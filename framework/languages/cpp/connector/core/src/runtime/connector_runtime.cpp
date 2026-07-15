@@ -88,10 +88,9 @@ bool &shared_runtime_started ()
 class shared_operation_runner_t
 {
   public:
-    shared_operation_runner_t ()
+    explicit shared_operation_runner_t (std::size_t worker_count, bool runtime_runner = false)
     {
-        std::size_t worker_count = 4;
-        {
+        if (runtime_runner) {
             std::lock_guard<std::mutex> lock (shared_runtime_config_mutex ());
             worker_count = shared_runtime_worker_count ();
             shared_runtime_started () = true;
@@ -160,7 +159,19 @@ class shared_operation_runner_t
 
 shared_operation_runner_t &shared_operation_runner ()
 {
-    static shared_operation_runner_t runner;
+    static shared_operation_runner_t runner (4, true);
+    return runner;
+}
+
+shared_operation_runner_t &shared_callback_runner ()
+{
+    static shared_operation_runner_t runner (4);
+    return runner;
+}
+
+shared_operation_runner_t &shared_connect_runner ()
+{
+    static shared_operation_runner_t runner (4);
     return runner;
 }
 
@@ -169,6 +180,11 @@ shared_operation_runner_t &shared_operation_runner ()
 boost::asio::io_context &shared_io_context ()
 {
     return shared_operation_runner ().io_context ();
+}
+
+boost::asio::io_context &shared_callback_io_context ()
+{
+    return shared_callback_runner ().io_context ();
 }
 
 bool configure_shared_runtime_worker_count (std::size_t worker_count)
@@ -276,6 +292,11 @@ void schedule_delivery (std::shared_ptr<void> state, std::function<void ()> call
 void post_runtime_operation (std::function<void ()> operation)
 {
     shared_operation_runner ().post (std::move (operation));
+}
+
+void post_connect_operation (std::function<void ()> operation)
+{
+    shared_connect_runner ().post (std::move (operation));
 }
 
 std::shared_ptr<boost::asio::steady_timer>
@@ -795,155 +816,12 @@ connect_transport (const std::shared_ptr<detail::connector_state_t> &state,
       std::move (connection));
 }
 
-void complete_connect_callback (std::shared_ptr<detail::connector_state_t> state,
-                                std::function<void (result_t<void>)> callback,
-                                result_t<void> result)
-{
-    detail::schedule_delivery (
-      state, [callback = std::move (callback), result = std::move (result)] () mutable {
-          if (callback) {
-              callback (std::move (result));
-          }
-          });
-}
-
 void schedule_start_read_loop (std::shared_ptr<detail::connector_state_t> state)
 {
     detail::post_runtime_operation ([state = std::move (state)] {
         detail::start_read_loop (state);
     });
 }
-
-void connect_tcp_async (std::shared_ptr<detail::connector_state_t> state,
-                        detail::endpoint_parts_t endpoint,
-                        std::function<void (result_t<void>)> callback)
-{
-    state->close_requested.store (false);
-    detail::change_state (state, connection_state_t::connecting);
-    auto resolver = std::make_shared<boost::asio::ip::tcp::resolver> (state->io_context);
-    resolver->async_resolve (
-      endpoint.host, endpoint.port,
-      [state, resolver, callback = std::move (callback)] (
-        boost::system::error_code error,
-        boost::asio::ip::tcp::resolver::results_type endpoints) mutable {
-          if (error) {
-              detail::change_state (
-                state, connection_state_t::disconnected,
-                error_t{error_code_t::connect_timeout, error.message ()});
-              complete_connect_callback (
-                state, std::move (callback),
-                result_t<void>::failure (error_code_t::connect_timeout, error.message ()));
-              return;
-          }
-          auto socket = std::make_shared<boost::asio::ip::tcp::socket> (state->io_context);
-          boost::asio::async_connect (
-            *socket, endpoints,
-            [state, socket, callback = std::move (callback)] (
-              boost::system::error_code connect_error,
-              const boost::asio::ip::tcp::endpoint &) mutable {
-                if (connect_error) {
-                    detail::change_state (
-                      state, connection_state_t::disconnected,
-                      error_t{error_code_t::connect_timeout, connect_error.message ()});
-                    complete_connect_callback (
-                      state, std::move (callback),
-                      result_t<void>::failure (error_code_t::connect_timeout,
-                                               connect_error.message ()));
-                    return;
-                }
-                {
-                    std::lock_guard<std::mutex> lock (state->transport_mutex);
-                    state->connection = detail::make_tcp_connection (std::move (*socket));
-                    const auto now = std::chrono::steady_clock::now ();
-                    state->last_heartbeat_sent = now;
-                    state->last_inbound_received = now;
-                }
-                detail::change_state (state, connection_state_t::connected);
-                detail::resume_pending_writes_after_connect (state);
-                complete_connect_callback (state, std::move (callback),
-                                           result_t<void>::success ());
-                schedule_start_read_loop (state);
-            });
-      });
-}
-
-void complete_async_transport_connect (
-  std::shared_ptr<detail::connector_state_t> state,
-  std::function<void (result_t<void>)> callback,
-  boost::system::error_code error,
-  std::unique_ptr<detail::stream_connection_t> connection)
-{
-    if (error) {
-        detail::change_state (state, connection_state_t::disconnected,
-                              error_t{error_code_t::connect_timeout, error.message ()});
-        complete_connect_callback (
-          state, std::move (callback),
-          result_t<void>::failure (error_code_t::connect_timeout, error.message ()));
-        return;
-    }
-    {
-        std::lock_guard<std::mutex> lock (state->transport_mutex);
-        state->connection = std::move (connection);
-        const auto now = std::chrono::steady_clock::now ();
-        state->last_heartbeat_sent = now;
-        state->last_inbound_received = now;
-    }
-    detail::change_state (state, connection_state_t::connected);
-    detail::resume_pending_writes_after_connect (state);
-    complete_connect_callback (state, std::move (callback), result_t<void>::success ());
-    schedule_start_read_loop (state);
-}
-
-void connect_websocket_plain_async (std::shared_ptr<detail::connector_state_t> state,
-                                    detail::websocket_endpoint_parts_t endpoint,
-                                    std::function<void (result_t<void>)> callback)
-{
-    state->close_requested.store (false);
-    detail::change_state (state, connection_state_t::connecting);
-    detail::connect_websocket_async (
-      state->io_context, std::move (endpoint),
-      [state, callback = std::move (callback)] (
-        boost::system::error_code error,
-        std::unique_ptr<detail::stream_connection_t> connection) mutable {
-          complete_async_transport_connect (state, std::move (callback), error,
-                                            std::move (connection));
-      });
-}
-
-#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-void connect_tls_transport_async (std::shared_ptr<detail::connector_state_t> state,
-                                  detail::endpoint_parts_t endpoint,
-                                  std::function<void (result_t<void>)> callback)
-{
-    state->close_requested.store (false);
-    detail::change_state (state, connection_state_t::connecting);
-    detail::connect_tls_async (
-      state->io_context, std::move (endpoint), state->options.skip_server_certificate_validation,
-      [state, callback = std::move (callback)] (
-        boost::system::error_code error,
-        std::unique_ptr<detail::stream_connection_t> connection) mutable {
-          complete_async_transport_connect (state, std::move (callback), error,
-                                            std::move (connection));
-      });
-}
-
-void connect_websocket_secure_transport_async (
-  std::shared_ptr<detail::connector_state_t> state,
-  detail::websocket_endpoint_parts_t endpoint,
-  std::function<void (result_t<void>)> callback)
-{
-    state->close_requested.store (false);
-    detail::change_state (state, connection_state_t::connecting);
-    detail::connect_websocket_secure_async (
-      state->io_context, std::move (endpoint), state->options.skip_server_certificate_validation,
-      [state, callback = std::move (callback)] (
-        boost::system::error_code error,
-        std::unique_ptr<detail::stream_connection_t> connection) mutable {
-          complete_async_transport_connect (state, std::move (callback), error,
-                                            std::move (connection));
-      });
-}
-#endif
 
 result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state,
                               bool automatic_reconnect = false)
@@ -1043,7 +921,7 @@ void detail::schedule_reconnect (std::shared_ptr<detail::connector_state_t> stat
     detail::change_state (state, connection_state_t::reconnecting);
     auto timer = detail::post_runtime_operation_after (
       state->options.reconnect.initial_delay, [state] {
-          boost::asio::post (boost::asio::system_executor{}, [state] {
+          detail::post_connect_operation ([state] {
               if (state->close_requested.load ()) {
                   std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
                   state->reconnect_scheduled = false;
@@ -1070,8 +948,7 @@ result_t<void> connector_t::connect ()
 void connector_t::connect (std::function<void (result_t<void>)> callback)
 {
     auto state = detail::state_from (_state);
-    boost::asio::post (boost::asio::system_executor{},
-                       [state, callback = std::move (callback)] () mutable {
+    detail::post_connect_operation ([state, callback = std::move (callback)] () mutable {
         auto result = connect_state (state);
         detail::schedule_delivery (
           state, [callback = std::move (callback), result = std::move (result)] () mutable {

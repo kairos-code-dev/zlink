@@ -25,6 +25,7 @@ namespace zlink::stream_connector::detail
 {
 
 boost::asio::io_context &shared_io_context ();
+boost::asio::io_context &shared_callback_io_context ();
 bool configure_shared_runtime_worker_count (std::size_t worker_count);
 
 struct pending_send_t
@@ -75,7 +76,7 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
         options (std::move (options)),
         io_context (shared_io_context ()),
         write_strand (boost::asio::make_strand (io_context)),
-        delivery_strand (boost::asio::make_strand (boost::asio::system_executor{}))
+        delivery_strand (boost::asio::make_strand (shared_callback_io_context ()))
     {
     }
 
@@ -129,7 +130,7 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     std::shared_ptr<boost::asio::steady_timer> heartbeat_timer;
     boost::asio::io_context &io_context;
     boost::asio::strand<boost::asio::io_context::executor_type> write_strand;
-    boost::asio::strand<boost::asio::system_executor> delivery_strand;
+    boost::asio::strand<boost::asio::io_context::executor_type> delivery_strand;
     std::shared_ptr<stream_connection_t> connection;
     mutable std::mutex lifecycle_mutex;
     std::condition_variable lifecycle_changed;
@@ -176,6 +177,7 @@ void deliver_received_packet (connector_state_t &state, packet_t packet);
 void schedule_delivery (std::shared_ptr<connector_state_t> state, std::function<void ()> callback);
 void publish_error (connector_state_t &state, error_t error) noexcept;
 void post_runtime_operation (std::function<void ()> operation);
+void post_connect_operation (std::function<void ()> operation);
 std::shared_ptr<boost::asio::steady_timer>
 post_runtime_operation_after (std::chrono::milliseconds delay,
                               std::function<void ()> operation);

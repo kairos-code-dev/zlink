@@ -256,9 +256,7 @@ endif()
 
 add_library(zlink_stream_connector STATIC
   connector/core/src/runtime/calls/zlink_stream_calls.cpp
-  connector/core/src/runtime/connector_lifecycle.cpp
   connector/core/src/runtime/connector_runtime.cpp
-  connector/core/src/runtime/heartbeat_monitor.cpp
   connector/core/src/runtime/protocol/compression/lz4_compression_codec.cpp
   connector/core/src/runtime/protocol/framing/frame_codec.cpp
   connector/core/src/runtime/protocol/framing.cpp

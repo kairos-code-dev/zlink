@@ -2,7 +2,6 @@
 
 #include "runtime/connector_runtime.hpp"
 
-#include "runtime/heartbeat_monitor.hpp"
 #include "runtime/protocol/compression/lz4_compression_codec.hpp"
 #include "runtime/protocol/framing/frame_codec.hpp"
 #include "runtime/protocol/framing.hpp"
@@ -506,27 +505,6 @@ result_t<inbound_frame_t> read_inbound_frame (std::shared_ptr<connector_state_t>
       header.kind, header.request_seq, std::move (packet.value ()), payload_size, {}});
 }
 
-result_t<void> send_due_heartbeat (connector_state_t &state)
-{
-    if (!is_transport_connected (state)) {
-        return result_t<void>::success ();
-    }
-    const auto now = steady_clock_t::now ();
-    heartbeat_monitor_t monitor (state.options.heartbeat);
-    if (!monitor.due (state.last_heartbeat_sent, now)) {
-        return result_t<void>::success ();
-    }
-    packet_t heartbeat;
-    heartbeat.name = "$zlink.heartbeat.ping";
-    heartbeat.codec = codec_t::raw;
-    heartbeat.payload = zlink::message_t::from (std::string{});
-    auto written = write_packet_frame (state, message_kind_t::control, heartbeat, std::nullopt);
-    if (written) {
-        state.last_heartbeat_sent = now;
-    }
-    return written;
-}
-
 result_t<void> send_due_pong (connector_state_t &state)
 {
     if (!state.heartbeat_pong_due || !is_transport_connected (state)) {
@@ -729,8 +707,10 @@ void run_heartbeat_maintenance (std::shared_ptr<connector_state_t> state,
             return;
         }
         const auto now = steady_clock_t::now ();
-        heartbeat_monitor_t monitor (state->options.heartbeat);
-        if (monitor.timed_out (state->last_inbound_received, now)) {
+        const auto heartbeat_timed_out =
+          state->last_inbound_received != steady_clock_t::time_point{}
+          && now - state->last_inbound_received >= state->options.heartbeat.timeout;
+        if (heartbeat_timed_out) {
             if (state->connection) {
                 boost::system::error_code ignored;
                 state->connection->close (ignored);
@@ -739,7 +719,8 @@ void run_heartbeat_maintenance (std::shared_ptr<connector_state_t> state,
             state->heartbeat_timer.reset ();
             timeout_error =
               error_t{error_code_t::disconnected, "stream connector heartbeat timed out"};
-        } else if (monitor.due (state->last_heartbeat_sent, now)) {
+        } else if (state->last_heartbeat_sent == steady_clock_t::time_point{}
+                   || now - state->last_heartbeat_sent >= state->options.heartbeat.interval) {
             packet_t heartbeat;
             heartbeat.name = "$zlink.heartbeat.ping";
             heartbeat.codec = codec_t::raw;

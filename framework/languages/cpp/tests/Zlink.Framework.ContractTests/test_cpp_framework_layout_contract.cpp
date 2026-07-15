@@ -932,8 +932,6 @@ int main ()
     ok &= require_exists (root / "connector/core/src/runtime/protocol/compression");
     ok &= require_exists (root / "connector/core/src/runtime/protocol/framing");
     ok &= require_exists (root / "connector/core/src/runtime/transport");
-    ok &= require_exists (root / "connector/core/src/runtime/connector_lifecycle.cpp");
-    ok &= require_exists (root / "connector/core/src/runtime/heartbeat_monitor.cpp");
     ok &= require_exists (root / "connector/core/src/runtime/calls/zlink_stream_calls.cpp");
     ok &= require_exists (
       root / "connector/core/src/runtime/protocol/compression/lz4_compression_codec.cpp");

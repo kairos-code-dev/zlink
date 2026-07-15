@@ -58,8 +58,8 @@ public HTTP client만 사용한다.
 
 - `RM-B3`은 미구현이다. Java catalog의 `failover` 별칭은 실제로 `RM-A4` 정상 replacement를 실행하며,
   provider `SIGKILL`, lease 만료 전후의 유한 결과, 남은 provider의 지속 성공을 검증하지 않는다.
-- 동적 역할 readiness는 아직 60초, peer convergence는 45초를 사용한다. 공통 3초 readiness와 이름
-  있는 5초 route settle 상한으로 줄인 gate를 통과해야 한다.
+- 동적 역할 readiness는 3초, peer convergence는 이름 있는 5초 route settle로 제한한다. 변경 뒤
+  `RM-A4`와 `RM-B2` 단독 실행이 통과했다(구현 커밋 `7ee3d9141`).
 
 ## 검증
 

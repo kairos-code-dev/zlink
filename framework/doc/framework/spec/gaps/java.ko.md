@@ -1102,6 +1102,8 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     `RM-B3` provider `SIGKILL` failover는 catalog에 없다. `RM-C2`의 미존재 rid 기대값을
     `REQUEST_TARGET_NOT_FOUND`로 바꾼 집중 gate는 실제 `TimeoutException`으로 실패했다
     (`RegistryMessaging/logs/20260716-084751-3147390/`).
+  - 부분 수정: 동적 역할 readiness 60초와 peer convergence 45초를 각각 공통 3초와 이름 있는 5초
+    route settle로 줄였다. `RM-A4`와 `RM-B2` 단독 실행이 통과했다. 구현 커밋 `7ee3d9141`.
 - [ ] **E2E-JV-26** (가짜 통과) — `SM-G2`가 SpotNode scale-out과 신규 배치를 검증하지 않는다.
   - 재검증: 현재 runner는 두 play node를 먼저 시작하고 scenario는 양쪽 local manager에 서로 다른
     Spot을 직접 만든다. 기존 play-a owner 유지, play-b peer/capability와 Entry Spot handle readiness,

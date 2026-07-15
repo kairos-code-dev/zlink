@@ -512,6 +512,7 @@ public interface ZLinkStreamNodeBuilder {
 
 public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder enableServer(String endpoint);
+    ZLinkSocketRuntimeOptions configureServerSocket();
     ClientServerChannelBuilder setRoutingId(RoutingId routingId);
     ClientServerChannelBuilder enableClient();
     ClientServerChannelBuilder enableClient(String endpoint);
@@ -541,6 +542,7 @@ public interface FanoutChannelBuilder {
 
 public interface RouteMeshChannelBuilder {
     RouteMeshChannelBuilder enableServer(String endpoint);
+    ZLinkSocketRuntimeOptions configureServerSocket();
     RouteMeshChannelBuilder setRoutingId(RoutingId routingId);
     RouteMeshChannelBuilder enableClient();
     RouteMeshChannelBuilder enableClient(String endpoint);

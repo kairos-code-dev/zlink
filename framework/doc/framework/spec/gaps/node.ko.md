@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 20건. 완료 15건.**
+**전체 20건. 완료 20건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -872,9 +872,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | **E2E-ND-16** (**가짜 통과**) | [config-10 ST-F1·ST-F3(**둘 다 P0**)](../../common/e2e/config-10-spot-actor-transfer.ko.md): `P1 → P2 → P3` 순서를 단언한다 | `assertOrder`가 **`entry.kind`만 비교하고 `entry.value`를 안 읽는다.** ST-F1은 `['packet_handler','packet_handler','packet_handler']` — **같은 kind 셋**이라 **어떤 순열이든 통과한다.** `P1/P2/P3`는 `value`에 있다. ⇒ **"3개가 도착했다"로 퇴화한다.** 필수 marker `source_cleanup`은 **트리 전체에 0건** |
 | **E2E-ND-17** (**가짜 통과**) | [config-1 RM-A4(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): consumer **재시작 없이** peer handover를 확인한다 | 교체 후 요청을 **replacement 프로세스 자신의 HTTP**로 보낸다. p1을 resolve했던 클라이언트가 **하나도 살아남지 않아** handover 경로가 **구조적으로 관측 불가능**하다. `v1Count === 0` 단언도 죽은 프로세스의 연결 실패를 삼키고 `[]`를 반환해 **항상 참**이다 |
 
-**Config 8이 Node에 없다** — `TD-*` grep 0건. 대신 폐기된 `ATD-*` 앱이 **기본 스윕에 남아 있고**,
-**Config 11의 P0 증거가 그 폐기된 앱과 in-process contract test에서 나온다**(e2e README §5가 e2e가
-아니라고 명시한 것이다).
+- [x] **E2E-ND-37** (미구현) — Config 8의 정식 `TD-A1`~`TD-G1` 27개가 없고 폐기된 `ATD-*` 앱이 기본 스윕에 남아 있다.
+  - 근거: 정식 제목과 ID를 정확히 대조하는 header 게이트가 기존 16개 `ATD-*`와 누락된 27개 `TD-*` 때문에 실패하는 것을 확인한 뒤, 두 play·두 delay·외부 HTTP API·두 session을 한 번 배포해 27개 실행 turn 시나리오와 shutdown/recovery를 실제 connector 경로로 검증하도록 교체했다. 연속 one-way 전송의 HWM race는 handler `started` evidence로 수신을 확인해 제거했고, 설정 파일 중복 읽기는 하나의 typed Configuration 경계로 모았다. 27/27과 shutdown/recovery가 `log/20260715-212417-1096885`에서 통과하고 header·설정 정책 게이트와 하위 프로젝트 build도 통과했다. POSD 재검토에서는 시나리오 실행을 `ExecutionTurnScenarioSuite`에 가두고 언어 구현 트리의 중복 `feature-map`·`porting-inventory`를 제거했다. 커밋 `16c1f1b7d`.
 
 > **감사자 자신의 한계 보고:** samples는 수렴했으나 **e2e는 수렴하지 않았다.** config-2(SpotService,
 > 시나리오 51개)와 config-11을 C++ 수준 깊이로 보지 못했다. **SpotService가 가장 크고 거의 확실히

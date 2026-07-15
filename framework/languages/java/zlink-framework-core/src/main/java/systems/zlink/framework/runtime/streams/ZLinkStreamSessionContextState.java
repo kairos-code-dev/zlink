@@ -165,8 +165,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
                 requestHeader.packetName(),
                 null,
                 null,
-                requestHeader.correlationId()
-                    .orElseGet(() -> requestHeader.requestSequence().map(String::valueOf).orElse(null)),
+                ZLinkStreamCorrelations.forTrace(requestHeader),
                 null,
                 null,
                 null,

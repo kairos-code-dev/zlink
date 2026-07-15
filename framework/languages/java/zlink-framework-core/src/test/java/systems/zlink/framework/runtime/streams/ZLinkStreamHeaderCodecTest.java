@@ -14,6 +14,23 @@ import systems.zlink.framework.streams.ZLinkStreamMessageKind;
 
 final class ZLinkStreamHeaderCodecTest {
     @Test
+    void traceCorrelationDoesNotInventValueFromRequestSequence() throws Exception {
+        ZLinkStreamHeader request = new ZLinkStreamHeader(
+            ZLinkStreamMessageKind.REQUEST,
+            ZLinkStreamCodec.JSON,
+            EnumSet.noneOf(ZLinkStreamHeaderFlag.class),
+            Optional.of(7L),
+            "RequestWithoutCorrelation",
+            Map.of());
+        Class<?> correlations = Class.forName(
+            "systems.zlink.framework.runtime.streams.ZLinkStreamCorrelations");
+        var method = correlations.getDeclaredMethod("forTrace", ZLinkStreamHeader.class);
+        method.setAccessible(true);
+
+        assertEquals(null, method.invoke(null, request));
+    }
+
+    @Test
     void encodeDecodePreservesDotnetHeaderFields() {
         ZLinkStreamHeader header = new ZLinkStreamHeader(
             ZLinkStreamMessageKind.REQUEST,

@@ -269,8 +269,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         SessionState state = getOrCreateSessionState(streamNode, stream, routingId);
         state.markApplicationReceived();
         if (flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.RECEIVED)) {
-            String corr = dispatchHeader.correlationId()
-                .orElseGet(() -> dispatchHeader.requestSequence().map(String::valueOf).orElse(null));
+            String corr = ZLinkStreamCorrelations.forTrace(dispatchHeader);
             flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
                 systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.RECEIVED,
                 systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,

@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 5건.**
+**전체 33건. 완료 6건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -296,7 +296,7 @@
 - [ ] **§12.12** — connector dispatch mode 이름 (Java)
 - [ ] **§12.13** — connector inbound observer option 부재 (Java)
 - [ ] **§12.15** — 예외 정규화 부재 (Java)
-- [ ] **§12.16** — metadata 총 크기 한도 미검사 (Java)
+- [x] **§12.16** — metadata wire 블록의 총 크기가 1024바이트를 넘으면 encode 전에 거부하도록 고쳤다. 경계값 1024 허용·1025 거부 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `47f7898af`(2026-07-15).
 - [ ] **§12.17** — correlated Error 처리 (Java)
 - [ ] **§12.18** — flow_id 미전파 (Java)
 - [x] **§12.19** — Java typed 호출이 raw payload를 거부하고 Kotlin request 완료 표면을 `awaitReply<T>()`로 통일했다. 집중 계약 테스트, Java connector·Kotlin module 전체 테스트, Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check 통과. 구현 커밋 `c372ebbfc`(2026-07-15).
@@ -456,9 +456,13 @@ payload preview 한도(기본 0바이트)를 option으로 조절한다고 규정
 
 ### §12.16 metadata 총 크기 한도 미검사 (Java)
 
-**미충족(Java).** [32 §4](../stream-connector/32-stream-connector.ko.md)는 metadata 블록의 **총합 1024바이트** 한도를
-규정한다. Java wire codec은 항목 수와 개별 key/value 길이만 검사하고 총합을 검사하지 않아, 한도를
-넘는 프레임을 만들 수 있다.
+**충족(Java).** [32 §4](../stream-connector/32-stream-connector.ko.md)가 규정한 metadata wire 블록의
+**총합 1024바이트** 한도를 encode 과정에서 검사한다. 항목 수와 개별 key/value 검사 뒤에 별도 전체
+순회를 추가하는 안 대신 기존 단일 encode 순회에서 누적 크기를 검증해 같은 정보를 두 번 계산하지 않는다.
+
+구현 전에는 정확히 1024바이트인 블록은 허용하고 1025바이트인 블록은 거부하는 집중 테스트 중 후자가
+실패했다. 구현 뒤 경계값 테스트와 `:zlink-stream-connector:test :zlink-framework-kotlin:test`가
+통과했다. 구현 커밋 `47f7898af`(2026-07-15).
 
 ### §12.17 correlated Error 처리 (Java)
 

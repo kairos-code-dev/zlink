@@ -23,7 +23,9 @@ final class ZLinkStreamConnectorConfiguration {
         this.limits = new Limits(
             options.maxSendPayloadSize(),
             options.maxReceivePayloadSize(),
-            options.maxReceivedMessages());
+            options.maxReceivedMessages(),
+            options.maxInboundObserverNotifications(),
+            options.maxInboundObserverPayloadPreviewBytes());
         this.heartbeat = new Heartbeat(
             options.heartbeatEnabled(), options.heartbeatInterval(), options.heartbeatTimeout());
         this.reconnect = new Reconnect(
@@ -71,6 +73,14 @@ final class ZLinkStreamConnectorConfiguration {
         if (options.maxReceivedMessages() <= 0) {
             throw new IllegalArgumentException("maxReceivedMessages must be positive");
         }
+        if (options.maxInboundObserverNotifications() <= 0) {
+            throw new IllegalArgumentException(
+                "maxInboundObserverNotifications must be positive");
+        }
+        if (options.maxInboundObserverPayloadPreviewBytes() < 0) {
+            throw new IllegalArgumentException(
+                "maxInboundObserverPayloadPreviewBytes must not be negative");
+        }
         Objects.requireNonNull(options.compression(), "compression");
         return new ZLinkStreamConnectorConfiguration(options);
     }
@@ -85,7 +95,12 @@ final class ZLinkStreamConnectorConfiguration {
     Transport transport() { return transport; }
 
     record Timeouts(Duration connect, Duration request, Duration waitForMessage) { }
-    record Limits(int sendPayload, int receivePayload, int receivedMessages) { }
+    record Limits(
+        int sendPayload,
+        int receivePayload,
+        int receivedMessages,
+        int inboundObserverNotifications,
+        int inboundObserverPayloadPreviewBytes) { }
     record Heartbeat(boolean enabled, Duration interval, Duration timeout) { }
     record Reconnect(
         boolean enabled,

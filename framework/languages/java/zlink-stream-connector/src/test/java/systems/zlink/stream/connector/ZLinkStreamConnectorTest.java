@@ -42,6 +42,14 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void inboundObserverOptionSurfaceMatchesContract() throws Exception {
+        assertEquals(int.class, ZLinkStreamConnectorOptions.class
+            .getMethod("maxInboundObserverNotifications").getReturnType());
+        assertEquals(int.class, ZLinkStreamConnectorOptions.class
+            .getMethod("maxInboundObserverPayloadPreviewBytes").getReturnType());
+    }
+
+    @Test
     void packetNameOverrideSurfaceMatchesContract() throws Exception {
         assertEquals(ZLinkStreamSendCall.class, ZLinkStreamSendCall.class
             .getMethod("packetName", String.class).getReturnType());
@@ -427,11 +435,45 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void inboundObserverPayloadPreviewUsesConfiguredLimit() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector = createConnector(withObserverLimits(
+                server.options(ZLinkStreamDispatchMode.AUTO),
+                4,
+                3));
+            AtomicReference<ZLinkStreamInboundObservation> observed = new AtomicReference<>();
+            connector.observeInbound(observation -> {
+                observed.set(observation);
+                return CompletableFuture.completedFuture(null);
+            });
+
+            ConnectorTestAwait.await(connector.connect());
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_SEND,
+                    ZLinkStreamWireProtocol.CODEC_RAW,
+                    0,
+                    null,
+                    "Preview",
+                    Map.of(),
+                    null),
+                TcpStreamConnectorTestServer.bytes("body")).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(() -> observed.get() != null);
+            assertEquals(4, observed.get().payloadLength());
+            assertArrayEquals(
+                TcpStreamConnectorTestServer.bytes("bod"),
+                observed.get().payloadPreview());
+        }
+    }
+
+    @Test
     void inboundObserverOverflowReportsObserverDroppedAndRequestsStillComplete()
         throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
-            ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+            ZLinkStreamConnector connector = createConnector(withObserverLimits(
+                server.options(ZLinkStreamDispatchMode.AUTO),
+                1,
+                0));
             CountDownLatch observerEntered = new CountDownLatch(1);
             CountDownLatch releaseObserver = new CountDownLatch(1);
             List<String> observedNames = Collections.synchronizedList(new ArrayList<>());
@@ -465,9 +507,7 @@ final class ZLinkStreamConnectorTest {
                 TcpStreamConnectorTestServer.bytes("block")).join();
             assertTrue(observerEntered.await(1, TimeUnit.SECONDS));
 
-            for (int index = 0;
-                index < ZLinkStreamInboundObserverDispatcher.DEFAULT_MAX_NOTIFICATIONS + 2;
-                index++) {
+            for (int index = 0; index < 3; index++) {
                 var requestFrame = server.readFrameAsync();
                 var replyFuture = connector.request(payload("Echo", "hello"))
                     .timeout(Duration.ofMillis(500))
@@ -488,8 +528,7 @@ final class ZLinkStreamConnectorTest {
             releaseObserver.countDown();
             TcpStreamConnectorTestServer.awaitCondition(() -> observedNames.size() > 1);
             assertEquals("", observedNames.get(1));
-            assertTrue(observedNames.size()
-                <= ZLinkStreamInboundObserverDispatcher.DEFAULT_MAX_NOTIFICATIONS + 1);
+            assertTrue(observedNames.size() <= 2);
         }
     }
 
@@ -1326,6 +1365,9 @@ final class ZLinkStreamConnectorTest {
         assertEquals(Duration.ofSeconds(5), options.connectTimeout());
         assertEquals(64 * 1024, options.maxSendPayloadSize());
         assertEquals(64 * 1024, options.maxReceivePayloadSize());
+        assertEquals(1024, options.maxReceivedMessages());
+        assertEquals(1024, options.maxInboundObserverNotifications());
+        assertEquals(0, options.maxInboundObserverPayloadPreviewBytes());
         assertTrue(options.heartbeatEnabled());
         assertEquals(Duration.ofSeconds(1), options.heartbeatInterval());
         assertEquals(Duration.ofSeconds(5), options.heartbeatTimeout());
@@ -1357,6 +1399,36 @@ final class ZLinkStreamConnectorTest {
             packetName,
             Message.from(body),
             Map.of());
+    }
+
+    private static ZLinkStreamConnectorOptions withObserverLimits(
+        ZLinkStreamConnectorOptions options,
+        int maxNotifications,
+        int maxPreviewBytes) {
+        return new ZLinkStreamConnectorOptions(
+            options.endpoint(),
+            options.dispatchMode(),
+            options.requestTimeout(),
+            options.waitTimeout(),
+            options.maxReconnectAttempts(),
+            options.connectTimeout(),
+            options.maxSendPayloadSize(),
+            options.maxReceivePayloadSize(),
+            options.maxReceivedMessages(),
+            maxNotifications,
+            maxPreviewBytes,
+            options.heartbeatEnabled(),
+            options.heartbeatInterval(),
+            options.heartbeatTimeout(),
+            options.reconnectEnabled(),
+            options.reconnectInitialDelay(),
+            options.reconnectMaxDelay(),
+            options.reconnectBackoffFactor(),
+            options.skipServerCertificateValidation(),
+            options.compression(),
+            options.compressionCodec(),
+            options.nameResolver(),
+            options.typedCodec());
     }
 
     private static ZLinkStreamConnectorOptions options(

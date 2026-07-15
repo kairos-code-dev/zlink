@@ -13,6 +13,8 @@ public record ZLinkStreamConnectorOptions(
     int maxSendPayloadSize,
     int maxReceivePayloadSize,
     int maxReceivedMessages,
+    int maxInboundObserverNotifications,
+    int maxInboundObserverPayloadPreviewBytes,
     boolean heartbeatEnabled,
     Duration heartbeatInterval,
     Duration heartbeatTimeout,
@@ -36,7 +38,7 @@ public record ZLinkStreamConnectorOptions(
             Duration.ofSeconds(5),
             64 * 1024,
             64 * 1024,
-            Integer.MAX_VALUE,
+            1024,
             true,
             Duration.ofSeconds(1),
             Duration.ofSeconds(5),
@@ -66,6 +68,54 @@ public record ZLinkStreamConnectorOptions(
         if (typedCodec == null) {
             typedCodec = ZLinkStreamJson.codec();
         }
+    }
+
+    public ZLinkStreamConnectorOptions(
+        URI endpoint,
+        ZLinkStreamDispatchMode dispatchMode,
+        Duration requestTimeout,
+        Duration waitTimeout,
+        int maxReconnectAttempts,
+        Duration connectTimeout,
+        int maxSendPayloadSize,
+        int maxReceivePayloadSize,
+        int maxReceivedMessages,
+        boolean heartbeatEnabled,
+        Duration heartbeatInterval,
+        Duration heartbeatTimeout,
+        boolean reconnectEnabled,
+        Duration reconnectInitialDelay,
+        Duration reconnectMaxDelay,
+        double reconnectBackoffFactor,
+        boolean skipServerCertificateValidation,
+        ZLinkStreamCompression compression,
+        ZLinkStreamCompressionCodec compressionCodec,
+        ZLinkStreamPacketNameResolver nameResolver,
+        ZLinkStreamTypedCodec typedCodec) {
+        this(
+            endpoint,
+            dispatchMode,
+            requestTimeout,
+            waitTimeout,
+            maxReconnectAttempts,
+            connectTimeout,
+            maxSendPayloadSize,
+            maxReceivePayloadSize,
+            maxReceivedMessages,
+            1024,
+            0,
+            heartbeatEnabled,
+            heartbeatInterval,
+            heartbeatTimeout,
+            reconnectEnabled,
+            reconnectInitialDelay,
+            reconnectMaxDelay,
+            reconnectBackoffFactor,
+            skipServerCertificateValidation,
+            compression,
+            compressionCodec,
+            nameResolver,
+            typedCodec);
     }
 
     public ZLinkStreamConnectorOptions(

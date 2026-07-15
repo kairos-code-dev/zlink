@@ -1,6 +1,7 @@
 package systems.zlink.stream.connector;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -12,18 +13,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 final class ZLinkStreamInboundObserverDispatcher implements AutoCloseable {
-    static final int DEFAULT_MAX_NOTIFICATIONS = 1024;
-
     private final List<ZLinkStreamInboundObserver> observers = new CopyOnWriteArrayList<>();
-    private final ArrayBlockingQueue<ZLinkStreamInboundObservation> queue =
-        new ArrayBlockingQueue<>(DEFAULT_MAX_NOTIFICATIONS);
+    private final ArrayBlockingQueue<ZLinkStreamInboundObservation> queue;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(
         new ObserverThreadFactory());
     private final Consumer<ZLinkStreamError> publishError;
+    private final int maxPayloadPreviewBytes;
     private final AtomicBoolean dropReportPending = new AtomicBoolean();
     private volatile boolean closed;
 
-    ZLinkStreamInboundObserverDispatcher(Consumer<ZLinkStreamError> publishError) {
+    ZLinkStreamInboundObserverDispatcher(
+        int maxNotifications,
+        int maxPayloadPreviewBytes,
+        Consumer<ZLinkStreamError> publishError) {
+        this.queue = new ArrayBlockingQueue<>(maxNotifications);
+        this.maxPayloadPreviewBytes = maxPayloadPreviewBytes;
         this.publishError = Objects.requireNonNull(publishError, "publishError");
         executor.execute(this::drainLoop);
     }
@@ -47,7 +51,7 @@ final class ZLinkStreamInboundObserverDispatcher implements AutoCloseable {
             payload.length,
             (header.flags() & ZLinkStreamWireProtocol.FLAG_PAYLOAD_COMPRESSED) != 0,
             Instant.now(),
-            new byte[0]);
+            Arrays.copyOf(payload, Math.min(payload.length, maxPayloadPreviewBytes)));
         if (!queue.offer(observation)) {
             reportDropped();
         }

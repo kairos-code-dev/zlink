@@ -40,8 +40,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     // outbound packet so the server can trace/echo it regardless of tracing mode.
     private final AtomicLong correlationCounter = new AtomicLong();
     private final ZLinkStreamPendingRequests pendingRequests = new ZLinkStreamPendingRequests();
-    private final ZLinkStreamInboundObserverDispatcher inboundObservers =
-        new ZLinkStreamInboundObserverDispatcher(this::publishError);
+    private final ZLinkStreamInboundObserverDispatcher inboundObservers;
     private final ZLinkStreamReceiveDispatcher receiveDispatcher;
     private final ZLinkStreamConnectionLifecycle lifecycle;
 
@@ -53,6 +52,10 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         this.options = this.configuration.publicOptions();
         this.dispatchQueue = new ZLinkStreamDispatchQueue(
             this.configuration.limits().receivedMessages());
+        this.inboundObservers = new ZLinkStreamInboundObserverDispatcher(
+            this.configuration.limits().inboundObserverNotifications(),
+            this.configuration.limits().inboundObserverPayloadPreviewBytes(),
+            this::publishError);
         this.payloadCodec = new ZLinkStreamConnectorPayloadCodec(this.configuration);
         this.receiveDispatcher = new ZLinkStreamReceiveDispatcher(
             this.configuration,

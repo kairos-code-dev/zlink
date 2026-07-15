@@ -9,14 +9,20 @@ client/server channel, fanout channel, route mesh channel과 SpotNode builder는
 반환형은 호출한 builder 자신이다.
 
 ```ts
+routingId(routingId: string): this;
 useAllocatedRoutingId(slotCount: number): this;
 useAllocatedRoutingId(slotCount: number, routingIdPrefix: string): this;
 setRoutingIdAllocationGroup(groupName: string): this;
 ```
 
-첫 번째 overload는 등록 이름을 prefix로 사용한다. 두 번째 overload는 routing id prefix만 바꾸며
+`routingId(...)`는 기존 고정 identity 설정이다. 첫 번째 자동 할당 overload는 등록 이름을 prefix로
+사용한다. 두 번째 overload는 routing id prefix만 바꾸며
 기본 group 이름은 유지한다. group 설정은 자동 할당 설정 전후 어느 쪽에도 둘 수 있다. 고정 routing
 id와 자동 할당을 함께 설정하면 runtime 시작 전에 `ZLinkConfigurationException`으로 실패한다.
+
+NestJS의 `ZLinkNestClientServerChannelBuilder`, `ZLinkNestFanoutChannelBuilder`,
+`ZLinkNestRouterMeshBuilder`, `ZLinkNestSpotNodeBuilder`도 같은 네 메서드를 제공한다. NestJS builder의
+기존 선택 설정 관례에 따라 고정 routing id 인자는 `string | undefined`를 받는다.
 
 ## 2. allocation store capability
 
@@ -46,6 +52,53 @@ acquire 결과는 `kind`가 `acquired`, `groupExhausted`, `groupConfigurationMis
 시각과 같은 원자 연산에서 읽은 store 시각을 포함한다. release 결과는 `released` 또는
 `ignoredStale`다.
 
+정확한 값 형태는 다음과 같다. member 목록은 `channelName` 오름차순으로 정규화한다. 이름은 channel과
+SpotNode를 같은 저장소 계약으로 다루기 위해 `channelName`을 사용한다.
+
+```ts
+export interface ZLinkRoutingIdSlotAllocationMember {
+  readonly channelName: string;
+  readonly routingIdPrefix: string;
+}
+
+export interface ZLinkRoutingIdSlotAcquireRequest {
+  readonly groupName: string;
+  readonly members: readonly ZLinkRoutingIdSlotAllocationMember[];
+  readonly slotCount: number;
+  readonly ownerId: string;
+  readonly leaseTtlMs: number;
+}
+
+export interface ZLinkRoutingIdSlotAllocation {
+  readonly slot: number;
+  readonly owner: ZLinkLocationOwnerToken;
+  readonly leaseExpiresAt: Date;
+  readonly storeNow: Date;
+}
+
+export type ZLinkRoutingIdSlotAcquireResult =
+  | { readonly kind: 'acquired'; readonly allocation: ZLinkRoutingIdSlotAllocation }
+  | { readonly kind: 'groupExhausted' }
+  | {
+      readonly kind: 'groupConfigurationMismatch';
+      readonly expectedMembers: readonly ZLinkRoutingIdSlotAllocationMember[];
+      readonly expectedSlotCount: number;
+      readonly actualMembers: readonly ZLinkRoutingIdSlotAllocationMember[];
+      readonly actualSlotCount: number;
+    }
+  | { readonly kind: 'identityModeConflict' };
+
+export type ZLinkRoutingIdSlotReleaseResult = 'released' | 'ignoredStale';
+
+export interface ZLinkRoutingIdSlotAllocationSnapshot {
+  readonly groupName: string;
+  readonly members: readonly ZLinkRoutingIdSlotAllocationMember[];
+  readonly slotCount: number;
+  readonly allocations: readonly ZLinkRoutingIdSlotAllocation[];
+  readonly storeNow: Date;
+}
+```
+
 ## 3. 준비된 결과 조회
 
 ```ts
@@ -56,12 +109,20 @@ export interface ZLinkAllocatedRoutingIdProvider {
   ): Promise<ZLinkAllocatedRoutingId>;
 }
 
-export const ZLINK_ALLOCATED_ROUTING_ID_PROVIDER: InjectionToken;
+export const ZLINK_ALLOCATED_ROUTING_ID_PROVIDER: unique symbol;
 ```
 
 결과는 group 이름, slot과 member 이름별 `RoutingId`를 제공한다. provider는 모든 socket bind와
 location row 게시가 끝나 readiness에 도달한 뒤에만 완료된다. 등록되지 않은 group은
 `ZLinkConfigurationException`으로 실패한다.
+
+```ts
+export interface ZLinkAllocatedRoutingId {
+  readonly groupName: string;
+  readonly slot: number;
+  readonly memberRoutingIds: ReadonlyMap<string, RoutingId>;
+}
+```
 
 ## 4. location option
 

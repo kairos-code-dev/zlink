@@ -227,6 +227,8 @@ export interface ZLinkChannelRuntimeOptions {
 export interface ZLinkClientServerChannelBuilder {
     enableServer(endpoint: string): this;
     routingId(routingId: string): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     configureServerSocket(): ZLinkSocketConfig;
     configureClientSocket(): ZLinkSocketConfig;
     enableClient(): this;
@@ -422,6 +424,9 @@ export interface ZLinkEntrySpotOptions {
 
 export interface ZLinkFanoutChannelBuilder {
     enablePublisher(endpoint: string): this;
+    routingId(routingId: string): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     enableSubscriber(): this;
     enableSubscriber(endpoint: string): this;
     subscriberConnections(): ZLinkEndpointConnections;
@@ -585,12 +590,74 @@ export interface ZLinkLocationMonitoringRegistration {
     readonly sourceName: string;
 }
 
+export interface ZLinkAllocatedRoutingId {
+    readonly groupName: string;
+    readonly slot: number;
+    readonly memberRoutingIds: ReadonlyMap<string, RoutingId>;
+}
+
+export interface ZLinkAllocatedRoutingIdProvider {
+    waitForReadyAllocation(groupName: string, signal?: AbortSignal): Promise<ZLinkAllocatedRoutingId>;
+}
+
+export declare const ZLINK_ALLOCATED_ROUTING_ID_PROVIDER: unique symbol;
+
+export interface ZLinkRoutingIdSlotAllocationMember {
+    readonly channelName: string;
+    readonly routingIdPrefix: string;
+}
+
+export interface ZLinkRoutingIdSlotAcquireRequest {
+    readonly groupName: string;
+    readonly members: readonly ZLinkRoutingIdSlotAllocationMember[];
+    readonly slotCount: number;
+    readonly ownerId: string;
+    readonly leaseTtlMs: number;
+}
+
+export interface ZLinkRoutingIdSlotAllocation {
+    readonly slot: number;
+    readonly owner: ZLinkLocationOwnerToken;
+    readonly leaseExpiresAt: Date;
+    readonly storeNow: Date;
+}
+
+export type ZLinkRoutingIdSlotAcquireResult =
+    | { readonly kind: 'acquired'; readonly allocation: ZLinkRoutingIdSlotAllocation }
+    | { readonly kind: 'groupExhausted' }
+    | {
+        readonly kind: 'groupConfigurationMismatch';
+        readonly expectedMembers: readonly ZLinkRoutingIdSlotAllocationMember[];
+        readonly expectedSlotCount: number;
+        readonly actualMembers: readonly ZLinkRoutingIdSlotAllocationMember[];
+        readonly actualSlotCount: number;
+      }
+    | { readonly kind: 'identityModeConflict' };
+
+export type ZLinkRoutingIdSlotReleaseResult = 'released' | 'ignoredStale';
+
+export interface ZLinkRoutingIdSlotAllocationSnapshot {
+    readonly groupName: string;
+    readonly members: readonly ZLinkRoutingIdSlotAllocationMember[];
+    readonly slotCount: number;
+    readonly allocations: readonly ZLinkRoutingIdSlotAllocation[];
+    readonly storeNow: Date;
+}
+
+export interface ZLinkRoutingIdSlotAllocationStore {
+    acquireRoutingIdSlot(request: ZLinkRoutingIdSlotAcquireRequest, signal?: AbortSignal): Promise<ZLinkRoutingIdSlotAcquireResult>;
+    releaseRoutingIdSlot(groupName: string, slot: number, owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<ZLinkRoutingIdSlotReleaseResult>;
+    listRoutingIdSlots(groupName: string, signal?: AbortSignal): Promise<ZLinkRoutingIdSlotAllocationSnapshot>;
+}
+
 export interface ZLinkLocationOptions {
     readonly heartbeatIntervalMs?: number;
     readonly ownerLeaseTtlMs?: number;
     readonly pollingIntervalMs?: number;
     readonly listPageSize?: number;
     readonly storeFailureGraceMs?: number;
+    readonly routingIdFencingMarginMs?: number;
+    readonly ownerLeaseRenewTimeoutMs?: number;
 }
 
 export interface ZLinkLocationOwnerToken {
@@ -1116,6 +1183,9 @@ export interface ZLinkRouteLocationStore {
 
 export interface ZLinkRouteMeshChannelBuilder {
     enableServer(endpoint: string): this;
+    routingId(routingId: string): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     enableClient(): this;
     enableClient(endpoint: string): this;
     clientConnections(): ZLinkEndpointConnections;
@@ -1508,6 +1578,8 @@ export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {
 
 export interface ZLinkSpotNodeBuilder {
     routingId(routingId: RoutingId): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
     connectRouter(endpoint: string): this;
     connectRouter(peerRid: RoutingId, endpoint: string): this;
@@ -1854,6 +1926,8 @@ export declare class ZLinkMonitoringModule {
 export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
     enableServer(bind: string | undefined): this;
     routingId(routingId: string | undefined): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     configureServerSocket(): ZLinkSocketConfig;
     configureClientSocket(): ZLinkSocketConfig;
     enableClient(endpoint?: string | readonly string[]): this;
@@ -1896,6 +1970,9 @@ export interface ZLinkNestEntrySpotSubscriptionHandlerOptions<TEntrySpot extends
 
 export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
     enablePublisher(bind: string | undefined): this;
+    routingId(routingId: string | undefined): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     enableSubscriber(endpoint?: string | readonly string[]): this;
     addPublishHandler(packetName: string, handlerType: Type): this;
     addHandlerGroup(groupName: string): this;
@@ -1952,6 +2029,8 @@ export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBui
     enableRouter(endpoint: string | undefined): this;
     enableClient(): this;
     routingId(routingId: string | undefined): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     configureSocket(): ZLinkSocketConfig;
     connect(endpoint: string | readonly string[] | undefined): this;
     addSendHandler(packetName: string, handlerType: Type): this;
@@ -1975,6 +2054,8 @@ export interface ZLinkNestSpotActorSendHandlerOptions<TSpot extends ZLinkSpot, T
 
 export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
     routingId(routingId: string | undefined): this;
+    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+    setRoutingIdAllocationGroup(groupName: string): this;
     enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
     connectRouter(endpoint: string): this;
     connectRouter(peerRid: string, endpoint: string): this;

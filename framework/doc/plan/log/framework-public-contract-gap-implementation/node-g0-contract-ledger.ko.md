@@ -8,12 +8,13 @@ TypeScript browser connector 정식 공개 interface의 전체 분모이며,
 |----|---------------------|-----------|
 | ND-DOC-001 | `01-system-structure.ko.md` | package, module, DI, lifecycle와 public export 검토 완료 |
 | ND-DOC-002 | `02-handler-interfaces.ko.md` | 전체 public interface, overload, actor, Spot, stream, location과 monitoring 시그니처 검토 완료 |
+| ND-DOC-003 | `03-routing-id-allocation.ko.md` | builder, slot store, readiness provider와 fencing lifecycle 검토 완료 |
 | TS-DOC-001 | `languages/typescript/README.ko.md` | browser connector 계약 소유권과 문서 범위 검토 완료 |
 | TS-DOC-002 | `languages/typescript/03-stream-connector.ko.md` | browser package root, framing, 명시적 flow와 closing 계약 검토 완료 |
 
 ## 정식 spec SHA-256 snapshot
 
-아래 목록은 Node.js G0가 실제로 읽은 공통 spec 26개, Node.js 정식 계약 2개와 TypeScript
+아래 목록은 Node.js G0가 실제로 읽은 공통 spec 26개, Node.js 정식 계약 3개와 TypeScript
 browser connector 계약 2개의 전체 분모다.
 파일이 추가되거나 내용이 바뀌면 문서 회귀 검증이 실패하며, 변경된 계약을 다시 검토한 뒤 이
 snapshot을 함께 갱신해야 한다.
@@ -26,28 +27,29 @@ snapshot을 함께 갱신해야 한다.
 | . | `03-message-model.ko.md` | `a165665cbb47ef2b69744cfa7614d40c35274154af47439693f811080934f914` |
 | . | `04-async-execution-policy.ko.md` | `6614f5efd549442f95ac4f67f8ff1e10bba9c7061ee63a7608ffd91f43fea4bd` |
 | . | `05-framework-api.ko.md` | `06f3d56438301a80afd983475e58c65d3b0e678a32b832c5f13813bf937ffcb6` |
-| server | `10-channel-topology.ko.md` | `5f190e3b4f1b93d4a0e03c9ba23b625a1b8a56c5d79dc361917215be73fa0839` |
+| server | `10-channel-topology.ko.md` | `3db7422c17d4a9ca1b24fa741ceb2fb88e975feda3829a133242f322332ab278` |
 | server | `11-channel-messaging.ko.md` | `7a1a32c29bc2cfc642ce465f71e5f405741a2a8c23b95d0426b132947fdd0202` |
 | server | `20-spot-messaging.ko.md` | `d9546cf37a3f9f34e863ac4a63eda2e2af6f1985269279579fa5b53632978108` |
-| server | `21-spot-node.ko.md` | `d9a36ee80739f7035a0371c703871cea26f952e353d0f123e45b69e44c540088` |
+| server | `21-spot-node.ko.md` | `ab578a47597159198b5ed4f37ef96d1fd0b94190a0b0014fbb29061e139572ef` |
 | server | `22-actor-model.ko.md` | `8cf0cac1e46c6086de082d8ad4aeae51f339245d05da1b7bc6175f9b622ec79e` |
 | server | `23-spot-actor.ko.md` | `ae0c25c9f67cb397da861e82d8aaf1311472dfe5e28212a88f1e0aa32ec20998` |
 | server | `24-spot-address-messaging.ko.md` | `45576c26b8061e0a1965d219d539080a4917c6c06572b5d63bccddfb2f1bbe4d` |
 | server | `25-stage-wrapper-on-spot.ko.md` | `54f7a53bc1ff7cc97ada0a41d28f50678e43d68c3ad46e0beef43466dd8ccf5c` |
 | server | `30-stream-session.ko.md` | `623bca5e070513cc314c2d7f93d00dcdeab8b5f473bdeb883bfb5711eaa028e0` |
-| server | `31-session-actor-dispatch.ko.md` | `49f5154412ed827496ba50f2e49a0f6bc84f3e1bcfdb4022b561dbded9b64147` |
+| server | `31-session-actor-dispatch.ko.md` | `a780a2e75f7e18f3efa27d8fc783555d47b2e4c012e6f9ff4a66b2d49058ded7` |
 | stream-connector | `32-stream-connector.ko.md` | `700c8504cfa71315b2598349eb2cc38c6cb52fb813b5b80650f46268412cae6c` |
-| server | `40-location-runtime.ko.md` | `e88a06f5622c94acddcd3734c5a0a6052b3dca6b62208ab3b8920de1ad8302ef` |
-| server | `41-location-store-redis.ko.md` | `f84d4a035cd773d6fe8aa0096151909e92be0743b57445dd51e5b38eeab9376c` |
+| server | `40-location-runtime.ko.md` | `ce511f3396de7853d8e746f973aacdf1d28b3654560726135ef608697b990e11` |
+| server | `41-location-store-redis.ko.md` | `76320eb54586db883dd436c481ff3427b8df7e9d2948f0c95ad9e9dcb6b4e02f` |
 | server | `50-runtime-monitoring.ko.md` | `d30ea2acfbee45009ee2e0d000f2b37009ccf9f5f134c8ad29dd2035e3b8ab99` |
 | server | `51-runtime-metrics.ko.md` | `d34e9b26860a2ee285b340c5234bb27fc4c82438bbdf375e697f1350a0c1ef1f` |
 | server | `52-message-flow-tracing.ko.md` | `0635851f5d9b3cf0fa6f481fb886200e1802f3bda6fe80db3648b35b53e22108` |
 | server | `53-flow-correlation.ko.md` | `077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c` |
 | server | `54-graceful-drain-handoff.ko.md` | `822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f` |
-| . | `90-implementation-gap.ko.md` | `07de3ec4f39558d3d8c092203c9fcaabcc0eca55c4b4c2b1e7bcfd6f2f932b39` |
+| . | `90-implementation-gap.ko.md` | `98b6cb5eb517b4e1168444814a7f54d57cb32c256e095e4ca7a9805d4384e8b6` |
 | . | `README.ko.md` | `8ffae3ae36f3305e1dfa35d1874a1c2c9c57342f5f2116abbe7f5e432f79f595` |
 | server/languages/node | `01-system-structure.ko.md` | `5a9134273d25fb8f8ca7ef503e7a4dc06139852cd0e559564c06f93cda55231a` |
-| server/languages/node | `02-handler-interfaces.ko.md` | `030c3a26a1d80952d3ec986a6553f858c4da5dfbaccdb9f6cf62eab0d44dc34f` |
+| server/languages/node | `02-handler-interfaces.ko.md` | `5b4305f9bb48e7884ed58bdddbc19051badef3debcb9aa51f80543274bd3d3ad` |
+| server/languages/node | `03-routing-id-allocation.ko.md` | `4b5641f524aa95f285c91e27e485fb73b4e9705c92f770259b16bc17e1591baa` |
 | stream-connector/languages/typescript | `README.ko.md` | `aa714dbe2a429a5244722a1ad1ba6e409715677f8cd9960f0f1c2b7a7900bfde` |
 | stream-connector/languages/typescript | `03-stream-connector.ko.md` | `c70d521cd993055dda63b67bafaf56b1111cfd0c88c746d7963b387601879e20` |
 
@@ -102,5 +104,5 @@ runtime 동작과 검증을 모두 포함한다.
 | graceful drain | `ZLinkDrainControl`, typed result, NestJS shutdown 순서와 natural drain | drain test, Bingo와 Config 11 | PASS |
 | package 경계 | framework/NestJS/connector/codec/location packages와 supporting stream-wire | source export test, ABI matrix, 실제 `.tgz` 7개 consumer | PASS |
 
-공통 spec 26개, Node 정식 계약 문서 2개와 TypeScript 계약 2개는 위 축의 세부 행에 모두 연결했다. 세부 E2E 분모 181개는
+공통 spec 26개, Node 정식 계약 문서 3개와 TypeScript 계약 2개는 위 축의 세부 행에 모두 연결했다. 세부 E2E 분모 181개는
 `node-g6-e2e-ledger.ko.md`에서 selector와 marker 단위로 관리한다.

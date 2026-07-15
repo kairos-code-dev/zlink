@@ -28,7 +28,6 @@ using resilience_lifecycle::scenario_route_res_t;
 using resilience_lifecycle::client::any_provider_evidence_contains;
 using resilience_lifecycle::client::client_options_t;
 using resilience_lifecycle::client::ensure;
-using resilience_lifecycle::client::env_or;
 using resilience_lifecycle::client::evidence_contains;
 using resilience_lifecycle::client::fetch_evidence;
 using resilience_lifecycle::client::post_consumer_command;

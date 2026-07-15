@@ -9,8 +9,8 @@ namespace rl_provider = zlink::framework::e2e::resilience_lifecycle::provider;
 
 int main (int argc, char **argv)
 {
-    const auto options = rl_provider::read_provider_options ();
     auto app = zlink::framework::app_t::create ();
+    const auto options = rl_provider::read_provider_options (app, argc, argv);
     app.logging ()
       .use_file (options.log_dir + "/" + options.rid + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);

@@ -1,19 +1,15 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <cstdlib>
+#include <nlohmann/json.hpp>
+
+#include <fstream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
 
 struct client_options_t
 {
@@ -25,20 +21,61 @@ struct client_options_t
     std::string route_b_endpoint;
     std::string client_route_endpoint;
     std::string http_consumer_endpoint;
+    std::string http_a_endpoint;
+    std::string http_b_endpoint;
     std::string http_b_green_endpoint;
+    std::string api_a_evidence_file;
+    std::string api_b_evidence_file;
+    std::string ready_file;
+    std::string continue_file;
+    std::string drained_file;
+    std::string restore_file;
+    std::string flap_phase;
+    std::string flap_cycle;
 };
 
-inline client_options_t read_client_options ()
+inline client_options_t read_client_options (int argc, char **argv)
 {
-    return {.log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-            .scenario = env_or ("ZLINK_CPP_E2E_SCENARIO", "common"),
-            .api_a_endpoint = env_or ("ZLINK_CPP_E2E_API_A_ENDPOINT"),
-            .api_b_endpoint = env_or ("ZLINK_CPP_E2E_API_B_ENDPOINT"),
-            .route_a_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_A_ENDPOINT"),
-            .route_b_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_B_ENDPOINT"),
-            .client_route_endpoint = env_or ("ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT"),
-            .http_consumer_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"),
-            .http_b_green_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_B_GREEN_ENDPOINT")};
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown ResilienceLifecycle client option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
+    }
+    if (path.empty ()) {
+        throw std::runtime_error ("ResilienceLifecycle client requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open ResilienceLifecycle client config: " + path);
+    }
+    const auto section = nlohmann::json::parse (input).at ("e2e");
+    const auto value = [&] (const char *key) {
+        const auto found = section.find (key);
+        return found == section.end () ? std::string{} : found->get<std::string> ();
+    };
+    return {.log_dir = value ("logDir"),
+            .scenario = value ("scenario"),
+            .api_a_endpoint = value ("apiAEndpoint"),
+            .api_b_endpoint = value ("apiBEndpoint"),
+            .route_a_endpoint = value ("routeAEndpoint"),
+            .route_b_endpoint = value ("routeBEndpoint"),
+            .client_route_endpoint = value ("clientRouteEndpoint"),
+            .http_consumer_endpoint = value ("httpConsumerEndpoint"),
+            .http_a_endpoint = value ("httpAEndpoint"),
+            .http_b_endpoint = value ("httpBEndpoint"),
+            .http_b_green_endpoint = value ("httpBGreenEndpoint"),
+            .api_a_evidence_file = value ("apiAEvidenceFile"),
+            .api_b_evidence_file = value ("apiBEvidenceFile"),
+            .ready_file = value ("readyFile"),
+            .continue_file = value ("continueFile"),
+            .drained_file = value ("drainedFile"),
+            .restore_file = value ("restoreFile"),
+            .flap_phase = value ("flapPhase"),
+            .flap_cycle = value ("flapCycle")};
 }
 
 } // namespace zlink::framework::e2e::resilience_lifecycle::client

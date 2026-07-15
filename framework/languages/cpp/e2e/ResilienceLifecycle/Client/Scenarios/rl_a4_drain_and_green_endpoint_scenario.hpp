@@ -75,19 +75,18 @@ inline void wait_evidence_prefix (const std::string &base_url,
     throw std::runtime_error ("timed out waiting for evidence prefix " + marker + "=" + prefix);
 }
 
-inline void run_rl_a4_drain_and_green_endpoint_scenario ()
+inline void run_rl_a4_drain_and_green_endpoint_scenario (const client_options_t &options)
 {
-    const auto options = read_client_options ();
     auto consumer = zlink::http_client::client_t::create ()
                       .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
     auto topology = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (35000))
                       .build ();
     auto provider_b = zlink::http_client::client_t::create ()
-                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
+                        .base_url (options.http_b_endpoint)
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
     auto green_provider = zlink::http_client::client_t::create ()
@@ -97,8 +96,8 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario ()
 
     provider_b.post ("/admin/drain").submit_raw ().result ().value ();
     wait_provider_weight (provider_b, 0);
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file);
 
     for (int index = 0; index < 12; ++index) {
         const auto marker = "rl-a4-rolling-" + std::to_string (index);
@@ -121,8 +120,8 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario ()
     }
     wait_evidence_prefix (options.http_b_green_endpoint, "ProfileReq", "rl-a4-green-");
 
-    touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
+    touch_file (options.drained_file);
+    wait_for_file (options.restore_file);
 
     wait_location_ready_count (topology, "api-b", 1);
     for (int index = 0; index < 32; ++index) {
@@ -133,7 +132,7 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario ()
         ensure (reply.value == "profile:fast",
                 "RL-A4 restored request returned an unexpected value");
     }
-    wait_evidence_prefix (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"), "ProfileReq",
+    wait_evidence_prefix (options.http_b_endpoint, "ProfileReq",
                           "rl-a4-restored-");
 
     std::cout << "scenario RL-A4 passed\n";

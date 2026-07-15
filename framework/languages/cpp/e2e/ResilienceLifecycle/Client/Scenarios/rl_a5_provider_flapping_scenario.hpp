@@ -15,12 +15,12 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void run_rl_a5_provider_flapping_probe ()
+inline void run_rl_a5_provider_flapping_probe (const client_options_t &options)
 {
-    const auto phase = env_or ("ZLINK_CPP_E2E_FLAP_PHASE");
-    const auto cycle = env_or ("ZLINK_CPP_E2E_FLAP_CYCLE", "0");
+    const auto &phase = options.flap_phase;
+    const auto &cycle = options.flap_cycle;
     auto consumer = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
 
@@ -34,7 +34,7 @@ inline void run_rl_a5_provider_flapping_probe ()
                     "RL-A5 down window did not converge to api-a");
         }
 
-        const auto evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
+        const auto evidence = fetch_evidence (options.http_a_endpoint);
         ensure (evidence_contains (evidence, "ProfileReq", "rl-a5-down-" + cycle + "-0"),
                 "RL-A5 down window did not record provider A evidence");
         std::cout << "scenario RL-A5 down passed\n";
@@ -54,7 +54,7 @@ inline void run_rl_a5_provider_flapping_probe ()
         const auto prefix = "rl-a5-up-" + cycle + "-";
         const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (15);
         while (std::chrono::steady_clock::now () < deadline) {
-            const auto evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+            const auto evidence = fetch_evidence (options.http_b_endpoint);
             for (const auto &entry : evidence.entries) {
                 if (entry.marker == "ProfileReq" && entry.value.rfind (prefix, 0) == 0) {
                     std::cout << "scenario RL-A5 up passed\n";
@@ -67,7 +67,7 @@ inline void run_rl_a5_provider_flapping_probe ()
         throw std::runtime_error ("RL-A5 up window did not record provider B evidence");
     }
 
-    throw std::runtime_error ("RL-A5 requires ZLINK_CPP_E2E_FLAP_PHASE=down or up");
+    throw std::runtime_error ("RL-A5 requires flapPhase to be down or up");
 }
 
 } // namespace zlink::framework::e2e::resilience_lifecycle::client

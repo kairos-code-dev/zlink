@@ -15,12 +15,12 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void run_quick_resilience_scenario ()
+inline void run_quick_resilience_scenario (const client_options_t &options)
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (6);
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            const auto reply = post_consumer_profile ("rl-quick");
+            const auto reply = post_consumer_profile (options, "rl-quick");
             if (!reply.provider_rid.empty ()) {
                 std::cout << "scenario quick passed\n";
                 return;
@@ -33,10 +33,10 @@ inline void run_quick_resilience_scenario ()
     throw std::runtime_error ("quick scenario did not recover within timeout");
 }
 
-inline void run_rl_a3_reconnect_storm_probe ()
+inline void run_rl_a3_reconnect_storm_probe (const client_options_t &options)
 {
     auto consumer = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
 
@@ -50,7 +50,8 @@ inline void run_rl_a3_reconnect_storm_probe ()
                 "RL-A3 storm request returned an unexpected provider");
     }
 
-    wait_provider_evidence_contains ("ProfileReq", "rl-a3-0", std::chrono::seconds (15));
+    wait_provider_evidence_contains (options, "ProfileReq", "rl-a3-0",
+                                     std::chrono::seconds (15));
     std::cout << "scenario RL-A3 passed\n";
 }
 

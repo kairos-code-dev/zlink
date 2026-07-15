@@ -70,18 +70,18 @@ inline void wait_c3_provider_evidence_prefix (const std::string &base_url,
     throw std::runtime_error ("RL-C3 did not record provider evidence " + prefix);
 }
 
-inline void run_rl_c3_node_pause_recovery_probe ()
+inline void run_rl_c3_node_pause_recovery_probe (const client_options_t &options)
 {
     auto consumer = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
     auto topology = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (35000))
                       .build ();
     auto provider_b = zlink::http_client::client_t::create ()
-                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
+                        .base_url (options.http_b_endpoint)
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
 
@@ -94,11 +94,11 @@ inline void run_rl_c3_node_pause_recovery_probe ()
                           .fetch<profile_res_t> ();
     ensure (during.provider_rid == "api-a",
             "RL-C3 did not use surviving provider during node down");
-    wait_c3_provider_evidence_prefix (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"),
+    wait_c3_provider_evidence_prefix (options.http_a_endpoint,
                                       "rl-c3-during-down");
 
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file);
 
     wait_c3_location_ready (topology);
     for (int index = 0; index < 40; ++index) {
@@ -109,7 +109,7 @@ inline void run_rl_c3_node_pause_recovery_probe ()
         ensure (reply.value == "profile:fast",
                 "RL-C3 recovered request returned an unexpected value");
     }
-    wait_c3_provider_evidence_prefix (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"),
+    wait_c3_provider_evidence_prefix (options.http_b_endpoint,
                                       "rl-c3-recovered-");
 
     std::cout << "scenario RL-C3 passed\n";

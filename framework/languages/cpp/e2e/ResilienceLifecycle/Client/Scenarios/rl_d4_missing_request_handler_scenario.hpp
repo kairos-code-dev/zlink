@@ -12,10 +12,10 @@
 namespace zlink::framework::e2e::resilience_lifecycle::client
 {
 
-inline void run_rl_d4_missing_request_handler_scenario ()
+inline void run_rl_d4_missing_request_handler_scenario (const client_options_t &options)
 {
     auto consumer = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
     const auto failure = consumer.post ("/profile/request/missing")
@@ -24,7 +24,7 @@ inline void run_rl_d4_missing_request_handler_scenario ()
     ensure (failure.failed, "RL-D4 expected public failure payload");
     ensure (failure.error_type == "HandlerNotFound",
             "RL-D4 missing handler error type mismatch: " + failure.error_type);
-    wait_provider_evidence_contains ("DispatchError", "handler_missing:reply_error",
+    wait_provider_evidence_contains (options, "DispatchError", "handler_missing:reply_error",
                                      std::chrono::milliseconds (5000));
     std::cout << "scenario RL-D4 passed\n";
 }

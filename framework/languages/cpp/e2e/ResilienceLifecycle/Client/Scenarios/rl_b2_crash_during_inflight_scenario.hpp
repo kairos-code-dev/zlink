@@ -62,22 +62,22 @@ inline void wait_topology_weight (zlink::http_client::client_t &topology,
     throw std::runtime_error ("topology did not publish " + routing_id + " with expected weight");
 }
 
-inline void run_inflight_crash_scenario ()
+inline void run_inflight_crash_scenario (const client_options_t &options)
 {
     auto consumer = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
     auto provider_a = zlink::http_client::client_t::create ()
-                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"))
+                        .base_url (options.http_a_endpoint)
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
     auto provider_b = zlink::http_client::client_t::create ()
-                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
+                        .base_url (options.http_b_endpoint)
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
     auto topology = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (35000))
                       .build ();
 
@@ -89,10 +89,10 @@ inline void run_inflight_crash_scenario ()
       .value ();
 
     const std::string marker = "rl-b2-slow";
-    auto pending = std::async (std::launch::async, [marker] {
+    auto pending = std::async (std::launch::async, [marker, &options] {
         try {
             auto slow_consumer = zlink::http_client::client_t::create ()
-                                   .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                                   .base_url (options.http_consumer_endpoint)
                                    .timeout (std::chrono::milliseconds (10000))
                                    .build ();
             auto response = slow_consumer.post ("/profile/request/manual-b")
@@ -109,7 +109,7 @@ inline void run_inflight_crash_scenario ()
 
     const auto start_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     const auto start_marker = "profile-start|rid=api-b|marker=" + marker;
-    const auto provider_b_evidence = env_or ("ZLINK_CPP_E2E_API_B_EVIDENCE_FILE");
+    const auto &provider_b_evidence = options.api_b_evidence_file;
     while (std::chrono::steady_clock::now () < start_deadline) {
         if (file_contains (provider_b_evidence, start_marker)) {
             break;
@@ -118,8 +118,8 @@ inline void run_inflight_crash_scenario ()
     }
     ensure (file_contains (provider_b_evidence, start_marker),
             "RL-B2 in-flight request did not start on provider B");
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file);
 
     topology.post ("/topology/wait")
       .body (nlohmann::json{{"routingId", "api-b"},
@@ -136,7 +136,7 @@ inline void run_inflight_crash_scenario ()
             "RL-B2 in-flight request unexpectedly completed after provider crash");
 
     auto provider_a_restore = zlink::http_client::client_t::create ()
-                                .base_url (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"))
+                                .base_url (options.http_a_endpoint)
                                 .timeout (std::chrono::milliseconds (10000))
                                 .build ();
     provider_a_restore.post ("/admin/restore").submit_raw ().result ().value ();
@@ -148,7 +148,7 @@ inline void run_inflight_crash_scenario ()
     wait_topology_weight (topology, "api-a", 100);
 
     auto follow_up_consumer = zlink::http_client::client_t::create ()
-                                .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                                .base_url (options.http_consumer_endpoint)
                                 .timeout (std::chrono::milliseconds (10000))
                                 .build ();
     const auto follow_up_raw = follow_up_consumer.post ("/profile/request")
@@ -163,8 +163,8 @@ inline void run_inflight_crash_scenario ()
     const auto follow_up = nlohmann::json::parse (follow_up_raw.body).get<profile_res_t> ();
     ensure (follow_up.provider_rid == "api-a", "RL-B2 surviving provider traffic failed");
 
-    touch_file (env_or ("ZLINK_CPP_E2E_DRAINED_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_RESTORE_FILE"));
+    touch_file (options.drained_file);
+    wait_for_file (options.restore_file);
 
     topology.post ("/topology/wait")
       .body (nlohmann::json{{"routingId", "api-b"},
@@ -178,7 +178,7 @@ inline void run_inflight_crash_scenario ()
       .value ();
 
     auto restored_consumer = zlink::http_client::client_t::create ()
-                               .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                               .base_url (options.http_consumer_endpoint)
                                .timeout (std::chrono::milliseconds (10000))
                                .build ();
     for (int index = 0; index < 32; ++index) {
@@ -193,7 +193,7 @@ inline void run_inflight_crash_scenario ()
 
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (15);
     while (std::chrono::steady_clock::now () < deadline) {
-        const auto evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+        const auto evidence = fetch_evidence (options.http_b_endpoint);
         for (const auto &entry : evidence.entries) {
             if (entry.marker == "ProfileReq" && entry.value.rfind ("rl-b2-restored-", 0) == 0) {
                 std::cout << "scenario RL-B2 passed\n";

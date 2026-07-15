@@ -21,14 +21,15 @@ inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
     return client.get ("/evidence").fetch<evidence_snapshot_t> ();
 }
 
-inline profile_res_t post_consumer_profile (const std::string &value,
+inline profile_res_t post_consumer_profile (const client_options_t &options,
+                                            const std::string &value,
                                             const std::string &marker = {},
                                             const std::string &path = "/profile/request",
                                             std::chrono::milliseconds timeout =
                                               std::chrono::milliseconds (3000))
 {
     auto client = zlink::http_client::client_t::create ()
-                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .base_url (options.http_consumer_endpoint)
                     .timeout (timeout)
                     .build ();
     auto request = profile_req_t{.value = value, .marker = marker.empty () ? value : marker};
@@ -36,13 +37,14 @@ inline profile_res_t post_consumer_profile (const std::string &value,
 }
 
 inline zlink::http_client::raw_http_response_t
-post_consumer_profile_raw (const std::string &value,
+post_consumer_profile_raw (const client_options_t &options,
+                           const std::string &value,
                            const std::string &marker = {},
                            const std::string &path = "/profile/request",
                            std::chrono::milliseconds timeout = std::chrono::milliseconds (3000))
 {
     auto client = zlink::http_client::client_t::create ()
-                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .base_url (options.http_consumer_endpoint)
                     .timeout (timeout)
                     .build ();
     auto request = profile_req_t{.value = value, .marker = marker.empty () ? value : marker};
@@ -53,10 +55,11 @@ post_consumer_profile_raw (const std::string &value,
     return result.value ();
 }
 
-inline request_failure_res_t post_consumer_missing (const std::string &value)
+inline request_failure_res_t post_consumer_missing (const client_options_t &options,
+                                                    const std::string &value)
 {
     auto client = zlink::http_client::client_t::create ()
-                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .base_url (options.http_consumer_endpoint)
                     .timeout (std::chrono::milliseconds (3000))
                     .build ();
     return client.post ("/profile/request/missing")
@@ -64,11 +67,12 @@ inline request_failure_res_t post_consumer_missing (const std::string &value)
       .fetch<request_failure_res_t> ();
 }
 
-inline operation_status_t post_consumer_command (const std::string &command_id,
+inline operation_status_t post_consumer_command (const client_options_t &options,
+                                                 const std::string &command_id,
                                                  const std::string &path = "/profile/command")
 {
     auto client = zlink::http_client::client_t::create ()
-                    .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                    .base_url (options.http_consumer_endpoint)
                     .timeout (std::chrono::milliseconds (3000))
                     .build ();
     return client.post (path)
@@ -99,21 +103,22 @@ inline bool evidence_contains (const evidence_snapshot_t &snapshot,
     return false;
 }
 
-inline bool any_provider_evidence_contains (const std::string &marker, const std::string &value)
+inline bool any_provider_evidence_contains (const client_options_t &options,
+                                            const std::string &marker,
+                                            const std::string &value)
 {
-    return evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT")), marker,
-                              value)
-           || evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT")),
-                                 marker, value);
+    return evidence_contains (fetch_evidence (options.http_a_endpoint), marker, value)
+           || evidence_contains (fetch_evidence (options.http_b_endpoint), marker, value);
 }
 
-inline void wait_provider_evidence_contains (const std::string &marker,
+inline void wait_provider_evidence_contains (const client_options_t &options,
+                                             const std::string &marker,
                                              const std::string &value,
                                              std::chrono::milliseconds timeout)
 {
     const auto deadline = std::chrono::steady_clock::now () + timeout;
     while (std::chrono::steady_clock::now () < deadline) {
-        if (any_provider_evidence_contains (marker, value)) {
+        if (any_provider_evidence_contains (options, marker, value)) {
             return;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (100));

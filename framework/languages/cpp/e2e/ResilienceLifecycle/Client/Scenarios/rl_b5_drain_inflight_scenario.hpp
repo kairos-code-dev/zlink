@@ -32,11 +32,12 @@ inline bool b5_file_contains (const std::string &path, const std::string &text)
     return false;
 }
 
-inline std::string wait_b5_slow_provider (const std::string &marker)
+inline std::string wait_b5_slow_provider (const client_options_t &options,
+                                         const std::string &marker)
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-    const auto evidence_a = env_or ("ZLINK_CPP_E2E_API_A_EVIDENCE_FILE");
-    const auto evidence_b = env_or ("ZLINK_CPP_E2E_API_B_EVIDENCE_FILE");
+    const auto &evidence_a = options.api_a_evidence_file;
+    const auto &evidence_b = options.api_b_evidence_file;
     while (std::chrono::steady_clock::now () < deadline) {
         if (b5_file_contains (evidence_a, "profile-start|rid=api-a|marker=" + marker)) {
             return "api-a";
@@ -89,11 +90,12 @@ inline void b5_wait_provider_evidence_prefix (const std::string &base_url,
     throw std::runtime_error ("RL-B5 did not record provider evidence " + prefix);
 }
 
-inline void b5_wait_consumer_topology_weight (const std::string &routing_id,
+inline void b5_wait_consumer_topology_weight (const client_options_t &options,
+                                              const std::string &routing_id,
                                               std::uint32_t expected)
 {
     auto consumer = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (3000))
                       .build ();
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
@@ -122,18 +124,18 @@ inline void b5_wait_consumer_topology_weight (const std::string &routing_id,
                               + std::to_string (expected));
 }
 
-inline void run_rl_b5_drain_inflight_scenario ()
+inline void run_rl_b5_drain_inflight_scenario (const client_options_t &options)
 {
     auto consumer = zlink::http_client::client_t::create ()
-                      .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                      .base_url (options.http_consumer_endpoint)
                       .timeout (std::chrono::milliseconds (10000))
                       .build ();
     auto provider_a = zlink::http_client::client_t::create ()
-                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"))
+                        .base_url (options.http_a_endpoint)
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
     auto provider_b = zlink::http_client::client_t::create ()
-                        .base_url (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"))
+                        .base_url (options.http_b_endpoint)
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
 
@@ -145,7 +147,7 @@ inline void run_rl_b5_drain_inflight_scenario ()
 
         const auto slow_marker = "rl-b5-slow";
         auto slow_consumer = zlink::http_client::client_t::create ()
-                               .base_url (env_or ("ZLINK_CPP_E2E_HTTP_CONSUMER_ENDPOINT"))
+                               .base_url (options.http_consumer_endpoint)
                                .timeout (std::chrono::milliseconds (10000))
                                .build ();
         auto slow = std::async (std::launch::async,
@@ -156,17 +158,17 @@ inline void run_rl_b5_drain_inflight_scenario ()
               .fetch<profile_res_t> ();
         });
 
-        const auto slow_provider = wait_b5_slow_provider (slow_marker);
+        const auto slow_provider = wait_b5_slow_provider (options, slow_marker);
         auto &drained_provider = slow_provider == "api-a" ? provider_a : provider_b;
-        const auto drained_url = slow_provider == "api-a" ? env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT")
-                                                           : env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT");
+        const auto &drained_url = slow_provider == "api-a" ? options.http_a_endpoint
+                                                            : options.http_b_endpoint;
         const auto healthy_provider = slow_provider == "api-a" ? "api-b" : "api-a";
         const auto before_drain = fetch_evidence (drained_url);
 
         try {
             drained_provider.post ("/admin/drain").submit_raw ().result ().value ();
             b5_wait_provider_weight (drained_provider, 0);
-            b5_wait_consumer_topology_weight (slow_provider, 0);
+            b5_wait_consumer_topology_weight (options, slow_provider, 0);
         }
         catch (const std::exception &ex) {
             throw std::runtime_error (std::string ("RL-B5 failed during drain readiness: ") + ex.what ());
@@ -211,7 +213,7 @@ inline void run_rl_b5_drain_inflight_scenario ()
         try {
             drained_provider.post ("/admin/restore").submit_raw ().result ().value ();
             b5_wait_provider_weight (drained_provider, 100);
-            b5_wait_consumer_topology_weight (slow_provider, 100);
+            b5_wait_consumer_topology_weight (options, slow_provider, 100);
         }
         catch (const std::exception &ex) {
             throw std::runtime_error (std::string ("RL-B5 failed during restore readiness: ") + ex.what ());

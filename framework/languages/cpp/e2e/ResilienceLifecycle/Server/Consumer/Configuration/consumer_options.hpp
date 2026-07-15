@@ -1,21 +1,15 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <cstdlib>
+#include <zlink/framework.hpp>
+
+#include <stdexcept>
 #include <sstream>
 #include <string>
 #include <vector>
 
 namespace zlink::framework::e2e::resilience_lifecycle::consumer
 {
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
 
 inline std::vector<std::string> split_csv (const std::string &text)
 {
@@ -38,16 +32,27 @@ struct consumer_options_t
     std::vector<std::string> provider_endpoints;
     std::string log_dir;
     std::string trace_label;
+
+    static consumer_options_t bind (const configuration_section_t &section)
+    {
+        return {.http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .provider_endpoints = split_csv (section.require ("providerEndpoints")),
+                .log_dir = section.require ("logDir"),
+                .trace_label = section.require ("traceLabel")};
+    }
 };
 
-inline consumer_options_t read_consumer_options ()
+inline consumer_options_t read_consumer_options (app_t &app, int argc, char **argv)
 {
-    return {.http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-            .redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
-            .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
-            .provider_endpoints = split_csv (env_or ("ZLINK_CPP_E2E_PROVIDER_ENDPOINTS")),
-            .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-            .trace_label = env_or ("ZLINK_CPP_E2E_TRACE_LABEL", "consumer")};
+    app.config ().load_cli (argc, argv);
+    const auto path = app.config ().model ().get ("config");
+    if (!path) {
+        throw std::runtime_error ("ResilienceLifecycle consumer requires --config=<path>");
+    }
+    app.config ().load_json (*path);
+    return app.config ().bind_required<consumer_options_t> ("e2e");
 }
 
 } // namespace zlink::framework::e2e::resilience_lifecycle::consumer

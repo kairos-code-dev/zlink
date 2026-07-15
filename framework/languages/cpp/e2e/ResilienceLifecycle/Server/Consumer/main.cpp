@@ -9,8 +9,8 @@ namespace rl_consumer = zlink::framework::e2e::resilience_lifecycle::consumer;
 
 int main (int argc, char **argv)
 {
-    const auto options = rl_consumer::read_consumer_options ();
     auto app = zlink::framework::app_t::create ();
+    const auto options = rl_consumer::read_consumer_options (app, argc, argv);
     app.logging ()
       .use_file (options.log_dir + "/consumer.log")
       .set_min_level (zlink::framework::log_level_t::debug);

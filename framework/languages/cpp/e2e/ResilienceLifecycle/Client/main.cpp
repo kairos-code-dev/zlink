@@ -30,43 +30,44 @@ int main (int argc, char **argv)
     (void) argv;
 
     try {
-        const auto scenario = rl_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "rl-a3");
+        const auto options = rl_client::read_client_options (argc, argv);
+        const auto &scenario = options.scenario;
         if (scenario == "inflight-crash") {
-            rl_client::run_inflight_crash_scenario ();
+            rl_client::run_inflight_crash_scenario (options);
         } else if (scenario == "location-store-outage") {
-            rl_client::run_location_store_outage_scenario ();
+            rl_client::run_location_store_outage_scenario (options);
         } else if (scenario == "location-store-recovered") {
-            rl_client::run_location_store_recovered_scenario ();
+            rl_client::run_location_store_recovered_scenario (options);
         } else if (scenario == "observer-fault") {
-            rl_client::run_observer_fault_scenario ();
+            rl_client::run_observer_fault_scenario (options);
         } else if (scenario == "rl-a1") {
-            rl_client::run_rl_a1_provider_restart_scenario ();
+            rl_client::run_rl_a1_provider_restart_scenario (options);
         } else if (scenario == "rl-a2") {
-            rl_client::run_rl_a2_provider_endpoint_remap_scenario ();
+            rl_client::run_rl_a2_provider_endpoint_remap_scenario (options);
         } else if (scenario == "rl-a3") {
-            rl_client::run_rl_a3_reconnect_storm_probe ();
+            rl_client::run_rl_a3_reconnect_storm_probe (options);
         } else if (scenario == "rl-a4") {
-            rl_client::run_rl_a4_drain_and_green_endpoint_scenario ();
+            rl_client::run_rl_a4_drain_and_green_endpoint_scenario (options);
         } else if (scenario == "rl-b4") {
-            rl_client::run_rl_b4_runtime_drain_scenario ();
+            rl_client::run_rl_b4_runtime_drain_scenario (options);
         } else if (scenario == "rl-b5") {
-            rl_client::run_rl_b5_drain_inflight_scenario ();
+            rl_client::run_rl_b5_drain_inflight_scenario (options);
         } else if (scenario == "rl-a5") {
-            rl_client::run_rl_a5_provider_flapping_probe ();
+            rl_client::run_rl_a5_provider_flapping_probe (options);
         } else if (scenario == "rl-b1") {
-            rl_client::run_rl_b1_cancellation_cleanup_scenario ();
+            rl_client::run_rl_b1_cancellation_cleanup_scenario (options);
         } else if (scenario == "rl-b3") {
-            rl_client::run_rl_b3_graceful_shutdown_scenario ();
+            rl_client::run_rl_b3_graceful_shutdown_scenario (options);
         } else if (scenario == "rl-b6") {
-            rl_client::run_rl_b6_gray_fault_scenario ();
+            rl_client::run_rl_b6_gray_fault_scenario (options);
         } else if (scenario == "rl-c1") {
-            rl_client::run_rl_c1_client_host_lifecycle_probe ();
+            rl_client::run_rl_c1_client_host_lifecycle_probe (options);
         } else if (scenario == "rl-c3") {
-            rl_client::run_rl_c3_node_pause_recovery_probe ();
+            rl_client::run_rl_c3_node_pause_recovery_probe (options);
         } else if (scenario == "rl-d3") {
-            rl_client::run_rl_d3_dispatch_error_evidence_scenario ();
+            rl_client::run_rl_d3_dispatch_error_evidence_scenario (options);
         } else if (scenario == "rl-d4") {
-            rl_client::run_rl_d4_missing_request_handler_scenario ();
+            rl_client::run_rl_d4_missing_request_handler_scenario (options);
         } else {
             throw std::runtime_error ("unknown scenario " + scenario);
         }

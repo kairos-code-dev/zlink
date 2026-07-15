@@ -173,6 +173,8 @@ int main ()
       e2e_root / "RegistrationCodec/Client/Scenarios/rc_a6_invalid_registration_scenario.hpp");
     const auto pubsub_runner = read_file (e2e_root / "PubSub/run_e2e.sh");
     const auto transfer_runner = read_file (e2e_root / "SpotActorTransfer/run_e2e.sh");
+    const auto transfer_feature_map =
+      read_file (e2e_root / "SpotActorTransfer/feature-map.ko.md");
     const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
     const auto observability_feature_map =
       read_file (e2e_root / "ObservabilityOps/feature-map.ko.md");
@@ -195,6 +197,36 @@ int main ()
       std::filesystem::exists (e2e_root / "SpotActorTransfer/feature-map.ko.md"),
       "E2E-CP-13",
       "Config 10 SpotActorTransfer is missing feature-map.ko.md");
+
+    /* E2E-CP-56 — the deployed topology keeps controller, session gateways,
+     * and actor nodes in their documented process roles. */
+    gate.require (transfer_runner.find ("start_role actor actor-a") != std::string::npos
+                    && transfer_runner.find ("start_role actor actor-b") != std::string::npos
+                    && transfer_runner.find ("start_role session session-a")
+                         != std::string::npos
+                    && transfer_runner.find ("start_role session session-b")
+                         != std::string::npos
+                    && transfer_runner.find ("start_role controller transfer-controller")
+                         != std::string::npos
+                    && transfer_runner.find ("actor-c") == std::string::npos,
+                  "E2E-CP-56", "Config 10 does not start the required five role servers");
+    gate.require (transfer_runner.find ("ZLINK_CPP_E2E_CONTROLLER_URL")
+                    != std::string::npos
+                    && transfer_runner.find ("ZLINK_CPP_E2E_NODE_A_STREAM")
+                         != std::string::npos
+                    && transfer_runner.find ("ZLINK_CPP_E2E_NODE_B_STREAM")
+                         != std::string::npos,
+                  "E2E-CP-56", "Config 10 does not pass controller and gateway endpoints");
+    gate.require (transfer_client.find ("create_actor (_nodes.controller")
+                    != std::string::npos
+                    && transfer_client.find ("join_actor (_nodes.controller")
+                         != std::string::npos
+                    && transfer_client.find ("probe_actor (_nodes.controller")
+                         != std::string::npos,
+                  "E2E-CP-56", "Config 10 client bypasses the transfer controller");
+    gate.require (transfer_feature_map.find ("`deferred`") == std::string::npos
+                    && transfer_feature_map.find ("actor node\n두 개") != std::string::npos,
+                  "E2E-CP-56", "Config 10 feature map still describes the old topology");
 
     /* E2E-CP-09 — local E2E waits use the common named defaults. */
     for (const auto *candidate : {&transfer_runner, &observability_runner}) {
@@ -639,7 +671,7 @@ int main ()
     gate.require (st_f5.find ("mapping_evicted") != std::string::npos
                     && st_f5.find ("forwarding_entries") != std::string::npos
                     && st_f5.find ("spot-map-chain-a-final-") != std::string::npos
-                    && st_f5.find ("_nodes.c") == std::string::npos,
+                    && st_f5.find ("_nodes.c,") == std::string::npos,
                   "E2E-CP-52",
                   "ST-F5 does not use the two-node chained topology or observe mapping eviction");
 
@@ -741,6 +773,16 @@ int main ()
                     && st_f2.find ("backlog_enqueued") != std::string::npos,
                   "E2E-CP-57",
                   "ST-F2 does not assert structured handoff evidence");
+    gate.require (transfer_client.find ("assert_request_handoff_frame")
+                    != std::string::npos
+                    && transfer_client.find ("handoff_request_frame")
+                         != std::string::npos
+                    && transfer_client.find ("backlog_request_frame")
+                         != std::string::npos
+                    && transfer_client.find ("handler_count == 1")
+                         != std::string::npos,
+                  "E2E-CP-57",
+                  "ST-F6 does not compare request framing or exactly-once dispatch evidence");
 
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");

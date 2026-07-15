@@ -342,7 +342,11 @@ Kotlin은 Java 런타임을 공유하므로 라운드 3의 Java 항목(**IMP-JV-
 
 - **IMP-JV-21** — `systems.zlink.framework.execution`의 내부 실행기가 public이다. Kotlin 앱도
   spot의 turn 큐에 직접 작업을 밀어 넣거나 공유 worker pool을 `close()`할 수 있다.
-- **IMP-JV-24** — Spring host 자동 drain이 25초다(스펙 30초). Kotlin Spring Boot 앱도 같은 경로를 탄다.
+- **IMP-JV-24** — Spring host의 두 자동 drain 경로는 스펙과 같은 30초를 사용한다. Kotlin Spring Boot 앱도 검증된 같은 경로를 탄다(구현 커밋 `a0e2bb977`).
+
+공유 런타임의 **IMP-JV-03**과 **IMP-JV-06**도 닫혔다. Kotlin 호출자가 drain waiter에 timeout을
+적용해도 공유 drain 상태를 바꾸지 않으며, 값을 버리던 channel `metadata(k,v)` 표면은 Kotlin에서도
+더 이상 노출되지 않는다. 집중 테스트와 Java core 전체 테스트가 통과했다(구현 커밋 `3db218ee0`).
 
 [java 체크리스트](java.ko.md)를 함께 본다.
 

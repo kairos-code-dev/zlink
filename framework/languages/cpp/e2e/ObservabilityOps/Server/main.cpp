@@ -431,6 +431,25 @@ class evidence_handler_t
             json["peerRowsError"] = error.what ();
         }
         json["peerRows"] = peer_rows;
+        auto owner_leases = nlohmann::json::array ();
+        try {
+            const auto snapshot = _store.list_owner_leases ().result ().value ();
+            for (const auto &lease : snapshot.leases) {
+                const auto renewed_at = std::chrono::duration_cast<std::chrono::milliseconds> (
+                  lease.updated_at.time_since_epoch ())
+                                          .count ();
+                const auto expires_at = std::chrono::duration_cast<std::chrono::milliseconds> (
+                  lease.lease_expires_at.time_since_epoch ())
+                                          .count ();
+                owner_leases.push_back (nlohmann::json{{"ownerId", lease.owner_id},
+                                                       {"renewedAtUnixMs", renewed_at},
+                                                       {"expiresAtUnixMs", expires_at}});
+            }
+        }
+        catch (const std::exception &error) {
+            json["ownerLeasesError"] = error.what ();
+        }
+        json["ownerLeases"] = owner_leases;
         try {
             json["ready"] = _drain.is_ready ? _drain.is_ready () : true;
         }
@@ -452,17 +471,54 @@ class evidence_handler_t
     drain_control_t &_drain;
 };
 
+class action_handler_t
+{
+  public:
+    using request_type = obs::obs_action_req_t;
+    using reply_type = obs::obs_action_res_t;
+    using dependency_types =
+      fw::dependency_list_t<fw::route_client_t, fw::spot_handle_resolver_t>;
+
+    action_handler_t (fw::route_client_t &routes, fw::spot_handle_resolver_t &spots) :
+        _routes (routes), _spots (spots)
+    {
+    }
+
+    fw::task_t<obs::obs_action_res_t> handle (const obs::obs_action_req_t &request)
+    {
+        auto spot = co_await _spots.resolve_spot_handle (
+          fw::spot_rid_t::from_string (request.spot_rid));
+        if (!spot) {
+            throw fw::framework_exception_t (fw::framework_error_kind_t::spot_route_not_found,
+                                             "room route was not found");
+        }
+        co_return co_await _routes.request_to_spot (*spot, request)
+          .timeout (std::chrono::milliseconds (5000))
+          .async<obs::obs_action_res_t> ();
+    }
+
+  private:
+    fw::route_client_t &_routes;
+    fw::spot_handle_resolver_t &_spots;
+};
+
 class create_room_handler_t
 {
   public:
     using request_type = obs::create_room_req_t;
     using reply_type = obs::create_room_res_t;
-    using dependency_types = fw::dependency_list_t<fw::spot_node_manager_t>;
+    using dependency_types = fw::dependency_list_t<fw::spot_node_manager_t, drain_control_t>;
 
-    explicit create_room_handler_t (fw::spot_node_manager_t &spots) : _spots (spots) {}
+    create_room_handler_t (fw::spot_node_manager_t &spots, drain_control_t &drain) :
+        _spots (spots), _drain (drain)
+    {
+    }
 
     obs::create_room_res_t handle (const obs::create_room_req_t &request)
     {
+        if (_drain.is_ready && !_drain.is_ready ()) {
+            return obs::create_room_res_t{request.spot_rid, "rejected"};
+        }
         const auto created = _spots.get_or_create_spot (
           obs::room_spot, fw::spot_rid_t::from_string (request.spot_rid));
         const auto state = created.state == fw::spot_create_state_t::created ? "created"
@@ -474,6 +530,7 @@ class create_room_handler_t
 
   private:
     fw::spot_node_manager_t &_spots;
+    drain_control_t &_drain;
 };
 
 class drain_handler_t
@@ -541,7 +598,7 @@ int main (int argc, char **argv)
               .connection_string = options.redis_endpoint,
               .key_prefix = options.redis_key_prefix}));
         {
-            auto locations = framework.configure_locations ();
+            auto &locations = framework.configure_locations ();
             locations.heartbeat_interval = std::chrono::seconds (1);
             locations.owner_lease_ttl = std::chrono::seconds (5);
             locations.polling_interval = std::chrono::milliseconds (250);
@@ -591,6 +648,7 @@ int main (int argc, char **argv)
           .listen (options.http_endpoint)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
+          .map_post<action_handler_t> ("/spot/action")
           .map_post<create_room_handler_t> ("/spot/create")
           .map_post<join_actor_handler_t> ("/actor/join")
           .map_post<actor_ping_handler_t> ("/actor/ping")

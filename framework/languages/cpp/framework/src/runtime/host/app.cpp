@@ -858,6 +858,16 @@ int app_t::run (int argc, char **argv)
     std::vector<hosted_service_t *> started;
     try {
         _state->start_hosted_services (provider, started);
+        try {
+            runtime::runtime_metrics_t drain_metrics (
+              detail::monitoring_runtime_t::from (_state->monitoring).state ());
+            if (drain_metrics.enabled ()) {
+                drain_metrics.observable ("zlink.drain.state", "{state}", 1,
+                                          {{"state", "serving"}});
+            }
+        }
+        catch (...) {
+        }
         while (!_state->stop_requested.load (std::memory_order_acquire)) {
             if (g_stop_signal_requested != 0) {
                 _state->stop_requested.store (true, std::memory_order_release);

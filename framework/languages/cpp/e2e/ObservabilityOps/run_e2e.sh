@@ -316,8 +316,9 @@ PY
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "drain" ]]; then
-  # OBS-C1 subset — draining marker keeps the peer row (draining=true),
-  # readiness flips, new spot creation is rejected, drain events observed.
+  curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.before-drain.evidence.json"
+  # OBS-C1 — draining excludes new placement while the typed row, lease, and
+  # existing route traffic remain available throughout the propagation window.
   curl_local -fsS -X POST "$PLAY_B_HTTP/drain" -H 'Content-Type: application/json' -d '{"deadlineMs":10000}' >/dev/null
   for _ in $(seq 1 100); do
     curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.drain.evidence.json" || true
@@ -337,28 +338,55 @@ body = json.load(open(sys.argv[1], encoding="utf-8"))
 states = [event["state"] for event in body["drainEvents"]]
 assert "draining" in states, states
 assert body["ready"] is False, "play-b still ready after drain"
-# The draining marker window can be brief when no handoff work exists: either
-# the marked row is still visible, or the owner cleanup already removed
-# play-b's rows (post-terminal). Both prove the marker+cleanup path ran.
 play_b_hex = "play-b".encode().hex()
 play_b_rows = [row for row in body["peerRows"] if row["nodeRid"] == play_b_hex]
 draining_rows = [row for row in play_b_rows if row["draining"]]
-# rows already removed => owner cleanup is underway; the terminal `drained`
-# state is asserted separately on the final snapshot below.
-cleaned_up = not play_b_rows
-assert draining_rows or cleaned_up, f"neither draining marker nor cleanup: {body['peerRows']}"
+assert draining_rows, f"draining peer row was removed: {body['peerRows']}"
 assert all(event["source"] == "drain" for event in body["drainEvents"]), body["drainEvents"]
-print("OBS-C1(subset) PASS (marker/cleanup + readiness flip + drain events)")
+metric_states = {m["tags"].get("state") for m in body["metrics"]
+                if m["name"] == "zlink.drain.state"}
+assert {"serving", "draining"} <= metric_states, metric_states
+print("OBS-C1 marker PASS (row retained + readiness flip + drain metric transition)")
 PY
-  # New spot creation on the draining node is rejected (RequestRejected -> HTTP error).
-  if curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' -d '{"spotRid":"obs-room-rejected"}' \
-      >"$LOG_DIR/create-while-draining.json" 2>/dev/null; then
-    python3 - "$LOG_DIR/create-while-draining.json" <<'PY'
+  for index in $(seq 1 8); do
+    curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
+      -d "{\"spotRid\":\"$SPOT_RID\",\"marker\":\"drain-$index\",\"value\":1}" \
+      >"$LOG_DIR/drain-action-$index.json"
+    python3 - "$LOG_DIR/drain-action-$index.json" "$index" <<'PY'
 import json, sys
 body = json.load(open(sys.argv[1], encoding="utf-8"))
-raise SystemExit(0 if body.get("state") == "rejected" else 1)
+assert body["marker"] == f"drain-{sys.argv[2]}", body
 PY
-  fi
+    sleep 0.25
+  done
+  curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.drain-traffic.evidence.json"
+  python3 - "$LOG_DIR/play-b.before-drain.evidence.json" \
+    "$LOG_DIR/play-b.drain-traffic.evidence.json" <<'PY'
+import json, sys
+before = json.load(open(sys.argv[1], encoding="utf-8"))
+during = json.load(open(sys.argv[2], encoding="utf-8"))
+play_b_hex = "play-b".encode().hex()
+rows = [row for row in during["peerRows"]
+        if row["nodeRid"] == play_b_hex and row["draining"]]
+assert rows, f"draining peer row disappeared during traffic: {during['peerRows']}"
+owner_id = rows[0]["ownerId"]
+def renewed(body):
+    values = [lease["renewedAtUnixMs"] for lease in body["ownerLeases"]
+              if lease["ownerId"] == owner_id]
+    assert values, f"owner lease missing for {owner_id}: {body['ownerLeases']}"
+    return max(values)
+assert renewed(during) > renewed(before), "owner lease did not renew while draining"
+print("OBS-C1 existing route traffic PASS (8/8, owner lease advanced)")
+PY
+  # The typed create result must explicitly report rejection; transport failure
+  # cannot stand in for this application-visible result.
+  curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-room-rejected"}' >"$LOG_DIR/create-while-draining.json"
+  python3 - "$LOG_DIR/create-while-draining.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+assert body.get("state") == "rejected", f"create while draining was not rejected: {body}"
+PY
   echo "OBS-C1 create-rejection PASS"
   # Existing peer (play-a) stays ready and serving.
   curl_local -fsS "$PLAY_A_HTTP/evidence" >"$LOG_DIR/play-a.drain.evidence.json"

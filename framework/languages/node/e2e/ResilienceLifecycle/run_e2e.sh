@@ -92,7 +92,6 @@ wait_tcp() {
 echo "log_dir=$LOG_DIR"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/TopologyProbe"
 build_package "$ROOT_DIR/Server/Provider"
 build_package "$ROOT_DIR/Server/Consumer"
 build_package "$ROOT_DIR/Client"
@@ -102,7 +101,6 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-TOPOLOGY_PROBE_HTTP_PORT="$(pick_port)"
 PROVIDER_A_HTTP_PORT="$(pick_port)"
 PROVIDER_B_HTTP_PORT="$(pick_port)"
 PROVIDER_B_REMAP_HTTP_PORT="$(pick_port)"
@@ -125,7 +123,6 @@ REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="resilience-lifecycle:node:$RUN_ID"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 
-TOPOLOGY_PROBE_MAIN="$ROOT_DIR/Server/TopologyProbe/dist/Server/TopologyProbe/main.js"
 PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
 CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
@@ -136,14 +133,6 @@ start_configured_server() {
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
-
-start_configured_server topology-probe "$TOPOLOGY_PROBE_MAIN" \
-  --rid topology-probe \
-  --http-url "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" topology-probe
 
 start_configured_server api-a "$PROVIDER_MAIN" \
   --rid api-a \
@@ -194,7 +183,7 @@ done
 CONSUMER_URL_LIST="$(IFS=,; echo "${CONSUMER_URLS[*]}")"
 
 node "$CLIENT_MAIN" \
-  --topology-url "http://127.0.0.1:$TOPOLOGY_PROBE_HTTP_PORT" \
+  --peer-location-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --provider-b-remap-url "http://127.0.0.1:$PROVIDER_B_REMAP_HTTP_PORT" \

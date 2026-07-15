@@ -4,7 +4,7 @@ import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
   waitForProviderTraffic,
-  waitTopologyReady,
+  waitPeerPresent,
   waitUntilAvailable,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -39,7 +39,7 @@ export async function runRlA5(options: ClientOptions, state: ScenarioState): Pro
     await restarted.waitReady();
     state.providerBProcess = restarted;
     await waitUntilAvailable(options.providerBUrl);
-    await waitTopologyReady(options.topologyUrl, 'api-b');
+    await waitPeerPresent(options.peerLocationUrl, 'api-b');
 
     await waitForProviderTraffic(options.consumerUrl, `rl-a5-up-${cycle}`, 'api-b');
     await postJson<string[]>(options.providerBUrl, '/evidence/wait', {

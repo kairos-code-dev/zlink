@@ -3,7 +3,7 @@ import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   waitForProviderTraffic,
-  waitTopologyEndpointReady,
+  waitPeerEndpointPresent,
   waitUntilAvailable,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -31,7 +31,7 @@ export async function runRlA2(options: ClientOptions, state: ScenarioState): Pro
   });
   try {
     await remapped.waitReady();
-    await waitTopologyEndpointReady(options.topologyUrl, 'api-b', options.providerBRemapChannelEndpoint);
+    await waitPeerEndpointPresent(options.peerLocationUrl, 'api-b', options.providerBRemapChannelEndpoint);
     await waitForProviderTraffic(options.consumerUrl, 'rl-a2-rescheduled', 'api-b');
     await postJson<string[]>(options.providerBRemapUrl, '/evidence/wait', { contains: 'marker=rl-a2-rescheduled-' });
   } finally {
@@ -53,7 +53,7 @@ export async function runRlA2(options: ClientOptions, state: ScenarioState): Pro
   await restored.waitReady();
   state.providerBProcess = restored;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyEndpointReady(options.topologyUrl, 'api-b', options.providerBChannelEndpoint);
+  await waitPeerEndpointPresent(options.peerLocationUrl, 'api-b', options.providerBChannelEndpoint);
   await waitForProviderTraffic(options.consumerUrl, 'rl-a2-original-restored', 'api-b');
   await postJson<string[]>(options.providerBUrl, '/evidence/wait', { contains: 'marker=rl-a2-original-restored-' });
 

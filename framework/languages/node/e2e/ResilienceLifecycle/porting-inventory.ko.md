@@ -44,7 +44,7 @@
 | `Client/Program.cs`, `Client/ResilienceLifecycle.Client.csproj` | `Client/main.ts`, `Client/package.json`, `Client/tsconfig.json` | client-entry/project | done | scenario 선택과 실행 앱 구현. default `all`에 RL-B5 포함 |
 | `Client/Support/*` | `Client/Support/` | support | done | options, assertion, HTTP/process helper 포팅 |
 | `Client/Scenarios/*.cs` | `Client/Scenarios/` | scenario | done | RL-A1~RL-A5/RL-B1~RL-B6/RL-C1~RL-C4/RL-D1~RL-D5 구현 |
-| `Server/TopologyProbe/*` | `Server/TopologyProbe/` | topology-probe | done | location runtime query 기반 topology probe와 lifecycle control endpoint 구현 |
+| topology 관측 | `Server/Consumer/` | consumer | done | 실제 request consumer가 public location runtime query로 peer row를 함께 제공한다. 별도 probe 역할은 두지 않는다. |
 | `Server/Provider/*` | `Server/Provider/` | provider-role | done | provider handler, evidence, fault injection, shutdown, crash, runtime drain/restore/weight endpoint 구현 |
 | `Server/Consumer/*` | `Server/Consumer/` | consumer-role | done | location store consumer request/send host, timeout/no-retry endpoint, short-lived client endpoint 구현 |
 

@@ -4,8 +4,8 @@ import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
   waitForProviderTraffic,
-  waitTopologyAbsent,
-  waitTopologyReady,
+  waitPeerAbsent,
+  waitPeerPresent,
   waitUntilDown
 } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
@@ -19,7 +19,7 @@ export async function runRlA1(options: ClientOptions, state: ScenarioState): Pro
     await postJson(options.providerBUrl, '/shutdown');
   }
   await waitUntilDown(options.providerBUrl);
-  await waitTopologyAbsent(options.topologyUrl, 'api-b');
+  await waitPeerAbsent(options.peerLocationUrl, 'api-b');
   state.providerBProcess = undefined;
 
   for (let i = 0; i < 12; i += 1) {
@@ -42,7 +42,7 @@ export async function runRlA1(options: ClientOptions, state: ScenarioState): Pro
   });
   await restarted.waitReady();
   state.providerBProcess = restarted;
-  await waitTopologyReady(options.topologyUrl, 'api-b');
+  await waitPeerPresent(options.peerLocationUrl, 'api-b');
 
   await waitForProviderTraffic(options.consumerUrl, 'rl-a1-restored', 'api-b');
   await postJson<string[]>(options.providerBUrl, '/evidence/wait', { contains: 'marker=rl-a1-restored-' });

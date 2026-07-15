@@ -2,7 +2,7 @@ import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { getJson, postJson } from './http-client';
 import { ensure } from './scenario-assert';
 
-interface TopologyEntryResult {
+interface PeerLocationResult {
   readonly routingId?: string;
   readonly rid?: string;
   readonly endpoint?: string;
@@ -45,52 +45,52 @@ export async function waitForProviderTraffic(
   throw new Error(`${markerPrefix} traffic did not reach ${expectedProviderRid}.`);
 }
 
-export async function waitTopologyReady(topologyUrl: string, rid: string): Promise<void> {
+export async function waitPeerPresent(peerLocationUrl: string, rid: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
+    const entries = await getJson<PeerLocationResult[]>(peerLocationUrl, '/location/peers');
     if (entries.some((entry) => entry.routingId === rid || entry.rid === rid)) {
       return;
     }
     await delay(250);
   }
-  throw new Error(`Timed out waiting for topology rid=${rid} Ready.`);
+  throw new Error(`Timed out waiting for peer rid=${rid} to appear.`);
 }
 
-export async function waitTopologyEndpointReady(topologyUrl: string, rid: string, endpoint: string): Promise<void> {
+export async function waitPeerEndpointPresent(peerLocationUrl: string, rid: string, endpoint: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
+    const entries = await getJson<PeerLocationResult[]>(peerLocationUrl, '/location/peers');
     if (entries.some((entry) => (entry.routingId === rid || entry.rid === rid) && entry.endpoint === endpoint)) {
       return;
     }
     await delay(250);
   }
-  throw new Error(`Timed out waiting for topology rid=${rid} endpoint=${endpoint} Ready.`);
+  throw new Error(`Timed out waiting for peer rid=${rid} endpoint=${endpoint} to appear.`);
 }
 
-export async function waitTopologyAbsent(topologyUrl: string, rid: string): Promise<void> {
+export async function waitPeerAbsent(peerLocationUrl: string, rid: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
+    const entries = await getJson<PeerLocationResult[]>(peerLocationUrl, '/location/peers');
     if (!entries.some((entry) => entry.routingId === rid || entry.rid === rid)) {
       return;
     }
     await delay(250);
   }
-  throw new Error(`Timed out waiting for topology rid=${rid} to leave Ready.`);
+  throw new Error(`Timed out waiting for peer rid=${rid} to disappear.`);
 }
 
-export async function waitTopologyEndpointAbsent(topologyUrl: string, endpoint: string): Promise<void> {
+export async function waitPeerEndpointAbsent(peerLocationUrl: string, endpoint: string): Promise<void> {
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    const entries = await getJson<TopologyEntryResult[]>(topologyUrl, '/topology-probe/topology');
+    const entries = await getJson<PeerLocationResult[]>(peerLocationUrl, '/location/peers');
     if (!entries.some((entry) => entry.endpoint === endpoint)) {
       return;
     }
     await delay(250);
   }
-  throw new Error(`Timed out waiting for topology endpoint=${endpoint} to leave Ready.`);
+  throw new Error(`Timed out waiting for peer endpoint=${endpoint} to disappear.`);
 }
 
 export async function waitUntilAvailable(baseUrl: string): Promise<void> {

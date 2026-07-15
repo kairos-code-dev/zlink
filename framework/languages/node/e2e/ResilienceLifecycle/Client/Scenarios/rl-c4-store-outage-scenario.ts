@@ -4,7 +4,7 @@ import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';
 import {
   profileReq,
-  waitTopologyReady
+  waitPeerPresent
 } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 import type { ScenarioState } from '../Support/scenario-state';
@@ -31,7 +31,7 @@ export async function runRlC4(options: ClientOptions, _state: ScenarioState): Pr
   }
 
   await waitForEitherEvidence(options, 'marker=rl-c4-before-outage', 'RL-C4 before-outage evidence missing.');
-  await waitTopologyReady(options.topologyUrl, 'api-a');
+  await waitPeerPresent(options.peerLocationUrl, 'api-a');
 
   const after = await postJson<ProfileRes>(
     options.consumerUrl,

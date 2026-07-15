@@ -1,5 +1,5 @@
 export interface ClientOptions {
-  readonly topologyUrl: string;
+  readonly peerLocationUrl: string;
   readonly providerAUrl: string;
   readonly providerBUrl: string;
   readonly consumerUrl: string;
@@ -36,7 +36,7 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     throw new Error('--soak-duration-seconds must be an integer of at least 120.');
   }
   return {
-    topologyUrl: required(values, 'topology-url'),
+    peerLocationUrl: required(values, 'peer-location-url'),
     providerAUrl: required(values, 'provider-a-url'),
     providerBUrl: required(values, 'provider-b-url'),
     consumerUrl: required(values, 'consumer-url'),

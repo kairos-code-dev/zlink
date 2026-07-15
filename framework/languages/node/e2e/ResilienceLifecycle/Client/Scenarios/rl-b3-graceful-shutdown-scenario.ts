@@ -4,8 +4,8 @@ import { postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
-  waitTopologyAbsent,
-  waitTopologyReady,
+  waitPeerAbsent,
+  waitPeerPresent,
   waitUntilAvailable,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -27,7 +27,7 @@ export async function runRlB3(options: ClientOptions, state: ScenarioState): Pro
     await postJson(options.providerBUrl, '/shutdown');
   }
   await waitUntilDown(options.providerBUrl);
-  await waitTopologyAbsent(options.topologyUrl, 'api-b');
+  await waitPeerAbsent(options.peerLocationUrl, 'api-b');
 
   for (let i = 0; i < 12; i += 1) {
     const after = await postJson<ProfileRes>(
@@ -53,7 +53,7 @@ export async function runRlB3(options: ClientOptions, state: ScenarioState): Pro
   await restarted.waitReady();
   state.providerBProcess = restarted;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyReady(options.topologyUrl, 'api-b');
+  await waitPeerPresent(options.peerLocationUrl, 'api-b');
 
   console.log('scenario RL-B3 passed');
 }

@@ -5,8 +5,8 @@ import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
   waitForProviderTraffic,
-  waitTopologyAbsent,
-  waitTopologyReady,
+  waitPeerAbsent,
+  waitPeerPresent,
   waitUntilAvailable,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -31,7 +31,7 @@ export async function runRlB2(options: ClientOptions, state: ScenarioState): Pro
   await postJson(options.providerAUrl, '/admin/restore');
   await waitForWeight(options.providerAUrl, 100);
 
-  await waitTopologyAbsent(options.topologyUrl, 'api-b');
+  await waitPeerAbsent(options.peerLocationUrl, 'api-b');
   const followUp = await postJson<ProfileRes>(
     options.consumerUrl,
     '/profile/request/new-client',
@@ -53,7 +53,7 @@ export async function runRlB2(options: ClientOptions, state: ScenarioState): Pro
   await restarted.waitReady();
   state.providerBProcess = restarted;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyReady(options.topologyUrl, 'api-b');
+  await waitPeerPresent(options.peerLocationUrl, 'api-b');
 
   await waitForProviderTraffic(options.consumerUrl, 'rl-b2-restored', 'api-b');
   await postJson<string[]>(options.providerBUrl, '/evidence/wait', { contains: 'marker=rl-b2-restored-' });

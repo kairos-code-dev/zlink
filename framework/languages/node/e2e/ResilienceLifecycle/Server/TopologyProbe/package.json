@@ -1,9 +1,0 @@
-{
-  "name": "@zlink-systems/e2e-resilience-lifecycle-topology-probe",
-  "version": "0.1.0-SNAPSHOT",
-  "private": true,
-  "main": "dist/Server/TopologyProbe/main.js",
-  "scripts": {
-    "build": "node ../../../../node_modules/typescript/bin/tsc -p tsconfig.json"
-  }
-}

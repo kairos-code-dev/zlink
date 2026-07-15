@@ -4,9 +4,9 @@ import { getJson, postJson } from '../Support/http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
-  waitTopologyEndpointAbsent,
-  waitTopologyEndpointReady,
-  waitTopologyReady,
+  waitPeerEndpointAbsent,
+  waitPeerEndpointPresent,
+  waitPeerPresent,
   waitUntilAvailable,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -49,10 +49,10 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
     }
     await waitUntilDown(options.providerBUrl);
     state.providerBProcess = undefined;
-    await waitTopologyEndpointAbsent(options.topologyUrl, options.providerBChannelEndpoint);
+    await waitPeerEndpointAbsent(options.peerLocationUrl, options.providerBChannelEndpoint);
 
-    await waitTopologyEndpointReady(options.topologyUrl, 'api-b', options.providerBGreenChannelEndpoint);
-    await waitTopologyReady(options.topologyUrl, 'api-b');
+    await waitPeerEndpointPresent(options.peerLocationUrl, 'api-b', options.providerBGreenChannelEndpoint);
+    await waitPeerPresent(options.peerLocationUrl, 'api-b');
     for (let i = 0; i < 32; i += 1) {
       const reply = await postJson<ProfileRes>(
         options.consumerUrl,
@@ -70,7 +70,7 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
     await green.stop();
   }
   await waitUntilDown(options.providerBGreenUrl);
-  await waitTopologyEndpointAbsent(options.topologyUrl, options.providerBGreenChannelEndpoint);
+  await waitPeerEndpointAbsent(options.peerLocationUrl, options.providerBGreenChannelEndpoint);
 
   const restored = startProvider({
     providerMain: options.providerMain,
@@ -86,8 +86,8 @@ export async function runRlA4(options: ClientOptions, state: ScenarioState): Pro
   await restored.waitReady();
   state.providerBProcess = restored;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyEndpointReady(options.topologyUrl, 'api-b', options.providerBChannelEndpoint);
-  await waitTopologyReady(options.topologyUrl, 'api-b');
+  await waitPeerEndpointPresent(options.peerLocationUrl, 'api-b', options.providerBChannelEndpoint);
+  await waitPeerPresent(options.peerLocationUrl, 'api-b');
 
   await sendUntilProvider(options.consumerUrl, 'rl-a4-restored', 'api-b', 120);
 

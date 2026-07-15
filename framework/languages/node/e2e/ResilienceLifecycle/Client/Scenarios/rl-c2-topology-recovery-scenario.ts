@@ -5,8 +5,8 @@ import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
   waitForProviderTraffic,
-  waitTopologyAbsent,
-  waitTopologyReady,
+  waitPeerAbsent,
+  waitPeerPresent,
   waitUntilAvailable,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -20,7 +20,7 @@ export async function runRlC2(options: ClientOptions, state: ScenarioState): Pro
     state.providerBProcess = undefined;
   }
   await waitUntilDown(options.providerBUrl);
-  await waitTopologyAbsent(options.topologyUrl, 'api-b');
+  await waitPeerAbsent(options.peerLocationUrl, 'api-b');
 
   for (let i = 0; i < 8; i += 1) {
     const reply = await postJson<ProfileRes>(
@@ -45,7 +45,7 @@ export async function runRlC2(options: ClientOptions, state: ScenarioState): Pro
   await restarted.waitReady();
   state.providerBProcess = restarted;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyReady(options.topologyUrl, 'api-b');
+  await waitPeerPresent(options.peerLocationUrl, 'api-b');
 
   await waitForProviderTraffic(options.consumerUrl, 'rl-c2-restored', 'api-b');
 

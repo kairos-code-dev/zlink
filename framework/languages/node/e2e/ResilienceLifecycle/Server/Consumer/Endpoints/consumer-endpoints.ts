@@ -1,4 +1,9 @@
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import {
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
+  type ZLinkChannelClient,
+  type ZLinkLocationRuntimeQuery
+} from '@zlink-systems/framework';
 import {
   MissingProfileMsg,
   MissingProfileReq,
@@ -15,12 +20,31 @@ import type { EvidenceStore } from '../Infrastructure/evidence-store';
 
 export function createConsumerEndpoints(
   channel: ZLinkChannelClient,
+  locationQuery: ZLinkLocationRuntimeQuery,
   evidence: EvidenceStore,
   requestWithNewClient: (request: ProfileReq) => Promise<ProfileRes>,
   stop: () => void
 ): HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready' }) },
+    {
+      method: 'GET',
+      path: '/location/peers',
+      handle: async () => {
+        const rows = await locationQuery.listPeerLocations({
+          autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+          meshName: 'profile',
+          role: ZLinkLocationRole.Router
+        });
+        return rows.map((row) => ({
+          channelName: row.meshName,
+          serviceRole: row.role,
+          routingId: String(row.nodeRid),
+          rid: String(row.nodeRid),
+          endpoint: row.endpoint
+        }));
+      }
+    },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
     { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
     {

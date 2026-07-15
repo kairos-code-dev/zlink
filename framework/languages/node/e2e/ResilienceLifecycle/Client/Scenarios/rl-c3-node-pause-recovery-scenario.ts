@@ -5,7 +5,7 @@ import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,
   waitForProviderTraffic,
-  waitTopologyReady,
+  waitPeerPresent,
   waitUntilAvailable,
   waitUntilDown
 } from '../Support/resilience-helpers';
@@ -42,7 +42,7 @@ export async function runRlC3(options: ClientOptions, state: ScenarioState): Pro
   await restarted.waitReady();
   state.providerBProcess = restarted;
   await waitUntilAvailable(options.providerBUrl);
-  await waitTopologyReady(options.topologyUrl, 'api-b');
+  await waitPeerPresent(options.peerLocationUrl, 'api-b');
 
   await waitForProviderTraffic(options.consumerUrl, 'rl-c3-recovered', 'api-b');
 

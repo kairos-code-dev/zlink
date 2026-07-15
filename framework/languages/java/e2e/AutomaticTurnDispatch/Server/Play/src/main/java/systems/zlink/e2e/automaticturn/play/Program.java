@@ -41,10 +41,11 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
@@ -68,7 +69,7 @@ public final class Program {
         ZLinkSpotManager spots,
         systems.zlink.framework.channels.ZLinkRouteClient routes) {
         return new EvidenceHttpServer(
-            evidence, json, Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"), metrics,
+            evidence, json, Env.get("httpEndpoint"), metrics,
             drain, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, spots::close,
             () -> routes.requestToNode(
                     Contracts.ROUTE_CHANNEL,
@@ -85,25 +86,25 @@ public final class Program {
     @Bean(destroyMethod = "close")
     systems.zlink.e2e.automaticturn.shared.PersistentRoomEvents persistentRoomEvents() {
         return new systems.zlink.e2e.automaticturn.shared.PersistentRoomEvents(
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"));
+            Env.get("redisLocationEndpoint"),
+            Env.get("locationKeyPrefix"));
     }
 
     @Bean
     ZLinkFrameworkConfigurer framework() {
         return options -> {
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = Env.get("logDirectory", "logs");
             String nodeRid = nodeRid();
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("java-atd-" + nodeRid);
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
+                .enableServer(Env.get("routeEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
             options.configureLocations().setSpotRouterChannel(
                 Contracts.SPOT_MESH, Contracts.ROUTE_CHANNEL);
-            String routePeerEndpoint = Env.get("ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT");
+            String routePeerEndpoint = Env.get("routePeerEndpoint");
             if (!routePeerEndpoint.isBlank()) {
                 route.enableClient(routePeerEndpoint);
             }
@@ -116,8 +117,8 @@ public final class Program {
                 Contracts.EnsureSpotReq.class,
                 Contracts.EnsureSpotRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
-                .enableClient(Env.get("ZLINK_JAVA_E2E_DELAY_ENDPOINT"));
-            String fanoutEndpoint = Env.get("ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT");
+                .enableClient(Env.get("delayEndpoint"));
+            String fanoutEndpoint = Env.get("observabilityFanoutEndpoint");
             if (!fanoutEndpoint.isBlank()) {
                 var fanout = options.addFanoutChannel(Contracts.OBS_FANOUT_CHANNEL);
                 if (Contracts.PLAY_NODE_A.equals(nodeRid)) {
@@ -129,11 +130,11 @@ public final class Program {
                         Contracts.ObservabilityFanoutEvent.class);
             }
             ZLinkSpotMeshBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH);
-            String drainPolicy = Env.get("ZLINK_JAVA_E2E_SPOT_DRAIN_POLICY", "natural");
+            String drainPolicy = Env.get("spotDrainPolicy", "natural");
             spot.useDrainPolicy("release".equals(drainPolicy)
                 ? systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE
                 : systems.zlink.framework.monitoring.ZLinkSpotDrainPolicy.DRAIN_NATURAL);
-            spot.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
+            spot.enableRouter(Env.get("spotEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
             spot.addEntrySpot(AwaitEntrySpot.class);
             spot.addSpotFactory(AwaitProbeSpot.class);
@@ -144,8 +145,8 @@ public final class Program {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix")));
     }
 
     @Bean
@@ -299,6 +300,6 @@ public final class Program {
     }
 
     private static String nodeRid() {
-        return Env.get("ZLINK_JAVA_E2E_NODE_RID", Contracts.PLAY_NODE);
+        return Env.get("nodeRid", Contracts.PLAY_NODE);
     }
 }

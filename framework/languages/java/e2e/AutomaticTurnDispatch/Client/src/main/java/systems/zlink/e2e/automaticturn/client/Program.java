@@ -28,25 +28,27 @@ public final class Program {
     }
 
     public static void main(String... args) throws Exception {
+        Env.configure(args);
+        String[] operationArgs = java.util.Arrays.copyOfRange(args, 2, args.length);
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
-            ZLinkStreamConnectorOptions.createDefault(URI.create(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))));
+            ZLinkStreamConnectorOptions.createDefault(URI.create(Env.get("streamEndpoint"))));
         try {
             connector.connect().submit().toCompletableFuture().join();
-            if (args.length > 0 && "--readiness".equals(args[0])) {
+            if (operationArgs.length > 0 && "--readiness".equals(operationArgs[0])) {
                 AutomaticTurnDispatchScenarioSupport.runReadinessProbe(connector);
                 System.out.println("automatic-turn-dispatch readiness=ready");
                 return;
             }
-            if (args.length > 0 && "--shutdown-wait".equals(args[0])) {
+            if (operationArgs.length > 0 && "--shutdown-wait".equals(operationArgs[0])) {
                 ShutdownAwaitScenario.runWait(connector);
                 return;
             }
-            if (args.length > 0 && "--shutdown-recovery".equals(args[0])) {
+            if (operationArgs.length > 0 && "--shutdown-recovery".equals(operationArgs[0])) {
                 ShutdownAwaitScenario.runRecovery(connector);
                 return;
             }
 
-            String scenario = args.length > 0 ? args[0] : "all";
+            String scenario = operationArgs.length > 0 ? operationArgs[0] : "all";
             runScenario(connector, scenario);
             System.out.println("automatic-turn-dispatch e2e result=passed");
         } finally {

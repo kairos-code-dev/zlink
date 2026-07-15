@@ -45,10 +45,11 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
@@ -70,7 +71,7 @@ public final class Program {
         ZLinkFrameworkLifecycle lifecycle,
         DrainEvidence drainEvidence) {
         return new EvidenceHttpServer(
-            evidence, json, Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"), metrics,
+            evidence, json, Env.get("httpEndpoint"), metrics,
             drain, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, null, null);
     }
 
@@ -80,41 +81,41 @@ public final class Program {
     @Bean(destroyMethod = "close")
     systems.zlink.e2e.automaticturn.shared.PersistentRoomEvents persistentRoomEvents() {
         return new systems.zlink.e2e.automaticturn.shared.PersistentRoomEvents(
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"));
+            Env.get("redisLocationEndpoint"),
+            Env.get("locationKeyPrefix"));
     }
 
     @Bean
     ZLinkFrameworkConfigurer framework() {
         return options -> {
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = Env.get("logDirectory", "logs");
             options.addHandlersFromPackageOf(ScenarioReqHandler.class);
             var dispatch = options.configureDispatch()
-                .messageFlow("off".equals(Env.get("ZLINK_JAVA_E2E_MESSAGE_FLOW"))
+                .messageFlow("off".equals(Env.get("messageFlowMode"))
                     ? ZLinkMessageFlowLogMode.OFF
                     : ZLinkMessageFlowLogMode.KEY_TRANSITIONS);
-            if (!"off".equals(Env.get("ZLINK_JAVA_E2E_MESSAGE_FLOW"))) {
+            if (!"off".equals(Env.get("messageFlowMode"))) {
                 dispatch.traceLogFile(logDir + "/session-flow.log")
                     .traceLabel("java-atd-session");
             }
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
+                .enableServer(Env.get("sessionRouteEndpoint"))
+                .enableClient(Env.get("routeEndpoint"))
                 .setRoutingId(RoutingId.from("session-a"));
-            String routeBEndpoint = Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT");
+            String routeBEndpoint = Env.get("routeBEndpoint");
             if (!routeBEndpoint.isBlank()) {
                 route.enableClient(routeBEndpoint);
             }
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
-                .enableClient(Env.get("ZLINK_JAVA_E2E_DELAY_ENDPOINT"));
+                .enableClient(Env.get("delayEndpoint"));
             ZLinkSpotMeshBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH);
-            spot.enableRouter(Env.get("ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT"))
+            spot.enableRouter(Env.get("sessionSpotEndpoint"))
                 .setRoutingId(RoutingId.from("session-a"));
             spot.addEntrySpot(AwaitEntrySpot.class);
             spot.addSpotFactory(AwaitProbeSpot.class);
             spot.addActorFactory(Contracts.ACTOR_TYPE, AwaitActorFactory.class);
             options.addStreamNode("session")
-                .bind(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))
+                .bind(Env.get("streamEndpoint"))
                 .registerSession(AwaitSession.class);
         };
     }
@@ -122,7 +123,7 @@ public final class Program {
     @Bean
     ApplicationRunner createDrainSpot(ZLinkSpotManager spots) {
         return ignored -> {
-            String spotRid = Env.get("ZLINK_JAVA_E2E_SESSION_DRAIN_SPOT");
+            String spotRid = Env.get("sessionDrainSpotRid");
             if (!spotRid.isBlank()) {
                 spots.getOrCreate(
                     AwaitProbeSpot.class,
@@ -135,8 +136,8 @@ public final class Program {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix")));
     }
 
     @Bean

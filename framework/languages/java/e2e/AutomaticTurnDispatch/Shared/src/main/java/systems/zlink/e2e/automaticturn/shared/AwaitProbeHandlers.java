@@ -374,7 +374,7 @@ public final class AwaitProbeHandlers {
                 evidence.record("timer-next-completed", scenario.requestId(), value);
                 spot.closeTimer(tick.name());
             } else if ("fast".equals(scenario.mode())) {
-                if (fanout != null && !Env.get("ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT").isBlank()) {
+                if (fanout != null && !Env.get("observabilityFanoutEndpoint").isBlank()) {
                     fanout.publish(
                         Contracts.OBS_FANOUT_CHANNEL,
                         "timer",

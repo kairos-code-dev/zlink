@@ -24,8 +24,10 @@ export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlin
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/AutomaticTurnDispatch-gradle-cache}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
   "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:automaticturn:${run_id}}"
+redis_location_endpoint="127.0.0.1:${redis_port}"
+location_key_prefix="zlink:e2e:automaticturn:${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -88,6 +90,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -368,12 +371,7 @@ static_checks() {
 assert_readiness() {
   : >"${log_dir}/readiness.stdout.log"
   : >"${log_dir}/readiness.stderr.log"
-  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
-  ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
-  ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
-  ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    timeout -k 5s 20s "$(client_bin)" --readiness \
+  timeout -k 5s 20s "$(client_bin)" --config "${client_config}" --readiness \
     >>"${log_dir}/readiness.stdout.log" 2>>"${log_dir}/readiness.stderr.log"
 }
 
@@ -410,51 +408,68 @@ SESSION_HTTP="$(http "${SESSION_HTTP_PORT}")"
 SESSION_ROUTE_ENDPOINT="$(tcp "${SESSION_ROUTE_PORT}")"
 SESSION_SPOT_ENDPOINT="$(tcp "${SESSION_SPOT_PORT}")"
 
+write_config() {
+  local path="$1"
+  shift
+  {
+    printf 'redisLocationEndpoint=%s\n' "${redis_location_endpoint}"
+    printf 'locationKeyPrefix=%s\n' "${location_key_prefix}"
+    printf 'logDirectory=%s\n' "${log_dir}"
+    printf '%s\n' "$@"
+  } >"${path}"
+  chmod 0600 "${path}"
+}
+write_client_config() {
+  local path="$1"
+  local shutdown_request_id="${2:-}"
+  local shutdown_spot_rid="${3:-}"
+  write_config "${path}" \
+    "streamEndpoint=${STREAM_ENDPOINT}" \
+    "playHttpEndpoint=${PLAY_A_HTTP}" \
+    "playBHttpEndpoint=${PLAY_B_HTTP}" \
+    "sessionHttpEndpoint=${SESSION_HTTP}" \
+    "shutdownRequestId=${shutdown_request_id}" \
+    "shutdownSpotRid=${shutdown_spot_rid}"
+}
+delay_config="${config_dir}/delay.properties"
+play_a_config="${config_dir}/play-a.properties"
+play_b_config="${config_dir}/play-b.properties"
+session_config="${config_dir}/session.properties"
+client_config="${config_dir}/client.properties"
+write_config "${delay_config}" "delayEndpoint=${DELAY_ENDPOINT}"
+write_config "${play_a_config}" \
+  "nodeRid=play-a" "routeEndpoint=${ROUTE_A_ENDPOINT}" \
+  "routePeerEndpoint=${ROUTE_B_ENDPOINT}" "spotEndpoint=${SPOT_A_ENDPOINT}" \
+  "delayEndpoint=${DELAY_ENDPOINT}" "httpEndpoint=${PLAY_A_HTTP}"
+write_config "${play_b_config}" \
+  "nodeRid=play-b" "routeEndpoint=${ROUTE_B_ENDPOINT}" \
+  "routePeerEndpoint=${ROUTE_A_ENDPOINT}" "spotEndpoint=${SPOT_B_ENDPOINT}" \
+  "delayEndpoint=${DELAY_ENDPOINT}" "httpEndpoint=${PLAY_B_HTTP}"
+write_config "${session_config}" \
+  "routeEndpoint=${ROUTE_A_ENDPOINT}" "routeBEndpoint=${ROUTE_B_ENDPOINT}" \
+  "sessionRouteEndpoint=${SESSION_ROUTE_ENDPOINT}" \
+  "sessionSpotEndpoint=${SESSION_SPOT_ENDPOINT}" \
+  "delayEndpoint=${DELAY_ENDPOINT}" "streamEndpoint=${STREAM_ENDPOINT}" \
+  "httpEndpoint=${SESSION_HTTP}"
+write_client_config "${client_config}"
+
 start_initial_role() {
   case "$1" in
     delay)
-      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(delay_bin)" >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
+      "$(delay_bin)" --config "${delay_config}" \
+        >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
       ;;
     play-a)
-      ZLINK_JAVA_E2E_NODE_RID="play-a" \
-      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
-      ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" \
-      ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" \
-      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(play_bin)" >"${log_dir}/play-a.stdout.log" 2>"${log_dir}/play-a.stderr.log" &
+      "$(play_bin)" --config "${play_a_config}" \
+        >"${log_dir}/play-a.stdout.log" 2>"${log_dir}/play-a.stderr.log" &
       ;;
     play-b)
-      ZLINK_JAVA_E2E_NODE_RID="play-b" \
-      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_B_ENDPOINT}" \
-      ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_A_ENDPOINT}" \
-      ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_B_ENDPOINT}" \
-      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_B_HTTP}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(play_bin)" >"${log_dir}/play-b.stdout.log" 2>"${log_dir}/play-b.stderr.log" &
+      "$(play_bin)" --config "${play_b_config}" \
+        >"${log_dir}/play-b.stdout.log" 2>"${log_dir}/play-b.stderr.log" &
       ;;
     session)
-      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
-      ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" \
-      ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" \
-      ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" \
-      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-      ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
-      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(session_bin)" >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
+      "$(session_bin)" --config "${session_config}" \
+        >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
       ;;
   esac
   pids+=("$!")
@@ -482,12 +497,8 @@ wait_http session-http "${SESSION_HTTP}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 assert_readiness
 
-ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
-ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
-ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
-ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  timeout -k 5s 90s "$(client_bin)" "${SCENARIO}" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+timeout -k 5s 90s "$(client_bin)" --config "${client_config}" "${SCENARIO}" \
+  >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 fetch_evidence "${PLAY_A_HTTP}" "${log_dir}/play-a-evidence.json"
 fetch_evidence "${PLAY_B_HTTP}" "${log_dir}/play-b-evidence.json"
@@ -521,14 +532,10 @@ grep -Rq "message flow" "${log_dir}"/*-flow.log
 if [[ "${SCENARIO}" == "all" ]]; then
   SHUTDOWN_ID="atde3-$(date +%s)-$$"
   SHUTDOWN_SPOT="atd-shutdown-${run_id//[^a-zA-Z0-9]/}"
-  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
-  ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
-  ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
-  ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID="${SHUTDOWN_ID}" \
-  ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID="${SHUTDOWN_SPOT}" \
-    timeout -k 5s 120s "$(client_bin)" --shutdown-wait \
+  shutdown_client_config="${config_dir}/client-shutdown.properties"
+  write_client_config "${shutdown_client_config}" "${SHUTDOWN_ID}" "${SHUTDOWN_SPOT}"
+  timeout -k 5s 120s "$(client_bin)" \
+    --config "${shutdown_client_config}" --shutdown-wait \
       >"${log_dir}/client-shutdown-wait.stdout.log" 2>"${log_dir}/client-shutdown-wait.stderr.log" &
   SHUTDOWN_CLIENT_PID=$!
   wait_evidence_contains \
@@ -542,16 +549,8 @@ if [[ "${SCENARIO}" == "all" ]]; then
   cat "${log_dir}/client-shutdown-wait.stdout.log"
   grep -q "automatic-turn-dispatch shutdown wait result=passed" "${log_dir}/client-shutdown-wait.stdout.log"
 
-  ZLINK_JAVA_E2E_NODE_RID="play-a" \
-  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
-  ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" \
-  ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" \
-  ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(play_bin)" >"${log_dir}/play-a-restart.stdout.log" 2>"${log_dir}/play-a-restart.stderr.log" &
+  "$(play_bin)" --config "${play_a_config}" \
+    >"${log_dir}/play-a-restart.stdout.log" 2>"${log_dir}/play-a-restart.stderr.log" &
   pids+=("$!")
   wait_port play-a-route "${ROUTE_A_ENDPOINT}"
   wait_port play-a-spot "${SPOT_A_ENDPOINT}"
@@ -559,14 +558,8 @@ if [[ "${SCENARIO}" == "all" ]]; then
   sleep "${ROUTE_SETTLE_SECONDS}"
   assert_readiness
 
-  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
-  ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" \
-  ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" \
-  ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID="${SHUTDOWN_ID}" \
-  ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID="${SHUTDOWN_SPOT}" \
-    timeout -k 5s 90s "$(client_bin)" --shutdown-recovery \
+  timeout -k 5s 90s "$(client_bin)" \
+    --config "${shutdown_client_config}" --shutdown-recovery \
       >"${log_dir}/client-shutdown-recovery.stdout.log" 2>"${log_dir}/client-shutdown-recovery.stderr.log"
   cat "${log_dir}/client-shutdown-recovery.stdout.log"
   grep -q "automatic-turn-dispatch shutdown recovery result=passed" "${log_dir}/client-shutdown-recovery.stdout.log"

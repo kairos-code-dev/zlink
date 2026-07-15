@@ -90,7 +90,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         Contracts.ActorAwaitRes awaitReply = await.toCompletableFuture().join();
         ensure(actorA.equals(awaitReply.actorId()), "ATD-B1 await actor mismatch");
         ensure(actorB.equals(fastReply.actorId()), "ATD-B1 fast actor mismatch");
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         assertOrder(playEvidence, requestId, List.of(
             "actor-await-started",
             "actor-await-released",
@@ -110,7 +110,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
 
     public static void runWorkerAwait(ZLinkStreamConnector connector) throws Exception {
         String requestId = "atda4-" + System.nanoTime();
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         Map<String, String> metadata = Map.of(
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
@@ -163,7 +163,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         Contracts.ActorFastRes fastReply = fast.toCompletableFuture().join();
         ensure(actorA.equals(awaitReply.actorId()), "ATD-B2 await actor mismatch");
         ensure(actorA.equals(fastReply.actorId()), "ATD-B2 fast actor mismatch");
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         assertOrder(playEvidence, requestId, List.of(
             "actor-await-started",
             "actor-await-released",
@@ -207,7 +207,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         Contracts.ActorJoinAwaitRes joinReply = join.toCompletableFuture().join();
         ensure(actorA.equals(joinReply.actorId()), "ATD-B3 join actor mismatch");
         ensure(actorB.equals(fastReply.actorId()), "ATD-B3 fast actor mismatch");
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         assertOrder(playEvidence, requestId, List.of(
             "actor-join-await-started",
             "actor-join-await-released",
@@ -230,7 +230,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         Map<String, String> metadata = Map.of(
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         connector
             .send(new Contracts.TimerStartMsg(
                 requestId,
@@ -276,7 +276,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         Map<String, String> metadata = Map.of(
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         connector
             .send(new Contracts.TimerStartMsg(
                 requestId,
@@ -332,7 +332,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
         String timerName = requestId + "-fast";
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         CompletionStage<Contracts.ActorAwaitRes> actorAwait = connector
             .request(new Contracts.ActorAwaitReq(requestId, ACTOR_TIMER_ISOLATION_DELAY_MILLIS))
             .metadata(Contracts.ACTOR_ID_METADATA, actorId)
@@ -386,7 +386,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
         String timerName = requestId + "-await";
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         connector
             .send(new Contracts.TimerStartMsg(
                 requestId,
@@ -430,8 +430,8 @@ public final class AutomaticTurnDispatchScenarioSupport {
         String requestId = "atdd2-" + System.nanoTime();
         String ownerSpot = requestId + "-owner";
         String targetSpot = requestId + "-target";
-        String playAEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
-        String playBEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_B_HTTP") + "/evidence";
+        String playAEvidence = Env.get("playHttpEndpoint") + "/evidence";
+        String playBEvidence = Env.get("playBHttpEndpoint") + "/evidence";
         Contracts.EnsureSpotRes owner = connector
             .request(new Contracts.EnsureSpotReq(ownerSpot))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
@@ -486,7 +486,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
     public static void runRouteBridgeAwait(ZLinkStreamConnector connector) throws Exception {
         String requestId = "atdd3-" + System.nanoTime();
         String spotRid = requestId + "-spot";
-        String playBEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_B_HTTP") + "/evidence";
+        String playBEvidence = Env.get("playBHttpEndpoint") + "/evidence";
         Contracts.EnsureSpotRes target = connector
             .request(new Contracts.EnsureSpotReq(spotRid))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
@@ -562,7 +562,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         String requestId = "atdd4-" + System.nanoTime();
         String actorA = requestId + "-actor-a";
         String actorB = requestId + "-actor-b";
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         Contracts.BindActorsRes bind = connector
             .request(new Contracts.BindActorsReq(Contracts.TARGET_SPOT, actorA, actorB))
             .timeout(REQUEST_TIMEOUT)
@@ -570,7 +570,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         ensure(actorA.equals(bind.actorA()), "ATD-D4 actor A bind mismatch");
 
         ZLinkStreamConnector unbound = ZLinkStreamConnectorFactory.create(
-            ZLinkStreamConnectorOptions.createDefault(URI.create(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))));
+            ZLinkStreamConnectorOptions.createDefault(URI.create(Env.get("streamEndpoint"))));
         try {
             unbound.connect().submit().toCompletableFuture().join();
             CompletionStage<ZLinkStreamMessage<Contracts.ActorPushNotify>> push = connector
@@ -616,7 +616,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
     public static void runTimeoutCleanup(ZLinkStreamConnector connector) throws Exception {
         String requestId = "atde1-" + System.nanoTime();
         String spotRid = requestId + "-spot";
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         Contracts.EnsureSpotRes target = connector
             .request(new Contracts.EnsureSpotReq(spotRid))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
@@ -661,7 +661,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
     public static void runCancellationCleanup(ZLinkStreamConnector connector) throws Exception {
         String requestId = "atde2-" + System.nanoTime();
         String spotRid = requestId + "-spot";
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = Env.get("playHttpEndpoint") + "/evidence";
         Contracts.EnsureSpotRes target = connector
             .request(new Contracts.EnsureSpotReq(spotRid))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
@@ -704,8 +704,8 @@ public final class AutomaticTurnDispatchScenarioSupport {
     }
 
     public static void runShutdownWait(ZLinkStreamConnector connector) throws Exception {
-        String requestId = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID");
-        String spotRid = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID");
+        String requestId = Env.get("shutdownRequestId");
+        String spotRid = Env.get("shutdownSpotRid");
         try {
             Contracts.AwaitShutdownRes result = connector
                 .request(new Contracts.AwaitShutdownScenarioReq(requestId, spotRid, 30_000))
@@ -722,8 +722,8 @@ public final class AutomaticTurnDispatchScenarioSupport {
     }
 
     public static void runShutdownRecovery(ZLinkStreamConnector connector) throws Exception {
-        String requestId = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_REQUEST_ID");
-        String spotRid = Env.get("ZLINK_JAVA_E2E_SHUTDOWN_SPOT_RID");
+        String requestId = Env.get("shutdownRequestId");
+        String spotRid = Env.get("shutdownSpotRid");
         Contracts.AwaitShutdownRes result = connector
             .request(new Contracts.AwaitShutdownRecoveryReq(requestId, spotRid))
             .timeout(REQUEST_TIMEOUT)
@@ -731,7 +731,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         ensure("atd.e3-shutdown-recovery".equals(result.operation()), "ATD-E3 recovery operation mismatch");
         ensure(requestId.equals(result.requestId()), "ATD-E3 recovery request mismatch");
         ensure(spotRid.equals(result.spotRid()), "ATD-E3 recovery spot mismatch");
-        assertOrder(Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence", requestId, List.of(
+        assertOrder(Env.get("playHttpEndpoint") + "/evidence", requestId, List.of(
             "probe-started",
             "probe-completed"));
         System.out.println("automatic-turn-dispatch shutdown recovery result=passed");
@@ -797,7 +797,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
     }
 
     private static void assertOrder(String requestId, List<String> expectedOrder) throws Exception {
-        assertOrder(Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence", requestId, expectedOrder);
+        assertOrder(Env.get("playHttpEndpoint") + "/evidence", requestId, expectedOrder);
     }
 
     private static void assertOrder(String evidenceUrl, String requestId, List<String> expectedOrder)
@@ -816,7 +816,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
     }
 
     private static List<String> observedMarkers(String requestId) throws Exception {
-        return observedMarkers(Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence", requestId);
+        return observedMarkers(Env.get("playHttpEndpoint") + "/evidence", requestId);
     }
 
     private static List<String> observedMarkers(String evidenceUrl, String requestId) throws Exception {
@@ -835,7 +835,7 @@ public final class AutomaticTurnDispatchScenarioSupport {
         List<String> expectedMarkers,
         String valueFragment) throws Exception {
         assertAllValuesContain(
-            Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence",
+            Env.get("playHttpEndpoint") + "/evidence",
             requestId,
             expectedMarkers,
             valueFragment);

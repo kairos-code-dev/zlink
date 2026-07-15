@@ -23,22 +23,23 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
     ZLinkFrameworkConfigurer framework() {
         return options -> {
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = Env.get("logDirectory", "logs");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/delay-flow.log")
                 .traceLabel("java-atd-delay");
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_DELAY_ENDPOINT"))
+                .enableServer(Env.get("delayEndpoint"))
                 .setRoutingId(RoutingId.from("delay-a"))
                 .addRequestHandler(
                     DelayHandler.class,
@@ -51,8 +52,8 @@ public final class Program {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix")));
     }
 
     @Bean

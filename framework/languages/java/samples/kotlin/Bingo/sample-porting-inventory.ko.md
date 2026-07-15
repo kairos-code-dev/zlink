@@ -50,7 +50,7 @@
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/ObserveBingoEventsHandler.cs` | `Server/Play/src/main/kotlin/.../spots/entryspot/handlers/ObserveBingoEventsHandler.kt` | spot-handler | done | observer용 local room join 처리. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom.cs` | `Server/Play/src/main/kotlin/.../spots/bingoroomspot/BingoRoomSpot.kt` | spot-adapter | done | room Spot lifecycle, domain 호출, push, reward pub/sub 수신을 맡는다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoomSettingsPayloadMapper.cs` | `Server/Play/src/main/kotlin/.../domain/bingo/BingoRoomModels.kt` | spot-payload | done | Kotlin은 settings model 생성으로 payload mapping을 표현한다. |
-| `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/BingoRewardAcquiredEventHandler.cs` | `Server/Play/src/main/kotlin/.../spots/bingoroomspot/handlers/BingoWinnerMsgHandler.kt` | pubsub-handler | done | reward event를 observer bound session으로 push한다. |
+| `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/BingoRewardAcquiredEventHandler.cs` | `Server/Play/src/main/kotlin/.../spots/bingoroomspot/handlers/BingoRewardAcquiredEventHandler.kt` | pubsub-handler | done | reward event를 observer bound session으로 push한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/BingoRoomDrawTimerHandler.cs` | `Server/Play/src/main/kotlin/.../spots/bingoroomspot/handlers/BingoRoomTimerHandler.kt` | timer-handler | done | server timer draw 진행. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/StopObservingBingoEventsHandler.cs` | `Server/Play/src/main/kotlin/.../spots/bingoroomspot/handlers/StopObservingBingoEventsHandler.kt` | spot-handler | done | observer actor를 observer room에서 제거한다. |
 | `.NET: Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/SubmitBingoCardHandler.cs` | `Server/Play/src/main/kotlin/.../spots/bingoroomspot/handlers/SubmitBingoCardHandler.kt` | spot-handler | done | card 제출 request를 room domain operation으로 연결한다. |
@@ -70,7 +70,7 @@
 | common: actor/session binding | `Session/.../BingoSession.kt`, `AuthenticateSessionHandler.kt`, `PlayerActor.kt` | runtime-flow | done | 인증 후 actor를 만들고 bound session push 경로를 사용한다. |
 | common: Entry Spot에서 room Spot join | `BingoEntrySpot.kt`, `MatchBingoActorHandler.kt` | spot-flow | done | actor matching 후 room Spot으로 join한다. |
 | common: remote room Spot join 검증 | `BingoClientScenario.kt` | validation | done | `player-2.ActorNodeRid != RoomOwnerNodeRid` 의미를 검증한다. |
-| common: Spot pub/sub reward fan-out | `BingoRoomSpot.kt`, `BingoWinnerMsgHandler.kt` | pubsub | done | owner room event를 observer용 local room에서 받아 push한다. |
+| common: Spot pub/sub reward fan-out | `BingoRoomSpot.kt`, `BingoRewardAcquiredEventHandler.kt` | pubsub | done | owner room event를 observer용 local room에서 받아 push한다. |
 | common: Redis-backed match queue | `RedisBingoMatchQueue.kt` | external-adapter | done | Redis를 application port 뒤에 둔다. |
 | common: Redis-backed location store | `SampleLocationStore.kt`, role application classes | runtime-config | done | Api, Session, Play role은 `ZLinkRedisLocationStore` bean을 등록하고 framework가 public Spring configurer 경로로 사용한다. |
 | common: 실행별 전용 Redis 사용 | `run_sample.sh`, `run_sample.ps1` | runner | done | runner가 pinned image로 전용 Docker Redis를 만들고 외부 endpoint를 재사용하지 않는다. |

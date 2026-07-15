@@ -7,13 +7,13 @@ import systems.zlink.samples.bingo.server.play.infrastructure.zlink.spots.bingor
 import systems.zlink.samples.bingo.shared.contracts.Messages;
 
 @ZLinkSpotSubscription(topic = SampleNames.WinnerTopic)
-public final class BingoWinnerMsgHandler
-    implements ZLinkSpotSubscriptionHandler<BingoRoomSpot, Messages.BingoWinnerMsg> {
+public final class BingoRewardAcquiredEventHandler
+    implements ZLinkSpotSubscriptionHandler<BingoRoomSpot, Messages.BingoRewardAcquiredEvent> {
     @Override
     public java.util.concurrent.CompletionStage<Void> handle(
         BingoRoomSpot spot,
-        Messages.BingoWinnerMsg message) {
-        spot.announceWinner(message);
+        Messages.BingoRewardAcquiredEvent event) {
+        spot.announceReward(event);
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 }

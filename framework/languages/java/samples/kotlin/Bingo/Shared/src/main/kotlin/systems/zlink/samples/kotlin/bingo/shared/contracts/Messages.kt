@@ -28,7 +28,6 @@ typealias BingoNumberDrawnNotify = Messages.BingoNumberDrawnNotify
 typealias BingoStateNotify = Messages.BingoStateNotify
 typealias BingoGameEndedNotify = Messages.BingoGameEndedNotify
 typealias BingoRewardAnnouncedNotify = Messages.BingoRewardAnnouncedNotify
-typealias BingoWinnerMsg = Messages.BingoWinnerMsg
 typealias BingoRewardAcquiredEvent = Messages.BingoRewardAcquiredEvent
 typealias BingoRoomState = Messages.BingoRoomState
 typealias BingoPlayerState = Messages.BingoPlayerState
@@ -319,23 +318,6 @@ fun BingoRewardAnnouncedNotify(
         .setItemName(itemName)
         .setRarity(rarity)
         .setReceivingSpotNodeRid(receivingSpotNodeRid)
-        .build()
-
-fun BingoWinnerMsg(
-    roomId: String,
-    actorId: String,
-    drawSeq: Int,
-    itemId: String,
-    itemName: String,
-    rarity: String,
-): BingoWinnerMsg =
-    Messages.BingoWinnerMsg.newBuilder()
-        .setRoomId(roomId)
-        .setActorId(actorId)
-        .setDrawSeq(drawSeq)
-        .setItemId(itemId)
-        .setItemName(itemName)
-        .setRarity(rarity)
         .build()
 
 fun BingoRewardAcquiredEvent(

@@ -175,7 +175,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         return leaveFinishedActors(change);
     }
 
-    public void announceWinner(Messages.BingoWinnerMsg event) {
+    public void announceReward(Messages.BingoRewardAcquiredEvent event) {
         if (!settings.observerMode()
             || observers.isEmpty()
             || !event.getRoomId().equals(settings.observedRoomId())) {
@@ -244,7 +244,7 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
         context.outbound()
             .publish(
                 SampleNames.WinnerTopic,
-                BingoMessages.bingoWinnerMsg(
+                BingoMessages.bingoRewardAcquiredEvent(
                     change.state().getRoomId(),
                     winner,
                     change.state().getDrawSeq(),

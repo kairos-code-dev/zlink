@@ -27,7 +27,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRewardAnnouncedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoStateNotify
-import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoWinnerMsg
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRewardAcquiredEvent
 import systems.zlink.samples.kotlin.bingo.shared.contracts.PlayerJoinedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsRes
@@ -166,7 +166,7 @@ class BingoRoomSpot(
         leaveFinishedActors(change)
     }
 
-    suspend fun announceWinner(event: BingoWinnerMsg) {
+    suspend fun announceReward(event: BingoRewardAcquiredEvent) {
         if (!settings.observerMode() ||
             observers.isEmpty() ||
             event.roomId != settings.observedRoomId
@@ -234,7 +234,7 @@ class BingoRoomSpot(
         context.outbound()
             .publish(
                 SampleNames.WinnerTopic,
-                BingoWinnerMsg(
+                BingoRewardAcquiredEvent(
                     state.roomId,
                     winner,
                     state.drawSeq,

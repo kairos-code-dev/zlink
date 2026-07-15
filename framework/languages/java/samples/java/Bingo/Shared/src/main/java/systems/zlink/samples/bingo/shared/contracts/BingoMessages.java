@@ -256,14 +256,14 @@ public final class BingoMessages {
             .build();
     }
 
-    public static Messages.BingoWinnerMsg bingoWinnerMsg(
+    public static Messages.BingoRewardAcquiredEvent bingoRewardAcquiredEvent(
         String roomId,
         String actorId,
         int drawSeq,
         String itemId,
         String itemName,
         String rarity) {
-        return Messages.BingoWinnerMsg.newBuilder()
+        return Messages.BingoRewardAcquiredEvent.newBuilder()
             .setRoomId(roomId)
             .setActorId(actorId)
             .setDrawSeq(drawSeq)

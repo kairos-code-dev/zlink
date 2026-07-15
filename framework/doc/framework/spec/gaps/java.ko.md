@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 14건.**
+**전체 33건. 완료 15건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -274,12 +274,12 @@
 - [x] **IMP-JV-06** (결함) — 값을 버리던 `metadata(k,v)`를 channel send·request·publish 공개 표면과 모든 구현에서 제거했다. 공개 표면 집중 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `3db218ee0`(2026-07-15).
 - [ ] **IMP-JV-07** (미구현) — 54 §9
 - [ ] **IMP-JV-08** (미구현) — 40 §9
-- [ ] **IMP-JV-09** (결함) — 40 §2.3
+- [x] **IMP-JV-09** (결함) — live owner의 row라도 `actorRef`가 없는 pending 상태는 resolve miss로 반환하도록 고쳤다. pending 집중 실패 테스트, core와 Kotlin module 전체 테스트가 통과했다. 구현 커밋 `0af3e6ec6`(2026-07-15).
 - [ ] **IMP-JV-10** (미구현) — 54 §3.4
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
 
-- [ ] **IMP-X1** — pending actor row(`ActorRef` 비어 있음)를 resolve 성공으로 반환한다
+- [x] **IMP-X1** — Java/Kotlin 공유 resolver가 pending actor row(`ActorRef` 비어 있음)를 resolve miss로 반환한다. 구현 커밋 `0af3e6ec6`(2026-07-15).
 - [ ] **IMP-X2** — location event source(`location-peer/spot/actor/route`, `StoreFailure`/`StoreRecovered`)가 없다
 - [ ] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
 - [ ] **IMP-X4** — location store read에 5초 취소 상한이 없다
@@ -323,7 +323,7 @@
 | **IMP-JV-06** | 결함 | [05 §2.x](../05-framework-api.ko.md): 없는 것을 있는 척하지 않는다 | **해결:** 값을 전달하지 않던 `metadata(k,v)`를 세 channel call interface와 11개 구현에서 제거했다. 공개 표면 집중 테스트와 core 전체 테스트 통과. 구현 커밋 `3db218ee0`(2026-07-15). |
 | **IMP-JV-07** | 미구현 | [54 §9](../server/54-graceful-drain-handoff.ko.md): `zlink.drain.state`(gauge), `zlink.drain.duration`(`outcome`), `zlink.drain.forced`(`kind`는 `actor\|spot\|request\|session`으로 **고정**) | 앞의 둘이 **없다.** `zlink.drain.forced`는 `kind=runtime`(닫힌 집합 밖)을 **한 번만** 올린다(`ZLinkFrameworkRuntime.java:652-653`) |
 | **IMP-JV-08** | 미구현 | [40 §9](../server/40-location-runtime.ko.md) | location event source 5개 중 **4개가 없다**(IMP-X2) |
-| **IMP-JV-09** | 결함 | [40 §2.3](../server/40-location-runtime.ko.md) | pending actor row를 성공 resolve로 반환한다(IMP-X1). ⇒ 두 노드가 claim을 경쟁하면 **actor 객체가 아직 없는 노드로 packet이 dispatch**된다 |
+| **IMP-JV-09** | 결함 | [40 §2.3](../server/40-location-runtime.ko.md) | **해결:** owner lease와 generation 검사를 통과한 row도 `actorRef`가 없으면 resolve miss로 반환한다. pending 집중 테스트, core와 Kotlin 전체 테스트 통과. 구현 커밋 `0af3e6ec6`(2026-07-15). |
 | **IMP-JV-10** | 미구현 | [54 §3.4](../server/54-graceful-drain-handoff.ko.md) | store read 5초 상한 없음(IMP-X4) |
 
 ## 3. 언어별 표면 차이 상세

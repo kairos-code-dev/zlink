@@ -356,6 +356,10 @@ Java core 전체 테스트가 통과했다(구현 커밋 `d7a62647e`).
 `actor:<type>` capability를 게시하며, drain은 정확히 일치하는 type을 지원하는 원격 노드만 고른다.
 exact-match 집중 테스트, Java core와 Kotlin module 전체 테스트가 통과했다(구현 커밋 `23f066b2e`).
 
+공유 location resolver의 **IMP-JV-09/IMP-X1**도 닫혔다. live owner row라도 `actorRef`가 없는
+pending actor는 resolve miss로 처리한다. pending 집중 테스트, Java core와 Kotlin module 전체
+테스트가 통과했다(구현 커밋 `0af3e6ec6`).
+
 [java 체크리스트](java.ko.md)를 함께 본다.
 
 ## 라운드 4 (2026-07-14) — 샘플 · E2E

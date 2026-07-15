@@ -14,8 +14,8 @@ public HTTP client만 사용한다.
 - `implemented`: provider, workflow, consumer role은 HTTP health endpoint를 제공한다. provider와
   workflow는 evidence 조회와 대기 endpoint도 제공한다.
 - `implemented`: scenario ID별 client 파일과 공통 support 파일을 분리했다.
-- `partial`: `RM-A4`와 `RM-B2`의 process 제어는 consumer 재시작 없이 topology 변화를 만들지만,
-  정상 종료의 terminal `Drained`와 drain 전파 중인 요청 완료를 아직 검증하지 않는다.
+- `partial`: `RM-A4`와 `RM-B2`는 public drain 결과가 terminal `Drained`인지 확인한 뒤 process를
+  종료하고 row 제거를 기다린다. `RM-B2`의 drain 전파 중 지속 요청 완료는 아직 검증하지 않는다.
 
 ## 구현됨
 
@@ -23,16 +23,15 @@ public HTTP client만 사용한다.
   public runtime query에서 API channel의 live provider peer row가 둘 이상 보이는지, provider
   evidence에 request가 남는지 함께 검증한다.
 - `RM-A2`: 수동 endpoint 연결로 provider에 직접 request를 보낸다.
-- `RM-A4` (부분 구현): 같은 rid의 provider를 새 endpoint로 교체한 뒤 replacement provider로
-  request가 가는지는 검증한다. terminal `Drained`, old row 제거 뒤 유효 row가 정확히 하나인지,
-  이전 endpoint evidence가 증가하지 않는지는 아직 검증하지 않는다.
+- `RM-A4` (부분 구현): v1 terminal `Drained`와 old row 제거를 확인하고 같은 rid의 새 endpoint로
+  교체한 뒤 연속 20개 request가 v2로 가는지 검증한다. 유효 row가 정확히 하나인지와 이전 endpoint
+  evidence delta 0은 아직 직접 단언하지 않는다.
 - `RM-A6`: API channel과 workflow channel이 같은 location store를 공유해도 channel 이름별로
   분리되는지 검증한다.
 - `RM-B1`: provider 추가 뒤 consumer가 location store row를 보고 새 provider를 routing 대상에
   포함하는지 검증한다.
-- `RM-B2` (부분 구현): process 종료 뒤 row 제거와 남은 provider routing을 검증한다. 정상 종료의
-  terminal `Drained`와 drain 전파 구간의 target 미지정 요청이 오류나 pending 없이 끝나는지는
-  아직 검증하지 않는다.
+- `RM-B2` (부분 구현): terminal `Drained`, row 제거와 남은 provider routing을 검증한다. drain 전파
+  구간의 target 미지정 요청이 오류나 pending 없이 끝나는지는 아직 검증하지 않는다.
 - `RM-C1`: request와 send happy path를 함께 검증한다. request와 command가 provider evidence에
   기록됐는지도 확인한다.
 - `RM-C2` (차단): 존재하는 rid의 target request는 검증한다. 미존재 rid의 기대값을

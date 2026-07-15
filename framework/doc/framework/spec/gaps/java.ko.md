@@ -1104,6 +1104,10 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     (`RegistryMessaging/logs/20260716-084751-3147390/`).
   - 부분 수정: 동적 역할 readiness 60초와 peer convergence 45초를 각각 공통 3초와 이름 있는 5초
     route settle로 줄였다. `RM-A4`와 `RM-B2` 단독 실행이 통과했다. 구현 커밋 `7ee3d9141`.
+  - 부분 수정: `/admin/drain`이 terminal 결과를 반환하게 하고 RM-A4·RM-B2가 `Drained`를 확인한 뒤
+    process를 종료하도록 바꿨다. endpoint가 없던 red 실행은 HTTP 404로 실패했고
+    (`logs/20260716-085310-3165552/`), 구현 뒤 RM-A4·RM-B2가 통과했다. `failover` alias도 제거해
+    replacement와 crash failover를 섞지 않는다. 구현 커밋 `d1adfb5dc`.
 - [ ] **E2E-JV-26** (가짜 통과) — `SM-G2`가 SpotNode scale-out과 신규 배치를 검증하지 않는다.
   - 재검증: 현재 runner는 두 play node를 먼저 시작하고 scenario는 양쪽 local manager에 서로 다른
     Spot을 직접 만든다. 기존 play-a owner 유지, play-b peer/capability와 Entry Spot handle readiness,

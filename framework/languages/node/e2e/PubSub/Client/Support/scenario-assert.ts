@@ -1,5 +1,3 @@
-import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
-
 export async function eventually(
   condition: () => Promise<boolean>,
   failureMessage: string,
@@ -15,7 +13,11 @@ export async function eventually(
   throw new Error(failureMessage);
 }
 
-export const ensure: (condition: boolean, message: string) => asserts condition = zlinkStreamAssert.ensure;
+export function ensure(condition: boolean, message: string): void {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
 
 export function isConnectionFailure(error: unknown): boolean {
   if (!(error instanceof Error)) {

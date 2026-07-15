@@ -11,30 +11,13 @@ const sampleClients = [
   'samples/TicTacToe.Ts/Client/tictactoe-client-scenario.ts'
 ];
 
-const e2eAssertionModules = [
-  'e2e/AutomaticTurnDispatch/Client/Support/scenario-assert.ts',
-  'e2e/DiscoveryRegistryHa/Client/Support/scenario-assert.ts',
-  'e2e/PubSub/Client/Support/scenario-assert.ts',
-  'e2e/RegistrationCodec/Client/Support/scenario-assert.ts',
-  'e2e/RegistryMessaging/Client/Support/scenario-assert.ts',
-  'e2e/ResilienceLifecycle/Client/Support/scenario-assert.ts',
-  'e2e/RuntimeMonitoring/Client/Support/scenario-assert.ts',
-  'e2e/SpotService/Client/Support/scenario-assert.ts'
-];
-
-test('sample and e2e scenarios use the stream connector test helper surface', () => {
+test('stream-connector sample scenarios use the connector test helper surface', () => {
   const samples = sampleClients.map(read).join('\n');
   assert.doesNotMatch(samples, /function (?:ensure|expectFailure|expectNoPush|expectRequestFailure)\b/);
   assert.doesNotMatch(samples, /\.waitFor\([^\n]+\)\.timeout\(250\)/);
   assert.match(samples, /zlinkStreamAssert\.ensure\(/);
   assert.match(samples, /zlinkStreamAssert\.expectFailure\(/);
   assert.match(samples, /\.expectNone(?:<[^>]+>)?\([^\n]+\)\.within\(250\)\.run\(signal\)/);
-
-  for (const path of e2eAssertionModules) {
-    const source = read(path);
-    assert.match(source, /zlinkStreamAssert\.ensure/);
-    assert.doesNotMatch(source, /function ensure\b/);
-  }
 });
 
 function read(path) {

@@ -39,7 +39,7 @@ class SupportChatClientScenario {
     const available = await request<SetAgentAvailableRes>(agent, PacketNames.setAgentAvailableReq, setAgentAvailable(true), undefined, signal);
     zlinkStreamAssert.ensure(available.isAvailable, 'Sample scenario assertion failed.');
     await zlinkStreamAssert.expectFailure(
-      () => request(agent, PacketNames.openConversationReq, openConversation('agent must not open'), undefined, signal));
+      async () => { await request(agent, PacketNames.openConversationReq, openConversation('agent must not open'), undefined, signal); });
 
     await customer1.connect(signal);
     const customer1Auth = await request<AuthenticateRes>(customer1, PacketNames.authenticateReq, authenticate('customer-1'), undefined, signal);
@@ -134,9 +134,9 @@ class SupportChatClientScenario {
     await greeting3Task;
 
     await customer4.connect(signal);
-    await zlinkStreamAssert.expectFailure(() => request(customer4, PacketNames.openConversationReq, openConversation('before auth'), undefined, signal));
+    await zlinkStreamAssert.expectFailure(async () => { await request(customer4, PacketNames.openConversationReq, openConversation('before auth'), undefined, signal); });
     await zlinkStreamAssert.expectFailure(
-      () => request(customer4, PacketNames.sendChatMessageReq, sendChatMessage('before auth'), 'unknown', signal));
+      async () => { await request(customer4, PacketNames.sendChatMessageReq, sendChatMessage('before auth'), 'unknown', signal); });
     send(customer4, PacketNames.setTypingReq, setTyping(true), cid1);
     await customer1.expectNone(PacketNames.typingChangedNotify).within(250).run(signal);
     await request<AuthenticateRes>(customer4, PacketNames.authenticateReq, authenticate('customer-4'), undefined, signal);
@@ -144,7 +144,7 @@ class SupportChatClientScenario {
     zlinkStreamAssert.ensure(atCapacity.state.status === ConversationStatuses.WaitingForAgent, 'Sample scenario assertion failed.');
     await agent.expectNone(PacketNames.conversationAssignedNotify).within(250).run(signal);
 
-    await zlinkStreamAssert.expectFailure(() => request(customer2, PacketNames.sendChatMessageReq, sendChatMessage('not my room'), cid1, signal));
+    await zlinkStreamAssert.expectFailure(async () => { await request(customer2, PacketNames.sendChatMessageReq, sendChatMessage('not my room'), cid1, signal); });
     send(customer2, PacketNames.setTypingReq, setTyping(true), cid1);
     await customer1.expectNone(PacketNames.typingChangedNotify).within(250).run(signal);
     const typingTask = wait<TypingChangedNotify>(customer1, PacketNames.typingChangedNotify, signal);
@@ -188,7 +188,7 @@ class SupportChatClientScenario {
     zlinkStreamAssert.ensure(closed2.state.status === ConversationStatuses.Closed, 'Sample scenario assertion failed.');
     const closed2Push = await closed2Notify;
     zlinkStreamAssert.ensure(closed2Push.payload.state.status === ConversationStatuses.Closed, 'Sample scenario assertion failed.');
-    await zlinkStreamAssert.expectFailure(() => request(customer2, PacketNames.closeConversationReq, closeConversation(), cid2, signal));
+    await zlinkStreamAssert.expectFailure(async () => { await request(customer2, PacketNames.closeConversationReq, closeConversation(), cid2, signal); });
 
     const firstIdleCustomer = wait<ConversationIdleNotify>(reconnectedCustomer, PacketNames.conversationIdleNotify, signal);
     const firstIdleAgent = waitConversation<ConversationIdleNotify>(reconnectedAgent, PacketNames.conversationIdleNotify, cid1, signal);
@@ -209,14 +209,14 @@ class SupportChatClientScenario {
     const [customerIdleClosed, agentIdleClosed] = await Promise.all([idleClosedCustomer, idleClosedAgent]);
     zlinkStreamAssert.ensure(customerIdleClosed.payload.state.status === ConversationStatuses.Closed, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(agentIdleClosed.payload.state.status === ConversationStatuses.Closed, 'Sample scenario assertion failed.');
-    await zlinkStreamAssert.expectFailure(() => request(reconnectedCustomer, PacketNames.sendChatMessageReq, sendChatMessage('too late'), cid1, signal));
+    await zlinkStreamAssert.expectFailure(async () => { await request(reconnectedCustomer, PacketNames.sendChatMessageReq, sendChatMessage('too late'), cid1, signal); });
     send(reconnectedCustomer, PacketNames.setTypingReq, setTyping(true), cid1);
     await reconnectedAgent.expectNone(PacketNames.typingChangedNotify).within(250).run(signal);
     console.log('supportchat-closed-typing-ignore=verified');
 
     await customer5.connect(signal);
     await request<AuthenticateRes>(customer5, PacketNames.authenticateReq, authenticate('customer-5'), undefined, signal);
-    await zlinkStreamAssert.expectFailure(() => request(customer5, PacketNames.setAgentAvailableReq, setAgentAvailable(true), undefined, signal));
+    await zlinkStreamAssert.expectFailure(async () => { await request(customer5, PacketNames.setAgentAvailableReq, setAgentAvailable(true), undefined, signal); });
     const recoveredAssignmentTask = wait<ConversationAssignedNotify>(reconnectedAgent, PacketNames.conversationAssignedNotify, signal);
     const capacityRecovered = await request<OpenConversationRes>(customer5, PacketNames.openConversationReq, openConversation('capacity recovered'), undefined, signal);
     const recoveredAssignment = await recoveredAssignmentTask;

@@ -59,9 +59,11 @@ class GameQuestClientScenario {
     zlinkStreamAssert.ensure(wrongArea.eventId === 'player-alice-kill-wrong-area', 'Sample scenario assertion failed.');
     await apiAStream.expectNone(PacketNames.questProgressNotify).within(250).run(signal);
     await zlinkStreamAssert.expectFailure(
-      () => apiBStream.request(collectItemReq('player-bob', 'healing-herb', -1, 'invalid-negative-count'), Object)
-        .packetName(PacketNames.collectItemReq)
-        .submit<CollectItemRes>(signal)
+      async () => {
+        await apiBStream.request(collectItemReq('player-bob', 'healing-herb', -1, 'invalid-negative-count'), Object)
+          .packetName(PacketNames.collectItemReq)
+          .submit<CollectItemRes>(signal);
+      }
     );
     await apiBStream.expectNone(PacketNames.questProgressNotify).within(250).run(signal);
 

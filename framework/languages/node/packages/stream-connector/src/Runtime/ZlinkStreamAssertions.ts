@@ -7,7 +7,7 @@ import { connectorError, unwrapStreamError } from './ZlinkStreamSupport';
 export interface ZlinkStreamAssertions {
   ensure(condition: boolean, message: string): asserts condition;
   expectFailure(
-    action: (signal?: AbortSignal) => Promise<unknown>,
+    action: (signal?: AbortSignal) => Promise<void>,
     errorKind?: string
   ): Promise<ZlinkStreamError>;
   expectTimeout(action: (signal?: AbortSignal) => Promise<void>): Promise<void>;
@@ -21,7 +21,7 @@ export const zlinkStreamAssert: ZlinkStreamAssertions = {
   },
 
   async expectFailure(
-    action: (signal?: AbortSignal) => Promise<unknown>,
+    action: (signal?: AbortSignal) => Promise<void>,
     errorKind?: string
   ): Promise<ZlinkStreamError> {
     let failure: unknown;

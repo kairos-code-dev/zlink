@@ -36,7 +36,7 @@ class DispatchWorker(
     suspend fun dispatch(request: AssignDeliveryMsg) {
         val courierId = candidates[0]
         val attempt = offers.offer(request, 0, SampleTimings.CourierDecisionTimeout)
-        publishStatus(request.deliveryId, DeliveryStatus.Assigned, courierId)
+        publishStatus(request, DeliveryStatus.Assigned, courierId)
         offer(request, courierId, attempt)
     }
 
@@ -52,9 +52,9 @@ class DispatchWorker(
             return
         }
 
-        publishStatus(offer.request.deliveryId, DeliveryStatus.Accepted, courierId)
-        publishStatus(offer.request.deliveryId, DeliveryStatus.PickedUp, courierId)
-        publishStatus(offer.request.deliveryId, DeliveryStatus.Delivered, courierId)
+        publishStatus(offer.request, DeliveryStatus.Accepted, courierId)
+        publishStatus(offer.request, DeliveryStatus.PickedUp, courierId)
+        publishStatus(offer.request, DeliveryStatus.Delivered, courierId)
         offers.close(offer.request.deliveryId)
     }
 
@@ -70,14 +70,14 @@ class DispatchWorker(
                 "deliverydispatch dispatch: delivery=${offer.request.deliveryId} " +
                     "was rejected by all couriers",
             )
-            publishStatus(offer.request.deliveryId, DeliveryStatus.Failed, candidates.last())
+            publishStatus(offer.request, DeliveryStatus.Failed, candidates.last())
             offers.close(offer.request.deliveryId)
             return
         }
 
         val courierId = candidates[nextIndex]
         val attempt = offers.offer(offer.request, nextIndex, SampleTimings.CourierDecisionTimeout)
-        publishStatus(offer.request.deliveryId, DeliveryStatus.Reassigned, courierId)
+        publishStatus(offer.request, DeliveryStatus.Reassigned, courierId)
         offer(offer.request, courierId, attempt)
     }
 
@@ -111,7 +111,7 @@ class DispatchWorker(
     }
 
     private suspend fun publishStatus(
-        deliveryId: String,
+        delivery: AssignDeliveryMsg,
         status: DeliveryStatus,
         courierId: String,
     ) {
@@ -119,7 +119,8 @@ class DispatchWorker(
             .requestToChannel(
                 SampleNames.TrackingChannel,
                 DeliveryStatusChangedReq(
-                    deliveryId = deliveryId,
+                    deliveryId = delivery.deliveryId,
+                    customerId = delivery.customerId,
                     status = status,
                     courierId = courierId,
                     occurredAt = Instant.now(),

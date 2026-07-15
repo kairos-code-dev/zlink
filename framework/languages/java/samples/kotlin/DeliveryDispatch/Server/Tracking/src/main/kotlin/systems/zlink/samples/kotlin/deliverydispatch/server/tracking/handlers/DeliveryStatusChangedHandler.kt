@@ -22,13 +22,15 @@ class DeliveryStatusChangedHandler(
         context: ZLinkRequestContext,
     ): DeliveryStatusChangedRes {
         evidenceStore.append(request)
-        val actorRef = actorRefs.find("customer-1").await()
-            .orElseThrow { IllegalStateException("customer actor not found: customer-1") }
+        val actorRef = actorRefs.find(request.customerId).await()
+            .orElseThrow {
+                IllegalStateException("customer actor not found: ${request.customerId}")
+            }
         actors.sendToActor(
             actorRef,
             DeliveryStatusUpdatedMsg(
                 deliveryId = request.deliveryId,
-                customerId = "customer-1",
+                customerId = request.customerId,
                 status = request.status,
                 courierId = request.courierId,
                 occurredAt = request.occurredAt,

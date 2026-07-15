@@ -3,6 +3,22 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+if rg -n 'customer-1' \
+    Server/Tracking/src/main/kotlin --glob 'DeliveryStatusChangedHandler.kt'; then
+  echo "Tracking must route status by DeliveryStatusChangedReq.customerId" >&2
+  exit 1
+fi
+if ! rg -q 'customerId = request.customerId' \
+    Server/Tracking/src/main/kotlin --glob 'DeliveryStatusChangedHandler.kt'; then
+  echo "Tracking must preserve the delivery customer id" >&2
+  exit 1
+fi
+if ! rg -q 'statuses.arrivals.toList\(\) == expected' \
+    Client/src/main/kotlin --glob 'Program.kt'; then
+  echo "Client must assert notification arrival order" >&2
+  exit 1
+fi
+
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 

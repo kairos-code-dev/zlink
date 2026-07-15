@@ -117,6 +117,7 @@ data class CourierDecisionMsg(
 
 data class DeliveryStatusChangedReq(
     val deliveryId: String,
+    val customerId: String,
     val status: DeliveryStatus,
     val courierId: String,
     val occurredAt: Instant,

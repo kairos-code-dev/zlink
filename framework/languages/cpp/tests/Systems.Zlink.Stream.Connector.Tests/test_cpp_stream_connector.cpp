@@ -870,6 +870,66 @@ int main ()
     }
 
     {
+        boost::asio::io_context lifecycle_io;
+        boost::asio::ip::tcp::acceptor lifecycle_acceptor (
+          lifecycle_io, {boost::asio::ip::make_address ("127.0.0.1"), 0});
+        const auto lifecycle_endpoint =
+          std::string ("tcp://127.0.0.1:")
+          + std::to_string (lifecycle_acceptor.local_endpoint ().port ());
+        callback_latch_t accepted_latch;
+        callback_latch_t release_latch;
+        joining_thread_t lifecycle_server (
+          [&lifecycle_acceptor, &accepted_latch, &release_latch] {
+              boost::asio::ip::tcp::socket socket (lifecycle_acceptor.get_executor ());
+              lifecycle_acceptor.accept (socket);
+              accepted_latch.signal ();
+              release_latch.wait_for (std::chrono::seconds (2));
+          });
+
+        zlink::stream_connector::connector_options_t lifecycle_options;
+        lifecycle_options.endpoint = lifecycle_endpoint;
+        lifecycle_options.reconnect.enabled = false;
+        lifecycle_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+        auto lifecycle_connector =
+          zlink::stream_connector::connector_factory_t::create (lifecycle_options);
+        std::atomic_size_t lifecycle_state_count{0};
+        lifecycle_connector.on_connection_state_changed (
+          [&lifecycle_state_count] (const zlink::stream_connector::connection_state_changed_t &) {
+              lifecycle_state_count.fetch_add (1);
+          });
+        const auto first_connect = lifecycle_connector.connect ();
+        const auto first_state_count = lifecycle_state_count.load ();
+        const auto repeated_connect = lifecycle_connector.connect ();
+        const auto repeated_state_count = lifecycle_state_count.load ();
+        callback_latch_t repeated_async_latch;
+        std::atomic_bool repeated_async_succeeded{false};
+        lifecycle_connector.connect (
+          [&repeated_async_latch, &repeated_async_succeeded] (
+            zlink::stream_connector::result_t<void> result) {
+              repeated_async_succeeded.store (static_cast<bool> (result));
+              repeated_async_latch.signal ();
+          });
+        const auto repeated_async_completed =
+          repeated_async_latch.wait_for (std::chrono::seconds (1));
+        const auto repeated_async_state_count = lifecycle_state_count.load ();
+        const auto closed = lifecycle_connector.close ();
+        const auto connect_after_close = lifecycle_connector.connect ();
+        if (connect_after_close) {
+            (void) lifecycle_connector.close ();
+        }
+        release_latch.signal ();
+        lifecycle_server.join ();
+        if (!first_connect || !accepted_latch.wait_for (std::chrono::seconds (1))
+            || !repeated_connect || repeated_state_count != first_state_count || !closed
+            || !repeated_async_completed || !repeated_async_succeeded.load ()
+            || repeated_async_state_count != first_state_count
+            || connect_after_close
+            || connect_after_close.error_code () != zlink::stream_connector::error_code_t::closed) {
+            return 168;
+        }
+    }
+
+    {
         zlink::stream_connector::connector_options_t lifecycle_options;
         lifecycle_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         bool connect_lifetime_seen = false;

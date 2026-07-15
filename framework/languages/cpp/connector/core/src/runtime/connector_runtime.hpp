@@ -127,6 +127,9 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     boost::asio::io_context &io_context;
     boost::asio::strand<boost::asio::io_context::executor_type> write_strand;
     std::shared_ptr<stream_connection_t> connection;
+    mutable std::mutex lifecycle_mutex;
+    std::condition_variable lifecycle_changed;
+    bool connect_attempt_active = false;
     std::mutex transport_mutex;
     std::condition_variable state_changed;
 };

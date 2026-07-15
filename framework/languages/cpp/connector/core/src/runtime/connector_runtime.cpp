@@ -285,8 +285,30 @@ void change_state (std::shared_ptr<connector_state_t> state,
                    connection_state_t next,
                    std::optional<error_t> error)
 {
-    const auto previous = state->state;
-    state->state = next;
+    connection_state_t previous;
+    std::vector<std::function<void (const connection_state_changed_t &)>> state_handlers;
+    std::vector<std::function<void ()>> disconnected_handlers;
+    std::optional<close_reason_t> close_reason;
+    {
+        std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+        previous = state->state;
+        state->state = next;
+        if (error
+            && (next == connection_state_t::disconnected || next == connection_state_t::closed)) {
+            state->last_disconnect_error = error;
+        }
+        if (next == connection_state_t::disconnected || next == connection_state_t::closed) {
+            if (!state->last_close_reason) {
+                state->last_close_reason =
+                  error ? close_reason_t::transport_error : close_reason_t::client_close;
+            }
+            close_reason = state->last_close_reason;
+            disconnected_handlers = state->disconnected_handlers;
+        } else if (next == connection_state_t::connected) {
+            state->last_close_reason.reset ();
+        }
+        state_handlers = state->state_handlers;
+    }
     if (stream_trace_enabled ()) {
         std::cerr << "zlink-cpp-stream-trace side=client connector=" << state->connector_id
                   << " stage=state previous=" << connection_state_name (previous)
@@ -297,33 +319,14 @@ void change_state (std::shared_ptr<connector_state_t> state,
         }
         std::cerr << '\n';
     }
-    if (error
-        && (next == connection_state_t::disconnected || next == connection_state_t::closed)) {
-        state->last_disconnect_error = error;
-    }
-    if (next == connection_state_t::disconnected || next == connection_state_t::closed) {
-        if (!state->last_close_reason) {
-            /* No session-closing control arrived: a transport failure is
-             * synthesized, a caller-initiated close is client_close. */
-            state->last_close_reason =
-              error ? close_reason_t::transport_error : close_reason_t::client_close;
-        }
-    } else if (next == connection_state_t::connected) {
-        state->last_close_reason.reset ();
-    }
-    connection_state_changed_t changed{previous, next, error,
-                                       (next == connection_state_t::disconnected
-                                        || next == connection_state_t::closed)
-                                         ? state->last_close_reason
-                                         : std::nullopt};
-    for (const auto &handler : state->state_handlers) {
+    connection_state_changed_t changed{previous, next, error, close_reason};
+    for (const auto &handler : state_handlers) {
         handler (changed);
     }
-    if (next == connection_state_t::disconnected || next == connection_state_t::closed) {
-        for (const auto &handler : state->disconnected_handlers) {
-            handler ();
-        }
+    for (const auto &handler : disconnected_handlers) {
+        handler ();
     }
+    state->lifecycle_changed.notify_all ();
     state->state_changed.notify_all ();
 }
 
@@ -505,12 +508,16 @@ inbound_observer_registration_t::operator bool () const noexcept
 
 bool connector_t::is_connected () const
 {
-    return detail::state_from (_state)->state == connection_state_t::connected;
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+    return state->state == connection_state_t::connected;
 }
 
 connection_state_t connector_t::state () const
 {
-    return detail::state_from (_state)->state;
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+    return state->state;
 }
 
 connector_options_t connector_t::options () const
@@ -591,6 +598,53 @@ parse_connect_options (const std::shared_ptr<detail::connector_state_t> &state)
     }
     return result_t<parsed_endpoint_options_t>::success (std::move (parsed));
 }
+
+std::optional<result_t<void>>
+begin_connect_attempt (const std::shared_ptr<detail::connector_state_t> &state)
+{
+    std::unique_lock<std::mutex> lock (state->lifecycle_mutex);
+    if (state->connect_attempt_active) {
+        state->lifecycle_changed.wait (lock, [&] { return !state->connect_attempt_active; });
+        if (state->state == connection_state_t::connected) {
+            return result_t<void>::success ();
+        }
+        if (state->state == connection_state_t::closed) {
+            return result_t<void>::failure (error_code_t::closed,
+                                            "stream connector is closed");
+        }
+        const auto error = state->last_disconnect_error;
+        return result_t<void>::failure (
+          error ? error->code : error_code_t::disconnected,
+          error ? error->message : "stream connector is not connected");
+    }
+    if (state->state == connection_state_t::connected) {
+        return result_t<void>::success ();
+    }
+    if (state->state == connection_state_t::closed || state->close_requested.load ()) {
+        return result_t<void>::failure (error_code_t::closed, "stream connector is closed");
+    }
+    state->connect_attempt_active = true;
+    return std::nullopt;
+}
+
+class connect_attempt_guard_t
+{
+  public:
+    explicit connect_attempt_guard_t (std::shared_ptr<detail::connector_state_t> state) :
+        _state (std::move (state))
+    {
+    }
+
+    ~connect_attempt_guard_t ()
+    {
+        std::lock_guard<std::mutex> lock (_state->lifecycle_mutex);
+        _state->connect_attempt_active = false;
+        _state->lifecycle_changed.notify_all ();
+    }
+
+  private:
+    std::shared_ptr<detail::connector_state_t> _state;
+};
 
 void complete_connect_callback (std::shared_ptr<detail::connector_state_t> state,
                                 std::function<void (result_t<void>)> callback,
@@ -744,13 +798,19 @@ void connect_websocket_secure_transport_async (
 
 result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
 {
+    if (auto existing = begin_connect_attempt (state)) {
+        return std::move (*existing);
+    }
+    connect_attempt_guard_t attempt (state);
     state->close_requested.store (false);
     state->connect_started = true;
     auto parsed = parse_connect_options (state);
     if (!parsed) {
-        return result_t<void>::failure (parsed.error_code (),
-                                        parsed.error () ? parsed.error ()->message
-                                                        : "stream connector endpoint is invalid");
+        const auto message = parsed.error () ? parsed.error ()->message
+                                             : "stream connector endpoint is invalid";
+        detail::change_state (state, connection_state_t::disconnected,
+                              error_t{parsed.error_code (), message});
+        return result_t<void>::failure (parsed.error_code (), message);
     }
 
     const auto max_attempts = state->options.reconnect.enabled
@@ -837,40 +897,6 @@ result_t<void> connector_t::connect ()
 void connector_t::connect (std::function<void (result_t<void>)> callback)
 {
     auto state = detail::state_from (_state);
-    state->connect_started = true;
-    auto parsed = parse_connect_options (state);
-    if (!parsed) {
-        detail::schedule_delivery (
-          state, [callback = std::move (callback),
-                  result = result_t<void>::failure (
-                    parsed.error_code (),
-                    parsed.error () ? parsed.error ()->message
-                                    : "stream connector endpoint is invalid")] () mutable {
-              if (callback) {
-                  callback (std::move (result));
-              }
-          });
-        return;
-    }
-    if (state->options.transport == transport_t::tcp) {
-        connect_tcp_async (state, *parsed.value ().tcp, std::move (callback));
-        return;
-    }
-    if (state->options.transport == transport_t::websocket) {
-        connect_websocket_plain_async (state, *parsed.value ().websocket, std::move (callback));
-        return;
-    }
-#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-    if (state->options.transport == transport_t::tls) {
-        connect_tls_transport_async (state, *parsed.value ().tls, std::move (callback));
-        return;
-    }
-    if (state->options.transport == transport_t::websocket_secure) {
-        connect_websocket_secure_transport_async (
-          state, *parsed.value ().websocket_secure, std::move (callback));
-        return;
-    }
-#endif
     detail::post_runtime_operation ([state, callback = std::move (callback)] () mutable {
         auto result = connect_state (state);
         detail::schedule_delivery (
@@ -1008,13 +1034,17 @@ result_t<packet_t> connector_t::wait_for (std::string packet_name,
 connector_t &connector_t::on_connection_state_changed (
   std::function<void (const connection_state_changed_t &)> handler)
 {
-    detail::state_from (_state)->state_handlers.push_back (std::move (handler));
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+    state->state_handlers.push_back (std::move (handler));
     return *this;
 }
 
 connector_t &connector_t::on_error (std::function<void (const error_t &)> handler)
 {
-    detail::state_from (_state)->error_handlers.push_back (std::move (handler));
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+    state->error_handlers.push_back (std::move (handler));
     return *this;
 }
 
@@ -1035,7 +1065,9 @@ connector_t::observe_inbound (std::function<void (const inbound_observation_t &)
 
 connector_t &connector_t::on_disconnected (std::function<void ()> handler)
 {
-    detail::state_from (_state)->disconnected_handlers.push_back (std::move (handler));
+    auto state = detail::state_from (_state);
+    std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+    state->disconnected_handlers.push_back (std::move (handler));
     return *this;
 }
 

@@ -3,6 +3,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -203,24 +204,26 @@ struct quest_completed_notify_t
     bool reward_granted = false;
 };
 
-struct gameplay_event_envelope_t
-{
-    std::string event_id;
-    std::string player_id;
-    std::string idempotency_key;
-    std::string event_type;
-    std::string value;
-    int count = 0;
-    std::string source_api;
-    long long created_at_unix_ms = 0;
-};
-
 /* 공통 sample spec §11.2: entry-spot → owner spot 게임플레이 event는 응답 없는 one-way send다. */
 struct gameplay_msg_t
 {
     static constexpr const char *packet_name = "GameplayMsg";
-    gameplay_event_envelope_t event;
+    std::string event_id;
+    std::string player_id;
+    std::string type;
+    std::vector<std::uint8_t> payload;
+    long long occurred_at_unix_ms = 0;
 };
+
+inline std::vector<std::uint8_t> gameplay_payload (const std::string &value, int count)
+{
+    return nlohmann::json::to_msgpack (nlohmann::json{{"value", value}, {"count", count}});
+}
+
+inline nlohmann::json gameplay_payload (const gameplay_msg_t &message)
+{
+    return nlohmann::json::from_msgpack (message.payload);
+}
 
 /* owner spot → player의 현재 연결 노드. 응답 없는 one-way이며, 대상 노드는 location store의
  * session binding이 정한다(§12). */
@@ -244,20 +247,6 @@ struct notify_quest_progress_res_t
 {
     static constexpr const char *packet_name = "NotifyQuestProgressRes";
     bool delivered = false;
-};
-
-struct apply_gameplay_event_req_t
-{
-    static constexpr const char *packet_name = "ApplyGameplayEventReq";
-    gameplay_event_envelope_t event;
-};
-
-struct apply_gameplay_event_res_t
-{
-    static constexpr const char *packet_name = "ApplyGameplayEventRes";
-    bool applied = false;
-    std::vector<quest_progress_t> projection;
-    std::string completed_quest_id;
 };
 
 struct server_assertion_req_t
@@ -509,31 +498,21 @@ inline void from_json (const nlohmann::json &json, quest_completed_notify_t &val
     json.at ("progress").get_to (value.progress);
     json.at ("rewardGranted").get_to (value.reward_granted);
 }
-inline void to_json (nlohmann::json &json, const gameplay_event_envelope_t &value)
-{
-    json = {{"eventId", value.event_id}, {"playerId", value.player_id},
-            {"idempotencyKey", value.idempotency_key}, {"eventType", value.event_type},
-            {"value", value.value}, {"count", value.count}, {"sourceApi", value.source_api},
-            {"createdAtUnixMs", value.created_at_unix_ms}};
-}
-inline void from_json (const nlohmann::json &json, gameplay_event_envelope_t &value)
-{
-    json.at ("eventId").get_to (value.event_id);
-    json.at ("playerId").get_to (value.player_id);
-    json.at ("idempotencyKey").get_to (value.idempotency_key);
-    json.at ("eventType").get_to (value.event_type);
-    json.at ("value").get_to (value.value);
-    json.at ("count").get_to (value.count);
-    json.at ("sourceApi").get_to (value.source_api);
-    json.at ("createdAtUnixMs").get_to (value.created_at_unix_ms);
-}
 inline void to_json (nlohmann::json &json, const gameplay_msg_t &value)
 {
-    json = {{"event", value.event}};
+    json = {{"eventId", value.event_id},
+            {"playerId", value.player_id},
+            {"type", value.type},
+            {"payload", value.payload},
+            {"occurredAtUnixMs", value.occurred_at_unix_ms}};
 }
 inline void from_json (const nlohmann::json &json, gameplay_msg_t &value)
 {
-    json.at ("event").get_to (value.event);
+    json.at ("eventId").get_to (value.event_id);
+    json.at ("playerId").get_to (value.player_id);
+    json.at ("type").get_to (value.type);
+    json.at ("payload").get_to (value.payload);
+    json.at ("occurredAtUnixMs").get_to (value.occurred_at_unix_ms);
 }
 inline void to_json (nlohmann::json &json, const notify_quest_progress_msg_t &value)
 {
@@ -566,25 +545,6 @@ inline void to_json (nlohmann::json &json, const notify_quest_progress_res_t &va
 inline void from_json (const nlohmann::json &json, notify_quest_progress_res_t &value)
 {
     json.at ("delivered").get_to (value.delivered);
-}
-inline void to_json (nlohmann::json &json, const apply_gameplay_event_req_t &value)
-{
-    json = {{"event", value.event}};
-}
-inline void from_json (const nlohmann::json &json, apply_gameplay_event_req_t &value)
-{
-    json.at ("event").get_to (value.event);
-}
-inline void to_json (nlohmann::json &json, const apply_gameplay_event_res_t &value)
-{
-    json = {{"applied", value.applied}, {"projection", value.projection},
-            {"completedQuestId", value.completed_quest_id}};
-}
-inline void from_json (const nlohmann::json &json, apply_gameplay_event_res_t &value)
-{
-    json.at ("applied").get_to (value.applied);
-    json.at ("projection").get_to (value.projection);
-    value.completed_quest_id = json.value ("completedQuestId", "");
 }
 inline void to_json (nlohmann::json &json, const server_assertion_req_t &)
 {

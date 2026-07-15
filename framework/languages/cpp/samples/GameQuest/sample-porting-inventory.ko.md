@@ -1,17 +1,16 @@
 # GameQuest C++ sample porting inventory
 
-최신 검증: 2026-07-07에 Redis 지원 root build에서 아래 명령을 실행했고,
+최신 검증: 2026-07-15에 Redis 지원 root build에서 아래 명령을 실행했고,
 `PASS GameQuest.Cpp`, `gamequest sample result=passed`, `gamequest-server-evidence=completed`,
 `gamequest=completed`를 확인했다.
 
 ```bash
-env CMAKE_BUILD_PARALLEL_LEVEL=1 GAMEQUEST_KEEP_RUN_DIR=1 nice -n 10 \
-  timeout 420s framework/languages/cpp/samples/GameQuest/run_sample.sh
+framework/languages/cpp/samples/GameQuest/run_sample.sh
 ```
 
 | 기준 | C++ 위치 | 상태 | 설명 |
 |------|----------|------|------|
-| `.NET Shared/Messages.cs` | `Shared/Contracts/messages.hpp` | done | gameplay request, quest progress, route request/reply, assertion DTO를 JSON 직렬화로 매핑한다. |
+| `.NET Shared/Messages.cs` | `Shared/Contracts/messages.hpp` | done | `GameplayMsg`는 event id·player id·type·payload bytes·발생 시각을 최상위 필드로 갖는 응답 없는 메시지다. 별도 envelope나 request/reply wrapper를 사용하지 않으며 projection의 version과 마지막 source event id는 유지한다. |
 | `.NET Server/Configuration/SampleConfiguration.cs` | `Server/Configuration/sample_topology.hpp` | done | api-a/api-b, mission-a/mission-b endpoint와 Redis location store prefix를 환경 변수로 받는다. |
 | `.NET GameApi session` | `Server/GameApi/main.cpp` | done | stream session이 client request를 받고, 먼저 owner QuestMission에 player quest Spot 생성을 보장한 뒤 public spot route request로 progress sync와 gameplay event 적용을 보낸다. |
 | `.NET PlayerQuestSpotProvisioner.cs` | `Server/GameApi/main.cpp`, `Server/QuestMission/main.cpp` | done | C++는 `EnsurePlayerQuestSpotReq` channel request와 `spot_node_manager_t::get_or_create_spot`으로 player owner Spot을 보장한다. |
@@ -34,5 +33,23 @@ env CMAKE_BUILD_PARALLEL_LEVEL=1 GAMEQUEST_KEEP_RUN_DIR=1 nice -n 10 \
 
 GameApi와 QuestMission은 공개 framework API만 사용한다. GameApi는 `route_client_t::request_to_node`의
 spot 대상 overload로 owner Spot에 요청하고, QuestMission은 `spot_node_manager_t::get_or_create_spot`으로
-player Spot을 생성한다. 샘플 코드에서 raw frame, private helper, 메시지별 codec 등록 우회는 사용하지
-않는다.
+player Spot을 생성한다. QuestMission 경계에서 payload bytes를 domain fact로 한 번 변환하므로 domain
+event store가 wire 형식에 의존하지 않는다. 샘플 코드에서 raw frame, private helper, 메시지별 codec 등록
+우회는 사용하지 않는다.
+
+## 계약 검증
+
+- 2026-07-15: `ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_sample_parity' --output-on-failure`
+  - 결과: 통과
+  - 의미: flat `GameplayMsg`, envelope와 request wrapper의 부재, version과 마지막 source event id 유지를 검사한다.
+- 2026-07-15: `framework/languages/cpp/samples/GameQuest/run_sample.sh`
+  - 결과: 통과
+  - 출력: `PASS GameQuest.Cpp`, `gamequest sample result=passed`
+  - 의미: flat one-way gameplay 메시지로 idempotency, progress 동기화, completion notify가 끝까지 동작한다.
+
+## 설계 재검토
+
+기존 envelope를 호환 adapter로 유지하는 안과 wire 메시지를 flat 구조로 바꾸고 QuestMission 경계에서
+domain fact로 변환하는 안을 비교했다. adapter를 유지하면 같은 gameplay 의미가 envelope와 flat 형식에
+나뉘고 domain event store까지 wire DTO가 전달된다. flat 메시지를 한 번 변환하는 안은 전송 형식을
+경계에 가두고 domain event store가 gameplay 규칙만 다루게 하므로 이 방식을 적용했다.

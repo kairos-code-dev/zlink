@@ -20,6 +20,7 @@
 #include "../../samples/TicTacToe/Server/Play/Application/GameCreation/tictactoe_game_creator.hpp"
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
 #include "../../samples/DeliveryDispatch/Shared/Contracts/messages.hpp"
+#include "../../samples/GameQuest/Shared/Contracts/messages.hpp"
 
 #include <gtest/gtest.h>
 
@@ -414,6 +415,28 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
           << "C++ DeliveryDispatch shared sample contract must not expose non-.NET message name "
           << extra_message;
     }
+}
+
+TEST (CppFrameworkSampleParity, GameQuestUsesFlatOneWayGameplayMessage)
+{
+    using namespace zlink::samples::gamequest;
+
+    const auto wire = nlohmann::json (gameplay_msg_t{
+      "event-1", "player-1", "MonsterKilled", std::vector<std::uint8_t>{1, 2, 3}, 42});
+    EXPECT_EQ (wire.at ("eventId"), "event-1");
+    EXPECT_EQ (wire.at ("playerId"), "player-1");
+    EXPECT_EQ (wire.at ("type"), "MonsterKilled");
+    EXPECT_EQ (wire.at ("payload"), nlohmann::json::array ({1, 2, 3}));
+    EXPECT_EQ (wire.at ("occurredAtUnixMs"), 42);
+    EXPECT_EQ (wire.find ("event"), wire.end ())
+      << "GameplayMsg must not wrap a private gameplay envelope";
+
+    const auto contracts =
+      read_file (cpp_language_root () / "samples/GameQuest/Shared/Contracts/messages.hpp");
+    EXPECT_EQ (contracts.find ("ApplyGameplayEventReq"), std::string::npos)
+      << "entry-to-owner gameplay is the one-way GameplayMsg, not a parallel request";
+    EXPECT_NE (contracts.find ("lastSourceEventId"), std::string::npos);
+    EXPECT_NE (contracts.find ("\"version\""), std::string::npos);
 }
 
 TEST (CppFrameworkSampleParity, TicTacToeDisconnectRemovesMilestoneObserver)

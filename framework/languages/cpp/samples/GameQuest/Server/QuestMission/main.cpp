@@ -26,6 +26,27 @@ namespace zlink::samples::gamequest
 
 using namespace framework;
 
+struct gameplay_fact_t
+{
+    std::string event_id;
+    std::string player_id;
+    std::string type;
+    std::string value;
+    int count = 0;
+    long long occurred_at_unix_ms = 0;
+};
+
+gameplay_fact_t decode_gameplay (const gameplay_msg_t &message)
+{
+    const auto payload = gameplay_payload (message);
+    return {.event_id = message.event_id,
+            .player_id = message.player_id,
+            .type = message.type,
+            .value = payload.value ("value", std::string{}),
+            .count = payload.value ("count", 0),
+            .occurred_at_unix_ms = message.occurred_at_unix_ms};
+}
+
 /* 공통 sample spec §10: quest event stream이 진실의 원천(append-only)이고, projection은 그
  * stream을 fold해서 만든다. 같은 gameplay event가 다시 와도(재시도) event를 또 append하지
  * 않는다 — source event id로 판정한다. */
@@ -39,7 +60,7 @@ class quest_event_store_t
         bool reward_granted = false;
     };
 
-    evaluation_t apply (const gameplay_event_envelope_t &event)
+    evaluation_t apply (const gameplay_fact_t &event)
     {
         const std::lock_guard lock (_mutex);
         auto &stream = _streams[event.player_id];
@@ -83,7 +104,7 @@ class quest_event_store_t
         }
 
         std::cerr << "gamequest mission processed player=" << event.player_id
-                  << " type=" << event.event_type << " value=" << event.value
+                  << " type=" << event.type << " value=" << event.value
                   << " completed=" << completed_quest_id << "\n";
         return {replay_unlocked (event.player_id), completed_quest_id, reward_granted};
     }
@@ -103,21 +124,21 @@ class quest_event_store_t
         int required_count = 0;
     };
 
-    static std::optional<quest_rule_t> quest_rule_for (const gameplay_event_envelope_t &event)
+    static std::optional<quest_rule_t> quest_rule_for (const gameplay_fact_t &event)
     {
-        if (event.event_type == "MonsterKilled" && event.value == "wolf") {
+        if (event.type == "MonsterKilled" && event.value == "wolf") {
             return quest_rule_t{quest_ids_t::first_hunt, event.count, 3};
         }
-        if (event.event_type == "FeatureUnlocked" && event.value == "auction") {
+        if (event.type == "FeatureUnlocked" && event.value == "auction") {
             return quest_rule_t{quest_ids_t::open_auction, 1, 1};
         }
-        if (event.event_type == "ItemCollected" && event.value == "healing-herb") {
+        if (event.type == "ItemCollected" && event.value == "healing-herb") {
             return quest_rule_t{quest_ids_t::herb_gathering, event.count, 5};
         }
-        if (event.event_type == "MissionCompleted" && event.value == "tutorial") {
+        if (event.type == "MissionCompleted" && event.value == "tutorial") {
             return quest_rule_t{quest_ids_t::clear_tutorial, 1, 1};
         }
-        if (event.event_type == "AreaEntered" && event.value == "ruins") {
+        if (event.type == "AreaEntered" && event.value == "ruins") {
             return quest_rule_t{quest_ids_t::visit_ruins, 1, 1};
         }
         return std::nullopt;
@@ -134,7 +155,7 @@ class quest_event_store_t
 
     void append_unlocked (std::vector<stored_quest_event_t> &stream,
                           const char *type,
-                          const gameplay_event_envelope_t &source,
+                          const gameplay_fact_t &source,
                           const quest_rule_t &rule,
                           int delta,
                           int current_count)
@@ -149,7 +170,7 @@ class quest_event_store_t
         stored.current_count = current_count;
         stored.required_count = rule.required_count;
         stored.version = static_cast<long long> (stream.size ()) + 1;
-        stored.created_at_unix_ms = static_cast<long long> (std::time (nullptr)) * 1000LL;
+        stored.created_at_unix_ms = source.occurred_at_unix_ms;
         stream.push_back (std::move (stored));
     }
 
@@ -222,24 +243,24 @@ class player_quest_spot_t : public spot_t
      * session binding이 가리키는 노드의 entry spot으로 route한다 — binding이 없으면 생략(§12). */
     task_t<void> apply (const gameplay_msg_t &message)
     {
-        auto result = _store.apply (message.event);
+        auto result = _store.apply (decode_gameplay (message));
         auto scope = _services.create_scope ();
         auto &actor_spots = scope.get_required<actor_spot_handle_resolver_t> ();
         auto &routes = scope.get_required<route_client_t> ();
 
         auto session_spot =
-          co_await actor_spots.resolve_actor_spot_handle (message.event.player_id);
+          co_await actor_spots.resolve_actor_spot_handle (message.player_id);
         if (!session_spot) {
             std::cerr << "gamequest mission kept projection while the player has no session"
-                      << " binding. player=" << message.event.player_id << "\n";
+                      << " binding. player=" << message.player_id << "\n";
             co_return;
         }
         routes
           .send_to_spot (*session_spot,
-                         notify_quest_progress_msg_t{message.event.player_id, result.projection,
+                         notify_quest_progress_msg_t{message.player_id, result.projection,
                                                      result.completed_quest_id})
           .submit ();
-        std::cerr << "gamequest mission notified player=" << message.event.player_id
+        std::cerr << "gamequest mission notified player=" << message.player_id
                   << " completed=" << result.completed_quest_id << "\n";
         co_return;
     }

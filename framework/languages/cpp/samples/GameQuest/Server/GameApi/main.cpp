@@ -57,7 +57,7 @@ class game_api_store_t
         return found == _projections.end () ? std::vector<quest_progress_t>{} : found->second;
     }
 
-    void record_event (const gameplay_event_envelope_t &event)
+    void record_event (const gameplay_msg_t &event)
     {
         const std::lock_guard lock (_mutex);
         _events.push_back (event);
@@ -132,8 +132,8 @@ class game_api_store_t
             evidence.push_back ("binding:" + player + ":" + api);
         }
         for (const auto &event : _events) {
-            evidence.push_back ("event:" + event.player_id + ":" + event.event_type + ":"
-                                + event.idempotency_key);
+            evidence.push_back ("event:" + event.player_id + ":" + event.type + ":"
+                                + event.event_id);
         }
         return {alice_first_hunt || alice_auction || bob_herb, evidence};
     }
@@ -143,7 +143,7 @@ class game_api_store_t
     std::map<std::string, std::string> _bindings;
     std::map<std::string, std::string> _session_ids;
     std::map<std::string, std::vector<quest_progress_t>> _projections;
-    std::vector<gameplay_event_envelope_t> _events;
+    std::vector<gameplay_msg_t> _events;
 };
 
 class player_actor_t
@@ -371,19 +371,16 @@ class gamequest_session_t final : public packet_stream_session_t
     }
 
   private:
-    gameplay_event_envelope_t event_for (std::string player_id,
-                                         std::string idempotency_key,
-                                         std::string event_type,
-                                         std::string value,
-                                         int count) const
+    gameplay_msg_t event_for (std::string player_id,
+                              std::string idempotency_key,
+                              std::string event_type,
+                              std::string value,
+                              int count) const
     {
         return {player_id + "-" + idempotency_key,
                 std::move (player_id),
-                std::move (idempotency_key),
                 std::move (event_type),
-                std::move (value),
-                count,
-                _topology.api_name,
+                gameplay_payload (value, count),
                 static_cast<long long> (std::time (nullptr)) * 1000LL};
     }
 
@@ -410,14 +407,14 @@ class gamequest_session_t final : public packet_stream_session_t
 
     /* 공통 sample spec §11.2: gameplay event는 owner spot으로 보내는 응답 없는 one-way다.
      * client에는 event id만 즉시 돌려주고, 진행은 notify로 돌아온다. */
-    task_t<void> apply_event (const gameplay_event_envelope_t &event)
+    task_t<void> apply_event (const gameplay_msg_t &event)
     {
         co_await ensure_player_spot (event.player_id);
         auto target = co_await resolve_player_spot (event.player_id);
-        _routes.send_to_spot (std::move (target), gameplay_msg_t{event}).submit ();
+        _routes.send_to_spot (std::move (target), event).submit ();
         _store.record_event (event);
         std::cerr << "gamequest api event routed player=" << event.player_id
-                  << " owner=" << owner_index (event.player_id) << " type=" << event.event_type
+                  << " owner=" << owner_index (event.player_id) << " type=" << event.type
                   << "\n";
         co_return;
     }

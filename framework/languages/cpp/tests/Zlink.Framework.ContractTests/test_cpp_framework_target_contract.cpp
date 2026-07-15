@@ -639,6 +639,38 @@ int main ()
                   "E2E-CP-52",
                   "ST-F5 does not observe mapping eviction and per-node forwarding entries");
 
+    /* E2E-CP-53 — direct and bound-session packets cross the location publish
+     * boundary before the join caller observes completion. */
+    const auto st_f2_begin = transfer_client.find ("void direct_overtake_prevention ()");
+    const auto st_f2_end =
+      transfer_client.find ("void bound_session_cross_move_order ()", st_f2_begin);
+    const auto st_f2 = st_f2_begin != std::string::npos && st_f2_end != std::string::npos
+                         ? transfer_client.substr (st_f2_begin, st_f2_end - st_f2_begin)
+                         : std::string{};
+    const auto st_f2_publish = st_f2.find ("location_committed");
+    const auto st_f2_follow_up = st_f2.find ("{\"ST-F2\", \"D1\"}");
+    const auto st_f2_join_get = st_f2.find ("join_task.get ()");
+    gate.require (st_f2_publish != std::string::npos
+                    && st_f2_follow_up > st_f2_publish
+                    && st_f2_follow_up < st_f2_join_get
+                    && st_f2.find ("old_ref.generation + 1") != std::string::npos,
+                  "E2E-CP-53",
+                  "ST-F2 sends D1 only after join completion or an extra ref lookup");
+    const auto st_f3_begin = st_f2_end;
+    const auto st_f3_end =
+      transfer_client.find ("void straggler_forward_then_fail_fast ()", st_f3_begin);
+    const auto st_f3 = st_f3_begin != std::string::npos && st_f3_end != std::string::npos
+                         ? transfer_client.substr (st_f3_begin, st_f3_end - st_f3_begin)
+                         : std::string{};
+    const auto st_f3_publish = st_f3.find ("location_committed");
+    const auto st_f3_follow_up = st_f3.find ("{\"ST-F3\", \"S3\"}");
+    const auto st_f3_join_get = st_f3.find ("join_task.get ()");
+    gate.require (st_f3_publish != std::string::npos
+                    && st_f3_follow_up > st_f3_publish
+                    && st_f3_follow_up < st_f3_join_get,
+                  "E2E-CP-53",
+                  "ST-F3 sends S3/S4 only after the join caller observes completion");
+
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");
     const auto st_d1_local_end =

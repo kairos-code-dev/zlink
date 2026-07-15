@@ -857,9 +857,12 @@ class scenario_runner_t
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (300));
         release_joined_gate (_nodes.b, spot_rid);
-        require (join_task.get ().accepted, "ST-F2 transfer was rejected.");
-        const auto target_ref = get_actor_ref (_nodes.b, actor_id);
+        wait_evidence (_nodes.b,
+                       {"message_flow|" + actor_id + "|location_committed|"});
+        const auto target_ref = e2e::actor_ref_snapshot_res_t{
+          actor_id, "actor-b", old_ref.generation + 1};
         send_ref (_nodes.b, actor_id, target_ref, {"ST-F2", "D1"});
+        require (join_task.get ().accepted, "ST-F2 transfer was rejected.");
         assert_evidence_order (_nodes.b, actor_id, "handoff_packet", {"B1", "B2", "D1"});
     }
 
@@ -880,9 +883,11 @@ class scenario_runner_t
         bound.send_packet ({"ST-F3", "S2"});
         std::this_thread::sleep_for (std::chrono::milliseconds (300));
         release_joined_gate (_nodes.b, spot_rid);
-        require (join_task.get ().accepted, "ST-F3 transfer was rejected.");
+        wait_evidence (_nodes.b,
+                       {"message_flow|" + actor_id + "|location_committed|"});
         bound.send_packet ({"ST-F3", "S3"});
         bound.send_packet ({"ST-F3", "S4"});
+        require (join_task.get ().accepted, "ST-F3 transfer was rejected.");
         assert_evidence_order (_nodes.b, actor_id, "handoff_packet", {"S1", "S2", "S3", "S4"});
     }
 

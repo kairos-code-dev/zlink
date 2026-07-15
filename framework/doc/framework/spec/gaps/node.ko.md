@@ -101,6 +101,36 @@
 
 #### 단계 4 — 전체 감사 (아래 0.6)
 
+### 0.3 POSD/DDD 리팩토링은 선택이 아니다 — **묶음 완료의 정의**
+
+**지금까지 작업자들이 갭만 닫고 리팩토링을 건너뛰었다. 그러면 묶음은 닫힌 것이 아니다.**
+
+한 묶음의 갭을 다 구현했는데 POSD/DDD 리팩토링을 안 했으면 그 묶음은 **미완료**다. 체크박스를
+`[x]`로 바꾸지 마라. 갭을 닫는 것과 묶음을 닫는 것은 다르다 —
+
+```
+갭 하나 닫힘   = 그 계약 위반이 사라짐          (기능 완료)
+묶음 하나 닫힘 = 그 위에 POSD/DDD 리뷰+리팩토링이 끝남  (설계 완료)  ← 여기까지 해야 [x]
+```
+
+**리팩토링을 "나중에 시간 나면"으로 미루지 않는다.** [POSD 원칙](../../../../../doc/principal/software-design-principles.ko.md)은 개발 시간의 **10–20%를 설계에** 쓰라고 한다 — 그건 권장이 아니라 **이 작업의 배정된 예산**이다.
+묶음마다 그 예산을 실제로 쓴다.
+
+**묶음 리팩토링에서 반드시 하는 것 (건너뛰면 묶음 미완료)**
+
+1. 그 묶음이 건드린 코드의 **POSD 위험 신호를 명시적으로 열거**한다(§0.4 목록으로).
+2. **DDD 경계를 확인**한다 — Domain이 framework/transport 타입에 의존하는가? 한 aggregate의
+   불변식을 다른 계층이 다시 판단하는가? wire DTO가 domain model 자리에 앉아 있는가?
+3. 각 위험 신호에 **수정안을 둘 이상** 적고, **인터페이스와 호출자 복잡성을 가장 많이 줄이는 안**을 고른다.
+4. 리팩토링을 **수행**한다. 그리고 기능 테스트 + (해당되면) 성능 벤치를 다시 통과시킨다.
+5. **재리뷰**에서 의미 있는 위험 신호가 남지 않아야 묶음을 닫는다.
+
+**증거를 남긴다.** 묶음을 닫을 때 "리팩토링함"으로 끝내지 말고 **무엇을 왜 바꿨는지**
+(어떤 위험 신호 → 어떤 수정 → 무엇이 줄었는지)를 한두 줄로 남긴다. 근거 없는 "리팩토링 완료"는
+안 한 것으로 본다.
+
+---
+
 ### 0.3 POSD 리팩토링을 언제 하는가 — 3단계 게이트
 
 **항목마다 구조를 뜯지 않는다. 마지막에 몰아서 하지도 않는다.**
@@ -155,14 +185,23 @@
 
 체크박스를 전부 `[x]`로 만드는 것이 끝이 아니다.
 
-1. POSD 위험 신호(0.4) 전수 검색
-2. public contract ↔ 실제 헤더/표면 재대조
-3. 안 쓰이는 타입·helper·DI 등록 검색
-4. 샘플·E2E에서 내부 타입 사용 여부 검색
-5. 이 언어의 전체 테스트 실행
-6. 성능 민감 변경 벤치 재실행
-7. 수정 후 **다시** POSD 리뷰
-8. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+**먼저 확인한다 — 모든 묶음이 §0.3의 POSD/DDD 리팩토링을 거쳤는가?**
+갭만 닫고 리팩토링을 건너뛴 묶음이 하나라도 있으면 문서는 닫히지 않는다. 각 묶음의 완료
+줄에 "무엇을 왜 바꿨는지"가 남아 있어야 한다(없으면 리팩토링 안 한 것).
+
+그 다음:
+
+1. POSD 위험 신호(0.4) 전수 검색 — 남은 게 있으면 아직 안 끝났다
+2. DDD 경계 재확인 — Domain의 framework/transport 의존 0건, wire DTO가 domain model 자리에 없음
+3. public contract ↔ 실제 헤더/표면 재대조
+4. 안 쓰이는 타입·helper·DI 등록 검색
+5. 샘플·E2E에서 내부 타입 사용 여부 검색
+6. 이 언어의 전체 테스트 실행
+7. 성능 민감 변경 벤치 재실행 (§0.5)
+8. 수정 후 **다시** POSD/DDD 리뷰
+9. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+
+`LOOP CLEAN`은 "체크박스가 다 [x]"가 아니라 **"한 바퀴 더 돌아도 고칠 게 안 나온다"**는 뜻이다.
 
 **파일 크기나 형식만을 이유로 리팩토링하지 않는다.** 책임 혼합·정보 누출·변경 증폭·호출자 복잡성을
 **실제로 줄이는** 변경만 한다.
@@ -227,16 +266,26 @@
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
-- [ ] **IMP-ND-01** (결함) — 54 §4·§5
-- [ ] **IMP-ND-02** (미구현) — 54 §3.1·§4-2
-- [ ] **IMP-ND-03** (결함) — 03 §5.3
-- [ ] **IMP-ND-04** (미구현) — 54 §7.1
-- [ ] **IMP-ND-05** (결함) — 54 §3.3-4
-- [ ] **IMP-ND-06** (결함) — 54 §3.4
-- [ ] **IMP-ND-07** (결함) — 05 §2.6·22 §2
-- [ ] **IMP-ND-08** (미구현) — 22 §6·§6.1
-- [ ] **IMP-ND-09** (미구현) — 51·05 §2.4.3
-- [ ] **IMP-ND-10** (결함) — 30 §7.2
+- [x] **IMP-ND-01** (결함) — 54 §4·§5
+  - 근거: drain 시작 전에 상태·location handoff를 순서화하고 host가 그 책임을 소유하게 정리했다. 기존 순서 단언이 실패하던 `drain-control` 게이트가 통과한다. 커밋 `c151e3de7`.
+- [x] **IMP-ND-02** (미구현) — 54 §3.1·§4-2
+  - 근거: actor·spot admission을 공통 drain 상태에 연결해 drain 중 신규 진입을 거부하고 중복 판단을 runtime 경계로 모았다. drain admission 회귀 게이트가 실패에서 통과로 바뀌었다. 커밋 `26144697a`.
+- [x] **IMP-ND-03** (결함) — 03 §5.3
+  - 근거: channel reply가 public error kind를 보존하도록 envelope 변환 책임을 한곳에 두었다. kind가 유실되던 `channel-envelope-error` 게이트가 통과한다. 커밋 `b1cd22745`.
+- [x] **IMP-ND-04** (미구현) — 54 §7.1
+  - 근거: managed stream에 heartbeat·liveness 판정을 구현하고 session runtime이 같은 정책을 사용하게 했다. timeout을 검출하지 못하던 `stream-session-runtime` 게이트가 통과한다. 커밋 `a76571fd6`.
+- [x] **IMP-ND-05** (결함) — 54 §3.3-4
+  - 근거: drain 완료가 location owner 정리 완료까지 기다리도록 lifecycle 책임을 연결했다. 조기 완료를 잡는 `drain-control`·`location-runtime` 게이트가 통과한다. 커밋 `0535310bb`.
+- [x] **IMP-ND-06** (결함) — 54 §3.4
+  - 근거: drain marker 기록 실패를 host 내부에서 재시도해 호출자에게 순서·재시도 정책을 노출하지 않았다. 일시 실패 뒤 marker가 빠지던 `drain-control` 게이트가 통과한다. 커밋 `9feb195b2`.
+- [x] **IMP-ND-07** (결함) — 05 §2.6·22 §2
+  - 근거: handler filter scope를 dispatch scope와 함께 만들고 Nest adapter의 중복 scope 판단을 분리했다. request-scoped filter가 다른 context를 보던 channel/Nest 게이트가 통과한다. 커밋 `ab29fd6b5`.
+- [x] **IMP-ND-08** (미구현) — 22 §6·§6.1
+  - 근거: actor resolver가 store의 원격 actor location을 실제 `ActorRef`로 해석하게 하고 배치 판단을 resolver에 가뒀다. 원격 actor를 찾지 못하던 actor/location 게이트가 통과한다. 커밋 `bff714aa4`.
+- [x] **IMP-ND-09** (미구현) — 51·05 §2.4.3
+  - 근거: mailbox·channel·spot·stream의 runtime metric 기록을 공통 계측 경계에 연결해 호출부별 계측 누락을 없앴다. metric 부재로 실패하던 `runtime-metrics` 게이트가 통과한다. 커밋 `f345d5668`.
+- [x] **IMP-ND-10** (결함) — 30 §7.2
+  - 근거: 같은 stream node 등록을 builder 단계에서 거부해 뒤늦은 runtime 충돌을 없앴다. 중복 등록이 통과하던 Nest module 게이트가 startup 오류를 확인하며 통과한다. 커밋 `135d27edb`.
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
 
@@ -309,10 +358,14 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 - [ ] **IMP-ND-13** (결함) — 모니터링 dispatcher가 예외 시 `continue`가 아니라 **`return`**한다
 - [ ] **IMP-ND-14** (결함) — 샘플링이 **flow 단위가 아니라 이벤트 단위**다
 - [ ] **IMP-ND-15** (미구현) — Entry Spot이 `spot.count`/`created`/`closed`에 **잡히지 않는다**
-- [ ] **IMP-ND-16** (결함) — handler 없는 `server`/`subscriber` 역할이 startup을 통과하고 **소켓을 아예 bind하지 않는다**
-- [ ] **IMP-ND-17** (결함) — channel 종류가 **배타적이지 않고**, 같은 이름을 두 번 등록하면 **조용히 병합**된다
-- [ ] **IMP-ND-18** (결함) — 수동 endpoint가 그 역할의 자동 연결 reconcile을 **끄지 않는다**
-- [ ] **IMP-ND-19** (결함) — SPOT timer 등록 검증이 **startup이 아니라 spot 활성화 시점**
+- [x] **IMP-ND-16** (결함) — handler 없는 `server`/`subscriber` 역할이 startup을 통과하고 **소켓을 아예 bind하지 않는다**
+  - 근거: receiver 역할의 handler 존재 검증을 registration validator로 모아 bind 없는 성공을 startup에서 거부한다. handlerless server/subscriber 게이트가 실패에서 통과로 바뀌었다. 커밋 `664d45650`.
+- [x] **IMP-ND-17** (결함) — channel 종류가 **배타적이지 않고**, 같은 이름을 두 번 등록하면 **조용히 병합**된다
+  - 근거: channel 이름별 kind 배타성과 중복 등록 거부를 builder가 일관되게 적용한다. 조용히 병합되던 Nest registration 게이트가 명시적 오류를 확인하며 통과한다. 커밋 `cc380c128`.
+- [x] **IMP-ND-18** (결함) — 수동 endpoint가 그 역할의 자동 연결 reconcile을 **끄지 않는다**
+  - 근거: 수동 endpoint 역할은 lookup만 유지하고 auto-connect reconcile 대상에서 제외하도록 lifecycle 정책을 한곳에 뒀다. 이중 연결을 잡는 location auto-connect/host 게이트가 통과한다. 커밋 `7b715d30f`.
+- [x] **IMP-ND-19** (결함) — SPOT timer 등록 검증이 **startup이 아니라 spot 활성화 시점**
+  - 근거: timer 계약 검증을 별도 registration validator로 옮겨 잘못된 주기를 startup에서 거부한다. 활성화 때까지 실패가 미뤄지던 startup-validation 게이트가 통과한다. 커밋 `b67ceb5e0`.
 - [ ] **IMP-ND-20** (결함) — `fanout.received`가 등록되지 않은 topic까지 라벨로 단다(`.NET` IMP-DN-08과 동형)
 - [ ] **IMP-TS-01** (결함) — **TypeScript connector**: 안 읽은 backlog가 쌓이면 `FrameTooLarge`로 **세션을 끊는다**
 - [ ] **IMP-TS-02** (결함) — **TypeScript connector**: handler 없는 수신 메시지를 **버려서** `waitFor`가 이미 도착한 메시지를 못 받는다
@@ -342,16 +395,25 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 ### 체크리스트
 
 - [ ] **IMP-ND-21** (결함) — connector 패키지가 **raw header bytes API를 root export**한다
-- [ ] **IMP-ND-22** (결함) — nestjs의 배포된 `.d.ts`가 **선언되지 않은 subpath를 import**해 내부 등록 레코드를 앱 타입 그래프로 끌고 온다
-- [ ] **IMP-ND-23** (결함) — payload decode 실패를 **조용히 문자열로 바꾼다.** actor 경로에서 `PayloadDecodeFailed`가 **도달 불가**
+- [x] **IMP-ND-22** (결함) — nestjs의 배포된 `.d.ts`가 **선언되지 않은 subpath를 import**해 내부 등록 레코드를 앱 타입 그래프로 끌고 온다
+  - 근거: Nest 공개 계약 타입을 패키지 내부의 안정된 contracts 경계로 분리해 선언되지 않은 framework subpath 의존을 제거했다. package 선언 검사가 실패하던 build/type gate가 통과한다. 커밋 `c09ccdf3d`.
+- [x] **IMP-ND-23** (결함) — payload decode 실패를 **조용히 문자열로 바꾼다.** actor 경로에서 `PayloadDecodeFailed`가 **도달 불가**
+  - 근거: actor payload codec이 잘못된 JSON을 fallback 문자열로 바꾸지 않고 `PayloadDecodeFailed`로 분류하며 dispatcher는 handler를 호출하지 않는다. malformed payload 게이트가 통과한다. 커밋 `6bf0df118`.
 - [ ] **IMP-ND-24** (결함) — `ZLinkWorkerOptions.minThreads`/`idleTimeoutMs`가 **조용한 no-op**
-- [ ] **IMP-ND-25** (결함) — `includeNativeDiagnostics`를 **읽는 곳이 없다**
-- [ ] **IMP-ND-26** (결함) — **actor가 든 spot을 닫을 수 있다** (`.NET` IMP-DN-17과 동형)
-- [ ] **IMP-ND-27** (결함) — 중복 `destroyActor`가 **파괴되기 전에 성공을 반환**하고, 실패한 destroy는 **영구히 재시도 불가**
-- [ ] **IMP-ND-28** (결함) — 첫 `GetOrCreate` 호출자의 취소가 **다른 호출자 전부를 실패**시킨다
-- [ ] **IMP-ND-29** (결함) — 서버가 `correlation_id`를 `request_seq`로 **날조한다**
-- [ ] **IMP-ND-30** (결함) — `listPageSize`를 **읽는 곳이 없다.** 내부 기본값이 **무한**이다
-- [ ] **IMP-ND-31** (미구현) — `storeFailureGrace`를 **읽는 곳이 없다**
+- [x] **IMP-ND-25** (결함) — `includeNativeDiagnostics`를 **읽는 곳이 없다**
+  - 근거: 효과 없는 public option을 제거하고 진단 정책을 실제 message-flow 설정만 소유하게 해 얕은 표면을 줄였다. option 존재를 금지하는 contract/message-flow 게이트가 통과한다. 커밋 `43d9e7029`.
+- [x] **IMP-ND-26** (결함) — **actor가 든 spot을 닫을 수 있다** (`.NET` IMP-DN-17과 동형)
+  - 근거: spot close admission과 actor membership 변경을 activation registry에서 직렬화해 검사·종료 경합을 없앴다. actor가 남은 spot close 경합 게이트가 통과한다. 커밋 `67aeaf1ba`.
+- [x] **IMP-ND-27** (결함) — 중복 `destroyActor`가 **파괴되기 전에 성공을 반환**하고, 실패한 destroy는 **영구히 재시도 불가**
+  - 근거: 동시 destroy 호출이 하나의 teardown completion을 공유하고 실패한 cleanup은 재시도 가능하게 actor runtime state에 캡슐화했다. 조기 성공·영구 실패 게이트가 통과한다. 커밋 `1bf9b83b5`.
+- [x] **IMP-ND-28** (결함) — 첫 `GetOrCreate` 호출자의 취소가 **다른 호출자 전부를 실패**시킨다
+  - 근거: 공유 actor 생성 promise와 개별 호출자의 abort 대기를 분리해 한 호출자의 취소가 생성 작업으로 전파되지 않게 했다. 동시 `GetOrCreate` 취소 게이트가 통과한다. 커밋 `f2de94a4c`.
+- [x] **IMP-ND-29** (결함) — 서버가 `correlation_id`를 `request_seq`로 **날조한다**
+  - 근거: correlation이 없는 stream 요청은 없는 값으로 유지하고 transport sequence를 대체값으로 노출하지 않는다. absent correlation 회귀 게이트가 실패에서 통과로 바뀌었다. 커밋 `deae68548`.
+- [x] **IMP-ND-30** (결함) — `listPageSize`를 **읽는 곳이 없다.** 내부 기본값이 **무한**이다
+  - 근거: location runtime이 호출자가 page size를 생략했을 때 등록된 `listPageSize`를 적용하도록 paging 결정을 한곳에 모았다. 무한 기본값을 잡는 location-runtime 게이트가 통과한다. 커밋 `cbc18227e`.
+- [x] **IMP-ND-31** (미구현) — `storeFailureGrace`를 **읽는 곳이 없다**
+  - 근거: auto-connect reconciler가 마지막 정상 target을 grace 안에서만 재사용하도록 option을 실제 정책에 연결했다. grace 안/밖 동작이 같아 실패하던 location-autoconnect 게이트가 통과한다. 커밋 `c3ce36a31`.
 
 ### 상세
 
@@ -589,39 +651,64 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 ### 체크리스트
 
 - [ ] **E2E-ND-01** (**가짜 통과**) — Config 11에 **e2e 앱이 없고 시나리오를 `echo`로 통과시킨다**
-- [ ] **E2E-ND-02** (**가짜 통과**) — probe 서버가 **클라이언트가 검사할 값을 리터럴로 만들어 낸다**
-- [ ] **SMP-ND-01** (미구현) — Bingo의 정본 `yield` 왕복이 **계약·서버·클라이언트 게이트 어디에도 없다**
-- [ ] **SMP-ND-02** (결함) — **6개 샘플 전부가 framework session handler registry를 우회**한다
-- [ ] **SMP-ND-03** (결함) — DeliveryDispatch가 **문서가 명시적으로 금지한** route-mesh + node rid로 offer를 보낸다
-- [ ] **SMP-ND-04** (결함) — TicTacToe가 **자체 Redis room-route 스키마**를 들고 있다
-- [ ] **SMP-ND-05** (결함) — TicTacToe의 "self-join notify 없음" 검사가 **25ms 창**이다
+- [x] **E2E-ND-02** (**가짜 통과**) — probe 서버가 **클라이언트가 검사할 값을 리터럴로 만들어 낸다**
+  - 근거: probe가 합성하던 topology 값을 제거하고 실제 consumer app role의 public query와 resilience client가 같은 관측 경로를 사용하게 했다. 합성 probe 없이는 실패하던 topology/RL-A1 게이트가 통과한다. 커밋 `cc857d12a`, `31f56b068`.
+- [x] **SMP-ND-01** (미구현) — Bingo의 정본 `yield` 왕복이 **계약·서버·클라이언트 게이트 어디에도 없다**
+  - 근거: Bingo record 흐름에 `yield` 왕복과 client release marker를 추가하고 room domain과 handler 책임을 분리했다. 왕복이 없으면 실패하는 yield record 게이트가 통과한다. 커밋 `675dc2ff4`.
+- [x] **SMP-ND-02** (결함) — **6개 샘플 전부가 framework session handler registry를 우회**한다
+  - 근거: sample session packet dispatch를 framework handler registry로 옮겨 packet-name switch와 샘플별 우회를 제거했다. registry를 거치지 않으면 실패하는 sample session 게이트가 통과한다. 커밋 `a355f8d86`.
+- [x] **SMP-ND-03** (결함) — DeliveryDispatch가 **문서가 명시적으로 금지한** route-mesh + node rid로 offer를 보낸다
+  - 근거: courier offer를 location resolver가 제공하는 Spot handle 경로로 바꾸고 node rid·route mesh 지식을 샘플 업무 코드에서 제거했다. 금지 경로를 검출하는 DeliveryDispatch gate가 통과한다. 커밋 `203d28ac7`.
+- [x] **SMP-ND-04** (결함) — TicTacToe가 **자체 Redis room-route 스키마**를 들고 있다
+  - 근거: 샘플 전용 room-route store와 병렬 schema를 제거하고 framework location store를 유일한 routing 책임으로 사용한다. 자체 schema가 남으면 실패하는 TicTacToe location-store 게이트가 통과한다. 커밋 `53bf76b30`.
+- [x] **SMP-ND-05** (결함) — TicTacToe의 "self-join notify 없음" 검사가 **25ms 창**이다
+  - 근거: 짧은 무발생 sleep 대신 후속 관측 구간과 명시적 notify 수를 사용해 self-join 비오염을 검증한다. 25ms timing oracle을 금지하는 self-join 게이트가 통과한다. 커밋 `921b146a0`.
 - [ ] **E2E-ND-03** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**
-- [ ] **E2E-ND-04** (결함) — `§2.1` settle 상수가 **어느 runner에도 없고** readiness가 최대 **60초**
-- [ ] **E2E-ND-05** (결함) — Redis 격리에 **탈출구**가 있다(`ZLINK_REDIS_E2E_ENDPOINT`)
+- [x] **E2E-ND-04** (결함) — `§2.1` settle 상수가 **어느 runner에도 없고** readiness가 최대 **60초**
+  - 근거: 11개 runner의 readiness·settle budget을 runner-local 상수로 고정해 숨은 장기 대기를 제거했다. 60초 대기와 상수 누락을 잡는 local-wait gate가 실패에서 통과로 바뀌고 TA-A1·ST-A1도 통과했다. 커밋 `a22a2169f`.
+- [x] **E2E-ND-05** (결함) — Redis 격리에 **탈출구**가 있다(`ZLINK_REDIS_E2E_ENDPOINT`)
+  - 근거: 외부 Redis endpoint override를 제거하고 runner가 실행별 격리 instance를 소유하게 했다. 환경변수 탈출구가 남으면 실패하는 Redis isolation gate가 통과한다. 커밋 `ffc2009dc`.
 - [ ] **E2E-ND-06** (결함) — e2e 앱 코드가 **환경변수를 읽고 쓴다**(`§2.6`: 0개)
 - [ ] **E2E-ND-07** (결함) — e2e 클라이언트가 **HTTP client wrapper를 안 쓴다** — 전부 raw `fetch`
-- [ ] **E2E-ND-08** (결함) — 시나리오 파일 **138개 중 0개**에 머리말 주석이 없다
+- [x] **E2E-ND-08** (결함) — 시나리오 파일 **138개 중 0개**에 머리말 주석이 없다
+  - 근거: 모든 기존 scenario 파일 첫머리에 검증 의도를 적고 common 문서 heading과 대응시키는 단일 header gate를 추가해 설명 지식의 중복 drift를 막았다. 139개 누락으로 실패하던 gate가 139개 전부를 확인하며 통과했다. 커밋 `5bf207ab5`.
 - [ ] **E2E-ND-09** (결함) — 낡은 디렉토리 이름과 죽은 `dist/`
-- [ ] **E2E-ND-10** (결함) — `START_ORDER` 축이 config 2개에만 있다
-- [ ] **E2E-ND-11** (결함) — SpotService `all`이 **문서에 없는 `SM-Q9`를 기본 게이트에 넣는다**
-- [ ] **E2E-ND-18** (결함) — `RM-B2`가 scale-in 동안 트래픽을 끊고 **남은 provider를 직접 호출한다**
-- [ ] **E2E-ND-19** (결함) — Config 1 negative가 **public error kind를 전혀 분류하지 않는다**
-- [ ] **E2E-ND-20** (미구현) — `RC-A6`가 세 startup-invalid 축 중 **duplicate 하나만** 검증한다
-- [ ] **E2E-ND-21** (결함) — `RL-D1`은 fanout이 아니라 **평범한 request 120개**다
-- [ ] **E2E-ND-22** (미구현) — `RL-D4`가 `Error=5`와 `errorCode`/`errorMessage` wire를 검증하지 않는다
-- [ ] **E2E-ND-23** (결함) — `RL-D5`가 수 분 soak가 아니라 **단발 Promise burst**다
-- [ ] **E2E-ND-24** (**가짜 통과**) — `SF-B2`가 신규 outbound connect를 만들지 않아 **죽은 `storeFailureGrace`를 잡지 못한다**
-- [ ] **E2E-ND-25** (결함) — `SF-D1`·`SF-D2`가 store stop/restart 대신 **pause/unpause**만 한다
+- [x] **E2E-ND-10** (결함) — `START_ORDER` 축이 config 2개에만 있다
+  - 근거: Config 1·2·9 runner가 forward/reverse/fixed-seed shuffle을 같은 인자로 받고 기본 전체 sweep이 변형을 실제 실행한다. 누락 config·미실행 축으로 실패하던 start-order gate가 통과한다. 커밋 `8e34f6bb2`.
+- [x] **E2E-ND-11** (결함) — SpotService `all`이 **문서에 없는 `SM-Q9`를 기본 게이트에 넣는다**
+  - 근거: 문서 밖 보조 시나리오 `SM-Q9`를 기본 `all` 목록에서 분리해 정식 scenario suite가 계약 목록만 소유하게 했다. 기본 목록에 Q9가 있으면 실패하는 gate가 통과한다. 커밋 `6d2f74ab5`.
+- [x] **E2E-ND-18** (결함) — `RM-B2`가 scale-in 동안 트래픽을 끊고 **남은 provider를 직접 호출한다**
+  - 근거: 살아 있는 consumer 경로에서 scale-in 전후 연속 트래픽을 보내고 provider 선택은 앱 topology가 담당하게 했다. 직접 호출·트래픽 공백을 잡는 scale-in gate가 통과한다. 커밋 `fac1af0c6`.
+- [x] **E2E-ND-19** (결함) — Config 1 negative가 **public error kind를 전혀 분류하지 않는다**
+  - 근거: missing packet·잘못된 payload를 public framework error kind로 분류하고 channel pipeline의 변환을 공통 경계로 모았다. kind 단언이 없으면 실패하는 public-errors gate와 channel client gate가 통과한다. 커밋 `36f437217`.
+- [x] **E2E-ND-20** (미구현) — `RC-A6`가 세 startup-invalid 축 중 **duplicate 하나만** 검증한다
+  - 근거: duplicate·invalid role·invalid timer 세 startup 축을 별도 invalid host 설정으로 실행한다. 두 축이 빠져 실패하던 registration-codec invalid-axes gate가 통과한다. 커밋 `6eb18ed0d`.
+- [x] **E2E-ND-21** (결함) — `RL-D1`은 fanout이 아니라 **평범한 request 120개**다
+  - 근거: RL-D1을 실제 fanout publish/subscribe 부하와 consumer evidence로 바꾸고 load 관측 책임을 evidence store에 모았다. request만 보내면 실패하는 high-fanout gate가 통과한다. 커밋 `967d7d544`.
+- [x] **E2E-ND-22** (미구현) — `RL-D4`가 `Error=5`와 `errorCode`/`errorMessage` wire를 검증하지 않는다
+  - 근거: missing handler 응답의 wire kind `Error=5`와 code/message를 모두 단언하고 envelope encoding을 공통 구현에서 고쳤다. 필드 하나라도 없으면 실패하는 track-D gate가 통과한다. 커밋 `fab02f2df`.
+- [x] **E2E-ND-23** (결함) — `RL-D5`가 수 분 soak가 아니라 **단발 Promise burst**다
+  - 근거: mixed workload를 지속 시간 동안 pace하고 동적으로 바뀌는 provider evidence를 관측하도록 soak driver를 분리했다. 단발 burst·고정 provider로 실패하던 track-D gate와 RL-D5 실행이 통과한다. 커밋 `6dbf73bf9`, `c272ce908`, `9ea78fecb`.
+- [x] **E2E-ND-24** (**가짜 통과**) — `SF-B2`가 신규 outbound connect를 만들지 않아 **죽은 `storeFailureGrace`를 잡지 못한다**
+  - 근거: store 장애 중 새 peer를 게시해 신규 outbound connect가 grace 정책으로 차단되는 실제 조건을 만들었다. 새 dial을 시도하지 않던 gate가 실패한 뒤 SF-B2와 contract gate가 통과했다. 커밋 `16b06351a`.
+- [x] **E2E-ND-25** (결함) — `SF-D1`·`SF-D2`가 store stop/restart 대신 **pause/unpause**만 한다
+  - 근거: runner가 Redis를 실제 stop/restart하고 빈 store 재등록·auto-connect recovery를 framework 경계에서 처리한다. pause만으로는 통과하지 않는 restart-recovery/location gates와 SF-D1·D2가 통과한다. 커밋 `0a9c1f084`.
 - [ ] **E2E-ND-26** (미구현) — `SF-C2`가 draining marker·drain deadline·정상 종료를 검증하지 않는다
-- [ ] **E2E-ND-27** (미구현) — `MON-A1`이 socket event의 **RemoteAddr·RoutingId를 단언하지 않는다**
-- [ ] **E2E-ND-28** (**가짜 통과**) — `MON-A2`가 provider 추가·종료를 일으키지 않고 **기존 startup event만 기다린다**
+- [x] **E2E-ND-27** (미구현) — `MON-A1`이 socket event의 **RemoteAddr·RoutingId를 단언하지 않는다**
+  - 근거: MON-A1이 실제 socket event의 remote address와 routing id를 필수로 단언한다. identity 필드가 비어도 통과하던 monitoring socket gate가 실패에서 통과로 바뀌었다. 커밋 `e21abc645`.
+- [x] **E2E-ND-28** (**가짜 통과**) — `MON-A2`가 provider 추가·종료를 일으키지 않고 **기존 startup event만 기다린다**
+  - 근거: client가 managed service를 추가·종료해 topology 변화를 직접 만들고 service evidence와 before/after를 대조한다. startup event 재사용으로 실패하던 monitoring topology gate가 통과한다. 커밋 `5922af9aa`.
 - [ ] **E2E-ND-29** (미구현) — `MON-A4`가 failover 절반을 실행하지 않고 topology **payload 변화도 대조하지 않는다**
 - [ ] **E2E-ND-30** (미구현) — Config 2·9의 P0에 **route-mesh-absent × separated-deployment** 조합이 없다
-- [ ] **E2E-ND-31** (**가짜 통과**) — actor ref의 `generation > 0`을 **어느 config도 단언하지 않는다**
-- [ ] **E2E-ND-32** (미구현) — `TA-A1`~`A3`가 bound-session snapshot과 **no-bind 비오염 negative**를 검증하지 않는다
-- [ ] **E2E-ND-33** (미구현) — `TA-A4`가 actor destroy 뒤 `ActorRouteNotFound` 절반을 실행하지 않는다
+- [x] **E2E-ND-31** (**가짜 통과**) — actor ref의 `generation > 0`을 **어느 config도 단언하지 않는다**
+  - 근거: SpotService와 ToActorMessaging이 실제 응답의 actor ref에서 양수 generation을 단언한다. 합성·0 generation으로 실패하던 concrete-actor-ref gate가 통과한다. 커밋 `7598155b8`.
+- [x] **E2E-ND-32** (미구현) — `TA-A1`~`A3`가 bound-session snapshot과 **no-bind 비오염 negative**를 검증하지 않는다
+  - 근거: TA-A1~A3가 bind 전후 actor snapshot과 no-bind 비오염을 server evidence로 대조한다. snapshot 단언이 없으면 실패하는 binding gate와 실제 TA 시나리오가 통과한다. 커밋 `3e7e37698`.
+- [x] **E2E-ND-33** (미구현) — `TA-A4`가 actor destroy 뒤 `ActorRouteNotFound` 절반을 실행하지 않는다
+  - 근거: TA-A4가 actor destroy 완료 뒤 같은 ref로 request해 public `ActorRouteNotFound`를 확인한다. destroy 후 요청이 없으면 실패하는 gate와 실제 TA-A4가 통과한다. 커밋 `82f52000d`.
 - [ ] **E2E-ND-34** (결함) — `TA-B2`·`TA-B3`가 실제 owner 교체·route 단절 대신 **ActorRef 필드를 위조한다**
-- [ ] **E2E-ND-35** (결함) — Config 10이 spot 생성마다 500ms sleep해 **수렴 직후 첫 요청 결함을 가린다**
+- [x] **E2E-ND-35** (결함) — Config 10이 spot 생성마다 500ms sleep해 **수렴 직후 첫 요청 결함을 가린다**
+  - 근거: spot 생성 뒤 고정 500ms sleep을 제거하고 준비 상태 직후 첫 요청을 보낸다. sleep이 남으면 실패하는 first-request gate와 SpotActorTransfer 시나리오가 통과한다. 커밋 `c92360970`.
 
 ### 가장 무거운 둘
 
@@ -679,6 +766,45 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 방을 **실제로 닫고 타이머를 취소한다.** 그리고 **클라이언트 게이트가 두 player 모두** 시작 notify를
 기다리고 둘 다 `Running`을 단언한다 — **C++ 버그를 가렸던 약한 게이트가 여기엔 없다.**
 `DeliveryDispatch`는 배송 상태 **도착 순서를 진짜로 단언한다**(`.NET`·C++은 못 한다).
+
+### 체크리스트
+
+- [x] **SMP-ND-06** (**버그**) — SupportChat open 응답이 실제 conversation state를 버린다
+  - 근거: allocate 응답부터 Entry Spot까지 도메인이 만든 8필드 conversation state를 그대로 전달하고 중복 조립을 계약 mapper로 모았다. 하드코딩 `WaitingForAgent` 때문에 실패하던 open-state gate가 통과한다. 커밋 `c72ff6c1a`.
+- [ ] **SMP-ND-07** (**버그**) — 닫힌 SupportChat·TicTacToe Spot의 timer가 계속 실행된다
+- [ ] **SMP-ND-08** (**버그**) — SupportChat 상담원 재연결이 `WaitingForClose`를 `Active`로 되돌린다
+- [x] **SMP-ND-09** (**버그**) — TicTacToe timeout을 승리로 기록한다
+  - 근거: turn timeout을 승리와 분리한 terminal outcome으로 유지하고 수를 두지 않은 player/cell을 마지막 수처럼 만들지 않게 domain 규칙을 고쳤다. timeout 승리·milestone 오염으로 실패하던 match test가 통과한다. 커밋 `2366f8908`.
+- [ ] **SMP-ND-10** (**버그**) — TicTacToe Entry Spot handler가 framework lifecycle 밖 객체를 사용한다
+- [x] **SMP-ND-11** (결함) — 샘플 wire 응답이 inline object와 흩어진 packet 문자열로 만들어진다
+  - 근거: SupportChat·DeliveryDispatch·GameQuest 응답을 이름 있는 wire contract로 옮겨 호출부가 payload 모양을 다시 결정하지 않게 했다. inline 응답을 검출하는 named-wire gate가 통과한다. 커밋 `0d98a2384`.
+- [x] **SMP-ND-12** (결함) — Bingo·TicTacToe inbound observer marker를 release gate가 확인하지 않는다
+  - 근거: 두 client가 observer marker와 필수 필드를 수집·단언하고 runner 성공 조건에 포함한다. marker 출력만으로 통과하던 inbound-observer release gate가 실패에서 통과로 바뀌었다. 커밋 `a984b609b`.
+- [x] **SMP-ND-13** (미구현) — Bingo·TicTacToe lifecycle server evidence gate가 없다
+  - 근거: Bingo room leave·Entry Spot destroy·destroy 뒤 callback 부재를 server evidence로 기록하고 공용 runner가 검증한다. lifecycle 연결을 끊어도 통과하던 Bingo lifecycle gate가 실패에서 통과로 바뀌었다. 커밋 `c718beed1`.
+- [x] **SMP-ND-14** (결함) — ShoppingMall 두 주문을 순차 시작해 scale-out 동시성을 검증하지 못한다
+  - 근거: 주문 A/B 시작을 `Promise.all`로 실제 동시 실행하고 이후 같은 projection을 확인한다. 순차 시작이면 실패하는 ShoppingMall scale-out gate가 통과한다. 커밋 `3c2b82602`.
+- [x] **SMP-ND-15** (결함) — GameQuest가 서로 다른 owner에서 처리됐는지 확인하지 않는다
+  - 근거: 두 player 처리의 owner identity를 server evidence에 기록하고 client가 서로 다름을 단언해 owner 판단을 store 경계에 모았다. 같은 owner로도 통과하던 GameQuest scale-out gate가 통과한다. 커밋 `45fab0587`.
+- [ ] **SMP-ND-16** (결함) — DeliveryDispatch status request의 고객 식별자 계약이 어긋난다
+- [x] **SMP-ND-17** (미구현) — TicTacToe 내부 join reply 전용 계약이 없다
+  - 근거: client-facing `JoinGameRes`와 별도 `TicTacToeGameJoinRes`를 정의하고 Entry/Game Spot 내부 join 경로가 전용 타입을 사용한다. 타입을 재사용하면 실패하는 internal-join contract gate가 통과한다. 커밋 `c8a7c77fb`.
+- [x] **SMP-ND-18** (**wire 파손**) — TicTacToe terminal state의 `nextTurn`이 `null`이다
+  - 근거: terminal state도 non-null `nextTurn` 계약을 유지하도록 domain snapshot과 client 단언을 맞췄다. `null` wire를 허용하면 실패하는 next-turn gate가 통과한다. 커밋 `933b9eb28`.
+- [ ] **SMP-ND-19** (**wire 파손**) — ShoppingMall decimal 금액을 JavaScript `number`로 표현한다
+- [x] **SMP-ND-20** (결함) — SupportChat client가 대화별 message 의미 값을 충분히 검증하지 않는다
+  - 근거: participant state와 conversation id·sender·text·sequence를 두 대화 각각 대조해 잘못된 방 payload를 거부한다. sequence만 맞으면 통과하던 message-semantics gate가 통과한다. 커밋 `98f26ff9c`.
+- [x] **E2E-ND-12** (**가짜 통과**) — PubSub 측정 구간이 warm-up과 겹치고 순서를 검사하지 않는다
+  - 근거: 측정 run/sequence/value를 warm-up과 분리하고 전체 순서·개수를 정확히 단언하도록 evidence 판정기를 캡슐화했다. 측정 publish를 빼면 실패하는 pubsub-evidence gate가 통과한다. 커밋 `5805e5663`.
+- [ ] **E2E-ND-13** (**가짜 통과**) — RM-C9 submit 결과가 하드코딩 문자열이다
+- [x] **E2E-ND-14** (미구현) — PubSub이 Redis location store를 사용하지 않는다
+  - 근거: publisher/subscriber 모두 실행별 Redis location store를 사용하고 runner가 store lifecycle을 소유하며 하드와이어 endpoint를 제거했다. in-memory store가 남으면 실패하는 PubSub Redis gate와 실제 PS-A1이 통과한다. 커밋 `9665b1f21`.
+- [x] **E2E-ND-15** (**가짜 통과**) — TA-B1이 stale ref를 transport에 보내지 않는다
+  - 근거: TA-B1이 형식은 유효하지만 stale한 `ActorRef`를 실제 actor client에 전달하고 public route error를 분류한다. local undefined 검사로 우회하면 실패하는 ToActor gate가 통과한다. 커밋 `e82d138b5`.
+- [x] **E2E-ND-16** (**가짜 통과**) — ST-F1·F3 순서 단언이 kind만 비교한다
+  - 근거: transfer evidence가 `P1→P2→P3` value 순서와 source cleanup marker를 모두 단언하고 runtime이 cleanup 증거를 낸다. 순열·marker 누락으로 실패하던 transfer-order gate와 ST-F1·F3가 통과한다. 커밋 `c05fd501c`.
+- [x] **E2E-ND-17** (**가짜 통과**) — RM-A4가 살아 있는 consumer의 handover를 검증하지 않는다
+  - 근거: 기존 consumer를 유지한 채 같은 rid의 replacement를 띄우고 같은 app endpoint에서 v1→v2 handover와 v1 부재를 대조한다. replacement 직접 호출로는 통과하지 않는 failover gate와 RM-A4가 통과한다. 커밋 `a69409cbc`.
 
 ### 진짜 버그
 

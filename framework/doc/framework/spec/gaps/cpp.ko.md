@@ -293,7 +293,8 @@
   - 근거: C++ 언어 작업인 IMP-CP-07에서 pending row를 resolve와 목록의 miss로 처리하고 동일 runtime의 observed generation guard를 함께 구현해 닫았다.
 - [ ] **IMP-X2** — location event source(`location-peer/spot/actor/route`, `StoreFailure`/`StoreRecovered`)가 없다
   - 현재 상태: C++ 구현 선택지는 IMP-CP-09에 기록했다. 네 per-kind source의 public 등록 계약이 확정되기 전에는 §0.8에 따라 구현하지 않는다.
-- [ ] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
+- [x] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
+  - 근거: C++ 범위를 재검증하니 IMP-CP-04에서 공통 options validator와 host 시작 전 검증이 이미 연결됐다. 빈 channel·handler group·Spot/STREAM 이름, STREAM bind/session 누락, node/session 이름 중복과 잘못된 Spot 구성을 집중 회귀가 거부한다. `test_cpp_framework_module_hosted`와 target·header 계약 시험이 현재 checkout에서 통과했으므로 별도 구현 변경 없이 C++의 교차 언어 행을 닫는다.
 
 ### 언어별 표면 차이 (기준선 대조)
 

@@ -13,11 +13,9 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::server::session {
 
 namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
 
-inline zlink::framework::app_t create_session_host ()
+inline void configure_session_host (zlink::framework::app_t &app,
+                                    const session_options_t &session_options)
 {
-    const auto session_options = read_session_options ();
-
-    auto app = zlink::framework::app_t::create ();
     app.logging ()
       .use_file (session_options.log_dir + "/" + session_options.node_rid + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);
@@ -53,7 +51,6 @@ inline zlink::framework::app_t create_session_host ()
           .register_session<await_session_t> ();
         framework_options.http ().listen (session_options.http_endpoint).map_health ("/health");
     });
-    return app;
 }
 
 } // namespace zlink::framework::e2e::automatic_turn_dispatch::server::session

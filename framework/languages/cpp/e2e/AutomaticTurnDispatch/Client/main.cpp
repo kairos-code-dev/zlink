@@ -38,29 +38,29 @@ using atd_client::unique_id;
 
 } // namespace
 
-int main ()
+int main (int argc, char **argv)
 {
     try {
-        const auto client_options = atd_client::parse_client_options ();
+        const auto client_options = atd_client::parse_client_options (argc, argv);
         ensure (!client_options.session_a_stream_endpoint.empty (),
-                "ZLINK_CPP_E2E_STREAM_ENDPOINT is required");
+                "sessionAStreamEndpoint is required");
         ensure (!client_options.session_b_stream_endpoint.empty (),
-                "ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT is required");
+                "sessionBStreamEndpoint is required");
         const auto scenario =
           client_options.scenario.empty () ? std::string ("full") : client_options.scenario;
         if (scenario == "shutdown-wait") {
             ensure (!client_options.request_id.empty (),
-                    "ZLINK_CPP_E2E_REQUEST_ID is required for shutdown-wait");
+                    "requestId is required for shutdown-wait");
             ensure (!client_options.spot_rid.empty (),
-                    "ZLINK_CPP_E2E_SPOT_RID is required for shutdown-wait");
+                    "spotRid is required for shutdown-wait");
             atd_client::run_shutdown_wait_scenario (client_options);
             return 0;
         }
         if (scenario == "shutdown-recovery") {
             ensure (!client_options.request_id.empty (),
-                    "ZLINK_CPP_E2E_REQUEST_ID is required for shutdown-recovery");
+                    "requestId is required for shutdown-recovery");
             ensure (!client_options.spot_rid.empty (),
-                    "ZLINK_CPP_E2E_SPOT_RID is required for shutdown-recovery");
+                    "spotRid is required for shutdown-recovery");
             atd_client::run_shutdown_recovery_scenario (client_options);
             return 0;
         }

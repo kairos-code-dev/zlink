@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../../Shared/env.hpp"
+#include <zlink/framework.hpp>
 
 #include <fstream>
 #include <mutex>
@@ -18,16 +18,15 @@ struct delay_options_t
     std::string node_rid;
     std::string http_endpoint;
     std::string delay_endpoint;
-};
 
-inline delay_options_t read_delay_options ()
-{
-    return delay_options_t{
-      .log_dir = server::env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-      .node_rid = server::env_or ("ZLINK_CPP_E2E_NODE_RID", "delay-a"),
-      .http_endpoint = server::env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-      .delay_endpoint = server::env_or ("ZLINK_CPP_E2E_DELAY_ENDPOINT")};
-}
+    static delay_options_t bind (const configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .node_rid = section.require ("nodeRid"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .delay_endpoint = section.require ("delayEndpoint")};
+    }
+};
 
 class delay_evidence_store_t
 {

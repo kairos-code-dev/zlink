@@ -23,7 +23,7 @@ std::string run_atd_d4_session_relay_actor_await_scenario (
   const await_actor_scenario_context_t &actors)
 {
     ensure (!session_b_stream_endpoint.empty (),
-            "ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT is required for ATD-D4");
+            "sessionBStreamEndpoint is required for ATD-D4");
     auto unbound_options = make_connector_options (session_b_stream_endpoint);
     auto unbound = zlink::stream_connector::connector_factory_t::create (unbound_options);
     auto unbound_connected = unbound.connect ();

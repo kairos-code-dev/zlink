@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "../../Shared/env.hpp"
+#include <zlink/framework.hpp>
 
 #include <string>
 
@@ -22,23 +22,22 @@ struct session_options_t
     std::string spot_router_endpoint;
     std::string spot_pub_endpoint;
     std::string stream_endpoint;
-};
 
-inline session_options_t read_session_options ()
-{
-    return session_options_t{
-      .log_dir = server::env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-      .node_rid = server::env_or ("ZLINK_CPP_E2E_NODE_RID", "session-a"),
-      .http_endpoint = server::env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-      .redis_endpoint = server::env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
-      .redis_key_prefix = server::env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
-      .control_endpoint = server::env_or ("ZLINK_CPP_E2E_CONTROL_ENDPOINT"),
-      .control_peer_endpoint = server::env_or ("ZLINK_CPP_E2E_CONTROL_PEER_ENDPOINT", ""),
-      .spot_route_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTE_ENDPOINT"),
-      .spot_route_peer_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTE_PEER_ENDPOINT", ""),
-      .spot_router_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT"),
-      .spot_pub_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT"),
-      .stream_endpoint = server::env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT")};
-}
+    static session_options_t bind (const configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .node_rid = section.require ("nodeRid"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .control_endpoint = section.require ("controlEndpoint"),
+                .control_peer_endpoint = section.get ("controlPeerEndpoint").value_or (""),
+                .spot_route_endpoint = section.require ("spotRouteEndpoint"),
+                .spot_route_peer_endpoint = section.get ("spotRoutePeerEndpoint").value_or (""),
+                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .spot_pub_endpoint = section.require ("spotPubEndpoint"),
+                .stream_endpoint = section.require ("streamEndpoint")};
+    }
+};
 
 } // namespace zlink::framework::e2e::automatic_turn_dispatch::server::session

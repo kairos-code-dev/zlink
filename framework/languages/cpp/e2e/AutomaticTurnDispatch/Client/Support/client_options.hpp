@@ -2,10 +2,13 @@
 #pragma once
 
 #include <zlink/stream_connector.hpp>
+#include <nlohmann/json.hpp>
 
 #include <chrono>
-#include <cstdlib>
+#include <fstream>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace zlink::framework::e2e::automatic_turn_dispatch::client
@@ -20,23 +23,34 @@ struct client_options_t
     std::string spot_rid;
 };
 
-inline std::string env_or (const char *name)
+inline client_options_t parse_client_options (int argc, char **argv)
 {
-    if (const char *value = std::getenv (name); value != nullptr) {
-        return value;
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown AutomaticTurnDispatch client option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
     }
-    return {};
-}
-
-inline client_options_t parse_client_options ()
-{
-    return client_options_t{.session_a_stream_endpoint =
-                              env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT"),
-                            .session_b_stream_endpoint =
-                              env_or ("ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT"),
-                            .scenario = env_or ("ZLINK_CPP_E2E_SCENARIO"),
-                            .request_id = env_or ("ZLINK_CPP_E2E_REQUEST_ID"),
-                            .spot_rid = env_or ("ZLINK_CPP_E2E_SPOT_RID")};
+    if (path.empty ()) {
+        throw std::runtime_error ("AutomaticTurnDispatch client requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open AutomaticTurnDispatch client config: " + path);
+    }
+    const auto section = nlohmann::json::parse (input).at ("e2e");
+    const auto value = [&] (const char *key) {
+        const auto found = section.find (key);
+        return found == section.end () ? std::string{} : found->get<std::string> ();
+    };
+    return {.session_a_stream_endpoint = value ("sessionAStreamEndpoint"),
+            .session_b_stream_endpoint = value ("sessionBStreamEndpoint"),
+            .scenario = value ("scenario"),
+            .request_id = value ("requestId"),
+            .spot_rid = value ("spotRid")};
 }
 
 inline zlink::stream_connector::connector_options_t

@@ -2,7 +2,7 @@
 #pragma once
 
 #include "../../Shared/codecs.hpp"
-#include "../../Shared/env.hpp"
+#include <zlink/framework.hpp>
 
 #include <chrono>
 #include <condition_variable>
@@ -27,22 +27,21 @@ struct play_options_t
     std::string spot_route_endpoint;
     std::string spot_router_endpoint;
     std::string spot_pub_endpoint;
-};
 
-inline play_options_t read_play_options ()
-{
-    return play_options_t{
-      .log_dir = server::env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-      .node_rid = server::env_or ("ZLINK_CPP_E2E_NODE_RID", "play-a"),
-      .http_endpoint = server::env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-      .redis_endpoint = server::env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
-      .redis_key_prefix = server::env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
-      .control_endpoint = server::env_or ("ZLINK_CPP_E2E_CONTROL_ENDPOINT"),
-      .delay_endpoint = server::env_or ("ZLINK_CPP_E2E_DELAY_ENDPOINT"),
-      .spot_route_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTE_ENDPOINT"),
-      .spot_router_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT"),
-      .spot_pub_endpoint = server::env_or ("ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT")};
-}
+    static play_options_t bind (const configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .node_rid = section.require ("nodeRid"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .control_endpoint = section.require ("controlEndpoint"),
+                .delay_endpoint = section.require ("delayEndpoint"),
+                .spot_route_endpoint = section.require ("spotRouteEndpoint"),
+                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .spot_pub_endpoint = section.require ("spotPubEndpoint")};
+    }
+};
 
 class evidence_store_t
 {

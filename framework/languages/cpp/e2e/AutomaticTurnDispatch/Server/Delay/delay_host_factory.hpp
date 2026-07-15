@@ -14,11 +14,9 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::server::delay {
 
 namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
 
-inline zlink::framework::app_t create_delay_host ()
+inline void configure_delay_host (zlink::framework::app_t &app,
+                                  const delay_options_t &delay_options)
 {
-    const auto delay_options = read_delay_options ();
-
-    auto app = zlink::framework::app_t::create ();
     app.logging ()
       .use_file (delay_options.log_dir + "/" + delay_options.node_rid + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);
@@ -39,7 +37,6 @@ inline zlink::framework::app_t create_delay_host ()
         options.handlers ().group (yd::handler_group).add<delay_handler_t> ();
         options.http ().listen (delay_options.http_endpoint).map_health ("/health");
     });
-    return app;
 }
 
 } // namespace zlink::framework::e2e::automatic_turn_dispatch::server::delay

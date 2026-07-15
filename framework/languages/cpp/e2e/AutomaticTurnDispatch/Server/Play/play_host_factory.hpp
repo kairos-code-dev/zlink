@@ -18,11 +18,9 @@ namespace zlink::framework::e2e::automatic_turn_dispatch::server::play {
 
 namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
 
-inline zlink::framework::app_t create_play_host ()
+inline void configure_play_host (zlink::framework::app_t &app,
+                                 const play_options_t &play_options)
 {
-    const auto play_options = read_play_options ();
-
-    auto app = zlink::framework::app_t::create ();
     app.logging ()
       .use_file (play_options.log_dir + "/" + play_options.node_rid + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);
@@ -84,7 +82,6 @@ inline zlink::framework::app_t create_play_host ()
           .add_actor_factory<await_actor_factory_t> (yd::actor_type);
         options.http ().listen (play_options.http_endpoint).map_health ("/health");
     });
-    return app;
 }
 
 } // namespace zlink::framework::e2e::automatic_turn_dispatch::server::play

@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
+BUILD_DIR="$FRAMEWORK_DIR/build"
 SCENARIO="${1:-all}"
 SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
 case "$SCENARIO_LOWER" in
@@ -21,7 +21,7 @@ SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 # spot node destroy는 core에서 소켓 제거 완료를 기다린다(ledger CPP-CORE-SPOTDESTROY-002).
 # 부하가 걸리면 8초를 넘길 수 있어 느린 종료를 hang으로 오판하지 않도록 넉넉히 둔다.
-PROCESS_SHUTDOWN_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_PROCESS_SHUTDOWN_TIMEOUT_SECONDS:-45}"
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=45
 PROCESS_SHUTDOWN_POLL_SECONDS=0.1
 SCENARIO_MARKER_TIMEOUT_SECONDS=30
 LOCAL_READINESS_ATTEMPTS="$(
@@ -56,7 +56,9 @@ PY
 )"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+CONFIG_DIR="$LOG_DIR/config"
 mkdir -p "$LOG_DIR"
+mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 
 read -r DELAY_A_HTTP DELAY_A_ENDPOINT DELAY_B_HTTP DELAY_B_ENDPOINT \
@@ -64,31 +66,16 @@ read -r DELAY_A_HTTP DELAY_A_ENDPOINT DELAY_B_HTTP DELAY_B_ENDPOINT \
   PLAY_B_HTTP PLAY_B_CONTROL PLAY_B_SPOT_ROUTE PLAY_B_SPOT_ROUTER PLAY_B_SPOT_PUB \
   SESSION_A_HTTP SESSION_A_STREAM SESSION_A_SPOT_ROUTER SESSION_A_SPOT_PUB \
   SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB <<<"$(python3 - <<'PY'
-import os
-import random
 import socket
 
 sockets = []
 ports = []
-host = os.environ.get("ZLINK_CPP_E2E_BIND_HOST", "127.0.0.2")
-base = os.environ.get("ZLINK_CPP_E2E_PORT_BASE")
-port_range = int(os.environ.get("ZLINK_CPP_E2E_PORT_RANGE", "20000"))
-start = int(base) if base else 10000
-stop = start + port_range if base else 30000
-available = list(range(start, stop))
-for port in random.sample(available, len(available)):
+host = "127.0.0.1"
+for _ in range(22):
     sock = socket.socket()
-    try:
-        sock.bind((host, port))
-    except OSError:
-        sock.close()
-        continue
+    sock.bind((host, 0))
     sockets.append(sock)
     ports.append(sock.getsockname()[1])
-    if len(ports) == 22:
-        break
-if len(ports) != 22:
-    raise SystemExit(f"failed to allocate 22 local ports, allocated {len(ports)}")
 print(f"http://{host}:{ports[0]}", end=" ")
 print(f"tcp://{host}:{ports[1]}", end=" ")
 print(f"http://{host}:{ports[2]}", end=" ")
@@ -147,13 +134,8 @@ process_exited() {
 launch_process() {
   local stdout_log="$1"
   local stderr_log="$2"
-  local wrapper="$3"
-  shift 3
-  if [[ -n "$wrapper" ]]; then
-    "$wrapper" "$@" >"$stdout_log" 2>"$stderr_log" &
-  else
-    "$@" >"$stdout_log" 2>"$stderr_log" &
-  fi
+  shift 2
+  "$@" >"$stdout_log" 2>"$stderr_log" &
 }
 
 print_failure_logs() {
@@ -203,6 +185,7 @@ cleanup() {
     fi
   done
   docker rm -f "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  rm -rf "$CONFIG_DIR"
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
     print_failure_logs
@@ -343,12 +326,21 @@ start_delay_role() {
   local name="$1"
   local http_endpoint="$2"
   local delay_endpoint="$3"
-  ZLINK_CPP_E2E_NODE_RID="$name" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http_endpoint" \
-  ZLINK_CPP_E2E_DELAY_ENDPOINT="$delay_endpoint" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
-      "${ZLINK_CPP_E2E_DELAY_WRAPPER:-}" "$DELAY"
+  local config_path="$CONFIG_DIR/$name.json"
+  python3 - "$config_path" "$name" "$http_endpoint" "$delay_endpoint" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, name, http_endpoint, delay_endpoint, log_dir = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": name, "httpEndpoint": http_endpoint,
+        "delayEndpoint": delay_endpoint, "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
+    "$DELAY" --config="$config_path"
   PIDS+=("$!")
   wait_port "$name" "$http_endpoint"
   wait_port "$name-delay" "$delay_endpoint"
@@ -362,18 +354,29 @@ start_play_role() {
   local spot_router_endpoint="$5"
   local spot_pub_endpoint="$6"
   local delay_endpoint="$7"
-  ZLINK_CPP_E2E_NODE_RID="$name" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http_endpoint" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_CONTROL_ENDPOINT="$control_endpoint" \
-  ZLINK_CPP_E2E_DELAY_ENDPOINT="$delay_endpoint" \
-  ZLINK_CPP_E2E_SPOT_ROUTE_ENDPOINT="$spot_route_endpoint" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot_router_endpoint" \
-  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$spot_pub_endpoint" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
-      "${ZLINK_CPP_E2E_PLAY_WRAPPER:-}" "$PLAY"
+  local config_path="$CONFIG_DIR/$name.json"
+  python3 - "$config_path" "$name" "$http_endpoint" "$control_endpoint" \
+    "$spot_route_endpoint" "$spot_router_endpoint" "$spot_pub_endpoint" \
+    "$delay_endpoint" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, name, http_endpoint, control_endpoint, spot_route_endpoint,
+ spot_router_endpoint, spot_pub_endpoint, delay_endpoint, redis_endpoint,
+ redis_key_prefix, log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": name, "httpEndpoint": http_endpoint,
+        "controlEndpoint": control_endpoint, "spotRouteEndpoint": spot_route_endpoint,
+        "spotRouterEndpoint": spot_router_endpoint, "spotPubEndpoint": spot_pub_endpoint,
+        "delayEndpoint": delay_endpoint,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
+    "$PLAY" --config="$config_path"
   PIDS+=("$!")
   wait_port "$name" "$http_endpoint"
   wait_port "$name-control" "$control_endpoint"
@@ -389,23 +392,57 @@ start_session_role() {
   local spot_route_peer_endpoint="$7"
   local spot_router_endpoint="$8"
   local spot_pub_endpoint="$9"
-  ZLINK_CPP_E2E_NODE_RID="$name" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http_endpoint" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$stream_endpoint" \
-  ZLINK_CPP_E2E_CONTROL_ENDPOINT="$control_endpoint" \
-  ZLINK_CPP_E2E_CONTROL_PEER_ENDPOINT="$control_peer_endpoint" \
-  ZLINK_CPP_E2E_SPOT_ROUTE_ENDPOINT="$spot_route_endpoint" \
-  ZLINK_CPP_E2E_SPOT_ROUTE_PEER_ENDPOINT="$spot_route_peer_endpoint" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot_router_endpoint" \
-  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$spot_pub_endpoint" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
-      "${ZLINK_CPP_E2E_SESSION_WRAPPER:-}" "$SESSION"
+  local config_path="$CONFIG_DIR/$name.json"
+  python3 - "$config_path" "$name" "$http_endpoint" "$stream_endpoint" \
+    "$control_endpoint" "$control_peer_endpoint" "$spot_route_endpoint" \
+    "$spot_route_peer_endpoint" "$spot_router_endpoint" "$spot_pub_endpoint" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, name, http_endpoint, stream_endpoint, control_endpoint,
+ control_peer_endpoint, spot_route_endpoint, spot_route_peer_endpoint,
+ spot_router_endpoint, spot_pub_endpoint, redis_endpoint, redis_key_prefix,
+ log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": name, "httpEndpoint": http_endpoint,
+        "streamEndpoint": stream_endpoint, "controlEndpoint": control_endpoint,
+        "controlPeerEndpoint": control_peer_endpoint,
+        "spotRouteEndpoint": spot_route_endpoint,
+        "spotRoutePeerEndpoint": spot_route_peer_endpoint,
+        "spotRouterEndpoint": spot_router_endpoint, "spotPubEndpoint": spot_pub_endpoint,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  launch_process "$LOG_DIR/$name.stdout.log" "$LOG_DIR/$name.stderr.log" \
+    "$SESSION" --config="$config_path"
   PIDS+=("$!")
   wait_port "$name" "$http_endpoint"
   wait_port "$name-stream" "$stream_endpoint"
+}
+
+write_client_config() {
+  local path="$1"
+  local scenario="$2"
+  local request_id="${3:-}"
+  local spot_rid="${4:-}"
+  python3 - "$path" "$SESSION_A_STREAM" "$SESSION_B_STREAM" "$scenario" \
+    "$request_id" "$spot_rid" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, session_a, session_b, scenario, request_id, spot_rid = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"sessionAStreamEndpoint": session_a,
+        "sessionBStreamEndpoint": session_b, "scenario": scenario,
+        "requestId": request_id, "spotRid": spot_rid}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
 }
 
 start_delay_role delay-a "$DELAY_A_HTTP" "$DELAY_A_ENDPOINT"
@@ -421,10 +458,9 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LO
   if [[ "$CLIENT_SCENARIO" == "atd-d1" ]]; then
     CLIENT_SCENARIO="full"
   fi
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
-ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
-ZLINK_CPP_E2E_SCENARIO="$CLIENT_SCENARIO" \
-    "$CLIENT" >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+  write_client_config "$CONFIG_DIR/client.json" "$CLIENT_SCENARIO"
+  "$CLIENT" --config="$CONFIG_DIR/client.json" \
+    >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
   if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == "atd-d1" ]]; then
     grep -q "scenario ATD-A1 passed" "$LOG_DIR/client.stdout.log"
     grep -q "scenario ATD-A2 passed" "$LOG_DIR/client.stdout.log"
@@ -457,12 +493,10 @@ fi
 SHUTDOWN_ID="ATD-E3-$RUN_ID"
 SHUTDOWN_SPOT="await-shutdown-${RUN_ID//[^a-zA-Z0-9]/}"
 if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == "atd-e3" ]]; then
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
-ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
-ZLINK_CPP_E2E_SCENARIO="shutdown-wait" \
-ZLINK_CPP_E2E_REQUEST_ID="$SHUTDOWN_ID" \
-ZLINK_CPP_E2E_SPOT_RID="$SHUTDOWN_SPOT" \
-    "$CLIENT" >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
+  write_client_config "$CONFIG_DIR/client-shutdown-wait.json" "shutdown-wait" \
+    "$SHUTDOWN_ID" "$SHUTDOWN_SPOT"
+  "$CLIENT" --config="$CONFIG_DIR/client-shutdown-wait.json" \
+    >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
   SHUTDOWN_CLIENT_PID=$!
   wait_file_contains \
     "$LOG_DIR/play-a.evidence.log" \
@@ -482,12 +516,11 @@ ZLINK_CPP_E2E_SPOT_RID="$SHUTDOWN_SPOT" \
   PLAY_A_PID="${PIDS[-1]}"
   sleep "$SCENARIO_SETTLE_SECONDS"
 
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$SESSION_A_STREAM" \
-ZLINK_CPP_E2E_SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM" \
-ZLINK_CPP_E2E_SCENARIO="shutdown-recovery" \
-ZLINK_CPP_E2E_REQUEST_ID="$SHUTDOWN_ID-recovery" \
-ZLINK_CPP_E2E_SPOT_RID="$SHUTDOWN_SPOT" \
-    "$CLIENT" >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
+  write_client_config "$CONFIG_DIR/client-shutdown-recovery.json" "shutdown-recovery" \
+    "$SHUTDOWN_ID-recovery" "$SHUTDOWN_SPOT"
+  "$CLIENT" --config="$CONFIG_DIR/client-shutdown-recovery.json" \
+    >"$LOG_DIR/client-shutdown-recovery.stdout.log" \
+    2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
   grep -q "automatic-turn-dispatch shutdown recovery result=passed" "$LOG_DIR/client-shutdown-recovery.stdout.log"
 fi
 

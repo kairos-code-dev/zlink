@@ -150,18 +150,16 @@ final class ZLinkStreamConnectionLifecycle {
     }
 
     private CompletionStage<Void> connectOnceStage() {
-        if (isWebSocketEndpoint()) {
-            return connectWebSocketStage();
-        }
-        if (isTlsEndpoint()) {
-            return ZLinkTlsTransportConnection.connectStage(
+        return switch (configuration.transport().kind()) {
+            case WEB_SOCKET, WEB_SOCKET_SECURE -> connectWebSocketStage();
+            case TLS -> ZLinkTlsTransportConnection.connectStage(
                 configuration.endpoint(),
                 configuration.timeouts().connect(),
                 configuration.limits().receivePayload(),
                 configuration.transport().skipServerCertificateValidation())
                 .thenAccept(this::activateConnection);
-        }
-        return connectTcpStage();
+            case TCP -> connectTcpStage();
+        };
     }
 
     private CompletionStage<Void> connectTcpStage() {
@@ -440,12 +438,8 @@ final class ZLinkStreamConnectionLifecycle {
     }
 
     private boolean isWebSocketEndpoint() {
-        String scheme = configuration.endpoint().getScheme();
-        return "ws".equals(scheme) || "wss".equals(scheme);
-    }
-
-    private boolean isTlsEndpoint() {
-        return "tls".equals(configuration.endpoint().getScheme());
+        return configuration.transport().kind() == ZLinkStreamTransport.WEB_SOCKET
+            || configuration.transport().kind() == ZLinkStreamTransport.WEB_SOCKET_SECURE;
     }
 
     private static SSLContext insecureSslContext() {

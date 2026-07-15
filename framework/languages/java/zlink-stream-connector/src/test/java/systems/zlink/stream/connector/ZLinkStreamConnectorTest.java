@@ -32,6 +32,16 @@ import systems.zlink.contracts.messaging.Message;
 
 final class ZLinkStreamConnectorTest {
     @Test
+    void transportSurfaceMatchesContract() throws Exception {
+        Class<?> transport = Class.forName("systems.zlink.stream.connector.ZLinkStreamTransport");
+        assertEquals(
+            java.util.List.of("TCP", "TLS", "WEB_SOCKET", "WEB_SOCKET_SECURE"),
+            java.util.Arrays.stream(transport.getEnumConstants())
+                .map(Object::toString)
+                .toList());
+    }
+
+    @Test
     void packetNameOverrideSurfaceMatchesContract() throws Exception {
         assertEquals(ZLinkStreamSendCall.class, ZLinkStreamSendCall.class
             .getMethod("packetName", String.class).getReturnType());

@@ -2,7 +2,6 @@ package systems.zlink.stream.connector;
 
 import java.net.URI;
 import java.time.Duration;
-import java.util.List;
 import java.util.Objects;
 
 final class ZLinkStreamConnectorConfiguration {
@@ -34,13 +33,14 @@ final class ZLinkStreamConnectorConfiguration {
             options.reconnectMaxDelay(),
             options.reconnectBackoffFactor());
         this.transport = new Transport(
+            transportFor(options.endpoint()),
             options.skipServerCertificateValidation(), options.compressionCodec());
     }
 
     static ZLinkStreamConnectorConfiguration from(ZLinkStreamConnectorOptions options) {
         Objects.requireNonNull(options, "options");
         Objects.requireNonNull(options.endpoint(), "endpoint");
-        requireSupportedEndpointScheme(options.endpoint().getScheme());
+        transportFor(options.endpoint());
         Objects.requireNonNull(options.dispatchMode(), "dispatchMode");
         Objects.requireNonNull(options.nameResolver(), "nameResolver");
         requirePositive(options.connectTimeout(), "connectTimeout");
@@ -94,6 +94,7 @@ final class ZLinkStreamConnectorConfiguration {
         Duration maxDelay,
         double backoffFactor) { }
     record Transport(
+        ZLinkStreamTransport kind,
         boolean skipServerCertificateValidation,
         ZLinkStreamCompressionCodec compressionCodec) { }
 
@@ -104,12 +105,18 @@ final class ZLinkStreamConnectorConfiguration {
         }
     }
 
-    private static void requireSupportedEndpointScheme(String scheme) {
+    private static ZLinkStreamTransport transportFor(URI endpoint) {
+        String scheme = endpoint.getScheme();
         if (scheme == null || scheme.isBlank()) {
             throw new IllegalArgumentException("endpoint URI scheme is required");
         }
-        if (!List.of("tcp", "tls", "ws", "wss").contains(scheme)) {
-            throw new IllegalArgumentException("unsupported endpoint URI scheme: " + scheme);
-        }
+        return switch (scheme) {
+            case "tcp" -> ZLinkStreamTransport.TCP;
+            case "tls" -> ZLinkStreamTransport.TLS;
+            case "ws" -> ZLinkStreamTransport.WEB_SOCKET;
+            case "wss" -> ZLinkStreamTransport.WEB_SOCKET_SECURE;
+            default -> throw new IllegalArgumentException(
+                "unsupported endpoint URI scheme: " + scheme);
+        };
     }
 }

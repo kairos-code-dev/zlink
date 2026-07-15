@@ -2,8 +2,6 @@
 #pragma once
 
 #include "../../Configuration/evidence_store.hpp"
-#include "../../Configuration/sample_names.hpp"
-
 #include <zlink/framework.hpp>
 
 #include <iostream>
@@ -38,7 +36,7 @@ class delivery_status_changed_handler_t
     {
         _evidence.append (request);
 
-        auto actor_ref = co_await _actor_directory.find (sample_names_t::customer_id);
+        auto actor_ref = co_await _actor_directory.find (request.customer_id);
         if (!actor_ref) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::actor_route_not_found,
@@ -47,7 +45,7 @@ class delivery_status_changed_handler_t
         _actors
           .send_to_actor (*actor_ref,
                           delivery_status_updated_msg_t{request.delivery_id,
-                                                        sample_names_t::customer_id,
+                                                        request.customer_id,
                                                         request.status, request.courier_id,
                                                         request.occurred_at})
           .submit ();

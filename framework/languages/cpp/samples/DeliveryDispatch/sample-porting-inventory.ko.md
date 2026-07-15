@@ -14,7 +14,7 @@ CMake sample target과 runner를 둔다.
 | `README.ko.md` | `README.ko.md`; `feature-map.ko.md` | docs | done | 실행 방법과 검증 항목을 C++ 기준으로 기록한다. |
 | `run_sample.sh` | `run_sample.sh` | runner | done | 필요한 CMake target을 빌드하고 Redis location store, tracking, customer gateway, courier session, courier gateway, courier actor node 2개, dispatch center, dispatch API, probe, client를 실행한다. customer stream과 courier stream endpoint도 분리한다. |
 | `Shared/DeliveryDispatch.Shared.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | shared header를 각 target include 경로로 사용한다. |
-| `Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.hpp` | shared | done | delivery request, reply, notify, evidence, `BindCourierReq`, `BindCourierSessionReq`, `EnsureCourierActorReq`, offer notify, courier decision DTO가 대응한다. CustomerGateway와 Courier 쪽 actor-bound session 경로도 대응한다. |
+| `Shared/Contracts/Messages.cs` | `Shared/Contracts/messages.hpp` | shared | done | 상태 문자열은 이름 있는 값을 사용하고, `BindCourierSessionRes.Actor`는 node routing id·actor id·generation을 포함하는 framework `ActorRefSnapshot` 전체를 사용한다. `DeliveryStatusChangedReq`는 delivery id와 customer id를 함께 전달한다. CustomerGateway와 Courier 쪽 actor-bound session 경로도 대응한다. |
 | `Server/Configuration/DeliveryDispatch.Server.Configuration.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | configuration headers를 각 role target에서 include한다. |
 | `Server/Configuration/EvidenceStore.cs` | `Server/Configuration/evidence_store.hpp` | infrastructure | done | 상태 evidence append/read/sequence 검증을 담당한다. |
 | `Server/Configuration/SampleFlowLog.cs` | `sample_log_dir.hpp`; role `main.cpp` trace option | infrastructure | done | role별 message-flow log 파일 경로를 제공한다. |
@@ -25,7 +25,7 @@ CMake sample target과 runner를 둔다.
 | `Server/Registry/Program.cs` | not-needed | server-role | removed | registry role 진입점은 삭제했다. |
 | `Server/Tracking/DeliveryDispatch.Server.Tracking.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | tracking target이 대응한다. |
 | `Server/Tracking/TrackingServerHostFactory.cs` | `Server/Tracking/main.cpp` | server-role | done | C++ tracking role은 main에서 tracking route, status publisher, handler group을 구성한다. |
-| `Server/Tracking/Handlers.cs` | `Server/Tracking/Handlers/tracking_handlers.hpp` | handler | done | actor ensure, delivery subscription, status changed handler가 대응한다. |
+| `Server/Tracking/Handlers.cs` | `Server/Tracking/Handlers/tracking_handlers.hpp` | handler | done | actor ensure, delivery subscription, status changed handler가 대응한다. 상태 변경 handler는 요청의 customer id로 고객 actor를 찾으며 고정된 샘플 고객 id에 의존하지 않는다. |
 | `Server/Tracking/Program.cs` | `Server/Tracking/main.cpp` | server-role | done | tracking role 진입점이다. |
 | `Client/DeliveryDispatch.Client.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | client target이 대응한다. |
 | `Client/DeliveryDispatchClientScenario.cs` | `Client/delivery_dispatch_client_scenario.hpp` | scenario | done | successful delivery, reassignment, self-check marker를 검증한다. |
@@ -78,6 +78,14 @@ CMake sample target과 runner를 둔다.
 
 ## 검증
 
+- 2026-07-15: `ctest --test-dir framework/languages/cpp/build -R 'test_cpp_framework_sample_parity' --output-on-failure`
+  - 결과: 통과
+  - 의미: 이름 있는 상태 문자열, 전체 actor ref snapshot, `customerId` 직렬화와 Tracking의 customer id 기반 actor 조회를 검사한다.
+- 2026-07-15: `framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh`
+  - 결과: 통과
+  - 출력: `deliverydispatch sample result=passed`
+  - 의미: 변경된 customer id 전달 계약으로 고객 상태 알림과 재배정 흐름이 끝까지 동작한다.
+
 - 2026-07-01: `timeout 420s framework/languages/cpp/samples/DeliveryDispatch/run_sample.sh`
   - 결과: 통과
   - 출력: `deliverydispatch sample result=passed`
@@ -99,3 +107,10 @@ CMake sample target과 runner를 둔다.
     `PASS SupportChat.Cpp`, `supportchat sample result=passed`, `PASS GameQuest.Cpp`,
     `gamequest sample result=passed`, `PASS ShoppingMall.Cpp`
   - 의미: 상위 sample runner가 여섯 C++ 샘플을 모두 실행하고 DeliveryDispatch를 빠뜨리지 않는지 다시 확인했다.
+
+## 설계 재검토
+
+Tracking이 고객 actor를 찾는 방법으로 delivery id에 대한 별도 색인을 유지하는 안과 상태 변경 메시지의
+customer id를 사용하는 안을 비교했다. 별도 색인은 Dispatch와 Tracking이 같은 delivery-customer 관계를
+각자 관리하게 만든다. 확정된 wire 필드를 사용하면 Tracking은 요청의 식별자만 해석하고, 고객 actor
+directory가 위치 조회를 전담한다. 따라서 고정된 샘플 고객 id와 중복 관계 저장을 제거했다.

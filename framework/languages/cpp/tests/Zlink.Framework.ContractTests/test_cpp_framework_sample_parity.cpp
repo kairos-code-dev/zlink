@@ -333,6 +333,26 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
     EXPECT_STREQ (delivery_status_t::reassigned, "Reassigned");
     EXPECT_STREQ (delivery_status_t::delivered, "Delivered");
 
+    const auto status_wire = nlohmann::json (
+      delivery_status_notify_t{"delivery-1", delivery_status_t::assigned, "courier-1",
+                               "2026-07-15T00:00:00Z"});
+    EXPECT_EQ (status_wire.at ("status"), "Assigned");
+
+    const auto actor_snapshot = actor_ref_snapshot_t{
+      .node_rid = zlink::framework::node_rid_t::from_string ("courier-node"),
+      .actor_id = "courier-1",
+      .generation = 7};
+    const auto bind_wire = nlohmann::json (
+      bind_courier_session_res_t{"courier-1", actor_snapshot, "courier-route"});
+    EXPECT_EQ (bind_wire.at ("actor").at ("nodeRid"), "courier-node");
+    EXPECT_EQ (bind_wire.at ("actor").at ("actorId"), "courier-1");
+    EXPECT_EQ (bind_wire.at ("actor").at ("generation"), 7);
+
+    const auto changed_wire = nlohmann::json (delivery_status_changed_req_t{
+      "delivery-1", "customer-2", delivery_status_t::assigned, "courier-1",
+      "2026-07-15T00:00:00Z"});
+    EXPECT_EQ (changed_wire.at ("customerId"), "customer-2");
+
     const auto common_doc = read_file (
       repository_root () / "framework/doc/framework/common/sample/deliverydispatch/README.ko.md");
     for (const auto *message : {"CreateDeliveryReq",
@@ -376,6 +396,11 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchUsesDotNetSampleStatusSurface)
 
     const auto shared_contract =
       read_file (cpp_language_root () / "samples/DeliveryDispatch/Shared/Contracts/messages.hpp");
+    const auto tracking_handler = read_file (
+      cpp_language_root ()
+      / "samples/DeliveryDispatch/Server/Tracking/Handlers/tracking_handlers.hpp");
+    EXPECT_EQ (tracking_handler.find ("sample_names_t::customer_id"), std::string::npos)
+      << "Tracking must route each status update with DeliveryStatusChangedReq.customerId";
     for (const auto *extra_message : {"OfferDeliveryReq\"",
                                       "SubscribeCustomerToDeliveryReq",
                                       "SubscribeCustomerToDeliveryRes",

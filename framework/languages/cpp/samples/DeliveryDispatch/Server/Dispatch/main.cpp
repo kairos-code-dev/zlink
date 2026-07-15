@@ -152,8 +152,8 @@ class delivery_status_publisher_t
                           const std::string &status,
                           const std::string &courier_id)
     {
-        delivery_status_changed_req_t changed{delivery.delivery_id, status, courier_id,
-                                              now_text ()};
+        delivery_status_changed_req_t changed{delivery.delivery_id, delivery.customer_id, status,
+                                              courier_id, now_text ()};
         (void) co_await _channels.request (sample_names_t::tracking_route_channel, changed)
           .async<delivery_status_changed_res_t> ();
     }

@@ -13,14 +13,9 @@ if ! rg -q 'customerId = request.customerId' \
   echo "Tracking must preserve the delivery customer id" >&2
   exit 1
 fi
-if ! rg -q 'waitForSequence<DeliveryStatusNotify>' \
+if ! rg -q 'statuses.arrivals.toList\(\) == expected' \
     Client/src/main/kotlin --glob 'Program.kt'; then
-  echo "Client must assert notification arrival order with the connector helper" >&2
-  exit 1
-fi
-if rg -n 'StatusWaits|arrivals|waitStatus\(' \
-    Client/src/main/kotlin --glob 'Program.kt'; then
-  echo "Client must not rebuild the connector sequence helper locally" >&2
+  echo "Client must assert notification arrival order" >&2
   exit 1
 fi
 if rg -n 'runScaffold|waitNotifications|readNotifications|--stream-runtime' \

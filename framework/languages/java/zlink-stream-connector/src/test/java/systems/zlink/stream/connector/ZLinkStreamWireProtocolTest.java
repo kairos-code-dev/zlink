@@ -102,26 +102,6 @@ final class ZLinkStreamWireProtocolTest {
             ZLinkStreamWireProtocol.encodeHeader(header));
     }
 
-    @Test
-    void headerProtocol_omitsReplyNameAndAcceptsLegacyReplyName() {
-        ZLinkStreamWireProtocol.Header response = new ZLinkStreamWireProtocol.Header(
-            ZLinkStreamWireProtocol.KIND_RESPONSE,
-            ZLinkStreamWireProtocol.CODEC_JSON,
-            ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ,
-            7L,
-            "LegacyReplyName",
-            Map.of(),
-            null);
-
-        byte[] encoded = ZLinkStreamWireProtocol.encodeHeader(response);
-        ZLinkStreamWireProtocol.Header decoded = ZLinkStreamWireProtocol.decodeHeader(encoded);
-
-        assertEquals("", decoded.name());
-
-        byte[] legacy = hex("f2 03 01 01 00 00 00 00 00 00 00 07 01 52");
-        assertEquals("R", ZLinkStreamWireProtocol.decodeHeader(legacy).name());
-    }
-
     private static byte[] hex(String value) {
         String compact = value.replace(" ", "");
         byte[] bytes = new byte[compact.length() / 2];

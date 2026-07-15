@@ -11,6 +11,17 @@ const sampleClients = [
   'samples/TicTacToe.Ts/Client/tictactoe-client-scenario.ts'
 ];
 
+const e2eScenarioAssertions = [
+  'e2e/AutomaticTurnDispatch/Client/Support/scenario-assert.ts',
+  'e2e/DiscoveryRegistryHa/Client/Support/scenario-assert.ts',
+  'e2e/PubSub/Client/Support/scenario-assert.ts',
+  'e2e/RegistrationCodec/Client/Support/scenario-assert.ts',
+  'e2e/RegistryMessaging/Client/Support/scenario-assert.ts',
+  'e2e/ResilienceLifecycle/Client/Support/scenario-assert.ts',
+  'e2e/RuntimeMonitoring/Client/Support/scenario-assert.ts',
+  'e2e/SpotService/Client/Support/scenario-assert.ts'
+];
+
 test('stream-connector sample scenarios use the connector test helper surface', () => {
   const samples = sampleClients.map(read).join('\n');
   assert.doesNotMatch(samples, /function (?:ensure|expectFailure|expectNoPush|expectRequestFailure)\b/);
@@ -18,6 +29,12 @@ test('stream-connector sample scenarios use the connector test helper surface', 
   assert.match(samples, /zlinkStreamAssert\.ensure\(/);
   assert.match(samples, /zlinkStreamAssert\.expectFailure\(/);
   assert.match(samples, /\.expectNone(?:<[^>]+>)?\([^\n]+\)\.within\(250\)\.run\(signal\)/);
+});
+
+test('e2e scenarios use the connector assertion surface', () => {
+  const assertions = e2eScenarioAssertions.map(read).join('\n');
+  assert.doesNotMatch(assertions, /export function ensure\b/);
+  assert.equal(assertions.match(/zlinkStreamAssert\.ensure/g)?.length, e2eScenarioAssertions.length);
 });
 
 function read(path) {

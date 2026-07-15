@@ -52,28 +52,6 @@ public interface ZLinkStreamConnector {
         return waitFor(options().nameResolver().resolve(payloadType));
     }
 
-    default ZLinkStreamExpectNoneCall expectNone(String name) {
-        return new DefaultZLinkStreamExpectNoneCall(this, name);
-    }
-
-    default ZLinkStreamExpectNoneCall expectNone(Class<?> payloadType) {
-        Objects.requireNonNull(payloadType, "payloadType");
-        return expectNone(options().nameResolver().resolve(payloadType));
-    }
-
-    default ZLinkStreamSequenceCall waitForSequence(String name) {
-        return new DefaultZLinkStreamSequenceCall(
-            this,
-            name,
-            options().waitTimeout(),
-            options().typedCodec());
-    }
-
-    default ZLinkStreamSequenceCall waitForSequence(Class<?> payloadType) {
-        Objects.requireNonNull(payloadType, "payloadType");
-        return waitForSequence(options().nameResolver().resolve(payloadType));
-    }
-
     AutoCloseable on(
         String name,
         ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler);

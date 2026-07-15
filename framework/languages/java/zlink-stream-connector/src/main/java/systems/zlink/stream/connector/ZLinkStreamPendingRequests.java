@@ -9,16 +9,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 final class ZLinkStreamPendingRequests {
-    private final Map<Long, PendingRequest> requests =
+    private final Map<Long, CompletableFuture<ZLinkStreamEncodedPayload>> requests =
         new ConcurrentHashMap<>();
 
     CompletableFuture<ZLinkStreamEncodedPayload> add(
         long requestSeq,
-        String packetName,
         Duration timeout,
         ScheduledExecutorService scheduler) {
         CompletableFuture<ZLinkStreamEncodedPayload> pending = new CompletableFuture<>();
-        requests.put(requestSeq, new PendingRequest(packetName, pending));
+        requests.put(requestSeq, pending);
         var timeoutTask = scheduler.schedule(() -> {
             if (requests.remove(requestSeq) != null) {
                 pending.completeExceptionally(
@@ -30,36 +29,25 @@ final class ZLinkStreamPendingRequests {
     }
 
     void complete(long requestSeq, ZLinkStreamEncodedPayload payload) {
-        PendingRequest request = requests.remove(requestSeq);
-        CompletableFuture<ZLinkStreamEncodedPayload> pending = request == null ? null : request.future();
+        CompletableFuture<ZLinkStreamEncodedPayload> pending = requests.remove(requestSeq);
         if (pending != null) {
-            pending.complete(new ZLinkStreamEncodedPayload(
-                request.packetName(),
-                payload.payload(),
-                payload.metadata(),
-                payload.codec()));
+            pending.complete(payload);
         }
     }
 
     void fail(long requestSeq, Throwable ex) {
-        PendingRequest request = requests.remove(requestSeq);
-        CompletableFuture<ZLinkStreamEncodedPayload> pending = request == null ? null : request.future();
+        CompletableFuture<ZLinkStreamEncodedPayload> pending = requests.remove(requestSeq);
         if (pending != null) {
             pending.completeExceptionally(ex);
         }
     }
 
     void failAll(Throwable ex) {
-        for (Map.Entry<Long, PendingRequest> entry
+        for (Map.Entry<Long, CompletableFuture<ZLinkStreamEncodedPayload>> entry
             : requests.entrySet()) {
             if (requests.remove(entry.getKey()) != null) {
-                entry.getValue().future().completeExceptionally(ex);
+                entry.getValue().completeExceptionally(ex);
             }
         }
-    }
-
-    private record PendingRequest(
-        String packetName,
-        CompletableFuture<ZLinkStreamEncodedPayload> future) {
     }
 }

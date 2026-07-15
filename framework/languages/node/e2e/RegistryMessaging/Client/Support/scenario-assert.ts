@@ -1,8 +1,6 @@
-export function ensure(condition: boolean, message: string): void {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
+import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
+
+export const ensure: (condition: boolean, message: string) => asserts condition = zlinkStreamAssert.ensure;
 
 export function countNewEvidence(after: readonly string[], before: readonly string[], prefix: string, marker: string): number {
   const beforeCount = before.filter((line) => line.includes(prefix) && line.includes(marker)).length;

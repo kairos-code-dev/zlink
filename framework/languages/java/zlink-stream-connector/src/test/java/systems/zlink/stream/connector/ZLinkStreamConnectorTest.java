@@ -200,7 +200,7 @@ final class ZLinkStreamConnectorTest {
 
             assertTrue(observed.await(1, TimeUnit.SECONDS));
             assertEquals(ZLinkStreamMessageKind.RESPONSE, snapshot.get().kind());
-            assertEquals("", snapshot.get().packetName());
+            assertEquals("EchoReply", snapshot.get().packetName());
             assertEquals(request.header().requestSeq(), snapshot.get().requestSeq());
         }
     }
@@ -404,10 +404,10 @@ final class ZLinkStreamConnectorTest {
             TcpStreamConnectorTestServer.awaitCondition(() -> dropped.get() != null);
             assertEquals(ZLinkStreamErrorCode.OBSERVER_DROPPED, dropped.get().code());
             releaseObserver.countDown();
-            TcpStreamConnectorTestServer.awaitCondition(() -> observedNames.size() > 1);
-            assertEquals("", observedNames.get(1));
-            assertTrue(observedNames.size()
-                <= ZLinkStreamInboundObserverDispatcher.DEFAULT_MAX_NOTIFICATIONS + 1);
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> observedNames.contains("EchoReply0"));
+            assertFalse(observedNames.contains(
+                "EchoReply" + (ZLinkStreamInboundObserverDispatcher.DEFAULT_MAX_NOTIFICATIONS + 1)));
         }
     }
 

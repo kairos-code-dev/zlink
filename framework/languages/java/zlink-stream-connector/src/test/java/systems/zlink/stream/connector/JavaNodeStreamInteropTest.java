@@ -38,7 +38,7 @@ final class JavaNodeStreamInteropTest {
         assertEquals(ZLinkStreamWireProtocol.KIND_RESPONSE, decodedHeader.kind());
         assertEquals(ZLinkStreamWireProtocol.CODEC_JSON, decodedHeader.codec());
         assertEquals(42L, decodedHeader.requestSeq());
-        assertEquals("", decodedHeader.name());
+        assertEquals("JoinAccepted", decodedHeader.name());
         assertEquals("node", decodedHeader.metadata().get("source"));
         assertEquals("{\"accepted\":true}", new String(decodedFrame.payload(), StandardCharsets.UTF_8));
     }
@@ -83,15 +83,10 @@ final class JavaNodeStreamInteropTest {
 
     private static String nodeScript() {
         return """
-            const path = require('node:path');
             const connector = require(process.argv[1]);
-            const { ZlinkStreamFrameCodec } = require(
-              path.join(process.argv[1], 'Runtime/Protocol/ZlinkStreamFrameCodec.js'));
-            const { ZlinkStreamHeaderCodec } = require(
-              path.join(process.argv[1], 'Runtime/Protocol/ZlinkStreamHeaderCodec.js'));
             const requestFrame = Buffer.from(process.argv[2], 'hex');
-            const decodedFrame = ZlinkStreamFrameCodec.decode(requestFrame);
-            const decodedHeader = ZlinkStreamHeaderCodec.decode(decodedFrame.header);
+            const decodedFrame = connector.ZlinkStreamFrameCodec.decode(requestFrame);
+            const decodedHeader = connector.ZlinkStreamHeaderCodec.decode(decodedFrame.header);
             if (decodedHeader.kind !== connector.ZlinkStreamMessageKind.Request ||
                 decodedHeader.codec !== connector.ZlinkStreamCodec.Json ||
                 decodedHeader.requestSeq !== 42n ||
@@ -100,7 +95,7 @@ final class JavaNodeStreamInteropTest {
                 Buffer.from(decodedFrame.payload).toString('utf8') !== '{"join":true}') {
               throw new Error('Node failed to decode Java request frame');
             }
-            const responseHeader = ZlinkStreamHeaderCodec.encode({
+            const responseHeader = connector.ZlinkStreamHeaderCodec.encode({
               kind: connector.ZlinkStreamMessageKind.Response,
               codec: connector.ZlinkStreamCodec.Json,
               flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
@@ -108,7 +103,7 @@ final class JavaNodeStreamInteropTest {
               name: 'JoinAccepted',
               metadata: connector.ZlinkStreamMetadataMap.empty.with('source', 'node')
             });
-            const responseFrame = ZlinkStreamFrameCodec.encode(
+            const responseFrame = connector.ZlinkStreamFrameCodec.encode(
               responseHeader,
               new TextEncoder().encode('{"accepted":true}'));
             process.stdout.write(Buffer.from(responseFrame).toString('hex'));

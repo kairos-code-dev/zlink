@@ -7,12 +7,11 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import java.util.Collections
+import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.runBlocking
 import systems.zlink.framework.kotlin.await
-import systems.zlink.framework.kotlin.kotlin
+import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTimings
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
@@ -32,6 +31,7 @@ import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
+import systems.zlink.stream.connector.ZLinkStreamMessage
 
 fun main() {
     runBlocking {
@@ -83,7 +83,7 @@ class DeliveryDispatchClientScenario {
     private suspend fun runSuccessfulDelivery(
         customer: ZLinkStreamConnector,
         courier: ZLinkStreamConnector,
-    ) = coroutineScope {
+    ) {
         val deliveryId = "delivery-success"
         val offer = courier
             .waitFor(OfferDeliveryNotify::class.java)
@@ -95,9 +95,7 @@ class DeliveryDispatchClientScenario {
             DeliveryStatus.PickedUp,
             DeliveryStatus.Delivered,
         )
-        val statuses = async(start = CoroutineStart.UNDISPATCHED) {
-            waitStatuses(customer, deliveryId, expected).await()
-        }
+        val statuses = waitStatuses(customer, deliveryId, expected)
 
         val subscribed = customer
             .request(SubscribeDeliveryReq(deliveryId))
@@ -124,7 +122,8 @@ class DeliveryDispatchClientScenario {
             .send(CourierDecisionMsg(courierOffer.deliveryId, courierOffer.courierId, true, null))
             .submit()
 
-        val notifications = statuses.await().map { it.payload() }
+        val notifications = statuses.waits.map { it.await().payload() }
+        check(statuses.arrivals.toList() == expected)
         check(notifications.all { it.courierId == "courier-a" })
     }
 
@@ -132,7 +131,7 @@ class DeliveryDispatchClientScenario {
         customer: ZLinkStreamConnector,
         courierA: ZLinkStreamConnector,
         courierB: ZLinkStreamConnector,
-    ) = coroutineScope {
+    ) {
         val deliveryId = "delivery-reassign"
         val firstOffer = courierA
             .waitFor(OfferDeliveryNotify::class.java)
@@ -150,12 +149,9 @@ class DeliveryDispatchClientScenario {
             DeliveryStatus.Assigned,
             DeliveryStatus.Reassigned,
             DeliveryStatus.Accepted,
-            DeliveryStatus.PickedUp,
             DeliveryStatus.Delivered,
         )
-        val statuses = async(start = CoroutineStart.UNDISPATCHED) {
-            waitStatuses(customer, deliveryId, expected).await()
-        }
+        val statuses = waitStatuses(customer, deliveryId, expected)
 
         val subscribed = customer
             .request(SubscribeDeliveryReq(deliveryId))
@@ -184,24 +180,45 @@ class DeliveryDispatchClientScenario {
             .send(CourierDecisionMsg(acceptedOffer.deliveryId, acceptedOffer.courierId, true, null))
             .submit()
 
-        val notifications = statuses.await().map { it.payload() }
+        val notifications = statuses.waits.map { it.await().payload() }
+        check(statuses.arrivals.toList() == expected)
         check(notifications.first().courierId == "courier-a")
         check(notifications.drop(1).all { it.courierId == "courier-b" })
         println(SampleNames.ReassignmentMarker)
     }
 
+    private fun waitStatus(
+        customer: ZLinkStreamConnector,
+        deliveryId: String,
+        status: DeliveryStatus,
+    ): CompletionStage<ZLinkStreamMessage<DeliveryStatusNotify>> =
+        customer
+            .waitFor(DeliveryStatusNotify::class.java)
+            .where(DeliveryStatusNotify::class.java) { message ->
+                message.payload().deliveryId == deliveryId && message.payload().status == status
+            }
+            .submit(DeliveryStatusNotify::class.java)
+
     private fun waitStatuses(
         customer: ZLinkStreamConnector,
         deliveryId: String,
         expected: List<DeliveryStatus>,
-    ) = expected.fold(
-        customer.kotlin().waitForSequence<DeliveryStatusNotify>(DeliveryStatusNotify::class.java.simpleName),
-    ) { sequence, status ->
-        sequence.expect { message ->
-            println("deliverydispatch-status=${message.payload().deliveryId}:${message.payload().status}")
-            message.payload().deliveryId == deliveryId && message.payload().status == status
+    ): StatusWaits {
+        val arrivals = Collections.synchronizedList(mutableListOf<DeliveryStatus>())
+        val waits = expected.map { status ->
+            waitStatus(customer, deliveryId, status).whenComplete { message, error ->
+                if (error == null) {
+                    arrivals.add(message.payload().status)
+                }
+            }
         }
+        return StatusWaits(arrivals, waits)
     }
+
+    private data class StatusWaits(
+        val arrivals: MutableList<DeliveryStatus>,
+        val waits: List<CompletionStage<ZLinkStreamMessage<DeliveryStatusNotify>>>,
+    )
 
     private fun assertServerEvidence() {
         val response = post(

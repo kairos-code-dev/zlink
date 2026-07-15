@@ -14,16 +14,6 @@ if rg -n -U '\.enableClient\(\s*[^)\s]|\.connect(?:Router|PeerPub)\(' Server --g
   echo "DeliveryDispatch server code must use location-store automatic connections" >&2
   exit 1
 fi
-if ! rg -q 'waitForSequence\(Messages\.DeliveryStatusNotify\.class\)' \
-    Client/src/main/java --glob 'DeliveryDispatchClientScenario.java'; then
-  echo "DeliveryDispatch client must use the connector sequence helper" >&2
-  exit 1
-fi
-if rg -n 'assertStatusOrder|observedStatuses' \
-    Client/src/main/java --glob 'DeliveryDispatchClientScenario.java'; then
-  echo "DeliveryDispatch client must not rebuild the connector sequence helper locally" >&2
-  exit 1
-fi
 
 if grep -q 'Server:CourierGateway' standalone.settings.gradle.kts; then
   echo "DeliveryDispatch must not include the dead CourierGateway role" >&2

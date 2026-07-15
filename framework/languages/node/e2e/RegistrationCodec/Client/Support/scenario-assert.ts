@@ -1,8 +1,6 @@
-export function ensure(condition: boolean, message: string): void {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
+import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
+
+export const ensure: (condition: boolean, message: string) => asserts condition = zlinkStreamAssert.ensure;
 
 export async function eventually(
   condition: () => Promise<boolean>,

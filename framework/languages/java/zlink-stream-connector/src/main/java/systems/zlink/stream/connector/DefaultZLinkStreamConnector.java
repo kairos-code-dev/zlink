@@ -221,7 +221,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         ensureConnected();
         long requestSeq = nextRequestSeq();
         CompletableFuture<ZLinkStreamEncodedPayload> pending =
-            pendingRequests.add(requestSeq, payload.packetName(), timeout, timeouts);
+            pendingRequests.add(requestSeq, timeout, timeouts);
 
         byte[] body = payloadCodec.encode(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(

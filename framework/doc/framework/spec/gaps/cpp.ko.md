@@ -274,7 +274,8 @@
   - 근거: SpotNode의 runtime capability 누락 검증은 기존 공통 options validator에 이미 존재함을 확인했다. 수정 전 module-hosted gate는 bind가 없는 STREAM 선언을 조용히 버려 exit 69로 실패했다. options가 STREAM node의 선언·bind·session과 전역 session 이름을 보존하도록 바꿔 bind 누락, session 누락, node 이름 중복, session 이름 중복을 host 시작 전에 거부한 뒤 네 회귀 gate, target-contract gate, contract-header와 module-hosted ctest가 모두 통과했다.
 - [x] **IMP-CP-05** (결함) — 40 §2.1·02 §4
   - 근거: 수정 전 실제 auto-connect 회귀 테스트에서 endpoint 없는 RouteMesh local row를 `Router`로 찾지 못해 실패했다. endpoint 유무와 관계없이 local role을 `Router`로 게시하고 RouteMesh discovery에서 `Dealer` peer를 거부하도록 모델을 바로잡은 뒤, endpoint 없는 local row와 잘못된 dealer peer 거부를 확인하는 회귀, route initiator ordering 시나리오, location resolver 전체 ctest와 target-contract gate가 통과했다.
-- [ ] **IMP-CP-06** (결함) — 40 §8.2·§6.1
+- [x] **IMP-CP-06** (결함) — 40 §8.2·§6.1
+  - 근거: 재검증에서 후속 Config 6 작업으로 이미 정본을 준수함을 확인했다. auto-connect loop는 설정한 polling interval을 사용하고(`6004fb09b`), store 장애 동안 마지막 desired set과 failure grace를 적용하며(`e3d003a0c`), 복구 시 local row를 다시 게시한 뒤 heartbeat 1회와 다음 polling tick까지 disconnect diff를 유예한다(`1301c3b9c`). target-contract gate와 실제 Redis 중단·replacement provider·복구를 수행한 `./run_e2e.sh SF-B2`가 통과했다(`logs/20260715-141516-3731091`).
 - [x] **IMP-CP-07** (결함) — 40 §2.3·§5.1
   - 근거: 수정 전 pending actor claim을 entry address로 성공 반환하는 resolver 회귀가 실패했다. actor row 관찰기가 key별 최신 generation과 commit된 `ActorRef`를 함께 판정하고 resolver, handle refresh, 운영 목록, actor directory, actor client가 같은 관찰 상태를 공유하도록 연결했다. pending miss, generation 2 관찰 뒤 generation 1 거부, pending generation 3 뒤 같은 generation commit 허용 회귀와 관련 ctest 3개, target-contract gate가 통과했다.
 - [x] **IMP-CP-08** (미구현) — 30 §6

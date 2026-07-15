@@ -16,7 +16,7 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
                                 spot_lifecycle_order_context_t &context)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-A4");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-A4");
     }
 
     auto api = zlink::http_client::client_t::create ()
@@ -53,10 +53,10 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
                                 const std::string &play_b_http_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-A4");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-A4");
     }
     if (play_b_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT is required for SM-A4");
+        throw std::runtime_error ("playBHttpEndpoint is required for SM-A4");
     }
 
     auto play_a = zlink::http_client::client_t::create ()

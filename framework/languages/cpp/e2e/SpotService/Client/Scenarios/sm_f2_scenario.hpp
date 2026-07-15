@@ -18,7 +18,7 @@ inline void run_sm_f2_scenario (const std::string &play_http_endpoint,
                                 spot_lifecycle_order_context_t &context)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-F2");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-F2");
     }
 
     auto api = zlink::http_client::client_t::create ()

@@ -19,10 +19,10 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
                                 const std::string &session_stream_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-B6");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-B6");
     }
     if (session_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-B6");
+        throw std::runtime_error ("streamEndpoint is required for SM-B6");
     }
 
     auto play_a = zlink::http_client::client_t::create ()

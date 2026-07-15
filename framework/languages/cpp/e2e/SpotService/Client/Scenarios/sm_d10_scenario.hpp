@@ -90,7 +90,7 @@ inline void run_sm_d10_scenario (const std::string &session_a_stream_endpoint,
     if (session_a_stream_endpoint.empty () || session_b_stream_endpoint.empty ()
         || play_a_http_endpoint.empty () || play_b_http_endpoint.empty ()) {
         throw std::runtime_error (
-          "ZLINK_CPP_E2E_STREAM_ENDPOINT, ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT, ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT, and ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT are required for SM-D10");
+          "streamEndpoint, alternateStreamEndpoint, playHttpEndpoint, and playBHttpEndpoint are required for SM-D10");
     }
 
     constexpr auto congested_actor = "actor-sm-d10-congested";

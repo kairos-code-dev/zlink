@@ -4,22 +4,47 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
-SCENARIO="${1:-all}"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
-LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_SECONDS:-3}"
+BUILD_DIR="$CPP_DIR/build"
+SCENARIO="all"
+E2E_START_ORDER="forward"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+REDIS_READINESS_TIMEOUT_SECONDS=60
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
-CONTROL_PING_READINESS_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_CONTROL_PING_READINESS_TIMEOUT_SECONDS:-3}"
-CHILD_SWEEP_SETTLE_SECONDS="${ZLINK_CPP_E2E_CHILD_SWEEP_SETTLE_SECONDS:-1}"
+CONTROL_PING_READINESS_TIMEOUT_SECONDS=3
+CHILD_SWEEP_SETTLE_SECONDS=1
 # spot node destroy는 core에서 소켓 제거 완료를 기다린다(ctx_t::wait_for_socket_removal).
 # 부하가 걸린 연속 실행에서는 이 대기가 10초를 넘기는 경우가 있고, 프로세스는 그 뒤 정상
 # 종료한다(60초 유예로 확인). 느린 종료를 강제 kill로 오판하지 않도록 유예를 넉넉히 둔다.
-PROCESS_SHUTDOWN_TIMEOUT_SECONDS="${ZLINK_CPP_E2E_PROCESS_SHUTDOWN_TIMEOUT_SECONDS:-45}"
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS=45
 PROCESS_SHUTDOWN_POLL_SECONDS=0.1
+BIND_HOST="127.0.0.2"
+PORT_BASE=""
+PORT_RANGE=20000
+SKIP_BUILD=0
+INTERNAL_REDIS_ENDPOINT=""
+INTERNAL_REDIS_CONTAINER=""
+GDB_ROLES=""
+if (($# > 0)) && [[ "$1" != --* ]]; then
+  SCENARIO="$1"
+  shift
+fi
+while (($# > 0)); do
+  case "$1" in
+    --start-order=*) E2E_START_ORDER="${1#*=}" ;;
+    --redis-endpoint=*) INTERNAL_REDIS_ENDPOINT="${1#*=}" ;;
+    --redis-container=*) INTERNAL_REDIS_CONTAINER="${1#*=}" ;;
+    --skip-build) SKIP_BUILD=1 ;;
+    --bind-host=*) BIND_HOST="${1#*=}" ;;
+    --port-base=*) PORT_BASE="${1#*=}" ;;
+    --port-range=*) PORT_RANGE="${1#*=}" ;;
+    --gdb-roles=*) GDB_ROLES="${1#*=}" ;;
+    *) echo "Unknown SpotService runner option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -41,16 +66,15 @@ print(max(1, math.ceil(timeout / poll)))
 PY
 )"
 
-read -r ROUTE_A ROUTE_B ROUTE_SESSION_A ROUTE_SESSION_B ROUTE_CLIENT ROUTE_STREAM_CLIENT SPOT_A SPOT_B SPOT_SESSION_A SPOT_SESSION_B SPOT_CLIENT PUB_A PUB_B PUB_SESSION_A PUB_SESSION_B PUB_CLIENT PUBLISHER_CLIENT API_CLIENT STREAM_A STREAM_B MULTI_ROUTE_A MULTI_ROUTE_B MULTI_ROUTE_CLIENT_A MULTI_ROUTE_CLIENT_B MULTI_SPOT_A MULTI_SPOT_B MULTI_PUB_A MULTI_PUB_B STREAM_TLS_A HTTP_A HTTP_B HTTP_SESSION_A HTTP_SESSION_B HTTP_GATEWAY HTTP_MULTI_A HTTP_MULTI_B <<<"$(python3 - <<'PY'
+read -r ROUTE_A ROUTE_B ROUTE_SESSION_A ROUTE_SESSION_B ROUTE_CLIENT ROUTE_STREAM_CLIENT SPOT_A SPOT_B SPOT_SESSION_A SPOT_SESSION_B SPOT_CLIENT PUB_A PUB_B PUB_SESSION_A PUB_SESSION_B PUB_CLIENT PUBLISHER_CLIENT API_CLIENT STREAM_A STREAM_B MULTI_ROUTE_A MULTI_ROUTE_B MULTI_ROUTE_CLIENT_A MULTI_ROUTE_CLIENT_B MULTI_SPOT_A MULTI_SPOT_B MULTI_PUB_A MULTI_PUB_B STREAM_TLS_A HTTP_A HTTP_B HTTP_SESSION_A HTTP_SESSION_B HTTP_GATEWAY HTTP_MULTI_A HTTP_MULTI_B <<<"$(python3 - "$BIND_HOST" "$PORT_BASE" "$PORT_RANGE" <<'PY'
 import random
 import socket
-import os
+import sys
 
 sockets = []
 ports = []
-host = os.environ.get("ZLINK_CPP_E2E_BIND_HOST", "127.0.0.2")
-base = os.environ.get("ZLINK_CPP_E2E_PORT_BASE")
-port_range = int(os.environ.get("ZLINK_CPP_E2E_PORT_RANGE", "20000"))
+host, base, port_range_text = sys.argv[1:]
+port_range = int(port_range_text)
 start = int(base) if base else 10000
 stop = start + port_range if base else 30000
 available = list(range(start, stop))
@@ -77,7 +101,8 @@ PY
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
-mkdir -p "$LOG_DIR"
+CONFIG_DIR="$LOG_DIR/config"
+mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
 cat >"$LOG_DIR/endpoints.env" <<EOF
@@ -122,13 +147,10 @@ EOF
 REDIS_CONTAINER=""
 REDIS_CONTAINER_OWNED=0
 REDIS_KEY_PREFIX="zlink:e2e:cfg2:$(date +%s)-$$"
-if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+if [[ -n "$INTERNAL_REDIS_CONTAINER" && -n "$INTERNAL_REDIS_ENDPOINT" ]]; then
+  REDIS_ENDPOINT="$INTERNAL_REDIS_ENDPOINT"
+  REDIS_CONTAINER="$INTERNAL_REDIS_CONTAINER"
   echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  echo "External Redis endpoint is not supported by the C++ SpotService e2e runner." >&2
-  exit 2
 else
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
     "zlink-redis-cpp-e2e-spotservice" "redis:7-alpine"
@@ -253,7 +275,7 @@ release_port_guards() {
   done
 }
 
-if [[ "${ZLINK_CPP_E2E_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "$SKIP_BUILD" != "1" ]]; then
   cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
   cmake --build "$BUILD_DIR" --target \
     zlink_cpp_e2e_spot_service_play \
@@ -279,35 +301,37 @@ GATEWAY_PID=""
 
 role_uses_gdb() {
   local role="$1"
-  local roles="${ZLINK_CPP_E2E_GDB_ROLES:-}"
+  local roles="$GDB_ROLES"
   [[ "$roles" == "all" || ",$roles," == *",$role,"* ]]
 }
 
 run_server_binary() {
   local role="$1"
   local binary="$2"
+  shift 2
   if role_uses_gdb "$role"; then
     exec gdb --batch -q \
       -ex "set pagination off" \
       -ex "run" \
       -ex "thread apply all bt full" \
-      --args "$binary"
+      --args "$binary" "$@"
   fi
-  exec "$binary"
+  exec "$binary" "$@"
 }
 
 run_foreground_binary() {
   local role="$1"
   local binary="$2"
+  shift 2
   if role_uses_gdb "$role"; then
     gdb --batch -q \
       -ex "set pagination off" \
       -ex "run" \
       -ex "thread apply all bt full" \
-      --args "$binary"
+      --args "$binary" "$@"
     return $?
   fi
-  "$binary"
+  "$binary" "$@"
 }
 
 record_server_pid() {
@@ -521,6 +545,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
+  rm -rf "$CONFIG_DIR"
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   elif [[ $cleanup_failed -ne 0 ]]; then
@@ -640,14 +665,13 @@ PY
 }
 
 allocate_tcp_endpoint() {
-  python3 - <<'PY'
+  python3 - "$BIND_HOST" "$PORT_BASE" "$PORT_RANGE" <<'PY'
 import random
 import socket
-import os
+import sys
 
-host = os.environ.get("ZLINK_CPP_E2E_BIND_HOST", "127.0.0.2")
-base = os.environ.get("ZLINK_CPP_E2E_PORT_BASE")
-port_range = int(os.environ.get("ZLINK_CPP_E2E_PORT_RANGE", "20000"))
+host, base, port_range_text = sys.argv[1:]
+port_range = int(port_range_text)
 start = int(base) if base else 10000
 stop = start + port_range if base else 30000
 available = list(range(start, stop))
@@ -720,27 +744,32 @@ do_start_play() {
   local pubsub="$4"
   local http="$5"
   local api_server="${6:-}"
+  local peer_pubsub="$PUB_B,$PUB_CLIENT"
+  if [[ "$rid" == "play-b" ]]; then
+    peer_pubsub="$PUB_A"
+  fi
   release_port_guards "$route" "$spot" "$pubsub" "$http" "$api_server" "$API_CLIENT" \
     "$PUBLISHER_CLIENT"
-  ZLINK_CPP_E2E_NODE_RID="$rid" \
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_ROUTE_SESSION_A_ENDPOINT="$ROUTE_SESSION_A" \
-  ZLINK_CPP_E2E_ROUTE_SESSION_B_ENDPOINT="$ROUTE_SESSION_B" \
-  ZLINK_CPP_E2E_ROUTE_STREAM_CLIENT_ENDPOINT="$ROUTE_STREAM_CLIENT" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
-  ZLINK_CPP_E2E_API_PEER_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$api_server" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    run_server_binary "$rid" "$PLAY_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  local config_path="$CONFIG_DIR/$rid.json"
+  python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$peer_pubsub" "$API_CLIENT" \
+    "$api_server" "$PUBLISHER_CLIENT" "$http" "$HTTP_A" "$HTTP_B" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json, os, stat, sys
+(path, rid, route, spot, pubsub, peer_pubsub, api_peer, api, publisher, http, play_a_http,
+ play_b_http, redis_endpoint, redis_key_prefix, log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
+        "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
+        "peerPubsubEndpoints": peer_pubsub,
+        "apiPeerEndpoint": api_peer, "apiEndpoint": api,
+        "publisherEndpoint": publisher, "httpEndpoint": http,
+        "playHttpEndpoints": {"playA": play_a_http, "playB": play_b_http},
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  run_server_binary "$rid" "$PLAY_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
   record_server_pid "$rid" "$pid"
   if [[ "$rid" == "play-a" ]]; then
@@ -761,25 +790,28 @@ do_start_session() {
   local tls_stream="${7:-}"
   local tls_cert="${8:-}"
   local tls_key="${9:-}"
+  if [[ "$stream" == "__none__" ]]; then
+    stream=""
+  fi
   release_port_guards "$route" "$spot" "$pubsub" "$stream" "$http" "$tls_stream"
-  ZLINK_CPP_E2E_NODE_RID="$rid" \
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_ROUTE_SESSION_A_ENDPOINT="$ROUTE_SESSION_A" \
-  ZLINK_CPP_E2E_ROUTE_SESSION_B_ENDPOINT="$ROUTE_SESSION_B" \
-  ZLINK_CPP_E2E_ROUTE_STREAM_CLIENT_ENDPOINT="$ROUTE_STREAM_CLIENT" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$stream" \
-  ZLINK_CPP_E2E_TLS_STREAM_ENDPOINT="$tls_stream" \
-  ZLINK_CPP_E2E_TLS_CERT_PATH="$tls_cert" \
-  ZLINK_CPP_E2E_TLS_KEY_PATH="$tls_key" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    run_server_binary "$rid" "$SESSION_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  local config_path="$CONFIG_DIR/$rid.json"
+  python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$stream" \
+    "$tls_stream" "$tls_cert" "$tls_key" "$http" "$REDIS_ENDPOINT" \
+    "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json, os, stat, sys
+(path, rid, route, spot, pubsub, stream, tls_stream, tls_cert, tls_key, http,
+ redis_endpoint, redis_key_prefix, log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
+        "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
+        "streamEndpoint": stream, "tls": {"streamEndpoint": tls_stream,
+        "certPath": tls_cert, "keyPath": tls_key}, "httpEndpoint": http,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  run_server_binary "$rid" "$SESSION_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
   record_server_pid "$rid" "$pid"
   if [[ "$rid" == "session-a" ]]; then
@@ -808,20 +840,21 @@ do_start_gateway() {
   local pubsub="$4"
   local http="$5"
   release_port_guards "$route" "$spot" "$pubsub" "$http"
-  ZLINK_CPP_E2E_NODE_RID="$rid" \
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_ROUTE_SESSION_A_ENDPOINT="$ROUTE_SESSION_A" \
-  ZLINK_CPP_E2E_ROUTE_SESSION_B_ENDPOINT="$ROUTE_SESSION_B" \
-  ZLINK_CPP_E2E_ROUTE_STREAM_CLIENT_ENDPOINT="$ROUTE_STREAM_CLIENT" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    run_server_binary "$rid" "$GATEWAY_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  local config_path="$CONFIG_DIR/$rid.json"
+  python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$http" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json, os, stat, sys
+path, rid, route, spot, pubsub, http, redis_endpoint, redis_key_prefix, log_dir = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
+        "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
+        "httpEndpoint": http,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  run_server_binary "$rid" "$GATEWAY_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
   record_server_pid "$rid" "$pid"
   GATEWAY_PID="$pid"
@@ -838,16 +871,22 @@ do_start_multi_node() {
     peer_route=""
   fi
   release_port_guards "$route" "$spot" "$pubsub" "$http"
-  ZLINK_CPP_E2E_NODE_RID="$rid" \
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-  ZLINK_CPP_E2E_PEER_ROUTE_ENDPOINT="$peer_route" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$pubsub" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    run_server_binary "$rid" "$MULTI_NODE_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  local config_path="$CONFIG_DIR/$rid.json"
+  python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$http" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" "$peer_route" <<'PY'
+import json, os, stat, sys
+(path, rid, route, spot, pubsub, http, redis_endpoint, redis_key_prefix,
+ log_dir, peer_route) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
+        "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
+        "httpEndpoint": http, "disableRouteMesh": "true" if not peer_route else "false",
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  run_server_binary "$rid" "$MULTI_NODE_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   local pid="$!"
   record_server_pid "$rid" "$pid"
 }
@@ -859,15 +898,20 @@ do_start_multi_node_requester() {
   local spot="$4"
   local http="$5"
   release_port_guards "$route_client" "$spot" "$http"
-  ZLINK_CPP_E2E_NODE_RID="$rid" \
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-  ZLINK_CPP_E2E_ROUTE_CLIENT_ENDPOINT="$route_client" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    run_server_binary "$rid-requester" "$MULTI_NODE_REQUESTER" >"$LOG_DIR/$rid-requester.stdout.log" 2>"$LOG_DIR/$rid-requester.stderr.log" &
+  local config_path="$CONFIG_DIR/$rid-requester.json"
+  python3 - "$config_path" "$rid" "$route_client" "$spot" "$http" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json, os, stat, sys
+path, rid, route_client, spot, http, redis_endpoint, redis_key_prefix, log_dir = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeRid": rid, "routeClientEndpoint": route_client,
+        "spotRouterEndpoint": spot, "httpEndpoint": http,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  run_server_binary "$rid-requester" "$MULTI_NODE_REQUESTER" --config="$config_path" \
+    >"$LOG_DIR/$rid-requester.stdout.log" 2>"$LOG_DIR/$rid-requester.stderr.log" &
   record_server_pid "$rid-requester" "$!"
 }
 
@@ -1066,6 +1110,37 @@ settle_scenario() {
   sleep "$SCENARIO_SETTLE_SECONDS"
 }
 
+run_client_from_options() {
+  local config_path="$CONFIG_DIR/client-$(date +%s%N)-$$.json"
+  python3 - "$config_path" "$@" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, *overrides = sys.argv[1:]
+allowed = {"logDir", "routeEndpoint", "routeAEndpoint", "routeBEndpoint",
+    "multiRouteClientAEndpoint", "multiRouteClientBEndpoint",
+    "multiRouteAEndpoint", "multiRouteBEndpoint", "spotRouterEndpoint",
+    "pubsubEndpoint", "publisherEndpoint", "apiEndpoint", "streamEndpoint",
+    "alternateStreamEndpoint", "tlsStreamEndpoint", "scenarioMode",
+    "playHttpEndpoint", "playBHttpEndpoint", "multiAHttpEndpoint",
+    "multiBHttpEndpoint", "multiARequestHttpEndpoint",
+    "multiBRequestHttpEndpoint", "sessionHttpEndpoint", "gatewayHttpEndpoint",
+    "clientRid", "runId", "crashReadyFile", "crashGoFile", "crashObservedFile"}
+configuration = {}
+for override in overrides:
+    key, separator, value = override.partition("=")
+    if not separator or key not in allowed:
+        raise SystemExit(f"unknown SpotService client configuration: {override}")
+    configuration[key] = value
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": configuration}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$CLIENT" --config="$config_path"
+}
+
 run_base_client() {
   ensure_servers_started_and_ready
   local mode="$1"
@@ -1075,30 +1150,29 @@ run_base_client() {
   local route_b_endpoint="${5:-$ROUTE_B}"
   local status=0
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route_endpoint" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$route_a_endpoint" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$route_b_endpoint" \
-  ZLINK_CPP_E2E_MULTI_ROUTE_CLIENT_A_ENDPOINT="$MULTI_ROUTE_CLIENT_A" \
-  ZLINK_CPP_E2E_MULTI_ROUTE_CLIENT_B_ENDPOINT="$MULTI_ROUTE_CLIENT_B" \
-  ZLINK_CPP_E2E_MULTI_ROUTE_A_ENDPOINT="$MULTI_ROUTE_A" \
-  ZLINK_CPP_E2E_MULTI_ROUTE_B_ENDPOINT="$MULTI_ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE="$mode" \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_MULTI_A_HTTP_ENDPOINT="$HTTP_MULTI_A" \
-  ZLINK_CPP_E2E_MULTI_B_HTTP_ENDPOINT="$HTTP_MULTI_B" \
-  ZLINK_CPP_E2E_MULTI_A_REQUEST_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_MULTI_B_REQUEST_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-$mode" \
-  ZLINK_CPP_E2E_RUN_ID="$RUN_ID" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" || status=$?
+  run_client_from_options \
+    routeEndpoint="$route_endpoint" \
+    routeAEndpoint="$route_a_endpoint" \
+    routeBEndpoint="$route_b_endpoint" \
+    multiRouteClientAEndpoint="$MULTI_ROUTE_CLIENT_A" \
+    multiRouteClientBEndpoint="$MULTI_ROUTE_CLIENT_B" \
+    multiRouteAEndpoint="$MULTI_ROUTE_A" \
+    multiRouteBEndpoint="$MULTI_ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode="$mode" \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    multiAHttpEndpoint="$HTTP_MULTI_A" \
+    multiBHttpEndpoint="$HTTP_MULTI_B" \
+    multiARequestHttpEndpoint="$HTTP_A" \
+    multiBRequestHttpEndpoint="$HTTP_B" \
+    clientRid="client-$mode" \
+    runId="$RUN_ID" \
+    logDir="$LOG_DIR" \
+    >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" || status=$?
   cat "$LOG_DIR/$output.stdout.log"
   return "$status"
 }
@@ -1214,7 +1288,6 @@ fi
 
 if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "sm-f6" ]]; then
   ensure_location_store
-  export ZLINK_CPP_E2E_DISABLE_ROUTE_MESH=1
   mapfile -t F6_SERVER_ROLES < <(ordered_roles multi-a multi-b)
   for role in "${F6_SERVER_ROLES[@]}"; do
     case "$role" in
@@ -1292,21 +1365,20 @@ run_stream_route_ready_client() {
   local output="$1"
   local status=0
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_STREAM_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=route-ready \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-stream-route-ready" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" || status=$?
+  run_client_from_options \
+    routeEndpoint="$ROUTE_STREAM_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=route-ready \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-stream-route-ready" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/$output.stdout.log" 2>"$LOG_DIR/$output.stderr.log" || status=$?
   cat "$LOG_DIR/$output.stdout.log"
   return "$status"
 }
@@ -1330,11 +1402,9 @@ run_focused_from_all() {
   for attempt in 1 2; do
     child_output="$LOG_DIR/child-$scenario-attempt-$attempt.output.log"
     set +e
-    ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" \
-    ZLINK_CPP_E2E_SKIP_BUILD=1 \
-    ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" \
-    ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" \
-      "$0" "$scenario" 2>&1 | tee "$child_output"
+    "$0" "$scenario" --skip-build --start-order="$E2E_START_ORDER" \
+      --redis-endpoint="$REDIS_ENDPOINT" --redis-container="$REDIS_CONTAINER" \
+      2>&1 | tee "$child_output"
     child_status="${PIPESTATUS[0]}"
     set -e
     child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
@@ -1853,22 +1923,21 @@ if [[ "$SCENARIO" == "SM-B6" || "$SCENARIO" == "sm-b6" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-b6-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b6-session-a-play-a-ready"
   status=0
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-b6 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-b6" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-b6.stdout.log" 2>"$LOG_DIR/client-sm-b6.stderr.log" || status=$?
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-b6 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-b6" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-b6.stdout.log" 2>"$LOG_DIR/client-sm-b6.stderr.log" || status=$?
   cat "$LOG_DIR/client-sm-b6.stdout.log"
   fetch_evidence play-a-sm-b6 "$HTTP_A"
   fetch_evidence play-b-sm-b6 "$HTTP_B"
@@ -1922,22 +1991,21 @@ if [[ "$SCENARIO" == "SM-B7" || "$SCENARIO" == "sm-b7" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   ensure_servers_started_and_ready
   wait_control_ping sm-b7-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b7-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-b7 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-b7" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-b7.stdout.log" 2>"$LOG_DIR/client-sm-b7.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-b7 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-b7" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-b7.stdout.log" 2>"$LOG_DIR/client-sm-b7.stderr.log"
   cat "$LOG_DIR/client-sm-b7.stdout.log"
   fetch_evidence play-a-sm-b7 "$HTTP_A"
   fetch_evidence play-b-sm-b7 "$HTTP_B"
@@ -1984,22 +2052,21 @@ if [[ "$SCENARIO" == "SM-B8" || "$SCENARIO" == "sm-b8" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   ensure_servers_started_and_ready
   wait_control_ping sm-b8-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b8-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-b8 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-b8" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-b8.stdout.log" 2>"$LOG_DIR/client-sm-b8.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-b8 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-b8" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-b8.stdout.log" 2>"$LOG_DIR/client-sm-b8.stderr.log"
   cat "$LOG_DIR/client-sm-b8.stdout.log"
   fetch_evidence play-a-sm-b8 "$HTTP_A"
   fetch_evidence play-b-sm-b8 "$HTTP_B"
@@ -2048,22 +2115,21 @@ if [[ "$SCENARIO" == "SM-B9" || "$SCENARIO" == "sm-b9" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-b9-session-a-play-a "$HTTP_SESSION_A" play-a "sm-b9-session-a-play-a-ready"
   wait_control_ping sm-b9-session-a-play-b "$HTTP_SESSION_A" play-b "sm-b9-session-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-b9 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-b9" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-b9.stdout.log" 2>"$LOG_DIR/client-sm-b9.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-b9 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-b9" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-b9.stdout.log" 2>"$LOG_DIR/client-sm-b9.stderr.log"
   cat "$LOG_DIR/client-sm-b9.stdout.log"
   fetch_evidence play-a-sm-b9 "$HTTP_A"
   fetch_evidence play-b-sm-b9 "$HTTP_B"
@@ -2108,21 +2174,20 @@ if [[ "$SCENARIO" == "SM-C1" || "$SCENARIO" == "sm-c1" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-c1-play-a-play-b "$HTTP_A" play-b "sm-c1-play-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-c1 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-c1" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-c1.stdout.log" 2>"$LOG_DIR/client-sm-c1.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-c1 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-c1" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-c1.stdout.log" 2>"$LOG_DIR/client-sm-c1.stderr.log"
   cat "$LOG_DIR/client-sm-c1.stdout.log"
   sleep "$SCENARIO_SETTLE_SECONDS"
   fetch_evidence play-a-sm-c1 "$HTTP_A"
@@ -2166,21 +2231,20 @@ if [[ "$SCENARIO" == "SM-C2" || "$SCENARIO" == "sm-c2" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-c2-play-a-play-b "$HTTP_A" play-b "sm-c2-play-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-c2 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-c2" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-c2.stdout.log" 2>"$LOG_DIR/client-sm-c2.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-c2 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-c2" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-c2.stdout.log" 2>"$LOG_DIR/client-sm-c2.stderr.log"
   cat "$LOG_DIR/client-sm-c2.stdout.log"
   sleep "$SCENARIO_SETTLE_SECONDS"
   fetch_evidence play-a-sm-c2 "$HTTP_A"
@@ -2224,21 +2288,20 @@ if [[ "$SCENARIO" == "SM-C3" || "$SCENARIO" == "sm-c3" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-c3-play-a-play-b "$HTTP_A" play-b "sm-c3-play-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-c3 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-c3" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-c3.stdout.log" 2>"$LOG_DIR/client-sm-c3.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-c3 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-c3" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-c3.stdout.log" 2>"$LOG_DIR/client-sm-c3.stderr.log"
   cat "$LOG_DIR/client-sm-c3.stdout.log"
   sleep "$SCENARIO_SETTLE_SECONDS"
   fetch_evidence play-a-sm-c3 "$HTTP_A"
@@ -2285,22 +2348,21 @@ if [[ "$SCENARIO" == "SM-C4" || "$SCENARIO" == "sm-c4" ]]; then
   start_gateway gateway "$ROUTE_CLIENT" "$SPOT_CLIENT" "$PUB_CLIENT" "$HTTP_GATEWAY"
   settle_scenario
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-c4 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT="$HTTP_GATEWAY" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-c4" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-c4.stdout.log" 2>"$LOG_DIR/client-sm-c4.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-c4 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    gatewayHttpEndpoint="$HTTP_GATEWAY" \
+    clientRid="client-sm-c4" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-c4.stdout.log" 2>"$LOG_DIR/client-sm-c4.stderr.log"
   cat "$LOG_DIR/client-sm-c4.stdout.log"
   sleep "$SCENARIO_SETTLE_SECONDS"
   fetch_evidence play-a-sm-c4 "$HTTP_A"
@@ -2342,21 +2404,20 @@ if [[ "$SCENARIO" == "SM-C5" || "$SCENARIO" == "sm-c5" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-c5-play-a-play-b "$HTTP_A" play-b "sm-c5-play-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-c5 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-c5" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-c5.stdout.log" 2>"$LOG_DIR/client-sm-c5.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-c5 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-c5" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-c5.stdout.log" 2>"$LOG_DIR/client-sm-c5.stderr.log"
   cat "$LOG_DIR/client-sm-c5.stdout.log"
   fetch_evidence play-b-sm-c5 "$HTTP_B"
   python3 - "$LOG_DIR/play-b-sm-c5-evidence.json" <<'PY'
@@ -2440,24 +2501,23 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   CRASH_GO="$LOG_DIR/sm-g1-go"
   CRASH_OBSERVED="$LOG_DIR/sm-g1-observed"
 
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_SETUP_ROUTE" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=crash-setup \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-g1-setup" \
-  ZLINK_CPP_E2E_CRASH_READY_FILE="$CRASH_READY" \
-  ZLINK_CPP_E2E_CRASH_GO_FILE="$CRASH_GO" \
-  ZLINK_CPP_E2E_CRASH_OBSERVED_FILE="$CRASH_OBSERVED" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-g1-setup.stdout.log" 2>"$LOG_DIR/client-sm-g1-setup.stderr.log" &
+  run_client_from_options \
+    routeEndpoint="$CRASH_SETUP_ROUTE" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    alternateStreamEndpoint="$STREAM_B" \
+    scenarioMode=crash-setup \
+    clientRid="client-sm-g1-setup" \
+    crashReadyFile="$CRASH_READY" \
+    crashGoFile="$CRASH_GO" \
+    crashObservedFile="$CRASH_OBSERVED" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-g1-setup.stdout.log" 2>"$LOG_DIR/client-sm-g1-setup.stderr.log" &
   CRASH_CLIENT_PID="$!"
   PIDS+=("$CRASH_CLIENT_PID")
 
@@ -2471,20 +2531,19 @@ if [[ "$SCENARIO" == "SM-G1" || "$SCENARIO" == "sm-g1" ]]; then
   cat "$LOG_DIR/client-sm-g1-setup.stdout.log"
   CRASH_RECOVER_ROUTE="$(allocate_tcp_endpoint)"
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$CRASH_RECOVER_ROUTE" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_B" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=crash-recover \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-g1-recover" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-g1-recover.stdout.log" 2>"$LOG_DIR/client-sm-g1-recover.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$CRASH_RECOVER_ROUTE" \
+    routeAEndpoint="" \
+    routeBEndpoint="" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_B" \
+    scenarioMode=crash-recover \
+    clientRid="client-sm-g1-recover" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-g1-recover.stdout.log" 2>"$LOG_DIR/client-sm-g1-recover.stderr.log"
   cat "$LOG_DIR/client-sm-g1-recover.stdout.log"
 
   fetch_evidence play-b-sm-g1 "$HTTP_B"
@@ -2526,22 +2585,21 @@ if [[ "$SCENARIO" == "SM-D1" || "$SCENARIO" == "sm-d1" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-d1-session-a-play-a-ready "$HTTP_SESSION_A" play-a \
     "sm-d1-session-a-play-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d1 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d1" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d1.stdout.log" 2>"$LOG_DIR/client-sm-d1.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d1 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d1" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d1.stdout.log" 2>"$LOG_DIR/client-sm-d1.stderr.log"
   cat "$LOG_DIR/client-sm-d1.stdout.log"
   fetch_evidence play-a-sm-d1 "$HTTP_A"
   fetch_evidence play-b-sm-d1 "$HTTP_B"
@@ -2586,22 +2644,21 @@ if [[ "$SCENARIO" == "SM-D2" || "$SCENARIO" == "sm-d2" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-d11-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d11-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d2 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d2" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d2.stdout.log" 2>"$LOG_DIR/client-sm-d2.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d2 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d2" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d2.stdout.log" 2>"$LOG_DIR/client-sm-d2.stderr.log"
   cat "$LOG_DIR/client-sm-d2.stdout.log"
   fetch_evidence play-a-sm-d2 "$HTTP_A"
   fetch_evidence play-b-sm-d2 "$HTTP_B"
@@ -2646,22 +2703,21 @@ if [[ "$SCENARIO" == "SM-D3" || "$SCENARIO" == "sm-d3" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-d3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d3-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d3 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d3" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d3.stdout.log" 2>"$LOG_DIR/client-sm-d3.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d3 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d3" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d3.stdout.log" 2>"$LOG_DIR/client-sm-d3.stderr.log"
   cat "$LOG_DIR/client-sm-d3.stdout.log"
   fetch_evidence play-a-sm-d3 "$HTTP_A"
   fetch_evidence play-b-sm-d3 "$HTTP_B"
@@ -2711,22 +2767,21 @@ if [[ "$SCENARIO" == "SM-D4" || "$SCENARIO" == "sm-d4" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-d4-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d4-session-a-play-a-ready"
   wait_control_ping sm-d4-session-a-play-b "$HTTP_SESSION_A" play-b "sm-d4-session-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d4 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d4" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d4.stdout.log" 2>"$LOG_DIR/client-sm-d4.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d4 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d4" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d4.stdout.log" 2>"$LOG_DIR/client-sm-d4.stderr.log"
   cat "$LOG_DIR/client-sm-d4.stdout.log"
   fetch_evidence play-a-sm-d4 "$HTTP_A"
   fetch_evidence play-b-sm-d4 "$HTTP_B"
@@ -2771,22 +2826,21 @@ if [[ "$SCENARIO" == "SM-D5" || "$SCENARIO" == "sm-d5" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-d5-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d5-session-a-play-a-ready"
   wait_control_ping sm-d5-session-a-play-b "$HTTP_SESSION_A" play-b "sm-d5-session-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d5 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d5" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d5.stdout.log" 2>"$LOG_DIR/client-sm-d5.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d5 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d5" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d5.stdout.log" 2>"$LOG_DIR/client-sm-d5.stderr.log"
   cat "$LOG_DIR/client-sm-d5.stdout.log"
   sleep "$SCENARIO_SETTLE_SECONDS"
   fetch_evidence play-a-sm-d5 "$HTTP_A"
@@ -2852,23 +2906,22 @@ if [[ "$SCENARIO" == "SM-D6" || "$SCENARIO" == "sm-d6" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-d6-session-a-control "$HTTP_SESSION_A" play-a "sm-d6-session-a-ready"
   wait_control_ping sm-d6-session-b-control "$HTTP_SESSION_B" play-b "sm-d6-session-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d6 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d6" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d6.stdout.log" 2>"$LOG_DIR/client-sm-d6.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    alternateStreamEndpoint="$STREAM_B" \
+    scenarioMode=sm-d6 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d6" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d6.stdout.log" 2>"$LOG_DIR/client-sm-d6.stderr.log"
   cat "$LOG_DIR/client-sm-d6.stdout.log"
   fetch_evidence play-a-sm-d6 "$HTTP_A"
   fetch_evidence play-b-sm-d6 "$HTTP_B"
@@ -2910,22 +2963,21 @@ if [[ "$SCENARIO" == "SM-D7" || "$SCENARIO" == "sm-d7" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-g3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g3-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d7 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d7" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d7.stdout.log" 2>"$LOG_DIR/client-sm-d7.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d7 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d7" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d7.stdout.log" 2>"$LOG_DIR/client-sm-d7.stderr.log"
   cat "$LOG_DIR/client-sm-d7.stdout.log"
   fetch_evidence play-a-sm-d7 "$HTTP_A"
   fetch_evidence play-b-sm-d7 "$HTTP_B"
@@ -2964,22 +3016,21 @@ if [[ "$SCENARIO" == "SM-D8" || "$SCENARIO" == "sm-d8" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   ensure_servers_started_and_ready
   wait_control_ping sm-d8-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d8-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d8 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d8" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d8.stdout.log" 2>"$LOG_DIR/client-sm-d8.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d8 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d8" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d8.stdout.log" 2>"$LOG_DIR/client-sm-d8.stderr.log"
   cat "$LOG_DIR/client-sm-d8.stdout.log"
   fetch_evidence play-a-sm-d8 "$HTTP_A"
   fetch_evidence play-b-sm-d8 "$HTTP_B"
@@ -3024,22 +3075,21 @@ if [[ "$SCENARIO" == "SM-D9" || "$SCENARIO" == "sm-d9" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-d9-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d9-session-a-play-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d9 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d9" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d9.stdout.log" 2>"$LOG_DIR/client-sm-d9.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d9 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d9" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d9.stdout.log" 2>"$LOG_DIR/client-sm-d9.stderr.log"
   cat "$LOG_DIR/client-sm-d9.stdout.log"
   fetch_evidence play-a-sm-d9 "$HTTP_A"
   fetch_evidence play-b-sm-d9 "$HTTP_B"
@@ -3080,23 +3130,22 @@ if [[ "$SCENARIO" == "SM-D10" || "$SCENARIO" == "sm-d10" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-d10-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d10-session-a-ready"
   wait_control_ping sm-d10-session-b-play-b "$HTTP_SESSION_B" play-b "sm-d10-session-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d10 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d10" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d10.stdout.log" 2>"$LOG_DIR/client-sm-d10.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    alternateStreamEndpoint="$STREAM_B" \
+    scenarioMode=sm-d10 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d10" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d10.stdout.log" 2>"$LOG_DIR/client-sm-d10.stderr.log"
   cat "$LOG_DIR/client-sm-d10.stdout.log"
   fetch_evidence play-a-sm-d10 "$HTTP_A"
   fetch_evidence play-b-sm-d10 "$HTTP_B"
@@ -3137,23 +3186,22 @@ if [[ "$SCENARIO" == "SM-D11" || "$SCENARIO" == "sm-d11" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-d13-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d13-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SESSION_HTTP_ENDPOINT="$HTTP_SESSION_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d11 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d11" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d11.stdout.log" 2>"$LOG_DIR/client-sm-d11.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    sessionHttpEndpoint="$HTTP_SESSION_A" \
+    scenarioMode=sm-d11 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d11" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d11.stdout.log" 2>"$LOG_DIR/client-sm-d11.stderr.log"
   cat "$LOG_DIR/client-sm-d11.stdout.log"
   fetch_evidence play-a-sm-d11 "$HTTP_A"
   fetch_evidence play-b-sm-d11 "$HTTP_B"
@@ -3194,23 +3242,22 @@ if [[ "$SCENARIO" == "SM-D12" || "$SCENARIO" == "sm-d12" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-d12-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d12-session-a-ready"
   wait_control_ping sm-d12-session-b-play-a "$HTTP_SESSION_B" play-a "sm-d12-session-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT="$STREAM_B" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d12 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d12" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d12.stdout.log" 2>"$LOG_DIR/client-sm-d12.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    alternateStreamEndpoint="$STREAM_B" \
+    scenarioMode=sm-d12 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d12" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d12.stdout.log" 2>"$LOG_DIR/client-sm-d12.stderr.log"
   cat "$LOG_DIR/client-sm-d12.stdout.log"
   fetch_evidence play-a-sm-d12 "$HTTP_A"
   fetch_evidence play-b-sm-d12 "$HTTP_B"
@@ -3251,22 +3298,21 @@ if [[ "$SCENARIO" == "SM-D13" || "$SCENARIO" == "sm-d13" ]]; then
   start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
   settle_scenario
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d13 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d13" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d13.stdout.log" 2>"$LOG_DIR/client-sm-d13.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d13 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d13" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d13.stdout.log" 2>"$LOG_DIR/client-sm-d13.stderr.log"
   cat "$LOG_DIR/client-sm-d13.stdout.log"
   fetch_evidence play-a-sm-d13 "$HTTP_A"
   fetch_evidence play-b-sm-d13 "$HTTP_B"
@@ -3303,27 +3349,26 @@ if [[ "$SCENARIO" == "SM-D14" || "$SCENARIO" == "sm-d14" ]]; then
   ensure_location_store
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A" "$STREAM_TLS_A" "$TLS_CERT" "$TLS_KEY"
+  start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "__none__" "$HTTP_SESSION_A" "$STREAM_TLS_A" "$TLS_CERT" "$TLS_KEY"
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-d14-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d14-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_TLS_STREAM_ENDPOINT="$STREAM_TLS_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d14 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d14" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    run_foreground_binary client-sm-d14 "$CLIENT" >"$LOG_DIR/client-sm-d14.stdout.log" 2>"$LOG_DIR/client-sm-d14.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    tlsStreamEndpoint="$STREAM_TLS_A" \
+    scenarioMode=sm-d14 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-d14" \
+    logDir="$LOG_DIR" \
+    >"$LOG_DIR/client-sm-d14.stdout.log" 2>"$LOG_DIR/client-sm-d14.stderr.log"
   cat "$LOG_DIR/client-sm-d14.stdout.log"
   fetch_evidence play-a-sm-d14 "$HTTP_A"
   fetch_evidence session-a-sm-d14 "$HTTP_SESSION_A"
@@ -3358,23 +3403,22 @@ if [[ "$SCENARIO" == "SM-D15" || "$SCENARIO" == "sm-d15" ]]; then
   start_gateway gateway "$ROUTE_CLIENT" "$SPOT_CLIENT" "$PUB_CLIENT" "$HTTP_GATEWAY"
   ensure_servers_started_and_ready
   wait_control_ping sm-d15-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d15-session-a-play-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_STREAM_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-d15 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT="$HTTP_GATEWAY" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-d15" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-d15.stdout.log" 2>"$LOG_DIR/client-sm-d15.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_STREAM_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-d15 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    gatewayHttpEndpoint="$HTTP_GATEWAY" \
+    clientRid="client-sm-d15" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-d15.stdout.log" 2>"$LOG_DIR/client-sm-d15.stderr.log"
   cat "$LOG_DIR/client-sm-d15.stdout.log"
   fetch_evidence play-a-sm-d15 "$HTTP_A"
   fetch_evidence gateway-sm-d15 "$HTTP_GATEWAY"
@@ -3406,21 +3450,20 @@ if [[ "$SCENARIO" == "SM-E1" || "$SCENARIO" == "sm-e1" ]]; then
   start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
   settle_scenario
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-e1 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-e1" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-e1.stdout.log" 2>"$LOG_DIR/client-sm-e1.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-e1 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-e1" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-e1.stdout.log" 2>"$LOG_DIR/client-sm-e1.stderr.log"
   cat "$LOG_DIR/client-sm-e1.stdout.log"
   fetch_evidence play-a-sm-e1 "$HTTP_A"
   fetch_evidence play-b-sm-e1 "$HTTP_B"
@@ -3453,20 +3496,19 @@ if [[ "$SCENARIO" == "SM-E2" || "$SCENARIO" == "sm-e2" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-e2 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-e2" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-e2.stdout.log" 2>"$LOG_DIR/client-sm-e2.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-e2 \
+    playHttpEndpoint="$HTTP_A" \
+    clientRid="client-sm-e2" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-e2.stdout.log" 2>"$LOG_DIR/client-sm-e2.stderr.log"
   cat "$LOG_DIR/client-sm-e2.stdout.log"
   fetch_evidence play-a-sm-e2 "$HTTP_A"
   python3 - "$LOG_DIR/play-a-sm-e2-evidence.json" <<'PY'
@@ -3492,20 +3534,19 @@ if [[ "$SCENARIO" == "SM-E3" || "$SCENARIO" == "sm-e3" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-e3 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-e3" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-e3.stdout.log" 2>"$LOG_DIR/client-sm-e3.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-e3 \
+    playHttpEndpoint="$HTTP_A" \
+    clientRid="client-sm-e3" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-e3.stdout.log" 2>"$LOG_DIR/client-sm-e3.stderr.log"
   cat "$LOG_DIR/client-sm-e3.stdout.log"
   fetch_evidence play-a-sm-e3 "$HTTP_A"
   python3 - "$LOG_DIR/play-a-sm-e3-evidence.json" <<'PY'
@@ -3531,20 +3572,19 @@ if [[ "$SCENARIO" == "SM-E4" || "$SCENARIO" == "sm-e4" ]]; then
   start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
   settle_scenario
   ensure_servers_started_and_ready
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-e4 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-e4" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-e4.stdout.log" 2>"$LOG_DIR/client-sm-e4.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-e4 \
+    playHttpEndpoint="$HTTP_A" \
+    clientRid="client-sm-e4" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-e4.stdout.log" 2>"$LOG_DIR/client-sm-e4.stderr.log"
   cat "$LOG_DIR/client-sm-e4.stdout.log"
   fetch_evidence play-a-sm-e4 "$HTTP_A"
   python3 - "$LOG_DIR/play-a-sm-e4-evidence.json" <<'PY'
@@ -3602,21 +3642,20 @@ if [[ "$SCENARIO" == "SM-G2" || "$SCENARIO" == "sm-g2" ]]; then
   ensure_servers_started_and_ready
   wait_control_ping sm-g2-play-b-play-a "$HTTP_B" play-a "sm-g2-play-b-play-a-ready"
   wait_control_ping sm-g2-play-a-play-b "$HTTP_A" play-b "sm-g2-play-a-play-b-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-g2 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-g2" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-g2.stdout.log" 2>"$LOG_DIR/client-sm-g2.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    scenarioMode=sm-g2 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-g2" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-g2.stdout.log" 2>"$LOG_DIR/client-sm-g2.stderr.log"
   cat "$LOG_DIR/client-sm-g2.stdout.log"
   fetch_evidence play-a-sm-g2 "$HTTP_A"
   fetch_evidence play-b-sm-g2 "$HTTP_B"
@@ -3656,22 +3695,21 @@ if [[ "$SCENARIO" == "SM-G3" || "$SCENARIO" == "sm-g3" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-g3-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g3-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-g3 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-g3" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-g3.stdout.log" 2>"$LOG_DIR/client-sm-g3.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-g3 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-g3" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-g3.stdout.log" 2>"$LOG_DIR/client-sm-g3.stderr.log"
   cat "$LOG_DIR/client-sm-g3.stdout.log"
   fetch_evidence play-a-sm-g3 "$HTTP_A"
   fetch_evidence session-a-sm-g3 "$HTTP_SESSION_A"
@@ -3708,22 +3746,21 @@ if [[ "$SCENARIO" == "SM-G4" || "$SCENARIO" == "sm-g4" ]]; then
   settle_scenario
   ensure_servers_started_and_ready
   wait_control_ping sm-g4-session-a-play-a "$HTTP_SESSION_A" play-a "sm-g4-session-a-ready"
-  ZLINK_CPP_E2E_ROUTE_ENDPOINT="$ROUTE_CLIENT" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_CLIENT" \
-  ZLINK_CPP_E2E_PUBSUB_ENDPOINT="$PUB_CLIENT" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER_CLIENT" \
-  ZLINK_CPP_E2E_API_ENDPOINT="$API_CLIENT" \
-  ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_A" \
-  ZLINK_CPP_E2E_SCENARIO_MODE=sm-g4 \
-  ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_CLIENT_RID="client-sm-g4" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" >"$LOG_DIR/client-sm-g4.stdout.log" 2>"$LOG_DIR/client-sm-g4.stderr.log"
+  run_client_from_options \
+    routeEndpoint="$ROUTE_CLIENT" \
+    routeAEndpoint="$ROUTE_A" \
+    routeBEndpoint="$ROUTE_B" \
+    spotRouterEndpoint="$SPOT_CLIENT" \
+    pubsubEndpoint="$PUB_CLIENT" \
+    publisherEndpoint="$PUBLISHER_CLIENT" \
+    apiEndpoint="$API_CLIENT" \
+    streamEndpoint="$STREAM_A" \
+    scenarioMode=sm-g4 \
+    playHttpEndpoint="$HTTP_A" \
+    playBHttpEndpoint="$HTTP_B" \
+    clientRid="client-sm-g4" \
+    logDir="$LOG_DIR" \
+     >"$LOG_DIR/client-sm-g4.stdout.log" 2>"$LOG_DIR/client-sm-g4.stderr.log"
   cat "$LOG_DIR/client-sm-g4.stdout.log"
   fetch_evidence play-a-sm-g4 "$HTTP_A"
   fetch_evidence session-a-sm-g4 "$HTTP_SESSION_A"

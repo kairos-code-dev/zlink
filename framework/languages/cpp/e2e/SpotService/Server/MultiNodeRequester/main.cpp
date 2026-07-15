@@ -2,7 +2,7 @@
 
 #include "../MultiNode/Handlers/multi_node_handlers.hpp"
 #include "../Shared/Support/codecs.hpp"
-#include "../Shared/Support/env.hpp"
+#include "../Shared/Support/configuration.hpp"
 #include "../Shared/Support/location_store.hpp"
 
 #include <zlink/framework.hpp>
@@ -16,16 +16,40 @@ class requester_bridge_spot_t : public zlink::framework::spot_t
     void configure (zlink::framework::spot_context_t &) {}
 };
 
+struct requester_options_t
+{
+    std::string log_dir;
+    std::string node_rid;
+    std::string route_client_endpoint;
+    std::string spot_router_endpoint;
+    std::string http_endpoint;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+
+    static requester_options_t bind (const zlink::framework::configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .node_rid = section.get ("nodeRid").value_or (multi_node_a_name),
+                .route_client_endpoint = section.require ("routeClientEndpoint"),
+                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix")};
+    }
+};
+
 int main (int argc, char **argv)
 {
     auto app = zlink::framework::app_t::create ();
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    const auto node_rid = env_or ("ZLINK_CPP_E2E_NODE_RID", multi_node_a_name);
-    const auto route_client_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_CLIENT_ENDPOINT");
-    const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
-    const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
-    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
+    load_spot_service_config (app, argc, argv, "multi-node requester");
+    const auto config = app.config ().bind_required<requester_options_t> ("e2e");
+    const auto &log_dir = config.log_dir;
+    const auto &node_rid = config.node_rid;
+    const auto &route_client_endpoint = config.route_client_endpoint;
+    const auto &spot_router_endpoint = config.spot_router_endpoint;
+    const auto &http_endpoint = config.http_endpoint;
+    const auto &redis_endpoint = config.redis_endpoint;
+    const auto &redis_key_prefix = config.redis_key_prefix;
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + "-requester.log")

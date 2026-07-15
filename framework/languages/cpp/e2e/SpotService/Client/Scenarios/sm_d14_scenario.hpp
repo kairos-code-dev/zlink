@@ -16,7 +16,7 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 inline void run_sm_d14_scenario (const std::string &session_tls_stream_endpoint)
 {
     if (session_tls_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_TLS_STREAM_ENDPOINT is required for SM-D14");
+        throw std::runtime_error ("tlsStreamEndpoint is required for SM-D14");
     }
 
     zlink::stream_connector::connector_options_t options;

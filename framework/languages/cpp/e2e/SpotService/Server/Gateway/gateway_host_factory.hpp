@@ -5,10 +5,10 @@
 #include "../Shared/Endpoints/evidence_endpoint.hpp"
 #include "../Shared/scenario_state.hpp"
 #include "../Shared/Support/location_store.hpp"
+#include "../Shared/Support/configuration.hpp"
 
 #include <zlink/framework.hpp>
 
-#include <cstdlib>
 #include <memory>
 #include <string>
 
@@ -16,14 +16,6 @@ namespace e2e = zlink::framework::e2e::spot_service;
 
 namespace
 {
-
-std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
 
 std::string gateway_error_kind_name (zlink::framework::framework_error_kind_t kind)
 {
@@ -188,17 +180,43 @@ void configure_gateway_codecs (zlink::framework::codec_options_builder_t codecs)
 
 } // namespace
 
+struct gateway_options_t
+{
+    std::string log_dir;
+    std::string node_rid;
+    std::string route_endpoint;
+    std::string spot_router_endpoint;
+    std::string pubsub_endpoint;
+    std::string http_endpoint;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+
+    static gateway_options_t bind (const zlink::framework::configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .node_rid = section.get ("nodeRid").value_or ("gateway"),
+                .route_endpoint = section.require ("routeEndpoint"),
+                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .pubsub_endpoint = section.require ("pubsubEndpoint"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix")};
+    }
+};
+
 inline int run_gateway_server (int argc, char **argv)
 {
     auto app = zlink::framework::app_t::create ();
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    const auto node_rid = env_or ("ZLINK_CPP_E2E_NODE_RID", "gateway");
-    const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
-    const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
-    const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
-    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
+    load_spot_service_config (app, argc, argv, "gateway");
+    const auto config = app.config ().bind_required<gateway_options_t> ("e2e");
+    const auto &log_dir = config.log_dir;
+    const auto &node_rid = config.node_rid;
+    const auto &route_endpoint = config.route_endpoint;
+    const auto &spot_router_endpoint = config.spot_router_endpoint;
+    const auto &pubsub_endpoint = config.pubsub_endpoint;
+    const auto &http_endpoint = config.http_endpoint;
+    const auto &redis_endpoint = config.redis_endpoint;
+    const auto &redis_key_prefix = config.redis_key_prefix;
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")

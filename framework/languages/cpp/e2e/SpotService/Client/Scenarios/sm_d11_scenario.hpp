@@ -18,10 +18,10 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
                                  const std::string &session_stream_endpoint)
 {
     if (session_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_SESSION_HTTP_ENDPOINT is required for SM-D11");
+        throw std::runtime_error ("sessionHttpEndpoint is required for SM-D11");
     }
     if (session_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-D11");
+        throw std::runtime_error ("streamEndpoint is required for SM-D11");
     }
 
     zlink::stream_connector::connector_options_t options;

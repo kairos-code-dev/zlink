@@ -5,8 +5,10 @@
 
 #include <zlink/http_client.hpp>
 
+#include <chrono>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -15,10 +17,10 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
                                 const std::string &play_b_http_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-E1");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-E1");
     }
     if (play_b_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT is required for SM-E1");
+        throw std::runtime_error ("playBHttpEndpoint is required for SM-E1");
     }
 
     auto play_a = zlink::http_client::client_t::create ()
@@ -70,13 +72,30 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-E1 missing route reply mismatch");
     }
 
-    auto missing_handler_request =
-      play_a.post ("/spot/missing-handler/request")
-        .body (spot_missing_handler_req_t{.spot_rid = spot_rid})
-        .submit_raw ()
-        .result ();
+    auto request_missing_handler = [&] {
+        return play_a.post ("/spot/missing-handler/request")
+          .body (spot_missing_handler_req_t{.spot_rid = spot_rid})
+          .submit_raw ()
+          .result ();
+    };
+    auto missing_handler_request = request_missing_handler ();
+    const auto location_deadline =
+      std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    while (missing_handler_request && missing_handler_request.value ().status == 500
+           && missing_handler_request.value ().body.find ("no live location row")
+                != std::string::npos
+           && std::chrono::steady_clock::now () < location_deadline) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        missing_handler_request = request_missing_handler ();
+    }
     if (!missing_handler_request || missing_handler_request.value ().status >= 400) {
-        throw std::runtime_error ("SM-E1 missing handler request endpoint failed");
+        throw std::runtime_error (
+          !missing_handler_request
+            ? (missing_handler_request.error () ? missing_handler_request.error ()->what ()
+                                                 : "SM-E1 missing handler request endpoint failed")
+            : "SM-E1 missing handler request HTTP status "
+                + std::to_string (missing_handler_request.value ().status) + ": "
+                + missing_handler_request.value ().body);
     }
     const auto missing_handler_request_reply =
       nlohmann::json::parse (missing_handler_request.value ().body)

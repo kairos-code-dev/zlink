@@ -117,10 +117,10 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
                                 const std::string &play_b_http_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-A8");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-A8");
     }
     if (play_b_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT is required for SM-A8");
+        throw std::runtime_error ("playBHttpEndpoint is required for SM-A8");
     }
 
     auto play_b = zlink::http_client::client_t::create ()

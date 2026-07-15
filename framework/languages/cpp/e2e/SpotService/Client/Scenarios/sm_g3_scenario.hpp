@@ -158,10 +158,10 @@ inline void run_sm_g3_scenario (const std::string &play_http_endpoint,
                                 const std::string &session_stream_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-G3");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-G3");
     }
     if (session_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-G3");
+        throw std::runtime_error ("streamEndpoint is required for SM-G3");
     }
 
     constexpr auto spot_key = "sm-g3-concurrent";

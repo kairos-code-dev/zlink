@@ -16,7 +16,7 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 inline void run_sm_d4_scenario (const std::string &session_stream_endpoint)
 {
     if (session_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-D4");
+        throw std::runtime_error ("streamEndpoint is required for SM-D4");
     }
 
     constexpr auto first_actor_id = "actor-sm-d4-x";

@@ -61,6 +61,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace e2e = zlink::framework::e2e::spot_service;
 namespace e2e_client = zlink::framework::e2e::spot_service::client;
@@ -107,6 +108,31 @@ e2e::join_res_t ensure_f_spot (const std::string &play_http_endpoint)
     if (response.join.owner_node_rid != "play-b"
         || response.join.spot_rid != "user:play-b:b-room") {
         throw std::runtime_error ("F scenario setup did not create play-b b-room spot");
+    }
+    auto api = make_http (play_http_endpoint);
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
+    for (;;) {
+        auto visible =
+          api.post ("/spot/direct")
+            .body (e2e::direct_spot_route_req_t{.target_node_rid = "play-b",
+                                                .spot_rid = response.join.spot_rid,
+                                                .value = "f-setup-ready",
+                                                .source_actor_id = "external-client"})
+            .submit_raw ()
+            .result ();
+        if (visible && visible.value ().status < 400) {
+            break;
+        }
+        const bool location_pending =
+          visible && visible.value ().status == 500
+          && visible.value ().body.find ("no live location row") != std::string::npos;
+        if (!location_pending || std::chrono::steady_clock::now () >= deadline) {
+            const auto error = visible ? visible.value ().body
+                                       : (visible.error () ? visible.error ()->what ()
+                                                          : "HTTP failed");
+            throw std::runtime_error ("F scenario location readiness failed: " + error);
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
     return response.join;
 }
@@ -310,7 +336,8 @@ void run_scenario (const e2e_client::client_options_t &options)
         scenarios::run_sm_f5_scenario (options.play_http_endpoint, options.play_b_http_endpoint);
     } else if (mode == "sm-f6") {
         scenarios::run_sm_f6_scenario (options.multi_a_http_endpoint,
-                                       options.multi_b_http_endpoint);
+                                       options.multi_b_http_endpoint,
+                                       options.run_id);
         std::cout << "scenario SM-F6 passed\n";
     } else if (mode == "sm-g1" || mode == "crash-setup") {
         scenarios::run_sm_g1_crash_observation_scenario (
@@ -341,10 +368,8 @@ void run_scenario (const e2e_client::client_options_t &options)
 
 int main (int argc, char **argv)
 {
-    (void) argc;
-    (void) argv;
     try {
-        run_scenario (e2e_client::client_options_t::from_env ());
+        run_scenario (e2e_client::client_options_t::from_config (argc, argv));
         return 0;
     }
     catch (const std::exception &error) {

@@ -56,7 +56,7 @@ inline void sm_g4_push_and_verify (zlink::stream_connector::connector_t &stream,
 inline void run_sm_g4_scenario (const std::string &session_stream_endpoint)
 {
     if (session_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-G4");
+        throw std::runtime_error ("streamEndpoint is required for SM-G4");
     }
 
     zlink::stream_connector::connector_options_t options;

@@ -17,10 +17,10 @@ inline void run_sm_d12_scenario (const std::string &session_a_stream_endpoint,
                                  const std::string &session_b_stream_endpoint)
 {
     if (session_a_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-D12");
+        throw std::runtime_error ("streamEndpoint is required for SM-D12");
     }
     if (session_b_stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT is required for SM-D12");
+        throw std::runtime_error ("alternateStreamEndpoint is required for SM-D12");
     }
 
     constexpr auto actor_id = "actor-sm-d12-transfer";

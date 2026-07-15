@@ -16,7 +16,7 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
 {
     if (play_http_endpoint.empty () || play_b_http_endpoint.empty ()) {
         throw std::runtime_error (
-          "ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT and ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT are required for SM-C2");
+          "playHttpEndpoint and playBHttpEndpoint are required for SM-C2");
     }
 
     constexpr auto spot_rid = "user:play-b:sm-c2-outbound";

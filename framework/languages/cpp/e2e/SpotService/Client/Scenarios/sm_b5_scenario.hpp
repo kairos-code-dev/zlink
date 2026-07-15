@@ -14,7 +14,7 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 inline void run_sm_b5_scenario (const std::string &play_http_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-B5");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-B5");
     }
 
     constexpr auto actor_id = "sm-b5-missing";

@@ -21,7 +21,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
     if (session_stream_endpoint.empty () || alternate_stream_endpoint.empty ()
         || play_http_endpoint.empty ()) {
         throw std::runtime_error (
-          "ZLINK_CPP_E2E_STREAM_ENDPOINT, ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT, and ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT are required for SM-D6");
+          "streamEndpoint, alternateStreamEndpoint, and playHttpEndpoint are required for SM-D6");
     }
 
     constexpr auto actor_id = "actor-sm-d6";

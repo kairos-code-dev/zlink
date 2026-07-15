@@ -18,7 +18,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
 {
     if (play_http_endpoint.empty () || gateway_http_endpoint.empty ()) {
         throw std::runtime_error (
-          "ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT and ZLINK_CPP_E2E_GATEWAY_HTTP_ENDPOINT are required for SM-C4");
+          "playHttpEndpoint and gatewayHttpEndpoint are required for SM-C4");
     }
 
     constexpr auto subscribed_spot_rid = "user:play-a:sm-c4-subscribed";

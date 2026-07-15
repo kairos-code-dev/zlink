@@ -13,6 +13,17 @@
 
 namespace e2e = zlink::framework::e2e::spot_service;
 
+struct play_node_http_endpoints_t
+{
+    std::string play_a;
+    std::string play_b;
+
+    const std::string &for_node (const std::string &node_rid) const
+    {
+        return node_rid == "play-b" ? play_b : play_a;
+    }
+};
+
 inline std::string public_error_kind_name (zlink::framework::framework_error_kind_t kind)
 {
     switch (kind) {
@@ -363,11 +374,13 @@ class remote_actor_flow_handler_t
   public:
     using dependency_types =
       zlink::framework::dependency_list_t<scenario_state_t,
-                                          zlink::framework::session_actor_manager_t>;
+                                          zlink::framework::session_actor_manager_t,
+                                          play_node_http_endpoints_t>;
 
     remote_actor_flow_handler_t (scenario_state_t &state,
-                                 zlink::framework::session_actor_manager_t &actors) :
-        _state (state), _actors (actors)
+                                 zlink::framework::session_actor_manager_t &actors,
+                                 play_node_http_endpoints_t &endpoints) :
+        _state (state), _actors (actors), _endpoints (endpoints)
     {
     }
 
@@ -440,20 +453,11 @@ class remote_actor_flow_handler_t
     }
 
   private:
-    static std::string env_or (const char *name)
-    {
-        if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-            return value;
-        }
-        return {};
-    }
-
     zlink::framework::http_response_t
     forward_to_owner (const e2e::remote_actor_flow_req_t &request,
                       const std::string &target_node)
     {
-        auto endpoint = target_node == "play-b" ? env_or ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT")
-                                                : env_or ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT");
+        const auto &endpoint = _endpoints.for_node (target_node);
         if (endpoint.empty ()) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::request_failed,
@@ -480,6 +484,7 @@ class remote_actor_flow_handler_t
 
     scenario_state_t &_state;
     zlink::framework::session_actor_manager_t &_actors;
+    play_node_http_endpoints_t &_endpoints;
 };
 
 class remote_actor_request_handler_t
@@ -488,12 +493,14 @@ class remote_actor_request_handler_t
     using dependency_types =
       zlink::framework::dependency_list_t<scenario_state_t,
                                           zlink::framework::route_client_t,
-                                          zlink::framework::session_actor_manager_t>;
+                                          zlink::framework::session_actor_manager_t,
+                                          play_node_http_endpoints_t>;
 
     remote_actor_request_handler_t (scenario_state_t &state,
                                     zlink::framework::route_client_t &routes,
-                                    zlink::framework::session_actor_manager_t &actors) :
-        _state (state), _routes (routes), _actors (actors)
+                                    zlink::framework::session_actor_manager_t &actors,
+                                    play_node_http_endpoints_t &endpoints) :
+        _state (state), _routes (routes), _actors (actors), _endpoints (endpoints)
     {
     }
 
@@ -567,20 +574,11 @@ class remote_actor_request_handler_t
     }
 
   private:
-    static std::string env_or (const char *name)
-    {
-        if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-            return value;
-        }
-        return {};
-    }
-
     zlink::framework::http_response_t
     forward_to_owner (const e2e::remote_actor_request_req_t &request,
                       const std::string &target_node)
     {
-        auto endpoint = target_node == "play-b" ? env_or ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT")
-                                                : env_or ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT");
+        const auto &endpoint = _endpoints.for_node (target_node);
         if (endpoint.empty ()) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::request_failed,
@@ -609,6 +607,7 @@ class remote_actor_request_handler_t
     scenario_state_t &_state;
     zlink::framework::route_client_t &_routes;
     zlink::framework::session_actor_manager_t &_actors;
+    play_node_http_endpoints_t &_endpoints;
 };
 
 class worker_spot_handler_t

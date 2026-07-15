@@ -5,29 +5,14 @@
 
 #include <zlink/http_client.hpp>
 
-#include <chrono>
-#include <cstdlib>
 #include <stdexcept>
 #include <string>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
-namespace
-{
-inline std::string sm_f6_run_suffix ()
-{
-    if (const auto *value = std::getenv ("ZLINK_CPP_E2E_RUN_ID")) {
-        if (*value != '\0') {
-            return value;
-        }
-    }
-    return std::to_string (
-      std::chrono::steady_clock::now ().time_since_epoch ().count ());
-}
-} // namespace
-
 inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
-                                const std::string &multi_b_http_endpoint)
+                                const std::string &multi_b_http_endpoint,
+                                const std::string &run_id)
 {
     if (multi_a_http_endpoint.empty () || multi_b_http_endpoint.empty ()) {
         throw std::runtime_error ("SM-F6 requires multi-node HTTP endpoints");
@@ -43,7 +28,10 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
         .timeout (std::chrono::seconds (45))
         .build ();
 
-    const auto suffix = sm_f6_run_suffix ();
+    if (run_id.empty ()) {
+        throw std::runtime_error ("SM-F6 requires runId");
+    }
+    const auto &suffix = run_id;
     const auto source_spot_rid = "spot-sm-f6-source-cpp-" + suffix;
     const auto target_spot_rid = "spot-sm-f6-target-cpp-" + suffix;
     const auto actor_id = "actor-sm-f6-cpp-" + suffix;

@@ -68,7 +68,7 @@ inline void run_sm_g1_crash_observation_scenario (const std::string &stream_endp
 {
     if (stream_endpoint.empty () || alternate_stream_endpoint.empty ()) {
         throw std::runtime_error (
-          "ZLINK_CPP_E2E_STREAM_ENDPOINT and ZLINK_CPP_E2E_ALT_STREAM_ENDPOINT are required for SM-G1");
+          "streamEndpoint and alternateStreamEndpoint are required for SM-G1");
     }
     const auto play_a_actor_id = std::string ("actor-sm-g1-crash");
     const auto play_b_actor_id = std::string ("actor-sm-g1-survivor");
@@ -165,7 +165,7 @@ inline void run_sm_g1_crash_observation_scenario (const std::string &stream_endp
 inline void run_sm_g1_crash_recovery_scenario (const std::string &stream_endpoint)
 {
     if (stream_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_STREAM_ENDPOINT is required for SM-G1 recovery");
+        throw std::runtime_error ("streamEndpoint is required for SM-G1 recovery");
     }
 
     auto recovered_core = sm_g1_make_stream_connector (stream_endpoint);

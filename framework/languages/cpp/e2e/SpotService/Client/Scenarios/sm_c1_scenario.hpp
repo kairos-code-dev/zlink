@@ -5,8 +5,10 @@
 
 #include <zlink/http_client.hpp>
 
+#include <chrono>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace zlink::framework::e2e::spot_service::client::scenarios
 {
@@ -15,10 +17,10 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
                                 const std::string &play_b_http_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-C1");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-C1");
     }
     if (play_b_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_B_HTTP_ENDPOINT is required for SM-C1");
+        throw std::runtime_error ("playBHttpEndpoint is required for SM-C1");
     }
 
     constexpr auto spot_rid = "user:play-a:sm-c1-channel";
@@ -77,11 +79,33 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-C1 channel-to-spot command was not accepted");
     }
 
-    auto publish_raw =
-      external_channel.post ("/spot/publish")
-        .body (spot_publish_route_req_t{.spot_rid = spot_rid, .marker = "sm-c1-publish"})
-        .submit_raw ()
-        .result ();
+    const auto publish_marker = [&] (const std::string &marker) {
+        return external_channel.post ("/spot/publish")
+          .body (spot_publish_route_req_t{.spot_rid = spot_rid, .marker = marker})
+          .submit_raw ()
+          .result ();
+    };
+    bool mesh_ready = false;
+    for (int attempt = 0; attempt < 100 && !mesh_ready; ++attempt) {
+        auto warmup = publish_marker ("sm-c1-warmup");
+        if (!warmup || warmup.value ().status >= 400) {
+            throw std::runtime_error ("SM-C1 mesh readiness publish failed");
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        const auto evidence = play_a.get ("/evidence").fetch<evidence_snapshot_t> ();
+        for (const auto &entry : evidence.entries) {
+            if (entry.marker == "MeshMsgReceived" && entry.spot_rid == spot_rid
+                && entry.value == "evt-sm-c1:sm-c1-warmup") {
+                mesh_ready = true;
+                break;
+            }
+        }
+    }
+    if (!mesh_ready) {
+        throw std::runtime_error ("SM-C1 mesh subscription did not become ready");
+    }
+
+    auto publish_raw = publish_marker ("sm-c1-publish");
     if (!publish_raw || publish_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 channel-to-spot publish failed");
     }
@@ -89,6 +113,15 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
       nlohmann::json::parse (publish_raw.value ().body).get<spot_publish_route_res_t> ();
     if (!publish.accepted) {
         throw std::runtime_error ("SM-C1 channel-to-spot publish was not accepted");
+    }
+    auto publish_observed =
+      play_a.post ("/evidence/wait")
+        .body (evidence_wait_req_t{
+          .contains_all = {"MeshMsgReceived", spot_rid, "evt-sm-c1:sm-c1-publish"}})
+        .submit_raw ()
+        .result ();
+    if (!publish_observed || publish_observed.value ().status >= 400) {
+        throw std::runtime_error ("SM-C1 published message was not observed by the target spot");
     }
 
     auto timeout_raw =

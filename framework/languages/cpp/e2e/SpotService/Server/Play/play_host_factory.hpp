@@ -12,28 +12,82 @@
 #include "Spots/play_actor_model.hpp"
 #include "../Shared/Handlers/channel_control_ping_handler.hpp"
 #include "../Shared/Support/codecs.hpp"
-#include "../Shared/Support/env.hpp"
+#include "../Shared/Support/configuration.hpp"
 #include "../Shared/Support/location_store.hpp"
 
 #include <zlink/framework.hpp>
 
 #include <memory>
+#include <sstream>
 #include <string>
+#include <vector>
+
+inline std::vector<std::string> split_play_endpoints (const std::string &text)
+{
+    std::vector<std::string> endpoints;
+    std::stringstream input (text);
+    std::string endpoint;
+    while (std::getline (input, endpoint, ',')) {
+        if (!endpoint.empty ()) {
+            endpoints.push_back (endpoint);
+        }
+    }
+    return endpoints;
+}
+
+struct play_options_t
+{
+    std::string log_dir;
+    std::string node_rid;
+    std::string route_endpoint;
+    std::string spot_router_endpoint;
+    std::string pubsub_endpoint;
+    std::vector<std::string> peer_pubsub_endpoints;
+    std::string api_peer_endpoint;
+    std::string api_endpoint;
+    std::string publisher_endpoint;
+    std::string http_endpoint;
+    std::string play_a_http_endpoint;
+    std::string play_b_http_endpoint;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+
+    static play_options_t bind (const zlink::framework::configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .node_rid = section.get ("nodeRid").value_or ("play-a"),
+                .route_endpoint = section.require ("routeEndpoint"),
+                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .pubsub_endpoint = section.require ("pubsubEndpoint"),
+                .peer_pubsub_endpoints = split_play_endpoints (
+                  section.get ("peerPubsubEndpoints").value_or ("")),
+                .api_peer_endpoint = section.get ("apiPeerEndpoint").value_or (""),
+                .api_endpoint = section.get ("apiEndpoint").value_or (""),
+                .publisher_endpoint = section.get ("publisherEndpoint").value_or (""),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .play_a_http_endpoint = section.require ("playHttpEndpoints.playA"),
+                .play_b_http_endpoint = section.require ("playHttpEndpoints.playB"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix")};
+    }
+};
 
 inline int run_play_server (int argc, char **argv)
 {
     auto app = zlink::framework::app_t::create ();
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    const auto node_rid = env_or ("ZLINK_CPP_E2E_NODE_RID", "play-a");
-    const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
-    const auto pubsub_endpoint = env_or ("ZLINK_CPP_E2E_PUBSUB_ENDPOINT");
-    const auto api_peer_endpoint = env_or ("ZLINK_CPP_E2E_API_PEER_ENDPOINT");
-    const auto api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
-    const auto publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
-    const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
-    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
+    load_spot_service_config (app, argc, argv, "play");
+    const auto config = app.config ().bind_required<play_options_t> ("e2e");
+    const auto &log_dir = config.log_dir;
+    const auto &node_rid = config.node_rid;
+    const auto &route_endpoint = config.route_endpoint;
+    const auto &spot_router_endpoint = config.spot_router_endpoint;
+    const auto &pubsub_endpoint = config.pubsub_endpoint;
+    const auto &api_peer_endpoint = config.api_peer_endpoint;
+    const auto &api_endpoint = config.api_endpoint;
+    const auto &publisher_endpoint = config.publisher_endpoint;
+    const auto &http_endpoint = config.http_endpoint;
+    const auto &redis_endpoint = config.redis_endpoint;
+    const auto &redis_key_prefix = config.redis_key_prefix;
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")
@@ -47,6 +101,10 @@ inline int run_play_server (int argc, char **argv)
           .trace_label ("cpp-sm-" + node_rid);
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
+          .add_singleton<play_node_http_endpoints_t> (
+            std::make_unique<play_node_http_endpoints_t> (
+              play_node_http_endpoints_t{config.play_a_http_endpoint,
+                                         config.play_b_http_endpoint}))
           .add_transient<ensure_actor_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t,
                          zlink::framework::session_actor_manager_t,
@@ -63,10 +121,12 @@ inline int run_play_server (int argc, char **argv)
           .add_transient<push_bound_session_handler_t,
                          zlink::framework::session_actor_manager_t> ()
           .add_transient<remote_actor_flow_handler_t, scenario_state_t,
-                         zlink::framework::session_actor_manager_t> ()
+                         zlink::framework::session_actor_manager_t,
+                         play_node_http_endpoints_t> ()
           .add_transient<remote_actor_request_handler_t, scenario_state_t,
                          zlink::framework::route_client_t,
-                         zlink::framework::session_actor_manager_t> ()
+                         zlink::framework::session_actor_manager_t,
+                         play_node_http_endpoints_t> ()
           .add_transient<worker_spot_handler_t, zlink::framework::session_actor_manager_t> ()
           .add_transient<create_spot_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
@@ -157,16 +217,20 @@ inline int run_play_server (int argc, char **argv)
             options.add_fanout_channel (e2e::publisher_channel)
               .enable_publisher (publisher_endpoint);
         }
-        options.add_spot_mesh (e2e::spot_mesh)
-          .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_router (spot_router_endpoint)
-          .enable_pub_sub (pubsub_endpoint)
-          .add_entry_spot<entry_spot_t> (
-            [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
-          .add_spot<user_spot_t> (
-            e2e::user_spot, [state_ptr] { return std::make_shared<user_spot_t> (*state_ptr); })
-          .add_spot<alternate_user_spot_t> (e2e::alternate_spot)
-          .add_actor_factory<scenario_actor_factory_t> (e2e::actor_type);
+        auto spot = options.add_spot_mesh (e2e::spot_mesh)
+                      .set_routing_id (zlink::routing_id_t::from (node_rid))
+                      .enable_router (spot_router_endpoint)
+                      .enable_pub_sub (pubsub_endpoint)
+                      .add_entry_spot<entry_spot_t> (
+                        [state_ptr] { return std::make_shared<entry_spot_t> (*state_ptr); })
+                      .add_spot<user_spot_t> (
+                        e2e::user_spot,
+                        [state_ptr] { return std::make_shared<user_spot_t> (*state_ptr); })
+                      .add_spot<alternate_user_spot_t> (e2e::alternate_spot)
+                      .add_actor_factory<scenario_actor_factory_t> (e2e::actor_type);
+        for (const auto &endpoint : config.peer_pubsub_endpoints) {
+            spot.connect_peer_pub (endpoint);
+        }
         auto &http = options.http ().listen (http_endpoint);
         map_operational_endpoints (http);
         map_spot_lifecycle_endpoints (http);

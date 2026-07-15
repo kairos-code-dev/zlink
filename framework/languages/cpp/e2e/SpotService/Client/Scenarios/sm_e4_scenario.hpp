@@ -92,7 +92,7 @@ inline evidence_snapshot_t sm_e4_wait_for_evidence (zlink::http_client::client_t
 inline void run_sm_e4_scenario (const std::string &play_http_endpoint)
 {
     if (play_http_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_PLAY_HTTP_ENDPOINT is required for SM-E4");
+        throw std::runtime_error ("playHttpEndpoint is required for SM-E4");
     }
 
     struct policy_case_t

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
 final class ZLinkStreamFlowWireContractTest {
@@ -22,6 +23,44 @@ final class ZLinkStreamFlowWireContractTest {
         assertEquals("corr-1", decoded.correlationId());
         assertTrue(flowId.matches(
             "[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
+    }
+
+    @Test
+    void outboundCallInsideInboundCallbackPreservesFlow() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
+                server.options(ZLinkStreamDispatchMode.IMMEDIATE));
+            try {
+                connector.on("Inbound", message -> {
+                    message.payload().payload().close();
+                    connector.send(new ZLinkStreamEncodedPayload(
+                        "Outbound",
+                        systems.zlink.contracts.messaging.Message.from("reply"),
+                        Map.of())).submit();
+                    return CompletableFuture.completedFuture(null);
+                });
+                ConnectorTestAwait.await(connector.connect());
+                String inboundFlow = ZLinkConnectorFlowIds.next();
+                var outbound = server.readFrameAsync();
+                server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                        ZLinkStreamWireProtocol.KIND_SEND,
+                        ZLinkStreamWireProtocol.CODEC_RAW,
+                        0,
+                        null,
+                        "Inbound",
+                        Map.of(),
+                        null,
+                        inboundFlow,
+                        1),
+                    TcpStreamConnectorTestServer.bytes("request")).join();
+
+                TcpStreamConnectorTestServer.ReceivedFrame sent = outbound.join();
+                assertEquals(inboundFlow, sent.header().flowId());
+                assertEquals(1, sent.header().flowOrigin());
+            } finally {
+                ConnectorTestAwait.await(connector.close());
+            }
+        }
     }
 
     @Test

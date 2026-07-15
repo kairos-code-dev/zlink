@@ -188,6 +188,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     CompletionStage<Void> submit(ZLinkStreamEncodedPayload payload, boolean compress) {
         ensureConnected();
+        ZLinkConnectorFlowContext.State flow = ZLinkConnectorFlowContext.currentOrApplication();
         byte[] body = payloadCodec.encode(payload, compress);
         ZLinkStreamWireProtocol.Header header = new ZLinkStreamWireProtocol.Header(
             ZLinkStreamWireProtocol.KIND_SEND,
@@ -198,8 +199,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             payload.packetName(),
             payload.metadata(),
             nextCorrelationId(),
-            ZLinkConnectorFlowIds.next(),
-            3);
+            flow.flowId(),
+            flow.flowOrigin());
         return sendFrame(header, body);
     }
 
@@ -208,6 +209,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
         Duration timeout,
         boolean compress) {
         ensureConnected();
+        ZLinkConnectorFlowContext.State flow = ZLinkConnectorFlowContext.currentOrApplication();
         long requestSeq = nextRequestSeq();
         CompletableFuture<ZLinkStreamEncodedPayload> pending =
             pendingRequests.add(requestSeq, payload.packetName(), timeout, timeouts);
@@ -223,8 +225,8 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
             payload.packetName(),
             payload.metadata(),
             nextCorrelationId(),
-            ZLinkConnectorFlowIds.next(),
-            3);
+            flow.flowId(),
+            flow.flowOrigin());
 
         sendFrame(header, body).whenComplete((ignored, ex) -> {
             if (ex != null) {

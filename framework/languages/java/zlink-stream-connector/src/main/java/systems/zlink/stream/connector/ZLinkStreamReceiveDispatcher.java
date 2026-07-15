@@ -162,8 +162,10 @@ final class ZLinkStreamReceiveDispatcher {
         }
         java.util.function.Supplier<CompletionStage<Void>> dispatch = () -> {
             CompletionStage<Void> completion = CompletableFuture.completedFuture(null);
+            ZLinkConnectorFlowContext.State flow = ZLinkConnectorFlowContext.inbound(
+                header.flowId(), header.flowOrigin());
             for (ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler : registered) {
-                completion = completion.thenCompose(ignored -> invokeUserCallback(
+                completion = completion.thenCompose(ignored -> invokeUserCallback(flow,
                     () -> handler.handleAsync(new ZLinkStreamMessage<>(
                         header.name(),
                         new ZLinkStreamEncodedPayload(
@@ -182,8 +184,10 @@ final class ZLinkStreamReceiveDispatcher {
         }
     }
 
-    private CompletionStage<Void> invokeUserCallback(UserCallback callback) {
-        try {
+    private CompletionStage<Void> invokeUserCallback(
+        ZLinkConnectorFlowContext.State flow,
+        UserCallback callback) {
+        try (ZLinkConnectorFlowContext.Scope ignored = ZLinkConnectorFlowContext.enter(flow)) {
             return callback.invoke().exceptionally(ex -> {
                 errorPublisher.accept(DefaultZLinkStreamConnector.userCallbackFailed(ex));
                 return null;

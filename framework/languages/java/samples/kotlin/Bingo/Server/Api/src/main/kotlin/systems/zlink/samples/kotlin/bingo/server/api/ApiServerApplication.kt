@@ -31,7 +31,7 @@ class ApiServerApplication {
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-api.log")
+                traceLogFile(SampleTopology.LogDirectory + "/flow-api.log")
                 traceLabel("api")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())

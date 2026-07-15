@@ -1,37 +1,64 @@
 package systems.zlink.samples.kotlin.bingo.server.configuration
 
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.Properties
+
 object SampleTopology {
-    val ApiChannelEndpoint: String = property("apiChannelEndpoint", "tcp://127.0.0.1:47103")
-    val ApiAChannelEndpoint: String = property("apiAChannelEndpoint", ApiChannelEndpoint)
-    val ApiBChannelEndpoint: String = property("apiBChannelEndpoint", "tcp://127.0.0.1:47117")
-    val PlayChannelEndpoint: String = property("playChannelEndpoint", "tcp://127.0.0.1:47104")
-    val PlayAChannelEndpoint: String = property("playAChannelEndpoint", PlayChannelEndpoint)
-    val PlayBChannelEndpoint: String = property("playBChannelEndpoint", "tcp://127.0.0.1:47118")
-    val SessionSpotEndpoint: String = property("sessionSpotEndpoint", "tcp://127.0.0.1:47105")
-    val SessionRouterEndpoint: String = property("sessionRouterEndpoint", "tcp://127.0.0.1:47106")
-    val SessionASpotEndpoint: String = property("sessionASpotEndpoint", SessionSpotEndpoint)
-    val SessionBSpotEndpoint: String = property("sessionBSpotEndpoint", "tcp://127.0.0.1:47119")
-    val SessionARouterEndpoint: String = property("sessionARouterEndpoint", SessionRouterEndpoint)
-    val SessionBRouterEndpoint: String = property("sessionBRouterEndpoint", "tcp://127.0.0.1:47120")
-    val PlaySpotEndpoint: String = property("playSpotEndpoint", "tcp://127.0.0.1:47110")
-    val PlaySpotRouterEndpoint: String = property("playSpotRouterEndpoint", "tcp://127.0.0.1:47111")
-    val PlayASpotEndpoint: String = property("playASpotEndpoint", PlaySpotEndpoint)
-    val PlayBSpotEndpoint: String = property("playBSpotEndpoint", "tcp://127.0.0.1:47121")
-    val PlayASpotRouterEndpoint: String = property("playASpotRouterEndpoint", PlaySpotRouterEndpoint)
-    val PlayBSpotRouterEndpoint: String = property("playBSpotRouterEndpoint", "tcp://127.0.0.1:47122")
-    val StreamEndpoint: String = property("streamEndpoint", "tcp://127.0.0.1:47114")
-    val SessionAStreamEndpoint: String = property("sessionAStreamEndpoint", StreamEndpoint)
-    val SessionBStreamEndpoint: String = property("sessionBStreamEndpoint", "tcp://127.0.0.1:47125")
-    val RedisEndpoint: String = requiredProperty("redisEndpoint")
-    val RedisKeyPrefix: String = property("redisKeyPrefix", "bingo:kotlin:")
-    val ApiNode: String = property("apiNode", "a")
-    val PlayNode: String = property("playNode", "a")
-    val SessionNode: String = property("sessionNode", "a")
-    val SessionARouterRid: String = property("sessionARouterRid", "1101")
-    val SessionBRouterRid: String = property("sessionBRouterRid", "1102")
-    val PlayANodeRid: String = property("playANodeRid", "2201")
-    val PlayBNodeRid: String = property("playBNodeRid", "2202")
-    val PlayRid: String = property("playRid", PlayBNodeRid)
+    lateinit var ApiAChannelEndpoint: String
+    lateinit var ApiBChannelEndpoint: String
+    lateinit var PlayAChannelEndpoint: String
+    lateinit var PlayBChannelEndpoint: String
+    lateinit var SessionASpotEndpoint: String
+    lateinit var SessionBSpotEndpoint: String
+    lateinit var SessionARouterEndpoint: String
+    lateinit var SessionBRouterEndpoint: String
+    lateinit var PlayASpotEndpoint: String
+    lateinit var PlayBSpotEndpoint: String
+    lateinit var PlayASpotRouterEndpoint: String
+    lateinit var PlayBSpotRouterEndpoint: String
+    lateinit var SessionAStreamEndpoint: String
+    lateinit var SessionBStreamEndpoint: String
+    lateinit var RedisEndpoint: String
+    lateinit var RedisKeyPrefix: String
+    lateinit var ApiNode: String
+    lateinit var PlayNode: String
+    lateinit var SessionNode: String
+    lateinit var SessionARouterRid: String
+    lateinit var SessionBRouterRid: String
+    lateinit var PlayANodeRid: String
+    lateinit var PlayBNodeRid: String
+    lateinit var PlayRid: String
+    lateinit var LogDirectory: String
+
+    fun configure(args: Array<String>) {
+        val properties = load(args)
+        ApiAChannelEndpoint = value(properties, "apiAChannelEndpoint", "tcp://127.0.0.1:47103")
+        ApiBChannelEndpoint = value(properties, "apiBChannelEndpoint", "tcp://127.0.0.1:47117")
+        PlayAChannelEndpoint = value(properties, "playAChannelEndpoint", "tcp://127.0.0.1:47104")
+        PlayBChannelEndpoint = value(properties, "playBChannelEndpoint", "tcp://127.0.0.1:47118")
+        SessionASpotEndpoint = value(properties, "sessionASpotEndpoint", "tcp://127.0.0.1:47105")
+        SessionBSpotEndpoint = value(properties, "sessionBSpotEndpoint", "tcp://127.0.0.1:47119")
+        SessionARouterEndpoint = value(properties, "sessionARouterEndpoint", "tcp://127.0.0.1:47106")
+        SessionBRouterEndpoint = value(properties, "sessionBRouterEndpoint", "tcp://127.0.0.1:47120")
+        PlayASpotEndpoint = value(properties, "playASpotEndpoint", "tcp://127.0.0.1:47110")
+        PlayBSpotEndpoint = value(properties, "playBSpotEndpoint", "tcp://127.0.0.1:47121")
+        PlayASpotRouterEndpoint = value(properties, "playASpotRouterEndpoint", "tcp://127.0.0.1:47111")
+        PlayBSpotRouterEndpoint = value(properties, "playBSpotRouterEndpoint", "tcp://127.0.0.1:47122")
+        SessionAStreamEndpoint = value(properties, "sessionAStreamEndpoint", "tcp://127.0.0.1:47114")
+        SessionBStreamEndpoint = value(properties, "sessionBStreamEndpoint", "tcp://127.0.0.1:47125")
+        RedisEndpoint = required(properties, "redisEndpoint")
+        RedisKeyPrefix = value(properties, "redisKeyPrefix", "bingo:kotlin:")
+        ApiNode = value(properties, "apiNode", "a")
+        PlayNode = value(properties, "playNode", "a")
+        SessionNode = value(properties, "sessionNode", "a")
+        SessionARouterRid = value(properties, "sessionARouterRid", "1101")
+        SessionBRouterRid = value(properties, "sessionBRouterRid", "1102")
+        PlayANodeRid = value(properties, "playANodeRid", "2201")
+        PlayBNodeRid = value(properties, "playBNodeRid", "2202")
+        PlayRid = value(properties, "playRid", PlayBNodeRid)
+        LogDirectory = required(properties, "logDirectory")
+    }
 
     fun selectedApiChannelEndpoint(): String =
         if (ApiNode == "b") ApiBChannelEndpoint else ApiAChannelEndpoint
@@ -69,18 +96,20 @@ object SampleTopology {
     fun selectedStreamEndpoint(): String =
         if (SessionNode == "b") SessionBStreamEndpoint else SessionAStreamEndpoint
 
-    private fun property(name: String, defaultValue: String): String =
-        System.getProperty("zlink.samples.bingo.$name", defaultValue)
-
-    // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
-    // an isolated container; require the endpoint so a stray direct run never
-    // silently falls back to a developer's local Redis.
-    private fun requiredProperty(name: String): String {
-        val value = System.getProperty("zlink.samples.bingo.$name")
-        require(!value.isNullOrBlank()) {
-            "System property 'zlink.samples.bingo.$name' is required; run the sample via " +
-                "run_sample.sh/run_sample.ps1, which provisions an isolated Redis container."
+    private fun load(args: Array<String>): Properties {
+        require(args.size == 2 && args[0] == "--config" && args[1].isNotBlank()) {
+            "Usage: <role> --config <path>"
         }
-        return value
+        return Properties().also { properties ->
+            Files.newBufferedReader(Path.of(args[1])).use(properties::load)
+        }
     }
+
+    private fun value(properties: Properties, name: String, fallback: String): String =
+        properties.getProperty(name)?.takeIf(String::isNotBlank) ?: fallback
+
+    private fun required(properties: Properties, name: String): String =
+        requireNotNull(properties.getProperty(name)?.takeIf(String::isNotBlank)) {
+            "Missing Bingo sample config: $name"
+        }
 }

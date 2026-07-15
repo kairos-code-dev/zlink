@@ -35,7 +35,7 @@ class SessionServerApplication {
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile((System.getenv("BINGO_LOG_DIR") ?: "logs") + "/flow-session.log")
+                traceLogFile(SampleTopology.LogDirectory + "/flow-session.log")
                 traceLabel("session")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())

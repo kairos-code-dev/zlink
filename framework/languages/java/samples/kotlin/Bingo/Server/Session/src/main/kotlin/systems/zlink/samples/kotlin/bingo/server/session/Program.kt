@@ -1,5 +1,8 @@
 package systems.zlink.samples.kotlin.bingo.server.session
 
+import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
+
 fun main(args: Array<String>) {
-    SessionServerApplication.run(args)
+    SampleTopology.configure(args)
+    SessionServerApplication.run()
 }

@@ -12,7 +12,8 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 
-suspend fun main() {
+suspend fun main(args: Array<String>) {
+    SampleTopology.configure(args)
     val client1 = createClient(SampleTopology.SessionAStreamEndpoint)
     val client2 = createClient(SampleTopology.SessionBStreamEndpoint)
     val observer = createClient(SampleTopology.SessionBStreamEndpoint)

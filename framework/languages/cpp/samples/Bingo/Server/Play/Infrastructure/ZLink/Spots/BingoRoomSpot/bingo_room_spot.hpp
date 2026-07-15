@@ -116,25 +116,14 @@ class bingo_room_spot_t : public spot_t
         } else {
             const auto display_name = actor.display_name.empty () ? request.display_name
                                                                   : actor.display_name;
-            _game.join (actor.actor.actor_id, display_name);
+            const auto joined = _game.join (actor.actor.actor_id, display_name);
+            send_to_players (joined.player_joined, actor.actor.actor_id);
+            if (joined.game_started) {
+                send_to_players (*joined.game_started, actor.actor.actor_id);
+                actor.push (*joined.game_started);
+            }
         }
         actors[actor.actor.actor_id] = const_cast<player_actor_t *> (&actor);
-        const auto &state = snapshot ();
-        auto joined = std::find_if (state.players.begin (), state.players.end (),
-                                    [&actor] (const bingo_player_state_t &player) {
-                                        return player.actor_id == actor.actor.actor_id;
-                                    });
-        if (joined != state.players.end ()) {
-            player_joined_notify_t notify{
-                state.room_id, joined->actor_id, joined->display_name, joined->seat, joined->is_host, state
-            };
-            send_to_players (notify, joined->actor_id);
-        }
-        if (state.players.size () == 2) {
-            game_started_notify_t started{state};
-            send_to_players (started, actor.actor.actor_id);
-            actor.push (started);
-        }
     }
 
     void on_leave_actor (const player_actor_t &actor)

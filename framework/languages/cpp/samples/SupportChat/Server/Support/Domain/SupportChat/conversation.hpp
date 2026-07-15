@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace zlink::samples::supportchat
@@ -27,6 +28,9 @@ struct conversation_event_t
     std::optional<chat_message_t> message;
     conversation_state_t state;
 };
+
+using conversation_timeout_event_t =
+  std::variant<std::monostate, conversation_idle_notify_t, conversation_closed_notify_t>;
 
 class conversation_t
 {
@@ -74,6 +78,7 @@ class conversation_t
         }
         if (_status == conversation_status_t::waiting_for_close) {
             _status = conversation_status_t::active;
+            _close_deadline_unix_ms.reset ();
         }
         auto message = chat_message_t{_conversation_id,
                                       ++_last_message_seq,
@@ -100,12 +105,24 @@ class conversation_t
         return {_conversation_id, sender_actor_id, is_typing, snapshot ()};
     }
 
-    conversation_idle_notify_t mark_idle ()
+    conversation_timeout_event_t advance_time (std::int64_t now_unix_ms)
     {
-        if (_status == conversation_status_t::active) {
-            _status = conversation_status_t::waiting_for_close;
+        if (_status == conversation_status_t::closed) {
+            return std::monostate{};
         }
-        return {_conversation_id, snapshot ()};
+        if (_status == conversation_status_t::active && _idle_deadline_unix_ms
+            && now_unix_ms >= *_idle_deadline_unix_ms) {
+            _status = conversation_status_t::waiting_for_close;
+            _close_deadline_unix_ms = now_unix_ms + close_grace_ms;
+            return conversation_idle_notify_t{_conversation_id, snapshot ()};
+        }
+        if (_status == conversation_status_t::waiting_for_close && _close_deadline_unix_ms
+            && now_unix_ms >= *_close_deadline_unix_ms) {
+            _status = conversation_status_t::closed;
+            _close_deadline_unix_ms.reset ();
+            return conversation_closed_notify_t{_conversation_id, snapshot ()};
+        }
+        return std::monostate{};
     }
 
     /* 이미 닫힌 대화를 다시 닫는 것은 오류다(공통 sample spec §9, §17 명시적 close 시나리오). */
@@ -113,6 +130,7 @@ class conversation_t
     {
         ensure_open ("close");
         _status = conversation_status_t::closed;
+        _close_deadline_unix_ms.reset ();
         return {_conversation_id, snapshot ()};
     }
 
@@ -129,6 +147,7 @@ class conversation_t
     }
 
     static constexpr std::int64_t idle_timeout_ms = 3000;
+    static constexpr std::int64_t close_grace_ms = 2000;
 
   private:
     void ensure_open (const std::string &action) const
@@ -170,6 +189,7 @@ class conversation_t
     std::uint64_t _last_message_seq{0};
     std::optional<std::int64_t> _last_message_at_unix_ms;
     std::optional<std::int64_t> _idle_deadline_unix_ms;
+    std::optional<std::int64_t> _close_deadline_unix_ms;
     std::vector<conversation_participant_t> _participants;
 };
 

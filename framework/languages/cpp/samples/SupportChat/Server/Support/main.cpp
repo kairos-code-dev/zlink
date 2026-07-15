@@ -276,25 +276,12 @@ class conversation_spot_t : public spot_t
         if (!_conversation) {
             return;
         }
-        const auto state = _conversation->snapshot ();
-        if (state.status == conversation_status_t::closed) {
-            return;
+        auto transition = _conversation->advance_time (now_unix_ms ());
+        if (const auto *idle = std::get_if<conversation_idle_notify_t> (&transition)) {
+            broadcast (*idle, conversation_idle_notify_t::packet_name);
         }
-        const auto now = now_unix_ms ();
-        if (state.status == conversation_status_t::active) {
-            if (state.idle_deadline_unix_ms > 0 && now >= state.idle_deadline_unix_ms) {
-                auto idle = _conversation->mark_idle ();
-                _close_deadline_unix_ms = now + close_grace_ms;
-                broadcast (idle, conversation_idle_notify_t::packet_name);
-            }
-            return;
-        }
-        if (state.status == conversation_status_t::waiting_for_close
-            && _close_deadline_unix_ms > 0 && now >= _close_deadline_unix_ms) {
-            auto closed = _conversation->close ();
-            _close_deadline_unix_ms = 0;
-            broadcast (conversation_closed_notify_t{closed.state.conversation_id, closed.state},
-                       conversation_closed_notify_t::packet_name);
+        if (const auto *closed = std::get_if<conversation_closed_notify_t> (&transition)) {
+            broadcast (*closed, conversation_closed_notify_t::packet_name);
         }
     }
 
@@ -381,7 +368,6 @@ class conversation_spot_t : public spot_t
     {
         (void) request;
         auto closed = require_conversation ().close ();
-        _close_deadline_unix_ms = 0;
         /* 종료 알림은 대화의 모든 참가자가 받는다(공통 sample spec §14). */
         broadcast (conversation_closed_notify_t{closed.state.conversation_id, closed.state},
                    conversation_closed_notify_t::packet_name);
@@ -477,11 +463,8 @@ class conversation_spot_t : public spot_t
     }
 
     supportchat_conversation_runtime_t &_runtime;
-    static constexpr std::int64_t close_grace_ms = 2000;
-
     spot_context_t _context;
     zlink::framework::timer_t _idle_timer;
-    std::int64_t _close_deadline_unix_ms{0};
     std::optional<conversation_t> _conversation;
     std::set<std::string> _pending_actor_joins;
 };
@@ -810,11 +793,19 @@ class supportchat_server_story_t
         require (duplicate_close_failed, "closed room accepted a message");
         record ("explicit-close=verified");
 
-        const auto idle1 = room1.mark_idle ();
-        require (idle1.state.status == conversation_status_t::waiting_for_close,
+        const auto room1_state = room1.snapshot ();
+        require (room1_state.idle_deadline_unix_ms.has_value (),
+                 "active conversation has no idle deadline");
+        const auto idle1 = room1.advance_time (*room1_state.idle_deadline_unix_ms);
+        const auto *idle_notify = std::get_if<conversation_idle_notify_t> (&idle1);
+        require (idle_notify != nullptr
+                   && idle_notify->state.status == conversation_status_t::waiting_for_close,
                  "idle did not move to WaitingForClose");
-        const auto closed1 = room1.close ();
-        require (closed1.state.status == conversation_status_t::closed,
+        const auto closed1 = room1.advance_time (*room1_state.idle_deadline_unix_ms
+                                                 + conversation_t::close_grace_ms);
+        const auto *closed_notify = std::get_if<conversation_closed_notify_t> (&closed1);
+        require (closed_notify != nullptr
+                   && closed_notify->state.status == conversation_status_t::closed,
                  "idle close did not close room1");
         record ("idle-close=verified");
 

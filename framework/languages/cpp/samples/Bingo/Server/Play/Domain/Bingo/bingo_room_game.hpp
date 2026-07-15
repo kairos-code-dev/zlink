@@ -4,12 +4,19 @@
 #include "bingo_game.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 namespace zlink::samples::bingo
 {
+
+struct bingo_room_join_result_t
+{
+    player_joined_notify_t player_joined;
+    std::optional<game_started_notify_t> game_started;
+};
 
 class bingo_room_game_t
 {
@@ -18,13 +25,13 @@ class bingo_room_game_t
 
     explicit bingo_room_game_t (std::string room_id) : _state{std::move (room_id)} {}
 
-    player_joined_notify_t join (std::string actor_id, std::string display_name)
+    bingo_room_join_result_t join (std::string actor_id, std::string display_name)
     {
         if (_state.players.size () >= 2) {
             throw std::runtime_error ("bingo room is full");
         }
         if (find_player (actor_id) != _state.players.end ()) {
-            return {_state.room_id, actor_id, display_name, 0, false, _state};
+            return {{_state.room_id, actor_id, display_name, 0, false, _state}, std::nullopt};
         }
 
         const bool is_host = _state.players.empty ();
@@ -37,8 +44,12 @@ class bingo_room_game_t
         if (_state.can_start) {
             _state.status = bingo_room_status_t::running;
         }
-        return {_state.room_id, std::move (actor_id), std::move (display_name), seat, is_host,
-                _state};
+        auto joined = player_joined_notify_t{_state.room_id, std::move (actor_id),
+                                             std::move (display_name), seat, is_host, _state};
+        auto started = _state.can_start
+                         ? std::optional<game_started_notify_t> (game_started_notify_t{_state})
+                         : std::nullopt;
+        return {std::move (joined), std::move (started)};
     }
 
     submit_bingo_card_res_t submit_card (const std::string &actor_id,

@@ -34,7 +34,8 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorFactory
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 
-fun main() {
+fun main(args: Array<String>) {
+    SampleTopology.configure(args)
     runBlocking {
         DeliveryDispatchClientScenario().run()
     }

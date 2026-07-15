@@ -29,7 +29,7 @@ class TrackingServerApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
-                    System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") +
+                    SampleTopology.LogDirectory +
                         "/flow-tracking.log",
                 )
                 .traceLabel("tracking")
@@ -49,10 +49,7 @@ class TrackingServerApplication {
     @Bean
     fun evidenceStore(): DeliveryEvidenceStore =
         DeliveryEvidenceStore(
-            System.getProperty(
-                "zlink.samples.deliverydispatch.stateDir",
-                "build/sample-state",
-            ),
+            SampleTopology.StateDirectory,
         )
 
     companion object {

@@ -26,13 +26,13 @@ class CourierSpotNodeApplication {
     fun courierSpotNodeFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.useCoroutineHandlers(Dispatchers.Default)
-            val node = System.getProperty("zlink.samples.deliverydispatch.courierNode", "node1")
+            val node = SampleTopology.CourierNode
             val selected = NodeOptions.resolve(node)
             options.addHandlersFromPackageOf(CourierSpotNodeApplication::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
-                    System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") +
+                    SampleTopology.LogDirectory +
                         "/flow-courier-$node.log",
                 )
                 .traceLabel("courier-$node")

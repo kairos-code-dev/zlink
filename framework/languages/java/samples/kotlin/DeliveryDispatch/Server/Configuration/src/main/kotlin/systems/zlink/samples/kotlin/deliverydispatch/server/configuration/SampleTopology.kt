@@ -1,5 +1,9 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.configuration
 
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.Properties
+
 data class SampleTopology(
     val registryUrl: String,
     val trackingUrl: String,
@@ -23,45 +27,75 @@ data class SampleTopology(
         )
 
     companion object {
-        val RegistryPubEndpoint: String = property("registryPubEndpoint", "tcp://127.0.0.1:49101")
-        val RegistryRouterEndpoint: String = property("registryRouterEndpoint", "tcp://127.0.0.1:49102")
-        val TrackingChannelEndpoint: String = property("trackingChannelEndpoint", "tcp://127.0.0.1:49103")
-        val TrackingSpotEndpoint: String = property("trackingSpotEndpoint", "tcp://127.0.0.1:49118")
-        val CustomerStreamEndpoint: String = property("customerStreamEndpoint", "tcp://127.0.0.1:49104")
-        val CourierStreamEndpoint: String = property("courierStreamEndpoint", "tcp://127.0.0.1:49105")
-        val CourierGatewayChannelEndpoint: String = property("courierGatewayChannelEndpoint", "tcp://127.0.0.1:49106")
-        val DispatchHttpEndpoint: String = property("dispatchHttpEndpoint", "http://127.0.0.1:49107")
-        val DispatchChannelEndpoint: String =
-            property("dispatchChannelEndpoint", "tcp://127.0.0.1:49121")
-        val CustomerSpotEndpoint: String = property("customerSpotEndpoint", "tcp://127.0.0.1:49109")
-        val CustomerSpotRouterEndpoint: String = property("customerSpotRouterEndpoint", "tcp://127.0.0.1:49110")
-        val CustomerSpotNodeRid: String = property("customerSpotNodeRid", "customer-node-1")
-        val CourierActorNode1Rid: String = property("courierActorNode1Rid", "courier-node-1")
-        val CourierActorNode2Rid: String = property("courierActorNode2Rid", "courier-node-2")
-        val CourierActorNode1SpotEndpoint: String =
-            property("courierActorNode1SpotEndpoint", "tcp://127.0.0.1:49113")
-        val CourierActorNode2SpotEndpoint: String =
-            property("courierActorNode2SpotEndpoint", "tcp://127.0.0.1:49114")
-        val CourierActorNode1RouterEndpoint: String =
-            property("courierActorNode1RouterEndpoint", "tcp://127.0.0.1:49115")
-        val CourierActorNode2RouterEndpoint: String =
-            property("courierActorNode2RouterEndpoint", "tcp://127.0.0.1:49116")
-        val CourierSessionSpotRouterEndpoint: String =
-            property("courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:49117")
-        val CourierSessionSpotEndpoint: String =
-            property("courierSessionSpotEndpoint", "tcp://127.0.0.1:49119")
-        val CourierSessionSpotNodeRid: String = property("courierSessionSpotNodeRid", "courier-session-node")
-        val RedisEndpoint: String = requiredProperty("redisEndpoint")
-        val RedisKeyPrefix: String = property("redisKeyPrefix", "deliverydispatch:kotlin:")
+        lateinit var RegistryPubEndpoint: String
+        lateinit var RegistryRouterEndpoint: String
+        lateinit var TrackingChannelEndpoint: String
+        lateinit var TrackingSpotEndpoint: String
+        lateinit var CustomerStreamEndpoint: String
+        lateinit var CourierStreamEndpoint: String
+        lateinit var CourierGatewayChannelEndpoint: String
+        lateinit var DispatchHttpEndpoint: String
+        lateinit var DispatchChannelEndpoint: String
+        lateinit var CustomerSpotEndpoint: String
+        lateinit var CustomerSpotRouterEndpoint: String
+        lateinit var CustomerSpotNodeRid: String
+        lateinit var CourierActorNode1Rid: String
+        lateinit var CourierActorNode2Rid: String
+        lateinit var CourierActorNode1SpotEndpoint: String
+        lateinit var CourierActorNode2SpotEndpoint: String
+        lateinit var CourierActorNode1RouterEndpoint: String
+        lateinit var CourierActorNode2RouterEndpoint: String
+        lateinit var CourierSessionSpotRouterEndpoint: String
+        lateinit var CourierSessionSpotEndpoint: String
+        lateinit var CourierSessionSpotNodeRid: String
+        lateinit var RedisEndpoint: String
+        lateinit var RedisKeyPrefix: String
+        lateinit var CourierNode: String
+        lateinit var LogDirectory: String
+        lateinit var StateDirectory: String
 
-        private fun property(name: String, fallback: String): String =
-            System.getProperty("zlink.samples.deliverydispatch.$name", fallback)
-
-        private fun requiredProperty(name: String): String {
-            val value = System.getProperty("zlink.samples.deliverydispatch.$name")
-            require(!value.isNullOrBlank()) { "Missing zlink.samples.deliverydispatch.$name" }
-            return value
+        fun configure(args: Array<String>) {
+            require(args.size == 2 && args[0] == "--config" && args[1].isNotBlank()) {
+                "Usage: <role> --config <path>"
+            }
+            val properties = Properties().also { values ->
+                Files.newBufferedReader(Path.of(args[1])).use(values::load)
+            }
+            RegistryPubEndpoint = value(properties, "registryPubEndpoint", "tcp://127.0.0.1:49101")
+            RegistryRouterEndpoint = value(properties, "registryRouterEndpoint", "tcp://127.0.0.1:49102")
+            TrackingChannelEndpoint = value(properties, "trackingChannelEndpoint", "tcp://127.0.0.1:49103")
+            TrackingSpotEndpoint = value(properties, "trackingSpotEndpoint", "tcp://127.0.0.1:49118")
+            CustomerStreamEndpoint = value(properties, "customerStreamEndpoint", "tcp://127.0.0.1:49104")
+            CourierStreamEndpoint = value(properties, "courierStreamEndpoint", "tcp://127.0.0.1:49105")
+            CourierGatewayChannelEndpoint = value(properties, "courierGatewayChannelEndpoint", "tcp://127.0.0.1:49106")
+            DispatchHttpEndpoint = value(properties, "dispatchHttpEndpoint", "http://127.0.0.1:49107")
+            DispatchChannelEndpoint = value(properties, "dispatchChannelEndpoint", "tcp://127.0.0.1:49121")
+            CustomerSpotEndpoint = value(properties, "customerSpotEndpoint", "tcp://127.0.0.1:49109")
+            CustomerSpotRouterEndpoint = value(properties, "customerSpotRouterEndpoint", "tcp://127.0.0.1:49110")
+            CustomerSpotNodeRid = value(properties, "customerSpotNodeRid", "customer-node-1")
+            CourierActorNode1Rid = value(properties, "courierActorNode1Rid", "courier-node-1")
+            CourierActorNode2Rid = value(properties, "courierActorNode2Rid", "courier-node-2")
+            CourierActorNode1SpotEndpoint = value(properties, "courierActorNode1SpotEndpoint", "tcp://127.0.0.1:49113")
+            CourierActorNode2SpotEndpoint = value(properties, "courierActorNode2SpotEndpoint", "tcp://127.0.0.1:49114")
+            CourierActorNode1RouterEndpoint = value(properties, "courierActorNode1RouterEndpoint", "tcp://127.0.0.1:49115")
+            CourierActorNode2RouterEndpoint = value(properties, "courierActorNode2RouterEndpoint", "tcp://127.0.0.1:49116")
+            CourierSessionSpotRouterEndpoint = value(properties, "courierSessionSpotRouterEndpoint", "tcp://127.0.0.1:49117")
+            CourierSessionSpotEndpoint = value(properties, "courierSessionSpotEndpoint", "tcp://127.0.0.1:49119")
+            CourierSessionSpotNodeRid = value(properties, "courierSessionSpotNodeRid", "courier-session-node")
+            RedisEndpoint = required(properties, "redisEndpoint")
+            RedisKeyPrefix = value(properties, "redisKeyPrefix", "deliverydispatch:kotlin:")
+            CourierNode = value(properties, "courierNode", "node1")
+            LogDirectory = required(properties, "logDirectory")
+            StateDirectory = required(properties, "stateDirectory")
         }
+
+        private fun value(properties: Properties, name: String, fallback: String): String =
+            properties.getProperty(name)?.takeIf(String::isNotBlank) ?: fallback
+
+        private fun required(properties: Properties, name: String): String =
+            requireNotNull(properties.getProperty(name)?.takeIf(String::isNotBlank)) {
+                "Missing DeliveryDispatch sample config: $name"
+            }
 
         fun courierPlacement(courierId: String): String =
             if (courierId == "courier-b") CourierActorNode2Rid else CourierActorNode1Rid

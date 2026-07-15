@@ -1,5 +1,8 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriersession
 
+import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleTopology
+
 fun main(args: Array<String>) {
-    CourierSessionApplication.run(args)
+    SampleTopology.configure(args)
+    CourierSessionApplication.run()
 }

@@ -31,7 +31,7 @@ class CustomerGatewayApplication {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(
-                    System.getenv().getOrDefault("DELIVERYDISPATCH_LOG_DIR", "logs") +
+                    SampleTopology.LogDirectory +
                         "/flow-customer-gateway.log",
                 )
                 .traceLabel("customer-gateway")

@@ -13,6 +13,7 @@ public final class SfRecoveredScenario implements ClientScenario {
 
     @Override
     public DiscoveryApiResult run(ClientContext context) {
-        return context.runStoreFailureRecovered(scenarioName);
+        context.waitForRecoveredStatus(scenarioName);
+        return context.requestUntilAnyProvider();
     }
 }

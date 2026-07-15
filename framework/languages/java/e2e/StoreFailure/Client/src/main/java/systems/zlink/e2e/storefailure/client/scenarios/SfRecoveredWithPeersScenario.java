@@ -13,6 +13,8 @@ public final class SfRecoveredWithPeersScenario implements ClientScenario {
 
     @Override
     public DiscoveryApiResult run(ClientContext context) {
-        return context.runStoreFailureRecoveredWithPeers(scenarioName);
+        context.waitForRecoveredStatus(scenarioName);
+        context.waitForLivePeerRows();
+        return context.requestUntilAnyProvider();
     }
 }

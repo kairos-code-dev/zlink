@@ -41,6 +41,11 @@ if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
   echo "StoreFailure client must use ZLinkHttpClient" >&2
   exit 1
 fi
+if rg -n 'context\.runStoreFailure|runStoreFailure[A-Z]' \
+    Client/src/main/java --glob '*.java'; then
+  echo "StoreFailure scenarios must own their actions and assertions" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"

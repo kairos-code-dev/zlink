@@ -46,6 +46,20 @@ final class DefaultChannelSocketRuntimeOptions implements ZLinkSocketRuntimeOpti
     }
 
     @Override
+    public long maxMessageSize() {
+        return host.serverSocket(channelName).maxMessageSize();
+    }
+
+    @Override
+    public void maxMessageSize(long value) {
+        if (value < 0) {
+            throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+                "MaxMessageSize must be zero or a positive byte count.");
+        }
+        host.serverSocket(channelName).setMaxMessageSize(value);
+    }
+
+    @Override
     public int weight() {
         return host.serverSocket(channelName).peerWeight();
     }

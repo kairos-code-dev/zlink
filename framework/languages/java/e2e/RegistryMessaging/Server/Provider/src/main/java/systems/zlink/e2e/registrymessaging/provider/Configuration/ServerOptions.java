@@ -7,6 +7,7 @@ public record ServerOptions(
     String providerRid,
     String providerInstance,
     String apiWeight,
+    long maxMessageSize,
     String apiEndpoint,
     String apiManualEndpoint,
     String routeEndpoint,

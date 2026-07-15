@@ -11,6 +11,7 @@ data class ServerOptions(
     val channelEndpoint: String?,
     val manualClientEndpoint: String?,
     val routeEndpoint: String?,
+    val maxMessageSize: Long,
     val weight: Int,
     val routePeers: List<String>,
 ) {
@@ -41,6 +42,7 @@ data class ServerOptions(
                 channelEndpoint = values.lastOrNull("channel-endpoint"),
                 manualClientEndpoint = values.lastOrNull("manual-client-endpoint"),
                 routeEndpoint = values.lastOrNull("route-endpoint"),
+                maxMessageSize = values.last("max-message-size", "0").toLong(),
                 weight = values.last("weight", "100").toInt(),
                 routePeers = values["route-peer"]?.toList().orEmpty(),
             )

@@ -29,6 +29,14 @@ public final class RmC8PayloadRoundTripScenario {
             ScenarioAssert.that(reply.length() == payload.length(), "RM-C8 payload length mismatch for " + size);
             ScenarioAssert.that(reply.sha256().equals(sha256(payload)), "RM-C8 payload hash mismatch for " + size);
         }
+        Contracts.RequestFailureRes oversized = singleConsumer.post("/profile/payload-over-limit")
+            .body(new Contracts.PayloadReq(
+                "rm-c8-over-limit-" + java.util.UUID.randomUUID(),
+                buildPayload(3 * 1024 * 1024)))
+            .fetch(Contracts.RequestFailureRes.class);
+        ScenarioAssert.that(oversized.failed(), "RM-C8 oversized payload should fail");
+        ScenarioAssert.that("TimeoutException".equals(oversized.errorKind()),
+            "RM-C8 oversized payload should report TimeoutException, got " + oversized.errorKind());
         Contracts.ProfileRes followUp = singleConsumer.post("/profile/request")
             .body(new Contracts.ProfileReq("rm-c8-after"))
             .fetch(Contracts.ProfileRes.class);
@@ -39,7 +47,7 @@ public final class RmC8PayloadRoundTripScenario {
         ScenarioAssert.that(markers.stream().allMatch(marker -> java.util.Arrays.stream(evidence)
                 .anyMatch(line -> line.contains("payload-request") && line.contains(marker))),
             "RM-C8 payload evidence missing");
-        System.out.println("scenario RM-C8 roundtrip passed");
+        System.out.println("scenario RM-C8 max-message-size passed");
     }
 
     private static String buildPayload(int size) {

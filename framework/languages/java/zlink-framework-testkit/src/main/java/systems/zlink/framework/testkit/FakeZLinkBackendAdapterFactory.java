@@ -564,6 +564,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static final class FakeRouterSocket extends FakeConnectableSocket implements ZLinkBackendRouterSocket {
         private final Deque<ZLinkBackendReceived> received = new ArrayDeque<>();
+        private long maxMessageSize;
         private int peerWeight = 100;
 
         FakeRouterSocket(List<String> calls, String name) {
@@ -588,6 +589,8 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void setRoutingId(RoutingId routingId) { record("setRoutingId"); }
         @Override public void setConnectRoutingId(RoutingId routingId) { record("setConnectRoutingId"); }
         @Override public void setProbe(boolean enabled) { record("setProbe." + enabled); }
+        @Override public long maxMessageSize() { return maxMessageSize; }
+        @Override public void setMaxMessageSize(long value) { maxMessageSize = value; record("setMaxMessageSize." + value); }
         @Override public int peerWeight() { return peerWeight; }
         @Override public void setPeerWeight(int weight) { peerWeight = weight; record("setPeerWeight." + weight); }
         @Override public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) { return received.pollFirst(); }

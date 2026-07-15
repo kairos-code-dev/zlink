@@ -172,6 +172,9 @@ struct set_agent_available_res_t
 struct join_conversation_req_t
 {
     static constexpr const char *packet_name = "JoinConversationReq";
+    std::string participant_id;
+    std::string role;
+    std::string display_name;
 };
 
 struct join_conversation_res_t
@@ -523,12 +526,19 @@ inline void from_json (const nlohmann::json &json, set_agent_available_res_t &va
     value.is_available = json.value ("isAvailable", false);
 }
 
-inline void to_json (nlohmann::json &json, const join_conversation_req_t &)
+inline void to_json (nlohmann::json &json, const join_conversation_req_t &value)
 {
-    json = nlohmann::json::object ();
+    json = {{"participantId", value.participant_id},
+            {"role", value.role},
+            {"displayName", value.display_name}};
 }
 
-inline void from_json (const nlohmann::json &, join_conversation_req_t &) {}
+inline void from_json (const nlohmann::json &json, join_conversation_req_t &value)
+{
+    value.participant_id = json.value ("participantId", "");
+    value.role = json.value ("role", "");
+    value.display_name = json.value ("displayName", "");
+}
 
 inline void to_json (nlohmann::json &json, const join_conversation_res_t &value)
 {

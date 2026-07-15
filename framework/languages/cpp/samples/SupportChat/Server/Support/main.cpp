@@ -310,18 +310,25 @@ class conversation_spot_t : public spot_t
     }
 
     spot_actor_join_response_t on_actor_join (std::string_view actor_id,
-                                              const zlink::framework::message_t &)
+                                              const zlink::framework::message_t &message)
     {
         const auto profile = _runtime.actor_profile (std::string (actor_id));
         if (!profile) {
             return spot_actor_join_response_t::reject ();
         }
-        auto projected = require_conversation ();
+        const auto request = message.decode<join_conversation_req_t> ();
         const auto participant_id = profile->participant_id.empty () ? profile->actor_id
                                                                       : profile->participant_id;
-        const auto joined = profile->role == role_t::agent
-                              ? projected.join_agent (participant_id, profile->display_name)
-                              : projected.join_customer (participant_id, profile->display_name);
+        if (request.participant_id != participant_id || request.role != profile->role
+            || request.display_name != profile->display_name) {
+            return spot_actor_join_response_t::reject ();
+        }
+        auto projected = require_conversation ();
+        const auto joined = request.role == role_t::agent
+                              ? projected.join_agent (request.participant_id,
+                                                      request.display_name)
+                              : projected.join_customer (request.participant_id,
+                                                         request.display_name);
         _pending_actor_joins.insert (std::string (actor_id));
         return spot_actor_join_response_t::accept (join_conversation_res_t{joined.state});
     }
@@ -562,8 +569,12 @@ class support_entry_spot_t : public entry_spot_t
          * Spot은 배정된 대화에 actor를 join시키는 lifecycle 작업만 한다. */
         const auto conversation_id = request.conversation_id;
         const auto spot_rid = spot_rid_t::from_string (conversation_id);
+        const auto participant_id = actor.participant_id.empty () ? actor.actor_id
+                                                                   : actor.participant_id;
         auto joined =
-          co_await actor.context.join_spot (spot_rid, join_conversation_req_t {})
+          co_await actor.context
+            .join_spot (spot_rid, join_conversation_req_t{participant_id, actor.role,
+                                                          actor.display_name})
             .async<join_conversation_res_t> ();
         const auto *accepted =
           std::get_if<framework::actor_join_accepted_t<join_conversation_res_t>> (&joined);
@@ -723,7 +734,8 @@ class ensure_agent_conversation_handler_t
           co_await actor.value ()
             .context ()
             .join_spot (spot_rid_t::from_string (request.conversation_id),
-                        join_conversation_req_t {})
+                        join_conversation_req_t{request.roster_actor_id, role_t::agent,
+                                                request.display_name})
             .async<join_conversation_res_t> ();
         const auto *joined_accepted =
           std::get_if<framework::actor_join_accepted_t<join_conversation_res_t>> (&joined);

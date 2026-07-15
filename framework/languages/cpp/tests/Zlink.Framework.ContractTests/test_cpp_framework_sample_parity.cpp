@@ -1363,6 +1363,21 @@ TEST (CppFrameworkSampleParity, SupportChatPushWaitsStayTyped)
     }
 }
 
+TEST (CppFrameworkSampleParity, SupportChatConversationJoinCarriesParticipantIdentity)
+{
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/SupportChat/Shared/Contracts/messages.hpp");
+    const auto support = read_file (
+      cpp_language_root () / "samples/SupportChat/Server/Support/main.cpp");
+    EXPECT_NE (contracts.find ("std::string participant_id;"), std::string::npos);
+    EXPECT_NE (contracts.find ("std::string role;"), std::string::npos);
+    EXPECT_NE (contracts.find ("std::string display_name;"), std::string::npos);
+    EXPECT_NE (contracts.find ("{\"participantId\", value.participant_id}"),
+               std::string::npos);
+    EXPECT_NE (support.find ("join_conversation_req_t{participant_id"), std::string::npos)
+      << "Support server must fill participant identity for the conversation actor join";
+}
+
 TEST (CppFrameworkSampleParity, ChannelSendBackpressureUsesIndependentDefault)
 {
     const auto source = read_file (

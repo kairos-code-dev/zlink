@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 7건.**
+**전체 33건. 완료 8건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -297,7 +297,7 @@
 - [x] **§12.13** — observer notification 큐 상한과 payload preview 바이트 한도를 options에 추가하고 실제 dispatcher가 사용하도록 연결했다. 공개 표면 테스트의 실패를 먼저 확인했고, 작은 큐 overflow·preview 절단 테스트와 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `900da7c0b`(2026-07-15).
 - [ ] **§12.15** — 예외 정규화 부재 (Java)
 - [x] **§12.16** — metadata wire 블록의 총 크기가 1024바이트를 넘으면 encode 전에 거부하도록 고쳤다. 경계값 1024 허용·1025 거부 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `47f7898af`(2026-07-15).
-- [ ] **§12.17** — correlated Error 처리 (Java)
+- [x] **§12.17** — Error JSON의 `code`·`message`를 검증해 파싱하고, 일치하는 `request_seq`가 있으면 pending request만 실패시키며 stream error callback에는 중복 발행하지 않도록 고쳤다. 집중 테스트의 실패를 먼저 확인했고 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `e00b77cc7`(2026-07-15).
 - [ ] **§12.18** — flow_id 미전파 (Java)
 - [x] **§12.19** — Java typed 호출이 raw payload를 거부하고 Kotlin request 완료 표면을 `awaitReply<T>()`로 통일했다. 집중 계약 테스트, Java connector·Kotlin module 전체 테스트, Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check 통과. 구현 커밋 `c372ebbfc`(2026-07-15).
 
@@ -471,10 +471,16 @@ SNAKE_CASE로 1:1 사상하고 있어 dispatch mode만 예외인 상태다.
 
 ### §12.17 correlated Error 처리 (Java)
 
-**미충족(Java).** request sequence가 붙은 `Error` 프레임은 그 request의 완료로만 매핑해야 한다.
-Java는 매핑 자체는 하지만(`pendingRequests.fail(...)`), **그 전에 stream-level error callback으로도
-발행해 같은 오류가 두 번 전달된다.** 또 error payload의 JSON 객체를 파싱하지 않아 서버가 보낸 오류
-상세를 잃는다.
+**충족(Java).** Error payload를 UTF-8 JSON 객체로 decode하고 문자열 `code`·`message` 필드를 검증한다.
+일치하는 `request_seq`가 있으면 pending request만 `code: message` 상세로 실패시키고, request가 없거나
+sequence가 일치하지 않을 때만 stream error callback에 `REMOTE_ERROR`를 전달한다. callback에 먼저
+발행한 뒤 pending을 찾는 안보다 pending map이 단일 전달 경로를 결정하는 안이 중복 관측을 구조적으로
+막으므로 이를 선택했다. 잘못된 Error JSON은 `FRAME_DECODE_FAILED`로 분류한다.
+
+구현 전에는 uncorrelated Error의 message가 JSON 원문이었고, correlated Error가 pending 실패와 stream
+callback에 두 번 전달되는 집중 테스트가 모두 실패했다. 구현 뒤 두 테스트와 Kotlin error flow의 JSON
+계약 테스트, `:zlink-stream-connector:test :zlink-framework-kotlin:test`가 통과했다. 구현 커밋
+`e00b77cc7`(2026-07-15).
 
 ### §12.18 flow_id 미전파 (Java)
 

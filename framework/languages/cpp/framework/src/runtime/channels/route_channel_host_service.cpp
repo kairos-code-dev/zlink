@@ -77,7 +77,8 @@ class route_channel_host_service_t::route_loop_t
         _stop (&stop),
         _context (std::make_unique<zlink::context_t> ()),
         _router (std::make_unique<zlink::router_socket_t> (*_context)),
-        _backend (std::make_unique<detail::backend::native_route_backend_t> (*_router, stop))
+        _backend (std::make_unique<detail::backend::native_route_backend_t> (
+          *_router, stop, _channel_runtime.dispatch_options ()))
     {
         _router->options ().handover (true);
         _router->options ().mandatory (true);

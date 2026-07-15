@@ -98,7 +98,26 @@ inline int run_play_server (int argc, char **argv)
         options.configure_dispatch ()
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (log_dir + "/" + node_rid + "-flow.log")
-          .trace_label ("cpp-sm-" + node_rid);
+          .trace_label ("cpp-sm-" + node_rid)
+          .set_message_flow_observer (
+            [state_ptr] (const zlink::framework::message_flow_event_t &event) {
+                if (event.outcome != zlink::framework::message_flow_outcome_t::error
+                    || event.surface != zlink::framework::dispatch_error_surface_t::spot_route
+                    || event.error_reason
+                         != zlink::framework::dispatch_error_reason_t::handler_missing
+                    || !event.error_action || !event.packet_name) {
+                    return;
+                }
+                const auto action =
+                  *event.error_action == zlink::framework::dispatch_error_action_t::reply_error
+                    ? "reply_error"
+                    : (*event.error_action == zlink::framework::dispatch_error_action_t::drop
+                         ? "drop"
+                         : "fail_caller");
+                state_ptr->record ("SpotRouteDispatchFailure", *event.packet_name,
+                                   event.spot_rid.value_or (""),
+                                   std::string ("handler_missing:") + action);
+            });
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
           .add_singleton<play_node_http_endpoints_t> (

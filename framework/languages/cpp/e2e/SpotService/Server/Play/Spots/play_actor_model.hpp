@@ -690,7 +690,7 @@ class user_spot_t : public zlink::framework::spot_t
             (void) co_await _context
               .request_to<e2e::direct_spot_res_t> (
                 target_ref.node_rid, target_ref.spot_rid,
-                e2e::unhandled_spot_req_t{request.marker})
+                e2e::direct_spot_req_t{source_spot, request.marker})
               .timeout (std::chrono::milliseconds (1000))
               .async ();
         }
@@ -699,8 +699,7 @@ class user_spot_t : public zlink::framework::spot_t
         }
         _context
           .send_to (target_ref.node_rid, target_ref.spot_rid,
-                    e2e::unhandled_spot_msg_t{
-                      e2e::unhandled_spot_req_t{"missing-" + request.marker}})
+                    e2e::direct_spot_msg_t{source_spot, "missing-" + request.marker})
           .submit ();
         _state.record ("SpotToSpotNegative", {}, source_spot,
                        "target=" + request.target_spot_rid + "|requestFailed="

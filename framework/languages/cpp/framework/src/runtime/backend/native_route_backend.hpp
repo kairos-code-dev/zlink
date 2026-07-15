@@ -26,7 +26,9 @@ class native_route_backend_t
 {
   public:
     explicit native_route_backend_t (zlink::router_socket_t &router);
-    native_route_backend_t (zlink::router_socket_t &router, std::atomic_bool &stop);
+    native_route_backend_t (zlink::router_socket_t &router,
+                            std::atomic_bool &stop,
+                            dispatch_options_t dispatch);
 
     void attach_spot_route_bridge (std::unique_ptr<zlink::service::spot_route_bridge_t> bridge,
                                    std::string channel_name);
@@ -57,6 +59,7 @@ class native_route_backend_t
     std::atomic_bool *_stop = nullptr;
     std::shared_ptr<zlink::service::spot_route_bridge_t> _spot_route_bridge;
     std::string _spot_route_channel_name;
+    dispatch_options_t _dispatch;
 };
 
 } // namespace zlink::framework::detail::backend

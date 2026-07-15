@@ -693,6 +693,9 @@ encode_spot_route_parts (runtime::messaging::message_kind_t kind,
 framework_exception_t native_request_error (zlink::request_result_t result, std::string message)
 {
     switch (result) {
+        case zlink::request_result_t::not_found:
+            return framework_exception_t (framework_error_kind_t::request_target_not_found,
+                                          std::move (message));
         case zlink::request_result_t::timed_out:
         case zlink::request_result_t::not_connected:
             // Remote SPOT peers come and go while actors migrate, so both
@@ -1566,6 +1569,17 @@ spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_ri
                     zlink::routing_id_t::from (std::string (spot_rid.value ())), std::move (parts),
                     effective_timeout);
                   if (!reply) {
+                      if (reply.error_kind ()
+                          == framework_error_kind_t::request_target_not_found) {
+                          report_spot_dispatch_error (
+                            state->node, dispatch_error_surface_t::spot_route,
+                            dispatch_message_kind_t::request,
+                            dispatch_error_reason_t::handler_missing,
+                            dispatch_error_action_t::reply_error, submitted_packet_name,
+                            *route_channel_name, std::string (spot_rid.value ()), std::nullopt,
+                            reply.error () ? std::make_exception_ptr (*reply.error ())
+                                           : std::exception_ptr {});
+                      }
                       return task_t<zlink::message_t> (detail::propagate_failure<zlink::message_t> (reply, "SPOT route request failed"));
                   }
                   runtime::messaging::envelope_codec_t envelope;

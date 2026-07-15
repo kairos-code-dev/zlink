@@ -10,6 +10,7 @@
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/diagnostics/monitoring_runtime.hpp"
 #include "runtime/diagnostics/flow_context.hpp"
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
@@ -1538,6 +1539,24 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                    target_node_rid, spot_rid, std::move (parts), effective_timeout);
                   } ();
                   if (!reply) {
+                      if (reply.error_kind ()
+                          == framework_error_kind_t::request_target_not_found) {
+                          detail::dispatch_error_reporter_t (runtime_state->dispatch).report (
+                            message_dispatch_error_event_t{
+                              dispatch_error_surface_t::spot_route,
+                              dispatch_message_kind_t::request,
+                              dispatch_error_reason_t::handler_missing,
+                              dispatch_error_action_t::reply_error,
+                              packet_name,
+                              router_channel_id,
+                              std::nullopt,
+                              spot_rid.to_string (),
+                              std::nullopt,
+                              target_node_rid.to_string (),
+                              std::nullopt,
+                              reply.error () ? std::make_exception_ptr (*reply.error ())
+                                             : std::exception_ptr {}});
+                      }
                       source->complete (detail::propagate_failure<zlink::message_t> (reply, "route spot request failed"));
                       return;
                   }

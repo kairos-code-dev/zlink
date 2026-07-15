@@ -2482,6 +2482,12 @@ else:
     raise AssertionError(f"unexpected scenario {scenario}")
 print(f"scenario {scenario.upper()} evidence passed")
 PY
+  if [[ "$scenario_lower" == "sm-f4" || "$scenario_lower" == "sm-f5" ]]; then
+    grep -q "surface=spot_route.*packet=DirectSpotReq.*reason=handler_missing.*action=reply_error" \
+      "$LOG_DIR/play-a-flow.log"
+    grep -q "surface=spot_route.*packet=DirectSpotMsg.*reason=handler_missing.*action=drop" \
+      "$LOG_DIR/play-b-flow.log"
+  fi
   echo "spot-service e2e result=passed"
   exit 0
 fi

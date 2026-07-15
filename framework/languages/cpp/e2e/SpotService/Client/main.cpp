@@ -329,10 +329,12 @@ void run_scenario (const e2e_client::client_options_t &options)
                                        spot.spot_rid);
     } else if (mode == "sm-f4") {
         const auto spot = ensure_f_spot (options.play_http_endpoint);
-        scenarios::run_sm_f4_scenario (options.play_http_endpoint, spot.spot_rid);
+        scenarios::run_sm_f4_scenario (options.play_http_endpoint,
+                                       options.play_b_http_endpoint, spot.spot_rid);
     } else if (mode == "sm-f5") {
         const auto spot = ensure_f_spot (options.play_http_endpoint);
-        scenarios::run_sm_f4_scenario (options.play_http_endpoint, spot.spot_rid);
+        scenarios::run_sm_f4_scenario (options.play_http_endpoint,
+                                       options.play_b_http_endpoint, spot.spot_rid);
         scenarios::run_sm_f5_scenario (options.play_http_endpoint, options.play_b_http_endpoint);
     } else if (mode == "sm-f6") {
         scenarios::run_sm_f6_scenario (options.multi_a_http_endpoint,

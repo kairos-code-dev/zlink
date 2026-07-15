@@ -191,6 +191,8 @@ int main ()
     const auto transfer_server = read_file (e2e_root / "SpotActorTransfer/Server/ActorNode/main.cpp");
     const auto spot_service_f5 = read_file (
       e2e_root / "SpotService/Client/Scenarios/sm_f5_scenario.hpp");
+    const auto spot_service_f4 = read_file (
+      e2e_root / "SpotService/Client/Scenarios/sm_f4_scenario.hpp");
 
     /* E2E-CP-13 — every common E2E configuration has an implementation map. */
     gate.require (
@@ -866,6 +868,23 @@ int main ()
                     "reason=handler_missing.*action=drop.*packet=MissingSpotMsg")
                     != std::string::npos,
                   "E2E-CP-18", "SM-E1 does not assert send message-flow error evidence");
+
+    /* E2E-CP-19 — SM-F4 executes request + one-way send from a source Spot to
+     * a closed target route and proves the dispatch failure count grows. */
+    gate.require (spot_service_f4.find ("/spot/to-spot/negative") != std::string::npos
+                    && spot_service_f4.find ("source_spot_rid") != std::string::npos
+                    && spot_service_f4.find ("target_spot_rid") != std::string::npos,
+                  "E2E-CP-19", "SM-F4 does not route request and send from a source Spot");
+    gate.require (spot_service_f4.find ("dispatch_failures_before") != std::string::npos
+                    && spot_service_f4.find ("dispatch_failures_after") != std::string::npos,
+                  "E2E-CP-19", "SM-F4 does not assert an increased failure counter");
+    gate.require (spot_service_runner.find (
+                    "packet=DirectSpotReq.*reason=handler_missing.*action=reply_error")
+                      != std::string::npos
+                    && spot_service_runner.find (
+                         "packet=DirectSpotMsg.*reason=handler_missing.*action=drop")
+                         != std::string::npos,
+                  "E2E-CP-19", "SM-F4 does not assert both message-flow classifications");
 
     /* E2E-CP-30 — the explicit client selector includes every RC-A scenario. */
     gate.require (registration_codec_runner.find ("== rc-a*") == std::string::npos,

@@ -2,6 +2,8 @@
 
 #include "runtime/backend/native_route_backend.hpp"
 
+#include "runtime/diagnostics/dispatch_error_reporter.hpp"
+
 #include <zlink/Contracts/Errors/errors.hpp>
 #include <zlink/Contracts/Service/operation_contracts.hpp>
 #include <zlink/Contracts/Sockets/routed_socket_contracts.hpp>
@@ -71,6 +73,10 @@ framework_exception_t map_native_route_exception (const std::exception &error)
         if (request_error->result () == zlink::request_result_t::timed_out) {
             return detail::make_boundary_exception (detail::boundary_error_t::timed_out,
                                           "native route request timed out", true);
+        }
+        if (request_error->result () == zlink::request_result_t::not_found) {
+            return framework_exception_t (framework_error_kind_t::request_target_not_found,
+                                          request_error->what ());
         }
         if (request_error->result () == zlink::request_result_t::not_connected
             || is_route_unreachable_errno (request_error->internal_errno ())) {
@@ -153,8 +159,9 @@ native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router) 
 }
 
 native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router,
-                                                std::atomic_bool &stop) :
-    _router (&router), _stop (&stop)
+                                                std::atomic_bool &stop,
+                                                dispatch_options_t dispatch) :
+    _router (&router), _stop (&stop), _dispatch (std::move (dispatch))
 {
 }
 
@@ -382,8 +389,46 @@ bool native_route_backend_t::handle_router_received (const zlink::routing_id_t &
     if (!bridge) {
         return false;
     }
+    const auto target_spot_rid = parts.size () >= 2 ? parts[1].to_string () : std::string ();
+    std::optional<runtime::messaging::envelope_header_t> header;
+    if (!request_seq && parts.size () >= 3) {
+        auto decoded = runtime::messaging::envelope_codec_t ().decode_header (parts[2]);
+        if (decoded
+            && decoded.value ().kind == runtime::messaging::message_kind_t::command) {
+            header = std::move (decoded.value ());
+        }
+    }
+    const bool is_spot_send = header.has_value ();
     try {
         return bridge->handle_router_received (channel_name, source_node_rid, parts, request_seq);
+    } catch (const zlink::binding_error_t &error) {
+        trace_native_route_backend (
+          "bridge-receive-failed errno=" + std::to_string (error.internal_errno ())
+          + " send=" + std::string (is_spot_send ? "true" : "false")
+          + " packet=" + (header ? header->message_name : std::string ())
+          + " spot=" + target_spot_rid);
+        /* The binding restores moved frames before throwing, so the native
+         * ENOENT value is not retained. A decoded command envelope plus a
+         * non-empty target identifies a routed one-way delivery rejection. */
+        if (is_spot_send && header && !target_spot_rid.empty ()) {
+            detail::dispatch_error_reporter_t (_dispatch).report (
+              message_dispatch_error_event_t{
+                dispatch_error_surface_t::spot_route,
+                dispatch_message_kind_t::send,
+                dispatch_error_reason_t::handler_missing,
+                dispatch_error_action_t::drop,
+                header->message_name,
+                channel_name,
+                std::nullopt,
+                target_spot_rid,
+                std::nullopt,
+                source_node_rid.to_string (),
+                header->correlation_id,
+                std::make_exception_ptr (framework_exception_t (
+                  framework_error_kind_t::spot_route_not_found,
+                  "target spot route is not registered"))});
+        }
+        return true;
     }
     catch (const std::exception &) {
         return true;

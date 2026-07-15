@@ -5,7 +5,6 @@
 
 #include <zlink/framework.hpp>
 
-#include <cstdlib>
 #include <chrono>
 #include <csignal>
 #include <mutex>
@@ -18,15 +17,7 @@
 namespace zlink::framework::e2e::pubsub::server
 {
 
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-inline bool env_has_topic (const std::string &topics, const std::string &topic)
+inline bool has_topic (const std::string &topics, const std::string &topic)
 {
     return ("," + topics + ",").find ("," + topic + ",") != std::string::npos;
 }

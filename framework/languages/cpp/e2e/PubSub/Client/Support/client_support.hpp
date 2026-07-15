@@ -2,10 +2,10 @@
 #pragma once
 
 #include "../../Shared/pubsub_contracts.hpp"
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -27,12 +27,67 @@
 namespace zlink::framework::e2e::pubsub::client
 {
 
-inline std::string env_or (const char *name, std::string fallback = {})
+struct client_options_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    std::string scenario;
+    std::string publisher_url;
+    std::string subscriber_urls;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string publisher_endpoint;
+    std::string log_dir;
+    std::string config_dir;
+    std::string subscriber_executable;
+    std::string publisher_executable;
+    std::string start_ready_file;
+    std::string start_continue_file;
+    std::string ready_file;
+    std::string continue_file;
+    std::string reconnect_subscriber_url;
+    std::string reconnect_subscriber_pid_file;
+    std::string restarted_publisher_pid_file;
+};
+
+inline client_options_t read_client_options (int argc, char **argv)
+{
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown PubSub client option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
     }
-    return fallback;
+    if (path.empty ()) {
+        throw std::runtime_error ("PubSub client requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open PubSub client config: " + path);
+    }
+    const auto section = nlohmann::json::parse (input).at ("e2e");
+    const auto value = [&] (const char *key) {
+        const auto found = section.find (key);
+        return found == section.end () ? std::string{} : found->get<std::string> ();
+    };
+    return {.scenario = value ("scenario"),
+            .publisher_url = value ("publisherUrl"),
+            .subscriber_urls = value ("subscriberUrls"),
+            .redis_endpoint = value ("redisEndpoint"),
+            .redis_key_prefix = value ("redisKeyPrefix"),
+            .publisher_endpoint = value ("publisherEndpoint"),
+            .log_dir = value ("logDir"),
+            .config_dir = value ("configDir"),
+            .subscriber_executable = value ("subscriberExecutable"),
+            .publisher_executable = value ("publisherExecutable"),
+            .start_ready_file = value ("startReadyFile"),
+            .start_continue_file = value ("startContinueFile"),
+            .ready_file = value ("readyFile"),
+            .continue_file = value ("continueFile"),
+            .reconnect_subscriber_url = value ("reconnectSubscriberUrl"),
+            .reconnect_subscriber_pid_file = value ("reconnectSubscriberPidFile"),
+            .restarted_publisher_pid_file = value ("restartedPublisherPidFile")};
 }
 
 inline void ensure (bool condition, const std::string &message)
@@ -63,14 +118,6 @@ inline void wait_for_file (const std::string &path)
         std::this_thread::sleep_for (std::chrono::milliseconds (50));
     }
     throw std::runtime_error ("timed out waiting for " + path);
-}
-
-inline int env_int_or (const char *name, int fallback)
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return std::stoi (value);
-    }
-    return fallback;
 }
 
 struct http_endpoint_t
@@ -153,7 +200,7 @@ inline std::optional<std::string> request_text (const std::string &method,
         throw std::runtime_error ("failed to connect to publisher HTTP endpoint");
     }
 
-    const auto timeout_ms = env_int_or ("ZLINK_CPP_E2E_HTTP_TIMEOUT_MS", 35000);
+    constexpr int timeout_ms = 35000;
     timeval socket_timeout{timeout_ms / 1000, (timeout_ms % 1000) * 1000};
     (void) setsockopt (socket_fd, SOL_SOCKET, SO_SNDTIMEO, &socket_timeout,
                        sizeof (socket_timeout));
@@ -244,9 +291,9 @@ inline void publish (const std::string &publisher_url,
     post_empty (publisher_url, path);
 }
 
-inline std::vector<std::string> subscriber_urls ()
+inline std::vector<std::string> subscriber_urls (const client_options_t &options)
 {
-    const auto configured = env_or ("ZLINK_CPP_E2E_SUBSCRIBER_URLS");
+    const auto &configured = options.subscriber_urls;
     std::vector<std::string> urls;
     std::size_t begin = 0;
     while (begin <= configured.size ()) {
@@ -260,7 +307,7 @@ inline std::vector<std::string> subscriber_urls ()
         }
         begin = separator + 1;
     }
-    ensure (urls.size () == 3, "ZLINK_CPP_E2E_SUBSCRIBER_URLS must contain three URLs");
+    ensure (urls.size () == 3, "subscriberUrls must contain three URLs");
     return urls;
 }
 
@@ -316,11 +363,11 @@ inline std::vector<std::string> wait_for_subscriber_evidence (
 inline std::vector<int> common_contiguous_sequence (
   const std::vector<std::vector<std::string>> &subscriber_lines,
   int first_sequence,
-  int last_sequence)
+  int last_sequence,
+  std::string_view marker = "value=measure-")
 {
     std::vector<std::vector<int>> sequences;
     sequences.reserve (subscriber_lines.size ());
-    constexpr std::string_view marker = "value=measure-";
     for (const auto &lines : subscriber_lines) {
         auto &sequence = sequences.emplace_back ();
         for (const auto &line : lines) {
@@ -390,7 +437,7 @@ inline void ensure_no_evidence_line (const std::vector<std::string> &lines,
 
 inline void wait_http_health (const std::string &name, const std::string &base_url, bool expected_up)
 {
-    const auto timeout_ms = env_int_or ("ZLINK_CPP_E2E_LOCAL_READINESS_TIMEOUT_MS", 3000);
+    constexpr int timeout_ms = 3000;
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms);
     while (std::chrono::steady_clock::now () < deadline) {
         const bool healthy = try_get (base_url, "/health");
@@ -447,10 +494,10 @@ inline void write_pid_file (const std::string &path, pid_t pid)
 inline child_process_t start_process (
   const std::string &name,
   const std::string &executable,
-  const std::vector<std::pair<std::string, std::string>> &environment)
+  const std::string &config_path,
+  const std::string &log_dir)
 {
     ensure (!executable.empty (), "missing executable path for " + name);
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
     std::filesystem::create_directories (log_dir);
     const auto stdout_path = std::filesystem::path (log_dir) / (name + ".stdout.log");
     const auto stderr_path = std::filesystem::path (log_dir) / (name + ".stderr.log");
@@ -469,44 +516,64 @@ inline child_process_t start_process (
         if (stderr_fd >= 0) {
             (void) ::dup2 (stderr_fd, STDERR_FILENO);
         }
-        for (const auto &[key, value] : environment) {
-            ::setenv (key.c_str (), value.c_str (), 1);
-        }
-        ::execl (executable.c_str (), executable.c_str (), static_cast<char *> (nullptr));
+        const auto argument = "--config=" + config_path;
+        ::execl (executable.c_str (), executable.c_str (), argument.c_str (),
+                 static_cast<char *> (nullptr));
         _exit (127);
     }
     return child_process_t (pid);
 }
 
-inline child_process_t start_subscriber_process (const std::string &name,
+inline child_process_t start_subscriber_process (const client_options_t &options,
+                                                 const std::string &name,
                                                  const std::string &http_url,
                                                  const std::string &subscriber_id,
                                                  const std::string &topics,
                                                  const std::string &accepted_topics)
 {
-    auto child = start_process (
-      name, env_or ("ZLINK_CPP_E2E_SUBSCRIBER_EXE"),
-      {{"ZLINK_CPP_E2E_SUBSCRIBER_ID", subscriber_id},
-       {"ZLINK_CPP_E2E_TOPICS", topics},
-       {"ZLINK_CPP_E2E_ACCEPTED_TOPICS", accepted_topics},
-       {"ZLINK_CPP_E2E_HTTP_ENDPOINT", http_url},
-       {"ZLINK_CPP_E2E_REDIS_ENDPOINT", env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT")},
-       {"ZLINK_CPP_E2E_REDIS_KEY_PREFIX", env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX")},
-       {"ZLINK_CPP_E2E_LOG_DIR", env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")}});
+    const auto config_path = std::filesystem::path (options.config_dir) / (name + ".json");
+    std::filesystem::create_directories (options.config_dir);
+    std::ofstream config (config_path);
+    config << nlohmann::json{{"e2e",
+                              {{"subscriberId", subscriber_id},
+                               {"topics", topics},
+                               {"acceptedTopics", accepted_topics},
+                               {"httpEndpoint", http_url},
+                               {"handlerDelayMs", "0"},
+                               {"redis", {{"endpoint", options.redis_endpoint},
+                                          {"keyPrefix", options.redis_key_prefix}}},
+                               {"logDir", options.log_dir}}}}
+               .dump (2);
+    config.close ();
+    std::filesystem::permissions (
+      config_path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+      std::filesystem::perm_options::replace);
+    auto child = start_process (name, options.subscriber_executable, config_path.string (),
+                                options.log_dir);
     wait_http_health (name, http_url, true);
     return child;
 }
 
-inline child_process_t start_publisher_process (const std::string &name,
+inline child_process_t start_publisher_process (const client_options_t &options,
+                                                const std::string &name,
                                                 const std::string &http_url)
 {
-    auto child = start_process (
-      name, env_or ("ZLINK_CPP_E2E_PUBLISHER_EXE"),
-      {{"ZLINK_CPP_E2E_PUBLISHER_HTTP_ENDPOINT", http_url},
-       {"ZLINK_CPP_E2E_REDIS_ENDPOINT", env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT")},
-       {"ZLINK_CPP_E2E_REDIS_KEY_PREFIX", env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX")},
-       {"ZLINK_CPP_E2E_PUBLISHER_ENDPOINT", env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT")},
-       {"ZLINK_CPP_E2E_LOG_DIR", env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")}});
+    const auto config_path = std::filesystem::path (options.config_dir) / (name + ".json");
+    std::filesystem::create_directories (options.config_dir);
+    std::ofstream config (config_path);
+    config << nlohmann::json{{"e2e",
+                              {{"httpEndpoint", http_url},
+                               {"publisherEndpoint", options.publisher_endpoint},
+                               {"redis", {{"endpoint", options.redis_endpoint},
+                                          {"keyPrefix", options.redis_key_prefix}}},
+                               {"logDir", options.log_dir}}}}
+               .dump (2);
+    config.close ();
+    std::filesystem::permissions (
+      config_path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+      std::filesystem::perm_options::replace);
+    auto child = start_process (name, options.publisher_executable, config_path.string (),
+                                options.log_dir);
     wait_http_health (name, http_url, true);
     return child;
 }

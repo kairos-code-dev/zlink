@@ -8,9 +8,10 @@
 namespace zlink::framework::e2e::pubsub::client
 {
 
-inline void run_fanout_basic_delivery_scenario (const std::string &publisher_url)
+inline void run_fanout_basic_delivery_scenario (const client_options_t &options)
 {
-    const auto urls = subscriber_urls ();
+    const auto &publisher_url = options.publisher_url;
+    const auto urls = subscriber_urls (options);
     std::vector<bool> subscriber_ready (urls.size (), false);
     const auto warmup_deadline =
       std::chrono::steady_clock::now () + std::chrono::seconds (3);

@@ -8,11 +8,20 @@ namespace zlink::framework::e2e::pubsub::server::publisher
 
 struct publisher_options_t
 {
-    std::string log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    std::string redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
-    std::string redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
-    std::string publisher_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_ENDPOINT");
-    std::string http_endpoint = env_or ("ZLINK_CPP_E2E_PUBLISHER_HTTP_ENDPOINT");
+    std::string log_dir;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string publisher_endpoint;
+    std::string http_endpoint;
+
+    static publisher_options_t bind (const configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .publisher_endpoint = section.require ("publisherEndpoint"),
+                .http_endpoint = section.require ("httpEndpoint")};
+    }
 };
 
 } // namespace zlink::framework::e2e::pubsub::server::publisher

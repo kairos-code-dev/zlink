@@ -9,8 +9,9 @@
 namespace zlink::framework::e2e::pubsub::client
 {
 
-inline void run_slow_subscriber_scenario (const std::string &publisher_url)
+inline void run_slow_subscriber_scenario (const client_options_t &options)
 {
+    const auto &publisher_url = options.publisher_url;
     for (int index = 0; index < 16; ++index) {
         publish (publisher_url, topic_fanout, "slow-isolation-" + std::to_string (index));
     }
@@ -18,7 +19,7 @@ inline void run_slow_subscriber_scenario (const std::string &publisher_url)
     for (int index = 0; index < 16; ++index) {
         expected.push_back (accepted_evidence ("slow-isolation-" + std::to_string (index)));
     }
-    const auto urls = subscriber_urls ();
+    const auto urls = subscriber_urls (options);
     const auto fast_wait_started = std::chrono::steady_clock::now ();
     auto fast_subscriber_two = std::async (std::launch::async, [&] {
         return wait_for_subscriber_evidence (urls[1], expected, 2000);

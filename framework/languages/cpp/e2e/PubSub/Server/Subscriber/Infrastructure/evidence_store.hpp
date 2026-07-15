@@ -25,7 +25,7 @@ class evidence_store_t
 
     bool accepts_topic (const std::string &topic) const
     {
-        return server::env_has_topic (accepted_topics, topic);
+        return server::has_topic (accepted_topics, topic);
     }
 
     void record_event (std::string topic, std::string value)

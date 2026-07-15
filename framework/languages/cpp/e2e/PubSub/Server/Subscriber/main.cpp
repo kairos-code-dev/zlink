@@ -11,8 +11,15 @@ namespace ps_server = zlink::framework::e2e::pubsub::server;
 
 int main (int argc, char **argv)
 {
-    ps_subscriber::subscriber_options_t pubsub;
     auto app = zlink::framework::app_t::create ();
+    app.config ().load_cli (argc, argv);
+    const auto config_path = app.config ().model ().get ("config");
+    if (!config_path) {
+        throw std::runtime_error ("PubSub subscriber requires --config=<path>");
+    }
+    app.config ().load_json (*config_path);
+    const auto pubsub =
+      app.config ().bind_required<ps_subscriber::subscriber_options_t> ("e2e");
     auto state =
       std::make_unique<ps_subscriber::evidence_store_t> (pubsub.subscriber_id,
                                                          pubsub.accepted_topics,
@@ -41,17 +48,17 @@ int main (int argc, char **argv)
           .map_health ("/health")
           .map_get<ps_subscriber::evidence_handler_t> ("/evidence")
           .map_post<ps_subscriber::evidence_wait_handler_t> ("/evidence/wait");
-        if (ps_server::env_has_topic (pubsub.topics, zlink::framework::e2e::pubsub::topic_fanout)) {
+        if (ps_server::has_topic (pubsub.topics, zlink::framework::e2e::pubsub::topic_fanout)) {
             options.handlers ()
               .group (zlink::framework::e2e::pubsub::handler_group)
               .add_publish<ps_subscriber::fanout_handler_t> ();
         }
-        if (ps_server::env_has_topic (pubsub.topics, zlink::framework::e2e::pubsub::topic_alpha)) {
+        if (ps_server::has_topic (pubsub.topics, zlink::framework::e2e::pubsub::topic_alpha)) {
             options.handlers ()
               .group (zlink::framework::e2e::pubsub::handler_group)
               .add_publish<ps_subscriber::alpha_handler_t> ();
         }
-        if (ps_server::env_has_topic (pubsub.topics, zlink::framework::e2e::pubsub::topic_beta)) {
+        if (ps_server::has_topic (pubsub.topics, zlink::framework::e2e::pubsub::topic_beta)) {
             options.handlers ()
               .group (zlink::framework::e2e::pubsub::handler_group)
               .add_publish<ps_subscriber::beta_handler_t> ();

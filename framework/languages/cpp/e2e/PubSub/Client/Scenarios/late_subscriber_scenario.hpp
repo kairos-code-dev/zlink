@@ -8,18 +8,19 @@
 namespace zlink::framework::e2e::pubsub::client
 {
 
-inline void run_late_subscriber_scenario (const std::string &publisher_url)
+inline void run_late_subscriber_scenario (const client_options_t &options)
 {
+    const auto &publisher_url = options.publisher_url;
     for (int index = 0; index < 5; ++index) {
         publish (publisher_url, topic_fanout, "before-late-" + std::to_string (index));
     }
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file);
     std::this_thread::sleep_for (std::chrono::milliseconds (500));
     for (int index = 0; index < 8; ++index) {
         publish (publisher_url, topic_fanout, "after-late-" + std::to_string (index));
     }
-    const auto urls = subscriber_urls ();
+    const auto urls = subscriber_urls (options);
     std::vector<std::vector<std::string>> early_expected;
     std::vector<std::vector<std::string>> late_expected;
     for (int index = 0; index < 5; ++index) {

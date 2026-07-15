@@ -15,31 +15,31 @@
 
 namespace ps_client = zlink::framework::e2e::pubsub::client;
 
-int main ()
+int main (int argc, char **argv)
 {
     try {
-        ps_client::touch_file (ps_client::env_or ("ZLINK_CPP_E2E_START_READY_FILE"));
-        ps_client::wait_for_file (ps_client::env_or ("ZLINK_CPP_E2E_START_CONTINUE_FILE"));
+        const auto options = ps_client::read_client_options (argc, argv);
+        ps_client::touch_file (options.start_ready_file);
+        ps_client::wait_for_file (options.start_continue_file);
         std::this_thread::sleep_for (std::chrono::milliseconds (1000));
 
-        const auto scenario = ps_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "basic");
-        const auto publisher_url = ps_client::env_or ("ZLINK_CPP_E2E_PUBLISHER_URL");
-        ps_client::ensure (!publisher_url.empty (), "ZLINK_CPP_E2E_PUBLISHER_URL is required");
+        const auto &scenario = options.scenario;
+        ps_client::ensure (!options.publisher_url.empty (), "publisherUrl is required");
 
         if (scenario == "basic") {
-            ps_client::run_fanout_basic_delivery_scenario (publisher_url);
+            ps_client::run_fanout_basic_delivery_scenario (options);
         } else if (scenario == "topic") {
-            ps_client::run_topic_filter_scenario (publisher_url);
+            ps_client::run_topic_filter_scenario (options);
         } else if (scenario == "late") {
-            ps_client::run_late_subscriber_scenario (publisher_url);
+            ps_client::run_late_subscriber_scenario (options);
         } else if (scenario == "reconnect") {
-            ps_client::run_subscriber_reconnect_scenario (publisher_url);
+            ps_client::run_subscriber_reconnect_scenario (options);
         } else if (scenario == "slow") {
-            ps_client::run_slow_subscriber_scenario (publisher_url);
+            ps_client::run_slow_subscriber_scenario (options);
         } else if (scenario == "publisher-restart") {
-            ps_client::run_publisher_restart_scenario (publisher_url);
+            ps_client::run_publisher_restart_scenario (options);
         } else if (scenario == "negative") {
-            ps_client::run_missing_message_name_scenario (publisher_url);
+            ps_client::run_missing_message_name_scenario (options);
         } else {
             throw std::runtime_error ("unknown scenario " + scenario);
         }

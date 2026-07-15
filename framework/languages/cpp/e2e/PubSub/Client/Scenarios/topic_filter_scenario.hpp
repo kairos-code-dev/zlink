@@ -8,13 +8,14 @@
 namespace zlink::framework::e2e::pubsub::client
 {
 
-inline void run_topic_filter_scenario (const std::string &publisher_url)
+inline void run_topic_filter_scenario (const client_options_t &options)
 {
+    const auto &publisher_url = options.publisher_url;
     for (int index = 0; index < 8; ++index) {
         publish (publisher_url, topic_alpha, "alpha-" + std::to_string (index));
         publish (publisher_url, topic_beta, "beta-" + std::to_string (index));
     }
-    const auto urls = subscriber_urls ();
+    const auto urls = subscriber_urls (options);
     for (std::size_t subscriber = 0; subscriber < urls.size (); ++subscriber) {
         const bool accepts_alpha = subscriber != 1;
         std::vector<std::vector<std::string>> expected;

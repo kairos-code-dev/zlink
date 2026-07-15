@@ -8,13 +8,14 @@
 namespace zlink::framework::e2e::pubsub::client
 {
 
-inline void run_subscriber_reconnect_scenario (const std::string &publisher_url)
+inline void run_subscriber_reconnect_scenario (const client_options_t &options)
 {
-    const auto reconnect_url = env_or ("ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_URL");
-    ensure (!reconnect_url.empty (), "ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_URL is required");
+    const auto &publisher_url = options.publisher_url;
+    const auto &reconnect_url = options.reconnect_subscriber_url;
+    ensure (!reconnect_url.empty (), "reconnectSubscriberUrl is required");
     auto reconnect_subscriber =
-      start_subscriber_process ("sub-reconnect", reconnect_url, "sub-3", "fanout", "fanout");
-    write_pid_file (env_or ("ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_PID_FILE"),
+      start_subscriber_process (options, "sub-reconnect", reconnect_url, "sub-3", "fanout", "fanout");
+    write_pid_file (options.reconnect_subscriber_pid_file,
                     reconnect_subscriber.pid ());
 
     for (int index = 0; index < 5; ++index) {
@@ -27,14 +28,14 @@ inline void run_subscriber_reconnect_scenario (const std::string &publisher_url)
         publish (publisher_url, topic_fanout, "during-reconnect-" + std::to_string (index));
     }
     reconnect_subscriber =
-      start_subscriber_process ("sub-reconnect", reconnect_url, "sub-3", "fanout", "fanout");
-    write_pid_file (env_or ("ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_PID_FILE"),
+      start_subscriber_process (options, "sub-reconnect", reconnect_url, "sub-3", "fanout", "fanout");
+    write_pid_file (options.reconnect_subscriber_pid_file,
                     reconnect_subscriber.pid ());
 
     for (int index = 0; index < 8; ++index) {
         publish (publisher_url, topic_fanout, "after-reconnect-" + std::to_string (index));
     }
-    const auto urls = subscriber_urls ();
+    const auto urls = subscriber_urls (options);
     std::vector<std::vector<std::string>> stable_expected;
     std::vector<std::vector<std::string>> rejoined_expected;
     for (int index = 0; index < 5; ++index) {

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
+BUILD_DIR="$CPP_DIR/build"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -41,7 +41,9 @@ PY
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
+CONFIG_DIR="$LOG_DIR/config"
 mkdir -p "$LOG_DIR"
+mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 SCENARIO="${1:-all}"
 
@@ -87,20 +89,11 @@ PY
 }
 
 REDIS_KEY_PREFIX="zlink:e2e:cfg3:$(date +%s)-$$"
-if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
-  echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  echo "External Redis endpoint is not supported by the C++ PubSub e2e runner." >&2
-  exit 2
-else
-  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-cpp-e2e-pubsub" "redis:7-alpine"
-  REDIS_CONTAINER_OWNED=1
-  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
-  echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
-fi
+zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+  "zlink-redis-cpp-e2e-pubsub" "redis:7-alpine"
+REDIS_CONTAINER_OWNED=1
+REDIS_ENDPOINT="127.0.0.1:${redis_port}"
+echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 REDIS_HOST="${REDIS_ENDPOINT%:*}"
 REDIS_TCP_PORT="${REDIS_ENDPOINT##*:}"
 wait_tcp "$REDIS_HOST" "$REDIS_TCP_PORT" redis
@@ -110,6 +103,7 @@ cleanup() {
   local code=$?
   local cleanup_failed=0
   local status
+  rm -rf "$CONFIG_DIR"
   for pid in "${PIDS[@]:-}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
@@ -243,12 +237,23 @@ PY
 
 start_publisher() {
   local suffix="${1:-publisher}"
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
-  ZLINK_CPP_E2E_PUBLISHER_HTTP_ENDPOINT="$PUBLISHER_HTTP" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$PUBLISHER_SERVER" >"$LOG_DIR/$suffix.stdout.log" 2>"$LOG_DIR/$suffix.stderr.log" &
+  local config_path="$CONFIG_DIR/$suffix.json"
+  python3 - "$config_path" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$PUBLISHER" \
+    "$PUBLISHER_HTTP" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, redis_endpoint, redis_key_prefix, publisher, http, log_dir = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"redis": {"endpoint": redis_endpoint,
+        "keyPrefix": redis_key_prefix}, "publisherEndpoint": publisher,
+        "httpEndpoint": http, "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$PUBLISHER_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$suffix.stdout.log" 2>"$LOG_DIR/$suffix.stderr.log" &
   LAST_PID="$!"
   PUBLISHER_PID="$LAST_PID"
   PIDS+=("$LAST_PID")
@@ -262,15 +267,25 @@ start_subscriber() {
   local http="$3"
   local delay="${4:-0}"
   local accepted_topics="${5:-$topics}"
-  ZLINK_CPP_E2E_SUBSCRIBER_ID="$id" \
-  ZLINK_CPP_E2E_TOPICS="$topics" \
-  ZLINK_CPP_E2E_ACCEPTED_TOPICS="$accepted_topics" \
-  ZLINK_CPP_E2E_HANDLER_DELAY_MS="$delay" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SUBSCRIBER" >"$LOG_DIR/$id.stdout.log" 2>"$LOG_DIR/$id.stderr.log" &
+  local config_path="$CONFIG_DIR/$id.json"
+  python3 - "$config_path" "$id" "$topics" "$accepted_topics" "$delay" "$http" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, subscriber_id, topics, accepted_topics, delay, http, redis_endpoint,
+ redis_key_prefix, log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"subscriberId": subscriber_id, "topics": topics,
+        "acceptedTopics": accepted_topics, "handlerDelayMs": delay,
+        "httpEndpoint": http, "redis": {"endpoint": redis_endpoint,
+        "keyPrefix": redis_key_prefix}, "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$SUBSCRIBER" --config="$config_path" \
+    >"$LOG_DIR/$id.stdout.log" 2>"$LOG_DIR/$id.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$id-http" "$http"
@@ -331,15 +346,38 @@ run_client() {
   local scenario="$1"
   local suffix="$2"
   shift 2
-  ZLINK_CPP_E2E_SCENARIO="$scenario" \
-  ZLINK_CPP_E2E_PUBLISHER_URL="$PUBLISHER_HTTP" \
-  ZLINK_CPP_E2E_SUBSCRIBER_URLS="$HTTP_1,$HTTP_2,$HTTP_3" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_PUBLISHER_ENDPOINT="$PUBLISHER" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$@" \
-    "$CLIENT" >"$LOG_DIR/client-$suffix.stdout.log" 2>"$LOG_DIR/client-$suffix.stderr.log"
+  local config_path="$CONFIG_DIR/client-$suffix.json"
+  python3 - "$config_path" "$scenario" "$PUBLISHER_HTTP" "$HTTP_1,$HTTP_2,$HTTP_3" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$PUBLISHER" "$LOG_DIR" "$CONFIG_DIR" \
+    "$SUBSCRIBER" "$PUBLISHER_SERVER" "$@" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, scenario, publisher_url, subscriber_urls, redis_endpoint,
+ redis_key_prefix, publisher_endpoint, log_dir, config_dir,
+ subscriber_executable, publisher_executable, *overrides) = sys.argv[1:]
+configuration = {"scenario": scenario, "publisherUrl": publisher_url,
+    "subscriberUrls": subscriber_urls, "redisEndpoint": redis_endpoint,
+    "redisKeyPrefix": redis_key_prefix, "publisherEndpoint": publisher_endpoint,
+    "logDir": log_dir, "configDir": config_dir,
+    "subscriberExecutable": subscriber_executable,
+    "publisherExecutable": publisher_executable}
+allowed = {"startReadyFile", "startContinueFile", "readyFile", "continueFile",
+           "reconnectSubscriberUrl", "reconnectSubscriberPidFile",
+           "restartedPublisherPidFile"}
+for override in overrides:
+    key, separator, value = override.partition("=")
+    if not separator or key not in allowed:
+        raise SystemExit(f"unknown client configuration override: {override}")
+    configuration[key] = value
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": configuration}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$CLIENT" --config="$config_path" \
+    >"$LOG_DIR/client-$suffix.stdout.log" 2>"$LOG_DIR/client-$suffix.stderr.log"
 }
 
 start_client_waiting() {
@@ -348,9 +386,9 @@ start_client_waiting() {
   local ready="$3"
   local continue_file="$4"
   shift 4
-  run_client "$scenario" "$suffix" env \
-    ZLINK_CPP_E2E_START_READY_FILE="$ready" \
-    ZLINK_CPP_E2E_START_CONTINUE_FILE="$continue_file" \
+  run_client "$scenario" "$suffix" \
+    startReadyFile="$ready" \
+    startContinueFile="$continue_file" \
     "$@" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
@@ -406,8 +444,8 @@ if should_run PS-A3 ps-a3; then
   READY="$LOG_DIR/ps-a3-ready"
   CONTINUE="$LOG_DIR/ps-a3-continue"
   start_client_waiting late late "$START_READY" "$START_CONTINUE" \
-    ZLINK_CPP_E2E_READY_FILE="$READY" \
-    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE"
+    readyFile="$READY" \
+    continueFile="$CONTINUE"
   LATE_CLIENT_PID="$LAST_PID"
   wait_marker "$START_READY"
   start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
@@ -428,9 +466,8 @@ if should_run PS-A4 ps-a4; then
   START_CONTINUE="$LOG_DIR/ps-a4-start-continue"
   RECONNECT_PID_FILE="$LOG_DIR/ps-a4-reconnect-subscriber.pid"
   start_client_waiting reconnect reconnect "$START_READY" "$START_CONTINUE" \
-    ZLINK_CPP_E2E_SUBSCRIBER_EXE="$SUBSCRIBER" \
-    ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_URL="$HTTP_3" \
-    ZLINK_CPP_E2E_RECONNECT_SUBSCRIBER_PID_FILE="$RECONNECT_PID_FILE"
+    reconnectSubscriberUrl="$HTTP_3" \
+    reconnectSubscriberPidFile="$RECONNECT_PID_FILE"
   RECONNECT_CLIENT_PID="$LAST_PID"
   wait_marker "$START_READY"
   start_subscriber sub-1 fanout "$HTTP_1"; SUB_PIDS+=("$LAST_PID")
@@ -467,8 +504,7 @@ if should_run PS-B2 ps-b2; then
   start_subscriber sub-2 fanout "$HTTP_2"; SUB_PIDS+=("$LAST_PID")
   start_subscriber sub-3 fanout "$HTTP_3"; SUB_PIDS+=("$LAST_PID")
   start_client_waiting publisher-restart publisher-before "$START_READY" "$START_CONTINUE" \
-    ZLINK_CPP_E2E_PUBLISHER_EXE="$PUBLISHER_SERVER" \
-    ZLINK_CPP_E2E_RESTARTED_PUBLISHER_PID_FILE="$RESTARTED_PUBLISHER_PID_FILE"
+    restartedPublisherPidFile="$RESTARTED_PUBLISHER_PID_FILE"
   PUB_RESTART_CLIENT_PID="$LAST_PID"
   wait_marker "$START_READY"
   sleep "$SCENARIO_SETTLE_SECONDS"

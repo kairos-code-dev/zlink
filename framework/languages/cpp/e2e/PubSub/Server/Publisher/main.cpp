@@ -9,8 +9,14 @@ namespace ps_server = zlink::framework::e2e::pubsub::server;
 
 int main (int argc, char **argv)
 {
-    ps_publisher::publisher_options_t pubsub;
     auto app = zlink::framework::app_t::create ();
+    app.config ().load_cli (argc, argv);
+    const auto config_path = app.config ().model ().get ("config");
+    if (!config_path) {
+        throw std::runtime_error ("PubSub publisher requires --config=<path>");
+    }
+    app.config ().load_json (*config_path);
+    const auto pubsub = app.config ().bind_required<ps_publisher::publisher_options_t> ("e2e");
     app.logging ()
       .use_file (pubsub.log_dir + "/publisher.log")
       .set_min_level (zlink::framework::log_level_t::debug);

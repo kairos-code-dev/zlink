@@ -180,7 +180,16 @@ int main ()
     const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
     const auto to_actor_caller =
       read_file (e2e_root / "ToActorMessaging/Server/Caller/main.cpp");
-    const auto to_actor_client = read_file (e2e_root / "ToActorMessaging/Client/main.cpp");
+    const auto to_actor_client_support =
+      read_file (e2e_root / "ToActorMessaging/Client/Support/scenario_context.hpp");
+    const auto to_actor_client =
+      read_file (e2e_root / "ToActorMessaging/Client/main.cpp") + to_actor_client_support
+      + read_file (e2e_root / "ToActorMessaging/Client/Scenarios/ta_b1_scenario.hpp")
+      + read_file (e2e_root / "ToActorMessaging/Client/Scenarios/ta_b2_scenario.hpp")
+      + read_file (e2e_root / "ToActorMessaging/Client/Scenarios/ta_b3_scenario.hpp");
+    const auto to_actor_session =
+      read_file (e2e_root / "ToActorMessaging/Server/Session/main.cpp");
+    const auto to_actor_runner = read_file (e2e_root / "ToActorMessaging/run_e2e.sh");
     const auto observability_server = read_file (e2e_root / "ObservabilityOps/Server/main.cpp");
     const std::vector<std::pair<std::string, std::string>> location_option_consumers{
       {"PubSub", read_file (e2e_root / "PubSub/Server/Shared/location_store.hpp")},
@@ -1243,6 +1252,26 @@ int main ()
                     && to_actor_client.find ("require_location (")
                          != std::string::npos,
                   "E2E-CP-60", "Track B omits negative actor evidence or location proof");
+
+    /* E2E-CP-02 — Config 9 owns two real session gateways and the client observes
+     * binding and push through the public stream connector. */
+    gate.require (!to_actor_session.empty ()
+                    && to_actor_session.find ("add_stream_node") != std::string::npos
+                    && to_actor_session.find ("register_session") != std::string::npos,
+                  "E2E-CP-02", "Config 9 has no stream session gateway role");
+    gate.require (to_actor_runner.find ("session-a") != std::string::npos
+                    && to_actor_runner.find ("session-b") != std::string::npos
+                    && to_actor_runner.find ("zlink_cpp_e2e_to_actor_messaging_session")
+                         != std::string::npos,
+                  "E2E-CP-02", "Config 9 runner does not start two session gateways");
+    gate.require (to_actor_client_support.find ("<zlink/stream_connector.hpp>")
+                         != std::string::npos
+                    && to_actor_client_support.find ("connector_factory_t::create")
+                         != std::string::npos
+                    && to_actor_client_support.find ("BindActorSessionReq")
+                         != std::string::npos
+                    && to_actor_client_support.find ("wait_for<") != std::string::npos,
+                  "E2E-CP-02", "Config 9 client does not observe bind and push via connector");
     for (const auto &[config, source] : location_option_consumers) {
         gate.require (source.find ("auto locations = framework.configure_locations ()")
                         == std::string::npos

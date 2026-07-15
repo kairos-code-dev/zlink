@@ -30,6 +30,11 @@ if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
   echo "ResilienceLifecycle client must use ZLinkHttpClient" >&2
   exit 1
 fi
+if rg -n 'runMode\(|/scenario/|class ConsumerScenario' \
+    "$(pwd)/Client/src/main/java" "$(pwd)/Server/Consumer/src/main/java" --glob '*.java'; then
+  echo "ResilienceLifecycle scenarios must run in Client files" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"
@@ -264,32 +269,20 @@ ZLINK_JAVA_E2E_HTTP_A_REPLACEMENT_ENDPOINT="${HTTP_A_REPLACEMENT}" \
 ZLINK_JAVA_E2E_HTTP_B_GREEN_ENDPOINT="${HTTP_B_GREEN}" \
 ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+ZLINK_JAVA_E2E_CONTROL_DIR="${log_dir}/control" \
   "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
-cat "${log_dir}"/consumer-*.stdout.log
 if [[ "${SCENARIO}" == "all" ]]; then
-  grep -q "scenario RL-A1 passed" "${log_dir}/consumer-restart.stdout.log"
-  grep -q "scenario RL-A2 passed" "${log_dir}/consumer-reschedule.stdout.log"
-  grep -q "scenario RL-A3 passed" "${log_dir}"/consumer-storm-*.stdout.log
-  grep -q "scenario RL-A4 passed" "${log_dir}/consumer-rolling-green.stdout.log"
-  grep -q "scenario RL-A5 passed" "${log_dir}/consumer-flapping.stdout.log"
-  grep -q "scenario RL-B1 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-B2 passed" "${log_dir}/consumer-crash-inflight.stdout.log"
-  grep -q "scenario RL-B3 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-B4 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-B5 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-B6 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-C1 passed" "${log_dir}/consumer-cleanup.stdout.log"
-  grep -q "scenario RL-C2 passed" "${log_dir}/consumer-topology-recovery.stdout.log"
-  grep -q "scenario RL-C3 passed" "${log_dir}/consumer-restart.stdout.log"
-  grep -q "scenario RL-D1 passed" "${log_dir}"/consumer-storm-*.stdout.log
-  grep -q "scenario RL-D2 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-D3 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-D4 passed" "${log_dir}/consumer-default.stdout.log"
-  grep -q "scenario RL-D5 passed" "${log_dir}/consumer-cleanup.stdout.log"
+  for scenario in \
+      RL-A1 RL-A2 RL-A3 RL-A4 RL-A5 \
+      RL-B1 RL-B2 RL-B3 RL-B4 RL-B5 RL-B6 \
+      RL-C1 RL-C2 RL-C3 RL-C4 \
+      RL-D1 RL-D2 RL-D3 RL-D4 RL-D5; do
+    grep -q "scenario ${scenario} passed" "${log_dir}/client.stdout.log"
+  done
 else
-  grep -Rq "scenario ${SCENARIO} passed" "${log_dir}"/consumer-*.stdout.log
+  grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"
 fi
 grep -q "resilience-lifecycle e2e result=passed" "${log_dir}/client.stdout.log"
 grep -Rq "message flow" "${log_dir}"/*-flow.log

@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.httpclient.RawHttpResponse;
 import systems.zlink.httpclient.ZLinkHttpClient;
@@ -84,11 +85,19 @@ public final class ResilienceProcessManager implements AutoCloseable {
     }
 
     public void waitSignal(String name) {
+        waitSignal(name, null);
+    }
+
+    public void waitSignal(String name, CompletableFuture<?> operation) {
         Path path = controlDir().resolve(name);
         long deadline = System.nanoTime() + SIGNAL_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             if (Files.exists(path)) {
                 return;
+            }
+            if (operation != null && operation.isDone()) {
+                operation.join();
+                throw new IllegalStateException("operation completed before signal " + name);
             }
             sleep(100);
         }

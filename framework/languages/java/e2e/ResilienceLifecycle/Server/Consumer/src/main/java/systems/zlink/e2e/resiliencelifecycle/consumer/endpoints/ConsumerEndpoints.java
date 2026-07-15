@@ -4,22 +4,35 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 import org.springframework.context.SmartLifecycle;
-import systems.zlink.e2e.resiliencelifecycle.consumer.scenarios.ConsumerScenario;
+import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
+import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class ConsumerEndpoints implements SmartLifecycle {
     private final ObjectMapper json;
-    private final ConsumerScenario scenario;
+    private final ZLinkClient client;
+    private final ZLinkFrameworkLifecycle lifecycle;
     private final String endpoint;
     private HttpServer server;
     private boolean running;
 
-    public ConsumerEndpoints(ObjectMapper json, ConsumerScenario scenario, String endpoint) {
+    public ConsumerEndpoints(
+        ObjectMapper json,
+        ZLinkClient client,
+        ZLinkFrameworkLifecycle lifecycle,
+        String endpoint) {
         this.json = json;
-        this.scenario = scenario;
+        this.client = client;
+        this.lifecycle = lifecycle;
         this.endpoint = endpoint;
     }
 
@@ -30,14 +43,43 @@ public final class ConsumerEndpoints implements SmartLifecycle {
             server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
             server.setExecutor(Executors.newCachedThreadPool());
             server.createContext("/health", exchange -> writeJson(exchange, Map.of("status", "ready")));
-            server.createContext("/scenario", exchange -> {
-                String mode = exchange.getRequestURI().getPath().replaceFirst("^/scenario/?", "");
-                if (mode.isBlank()) {
-                    mode = "default";
-                }
-                scenario.run(mode);
-                writeJson(exchange, Map.of("status", "passed", "mode", mode));
-            });
+            server.createContext("/operations/request/work", exchange -> handle(exchange, () -> {
+                Contracts.WorkOperation request = read(exchange, Contracts.WorkOperation.class);
+                return client.requestToChannel(Contracts.CHANNEL, new Contracts.WorkReq(request.value()))
+                    .timeout(Duration.ofMillis(request.timeoutMillis()))
+                    .submit(Contracts.WorkRes.class)
+                    .toCompletableFuture()
+                    .join();
+            }));
+            server.createContext("/operations/request/unhandled", exchange -> handle(exchange, () -> {
+                Contracts.UnhandledOperation request = read(exchange, Contracts.UnhandledOperation.class);
+                return client.requestToChannel(Contracts.CHANNEL, new Contracts.UnhandledReq(request.value()))
+                    .timeout(Duration.ofMillis(request.timeoutMillis()))
+                    .submit(Contracts.WorkRes.class)
+                    .toCompletableFuture()
+                    .join();
+            }));
+            server.createContext("/operations/send/work", exchange -> handle(exchange, () -> {
+                Contracts.WorkMsg request = read(exchange, Contracts.WorkMsg.class);
+                client.sendToChannel(Contracts.CHANNEL, request).submit();
+                return Map.of("status", "accepted");
+            }));
+            server.createContext("/operations/peers", exchange -> handle(exchange, () -> {
+                List<Contracts.PeerLocation> peers = lifecycle.monitoringLocationRuntimeQuery()
+                    .listPeerLocations(new ZLinkPeerLocationFilter(
+                        ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                        Contracts.CHANNEL,
+                        ZLinkLocationRole.ROUTER,
+                        null,
+                        null))
+                    .toCompletableFuture()
+                    .join()
+                    .stream()
+                    .map(peer -> new Contracts.PeerLocation(
+                        peer.nodeRid().toString(), peer.endpoint()))
+                    .toList();
+                return new Contracts.PeerSnapshot(peers);
+            }));
             server.start();
             running = true;
         } catch (Exception error) {
@@ -59,18 +101,36 @@ public final class ConsumerEndpoints implements SmartLifecycle {
         return running;
     }
 
-    private void writeJson(com.sun.net.httpserver.HttpExchange exchange, Object value) throws java.io.IOException {
+    private <T> T read(com.sun.net.httpserver.HttpExchange exchange, Class<T> type) {
         try {
-            byte[] body = json.writeValueAsBytes(value);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, body.length);
-            exchange.getResponseBody().write(body);
-        } catch (RuntimeException error) {
-            byte[] body = error.toString().getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(500, body.length);
-            exchange.getResponseBody().write(body);
-        } finally {
-            exchange.close();
+            return json.readValue(exchange.getRequestBody(), type);
+        } catch (java.io.IOException error) {
+            throw new IllegalArgumentException("invalid operation request", error);
         }
+    }
+
+    private void handle(
+        com.sun.net.httpserver.HttpExchange exchange,
+        Supplier<Object> operation) throws java.io.IOException {
+        try {
+            writeJson(exchange, 200, operation.get());
+        } catch (RuntimeException error) {
+            writeJson(exchange, 500, Map.of("error", error.toString()));
+        }
+    }
+
+    private void writeJson(com.sun.net.httpserver.HttpExchange exchange, Object value) throws java.io.IOException {
+        writeJson(exchange, 200, value);
+    }
+
+    private void writeJson(
+        com.sun.net.httpserver.HttpExchange exchange,
+        int status,
+        Object value) throws java.io.IOException {
+        byte[] body = json.writeValueAsBytes(value);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, body.length);
+        exchange.getResponseBody().write(body);
+        exchange.close();
     }
 }

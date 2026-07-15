@@ -23,6 +23,18 @@ public final class Contracts {
         String providerRid) {
     }
 
+    public record WorkOperation(String value, long timeoutMillis) {
+    }
+
+    public record UnhandledOperation(String value, long timeoutMillis) {
+    }
+
+    public record PeerLocation(String routingId, String endpoint) {
+    }
+
+    public record PeerSnapshot(List<PeerLocation> peers) {
+    }
+
     public record EvidenceEntry(
         String marker,
         String providerRid,

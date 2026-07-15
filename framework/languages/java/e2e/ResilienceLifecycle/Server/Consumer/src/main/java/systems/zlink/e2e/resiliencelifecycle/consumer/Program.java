@@ -7,7 +7,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.e2e.resiliencelifecycle.consumer.endpoints.ConsumerEndpoints;
-import systems.zlink.e2e.resiliencelifecycle.consumer.scenarios.ConsumerScenario;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -38,8 +37,15 @@ public final class Program {
     }
 
     @Bean
-    ConsumerEndpoints consumerEndpoints(ObjectMapper json, ConsumerScenario scenario) {
-        return new ConsumerEndpoints(json, scenario, Env.get("ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT"));
+    ConsumerEndpoints consumerEndpoints(
+        ObjectMapper json,
+        systems.zlink.framework.channels.ZLinkClient client,
+        ZLinkFrameworkLifecycle lifecycle) {
+        return new ConsumerEndpoints(
+            json,
+            client,
+            lifecycle,
+            Env.get("ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT"));
     }
 
     @Bean
@@ -63,11 +69,4 @@ public final class Program {
             .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
     }
 
-    @Bean
-    ConsumerScenario consumerScenario(
-        systems.zlink.framework.channels.ZLinkClient client,
-        ZLinkFrameworkLifecycle lifecycle,
-        ObjectMapper json) {
-        return new ConsumerScenario(client, lifecycle, json);
-    }
 }

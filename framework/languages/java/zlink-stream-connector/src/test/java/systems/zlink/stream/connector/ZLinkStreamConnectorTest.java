@@ -1233,13 +1233,49 @@ final class ZLinkStreamConnectorTest {
                     "RemoteError",
                     Map.of(),
             null),
-                "{\"message\":\"remote failed\"}".getBytes(StandardCharsets.UTF_8)).join();
+                "{\"code\":\"quota_exceeded\",\"message\":\"remote failed\"}"
+                    .getBytes(StandardCharsets.UTF_8)).join();
 
             TcpStreamConnectorTestServer.awaitCondition(
                 () -> received.get() != null);
 
             assertEquals(ZLinkStreamErrorCode.REMOTE_ERROR, received.get().code());
-            assertEquals("{\"message\":\"remote failed\"}", received.get().message());
+            assertEquals("remote failed", received.get().message());
+        }
+    }
+
+    @Test
+    void correlatedRemoteErrorFailsOnlyItsPendingRequest() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+            AtomicInteger streamErrors = new AtomicInteger();
+            connector.onErrorReceived(error -> {
+                streamErrors.incrementAndGet();
+                return CompletableFuture.completedFuture(null);
+            });
+
+            ConnectorTestAwait.await(connector.connect());
+            var requestFrame = server.readFrameAsync();
+            CompletableFuture<ZLinkStreamEncodedPayload> reply = connector
+                .request(payload("RemoteFailure", "request"))
+                .submit()
+                .toCompletableFuture();
+            TcpStreamConnectorTestServer.ReceivedFrame request = requestFrame.join();
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_ERROR,
+                    ZLinkStreamWireProtocol.CODEC_JSON,
+                    ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ,
+                    request.header().requestSeq(),
+                    "",
+                    Map.of(),
+                    null),
+                "{\"code\":\"conflict\",\"message\":\"version conflict\"}"
+                    .getBytes(StandardCharsets.UTF_8)).join();
+
+            CompletionException failure = assertThrows(CompletionException.class, reply::join);
+            assertEquals("conflict: version conflict", failure.getCause().getMessage());
+            assertEquals(0, streamErrors.get());
         }
     }
 

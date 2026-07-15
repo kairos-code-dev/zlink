@@ -1,6 +1,7 @@
 package systems.zlink.stream.connector;
 
-import java.nio.charset.StandardCharsets;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
@@ -9,6 +10,7 @@ import java.util.function.Function;
 import systems.zlink.contracts.messaging.Message;
 
 final class ZLinkStreamReceiveDispatcher {
+    private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();
     private static final String HEARTBEAT_PING_NAME = "$zlink.heartbeat.ping";
     private static final String HEARTBEAT_PONG_NAME = "$zlink.heartbeat.pong";
 
@@ -123,14 +125,33 @@ final class ZLinkStreamReceiveDispatcher {
     }
 
     private void dispatchError(ZLinkStreamWireProtocol.Header header, byte[] payload) {
-        ZLinkStreamError error = new ZLinkStreamError(
-            ZLinkStreamErrorCode.REMOTE_ERROR,
-            new String(payload, StandardCharsets.UTF_8));
-        errorPublisher.accept(error);
-        if (header.requestSeq() != null) {
-            pendingRequests.fail(header.requestSeq(), new IllegalStateException(error.message()));
+        ZLinkStreamError error;
+        RuntimeException requestFailure;
+        try {
+            RemoteErrorPayload remote = ERROR_MAPPER.readValue(payload, RemoteErrorPayload.class);
+            if (remote.code() == null || remote.code().isBlank()
+                || remote.message() == null || remote.message().isBlank()) {
+                throw new IOException("error payload requires string code and message fields");
+            }
+            requestFailure = new IllegalStateException(remote.code() + ": " + remote.message());
+            error = new ZLinkStreamError(
+                ZLinkStreamErrorCode.REMOTE_ERROR,
+                remote.message(),
+                requestFailure);
+        } catch (IOException ex) {
+            requestFailure = new IllegalArgumentException("remote error payload is invalid", ex);
+            error = new ZLinkStreamError(
+                ZLinkStreamErrorCode.FRAME_DECODE_FAILED,
+                "Remote error payload is invalid.",
+                requestFailure);
+        }
+        if (header.requestSeq() == null
+            || !pendingRequests.fail(header.requestSeq(), requestFailure)) {
+            errorPublisher.accept(error);
         }
     }
+
+    private record RemoteErrorPayload(String code, String message) { }
 
     private void dispatchToHandlers(ZLinkStreamWireProtocol.Header header, byte[] payload) {
         List<ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>> registered =

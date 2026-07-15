@@ -198,6 +198,7 @@ final class KotlinConnectorWrapperTest {
                     received.await()
                 }
                 assertEquals(ZLinkStreamErrorCode.REMOTE_ERROR, error.code())
+                assertEquals("remote failed", error.message())
                 collector.cancel()
             } finally {
                 connector.close().await()
@@ -349,7 +350,8 @@ final class KotlinConnectorWrapperTest {
                     codec = 1,
                     requestSeq = null,
                     name = "RemoteError",
-                    payload = "remote failed".toByteArray(StandardCharsets.UTF_8),
+                    payload = """{"code":"remote","message":"remote failed"}"""
+                        .toByteArray(StandardCharsets.UTF_8),
                 ),
             )
             connector.dispatch().await()

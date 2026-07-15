@@ -41,12 +41,14 @@ final class ZLinkStreamPendingRequests {
         }
     }
 
-    void fail(long requestSeq, Throwable ex) {
+    boolean fail(long requestSeq, Throwable ex) {
         PendingRequest request = requests.remove(requestSeq);
         CompletableFuture<ZLinkStreamEncodedPayload> pending = request == null ? null : request.future();
         if (pending != null) {
             pending.completeExceptionally(ex);
+            return true;
         }
+        return false;
     }
 
     void failAll(Throwable ex) {

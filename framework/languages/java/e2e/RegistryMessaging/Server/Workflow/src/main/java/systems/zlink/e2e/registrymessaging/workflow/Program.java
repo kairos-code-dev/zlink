@@ -1,12 +1,14 @@
 package systems.zlink.e2e.registrymessaging.workflow;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.Map;
+import java.nio.file.Path;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.registrymessaging.workflow.Configuration.ServerOptions;
 import systems.zlink.e2e.registrymessaging.workflow.Handlers.ProfileMsgHandler;
@@ -24,6 +26,7 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(ServerOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.registrymessaging.workflow")
@@ -32,23 +35,24 @@ public final class Program {
     }
 
     public static void main(String[] args) {
+        String config = configPath(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(isolatedEnvironment())
             .web(WebApplicationType.SERVLET)
-            .properties(Map.of("server.port", ServerOptions.get("ZLINK_JAVA_E2E_HTTP_PORT", "0")));
+            .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri());
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
-    ScenarioState scenarioState() {
-        String rid = ServerOptions.get("ZLINK_JAVA_E2E_PROVIDER_RID", "api-a");
-        return new ScenarioState(rid, ServerOptions.get("ZLINK_JAVA_E2E_PROVIDER_INSTANCE", rid));
+    ScenarioState scenarioState(ServerOptions options) {
+        return new ScenarioState(options.providerRid(), options.providerInstance());
     }
 
     @Bean
-    ZLinkFrameworkConfigurer workflowFramework(ScenarioState state) {
+    ZLinkFrameworkConfigurer workflowFramework(ScenarioState state, ServerOptions server) {
         return options -> {
-            String logDir = ServerOptions.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = server.logDir();
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + state.providerRid() + "-flow.log")
@@ -64,7 +68,7 @@ public final class Program {
                 });
             options.addHandlersFromPackageOf(ProfileReqHandler.class);
 
-            String apiEndpoint = ServerOptions.get("ZLINK_JAVA_E2E_API_ENDPOINT");
+            String apiEndpoint = server.apiEndpoint();
             if (!apiEndpoint.isBlank()) {
                 options.addClientServerChannel(Contracts.API_CHANNEL)
                     .enableServer(apiEndpoint)
@@ -72,7 +76,7 @@ public final class Program {
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
             }
 
-            String workflowEndpoint = ServerOptions.get("ZLINK_JAVA_E2E_WORKFLOW_ENDPOINT");
+            String workflowEndpoint = server.workflowEndpoint();
             if (!workflowEndpoint.isBlank()) {
                 options.addClientServerChannel(Contracts.WORKFLOW_CHANNEL)
                     .enableServer(workflowEndpoint)
@@ -80,7 +84,7 @@ public final class Program {
                     .addHandlerGroup(Contracts.HANDLER_GROUP);
             }
 
-            String routeEndpoint = ServerOptions.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT");
+            String routeEndpoint = server.routeEndpoint();
             if (!routeEndpoint.isBlank()) {
                 options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
                     .enableServer(routeEndpoint)
@@ -95,16 +99,16 @@ public final class Program {
     }
 
     @Bean
-    ZLinkRedisLocationStore locationStore() {
+    ZLinkRedisLocationStore locationStore(ServerOptions options) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(ServerOptions.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(ServerOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix()));
     }
 
     @Bean
-    ApplicationRunner applyInitialSocketWeight(ZLinkChannelRuntimeOptions runtimeOptions) {
+    ApplicationRunner applyInitialSocketWeight(ZLinkChannelRuntimeOptions runtimeOptions, ServerOptions options) {
         return ignored -> {
-            String weight = ServerOptions.get("ZLINK_JAVA_E2E_API_WEIGHT");
+            String weight = options.apiWeight();
             if (!weight.isBlank()) {
                 runtimeOptions
                     .clientServerChannel(Contracts.API_CHANNEL)
@@ -132,5 +136,19 @@ public final class Program {
     @Bean
     WorkflowReqHandler workflowRequestHandler(ScenarioState state) {
         return new WorkflowReqHandler(state);
+    }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: registry-messaging-workflow --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
     }
 }

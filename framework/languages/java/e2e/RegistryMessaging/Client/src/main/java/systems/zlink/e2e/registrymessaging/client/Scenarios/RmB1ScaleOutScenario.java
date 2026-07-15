@@ -2,6 +2,7 @@ package systems.zlink.e2e.registrymessaging.client.Scenarios;
 
 import java.util.Set;
 import systems.zlink.e2e.registrymessaging.client.Support.DynamicClusterLauncher;
+import systems.zlink.e2e.registrymessaging.client.Support.ClientOptions;
 import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.httpclient.ZLinkHttpClient;
@@ -10,8 +11,8 @@ public final class RmB1ScaleOutScenario {
     private RmB1ScaleOutScenario() {
     }
 
-    public static void run() {
-        try (DynamicClusterLauncher cluster = DynamicClusterLauncher.start("rm-b1")) {
+    public static void run(ClientOptions options) {
+        try (DynamicClusterLauncher cluster = DynamicClusterLauncher.start(options)) {
             DynamicClusterLauncher.DynamicProvider providerA = cluster.startProvider("api-a", "api-a");
             DynamicClusterLauncher.DynamicConsumer consumer = cluster.startConsumer("consumer");
             try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {

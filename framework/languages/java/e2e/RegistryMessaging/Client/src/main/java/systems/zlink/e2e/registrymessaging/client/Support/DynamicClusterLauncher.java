@@ -4,11 +4,14 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import static java.util.Map.entry;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import systems.zlink.httpclient.ZLinkHttpClient;
@@ -17,17 +20,18 @@ public final class DynamicClusterLauncher implements AutoCloseable {
     private final List<DynamicProcess> processes = new ArrayList<>();
     private final Path logDir;
     private final String buildDir;
+    private final Path configDir;
+    private final ClientOptions options;
 
-    private DynamicClusterLauncher(Path logDir, String buildDir) {
-        this.logDir = logDir;
-        this.buildDir = buildDir;
+    private DynamicClusterLauncher(ClientOptions options) {
+        this.options = options;
+        this.logDir = Path.of(options.logDir());
+        this.buildDir = options.buildDir();
+        this.configDir = Path.of(options.configDir());
     }
 
-    public static DynamicClusterLauncher start(String scenarioName) {
-        DynamicClusterLauncher launcher = new DynamicClusterLauncher(
-            Path.of(ClientOptions.get("ZLINK_JAVA_E2E_LOG_DIR", "logs")),
-            ClientOptions.get("ZLINK_JAVA_E2E_BUILD_DIR",
-                System.getProperty("user.home") + "/.cache/zlink/java-e2e/RegistryMessaging"));
+    public static DynamicClusterLauncher start(ClientOptions options) {
+        DynamicClusterLauncher launcher = new DynamicClusterLauncher(options);
         try {
             return launcher;
         } catch (RuntimeException error) {
@@ -46,21 +50,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         DynamicProcess process = startProcess(
             name,
             providerBinary(),
-            Map.ofEntries(
-                entry("ZLINK_JAVA_E2E_PROVIDER_RID", rid),
-                entry("ZLINK_JAVA_E2E_PROVIDER_INSTANCE", instanceId),
-                entry("ZLINK_JAVA_E2E_API_WEIGHT", weight),
-                entry("ZLINK_JAVA_E2E_API_ENDPOINT", channelEndpoint),
-                entry("ZLINK_JAVA_E2E_API_MANUAL_ENDPOINT", channelEndpoint),
-                entry("ZLINK_JAVA_E2E_ROUTE_ENDPOINT", pickEndpoint()),
-                entry("ZLINK_JAVA_E2E_ROUTE_PEERS", ""),
-                entry("ZLINK_JAVA_E2E_WORKFLOW_ENDPOINT", ""),
-                entry("ZLINK_JAVA_E2E_HTTP_PORT", portOf(httpUrl)),
-                entry("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT",
-                    ClientOptions.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT")),
-                entry("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX",
-                    ClientOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")),
-                entry("ZLINK_JAVA_E2E_LOG_DIR", logDir.toString())),
+            providerConfig(rid, instanceId, weight, channelEndpoint, pickEndpoint(), httpUrl),
             httpUrl);
         process.waitReady();
         return new DynamicProvider(process, httpUrl, channelEndpoint);
@@ -71,16 +61,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         DynamicProcess process = startProcess(
             name,
             consumerBinary(),
-            Map.ofEntries(
-                entry("ZLINK_JAVA_E2E_CONSUMER_NAME", name),
-                entry("ZLINK_JAVA_E2E_CONSUMER_MODE", "discovery"),
-                entry("ZLINK_JAVA_E2E_PROVIDER_ENDPOINTS", ""),
-                entry("ZLINK_JAVA_E2E_HTTP_PORT", portOf(httpUrl)),
-                entry("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT",
-                    ClientOptions.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT")),
-                entry("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX",
-                    ClientOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")),
-                entry("ZLINK_JAVA_E2E_LOG_DIR", logDir.toString())),
+            consumerConfig(name, httpUrl),
             httpUrl);
         process.waitReady();
         return new DynamicConsumer(process, httpUrl);
@@ -120,20 +101,65 @@ public final class DynamicClusterLauncher implements AutoCloseable {
     private DynamicProcess startProcess(
         String name,
         String binary,
-        Map<String, String> environment,
+        String config,
         String httpUrl) {
-        ProcessBuilder builder = new ProcessBuilder(binary);
-        builder.environment().putAll(environment);
-        builder.redirectOutput(logDir.resolve(name + ".stdout.log").toFile());
-        builder.redirectError(logDir.resolve(name + ".stderr.log").toFile());
         try {
             Files.createDirectories(logDir);
-            DynamicProcess process = new DynamicProcess(builder.start(), httpUrl);
+            Path configPath = writeConfig(name, config);
+            ProcessBuilder builder = new ProcessBuilder(binary, "--config", configPath.toString());
+            builder.redirectOutput(logDir.resolve(name + ".stdout.log").toFile());
+            builder.redirectError(logDir.resolve(name + ".stderr.log").toFile());
+            DynamicProcess process = new DynamicProcess(builder.start(), httpUrl, configPath);
             processes.add(process);
             return process;
         } catch (IOException error) {
             throw new IllegalStateException("failed to start " + name, error);
         }
+    }
+
+    private String providerConfig(
+        String rid, String instanceId, String weight, String apiEndpoint,
+        String routeEndpoint, String httpUrl) {
+        return """
+            e2e.provider-rid=%s
+            e2e.provider-instance=%s
+            e2e.api-weight=%s
+            e2e.api-endpoint=%s
+            e2e.api-manual-endpoint=%s
+            e2e.route-endpoint=%s
+            e2e.route-peers=
+            e2e.workflow-endpoint=
+            e2e.http-port=%s
+            server.port=${e2e.http-port}
+            e2e.redis-location-endpoint=%s
+            e2e.location-key-prefix=%s
+            e2e.log-dir=%s
+            """.formatted(rid, instanceId, weight, apiEndpoint, apiEndpoint,
+                routeEndpoint, portOf(httpUrl), options.redisLocationEndpoint(),
+                options.locationKeyPrefix(), logDir);
+    }
+
+    private String consumerConfig(String name, String httpUrl) {
+        return """
+            e2e.consumer-name=%s
+            e2e.consumer-mode=discovery
+            e2e.provider-endpoints=
+            e2e.http-port=%s
+            server.port=${e2e.http-port}
+            e2e.redis-location-endpoint=%s
+            e2e.location-key-prefix=%s
+            e2e.log-dir=%s
+            """.formatted(name, portOf(httpUrl), options.redisLocationEndpoint(),
+                options.locationKeyPrefix(), logDir);
+    }
+
+    private Path writeConfig(String name, String contents) throws IOException {
+        Files.createDirectories(configDir);
+        Path path = configDir.resolve(name + "-" + System.nanoTime() + ".properties");
+        Files.writeString(path, contents, StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
+        Files.setPosixFilePermissions(path, Set.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        return path;
     }
 
     private String providerBinary() {
@@ -192,11 +218,13 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         private final Process process;
         private final String httpUrl;
         private final ZLinkHttpClient healthClient;
+        private final Path configPath;
         private boolean stopped;
 
-        DynamicProcess(Process process, String httpUrl) {
+        DynamicProcess(Process process, String httpUrl, Path configPath) {
             this.process = process;
             this.httpUrl = httpUrl;
+            this.configPath = configPath;
             this.healthClient = ZLinkHttpClient.create(httpUrl)
                 .timeout(Duration.ofMillis(300))
                 .build();
@@ -236,6 +264,11 @@ public final class DynamicClusterLauncher implements AutoCloseable {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 process.destroyForcibly();
+            } finally {
+                try {
+                    Files.deleteIfExists(configPath);
+                } catch (IOException ignored) {
+                }
             }
         }
 

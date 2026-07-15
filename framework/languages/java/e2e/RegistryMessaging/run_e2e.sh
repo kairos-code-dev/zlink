@@ -9,6 +9,8 @@ pids=()
 REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+config_dir="$(mktemp -d)"
+chmod 700 "${config_dir}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -21,8 +23,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging-gradle-cache}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=""
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:registry-messaging:${run_id}}"
+redis_location_endpoint=""
+location_key_prefix="zlink:e2e:registry-messaging:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -82,6 +84,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -158,8 +161,7 @@ start_redis_container() {
   fi
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
     "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+  redis_location_endpoint="127.0.0.1:${redis_port}"
 }
 
 gradle_run() {
@@ -207,24 +209,29 @@ start_provider() {
   local weight="${6:-}"
   local http_port="${7:?http port is required}"
   local binary
+  local config_path="${config_dir}/${rid}-$(date +%s%N).properties"
   if [[ -n "${workflow}" && -z "${api}" && -z "${route}" ]]; then
     binary="$(workflow_bin)"
   else
     binary="$(provider_bin)"
   fi
-  ZLINK_JAVA_E2E_PROVIDER_RID="${rid}" \
-  ZLINK_JAVA_E2E_PROVIDER_INSTANCE="${instance}" \
-  ZLINK_JAVA_E2E_API_WEIGHT="${weight}" \
-  ZLINK_JAVA_E2E_API_ENDPOINT="${api}" \
-  ZLINK_JAVA_E2E_API_MANUAL_ENDPOINT="${API_A}" \
-  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
-  ZLINK_JAVA_E2E_ROUTE_PEERS="${ROUTE_B}" \
-  ZLINK_JAVA_E2E_WORKFLOW_ENDPOINT="${workflow}" \
-  ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${http_port}")" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "${binary}" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+  {
+    echo "e2e.provider-rid=${rid}"
+    echo "e2e.provider-instance=${instance}"
+    echo "e2e.api-weight=${weight}"
+    echo "e2e.api-endpoint=${api}"
+    echo "e2e.api-manual-endpoint=${API_A}"
+    echo "e2e.route-endpoint=${route}"
+    echo "e2e.route-peers=${ROUTE_B}"
+    echo "e2e.workflow-endpoint=${workflow}"
+    echo "e2e.http-port=$(port_of "${http_port}")"
+    echo 'server.port=${e2e.http-port}'
+    echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"
+    echo "e2e.log-dir=${log_dir}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  "${binary}" --config "${config_path}" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   [[ -z "${api}" ]] || wait_port "${rid}-api" "${api}"
@@ -238,14 +245,19 @@ start_consumer() {
   local mode="$2"
   local http_port="$3"
   local endpoints="${4:-}"
-  ZLINK_JAVA_E2E_CONSUMER_NAME="${name}" \
-  ZLINK_JAVA_E2E_CONSUMER_MODE="${mode}" \
-  ZLINK_JAVA_E2E_PROVIDER_ENDPOINTS="${endpoints}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_HTTP_PORT="$(port_of "${http_port}")" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(consumer_bin)" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
+  local config_path="${config_dir}/${name}-$(date +%s%N).properties"
+  {
+    echo "e2e.consumer-name=${name}"
+    echo "e2e.consumer-mode=${mode}"
+    echo "e2e.provider-endpoints=${endpoints}"
+    echo "e2e.http-port=$(port_of "${http_port}")"
+    echo 'server.port=${e2e.http-port}'
+    echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"
+    echo "e2e.log-dir=${log_dir}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  "$(consumer_bin)" --config "${config_path}" >"${log_dir}/${name}.stdout.log" 2>"${log_dir}/${name}.stderr.log" &
   pids+=("$!")
   wait_health "${name}" "${http_port}"
 }
@@ -273,17 +285,24 @@ run_client() {
   local scenario="$1"
   local suffix="$2"
   shift 2
-  ZLINK_JAVA_E2E_SCENARIO="${scenario}" \
-  ZLINK_JAVA_E2E_PROVIDER_A_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_API_A}")" \
-  ZLINK_JAVA_E2E_PROVIDER_B_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_API_B}")" \
-  ZLINK_JAVA_E2E_WORKFLOW_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_WORKFLOW}")" \
-  ZLINK_JAVA_E2E_DISCOVERY_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_DISCOVERY_CONSUMER}")" \
-  ZLINK_JAVA_E2E_DIRECT_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_DIRECT_CONSUMER}")" \
-  ZLINK_JAVA_E2E_SINGLE_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_SINGLE_CONSUMER}")" \
-  ZLINK_JAVA_E2E_BACKPRESSURE_CONSUMER_HTTP_URL="http://127.0.0.1:$(port_of "${HTTP_BACKPRESSURE_CONSUMER}")" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$@" \
-    "$(client_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
+  local config_path="${config_dir}/client-${suffix}-$(date +%s%N).properties"
+  {
+    echo "providerAHttpUrl=http://127.0.0.1:$(port_of "${HTTP_API_A}")"
+    echo "providerBHttpUrl=http://127.0.0.1:$(port_of "${HTTP_API_B}")"
+    echo "workflowHttpUrl=http://127.0.0.1:$(port_of "${HTTP_WORKFLOW}")"
+    echo "discoveryConsumerHttpUrl=http://127.0.0.1:$(port_of "${HTTP_DISCOVERY_CONSUMER}")"
+    echo "directConsumerHttpUrl=http://127.0.0.1:$(port_of "${HTTP_DIRECT_CONSUMER}")"
+    echo "singleConsumerHttpUrl=http://127.0.0.1:$(port_of "${HTTP_SINGLE_CONSUMER}")"
+    echo "backpressureConsumerHttpUrl=http://127.0.0.1:$(port_of "${HTTP_BACKPRESSURE_CONSUMER}")"
+    echo "redisLocationEndpoint=${redis_location_endpoint}"
+    echo "locationKeyPrefix=${location_key_prefix}"
+    echo "buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}"
+    echo "logDir=${log_dir}"
+    echo "configDir=${config_dir}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  "$@" "$(client_bin)" --config "${config_path}" --scenario "${scenario}" \
+    >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
 }
 
 is_common_scenario() {

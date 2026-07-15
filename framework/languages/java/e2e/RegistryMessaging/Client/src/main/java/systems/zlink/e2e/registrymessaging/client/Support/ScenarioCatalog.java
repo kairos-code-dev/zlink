@@ -17,13 +17,15 @@ import systems.zlink.e2e.registrymessaging.client.Scenarios.RmC9BackpressureScen
 
 public final class ScenarioCatalog {
     private final RegistryMessagingHttp http;
+    private final ClientOptions options;
 
-    public ScenarioCatalog(RegistryMessagingHttp http) {
+    public ScenarioCatalog(RegistryMessagingHttp http, ClientOptions options) {
         this.http = http;
+        this.options = options;
     }
 
-    public void run() {
-        switch (ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO", "common")) {
+    public void run(String scenario) {
+        switch (scenario) {
             case "common" -> runCommon();
             case "RM-A1" -> RmA1DiscoveryRequestScenario.run(
                 http.providerA(),
@@ -35,12 +37,12 @@ public final class ScenarioCatalog {
                 http.providerA(),
                 http.providerB(),
                 http.workflow());
-            case "scale-out" -> RmB1ScaleOutScenario.run();
-            case "scale-in" -> RmB2ScaleInScenario.run();
-            case "failover" -> RmA4SameRidFailoverScenario.run();
-            case "RM-B1" -> RmB1ScaleOutScenario.run();
-            case "RM-B2" -> RmB2ScaleInScenario.run();
-            case "RM-A4" -> RmA4SameRidFailoverScenario.run();
+            case "scale-out" -> RmB1ScaleOutScenario.run(options);
+            case "scale-in" -> RmB2ScaleInScenario.run(options);
+            case "failover" -> RmA4SameRidFailoverScenario.run(options);
+            case "RM-B1" -> RmB1ScaleOutScenario.run(options);
+            case "RM-B2" -> RmB2ScaleInScenario.run(options);
+            case "RM-A4" -> RmA4SameRidFailoverScenario.run(options);
             case "RM-C1" -> RmC1RequestSendScenario.run(http.providerA(), http.providerB());
             case "RM-C2" -> RmC2TargetedRouteScenario.run(http.providerA());
             case "RM-C3" -> RmC3MultiProviderDistributionScenario.run(http.directConsumer(), "RM-C3", "multi-", 80, false);
@@ -60,7 +62,7 @@ public final class ScenarioCatalog {
                 http.providerA(),
                 http.providerB());
             default -> throw new IllegalArgumentException(
-                "unknown scenario " + ClientOptions.get("ZLINK_JAVA_E2E_SCENARIO"));
+                "unknown scenario " + scenario);
         }
     }
 

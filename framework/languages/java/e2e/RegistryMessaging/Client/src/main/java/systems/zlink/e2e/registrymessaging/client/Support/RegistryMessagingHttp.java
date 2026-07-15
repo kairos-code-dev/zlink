@@ -12,14 +12,14 @@ public final class RegistryMessagingHttp implements AutoCloseable {
     private final ZLinkHttpClient singleConsumer;
     private final ZLinkHttpClient backpressureConsumer;
 
-    public RegistryMessagingHttp() {
-        providerA = client("ZLINK_JAVA_E2E_PROVIDER_A_HTTP_URL");
-        providerB = client("ZLINK_JAVA_E2E_PROVIDER_B_HTTP_URL");
-        workflow = client("ZLINK_JAVA_E2E_WORKFLOW_HTTP_URL");
-        discoveryConsumer = client("ZLINK_JAVA_E2E_DISCOVERY_CONSUMER_HTTP_URL");
-        directConsumer = client("ZLINK_JAVA_E2E_DIRECT_CONSUMER_HTTP_URL");
-        singleConsumer = client("ZLINK_JAVA_E2E_SINGLE_CONSUMER_HTTP_URL");
-        backpressureConsumer = client("ZLINK_JAVA_E2E_BACKPRESSURE_CONSUMER_HTTP_URL");
+    public RegistryMessagingHttp(ClientOptions options) {
+        providerA = client(options.providerAHttpUrl());
+        providerB = client(options.providerBHttpUrl());
+        workflow = client(options.workflowHttpUrl());
+        discoveryConsumer = client(options.discoveryConsumerHttpUrl());
+        directConsumer = client(options.directConsumerHttpUrl());
+        singleConsumer = client(options.singleConsumerHttpUrl());
+        backpressureConsumer = client(options.backpressureConsumerHttpUrl());
     }
 
     public ZLinkHttpClient providerA() {
@@ -61,8 +61,8 @@ public final class RegistryMessagingHttp implements AutoCloseable {
         backpressureConsumer.close();
     }
 
-    private static ZLinkHttpClient client(String envName) {
-        return ZLinkHttpClient.create(ClientOptions.get(envName))
+    private static ZLinkHttpClient client(String endpoint) {
+        return ZLinkHttpClient.create(endpoint)
             .timeout(Duration.ofMinutes(5))
             .build();
     }

@@ -1,6 +1,7 @@
 package systems.zlink.e2e.registrymessaging.client.Scenarios;
 
 import systems.zlink.e2e.registrymessaging.client.Support.DynamicClusterLauncher;
+import systems.zlink.e2e.registrymessaging.client.Support.ClientOptions;
 import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.httpclient.ZLinkHttpClient;
@@ -9,8 +10,8 @@ public final class RmA4SameRidFailoverScenario {
     private RmA4SameRidFailoverScenario() {
     }
 
-    public static void run() {
-        try (DynamicClusterLauncher cluster = DynamicClusterLauncher.start("rm-a4")) {
+    public static void run(ClientOptions options) {
+        try (DynamicClusterLauncher cluster = DynamicClusterLauncher.start(options)) {
             DynamicClusterLauncher.DynamicProvider providerV1 =
                 cluster.startProvider("api-a-v1", "api-a", "api-a-v1", "");
             DynamicClusterLauncher.DynamicConsumer consumer = cluster.startConsumer("consumer");

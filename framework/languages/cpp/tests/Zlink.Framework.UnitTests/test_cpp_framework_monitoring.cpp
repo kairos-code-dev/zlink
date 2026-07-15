@@ -15,6 +15,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <typeindex>
 
 namespace
@@ -350,6 +351,34 @@ int main ()
     }
     if (trace_events < 9) {
         return 4;
+    }
+
+    zlink::framework::monitoring_builder_t throttled_spot_monitoring;
+    int throttled_spot_events = 0;
+    std::vector<std::string> latest_subjects;
+    throttled_spot_monitoring.add_spot_events ("throttled.spot", 40ms)
+      .on<zlink::framework::spot_event_payload_t> (
+        [&] (const zlink::framework::spot_event_payload_t &event) {
+            ++throttled_spot_events;
+            latest_subjects = event.subjects;
+        });
+    auto throttled_runtime =
+      zlink::framework::detail::monitoring_runtime_t::from (throttled_spot_monitoring);
+    throttled_runtime.publish_spot_snapshot (
+      {zlink::framework::runtime_event_base_t{"throttled.spot"},
+       zlink::framework::spot_event_kind_t::subjects_changed, "throttled.spot", {}, {"one"},
+       std::nullopt});
+    throttled_runtime.publish_spot_snapshot (
+      {zlink::framework::runtime_event_base_t{"throttled.spot"},
+       zlink::framework::spot_event_kind_t::subjects_changed, "throttled.spot", {}, {"two"},
+       std::nullopt});
+    if (throttled_spot_events != 1) {
+        return 36;
+    }
+    std::this_thread::sleep_for (50ms);
+    throttled_runtime.flush_spot_snapshots ("throttled.spot");
+    if (throttled_spot_events != 2 || latest_subjects != std::vector<std::string>{"two"}) {
+        return 37;
     }
 
     bool duplicate_source_failed = false;

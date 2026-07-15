@@ -483,7 +483,7 @@ void spot_node_host_service_t::start (service_provider_t &services)
                     //  Draining also reaches native configuration calls, which throw. Keeping it
                     //  inside the guard is what stops one of those from unwinding out of this
                     //  thread and terminating the process.
-                    native->runtime.publish_peer_snapshot_if_changed ();
+                    native->runtime.poll_monitoring ();
                     dispatched += native->runtime.cleanup_expired_actor_admissions ();
                     dispatched += native->runtime.drain_actor_packets (services, serializers);
                     dispatched += native->runtime.drain_routed_packets (services, serializers);

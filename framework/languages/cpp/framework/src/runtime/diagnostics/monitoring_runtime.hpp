@@ -5,6 +5,7 @@
 
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <typeindex>
@@ -28,6 +29,12 @@ struct socket_monitoring_source_registration_t
 class monitoring_runtime_state_t
 {
   public:
+    struct spot_snapshot_gate_t
+    {
+        std::chrono::steady_clock::time_point next_publish_at;
+        std::map<spot_event_kind_t, spot_event_payload_t> pending;
+    };
+
     std::vector<socket_monitoring_source_registration_t> socket_sources;
     std::vector<monitoring_source_registration_t> location_sources;
     std::vector<monitoring_source_registration_t> spot_sources;
@@ -36,6 +43,8 @@ class monitoring_runtime_state_t
     bool runtime_metrics_enabled = false;
     std::map<std::type_index, std::vector<std::function<void (const void *)>>> handlers;
     std::function<void (const runtime_event_base_t &)> tracing_hook;
+    std::mutex spot_snapshot_mutex;
+    std::map<std::string, spot_snapshot_gate_t> spot_snapshot_gates;
 };
 
 class monitoring_runtime_t
@@ -58,6 +67,7 @@ class monitoring_runtime_t
       std::optional<std::vector<location_topology_entry_t>> topology,
       std::optional<std::vector<location_service_summary_t>> summary) const;
     void publish_spot_snapshot (spot_event_payload_t event) const;
+    void flush_spot_snapshots (const std::string &source_name) const;
     void publish_stream (stream_event_payload_t event) const;
     void publish_actor (actor_event_payload_t event) const;
     void publish_timer_failure (std::string source_name,

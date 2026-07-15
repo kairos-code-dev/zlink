@@ -318,10 +318,46 @@ void monitoring_runtime_t::publish_location_changes (
 
 void monitoring_runtime_t::publish_spot_snapshot (spot_event_payload_t event) const
 {
-    if (!contains_source (_state->spot_sources, event.source_name)) {
+    const auto source_name = event.source_name;
+    if (!contains_source (_state->spot_sources, source_name)) {
         return;
     }
-    publish (std::move (event));
+    {
+        std::lock_guard lock (_state->spot_snapshot_mutex);
+        _state->spot_snapshot_gates[source_name].pending[event.event] = std::move (event);
+    }
+    flush_spot_snapshots (source_name);
+}
+
+void monitoring_runtime_t::flush_spot_snapshots (const std::string &source_name) const
+{
+    const auto source = std::find_if (
+      _state->spot_sources.begin (), _state->spot_sources.end (), [&] (const auto &candidate) {
+          return candidate.source_name == source_name;
+      });
+    if (source == _state->spot_sources.end ()) {
+        return;
+    }
+
+    std::vector<spot_event_payload_t> events;
+    {
+        std::lock_guard lock (_state->spot_snapshot_mutex);
+        auto &gate = _state->spot_snapshot_gates[source_name];
+        const auto now = std::chrono::steady_clock::now ();
+        if (gate.next_publish_at != std::chrono::steady_clock::time_point{}
+            && now < gate.next_publish_at) {
+            return;
+        }
+        gate.next_publish_at = now + source->interval;
+        events.reserve (gate.pending.size ());
+        for (auto &[_, event] : gate.pending) {
+            events.push_back (std::move (event));
+        }
+        gate.pending.clear ();
+    }
+    for (auto &event : events) {
+        publish (std::move (event));
+    }
 }
 
 void monitoring_runtime_t::publish_stream (stream_event_payload_t event) const

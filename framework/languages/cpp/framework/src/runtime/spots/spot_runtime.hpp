@@ -386,7 +386,7 @@ class spot_node_runtime_t
       const zlink::routing_id_t &target_spot_rid,
       runtime::messaging::message_parts_t parts,
       std::chrono::milliseconds timeout) const;
-    void publish_peer_snapshot_if_changed ();
+    void poll_monitoring ();
     std::vector<spot_context_t> active_contexts () const;
     result_t<void> dispatch_subscription (const spot_context_t &context,
                                           std::string topic,

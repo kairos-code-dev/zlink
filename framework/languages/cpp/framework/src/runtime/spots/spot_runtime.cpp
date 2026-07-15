@@ -4603,39 +4603,41 @@ void spot_node_runtime_t::set_route_client (route_client_t route_client)
     _state->route_client = std::move (route_client);
 }
 
-void spot_node_runtime_t::publish_peer_snapshot_if_changed ()
+void spot_node_runtime_t::poll_monitoring ()
 {
     if (!_state->monitoring) {
         return;
     }
 
+    monitoring_runtime_t monitoring (_state->monitoring);
+    monitoring.flush_spot_snapshots (_state->snapshot.name);
+
     std::vector<std::string> peers;
+    bool peers_changed = false;
     {
         std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
         auto native = _state->native_node.lock ();
-        if (!native) {
-            return;
-        }
-        for (const auto &peer : native->peers ()) {
-            if (!peer.peer_endpoint ().empty ()) {
-                peers.push_back (peer.peer_endpoint ());
+        if (native) {
+            for (const auto &peer : native->peers ()) {
+                if (!peer.peer_endpoint ().empty ()) {
+                    peers.push_back (peer.peer_endpoint ());
+                }
             }
         }
         std::sort (peers.begin (), peers.end ());
         peers.erase (std::unique (peers.begin (), peers.end ()), peers.end ());
-        if (peers == _state->last_monitoring_peers) {
-            return;
+        if (peers != _state->last_monitoring_peers) {
+            _state->last_monitoring_peers = peers;
+            peers_changed = true;
         }
-        _state->last_monitoring_peers = peers;
     }
 
-    monitoring_runtime_t (_state->monitoring)
-      .publish_spot_snapshot (spot_event_payload_t{runtime_event_base_t{_state->snapshot.name},
-                                                   spot_event_kind_t::peers_changed,
-                                                   _state->snapshot.name,
-                                                   std::move (peers),
-                                                   {},
-                                                   std::nullopt});
+    if (peers_changed) {
+        monitoring.publish_spot_snapshot (
+          spot_event_payload_t{runtime_event_base_t{_state->snapshot.name},
+                               spot_event_kind_t::peers_changed, _state->snapshot.name,
+                               std::move (peers), {}, std::nullopt});
+    }
 }
 
 std::vector<spot_context_t> spot_node_runtime_t::active_contexts () const

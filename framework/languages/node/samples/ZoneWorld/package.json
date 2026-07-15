@@ -1,0 +1,9 @@
+{
+  "name": "@zlink-systems/sample-zoneworld",
+  "version": "0.1.0-SNAPSHOT",
+  "private": true,
+  "scripts": {
+    "build": "node ../../node_modules/typescript/bin/tsc -p tsconfig.json",
+    "test": "node --test test/*.test.js"
+  }
+}

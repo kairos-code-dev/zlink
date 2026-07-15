@@ -1,39 +1,28 @@
 package systems.zlink.e2e.registrationcodec.client.Support;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import systems.zlink.e2e.registrationcodec.shared.Contracts;
+import systems.zlink.httpclient.ZLinkHttpClient;
 
-public final class Evidence {
-    private final ClientOptions options;
-    private final ObjectMapper json;
-    private final HttpClient http;
+public final class Evidence implements AutoCloseable {
+    private final ZLinkHttpClient http;
 
-    public Evidence(ClientOptions options, ObjectMapper json, HttpClient http) {
-        this.options = options;
-        this.json = json;
+    private Evidence(ZLinkHttpClient http) {
         this.http = http;
     }
 
     public static Evidence fromOptions(ClientOptions options) {
-        return new Evidence(options, new ObjectMapper(), HttpClient.newHttpClient());
+        return new Evidence(ZLinkHttpClient.create(options.httpEndpoint())
+            .timeout(Duration.ofSeconds(3))
+            .build());
     }
 
     public Contracts.EvidenceSnapshot snapshot() {
-        try {
-            HttpRequest request = HttpRequest.newBuilder(
-                    URI.create(options.httpEndpoint() + "/evidence"))
-                .timeout(Duration.ofSeconds(3))
-                .GET()
-                .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            return json.readValue(response.body(), Contracts.EvidenceSnapshot.class);
-        } catch (Exception error) {
-            throw new IllegalStateException("failed to fetch evidence", error);
-        }
+        return http.get("/evidence").fetch(Contracts.EvidenceSnapshot.class);
+    }
+
+    @Override
+    public void close() {
+        http.close();
     }
 }

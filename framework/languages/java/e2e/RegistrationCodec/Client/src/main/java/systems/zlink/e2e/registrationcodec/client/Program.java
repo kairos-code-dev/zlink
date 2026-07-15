@@ -13,9 +13,9 @@ public final class Program {
         ClientOptions options = ClientOptions.fromEnv();
         try (
             ZLinkHttpClient server = ZLinkHttpClient.create(options.httpEndpoint()).build();
-            ZLinkHttpClient codecRequester = ZLinkHttpClient.create(options.codecRequesterHttpEndpoint()).build()
+            ZLinkHttpClient codecRequester = ZLinkHttpClient.create(options.codecRequesterHttpEndpoint()).build();
+            Evidence evidence = Evidence.fromOptions(options)
         ) {
-            Evidence evidence = Evidence.fromOptions(options);
             new ScenarioRunner(new ScenarioContext(options, server, codecRequester, evidence)).run();
             System.out.println("registration-codec e2e result=passed");
         }

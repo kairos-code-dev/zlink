@@ -25,6 +25,11 @@ if [[ "${ROUTE_SETTLE_SECONDS:-}" != 5 ]]; then
   echo "RegistrationCodec must use a 5s route settle limit" >&2
   exit 1
 fi
+if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
+    "$(pwd)/Client/src/main/java" --glob '*.java'; then
+  echo "RegistrationCodec client must use ZLinkHttpClient" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"

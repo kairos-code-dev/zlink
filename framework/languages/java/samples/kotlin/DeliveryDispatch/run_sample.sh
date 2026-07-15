@@ -23,6 +23,20 @@ if rg -n 'runScaffold|waitNotifications|readNotifications|--stream-runtime' \
   echo "DeliveryDispatch client must use the stream connector path only" >&2
   exit 1
 fi
+coroutine_hosts=(
+  Server/CourierGateway/src/main/kotlin
+  Server/CourierSession/src/main/kotlin
+  Server/CourierSpotNode/src/main/kotlin
+  Server/CustomerGateway/src/main/kotlin
+  Server/Dispatch/src/main/kotlin
+  Server/Tracking/src/main/kotlin
+)
+for host in "${coroutine_hosts[@]}"; do
+  if ! rg -q 'useCoroutineHandlers\(Dispatchers\.Default\)' "${host}" --glob '*.kt'; then
+    echo "DeliveryDispatch framework host must configure coroutine handlers: ${host}" >&2
+    exit 1
+  fi
+done
 
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)

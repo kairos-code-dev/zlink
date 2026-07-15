@@ -1,5 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.courierspotnode
 
+import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -7,6 +8,7 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
@@ -23,6 +25,7 @@ class CourierSpotNodeApplication {
     @Bean
     fun courierSpotNodeFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
+            options.useCoroutineHandlers(Dispatchers.Default)
             val node = System.getProperty("zlink.samples.deliverydispatch.courierNode", "node1")
             val selected = NodeOptions.resolve(node)
             options.addHandlersFromPackageOf(CourierSpotNodeApplication::class.java)

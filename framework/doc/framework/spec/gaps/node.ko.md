@@ -875,6 +875,6 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
 검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
 
-- [x] **TH-ND-01** (미구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`와 `zlinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §4.x](../stream-connector/languages/typescript/03-stream-connector.ko.md)대로 구현한다.
+- [x] **TH-ND-01** (미구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`와 `zlinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §4.1](../stream-connector/languages/typescript/03-stream-connector.ko.md)대로 구현한다.
   - 근거: 수신 큐를 사용하는 부재·순서 builder와 별도 단언 이름 공간을 추가하고, 대기 중 handler 등록이 같은 메시지를 중복 소비하던 큐 순회도 snapshot으로 고쳤다. API가 없어 실패하던 집중 계약 테스트는 2/2, TypeScript·browser build와 실제 Chromium 게이트는 1/1 통과했다. 커밋 `5606142a5`.
 - [ ] **TH-ND-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper를 connector API로 **교체**한다. negative 검증은 typed-callback 카운팅(SMP-ND-05로 이미 닫음) 대신 `expectNone`의 명시적 window로 표준화한다.

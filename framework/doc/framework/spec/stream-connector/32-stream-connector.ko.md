@@ -445,6 +445,51 @@ framework runtime을 참조하지 않아야 한다.
   연결 유지에 필요하기 때문이다.
 - 이 큐는 inbound observer notification 큐와 **별도**다(§10).
 
+### 10.2 테스트 대기·단언 표면
+
+connector는 **테스트에서 쓰는 대기·단언 표면**을 공개 API로 제공한다. 지금까지 각 샘플·e2e
+시나리오가 이걸 매번 손으로 재구현했고, 그 결과 (a) 언어마다 시그니처·의미가 갈리고,
+(b) 없는 언어에서는 검증이 아예 빠지거나 약해졌다(예: `expectNone` 부재로 "self-push 안 옴"을
+25ms 창으로만 확인, 상태 순서 미검증). connector가 제공하면 **다섯 언어가 같은 사용성**을
+갖고, 이 부재로 생긴 갭이 구조적으로 사라진다.
+
+**두 표면으로 나눈다. 이름 공간을 섞지 않는다.**
+
+#### 10.2.1 push 관측 표면 — `waitFor` 계열
+
+수신 메시지 큐(§10.1)를 관측해야만 판정할 수 있는 것. connector 인스턴스의 메서드다.
+
+**셋 다 인자는 `name` 하나이고, 나머지는 builder 체이닝으로 좁힌다**(언어별 완료 종결자는
+`.Async`/`.submit`/`.run` — 각 언어 doc이 소유).
+
+| 표면 | 계약 | 실패 |
+|------|------|------|
+| `waitFor<T>(name)` | 그 packet이 올 때까지 대기. `.where(predicate)`·`.timeout(t)`로 좁힌다. 기본 timeout은 §6.1의 `wait timeout`(5초) | timeout 내 미도착이면 **오류를 던진다**(§10.1은 이 표면이 큐를 소비한다고 규정) |
+| `expectNone<T>(name)` | `.within(window)` 동안 그 packet이 **오지 않는지** 확인한다(negative). `waitFor`의 대칭 | window 안에 도착하면 **오류를 던진다** |
+| `waitForSequence<T>(name)` | `.expect(p1).expect(p2)….timeout(t)` — 같은 이름의 push가 **주어진 술어 순서대로** 도착하는지 확인하고 payload 목록을 돌려준다 | 순서가 어긋나거나 timeout이면 **오류를 던진다.** "N개가 도착했다"가 아니라 **"순서대로 도착했다"** 를 검증하는 것이 이 표면의 존재 이유다 |
+
+- **status 대기는 별도 표면을 두지 않는다.** status는 payload의 한 필드이므로
+  `waitFor<T>(name).where(p => p.status == …)`로 표현한다. connector가 어느 필드가 status인지
+  알면 안 된다.
+- **도메인 REST 폴링(`/orders/{id}` 등)은 이 표면이 아니다.** 그건 HTTP client의 일이며 connector
+  계약에 넣지 않는다.
+
+#### 10.2.2 단언 표면 — `assert` 유틸
+
+connector 상태와 무관한 범용 단언. connector가 테스트 진입점을 겸하므로 **별도 이름 공간**
+(`assert` 또는 언어별 동등물)으로 제공하되, **전송 API와 섞지 않는다.**
+
+| 표면 | 계약 |
+|------|------|
+| `ensure(condition, message)` | 조건이 거짓이면 `message`와 함께 오류를 던진다. **`message`는 필수다** — 실패 원인을 남기지 않는 단언은 디버깅 비용만 만든다 |
+| `expectFailure(action, errorKind?)` | `action`을 **실행해** 실패하는지 확인하고 그 오류를 돌려준다. **입력은 미리 만든 task가 아니라 실행할 action(람다)이다** — task를 밖에서 만들면 언제 실행되는지 모호하다. `errorKind`를 주면 **그 종류로 실패했는지까지** 검증한다(주지 않으면 "실패했다"만). 실패 분류가 필요한 시나리오는 반드시 `errorKind`를 준다 |
+| `expectTimeout(action)` | `action`이 timeout으로 실패하는지 확인한다. timeout이 아닌 다른 오류는 **재전파한다** |
+
+**이 표면들은 [§0.8](../gaps/cpp.ko.md)의 계약 결정이 끝난 항목이다.** 각 언어는 이 계약대로
+connector에 구현하고, 샘플·e2e 시나리오의 손수 재구현을 **삭제하고 이 API로 교체한다.**
+교체하면 `expectNone`·`waitForSequence` 부재로 생긴 갭(각 언어 gap 문서의 해당 항목)이
+함께 닫힌다.
+
 ## 11. 배포 산출물
 
 각 대상이 어떤 산출물로 배포되는지도 이 스펙이 소유한다. 배포 형식이 그 환경의 제약을

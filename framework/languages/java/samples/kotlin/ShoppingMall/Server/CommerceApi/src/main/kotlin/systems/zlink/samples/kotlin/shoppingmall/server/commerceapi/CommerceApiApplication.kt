@@ -1,6 +1,7 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi
 
 import java.nio.file.Path
+import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -9,6 +10,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.core.env.StandardEnvironment
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.kotlin.configureDispatch
+import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
@@ -34,6 +36,7 @@ class CommerceApiApplication {
     fun commerceApiFramework(topology: SampleTopology): ZLinkFrameworkConfigurer {
         val role = topology.role()
         return ZLinkFrameworkConfigurer { configurer ->
+            configurer.useCoroutineHandlers(Dispatchers.Default)
             configurer.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 traceLogFile("${role.logDirectory}/flow-${role.instanceId}.log")

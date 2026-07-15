@@ -2,6 +2,7 @@ package systems.zlink.samples.kotlin.deliverydispatch.server.dispatch
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -12,6 +13,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
@@ -27,6 +29,7 @@ class DispatchServerApplication {
     @Bean
     fun dispatchFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
+            options.useCoroutineHandlers(Dispatchers.Default)
             options.addHandlersFromPackageOf(DispatchServerApplication::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)

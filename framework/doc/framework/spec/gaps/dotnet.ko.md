@@ -701,3 +701,17 @@ session 없이 도는 것, fanout topic에 동적 id 없음, 발행자가 노드
   stress 시나리오도 함께 통과했다.
 
 최종 재리뷰에서 의미 있는 POSD/DDD 위험 신호와 미완료 계약 갭은 남지 않았다. **LOOP CLEAN**.
+
+## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+
+**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
+표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
+공개 API로 제공한다.
+
+**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
+SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
+언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
+검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
+
+- [ ] **TH-DN-01** (미구현) — connector에 `ExpectNone`·`WaitForSequence`와 `ZlinkStreamAssert`(`Ensure`/`ExpectFailureAsync`/`ExpectTimeoutAsync`)를 [03 §8.1](../stream-connector/languages/dotnet/03-stream-connector.ko.md)대로 구현한다. `Send`/`WaitFor`와 같은 builder·완료 규약을 따른다.
+- [ ] **TH-DN-02** (리팩토링) — DeliveryDispatch 시나리오의 지역 helper(`WaitForStatusSequenceAsync`·`ExpectNoPushAsync`)를 이 connector API로 **교체**한다. 지역 helper로 이미 닫은 SMP-DN-08을 표준 표면으로 대체하는 것이며, 그러면 교차 언어 SMP-X3의 "공통 게이트"가 채워진다.

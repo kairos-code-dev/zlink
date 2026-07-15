@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi
 
-import java.util.concurrent.locks.LockSupport
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
 import org.springframework.stereotype.Component
 import systems.zlink.framework.channels.ZLinkClient
@@ -46,7 +46,7 @@ class OrderWorkflowRouter(private val channels: ZLinkClient, private val topolog
                     .await()
             } catch (error: RuntimeException) {
                 lastError = error
-                LockSupport.parkNanos(SampleTimings.ChannelRetryDelay.toNanos())
+                delay(SampleTimings.ChannelRetryDelay.toMillis())
             }
         }
         throw IllegalStateException("OrderWorkflow channel was not ready for order '$orderId'.", lastError)

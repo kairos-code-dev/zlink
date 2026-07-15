@@ -54,11 +54,13 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     IZlinkStreamLifecycleCall Close { get; }
     IZlinkStreamLifecycleCall Dispatch { get; }
 
-    IZlinkStreamSendCall    Send(ZlinkStreamEncodedPayload payload);
-    IZlinkStreamRequestCall Request(ZlinkStreamEncodedPayload payload);
-    IZlinkStreamWaitCall    WaitFor(string name);
-    IDisposable             On(string name, Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
-    int                     ReceivedCount(string name);
+    IZlinkStreamSendCall     Send(ZlinkStreamEncodedPayload payload);
+    IZlinkStreamRequestCall  Request(ZlinkStreamEncodedPayload payload);
+    IZlinkStreamWaitCall     WaitFor(string name);
+    IZlinkStreamExpectNoneCall ExpectNone(string name);
+    IZlinkStreamSequenceCall WaitForSequence(string name);
+    IDisposable              On(string name, Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
+    int                      ReceivedCount(string name);
 
     IDisposable ObserveInbound(Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer);
 
@@ -121,7 +123,8 @@ public interface IZlinkStreamWaitCall
 ## 5. Typed 표면
 
 `ZlinkStreamTypedConnectorExtensions`가 `Send<TPayload>`, `Request<TPayload>`, `On<TPayload>`,
-`WaitFor<TPayload>`를 제공하고, 각각 typed builder를 반환한다.
+`WaitFor<TPayload>`, `ExpectNone<TPayload>`, `WaitForSequence<TPayload>`를 제공하고, 각각 typed
+builder를 반환한다.
 
 **packet identity는 `IZlinkStreamPacketNameResolver`가 결정한다.** 기본 resolver는
 `ZlinkStreamPacketNameAttribute`를 우선하고, attribute가 없으면 타입 이름을 사용한다.
@@ -172,6 +175,36 @@ heartbeat 같은 control frame의 처리를 막지 않는다.**
 
 **큐가 가득 차면 새로 도착한 message를 거부하고 `ReceivedMessageDropped`를 보고한다**
 ([공통 스펙 §10.1](../../32-stream-connector.ko.md)).
+
+### 8.1 테스트 대기·단언 표면
+
+계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. `.NET` 표면은 다음과 같다.
+
+**push 관측 — connector 메서드**(§4의 `WaitFor`와 같은 자리). 각각 typed builder를 반환한다.
+
+```csharp
+IZlinkStreamWaitCall       WaitFor(string name);        // 도달할 때까지 대기
+IZlinkStreamExpectNoneCall ExpectNone(string name);     // .Within(window) 동안 오지 않는지
+IZlinkStreamSequenceCall   WaitForSequence(string name); // .Expect(p).Expect(p)…를 순서대로
+
+// typed: ZlinkStreamTypedConnectorExtensions 가 WaitFor<T>·ExpectNone<T>·WaitForSequence<T> 제공
+```
+
+- `ExpectNone(name).Within(TimeSpan).Async(ct)` — window 안에 도착하면 **오류를 던진다**. `WaitFor`의 대칭.
+- `WaitForSequence(name).Expect(p1).Expect(p2)…Timeout(t).Async(ct)` — 같은 이름 push가 **술어 순서대로** 도착하는지 확인하고 payload 목록을 돌려준다. "N개 도착"이 아니라 **"순서대로 도착"** 을 검증한다.
+- **status 전용 표면을 두지 않는다.** status는 payload 필드이므로 `WaitFor<T>(name).Where(p => p.Status == …)`로 표현한다. connector가 어느 필드가 status인지 알지 않는다.
+
+**범용 단언 — `ZlinkStreamAssert`**(전송 API와 섞지 않는 별도 이름 공간).
+
+```csharp
+static void      Ensure(bool condition, string message);          // message 필수
+static ValueTask<ZlinkStreamError> ExpectFailureAsync(Func<CancellationToken, ValueTask> action, string? errorKind = null);
+static ValueTask ExpectTimeoutAsync(Func<CancellationToken, ValueTask> action);
+```
+
+- `ExpectFailureAsync`의 입력은 **미리 만든 Task가 아니라 실행할 action**이다. `errorKind`를 주면 그 종류로 실패했는지까지 검증한다(주지 않으면 "실패했다"만). 실패 분류가 필요한 시나리오는 반드시 준다.
+- `ExpectTimeoutAsync`는 timeout이 아닌 오류를 **재전파**한다.
+- **도메인 REST 폴링(`GET /deliveries/{id}` 등)은 이 표면이 아니다.** 그건 `ZLinkHttpClient`의 일이다.
 
 ## 9. Inbound observer
 

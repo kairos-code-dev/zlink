@@ -1,6 +1,6 @@
 package systems.zlink.samples.kotlin.shoppingmall.client
 
-import java.util.concurrent.locks.LockSupport
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.future.await
@@ -253,7 +253,7 @@ class ShoppingMallClientScenario(
             if (last.status == expectedStatus) {
                 return last
             }
-            LockSupport.parkNanos(SampleTimings.PollDelay.toNanos())
+            delay(SampleTimings.PollDelay.toMillis())
         }
         throw IllegalStateException(
             "Order '$orderId' did not reach status '$expectedStatus' (last=${last?.status ?: "none"}).",
@@ -268,7 +268,7 @@ class ShoppingMallClientScenario(
             if (last.isCreatedOrConfirmed()) {
                 return last
             }
-            LockSupport.parkNanos(SampleTimings.PollDelay.toNanos())
+            delay(SampleTimings.PollDelay.toMillis())
         }
         throw IllegalStateException(
             "Order '$orderId' did not reach Created or Confirmed (last=${last?.status ?: "none"}).",

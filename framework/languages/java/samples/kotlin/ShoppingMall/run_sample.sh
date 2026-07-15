@@ -3,6 +3,19 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+for host in Server/CommerceApi/src/main/kotlin Server/OrderWorkflow/src/main/kotlin; do
+  if ! rg -q 'useCoroutineHandlers\(Dispatchers\.Default\)' "${host}" --glob '*.kt'; then
+    echo "ShoppingMall framework host must configure coroutine handlers: ${host}" >&2
+    exit 1
+  fi
+done
+if rg -n 'LockSupport\.parkNanos' \
+    Client/src/main/kotlin \
+    Server/CommerceApi/src/main/kotlin --glob '*.kt'; then
+  echo "ShoppingMall suspend paths must not block coroutine threads" >&2
+  exit 1
+fi
+
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 
@@ -10,11 +23,13 @@ pids=()
 redis_container_id=""
 log_dir="build/sample-logs"
 store_dir="build/sample-store"
+config_dir="build/sample-config"
 export SHOPPINGMALL_LOG_DIR="${SHOPPINGMALL_LOG_DIR:-$(pwd)/logs}"
-mkdir -p "${log_dir}" "${store_dir}" "${SHOPPINGMALL_LOG_DIR}"
+mkdir -p "${log_dir}" "${store_dir}" "${config_dir}" "${SHOPPINGMALL_LOG_DIR}"
 rm -f "${log_dir}"/*.log
 rm -f "${SHOPPINGMALL_LOG_DIR}"/*.log
 rm -f "${store_dir}"/*
+rm -f "${config_dir}"/*.properties
 
 print_logs() {
   local status="$1"
@@ -102,15 +117,28 @@ zlink_redis_start_scoped_assign redis_container_id redis_port \
 SHOPPINGMALL_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port "${SHOPPINGMALL_REDIS_ENDPOINT%:*}" "${SHOPPINGMALL_REDIS_ENDPOINT##*:}"
 
-prefix="zlink.samples.shoppingmall"
-export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} \
--D${prefix}.commerceApiAEndpoint=tcp://${commerce_a_host}:${commerce_a_port} \
--D${prefix}.commerceApiBEndpoint=tcp://${commerce_b_host}:${commerce_b_port} \
--D${prefix}.workflowAEndpoint=tcp://${workflow_a_host}:${workflow_a_port} \
--D${prefix}.workflowBEndpoint=tcp://${workflow_b_host}:${workflow_b_port} \
--D${prefix}.redisEndpoint=${SHOPPINGMALL_REDIS_ENDPOINT} \
--D${prefix}.redisKeyPrefix=${shoppingmall_redis_key_prefix} \
--D${prefix}.storeDir=${PWD}/${store_dir}"
+write_role_config() {
+  local path="$1" instance_id="$2" channel_endpoint="$3"
+  cat >"${path}" <<EOF
+sample.instanceId=${instance_id}
+sample.logDirectory=${SHOPPINGMALL_LOG_DIR}
+sample.channelEndpoint=${channel_endpoint}
+sample.redisEndpoint=${SHOPPINGMALL_REDIS_ENDPOINT}
+sample.redisKeyPrefix=${shoppingmall_redis_key_prefix}
+sample.storeDirectory=${PWD}/${store_dir}
+EOF
+}
+
+workflow_a_config="${config_dir}/workflow-a.properties"
+workflow_b_config="${config_dir}/workflow-b.properties"
+api_a_config="${config_dir}/api-a.properties"
+api_b_config="${config_dir}/api-b.properties"
+client_config="${config_dir}/client.properties"
+write_role_config "${workflow_a_config}" workflow-a "tcp://${workflow_a_host}:${workflow_a_port}"
+write_role_config "${workflow_b_config}" workflow-b "tcp://${workflow_b_host}:${workflow_b_port}"
+write_role_config "${api_a_config}" api-a "tcp://${commerce_a_host}:${commerce_a_port}"
+write_role_config "${api_b_config}" api-b "tcp://${commerce_b_host}:${commerce_b_port}"
+write_role_config "${client_config}" client "tcp://127.0.0.1:1"
 
 build_framework_jars
 gradle_run \
@@ -118,23 +146,23 @@ gradle_run \
   :Server:CommerceApi:installDist \
   :Client:installDist
 
-"$(app_bin Server/OrderWorkflow OrderWorkflow)" --instance workflow-a >"${log_dir}/workflow-a.log" 2>&1 &
+"$(app_bin Server/OrderWorkflow OrderWorkflow)" --config "${workflow_a_config}" >"${log_dir}/workflow-a.log" 2>&1 &
 pids+=("$!")
 wait_port "${workflow_a_host}" "${workflow_a_port}"
 
-"$(app_bin Server/OrderWorkflow OrderWorkflow)" --instance workflow-b >"${log_dir}/workflow-b.log" 2>&1 &
+"$(app_bin Server/OrderWorkflow OrderWorkflow)" --config "${workflow_b_config}" >"${log_dir}/workflow-b.log" 2>&1 &
 pids+=("$!")
 wait_port "${workflow_b_host}" "${workflow_b_port}"
 
-"$(app_bin Server/CommerceApi CommerceApi)" --instance api-a >"${log_dir}/api-a.log" 2>&1 &
+"$(app_bin Server/CommerceApi CommerceApi)" --config "${api_a_config}" >"${log_dir}/api-a.log" 2>&1 &
 pids+=("$!")
 wait_port "${commerce_a_host}" "${commerce_a_port}"
 
-"$(app_bin Server/CommerceApi CommerceApi)" --instance api-b >"${log_dir}/api-b.log" 2>&1 &
+"$(app_bin Server/CommerceApi CommerceApi)" --config "${api_b_config}" >"${log_dir}/api-b.log" 2>&1 &
 pids+=("$!")
 wait_port "${commerce_b_host}" "${commerce_b_port}"
 
-"$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
+"$(app_bin Client Client)" --config "${client_config}" >"${log_dir}/client.log" 2>&1
 
 grep -q "shoppingmall order: started" "${log_dir}/workflow-a.log"
 grep -q "shoppingmall order: started" "${log_dir}/workflow-b.log"

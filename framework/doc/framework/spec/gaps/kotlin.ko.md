@@ -101,6 +101,36 @@
 
 #### 단계 4 — 전체 감사 (아래 0.6)
 
+### 0.3 POSD/DDD 리팩토링은 선택이 아니다 — **묶음 완료의 정의**
+
+**지금까지 작업자들이 갭만 닫고 리팩토링을 건너뛰었다. 그러면 묶음은 닫힌 것이 아니다.**
+
+한 묶음의 갭을 다 구현했는데 POSD/DDD 리팩토링을 안 했으면 그 묶음은 **미완료**다. 체크박스를
+`[x]`로 바꾸지 마라. 갭을 닫는 것과 묶음을 닫는 것은 다르다 —
+
+```
+갭 하나 닫힘   = 그 계약 위반이 사라짐          (기능 완료)
+묶음 하나 닫힘 = 그 위에 POSD/DDD 리뷰+리팩토링이 끝남  (설계 완료)  ← 여기까지 해야 [x]
+```
+
+**리팩토링을 "나중에 시간 나면"으로 미루지 않는다.** [POSD 원칙](../../../../../doc/principal/software-design-principles.ko.md)은 개발 시간의 **10–20%를 설계에** 쓰라고 한다 — 그건 권장이 아니라 **이 작업의 배정된 예산**이다.
+묶음마다 그 예산을 실제로 쓴다.
+
+**묶음 리팩토링에서 반드시 하는 것 (건너뛰면 묶음 미완료)**
+
+1. 그 묶음이 건드린 코드의 **POSD 위험 신호를 명시적으로 열거**한다(§0.4 목록으로).
+2. **DDD 경계를 확인**한다 — Domain이 framework/transport 타입에 의존하는가? 한 aggregate의
+   불변식을 다른 계층이 다시 판단하는가? wire DTO가 domain model 자리에 앉아 있는가?
+3. 각 위험 신호에 **수정안을 둘 이상** 적고, **인터페이스와 호출자 복잡성을 가장 많이 줄이는 안**을 고른다.
+4. 리팩토링을 **수행**한다. 그리고 기능 테스트 + (해당되면) 성능 벤치를 다시 통과시킨다.
+5. **재리뷰**에서 의미 있는 위험 신호가 남지 않아야 묶음을 닫는다.
+
+**증거를 남긴다.** 묶음을 닫을 때 "리팩토링함"으로 끝내지 말고 **무엇을 왜 바꿨는지**
+(어떤 위험 신호 → 어떤 수정 → 무엇이 줄었는지)를 한두 줄로 남긴다. 근거 없는 "리팩토링 완료"는
+안 한 것으로 본다.
+
+---
+
 ### 0.3 POSD 리팩토링을 언제 하는가 — 3단계 게이트
 
 **항목마다 구조를 뜯지 않는다. 마지막에 몰아서 하지도 않는다.**
@@ -155,14 +185,23 @@
 
 체크박스를 전부 `[x]`로 만드는 것이 끝이 아니다.
 
-1. POSD 위험 신호(0.4) 전수 검색
-2. public contract ↔ 실제 헤더/표면 재대조
-3. 안 쓰이는 타입·helper·DI 등록 검색
-4. 샘플·E2E에서 내부 타입 사용 여부 검색
-5. 이 언어의 전체 테스트 실행
-6. 성능 민감 변경 벤치 재실행
-7. 수정 후 **다시** POSD 리뷰
-8. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+**먼저 확인한다 — 모든 묶음이 §0.3의 POSD/DDD 리팩토링을 거쳤는가?**
+갭만 닫고 리팩토링을 건너뛴 묶음이 하나라도 있으면 문서는 닫히지 않는다. 각 묶음의 완료
+줄에 "무엇을 왜 바꿨는지"가 남아 있어야 한다(없으면 리팩토링 안 한 것).
+
+그 다음:
+
+1. POSD 위험 신호(0.4) 전수 검색 — 남은 게 있으면 아직 안 끝났다
+2. DDD 경계 재확인 — Domain의 framework/transport 의존 0건, wire DTO가 domain model 자리에 없음
+3. public contract ↔ 실제 헤더/표면 재대조
+4. 안 쓰이는 타입·helper·DI 등록 검색
+5. 샘플·E2E에서 내부 타입 사용 여부 검색
+6. 이 언어의 전체 테스트 실행
+7. 성능 민감 변경 벤치 재실행 (§0.5)
+8. 수정 후 **다시** POSD/DDD 리뷰
+9. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+
+`LOOP CLEAN`은 "체크박스가 다 [x]"가 아니라 **"한 바퀴 더 돌아도 고칠 게 안 나온다"**는 뜻이다.
 
 **파일 크기나 형식만을 이유로 리팩토링하지 않는다.** 책임 혼합·정보 누출·변경 증폭·호출자 복잡성을
 **실제로 줄이는** 변경만 한다.
@@ -307,7 +346,9 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
 - [ ] **SMP-KT-02** (결함) — ShoppingMall이 **문서가 "사라진다"고 한 saga 오케스트레이터를 되살렸다** — 비내구 in-process 큐라 크래시 시 continuation을 잃는다(무손실 요구 위반)
 - [ ] **SMP-KT-03** (미구현) — ShoppingMall에 **HTTP edge가 없고**, 내부 메시지 `ContinueOrderWorkflowReq`를 **클라이언트가 직접** 보낸다
 - [ ] **SMP-KT-04** (미구현) — GameQuest·ShoppingMall에 **owner Spot이 없다**
-- [ ] **SMP-KT-05** (결함) — 샘플 6개 중 **2개가 coroutine 표면을 아예 안 켠다**(`useCoroutineHandlers` 미호출). ShoppingMall은 `suspend` 안에서 **`LockSupport.parkNanos`로 블로킹**한다
+- [x] **SMP-KT-05** (결함) — DeliveryDispatch와 ShoppingMall의 coroutine 실행 경계를 명시했다
+  - 근거: suspend handler를 가진 모든 역할 host가 `Dispatchers.Default`를 명시하고, ShoppingMall의
+    suspend 재시도·poll 대기는 `delay`를 사용한다. 두 runner의 source gate와 전체 실행이 통과했다.
 - [x] **SMP-KT-06** (결함) — DeliveryDispatch 기본 클라이언트가 **HTTP 폴링 루프**다(규약 금지)
   - 근거: scaffold 분기와 notification HTTP polling을 삭제해 public stream connector 경로 하나만
     남겼다. 금지 source gate와 DeliveryDispatch 전체 runner가 통과했다.
@@ -368,7 +409,7 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
 | **SMP-KT-02** (결함) | [shoppingmall:219](../../common/sample/event/shoppingmall.ko.md): "saga 오케스트레이터 / 단계 소비자"는 **사라지고** owner spot이 이벤트 접기로 다음 단계를 판정해 직접 진행한다. [:555-566](../../common/sample/event/shoppingmall.ko.md): `StartOrderWorkflowReq` handler는 `Created`까지만 돌리고 같은 흐름 안에서 **`ContinueOrderWorkflowReq` 호출을 기다리지 않고 예약**한다 — crash 뒤 재개와 **같은 메커니즘**이다 | `Server/OrderWorkflow/.../handlers/StartOrderWorkflowHandler.kt:22` — framework 재개 호출 대신 `continuations.enqueue(request.orderId)`로 프로세스 메모리 큐에 넣는다(`WorkflowContinuationQueue.kt:11-16`, 맨 `LinkedBlockingQueue`). `WorkflowSagaWorker.kt:13-27,37-53`이 daemon Thread 하나(`"shoppingmall-workflow-saga-worker"`)로 그 큐를 빼서 `workflow.continueWorkflow(orderId)`를 **직접** 호출한다. ⇒ 문서가 사라진다고 한 **saga worker가 이름까지 그대로 살아 있다.** 큐가 비내구·프로세스 로컬이라 노드가 죽으면 대기 중이던 continuation이 사라지고, 재개가 framework 메시지 경로를 타지 않으므로 owner 라우팅·순서 실행 보장도 받지 못한다 |
 | **SMP-KT-03** (미구현) | [shoppingmall:18,266,305](../../common/sample/event/shoppingmall.ko.md): 클라이언트는 `CommerceApi`에 **HTTP로** 주문 시작·상태 조회를 요청하고, 클라이언트가 마주하는 창구는 `CommerceApi` 하나뿐이다. [:450-452,559-561](../../common/sample/event/shoppingmall.ko.md): `ContinueOrderWorkflowReq`는 owner spot이 **자기 자신에게 예약하는 내부 재개 명령**이다 | `Server/CommerceApi/.../CommerceApiApplication.kt:67` — `.web(WebApplicationType.NONE)`. HTTP endpoint가 0개다(`@RestController`·`@PostMapping` grep 0건). 클라이언트가 대신 **자기가 framework 호스트**가 되어(`Client/.../ClientApplication.kt:18-19,29-35`) `requestToChannel(commerceApiChannel(...), ...)`로 채널 요청을 보내고, `Client/.../ShoppingMallClientScenario.kt:133-141`에서 내부 재개 명령 `ContinueOrderWorkflowReq`를 **클라이언트가 직접** 보낸다. `.NET`은 같은 자리에 `MapPost`/`MapGet` HTTP edge를 둔다(`dotnet/samples/ShoppingMall/Server/CommerceApi/Program.cs`). ⇒ "HTTP 진입 + 내부 메시지 은닉"이라는 이 샘플의 구도가 통째로 뒤집혔다 |
 | **SMP-KT-04** (미구현) | [gamequest:13,19,124-127](../../common/sample/event/gamequest.ko.md): player별 quest 판정은 **`PlayerQuestSpot`**이 맡고 `PlayerId` 기준 owner로 event를 직렬 처리한다. [shoppingmall:350](../../common/sample/event/shoppingmall.ko.md): 어느 `CommerceApi`로 들어와도 owner 라우팅이 항상 같은 **`OrderWorkflowSpot`**으로 보낸다 | 두 샘플 소스 전체에 `spot` 문자열이 **0건**이다(`samples/kotlin/{GameQuest,ShoppingMall}/**/src`). GameQuest는 `Server/QuestMission/.../Program.kt:79-81`에서 평범한 client-server channel(`questOwnerChannelFor(instanceName)`) + `quest-owner` handler group으로 끝나고, ShoppingMall은 `Server/OrderWorkflow/.../OrderWorkflowApplication.kt:43-45`가 `workflowChannel(instanceId)` server 하나다. owner 선택도 framework spot 배치가 아니라 앱이 한다 — `Server/CommerceApi/.../OrderWorkflowRouter.kt:38-39`의 `topology.workflowInstanceForOrder(orderId)`. ⇒ 이 두 샘플의 존재 이유인 **owner spot의 직렬 실행·이동·location 조회를 한 번도 실행하지 않는다** |
-| **SMP-KT-05** (결함) | [kotlin guide 02:30-33](../../kotlin/guide/02-getting-started.ko.md): `useCoroutineHandlers(...)`는 suspend handler를 실행할 coroutine dispatcher/scope를 지정하는 설정이다. [kotlin guide 03 §6:53-55](../../kotlin/guide/03-concepts.ko.md): **"handler 안에서 blocking 호출(`Thread.sleep`, blocking JDBC, `CompletableFuture.join` 등)을 직접 쓰지 않는다."** 불가피하면 `withContext(Dispatchers.IO)`로 옮긴다 | `src` 기준 `useCoroutineHandlers`를 부르는 파일이 **DeliveryDispatch 0개 · ShoppingMall 0개**다(Bingo 3 · SupportChat 3 · GameQuest 2 · TicTacToe 2). 그러면서 두 샘플 모두 suspend handler를 쓴다 — `ZLinkSuspending*`를 구현한 파일이 DeliveryDispatch 20개, ShoppingMall 12개다. ⇒ suspend handler가 앱이 지정하지 않은 dispatcher에서 돈다(`ZLinkHandlerMethodInvoker.java:21-23`의 `ServiceLoader` fallback이 `Dispatchers.Default`로 대신 잡아 주므로 터지지는 않는다 — 그래서 더 늦게 드러난다). ShoppingMall은 그 위에 **`suspend` 함수 안에서 carrier 스레드를 park한다** — `Server/CommerceApi/.../OrderWorkflowRouter.kt:38,49`의 `private suspend fun request(...)`와 `.../StartOrderUseCase.kt:87,98`의 `private suspend fun forwardToOwner(...)`가 재시도 사이에 `delay(...)`가 아니라 `LockSupport.parkNanos(...)`를 부르고, `Client/.../ShoppingMallClientScenario.kt:256,271`의 `waitForStatus`/`waitForCreatedOrConfirmed`도 같다 |
+| **SMP-KT-05** (결함) | [kotlin guide 02:30-33](../../kotlin/guide/02-getting-started.ko.md): `useCoroutineHandlers(...)`는 suspend handler를 실행할 coroutine dispatcher/scope를 지정하는 설정이다. [kotlin guide 03 §6:53-55](../../kotlin/guide/03-concepts.ko.md): **"handler 안에서 blocking 호출(`Thread.sleep`, blocking JDBC, `CompletableFuture.join` 등)을 직접 쓰지 않는다."** 불가피하면 `withContext(Dispatchers.IO)`로 옮긴다 | **해결:** DeliveryDispatch의 handler host 6개와 ShoppingMall의 CommerceApi·OrderWorkflow가 `useCoroutineHandlers(Dispatchers.Default)`를 직접 설정한다. ShoppingMall의 channel 재시도와 client 상태 poll은 `LockSupport.parkNanos` 대신 suspending `delay`를 사용한다. 동기식 `CommerceStore`의 파일 lock 획득은 coroutine handler가 아닌 임계 구역이라 이 변경에 섞지 않았다. POSD 재리뷰에서는 fallback 의존을 설명만 하는 안과 각 host가 실행 정책을 명시하는 안을 비교해 후자를 선택했고, 별도 pass-through 설정 helper 없이 정책이 필요한 구성 지점에 둔다. DDD 모델과 wire 계약은 바뀌지 않았다. 검증 중 삭제된 `CommerceApiInstanceOptions` 참조와 `--instance` runner가 typed config 계약과 어긋난 기존 결함도 발견해 중앙 `SampleTopology`와 역할별 config 파일로 통합했다. 두 runner는 설정·blocking 경로 회귀 gate를 거쳐 전체 client/server 실행을 통과했다. |
 | **SMP-KT-06** (결함) | [샘플 규약:365-371](../../common/sample/README.ko.md): push message 대기는 **sample-local polling 함수가 아니라 stream connector의 public wait interface**를 사용한다. "notification 수집용 inbox나 로그 queue는 ... push 도착을 기다리는 기준 경로가 되어서는 안 된다." [deliverydispatch:689-691](../../common/sample/deliverydispatch/README.ko.md)도 같은 규칙 | **해결:** `runScaffold`, `waitNotifications`, `/notifications` polling, `--stream-runtime` 선택 축과 사용되지 않는 role URL option을 삭제했다. client는 항상 typed stream connector의 `waitFor`로 push를 기다린다. POSD 재리뷰에서는 금지 polling을 남기고 기본값만 바꾸는 안과 두 구현 중 connector 경로만 남기는 안을 비교해 후자를 선택했다. 시나리오 정책·option·HTTP helper 중복 230줄을 제거했고 domain 경계는 바뀌지 않았다. source gate와 전체 runner가 통과했다. |
 
 ### E2E
@@ -379,3 +420,17 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
 | **E2E-KT-02** (결함) | [config-10](../../common/e2e/config-10-spot-actor-transfer.ko.md): ST 시나리오 **20개**(`ST-A1`~`ST-F6`). [E2E README §2.2:220-226,241-242](../../common/e2e/README.ko.md): config마다 `Shared/`와 `feature-map.ko.md`를 둔다. [§2.7:403-405](../../common/e2e/README.ko.md): Redis container 이름은 Kotlin e2e면 `zlink-redis-kotlin-e2e...`처럼 언어 범위를 드러낸다 | `SpotActorTransfer/Client/.../Program.kt:25-30` — `when (scenario) { "ST-E1","ST-E2" -> KotlinBoundSessionScenario(scenario).run(); else -> systems.zlink.e2e.spotactortransfer.client.Program.main() }`. **나머지 18개를 Java e2e client의 `main()`에 그대로 넘긴다.** `run_e2e.sh:5,12`도 12줄짜리 shim으로 `../../e2e/SpotActorTransfer/run_e2e.sh`를 실행할 뿐이라, Redis container를 만드는 것도 Java runner이고 이름은 `zlink-redis-java-e2e-spot-transfer`다(`e2e/SpotActorTransfer/run_e2e.sh:71`). config 루트에 `Shared/`도 `feature-map.ko.md`도 없다. ⇒ Kotlin이 Config 10을 검증한다고 말할 수 없다 |
 | **E2E-KT-03** (결함) | [config-2](../../common/e2e/config-2-spot-service.ko.md): Track A~G 시나리오 **51개**. [config-4 RC-A6:103-110](../../common/e2e/config-4-registration-codec.ko.md)(**P0**): duplicate kind+packet·잘못된 handler group·미지원 channel kind 조합을 **각각** startup에서 거부하는지 본다. [E2E README §2.5:310,330-332](../../common/e2e/README.ko.md): 시나리오 ID 하나 = client scenario 파일 하나. [§2.8:437-446](../../common/e2e/README.ko.md): feature-map은 skip 목록이 아니라 근거를 남기는 표다 | (a) `SpotService/Client/.../scenarios/`에 47개 파일이 있으나 51개 중 **`SM-B2`·`SM-B4`·`SM-B9`·`SM-C5`·`SM-D2`·`SM-D15` 6개가 없고**, 문서에 ID가 없는 `SmQ9Scenario.kt`·`SmRemoteActorSessionScenario.kt` 2개가 대신 들어 있다. (b) `RC-A6`에는 client 시나리오 파일이 **아예 없다** — `RegistrationCodec/run_e2e.sh:151-166`이 invalid 서버를 띄워 종료 코드가 0이 아닌지 본 뒤 로그를 `grep -Eq "duplicate\|Duplicate\|registration\|packet"`으로 훑고 `echo "scenario RC-A6 passed"`를 찍는다. 세 축 중 duplicate 하나만 만들고, 저 grep은 "packet"이나 "registration"이 든 **어떤 기동 실패 메시지든** 통과시킨다. 그런데 `RegistrationCodec/feature-map.ko.md:18`은 상태를 `구현 완료`로 적는다. (체크리스트 한 줄이 두 config를 붙여 놨다 — **누락 6개는 Config 2**, **`RC-A6`은 Config 4**다. Java·`.NET`은 둘 다 `InvalidRegistrationScenario`라는 client scenario 파일로 이걸 검증한다) |
 | **E2E-KT-04** (결함) | [E2E README §2.5:310,328-332](../../common/e2e/README.ko.md): 시나리오는 `Client/Scenarios/` 아래에 scenario별 파일로 분리하고, "여러 시나리오를 하나의 `AllScenario`, `ScenarioSet`, `DriverScenario` 파일로 묶어 driver에 위임하지 않는다". [:312-313](../../common/e2e/README.ko.md): support 코드에는 option parsing·assertion·process lifecycle 같은 보조 코드만 둔다 | `DiscoveryRegistryHa/Client/`에 `Scenarios/` 디렉토리가 없다. `ClientScenario.kt:12-31`(32줄)이 `when`으로 15개 selector(`SF-A1`~`SF-E1`과 `-RECOVERED`/`-HEALTHY` 변형)를 분기하고, 시나리오 본문 전부가 `client/Support/ClientScenarioContext.kt`(**477줄**) 한 클래스의 메서드다(`:21,28,41,51,64,75,85,91,98,107,126,134,149`). 규약이 이름을 짚어 금지한 `AllScenario` 형태이며, 하필 보조 코드만 두라는 `Support/` 안에 있다. 같은 언어의 `RegistryMessaging`은 `Client/Scenarios/`에 ID별 파일을 두므로 **config마다 client 형태가 갈린다** |
+
+## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+
+**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
+표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
+공개 API로 제공한다.
+
+**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
+SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
+언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
+검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
+
+- [ ] **TH-KT-01** (미구현) — Kotlin connector 표면(suspend/`Flow`, [java doc §13](../stream-connector/languages/java/03-stream-connector.ko.md))이 `expectNone`·`waitForSequence`와 assert 유틸을 노출한다. Java 런타임을 공유하므로 구현은 java(TH-JV-01)를 따르되 **coroutine 관용**(suspend `await` 계열)으로 감싼다. **그 시그니처를 java doc §13 Kotlin 표면에 먼저 명시**한다.
+- [ ] **TH-KT-02** (리팩토링) — Kotlin 샘플·e2e 시나리오의 지역 helper를 이 표면으로 교체한다.

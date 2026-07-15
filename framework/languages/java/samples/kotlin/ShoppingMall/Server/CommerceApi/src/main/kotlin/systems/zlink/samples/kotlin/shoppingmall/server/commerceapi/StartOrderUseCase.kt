@@ -1,12 +1,13 @@
 package systems.zlink.samples.kotlin.shoppingmall.server.commerceapi
 
-import java.util.concurrent.locks.LockSupport
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.future.await
 import org.springframework.stereotype.Component
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.CommerceStore
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTimings
+import systems.zlink.samples.kotlin.shoppingmall.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.OrderState
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderReq
 import systems.zlink.samples.kotlin.shoppingmall.shared.contracts.StartOrderRes
@@ -22,15 +23,17 @@ class StartOrderUseCase(
     private val store: CommerceStore,
     private val workflows: OrderWorkflowRouter,
     private val channels: ZLinkClient,
-    private val options: CommerceApiInstanceOptions,
+    topology: SampleTopology,
 ) {
+    private val instanceId = topology.role().instanceId
+
     suspend fun execute(request: StartOrderReq): StartOrderRes {
         val existing = store.findIdempotency(request.idempotencyKey)
         if (existing != null && existing.started) {
             val state = store.findReadModel(existing.orderId) ?: store.placeholder(existing.orderId)
             return StartOrderRes(state.orderId, state.status)
         }
-        if (existing != null && existing.ownerInstanceId != options.instanceId) {
+        if (existing != null && existing.ownerInstanceId != instanceId) {
             return forwardToOwner(existing.ownerInstanceId, request)
         }
 
@@ -47,7 +50,7 @@ class StartOrderUseCase(
         if (existing != null && existing.started) {
             return store.findReadModel(existing.orderId) ?: store.placeholder(existing.orderId)
         }
-        if (existing != null && existing.ownerInstanceId != options.instanceId) {
+        if (existing != null && existing.ownerInstanceId != instanceId) {
             throw IllegalStateException("Inventory-reserved checkpoint must run on owning CommerceApi.")
         }
 
@@ -69,7 +72,7 @@ class StartOrderUseCase(
         }
 
         val mapping = existing
-            ?: store.reserveIdempotency(request.idempotencyKey, options.instanceId)
+            ?: store.reserveIdempotency(request.idempotencyKey, instanceId)
         store.saveOrderPaymentMethod(mapping.orderId, request.paymentMethodId)
 
         return StartOrderWorkflowReq(
@@ -95,7 +98,7 @@ class StartOrderUseCase(
                     .await()
             } catch (error: RuntimeException) {
                 lastError = error
-                LockSupport.parkNanos(SampleTimings.ChannelRetryDelay.toNanos())
+                delay(SampleTimings.ChannelRetryDelay.toMillis())
             }
         }
         throw IllegalStateException(

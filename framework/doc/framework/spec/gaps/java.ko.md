@@ -101,6 +101,36 @@
 
 #### 단계 4 — 전체 감사 (아래 0.6)
 
+### 0.3 POSD/DDD 리팩토링은 선택이 아니다 — **묶음 완료의 정의**
+
+**지금까지 작업자들이 갭만 닫고 리팩토링을 건너뛰었다. 그러면 묶음은 닫힌 것이 아니다.**
+
+한 묶음의 갭을 다 구현했는데 POSD/DDD 리팩토링을 안 했으면 그 묶음은 **미완료**다. 체크박스를
+`[x]`로 바꾸지 마라. 갭을 닫는 것과 묶음을 닫는 것은 다르다 —
+
+```
+갭 하나 닫힘   = 그 계약 위반이 사라짐          (기능 완료)
+묶음 하나 닫힘 = 그 위에 POSD/DDD 리뷰+리팩토링이 끝남  (설계 완료)  ← 여기까지 해야 [x]
+```
+
+**리팩토링을 "나중에 시간 나면"으로 미루지 않는다.** [POSD 원칙](../../../../../doc/principal/software-design-principles.ko.md)은 개발 시간의 **10–20%를 설계에** 쓰라고 한다 — 그건 권장이 아니라 **이 작업의 배정된 예산**이다.
+묶음마다 그 예산을 실제로 쓴다.
+
+**묶음 리팩토링에서 반드시 하는 것 (건너뛰면 묶음 미완료)**
+
+1. 그 묶음이 건드린 코드의 **POSD 위험 신호를 명시적으로 열거**한다(§0.4 목록으로).
+2. **DDD 경계를 확인**한다 — Domain이 framework/transport 타입에 의존하는가? 한 aggregate의
+   불변식을 다른 계층이 다시 판단하는가? wire DTO가 domain model 자리에 앉아 있는가?
+3. 각 위험 신호에 **수정안을 둘 이상** 적고, **인터페이스와 호출자 복잡성을 가장 많이 줄이는 안**을 고른다.
+4. 리팩토링을 **수행**한다. 그리고 기능 테스트 + (해당되면) 성능 벤치를 다시 통과시킨다.
+5. **재리뷰**에서 의미 있는 위험 신호가 남지 않아야 묶음을 닫는다.
+
+**증거를 남긴다.** 묶음을 닫을 때 "리팩토링함"으로 끝내지 말고 **무엇을 왜 바꿨는지**
+(어떤 위험 신호 → 어떤 수정 → 무엇이 줄었는지)를 한두 줄로 남긴다. 근거 없는 "리팩토링 완료"는
+안 한 것으로 본다.
+
+---
+
 ### 0.3 POSD 리팩토링을 언제 하는가 — 3단계 게이트
 
 **항목마다 구조를 뜯지 않는다. 마지막에 몰아서 하지도 않는다.**
@@ -155,14 +185,23 @@
 
 체크박스를 전부 `[x]`로 만드는 것이 끝이 아니다.
 
-1. POSD 위험 신호(0.4) 전수 검색
-2. public contract ↔ 실제 헤더/표면 재대조
-3. 안 쓰이는 타입·helper·DI 등록 검색
-4. 샘플·E2E에서 내부 타입 사용 여부 검색
-5. 이 언어의 전체 테스트 실행
-6. 성능 민감 변경 벤치 재실행
-7. 수정 후 **다시** POSD 리뷰
-8. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+**먼저 확인한다 — 모든 묶음이 §0.3의 POSD/DDD 리팩토링을 거쳤는가?**
+갭만 닫고 리팩토링을 건너뛴 묶음이 하나라도 있으면 문서는 닫히지 않는다. 각 묶음의 완료
+줄에 "무엇을 왜 바꿨는지"가 남아 있어야 한다(없으면 리팩토링 안 한 것).
+
+그 다음:
+
+1. POSD 위험 신호(0.4) 전수 검색 — 남은 게 있으면 아직 안 끝났다
+2. DDD 경계 재확인 — Domain의 framework/transport 의존 0건, wire DTO가 domain model 자리에 없음
+3. public contract ↔ 실제 헤더/표면 재대조
+4. 안 쓰이는 타입·helper·DI 등록 검색
+5. 샘플·E2E에서 내부 타입 사용 여부 검색
+6. 이 언어의 전체 테스트 실행
+7. 성능 민감 변경 벤치 재실행 (§0.5)
+8. 수정 후 **다시** POSD/DDD 리뷰
+9. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+
+`LOOP CLEAN`은 "체크박스가 다 [x]"가 아니라 **"한 바퀴 더 돌아도 고칠 게 안 나온다"**는 뜻이다.
 
 **파일 크기나 형식만을 이유로 리팩토링하지 않는다.** 책임 혼합·정보 누출·변경 증폭·호출자 복잡성을
 **실제로 줄이는** 변경만 한다.
@@ -965,3 +1004,17 @@ Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **READM
 | **E2E-JV-22** (**가짜 통과**) | [config-1 RM-C2:174-182](../../common/e2e/config-1-location-messaging.ko.md)는 미존재 rid가 **public error**로 실패해야 한다. [RM-C4:194-202](../../common/e2e/config-1-location-messaging.ko.md)는 첫 실패가 **timeout**이고 느린 handler가 결국 완료됐는지까지 본다 | **해결:** 두 endpoint는 완료 예외를 벗긴 뒤 framework 오류면 `ZLinkFrameworkErrorKind`, 그 밖의 공개 경계 오류면 예외 타입 이름을 응답한다. RM-C2와 RM-C4는 실제 `TimeoutException`을 확인한다. RM-C4는 후속 정상 reply뿐 아니라 느린 handler의 `ProfileReq` 완료 evidence도 직접 기다린다. |
 | **E2E-JV-23** (미구현) | [config-1 RM-C8:228-238](../../common/e2e/config-1-location-messaging.ko.md): `MaxMessageSize` 근접 payload는 왕복하고 **상한 초과 payload는 public error로 거부**된 뒤 정상 request가 동작해야 한다 | **재검증 중단:** Java의 정식 interface spec과 실제 `ZLinkSocketRuntimeOptions`는 `weight()`만 제공하며 `MaxMessageSize` 설정이 없다. binding에는 socket option이 있지만 framework가 만든 live channel socket에 적용할 공개 경로가 없다. E2E 앱이 payload 길이만 보고 임의로 거부하면 framework 상한을 검증하지 못하므로 구현하지 않았다. **선택지:** (1) `MaxMessageSize`를 framework 공통 계약으로 받아들일지 먼저 리뷰하고, 받아들이면 공통 spec·Java interface spec·`zlink-framework-core`까지 범위를 넓혀 공개 설정을 구현한 뒤 RM-C8을 확장한다. (2) 현재 범위를 유지하고 feature-map에 적힌 runtime gap과 이 항목을 open으로 남긴다. |
 | **E2E-JV-24** (미구현) | [E2E README:514-519](../../common/e2e/README.ko.md): 표면을 넘은 actor ref는 node rid가 비어 있지 않고 **`generation > 0`**인지 어서션한다 | **해결:** `ActorAuthRes`가 `bound.ref().generation()`을 함께 전달한다. local·remote stream 경계에서 수신한 generation이 양수인지 직접 확인하므로 필드 누락이나 기본값 0으로의 퇴행을 잡는다. |
+
+## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+
+**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
+표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
+공개 API로 제공한다.
+
+**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
+SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
+언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
+검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
+
+- [ ] **TH-JV-01** (미구현) — connector에 `expectNone`·`waitForSequence`와 `ZLinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §7.1](../stream-connector/languages/java/03-stream-connector.ko.md)대로 구현한다.
+- [ ] **TH-JV-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper(`assertStatusOrder` 등)를 connector API로 **교체**한다. `assertStatusOrder`는 이미 java에 있으니 그 로직을 connector `waitForSequence`로 올린다 — 다른 언어가 참조하는 정본이 된다.

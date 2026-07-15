@@ -65,6 +65,10 @@ public interface ZLinkStreamConnector {
     ZLinkTypedStreamRequestCall request(Object payload);
     ZLinkStreamWaitCall waitFor(String name);
     ZLinkStreamWaitCall waitFor(Class<?> payloadType);
+    ZLinkStreamExpectNoneCall expectNone(String name);
+    ZLinkStreamExpectNoneCall expectNone(Class<?> payloadType);
+    ZLinkStreamSequenceCall waitForSequence(String name);
+    ZLinkStreamSequenceCall waitForSequence(Class<?> payloadType);
 
     AutoCloseable on(
         String name,
@@ -247,6 +251,34 @@ public interface ZLinkStreamWaitCall {
 request timeout이 끝나면 pending request를 제거하고 반환한 `CompletionStage`를 timeout
 실패로 완료한다. 제거된 request의 response가 늦게 도착해도 그 stage를 다시 완료하지 않는다.
 
+### 7.1 테스트 대기·단언 표면
+
+계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. Java 표면은 다음과 같다.
+
+**push 관측 — connector 메서드**(`waitFor`와 같은 자리). 각각 builder를 반환한다.
+
+```java
+ZLinkStreamWaitCall       waitFor(String name);          // 도달할 때까지 대기
+ZLinkStreamExpectNoneCall expectNone(String name);       // .within(window) 동안 오지 않는지
+ZLinkStreamSequenceCall   waitForSequence(String name);  // .expect(p).expect(p)…를 순서대로
+```
+
+- `expectNone(name).within(Duration).submit()` — window 안에 도착하면 **예외를 던진다**. `waitFor`의 대칭.
+- `waitForSequence(name).expect(p1).expect(p2)….timeout(t).submit()` — 같은 이름 push가 **술어 순서대로** 도착하는지 확인하고 payload 목록을 돌려준다. "N개 도착"이 아니라 **"순서대로 도착"** 을 검증한다.
+- **status 전용 표면을 두지 않는다.** status는 payload 필드이므로 `waitFor(T.class).where(p -> p.status() == …)`로 표현한다.
+
+**범용 단언 — `ZLinkStreamAssert`**(전송 API와 섞지 않는 별도 유틸).
+
+```java
+static void ensure(boolean condition, String message);                       // message 필수
+static ZLinkStreamError expectFailure(ThrowingRunnable action, String errorKind); // errorKind null 허용
+static void expectTimeout(ThrowingRunnable action);
+```
+
+- `expectFailure`의 입력은 **미리 만든 future가 아니라 실행할 action**이다. `errorKind`를 주면 그 종류로 실패했는지까지 검증한다(null이면 "실패했다"만). 실패 분류가 필요한 시나리오는 반드시 준다.
+- `expectTimeout`은 timeout이 아닌 오류를 **재전파**한다.
+- **도메인 REST 폴링은 이 표면이 아니다.** 그건 `ZLinkHttpClient`의 일이다.
+
 ## 8. Typed payload codec
 
 기본 connector는 wire payload를 `ZLinkStreamEncodedPayload`로 보관한다. typed 표면은
@@ -385,6 +417,8 @@ class ZLinkKotlinStreamConnector {
     fun request(payload: Any): ZLinkTypedStreamRequestCall
     fun <TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload>
     fun <TPayload> waitFor(name: String): ZLinkStreamTypedWaitCall<TPayload>
+    fun <TPayload> expectNone(name: String): ZLinkStreamTypedExpectNoneCall<TPayload>
+    fun <TPayload> waitForSequence(name: String): ZLinkStreamTypedSequenceCall<TPayload>
     fun messages(packetName: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
     fun errors(): Flow<ZLinkStreamError>
 }
@@ -406,6 +440,20 @@ class ZLinkStreamTypedWaitCall<TPayload> {
     fun where(predicate: (ZLinkStreamMessage<TPayload>) -> Boolean): ZLinkStreamTypedWaitCall<TPayload>
     suspend fun await(): ZLinkStreamMessage<TPayload>
 }
+
+class ZLinkStreamTypedExpectNoneCall<TPayload> {
+    fun within(window: Duration): ZLinkStreamTypedExpectNoneCall<TPayload>
+    suspend fun await()   // window 안에 도착하면 예외
+}
+
+class ZLinkStreamTypedSequenceCall<TPayload> {
+    fun expect(predicate: (ZLinkStreamMessage<TPayload>) -> Boolean): ZLinkStreamTypedSequenceCall<TPayload>
+    fun timeout(timeout: Duration): ZLinkStreamTypedSequenceCall<TPayload>
+    suspend fun await(): List<ZLinkStreamMessage<TPayload>>   // 술어 순서대로 도착
+}
+
+// 범용 단언(ZLinkStreamAssert)은 suspend 래핑 없이 그대로 쓴다. expectFailure는
+// suspend action을 받는 ZLinkKotlinStreamAssert.expectFailure(errorKind?) { … } 형태를 함께 제공한다.
 ```
 
 Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들면 안 된다. options를

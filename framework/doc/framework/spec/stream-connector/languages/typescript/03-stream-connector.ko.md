@@ -77,6 +77,8 @@ interface ZlinkStreamConnector {
   send(payload: unknown, messageType?: Function): ZlinkStreamSendCall;
   request(payload: unknown, messageType?: Function): ZlinkStreamRequestCall;
   waitFor<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamWaitCall<TPayload>;
+  expectNone<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamExpectNoneCall<TPayload>;
+  waitForSequence<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamSequenceCall<TPayload>;
   on<TPayload = ZlinkStreamEncodedPayload>(
     name: string,
     handler: (message: ZlinkStreamMessage<TPayload>, signal?: AbortSignal) => Promise<void> | void,
@@ -137,6 +139,34 @@ connector 생성은 `zlinkStreamConnectorFactory.create(options)`를 사용한�
 option의 기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다. TypeScript는 이를
 `ZlinkStreamConnectorOptions`의 필드로 표현하며, 해석된 전체 값을 `RequiredZlinkStreamConnectorOptions`로
 노출한다.
+
+### 4.1 테스트 대기·단언 표면
+
+계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. TypeScript 표면은 다음과 같다.
+
+**push 관측 — connector 메서드**(`waitFor`와 같은 자리). 각각 builder를 반환한다.
+
+```ts
+waitFor<T>(name: string): ZlinkStreamWaitCall<T>;          // 도달할 때까지 대기
+expectNone<T>(name: string): ZlinkStreamExpectNoneCall<T>; // .within(ms) 동안 오지 않는지
+waitForSequence<T>(name: string): ZlinkStreamSequenceCall<T>; // .expect(p).expect(p)…를 순서대로
+```
+
+- `await expectNone<T>(name).within(ms).run(signal)` — window 안에 도착하면 **throw**. `waitFor`의 대칭.
+- `await waitForSequence<T>(name).expect(p1).expect(p2)….timeout(ms).run(signal)` — 같은 이름 push가 **술어 순서대로** 도착하는지 확인하고 payload 배열을 돌려준다. "N개 도착"이 아니라 **"순서대로 도착"** 을 검증한다.
+- **status 전용 표면을 두지 않는다.** status는 payload 필드이므로 `waitFor<T>(name).where(p => p.status === …)`로 표현한다.
+
+**범용 단언 — `zlinkStreamAssert`**(전송 API와 섞지 않는 별도 유틸).
+
+```ts
+ensure(condition: boolean, message: string): void;                     // message 필수
+expectFailure(action: (signal?: AbortSignal) => Promise<void>, errorKind?: string): Promise<ZlinkStreamError>;
+expectTimeout(action: (signal?: AbortSignal) => Promise<void>): Promise<void>;
+```
+
+- `expectFailure`의 입력은 **미리 만든 Promise가 아니라 실행할 action**이다. `errorKind`를 주면 그 종류로 실패했는지까지 검증한다(생략하면 "실패했다"만).
+- `expectTimeout`은 timeout이 아닌 오류를 **재전파**한다.
+- **도메인 REST 폴링은 이 표면이 아니다.** 그건 HTTP client의 일이다.
 
 ## 5. Inbound Observer와 수신 큐
 

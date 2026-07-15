@@ -1,5 +1,6 @@
 package systems.zlink.samples.kotlin.deliverydispatch.server.couriergateway
 
+import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
@@ -7,6 +8,7 @@ import org.springframework.context.annotation.Bean
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore
+import systems.zlink.framework.kotlin.useCoroutineHandlers
 import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleLocationStore
@@ -22,6 +24,7 @@ class CourierGatewayApplication {
     @Bean
     fun courierGatewayFramework(): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
+            options.useCoroutineHandlers(Dispatchers.Default)
             options.addHandlersFromPackageOf(CourierGatewayApplication::class.java)
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)

@@ -1028,3 +1028,17 @@ STREAM 압축 wire는 다른 언어와 같은 LZ4 pickle 프레이밍으로 정�
 `[u32][block]` 프레이밍은 언어 경계를 넘지 못했다). 남은 wire 항목은 SPOT fan-out의
 단일 프레임 인코딩이며, 원인(프레임워크 부착 SPOT의 multipart publish가 첫 파트만 전달)이
 core 소유라 C++ 계약 ledger에 열린 항목으로 남겨 두었다.
+
+## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+
+**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
+표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
+공개 API로 제공한다.
+
+**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
+SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
+언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
+검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
+
+- [ ] **TH-CP-01** (미구현) — **선행: cpp connector 언어별 계약 문서가 없다**([§14](../90-implementation-gap.ko.md)). 그 문서를 만들면서 `expect_none`·`wait_for_sequence`와 assert 유틸(`ensure`/`expect_failure`/`expect_timeout`)을 §10.2대로 정의·구현한다.
+- [ ] **TH-CP-02** (리팩토링) — cpp가 다섯 언어 중 negative 단언이 가장 얕다(`expect_error` 하나). SMP-CP-31·SMP-CP-37은 지역적으로 이미 닫혔지만, `expect_none`·`wait_for_sequence`를 connector에 두면 그 지역 구현이 **표준 표면으로 대체**되고 교차 언어 SMP-X3의 공통 게이트가 채워진다.

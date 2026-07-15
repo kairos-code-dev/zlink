@@ -864,12 +864,17 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 > 시나리오 51개)와 config-11을 C++ 수준 깊이로 보지 못했다. **SpotService가 가장 크고 거의 확실히
 > 더 있다.**
 
-
 ## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
 
 **계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
 표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
-공개 API로 제공한다. 지금까지 각 시나리오가 이걸 손으로 재구현했고, 그 부재가 실제 갭을 만들었다.
+공개 API로 제공한다.
 
-- [ ] **TH-ND-01** (미구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`와 `zlinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §6.1](../stream-connector/languages/typescript/03-stream-connector.ko.md)대로 구현한다.
-- [ ] **TH-ND-02** (결함) — 샘플·e2e 시나리오의 지역 helper를 connector API로 교체한다. 특히 `expectNone`으로 negative 검증을 25ms 창 대신 명시적 window로 바꾼다.
+**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
+SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
+언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
+검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
+
+- [x] **TH-ND-01** (미구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`와 `zlinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §4.x](../stream-connector/languages/typescript/03-stream-connector.ko.md)대로 구현한다.
+  - 근거: 수신 큐를 사용하는 부재·순서 builder와 별도 단언 이름 공간을 추가하고, 대기 중 handler 등록이 같은 메시지를 중복 소비하던 큐 순회도 snapshot으로 고쳤다. API가 없어 실패하던 집중 계약 테스트는 2/2, TypeScript·browser build와 실제 Chromium 게이트는 1/1 통과했다. 커밋 `5606142a5`.
+- [ ] **TH-ND-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper를 connector API로 **교체**한다. negative 검증은 typed-callback 카운팅(SMP-ND-05로 이미 닫음) 대신 `expectNone`의 명시적 window로 표준화한다.

@@ -9,6 +9,12 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-${2:-forward}}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_TIMEOUT_SECONDS=5
+SCENARIO_SETTLE_TIMEOUT_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
 pick_port() {
@@ -18,11 +24,11 @@ pick_port() {
 wait_health() {
   local url="$1"
   local name="$2"
-  for _ in $(seq 1 120); do
-    if curl -fsS "$url/health" >/dev/null 2>&1; then
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
+    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "$url/health" >/dev/null 2>&1; then
       return 0
     fi
-    sleep 0.25
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $url" >&2
   return 1
@@ -34,11 +40,11 @@ wait_tcp() {
   local host_port="${endpoint#*://}"
   local host="${host_port%:*}"
   local port="${host_port##*:}"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if node -e "const net=require('node:net'); const s=net.createConnection({host: process.argv[1], port: Number(process.argv[2])}); s.once('connect', () => { s.end(); process.exit(0); }); s.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 500);" "$host" "$port"; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $endpoint" >&2
   return 1
@@ -48,6 +54,8 @@ wait_topology() {
   node "$NODE_ROOT/e2e/location-readiness.js" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --key-prefix "$REDIS_KEY_PREFIX" \
+    --timeout-ms "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 1000))" \
+    --interval-ms "$((LOCAL_READINESS_TIMEOUT_SECONDS * 1000 / LOCAL_READINESS_ATTEMPTS))" \
     --peer spot-mesh to-actor spot \
       "tcp://127.0.0.1:$ACTOR_ROUTER_PORT" \
       "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \

@@ -23,7 +23,9 @@ if [[ "$CHILD_RUN" != "--child-run" && ("$SCENARIO" == "full" || "$SCENARIO" == 
 fi
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=150
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_TIMEOUT_SECONDS=5
+SCENARIO_SETTLE_TIMEOUT_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 CLIENT_SCENARIO="$SCENARIO"
 if [[ "$CLIENT_SCENARIO" == "all" ]]; then
@@ -102,7 +104,7 @@ wait_file_contains() {
   local pattern="$2"
   local failure="$3"
   local pid="${4:-}"
-  local attempts="${5:-300}"
+  local attempts="${5:-$((SCENARIO_SETTLE_TIMEOUT_SECONDS * 10))}"
   for _ in $(seq 1 "$attempts"); do
     if [[ -f "$file" ]] && grep -F "$pattern" "$file" >/dev/null 2>&1; then
       return 0
@@ -184,7 +186,7 @@ fi
 start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1::6379" "redis:7.2-alpine"
 REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="await-dispatch:node:${RUN_ID}:location"
-wait_tcp redis "tcp://$REDIS_ENDPOINT" 600
+wait_tcp redis "tcp://$REDIS_ENDPOINT" "$LOCAL_READINESS_ATTEMPTS"
 
 DELAY_HTTP_PORT="$(allocate_port)"
 DELAY_B_HTTP_PORT="$(allocate_port)"

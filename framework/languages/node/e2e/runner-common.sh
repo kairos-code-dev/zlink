@@ -146,7 +146,7 @@ wait_file_contains() {
   local pattern="$2"
   local failure="$3"
   local pid="${4:-}"
-  local attempts="${5:-300}"
+  local attempts="${5:-$((SCENARIO_SETTLE_TIMEOUT_SECONDS * 10))}"
   for _ in $(seq 1 "$attempts"); do
     if [[ -f "$file" ]] && grep -F "$pattern" "$file" >/dev/null 2>&1; then
       return 0

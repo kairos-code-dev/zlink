@@ -16,11 +16,17 @@ if [[ "$CHILD_RUN" != "--child-run" && "$SCENARIO" == "all" ]]; then
 fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_POLL_SECONDS=0.1
+LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_TIMEOUT_SECONDS=5
+SCENARIO_SETTLE_TIMEOUT_SECONDS=3
+HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
 wait_health() {
   local url="$1" name="$2" pid="${3:-}"
-  for _ in $(seq 1 160); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if [[ -n "$pid" ]] && ! process_alive "$pid"; then
       set +e
       wait "$pid"
@@ -29,8 +35,8 @@ wait_health() {
       echo "$name exited before readiness with status $status" >&2
       return 1
     fi
-    if curl -fsS "$url/health" >/dev/null 2>&1; then return 0; fi
-    sleep 0.25
+    if curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS "$url/health" >/dev/null 2>&1; then return 0; fi
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $url" >&2
   return 1
@@ -46,11 +52,11 @@ process_alive() {
 wait_tcp() {
   local name="$1" endpoint="$2" host_port="${2#*://}"
   local host="${host_port%:*}" port="${host_port##*:}"
-  for _ in $(seq 1 120); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if node -e "const net=require('node:net');const s=net.createConnection({host:process.argv[1],port:Number(process.argv[2])});s.once('connect',()=>{s.end();process.exit(0)});s.once('error',()=>process.exit(1));setTimeout(()=>process.exit(1),500)" "$host" "$port"; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $endpoint" >&2
   return 1
@@ -60,6 +66,8 @@ wait_topology() {
   node "$NODE_ROOT/e2e/location-readiness.js" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --key-prefix "$REDIS_KEY_PREFIX" \
+    --timeout-ms "$((ROUTE_SETTLE_TIMEOUT_SECONDS * 1000))" \
+    --interval-ms "$((LOCAL_READINESS_TIMEOUT_SECONDS * 1000 / LOCAL_READINESS_ATTEMPTS))" \
     --peer spot-mesh spot-actor-transfer spot \
       "$NODE_A_ROUTER" "$NODE_A_PUBSUB" \
       "$NODE_B_ROUTER" "$NODE_B_PUBSUB" \

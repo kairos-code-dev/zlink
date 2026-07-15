@@ -11,6 +11,8 @@ SCENARIO="${1:-all}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
+ROUTE_SETTLE_TIMEOUT_SECONDS=5
+SCENARIO_SETTLE_TIMEOUT_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
@@ -96,11 +98,11 @@ wait_tcp() {
   local host_port="${endpoint#tcp://}"
   local host="${host_port%:*}"
   local port="${host_port##*:}"
-  for _ in $(seq 1 100); do
+  for _ in $(seq 1 "${LOCAL_READINESS_ATTEMPTS}"); do
     if node -e "const net=require('node:net'); const s=net.createConnection({host: process.argv[1], port: Number(process.argv[2])}); s.once('connect', () => { s.end(); process.exit(0); }); s.once('error', () => process.exit(1)); setTimeout(() => process.exit(1), 500);" "$host" "$port"; then
       return 0
     fi
-    sleep 0.1
+    sleep "${LOCAL_READINESS_POLL_SECONDS}"
   done
   echo "Timed out waiting for $name at $endpoint" >&2
   return 1

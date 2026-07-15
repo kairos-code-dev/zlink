@@ -630,6 +630,7 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-14** (미구현) — **§3.1 "route mesh 없음 × 분리 배치" 조합이 아예 만들어지지 않는다**
 - [x] **E2E-CP-15** (결함) — Config 4의 **`RC-A6`(P0)에 client scenario 파일이 없다**(shell runner가 대신 단언)
   - 근거: 수정 전 target-contract gate가 RC-A6 client scenario 부재와 shell의 종료·stderr 판정을 각각 검출했다. client scenario가 세 invalid server process를 bounded startup window 안에서 직접 실행하고 비정상 종료와 정확한 validation 오류를 판정하도록 옮겼다. client target 빌드, gate, `./run_e2e.sh RC-A6`의 duplicate·wrong-group·unsupported-channel 검증이 통과했다.
+  - 재검증: 설정 정책 전환 뒤 target gate가 제거된 환경변수 이름을 오히려 요구해 거짓 실패했다. runner가 `invalidServerExecutable`·`invalidEndpoint`를 typed client JSON으로 전달하고 환경변수는 사용하지 않는 조건으로 바로잡았다(`1642bf86a`). target gate에서 E2E-CP-15가 사라졌고 `RC-A6` 세 startup 실패가 다시 통과했다(`logs/20260715-214948-1180846`).
 - [x] **E2E-CP-16** (결함) — **`SM-D2`(P0, 원격 bind·relay)가 `all` 목록에 없어 게이트에서 안 돈다**
   - 근거: 수정 전 target-contract gate가 SpotService `all` 목록의 `SM-D2` 누락을 검출했다. 기본 scenario inventory에 `SM-D2`를 추가한 뒤 gate와 `./run_e2e.sh SM-D2`의 client·play-a·play-b·session-a evidence 검증이 모두 통과했다.
 - [x] **E2E-CP-17** (결함) — **`SM-F5`가 자기 계약의 정반대를 단언한다.** Spot을 닫지 않고 "살아 있음"을 확인한다

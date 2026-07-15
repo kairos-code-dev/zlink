@@ -132,6 +132,10 @@ if rg -n 'ZLinkRequestHandler<Messages.GameplayMsg' Server/QuestMission/src/main
   echo "GameplayMsg must use one-way send handlers" >&2
   exit 1
 fi
+if rg -n '\.enableClient\([^)]' Server; then
+  echo "GameQuest channels must use location-store auto discovery" >&2
+  exit 1
+fi
 grep -q 'gamequest-scale-out=completed' \
   Client/src/main/java/systems/zlink/samples/gamequest/client/GameQuestClientScenario.java
 (

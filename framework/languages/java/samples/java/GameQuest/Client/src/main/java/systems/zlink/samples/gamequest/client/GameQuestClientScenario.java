@@ -114,6 +114,7 @@ public final class GameQuestClientScenario {
             .request(new Messages.CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
             .submit(Messages.CollectItemRes.class).toCompletableFuture().join();
         ensure(offlineItem.eventId().equals("player-bob-herb-1"));
+        waitForProjection("player-bob", Messages.QuestIds.HerbGathering, 1);
         Messages.GetQuestProgressRes offlineProgress = apiAStream
             .request(new Messages.GetQuestProgressReq("player-bob"))
             .submit(Messages.GetQuestProgressRes.class).toCompletableFuture().join();
@@ -277,6 +278,21 @@ public final class GameQuestClientScenario {
             }
         }
         return last;
+    }
+
+    private void waitForProjection(String playerId, String questId, int currentCount) throws Exception {
+        Instant deadline = Instant.now().plus(Duration.ofSeconds(10));
+        do {
+            Messages.GetQuestProgressRes projection = post(
+                options.apiAHttpEndpoint(),
+                "/quest/progress/" + playerId,
+                "",
+                Messages.GetQuestProgressRes.class);
+            if (hasProgress(projection.activeQuests(), questId, currentCount)) {
+                return;
+            }
+        } while (Instant.now().isBefore(deadline));
+        throw new IllegalStateException("Projection did not reach " + questId + "=" + currentCount);
     }
 
     private boolean hasProgress(List<Messages.QuestProgress> progress, String questId, int currentCount) {

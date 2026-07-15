@@ -71,9 +71,9 @@ public class Program {
                 .traceLogFile(api.logDirectory() + "/flow-" + api.instanceName() + ".log")
                 .traceLabel(api.instanceName());
             options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-a"))
-                .enableClient(api.missionAChannelEndpoint());
+                .enableClient();
             options.addClientServerChannel(SampleNames.questOwnerChannelFor("mission-b"))
-                .enableClient(api.missionBChannelEndpoint());
+                .enableClient();
             options.addClientServerChannel(SampleNames.questNotificationChannelFor(api.instanceName()))
                 .enableServer(api.notificationChannelEndpoint())
                 .addHandlerGroup("quest-notify");

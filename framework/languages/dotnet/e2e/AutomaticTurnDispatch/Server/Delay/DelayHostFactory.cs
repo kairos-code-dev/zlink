@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Systems.Zlink;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.AspNetCore;
@@ -12,6 +14,8 @@ internal static class DelayHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {

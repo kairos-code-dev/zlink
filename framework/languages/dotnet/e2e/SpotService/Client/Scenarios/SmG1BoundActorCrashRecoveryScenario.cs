@@ -11,6 +11,7 @@ internal static class SmG1BoundActorCrashRecoveryScenario
 {
     public static async Task RunAsync(
         string playAUrl,
+        ZLinkHttpClient gateway,
         string sessionAStreamEndpoint,
         string sessionBStreamEndpoint)
     {
@@ -51,22 +52,16 @@ internal static class SmG1BoundActorCrashRecoveryScenario
         ZlinkStreamAssert.Ensure(
             response.Status >= 200 && response.Status < 300,
             $"SM-G1 crash endpoint returned HTTP {response.Status}.");
-        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        await gateway.Post("/actor/wait-missing")
+            .Body(new ActorMissingWaitReq("actor-sm-g1-crash"))
+            .AsyncRaw();
 
-        var afterCrashFailed = false;
-        try
-        {
-            await playA.Request(new ActorPingReq("after-crash"))
+        await ZlinkStreamAssert.ExpectFailureAsync(
+            async cancellationToken => _ = await playA.Request(new ActorPingReq("after-crash"))
                 .PacketName("ActorPingReq")
                 .Timeout(TimeSpan.FromSeconds(1))
-                .Async<ActorPingRes>();
-        }
-        catch
-        {
-            afterCrashFailed = true;
-        }
-
-        ZlinkStreamAssert.Ensure(afterCrashFailed, "SM-G1 expected play-a actor request to fail after crash.");
+                .Async<ActorPingRes>(cancellationToken),
+            nameof(ZlinkStreamErrorCode.RemoteError));
 
         var survivor = await playB.Request(new ActorPingReq("after-crash"))
             .PacketName("ActorPingReq")

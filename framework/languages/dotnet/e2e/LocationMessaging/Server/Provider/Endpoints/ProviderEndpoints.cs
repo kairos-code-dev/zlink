@@ -3,6 +3,7 @@ using LocationMessaging.Server.Provider.Infrastructure;
 using LocationMessaging.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
 
 namespace LocationMessaging.Server.Provider.Endpoints;
@@ -41,7 +42,9 @@ internal static class ProviderEndpoints
                     .Select(ToPeerRow)
                     .ToArray();
                 var matches = rows.Where(row =>
-                        row.Role == request.Role && row.NodeRid == request.NodeRid)
+                        row.Role == request.Role
+                        && row.NodeRid == request.NodeRid
+                        && (request.Weight is null || row.Weight == request.Weight))
                     .ToArray();
                 var reached = request.Present
                     ? matches.Length == 1
@@ -119,19 +122,46 @@ internal static class ProviderEndpoints
             ScenarioRoutePing request,
             IZLinkRouteClient route) =>
         {
-            var failed = false;
             try
             {
                 await route.RequestToNode("profile.route", RoutingId.From("missing-rid"), request)
                     .Timeout(TimeSpan.FromMilliseconds(300))
                     .Async<ScenarioRoutePong>();
             }
-            catch (Exception)
+            catch (ZLinkFrameworkException error) when (
+                error.Kind == ZLinkFrameworkErrorKind.RequestTargetNotFound)
             {
-                failed = true;
+                return Results.Ok(new ExpectedFailureRes(error.Kind.ToString()));
             }
 
-            return Results.Ok(new RouteMissingRes(failed));
+            throw new InvalidOperationException(
+                "A request to a missing route target completed without RequestTargetNotFound.");
+        });
+        app.MapPost("/profile/route/target", async (
+            TargetedRoutePing request,
+            IZLinkRouteClient route,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var reply = await route.RequestToNode(
+                        "profile.route",
+                        RoutingId.From(request.TargetRid),
+                        new ScenarioRoutePing(request.Value))
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .Async<ScenarioRoutePong>(cancellationToken);
+                return Results.Ok(new ExpectedFailureRes($"UnexpectedReply:{reply.ProviderRid}"));
+            }
+            catch (ZLinkFrameworkException error) when (
+                error.Kind is ZLinkFrameworkErrorKind.RequestTargetNotFound
+                    or ZLinkFrameworkErrorKind.RequestFailed)
+            {
+                return Results.Ok(new ExpectedFailureRes(error.Kind.ToString()));
+            }
+            catch (TimeoutException)
+            {
+                return Results.Ok(new ExpectedFailureRes("Timeout"));
+            }
         });
         app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
         {
@@ -144,11 +174,20 @@ internal static class ProviderEndpoints
             CancellationToken cancellationToken) =>
         {
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
-            var snapshot = await evidence.WaitUntilAsync(
-                line => line.Contains(request.Contains, StringComparison.Ordinal),
-                timeout,
-                cancellationToken);
-            return Results.Ok(snapshot);
+            try
+            {
+                var snapshot = await evidence.WaitUntilAsync(
+                    line => line.Contains(request.Contains, StringComparison.Ordinal),
+                    timeout,
+                    cancellationToken);
+                return Results.Ok(snapshot);
+            }
+            catch (TimeoutException error)
+            {
+                return Results.Problem(
+                    error.Message,
+                    statusCode: StatusCodes.Status504GatewayTimeout);
+            }
         });
         app.MapPost("/evidence/wait-count", async (
             EvidenceCountWaitReq request,
@@ -156,12 +195,21 @@ internal static class ProviderEndpoints
             CancellationToken cancellationToken) =>
         {
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 120000));
-            var snapshot = await evidence.WaitUntilCountAsync(
-                request.Contains,
-                Math.Max(1, request.MinimumCount),
-                timeout,
-                cancellationToken);
-            return Results.Ok(snapshot);
+            try
+            {
+                var snapshot = await evidence.WaitUntilCountAsync(
+                    request.Contains,
+                    Math.Max(1, request.MinimumCount),
+                    timeout,
+                    cancellationToken);
+                return Results.Ok(snapshot);
+            }
+            catch (TimeoutException error)
+            {
+                return Results.Problem(
+                    error.Message,
+                    statusCode: StatusCodes.Status504GatewayTimeout);
+            }
         });
         app.MapPost("/evidence/wait-quiet", async (
             EvidenceQuietWaitReq request,
@@ -170,12 +218,21 @@ internal static class ProviderEndpoints
         {
             var quietPeriod = TimeSpan.FromMilliseconds(Math.Clamp(request.QuietMilliseconds, 1, 5000));
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 60000));
-            var snapshot = await evidence.WaitUntilQuietAsync(
-                request.Contains,
-                quietPeriod,
-                timeout,
-                cancellationToken);
-            return Results.Ok(snapshot);
+            try
+            {
+                var snapshot = await evidence.WaitUntilQuietAsync(
+                    request.Contains,
+                    quietPeriod,
+                    timeout,
+                    cancellationToken);
+                return Results.Ok(snapshot);
+            }
+            catch (TimeoutException error)
+            {
+                return Results.Problem(
+                    error.Message,
+                    statusCode: StatusCodes.Status504GatewayTimeout);
+            }
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

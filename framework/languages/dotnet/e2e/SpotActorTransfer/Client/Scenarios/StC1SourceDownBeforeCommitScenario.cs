@@ -24,17 +24,23 @@ internal static class StC1SourceDownBeforeCommitScenario
         ]);
 
         await context.ShutdownAsync(context.NodeA);
+        JoinResponse? response = null;
         try
         {
-            var response = await joinTask.WaitAsync(TimeSpan.FromSeconds(3));
-            ZlinkStreamAssert.Ensure(!response.Accepted, "ST-C1 join should not be accepted after source shutdown before commit.");
+            response = await joinTask.WaitAsync(TimeSpan.FromSeconds(3));
         }
-        catch (Exception ex) when (ex is TimeoutException or InvalidOperationException or HttpRequestException)
+        catch (Exception ex) when (ex is TimeoutException or HttpRequestException)
         {
             // Source shutdown may abort the HTTP request before the app endpoint can return a failure body.
         }
+        if (response is not null)
+            ZlinkStreamAssert.Ensure(!response.Accepted,
+                "ST-C1 join should not be accepted after source shutdown before commit.");
 
-        await Task.Delay(TimeSpan.FromSeconds(5));
+        // Target drain cannot complete while an accepted handoff admission is pending. Its
+        // completion is the public lifecycle barrier that proves the abandoned admission was
+        // aborted or expired; a fixed observation delay cannot prove that state transition.
+        await context.DrainAsync(context.NodeB);
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
         SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|transfer_in|62", "ST-C1 target should not transfer in without commit.");
         SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|joined|{spotRid}", "ST-C1 target should not join without commit.");

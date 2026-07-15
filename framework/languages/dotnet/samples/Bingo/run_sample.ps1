@@ -6,10 +6,9 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RunDir = New-SampleRunDirectory "bingo-dotnet"
 $RunId = "$PID-$([Guid]::NewGuid().ToString('N'))"
 $LogDir = Join-Path $RunDir "logs"
-$SampleLogDir = Join-Path $ScriptDir "logs"
+$SampleLogDir = Join-Path $RunDir "flow-logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
-Remove-Item -Path (Join-Path $SampleLogDir "*.log") -Force -ErrorAction SilentlyContinue
 $BINGO_LOG_DIR = $SampleLogDir
 $RedisContainer = $null
 $RunSucceeded = $false
@@ -79,12 +78,10 @@ try {
     $ports = New-SamplePorts -Count 22 -BasePort $basePort
 
     Set-DefaultValue "BINGO_API_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[2])"
-    Set-DefaultValue "BINGO_PLAY_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[3])"
     Set-DefaultValue "BINGO_SESSION_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[4])"
     Set-DefaultValue "BINGO_SESSION_A_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[5])"
     Set-DefaultValue "BINGO_SESSION_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[6])"
     Set-DefaultValue "BINGO_SESSION_B_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[7])"
-    Set-DefaultValue "BINGO_PLAY_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[8])"
     Set-DefaultValue "BINGO_PLAY_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[9])"
     Set-DefaultValue "BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[10])"
     Set-DefaultValue "BINGO_SESSION_A_STREAM_ENDPOINT" "tcp://127.0.0.1:$($ports[11])"
@@ -92,6 +89,10 @@ try {
     Set-DefaultValue "BINGO_PLAY_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[13])"
     Set-DefaultValue "BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[14])"
     Set-DefaultValue "BINGO_API_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[15])"
+    Set-DefaultValue "BINGO_API_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[16])"
+    Set-DefaultValue "BINGO_API_A_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[17])"
+    Set-DefaultValue "BINGO_API_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[18])"
+    Set-DefaultValue "BINGO_API_B_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[19])"
     $redis = Start-SampleRedisContainer "zlink-bingo-dotnet-redis"
     $RedisContainer = $redis.ContainerId
     $BINGO_REDIS_ENDPOINT = $redis.Endpoint
@@ -103,14 +104,14 @@ try {
         RedisKeyPrefix = $BINGO_REDIS_KEY_PREFIX
     }
     $roles = @{
-        "api-a" = $common + @{ NodeName = "a"; ChannelEndpoint = $BINGO_API_A_CHANNEL_ENDPOINT }
-        "api-b" = $common + @{ NodeName = "b"; ChannelEndpoint = $BINGO_API_B_CHANNEL_ENDPOINT }
+        "api-a" = $common + @{ NodeName = "a"; ChannelEndpoint = $BINGO_API_A_CHANNEL_ENDPOINT; SpotEndpoint = $BINGO_API_A_SPOT_ENDPOINT; SpotRouterEndpoint = $BINGO_API_A_SPOT_ROUTER_ENDPOINT }
+        "api-b" = $common + @{ NodeName = "b"; ChannelEndpoint = $BINGO_API_B_CHANNEL_ENDPOINT; SpotEndpoint = $BINGO_API_B_SPOT_ENDPOINT; SpotRouterEndpoint = $BINGO_API_B_SPOT_ROUTER_ENDPOINT }
         "play-a" = $common + @{
-            NodeName = "a"; ChannelEndpoint = $BINGO_PLAY_A_CHANNEL_ENDPOINT
+            NodeName = "a"
             SpotEndpoint = $BINGO_PLAY_A_SPOT_ENDPOINT; SpotRouterEndpoint = $BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
         }
         "play-b" = $common + @{
-            NodeName = "b"; ChannelEndpoint = $BINGO_PLAY_B_CHANNEL_ENDPOINT
+            NodeName = "b"
             SpotEndpoint = $BINGO_PLAY_B_SPOT_ENDPOINT; SpotRouterEndpoint = $BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
         }
         "session-a" = $common + @{
@@ -141,15 +142,17 @@ try {
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-a"]) | Out-Null
     Wait-SampleTcpEndpoint "api-a" $BINGO_API_A_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api-a-spot-router" $BINGO_API_A_SPOT_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "api-a-spot-pub" $BINGO_API_A_SPOT_ENDPOINT
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-b"]) | Out-Null
     Wait-SampleTcpEndpoint "api-b" $BINGO_API_B_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api-b-spot-router" $BINGO_API_B_SPOT_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "api-b-spot-pub" $BINGO_API_B_SPOT_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["play-a"]) | Out-Null
-    Wait-SampleTcpEndpoint "play-a" $BINGO_PLAY_A_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "play-a-spot-router" $BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "play-a-spot-pub" $BINGO_PLAY_A_SPOT_ENDPOINT
     Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["play-b"]) | Out-Null
-    Wait-SampleTcpEndpoint "play-b" $BINGO_PLAY_B_CHANNEL_ENDPOINT
     Wait-SampleTcpEndpoint "play-b-spot-router" $BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
     Wait-SampleTcpEndpoint "play-b-spot-pub" $BINGO_PLAY_B_SPOT_ENDPOINT
 

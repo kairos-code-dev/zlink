@@ -8,7 +8,7 @@ internal sealed class ZLinkFrameworkHostedService(
     ZLinkFrameworkRuntime runtime,
     ZLinkMonitoringRegistration? monitoringRegistration,
     ZLinkLocationRuntime? locationRuntime,
-    ZLinkLocationAutoConnectHost? autoConnect,
+    ZLinkAutoConnectLifecycleCoordinator autoConnectLifecycle,
     ZLinkLocationLifecycle? locationLifecycle,
     ZLinkAllocatedRoutingIdRuntime? allocatedRoutingIds,
     IHostApplicationLifetime? applicationLifetime,
@@ -40,11 +40,8 @@ internal sealed class ZLinkFrameworkHostedService(
 
             await runtime.StartAsync(cancellationToken).ConfigureAwait(false);
             allocatedRoutingIds?.MarkReady();
-            if (autoConnect is not null)
-            {
-                var state = await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
-                await autoConnect.StartAsync(state, cancellationToken).ConfigureAwait(false);
-            }
+            var state = await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
+            await autoConnectLifecycle.FrameworkReadyAsync(state, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception startFailure)
         {
@@ -83,7 +80,7 @@ internal sealed class ZLinkFrameworkHostedService(
     {
         List<Exception>? failures = null;
         await TryStopAsync(
-            () => autoConnect?.StopAsync(CancellationToken.None).AsTask() ?? Task.CompletedTask).ConfigureAwait(false);
+            () => autoConnectLifecycle.StopAsync(CancellationToken.None).AsTask()).ConfigureAwait(false);
         await TryStopAsync(
             () => runtime.StopAsync(CancellationToken.None).AsTask()).ConfigureAwait(false);
         await TryStopAsync(

@@ -8,13 +8,12 @@ $RedisContainer = $null
 $RunSucceeded = $false
 $LogDir = Join-Path $RunDir "logs"
 $WorkDir = Join-Path $RunDir "work"
-$SampleLogDir = Join-Path $ScriptDir "logs"
+$SampleLogDir = Join-Path $RunDir "flow-logs"
 $ConfigDir = Join-Path $RunDir "config"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
-Remove-Item -Path (Join-Path $SampleLogDir "*.log") -Force -ErrorAction SilentlyContinue
 
 function Wait-SampleLogContains {
     param(

@@ -35,6 +35,7 @@ var scenarios = new (string Name, Func<Task> Run)[]
     ("RM-A6", () => RmA6MultipleChannelsScenario.RunAsync(providerA, providerB, workflow)),
     ("RM-B1", () => RmB1ScaleOutScenario.RunAsync(options)),
     ("RM-B2", () => RmB2ScaleInScenario.RunAsync(options)),
+    ("RM-B3", () => RmB3ProviderCrashFailoverScenario.RunAsync(options)),
     ("RM-C1", () => RmC1RequestSendScenario.RunAsync(providerA, providerB)),
     ("RM-C2", () => RmC2TargetedRouteScenario.RunAsync(providerA, providerB)),
     ("RM-C3", () => RmC3MultiProviderDistributionScenario.RunAsync(directConsumer, providerA, providerB)),

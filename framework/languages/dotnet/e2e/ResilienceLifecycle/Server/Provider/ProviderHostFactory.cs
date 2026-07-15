@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using ResilienceLifecycle.Server.Provider.Handlers;
 using ResilienceLifecycle.Shared;
 using Systems.Zlink;
@@ -16,6 +18,8 @@ internal static class ProviderHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -32,14 +36,14 @@ internal static class ProviderHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             var channel = framework.AddClientServerChannel(ResilienceLifecycleNames.Channel)
-                .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
+                .EnableServer(Require(options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
             channel.ConfigureServerSocket().Weight = options.Weight;
             channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");

@@ -2,9 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAX_ATTEMPTS=3
 CONFIG_TIMEOUT_SECONDS=1800
-BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE"
 
 CONFIGS=(
   LocationMessaging
@@ -55,10 +53,6 @@ SELECTORS=()
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
-    --max-attempts)
-      MAX_ATTEMPTS="$2"
-      shift 2
-      ;;
     --config-timeout-seconds)
       CONFIG_TIMEOUT_SECONDS="$2"
       shift 2
@@ -109,47 +103,29 @@ else
   done
 fi
 
-run_config_with_retry() {
+run_config() {
   local config="$1"
   local scenario="$2"
-  local attempt output status started_at ended_at
-  output="$(mktemp)"
+  local status started_at ended_at
+  started_at="$(date +%s)"
+  set +e
+  (
+    cd "$SCRIPT_DIR/$config" &&
+      exec nice -n 10 timeout "${CONFIG_TIMEOUT_SECONDS}s" ./run_e2e.sh "$scenario"
+  ) &
+  active_config_pid="$!"
+  wait "$active_config_pid"
+  status="$?"
+  active_config_pid=""
+  set -e
+  ended_at="$(date +%s)"
 
-  for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-    : >"$output"
-    started_at="$(date +%s)"
-    set +e
-    (
-      cd "$SCRIPT_DIR/$config" &&
-        exec nice -n 10 timeout "${CONFIG_TIMEOUT_SECONDS}s" ./run_e2e.sh "$scenario"
-    ) > >(tee "$output") 2>&1 &
-    active_config_pid="$!"
-    wait "$active_config_pid"
-    status="$?"
-    active_config_pid=""
-    set -e
-    ended_at="$(date +%s)"
+  if [[ "$status" != "0" ]]; then
+    echo "[dotnet-e2e] ${config} FAIL ($((ended_at - started_at))s)" >&2
+    return "$status"
+  fi
 
-    if [[ "$status" == "0" ]]; then
-      rm -f "$output"
-      echo "[dotnet-e2e] ${config} PASS ($((ended_at - started_at))s)"
-      return 0
-    fi
-
-    echo "[dotnet-e2e] ${config} FAIL ($((ended_at - started_at))s, attempt ${attempt})" >&2
-    if ! grep -Eq "$BIND_RETRY_PATTERN" "$output"; then
-      rm -f "$output"
-      return "$status"
-    fi
-
-    if [[ "$attempt" == "$MAX_ATTEMPTS" ]]; then
-      rm -f "$output"
-      return "$status"
-    fi
-
-    echo "[dotnet-e2e] ${config} retry after transient bind failure (${attempt}/${MAX_ATTEMPTS})" >&2
-    sleep 1
-  done
+  echo "[dotnet-e2e] ${config} PASS ($((ended_at - started_at))s)"
 }
 
 all_started_at="$(date +%s)"
@@ -158,7 +134,7 @@ for i in "${!SELECTED_CONFIGS[@]}"; do
   config="${SELECTED_CONFIGS[$i]}"
   scenario="${SELECTED_SCENARIOS[$i]}"
   echo "[dotnet-e2e] ${config} start scenario=${scenario}"
-  run_config_with_retry "$config" "$scenario"
+  run_config "$config" "$scenario"
 done
 all_ended_at="$(date +%s)"
 

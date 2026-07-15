@@ -16,46 +16,37 @@ internal static class RmC4TimeoutIsolationScenario
     {
         var timeout = (await storeConsumer.Post("/profile/slow-request")
             .Body(new ProfileReq("slow"))
-            .Async<RequestFailureRes>()).Body;
-        ZlinkStreamAssert.Ensure(timeout.Failed, "RM-C4 expected the slow request to time out.");
-        ZlinkStreamAssert.Ensure(timeout.FailureType == nameof(TimeoutException), "RM-C4 expected TimeoutException.");
+            .Async<ExpectedFailureRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            timeout.ErrorKind == nameof(TimeoutException),
+            "RM-C4 expected TimeoutException.");
 
         var immediate = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c4-after-timeout"))
             .Async<ProfileRes>()).Body;
         ZlinkStreamAssert.Ensure(immediate.Value == "profile:rm-c4-after-timeout", "RM-C4 follow-up reply mismatch.");
 
-        await Task.Delay(TimeSpan.FromMilliseconds(1200));
+        var slowCompletion = await ProviderEvidence.WaitFromEitherAsync(providerA, providerB, "value=slow");
+        ZlinkStreamAssert.Ensure(
+            slowCompletion.Any(line => line.Contains("profile-request", StringComparison.Ordinal)
+                                       && line.Contains("value=slow", StringComparison.Ordinal)),
+            "RM-C4 timed-out handler did not complete on the server.");
+
         var later = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c4-later"))
             .Async<ProfileRes>()).Body;
         ZlinkStreamAssert.Ensure(later.Value == "profile:rm-c4-later", "RM-C4 later reply mismatch.");
 
-        var afterTimeoutWaitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq("rm-c4-after-timeout"))
-            .Async<string[]>()
-            .AsTask();
-        var afterTimeoutWaitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq("rm-c4-after-timeout"))
-            .Async<string[]>()
-            .AsTask();
-        var afterTimeoutCompleted = await Task.WhenAny(afterTimeoutWaitA, afterTimeoutWaitB);
-        var afterTimeoutEvidence = (await afterTimeoutCompleted).Body;
-
-        var laterWaitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq("rm-c4-later"))
-            .Async<string[]>()
-            .AsTask();
-        var laterWaitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq("rm-c4-later"))
-            .Async<string[]>()
-            .AsTask();
-        var laterCompleted = await Task.WhenAny(laterWaitA, laterWaitB);
-        var laterEvidence = (await laterCompleted).Body;
+        var afterTimeoutEvidence = await ProviderEvidence.WaitFromEitherAsync(
+            providerA,
+            providerB,
+            "rm-c4-after-timeout");
+        var laterEvidence = await ProviderEvidence.WaitFromEitherAsync(providerA, providerB, "rm-c4-later");
         var evidence = afterTimeoutEvidence.Concat(laterEvidence).ToArray();
         ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("rm-c4-after-timeout", StringComparison.Ordinal))
             && evidence.Any(line => line.Contains("rm-c4-later", StringComparison.Ordinal)),
             "RM-C4 follow-up evidence missing.");
     }
+
 }

@@ -7,7 +7,8 @@ internal sealed class ZLinkMonitoringHostedService(
     ZLinkMonitoringRegistration registration,
     IZLinkRuntimeEventPublisher publisher,
     ZLinkFrameworkRuntime? frameworkRuntime,
-    IZLinkLocationRuntimeQuery? locationQuery) : IHostedService, IAsyncDisposable
+    IZLinkLocationRuntimeQuery? locationQuery,
+    ZLinkAutoConnectLifecycleCoordinator? autoConnectLifecycle) : IHostedService, IAsyncDisposable
 {
     private readonly IZLinkMonitoringBackendAdapter
         _monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
@@ -74,12 +75,31 @@ internal sealed class ZLinkMonitoringHostedService(
                 }
 
                 await _sourceValidator.PreflightPollingSourcesAsync(frameworkRuntime, cancellationToken);
+                // A backend monitor may invoke its callback synchronously from OnEvent.
+                // Install the dispatch runner before attaching monitors so the first
+                // connection event cannot be dropped during host startup.
+                _stopTokenSource = new CancellationTokenSource();
+                _taskRunner = new ZLinkRuntimeTaskRunner(
+                    new ZLinkRuntimeErrorSink(),
+                    _stopTokenSource.Token);
                 AttachSocketMonitors(frameworkRuntime);
+                if (registration.SocketSources.Count > 0 && autoConnectLifecycle is not null)
+                    await autoConnectLifecycle.SocketMonitoringReadyAsync(cancellationToken)
+                        .ConfigureAwait(false);
             }
             catch (Exception startupFailure)
             {
                 var failures = new List<Exception> { startupFailure };
                 await CaptureCleanupAsync(DisposeMonitorsAsync, failures).ConfigureAwait(false);
+                if (_stopTokenSource is { } stop)
+                {
+                    stop.Cancel();
+                    if (_taskRunner is { } runner)
+                        await CaptureCleanupAsync(runner.StopAsync, failures).ConfigureAwait(false);
+                    stop.Dispose();
+                    _taskRunner = null;
+                    _stopTokenSource = null;
+                }
                 if (startedFramework && frameworkRuntime is not null)
                     await CaptureCleanupAsync(
                             () => frameworkRuntime.StopAsync(CancellationToken.None),
@@ -89,18 +109,17 @@ internal sealed class ZLinkMonitoringHostedService(
                 ThrowFailures(failures);
             }
 
-            _stopTokenSource = new CancellationTokenSource();
-            _taskRunner = new ZLinkRuntimeTaskRunner(
-                new ZLinkRuntimeErrorSink(),
-                _stopTokenSource.Token);
             var pollingRunner = new ZLinkMonitoringPollingRunner(
                 registration,
                 spotEvent => QueueDispatch(spotEvent),
                 locationEvent => QueueDispatch(locationEvent));
+            var stopToken = (_stopTokenSource
+                             ?? throw new InvalidOperationException("Monitoring dispatch was not initialized."))
+                .Token;
             _pollingTask = pollingRunner.RunAsync(
                 frameworkRuntime,
                 locationQuery,
-                _stopTokenSource.Token);
+                stopToken);
         }
         finally
         {

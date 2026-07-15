@@ -7,10 +7,9 @@ source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
-FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
+FLOW_LOG_DIR="${RUN_DIR}/flow-logs"
 CONFIG_DIR="${RUN_DIR}/config"
 mkdir -p "${LOG_DIR}" "${WORK_DIR}" "${CONFIG_DIR}" "${FLOW_LOG_DIR}"
-rm -f "${FLOW_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""

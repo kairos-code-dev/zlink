@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using LocationMessaging.Server.Provider.Configuration;
 using LocationMessaging.Server.Provider.Endpoints;
 using LocationMessaging.Server.Provider.Handlers;
@@ -6,6 +8,7 @@ using LocationMessaging.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
 
 namespace LocationMessaging.Server.Provider;
@@ -18,6 +21,8 @@ internal static class ProviderHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -27,6 +32,7 @@ internal static class ProviderHostFactory
 
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ProfileSocketEventObserver>();
 
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -35,10 +41,10 @@ internal static class ProviderHostFactory
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint
                                          ?? throw new InvalidOperationException(
-                                             "--redis-endpoint is required."))
+                                             "Shared.RedisEndpoint is required."))
                 .SetKeyPrefix(options.RedisKeyPrefix
                                   ?? throw new InvalidOperationException(
-                                      "--redis-key-prefix is required."))));
+                                      "Shared.RedisKeyPrefix is required."))));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
@@ -73,6 +79,14 @@ internal static class ProviderHostFactory
 
                 route.AddRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
             }
+        });
+        builder.Services.AddZLinkMonitoring(monitor =>
+        {
+            monitor.AddSocketEvents("profile.server", ZLinkSocketEventKind.ConnectionReady);
+            monitor.AddSocketEvents(
+                "profile.client",
+                ZLinkSocketEventKind.ConnectionReady,
+                ZLinkSocketEventKind.Disconnected);
         });
 
         var app = builder.Build();

@@ -9,7 +9,9 @@ public static class SampleConfigurationLoader
         var settings = Load(args);
         settings.ValidateCommon();
         return settings.ToRuntime(new SampleApiNode(
-            settings.Require(nameof(settings.ChannelEndpoint), settings.ChannelEndpoint)));
+            settings.Require(nameof(settings.ChannelEndpoint), settings.ChannelEndpoint),
+            settings.Require(nameof(settings.SpotEndpoint), settings.SpotEndpoint),
+            settings.Require(nameof(settings.SpotRouterEndpoint), settings.SpotRouterEndpoint)));
     }
 
     public static SampleRuntimeConfiguration<SamplePlayNode> LoadPlay(string[] args)
@@ -17,7 +19,6 @@ public static class SampleConfigurationLoader
         var settings = Load(args);
         settings.ValidateCommon();
         return settings.ToRuntime(new SamplePlayNode(
-            settings.Require(nameof(settings.ChannelEndpoint), settings.ChannelEndpoint),
             settings.Require(nameof(settings.SpotEndpoint), settings.SpotEndpoint),
             settings.Require(nameof(settings.SpotRouterEndpoint), settings.SpotRouterEndpoint)));
     }
@@ -92,10 +93,12 @@ public sealed class SampleConfiguration
     }
 }
 
-public sealed record SampleApiNode(string ChannelEndpoint);
+public sealed record SampleApiNode(
+    string ChannelEndpoint,
+    string SpotPubEndpoint,
+    string SpotRouterEndpoint);
 
 public sealed record SamplePlayNode(
-    string PlayChannelEndpoint,
     string SpotPubEndpoint,
     string SpotRouterEndpoint);
 

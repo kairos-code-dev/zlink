@@ -31,7 +31,10 @@ internal static class StF5ForwardingMappingEvictionScenario
         await context.SendRefAsync(context.NodeB, actorId, returnedRef, new HandoffPacket("ST-F5", "returned-within-window"));
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F5|{actorId}|handoff_packet|returned-within-window"]);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(5300));
+        await context.WaitRuntimeEvidenceAsync(context.NodeA,
+            $"mapping_evicted actor={actorId} entries=0");
+        await context.WaitRuntimeEvidenceAsync(context.NodeB,
+            $"mapping_evicted actor={actorId} entries=0");
         var stale = await context.ProbeRefAsync(context.NodeA, actorId, oldRefA, new ProbeReq("ST-F5", "after-eviction"));
         ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
             $"ST-F5 expected evicted mapping to fail stale, got '{stale.ErrorKind}'.");

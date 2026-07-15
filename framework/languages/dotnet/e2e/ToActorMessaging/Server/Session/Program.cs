@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Collections.Concurrent;
 using Systems.Zlink;
 using ToActorMessaging.Shared;
@@ -11,6 +13,8 @@ using Zlink.Framework.E2E.Configuration;
 var options = SessionOptions.Parse(args);
 Directory.CreateDirectory(options.LogDir);
 var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
 builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(new SessionEvidence(options.EvidenceFile));
 builder.Services.AddZLinkFramework(framework =>

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Bingo.Server.Configuration;
 using Bingo.Server.Session.Sessions;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +22,8 @@ public static class SessionServerHostFactory
         var logDirectory = configuration.LogDirectory;
         var traceLabel = $"session-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             logDirectory,

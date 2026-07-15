@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Systems.Zlink.Stream.Connector.Runtime;
 
 namespace Zlink.Framework.Runtime.Actors;
@@ -139,7 +138,7 @@ internal sealed class ZLinkActorClient(
 
         try
         {
-            return DecodeReply<TReply>(reply);
+            return ZLinkActorReplyDecoder.Decode<TReply>(reply);
         }
         finally
         {
@@ -188,47 +187,6 @@ internal sealed class ZLinkActorClient(
             Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span),
             Message.From(payload)
         ];
-    }
-
-    private static TReply DecodeReply<TReply>(IReadOnlyList<Message> reply)
-    {
-        if (reply.Count == 1)
-        {
-            var frame = reply[0].AsReadOnlySpan();
-            if (ZLinkStreamFrameCodec.TryDecode(frame, out var headerBytes, out var payload))
-            {
-                var header = ZLinkStreamProtocolDefaults.DecodeHeader(headerBytes.ToArray());
-                return DecodeReplyPayload<TReply>(header, payload);
-            }
-        }
-
-        if (reply.Count >= 2)
-        {
-            var header = ZLinkStreamProtocolDefaults.DecodeHeader(reply[0].AsReadOnlyMemory());
-            return DecodeReplyPayload<TReply>(header, reply[1].AsReadOnlySpan());
-        }
-
-        throw new InvalidOperationException("Actor request reply is empty.");
-    }
-
-    private static TReply DecodeReplyPayload<TReply>(
-        ZlinkStreamHeader header,
-        ReadOnlySpan<byte> payload)
-    {
-        if (header.Kind == ZlinkStreamMessageKind.Error)
-        {
-            var error = JsonSerializer.Deserialize<ZLinkStreamWireError>(
-                payload,
-                ZLinkJsonSerializerOptions.Default);
-            if (Enum.TryParse<ZLinkFrameworkErrorKind>(error?.Code, out var kind))
-                throw new ZLinkFrameworkException(
-                    kind,
-                    error?.Message ?? "Actor request failed.");
-            throw new InvalidOperationException(error?.Message ?? "Actor request failed.");
-        }
-
-        return JsonSerializer.Deserialize<TReply>(payload, ZLinkJsonSerializerOptions.Default)
-               ?? throw new InvalidOperationException("Actor request reply payload is null.");
     }
 
     private static Exception MapSubmitException(

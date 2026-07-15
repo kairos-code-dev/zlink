@@ -37,6 +37,57 @@ public interface IZLinkRoutingIdSlotAllocationStore
         string groupName,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ZLinkRoutingIdSlotAcquireRequest(
+    string GroupName,
+    IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> Members,
+    int SlotCount,
+    string OwnerId,
+    TimeSpan LeaseTtl);
+
+public abstract record ZLinkRoutingIdSlotAcquireResult
+{
+    // 결과 집합은 framework package 안에서만 확장할 수 있다.
+    private protected ZLinkRoutingIdSlotAcquireResult();
+}
+
+public sealed record ZLinkRoutingIdSlotAcquired(
+    ZLinkRoutingIdSlotAllocation Allocation) : ZLinkRoutingIdSlotAcquireResult;
+
+public sealed record ZLinkRoutingIdSlotGroupExhausted
+    : ZLinkRoutingIdSlotAcquireResult;
+
+public sealed record ZLinkRoutingIdSlotGroupConfigurationMismatch(
+    IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> ExpectedMembers,
+    int ExpectedSlotCount,
+    IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> ActualMembers,
+    int ActualSlotCount) : ZLinkRoutingIdSlotAcquireResult;
+
+public sealed record ZLinkRoutingIdSlotIdentityModeConflict
+    : ZLinkRoutingIdSlotAcquireResult;
+
+public sealed record ZLinkRoutingIdSlotAllocation(
+    int Slot,
+    ZLinkLocationOwnerToken Owner,
+    DateTimeOffset LeaseExpiresAt,
+    DateTimeOffset StoreNow);
+
+public enum ZLinkRoutingIdSlotReleaseResult
+{
+    Released = 1,
+    IgnoredStale = 2
+}
+
+public sealed record ZLinkRoutingIdSlotAllocationSnapshot(
+    string GroupName,
+    IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> Members,
+    int SlotCount,
+    IReadOnlyList<ZLinkRoutingIdSlotAllocation> Allocations,
+    DateTimeOffset StoreNow);
+
+public sealed record ZLinkRoutingIdSlotAllocationMember(
+    string ChannelName,
+    string RoutingIdPrefix);
 ```
 
 `ZLinkRoutingIdSlotAcquireResult`의 닫힌 결과 집합은 `ZLinkRoutingIdSlotAcquired`,
@@ -53,6 +104,11 @@ public interface IZLinkAllocatedRoutingIdProvider
         string groupName,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record ZLinkAllocatedRoutingId(
+    string GroupName,
+    int Slot,
+    IReadOnlyDictionary<string, RoutingId> MemberRoutingIds);
 ```
 
 결과는 group 이름, slot과 member 이름별 `RoutingId`를 제공한다. provider는 모든 socket bind와

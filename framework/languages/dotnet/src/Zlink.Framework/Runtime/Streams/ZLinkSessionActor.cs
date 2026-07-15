@@ -7,6 +7,8 @@ internal sealed class ZLinkSessionActor(
     string bindingToken)
     : IZLinkSessionActor
 {
+    internal ZLinkSessionContext Context { get; } = context;
+
     internal RoutingId SessionRid { get; } = sessionRid;
 
     internal string BindingToken { get; } = bindingToken;
@@ -19,12 +21,12 @@ internal sealed class ZLinkSessionActor(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(payload);
-        var raw = payload.ToRawMessage(context.Runtime.Registration.Codecs);
-        return context.RelayActorRefAsync(this, raw, cancellationToken);
+        var raw = payload.ToRawMessage(Context.Runtime.Registration.Codecs);
+        return Context.RelayActorRefAsync(this, raw, cancellationToken);
     }
 
     public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default)
     {
-        return context.NotifyActorRefDisconnectedAsync(this, cancellationToken);
+        return Context.NotifyActorRefDisconnectedAsync(this, cancellationToken);
     }
 }

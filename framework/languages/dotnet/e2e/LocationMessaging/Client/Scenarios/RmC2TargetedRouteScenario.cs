@@ -1,6 +1,7 @@
 // Verifies RM-C2 Targeted Route behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace LocationMessaging.Client.Scenarios;
@@ -34,7 +35,9 @@ internal static class RmC2TargetedRouteScenario
 
         var missing = (await providerA.Post("/profile/route/missing")
             .Body(new ScenarioRoutePing("missing"))
-            .Async<RouteMissingRes>()).Body;
-        ZlinkStreamAssert.Ensure(missing.Failed, "RM-C2 missing rid request should fail.");
+            .Async<ExpectedFailureRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            missing.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
+            "RM-C2 missing rid request should report RequestTargetNotFound.");
     }
 }

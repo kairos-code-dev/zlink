@@ -18,6 +18,22 @@ namespace Zlink.Framework.UnitTests;
 public sealed partial class UnhandledDispatchPolicyTests
 {
     [Fact]
+    public async Task Dynamic_Spot_Subscription_Retries_Transient_Native_Attachment_Failures()
+    {
+        var registry = new ZLinkSpotSubscriptionRegistry();
+        var nativeSpot = new CapturingSpot { SubscriptionFailuresRemaining = 2 };
+        registry.Add("events", typeof(TestSubscriptionHandler));
+
+        await registry.BindAsync(
+            new TestSubscriptionSpot(),
+            nativeSpot,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
+
+        Assert.Equal(3, nativeSpot.SubscriptionAttempts);
+    }
+
+    [Fact]
     public async Task SpotSubscription_MalformedUnknownTopic_ReportsInvalidFrameBeforeTopicLookup()
     {
         var result = await ObserveUnknownSpotSubscriptionAsync(malformed: true);
@@ -888,7 +904,11 @@ public sealed partial class UnhandledDispatchPolicyTests
         var registry = new ZLinkSpotSubscriptionRegistry();
         var nativeSpot = new CapturingSpot();
         registry.Add("events", typeof(TestSubscriptionHandler));
-        registry.Bind(new TestSubscriptionSpot(), nativeSpot);
+        await registry.BindAsync(
+            new TestSubscriptionSpot(),
+            nativeSpot,
+            TimeSpan.FromSeconds(1),
+            CancellationToken.None);
 
         var backendFactory = new ZLinkDotNetBackendAdapterFactory();
         var channelAdapter = backendFactory.CreateChannelAdapter();
@@ -1182,6 +1202,10 @@ public sealed partial class UnhandledDispatchPolicyTests
 
     private sealed class CapturingSpot : IZLinkBackendSpot
     {
+        public int SubscriptionAttempts { get; private set; }
+
+        public int SubscriptionFailuresRemaining { get; init; }
+
         public Func<TopicMessage, RecvFlags, bool>? SubscribeHandler { get; set; }
 
         public int? LastJoinResultCode { get; private set; }
@@ -1199,6 +1223,9 @@ public sealed partial class UnhandledDispatchPolicyTests
 
         public void SetSubscription(string topic)
         {
+            SubscriptionAttempts++;
+            if (SubscriptionAttempts <= SubscriptionFailuresRemaining)
+                throw new ZlinkConfigException(ZlinkConfigException.ErrorCode.InternalError);
         }
 
         public bool Subscribe(TopicMessage result, RecvFlags flags)

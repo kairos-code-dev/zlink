@@ -6,7 +6,7 @@ internal sealed class BingoRoomAllocator(IBingoMatchQueue matchQueue)
 {
     private int _roomSeq;
 
-    public async ValueTask<BingoMatchReservation> AllocateAsync(
+    public async ValueTask<BingoRoomAllocation> AllocateAsync(
         string mode,
         string actorId,
         string preferredOwnerNodeRid,
@@ -28,10 +28,9 @@ internal sealed class BingoRoomAllocator(IBingoMatchQueue matchQueue)
             settings.RequiredPlayers,
             cancellationToken);
 
-        if (string.Equals(reservation.OwnerPlayNodeRid, preferredOwnerNodeRid, StringComparison.Ordinal)
-            && string.Equals(reservation.RoomId, roomId, StringComparison.Ordinal))
-            return reservation with { LocalRoomSettings = settings };
-
-        return reservation;
+        return new BingoRoomAllocation(
+            reservation.RoomId,
+            reservation.OwnerPlayNodeRid,
+            string.Equals(reservation.RoomId, roomId, StringComparison.Ordinal) ? settings : null);
     }
 }

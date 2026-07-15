@@ -1,6 +1,8 @@
 namespace Zlink.Framework.Runtime.Actors;
 
-internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = null)
+internal sealed class ZLinkActorHandoffAdmissions(
+    TimeProvider? timeProvider = null,
+    Action<string>? diagnostic = null)
 {
     private const int TerminalCapacity = 1024;
     private readonly object _gate = new();
@@ -428,6 +430,7 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
         PendingAdmission pending,
         CancellationToken cancellationToken)
     {
+        var expired = false;
         try
         {
             var delay = pending.Deadline - _timeProvider.GetUtcNow();
@@ -447,8 +450,12 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
             {
                 _pending.Remove(handoffId);
                 TryCompleteDrainSafeLocked();
+                expired = true;
             }
         }
+        if (expired)
+            diagnostic?.Invoke(
+                $"pending_admission_expired actor={pending.ActorId} handoff_id={handoffId}");
     }
 
     private void MarkDrainUnsafeLocked()
@@ -479,6 +486,8 @@ internal sealed class ZLinkActorHandoffAdmissions(TimeProvider? timeProvider = n
         DateTimeOffset deadline,
         ZLinkRemoteActorAdmissionReply reply)
     {
+        public string ActorId { get; } = request.ActorId;
+
         public DateTimeOffset Deadline { get; } = deadline;
 
         public ZLinkRemoteActorAdmissionReply Reply { get; } = reply;

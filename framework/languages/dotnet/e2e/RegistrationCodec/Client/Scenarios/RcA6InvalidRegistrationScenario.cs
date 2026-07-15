@@ -27,16 +27,15 @@ internal static class RcA6InvalidRegistrationScenario
         process.StartInfo.ArgumentList.Add(options.InvalidServerProject);
         process.StartInfo.ArgumentList.Add("--");
         process.StartInfo.ArgumentList.Add("--config");
-        process.StartInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(
+        process.StartInfo.ArgumentList.Add(E2eConfiguration.Write(
             options.ConfigDir,
             "invalid-duplicate",
-            [
-                "--rid", "invalid-duplicate",
-                "--http-url", $"http://127.0.0.1:{invalidHttpPort}",
-                "--channel-endpoint", $"tcp://127.0.0.1:{invalidChannelPort}",
-                "--log-dir", options.LogDir,
-                "--codec-mode", "all"
-            ]));
+            new InvalidRegistrationOptions(
+                "invalid-duplicate",
+                $"http://127.0.0.1:{invalidHttpPort}",
+                options.LogDir,
+                "all",
+                $"tcp://127.0.0.1:{invalidChannelPort}")));
         process.Start();
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
@@ -68,3 +67,10 @@ internal static class RcA6InvalidRegistrationScenario
         Console.WriteLine("scenario RC-A6 passed");
     }
 }
+
+internal sealed record InvalidRegistrationOptions(
+    string Rid,
+    string HttpUrl,
+    string LogDir,
+    string CodecMode,
+    string ChannelEndpoint);

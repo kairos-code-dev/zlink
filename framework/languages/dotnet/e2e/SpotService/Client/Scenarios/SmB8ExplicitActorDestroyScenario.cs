@@ -29,27 +29,6 @@ internal static class SmB8ExplicitActorDestroyScenario
             .Async<DestroyActorRes>();
         ZlinkStreamAssert.Ensure(destroyed.Destroyed && destroyed.ActorId == actorId, "SM-B8 destroy reply mismatch.");
 
-        var snapshotFailed = false;
-        for (var attempt = 0; attempt < 10; attempt++)
-        {
-            try
-            {
-                await client.Request(new SnapshotReq(actorId))
-                    .PacketName("SnapshotReq")
-                    .Timeout(TimeSpan.FromSeconds(1))
-                    .Async<SnapshotRes>();
-            }
-            catch
-            {
-                snapshotFailed = true;
-                break;
-            }
-
-            await Task.Delay(150);
-        }
-
-        ZlinkStreamAssert.Ensure(snapshotFailed, "SM-B8 expected request to destroyed actor to fail.");
-
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"actor-destroyed|rid=play-a|actor={actorId}"]))
             .Async<string[]>()).Body;
@@ -61,6 +40,13 @@ internal static class SmB8ExplicitActorDestroyScenario
             evidence.All(line =>
                 !line.Contains($"actor-destroy-failed|rid=play-a|actor={actorId}", StringComparison.Ordinal)),
             "SM-B8 actor destroy reported a failure.");
+
+        await ZlinkStreamAssert.ExpectFailureAsync(
+            async cancellationToken => _ = await client.Request(new SnapshotReq(actorId))
+                .PacketName("SnapshotReq")
+                .Timeout(TimeSpan.FromSeconds(1))
+                .Async<SnapshotRes>(cancellationToken),
+            nameof(ZlinkStreamErrorCode.RemoteError));
 
         Console.WriteLine("operation SpotService.sm-b8 passed");
     }

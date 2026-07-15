@@ -32,6 +32,24 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("ScenarioAssert.That(", clientText, StringComparison.Ordinal);
         Assert.DoesNotContain("ScenarioContext.Require(", clientText, StringComparison.Ordinal);
         Assert.DoesNotContain("ReceivedCount(nameof(PlayerJoinedNotify))", clientText, StringComparison.Ordinal);
+
+        foreach (var relativePath in new[]
+                 {
+                     "AutomaticTurnDispatch/Client/Scenarios/ShutdownAwaitProbe.cs",
+                     "SpotService/Client/Scenarios/SmD8StreamReconnectRecoveryScenario.cs",
+                     "SpotService/Client/Scenarios/SmD4MultipleActorBindingScenario.cs",
+                     "SpotService/Client/Scenarios/SmD14TlsStreamValidationScenario.cs",
+                     "SpotService/Client/Scenarios/SmG1BoundActorCrashRecoveryScenario.cs",
+                     "SpotService/Client/Scenarios/SmB8ExplicitActorDestroyScenario.cs"
+                 })
+        {
+            var source = File.ReadAllText(Path.Combine(
+                ResolveE2eRoot(),
+                relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            Assert.Contains("ZlinkStreamAssert.ExpectFailureAsync", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Failed = false", source, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("catch\n        {", source, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

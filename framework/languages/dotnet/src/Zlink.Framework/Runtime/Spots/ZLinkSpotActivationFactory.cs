@@ -45,7 +45,7 @@ internal sealed class ZLinkSpotActivationFactory(
                     .ConfigureAwait(false);
 
             spot.Configure();
-            activation.BindDescriptors();
+            await activation.BindDescriptorsAsync(cancellationToken).ConfigureAwait(false);
             var response = await activation.InitializeAsync(request, cancellationToken).ConfigureAwait(false);
             return new ZLinkSpotActivationCreateResult(activation, response);
         }

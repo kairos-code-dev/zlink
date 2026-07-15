@@ -46,10 +46,12 @@
         <Compile Include="Contracts/SpotContractTests.cs"/>
         <Compile Include="Documentation/Regression.cs"/>
         <Compile Include="Runtime/AutoConnectLoopTests.cs"/>
+        <Compile Include="Runtime/AutoConnectLifecycleCoordinatorTests.cs"/>
         <Compile Include="Runtime/AutoConnectReconcilerTests.cs"/>
         <Compile Include="Runtime/ActorTransferTests.cs"/>
         <Compile Include="Runtime/ActorHandoffTests.cs"/>
         <Compile Include="Runtime/ActorClientTests.cs"/>
+        <Compile Include="Runtime/ActorBoundSessionRelayTests.cs"/>
         <Compile Include="Runtime/TransportFailFastTests.cs"/>
         <Compile Include="Runtime/BackendAdapterFactoryTests.cs"/>
         <Compile Include="Runtime/BackendSpotNodeConcurrencyTests.cs"/>

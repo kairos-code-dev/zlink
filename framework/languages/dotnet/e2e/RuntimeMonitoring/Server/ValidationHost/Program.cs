@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +13,8 @@ using Zlink.Framework.E2E.Configuration;
 
 var validationCase = E2eConfiguration.Load<ValidationOptions>(args).Case;
 var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
 
 switch (validationCase)
 {

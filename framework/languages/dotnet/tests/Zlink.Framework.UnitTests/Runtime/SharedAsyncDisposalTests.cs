@@ -30,6 +30,7 @@ public sealed class SharedAsyncDisposalTests
             new ZLinkMonitoringRegistration(),
             null!,
             null,
+            null,
             null);
         var first = host.DisposeAsync().AsTask();
         var second = host.DisposeAsync().AsTask();

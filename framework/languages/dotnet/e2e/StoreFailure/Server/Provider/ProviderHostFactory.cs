@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using StoreFailure.Server.Provider.Handlers;
 using StoreFailure.Shared;
 using Systems.Zlink;
@@ -16,6 +18,8 @@ internal static class ProviderHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -33,7 +37,7 @@ internal static class ProviderHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
                 var locations = framework.ConfigureLocations();
                 locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
                 locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
@@ -46,7 +50,7 @@ internal static class ProviderHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             var channel = framework.AddClientServerChannel(StoreFailureNames.Channel)
-                .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
+                .EnableServer(Require(options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
             channel.ConfigureServerSocket().Weight = options.Weight;
             channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");

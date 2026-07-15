@@ -39,6 +39,47 @@ public sealed partial class RegressionTests
         }
     }
 
+    [Fact]
+    public void ExecutionTurn_Uses_Typed_Default_Packet_Names()
+    {
+        var clientRoot = Path.Combine(
+            ResolveE2eRoot(),
+            "AutomaticTurnDispatch",
+            "Client");
+        var offenders = Directory.EnumerateFiles(clientRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => File.ReadAllText(path).Contains(".PacketName(", StringComparison.Ordinal))
+            .Select(path => Path.GetRelativePath(clientRoot, path))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "AutomaticTurnDispatch must infer packet names from message types: "
+            + string.Join(", ", offenders));
+    }
+
+    [Fact]
+    public void ExecutionTurn_Scenarios_Use_Bounded_Evidence_Waits()
+    {
+        var scenarioRoot = Path.Combine(
+            ResolveE2eRoot(),
+            "AutomaticTurnDispatch",
+            "Client",
+            "Scenarios");
+        var offenders = Directory.EnumerateFiles(scenarioRoot, "Td*Scenario.cs")
+            .Select(path => (Path: path, Source: File.ReadAllText(path)))
+            .Where(item => item.Source.Contains("Task.Delay(", StringComparison.Ordinal)
+                           || item.Source.Contains("AwaitEvidenceReq(", StringComparison.Ordinal))
+            .Select(item => Path.GetFileName(item.Path))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "Execution-turn scenarios must wait on bounded server evidence: "
+            + string.Join(", ", offenders));
+    }
+
     [Theory]
     [InlineData("AutomaticTurnDispatch")]
     [InlineData("PubSub")]

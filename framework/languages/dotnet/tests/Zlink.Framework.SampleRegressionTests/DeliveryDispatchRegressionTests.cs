@@ -45,6 +45,9 @@ public sealed partial class RegressionTests
         Assert.Contains("deliverydispatch-runner-evidence=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("grep -Rq \"message flow\" \"${FLOW_LOG_DIR}\"", shellRunner,
             StringComparison.Ordinal);
+        Assert.Contains("FLOW_LOG_DIR=\"${RUN_DIR}/flow-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("FLOW_LOG_DIR=\"${SCRIPT_DIR}/logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("rm -f \"${FLOW_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_SETTLE_SECONDS", shellRunner, StringComparison.Ordinal);
 
@@ -60,6 +63,9 @@ public sealed partial class RegressionTests
         Assert.Contains("deliverydispatch-runner-evidence=completed", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Wait-SampleLogContains \"message flow\" \"DeliveryDispatch message-flow evidence\"",
             powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"flow-logs\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Join-Path $ScriptDir \"logs\"", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("DELIVERYDISPATCH_STARTUP_DELAY_SECONDS", powershellRunner,
             StringComparison.Ordinal);

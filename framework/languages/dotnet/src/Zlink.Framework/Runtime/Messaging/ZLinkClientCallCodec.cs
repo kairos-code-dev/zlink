@@ -100,6 +100,14 @@ internal static class ZLinkEnvelopeReplyDecoder
         }
         if (replyHeader.Kind == ZLinkMessageKind.Error)
             throw ZLinkEnvelopeErrorMapper.CreateException(replyHeader, errorMessage);
+        if (replyHeader.Kind != ZLinkMessageKind.Response)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                $"Reply envelope kind '{replyHeader.Kind}' is not a response.");
+        if (reply.Count < 2)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                "Reply envelope body is missing.");
 
         try
         {
@@ -133,7 +141,8 @@ internal static class ZLinkEnvelopeErrorMapper
         string fallbackMessage)
     {
         var message = header.ErrorMessage ?? fallbackMessage;
-        if (Enum.TryParse<ZLinkFrameworkErrorKind>(header.ErrorCode, out var frameworkErrorKind))
+        if (Enum.TryParse<ZLinkFrameworkErrorKind>(header.ErrorCode, out var frameworkErrorKind)
+            && Enum.IsDefined(frameworkErrorKind))
             return new ZLinkFrameworkException(frameworkErrorKind, message);
 
         return header.ErrorCode switch

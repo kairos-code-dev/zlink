@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Google.Protobuf.WellKnownTypes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -20,6 +22,8 @@ internal static class CodecRequesterHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {

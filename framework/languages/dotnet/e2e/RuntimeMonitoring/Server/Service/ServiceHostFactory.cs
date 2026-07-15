@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Microsoft.AspNetCore.Mvc;
 using RuntimeMonitoring.Server.Service.Handlers;
 using RuntimeMonitoring.Server.Service.Support;
@@ -21,6 +23,8 @@ internal static class ServiceHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -40,22 +44,22 @@ internal static class ServiceHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
 
             var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
-                .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
+                .EnableServer(Require(options.ChannelEndpoint, "ChannelEndpoint"))
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
             channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
 
             var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
-            spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+            spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
+                .EnablePubSub(Require(options.SpotPubEndpoint, "SpotPubEndpoint"))
                 .AddEntrySpot<MonitoringEntrySpot>()
                 .AddSpotFactory<MonitoringSubjectSpot>();
         });

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Server.CustomerGateway.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +18,8 @@ public static class CustomerGatewayHostFactory
     {
         var topology = configuration.Topology;
         var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             configuration.Role.LogDir,

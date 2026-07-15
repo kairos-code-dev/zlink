@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SupportChat.Server.Configuration;
@@ -19,6 +21,8 @@ public static class SupportServerHostFactory
     public static IHost Build(SampleTopology topology, string logDirectory)
     {
         var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             logDirectory,

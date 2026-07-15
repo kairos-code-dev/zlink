@@ -86,9 +86,9 @@ internal sealed class AwaitEvidenceWaitControlHandler(EvidenceStore evidence)
         _ = context;
         var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
         var snapshot = await evidence.WaitUntilAsync(
-            entries => entries.Any(line =>
+            entries => entries.Count(line =>
                 line.Contains($"request={request.RequestId}", StringComparison.Ordinal)
-                && line.Contains(request.Marker, StringComparison.Ordinal)),
+                && line.Contains(request.Marker, StringComparison.Ordinal)) >= Math.Max(1, request.MinimumCount),
             timeout,
             cancellationToken);
         return new AwaitEvidenceRes(request.RequestId, snapshot);

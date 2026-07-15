@@ -126,9 +126,7 @@ SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 PROCESS_SHUTDOWN_TIMEOUT_SECONDS=15
 CHILD_PROCESS_TIMEOUT_SECONDS=420
-CHILD_RETRY_COOLDOWN_SECONDS=1
 CLIENT_PROCESS_TIMEOUT_SECONDS=120
-BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE"
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
 import math
@@ -169,31 +167,8 @@ if [[ "$SCENARIO_SET" == "all" && "$ALL_CHILD" != "1" ]]; then
   build_projects
   for child_group in default-batch sm-f6 sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
     echo "child operation_group=${child_group}"
-    child_ok=0
-    child_output="$(mktemp)"
-    for child_attempt in 1 2; do
-      : >"$child_output"
-      set +e
-      timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
-        "$SCRIPT_DIR/run_e2e.sh" --all-child --skip-build --start-order "$E2E_START_ORDER" "$child_group" \
-        2>&1 | tee "$child_output"
-      child_status="${PIPESTATUS[0]}"
-      set -e
-      if [[ "$child_status" == "0" ]]; then
-        child_ok=1
-        break
-      fi
-      if ! grep -Eq "$BIND_RETRY_PATTERN" "$child_output"; then
-        break
-      fi
-      echo "spot-service transient bind failure; retrying child operation_group=${child_group} (${child_attempt}/2)" >&2
-      sleep "$CHILD_RETRY_COOLDOWN_SECONDS"
-    done
-    rm -f "$child_output"
-    if [[ "$child_ok" != "1" ]]; then
-      echo "child operation_group=${child_group} failed" >&2
-      exit 1
-    fi
+    timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
+      "$SCRIPT_DIR/run_e2e.sh" --all-child --skip-build --start-order "$E2E_START_ORDER" "$child_group"
   done
   echo "spot-service e2e result=passed"
   exit 0
@@ -767,7 +742,17 @@ if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
   fi
 fi
 
-sleep "$ROUTE_SETTLE_SECONDS"
+wait_for_log_after() {
+  local name="$1" pattern="$2" first_line="$3" attempts="${4:-200}"
+  for ((i = 0; i < attempts; i++)); do
+    if tail -n +"$first_line" "$LOG_DIR/$name.log" 2>/dev/null | grep -q "$pattern"; then
+      return 0
+    fi
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  echo "Timed out waiting for '$pattern' in $name after line $first_line" >&2
+  return 1
+}
 
 run_client() {
   local operation_group="$1"
@@ -786,9 +771,39 @@ run_client() {
     --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --operation-group "$operation_group"
-  timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
-    2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
-    | tee -a "$LOG_DIR/client.stdout.log"
+  if [[ "$operation_group" == *"d13"* ]]; then
+    local first_line evidence_first_line client_pid session_pid session_pgid client_status
+    first_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
+    evidence_first_line=$(($(wc -l <"$LOG_DIR/play-a.evidence.log") + 1))
+    timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
+      2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
+      | tee -a "$LOG_DIR/client.stdout.log" &
+    client_pid=$!
+    if ! wait_for_log_after client.stdout "spot-service sm-d13 heartbeat-stop armed" "$first_line" 600; then
+      wait "$client_pid" || true
+      return 1
+    fi
+    session_pid="$(pid_for_role session-a)"
+    session_pgid="$(ps -o pgid= -p "$session_pid" | tr -d ' ')"
+    if [[ "$session_pgid" != "$session_pid" ]]; then
+      echo "session-a process group mismatch: pid=$session_pid pgid=$session_pgid" >&2
+      wait "$client_pid" || true
+      return 1
+    fi
+    kill -STOP -- "-$session_pid"
+    set +e
+    wait "$client_pid"
+    client_status=$?
+    set -e
+    kill -CONT -- "-$session_pid" 2>/dev/null || true
+    [[ "$client_status" -eq 0 ]] || return "$client_status"
+    wait_for_log_after play-a.evidence \
+      "entry-disconnected|rid=play-a|actor=actor-sm-d13" "$evidence_first_line" 600
+  else
+    timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
+      2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
+      | tee -a "$LOG_DIR/client.stdout.log"
+  fi
   if [[ "$operation_group" == "sm-g1" ]]; then
     assert_expected_server_exit play-a 137 "client ${operation_group} completion"
   else

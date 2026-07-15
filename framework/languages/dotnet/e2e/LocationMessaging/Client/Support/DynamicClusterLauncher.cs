@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 using Zlink.Framework.E2E.Configuration;
 
@@ -10,7 +11,8 @@ internal sealed class DynamicClusterLauncher(
     string providerProject,
     string consumerProject,
     string configDir,
-    string logDir) : IAsyncDisposable
+    string logDir,
+    string scenarioName) : IAsyncDisposable
 {
     private readonly List<DynamicProcess> _processes = [];
 
@@ -30,11 +32,16 @@ internal sealed class DynamicClusterLauncher(
         // No registry process exists. Each dynamic cluster shares the run's
         // Redis instance but isolates its peer location rows under a
         // scenario-specific key prefix (mirrors the doc's per-run isolation).
+        var scenarioConfigDir = Path.Combine(options.ConfigDir, scenarioName);
+        var scenarioLogDir = Path.Combine(options.LogDir, "dynamic", scenarioName);
+        Directory.CreateDirectory(scenarioConfigDir);
+        Directory.CreateDirectory(scenarioLogDir);
         var launcher = new DynamicClusterLauncher(
             options.ProviderProject,
             options.ConsumerProject,
-            options.ConfigDir,
-            options.LogDir)
+            scenarioConfigDir,
+            scenarioLogDir,
+            scenarioName)
         {
             RedisEndpoint = options.RedisEndpoint,
             RedisKeyPrefix = $"{options.RedisKeyPrefix}:{scenarioName}"
@@ -44,24 +51,16 @@ internal sealed class DynamicClusterLauncher(
 
     public async Task<DynamicProvider> StartProviderAsync(string name, string rid, int weight = 100)
     {
+        var processName = $"{scenarioName}-{name}";
         var httpUrl = PickHttpUrl();
         var channelEndpoint = PickEndpoint();
         var process = StartServer(
-            name,
+            processName,
             providerProject,
-            [
-                "--role", "provider",
-                "--rid", rid,
-                "--http-url", httpUrl,
-                "--redis-endpoint", RedisEndpoint,
-                "--redis-key-prefix", RedisKeyPrefix,
-                "--channel-endpoint", channelEndpoint,
-                "--max-message-size", "2097152",
-                "--route-endpoint", PickEndpoint(),
-                "--weight", weight.ToString(),
-                "--evidence-file", Path.Combine(logDir, $"{name}.evidence.log"),
-                "--log-dir", logDir
-            ],
+            new DynamicProviderOptions(
+                "provider", httpUrl, logDir, rid, weight, 2_097_152,
+                Path.Combine(logDir, $"{processName}.evidence.log"),
+                RedisEndpoint, RedisKeyPrefix, channelEndpoint, PickEndpoint()),
             httpUrl,
             channelEndpoint);
         await process.WaitReadyAsync();
@@ -70,17 +69,13 @@ internal sealed class DynamicClusterLauncher(
 
     public async Task<DynamicConsumer> StartConsumerAsync(string name)
     {
+        var processName = $"{scenarioName}-{name}";
         var httpUrl = PickHttpUrl();
         var process = StartServer(
-            name,
+            processName,
             consumerProject,
-            [
-                "--http-url", httpUrl,
-                "--redis-endpoint", RedisEndpoint,
-                "--redis-key-prefix", RedisKeyPrefix,
-                "--trace-label", name,
-                "--log-dir", logDir
-            ],
+            new DynamicConsumerOptions(
+                httpUrl, logDir, name, RedisEndpoint, RedisKeyPrefix),
             httpUrl,
             channelEndpoint: null);
         await process.WaitReadyAsync();
@@ -93,10 +88,16 @@ internal sealed class DynamicClusterLauncher(
         _processes.Remove(provider.Process);
     }
 
+    public async Task CrashAsync(DynamicProvider provider)
+    {
+        await provider.Process.CrashAsync();
+        _processes.Remove(provider.Process);
+    }
+
     private DynamicProcess StartServer(
         string name,
         string projectPath,
-        IReadOnlyList<string> arguments,
+        object roleOptions,
         string httpUrl,
         string? channelEndpoint)
     {
@@ -108,11 +109,12 @@ internal sealed class DynamicClusterLauncher(
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("--no-build");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(projectPath);
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add("--config");
-        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(configDir, name, arguments));
+        startInfo.ArgumentList.Add(E2eConfiguration.Write(configDir, name, roleOptions));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException($"Failed to start {name}.");
@@ -152,12 +154,35 @@ internal sealed class DynamicClusterLauncher(
     }
 }
 
+internal sealed record DynamicProviderOptions(
+    string Role,
+    string HttpUrl,
+    string LogDir,
+    string Rid,
+    int Weight,
+    long MaxMessageSize,
+    string EvidenceFile,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
+    string ChannelEndpoint,
+    string RouteEndpoint);
+
+internal sealed record DynamicConsumerOptions(
+    string HttpUrl,
+    string LogDir,
+    string TraceLabel,
+    string RedisEndpoint,
+    string RedisKeyPrefix);
+
 internal sealed record DynamicProvider(DynamicProcess Process, string HttpUrl, string ChannelEndpoint);
 
 internal sealed record DynamicConsumer(DynamicProcess Process, string HttpUrl);
 
 internal sealed class DynamicProcess(Process process, string httpUrl, string? channelEndpoint)
 {
+    private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan GracefulShutdownTimeout = TimeSpan.FromSeconds(30);
     private bool _disposed;
 
     public string HttpUrl { get; } = httpUrl;
@@ -172,8 +197,11 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
 
     public async Task WaitReadyAsync()
     {
-        using var client = ZLinkHttpClient.Create(HttpUrl).Build();
-        for (var i = 0; i < 120; i++)
+        using var client = ZLinkHttpClient.Create(HttpUrl)
+            .Timeout(TimeSpan.FromSeconds(3))
+            .Build();
+        var deadline = DateTimeOffset.UtcNow + ReadinessTimeout;
+        while (DateTimeOffset.UtcNow < deadline)
         {
             if (process.HasExited)
                 throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");
@@ -183,11 +211,12 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
                 await client.Get("/health").Async<string>();
                 return;
             }
-            catch
+            catch (ZLinkFrameworkException error) when (
+                error.Kind == ZLinkFrameworkErrorKind.RequestFailed && error.IsRetriable)
             {
             }
 
-            await Task.Delay(250);
+            await Task.Delay(ReadinessPollInterval);
         }
 
         throw new TimeoutException($"Process did not become ready: {HttpUrl}.");
@@ -206,14 +235,15 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
                     .Build();
                 await client.Post("/shutdown").AsyncRaw();
             }
-            catch
+            catch (ZLinkFrameworkException error) when (
+                error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
             {
                 if (!process.HasExited) process.Kill(true);
             }
 
         try
         {
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await process.WaitForExitAsync().WaitAsync(GracefulShutdownTimeout);
         }
         catch (TimeoutException)
         {
@@ -221,6 +251,16 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
             await process.WaitForExitAsync();
         }
 
+        process.Dispose();
+    }
+
+    public async Task CrashAsync()
+    {
+        if (_disposed) return;
+
+        _disposed = true;
+        if (!process.HasExited) process.Kill(true);
+        await process.WaitForExitAsync();
         process.Dispose();
     }
 }

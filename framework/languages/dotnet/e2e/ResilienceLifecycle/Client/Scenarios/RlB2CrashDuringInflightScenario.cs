@@ -1,6 +1,7 @@
 // Verifies RL-B2 Crash During Inflight behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace ResilienceLifecycle.Client.Scenarios;
@@ -46,17 +47,16 @@ internal static class RlB2CrashDuringInflightScenario
             await Task.Delay(100);
         }
 
-        var failed = false;
         try
         {
             await inFlight;
+            throw new InvalidOperationException(
+                "RL-B2 in-flight request unexpectedly completed after provider crash.");
         }
-        catch
+        catch (ZLinkFrameworkException error) when (
+            error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
         {
-            failed = true;
         }
-
-        ZlinkStreamAssert.Ensure(failed, "RL-B2 in-flight request unexpectedly completed after provider crash.");
 
         await providerA.Post("/admin/restore").AsyncRaw();
         await providerA.Post("/admin/weight/wait")

@@ -1,8 +1,12 @@
+using Microsoft.Extensions.Configuration;
+
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.E2E.Configuration;
 
 var options = E2eConfiguration.Load<ExternalApiOptions>(args);
 var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
 builder.WebHost.UseUrls(options.HttpUrl);
 var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ready", role = "external-api" }));

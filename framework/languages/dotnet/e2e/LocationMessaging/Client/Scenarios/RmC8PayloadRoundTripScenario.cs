@@ -36,8 +36,10 @@ internal static class RmC8PayloadRoundTripScenario
         var oversizedMarker = $"rm-c8-over-limit-{Guid.NewGuid():N}";
         var oversized = (await directConsumer.Post("/profile/payload-over-limit")
             .Body(new PayloadReq(oversizedMarker, BuildPayload(3 * 1024 * 1024)))
-            .Async<RequestFailureRes>()).Body;
-        ZlinkStreamAssert.Ensure(oversized.Failed, "RM-C8 oversized payload should fail.");
+            .Async<ExpectedFailureRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            oversized.ErrorKind == nameof(TimeoutException),
+            "RM-C8 oversized payload should report TimeoutException.");
 
         var followUp = (await directConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c8-after"))

@@ -126,23 +126,25 @@ internal static class MonD1FailureRecoveryScenario
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("--no-build");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(options.ServiceProject);
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add("--config");
-        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(options.ConfigDir, "svc-b-restart",
-        [
-            "--role", "service",
-            "--rid", "svc-b",
-            "--http-url", options.ServiceBUrl,
-            "--redis-endpoint", options.RedisEndpoint,
-            "--redis-key-prefix", options.RedisKeyPrefix,
-            "--channel-endpoint", options.ServiceBChannelEndpoint,
-            "--spot-router-endpoint", options.ServiceBSpotRouterEndpoint,
-            "--spot-pub-endpoint", options.ServiceBSpotPubEndpoint,
-            "--evidence-file", Path.Combine(options.LogDir, "svc-b-restart.evidence.log"),
-            "--log-dir", options.LogDir
-        ]));
+        startInfo.ArgumentList.Add(E2eConfiguration.Write(
+            options.ConfigDir,
+            "svc-b-restart",
+            new RestartServiceOptions(
+                "service",
+                options.ServiceBUrl,
+                options.LogDir,
+                "svc-b",
+                Path.Combine(options.LogDir, "svc-b-restart.evidence.log"),
+                options.RedisEndpoint,
+                options.RedisKeyPrefix,
+                options.ServiceBChannelEndpoint,
+                options.ServiceBSpotRouterEndpoint,
+                options.ServiceBSpotPubEndpoint)));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException("Failed to restart service-b.");
@@ -167,7 +169,7 @@ internal static class MonD1FailureRecoveryScenario
 
     private static async Task WaitForPortStateAsync(string host, int port, bool shouldBeOpen, string failureMessage)
     {
-        for (var attempt = 0; attempt < 100; attempt++)
+        for (var attempt = 0; attempt < 30; attempt++)
         {
             if (await CanConnectAsync(host, port) == shouldBeOpen) return;
 
@@ -220,3 +222,15 @@ internal static class MonD1FailureRecoveryScenario
         }
     }
 }
+
+internal sealed record RestartServiceOptions(
+    string Role,
+    string HttpUrl,
+    string LogDir,
+    string Rid,
+    string EvidenceFile,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
+    string ChannelEndpoint,
+    string SpotRouterEndpoint,
+    string SpotPubEndpoint);

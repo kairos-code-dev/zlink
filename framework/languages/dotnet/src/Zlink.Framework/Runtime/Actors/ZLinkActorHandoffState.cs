@@ -2,7 +2,8 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorHandoffState(
     string actorId,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    Action<string>? diagnostic = null)
 {
     private readonly object _gate = new();
     private readonly object _forwardGate = new();
@@ -120,7 +121,7 @@ internal sealed class ZLinkActorHandoffState(
                 return false;
 
             _frames.Add(ZLinkActorHandoffFrames.Capture(frame, _arrivalIndex++));
-            ZLinkFrameworkDebugLog.SpotDiscovery(
+            diagnostic?.Invoke(
                 $"handoff_backlog actor={actorId} arrival={_arrivalIndex - 1} kind={frame.Header.Kind} request_id={frame.RequestId} flags={frame.Flags}");
             return true;
         }
@@ -169,7 +170,7 @@ internal sealed class ZLinkActorHandoffState(
             foreach (var frame in request.HandoffFrames.OrderBy(static frame => frame.ArrivalIndex))
             {
                 _frames.Add(frame with { ArrivalIndex = _arrivalIndex++ });
-                ZLinkFrameworkDebugLog.SpotDiscovery(
+                diagnostic?.Invoke(
                     $"backlog_enqueued actor={actorId} arrival={_arrivalIndex - 1} request_id={frame.RequestId} flags={frame.Flags}");
             }
             _importedFrameCount = _frames.Count;
@@ -291,7 +292,7 @@ internal sealed class ZLinkActorHandoffState(
                     new ZLinkActorForwardingLease(timeProvider));
                 _staleSourceActor = sourceActor;
                 _sourcePhase = ZLinkActorSourceHandoffPhase.CutoverPending;
-                ZLinkFrameworkDebugLog.SpotDiscovery(
+                diagnostic?.Invoke(
                     $"mapping_installed actor={actorId} source={sourceActor.NodeRid} target={targetActor.NodeRid} entries=1");
                 return _frames.Skip(committedFrameCount).ToArray();
             }
@@ -336,9 +337,16 @@ internal sealed class ZLinkActorHandoffState(
                 var trailing = sourceTrailingFrames
                     .OrderBy(static frame => frame.ArrivalIndex)
                     .ToArray();
+                var trailingStart = _importedFrameCount;
                 _frames.InsertRange(_importedFrameCount, trailing);
                 for (var index = 0; index < _frames.Count; index++)
                     _frames[index] = _frames[index] with { ArrivalIndex = index };
+                for (var index = trailingStart; index < _frames.Count; index++)
+                {
+                    var frame = _frames[index];
+                    diagnostic?.Invoke(
+                        $"backlog_enqueued actor={actorId} arrival={frame.ArrivalIndex} request_id={frame.RequestId} flags={frame.Flags}");
+                }
                 _arrivalIndex = _frames.Count;
                 _sourceTrailingImported = true;
                 _importedFrameCount = 0;
@@ -526,7 +534,7 @@ internal sealed class ZLinkActorHandoffState(
                     if (!ReferenceEquals(_forwardingExpiry, expiry)) return;
 
                     ClearForwardingMappingLocked();
-                    ZLinkFrameworkDebugLog.SpotDiscovery($"mapping_evicted actor={actorId} entries=0");
+                    diagnostic?.Invoke($"mapping_evicted actor={actorId} entries=0");
                 }
             }
         }

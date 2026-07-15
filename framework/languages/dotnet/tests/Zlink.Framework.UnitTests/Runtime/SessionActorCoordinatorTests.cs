@@ -177,6 +177,69 @@ public sealed class SessionActorCoordinatorTests
         Assert.Same(replacementContext, currentContext);
     }
 
+    [Fact]
+    public async Task Bound_Actor_Relay_Rejects_A_Stale_Directory_Ref_Before_Native_Send()
+    {
+        var runtime = CreateRuntime(actorDirectory: new MissingActorDirectory());
+        var context = CreateSessionContext(runtime, "session-rid");
+        var actor = new ActorRef(RoutingId.From("actor-node"), "actor-1", 1);
+        var bound = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actor,
+            CancellationToken.None);
+        using var payload = Message.From(new byte[] { 1, 2, 3 });
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Request,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(1),
+            "ActorPingReq",
+            ZlinkStreamMetadata.Empty);
+
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await context.ActorCoordinator.RelayToActorAsync(
+                bound,
+                header,
+                payload,
+                static (_, _, _) => ValueTask.CompletedTask,
+                CancellationToken.None));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, error.Kind);
+    }
+
+    [Fact]
+    public async Task Bound_Actor_Relay_Rebinds_To_The_Current_Directory_Ref_After_Handoff()
+    {
+        var current = new ActorRef(RoutingId.From("actor-node-b"), "actor-1", 2);
+        var runtime = CreateRuntime(actorDirectory: new FixedActorDirectory(current));
+        var context = CreateSessionContext(runtime, "session-rid");
+        var stale = new ActorRef(RoutingId.From("actor-node-a"), "actor-1", 1);
+        var bound = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            stale,
+            CancellationToken.None);
+        using var payload = Message.From(new byte[] { 1, 2, 3 });
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Json,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "ActorPingReq",
+            ZlinkStreamMetadata.Empty);
+
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+            await context.ActorCoordinator.RelayToActorAsync(
+                bound,
+                header,
+                payload,
+                static (_, _, _) => ValueTask.CompletedTask,
+                CancellationToken.None));
+
+        var rebound = Assert.Single(context.Actors.Bound);
+        Assert.Equal(current, rebound.Ref);
+        Assert.DoesNotContain(bound, context.Actors.Bound);
+    }
+
     private static ZLinkSessionContext CreateSessionContext(
         ZLinkFrameworkRuntime runtime,
         string sessionRid)
@@ -189,11 +252,12 @@ public sealed class SessionActorCoordinatorTests
             static _ => ValueTask.CompletedTask);
     }
 
-    private static ZLinkFrameworkRuntime CreateRuntime()
+    private static ZLinkFrameworkRuntime CreateRuntime(IZLinkActorDirectory? actorDirectory = null)
     {
         var registration = new ZLinkFrameworkRegistration();
         var services = new ServiceCollection();
         services.AddSingleton(registration);
+        if (actorDirectory is not null) services.AddSingleton(actorDirectory);
         var provider = services.BuildServiceProvider();
 
         return new ZLinkFrameworkRuntime(
@@ -207,6 +271,35 @@ public sealed class SessionActorCoordinatorTests
     }
 
     private sealed record SessionPush(string Value);
+
+    private sealed class MissingActorDirectory : IZLinkActorDirectory
+    {
+        public ValueTask<ActorRef?> FindAsync(
+            string actorId,
+            CancellationToken cancellationToken = default) => ValueTask.FromResult<ActorRef?>(null);
+
+        public ValueTask<ActorRef> EnsureAsync(
+            string actorId,
+            ZLinkMessage createRequest,
+            ZLinkActorPlacement placement = default,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FixedActorDirectory(ActorRef actor) : IZLinkActorDirectory
+    {
+        public ValueTask<ActorRef?> FindAsync(
+            string actorId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<ActorRef?>(actor.ActorId == actorId ? actor : null);
+
+        public ValueTask<ActorRef> EnsureAsync(
+            string actorId,
+            ZLinkMessage createRequest,
+            ZLinkActorPlacement placement = default,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
 
     private sealed class TestSessionHandlerRegistry : IZLinkSessionHandlerRegistry
     {

@@ -13,14 +13,30 @@ internal static class StD2StaleSourceReleaseFencingScenario
         var spotRid = $"spot-stale-release-{Guid.NewGuid():N}";
         await context.CreateSpotAsync(context.NodeB, spotRid);
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 81);
+        await context.ArmCleanupGateAsync(context.NodeA, actorId, "ST-D2");
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-D2", spotRid));
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-D2 join was rejected.");
-        var before = await context.GetActorRefAsync(context.NodeB, actorId);
+        await context.AllowCleanupAttemptAsync(context.NodeA, actorId, "ST-D2");
+        await context.WaitEvidenceAsync(context.NodeA, [
+            $"ST-D2|{actorId}|source_cleanup_attempt|"
+        ]);
+        var before = await context.GetActorRefWithEvidenceAsync(
+            context.NodeB, actorId, "ST-D2", "location_snapshot_before_cleanup");
         ZlinkStreamAssert.Ensure(before.NodeRid == "actor-b", $"ST-D2 target ref expected actor-b, got {before.NodeRid}.");
+        var beforeCleanupProbe = await context.ProbeAsync(
+            context.NodeB,
+            actorId,
+            new ProbeReq("ST-D2", "before-stale-cleanup-release"));
+        ZlinkStreamAssert.Ensure(beforeCleanupProbe.NodeRid == "actor-b",
+            $"ST-D2 pre-cleanup probe expected actor-b, got {beforeCleanupProbe.NodeRid}.");
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
-        var after = await context.GetActorRefAsync(context.NodeB, actorId);
+        await context.ReleaseCleanupGateAsync(context.NodeA, actorId, "ST-D2");
+        await context.WaitEvidenceAsync(context.NodeA, [
+            $"ST-D2|{actorId}|source_cleanup_completed|"
+        ]);
+        var after = await context.GetActorRefWithEvidenceAsync(
+            context.NodeB, actorId, "ST-D2", "location_snapshot_after_cleanup");
         ZlinkStreamAssert.Ensure(after.NodeRid == "actor-b", $"ST-D2 target ref changed after delayed cleanup: {after.NodeRid}.");
         ZlinkStreamAssert.Ensure(after.Generation == before.Generation,
             $"ST-D2 generation changed after delayed cleanup. before={before.Generation}, after={after.Generation}");

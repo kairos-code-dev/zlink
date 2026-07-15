@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Systems.Zlink;
 using ToActorMessaging.Actor;
 using ToActorMessaging.Shared;
@@ -11,6 +13,8 @@ var options = ServerOptions.Parse(args, "actor");
 Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
 builder.WebHost.UseUrls(options.HttpUrl);
 builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));

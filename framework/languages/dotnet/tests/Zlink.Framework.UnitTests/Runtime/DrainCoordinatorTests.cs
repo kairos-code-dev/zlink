@@ -26,7 +26,7 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
-    public async Task Drain_Executor_Preserves_The_Frozen_Seven_Phase_Order()
+    public async Task Drain_Executor_Quiesces_Serving_Channels_After_Marker_Propagation_And_Before_Sealing()
     {
         var probe = new DrainExecutionProbe();
         var executor = new ZLinkFrameworkDrainExecutor(
@@ -47,6 +47,7 @@ public sealed class DrainCoordinatorTests
             new[]
             {
                 "marker",
+                "quiesce-serving-channels",
                 "seal-admission",
                 "begin-spot-drain",
                 "wait-accepted-handoffs",
@@ -58,6 +59,40 @@ public sealed class DrainCoordinatorTests
                 "cleanup-owner"
             },
             probe.Events);
+    }
+
+    [Fact]
+    public async Task Drain_Executor_Seals_Admission_After_Weight_Quiescence()
+    {
+        var probe = new DrainExecutionProbe();
+        var executor = new ZLinkFrameworkDrainExecutor(
+            probe.Operations,
+            new ZLinkLocationOptions
+            {
+                // 50ms = -5.050s polling + 5s store bound + 100ms jitter.
+                PollingInterval = TimeSpan.FromMilliseconds(-5_050)
+            });
+
+        await executor.ExecuteAsync(TimeSpan.FromSeconds(1), CancellationToken.None);
+        Assert.True(
+            probe.Events.IndexOf("quiesce-serving-channels")
+            < probe.Events.IndexOf("seal-admission"));
+    }
+
+    [Fact]
+    public async Task Serving_Weight_Store_Failure_Retries_Until_Deadline_And_Skips_Admission_Seal()
+    {
+        var probe = new DrainExecutionProbe { WeightAlwaysFails = true };
+        var executor = new ZLinkFrameworkDrainExecutor(
+            probe.Operations with { HasAutoConnect = false },
+            new ZLinkLocationOptions { PollingInterval = TimeSpan.FromMilliseconds(1) });
+        using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(30));
+
+        var reason = await executor.ExecuteAsync(TimeSpan.FromMilliseconds(30), deadline.Token);
+
+        Assert.Equal(ZLinkDrainForceReason.DrainingStatePublishFailed, reason);
+        Assert.True(probe.WeightAttempts > 1);
+        Assert.DoesNotContain("seal-admission", probe.Events);
     }
 
     [Fact]
@@ -631,13 +666,27 @@ public sealed class DrainCoordinatorTests
     {
         public List<string> Events { get; } = [];
 
+        public TaskCompletionSource ServingChannelsQuiesced { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public bool MarkerAlwaysFails { get; init; }
 
+        public bool WeightAlwaysFails { get; init; }
+
         public int MarkerAttempts { get; private set; }
+
+        public int WeightAttempts { get; private set; }
 
         public ZLinkDrainExecutionOperations Operations => new(
             HasAutoConnect: true,
             HasLocationRuntime: true,
+            QuiesceServingChannels: _ =>
+            {
+                Events.Add("quiesce-serving-channels");
+                WeightAttempts++;
+                ServingChannelsQuiesced.TrySetResult();
+                return ValueTask.FromResult(!WeightAlwaysFails);
+            },
             MarkDraining: _ =>
             {
                 Events.Add("marker");

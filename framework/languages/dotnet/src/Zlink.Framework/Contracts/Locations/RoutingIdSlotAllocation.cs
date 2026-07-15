@@ -45,7 +45,12 @@ public sealed record ZLinkRoutingIdSlotAcquireRequest(
     string OwnerId,
     TimeSpan LeaseTtl);
 
-public abstract record ZLinkRoutingIdSlotAcquireResult;
+public abstract record ZLinkRoutingIdSlotAcquireResult
+{
+    private protected ZLinkRoutingIdSlotAcquireResult()
+    {
+    }
+}
 
 public sealed record ZLinkRoutingIdSlotAcquired(ZLinkRoutingIdSlotAllocation Allocation)
     : ZLinkRoutingIdSlotAcquireResult;

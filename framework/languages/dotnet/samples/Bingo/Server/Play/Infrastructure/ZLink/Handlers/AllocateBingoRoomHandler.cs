@@ -3,21 +3,20 @@ using Bingo.Server.Play.Infrastructure.ZLink.Spots.BingoRoomSpot;
 using Bingo.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink;
-using Zlink.Framework.Contracts.Handlers;
 using Zlink.Framework.Contracts.Spots;
+using Bingo.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 
 namespace Bingo.Server.Play.Infrastructure.ZLink.Handlers;
 
-[ZLinkHandlerGroup("play")]
 internal sealed class AllocateBingoRoomHandler(
     BingoRoomAllocator allocator,
     IZLinkSpotManager spots,
     ILogger<AllocateBingoRoomHandler> logger)
-    : IZLinkRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes>
+    : IZLinkSpotRequestHandler<BingoEntrySpot, AllocateBingoRoomReq, AllocateBingoRoomRes>
 {
     public async ValueTask<AllocateBingoRoomRes> HandleAsync(
+        BingoEntrySpot entrySpot,
         AllocateBingoRoomReq request,
-        ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
@@ -35,10 +34,10 @@ internal sealed class AllocateBingoRoomHandler(
             request.ActorId,
             reservation.RoomId,
             reservation.OwnerPlayNodeRid);
-        if (reservation.LocalRoomSettings is not null)
+        if (reservation.NewRoomSettings is not null)
             await spots.GetOrCreateAsync<BingoRoom, BingoRoomSettingsPayload>(
                 RoutingId.From(reservation.RoomId),
-                BingoRoomSettingsPayloadMapper.ToPayload(reservation.LocalRoomSettings),
+                BingoRoomSettingsPayloadMapper.ToPayload(reservation.NewRoomSettings),
                 cancellationToken);
 
         return new AllocateBingoRoomRes

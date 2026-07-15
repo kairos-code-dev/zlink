@@ -9,59 +9,39 @@ internal static class SmD13HeartbeatRequestScenario
 {
     public static async Task RunAsync(string sessionAStreamEndpoint)
     {
-        IZlinkStreamConnector? stream = null;
-        try
+        var disconnected = new TaskCompletionSource<ZlinkStreamDisconnected>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var stream = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-            Exception? last = null;
-            while (DateTimeOffset.UtcNow < deadline)
+            Endpoint = new Uri(sessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions
             {
-                var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                {
-                    Endpoint = new Uri(sessionAStreamEndpoint),
-                    ConnectTimeout = TimeSpan.FromSeconds(5),
-                    RequestTimeout = TimeSpan.FromSeconds(5),
-                    Heartbeat = new ZlinkStreamHeartbeatOptions
-                    {
-                        Enabled = true,
-                        Interval = TimeSpan.FromMilliseconds(200),
-                        Timeout = TimeSpan.FromSeconds(2)
-                    },
-                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024
-                });
-                try
-                {
-                    await client.Connect.Async();
-                    await client.Request(new AuthReq("actor-sm-d13", "heartbeat", "play-a"))
-                        .PacketName("AuthReq")
-                        .Async<AuthRes>();
-                    stream = client;
-                    break;
-                }
-                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-                {
-                    last = ex;
-                    await client.DisposeAsync();
-                    await Task.Delay(500);
-                }
-            }
-
-            if (stream is null)
-                throw new InvalidOperationException(
-                    last is null
-                        ? "Actor auth did not become routable: actor-sm-d13"
-                        : $"Actor auth did not become routable: actor-sm-d13. Last error: {last.Message}",
-                    last);
-
-            var activeStream = stream;
-            await Task.Delay(600);
-            ZlinkStreamAssert.Ensure(activeStream.IsConnected, "SM-D13 heartbeat-enabled stream disconnected.");
-        }
-        finally
+                Enabled = true,
+                Interval = TimeSpan.FromMilliseconds(200),
+                Timeout = TimeSpan.FromSeconds(2)
+            },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024
+        });
+        stream.Disconnected += (message, _) =>
         {
-            if (stream is not null) await stream.DisposeAsync();
-        }
+            disconnected.TrySetResult(message);
+            return ValueTask.CompletedTask;
+        };
+        await stream.Connect.Async();
+        await stream.Request(new AuthReq("actor-sm-d13", "heartbeat", "play-a"))
+            .PacketName("AuthReq").Async<AuthRes>();
+        var alive = await stream.Request(new ActorPingReq("heartbeat-alive"))
+            .PacketName("ActorPingReq").Async<ActorPingRes>();
+        ZlinkStreamAssert.Ensure(alive.ActorId == "actor-sm-d13", "SM-D13 normal heartbeat session failed.");
+        Console.WriteLine("spot-service sm-d13 heartbeat-stop armed");
+        var stopped = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        ZlinkStreamAssert.Ensure(
+            stopped.CloseReason is ZlinkStreamCloseReason.HeartbeatTimeout or ZlinkStreamCloseReason.TransportError
+            && !stream.IsConnected,
+            $"SM-D13 expected heartbeat loss to disconnect the connector, actual {stopped.CloseReason}.");
 
         Console.WriteLine("operation SpotService.sm-d13 passed");
     }

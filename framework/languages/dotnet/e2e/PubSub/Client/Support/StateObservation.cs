@@ -2,19 +2,27 @@ namespace PubSub.Client.Support;
 
 internal static class StateObservation
 {
+    private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(100);
+
     public static async Task WaitUntilAsync(
         Func<Task<bool>> condition,
         string failureMessage,
         TimeSpan? timeout = null)
     {
-        using var timeoutSource = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(20));
-        while (!timeoutSource.IsCancellationRequested)
+        using var timeoutSource = new CancellationTokenSource(timeout ?? ReadinessTimeout);
+        try
         {
-            if (await condition()) return;
+            while (true)
+            {
+                if (await condition()) return;
 
-            await Task.Delay(100, timeoutSource.Token).ContinueWith(_ => { });
+                await Task.Delay(ReadinessPollInterval, timeoutSource.Token);
+            }
         }
-
-        throw new TimeoutException(failureMessage);
+        catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested)
+        {
+            throw new TimeoutException(failureMessage);
+        }
     }
 }

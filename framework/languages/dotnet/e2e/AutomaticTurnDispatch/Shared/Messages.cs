@@ -27,7 +27,11 @@ public sealed record AwaitEvidenceReq(string RequestId);
 
 public sealed record AwaitEvidenceRes(string RequestId, string[] Evidence);
 
-public sealed record AwaitEvidenceWaitReq(string RequestId, string Marker, int TimeoutMilliseconds = 20000);
+public sealed record AwaitEvidenceWaitReq(
+    string RequestId,
+    string Marker,
+    int TimeoutMilliseconds = 20000,
+    int MinimumCount = 1);
 
 public sealed record DelayReq(string RequestId, int DelayMs, string Marker);
 

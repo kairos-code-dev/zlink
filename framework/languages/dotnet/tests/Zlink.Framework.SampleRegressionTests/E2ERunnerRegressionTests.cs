@@ -37,6 +37,156 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void LocationMessaging_Negative_Oracles_Require_Exact_Public_Errors()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "LocationMessaging");
+        var providerEndpoints = File.ReadAllText(Path.Combine(
+            root, "Server", "Provider", "Endpoints", "ProviderEndpoints.cs"));
+        var consumerEndpoints = File.ReadAllText(Path.Combine(
+            root, "Server", "Consumer", "Endpoints", "ConsumerEndpoints.cs"));
+        var messages = File.ReadAllText(Path.Combine(root, "Shared", "Messages.cs"));
+        var scenarios = Path.Combine(root, "Client", "Scenarios");
+        var rmC2 = File.ReadAllText(Path.Combine(scenarios, "RmC2TargetedRouteScenario.cs"));
+        var rmC5 = File.ReadAllText(Path.Combine(scenarios, "RmC5MissingPacketScenario.cs"));
+        var rmC8 = File.ReadAllText(Path.Combine(scenarios, "RmC8PayloadRoundTripScenario.cs"));
+        var runtimeChannels = File.ReadAllText(Path.Combine(
+            ResolveDotnetRoot(),
+            "src", "Zlink.Framework", "Runtime", "Host", "ZLinkFrameworkRuntimeChannels.cs"));
+        var routeRequestStart = runtimeChannels.IndexOf(
+            "internal async ValueTask<TReply> SubmitRouteRequestAsync",
+            StringComparison.Ordinal);
+        var routeRequestEnd = runtimeChannels.IndexOf(
+            "internal ValueTask SendToSpotViaRouterChannelAsync",
+            routeRequestStart,
+            StringComparison.Ordinal);
+        var routeRequest = runtimeChannels[routeRequestStart..routeRequestEnd];
+
+        Assert.DoesNotContain("catch (Exception", providerEndpoints, StringComparison.Ordinal);
+        Assert.DoesNotContain("catch (Exception", consumerEndpoints, StringComparison.Ordinal);
+        Assert.DoesNotContain("bool Failed", messages, StringComparison.Ordinal);
+        Assert.Contains("ExpectedFailureRes(string ErrorKind)", messages, StringComparison.Ordinal);
+        Assert.Contains("catch (ZLinkFrameworkException error)", providerEndpoints, StringComparison.Ordinal);
+        Assert.Contains(
+            "error.Kind == ZLinkFrameworkErrorKind.RequestTargetNotFound",
+            providerEndpoints,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "error.Kind == ZLinkFrameworkErrorKind.HandlerNotFound",
+            consumerEndpoints,
+            StringComparison.Ordinal);
+
+        Assert.Contains("ZLinkFrameworkErrorKind.RequestTargetNotFound", rmC2, StringComparison.Ordinal);
+        Assert.True(
+            routeRequest.IndexOf("if (known == false)", StringComparison.Ordinal)
+            < routeRequest.IndexOf("GetRouteChannel(routerChannelId).RequestAsync", StringComparison.Ordinal),
+            "RM-C2 must reject an unknown topology target before invoking the route backend.");
+        Assert.DoesNotContain("catch (ZLinkFrameworkException", routeRequest, StringComparison.Ordinal);
+        Assert.Contains("ZLinkFrameworkErrorKind.HandlerNotFound", rmC5, StringComparison.Ordinal);
+        Assert.Contains("reason=HandlerMissing", rmC5, StringComparison.Ordinal);
+        Assert.Contains("action=ReplyError", rmC5, StringComparison.Ordinal);
+        Assert.Contains("action=Drop", rmC5, StringComparison.Ordinal);
+        Assert.Contains("ProviderEvidence.WaitFromEitherAsync", rmC5, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.WhenAll(providerAEvidence, providerBEvidence)", rmC5, StringComparison.Ordinal);
+        Assert.Contains("nameof(TimeoutException)", rmC8, StringComparison.Ordinal);
+        Assert.DoesNotContain(".Failed", rmC2 + rmC5 + rmC8, StringComparison.Ordinal);
+
+        var providerEvidence = File.ReadAllText(Path.Combine(
+            root, "Client", "Support", "ProviderEvidence.cs"));
+        Assert.Contains("Task.WhenAny(pending)", providerEvidence, StringComparison.Ordinal);
+        Assert.Contains("while (pending.Count > 0)", providerEvidence, StringComparison.Ordinal);
+        Assert.Contains("failures.Add(error)", providerEvidence, StringComparison.Ordinal);
+        Assert.Contains("cancellation.Cancel()", providerEvidence, StringComparison.Ordinal);
+        Assert.Contains("ObserveCanceledLosersAsync", providerEvidence, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LocationMessaging_Convergence_Oracles_Do_Not_Retry_Message_Traffic()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "LocationMessaging", "Client");
+        var scenarios = Path.Combine(root, "Scenarios");
+        foreach (var name in new[]
+                 {
+                     "RmB1ScaleOutScenario.cs",
+                     "RmB2ScaleInScenario.cs",
+                     "RmC4TimeoutIsolationScenario.cs",
+                     "RmC7WeightedProviderScenario.cs"
+                 })
+        {
+            var source = File.ReadAllText(Path.Combine(scenarios, name));
+            Assert.DoesNotContain("Task.Delay", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("for (var attempt", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("catch (Exception", source, StringComparison.Ordinal);
+            if (name is "RmB1ScaleOutScenario.cs" or "RmB2ScaleInScenario.cs"
+                or "RmC7WeightedProviderScenario.cs")
+                Assert.Contains(
+                    "monitor-socket|source=profile.client|kind=ConnectionReady|remote=",
+                    source,
+                    StringComparison.Ordinal);
+            if (name is "RmB1ScaleOutScenario.cs" or "RmB2ScaleInScenario.cs"
+                or "RmC7WeightedProviderScenario.cs")
+            {
+                Assert.Contains(".Zip(", source, StringComparison.Ordinal);
+                Assert.Contains(".Select(result => result.First)", source, StringComparison.Ordinal);
+                Assert.DoesNotContain(".Select(reply => reply.Value)", source, StringComparison.Ordinal);
+            }
+            if (name == "RmB2ScaleInScenario.cs")
+            {
+                Assert.Contains(
+                    "monitor-socket|source=profile.client|kind=Disconnected",
+                    source,
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain("|value=1", source, StringComparison.Ordinal);
+                Assert.Contains("first single request", source, StringComparison.Ordinal);
+                Assert.Contains("profile-request-start", source, StringComparison.Ordinal);
+                Assert.Contains("Task.WhenAll(transitionTasks)", source, StringComparison.Ordinal);
+                Assert.Contains("RunTransitionTrafficAsync", source, StringComparison.Ordinal);
+                Assert.Contains("while (!gate.IsStopped)", source, StringComparison.Ordinal);
+                Assert.Contains("ZLinkFrameworkErrorKind.RequestFailed", source, StringComparison.Ordinal);
+                Assert.Contains("WaitForPeerWeightAsync(requester, \"api-b\", 0)", source,
+                    StringComparison.Ordinal);
+                Assert.Contains("ConfirmWeightPropagationWithTrafficAsync", source, StringComparison.Ordinal);
+                Assert.Contains("consecutiveApiAReplies == 16", source, StringComparison.Ordinal);
+                Assert.Contains("reply.ProviderRid == \"api-a\"", source, StringComparison.Ordinal);
+            }
+        }
+
+        var launcher = File.ReadAllText(Path.Combine(root, "Support", "DynamicClusterLauncher.cs"));
+        Assert.Contains("ReadinessTimeout = TimeSpan.FromSeconds(3)", launcher, StringComparison.Ordinal);
+        Assert.Contains("ReadinessPollInterval = TimeSpan.FromMilliseconds(100)", launcher, StringComparison.Ordinal);
+        Assert.Contains("GracefulShutdownTimeout = TimeSpan.FromSeconds(30)", launcher, StringComparison.Ordinal);
+        Assert.Contains("WaitAsync(GracefulShutdownTimeout)", launcher, StringComparison.Ordinal);
+        Assert.Contains("error.Kind == ZLinkFrameworkErrorKind.RequestFailed", launcher, StringComparison.Ordinal);
+        Assert.Contains("startInfo.ArgumentList.Add(\"--no-build\")", launcher, StringComparison.Ordinal);
+        Assert.Contains("Path.Combine(options.LogDir, \"dynamic\", scenarioName)", launcher,
+            StringComparison.Ordinal);
+        Assert.Contains("Path.Combine(options.ConfigDir, scenarioName)", launcher, StringComparison.Ordinal);
+        Assert.Contains("var processName = $\"{scenarioName}-{name}\"", launcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("for (var i = 0; i < 120", launcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Delay(250)", launcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("catch\n", launcher, StringComparison.Ordinal);
+        Assert.DoesNotContain("catch {", launcher, StringComparison.Ordinal);
+
+        var consumerEvidence = File.ReadAllText(Path.Combine(
+            ResolveE2eRoot(), "LocationMessaging", "Server", "Consumer", "ConnectionEvidence.cs"));
+        var providerEvidence = File.ReadAllText(Path.Combine(
+            ResolveE2eRoot(), "LocationMessaging", "Server", "Provider", "Infrastructure",
+            "EvidenceStore.cs"));
+        var consumerEndpoints = File.ReadAllText(Path.Combine(
+            ResolveE2eRoot(), "LocationMessaging", "Server", "Consumer", "Endpoints",
+            "ConsumerEndpoints.cs"));
+        var providerEndpoints = File.ReadAllText(Path.Combine(
+            ResolveE2eRoot(), "LocationMessaging", "Server", "Provider", "Endpoints",
+            "ProviderEndpoints.cs"));
+        Assert.Contains("throw new TimeoutException", consumerEvidence, StringComparison.Ordinal);
+        Assert.Contains("throw new TimeoutException", providerEvidence, StringComparison.Ordinal);
+        Assert.DoesNotContain("return _entries.ToArray();", consumerEvidence, StringComparison.Ordinal);
+        Assert.DoesNotContain("|| !await _signal.WaitAsync(remaining, cancellationToken))\n                return Snapshot();",
+            providerEvidence, StringComparison.Ordinal);
+        Assert.Contains("StatusCodes.Status504GatewayTimeout", consumerEndpoints, StringComparison.Ordinal);
+        Assert.Contains("StatusCodes.Status504GatewayTimeout", providerEndpoints, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Failure_Scenarios_Observe_The_First_Profile_Request_Result()
     {
         var root = ResolveE2eRoot();
@@ -130,7 +280,8 @@ public sealed partial class RegressionTests
             "Support",
             "DynamicClusterLauncher.cs"));
 
-        Assert.Contains("\"--max-message-size\", \"2097152\"", launcher, StringComparison.Ordinal);
+        Assert.Contains("MaxMessageSize", launcher, StringComparison.Ordinal);
+        Assert.Contains("2_097_152", launcher, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -145,6 +296,64 @@ public sealed partial class RegressionTests
             "SubscriberOptions.cs"));
 
         Assert.Contains("int HandlerDelayMs = 0", options, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PubSub_Dynamic_Lifecycle_Waits_For_Public_Socket_Readiness_Before_One_Measured_Publish()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "PubSub");
+        var host = File.ReadAllText(Path.Combine(
+            root, "Server", "Subscriber", "SubscriberHostFactory.cs"));
+        var observation = File.ReadAllText(Path.Combine(
+            root, "Client", "Support", "SubscriberObservation.cs"));
+
+        Assert.Contains("AddSocketEvents(", host, StringComparison.Ordinal);
+        Assert.Contains("PubSubNames.SubscriberSocketSource", host, StringComparison.Ordinal);
+        Assert.Contains("ZLinkSocketEventKind.ConnectionReady", host, StringComparison.Ordinal);
+        Assert.Contains("WaitForConnectionAsync", observation, StringComparison.Ordinal);
+        Assert.Contains("StateObservation.WaitUntilAsync", observation, StringComparison.Ordinal);
+
+        foreach (var name in new[]
+                 {
+                     "PsA3LateSubscriberScenario.cs",
+                     "PsA4SubscriberReconnectScenario.cs",
+                     "PsB2PublisherRestartScenario.cs"
+                 })
+        {
+            var scenario = File.ReadAllText(Path.Combine(root, "Client", "Scenarios", name));
+            Assert.Contains("SubscriberObservation.WaitForConnectionAsync", scenario, StringComparison.Ordinal);
+            Assert.DoesNotContain("Task.Delay(500)", scenario, StringComparison.Ordinal);
+            Assert.DoesNotContain("i <= 42", scenario, StringComparison.Ordinal);
+            Assert.DoesNotContain("i <= 8", scenario, StringComparison.Ordinal);
+        }
+
+        var restart = File.ReadAllText(Path.Combine(
+            root, "Client", "Scenarios", "PsB2PublisherRestartScenario.cs"));
+        Assert.Contains("\"sequence\", \"3\"", restart, StringComparison.Ordinal);
+        Assert.Contains("\"seq=3|\"", restart, StringComparison.Ordinal);
+
+        var monitoringHost = File.ReadAllText(Path.Combine(
+            ResolveDotnetRoot(),
+            "src", "Zlink.Framework.AspNetCore", "ZLinkMonitoringHostedService.cs"));
+        var runnerInitialization = monitoringHost.IndexOf(
+            "_taskRunner = new ZLinkRuntimeTaskRunner",
+            StringComparison.Ordinal);
+        var monitorAttachment = monitoringHost.IndexOf(
+            "AttachSocketMonitors(frameworkRuntime);",
+            StringComparison.Ordinal);
+        var monitoringReady = monitoringHost.IndexOf(
+            "autoConnectLifecycle.SocketMonitoringReadyAsync(cancellationToken)",
+            StringComparison.Ordinal);
+        Assert.True(runnerInitialization >= 0 && runnerInitialization < monitorAttachment);
+        Assert.True(monitorAttachment < monitoringReady);
+
+        var lifecycle = File.ReadAllText(Path.Combine(
+            ResolveDotnetRoot(),
+            "src", "Zlink.Framework.AspNetCore", "ZLinkAutoConnectLifecycleCoordinator.cs"));
+        Assert.Contains("FrameworkReadyAsync", lifecycle, StringComparison.Ordinal);
+        Assert.Contains("SocketMonitoringReadyAsync", lifecycle, StringComparison.Ordinal);
+        Assert.Contains("_requiresSocketMonitoring && !_socketMonitoringReady", lifecycle,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -238,6 +447,38 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("class TransferActorAdapter", program, StringComparison.Ordinal);
         Assert.Contains("class TransferActorAdapter", runtime, StringComparison.Ordinal);
         Assert.DoesNotContain("app.MapPost", runtime, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SpotActorTransfer_Cleanup_Fencing_Uses_The_Public_Location_Store_Path()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "SpotActorTransfer");
+        var support = File.ReadAllText(Path.Combine(
+            root, "Server", "ActorNode", "CleanupGatedLocationStore.cs"));
+        var host = File.ReadAllText(Path.Combine(
+            root, "Server", "ActorNode", "ActorNodeHostFactory.cs"));
+        var b2 = File.ReadAllText(Path.Combine(
+            root, "Client", "Scenarios", "StB2SourceCleanupFailureAfterSuccessScenario.cs"));
+        var d2 = File.ReadAllText(Path.Combine(
+            root, "Client", "Scenarios", "StD2StaleSourceReleaseFencingScenario.cs"));
+
+        Assert.Contains("CleanupGatedLocationStore", host, StringComparison.Ordinal);
+        Assert.Contains("IZLinkLocationStore", support, StringComparison.Ordinal);
+        Assert.Contains("inner.RemoveActorAsync(key, owner, cancellationToken)", support,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Zlink.Framework.Runtime", support, StringComparison.Ordinal);
+
+        Assert.Contains("AllowCleanupAttemptAsync", b2, StringComparison.Ordinal);
+        Assert.Contains("source_cleanup_attempt", b2, StringComparison.Ordinal);
+        Assert.Contains("ShutdownAndWaitUnavailableAsync", b2, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReleaseCleanupGateAsync", b2, StringComparison.Ordinal);
+
+        Assert.Contains("before-stale-cleanup-release", d2, StringComparison.Ordinal);
+        Assert.Contains("location_snapshot_before_cleanup", d2, StringComparison.Ordinal);
+        Assert.Contains("ReleaseCleanupGateAsync", d2, StringComparison.Ordinal);
+        Assert.Contains("source_cleanup_completed", d2, StringComparison.Ordinal);
+        Assert.Contains("location_snapshot_after_cleanup", d2, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Delay", b2 + d2, StringComparison.Ordinal);
     }
 
     [Fact]

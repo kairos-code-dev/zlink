@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Diagnostics;
 using SpotService.Server.Session.Handlers;
 using SpotService.Server.Session.Spots;
@@ -19,6 +21,8 @@ internal static class SessionHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -36,7 +40,7 @@ internal static class SessionHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -52,24 +56,24 @@ internal static class SessionHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
-                .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
+                .EnableServer(Require(options.ControlEndpoint, "ControlEndpoint"))
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddHandlerGroup("play");
             framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                                .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+                                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);
             framework.AddStreamNode(SpotServiceNames.StreamNode)
-                .Bind(Require(options.StreamEndpoint, "--stream-endpoint"))
+                .Bind(Require(options.StreamEndpoint, "StreamEndpoint"))
                 .RegisterSession<ScenarioSession>();
             if (!string.IsNullOrWhiteSpace(options.TlsStreamEndpoint))
                 framework.AddStreamNode(SpotServiceNames.TlsStreamNode)
                     .Bind(options.TlsStreamEndpoint)
                     .SetTlsServer(
-                        Require(options.TlsCertPath, "--tls-cert-path"),
-                        Require(options.TlsKeyPath, "--tls-key-path"))
+                        Require(options.TlsCertPath, "TlsCertPath"),
+                        Require(options.TlsKeyPath, "TlsKeyPath"))
                     .RegisterSession<ScenarioSession>();
         });
 

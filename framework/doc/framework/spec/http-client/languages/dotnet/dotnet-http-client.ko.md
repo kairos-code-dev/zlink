@@ -3,8 +3,8 @@
 > 사용법 중심 문서는 [사용자 가이드](../../../../dotnet/http-client/README.ko.md)를 본다.
 > **언어 중립 공통 계약은 [공통 spec](../../README.ko.md)이 정본**이며,
 > 이 문서는 공통 계약에 대한 .NET 고유 편차와 구현 매핑만 기술한다.
-> 실제 계약의 단일 기준은 공통 spec + `src/Zlink.HttpClient/**` 공개 타입과
-> `Zlink.HttpClient.UnitTests` 회귀 테스트다.
+> 공개 계약의 기준은 공통 spec과 이 언어별 spec이다. `src/Zlink.HttpClient/**`의 공개 타입과
+> `Zlink.HttpClient.UnitTests` 회귀 테스트는 구현이 그 계약을 지키는지 검증한다.
 
 ## 1. 목적
 
@@ -51,6 +51,15 @@ server runtime assembly를 함께 배포하지 않아도 같은 오류·codec �
 - `RawHttpResponse` { `Status`, `Headers`, `Body` }.
 - `HttpResponse<T>` { `Status`, `Headers`, `Body`, `RawBody` }.
 - `ZLinkHttpMethod` enum.
+
+callback overload가 받는 delegate도 공개 계약에 포함한다. 완료 시 `error`와 `response` 중 정확히
+하나만 null이 아니다.
+
+```csharp
+public delegate void ZLinkHttpCallback<T>(
+    Exception? error,
+    HttpResponse<T>? response);
+```
 
 ## 4. 실행 모델
 

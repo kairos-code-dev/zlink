@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Host;
 
-internal sealed class ZLinkActorBoundSessionRegistry(ZLinkFrameworkRuntime runtime)
+internal sealed class ZLinkActorBoundSessionRegistry(Action<string, string> unbind)
 {
     private readonly Dictionary<string, List<Entry>> _entries = new(StringComparer.Ordinal);
     private readonly object _gate = new();
@@ -55,7 +55,7 @@ internal sealed class ZLinkActorBoundSessionRegistry(ZLinkFrameworkRuntime runti
         }
 
         foreach (var entry in entries)
-            runtime.UnbindActorSession(entry.ActorId, entry.BindingToken);
+            unbind(entry.ActorId, entry.BindingToken);
     }
 
     public void Clear()

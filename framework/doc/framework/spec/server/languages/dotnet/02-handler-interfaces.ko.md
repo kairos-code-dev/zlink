@@ -3339,6 +3339,19 @@ public abstract record ZLinkSpotEvent(
 }
 ```
 
+위 location event 기반 record들과 `ZLinkSpotEvent`는 외부 assembly에서 임의로 파생할 수 없는 닫힌
+결과 집합이다. 실제 선언은 각 기반 record 안에 다음 접근성의 생성자를 두며, 위 positional 표기는
+파생 record의 공통 필드를 읽기 쉽게 나타낸 축약이다.
+
+```csharp
+private protected ZLinkLocationRuntimeEvent(string sourceName, DateTimeOffset timestamp);
+private protected ZLinkLocationPeerEvent(string sourceName, DateTimeOffset timestamp);
+private protected ZLinkLocationSpotEvent(string sourceName, DateTimeOffset timestamp);
+private protected ZLinkLocationActorEvent(string sourceName, DateTimeOffset timestamp);
+private protected ZLinkLocationRouteEvent(string sourceName, DateTimeOffset timestamp);
+private protected ZLinkSpotEvent(string sourceName, DateTimeOffset timestamp);
+```
+
 `TimerHandlerFailed` 와 `TimerStoppedAfterUnhandledException` 은 polling interval 을
 기다리는 주기적 상태 비교 event 가 아니다. timer handler 에서 처리되지 않은 예외가
 발생한 시점에 즉시 발행된다. exception 객체 자체는 public payload 에 넣지 않고,
@@ -3535,7 +3548,10 @@ public sealed record ZLinkDrainEvent(
 {
     public string SourceName => "drain";
 }
-public abstract record ZLinkDrainResult;
+public abstract record ZLinkDrainResult
+{
+    private protected ZLinkDrainResult() { }
+}
 public sealed record Drained : ZLinkDrainResult;
 public sealed record ForceStopped(ZLinkDrainForceReason Reason) : ZLinkDrainResult;
 public interface IZLinkDrainControl
@@ -3583,6 +3599,11 @@ await drain.AwaitDrainedAsync(ct);
 - **왜 앱이 `Drain`을 안 불러도 되나:** host 종료 신호 처리를 framework가 흡수한다. `IZLinkDrainControl`
   은 배포 자동화가 세밀 제어할 때만 쓰는 탈출구다.
 - `IsReady`는 술어 프로퍼티다(`Draining`이면 false). readiness probe가 이 값을 그대로 읽는다.
+- location marker의 전파 상한 동안에는 기존 channel·route 연결의 request를 계속 처리한다. 이 상한이
+  끝나면 framework가 server·route serving socket의 weight를 0으로 바꾸고 신규 request admission을
+  닫는다. weight 변경은 peer에 비동기로 전달되므로 고정 대기나 local getter로 전파 완료를 보장하지
+  않는다. 실제 전파 여부는 공통 계약 §3.2에 따라 연결된 peer의 실제 요청 트래픽으로 검증한다.
+  application은 socket weight나 disconnect 순서를 따로 조정하지 않는다.
 
 ### 10.8 Session/actor dispatch 오류 표현 (`.NET` exception)
 
@@ -4119,6 +4140,29 @@ public interface IZLinkCodecRegistrar
         IZLinkMessageSerializer serializer,
         Func<Type, bool> canSerialize);
     void AddStreamCodec(string contentType, ZlinkStreamCodec codec);
+}
+```
+
+별도 codec package가 제공하는 공개 extension은 server serializer 등록과 Stream Connector의 typed
+payload codec을 같은 객체로 연결한다. 두 클래스의 공개 interface는 다음과 같다.
+
+```csharp
+public sealed class ZLinkMessagePackCodec
+    : IZLinkCodecExtension, IZlinkStreamPayloadCodec
+{
+    public static ZLinkMessagePackCodec Default { get; }
+    public void Register(IZLinkCodecRegistrar codecs);
+    public ZlinkStreamEncodedPayload Encode<TPayload>(TPayload payload);
+    public TPayload Decode<TPayload>(ZlinkStreamEncodedPayload payload);
+}
+
+public sealed class ZLinkProtobufCodec
+    : IZLinkCodecExtension, IZlinkStreamPayloadCodec
+{
+    public static ZLinkProtobufCodec Default { get; }
+    public void Register(IZLinkCodecRegistrar codecs);
+    public ZlinkStreamEncodedPayload Encode<TPayload>(TPayload payload);
+    public TPayload Decode<TPayload>(ZlinkStreamEncodedPayload payload);
 }
 ```
 
@@ -4889,7 +4933,7 @@ NuGet package에서 **한 항목도 빠뜨리지 않고 검사하기 위한 기�
 
 ### 17.1 API snapshot
 
-`framework/languages/dotnet/contract/api/`에는 정식 배포 대상 assembly 일곱 개의 모든 public type과 member를 기록한다.
+`framework/languages/dotnet/contract/api/`에는 정식 배포 대상 assembly 여덟 개의 모든 public type과 member를 기록한다.
 각 파일은 다음 항목을 구분한다.
 
 - assembly와 type 소유권

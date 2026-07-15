@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using GameQuest.QuestMission.Application;
 using GameQuest.QuestMission.Infrastructure.Store;
 using GameQuest.QuestMission.Infrastructure.ZLink;
@@ -22,6 +24,8 @@ internal static class Program
         var missionName = configuration.InstanceName;
         var instance = topology.ForQuestMission(missionName);
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.WebHost.UseUrls(topology.MissionHttpBaseUrl(missionName));
         SampleLogging.Configure(
             builder.Logging,

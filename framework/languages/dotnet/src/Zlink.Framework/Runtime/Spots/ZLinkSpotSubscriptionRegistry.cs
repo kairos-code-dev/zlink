@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -24,12 +25,56 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         _registrations.Add(new ZLinkSpotSubscriptionRegistration(topic, spotType, method));
     }
 
+    public async ValueTask BindAsync(
+        object spot,
+        IZLinkBackendSpot nativeSpot,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        foreach (var (topic, handlers) in BuildDescriptors(spot))
+        {
+            _descriptorsByTopic.Add(topic, handlers);
+            await SetSubscriptionAsync(nativeSpot, topic, timeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
     public void Bind(object spot, IZLinkBackendSpot nativeSpot)
     {
         foreach (var (topic, handlers) in BuildDescriptors(spot))
         {
             _descriptorsByTopic.Add(topic, handlers);
             nativeSpot.SetSubscription(topic);
+        }
+    }
+
+    private static async ValueTask SetSubscriptionAsync(
+        IZLinkBackendSpot nativeSpot,
+        string topic,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var started = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                nativeSpot.SetSubscription(topic);
+                return;
+            }
+            catch (ZlinkConfigException error)
+                when (error.Result == ZlinkConfigException.ErrorCode.InternalError
+                      && Stopwatch.GetElapsedTime(started) < timeout)
+            {
+                var remaining = timeout - Stopwatch.GetElapsedTime(started);
+                await Task.Delay(
+                        remaining < TimeSpan.FromMilliseconds(25)
+                            ? remaining
+                            : TimeSpan.FromMilliseconds(25),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
     }
 

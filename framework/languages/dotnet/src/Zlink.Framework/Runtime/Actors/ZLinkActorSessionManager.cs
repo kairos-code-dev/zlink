@@ -7,7 +7,7 @@ internal sealed partial class ZLinkActorSessionManager(
     ZLinkLocationLifecycle? locationLifecycle,
     IZLinkBoundSessionService boundSessionService)
 {
-    private readonly ZLinkActorSessionRegistry _actorSessions = new();
+    private readonly ZLinkActorSessionRegistry _actorSessions = new(runtime.LogActorHandoff);
 
     private ZLinkLocationLifecycle? LocationLifecycle { get; } = locationLifecycle;
 

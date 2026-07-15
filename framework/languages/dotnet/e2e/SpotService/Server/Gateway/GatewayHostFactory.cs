@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -29,6 +31,8 @@ internal static class GatewayHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -44,7 +48,7 @@ internal static class GatewayHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -58,11 +62,11 @@ internal static class GatewayHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
-                .EnableClient(Require(options.ExternalSpotEndpoint, "--external-spot-endpoint"));
+                .EnableClient(Require(options.ExternalSpotEndpoint, "ExternalSpotEndpoint"));
             framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"));
+                .EnablePubSub(Require(options.SpotPubEndpoint, "SpotPubEndpoint"));
         });
 
         var app = builder.Build();
@@ -168,6 +172,24 @@ internal static class GatewayHostFactory
                     false,
                     ex.GetType().Name));
             }
+        });
+        app.MapPost("/actor/wait-missing", async (
+            ActorMissingWaitReq request,
+            IZLinkActorDirectory actorDirectory,
+            CancellationToken cancellationToken) =>
+        {
+            var deadline = DateTimeOffset.UtcNow
+                           + TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                if (await actorDirectory.FindAsync(request.ActorId, cancellationToken) is null)
+                    return Results.Ok();
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            }
+
+            return Results.Problem(
+                $"Actor route '{request.ActorId}' remained visible.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {

@@ -31,7 +31,7 @@ internal static class ZLinkActorSessionForwarder
                 forwardingLease!);
         if (route == ZLinkActorFrameRoute.Stale)
         {
-            ZLinkFrameworkDebugLog.SpotDiscovery(
+            runtime.LogActorHandoff(
                 $"stale_fail_fast actor={frameActor.ActorId} generation={frameActor.Generation}");
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorLocationStale,
@@ -39,7 +39,7 @@ internal static class ZLinkActorSessionForwarder
         }
 
         if (route == ZLinkActorFrameRoute.Forward)
-            ZLinkFrameworkDebugLog.SpotDiscovery(
+            runtime.LogActorHandoff(
                 $"straggler_forward actor={frameActor.ActorId} generation={frameActor.Generation}");
 
         return route == ZLinkActorFrameRoute.Forward;

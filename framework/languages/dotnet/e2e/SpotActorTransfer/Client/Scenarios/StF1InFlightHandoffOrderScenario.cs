@@ -19,7 +19,8 @@ internal static class StF1InFlightHandoffOrderScenario
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F1|{actorId}|joined_wait|{spotRid}"]);
         foreach (var marker in new[] { "P1", "P2", "P3" })
             await context.SendRefAsync(context.NodeA, actorId, oldRef, new HandoffPacket("ST-F1", marker));
-        await Task.Delay(300);
+        await context.WaitRuntimeEvidenceAsync(context.NodeA,
+            $"handoff_backlog actor={actorId} arrival=2");
         var sourceEvidence = await context.GetEvidenceAsync(context.NodeA);
         SpotActorTransferScenarioContext.RequireNoContains(sourceEvidence, $"ST-F1|{actorId}|handoff_packet|", "ST-F1 packet ran on the source node.");
 

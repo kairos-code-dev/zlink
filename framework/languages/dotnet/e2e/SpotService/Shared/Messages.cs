@@ -123,6 +123,8 @@ public sealed record ActorPushNotify(string ActorId, string Value, int Seen);
 
 public sealed record ActorPushByActorReq(string ActorId, string Value);
 
+public sealed record ActorMissingWaitReq(string ActorId, int TimeoutMilliseconds = 10000);
+
 public sealed record ActorPushByActorRes(string ActorId, string Value, bool Delivered, string ErrorKind);
 
 public sealed record ComplexActorReq(

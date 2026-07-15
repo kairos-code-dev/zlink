@@ -19,19 +19,9 @@ internal static class SmD14TlsStreamValidationScenario
             MaxReceivedMessages = 1024,
             SkipServerCertificateValidation = false
         });
-        var strictTlsRejected = false;
-        try
-        {
-            await strict.Connect.Async();
-        }
-        catch
-        {
-            strictTlsRejected = true;
-        }
-
-        ZlinkStreamAssert.Ensure(
-            strictTlsRejected,
-            "SM-D14 expected strict TLS validation to reject the self-signed stream certificate.");
+        await ZlinkStreamAssert.ExpectFailureAsync(
+            cancellationToken => strict.Connect.Async(cancellationToken),
+            nameof(ZlinkStreamErrorCode.TlsValidationFailed));
 
         await using var tls = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using SpotActorTransfer.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
@@ -12,24 +14,36 @@ internal static class ActorNodeHostFactory
         var options = ServerOptions.Parse(args, "actor-node");
         Directory.CreateDirectory(options.LogDir);
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
             console.SingleLine = true;
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
+        var runtimeEvidence = new RuntimeEvidenceStore();
+        builder.Logging.AddProvider(new ActorHandoffEvidenceLoggerProvider(runtimeEvidence));
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
+        var evidence = new EvidenceStore(options.Rid, options.EvidenceFile);
+        var cleanupGates = new ActorCleanupGateStore(evidence);
+        builder.Services.AddSingleton(evidence);
+        builder.Services.AddSingleton(runtimeEvidence);
         builder.Services.AddSingleton(new DomainStateStore(options.LogDir));
         builder.Services.AddSingleton<JoinedGateStore>();
         builder.Services.AddSingleton<TransferGateStore>();
+        builder.Services.AddSingleton(cleanupGates);
         builder.Services.AddSingleton<ActorJoinTargetUseCase>();
         builder.Services.AddZLinkFramework(framework =>
         {
+            framework.DefaultRequestTimeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMilliseconds);
             framework.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
-            framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
+            var redisStore = new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)
-                .SetKeyPrefix(options.RedisKeyPrefix)));
+                .SetKeyPrefix(options.RedisKeyPrefix));
+            framework.AddLocationStore(new CleanupGatedLocationStore(
+                redisStore,
+                cleanupGates));
             var locations = framework.ConfigureLocations();
             locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
             locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);

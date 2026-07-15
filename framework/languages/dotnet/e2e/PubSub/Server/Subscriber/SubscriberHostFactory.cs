@@ -4,6 +4,7 @@ using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Eventing;
 
 namespace PubSub.Server.Subscriber;
 
@@ -16,7 +17,7 @@ internal static class SubscriberHostFactory
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddSingleton(new HandlerDelayOptions(options.HandlerDelayMs));
-
+        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEvidenceRecorder>();
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -29,7 +30,11 @@ internal static class SubscriberHostFactory
                 .EnableSubscriber()
                 .AddPublishHandler<EventMsgHandler, EventMsg>("EventMsg");
         });
-
+        builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
+            PubSubNames.SubscriberSocketSource,
+            ZLinkSocketEventKind.Connected,
+            ZLinkSocketEventKind.ConnectionReady,
+            ZLinkSocketEventKind.Disconnected));
         var app = builder.Build();
         app.MapOperationalEndpoints("subscriber", options.Rid);
         return app;

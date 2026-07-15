@@ -48,6 +48,29 @@ public sealed class ContractSurfaceCoverage
     }
 
     [Fact]
+    public void Closed_result_and_event_roots_cannot_be_subclassed_outside_the_framework_assembly()
+    {
+        Type[] roots =
+        [
+            typeof(ZLinkActorJoinResult), typeof(ZLinkActorJoinResult<>),
+            typeof(ZLinkDrainResult), typeof(ZLinkLocationRuntimeEvent),
+            typeof(ZLinkLocationPeerEvent), typeof(ZLinkLocationSpotEvent),
+            typeof(ZLinkLocationActorEvent), typeof(ZLinkLocationRouteEvent),
+            typeof(ZLinkSpotEvent), typeof(ZLinkRoutingIdSlotAcquireResult)
+        ];
+
+        foreach (var root in roots)
+        {
+            var constructors = root.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Where(constructor => constructor.GetParameters() is not [{ ParameterType: var parameterType }]
+                                      || parameterType != root)
+                .ToArray();
+            Assert.NotEmpty(constructors);
+            Assert.All(constructors, constructor => Assert.True(constructor.IsFamilyAndAssembly));
+        }
+    }
+
+    [Fact]
     public void Redis_Extension_Remains_A_Separate_Package_Without_A_Backend_Specific_Registration_API()
     {
         var framework = typeof(IZLinkFrameworkOptions).Assembly;

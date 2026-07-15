@@ -23,12 +23,13 @@ try
         ["PS-A3"] = () => PsA3LateSubscriberScenario.RunAsync(
             publisher,
             lateSubscriber,
+            subscribers,
             processLauncher,
             options.LateSubscriberUrl),
         ["PS-A4"] = () => PsA4SubscriberReconnectScenario.RunAsync(
             publisher,
             lateSubscriber,
-            subscribers.Take(2).ToArray(),
+            subscribers,
             processLauncher,
             options.LateSubscriberUrl),
         ["PS-B1"] = () => PsB1SlowSubscriberScenario.RunAsync(publisher, subscribers.Take(2).ToArray(), subscribers[^1]),

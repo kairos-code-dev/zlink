@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -25,6 +27,8 @@ internal static class Program
         var apiName = configuration.InstanceName;
         var streamEndpoint = configuration.StreamBindEndpoint;
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.WebHost.UseUrls(
             string.Equals(apiName, "api-b", StringComparison.Ordinal)
                 ? topology.GameApiBHttpBaseUrl

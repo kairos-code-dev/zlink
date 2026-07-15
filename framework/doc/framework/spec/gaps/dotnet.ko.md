@@ -792,3 +792,59 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
   — 재검증 시 `ExpectNoPushAsync`는 DeliveryDispatch의 현재 코드와 해당 파일 이력에 없었으므로 새 지역 helper를 만들지 않았다. 남아 있던 `WaitForStatusSequenceAsync`를 typed `WaitForSequence`로 삭제하고, courier-a가 수락한 배송이 courier-b로 잘못 재할당되지 않는 검증은 typed `ExpectNone`으로 직접 추가했다. `ZlinkStreamAssert.Ensure`도 필수 메시지와 함께 사용한다. sample regression **59/59**와 실제 DeliveryDispatch runner의 `deliverydispatch-runner-evidence=completed`가 통과했다. 코드 커밋 `8da696b1f`.
 
 POSD 재검토에서는 수신 callback을 따로 구독하는 방식, 시나리오가 `WaitFor`를 반복하는 방식, 기존 수신 큐와 builder가 순서와 전체 timeout을 소유하는 방식을 비교했다. 기존 수신 큐를 사용하는 방식을 선택해 queue 소비 규칙과 timeout 계산을 connector 안에 유지했다. status 전용 API와 도메인 REST 대기는 추가하지 않았고, 대상인 DeliveryDispatch에는 두 지역 helper 이름이 남지 않았다. **LOOP CLEAN**.
+
+## 2026-07-16 최종 구현·재리뷰
+
+이 절은 위의 과거 실행 수치보다 최신 checkout을 기준으로 한다. 정식 spec, 언어별 interface,
+sample·E2E 공통 문서와 구현을 다시 대조했고 다음 불일치와 실제 원인을 수정했다.
+
+- location provider 증거 대기는 먼저 완료된 한 provider의 빈 결과를 전체 실패로 확정했다.
+  `ProviderEvidence`가 두 provider 중 첫 **성공 결과**를 선택하고 나머지 작업을 취소·관찰하도록 고쳤다.
+- graceful drain은 저장소에 weight 0 row가 반영되기 전에 요청을 보내면 stale weight로 선택될 수 있었다.
+  drain의 게시 완료를 동기화하고 `RM-B2`가 실제 지속 트래픽으로 수렴을 확인하도록 고쳤다.
+- bound session은 actor 이동 뒤 directory의 새 참조와 session에 저장된 이전 참조가 달라졌다.
+  relay coordinator가 logical actor id를 기준으로 현재 참조를 확인하고 handoff이면 내부에서 재결합하며,
+  actor 자체가 사라진 경우에는 `ActorRouteNotFound`로 끝내도록 고쳤다.
+- 동적 user Spot 생성 직후 native subscription receiver attachment가 일시적으로 internal error 704를
+  반환할 수 있었지만 startup 경로가 이를 영구 생성 실패로 확정했다. 동적 activation 경계에서 이 오류만
+  전체 request timeout 안에서 재시도하고, 다른 설정 오류는 즉시 전달하도록 고쳤다.
+- Bingo API가 load-balanced allocation channel에 요청하면서 별도 preferred owner를 payload로 전달해,
+  실제 handler node와 보고된 owner가 달라질 수 있었다. API가 정식 Entry Spot route로 선택한 play node에
+  직접 요청하고 그 node가 room을 만들도록 고쳤다.
+- `RM-B3`는 crash 전에 시작한 요청만 관찰한 뒤 stale row 제거를 기다려, 장애 직후 신규 부하 지속을
+  증명하지 못했다. crash 직후부터 row 제거까지 무지정 request worker를 계속 실행하고, B 처리 증거가
+  확인된 시점에도 A row가 남아 있음을 단언한 뒤 expiry 후 수렴과 targeted NotFound를 확인한다.
+- sample·E2E의 stream 실패·순서·무수신 단언을 connector의 `ZlinkStreamAssert`, `WaitForSequence`,
+  `ExpectNone`으로 옮겼다. 역할별 설정은 typed JSON 객체를 생성하고 framework host에는
+  `--config <path>`만 전달하며, Bingo와 DeliveryDispatch runner artifact는 실행별 임시 디렉토리로
+  격리한다.
+
+### POSD·DDD 재검토
+
+| 위험 신호 | 검토한 대안 | 선택한 설계 |
+|---|---|---|
+| handler와 caller가 actor 이동을 각각 추적함 | caller 재결합 / 실패 후 재시도 / relay coordinator가 현재 참조 확인 | coordinator가 directory 지식과 재결합을 숨긴다. caller 표면은 바뀌지 않는다. |
+| subscription 일시 오류를 sample이 회피할 가능성 | subscribe 제거 / sample retry / activation 내부 bounded retry | framework activation이 native attachment의 일시 오류만 흡수한다. |
+| Bingo의 owner 선호와 실제 실행 위치가 분리됨 | load balance 뒤 owner 보고 / receiver가 owner를 재선택 / 선택한 Entry Spot으로 direct route | allocation 위치와 room owner를 같은 경계로 만들었다. |
+| 장애 수렴을 고정 sleep으로 추정함 | 긴 sleep / row만 확인 / 조건 wait와 지속 실제 traffic | role server의 bounded wait와 실제 request 결과를 함께 사용한다. |
+| stream 검증 정책이 시나리오마다 중복됨 | 지역 helper 유지 / 범용 test library 추가 / connector 수신 큐 표면 재사용 | connector가 순서·timeout·failure kind를 소유하고 sample은 업무 단언만 남긴다. |
+| wire DTO가 domain 상태와 생성 책임을 함께 가짐 | DTO 유지 / 범용 mapper / application 결과와 domain reservation 분리 | Bingo reservation과 allocation 결과를 분리해 domain이 transport를 알지 않는다. |
+
+새 public API, raw-frame 우회, message별 codec 등록, binding non-public reflection은 추가하지 않았다.
+Domain 디렉토리에서 framework·Redis·HTTP 의존도 다시 검색했으며 새 의존은 없다.
+
+### 최종 증거
+
+- solution build: warning 0, error 0
+- framework unit **692/692**, contract **45/45**, stream connector **140/140**,
+  HTTP client **63/63**, sample regression **110/110**
+- Redis 저장소의 환경 독립 항목 **43/43**. 교차 언어 2건은 Node fixture와 실행별 Redis endpoint를
+  준비하는 전용 runner의 기존 **2/2** 증거를 유지한다.
+- 실제 runner: 수정 후 `RM-B3` **PASS (50s)**, Bingo 전체와 DeliveryDispatch 전체 PASS
+- 여덟 package archive·export, aggregate consumer와 HTTP client 단독 consumer 검증 PASS
+- API snapshot 8개, package snapshot 8개, 정식 문서 SHA-256 ledger를 최신 checkout과 다시 대조했다.
+
+독립 재리뷰는 RM-B3 stale-row 구간, Bingo allocation, Spot subscription retry, actor ref 재결합,
+first-success evidence, typed 설정, connector helper 이관과 ledger를 다시 확인했고
+**NO HIGH/MEDIUM NET-NEW ISSUES**로 판정했다. 현재 확인된 미완료 .NET spec gap은 없다.
+**LOOP CLEAN**.

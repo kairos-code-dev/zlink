@@ -100,10 +100,14 @@ internal sealed class ZLinkAutoConnectReconciler
         Interlocked.Exchange(ref _peerMetricRegistration, null)?.Dispose();
     }
 
-    internal void SetLocalWeight(uint weight)
-    {
-        Volatile.Write(ref _pendingLocalWeight, weight);
-    }
+    internal void SetLocalWeight(uint weight) => Volatile.Write(ref _pendingLocalWeight, weight);
+
+    internal ValueTask<bool> SetLocalWeightAsync(
+        uint weight,
+        CancellationToken cancellationToken = default) =>
+        PublishLocalMutationAsync(
+            row => row with { Weight = weight },
+            cancellationToken);
 
     internal bool HasPendingTargets
     {
@@ -124,12 +128,19 @@ internal sealed class ZLinkAutoConnectReconciler
 
     internal async ValueTask<bool> MarkDrainingAsync(
         CancellationToken cancellationToken = default)
+        => await PublishLocalMutationAsync(
+            row => row with { Draining = true },
+            cancellationToken).ConfigureAwait(false);
+
+    private async ValueTask<bool> PublishLocalMutationAsync(
+        Func<ZLinkPeerLocation, ZLinkPeerLocation> mutation,
+        CancellationToken cancellationToken)
     {
         await _reconcileGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_localRow is null) return true;
-            _localRow = _localRow with { Draining = true };
+            _localRow = mutation(_localRow);
             if (!_localPublished)
                 await PublishLocalAsync(cancellationToken).ConfigureAwait(false);
             if (!_localPublished || _localGeneration <= 0) return false;

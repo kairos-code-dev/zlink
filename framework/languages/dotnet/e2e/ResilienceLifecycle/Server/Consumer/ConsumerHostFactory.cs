@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +28,8 @@ internal static class ConsumerHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -174,6 +178,7 @@ internal static class ConsumerHostFactory
     static IHost CreateClientHost(ConsumerOptions options, string traceLabel)
     {
         return Host.CreateDefaultBuilder()
+            .ConfigureAppConfiguration((_, configuration) => configuration.Sources.Clear())
             .ConfigureServices(services =>
             {
                 services.AddZLinkFramework(framework =>

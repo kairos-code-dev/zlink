@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
@@ -12,6 +14,8 @@ internal sealed class ApiServer(SampleSettings settings)
     public WebApplication Build()
     {
         var builder = WebApplication.CreateBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(builder.Logging, settings.LogDirectory, "api");
         builder.WebHost.UseUrls(settings.ApiBindUrl);
         builder.Services.AddSingleton(settings);

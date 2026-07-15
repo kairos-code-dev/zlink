@@ -25,13 +25,17 @@ public sealed record PeerLocationWaitReq(
     string NodeRid,
     bool Present,
     string? Endpoint = null,
+    uint? Weight = null,
     int TimeoutMilliseconds = 30000);
 
 public sealed record LocationStatusRes(
     bool StoreHealthy,
     bool OwnerLeaseHealthy);
 
-public sealed record EvidenceWaitReq(string Contains, int TimeoutMilliseconds = 10000);
+public sealed record EvidenceWaitReq(
+    string Contains,
+    int TimeoutMilliseconds = 10000,
+    int AfterCount = 0);
 
 public sealed record EvidenceCountWaitReq(
     string Contains,
@@ -53,11 +57,11 @@ public sealed record WorkflowRes(string Value, string ProviderRid);
 
 public sealed record ScenarioRoutePing(string Value);
 
+public sealed record TargetedRoutePing(string TargetRid, string Value);
+
 public sealed record ScenarioRoutePong(
     string Value,
     string ProviderRid,
     string SourceRid);
 
-public sealed record RouteMissingRes(bool Failed);
-
-public sealed record RequestFailureRes(bool Failed, string FailureType);
+public sealed record ExpectedFailureRes(string ErrorKind);

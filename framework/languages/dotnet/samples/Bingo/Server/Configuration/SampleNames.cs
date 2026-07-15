@@ -5,7 +5,8 @@ namespace Bingo.Server.Configuration;
 public static class SampleNames
 {
     public const string ApiChannel = "bingo.api";
-    public const string PlayChannel = "bingo.play";
+    public const string ApiAllocationGroup = "bingo.api";
+    public const string PlayAllocationGroup = "bingo.play";
     public const string RouterChannel = "bingo.gateway";
     public const string RewardTopic = "bingo.room.reward";
     public const string StreamNode = "bingo.client.stream";

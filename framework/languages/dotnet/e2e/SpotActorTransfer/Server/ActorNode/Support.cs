@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using SpotActorTransfer.Shared;
 
 namespace SpotActorTransfer.ActorNode;
@@ -12,7 +13,8 @@ internal sealed record ServerOptions(
     string RedisKeyPrefix,
     string RouterEndpoint,
     string EvidenceFile,
-    string LogDir)
+    string LogDir,
+    int RequestTimeoutMilliseconds)
 {
     public static ServerOptions Parse(string[] args, string role)
         => E2eConfiguration.Load<ServerOptions>(args);
@@ -48,6 +50,56 @@ internal sealed class EvidenceStore(string nodeRid, string path)
         }
 
         return Snapshot();
+    }
+}
+
+internal sealed class RuntimeEvidenceStore
+{
+    private readonly ConcurrentQueue<string> _items = new();
+
+    public void Add(string marker) => _items.Enqueue(marker);
+
+    public async ValueTask<string[]> WaitUntilAsync(
+        string[] containsAll,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var snapshot = _items.ToArray();
+            if (containsAll.All(expected => snapshot.Any(item =>
+                    item.Contains(expected, StringComparison.Ordinal))))
+                return snapshot;
+            await Task.Delay(50, cancellationToken);
+        }
+
+        return _items.ToArray();
+    }
+}
+
+internal sealed class ActorHandoffEvidenceLoggerProvider(RuntimeEvidenceStore evidence) : ILoggerProvider
+{
+    public ILogger CreateLogger(string categoryName) =>
+        string.Equals(categoryName, "Zlink.Framework.ActorHandoff", StringComparison.Ordinal)
+            ? new ActorHandoffEvidenceLogger(evidence)
+            : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+    public void Dispose()
+    {
+    }
+
+    private sealed class ActorHandoffEvidenceLogger(RuntimeEvidenceStore evidence) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (IsEnabled(logLevel)) evidence.Add(formatter(state, exception));
+        }
     }
 }
 

@@ -108,6 +108,7 @@ start_node() {
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" \
+    --request-timeout-milliseconds 3000 \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR"
   setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
@@ -228,7 +229,7 @@ fi
 
 require_runtime_marker() {
   local marker="$1"
-  if ! grep -h -q "$marker" "$LOG_DIR"/actor-*.stderr.log; then
+  if ! grep -h -q "$marker" "$LOG_DIR"/actor-*.*.log; then
     echo "Missing runtime marker '$marker'. Logs: $LOG_DIR" >&2
     return 1
   fi
@@ -245,7 +246,7 @@ import sys
 
 log_dir, actor_prefix, first, second = sys.argv[1:]
 lines = []
-for path in pathlib.Path(log_dir).glob("actor-*.stderr.log"):
+for path in pathlib.Path(log_dir).glob("actor-*.*.log"):
     lines.extend(path.read_text().splitlines())
 actor_pattern = re.compile(rf"actor=({re.escape(actor_prefix)}[^ ]+)")
 actors = {m.group(1) for line in lines if (m := actor_pattern.search(line))}
@@ -258,6 +259,10 @@ if first_index is None or second_index is None or first_index >= second_index:
     raise SystemExit(f"Marker order failed for {actor}: {first}={first_index}, {second}={second_index}")
 PY
 }
+
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-C1"* ]]; then
+  require_runtime_marker pending_admission_expired
+fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F1"* ]]; then
   require_runtime_marker handoff_backlog
@@ -272,15 +277,15 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F4"* ]]; then
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F5"* ]]; then
   require_runtime_marker mapping_evicted
-  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-a target=actor-b entries=1' "$LOG_DIR"/actor-a.stderr.log
-  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-b target=actor-c entries=1' "$LOG_DIR"/actor-b.stderr.log
-  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-a.stderr.log
-  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-b.stderr.log
+  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-a target=actor-b entries=1' "$LOG_DIR"/actor-a.*.log
+  grep -h -E -q 'mapping_installed actor=actor-map-chain-.* source=actor-b target=actor-c entries=1' "$LOG_DIR"/actor-b.*.log
+  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-a.*.log
+  grep -h -E -q 'mapping_evicted actor=actor-map-chain-.* entries=0' "$LOG_DIR"/actor-b.*.log
 fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F6"* ]]; then
-  grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-a.stderr.log
-  grep -h -E -q 'backlog_enqueued actor=actor-inflight-req-.* request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-b.stderr.log
-  grep -h -E -q 'request_reply_direct actor=actor-inflight-req-' "$LOG_DIR"/actor-b.stderr.log
+  grep -h -E -q 'handoff_backlog actor=actor-inflight-req-.* kind=Request request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-a.*.log
+  grep -h -E -q 'backlog_enqueued actor=actor-inflight-req-.* request_id=[1-9][0-9]* flags=[1-9][0-9]*' "$LOG_DIR"/actor-b.*.log
+  grep -h -E -q 'request_reply_direct actor=actor-inflight-req-' "$LOG_DIR"/actor-b.*.log
 fi
 
 cat "$LOG_DIR/client.stdout.log"

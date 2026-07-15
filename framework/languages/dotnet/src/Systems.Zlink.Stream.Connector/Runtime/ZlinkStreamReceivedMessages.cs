@@ -47,6 +47,7 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
 
@@ -66,6 +67,7 @@ internal sealed class ZlinkStreamReceivedMessages(int maxMessages)
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         throw new TimeoutException($"Timed out waiting for '{name}' stream message.");
     }
 

@@ -36,6 +36,13 @@ public sealed record GateReleaseRes(
     string SpotRid,
     bool Released);
 
+public sealed record CleanupGateArmReq(
+    string Scenario);
+
+public sealed record CleanupGateRes(
+    string ActorId,
+    bool Changed);
+
 public sealed record JoinTargetReq(
     string Scenario,
     string TargetSpotRid,

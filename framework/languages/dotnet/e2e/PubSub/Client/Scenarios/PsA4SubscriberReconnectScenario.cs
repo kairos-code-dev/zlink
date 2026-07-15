@@ -16,6 +16,16 @@ internal static class PsA4SubscriberReconnectScenario
         string reconnectSubscriberUrl)
     {
         var runId = Guid.NewGuid().ToString("N");
+        var activationRunId = Guid.NewGuid().ToString("N");
+
+        // Activate the lazily-created publisher socket before waiting for a newly dialed subscriber.
+        await publisher.Post("/publish/event")
+            .Query("topic", PubSubNames.MainTopic)
+            .Query("runId", activationRunId)
+            .Query("sequence", "1")
+            .Query("value", "activate-publisher")
+            .AsyncRaw();
+        await WaitForSubscribersAsync(fastSubscribers, activationRunId, 1);
 
         // First prove the extra subscriber can receive before it is disconnected.
         using (var subscriber = processes.StartSubscriber(
@@ -36,16 +46,26 @@ internal static class PsA4SubscriberReconnectScenario
                     }
                 },
                 "PS-A4 expected reconnect subscriber to become healthy before disconnect.");
+            await SubscriberObservation.WaitForConnectionAsync(reconnectSubscriberClient);
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", runId)
                 .Query("sequence", "1")
                 .Query("value", "before-disconnect")
                 .AsyncRaw();
-            await WaitForSubscriberAsync(reconnectSubscriberClient, runId);
+            await WaitForSubscribersAsync(
+                fastSubscribers.Append(reconnectSubscriberClient).ToArray(),
+                runId,
+                1);
 
+            var publisherEvidenceOffset = await SubscriberObservation.EvidenceCountAsync(publisher);
             subscriber.Kill(true);
             await subscriber.WaitForExitAsync();
+            await SubscriberObservation.WaitForSocketEventAsync(
+                publisher,
+                PubSubNames.PublisherSocketSource,
+                "Disconnected",
+                publisherEvidenceOffset);
         }
 
         // Wait until the endpoint is gone before publishing the no-replay gap range.
@@ -72,62 +92,72 @@ internal static class PsA4SubscriberReconnectScenario
                 .Query("value", $"gap-{i}")
                 .AsyncRaw();
 
-        // The two always-on subscribers must continue receiving while the extra subscriber is down.
-        await WaitForSubscribersAsync(fastSubscribers, runId);
+        // Every always-on subscriber must receive the last event published during the gap.
+        await WaitForSubscribersAsync(fastSubscribers, runId, 4);
 
         // Restart the same logical subscriber and verify it receives only the post-reconnect range.
         using var restartedSubscriber = processes.StartSubscriber(
             "sub-reconnect",
             reconnectSubscriberUrl,
             "sub-reconnect.evidence.log");
-        await StateObservation.WaitUntilAsync(
-            async () =>
-            {
-                try
+        try
+        {
+            await StateObservation.WaitUntilAsync(
+                async () =>
                 {
-                    return (await reconnectSubscriberClient.Get("/health").AsyncRaw()).Status == 200;
-                }
-                catch (Exception ex) when ((ex is HttpRequestException || ex.InnerException is HttpRequestException))
-                {
-                    return false;
-                }
-            },
-            "PS-A4 expected reconnect subscriber to become healthy after reconnect.");
+                    try
+                    {
+                        return (await reconnectSubscriberClient.Get("/health").AsyncRaw()).Status == 200;
+                    }
+                    catch (Exception ex) when ((ex is HttpRequestException
+                                                || ex.InnerException is HttpRequestException))
+                    {
+                        return false;
+                    }
+                },
+                "PS-A4 expected reconnect subscriber to become healthy after reconnect.");
+            await SubscriberObservation.WaitForConnectionAsync(reconnectSubscriberClient);
 
-        for (var i = 5; i <= 8; i++)
             await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", runId)
-                .Query("sequence", i.ToString())
-                .Query("value", $"after-reconnect-{i}")
+                .Query("sequence", "5")
+                .Query("value", "after-reconnect")
                 .AsyncRaw();
 
-        var reconnectEvidence = await WaitForSubscriberAsync(reconnectSubscriberClient, runId);
+            await WaitForSubscribersAsync(
+                fastSubscribers.Append(reconnectSubscriberClient).ToArray(),
+                runId,
+                5);
+            var reconnectEvidence = (await reconnectSubscriberClient.Get("/evidence")
+                .Async<string[]>()).Body;
 
-        // Reconnect should not replay events that were published during the disconnect gap.
-        ZlinkStreamAssert.Ensure(
-            reconnectEvidence.All(line =>
-                !line.Contains($"run={runId}", StringComparison.Ordinal)
-                || !line.Contains("value=gap-", StringComparison.Ordinal)),
-            "PS-A4 reconnected subscriber replayed disconnect-gap events.");
-        Console.WriteLine("scenario PS-A4 passed");
-
-        restartedSubscriber.Kill(true);
-        await restartedSubscriber.WaitForExitAsync();
+            // Reconnect should not replay events that were published during the disconnect gap.
+            ZlinkStreamAssert.Ensure(
+                reconnectEvidence.All(line =>
+                    !line.Contains($"run={runId}", StringComparison.Ordinal)
+                    || !line.Contains("value=gap-", StringComparison.Ordinal)),
+                "PS-A4 reconnected subscriber replayed disconnect-gap events.");
+            Console.WriteLine("scenario PS-A4 passed");
+        }
+        finally
+        {
+            if (!restartedSubscriber.HasExited)
+            {
+                restartedSubscriber.Kill(true);
+                await restartedSubscriber.WaitForExitAsync();
+            }
+        }
     }
 
-    private static async Task<string[]> WaitForSubscriberAsync(ZLinkHttpClient subscriber, string runId)
+    private static async Task WaitForSubscribersAsync(
+        IReadOnlyList<ZLinkHttpClient> subscribers,
+        string runId,
+        int sequence)
     {
-        return (await subscriber.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
-                []))
-            .Async<string[]>()).Body;
-    }
-
-    private static async Task WaitForSubscribersAsync(IReadOnlyList<ZLinkHttpClient> subscribers, string runId)
-    {
-        var waits = subscribers.Select(subscriber => WaitForSubscriberAsync(subscriber, runId)).ToArray();
+        var waits = subscribers
+            .Select(subscriber => SubscriberObservation.WaitForEventAsync(subscriber, runId, sequence))
+            .ToArray();
         await Task.WhenAll(waits);
     }
 }

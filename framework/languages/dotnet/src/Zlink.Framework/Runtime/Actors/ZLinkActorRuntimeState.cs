@@ -2,7 +2,8 @@ namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorRuntimeState(
     string actorId,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    Action<string>? handoffDiagnostic = null)
 {
     private static readonly AsyncLocal<DispatchOwnership?> AmbientDispatch = new();
     private readonly ZLinkActorDispatchMailbox _dispatchMailbox = new();
@@ -17,7 +18,8 @@ internal sealed class ZLinkActorRuntimeState(
 
     public ZLinkActorHandoffState Handoff { get; } = new(
         actorId,
-        timeProvider ?? TimeProvider.System);
+        timeProvider ?? TimeProvider.System,
+        handoffDiagnostic);
 
     public string? ActorType { get; private set; }
 
@@ -173,6 +175,22 @@ internal sealed class ZLinkActorRuntimeState(
 
         session = default;
         return false;
+    }
+
+    public bool TryUseBoundSession(
+        string expectedBindingToken,
+        Func<ZLinkActorBoundSession, bool> operation)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        lock (_sessionGate)
+        {
+            if (_boundSession is not { } current
+                || !string.Equals(current.BindingToken, expectedBindingToken, StringComparison.Ordinal))
+                return true;
+
+            return operation(current);
+        }
     }
 
     public ZLinkActorBoundSession? ClearAfterDestroy()

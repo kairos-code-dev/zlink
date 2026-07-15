@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
@@ -11,6 +12,8 @@ var gateway = configuration.Gateway
               ?? throw new InvalidOperationException("Gateway configuration is required.");
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Configuration.Sources.Clear();
+builder.Configuration.AddInMemoryCollection();
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(console =>
 {

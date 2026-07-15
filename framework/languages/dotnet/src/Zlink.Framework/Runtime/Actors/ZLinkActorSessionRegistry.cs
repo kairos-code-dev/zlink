@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Actors;
 
-internal sealed class ZLinkActorSessionRegistry
+internal sealed class ZLinkActorSessionRegistry(Action<string>? handoffDiagnostic = null)
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, ZLinkActorRuntimeState> _states = new(StringComparer.Ordinal);
@@ -11,7 +11,7 @@ internal sealed class ZLinkActorSessionRegistry
         {
             if (_states.TryGetValue(actorId, out var existing)) return existing;
 
-            var created = new ZLinkActorRuntimeState(actorId);
+            var created = new ZLinkActorRuntimeState(actorId, handoffDiagnostic: handoffDiagnostic);
             _states.Add(actorId, created);
             return created;
         }

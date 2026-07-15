@@ -54,7 +54,7 @@ await (options.OperationGroup switch
     "sm-d5" => SmD5ExplicitDisconnectNotificationScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
     "sm-d6" => SmD6BoundSessionPushTargetingScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-d7" => SmD7StreamAuthenticationDispatchScenario.RunAsync(options.SessionAStreamEndpoint),
-    "sm-d8" => SmD8StreamReconnectRecoveryScenario.RunAsync(options.SessionAStreamEndpoint),
+    "sm-d8" => SmD8StreamReconnectRecoveryScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d9" => SmD9StreamInboundObserverScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d10" => SmD10BoundedSessionBackpressureScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-d11" => SmD11StreamAndRouteRequestScenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
@@ -72,7 +72,8 @@ await (options.OperationGroup switch
     "sm-f4" => SmF4MissingTargetSpotRouteScenario.RunAsync(playA),
     "sm-f5" => SmF5ClosedSpotRouteIsolationScenario.RunAsync(playA, gateway),
     "sm-f6" => SmF6RemoteSpotOutboundScenario.RunAsync(multiA, multiB),
-    "sm-g1" => SmG1BoundActorCrashRecoveryScenario.RunAsync(options.PlayAUrl, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-g1" => SmG1BoundActorCrashRecoveryScenario.RunAsync(
+        options.PlayAUrl, gateway, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-g2" => SmG2OwnerSpotRemapScenario.RunAsync(playA, playB),
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),

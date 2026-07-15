@@ -22,45 +22,16 @@ internal static class SmG3ConcurrentSessionActorLifecycleScenario
         {
             foreach (var actorId in actorIds)
             {
-                IZlinkStreamConnector? client = null;
-                var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
-                Exception? last = null;
-                while (DateTimeOffset.UtcNow < deadline)
+                var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
                 {
-                    var candidate = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                    {
-                        Endpoint = new Uri(sessionAStreamEndpoint)
-                    });
-                    try
-                    {
-                        await candidate.Connect.Async();
-                        await candidate.Request(new UserSpotAuthReq(spotRid, actorId, actorId, "play-a"))
-                            .PacketName("UserSpotAuthReq")
-                            .Async<AuthRes>();
-                        await playA.Post("/spot/create")
-                            .Body(new CreateSpotReq(spotRid))
-                            .Async<CreateSpotRes>();
-                        await candidate.Request(new JoinUserSpotActorReq(spotRid, actorId))
-                            .PacketName("JoinUserSpotActorReq")
-                            .Async<JoinUserSpotActorRes>();
-                        client = candidate;
-                        break;
-                    }
-                    catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-                    {
-                        last = ex;
-                        await candidate.DisposeAsync();
-                    }
-
-                    await Task.Delay(250);
-                }
-
-                if (client is null)
-                    throw new InvalidOperationException(
-                        last is null
-                            ? $"Actor auth did not become routable: {actorId}"
-                            : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}",
-                        last);
+                    Endpoint = new Uri(sessionAStreamEndpoint)
+                });
+                await client.Connect.Async();
+                await client.Request(new UserSpotAuthReq(spotRid, actorId, actorId, "play-a"))
+                    .PacketName("UserSpotAuthReq").Async<AuthRes>();
+                await playA.Post("/spot/create").Body(new CreateSpotReq(spotRid)).Async<CreateSpotRes>();
+                await client.Request(new JoinUserSpotActorReq(spotRid, actorId))
+                    .PacketName("JoinUserSpotActorReq").Async<JoinUserSpotActorRes>();
 
                 clients.Add(client);
             }

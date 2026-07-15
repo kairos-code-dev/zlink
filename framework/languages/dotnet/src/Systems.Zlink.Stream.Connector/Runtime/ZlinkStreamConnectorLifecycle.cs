@@ -23,6 +23,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
     private Func<CancellationToken, Task>? _runReceiveLoop;
     private Func<CancellationToken, ValueTask>? _sendHeartbeatPing;
     private CancellationTokenSource? _sessionCts;
+    private long _connectionGeneration;
     private ZlinkStreamConnectionState _state = ZlinkStreamConnectionState.Created;
     private ZlinkStreamCloseReason? _lastCloseReason;
 
@@ -74,6 +75,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
         CancellationToken cancellationToken)
     {
         Task? waitTask;
+        long observedConnectionGeneration;
         ActiveConnectStart? activeConnectStart = null;
         ZlinkStreamConnectionStateChanged? change = null;
         lock (_gate)
@@ -84,6 +86,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 
             _runReceiveLoop = runReceiveLoop;
             _sendHeartbeatPing = sendHeartbeatPing;
+            observedConnectionGeneration = _connectionGeneration;
 
             if (_state == ZlinkStreamConnectionState.Connected) return;
 
@@ -113,8 +116,12 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             throw new ObjectDisposedException(nameof(ZlinkStreamConnector), "Connector is closed.");
         }
 
-        if (State == ZlinkStreamConnectionState.Closed)
-            throw new ObjectDisposedException(nameof(ZlinkStreamConnector), "Connector is closed.");
+        lock (_gate)
+        {
+            if (_state == ZlinkStreamConnectionState.Closed
+                && _connectionGeneration == observedConnectionGeneration)
+                throw new ObjectDisposedException(nameof(ZlinkStreamConnector), "Connector is closed.");
+        }
     }
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
@@ -339,7 +346,7 @@ internal sealed class ZlinkStreamConnectorLifecycle(
             sessionCts.Cancel();
             await CloseConnectionAsync(connection, cancellationToken).ConfigureAwait(false);
             sessionCts.Dispose();
-            return;
+            throw new ObjectDisposedException(nameof(ZlinkStreamConnector), "Connector is closed.");
         }
 
         oldSnapshot.SessionCts?.Cancel();
@@ -349,8 +356,15 @@ internal sealed class ZlinkStreamConnectorLifecycle(
 
         lock (_gate)
         {
-            if (!ReferenceEquals(_connection, connection) || !ReferenceEquals(_sessionCts, sessionCts)) return;
+            if (!ReferenceEquals(_connection, connection) || !ReferenceEquals(_sessionCts, sessionCts))
+            {
+                if (_state == ZlinkStreamConnectionState.Closed)
+                    throw new ObjectDisposedException(nameof(ZlinkStreamConnector), "Connector is closed.");
 
+                return;
+            }
+
+            _connectionGeneration++;
             _receiveTask = taskRunner.Run(
                 _ => new ValueTask(RunReceiveLoopGuardedAsync(runReceiveLoop, sessionCts.Token)));
             _heartbeatTask = options.Heartbeat.Enabled

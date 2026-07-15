@@ -1,6 +1,7 @@
 using SpotActorTransfer.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
@@ -23,10 +24,27 @@ internal static class ActorNodeEndpoints
                 cancellationToken);
             return Results.Ok(snapshot);
         });
+        app.MapPost("/runtime-evidence/wait", async (EvidenceWaitReq request,
+            RuntimeEvidenceStore evidence, CancellationToken cancellationToken) =>
+        {
+            var snapshot = await evidence.WaitUntilAsync(
+                request.ContainsAll,
+                TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
+                cancellationToken);
+            return Results.Ok(snapshot);
+        });
         app.MapPost("/joined-gates/{spotRid}/release", (string spotRid, JoinedGateStore gates) =>
             Results.Ok(new GateReleaseRes(spotRid, gates.Release(spotRid))));
         app.MapPost("/transfer-gates/{actorId}/release", (string actorId, TransferGateStore gates) =>
             Results.Ok(new GateReleaseRes(actorId, gates.Release(actorId))));
+        app.MapPost("/cleanup-gates/{actorId}/arm", (
+            string actorId, CleanupGateArmReq request, ActorCleanupGateStore gates) =>
+            Results.Ok(new CleanupGateRes(actorId, gates.Arm(actorId, request.Scenario))));
+        app.MapPost("/cleanup-gates/{actorId}/allow-attempt", (
+            string actorId, ActorCleanupGateStore gates) =>
+            Results.Ok(new CleanupGateRes(actorId, gates.AllowAttempt(actorId))));
+        app.MapPost("/cleanup-gates/{actorId}/release", (string actorId, ActorCleanupGateStore gates) =>
+            Results.Ok(new CleanupGateRes(actorId, gates.Release(actorId))));
         app.MapPost("/spots", async (CreateSpotReq request, IZLinkSpotManager spots,
             CancellationToken cancellationToken) =>
         {
@@ -49,6 +67,21 @@ internal static class ActorNodeEndpoints
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
             return Results.Ok(new ActorRefSnapshotRes(
                 actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.Generation)));
+        });
+        app.MapGet("/actors/{actorId}/ref-evidence/{scenario}/{marker}", async (
+            string actorId,
+            string scenario,
+            string marker,
+            IZLinkActorManager actors,
+            EvidenceStore evidence,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = await FindActorAsync(actors, actorId, cancellationToken);
+            var snapshot = new ActorRefSnapshotRes(
+                actor.ActorId, actor.NodeRid.ToString(), checked((long)actor.Generation));
+            evidence.Add(scenario, actorId, marker,
+                $"node={snapshot.NodeRid};generation={snapshot.Generation}");
+            return Results.Ok(snapshot);
         });
         app.MapPost("/actors/{actorId}/join", async (string actorId, JoinTargetReq request,
             IZLinkActorManager actors, IZLinkActorClient actorClient, EvidenceStore evidence,
@@ -73,9 +106,11 @@ internal static class ActorNodeEndpoints
             }
         });
         app.MapPost("/actors/{actorId}/probe", async (string actorId, ProbeReq request,
-            IZLinkActorManager actors, IZLinkActorClient actorClient, CancellationToken cancellationToken) =>
+            IZLinkActorManager actors, IZLinkActorClient actorClient, EvidenceStore evidence,
+            CancellationToken cancellationToken) =>
         {
             var actor = await FindActorAsync(actors, actorId, cancellationToken);
+            evidence.Add(request.Scenario, actorId, "probe_submitted", request.Marker);
             return Results.Ok(await actorClient.RequestToActor(actor, request)
                 .Timeout(TimeSpan.FromSeconds(10)).Async<ProbeRes>(cancellationToken));
         });
@@ -119,6 +154,13 @@ internal static class ActorNodeEndpoints
         {
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
+        });
+        app.MapPost("/drain", async (IZLinkDrainControl drain, CancellationToken cancellationToken) =>
+        {
+            var result = await drain.DrainAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            if (result is not Drained)
+                throw new InvalidOperationException($"Target drain did not complete: {result}.");
+            return Results.Ok(new { status = "drained" });
         });
     }
 

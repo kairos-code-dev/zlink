@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using SpotActorTransfer.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
@@ -11,6 +13,8 @@ internal static class SessionGatewayHostFactory
     {
         var options = GatewayOptions.Parse(args);
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(new GatewayEvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddZLinkFramework(framework =>

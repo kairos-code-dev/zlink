@@ -1,9 +1,12 @@
+using Microsoft.Extensions.Configuration;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Locations.Redis;
 using LocationMessaging.Server.Consumer.Configuration;
 using LocationMessaging.Server.Consumer.Endpoints;
@@ -18,6 +21,8 @@ internal static class ConsumerHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -26,6 +31,8 @@ internal static class ConsumerHostFactory
         });
 
         builder.WebHost.UseUrls(options.HttpUrl);
+        builder.Services.AddSingleton<ConnectionEvidence>();
+        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ConnectionEventObserver>();
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.ConfigureDispatch()
@@ -56,6 +63,10 @@ internal static class ConsumerHostFactory
                 profile.ConfigureClientSocket().SendHighWaterMark = 4;
 
         });
+        builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
+            "profile.client",
+            ZLinkSocketEventKind.ConnectionReady,
+            ZLinkSocketEventKind.Disconnected));
 
         var app = builder.Build();
         app.MapConsumerEndpoints();

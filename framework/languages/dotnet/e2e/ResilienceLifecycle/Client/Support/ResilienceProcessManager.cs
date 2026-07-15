@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 using Zlink.Framework.E2E.Configuration;
 
@@ -156,25 +157,17 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
     {
         return StartProcess(
             name,
-            rid,
             options.ProviderProject,
-            [
-                "--rid", rid,
-                "--http-url", url,
-                "--redis-endpoint", options.RedisEndpoint,
-                "--redis-key-prefix", options.RedisKeyPrefix,
-                "--channel-endpoint", endpoint,
-                "--evidence-file", evidenceFile,
-                "--log-dir", options.LogDir
-            ],
+            new DynamicProviderOptions(
+                "provider", rid, url, options.LogDir, 100,
+                options.RedisEndpoint, options.RedisKeyPrefix, endpoint, evidenceFile),
             url);
     }
 
     private ManagedProcess StartProcess(
         string name,
-        string rid,
         string project,
-        IReadOnlyList<string> arguments,
+        object roleOptions,
         string healthUrl)
     {
         var startInfo = new ProcessStartInfo("dotnet")
@@ -184,14 +177,12 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("--no-build");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add("--config");
-        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(
-            options.ConfigDir,
-            name,
-            ["--role", "provider", "--weight", "100", .. arguments]));
+        startInfo.ArgumentList.Add(E2eConfiguration.Write(options.ConfigDir, name, roleOptions));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException($"Failed to start {name}.");
@@ -227,29 +218,44 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
     }
 }
 
+internal sealed record DynamicProviderOptions(
+    string Role,
+    string Rid,
+    string HttpUrl,
+    string LogDir,
+    int Weight,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
+    string ChannelEndpoint,
+    string EvidenceFile);
+
 internal sealed record ProviderStartResult(string Rid, string Status, string Url, string Endpoint);
 
 internal sealed class ManagedProcess(Process process, string healthUrl)
 {
+    private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(100);
     private bool _disposed;
 
     public async Task WaitReadyAsync()
     {
-        for (var i = 0; i < 120; i++)
+        var deadline = DateTimeOffset.UtcNow + ReadinessTimeout;
+        using var http = ZLinkHttpClient.Create(healthUrl).Timeout(ReadinessTimeout).Build();
+        while (DateTimeOffset.UtcNow < deadline)
         {
             if (process.HasExited)
                 throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");
 
             try
             {
-                using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(2)).Build();
                 if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
             }
-            catch
+            catch (ZLinkFrameworkException error) when (
+                error.Kind == ZLinkFrameworkErrorKind.RequestFailed && error.IsRetriable)
             {
             }
 
-            await Task.Delay(250);
+            await Task.Delay(ReadinessPollInterval);
         }
 
         throw new TimeoutException($"Process did not become ready: {healthUrl}.");

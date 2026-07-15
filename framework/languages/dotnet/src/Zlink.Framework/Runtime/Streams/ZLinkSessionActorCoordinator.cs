@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkSessionActorCoordinator(
@@ -138,6 +140,25 @@ internal sealed class ZLinkSessionActorCoordinator(
     {
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
+
+        if (runtime.Services.GetService<IZLinkActorDirectory>() is { } directory)
+        {
+            var current = await directory.FindAsync(actorRef.ActorId, cancellationToken)
+                .ConfigureAwait(false);
+            if (current is not { } resolved)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                    $"Actor '{actorRef.ActorId}' is no longer available.");
+
+            if (!ActorRefsEqual(resolved, actorRef.Ref))
+            {
+                actorRef = (ZLinkSessionActor)await BindOrGetActorAsync(
+                        actorRef.Context,
+                        resolved,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
 
         if (stream is ZLinkManagedStream managedStream)
         {

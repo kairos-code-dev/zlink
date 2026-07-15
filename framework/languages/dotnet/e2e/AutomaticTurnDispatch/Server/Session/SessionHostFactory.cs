@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Systems.Zlink;
 using AutomaticTurnDispatch.Server.Session.Support;
 using AutomaticTurnDispatch.Shared;
@@ -17,6 +19,8 @@ internal static class SessionHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {

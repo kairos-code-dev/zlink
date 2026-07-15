@@ -250,8 +250,10 @@ public sealed class EnvelopeCodecTests
         Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
     }
 
-    [Fact]
-    public void DecodeEnvelopeReply_Maps_Unknown_Remote_Error_To_Framework_Error()
+    [Theory]
+    [InlineData("UnknownRemoteError")]
+    [InlineData("999")]
+    public void DecodeEnvelopeReply_Maps_Unknown_Remote_Error_To_Framework_Error(string errorCode)
     {
         var header = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Error,
@@ -261,9 +263,59 @@ public sealed class EnvelopeCodecTests
             "correlation",
             null,
             null,
-            "UnknownRemoteError",
+            errorCode,
             "remote failed");
         var parts = ZLinkEnvelopeCodec.EncodeParts(header, null, null, null);
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(
+                parts,
+                "empty",
+                "failed",
+                null));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+    }
+
+    [Fact]
+    public void DecodeEnvelopeReply_Maps_NonResponse_Kind_To_Protocol_Error()
+    {
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Command,
+            "route",
+            "Message",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            null,
+            null,
+            null,
+            null,
+            null);
+        var parts = ZLinkEnvelopeCodec.EncodeParts(header, new object(), typeof(object), null);
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(
+                parts,
+                "empty",
+                "failed",
+                null));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+    }
+
+    [Fact]
+    public void DecodeEnvelopeReply_Maps_Missing_Response_Body_To_Protocol_Error()
+    {
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Response,
+            "route",
+            "Reply",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "correlation",
+            null,
+            null,
+            null,
+            null);
+        IReadOnlyList<Message> parts = [ZLinkEnvelopeCodec.EncodeHeader(header)];
 
         var exception = Assert.Throws<ZLinkFrameworkException>(() =>
             ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(

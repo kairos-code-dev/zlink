@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -22,6 +24,8 @@ internal static class WorkflowHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -38,9 +42,9 @@ internal static class WorkflowHostFactory
             // stores and the owner lease store together (doc §2).
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint
-                    ?? throw new InvalidOperationException("--redis-endpoint is required."))
+                    ?? throw new InvalidOperationException("Shared.RedisEndpoint is required."))
                 .SetKeyPrefix(options.RedisKeyPrefix
-                    ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                    ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
             framework.ConfigureDispatch()
                 .SetMessageFlowObserver<EvidenceDispatchErrorObserver>()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

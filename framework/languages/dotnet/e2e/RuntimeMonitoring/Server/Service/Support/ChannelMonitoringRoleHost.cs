@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using RuntimeMonitoring.Server.Service.Handlers;
 using RuntimeMonitoring.Shared;
 using Systems.Zlink;
@@ -17,6 +19,8 @@ internal sealed class ChannelMonitoringRoleHost
     {
         _options = ServerOptions.Parse(args, defaultRole);
         _builder = WebApplication.CreateBuilder(args);
+        _builder.Configuration.Sources.Clear();
+        _builder.Configuration.AddInMemoryCollection();
         _builder.WebHost.UseUrls(_options.HttpUrl);
         _builder.Services.AddSingleton(new EvidenceStore(_options.EvidenceFile, _options.Rid));
         _builder.Services.AddSingleton<LocationTopologyTransitionTracker>();
@@ -25,8 +29,8 @@ internal sealed class ChannelMonitoringRoleHost
         _builder.Services.AddZLinkFramework(framework =>
         {
             var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
-                .EnableServer(Require(_options.ChannelEndpoint, "--channel-endpoint"))
-                .EnableClient(Require(_options.ChannelEndpoint, "--channel-endpoint"))
+                .EnableServer(Require(_options.ChannelEndpoint, "ChannelEndpoint"))
+                .EnableClient(Require(_options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(_options.Rid))
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
             _builder.Services.AddSingleton(channel.ClientConnections);
@@ -90,12 +94,12 @@ internal sealed class ChannelMonitoringRoleHost
         });
         app.MapPost("/admin/connect", (IZLinkEndpointConnections connections) =>
         {
-            connections.Connect(Require(_options.ChannelEndpoint, "--channel-endpoint"));
+            connections.Connect(Require(_options.ChannelEndpoint, "ChannelEndpoint"));
             return Results.Ok(new { status = "connected" });
         });
         app.MapPost("/admin/disconnect", (IZLinkEndpointConnections connections) =>
         {
-            connections.Disconnect(Require(_options.ChannelEndpoint, "--channel-endpoint"));
+            connections.Disconnect(Require(_options.ChannelEndpoint, "ChannelEndpoint"));
             return Results.Ok(new { status = "disconnected" });
         });
         return app;

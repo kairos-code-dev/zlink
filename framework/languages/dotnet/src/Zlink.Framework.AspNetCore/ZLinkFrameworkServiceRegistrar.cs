@@ -110,6 +110,9 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.TryAddSingleton<IZLinkRuntimeEventPublisher>(static provider =>
             provider.GetRequiredService<ZLinkRuntimeEventDispatcher>());
         services.TryAddSingleton<ZLinkDrainAdmissionGate>();
+        services.AddSingleton(static provider => new ZLinkAutoConnectLifecycleCoordinator(
+            provider.GetService<ZLinkLocationAutoConnectHost>(),
+            provider.GetService<ZLinkMonitoringRegistration>()?.SocketSources.Count > 0));
         services.AddSingleton(static provider =>
             new ZLinkFrameworkRuntime(
                 provider,
@@ -139,7 +142,7 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                 provider.GetService<ZLinkMonitoringRegistration>(),
                 provider.GetService<ZLinkLocationRuntime>(),
-                provider.GetService<ZLinkLocationAutoConnectHost>(),
+                provider.GetRequiredService<ZLinkAutoConnectLifecycleCoordinator>(),
                 provider.GetService<ZLinkLocationLifecycle>(),
                 provider.GetService<ZLinkAllocatedRoutingIdRuntime>(),
                 provider.GetService<IHostApplicationLifetime>(),

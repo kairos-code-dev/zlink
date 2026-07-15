@@ -79,7 +79,8 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         var payload = frameSender.DecompressIfNeeded(header, wirePayload);
         var payloadObject = new ZlinkStreamEncodedPayload(header.Codec, payload);
         var message = new ZlinkStreamMessage<ZlinkStreamEncodedPayload>(header.Name, header.Metadata, payloadObject);
-        if (!receivedMessages.Record(message))
+        var handlers = typedHandlers.Snapshot(header.Name);
+        if (handlers.Count == 0 && !receivedMessages.Record(message))
         {
             await callbacks.PublishErrorAsync(
                     new ZlinkStreamError(
@@ -90,7 +91,6 @@ internal sealed class ZlinkStreamReceiveDispatcher(
             return;
         }
 
-        var handlers = typedHandlers.Snapshot(header.Name);
         foreach (var handler in handlers)
             await callbacks.DispatchUserCallbackAsync(
                     async dispatchedToken =>

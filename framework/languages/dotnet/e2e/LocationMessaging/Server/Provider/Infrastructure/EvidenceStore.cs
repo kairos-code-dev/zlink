@@ -53,7 +53,7 @@ internal sealed class EvidenceStore
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero
                 || !await _signal.WaitAsync(remaining, cancellationToken))
-                return Snapshot();
+                throw new TimeoutException($"Evidence did not satisfy the predicate within {timeout}.");
         }
     }
 
@@ -73,7 +73,8 @@ internal sealed class EvidenceStore
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero
                 || !await _signal.WaitAsync(remaining, cancellationToken))
-                return Snapshot();
+                throw new TimeoutException(
+                    $"Evidence containing '{contains}' did not reach count {minimumCount} within {timeout}.");
         }
     }
 
@@ -89,9 +90,11 @@ internal sealed class EvidenceStore
             var before = Snapshot();
             var matchingCount = before.Count(line => line.Contains(contains, StringComparison.Ordinal));
             var remaining = deadline - DateTimeOffset.UtcNow;
-            if (remaining <= TimeSpan.Zero) return before;
+            if (remaining < quietPeriod)
+                throw new TimeoutException(
+                    $"Evidence containing '{contains}' did not remain quiet for {quietPeriod} within {timeout}.");
 
-            await Task.Delay(remaining < quietPeriod ? remaining : quietPeriod, cancellationToken);
+            await Task.Delay(quietPeriod, cancellationToken);
             var after = Snapshot();
             var updatedCount = after.Count(line => line.Contains(contains, StringComparison.Ordinal));
             if (updatedCount == matchingCount) return after;

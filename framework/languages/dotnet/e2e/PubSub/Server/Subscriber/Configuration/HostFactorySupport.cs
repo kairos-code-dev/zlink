@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 namespace PubSub.Server.Subscriber.Configuration;
 
 public static class HostFactorySupport
@@ -7,6 +9,8 @@ public static class HostFactorySupport
         Directory.CreateDirectory(logDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using ObservabilityOps.Server.Play.Infrastructure;
 using ObservabilityOps.Server.Play.Spots;
 using ObservabilityOps.Server.Play.Support;
@@ -20,6 +22,8 @@ internal static class PlayHostFactory
         var options = PlayOptions.Parse(args);
         Directory.CreateDirectory(options.LogDir);
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console => console.SingleLine = true);
         builder.WebHost.UseUrls(options.HttpUrl);

@@ -6,13 +6,6 @@ namespace Zlink.Framework.E2E.Configuration;
 
 internal static class E2eConfiguration
 {
-    private static readonly IReadOnlyDictionary<string, string> CollectionOptions =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["ProviderEndpoint"] = "ProviderEndpoints",
-            ["RoutePeer"] = "RoutePeers"
-        };
-
     public static string Write(string directory, string name, object options)
     {
         Directory.CreateDirectory(directory);
@@ -21,50 +14,6 @@ internal static class E2eConfiguration
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         return path;
-    }
-
-    public static string WriteArguments(
-        string directory,
-        string name,
-        IReadOnlyList<string> arguments)
-    {
-        if (arguments.Count % 2 != 0)
-            throw new ArgumentException("Every configuration option requires a value.", nameof(arguments));
-
-        var values = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        for (var index = 0; index < arguments.Count; index += 2)
-        {
-            var option = arguments[index];
-            if (!option.StartsWith("--", StringComparison.Ordinal))
-                throw new ArgumentException($"Invalid configuration option: {option}", nameof(arguments));
-
-            var property = string.Concat(option[2..].Split('-')
-                .Select(static part => char.ToUpperInvariant(part[0]) + part[1..]));
-            var value = arguments[index + 1];
-            var plural = CollectionOptions.TryGetValue(property, out var collectionProperty)
-                ? collectionProperty
-                : property.EndsWith('s') ? property : property + "s";
-            if (CollectionOptions.ContainsKey(property) && !values.ContainsKey(plural))
-            {
-                values[plural] = new List<string> { value };
-                continue;
-            }
-            if (values.TryGetValue(plural, out var repeated) && repeated is List<string> repeatedList)
-            {
-                repeatedList.Add(value);
-            }
-            else if (values.TryGetValue(property, out var current))
-            {
-                values.Remove(property);
-                values[plural] = new List<string> { current?.ToString() ?? string.Empty, value };
-            }
-            else
-            {
-                values[property] = value;
-            }
-        }
-
-        return Write(directory, name, values);
     }
 
     public static T Load<T>(string[] args)

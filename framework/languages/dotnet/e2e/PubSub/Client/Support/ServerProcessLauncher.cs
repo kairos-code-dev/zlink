@@ -8,31 +8,20 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
     public Process StartSubscriber(string name, string httpUrl, string evidenceFile)
     {
         var startInfo = CreateServerStartInfo(options.SubscriberProject, name,
-        [
-            "--rid", name,
-            "--http-url", httpUrl,
-            "--redis-endpoint", options.RedisEndpoint,
-            "--redis-key-prefix", options.RedisKeyPrefix,
-            "--evidence-file", Path.Combine(options.LogDir, evidenceFile),
-            "--log-dir", options.LogDir,
-            "--handler-delay-ms", "0"
-        ]);
+            new DynamicSubscriberOptions(
+                name, httpUrl, options.LogDir, options.RedisEndpoint,
+                options.RedisKeyPrefix, 0, Path.Combine(options.LogDir, evidenceFile)));
 
         return Start(name, startInfo);
     }
 
     public Process StartPublisher()
     {
-        var startInfo = CreateServerStartInfo(options.PublisherProject, "pub-a",
-        [
-            "--rid", "pub-a",
-            "--http-url", options.PublisherUrl,
-            "--redis-endpoint", options.RedisEndpoint,
-            "--redis-key-prefix", options.RedisKeyPrefix,
-            "--publisher-endpoint", options.PublisherEndpoint,
-            "--evidence-file", Path.Combine(options.LogDir, "pub-restart.evidence.log"),
-            "--log-dir", options.LogDir
-        ]);
+        var startInfo = CreateServerStartInfo(options.PublisherProject, "pub-restart",
+            new DynamicPublisherOptions(
+                "pub-a", options.PublisherUrl, options.LogDir, options.RedisEndpoint,
+                options.RedisKeyPrefix, options.PublisherEndpoint,
+                Path.Combine(options.LogDir, "pub-restart.evidence.log")));
 
         return Start("pub-restart", startInfo);
     }
@@ -40,7 +29,7 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
     private ProcessStartInfo CreateServerStartInfo(
         string project,
         string name,
-        IReadOnlyList<string> arguments)
+        object roleOptions)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -49,11 +38,12 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("--no-build");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add("--config");
-        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(options.ConfigDir, name, arguments));
+        startInfo.ArgumentList.Add(E2eConfiguration.Write(options.ConfigDir, name, roleOptions));
         return startInfo;
     }
 
@@ -68,3 +58,11 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
         return process;
     }
 }
+
+internal sealed record DynamicSubscriberOptions(
+    string Rid, string HttpUrl, string LogDir, string RedisEndpoint,
+    string RedisKeyPrefix, int HandlerDelayMs, string EvidenceFile);
+
+internal sealed record DynamicPublisherOptions(
+    string Rid, string HttpUrl, string LogDir, string RedisEndpoint,
+    string RedisKeyPrefix, string PublisherEndpoint, string EvidenceFile);

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Net.Http.Json;
 using ShoppingMall.Server.CommerceApi.Application.OrderWorkflow;
 using ShoppingMall.Server.CommerceApi.Infrastructure.ZLink;
@@ -23,6 +25,8 @@ internal static class Program
         var topology = configuration.Topology;
         var instance = topology.ForInstance(configuration.InstanceId);
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             configuration.LogDirectory,

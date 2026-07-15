@@ -158,11 +158,52 @@ public sealed partial class StreamConnectorTests
 
         await ZlinkStreamAssert.ExpectTimeoutAsync(
             _ => ValueTask.FromException(new TimeoutException("wait timed out")));
+        await ZlinkStreamAssert.ExpectTimeoutAsync(
+            _ => ValueTask.FromException(
+                new Zlink.Framework.Contracts.Errors.ZLinkFrameworkException(
+                    Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind.RequestFailed,
+                    "HTTP request exceeded timeout",
+                    true,
+                    new TimeoutException("HTTP request exceeded timeout"))));
+        using var callerCanceled = new CancellationTokenSource();
+        callerCanceled.Cancel();
+        var cancellation = new OperationCanceledException(callerCanceled.Token);
+        var propagatedCancellation = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            ZlinkStreamAssert.ExpectTimeoutAsync(
+                _ => ValueTask.FromException(cancellation)).AsTask());
+        Assert.Same(cancellation, propagatedCancellation);
         var nonTimeout = new InvalidOperationException("not a timeout");
         var propagated = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ZlinkStreamAssert.ExpectTimeoutAsync(
                 _ => ValueTask.FromException(nonTimeout)).AsTask());
         Assert.Same(nonTimeout, propagated);
+    }
+
+    [Fact]
+    public async Task WaitForPreservesCallerCancellationBeforeAndDuringTheWait()
+    {
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri("tcp://127.0.0.1:1"),
+            Heartbeat = DisabledHeartbeat(),
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false }
+        });
+
+        using var alreadyCanceled = new CancellationTokenSource();
+        alreadyCanceled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            connector.WaitFor("never.pre-canceled")
+                .Timeout(TimeSpan.FromSeconds(30))
+                .Async(alreadyCanceled.Token).AsTask());
+
+        using var canceledWhileWaiting = new CancellationTokenSource();
+        var pending = connector.WaitFor("never.waiting")
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Async(canceledWhileWaiting.Token).AsTask();
+        Assert.False(pending.IsCompleted);
+        await canceledWhileWaiting.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
     }
 
     private static string Text(ZlinkStreamMessage<ZlinkStreamEncodedPayload> message)

@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Locations;
 using LocationMessaging.Server.Consumer.Configuration;
 using LocationMessaging.Server.Consumer;
 
@@ -12,6 +15,63 @@ internal static class ConsumerEndpoints
     public static void MapConsumerEndpoints(this WebApplication app)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
+        app.MapPost("/connections/wait", async (
+            EvidenceWaitReq request,
+            ConnectionEvidence evidence,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var snapshot = await evidence.WaitAsync(
+                    request.Contains,
+                    request.AfterCount,
+                    TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
+                    cancellationToken);
+                return Results.Ok(snapshot);
+            }
+            catch (TimeoutException error)
+            {
+                return Results.Problem(
+                    error.Message,
+                    statusCode: StatusCodes.Status504GatewayTimeout);
+            }
+        });
+        app.MapPost("/locations/peers/wait", async (
+            PeerLocationWaitReq request,
+            IServiceProvider services,
+            CancellationToken cancellationToken) =>
+        {
+            var query = services.GetRequiredService<IZLinkLocationRuntimeQuery>();
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 120000));
+            var deadline = DateTimeOffset.UtcNow + timeout;
+            PeerLocationRow[] rows;
+            do
+            {
+                rows = (await query.ListPeerLocationsAsync(
+                        new ZLinkPeerLocationFilter(MeshName: request.MeshName),
+                        cancellationToken))
+                    .Select(peer => new PeerLocationRow(
+                        peer.MeshName,
+                        peer.NodeRid?.ToString(),
+                        peer.Role.ToString(),
+                        peer.Endpoint,
+                        peer.Weight,
+                        peer.OwnerId,
+                        peer.Generation))
+                    .ToArray();
+                var matches = rows.Where(row =>
+                    row.Role == request.Role
+                    && row.NodeRid == request.NodeRid
+                    && (request.Weight is null || row.Weight == request.Weight));
+                if (request.Present ? matches.Any() : !matches.Any()) return Results.Ok(rows);
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            } while (DateTimeOffset.UtcNow < deadline);
+
+            return Results.Problem(
+                $"Peer row did not reach the requested state for rid={request.NodeRid}.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
         app.MapPost("/profile/batch-request", async (
             ProfileReq[] requests,
             IZLinkChannelClient channel) =>
@@ -102,7 +162,7 @@ internal static class ConsumerEndpoints
             .Async<PayloadRes>()
             .AsTask();
 
-    static async Task<RequestFailureRes> RequestPayloadFailureAsync(
+    static async Task<ExpectedFailureRes> RequestPayloadFailureAsync(
         IZLinkChannelClient channel,
         PayloadReq request)
     {
@@ -111,15 +171,16 @@ internal static class ConsumerEndpoints
             await channel.RequestToChannel("profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<PayloadRes>();
-            return new RequestFailureRes(false, "");
+            throw new InvalidOperationException(
+                "An oversized payload completed without the expected public timeout error.");
         }
-        catch (Exception ex)
+        catch (TimeoutException error)
         {
-            return new RequestFailureRes(true, ex.GetType().Name);
+            return new ExpectedFailureRes(error.GetType().Name);
         }
     }
 
-    static async Task<RequestFailureRes> RequestProfileFailureAsync(
+    static async Task<ExpectedFailureRes> RequestProfileFailureAsync(
         IZLinkChannelClient channel,
         ProfileReq request,
         TimeSpan timeout)
@@ -127,15 +188,16 @@ internal static class ConsumerEndpoints
         try
         {
             await RequestProfileAsync(channel, request, timeout);
-            return new RequestFailureRes(false, "");
+            throw new InvalidOperationException(
+                "A slow request completed without the expected public timeout error.");
         }
-        catch (TimeoutException ex)
+        catch (TimeoutException error)
         {
-            return new RequestFailureRes(true, ex.GetType().Name);
+            return new ExpectedFailureRes(error.GetType().Name);
         }
     }
 
-    static async Task<RequestFailureRes> RequestMissingProfileAsync(
+    static async Task<ExpectedFailureRes> RequestMissingProfileAsync(
         IZLinkChannelClient channel,
         MissingProfileReq request)
     {
@@ -144,11 +206,13 @@ internal static class ConsumerEndpoints
             await channel.RequestToChannel("profile", request)
                 .Timeout(TimeSpan.FromSeconds(5))
                 .Async<ProfileRes>();
-            return new RequestFailureRes(false, "");
+            throw new InvalidOperationException(
+                "A request without a registered handler completed without the expected public error.");
         }
-        catch (Exception ex)
+        catch (ZLinkFrameworkException error) when (
+            error.Kind == ZLinkFrameworkErrorKind.HandlerNotFound)
         {
-            return new RequestFailureRes(true, ex.GetType().Name);
+            return new ExpectedFailureRes(error.Kind.ToString());
         }
     }
 

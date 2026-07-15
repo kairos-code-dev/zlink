@@ -4,6 +4,7 @@ using LocationMessaging.Server.Provider.Infrastructure;
 using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Handlers;
 
 namespace LocationMessaging.Server.Provider.Handlers;
@@ -17,6 +18,12 @@ internal sealed class ProfileRequestHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         if (request.Value == "slow") await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        if (request.Value.StartsWith("rm-b2-transition-", StringComparison.Ordinal)
+            || request.Value.StartsWith("rm-b3-transition-", StringComparison.Ordinal))
+        {
+            evidence.Add($"profile-request-start|rid={evidence.Rid}|value={request.Value}");
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
 
         evidence.Add($"profile-request|rid={evidence.Rid}|value={request.Value}|packet={context.PacketName}");
         return new ProfileRes($"profile:{request.Value}", evidence.Rid);
@@ -90,6 +97,21 @@ internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
             + $"|action={flow.ErrorAction}"
             + $"|packet={flow.PacketName ?? "<null>"}"
             + $"|channel={flow.ChannelName ?? "<null>"}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class ProfileSocketEventObserver(EvidenceStore evidence)
+    : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
+{
+    public ValueTask HandleAsync(
+        ZLinkSocketEvent @event,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
+            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}");
         return ValueTask.CompletedTask;
     }
 }

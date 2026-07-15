@@ -98,7 +98,7 @@ internal static class ZLinkActorBoundSessionRelay
         }
 
         var frame = reply.ToFrame(requestHeader);
-        await SendFrameWithRetryAsync(runtime, actorId, frame, cancellationToken)
+        await SendFrameWithRetryAsync(runtime, actorId, sourceSessionRid, frame, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -166,22 +166,25 @@ internal static class ZLinkActorBoundSessionRelay
             requestId,
             flags,
             [replyMessage]);
-        ZLinkFrameworkDebugLog.SpotDiscovery(
+        runtime.LogActorHandoff(
             $"request_reply_direct actor={actorRef.ActorId} request_id={requestId} caller_node={sourceNodeRid}");
     }
 
     private static async ValueTask SendFrameWithRetryAsync(
         ZLinkFrameworkRuntime runtime,
         string actorId,
+        RoutingId sourceSessionRid,
         byte[] frame,
         CancellationToken cancellationToken)
     {
+        var sourceBindingToken = ZLinkActorBoundSessionBindingToken.Native(sourceSessionRid);
         await ZLinkRetryingSubmitter.Async(
                 () =>
                 {
                     using var frameMessage = Message.From(frame);
-                    return runtime.SendActorBoundSession(
+                    return runtime.SendActorBoundSessionIfCurrent(
                         actorId,
+                        sourceBindingToken,
                         new[] { frameMessage },
                         SendFlags.None);
                 },

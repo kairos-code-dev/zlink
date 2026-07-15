@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Microsoft.Extensions.Hosting;
 using SupportChat.Server.Configuration;
 using Zlink.Framework.AspNetCore;
@@ -12,6 +14,8 @@ public static class ApiServerHostFactory
     public static IHost Build(SampleTopology topology, string logDirectory)
     {
         var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             logDirectory,

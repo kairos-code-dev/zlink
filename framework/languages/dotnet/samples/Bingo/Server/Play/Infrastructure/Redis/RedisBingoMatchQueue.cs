@@ -85,8 +85,7 @@ internal sealed class RedisBingoMatchQueue(
 
         return new BingoMatchReservation(
             (string)values[0]!,
-            (string)values[1]!,
-            null);
+            (string)values[1]!);
     }
 
     private RedisKey MatchKey(string mode)

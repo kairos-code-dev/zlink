@@ -2,6 +2,7 @@
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
+using Zlink.Framework.Contracts.Errors;
 
 namespace LocationMessaging.Client.Scenarios;
 
@@ -16,8 +17,10 @@ internal static class RmC5MissingPacketScenario
     {
         var missingRequest = (await storeConsumer.Post("/profile/missing-request")
             .Body(new ProfileReq("missing-request"))
-            .Async<RequestFailureRes>()).Body;
-        ZlinkStreamAssert.Ensure(missingRequest.Failed, "RM-C5 missing request should fail.");
+            .Async<ExpectedFailureRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            missingRequest.ErrorKind == nameof(ZLinkFrameworkErrorKind.HandlerNotFound),
+            "RM-C5 missing request should report HandlerNotFound.");
 
         await storeConsumer.Post("/profile/missing-command")
             .Body(new ProfileMsg("missing-send"))
@@ -34,12 +37,18 @@ internal static class RmC5MissingPacketScenario
             .ToArray();
         ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("dispatch-error", StringComparison.Ordinal)
-                                 && line.Contains("MissingProfileReq", StringComparison.Ordinal)),
-            "RM-C5 missing request evidence missing.");
+                                 && line.Contains("kind=Request", StringComparison.Ordinal)
+                                 && line.Contains("reason=HandlerMissing", StringComparison.Ordinal)
+                                 && line.Contains("action=ReplyError", StringComparison.Ordinal)
+                                 && line.Contains("packet=MissingProfileReq", StringComparison.Ordinal)),
+            "RM-C5 missing request evidence should report HandlerMissing/ReplyError.");
         ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("dispatch-error", StringComparison.Ordinal)
-                                 && line.Contains("MissingProfileMsg", StringComparison.Ordinal)),
-            "RM-C5 missing send evidence missing.");
+                                 && line.Contains("kind=Send", StringComparison.Ordinal)
+                                 && line.Contains("reason=HandlerMissing", StringComparison.Ordinal)
+                                 && line.Contains("action=Drop", StringComparison.Ordinal)
+                                 && line.Contains("packet=MissingProfileMsg", StringComparison.Ordinal)),
+            "RM-C5 missing send evidence should report HandlerMissing/Drop.");
 
         var reply = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c5-after"))
@@ -52,10 +61,6 @@ internal static class RmC5MissingPacketScenario
         ZLinkHttpClient providerB,
         string packetName)
     {
-        var wait = new EvidenceWaitReq(packetName);
-        var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
-        var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
-        await Task.WhenAll(providerAEvidence, providerBEvidence);
-        return (await providerAEvidence).Body.Concat((await providerBEvidence).Body).ToArray();
+        return await ProviderEvidence.WaitFromEitherAsync(providerA, providerB, packetName);
     }
 }

@@ -70,12 +70,17 @@ internal sealed partial class ZLinkSpotActivation
             _runtime.Registration.StreamCompressionCodec);
     }
 
-    public void BindDescriptors()
+    public async ValueTask BindDescriptorsAsync(CancellationToken cancellationToken)
     {
         _configurationOpen = false;
 
         _packets.Bind(Spot);
-        _subscriptions.Bind(Spot, NativeSpot);
+        await _subscriptions.BindAsync(
+                Spot,
+                NativeSpot,
+                DefaultRequestTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
         _actorJoins.Bind(Spot);
         _actorHandlers?.Bind();
     }

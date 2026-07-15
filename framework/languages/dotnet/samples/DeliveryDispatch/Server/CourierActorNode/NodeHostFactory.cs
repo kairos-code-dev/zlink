@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Server.CourierActorNode.Spots.EntrySpot;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +18,8 @@ public static class NodeHostFactory
         var topology = configuration.Topology;
         var node = ResolveNode(configuration);
         var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             configuration.Role.LogDir,

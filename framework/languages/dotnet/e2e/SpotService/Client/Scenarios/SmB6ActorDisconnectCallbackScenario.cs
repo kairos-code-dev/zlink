@@ -17,55 +17,32 @@ internal static class SmB6ActorDisconnectCallbackScenario
         var leaveActorId = $"actor-sm-b6-left-{Guid.NewGuid():N}";
         var disconnectActorId = $"actor-sm-b6-disconnected-{Guid.NewGuid():N}";
 
-        LeaveRes? left = null;
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
+        await using (var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            var leaveStarted = false;
-            try
-            {
-                await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                {
-                    Endpoint = new Uri(sessionAStreamEndpoint),
-                    ConnectTimeout = TimeSpan.FromSeconds(5),
-                    RequestTimeout = TimeSpan.FromSeconds(5),
-                    Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024
-                });
-                await client.Connect.Async();
-                await client.Request(new UserSpotAuthReq(spotRid, leaveActorId, leaveActorId, "play-a"))
-                    .PacketName("UserSpotAuthReq")
-                    .Async<AuthRes>();
-                await playA.Post("/spot/create")
-                    .Body(new CreateSpotReq(spotRid))
-                    .Async<CreateSpotRes>();
-                await client.Request(new JoinUserSpotActorReq(spotRid, leaveActorId))
-                    .PacketName("JoinUserSpotActorReq")
-                    .Async<JoinUserSpotActorRes>();
+            Endpoint = new Uri(sessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024
+        }))
+        {
+            await client.Connect.Async();
+            await client.Request(new UserSpotAuthReq(spotRid, leaveActorId, leaveActorId, "play-a"))
+                .PacketName("UserSpotAuthReq")
+                .Async<AuthRes>();
+            await playA.Post("/spot/create")
+                .Body(new CreateSpotReq(spotRid))
+                .Async<CreateSpotRes>();
+            await client.Request(new JoinUserSpotActorReq(spotRid, leaveActorId))
+                .PacketName("JoinUserSpotActorReq")
+                .Async<JoinUserSpotActorRes>();
+            var left = await client.Request(new LeaveReq(leaveActorId))
+                .PacketName("LeaveReq")
+                .Async<LeaveRes>();
 
-                leaveStarted = true;
-                left = await client.Request(new LeaveReq(leaveActorId))
-                    .PacketName("LeaveReq")
-                    .Async<LeaveRes>();
-                break;
-            }
-            catch (Exception ex) when (!leaveStarted && ex is ZlinkStreamException or TimeoutException)
-            {
-                last = ex;
-                await Task.Delay(500);
-            }
+            ZlinkStreamAssert.Ensure(left.Accepted && left.ActorId == leaveActorId, "SM-B6 leave reply mismatch.");
         }
-
-        if (left is null)
-            throw new InvalidOperationException(
-                last is null
-                    ? "SM-B6 leave flow did not become routable."
-                    : $"SM-B6 leave flow did not become routable. Last error: {last.Message}",
-                last);
-
-        ZlinkStreamAssert.Ensure(left.Accepted && left.ActorId == leaveActorId, "SM-B6 leave reply mismatch.");
         var expectedLeaveEvidence = new[] { $"spot-actor-left|rid=play-a|spot={spotRid}|actor={leaveActorId}" };
         var playAAfterLeave = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedLeaveEvidence))
@@ -86,14 +63,14 @@ internal static class SmB6ActorDisconnectCallbackScenario
             "SM-B6 explicit leave incorrectly emitted disconnect evidence.");
 
         await using (var disconnectClient = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                     {
-                         Endpoint = new Uri(sessionAStreamEndpoint),
-                         ConnectTimeout = TimeSpan.FromSeconds(5),
-                         RequestTimeout = TimeSpan.FromSeconds(5),
-                         Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-                         DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                         MaxReceivedMessages = 1024
-                     }))
+        {
+            Endpoint = new Uri(sessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024
+        }))
         {
             await disconnectClient.Connect.Async();
             await disconnectClient.Request(new UserSpotAuthReq(spotRid, disconnectActorId, disconnectActorId, "play-a"))

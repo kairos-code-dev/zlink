@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using DeliveryDispatch.Server.Configuration;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
@@ -17,6 +19,8 @@ public static class DispatchServerHostFactory
     {
         var topology = configuration.Topology;
         var builder = WebApplication.CreateBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             configuration.Role.LogDir,

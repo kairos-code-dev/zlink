@@ -10,6 +10,7 @@
 | RM-A6 | 구현 | profile/workflow channel을 같은 location store(같은 key prefix)에 등록하고, mesh name filter로 peer row 집합이 섞이지 않음과 각 channel request가 자기 provider evidence에만 남는지 검증한다. |
 | RM-B1 | 구현 | scale-out marker가 있고, runtime query peer list에 신규 provider row가 반영될 때까지 대기한 뒤 검증한다. |
 | RM-B2 | 구현 | scale-in / graceful drain marker가 있고, 정상 종료된 provider의 peer row가 runtime query peer list에서 제거될 때까지 대기한 뒤 검증한다. |
+| RM-B3 | 구현 | provider A를 강제 종료한 직후부터 stale row가 owner lease 만료로 제거될 때까지 무지정 request를 계속 보내며, A row가 남아 있는 구간에도 B가 신규 요청을 처리한 증거와 bounded public error만 발생함을 확인한다. |
 | RM-C1 | 구현 | request / send happy path marker가 있다. |
 | RM-C2 | 구현 | targeted request by rid marker가 있다. |
 | RM-C3 | 구현 | 다중 provider 분산 marker가 있다. |

@@ -1,4 +1,5 @@
 using StackExchange.Redis;
+using Microsoft.Extensions.Configuration;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
@@ -28,6 +29,8 @@ var zones = ZoneTopology.ZonesOf(nodeId);
 var hostsZones = zones.Count > 0;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Configuration.Sources.Clear();
+builder.Configuration.AddInMemoryCollection();
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(console =>
 {

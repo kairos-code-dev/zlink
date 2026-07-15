@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using ObservabilityOps.Server.Session.Sessions;
 using ObservabilityOps.Server.Session.Support;
 using ObservabilityOps.Server.Support;
@@ -18,6 +20,8 @@ internal static class SessionHostFactory
         var options = ObservabilityOps.Server.Session.Support.SessionOptions.Parse(args);
         Directory.CreateDirectory(options.LogDir);
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console => console.SingleLine = true);
         builder.WebHost.UseUrls(options.HttpUrl);

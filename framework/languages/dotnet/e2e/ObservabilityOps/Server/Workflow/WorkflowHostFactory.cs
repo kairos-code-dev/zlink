@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using ObservabilityOps.Server.Support;
 using ObservabilityOps.Server.Workflow.Spots;
 using ObservabilityOps.Server.Workflow.Support;
@@ -21,6 +23,8 @@ internal static class WorkflowHostFactory
         var options = WorkflowOptions.Parse(args);
         Directory.CreateDirectory(options.LogDir);
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console => console.SingleLine = true);
         builder.WebHost.UseUrls(options.HttpUrl);

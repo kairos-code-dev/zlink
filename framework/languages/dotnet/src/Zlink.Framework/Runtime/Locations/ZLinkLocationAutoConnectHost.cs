@@ -364,6 +364,18 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             reconciler.SetLocalWeight(weight);
     }
 
+    internal ValueTask<bool> SetLocalWeightAsync(
+        ZLinkLocationAutoConnectType type,
+        string meshName,
+        ZLinkLocationRole role,
+        uint weight,
+        CancellationToken cancellationToken)
+    {
+        return _localReconcilers.TryGetValue((type, meshName, role), out var reconciler)
+            ? reconciler.SetLocalWeightAsync(weight, cancellationToken)
+            : ValueTask.FromResult(true);
+    }
+
     private static RoutingId? RidOrNull(RoutingId routingId) =>
         routingId.Size > 0 ? routingId : null;
 

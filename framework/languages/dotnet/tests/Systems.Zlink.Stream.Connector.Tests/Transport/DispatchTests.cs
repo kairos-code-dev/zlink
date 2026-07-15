@@ -119,6 +119,79 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
+    public async Task OnHandlerConsumesMoreMessagesThanUnreadHistoryCapacityWithoutDropping()
+    {
+        const int messageCount = 5;
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var handledAll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            for (var index = 1; index <= 2; index++)
+                await WritePacketAsync(
+                    stream,
+                    headerCodec.Encode(new ZlinkStreamHeader(
+                        ZlinkStreamMessageKind.Send,
+                        ZlinkStreamCodec.Raw,
+                        ZlinkStreamHeaderFlags.None,
+                        null,
+                        "buffered-before-handler",
+                        ZlinkStreamMetadata.Empty)).ToArray(),
+                    [(byte)index]);
+
+            for (var index = 1; index <= messageCount; index++)
+                await WritePacketAsync(
+                    stream,
+                    headerCodec.Encode(new ZlinkStreamHeader(
+                        ZlinkStreamMessageKind.Send,
+                        ZlinkStreamCodec.Raw,
+                        ZlinkStreamHeaderFlags.None,
+                        null,
+                        "handled",
+                        ZlinkStreamMetadata.Empty)).ToArray(),
+                    [(byte)index]);
+
+            await handledAll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 2
+        });
+        var handled = new List<byte>();
+        var dropped = 0;
+        connector.ErrorReceived += (error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.ReceivedMessageDropped)
+                Interlocked.Increment(ref dropped);
+            return ValueTask.CompletedTask;
+        };
+        using var subscription = connector.On("handled", (message, _) =>
+        {
+            handled.Add(message.Payload.Payload.Span[0]);
+            if (handled.Count == messageCount) handledAll.TrySetResult();
+            return ValueTask.CompletedTask;
+        });
+
+        await connector.Connect.Async();
+        await handledAll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await server;
+
+        Assert.Equal(new byte[] { 1, 2, 3, 4, 5 }, handled);
+        Assert.Equal(2, connector.ReceivedCount("buffered-before-handler"));
+        Assert.Equal(0, connector.ReceivedCount("handled"));
+        Assert.Equal(0, Volatile.Read(ref dropped));
+    }
+
+    [Fact]
     public async Task UnmatchedResponse_DoesNotConsumeReceivedMessageCapacity()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -224,6 +297,55 @@ public sealed partial class StreamConnectorTests
         var error = await remoteError.Task.WaitAsync(TimeSpan.FromMilliseconds(100));
         Assert.Equal("late: late reply", error.Message);
         Assert.Equal(0, connector.ReceivedCount("late.error"));
+    }
+
+    [Fact]
+    public async Task ErrorPayloadWithoutCode_IsReportedAsFrameDecodeFailed()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var endpoint = (IPEndPoint)listener.LocalEndpoint;
+        var headerCodec = new ZlinkStreamHeaderCodec();
+        var server = Task.Run(async () =>
+        {
+            using var tcp = await listener.AcceptTcpClientAsync();
+            await using var stream = tcp.GetStream();
+            await WritePacketAsync(
+                stream,
+                headerCodec.Encode(new ZlinkStreamHeader(
+                    ZlinkStreamMessageKind.Error,
+                    ZlinkStreamCodec.Json,
+                    ZlinkStreamHeaderFlags.HasRequestSeq,
+                    new ZlinkStreamRequestSeq(999),
+                    string.Empty,
+                    ZlinkStreamMetadata.Empty)).ToArray(),
+                "{\"message\":\"missing code\"}"u8.ToArray());
+        });
+
+        await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri($"tcp://127.0.0.1:{endpoint.Port}"),
+            Heartbeat = DisabledHeartbeat(),
+            Reconnect = new ZlinkStreamReconnectOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate
+        });
+        var decodeError = new TaskCompletionSource<ZlinkStreamError>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        connector.ErrorReceived += (error, _) =>
+        {
+            if (error.Code == ZlinkStreamErrorCode.FrameDecodeFailed) decodeError.TrySetResult(error);
+            return ValueTask.CompletedTask;
+        };
+
+        await connector.Connect.Async();
+        await server;
+        await WaitUntilAsync(
+            () => decodeError.Task.IsCompleted,
+            TimeSpan.FromSeconds(5));
+
+        var error = await decodeError.Task.WaitAsync(TimeSpan.FromMilliseconds(100));
+        Assert.Equal("Remote stream error payload could not be decoded.", error.Message);
+        Assert.IsType<System.Text.Json.JsonException>(error.Exception);
     }
 
     [Fact]

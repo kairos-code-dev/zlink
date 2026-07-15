@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using SpotService.Server.Play.Endpoints;
 using SpotService.Server.Play.Spots;
 using SpotService.Shared;
@@ -20,6 +22,8 @@ internal static class PlayHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -37,7 +41,7 @@ internal static class PlayHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -53,7 +57,7 @@ internal static class PlayHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
             framework.AddRouteMeshChannel(SpotServiceNames.ControlChannel)
-                .EnableServer(Require(options.ControlEndpoint, "--control-endpoint"))
+                .EnableServer(Require(options.ControlEndpoint, "ControlEndpoint"))
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddHandlerGroup("play");
@@ -73,9 +77,9 @@ internal static class PlayHostFactory
                     .AddHandlerGroup("client");
 
             var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                                .EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+                                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
+                .EnablePubSub(Require(options.SpotPubEndpoint, "SpotPubEndpoint"))
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
                 .AddSpotFactory<ScenarioUserSpot>()

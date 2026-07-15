@@ -16,57 +16,23 @@ internal static class SmD5ExplicitDisconnectNotificationScenario
         _ = sessionA;
         var spotRid = $"spot-sm-d5-{Guid.NewGuid():N}";
         var actorId = $"actor-sm-d5-notified-{Guid.NewGuid():N}";
-        IZlinkStreamConnector? client = null;
-        try
+        await using (var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-            Exception? last = null;
-            while (DateTimeOffset.UtcNow < deadline)
-            {
-                var candidate = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                {
-                    Endpoint = new Uri(sessionAStreamEndpoint),
-                    ConnectTimeout = TimeSpan.FromSeconds(5),
-                    RequestTimeout = TimeSpan.FromSeconds(5),
-                    Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024
-                });
-                try
-                {
-                    await candidate.Connect.Async();
-                    await candidate.Request(new UserSpotAuthReq(spotRid, actorId, "disconnect", "play-a"))
-                        .PacketName("UserSpotAuthReq")
-                        .Async<AuthRes>();
-                    await playA.Post("/spot/create")
-                        .Body(new CreateSpotReq(spotRid))
-                        .Async<CreateSpotRes>();
-                    await candidate.Request(new JoinUserSpotActorReq(spotRid, actorId))
-                        .PacketName("JoinUserSpotActorReq")
-                        .Async<JoinUserSpotActorRes>();
-                    client = candidate;
-                    break;
-                }
-                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-                {
-                    last = ex;
-                    await candidate.DisposeAsync();
-                    await Task.Delay(200);
-                }
-            }
-
-            if (client is null)
-                throw new InvalidOperationException(
-                    last is null
-                        ? $"Actor auth did not become routable: {actorId}"
-                        : $"Actor auth did not become routable: {actorId}. Last error: {last.Message}",
-                    last);
-
+            Endpoint = new Uri(sessionAStreamEndpoint),
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+            DispatchMode = ZlinkStreamDispatchMode.Immediate,
+            MaxReceivedMessages = 1024
+        }))
+        {
+            await client.Connect.Async();
+            await client.Request(new UserSpotAuthReq(spotRid, actorId, "disconnect", "play-a"))
+                .PacketName("UserSpotAuthReq").Async<AuthRes>();
+            await playA.Post("/spot/create").Body(new CreateSpotReq(spotRid)).Async<CreateSpotRes>();
+            await client.Request(new JoinUserSpotActorReq(spotRid, actorId))
+                .PacketName("JoinUserSpotActorReq").Async<JoinUserSpotActorRes>();
             await client.Close.Async();
-        }
-        finally
-        {
-            if (client is not null) await client.DisposeAsync();
         }
 
         var expectedEvidence = $"spot-actor-disconnected|rid=play-a|spot={spotRid}|actor={actorId}";

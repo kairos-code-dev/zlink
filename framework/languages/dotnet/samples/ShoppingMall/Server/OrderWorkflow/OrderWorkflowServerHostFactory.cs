@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Application.OrderWorkflow;
 using ShoppingMall.Server.OrderWorkflow.Application.SelfCheck;
@@ -27,6 +29,8 @@ public static class OrderWorkflowServerHostFactory
         string[]? args = null)
     {
         var builder = WebApplication.CreateBuilder(args ?? []);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             logDirectory,

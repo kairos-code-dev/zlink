@@ -65,30 +65,20 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         using var operation = EnterOperation(countAsRequest: true);
-        var routeChannel = GetRouteChannel(routerChannelId);
         var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
-        try
-        {
-            return await routeChannel.RequestAsync<TRequest, TReply>(
-                    targetNodeRid,
-                    packetName,
-                    request,
-                    timeout,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (ZLinkFrameworkException exception) when (
-            exception.Kind == ZLinkFrameworkErrorKind.RouteNotConnected && known == false)
-        {
-            // The mesh does not know this rid at all: the internal snapshot is
-            // stale or wrong, not merely unconverged. Surface the typed result so
-            // the owning SpotHandle can apply its bounded refresh rule.
+        if (known == false)
             throw CreateUnknownRouteTargetException(
                 routerChannelId,
                 targetNodeRid,
-                $"packet '{packetName}'",
-                exception);
-        }
+                $"packet '{packetName}'");
+
+        return await GetRouteChannel(routerChannelId).RequestAsync<TRequest, TReply>(
+                targetNodeRid,
+                packetName,
+                request,
+                timeout,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal ValueTask SendToSpotViaRouterChannelAsync(

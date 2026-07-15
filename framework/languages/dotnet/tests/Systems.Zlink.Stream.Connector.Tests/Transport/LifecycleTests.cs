@@ -236,8 +236,9 @@ public sealed partial class StreamConnectorTests
             callbackCompleted.TrySetResult();
         };
 
-        await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        var connect = connector.Connect.Async().AsTask();
         await callbackCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await connect.WaitAsync(TimeSpan.FromSeconds(5));
         await server.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(ZlinkStreamConnectionState.Closed, connector.State);
@@ -751,8 +752,9 @@ public sealed partial class StreamConnectorTests
         await connector.Connect.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         await framesWritten.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await WaitUntilAsync(
-            () => connector.ReceivedCount("manual-dispose") == 1 && connector.PendingDispatchCount >= 4,
+            () => connector.PendingDispatchCount >= 4,
             TimeSpan.FromSeconds(5));
+        Assert.Equal(0, connector.ReceivedCount("manual-dispose"));
         await connector.Dispatch.Async().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
 
         foreach (var rejection in new[] { stateRejected.Task, typedRejected.Task, errorRejected.Task })

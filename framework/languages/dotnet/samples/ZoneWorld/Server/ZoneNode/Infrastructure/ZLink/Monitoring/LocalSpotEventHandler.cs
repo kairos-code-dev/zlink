@@ -73,6 +73,7 @@ internal sealed class OpsReportAdapter(
 internal sealed class NodeStatusReporter(
     IOpsReportPort ops,
     IZLinkAllocatedRoutingIdProvider allocatedRoutingIds,
+    IZLinkRoutingIdSlotAllocationStore allocationStore,
     NodeMaintenancePolicy maintenance,
     NodePlayerCensus census,
     ILogger<NodeStatusReporter> logger) : BackgroundService
@@ -82,12 +83,21 @@ internal sealed class NodeStatusReporter(
         var allocation = await allocatedRoutingIds.WaitForReadyAllocationAsync(
             "zoneworld.zone-node",
             stoppingToken);
+        var snapshot = await allocationStore.ListRoutingIdSlotsAsync(
+            allocation.GroupName,
+            stoppingToken);
+        var lease = snapshot.Allocations.Single(item => item.Slot == allocation.Slot);
         var nodeRid = allocation.MemberRoutingIds[ZoneWorldNames.ZoneMesh].ToString();
         logger.LogInformation(
-            "zone node allocation ready. node={NodeId} slot={Slot} rid={RoutingId}",
+            "zone node allocation ready. node={NodeId} group={Group} slot={Slot} generation={Generation} "
+            + "zoneRid={ZoneRid} bridgeRid={BridgeRid} reportRid={ReportRid}",
             maintenance.OwnNodeId,
+            allocation.GroupName,
             allocation.Slot,
-            nodeRid);
+            lease.Owner.Generation,
+            nodeRid,
+            allocation.MemberRoutingIds[ZoneWorldNames.BridgeMesh],
+            allocation.MemberRoutingIds[ZoneWorldNames.ReportChannel]);
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(ZoneWorldSpec.NodeStatusReportPeriodMs));
         var firstReport = true;

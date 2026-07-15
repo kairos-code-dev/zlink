@@ -19,34 +19,15 @@ internal static class ShutdownAwaitProbe
         });
         await client.Connect.Async();
 
-        try
-        {
-            var result = await client.Request(new AwaitShutdownScenarioReq(options.RequestId, options.SpotRid, 30_000))
-                .PacketName("AwaitShutdownScenarioReq")
+        var failure = await ZlinkStreamAssert.ExpectFailureAsync(
+            async cancellationToken => _ = await client.Request(
+                    new AwaitShutdownScenarioReq(options.RequestId, options.SpotRid, 30_000))
                 .Timeout(TimeSpan.FromSeconds(90))
-                .Async<AwaitShutdownScenarioRes>();
-            throw new InvalidOperationException(
-                $"TD-F5 expected a public shutdown failure while the request was pending, but it completed as {result.Operation}.");
-        }
-        catch (ZlinkStreamException ex) when (IsExpectedShutdownError(ex))
-        {
-            Console.WriteLine("automatic-turn-dispatch shutdown wait result=passed");
-        }
-        catch (OperationCanceledException)
-        {
-            Console.WriteLine("automatic-turn-dispatch shutdown wait result=passed");
-        }
-    }
-
-    private static bool IsExpectedShutdownError(ZlinkStreamException exception)
-    {
-        if (exception.Error.Code == ZlinkStreamErrorCode.RequestTimeout)
-            return false;
-
-        // A session disconnect and a server-side remote error are both valid
-        // public observations of the downstream runtime stopping. Only a
-        // client request timeout would hide the shutdown result.
-        return true;
+                .Async<AwaitShutdownScenarioRes>(cancellationToken));
+        ZlinkStreamAssert.Ensure(
+            failure.Code is ZlinkStreamErrorCode.Disconnected or ZlinkStreamErrorCode.RemoteError,
+            $"TD-F5 expected Disconnected or RemoteError, got {failure.Code}.");
+        Console.WriteLine("automatic-turn-dispatch shutdown wait result=passed");
     }
 
     public static async Task RunRecoveryAsync(ClientOptions options)
@@ -63,7 +44,6 @@ internal static class ShutdownAwaitProbe
         await client.Connect.Async();
 
         var result = await client.Request(new AwaitShutdownRecoveryReq(options.RequestId, options.SpotRid))
-            .PacketName("AwaitShutdownRecoveryReq")
             .Timeout(TimeSpan.FromSeconds(45))
             .Async<AwaitShutdownRecoveryRes>();
         ZlinkStreamAssert.Ensure(result.Operation == "await.e3-shutdown-recovery", "TD-F5 recovery operation mismatch.");

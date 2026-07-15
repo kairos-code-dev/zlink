@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Bingo.Server.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -19,6 +21,8 @@ public static class ApiServerHostFactory
         var logDirectory = configuration.LogDirectory;
         var traceLabel = $"api-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(
             builder.Logging,
             logDirectory,
@@ -37,16 +41,19 @@ public static class ApiServerHostFactory
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
-                .SetRoutingIdAllocationGroup("bingo.api")
+                .SetRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
                 .EnableServer(node.ChannelEndpoint)
                 .AddHandlerGroup("api");
-            options.AddClientServerChannel(SampleNames.PlayChannel)
-                .EnableClient();
+            options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
+                .SetRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
+                .EnableRouter(node.SpotRouterEndpoint)
+                .EnablePubSub(node.SpotPubEndpoint);
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "api",
-            "bingo.api",
-            [SampleNames.ApiChannel]));
+            SampleNames.ApiAllocationGroup,
+            [SampleNames.ApiChannel, SampleNames.RoomSpotDiscovery]));
         builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();

@@ -4,6 +4,7 @@ using PubSub.Shared;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Locations.Redis;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Eventing;
 
 namespace PubSub.Server.Publisher;
 
@@ -15,7 +16,7 @@ internal static class PublisherHostFactory
         var builder = HostFactorySupport.CreateBuilder(args, options.HttpUrl, options.LogDir);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
-
+        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEvidenceRecorder>();
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -25,7 +26,9 @@ internal static class PublisherHostFactory
             framework.AddFanoutChannel(PubSubNames.Channel)
                 .EnablePublisher(options.PublisherEndpoint);
         });
-
+        builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
+            PubSubNames.PublisherSocketSource,
+            ZLinkSocketEventKind.Disconnected));
         var app = builder.Build();
         app.MapOperationalEndpoints("publisher", options.Rid);
         app.MapPublisherEndpoints();

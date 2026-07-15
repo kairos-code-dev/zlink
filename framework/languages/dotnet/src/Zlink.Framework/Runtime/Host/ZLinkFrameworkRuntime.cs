@@ -17,16 +17,17 @@ internal readonly record struct ZLinkDrainRemainderCounts(
 internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 {
     private static readonly AsyncLocal<ZLinkRuntimeOperationOwnership?> AmbientOperation = new();
+    private readonly ZLinkActorDrainCoordinator _actorDrainCoordinator;
+    private readonly ZLinkActorBoundSessionCoordinator _actorBoundSessionCoordinator;
     private readonly ZLinkFrameworkActorFacade _actors;
     private readonly ZLinkActorSessionManager _actorSessionManager;
-    private readonly ZLinkActorHandoffAdmissions _actorHandoffAdmissions = new();
+    private readonly ZLinkActorHandoffAdmissions _actorHandoffAdmissions;
     private readonly IZLinkBackendAdapterFactory _backendAdapterFactory;
     private readonly ZLinkChannelRuntimeManager _channels;
     private readonly ZLinkDrainAdmissionGate _drainAdmission;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private ZLinkRuntimeExecutionScope? _executionScope;
     private readonly object _operationGate = new();
-    private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
     private readonly ZLinkLocationLifecycle? _locationLifecycle;
     private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
@@ -35,6 +36,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly ZLinkStreamRuntimeManager _streams;
     private readonly object _workerPoolGate = new();
     private ZLinkMessageFlowTracer? _flow;
+    private ILogger? _actorHandoffLogger;
     private ZLinkRuntimeErrorSink? _generationErrorSink = new();
     private int _lifecyclePhase;
     private ZLinkFrameworkRuntimeState? _state;
@@ -52,7 +54,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         ZLinkHandlerDispatcher dispatcher)
     {
         Services = services;
-        _actorBoundSessions = new ZLinkActorBoundSessionRegistry(this);
+        _actorHandoffAdmissions = new ZLinkActorHandoffAdmissions(
+            diagnostic: LogActorHandoff);
         _backendAdapterFactory = backendAdapterFactory;
         Registration = registration;
         _drainAdmission = services.GetService<ZLinkDrainAdmissionGate>() ?? new ZLinkDrainAdmissionGate();
@@ -74,6 +77,17 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         _stateFactory = components.StateFactory;
         _actorSessionManager = components.ActorSessionManager;
         _actors = components.Actors;
+        _actorBoundSessionCoordinator = new ZLinkActorBoundSessionCoordinator(
+            _actorSessionManager.GetOrCreateState,
+            GetActorSpotNode,
+            () => _locationLifecycle,
+            registration,
+            () => ShutdownToken);
+        _actorDrainCoordinator = new ZLinkActorDrainCoordinator(
+            _actors,
+            _actorSessionManager,
+            services,
+            registration);
         _actorStragglerForwarder = new ZLinkActorStragglerForwarder(this);
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
     }
@@ -91,6 +105,13 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         Registration.DispatchOptions,
         ZLinkMessageFlowTracer.CreateLogger(Services.GetService<ILoggerFactory>()),
         this);
+
+    internal void LogActorHandoff(string marker)
+    {
+        _actorHandoffLogger ??= Services.GetService<ILoggerFactory>()?
+            .CreateLogger("Zlink.Framework.ActorHandoff");
+        _actorHandoffLogger?.LogInformation("{ActorHandoffMarker}", marker);
+    }
 
     internal ZLinkRuntimeErrorSink ErrorSink => Volatile.Read(ref _generationErrorSink)
                                                  ?? throw new InvalidOperationException(
@@ -140,6 +161,55 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         if (state is null) return;
         foreach (var spotNode in state.SpotNodes.Values) spotNode.BeginDrain();
     }
+
+    internal async ValueTask<bool> QuiesceServingChannelsForDrainAsync(
+        ZLinkLocationAutoConnectHost? autoConnect,
+        CancellationToken cancellationToken)
+    {
+        var state = _state;
+        if (state is null) return true;
+
+        // Once the marker propagation window closes, advertise zero weight before request
+        // admissions are sealed. Requests that arrived during the contract's propagation window
+        // were still processed; later traffic is removed from peer load balancing before owner
+        // cleanup can terminate the pipes.
+        var published = true;
+        foreach (var (name, bundle) in state.ServerBundles)
+        {
+            if (bundle.Socket is IZLinkBackendWeightedSocket weighted)
+                weighted.SetPeerWeight(0);
+            if (Registration.Channels.TryGetValue(name, out var channel))
+                published &= await PublishWeightAsync(
+                    autoConnect,
+                    ZLinkLocationAutoConnectType.ClientServer,
+                    channel.ChannelName,
+                    ZLinkLocationRole.Router,
+                    cancellationToken).ConfigureAwait(false);
+        }
+        foreach (var (name, route) in state.RouteChannels)
+        {
+            route.ServingSocket.SetPeerWeight(0);
+            if (Registration.RouteChannels.TryGetValue(name, out var registration))
+                published &= await PublishWeightAsync(
+                    autoConnect,
+                    ZLinkLocationAutoConnectType.RouteMesh,
+                    registration.RouterChannelId,
+                    ZLinkLocationRole.Router,
+                    cancellationToken).ConfigureAwait(false);
+        }
+
+        return published;
+    }
+
+    private static ValueTask<bool> PublishWeightAsync(
+        ZLinkLocationAutoConnectHost? autoConnect,
+        ZLinkLocationAutoConnectType type,
+        string meshName,
+        ZLinkLocationRole role,
+        CancellationToken cancellationToken) =>
+        autoConnect is null
+            ? ValueTask.FromResult(true)
+            : autoConnect.SetLocalWeightAsync(type, meshName, role, 0, cancellationToken);
 
     internal void SealRequestAdmissionsForDrain()
     {

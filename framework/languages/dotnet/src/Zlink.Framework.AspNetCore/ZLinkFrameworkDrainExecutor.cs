@@ -54,6 +54,8 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             ? Task.CompletedTask
             : Task.Delay(propagationDelay, deadlineToken);
         await propagation.ConfigureAwait(false);
+        if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
+            return ZLinkDrainForceReason.DrainingStatePublishFailed;
         _operations.SealRequestAdmissions();
         _operations.BeginSpotDrain();
         await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);
@@ -192,6 +194,25 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         + ZLinkLocationStoreRead.Timeout
         + SchedulerJitterBudget;
 
+    private async ValueTask<bool> PublishServingWeightAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (await _operations.QuiesceServingChannels(cancellationToken).ConfigureAwait(false))
+                return true;
+            try
+            {
+                await Task.Delay(_locationOptions.PollingInterval, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     private static async ValueTask CaptureAsync(
         Func<ValueTask> operation,
         List<Exception> failures)
@@ -210,6 +231,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
 internal sealed record ZLinkDrainExecutionOperations(
     bool HasAutoConnect,
     bool HasLocationRuntime,
+    Func<CancellationToken, ValueTask<bool>> QuiesceServingChannels,
     Func<CancellationToken, ValueTask<bool>> MarkDraining,
     Action SealRequestAdmissions,
     Action BeginSpotDrain,
@@ -231,6 +253,7 @@ internal sealed record ZLinkDrainExecutionOperations(
         ZLinkLocationRuntime? locationRuntime) => new(
         autoConnect is not null,
         locationRuntime is not null,
+        cancellationToken => runtime.QuiesceServingChannelsForDrainAsync(autoConnect, cancellationToken),
         autoConnect is null
             ? static _ => ValueTask.FromResult(true)
             : autoConnect.MarkDrainingAsync,

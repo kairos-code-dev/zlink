@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using StoreFailure.Shared;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 using Zlink.Framework.E2E.Configuration;
 
@@ -48,20 +49,18 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
     {
         var process = StartProcess(
             "consumer-nw",
-            "consumer-nw",
             options.ConsumerProject,
-            [
-                "--http-url", options.ConsumerNwUrl,
-                "--redis-endpoint", options.RedisEndpoint,
-                "--redis-key-prefix", options.RedisKeyPrefix,
-                "--store-mode", "polling",
-                "--trace-label", "consumer-nw",
-                "--location-heartbeat-ms", options.LocationHeartbeatMs.ToString(),
-                "--location-lease-ttl-ms", options.LocationLeaseTtlMs.ToString(),
-                "--location-polling-ms", options.LocationPollingMs.ToString(),
-                "--location-grace-ms", options.LocationGraceMs.ToString(),
-                "--log-dir", options.LogDir
-            ],
+            new DynamicConsumerOptions(
+                options.ConsumerNwUrl,
+                options.RedisEndpoint,
+                options.RedisKeyPrefix,
+                options.LogDir,
+                "consumer-nw",
+                "polling",
+                options.LocationHeartbeatMs,
+                options.LocationLeaseTtlMs,
+                options.LocationPollingMs,
+                options.LocationGraceMs),
             options.ConsumerNwUrl);
         await process.WaitReadyAsync();
         return process;
@@ -101,29 +100,19 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
     {
         return StartProcess(
             name,
-            rid,
             options.ProviderProject,
-            [
-                "--rid", rid,
-                "--http-url", url,
-                "--redis-endpoint", options.RedisEndpoint,
-                "--redis-key-prefix", options.RedisKeyPrefix,
-                "--channel-endpoint", endpoint,
-                "--evidence-file", evidenceFile,
-                "--location-heartbeat-ms", options.LocationHeartbeatMs.ToString(),
-                "--location-lease-ttl-ms", options.LocationLeaseTtlMs.ToString(),
-                "--location-polling-ms", options.LocationPollingMs.ToString(),
-                "--location-grace-ms", options.LocationGraceMs.ToString(),
-                "--log-dir", options.LogDir
-            ],
+            new DynamicProviderOptions(
+                name, rid, url, options.LogDir, 100,
+                options.LocationHeartbeatMs, options.LocationLeaseTtlMs,
+                options.LocationPollingMs, options.LocationGraceMs,
+                options.RedisEndpoint, options.RedisKeyPrefix, endpoint, evidenceFile),
             url);
     }
 
     private ManagedProcess StartProcess(
         string name,
-        string rid,
         string project,
-        IReadOnlyList<string> arguments,
+        object roleOptions,
         string healthUrl)
     {
         var startInfo = new ProcessStartInfo("setsid")
@@ -139,10 +128,7 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
         startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add("--config");
-        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(
-            options.ConfigDir,
-            name,
-            ["--role", name, "--weight", "100", .. arguments]));
+        startInfo.ArgumentList.Add(E2eConfiguration.Write(options.ConfigDir, name, roleOptions));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException($"Failed to start {name}.");
@@ -165,29 +151,60 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
     }
 }
 
+internal sealed record DynamicProviderOptions(
+    string Role,
+    string Rid,
+    string HttpUrl,
+    string LogDir,
+    int Weight,
+    int LocationHeartbeatMs,
+    int LocationLeaseTtlMs,
+    int LocationPollingMs,
+    int LocationGraceMs,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
+    string ChannelEndpoint,
+    string EvidenceFile);
+
+internal sealed record DynamicConsumerOptions(
+    string HttpUrl,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
+    string LogDir,
+    string TraceLabel,
+    string StoreMode,
+    int LocationHeartbeatMs,
+    int LocationLeaseTtlMs,
+    int LocationPollingMs,
+    int LocationGraceMs);
+
 internal sealed class ManagedProcess(Process process, string healthUrl)
 {
+    private static readonly TimeSpan ReadinessTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ReadinessPollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan GracefulExitTimeout = TimeSpan.FromSeconds(35);
     private bool _shutdownRequested;
     private bool _stopped;
 
     public async Task WaitReadyAsync()
     {
-        for (var i = 0; i < 120; i++)
+        var deadline = DateTimeOffset.UtcNow + ReadinessTimeout;
+        using var http = ZLinkHttpClient.Create(healthUrl).Timeout(ReadinessTimeout).Build();
+        while (DateTimeOffset.UtcNow < deadline)
         {
             if (process.HasExited)
                 throw new InvalidOperationException($"Process exited before readiness: {process.ExitCode}.");
 
             try
             {
-                using var http = ZLinkHttpClient.Create(healthUrl).Timeout(TimeSpan.FromSeconds(2)).Build();
                 if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
             }
-            catch
+            catch (ZLinkFrameworkException error) when (
+                error.Kind == ZLinkFrameworkErrorKind.RequestFailed && error.IsRetriable)
             {
             }
 
-            await Task.Delay(250);
+            await Task.Delay(ReadinessPollInterval);
         }
 
         throw new TimeoutException($"Process did not become ready: {healthUrl}.");

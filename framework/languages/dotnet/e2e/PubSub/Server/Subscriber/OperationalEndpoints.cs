@@ -16,20 +16,22 @@ public static class OperationalEndpoints
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var snapshot = await evidence.WaitUntilAsync(
                 entries => request.ContainsAll.All(expected =>
-                               entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
+                               entries.Skip(request.AfterIndex)
+                                   .Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
                            && request.ContainsAnyGroups.All(group =>
                                group.Any(expected =>
-                                   entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal))))
+                                   entries.Skip(request.AfterIndex)
+                                       .Any(entry => entry.Contains(expected, StringComparison.Ordinal))))
                            && request.ContainsAllLineGroups.All(group =>
-                               entries.Any(entry =>
+                               entries.Skip(request.AfterIndex).Any(entry =>
                                    group.All(expected => entry.Contains(expected, StringComparison.Ordinal))))
                            && (request.ContainsAnyLineGroups.Length == 0
                                || request.ContainsAnyLineGroups.Any(group =>
-                                   entries.Any(entry =>
+                                   entries.Skip(request.AfterIndex).Any(entry =>
                                        group.All(expected => entry.Contains(expected, StringComparison.Ordinal))))),
                 timeout,
                 cancellationToken);
-            return Results.Ok(snapshot);
+            return Results.Ok(snapshot.Skip(request.AfterIndex).ToArray());
         });
         app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
         {

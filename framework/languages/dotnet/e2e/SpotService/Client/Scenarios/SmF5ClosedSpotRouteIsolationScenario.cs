@@ -1,6 +1,7 @@
 // Verifies SM-F5 Closed Spot Route Isolation behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace SpotService.Client.Scenarios;
@@ -18,20 +19,18 @@ internal static class SmF5ClosedSpotRouteIsolationScenario
             .Async<CloseSpotRes>()).Body;
         ZlinkStreamAssert.Ensure(closed.Closed, "SM-F5 target spot did not close.");
 
-        var closedSpotRouteFailed = false;
         try
         {
             await gateway.Post("/spot/route-state")
                 .Body(new SpotStateRouteReq(spotRid, "add", 1))
                 .Async<StateRes>();
+            throw new InvalidOperationException(
+                "SM-F5 closed target spot still accepted a routed request.");
         }
-        catch
+        catch (ZLinkFrameworkException error) when (
+            error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
         {
-            closedSpotRouteFailed = true;
         }
-        ZlinkStreamAssert.Ensure(
-            closedSpotRouteFailed,
-            "SM-F5 closed target spot still accepted a routed request.");
 
         var afterClose = (await gateway.Post("/channel/route-ping")
             .Body(new ControlPingReq("sm-f5-after-close"))

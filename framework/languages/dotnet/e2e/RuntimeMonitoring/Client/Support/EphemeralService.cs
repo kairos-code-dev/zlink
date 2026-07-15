@@ -32,22 +32,20 @@ internal sealed class EphemeralService : IAsyncDisposable
         start.ArgumentList.Add(options.ServiceProject);
         start.ArgumentList.Add("--");
         start.ArgumentList.Add("--config");
-        var arguments = new List<string>
-        {
-            "--role", "service",
-            "--rid", rid,
-            "--http-url", url,
-            "--redis-endpoint", options.RedisEndpoint,
-            "--redis-key-prefix", options.RedisKeyPrefix,
-            "--channel-endpoint", channelEndpoint,
-            "--evidence-file", Path.Combine(options.LogDir, $"{rid}.evidence.log"),
-            "--log-dir", options.LogDir
-        };
-        arguments.AddRange([
-            "--spot-router-endpoint", $"tcp://127.0.0.1:{ReservePort()}",
-            "--spot-pub-endpoint", $"tcp://127.0.0.1:{ReservePort()}"
-        ]);
-        start.ArgumentList.Add(E2eConfiguration.WriteArguments(options.ConfigDir, rid, arguments));
+        start.ArgumentList.Add(E2eConfiguration.Write(
+            options.ConfigDir,
+            rid,
+            new DynamicServiceOptions(
+                "service",
+                url,
+                options.LogDir,
+                rid,
+                Path.Combine(options.LogDir, $"{rid}.evidence.log"),
+                options.RedisEndpoint,
+                options.RedisKeyPrefix,
+                channelEndpoint,
+                $"tcp://127.0.0.1:{ReservePort()}",
+                $"tcp://127.0.0.1:{ReservePort()}")));
         var process = Process.Start(start)
                       ?? throw new InvalidOperationException($"Failed to start {rid}.");
         var service = new EphemeralService(process, url, channelEndpoint);
@@ -101,3 +99,15 @@ internal sealed class EphemeralService : IAsyncDisposable
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 }
+
+internal sealed record DynamicServiceOptions(
+    string Role,
+    string HttpUrl,
+    string LogDir,
+    string Rid,
+    string EvidenceFile,
+    string RedisEndpoint,
+    string RedisKeyPrefix,
+    string ChannelEndpoint,
+    string SpotRouterEndpoint,
+    string SpotPubEndpoint);

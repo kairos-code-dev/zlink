@@ -13,9 +13,41 @@ public sealed class OpsConsoleRegistry
     private const int RecentAlertCount = 20;
 
     private readonly ConcurrentDictionary<string, IZLinkSessionContext> _consoles = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, NodeStatusNotify> _latestNodes = new(StringComparer.Ordinal);
     private readonly Queue<NodeAlertNotify> _recentAlerts = new();
+    private readonly object _nodeGate = new();
+    private long _nodeVersion;
 
-    public void Add(IZLinkSessionContext context) => _consoles[context.SessionId] = context;
+    /// <summary>
+    /// Registers a console and gives a replacement stream session the latest node state. The
+    /// same gate also protects node broadcasts: a session added before a state change receives
+    /// that change, while a session added afterwards receives the cached result.
+    /// </summary>
+    public void Add(IZLinkSessionContext context)
+    {
+        while (true)
+        {
+            NodeStatusNotify[] snapshot;
+            long version;
+            lock (_nodeGate)
+            {
+                snapshot = _latestNodes.Values.ToArray();
+                version = _nodeVersion;
+            }
+
+            foreach (var node in snapshot)
+                Send(context, node);
+
+            lock (_nodeGate)
+            {
+                // A broadcast that raced the replay did not yet know this session. Retry its
+                // newest snapshot before publishing the session to future broadcasts.
+                if (version != _nodeVersion) continue;
+                _consoles[context.SessionId] = context;
+                return;
+            }
+        }
+    }
 
     /// <summary>
     /// Hands a console the alerts that arrived before it started watching. A node fault does
@@ -28,16 +60,7 @@ public sealed class OpsConsoleRegistry
         lock (_recentAlerts) backlog = _recentAlerts.ToArray();
 
         foreach (var alert in backlog)
-        {
-            try
-            {
-                context.Client.Send(alert).Submit();
-            }
-            catch
-            {
-                // The console went away between the request and this replay.
-            }
-        }
+            Send(context, alert);
     }
 
     public void RecordAlert(NodeAlertNotify alert)
@@ -49,21 +72,50 @@ public sealed class OpsConsoleRegistry
         }
     }
 
-    public void Remove(IZLinkSessionContext context) => _consoles.TryRemove(context.SessionId, out _);
+    public void Remove(IZLinkSessionContext context) =>
+        ((ICollection<KeyValuePair<string, IZLinkSessionContext>>)_consoles).Remove(
+            new KeyValuePair<string, IZLinkSessionContext>(context.SessionId, context));
+
+    public void Broadcast(NodeStatusNotify message)
+    {
+        IZLinkSessionContext[] consoles;
+        lock (_nodeGate)
+        {
+            _latestNodes[message.NodeId] = message;
+            _nodeVersion++;
+            consoles = _consoles.Values.ToArray();
+        }
+
+        SendAll(consoles, message);
+    }
 
     public void Broadcast<TMessage>(TMessage message)
     {
-        foreach (var console in _consoles.Values)
+        SendAll(_consoles.Values.ToArray(), message);
+    }
+
+    private void SendAll<TMessage>(
+        IReadOnlyList<IZLinkSessionContext> consoles,
+        TMessage message)
+    {
+        List<Exception>? failures = null;
+        foreach (var console in consoles)
         {
             try
             {
-                console.Client.Send(message).Submit();
+                Send(console, message);
             }
-            catch
+            catch (Exception error)
             {
-                // A console that went away between the lookup and the send is not an error;
-                // its OnDisconnected removes it.
+                Remove(console);
+                (failures ??= []).Add(error);
             }
         }
+
+        if (failures is not null)
+            throw new AggregateException("One or more ops console pushes failed.", failures);
     }
+
+    private static void Send<TMessage>(IZLinkSessionContext context, TMessage message) =>
+        context.Client.Send(message).Submit();
 }

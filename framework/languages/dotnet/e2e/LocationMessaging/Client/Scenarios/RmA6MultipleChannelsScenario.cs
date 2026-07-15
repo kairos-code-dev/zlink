@@ -49,16 +49,10 @@ internal static class RmA6MultipleChannelsScenario
             && workflowRows.All(row => row.NodeRid is not ("api-a" or "api-b")),
             "RM-A6 workflow mesh rows should contain workflow-a only.");
 
-        var providerWaitA = providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(profileMarker))
-            .Async<string[]>()
-            .AsTask();
-        var providerWaitB = providerB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(profileMarker))
-            .Async<string[]>()
-            .AsTask();
-        var providerCompleted = await Task.WhenAny(providerWaitA, providerWaitB);
-        var providerEvidence = (await providerCompleted).Body;
+        var providerEvidence = await ProviderEvidence.WaitFromEitherAsync(
+            providerA,
+            providerB,
+            profileMarker);
         var workflowEvidence = (await workflow.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(workflowMarker))
             .Async<string[]>()).Body;

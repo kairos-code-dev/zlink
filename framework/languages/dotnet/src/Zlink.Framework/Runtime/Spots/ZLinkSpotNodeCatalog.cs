@@ -369,6 +369,8 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
         catch (Exception error)
         {
+            ZLinkFrameworkDebugLog.SpotDiscovery(
+                $"SPOT '{requestedSpotRid}' creation failed on node '{node.RoutingId}': {error}");
             var wrapped = WrapSpotCreateFailed(spotType, error);
             lock (_gate)
             {

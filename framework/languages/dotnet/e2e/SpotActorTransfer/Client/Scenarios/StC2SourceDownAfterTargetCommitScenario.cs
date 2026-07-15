@@ -16,9 +16,11 @@ internal static class StC2SourceDownAfterTargetCommitScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 61);
         var sourceRef = await context.GetActorRefAsync(context.NodeA, actorId);
         await using var bound = await context.ConnectAndBindAsync(context.Options.NodeBStreamEndpoint, "ST-C2", sourceRef);
-        var beforeTransferPush = context.WaitBoundPushAsync(bound, "bound-before-transfer");
+        var beforeTransferPush = bound.WaitFor<BoundPushNotify>()
+            .Where(message => message.Payload.Marker == "bound-before-transfer")
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Async().AsTask();
         var beforeTransferReply = await bound.Request(new BoundPushReq("ST-C2", "bound-before-transfer"))
-            .PacketName(nameof(BoundPushReq))
             .Async<BoundPushRes>();
         ZlinkStreamAssert.Ensure(beforeTransferReply.NodeRid == "actor-a", $"ST-C2 pre-transfer bound push expected actor-a, got {beforeTransferReply.NodeRid}.");
         await beforeTransferPush;
@@ -32,8 +34,7 @@ internal static class StC2SourceDownAfterTargetCommitScenario
         var beforeShutdown = await context.GetActorRefAsync(context.NodeB, actorId);
         ZlinkStreamAssert.Ensure(beforeShutdown.NodeRid == "actor-b", $"ST-C2 target ref expected actor-b, got {beforeShutdown.NodeRid}.");
 
-        await context.ShutdownAsync(context.NodeA);
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await context.ShutdownAndWaitUnavailableAsync(context.NodeA, context.Options.NodeAUrl);
 
         var afterShutdown = await context.GetActorRefAsync(context.NodeB, actorId);
         ZlinkStreamAssert.Ensure(afterShutdown.NodeRid == "actor-b", $"ST-C2 target ref changed after source shutdown: {afterShutdown.NodeRid}.");
@@ -44,7 +45,10 @@ internal static class StC2SourceDownAfterTargetCommitScenario
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-C2", "after-source-down"));
         ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-b", $"ST-C2 probe expected actor-b, got {probe.NodeRid}.");
         ZlinkStreamAssert.Ensure(probe.SpotRid == spotRid, "ST-C2 probe did not reach target spot after source shutdown.");
-        var pushed = context.WaitBoundPushAsync(bound, "bound-after-source-down");
+        var pushed = bound.WaitFor<BoundPushNotify>()
+            .Where(message => message.Payload.Marker == "bound-after-source-down")
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Async().AsTask();
         var pushReply = await context.BoundPushAsync(context.NodeB, actorId, new BoundPushReq("ST-C2", "bound-after-source-down"));
         var notify = await pushed;
         ZlinkStreamAssert.Ensure(pushReply.NodeRid == "actor-b", $"ST-C2 bound push reply expected actor-b, got {pushReply.NodeRid}.");

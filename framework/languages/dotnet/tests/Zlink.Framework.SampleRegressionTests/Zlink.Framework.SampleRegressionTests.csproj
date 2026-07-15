@@ -7,6 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
         <PackageReference Include="Microsoft.NET.Test.Sdk"/>
         <PackageReference Include="coverlet.collector">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -34,6 +35,14 @@
         <Compile Include="ShoppingMallRegressionTests.cs"/>
         <Compile Include="SupportChatRegressionTests.cs"/>
         <Compile Include="TicTacToeRegressionTests.cs"/>
+        <Compile Include="ZoneWorldOpsConsoleRegistryTests.cs"/>
+        <Compile Include="../../samples/ZoneWorld/Server/Ops/Infrastructure/ZLink/Sessions/OpsConsoleRegistry.cs"
+                 Link="ZoneWorld/OpsConsoleRegistry.cs"/>
         <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../../samples/ZoneWorld/Shared/ZoneWorld.Shared.csproj"/>
     </ItemGroup>
 </Project>

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using StackExchange.Redis;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
@@ -18,6 +19,8 @@ var ops = configuration.Ops
           ?? throw new InvalidOperationException("Ops configuration is required.");
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Configuration.Sources.Clear();
+builder.Configuration.AddInMemoryCollection();
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(console =>
 {

@@ -27,8 +27,10 @@ internal static class PsB2PublisherRestartScenario
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=1"],
             []));
+        var evidenceOffsets = await Task.WhenAll(
+            subscribers.Select(SubscriberObservation.EvidenceCountAsync));
 
-        // Stop the HTTP publisher server and wait until the client observes the process gap.
+        // Stop the publisher and wait for the graceful runtime drain separately from local readiness.
         await publisher.Post("/shutdown").AsyncRaw();
         await StateObservation.WaitUntilAsync(
             async () =>
@@ -43,6 +45,14 @@ internal static class PsB2PublisherRestartScenario
                 }
             },
             "PS-B2 expected publisher to stop before restart.");
+        await Task.WhenAll(subscribers.Select((subscriber, index) =>
+            SubscriberObservation.WaitForSocketEvidenceAsync(
+                subscriber,
+                PubSubNames.SubscriberSocketSource,
+                "Disconnected",
+                evidenceOffsets[index])));
+        evidenceOffsets = await Task.WhenAll(
+            subscribers.Select(SubscriberObservation.EvidenceCountAsync));
 
         // A publish while the process is down should fail at the HTTP boundary.
         await ZlinkStreamAssert.ExpectFailureAsync(async cancellationToken =>
@@ -68,28 +78,26 @@ internal static class PsB2PublisherRestartScenario
                 }
             },
             "PS-B2 expected restarted publisher to become healthy.");
-        await Task.Delay(500);
+        await Task.WhenAll(subscribers.Select((subscriber, index) =>
+            SubscriberObservation.WaitForConnectionAsync(subscriber, evidenceOffsets[index])));
 
-        // Send enough post-restart events to give subscribers time to reconnect to the publisher.
-        for (var i = 3; i <= 42; i++)
-        {
-            await publisher.Post("/publish/event")
-                .Query("topic", PubSubNames.MainTopic)
-                .Query("runId", runId)
-                .Query("sequence", i.ToString())
-                .Query("value", $"after-publisher-restart-{i}")
-                .AsyncRaw();
-            await Task.Delay(100);
-        }
+        // Every subscriber has observed its public socket reconnect before this single measurement.
+        await publisher.Post("/publish/event")
+            .Query("topic", PubSubNames.MainTopic)
+            .Query("runId", runId)
+            .Query("sequence", "3")
+            .Query("value", "after-publisher-restart")
+            .AsyncRaw();
 
-        // Recovery is proven by post-restart delivery to every subscriber, not by replaying downtime data.
+        // Recovery is proven by this exact first post-readiness event at every subscriber.
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
-            ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
+            [],
             [])
         {
-            ContainsAnyLineGroups = Enumerable.Range(20, 23)
-                .Select(seq => new[] { $"seq={seq}|", $"run={runId}", $"topic={PubSubNames.MainTopic}" })
-                .ToArray()
+            ContainsAllLineGroups =
+            [
+                ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=3|"]
+            ]
         });
         Console.WriteLine("scenario PS-B2 passed");
         return restartedPublisher;

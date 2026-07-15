@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Diagnostics;
 using SpotService.Server.MultiNode.Spots;
 using SpotService.Shared;
@@ -21,6 +23,8 @@ internal static class MultiNodeHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -38,7 +42,7 @@ internal static class MultiNodeHostFactory
                 framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                     .SetConnectionString(options.RedisEndpoint)
                     .SetKeyPrefix(options.RedisKeyPrefix
-                                  ?? throw new InvalidOperationException("--redis-key-prefix is required."))));
+                                  ?? throw new InvalidOperationException("Shared.RedisKeyPrefix is required."))));
                 // Crash-recovery scenarios re-claim actors from a killed
                 // node; a short owner lease keeps that takeover window
                 // within the scenario's patience.
@@ -68,7 +72,7 @@ internal static class MultiNodeHostFactory
                 }
 
                 framework.AddSpotMesh(ResolveSpotMeshName(options))
-                    .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "--multi-spot-router-a-endpoint"))
+                    .EnableRouter(Require(options.MultiSpotRouterAEndpoint, "MultiSpotRouterAEndpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
@@ -91,7 +95,7 @@ internal static class MultiNodeHostFactory
                 }
 
                 framework.AddSpotMesh(ResolveSpotMeshName(options))
-                    .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "--multi-spot-router-b-endpoint"))
+                    .EnableRouter(Require(options.MultiSpotRouterBEndpoint, "MultiSpotRouterBEndpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
                     .AddEntrySpot<ScenarioEntrySpot>()
                     .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)

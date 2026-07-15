@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Systems.Zlink;
 using AutomaticTurnDispatch.Server.Play.Handlers;
 using AutomaticTurnDispatch.Server.Play.Spots;
@@ -16,6 +18,8 @@ internal static class PlayHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {

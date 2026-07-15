@@ -28,7 +28,21 @@ internal static class RmC7WeightedProviderScenario
 
         var beforeA = await ReadEvidenceAsync(providerAClient);
         var beforeB = await ReadEvidenceAsync(providerBClient);
-        await WaitForBothProvidersAsync(requester);
+        await WaitForProviderRowAsync(requester, "api-a");
+        await WaitForProviderRowAsync(requester, "api-b");
+        await WaitConnectionEvidenceAsync(
+            requester,
+            $"monitor-socket|source=profile.client|kind=ConnectionReady|remote={providerA.ChannelEndpoint}");
+        await WaitConnectionEvidenceAsync(
+            requester,
+            $"monitor-socket|source=profile.client|kind=ConnectionReady|remote={providerB.ChannelEndpoint}");
+        var first = (await requester.Post("/profile/request")
+            .Body(new ProfileReq("rm-c7-first-after-rows"))
+            .Async<ProfileRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            first.ProviderRid is "api-a" or "api-b"
+            && first.Value == "profile:rm-c7-first-after-rows",
+            "RM-C7 first request after peer convergence failed.");
         var marker = $"rm-c7-{Guid.NewGuid():N}";
         var values = Enumerable.Range(0, 240)
             .Select(index => $"{marker}-{index}")
@@ -47,13 +61,13 @@ internal static class RmC7WeightedProviderScenario
             replies.All(reply => reply.ProviderRid is "api-a" or "api-b"),
             "RM-C7 reply provider mismatch.");
 
-        var apiAValues = replies
-            .Where(reply => reply.ProviderRid == "api-a")
-            .Select(reply => reply.Value)
+        var apiAValues = values.Zip(replies)
+            .Where(result => result.Second.ProviderRid == "api-a")
+            .Select(result => result.First)
             .ToArray();
-        var apiBValues = replies
-            .Where(reply => reply.ProviderRid == "api-b")
-            .Select(reply => reply.Value)
+        var apiBValues = values.Zip(replies)
+            .Where(result => result.Second.ProviderRid == "api-b")
+            .Select(result => result.First)
             .ToArray();
         ZlinkStreamAssert.Ensure(apiAValues.Length > 0 && apiBValues.Length > 0, "RM-C7 expected both weighted providers.");
         var afterA = await WaitEvidenceAsync(providerAClient, apiAValues[^1]);
@@ -83,18 +97,19 @@ internal static class RmC7WeightedProviderScenario
             .Async<string[]>()).Body;
     }
 
-    private static async Task WaitForBothProvidersAsync(ZLinkHttpClient requester)
+    private static async Task WaitForProviderRowAsync(ZLinkHttpClient requester, string rid)
     {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var attempt = 0; attempt < 120 && seen.Count < 2; attempt++)
-        {
-            var reply = (await requester.Post("/profile/request")
-                .Body(new ProfileReq($"rm-c7-warm-{attempt}"))
-                .Async<ProfileRes>()).Body;
-            seen.Add(reply.ProviderRid);
-            if (seen.Count < 2) await Task.Delay(150);
-        }
+        await requester.Post("/locations/peers/wait")
+            .Body(new PeerLocationWaitReq("profile", "Router", rid, Present: true))
+            .Async<PeerLocationRow[]>();
+    }
 
-        ZlinkStreamAssert.Ensure(seen.SetEquals(["api-a", "api-b"]), "RM-C7 warm-up never reached both weighted providers.");
+    private static async Task<string[]> WaitConnectionEvidenceAsync(
+        ZLinkHttpClient http,
+        string contains)
+    {
+        return (await http.Post("/connections/wait")
+            .Body(new EvidenceWaitReq(contains))
+            .Async<string[]>()).Body;
     }
 }

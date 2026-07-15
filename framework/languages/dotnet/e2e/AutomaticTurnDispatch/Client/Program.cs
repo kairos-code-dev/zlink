@@ -19,36 +19,36 @@ switch (options.Scenario)
         });
         await client.Connect.Async();
 
-        var suite = new ExecutionTurnScenarioSuite(client, options.SessionBStreamEndpoint);
+        var context = new ExecutionTurnScenarioContext(client);
         var scenarios = new (string Id, Func<Task> Run)[]
         {
-            ("TD-A1", () => TdA1TerminatorSurfaceScenario.RunAsync(suite)),
-            ("TD-A2", () => TdA2AsyncCompletionOrderScenario.RunAsync(suite)),
-            ("TD-A3", () => TdA3AsyncCounterSerializationScenario.RunAsync(suite)),
-            ("TD-A4", () => TdA4DelayedAsyncCompletionScenario.RunAsync(suite)),
-            ("TD-A5", () => TdA5AsyncTimerExclusionScenario.RunAsync(suite)),
-            ("TD-B1", () => TdB1YieldProbeInterleaveScenario.RunAsync(suite)),
-            ("TD-B2", () => TdB2YieldQueuedProbeOrderScenario.RunAsync(suite)),
-            ("TD-B3", () => TdB3YieldLostUpdateScenario.RunAsync(suite)),
-            ("TD-B4", () => TdB4YieldTimerInterleaveScenario.RunAsync(suite)),
-            ("TD-C1", () => TdC1HttpYieldInterleaveScenario.RunAsync(suite)),
-            ("TD-C2", () => TdC2HttpAsyncExclusionScenario.RunAsync(suite)),
-            ("TD-C3", () => TdC3IoWorkerCapacityScenario.RunAsync(suite)),
-            ("TD-C4", () => TdC4CpuWorkerTurnOrderScenario.RunAsync(suite)),
-            ("TD-C5", () => TdC5CpuWorkerSourceGateScenario.RunAsync(suite)),
-            ("TD-D1", () => TdD1CrossActorYieldInterleaveScenario.RunAsync(suite)),
-            ("TD-D2", () => TdD2SameActorNoReentryScenario.RunAsync(suite)),
-            ("TD-D3", () => TdD3TimerNoReentryScenario.RunAsync(suite)),
-            ("TD-E1", () => TdE1EntryToUserSpotJoinScenario.RunAsync(suite)),
-            ("TD-E2", () => TdE2UserToUserSpotJoinScenario.RunAsync(suite)),
-            ("TD-E3", () => TdE3OppositeSpotJoinScenario.RunAsync(suite)),
-            ("TD-F1", () => TdF1RemoteSpotContinuationScenario.RunAsync(suite)),
-            ("TD-F2", () => TdF2RouteBridgeYieldScenario.RunAsync(suite)),
-            ("TD-F3", () => TdF3SessionRelayYieldScenario.RunAsync(suite)),
-            ("TD-F4", () => TdF4RequestTimeoutRecoveryScenario.RunAsync(suite)),
-            ("TD-F5", () => TdF5CancellationShutdownRecoveryScenario.RunAsync(suite)),
-            ("TD-F6", () => TdF6SelfRequestTimeoutRecoveryScenario.RunAsync(suite)),
-            ("TD-G1", () => TdG1TerminatorConformanceScenario.RunAsync(suite))
+            ("TD-A1", () => TdA1TerminatorSurfaceScenario.RunAsync(context)),
+            ("TD-A2", () => TdA2AsyncCompletionOrderScenario.RunAsync(context)),
+            ("TD-A3", () => TdA3AsyncCounterSerializationScenario.RunAsync(context)),
+            ("TD-A4", () => TdA4DelayedAsyncCompletionScenario.RunAsync(context)),
+            ("TD-A5", () => TdA5AsyncTimerExclusionScenario.RunAsync(context)),
+            ("TD-B1", () => TdB1YieldProbeInterleaveScenario.RunAsync(context)),
+            ("TD-B2", () => TdB2YieldQueuedProbeOrderScenario.RunAsync(context)),
+            ("TD-B3", () => TdB3YieldLostUpdateScenario.RunAsync(context)),
+            ("TD-B4", () => TdB4YieldTimerInterleaveScenario.RunAsync(context)),
+            ("TD-C1", () => TdC1HttpYieldInterleaveScenario.RunAsync(context)),
+            ("TD-C2", () => TdC2HttpAsyncExclusionScenario.RunAsync(context)),
+            ("TD-C3", () => TdC3IoWorkerCapacityScenario.RunAsync(context)),
+            ("TD-C4", () => TdC4CpuWorkerTurnOrderScenario.RunAsync(context)),
+            ("TD-C5", () => TdC5CpuWorkerSourceGateScenario.RunAsync(context)),
+            ("TD-D1", () => TdD1CrossActorYieldInterleaveScenario.RunAsync(context)),
+            ("TD-D2", () => TdD2SameActorNoReentryScenario.RunAsync(context)),
+            ("TD-D3", () => TdD3TimerNoReentryScenario.RunAsync(context)),
+            ("TD-E1", () => TdE1EntryToUserSpotJoinScenario.RunAsync(context)),
+            ("TD-E2", () => TdE2UserToUserSpotJoinScenario.RunAsync(context)),
+            ("TD-E3", () => TdE3OppositeSpotJoinScenario.RunAsync(context)),
+            ("TD-F1", () => TdF1RemoteSpotContinuationScenario.RunAsync(context)),
+            ("TD-F2", () => TdF2RouteBridgeYieldScenario.RunAsync(context)),
+            ("TD-F3", () => TdF3SessionRelayYieldScenario.RunAsync(context)),
+            ("TD-F4", () => TdF4RequestTimeoutRecoveryScenario.RunAsync(context)),
+            ("TD-F5", () => TdF5CancellationShutdownRecoveryScenario.RunAsync(context)),
+            ("TD-F6", () => TdF6SelfRequestTimeoutRecoveryScenario.RunAsync(context)),
+            ("TD-G1", () => TdG1TerminatorConformanceScenario.RunAsync(context))
         };
         foreach (var scenario in scenarios)
         {

@@ -29,7 +29,8 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
             oldRef,
             new ProbeReq("ST-F6", "correlated-reply"),
             TimeSpan.FromSeconds(5));
-        await Task.Delay(200);
+        await context.WaitRuntimeEvidenceAsync(context.NodeA,
+            $"handoff_backlog actor={actorId} arrival=0");
         await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
 
         ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F6 correlation transfer was rejected.");
@@ -56,7 +57,6 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
             oldRef,
             new ProbeReq("ST-F6", "late-reply"),
             TimeSpan.FromMilliseconds(250));
-        await Task.Delay(400);
         var timeout = await requestTask;
         ZlinkStreamAssert.Ensure(!timeout.Succeeded && timeout.ErrorKind == nameof(TimeoutException),
             $"ST-F6 expected normal TimeoutException, got '{timeout.ErrorKind}'.");

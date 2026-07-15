@@ -26,8 +26,13 @@ internal static class StA3MovingDispatchBlockedScenario
             "ST-A3 packet should not run before OnJoinedActorAsync is released.");
 
         var blockedProbe = context.ProbeAsync(context.NodeA, actorId, new ProbeReq("ST-A3", "during-joined-wait"));
-        await Task.Delay(500);
-        ZlinkStreamAssert.Ensure(!blockedProbe.IsCompleted, "ST-A3 actor packet completed while OnJoinedActorAsync was still blocked.");
+        var submittedEvidence = await context.WaitEvidenceAsync(context.NodeA, [
+            $"ST-A3|{actorId}|probe_submitted|during-joined-wait"
+        ]);
+        SpotActorTransferScenarioContext.RequireNoContains(
+            submittedEvidence,
+            $"ST-A3|{actorId}|packet_handler|during-joined-wait",
+            "ST-A3 actor packet completed while OnJoinedActorAsync was still blocked.");
 
         var release = await context.ReleaseJoinedGateAsync(context.NodeA, spotRid);
         ZlinkStreamAssert.Ensure(release.Released, "ST-A3 joined gate was already released before the scenario released it.");

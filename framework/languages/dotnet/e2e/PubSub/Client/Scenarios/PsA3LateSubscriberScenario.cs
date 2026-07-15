@@ -11,6 +11,7 @@ internal static class PsA3LateSubscriberScenario
     public static async Task RunAsync(
         ZLinkHttpClient publisher,
         ZLinkHttpClient lateSubscriberClient,
+        IReadOnlyList<ZLinkHttpClient> existingSubscribers,
         ServerProcessLauncher processes,
         string lateSubscriberUrl)
     {
@@ -45,24 +46,22 @@ internal static class PsA3LateSubscriberScenario
                     }
                 },
                 "PS-A3 expected late subscriber to become healthy.");
+            await SubscriberObservation.WaitForConnectionAsync(lateSubscriberClient);
 
             var afterLateRun = Guid.NewGuid().ToString("N");
 
-            // After the late subscriber is healthy, new publishes should be visible to it.
-            for (var i = 1; i <= 8; i++)
-                await publisher.Post("/publish/event")
-                    .Query("topic", PubSubNames.MainTopic)
-                    .Query("runId", afterLateRun)
-                    .Query("sequence", i.ToString())
-                    .Query("value", $"after-late-{i}")
-                    .AsyncRaw();
+            // Socket readiness proves the late subscriber has joined before this measured publish.
+            await publisher.Post("/publish/event")
+                .Query("topic", PubSubNames.MainTopic)
+                .Query("runId", afterLateRun)
+                .Query("sequence", "1")
+                .Query("value", "after-late")
+                .AsyncRaw();
 
-            // The positive check proves the late subscriber joined the fanout after process start.
-            var lateEvidence = (await lateSubscriberClient.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(
-                    ["event|", $"run={afterLateRun}", $"topic={PubSubNames.MainTopic}"],
-                    []))
-                .Async<string[]>()).Body;
+            var measuredSubscribers = existingSubscribers.Append(lateSubscriberClient).ToArray();
+            var measuredEvidence = await Task.WhenAll(measuredSubscribers.Select(
+                subscriber => SubscriberObservation.WaitForEventAsync(subscriber, afterLateRun, 1)));
+            var lateEvidence = measuredEvidence[^1];
 
             // Pub/Sub has no replay contract, so pre-join events must stay absent from late evidence.
             ZlinkStreamAssert.Ensure(

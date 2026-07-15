@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using System.Collections.Concurrent;
 using Systems.Zlink;
 using ToActorMessaging.Caller;
@@ -13,6 +15,8 @@ var options = ServerOptions.Parse(args, "caller");
 Directory.CreateDirectory(options.LogDir);
 
 var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
 builder.WebHost.UseUrls(options.HttpUrl);
 var cachedActors = new ConcurrentDictionary<string, ActorRef>(StringComparer.Ordinal);
 IZLinkEndpointConnections? actorConnections = null;

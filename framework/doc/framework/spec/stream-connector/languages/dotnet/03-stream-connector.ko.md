@@ -173,6 +173,11 @@ codec 표면은 `IZlinkStreamPayloadCodec`과 `IZlinkStreamCompressionCodec`이�
 `WaitFor(...)`가 사용할 unread 수신 기록은 `MaxReceivedMessages`로 제한한다. **이 제한은 response와
 heartbeat 같은 control frame의 처리를 막지 않는다.**
 
+`On(...)` handler가 등록된 이름의 message는 handler snapshot으로 전달하며 unread 기록에 넣지 않는다.
+따라서 production handler의 처리량은 `MaxReceivedMessages`에 제한되지 않는다. handler가 없는 이름의
+message만 unread 기록에 남고 `WaitFor(...)`가 하나씩 소비한다. inbound observer는 이 선택과 별도의
+관찰 경로이므로 두 경우 모두 frame snapshot을 받는다.
+
 **큐가 가득 차면 새로 도착한 message를 거부하고 `ReceivedMessageDropped`를 보고한다**
 ([공통 스펙 §10.1](../../32-stream-connector.ko.md)).
 
@@ -188,6 +193,27 @@ IZlinkStreamExpectNoneCall ExpectNone(string name);     // .Within(window) 동�
 IZlinkStreamSequenceCall   WaitForSequence(string name); // .Expect(p).Expect(p)…를 순서대로
 
 // typed: ZlinkStreamTypedConnectorExtensions 가 WaitFor<T>·ExpectNone<T>·WaitForSequence<T> 제공
+```
+
+negative observation과 순서 검증의 typed builder는 다음 public interface를 고정한다.
+
+```csharp
+public sealed class ZlinkStreamTypedExpectNoneBuilder<TPayload>
+{
+    // 이 packet이 도착하지 않아야 하는 관찰 구간을 정한다.
+    public ZlinkStreamTypedExpectNoneBuilder<TPayload> Within(TimeSpan window);
+    public ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public sealed class ZlinkStreamTypedSequenceBuilder<TPayload>
+{
+    // 도착 순서대로 적용할 다음 typed predicate를 추가한다.
+    public ZlinkStreamTypedSequenceBuilder<TPayload> Expect(
+        Func<ZlinkStreamMessage<TPayload>, bool> predicate);
+    public ZlinkStreamTypedSequenceBuilder<TPayload> Timeout(TimeSpan timeout);
+    public ValueTask<IReadOnlyList<ZlinkStreamMessage<TPayload>>> Async(
+        CancellationToken cancellationToken = default);
+}
 ```
 
 - `ExpectNone(name).Within(TimeSpan).Async(ct)` — window 안에 도착하면 **오류를 던진다**. `WaitFor`의 대칭.

@@ -1,6 +1,7 @@
 // Verifies ST-E1 Bound Session Push After Transfer behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 namespace SpotActorTransfer.Client.Scenarios;
@@ -15,13 +16,19 @@ internal static class StE1BoundSessionPushAfterTransferScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 91);
         var sourceRef = await context.GetActorRefAsync(context.NodeA, actorId);
         await using var bound = await context.ConnectAndBindAsync(context.Options.NodeAStreamEndpoint, "ST-E1", sourceRef);
-        var beforeTransferPush = context.WaitBoundPushAsync(bound, "before-transfer");
+        var beforeTransferPush = bound.WaitFor<BoundPushNotify>()
+            .Where(message => message.Payload.Marker == "before-transfer")
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Async().AsTask();
         await context.BoundPushAsync(context.NodeA, actorId, new BoundPushReq("ST-E1", "before-transfer"));
         await beforeTransferPush;
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-E1", spotRid));
         ZlinkStreamAssert.Ensure(join.Accepted, "ST-E1 join was rejected.");
-        var pushed = context.WaitBoundPushAsync(bound, "after-remote-transfer");
+        var pushed = bound.WaitFor<BoundPushNotify>()
+            .Where(message => message.Payload.Marker == "after-remote-transfer")
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Async().AsTask();
         var pushReply = await context.BoundPushAsync(context.NodeB, actorId, new BoundPushReq("ST-E1", "after-remote-transfer"));
         var notify = await pushed;
         ZlinkStreamAssert.Ensure(pushReply.NodeRid == "actor-b", $"ST-E1 bound push reply expected actor-b, got {pushReply.NodeRid}.");

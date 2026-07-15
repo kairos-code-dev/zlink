@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Systems.Zlink;
 using TicTacToe.Server.Configuration;
 using TicTacToe.Server.Play.Application.GameCreation;
@@ -20,6 +22,8 @@ internal sealed class PlayServer(SampleSettings settings)
     public IHost Build()
     {
         var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         SampleLogging.Configure(builder.Logging, settings.LogDirectory, "play");
 
         builder.Services.AddSingleton(settings);

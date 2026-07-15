@@ -1,6 +1,7 @@
 using Zlink.Framework.E2E.Configuration;
 using SpotActorTransfer.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
+using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace SpotActorTransfer.Client.Support;
@@ -54,10 +55,58 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                ?? throw new InvalidOperationException("Gate release response was null.");
     }
 
+    public async Task ArmCleanupGateAsync(
+        ZLinkHttpClient client,
+        string actorId,
+        string scenario)
+    {
+        var result = (await client.Post($"/cleanup-gates/{actorId}/arm")
+                .Body(new CleanupGateArmReq(scenario))
+                .Async<CleanupGateRes>()).Body
+            ?? throw new InvalidOperationException("Cleanup gate arm response was null.");
+        ZlinkStreamAssert.Ensure(result.Changed,
+            $"{scenario} cleanup gate for actor '{actorId}' was already armed.");
+    }
+
+    public async Task ReleaseCleanupGateAsync(
+        ZLinkHttpClient client,
+        string actorId,
+        string scenario)
+    {
+        var result = (await client.Post($"/cleanup-gates/{actorId}/release")
+                .Async<CleanupGateRes>()).Body
+            ?? throw new InvalidOperationException("Cleanup gate release response was null.");
+        ZlinkStreamAssert.Ensure(result.Changed,
+            $"{scenario} cleanup gate for actor '{actorId}' was not waiting.");
+    }
+
+    public async Task AllowCleanupAttemptAsync(
+        ZLinkHttpClient client,
+        string actorId,
+        string scenario)
+    {
+        var result = (await client.Post($"/cleanup-gates/{actorId}/allow-attempt")
+                .Async<CleanupGateRes>()).Body
+            ?? throw new InvalidOperationException("Cleanup gate allow response was null.");
+        ZlinkStreamAssert.Ensure(result.Changed,
+            $"{scenario} cleanup attempt for actor '{actorId}' was already allowed.");
+    }
+
     public async Task<ActorRefSnapshotRes> GetActorRefAsync(ZLinkHttpClient client, string actorId)
     {
         return (await client.Get($"/actors/{actorId}/ref").Async<ActorRefSnapshotRes>()).Body
                ?? throw new InvalidOperationException("Actor ref response was null.");
+    }
+
+    public async Task<ActorRefSnapshotRes> GetActorRefWithEvidenceAsync(
+        ZLinkHttpClient client,
+        string actorId,
+        string scenario,
+        string marker)
+    {
+        return (await client.Get($"/actors/{actorId}/ref-evidence/{scenario}/{marker}")
+                   .Async<ActorRefSnapshotRes>()).Body
+               ?? throw new InvalidOperationException("Actor ref evidence response was null.");
     }
 
     public async Task<IReadOnlyList<ActorEvidence>> GetEvidenceAsync(ZLinkHttpClient client)
@@ -69,6 +118,55 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     public async Task ShutdownAsync(ZLinkHttpClient client)
     {
         await client.Post("/shutdown").AsyncRaw();
+    }
+
+    public async Task ShutdownAndWaitUnavailableAsync(ZLinkHttpClient client, string url)
+    {
+        await ShutdownAsync(client);
+        using var probe = ZLinkHttpClient.Create(url)
+            .Timeout(TimeSpan.FromMilliseconds(250))
+            .Build();
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            try
+            {
+                await probe.Get("/health").AsyncRaw();
+            }
+            catch (ZLinkFrameworkException error) when (
+                error.Kind == ZLinkFrameworkErrorKind.RequestFailed
+                && HasConnectionFailure(error))
+            {
+                return;
+            }
+            catch (Exception error) when (error is HttpRequestException or IOException)
+            {
+                return;
+            }
+            catch (Exception error) when (
+                error is TaskCanceledException or TimeoutException
+                || error is ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.RequestFailed })
+            {
+                // A slow health probe does not prove that the process exited. Keep observing
+                // until a connection failure is reported or the outer deadline expires.
+            }
+            await Task.Delay(50);
+        }
+
+        throw new TimeoutException($"Source node at '{url}' remained reachable after shutdown.");
+    }
+
+    private static bool HasConnectionFailure(Exception error)
+    {
+        for (var current = error; current is not null; current = current.InnerException)
+            if (current is HttpRequestException or IOException)
+                return true;
+        return false;
+    }
+
+    public async Task DrainAsync(ZLinkHttpClient client)
+    {
+        await client.Post("/drain").AsyncRaw();
     }
 
     public async Task<JoinTargetRes> JoinAsync(
@@ -134,16 +232,6 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                ?? throw new InvalidOperationException("Bound push response was null.");
     }
 
-    public Task<ZlinkStreamMessage<BoundPushNotify>> WaitBoundPushAsync(
-        IZlinkStreamConnector stream,
-        string marker)
-    {
-        return stream.WaitFor<BoundPushNotify>()
-            .Where(message => message.Payload.Marker == marker)
-            .Timeout(TimeSpan.FromSeconds(10))
-            .Async().AsTask();
-    }
-
     public async Task<IZlinkStreamConnector> ConnectAndBindAsync(
         string endpoint,
         string scenario,
@@ -161,7 +249,6 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         await stream.Connect.Async();
         var bound = await stream.Request(new BindActorSessionReq(
                 scenario, actor.ActorId, actor.NodeRid, actor.Generation))
-            .PacketName(nameof(BindActorSessionReq))
             .Async<BindActorSessionRes>();
         ZlinkStreamAssert.Ensure(bound.ActorId == actor.ActorId, $"{scenario} session bind actor mismatch.");
         return stream;
@@ -177,6 +264,17 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         foreach (var expected in containsAll)
             RequireContains(evidence, expected, $"Expected evidence marker was not observed: {expected}");
         return evidence;
+    }
+
+    public async Task WaitRuntimeEvidenceAsync(ZLinkHttpClient client, params string[] containsAll)
+    {
+        var evidence = (await client.Post("/runtime-evidence/wait")
+                .Body(new EvidenceWaitReq(containsAll))
+                .Async<string[]>()).Body
+            ?? throw new InvalidOperationException("Runtime evidence response was null.");
+        foreach (var expected in containsAll)
+            ZlinkStreamAssert.Ensure(evidence.Any(item => item.Contains(expected, StringComparison.Ordinal)),
+                $"Expected runtime evidence marker was not observed: {expected}");
     }
 
     public async Task AssertEvidenceOrderAsync(

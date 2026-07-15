@@ -7,9 +7,8 @@ source "${SCRIPT_DIR}/../redis-common.sh"
 RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
-BINGO_LOG_DIR="${SCRIPT_DIR}/logs"
+BINGO_LOG_DIR="${RUN_DIR}/flow-logs"
 mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
-rm -f "${BINGO_LOG_DIR}"/*.log
 
 PIDS=()
 REDIS_CONTAINER=""
@@ -85,12 +84,10 @@ PY
 )"
 
 BINGO_API_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
-BINGO_PLAY_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
 BINGO_SESSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
 BINGO_SESSION_A_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
 BINGO_SESSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
 BINGO_SESSION_B_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
-BINGO_PLAY_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
 BINGO_PLAY_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
 BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
 BINGO_SESSION_A_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
@@ -98,6 +95,10 @@ BINGO_SESSION_B_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
 BINGO_PLAY_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
 BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
 BINGO_API_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
+BINGO_API_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[16]}"
+BINGO_API_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[17]}"
+BINGO_API_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[18]}"
+BINGO_API_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[19]}"
 API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
@@ -165,11 +166,13 @@ common = {
     "RedisKeyPrefix": "${BINGO_REDIS_KEY_PREFIX}",
 }
 roles = [
-    {**common, "NodeName": "a", "ChannelEndpoint": "${BINGO_API_A_CHANNEL_ENDPOINT}"},
-    {**common, "NodeName": "b", "ChannelEndpoint": "${BINGO_API_B_CHANNEL_ENDPOINT}"},
-    {**common, "NodeName": "a", "ChannelEndpoint": "${BINGO_PLAY_A_CHANNEL_ENDPOINT}",
+    {**common, "NodeName": "a", "ChannelEndpoint": "${BINGO_API_A_CHANNEL_ENDPOINT}",
+     "SpotEndpoint": "${BINGO_API_A_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_API_A_SPOT_ROUTER_ENDPOINT}"},
+    {**common, "NodeName": "b", "ChannelEndpoint": "${BINGO_API_B_CHANNEL_ENDPOINT}",
+     "SpotEndpoint": "${BINGO_API_B_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_API_B_SPOT_ROUTER_ENDPOINT}"},
+    {**common, "NodeName": "a",
      "SpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"},
-    {**common, "NodeName": "b", "ChannelEndpoint": "${BINGO_PLAY_B_CHANNEL_ENDPOINT}",
+    {**common, "NodeName": "b",
      "SpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"},
     {**common, "NodeName": "a", "SpotEndpoint": "${BINGO_SESSION_A_SPOT_ENDPOINT}",
      "SpotRouterEndpoint": "${BINGO_SESSION_A_ROUTER_ENDPOINT}", "StreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}"},
@@ -204,18 +207,20 @@ start_server() {
 dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 
 start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_A_CONFIG_FILE}"
-wait_port play-a "${BINGO_PLAY_A_CHANNEL_ENDPOINT}"
 wait_port play-a-spot-router "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"
 wait_port play-a-spot-pub "${BINGO_PLAY_A_SPOT_ENDPOINT}"
 start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_B_CONFIG_FILE}"
-wait_port play-b "${BINGO_PLAY_B_CHANNEL_ENDPOINT}"
 wait_port play-b-spot-router "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"
 wait_port play-b-spot-pub "${BINGO_PLAY_B_SPOT_ENDPOINT}"
 
 start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_A_CONFIG_FILE}"
 wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
+wait_port api-a-spot-router "${BINGO_API_A_SPOT_ROUTER_ENDPOINT}"
+wait_port api-a-spot-pub "${BINGO_API_A_SPOT_ENDPOINT}"
 start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_B_CONFIG_FILE}"
 wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
+wait_port api-b-spot-router "${BINGO_API_B_SPOT_ROUTER_ENDPOINT}"
+wait_port api-b-spot-pub "${BINGO_API_B_SPOT_ENDPOINT}"
 
 start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --config "${SESSION_A_CONFIG_FILE}"
 wait_port session-a-router "${BINGO_SESSION_A_ROUTER_ENDPOINT}"

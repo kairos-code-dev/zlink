@@ -47,6 +47,20 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void Bingo_Creates_A_New_Room_Only_On_The_Assigned_Owner_Node()
+    {
+        var sampleRoot = ResolveSampleRoot("Bingo");
+        var handler = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Infrastructure", "ZLink",
+            "Handlers", "AllocateBingoRoomHandler.cs"));
+        var allocator = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "Application",
+            "RoomAllocation", "BingoRoomAllocator.cs"));
+
+        Assert.Contains("IZLinkSpotRequestHandler<BingoEntrySpot", handler, StringComparison.Ordinal);
+        Assert.Contains("reservation.NewRoomSettings is not null", handler, StringComparison.Ordinal);
+        Assert.DoesNotContain("OwnerPlayNodeRid, preferredOwnerNodeRid", allocator, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bingo_Player_Records_Are_Loaded_And_Reported_Through_Yielding_Room_Lifecycle()
     {
         var sampleRoot = ResolveSampleRoot("Bingo");
@@ -76,6 +90,9 @@ public sealed partial class RegressionTests
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("BINGO_REDIS_KEY_PREFIX=\"bingo:dotnet:${RUN_ID}:\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("BINGO_LOG_DIR=\"${RUN_DIR}/flow-logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("BINGO_LOG_DIR=\"${SCRIPT_DIR}/logs\"", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("rm -f \"${BINGO_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-bingo-dotnet-redis-${RUN_ID}\"", shellRunner, StringComparison.Ordinal);
         AssertShellRunnerUsesRedisDockerHelper(shellRunner, "zlink-bingo-dotnet-redis", "BINGO_REDIS_ENDPOINT");
         Assert.DoesNotContain("if [[ -z \"${BINGO_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
@@ -96,6 +113,9 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("BINGO_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("BINGO_STARTUP_SETTLE_SECONDS", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("$BINGO_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$SampleLogDir = Join-Path $RunDir \"flow-logs\"", powershellRunner,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Join-Path $ScriptDir \"logs\"", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("function Wait-LogContains", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Select-String -Pattern $Pattern -Quiet", powershellRunner, StringComparison.Ordinal);

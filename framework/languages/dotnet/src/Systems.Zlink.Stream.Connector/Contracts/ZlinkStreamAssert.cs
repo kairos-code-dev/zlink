@@ -56,14 +56,13 @@ public static class ZlinkStreamAssert
         {
             await action(CancellationToken.None).ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (Exception exception)
         {
-            return;
-        }
-        catch (ZlinkStreamException exception) when (
-            exception.Error.Code is ZlinkStreamErrorCode.RequestTimeout or ZlinkStreamErrorCode.ConnectTimeout)
-        {
-            return;
+            if (TryClassifyKnownFailure(exception, out var error)
+                && error.Code is ZlinkStreamErrorCode.RequestTimeout or ZlinkStreamErrorCode.ConnectTimeout)
+                return;
+
+            ExceptionDispatchInfo.Capture(exception).Throw();
         }
 
         throw new InvalidOperationException("Expected action to time out.");
@@ -71,7 +70,21 @@ public static class ZlinkStreamAssert
 
     private static ZlinkStreamError Classify(Exception exception)
     {
-        if (exception is ZlinkStreamException streamException) return streamException.Error;
+        if (TryClassifyKnownFailure(exception, out var error)) return error;
+
+        ExceptionDispatchInfo.Capture(exception).Throw();
+        throw new InvalidOperationException("Unreachable code.");
+    }
+
+    private static bool TryClassifyKnownFailure(
+        Exception exception,
+        out ZlinkStreamError error)
+    {
+        if (exception is ZlinkStreamException streamException)
+        {
+            error = streamException.Error;
+            return true;
+        }
 
         for (var current = exception; current is not null; current = current.InnerException)
         {
@@ -84,10 +97,13 @@ public static class ZlinkStreamAssert
                 _ => (ZlinkStreamErrorCode?)null
             };
             if (code is { } knownCode)
-                return new ZlinkStreamError(knownCode, exception.Message, exception);
+            {
+                error = new ZlinkStreamError(knownCode, exception.Message, exception);
+                return true;
+            }
         }
 
-        ExceptionDispatchInfo.Capture(exception).Throw();
-        throw new InvalidOperationException("Unreachable code.");
+        error = null!;
+        return false;
     }
 }

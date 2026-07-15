@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using Google.Protobuf.WellKnownTypes;
 using RegistrationCodec.Server.InvalidDuplicate.Handlers;
 using RegistrationCodec.Server.InvalidDuplicate.Infrastructure;
@@ -24,6 +26,8 @@ public static class RegistrationCodecServerHostFactory
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection();
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole(console =>
         {
@@ -54,8 +58,8 @@ public static class RegistrationCodecServerHostFactory
             framework.UseFilter<SecondFilter>();
 
             var channel = framework.AddClientServerChannel(RegistrationCodecNames.Channel)
-                .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
-                .EnableClient(Require(options.ChannelEndpoint, "--channel-endpoint"));
+                .EnableServer(Require(options.ChannelEndpoint, "ChannelEndpoint"))
+                .EnableClient(Require(options.ChannelEndpoint, "ChannelEndpoint"));
             channel.AddHandlerGroup("auto");
             channel.AddHandlerGroup("attr");
             channel.AddRequestHandler<EchoManualRequestHandler, EchoManualReq, EchoRes>("EchoManual");

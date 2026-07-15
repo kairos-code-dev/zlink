@@ -78,6 +78,9 @@ internal sealed class EntrySlowActorPingHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         _ = context;
+        evidence.Add(
+            $"actor-slow-ping-started|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
+            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}");
         await Task.Delay(TimeSpan.FromMilliseconds(request.DelayMs), cancellationToken);
         actor.Seen++;
         evidence.Add(

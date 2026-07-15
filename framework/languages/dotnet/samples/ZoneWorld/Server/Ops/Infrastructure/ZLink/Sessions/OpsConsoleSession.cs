@@ -34,9 +34,10 @@ public sealed class OpsConsoleSession(
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)
     {
         logger.LogWarning(
-            "ops stream error. session={SessionId}, code={Code}",
+            "ops stream error. session={SessionId}, code={Code}, diagnostic={Diagnostic}",
             Context.SessionId,
-            error.Error);
+            error.Error,
+            error.Diagnostic?.Message);
         return ValueTask.CompletedTask;
     }
 

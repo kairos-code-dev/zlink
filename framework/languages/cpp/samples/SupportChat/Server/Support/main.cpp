@@ -127,21 +127,26 @@ class supportchat_conversation_runtime_t
         return "supportchat-conversation-" + std::to_string (_next_conversation_seq++);
     }
 
-    set_agent_available_res_t set_agent_available (const std::string &actor_id, bool available)
+    set_agent_available_res_t set_agent_available (const std::string &actor_id,
+                                                   const std::string &display_name,
+                                                   bool available)
     {
         std::lock_guard lock (_mutex);
-        if (available) {
-            _available_agent = actor_id;
-        } else if (_available_agent == actor_id) {
-            _available_agent.reset ();
-        }
+        _assignment.set_available (actor_id, display_name, available);
         return {available};
     }
 
-    std::optional<std::string> assign_agent ()
+    std::optional<std::string> assign_agent (const std::string &conversation_id)
     {
         std::lock_guard lock (_mutex);
-        return _available_agent;
+        const auto assigned = _assignment.assign_for_conversation (conversation_id);
+        return assigned ? std::optional<std::string>{assigned->roster_actor_id} : std::nullopt;
+    }
+
+    void release_conversation (const std::string &conversation_id)
+    {
+        std::lock_guard lock (_mutex);
+        _assignment.release_conversation (conversation_id);
     }
 
     std::optional<actor_profile_t> actor_profile (const std::string &actor_id) const
@@ -196,7 +201,8 @@ class supportchat_conversation_runtime_t
     mutable std::mutex _mutex;
     std::map<std::string, participant_t> _actors;
     std::map<std::string, support_user_actor_t *> _live_actors;
-    std::optional<std::string> _available_agent;
+    agent_availability_directory_t _agent_availability{3};
+    agent_assignment_service_t _assignment{_agent_availability};
     int _next_conversation_seq{1};
 };
 
@@ -281,6 +287,7 @@ class conversation_spot_t : public spot_t
             broadcast (*idle, conversation_idle_notify_t::packet_name);
         }
         if (const auto *closed = std::get_if<conversation_closed_notify_t> (&transition)) {
+            _runtime.release_conversation (closed->conversation_id);
             broadcast (*closed, conversation_closed_notify_t::packet_name);
         }
     }
@@ -368,6 +375,7 @@ class conversation_spot_t : public spot_t
     {
         (void) request;
         auto closed = require_conversation ().close ();
+        _runtime.release_conversation (closed.state.conversation_id);
         /* 종료 알림은 대화의 모든 참가자가 받는다(공통 sample spec §14). */
         broadcast (conversation_closed_notify_t{closed.state.conversation_id, closed.state},
                    conversation_closed_notify_t::packet_name);
@@ -541,7 +549,8 @@ class support_entry_spot_t : public entry_spot_t
             throw framework_exception_t (framework_error_kind_t::request_rejected,
                                          "only agent actors can set availability");
         }
-        return _runtime.set_agent_available (actor.actor_id, request.is_available);
+        return _runtime.set_agent_available (actor.actor_id, actor.display_name,
+                                             request.is_available);
     }
 
     task_t<open_conversation_res_t> open_conversation (support_user_actor_t &actor,
@@ -652,7 +661,7 @@ class allocate_conversation_handler_t
     allocate_conversation_res_t handle (const allocate_conversation_req_t &request)
     {
         const auto conversation_id = _runtime.next_conversation_id ();
-        const auto assigned_agent = _runtime.assign_agent ();
+        const auto assigned_agent = _runtime.assign_agent (conversation_id);
         (void) _spots.get_or_create_spot (
           support_conversation_spot, spot_rid_t::from_string (conversation_id),
           zlink::framework::message_t::from (conversation_create_req_t{conversation_id, request.subject,
@@ -741,9 +750,9 @@ class supportchat_server_story_t
     supportchat_server_assertion_res_t run ()
     {
         _evidence.clear ();
-        agent_availability_directory_t agents;
+        agent_availability_directory_t agents (2);
         agent_assignment_service_t assignment (agents);
-        agents.set_available ("agent-1", 2);
+        assignment.set_available ("agent-1", "Agent One", true);
         record ("agent-availability=registered");
 
         auto room1 = open_conversation ("supportchat-conversation-1", "checkout payment failed",
@@ -829,9 +838,10 @@ class supportchat_server_story_t
         const auto customer_join = conversation.join_customer (customer_id, customer_id);
         require (customer_join.state.status == conversation_status_t::waiting_for_agent,
                  "customer join state mismatch");
-        if (auto agent = assignment.assign ()) {
-            const auto assigned = conversation.assign_agent (*agent);
-            require (assigned.state.agent_actor_id == *agent, "assigned agent mismatch");
+        if (auto agent = assignment.assign_for_conversation (conversation_id)) {
+            const auto assigned = conversation.assign_agent (agent->roster_actor_id);
+            require (assigned.state.agent_actor_id == agent->roster_actor_id,
+                     "assigned agent mismatch");
         }
         record ("open:" + conversation_id + ":" + conversation.snapshot ().status);
         return conversation;

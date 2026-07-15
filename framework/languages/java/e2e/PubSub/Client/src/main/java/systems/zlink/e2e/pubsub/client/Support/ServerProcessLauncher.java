@@ -1,10 +1,6 @@
 package systems.zlink.e2e.pubsub.client.Support;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
@@ -14,9 +10,9 @@ public final class ServerProcessLauncher {
     private static final Duration START_TIMEOUT = Duration.ofSeconds(30);
 
     private final ClientOptions options;
-    private final HttpClient http;
+    private final PubSubHttpClient http;
 
-    public ServerProcessLauncher(ClientOptions options, HttpClient http) {
+    ServerProcessLauncher(ClientOptions options, PubSubHttpClient http) {
         this.options = options;
         this.http = http;
     }
@@ -81,16 +77,7 @@ public final class ServerProcessLauncher {
     }
 
     private boolean isHealthy(String endpoint) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint + "/health"))
-                .timeout(Duration.ofMillis(300))
-                .GET()
-                .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() >= 200 && response.statusCode() < 300;
-        } catch (Exception ignored) {
-            return false;
-        }
+        return http.isHealthy(endpoint, Duration.ofMillis(300));
     }
 
     private Path publisherBin() {

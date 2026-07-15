@@ -1,20 +1,45 @@
 package systems.zlink.e2e.pubsub.client.Support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.http.HttpClient;
 
-public record ScenarioContext(
-    ClientOptions options,
-    PublisherClient publisher,
-    Evidence evidence,
-    ServerProcessLauncher processes) {
+public final class ScenarioContext implements AutoCloseable {
+    private final ClientOptions options;
+    private final PublisherClient publisher;
+    private final Evidence evidence;
+    private final ServerProcessLauncher processes;
+    private final PubSubHttpClient http;
+
+    private ScenarioContext(ClientOptions options, PubSubHttpClient http) {
+        this.options = options;
+        this.publisher = new PublisherClient(http, options.publisherHttp());
+        this.evidence = new Evidence(options, new ObjectMapper(), http);
+        this.processes = new ServerProcessLauncher(options, http);
+        this.http = http;
+    }
+
     public static ScenarioContext fromEnv() {
-        HttpClient http = HttpClient.newHttpClient();
         ClientOptions options = ClientOptions.fromEnv();
-        return new ScenarioContext(
-            options,
-            new PublisherClient(http, options.publisherHttp()),
-            new Evidence(options, new ObjectMapper(), http),
-            new ServerProcessLauncher(options, http));
+        return new ScenarioContext(options, new PubSubHttpClient());
+    }
+
+    public ClientOptions options() {
+        return options;
+    }
+
+    public PublisherClient publisher() {
+        return publisher;
+    }
+
+    public Evidence evidence() {
+        return evidence;
+    }
+
+    public ServerProcessLauncher processes() {
+        return processes;
+    }
+
+    @Override
+    public void close() {
+        http.close();
     }
 }

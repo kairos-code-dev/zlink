@@ -16,19 +16,21 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        ScenarioContext context = ScenarioContext.fromEnv();
-        switch (context.options().mode()) {
-            case "PS-A1" -> FanoutBasicDeliveryScenario.run(context);
-            case "PS-A2" -> TopicFilterScenario.run(context);
-            case "PS-A3" -> runLateSubscriberOnly(context);
-            case "PS-A4", "subscriber-restarted" -> SubscriberReconnectScenario.run(context);
-            case "PS-B1", "slow-subscriber" -> SlowSubscriberScenario.run(context);
-            case "PS-B2", "publisher-restarted" -> PublisherRestartScenario.run(context);
-            case "PS-C1" -> MissingMessageNameScenario.run(context);
-            case "default" -> runDefault(context);
-            default -> throw new IllegalArgumentException("unknown mode " + context.options().mode());
+        try (ScenarioContext context = ScenarioContext.fromEnv()) {
+            switch (context.options().mode()) {
+                case "PS-A1" -> FanoutBasicDeliveryScenario.run(context);
+                case "PS-A2" -> TopicFilterScenario.run(context);
+                case "PS-A3" -> runLateSubscriberOnly(context);
+                case "PS-A4", "subscriber-restarted" -> SubscriberReconnectScenario.run(context);
+                case "PS-B1", "slow-subscriber" -> SlowSubscriberScenario.run(context);
+                case "PS-B2", "publisher-restarted" -> PublisherRestartScenario.run(context);
+                case "PS-C1" -> MissingMessageNameScenario.run(context);
+                case "default" -> runDefault(context);
+                default -> throw new IllegalArgumentException(
+                    "unknown mode " + context.options().mode());
+            }
+            System.out.println("pub-sub e2e result=passed");
         }
-        System.out.println("pub-sub e2e result=passed");
     }
 
     private static void runDefault(ScenarioContext context) {

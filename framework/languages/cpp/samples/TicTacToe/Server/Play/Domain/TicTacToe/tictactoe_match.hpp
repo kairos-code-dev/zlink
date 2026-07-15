@@ -24,7 +24,8 @@ class tictactoe_match_t
     {
     }
 
-    join_game_res_t evaluate_join (const std::string &actor_id, const std::string &room_id) const
+    tictactoe_game_join_res_t
+    evaluate_join (const std::string &actor_id, const std::string &room_id) const
     {
         if (room_id != _state.room_id) {
             throw std::runtime_error ("room id mismatch");
@@ -53,7 +54,7 @@ class tictactoe_match_t
         throw std::runtime_error ("match already has two players");
     }
 
-    join_game_res_t join (const std::string &actor_id, const std::string &room_id)
+    tictactoe_game_join_res_t join (const std::string &actor_id, const std::string &room_id)
     {
         const auto previous_status = _state.status;
         auto response = evaluate_join (actor_id, room_id);

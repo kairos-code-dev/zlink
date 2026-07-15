@@ -286,6 +286,18 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
 }
 
+TEST (CppFrameworkSampleParity, TicTacToeSeparatesInternalRoomJoinResponse)
+{
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/TicTacToe/Shared/Contracts/messages.hpp");
+    const auto handler = read_file (
+      cpp_language_root ()
+      / "samples/TicTacToe/Server/Play/Infrastructure/ZLink/Spots/EntrySpot/Handlers/play_actor_join_game_handler.hpp");
+    EXPECT_NE (contracts.find ("struct tictactoe_game_join_res_t"), std::string::npos);
+    EXPECT_NE (handler.find ("async<tictactoe_game_join_res_t>"), std::string::npos)
+      << "room admission must decode the documented internal response, not JoinGameRes";
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesFrameworkOwnedSpotLocationResolution)
 {
     const auto host_factory = read_file (

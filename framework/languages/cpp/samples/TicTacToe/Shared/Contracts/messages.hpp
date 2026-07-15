@@ -153,6 +153,11 @@ struct tictactoe_state_t
     int last_move_cell = -1;
 };
 
+struct tictactoe_game_join_res_t
+{
+    tictactoe_state_t state;
+};
+
 struct join_game_res_t
 {
     static constexpr const char *packet_name = "JoinGameRes";
@@ -362,6 +367,16 @@ inline void from_json (const nlohmann::json &json, tictactoe_state_t &value)
     value.o_actor_id = json.value ("oActorId", "");
     value.last_move_actor_id = json.value ("lastMoveActorId", "");
     value.last_move_cell = json.value ("lastMoveCell", -1);
+}
+
+inline void to_json (nlohmann::json &json, const tictactoe_game_join_res_t &value)
+{
+    json = {{"state", value.state}};
+}
+
+inline void from_json (const nlohmann::json &json, tictactoe_game_join_res_t &value)
+{
+    value.state = json.value ("state", tictactoe_state_t{});
 }
 
 inline void to_json (nlohmann::json &json, const authenticate_res_t &value)

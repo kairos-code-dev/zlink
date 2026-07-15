@@ -1052,7 +1052,7 @@ Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **READM
 ## 라운드 6 — E2E 전 config 구성 축·Config 1 심층
 
 - [x] **E2E-JV-20** (미구현) — 11개 config runner가 공통 role-order 정책을 적용하고 통합 runner가 reverse와 고정 seed shuffle 축을 실행한다.
-  - 재검증 완료: `validate_start_order_contract.sh`가 11개 runner의 `zlink_e2e_order_roles` 적용, 명시적 `--start-order`, reverse와 `shuffle:20260715` 실행을 확인해 통과했다. 구현 커밋 `acfd67dfd`, 명시적 옵션 정리 `9d8298db1`(2026-07-15).
+  - 재검증 완료: `validate_start_order_contract.sh`가 11개 runner의 `zlink_e2e_order_roles` 적용, 명시적 `--start-order`, reverse와 `shuffle:20260715` 실행을 확인해 통과했다. RegistryMessaging 전체 selector도 두 시작 순서에서 각각 exit 0으로 통과했다. 구현 커밋 `acfd67dfd`, 명시적 옵션 정리 `9d8298db1`(2026-07-15).
 - [x] **E2E-JV-21** (미구현) — Config 2·9가 route mesh 없음과 session/spot 분리 배치 조합을 실행한다.
 - [ ] **E2E-JV-23** (미구현) — RM-C8 MaxMessageSize는 framework 공통 계약과 Java public 설정 결정이 선행돼야 한다.
 - [x] **E2E-JV-22** (**가짜 통과**) — RM-C2·RM-C4가 실패 종류와 느린 handler의 최종 완료를 검증하지 않는다.

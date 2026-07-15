@@ -2530,13 +2530,21 @@ int main ()
         || !handoff_source_spot->notes_snapshot ().empty ()) {
         return 208;
     }
+    zlink::framework::spot_actor_message_metadata_t handoff_request_metadata;
+    handoff_request_metadata.values["__zlink.actorRequestId"] = "handoff-request-1";
     auto handoff_moving_request = handoff_source_runtime.relay_actor_packet (
       handoff_join.value ().actor, {}, "state.read", zlink::message_t{}, handoff_provider,
-      manual_serializers);
+      manual_serializers, handoff_request_metadata);
+    auto handoff_moving_request_retry = handoff_source_runtime.relay_actor_packet (
+      handoff_join.value ().actor, {}, "state.read", zlink::message_t{}, handoff_provider,
+      manual_serializers, handoff_request_metadata);
     if (handoff_moving_request
         || handoff_moving_request.error_kind ()
              != zlink::framework::framework_error_kind_t::actor_location_stale
-        || !handoff_moving_request.error () || !handoff_moving_request.error ()->is_retriable ()) {
+        || !handoff_moving_request.error () || !handoff_moving_request.error ()->is_retriable ()
+        || handoff_moving_request_retry
+        || handoff_moving_request_retry.error_kind ()
+             != zlink::framework::framework_error_kind_t::actor_location_stale) {
         return 209;
     }
     auto handoff_left =
@@ -2550,7 +2558,8 @@ int main ()
     // arrival order (the request also failed fast at 209, but is not dropped —
     // it reaches the committed target's handler for a best-effort late reply,
     // §10.5). The request carries is_request so the replay dispatches it as a
-    // request rather than a send.
+    // request rather than a send. A retry with the same request id does not add
+    // a duplicate backlog entry.
     if (handoff_backlog.size () != 3 || handoff_backlog[0].packet_name != "state.note"
         || handoff_backlog[0].is_request || handoff_backlog[1].packet_name != "state.note"
         || handoff_backlog[1].is_request || handoff_backlog[2].packet_name != "state.read"

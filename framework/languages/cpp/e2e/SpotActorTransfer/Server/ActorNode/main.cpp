@@ -73,7 +73,7 @@ class evidence_store_t
           "commit_request", "location_committed", "commit_ack", "source_cleanup",
           "pending_admission_expired", "forwarding_entry", "mapping_evicted",
           "straggler_forward", "stale_fail_fast", "handoff_backlog",
-          "backlog_enqueued"};
+          "backlog_enqueued", "handoff_request_frame", "backlog_request_frame"};
         if (!transfer_markers.contains (*event.packet_name)) {
             return;
         }
@@ -84,9 +84,15 @@ class evidence_store_t
                 value += ":" + *event.spot_rid;
             }
         }
-        e2e::actor_evidence_t entry{"message_flow", *event.actor_id, *event.packet_name,
-                                    std::move (value), _node_rid, *event.correlation_id,
-                                    *event.correlation_id, *event.flow_id};
+        const bool request_frame = *event.packet_name == "handoff_request_frame"
+                                   || *event.packet_name == "backlog_request_frame";
+        if (request_frame && event.channel_name) {
+            value = *event.channel_name;
+        }
+        e2e::actor_evidence_t entry{
+          "message_flow", *event.actor_id, *event.packet_name, std::move (value), _node_rid,
+          request_frame ? *event.flow_id : *event.correlation_id, *event.correlation_id,
+          *event.flow_id};
         append (std::move (entry));
     }
 

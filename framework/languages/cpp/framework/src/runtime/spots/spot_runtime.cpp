@@ -365,6 +365,33 @@ void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder
     });
 }
 
+void report_actor_handoff_request_trace (
+  const std::shared_ptr<detail::spot_node_builder_state_t> &state,
+  std::string marker,
+  const actor_ref_t &actor_ref,
+  std::string request_id,
+  std::string transfer_id)
+{
+    if (!state || request_id.empty () || transfer_id.empty ()) {
+        return;
+    }
+    detail::message_flow_tracer_t (state->dispatch).trace (
+      message_flow_outcome_t::dispatched,
+      [marker = std::move (marker), actor_ref, request_id = std::move (request_id),
+       transfer_id = std::move (transfer_id)] () mutable {
+          return message_flow_event_t{
+            .outcome = message_flow_outcome_t::dispatched,
+            .surface = dispatch_error_surface_t::spot_actor,
+            .message_kind = dispatch_message_kind_t::actor_request,
+            .packet_name = std::move (marker),
+            .channel_name = "request",
+            .correlation_id = std::move (request_id),
+            .actor_id = std::string (actor_ref.actor_id ()),
+            .flow_id = std::move (transfer_id),
+            .flow_origin = flow_origin_t::lifecycle};
+      });
+}
+
 void decrement_actor_count_unlocked (detail::spot_context_state_t &state)
 {
     if (state.actor_count > 0) {
@@ -3372,6 +3399,8 @@ spot_node_runtime_t::finalize_remote_actor_to_spot (
             const auto id_it = metadata.values.find ("__zlink.actorRequestId");
             if (id_it != metadata.values.end () && !id_it->second.empty ()) {
                 replay_request_id = id_it->second;
+                report_actor_handoff_request_trace (
+                  _state, "backlog_request_frame", committed, replay_request_id, transfer_id);
                 const std::lock_guard<std::mutex> dedup_lock (
                   _state->dispatched_request_replies_mutex);
                 if (!_state->dispatched_request_replies[key]
@@ -3553,6 +3582,14 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
             emit_actor_transfer_marker (
               "handoff_backlog", actor_ref,
               _state->actor_transfer_coordinator.transfer_id (key).value_or (key));
+            if (is_request) {
+                const auto request_id = metadata.values.find ("__zlink.actorRequestId");
+                if (request_id != metadata.values.end ()) {
+                    report_actor_handoff_request_trace (
+                      _state, "handoff_request_frame", actor_ref, request_id->second,
+                      _state->actor_transfer_coordinator.transfer_id (key).value_or (key));
+                }
+            }
             if (!is_request) {
                 return result_t<std::optional<zlink::message_t>>::success (zlink::message_t{});
             }

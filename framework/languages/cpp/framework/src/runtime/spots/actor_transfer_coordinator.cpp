@@ -2,6 +2,8 @@
 
 #include "actor_transfer_coordinator.hpp"
 
+#include <algorithm>
+
 namespace zlink::framework::detail
 {
 
@@ -70,7 +72,22 @@ bool actor_transfer_coordinator_t::try_append_backlog (const std::string &actor_
         && moving->second.phase != actor_move_phase_t::reconcile) {
         return false;
     }
-    _backlogs[actor_key].push_back (std::move (packet));
+    auto &backlog = _backlogs[actor_key];
+    if (packet.is_request) {
+        const auto request_id = packet.metadata.find ("__zlink.actorRequestId");
+        if (request_id != packet.metadata.end () && !request_id->second.empty ()) {
+            const auto duplicate = std::find_if (
+              backlog.begin (), backlog.end (), [&request_id] (const handoff_packet_t &queued) {
+                  const auto queued_id = queued.metadata.find ("__zlink.actorRequestId");
+                  return queued.is_request && queued_id != queued.metadata.end ()
+                         && queued_id->second == request_id->second;
+              });
+            if (duplicate != backlog.end ()) {
+                return false;
+            }
+        }
+    }
+    backlog.push_back (std::move (packet));
     return true;
 }
 

@@ -270,6 +270,42 @@ void assert_correlated_transfer_markers (
              "Correlated transfer marker set is incomplete.");
 }
 
+void assert_request_handoff_frame (http::client_t &source,
+                                   http::client_t &target,
+                                   const std::string &actor_id,
+                                   const std::string &handler_marker)
+{
+    wait_evidence (source, {"message_flow|" + actor_id + "|handoff_request_frame|request"});
+    wait_evidence (target, {"message_flow|" + actor_id + "|backlog_request_frame|request"});
+    std::optional<e2e::actor_evidence_t> source_frame;
+    std::optional<e2e::actor_evidence_t> target_frame;
+    std::size_t handler_count = 0;
+    for (const auto &entry : get_evidence (source)) {
+        if (entry.actor_id == actor_id && entry.kind == "handoff_request_frame") {
+            require (!source_frame.has_value (), "Source recorded duplicate request handoff frames.");
+            source_frame = entry;
+        }
+    }
+    for (const auto &entry : get_evidence (target)) {
+        if (entry.actor_id == actor_id && entry.kind == "backlog_request_frame") {
+            require (!target_frame.has_value (), "Target recorded duplicate request backlog frames.");
+            target_frame = entry;
+        }
+        if (entry.actor_id == actor_id && entry.kind == "packet_handler"
+            && entry.value == handler_marker) {
+            ++handler_count;
+        }
+    }
+    require (source_frame && target_frame, "Request handoff frame evidence is incomplete.");
+    require (source_frame->value == "request" && target_frame->value == "request"
+               && !source_frame->correlation_id.empty ()
+               && source_frame->correlation_id == target_frame->correlation_id
+               && source_frame->transfer_id == target_frame->transfer_id
+               && source_frame->flow_id == target_frame->flow_id,
+             "Request id or request flag changed across actor handoff.");
+    require (handler_count == 1, "In-flight request was not dispatched exactly once.");
+}
+
 std::vector<e2e::actor_evidence_t> forwarding_entries (http::client_t &node,
                                                         const std::string &actor_id)
 {
@@ -1019,6 +1055,7 @@ class scenario_runner_t
         require (response.reply->marker == "correlated-reply",
                  "ST-F6 correlated reply marker mismatch.");
         wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|packet_handler|correlated-reply"});
+        assert_request_handoff_frame (_nodes.a, _nodes.b, actor_id, "correlated-reply");
     }
 
     // §10.5: the caller times out before the move commits, but the preserved
@@ -1048,6 +1085,7 @@ class scenario_runner_t
         require (join_task.get ().accepted, "ST-F6 timeout transfer was rejected.");
         wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|packet_handler|late-reply",
                                   "ST-F6|" + actor_id + "|late_reply_created|late-reply"});
+        assert_request_handoff_frame (_nodes.a, _nodes.b, actor_id, "late-reply");
     }
 
     straggler_setup_t transfer_for_straggler (const std::string &scenario, int state_version)

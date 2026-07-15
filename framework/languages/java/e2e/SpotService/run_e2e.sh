@@ -109,10 +109,12 @@ if [[ "${SCENARIO}" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; 
   exit 0
 fi
 
+config_dir="$(mktemp -d)"
+chmod 700 "${config_dir}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
   "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:spot-service:${run_id}}"
+redis_location_endpoint="127.0.0.1:${redis_port}"
+location_key_prefix="zlink:e2e:spot-service:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -172,6 +174,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -276,55 +279,36 @@ start_play() {
   local spot_pub="$6"
   local stream="$7"
   local tls_stream="$8"
-  ZLINK_JAVA_E2E_NODE_RID="${rid}" \
-  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
-  ZLINK_JAVA_E2E_INGRESS_ENDPOINT="${ingress}" \
-  ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
-  ZLINK_JAVA_E2E_INGRESS_B_ENDPOINT="${INGRESS_B}" \
-  ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
-  ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
-  ZLINK_JAVA_E2E_SPOT_ENDPOINT="${spot}" \
-  ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT="${spot_pub}" \
-  ZLINK_JAVA_E2E_STREAM_ENDPOINT="${stream}" \
-  ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
-  ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
-  ZLINK_JAVA_E2E_TLS_STREAM_ENDPOINT="${tls_stream}" \
-  ZLINK_JAVA_E2E_TLS_CERTIFICATE_PATH="${TLS_CERTIFICATE_PATH:-}" \
-  ZLINK_JAVA_E2E_TLS_KEY_PATH="${TLS_KEY_PATH:-}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(play_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+  local config_path="${config_dir}/${rid}-$(date +%s%N).properties"
+  {
+    echo "e2e.node-rid=${rid}"; echo "e2e.route-endpoint=${route}"
+    echo "e2e.route-a-endpoint=${ROUTE_A}"; echo "e2e.route-b-endpoint=${ROUTE_B}"
+    echo "e2e.ingress-endpoint=${ingress}"; echo "e2e.ingress-a-endpoint=${INGRESS_A}"
+    echo "e2e.ingress-b-endpoint=${INGRESS_B}"; echo "e2e.spot-endpoint=${spot}"
+    echo "e2e.spot-pub-endpoint=${spot_pub}"; echo "e2e.stream-endpoint=${stream}"
+    echo "e2e.tls-stream-endpoint=${tls_stream}"
+    echo "e2e.tls-certificate-path=${TLS_CERTIFICATE_PATH:-}"
+    echo "e2e.tls-key-path=${TLS_KEY_PATH:-}"; echo "e2e.http-endpoint=${http}"
+    echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"; echo "e2e.log-dir=${log_dir}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  "$(play_bin)" --config "${config_path}" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
 }
 
 start_gateway() {
-  ZLINK_JAVA_E2E_GATEWAY_RID="client-route-mesh" \
-  ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT="${HTTP_GATEWAY}" \
-  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_CLIENT}" \
-  ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
-  ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
-  ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_CLIENT}" \
-  ZLINK_JAVA_E2E_SPOT_A_ENDPOINT="${SPOT_A}" \
-  ZLINK_JAVA_E2E_SPOT_B_ENDPOINT="${SPOT_B}" \
-  ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT="${INGRESS_A}" \
-  ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
-  ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
-  ZLINK_JAVA_E2E_TLS_STREAM_A_ENDPOINT="${TLS_STREAM_A}" \
-  ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
-  ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
-  ZLINK_JAVA_E2E_MULTI_A_HTTP_ENDPOINT="${MULTI_HTTP_A}" \
-  ZLINK_JAVA_E2E_MULTI_B_HTTP_ENDPOINT="${MULTI_HTTP_B}" \
-  ZLINK_JAVA_E2E_SPOT_ONLY="${SPOT_ONLY_MODE}" \
-  ZLINK_JAVA_E2E_SM_G1_READY_FILE="${log_dir}/sm-g1-ready" \
-  ZLINK_JAVA_E2E_SM_G1_CRASHED_FILE="${log_dir}/sm-g1-crashed" \
-  ZLINK_JAVA_E2E_SM_G1_FAILED_FILE="${log_dir}/sm-g1-failed" \
-  ZLINK_JAVA_E2E_SM_G1_RESTARTED_FILE="${log_dir}/sm-g1-restarted" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(gateway_bin)" >"${log_dir}/gateway.stdout.log" 2>"${log_dir}/gateway.stderr.log" &
+  local config_path="${config_dir}/gateway-$(date +%s%N).properties"
+  {
+    echo "e2e.gateway-rid=client-route-mesh"; echo "e2e.gateway-http-endpoint=${HTTP_GATEWAY}"
+    echo "e2e.route-endpoint=${ROUTE_CLIENT}"; echo "e2e.route-a-endpoint=${ROUTE_A}"
+    echo "e2e.route-b-endpoint=${ROUTE_B}"; echo "e2e.ingress-a-endpoint=${INGRESS_A}"
+    echo "e2e.spot-endpoint=${SPOT_CLIENT}"; echo "e2e.spot-only=${SPOT_ONLY_MODE}"
+    echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"; echo "e2e.log-dir=${log_dir}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  "$(gateway_bin)" --config "${config_path}" >"${log_dir}/gateway.stdout.log" 2>"${log_dir}/gateway.stderr.log" &
   pids+=("$!")
 }
 
@@ -333,17 +317,16 @@ start_multi_node() {
   local route="$2"
   local spot="$3"
   local http="$4"
-  ZLINK_JAVA_E2E_NODE_RID="${rid}" \
-  ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${route}" \
-  ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT="${ROUTE_A}" \
-  ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B}" \
-  ZLINK_JAVA_E2E_SPOT_ENDPOINT="${spot}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
-  ZLINK_JAVA_E2E_SPOT_ONLY="${SPOT_ONLY_MODE}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(multi_node_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+  local config_path="${config_dir}/${rid}-$(date +%s%N).properties"
+  {
+    echo "e2e.node-rid=${rid}"; echo "e2e.route-endpoint=${route}"
+    echo "e2e.route-a-endpoint=${ROUTE_A}"; echo "e2e.route-b-endpoint=${ROUTE_B}"
+    echo "e2e.spot-endpoint=${spot}"; echo "e2e.http-endpoint=${http}"
+    echo "e2e.spot-only=${SPOT_ONLY_MODE}"; echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"; echo "e2e.log-dir=${log_dir}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  "$(multi_node_bin)" --config "${config_path}" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   pids+=("$!")
 }
 
@@ -419,11 +402,14 @@ wait_named_server() {
 }
 
 run_publisher() {
-  ZLINK_JAVA_E2E_SPOT_PUBLISHER_ENDPOINT="${SPOT_PUBLISHER}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    timeout -k 5s 30s "$(publisher_bin)" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
+  local config_path="${config_dir}/publisher-$(date +%s%N).properties"
+  {
+    echo "e2e.spot-publisher-endpoint=${SPOT_PUBLISHER}"
+    echo "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    echo "e2e.location-key-prefix=${location_key_prefix}"; echo "e2e.log-dir=${log_dir}"
+  } >"${config_path}"
+  chmod 600 "${config_path}"
+  timeout -k 5s 30s "$(publisher_bin)" --config "${config_path}" >"${log_dir}/publisher.stdout.log" 2>"${log_dir}/publisher.stderr.log"
 }
 
 fetch_evidence() {
@@ -515,14 +501,14 @@ PY
 
 read -r ROUTE_A ROUTE_B ROUTE_CLIENT SPOT_A SPOT_B SPOT_CLIENT INGRESS_A INGRESS_B SPOT_PUB_A SPOT_PUB_B SPOT_PUBLISHER STREAM_A STREAM_B TLS_STREAM_A_RAW MULTI_SPOT_A MULTI_SPOT_B HTTP_A HTTP_B HTTP_GATEWAY MULTI_HTTP_A MULTI_HTTP_B <<<"$(reserve_ports)"
 TLS_STREAM_A=""
-if [[ "${SCENARIO}" == "SM-D14" || "${SCENARIO}" == "sm-d14" || "${ZLINK_JAVA_E2E_MODES:-}" == *stream-tls* ]]; then
+if [[ "${SCENARIO}" == "SM-D14" || "${SCENARIO}" == "sm-d14" ]]; then
   TLS_STREAM_A="${TLS_STREAM_A_RAW/tcp:/tls:}"
   TLS_CERTIFICATE_PATH="${log_dir}/sm-d14-cert.pem"
   TLS_KEY_PATH="${log_dir}/sm-d14-key.pem"
   generate_tls_cert "${TLS_CERTIFICATE_PATH}" "${TLS_KEY_PATH}"
 fi
 SPOT_ONLY_MODE="false"
-if [[ "${SCENARIO}" == "SM-F6" || "${SCENARIO}" == "sm-f6" || "${ZLINK_JAVA_E2E_MODES:-}" == *spot-only-mesh* ]]; then
+if [[ "${SCENARIO}" == "SM-F6" || "${SCENARIO}" == "sm-f6" ]]; then
   SPOT_ONLY_MODE="true"
 fi
 
@@ -530,7 +516,7 @@ gradle_run installDist
 
 if [[ "${SCENARIO}" == "SM-E1" || "${SCENARIO}" == "sm-e1" ]]; then
   SERVER_ROLES=(play-a gateway)
-elif [[ "${SPOT_ONLY_MODE}" == "true" || "${ZLINK_JAVA_E2E_MODES:-}" == *multi-node* ]]; then
+elif [[ "${SPOT_ONLY_MODE}" == "true" ]]; then
   SERVER_ROLES=(multi-node-a multi-node-b gateway)
 else
   SERVER_ROLES=(play-a play-b gateway)
@@ -550,32 +536,38 @@ if [[ "${SPOT_ONLY_MODE}" == "true" ]]; then
   done
 fi
 
+write_client_config() {
+  local suffix="$1"
+  LAST_CLIENT_CONFIG="${config_dir}/client-${suffix}-$(date +%s%N).properties"
+  {
+    echo "gatewayHttpEndpoint=${HTTP_GATEWAY}"; echo "streamAEndpoint=${STREAM_A}"
+    echo "streamBEndpoint=${STREAM_B}"; echo "tlsStreamAEndpoint=${TLS_STREAM_A}"
+    echo "httpAEndpoint=${HTTP_A}"; echo "httpBEndpoint=${HTTP_B}"
+    echo "multiAHttpEndpoint=${MULTI_HTTP_A}"; echo "multiBHttpEndpoint=${MULTI_HTTP_B}"
+    echo "readyFile=${log_dir}/sm-g1-ready"; echo "crashedFile=${log_dir}/sm-g1-crashed"
+    echo "failedFile=${log_dir}/sm-g1-failed"; echo "restartedFile=${log_dir}/sm-g1-restarted"
+  } >"${LAST_CLIENT_CONFIG}"
+  chmod 600 "${LAST_CLIENT_CONFIG}"
+}
+
 run_client_mode() {
   local mode="$1"
-  local timeout_seconds="${ZLINK_JAVA_E2E_CLIENT_TIMEOUT_SECONDS:-90}"
+  local timeout_seconds=90
   local attempt
   local client_scenario="${mode}"
   local status
   if [[ "${SCENARIO}" == SM-* ]]; then
     client_scenario="${SCENARIO}"
   fi
+  write_client_config "${mode}"
   for attempt in $(seq 1 5); do
     set +e
-      ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
-      ZLINK_JAVA_E2E_SCENARIO_ID="${client_scenario}" \
-      ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT="${HTTP_GATEWAY}" \
-      ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
-      ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
-      ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
-      ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
-      ZLINK_JAVA_E2E_TLS_STREAM_A_ENDPOINT="${TLS_STREAM_A}" \
-      ZLINK_JAVA_E2E_MULTI_A_HTTP_ENDPOINT="${MULTI_HTTP_A}" \
-      ZLINK_JAVA_E2E_MULTI_B_HTTP_ENDPOINT="${MULTI_HTTP_B}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        timeout -k 5s "${timeout_seconds}s" "$(client_bin)" >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
+      timeout -k 5s "${timeout_seconds}s" "$(client_bin)" \
+        --config "${LAST_CLIENT_CONFIG}" --scenario "${client_scenario}" \
+        >"${log_dir}/client-${mode}.stdout.log" 2>"${log_dir}/client-${mode}.stderr.log"
     status="$?"
     set -e
-    if [[ "${status}" == "0" ]] && grep -q "spot-service e2e mode=${mode} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
+    if [[ "${status}" == "0" ]] && grep -q "spot-service e2e mode=${client_scenario} result=passed" "${log_dir}/client-${mode}.stdout.log"; then
       cat "${log_dir}/client-${mode}.stdout.log" >>"${log_dir}/client.stdout.log"
       cat "${log_dir}/client-${mode}.stderr.log" >>"${log_dir}/client.stderr.log"
       return 0
@@ -606,19 +598,9 @@ run_sm_g1() {
   local restarted_file="${log_dir}/sm-g1-restarted"
   local client_pid
 
-  ZLINK_JAVA_E2E_CLIENT_MODE="play-crash-recovery" \
-  ZLINK_JAVA_E2E_SCENARIO_ID="SM-G1" \
-  ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT="${HTTP_GATEWAY}" \
-  ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
-  ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
-  ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
-  ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
-  ZLINK_JAVA_E2E_SM_G1_READY_FILE="${ready_file}" \
-  ZLINK_JAVA_E2E_SM_G1_CRASHED_FILE="${crashed_file}" \
-  ZLINK_JAVA_E2E_SM_G1_FAILED_FILE="${failed_file}" \
-  ZLINK_JAVA_E2E_SM_G1_RESTARTED_FILE="${restarted_file}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    timeout -k 5s 180s "$(client_bin)" >"${log_dir}/client-play-crash-recovery.stdout.log" 2>"${log_dir}/client-play-crash-recovery.stderr.log" &
+  write_client_config play-crash-recovery
+  timeout -k 5s 180s "$(client_bin)" --config "${LAST_CLIENT_CONFIG}" --scenario SM-G1 \
+    >"${log_dir}/client-play-crash-recovery.stdout.log" 2>"${log_dir}/client-play-crash-recovery.stderr.log" &
   client_pid="$!"
   pids+=("${client_pid}")
 
@@ -626,14 +608,14 @@ run_sm_g1() {
   crash_named_server play-a
   touch "${crashed_file}"
   wait_file "SM-G1 bounded failure signal" "${failed_file}"
-  sleep "${ZLINK_JAVA_E2E_SM_G1_LEASE_WAIT_SECONDS:-20}"
+  sleep 20
   start_named_server play-a
   wait_named_server play-a
   sleep "${ROUTE_SETTLE_SECONDS}"
   touch "${restarted_file}"
 
   wait "${client_pid}"
-  grep -q "spot-service e2e mode=play-crash-recovery result=passed" "${log_dir}/client-play-crash-recovery.stdout.log"
+  grep -q "spot-service e2e mode=SM-G1 result=passed" "${log_dir}/client-play-crash-recovery.stdout.log"
   cat "${log_dir}/client-play-crash-recovery.stdout.log" >>"${log_dir}/client.stdout.log"
   cat "${log_dir}/client-play-crash-recovery.stderr.log" >>"${log_dir}/client.stderr.log"
 }
@@ -698,7 +680,7 @@ if [[ "${SCENARIO}" == "SM-G1" || "${SCENARIO}" == "sm-g1" ]]; then
   fetch_evidence play-b "${HTTP_B}"
   exit 0
 fi
-client_modes="${ZLINK_JAVA_E2E_MODES:-$(scenario_modes "${SCENARIO}")}"
+client_modes="$(scenario_modes "${SCENARIO}")"
 for mode in ${client_modes}; do
   if [[ "${mode}" == "idle-timer" ]]; then
     create_timer_spot "${HTTP_A}" idle-close
@@ -717,7 +699,7 @@ for mode in ${client_modes}; do
   fi
   sleep "${SCENARIO_SETTLE_SECONDS}"
 done
-if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" || ( "${SCENARIO}" != "all" && "${SCENARIO}" != "default-batch" ) ]]; then
+if [[ "${SCENARIO}" != "all" && "${SCENARIO}" != "default-batch" ]]; then
   case "${SCENARIO}" in
     SM-C4|sm-c4)
       run_publisher
@@ -738,7 +720,7 @@ if [[ -n "${ZLINK_JAVA_E2E_MODES:-}" || ( "${SCENARIO}" != "all" && "${SCENARIO}
       ;;
   esac
   cat "${log_dir}/client.stdout.log"
-  if [[ "${SPOT_ONLY_MODE}" == "true" || "${ZLINK_JAVA_E2E_MODES:-}" == *multi-node* ]]; then
+  if [[ "${SPOT_ONLY_MODE}" == "true" ]]; then
     fetch_evidence multi-node-a "${MULTI_HTTP_A}"
     fetch_evidence multi-node-b "${MULTI_HTTP_B}"
   else

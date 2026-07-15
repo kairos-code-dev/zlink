@@ -3,7 +3,6 @@ package systems.zlink.e2e.spotservice.client.Scenarios;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
 public final class SmD5Scenario extends SpotServiceScenarioContext {
@@ -18,7 +17,7 @@ public final class SmD5Scenario extends SpotServiceScenarioContext {
     private void execute() {
         try {
             String actorId = "actor-sm-d5-notified-" + UUID.randomUUID().toString().replace("-", "");
-            ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+            ZLinkStreamConnector connector = createStreamConnector(options().streamAEndpoint());
             Contracts.ActorProfile profile = new Contracts.ActorProfile("Disconnect", 5, List.of("disconnect"));
             try {
                 connector.connect().submit().toCompletableFuture().join();

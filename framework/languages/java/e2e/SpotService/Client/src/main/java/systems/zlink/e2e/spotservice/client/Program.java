@@ -2,17 +2,25 @@ package systems.zlink.e2e.spotservice.client;
 
 import systems.zlink.e2e.spotservice.client.Scenarios.ScenarioSuite;
 import systems.zlink.e2e.spotservice.client.Scenarios.SpotServiceScenarioContext;
-import systems.zlink.e2e.spotservice.shared.Env;
 
 public final class Program {
     private Program() {
     }
 
     public static void main(String... args) {
-        String mode = Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "state1");
-        String scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO_ID", mode);
-        String endpoint = Env.get("ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT");
-        ScenarioSuite.run(scenario, new SpotServiceScenarioContext(endpoint));
-        System.out.println("spot-service e2e mode=" + mode + " result=passed");
+        Inputs inputs = parseInputs(args);
+        ClientOptions options = ClientOptions.load(inputs.configPath());
+        ScenarioSuite.run(inputs.scenario(), new SpotServiceScenarioContext(options));
+        System.out.println("spot-service e2e mode=" + inputs.scenario() + " result=passed");
     }
+
+    private static Inputs parseInputs(String[] args) {
+        if (args.length != 4 || !"--config".equals(args[0]) || args[1].isBlank()
+            || !"--scenario".equals(args[2]) || args[3].isBlank()) {
+            throw new IllegalArgumentException("Usage: spot-service-client --config <path> --scenario <selector>");
+        }
+        return new Inputs(args[1], args[3]);
+    }
+
+    private record Inputs(String configPath, String scenario) { }
 }

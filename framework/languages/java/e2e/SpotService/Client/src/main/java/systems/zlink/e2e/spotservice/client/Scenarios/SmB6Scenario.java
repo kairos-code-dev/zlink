@@ -3,7 +3,6 @@ package systems.zlink.e2e.spotservice.client.Scenarios;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
 public final class SmB6Scenario extends SpotServiceScenarioContext {
@@ -22,7 +21,7 @@ public final class SmB6Scenario extends SpotServiceScenarioContext {
             String disconnectActorId = "actor-sm-b6-disconnected-" + suffix;
 
             try {
-                ZLinkStreamConnector leaveClient = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+                ZLinkStreamConnector leaveClient = createStreamConnector(options().streamAEndpoint());
                 Contracts.ActorProfile profile = new Contracts.ActorProfile("Leave", 6, List.of("leave"));
                 try {
                     leaveClient.connect().submit().toCompletableFuture().join();
@@ -54,7 +53,7 @@ public final class SmB6Scenario extends SpotServiceScenarioContext {
 
             try {
                 ZLinkStreamConnector disconnectClient =
-                    createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+                    createStreamConnector(options().streamAEndpoint());
                 try {
                     Contracts.ActorProfile disconnectProfile =
                         new Contracts.ActorProfile("Disconnect", 6, List.of("disconnect"));

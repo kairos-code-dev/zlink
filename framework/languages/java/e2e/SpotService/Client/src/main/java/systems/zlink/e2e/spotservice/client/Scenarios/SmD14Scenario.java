@@ -2,7 +2,6 @@ package systems.zlink.e2e.spotservice.client.Scenarios;
 
 import java.util.List;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 
@@ -16,7 +15,7 @@ public final class SmD14Scenario extends SpotServiceScenarioContext {
     }
 
     private void execute() {
-        String endpoint = Env.get("ZLINK_JAVA_E2E_TLS_STREAM_A_ENDPOINT");
+        String endpoint = options().tlsStreamAEndpoint();
         ZLinkStreamConnector strict = createStreamConnector(
             endpoint,
             ZLinkStreamDispatchMode.IMMEDIATE,

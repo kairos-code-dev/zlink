@@ -3,7 +3,6 @@ package systems.zlink.e2e.spotservice.client.Scenarios;
 import java.time.Duration;
 import java.util.List;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
 public final class SmB1Scenario extends SpotServiceScenarioContext {
@@ -16,8 +15,8 @@ public final class SmB1Scenario extends SpotServiceScenarioContext {
     }
 
     private void execute() {
-        ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
-        ZLinkStreamConnector unbound = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+        ZLinkStreamConnector connector = createStreamConnector(options().streamAEndpoint());
+        ZLinkStreamConnector unbound = createStreamConnector(options().streamAEndpoint());
         try {
             Contracts.ActorProfile profile = new Contracts.ActorProfile(
                 "Player One",

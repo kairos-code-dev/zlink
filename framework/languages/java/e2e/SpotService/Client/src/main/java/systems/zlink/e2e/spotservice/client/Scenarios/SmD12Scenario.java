@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
 public final class SmD12Scenario extends SpotServiceScenarioContext {
@@ -19,7 +18,7 @@ public final class SmD12Scenario extends SpotServiceScenarioContext {
     private void execute() {
         String actorId = "actor-sm-d12-" + UUID.randomUUID().toString().replace("-", "");
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Transfer", 12, List.of("transfer"));
-        ZLinkStreamConnector first = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+        ZLinkStreamConnector first = createStreamConnector(options().streamAEndpoint());
         int firstSeen;
         try {
             first.connect().submit().toCompletableFuture().join();
@@ -45,7 +44,7 @@ public final class SmD12Scenario extends SpotServiceScenarioContext {
 
         waitForPlayAEvidence(List.of("StreamDisconnected|play-a|session"));
 
-        ZLinkStreamConnector second = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_B_ENDPOINT"));
+        ZLinkStreamConnector second = createStreamConnector(options().streamBEndpoint());
         try {
             second.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes auth = second

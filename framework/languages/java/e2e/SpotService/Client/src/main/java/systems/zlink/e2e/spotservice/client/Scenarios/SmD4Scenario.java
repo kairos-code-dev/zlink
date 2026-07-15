@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
 public final class SmD4Scenario extends SpotServiceScenarioContext {
@@ -19,7 +18,7 @@ public final class SmD4Scenario extends SpotServiceScenarioContext {
     private void execute() {
         String firstActorId = "actor-sm-d4-x-" + UUID.randomUUID().toString().replace("-", "");
         String secondActorId = "actor-sm-d4-y-" + UUID.randomUUID().toString().replace("-", "");
-        ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+        ZLinkStreamConnector connector = createStreamConnector(options().streamAEndpoint());
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Multi Bind", 9, List.of("multi", "bind"));
         try {
             connector.connect().submit().toCompletableFuture().join();

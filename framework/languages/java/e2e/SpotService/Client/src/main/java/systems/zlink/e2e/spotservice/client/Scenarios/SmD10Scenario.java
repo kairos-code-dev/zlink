@@ -3,7 +3,6 @@ package systems.zlink.e2e.spotservice.client.Scenarios;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 
@@ -24,10 +23,10 @@ public final class SmD10Scenario extends SpotServiceScenarioContext {
         Contracts.ActorProfile isolatedProfile =
             new Contracts.ActorProfile("Backpressure Peer", 10, List.of("isolated"));
         ZLinkStreamConnector congested = createStreamConnector(
-            Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"),
+            options().streamAEndpoint(),
             ZLinkStreamDispatchMode.MANUAL,
             1);
-        ZLinkStreamConnector isolated = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_B_ENDPOINT"));
+        ZLinkStreamConnector isolated = createStreamConnector(options().streamBEndpoint());
         try {
             congested.connect().submit().toCompletableFuture().join();
             Contracts.ActorAuthRes congestedAuth = congested

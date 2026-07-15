@@ -6,7 +6,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamMessage;
 
@@ -30,7 +29,7 @@ public final class SmG4Scenario extends SpotServiceScenarioContext {
                 String actorId = "actor-sm-g4-" + index + "-" + UUID.randomUUID().toString().replace("-", "");
                 Contracts.ActorProfile profile =
                     new Contracts.ActorProfile("Bound Load " + index, 14, List.of("load", "session-" + index));
-                ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+                ZLinkStreamConnector connector = createStreamConnector(options().streamAEndpoint());
                 connectors.add(connector);
                 actorIds.add(actorId);
                 values.add("push-" + index);

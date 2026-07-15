@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
 public final class SmB2Scenario extends SpotServiceScenarioContext {
@@ -18,7 +17,7 @@ public final class SmB2Scenario extends SpotServiceScenarioContext {
 
     private void execute() {
         String actorId = "actor-sm-remote-" + UUID.randomUUID().toString().replace("-", "");
-        ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_B_ENDPOINT"));
+        ZLinkStreamConnector connector = createStreamConnector(options().streamBEndpoint());
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Remote Player", 24, List.of("remote", "relay"));
         try {
             connector.connect().submit().toCompletableFuture().join();

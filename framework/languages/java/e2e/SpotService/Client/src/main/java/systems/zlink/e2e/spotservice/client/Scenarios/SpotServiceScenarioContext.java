@@ -12,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
+import systems.zlink.e2e.spotservice.client.ClientOptions;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.httpclient.HttpResponse;
 import systems.zlink.httpclient.RawHttpResponse;
@@ -28,15 +28,17 @@ import systems.zlink.stream.connector.ZLinkStreamPacketNameResolver;
 public class SpotServiceScenarioContext {
     protected static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(5);
     protected static final Duration EVENTUAL_TIMEOUT = Duration.ofSeconds(30);
-    private final String gatewayEndpoint;
+    private final ClientOptions options;
 
     protected SpotServiceScenarioContext(SpotServiceScenarioContext source) {
-        this(source.gatewayEndpoint);
+        this(source.options);
     }
 
-    public SpotServiceScenarioContext(String gatewayEndpoint) {
-        this.gatewayEndpoint = gatewayEndpoint;
+    public SpotServiceScenarioContext(ClientOptions options) {
+        this.options = options;
     }
+
+    protected ClientOptions options() { return options; }
 
     protected Contracts.StateRes requestState(String spotRid, String value, Duration timeout) {
         return postGateway("/operations/spot/state-request",
@@ -81,7 +83,7 @@ public class SpotServiceScenarioContext {
     }
 
     private <T> T postGateway(String path, Object request, Class<T> responseType) {
-        return postJson(gatewayEndpoint, path, request, responseType);
+        return postJson(options.gatewayHttpEndpoint(), path, request, responseType);
     }
 
     protected void verifyActorJoinAdmission(
@@ -100,7 +102,7 @@ public class SpotServiceScenarioContext {
             new Contracts.CreateSpotReq(spotRid),
             Contracts.CreateSpotRes.class);
 
-        ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+        ZLinkStreamConnector connector = createStreamConnector(options.streamAEndpoint());
         try {
             connector.connect().submit().toCompletableFuture().join();
             connector
@@ -202,9 +204,7 @@ public class SpotServiceScenarioContext {
         }
     }
 
-    protected static void signalFile(String envName) {
-        String path = Env.get(envName);
-        ensure(!path.isBlank(), envName + " is required");
+    protected static void signalFile(String path) {
         try {
             Files.writeString(Path.of(path), "ready\n");
         } catch (IOException error) {
@@ -212,9 +212,7 @@ public class SpotServiceScenarioContext {
         }
     }
 
-    protected static void waitForSignalFile(String envName) {
-        String path = Env.get(envName);
-        ensure(!path.isBlank(), envName + " is required");
+    protected static void waitForSignalFile(String path) {
         Path signal = Path.of(path);
         long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
         while (System.nanoTime() < deadline) {
@@ -314,8 +312,8 @@ public class SpotServiceScenarioContext {
         }
     }
 
-    protected static void closeSpot(String spotRid) {
-        String endpoint = Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT");
+    protected void closeSpot(String spotRid) {
+        String endpoint = options().httpAEndpoint();
         try (ZLinkHttpClient http = ZLinkHttpClient.create(endpoint).build()) {
             RawHttpResponse response = http.post("/admin/close?rid=" + spotRid)
                 .timeout(REQUEST_TIMEOUT)
@@ -328,17 +326,17 @@ public class SpotServiceScenarioContext {
         }
     }
 
-    protected static Contracts.EvidenceSnapshot waitForPlayAEvidence(List<String> fragments) {
+    protected Contracts.EvidenceSnapshot waitForPlayAEvidence(List<String> fragments) {
         return postJson(
-            Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
+            options().httpAEndpoint(),
             "/evidence/wait",
             new Contracts.EvidenceWaitReq(fragments, 10_000),
             Contracts.EvidenceSnapshot.class);
     }
 
-    protected static Contracts.EvidenceSnapshot waitForPlayBEvidence(List<String> fragments) {
+    protected Contracts.EvidenceSnapshot waitForPlayBEvidence(List<String> fragments) {
         return postJson(
-            Env.get("ZLINK_JAVA_E2E_HTTP_B_ENDPOINT"),
+            options().httpBEndpoint(),
             "/evidence/wait",
             new Contracts.EvidenceWaitReq(fragments, 10_000),
             Contracts.EvidenceSnapshot.class);

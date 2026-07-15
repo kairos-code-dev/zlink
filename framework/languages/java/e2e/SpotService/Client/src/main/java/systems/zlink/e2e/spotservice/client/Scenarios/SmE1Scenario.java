@@ -3,7 +3,6 @@ package systems.zlink.e2e.spotservice.client.Scenarios;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 
 public final class SmE1Scenario extends SpotServiceScenarioContext {
     private SmE1Scenario(SpotServiceScenarioContext context) {
@@ -15,7 +14,7 @@ public final class SmE1Scenario extends SpotServiceScenarioContext {
     }
 
     private void execute() {
-        String ownerEndpoint = Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT");
+        String ownerEndpoint = options().httpAEndpoint();
         String spotRid = "spot-sm-e1-" + java.util.UUID.randomUUID().toString().replace("-", "");
         Contracts.CreateSpotRes created = postJson(
             ownerEndpoint,

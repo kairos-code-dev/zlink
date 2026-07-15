@@ -3,7 +3,6 @@ package systems.zlink.e2e.spotservice.client.Scenarios;
 import java.util.List;
 import java.util.UUID;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 
 public final class SmQ9Scenario extends SpotServiceScenarioContext {
     private SmQ9Scenario(SpotServiceScenarioContext context) {
@@ -15,8 +14,8 @@ public final class SmQ9Scenario extends SpotServiceScenarioContext {
     }
 
     private void execute() {
-        String endpointA = Env.get("ZLINK_JAVA_E2E_MULTI_A_HTTP_ENDPOINT");
-        String endpointB = Env.get("ZLINK_JAVA_E2E_MULTI_B_HTTP_ENDPOINT");
+        String endpointA = options().multiAHttpEndpoint();
+        String endpointB = options().multiBHttpEndpoint();
         String spotA = "spot-sm-q9-a-" + UUID.randomUUID().toString().replace("-", "");
         String spotB = "spot-sm-q9-b-" + UUID.randomUUID().toString().replace("-", "");
 

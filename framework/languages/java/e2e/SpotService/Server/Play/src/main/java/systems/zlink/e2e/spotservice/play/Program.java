@@ -1,14 +1,16 @@
 package systems.zlink.e2e.spotservice.play;
 
+import java.nio.file.Path;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.spotservice.shared.ActorAuthHandler;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.e2e.spotservice.shared.EvidenceHttpServer;
 import systems.zlink.e2e.spotservice.shared.IngressMsgHandler;
 import systems.zlink.e2e.spotservice.shared.MismatchedSpot;
@@ -34,6 +36,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(PlayOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.spotservice.play")
@@ -42,15 +45,18 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        String config = configPath(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(isolatedEnvironment())
+            .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
-    ScenarioState scenarioState() {
-        return new ScenarioState(Env.get("ZLINK_JAVA_E2E_NODE_RID", "play-a"));
+    ScenarioState scenarioState(PlayOptions options) {
+        return new ScenarioState(options.nodeRid());
     }
 
     @Bean
@@ -64,21 +70,22 @@ public final class Program {
         com.fasterxml.jackson.databind.ObjectMapper json,
         ZLinkSpotManager spots,
         systems.zlink.framework.channels.ZLinkRouteClient routes,
-        systems.zlink.framework.spots.SpotHandleResolver spotHandles) {
+        systems.zlink.framework.spots.SpotHandleResolver spotHandles,
+        PlayOptions options) {
         return new EvidenceHttpServer(
             state,
             json,
-            Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
+            options.httpEndpoint(),
             spots,
             routes,
             spotHandles);
     }
 
     @Bean
-    ZLinkFrameworkConfigurer playFramework(ScenarioState state) {
+    ZLinkFrameworkConfigurer playFramework(ScenarioState state, PlayOptions play) {
         return options -> {
             String nodeRid = state.nodeRid();
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = play.logDir();
             options.addHandlersFromPackageOf(ActorAuthHandler.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
@@ -95,9 +102,9 @@ public final class Program {
                     return java.util.concurrent.CompletableFuture.completedFuture(null);
                 });
             options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_ROUTE_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_A_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT"))
+                .enableServer(play.routeEndpoint())
+                .enableClient(play.routeAEndpoint())
+                .enableClient(play.routeBEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid))
                 .addRequestHandler(
                     RouteReqHandler.class,
@@ -105,10 +112,10 @@ public final class Program {
                     Contracts.RouteRes.class,
                     Contracts.ROUTE_PACKET);
             String peerIngress = "play-a".equals(nodeRid)
-                ? Env.get("ZLINK_JAVA_E2E_INGRESS_B_ENDPOINT")
-                : Env.get("ZLINK_JAVA_E2E_INGRESS_A_ENDPOINT");
+                ? play.ingressBEndpoint()
+                : play.ingressAEndpoint();
             ClientServerChannelBuilder ingress = options.addClientServerChannel(Contracts.INGRESS_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_INGRESS_ENDPOINT"))
+                .enableServer(play.ingressEndpoint())
                 .enableClient(peerIngress)
                 .setRoutingId(RoutingId.from(nodeRid));
             ingress.addSendHandler(
@@ -121,16 +128,16 @@ public final class Program {
                 String.class,
                 "StateReq");
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
-            node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
-                .enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"))
+            node.enableRouter(play.spotEndpoint())
+                .enablePubSub(play.spotPubEndpoint())
                 .setRoutingId(RoutingId.from(nodeRid));
             node.addEntrySpot(ScenarioEntrySpot.class);
             node.addSpotFactory(UserSpot.class);
             node.addSpotFactory(MismatchedSpot.class);
             node.addSpotFactory(TimerScenarioSpot.class);
             node.addActorFactory("scenario", ScenarioActorFactory.class);
-            String streamEndpoint = Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT");
-            String tlsStreamEndpoint = Env.get("ZLINK_JAVA_E2E_TLS_STREAM_ENDPOINT", "");
+            String streamEndpoint = play.streamEndpoint();
+            String tlsStreamEndpoint = play.tlsStreamEndpoint();
             if (!streamEndpoint.isBlank() || !tlsStreamEndpoint.isBlank()) {
                 var stream = options.addStreamNode("gateway");
                 if (!streamEndpoint.isBlank()) {
@@ -139,8 +146,8 @@ public final class Program {
                 if (!tlsStreamEndpoint.isBlank()) {
                     stream.bind(tlsStreamEndpoint)
                         .setTlsServer(
-                            Env.get("ZLINK_JAVA_E2E_TLS_CERTIFICATE_PATH"),
-                            Env.get("ZLINK_JAVA_E2E_TLS_KEY_PATH"));
+                            play.tlsCertificatePath(),
+                            play.tlsKeyPath());
                 }
                 stream.registerSession(ScenarioSession.class);
             }
@@ -148,10 +155,10 @@ public final class Program {
     }
 
     @Bean
-    ZLinkRedisLocationStore locationStore() {
+    ZLinkRedisLocationStore locationStore(PlayOptions options) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix()));
     }
 
     @Bean
@@ -164,5 +171,19 @@ public final class Program {
                 .toCompletableFuture()
                 .join();
         };
+    }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: spot-service-play --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
     }
 }

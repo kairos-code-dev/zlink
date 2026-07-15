@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import systems.zlink.e2e.spotservice.shared.Contracts;
-import systems.zlink.e2e.spotservice.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 
 public final class SmG3Scenario extends SpotServiceScenarioContext {
@@ -26,14 +25,14 @@ public final class SmG3Scenario extends SpotServiceScenarioContext {
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Race", 3, List.of("join", "leave"));
         try {
             postJson(
-                Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
+                options().httpAEndpoint(),
                 "/spot/create",
                 new Contracts.CreateSpotReq(spotRid),
                 Contracts.CreateSpotRes.class);
 
             for (int index = 0; index < actorCount; index++) {
                 String actorId = "actor-sm-g3-" + key + "-" + index;
-                ZLinkStreamConnector connector = createStreamConnector(Env.get("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+                ZLinkStreamConnector connector = createStreamConnector(options().streamAEndpoint());
                 connector.connect().submit().toCompletableFuture().join();
                 Contracts.ActorAuthRes auth = connector
                     .request(new Contracts.ActorAuthReq(actorId, profile))

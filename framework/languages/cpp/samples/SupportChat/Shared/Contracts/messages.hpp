@@ -165,8 +165,6 @@ struct open_conversation_req_t
 {
     static constexpr const char *packet_name = "OpenConversationReq";
     std::string subject;
-    /* Session이 API에서 받은 배정 결과를 actor join 요청에 실어 준다(클라이언트는 비운다). */
-    std::string conversation_id;
 };
 
 struct open_conversation_res_t
@@ -356,12 +354,11 @@ SUPPORTCHAT_JSON_STRING_REQ (authenticate_req_t, access_token, "accessToken")
 SUPPORTCHAT_JSON_STRING_REQ (authenticate_user_req_t, access_token, "accessToken")
 inline void to_json (nlohmann::json &json, const open_conversation_req_t &value)
 {
-    json = {{"subject", value.subject}, {"conversationId", value.conversation_id}};
+    json = {{"subject", value.subject}};
 }
 inline void from_json (const nlohmann::json &json, open_conversation_req_t &value)
 {
     value.subject = json.value ("subject", "");
-    value.conversation_id = json.value ("conversationId", "");
 }
 SUPPORTCHAT_JSON_STRING_REQ (send_chat_message_req_t, text, "text")
 

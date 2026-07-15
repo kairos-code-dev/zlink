@@ -95,25 +95,6 @@ class supportchat_session_t final : public packet_stream_session_t
               .submit ();
             co_return;
         }
-        if (dispatch.packet_name () == open_conversation_req_t::packet_name) {
-            /* 대화 개설 접수는 API가 소유한다(공통 sample spec §12). Session은 배정 결과를
-             * 받아 고객 actor의 join lifecycle에 넘긴다. */
-            const auto opened = payload.parse_json<open_conversation_req_t> ();
-            auto allocated =
-              co_await _channels
-                .request ("supportchat.api",
-                          open_conversation_api_req_t{_identity_actor_id, _identity_display_name,
-                                                      opened.subject})
-                .async<open_conversation_api_res_t> ();
-            auto actor = co_await select_actor (stream, dispatch);
-            auto reply =
-              co_await actor
-                .relay_request (zlink::message_t::from_json (
-                  open_conversation_req_t{opened.subject, allocated.conversation_id}))
-                .async ();
-            stream.reply_packet (reply).submit ();
-            co_return;
-        }
         auto actor = co_await select_actor (stream, dispatch);
         if (dispatch.can_reply ()) {
             auto reply = co_await actor.relay_request (payload).async ();

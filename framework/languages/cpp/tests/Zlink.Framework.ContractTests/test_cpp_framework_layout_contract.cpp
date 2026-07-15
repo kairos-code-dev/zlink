@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cctype>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -672,6 +673,70 @@ bool spot_actor_transfer_uses_role_specific_entrypoints (const std::filesystem::
         || runner.find ("zlink_cpp_e2e_spot_actor_transfer_node") != std::string::npos) {
         std::cerr << "SpotActorTransfer must not select ActorNode/Session through config\n";
         ok = false;
+    }
+    return ok;
+}
+
+/* 공통 E2E README §2.5: 계약 시나리오 ID 하나는 실행과 단언을 소유하는 client
+ * scenario 파일 하나에 대응한다. ID 상수만 둔 placeholder는 이 계약을 충족하지 않는다. */
+bool affected_e2e_clients_own_each_scenario_in_a_file (const std::filesystem::path &root)
+{
+    struct config_scenarios_t
+    {
+        const char *directory;
+        std::vector<const char *> ids;
+    };
+    const std::vector<config_scenarios_t> configs{
+      {"ToActorMessaging",
+       {"TA-A1", "TA-A2", "TA-A3", "TA-A4", "TA-B1", "TA-B2", "TA-B3"}},
+      {"DiscoveryRegistryHa",
+       {"SF-A1", "SF-A2", "SF-B1", "SF-B2", "SF-C1", "SF-C2", "SF-D1", "SF-D2",
+        "SF-D3", "SF-E1"}},
+      {"SpotActorTransfer",
+       {"ST-A1", "ST-A2", "ST-A3", "ST-B1", "ST-B2", "ST-B3", "ST-B4", "ST-C1",
+        "ST-C2", "ST-C3", "ST-D1", "ST-D2", "ST-E1", "ST-E2", "ST-F1", "ST-F2",
+        "ST-F3", "ST-F4", "ST-F5", "ST-F6"}},
+      {"ObservabilityOps",
+       {"OBS-A1", "OBS-A2", "OBS-A3", "OBS-A4", "OBS-B1", "OBS-B2", "OBS-B3",
+        "OBS-B4", "OBS-C1", "OBS-C2", "OBS-C3", "OBS-C4", "OBS-C5"}},
+    };
+
+    bool ok = true;
+    for (const auto &config : configs) {
+        const auto client_root = root / "e2e" / config.directory / "Client";
+        std::ifstream main_input (client_root / "main.cpp");
+        const std::string main_content ((std::istreambuf_iterator<char> (main_input)),
+                                        std::istreambuf_iterator<char> ());
+        for (const auto *id : config.ids) {
+            std::string key;
+            for (const char value : std::string (id)) {
+                key.push_back (value == '-' ? '_' : static_cast<char> (std::tolower (value)));
+            }
+            const auto filename = key + "_scenario.hpp";
+            const auto symbol = "run_" + key + "_scenario";
+            const auto path = client_root / "Scenarios" / filename;
+            if (!std::filesystem::is_regular_file (path)) {
+                std::cerr << config.directory << " requires client scenario file for " << id
+                          << ": " << path << '\n';
+                ok = false;
+                continue;
+            }
+            std::ifstream scenario_input (path);
+            const std::string scenario ((std::istreambuf_iterator<char> (scenario_input)),
+                                        std::istreambuf_iterator<char> ());
+            if (scenario.find (id) == std::string::npos
+                || scenario.find (symbol) == std::string::npos) {
+                std::cerr << path << " must own " << id << " execution through " << symbol
+                          << '\n';
+                ok = false;
+            }
+            if (main_content.find (filename) == std::string::npos
+                || main_content.find (symbol) == std::string::npos) {
+                std::cerr << client_root / "main.cpp" << " must dispatch " << id << " through "
+                          << symbol << '\n';
+                ok = false;
+            }
+        }
     }
     return ok;
 }
@@ -1640,6 +1705,7 @@ int main ()
     ok &= runner_generated_config_files_are_private_and_cleaned (root);
     ok &= observability_ops_uses_role_specific_entrypoints (root);
     ok &= spot_actor_transfer_uses_role_specific_entrypoints (root);
+    ok &= affected_e2e_clients_own_each_scenario_in_a_file (root);
     ok &= file_does_not_contain (
       root / "e2e/run_e2e_all.sh", "exec env E2E_START_ORDER=",
       "the aggregate E2E runner must pass start order as a runner option, not an environment variable");

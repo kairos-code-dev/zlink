@@ -162,6 +162,42 @@ test('session handler registry uses packet metadata and closes registration afte
   }, /already registered/i);
 });
 
+test('session handler registry resolves handler instances through the runtime provider resolver', async () => {
+  const handled = [];
+  const dependency = { value: 'resolved' };
+  class InjectedHandler {
+    constructor(value) {
+      this.value = value;
+    }
+    async handle(_context, _dispatch, message) {
+      handled.push([this.value.value, message.decode()]);
+    }
+  }
+  framework.ZLinkPacket('session.injected')(InjectedHandler);
+  const runtime = new framework.ZLinkStreamSessionRuntime({
+    socket: new FakeStreamSocket(),
+    providerResolver: {
+      create(type) {
+        assert.equal(type, InjectedHandler);
+        return new InjectedHandler(dependency);
+      }
+    },
+    sessionFactory(context) {
+      context.handlers.addHandler(InjectedHandler);
+      return { context };
+    }
+  }, zlink.RoutingId.from(11));
+
+  await runtime.session;
+  assert.equal(await runtime.context.handlers.tryHandle({
+    packetName: 'session.injected',
+    metadata: new Map(),
+    canReply: false
+  }, { decode: () => 'payload' }), true);
+  assert.deepEqual(handled, [['resolved', 'payload']]);
+  await runtime.dispose();
+});
+
 test('stream session node runtime dispatches framed packets through one session context', async () => {
   const socket = new FakeStreamSocket();
   const events = [];

@@ -172,6 +172,7 @@ export class ZLinkStreamRuntimeManager {
         acceptNewSession: this.options.acceptNewSession,
         dispatchErrors: this.options.dispatchErrors,
         metrics: this.options.metrics,
+        providerResolver: this.options.providerResolver,
         messageSerializers: this.options.registration.messageSerializers,
         sessionFactory: (context) => createStreamSessionInstance(
           sessionType as Type<ZLinkSession> | Type<ZLinkSessionFactory>,
@@ -246,8 +247,17 @@ export class ZLinkStreamBindingRuntime {
     this.boundActorRelay = new ZLinkBoundActorRelaySender(this.routes, this.frameMessages, options, actorSessionLifecycle);
   }
 
-  createSessionContext(stream: ZLinkManagedStream, close?: (signal?: AbortSignal) => Promise<void>): DefaultZLinkSessionContext {
-    return new DefaultZLinkSessionContext(this, stream, close ?? ((signal) => stream.close(signal)));
+  createSessionContext(
+    stream: ZLinkManagedStream,
+    close?: (signal?: AbortSignal) => Promise<void>,
+    providerResolver?: ZLinkProviderResolver
+  ): DefaultZLinkSessionContext {
+    return new DefaultZLinkSessionContext(
+      this,
+      stream,
+      close ?? ((signal) => stream.close(signal)),
+      providerResolver
+    );
   }
 
   createBoundSession(actorId: string): ZLinkBoundSession {

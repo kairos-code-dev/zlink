@@ -1,4 +1,5 @@
 import type {
+  ZLinkProviderResolver,
   ZLinkMessageSerializer,
   ZLinkSession,
   ZLinkSessionDispatchContext
@@ -66,7 +67,8 @@ const systemLivenessClock: ZLinkStreamLivenessClock = {
 export interface ZLinkStreamSessionContextFactory {
   createSessionContext(
     stream: ZLinkManagedStream,
-    close?: (signal?: AbortSignal) => Promise<void>
+    close?: (signal?: AbortSignal) => Promise<void>,
+    providerResolver?: ZLinkProviderResolver
   ): DefaultZLinkSessionContext;
 }
 
@@ -74,6 +76,7 @@ export interface ZLinkStreamSessionRuntimeOptions {
   readonly socket: ZLinkBackendStreamSocket;
   readonly sessionFactory: (context: DefaultZLinkSessionContext) => ZLinkSession | Promise<ZLinkSession>;
   readonly bindingRuntime: ZLinkStreamSessionContextFactory;
+  readonly providerResolver?: ZLinkProviderResolver;
   readonly onError?: (error: unknown) => void;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
@@ -115,7 +118,11 @@ export class ZLinkStreamSessionRuntime {
   ) {
     this.livenessClock = options.livenessClock ?? systemLivenessClock;
     this.stream = new ZLinkManagedStream(options.socket, routingId, options.messageSerializers);
-    this.context = options.bindingRuntime.createSessionContext(this.stream, (signal) => this.close(signal));
+    this.context = options.bindingRuntime.createSessionContext(
+      this.stream,
+      (signal) => this.close(signal),
+      options.providerResolver
+    );
     const sessionOrPromise = options.sessionFactory(this.context);
     this.sessionReady = isPromiseLike(sessionOrPromise)
       ? sessionOrPromise.then(

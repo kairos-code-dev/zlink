@@ -1,7 +1,9 @@
 import type {
   ActorRef,
   RoutingId,
+  Type,
   ZLinkMessage,
+  ZLinkProviderResolver,
   ZLinkActor,
   ZLinkBoundSession,
   ZLinkSessionActor,
@@ -93,8 +95,8 @@ export interface ZLinkBoundSessionFactory {
 export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   readonly client: ZLinkSessionClient;
   readonly actors: ZLinkSessionActors;
-  private readonly handlerRegistry = new DefaultZLinkSessionHandlerRegistry(this);
-  readonly handlers: ZLinkSessionHandlerRegistry = this.handlerRegistry;
+  private readonly handlerRegistry: DefaultZLinkSessionHandlerRegistry;
+  readonly handlers: ZLinkSessionHandlerRegistry;
   private readonly localActors = new ZLinkSessionLocalActorBindings<DefaultZLinkSessionActor>();
   private readonly requests = new ZLinkSessionRequestTracker();
   private currentDispatchHeader: ZLinkStreamFrameHeader | undefined;
@@ -102,10 +104,13 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
   constructor(
     private readonly runtime: ZLinkSessionContextRuntime,
     readonly stream: ZLinkSessionContextStream,
-    private readonly closeSession: (signal?: AbortSignal) => Promise<void>
+    private readonly closeSession: (signal?: AbortSignal) => Promise<void>,
+    providerResolver?: ZLinkProviderResolver
   ) {
     this.client = new DefaultZLinkSessionClient(this);
     this.actors = new DefaultZLinkSessionActors(this, runtime);
+    this.handlerRegistry = new DefaultZLinkSessionHandlerRegistry(this, providerResolver);
+    this.handlers = this.handlerRegistry;
   }
 
   get sessionId(): string {
@@ -235,10 +240,13 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
 }
 
 class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry {
-  private readonly handlersByPacket = new Map<string, ZLinkSessionPacketHandler<ZLinkSessionContext>>();
+  private readonly handlersByPacket = new Map<string, Type<ZLinkSessionPacketHandler<ZLinkSessionContext>>>();
   private registrationOpen = true;
 
-  constructor(private readonly context: ZLinkSessionContext) {}
+  constructor(
+    private readonly context: ZLinkSessionContext,
+    private readonly providerResolver?: ZLinkProviderResolver
+  ) {}
 
   addHandler<THandler>(handlerType: new (...args: never[]) => THandler): this {
     if (!this.registrationOpen) {
@@ -250,11 +258,13 @@ class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry 
         `Session packet '${packetName}' is already registered.`
       );
     }
-    const handler = new handlerType() as THandler & Partial<ZLinkSessionPacketHandler<ZLinkSessionContext>>;
-    if (typeof handler.handle !== 'function') {
+    if (typeof (handlerType as { prototype?: { handle?: unknown } }).prototype?.handle !== 'function') {
       throw new TypeError(`Session handler '${handlerType.name}' must implement handle(...).`);
     }
-    this.handlersByPacket.set(packetName, handler as ZLinkSessionPacketHandler<ZLinkSessionContext>);
+    this.handlersByPacket.set(
+      packetName,
+      handlerType as Type<ZLinkSessionPacketHandler<ZLinkSessionContext>>
+    );
     return this;
   }
 
@@ -263,12 +273,21 @@ class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry 
   }
 
   async tryHandle(dispatch: import('../../contracts').ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<boolean> {
-    const handler = this.handlersByPacket.get(dispatch.packetName);
-    if (handler === undefined) {
+    const handlerType = this.handlersByPacket.get(dispatch.packetName);
+    if (handlerType === undefined) {
       return false;
     }
+    const handler = await this.resolveHandler(handlerType);
     await handler.handle(this.context, dispatch, payload);
     return true;
+  }
+
+  private async resolveHandler(
+    handlerType: Type<ZLinkSessionPacketHandler<ZLinkSessionContext>>
+  ): Promise<ZLinkSessionPacketHandler<ZLinkSessionContext>> {
+    const resolved = this.providerResolver?.get?.(handlerType)
+      ?? await this.providerResolver?.create?.(handlerType);
+    return resolved ?? new handlerType();
   }
 }
 

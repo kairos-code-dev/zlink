@@ -517,7 +517,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-22** (결함) — **Domain이 framework 헤더를 include하고 wire DTO를 직접 만든다**(Bingo·TicTacToe)
 - [x] **SMP-CP-23** (결함) — **TicTacToe Spot이 도메인 aggregate를 상속**한다. slicing 대입 + actor마다 `join()` 2회
   - 근거: 수정 전 새 contract test가 무변경 admission API 부재로 컴파일에 실패했고 구조 gate가 domain 상속·slicing 대입을 검출했다. Spot이 optional match를 합성하고 admission은 `evaluate_join()`, commit은 단일 `join()`을 사용하도록 바꾼 뒤 TicTacToe parity 10건과 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
-- [ ] **SMP-CP-24** (결함) — **SupportChat Application 레이어가 serving 경로에서 dead code**다(위조 self-check에서만 쓰인다)
+- [x] **SMP-CP-24** (결함) — **SupportChat Application 레이어가 serving 경로에서 dead code**다(위조 self-check에서만 쓰인다)
+  - 근거: 수정 전 집중 gate `7c8f498d4`가 serving runtime의 `_available_agent` 중복 상태와 `agent_assignment_service_t` 미사용을 5건으로 검출했다. `d1dc8b6ce`에서 .NET 정본 결정과 같이 Application service가 conversation별 reservation·capacity·fairness·재등록 load 복원·close 해제를 소유하고 serving handler가 이 use case를 호출하도록 바꿨다. 집중 gate와 sample parity 52건, 실제 SupportChat runner가 통과했다. POSD/DDD 재검토에서는 optional 상태를 남긴 얕은 wrapper 대안을 배제하고 배정 지식을 Application 한 곳에 모았다.
 - [x] **SMP-CP-25** (결함) — **Domain이 이미 내린 판정을 Infrastructure가 다시 내린다**(SupportChat idle/close, Bingo join notify)
   - 근거: 수정 전 집중 계약 gate `06c4384a1`이 Infrastructure의 Bingo join 재판정과 SupportChat timeout 판정을 검출해 9건 실패했다. `b2c2785a3`에서 Bingo domain이 join transition 결과를 반환하고 SupportChat domain이 idle/close deadline과 상태 전이를 소유하도록 바꿨다. 구현 뒤 집중 gate와 sample parity 51건, Bingo·SupportChat 실제 runner가 모두 통과했다. POSD/DDD 재검토에서는 Infrastructure가 snapshot을 다시 읽는 대안을 배제하고, domain은 판정하고 Infrastructure는 결과를 전송하는 책임 경계로 정리했다.
 - [x] **SMP-CP-26** (결함) — **runner 3개가 framework 동작 knob(`ZLINK_CPP_AUTO_CONNECT_TRACE`)을 export**하고, Bingo는 그 덕에 생긴 로그로 self-check한다

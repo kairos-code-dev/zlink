@@ -57,12 +57,12 @@ if SELECTOR in ("all", "OBS-A1"):
     write("OBS-A1", [("connector_outbound", connector), ("stream_inbound", inbound), ("actor_relay", relay), ("spot_dispatch", dispatch)])
 
 if SELECTOR in ("all", "OBS-A2"):
-    connector = require([line for line in lines("a2-trigger.stderr.log") if "connector write-start" in line and "name=ObservabilityMissingPacket" in line and flow_of(line)], "OBS-A2 connector request log missing")[-1]
+    connector = require([line for line in lines("a2-client.stderr.log") if "connector write-start" in line and "name=ObservabilityMissingPacket" in line and flow_of(line)], "OBS-A2 connector request log missing")[-1]
     flow = flow_of(connector)
     session = [line for line in lines("session-flow.log") if f"flow={flow}" in line]
     received = require([line for line in session if "outcome=RECEIVED" in line], "OBS-A2 received log missing")[0]
     error = require([
-        line for line in lines("a2-trigger.stderr.log")
+        line for line in lines("a2-client.stderr.log")
         if f"flow={flow}" in line and "connector read-frame" in line and "kind=4" in line
     ], "OBS-A2 error reply log missing")[0]
     write("OBS-A2", [("stream_inbound", received), ("stream_error", error)])
@@ -173,7 +173,7 @@ if SELECTOR in ("all", "OBS-B4"):
 if SELECTOR in ("all", "OBS-C4"):
     status = json.loads((LOG_DIR / "c4-drain-status.json").read_text(encoding="utf-8"))
     connector = json.loads((LOG_DIR / "c4-connector-result.json").read_text(encoding="utf-8"))
-    trace = "\n".join(lines("c4-trigger.stderr.log"))
+    trace = "\n".join(lines("c4-client.stderr.log"))
     require([trace] if "session-closing version=1 reason=server_drain" in trace else [],
             "OBS-C4 session-closing v1 trace missing")
     events = [{"state": event["state"].lower(), "timestamp": event["timestamp"]}
@@ -192,7 +192,8 @@ if SELECTOR in ("all", "OBS-C4"):
 if SELECTOR in ("all", "OBS-C1"):
     before = json.loads((LOG_DIR / "c1-before.json").read_text(encoding="utf-8"))
     during = json.loads((LOG_DIR / "c1-during.json").read_text(encoding="utf-8"))
-    existing = "scenario ATD-A1 passed" in "\n".join(lines("c1-existing.stdout.log"))
+    existing = "observability-ops client scenario=OBS-C1 result=passed" in "\n".join(
+        lines("c1-existing.stdout.log"))
     before_renewed = before.get("locationStatus", {}).get("ownerLeaseRenewedAt", "")
     during_renewed = during.get("locationStatus", {}).get("ownerLeaseRenewedAt", "")
     events = [{"state": event["state"].lower(), "timestamp": event["timestamp"]}

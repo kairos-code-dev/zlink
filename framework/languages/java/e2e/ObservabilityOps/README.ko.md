@@ -8,8 +8,10 @@ flow 배열은 `flow`, `origin`, `label`, `phase`, `outcome`, `sequence`를 사�
 스펙의 `name`, `kind`, `value`, `unit`, `tags` 형식을 사용한다. drain 증거는 `drainEvents`와
 `peerRows`를 사용한다.
 
-runner는 별도 endpoint와 Redis key prefix를 예약하고 AutomaticTurnDispatch의 Delay, Play-A, Play-B,
-Session 역할을 실행한다. OBS-A1은 실제 actor relay 요청을 사용하고, OBS-A2는 등록되지 않은 packet을
+runner는 별도 endpoint와 Redis key prefix를 예약하고 이 config의 Delay, Play-A, Play-B, Session
+역할 서버와 Client를 실행한다. 역할 서버가 함께 사용하는 topology 지원 코드는 한 모듈에 모아 두되,
+각 역할의 실행 진입점과 OBS 시나리오 선택은 이 config가 소유한다. OBS-A1은 실제 actor relay 요청을
+사용하고, OBS-A2는 등록되지 않은 packet을
 보내 실제 error reply를 발생시킨다. OBS-A3은 Session의 tracing을 끈 뒤 같은 relay를 다시 실행하여
 하류까지 flow가 유지되는지 확인한다. OBS-A4는 framework Spot timer에서 fanout event를 발행하고 두
 Play 역할이 같은 flow를 수신하는지 확인한다. evidence JSON은 connector와 framework가 남긴 로그에서만

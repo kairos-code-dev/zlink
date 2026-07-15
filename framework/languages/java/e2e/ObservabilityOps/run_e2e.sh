@@ -5,8 +5,22 @@ set -euo pipefail
 # connector/framework logs emitted by the deployed processes.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JAVA_E2E_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ATD_DIR="${JAVA_E2E_DIR}/AutomaticTurnDispatch"
 source "${JAVA_E2E_DIR}/../e2e-redis-common.sh"
+
+forbidden_config_ref="Automatic""TurnDispatch|ATD""_DIR|ATD""-[A-Z][0-9]"
+if rg -n "${forbidden_config_ref}" \
+    "${SCRIPT_DIR}/run_e2e.sh" \
+    "${SCRIPT_DIR}/Client/src/main/java/systems/zlink/e2e/observabilityops/client/Program.java" \
+    "${SCRIPT_DIR}/Server" --glob '*.java'; then
+  echo "ObservabilityOps must own its role apps and client scenarios" >&2
+  exit 1
+fi
+legacy_config_dir="${JAVA_E2E_DIR}/Automatic""TurnDispatch"
+if rg -n 'OBS-[A-Z][0-9]' \
+    "${legacy_config_dir}/Client/src/main/java" --glob '*.java'; then
+  echo "The adjacent config client must not own ObservabilityOps scenarios" >&2
+  exit 1
+fi
 
 SELECTOR="${1:-all}"
 case "${SELECTOR}" in
@@ -32,7 +46,6 @@ log_dir="${SCRIPT_DIR}/logs/${run_id}"
 evidence_dir="${log_dir}/evidence"
 repo_root="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
-atd_build="${ZLINK_JAVA_OBSERVABILITY_ATD_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/ObservabilityOps-atd}"
 obs_build="${ZLINK_JAVA_OBSERVABILITY_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/ObservabilityOps}"
 gradle_cache="${ZLINK_JAVA_OBSERVABILITY_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/ObservabilityOps-gradle-cache}"
 pids=()
@@ -225,16 +238,14 @@ s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()
 PY
 )")"
 
-(cd "${ATD_DIR}" && ZLINK_JAVA_E2E_BUILD_DIR="${atd_build}" ../../gradlew \
-  --project-cache-dir "${gradle_cache}" --no-daemon --no-parallel --max-workers=1 --quiet installDist)
 ZLINK_JAVA_E2E_BUILD_DIR="${obs_build}" "${SCRIPT_DIR}/gradlew" \
-  --project-cache-dir "${gradle_cache}" --no-daemon --no-parallel --max-workers=1 --quiet installDist
+  --project-cache-dir "${gradle_cache}" --no-daemon --no-parallel --max-workers=1 --quiet \
+  clean installDist
 
-delay_bin="${atd_build}/Server-Delay/install/automatic-turn-dispatch-delay/bin/automatic-turn-dispatch-delay"
-play_bin="${atd_build}/Server-Play/install/automatic-turn-dispatch-play/bin/automatic-turn-dispatch-play"
-session_bin="${atd_build}/Server-Session/install/automatic-turn-dispatch-session/bin/automatic-turn-dispatch-session"
-client_bin="${atd_build}/Client/install/automatic-turn-dispatch-client/bin/automatic-turn-dispatch-client"
-trigger_bin="${obs_build}/Trigger/install/observability-ops-trigger/bin/observability-ops-trigger"
+delay_bin="${obs_build}/Server-Delay/install/observability-ops-delay/bin/observability-ops-delay"
+play_bin="${obs_build}/Server-Play/install/observability-ops-play/bin/observability-ops-play"
+session_bin="${obs_build}/Server-Session/install/observability-ops-session/bin/observability-ops-session"
+client_bin="${obs_build}/Client/install/observability-ops-client/bin/observability-ops-client"
 verifier_bin="${obs_build}/Verifier/install/observability-ops-verifier/bin/observability-ops-verifier"
 
 common_env=(ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}")
@@ -256,10 +267,10 @@ sleep "${ROUTE_SETTLE_SECONDS}"
 
 client_env=(ZLINK_JAVA_STREAM_TRACE=1 JAVA_TOOL_OPTIONS="-Djava.util.logging.config.file=${SCRIPT_DIR}/logging.properties" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}")
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A1 ]]; then
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" ATD-D4 >"${log_dir}/a1-client.stdout.log" 2>"${log_dir}/a1-client.stderr.log"
+  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-A1 >"${log_dir}/a1-client.stdout.log" 2>"${log_dir}/a1-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A2 ]]; then
-  env "${client_env[@]}" timeout -k 5s 30s "${trigger_bin}" "${STREAM_ENDPOINT}" >"${log_dir}/a2-trigger.stdout.log" 2>"${log_dir}/a2-trigger.stderr.log"
+  env "${client_env[@]}" timeout -k 5s 30s "${client_bin}" OBS-A2 >"${log_dir}/a2-client.stdout.log" 2>"${log_dir}/a2-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B2 ]]; then
   env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-B2 >"${log_dir}/b2-client.stdout.log" 2>"${log_dir}/b2-client.stderr.log"
@@ -278,14 +289,15 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A3 ]]; then
   wait_port off-node-stream "${STREAM_ENDPOINT}"; wait_http off-node-http "${SESSION_HTTP}"
   wait_metrics_state "${SESSION_HTTP}" true
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" ATD-D4 >"${log_dir}/a3-client.stdout.log" 2>"${log_dir}/a3-client.stderr.log"
+  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-A3 >"${log_dir}/a3-client.stdout.log" 2>"${log_dir}/a3-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A4 || "${SELECTOR}" == OBS-B3 ]]; then
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" ATD-C1 >"${log_dir}/a4-client.stdout.log" 2>"${log_dir}/a4-client.stderr.log"
+  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-A4 >"${log_dir}/a4-client.stdout.log" 2>"${log_dir}/a4-client.stderr.log"
   sleep 1
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B1 ]]; then
-  env "${client_env[@]}" timeout -k 5s 60s "${trigger_bin}" --metrics-b1 "${STREAM_ENDPOINT}" "${log_dir}/connector-metrics.json" >"${log_dir}/b1-trigger.stdout.log" 2>"${log_dir}/b1-trigger.stderr.log"
+  env "${client_env[@]}" ZLINK_JAVA_E2E_SCENARIO_OUTPUT="${log_dir}/connector-metrics.json" \
+    timeout -k 5s 60s "${client_bin}" OBS-B1 >"${log_dir}/b1-client.stdout.log" 2>"${log_dir}/b1-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B3 ]]; then
   kill -STOP "${pids[1]}"
@@ -304,12 +316,13 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B4 ]]; then
   wait_port reader-free-stream "${STREAM_ENDPOINT}"; wait_http reader-free-http "${SESSION_HTTP}"
   wait_metrics_state "${SESSION_HTTP}" false
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" timeout -k 5s 120s "${trigger_bin}" --reader-free-b4 "${STREAM_ENDPOINT}" "${log_dir}/reader-free-result.json" >"${log_dir}/b4-trigger.stdout.log" 2>"${log_dir}/b4-trigger.stderr.log"
+  env "${client_env[@]}" ZLINK_JAVA_E2E_SCENARIO_OUTPUT="${log_dir}/reader-free-result.json" \
+    timeout -k 5s 120s "${client_bin}" OBS-B4 >"${log_dir}/b4-client.stdout.log" 2>"${log_dir}/b4-client.stderr.log"
   fetch_url "${SESSION_HTTP}/metrics" "${log_dir}/reader-free-metrics.json"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C1 ]]; then
   fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c1-before.json"
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" ATD-A1 >"${log_dir}/c1-existing.stdout.log" 2>"${log_dir}/c1-existing.stderr.log"
+  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-C1 >"${log_dir}/c1-existing.stdout.log" 2>"${log_dir}/c1-existing.stderr.log"
   fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=9000" "${log_dir}/c1-start.json"
   python3 - "${PLAY_A_HTTP}/drain/status" "${log_dir}/c1-before.json" "${log_dir}/c1-during.json" <<'PY'
 import json, pathlib, sys, time, urllib.request
@@ -421,7 +434,10 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C4 ]]; then
   session_pid="$!"
   wait_port c4-session-stream "${STREAM_ENDPOINT}"; wait_http c4-session-http "${SESSION_HTTP}"; wait_metrics_state "${SESSION_HTTP}" true
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" timeout -k 5s 30s "${trigger_bin}" --drain-watch "${STREAM_ENDPOINT}" "${SESSION_HTTP}/drain/start?deadlineMs=500" "${log_dir}/c4-connector-result.json" >"${log_dir}/c4-trigger.stdout.log" 2>"${log_dir}/c4-trigger.stderr.log"
+  env "${client_env[@]}" \
+    ZLINK_JAVA_E2E_DRAIN_URL="${SESSION_HTTP}/drain/start?deadlineMs=500" \
+    ZLINK_JAVA_E2E_SCENARIO_OUTPUT="${log_dir}/c4-connector-result.json" \
+    timeout -k 5s 30s "${client_bin}" OBS-C4 >"${log_dir}/c4-client.stdout.log" 2>"${log_dir}/c4-client.stderr.log"
   fetch_url "${SESSION_HTTP}/drain/status" "${log_dir}/c4-drain-status.json"
   fetch_url "${SESSION_HTTP}/metrics" "${log_dir}/c4-metrics.json"
 fi

@@ -73,13 +73,6 @@ public final class Program {
             case "ATD-D4" -> AtdD4SessionRelayActorAwaitScenario.run(connector);
             case "ATD-E1" -> AtdE1TimeoutScenario.run(connector);
             case "ATD-E2" -> AtdE2CancellationScenario.run(connector);
-            case "OBS-B2" -> AutomaticTurnDispatchScenarioSupport.runObservabilityTransfer(connector);
-            case "OBS-B2-QUEUE" -> AutomaticTurnDispatchScenarioSupport.runObservabilityQueue(connector);
-            case "OBS-C2" -> AutomaticTurnDispatchScenarioSupport.runObservabilityDrainHandoff(connector);
-            case "OBS-C3-WRITE" -> AutomaticTurnDispatchScenarioSupport.runPersistentRoomWrite(connector);
-            case "OBS-C3-READ" -> AutomaticTurnDispatchScenarioSupport.runPersistentRoomRead(connector);
-            case "OBS-C5-BIND" -> AutomaticTurnDispatchScenarioSupport.runDrainRolloutBind(connector);
-            case "OBS-C5-PROBE" -> AutomaticTurnDispatchScenarioSupport.runDrainTargetProbe(connector);
             case "ATD-E4", "ATD-E5" -> System.out.println("scenario " + scenario + " passed");
             default -> throw new IllegalArgumentException("unknown AutomaticTurnDispatch scenario: " + scenario);
         }

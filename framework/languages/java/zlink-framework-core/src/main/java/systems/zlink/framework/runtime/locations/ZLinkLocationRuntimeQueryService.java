@@ -1,7 +1,9 @@
 package systems.zlink.framework.runtime.locations;
 
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -178,39 +180,82 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
     private CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> listAllTopologyKinds(
         ZLinkLocationTopologyFilter filter,
         ZLinkPageRequest page) {
-        List<ZLinkLocationTopologyEntry> entries = new ArrayList<>();
-        return listPeerTopology(filter, ZLinkPageRequest.firstPage())
-            .thenCompose(peerPage -> {
-                entries.addAll(peerPage.items());
-                return listTopology(new ZLinkLocationTopologyFilter(
-                    ZLinkLocationKind.SPOT,
-                    filter.meshName(),
-                    filter.role(),
-                    filter.nodeRid(),
-                    filter.state()), ZLinkPageRequest.firstPage());
-            })
-            .thenCompose(spotPage -> {
-                entries.addAll(spotPage.items());
-                return listTopology(new ZLinkLocationTopologyFilter(
-                    ZLinkLocationKind.ACTOR,
-                    filter.meshName(),
-                    filter.role(),
-                    filter.nodeRid(),
-                    filter.state()), ZLinkPageRequest.firstPage());
-            })
-            .thenCompose(actorPage -> {
-                entries.addAll(actorPage.items());
-                return listTopology(new ZLinkLocationTopologyFilter(
-                    ZLinkLocationKind.ROUTE,
-                    filter.meshName(),
-                    filter.role(),
-                    filter.nodeRid(),
-                    filter.state()), ZLinkPageRequest.firstPage());
-            })
-            .thenApply(routePage -> {
-                entries.addAll(routePage.items());
-                return pageInMemory(entries, page);
+        ZLinkPageRequest safePage = normalize(page);
+        TopologyCursor cursor = decodeTopologyCursor(safePage.continuationToken());
+        return collectTopologyKinds(
+            filter,
+            cursor.kindIndex(),
+            cursor.storeToken(),
+            safePage.pageSize(),
+            new ArrayList<>());
+    }
+
+    private CompletionStage<ZLinkLocationPage<ZLinkLocationTopologyEntry>> collectTopologyKinds(
+        ZLinkLocationTopologyFilter filter,
+        int kindIndex,
+        String storeToken,
+        int pageSize,
+        List<ZLinkLocationTopologyEntry> entries) {
+        ZLinkLocationKind[] kinds = {
+            ZLinkLocationKind.PEER,
+            ZLinkLocationKind.SPOT,
+            ZLinkLocationKind.ACTOR,
+            ZLinkLocationKind.ROUTE
+        };
+        if (kindIndex >= kinds.length) {
+            return CompletableFuture.completedFuture(new ZLinkLocationPage<>(entries, null));
+        }
+        int remaining = pageSize - entries.size();
+        ZLinkLocationTopologyFilter kindFilter = new ZLinkLocationTopologyFilter(
+            kinds[kindIndex],
+            filter.meshName(),
+            filter.role(),
+            filter.nodeRid(),
+            filter.state());
+        return listTopology(kindFilter, new ZLinkPageRequest(remaining, storeToken))
+            .thenCompose(kindPage -> {
+                entries.addAll(kindPage.items());
+                String nextStoreToken = kindPage.continuationToken();
+                if (entries.size() >= pageSize) {
+                    String continuation = nextStoreToken == null
+                        ? (kindIndex + 1 < kinds.length
+                            ? encodeTopologyCursor(kindIndex + 1, null)
+                            : null)
+                        : encodeTopologyCursor(kindIndex, nextStoreToken);
+                    return CompletableFuture.completedFuture(
+                        new ZLinkLocationPage<>(List.copyOf(entries), continuation));
+                }
+                return collectTopologyKinds(
+                    filter,
+                    nextStoreToken == null ? kindIndex + 1 : kindIndex,
+                    nextStoreToken,
+                    pageSize,
+                    entries);
             });
+    }
+
+    private static String encodeTopologyCursor(int kindIndex, String storeToken) {
+        String encodedStoreToken = storeToken == null
+            ? ""
+            : Base64.getUrlEncoder().withoutPadding().encodeToString(
+                storeToken.getBytes(StandardCharsets.UTF_8));
+        return "topology:" + kindIndex + ":" + encodedStoreToken;
+    }
+
+    private static TopologyCursor decodeTopologyCursor(String token) {
+        if (token == null || !token.startsWith("topology:")) {
+            return new TopologyCursor(0, null);
+        }
+        String[] fields = token.split(":", 3);
+        try {
+            int kindIndex = Integer.parseInt(fields[1]);
+            String storeToken = fields.length < 3 || fields[2].isEmpty()
+                ? null
+                : new String(Base64.getUrlDecoder().decode(fields[2]), StandardCharsets.UTF_8);
+            return new TopologyCursor(Math.max(0, kindIndex), storeToken);
+        } catch (IllegalArgumentException ignored) {
+            return new TopologyCursor(0, null);
+        }
     }
 
     @Override
@@ -311,6 +356,9 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
         String meshName,
         systems.zlink.framework.locations.ZLinkLocationAutoConnectType autoConnectType,
         ZLinkLocationRole role) {
+    }
+
+    private record TopologyCursor(int kindIndex, String storeToken) {
     }
 
     private static final class MutableSummary {

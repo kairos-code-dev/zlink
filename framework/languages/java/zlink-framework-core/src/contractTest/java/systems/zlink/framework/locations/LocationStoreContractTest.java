@@ -246,6 +246,21 @@ final class LocationStoreContractTest {
 
             assertEquals(2, page.items().size());
             assertNotNull(page.continuationToken());
+
+            ZLinkLocationPage<ZLinkLocationTopologyEntry> topologyFirst = query.listTopology(
+                    ZLinkLocationTopologyFilter.all(),
+                    ZLinkPageRequest.firstPage())
+                .toCompletableFuture()
+                .get();
+            assertEquals(2, topologyFirst.items().size());
+            assertNotNull(topologyFirst.continuationToken());
+            ZLinkLocationPage<ZLinkLocationTopologyEntry> topologySecond = query.listTopology(
+                    ZLinkLocationTopologyFilter.all(),
+                    new ZLinkPageRequest(0, topologyFirst.continuationToken()))
+                .toCompletableFuture()
+                .get();
+            assertEquals(1, topologySecond.items().size());
+            assertNull(topologySecond.continuationToken());
         }
     }
 

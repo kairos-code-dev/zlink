@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import systems.zlink.e2e.automaticturn.shared.Contracts;
-import systems.zlink.e2e.automaticturn.shared.Env;
 import systems.zlink.httpclient.RawHttpResponse;
 import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -23,11 +22,13 @@ public final class ObservabilityScenarioSupport {
     private static final long ISOLATION_DELAY_MILLIS = 350;
     private static final long ACTOR_TIMER_ISOLATION_DELAY_MILLIS = 5000;
     private static final ObjectMapper JSON = new ObjectMapper();
+    private final ClientOptions options;
 
-    private ObservabilityScenarioSupport() {
+    public ObservabilityScenarioSupport(ClientOptions options) {
+        this.options = options;
     }
 
-    public static void runBasicTerminator(ZLinkStreamConnector connector) throws Exception {
+    public void runBasicTerminator(ZLinkStreamConnector connector) throws Exception {
         runScenario(connector, "ATD-A1", List.of(
             "hold-started",
             "probe-started",
@@ -36,12 +37,12 @@ public final class ObservabilityScenarioSupport {
             "hold-completed"));
     }
 
-    public static void runTimerIsolation(ZLinkStreamConnector connector) throws Exception {
+    public void runTimerIsolation(ZLinkStreamConnector connector) throws Exception {
         String requestId = "atdc1-" + System.nanoTime();
         Map<String, String> metadata = Map.of(
             Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
             Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE);
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = options.playHttpEndpoint() + "/evidence";
         connector
             .send(new Contracts.TimerStartMsg(
                 requestId,
@@ -81,11 +82,11 @@ public final class ObservabilityScenarioSupport {
             "timer-fast-completed"), "timer=" + requestId + "-fast");
     }
 
-    public static void runSessionRelayActorAwait(ZLinkStreamConnector connector) throws Exception {
+    public void runSessionRelayActorAwait(ZLinkStreamConnector connector) throws Exception {
         String requestId = "atdd4-" + System.nanoTime();
         String actorA = requestId + "-actor-a";
         String actorB = requestId + "-actor-b";
-        String playEvidence = Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence";
+        String playEvidence = options.playHttpEndpoint() + "/evidence";
         Contracts.BindActorsRes bind = connector
             .request(new Contracts.BindActorsReq(Contracts.TARGET_SPOT, actorA, actorB))
             .timeout(REQUEST_TIMEOUT)
@@ -93,7 +94,7 @@ public final class ObservabilityScenarioSupport {
         ensure(actorA.equals(bind.actorA()), "ATD-D4 actor A bind mismatch");
 
         ZLinkStreamConnector unbound = ZLinkStreamConnectorFactory.create(
-            ZLinkStreamConnectorOptions.createDefault(URI.create(Env.get("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))));
+            ZLinkStreamConnectorOptions.createDefault(URI.create(options.streamEndpoint())));
         try {
             unbound.connect().submit().toCompletableFuture().join();
             CompletionStage<ZLinkStreamMessage<Contracts.ActorPushNotify>> push = connector
@@ -136,7 +137,7 @@ public final class ObservabilityScenarioSupport {
             "actor-push-await-completed"), "actor=" + actorA);
     }
 
-    public static void runObservabilityTransfer(ZLinkStreamConnector connector) throws Exception {
+    public void runObservabilityTransfer(ZLinkStreamConnector connector) throws Exception {
         String requestId = "obsb2-" + System.nanoTime();
         String remoteSpot = requestId + "-remote-spot";
         Contracts.EnsureSpotRes ensured = connector
@@ -163,7 +164,7 @@ public final class ObservabilityScenarioSupport {
         System.out.println("scenario OBS-B2 passed actor=" + actorA + " spot=" + remoteSpot);
     }
 
-    public static void runObservabilityQueue(ZLinkStreamConnector connector) throws Exception {
+    public void runObservabilityQueue(ZLinkStreamConnector connector) throws Exception {
         String requestId = "obsb2q-" + System.nanoTime();
         ZLinkStreamConnector peer = ZLinkStreamConnectorFactory.create(connector.options());
         try {
@@ -183,7 +184,7 @@ public final class ObservabilityScenarioSupport {
         System.out.println("scenario OBS-B2-QUEUE passed");
     }
 
-    public static void runObservabilityDrainHandoff(ZLinkStreamConnector connector) throws Exception {
+    public void runObservabilityDrainHandoff(ZLinkStreamConnector connector) throws Exception {
         String requestId = "obsc2-" + System.nanoTime();
         String actorA = requestId + "-actor-a";
         String actorB = requestId + "-actor-b";
@@ -206,7 +207,7 @@ public final class ObservabilityScenarioSupport {
             pendingCompleted = timeout.getCause() instanceof java.util.concurrent.TimeoutException;
         }
         waitForMetricValue(
-            Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/metrics",
+            options.playHttpEndpoint() + "/metrics",
             "zlink.drain.actors.handed_off",
             2);
         Contracts.ActorPushAwaitRes reply = connector
@@ -221,7 +222,7 @@ public final class ObservabilityScenarioSupport {
         System.out.println("OBS-C2 pending-completed=" + pendingCompleted + " bound-push=true");
     }
 
-    public static void runPersistentRoomWrite(ZLinkStreamConnector connector) {
+    public void runPersistentRoomWrite(ZLinkStreamConnector connector) {
         connector.request(new Contracts.EnsureSpotReq("obs-c3-persistent-room"))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
             .timeout(REQUEST_TIMEOUT).submit(Contracts.EnsureSpotRes.class)
@@ -234,7 +235,7 @@ public final class ObservabilityScenarioSupport {
             + " events=" + state.eventCount() + " value=" + state.value());
     }
 
-    public static void runPersistentRoomRead(ZLinkStreamConnector connector) {
+    public void runPersistentRoomRead(ZLinkStreamConnector connector) {
         String room = "obs-c3-persistent-room";
         Contracts.EnsureSpotRes created = connector
             .request(new Contracts.EnsureSpotReq(room))
@@ -252,7 +253,7 @@ public final class ObservabilityScenarioSupport {
             + " replayed=" + state.replayed());
     }
 
-    private static Contracts.PersistentRoomStateRes persistentRoom(
+    private Contracts.PersistentRoomStateRes persistentRoom(
         ZLinkStreamConnector connector,
         String nodeRid,
         Contracts.PersistentRoomStateReq request) {
@@ -264,7 +265,7 @@ public final class ObservabilityScenarioSupport {
             .toCompletableFuture().join();
     }
 
-    public static void runDrainRolloutBind(ZLinkStreamConnector connector) {
+    public void runDrainRolloutBind(ZLinkStreamConnector connector) {
         Contracts.BindActorsRes bound = connector
             .request(new Contracts.BindActorsReq(
                 Contracts.TARGET_SPOT, "obs-c5-actor-a", "obs-c5-actor-b"))
@@ -274,7 +275,7 @@ public final class ObservabilityScenarioSupport {
             + " source=" + bound.actors().get(0).nodeRid());
     }
 
-    public static void runDrainTargetProbe(ZLinkStreamConnector connector) {
+    public void runDrainTargetProbe(ZLinkStreamConnector connector) {
         Contracts.EnsureSpotRes ready = connector
             .request(new Contracts.EnsureSpotReq("obs-c5-target-ready"))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_B)
@@ -284,14 +285,14 @@ public final class ObservabilityScenarioSupport {
         System.out.println("OBS-C5 target-ready=" + ready.nodeRid());
     }
 
-    private static void runScenario(
+    private void runScenario(
         ZLinkStreamConnector connector,
         String scenarioId,
         List<String> expectedOrder) throws Exception {
         runScenario(connector, scenarioId, expectedOrder, Map.of(), List.of());
     }
 
-    private static void runScenario(
+    private void runScenario(
         ZLinkStreamConnector connector,
         String scenarioId,
         List<String> expectedOrder,
@@ -311,11 +312,11 @@ public final class ObservabilityScenarioSupport {
         }
     }
 
-    private static void assertOrder(String requestId, List<String> expectedOrder) throws Exception {
-        assertOrder(Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence", requestId, expectedOrder);
+    private void assertOrder(String requestId, List<String> expectedOrder) throws Exception {
+        assertOrder(options.playHttpEndpoint() + "/evidence", requestId, expectedOrder);
     }
 
-    private static void assertOrder(String evidenceUrl, String requestId, List<String> expectedOrder)
+    private void assertOrder(String evidenceUrl, String requestId, List<String> expectedOrder)
         throws Exception {
         long deadline = System.nanoTime() + REQUEST_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -330,11 +331,11 @@ public final class ObservabilityScenarioSupport {
                 + ", observed=" + observedMarkers(evidenceUrl, requestId));
     }
 
-    private static List<String> observedMarkers(String requestId) throws Exception {
-        return observedMarkers(Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence", requestId);
+    private List<String> observedMarkers(String requestId) throws Exception {
+        return observedMarkers(options.playHttpEndpoint() + "/evidence", requestId);
     }
 
-    private static List<String> observedMarkers(String evidenceUrl, String requestId) throws Exception {
+    private List<String> observedMarkers(String evidenceUrl, String requestId) throws Exception {
         JsonNode root = JSON.readTree(get(evidenceUrl));
         List<String> markers = new ArrayList<>();
         for (JsonNode entry : root.path("entries")) {
@@ -345,18 +346,18 @@ public final class ObservabilityScenarioSupport {
         return markers;
     }
 
-    private static void assertAllValuesContain(
+    private void assertAllValuesContain(
         String requestId,
         List<String> expectedMarkers,
         String valueFragment) throws Exception {
         assertAllValuesContain(
-            Env.get("ZLINK_JAVA_E2E_PLAY_HTTP") + "/evidence",
+            options.playHttpEndpoint() + "/evidence",
             requestId,
             expectedMarkers,
             valueFragment);
     }
 
-    private static void assertAllValuesContain(
+    private void assertAllValuesContain(
         String evidenceUrl,
         String requestId,
         List<String> expectedMarkers,
@@ -372,12 +373,12 @@ public final class ObservabilityScenarioSupport {
         }
     }
 
-    private static void assertNoMarker(String evidenceUrl, String requestId, String marker) throws Exception {
+    private void assertNoMarker(String evidenceUrl, String requestId, String marker) throws Exception {
         List<String> observed = observedMarkers(evidenceUrl, requestId);
         ensure(!observed.contains(marker), "unexpected marker " + marker + " for " + requestId);
     }
 
-    private static void waitForMetricValue(String metricsUrl, String metricName, double minimum)
+    private void waitForMetricValue(String metricsUrl, String metricName, double minimum)
         throws Exception {
         long deadline = System.nanoTime() + REQUEST_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
@@ -398,7 +399,7 @@ public final class ObservabilityScenarioSupport {
         void run() throws Exception;
     }
 
-    private static void expectFailure(ThrowingRunnable action, String message) throws Exception {
+    private void expectFailure(ThrowingRunnable action, String message) throws Exception {
         try {
             action.run();
         } catch (Exception error) {
@@ -420,7 +421,7 @@ public final class ObservabilityScenarioSupport {
         return index == expected.size();
     }
 
-    private static String get(String url) throws Exception {
+    private String get(String url) throws Exception {
         URI target = URI.create(url);
         String baseUrl = target.getScheme() + "://" + target.getRawAuthority();
         String path = target.getRawPath();
@@ -438,7 +439,7 @@ public final class ObservabilityScenarioSupport {
         return response.body();
     }
 
-    private static void ensure(boolean condition, String message) {
+    private void ensure(boolean condition, String message) {
         if (!condition) {
             throw new IllegalStateException(message);
         }

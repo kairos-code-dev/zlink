@@ -1,13 +1,15 @@
 package systems.zlink.e2e.observabilityops.delay;
 
+import java.nio.file.Path;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.automaticturn.shared.Contracts;
 import systems.zlink.e2e.automaticturn.shared.DelayHandler;
-import systems.zlink.e2e.automaticturn.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -15,6 +17,7 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(DelayOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.observabilityops.delay")
@@ -23,22 +26,24 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        String config = configPath(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(isolatedEnvironment())
+            .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
-    ZLinkFrameworkConfigurer framework() {
+    ZLinkFrameworkConfigurer framework(DelayOptions config) {
         return options -> {
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(logDir + "/delay-flow.log")
+                .traceLogFile(config.logDir() + "/delay-flow.log")
                 .traceLabel("java-observability-delay");
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_DELAY_ENDPOINT"))
+                .enableServer(config.delayEndpoint())
                 .setRoutingId(RoutingId.from("delay-a"))
                 .addRequestHandler(
                     DelayHandler.class,
@@ -49,14 +54,28 @@ public final class Program {
     }
 
     @Bean
-    ZLinkRedisLocationStore locationStore() {
+    ZLinkRedisLocationStore locationStore(DelayOptions config) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(config.redisLocationEndpoint())
+            .setKeyPrefix(config.locationKeyPrefix()));
     }
 
     @Bean
     DelayHandler delayHandler() {
         return new DelayHandler();
+    }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: observability-ops-delay --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
     }
 }

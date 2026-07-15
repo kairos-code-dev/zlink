@@ -53,7 +53,8 @@ obs_build="${ZLINK_JAVA_OBSERVABILITY_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/O
 gradle_cache="${ZLINK_JAVA_OBSERVABILITY_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/ObservabilityOps-gradle-cache}"
 pids=()
 REDIS_CONTAINER=""
-mkdir -p "${log_dir}" "${evidence_dir}"
+config_dir="${log_dir}/config"
+mkdir -p -m 0700 "${log_dir}" "${evidence_dir}" "${config_dir}"
 echo "log_dir=${log_dir}"
 
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
@@ -61,8 +62,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
   "zlink-redis-java-e2e-observability" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_OBSERVABILITY_LOCATION_KEY_PREFIX:-zlink:e2e:observability:${run_id}}"
+redis_location_endpoint="127.0.0.1:${redis_port}"
+location_key_prefix="zlink:e2e:observability:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -95,6 +96,7 @@ cleanup() {
   done
   [[ -z "${REDIS_CONTAINER}" ]] || docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   wait >/dev/null 2>&1 || true
+  rm -rf "${config_dir}"
   if [[ "${status}" != 0 ]]; then
     for log in "${log_dir}"/*.log; do [[ -f "${log}" ]] && { echo "===== ${log} =====" >&2; tail -n 120 "${log}" >&2; }; done
   fi
@@ -251,24 +253,100 @@ session_bin="${obs_build}/Server-Session/install/observability-ops-session/bin/o
 client_bin="${obs_build}/Client/install/observability-ops-client/bin/observability-ops-client"
 verifier_bin="${obs_build}/Verifier/install/observability-ops-verifier/bin/observability-ops-verifier"
 
-common_env=(ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}")
+write_config() {
+  local path="$1"
+  shift
+  : >"${path}"
+  chmod 0600 "${path}"
+  printf '%s\n' "$@" >"${path}"
+}
+start_delay() {
+  local stdout="$1" stderr="$2" config="${config_dir}/delay.properties"
+  write_config "${config}" \
+    "e2e.delay-endpoint=${DELAY_ENDPOINT}" \
+    "e2e.redis-location-endpoint=${redis_location_endpoint}" \
+    "e2e.location-key-prefix=${location_key_prefix}" \
+    "e2e.log-dir=${log_dir}"
+  "${delay_bin}" --config "${config}" >"${stdout}" 2>"${stderr}" &
+}
+start_play() {
+  local node="$1" drain_policy="$2" stdout="$3" stderr="$4"
+  local route_endpoint route_peer_endpoint spot_endpoint http_endpoint
+  if [[ "${node}" == play-a ]]; then
+    route_endpoint="${ROUTE_A_ENDPOINT}"; route_peer_endpoint="${ROUTE_B_ENDPOINT}"
+    spot_endpoint="${SPOT_A_ENDPOINT}"; http_endpoint="${PLAY_A_HTTP}"
+  else
+    route_endpoint="${ROUTE_B_ENDPOINT}"; route_peer_endpoint="${ROUTE_A_ENDPOINT}"
+    spot_endpoint="${SPOT_B_ENDPOINT}"; http_endpoint="${PLAY_B_HTTP}"
+  fi
+  local config="${config_dir}/${node}.properties"
+  write_config "${config}" \
+    "e2e.node-rid=${node}" \
+    "e2e.drain-policy=${drain_policy}" \
+    "e2e.route-endpoint=${route_endpoint}" \
+    "e2e.route-peer-endpoint=${route_peer_endpoint}" \
+    "e2e.spot-endpoint=${spot_endpoint}" \
+    "e2e.delay-endpoint=${DELAY_ENDPOINT}" \
+    "e2e.fanout-endpoint=${FANOUT_ENDPOINT}" \
+    "e2e.http-endpoint=${http_endpoint}" \
+    "e2e.redis-location-endpoint=${redis_location_endpoint}" \
+    "e2e.location-key-prefix=${location_key_prefix}" \
+    "e2e.log-dir=${log_dir}"
+  "${play_bin}" --config "${config}" >"${stdout}" 2>"${stderr}" &
+}
+start_session() {
+  local flow="$1" drain_spot="$2" metrics="$3" stdout="$4" stderr="$5"
+  local config="${config_dir}/session.properties"
+  local properties=(
+    "e2e.message-flow=${flow}"
+    "e2e.route-endpoint=${ROUTE_A_ENDPOINT}"
+    "e2e.route-b-endpoint=${ROUTE_B_ENDPOINT}"
+    "e2e.session-route-endpoint=${SESSION_ROUTE_ENDPOINT}"
+    "e2e.session-spot-endpoint=${SESSION_SPOT_ENDPOINT}"
+    "e2e.delay-endpoint=${DELAY_ENDPOINT}"
+    "e2e.stream-endpoint=${STREAM_ENDPOINT}"
+    "e2e.http-endpoint=${SESSION_HTTP}"
+    "e2e.session-drain-spot=${drain_spot}"
+    "e2e.redis-location-endpoint=${redis_location_endpoint}"
+    "e2e.location-key-prefix=${location_key_prefix}"
+    "e2e.log-dir=${log_dir}"
+  )
+  if [[ "${metrics}" == off ]]; then
+    properties+=("spring.autoconfigure.exclude=systems.zlink.framework.spring.ZLinkMetricsAutoConfiguration")
+  fi
+  write_config "${config}" "${properties[@]}"
+  "${session_bin}" --config "${config}" >"${stdout}" 2>"${stderr}" &
+}
+run_client() {
+  local scenario="$1" scenario_output="$2" drain_url="$3" limit="$4" stdout="$5" stderr="$6"
+  local config="${config_dir}/client-${scenario}.properties"
+  write_config "${config}" \
+    "streamEndpoint=${STREAM_ENDPOINT}" \
+    "playHttpEndpoint=${PLAY_A_HTTP}" \
+    "playBHttpEndpoint=${PLAY_B_HTTP}" \
+    "sessionHttpEndpoint=${SESSION_HTTP}" \
+    "scenarioOutput=${scenario_output}" \
+    "drainUrl=${drain_url}"
+  timeout -k 5s "${limit}" "${client_bin}" --config "${config}" --scenario "${scenario}" >"${stdout}" 2>"${stderr}"
+}
+
 play_a_drain_policy=natural
 [[ "${SELECTOR}" == OBS-C5 ]] && play_a_drain_policy=release
 start_initial_role() {
   case "$1" in
     delay)
-      env "${common_env[@]}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" "${delay_bin}" >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
+      start_delay "${log_dir}/delay.stdout.log" "${log_dir}/delay.stderr.log"
       ;;
     play-a)
-      env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-a ZLINK_JAVA_E2E_SPOT_DRAIN_POLICY="${play_a_drain_policy}" ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" "${play_bin}" >"${log_dir}/play-a.stdout.log" 2>"${log_dir}/play-a.stderr.log" &
+      start_play play-a "${play_a_drain_policy}" "${log_dir}/play-a.stdout.log" "${log_dir}/play-a.stderr.log"
       play_a_pid="$!"
       ;;
     play-b)
-      env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-b ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_B_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_B_HTTP}" "${play_bin}" >"${log_dir}/play-b.stdout.log" 2>"${log_dir}/play-b.stderr.log" &
+      start_play play-b natural "${log_dir}/play-b.stdout.log" "${log_dir}/play-b.stderr.log"
       play_b_pid="$!"
       ;;
     session)
-      env "${common_env[@]}" ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" "${session_bin}" >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
+      start_session on "" on "${log_dir}/session.stdout.log" "${log_dir}/session.stderr.log"
       session_pid="$!"
       ;;
   esac
@@ -294,16 +372,15 @@ wait_http session-http "${SESSION_HTTP}"
 wait_metrics_state "${SESSION_HTTP}" true
 sleep "${ROUTE_SETTLE_SECONDS}"
 
-client_env=(ZLINK_JAVA_STREAM_TRACE=1 JAVA_TOOL_OPTIONS="-Djava.util.logging.config.file=${SCRIPT_DIR}/logging.properties" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_PLAY_HTTP="${PLAY_A_HTTP}" ZLINK_JAVA_E2E_PLAY_B_HTTP="${PLAY_B_HTTP}" ZLINK_JAVA_E2E_SESSION_HTTP="${SESSION_HTTP}" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}")
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A1 ]]; then
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-A1 >"${log_dir}/a1-client.stdout.log" 2>"${log_dir}/a1-client.stderr.log"
+  run_client OBS-A1 "" "" 90s "${log_dir}/a1-client.stdout.log" "${log_dir}/a1-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A2 ]]; then
-  env "${client_env[@]}" timeout -k 5s 30s "${client_bin}" OBS-A2 >"${log_dir}/a2-client.stdout.log" 2>"${log_dir}/a2-client.stderr.log"
+  run_client OBS-A2 "" "" 30s "${log_dir}/a2-client.stdout.log" "${log_dir}/a2-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B2 ]]; then
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-B2 >"${log_dir}/b2-client.stdout.log" 2>"${log_dir}/b2-client.stderr.log"
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-B2-QUEUE >"${log_dir}/b2-queue.stdout.log" 2>"${log_dir}/b2-queue.stderr.log" &
+  run_client OBS-B2 "" "" 90s "${log_dir}/b2-client.stdout.log" "${log_dir}/b2-client.stderr.log"
+  run_client OBS-B2-QUEUE "" "" 90s "${log_dir}/b2-queue.stdout.log" "${log_dir}/b2-queue.stderr.log" &
   b2_queue_pid="$!"
   wait_metric_value_on_either_node "${PLAY_A_HTTP}" "${PLAY_B_HTTP}" \
     zlink.spot.queue.depth kind user 1 "${log_dir}/play-a-metrics-b2-live.json"
@@ -313,20 +390,19 @@ fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A3 ]]; then
   kill -TERM "${session_pid}"
   wait "${session_pid}" || true
-  env "${common_env[@]}" ZLINK_JAVA_E2E_MESSAGE_FLOW=off ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" "${session_bin}" >"${log_dir}/off-node.stdout.log" 2>"${log_dir}/off-node.stderr.log" & pids+=("$!")
+  start_session off "" on "${log_dir}/off-node.stdout.log" "${log_dir}/off-node.stderr.log"; pids+=("$!")
   session_pid="$!"
   wait_port off-node-stream "${STREAM_ENDPOINT}"; wait_http off-node-http "${SESSION_HTTP}"
   wait_metrics_state "${SESSION_HTTP}" true
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-A3 >"${log_dir}/a3-client.stdout.log" 2>"${log_dir}/a3-client.stderr.log"
+  run_client OBS-A3 "" "" 90s "${log_dir}/a3-client.stdout.log" "${log_dir}/a3-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-A4 || "${SELECTOR}" == OBS-B3 ]]; then
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-A4 >"${log_dir}/a4-client.stdout.log" 2>"${log_dir}/a4-client.stderr.log"
+  run_client OBS-A4 "" "" 90s "${log_dir}/a4-client.stdout.log" "${log_dir}/a4-client.stderr.log"
   sleep 1
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B1 ]]; then
-  env "${client_env[@]}" ZLINK_JAVA_E2E_SCENARIO_OUTPUT="${log_dir}/connector-metrics.json" \
-    timeout -k 5s 60s "${client_bin}" OBS-B1 >"${log_dir}/b1-client.stdout.log" 2>"${log_dir}/b1-client.stderr.log"
+  run_client OBS-B1 "${log_dir}/connector-metrics.json" "" 60s "${log_dir}/b1-client.stdout.log" "${log_dir}/b1-client.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B3 ]]; then
   kill -STOP "${pids[1]}"
@@ -340,18 +416,17 @@ fetch_url "${SESSION_HTTP}/metrics" "${log_dir}/session-metrics.json"
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-B4 ]]; then
   kill -TERM "${session_pid}"
   wait "${session_pid}" || true
-  env "${common_env[@]}" SPRING_AUTOCONFIGURE_EXCLUDE=systems.zlink.framework.spring.ZLinkMetricsAutoConfiguration ZLINK_JAVA_E2E_MESSAGE_FLOW=off ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" "${session_bin}" >"${log_dir}/reader-free.stdout.log" 2>"${log_dir}/reader-free.stderr.log" & pids+=("$!")
+  start_session off "" off "${log_dir}/reader-free.stdout.log" "${log_dir}/reader-free.stderr.log"; pids+=("$!")
   session_pid="$!"
   wait_port reader-free-stream "${STREAM_ENDPOINT}"; wait_http reader-free-http "${SESSION_HTTP}"
   wait_metrics_state "${SESSION_HTTP}" false
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" ZLINK_JAVA_E2E_SCENARIO_OUTPUT="${log_dir}/reader-free-result.json" \
-    timeout -k 5s 120s "${client_bin}" OBS-B4 >"${log_dir}/b4-client.stdout.log" 2>"${log_dir}/b4-client.stderr.log"
+  run_client OBS-B4 "${log_dir}/reader-free-result.json" "" 120s "${log_dir}/b4-client.stdout.log" "${log_dir}/b4-client.stderr.log"
   fetch_url "${SESSION_HTTP}/metrics" "${log_dir}/reader-free-metrics.json"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C1 ]]; then
   fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c1-before.json"
-  env "${client_env[@]}" timeout -k 5s 90s "${client_bin}" OBS-C1 >"${log_dir}/c1-existing.stdout.log" 2>"${log_dir}/c1-existing.stderr.log"
+  run_client OBS-C1 "" "" 90s "${log_dir}/c1-existing.stdout.log" "${log_dir}/c1-existing.stderr.log"
   fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=9000" "${log_dir}/c1-start.json"
   python3 - "${PLAY_A_HTTP}/drain/status" "${log_dir}/c1-before.json" "${log_dir}/c1-during.json" <<'PY'
 import json, pathlib, sys, time, urllib.request
@@ -382,14 +457,14 @@ PY
   kill -TERM "${play_a_pid}" >/dev/null 2>&1 || true
   wait "${play_a_pid}" || true
   truncate -s 0 "${log_dir}/play-a-flow.log"
-  env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-a ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" "${play_bin}" >"${log_dir}/play-a-c1-restart.stdout.log" 2>"${log_dir}/play-a-c1-restart.stderr.log" & pids+=("$!")
+  start_play play-a natural "${log_dir}/play-a-c1-restart.stdout.log" "${log_dir}/play-a-c1-restart.stderr.log"; pids+=("$!")
   play_a_pid="$!"
   wait_port play-a-restart-route "${ROUTE_A_ENDPOINT}"; wait_port play-a-restart-spot "${SPOT_A_ENDPOINT}"; wait_http play-a-restart-http "${PLAY_A_HTTP}"
   wait_drain_ready "${PLAY_A_HTTP}" play-a
   sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C2 ]]; then
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C2 >"${log_dir}/c2-client.stdout.log" 2>"${log_dir}/c2-client.stderr.log" &
+  run_client OBS-C2 "" "" 60s "${log_dir}/c2-client.stdout.log" "${log_dir}/c2-client.stderr.log" &
   c2_client_pid="$!"
   for _ in $(seq 1 300); do
     grep -q "OBS-C2 pending-started" "${log_dir}/c2-client.stdout.log" && break
@@ -417,13 +492,13 @@ PY
   done
   kill -TERM "${play_a_pid}" >/dev/null 2>&1 || true
   wait "${play_a_pid}" || true
-  env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-a ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" "${play_bin}" >"${log_dir}/play-a-c2-restart.stdout.log" 2>"${log_dir}/play-a-c2-restart.stderr.log" & pids+=("$!")
+  start_play play-a natural "${log_dir}/play-a-c2-restart.stdout.log" "${log_dir}/play-a-c2-restart.stderr.log"; pids+=("$!")
   play_a_pid="$!"
   wait_port play-a-c2-restart-route "${ROUTE_A_ENDPOINT}"; wait_port play-a-c2-restart-spot "${SPOT_A_ENDPOINT}"; wait_http play-a-c2-restart-http "${PLAY_A_HTTP}"
   sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C3 ]]; then
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C3-WRITE >"${log_dir}/c3-write.stdout.log" 2>"${log_dir}/c3-write.stderr.log"
+  run_client OBS-C3-WRITE "" "" 60s "${log_dir}/c3-write.stdout.log" "${log_dir}/c3-write.stderr.log"
   fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=15000" "${log_dir}/c3-natural-start.json"
   fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c3-natural-during.json"
   fetch_url "${PLAY_A_HTTP}/spot/close?spotRid=obs-c3-persistent-room" "${log_dir}/c3-natural-close-room.json"
@@ -439,11 +514,11 @@ PY
   fetch_url "${PLAY_A_HTTP}/metrics" "${log_dir}/c3-natural-metrics.json"
   kill -TERM "${play_a_pid}" >/dev/null 2>&1 || true
   wait "${play_a_pid}" || true
-  env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-a ZLINK_JAVA_E2E_SPOT_DRAIN_POLICY=release ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" "${play_bin}" >"${log_dir}/play-a-c3-release.stdout.log" 2>"${log_dir}/play-a-c3-release.stderr.log" & pids+=("$!")
+  start_play play-a release "${log_dir}/play-a-c3-release.stdout.log" "${log_dir}/play-a-c3-release.stderr.log"; pids+=("$!")
   play_a_pid="$!"
   wait_port c3-release-route "${ROUTE_A_ENDPOINT}"; wait_http c3-release-http "${PLAY_A_HTTP}"
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C3-WRITE >"${log_dir}/c3-release-write.stdout.log" 2>"${log_dir}/c3-release-write.stderr.log"
+  run_client OBS-C3-WRITE "" "" 60s "${log_dir}/c3-release-write.stdout.log" "${log_dir}/c3-release-write.stderr.log"
   fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=15000" "${log_dir}/c3-release-start.json"
   for _ in $(seq 1 150); do
     fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c3-release-terminal.json"
@@ -454,19 +529,17 @@ PY
     sleep 0.1
   done
   fetch_url "${PLAY_A_HTTP}/metrics" "${log_dir}/c3-release-metrics.json"
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C3-READ >"${log_dir}/c3-read.stdout.log" 2>"${log_dir}/c3-read.stderr.log"
+  run_client OBS-C3-READ "" "" 60s "${log_dir}/c3-read.stdout.log" "${log_dir}/c3-read.stderr.log"
 fi
 if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C4 ]]; then
   kill -TERM "${session_pid}" >/dev/null 2>&1 || true
   wait "${session_pid}" || true
-  env "${common_env[@]}" ZLINK_JAVA_E2E_SESSION_DRAIN_SPOT="obs-c4-held-spot" ZLINK_JAVA_E2E_MESSAGE_FLOW=off ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" "${session_bin}" >"${log_dir}/c4-session.stdout.log" 2>"${log_dir}/c4-session.stderr.log" & pids+=("$!")
+  start_session off obs-c4-held-spot on "${log_dir}/c4-session.stdout.log" "${log_dir}/c4-session.stderr.log"; pids+=("$!")
   session_pid="$!"
   wait_port c4-session-stream "${STREAM_ENDPOINT}"; wait_http c4-session-http "${SESSION_HTTP}"; wait_metrics_state "${SESSION_HTTP}" true
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" \
-    ZLINK_JAVA_E2E_DRAIN_URL="${SESSION_HTTP}/drain/start?deadlineMs=500" \
-    ZLINK_JAVA_E2E_SCENARIO_OUTPUT="${log_dir}/c4-connector-result.json" \
-    timeout -k 5s 30s "${client_bin}" OBS-C4 >"${log_dir}/c4-client.stdout.log" 2>"${log_dir}/c4-client.stderr.log"
+  run_client OBS-C4 "${log_dir}/c4-connector-result.json" \
+    "${SESSION_HTTP}/drain/start?deadlineMs=500" 30s "${log_dir}/c4-client.stdout.log" "${log_dir}/c4-client.stderr.log"
   fetch_url "${SESSION_HTTP}/drain/status" "${log_dir}/c4-drain-status.json"
   fetch_url "${SESSION_HTTP}/metrics" "${log_dir}/c4-metrics.json"
 fi
@@ -476,22 +549,22 @@ if [[ "${SELECTOR}" == all || "${SELECTOR}" == OBS-C5 ]]; then
     wait "${play_a_pid}" || true
     wait "${play_b_pid}" || true
     wait "${session_pid}" || true
-    env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-a ZLINK_JAVA_E2E_SPOT_DRAIN_POLICY=release ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" "${play_bin}" >"${log_dir}/c5-serving-play-a.stdout.log" 2>"${log_dir}/c5-serving-play-a.stderr.log" & pids+=("$!")
+    start_play play-a release "${log_dir}/c5-serving-play-a.stdout.log" "${log_dir}/c5-serving-play-a.stderr.log"; pids+=("$!")
     play_a_pid="$!"
     wait_port c5-serving-play-a-route "${ROUTE_A_ENDPOINT}"; wait_http c5-serving-play-a-http "${PLAY_A_HTTP}"
-    env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-b ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_B_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_B_HTTP}" "${play_bin}" >"${log_dir}/c5-serving-play-b.stdout.log" 2>"${log_dir}/c5-serving-play-b.stderr.log" & pids+=("$!")
+    start_play play-b natural "${log_dir}/c5-serving-play-b.stdout.log" "${log_dir}/c5-serving-play-b.stderr.log"; pids+=("$!")
     play_b_pid="$!"
     wait_port c5-serving-play-b-route "${ROUTE_B_ENDPOINT}"; wait_http c5-serving-play-b-http "${PLAY_B_HTTP}"
-    env "${common_env[@]}" ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" "${session_bin}" >"${log_dir}/c5-serving-session.stdout.log" 2>"${log_dir}/c5-serving-session.stderr.log" & pids+=("$!")
+    start_session on "" on "${log_dir}/c5-serving-session.stdout.log" "${log_dir}/c5-serving-session.stderr.log"; pids+=("$!")
     session_pid="$!"
     wait_port c5-serving-session-route "${SESSION_ROUTE_ENDPOINT}"; wait_port c5-serving-session-spot "${SESSION_SPOT_ENDPOINT}"; wait_port c5-serving-session-stream "${STREAM_ENDPOINT}"; wait_http c5-serving-session-http "${SESSION_HTTP}"; wait_metrics_state "${SESSION_HTTP}" true
     sleep "${ROUTE_SETTLE_SECONDS}"
   fi
   truncate -s 0 "${log_dir}/play-a-flow.log"
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C5-PROBE >"${log_dir}/c5-serving-probe.stdout.log" 2>"${log_dir}/c5-serving-probe.stderr.log"
+  run_client OBS-C5-PROBE "" "" 60s "${log_dir}/c5-serving-probe.stdout.log" "${log_dir}/c5-serving-probe.stderr.log"
   fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c5-serving-source-before-probe.json"
   fetch_url "${PLAY_A_HTTP}/route-probe" "${log_dir}/c5-serving-source-probe.json"
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C5-BIND >"${log_dir}/c5-serving-client.stdout.log" 2>"${log_dir}/c5-serving-client.stderr.log"
+  run_client OBS-C5-BIND "" "" 60s "${log_dir}/c5-serving-client.stdout.log" "${log_dir}/c5-serving-client.stderr.log"
   fetch_url "${PLAY_A_HTTP}/drain/start?deadlineMs=20000" "${log_dir}/c5-serving-start.json"
   for _ in $(seq 1 250); do
     fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c5-serving-terminal.json"
@@ -505,18 +578,18 @@ PY
   wait "${play_a_pid}" || true
   wait "${play_b_pid}" || true
   wait "${session_pid}" || true
-  env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-a ZLINK_JAVA_E2E_SPOT_DRAIN_POLICY=release ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" "${play_bin}" >"${log_dir}/c5-zero-play-a.stdout.log" 2>"${log_dir}/c5-zero-play-a.stderr.log" & pids+=("$!")
+  start_play play-a release "${log_dir}/c5-zero-play-a.stdout.log" "${log_dir}/c5-zero-play-a.stderr.log"; pids+=("$!")
   play_a_pid="$!"
   wait_port c5-zero-route "${ROUTE_A_ENDPOINT}"; wait_http c5-zero-http "${PLAY_A_HTTP}"
-  env "${common_env[@]}" ZLINK_JAVA_E2E_NODE_RID=play-b ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_B_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_OBS_FANOUT_ENDPOINT="${FANOUT_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_B_HTTP}" "${play_bin}" >"${log_dir}/c5-zero-play-b.stdout.log" 2>"${log_dir}/c5-zero-play-b.stderr.log" & pids+=("$!")
+  start_play play-b natural "${log_dir}/c5-zero-play-b.stdout.log" "${log_dir}/c5-zero-play-b.stderr.log"; pids+=("$!")
   play_b_pid="$!"
   wait_port c5-zero-play-b-route "${ROUTE_B_ENDPOINT}"; wait_http c5-zero-play-b-http "${PLAY_B_HTTP}"
-  env "${common_env[@]}" ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" "${session_bin}" >"${log_dir}/c5-zero-session.stdout.log" 2>"${log_dir}/c5-zero-session.stderr.log" & pids+=("$!")
+  start_session on "" on "${log_dir}/c5-zero-session.stdout.log" "${log_dir}/c5-zero-session.stderr.log"; pids+=("$!")
   session_pid="$!"
   wait_port c5-zero-session-route "${SESSION_ROUTE_ENDPOINT}"; wait_port c5-zero-session-spot "${SESSION_SPOT_ENDPOINT}"; wait_port c5-zero-session-stream "${STREAM_ENDPOINT}"; wait_http c5-zero-session-http "${SESSION_HTTP}"; wait_metrics_state "${SESSION_HTTP}" true
   sleep "${ROUTE_SETTLE_SECONDS}"
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C5-BIND >"${log_dir}/c5-zero-bind.stdout.log" 2>"${log_dir}/c5-zero-bind.stderr.log"
-  env "${client_env[@]}" timeout -k 5s 60s "${client_bin}" OBS-C5-PROBE >"${log_dir}/c5-zero-held-spot.stdout.log" 2>"${log_dir}/c5-zero-held-spot.stderr.log"
+  run_client OBS-C5-BIND "" "" 60s "${log_dir}/c5-zero-bind.stdout.log" "${log_dir}/c5-zero-bind.stderr.log"
+  run_client OBS-C5-PROBE "" "" 60s "${log_dir}/c5-zero-held-spot.stdout.log" "${log_dir}/c5-zero-held-spot.stderr.log"
   fetch_url "${PLAY_B_HTTP}/drain/start?deadlineMs=5000" "${log_dir}/c5-zero-play-b-start.json"
   for _ in $(seq 1 100); do
     fetch_url "${PLAY_A_HTTP}/drain/status" "${log_dir}/c5-zero-play-b-row.json"

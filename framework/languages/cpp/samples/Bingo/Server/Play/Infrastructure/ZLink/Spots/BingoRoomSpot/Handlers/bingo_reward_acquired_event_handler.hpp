@@ -7,7 +7,7 @@ namespace zlink::samples::bingo
 {
 
 inline task_t<void>
-bingo_room_spot_t::on_reward_acquired (const bingo_reward_acquired_msg_t &event)
+bingo_room_spot_t::on_reward_acquired (const bingo_reward_acquired_event_t &event)
 {
     if (!_is_observer || event.room_id != _observed_room_id) {
         co_return;

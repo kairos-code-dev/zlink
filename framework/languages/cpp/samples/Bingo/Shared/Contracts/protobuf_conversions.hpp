@@ -463,7 +463,7 @@ inline void from_protobuf (const pb::BingoRewardAnnouncedNotify &message,
     value.receiving_spot_node_rid = message.receiving_spot_node_rid ();
 }
 
-inline void to_protobuf (const bingo_reward_acquired_msg_t &value,
+inline void to_protobuf (const bingo_reward_acquired_event_t &value,
                          pb::BingoRewardAcquiredEvent &message)
 {
     message.set_room_id (value.room_id);
@@ -475,7 +475,7 @@ inline void to_protobuf (const bingo_reward_acquired_msg_t &value,
 }
 
 inline void from_protobuf (const pb::BingoRewardAcquiredEvent &message,
-                           bingo_reward_acquired_msg_t &value)
+                           bingo_reward_acquired_event_t &value)
 {
     value.room_id = message.room_id ();
     value.actor_id = message.actor_id ();
@@ -529,7 +529,7 @@ ZLINK_BINGO_STREAM_PAYLOAD (game_started_notify_t, BingoGameStartedNotify)
 ZLINK_BINGO_STREAM_PAYLOAD (number_drawn_notify_t, BingoNumberDrawnNotify)
 ZLINK_BINGO_STREAM_PAYLOAD (game_ended_notify_t, BingoGameEndedNotify)
 ZLINK_BINGO_STREAM_PAYLOAD (bingo_reward_announced_notify_t, BingoRewardAnnouncedNotify)
-ZLINK_BINGO_STREAM_PAYLOAD (bingo_reward_acquired_msg_t, BingoRewardAcquiredEvent)
+ZLINK_BINGO_STREAM_PAYLOAD (bingo_reward_acquired_event_t, BingoRewardAcquiredEvent)
 #undef ZLINK_BINGO_STREAM_PAYLOAD
 
 } // namespace zlink::samples::bingo

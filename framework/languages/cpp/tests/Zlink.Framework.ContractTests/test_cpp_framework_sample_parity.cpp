@@ -102,6 +102,7 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_STREQ (sample_names_t::game_started_packet, "BingoGameStartedNotify");
     EXPECT_STREQ (sample_names_t::number_drawn_packet, "BingoNumberDrawnNotify");
     EXPECT_STREQ (sample_names_t::game_ended_packet, "BingoGameEndedNotify");
+    EXPECT_STREQ (bingo_reward_acquired_event_t::packet_name, "BingoRewardAcquiredEvent");
 
     authenticate_player_handler_t auth;
     const auto authenticated = auth.handle ({"player-1"});

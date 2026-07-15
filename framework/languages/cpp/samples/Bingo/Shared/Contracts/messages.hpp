@@ -305,9 +305,9 @@ struct bingo_reward_announced_notify_t
     std::string receiving_spot_node_rid;
 };
 
-struct bingo_reward_acquired_msg_t
+struct bingo_reward_acquired_event_t
 {
-    static constexpr const char *packet_name = "BingoRewardAcquiredMsg";
+    static constexpr const char *packet_name = "BingoRewardAcquiredEvent";
     std::string room_id;
     std::string actor_id;
     int draw_seq = 0;
@@ -707,7 +707,7 @@ inline void from_json (const nlohmann::json &json, bingo_reward_announced_notify
       json_string (json, "receivingSpotNodeRid", "receiving_spot_node_rid");
 }
 
-inline void to_json (nlohmann::json &json, const bingo_reward_acquired_msg_t &value)
+inline void to_json (nlohmann::json &json, const bingo_reward_acquired_event_t &value)
 {
     json = {{"roomId", value.room_id},
             {"actorId", value.actor_id},
@@ -717,7 +717,7 @@ inline void to_json (nlohmann::json &json, const bingo_reward_acquired_msg_t &va
             {"rarity", value.rarity}};
 }
 
-inline void from_json (const nlohmann::json &json, bingo_reward_acquired_msg_t &value)
+inline void from_json (const nlohmann::json &json, bingo_reward_acquired_event_t &value)
 {
     value.room_id = json_string (json, "roomId", "room_id");
     value.actor_id = json_string (json, "actorId", "actor_id");

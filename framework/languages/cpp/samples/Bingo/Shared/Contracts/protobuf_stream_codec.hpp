@@ -55,7 +55,7 @@ ZLINK_BINGO_PROTOBUF_CODEC_TRAITS (zlink::samples::bingo::game_started_notify_t)
 ZLINK_BINGO_PROTOBUF_CODEC_TRAITS (zlink::samples::bingo::number_drawn_notify_t)
 ZLINK_BINGO_PROTOBUF_CODEC_TRAITS (zlink::samples::bingo::game_ended_notify_t)
 ZLINK_BINGO_PROTOBUF_CODEC_TRAITS (zlink::samples::bingo::bingo_reward_announced_notify_t)
-ZLINK_BINGO_PROTOBUF_CODEC_TRAITS (zlink::samples::bingo::bingo_reward_acquired_msg_t)
+ZLINK_BINGO_PROTOBUF_CODEC_TRAITS (zlink::samples::bingo::bingo_reward_acquired_event_t)
 #undef ZLINK_BINGO_PROTOBUF_CODEC_TRAITS
 
 } // namespace zlink::stream_connector::codecs

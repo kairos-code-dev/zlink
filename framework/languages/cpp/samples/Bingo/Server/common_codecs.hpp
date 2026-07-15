@@ -48,7 +48,7 @@ struct bingo_protobuf_codecs_t
         ZLINK_BINGO_REGISTER_PROTOBUF (game_ended_notify_t, BingoGameEndedNotify);
         ZLINK_BINGO_REGISTER_PROTOBUF (bingo_reward_announced_notify_t,
                                        BingoRewardAnnouncedNotify);
-        ZLINK_BINGO_REGISTER_PROTOBUF (bingo_reward_acquired_msg_t, BingoRewardAcquiredEvent);
+        ZLINK_BINGO_REGISTER_PROTOBUF (bingo_reward_acquired_event_t, BingoRewardAcquiredEvent);
 #undef ZLINK_BINGO_REGISTER_PROTOBUF
     }
 };

@@ -310,6 +310,7 @@
 - [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
 - [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
 - [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
+  - Node 진행 근거: target commit 전에 source leave를 준비하고 실패 시 복구한 뒤 성공 시에만 source를 정리하도록 join 순서를 바로잡았다. 이어 prepare·restore·commit의 시간적 상태를 `LocalActorSourceTransfer`에 모아 호출부의 mutable 분기와 lint 오류를 제거했으며 actor-manager·spot-manager 회귀 게이트와 전체 Node runtime gate가 통과한다. Node 코드 커밋 `0abc8afac`, POSD 리팩토링 커밋 `285df6af1`. 전 언어 공통 항목이므로 다른 언어가 닫힐 때까지 체크박스는 열린 상태로 둔다.
 
 본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
 

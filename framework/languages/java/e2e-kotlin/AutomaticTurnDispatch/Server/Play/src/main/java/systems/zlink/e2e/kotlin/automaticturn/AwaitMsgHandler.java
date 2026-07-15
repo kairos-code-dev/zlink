@@ -19,7 +19,7 @@ public final class AwaitMsgHandler
         String value = "spot=" + spot.context().spotRid()
             + ";correlation=" + command.correlationId()
             + ";handler=spot";
-        boolean yields = "TD-B1".equals(command.correlationId());
+        boolean yields = command.correlationId().startsWith("TD-B");
         boolean turnContract = command.correlationId().startsWith("TD-");
         evidence.record(command.requestId(), "await-started", value);
         evidence.record(command.requestId(), yields ? "yield-released"

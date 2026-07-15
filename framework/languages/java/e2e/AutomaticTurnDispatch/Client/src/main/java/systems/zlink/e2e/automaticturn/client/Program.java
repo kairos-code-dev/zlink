@@ -72,6 +72,7 @@ public final class Program {
             case "TD-A2" -> support.runAsyncHoldsTurn(connector);
             case "TD-A4" -> support.runAsyncCompletion(connector);
             case "TD-B1" -> support.runYieldReleasesTurn(connector);
+            case "TD-B2" -> support.runYieldQueuedOrder(connector);
             default -> throw new IllegalArgumentException("unknown AutomaticTurnDispatch scenario: " + scenario);
         }
         if (!"all".equals(scenario) && !"ATD-D1".equals(scenario)

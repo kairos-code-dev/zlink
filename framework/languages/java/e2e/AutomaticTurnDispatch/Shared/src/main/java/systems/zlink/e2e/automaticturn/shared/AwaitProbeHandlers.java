@@ -213,7 +213,7 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Void> handle(AwaitProbeSpot spot, Contracts.AwaitMsg request) {
             String value = "spot=" + spot.context().spotRid()
                 + ";correlation=" + request.correlationId() + ";handler=spot";
-            boolean yields = "TD-B1".equals(request.correlationId());
+            boolean yields = request.correlationId().startsWith("TD-B");
             boolean turnContract = request.correlationId().startsWith("TD-");
             evidence.record("await-started", request.requestId(), value);
             evidence.record(yields ? "yield-released"

@@ -37,6 +37,26 @@ public final class TdBasicTurnScenario {
             "yield-released", "probe-started", "probe-completed", "yield-resumed", "completed"));
     }
 
+    public static void runYieldQueuedOrder(ZLinkStreamConnector connector) {
+        String requestId = id("TD-B2");
+        sendAwait(connector, requestId, "TD-B2");
+        ClientStreamSupport.waitForEvidence(connector, requestId, SPOT_RID, "yield-released");
+        for (int index = 1; index <= 3; index++) {
+            ClientStreamSupport.send(connector.send(new Contracts.ProbeMsg(requestId, "probe-" + index))
+                .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")
+                .metadata(Contracts.SPOT_RID_METADATA, SPOT_RID));
+        }
+        Contracts.EvidenceRes evidence = ClientStreamSupport.waitForEvidence(
+            connector, requestId, SPOT_RID, "completed");
+        ScenarioAssert.containsMarkersInOrder(evidence.markers(),
+            "yield-released",
+            "probe-started", "probe-completed",
+            "probe-started", "probe-completed",
+            "probe-started", "probe-completed",
+            "yield-resumed", "completed");
+        System.out.println("scenario TD-B2 passed");
+    }
+
     private static void runInterleave(
         ZLinkStreamConnector connector,
         String scenarioId,

@@ -60,6 +60,25 @@ public final class AutomaticTurnDispatchScenarioSupport {
             "yield-released", "probe-started", "probe-completed", "yield-resumed", "completed"));
     }
 
+    public void runYieldQueuedOrder(ZLinkStreamConnector connector) throws Exception {
+        String requestId = "tdb2-" + System.nanoTime();
+        sendTurnAwait(connector, "TD-B2", requestId);
+        assertOrder(requestId, List.of("yield-released"));
+        for (int index = 1; index <= 3; index++) {
+            connector.send(new Contracts.ProbeMsg(requestId, "probe-" + index))
+                .metadata(Map.of(
+                    Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
+                    Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A))
+                .submit();
+        }
+        assertOrder(requestId, List.of(
+            "yield-released",
+            "probe-started", "probe-completed",
+            "probe-started", "probe-completed",
+            "probe-started", "probe-completed",
+            "yield-resumed", "completed"));
+    }
+
     private void runTurnInterleave(
         ZLinkStreamConnector connector,
         String scenarioId,

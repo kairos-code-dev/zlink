@@ -101,6 +101,7 @@ public final class ClientScenario {
             case "TD-A2" -> TdBasicTurnScenario.runAsyncHoldsTurn(roomA);
             case "TD-A4" -> TdBasicTurnScenario.runAsyncCompletion(roomA);
             case "TD-B1" -> TdBasicTurnScenario.runYieldInterleave(roomA);
+            case "TD-B2" -> TdBasicTurnScenario.runYieldQueuedOrder(roomA);
             default -> throw new IllegalArgumentException("unknown AutomaticTurnDispatch scenario: " + scenario);
         }
     }

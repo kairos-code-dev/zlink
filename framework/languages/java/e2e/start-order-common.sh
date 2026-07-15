@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
 
 zlink_e2e_start_order_mode() {
-  printf '%s\n' "${E2E_START_ORDER:-forward}"
+  local mode="forward"
+  while [[ "$#" -gt 0 ]]; do
+    if [[ "$1" == "--start-order" ]]; then
+      if [[ "$#" -lt 2 ]]; then
+        echo "--start-order requires a value" >&2
+        return 2
+      fi
+      mode="$2"
+      shift 2
+      continue
+    fi
+    shift
+  done
+  printf '%s\n' "${mode}"
 }
 
 zlink_e2e_order_roles() {
   local mode
-  mode="$(zlink_e2e_start_order_mode)"
+  mode="${E2E_START_ORDER:-forward}"
 
   python3 - "${mode}" "$@" <<'PY'
 import random
@@ -22,14 +35,14 @@ elif mode == "reverse":
 elif mode.startswith("shuffle:"):
     seed_text = mode.split(":", 1)[1]
     if not seed_text:
-        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+        raise SystemExit("--start-order shuffle requires a seed")
     try:
         seed = int(seed_text)
     except ValueError as error:
-        raise SystemExit("E2E_START_ORDER shuffle seed must be an integer") from error
+        raise SystemExit("--start-order shuffle seed must be an integer") from error
     random.Random(seed).shuffle(roles)
 else:
-    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+    raise SystemExit(f"unsupported --start-order value: {mode!r}")
 
 print("\n".join(roles))
 PY

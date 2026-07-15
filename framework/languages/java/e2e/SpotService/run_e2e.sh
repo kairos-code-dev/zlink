@@ -16,7 +16,7 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
 echo "start_order=${E2E_START_ORDER}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
@@ -45,13 +45,23 @@ if rg -n 'receivedCount\([^)]*\)\s*==\s*0' \
   exit 1
 fi
 
-if [[ "${SCENARIO}" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
+retry_child=0
+all_child=0
+for arg in "$@"; do
+  case "${arg}" in
+    --retry-child) retry_child=1 ;;
+    --all-child) all_child=1 ;;
+  esac
+done
+
+if [[ "${SCENARIO}" != "all" && "${retry_child}" != "1" && "${all_child}" != "1" ]]; then
   output="$(mktemp)"
   scenario_passed=0
   for attempt in 1 2 3; do
     : >"${output}"
     set +e
-    timeout 900s env ZLINK_SPOT_SERVICE_RETRY_CHILD=1 "${SCRIPT_PATH}" "${SCENARIO}" 2>&1 | tee "${output}"
+    timeout 900s "${SCRIPT_PATH}" "${SCENARIO}" --retry-child \
+      --start-order "${E2E_START_ORDER}" 2>&1 | tee "${output}"
     status="${PIPESTATUS[0]}"
     set -e
     if [[ "${status}" == "0" ]]; then
@@ -75,7 +85,7 @@ if [[ "${SCENARIO}" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" &&
   exit 1
 fi
 
-if [[ "${SCENARIO}" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
+if [[ "${SCENARIO}" == "all" && "${all_child}" != "1" ]]; then
   for child_group in default-batch SM-F6 SM-G2 SM-G3 SM-G4 SM-G1; do
     echo "child scenario=${child_group}"
     output="$(mktemp)"
@@ -83,7 +93,8 @@ if [[ "${SCENARIO}" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; 
     for attempt in 1 2 3; do
       : >"${output}"
       set +e
-      timeout 900s env ZLINK_SPOT_SERVICE_ALL_CHILD=1 "${SCRIPT_PATH}" "${child_group}" 2>&1 | tee "${output}"
+      timeout 900s "${SCRIPT_PATH}" "${child_group}" --all-child \
+        --start-order "${E2E_START_ORDER}" 2>&1 | tee "${output}"
       status="${PIPESTATUS[0]}"
       set -e
       if [[ "${status}" == "0" ]]; then

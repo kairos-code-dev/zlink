@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JAVA_E2E_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${JAVA_E2E_DIR}/../e2e-redis-common.sh"
 source "${JAVA_E2E_DIR}/start-order-common.sh"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
 echo "start_order=${E2E_START_ORDER}"
 
 forbidden_config_ref="Automatic""TurnDispatch|ATD""_DIR|ATD""-[A-Z][0-9]"

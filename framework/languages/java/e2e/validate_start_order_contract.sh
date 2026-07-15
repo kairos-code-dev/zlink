@@ -26,6 +26,14 @@ for config in "${configs[@]}"; do
 done
 
 aggregate="${script_dir}/run_e2e_all.sh"
+if rg -n 'env E2E_START_ORDER=' "${aggregate}"; then
+  echo "aggregate runner must pass start order as an explicit option" >&2
+  exit 1
+fi
+if ! rg -q -- '--start-order "\$\{start_order\}"' "${aggregate}"; then
+  echo "aggregate runner does not pass the start-order option" >&2
+  exit 1
+fi
 for mode in reverse "shuffle:${expected_seed}"; do
   if ! rg -Fq "${mode}" "${aggregate}"; then
     echo "aggregate runner does not execute the ${mode} start-order axis" >&2

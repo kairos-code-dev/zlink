@@ -7,7 +7,7 @@ source "${JAVA_DIR}/e2e-redis-common.sh"
 source "${ROOT_DIR}/../start-order-common.sh"
 
 SCENARIO="${1:-all}"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
 echo "start_order=${E2E_START_ORDER}"
 if rg -q "observedAtNanos" "${ROOT_DIR}/Client" "${ROOT_DIR}/Server" "${ROOT_DIR}/Shared"; then
   echo "SpotActorTransfer evidence must not compare process-local nanoTime values" >&2

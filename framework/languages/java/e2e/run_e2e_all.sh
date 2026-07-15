@@ -85,7 +85,7 @@ run_scenario_with_retry() {
     (
       cd "$SCRIPT_DIR/$scenario" &&
         exec nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" \
-          env E2E_START_ORDER="${start_order}" ./run_e2e.sh "${selector}"
+          ./run_e2e.sh "${selector}" --start-order "${start_order}"
     ) > >(tee "${output}") 2>&1 &
     active_scenario_pid="$!"
     wait "${active_scenario_pid}"

@@ -147,7 +147,8 @@ target ownership이 유지되는가.
 
 - 절차: remote transfer 정상 경로를 실행하되 source node가 `commit_ack`를 받은 뒤 `source_cleanup`
   marker를 남기기 전에 대기하도록 application endpoint로 설정한다. caller가 success reply를 받은 것을
-  확인한 뒤 `run_e2e.sh`가 `actor-a` process를 종료한다. 이후 target actor에게 packet을 보내고,
+  확인한 뒤 `run_e2e.sh`가 `actor-a` process에 `SIGKILL`을 보낸다. 정상 종료나 drain으로
+  `source_cleanup`이 완료되는 경로를 이 시나리오에 섞지 않는다. 이후 target actor에게 packet을 보내고,
   가능한 언어는 cleanup retry evidence를 bounded wait로 확인한다.
 - 검증: caller는 target commit ack 이후 success reply를 받는다. target actor packet은 target user Spot에서
   처리된다. source cleanup 미완료나 source process 종료는 join 실패로 rollback되지 않는다. stale source
@@ -189,13 +190,15 @@ domain state를 별도로 읽어 올 수 있는가.
 
 우선순위: `P0`
 
-**한마디로:** target admission accept 뒤 source node가 commit 전에 죽으면 transfer가 완료되지 않고
+**한마디로:** target admission accept 뒤 source node가 commit 전에 비정상 종료되면 transfer가 완료되지 않고
 target pending admission만 정리되는가.
 
 - 절차: remote transfer를 시작하고 target `OnActorJoin` accept evidence와 source node의 `before_commit_gate`
   marker를 모두 기다린다. `before_commit_gate`는 source가 admission accepted 응답을 받은 뒤 commit 요청을
   보내기 전에 application endpoint가 걸어 둔 public callback/evidence gate다. 두 marker가 모두 나온 뒤
-  `run_e2e.sh`가 `actor-a` process를 종료한다. `actor-b`의 pending admission deadline이 지나도록 bounded
+  `run_e2e.sh`가 `actor-a` process에 `SIGKILL`을 보내 transport를 즉시 끊는다. 정상 종료나 drain은
+  진행 중 outbound transfer를 완료할 수 있으므로 사용하지 않는다. `actor-b`의 pending admission
+  deadline이 지나도록 bounded
   wait를 둔다.
 - 검증: target `OnJoinedActor`, target `TransferIn`, target location commit evidence가 없어야 한다.
   target은 source down signal을 기다리지 않고 pending admission timeout cleanup evidence를 남긴다.
@@ -206,11 +209,12 @@ target pending admission만 정리되는가.
 
 우선순위: `P0`
 
-**한마디로:** target `OnJoinedActor`와 commit ack가 끝난 뒤 source node가 죽어도 target ownership이
+**한마디로:** target `OnJoinedActor`와 commit ack가 끝난 뒤 source node가 비정상 종료되어도 target ownership이
 유지되는가.
 
 - 절차: remote transfer 정상 경로에서 target `OnJoinedActor`와 commit ack evidence를 확인한 직후
-  `actor-a` process를 종료한다. 이후 target actor에게 packet과 bound session push를 발생시킨다.
+  `actor-a` process에 `SIGKILL`을 보낸다. 이후 target actor에게 packet과 bound session push를
+  발생시킨다. 정상 종료나 drain cleanup 결과를 source 장애 evidence로 사용하지 않는다.
 - 검증: actor location row는 target user Spot과 target node를 가리킨다. target actor packet과 bound
   session push가 성공한다. stale source owner cleanup 실패나 source process 종료가 target ownership을
   지우면 실패다.

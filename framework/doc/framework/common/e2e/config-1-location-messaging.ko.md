@@ -119,8 +119,15 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 **한마디로:** 같은 rid의 provider를 다른 endpoint의 process로 교체해도, consumer가 새 endpoint를
 사용하고 이전 endpoint로 계속 요청하지 않는가.
 
-- 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1 종료 → provider v2를 같은 rid `api-a`/endpoint p2로 시작 → runtime query의 peer location list가 rid `api-a`의 endpoint를 p2로 보여줄 때까지 대기 → consumer 재시작 없이 다시 request.
-- 검증: `ListPeerLocationsAsync(filter)`의 성공 결과에서 rid `api-a`의 살아 있는 row는 하나이고 endpoint가 p2다(v1의 row는 정상 종료 remove 또는 owner lease 만료로 성공 결과에서 제외된다). 교체 뒤 신규 request는 p2 evidence에 기록. consumer가 p1 stale endpoint로 반복 timeout 하지 않음. 이후 연속 20개 request 모두 성공.
+- 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1에 정상 종료를
+  요청 → terminal `Drained`와 peer location 성공 조회에서 v1 row 제거를 확인 → provider v2를 같은 rid
+  `api-a`/endpoint p2로 시작 → runtime query의 peer location list가 rid `api-a`의 endpoint를 p2로
+  보여줄 때까지 대기 → consumer 재시작 없이 다시 request. crash 뒤 lease 만료를 거치는 replacement는
+  Config 5 RL-A2가 별도로 검증한다.
+- 검증: v2 시작 전 v1 row가 성공 조회에서 제외된다. v2 시작 뒤
+  `ListPeerLocationsAsync(filter)`의 성공 결과에서 rid `api-a`의 유효한 row는 하나이고 endpoint가 p2다.
+  교체 뒤 신규 request는 p2 evidence에 기록되고 consumer가 p1 stale endpoint로 요청하지 않는다. 이후
+  연속 20개 request가 모두 성공한다.
 - 세부 동작: 같은 peer key의 endpoint replacement 반영 + stale 회피. 이미 실행 중인 다른 provider가
   장애 직후 처리를 계속하는 failover는 RM-B3에서 별도로 검증한다.
 
@@ -150,14 +157,18 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 - 검증: B 추가 전엔 A만 처리. 반영 완료 뒤 검증 구간에선 A·B 모두 routing 대상. consumer 재시작 없음.
 - 세부 동작: 무중단 provider 증설 반영(peer row 추가 → reconcile connect).
 
-#### RM-B2 scale-in / graceful drain
+#### RM-B2 scale-in / 정상 종료
 
 우선순위: `P0`
 
-**한마디로:** provider 한 대를 정상 종료해 빼도, consumer가 죽은 곳으로 안 가고 남은 provider로만 깔끔하게 흘러가는가.
+**한마디로:** provider 한 대를 정상 종료해 제외해도, consumer가 종료된 endpoint로 요청하지 않고 남은
+provider로만 처리하는가.
 
-- 절차: A·B로 분산을 확인 → B를 정상 종료 → runtime query의 peer location list에서 B의 row가 빠질 때까지 대기 → 다시 request.
-- 검증: B 종료 뒤 request는 A로만. 정상 종료이므로 B의 peer row는 owner lease 만료를 기다리지 않고 shutdown 경로에서 제거된다. consumer가 죽은 endpoint로 timeout을 반복하지 않음. 지속 request 중 scale-in이 나도 완료된 요청은 정상 reply 또는 정해진 public error로 끝나고 pending이 남지 않음.
+- 절차: A·B로 분산을 확인 → B에 정상 종료 요청 → terminal `Drained`와 runtime query의 peer location
+  list에서 B의 row 제거를 확인 → 다시 request.
+- 검증: B 종료 뒤 request는 A로만 처리된다. 정상 종료이므로 B의 peer row는 owner lease 만료를 기다리지
+  않고 shutdown 경로에서 제거된다. target 미지정 지속 request는 drain 전파 구간을 포함해 모두 정상
+  reply로 끝나며 오류와 pending이 남지 않는다. consumer가 종료된 endpoint로 timeout을 반복하지 않는다.
 - 세부 동작: 무중단 provider 감축 + shutdown 시 row 제거 + stale 정리.
 
 #### RM-B3 provider crash failover
@@ -167,13 +178,22 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 **한마디로:** provider 하나가 비정상 종료되어도 이미 실행 중인 다른 provider가 신규 요청을 계속
 처리하는가.
 
-- 절차: provider A·B가 모두 routing 대상임을 확인한다 → A를 `SIGKILL`한다 → consumer를 재시작하지
-  않고 target을 지정하지 않은 request를 계속 보낸다 → owner lease 만료 뒤 peer location list에서 A가
-  제외되는지 확인한다.
-- 검증: A가 처리 중이던 request는 정해진 public error 또는 timeout으로 끝나고 무한 대기하지 않는다.
-  이후 신규 request는 B에서 성공한다. A를 rid로 지정한 request는 B로 바뀌어 처리되지 않고 정해진
-  target 오류로 끝난다. 이 시나리오는 A의 메모리 상태를 B로 자동 이전한다고 단언하지 않는다.
-- 세부 동작: provider crash 격리 + 이미 실행 중인 provider로 신규 부하 지속 + stale row 제외.
+- 절차: provider A·B가 모두 routing 대상임을 확인한다 → 처리 시간을 제어할 수 있는 request가 A
+  handler에서 시작했다는 evidence가 기록되면 완료시키지 않은 상태에서 A를 `SIGKILL`한다 → consumer를
+  재시작하지 않고 crash 전파 구간에 target 미지정 신규 request 20개를 보낸다 → owner lease 만료 뒤
+  consumer runtime의 peer location 성공 조회에서 A가 제외되는지 확인한다 → target 미지정 신규 request
+  20개를 보낸다 → 수동 peer 구성을 유지한 RouteMesh에서 `RequestToNode(A)`와 등록한 적 없는 rid
+  `api-missing`을 대상으로 한 `RequestToNode`를 각각 한 건 보낸다.
+- 검증: A handler-start evidence가 있는 in-flight request는 연결 종료가 먼저 관측되면 retriable
+  `RouteNotConnected`, handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의
+  timeout으로 끝나며 무한 대기하지 않는다. framework가 그 request를 B로 자동 재전송하지 않는다.
+  crash 전파 구간의 target 미지정 request는 B의 정상 reply, reply보다 연결 종료가 먼저 request 완료로
+  전달된 `RouteNotConnected`, 또는 request deadline이 먼저 도달한 timeout 중 하나로 유한 시간 안에
+  끝나며, B의 성공 reply가 하나 이상 있어야 한다. A가 성공 topology 조회에서 제외된 뒤 보낸 20개는
+  모두 B에서 성공한다. 수동 RouteMesh에는 A의 membership이 남아 있으므로 `RequestToNode(A)`는 readiness
+  한계 뒤 `RouteNotConnected`, member snapshot에 없는 `api-missing`은 `RequestTargetNotFound`로 끝난다.
+  이 시나리오는 A의 메모리 상태를 B로 자동 이전한다고 단언하지 않는다.
+- 세부 동작: client-server provider crash 격리와 신규 부하 failover + stale row 제외.
 
 ### Track C — resolve된 연결 위의 messaging 세부 동작
 
@@ -238,7 +258,7 @@ negative path를 하나씩 점검한다.
 - 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 weight 비율을 따라 `api-a`가 `api-b`보다 **뚜렷이 많이** 처리한다(정확한 75/25는 보장값이 아니므로 "고weight가 저weight보다 분명히 많음 + 양쪽 모두 처리 + 합계 일치"로 검증한다).
 - 세부 동작: peer location row에 실린 server쪽 weight에 따른 client측 부하 분산.
 
-> 분산 주체 주의. client-server channel에서 server는 ROUTER, client는 DEALER다. server(ROUTER)는 자기 weight를 연결된 client(DEALER) peer에게 advertise만 하고, 비율 분산은 **client(DEALER)의 load balancer**가 수행한다. ROUTER 자신은 weight를 비율 분산이 아니라 `0`=drain / non-`0`=허용의 이진 게이트로만 쓴다. 따라서 weighted 비율(`1..99`)은 **이미 연결된 peer의 LB 분배**에만 작용하고, weight `0`(drain)은 RM-C3 분산에서 그 노드를 후보에서 빼는 별개 동작이다(drain·복귀 검증은 Config 5 RL-B에서 다룬다).
+> 분산 주체 주의. client-server channel에서 server는 ROUTER, client는 DEALER다. server(ROUTER)는 자기 weight를 연결된 client(DEALER) peer에게 advertise만 하고, 비율 분산은 **client(DEALER)의 load balancer**가 수행한다. ROUTER 자신은 weight를 비율 분산이 아니라 `0`=부하 제외 / non-`0`=허용의 이진 transport 게이트로만 쓴다. 따라서 weighted 비율(`1..99`)은 **이미 연결된 peer의 LB 분배**에만 작용하고, weight `0`은 RM-C3 분산에서 그 노드를 후보에서 빼는 별개 동작이다(weight 제외·복원 검증은 Config 5 RL-B4·B5에서 다룬다).
 
 > payload decode 실패는 public typed client로 유도할 수 없다(typed client는 항상 정상 envelope로 직렬화). 실제 decode-failure는 raw frame 주입이 필요해 public-API-only인 이 config 범위 밖이며, raw-frame contract 테스트(E2ETests DispatchErrors)가 다룬다. decode 실패의 surface/reason 분류(channel=`PayloadDecodeFailed`, route mesh=`HandlerException`)도 거기서 검증한다.
 

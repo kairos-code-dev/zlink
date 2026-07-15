@@ -84,15 +84,30 @@ trigger client가 이벤트를 유발한다. 각 host의 evidence를 조회해 �
 - 검증: `SubjectsChanged`/`PeersChanged` 이벤트가 evidence에 기록되어 실제 subject/peer 변화를 반영한다. spot timer가 예외로 실패하면 `TimerHandlerFailed`도 관찰된다.
 - 세부 동작: spot source 관찰(subjects/peers/timer kind).
 
-#### MON-A4 가용성 전이 관측 (failover / drain)
+#### MON-A4 가용성 전이 관측 (replacement / failover / weight 변경)
 
 우선순위: `P1`
 
-**한마디로:** provider 교체(failover)나 런타임 drain으로 가용성이 바뀔 때, 그 전이가 monitoring 이벤트(연결/해제·admission 변경)와 location-runtime `TopologyChanged`로 잡히는가.
+**한마디로:** provider replacement·failover 또는 socket weight 변경으로 가용성이 바뀔 때, 그 전이가
+monitoring 이벤트(연결/해제·admission 변경)와 location-runtime `TopologyChanged`로 잡히는가.
 
-- 절차: (a) provider를 같은 rid 다른 endpoint로 교체(failover)하고, (b) 한 provider를 런타임 drain(`ConfigureServerSocket().Weight = 0`)했다가 restore한다. socket·location-runtime source가 관찰한다.
-- 검증: failover 시 연결 전이가 socket 이벤트(`Disconnected`/`Connected`/`ConnectionReady`)로, peer location과 projection 변화가 location-runtime `TopologyChanged`/`ServiceSummaryChanged`로 관측된다. drain된 peer의 가용성 변화는 연결된 peer 쪽 socket 이벤트(`PeerAdmissionChanged`)로 나타난다. (weight 값 자체의 세밀한 관측은 monitoring kind가 아니라 channel 옵션의 `Weight` read로 보완한다 — socket 이벤트 kind는 §2의 고정 enum 범위다.)
-- 세부 동작: 가용성 전이(failover·drain) 관측(고정 enum + topology).
+- 절차: 종료 대상이 아닌 별도 peer host에서 socket source와 location-runtime source를 먼저 구독한다.
+  (a) provider v1에 정상 종료를 요청하고 terminal `Drained`와 old row 제거를 확인한 뒤, 같은 rid·다른
+  endpoint의 v2를 시작해 replacement를 실행한다. (b) A·B가 함께 처리하는 상태에서 A를 `SIGKILL`하고
+  owner lease 만료 뒤 topology 제외와 B의 follow-up 성공을 확인한다. (c) 한 provider의 socket weight를
+  런타임에 `0`으로 바꿨다가 원래 값으로 복원한다. 종료 대상과 분리된 observer가 세 전이를 모두
+  관찰한다.
+- 검증: replacement는 이전 endpoint의 `Disconnected`와 새 endpoint의 `Connected`/`ConnectionReady`,
+  그리고 같은 rid의 endpoint 변경에 해당하는 `TopologyChanged`로 관측된다. service summary는
+  mesh/type/role별 count가 실제로 달라진 경우에만 `ServiceSummaryChanged`를 요구한다.
+  failover는 A의 연결 해제, owner lease 만료 뒤 topology 제외, B의 follow-up request 성공을 함께
+  확인한다. weight가 0으로 바뀐 peer의 가용성 변화는 연결된 peer 쪽 socket 이벤트
+  (`PeerAdmissionChanged`)로 나타난다. 종료되는 provider 자체가 남긴 event만으로 `Disconnected`를
+  판정하면 안 된다. (weight 값 자체의 세밀한 관측은 monitoring kind가 아니라
+  channel 옵션의 `Weight` read로 보완한다. 이 단계는 transport 부하 제외만 검증하며 `Draining` 마커,
+  readiness 변경, actor handoff를 포함하는 graceful drain으로 표현하지 않는다 — socket 이벤트 kind는
+  §2의 고정 enum 범위다.)
+- 세부 동작: replacement·failover·socket weight 변경을 구분한 가용성 전이 관측(고정 enum + topology).
 
 #### MON-A5 나머지 고정 kind 관찰 (handshake·status·timer-stopped)
 
@@ -144,10 +159,18 @@ trigger client가 이벤트를 유발한다. 각 host의 evidence를 조회해 �
 
 우선순위: `P1`
 
-**한마디로:** provider가 죽었다 살기를 반복하는 동안에도 monitoring이 계속 이벤트를 잡고, 그 전이가 실제 장애·복구를 반영하며, 관측이 runtime을 끌어내리지 않는가.
+**한마디로:** provider의 비정상 종료와 재기동을 반복하는 동안에도 monitoring event가 계속 기록되고,
+그 전이가 실제 장애·복구를 반영하며 runtime 동작을 중단시키지 않는가.
 
-- 절차: provider를 crash·재기동(필요 시 drain·restore 포함)으로 여러 번 흔드는 동안 socket·location-runtime source가 계속 관찰하게 둔다(harness kill/restart 전제).
-- 검증: 장애 구간에도 monitoring task가 죽지 않고 이벤트 기록이 이어지며, 각 down/up에 해당하는 전이(연결/해제, `TopologyChanged`)가 관측된다. (이벤트는 detached task로 발행되므로 **엄밀한 전역 순서·무손실은 보장하지 않는다** — best-effort 관측. 따라서 "순서대로 반영"을 단언하지 않고 "해당 전이가 관측됨 + monitoring이 죽지 않음"으로 본다.) monitoring이 messaging·runtime 경로를 막거나 종료시키지 않는다.
+- 절차: 종료 대상과 분리된 peer host에서 socket·location-runtime source를 구독한다. 아래 cycle을 3회
+  반복한다: provider `SIGKILL` → observer의 `Disconnected`와 owner lease 만료 뒤 topology 제거를
+  bounded wait로 확인 → 같은 rid·endpoint로 provider 재시작 → 새 owner generation row와 observer의
+  `ConnectionReady`·topology 추가를 확인. 각 cycle의 up evidence가 끝난 뒤에만 다음 crash를 실행한다.
+  socket weight 0·복원은 crash cycle과 섞지 않고 별도 구간에서 한 번 검증한다.
+- 검증: 장애 구간에도 monitoring task가 종료되지 않고 이벤트 기록이 이어지며, 세 cycle 각각의
+  down/up에 해당하는 연결·해제와 `TopologyChanged`가 관측된다. cycle correlation으로 전이를 구분하되
+  event 사이의 엄밀한 전역 순서·무손실은 단언하지 않는다. monitoring이 messaging·runtime 경로를
+  막거나 종료시키지 않는다.
 - 세부 동작: 장애·복구 반복 중 관측 연속성(best-effort).
 
 ## 5. 완료 기준

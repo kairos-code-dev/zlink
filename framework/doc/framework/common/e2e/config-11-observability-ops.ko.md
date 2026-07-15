@@ -209,7 +209,10 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 **한마디로:** deadline을 넘기면 강제 종료로 넘어가고 활성 세션에 `server_drain` 종료 통지가 가는가.
 
-- 절차: 핸드오프가 deadline 안에 못 끝나도록 짧은 deadline으로 drain한다.
+- 절차: actor handler 또는 transfer가 시작됐다는 evidence가 나온 뒤 application의 bounded gate에서
+  완료를 막는다. gate 대기 상한보다 짧지만 0보다 큰 drain deadline으로 `Drain(deadline)`을 호출하고,
+  deadline이 지나 terminal result가 나온 뒤 gate를 해제한다. 벽시계 sleep만으로 handoff 지연을
+  유도하지 않는다.
 - 검증: 상태가 `ForceStopping`으로 전이하고 drain 결과가 `ForceStopped`이다. 활성 STREAM 세션에는
   versioned `session-closing` 제어 프레임의 `reason=server_drain`이 통지 상한 내에 전달된다. connector가
   제어 프레임을 저장한 뒤 disconnect event를 내보내며, client는 공개 `closeReason`으로 확인한다.
@@ -222,8 +225,12 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 **한마디로:** serving target이 있는 순차 롤아웃과 target이 없는 강제 종료가 각각 계약대로 동작하는가.
 
-- 절차: (a) fresh topology에서 `play-a`만 drain해 actor를 serving `play-b`로 이동시킨다. (b) topology를
-  다시 시작하고 `play-a`와 `play-b`를 거의 동시에 drain해 eligible target을 0으로 만든다.
+- 절차: (a) fresh topology에서 장기 `drain-natural` 대상이 없음을 확인하고 `play-a`만 drain해 actor를
+  serving `play-b`로 이동시킨다. (b) topology를 다시 시작하고 actor는 `play-a`에 둔다. `play-b`에서
+  application handler를 bounded gate로 막은 뒤 `play-a`보다 긴 deadline으로 `play-b`의 drain을 먼저
+  시작하고, location 성공 조회에서 `play-b`의 `Draining=true`를 확인한다. 그 상태에서 `play-a`를
+  drain하면 handoff 대상 선택은 이미 draining인 `play-b`를 제외하므로 eligible target이 0이 된다.
+  `play-a`의 terminal result를 확인한 뒤 `play-b`의 gate를 해제한다.
 - 검증: (a)는 `ForceStopping` 없이 `Drained`로 끝난다. (b)는 draining peer를 target에서 제외하고,
   actor는 source에서 유지되다가 자연 종료하거나 전역 deadline에 `ForceStopped(DeadlineExceeded)`가
   된다. SPOT은 설정한 `drain-natural` 또는 `release-and-recreate` 정책을 독립적으로 따른다.

@@ -9,7 +9,8 @@
 
 ## 1. 목적과 범위
 
-- 다룬다: fanout 전달, topic 필터(application-level, publish context.Topic 기반), late subscriber 합류, subscriber 느린 handler, publish negative path.
+- 다룬다: fanout 전달, topic 필터(application-level, publish context.Topic 기반), late subscriber 합류,
+  subscriber 재연결, publisher 재시작, subscriber 느린 handler, publish negative path.
 - 여기서 다루지 않는 것: channel request/send(Config 1), spot publish(Config 2).
 
 ## 2. 서버 구성 (한 번 구동, 공유)
@@ -18,7 +19,7 @@
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, fanout 연결에 필요한 peer location row는 framework lifecycle이 자동 갱신한다. |
 | publisher | 1 (`pub-a`) | publish channel server. `EventPublish(topic, value)` 발행. peer location row 자동 등록. `/evidence`·`/health`. |
-| subscriber | 3 (`sub-1`, `sub-2`, `sub-3`) | subscribe handler 보유. 받은 이벤트를 evidence로 기록. handler가 publish context.Topic으로 관심 topic만 처리. |
+| subscriber | 3 (`sub-1`, `sub-2`, `sub-3`) | subscribe handler 보유. 받은 이벤트와 public socket lifecycle의 `ConnectionReady`·`Disconnected`를 evidence로 기록. handler가 publish context.Topic으로 관심 topic만 처리. |
 | consumer | 시나리오별 | publish를 트리거하거나 직접 subscribe하는 client. |
 
 handler 동작(공유): subscriber는 `EventNotify`를 받아 publish context.Topic과 value를 evidence에
@@ -43,11 +44,14 @@ subscriber 시나리오는 subscriber 하나를 일부러 늦게 띄운다. clie
 
 우선순위: `P0`
 
-**한마디로:** warm-up 뒤 측정 구간에서 세 subscriber가 같은 연속 sequence를 같은 순서로 받는가(fanout 증명 — 전량 무손실이 아니라 공통 sequence 도달로 본다).
+**한마디로:** 세 subscriber의 구독 준비가 끝난 뒤 측정 구간에서 같은 연속 sequence를 같은 순서로
+받는가.
 
-- 절차: warm-up publish를 반복해 각 subscriber가 처음 수신할 때까지 기다린다(별도 "subscribe 완료" event는 없으므로 warm-up 수신을 구독 준비 barrier로 쓴다). 그 뒤 측정 구간에서 이벤트를 발행한다.
-- 검증: 측정 구간에서 모든 subscriber가 공유하는 하나의 연속 sequence가 존재한다(세 subscriber 모두 그 sequence를 순서대로 수신). `Publish(...).Async()`는 remote 수신을 보장하지 않으므로 "전량 N개 무손실"이 아니라 공통 sequence 도달로 fanout을 증명한다(기존 fanout E2E와 같은 oracle).
-- 세부 동작: warm-up barrier 후 공통 sequence fanout.
+- 절차: 세 subscriber 각각의 `ConnectionReady`를 기다린 뒤 측정용 고유 sequence를 발행한다.
+- 검증: 측정 구간에서 모든 subscriber가 공유하는 하나의 연속 sequence가 존재하고 세 subscriber 모두
+  그 sequence를 같은 순서로 수신한다. `Publish(...).Async()` 완료 자체를 remote 수신 evidence로 쓰지
+  않고 subscriber handler evidence로 판정한다.
+- 세부 동작: 구독 readiness 뒤 공통 sequence fanout.
 
 #### PS-A2 topic filter
 
@@ -63,21 +67,37 @@ subscriber 시나리오는 subscriber 하나를 일부러 늦게 띄운다. clie
 
 우선순위: `P0`
 
-**한마디로:** 발행이 시작된 뒤 새로 구독하면, 구독 이후 발행분만 받고 그 전 것은 못 받는가(replay 없음).
+**한마디로:** 발행이 시작된 뒤 새 subscriber가 연결되면, 구독 준비가 끝난 뒤 발행한 event부터 받고
+그 전에 발행한 event는 replay하지 않는가.
 
-- 절차: 발행이 시작된 뒤 새 subscriber를 띄워 구독한다.
-- 검증: late subscriber는 구독 이후 발행분을 받는다. 구독 이전 발행분은 전달되지 않는다(replay 계약 없음). 이 late-subscriber 규칙은 public 계약이 아니라 관측된 기대(observed expectation)이며, 본 config가 그 동작을 evidence로 고정한다.
-- 세부 동작: 동적 구독 합류.
+- 절차: publisher가 고유 sequence의 `before-ready` event를 발행한다 → 새 subscriber를 시작한다 →
+  subscriber의 `ConnectionReady`를 기다린다 → 고유 sequence의
+  `after-ready` event를 한 번 발행한다.
+- 검증: late subscriber는 `after-ready` event를 받고 payload가 일치한다. `before-ready` event는
+  subscriber evidence에 없으며 준비 완료 뒤에도 replay되지 않는다. publish 완료는 subscriber 수신
+  acknowledgement로 사용하지 않는다.
+- 세부 동작: 현재 연결과 구독 준비가 끝난 subscriber에게만 전달하는 fanout의 동적 구독 합류.
 
-#### PS-A4 subscriber 재연결·재구독
+#### PS-A4 subscriber 재연결·기존 subscription 재적용
 
 우선순위: `P1`
 
-**한마디로:** subscriber가 끊겼다 다시 붙어 재구독하면, 그때부터의 발행분을 다시 받고(끊긴 동안 것은 replay 없이 못 받고) 다른 subscriber엔 영향이 없는가.
+**한마디로:** subscriber transport 연결이 끊겼다가 복구되어도 application이 handler를 다시 등록하지
+않고 기존 subscription으로 새 event를 받으며, 끊긴 동안 발행된 event는 replay하지 않는가.
 
-- 절차: subscriber 하나를 연결 해제했다가 재접속해 다시 구독한다. 그 사이에도 발행은 계속된다.
-- 검증: 재구독 후 그 시점 이후 발행분을 다시 받는다. 끊긴 동안 발행된 것은 전달되지 않는다(공개 replay 계약이 없는 관측된 동작으로 고정 — PS-A3과 동일 성격). 끊김·재구독 중에도 다른 subscriber의 수신은 영향받지 않는다. (재구독은 fanout builder에 별도 reconnect/unsubscribe API가 아니라 runtime/process lifecycle로 유도한다.)
-- 세부 동작: 동적 재구독(끊김 구간 비replay 관측 + subscriber 격리).
+- 절차: subscriber A·B가 같은 topic을 받고 있음을 확인한다 → runner의 process-external network fault로
+  A의 transport 연결만 끊는다 → 연결 단절 evidence를 확인한 뒤 `while-disconnected` event를 한 번
+  발행한다 → B 수신을 확인한다 → network fault를 해제하고 A의
+  `ConnectionReady`를 기다린다 → application의 handler 등록이나
+  재구독 API 호출 없이 `after-reconnect` event를 한 번 발행한다.
+- 검증: B는 두 event를 모두 받는다. A는 `after-reconnect` event를 받고
+  `while-disconnected` event를 받지 않으며 복구 뒤에도 replay evidence가 없다. A application은 handler를
+  다시 등록하거나 reconnect loop를 만들지 않는다.
+- 세부 동작: 기존 subscription을 유지한 transport 재연결과 subscriber 격리.
+
+> subscriber 하나의 transport만 끊을 수 있는 network fault harness가 없으면 PS-A4는 `blocked`로
+> 기록한다. subscriber process 재시작으로 바꾸면 application startup이 handler를 다시 등록하므로 이
+> 시나리오를 검증한 것이 아니다.
 
 ### Track B — subscriber 동작
 
@@ -95,11 +115,16 @@ subscriber 시나리오는 subscriber 하나를 일부러 늦게 띄운다. clie
 
 우선순위: `P1`
 
-**한마디로:** publisher가 죽었다 다시 떠도, 복구 후 발행이 기존 subscriber에게 다시 도달하는가(다운 구간 발행분 유실은 계약대로).
+**한마디로:** publisher가 같은 rid·endpoint로 재시작해도 subscriber application이 구독을 다시
+등록하지 않은 채 복구 후의 새 발행을 받는가.
 
-- 절차: 발행 중 publisher 프로세스를 종료했다가 재기동한다(harness restart 전제). subscriber는 그대로 둔다.
-- 검증: publisher 재기동 후 새 발행이 다시 subscriber에 도달한다(subscriber 재구독이 필요한지 여부는 transport 동작에 따르며, 관측 결과로 고정한다). 다운 구간 발행 시도분의 유실 여부도 공개 replay 계약이 없으므로 관측으로 고정한다(replay를 보장하지 않음). subscriber 측은 재기동에도 죽지 않는다. publisher 재기동은 runtime/process lifecycle(start/stop)로 유도한다.
-- 세부 동작: publisher 재기동 복구(다운 구간 비replay 관측).
+- 절차: 발행 중 publisher에 정상 종료를 요청하고 terminal `Drained`와 old peer row 제거를 확인한 뒤
+  같은 rid·endpoint로 재시작한다. subscriber 프로세스와 등록한 topic은 그대로 유지하며 application
+  코드에서 재구독 API를 호출하지 않는다. subscriber가 새 publisher에 대해 기록한
+  `ConnectionReady`를 기다린 뒤 고유 sequence의 event를 한 번 발행한다.
+- 검증: 복구 뒤 고유 sequence를 가진 새 event가 기존 subscriber handler에 도달하고 payload가 일치한다. subscriber application이
+  구독을 다시 등록하거나 reconnect loop를 만들지 않아야 한다. subscriber process는 전 구간 유지된다.
+- 세부 동작: transport 재연결 뒤 기존 subscription 설정으로 publisher restart 복구(자동 replay 아님).
 
 ### Track C — negatives
 

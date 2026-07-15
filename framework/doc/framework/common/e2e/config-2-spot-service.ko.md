@@ -101,7 +101,8 @@ handler 동작(공유):
 
 - 절차: 앱이 entity key(예: order id, player id)를 결정적 규칙으로 `RoutingId`에 매핑하고(§2의 고정 매핑 규칙), 그 RoutingId의 owner spot으로 request를 보낸다.
 - 검증: 같은 key는 항상 같은 RoutingId → 같은 owner spot/노드로 간다. cross-node spot lookup은 RoutingId로 resolve된다(key→RoutingId 매핑·노드 owner 규칙은 앱이 정의). 매핑이 고정인 한 owner도 고정이다.
-- 세부 동작: 결정적 key→RoutingId 매핑 기반 owner routing. (scale-out 중 owner 이동은 Track G의 SM-G2에서 다룬다.)
+- 세부 동작: 결정적 key→RoutingId 매핑 기반 owner routing. (scale-out 뒤 기존 owner 유지와 신규 대상
+  배치는 Track G의 SM-G2에서 다룬다.)
 
 #### SM-A5 Stage wrapper
 
@@ -605,39 +606,66 @@ target user Spot을 닫아도 channel 연결 자체는 유지되는가.
 
 ### Track G — SpotNode 증설, 장애와 복구
 
-여기서는 SpotNode가 추가되거나 spot/actor/session 노드가 실제로 죽고, 동시 트래픽이 경합할 때
+여기서는 SpotNode가 추가되거나 spot/actor/session 노드가 비정상 종료되고, 동시 트래픽이 경합할 때
 stateful 경로가 어떻게 동작하는지 본다. Config 5(resilience)는 channel provider를 다루므로,
 spot 배포(play/session 노드)를 쓰는 시나리오는 Config 2에 둔다. 프로세스를
-실제로 죽이는 시나리오는 harness의 `kill`/`stop`/`restart` 연산을 전제한다(없으면 "미구현(하네스
+비정상 종료시키는 시나리오는 harness의 `kill`/`stop`/`restart` 연산을 전제한다(없으면 "미구현(하네스
 대기)").
 
 #### SM-G1 play 노드 crash와 복구
 
 우선순위: `P0`
 
-**한마디로:** actor·bound session이 붙어 있는 play 노드가 죽으면, 그 노드 것만 영향을 받고(다른 노드는 멀쩡), client가 재join·rebind로 복구할 수 있는가.
+**한마디로:** actor·bound session이 설정된 play 노드가 비정상 종료되면 그 노드의 상태만 영향을
+받고, 같은 노드의 restart와 다른 노드에서의 application 복구가 각각 명시적인 재join·rebind로
+정상화되는가.
 
-- 절차: `play-a`에 actor join + session bind 상태를 만든 뒤 `play-a`를 SIGKILL한다. consumer는 그 actor로
-  messaging을 시도하다 실패를 관찰한다. 같은 논리 node를 재시작하거나, application이 `play-b`에 새
-  actor를 만들도록 명시적으로 join한 뒤 rebind한다.
-- 검증: `play-a` crash로 그 노드의 actor/spot 상태는 소실되고, 그 노드로 가던 request·relay는 정해진 public error/`Disconnected`로 끝난다(무한 대기 없음). `play-b`의 actor·session은 영향받지 않는다. 재join·rebind 후 messaging이 정상 재개되고, 필요한 상태는 app replay/snapshot으로 복구된다(자동 이전 아님).
-- 세부 동작: stateful 노드 crash 격리 + 재join·rebind 복구.
+- 절차: 먼저 `play-a`에 actor join + session bind 상태를 만들고 `play-b`에도 독립 기준 actor와
+  session을 준비한 뒤 `play-a`를 `SIGKILL`한다. crash 직전 처리 중인 actor request와 crash 뒤 old
+  `ActorRef`로 보낸 request의 실패를 각각 관찰한다. 다음 두 복구 경로를 **모두** 실행한다.
+  1. old peer·actor location이 owner lease 만료로 성공 조회에서 제외될 때까지 기다린다. 그 뒤
+     `play-a`를 같은 rid·endpoint로 restart하고 새 owner generation의 peer row가 조회되는지 확인한다.
+     `play-a`가 게시한 Entry Spot rid의 `SpotHandle` resolve가 성공할 때까지 역할 server의 bounded wait로
+     기다린다. application은 준비된 handle로 `JoinReq`를 한 번 보내고,
+     해당 handler가 로컬 actor를 다시 만든 뒤 join·rebind하고 snapshot/replay를 적용한다.
+  2. 다시 같은 장애를 만든 뒤 old actor location이 성공 조회에서 제외될 때까지 기다리고,
+     `play-b`가 게시한 Entry Spot rid의 `SpotHandle` resolve가 성공할 때까지 bounded wait로 기다린 뒤
+     application이 준비된 handle로 `JoinReq`를 한 번 보낸다.
+     해당 Entry Spot handler가 로컬 actor를 명시적으로 만든 뒤 join·rebind하고 snapshot/replay를
+     적용한다.
+- 검증: crash 직전 처리 중인 request는 연결 단절이 먼저 확정되면 retriable `RouteNotConnected`,
+  handler 완료 여부를 caller가 확정할 수 없으면 설정한 request timeout 안의 timeout으로 끝난다.
+  owner lease 만료로 old actor location이 성공 조회에서 제외된 뒤, actor를 다시 만들기 전에 old
+  `ActorRef`로 보낸 request는 `ActorRouteNotFound`로 끝난다. actor를 같은 id와 새 generation으로 다시
+  만든 뒤 old `ActorRef`로 보낸 request는 `ActorLocationStale`로 끝나고, 새 live `ActorRef`로 보낸
+  follow-up request는 성공한다. 각 실패는 설정한 timeout 안에 종료되고 어느 단계에서도 old handler가
+  실행되지 않아야 한다. stream 연결 종료는 framework request 오류와 섞지 않고
+  connector/session의 `Disconnected`로 별도 확인한다. `play-b`의 기준 actor·session은 영향받지 않는다.
+  두 복구 경로 모두 재join·rebind 뒤 messaging이 정상화되고 필요한 상태는 application snapshot/replay로
+  복원된다. 자동 상태 이전이나 실패 request의 자동 재전송은 단언하지 않는다.
+- 세부 동작: stateful 노드 crash 격리 + 같은 rid·endpoint restart 복구 + 선택한 노드의 Entry Spot
+  handle을 사용한 application 복구.
 
 #### SM-G2 SpotNode scale-out과 신규 배치
 
 우선순위: `P1`
 
-**한마디로:** SpotNode를 추가해도 기존 owner는 유지되고, 이후 새로 만드는 Spot 또는 actor는 공개
-배치 입력과 정책에 따라 새 node를 사용할 수 있는가.
+**한마디로:** SpotNode를 추가해도 기존 owner는 유지되고, 새 actor는 선택한 node의 Entry Spot에
+application `JoinReq`를 보내 만들 수 있으며 새 Spot은 선택한 node의 로컬 manager에서 만들 수 있는가.
 
-- 절차: `play-a`에서 기존 Spot과 actor를 만들고 owner evidence를 기록한다 → `play-b`를 추가한다 →
-  peer/capability 정보에 `play-b`가 반영될 때까지 기다린다 → 기존 대상에 다시 request한다 → 공개 배치
-  입력으로 `play-b`를 선택해 새 Spot 또는 actor를 만든다.
+- 절차: `play-a`의 로컬 SpotManager에서 기존 Spot을 만들고 actor도 만든 뒤 owner evidence를
+  기록한다 → `play-b`를 추가한다 → peer/capability 정보에 `play-b`가 반영되고 `play-b`가 게시한 Entry
+  Spot rid의 `SpotHandle` resolve가 성공할 때까지 각각 bounded wait로 기다린다 → 기존 대상에 다시
+  request한다 → 준비된 handle로 application `JoinReq`를 한 번 보내고 해당 Entry Spot handler가 로컬
+  actor를 만든다 → 새 Spot은 `play-b` 프로세스의
+  로컬 SpotManager `GetOrCreate`/`getOrCreate`로 만든다.
 - 검증: node 추가 전 만든 대상의 owner는 `play-a`로 유지되고 후속 request도 같은 owner가 처리한다.
-  새 대상은 요청한 공개 배치 조건에 따라 `play-b`에서 만들어지며, 두 node의 대상이 동시에 정상
-  처리된다. node 추가만으로 기존 owner가 이동하거나 자동 재분배되었다고 단언하지 않는다.
-- 세부 동작: SpotNode 증설 발견 + 기존 owner 유지 + 신규 대상의 명시적 배치. 기존 actor owner를
-  바꾸는 동작은 Config 10의 actor transfer 또는 Config 11의 drain handoff에서 검증한다.
+  새 actor는 `play-b`가 게시한 Entry Spot에서 만들어지고, 새 Spot은 호출한 `play-b`의 로컬
+  SpotNode에서 만들어진다. 두 node의 대상이 동시에 정상 처리된다. spot `GetOrCreate`를 클러스터
+  배치 API로 표현하거나 node 추가만으로 기존 owner가 이동·자동 재분배되었다고 단언하지 않는다.
+- 세부 동작: SpotNode 증설 발견 + 기존 owner 유지 + 선택한 Entry Spot의 application handler actor 생성 +
+  선택한 node에서의 로컬 Spot 생성. 기존 actor owner를 바꾸는 동작은 Config 10의 actor transfer 또는
+  Config 11의 drain handoff에서 검증한다.
 
 #### SM-G3 동시 join/leave 경합
 

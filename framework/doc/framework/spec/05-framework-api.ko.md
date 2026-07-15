@@ -655,7 +655,9 @@ framework 기본값은 core socket 기본 send timeout과 같은 1000ms로 맞�
 framework 기본값을 async pending deadline으로 사용한다. framework 기본 send
 timeout을 명시적으로 비우는 언어에서는 무한 대기로 본다.
 publish도 send와 같은 내부 submit 규칙을 따른다. subscriber 처리 완료를 기다리지 않고,
-local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다.
+local publish transport에 메시지를 맡길 수 있을 때까지 비동기로 기다린다. 구독 준비 전·연결 단절 중
+발행분의 처리와 재연결 뒤 기존 subscription 적용은
+[channel messaging §1.2](server/11-channel-messaging.ko.md)가 소유한다.
 
 request도 reply를 기다리는 async 호출로 설명한다. 다만 request packet을 보내는
 단계는 send와 같은 내부 submit 경로를 사용해야 한다. `Timeout(...)`은 reply

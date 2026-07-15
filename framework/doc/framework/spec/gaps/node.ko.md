@@ -659,11 +659,9 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 ### 체크리스트
 
 - [ ] **E2E-ND-01** (**가짜 통과**) — Config 11에 **e2e 앱이 없고 시나리오를 `echo`로 통과시킨다**
-  - 선행 대기: 독립 역할 앱과 13개 시나리오가 없으면 실패하는 집중 게이트에서 현재 runner의 하위
-    config 재실행과 합성 `PASS`가 실제로 실패했다. 그러나 OBS-C1은 E2E-ND-26과 같은 “기존 연결은
-    유지하면서 draining peer를 신규 배정에서만 제외”하는 계약을 요구한다. 현재 dealer backend에는
-    연결을 유지한 채 peer별 신규 선택만 막는 표면이 없고 연결 해제 우회는 in-flight 유지 계약을
-    깨므로, E2E-ND-26의 계약·구현 결정 뒤 Config 11 전체 배포로 함께 검증할 때까지 열린 상태로 둔다.
+  - 선행 해소: 독립 역할 앱과 13개 시나리오가 없으면 실패하는 집중 게이트에서 현재 runner의 하위
+    config 재실행과 합성 `PASS`가 실제로 실패했다. OBS-C1의 신규 배정 제외 선행 계약은 E2E-ND-26에서
+    공개 server weight와 drain 표면으로 검증했으므로, 이제 Config 11 역할 앱과 시나리오를 구현해야 한다.
 - [x] **E2E-ND-02** (**가짜 통과**) — probe 서버가 **클라이언트가 검사할 값을 리터럴로 만들어 낸다**
   - 근거: probe가 합성하던 topology 값을 제거하고 실제 consumer app role의 public query와 resilience client가 같은 관측 경로를 사용하게 했다. 합성 probe 없이는 실패하던 topology/RL-A1 게이트가 통과한다. 커밋 `cc857d12a`, `31f56b068`.
 - [x] **SMP-ND-01** (미구현) — Bingo의 정본 `yield` 왕복이 **계약·서버·클라이언트 게이트 어디에도 없다**
@@ -710,8 +708,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: store 장애 중 새 peer를 게시해 신규 outbound connect가 grace 정책으로 차단되는 실제 조건을 만들었다. 새 dial을 시도하지 않던 gate가 실패한 뒤 SF-B2와 contract gate가 통과했다. 커밋 `16b06351a`.
 - [x] **E2E-ND-25** (결함) — `SF-D1`·`SF-D2`가 store stop/restart 대신 **pause/unpause**만 한다
   - 근거: `SF-D2` client의 4초 대기가 3초 scenario marker budget을 넘겨 runner가 먼저 모든 프로세스를 정리하던 회귀를 확인했다. 외부 Redis의 장기 장애 시간을 runner가 소유하도록 옮기고 client는 지속 request와 복구 결과만 검증하게 했다. 이 충돌을 고정한 계약 게이트가 실패에서 통과로 바뀌고 실제 `SF-D1`·`SF-D2`가 빈 Redis stop/restart 전 구간을 통과했다. 커밋 `0a9c1f084`, `09adaedb0`.
-- [ ] **E2E-ND-26** (미구현) — `SF-C2`가 draining marker·drain deadline·정상 종료를 검증하지 않는다
-  - 재검증: marker barrier를 둔 실제 SF-C2 red gate에서 `Draining=true` row가 게시된 뒤에도 새 request가 `api-b`에 배정됐다. auto-connect reconciler는 기존 연결 유지를 위해 draining target을 active set에 남기지만, dealer backend에는 연결을 유지한 채 새 request 선택에서만 특정 peer를 제외하는 표면이 없다. 연결을 끊는 우회는 기존 연결·작업 유지 계약을 깨므로 적용하지 않았으며, peer별 신규 배정 차단 표면의 계약·구현 결정 전까지 열린 상태로 둔다.
+- [x] **E2E-ND-26** (미구현) — `SF-C2`가 draining marker·drain deadline·정상 종료를 검증하지 않는다
+  - 근거: server weight 0과 typed drain을 provider 경계에 모으고 marker를 한 polling interval 관측한 뒤 owner를 정리해 기존 연결을 끊지 않고 신규 배정만 제외했다. marker 즉시 정리와 drain 중 `api-b` 배정을 잡은 집중 게이트가 실패에서 21/21 통과로 바뀌었고 build, 변경 파일 lint, 실제 `SF-C2`, DiscoveryRegistryHa 10개 전체 시나리오가 통과했다. 호출자 소유 Redis store는 host가 정리해 `process.exit()` 없이 정상 종료하며, 연결 해제 우회와 framework의 store 소유권 침범을 제거한 POSD 재리뷰도 마쳤다. 커밋 `a05940bd2`.
 - [x] **E2E-ND-27** (미구현) — `MON-A1`이 socket event의 **RemoteAddr·RoutingId를 단언하지 않는다**
   - 근거: MON-A1이 실제 socket event의 remote address와 routing id를 필수로 단언한다. identity 필드가 비어도 통과하던 monitoring socket gate가 실패에서 통과로 바뀌었다. 커밋 `e21abc645`.
 - [x] **E2E-ND-28** (**가짜 통과**) — `MON-A2`가 provider 추가·종료를 일으키지 않고 **기존 startup event만 기다린다**

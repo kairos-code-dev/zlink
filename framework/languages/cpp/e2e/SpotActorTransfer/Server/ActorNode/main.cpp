@@ -9,7 +9,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -29,22 +28,35 @@ namespace fw = zlink::framework;
 namespace
 {
 
-std::string env_or (const char *name, std::string fallback = {})
+struct node_options_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
+    std::string role;
+    std::string initial_actor_node;
+    std::string rid;
+    std::string http_url;
+    std::string router_endpoint;
+    std::string stream_endpoint;
+    std::string pub_endpoint;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string log_dir;
+    std::string evidence_file;
 
-std::string require_env (const char *name)
-{
-    auto value = env_or (name);
-    if (value.empty ()) {
-        throw std::runtime_error (std::string (name) + " is required");
+    static node_options_t bind (const fw::configuration_section_t &section)
+    {
+        return {.role = section.require ("role"),
+                .initial_actor_node = section.require ("initialActorNode"),
+                .rid = section.require ("rid"),
+                .http_url = section.require ("httpUrl"),
+                .router_endpoint = section.require ("routerEndpoint"),
+                .stream_endpoint = section.require ("streamEndpoint"),
+                .pub_endpoint = section.require ("pubEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .log_dir = section.require ("logDir"),
+                .evidence_file = section.require ("evidenceFile")};
     }
-    return value;
-}
+};
 
 class evidence_store_t
 {
@@ -1059,17 +1071,24 @@ class shutdown_handler_t
 
 int main (int argc, char **argv)
 {
-    const auto role = env_or ("ZLINK_CPP_E2E_ROLE", "actor");
-    const auto rid = require_env ("ZLINK_CPP_E2E_ACTOR_RID");
-    const auto http_url = require_env ("ZLINK_CPP_E2E_ACTOR_HTTP");
-    const auto router_endpoint = require_env ("ZLINK_CPP_E2E_ACTOR_ROUTER");
-    const auto stream_endpoint = require_env ("ZLINK_CPP_E2E_ACTOR_STREAM");
-    const auto pub_endpoint = require_env ("ZLINK_CPP_E2E_ACTOR_PUB");
-    const auto redis_endpoint = require_env ("ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT");
-    const auto key_prefix = require_env ("ZLINK_CPP_E2E_LOCATION_KEY_PREFIX");
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    const auto evidence_file = env_or ("ZLINK_CPP_E2E_EVIDENCE_FILE",
-                                       log_dir + "/" + rid + ".evidence.log");
+    auto app = fw::app_t::create ();
+    app.config ().load_cli (argc, argv);
+    const auto config_path = app.config ().model ().get ("config");
+    if (!config_path) {
+        throw std::runtime_error ("SpotActorTransfer node requires --config=<path>");
+    }
+    app.config ().load_json (*config_path);
+    const auto configured = app.config ().bind_required<node_options_t> ("e2e");
+    const auto &role = configured.role;
+    const auto &rid = configured.rid;
+    const auto &http_url = configured.http_url;
+    const auto &router_endpoint = configured.router_endpoint;
+    const auto &stream_endpoint = configured.stream_endpoint;
+    const auto &pub_endpoint = configured.pub_endpoint;
+    const auto &redis_endpoint = configured.redis_endpoint;
+    const auto &key_prefix = configured.redis_key_prefix;
+    const auto &log_dir = configured.log_dir;
+    const auto &evidence_file = configured.evidence_file;
     std::filesystem::create_directories (log_dir);
 
     auto evidence = std::make_unique<evidence_store_t> (rid, evidence_file);
@@ -1081,10 +1100,9 @@ int main (int argc, char **argv)
     g_domain_state = domain_state.get ();
     g_joined_gates = joined_gates.get ();
     g_transfer_gates = transfer_gates.get ();
-    g_initial_actor_node_rid = env_or ("ZLINK_CPP_E2E_INITIAL_ACTOR_NODE", rid);
+    g_initial_actor_node_rid = configured.initial_actor_node;
     auto *shutdown_flag_ptr = shutdown_flag.get ();
 
-    auto app = fw::app_t::create ();
     app.logging ().use_file (log_dir + "/" + rid + ".app.log");
     app.add_zlink_framework ([&] (fw::zlink_framework_options_t &framework) {
         framework.services ().add_singleton<evidence_store_t> (std::move (evidence));

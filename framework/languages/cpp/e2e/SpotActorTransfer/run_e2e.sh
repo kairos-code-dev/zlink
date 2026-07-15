@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
+BUILD_DIR="$CPP_ROOT/build"
 
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"
@@ -15,7 +15,9 @@ fi
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+CONFIG_DIR="$LOG_DIR/config"
 mkdir -p "$LOG_DIR"
+mkdir -p "$CONFIG_DIR"
 
 NODE_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_node"
 CLIENT_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_client"
@@ -23,19 +25,9 @@ LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
-REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+REDIS_READINESS_TIMEOUT_SECONDS=60
 HTTP_PROBE_TIMEOUT_SECONDS=3
 SHUTDOWN_GRACE_SECONDS=0.5
-
-pick_port() {
-  python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])
-s.close()
-PY
-}
 
 pick_ports() {
   python3 - "$1" <<'PY'
@@ -68,6 +60,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
+  rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   fi
@@ -104,30 +97,48 @@ start_role() {
   local router="$4"
   local stream="$5"
   local pub="$6"
-  ZLINK_CPP_E2E_ROLE="$role" \
-  ZLINK_CPP_E2E_INITIAL_ACTOR_NODE="actor-a" \
-  ZLINK_CPP_E2E_ACTOR_RID="$rid" \
-  ZLINK_CPP_E2E_ACTOR_HTTP="$url" \
-  ZLINK_CPP_E2E_ACTOR_ROUTER="$router" \
-  ZLINK_CPP_E2E_ACTOR_STREAM="$stream" \
-  ZLINK_CPP_E2E_ACTOR_PUB="$pub" \
-  ZLINK_CPP_E2E_REDIS_LOCATION_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_LOCATION_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/${rid}.evidence.log" \
-  setsid "$NODE_BIN" \
+  local config_path="$CONFIG_DIR/$rid.json"
+  python3 - "$config_path" "$role" "$rid" "$url" "$router" "$stream" "$pub" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, role, rid, http_url, router, stream, pub, redis_endpoint,
+ redis_key_prefix, log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"role": role, "initialActorNode": "actor-a",
+        "rid": rid, "httpUrl": http_url, "routerEndpoint": router,
+        "streamEndpoint": stream, "pubEndpoint": pub,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir, "evidenceFile": f"{log_dir}/{rid}.evidence.log"}},
+        file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  setsid "$NODE_BIN" --config="$config_path" \
     >"$LOG_DIR/${rid}.stdout.log" 2>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }
 
 run_client() {
   local scenario="$1"
-  ZLINK_CPP_E2E_NODE_A_URL="$NODE_A_URL" \
-  ZLINK_CPP_E2E_NODE_B_URL="$NODE_B_URL" \
-  ZLINK_CPP_E2E_NODE_A_STREAM="$SESSION_A_STREAM" \
-  ZLINK_CPP_E2E_NODE_B_STREAM="$SESSION_B_STREAM" \
-  ZLINK_CPP_E2E_SCENARIO="$scenario" \
-  "$CLIENT_BIN" \
+  local config_path="$CONFIG_DIR/client-${scenario//[^a-zA-Z0-9_-]/_}.json"
+  python3 - "$config_path" "$NODE_A_URL" "$NODE_B_URL" "$SESSION_A_STREAM" \
+    "$SESSION_B_STREAM" "$scenario" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, node_a_url, node_b_url, node_a_stream, node_b_stream, scenario = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"nodeAUrl": node_a_url, "nodeBUrl": node_b_url,
+        "nodeAStream": node_a_stream, "nodeBStream": node_b_stream,
+        "scenario": scenario}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$CLIENT_BIN" --config="$config_path" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
 

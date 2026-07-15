@@ -4,10 +4,11 @@
 
 #include <zlink/http_client.hpp>
 #include <zlink/stream_connector.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
+#include <fstream>
 #include <functional>
 #include <future>
 #include <iostream>
@@ -18,6 +19,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -28,21 +30,39 @@ namespace sc = zlink::stream_connector;
 namespace
 {
 
-std::string env_or (const char *name, std::string fallback = {})
+struct client_options_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
+    std::string node_a_url;
+    std::string node_b_url;
+    std::string node_a_stream;
+    std::string node_b_stream;
+    std::string scenario;
+};
 
-std::string require_env (const char *name)
+client_options_t read_options (int argc, char **argv)
 {
-    auto value = env_or (name);
-    if (value.empty ()) {
-        throw std::runtime_error (std::string (name) + " is required");
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown SpotActorTransfer client option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
     }
-    return value;
+    if (path.empty ()) {
+        throw std::runtime_error ("SpotActorTransfer client requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open SpotActorTransfer client config: " + path);
+    }
+    const auto section = nlohmann::json::parse (input).at ("e2e");
+    return {.node_a_url = section.at ("nodeAUrl").get<std::string> (),
+            .node_b_url = section.at ("nodeBUrl").get<std::string> (),
+            .node_a_stream = section.at ("nodeAStream").get<std::string> (),
+            .node_b_stream = section.at ("nodeBStream").get<std::string> (),
+            .scenario = section.at ("scenario").get<std::string> ()};
 }
 
 void require (bool condition, const std::string &message)
@@ -1300,16 +1320,15 @@ std::vector<std::string> selected_scenarios (const std::string &raw)
 
 } // namespace
 
-int main ()
+int main (int argc, char **argv)
 {
     try {
-        nodes_t nodes{make_http (require_env ("ZLINK_CPP_E2E_NODE_A_URL")),
-                      make_http (require_env ("ZLINK_CPP_E2E_NODE_B_URL")),
-                      require_env ("ZLINK_CPP_E2E_NODE_A_STREAM"),
-                      require_env ("ZLINK_CPP_E2E_NODE_B_STREAM")};
+        const auto options = read_options (argc, argv);
+        nodes_t nodes{make_http (options.node_a_url), make_http (options.node_b_url),
+                      options.node_a_stream, options.node_b_stream};
         scenario_runner_t runner (nodes);
         for (const auto &name : selected_scenarios (
-               env_or ("ZLINK_CPP_E2E_SCENARIO", "ST-A1"))) {
+               options.scenario)) {
             runner.run (name);
         }
         std::cout << "spot-actor-transfer e2e partial result=passed" << std::endl;

@@ -768,7 +768,7 @@ public final class Program implements AutoCloseable {
         RequestTarget target = requestTarget(uri);
         return target.client().get(target.path())
             .timeout(Duration.ofSeconds(5))
-            .fetch(type);
+            .async(type).toCompletableFuture().join().body();
     }
 
     private RequestTarget requestTarget(String uri) {

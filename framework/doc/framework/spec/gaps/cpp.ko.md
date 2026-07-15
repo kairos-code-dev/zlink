@@ -101,6 +101,36 @@
 
 #### 단계 4 — 전체 감사 (아래 0.6)
 
+### 0.3 POSD/DDD 리팩토링은 선택이 아니다 — **묶음 완료의 정의**
+
+**지금까지 작업자들이 갭만 닫고 리팩토링을 건너뛰었다. 그러면 묶음은 닫힌 것이 아니다.**
+
+한 묶음의 갭을 다 구현했는데 POSD/DDD 리팩토링을 안 했으면 그 묶음은 **미완료**다. 체크박스를
+`[x]`로 바꾸지 마라. 갭을 닫는 것과 묶음을 닫는 것은 다르다 —
+
+```
+갭 하나 닫힘   = 그 계약 위반이 사라짐          (기능 완료)
+묶음 하나 닫힘 = 그 위에 POSD/DDD 리뷰+리팩토링이 끝남  (설계 완료)  ← 여기까지 해야 [x]
+```
+
+**리팩토링을 "나중에 시간 나면"으로 미루지 않는다.** [POSD 원칙](../../../../../doc/principal/software-design-principles.ko.md)은 개발 시간의 **10–20%를 설계에** 쓰라고 한다 — 그건 권장이 아니라 **이 작업의 배정된 예산**이다.
+묶음마다 그 예산을 실제로 쓴다.
+
+**묶음 리팩토링에서 반드시 하는 것 (건너뛰면 묶음 미완료)**
+
+1. 그 묶음이 건드린 코드의 **POSD 위험 신호를 명시적으로 열거**한다(§0.4 목록으로).
+2. **DDD 경계를 확인**한다 — Domain이 framework/transport 타입에 의존하는가? 한 aggregate의
+   불변식을 다른 계층이 다시 판단하는가? wire DTO가 domain model 자리에 앉아 있는가?
+3. 각 위험 신호에 **수정안을 둘 이상** 적고, **인터페이스와 호출자 복잡성을 가장 많이 줄이는 안**을 고른다.
+4. 리팩토링을 **수행**한다. 그리고 기능 테스트 + (해당되면) 성능 벤치를 다시 통과시킨다.
+5. **재리뷰**에서 의미 있는 위험 신호가 남지 않아야 묶음을 닫는다.
+
+**증거를 남긴다.** 묶음을 닫을 때 "리팩토링함"으로 끝내지 말고 **무엇을 왜 바꿨는지**
+(어떤 위험 신호 → 어떤 수정 → 무엇이 줄었는지)를 한두 줄로 남긴다. 근거 없는 "리팩토링 완료"는
+안 한 것으로 본다.
+
+---
+
 ### 0.3 POSD 리팩토링을 언제 하는가 — 3단계 게이트
 
 **항목마다 구조를 뜯지 않는다. 마지막에 몰아서 하지도 않는다.**
@@ -155,14 +185,23 @@
 
 체크박스를 전부 `[x]`로 만드는 것이 끝이 아니다.
 
-1. POSD 위험 신호(0.4) 전수 검색
-2. public contract ↔ 실제 헤더/표면 재대조
-3. 안 쓰이는 타입·helper·DI 등록 검색
-4. 샘플·E2E에서 내부 타입 사용 여부 검색
-5. 이 언어의 전체 테스트 실행
-6. 성능 민감 변경 벤치 재실행
-7. 수정 후 **다시** POSD 리뷰
-8. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+**먼저 확인한다 — 모든 묶음이 §0.3의 POSD/DDD 리팩토링을 거쳤는가?**
+갭만 닫고 리팩토링을 건너뛴 묶음이 하나라도 있으면 문서는 닫히지 않는다. 각 묶음의 완료
+줄에 "무엇을 왜 바꿨는지"가 남아 있어야 한다(없으면 리팩토링 안 한 것).
+
+그 다음:
+
+1. POSD 위험 신호(0.4) 전수 검색 — 남은 게 있으면 아직 안 끝났다
+2. DDD 경계 재확인 — Domain의 framework/transport 의존 0건, wire DTO가 domain model 자리에 없음
+3. public contract ↔ 실제 헤더/표면 재대조
+4. 안 쓰이는 타입·helper·DI 등록 검색
+5. 샘플·E2E에서 내부 타입 사용 여부 검색
+6. 이 언어의 전체 테스트 실행
+7. 성능 민감 변경 벤치 재실행 (§0.5)
+8. 수정 후 **다시** POSD/DDD 리뷰
+9. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+
+`LOOP CLEAN`은 "체크박스가 다 [x]"가 아니라 **"한 바퀴 더 돌아도 고칠 게 안 나온다"**는 뜻이다.
 
 **파일 크기나 형식만을 이유로 리팩토링하지 않는다.** 책임 혼합·정보 누출·변경 증폭·호출자 복잡성을
 **실제로 줄이는** 변경만 한다.
@@ -616,9 +655,13 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract gate가 `request_profile_with_retry`, 30초 deadline, 100ms backoff를 검출해 실패했다. 표준 `/profile/request` handler를 5초 제한의 단일 framework request로 복원해 오류를 즉시 HTTP 실패로 드러내도록 바꿨다. retry 제거 상태에서 SF-D1·D2 단독 실행과 전체 `./run_e2e.sh all`이 통과해, 지속 traffic과 복구 단언이 consumer 우회에 의존하지 않음을 확인했다.
 - [x] **E2E-CP-42** (결함) — **`SF-A2`가 항진명제**이고(`watch_enabled`가 하드코딩 `false`) provider를 안 띄워 **`SF-C2`의 복제본**이다
   - 근거: 수정 전 target-contract gate가 추가 provider 시작과 polling add/remove routing 단언 부재 2건으로 실패했다. runner가 client의 초기 부재 확인 신호 뒤 별도 `api-c`를 시작하고, client가 polling 제한 안의 peer 추가와 `api-c` 실제 응답을 확인한 다음 정상 종료와 peer 제거, 이후 routing 제외를 확인한다. SF-A2 단독 실행과 전체 `./run_e2e.sh all`이 통과했다.
-- [ ] **E2E-CP-43** (결함) — **`SF-C2`가 lease 만료만으로 통과한다.** 문서가 명시적으로 금지한 것이고, `draining` 필드를 e2e가 버린다
-- [ ] **E2E-CP-44** (결함) — **`SF-D3`·`SF-A1`의 상태 필드 3개가 실제로는 bit 하나**로 붕괴한다
-- [ ] **E2E-CP-45** (결함) — **`SF-E1`이 store가 아니라 앱 데코레이터에 지연을 넣어** 자기 `sleep`을 잰다
+- [x] **E2E-CP-43** (결함) — **`SF-C2`가 lease 만료만으로 통과한다.** 문서가 명시적으로 금지한 것이고, `draining` 필드를 e2e가 버린다
+  - 근거: 수정 전 failure gate가 typed `draining` 전달, public drain 결과, 전파 상한 동안 lease 유지, 신규 request 제외를 각각 검출해 실패했다. provider가 public `app.drain(...)`을 실행하고 consumer가 `Draining=true`를 관측한 뒤 `api-b`를 신규 request에서 제외한다. terminal `drained`와 TTL 전 owner row·lease 제거를 확인했으며, 묶음 리팩터링 뒤 전체 실행의 `logs/20260715-090048-2562661`에서도 SF-C2가 통과했다.
+- [x] **E2E-CP-44** (결함) — **`SF-D3`·`SF-A1`의 상태 필드 3개가 실제로는 bit 하나**로 붕괴한다
+  - 근거: 수정 전 failure gate가 `get_status()`의 즉석 store probe, 시각을 presence bit로 줄인 DTO, 복구 후 시각 증가 단언 부재 3건으로 실패했다. status는 owner lease heartbeat가 기록한 health·error·renewed-at snapshot을 반환하고, SF-D3는 장애 중 마지막 성공 시각 보존과 복구 뒤 owner lease 갱신 시각·last refresh 시각 증가를 단언한다. 묶음 리팩터링 뒤 SF-A1(`logs/20260715-085947-2551169`)과 SF-D3(`logs/20260715-090135-2570525`)가 통과했다.
+- [x] **E2E-CP-45** (결함) — **`SF-E1`이 store가 아니라 앱 데코레이터에 지연을 넣어** 자기 `sleep`을 잰다
+  - 근거: 수정 전 failure gate가 application store decorator와 `/admin/store-delay`, Redis 지연 proxy 부재를 검출해 3건으로 실패했다. runner의 별도 TCP proxy가 Redis 응답에 300ms 지연을 주입한다. 묶음 리팩터링 뒤 SF-E1(`logs/20260715-090145-2571861`)에서 peer query 2411.36ms 동안 status query 0.81ms, application request p99 51.75ms로 822.20ms budget 안에 남았고 전체 실행도 통과했다.
+  - 묶음 설계 검토: status 변환은 DTO factory와 server 공용 projection을 비교해 wire DTO가 framework 타입을 알지 않는 공용 projection을 선택했다. lifecycle은 handler의 `app_t` 직접 의존과 lifecycle 모듈 내부화를 비교해 drain 결과 변환·응답 후 stop 순서를 모듈 안으로 내렸다. 이 과정에서 중복 변환과 callback pass-through를 제거했다. Config 6에는 domain aggregate가 없고 probe DTO는 HTTP 경계에만 있으며 domain model로 사용되지 않는다. 리팩터링 전/후 SF-E1의 delayed query는 2406.46/2406.16ms, concurrent p99는 51.50/51.64ms로 Redis 왕복이나 dispatch hop 증가가 없었다.
 - [x] **E2E-CP-46** (결함) — **`PS-A1`의 오라클이 계약이 허용하는 것보다 강하고**(무손실 전량), warm-up barrier가 없고, 순서를 안 본다
   - 근거: 수정 전 target-contract 검증이 고정 sleep, 측정 메시지 전량 수신 요구, 공통 수신 순서 검사 부재를 각각 검출했다. client가 세 subscriber의 첫 warm-up 수신을 확인할 때까지 발행을 반복한 뒤 측정 구간을 분리하고, 각 evidence의 기록 순서에서 길이 3 이상인 공통 연속 번호를 찾도록 바꿨다. target-contract 검증과 `./run_e2e.sh PS-A1`이 통과했다.
 - [x] **E2E-CP-47** (결함) — **`PS-B1`의 격리 단언에 시간 제한이 없어** 격리와 head-of-line 블로킹을 구분하지 못한다
@@ -628,16 +671,25 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 
 **Config 9·10·11 심층 — 여기서 "단언이 실패할 수 없다"가 가장 많이 나왔다.**
 
-- [ ] **E2E-CP-49** (결함) — **`ST-E2`(P0)가 계약과 정반대 시나리오를 돈다.** 실패한 transfer를 검증해야 하는데 **성공한 transfer**를 돌린다
-- [ ] **E2E-CP-50** (결함) — **Track F의 필수 marker가 단언이 아니라 경고로 강등**돼 있다. `require_runtime_marker()`가 **절대 실패하지 못한다**
-- [ ] **E2E-CP-51** (미구현) — **필수 order marker 9개 중 2개가 서버에 존재하지 않는다**(`commit_ack`·`source_cleanup`)
-- [ ] **E2E-CP-52** (결함) — **`ST-D2`·`ST-B2`·`ST-C1`·`ST-C3`·`ST-F5`가 이름뿐**이거나 **실패할 수 없는 단언**을 갖는다
-- [ ] **E2E-CP-53** (결함) — **`ST-F2`(P0)·`ST-F3`이 자기 경합 창을 스스로 닫는다.** `join_task.get()` 뒤에 보내 backlog가 이미 빠졌다
-- [ ] **E2E-CP-54** (결함) — **`ST-F4`가 G1/G2의 message kind를 바꿔** 진짜 발산을 피해 간다. **send였다면 문서가 실패라 부른 동작이 조용히 일어난다**
+- [x] **E2E-CP-49** (결함) — **`ST-E2`(P0)가 계약과 정반대 시나리오를 돈다.** 실패한 transfer를 검증해야 하는데 **성공한 transfer**를 돌린다
+  - 근거: transfer-out adapter 실패를 주입해 commit 전 이동을 거절하고, 기존 source session만 후속 push를 받으며 target에는 joined·bound-push evidence가 없는지 client가 판정하도록 바꿨다. `./run_e2e.sh ST-E2`와 전체 runner가 통과했다.
+- [x] **E2E-CP-50** (결함) — **Track F의 필수 marker가 단언이 아니라 경고로 강등**돼 있다. `require_runtime_marker()`가 **절대 실패하지 못한다**
+  - 근거: stderr marker와 경고 전용 helper를 제거하고 client가 역할 server의 구조화 evidence에서 필수 marker·순서·correlation을 직접 검사하도록 바꿨다. marker가 없으면 bounded evidence wait가 실패하며 ST-F1~F6과 전체 runner가 통과했다.
+- [x] **E2E-CP-51** (미구현) — **필수 order marker 9개 중 2개가 서버에 존재하지 않는다**(`commit_ack`·`source_cleanup`)
+  - 근거: framework의 target commit 확인과 generation fence가 적용된 source 정리 경계에서 두 marker를 message-flow observer로 발행한다. ST-B1·B3가 같은 transfer id·correlation·flow id를 검사하고 전체 runner가 통과했다.
+- [x] **E2E-CP-52** (결함) — **`ST-D2`·`ST-B2`·`ST-C1`·`ST-C3`·`ST-F5`가 이름뿐**이거나 **실패할 수 없는 단언**을 갖는다
+  - 근거: cleanup 지연·commit ack 직후 source 중단·pending admission 만료·실제 callback 실패 뒤 packet 요청·두 node 연속 이동과 mapping 축출을 각각 실패 가능한 절차로 바꿨다. actor-a 재시작을 포함한 `./run_e2e.sh all`의 스무 시나리오가 통과했다.
+- [x] **E2E-CP-53** (결함) — **`ST-F2`(P0)·`ST-F3`이 자기 경합 창을 스스로 닫는다.** `join_task.get()` 뒤에 보내 backlog가 이미 빠졌다
+  - 근거: target prepare와 backlog enqueue·location publish를 분리하고 client가 join caller 완료 전에 direct packet을 보낸다. target의 `backlog_enqueued < location_committed`와 B1→B2→D1, S1→S2→S3→S4 순서를 단언했으며 ST-F2·F3과 전체 runner가 통과했다.
+- [x] **E2E-CP-54** (결함) — **`ST-F4`가 G1/G2의 message kind를 바꿔** 진짜 발산을 피해 간다. **send였다면 문서가 실패라 부른 동작이 조용히 일어난다**
+  - 근거: G1과 G2를 같은 explicit old ref의 one-way send로 보내고, window 안 forward와 window 뒤 fail-fast·target 미처리를 구조화 evidence로 판정한다. 자동 re-resolve send 우회를 제거한 뒤 ST-F4·F5와 전체 runner가 통과했다.
 - [x] **E2E-CP-55** (결함) — **`ST-D1`(P0)의 local 절반이 항진명제**다(`>=`)
   - 근거: 재검증에서 C++ local move는 기존 owner row를 유지해 별도 pending row를 쓰지 않으므로 conditional pending evidence 주장은 제외했다. 수정 전 target-contract gate가 commit 뒤 generation 증가와 지연 중 actor packet route 관찰 부재를 각각 검출했고, ST-D1이 generation 증가, commit 전 target handler 미도달, commit 뒤 target 처리까지 단언하도록 보강한 뒤 gate와 `./run_e2e.sh ST-D1`이 통과했다.
-- [ ] **E2E-CP-56** (결함) — **Config 10의 topology가 문서와 다르다.** actor 노드 3개, session gateway·transfer controller **0개**
-- [ ] **E2E-CP-57** (결함) — **Track F 관측이 env로 게이트된 stderr 사이드 채널**이다. 문서가 **"단순 로그 문자열 grep이 아니라"**고 명시적으로 금지한 것
+- [x] **E2E-CP-56** (결함) — **Config 10의 topology가 문서와 다르다.** actor 노드 3개, session gateway·transfer controller **0개**
+  - 근거: runner가 actor node 두 개, session gateway 두 개, transfer controller 한 개를 별도 process로 시작한다. controller가 actor 생성·이동·조회를, gateway가 connector session을, actor node가 lifecycle과 handler를 맡는다. remote session route는 bind 완료 시 framework 내부 프로토콜로 등록하고 이동 snapshot에 보존한다. `./run_e2e.sh all`이 `logs/20260715-111050-3056956`에서 스무 시나리오를 통과했다.
+- [x] **E2E-CP-57** (결함) — **Track F 관측이 env로 게이트된 stderr 사이드 채널**이다. 문서가 **"단순 로그 문자열 grep이 아니라"**고 명시적으로 금지한 것
+  - 근거: env·stderr marker를 없애고 framework message-flow observer가 역할 server evidence에 transfer id·correlation id·flow id를 기록한다. ST-F6은 request id와 request flag가 source backlog와 target replay에서 같고 handler dispatch가 한 번인지도 판정한다. `./run_e2e.sh ST-F6`은 `logs/20260715-110604-3043381`에서 통과했다.
+  - 묶음 설계 검토: 위험 신호는 session bind 순서를 호출자가 알아야 하는 점, source를 발신 session으로 추론하는 정보 누출, session RID를 필수로 둔 잘못된 snapshot 불변식, 같은 request id 재시도가 backlog에 중복 적재되는 점이었다. public metadata나 샘플 probe로 경로를 등록하는 안 대신 gateway bind가 내부 등록을 완료하도록 책임을 내렸고, session RID는 optional로 모델링했으며 request id 기준 dedup을 coordinator에 모았다. Domain과 wire DTO는 framework transport 타입에 의존하지 않는다. 리팩터링 전/후 admission burst median throughput은 94,926/95,955건/s, p99는 2,685.49/2,419.20µs로 dispatch hop·lock 회귀가 없었다. 단위 테스트 2개와 전체 스무 시나리오를 다시 통과한 뒤 재리뷰에서 의미 있는 POSD/DDD 위험 신호가 남지 않았다.
 - [ ] **E2E-CP-58** (결함) — **`TA-B1`의 error kind를 e2e caller가 스스로 만들어 던진다.** framework 분류를 **지워도 통과**한다. send를 존재 확인 수단으로 쓴다(문서가 이름 짚어 금지)
 - [ ] **E2E-CP-59** (결함) — **`TA-B2`·`TA-B3`가 앱 코드로 location row를 위조한다.** actor 노드가 1개뿐이라 owner 교체가 **구성 불가능**하고, B3는 route를 **끊지도 복구하지도 않는다**
 - [ ] **E2E-CP-60** (미구현) — **Track B의 negative 역할서버 evidence**가 세 시나리오 전부 미단언

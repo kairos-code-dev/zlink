@@ -4,12 +4,16 @@ export interface ZLinkLocationOptions {
   readonly pollingIntervalMs?: number;
   readonly listPageSize?: number;
   readonly storeFailureGraceMs?: number;
+  readonly routingIdFencingMarginMs?: number;
+  readonly ownerLeaseRenewTimeoutMs?: number;
 }
 
 export const zlinkDefaultLocationOptions: Required<ZLinkLocationOptions> = {
-  heartbeatIntervalMs: 5000,
-  ownerLeaseTtlMs: 15000,
+  heartbeatIntervalMs: 10000,
+  ownerLeaseTtlMs: 30000,
   pollingIntervalMs: 1000,
   listPageSize: 1000,
-  storeFailureGraceMs: 30000
+  storeFailureGraceMs: 30000,
+  routingIdFencingMarginMs: 5000,
+  ownerLeaseRenewTimeoutMs: 3000
 };

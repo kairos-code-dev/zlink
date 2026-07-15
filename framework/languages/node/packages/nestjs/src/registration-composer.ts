@@ -377,6 +377,8 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
   for (const [name, channel] of Object.entries(options.clientServerChannels ?? {})) {
     assertChannelNameAvailable(channels, name, 'ClientServerChannel');
     channels[name] = {
+      routingId: channel.routingId,
+      routingIdAllocation: channel.routingIdAllocation,
       client: channel.client,
       requestHandlers: channel.requestHandlers,
       sendHandlers: channel.sendHandlers,
@@ -387,6 +389,8 @@ export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOp
   for (const [name, channel] of Object.entries(options.fanoutChannels ?? {})) {
     assertChannelNameAvailable(channels, name, 'FanoutChannel');
     channels[name] = {
+      routingId: channel.routingId,
+      routingIdAllocation: channel.routingIdAllocation,
       publishHandlers: channel.publishHandlers,
       publisher: channel.publisher,
       subscriber: channel.subscriber

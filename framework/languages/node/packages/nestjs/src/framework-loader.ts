@@ -87,6 +87,21 @@ interface FrameworkIntegrationModule {
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
   ): void;
   validateActorTransferForwardWindow(timeoutMs: number): number;
+  createRoutingIdAllocation(
+    slotCount: number,
+    routingIdPrefix: string,
+    groupName?: string
+  ): { slotCount: number; routingIdPrefix: string; groupName?: string };
+  setRoutingIdAllocationGroup(
+    groupName: string,
+    allocation: { slotCount: number; routingIdPrefix: string; groupName?: string } | undefined,
+    defaultPrefix: string
+  ): { slotCount: number; routingIdPrefix: string; groupName?: string };
+  rejectFixedRoutingId(routingId: unknown, memberName: string): void;
+  rejectAllocatedRoutingId(
+    allocation: { slotCount: number; routingIdPrefix: string; groupName?: string } | undefined,
+    memberName: string
+  ): void;
   registerEntrySpot(
     options: { entrySpotType?: Type<ZLinkEntrySpot> },
     entrySpotType: Type<ZLinkEntrySpot>

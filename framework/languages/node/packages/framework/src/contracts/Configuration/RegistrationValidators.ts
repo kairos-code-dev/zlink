@@ -17,6 +17,8 @@ import {
   isRouteTransportDeclared
 } from './RouteChannelInternalState';
 import { validateTimerRegistration } from './TimerRegistrationValidator';
+import { collectRoutingIdAllocationMembers } from './RoutingIdAllocationRegistration';
+import { zlinkDefaultLocationOptions } from '../Locations';
 
 export function validateFrameworkRegistration(
   registration: ZLinkFrameworkRegistration,
@@ -38,6 +40,7 @@ export function validateFrameworkRegistration(
   validateWorkerOptions(registration.worker);
   validateMonitoring(registration);
   validateLocationRegistration(registration);
+  validateRoutingIdAllocations(registration);
 }
 
 function toActorFactoryCount(value: ZLinkSpotNodeOptions['actorFactories']): number {
@@ -123,6 +126,96 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
       'In-memory location stores cannot be combined with explicit location store registrations.'
     );
   }
+}
+
+function validateRoutingIdAllocations(registration: ZLinkFrameworkRegistration): void {
+  const members = collectRoutingIdAllocationMembers(registration);
+  if (members.length === 0) return;
+  if (!hasLocationStores(registration)) {
+    throw new ZLinkConfigurationException(
+      'Allocated routing ids require a location store or in-memory location stores.'
+    );
+  }
+  const explicitStore = registration.locations.storeInstance;
+  if (explicitStore !== undefined && !isRoutingIdAllocationStore(explicitStore)) {
+    throw new ZLinkConfigurationException(
+      'The registered location store does not provide routing-id slot allocation.'
+    );
+  }
+
+  const options = { ...zlinkDefaultLocationOptions, ...registration.locations.options };
+  const times = [
+    options.heartbeatIntervalMs,
+    options.ownerLeaseTtlMs,
+    options.routingIdFencingMarginMs,
+    options.ownerLeaseRenewTimeoutMs
+  ];
+  if (times.some((value) => !Number.isFinite(value) || value <= 0)) {
+    throw new ZLinkConfigurationException('Allocated routing-id lease times must be greater than zero.');
+  }
+  if (options.heartbeatIntervalMs + options.ownerLeaseRenewTimeoutMs
+      >= options.ownerLeaseTtlMs - options.routingIdFencingMarginMs) {
+    throw new ZLinkConfigurationException(
+      'Allocated routing-id lease times must satisfy heartbeat + renew timeout < TTL - fencing margin.'
+    );
+  }
+
+  const groups = new Map<string, typeof members>();
+  for (const member of members) {
+    if (!Number.isInteger(member.slotCount) || member.slotCount < 1) {
+      throw new ZLinkConfigurationException(
+        `Routing-id allocation group '${member.groupName}' must configure at least one slot.`
+      );
+    }
+    if (member.groupName.trim().length === 0 || member.routingIdPrefix.trim().length === 0) {
+      throw new ZLinkConfigurationException('Routing-id allocation names and prefixes must not be empty.');
+    }
+    if (Buffer.byteLength(`${member.routingIdPrefix}${member.slotCount}`, 'utf8') > 255) {
+      throw new ZLinkConfigurationException(
+        `Routing-id allocation member '${member.memberName}' can exceed the 255 byte routing-id limit.`
+      );
+    }
+    if (member.fixedRoutingId !== undefined) {
+      throw new ZLinkConfigurationException(
+        `Routing-id allocation member '${member.memberName}' cannot combine fixed and allocated routing ids.`
+      );
+    }
+    if (member.explicitEntrySpotRoutingId) {
+      throw new ZLinkConfigurationException(
+        `SpotNode '${member.memberName}' cannot combine allocated routing id and explicit Entry Spot routing id.`
+      );
+    }
+    if (!member.hasBindableRole) {
+      throw new ZLinkConfigurationException(
+        `Routing-id allocation member '${member.memberName}' must enable a channel or SpotNode role.`
+      );
+    }
+    const group = groups.get(member.groupName) ?? [];
+    groups.set(member.groupName, [...group, member]);
+  }
+  for (const [groupName, group] of groups) {
+    if (group.some((member) => member.slotCount !== group[0]?.slotCount)) {
+      throw new ZLinkConfigurationException(
+        `Routing-id allocation group '${groupName}' must use one slot count for every member.`
+      );
+    }
+    if (new Set(group.map((member) => member.memberName)).size !== group.length) {
+      throw new ZLinkConfigurationException(
+        `Routing-id allocation group '${groupName}' contains duplicate members.`
+      );
+    }
+  }
+}
+
+function isRoutingIdAllocationStore(value: unknown): boolean {
+  const store = value as {
+    acquireRoutingIdSlot?: unknown;
+    releaseRoutingIdSlot?: unknown;
+    listRoutingIdSlots?: unknown;
+  };
+  return typeof store.acquireRoutingIdSlot === 'function'
+    && typeof store.releaseRoutingIdSlot === 'function'
+    && typeof store.listRoutingIdSlots === 'function';
 }
 
 function validateDuplicateMonitoringSourceNames(sourceNames: readonly string[]): void {

@@ -17,3 +17,4 @@ export const ZLINK_ACTOR_SPOT_HANDLE_RESOLVER = Symbol.for('@zlink-systems/frame
 export const ZLINK_RUNTIME_EVENT_PUBLISHER = Symbol.for('@zlink-systems/framework:runtime-event-publisher');
 export const ZLINK_DRAIN_CONTROL = Symbol.for('@zlink-systems/framework:drain-control');
 export const ZLINK_LOCATION_RUNTIME_QUERY = Symbol.for('@zlink-systems/framework:location-runtime-query');
+export const ZLINK_ALLOCATED_ROUTING_ID_PROVIDER = Symbol.for('@zlink-systems/framework:allocated-routing-id-provider');

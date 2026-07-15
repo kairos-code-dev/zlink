@@ -10,6 +10,10 @@ export type * from './contracts';
 export {
   registerActorFactory,
   registerActorTransferAdapter,
+  createRoutingIdAllocation,
+  setRoutingIdAllocationGroup,
+  rejectFixedRoutingId,
+  rejectAllocatedRoutingId,
   registerEntrySpot,
   registerSpotFactory,
   validateActorTransferForwardWindow
@@ -71,6 +75,10 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly boundSessionFactory: ZLinkBoundSessionFactory;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;
+  waitForReadyAllocation(
+    groupName: string,
+    signal?: AbortSignal
+  ): Promise<import('./contracts').ZLinkAllocatedRoutingId>;
   createLocationHandleResolver(): ZLinkSpotHandleResolver | undefined;
   start(): Promise<void>;
   stop(): Promise<void>;

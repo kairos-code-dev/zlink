@@ -123,3 +123,95 @@ for _, ownerId in ipairs(owners) do
 end
 return {nowMs, out}
 `;
+
+export const ACQUIRE_ROUTING_ID_SLOT_SCRIPT = PROLOGUE + `
+local config = redis.call('HGET', KEYS[1], 'config')
+local slotCount = tonumber(ARGV[2])
+if not config then
+    redis.call('HSET', KEYS[1],
+        'config', ARGV[1], 'slotCount', slotCount, 'identityMode', 'allocated')
+elseif config ~= ARGV[1] or tonumber(redis.call('HGET', KEYS[1], 'slotCount')) ~= slotCount then
+    return {'mismatch', config, redis.call('HGET', KEYS[1], 'slotCount'), nowMs}
+end
+
+local ownerField = 'owner:' .. ARGV[3]
+local existingSlot = tonumber(redis.call('HGET', KEYS[1], ownerField))
+if existingSlot then
+    local value = redis.call('HGET', KEYS[1], 'slot:' .. existingSlot)
+    if value then
+        local currentOwner, generation = string.match(value, '([^|]*)|([^|]*)|')
+        if currentOwner == ARGV[3] and redis.call('EXISTS', KEYS[2]) == 1 then
+            local renewedExpiry = nowMs + tonumber(ARGV[4])
+            redis.call('HSET', KEYS[1], 'slot:' .. existingSlot,
+                currentOwner .. '|' .. generation .. '|' .. renewedExpiry)
+            local leaseValue = redis.call('GET', KEYS[2])
+            local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
+            redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+            redis.call('SADD', KEYS[3], ARGV[3])
+            return {'acquired', existingSlot, tonumber(generation), renewedExpiry, nowMs}
+        end
+    end
+end
+
+local selected = 0
+for slot = 1, slotCount do
+    local value = redis.call('HGET', KEYS[1], 'slot:' .. slot)
+    if not value then
+        selected = slot
+        break
+    end
+    local currentOwner = string.match(value, '([^|]*)|')
+    if redis.call('EXISTS', ARGV[5] .. currentOwner) == 0 then
+        redis.call('HDEL', KEYS[1], 'owner:' .. currentOwner)
+        selected = slot
+        break
+    end
+end
+
+if selected == 0 then return {'exhausted', nowMs} end
+
+local generationField = 'generation:' .. selected
+local generation = redis.call('HINCRBY', KEYS[1], generationField, 1)
+local expiresAt = nowMs + tonumber(ARGV[4])
+redis.call('HSET', KEYS[1],
+    'slot:' .. selected, ARGV[3] .. '|' .. generation .. '|' .. expiresAt,
+    ownerField, selected)
+local leaseValue = redis.call('GET', KEYS[2])
+local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
+redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+redis.call('SADD', KEYS[3], ARGV[3])
+return {'acquired', selected, generation, expiresAt, nowMs}
+`;
+
+export const RELEASE_ROUTING_ID_SLOT_SCRIPT = PROLOGUE + `
+local slotField = 'slot:' .. ARGV[1]
+local value = redis.call('HGET', KEYS[1], slotField)
+if not value then return {'stale', nowMs} end
+local currentOwner, generation = string.match(value, '([^|]*)|([^|]*)|')
+if currentOwner ~= ARGV[2] or tonumber(generation) ~= tonumber(ARGV[3]) then
+    return {'stale', nowMs}
+end
+redis.call('HDEL', KEYS[1], slotField, 'owner:' .. currentOwner)
+return {'released', nowMs}
+`;
+
+export const LIST_ROUTING_ID_SLOTS_SCRIPT = PROLOGUE + `
+local config = redis.call('HGET', KEYS[1], 'config')
+if not config then return {'', 0, nowMs, {}} end
+local slotCount = tonumber(redis.call('HGET', KEYS[1], 'slotCount'))
+local allocations = {}
+for slot = 1, slotCount do
+    local value = redis.call('HGET', KEYS[1], 'slot:' .. slot)
+    if value then
+        local owner, generation = string.match(value, '([^|]*)|([^|]*)|')
+        local remaining = redis.call('PTTL', ARGV[1] .. owner)
+        if remaining >= 0 then
+            allocations[#allocations + 1] = slot
+            allocations[#allocations + 1] = owner
+            allocations[#allocations + 1] = tonumber(generation)
+            allocations[#allocations + 1] = nowMs + remaining
+        end
+    end
+end
+return {config, slotCount, nowMs, allocations}
+`;

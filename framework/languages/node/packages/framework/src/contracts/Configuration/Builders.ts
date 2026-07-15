@@ -49,6 +49,8 @@ export interface ZLinkStreamCompressionBuilder {
 export interface ZLinkClientServerChannelBuilder {
   enableServer(endpoint: string): this;
   routingId(routingId: string): this;
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+  setRoutingIdAllocationGroup(groupName: string): this;
   configureServerSocket(): ZLinkSocketConfig;
   configureClientSocket(): ZLinkSocketConfig;
   enableClient(): this;
@@ -59,6 +61,9 @@ export interface ZLinkClientServerChannelBuilder {
 
 export interface ZLinkFanoutChannelBuilder {
   enablePublisher(endpoint: string): this;
+  routingId(routingId: string): this;
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+  setRoutingIdAllocationGroup(groupName: string): this;
   enableSubscriber(): this;
   enableSubscriber(endpoint: string): this;
   subscriberConnections(): ZLinkEndpointConnections;
@@ -66,6 +71,9 @@ export interface ZLinkFanoutChannelBuilder {
 
 export interface ZLinkRouteMeshChannelBuilder {
   enableServer(endpoint: string): this;
+  routingId(routingId: string): this;
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+  setRoutingIdAllocationGroup(groupName: string): this;
   enableClient(): this;
   enableClient(endpoint: string): this;
   clientConnections(): ZLinkEndpointConnections;

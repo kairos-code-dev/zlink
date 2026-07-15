@@ -33,6 +33,7 @@ export interface ZLinkNestIntegrationRuntimeHost {
   readonly boundSessionFactory: unknown;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: unknown;
+  waitForReadyAllocation(groupName: string, signal?: AbortSignal): Promise<unknown>;
   createLocationHandleResolver(): unknown;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -132,6 +133,8 @@ export interface ZLinkFrameworkRegistrationOptions {
 }
 
 export interface ZLinkChannelOptions {
+  readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly requestTimeoutMs?: number;
   readonly client?: ZLinkClientCapabilityOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
@@ -168,6 +171,7 @@ export interface ZLinkRouteMeshChannelOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly weight?: number;
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
@@ -199,6 +203,7 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 export interface ZLinkSpotNodeOptions {
   readonly drainPolicy?: ZLinkSpotDrainPolicy;
   readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
   readonly entrySpot?: ZLinkEntrySpotOptions;
@@ -215,6 +220,12 @@ export interface ZLinkSpotNodeOptions {
   readonly spotSubscriptionHandlers?: readonly ZLinkSpotSubscriptionHandlerRegistration[];
   readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
+}
+
+export interface ZLinkRoutingIdAllocationOptions {
+  readonly slotCount: number;
+  readonly routingIdPrefix: string;
+  readonly groupName?: string;
 }
 
 export interface ZLinkSpotRouterCapabilityOptions {

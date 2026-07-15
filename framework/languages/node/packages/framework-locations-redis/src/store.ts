@@ -15,7 +15,10 @@ import {
   routingIdHex
 } from './redis-row-keys';
 import {
+  ACQUIRE_ROUTING_ID_SLOT_SCRIPT,
+  LIST_ROUTING_ID_SLOTS_SCRIPT,
   LIST_LEASES_SCRIPT,
+  RELEASE_ROUTING_ID_SLOT_SCRIPT,
   REMOVE_ALL_BY_OWNER_SCRIPT,
   REMOVE_LEASE_SCRIPT,
   REMOVE_SCRIPT,
@@ -37,9 +40,9 @@ import { asArray, asString, toNumber } from './redis-values';
 import { fromUnixMs, intentName, toWriteResult } from './redis-write-result';
 import {
   ZLinkLocationWriteIntent,
+  type RoutingId,
   type ZLinkLocationChangeStampStore,
   type ZLinkLocationStore,
-  type RoutingId,
   type ZLinkActorLocation,
   type ZLinkActorLocationFilter,
   type ZLinkActorLocationKey,
@@ -59,10 +62,19 @@ import {
   type ZLinkRouteLocationKey,
   type ZLinkSpotLocation,
   type ZLinkSpotLocationFilter,
-  type ZLinkSpotLocationKey
+  type ZLinkSpotLocationKey,
+  type ZLinkRoutingIdSlotAcquireRequest,
+  type ZLinkRoutingIdSlotAcquireResult,
+  type ZLinkRoutingIdSlotAllocationMember,
+  type ZLinkRoutingIdSlotAllocationSnapshot,
+  type ZLinkRoutingIdSlotAllocationStore,
+  type ZLinkRoutingIdSlotReleaseResult
 } from '@zlink-systems/framework';
 
-export class ZLinkRedisLocationStore implements ZLinkLocationStore, ZLinkLocationChangeStampStore {
+export class ZLinkRedisLocationStore implements
+  ZLinkLocationStore,
+  ZLinkLocationChangeStampStore,
+  ZLinkRoutingIdSlotAllocationStore {
   private readonly keys: RedisStoreKeys;
   private readonly providedClient?: RedisCommandClient;
   private client?: RedisCommandClient;
@@ -276,6 +288,96 @@ export class ZLinkRedisLocationStore implements ZLinkLocationStore, ZLinkLocatio
     return value === null ? 0n : BigInt(asString(value));
   }
 
+  async acquireRoutingIdSlot(
+    request: ZLinkRoutingIdSlotAcquireRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkRoutingIdSlotAcquireResult> {
+    validateAcquire(request);
+    const members = [...request.members]
+      .sort((left, right) => left.channelName.localeCompare(right.channelName));
+    const config = JSON.stringify(members.map((member) => ({
+      ChannelName: member.channelName,
+      RoutingIdPrefix: member.routingIdPrefix
+    })));
+    const raw = asArray(await this.eval(ACQUIRE_ROUTING_ID_SLOT_SCRIPT, [
+      this.keys.routingIdAllocationGroup(request.groupName),
+      this.keys.lease(request.ownerId),
+      this.keys.leaseIndex()
+    ], [
+      config,
+      String(request.slotCount),
+      request.ownerId,
+      String(Math.max(1, Math.trunc(request.leaseTtlMs))),
+      this.keys.leasePrefix()
+    ], signal));
+    const kind = asString(raw[0]);
+    if (kind === 'exhausted') return { kind: 'groupExhausted' };
+    if (kind === 'identity-conflict') return { kind: 'identityModeConflict' };
+    if (kind === 'mismatch') {
+      return {
+        kind: 'groupConfigurationMismatch',
+        expectedMembers: decodeMembers(asString(raw[1])),
+        expectedSlotCount: toNumber(raw[2]),
+        actualMembers: members,
+        actualSlotCount: request.slotCount
+      };
+    }
+    if (kind !== 'acquired') throw new Error(`Unknown routing-id slot acquire result '${kind}'.`);
+    return {
+      kind: 'acquired',
+      allocation: {
+        slot: toNumber(raw[1]),
+        owner: { ownerId: request.ownerId, generation: BigInt(asString(raw[2])) },
+        leaseExpiresAt: fromUnixMs(toNumber(raw[3])),
+        storeNow: fromUnixMs(toNumber(raw[4]))
+      }
+    };
+  }
+
+  async releaseRoutingIdSlot(
+    groupName: string,
+    slot: number,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkRoutingIdSlotReleaseResult> {
+    validateRelease(groupName, slot, owner);
+    const raw = asArray(await this.eval(RELEASE_ROUTING_ID_SLOT_SCRIPT, [
+      this.keys.routingIdAllocationGroup(groupName)
+    ], [String(slot), owner.ownerId, String(owner.generation)], signal));
+    return asString(raw[0]) === 'released' ? 'released' : 'ignoredStale';
+  }
+
+  async listRoutingIdSlots(
+    groupName: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkRoutingIdSlotAllocationSnapshot> {
+    validateGroupName(groupName);
+    const raw = asArray(await this.eval(LIST_ROUTING_ID_SLOTS_SCRIPT, [
+      this.keys.routingIdAllocationGroup(groupName)
+    ], [this.keys.leasePrefix()], signal));
+    const storeNow = fromUnixMs(toNumber(raw[2]));
+    const entries = asArray(raw[3]);
+    const allocations = [];
+    for (let index = 0; index + 3 < entries.length; index += 4) {
+      allocations.push({
+        slot: toNumber(entries[index]),
+        owner: {
+          ownerId: asString(entries[index + 1]),
+          generation: BigInt(asString(entries[index + 2]))
+        },
+        leaseExpiresAt: fromUnixMs(toNumber(entries[index + 3])),
+        storeNow
+      });
+    }
+    return {
+      groupName,
+      members: asString(raw[0]).length === 0 ? [] : decodeMembers(asString(raw[0])),
+      slotCount: toNumber(raw[1]),
+      allocations,
+      storeNow
+    };
+  }
+
   async dispose(): Promise<void> {
     const client = this.client;
     this.client = undefined;
@@ -428,4 +530,34 @@ export class ZLinkRedisLocationStore implements ZLinkLocationStore, ZLinkLocatio
     return client;
   }
 
+}
+
+function decodeMembers(value: string): readonly ZLinkRoutingIdSlotAllocationMember[] {
+  const decoded = JSON.parse(value) as Array<{
+    ChannelName?: string;
+    RoutingIdPrefix?: string;
+    channelName?: string;
+    routingIdPrefix?: string;
+  }>;
+  return decoded.map((member) => ({
+    channelName: member.ChannelName ?? member.channelName ?? '',
+    routingIdPrefix: member.RoutingIdPrefix ?? member.routingIdPrefix ?? ''
+  }));
+}
+
+function validateAcquire(request: ZLinkRoutingIdSlotAcquireRequest): void {
+  validateGroupName(request.groupName);
+  if (!Number.isInteger(request.slotCount) || request.slotCount < 1) throw new RangeError('slotCount must be positive.');
+  if (request.ownerId.trim().length === 0 || request.members.length === 0) throw new TypeError('ownerId and members are required.');
+  if (!Number.isFinite(request.leaseTtlMs) || request.leaseTtlMs <= 0) throw new RangeError('leaseTtlMs must be positive.');
+}
+
+function validateRelease(groupName: string, slot: number, owner: ZLinkLocationOwnerToken): void {
+  validateGroupName(groupName);
+  if (!Number.isInteger(slot) || slot < 1) throw new RangeError('slot must be positive.');
+  if (owner.ownerId.trim().length === 0 || owner.generation < 1n) throw new TypeError('owner token is invalid.');
+}
+
+function validateGroupName(groupName: string): void {
+  if (groupName.trim().length === 0) throw new TypeError('groupName must not be empty.');
 }

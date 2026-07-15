@@ -10,6 +10,7 @@ import type {
 import type { ZLinkFrameworkRegistration } from './framework-integration-contracts';
 import {
   ZLINK_ACTOR_CLIENT,
+  ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
   ZLINK_ACTOR_MANAGER,
   ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
   ZLINK_BOUND_SESSION_FACTORY,
@@ -135,6 +136,12 @@ interface ConditionalClientProviderSpec {
 }
 
 const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[] = [
+  {
+    token: ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
+    requiresRuntime: true,
+    isEnabled: (registration) => hasAllocatedRoutingIds(registration),
+    create: (_registration, runtime) => requireRuntime(runtime)
+  },
   {
     token: ZLINK_SPOT_MANAGER,
     requiresRuntime: true,
@@ -290,6 +297,7 @@ function requireRuntime(runtime: FrameworkRuntimeHost | undefined): FrameworkRun
 
 export function conditionalClientTokens(): InjectionToken[] {
   return [
+    ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
     ZLINK_SPOT_MANAGER,
     ZLINK_SPOT_OUTBOUND,
     ZLINK_SPOT_PUBLISHER_CLIENT,
@@ -299,6 +307,12 @@ export function conditionalClientTokens(): InjectionToken[] {
     ZLINK_ACTOR_SPOT_HANDLE_RESOLVER,
     ZLINK_LOCATION_RUNTIME_QUERY
   ];
+}
+
+function hasAllocatedRoutingIds(registration: ZLinkFrameworkRegistration): boolean {
+  return [...registration.channels.values()].some((channel) => channel.routingIdAllocation !== undefined)
+    || [...registration.routeChannelOptions.values()].some((channel) => channel.routingIdAllocation !== undefined)
+    || [...registration.spotNodes.values()].some((spotNode) => spotNode.routingIdAllocation !== undefined);
 }
 
 function hasLocationStores(registration: ZLinkFrameworkRegistration): boolean {

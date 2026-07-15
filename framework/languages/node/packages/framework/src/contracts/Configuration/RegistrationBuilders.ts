@@ -59,6 +59,10 @@ import type {
 } from './RegistrationTypes';
 import {
   registerActorTransferAdapter,
+  createRoutingIdAllocation,
+  setRoutingIdAllocationGroup,
+  rejectFixedRoutingId,
+  rejectAllocatedRoutingId,
   registerActorFactory,
   registerEntrySpot,
   registerSpotFactory,
@@ -149,22 +153,22 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
     }
     this.spotMeshes.add(channelName);
     const spotNode = this.spotNodeOptions(channelName);
-    return new DefaultSpotNodeBuilder(spotNode);
+    return new DefaultSpotNodeBuilder(channelName, spotNode);
   }
 
   addClientServerChannel(name: string): ZLinkClientServerChannelBuilder {
-    return new DefaultClientServerChannelBuilder(this.channel(name));
+    return new DefaultClientServerChannelBuilder(name, this.channel(name));
   }
 
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder {
-    return new DefaultFanoutChannelBuilder(this.channel(name));
+    return new DefaultFanoutChannelBuilder(name, this.channel(name));
   }
 
   addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder {
     const channel = this.channel(name);
     channel.routeMesh ??= {};
     markRouteTransportDeclared(channel.routeMesh);
-    return new DefaultRouteChannelOptionsBuilder(channel.routeMesh);
+    return new DefaultRouteChannelOptionsBuilder(name, channel.routeMesh);
   }
 
   addStreamNode(name: string): ZLinkStreamNodeBuilder {
@@ -265,7 +269,10 @@ function defaultDispatchOptions(): ZLinkDispatchOptions {
 }
 
 class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuilder {
-  constructor(private readonly channel: MutableChannelOptions) {}
+  constructor(
+    private readonly name: string,
+    private readonly channel: MutableChannelOptions
+  ) {}
 
   enableServer(endpoint: string): this {
     this.channel.server ??= {};
@@ -274,8 +281,28 @@ class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuild
   }
 
   routingId(routingId: string): this {
+    rejectAllocatedRoutingId(this.channel.routingIdAllocation, this.name);
     this.channel.server ??= {};
     this.channel.server.routingId = routingId;
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    rejectFixedRoutingId(this.channel.server?.routingId, this.name);
+    this.channel.routingIdAllocation = createRoutingIdAllocation(
+      slotCount,
+      routingIdPrefix,
+      this.channel.routingIdAllocation?.groupName
+    );
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.channel.routingIdAllocation = setRoutingIdAllocationGroup(
+      groupName,
+      this.channel.routingIdAllocation,
+      this.name
+    );
     return this;
   }
 
@@ -311,11 +338,39 @@ class DefaultClientServerChannelBuilder implements ZLinkClientServerChannelBuild
 }
 
 class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
-  constructor(private readonly channel: MutableChannelOptions) {}
+  constructor(
+    private readonly name: string,
+    private readonly channel: MutableChannelOptions
+  ) {}
 
   enablePublisher(endpoint: string): this {
     this.channel.publisher ??= {};
     this.channel.publisher.bind = endpoint;
+    return this;
+  }
+
+  routingId(routingId: string): this {
+    rejectAllocatedRoutingId(this.channel.routingIdAllocation, this.name);
+    this.channel.routingId = routingId;
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    rejectFixedRoutingId(this.channel.routingId, this.name);
+    this.channel.routingIdAllocation = createRoutingIdAllocation(
+      slotCount,
+      routingIdPrefix,
+      this.channel.routingIdAllocation?.groupName
+    );
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.channel.routingIdAllocation = setRoutingIdAllocationGroup(
+      groupName,
+      this.channel.routingIdAllocation,
+      this.name
+    );
     return this;
   }
 
@@ -338,10 +393,38 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
 class DefaultRouteChannelOptionsBuilder<
   TOptions extends MutableRouteMeshChannelOptions
 > implements ZLinkRouteMeshChannelBuilder {
-  constructor(private readonly routeChannel: TOptions) {}
+  constructor(
+    private readonly name: string,
+    private readonly routeChannel: TOptions
+  ) {}
 
   enableServer(endpoint: string): this {
     this.routeChannel.bind = endpoint;
+    return this;
+  }
+
+  routingId(routingId: string): this {
+    rejectAllocatedRoutingId(this.routeChannel.routingIdAllocation, this.name);
+    this.routeChannel.routingId = routingId;
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    rejectFixedRoutingId(this.routeChannel.routingId, this.name);
+    this.routeChannel.routingIdAllocation = createRoutingIdAllocation(
+      slotCount,
+      routingIdPrefix,
+      this.routeChannel.routingIdAllocation?.groupName
+    );
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.routeChannel.routingIdAllocation = setRoutingIdAllocationGroup(
+      groupName,
+      this.routeChannel.routingIdAllocation,
+      this.name
+    );
     return this;
   }
 
@@ -425,9 +508,13 @@ export class DefaultStreamCompressionBuilder implements ZLinkStreamCompressionBu
 }
 
 class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
-  constructor(private readonly spotNode: MutableSpotNodeOptions) {}
+  constructor(
+    private readonly name: string,
+    private readonly spotNode: MutableSpotNodeOptions
+  ) {}
 
   routingId(routingId: RoutingId): this {
+    rejectAllocatedRoutingId(this.spotNode.routingIdAllocation, this.name);
     this.spotNode.routingId = routingId;
     if (this.spotNode.router !== undefined) {
       this.spotNode.router.routingId = routingId;
@@ -435,6 +522,25 @@ class DefaultSpotNodeBuilder implements ZLinkSpotNodeBuilder {
     if (this.spotNode.pubSub !== undefined) {
       this.spotNode.pubSub.routingId = routingId;
     }
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    rejectFixedRoutingId(this.spotNode.routingId, this.name);
+    this.spotNode.routingIdAllocation = createRoutingIdAllocation(
+      slotCount,
+      routingIdPrefix,
+      this.spotNode.routingIdAllocation?.groupName
+    );
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.spotNode.routingIdAllocation = setRoutingIdAllocationGroup(
+      groupName,
+      this.spotNode.routingIdAllocation,
+      this.name
+    );
     return this;
   }
 
@@ -537,6 +643,8 @@ interface MutableLocationRegistrationOptions {
 }
 
 interface MutableChannelOptions {
+  routingId?: string;
+  routingIdAllocation?: MutableRoutingIdAllocationOptions;
   requestTimeoutMs?: number;
   client?: MutableClientCapabilityOptions;
   publisher?: MutablePublisherCapabilityOptions;
@@ -573,6 +681,7 @@ interface MutableRouteMeshChannelOptions {
   bind?: string;
   manualConnections?: string[];
   routingId?: string;
+  routingIdAllocation?: MutableRoutingIdAllocationOptions;
   sendHighWaterMark?: number;
   receiveHighWaterMark?: number;
   sendTimeoutMs?: number;
@@ -600,6 +709,7 @@ export interface MutableStreamCompressionOptions {
 interface MutableSpotNodeOptions {
   drainPolicy?: import('../Eventing').ZLinkSpotDrainPolicy;
   routingId?: string;
+  routingIdAllocation?: MutableRoutingIdAllocationOptions;
   router?: MutableSpotRouterCapabilityOptions;
   pubSub?: MutableSpotPubSubCapabilityOptions;
   entrySpot?: ZLinkEntrySpotOptions;
@@ -619,4 +729,10 @@ interface MutableSpotPubSubCapabilityOptions {
   bind?: string;
   manualConnections?: string[];
   routingId?: string;
+}
+
+interface MutableRoutingIdAllocationOptions {
+  slotCount: number;
+  routingIdPrefix: string;
+  groupName?: string;
 }

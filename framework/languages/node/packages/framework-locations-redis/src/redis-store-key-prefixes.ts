@@ -33,6 +33,10 @@ export class RedisStoreKeys {
     return `${this.keyPrefix}:leases`;
   }
 
+  routingIdAllocationGroup(groupName: string): string {
+    return `${this.keyPrefix}:ridalloc:${groupName}`;
+  }
+
   stamp(tag: string, meshName: string | undefined): string {
     return meshName === undefined
       ? `${this.keyPrefix}:stamp:${tag}`

@@ -146,6 +146,7 @@ export interface ZLinkBackendConnectableSocket extends ZLinkBackendSocket {
 }
 
 export interface ZLinkBackendDealerSocket extends ZLinkBackendConnectableSocket {
+  setRoutingId(routingId: RoutingId): void;
   peerWeight: number;
   sendHighWaterMark: number;
   receiveHighWaterMark: number;

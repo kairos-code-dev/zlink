@@ -85,6 +85,9 @@ export class ZLinkChannelSocketRegistry {
 
     const dealer = this.adapter.createDealerSocket(this.context);
     dealer.setChannelName(channelName);
+    if (channel?.routingId !== undefined && channel.routingId.length > 0) {
+      dealer.setRoutingId(deriveRoutingId(channel.routingId, 'dealer'));
+    }
     applySocketConfig(dealer, client);
     this.trackSubmitter(dealer);
     if ((client.manualConnections ?? []).length > 0) {
@@ -276,6 +279,16 @@ export class ZLinkChannelSocketRegistry {
       ));
     });
   }
+}
+
+function deriveRoutingId(baseRoutingId: string, suffix: string): string {
+  const derived = `${baseRoutingId}\0${suffix}`;
+  if (Buffer.byteLength(derived, 'utf8') > 255) {
+    throw new ZLinkConfigurationException(
+      `Derived routing id with suffix '${suffix}' exceeds the 255 byte limit.`
+    );
+  }
+  return derived;
 }
 
 function applySocketConfig(

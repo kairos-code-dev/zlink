@@ -136,6 +136,62 @@ test('redis location store row json matches the shared Redis fixture', async (t)
   }
 });
 
+test('redis routing-id slot allocation is atomic, idempotent, configured, and fenced', async (t) => {
+  const fixture = await redisFixture();
+  if (fixture === undefined) {
+    t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
+    return;
+  }
+  const prefix = `zlink:node-routing-id-redis:${process.pid}:${Date.now()}`;
+  const store = new redisLocations.ZLinkRedisLocationStore({ url: fixture.url, keyPrefix: prefix });
+  const members = [
+    { channelName: 'play', routingIdPrefix: 'play-' },
+    { channelName: 'rooms', routingIdPrefix: 'rooms-' }
+  ];
+  const request = (ownerId) => ({
+    groupName: 'game', members, slotCount: 2, ownerId, leaseTtlMs: 30_000
+  });
+  try {
+    const first = await store.acquireRoutingIdSlot(request('owner-a'));
+    assert.equal(first.kind, 'acquired');
+    assert.equal(first.allocation.slot, 1);
+    assert.equal((await store.acquireRoutingIdSlot(request('owner-a'))).allocation.slot, 1);
+    const second = await store.acquireRoutingIdSlot(request('owner-b'));
+    assert.equal(second.kind, 'acquired');
+    assert.equal(second.allocation.slot, 2);
+    assert.equal((await store.acquireRoutingIdSlot(request('owner-c'))).kind, 'groupExhausted');
+    assert.equal((await store.acquireRoutingIdSlot({
+      ...request('owner-c'), slotCount: 3
+    })).kind, 'groupConfigurationMismatch');
+
+    assert.equal(await store.releaseRoutingIdSlot('game', 1, {
+      ownerId: 'owner-a', generation: first.allocation.owner.generation + 1n
+    }), 'ignoredStale');
+    assert.equal(await store.releaseRoutingIdSlot(
+      'game', 1, first.allocation.owner
+    ), 'released');
+    const recycled = await store.acquireRoutingIdSlot(request('owner-c'));
+    assert.equal(recycled.kind, 'acquired');
+    assert.equal(recycled.allocation.slot, 1);
+    assert.equal(recycled.allocation.owner.generation, 2n);
+
+    const snapshot = await store.listRoutingIdSlots('game');
+    assert.deepEqual(snapshot.members, members);
+    assert.equal(snapshot.allocations.length, 2);
+    assert.equal(
+      await fixture.client.hGet(`${prefix}:ridalloc:game`, 'config'),
+      JSON.stringify([
+        { ChannelName: 'play', RoutingIdPrefix: 'play-' },
+        { ChannelName: 'rooms', RoutingIdPrefix: 'rooms-' }
+      ])
+    );
+  } finally {
+    await store.dispose();
+    await cleanupPrefix(fixture.client, prefix);
+    await fixture.client.quit();
+  }
+});
+
 test('redis location store validates required connection options', () => {
   assert.throws(
     () => new redisLocations.ZLinkRedisLocationStore({ url: 'redis://127.0.0.1:6379', keyPrefix: '' }),

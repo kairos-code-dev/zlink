@@ -12,6 +12,13 @@ import {
   type ZLinkLocationOwnerToken,
   type ZLinkLocationPage,
   type ZLinkLocationWriteResult,
+  type ZLinkRoutingIdSlotAcquireRequest,
+  type ZLinkRoutingIdSlotAcquireResult,
+  type ZLinkRoutingIdSlotAllocation,
+  type ZLinkRoutingIdSlotAllocationMember,
+  type ZLinkRoutingIdSlotAllocationSnapshot,
+  type ZLinkRoutingIdSlotAllocationStore,
+  type ZLinkRoutingIdSlotReleaseResult,
   type ZLinkOwnerLease,
   type ZLinkOwnerLeaseRenewal,
   type ZLinkOwnerLeaseSnapshot,
@@ -34,15 +41,121 @@ import {
   matchesSpotLocation
 } from '../../location-store-integration';
 
-export class ZLinkInMemoryLocationStore implements ZLinkLocationStore, ZLinkLocationChangeStampStore {
+export class ZLinkInMemoryLocationStore implements
+  ZLinkLocationStore,
+  ZLinkLocationChangeStampStore,
+  ZLinkRoutingIdSlotAllocationStore {
   private readonly leases = new Map<string, ZLinkOwnerLease>();
   private readonly peers = new RowTable<ZLinkPeerLocation>();
   private readonly spots = new RowTable<ZLinkSpotLocation>();
   private readonly actors = new RowTable<ZLinkActorLocation>();
   private readonly routes = new RowTable<ZLinkRouteLocation>();
   private readonly stamps = new Map<string, bigint>();
+  private readonly routingIdGroups = new Map<string, InMemoryRoutingIdGroup>();
 
   constructor(private readonly now: () => Date = () => new Date()) {}
+
+  async acquireRoutingIdSlot(
+    request: ZLinkRoutingIdSlotAcquireRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkRoutingIdSlotAcquireResult> {
+    signal?.throwIfAborted();
+    validateRoutingIdSlotAcquireRequest(request);
+    const storeNow = this.now();
+    const members = normalizeRoutingIdMembers(request.members);
+    let group = this.routingIdGroups.get(request.groupName);
+    if (group === undefined) {
+      const memberNames = new Set(members.map((member) => member.channelName));
+      if ([...this.peers.rows.values()].some((peer) =>
+        memberNames.has(peer.meshName) && this.isOwnerLive(peer.ownerId, storeNow))) {
+        return { kind: 'identityModeConflict' };
+      }
+      group = {
+        members,
+        slotCount: request.slotCount,
+        allocations: new Map(),
+        generations: new Map()
+      };
+      this.routingIdGroups.set(request.groupName, group);
+    } else if (group.slotCount !== request.slotCount || !sameRoutingIdMembers(group.members, members)) {
+      return {
+        kind: 'groupConfigurationMismatch',
+        expectedMembers: group.members,
+        expectedSlotCount: group.slotCount,
+        actualMembers: members,
+        actualSlotCount: request.slotCount
+      };
+    }
+
+    removeExpiredRoutingIdAllocations(group, this.leases, storeNow);
+    for (const [slot, current] of group.allocations) {
+      if (current.owner.ownerId !== request.ownerId) continue;
+      const allocation = routingIdAllocation(
+        slot,
+        current.owner,
+        storeNow,
+        request.leaseTtlMs
+      );
+      group.allocations.set(slot, allocation);
+      this.renewExistingAllocationOwnerLease(request.ownerId, request.leaseTtlMs, storeNow);
+      return { kind: 'acquired', allocation };
+    }
+
+    for (let slot = 1; slot <= group.slotCount; slot += 1) {
+      if (group.allocations.has(slot)) continue;
+      const generation = (group.generations.get(slot) ?? 0n) + 1n;
+      group.generations.set(slot, generation);
+      const allocation = routingIdAllocation(
+        slot,
+        { ownerId: request.ownerId, generation },
+        storeNow,
+        request.leaseTtlMs
+      );
+      group.allocations.set(slot, allocation);
+      return { kind: 'acquired', allocation };
+    }
+    return { kind: 'groupExhausted' };
+  }
+
+  async releaseRoutingIdSlot(
+    groupName: string,
+    slot: number,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkRoutingIdSlotReleaseResult> {
+    signal?.throwIfAborted();
+    validateRoutingIdSlotRelease(groupName, slot, owner);
+    const group = this.routingIdGroups.get(groupName);
+    const current = group?.allocations.get(slot);
+    if (current === undefined
+      || current.owner.ownerId !== owner.ownerId
+      || current.owner.generation !== owner.generation) {
+      return 'ignoredStale';
+    }
+    group?.allocations.delete(slot);
+    return 'released';
+  }
+
+  async listRoutingIdSlots(
+    groupName: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkRoutingIdSlotAllocationSnapshot> {
+    signal?.throwIfAborted();
+    validateRoutingIdGroupName(groupName);
+    const storeNow = this.now();
+    const group = this.routingIdGroups.get(groupName);
+    if (group === undefined) {
+      return { groupName, members: [], slotCount: 0, allocations: [], storeNow };
+    }
+    removeExpiredRoutingIdAllocations(group, this.leases, storeNow);
+    return {
+      groupName,
+      members: group.members,
+      slotCount: group.slotCount,
+      allocations: [...group.allocations.values()].sort((left, right) => left.slot - right.slot),
+      storeNow
+    };
+  }
 
   async updatePeer(
     peer: ZLinkPeerLocation,
@@ -334,6 +447,16 @@ export class ZLinkInMemoryLocationStore implements ZLinkLocationStore, ZLinkLoca
     return lease !== undefined && lease.leaseExpiresAt.getTime() > now.getTime();
   }
 
+  private renewExistingAllocationOwnerLease(ownerId: string, leaseTtlMs: number, now: Date): void {
+    const lease = this.leases.get(ownerId);
+    if (lease === undefined) return;
+    this.leases.set(ownerId, {
+      ...lease,
+      leaseExpiresAt: new Date(now.getTime() + leaseTtlMs),
+      updatedAt: now
+    });
+  }
+
   private bump(kind: ZLinkLocationKind, meshName: string | undefined): void {
     this.bumpScope({ kind, meshName });
     if (meshName !== undefined) {
@@ -350,6 +473,104 @@ export class ZLinkInMemoryLocationStore implements ZLinkLocationStore, ZLinkLoca
 class RowTable<TRow> {
   readonly rows = new Map<string, TRow>();
   readonly generations = new Map<string, bigint>();
+}
+
+interface InMemoryRoutingIdGroup {
+  readonly members: readonly ZLinkRoutingIdSlotAllocationMember[];
+  readonly slotCount: number;
+  readonly allocations: Map<number, ZLinkRoutingIdSlotAllocation>;
+  readonly generations: Map<number, bigint>;
+}
+
+function validateRoutingIdSlotAcquireRequest(request: ZLinkRoutingIdSlotAcquireRequest): void {
+  validateRoutingIdGroupName(request.groupName);
+  if (!Number.isInteger(request.slotCount) || request.slotCount < 1) {
+    throw new RangeError('Routing-id slotCount must be a positive integer.');
+  }
+  if (request.ownerId.trim().length === 0) {
+    throw new TypeError('Routing-id allocation ownerId must not be empty.');
+  }
+  if (!Number.isFinite(request.leaseTtlMs) || request.leaseTtlMs <= 0) {
+    throw new RangeError('Routing-id allocation leaseTtlMs must be greater than zero.');
+  }
+  if (request.members.length === 0) {
+    throw new TypeError('Routing-id allocation requires at least one member.');
+  }
+  const names = new Set<string>();
+  for (const member of request.members) {
+    if (member.channelName.trim().length === 0 || member.routingIdPrefix.trim().length === 0) {
+      throw new TypeError('Routing-id allocation member names and prefixes must not be empty.');
+    }
+    if (names.has(member.channelName)) {
+      throw new TypeError(`Routing-id allocation member '${member.channelName}' is duplicated.`);
+    }
+    names.add(member.channelName);
+  }
+}
+
+function validateRoutingIdSlotRelease(
+  groupName: string,
+  slot: number,
+  owner: ZLinkLocationOwnerToken
+): void {
+  validateRoutingIdGroupName(groupName);
+  if (!Number.isInteger(slot) || slot < 1) {
+    throw new RangeError('Routing-id allocation slot must be a positive integer.');
+  }
+  if (owner.ownerId.trim().length === 0 || owner.generation < 1n) {
+    throw new TypeError('Routing-id allocation owner token is invalid.');
+  }
+}
+
+function validateRoutingIdGroupName(groupName: string): void {
+  if (groupName.trim().length === 0) {
+    throw new TypeError('Routing-id allocation group name must not be empty.');
+  }
+}
+
+function normalizeRoutingIdMembers(
+  members: readonly ZLinkRoutingIdSlotAllocationMember[]
+): readonly ZLinkRoutingIdSlotAllocationMember[] {
+  return members
+    .map((member) => ({ ...member }))
+    .sort((left, right) => left.channelName.localeCompare(right.channelName));
+}
+
+function sameRoutingIdMembers(
+  left: readonly ZLinkRoutingIdSlotAllocationMember[],
+  right: readonly ZLinkRoutingIdSlotAllocationMember[]
+): boolean {
+  return left.length === right.length && left.every((member, index) =>
+    member.channelName === right[index]?.channelName
+      && member.routingIdPrefix === right[index]?.routingIdPrefix);
+}
+
+function removeExpiredRoutingIdAllocations(
+  group: InMemoryRoutingIdGroup,
+  leases: ReadonlyMap<string, ZLinkOwnerLease>,
+  storeNow: Date
+): void {
+  for (const [slot, allocation] of group.allocations) {
+    const leaseExpiresAt = leases.get(allocation.owner.ownerId)?.leaseExpiresAt
+      ?? allocation.leaseExpiresAt;
+    if (leaseExpiresAt.getTime() <= storeNow.getTime()) {
+      group.allocations.delete(slot);
+    }
+  }
+}
+
+function routingIdAllocation(
+  slot: number,
+  owner: ZLinkLocationOwnerToken,
+  storeNow: Date,
+  leaseTtlMs: number
+): ZLinkRoutingIdSlotAllocation {
+  return {
+    slot,
+    owner,
+    leaseExpiresAt: new Date(storeNow.getTime() + leaseTtlMs),
+    storeNow
+  };
 }
 
 function pageRows<TRow>(

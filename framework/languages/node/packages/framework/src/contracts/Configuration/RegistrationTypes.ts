@@ -108,6 +108,8 @@ export interface ZLinkFrameworkRegistrationOptions {
 }
 
 export interface ZLinkChannelOptions {
+  readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly requestTimeoutMs?: number;
   readonly client?: ZLinkClientCapabilityOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
@@ -139,11 +141,18 @@ export interface ZLinkPublisherCapabilityOptions {
   readonly bind?: string;
 }
 
+export interface ZLinkRoutingIdAllocationOptions {
+  readonly slotCount: number;
+  readonly routingIdPrefix: string;
+  readonly groupName?: string;
+}
+
 export interface ZLinkRouteMeshChannelOptions {
   readonly requestTimeoutMs?: number;
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly weight?: number;
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
@@ -160,6 +169,7 @@ export interface ZLinkRouteChannelOptions {
   readonly bind?: string;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly weight?: number;
   readonly sendHighWaterMark?: number;
   readonly receiveHighWaterMark?: number;
@@ -189,6 +199,7 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 export interface ZLinkSpotNodeOptions {
   readonly drainPolicy?: import('../Eventing').ZLinkSpotDrainPolicy;
   readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
   readonly pubSub?: ZLinkSpotPubSubCapabilityOptions;
   readonly entrySpot?: ZLinkEntrySpotOptions;

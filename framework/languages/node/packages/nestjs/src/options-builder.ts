@@ -174,25 +174,25 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
   addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder {
     this.ensureChannelAvailable(name);
     this.state.clientServerChannels[name] = {};
-    return new DefaultZLinkNestClientServerChannelBuilder(this.state, this.state.clientServerChannels[name]);
+    return new DefaultZLinkNestClientServerChannelBuilder(this.state, name, this.state.clientServerChannels[name]);
   }
 
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder {
     this.ensureChannelAvailable(name);
     this.state.fanoutChannels[name] = {};
-    return new DefaultZLinkNestFanoutChannelBuilder(this.state, this.state.fanoutChannels[name]);
+    return new DefaultZLinkNestFanoutChannelBuilder(this.state, name, this.state.fanoutChannels[name]);
   }
 
   addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder {
     this.ensureChannelAvailable(name);
     this.state.routerMeshes[name] = {};
     markRouteTransportDeclared(this.state.routerMeshes[name]);
-    return new DefaultZLinkNestRouterMeshBuilder(this.state, this.state.routerMeshes[name]);
+    return new DefaultZLinkNestRouterMeshBuilder(this.state, name, this.state.routerMeshes[name]);
   }
 
   addSpotMesh(name: string): ZLinkNestSpotNodeBuilder {
     this.state.spotNodes[name] ??= {};
-    return new DefaultZLinkNestSpotNodeBuilder(this.state, this.state.spotNodes[name]);
+    return new DefaultZLinkNestSpotNodeBuilder(this.state, name, this.state.spotNodes[name]);
   }
 
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder {
@@ -266,7 +266,7 @@ class DefaultZLinkNestCodecRegistryBuilder extends ZLinkNestOptionsBuilder imple
 }
 
 class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestClientServerChannelBuilder {
-  constructor(state: ZLinkNestBuilderState, private readonly channelOptions: Mutable<InternalZLinkNestClientServerChannelOptions>) {
+  constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly channelOptions: Mutable<InternalZLinkNestClientServerChannelOptions>) {
     super(state);
   }
 
@@ -276,10 +276,22 @@ class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestOptionsBuilder
   }
 
   routingId(routingId: string | undefined): this {
+    framework.rejectAllocatedRoutingId(this.channelOptions.routingIdAllocation, this.name);
     this.channelOptions.server = {
       ...this.channelOptions.server,
       routingId
     };
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    framework.rejectFixedRoutingId(this.channelOptions.server?.routingId, this.name);
+    this.channelOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.channelOptions.routingIdAllocation?.groupName);
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.channelOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.channelOptions.routingIdAllocation, this.name);
     return this;
   }
 
@@ -318,12 +330,29 @@ class DefaultZLinkNestClientServerChannelBuilder extends ZLinkNestOptionsBuilder
 }
 
 class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestFanoutChannelBuilder {
-  constructor(state: ZLinkNestBuilderState, private readonly channelOptions: Mutable<InternalZLinkNestFanoutChannelOptions>) {
+  constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly channelOptions: Mutable<InternalZLinkNestFanoutChannelOptions>) {
     super(state);
   }
 
   enablePublisher(bind: string | undefined): this {
     this.channelOptions.publisher = { bind };
+    return this;
+  }
+
+  routingId(routingId: string | undefined): this {
+    framework.rejectAllocatedRoutingId(this.channelOptions.routingIdAllocation, this.name);
+    this.channelOptions.routingId = routingId;
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    framework.rejectFixedRoutingId(this.channelOptions.routingId, this.name);
+    this.channelOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.channelOptions.routingIdAllocation?.groupName);
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.channelOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.channelOptions.routingIdAllocation, this.name);
     return this;
   }
 
@@ -344,7 +373,7 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder imple
 }
 
 class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestRouterMeshBuilder {
-  constructor(state: ZLinkNestBuilderState, private readonly routeOptions: Mutable<InternalZLinkNestRouterMeshOptions>) {
+  constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly routeOptions: Mutable<InternalZLinkNestRouterMeshOptions>) {
     super(state);
   }
 
@@ -360,7 +389,19 @@ class DefaultZLinkNestRouterMeshBuilder extends ZLinkNestOptionsBuilder implemen
   }
 
   routingId(routingId: string | undefined): this {
+    framework.rejectAllocatedRoutingId(this.routeOptions.routingIdAllocation, this.name);
     this.routeOptions.routingId = routingId;
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    framework.rejectFixedRoutingId(this.routeOptions.routingId, this.name);
+    this.routeOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.routeOptions.routingIdAllocation?.groupName);
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.routeOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.routeOptions.routingIdAllocation, this.name);
     return this;
   }
 
@@ -420,11 +461,12 @@ class DefaultZLinkNestStreamNodeBuilder extends ZLinkNestOptionsBuilder implemen
 }
 
 class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestSpotNodeBuilder {
-  constructor(state: ZLinkNestBuilderState, private readonly spotOptions: Mutable<ZLinkSpotNodeOptions>) {
+  constructor(state: ZLinkNestBuilderState, private readonly name: string, private readonly spotOptions: Mutable<ZLinkSpotNodeOptions>) {
     super(state);
   }
 
   routingId(routingId: string | undefined): this {
+    framework.rejectAllocatedRoutingId(this.spotOptions.routingIdAllocation, this.name);
     this.spotOptions.routingId = routingId;
     if (this.spotOptions.router !== undefined) {
       (this.spotOptions.router as Mutable<NonNullable<ZLinkSpotNodeOptions['router']>>).routingId = routingId;
@@ -432,6 +474,17 @@ class DefaultZLinkNestSpotNodeBuilder extends ZLinkNestOptionsBuilder implements
     if (this.spotOptions.pubSub !== undefined) {
       (this.spotOptions.pubSub as Mutable<NonNullable<ZLinkSpotNodeOptions['pubSub']>>).routingId = routingId;
     }
+    return this;
+  }
+
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix = this.name): this {
+    framework.rejectFixedRoutingId(this.spotOptions.routingId, this.name);
+    this.spotOptions.routingIdAllocation = framework.createRoutingIdAllocation(slotCount, routingIdPrefix, this.spotOptions.routingIdAllocation?.groupName);
+    return this;
+  }
+
+  setRoutingIdAllocationGroup(groupName: string): this {
+    this.spotOptions.routingIdAllocation = framework.setRoutingIdAllocationGroup(groupName, this.spotOptions.routingIdAllocation, this.name);
     return this;
   }
 

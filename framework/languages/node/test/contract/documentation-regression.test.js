@@ -285,7 +285,7 @@ test('node interface catalog declarations exactly match public package declarati
     catalogShapes.set(declaration.name.text, values);
   }
 
-  assert.equal(publicShapes.size, 340);
+  assert.equal(publicShapes.size, 350);
   assert.deepEqual([...catalogShapes.keys()].sort(), [...publicShapes.keys()].sort());
   for (const [name, expected] of publicShapes) {
     assert.deepEqual(
@@ -334,7 +334,7 @@ test('node G0 ledger pins every common and Node specification hash', () => {
     ]),
     ['stream-connector:32-stream-connector.ko.md',
       path.join(connectorSpecRoot, '32-stream-connector.ko.md')],
-    ...['01-system-structure.ko.md', '02-handler-interfaces.ko.md']
+    ...['01-system-structure.ko.md', '02-handler-interfaces.ko.md', '03-routing-id-allocation.ko.md']
       .map((file) => [`server/languages/node:${file}`, path.join(specRoot, file)]),
     ...['README.ko.md', '03-stream-connector.ko.md']
       .map((file) => [

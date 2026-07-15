@@ -62,6 +62,8 @@ export type Mutable<T> = {
 };
 
 export interface InternalZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
+  readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly server?: {
     readonly bind?: string;
     readonly routingId?: string;
@@ -75,6 +77,8 @@ export interface InternalZLinkNestClientServerChannelOptions extends ZLinkNestHa
 }
 
 export interface InternalZLinkNestFanoutChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
+  readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly publisher?: ZLinkPublisherCapabilityOptions;
   readonly subscriber?: ZLinkClientCapabilityOptions;
   readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
@@ -87,6 +91,7 @@ export interface InternalZLinkNestRouterMeshOptions extends ZLinkNestHandlerDisc
   readonly transportDeclared?: boolean;
   readonly manualConnections?: readonly string[];
   readonly routingId?: string;
+  readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly weight?: number;
   readonly sendHandlers?: readonly ZLinkRouteChannelSendHandlerRegistration[];
   readonly requestHandlers?: readonly ZLinkRouteChannelRequestHandlerRegistration[];
@@ -234,6 +239,8 @@ export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptions
 export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enableServer(bind: string | undefined): this;
   routingId(routingId: string | undefined): this;
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+  setRoutingIdAllocationGroup(groupName: string): this;
   configureServerSocket(): ZLinkSocketConfig;
   configureClientSocket(): ZLinkSocketConfig;
   enableClient(endpoint?: string | readonly string[]): this;
@@ -244,6 +251,9 @@ export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkO
 
 export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
   enablePublisher(bind: string | undefined): this;
+  routingId(routingId: string | undefined): this;
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+  setRoutingIdAllocationGroup(groupName: string): this;
   enableSubscriber(endpoint?: string | readonly string[]): this;
   addPublishHandler(packetName: string, handlerType: Type): this;
   addHandlerGroup(groupName: string): this;
@@ -253,6 +263,8 @@ export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBui
   enableRouter(endpoint: string | undefined): this;
   enableClient(): this;
   routingId(routingId: string | undefined): this;
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+  setRoutingIdAllocationGroup(groupName: string): this;
   configureSocket(): ZLinkSocketConfig;
   connect(endpoint: string | readonly string[] | undefined): this;
   addSendHandler(packetName: string, handlerType: Type): this;
@@ -268,6 +280,8 @@ export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBui
 
 export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
   routingId(routingId: string | undefined): this;
+  useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
+  setRoutingIdAllocationGroup(groupName: string): this;
   enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
   connectRouter(endpoint: string): this;
   connectRouter(peerRid: string, endpoint: string): this;
@@ -278,4 +292,10 @@ export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
   actorFactory(actorType: string, factoryType: Type): this;
   useDrainPolicy(policy: import('@zlink-systems/framework').ZLinkSpotDrainPolicy): this;
+}
+
+interface ZLinkRoutingIdAllocationOptions {
+  readonly slotCount: number;
+  readonly routingIdPrefix: string;
+  readonly groupName?: string;
 }

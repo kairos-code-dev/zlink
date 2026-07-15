@@ -2,6 +2,7 @@ import type { ZLinkBackendContext } from '../backend';
 import type { ZLinkChannelRuntimeManager } from '../channels';
 import type { ZLinkFrameworkRuntimeState } from '../execution';
 import type { ZLinkLocationRuntime } from '../locations';
+import type { ZLinkAllocatedRoutingIdRuntime } from '../locations';
 import type { ZLinkSpotNodeRuntimeManager } from '../spots';
 import type { ZLinkStreamRuntimeManager } from '../streams';
 import type { ZLinkLocationRuntimeStopSnapshot } from './location-runtime-owner';
@@ -14,6 +15,7 @@ export interface ZLinkRuntimeStartRollbackParts {
   readonly streamRuntime?: ZLinkStreamRuntimeManager;
   readonly spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   readonly channelRuntime?: ZLinkChannelRuntimeManager;
+  readonly allocatedRoutingIdRuntime?: ZLinkAllocatedRoutingIdRuntime;
 }
 
 export interface ZLinkRuntimeStopParts {
@@ -23,17 +25,19 @@ export interface ZLinkRuntimeStopParts {
   readonly streamRuntime?: ZLinkStreamRuntimeManager;
   readonly spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   readonly channelRuntime?: ZLinkChannelRuntimeManager;
+  readonly allocatedRoutingIdRuntime?: ZLinkAllocatedRoutingIdRuntime;
 }
 
 export async function rollbackRuntimeStart(parts: ZLinkRuntimeStartRollbackParts): Promise<void> {
   await Promise.allSettled([
-    parts.startedLocationRuntime?.stop(),
     parts.monitoringRuntime?.dispose(),
     parts.streamRuntime?.dispose(),
     parts.spotNodeRuntime?.dispose(),
-    parts.channelRuntime?.dispose(),
-    parts.context.dispose()
+    parts.channelRuntime?.dispose()
   ]);
+  await parts.allocatedRoutingIdRuntime?.stop().catch(() => undefined);
+  await parts.startedLocationRuntime?.stop().catch(() => undefined);
+  await parts.context.dispose().catch(() => undefined);
 }
 
 export async function stopRuntimeParts(parts: ZLinkRuntimeStopParts): Promise<void> {
@@ -44,6 +48,7 @@ export async function stopRuntimeParts(parts: ZLinkRuntimeStopParts): Promise<vo
   await runShutdownStep(errors, () => parts.streamRuntime?.dispose());
   await runShutdownStep(errors, () => parts.spotNodeRuntime?.dispose());
   await runShutdownStep(errors, () => parts.channelRuntime?.dispose());
+  await runShutdownStep(errors, () => parts.allocatedRoutingIdRuntime?.stop());
   await runShutdownStep(errors, () => parts.locationSnapshot.lifecycle?.dispose());
   await runShutdownStep(errors, () => parts.locationSnapshot.runtime?.stop());
   await Promise.allSettled(state.listenerTasks);

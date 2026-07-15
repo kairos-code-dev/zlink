@@ -1,4 +1,8 @@
-import type { RoutingId, ZLinkRuntimeEventPublisher } from '../../contracts';
+import type {
+  RoutingId,
+  ZLinkRoutingIdSlotAllocationStore,
+  ZLinkRuntimeEventPublisher
+} from '../../contracts';
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type { ZLinkChannelRuntimeManager } from '../channels';
 import { ZLinkLocationMonitoringEventEmitter } from '../diagnostics';
@@ -20,6 +24,7 @@ export interface ZLinkLocationRuntimeOwnerOptions {
   readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   readonly fallbackNodeRid: RoutingId;
   readonly metrics: import('../diagnostics').ZLinkRuntimeMetrics;
+  readonly allocatedRoutingIdsEnabled: boolean;
 }
 
 export interface ZLinkLocationRuntimeStopSnapshot {
@@ -55,6 +60,11 @@ export class ZLinkLocationRuntimeOwner {
     return this.events;
   }
 
+  routingIdAllocationStore(): ZLinkRoutingIdSlotAllocationStore | undefined {
+    const store = this.stores?.locationStore ?? this.createAndRememberStores()?.locationStore;
+    return isRoutingIdAllocationStore(store) ? store : undefined;
+  }
+
   ensureRuntime(primarySpotMeshName: string | undefined): ZLinkLocationRuntime | undefined {
     if (this.runtime !== undefined) {
       return this.runtime;
@@ -69,7 +79,8 @@ export class ZLinkLocationRuntimeOwner {
       options: this.options.registration.locations.options,
       events: this.ensureEvents(),
       leaseTracker: this.leaseTracker(stores),
-      metrics: this.options.metrics
+      metrics: this.options.metrics,
+      allocatedRoutingIdsEnabled: this.options.allocatedRoutingIdsEnabled
     });
     this.runtime = runtime;
     this.lifecycle = new ZLinkLocationLifecycle(runtime, stores.actorStore, primarySpotMeshName ?? '');
@@ -127,8 +138,9 @@ export class ZLinkLocationRuntimeOwner {
       return spotNodeRid;
     }
     for (const channel of this.options.registration.channels.values()) {
-      if (channel.server?.routingId !== undefined) {
-        return channel.server.routingId;
+      const routingId = channel.routingId ?? channel.server?.routingId;
+      if (routingId !== undefined) {
+        return routingId;
       }
     }
     for (const routeChannel of this.options.registration.routeChannelOptions.values()) {
@@ -216,6 +228,12 @@ export class ZLinkLocationRuntimeOwner {
     return undefined;
   }
 
+  private createAndRememberStores(): ZLinkLocationRuntimeStores | undefined {
+    if (this.stores !== undefined) return this.stores;
+    this.stores = this.createRuntimeStores();
+    return this.stores;
+  }
+
   private leaseTracker(stores: ZLinkLocationRuntimeStores): ZLinkOwnerLeaseTracker {
     if (this.leaseTrackerState?.stores === stores) {
       return this.leaseTrackerState.tracker;
@@ -245,4 +263,11 @@ export class ZLinkLocationRuntimeOwner {
     this.events = emitter;
     return emitter;
   }
+}
+
+function isRoutingIdAllocationStore(value: unknown): value is ZLinkRoutingIdSlotAllocationStore {
+  const store = value as Partial<ZLinkRoutingIdSlotAllocationStore> | undefined;
+  return typeof store?.acquireRoutingIdSlot === 'function'
+    && typeof store.releaseRoutingIdSlot === 'function'
+    && typeof store.listRoutingIdSlots === 'function';
 }

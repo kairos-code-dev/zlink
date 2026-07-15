@@ -10,3 +10,4 @@ export * from './Watch';
 export * from './Diagnostics';
 export * from './RuntimeQuery';
 export * from './Readiness';
+export * from './RoutingIdAllocation';

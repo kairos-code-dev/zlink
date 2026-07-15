@@ -23,7 +23,7 @@ public final class RmC3MultiProviderDistributionScenario {
         }
         Contracts.ProfileRes[] replies = directConsumer.post("/profile/batch-request")
             .body(requests)
-            .fetch(Contracts.ProfileRes[].class);
+            .async(Contracts.ProfileRes[].class).toCompletableFuture().join().body();
         for (Contracts.ProfileRes reply : replies) {
             counts.merge(reply.providerRid(), 1, Integer::sum);
         }

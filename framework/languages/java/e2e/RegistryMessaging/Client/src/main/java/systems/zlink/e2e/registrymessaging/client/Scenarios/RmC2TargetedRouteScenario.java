@@ -11,12 +11,12 @@ public final class RmC2TargetedRouteScenario {
     public static void run(ZLinkHttpClient providerA) {
         Contracts.RouteRes toB = providerA.post("/profile/route/request")
             .body(new Contracts.RouteReq("target-b"))
-            .fetch(Contracts.RouteRes.class);
+            .async(Contracts.RouteRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that("api-b".equals(toB.targetRid()), "RM-C2 target rid mismatch");
 
         Contracts.RequestFailureRes missing = providerA.post("/profile/route/missing")
             .body(new Contracts.RouteReq("missing"))
-            .fetch(Contracts.RequestFailureRes.class);
+            .async(Contracts.RequestFailureRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that(missing.failed(), "RM-C2 missing rid request should fail");
         ScenarioAssert.that("TimeoutException".equals(missing.errorKind()),
             "RM-C2 expected public TimeoutException, got " + missing.errorKind());

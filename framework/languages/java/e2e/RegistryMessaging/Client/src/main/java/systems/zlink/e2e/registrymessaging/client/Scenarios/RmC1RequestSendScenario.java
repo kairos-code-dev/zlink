@@ -12,12 +12,12 @@ public final class RmC1RequestSendScenario {
         String requestValue = "rm-c1-request";
         Contracts.ProfileRes reply = providerA.post("/profile/request")
             .body(new Contracts.ProfileReq(requestValue))
-            .fetch(Contracts.ProfileRes.class);
+            .async(Contracts.ProfileRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that(("profile:" + requestValue).equals(reply.value()), "RM-C1 reply mismatch");
         String commandId = "cmd-c1-" + java.util.UUID.randomUUID();
         providerA.post("/profile/command")
             .body(new Contracts.ProfileMsg(commandId))
-            .fetch(Object.class);
+            .async(Object.class).toCompletableFuture().join().body();
         String[] evidence = ScenarioAssert.waitAnyEvidence(providerA, providerB, commandId);
         ScenarioAssert.that(java.util.Arrays.stream(evidence)
                 .anyMatch(line -> line.contains("ProfileReq") && line.contains(requestValue)),

@@ -14,13 +14,13 @@ public final class RmA1DiscoveryRequestScenario {
         ZLinkHttpClient discoveryConsumer) {
         Contracts.ProfileRes reply = discoveryConsumer.post("/profile/request")
             .body(new Contracts.ProfileReq("rm-a1"))
-            .fetch(Contracts.ProfileRes.class);
+            .async(Contracts.ProfileRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that("profile:rm-a1".equals(reply.value()), "RM-A1 reply payload mismatch");
         ScenarioAssert.that(reply.providerRid().equals("api-a") || reply.providerRid().equals("api-b"),
             "RM-A1 provider rid mismatch");
 
         java.util.Map[] peers = discoveryConsumer.get("/locations/peers")
-            .fetch(java.util.Map[].class);
+            .async(java.util.Map[].class).toCompletableFuture().join().body();
         long readyProviders = java.util.Arrays.stream(peers)
             .filter(entry -> Contracts.API_CHANNEL.equals(entry.get("meshName")))
             .filter(entry -> "ROUTER".equals(entry.get("role")))

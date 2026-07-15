@@ -49,7 +49,7 @@ public final class RmA6MultipleChannelsScenario {
             try {
                 return consumer.post("/workflow/request")
                     .body(new Contracts.WorkflowReq(marker))
-                    .fetch(Contracts.WorkflowRes.class);
+                    .async(Contracts.WorkflowRes.class).toCompletableFuture().join().body();
             } catch (RuntimeException error) {
                 lastError = error;
                 try {

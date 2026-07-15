@@ -177,7 +177,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
         Map<String, Object>[] latest = new Map[0];
         while (System.nanoTime() < deadline) {
-            latest = consumer.get("/locations/peers").fetch(Map[].class);
+            latest = consumer.get("/locations/peers").async(Map[].class).toCompletableFuture().join().body();
             if (predicate.test(latest)) {
                 return;
             }

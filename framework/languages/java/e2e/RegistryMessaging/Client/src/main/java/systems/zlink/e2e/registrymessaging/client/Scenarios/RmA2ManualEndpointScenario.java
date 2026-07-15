@@ -11,7 +11,7 @@ public final class RmA2ManualEndpointScenario {
     public static void run(ZLinkHttpClient providerA) {
         Contracts.ProfileRes manual = providerA.post("/profile/manual")
             .body(new Contracts.ProfileReq("manual"))
-            .fetch(Contracts.ProfileRes.class);
+            .async(Contracts.ProfileRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that("api-a".equals(manual.providerRid()), "RM-A2 wrong provider");
         System.out.println("scenario RM-A2 passed");
     }

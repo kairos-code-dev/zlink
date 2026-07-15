@@ -109,6 +109,9 @@ int main ()
       read_file (e2e_root / "DiscoveryRegistryHa/Server/Consumer/main.cpp");
     const auto store_failure_provider =
       read_file (e2e_root / "DiscoveryRegistryHa/Server/Provider/main.cpp");
+    const auto store_failure_provider_lifecycle = read_file (
+      e2e_root
+      / "DiscoveryRegistryHa/Server/Provider/Infrastructure/provider_lifecycle_control.hpp");
     const auto store_failure_consumer_endpoints = read_file (
       e2e_root / "DiscoveryRegistryHa/Server/Consumer/Endpoints/consumer_endpoints.hpp");
     const auto store_failure_location_store = read_file (
@@ -794,7 +797,7 @@ int main ()
                     && store_failure_client.find ("SF-C2 api-b did not publish draining=true")
                          != std::string::npos,
                   "E2E-CP-43", "SF-C2 drops or never asserts the typed draining marker");
-    gate.require (store_failure_provider.find ("app.drain (deadline)")
+    gate.require (store_failure_provider_lifecycle.find ("_app.drain (deadline)")
                     != std::string::npos
                     && store_failure_provider.find ("drain_handler_t") != std::string::npos
                     && store_failure_client.find ("SF-C2 drain did not complete as drained")

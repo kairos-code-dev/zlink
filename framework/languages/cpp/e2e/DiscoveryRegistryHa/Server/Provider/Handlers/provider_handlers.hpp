@@ -2,23 +2,18 @@
 #pragma once
 
 #include "../Infrastructure/provider_evidence_store.hpp"
+#include "../Infrastructure/provider_lifecycle_control.hpp"
+#include "../../Shared/runtime_status_projection.hpp"
 
 #include <zlink/framework.hpp>
 
 #include <chrono>
 #include <csignal>
-#include <functional>
 #include <nlohmann/json.hpp>
 #include <thread>
 
 namespace zlink::framework::e2e::store_failure::provider
 {
-
-struct provider_lifecycle_control_t
-{
-    std::function<drain_result_t (std::chrono::milliseconds)> drain;
-    std::function<void ()> request_stop;
-};
 
 class profile_request_handler_t
 {
@@ -107,24 +102,7 @@ class query_status_handler_t
     {
         const auto status = _query.get_status ().result ().value ();
         zlink::framework::http_response_t response;
-        response.body = nlohmann::json (runtime_status_res_t{
-          .store_healthy = status.store_healthy,
-          .watch_enabled = status.watch_enabled,
-          .owner_lease_healthy = status.owner_lease_healthy,
-          .owner_lease_renewed_at_unix_ms =
-            status.owner_lease_renewed_at
-              ? std::chrono::duration_cast<std::chrono::milliseconds> (
-                  status.owner_lease_renewed_at->time_since_epoch ())
-                  .count ()
-              : 0,
-          .last_refresh_at_unix_ms =
-            status.last_refresh_at
-              ? std::chrono::duration_cast<std::chrono::milliseconds> (
-                  status.last_refresh_at->time_since_epoch ())
-                  .count ()
-              : 0,
-          .last_error = status.last_error.value_or (std::string{})})
-                          .dump ();
+        response.body = nlohmann::json (server::project_runtime_status (status)).dump ();
         return response;
     }
 
@@ -145,11 +123,7 @@ class shutdown_handler_t
 
     zlink::framework::http_response_t handle (const zlink::framework::http_request_t &)
     {
-        auto request_stop = _lifecycle.request_stop;
-        std::thread ([request_stop = std::move (request_stop)] {
-            std::this_thread::sleep_for (std::chrono::milliseconds (50));
-            request_stop ();
-        }).detach ();
+        _lifecycle.request_stop_after_response ();
 
         zlink::framework::http_response_t response;
         response.body = R"({"status":"stopping"})";
@@ -175,16 +149,7 @@ class drain_handler_t
 
     operation_status_t handle (const operation_status_t &)
     {
-        const auto result = _lifecycle.drain (std::chrono::seconds (30));
-        const auto status = std::holds_alternative<drained_t> (result)
-                              ? std::string ("drained")
-                              : std::string ("force_stopped");
-        auto request_stop = _lifecycle.request_stop;
-        std::thread ([request_stop = std::move (request_stop)] {
-            std::this_thread::sleep_for (std::chrono::milliseconds (50));
-            request_stop ();
-        }).detach ();
-        return {.status = status};
+        return _lifecycle.drain_and_stop (std::chrono::seconds (30));
     }
 
   private:

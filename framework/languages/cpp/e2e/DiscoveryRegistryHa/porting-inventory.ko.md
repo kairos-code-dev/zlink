@@ -43,6 +43,11 @@ C++ Config-6 E2E의 대응 파일과 검증 상태를 기록한다. C++ 디렉�
 
 ## 검증
 
+- 2026-07-15: Config 6 묶음 POSD/DDD 리팩터링 뒤 `timeout 1200s ./run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-085947-2551169`(SF-A1)부터 `logs/20260715-090145-2571861`(SF-E1)까지
+  - 설계: status projection 중복과 lifecycle callback pass-through를 제거했다. 공용 server projection이 framework status를 probe DTO로 한 번만 변환하고, provider lifecycle 모듈이 drain과 stop 순서를 내부에 둔다. domain aggregate는 없으며 wire DTO가 domain model로 사용되는 경로도 없다.
+  - 성능: SF-E1 리팩터링 전/후 delayed Redis query는 2406.46/2406.16ms, status query는 0.93/0.86ms, concurrent request p99는 51.50/51.64ms였다.
 - 2026-07-15: `timeout 1200s ./run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-085244-2519813`(SF-A1)부터 `logs/20260715-085440-2530199`(SF-E1)까지

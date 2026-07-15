@@ -23,6 +23,11 @@
 
 ## 검증
 
+- 2026-07-15: Config 6 묶음 POSD/DDD 리팩터링 뒤 `timeout 1200s ./run_e2e.sh all`
+  - 결과: 통과
+  - 로그: `logs/20260715-085947-2551169`(SF-A1)부터 `logs/20260715-090145-2571861`(SF-E1)까지
+  - 설계: 두 역할에 퍼진 status 시각 변환을 server 공용 projection으로 모으고, callback만 전달하던 provider lifecycle을 drain 결과 변환과 응답 후 stop 순서를 소유하는 모듈로 바꿨다. Config 6에는 domain aggregate가 없고 wire DTO는 HTTP probe 경계에만 있음을 재확인했다.
+  - 성능: 리팩터링 전/후 SF-E1은 delayed Redis query 2406.46/2406.16ms, status query 0.93/0.86ms, concurrent request p99 51.50/51.64ms였다. Redis 왕복과 dispatch hop이 늘지 않았다.
 - 2026-07-15: `timeout 1200s ./run_e2e.sh all`
   - 결과: 통과
   - 로그: `logs/20260715-085244-2519813`(SF-A1)부터 `logs/20260715-085440-2530199`(SF-E1)까지

@@ -18,11 +18,8 @@ int main (int argc, char **argv)
 {
     const auto options = sf_provider::read_provider_options ();
     auto app = zlink::framework::app_t::create ();
-    auto lifecycle_owner = std::make_unique<sf_provider::provider_lifecycle_control_t> ();
-    lifecycle_owner->drain = [&app] (std::chrono::milliseconds deadline) {
-        return app.drain (deadline).result ().value ();
-    };
-    lifecycle_owner->request_stop = [&app] { app.request_stop (); };
+    auto lifecycle_owner =
+      std::make_unique<sf_provider::provider_lifecycle_control_t> (app);
     app.logging ()
       .use_file (options.log_dir + "/" + options.log_name + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);

@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DeflaterOutputStream;
@@ -34,6 +35,44 @@ final class HttpClientContractTest {
     }
 
     private record CreateGameRes(String id, boolean ranked) {
+    }
+
+    @Test
+    void serverClientUsesSelectedExecutionTerminatorAndHasNoBlockingFetch() throws Exception {
+        assertThrows(NoSuchMethodException.class,
+            () -> ZLinkHttpRequestBuilder.class.getMethod("fetch", Class.class));
+        assertEquals(ZLinkHttpServerClient.class,
+            ZLinkHttpClientBuilder.class.getMethod(
+                "buildServer", ZLinkHttpExecutionTurn.class).getReturnType());
+        AtomicInteger asyncCalls = new AtomicInteger();
+        AtomicInteger yieldCalls = new AtomicInteger();
+        ZLinkHttpExecutionTurn turn = new ZLinkHttpExecutionTurn() {
+            @Override
+            public <T> CompletionStage<T> async(CompletionStage<T> operation) {
+                asyncCalls.incrementAndGet();
+                return operation;
+            }
+
+            @Override
+            public <T> CompletionStage<T> yield(CompletionStage<T> operation) {
+                yieldCalls.incrementAndGet();
+                return operation;
+            }
+        };
+        TestSupport.Server server = TestSupport.httpServer(exchange ->
+            TestSupport.respond(exchange, 200, "{\"id\":7,\"name\":\"p\"}"));
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
+            ZLinkHttpServerClient serverClient = new ZLinkHttpServerClient(
+                client, turn, error -> { throw new AssertionError(error); });
+            assertEquals(7, serverClient.get("/p").async(Player.class)
+                .toCompletableFuture().join().body().id());
+            assertEquals(7, serverClient.get("/p").yield(Player.class)
+                .toCompletableFuture().join().body().id());
+            assertEquals(1, asyncCalls.get());
+            assertEquals(1, yieldCalls.get());
+        } finally {
+            server.closeable().close();
+        }
     }
 
     @Test
@@ -147,7 +186,8 @@ final class HttpClientContractTest {
         TestSupport.Server server = TestSupport.httpServer(exchange ->
             TestSupport.respond(exchange, 200, "{\"id\":7,\"name\":\"Aria\"}"));
         try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
-            Player player = client.get("/players/7").fetch(Player.class);
+            Player player = client.get("/players/7").async(Player.class)
+                .toCompletableFuture().join().body();
             assertEquals(7, player.id());
             assertEquals("Aria", player.name());
         } finally {

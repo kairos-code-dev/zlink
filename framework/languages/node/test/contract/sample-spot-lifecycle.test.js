@@ -51,6 +51,48 @@ test('SupportChat closes a conversation Spot after the close grace deadline', as
   );
 });
 
+test('SupportChat explicit close preserves the Spot long enough to reject duplicate close', async () => {
+  await withCompiledSample(
+    'SupportChat.Ts',
+    'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot.ts',
+    async (outputRoot) => {
+      const { ConversationSpot } = require(path.join(
+        outputRoot,
+        'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot.js'
+      ));
+      const spot = new ConversationSpot(
+        { assignNextAgent: () => undefined },
+        { get: () => undefined },
+        { publish: () => undefined }
+      );
+      let closeCalls = 0;
+      spot.context = {
+        close: async () => { closeCalls += 1; return true; },
+        leaveActor: async () => undefined
+      };
+      await spot.onCreate({
+        decode: () => ({
+          conversationId: 'conversation-1',
+          customerActorId: 'customer-1',
+          customerDisplayName: 'Customer',
+          subject: 'Payment failed'
+        })
+      });
+      const customer = {
+        actorId: 'customer-1',
+        participantId: 'customer-1',
+        role: 'Customer',
+        displayName: 'Customer'
+      };
+
+      await spot.close(customer);
+
+      assert.equal(closeCalls, 0);
+      await assert.rejects(async () => spot.close(customer), /duplicate close/);
+    }
+  );
+});
+
 test('TicTacToe closes a terminal room Spot after every actor leaves', async () => {
   await withCompiledSample(
     'TicTacToe.Ts',

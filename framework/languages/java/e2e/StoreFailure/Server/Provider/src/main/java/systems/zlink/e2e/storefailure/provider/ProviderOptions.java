@@ -1,7 +1,8 @@
 package systems.zlink.e2e.storefailure.provider;
 
-import systems.zlink.e2e.storefailure.shared.Env;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
+@ConfigurationProperties("e2e")
 public record ProviderOptions(
     String rid,
     String httpEndpoint,
@@ -15,20 +16,26 @@ public record ProviderOptions(
     long storeFailureGraceMillis,
     String evidenceFile,
     String logDir) {
-    public static ProviderOptions fromEnv() {
-        String rid = Env.get("ZLINK_JAVA_E2E_PROVIDER_RID", "api-a");
-        return new ProviderOptions(
-            rid,
-            Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"),
-            Long.parseLong(Env.get("ZLINK_JAVA_E2E_REDIS_COMMAND_TIMEOUT_MS", "5000")),
-            Long.parseLong(Env.get("ZLINK_JAVA_E2E_LOCATION_HEARTBEAT_MS", "1000")),
-            Long.parseLong(Env.get("ZLINK_JAVA_E2E_LOCATION_LEASE_TTL_MS", "3000")),
-            Long.parseLong(Env.get("ZLINK_JAVA_E2E_LOCATION_POLLING_MS", "500")),
-            Long.parseLong(Env.get("ZLINK_JAVA_E2E_LOCATION_STORE_FAILURE_GRACE_MS", "6000")),
-            Env.get("ZLINK_JAVA_E2E_EVIDENCE_FILE"),
-            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
+    public ProviderOptions {
+        required(rid, "rid");
+        required(channelEndpoint, "channel-endpoint");
+        required(redisLocationEndpoint, "redis-location-endpoint");
+        required(locationKeyPrefix, "location-key-prefix");
+        positive(redisCommandTimeoutMillis, "redis-command-timeout-millis");
+        positive(heartbeatMillis, "heartbeat-millis");
+        positive(leaseTtlMillis, "lease-ttl-millis");
+        positive(pollingMillis, "polling-millis");
+        positive(storeFailureGraceMillis, "store-failure-grace-millis");
+        required(logDir, "log-dir");
+        evidenceFile = evidenceFile == null ? "" : evidenceFile;
+        httpEndpoint = httpEndpoint == null ? "" : httpEndpoint;
+    }
+
+    private static void required(String value, String name) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException("e2e." + name + " is required");
+    }
+
+    private static void positive(long value, String name) {
+        if (value <= 0) throw new IllegalArgumentException("e2e." + name + " must be positive");
     }
 }

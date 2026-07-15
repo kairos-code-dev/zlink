@@ -3,10 +3,10 @@ package systems.zlink.e2e.storefailure.provider;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.storefailure.shared.Contracts;
-import systems.zlink.e2e.storefailure.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
@@ -14,16 +14,12 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(ProviderOptions.class)
 @SpringBootApplication(proxyBeanMethods = false)
 public final class ProviderApplication {
     @Bean
     ObjectMapper objectMapper() {
         return new ObjectMapper();
-    }
-
-    @Bean
-    ProviderOptions providerOptions() {
-        return ProviderOptions.fromEnv();
     }
 
     @Bean

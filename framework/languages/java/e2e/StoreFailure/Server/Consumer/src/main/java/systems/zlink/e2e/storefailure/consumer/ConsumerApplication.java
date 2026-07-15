@@ -3,6 +3,7 @@ package systems.zlink.e2e.storefailure.consumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.e2e.storefailure.shared.Contracts;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -13,16 +14,12 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(ConsumerOptions.class)
 @SpringBootApplication(proxyBeanMethods = false)
 public final class ConsumerApplication {
     @Bean
     ObjectMapper objectMapper() {
         return new ObjectMapper();
-    }
-
-    @Bean
-    ConsumerOptions consumerOptions() {
-        return ConsumerOptions.fromEnv();
     }
 
     @Bean

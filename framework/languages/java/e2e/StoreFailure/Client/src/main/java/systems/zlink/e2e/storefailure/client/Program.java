@@ -22,13 +22,24 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
-        ClientOptions options = ClientOptions.fromEnv();
-        ClientScenario scenario = scenario(options.scenario());
+        Inputs inputs = parseInputs(args);
+        ClientOptions options = ClientOptions.load(inputs.configPath());
+        ClientScenario scenario = scenario(inputs.scenario());
         try (ClientContext context = new ClientContext(options)) {
             DiscoveryApiResult result = scenario.run(context);
-            System.out.println("scenario " + options.scenario() + " passed providers=" + result.providers());
+            System.out.println("scenario " + inputs.scenario() + " passed providers=" + result.providers());
         }
     }
+
+    private static Inputs parseInputs(String[] args) {
+        if (args.length != 4 || !"--config".equals(args[0]) || args[1].isBlank()
+            || !"--scenario".equals(args[2]) || args[3].isBlank()) {
+            throw new IllegalArgumentException("Usage: store-failure-client --config <path> --scenario <selector>");
+        }
+        return new Inputs(args[1], args[3]);
+    }
+
+    private record Inputs(String configPath, String scenario) { }
 
     private static ClientScenario scenario(String name) {
         return switch (name) {

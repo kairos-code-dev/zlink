@@ -1030,6 +1030,20 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchClientGateChecksStatusArrivalOrd
     EXPECT_EQ (client.find ("wait_status ("), std::string::npos);
 }
 
+TEST (CppFrameworkSampleParity, CoroutineSampleWaitsDoNotBlockConnectorDelivery)
+{
+    const auto cpp_root = cpp_language_root ();
+    for (const auto *path : {
+           "samples/Bingo/Client/bingo_client_scenario.hpp",
+           "samples/TicTacToe/Client/tictactoe_client_scenario.hpp"}) {
+        const auto client = read_file (cpp_root / path);
+        EXPECT_EQ (client.find (".to_future ("), std::string::npos)
+          << path << " must keep connector waits as awaitable tasks";
+        EXPECT_EQ (client.find (".get ()"), std::string::npos)
+          << path << " must not block the shared connector delivery runner";
+    }
+}
+
 TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
 {
     const auto cpp_root = cpp_language_root ();

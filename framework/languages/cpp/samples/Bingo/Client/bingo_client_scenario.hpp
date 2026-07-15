@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <future>
 #include <iostream>
 #include <source_location>
 #include <stdexcept>
@@ -94,14 +93,12 @@ class bingo_client_scenario_t
             ensure (observed.observer_node_rid != client1_match.room_owner_node_rid);
 
             trace ("match client2");
-            auto client1_joined_future =
+            auto client1_joined_task =
               client1.wait_for<player_joined_notify_t> ()
                 .where (&player_joined_notify_t::actor_id, client2_auth.actor_id)
-                .to_future ("client1 joined notify wait failed");
-            auto client1_started_future = client1.wait_for<game_started_notify_t> ().to_future (
-              "client1 game started wait failed");
-            auto client2_started_future = client2.wait_for<game_started_notify_t> ().to_future (
-              "client2 game started wait failed");
+                .async ();
+            auto client1_started_task = client1.wait_for<game_started_notify_t> ().async ();
+            auto client2_started_task = client2.wait_for<game_started_notify_t> ().async ();
             const auto match_request = match_bingo_req_t{bingo_sample_modes_t::two_player};
             auto client2_match =
               co_await client2.request (match_request).async<match_bingo_res_t> ();
@@ -109,9 +106,9 @@ class bingo_client_scenario_t
             ensure (client2_match.state.status == bingo_room_status_t::running);
             ensure (client2_match.room_owner_node_rid == client1_match.room_owner_node_rid);
             ensure (client2_auth.actor_node_rid != client2_match.room_owner_node_rid);
-            auto client1_joined = client1_joined_future.get ();
-            auto client1_started = client1_started_future.get ();
-            auto client2_started = client2_started_future.get ();
+            auto client1_joined = co_await client1_joined_task;
+            auto client1_started = co_await client1_started_task;
+            auto client2_started = co_await client2_started_task;
             co_await client2.expect_none<player_joined_notify_t> ()
               .within (std::chrono::milliseconds (25))
               .async ();
@@ -173,35 +170,37 @@ class bingo_client_scenario_t
 
             trace ("client1 submit card");
             constexpr int expected_draw_count = 3;
-            auto reward_future = observer.wait_for<bingo_reward_announced_notify_t> ()
-                                   .where (&bingo_reward_announced_notify_t::room_id, room_id)
-                                   .to_future ("reward announcement wait failed");
-            std::vector<std::future<number_drawn_notify_t>> client1_draw_futures;
-            std::vector<std::future<number_drawn_notify_t>> client2_draw_futures;
-            client1_draw_futures.reserve (expected_draw_count);
-            client2_draw_futures.reserve (expected_draw_count);
+            auto reward_task = observer.wait_for<bingo_reward_announced_notify_t> ()
+                                 .where (&bingo_reward_announced_notify_t::room_id, room_id)
+                                 .async ();
+            std::vector<zlink::stream_e2e_client::task_t<number_drawn_notify_t>>
+              client1_draw_tasks;
+            std::vector<zlink::stream_e2e_client::task_t<number_drawn_notify_t>>
+              client2_draw_tasks;
+            client1_draw_tasks.reserve (expected_draw_count);
+            client2_draw_tasks.reserve (expected_draw_count);
             for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
-                client1_draw_futures.push_back (
+                client1_draw_tasks.push_back (
                   client1.wait_for<number_drawn_notify_t> ()
                     .where (&number_drawn_notify_t::draw_seq, draw_seq)
-                    .to_future ("client1 draw notify wait failed"));
-                client2_draw_futures.push_back (
+                    .async ());
+                client2_draw_tasks.push_back (
                   client2.wait_for<number_drawn_notify_t> ()
                     .where (&number_drawn_notify_t::draw_seq, draw_seq)
-                    .to_future ("client2 draw notify wait failed"));
+                    .async ());
             }
-            auto client1_ended_future =
+            auto client1_ended_task =
               client1.wait_for<game_ended_notify_t> ()
                 .where ([] (const game_ended_notify_t &message) {
                     return message.state.status == bingo_room_status_t::finished;
                 })
-                .to_future ("client1 game ended wait failed");
-            auto client2_ended_future =
+                .async ();
+            auto client2_ended_task =
               client2.wait_for<game_ended_notify_t> ()
                 .where ([] (const game_ended_notify_t &message) {
                     return message.state.status == bingo_room_status_t::finished;
                 })
-                .to_future ("client2 game ended wait failed");
+                .async ();
             const auto client1_card_request =
               submit_bingo_card_req_t{room_id, client1_card_numbers};
             auto client1_card =
@@ -213,9 +212,9 @@ class bingo_client_scenario_t
             std::vector<number_drawn_notify_t> drawn_numbers;
             for (int draw_seq = 1; draw_seq <= expected_draw_count; ++draw_seq) {
                 auto client1_drawn =
-                  client1_draw_futures[static_cast<std::size_t> (draw_seq - 1)].get ();
+                  co_await client1_draw_tasks[static_cast<std::size_t> (draw_seq - 1)];
                 auto client2_drawn =
-                  client2_draw_futures[static_cast<std::size_t> (draw_seq - 1)].get ();
+                  co_await client2_draw_tasks[static_cast<std::size_t> (draw_seq - 1)];
                 drawn_numbers.push_back (client1_drawn);
                 ensure (client1_drawn.draw_seq == draw_seq);
                 ensure (client2_drawn.draw_seq == draw_seq);
@@ -223,8 +222,8 @@ class bingo_client_scenario_t
             }
             ensure (drawn_numbers.size () == expected_draw_count);
             ensure (drawn_numbers.back ().state.status == bingo_room_status_t::finished);
-            auto client1_ended = client1_ended_future.get ();
-            auto client2_ended = client2_ended_future.get ();
+            auto client1_ended = co_await client1_ended_task;
+            auto client2_ended = co_await client2_ended_task;
             ensure (client1_ended.state.status == bingo_room_status_t::finished);
             ensure (client2_ended.state.status == bingo_room_status_t::finished);
             ensure (client2_ended.state.drawn_numbers == client1_ended.state.drawn_numbers);
@@ -245,7 +244,7 @@ class bingo_client_scenario_t
               }));
 
             trace ("wait reward announcement");
-            auto reward = reward_future.get ();
+            auto reward = co_await reward_task;
             ensure (reward.actor_id == client1_auth.actor_id);
             ensure (reward.draw_seq == client1_ended.state.draw_seq);
             ensure (reward.item_id == bingo_reward_items_t::golden_dauber_id);

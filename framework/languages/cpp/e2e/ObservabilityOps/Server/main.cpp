@@ -14,7 +14,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -28,13 +27,41 @@ namespace fw = zlink::framework;
 namespace
 {
 
-std::string env_or (const char *name, const std::string &fallback = {})
+struct server_options_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    std::string role;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string http_endpoint;
+    std::string route_endpoint;
+    std::string peer_route_endpoint;
+    std::string spot_router_endpoint;
+    std::string spot_pub_endpoint;
+    std::string stream_endpoint;
+    std::string log_dir;
+    std::string trace_mode;
+    std::string drain_policy;
+    bool metrics_enabled;
+    bool room_timer_enabled;
+
+    static server_options_t bind (const fw::configuration_section_t &section)
+    {
+        return {.role = section.require ("role"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .route_endpoint = section.require ("routeEndpoint"),
+                .peer_route_endpoint = section.get ("peerRouteEndpoint").value_or (""),
+                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .spot_pub_endpoint = section.require ("spotPubEndpoint"),
+                .stream_endpoint = section.get ("streamEndpoint").value_or (""),
+                .log_dir = section.require ("logDir"),
+                .trace_mode = section.get ("traceMode").value_or ("key_transitions"),
+                .drain_policy = section.get ("drainPolicy").value_or ("drain_natural"),
+                .metrics_enabled = section.get ("metrics").value_or ("on") != "off",
+                .room_timer_enabled = section.get ("roomTimer").value_or ("off") == "on"};
     }
-    return fallback;
-}
+};
 
 const char *metric_kind_name (fw::metric_instrument_kind_t kind)
 {
@@ -122,6 +149,8 @@ struct room_timer_handler_t
 class room_spot_t : public fw::spot_t
 {
   public:
+    explicit room_spot_t (bool timer_enabled) : _timer_enabled (timer_enabled) {}
+
     void configure (fw::spot_context_t &context)
     {
         _context = context;
@@ -132,7 +161,7 @@ class room_spot_t : public fw::spot_t
 
     void on_initialize ()
     {
-        if (env_or ("ZLINK_CPP_E2E_ROOM_TIMER") == "1") {
+        if (_timer_enabled) {
             _timer = _context.add_timer<room_timer_handler_t> ("obs-tick",
                                                                std::chrono::milliseconds (200));
         }
@@ -166,6 +195,7 @@ class room_spot_t : public fw::spot_t
     fw::timer_t _timer;
     int _applied = 0;
     int _projections_seen = 0;
+    bool _timer_enabled;
 };
 
 void room_timer_handler_t::handle (room_spot_t &spot, const fw::timer_tick_t &) const
@@ -233,9 +263,14 @@ class join_actor_handler_t
   public:
     using request_type = obs::join_actor_req_t;
     using reply_type = obs::join_actor_res_t;
-    using dependency_types = fw::dependency_list_t<fw::session_actor_manager_t>;
+    using dependency_types =
+      fw::dependency_list_t<fw::session_actor_manager_t, server_options_t>;
 
-    explicit join_actor_handler_t (fw::session_actor_manager_t &actors) : _actors (actors) {}
+    join_actor_handler_t (fw::session_actor_manager_t &actors,
+                          server_options_t &options) :
+        _actors (actors), _role (options.role)
+    {
+    }
 
     obs::join_actor_res_t handle (const obs::join_actor_req_t &request)
     {
@@ -248,10 +283,9 @@ class join_actor_handler_t
             }
             /* The drain handoff moves actors that hold a spot placement, so
              * the fixture joins the local entry spot (rid == node rid). */
-            const auto role = env_or ("ZLINK_CPP_E2E_ROLE", "play-a");
             auto joined = actor.value ()
                             .context ()
-                            .join_spot (fw::spot_rid_t::from_string (role),
+                            .join_spot (fw::spot_rid_t::from_string (_role),
                                         obs::join_actor_req_t{request.actor_id})
                             .async ()
                             .result ();
@@ -276,6 +310,7 @@ class join_actor_handler_t
 
   private:
     fw::session_actor_manager_t &_actors;
+    std::string _role;
 };
 
 class actor_ping_handler_t
@@ -466,18 +501,14 @@ class drain_handler_t
 
 int main (int argc, char **argv)
 {
-    const auto role = env_or ("ZLINK_CPP_E2E_ROLE", "play-a");
-    const auto redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
-    const auto redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
-    const auto http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT");
-    const auto peer_route_endpoint = env_or ("ZLINK_CPP_E2E_PEER_ROUTE_ENDPOINT");
-    const auto spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
-    const auto spot_pub_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT");
-    const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
-    const auto log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-
     auto app = fw::app_t::create ();
+    app.config ().load_cli (argc, argv);
+    const auto config_path = app.config ().model ().get ("config");
+    if (!config_path) {
+        throw std::runtime_error ("ObservabilityOps server requires --config=<path>");
+    }
+    app.config ().load_json (*config_path);
+    const auto options = app.config ().bind_required<server_options_t> ("e2e");
     auto evidence_owner = std::make_unique<observability_evidence_t> ();
     auto *evidence = evidence_owner.get ();
     auto drain_control_owner = std::make_unique<drain_control_t> ();
@@ -489,8 +520,7 @@ int main (int argc, char **argv)
 
     /* OBS-B4: a node without a metric reader must keep messaging intact on
      * the inactive instrument path. */
-    const bool metrics_enabled = env_or ("ZLINK_CPP_E2E_METRICS", "on") != "off";
-    if (metrics_enabled) {
+    if (options.metrics_enabled) {
         app.monitoring ().on<fw::metric_event_payload_t> (
           [evidence] (const fw::metric_event_payload_t &event) {
               evidence->record_metric (event);
@@ -500,13 +530,16 @@ int main (int argc, char **argv)
       [evidence] (const fw::drain_event_t &event) { evidence->record_drain (event); });
 
     app.add_zlink_framework ([&] (fw::zlink_framework_options_t &framework) {
+        framework.services ().add_singleton<server_options_t> (
+          std::make_unique<server_options_t> (options));
         framework.services ().add_singleton<observability_evidence_t> (
           std::move (evidence_owner));
         framework.services ().add_singleton<drain_control_t> (std::move (drain_control_owner));
         framework.add_location_store (
           std::make_shared<fw::locations::redis::redis_location_store_t> (
             fw::locations::redis::redis_location_options_t{
-              .connection_string = redis_endpoint, .key_prefix = redis_key_prefix}));
+              .connection_string = options.redis_endpoint,
+              .key_prefix = options.redis_key_prefix}));
         {
             auto locations = framework.configure_locations ();
             locations.heartbeat_interval = std::chrono::seconds (1);
@@ -516,43 +549,46 @@ int main (int argc, char **argv)
         }
         /* OBS-A3(b): an off node must not create flows but still propagates
          * the received pair to the next hop. */
-        const auto trace_mode = env_or ("ZLINK_CPP_E2E_TRACE_MODE", "key_transitions");
         framework.configure_dispatch ()
-          .message_flow (trace_mode == "off" ? fw::message_flow_log_mode_t::off
-                                             : fw::message_flow_log_mode_t::key_transitions)
-          .trace_log_file (log_dir + "/" + role + "-flow.log")
-          .trace_label ("cpp-obs-" + role);
+          .message_flow (options.trace_mode == "off" ? fw::message_flow_log_mode_t::off
+                                                     : fw::message_flow_log_mode_t::key_transitions)
+          .trace_log_file (options.log_dir + "/" + options.role + "-flow.log")
+          .trace_label ("cpp-obs-" + options.role);
 
         auto spot_route = framework.add_route_mesh (obs::spot_route_channel);
-        spot_route.enable_server (route_endpoint);
-        spot_route.set_routing_id (zlink::routing_id_t::from (role));
-        if (!peer_route_endpoint.empty ()) {
-            spot_route.enable_client (peer_route_endpoint);
+        spot_route.enable_server (options.route_endpoint);
+        spot_route.set_routing_id (zlink::routing_id_t::from (options.role));
+        if (!options.peer_route_endpoint.empty ()) {
+            spot_route.enable_client (options.peer_route_endpoint);
         }
 
         auto spot_mesh = framework.add_spot_mesh (obs::spot_mesh);
         /* OBS-C3: room mesh policy is configurable per run — drain_natural
          * keeps in-progress rooms; release_and_recreate frees the rows for
          * a GetOrCreate rebuild on another owner. */
-        spot_mesh.use_drain_policy (env_or ("ZLINK_CPP_E2E_DRAIN_POLICY") == "release_and_recreate"
+        spot_mesh.use_drain_policy (options.drain_policy == "release_and_recreate"
                                       ? fw::spot_drain_policy_t::release_and_recreate
                                       : fw::spot_drain_policy_t::drain_natural);
-        spot_mesh.set_routing_id (zlink::routing_id_t::from (role))
-          .enable_router (spot_router_endpoint)
-          .enable_pub_sub (spot_pub_endpoint)
+        spot_mesh.set_routing_id (zlink::routing_id_t::from (options.role))
+          .enable_router (options.spot_router_endpoint)
+          .enable_pub_sub (options.spot_pub_endpoint)
           .accept_route_mesh (obs::spot_route_channel)
           .add_entry_spot<obs_entry_spot_t> ()
-          .add_spot<room_spot_t> (obs::room_spot)
+          .add_spot<room_spot_t> (
+            obs::room_spot,
+            [timer_enabled = options.room_timer_enabled] {
+                return std::make_shared<room_spot_t> (timer_enabled);
+            })
           .add_actor_factory<obs_actor_factory_t> (obs::actor_type);
 
-        if (!stream_endpoint.empty ()) {
+        if (!options.stream_endpoint.empty ()) {
             framework.add_stream_node ("obs.session")
-              .bind (stream_endpoint)
+              .bind (options.stream_endpoint)
               .register_session<obs_session_t> ();
         }
 
         framework.http ()
-          .listen (http_endpoint)
+          .listen (options.http_endpoint)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
           .map_post<create_room_handler_t> ("/spot/create")

@@ -13,16 +13,18 @@
 
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
+#include <nlohmann/json.hpp>
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
-#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace obs = zlink::framework::e2e::observability_ops;
@@ -30,12 +32,35 @@ namespace obs = zlink::framework::e2e::observability_ops;
 namespace
 {
 
-std::string env_or (const char *name, const std::string &fallback = {})
+struct trigger_options_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    std::string scenario;
+    std::string stream_endpoint;
+    std::string spot_rid;
+};
+
+trigger_options_t read_options (int argc, char **argv)
+{
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown ObservabilityOps trigger option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
     }
-    return fallback;
+    if (path.empty ()) {
+        throw std::runtime_error ("ObservabilityOps trigger requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open ObservabilityOps trigger config: " + path);
+    }
+    const auto section = nlohmann::json::parse (input).at ("e2e");
+    return {.scenario = section.at ("scenario").get<std::string> (),
+            .stream_endpoint = section.at ("streamEndpoint").get<std::string> (),
+            .spot_rid = section.at ("spotRid").get<std::string> ()};
 }
 
 void ensure (bool condition, const std::string &message)
@@ -50,10 +75,11 @@ void ensure (bool condition, const std::string &message)
 int main (int argc, char **argv)
 {
     try {
-        const std::string scenario = argc > 1 ? argv[1] : "flow";
-        const auto stream_endpoint = env_or ("ZLINK_CPP_E2E_STREAM_ENDPOINT");
-        const auto spot_rid = env_or ("ZLINK_CPP_E2E_SPOT_RID", "obs-room-1");
-        ensure (!stream_endpoint.empty (), "ZLINK_CPP_E2E_STREAM_ENDPOINT is required");
+        const auto configured = read_options (argc, argv);
+        const auto &scenario = configured.scenario;
+        const auto &stream_endpoint = configured.stream_endpoint;
+        const auto &spot_rid = configured.spot_rid;
+        ensure (!stream_endpoint.empty (), "streamEndpoint is required");
 
         zlink::stream_connector::connector_options_t options;
         options.endpoint = stream_endpoint;

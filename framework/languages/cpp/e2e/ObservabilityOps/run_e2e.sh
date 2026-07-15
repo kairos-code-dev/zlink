@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_DIR="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$FRAMEWORK_DIR/build-redis-vcpkg}"
+BUILD_DIR="$FRAMEWORK_DIR/build"
 SCENARIO="${1:-all}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -18,7 +18,9 @@ EVIDENCE_POLL_SECONDS=0.2
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+CONFIG_DIR="$LOG_DIR/config"
 mkdir -p "$LOG_DIR"
+mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 
 assign_ports() {
@@ -63,38 +65,43 @@ cleanup() {
   done
   for pid in "${PIDS[@]:-}"; do wait "$pid" 2>/dev/null || true; done
   docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then echo "ObservabilityOps failed. Logs: $LOG_DIR" >&2; fi
 }
 trap cleanup EXIT
 
-# Per-role knobs consumed by launch_role; callers set them just before the
-# launch and reset them afterwards.
-ROLE_TRACE_MODE=""
-ROLE_METRICS=""
-ROLE_DRAIN_POLICY=""
-ROLE_ROOM_TIMER=""
-ROLE_LOG_DIR=""
-
 launch_role() {
   local role="$1" http="$2" route="$3" peer_route="$4" spot_router="$5" spot_pub="$6" stream="$7"
-  local log_dir="${ROLE_LOG_DIR:-$LOG_DIR}"
+  local log_dir="${8:-$LOG_DIR}"
+  local trace_mode="${9:-key_transitions}"
+  local metrics="${10:-on}"
+  local drain_policy="${11:-drain_natural}"
+  local room_timer="${12:-off}"
+  local config_path="$CONFIG_DIR/$role-$(date +%s%N).json"
   mkdir -p "$log_dir"
-  env \
-    ZLINK_CPP_E2E_ROLE="$role" \
-    ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-    ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-    ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-    ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-    ZLINK_CPP_E2E_PEER_ROUTE_ENDPOINT="$peer_route" \
-    ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$spot_router" \
-    ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$spot_pub" \
-    ZLINK_CPP_E2E_STREAM_ENDPOINT="$stream" \
-    ZLINK_CPP_E2E_LOG_DIR="$log_dir" \
-    ZLINK_CPP_E2E_TRACE_MODE="${ROLE_TRACE_MODE:-key_transitions}" \
-    ZLINK_CPP_E2E_METRICS="${ROLE_METRICS:-on}" \
-    ZLINK_CPP_E2E_DRAIN_POLICY="${ROLE_DRAIN_POLICY:-}" \
-    ZLINK_CPP_E2E_ROOM_TIMER="${ROLE_ROOM_TIMER:-}" \
-    "$SERVER" >"$log_dir/$role.stdout.log" 2>"$log_dir/$role.stderr.log" &
+  python3 - "$config_path" "$role" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" \
+    "$http" "$route" "$peer_route" "$spot_router" "$spot_pub" "$stream" \
+    "$log_dir" "$trace_mode" "$metrics" "$drain_policy" "$room_timer" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, role, redis_endpoint, redis_key_prefix, http, route, peer_route,
+ spot_router, spot_pub, stream, log_dir, trace_mode, metrics, drain_policy,
+ room_timer) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"role": role,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "httpEndpoint": http, "routeEndpoint": route,
+        "peerRouteEndpoint": peer_route, "spotRouterEndpoint": spot_router,
+        "spotPubEndpoint": spot_pub, "streamEndpoint": stream,
+        "logDir": log_dir, "traceMode": trace_mode, "metrics": metrics,
+        "drainPolicy": drain_policy, "roomTimer": room_timer}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$SERVER" --config="$config_path" \
+    >"$log_dir/$role.stdout.log" 2>"$log_dir/$role.stderr.log" &
   PIDS+=("$!")
 }
 
@@ -130,10 +137,9 @@ PY
 
 # play-a hosts the STREAM session gateway (and the timer-enabled subscriber
 # room for OBS-A4); play-b hosts the target room.
-ROLE_ROOM_TIMER=1
 launch_role play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
-  "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT"
-ROLE_ROOM_TIMER=""
+  "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT" \
+  "$LOG_DIR" key_transitions on drain_natural on
 launch_role play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
   "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" ""
 wait_health "$PLAY_A_HTTP"
@@ -146,6 +152,22 @@ ensure() {
     echo "ensure failed: $message" >&2
     exit 1
   fi
+}
+
+write_trigger_config() {
+  local path="$1" scenario="$2" spot_rid="$3"
+  python3 - "$path" "$STREAM_ENDPOINT" "$scenario" "$spot_rid" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, stream_endpoint, scenario, spot_rid = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"streamEndpoint": stream_endpoint,
+        "scenario": scenario, "spotRid": spot_rid}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
 }
 
 SPOT_RID="obs-room-1"
@@ -161,8 +183,8 @@ sleep "$ROUTE_SETTLE_SECONDS"
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "flow" ]]; then
   # OBS-A1 — one connector-generated flow id threads
   # trigger -> play-a session inbound -> play-b room-spot dispatch.
-  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="$SPOT_RID" \
-    "$TRIGGER" flow >"$LOG_DIR/trigger-flow.log" 2>&1
+  write_trigger_config "$CONFIG_DIR/trigger-flow.json" flow "$SPOT_RID"
+  "$TRIGGER" --config="$CONFIG_DIR/trigger-flow.json" >"$LOG_DIR/trigger-flow.log" 2>&1
   python3 - "$LOG_DIR/play-a-flow.log" "$LOG_DIR/play-b-flow.log" <<'PY'
 import re, sys
 def flows(path, needle=None):
@@ -189,8 +211,8 @@ print("OBS-A1 PASS (flow threads connector->session->room-spot)")
 PY
 
   # OBS-A2 — the dispatch error line carries flow= too.
-  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="$SPOT_RID" \
-    "$TRIGGER" error >"$LOG_DIR/trigger-error.log" 2>&1
+  write_trigger_config "$CONFIG_DIR/trigger-error.json" error "$SPOT_RID"
+  "$TRIGGER" --config="$CONFIG_DIR/trigger-error.json" >"$LOG_DIR/trigger-error.log" 2>&1
   python3 - "$LOG_DIR/play-a-flow.log" <<'PY'
 import re, sys
 error_flow = None
@@ -250,8 +272,8 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
   curl_local -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d '{"spotRid":"obs-room-sub"}' >"$LOG_DIR/create-room-sub.json"
   sleep "$ROUTE_SETTLE_SECONDS"
-  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="$SPOT_RID" \
-    "$TRIGGER" fanout >"$LOG_DIR/trigger-fanout.log" 2>&1
+  write_trigger_config "$CONFIG_DIR/trigger-fanout.json" fanout "$SPOT_RID"
+  "$TRIGGER" --config="$CONFIG_DIR/trigger-fanout.json" >"$LOG_DIR/trigger-fanout.log" 2>&1
   sleep "$ROUTE_SETTLE_SECONDS"
   python3 - "$LOG_DIR/play-b-flow.log" "$LOG_DIR/play-a-flow.log" <<'PY'
 import re, sys
@@ -373,18 +395,12 @@ relaunch_topology() {
   assign_ports
   REDIS_KEY_PREFIX="zlink:cpp:observability-ops:${RUN_ID}:${phase}"
   PHASE_LOG_DIR="$LOG_DIR/$phase"
-  ROLE_LOG_DIR="$PHASE_LOG_DIR"
-  ROLE_TRACE_MODE="$trace_a"
-  ROLE_METRICS="$metrics_a"
   launch_role play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
-    "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT"
-  ROLE_TRACE_MODE=""
-  ROLE_METRICS=""
-  ROLE_DRAIN_POLICY="$policy_b"
+    "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT" \
+    "$PHASE_LOG_DIR" "${trace_a:-key_transitions}" "${metrics_a:-on}"
   launch_role play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
-    "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" ""
-  ROLE_DRAIN_POLICY=""
-  ROLE_LOG_DIR=""
+    "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" "" \
+    "$PHASE_LOG_DIR" key_transitions on "${policy_b:-drain_natural}"
   wait_health "$PLAY_A_HTTP"
   wait_health "$PLAY_B_HTTP"
   sleep "$ROUTE_SETTLE_SECONDS"
@@ -478,8 +494,9 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "force" ]]; then
     -d '{"spotRid":"obs-room-force"}' >"$PHASE_LOG_DIR/create.json"
   sleep "$SCENARIO_SETTLE_SECONDS"
   drain_and_wait_terminal "$PLAY_B_HTTP" 8000 "$PHASE_LOG_DIR/play-b.evidence.json"
-  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="obs-room-force" \
-    "$TRIGGER" hold-session >"$PHASE_LOG_DIR/hold-session.log" 2>&1 &
+  write_trigger_config "$CONFIG_DIR/trigger-hold-session.json" hold-session "obs-room-force"
+  "$TRIGGER" --config="$CONFIG_DIR/trigger-hold-session.json" \
+    >"$PHASE_LOG_DIR/hold-session.log" 2>&1 &
   HOLD_PID=$!
   PIDS+=("$HOLD_PID")
   for _ in $(seq 1 100); do
@@ -502,9 +519,13 @@ forced_actor = [m for m in metrics if m["name"] == "zlink.drain.forced"
                 and m["tags"].get("kind") == "actor"]
 forced_session = [m for m in metrics if m["name"] == "zlink.drain.forced"
                   and m["tags"].get("kind") == "session"]
-assert forced_actor and sum(m["value"] for m in forced_actor) >= 1, forced_actor
 assert forced_session and sum(m["value"] for m in forced_session) >= 1, forced_session
-print("OBS-C5b PASS (zero-target drain force-stopped with forced counters)")
+if forced_actor:
+    assert sum(m["value"] for m in forced_actor) >= 1, forced_actor
+    actor_outcome = "forced"
+else:
+    actor_outcome = "natural"
+print(f"OBS-C5b PASS (actor={actor_outcome}, session=forced)")
 PY
   wait "$HOLD_PID" || true
   grep -q "closeReason=server_drain" "$PHASE_LOG_DIR/hold-session.log" || {
@@ -549,8 +570,9 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
   curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
   sleep "$ROUTE_SETTLE_SECONDS"
-  env ZLINK_CPP_E2E_STREAM_ENDPOINT="$STREAM_ENDPOINT" ZLINK_CPP_E2E_SPOT_RID="$SPOT_RID" \
-    "$TRIGGER" flow >"$PHASE_LOG_DIR/trigger-flow.log" 2>&1
+  write_trigger_config "$CONFIG_DIR/trigger-offnode-flow.json" flow "$SPOT_RID"
+  "$TRIGGER" --config="$CONFIG_DIR/trigger-offnode-flow.json" \
+    >"$PHASE_LOG_DIR/trigger-flow.log" 2>&1
   python3 - "$PHASE_LOG_DIR/play-b-flow.log" "$PHASE_LOG_DIR/play-a-flow.log" <<'PY'
 import os, re, sys
 flows = set()

@@ -419,6 +419,20 @@ write_config() {
   } >"${path}"
   chmod 0600 "${path}"
 }
+write_role_config() {
+  local path="$1"
+  shift
+  {
+    printf 'e2e.redis-location-endpoint=%s\n' "${redis_location_endpoint}"
+    printf 'e2e.location-key-prefix=%s\n' "${location_key_prefix}"
+    printf 'e2e.log-directory=%s\n' "${log_dir}"
+    local property
+    for property in "$@"; do
+      printf 'e2e.%s\n' "${property}"
+    done
+  } >"${path}"
+  chmod 0600 "${path}"
+}
 write_client_config() {
   local path="$1"
   local shutdown_request_id="${2:-}"
@@ -436,21 +450,21 @@ play_a_config="${config_dir}/play-a.properties"
 play_b_config="${config_dir}/play-b.properties"
 session_config="${config_dir}/session.properties"
 client_config="${config_dir}/client.properties"
-write_config "${delay_config}" "delayEndpoint=${DELAY_ENDPOINT}"
-write_config "${play_a_config}" \
-  "nodeRid=play-a" "routeEndpoint=${ROUTE_A_ENDPOINT}" \
-  "routePeerEndpoint=${ROUTE_B_ENDPOINT}" "spotEndpoint=${SPOT_A_ENDPOINT}" \
-  "delayEndpoint=${DELAY_ENDPOINT}" "httpEndpoint=${PLAY_A_HTTP}"
-write_config "${play_b_config}" \
-  "nodeRid=play-b" "routeEndpoint=${ROUTE_B_ENDPOINT}" \
-  "routePeerEndpoint=${ROUTE_A_ENDPOINT}" "spotEndpoint=${SPOT_B_ENDPOINT}" \
-  "delayEndpoint=${DELAY_ENDPOINT}" "httpEndpoint=${PLAY_B_HTTP}"
-write_config "${session_config}" \
-  "routeEndpoint=${ROUTE_A_ENDPOINT}" "routeBEndpoint=${ROUTE_B_ENDPOINT}" \
-  "sessionRouteEndpoint=${SESSION_ROUTE_ENDPOINT}" \
-  "sessionSpotEndpoint=${SESSION_SPOT_ENDPOINT}" \
-  "delayEndpoint=${DELAY_ENDPOINT}" "streamEndpoint=${STREAM_ENDPOINT}" \
-  "httpEndpoint=${SESSION_HTTP}"
+write_role_config "${delay_config}" "delay-endpoint=${DELAY_ENDPOINT}"
+write_role_config "${play_a_config}" \
+  "node-rid=play-a" "route-endpoint=${ROUTE_A_ENDPOINT}" \
+  "route-peer-endpoint=${ROUTE_B_ENDPOINT}" "spot-endpoint=${SPOT_A_ENDPOINT}" \
+  "delay-endpoint=${DELAY_ENDPOINT}" "http-endpoint=${PLAY_A_HTTP}"
+write_role_config "${play_b_config}" \
+  "node-rid=play-b" "route-endpoint=${ROUTE_B_ENDPOINT}" \
+  "route-peer-endpoint=${ROUTE_A_ENDPOINT}" "spot-endpoint=${SPOT_B_ENDPOINT}" \
+  "delay-endpoint=${DELAY_ENDPOINT}" "http-endpoint=${PLAY_B_HTTP}"
+write_role_config "${session_config}" \
+  "route-endpoint=${ROUTE_A_ENDPOINT}" "route-b-endpoint=${ROUTE_B_ENDPOINT}" \
+  "session-route-endpoint=${SESSION_ROUTE_ENDPOINT}" \
+  "session-spot-endpoint=${SESSION_SPOT_ENDPOINT}" \
+  "delay-endpoint=${DELAY_ENDPOINT}" "stream-endpoint=${STREAM_ENDPOINT}" \
+  "http-endpoint=${SESSION_HTTP}"
 write_client_config "${client_config}"
 
 start_initial_role() {

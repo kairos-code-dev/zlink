@@ -333,14 +333,20 @@ public final class AwaitProbeHandlers {
     public static final class TimerTickHandler implements ZLinkSpotTimerHandler<AwaitProbeSpot> {
         private final EvidenceStore evidence;
         private final ZLinkFanoutClient fanout;
+        private final boolean fanoutEnabled;
 
         public TimerTickHandler(EvidenceStore evidence) {
-            this(evidence, null);
+            this(evidence, null, false);
         }
 
         public TimerTickHandler(EvidenceStore evidence, ZLinkFanoutClient fanout) {
+            this(evidence, fanout, fanout != null);
+        }
+
+        public TimerTickHandler(EvidenceStore evidence, ZLinkFanoutClient fanout, boolean fanoutEnabled) {
             this.evidence = evidence;
             this.fanout = fanout;
+            this.fanoutEnabled = fanoutEnabled;
         }
 
         @Override
@@ -374,7 +380,7 @@ public final class AwaitProbeHandlers {
                 evidence.record("timer-next-completed", scenario.requestId(), value);
                 spot.closeTimer(tick.name());
             } else if ("fast".equals(scenario.mode())) {
-                if (fanout != null && !Env.get("observabilityFanoutEndpoint").isBlank()) {
+                if (fanout != null && fanoutEnabled) {
                     fanout.publish(
                         Contracts.OBS_FANOUT_CHANNEL,
                         "timer",

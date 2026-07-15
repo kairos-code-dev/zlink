@@ -1,15 +1,17 @@
 package systems.zlink.e2e.automaticturn.session;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.automaticturn.shared.BindActorsHandler;
 import systems.zlink.e2e.automaticturn.shared.Contracts;
 import systems.zlink.e2e.automaticturn.shared.EnsureSpotHandler;
-import systems.zlink.e2e.automaticturn.shared.Env;
 import systems.zlink.e2e.automaticturn.shared.EvidenceHttpServer;
 import systems.zlink.e2e.automaticturn.shared.EvidenceStore;
 import systems.zlink.e2e.automaticturn.shared.ScenarioReqHandler;
@@ -37,6 +39,7 @@ import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SessionOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.automaticturn.session")
@@ -45,8 +48,10 @@ public final class Program {
     }
 
     public static void main(String... args) {
-        Env.configure(args);
+        String config = configPath(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(isolatedEnvironment())
+            .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
         builder.run();
@@ -69,9 +74,10 @@ public final class Program {
         MeterRegistry metrics,
         systems.zlink.framework.monitoring.ZLinkDrainControl drain,
         ZLinkFrameworkLifecycle lifecycle,
-        DrainEvidence drainEvidence) {
+        DrainEvidence drainEvidence,
+        SessionOptions config) {
         return new EvidenceHttpServer(
-            evidence, json, Env.get("httpEndpoint"), metrics,
+            evidence, json, config.httpEndpoint(), metrics,
             drain, lifecycle::monitoringLocationRuntimeQuery, drainEvidence, null, null);
     }
 
@@ -79,51 +85,49 @@ public final class Program {
     DrainEvidence drainEvidence() { return new DrainEvidence(); }
 
     @Bean(destroyMethod = "close")
-    systems.zlink.e2e.automaticturn.shared.PersistentRoomEvents persistentRoomEvents() {
+    systems.zlink.e2e.automaticturn.shared.PersistentRoomEvents persistentRoomEvents(SessionOptions config) {
         return new systems.zlink.e2e.automaticturn.shared.PersistentRoomEvents(
-            Env.get("redisLocationEndpoint"),
-            Env.get("locationKeyPrefix"));
+            config.redisLocationEndpoint(), config.locationKeyPrefix());
     }
 
     @Bean
-    ZLinkFrameworkConfigurer framework() {
+    ZLinkFrameworkConfigurer framework(SessionOptions config) {
         return options -> {
-            String logDir = Env.get("logDirectory", "logs");
             options.addHandlersFromPackageOf(ScenarioReqHandler.class);
             var dispatch = options.configureDispatch()
-                .messageFlow("off".equals(Env.get("messageFlowMode"))
+                .messageFlow("off".equals(config.messageFlowMode())
                     ? ZLinkMessageFlowLogMode.OFF
                     : ZLinkMessageFlowLogMode.KEY_TRANSITIONS);
-            if (!"off".equals(Env.get("messageFlowMode"))) {
-                dispatch.traceLogFile(logDir + "/session-flow.log")
+            if (!"off".equals(config.messageFlowMode())) {
+                dispatch.traceLogFile(config.logDirectory() + "/session-flow.log")
                     .traceLabel("java-atd-session");
             }
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.ROUTE_CHANNEL)
-                .enableServer(Env.get("sessionRouteEndpoint"))
-                .enableClient(Env.get("routeEndpoint"))
+                .enableServer(config.sessionRouteEndpoint())
+                .enableClient(config.routeEndpoint())
                 .setRoutingId(RoutingId.from("session-a"));
-            String routeBEndpoint = Env.get("routeBEndpoint");
+            String routeBEndpoint = config.routeBEndpoint();
             if (!routeBEndpoint.isBlank()) {
                 route.enableClient(routeBEndpoint);
             }
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
-                .enableClient(Env.get("delayEndpoint"));
+                .enableClient(config.delayEndpoint());
             ZLinkSpotMeshBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH);
-            spot.enableRouter(Env.get("sessionSpotEndpoint"))
+            spot.enableRouter(config.sessionSpotEndpoint())
                 .setRoutingId(RoutingId.from("session-a"));
             spot.addEntrySpot(AwaitEntrySpot.class);
             spot.addSpotFactory(AwaitProbeSpot.class);
             spot.addActorFactory(Contracts.ACTOR_TYPE, AwaitActorFactory.class);
             options.addStreamNode("session")
-                .bind(Env.get("streamEndpoint"))
+                .bind(config.streamEndpoint())
                 .registerSession(AwaitSession.class);
         };
     }
 
     @Bean
-    ApplicationRunner createDrainSpot(ZLinkSpotManager spots) {
+    ApplicationRunner createDrainSpot(ZLinkSpotManager spots, SessionOptions config) {
         return ignored -> {
-            String spotRid = Env.get("sessionDrainSpotRid");
+            String spotRid = config.sessionDrainSpotRid();
             if (!spotRid.isBlank()) {
                 spots.getOrCreate(
                     AwaitProbeSpot.class,
@@ -134,10 +138,10 @@ public final class Program {
     }
 
     @Bean
-    ZLinkRedisLocationStore locationStore() {
+    ZLinkRedisLocationStore locationStore(SessionOptions config) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("redisLocationEndpoint"))
-            .setKeyPrefix(Env.get("locationKeyPrefix")));
+            .setConnectionString(config.redisLocationEndpoint())
+            .setKeyPrefix(config.locationKeyPrefix()));
     }
 
     @Bean
@@ -269,5 +273,19 @@ public final class Program {
     @Bean
     AwaitProbeHandlers.ActorFastHandler actorFastHandler(EvidenceStore evidence) {
         return new AwaitProbeHandlers.ActorFastHandler(evidence);
+    }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: automatic-turn-dispatch-session --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
     }
 }

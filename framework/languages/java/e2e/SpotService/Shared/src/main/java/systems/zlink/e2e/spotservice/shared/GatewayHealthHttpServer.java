@@ -1,0 +1,104 @@
+package systems.zlink.e2e.spotservice.shared;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
+import org.springframework.context.SmartLifecycle;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.spots.ZLinkSpotManager;
+
+public final class GatewayHealthHttpServer implements SmartLifecycle {
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private final String endpoint;
+    private final ZLinkSpotManager spots;
+    private HttpServer server;
+    private boolean running;
+
+    public GatewayHealthHttpServer(String endpoint, ZLinkSpotManager spots) {
+        this.endpoint = endpoint;
+        this.spots = spots;
+    }
+
+    @Override
+    public void start() {
+        if (endpoint == null || endpoint.isBlank()) {
+            return;
+        }
+        try {
+            spots.create(GatewayOperationSpot.class, RoutingId.from(
+                    "gateway-operations-" + UUID.randomUUID().toString().replace("-", "")))
+                .toCompletableFuture().join();
+            GatewayOperationSpot operations = GatewayOperationSpot.awaitReady();
+            URI uri = URI.create(endpoint);
+            server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
+            server.createContext("/health", exchange -> write(exchange, 200, "ok\n"));
+            operation("/operations/spot/state-request", Contracts.SpotStateOperation.class,
+                operations::requestState);
+            operation("/operations/spot/slow-request", Contracts.SpotStateOperation.class,
+                operations::requestSlow);
+            operation("/operations/spot/outbound-request", Contracts.SpotValueOperation.class,
+                operations::requestOutbound);
+            operation("/operations/spot/state-send", Contracts.SpotValueOperation.class,
+                operations::sendState);
+            operation("/operations/spot/outbound-send", Contracts.SpotValueOperation.class,
+                operations::sendOutbound);
+            operation("/operations/route/request", Contracts.RouteOperation.class,
+                operations::requestRoute);
+            operation("/operations/actor/push-request", Contracts.ActorOperation.class,
+                operations::requestActorPush);
+            server.start();
+            running = true;
+        } catch (Exception error) {
+            throw new IllegalStateException("failed to start gateway scenario endpoint " + endpoint, error);
+        }
+    }
+
+    private <T> void operation(String path, Class<T> requestType, Operation<T> operation) {
+        server.createContext(path, exchange -> {
+            try {
+                T request = JSON.readValue(exchange.getRequestBody(), requestType);
+                byte[] body = JSON.writeValueAsBytes(operation.execute(request));
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+                exchange.close();
+            } catch (Throwable error) {
+                error.printStackTrace(System.err);
+                write(exchange, 500, "operation failed: " + error + "\n");
+            }
+        });
+    }
+
+    private static void write(
+        com.sun.net.httpserver.HttpExchange exchange,
+        int status,
+        String value) throws java.io.IOException {
+        byte[] body = value.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "text/plain");
+        exchange.sendResponseHeaders(status, body.length);
+        exchange.getResponseBody().write(body);
+        exchange.close();
+    }
+
+    @Override
+    public void stop() {
+        if (server != null) {
+            server.stop(0);
+            server = null;
+        }
+        running = false;
+    }
+
+    @Override
+    public boolean isRunning() {
+        return running;
+    }
+
+    @FunctionalInterface
+    private interface Operation<T> {
+        Object execute(T request);
+    }
+}

@@ -25,6 +25,32 @@ public final class Contracts {
     public record StateMsg(String value) {
     }
 
+    public record SpotStateOperation(
+        String spotRid,
+        String value,
+        long timeoutMilliseconds) {
+    }
+
+    public record SpotValueOperation(
+        String spotRid,
+        String value) {
+    }
+
+    public record RouteOperation(
+        String nodeRid,
+        String value,
+        long timeoutMilliseconds) {
+    }
+
+    public record ActorOperation(
+        String actorId,
+        String value,
+        long timeoutMilliseconds) {
+    }
+
+    public record OperationAccepted(boolean accepted) {
+    }
+
     public record MissingSpotReq(String value) {
     }
 

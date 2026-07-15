@@ -28,6 +28,16 @@ if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
   echo "SpotService client must use ZLinkHttpClient" >&2
   exit 1
 fi
+if rg -n 'runMode\(|/scenario/|class ClientScenario' \
+    "$(pwd)/Client/src/main/java" "$(pwd)/Shared/src/main/java" --glob '*.java'; then
+  echo "SpotService scenarios must run in Client scenario files" >&2
+  exit 1
+fi
+if rg -n '@EnableZLinkFramework|\bZLink(SpotOutbound|RouteClient|ActorClient|SpotManager)\b' \
+    "$(pwd)/Client/src/main/java" --glob '*.java'; then
+  echo "SpotService Client must not host or call the framework runtime directly" >&2
+  exit 1
+fi
 
 if [[ "${SCENARIO}" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   output="$(mktemp)"
@@ -561,11 +571,18 @@ run_client_mode() {
   local mode="$1"
   local timeout_seconds="${ZLINK_JAVA_E2E_CLIENT_TIMEOUT_SECONDS:-90}"
   local attempt
+  local client_scenario="${mode}"
   local status
+  if [[ "${SCENARIO}" == SM-* ]]; then
+    client_scenario="${SCENARIO}"
+  fi
   for attempt in $(seq 1 5); do
     set +e
       ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
+      ZLINK_JAVA_E2E_SCENARIO_ID="${client_scenario}" \
       ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT="${HTTP_GATEWAY}" \
+      ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
+      ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
       ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
       ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
       ZLINK_JAVA_E2E_TLS_STREAM_A_ENDPOINT="${TLS_STREAM_A}" \
@@ -607,7 +624,10 @@ run_sm_g1() {
   local client_pid
 
   ZLINK_JAVA_E2E_CLIENT_MODE="play-crash-recovery" \
+  ZLINK_JAVA_E2E_SCENARIO_ID="SM-G1" \
   ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT="${HTTP_GATEWAY}" \
+  ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="${STREAM_A}" \
+  ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="${STREAM_B}" \
   ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
   ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
   ZLINK_JAVA_E2E_SM_G1_READY_FILE="${ready_file}" \

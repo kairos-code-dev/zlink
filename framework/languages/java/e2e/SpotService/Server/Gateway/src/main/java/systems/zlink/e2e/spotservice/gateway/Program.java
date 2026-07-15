@@ -5,10 +5,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.e2e.spotservice.shared.ClientDriverSpot;
 import systems.zlink.e2e.spotservice.shared.Contracts;
 import systems.zlink.e2e.spotservice.shared.Env;
-import systems.zlink.e2e.spotservice.shared.GatewayScenarioHttpServer;
+import systems.zlink.e2e.spotservice.shared.GatewayHealthHttpServer;
+import systems.zlink.e2e.spotservice.shared.GatewayOperationSpot;
 import systems.zlink.e2e.spotservice.shared.ScenarioState;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
@@ -38,8 +38,8 @@ public final class Program {
     }
 
     @Bean
-    GatewayScenarioHttpServer gatewayScenarioHttpServer(ZLinkSpotManager spots) {
-        return new GatewayScenarioHttpServer(Env.get("ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT"), spots);
+    GatewayHealthHttpServer gatewayHealthHttpServer(ZLinkSpotManager spots) {
+        return new GatewayHealthHttpServer(Env.get("ZLINK_JAVA_E2E_GATEWAY_HTTP_ENDPOINT"), spots);
     }
 
     @Bean
@@ -67,7 +67,7 @@ public final class Program {
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
             node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
                 .setRoutingId(RoutingId.from(gatewayRid));
-            node.addSpotFactory(ClientDriverSpot.class);
+            node.addSpotFactory(GatewayOperationSpot.class);
         };
     }
 

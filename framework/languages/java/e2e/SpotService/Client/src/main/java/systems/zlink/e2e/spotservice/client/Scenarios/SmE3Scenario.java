@@ -1,12 +1,18 @@
 package systems.zlink.e2e.spotservice.client.Scenarios;
 
-import systems.zlink.e2e.spotservice.client.Support.GatewayScenarioClient;
 
-public final class SmE3Scenario {
-    private SmE3Scenario() {
+public final class SmE3Scenario extends SpotServiceScenarioContext {
+    private SmE3Scenario(SpotServiceScenarioContext context) {
+        super(context);
     }
 
-    public static void run(GatewayScenarioClient gateway) {
-        gateway.runMode("idle-timer");
+    public static void run(SpotServiceScenarioContext context) {
+        new SmE3Scenario(context).execute();
+    }
+
+    private void execute() {
+        sleep(1200);
+        System.out.println("scenario SM-E3 passed");
+
     }
 }

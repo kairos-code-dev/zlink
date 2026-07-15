@@ -91,37 +91,15 @@ class actor_client_impl_t final : public actor_client_t
                                        std::string packet_name,
                                        message_t message) override
     {
-        const auto actor_id = std::string (actor_ref.actor_id ());
-        auto actor = resolve_actor (actor_id, stale_policy_t::route_not_found);
+        auto actor = resolve_explicit_actor (actor_ref);
         if (!actor) {
             return task_t<void> (result_t<void>::failure (
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "actor route was not found",
               actor.error () && actor.error ()->is_retriable ()));
         }
-        auto first = submit_send (actor.value (), std::move (packet_name), std::move (message));
-        if (first) {
-            return task_t<void> (result_t<void>::success ());
-        }
-        if (!is_stale_actor_error (first.error_kind ())) {
-            return task_t<void> (std::move (first));
-        }
-        auto resolved = resolve_actor (actor_id, stale_policy_t::location_stale);
-        if (!resolved) {
-            return task_t<void> (result_t<void>::failure (
-              resolved.error_kind (),
-              resolved.error () ? resolved.error ()->what () : "actor location is stale", true));
-        }
-        auto retry = submit_send (resolved.value (), std::move (packet_name), std::move (message));
-        if (retry) {
-            return task_t<void> (result_t<void>::success ());
-        }
-        if (is_stale_actor_error (retry.error_kind ())) {
-            return task_t<void> (result_t<void>::failure (
-              framework_error_kind_t::actor_location_stale,
-              "actor route is stale after re-resolve", true));
-        }
-        return task_t<void> (std::move (retry));
+        return task_t<void> (
+          submit_send (actor.value (), std::move (packet_name), std::move (message)));
     }
 
     task_t<message_t> request_to_actor_erased (
@@ -240,6 +218,22 @@ class actor_client_impl_t final : public actor_client_t
         node_rid_t node_rid;
         spot_rid_t spot_rid;
     };
+
+    result_t<resolved_actor_t> resolve_explicit_actor (const actor_ref_t &actor_ref)
+    {
+        if (actor_ref.empty () || actor_ref.node_rid ().empty ()) {
+            return result_t<resolved_actor_t>::failure (
+              framework_error_kind_t::actor_route_not_found,
+              "actor send requires a non-empty actor ref and node rid");
+        }
+        auto native = zlink::service::spot_node_t::remote_actor_ref (
+          zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
+          std::string (actor_ref.actor_id ()));
+        return result_t<resolved_actor_t>::success (
+          resolved_actor_t{
+            actor_ref, std::move (native), actor_ref.node_rid (),
+            spot_rid_t::from_string (std::string (actor_ref.node_rid ().value ())) });
+    }
 
     result_t<resolved_actor_t> resolve_actor (const std::string &actor_id, stale_policy_t policy)
     {

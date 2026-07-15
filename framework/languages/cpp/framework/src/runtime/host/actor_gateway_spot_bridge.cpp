@@ -772,12 +772,13 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
     (void) route_channel_name;
     const auto send_remote =
       [&] (const spot_route_t &route,
-           const spot_rid_t &spot_rid) -> result_t<std::optional<zlink::message_t>> {
+           const spot_rid_t &spot_rid,
+           const actor_ref_t &routed_actor) -> result_t<std::optional<zlink::message_t>> {
         auto relayed = relay_actor_packet_to_remote_actor_mesh (
-          runtime, actor_gateway, actor_ref, route.node_rid, spot_rid, header, payload, metadata,
+          runtime, actor_gateway, routed_actor, route.node_rid, spot_rid, header, payload, metadata,
           serializers);
         if (relayed) {
-            runtime.record_actor_route (actor_ref,
+            runtime.record_actor_route (routed_actor,
                                         spot_route_t{route.node_rid, spot_rid, route.spot_name});
         }
         return relayed;
@@ -789,8 +790,16 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         if (const auto current = runtime.current_actor_ref (actor_ref);
             current && current->generation () > actor_ref.generation ()) {
             emit_straggler_forward_marker (actor_ref);
+            runtime.emit_actor_transfer_marker (
+              "straggler_forward", actor_ref,
+              std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),
+              route->spot_rid, route->node_rid);
+            const auto forwarded = actor_ref_t (
+              route->node_rid, std::string (actor_ref.actor_type ()),
+              std::string (actor_ref.actor_id ()), current->generation ());
+            return send_remote (*route, route->spot_rid, forwarded);
         }
-        return send_remote (*route, route->spot_rid);
+        return send_remote (*route, route->spot_rid, actor_ref);
     }
 
     // A relay for an actor whose ref is homed on another node and that has no
@@ -828,7 +837,7 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
                   spot_route_t{node_rid_t::from_string (resolved.value ()->node_rid.to_string ()),
                                spot_rid_t::from_string (resolved.value ()->spot_rid.to_string ()),
                                resolved.value ()->mesh_name};
-                return send_remote (route, route.spot_rid);
+                return send_remote (route, route.spot_rid, actor_ref);
             }
         }
         catch (const framework_exception_t &) {
@@ -836,7 +845,7 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         if (!actor_ref.node_rid ().empty ()
             && actor_ref.node_rid ().value () != runtime.node_rid ().value ()) {
             return send_remote (spot_route_t{actor_ref.node_rid (), spot_rid_t{}, std::string{}},
-                                spot_rid_t{});
+                                spot_rid_t{}, actor_ref);
         }
         return local;
     }
@@ -847,11 +856,11 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         if (!actor_ref.node_rid ().empty ()
             && actor_ref.node_rid ().value () != runtime.node_rid ().value ()) {
             return send_remote (spot_route_t{actor_ref.node_rid (), spot_rid_t{}, std::string{}},
-                                spot_rid_t{});
+                                spot_rid_t{}, actor_ref);
         }
         return local;
     }
-    return send_remote (*route, *spot_rid);
+    return send_remote (*route, *spot_rid, actor_ref);
 }
 
 result_t<void>

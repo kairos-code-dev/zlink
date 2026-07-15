@@ -71,7 +71,8 @@ class evidence_store_t
         }
         static const std::set<std::string> transfer_markers{
           "commit_request", "location_committed", "commit_ack", "source_cleanup",
-          "pending_admission_expired", "forwarding_entry", "mapping_evicted"};
+          "pending_admission_expired", "forwarding_entry", "mapping_evicted",
+          "straggler_forward", "stale_fail_fast"};
         if (!transfer_markers.contains (*event.packet_name)) {
             return;
         }

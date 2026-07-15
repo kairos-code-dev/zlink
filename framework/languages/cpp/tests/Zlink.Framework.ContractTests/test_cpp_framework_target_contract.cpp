@@ -671,6 +671,32 @@ int main ()
                   "E2E-CP-53",
                   "ST-F3 sends S3/S4 only after the join caller observes completion");
 
+    /* E2E-CP-54 — both sides of the forwarding window use the same one-way
+     * send surface; an explicit stale ref is never silently re-resolved. */
+    const auto st_f4_begin = transfer_client.find ("void straggler_forward_then_fail_fast ()");
+    const auto st_f4_end = transfer_client.find ("void forwarding_mapping_eviction ()", st_f4_begin);
+    const auto st_f4 = st_f4_begin != std::string::npos && st_f4_end != std::string::npos
+                         ? transfer_client.substr (st_f4_begin, st_f4_end - st_f4_begin)
+                         : std::string{};
+    gate.require (st_f4.find ("send_ref") != std::string::npos
+                    && st_f4.find ("{\"ST-F4\", \"G2\"}") != std::string::npos
+                    && st_f4.find ("probe_ref") == std::string::npos
+                    && st_f4.find ("stale_fail_fast") != std::string::npos,
+                  "E2E-CP-54",
+                  "ST-F4 still changes G2 from send to request or omits stale evidence");
+    const auto actor_client_runtime =
+      read_file (root / "framework/src/runtime/actors/actor_client.cpp");
+    const auto send_begin = actor_client_runtime.find ("task_t<void> send_to_actor_erased");
+    const auto send_end = actor_client_runtime.find (
+      "task_t<message_t> request_to_actor_erased", send_begin);
+    const auto actor_send = send_begin != std::string::npos && send_end != std::string::npos
+                              ? actor_client_runtime.substr (send_begin, send_end - send_begin)
+                              : std::string{};
+    gate.require (actor_send.find ("stale_policy_t::location_stale") == std::string::npos
+                    && actor_send.find ("retry") == std::string::npos,
+                  "E2E-CP-54",
+                  "explicit actor send still re-resolves and retries stale refs");
+
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");
     const auto st_d1_local_end =

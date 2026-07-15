@@ -895,12 +895,18 @@ class scenario_runner_t
     {
         const auto setup = transfer_for_straggler ("ST-F4", 104);
         send_ref (_nodes.a, setup.actor_id, setup.old_ref, {"ST-F4", "G1"});
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + setup.actor_id + "|straggler_forward|"});
         wait_evidence (_nodes.b, {"ST-F4|" + setup.actor_id + "|handoff_packet|G1"});
 
-        std::this_thread::sleep_for (std::chrono::milliseconds (3300));
-        const auto stale = probe_ref (_nodes.a, setup.actor_id, setup.old_ref, {"ST-F4", "G2"});
-        require (!stale.succeeded && stale.error_kind == "ActorLocationStale",
-                 "ST-F4 expected ActorLocationStale, got '" + stale.error_kind + "'.");
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + setup.actor_id + "|mapping_evicted|"});
+        send_ref (_nodes.a, setup.actor_id, setup.old_ref, {"ST-F4", "G2"});
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + setup.actor_id + "|stale_fail_fast|"});
+        require_no_contains (get_evidence (_nodes.b),
+                             "ST-F4|" + setup.actor_id + "|handoff_packet|G2",
+                             "ST-F4 stale G2 send was automatically re-resolved and delivered.");
     }
 
     void forwarding_mapping_eviction ()

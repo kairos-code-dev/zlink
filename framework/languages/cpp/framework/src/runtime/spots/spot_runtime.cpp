@@ -3571,6 +3571,12 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         // (ST-A3); for a genuinely stale record the client re-resolves the same
         // answer and eventually surfaces this stale on its own budget timeout.
         emit_actor_handoff_marker ("stale_fail_fast", actor_ref.actor_id (), packet_name);
+        emit_actor_transfer_marker (
+          "stale_fail_fast", actor_ref,
+          std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),
+          found_location != _state->actor_spot_rids.end ()
+            ? std::make_optional (found_location->second)
+            : std::nullopt);
         return result_t<std::optional<zlink::message_t>>::failure (
           framework_error_kind_t::actor_location_stale,
           "actor generation is stale. actor=" + std::string (actor_ref.actor_id ())

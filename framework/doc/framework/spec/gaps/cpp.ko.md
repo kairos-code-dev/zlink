@@ -613,7 +613,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **E2E-CP-01** (결함) — **Config 10이 통합 게이트에서 아예 안 돈다.** 대신 문서에 없는 config가 돈다
   - 근거: 수정 전 target-contract gate가 `SpotActorTransfer` 누락과 문서 밖 `DeliveryDispatch` 등록을 모두 검출했다. 통합 목록을 공통 11개 config에 맞춘 뒤 gate가 통과했고, `./run_e2e_all.sh SpotActorTransfer:ST-A1`이 forward·reverse·shuffle 세 변형에서 모두 통과했다.
 - [ ] **E2E-CP-02** (결함) — **Config 9 Track A(P0 전부)가 이름만 그렇다.** session gateway 역할도 stream connector도 없다
-- [ ] **E2E-CP-03** (결함) — **Config 11이 구조 자체가 규약 밖**이다(Client 없음·env role 스위치·`OrderWorkflow` 역할 0건)
+- [x] **E2E-CP-03** (결함) — **Config 11이 구조 자체가 규약 밖**이다(Client 없음·env role 스위치·`OrderWorkflow` 역할 0건)
+  - 근거: 수정 전 역할 진입점 gate가 `Session`·`Play`·`OrderWorkflow`·`Client` 대상과 파일 부재, runtime `role` 설정을 검출했다(`b0e5fd8c5`). 역할별 진입점과 CMake target을 추가하고 runtime 역할 선택을 제거한 뒤(`80e3c4e1e`), 실제 `Session` 1개·`Play` 2개·`OrderWorkflow` 2개를 역할별 `0600` JSON으로 순차 시작하도록 topology와 drain 정책을 분리했다(`83f843fd2`). C++ 전체 sample/E2E layout 정책 gate, 네 역할 target 빌드, shell 문법 검사와 `ObservabilityOps/run_e2e.sh all`이 통과했다. POSD/DDD 재검토에서는 공통 host가 설정과 수명주기를 흡수하고 각 역할 진입점은 고정 역할만 선택하게 해 runtime 분기와 호출자 설정 지식을 제거했다. 시나리오 파일 분리와 세부 단언 gap은 E2E-CP-10·62·63에 유지한다.
 - [x] **E2E-CP-04** (결함) — **PubSub client 시나리오가 아무것도 단언하지 않는다**
   - 근거: 수정 전 target-contract 검증이 client에서 제한 시간 안에 evidence를 기다리는 기능이 없고 7개 시나리오가 단언 없이 PASS를 출력하는 문제를 검출했다. HTTP 요청 처리는 client support에 모으고, 각 시나리오가 세 subscriber의 수신·필터·재연결·실패 경로 marker를 직접 단언하도록 옮겼다. shell runner의 중복 판정을 제거한 뒤 target-contract 검증과 `./run_e2e.sh all`의 7개 시나리오가 모두 통과했다.
 - [x] **E2E-CP-05** (결함) — **SpotService `all`이 문서 시나리오를 빼먹고**(SM-F3·F4·F5) **문서에 없는 걸 돌린다**(SM-Q9)

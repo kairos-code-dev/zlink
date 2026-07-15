@@ -255,6 +255,21 @@ TEST (CppFrameworkSampleParity, DomainOwnsBingoJoinAndSupportChatTimeoutDecision
     EXPECT_EQ (support.find ("_close_deadline_unix_ms"), std::string::npos);
 }
 
+TEST (CppFrameworkSampleParity, SupportChatServingPathUsesAgentAssignmentApplicationService)
+{
+    const auto root = cpp_language_root ();
+    const auto assignment = read_file (
+      root
+      / "samples/SupportChat/Server/Support/Application/ConversationAssignment/agent_assignment_service.hpp");
+    const auto support = read_file (root / "samples/SupportChat/Server/Support/main.cpp");
+
+    EXPECT_NE (assignment.find ("assign_for_conversation"), std::string::npos);
+    EXPECT_NE (assignment.find ("release_conversation"), std::string::npos);
+    EXPECT_NE (support.find ("_assignment.set_available"), std::string::npos);
+    EXPECT_NE (support.find ("_assignment.assign_for_conversation"), std::string::npos);
+    EXPECT_EQ (support.find ("_available_agent"), std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 {
     using namespace zlink::samples::tictactoe;

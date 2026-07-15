@@ -557,7 +557,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **SMP-CP-47** (결함) — **문서에 없는 필드가 응답·push에 실린다**(TicTacToe 4개, GameQuest 1개, `.NET` DeliveryDispatch 1개)
 - [ ] **SMP-CP-48** (결함) — **계약에 없는 wire 타입이 9종 더 있다**(GameQuest 4, ShoppingMall 5)
 - [ ] **SMP-CP-49** (**wire 파손**) — **`.NET`이 `null`을 wire에 싣는데 C++엔 null 가드가 없다.** Bingo 0·TicTacToe 0·GameQuest 0개
-- [ ] **SMP-CP-50** (결함) — **Bingo `BingoActorEntrySpotNotify`가 `.NET`에만 있고** `target_node_rid`를 흘린다. C++·문서엔 0건
+- [x] **SMP-CP-50** (결함) — **Bingo `BingoActorEntrySpotNotify`가 `.NET`에만 있고** `target_node_rid`를 흘린다. C++·문서엔 0건
+  - 근거: 재검증에서 C++ 사용처는 없지만 shared protobuf에 유령 메시지가 남아 있어 기존 설명을 바로잡았다. 수정 전 sample-parity gate가 `BingoActorEntrySpotNotify`를 검출해 1건 실패했고, 비계약 메시지와 transport `target_node_rid` 필드를 제거했다(`725ab8090`). parity·spot runtime·ActorGateway 시험과 Bingo 전체 runner가 통과했다.
 
 **아래는 샘플 서버 인프라를 정독해 나온 것이다. 진짜 버그가 5건 더 나왔다.**
 
@@ -802,7 +803,7 @@ C++는 nlohmann `json.value(k, default)`로 읽는데, 이건 **키가 없을 �
 | **SMP-CP-47** | 각 문서의 §메시지 계약 표가 필드를 고정한다 | **TicTacToe**: `GameStateNotify`가 문서(`:689-691`)·`.NET`(`Messages.cs:84`)엔 `{State}`뿐인데 C++엔 `room_id`+`next_turn`이 더 있다(`messages.hpp:220-226`, 방출 `:526-529`). `AuthenticatePlayerRes`도 문서(`:620-622`)엔 `{Player}`인데 C++엔 `accepted`+`reason`이 더 있다(`:85-91`). **GameQuest**: `SyncQuestProgressReq`가 문서(`:492`)·`.NET`(`Messages.cs:31`)엔 `{PlayerId}`(보정 트리거)인데 C++엔 `snapshot_kill_count`가 더 있다(`messages.hpp:159-166`) ⇒ **서버가 재계산해야 할 값을 client가 넘긴다.** **DeliveryDispatch**: `DeliveryStatusChangedReq`가 문서(`:326`)·C++(`messages.hpp:224-231`)엔 4필드인데 **`.NET`에만 `CustomerId`**가 더 있다(`Messages.cs:124-129`) |
 | **SMP-CP-48** | SMP-CP-29에 이어, 계약에 없는 wire 타입이 더 있다 | **GameQuest**: `ApplyGameplayEventReq/Res`(`messages.hpp:252-264`)·`NotifyQuestProgressMsg`(`:230-236`)·`PlayerQuestSpotCreateReq`(`:186-190`)·`EnsurePlayerQuestSpotReq/Res`(`:174-184`). **ShoppingMall**: `EnsureOrderWorkflowSpotReq`(`messages.hpp:207-211`)·`PendingMappingReq`(`:213-219`, `owner_instance_id`를 흘린다)·`DeleteProjectionReq`(`:221-225`)·`OkRes`(`:227-231`)·`ServerAssertionReq/Res`(`:233-250`). 문서 §11 grep **전부 0건** |
 | **SMP-CP-49** | 언어 간 wire 호환 | 위 "전제" 참조 — `.NET`이 `null`을 싣는데 C++ **Bingo·TicTacToe·GameQuest의 null 가드가 0개**다. ⇒ `.NET` client/peer가 보낸 payload에서 **C++가 `type_error.302`로 던진다.** SMP-CP-40·43이 구체 사례이고, **이건 그 셋을 넘어 계약 표면 전반에 깔린 체계적 위험**이다. 가드 패턴 자체는 이미 트리에 있다(`ShoppingMall/.../messages.hpp:260-270`의 `json_nullable_string`) — **쓰지 않았을 뿐이다** |
-| **SMP-CP-50** | [bingo §11:596-844](../../common/sample/bingo/README.ko.md)가 wire를 고정한다 | `Shared/Contracts/bingo_messages.proto:150-154`의 `BingoActorEntrySpotNotify`(`actor_id`·`room_id`·**`target_node_rid`**) — `.NET`이 보낸다(`Server/Play/.../EntrySpot/BingoEntrySpot.cs:61`). **C++ Bingo 샘플엔 타입도 handler도 0건**이고 **문서 grep도 0건**이다. ⇒ `.NET`만 쏘는 유령 packet이고 **transport 신원(`target_node_rid`)을 client 계약에 흘린다** |
+| **SMP-CP-50** | [bingo §11:596-844](../../common/sample/bingo/README.ko.md)가 wire를 고정한다 | **해결.** C++ shared protobuf에도 남아 있던 미사용 `BingoActorEntrySpotNotify`와 transport `target_node_rid` 필드를 제거했다. sample-parity gate가 이 비계약 메시지의 재도입을 막는다. |
 
 **Bingo가 6개 중 가장 깨끗하다** — 실제 wire가 전 hop protobuf이고(`Server/common_codecs.hpp:30-32`,
 `bingo_session.hpp:61`, `.NET` `Client/Program.cs:48`), `.NET`엔 **C# 메시지 record가 아예 없어**

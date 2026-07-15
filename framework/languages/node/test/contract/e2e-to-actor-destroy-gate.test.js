@@ -6,7 +6,10 @@ const test = require('node:test');
 const root = path.resolve(__dirname, '../..');
 
 test('TA-A4 verifies ActorRouteNotFound after actor destroy', () => {
-  const client = fs.readFileSync(path.join(root, 'e2e/ToActorMessaging/Client/main.ts'), 'utf8');
+  const client = fs.readFileSync(path.join(
+    root,
+    'e2e/ToActorMessaging/Client/Scenarios/ta-a4-disconnect-destroy-scenario.ts'
+  ), 'utf8');
   const actor = fs.readFileSync(path.join(root, 'e2e/ToActorMessaging/Server/Actor/main.ts'), 'utf8');
 
   assert.match(actor, /path: '\/actors\/ta-a4\/destroy'/);

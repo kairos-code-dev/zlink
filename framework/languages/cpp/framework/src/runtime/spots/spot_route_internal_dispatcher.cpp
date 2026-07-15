@@ -153,10 +153,9 @@ void spot_route_internal_dispatcher_t::bind_actor_session_route (
     actor_gateway.bind_session_route (actor_ref, _route_client, route_channel_name,
                                       session_node_rid, stream_codec_t::message_pack,
                                       replace_existing);
-    if (session_rid && session_rid->size () > 0) {
-        actor_gateway.record_bound_session_route (actor_ref, std::move (session_node_rid),
-                                                  std::move (*session_rid));
-    }
+    auto snapshot_session_rid = session_rid.value_or (session_node_rid);
+    actor_gateway.record_bound_session_route (actor_ref, std::move (session_node_rid),
+                                              std::move (snapshot_session_rid));
 }
 
 actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (
@@ -269,13 +268,16 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                       actor_ref_updated.error () ? actor_ref_updated.error ()->what ()
                                                  : "remote actor ref update failed");
                 }
-                if (!request.bound_session_node_rid.empty ()
-                    && !request.bound_session_rid.empty ()) {
+                if (!request.bound_session_node_rid.empty ()) {
                     bind_actor_session_route (
                       actor_gateway, committed.value ().actor,
                       _runtime.actor_route_transport_name ().value_or (header.channel_name),
                       zlink::routing_id_t::from (request.bound_session_node_rid),
-                      zlink::routing_id_t::from (request.bound_session_rid), true);
+                      request.bound_session_rid.empty ()
+                        ? std::nullopt
+                        : std::make_optional (
+                            zlink::routing_id_t::from (request.bound_session_rid)),
+                      true);
                 }
             }
             trace_actor_transfer_target ("commit-replying", request.actor_id, request.transfer_id);

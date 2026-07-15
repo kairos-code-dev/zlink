@@ -34,6 +34,11 @@ if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' Client/src/main/java --gl
   echo "RuntimeMonitoring client must use ZLinkHttpClient" >&2
   exit 1
 fi
+if rg -n 'runScenario\(|/scenario/|class TriggerScenario' \
+    Client/src/main/java Server/Trigger/src/main/java --glob '*.java'; then
+  echo "RuntimeMonitoring scenarios must run in Client files" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"
@@ -235,6 +240,13 @@ wait_port trigger-http "${TRIGGER_HTTP}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 
 ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
+ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
+ZLINK_JAVA_E2E_SERVICE_B_HTTP="${FILTER_HTTP}" \
+ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT="${FILTER_API_ENDPOINT}" \
+ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
+ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN="$(filtered_service_bin)" \
 ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
   "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"

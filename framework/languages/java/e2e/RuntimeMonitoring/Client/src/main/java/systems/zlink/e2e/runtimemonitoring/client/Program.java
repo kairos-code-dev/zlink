@@ -9,7 +9,7 @@ import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonB1KindFilterScena
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonB2RegistrationValidationScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonC1DispatchFailureScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonD1FailureRecoveryScenario;
-import systems.zlink.e2e.runtimemonitoring.client.Support.TriggerScenarioClient;
+import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
 import systems.zlink.e2e.runtimemonitoring.shared.Env;
 
 public final class Program {
@@ -17,38 +17,37 @@ public final class Program {
     }
 
     public static void main(String... args) {
-        try (TriggerScenarioClient trigger = new TriggerScenarioClient(
-                Env.get("ZLINK_JAVA_E2E_TRIGGER_HTTP"))) {
+        try (MonitoringScenarioContext context = new MonitoringScenarioContext()) {
             String scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
             if (!"all".equals(scenario)) {
-                runOne(scenario, trigger);
+                runOne(scenario, context);
                 System.out.println("monitoring e2e result=passed");
                 return;
             }
-            MonA1SocketEventsScenario.run(trigger);
-            MonA2LocationEventsScenario.run(trigger);
-            MonA3SpotEventsScenario.run(trigger);
-            MonA4AvailabilityTransitionScenario.run(trigger);
-            MonA5FixedKindsScenario.run(trigger);
-            MonB1KindFilterScenario.run(trigger);
-            MonB2RegistrationValidationScenario.run(trigger);
-            MonC1DispatchFailureScenario.run(trigger);
-            MonD1FailureRecoveryScenario.run(trigger);
+            MonA1SocketEventsScenario.run(context);
+            MonA2LocationEventsScenario.run(context);
+            MonA3SpotEventsScenario.run(context);
+            MonA4AvailabilityTransitionScenario.run(context);
+            MonA5FixedKindsScenario.run(context);
+            MonB1KindFilterScenario.run(context);
+            MonB2RegistrationValidationScenario.run(context);
+            MonC1DispatchFailureScenario.run(context);
+            MonD1FailureRecoveryScenario.run(context);
             System.out.println("monitoring e2e result=passed");
         }
     }
 
-    private static void runOne(String scenario, TriggerScenarioClient trigger) {
+    private static void runOne(String scenario, MonitoringScenarioContext context) {
         switch (scenario) {
-            case "MON-A1" -> MonA1SocketEventsScenario.run(trigger);
-            case "MON-A2" -> MonA2LocationEventsScenario.run(trigger);
-            case "MON-A3" -> MonA3SpotEventsScenario.run(trigger);
-            case "MON-A4" -> MonA4AvailabilityTransitionScenario.run(trigger);
-            case "MON-A5" -> MonA5FixedKindsScenario.run(trigger);
-            case "MON-B1" -> MonB1KindFilterScenario.run(trigger);
-            case "MON-B2" -> MonB2RegistrationValidationScenario.run(trigger);
-            case "MON-C1" -> MonC1DispatchFailureScenario.run(trigger);
-            case "MON-D1" -> MonD1FailureRecoveryScenario.run(trigger);
+            case "MON-A1" -> MonA1SocketEventsScenario.run(context);
+            case "MON-A2" -> MonA2LocationEventsScenario.run(context);
+            case "MON-A3" -> MonA3SpotEventsScenario.run(context);
+            case "MON-A4" -> MonA4AvailabilityTransitionScenario.run(context);
+            case "MON-A5" -> MonA5FixedKindsScenario.run(context);
+            case "MON-B1" -> MonB1KindFilterScenario.run(context);
+            case "MON-B2" -> MonB2RegistrationValidationScenario.run(context);
+            case "MON-C1" -> MonC1DispatchFailureScenario.run(context);
+            case "MON-D1" -> MonD1FailureRecoveryScenario.run(context);
             default -> throw new IllegalArgumentException("Unknown RuntimeMonitoring scenario '" + scenario + "'.");
         }
     }

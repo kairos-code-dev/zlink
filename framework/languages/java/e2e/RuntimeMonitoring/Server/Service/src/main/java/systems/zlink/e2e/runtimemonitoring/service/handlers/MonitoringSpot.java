@@ -49,6 +49,9 @@ public final class MonitoringSpot implements ZLinkSpot<ZLinkActor> {
         implements ZLinkSpotTimerHandler<MonitoringSpot> {
         @Override
         public CompletionStage<Void> handle(MonitoringSpot spot, ZLinkTimerTick tick) {
+            if (tick.name().equals("failing-monitoring-timer") && tick.deliveryIndex() > 1) {
+                return CompletableFuture.completedFuture(null);
+            }
             return CompletableFuture.failedFuture(
                 new IllegalStateException("monitoring timer boom"));
         }

@@ -709,10 +709,10 @@ Config 11 전체 실행도 각 selector를
 - [ ] **E2E-JV-01** (결함) — `ObservabilityOps`가 **역할 서버도 클라이언트도 없이** 폐기된 config-8 바이너리를 빌려 쓴다
 - [x] **E2E-JV-02** (결함) — Config 2 커버리지 구멍(`SM-F3` 누락), 문서에 없는 `SM-Q9`
   - 근거: 수정 전 `run_e2e.sh SM-F3`가 `not mapped to an implemented client mode`로 실패했다. `SM-F3`를 기존 route-mesh 검증에 연결한 뒤 단독 실행이 통과했다. 공통 문서에 없는 `SM-Q9`는 전체 실행 목록, selector, feature-map과 시나리오 출력에서 제거했다.
-- [ ] **E2E-JV-03** (결함) — Client 주 경로·보조 launcher raw 0. 서버 위임 경로 raw 3
+- [ ] **E2E-JV-03** (결함) — Client 주 경로·보조 launcher raw 0. 서버 위임 경로 raw 2
 - [ ] **E2E-JV-04** (결함) — 앱 코드의 **환경변수 읽기 535곳**인데 feature-map에 기록 **0**
 - [ ] **E2E-JV-05** (결함) — 10개 runner 해결. `ResilienceLifecycle`은 E2E-JV-06의 역할 기동 책임을 먼저 옮겨야 한다
-- [ ] **E2E-JV-06** (결함) — StoreFailure 해결. ResilienceLifecycle·RuntimeMonitoring·SpotService의 서버 위임이 남아 있다
+- [ ] **E2E-JV-06** (결함) — StoreFailure·RuntimeMonitoring 해결. ResilienceLifecycle·SpotService의 서버 위임이 남아 있다
 - [ ] **E2E-JV-07** (결함) — **`SF-B2`가 `SF-B1`과 구별되는 것을 아무것도 단언하지 않고**, 죽은 옵션으로 시간을 잰다
   - 재검증 중단: provider 재시작과 survivor-only gate를 추가하면 기존 runner에서는 `api-b` 응답을 잡아 red가 된다. grace 초과 뒤 `api-b`를 종료하고 Redis 중단 상태에서 같은 endpoint로 재시작해도 consumer가 새 연결을 만들고 `sf-b2-restarted` 요청을 전달했다. E2E만 고치면 영구 실패하므로 Java runtime 범위가 필요하다.
 - [x] **E2E-JV-08** (결함) — `feature-map` 누락, `YieldDispatch`에 **`run_e2e.sh`가 없어** 실행 불가
@@ -745,10 +745,10 @@ Config 11 전체 실행도 각 selector를
 |----|------|----------------|
 | **E2E-JV-01** (결함) | [E2E README §2.2:218-236](../../common/e2e/README.ko.md): config마다 역할 서버 앱과 `Client/Program.*`·`Client/Scenarios/`를 둔다. `:109`는 *"프로젝트 안에서 옵션만 바꿔 구동하지 않는다"* | `ObservabilityOps/settings.gradle.kts:16` — `include(":Trigger", ":Verifier")`가 전부다. **역할 서버도 Client도 없다**(`Role/`엔 낡은 `build/`만 남아 있다). `run_e2e.sh:8,213-221`이 **옆 config인 `AutomaticTurnDispatch`를 빌드해** 그 `delay`/`play`/`session`/`client` 바이너리를 그대로 띄우고, OBS-A1은 `"${client_bin}" ATD-D4`(`:242`)를 돌린다. 그 ATD는 **폐기된 config-8 하네스**다(정본 ID는 [config-8](../../common/e2e/config-8-execution-turn.ko.md)의 `TD-*`). ⇒ **config-11 코드가 한 줄도 없이 config-11을 통과시킨다.** Kotlin도 같은 병이다(E2E-KT-06) |
 | **E2E-JV-02** (결함) | [config-2:558](../../common/e2e/config-2-spot-service.ko.md)에 `SM-F3`("한 channel에 일반 packet과 spot route packet 혼재")가 있다. [E2E README §2.8:435-447](../../common/e2e/README.ko.md)은 feature-map이 **config 문서의 모든 시나리오 ID를 행으로** 두라고 한다 | **해결:** `SM-F3` selector가 일반 route request와 spot request/send를 함께 검증하는 기존 `route-mesh` 모드를 단독 실행한다. 공통 문서에 없는 `SM-Q9`는 전체 실행과 정식 시나리오 목록에서 제거했으며, 내부 multi-node 진단은 계약 ID를 출력하지 않는다. |
-| **E2E-JV-03** (결함) | [E2E README:43-44](../../common/e2e/README.ko.md): client는 **언어별 HTTP client wrapper**를 사용하고 raw `HttpClient`로 app endpoint를 호출하지 않는다 | **부분 해결:** Client 주 경로와 보조 launcher는 wrapper 11 : raw 0이지만, 서버 위임 코드에는 raw 3곳이 남아 있다. 아래 `E2E-JV-03 진행 기록`에서 검증과 잔여 경로를 추적한다. |
+| **E2E-JV-03** (결함) | [E2E README:43-44](../../common/e2e/README.ko.md): client는 **언어별 HTTP client wrapper**를 사용하고 raw `HttpClient`로 app endpoint를 호출하지 않는다 | **부분 해결:** Client 주 경로와 보조 launcher는 wrapper 11 : raw 0이고 RuntimeMonitoring의 server driver도 제거했다. 서버 위임 코드에는 raw 2곳이 남아 있다. 아래 `E2E-JV-03 진행 기록`에서 검증과 잔여 경로를 추적한다. |
 | **E2E-JV-04** (결함) | [E2E README §2.6:343-344](../../common/e2e/README.ko.md): "timeout, 로그와 evidence 경로를 환경 변수나 JVM system property로 전달하지 않으며, server와 client 애플리케이션 코드에서 직접 사용할 수 있는 **환경 변수는 0개다**". §2.8은 미충족 항목을 feature-map에 gap으로 남기라고 한다 | config마다 `Shared/Env.java`(또는 `Configuration/Env.java`) 같은 얇은 `System.getenv` 래퍼를 두고 앱 코드가 그것을 **324곳**에서 부른다. `ZLINK_JAVA_E2E_*` 이름 문자열이 java 소스에 **440번**, **서로 다른 122개**가 등장한다 — endpoint·node rid·redis key prefix·drain policy·message-flow 모드·log dir이 전부 이 통로다. ⇒ 0개를 요구한 축이 **사실상 유일한 설정 통로**다. 그런데 **feature-map 10개 어디에도 이 gap이 기록돼 있지 않다.** (체크리스트의 "535곳"은 재현하지 못했다. 위 세 수치가 실측이다) |
 | **E2E-JV-05** (결함) | [E2E README §2.1:157-171](../../common/e2e/README.ko.md): local readiness timeout **3초**, route settle **5초**, scenario settle **3초**. *"이 값 안에 준비되지 않는 로컬 e2e는 대기 시간을 늘려서 통과시키지 않는다 … 긴 대기는 버그를 늦게 발견하게 만들기 때문에 완료 조건으로 인정하지 않는다"* | **부분 해결:** `RuntimeMonitoring`·`PubSub`·`RegistryMessaging`·`AutomaticTurnDispatch`·`RegistrationCodec`·`StoreFailure`·`SpotService`·`ToActorMessaging`·`SpotActorTransfer`·`ObservabilityOps`는 readiness를 3초로 제한하고 이름 있는 5초 route settle을 적용했다. ObservabilityOps는 port·HTTP·metrics 준비 확인만 0.1초 × 30회로 제한하고 drain 완료·metric 관측·종료 증거 대기는 시나리오 계약에 따라 유지했다. 기존 상한과 settle 부재를 잡는 gate가 먼저 실패했으며 OBS-A1 대표 실행과 OBS-A1~C5 전체 실행이 통과했다. POSD 재리뷰에서는 서로 다른 반복 횟수에 흩어진 readiness 정책과 이름 없는 topology 대기를 정보 중복 위험으로 분류했다. 별도 대기 helper를 추가하는 안보다 기존 wait 함수 안에서 공통 상수를 사용하고 호출 지점에는 route settle을 직접 드러내는 안을 선택해 얕은 pass-through 계층 없이 정책 변경 지점을 줄였으며, domain 코드는 건드리지 않아 DDD 경계 변화는 없다. 다만 역할 앱을 AutomaticTurnDispatch에서 빌려 쓰는 E2E-JV-01은 별도 open이다. SpotActorTransfer는 정수 `SECONDS` 경계 때문에 실제 3초보다 짧아지던 deadline도 0.1초 × 30회로 고쳤고 ST-A1~F6 전체가 통과했다. 첫 전체 실행은 ST-B3 node가 2.443초에 시작했는데도 이 정수 deadline 때문에 실패했으며 수정 후 해당 selector와 나머지 selector가 통과했다. ToActorMessaging은 Redis TCP, 역할 HTTP, 역할 application marker의 인라인 30초 wait를 모두 같은 3초 상한으로 묶었다. SpotService는 느린 CI용 override로 기본값을 30초까지 늘리던 경로도 제거하고 scenario settle을 3초로 이름 붙였다. ATD는 60회 readiness client 재시도를 제거해 settle 직후 한 번의 요청만 허용하며 restart 뒤에도 같은 경로를 쓴다. 각 runner에서 기존 상한이나 settle 부재를 잡는 gate가 먼저 실패했다. MON, PS, RM, ATD, RC, TA, ST 전체와 SpotService의 default-batch·SM-F6·SM-G1~G4가 새 기본값으로 통과했다. 기존 bind 전용 retry는 port 경합에만 사용했다. StoreFailure 전체 실행은 SF-A1~D1까지 통과한 뒤 SF-D2 traffic stall로 한 번 실패했지만 SF-D2 단독 재실행과 뒤의 SF-D3·E1은 통과했다. 남은 `ResilienceLifecycle`은 Client가 역할 process를 기동하는 E2E-JV-06 구조를 먼저 고쳐야 runner가 route settle을 소유할 수 있으므로 이 gap은 open이다. |
-| **E2E-JV-06** (결함) | [E2E README:236](../../common/e2e/README.ko.md): `Client/Scenarios/<ScenarioId><Name>Scenario.*`는 시나리오 ID마다 파일 하나를 두고, [§2.5:324-329](../../common/e2e/README.ko.md)는 server의 `/run`·`/scenario` endpoint에 검증 전체를 위임하지 못하게 한다 | **부분 해결:** StoreFailure의 시나리오 껍데기와 532줄 god-context는 해소했다. ResilienceLifecycle·RuntimeMonitoring·SpotService의 server driver 위임은 남아 있다. 아래 `E2E-JV-06 진행 기록`에서 검증과 잔여 구조를 추적한다. |
+| **E2E-JV-06** (결함) | [E2E README:236](../../common/e2e/README.ko.md): `Client/Scenarios/<ScenarioId><Name>Scenario.*`는 시나리오 ID마다 파일 하나를 두고, [§2.5:324-329](../../common/e2e/README.ko.md)는 server의 `/run`·`/scenario` endpoint에 검증 전체를 위임하지 못하게 한다 | **부분 해결:** StoreFailure의 시나리오 껍데기와 532줄 god-context를 해소했고, RuntimeMonitoring의 9개 시나리오도 Client 파일이 순서와 단언을 직접 소유한다. ResilienceLifecycle·SpotService의 server driver 위임은 남아 있다. 아래 `E2E-JV-06 진행 기록`에서 검증과 잔여 구조를 추적한다. |
 | **E2E-JV-08** (미구현) | [E2E README §2.8:435-447](../../common/e2e/README.ko.md): 언어별 e2e에는 **config별 `feature-map.ko.md`를 둔다.** [§2.7:355](../../common/e2e/README.ko.md)은 `run_e2e.*`가 build·기동·client 실행을 책임진다고 규정한다 | **해결:** `SpotActorTransfer/feature-map.ko.md`가 공통 Config 10과 runner의 ST-* 20개 ID를 빠짐없이 연결한다. 알려진 증거 결함은 완료로 숨기지 않고 E2E-JV-17·18을 참조하는 부분 구현으로 기록했다. `YieldDispatch/`는 Git 추적 파일과 통합 runner 항목이 모두 없으므로 이 E2E gap의 대상이 아니며, `yield` 기능 부재는 SMP-JV-04가 계속 추적한다. |
 
 #### E2E-JV-03 진행 기록
@@ -773,16 +773,19 @@ Config 11 전체 실행도 각 selector를
   공유하는 안 대신 각 동적 process가 자신의 endpoint·300ms timeout·wrapper 수명을 소유하게 해
   변경 지식을 한곳에 모았다. Client 전체 raw 금지 gate가 변경 전에 실패했고, `RM-A1~C9`와
   동적 역할 시나리오 `RM-C7`·`RM-B1`·`RM-B2`·`RM-A4`를 포함한 전체 실행이 통과했다.
-- 전체 app을 다시 검색하면 서버 위임 raw 경로가 3곳 남는다.
+- RuntimeMonitoring은 `runScenario`·`/scenario/`·`TriggerScenario`가 남으면 실패하는 gate가 기존
+  server driver와 Client 위임 9곳을 검출했다. Trigger는 framework request, validation 시도와 evidence
+  조회만 제공하고, 시나리오의 단계·프로세스 수명·단언은 Client 파일로 옮겼다. Trigger의 raw JDK
+  client도 함께 제거했으며 `MON-A1~D1` 전체 실행이 통과했다.
+- 전체 app을 다시 검색하면 서버 위임 raw 경로가 2곳 남는다.
   `ResilienceLifecycle/Server/Consumer/.../ConsumerScenario.java`,
-  `RuntimeMonitoring/Server/Trigger/.../Program.java`,
-  `SpotService/Shared/.../ClientScenario.java`다. 마지막 세 곳은 서버가 Client 역할을 대신하는
+  `SpotService/Shared/.../ClientScenario.java`다. 이 두 곳은 서버가 Client 역할을 대신하는
   E2E-JV-06 구조와 결합되어 있으므로 Client 주 경로만 보고 이 gap을 닫지 않는다.
 - POSD/DDD 재리뷰에서는 JDK transport 타입 누출, Shared의 server/client 책임 혼합, endpoint·상태·수명
   정책 중복을 위험 신호로 분류했다. Shared에 wrapper 의존성을 추가하는 안과 Client 역할 객체로
   분리하는 안을 비교해 후자를 선택했고, domain model은 변경하지 않았다. PubSub는 가변 endpoint
   wrapper 수명을 Client 내부 모듈 하나에 가두고, StoreFailure와 ToActorMessaging은 client 요청을
-  Shared server helper에서 Client로 옮겼다. 의미 있는 잔여 위험 신호는 위 raw 3곳과 E2E-JV-06에서
+  Shared server helper에서 Client로 옮겼다. 의미 있는 잔여 위험 신호는 위 raw 2곳과 E2E-JV-06에서
   계속 추적한다.
 
 #### E2E-JV-06 진행 기록
@@ -798,9 +801,20 @@ Config 11 전체 실행도 각 selector를
   위험 신호로 분류했다. 모든 HTTP·polling 코드를 scenario마다 복제하는 안과, scenario가 계약 순서와
   단언을 소유하고 재사용 probe만 context에 남기는 안을 비교해 후자를 선택했다. 호출부에서 각 계약이
   드러나면서 transport 구현 중복은 늘지 않았고 domain model은 변경하지 않았다.
-- 남은 server 위임은 `ResilienceLifecycle/Server/Consumer/.../ConsumerScenario.java`,
-  `RuntimeMonitoring/Server/Trigger/.../Program.java`, `SpotService/Shared/.../ClientScenario.java`다.
-  이 세 경로는 E2E-JV-03의 raw HTTP 3곳과 같은 책임 누출이므로 함께 제거한다.
+- RuntimeMonitoring runner의 위임 금지 gate가 기존 server driver와 Client의 한 줄 위임 9곳을 먼저
+  검출했다. 각 시나리오 파일이 계약 순서와 단언을 소유하고, `MonitoringScenarioContext`는 public HTTP
+  wrapper, evidence probe와 자신이 시작한 service-b 프로세스 수명만 캡슐화한다. Trigger는 framework
+  request·validation 같은 역할 동작만 제공한다. 실패 주입 타이머가 첫 실패 delivery를 무제한 반복해
+  5초 안에 12만 건·약 47 MiB evidence를 만들던 문제는 첫 실패 뒤 정상 완료하도록 유한하게 정의했다.
+  body 제한 확대나 대기 확대 없이 `MON-A1`과 `MON-A1~D1` 전체 실행이 통과했다.
+- POSD/DDD 재리뷰에서는 663줄 Trigger가 transport·프로세스·시나리오 정책을 함께 가진 god-driver인 점과
+  Client가 `Process`를 직접 소유하는 수명 누출을 위험 신호로 분류했다. (1) 기존 driver를 wrapper로만
+  바꾸는 안과 (2) server는 역할 동작만 제공하고 Client가 시나리오를 소유하는 안을 비교해 후자를
+  선택했다. 재시작 process도 context 내부에서 종료까지 책임지게 해 호출자는 포트 종료와 process 종료를
+  구별할 필요가 없다. domain model은 바뀌지 않았다.
+- 남은 server 위임은 `ResilienceLifecycle/Server/Consumer/.../ConsumerScenario.java`와
+  `SpotService/Shared/.../ClientScenario.java`다. 이 두 경로는 E2E-JV-03의 raw HTTP 2곳과 같은 책임
+  누출이므로 함께 제거한다.
 
 ## 라운드 5 (2026-07-14) — GameQuest 심층
 

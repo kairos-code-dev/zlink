@@ -12,8 +12,8 @@ log_dir="$(pwd)/logs/${run_id}"
 config_dir="$(mktemp -d)"
 chmod 0700 "${config_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -21,8 +21,8 @@ echo "log_dir=${log_dir}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring-gradle-cache"
 redis_location_endpoint=""
 location_key_prefix="zlink:e2e:runtime-monitoring:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -146,32 +146,33 @@ start_redis_container() {
     exit 1
   fi
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+    "zlink-redis-java-e2e" "redis:7.2-alpine"
   redis_location_endpoint="127.0.0.1:${redis_port}"
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon "$@" --quiet
 }
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/runtime-monitoring-client/bin/runtime-monitoring-client"
+  echo "${e2e_build_dir}/Client/install/runtime-monitoring-client/bin/runtime-monitoring-client"
 }
 
 service_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Service/install/runtime-monitoring-service/bin/runtime-monitoring-service"
+  echo "${e2e_build_dir}/Server-Service/install/runtime-monitoring-service/bin/runtime-monitoring-service"
 }
 
 filtered_service_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-FilteredService/install/runtime-monitoring-filtered-service/bin/runtime-monitoring-filtered-service"
+  echo "${e2e_build_dir}/Server-FilteredService/install/runtime-monitoring-filtered-service/bin/runtime-monitoring-filtered-service"
 }
 
 throwing_service_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-ThrowingService/install/runtime-monitoring-throwing-service/bin/runtime-monitoring-throwing-service"
+  echo "${e2e_build_dir}/Server-ThrowingService/install/runtime-monitoring-throwing-service/bin/runtime-monitoring-throwing-service"
 }
 
 trigger_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Trigger/install/runtime-monitoring-trigger/bin/runtime-monitoring-trigger"
+  echo "${e2e_build_dir}/Server-Trigger/install/runtime-monitoring-trigger/bin/runtime-monitoring-trigger"
 }
 
 read -r API_PORT HANDSHAKE_PORT SPOT_PORT SPOT_PUB_PORT SVC_HTTP_PORT FILTER_API_PORT FILTER_HTTP_PORT THROW_API_PORT THROW_HTTP_PORT TRIGGER_HTTP_PORT _ _ _ <<<"$(reserve_ports)"

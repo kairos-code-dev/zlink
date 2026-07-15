@@ -7,8 +7,8 @@ source "${JAVA_DIR}/e2e-redis-common.sh"
 source "${ROOT_DIR}/../start-order-common.sh"
 
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 if rg -q "observedAtNanos" "${ROOT_DIR}/Client" "${ROOT_DIR}/Server" "${ROOT_DIR}/Shared"; then
   echo "SpotActorTransfer evidence must not compare process-local nanoTime values" >&2
   exit 1
@@ -21,11 +21,11 @@ if [[ "${SCENARIO}" == "all" ]]; then
   for scenario in ST-A1 ST-A2 ST-A3 ST-B1 ST-B2 ST-B3 ST-B4 ST-C1 ST-C2 ST-C3 ST-D1 ST-D2 ST-E1 ST-E2 ST-F1 ST-F2 ST-F3 ST-F4 ST-F5 ST-F6; do
     passed=0
     for attempt in 1 2 3; do
-      if "${BASH_SOURCE[0]}" "${scenario}"; then
+      if "${BASH_SOURCE[0]}" "${scenario}" --start-order "${e2e_start_order}"; then
         passed=1
         break
       fi
-      log_root="${ZLINK_JAVA_E2E_LOG_ROOT:-${ROOT_DIR}/log}"
+      log_root="${ROOT_DIR}/log"
       latest_log="$(find "${log_root}" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)"
       if [[ "${attempt}" == "3" ]] \
          || ! rg --no-ignore -q "ZlinkBindException|BindException|Address already in use|errno=98" "${latest_log}"; then
@@ -39,8 +39,8 @@ if [[ "${SCENARIO}" == "all" ]]; then
   exit 0
 fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
-PROJECT_ROOT="${ZLINK_JAVA_E2E_PROJECT_ROOT:-${ROOT_DIR}}"
-LOG_DIR="${ZLINK_JAVA_E2E_LOG_ROOT:-${ROOT_DIR}/log}/${RUN_ID}"
+PROJECT_ROOT="${ROOT_DIR}"
+LOG_DIR="${ROOT_DIR}/log/${RUN_ID}"
 CONFIG_DIR="$(mktemp -d)"
 chmod 0700 "${CONFIG_DIR}"
 REDIS_CONTAINER=""
@@ -94,13 +94,13 @@ PY
 zlink_redis_start_scoped_assign \
   REDIS_CONTAINER REDIS_PORT \
   "zlink-redis-java-e2e-spot-transfer" \
-  "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" \
+  "redis:7.2-alpine" \
   "127.0.0.1::6379"
 REDIS_LOCATION_ENDPOINT="127.0.0.1:${REDIS_PORT}"
 
 LOCATION_PREFIX="zlink:e2e:java:spot-transfer:${RUN_ID}:"
-NODE_BIN="${ZLINK_JAVA_E2E_NODE_BIN:-${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node}"
-CLIENT_BIN="${ZLINK_JAVA_E2E_CLIENT_BIN:-${ROOT_DIR}/Client/build/install/spot-actor-transfer-client/bin/spot-actor-transfer-client}"
+NODE_BIN="${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node"
+CLIENT_BIN="${ROOT_DIR}/Client/build/install/spot-actor-transfer-client/bin/spot-actor-transfer-client"
 
 "${JAVA_DIR}/gradlew" \
   -p "${PROJECT_ROOT}" \
@@ -188,7 +188,7 @@ logDirectory=${LOG_DIR}
 streamAEndpoint=tcp://127.0.0.1:${STREAM_A_PORT}
 EOF
   chmod 0600 "${config_path}"
-  timeout -k 5s "${ZLINK_JAVA_E2E_CLIENT_TIMEOUT_SECONDS:-240}s" \
+  timeout -k 5s 240s \
     "${CLIENT_BIN}" --config "${config_path}" --scenario "${SCENARIO}" \
     >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"
 }

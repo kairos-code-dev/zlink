@@ -11,8 +11,8 @@ log_dir="$(pwd)/logs/${run_id}"
 config_dir="$(mktemp -d)"
 chmod 0700 "${config_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -20,8 +20,8 @@ echo "log_dir=${log_dir}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RegistrationCodec}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RegistrationCodec-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/RegistrationCodec"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/RegistrationCodec-gradle-cache"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -146,27 +146,28 @@ PY
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/registration-codec-client/bin/registration-codec-client"
+  echo "${e2e_build_dir}/Client/install/registration-codec-client/bin/registration-codec-client"
 }
 
 main_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Main/install/registration-codec-main/bin/registration-codec-main"
+  echo "${e2e_build_dir}/Server-Main/install/registration-codec-main/bin/registration-codec-main"
 }
 
 invalid_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-InvalidDuplicate/install/registration-codec-invalid-duplicate/bin/registration-codec-invalid-duplicate"
+  echo "${e2e_build_dir}/Server-InvalidDuplicate/install/registration-codec-invalid-duplicate/bin/registration-codec-invalid-duplicate"
 }
 
 json_only_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-JsonOnlyPeer/install/registration-codec-json-only-peer/bin/registration-codec-json-only-peer"
+  echo "${e2e_build_dir}/Server-JsonOnlyPeer/install/registration-codec-json-only-peer/bin/registration-codec-json-only-peer"
 }
 
 requester_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-CodecRequester/install/registration-codec-requester/bin/registration-codec-requester"
+  echo "${e2e_build_dir}/Server-CodecRequester/install/registration-codec-requester/bin/registration-codec-requester"
 }
 
 read -r SERVER_PORT HTTP_PORT INVALID_PORT MISMATCH_PORT MISMATCH_HTTP_PORT REQUESTER_HTTP_PORT <<<"$(reserve_ports 6)"
@@ -200,7 +201,7 @@ write_config "${client_config}" \
   "httpEndpoint=${HTTP_ENDPOINT}" \
   "codecRequesterHttpEndpoint=${REQUESTER_HTTP_ENDPOINT}" \
   "invalidServerEndpoint=${INVALID_ENDPOINT}" \
-  "buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}" \
+  "buildDir=${e2e_build_dir}" \
   "logDir=${log_dir}" \
   "invalidServerConfig=${invalid_config}"
 
@@ -225,7 +226,7 @@ case "${SCENARIO}" in
     ;;
 esac
 
-rm -rf "${ZLINK_JAVA_E2E_BUILD_DIR}"
+rm -rf "${e2e_build_dir}"
 gradle_run installDist
 
 start_initial_role() {

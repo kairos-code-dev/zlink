@@ -15,15 +15,15 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/AutomaticTurnDispatch}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/AutomaticTurnDispatch-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/AutomaticTurnDispatch"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/AutomaticTurnDispatch-gradle-cache"
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-e2e" "redis:7.2-alpine"
 redis_location_endpoint="127.0.0.1:${redis_port}"
 location_key_prefix="zlink:e2e:automaticturn:${run_id}"
 config_dir="$(mktemp -d)"
@@ -376,23 +376,24 @@ assert_readiness() {
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/automatic-turn-dispatch-client/bin/automatic-turn-dispatch-client"
+  echo "${e2e_build_dir}/Client/install/automatic-turn-dispatch-client/bin/automatic-turn-dispatch-client"
 }
 
 delay_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Delay/install/automatic-turn-dispatch-delay/bin/automatic-turn-dispatch-delay"
+  echo "${e2e_build_dir}/Server-Delay/install/automatic-turn-dispatch-delay/bin/automatic-turn-dispatch-delay"
 }
 
 play_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Play/install/automatic-turn-dispatch-play/bin/automatic-turn-dispatch-play"
+  echo "${e2e_build_dir}/Server-Play/install/automatic-turn-dispatch-play/bin/automatic-turn-dispatch-play"
 }
 
 session_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Session/install/automatic-turn-dispatch-session/bin/automatic-turn-dispatch-session"
+  echo "${e2e_build_dir}/Server-Session/install/automatic-turn-dispatch-session/bin/automatic-turn-dispatch-session"
 }
 
 read -r DELAY_PORT ROUTE_A_PORT SPOT_A_PORT ROUTE_B_PORT SPOT_B_PORT STREAM_PORT PLAY_A_HTTP_PORT PLAY_B_HTTP_PORT SESSION_HTTP_PORT SESSION_ROUTE_PORT SESSION_SPOT_PORT _ _ <<<"$(reserve_ports)"

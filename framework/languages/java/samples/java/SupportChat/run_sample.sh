@@ -40,7 +40,7 @@ redis_key_prefix="zlink:supportchat:sample:$(date +%s):$$"
 
 REDIS_CONTAINER=""
 zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_PORT \
-  "zlink-redis-java-sample-supportchat" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-sample-supportchat" "redis:7.2-alpine"
 redis_endpoint="127.0.0.1:$REDIS_PORT"
 
 pids=()

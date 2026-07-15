@@ -13,9 +13,9 @@ repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
 SCENARIO="${1:-all}"
-echo "start_order=${E2E_START_ORDER}"
+echo "start_order=${e2e_start_order}"
 echo "scenario=${SCENARIO}"
 
 if [[ ! -f "Server/Session/build.gradle.kts" ]]; then
@@ -92,7 +92,7 @@ PY
 }
 
 zlink_redis_start_scoped_assign redis_container redis_port \
-  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+  "zlink-redis-java-e2e" "redis:7.2-alpine" "127.0.0.1::6379"
 redis_endpoint="127.0.0.1:${redis_port}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
@@ -282,7 +282,8 @@ wait_role_ready() {
   esac
 }
 
-../../gradlew --no-daemon --no-parallel --max-workers=1 --gradle-user-home "${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/toactor-gradle}" -p . installDist
+../../gradlew --no-daemon --no-parallel --max-workers=1 \
+  --gradle-user-home "${HOME}/.cache/zlink/java-e2e/toactor-gradle" -p . installDist
 
 SERVER_ROLES=(actor caller session-a session-b)
 mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles "${SERVER_ROLES[@]}")

@@ -107,7 +107,7 @@ stream_b_host="${session_b_stream%:*}"
 stream_b_port="${session_b_stream##*:}"
 bingo_redis_key_prefix="bingo:java:${RANDOM}:$$:"
 zlink_redis_start_scoped_assign redis_container_id redis_port \
-  "zlink-redis-java-sample-bingo" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-sample-bingo" "redis:7.2-alpine"
 redis_endpoint="127.0.0.1:${redis_port}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"

@@ -177,7 +177,7 @@ endpoint_port() { echo "${1##*:}"; }
 
 deliverydispatch_redis_key_prefix="deliverydispatch:java:${RANDOM}:$$:"
 zlink_redis_start_scoped_assign redis_container_id redis_port \
-  "zlink-redis-java-sample-deliverydispatch" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-sample-deliverydispatch" "redis:7.2-alpine"
 redis_endpoint="127.0.0.1:${redis_port}"
 wait_port "${redis_endpoint%:*}" "${redis_endpoint##*:}"
 write_config() {

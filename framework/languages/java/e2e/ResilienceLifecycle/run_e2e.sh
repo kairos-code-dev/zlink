@@ -19,13 +19,13 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle-gradle-cache"
 location_key_prefix="zlink:e2e:resilience-lifecycle:${run_id}"
 redis_location_endpoint=""
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -140,11 +140,12 @@ wait_port() {
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon "$@" --quiet
 }
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/resilience-lifecycle-client/bin/resilience-lifecycle-client"
+  echo "${e2e_build_dir}/Client/install/resilience-lifecycle-client/bin/resilience-lifecycle-client"
 }
 
 start_redis_proxy() {
@@ -250,7 +251,7 @@ EOF
 
 explicit_redis_endpoint=""
 zlink_redis_start_scoped_assign redis_container_name redis_port \
-  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
+  "zlink-redis-java-e2e" "redis:7.2-alpine" "127.0.0.1::6379"
 redis_location_endpoint="127.0.0.1:${redis_port}"
 start_redis_proxy
 create_store_outage_commands
@@ -275,7 +276,7 @@ httpAReplacementEndpoint=${HTTP_A_REPLACEMENT}
 httpBGreenEndpoint=${HTTP_B_GREEN}
 storePauseCommand=${store_pause_command}
 storeResumeCommand=${store_resume_command}
-buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}
+buildDir=${e2e_build_dir}
 logDir=${log_dir}
 controlDir=${log_dir}/control
 configDir=${config_dir}

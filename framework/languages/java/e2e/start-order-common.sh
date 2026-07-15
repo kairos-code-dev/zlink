@@ -19,7 +19,7 @@ zlink_e2e_start_order_mode() {
 
 zlink_e2e_order_roles() {
   local mode
-  mode="${E2E_START_ORDER:-forward}"
+  mode="${e2e_start_order:-forward}"
 
   python3 - "${mode}" "$@" <<'PY'
 import random

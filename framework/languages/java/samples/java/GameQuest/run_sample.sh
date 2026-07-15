@@ -32,7 +32,7 @@ api_b_notify="tcp://127.0.0.1:${api_b_notify_port}"
 
 REDIS_CONTAINER=""
 zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_PORT \
-  "zlink-redis-java-sample-gamequest" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-sample-gamequest" "redis:7.2-alpine"
 redis_endpoint="127.0.0.1:${REDIS_PORT}"
 redis_key_prefix="gamequest:java:$(date +%s):$$:"
 

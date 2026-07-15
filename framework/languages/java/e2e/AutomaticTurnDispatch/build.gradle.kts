@@ -1,5 +1,5 @@
 // Config 8 AutomaticTurnDispatch build isolation.
-val e2eBuildDir = providers.environmentVariable("ZLINK_JAVA_E2E_BUILD_DIR").orNull
+val e2eBuildDir = providers.gradleProperty("zlinkE2eBuildDir").orNull
 if (!e2eBuildDir.isNullOrBlank()) {
     layout.buildDirectory.set(file(e2eBuildDir))
 }

@@ -16,14 +16,14 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE|errno=98"
-echo "start_order=${E2E_START_ORDER}"
+echo "start_order=${e2e_start_order}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/SpotService}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/SpotService-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/SpotService"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/SpotService-gradle-cache"
 if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
     "$(pwd)/Client/src/main/java" --glob '*.java'; then
   echo "SpotService client must use ZLinkHttpClient" >&2
@@ -61,7 +61,7 @@ if [[ "${SCENARIO}" != "all" && "${retry_child}" != "1" && "${all_child}" != "1"
     : >"${output}"
     set +e
     timeout 900s "${SCRIPT_PATH}" "${SCENARIO}" --retry-child \
-      --start-order "${E2E_START_ORDER}" 2>&1 | tee "${output}"
+      --start-order "${e2e_start_order}" 2>&1 | tee "${output}"
     status="${PIPESTATUS[0]}"
     set -e
     if [[ "${status}" == "0" ]]; then
@@ -94,7 +94,7 @@ if [[ "${SCENARIO}" == "all" && "${all_child}" != "1" ]]; then
       : >"${output}"
       set +e
       timeout 900s "${SCRIPT_PATH}" "${child_group}" --all-child \
-        --start-order "${E2E_START_ORDER}" 2>&1 | tee "${output}"
+        --start-order "${e2e_start_order}" 2>&1 | tee "${output}"
       status="${PIPESTATUS[0]}"
       set -e
       if [[ "${status}" == "0" ]]; then
@@ -123,7 +123,7 @@ fi
 config_dir="$(mktemp -d)"
 chmod 700 "${config_dir}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-  "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-e2e" "redis:7.2-alpine"
 redis_location_endpoint="127.0.0.1:${redis_port}"
 location_key_prefix="zlink:e2e:spot-service:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -258,27 +258,28 @@ wait_port() {
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/spot-service-client/bin/spot-service-client"
+  echo "${e2e_build_dir}/Client/install/spot-service-client/bin/spot-service-client"
 }
 
 play_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Play/install/spot-service-play/bin/spot-service-play"
+  echo "${e2e_build_dir}/Server-Play/install/spot-service-play/bin/spot-service-play"
 }
 
 publisher_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Publisher/install/spot-service-publisher/bin/spot-service-publisher"
+  echo "${e2e_build_dir}/Server-Publisher/install/spot-service-publisher/bin/spot-service-publisher"
 }
 
 gateway_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Gateway/install/spot-service-gateway/bin/spot-service-gateway"
+  echo "${e2e_build_dir}/Server-Gateway/install/spot-service-gateway/bin/spot-service-gateway"
 }
 
 multi_node_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-MultiNode/install/spot-service-multi-node/bin/spot-service-multi-node"
+  echo "${e2e_build_dir}/Server-MultiNode/install/spot-service-multi-node/bin/spot-service-multi-node"
 }
 
 start_play() {

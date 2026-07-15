@@ -19,13 +19,13 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-SF-A1}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/StoreFailure}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/StoreFailure-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/StoreFailure"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/StoreFailure-gradle-cache"
 redis_command_timeout_ms=500
 location_key_prefix="zlink:e2e:store-failure:${run_id}"
 location_heartbeat_ms=1000
@@ -142,7 +142,7 @@ PY
 redis_port="$(reserve_ports 1)"
 zlink_redis_start_scoped_assign BASE_REDIS_CONTAINER redis_port \
   "zlink-redis-java-e2e" \
-  "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" \
+  "redis:7.2-alpine" \
   "127.0.0.1:${redis_port}:6379"
 redis_location_endpoint="127.0.0.1:${redis_port}"
 base_redis_location_endpoint="${redis_location_endpoint}"
@@ -316,19 +316,20 @@ wait_port() {
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon "$@" --quiet
 }
 
 provider_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Provider/install/store-failure-provider/bin/store-failure-provider"
+  echo "${e2e_build_dir}/Server-Provider/install/store-failure-provider/bin/store-failure-provider"
 }
 
 consumer_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Consumer/install/store-failure-consumer/bin/store-failure-consumer"
+  echo "${e2e_build_dir}/Server-Consumer/install/store-failure-consumer/bin/store-failure-consumer"
 }
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/store-failure-client/bin/store-failure-client"
+  echo "${e2e_build_dir}/Client/install/store-failure-client/bin/store-failure-client"
 }
 
 start_provider() {

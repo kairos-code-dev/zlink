@@ -16,13 +16,13 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RegistryMessaging-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/RegistryMessaging"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/RegistryMessaging-gradle-cache"
 redis_location_endpoint=""
 location_key_prefix="zlink:e2e:registry-messaging:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -160,12 +160,13 @@ start_redis_container() {
     exit 1
   fi
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+    "zlink-redis-java-e2e" "redis:7.2-alpine"
   redis_location_endpoint="127.0.0.1:${redis_port}"
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon "$@" --quiet
 }
 
 install_dist() {
@@ -185,19 +186,19 @@ install_dist() {
 
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/registry-messaging-client/bin/registry-messaging-client"
+  echo "${e2e_build_dir}/Client/install/registry-messaging-client/bin/registry-messaging-client"
 }
 
 provider_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Provider/install/registry-messaging-provider/bin/registry-messaging-provider"
+  echo "${e2e_build_dir}/Server-Provider/install/registry-messaging-provider/bin/registry-messaging-provider"
 }
 
 workflow_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Workflow/install/registry-messaging-workflow/bin/registry-messaging-workflow"
+  echo "${e2e_build_dir}/Server-Workflow/install/registry-messaging-workflow/bin/registry-messaging-workflow"
 }
 
 consumer_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Consumer/install/registry-messaging-consumer/bin/registry-messaging-consumer"
+  echo "${e2e_build_dir}/Server-Consumer/install/registry-messaging-consumer/bin/registry-messaging-consumer"
 }
 
 start_provider() {
@@ -296,7 +297,7 @@ run_client() {
     echo "backpressureConsumerHttpUrl=http://127.0.0.1:$(port_of "${HTTP_BACKPRESSURE_CONSUMER}")"
     echo "redisLocationEndpoint=${redis_location_endpoint}"
     echo "locationKeyPrefix=${location_key_prefix}"
-    echo "buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}"
+    echo "buildDir=${e2e_build_dir}"
     echo "logDir=${log_dir}"
     echo "configDir=${config_dir}"
   } >"${config_path}"

@@ -12,8 +12,8 @@ log_dir="$(pwd)/logs/${run_id}"
 config_dir="$(mktemp -d)"
 chmod 0700 "${config_dir}"
 SCENARIO="${1:-all}"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -21,8 +21,8 @@ echo "log_dir=${log_dir}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
-export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/PubSub}"
-export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/PubSub-gradle-cache}"
+readonly e2e_build_dir="${HOME}/.cache/zlink/java-e2e/PubSub"
+readonly gradle_cache_dir="${HOME}/.cache/zlink/java-e2e/PubSub-gradle-cache"
 redis_location_endpoint=""
 location_key_prefix="zlink:e2e:pubsub:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -170,24 +170,25 @@ start_redis_container() {
     exit 1
   fi
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+    "zlink-redis-java-e2e" "redis:7.2-alpine"
   redis_location_endpoint="127.0.0.1:${redis_port}"
 }
 
 gradle_run() {
-  ../../gradlew --project-cache-dir "${ZLINK_JAVA_E2E_GRADLE_CACHE}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
+  ../../gradlew -PzlinkE2eBuildDir="${e2e_build_dir}" \
+    --project-cache-dir "${gradle_cache_dir}" --no-daemon --no-parallel --max-workers=1 "$@" --quiet
 }
 
 client_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Client/install/pub-sub-client/bin/pub-sub-client"
+  echo "${e2e_build_dir}/Client/install/pub-sub-client/bin/pub-sub-client"
 }
 
 publisher_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Publisher/install/pub-sub-publisher/bin/pub-sub-publisher"
+  echo "${e2e_build_dir}/Server-Publisher/install/pub-sub-publisher/bin/pub-sub-publisher"
 }
 
 subscriber_bin() {
-  echo "${ZLINK_JAVA_E2E_BUILD_DIR}/Server-Subscriber/install/pub-sub-subscriber/bin/pub-sub-subscriber"
+  echo "${e2e_build_dir}/Server-Subscriber/install/pub-sub-subscriber/bin/pub-sub-subscriber"
 }
 
 start_publisher() {
@@ -270,7 +271,7 @@ publisherReadyFile=${PUBLISHER_READY}
 prelateContinueFile=${PRELATE_CONTINUE}
 lateReadyFile=${LATE_READY}
 lateContinueFile=${LATE_CONTINUE}
-buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}
+buildDir=${e2e_build_dir}
 logDir=${log_dir}
 configDir=${config_dir}
 EOF

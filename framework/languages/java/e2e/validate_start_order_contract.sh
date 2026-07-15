@@ -26,7 +26,7 @@ for config in "${configs[@]}"; do
 done
 
 aggregate="${script_dir}/run_e2e_all.sh"
-if rg -n 'env E2E_START_ORDER=' "${aggregate}"; then
+if rg -n 'env e2e_start_order=' "${aggregate}"; then
   echo "aggregate runner must pass start order as an explicit option" >&2
   exit 1
 fi

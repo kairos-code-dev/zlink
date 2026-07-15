@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JAVA_E2E_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${JAVA_E2E_DIR}/../e2e-redis-common.sh"
 source "${JAVA_E2E_DIR}/start-order-common.sh"
-E2E_START_ORDER="$(zlink_e2e_start_order_mode "$@")"
-echo "start_order=${E2E_START_ORDER}"
+e2e_start_order="$(zlink_e2e_start_order_mode "$@")"
+echo "start_order=${e2e_start_order}"
 
 forbidden_config_ref="Automatic""TurnDispatch|ATD""_DIR|ATD""-[A-Z][0-9]"
 if rg -n "${forbidden_config_ref}" \
@@ -37,7 +37,7 @@ if [[ "${SELECTOR}" == all ]]; then
     OBS-B1 OBS-B2 OBS-B3 OBS-B4 \
     OBS-C1 OBS-C2 OBS-C3 OBS-C4 OBS-C5; do
     echo "===== OBSERVABILITY OPS START ${selector} ====="
-    "${BASH_SOURCE[0]}" "${selector}"
+    "${BASH_SOURCE[0]}" "${selector}" --start-order "${e2e_start_order}"
     echo "===== OBSERVABILITY OPS PASS ${selector} ====="
   done
   echo "observability-ops all result=passed"
@@ -49,8 +49,8 @@ log_dir="${SCRIPT_DIR}/logs/${run_id}"
 evidence_dir="${log_dir}/evidence"
 repo_root="$(cd "${SCRIPT_DIR}/../../../../.." && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
-obs_build="${ZLINK_JAVA_OBSERVABILITY_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/ObservabilityOps}"
-gradle_cache="${ZLINK_JAVA_OBSERVABILITY_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/ObservabilityOps-gradle-cache}"
+obs_build="${HOME}/.cache/zlink/java-e2e/ObservabilityOps"
+gradle_cache="${HOME}/.cache/zlink/java-e2e/ObservabilityOps-gradle-cache"
 pids=()
 REDIS_CONTAINER=""
 config_dir="${log_dir}/config"
@@ -61,7 +61,7 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-  "zlink-redis-java-e2e-observability" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-e2e-observability" "redis:7.2-alpine"
 redis_location_endpoint="127.0.0.1:${redis_port}"
 location_key_prefix="zlink:e2e:observability:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -243,7 +243,7 @@ s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1]); s.close()
 PY
 )")"
 
-ZLINK_JAVA_E2E_BUILD_DIR="${obs_build}" "${SCRIPT_DIR}/gradlew" \
+"${SCRIPT_DIR}/gradlew" -PzlinkE2eBuildDir="${obs_build}" \
   --project-cache-dir "${gradle_cache}" --no-daemon --no-parallel --max-workers=1 --quiet \
   clean installDist
 

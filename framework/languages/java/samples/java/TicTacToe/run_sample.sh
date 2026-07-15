@@ -112,7 +112,7 @@ reserve_ports() {
 read -r api_a_http_port api_b_http_port api_a_channel_port api_b_channel_port play_a_channel_port play_b_channel_port play_a_stream_port play_b_stream_port play_a_spot_port play_b_spot_port play_a_pub_port play_b_pub_port unused_port1 unused_port2 unused_port3 < <(reserve_ports)
 
 zlink_redis_start_scoped_assign redis_container_id redis_port \
-  "zlink-redis-java-sample-tictactoe" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
+  "zlink-redis-java-sample-tictactoe" "redis:7.2-alpine"
 redis_endpoint="127.0.0.1:${redis_port}"
 
 wait_endpoint redis "${redis_endpoint}"

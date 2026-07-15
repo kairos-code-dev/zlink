@@ -7,6 +7,11 @@ import java.util.concurrent.CompletionStage;
 record ZLinkTypedStreamConnectorSendCall(
     ZLinkStreamSendCall delegate) implements ZLinkTypedStreamSendCall {
     @Override
+    public ZLinkTypedStreamSendCall packetName(String name) {
+        return new ZLinkTypedStreamConnectorSendCall(delegate.packetName(name));
+    }
+
+    @Override
     public ZLinkTypedStreamSendCall metadata(String key, String value) {
         return new ZLinkTypedStreamConnectorSendCall(delegate.metadata(key, value));
     }
@@ -29,6 +34,11 @@ record ZLinkTypedStreamConnectorSendCall(
 
 record ZLinkTypedStreamConnectorRequestCall(
     ZLinkStreamRequestCall delegate) implements ZLinkTypedStreamRequestCall {
+    @Override
+    public ZLinkTypedStreamRequestCall packetName(String name) {
+        return new ZLinkTypedStreamConnectorRequestCall(delegate.packetName(name));
+    }
+
     @Override
     public ZLinkTypedStreamRequestCall metadata(String key, String value) {
         return new ZLinkTypedStreamConnectorRequestCall(delegate.metadata(key, value));

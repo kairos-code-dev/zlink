@@ -5,6 +5,8 @@ import java.util.Map;
 import java.util.concurrent.CompletionStage;
 
 public interface ZLinkTypedStreamRequestCall {
+    ZLinkTypedStreamRequestCall packetName(String name);
+
     ZLinkTypedStreamRequestCall metadata(String key, String value);
 
     ZLinkTypedStreamRequestCall metadata(Map<String, String> metadata);

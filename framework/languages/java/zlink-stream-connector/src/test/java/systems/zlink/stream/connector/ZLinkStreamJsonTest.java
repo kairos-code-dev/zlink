@@ -276,6 +276,11 @@ final class ZLinkStreamJsonTest {
 
     private static final class NoopSendCall implements ZLinkStreamSendCall {
         @Override
+        public ZLinkStreamSendCall packetName(String name) {
+            return this;
+        }
+
+        @Override
         public ZLinkStreamSendCall metadata(String key, String value) {
             return this;
         }
@@ -296,6 +301,11 @@ final class ZLinkStreamJsonTest {
     }
 
     private static final class NoopRequestCall implements ZLinkStreamRequestCall {
+        @Override
+        public ZLinkStreamRequestCall packetName(String name) {
+            return this;
+        }
+
         @Override
         public ZLinkStreamRequestCall metadata(String key, String value) {
             return this;

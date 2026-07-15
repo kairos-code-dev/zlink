@@ -32,6 +32,76 @@ import systems.zlink.contracts.messaging.Message;
 
 final class ZLinkStreamConnectorTest {
     @Test
+    void packetNameOverrideSurfaceMatchesContract() throws Exception {
+        assertEquals(ZLinkStreamSendCall.class, ZLinkStreamSendCall.class
+            .getMethod("packetName", String.class).getReturnType());
+        assertEquals(ZLinkStreamRequestCall.class, ZLinkStreamRequestCall.class
+            .getMethod("packetName", String.class).getReturnType());
+        assertEquals(ZLinkTypedStreamSendCall.class, ZLinkTypedStreamSendCall.class
+            .getMethod("packetName", String.class).getReturnType());
+        assertEquals(ZLinkTypedStreamRequestCall.class, ZLinkTypedStreamRequestCall.class
+            .getMethod("packetName", String.class).getReturnType());
+    }
+
+    @Test
+    void packetNameOverrideWinsForRawAndTypedSendAndRequest() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+            ConnectorTestAwait.await(connector.connect());
+
+            CompletableFuture<TcpStreamConnectorTestServer.ReceivedFrame> rawSend =
+                server.readFrameAsync();
+            connector.send(payload("RawDefault", "send"))
+                .packetName("RawOverride")
+                .submit();
+            assertEquals("RawOverride", rawSend.join().header().name());
+
+            CompletableFuture<TcpStreamConnectorTestServer.ReceivedFrame> typedSend =
+                server.readFrameAsync();
+            connector.send(new NamedPayload("send"))
+                .packetName("TypedOverride")
+                .submit();
+            assertEquals("TypedOverride", typedSend.join().header().name());
+
+            CompletableFuture<TcpStreamConnectorTestServer.ReceivedFrame> rawRequestFrame =
+                server.readFrameAsync();
+            CompletableFuture<ZLinkStreamEncodedPayload> rawReply = connector
+                .request(payload("RawRequestDefault", "request"))
+                .packetName("RawRequestOverride")
+                .submit()
+                .toCompletableFuture();
+            TcpStreamConnectorTestServer.ReceivedFrame rawRequest = rawRequestFrame.join();
+            assertEquals("RawRequestOverride", rawRequest.header().name());
+            server.sendAsync(
+                TcpStreamConnectorTestServer.responseTo(rawRequest, "ignored", Map.of()),
+                TcpStreamConnectorTestServer.bytes("reply")).join();
+            rawReply.join().payload().close();
+
+            CompletableFuture<TcpStreamConnectorTestServer.ReceivedFrame> typedRequestFrame =
+                server.readFrameAsync();
+            CompletableFuture<NamedPayload> typedReply = connector
+                .request(new NamedPayload("request"))
+                .packetName("TypedRequestOverride")
+                .submit(NamedPayload.class)
+                .toCompletableFuture();
+            TcpStreamConnectorTestServer.ReceivedFrame typedRequest = typedRequestFrame.join();
+            assertEquals("TypedRequestOverride", typedRequest.header().name());
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_RESPONSE,
+                    ZLinkStreamWireProtocol.CODEC_JSON,
+                    ZLinkStreamWireProtocol.FLAG_HAS_REQUEST_SEQ,
+                    typedRequest.header().requestSeq(),
+                    "ignored",
+                    Map.of(),
+                    null),
+                TcpStreamConnectorTestServer.bytes("{\"value\":\"reply\"}"))
+                .join();
+            assertEquals(new NamedPayload("reply"), typedReply.join());
+        }
+    }
+
+    @Test
     void oneWayAndTypedCallSurfacesMatchTheJavaContract() throws Exception {
         assertEquals(void.class, ZLinkStreamSendCall.class.getMethod("submit").getReturnType());
         assertEquals(void.class, ZLinkTypedStreamSendCall.class.getMethod("submit").getReturnType());
@@ -41,10 +111,12 @@ final class ZLinkStreamConnectorTest {
         assertEquals(
             ZLinkTypedStreamRequestCall.class,
             ZLinkStreamConnector.class.getMethod("request", Object.class).getReturnType());
-        assertFalse(java.util.Arrays.stream(ZLinkStreamSendCall.class.getMethods())
+        assertTrue(java.util.Arrays.stream(ZLinkStreamSendCall.class.getMethods())
+            .anyMatch(method -> method.getName().equals("packetName")));
+        assertTrue(java.util.Arrays.stream(ZLinkStreamRequestCall.class.getMethods())
             .anyMatch(method -> method.getName().equals("packetName")));
         assertFalse(java.util.Arrays.stream(ZLinkStreamRequestCall.class.getMethods())
-            .anyMatch(method -> method.getName().equals("packetName") || method.getName().equals("await")));
+            .anyMatch(method -> method.getName().equals("await")));
         assertFalse(java.util.Arrays.stream(ZLinkStreamConnector.class.getMethods())
             .anyMatch(method -> method.getName().equals("await")));
     }

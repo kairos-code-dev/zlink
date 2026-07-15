@@ -96,8 +96,16 @@ public final class Program {
         }
 
         if (selected(selector, "TA-B1")) {
-            assertFailure(callerUrl, "TA-B1-missing-send", "missing-actor", "ACTOR_ROUTE_NOT_FOUND", true);
-            assertFailure(callerUrl, "TA-B1-missing-request", "missing-actor", "ACTOR_ROUTE_NOT_FOUND", false);
+            Contracts.ActorRefWire missingRef = ensureRef(actorUrl, "TA-B1", "ta-b1");
+            waitRefUntilReady(callerUrl, "TA-B1-ref-ready", missingRef);
+            Contracts.DestroyActorReply destroyed = ToActorHttpClient.postJson(
+                actorUrl + "/destroy",
+                new Contracts.DestroyActorRequest("TA-B1-destroy", missingRef.actorId()),
+                Contracts.DestroyActorReply.class);
+            require(destroyed.destroyed(), "TA-B1 destroy was not acknowledged");
+            waitUntilMissing(callerUrl, "TA-B1-row-removed", missingRef.actorId());
+            assertRefFailure(callerUrl, "TA-B1-missing-send", missingRef, "ACTOR_ROUTE_NOT_FOUND", true);
+            assertRefFailure(callerUrl, "TA-B1-missing-request", missingRef, "ACTOR_ROUTE_NOT_FOUND", false);
         }
 
         if (selected(selector, "TA-B2")) {

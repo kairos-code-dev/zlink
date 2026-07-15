@@ -1020,6 +1020,7 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 - [x] **E2E-JV-18** (**가짜 통과**) — 서로 다른 JVM의 `System.nanoTime()`을 합쳐 remote transfer 순서를 정렬한다.
   - 근거: runner에 프로세스마다 따로 측정한 timestamp 사용 금지 gate를 추가하자 기존 코드가 즉시 실패했다. timestamp 필드를 제거하고 source·target evidence의 삽입 순서를 역할별로 확인하며, target join 완료 뒤 돌아오는 `commit_ack`를 역할 사이 인과 경계로 사용하도록 바꿨다. ST-B1·ST-B4와 local join 회귀 ST-A1이 통과했다.
 - [ ] **E2E-JV-15** (**가짜 통과**) — TA-B1의 public actor error kind는 Java runtime 분류가 선행돼야 한다.
+  - 실패 게이트 복구: 실제 public `ActorRef`를 만든 뒤 actor를 destroy하고 row 제거를 확인한 다음 같은 ref로 send/request를 호출하도록 바꿨다. 기존 앱 합성 오류 경로는 판정에서 제외됐다. 현재 direct send는 `ACTOR_ROUTE_NOT_FOUND` 대신 성공(`errorKind=null`)으로 반환되어 `./run_e2e.sh TA-B1`이 exit 1로 실패한다. gate 커밋 `02d44860f`; runtime 오류 분류가 고쳐진 뒤 이 gate가 통과해야 닫힌다(2026-07-15).
 - [x] **E2E-JV-16** (미구현) — Config 9 bind 상태 매트릭스 TA-A1~A4와 TA-B2·B3를 실제 session gateway 분리 구성에서 검증한다.
 - [ ] **E2E-JV-17** (**가짜 통과**) — transfer late backlog target evidence와 moving actor replay는 Java runtime 수정이 선행돼야 한다.
 - [ ] **E2E-JV-19** (**가짜 통과**) — OBS-A2 server dispatch error flow event는 Java runtime 발행이 선행돼야 한다.

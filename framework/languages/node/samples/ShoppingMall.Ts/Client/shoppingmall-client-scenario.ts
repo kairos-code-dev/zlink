@@ -1,4 +1,4 @@
-import { OrderStatuses } from '../Shared/Contracts/messages';
+import { DecimalAmount, OrderStatuses } from '../Shared/Contracts/messages';
 import type { ZLinkHttpClient } from '@zlink-systems/http-client';
 import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
 import type {
@@ -29,7 +29,10 @@ class ShoppingMallClientScenario {
     const confirmed = await this.waitForStatus(apiA, success.orderId, OrderStatuses.Confirmed, signal);
     zlinkStreamAssert.ensure(confirmed.reservationId === `reservation-${success.orderId}`, 'Sample scenario assertion failed.');
     zlinkStreamAssert.ensure(confirmed.paymentId === `payment-${success.orderId}`, 'Sample scenario assertion failed.');
-    zlinkStreamAssert.ensure(confirmed.amount === 120, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(
+      DecimalAmount.fromMinorUnits(12_000n).equalsWire(confirmed.amount),
+      'Sample scenario assertion failed.'
+    );
     zlinkStreamAssert.ensure(confirmed.currency === 'USD', 'Sample scenario assertion failed.');
     console.log('shoppingmall-success=completed');
 

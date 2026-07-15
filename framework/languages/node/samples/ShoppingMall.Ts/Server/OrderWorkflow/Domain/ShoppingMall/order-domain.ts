@@ -1,4 +1,4 @@
-import { OrderStatuses } from '../../../../Shared/Contracts/messages';
+import { DecimalAmount, OrderStatuses } from '../../../../Shared/Contracts/messages';
 import type { OrderState } from '../../../../Shared/Contracts/messages';
 import type { OrderEventType } from '../../../Shared/Domain/order-events';
 
@@ -13,7 +13,7 @@ class OrderAggregate {
         orderId,
         status: OrderStatuses.Created,
         shippingAddressId: payload.shippingAddressId,
-        amount: payload.amount,
+        amount: DecimalAmount.fromWire(payload.amount),
         currency: payload.currency,
         updatedAtUnixMs: occurredAtUnixMs
       };

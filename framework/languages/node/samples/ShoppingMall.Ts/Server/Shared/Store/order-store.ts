@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { StartOrderWorkflowReq } from '../../../Shared/Contracts/messages';
+import { DecimalAmount, StartOrderWorkflowReq } from '../../../Shared/Contracts/messages';
 import type {
   OrderLineInput,
   OrderState,
@@ -14,7 +14,7 @@ import { OrderAggregate } from '../../OrderWorkflow/Domain/ShoppingMall/order-do
 
 type MappingStatus = 'pending' | 'started';
 
-interface CartSeed { lines: readonly OrderLineInput[]; amount: number; currency: string; }
+interface CartSeed { lines: readonly OrderLineInput[]; amount: DecimalAmount; currency: string; }
 interface PaymentSeed { shouldAuthorize: boolean; failureReason?: string; }
 interface EffectResult { accepted: boolean; reason?: string; attempts: number; }
 
@@ -56,9 +56,9 @@ class OrderStore {
 
   seedSelfCheck(): { seeded: boolean } {
     return this.updateCommerce((data) => {
-      data.carts['cart-success'] = { lines: [{ sku: 'sku-normal', quantity: 2 }], amount: 120, currency: 'USD' };
-      data.carts['cart-inventory-fail'] = { lines: [{ sku: 'sku-limited', quantity: 3 }], amount: 75, currency: 'USD' };
-      data.carts['cart-payment-fail'] = { lines: [{ sku: 'sku-normal', quantity: 1 }], amount: 60, currency: 'USD' };
+      data.carts['cart-success'] = { lines: [{ sku: 'sku-normal', quantity: 2 }], amount: DecimalAmount.fromMinorUnits(12_000n), currency: 'USD' };
+      data.carts['cart-inventory-fail'] = { lines: [{ sku: 'sku-limited', quantity: 3 }], amount: DecimalAmount.fromMinorUnits(7_500n), currency: 'USD' };
+      data.carts['cart-payment-fail'] = { lines: [{ sku: 'sku-normal', quantity: 1 }], amount: DecimalAmount.fromMinorUnits(6_000n), currency: 'USD' };
       data.addresses['addr-home'] = true;
       data.addresses['addr-office'] = true;
       data.inventory['sku-normal'] = 100;
@@ -468,19 +468,49 @@ class OrderStore {
   private orderPath(orderId: string): string { return path.join(this.ordersDir, `${Buffer.from(orderId).toString('base64url')}.json`); }
 
   private readCommerce(): CommerceData {
-    return this.readJson(this.commercePath, this.emptyCommerce());
+    return this.rehydrateCommerce(this.readJson(this.commercePath, this.emptyCommerce()));
+  }
+
+  private rehydrateCommerce(data: CommerceData): CommerceData {
+    for (const cart of Object.values(data.carts)) {
+      if (cart !== undefined) {
+        cart.amount = DecimalAmount.fromWire(cart.amount);
+      }
+    }
+    return data;
   }
 
   private readOrder(orderId: string): OrderData {
-    return this.readJson(this.orderPath(orderId), { stream: [], evidence: [] });
+    return this.rehydrateOrder(this.readJson<OrderData>(
+      this.orderPath(orderId),
+      { stream: [], evidence: [] }
+    ));
+  }
+
+  private rehydrateOrder(data: OrderData): OrderData {
+    if (data.projection?.amount !== undefined) {
+      data.projection = {
+        ...data.projection,
+        amount: DecimalAmount.fromWire(data.projection.amount)
+      };
+    }
+    return data;
   }
 
   private updateCommerce<T>(mutate: (data: CommerceData) => T): T {
-    return this.updateFile(this.commercePath, this.emptyCommerce(), mutate);
+    return this.updateFile(
+      this.commercePath,
+      this.emptyCommerce(),
+      (data) => mutate(this.rehydrateCommerce(data))
+    );
   }
 
   private updateOrder<T>(orderId: string, mutate: (data: OrderData) => T): T {
-    return this.updateFile(this.orderPath(orderId), { stream: [], evidence: [] }, mutate);
+    return this.updateFile(
+      this.orderPath(orderId),
+      { stream: [], evidence: [] },
+      (data) => mutate(this.rehydrateOrder(data))
+    );
   }
 
   private updateFile<TData, TResult>(filePath: string, initial: TData, mutate: (data: TData) => TResult): TResult {

@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 0건.**
+**전체 33건. 완료 2건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -299,7 +299,7 @@
 - [ ] **§12.16** — metadata 총 크기 한도 미검사 (Java)
 - [ ] **§12.17** — correlated Error 처리 (Java)
 - [ ] **§12.18** — flow_id 미전파 (Java)
-- [ ] **§12.19** — typed 표면 경계 (Java, Kotlin)
+- [x] **§12.19** — Java typed 호출이 raw payload를 거부하고 Kotlin request 완료 표면을 `awaitReply<T>()`로 통일했다. 집중 계약 테스트, Java connector·Kotlin module 전체 테스트, Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check 통과. 구현 커밋 `c372ebbfc`(2026-07-15).
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
@@ -456,12 +456,21 @@ flow가 경계에서 끊긴다.
 
 ### §12.19 typed 표면 경계 (Java, Kotlin)
 
-**미충족.** 두 항목이다.
+**해결.** Java의 typed `send(Object)`와 `request(Object)`는 runtime type이
+`ZLinkStreamEncodedPayload`이면 raw overload를 사용하라는 `IllegalArgumentException`을 발생시킨다.
+raw 값을 typed codec이 다시 인코딩하도록 허용하는 안과 경계에서 거부하는 안을 비교해 후자를
+선택했다. 이 방식은 raw payload의 packet name과 bytes를 raw 표면 한 곳에서만 해석하게 한다.
 
-- Java `send(Object)`가 raw `ZLinkStreamEncodedPayload`도 그대로 받아 typed 경로에서 처리한다.
-  raw payload는 raw 표면이 소유해야 한다.
-- Kotlin wrapper에 목표 계약에 없는 request `await<T>()` overload 2개(typed·raw)가 있다. 목표
-  선언에 없는 공개 표면은 두지 않는다.
+Kotlin wrapper에서는 목표 계약에 없던 request `await<T>()` overload 2개를 제거하고 typed·raw request의
+generic 완료 이름을 모두 `awaitReply<T>()`로 통일했다. 호환 별칭을 남기는 안은 같은 완료 동작을 두
+이름으로 노출하므로 선택하지 않았다. SpotService와 Kotlin 샘플의 호출부도 계약 이름으로 옮겼으며,
+HTTP client의 별도 coroutine `await<T>()`는 변경하지 않았다.
+
+구현 전 `typedCallsRejectRawEncodedPayloadHiddenAsObject`와
+`kotlinRequestCompletionSurfaceUsesOnlyContractNames`가 각각 raw payload 수용과 계약 밖 overload를
+검출해 실패하는 것을 확인했다. 구현 뒤 두 집중 테스트, Java connector·Kotlin module 전체 테스트,
+Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check가 통과했다. 구현 커밋
+`c372ebbfc`(2026-07-15).
 
 ## 라운드 2 (2026-07-14) — 관측 · channel topology · companion 패키지
 

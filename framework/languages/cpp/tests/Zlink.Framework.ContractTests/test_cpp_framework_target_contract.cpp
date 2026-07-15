@@ -178,6 +178,7 @@ int main ()
     const auto transfer_feature_map =
       read_file (e2e_root / "SpotActorTransfer/feature-map.ko.md");
     const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
+    const auto observability_server = read_file (e2e_root / "ObservabilityOps/Server/main.cpp");
     const auto observability_feature_map =
       read_file (e2e_root / "ObservabilityOps/feature-map.ko.md");
     const auto resilience_client =
@@ -1200,6 +1201,26 @@ int main ()
                   "IMP-CP-36", "Redis location paging still treats continuation as an offset");
 
     /* E2E-CP-64 — the sample is not duplicated as a twelfth, non-contract config. */
+    /* E2E-CP-61 — C1 keeps the typed row and lease while existing traffic stays healthy. */
+    gate.require (observability_runner.find ("draining_rows or cleaned_up")
+                    == std::string::npos
+                    && observability_runner.find ("assert draining_rows") != std::string::npos,
+                  "E2E-CP-61", "OBS-C1 still accepts removal of the draining peer row");
+    gate.require (observability_runner.find ("ownerLeases") != std::string::npos
+                    && observability_runner.find ("renewedAtUnixMs") != std::string::npos,
+                  "E2E-CP-61", "OBS-C1 does not prove the owner lease renews while draining");
+    gate.require (observability_runner.find ("zlink.drain.state") != std::string::npos
+                    && observability_runner.find ("existing route traffic") != std::string::npos,
+                  "E2E-CP-61", "OBS-C1 omits drain-state metrics or zero-error existing traffic");
+    gate.require (observability_runner.find ("if curl_local -fsS -X POST \"$PLAY_B_HTTP/spot/create\"")
+                    == std::string::npos
+                    && observability_runner.find ("create while draining was not rejected")
+                         != std::string::npos,
+                  "E2E-CP-61", "OBS-C1 still turns transport failure into create-rejection PASS");
+    gate.require (observability_server.find ("ownerLeases") != std::string::npos
+                    && observability_server.find ("/spot/action") != std::string::npos,
+                  "E2E-CP-61", "ObservabilityOps exposes no lease or existing-route evidence");
+
     gate.require (!std::filesystem::exists (e2e_root / "DeliveryDispatch/run_e2e.sh"),
                   "E2E-CP-64", "stray DeliveryDispatch e2e fork remains tracked");
     gate.require (cmake.find ("zlink_cpp_e2e_delivery_dispatch") == std::string::npos,

@@ -698,9 +698,10 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     runtime.emit_actor_transfer_marker ("commit_ack", actor_ref, transfer_id,
                                         route->spot_rid);
     runtime.complete_remote_actor_transfer (
-      actor_ref, joined.value ().actor, spot_route_t{route->node_rid, spot_rid, route->spot_name});
-    runtime.emit_actor_transfer_marker ("source_cleanup", actor_ref, transfer_id,
-                                        route->spot_rid);
+      actor_ref, joined.value ().actor, spot_route_t{route->node_rid, spot_rid, route->spot_name},
+      transfer_id);
+    runtime.emit_actor_transfer_marker ("forwarding_entry", actor_ref, transfer_id,
+                                        route->spot_rid, route->node_rid);
     // §10.2-2: packets that arrived between the backlog snapshot and the commit
     // ack were still preserved. Forward them in arrival order now that the
     // forwarding mapping points at the target; later stragglers follow the

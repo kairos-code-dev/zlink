@@ -105,14 +105,15 @@ bool actor_transfer_coordinator_t::forwards_stale_generation (const std::string 
     return found != _forwardings.end () && generation <= found->second.old_generation;
 }
 
-std::vector<std::string>
+std::vector<evicted_actor_forwarding_t>
 actor_transfer_coordinator_t::evict_expired_forwarding (std::chrono::steady_clock::time_point now)
 {
     std::lock_guard lock (_mutex);
-    std::vector<std::string> evicted;
+    std::vector<evicted_actor_forwarding_t> evicted;
     for (auto found = _forwardings.begin (); found != _forwardings.end ();) {
         if (found->second.evict_at <= now) {
-            evicted.push_back (found->first);
+            evicted.push_back (
+              evicted_actor_forwarding_t{found->first, found->second.old_generation});
             found = _forwardings.erase (found);
         } else {
             ++found;
@@ -208,19 +209,19 @@ void actor_transfer_coordinator_t::complete_commit (const std::string &transfer_
     _admissions.erase (found);
 }
 
-std::size_t
+std::vector<expired_actor_admission_t>
 actor_transfer_coordinator_t::cleanup_expired (std::chrono::steady_clock::time_point now)
 {
     std::lock_guard lock (_mutex);
-    std::size_t removed = 0;
+    std::vector<expired_actor_admission_t> removed;
     for (auto found = _admissions.begin (); found != _admissions.end ();) {
         const auto moving = _moves.find (found->second.actor_key);
         const bool can_expire =
           moving != _moves.end () && moving->second.phase == actor_move_phase_t::target_pending;
         if (can_expire && found->second.deadline <= now) {
             _moves.erase (moving);
+            removed.push_back (expired_actor_admission_t{found->first, found->second});
             found = _admissions.erase (found);
-            ++removed;
         } else {
             ++found;
         }

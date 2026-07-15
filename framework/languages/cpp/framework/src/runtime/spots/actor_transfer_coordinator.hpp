@@ -33,6 +33,18 @@ struct pending_actor_admission_t
     std::chrono::steady_clock::time_point deadline;
 };
 
+struct expired_actor_admission_t
+{
+    std::string transfer_id;
+    pending_actor_admission_t admission;
+};
+
+struct evicted_actor_forwarding_t
+{
+    std::string actor_key;
+    std::uint64_t old_generation = 0;
+};
+
 // One in-flight actor packet preserved while its actor is moving (spot-actor
 // spec §10). Sends are preserved and replayed transparently; a request is also
 // preserved (§10.2-1) so it still reaches the committed target's handler even
@@ -77,7 +89,8 @@ class actor_transfer_coordinator_t
                               std::chrono::steady_clock::time_point evict_at);
     bool forwards_stale_generation (const std::string &actor_key,
                                     std::uint64_t generation) const;
-    std::vector<std::string> evict_expired_forwarding (std::chrono::steady_clock::time_point now);
+    std::vector<evicted_actor_forwarding_t>
+    evict_expired_forwarding (std::chrono::steady_clock::time_point now);
 
     bool try_add_admission (std::string transfer_id, pending_actor_admission_t admission);
     std::optional<pending_actor_admission_t> begin_commit (const std::string &transfer_id,
@@ -85,7 +98,8 @@ class actor_transfer_coordinator_t
                                                            const spot_rid_t &target_spot_rid);
     void fail_commit (const std::string &transfer_id, bool reconcile);
     void complete_commit (const std::string &transfer_id);
-    std::size_t cleanup_expired (std::chrono::steady_clock::time_point now);
+    std::vector<expired_actor_admission_t>
+    cleanup_expired (std::chrono::steady_clock::time_point now);
     std::size_t pending_count () const;
 
     std::string next_transfer_id (const std::string &node_rid);

@@ -2780,12 +2780,47 @@ spot_node_runtime_t::join_remote_actor_to_spot_erased (const actor_ref_t &actor_
 
 std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions ()
 {
-    const auto now = std::chrono::steady_clock::now ();
-    auto removed = _state->actor_transfer_coordinator.cleanup_expired (now);
+    return cleanup_expired_actor_admissions_at (std::chrono::steady_clock::now ());
+}
+
+std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions_at (
+  std::chrono::steady_clock::time_point now)
+{
+    const auto expired = _state->actor_transfer_coordinator.cleanup_expired (now);
+    for (const auto &entry : expired) {
+        emit_actor_transfer_marker ("pending_admission_expired", entry.admission.source_actor,
+                                    entry.transfer_id, entry.admission.target_spot_rid);
+    }
+    std::size_t removed = expired.size ();
+    std::vector<spot_node_builder_state_t::pending_remote_source_cleanup_t> cleaned_sources;
+    {
+        std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+        for (auto found = _state->pending_remote_source_cleanups.begin ();
+             found != _state->pending_remote_source_cleanups.end ();) {
+            if (found->not_before > now) {
+                ++found;
+                continue;
+            }
+            const auto key = actor_key (found->source_actor);
+            _state->actor_instances.erase (key);
+            detail::erase_actor_instance_index_unlocked (
+              *_state, found->source_actor.actor_type (), found->source_actor.actor_id ());
+            _state->actor_mailboxes.erase (key);
+            release_actor_location (*_state, found->source_actor);
+            cleaned_sources.push_back (std::move (*found));
+            found = _state->pending_remote_source_cleanups.erase (found);
+            ++removed;
+        }
+    }
+    for (const auto &cleanup : cleaned_sources) {
+        emit_actor_transfer_marker ("source_cleanup", cleanup.source_actor,
+                                    cleanup.transfer_id, cleanup.target_spot_rid);
+    }
     const auto evicted = _state->actor_transfer_coordinator.evict_expired_forwarding (now);
     if (!evicted.empty ()) {
         std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
-        for (const auto &key : evicted) {
+        for (const auto &entry : evicted) {
+            const auto &key = entry.actor_key;
             // The forwarding window ended (§10.4-3): drop the retained route so
             // this node stops forwarding. The generation record stays behind as
             // a tombstone so stale refs keep failing fast instead of
@@ -2793,6 +2828,13 @@ std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions ()
             _state->actor_routes.erase (key);
             _state->native_actors.erase (key);
             emit_actor_handoff_marker ("mapping_evicted", key);
+            const auto separator = key.find (':');
+            if (separator != std::string::npos) {
+                const auto actor_ref = actor_ref_t (
+                  node_rid (), key.substr (0, separator), key.substr (separator + 1),
+                  entry.old_generation);
+                emit_actor_transfer_marker ("mapping_evicted", actor_ref, key);
+            }
             ++removed;
         }
     }
@@ -3002,14 +3044,15 @@ void spot_node_runtime_t::fail_remote_actor_transfer (const actor_ref_t &actor_r
 
 void spot_node_runtime_t::complete_remote_actor_transfer (const actor_ref_t &source_actor,
                                                           const actor_ref_t &target_actor,
-                                                          spot_route_t target_route)
+                                                          spot_route_t target_route,
+                                                          std::string transfer_id)
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto key = actor_key (source_actor);
-    _state->actor_instances.erase (key);
-    detail::erase_actor_instance_index_unlocked (*_state, source_actor.actor_type (),
-                                                 source_actor.actor_id ());
-    _state->actor_mailboxes.erase (key);
+    if (transfer_id.empty ()) {
+        transfer_id = key;
+    }
+    const auto target_spot_rid = target_route.spot_rid;
     const auto transfer_elapsed = _state->actor_transfer_coordinator.complete_move (key);
     if (transfer_elapsed) {
         // Commit ack confirmed: one transfers count and one duration sample per
@@ -3029,24 +3072,36 @@ void spot_node_runtime_t::complete_remote_actor_transfer (const actor_ref_t &sou
     _state->actor_transfer_coordinator.activate_forwarding (
       key, source_actor.generation (),
       std::chrono::steady_clock::now () + _state->actor_transfer_forward_window);
-    release_actor_location (*_state, source_actor);
+    // Commit acknowledgement fixes the new owner and forwarding route first.
+    // Releasing stale source ownership is post-commit housekeeping: losing the
+    // source process now cannot roll back the accepted target generation.
+    _state->pending_remote_source_cleanups.push_back (
+      spot_node_builder_state_t::pending_remote_source_cleanup_t{
+        source_actor, std::move (transfer_id), target_spot_rid,
+        std::chrono::steady_clock::now () + std::chrono::seconds (1)});
 }
 
 void spot_node_runtime_t::emit_actor_transfer_marker (
   std::string marker,
   const actor_ref_t &actor_ref,
   std::string transfer_id,
-  std::optional<spot_rid_t> spot_rid) const
+  std::optional<spot_rid_t> spot_rid,
+  std::optional<node_rid_t> target_node_rid) const
 {
     message_flow_tracer_t (_state->dispatch).trace (
       message_flow_outcome_t::dispatched,
       [marker = std::move (marker), actor_ref, transfer_id = std::move (transfer_id),
-       spot_rid = std::move (spot_rid), node_rid = node_rid ()] () mutable {
+       spot_rid = std::move (spot_rid), target_node_rid = std::move (target_node_rid),
+       node_rid = node_rid ()] () mutable {
           return message_flow_event_t{
             .outcome = message_flow_outcome_t::dispatched,
             .surface = dispatch_error_surface_t::spot_actor,
             .message_kind = dispatch_message_kind_t::actor_request,
             .packet_name = std::move (marker),
+            .channel_name = target_node_rid
+                              ? std::make_optional (
+                                  std::string (target_node_rid->value ()))
+                              : std::nullopt,
             .correlation_id = transfer_id,
             .source_rid = std::string (node_rid.value ()),
             .spot_rid = spot_rid ? std::make_optional (std::string (spot_rid->value ()))

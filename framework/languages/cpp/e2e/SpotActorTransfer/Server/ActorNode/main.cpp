@@ -70,12 +70,20 @@ class evidence_store_t
             return;
         }
         static const std::set<std::string> transfer_markers{
-          "commit_request", "location_committed", "commit_ack", "source_cleanup"};
+          "commit_request", "location_committed", "commit_ack", "source_cleanup",
+          "pending_admission_expired", "forwarding_entry", "mapping_evicted"};
         if (!transfer_markers.contains (*event.packet_name)) {
             return;
         }
+        auto value = *event.correlation_id;
+        if (*event.packet_name == "forwarding_entry" && event.channel_name) {
+            value = *event.channel_name;
+            if (event.spot_rid) {
+                value += ":" + *event.spot_rid;
+            }
+        }
         e2e::actor_evidence_t entry{"message_flow", *event.actor_id, *event.packet_name,
-                                    *event.correlation_id, _node_rid, *event.correlation_id,
+                                    std::move (value), _node_rid, *event.correlation_id,
                                     *event.correlation_id, *event.flow_id};
         append (std::move (entry));
     }
@@ -1051,6 +1059,8 @@ int main (int argc, char **argv)
         framework.services ().add_singleton<joined_gate_store_t> (std::move (joined_gates));
         framework.services ().add_singleton<transfer_gate_store_t> (std::move (transfer_gates));
         framework.services ().add_singleton<shutdown_flag_t> (std::move (shutdown_flag));
+
+        framework.set_default_request_timeout (std::chrono::seconds (3));
 
         framework.configure_dispatch ()
           .message_flow (fw::message_flow_log_mode_t::key_transitions)

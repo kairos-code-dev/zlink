@@ -557,7 +557,7 @@ int main ()
     gate.require (actor_gateway_spot_bridge.find (
                     "emit_actor_transfer_marker (\"commit_ack\"")
                     != std::string::npos
-                    && actor_gateway_spot_bridge.find (
+                    && spot_runtime.find (
                          "emit_actor_transfer_marker (\"source_cleanup\"")
                          != std::string::npos,
                   "E2E-CP-51",
@@ -582,6 +582,62 @@ int main ()
                     && st_b3.find ("source_cleanup") != std::string::npos,
                   "E2E-CP-51",
                   "ST-B3 does not require commit_ack and source_cleanup evidence");
+
+    /* E2E-CP-52 — named scenarios must open and observe their contract
+     * boundary instead of relying on sleeps or impossible negative checks. */
+    const auto st_b2_begin =
+      transfer_client.find ("void source_cleanup_failure_after_success ()");
+    const auto st_b2_end = transfer_client.find ("void remote_missing_adapter ()", st_b2_begin);
+    const auto st_b2 = st_b2_begin != std::string::npos && st_b2_end != std::string::npos
+                         ? transfer_client.substr (st_b2_begin, st_b2_end - st_b2_begin)
+                         : std::string{};
+    gate.require (st_b2.find ("commit_ack") != std::string::npos
+                    && st_b2.find ("source_cleanup") != std::string::npos
+                    && st_b2.find ("join_task") != std::string::npos,
+                  "E2E-CP-52",
+                  "ST-B2 does not stop the source between commit ack and source cleanup");
+    const auto st_c1_begin = transfer_client.find ("void source_down_before_commit ()");
+    const auto st_c1_end =
+      transfer_client.find ("void source_down_after_target_commit ()", st_c1_begin);
+    const auto st_c1 = st_c1_begin != std::string::npos && st_c1_end != std::string::npos
+                         ? transfer_client.substr (st_c1_begin, st_c1_end - st_c1_begin)
+                         : std::string{};
+    gate.require (st_c1.find ("pending_admission_expired") != std::string::npos,
+                  "E2E-CP-52",
+                  "ST-C1 does not require pending-admission timeout cleanup evidence");
+    const auto st_d2_begin = transfer_client.find ("void stale_source_release_fencing ()");
+    const auto st_d2_end =
+      transfer_client.find ("void bound_session_push_after_remote_transfer ()", st_d2_begin);
+    const auto st_d2 = st_d2_begin != std::string::npos && st_d2_end != std::string::npos
+                         ? transfer_client.substr (st_d2_begin, st_d2_end - st_d2_begin)
+                         : std::string{};
+    gate.require (st_d2.find ("source_cleanup") != std::string::npos
+                    && st_d2.find ("before-delayed-cleanup") != std::string::npos
+                    && st_d2.find ("after-delayed-cleanup") != std::string::npos,
+                  "E2E-CP-52",
+                  "ST-D2 does not delay, trigger, and route across stale source cleanup");
+    const auto joined_failure_begin = transfer_client.find ("void joined_failure ()");
+    const auto joined_failure_end =
+      transfer_client.find ("void local_location_commit_timing ()", joined_failure_begin);
+    const auto joined_failure =
+      joined_failure_begin != std::string::npos && joined_failure_end != std::string::npos
+        ? transfer_client.substr (joined_failure_begin,
+                                  joined_failure_end - joined_failure_begin)
+        : std::string{};
+    gate.require (joined_failure.find ("after-joined-failure") != std::string::npos
+                    && joined_failure.find ("probe_actor") != std::string::npos,
+                  "E2E-CP-52",
+                  "ST-C3 joined failure still asserts an actor packet nobody sends");
+    const auto st_f5_begin = transfer_client.find ("void forwarding_mapping_eviction ()");
+    const auto st_f5_end =
+      transfer_client.find ("void in_flight_request_correlation_and_timeout ()", st_f5_begin);
+    const auto st_f5 = st_f5_begin != std::string::npos && st_f5_end != std::string::npos
+                         ? transfer_client.substr (st_f5_begin, st_f5_end - st_f5_begin)
+                         : std::string{};
+    gate.require (st_f5.find ("mapping_evicted") != std::string::npos
+                    && st_f5.find ("forwarding_entries") != std::string::npos,
+                  "E2E-CP-52",
+                  "ST-F5 does not observe mapping eviction and per-node forwarding entries");
 
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");

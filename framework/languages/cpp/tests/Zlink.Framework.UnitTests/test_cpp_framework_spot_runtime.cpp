@@ -3070,6 +3070,13 @@ int main ()
       zlink::framework::spot_route_t{zlink::framework::node_rid_t::from_string ("relay-target"),
                                      zlink::framework::spot_rid_t::from_string ("target-room"),
                                      "target"});
+    if (!relay_runtime.actor_instance<relay_actor_t> (source_transfer_join.value ().actor)
+        || !relay_runtime.actor_route (target_transfer_ref)
+        || relay_runtime.actor_route (target_transfer_ref)->node_rid.value () != "relay-target") {
+        return 154;
+    }
+    relay_runtime.cleanup_expired_actor_admissions_at (
+      std::chrono::steady_clock::now () + std::chrono::seconds (2));
     if (relay_runtime.actor_instance<relay_actor_t> (source_transfer_join.value ().actor)
         || !relay_runtime.actor_route (target_transfer_ref)
         || relay_runtime.actor_route (target_transfer_ref)->node_rid.value () != "relay-target") {

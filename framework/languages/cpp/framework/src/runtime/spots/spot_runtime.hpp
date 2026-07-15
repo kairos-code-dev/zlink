@@ -15,6 +15,7 @@
 #include <zlink/Contracts/Service/actor_models.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <future>
@@ -27,6 +28,7 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace zlink::framework::detail
 {
@@ -83,6 +85,14 @@ class spot_node_builder_state_t
     // packet-drain thread while the sample is taken on the transfer path.
     std::map<std::string, std::size_t> actor_pending_requests;
     std::mutex actor_pending_requests_mutex;
+    struct pending_remote_source_cleanup_t
+    {
+        actor_ref_t source_actor;
+        std::string transfer_id;
+        spot_rid_t target_spot_rid;
+        std::chrono::steady_clock::time_point not_before;
+    };
+    std::vector<pending_remote_source_cleanup_t> pending_remote_source_cleanups;
     struct actor_factory_registration_t
     {
         std::type_index actor_type{typeid (void)};
@@ -439,6 +449,8 @@ class spot_node_runtime_t
                                  std::vector<handoff_packet_t> handoff_backlog = {},
                                  service_provider_t *services = nullptr);
     std::size_t cleanup_expired_actor_admissions ();
+    std::size_t cleanup_expired_actor_admissions_at (
+      std::chrono::steady_clock::time_point now);
     std::string next_actor_transfer_id ();
     // In-flight handoff (spot-actor §10): drains the packets preserved while the
     // actor was moving, in arrival order. The commit path calls this once to fill
@@ -450,7 +462,8 @@ class spot_node_runtime_t
     void fail_remote_actor_transfer (const actor_ref_t &actor_ref, bool reconcile);
     void complete_remote_actor_transfer (const actor_ref_t &source_actor,
                                          const actor_ref_t &target_actor,
-                                         spot_route_t target_route);
+                                         spot_route_t target_route,
+                                         std::string transfer_id = {});
     // Emits an internal transfer lifecycle boundary through the configured
     // public message-flow observer. The transfer id is both the correlation
     // key and lifecycle flow key so role-server evidence can join source and
@@ -458,7 +471,8 @@ class spot_node_runtime_t
     void emit_actor_transfer_marker (std::string marker,
                                      const actor_ref_t &actor_ref,
                                      std::string transfer_id,
-                                     std::optional<spot_rid_t> spot_rid = std::nullopt) const;
+                                     std::optional<spot_rid_t> spot_rid = std::nullopt,
+                                     std::optional<node_rid_t> target_node_rid = std::nullopt) const;
     result_t<actor_join_reply_t> join_actor_to_entry_spot_erased (
       const actor_ref_t &actor_ref,
       node_rid_t spot_node_rid,

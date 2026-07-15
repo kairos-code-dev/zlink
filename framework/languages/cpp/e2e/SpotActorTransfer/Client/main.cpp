@@ -270,6 +270,19 @@ void assert_correlated_transfer_markers (
              "Correlated transfer marker set is incomplete.");
 }
 
+std::vector<e2e::actor_evidence_t> forwarding_entries (http::client_t &node,
+                                                        const std::string &actor_id)
+{
+    std::vector<e2e::actor_evidence_t> entries;
+    for (const auto &entry : get_evidence (node)) {
+        if (entry.scenario == "message_flow" && entry.actor_id == actor_id
+            && entry.kind == "forwarding_entry") {
+            entries.push_back (entry);
+        }
+    }
+    return entries;
+}
+
 class bound_session_t
 {
   public:
@@ -502,7 +515,6 @@ class scenario_runner_t
                      "transfer|" + actor_id + "|leave|21",
                      "message_flow|" + actor_id + "|commit_request|",
                      "message_flow|" + actor_id + "|commit_ack|",
-                     "message_flow|" + actor_id + "|source_cleanup|",
                      "ST-B1|" + actor_id + "|success_reply|" + spot_rid});
         assert_evidence_sequence (
           _nodes.b, {"ST-B1|" + actor_id + "|admission|",
@@ -510,6 +522,8 @@ class scenario_runner_t
                      "transfer|" + actor_id + "|joined|" + spot_rid + ":21",
                      "message_flow|" + actor_id + "|location_committed|",
                      "ST-B1|" + actor_id + "|packet_handler|after-transfer"});
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|source_cleanup|"});
 
         assert_correlated_transfer_markers (
           {&_nodes.a, &_nodes.b}, actor_id,
@@ -523,15 +537,21 @@ class scenario_runner_t
         create_spot (_nodes.b, spot_rid);
         create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 22);
 
-        const auto join = join_actor (_nodes.a, actor_id, {"ST-B2", spot_rid});
+        auto join_task = std::async (std::launch::async, [&] {
+            return join_actor (_nodes.a, actor_id, {"ST-B2", spot_rid});
+        });
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|commit_ack|"});
+        const auto join = join_task.get ();
         require (join.accepted, "ST-B2 join was rejected.");
+        require_no_contains (get_evidence (_nodes.a),
+                             "message_flow|" + actor_id + "|source_cleanup|",
+                             "ST-B2 source cleanup completed before source shutdown.");
         const auto before = probe_actor (_nodes.b, actor_id, {"ST-B2", "before-source-cleanup-loss"});
         require (before.node_rid == "actor-b",
                  "ST-B2 probe expected actor-b, got " + before.node_rid);
 
         shutdown_node (_nodes.a);
-        std::this_thread::sleep_for (std::chrono::seconds (2));
-
         const auto after = probe_actor (_nodes.b, actor_id, {"ST-B2", "after-source-cleanup-loss"});
         require (after.node_rid == "actor-b",
                  "ST-B2 target ownership was lost after source shutdown: " + after.node_rid);
@@ -564,7 +584,6 @@ class scenario_runner_t
                      "transfer|" + actor_id + "|leave|31",
                      "message_flow|" + actor_id + "|commit_request|",
                      "message_flow|" + actor_id + "|commit_ack|",
-                     "message_flow|" + actor_id + "|source_cleanup|",
                      "ST-B3|" + actor_id + "|success_reply|" + spot_rid});
         assert_evidence_sequence (
           _nodes.b, {"ST-B3|" + actor_id + "|admission|",
@@ -572,6 +591,8 @@ class scenario_runner_t
                      "transfer|" + actor_id + "|joined|" + spot_rid + ":0",
                      "message_flow|" + actor_id + "|location_committed|",
                      "ST-B3|" + actor_id + "|packet_handler|after-default-empty-transfer"});
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|source_cleanup|"});
         assert_correlated_transfer_markers (
           {&_nodes.a, &_nodes.b}, actor_id,
           {"commit_request", "location_committed", "commit_ack", "source_cleanup"});
@@ -635,8 +656,8 @@ class scenario_runner_t
                      "ST-C1 join should not be accepted after source shutdown before commit.");
         }
 
-        std::this_thread::sleep_for (std::chrono::seconds (5));
-        const auto target_evidence = get_evidence (_nodes.b);
+        const auto target_evidence = wait_evidence (
+          _nodes.b, {"message_flow|" + actor_id + "|pending_admission_expired|"});
         require_no_contains (target_evidence, "transfer|" + actor_id + "|transfer_in|62",
                              "ST-C1 target should not transfer in without commit.");
         require_no_contains (target_evidence, "transfer|" + actor_id + "|joined|" + spot_rid,
@@ -724,13 +745,15 @@ class scenario_runner_t
         require (before.node_rid == "actor-b",
                  "ST-D2 target ref expected actor-b, got " + before.node_rid);
 
-        std::this_thread::sleep_for (std::chrono::seconds (2));
+        (void) probe_actor (_nodes.b, actor_id, {"ST-D2", "before-delayed-cleanup"});
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|source_cleanup|"});
         const auto after = get_actor_ref (_nodes.b, actor_id);
         require (after.node_rid == "actor-b",
                  "ST-D2 target ref changed after delayed cleanup: " + after.node_rid);
         require (after.generation == before.generation,
                  "ST-D2 generation changed after delayed cleanup.");
-        const auto probe = probe_actor (_nodes.b, actor_id, {"ST-D2", "after-stale-cleanup-window"});
+        const auto probe = probe_actor (_nodes.b, actor_id, {"ST-D2", "after-delayed-cleanup"});
         require (probe.node_rid == "actor-b", "ST-D2 probe expected actor-b, got " + probe.node_rid);
     }
 
@@ -886,14 +909,25 @@ class scenario_runner_t
         const auto old_ref_a = get_actor_ref (_nodes.a, actor_id);
         require (join_actor (_nodes.a, actor_id, {"ST-F5", spot_b}).accepted,
                  "ST-F5 first transfer was rejected.");
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|forwarding_entry|actor-b:" + spot_b});
         const auto old_ref_b = get_actor_ref (_nodes.b, actor_id);
         require (join_actor (_nodes.b, actor_id, {"ST-F5", spot_c}).accepted,
                  "ST-F5 chained transfer was rejected.");
+        wait_evidence (_nodes.b,
+                       {"message_flow|" + actor_id + "|forwarding_entry|actor-c:" + spot_c});
+        require (forwarding_entries (_nodes.a, actor_id).size () == 1,
+                 "ST-F5 actor-a retained more than one forwarding entry.");
+        require (forwarding_entries (_nodes.b, actor_id).size () == 1,
+                 "ST-F5 actor-b retained more than one forwarding entry.");
 
         send_ref (_nodes.a, actor_id, old_ref_a, {"ST-F5", "chain-to-final"});
         wait_evidence (_nodes.c, {"ST-F5|" + actor_id + "|handoff_packet|chain-to-final"});
 
-        std::this_thread::sleep_for (std::chrono::milliseconds (3300));
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|mapping_evicted|"});
+        wait_evidence (_nodes.b,
+                       {"message_flow|" + actor_id + "|mapping_evicted|"});
         const auto stale = probe_ref (_nodes.a, actor_id, old_ref_a, {"ST-F5", "after-eviction"});
         require (!stale.succeeded && stale.error_kind == "ActorLocationStale",
                  "ST-F5 expected evicted mapping to fail stale, got '" + stale.error_kind + "'.");
@@ -1061,6 +1095,16 @@ class scenario_runner_t
                                    "transfer|" + actor_id + "|leave|74",
                                    "ST-C3|" + actor_id + "|join_failed|",
                                  });
+        bool packet_failed = false;
+        try {
+            (void) probe_actor (_nodes.b, actor_id,
+                                {"ST-C3", "after-joined-failure"});
+        }
+        catch (const std::exception &) {
+            packet_failed = true;
+        }
+        require (packet_failed,
+                 "ST-C3 actor packet succeeded after the joined callback failed.");
         const auto target_evidence = get_evidence (_nodes.b);
         require_no_contains (target_evidence,
                              "ST-C3|" + actor_id + "|packet_handler|after-joined-failure",

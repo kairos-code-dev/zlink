@@ -24,11 +24,13 @@ const e2eScenarioAssertions = [
 
 test('stream-connector sample scenarios use the connector test helper surface', () => {
   const samples = sampleClients.map(read).join('\n');
-  assert.doesNotMatch(samples, /function (?:ensure|expectFailure|expectNoPush|expectRequestFailure)\b/);
+  assert.doesNotMatch(samples, /function (?:ensure|expectFailure|expectNoPush|expectRequestFailure|watchForUnexpectedMessage)\b/);
   assert.doesNotMatch(samples, /\.waitFor\([^\n]+\)\.timeout\(250\)/);
   assert.match(samples, /zlinkStreamAssert\.ensure\(/);
   assert.match(samples, /zlinkStreamAssert\.expectFailure\(/);
   assert.match(samples, /\.expectNone(?:<[^>]+>)?\([^\n]+\)\.within\(250\)\.run\(signal\)/);
+  assert.match(samples, /\.waitForSequence(?:<[^>]+>)?\(/);
+  assert.doesNotMatch(samples, /const statusWaits = statuses\.map/);
 });
 
 test('e2e scenarios use the connector assertion surface', () => {

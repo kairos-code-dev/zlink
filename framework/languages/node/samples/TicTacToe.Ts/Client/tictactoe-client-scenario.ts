@@ -92,13 +92,10 @@ class TicTacToeClientScenario {
       console.log('observer-subscription=verified');
 
       // 3. Host joins by explicit RoomId
-      const client1SelfJoin = watchForUnexpectedMessage(
-        client1,
-        PacketNames.playerJoinedNotify,
-        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client1Auth.player.actorId,
-        signal
-      );
-      const client1Join = await client1.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
+      const [client1Join] = await Promise.all([
+        client1.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal),
+        client1.expectNone<PlayerJoinedNotify>(PacketNames.playerJoinedNotify).within(250).run(signal)
+      ]);
       connector.zlinkStreamAssert.ensure(stateOf(client1Join).roomId === game.roomId, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(stateOf(client1Join).status === GameStatus.WaitingForPlayers, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(stateOf(client1Join).xActorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
@@ -114,13 +111,10 @@ class TicTacToeClientScenario {
         .submit(signal);
 
       // 4-6. Guest joins by the same RoomId.
-      const client2SelfJoin = watchForUnexpectedMessage(
-        client2,
-        PacketNames.playerJoinedNotify,
-        (message: ZlinkStreamMessage<PlayerJoinedNotify>) => message.payload.actorId === client2Auth.player.actorId,
-        signal
-      );
-      const client2Join = await client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
+      const [client2Join] = await Promise.all([
+        client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal),
+        client2.expectNone<PlayerJoinedNotify>(PacketNames.playerJoinedNotify).within(250).run(signal)
+      ]);
       connector.zlinkStreamAssert.ensure(stateOf(client2Join).roomId === game.roomId, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(stateOf(client2Join).status === GameStatus.InProgress, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(stateOf(client2Join).oActorId === client2Auth.player.actorId, 'Sample scenario assertion failed.');
@@ -137,13 +131,10 @@ class TicTacToeClientScenario {
       connector.zlinkStreamAssert.ensure(client1Joined.payload.mark === GameMarks.o, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(stateOf(client1Joined.payload).status === GameStatus.InProgress, 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(client1Running.payload.state.nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
-      await client1SelfJoin.assertAbsent();
-
       // 7. Each move response is matched with the opponent notify.
       const client2SawMove1 = waitState(client2, 0, signal);
       const client1Move1 = await client1.request(placeMarkStreamReq(0)).submit<PlaceMarkRes>(signal);
       requireSameState(stateOf(client1Move1), (await client2SawMove1).payload.state);
-      await client2SelfJoin.assertAbsent();
       connector.zlinkStreamAssert.ensure(stateOf(client1Move1).board === 'X........', 'Sample scenario assertion failed.');
       connector.zlinkStreamAssert.ensure(stateOf(client1Move1).nextTurn === GameMarks.o, 'Sample scenario assertion failed.');
       requireLastMove(stateOf(client1Move1), client1Auth.player.actorId, 0);
@@ -224,37 +215,6 @@ function waitState(
     .waitFor<GameStateNotify>(PacketNames.gameStateNotify)
     .where((message) => message.payload.state.lastMoveCell === lastMoveCell)
     .submit(signal);
-}
-
-function watchForUnexpectedMessage<TPayload>(
-  client: ZlinkStreamConnector,
-  packetName: string,
-  predicate: (message: ZlinkStreamMessage<TPayload>) => boolean,
-  signal?: AbortSignal
-): { assertAbsent(): Promise<void> } {
-  const controller = new AbortController();
-  const waitSignal = signal === undefined
-    ? controller.signal
-    : AbortSignal.any([signal, controller.signal]);
-  const observed = client
-    .waitFor<TPayload>(packetName)
-    .where(predicate)
-    .submit(waitSignal)
-    .then(
-      () => true,
-      (error) => {
-        if (controller.signal.aborted && signal?.aborted !== true) return false;
-        throw error;
-      }
-    );
-  return {
-    async assertAbsent(): Promise<void> {
-      controller.abort();
-      if (await observed) {
-        throw new Error(`Unexpected stream message '${packetName}'.`);
-      }
-    }
-  };
 }
 
 function createPlayerClient(endpoint: string, name: string, observedClients: Set<string>): ZlinkStreamConnector {

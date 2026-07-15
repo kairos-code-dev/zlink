@@ -348,6 +348,10 @@ Kotlin은 Java 런타임을 공유하므로 라운드 3의 Java 항목(**IMP-JV-
 적용해도 공유 drain 상태를 바꾸지 않으며, 값을 버리던 channel `metadata(k,v)` 표면은 Kotlin에서도
 더 이상 노출되지 않는다. 집중 테스트와 Java core 전체 테스트가 통과했다(구현 커밋 `3db218ee0`).
 
+공유 startup validator의 **IMP-JV-05**도 닫혔다. Kotlin 구성에서도 router/pub-sub capability가
+없거나 활성 capability의 bind endpoint가 없으면 시작 전에 설정 오류로 거부한다. 세 집중 테스트와
+Java core 전체 테스트가 통과했다(구현 커밋 `d7a62647e`).
+
 [java 체크리스트](java.ko.md)를 함께 본다.
 
 ## 라운드 4 (2026-07-14) — 샘플 · E2E

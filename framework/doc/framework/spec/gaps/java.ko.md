@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 12건.**
+**전체 33건. 완료 13건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -270,7 +270,7 @@
 - [ ] **IMP-JV-02** (결함) — 24 §3·§5
 - [x] **IMP-JV-03** (결함) — `drain(...)`과 `awaitDrained()`가 공유 완료 상태의 독립 waiter를 반환하도록 고쳤다. 한 호출자가 waiter에 timeout을 적용해도 런타임의 drain 상태는 완료되지 않는 집중 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `3db218ee0`(2026-07-15).
 - [ ] **IMP-JV-04** (결함) — 24 §4.1·05 §2.3
-- [ ] **IMP-JV-05** (결함) — 20 §8
+- [x] **IMP-JV-05** (결함) — SpotNode가 router/pub-sub 중 하나도 갖지 않는 구성과, 활성화한 capability에 bind endpoint가 없는 구성을 시작 전에 거부한다. 세 집중 실패 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `d7a62647e`(2026-07-15).
 - [x] **IMP-JV-06** (결함) — 값을 버리던 `metadata(k,v)`를 channel send·request·publish 공개 표면과 모든 구현에서 제거했다. 공개 표면 집중 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `3db218ee0`(2026-07-15).
 - [ ] **IMP-JV-07** (미구현) — 54 §9
 - [ ] **IMP-JV-08** (미구현) — 40 §9
@@ -319,7 +319,7 @@
 | **IMP-JV-02** | 결함 | [24 §3·§5](../server/24-spot-address-messaging.ko.md): **정상 전송 경로는 store를 읽지 않는다.** handle이 snapshot을 들고, stale 실패 시 **1회 갱신 + 1회 재전송** | `FrameworkSpotHandle.java:6` — `record FrameworkSpotHandle(RoutingId spotRid)`, **rid 하나뿐**. snapshot도 swap도 없다. 그래서 `ZLinkChannelSpotCalls.java:128,200` 등 **모든 spot 전송이 매번 store를 읽는다.** ⇒ 룸 핫패스마다 Redis 왕복, store 장애 시 라우트 소켓이 멀쩡해도 **모든 spot 전송 실패**(스펙은 fail-static 요구) |
 | **IMP-JV-03** | 결함 | [54 §6](../server/54-graceful-drain-handoff.ko.md): **호출자의 취소는 그 호출자의 대기만 중단한다** | **해결:** 각 호출은 공유 drain stage에 `thenApply`로 연결한 독립 waiter를 받는다. waiter timeout이 공유 상태를 완료하지 않는 집중 테스트와 core 전체 테스트 통과. 구현 커밋 `3db218ee0`(2026-07-15). |
 | **IMP-JV-04** | 결함 | [24 §4.1](../server/24-spot-address-messaging.ko.md)·[05 §2.3](../05-framework-api.ko.md): `SpotRouteNotFound`/`RouteNotConnected`/`RequestTargetNotFound`를 구분한다 | `ZLinkChannelSpotCalls.java:228-236` — 전부 `ZLinkConfigurationException`(kind=`REQUEST_FAILED`, retriable=false). ⇒ **"spot이 사라졌다"와 "mesh가 아직 수렴 중이다"를 구분할 수 없다.** retriable 기반 재시도 정책이 영영 안 돈다 |
-| **IMP-JV-05** | 결함 | [20 §8](../server/20-spot-messaging.ko.md): router/pub-sub 미설정, bind endpoint 없음, route bridge 대상 없음은 **설정 오류** | `SpotNodeRegistration.java:220-238` — 셋 다 검사하지 않는다. `enableRouter()`가 bind 없이도 통과(:106-108)하고, `ZLinkLocationAutoConnectHost.java:79`가 **빈 endpoint peer row를 조용히 게시**한다. ⇒ 아무도 dial하지 못하는 노드가 정상 기동하고, remote join·transfer·handoff가 **말없이 전부 실패** |
+| **IMP-JV-05** | 결함 | [20 §8](../server/20-spot-messaging.ko.md): router/pub-sub 미설정, bind endpoint 없음, route bridge 대상 없음은 **설정 오류** | **해결:** `.NET` validator와 같이 SpotNode가 router/pub-sub 중 하나 이상을 갖는지, 활성화한 각 capability에 bind endpoint가 있는지 검증한다. 기존 유효 fixture도 실제 bind를 명시하도록 바로잡았고 세 집중 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `d7a62647e`(2026-07-15). |
 | **IMP-JV-06** | 결함 | [05 §2.x](../05-framework-api.ko.md): 없는 것을 있는 척하지 않는다 | **해결:** 값을 전달하지 않던 `metadata(k,v)`를 세 channel call interface와 11개 구현에서 제거했다. 공개 표면 집중 테스트와 core 전체 테스트 통과. 구현 커밋 `3db218ee0`(2026-07-15). |
 | **IMP-JV-07** | 미구현 | [54 §9](../server/54-graceful-drain-handoff.ko.md): `zlink.drain.state`(gauge), `zlink.drain.duration`(`outcome`), `zlink.drain.forced`(`kind`는 `actor\|spot\|request\|session`으로 **고정**) | 앞의 둘이 **없다.** `zlink.drain.forced`는 `kind=runtime`(닫힌 집합 밖)을 **한 번만** 올린다(`ZLinkFrameworkRuntime.java:652-653`) |
 | **IMP-JV-08** | 미구현 | [40 §9](../server/40-location-runtime.ko.md) | location event source 5개 중 **4개가 없다**(IMP-X2) |

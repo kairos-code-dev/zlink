@@ -286,7 +286,7 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 | [§12.21](#1221-yield-terminator-부재-전-언어) | **결함 + 미구현** | `async`가 **자동으로 turn을 반납한다**(결함). `yield` 표면이 없다(미구현) |
 | [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **결함 + 미구현** | terminator 이름이 계약과 다르고 blocking 표면이 public이다(결함). turn seam·DI 서버 표면이 없다(미구현) |
 | [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **미구현** | CPU/I/O worker 분리와 worker의 `yield`가 없다 |
-| [§12.24](#1224-actor-join의-orchestration이-뒤집혀-있다-전-언어) | **결함** | join이 **target 줄을 잡은 채 source 줄을 기다린다.** 그 사이클을 노드 전역 세마포어로 덮어 두었다 |
+| [§12.24](#1224-actor-join의-orchestration이-뒤집혀-있다-전-언어) | **일부 충족** | `.NET`·Java·Kotlin은 caller turn orchestration과 반대 방향 동시 join을 구현했다. Node·C++은 아직 확인과 구현이 필요하다 |
 
 나머지 §12.1~§12.19는 언어별 표면 차이이며, 각 항목이 미구현인지 결함인지를 본문에 적었다.
 
@@ -462,13 +462,13 @@ E2E는 이미 정본을 따른다 — [config-2 SM-A8](../common/e2e/config-2-sp
 
 ### 12.24 actor join의 orchestration이 뒤집혀 있다 (전 언어)
 
-**결함(`.NET`, Java, Kotlin, Node, C++).** 표면은 있고 동작한다. 그런데 **join이 target 줄을 잡은
-채 source 줄을 기다린다** — 방향이 거꾸로다.
+**충족(`.NET`, Java, Kotlin), 미충족(Node, C++).** 기존 구현은 **join이 target 줄을 잡은 채
+source 줄을 기다리는** 반대 방향 orchestration을 사용했다.
 
 admission과 commit이 **target Spot의 줄**에서 돌고, source cleanup(`OnLeaveActor`)을 **source Spot의
 큐에 post**한다. 즉 **한 join이 두 실행 줄을 걸치면서, 잡은 줄과 기다리는 줄이 반대**다.
 
-**`.NET` 기준선 근거:**
+**수정 전 `.NET` 기준선에서 확인한 결함:**
 
 | 사실 | 위치 |
 |------|------|
@@ -500,7 +500,8 @@ admission과 commit이 **target Spot의 줄**에서 돌고, source cleanup(`OnLe
    줄이므로 안전하다.
 2. **source `OnLeaveActor`를 그 turn 안에서 inline 실행한다.** 이미 source 줄 위에 있으므로 post가
    필요 없다.
-3. target **commit**과 `OnJoinedActor`를 target 줄에서 실행한다.
+3. target membership **commit**과 `OnJoinedActor`도 caller turn에서 순서대로 실행한다. target의 일반
+   packet·timer 실행 줄을 보유한 채 source 큐를 기다리는 경로를 만들지 않는다.
 4. 결과를 caller에게 반환한다.
 
 [23 §3.3~§4.1](server/23-spot-actor.ko.md)이 고정한 순서(source `OnLeaveActor` → target membership
@@ -509,6 +510,10 @@ commit → target `OnJoinedActor`)를 **그대로 지킨다.** source 큐로 되
 
 **E2E:** [config-8 TD-E2](../common/e2e/config-8-execution-turn.ko.md)(user→user join)와
 TD-E3(반대 방향 동시 join)이 이 갭의 검증 축이다.
+
+Java와 Kotlin은 공유 Java runtime에서 native admission을 일반 target dispatch queue 밖에서 받아
+caller turn에 반환하고, source leave와 target commit을 그 turn에서 순서대로 완료한다. Java와 Kotlin
+Config 8의 `TD-E2`와 `TD-E3`가 모두 통과했다. 구현 커밋 `175d60d13`(2026-07-16).
 
 ## 13. 샘플 연결·등록 축 준수 현황
 

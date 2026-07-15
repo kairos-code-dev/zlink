@@ -276,7 +276,10 @@
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
 - [x] **§12.22** — 공유 Java 서버 HTTP client의 네 완료 방식과 Spring execution turn bean을 사용하고 coroutine용 turn 유지 `await`와 turn 반납 `yieldAwait`를 제공한다. Java/Kotlin HTTP client와 Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
 - [x] **§12.23** — 공유 Java 런타임의 `runCpuWorker`와 비동기 `runIoWorker`를 사용하며 두 표면의 `submit`·`yield`를 coroutine에서 기다릴 수 있다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
-- [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
+- [x] **§12.24** — 공유 Java runtime이 같은 node local join을 caller turn에서 orchestrate하고 source
+  `OnLeaveActor`와 target commit·`OnJoinedActor`를 순서대로 완료한다. Kotlin Config 8의 user Spot
+  A→B `TD-E2`와 A→B·B→A 동시 `TD-E3`, core·Kotlin 전체 테스트가 통과했다. 구현 커밋
+  `175d60d13`(2026-07-16).
 
 본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
 

@@ -307,7 +307,10 @@
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
 - [x] **§12.22** — standalone과 서버 전용 HTTP client를 분리하고 서버 표면에 `submit`·`async`·`yield`·callback, `buildServer`와 Spring execution turn bean을 구현했다. blocking `fetch`는 제거했다. HTTP client·Kotlin·Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
 - [x] **§12.23** — `runCpuWorker`와 비동기 `runIoWorker`를 분리하고 두 표면에 turn 유지 `submit`과 turn 반납 `yield`를 제공한다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
-- [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
+- [x] **§12.24** — 같은 node local join의 native admission을 일반 target dispatch queue와 분리하고,
+  caller turn에서 source `OnLeaveActor`와 target commit·`OnJoinedActor`를 순서대로 완료하도록 고쳤다.
+  Java Config 8의 user Spot A→B `TD-E2`와 A→B·B→A 동시 `TD-E3`, core·Kotlin 전체 테스트가
+  통과했다. 구현 커밋 `175d60d13`(2026-07-16).
 
 본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
 

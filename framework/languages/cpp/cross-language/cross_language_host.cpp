@@ -228,9 +228,7 @@ class raw_stream_session_t final : public fw::packet_stream_session_t
     {
         _sink.append ("raw|" + std::string (dispatch.packet_name ()) + "|"
                       + payload.to_string ());
-        stream.reply_packet (zlink::message_t::from_json (std::string ("pong")))
-          .packet_name (std::string (dispatch.packet_name ()))
-          .submit ();
+        stream.reply_packet (zlink::message_t::from_json (std::string ("pong"))).submit ();
         co_return;
     }
 

@@ -69,7 +69,8 @@ class stream_write_call_state_t
     stream_write_call_state_t (stream_header_t header,
                                zlink::message_t payload,
                                std::shared_ptr<const stream_compression_codec_t> compression_codec,
-                               stream_write_call_t::submit_fn_t submit) :
+                               std::function<result_t<void> (const stream_header_t &,
+                                                            const zlink::message_t &)> submit) :
         _header (std::move (header)),
         _payload (std::move (payload)),
         _submit (std::move (submit)),
@@ -128,9 +129,9 @@ class stream_write_call_state_t
     std::optional<result_t<void>> _immediate;
     std::optional<stream_header_t> _header;
     std::optional<zlink::message_t> _payload;
-    stream_write_call_t::submit_fn_t _submit;
+    std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)> _submit;
     std::shared_ptr<const stream_compression_codec_t> _compression_codec;
-    stream_write_call_t::metadata_map_t _metadata;
+    std::map<std::string, std::string> _metadata;
     std::string _packet_name;
     bool _compressed = false;
 };
@@ -264,12 +265,6 @@ stream_write_call_t &stream_write_call_t::metadata (std::string key, std::string
     return *this;
 }
 
-stream_write_call_t &stream_write_call_t::packet_name (std::string packet_name)
-{
-    _state->packet_name (std::move (packet_name));
-    return *this;
-}
-
 stream_write_call_t &stream_write_call_t::compress ()
 {
     _state->compress ();
@@ -284,6 +279,48 @@ void stream_write_call_t::submit ()
 result_t<void> stream_write_call_t::submit_now ()
 {
     return _state->submit_now ();
+}
+
+stream_send_call_t::stream_send_call_t (result_t<void> result) :
+    _state (std::make_shared<detail::stream_write_call_state_t> (std::move (result)))
+{
+}
+
+stream_send_call_t::stream_send_call_t (
+  detail::stream_header_t header,
+  zlink::message_t payload,
+  std::shared_ptr<const stream_compression_codec_t> compression_codec,
+  submit_fn_t submit) :
+    _state (std::make_shared<detail::stream_write_call_state_t> (
+      std::move (header), std::move (payload), std::move (compression_codec), std::move (submit)))
+{
+}
+
+stream_send_call_t::~stream_send_call_t () = default;
+stream_send_call_t::stream_send_call_t (stream_send_call_t &&) noexcept = default;
+stream_send_call_t &stream_send_call_t::operator= (stream_send_call_t &&) noexcept = default;
+
+stream_send_call_t &stream_send_call_t::metadata (std::string key, std::string value)
+{
+    _state->metadata (std::move (key), std::move (value));
+    return *this;
+}
+
+stream_send_call_t &stream_send_call_t::packet_name (std::string packet_name)
+{
+    _state->packet_name (std::move (packet_name));
+    return *this;
+}
+
+stream_send_call_t &stream_send_call_t::compress ()
+{
+    _state->compress ();
+    return *this;
+}
+
+void stream_send_call_t::submit ()
+{
+    _state->submit_now ().value ();
 }
 
 stream_error_t::stream_error_t (stream_session_error_t error,
@@ -476,11 +513,46 @@ task_t<void> stream_t::close ()
     return task_t<void> (result_t<void>::success ());
 }
 
-stream_write_call_t stream_t::write_packet (const zlink::message_t &payload)
+namespace
+{
+
+std::function<result_t<void> (const stream_header_t &, const zlink::message_t &)>
+stream_submitter (std::shared_ptr<detail::stream_state_t> state)
+{
+    return [state = std::move (state)] (const stream_header_t &submitted_header,
+                                        const zlink::message_t &submitted_payload) {
+        if (state->closed.load (std::memory_order_acquire)) {
+            return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
+                                                    "STREAM session is disconnected");
+        }
+        {
+            const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
+            if (state->closed.load (std::memory_order_acquire)) {
+                return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
+                                                        "STREAM session is disconnected");
+            }
+            if (state->transport_writer)
+                return state->transport_writer (submitted_header, submitted_payload);
+        }
+        if (state->closed.load (std::memory_order_acquire)) {
+            return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
+                                                    "STREAM session is disconnected");
+        }
+        const std::lock_guard<std::mutex> lock (state->state_mutex);
+        state->written_headers.push_back (submitted_header);
+        state->written_payloads.push_back (submitted_payload);
+        return result_t<void>::success ();
+    };
+}
+
+} // namespace
+
+stream_send_call_t stream_t::write_packet (const zlink::message_t &payload)
 {
     stream_header_t header (stream_message_kind_t::send, stream_codec_t::raw,
                             stream_header_flags_t::none, std::nullopt, "", {});
-    return write_packet_with_header (std::move (header), payload);
+    return stream_send_call_t (std::move (header), payload, _state->compression_codec,
+                               stream_submitter (_state));
 }
 
 stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t header,
@@ -493,32 +565,9 @@ stream_write_call_t stream_t::write_packet_with_header (detail::stream_header_t 
             header.with_flow (flow->flow_id, flow->origin);
         }
     }
-    auto state = _state;
     return stream_write_call_t (
-      std::move (header), std::move (payload), state->compression_codec,
-      [state] (const stream_header_t &submitted_header, const zlink::message_t &submitted_payload) {
-          if (state->closed.load (std::memory_order_acquire)) {
-              return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
-                                              "STREAM session is disconnected");
-          }
-          {
-              const std::lock_guard<std::mutex> lock (state->transport_writer_mutex);
-              if (state->closed.load (std::memory_order_acquire)) {
-                  return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
-                                                  "STREAM session is disconnected");
-              }
-              if (state->transport_writer)
-                  return state->transport_writer (submitted_header, submitted_payload);
-          }
-          if (state->closed.load (std::memory_order_acquire)) {
-              return detail::boundary_failure<void> (detail::boundary_error_t::disconnected,
-                                              "STREAM session is disconnected");
-          }
-          const std::lock_guard<std::mutex> lock (state->state_mutex);
-          state->written_headers.push_back (submitted_header);
-          state->written_payloads.push_back (submitted_payload);
-          return result_t<void>::success ();
-      });
+      std::move (header), std::move (payload), _state->compression_codec,
+      stream_submitter (_state));
 }
 
 stream_write_call_t stream_t::reply_packet (const zlink::message_t &payload)
@@ -534,12 +583,9 @@ stream_write_call_t stream_t::reply_packet (const zlink::message_t &payload)
           result_t<void>::failure (framework_error_kind_t::request_protocol_error,
                                    "STREAM reply requires request sequence"));
     }
-    /* 응답 이름의 기본값은 request의 packet name이다. pending request 매칭은 request_seq가 하므로
-     * 이름은 참고 값이며, application이 필요하면 reply 타입 이름으로 덮어쓸 수 있다(§5.2). */
     stream_header_t reply_header (stream_message_kind_t::response, request_header->codec (),
                                   stream_header_flags_t::has_request_seq,
-                                  request_header->request_seq (),
-                                  std::string (request_header->packet_name ()), {});
+                                  request_header->request_seq (), "", {});
     if (auto correlation = request_header->correlation_id ()) {
         reply_header.with_correlation_id (std::string (*correlation));
     }
@@ -758,10 +804,14 @@ result_t<void> stream_runtime_t::validate_header (const stream_header_t &header)
         }
     }
 
-    if (auto valid_name =
-          validate_name (header.packet_name (), header.kind () == stream_message_kind_t::control);
-        !valid_name) {
-        return valid_name;
+    const bool is_reply = header.kind () == stream_message_kind_t::response
+                          || header.kind () == stream_message_kind_t::error;
+    if (!is_reply) {
+        if (auto valid_name = validate_name (
+              header.packet_name (), header.kind () == stream_message_kind_t::control);
+            !valid_name) {
+            return valid_name;
+        }
     }
 
     const bool has_request_seq = header.request_seq ().has_value ();
@@ -798,6 +848,13 @@ result_t<void> stream_runtime_t::validate_header (const stream_header_t &header)
 result_t<std::vector<std::uint8_t>>
 stream_runtime_t::encode_header (const stream_header_t &header) const
 {
+    if ((header.kind () == stream_message_kind_t::response
+         || header.kind () == stream_message_kind_t::error)
+        && !header.packet_name ().empty ()) {
+        return result_t<std::vector<std::uint8_t>>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "STREAM response and error packet names must be empty");
+    }
     if (auto valid = validate_header (header); !valid) {
         return result_t<std::vector<std::uint8_t>>::failure (valid.error_kind (),
                                                              valid.error ()->what ());
@@ -900,7 +957,7 @@ stream_runtime_t::decode_header (const std::vector<std::uint8_t> &bytes) const
                                                    "STREAM packet name length is missing");
     }
     const auto name_size = bytes[offset++];
-    if (name_size == 0 || bytes.size () - offset < name_size) {
+    if (bytes.size () - offset < name_size) {
         return result_t<stream_header_t>::failure (framework_error_kind_t::payload_decode_failed,
                                                    "STREAM packet name is invalid");
     }

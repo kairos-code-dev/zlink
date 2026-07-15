@@ -663,7 +663,6 @@ class transfer_session_t final : public fw::packet_stream_session_t
                 request.scenario, std::string (resolved.actor_id ()),
                 std::string (resolved.node_rid ().value ()),
                 static_cast<std::int64_t> (resolved.generation ())}))
-              .packet_name (e2e::bind_actor_session_res_t::packet_name)
               .submit ();
             co_return;
         }

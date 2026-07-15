@@ -322,7 +322,6 @@ class stream_write_call_t
     stream_write_call_t &operator= (const stream_write_call_t &) = delete;
 
     stream_write_call_t &metadata (std::string key, std::string value);
-    stream_write_call_t &packet_name (std::string packet_name);
     stream_write_call_t &compress ();
     void submit ();
 
@@ -339,6 +338,36 @@ class stream_write_call_t
                          submit_fn_t submit);
 
     result_t<void> submit_now ();
+
+    std::shared_ptr<detail::stream_write_call_state_t> _state;
+};
+
+class stream_send_call_t
+{
+  public:
+    explicit stream_send_call_t (result_t<void> result);
+    ~stream_send_call_t ();
+
+    stream_send_call_t (stream_send_call_t &&) noexcept;
+    stream_send_call_t &operator= (stream_send_call_t &&) noexcept;
+    stream_send_call_t (const stream_send_call_t &) = delete;
+    stream_send_call_t &operator= (const stream_send_call_t &) = delete;
+
+    stream_send_call_t &metadata (std::string key, std::string value);
+    stream_send_call_t &packet_name (std::string packet_name);
+    stream_send_call_t &compress ();
+    void submit ();
+
+  private:
+    using submit_fn_t =
+      std::function<result_t<void> (const detail::stream_header_t &, const zlink::message_t &)>;
+
+    friend class stream_t;
+
+    stream_send_call_t (detail::stream_header_t header,
+                        zlink::message_t payload,
+                        std::shared_ptr<const stream_compression_codec_t> compression_codec,
+                        submit_fn_t submit);
 
     std::shared_ptr<detail::stream_write_call_state_t> _state;
 };

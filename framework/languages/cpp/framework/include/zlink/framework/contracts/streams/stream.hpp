@@ -215,7 +215,7 @@ class stream_t
 
     std::string session_id () const;
     task_t<void> close ();
-    stream_write_call_t write_packet (const zlink::message_t &payload);
+    stream_send_call_t write_packet (const zlink::message_t &payload);
     stream_write_call_t reply_packet (const zlink::message_t &payload);
 
   private:

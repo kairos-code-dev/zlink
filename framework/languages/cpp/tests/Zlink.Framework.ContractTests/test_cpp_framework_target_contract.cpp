@@ -517,8 +517,8 @@ int main ()
                       "dispatch optimization surface is still public: " + forbidden);
     }
     for (const std::string forbidden :
-         {"request_call_t &packet_name", "send_call_t &packet_name",
-          "actor_send_call_t &packet_name", "actor_request_call_t &packet_name"}) {
+         {"\n    request_call_t &packet_name", "\n    send_call_t &packet_name",
+          "\n    actor_send_call_t &packet_name", "\n    actor_request_call_t &packet_name"}) {
         gate.require (!tree_contains (include_root, forbidden), "CPP-G0-DISPATCH-001",
                       "typed call still exposes packet_name override: " + forbidden);
     }

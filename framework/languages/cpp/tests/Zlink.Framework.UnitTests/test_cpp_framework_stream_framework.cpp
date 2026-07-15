@@ -404,6 +404,13 @@ int main ()
         || !runtime.decode_header (encoded_reply.value ())) {
         return 33;
     }
+    auto legacy_reply = encoded_reply.value ();
+    legacy_reply[12] = 6;
+    legacy_reply.insert (legacy_reply.begin () + 13, {'l', 'e', 'g', 'a', 'c', 'y'});
+    const auto decoded_legacy_reply = runtime.decode_header (legacy_reply);
+    if (!decoded_legacy_reply || decoded_legacy_reply.value ().packet_name () != "legacy") {
+        return 35;
+    }
     zlink::framework::detail::stream_header_t named_reply_header (
       stream_message_kind_t::response, stream_codec_t::json,
       stream_header_flags_t::has_request_seq, 77, "legacy.reply");
@@ -570,7 +577,7 @@ int main ()
     /* stream connector §5.2: Response는 request의 packet name을 그대로 되돌린다. */
     if (runtime.written_headers (stream)[0].kind () != stream_message_kind_t::response
         || runtime.written_headers (stream)[0].request_seq () != 77
-        || runtime.written_headers (stream)[0].packet_name () != "move") {
+        || !runtime.written_headers (stream)[0].packet_name ().empty ()) {
         return 15;
     }
 

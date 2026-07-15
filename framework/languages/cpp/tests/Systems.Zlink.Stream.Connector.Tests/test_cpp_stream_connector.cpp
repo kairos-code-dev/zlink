@@ -515,6 +515,10 @@ zlink::message_t make_server_frame (zlink::stream_connector::message_kind_t kind
                                     std::string payload,
                                     bool compressed = false)
 {
+    const bool legacy_named_reply =
+      (kind == zlink::stream_connector::message_kind_t::response
+       || kind == zlink::stream_connector::message_kind_t::error)
+      && !name.empty ();
     zlink::stream_connector::detail::stream_header_t header;
     header.kind = kind;
     header.codec = kind == zlink::stream_connector::message_kind_t::error
@@ -527,8 +531,13 @@ zlink::message_t make_server_frame (zlink::stream_connector::message_kind_t kind
                              || kind == zlink::stream_connector::message_kind_t::error
                            ? std::optional<std::uint64_t>{seq}
                            : std::optional<std::uint64_t>{};
-    header.name = std::move (name);
+    header.name = legacy_named_reply ? std::string{} : name;
     auto header_bytes = zlink::stream_connector::detail::header_codec_t{}.encode (header);
+    if (legacy_named_reply) {
+        auto &bytes = header_bytes.value ();
+        bytes[12] = static_cast<std::uint8_t> (name.size ());
+        bytes.insert (bytes.begin () + 13, name.begin (), name.end ());
+    }
     zlink::stream_connector::connector_options_t options;
     options.compression = zlink::stream_connector::compression_t::lz4;
     if (compressed) {

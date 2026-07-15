@@ -164,19 +164,6 @@ shared_operation_runner_t &shared_operation_runner ()
     return runner;
 }
 
-void publish_received_message_dropped (connector_state_t &state) noexcept
-{
-    auto handlers = state.error_handlers;
-    for (const auto &handler : handlers) {
-        try {
-            handler (error_t{error_code_t::received_message_dropped,
-                             "Received message was dropped because the receive queue is full."});
-        }
-        catch (...) {
-        }
-    }
-}
-
 } // namespace
 
 boost::asio::io_context &shared_io_context ()
@@ -223,7 +210,9 @@ void deliver_received_packet (connector_state_t &state, packet_t packet)
         return;
     }
     if (state.dispatch_queue.size () >= state.options.max_received_messages) {
-        publish_received_message_dropped (state);
+        publish_error (
+          state, error_t{error_code_t::received_message_dropped,
+                         "Received message was dropped because the receive queue is full."});
         state.state_changed.notify_all ();
         return;
     }
@@ -241,12 +230,42 @@ void schedule_delivery (std::shared_ptr<connector_state_t> state, std::function<
         // are frequently invoked from the connector's own read pump; running user
         // callbacks inline there lets a slow or blocking callback starve the pump
         // (and deadlock when the callback waits on a later inbound frame).
-        post_runtime_operation ([callback = std::move (callback)] () mutable { callback (); });
+        boost::asio::post (state->delivery_strand,
+                           [callback = std::move (callback)] () mutable {
+                               try {
+                                   callback ();
+                               }
+                               catch (...) {
+                               }
+                           });
         return;
     }
-    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    std::lock_guard<std::mutex> lock (state->delivery_mutex);
     state->delivery_queue.push_back (std::move (callback));
     state->state_changed.notify_all ();
+}
+
+void publish_error (connector_state_t &state, error_t error) noexcept
+{
+    std::vector<std::function<void (const error_t &)>> handlers;
+    {
+        std::lock_guard<std::mutex> lock (state.lifecycle_mutex);
+        handlers = state.error_handlers;
+    }
+    if (handlers.empty ()) {
+        return;
+    }
+    schedule_delivery (
+      state.shared_from_this (),
+      [handlers = std::move (handlers), error = std::move (error)] {
+          for (const auto &handler : handlers) {
+              try {
+                  handler (error);
+              }
+              catch (...) {
+              }
+          }
+      });
 }
 
 void schedule_delivery (std::shared_ptr<void> state, std::function<void ()> callback)
@@ -319,15 +338,22 @@ void change_state (std::shared_ptr<connector_state_t> state,
         }
         std::cerr << '\n';
     }
-    connection_state_changed_t changed{previous, next, error, close_reason};
-    for (const auto &handler : state_handlers) {
-        handler (changed);
-    }
-    for (const auto &handler : disconnected_handlers) {
-        handler ();
-    }
     state->lifecycle_changed.notify_all ();
     state->state_changed.notify_all ();
+    connection_state_changed_t changed{previous, next, error, close_reason};
+    if (!state_handlers.empty () || !disconnected_handlers.empty ()) {
+        detail::schedule_delivery (
+          state, [state_handlers = std::move (state_handlers),
+                  disconnected_handlers = std::move (disconnected_handlers),
+                  changed = std::move (changed)] {
+              for (const auto &handler : state_handlers) {
+                  handler (changed);
+              }
+              for (const auto &handler : disconnected_handlers) {
+                  handler ();
+              }
+          });
+    }
 }
 
 } // namespace zlink::stream_connector::detail
@@ -528,8 +554,13 @@ connector_options_t connector_t::options () const
 std::size_t connector_t::pending_dispatch_count () const
 {
     auto state = detail::state_from (_state);
-    std::lock_guard<std::mutex> lock (state->transport_mutex);
-    return state->dispatch_queue.size ();
+    std::size_t packets;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        packets = state->dispatch_queue.size ();
+    }
+    std::lock_guard<std::mutex> lock (state->delivery_mutex);
+    return packets + state->delivery_queue.size ();
 }
 
 codec_registry_t &connector_t::codecs ()

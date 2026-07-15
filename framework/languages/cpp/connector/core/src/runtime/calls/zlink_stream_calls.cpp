@@ -161,40 +161,12 @@ result_t<std::string> decode_remote_error_message (const packet_t &packet)
     }
 }
 
-void publish_error (const connector_state_t &state, const error_t &error)
-{
-    for (const auto &handler : state.error_handlers) {
-        handler (error);
-    }
-}
-
-void publish_observer_error (const connector_state_t &state, const error_t &error) noexcept
-{
-    for (const auto &handler : state.error_handlers) {
-        try {
-            handler (error);
-        }
-        catch (...) {
-        }
-    }
-}
-
-void publish_received_message_dropped (const connector_state_t &state) noexcept
-{
-    for (const auto &handler : state.error_handlers) {
-        try {
-            handler (error_t{error_code_t::received_message_dropped,
-                             "Received message was dropped because the receive queue is full."});
-        }
-        catch (...) {
-        }
-    }
-}
-
 bool enqueue_received_message (connector_state_t &state, packet_t packet)
 {
     if (state.dispatch_queue.size () >= state.options.max_received_messages) {
-        publish_received_message_dropped (state);
+        publish_error (
+          state, error_t{error_code_t::received_message_dropped,
+                         "Received message was dropped because the receive queue is full."});
         state.state_changed.notify_all ();
         return false;
     }
@@ -368,7 +340,7 @@ void enqueue_inbound_observer_notification (std::shared_ptr<connector_state_t> s
     if (pending > state->options.max_inbound_observer_notifications) {
         state->pending_inbound_observer_notifications.fetch_sub (1);
         if (!state->inbound_observer_drop_report_pending.exchange (true)) {
-            publish_observer_error (
+            publish_error (
               *state,
               error_t{
                 error_code_t::observer_dropped,
@@ -397,13 +369,13 @@ void enqueue_inbound_observer_notification (std::shared_ptr<connector_state_t> s
                 observer->callback (observation);
             }
             catch (const std::exception &ex) {
-                publish_observer_error (
+                publish_error (
                   *state, error_t{error_code_t::observer_failed,
                                   "Inbound observer callback failed: " + std::string (ex.what ())});
             }
             catch (...) {
-                publish_observer_error (*state, error_t{error_code_t::observer_failed,
-                                                        "Inbound observer callback failed."});
+                publish_error (*state, error_t{error_code_t::observer_failed,
+                                               "Inbound observer callback failed."});
             }
         }
         state->pending_inbound_observer_notifications.fetch_sub (1);
@@ -1516,6 +1488,7 @@ void submit_request_async (std::shared_ptr<void> state_handle,
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
 {
     std::deque<std::function<void ()>> deliveries;
+    std::deque<std::function<void ()>> packet_deliveries;
     {
         std::lock_guard<std::mutex> lock (state->transport_mutex);
         if (is_transport_connected (*state) && !state->read_in_progress) {
@@ -1535,22 +1508,29 @@ result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
         }
         std::deque<packet_t> packets;
         packets.swap (state->dispatch_queue);
-        deliveries.swap (state->delivery_queue);
         while (!packets.empty ()) {
             auto packet = std::move (packets.front ());
             packets.pop_front ();
             if (auto wait = take_matching_wait (*state, packet)) {
-                deliveries.push_back (
+                packet_deliveries.push_back (
                   [wait = std::move (*wait), packet = std::move (packet)] () mutable {
                       if (wait.callback) {
                           wait.callback (result_t<packet_t>::success (std::move (packet)));
                       }
                   });
             } else {
-                deliveries.push_back (
+                packet_deliveries.push_back (
                   [state, packet = std::move (packet)] { dispatch_packet (*state, packet); });
             }
         }
+    }
+    {
+        std::lock_guard<std::mutex> lock (state->delivery_mutex);
+        deliveries.swap (state->delivery_queue);
+    }
+    while (!packet_deliveries.empty ()) {
+        deliveries.push_back (std::move (packet_deliveries.front ()));
+        packet_deliveries.pop_front ();
     }
     while (!deliveries.empty ()) {
         auto delivery = std::move (deliveries.front ());

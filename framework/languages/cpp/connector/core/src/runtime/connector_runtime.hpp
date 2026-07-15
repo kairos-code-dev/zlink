@@ -74,7 +74,8 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
         connector_id (next_connector_id.fetch_add (1, std::memory_order_relaxed)),
         options (std::move (options)),
         io_context (shared_io_context ()),
-        write_strand (boost::asio::make_strand (io_context))
+        write_strand (boost::asio::make_strand (io_context)),
+        delivery_strand (boost::asio::make_strand (boost::asio::system_executor{}))
     {
     }
 
@@ -128,11 +129,13 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     std::shared_ptr<boost::asio::steady_timer> heartbeat_timer;
     boost::asio::io_context &io_context;
     boost::asio::strand<boost::asio::io_context::executor_type> write_strand;
+    boost::asio::strand<boost::asio::system_executor> delivery_strand;
     std::shared_ptr<stream_connection_t> connection;
     mutable std::mutex lifecycle_mutex;
     std::condition_variable lifecycle_changed;
     bool connect_attempt_active = false;
     std::mutex transport_mutex;
+    std::mutex delivery_mutex;
     std::condition_variable state_changed;
 };
 
@@ -168,6 +171,7 @@ result_t<packet_t> wait_for_packet (std::shared_ptr<connector_state_t> state,
                                     std::chrono::milliseconds timeout);
 void deliver_received_packet (connector_state_t &state, packet_t packet);
 void schedule_delivery (std::shared_ptr<connector_state_t> state, std::function<void ()> callback);
+void publish_error (connector_state_t &state, error_t error) noexcept;
 void post_runtime_operation (std::function<void ()> operation);
 std::shared_ptr<boost::asio::steady_timer>
 post_runtime_operation_after (std::chrono::milliseconds delay,

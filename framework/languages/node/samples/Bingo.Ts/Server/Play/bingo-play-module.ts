@@ -6,7 +6,11 @@ import { PlayerActor } from './Infrastructure/ZLink/Actors/player-actor';
 import { PlayerActorTransferAdapter } from './Infrastructure/ZLink/Actors/player-actor-transfer-adapter';
 import { BingoEntrySpot } from './Infrastructure/ZLink/Spots/EntrySpot/bingo-entry-spot';
 import { BingoRoomSpot } from './Infrastructure/ZLink/Spots/BingoRoomSpot/bingo-room-spot';
-import { AllocateBingoRoomHandler } from './Infrastructure/ZLink/Handlers/allocate-bingo-room-handler';
+import {
+  AllocateBingoRoomHandler,
+  AllocateBingoRoomSpotHandler,
+  BingoRoomProvisioner
+} from './Infrastructure/ZLink/Handlers/allocate-bingo-room-handler';
 import { EnsurePlayerActorHandler } from './Infrastructure/ZLink/Handlers/ensure-player-actor-handler';
 import { MatchBingoActorHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/match-bingo-actor-handler';
 import { ObserveBingoEventsHandler } from './Infrastructure/ZLink/Spots/EntrySpot/Handlers/observe-bingo-events-handler';
@@ -26,10 +30,8 @@ function createBingoPlayModule() {
   class BingoPlayModule {}
   const configuration = createBingoConfigurationModule([
     'playEndpoint',
-    'playRouteEndpoint',
     'playSpotEndpoint',
     'playSpotPubSubEndpoint',
-    'playSpotNodeRid',
     'redisEndpoint',
     'redisKeyPrefix',
     'logDir'
@@ -53,16 +55,20 @@ function createBingoPlayModule() {
           return builder
           .codecs()
             .use(bingoFrameworkProtobuf)
-          .addRouteMeshChannel(SampleNames.playChannel)
-            .enableRouter(config.playRouteEndpoint)
-            .routingId(config.playSpotNodeRid)
+          .addClientServerChannel(SampleNames.playChannel)
+            .useAllocatedRoutingId(2, 'play')
+            .setRoutingIdAllocationGroup('bingo.play')
+            .enableServer(config.playEndpoint)
+            .enableClient()
             .addHandlerGroup('play')
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
           .addActorTransferAdapter(PlayerActor, PlayerActorTransferAdapter)
           .addSpotMesh(SampleNames.roomSpotNode)
-            .enableRouter(config.playSpotEndpoint, config.playSpotNodeRid)
-            .enablePubSub(config.playSpotPubSubEndpoint, config.playSpotNodeRid)
+            .useAllocatedRoutingId(2, 'play')
+            .setRoutingIdAllocationGroup('bingo.play')
+            .enableRouter(config.playSpotEndpoint)
+            .enablePubSub(config.playSpotPubSubEndpoint)
             .addEntrySpot(BingoEntrySpot)
             .addSpotFactory(BingoRoomSpot)
             .actorFactory(SampleNames.playerActorType, PlayerActorFactory)
@@ -79,6 +85,8 @@ function createBingoPlayModule() {
           new RedisBingoMatchQueue(config.redisEndpoint, config.redisKeyPrefix)
       },
       AllocateBingoRoomHandler,
+      AllocateBingoRoomSpotHandler,
+      BingoRoomProvisioner,
       EnsurePlayerActorHandler,
       PlayerActorFactory,
       PlayerActorTransferAdapter,

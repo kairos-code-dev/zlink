@@ -35,9 +35,11 @@ function createBingoApiModule() {
             .codecs()
               .use(bingoFrameworkProtobuf)
             .addClientServerChannel(SampleNames.apiChannel)
+              .useAllocatedRoutingId(2, 'api')
+              .setRoutingIdAllocationGroup('bingo.api')
               .enableServer(config.apiEndpoint)
               .addHandlerGroup('api')
-            .addRouteMeshChannel(SampleNames.playChannel)
+            .addClientServerChannel(SampleNames.playChannel)
               .enableClient()
             .build();
         }

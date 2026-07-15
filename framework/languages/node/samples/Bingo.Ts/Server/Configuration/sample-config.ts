@@ -3,15 +3,11 @@ import { Module, type DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 type BingoSampleConfig = {
   sessionEndpoint: string;
-  sessionRouteEndpoint: string;
   sessionSpotEndpoint: string;
-  sessionSpotNodeRid: string;
-  preferredPlayNodeRid: string;
+  sessionSpotPubSubEndpoint: string;
   playEndpoint: string;
-  playRouteEndpoint: string;
   playSpotEndpoint: string;
   playSpotPubSubEndpoint: string;
-  playSpotNodeRid: string;
   apiEndpoint: string;
   redisEndpoint: string;
   redisKeyPrefix: string;

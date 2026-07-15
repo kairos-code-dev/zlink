@@ -7,6 +7,7 @@ import { createBingoPlayModule } from './bingo-play-module';
 import { SampleNames } from '../Configuration/sample-names';
 import { BINGO_SAMPLE_CONFIG } from '../Configuration/sample-config';
 import type { BingoSampleConfig } from '../Configuration/sample-config';
+import { reportBingoRoutingId } from '../Configuration/routing-id-report';
 async function bootstrap(): Promise<void> {
   const BingoPlayModule = createBingoPlayModule();
   const app = await NestFactory.createApplicationContext(BingoPlayModule, {
@@ -14,6 +15,10 @@ async function bootstrap(): Promise<void> {
     abortOnError: false
   });
   const config = app.get<BingoSampleConfig>(BINGO_SAMPLE_CONFIG);
+  await reportBingoRoutingId(app, 'play', 'bingo.play', [
+    SampleNames.playChannel,
+    SampleNames.roomSpotNode
+  ]);
 
   const drain = app.get<ZLinkDrainControl>(ZLINK_DRAIN_CONTROL);
   const beginDrain = () => {

@@ -8,11 +8,19 @@ function createBingoLocationStore(config: Pick<BingoSampleConfig, 'redisEndpoint
   });
 }
 
-function bingoLocationOptions(): { pollingIntervalMs: number; heartbeatIntervalMs: number; ownerLeaseTtlMs: number } {
+function bingoLocationOptions(): {
+  pollingIntervalMs: number;
+  heartbeatIntervalMs: number;
+  ownerLeaseTtlMs: number;
+  routingIdFencingMarginMs: number;
+  ownerLeaseRenewTimeoutMs: number;
+} {
   return {
     pollingIntervalMs: 100,
-    heartbeatIntervalMs: 1000,
-    ownerLeaseTtlMs: 5000
+    heartbeatIntervalMs: 10_000,
+    ownerLeaseTtlMs: 30_000,
+    routingIdFencingMarginMs: 5_000,
+    ownerLeaseRenewTimeoutMs: 3_000
   };
 }
 

@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
   ZLINK_CHANNEL_CLIENT,
-  ZLINK_LOCATION_RUNTIME_QUERY,
+  ZLINK_SPOT_HANDLE_RESOLVER,
   ZLINK_ROUTE_CLIENT
 } from '@zlink-systems/nestjs';
-import { BINGO_SAMPLE_CONFIG } from '../../../Configuration/sample-config';
 import { SampleNames } from '../../../Configuration/sample-names';
 import {
   AuthenticatePlayerReq,
@@ -13,18 +13,16 @@ import {
 } from '../../../../Shared/Contracts/bingo-messages.generated';
 import { PacketNames } from '../../../../Shared/Contracts/messages';
 import {
-  ZLinkLocationAutoConnectType,
-  ZLinkLocationRole,
   ZLinkPacket,
   type RoutingId,
+  type ZLinkAllocatedRoutingIdProvider,
   type ZLinkChannelClient,
-  type ZLinkLocationRuntimeQuery,
   type ZLinkRouteClient,
+  type ZLinkSpotHandleResolver,
   type ZLinkMessage,
   type ZLinkSessionContext,
   type ZLinkSessionDispatchContext
 } from '@zlink-systems/framework';
-import type { BingoSampleConfig } from '../../../Configuration/sample-config';
 import type {
   AuthenticatePlayerRes,
   AuthenticateReq,
@@ -37,8 +35,9 @@ class SessionAuthenticator {
   constructor(
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly zlinkClient: ZLinkChannelClient,
     @Inject(ZLINK_ROUTE_CLIENT) private readonly routeClient: ZLinkRouteClient,
-    @Inject(ZLINK_LOCATION_RUNTIME_QUERY) private readonly locations: ZLinkLocationRuntimeQuery,
-    @Inject(BINGO_SAMPLE_CONFIG) private readonly config: BingoSampleConfig
+    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly spotHandles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_ALLOCATED_ROUTING_ID_PROVIDER)
+    private readonly allocatedRoutingIds: ZLinkAllocatedRoutingIdProvider
   ) {}
 
   async handle(
@@ -65,24 +64,19 @@ class SessionAuthenticator {
     }
 
     console.log(`session-auth ensure actor=${authenticated.actorId}`);
+    const allocation = await this.allocatedRoutingIds.waitForReadyAllocation('bingo.session');
+    const preferredPlayNodeRid = `play${allocation.slot}` as RoutingId;
     const ensureRequest = new EnsurePlayerActorReq({
       actorId: authenticated.actorId,
       displayName: authenticated.displayName,
-      preferredActorNodeRid: this.config.preferredPlayNodeRid
+      preferredActorNodeRid: preferredPlayNodeRid
     });
-    const servingPeers = await this.locations.listPeerLocations({
-      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-      meshName: SampleNames.playChannel,
-      role: ZLinkLocationRole.Router
-    });
-    const serving = servingPeers.filter((peer) => !peer.draining && peer.nodeRid !== undefined);
-    const selected = serving.find((peer) => String(peer.nodeRid) === this.config.preferredPlayNodeRid)
-      ?? serving.at(0);
-    if (selected?.nodeRid === undefined) {
-      throw new Error('No serving Play node is available for a new player actor.');
+    const playEntrySpot = await this.spotHandles.resolveSpotHandle(preferredPlayNodeRid);
+    if (playEntrySpot === undefined) {
+      throw new Error(`Play entry spot '${preferredPlayNodeRid}' was not found.`);
     }
     const ensured = await this.routeClient
-      .requestToNode(SampleNames.playChannel, selected.nodeRid, ensureRequest)
+      .requestToSpot(playEntrySpot, ensureRequest)
       .timeout(500)
       .submit<EnsurePlayerActorRes>(AbortSignal.timeout(500));
     console.log(`session-auth ensured actor=${ensured.actorId} node=${ensured.actor.nodeRid}`);

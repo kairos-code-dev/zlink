@@ -79,6 +79,19 @@ function createContext(redisEndpoint) {
       children.push(child);
       return child;
     },
+    async stop(name, signal = 'SIGINT') {
+      const state = children.find((entry) => entry.name === name);
+      if (!state) throw new Error(`Unknown sample process '${name}'.`);
+      state.expectedStop = true;
+      if (state.child.exitCode === null && state.child.signalCode === null) state.child.kill(signal);
+      await waitForExit(state);
+    },
+    signal(name, signal = 'SIGINT') {
+      const state = children.find((entry) => entry.name === name);
+      if (!state) throw new Error(`Unknown sample process '${name}'.`);
+      state.expectedStop = true;
+      if (state.child.exitCode === null && state.child.signalCode === null) state.child.kill(signal);
+    },
     waitTcp,
     waitHttp,
     waitLog,
@@ -100,6 +113,12 @@ function createContext(redisEndpoint) {
       run(process.execPath, args, { cwd: sampleRoot, env });
     }
   };
+}
+
+async function waitForExit(state) {
+  const deadline = Date.now() + 10_000;
+  while (state.status === undefined && Date.now() < deadline) await sleep(50);
+  if (state.status === undefined) throw new Error(`${state.name} did not stop within 10 seconds.`);
 }
 
 async function reserveBrowserSafePort() {
@@ -220,7 +239,7 @@ async function waitUntil(description, probe) {
 }
 
 function ensureChildrenRunning() {
-  const stopped = children.find((entry) => entry.status !== undefined);
+  const stopped = children.find((entry) => entry.status !== undefined && entry.expectedStop !== true);
   if (stopped) {
     throw new Error(`${stopped.name} exited before the sample client ran. See ${stopped.logPath}.`);
   }

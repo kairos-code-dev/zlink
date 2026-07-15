@@ -13,9 +13,8 @@ function createBingoSessionModule() {
   class BingoSessionModule {}
   const configuration = createBingoConfigurationModule([
     'sessionEndpoint',
-    'sessionRouteEndpoint',
     'sessionSpotEndpoint',
-    'sessionSpotNodeRid',
+    'sessionSpotPubSubEndpoint',
     'redisEndpoint',
     'redisKeyPrefix',
     'logDir'
@@ -41,11 +40,11 @@ function createBingoSessionModule() {
             .use(bingoFrameworkProtobuf)
           .addClientServerChannel(SampleNames.apiChannel)
             .enableClient()
-          .addRouteMeshChannel(SampleNames.playChannel)
-            .enableRouter(endpoints.sessionRouteEndpoint)
-            .routingId(endpoints.sessionSpotNodeRid)
           .addSpotMesh(SampleNames.roomSpotNode)
-            .enableRouter(endpoints.sessionSpotEndpoint, endpoints.sessionSpotNodeRid)
+            .useAllocatedRoutingId(2, 'session')
+            .setRoutingIdAllocationGroup('bingo.session')
+            .enableRouter(endpoints.sessionSpotEndpoint)
+            .enablePubSub(endpoints.sessionSpotPubSubEndpoint)
           .addStreamNode(SampleNames.sessionStream)
             .bind(endpoints.sessionEndpoint)
             .registerSession(BingoSessionFactory)

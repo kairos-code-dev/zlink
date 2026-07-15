@@ -1266,6 +1266,8 @@ public interface ZLinkRouteMeshChannelRuntimeOptions {
 }
 
 public interface ZLinkSocketRuntimeOptions {
+    long maxMessageSize();
+    void maxMessageSize(long value);
     int weight();
     void weight(int value);
 }

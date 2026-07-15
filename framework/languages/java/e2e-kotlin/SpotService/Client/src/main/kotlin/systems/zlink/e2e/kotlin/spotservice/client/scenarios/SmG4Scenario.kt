@@ -29,7 +29,7 @@ internal object SmG4Scenario {
                 connector.connect().await()
                 val auth = connector
                     .request(Contracts.ActorAuthReq(actorId, profile))
-                    .await<Contracts.ActorAuthRes>()
+                    .awaitReply<Contracts.ActorAuthRes>()
                 ensure(auth.actorId == actorId, "SM-G4 auth actor mismatch")
             }
 
@@ -44,7 +44,7 @@ internal object SmG4Scenario {
                     val profile = Contracts.ActorProfile("Bound Load Request $index", 14, listOf("load"))
                     async {
                         connector.request(Contracts.ActorEchoReq(value, 14, profile))
-                            .await<Contracts.ActorEchoRes>()
+                            .awaitReply<Contracts.ActorEchoRes>()
                     }
                 }.awaitAll().let { pushes to it }
             }

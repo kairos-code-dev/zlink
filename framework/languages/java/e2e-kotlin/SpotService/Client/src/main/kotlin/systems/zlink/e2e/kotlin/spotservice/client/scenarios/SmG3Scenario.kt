@@ -32,13 +32,13 @@ internal object SmG3Scenario {
 
                 val auth = connector
                     .request(Contracts.ActorAuthReq(actorId, profile))
-                    .await<Contracts.ActorAuthRes>()
+                    .awaitReply<Contracts.ActorAuthRes>()
                 ensure(auth.actorId == actorId, "SM-G3 auth actor mismatch")
 
                 val joined = connector
                     .request(Contracts.ActorJoinReq(spotRid, profile, profile.tags))
                     .metadata("actor-id", actorId)
-                    .await<Contracts.ActorJoinRes>()
+                    .awaitReply<Contracts.ActorJoinRes>()
                 ensure(joined.actorId == actorId, "SM-G3 join actor mismatch")
                 ensure(joined.nodeRid == "play-a", "SM-G3 join node mismatch")
             }
@@ -50,14 +50,14 @@ internal object SmG3Scenario {
                     val ping = connector
                         .request(Contracts.ActorEchoReq(actorId, 3, profile))
                         .metadata("actor-id", actorId)
-                        .await<Contracts.ActorEchoRes>()
+                        .awaitReply<Contracts.ActorEchoRes>()
                     ensure(ping.actorId == actorId, "SM-G3 actor request target mismatch")
                     ensure(ping.nodeRid == "play-a", "SM-G3 actor request node mismatch")
 
                     val left = connector
                         .request(Contracts.LeaveActorReq(actorId))
                         .metadata("actor-id", actorId)
-                        .await<Contracts.LeaveActorRes>()
+                        .awaitReply<Contracts.LeaveActorRes>()
                     ensure(left.actorId == actorId, "SM-G3 leave actor mismatch")
                     ensure(left.accepted, "SM-G3 leave was not accepted")
                     }

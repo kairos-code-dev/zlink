@@ -113,6 +113,10 @@ public interface ZLinkStreamConnector {
     }
 
     private ZLinkStreamEncodedPayload encodeTypedPayload(Object payload) {
+        if (payload instanceof ZLinkStreamEncodedPayload) {
+            throw new IllegalArgumentException(
+                "raw encoded payload must use the ZLinkStreamEncodedPayload overload");
+        }
         return requireTypedCodec().encode(
             options().nameResolver().resolve(payload.getClass()),
             payload);

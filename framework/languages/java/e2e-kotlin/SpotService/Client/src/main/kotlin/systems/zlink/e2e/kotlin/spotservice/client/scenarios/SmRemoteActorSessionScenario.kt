@@ -22,7 +22,7 @@ internal object SmRemoteActorSessionScenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-B2 remote auth actor mismatch")
             ensure(auth.nodeRid == "play-b", "SM-B2 remote actor was not created on play-b")
 
@@ -30,7 +30,7 @@ internal object SmRemoteActorSessionScenario {
                 .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
                 .metadata("actor-id", actorId)
                 .timeout(Duration.ofSeconds(15))
-                .await<Contracts.ActorJoinRes>()
+                .awaitReply<Contracts.ActorJoinRes>()
             ensure(joined.actorId == actorId, "SM-B2 remote join actor mismatch")
             ensure(joined.spotRid == "room-a", "SM-B2 remote join spot mismatch")
             ensure(joined.nodeRid == "play-a", "SM-B2 remote join did not cross to play-a")
@@ -43,7 +43,7 @@ internal object SmRemoteActorSessionScenario {
                     .request(Contracts.ActorEchoReq("remote-user-echo", 42, profile))
                     .metadata("actor-id", actorId)
                     .timeout(Duration.ofSeconds(15))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
                 userReply to userPush.await().payload()
             }
             ensure(userReply.value == "user:remote-user-echo", "SM-B4 remote actor reply mismatch")

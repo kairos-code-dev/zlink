@@ -56,7 +56,7 @@ internal class ActorSessionScenarioContext {
         unbound.connect().await()
         auth = connector
             .request(Contracts.ActorAuthReq(actorId, profile))
-            .await<Contracts.ActorAuthRes>()
+            .awaitReply<Contracts.ActorAuthRes>()
     }
 
     suspend fun requestEntryEcho() = coroutineScope {
@@ -66,7 +66,7 @@ internal class ActorSessionScenarioContext {
         entryReply = connector
             .request(Contracts.ActorEchoReq("entry-echo", 1, profile))
             .metadata("actor-id", actorId)
-            .await<Contracts.ActorEchoRes>()
+            .awaitReply<Contracts.ActorEchoRes>()
         entryPush = push.await().payload()
     }
 
@@ -74,7 +74,7 @@ internal class ActorSessionScenarioContext {
         joined = connector
             .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
             .metadata("actor-id", actorId)
-            .await<Contracts.ActorJoinRes>()
+            .awaitReply<Contracts.ActorJoinRes>()
     }
 
     suspend fun requestFirstUserEchoAndCheckUnboundIsolation() = supervisorScope {
@@ -109,7 +109,7 @@ internal class ActorSessionScenarioContext {
         connector
             .request(Contracts.ActorEchoReq(value, seq, profile))
             .metadata("actor-id", actorId)
-            .await<Contracts.ActorEchoRes>()
+            .awaitReply<Contracts.ActorEchoRes>()
 
     suspend fun close() {
         closeQuietly(inboundObserver)

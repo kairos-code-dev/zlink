@@ -34,6 +34,7 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.ZLinkStreamError
 import systems.zlink.stream.connector.ZLinkStreamErrorCode
+import systems.zlink.stream.connector.ZLinkTypedStreamRequestCall
 
 final class KotlinConnectorWrapperTest {
     @Test
@@ -82,6 +83,21 @@ final class KotlinConnectorWrapperTest {
 
         assertEquals(7, connectorOptions.withDefaultStreamCompression().maxReceivedMessages())
         assertEquals(7, connectorOptions.withoutStreamCompression().maxReceivedMessages())
+    }
+
+    @Test
+    fun kotlinRequestCompletionSurfaceUsesOnlyContractNames() {
+        val extensionMethods = Class.forName(
+            "systems.zlink.framework.kotlin.ZLinkConnectorExtensionsKt",
+        ).declaredMethods
+
+        assertTrue(extensionMethods.none { method ->
+            method.name == "awaitTyped"
+        })
+        assertTrue(extensionMethods.none { method ->
+            method.name == "await" &&
+                method.parameterTypes.firstOrNull() == ZLinkTypedStreamRequestCall::class.java
+        })
     }
 
     @Test

@@ -17,12 +17,12 @@ internal object SmD11Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D11 auth actor mismatch")
 
             val streamReply = connector
                 .request(Contracts.ActorEchoReq("stream-side", 11, profile))
-                .await<Contracts.ActorEchoRes>()
+                .awaitReply<Contracts.ActorEchoRes>()
             ensure(streamReply.actorId == actorId, "SM-D11 stream request actor mismatch")
             ensure(streamReply.value == "entry:stream-side", "SM-D11 stream reply value mismatch")
         } finally {

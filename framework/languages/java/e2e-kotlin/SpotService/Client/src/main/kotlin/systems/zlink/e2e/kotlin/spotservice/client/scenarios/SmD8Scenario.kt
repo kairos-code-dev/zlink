@@ -19,7 +19,7 @@ internal object SmD8Scenario {
             first.connect().await()
             val auth = first
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D8 initial auth actor mismatch")
 
             val pending = first
@@ -58,12 +58,12 @@ internal object SmD8Scenario {
             second.connect().await()
             val auth = second
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D8 reauth actor mismatch")
 
             val reply = second
                 .request(Contracts.ActorEchoReq("after-reconnect", 8, profile))
-                .await<Contracts.ActorEchoRes>()
+                .awaitReply<Contracts.ActorEchoRes>()
             ensure(reply.actorId == actorId, "SM-D8 reconnected actor mismatch")
             ensure(reply.nodeRid == "session-a", "SM-D8 reconnected node mismatch")
             ensure(reply.value == "entry:after-reconnect", "SM-D8 reconnected value mismatch")

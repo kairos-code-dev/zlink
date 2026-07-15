@@ -14,6 +14,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import systems.zlink.framework.kotlin.ZLinkKotlinStreamConnector
 import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.gamequest.server.configuration.SampleTimings
@@ -92,11 +93,11 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
 
     suspend fun run(apiAStream: ZLinkKotlinStreamConnector, apiBStream: ZLinkKotlinStreamConnector) = coroutineScope {
         apiAStream.connect().await()
-        val joined = apiAStream.request(JoinSessionReq("player-alice")).await<JoinSessionRes>()
+        val joined = apiAStream.request(JoinSessionReq("player-alice")).awaitReply<JoinSessionRes>()
         ensure(joined.activeQuests.isEmpty())
 
         val firstProgress = async { apiAStream.waitFor<QuestProgressNotify>().await() }
-        val firstKill = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-1")).await<KillMonsterRes>()
+        val firstKill = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-1")).awaitReply<KillMonsterRes>()
         ensure(firstKill.eventId == "player-alice-kill-1")
         val firstPush = firstProgress.await().payload()
         ensure(firstPush.playerId == "player-alice")
@@ -106,20 +107,20 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
         val firstHuntCompleted = apiAStream.waitFor<QuestCompletedNotify>()
             .where { it.payload().progress.questId == QuestIds.FirstHunt }
             .let { wait -> async { wait.await() } }
-        apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-2")).await<KillMonsterRes>()
-        val thirdKill = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-3")).await<KillMonsterRes>()
+        apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-2")).awaitReply<KillMonsterRes>()
+        val thirdKill = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-3")).awaitReply<KillMonsterRes>()
         ensure(thirdKill.eventId == "player-alice-kill-3")
         val firstHuntPush = firstHuntCompleted.await().payload()
         ensure(firstHuntPush.rewardGranted)
         ensure(firstHuntPush.progress.status == QuestStatuses.RewardGranted)
 
-        val duplicate = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-3")).await<KillMonsterRes>()
+        val duplicate = apiAStream.request(KillMonsterReq("player-alice", "wolf", "forest", "kill-3")).awaitReply<KillMonsterRes>()
         ensure(duplicate.eventId == thirdKill.eventId)
 
         val auctionCompleted = apiAStream.waitFor<QuestCompletedNotify>()
             .where { it.payload().progress.questId == QuestIds.OpenAuction }
             .let { wait -> async { wait.await() } }
-        val auction = apiAStream.request(UnlockFeatureReq("player-alice", "auction", "unlock-auction")).await<UnlockFeatureRes>()
+        val auction = apiAStream.request(UnlockFeatureReq("player-alice", "auction", "unlock-auction")).awaitReply<UnlockFeatureRes>()
         ensure(auction.eventId == "player-alice-unlock-auction")
         ensure(auctionCompleted.await().payload().rewardGranted)
         val snapshot = post<GetGameplaySnapshotRes>(
@@ -133,24 +134,24 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
         ensure(postRaw(options.missionBHttpEndpoint, "/self-check/owner/player-alice/close"))
 
         val tutorial = apiAStream.request(CompleteMissionReq("player-alice", "tutorial", "mission-tutorial"))
-            .await<CompleteMissionRes>()
+            .awaitReply<CompleteMissionRes>()
         ensure(tutorial.eventId == "player-alice-mission-tutorial")
-        val ruins = apiAStream.request(EnterAreaReq("player-alice", "ruins", "enter-ruins")).await<EnterAreaRes>()
+        val ruins = apiAStream.request(EnterAreaReq("player-alice", "ruins", "enter-ruins")).awaitReply<EnterAreaRes>()
         ensure(ruins.eventId == "player-alice-enter-ruins")
 
         val offlineItem = apiAStream.request(CollectItemReq("player-bob", "healing-herb", 1, "herb-1"))
-            .await<CollectItemRes>()
+            .awaitReply<CollectItemRes>()
         ensure(offlineItem.eventId == "player-bob-herb-1")
 
         apiBStream.connect().await()
-        val bobJoined = apiBStream.request(JoinSessionReq("player-bob")).await<JoinSessionRes>()
+        val bobJoined = apiBStream.request(JoinSessionReq("player-bob")).awaitReply<JoinSessionRes>()
         ensure(hasProgress(bobJoined.activeQuests, QuestIds.HerbGathering, 1))
 
         val herbCompleted = apiBStream.waitFor<QuestCompletedNotify>()
             .where { it.payload().progress.questId == QuestIds.HerbGathering }
             .let { wait -> async { wait.await() } }
         val onlineItem = apiBStream.request(CollectItemReq("player-bob", "healing-herb", 4, "herb-2"))
-            .await<CollectItemRes>()
+            .awaitReply<CollectItemRes>()
         ensure(onlineItem.eventId == "player-bob-herb-2")
         val herbPush = herbCompleted.await().payload()
         ensure(herbPush.playerId == "player-bob")
@@ -158,7 +159,7 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
         ensure(herbPush.progress.status == QuestStatuses.RewardGranted)
 
         ensure(postRaw(options.apiAHttpEndpoint, "/self-check/projection/player-bob/${QuestIds.HerbGathering}/delete"))
-        val missingProjection = apiBStream.request(GetQuestProgressReq("player-bob")).await<GetQuestProgressRes>()
+        val missingProjection = apiBStream.request(GetQuestProgressReq("player-bob")).awaitReply<GetQuestProgressRes>()
         ensure(missingProjection.activeQuests.none { it.questId == QuestIds.HerbGathering })
         val rebuilt = post<QuestProgress>(
             options.apiAHttpEndpoint,
@@ -167,15 +168,15 @@ class GameQuestClientScenario(private val options: GameQuestClientOptions) {
         )
         ensure(rebuilt.questId == QuestIds.HerbGathering)
         ensure(rebuilt.status == QuestStatuses.RewardGranted)
-        val rebuiltProjection = apiBStream.request(GetQuestProgressReq("player-bob")).await<GetQuestProgressRes>()
+        val rebuiltProjection = apiBStream.request(GetQuestProgressReq("player-bob")).awaitReply<GetQuestProgressRes>()
         ensure(rebuiltProjection.activeQuests.any {
             it.questId == QuestIds.HerbGathering && it.status == QuestStatuses.RewardGranted
         })
 
         ensure(postRaw(options.apiBHttpEndpoint, "/self-check/gameplay/kill-without-publish/player-alice"))
-        val sync = apiAStream.request(SyncQuestProgressReq("player-alice")).await<SyncQuestProgressRes>()
+        val sync = apiAStream.request(SyncQuestProgressReq("player-alice")).awaitReply<SyncQuestProgressRes>()
         ensure(sync.updatedQuests.any { it.questId == QuestIds.FirstHunt && it.currentCount >= 4 })
-        val reconciled = apiBStream.request(GetQuestProgressReq("player-alice")).await<GetQuestProgressRes>()
+        val reconciled = apiBStream.request(GetQuestProgressReq("player-alice")).awaitReply<GetQuestProgressRes>()
         ensure(reconciled.activeQuests.any { it.questId == QuestIds.FirstHunt && it.currentCount >= 4 })
 
         apiAStream.close().await()

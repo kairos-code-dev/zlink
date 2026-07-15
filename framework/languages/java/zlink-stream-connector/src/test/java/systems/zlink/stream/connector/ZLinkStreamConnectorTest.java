@@ -454,6 +454,17 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void typedCallsRejectRawEncodedPayloadHiddenAsObject() {
+        ZLinkStreamConnector connector =
+            createConnector(options(ZLinkStreamDispatchMode.MANUAL));
+        Object rawPayload = payload("RawPayload", "raw");
+
+        assertThrows(IllegalArgumentException.class, () -> connector.send(rawPayload));
+        assertThrows(IllegalArgumentException.class, () -> connector.request(rawPayload));
+        ((ZLinkStreamEncodedPayload) rawPayload).payload().close();
+    }
+
+    @Test
     void requestBulkMetadataReplacesExistingMetadata() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =

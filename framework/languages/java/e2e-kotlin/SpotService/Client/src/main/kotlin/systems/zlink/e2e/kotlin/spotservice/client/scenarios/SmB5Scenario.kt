@@ -19,7 +19,7 @@ internal object SmB5Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-B5 auth actor mismatch")
 
             expectFailure {
@@ -27,7 +27,7 @@ internal object SmB5Scenario {
                     .request(Contracts.MissingActorReq("missing-handler", 5, profile))
                     .metadata("actor-id", actorId)
                     .timeout(Duration.ofSeconds(2))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
             }
 
             postJson(

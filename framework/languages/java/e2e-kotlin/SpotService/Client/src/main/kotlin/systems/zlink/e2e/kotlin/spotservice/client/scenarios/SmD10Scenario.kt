@@ -27,11 +27,11 @@ internal object SmD10Scenario {
             congested.connect().await()
             congested
                 .request(Contracts.ActorAuthReq(congestedActorId, congestedProfile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             isolated.connect().await()
             isolated
                 .request(Contracts.ActorAuthReq(isolatedActorId, isolatedProfile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
 
             val retained = coroutineScope {
                 val retainedPush = async(start = CoroutineStart.UNDISPATCHED) {
@@ -40,7 +40,7 @@ internal object SmD10Scenario {
                 for (index in 0 until 8) {
                     val reply = congested
                         .request(Contracts.ActorEchoReq("burst-$index", 10, congestedProfile))
-                        .await<Contracts.ActorEchoRes>()
+                        .awaitReply<Contracts.ActorEchoRes>()
                     ensure(reply.actorId == congestedActorId, "SM-D10 congested reply actor mismatch")
                 }
                 ensure(congested.receivedCount("ActorPushNotify") <= 1, "SM-D10 congested queue retained too many pushes")
@@ -52,7 +52,7 @@ internal object SmD10Scenario {
 
             val stillAlive = congested
                 .request(Contracts.ActorEchoReq("after-backpressure", 10, congestedProfile))
-                .await<Contracts.ActorEchoRes>()
+                .awaitReply<Contracts.ActorEchoRes>()
             ensure(stillAlive.actorId == congestedActorId, "SM-D10 congested session stopped routing")
             ensure(stillAlive.value == "entry:after-backpressure", "SM-D10 congested session reply mismatch")
             congested.dispatch().await()
@@ -63,7 +63,7 @@ internal object SmD10Scenario {
                 }
                 val isolatedReply = isolated
                     .request(Contracts.ActorEchoReq("isolated-push", 10, isolatedProfile))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
                 isolatedReply to isolatedPush.await().payload()
             }
             ensure(isolatedReply.actorId == isolatedActorId, "SM-D10 isolated reply actor mismatch")

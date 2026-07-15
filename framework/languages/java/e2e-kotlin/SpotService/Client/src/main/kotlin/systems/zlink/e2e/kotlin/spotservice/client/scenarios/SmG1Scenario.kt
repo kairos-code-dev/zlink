@@ -32,7 +32,7 @@ internal object SmG1Scenario {
                     .request(Contracts.ActorEchoReq("during-crash", 2, profile))
                     .metadata("actor-id", actorId)
                     .timeout(Duration.ofSeconds(2))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
             }
 
             val survivor = eventually {
@@ -66,21 +66,21 @@ internal object SmG1Scenario {
         val auth = connector
             .request(Contracts.ActorAuthReq(actorId, profile))
             .timeout(Duration.ofSeconds(15))
-            .await<Contracts.ActorAuthRes>()
+            .awaitReply<Contracts.ActorAuthRes>()
         ensure(auth.actorId == actorId, "SM-G1 auth actor mismatch")
 
         val joined = connector
             .request(Contracts.ActorJoinReq("room-a", profile, profile.tags))
             .metadata("actor-id", actorId)
             .timeout(Duration.ofSeconds(15))
-            .await<Contracts.ActorJoinRes>()
+            .awaitReply<Contracts.ActorJoinRes>()
         ensure(joined.spotRid == "room-a", "SM-G1 joined spot mismatch")
 
         val echo = connector
             .request(Contracts.ActorEchoReq(value, requestSeq, profile))
             .metadata("actor-id", actorId)
             .timeout(Duration.ofSeconds(15))
-            .await<Contracts.ActorEchoRes>()
+            .awaitReply<Contracts.ActorEchoRes>()
         ensure(echo.spotRid == "room-a", "SM-G1 actor spot mismatch")
         ensure(echo.value == "user:$value", "SM-G1 actor echo mismatch")
     }

@@ -27,7 +27,7 @@ internal object SmD7Scenario {
                         )
                     )
                     .timeout(Duration.ofMillis(500))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
             }
         } finally {
             try {
@@ -42,7 +42,7 @@ internal object SmD7Scenario {
             authenticated.connect().await()
             val auth = authenticated
                 .request(Contracts.ActorAuthReq("actor-sm-d7", profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == "actor-sm-d7", "SM-D7 auth actor mismatch")
 
             val (reply, notify) = coroutineScope {
@@ -51,7 +51,7 @@ internal object SmD7Scenario {
                 }
                 val reply = authenticated
                     .request(Contracts.ActorEchoReq("auth-ok", 7, profile))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
                 reply to push.await().payload()
             }
 

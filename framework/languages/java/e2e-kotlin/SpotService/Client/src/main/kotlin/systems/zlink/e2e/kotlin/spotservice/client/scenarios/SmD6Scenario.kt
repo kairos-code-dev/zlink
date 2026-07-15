@@ -21,11 +21,11 @@ internal object SmD6Scenario {
             bound.connect().await()
             bound
                 .request(Contracts.ActorAuthReq("actor-sm-d6", boundProfile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             shadow.connect().await()
             shadow
                 .request(Contracts.ActorAuthReq("actor-sm-d6-shadow", shadowProfile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
 
             val (reply, notify) = supervisorScope {
                 val shadowPush = async(start = CoroutineStart.UNDISPATCHED) {
@@ -38,7 +38,7 @@ internal object SmD6Scenario {
                 }
                 val reply = bound
                     .request(Contracts.ActorEchoReq("push-bound-only", 20, boundProfile))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
                 val notify = boundPush.await().payload()
                 shadowPush.await()
                 reply to notify

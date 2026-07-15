@@ -19,12 +19,12 @@ internal object SmB8Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-B8 auth actor mismatch")
 
             val destroyed = connector
                 .request(Contracts.DestroyActorReq(actorId))
-                .await<Contracts.DestroyActorRes>()
+                .awaitReply<Contracts.DestroyActorRes>()
             ensure(destroyed.destroyed && destroyed.actorId == actorId, "SM-B8 destroy reply mismatch")
 
             val evidence = postJson(
@@ -45,7 +45,7 @@ internal object SmB8Scenario {
                 connector
                     .request(Contracts.ActorEchoReq("after-destroy", 8, profile))
                     .timeout(Duration.ofMillis(500))
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
             }
 
             println("scenario SM-B8 passed")

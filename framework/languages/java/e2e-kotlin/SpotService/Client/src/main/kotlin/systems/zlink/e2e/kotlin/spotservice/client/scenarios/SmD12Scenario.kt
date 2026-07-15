@@ -21,14 +21,14 @@ internal object SmD12Scenario {
             first.connect().await()
             val firstAuth = first
                 .request(Contracts.ActorRemoteAuthReq(actorId, profile, "play-a"))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(firstAuth.actorId == actorId, "SM-D12 first auth actor mismatch")
             ensure(firstAuth.nodeRid == "play-a", "SM-D12 first auth node mismatch")
 
             val firstReply = first
                 .request(Contracts.ActorEchoReq("before-transfer", 1, profile))
                 .metadata("actor-id", actorId)
-                .await<Contracts.ActorEchoRes>()
+                .awaitReply<Contracts.ActorEchoRes>()
             ensure(firstReply.nodeRid == "play-a", "SM-D12 first actor node mismatch")
             ensure(firstReply.handlerSeq > 0, "SM-D12 initial actor state was not updated")
             first.close().await()
@@ -36,7 +36,7 @@ internal object SmD12Scenario {
             second.connect().await()
             val secondAuth = second
                 .request(Contracts.ActorRemoteAuthReq(actorId, profile, "play-a"))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(secondAuth.actorId == actorId, "SM-D12 second auth actor mismatch")
             ensure(secondAuth.nodeRid == "play-a", "SM-D12 second auth node mismatch")
 
@@ -47,7 +47,7 @@ internal object SmD12Scenario {
                 val resumed = second
                     .request(Contracts.ActorEchoReq("after-transfer", 2, profile))
                     .metadata("actor-id", actorId)
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
                 resumed to push.await().payload()
             }
             ensure(resumed.actorId == actorId, "SM-D12 resumed actor mismatch")

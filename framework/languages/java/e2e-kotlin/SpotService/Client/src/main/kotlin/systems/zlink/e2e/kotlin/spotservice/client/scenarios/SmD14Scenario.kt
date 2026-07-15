@@ -43,7 +43,7 @@ internal object SmD14Scenario {
             tls.connect().await()
             val auth = tls
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D14 TLS auth actor mismatch")
             ensure(auth.nodeRid == "play-a", "SM-D14 TLS auth node mismatch")
 
@@ -54,7 +54,7 @@ internal object SmD14Scenario {
                 val reply = tls
                     .request(Contracts.ActorEchoReq("tls-push", 14, profile))
                     .metadata("actor-id", actorId)
-                    .await<Contracts.ActorEchoRes>()
+                    .awaitReply<Contracts.ActorEchoRes>()
                 reply to pushed.await().payload()
             }
             ensure(reply.actorId == actorId, "SM-D14 TLS actor reply mismatch")

@@ -21,19 +21,19 @@ internal object SmB6Scenario {
             leaveClient.connect().await()
             val auth = leaveClient
                 .request(Contracts.ActorAuthReq(leaveActorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == leaveActorId, "SM-B6 leave auth actor mismatch")
 
             val joined = leaveClient
                 .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
                 .metadata("actor-id", leaveActorId)
-                .await<Contracts.ActorJoinRes>()
+                .awaitReply<Contracts.ActorJoinRes>()
             ensure(joined.actorId == leaveActorId, "SM-B6 leave join actor mismatch")
 
             val left = leaveClient
                 .request(Contracts.LeaveActorReq(leaveActorId))
                 .metadata("actor-id", leaveActorId)
-                .await<Contracts.LeaveActorRes>()
+                .awaitReply<Contracts.LeaveActorRes>()
             ensure(left.accepted && left.actorId == leaveActorId, "SM-B6 leave reply mismatch")
         } finally {
             try {
@@ -66,12 +66,12 @@ internal object SmB6Scenario {
             disconnectClient.connect().await()
             val auth = disconnectClient
                 .request(Contracts.ActorAuthReq(disconnectActorId, disconnectProfile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == disconnectActorId, "SM-B6 disconnect auth actor mismatch")
             val joined = disconnectClient
                 .request(Contracts.ActorJoinReq("actor-room-a", disconnectProfile, disconnectProfile.tags))
                 .metadata("actor-id", disconnectActorId)
-                .await<Contracts.ActorJoinRes>()
+                .awaitReply<Contracts.ActorJoinRes>()
             ensure(joined.actorId == disconnectActorId, "SM-B6 disconnect join actor mismatch")
             disconnectClient.close().await()
         } finally {

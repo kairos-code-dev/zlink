@@ -18,12 +18,12 @@ internal object SmD5Scenario {
             connector.connect().await()
             val auth = connector
                 .request(Contracts.ActorAuthReq(actorId, profile))
-                .await<Contracts.ActorAuthRes>()
+                .awaitReply<Contracts.ActorAuthRes>()
             ensure(auth.actorId == actorId, "SM-D5 auth actor mismatch")
             val joined = connector
                 .request(Contracts.ActorJoinReq("actor-room-a", profile, profile.tags))
                 .metadata("actor-id", actorId)
-                .await<Contracts.ActorJoinRes>()
+                .awaitReply<Contracts.ActorJoinRes>()
             ensure(joined.actorId == actorId, "SM-D5 join actor mismatch")
             connector.close().await()
         } finally {

@@ -5,6 +5,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.time.Duration.ofMillis
 import java.time.Duration.ofSeconds
 import java.util.concurrent.CompletionException
 import java.util.concurrent.LinkedBlockingQueue
@@ -53,6 +54,34 @@ final class KotlinConnectorWrapperTest {
         val disabled = connectorOptions.withoutStreamCompression()
         assertEquals(ZLinkStreamCompression.NONE, disabled.compression())
         assertEquals(null, disabled.compressionCodec())
+    }
+
+    @Test
+    fun kotlinCompressionDslPreservesReceivedMessageLimit() {
+        val connectorOptions = ZLinkStreamConnectorOptions(
+            URI.create("tcp://127.0.0.1:7200"),
+            ZLinkStreamDispatchMode.MANUAL,
+            ofSeconds(1),
+            1,
+            ofSeconds(1),
+            64 * 1024,
+            64 * 1024,
+            7,
+            true,
+            ofSeconds(1),
+            ofSeconds(5),
+            true,
+            ofMillis(250),
+            ofSeconds(5),
+            2.0,
+            false,
+            ZLinkStreamCompression.LZ4,
+            null,
+            null,
+        )
+
+        assertEquals(7, connectorOptions.withDefaultStreamCompression().maxReceivedMessages())
+        assertEquals(7, connectorOptions.withoutStreamCompression().maxReceivedMessages())
     }
 
     @Test

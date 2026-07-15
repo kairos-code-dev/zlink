@@ -759,7 +759,9 @@ Config 11 전체 실행도 각 selector를
 - [x] **SMP-JV-03** (미구현) — GameQuest가 **event sourcing이 아니다.** "rehydrate" 게이트를 카운터로 통과한다
   - 증거: SMP-JV-19의 domain event delta fold, SMP-JV-13의 Redis replay, SMP-JV-12의 실제 process restart/channel 조회, SMP-JV-11의 `PlayerQuestSpot` owner turn이 함께 적용됐다. runner는 owner SPOT flow, mission 재기동, count `5` 복원과 rehydrate client를 모두 검증한다.
 - [ ] **SMP-JV-04** (미구현) — Bingo의 정본 `yield` 사용처가 코드에 없다
+  - §0.7 선행 차단: Java production public surface에는 아직 `yield` terminator가 없고 §12.21·§12.24도 open이다. Bingo 전체 runner는 exit 0이지만 `yield` 회귀를 검출할 수 없다. 샘플에서 `async`나 지역 helper로 흉내 내면 선행 관계와 우회 구현 금지를 위반하므로 runtime 계약 구현 전에는 변경하지 않는다(2026-07-15 재검증).
 - [ ] **SMP-JV-05** (결함) — Java 구현 완료. 범위 밖 release gate가 여전히 **MessagePack**을 요구한다
+  - 범위 차단: TicTacToe client/server self-check는 `PASS TicTacToe.Java`까지 통과했지만 범위 밖 `samples/runner-common.sh`의 cleanup이 종료된 프로세스를 제한 시간 안에 정리하지 못해 runner exit 1을 반환했다. MessagePack을 요구하는 범위 밖 release contract test와 공통 cleanup을 함께 고치기 전에는 완료로 표시하지 않는다(2026-07-15 재검증).
 - [ ] **SMP-JV-06** (결함) — publish 메시지를 `Msg`로 잘못 이름 붙였다. 올바른 `Event`는 **선언만 되고 죽어 있다**
   - §0.8 중단: `BingoWinnerMsg`를 `BingoRewardAcquiredEvent`로 바꾸면 공유 proto wire 타입과 다른 언어의 handler 계약이 함께 바뀐다. 선택지는 (1) 공통 계약의 `Event`를 확정하고 다섯 언어 wire를 함께 이행하거나, (2) 공통 계약을 `Msg`로 바꾸고 publish naming 규칙 예외를 승인하는 것이다. 현재 범위에는 갭 인덱스·공통 spec 수정 권한이 없으므로 Java만 구현하지 않고 open으로 남긴다.
 - [x] **SMP-JV-07** (결함) — DeliveryDispatch에 **문서에 없는 죽은 `CourierGateway` 프로세스**가 있고, Java가 **actor relay를 건너뛴다**

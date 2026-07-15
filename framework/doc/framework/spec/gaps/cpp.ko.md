@@ -620,7 +620,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [ ] **E2E-CP-10** (결함) — **§2.5 시나리오 파일 분리 위반** — 4개 config가 단일 `main.cpp`
 - [x] **E2E-CP-11** (결함) — **Config 11 feature-map이 자기 모순**이다(pending을 `구현`으로 적는다)
   - 근거: 수정 전 target-contract gate가 OBS-B1·B3·C2의 비고와 상태 불일치, 비표준 상태값, runner의 `PENDING` 표기를 모두 검출했다. 공통 13개 시나리오만 남기고 현재 심층 gap과 역할 배치 차이에 따라 전부 `deferred`로 정규화했으며, runner도 같은 용어를 사용한다. target-contract gate, 13행 inventory, shell 문법 검사가 통과했다.
-- [ ] **E2E-CP-12** (결함) — **Config 6 기본 실행이 단일 시나리오**(`SF-A1`)이고 프레임워크 knob이 env로 뚫려 있다
+- [x] **E2E-CP-12** (결함) — **Config 6 기본 실행이 단일 시나리오**(`SF-A1`)이고 프레임워크 knob이 env로 뚫려 있다
+  - 근거: 수정 전 configuration-policy contract gate가 DiscoveryRegistryHa의 client·provider·consumer와 location store에서 환경 변수 직접 접근 6건을 검출했고, 인자 없는 runner는 `SF-A1` 하나만 선택했다. `e7cc4c436`에서 role별 0600 JSON binding과 client 단일 설정 경계로 heartbeat·lease·polling·grace를 통합하고, runner 간 환경 전달을 제거했다. 인자 없이 실행한 실제 runner가 `SF-A1`~`SF-E1` 열 시나리오를 모두 순차 통과했다.
 - [x] **E2E-CP-13** (결함) — **Config 10에 `feature-map.ko.md`가 없다**
   - 근거: 수정 전 target-contract gate가 `SpotActorTransfer/feature-map.ko.md` 부재로 실패했다. 공통 Config 10의 스무 시나리오를 모두 행으로 두고, 현재 runner와 기존 gap에 근거해 각 상태를 `deferred`로 기록했다. 역할 배치 차이와 약한 단언을 완료로 표시하지 않았으며, 문서 추가 뒤 target-contract gate와 runner 문법 검사가 통과했다.
 - [ ] **E2E-CP-14** (미구현) — **§3.1 "route mesh 없음 × 분리 배치" 조합이 아예 만들어지지 않는다**

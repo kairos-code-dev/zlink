@@ -3093,13 +3093,11 @@ void spot_node_runtime_t::emit_actor_transfer_marker (
 }
 
 result_t<actor_join_reply_t>
-spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
-                                                  const actor_ref_t &actor_ref,
-                                                  spot_rid_t target_spot_rid,
-                                                  zlink::message_t transfer_state,
-                                                  actor_context_t actor_context,
-                                                  std::vector<handoff_packet_t> handoff_backlog,
-                                                  service_provider_t *services)
+spot_node_runtime_t::prepare_remote_actor_to_spot (std::string transfer_id,
+                                                   const actor_ref_t &actor_ref,
+                                                   spot_rid_t target_spot_rid,
+                                                   zlink::message_t transfer_state,
+                                                   actor_context_t actor_context)
 {
     std::unique_lock<std::recursive_mutex> node_lock (_state->mutex);
     cleanup_expired_actor_admissions ();
@@ -3258,73 +3256,6 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
     detail::record_actor_instance_index_unlocked (*_state, committed, actor.get ());
     _state->actor_instances[key] = std::move (actor);
     _state->destroyed_actor_keys.erase (key);
-    // In-flight handoff replay (§10.2-3): the preserved backlog goes onto the
-    // target actor's dispatch queue before any new path to the actor opens
-    // (the local route record below and the location publish after it), so
-    // direct packets cannot overtake it. Dispatch itself runs on the spot
-    // serial queue after the joined callback that already completed above.
-    if (!handoff_backlog.empty () && services != nullptr) {
-        auto &target_serializers = *target.channel_runtime->serializers;
-        auto backlog_actor = _state->actor_instances[key];
-        for (auto &packet : handoff_backlog) {
-            emit_actor_transfer_marker ("backlog_enqueued", committed, transfer_id,
-                                        target_spot_rid);
-            const auto message = zlink::message_t::from (packet.payload);
-            spot_actor_message_metadata_t metadata;
-            metadata.content_type = std::move (packet.content_type);
-            metadata.values = std::move (packet.metadata);
-            // A preserved request is dispatched to the request handler (§10.5
-            // late reply). Claim its id so the sender's own retry to the
-            // committed location returns this dispatch's cached reply instead of
-            // dispatching a second time (§10.2-1 exactly-once); if the retry
-            // already claimed it, skip.
-            std::string replay_request_id;
-            if (packet.is_request) {
-                const auto id_it = metadata.values.find ("__zlink.actorRequestId");
-                if (id_it != metadata.values.end () && !id_it->second.empty ()) {
-                    replay_request_id = id_it->second;
-                    const std::lock_guard<std::mutex> dedup_lock (
-                      _state->dispatched_request_replies_mutex);
-                    if (!_state->dispatched_request_replies[key]
-                           .emplace (replay_request_id, std::nullopt)
-                           .second) {
-                        continue;
-                    }
-                }
-            }
-            const auto handler_kind = packet.is_request ? spot_handler_kind_t::actor_request
-                                                        : spot_handler_kind_t::actor_send;
-            auto task =
-              spot_handler_registry_t (context->_state)
-                .invoke_erased (handler_kind, packet.packet_name, {},
-                                factory.value ().get ().actor_type, target.spot_instance.get (),
-                                backlog_actor.get (), *services, target_serializers, message,
-                                std::move (metadata));
-            auto task_holder = std::make_shared<task_t<zlink::message_t>> (std::move (task));
-            detail::observe_task_completion (
-              *task_holder, [task_holder, node_state = _state, key, replay_request_id] (
-                              const result_t<zlink::message_t> &completed) {
-                  if (replay_request_id.empty ()) {
-                      return;
-                  }
-                  const std::lock_guard<std::mutex> lock (
-                    node_state->dispatched_request_replies_mutex);
-                  auto replies = node_state->dispatched_request_replies.find (key);
-                  if (replies == node_state->dispatched_request_replies.end ()) {
-                      return;
-                  }
-                  const auto entry = replies->second.find (replay_request_id);
-                  if (entry == replies->second.end ()) {
-                      return;
-                  }
-                  if (completed) {
-                      entry->second = completed.value ();
-                  } else {
-                      replies->second.erase (entry);
-                  }
-              });
-        }
-    }
     if (auto native = _state->native_node.lock ();
         native && !_state->native_actors.contains (key)) {
         _state->native_actors.emplace (
@@ -3334,10 +3265,134 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
     detail::record_actor_context_route_unlocked (*_state, key,
                                                  detail::effective_spot_node_rid (_state->snapshot),
                                                  target, committed.generation ());
+    return result_t<actor_join_reply_t>::success (
+      actor_join_reply_t{0, committed, zlink::message_t{}});
+}
+
+result_t<actor_join_reply_t>
+spot_node_runtime_t::commit_remote_actor_to_spot (
+  std::string transfer_id,
+  const actor_ref_t &actor_ref,
+  spot_rid_t target_spot_rid,
+  zlink::message_t transfer_state,
+  actor_context_t actor_context,
+  std::vector<handoff_packet_t> handoff_backlog,
+  service_provider_t *services)
+{
+    auto prepared = prepare_remote_actor_to_spot (
+      transfer_id, actor_ref, target_spot_rid, std::move (transfer_state),
+      std::move (actor_context));
+    if (!prepared) {
+        return prepared;
+    }
+    if (!handoff_backlog.empty () && services == nullptr) {
+        _state->actor_transfer_coordinator.fail_commit (transfer_id, true);
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "remote actor handoff backlog requires a service provider");
+    }
+    if (services != nullptr) {
+        return finalize_remote_actor_to_spot (
+          std::move (transfer_id), actor_ref, std::move (target_spot_rid),
+          std::move (handoff_backlog), *services);
+    }
+    service_collection_t empty_services;
+    auto empty_provider = empty_services.build_provider ();
+    return finalize_remote_actor_to_spot (
+      std::move (transfer_id), actor_ref, std::move (target_spot_rid), {}, empty_provider);
+}
+
+result_t<actor_join_reply_t>
+spot_node_runtime_t::finalize_remote_actor_to_spot (
+  std::string transfer_id,
+  const actor_ref_t &actor_ref,
+  spot_rid_t target_spot_rid,
+  std::vector<handoff_packet_t> handoff_backlog,
+  service_provider_t &services)
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    const auto pending = _state->actor_transfer_coordinator.pending_commit (
+      transfer_id, actor_ref, target_spot_rid);
+    if (!pending) {
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::request_protocol_error,
+          "remote actor finalize has no matching prepared commit");
+    }
+    const auto committed =
+      actor_ref_t (node_rid_t::from_string (detail::effective_spot_node_rid (_state->snapshot)),
+                   std::string (actor_ref.actor_type ()), std::string (actor_ref.actor_id ()),
+                   actor_ref.generation () + 1);
+    const auto key = actor_key (committed);
+    auto context = find_context (target_spot_rid);
+    auto factory = actor_factory_unlocked (committed);
+    const auto actor = _state->actor_instances.find (key);
+    if (!context || !context->_state->spot_instance || !factory
+        || actor == _state->actor_instances.end () || !actor->second) {
+        _state->actor_transfer_coordinator.fail_commit (transfer_id, true);
+        return result_t<actor_join_reply_t>::failure (
+          framework_error_kind_t::actor_route_not_found,
+          "prepared remote actor commit dependencies are unavailable");
+    }
+
+    auto &target = *context->_state;
+    auto &target_serializers = *target.channel_runtime->serializers;
+    for (auto &packet : handoff_backlog) {
+        emit_actor_transfer_marker ("backlog_enqueued", committed, transfer_id,
+                                    target_spot_rid);
+        const auto message = zlink::message_t::from (packet.payload);
+        spot_actor_message_metadata_t metadata;
+        metadata.content_type = std::move (packet.content_type);
+        metadata.values = std::move (packet.metadata);
+        std::string replay_request_id;
+        if (packet.is_request) {
+            const auto id_it = metadata.values.find ("__zlink.actorRequestId");
+            if (id_it != metadata.values.end () && !id_it->second.empty ()) {
+                replay_request_id = id_it->second;
+                const std::lock_guard<std::mutex> dedup_lock (
+                  _state->dispatched_request_replies_mutex);
+                if (!_state->dispatched_request_replies[key]
+                       .emplace (replay_request_id, std::nullopt)
+                       .second) {
+                    continue;
+                }
+            }
+        }
+        const auto handler_kind = packet.is_request ? spot_handler_kind_t::actor_request
+                                                    : spot_handler_kind_t::actor_send;
+        auto task = spot_handler_registry_t (context->_state)
+                      .invoke_erased (handler_kind, packet.packet_name, {},
+                                      factory.value ().get ().actor_type,
+                                      target.spot_instance.get (), actor->second.get (), services,
+                                      target_serializers, message, std::move (metadata));
+        auto task_holder = std::make_shared<task_t<zlink::message_t>> (std::move (task));
+        detail::observe_task_completion (
+          *task_holder, [task_holder, node_state = _state, key, replay_request_id] (
+                          const result_t<zlink::message_t> &completed) {
+              if (replay_request_id.empty ()) {
+                  return;
+              }
+              const std::lock_guard<std::mutex> lock (
+                node_state->dispatched_request_replies_mutex);
+              auto replies = node_state->dispatched_request_replies.find (key);
+              if (replies == node_state->dispatched_request_replies.end ()) {
+                  return;
+              }
+              const auto entry = replies->second.find (replay_request_id);
+              if (entry == replies->second.end ()) {
+                  return;
+              }
+              if (completed) {
+                  entry->second = completed.value ();
+              } else {
+                  replies->second.erase (entry);
+              }
+          });
+    }
+
     const auto location_updated =
       update_actor_location_after_move (*_state, committed, target, false);
     if (!location_updated) {
-        fail_target_commit (true);
+        _state->actor_transfer_coordinator.fail_commit (transfer_id, true);
         return result_t<actor_join_reply_t>::failure (location_updated.error_kind (),
                                                       location_updated.error ()
                                                         ? location_updated.error ()->what ()
@@ -3348,7 +3403,7 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
     if (_state->update_actor_registry_ref) {
         const auto updated = _state->update_actor_registry_ref (committed);
         if (!updated) {
-            fail_target_commit (true);
+            _state->actor_transfer_coordinator.fail_commit (transfer_id, true);
             return detail::propagate_failure<actor_join_reply_t> (updated, "actor ref update failed");
         }
     }

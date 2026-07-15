@@ -99,6 +99,10 @@ class actor_transfer_coordinator_t
     std::optional<pending_actor_admission_t> begin_commit (const std::string &transfer_id,
                                                            const actor_ref_t &source_actor,
                                                            const spot_rid_t &target_spot_rid);
+    std::optional<pending_actor_admission_t> pending_commit (
+      const std::string &transfer_id,
+      const actor_ref_t &source_actor,
+      const spot_rid_t &target_spot_rid) const;
     void fail_commit (const std::string &transfer_id, bool reconcile);
     void complete_commit (const std::string &transfer_id);
     std::vector<expired_actor_admission_t>

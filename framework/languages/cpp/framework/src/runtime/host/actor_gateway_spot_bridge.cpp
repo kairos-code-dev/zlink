@@ -632,7 +632,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     for (auto &packet : handoff_backlog) {
         wire_backlog.push_back (spot_actor_handoff_packet_t{
           std::move (packet.packet_name), std::move (packet.payload),
-          std::move (packet.content_type), std::move (packet.metadata)});
+          std::move (packet.content_type), std::move (packet.metadata), packet.is_request});
     }
     trace_actor_transfer ("commit-start", actor_ref, route->node_rid, route->spot_rid);
     runtime.emit_actor_transfer_marker ("commit_request", actor_ref, transfer_id,
@@ -651,7 +651,9 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         .bound_session_rid =
           bound_session ? bound_session->session_rid.to_string () : std::string{},
         .transfer_state = transfer.value ().state.to_bytes (),
-        .handoff_backlog = std::move (wire_backlog)},
+        .handoff_backlog = {},
+        .prepare = true,
+        .finalize = false},
       serializers);
     trace_actor_transfer ("commit-completed", actor_ref, route->node_rid, route->spot_rid);
     if (!joined) {
@@ -662,37 +664,49 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         runtime.fail_remote_actor_transfer (actor_ref, true);
         return joined;
     }
+    // The prepare RPC completes target materialization and OnJoinedActor but
+    // deliberately keeps the new location private. Packets that raced that RPC
+    // are appended after the earlier snapshot, then the finalize RPC enqueues
+    // the complete ordered backlog before it publishes the target location.
+    auto late_backlog = runtime.take_actor_handoff_backlog (actor_ref);
+    wire_backlog.reserve (wire_backlog.size () + late_backlog.size ());
+    for (auto &packet : late_backlog) {
+        wire_backlog.push_back (spot_actor_handoff_packet_t{
+          std::move (packet.packet_name), std::move (packet.payload),
+          std::move (packet.content_type), std::move (packet.metadata), packet.is_request});
+    }
+    auto finalized = request_remote_actor_commit (
+      runtime, route_client, route_channel_name, route->node_rid, route->spot_rid,
+      spot_actor_commit_route_request_t{
+        .transfer_id = transfer_id,
+        .actor_node_rid = std::string (actor_ref.node_rid ().value ()),
+        .actor_type = std::string (actor_ref.actor_type ()),
+        .actor_id = std::string (actor_ref.actor_id ()),
+        .actor_generation = actor_ref.generation (),
+        .target_spot_rid = std::string (route->spot_rid.value ()),
+        .bound_session_node_rid =
+          bound_session ? bound_session->node_rid.to_string () : std::string{},
+        .bound_session_rid =
+          bound_session ? bound_session->session_rid.to_string () : std::string{},
+        .transfer_state = {},
+        .handoff_backlog = std::move (wire_backlog),
+        .prepare = false,
+        .finalize = true},
+      serializers);
+    if (!finalized || finalized.value ().result_code != 0) {
+        runtime.fail_remote_actor_transfer (actor_ref, true);
+        return finalized;
+    }
     runtime.emit_actor_transfer_marker ("commit_ack", actor_ref, transfer_id,
                                         route->spot_rid);
     runtime.complete_remote_actor_transfer (
-      actor_ref, joined.value ().actor, spot_route_t{route->node_rid, spot_rid, route->spot_name},
+      actor_ref, finalized.value ().actor,
+      spot_route_t{route->node_rid, spot_rid, route->spot_name},
       transfer_id);
     runtime.emit_actor_transfer_marker ("forwarding_entry", actor_ref, transfer_id,
                                         route->spot_rid, route->node_rid);
-    // §10.2-2: packets that arrived between the backlog snapshot and the commit
-    // ack were still preserved. Forward them in arrival order now that the
-    // forwarding mapping points at the target; later stragglers follow the
-    // same mapping until its window evicts it.
-    auto late_backlog = runtime.take_actor_handoff_backlog (actor_ref);
-    for (auto &packet : late_backlog) {
-        // A preserved request is replayed as a request so it reaches the target's
-        // request handler (§10.5 late reply); its reply is best-effort — the
-        // original caller has already re-resolved or timed out.
-        const auto kind = packet.is_request ? stream_message_kind_t::request
-                                            : stream_message_kind_t::send;
-        stream_header_t header (kind, stream_codec_t::raw, stream_header_flags_t::none,
-                                std::nullopt, std::move (packet.packet_name));
-        spot_actor_message_metadata_t metadata;
-        metadata.content_type = std::move (packet.content_type);
-        metadata.values = std::move (packet.metadata);
-        metadata.values["__zlink.actorHandoffBacklog"] = "true";
-        metadata.values["__zlink.actorTransferId"] = transfer_id;
-        (void) relay_actor_packet_to_remote_actor_mesh (
-          runtime, actor_gateway, joined.value ().actor, route->node_rid, route->spot_rid, header,
-          zlink::message_t::from (packet.payload), metadata, serializers);
-    }
     return result_t<actor_join_reply_t>::success (
-      actor_join_reply_t{joined.value ().result_code, joined.value ().actor,
+      actor_join_reply_t{finalized.value ().result_code, finalized.value ().actor,
                          zlink::message_t::from (admitted.value ().payload)});
 }
 

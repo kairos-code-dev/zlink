@@ -672,6 +672,14 @@ int main ()
                     && st_f3_follow_up < st_f3_join_get,
                   "E2E-CP-53",
                   "ST-F3 sends S3/S4 only after the join caller observes completion");
+    gate.require (actor_gateway_spot_bridge.find (".prepare = true") != std::string::npos
+                    && actor_gateway_spot_bridge.find (".finalize = true") != std::string::npos
+                    && spot_runtime.find ("prepare_remote_actor_to_spot") != std::string::npos
+                    && spot_runtime.find ("finalize_remote_actor_to_spot") != std::string::npos
+                    && st_f2.find ("assert_evidence_sequence") != std::string::npos
+                    && st_f3.find ("assert_evidence_sequence") != std::string::npos,
+                  "E2E-CP-53",
+                  "remote transfer does not enqueue raced backlog before location publication");
 
     /* E2E-CP-54 — both sides of the forwarding window use the same one-way
      * send surface; an explicit stale ref is never silently re-resolved. */

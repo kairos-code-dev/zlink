@@ -221,30 +221,47 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             for (auto &packet : request.handoff_backlog) {
                 handoff_backlog.push_back (handoff_packet_t{
                   std::move (packet.packet_name_value), std::move (packet.payload),
-                  std::move (packet.content_type), std::move (packet.metadata)});
+                  std::move (packet.content_type), std::move (packet.metadata),
+                  packet.is_request});
             }
-            auto committed = runtime.commit_remote_actor_to_spot (
-              request.transfer_id, actor_ref, spot_rid_t::from_string (request.target_spot_rid),
-              zlink::message_t::from (request.transfer_state),
-              actor_gateway.actor_context (actor_ref), std::move (handoff_backlog), &services);
+            auto committed = request.finalize
+                               ? runtime.finalize_remote_actor_to_spot (
+                                   request.transfer_id, actor_ref,
+                                   spot_rid_t::from_string (request.target_spot_rid),
+                                   std::move (handoff_backlog), services)
+                             : request.prepare
+                               ? runtime.prepare_remote_actor_to_spot (
+                                   request.transfer_id, actor_ref,
+                                   spot_rid_t::from_string (request.target_spot_rid),
+                                   zlink::message_t::from (request.transfer_state),
+                                   actor_gateway.actor_context (actor_ref))
+                               : runtime.commit_remote_actor_to_spot (
+                                   request.transfer_id, actor_ref,
+                                   spot_rid_t::from_string (request.target_spot_rid),
+                                   zlink::message_t::from (request.transfer_state),
+                                   actor_gateway.actor_context (actor_ref),
+                                   std::move (handoff_backlog), &services);
             trace_actor_transfer_target ("commit-applied", request.actor_id, request.transfer_id);
             if (!committed) {
                 return detail::propagate_failure<zlink::message_t> (committed, "remote actor commit failed");
             }
-            const auto actor_ref_updated =
-              actor_gateway.update_actor_ref (committed.value ().actor);
-            if (!actor_ref_updated) {
-                return result_t<zlink::message_t>::failure (actor_ref_updated.error_kind (),
-                                                            actor_ref_updated.error ()
-                                                              ? actor_ref_updated.error ()->what ()
-                                                              : "remote actor ref update failed");
-            }
-            if (!request.bound_session_node_rid.empty () && !request.bound_session_rid.empty ()) {
-                bind_actor_session_route (
-                  actor_gateway, committed.value ().actor,
-                  _runtime.actor_route_transport_name ().value_or (header.channel_name),
-                  zlink::routing_id_t::from (request.bound_session_node_rid),
-                  zlink::routing_id_t::from (request.bound_session_rid), true);
+            if (!request.prepare) {
+                const auto actor_ref_updated =
+                  actor_gateway.update_actor_ref (committed.value ().actor);
+                if (!actor_ref_updated) {
+                    return result_t<zlink::message_t>::failure (
+                      actor_ref_updated.error_kind (),
+                      actor_ref_updated.error () ? actor_ref_updated.error ()->what ()
+                                                 : "remote actor ref update failed");
+                }
+                if (!request.bound_session_node_rid.empty ()
+                    && !request.bound_session_rid.empty ()) {
+                    bind_actor_session_route (
+                      actor_gateway, committed.value ().actor,
+                      _runtime.actor_route_transport_name ().value_or (header.channel_name),
+                      zlink::routing_id_t::from (request.bound_session_node_rid),
+                      zlink::routing_id_t::from (request.bound_session_rid), true);
+                }
             }
             trace_actor_transfer_target ("commit-replying", request.actor_id, request.transfer_id);
             return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (

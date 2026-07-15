@@ -43,6 +43,7 @@ struct spot_actor_handoff_packet_t
     std::vector<std::uint8_t> payload;
     std::string content_type;
     std::map<std::string, std::string> metadata;
+    bool is_request = false;
 };
 
 struct spot_actor_commit_route_request_t
@@ -59,6 +60,8 @@ struct spot_actor_commit_route_request_t
     std::string bound_session_rid;
     std::vector<std::uint8_t> transfer_state;
     std::vector<spot_actor_handoff_packet_t> handoff_backlog;
+    bool prepare = false;
+    bool finalize = false;
 };
 
 struct spot_actor_join_route_request_t

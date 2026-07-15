@@ -441,6 +441,12 @@ class spot_node_runtime_t
     // dispatch queue before the committed location is published (§10.2-3), and
     // services may be null only when the backlog is empty.
     result_t<actor_join_reply_t>
+    prepare_remote_actor_to_spot (std::string transfer_id,
+                                  const actor_ref_t &actor_ref,
+                                  spot_rid_t target_spot_rid,
+                                  zlink::message_t transfer_state,
+                                  actor_context_t actor_context = {});
+    result_t<actor_join_reply_t>
     commit_remote_actor_to_spot (std::string transfer_id,
                                  const actor_ref_t &actor_ref,
                                  spot_rid_t target_spot_rid,
@@ -448,6 +454,12 @@ class spot_node_runtime_t
                                  actor_context_t actor_context = {},
                                  std::vector<handoff_packet_t> handoff_backlog = {},
                                  service_provider_t *services = nullptr);
+    result_t<actor_join_reply_t>
+    finalize_remote_actor_to_spot (std::string transfer_id,
+                                   const actor_ref_t &actor_ref,
+                                   spot_rid_t target_spot_rid,
+                                   std::vector<handoff_packet_t> handoff_backlog,
+                                   service_provider_t &services);
     std::size_t cleanup_expired_actor_admissions ();
     std::size_t cleanup_expired_actor_admissions_at (
       std::chrono::steady_clock::time_point now);

@@ -845,6 +845,9 @@ class scenario_runner_t
         assert_correlated_transfer_markers (
           {&_nodes.a, &_nodes.b}, actor_id,
           {"handoff_backlog", "backlog_enqueued", "location_committed"});
+        assert_evidence_sequence (
+          _nodes.b, {"message_flow|" + actor_id + "|backlog_enqueued|",
+                     "message_flow|" + actor_id + "|location_committed|"});
         assert_evidence_order (_nodes.b, actor_id, "handoff_packet", {"P1", "P2", "P3"});
     }
 
@@ -877,6 +880,10 @@ class scenario_runner_t
         assert_correlated_transfer_markers (
           {&_nodes.a, &_nodes.b}, actor_id,
           {"handoff_backlog", "backlog_enqueued", "location_committed"});
+        assert_evidence_sequence (
+          _nodes.b, {"message_flow|" + actor_id + "|backlog_enqueued|",
+                     "message_flow|" + actor_id + "|location_committed|",
+                     "ST-F2|" + actor_id + "|handoff_packet|D1"});
         assert_evidence_order (_nodes.b, actor_id, "handoff_packet", {"B1", "B2", "D1"});
     }
 
@@ -902,6 +909,10 @@ class scenario_runner_t
         bound.send_packet ({"ST-F3", "S3"});
         bound.send_packet ({"ST-F3", "S4"});
         require (join_task.get ().accepted, "ST-F3 transfer was rejected.");
+        assert_evidence_sequence (
+          _nodes.b, {"message_flow|" + actor_id + "|backlog_enqueued|",
+                     "message_flow|" + actor_id + "|location_committed|",
+                     "ST-F3|" + actor_id + "|handoff_packet|S3"});
         assert_evidence_order (_nodes.b, actor_id, "handoff_packet", {"S1", "S2", "S3", "S4"});
     }
 

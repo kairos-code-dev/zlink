@@ -82,7 +82,8 @@ void to_json (nlohmann::json &json, const spot_actor_handoff_packet_t &value)
     json = nlohmann::json{{"packetName", value.packet_name_value},
                           {"payload", value.payload},
                           {"contentType", value.content_type},
-                          {"metadata", value.metadata}};
+                          {"metadata", value.metadata},
+                          {"isRequest", value.is_request}};
 }
 
 void from_json (const nlohmann::json &json, spot_actor_handoff_packet_t &value)
@@ -91,6 +92,7 @@ void from_json (const nlohmann::json &json, spot_actor_handoff_packet_t &value)
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
     value.content_type = json.value ("contentType", "");
     value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
+    value.is_request = json.value ("isRequest", false);
 }
 
 void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &value)
@@ -104,7 +106,9 @@ void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &val
                           {"boundSessionNodeRid", value.bound_session_node_rid},
                           {"boundSessionRid", value.bound_session_rid},
                           {"transferState", value.transfer_state},
-                          {"handoffBacklog", value.handoff_backlog}};
+                          {"handoffBacklog", value.handoff_backlog},
+                          {"prepare", value.prepare},
+                          {"finalize", value.finalize}};
 }
 
 void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &value)
@@ -120,6 +124,8 @@ void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &v
     value.transfer_state = json.at ("transferState").get<std::vector<std::uint8_t>> ();
     value.handoff_backlog =
       json.value ("handoffBacklog", std::vector<spot_actor_handoff_packet_t>{});
+    value.prepare = json.value ("prepare", false);
+    value.finalize = json.value ("finalize", false);
 }
 
 void to_json (nlohmann::json &json, const spot_actor_join_route_request_t &value)

@@ -27,8 +27,8 @@ client와 `run_e2e.sh all`에 등록되어 있지만, 현재 배치와 일부 �
 | ST-D2 | `deferred` | commit 뒤 source cleanup queue가 stale owner release를 실행하기 전후에 target packet과 generation snapshot이 유지되는지 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-E1 | `deferred` | transfer 전후 같은 connector의 bound push 수신을 검사한다. 별도 session gateway 역할이 없다(`E2E-CP-56`). |
 | ST-E2 | `deferred` | transfer-out adapter 실패로 commit 전 transfer를 거절하고, source의 기존 bound session이 follow-up notify를 받으며 target에는 `bound_push`·`joined` evidence가 없는지 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
-| ST-F1 | `deferred` | source `handoff_backlog`와 target `backlog_enqueued`를 같은 transfer correlation으로 검사하며 target 처리 순서도 확인한다. late backlog의 target enqueue가 location 공개 뒤에 관찰되는 순서 gap은 남아 있다(`E2E-CP-53`). |
-| ST-F2 | `deferred` | moving 중 B1/B2를 보낸 뒤 target의 구조화된 location commit evidence를 경계로 D1을 보내며, join caller가 완료를 읽기 전에 B1→B2→D1 순서와 handoff correlation을 검사한다. late backlog enqueue가 location 공개 뒤에 관찰되는 순서 gap은 남아 있다(`E2E-CP-53`). |
+| ST-F1 | `deferred` | source `handoff_backlog`와 target `backlog_enqueued`를 같은 transfer correlation으로 검사한다. target은 prepare 뒤 받은 전체 backlog를 queue에 넣은 다음 location을 공개하며 P1→P2→P3 처리 순서도 확인한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
+| ST-F2 | `deferred` | moving 중 B1/B2를 보내고 target의 `backlog_enqueued`가 `location_committed`보다 앞서는지 검사한다. location 공개 직후 D1을 보내 join caller가 완료를 읽기 전에 B1→B2→D1 순서가 유지되는지도 확인한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-F3 | `deferred` | moving 중 S1/S2를 보내고 target의 구조화된 location commit evidence 직후 기존 bound session으로 S3/S4를 보내 join caller가 완료를 읽기 전에 전체 순서를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-F4 | `deferred` | 같은 explicit old ref one-way send로 G1/G2를 보내고, G1의 구조화된 `straggler_forward`와 target 처리 뒤 `mapping_evicted`, G2의 구조화된 `stale_fail_fast`와 target 미처리를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-F5 | `deferred` | source 역할별 구조화 evidence로 다음 hop forwarding entry가 하나뿐인지 확인하고, `mapping_evicted`를 기다린 뒤 두 old ref가 stale로 실패하는지 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |

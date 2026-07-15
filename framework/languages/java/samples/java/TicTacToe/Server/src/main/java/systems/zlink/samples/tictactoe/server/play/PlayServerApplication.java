@@ -15,14 +15,14 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLocationStore;
-import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.configuration.PlaySettings;
 import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.handlers.TicTacToeGameCreatedHandler;
 
 
 
 @EnableZLinkFramework
-@EnableConfigurationProperties(SampleSettings.class)
+@EnableConfigurationProperties(PlaySettings.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = PlayServer.class)
@@ -43,7 +43,7 @@ public final class PlayServerApplication {
     }
 
     @Bean
-    ZLinkFrameworkConfigurer playFramework(SampleSettings settings) {
+    ZLinkFrameworkConfigurer playFramework(PlaySettings settings) {
         return PlayServer.configure(settings);
     }
 
@@ -54,12 +54,12 @@ public final class PlayServerApplication {
 
     @Bean
     TicTacToeGameCreator ticTacToeGameCreator(
-        SampleSettings settings) {
+        PlaySettings settings) {
         return new TicTacToeGameCreator(settings);
     }
 
     @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore(SampleSettings settings) {
+    ZLinkRedisLocationStore locationStore(PlaySettings settings) {
         return SampleLocationStore.create(settings);
     }
 

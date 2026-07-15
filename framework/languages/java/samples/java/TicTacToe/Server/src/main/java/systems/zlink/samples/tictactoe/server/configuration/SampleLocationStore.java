@@ -8,7 +8,7 @@ public final class SampleLocationStore {
     private SampleLocationStore() {
     }
 
-    public static ZLinkRedisLocationStore create(SampleSettings settings) {
+    public static ZLinkRedisLocationStore create(PlaySettings settings) {
         return new ZLinkRedisLocationStore(
             new ZLinkRedisLocationOptions()
                 .setConnectionString(settings.redisEndpoint())

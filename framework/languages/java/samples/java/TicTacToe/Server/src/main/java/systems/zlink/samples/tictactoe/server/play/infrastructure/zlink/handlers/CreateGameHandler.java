@@ -5,7 +5,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.spots.ZLinkSpotManager;
-import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.configuration.PlaySettings;
 import systems.zlink.samples.tictactoe.server.play.application.gamecreation.TicTacToeGameCreator;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.tictactoegamespot.TicTacToeGame;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameReq;
@@ -13,12 +13,12 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 
 public final class CreateGameHandler implements ZLinkRequestHandler<CreateGameReq, CreateGameRes> {
     private final ObjectProvider<ZLinkSpotManager> spots;
-    private final SampleSettings settings;
+    private final PlaySettings settings;
     private final TicTacToeGameCreator gameCreator;
 
     public CreateGameHandler(
         ObjectProvider<ZLinkSpotManager> spots,
-        SampleSettings settings,
+        PlaySettings settings,
         TicTacToeGameCreator gameCreator) {
         this.spots = spots;
         this.settings = settings;

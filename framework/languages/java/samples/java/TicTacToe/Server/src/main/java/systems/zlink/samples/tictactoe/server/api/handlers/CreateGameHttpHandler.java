@@ -14,12 +14,12 @@ import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 @RestController
 public final class CreateGameHttpHandler {
     private final ZLinkClient client;
-    private final systems.zlink.samples.tictactoe.server.configuration.SampleSettings settings;
+    private final systems.zlink.samples.tictactoe.server.configuration.ApiSettings settings;
     private final AtomicInteger nextOwnerIndex = new AtomicInteger();
 
     public CreateGameHttpHandler(
         ZLinkClient client,
-        systems.zlink.samples.tictactoe.server.configuration.SampleSettings settings) {
+        systems.zlink.samples.tictactoe.server.configuration.ApiSettings settings) {
         this.client = client;
         this.settings = settings;
     }

@@ -5,7 +5,8 @@ $ErrorActionPreference = "Stop"
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $SampleDir
 
-$LogDir = Join-Path $SampleDir "build/sample-logs"
+$RunDir = Join-Path ([IO.Path]::GetTempPath()) ("zlink-tictactoe-" + [Guid]::NewGuid().ToString("N"))
+$LogDir = Join-Path $RunDir "logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 
@@ -34,6 +35,7 @@ function Cleanup {
     if ($RedisContainer) {
         Remove-ZlinkSampleRedis $RedisContainer
     }
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $RunDir
 }
 
 function Reserve-Ports {
@@ -94,54 +96,108 @@ function Start-SampleRole {
     $Processes.Add($process)
 }
 
+function Protect-ConfigFile {
+    param([string]$Path)
+    if ($IsWindows) {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        & icacls $Path /inheritance:r /grant:r "${identity}:(R,W)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config file ACL: $Path" }
+    } else {
+        & chmod 0600 $Path
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config file mode: $Path" }
+    }
+}
+
 $Status = 1
 try {
-    $ports = Reserve-Ports 7
-    $ApiPort = $ports[0]
-    $ApiChannelPort = $ports[1]
-    $PlayStreamPort = $ports[2]
-    $PlayChannelPort = $ports[3]
-    $SpotPort = $ports[4]
-    $SpotPubPort = $ports[5]
-    $PeerSpotPort = $ports[6]
+    $ports = Reserve-Ports 12
+    $ApiAPort = $ports[0]
+    $ApiBPort = $ports[1]
+    $ApiAChannelPort = $ports[2]
+    $ApiBChannelPort = $ports[3]
+    $PlayAStreamPort = $ports[4]
+    $PlayBStreamPort = $ports[5]
+    $PlayAChannelPort = $ports[6]
+    $PlayBChannelPort = $ports[7]
+    $PlayASpotPort = $ports[8]
+    $PlayBSpotPort = $ports[9]
+    $PlayAPubPort = $ports[10]
+    $PlayBPubPort = $ports[11]
     $redis = Start-ZlinkSampleRedis "zlink-redis-java-sample-tictactoe" "redis:7-alpine"
     $RedisContainer = $redis.ContainerId
     $RedisEndpoint = $redis.Endpoint
     $RedisKeyPrefix = "zlink:tictactoe:${PID}:$([Guid]::NewGuid().ToString('N')):room:"
 
-    $ConfigFile = Join-Path $SampleDir "build/sample-application.properties"
-    @(
-        "sample.apiBindUrl=http://127.0.0.1:$ApiPort",
-        "sample.apiPublicUrl=http://127.0.0.1:$ApiPort",
-        "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiChannelPort",
-        "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayChannelPort",
-        "sample.playChannelEndpoints=tcp://127.0.0.1:$PlayChannelPort",
-        "sample.playEndpoint=tcp://127.0.0.1:$PlayStreamPort",
-        "sample.playEndpoints=tcp://127.0.0.1:$PlayStreamPort",
+    $PlayChannels = "tcp://127.0.0.1:$PlayAChannelPort,tcp://127.0.0.1:$PlayBChannelPort"
+    $PlayStreams = "tcp://127.0.0.1:$PlayAStreamPort,tcp://127.0.0.1:$PlayBStreamPort"
+    function Write-ApiConfig {
+        param([string]$Name, [int]$HttpPort, [int]$ChannelPort)
+        $path = Join-Path $RunDir "$Name.properties"
+        @(
+            "sample.apiBindUrl=http://127.0.0.1:$HttpPort",
+            "sample.apiChannelEndpoint=tcp://127.0.0.1:$ChannelPort",
+            "sample.playChannelEndpoint=tcp://127.0.0.1:$PlayAChannelPort",
+            "sample.playChannelEndpoints=$PlayChannels",
+            "sample.logDirectory=$LogDir"
+        ) | Set-Content -Path $path -Encoding utf8NoBOM
+        Protect-ConfigFile $path
+        return $path
+    }
+    function Write-PlayConfig {
+        param(
+            [string]$Name,
+            [int]$ChannelPort,
+            [int]$StreamPort,
+            [int]$SpotPort,
+            [int]$PubPort,
+            [string]$NodeRid,
+            [int]$PeerSpotPort,
+            [int]$PeerPubPort,
+            [string]$PeerNodeRid)
+        $path = Join-Path $RunDir "$Name.properties"
+        @(
+        "sample.apiChannelEndpoint=tcp://127.0.0.1:$ApiAChannelPort",
+        "sample.playChannelEndpoint=tcp://127.0.0.1:$ChannelPort",
+        "sample.playEndpoint=tcp://127.0.0.1:$StreamPort",
+        "sample.playEndpoints=$PlayStreams",
         "sample.spotEndpoint=tcp://127.0.0.1:$SpotPort",
-        "sample.spotEndpoints=tcp://127.0.0.1:$SpotPort",
-        "sample.spotPubSubEndpoint=tcp://127.0.0.1:$SpotPubPort",
-        "sample.spotPubSubEndpoints=tcp://127.0.0.1:$SpotPubPort",
+        "sample.spotPubSubEndpoint=tcp://127.0.0.1:$PubPort",
         "sample.redisEndpoint=$RedisEndpoint",
         "sample.redisKeyPrefix=$RedisKeyPrefix",
-        "sample.playSpotNodeRid=play-node-1",
-        "sample.peerPlaySpotNodeRid=play-node-2",
+        "sample.playSpotNodeRid=$NodeRid",
+        "sample.peerPlaySpotNodeRid=$PeerNodeRid",
         "sample.peerSpotEndpoint=tcp://127.0.0.1:$PeerSpotPort",
-        "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PeerSpotPort",
+        "sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:$PeerPubPort",
         "sample.logDirectory=$LogDir"
-    ) | Set-Content -Path $ConfigFile -Encoding UTF8
+        ) | Set-Content -Path $path -Encoding utf8NoBOM
+        Protect-ConfigFile $path
+        return $path
+    }
+    $ApiAConfig = Write-ApiConfig "api-a" $ApiAPort $ApiAChannelPort
+    $ApiBConfig = Write-ApiConfig "api-b" $ApiBPort $ApiBChannelPort
+    $PlayAConfig = Write-PlayConfig "play-a" $PlayAChannelPort $PlayAStreamPort `
+        $PlayASpotPort $PlayAPubPort "tic-play-alpha" $PlayBSpotPort $PlayBPubPort "tic-play-beta"
+    $PlayBConfig = Write-PlayConfig "play-b" $PlayBChannelPort $PlayBStreamPort `
+        $PlayBSpotPort $PlayBPubPort "tic-play-beta" $PlayASpotPort $PlayAPubPort "tic-play-alpha"
 
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", ":Server:installDist", ":Client:installDist", "--quiet")
 
-    Start-SampleRole "play" $ConfigFile "play.log"
-    Wait-Port $PlayStreamPort
-    Wait-Port $PlayChannelPort
+    Start-SampleRole "play" $PlayBConfig "play-b.log"
+    Wait-Port $PlayBStreamPort
+    Wait-Port $PlayBChannelPort
+    Start-SampleRole "play" $PlayAConfig "play-a.log"
+    Wait-Port $PlayAStreamPort
+    Wait-Port $PlayAChannelPort
 
-    Start-SampleRole "api" $ConfigFile "api.log"
-    Wait-Port $ApiPort
-    Wait-Port $ApiChannelPort
+    Start-SampleRole "api" $ApiAConfig "api-a.log"
+    Wait-Port $ApiAPort
+    Wait-Port $ApiAChannelPort
+    Start-SampleRole "api" $ApiBConfig "api-b.log"
+    Wait-Port $ApiBPort
+    Wait-Port $ApiBChannelPort
 
-    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", ":Client:run", "--quiet", "--args=--api-url http://127.0.0.1:$ApiPort")
+    Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", ":Client:run", "--quiet", "--args=--api-url http://127.0.0.1:$ApiAPort")
+    Write-Host "PASS TicTacToe.Java"
     $Status = 0
 } finally {
     Cleanup $Status

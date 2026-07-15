@@ -1,16 +1,16 @@
 package systems.zlink.samples.tictactoe.server.play.application.gamecreation;
 
 import java.util.concurrent.atomic.AtomicInteger;
-import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.configuration.PlaySettings;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
 import systems.zlink.samples.tictactoe.shared.contracts.CreateGameRes;
 import systems.zlink.samples.tictactoe.shared.contracts.PlayNodeInfo;
 
 public final class TicTacToeGameCreator {
     private final AtomicInteger sequence = new AtomicInteger();
-    private final SampleSettings settings;
+    private final PlaySettings settings;
 
-    public TicTacToeGameCreator(SampleSettings settings) {
+    public TicTacToeGameCreator(PlaySettings settings) {
         this.settings = settings;
     }
 

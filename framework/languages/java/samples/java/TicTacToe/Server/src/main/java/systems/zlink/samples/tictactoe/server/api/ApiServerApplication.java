@@ -14,12 +14,12 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.tictactoe.server.api.handlers.AuthenticatePlayerHandler;
 import systems.zlink.samples.tictactoe.server.api.handlers.CreateGameHttpHandler;
-import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.configuration.ApiSettings;
 
 
 
 @EnableZLinkFramework
-@EnableConfigurationProperties(SampleSettings.class)
+@EnableConfigurationProperties(ApiSettings.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = {
@@ -44,12 +44,12 @@ public final class ApiServerApplication {
     }
 
     @Bean
-    ZLinkFrameworkConfigurer apiFramework(SampleSettings settings) {
+    ZLinkFrameworkConfigurer apiFramework(ApiSettings settings) {
         return ApiServer.configure(settings);
     }
 
     @Bean
-    WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> apiHttpServer(SampleSettings settings) {
+    WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> apiHttpServer(ApiSettings settings) {
         return server -> {
             var endpoint = java.net.URI.create(settings.apiBindUrl());
             server.setAddress(java.net.InetAddress.getLoopbackAddress());

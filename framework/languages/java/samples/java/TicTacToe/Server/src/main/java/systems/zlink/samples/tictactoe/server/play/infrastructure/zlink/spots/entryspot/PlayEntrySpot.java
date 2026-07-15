@@ -6,7 +6,7 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
-import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.configuration.PlaySettings;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.actors.PlayActor;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayActorJoinGameHandler;
 import systems.zlink.samples.tictactoe.server.play.infrastructure.zlink.spots.entryspot.handlers.PlayActorObserveMilestoneHandler;
@@ -19,12 +19,12 @@ import systems.zlink.samples.tictactoe.shared.contracts.WinMilestoneNotify;
 public final class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     private static final Logger LOGGER = LoggerFactory.getLogger(PlayEntrySpot.class);
     private final ZLinkEntrySpotContext context;
-    private final SampleSettings settings;
+    private final PlaySettings settings;
     private final java.util.List<PlayActor> milestoneObservers = new java.util.ArrayList<>();
 
     public PlayEntrySpot(
         ZLinkEntrySpotContext context,
-        SampleSettings settings) {
+        PlaySettings settings) {
         this.context = context;
         this.settings = settings;
     }

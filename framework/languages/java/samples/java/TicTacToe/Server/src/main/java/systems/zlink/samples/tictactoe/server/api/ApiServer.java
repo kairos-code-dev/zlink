@@ -6,7 +6,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.tictactoe.server.api.handlers.AuthenticatePlayerHandler;
 import systems.zlink.samples.tictactoe.server.configuration.SampleLogging;
 import systems.zlink.samples.tictactoe.server.configuration.SampleNames;
-import systems.zlink.samples.tictactoe.server.configuration.SampleSettings;
+import systems.zlink.samples.tictactoe.server.configuration.ApiSettings;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerReq;
 import systems.zlink.samples.tictactoe.shared.contracts.AuthenticatePlayerRes;
 
@@ -14,7 +14,7 @@ public final class ApiServer {
     private ApiServer() {
     }
 
-    public static ZLinkFrameworkConfigurer configure(SampleSettings settings) {
+    public static ZLinkFrameworkConfigurer configure(ApiSettings settings) {
         return options -> {
             SampleLogging.configure(settings, "api");
             options.configureDispatch()

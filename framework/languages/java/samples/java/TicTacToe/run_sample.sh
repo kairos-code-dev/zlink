@@ -24,6 +24,17 @@ if ! rg -q 'stream-inbound sample=TicTacToe' Client/src/main/java --glob '*.java
   echo "TicTacToe client must register inbound observers before connect" >&2
   exit 1
 fi
+if rg -n 'SampleSettings' Server/src/main/java --glob '*.java'; then
+  echo "TicTacToe API and Play roles must use separate typed settings" >&2
+  exit 1
+fi
+for settings in ApiSettings PlaySettings; do
+  if ! rg -q '@ConfigurationProperties\("sample"\)' \
+      "Server/src/main/java/systems/zlink/samples/tictactoe/server/configuration/${settings}.java"; then
+    echo "TicTacToe ${settings} must use Spring typed binding" >&2
+    exit 1
+  fi
+done
 
 core_lib="$(cd ../../../../../.. && pwd)/core/build/lib/libzlink.so"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${core_lib}" ]]; then
@@ -34,6 +45,7 @@ pids=()
 redis_container_id=""
 redis_key_prefix="zlink:tictactoe:${RANDOM}:$$:room:"
 run_dir="$(mktemp -d)"
+chmod 0700 "${run_dir}"
 log_dir="${run_dir}/logs"
 mkdir -p "${log_dir}"
 
@@ -49,7 +61,21 @@ print_logs() {
   done
 }
 
-trap cleanup EXIT
+cleanup_sample() {
+  local status="$?"
+  trap - EXIT
+  set +e
+  set_cleanup_status() { return "$1"; }
+  set_cleanup_status "${status}"
+  cleanup
+  local cleanup_status="$?"
+  rm -rf "${run_dir}"
+  if [[ "${status}" != "0" ]]; then
+    exit "${status}"
+  fi
+  exit "${cleanup_status}"
+}
+trap cleanup_sample EXIT
 
 wait_endpoint() {
   local name="$1"
@@ -93,8 +119,6 @@ wait_endpoint redis "${redis_endpoint}"
 
 common_play_channels="tcp://127.0.0.1:${play_a_channel_port},tcp://127.0.0.1:${play_b_channel_port}"
 common_play_streams="tcp://127.0.0.1:${play_a_stream_port},tcp://127.0.0.1:${play_b_stream_port}"
-common_spots="tcp://127.0.0.1:${play_a_spot_port},tcp://127.0.0.1:${play_b_spot_port}"
-common_pubs="tcp://127.0.0.1:${play_a_pub_port},tcp://127.0.0.1:${play_b_pub_port}"
 play_a_node_rid="tic-play-alpha"
 play_b_node_rid="tic-play-beta"
 
@@ -105,16 +129,25 @@ play_b_config="${run_dir}/play-b.properties"
 
 cat >"${api_a_config}" <<EOF
 sample.apiBindUrl=http://127.0.0.1:${api_a_http_port}
-sample.apiPublicUrl=http://127.0.0.1:${api_a_http_port}
 sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
 sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}
 sample.playChannelEndpoints=${common_play_channels}
+sample.logDirectory=${log_dir}
+EOF
+
+cp "${api_a_config}" "${api_b_config}"
+sed -i \
+  -e "s#sample.apiBindUrl=.*#sample.apiBindUrl=http://127.0.0.1:${api_b_http_port}#" \
+  -e "s#sample.apiChannelEndpoint=.*#sample.apiChannelEndpoint=tcp://127.0.0.1:${api_b_channel_port}#" \
+  "${api_b_config}"
+
+cat >"${play_a_config}" <<EOF
+sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
+sample.playChannelEndpoint=tcp://127.0.0.1:${play_a_channel_port}
 sample.playEndpoint=tcp://127.0.0.1:${play_a_stream_port}
 sample.playEndpoints=${common_play_streams}
 sample.spotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
-sample.spotEndpoints=${common_spots}
 sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
-sample.spotPubSubEndpoints=${common_pubs}
 sample.redisEndpoint=${redis_endpoint}
 sample.redisKeyPrefix=${redis_key_prefix}
 sample.playSpotNodeRid=${play_a_node_rid}
@@ -124,25 +157,21 @@ sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
 sample.logDirectory=${log_dir}
 EOF
 
-cp "${api_a_config}" "${api_b_config}"
-sed -i \
-  -e "s#sample.apiBindUrl=.*#sample.apiBindUrl=http://127.0.0.1:${api_b_http_port}#" \
-  -e "s#sample.apiPublicUrl=.*#sample.apiPublicUrl=http://127.0.0.1:${api_b_http_port}#" \
-  -e "s#sample.apiChannelEndpoint=.*#sample.apiChannelEndpoint=tcp://127.0.0.1:${api_b_channel_port}#" \
-  "${api_b_config}"
-
-cp "${api_a_config}" "${play_a_config}"
-cp "${api_a_config}" "${play_b_config}"
-sed -i \
-  -e "s#sample.playChannelEndpoint=.*#sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}#" \
-  -e "s#sample.playEndpoint=.*#sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}#" \
-  -e "s#sample.spotEndpoint=.*#sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}#" \
-  -e "s#sample.spotPubSubEndpoint=.*#sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}#" \
-  -e "s#sample.playSpotNodeRid=.*#sample.playSpotNodeRid=${play_b_node_rid}#" \
-  -e "s#sample.peerPlaySpotNodeRid=.*#sample.peerPlaySpotNodeRid=${play_a_node_rid}#" \
-  -e "s#sample.peerSpotEndpoint=.*#sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}#" \
-  -e "s#sample.peerSpotPubSubEndpoint=.*#sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}#" \
-  "${play_b_config}"
+cat >"${play_b_config}" <<EOF
+sample.apiChannelEndpoint=tcp://127.0.0.1:${api_a_channel_port}
+sample.playChannelEndpoint=tcp://127.0.0.1:${play_b_channel_port}
+sample.playEndpoint=tcp://127.0.0.1:${play_b_stream_port}
+sample.playEndpoints=${common_play_streams}
+sample.spotEndpoint=tcp://127.0.0.1:${play_b_spot_port}
+sample.spotPubSubEndpoint=tcp://127.0.0.1:${play_b_pub_port}
+sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${redis_key_prefix}
+sample.playSpotNodeRid=${play_b_node_rid}
+sample.peerPlaySpotNodeRid=${play_a_node_rid}
+sample.peerSpotEndpoint=tcp://127.0.0.1:${play_a_spot_port}
+sample.peerSpotPubSubEndpoint=tcp://127.0.0.1:${play_a_pub_port}
+sample.logDirectory=${log_dir}
+EOF
 
 chmod 0600 "${api_a_config}" "${api_b_config}" "${play_a_config}" "${play_b_config}"
 

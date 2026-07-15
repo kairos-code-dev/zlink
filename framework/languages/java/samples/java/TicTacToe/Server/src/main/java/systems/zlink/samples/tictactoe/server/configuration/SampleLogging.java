@@ -8,7 +8,7 @@ public final class SampleLogging {
     private SampleLogging() {
     }
 
-    public static void configure(SampleSettings settings, String role) {
+    public static void configure(SampleLogSettings settings, String role) {
         try {
             Files.createDirectories(Path.of(settings.logDirectory()));
             Path.of(settings.logDirectory(), role + ".log").toFile().createNewFile();
@@ -18,7 +18,7 @@ public final class SampleLogging {
         }
     }
 
-    public static String flowLogPath(SampleSettings settings, String role) {
+    public static String flowLogPath(SampleLogSettings settings, String role) {
         return Path.of(settings.logDirectory(), "flow-" + role + ".log").toString();
     }
 }

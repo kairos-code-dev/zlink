@@ -46,7 +46,8 @@ public final class ZLinkStoreLocationResolvers
     }
 
     public CompletionStage<ZLinkActorLocation> resolveActorRow(ZLinkActorLocationKey key) {
-        return liveRows.resolveLiveActor(stores.actorStore().resolveActor(key));
+        return liveRows.resolveLiveActor(stores.actorStore().resolveActor(key))
+            .thenApply(row -> row == null || row.actorRef() == null ? null : row);
     }
 
     CompletionStage<ZLinkRouteLocation> resolveRouteRow(ZLinkRouteLocationKey key) {

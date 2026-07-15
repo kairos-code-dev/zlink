@@ -91,6 +91,23 @@ class ZLinkStoreLocationResolversTest {
             .get());
     }
 
+    @Test
+    void actorResolverTreatsPendingRowWithoutActorRefAsMiss() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
+        store.renewOwnerLease("owner-a", NODE, Duration.ofSeconds(30))
+            .toCompletableFuture()
+            .get();
+        store.updateActor(
+                actor("owner-a", "player-pending", ZLinkSpotKind.ENTRY, null),
+                ZLinkLocationWriteIntent.NEW_CLAIM)
+            .toCompletableFuture()
+            .get();
+
+        assertNull(resolvers(store).resolveActorRow(new ZLinkActorLocationKey("player-pending"))
+            .toCompletableFuture()
+            .get());
+    }
+
     private static ZLinkStoreLocationResolvers resolvers(ZLinkInMemoryLocationStore store) {
         ZLinkLocationOptions options = new ZLinkLocationOptions();
         options.setPollingInterval(Duration.ofMillis(1));

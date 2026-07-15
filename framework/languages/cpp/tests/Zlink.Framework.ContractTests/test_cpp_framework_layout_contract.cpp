@@ -1527,6 +1527,16 @@ int main ()
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
     ok &= sample_and_e2e_code_does_not_read_the_environment (root);
+    ok &= file_does_not_contain (
+      root / "e2e/run_e2e_all.sh", "exec env E2E_START_ORDER=",
+      "the aggregate E2E runner must pass start order as a runner option, not an environment variable");
+    ok &= file_contains (root / "e2e/RuntimeMonitoring/run_e2e.sh",
+                         "$CLIENT\" --config=\"$CONFIG_DIR/client.json\"");
+    ok &= file_contains (root / "e2e/RuntimeMonitoring/Client/Support/client_options.hpp",
+                         "RuntimeMonitoring client requires --config=<path>");
+    ok &= file_does_not_contain (
+      root / "e2e/RuntimeMonitoring/Client/Support/client_options.hpp", "--log-dir=",
+      "RuntimeMonitoring client file paths and topology must come from typed config");
     ok &= redesigned_cpp_contract_symbols_do_not_regress (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");
     ok &= contract_headers_have_compile_coverage (root, "connector/core/include", "");

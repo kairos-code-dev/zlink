@@ -4,7 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
+import org.springframework.core.env.StandardEnvironment
+import java.nio.file.Path
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
@@ -23,19 +26,20 @@ import io.micrometer.core.instrument.MeterRegistry
 
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [SessionServerApplication::class],
 )
 class SessionServerApplication {
     @Bean
-    fun sessionFramework(): ZLinkFrameworkConfigurer =
+    fun sessionFramework(topology: SampleTopology): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(SessionServerApplication::class.java)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile(SampleTopology.LogDirectory + "/flow-session.log")
+                traceLogFile(topology.logDirectory + "/flow-session.log")
                 traceLabel("session")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
@@ -44,20 +48,20 @@ class SessionServerApplication {
                 .enableClient()
             val node = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
 
-            node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
-                .setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()))
+            node.enableRouter(topology.selectedSessionRouterEndpoint())
+                .setRoutingId(RoutingId.from(topology.selectedSessionRouterRid()))
             node.connectRouter(
-                RoutingId.from(SampleTopology.preferredPlayNodeRid()),
-                SampleTopology.preferredPlaySpotRouterEndpoint(),
+                RoutingId.from(topology.preferredPlayNodeRid()),
+                topology.preferredPlaySpotRouterEndpoint(),
             )
-            node.enablePubSub(SampleTopology.selectedSessionSpotEndpoint())
+            node.enablePubSub(topology.selectedSessionSpotEndpoint())
             options.addStreamNode(SampleNames.StreamNode)
-                .bind(SampleTopology.selectedStreamEndpoint())
+                .bind(topology.selectedStreamEndpoint())
                 .registerSession(BingoSession::class.java)
         }
 
     @Bean
-    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean(destroyMethod = "close")
     fun bingoMetricsReporter(registry: MeterRegistry): BingoMetricsReporter =
@@ -65,10 +69,16 @@ class SessionServerApplication {
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
             val builder = SpringApplicationBuilder(SessionServerApplication::class.java)
+                .environment(environment)
+                .properties("spring.config.location=${Path.of(SampleTopology.configPath(args)).toAbsolutePath().toUri()}")
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run()
             return AutoCloseable { context.close() }
         }
     }

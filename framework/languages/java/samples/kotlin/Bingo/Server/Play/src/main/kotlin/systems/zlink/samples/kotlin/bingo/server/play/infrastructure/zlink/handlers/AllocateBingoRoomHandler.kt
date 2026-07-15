@@ -18,6 +18,7 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.AllocateBingoRoomRes
 class AllocateBingoRoomHandler(
     private val rooms: BingoRoomAllocator,
     private val spots: ZLinkSpotManager,
+    private val topology: SampleTopology,
 ) : ZLinkSuspendingRequestHandler<AllocateBingoRoomReq, AllocateBingoRoomRes> {
     override suspend fun handle(
         request: AllocateBingoRoomReq,
@@ -33,7 +34,7 @@ class AllocateBingoRoomHandler(
     }
 
     private suspend fun ensureLocalRoom(allocation: BingoRoomAllocation) {
-        if (allocation.ownerPlayNodeRid != SampleTopology.selectedPlayNodeRid()) {
+        if (allocation.ownerPlayNodeRid != topology.selectedPlayNodeRid()) {
             return
         }
 

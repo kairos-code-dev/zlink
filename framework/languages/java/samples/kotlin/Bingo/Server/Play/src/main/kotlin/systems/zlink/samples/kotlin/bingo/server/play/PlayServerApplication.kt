@@ -7,7 +7,10 @@ import kotlinx.coroutines.Dispatchers
 import org.springframework.boot.WebApplicationType
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.builder.SpringApplicationBuilder
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
+import org.springframework.core.env.StandardEnvironment
+import java.nio.file.Path
 import systems.zlink.contracts.core.RoutingId
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode
@@ -36,19 +39,20 @@ import io.micrometer.core.instrument.MeterRegistry
 
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology::class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = [PlayServerApplication::class],
 )
 class PlayServerApplication {
     @Bean
-    fun playFramework(): ZLinkFrameworkConfigurer =
+    fun playFramework(topology: SampleTopology): ZLinkFrameworkConfigurer =
         ZLinkFrameworkConfigurer { options ->
             options.addHandlersFromPackageOf(PlayServerApplication::class.java)
             options.useCoroutineHandlers(Dispatchers.Default)
             options.configureDispatch {
                 messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                traceLogFile(SampleTopology.LogDirectory + "/flow-play.log")
+                traceLogFile(topology.logDirectory + "/flow-play.log")
                 traceLabel("play")
             }
             options.codecs().use(ZLinkProtobufCodec.defaultCodec())
@@ -56,18 +60,18 @@ class PlayServerApplication {
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient()
             options.addClientServerChannel(SampleNames.PlayChannel)
-                .enableServer(SampleTopology.selectedPlayChannelEndpoint())
+                .enableServer(topology.selectedPlayChannelEndpoint())
                 .enableClient()
                 .addHandlerGroup("play-route")
-                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()))
             val node: ZLinkSpotMeshBuilder = options.addSpotMesh(SampleNames.RoomSpotDiscovery)
             node.useDrainPolicy(ZLinkSpotDrainPolicy.DRAIN_NATURAL)
-            node.enableRouter(SampleTopology.selectedPlaySpotRouterEndpoint())
-                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
+            node.enableRouter(topology.selectedPlaySpotRouterEndpoint())
+                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()))
             node.configureEntrySpot()
-                .setRoutingId(RoutingId.from(SampleTopology.selectedPlayNodeRid()))
-            node.enablePubSub(SampleTopology.selectedPlaySpotEndpoint())
-            node.connectPeerPub(SampleTopology.peerPlaySpotEndpoint())
+                .setRoutingId(RoutingId.from(topology.selectedPlayNodeRid()))
+            node.enablePubSub(topology.selectedPlaySpotEndpoint())
+            node.connectPeerPub(topology.peerPlaySpotEndpoint())
             node.addEntrySpot(BingoEntrySpot::class.java)
             node.addSpotFactory(BingoRoomSpot::class.java)
             node.addActorFactory(SampleNames.PlayerActorType, PlayerActorFactory::class.java)
@@ -78,14 +82,14 @@ class PlayServerApplication {
         }
 
     @Bean
-    fun locationStore(): ZLinkRedisLocationStore = SampleLocationStore.create()
+    fun locationStore(topology: SampleTopology): ZLinkRedisLocationStore = SampleLocationStore.create(topology)
 
     @Bean
     fun bingoRoomAllocator(matchQueue: BingoMatchQueue): BingoRoomAllocator =
         BingoRoomAllocator(matchQueue, SampleTimings.DrawPeriod.toMillis())
 
     @Bean
-    fun redisBingoMatchQueue(): BingoMatchQueue = RedisBingoMatchQueue()
+    fun redisBingoMatchQueue(topology: SampleTopology): BingoMatchQueue = RedisBingoMatchQueue(topology)
 
     @Bean
     fun bingoRoomSettingsInitializer(): BingoRoomSettingsInitializer =
@@ -105,10 +109,16 @@ class PlayServerApplication {
 
     companion object {
         fun run(args: Array<String> = emptyArray()): AutoCloseable {
+            val environment = StandardEnvironment().apply {
+                propertySources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)
+                propertySources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)
+            }
             val builder = SpringApplicationBuilder(PlayServerApplication::class.java)
+                .environment(environment)
+                .properties("spring.config.location=${Path.of(SampleTopology.configPath(args)).toAbsolutePath().toUri()}")
                 .web(WebApplicationType.NONE)
             builder.application().setKeepAlive(true)
-            val context = builder.run(*args)
+            val context = builder.run()
             return AutoCloseable { context.close() }
         }
     }

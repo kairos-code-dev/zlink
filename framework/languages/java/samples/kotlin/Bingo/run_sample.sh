@@ -107,24 +107,24 @@ wait_port "${redis_host}" "${redis_port}"
 write_config() {
   local path="$1" role_key="$2" role_value="$3"
   cat >"$path" <<EOF
-apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port}
-apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port}
-playAChannelEndpoint=tcp://${play_a_host}:${play_a_port}
-playBChannelEndpoint=tcp://${play_b_host}:${play_b_port}
-sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port}
-sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port}
-sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port}
-sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port}
-playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port}
-playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port}
-playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port}
-playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port}
-sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port}
-sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port}
-redisEndpoint=${BINGO_REDIS_ENDPOINT}
-redisKeyPrefix=${bingo_redis_key_prefix}
-logDirectory=${flow_log_dir}
-${role_key}=${role_value}
+sample.api-a-channel-endpoint=tcp://${api_a_host}:${api_a_port}
+sample.api-b-channel-endpoint=tcp://${api_b_host}:${api_b_port}
+sample.play-a-channel-endpoint=tcp://${play_a_host}:${play_a_port}
+sample.play-b-channel-endpoint=tcp://${play_b_host}:${play_b_port}
+sample.session-a-spot-endpoint=tcp://${session_a_spot_host}:${session_a_spot_port}
+sample.session-b-spot-endpoint=tcp://${session_b_spot_host}:${session_b_spot_port}
+sample.session-a-router-endpoint=tcp://${session_a_router_host}:${session_a_router_port}
+sample.session-b-router-endpoint=tcp://${session_b_router_host}:${session_b_router_port}
+sample.play-a-spot-endpoint=tcp://${play_a_spot_host}:${play_a_spot_port}
+sample.play-b-spot-endpoint=tcp://${play_b_spot_host}:${play_b_spot_port}
+sample.play-a-spot-router-endpoint=tcp://${play_a_router_host}:${play_a_router_port}
+sample.play-b-spot-router-endpoint=tcp://${play_b_router_host}:${play_b_router_port}
+sample.session-a-stream-endpoint=tcp://${stream_a_host}:${stream_a_port}
+sample.session-b-stream-endpoint=tcp://${stream_b_host}:${stream_b_port}
+sample.redis-endpoint=${BINGO_REDIS_ENDPOINT}
+sample.redis-key-prefix=${bingo_redis_key_prefix}
+sample.log-directory=${flow_log_dir}
+sample.${role_key}=${role_value}
 EOF
   chmod 0600 "$path"
 }

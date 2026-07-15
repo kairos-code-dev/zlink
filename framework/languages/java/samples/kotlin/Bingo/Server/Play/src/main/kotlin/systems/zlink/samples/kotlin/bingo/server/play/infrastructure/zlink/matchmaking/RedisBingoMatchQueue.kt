@@ -8,8 +8,8 @@ import systems.zlink.samples.kotlin.bingo.server.configuration.SampleTopology
 import systems.zlink.samples.kotlin.bingo.server.play.application.roomallocation.BingoMatchQueue
 import systems.zlink.samples.kotlin.bingo.server.play.application.roomallocation.BingoMatchReservation
 
-class RedisBingoMatchQueue : BingoMatchQueue, AutoCloseable {
-    private val client: RedisClient = RedisClient.create(redisUri(SampleTopology.RedisEndpoint))
+class RedisBingoMatchQueue(private val topology: SampleTopology) : BingoMatchQueue, AutoCloseable {
+    private val client: RedisClient = RedisClient.create(redisUri(topology.redisEndpoint))
     private val connection: StatefulRedisConnection<String, String> = client.connect()
 
     override fun reserve(
@@ -42,7 +42,7 @@ class RedisBingoMatchQueue : BingoMatchQueue, AutoCloseable {
     }
 
     private fun matchKey(mode: String): String =
-        SampleTopology.RedisKeyPrefix + "match:" + mode
+        topology.redisKeyPrefix + "match:" + mode
 
     private fun redisUri(endpoint: String): String =
         if (endpoint.startsWith("redis://")) endpoint else "redis://$endpoint"

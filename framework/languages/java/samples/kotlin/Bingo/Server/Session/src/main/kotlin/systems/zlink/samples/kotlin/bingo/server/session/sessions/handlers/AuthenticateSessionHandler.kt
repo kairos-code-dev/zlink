@@ -23,6 +23,7 @@ class AuthenticateSessionHandler(
     private val channels: ZLinkClient,
     private val routes: ZLinkRouteClient,
     private val spots: SpotHandleResolver,
+    private val topology: SampleTopology,
 ) : ZLinkSuspendingTypedSessionPacketHandler<ZLinkSessionContext, AuthenticateReq> {
     override fun packetName(): String = "AuthenticateReq"
 
@@ -50,7 +51,7 @@ class AuthenticateSessionHandler(
                 authenticated.reason ?: "Player authentication failed.",
             )
         }
-        val preferredPlayNode = RoutingId.from(SampleTopology.preferredPlayNodeRid())
+        val preferredPlayNode = RoutingId.from(topology.preferredPlayNodeRid())
         val spot = spots.resolveSpotHandle(preferredPlayNode).await()
             .orElseThrow { IllegalStateException("spot not found: $preferredPlayNode") }
         val ensured = routes
@@ -60,7 +61,7 @@ class AuthenticateSessionHandler(
                 EnsurePlayerActorReq(
                     authenticated.actorId,
                     authenticated.displayName,
-                    SampleTopology.preferredPlayNodeRid(),
+                    topology.preferredPlayNodeRid(),
                 ),
             )
             .timeout(SampleTimings.RequestTimeout)

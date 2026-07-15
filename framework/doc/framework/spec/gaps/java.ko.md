@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 4건.**
+**전체 33건. 완료 5건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -292,7 +292,7 @@
 - [x] **§12.4** — raw·typed send/request call에 `packetName(String)`을 추가하고 명시한 이름이 타입 기반 기본 이름보다 우선하도록 구현했다. 공개 표면 집중 테스트의 실패를 먼저 확인했고, 네 호출 경로의 wire 이름 테스트와 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `4071e369f`(2026-07-15).
 - [ ] **§12.8** — monitoring 표면 (Java)
 - [ ] **§12.9** — spot 전송 표면에 channel 이름을 함께 받는다 (Java)
-- [ ] **§12.10** — connector transport enum 부재 (Java)
+- [x] **§12.10** — `ZLinkStreamTransport` 네 멤버를 공개하고 endpoint scheme 해석과 실제 연결 분기가 이 enum을 사용하도록 통합했다. 공개 표면 집중 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `aad0f8074`(2026-07-15).
 - [ ] **§12.12** — connector dispatch mode 이름 (Java)
 - [ ] **§12.13** — connector inbound observer option 부재 (Java)
 - [ ] **§12.15** — 예외 정규화 부재 (Java)
@@ -416,8 +416,14 @@ caller가 route channel을 함께 고르지 않는다"고 규정한다. Java `ZL
 
 ### §12.10 connector transport enum 부재 (Java)
 
-**미충족(Java).** Java 언어 스펙이 고정한 `ZLinkStreamTransport`(`TCP`/`TLS`/`WEB_SOCKET`/
-`WEB_SOCKET_SECURE`)가 구현에 없다. 지원 transport 집합을 공개 계약으로 관찰할 수 없다.
+**충족(Java).** Java 언어 스펙이 고정한 `ZLinkStreamTransport`(`TCP`/`TLS`/`WEB_SOCKET`/
+`WEB_SOCKET_SECURE`)를 추가했다. 이름만 있는 enum을 두지 않고 endpoint scheme 해석 결과와 TCP·TLS·WebSocket
+연결 분기가 이 enum을 사용하게 했다. 기존 문자열 조건을 유지하면서 enum만 덧붙이는 안보다 transport 선택을
+한 번만 해석하는 안이 지원 집합과 실제 동작의 불일치를 막으므로 이를 선택했다.
+
+구현 전 공개 enum과 네 멤버를 찾는 집중 계약 테스트는 `ClassNotFoundException`으로 실패했다. 구현 뒤 이
+테스트와 TCP·TLS·WebSocket 경로를 포함한 `:zlink-stream-connector:test`, Kotlin 공유 runtime 영향 게이트인
+`:zlink-framework-kotlin:test`가 통과했다. 구현 커밋 `aad0f8074`(2026-07-15).
 
 ### §12.12 connector dispatch mode 이름 (Java)
 

@@ -420,11 +420,7 @@ if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-B2" ]]; then
 fi
 
 if [[ "${SCENARIO}" == "all" || "${SCENARIO}" == "RM-A4" ]]; then
-  failover_client_scenario="${SCENARIO}"
-  if [[ "${SCENARIO}" == "all" ]]; then
-    failover_client_scenario="failover"
-  fi
-  run_client "${failover_client_scenario}" rm-a4 env
+  run_client "RM-A4" rm-a4 env
   cat "${log_dir}/client-rm-a4.stdout.log"
 fi
 

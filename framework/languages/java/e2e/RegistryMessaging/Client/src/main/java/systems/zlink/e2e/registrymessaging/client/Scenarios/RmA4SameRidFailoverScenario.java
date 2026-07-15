@@ -22,7 +22,9 @@ public final class RmA4SameRidFailoverScenario {
                     "RM-A4 initial provider mismatch");
             }
 
-            cluster.stop(providerV1);
+            String drainResult = cluster.stop(providerV1);
+            ScenarioAssert.that("Drained".equals(drainResult),
+                "RM-A4 v1 did not reach terminal Drained: " + drainResult);
             try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
                 cluster.waitPeerEndpointAbsent(requester, providerV1.channelEndpoint());
             }

@@ -27,7 +27,9 @@ public final class RmB2ScaleInScenario {
                 ScenarioAssert.that(before.contains("api-a") && before.contains("api-b"),
                     "RM-B2 did not start with both providers");
 
-                cluster.stop(providerB);
+                String drainResult = cluster.stop(providerB);
+                ScenarioAssert.that("Drained".equals(drainResult),
+                    "RM-B2 provider did not reach terminal Drained: " + drainResult);
                 cluster.waitPeerEndpointAbsent(requester, providerB.channelEndpoint());
 
                 for (int index = 0; index < 20; index++) {

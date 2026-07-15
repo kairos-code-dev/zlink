@@ -87,9 +87,10 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         waitPeers(consumer, peers -> peers.length == count, "peer count " + count);
     }
 
-    public void stop(DynamicProvider provider) {
-        provider.process().stop();
+    public String stop(DynamicProvider provider) {
+        String result = provider.process().drainAndStop();
         processes.remove(provider.process());
+        return result;
     }
 
     @Override
@@ -271,6 +272,19 @@ public final class DynamicClusterLauncher implements AutoCloseable {
                     Files.deleteIfExists(configPath);
                 } catch (IOException ignored) {
                 }
+            }
+        }
+
+        String drainAndStop() {
+            try (ZLinkHttpClient drainClient = ZLinkHttpClient.create(httpUrl)
+                .timeout(Duration.ofSeconds(35))
+                .build()) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> response = drainClient.post("/admin/drain")
+                    .async(Map.class).toCompletableFuture().join().body();
+                String result = String.valueOf(response.get("result"));
+                stop();
+                return result;
             }
         }
 

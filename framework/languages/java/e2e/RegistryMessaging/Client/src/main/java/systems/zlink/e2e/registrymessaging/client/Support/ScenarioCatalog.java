@@ -39,7 +39,6 @@ public final class ScenarioCatalog {
                 http.workflow());
             case "scale-out" -> RmB1ScaleOutScenario.run(options);
             case "scale-in" -> RmB2ScaleInScenario.run(options);
-            case "failover" -> RmA4SameRidFailoverScenario.run(options);
             case "RM-B1" -> RmB1ScaleOutScenario.run(options);
             case "RM-B2" -> RmB2ScaleInScenario.run(options);
             case "RM-A4" -> RmA4SameRidFailoverScenario.run(options);

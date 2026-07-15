@@ -114,14 +114,14 @@ start_node() {
   local stream_port="$4"
   local config_path="${CONFIG_DIR}/${rid}.properties"
   cat >"${config_path}" <<EOF
-nodeRid=${rid}
-routerEndpoint=tcp://127.0.0.1:${router_port}
-routerPeers=actor-a=tcp://127.0.0.1:${ROUTER_A_PORT},actor-b=tcp://127.0.0.1:${ROUTER_B_PORT},actor-c=tcp://127.0.0.1:${ROUTER_C_PORT}
-httpEndpoint=http://127.0.0.1:${http_port}
-streamEndpoint=tcp://127.0.0.1:${stream_port}
-redisLocationEndpoint=${REDIS_LOCATION_ENDPOINT}
-locationKeyPrefix=${LOCATION_PREFIX}
-logDirectory=${LOG_DIR}
+e2e.node-rid=${rid}
+e2e.router-endpoint=tcp://127.0.0.1:${router_port}
+e2e.router-peers=actor-a=tcp://127.0.0.1:${ROUTER_A_PORT},actor-b=tcp://127.0.0.1:${ROUTER_B_PORT},actor-c=tcp://127.0.0.1:${ROUTER_C_PORT}
+e2e.http-endpoint=http://127.0.0.1:${http_port}
+e2e.stream-endpoint=tcp://127.0.0.1:${stream_port}
+e2e.redis-location-endpoint=${REDIS_LOCATION_ENDPOINT}
+e2e.location-key-prefix=${LOCATION_PREFIX}
+e2e.log-directory=${LOG_DIR}
 EOF
   chmod 0600 "${config_path}"
   "${NODE_BIN}" --config "${config_path}" \
@@ -184,14 +184,12 @@ run_client() {
 nodeAHttpEndpoint=http://127.0.0.1:${HTTP_A_PORT}
 nodeBHttpEndpoint=http://127.0.0.1:${HTTP_B_PORT}
 nodeCHttpEndpoint=http://127.0.0.1:${HTTP_C_PORT}
-scenario=${SCENARIO}
 logDirectory=${LOG_DIR}
 streamAEndpoint=tcp://127.0.0.1:${STREAM_A_PORT}
-streamBEndpoint=tcp://127.0.0.1:${STREAM_B_PORT}
 EOF
   chmod 0600 "${config_path}"
   timeout -k 5s "${ZLINK_JAVA_E2E_CLIENT_TIMEOUT_SECONDS:-240}s" \
-    "${CLIENT_BIN}" --config "${config_path}" \
+    "${CLIENT_BIN}" --config "${config_path}" --scenario "${SCENARIO}" \
     >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"
 }
 

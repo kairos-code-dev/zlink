@@ -11,7 +11,6 @@ import java.util.concurrent.TimeUnit;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import systems.zlink.e2e.spotactortransfer.shared.Contracts;
-import systems.zlink.e2e.spotactortransfer.shared.Env;
 import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.stream.connector.ZLinkStreamCompression;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -21,18 +20,30 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamPacketNameResolver;
 
 public final class Program implements AutoCloseable {
-    private final String nodeA = Env.require("nodeAHttpEndpoint");
-    private final String nodeB = Env.require("nodeBHttpEndpoint");
-    private final String nodeC = Env.require("nodeCHttpEndpoint");
-    private final ZLinkHttpClient nodeAHttp = createHttpClient(nodeA);
-    private final ZLinkHttpClient nodeBHttp = createHttpClient(nodeB);
-    private final ZLinkHttpClient nodeCHttp = createHttpClient(nodeC);
-    private final Path signals = Path.of(Env.get("logDirectory", "."));
+    private final ClientOptions options;
+    private final String nodeA;
+    private final String nodeB;
+    private final String nodeC;
+    private final ZLinkHttpClient nodeAHttp;
+    private final ZLinkHttpClient nodeBHttp;
+    private final ZLinkHttpClient nodeCHttp;
+    private final Path signals;
+
+    private Program(ClientOptions options) {
+        this.options = options;
+        nodeA = options.nodeAHttpEndpoint(); nodeB = options.nodeBHttpEndpoint(); nodeC = options.nodeCHttpEndpoint();
+        nodeAHttp = createHttpClient(nodeA); nodeBHttp = createHttpClient(nodeB); nodeCHttp = createHttpClient(nodeC);
+        signals = Path.of(options.logDirectory());
+    }
 
     public static void main(String... args) throws Exception {
-        Env.configure(args);
-        try (Program program = new Program()) {
-            String selected = Env.get("scenario", "all");
+        if (args.length != 4 || !"--config".equals(args[0]) || args[1].isBlank()
+            || !"--scenario".equals(args[2]) || args[3].isBlank()) {
+            throw new IllegalArgumentException(
+                "Usage: spot-actor-transfer-client --config <path> --scenario <selector>");
+        }
+        try (Program program = new Program(ClientOptions.load(args[1]))) {
+            String selected = args[3];
             for (String scenario : scenarios(selected)) {
                 program.run(scenario);
                 System.out.println("scenario " + scenario + " passed");
@@ -185,7 +196,7 @@ public final class Program implements AutoCloseable {
         String spotRid = id("spot-f3");
         createSpot(nodeB, spotRid, "delay-joined");
         createActor(nodeA, actorId, Contracts.STATEFUL, 93);
-        ZLinkStreamConnector connector = connector(Env.require("streamAEndpoint"));
+        ZLinkStreamConnector connector = connector(options.streamAEndpoint());
         try {
             connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-F3", actorId))
@@ -402,7 +413,7 @@ public final class Program implements AutoCloseable {
         createSpot(nodeB, spotRid, "accept");
         createActor(nodeA, actorId, Contracts.STATEFUL, 81);
         ZLinkStreamConnector connector = connector(
-            Env.require("streamAEndpoint"));
+            options.streamAEndpoint());
         try {
             connector.connect().submit().toCompletableFuture().join();
             Contracts.BindSessionRes bound = connector
@@ -424,7 +435,7 @@ public final class Program implements AutoCloseable {
         createSpot(nodeB, spotRid, "accept");
         createActor(nodeA, actorId, Contracts.FAIL_OUT, 82);
         ZLinkStreamConnector connector = connector(
-            Env.require("streamAEndpoint"));
+            options.streamAEndpoint());
         try {
             connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-E2", actorId))

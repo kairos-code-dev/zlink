@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 6건.**
+**전체 33건. 완료 7건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -294,7 +294,7 @@
 - [ ] **§12.9** — spot 전송 표면에 channel 이름을 함께 받는다 (Java)
 - [x] **§12.10** — `ZLinkStreamTransport` 네 멤버를 공개하고 endpoint scheme 해석과 실제 연결 분기가 이 enum을 사용하도록 통합했다. 공개 표면 집중 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `aad0f8074`(2026-07-15).
 - [ ] **§12.12** — connector dispatch mode 이름 (Java)
-- [ ] **§12.13** — connector inbound observer option 부재 (Java)
+- [x] **§12.13** — observer notification 큐 상한과 payload preview 바이트 한도를 options에 추가하고 실제 dispatcher가 사용하도록 연결했다. 공개 표면 테스트의 실패를 먼저 확인했고, 작은 큐 overflow·preview 절단 테스트와 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `900da7c0b`(2026-07-15).
 - [ ] **§12.15** — 예외 정규화 부재 (Java)
 - [x] **§12.16** — metadata wire 블록의 총 크기가 1024바이트를 넘으면 encode 전에 거부하도록 고쳤다. 경계값 1024 허용·1025 거부 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `47f7898af`(2026-07-15).
 - [ ] **§12.17** — correlated Error 처리 (Java)
@@ -442,10 +442,15 @@ SNAKE_CASE로 1:1 사상하고 있어 dispatch mode만 예외인 상태다.
 
 ### §12.13 connector inbound observer option 부재 (Java)
 
-**미충족(Java).** [32 §10](../stream-connector/32-stream-connector.ko.md)은 inbound observer 통지 큐(기본 1024개)와
-payload preview 한도(기본 0바이트)를 option으로 조절한다고 규정한다. Java
-`ZLinkStreamConnectorOptions`에는 `maxInboundObserverNotifications`와
-`maxInboundObserverPayloadPreviewBytes`가 없어 그 한도를 관찰하거나 조절할 수 없다.
+**충족(Java).** `ZLinkStreamConnectorOptions`에 `maxInboundObserverNotifications`와
+`maxInboundObserverPayloadPreviewBytes`를 추가하고 각각 기본값 1024개와 0바이트를 적용했다. 두 값은
+양수·음수가 아닌 값인지 시작 전에 검증하며, observer dispatcher의 실제 bounded queue와 snapshot preview
+절단에 사용된다. option getter만 추가하는 안은 실제 동작을 바꾸지 않는 거짓 계약이므로 선택하지 않았다.
+
+구현 전 두 option 접근자를 찾는 집중 계약 테스트는 `NoSuchMethodException`으로 실패했다. 구현 뒤 큐
+상한 1에서 `OBSERVER_DROPPED`가 발생해도 request가 완료되는 테스트, preview 한도 3에서 4바이트 payload가
+3바이트 snapshot으로 전달되는 테스트와 `:zlink-stream-connector:test :zlink-framework-kotlin:test`가
+통과했다. 구현 커밋 `900da7c0b`(2026-07-15).
 
 ### §12.15 예외 정규화 부재 (Java)
 

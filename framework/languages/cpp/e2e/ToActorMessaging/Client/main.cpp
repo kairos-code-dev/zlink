@@ -171,6 +171,34 @@ void require_evidence (const std::vector<e2e::actor_evidence_t> &evidence,
     throw std::runtime_error (scenario + " " + kind + " evidence missing");
 }
 
+void require_no_evidence (const std::vector<e2e::actor_evidence_t> &evidence,
+                          const std::string &scenario)
+{
+    for (const auto &entry : evidence) {
+        require (entry.scenario != scenario,
+                 scenario + " unexpectedly reached actor handler kind=" + entry.kind);
+    }
+}
+
+void require_location (zlink::http_client::client_t &caller,
+                       const std::string &scenario,
+                       const std::string &actor_id,
+                       const std::string &expected)
+{
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
+    e2e::actor_call_response_t response;
+    while (std::chrono::steady_clock::now () < deadline) {
+        response = call (caller, "/location", scenario, actor_id, "observe");
+        if (response.error_kind.empty () && response.result == expected) {
+            return;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    }
+    throw std::runtime_error (scenario + " expected location=" + expected
+                              + " result=" + response.result
+                              + " error=" + response.error_kind);
+}
+
 std::vector<std::string> split_selector (std::string selector)
 {
     if (selector.empty ()) {
@@ -243,7 +271,7 @@ int main (int argc, char **argv)
 
     if (should_run (selected, {"TA-A3", "ta-a3"})) {
         assert_failure (caller, "TA-A3-before-bind", "ta-a3-missing", "actor_route_not_found",
-                        true);
+                        false);
         ensure_ready (actor, caller, "TA-A3", "ta-a3");
         assert_call (caller, "TA-A3-after-bind-send", "ta-a3", "a3-send", "sent", true);
         assert_call (caller, "TA-A3-after-bind-request", "ta-a3", "a3-request",
@@ -260,8 +288,11 @@ int main (int argc, char **argv)
     }
 
     if (should_run (selected, {"TA-B1", "ta-b1"})) {
-        assert_failure (caller, "TA-B1-missing-send", "missing-actor", "actor_route_not_found",
-                        true);
+        ensure_ready (actor, caller, "TA-B1", "missing-actor");
+        assert_call (caller, "TA-B1-destroy", "missing-actor", "destroy", "reply:destroy",
+                     false);
+        require_location (caller, "TA-B1-location", "missing-actor", "missing");
+        assert_call (caller, "TA-B1-send-submit", "missing-actor", "missing", "sent", true);
         assert_failure (caller, "TA-B1-missing-request", "missing-actor", "actor_route_not_found",
                         false);
     }
@@ -269,12 +300,14 @@ int main (int argc, char **argv)
     if (should_run (selected, {"TA-B2", "ta-b2"})) {
         ensure_ready (actor, caller, "TA-B2", "ta-b2-stale");
         prepare_failure (caller, "TA-B2-prepare", "ta-b2-stale");
+        require_location (caller, "TA-B2-location", "ta-b2-stale", "present");
         assert_failure (caller, "TA-B2-stale-location", "ta-b2-stale", "actor_location_stale",
                         false);
     }
 
     if (should_run (selected, {"TA-B3", "ta-b3"})) {
         prepare_failure (caller, "TA-B3-prepare", "ta-b3-disconnected");
+        require_location (caller, "TA-B3-location", "ta-b3-disconnected", "present");
         assert_failure (caller, "TA-B3-route-not-connected", "ta-b3-disconnected",
                         "route_not_connected", false);
         ensure_ready (actor, caller, "TA-B3", "ta-b3");
@@ -295,6 +328,16 @@ int main (int argc, char **argv)
     }
     if (should_run (selected, {"TA-A4", "ta-a4"})) {
         require_evidence (evidence, "TA-A4-disconnected-send", "send");
+    }
+    if (should_run (selected, {"TA-B1", "ta-b1"})) {
+        require_no_evidence (evidence, "TA-B1-send-submit");
+        require_no_evidence (evidence, "TA-B1-missing-request");
+    }
+    if (should_run (selected, {"TA-B2", "ta-b2"})) {
+        require_no_evidence (evidence, "TA-B2-stale-location");
+    }
+    if (should_run (selected, {"TA-B3", "ta-b3"})) {
+        require_no_evidence (evidence, "TA-B3-route-not-connected");
     }
 
     std::cout << "to-actor-messaging e2e result=passed\n";

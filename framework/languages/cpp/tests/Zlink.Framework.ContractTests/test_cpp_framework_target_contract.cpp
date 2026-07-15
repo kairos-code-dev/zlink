@@ -1240,7 +1240,7 @@ int main ()
     gate.require (to_actor_client.find ("TA-B1-missing-send") == std::string::npos,
                   "E2E-CP-58", "TA-B1 still uses send submit as an existence check");
     gate.require (to_actor_client.find ("require_no_evidence") != std::string::npos
-                    && to_actor_client.find ("require_location_missing")
+                    && to_actor_client.find ("require_location (")
                          != std::string::npos,
                   "E2E-CP-60", "Track B omits negative actor evidence or location proof");
     for (const auto &[config, source] : location_option_consumers) {

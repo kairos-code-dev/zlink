@@ -72,6 +72,7 @@ class to_actor_e2e_spot_t : public zlink::framework::entry_spot_t
 
     void configure (zlink::framework::spot_context_t &context)
     {
+        _context = zlink::framework::entry_spot_context_t (context);
         context.handlers ().add_actor_send<&to_actor_e2e_spot_t::on_notify> (
           e2e::actor_notify_t::packet_name);
         context.handlers ().add_actor_request<&to_actor_e2e_spot_t::on_ask> (
@@ -95,16 +96,23 @@ class to_actor_e2e_spot_t : public zlink::framework::entry_spot_t
         _evidence.append ({message.scenario, actor.actor_id (), "send", message.value});
     }
 
-    e2e::actor_reply_t on_ask (to_actor_e2e_actor_t &actor,
-                               zlink::framework::spot_actor_request_context_t &,
-                               const e2e::actor_ask_t &message)
+    zlink::framework::task_t<e2e::actor_reply_t>
+    on_ask (to_actor_e2e_actor_t &actor,
+            zlink::framework::spot_actor_request_context_t &,
+            const e2e::actor_ask_t &message)
     {
         _evidence.append ({message.scenario, actor.actor_id (), "request", message.value});
-        return {message.scenario, actor.actor_id (), "reply:" + message.value};
+        auto reply = e2e::actor_reply_t{message.scenario, actor.actor_id (),
+                                        "reply:" + message.value};
+        if (message.scenario == "TA-B1-destroy" || message.scenario == "TA-A4-destroy") {
+            co_await _context.destroy_actor (actor);
+        }
+        co_return reply;
     }
 
   private:
     evidence_store_t &_evidence;
+    zlink::framework::entry_spot_context_t _context;
 };
 
 class ensure_actor_handler_t

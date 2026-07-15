@@ -105,17 +105,33 @@ e2e::actor_call_response_t failed (const e2e::actor_call_request_t &request,
     return {request.scenario, request.actor_id, error.what (), kind_name (error.kind ())};
 }
 
+zlink::framework::task_t<zlink::framework::actor_ref_t>
+candidate_actor_ref (zlink::framework::actor_directory_t &directory,
+                     const e2e::caller_configuration_t &configuration,
+                     const std::string &actor_id)
+{
+    if (auto located = co_await directory.find (actor_id)) {
+        co_return *located;
+    }
+    co_return zlink::framework::actor_ref_t (
+      zlink::framework::node_rid_t::from_string (configuration.actor_rid),
+      e2e::actor_type_name, actor_id, 1);
+}
+
 class send_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::actor_client_t,
-                                                                zlink::framework::actor_directory_t>;
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::actor_client_t,
+                                          zlink::framework::actor_directory_t,
+                                          e2e::caller_configuration_t>;
     using request_type = e2e::actor_call_request_t;
     using reply_type = e2e::actor_call_response_t;
 
     send_handler_t (zlink::framework::actor_client_t &actors,
-                    zlink::framework::actor_directory_t &directory) :
-        _actors (actors), _directory (directory)
+                    zlink::framework::actor_directory_t &directory,
+                    e2e::caller_configuration_t &configuration) :
+        _actors (actors), _directory (directory), _configuration (configuration)
     {
     }
 
@@ -124,13 +140,9 @@ class send_handler_t
     {
         try {
             e2e::actor_notify_t notify{request.scenario, request.actor_id, request.value};
-            auto actor_ref = co_await _directory.find (request.actor_id);
-            if (!actor_ref) {
-                throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::actor_route_not_found,
-                  "actor route was not found");
-            }
-            _actors.send_to_actor (*actor_ref, notify)
+            auto actor_ref = co_await candidate_actor_ref (_directory, _configuration,
+                                                           request.actor_id);
+            _actors.send_to_actor (actor_ref, notify)
               .submit ();
             co_return e2e::actor_call_response_t{request.scenario, request.actor_id, "sent", ""};
         }
@@ -142,19 +154,23 @@ class send_handler_t
   private:
     zlink::framework::actor_client_t &_actors;
     zlink::framework::actor_directory_t &_directory;
+    e2e::caller_configuration_t &_configuration;
 };
 
 class request_handler_t
 {
   public:
-    using dependency_types = zlink::framework::dependency_list_t<zlink::framework::actor_client_t,
-                                                                zlink::framework::actor_directory_t>;
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::actor_client_t,
+                                          zlink::framework::actor_directory_t,
+                                          e2e::caller_configuration_t>;
     using request_type = e2e::actor_call_request_t;
     using reply_type = e2e::actor_call_response_t;
 
     request_handler_t (zlink::framework::actor_client_t &actors,
-                       zlink::framework::actor_directory_t &directory) :
-        _actors (actors), _directory (directory)
+                       zlink::framework::actor_directory_t &directory,
+                       e2e::caller_configuration_t &configuration) :
+        _actors (actors), _directory (directory), _configuration (configuration)
     {
     }
 
@@ -163,13 +179,9 @@ class request_handler_t
     {
         try {
             e2e::actor_ask_t ask{request.scenario, request.actor_id, request.value};
-            auto actor_ref = co_await _directory.find (request.actor_id);
-            if (!actor_ref) {
-                throw zlink::framework::framework_exception_t (
-                  zlink::framework::framework_error_kind_t::actor_route_not_found,
-                  "actor route was not found");
-            }
-            auto reply = co_await _actors.request_to_actor (*actor_ref, ask)
+            auto actor_ref = co_await candidate_actor_ref (_directory, _configuration,
+                                                           request.actor_id);
+            auto reply = co_await _actors.request_to_actor (actor_ref, ask)
                            .timeout (std::chrono::seconds (5))
                            .async<e2e::actor_reply_t> ();
             co_return e2e::actor_call_response_t{
@@ -182,6 +194,32 @@ class request_handler_t
 
   private:
     zlink::framework::actor_client_t &_actors;
+    zlink::framework::actor_directory_t &_directory;
+    e2e::caller_configuration_t &_configuration;
+};
+
+class location_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::actor_directory_t>;
+    using request_type = e2e::actor_call_request_t;
+    using reply_type = e2e::actor_call_response_t;
+
+    explicit location_handler_t (zlink::framework::actor_directory_t &directory) :
+        _directory (directory)
+    {
+    }
+
+    zlink::framework::task_t<e2e::actor_call_response_t>
+    handle (const e2e::actor_call_request_t &request)
+    {
+        const auto located = co_await _directory.find (request.actor_id);
+        co_return e2e::actor_call_response_t{
+          request.scenario, request.actor_id, located ? "present" : "missing", ""};
+    }
+
+  private:
     zlink::framework::actor_directory_t &_directory;
 };
 
@@ -244,6 +282,7 @@ int main (int argc, char **argv)
           .map_health ("/health")
           .map_post<send_handler_t> ("/send")
           .map_post<request_handler_t> ("/request")
+          .map_post<location_handler_t> ("/location")
           .map_post<prepare_failure_handler_t> ("/prepare-failure");
     });
     return app.run (argc, argv);

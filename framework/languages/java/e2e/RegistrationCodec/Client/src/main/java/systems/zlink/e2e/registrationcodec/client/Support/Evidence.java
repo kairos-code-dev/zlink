@@ -18,7 +18,7 @@ public final class Evidence implements AutoCloseable {
     }
 
     public Contracts.EvidenceSnapshot snapshot() {
-        return http.get("/evidence").fetch(Contracts.EvidenceSnapshot.class);
+        return http.get("/evidence").async(Contracts.EvidenceSnapshot.class).toCompletableFuture().join().body();
     }
 
     @Override

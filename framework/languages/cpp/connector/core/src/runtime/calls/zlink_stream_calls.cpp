@@ -755,6 +755,7 @@ void run_heartbeat_maintenance (std::shared_ptr<connector_state_t> state,
     if (timeout_error) {
         publish_error (*state, *timeout_error);
         change_state (state, connection_state_t::disconnected, *timeout_error);
+        schedule_reconnect (state);
         return;
     }
     if (!heartbeat_frame.empty ()) {
@@ -910,6 +911,7 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
               state, request_seq,
               result_t<request_reply_t>::failure (transport_error->code, transport_error->message));
         }
+        schedule_reconnect (state);
     } else if (reschedule) {
         schedule_request_pump (state);
     }

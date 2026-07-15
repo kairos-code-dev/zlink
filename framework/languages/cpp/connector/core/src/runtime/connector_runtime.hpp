@@ -134,6 +134,8 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     mutable std::mutex lifecycle_mutex;
     std::condition_variable lifecycle_changed;
     bool connect_attempt_active = false;
+    bool reconnect_scheduled = false;
+    std::shared_ptr<boost::asio::steady_timer> reconnect_timer;
     std::mutex transport_mutex;
     std::mutex delivery_mutex;
     std::condition_variable state_changed;
@@ -161,6 +163,7 @@ void submit_send_async (std::shared_ptr<connector_state_t> state,
 void start_read_loop (std::shared_ptr<connector_state_t> state);
 void start_heartbeat_monitor (std::shared_ptr<connector_state_t> state);
 void stop_heartbeat_monitor (std::shared_ptr<connector_state_t> state);
+void schedule_reconnect (std::shared_ptr<connector_state_t> state);
 void resume_pending_writes_after_connect (std::shared_ptr<connector_state_t> state);
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state);
 result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,

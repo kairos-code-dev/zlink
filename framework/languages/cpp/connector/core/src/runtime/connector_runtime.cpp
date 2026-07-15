@@ -636,11 +636,17 @@ parse_connect_options (const std::shared_ptr<detail::connector_state_t> &state)
 }
 
 std::optional<result_t<void>>
-begin_connect_attempt (const std::shared_ptr<detail::connector_state_t> &state)
+begin_connect_attempt (const std::shared_ptr<detail::connector_state_t> &state,
+                       bool automatic_reconnect)
 {
     std::unique_lock<std::mutex> lock (state->lifecycle_mutex);
-    if (state->connect_attempt_active) {
-        state->lifecycle_changed.wait (lock, [&] { return !state->connect_attempt_active; });
+    if (automatic_reconnect) {
+        state->reconnect_scheduled = false;
+        state->reconnect_timer.reset ();
+    } else if (state->connect_attempt_active || state->reconnect_scheduled) {
+        state->lifecycle_changed.wait (lock, [&] {
+            return !state->connect_attempt_active && !state->reconnect_scheduled;
+        });
         if (state->state == connection_state_t::connected) {
             return result_t<void>::success ();
         }
@@ -939,9 +945,10 @@ void connect_websocket_secure_transport_async (
 }
 #endif
 
-result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
+result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state,
+                              bool automatic_reconnect = false)
 {
-    if (auto existing = begin_connect_attempt (state)) {
+    if (auto existing = begin_connect_attempt (state, automatic_reconnect)) {
         return std::move (*existing);
     }
     connect_attempt_guard_t attempt (state);
@@ -971,8 +978,10 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
             last_error = "stream connector connect timed out";
             break;
         }
-        detail::change_state (state, attempt_number == 1 ? connection_state_t::connecting
-                                                         : connection_state_t::reconnecting);
+        if (!automatic_reconnect || attempt_number != 1) {
+            detail::change_state (state, attempt_number == 1 ? connection_state_t::connecting
+                                                             : connection_state_t::reconnecting);
+        }
         const auto remaining =
           std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
         auto connected = connect_transport (state, parsed.value (), remaining);
@@ -1018,6 +1027,41 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
 
 } // namespace
 
+void detail::schedule_reconnect (std::shared_ptr<detail::connector_state_t> state)
+{
+    if (!state->options.reconnect.enabled || state->close_requested.load ()) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+        if (state->state == connection_state_t::closed || state->connect_attempt_active
+            || state->reconnect_scheduled) {
+            return;
+        }
+        state->reconnect_scheduled = true;
+    }
+    detail::change_state (state, connection_state_t::reconnecting);
+    auto timer = detail::post_runtime_operation_after (
+      state->options.reconnect.initial_delay, [state] {
+          boost::asio::post (boost::asio::system_executor{}, [state] {
+              if (state->close_requested.load ()) {
+                  std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+                  state->reconnect_scheduled = false;
+                  state->reconnect_timer.reset ();
+                  state->lifecycle_changed.notify_all ();
+                  return;
+              }
+              (void) connect_state (state, true);
+          });
+      });
+    std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+    if (state->reconnect_scheduled) {
+        state->reconnect_timer = std::move (timer);
+    } else {
+        detail::cancel_timer (timer);
+    }
+}
+
 result_t<void> connector_t::connect ()
 {
     return connect_state (detail::state_from (_state));
@@ -1026,7 +1070,8 @@ result_t<void> connector_t::connect ()
 void connector_t::connect (std::function<void (result_t<void>)> callback)
 {
     auto state = detail::state_from (_state);
-    detail::post_runtime_operation ([state, callback = std::move (callback)] () mutable {
+    boost::asio::post (boost::asio::system_executor{},
+                       [state, callback = std::move (callback)] () mutable {
         auto result = connect_state (state);
         detail::schedule_delivery (
           state, [callback = std::move (callback), result = std::move (result)] () mutable {
@@ -1043,6 +1088,14 @@ namespace
 result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
 {
     state->close_requested.store (true);
+    std::shared_ptr<boost::asio::steady_timer> reconnect_timer;
+    {
+        std::lock_guard<std::mutex> lock (state->lifecycle_mutex);
+        state->reconnect_scheduled = false;
+        reconnect_timer = std::move (state->reconnect_timer);
+    }
+    detail::cancel_timer (reconnect_timer);
+    state->lifecycle_changed.notify_all ();
     detail::stop_heartbeat_monitor (state);
     state->state_changed.notify_all ();
     std::vector<std::function<void ()>> closed_write_callbacks;

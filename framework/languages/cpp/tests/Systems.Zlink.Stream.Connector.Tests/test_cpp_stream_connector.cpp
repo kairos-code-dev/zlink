@@ -1166,6 +1166,158 @@ int main ()
     }
 
     {
+        boost::asio::io_context reconnect_io;
+        boost::asio::ip::tcp::acceptor reconnect_acceptor (
+          reconnect_io, {boost::asio::ip::make_address ("127.0.0.1"), 0});
+        const auto reconnect_endpoint =
+          std::string ("tcp://127.0.0.1:")
+          + std::to_string (reconnect_acceptor.local_endpoint ().port ());
+        callback_latch_t first_request_seen;
+        callback_latch_t release_first_connection;
+        std::atomic_bool second_connection_seen{false};
+        std::atomic_bool second_connection_received_fresh_send{false};
+        joining_thread_t reconnect_server (
+          [&reconnect_acceptor, &first_request_seen, &release_first_connection,
+           &second_connection_seen, &second_connection_received_fresh_send] {
+              boost::asio::ip::tcp::socket first (reconnect_acceptor.get_executor ());
+              reconnect_acceptor.accept (first);
+              std::array<char, 512> first_chunk{};
+              boost::system::error_code error;
+              const auto first_size = first.read_some (boost::asio::buffer (first_chunk), error);
+              if (!error) {
+                  std::string first_buffer (first_chunk.data (), first_size);
+                  if (auto frame = try_read_server_frame (first_buffer);
+                      frame && frame->header.kind
+                                   == zlink::stream_connector::message_kind_t::request
+                      && frame->header.name == "pending.before.reconnect") {
+                      first_request_seen.signal ();
+                  }
+              }
+              release_first_connection.wait_for (std::chrono::milliseconds (500));
+              first.shutdown (boost::asio::ip::tcp::socket::shutdown_both, error);
+              first.close (error);
+
+              reconnect_acceptor.non_blocking (true);
+              boost::asio::ip::tcp::socket second (reconnect_acceptor.get_executor ());
+              const auto accept_deadline =
+                std::chrono::steady_clock::now () + std::chrono::milliseconds (700);
+              while (std::chrono::steady_clock::now () < accept_deadline) {
+                  reconnect_acceptor.accept (second, error);
+                  if (!error) {
+                      second_connection_seen = true;
+                      break;
+                  }
+                  if (error != boost::asio::error::would_block
+                      && error != boost::asio::error::try_again) {
+                      return;
+                  }
+                  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+              }
+              if (!second_connection_seen) {
+                  return;
+              }
+              second.non_blocking (true);
+              std::string second_buffer;
+              std::array<char, 512> second_chunk{};
+              const auto read_deadline =
+                std::chrono::steady_clock::now () + std::chrono::milliseconds (500);
+              while (std::chrono::steady_clock::now () < read_deadline) {
+                  const auto size = second.read_some (boost::asio::buffer (second_chunk), error);
+                  if (!error) {
+                      second_buffer.append (second_chunk.data (), size);
+                      if (auto frame = try_read_server_frame (second_buffer)) {
+                          second_connection_received_fresh_send =
+                            frame->header.kind == zlink::stream_connector::message_kind_t::send
+                            && frame->header.name == "fresh.after.reconnect";
+                          return;
+                      }
+                  } else if (error != boost::asio::error::would_block
+                             && error != boost::asio::error::try_again) {
+                      return;
+                  }
+                  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+              }
+          });
+
+        zlink::stream_connector::connector_options_t reconnect_options;
+        reconnect_options.endpoint = reconnect_endpoint;
+        reconnect_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+        reconnect_options.heartbeat.enabled = false;
+        reconnect_options.connect_timeout = std::chrono::milliseconds (1000);
+        reconnect_options.reconnect.initial_delay = std::chrono::milliseconds (100);
+        reconnect_options.reconnect.max_delay = std::chrono::milliseconds (100);
+        reconnect_options.reconnect.max_attempts = 3;
+        auto reconnect_connector =
+          zlink::stream_connector::connector_factory_t::create (reconnect_options);
+        std::atomic_bool reconnecting_seen{false};
+        reconnect_connector.on_connection_state_changed ([&reconnecting_seen] (const auto &state) {
+            if (state.current == zlink::stream_connector::connection_state_t::reconnecting) {
+                reconnecting_seen = true;
+            }
+        });
+        if (!reconnect_connector.connect ()) {
+            release_first_connection.signal ();
+            reconnect_server.join ();
+            return 176;
+        }
+        callback_latch_t pending_request_completed;
+        std::atomic_int pending_request_callback_count{0};
+        std::optional<zlink::stream_connector::error_code_t> pending_request_error;
+        reconnect_connector.request (login_request_t{})
+          .packet_name ("pending.before.reconnect")
+          .timeout (std::chrono::seconds (2))
+          .submit<login_reply_t> ([&] (auto result) {
+              ++pending_request_callback_count;
+              pending_request_error = result.error_code ();
+              pending_request_completed.signal ();
+          });
+        if (!first_request_seen.wait_for (std::chrono::milliseconds (250))) {
+            release_first_connection.signal ();
+            reconnect_server.join ();
+            return 176;
+        }
+        release_first_connection.signal ();
+        const auto reconnecting_deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (250);
+        while (reconnect_connector.state ()
+                 != zlink::stream_connector::connection_state_t::reconnecting
+               && std::chrono::steady_clock::now () < reconnecting_deadline) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        const auto request_during_reconnect =
+          reconnect_connector.request (login_request_t{})
+            .packet_name ("must.not.queue.during.reconnect")
+            .timeout (std::chrono::seconds (1))
+            .submit<login_reply_t> ();
+        const auto connected_deadline =
+          std::chrono::steady_clock::now () + std::chrono::milliseconds (700);
+        while (reconnect_connector.state ()
+                 != zlink::stream_connector::connection_state_t::connected
+               && std::chrono::steady_clock::now () < connected_deadline) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+        }
+        if (reconnect_connector.state ()
+            == zlink::stream_connector::connection_state_t::connected) {
+            reconnect_connector.send (login_request_t{})
+              .packet_name ("fresh.after.reconnect")
+              .submit ();
+        }
+        reconnect_server.join ();
+        const auto pending_completed =
+          pending_request_completed.wait_for (std::chrono::milliseconds (250));
+        reconnect_connector.close ();
+        if (!reconnecting_seen || !second_connection_seen
+            || !second_connection_received_fresh_send || !pending_completed
+            || pending_request_callback_count != 1
+            || pending_request_error != zlink::stream_connector::error_code_t::disconnected
+            || request_during_reconnect
+            || request_during_reconnect.error_code ()
+                 != zlink::stream_connector::error_code_t::disconnected) {
+            return 176;
+        }
+    }
+
+    {
         zlink::stream_connector::connector_options_t lifecycle_options;
         lifecycle_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         bool connect_lifetime_seen = false;
@@ -3057,14 +3209,15 @@ int main ()
     const auto heartbeat_timeout_deadline =
       std::chrono::steady_clock::now () + std::chrono::milliseconds (250);
     while (heartbeat_timeout_connector.state ()
-             != zlink::stream_connector::connection_state_t::disconnected
+             != zlink::stream_connector::connection_state_t::reconnecting
            && std::chrono::steady_clock::now () < heartbeat_timeout_deadline) {
         std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
     if (heartbeat_timeout_connector.state ()
-        != zlink::stream_connector::connection_state_t::disconnected) {
+        != zlink::stream_connector::connection_state_t::reconnecting) {
         return 46;
     }
+    heartbeat_timeout_connector.close ();
 
     boost::asio::io_context websocket_io;
     boost::asio::ip::tcp::acceptor websocket_acceptor (

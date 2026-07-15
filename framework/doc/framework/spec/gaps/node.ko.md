@@ -780,7 +780,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 
 - [x] **SMP-ND-06** (**버그**) — SupportChat open 응답이 실제 conversation state를 버린다
   - 근거: allocate 응답부터 Entry Spot까지 도메인이 만든 8필드 conversation state를 그대로 전달하고 중복 조립을 계약 mapper로 모았다. 하드코딩 `WaitingForAgent` 때문에 실패하던 open-state gate가 통과한다. 커밋 `c72ff6c1a`.
-- [ ] **SMP-ND-07** (**버그**) — 닫힌 SupportChat·TicTacToe Spot의 timer가 계속 실행된다
+- [x] **SMP-ND-07** (**버그**) — 닫힌 SupportChat·TicTacToe Spot의 timer가 계속 실행된다
+  - 근거: SupportChat은 close-grace 종료 때, TicTacToe는 terminal room의 마지막 actor leave 때 `context.close()`를 호출해 Spot과 timer 수명을 framework lifecycle이 함께 정리한다. close 호출이 없어 실패하던 두 sample lifecycle gate가 DI 대역을 명시한 현재 checkout에서도 통과한다. 구현 커밋 `16613716f`, 게이트 복구 커밋 `345b6fc77`.
 - [x] **SMP-ND-08** (**버그**) — SupportChat 상담원 재연결이 `WaitingForClose`를 `Active`로 되돌린다
   - 근거: 상담원 rejoin은 `WaitingForClose` 상태와 기존 close deadline을 보존하고 새 message만 재활성화하도록 domain transition을 고쳤다. rejoin으로 상태가 되돌아가 실패하던 SupportChat domain gate가 통과한다. 커밋 `1ab5ce152`.
 - [x] **SMP-ND-09** (**버그**) — TicTacToe timeout을 승리로 기록한다

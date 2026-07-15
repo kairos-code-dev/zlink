@@ -545,7 +545,15 @@ bool sample_and_e2e_code_does_not_read_the_environment (const std::filesystem::p
                                                || line.find ("load_env(") != std::string::npos
                                                || line.find ("os.environ") != std::string::npos
                                                || line.find ("${ZLINK_") != std::string::npos
-                                               || line.find ("$ZLINK_") != std::string::npos;
+                                               || line.find ("$ZLINK_") != std::string::npos
+                                               || ((line.find ("${BINGO_") != std::string::npos
+                                                    || line.find ("${GAMEQUEST_")
+                                                         != std::string::npos
+                                                    || line.find ("${SHOPPINGMALL_")
+                                                         != std::string::npos
+                                                    || line.find ("${TICTACTOE_")
+                                                         != std::string::npos)
+                                                   && line.find (":-") != std::string::npos);
                 if (reads_environment) {
                     std::cerr << "sample/e2e application code must take configuration from its "
                                  "config file, not the environment: "

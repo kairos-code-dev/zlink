@@ -43,13 +43,7 @@ done
   -R 'test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay' \
   --output-on-failure
 
-if [[ -n "${BINGO_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 22); do
-    PORTS+=("$((BINGO_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
@@ -80,30 +74,29 @@ finally:
         sock.close()
 PY
   )"
-fi
 
 if [[ ${#PORTS[@]} -lt 22 ]]; then
   echo "Failed to allocate 22 local TCP ports for the Bingo sample." >&2
-  echo "This environment may block local socket creation; set BINGO_BASE_PORT to use fixed ports." >&2
+  echo "This environment may block local socket creation." >&2
   exit 1
 fi
 
-API_A_CHANNEL_ENDPOINT="${BINGO_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-PLAY_A_CHANNEL_ENDPOINT="${BINGO_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-SESSION_A_ROUTER_ENDPOINT="${BINGO_SESSION_A_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-SESSION_B_SPOT_ENDPOINT="${BINGO_SESSION_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-SESSION_B_ROUTER_ENDPOINT="${BINGO_SESSION_B_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
-PLAY_B_CHANNEL_ENDPOINT="${BINGO_PLAY_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
-PLAY_A_SPOT_ENDPOINT="${BINGO_PLAY_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-PLAY_A_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-SESSION_A_STREAM_ENDPOINT="${BINGO_SESSION_A_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-SESSION_B_STREAM_ENDPOINT="${BINGO_SESSION_B_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
-PLAY_B_SPOT_ENDPOINT="${BINGO_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
-PLAY_B_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[14]}}"
-API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[15]}}"
-PLAY_A_ROUTE_ENDPOINT="${BINGO_PLAY_A_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[0]}}"
-PLAY_B_ROUTE_ENDPOINT="${BINGO_PLAY_B_ROUTE_ENDPOINT:-tcp://127.0.0.1:${PORTS[1]}}"
+API_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+PLAY_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+SESSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+SESSION_A_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+SESSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+SESSION_B_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+PLAY_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+PLAY_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+PLAY_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+SESSION_A_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
+SESSION_B_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
+PLAY_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
+PLAY_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
+API_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
+PLAY_A_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
+PLAY_B_ROUTE_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -136,13 +129,13 @@ wait_port() {
   return 1
 }
 
-RUN_DIR="${BINGO_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
 PIDS=()
 REDIS_CONTAINER=""
 cleanup_done=false
-BINGO_REDIS_KEY_PREFIX="${BINGO_REDIS_KEY_PREFIX:-bingo:cpp:${RANDOM}:$$:}"
+BINGO_REDIS_KEY_PREFIX="bingo:cpp:${RANDOM}:$$:"
 
 cleanup() {
   local code=$?
@@ -191,11 +184,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
-  if [[ "${BINGO_KEEP_RUN_DIR:-}" == "1" ]]; then
-    echo "runDir=$RUN_DIR"
-  else
-    [[ -z "${BINGO_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
-  fi
+  rm -rf "$RUN_DIR"
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
     code=1
   fi

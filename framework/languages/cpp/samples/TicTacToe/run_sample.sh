@@ -40,13 +40,7 @@ done
   -R 'test_cpp_framework_sample_parity|test_cpp_framework_spot_runtime|test_cpp_framework_ActorGateway_actor_session_relay|sample_smoke_sample_cpp_framework_tictactoe_(play|api)' \
   --output-on-failure
 
-if [[ -n "${TICTACTOE_CPP_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 15); do
-    PORTS+=("$((TICTACTOE_CPP_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
@@ -71,11 +65,10 @@ finally:
         sock.close()
 PY
   )"
-fi
 
 if [[ ${#PORTS[@]} -lt 15 ]]; then
   echo "Failed to allocate 15 local TCP ports for the TicTacToe sample." >&2
-  echo "This environment may block local socket creation; set TICTACTOE_CPP_BASE_PORT to use fixed ports." >&2
+  echo "This environment may block local socket creation." >&2
   exit 1
 fi
 
@@ -139,13 +132,14 @@ wait_grep() {
   grep -q "$pattern" "$file"
 }
 
-RUN_DIR="${TICTACTOE_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
 PIDS=()
 REDIS_CONTAINER=""
 cleanup_done=false
-REDIS_KEY_PREFIX="${TICTACTOE_CPP_REDIS_KEY_PREFIX:-zlink:tictactoe-cpp:${RANDOM}:$$:room:}"
+TICTACTOE_CPP_REDIS_KEY_PREFIX="zlink:tictactoe-cpp:${RANDOM}:$$:room:"
+REDIS_KEY_PREFIX="$TICTACTOE_CPP_REDIS_KEY_PREFIX"
 
 cleanup() {
   local code=$?
@@ -171,11 +165,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
-  if [[ "${TICTACTOE_CPP_KEEP_RUN_DIR:-}" == "1" ]]; then
-    echo "runDir=$RUN_DIR"
-  else
-    [[ -z "${TICTACTOE_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
-  fi
+  rm -rf "$RUN_DIR"
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
     code=1
   fi
@@ -280,10 +270,6 @@ wait_port api-a-channel "$API_A_ENDPOINT"
 wait_port api-a-http "$API_A_HTTP_ENDPOINT"
 wait_port api-b-channel "$API_B_ENDPOINT"
 wait_port api-b-http "$API_B_HTTP_ENDPOINT"
-
-if [[ "${TICTACTOE_CPP_STARTUP_SETTLE_SECONDS:-0}" != "0" ]]; then
-  sleep "$TICTACTOE_CPP_STARTUP_SETTLE_SECONDS"
-fi
 
 "$CLIENT_BIN" --api-http-endpoint "$API_A_HTTP_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {
   cat "$LOG_DIR/client.log" >&2

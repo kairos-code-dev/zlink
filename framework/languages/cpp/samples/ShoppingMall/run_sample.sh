@@ -11,7 +11,7 @@ if [[ ! -x "$BIN_DIR/sample_cpp_framework_shoppingmall_client" && -x "$BIN_DIR/l
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
 fi
 
-RUN_DIR="${SHOPPINGMALL_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "$RUN_DIR")-$$-${RANDOM}"
 LOG_DIR="$RUN_DIR/logs"
 FLOW_LOG_DIR="$SCRIPT_DIR/logs"
@@ -43,11 +43,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER_NAME" ]]; then
     docker rm -fv "$REDIS_CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
-  if [[ "${SHOPPINGMALL_KEEP_RUN_DIR:-}" == "1" ]]; then
-    echo "runDir=$RUN_DIR"
-  else
-    [[ -z "${SHOPPINGMALL_RUN_DIR:-}" ]] && rm -rf "$RUN_DIR"
-  fi
+  rm -rf "$RUN_DIR"
   if [[ "$cleanup_failed" -ne 0 && "$code" -eq 0 ]]; then
     code=1
   fi
@@ -95,7 +91,7 @@ cmake --build "$BUILD_DIR" --target \
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
   "zlink-redis-cpp-sample-shoppingmall" "redis:7-alpine"
 SHOPPINGMALL_REDIS_ENDPOINT="tcp://127.0.0.1:${redis_port}"
-SHOPPINGMALL_REDIS_KEY_PREFIX="${SHOPPINGMALL_REDIS_KEY_PREFIX:-shoppingmall:cpp:${RUN_ID}:}"
+SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:cpp:${RUN_ID}:"
 SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_A_PORT}"
 SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_API_B_PORT}"
 SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${SHOPPINGMALL_WORKFLOW_A_PORT}"

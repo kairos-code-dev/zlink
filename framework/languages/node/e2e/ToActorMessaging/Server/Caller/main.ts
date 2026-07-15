@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkFrameworkErrorKind, ZLinkFrameworkException, ZLinkMessageFlowLogMode, type ActorRef, type ZLinkActorClient } from '@zlink-systems/framework';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
+  ZLinkMessageFlowLogMode,
+  type ActorRef,
+  type ZLinkActorClient
+} from '@zlink-systems/framework';
 import { ZLINK_ACTOR_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { actorAsk, actorNotify, actorPush, type ActorCallRequest, type ActorCallResponse, type ActorRefSnapshot, type ActorReply } from '../../Shared/messages';
@@ -12,6 +18,8 @@ import type { ServerOptions } from '../../configuration';
 
 let options: ServerOptions;
 let stopping = false;
+const scenarioControls = new Set<string>();
+const callTimeoutMs = 1000;
 
 class CallerModule {}
 const configuration = createToActorConfigurationModule();
@@ -74,7 +82,7 @@ async function main(): Promise<void> {
         try {
           const reply = await actors
             .requestToActor(requireActorRef(request), actorAsk(request.scenario, request.actorId, request.value))
-            .timeout(5000)
+            .timeout(callTimeoutMs)
             .submit<ActorReply>();
           return { scenario: request.scenario, actorId: request.actorId, result: reply.value } satisfies ActorCallResponse;
         } catch (error) {
@@ -98,6 +106,10 @@ async function main(): Promise<void> {
         }
       }
     },
+    { method: 'GET', path: '/control/route-disconnected', handle: () => ({ ready: scenarioControls.has('route-disconnected') }) },
+    { method: 'POST', path: '/control/route-disconnected', handle: () => { scenarioControls.add('route-disconnected'); return { ready: true }; } },
+    { method: 'GET', path: '/control/route-restored', handle: () => ({ ready: scenarioControls.has('route-restored') }) },
+    { method: 'POST', path: '/control/route-restored', handle: () => { scenarioControls.add('route-restored'); return { ready: true }; } },
     { method: 'POST', path: '/shutdown', handle: () => { stopping = true; return { status: 'stopping' }; } }
   ]);
 

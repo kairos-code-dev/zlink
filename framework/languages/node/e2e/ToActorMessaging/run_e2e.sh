@@ -67,8 +67,13 @@ wait_topology() {
 
 pids=()
 REDIS_CONTAINER_ID=""
+ACTOR_PID=""
+ACTOR_PAUSED=0
 cleanup() {
   local code=$?
+  if [[ "$ACTOR_PAUSED" == "1" && -n "$ACTOR_PID" ]]; then
+    kill -CONT "$ACTOR_PID" >/dev/null 2>&1 || true
+  fi
   for pid in "${pids[@]:-}"; do
     kill "$pid" >/dev/null 2>&1 || true
   done
@@ -94,7 +99,8 @@ start_server() {
   shift
   shift
   node "$main" "$@" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
-  pids+=("$!")
+  LAST_SERVER_PID="$!"
+  pids+=("$LAST_SERVER_PID")
 }
 
 start_configured_server() {
@@ -118,6 +124,7 @@ start_role() {
         --pubsub-endpoint "tcp://127.0.0.1:$ACTOR_PUBSUB_PORT" \
         --evidence-file "$LOG_DIR/actor.evidence.log" \
         --log-dir "$LOG_DIR"
+      ACTOR_PID="$LAST_SERVER_PID"
       ;;
     caller)
       start_configured_server caller "$CALLER_MAIN" \
@@ -200,12 +207,37 @@ for role in "${SERVER_ROLES[@]}"; do
 done
 wait_topology
 
-node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
-  --actor-url "$ACTOR_URL" \
-  --caller-url "$CALLER_URL" \
-  --session-url "$SESSION_URL" \
-  --session-stream-endpoint "$SESSION_STREAM_ENDPOINT" \
-  --scenario "$SCENARIO" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+run_client() {
+  node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
+    --actor-url "$ACTOR_URL" \
+    --caller-url "$CALLER_URL" \
+    --session-url "$SESSION_URL" \
+    --session-stream-endpoint "$SESSION_STREAM_ENDPOINT" \
+    --scenario "$SCENARIO"
+}
+
+if [[ "$SCENARIO" == "TA-B3" ]]; then
+  run_client >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log" &
+  CLIENT_PID="$!"
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control TA-B3 disconnect-route" \
+    "TA-B3 client did not request route disconnection." "$CLIENT_PID"
+
+  kill -STOP "$ACTOR_PID"
+  ACTOR_PAUSED=1
+  PEER_SNAPSHOT="$LOG_DIR/actor-peer.snapshot.json"
+  node "$ROOT_DIR/peer-fault.js" remove "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" to-actor-owner "$PEER_SNAPSHOT"
+  curl -fsS -X POST "$CALLER_URL/control/route-disconnected" >/dev/null
+
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control TA-B3 restore-route" \
+    "TA-B3 client did not request route restoration." "$CLIENT_PID"
+  kill -CONT "$ACTOR_PID"
+  ACTOR_PAUSED=0
+  node "$ROOT_DIR/peer-fault.js" restore "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" to-actor-owner "$PEER_SNAPSHOT"
+  wait_topology
+  curl -fsS -X POST "$CALLER_URL/control/route-restored" >/dev/null
+  wait "$CLIENT_PID"
+else
+  run_client >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+fi
 
 cat "$LOG_DIR/client.stdout.log"

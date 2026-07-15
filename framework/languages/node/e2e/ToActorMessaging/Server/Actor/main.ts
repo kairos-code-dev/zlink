@@ -234,6 +234,14 @@ async function main(): Promise<void> {
     },
     {
       method: 'POST',
+      path: '/actors/ta-b2/destroy',
+      handle: async () => {
+        await entrySpot.destroy('ta-b2');
+        return { actorId: 'ta-b2', status: 'destroyed' };
+      }
+    },
+    {
+      method: 'POST',
       path: '/actors/ta-b3/ensure',
       handle: async () => {
         const actor = await actors.getOrCreate('ta-b3', 'test-actor');

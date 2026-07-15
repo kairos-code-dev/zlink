@@ -173,6 +173,7 @@ public final class Program implements AutoCloseable {
                 "ST-F1 backlog did not replay on target");
         }
         assertMarkerOrder(fixture.actorId(), "packet_handler", List.of("P1", "P2", "P3"));
+        assertNodeOrder(fixture.actorId(), "actor-b", List.of("backlog_enqueued", "packet_handler"));
     }
 
     private void directDoesNotOvertake() throws Exception {
@@ -189,6 +190,7 @@ public final class Program implements AutoCloseable {
         b2.get(8, TimeUnit.SECONDS);
         direct.get(8, TimeUnit.SECONDS);
         assertMarkerOrder(fixture.actorId(), "packet_handler", List.of("B1", "B2", "D1"));
+        assertNodeOrder(fixture.actorId(), "actor-b", List.of("backlog_enqueued", "packet_handler"));
     }
 
     private void boundSessionCrossMoveOrder() throws Exception {

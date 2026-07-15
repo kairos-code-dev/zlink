@@ -1,5 +1,6 @@
 import { OrderStatuses } from '../Shared/Contracts/messages';
 import type { ZLinkHttpClient } from '@zlink-systems/http-client';
+import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
 import type {
   ContinueOrderWorkflowRes,
   GetOrderStateRes,
@@ -14,26 +15,26 @@ import type {
 class ShoppingMallClientScenario {
   async run(apiA: ZLinkHttpClient, apiB: ZLinkHttpClient, signal?: AbortSignal): Promise<void> {
     const seeded = await apiA.post('/self-check/seed').asyncRaw();
-    ensure(() => seeded.status >= 200 && seeded.status < 300);
+    zlinkStreamAssert.ensure(seeded.status >= 200 && seeded.status < 300, 'Sample scenario assertion failed.');
 
     const successReq = startOrderReq('cart-success', 'addr-home', 'pm-ok', 'order-success-001');
     const success = await apiA.post('/orders/start').body(successReq).fetch<StartOrderRes>();
-    ensure(() => success.status === OrderStatuses.Created);
-    ensure(() => success.orderId.length > 0);
+    zlinkStreamAssert.ensure(success.status === OrderStatuses.Created, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(success.orderId.length > 0, 'Sample scenario assertion failed.');
 
     const created = await this.getOrder(apiA, success.orderId);
-    ensure(() => this.isStartedOrConfirmed(created));
-    ensure(() => created.shippingAddressId === successReq.shippingAddressId);
+    zlinkStreamAssert.ensure(this.isStartedOrConfirmed(created), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(created.shippingAddressId === successReq.shippingAddressId, 'Sample scenario assertion failed.');
 
     const confirmed = await this.waitForStatus(apiA, success.orderId, OrderStatuses.Confirmed, signal);
-    ensure(() => confirmed.reservationId === `reservation-${success.orderId}`);
-    ensure(() => confirmed.paymentId === `payment-${success.orderId}`);
-    ensure(() => confirmed.amount === 120);
-    ensure(() => confirmed.currency === 'USD');
+    zlinkStreamAssert.ensure(confirmed.reservationId === `reservation-${success.orderId}`, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(confirmed.paymentId === `payment-${success.orderId}`, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(confirmed.amount === 120, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(confirmed.currency === 'USD', 'Sample scenario assertion failed.');
     console.log('shoppingmall-success=completed');
 
     const duplicate = await apiB.post('/orders/start').body(successReq).fetch<StartOrderRes>();
-    ensure(() => duplicate.orderId === success.orderId);
+    zlinkStreamAssert.ensure(duplicate.orderId === success.orderId, 'Sample scenario assertion failed.');
     console.log('shoppingmall-idempotency=completed');
 
     const concurrentReq = startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-concurrent-001');
@@ -41,84 +42,84 @@ class ShoppingMallClientScenario {
       apiA.post('/orders/start').body(concurrentReq).fetch<StartOrderRes>(),
       apiB.post('/orders/start').body(concurrentReq).fetch<StartOrderRes>()
     ]);
-    ensure(() => concurrentA.orderId === concurrentB.orderId);
+    zlinkStreamAssert.ensure(concurrentA.orderId === concurrentB.orderId, 'Sample scenario assertion failed.');
     const concurrentConfirmed = await this.waitForStatus(apiA, concurrentA.orderId, OrderStatuses.Confirmed, signal);
-    ensure(() => concurrentConfirmed.status === OrderStatuses.Confirmed);
+    zlinkStreamAssert.ensure(concurrentConfirmed.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
     console.log('shoppingmall-concurrent=completed');
 
     const pendingReq = startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-pending-001');
     const pendingHook = await apiA.post('/self-check/idempotency/pending')
       .body({ idempotencyKey: pendingReq.idempotencyKey, orderId: 'order-pending-0001', ownerInstanceId: 'api-a' })
       .asyncRaw();
-    ensure(() => pendingHook.status >= 200 && pendingHook.status < 300);
+    zlinkStreamAssert.ensure(pendingHook.status >= 200 && pendingHook.status < 300, 'Sample scenario assertion failed.');
     const pending = await apiB.post('/orders/start').body(pendingReq).fetch<StartOrderRes>();
-    ensure(() => pending.orderId === 'order-pending-0001');
-    ensure(() => pending.status === OrderStatuses.Created);
+    zlinkStreamAssert.ensure(pending.orderId === 'order-pending-0001', 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(pending.status === OrderStatuses.Created, 'Sample scenario assertion failed.');
     const pendingCreated = await this.getOrder(apiA, pending.orderId);
-    ensure(() => this.isStartedOrConfirmed(pendingCreated));
-    ensure(() => pendingCreated.shippingAddressId === pendingReq.shippingAddressId);
+    zlinkStreamAssert.ensure(this.isStartedOrConfirmed(pendingCreated), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(pendingCreated.shippingAddressId === pendingReq.shippingAddressId, 'Sample scenario assertion failed.');
     console.log('shoppingmall-pending=completed');
 
     const resumeReq = startOrderReq('cart-success', 'addr-home', 'pm-ok', 'order-resume-001');
     const inventoryReserved = await apiA.post('/self-check/workflow/inventory-reserved')
       .body(resumeReq)
       .fetch<StartOrderRes>();
-    ensure(() => inventoryReserved.status === OrderStatuses.InventoryReserved);
+    zlinkStreamAssert.ensure(inventoryReserved.status === OrderStatuses.InventoryReserved, 'Sample scenario assertion failed.');
     const resumed = await apiB.post(`/self-check/workflow/${inventoryReserved.orderId}/continue`)
       .fetch<ContinueOrderWorkflowRes>();
-    ensure(() => resumed.state.status === OrderStatuses.Confirmed);
-    ensure(() => resumed.state.reservationId === `reservation-${inventoryReserved.orderId}`);
-    ensure(() => resumed.state.paymentId === `payment-${inventoryReserved.orderId}`);
+    zlinkStreamAssert.ensure(resumed.state.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(resumed.state.reservationId === `reservation-${inventoryReserved.orderId}`, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(resumed.state.paymentId === `payment-${inventoryReserved.orderId}`, 'Sample scenario assertion failed.');
     console.log('shoppingmall-resume=completed');
 
     const interruptedReq = startOrderReq('cart-success', 'addr-home', 'pm-ok', 'order-interrupted-001');
     const interrupted = await apiA.post('/self-check/workflow/inventory-effect')
       .body(interruptedReq)
       .fetch<StartOrderRes>();
-    ensure(() => interrupted.status === OrderStatuses.Created);
+    zlinkStreamAssert.ensure(interrupted.status === OrderStatuses.Created, 'Sample scenario assertion failed.');
     const interruptionRecovered = await apiB.post(`/self-check/workflow/${interrupted.orderId}/continue`)
       .fetch<ContinueOrderWorkflowRes>();
-    ensure(() => interruptionRecovered.state.status === OrderStatuses.Confirmed);
+    zlinkStreamAssert.ensure(interruptionRecovered.state.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
     console.log('shoppingmall-effect-interruption=completed');
 
     const fence = await apiA.post(`/self-check/workflow/${success.orderId}/verify-fence`)
       .fetch<VerifyExpectedVersionFenceRes>();
-    ensure(() => fence.rejected);
-    ensure(() => fence.actualVersion > fence.expectedVersion);
+    zlinkStreamAssert.ensure(fence.rejected, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(fence.actualVersion > fence.expectedVersion, 'Sample scenario assertion failed.');
     console.log('shoppingmall-version-fence=completed');
 
     const inventoryReq = startOrderReq('cart-inventory-fail', 'addr-home', 'pm-ok', 'order-inventory-001');
     const inventoryStarted = await apiA.post('/orders/start').body(inventoryReq).fetch<StartOrderRes>();
     const inventoryFailed = await this.waitForStatus(apiA, inventoryStarted.orderId, OrderStatuses.Failed, signal);
-    ensure(() => inventoryFailed.reason?.toLowerCase().includes('inventory') === true);
+    zlinkStreamAssert.ensure(inventoryFailed.reason?.toLowerCase().includes('inventory') === true, 'Sample scenario assertion failed.');
     console.log('shoppingmall-inventory-failure=completed');
 
     const paymentReq = startOrderReq('cart-payment-fail', 'addr-home', 'pm-decline', 'order-payment-001');
     const paymentStarted = await apiB.post('/orders/start').body(paymentReq).fetch<StartOrderRes>();
     const paymentFailed = await this.waitForStatus(apiB, paymentStarted.orderId, OrderStatuses.Failed, signal);
-    ensure(() => paymentFailed.reservationId !== undefined);
-    ensure(() => paymentFailed.reason?.toLowerCase().includes('payment') === true);
+    zlinkStreamAssert.ensure(paymentFailed.reservationId !== undefined, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(paymentFailed.reason?.toLowerCase().includes('payment') === true, 'Sample scenario assertion failed.');
     console.log('shoppingmall-payment-failure=completed');
 
     const deleteProjection = await apiA.post(`/self-check/projection/${success.orderId}/delete`).asyncRaw();
-    ensure(() => deleteProjection.status >= 200 && deleteProjection.status < 300);
+    zlinkStreamAssert.ensure(deleteProjection.status >= 200 && deleteProjection.status < 300, 'Sample scenario assertion failed.');
     const healedByContinue = await apiB.post(`/self-check/workflow/${success.orderId}/continue`)
       .fetch<ContinueOrderWorkflowRes>();
-    ensure(() => healedByContinue.state.status === OrderStatuses.Confirmed);
+    zlinkStreamAssert.ensure(healedByContinue.state.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
 
     const deleteProjectionAgain = await apiA.post(`/self-check/projection/${success.orderId}/delete`).asyncRaw();
-    ensure(() => deleteProjectionAgain.status >= 200 && deleteProjectionAgain.status < 300);
+    zlinkStreamAssert.ensure(deleteProjectionAgain.status >= 200 && deleteProjectionAgain.status < 300, 'Sample scenario assertion failed.');
     const rebuilt = await apiA.post(`/self-check/projection/${success.orderId}/rebuild`)
       .fetch<RebuildOrderProjectionRes>();
-    ensure(() => rebuilt.state.status === OrderStatuses.Confirmed);
+    zlinkStreamAssert.ensure(rebuilt.state.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
     const rebuiltRead = await this.getOrder(apiB, success.orderId);
-    ensure(() => rebuiltRead.status === OrderStatuses.Confirmed);
+    zlinkStreamAssert.ensure(rebuiltRead.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
     console.log('shoppingmall-rebuild=completed');
 
     const delayedFirst = await this.getOrder(apiB, paymentStarted.orderId);
     const delayedSecond = await this.getOrder(apiA, paymentStarted.orderId);
-    ensure(() => delayedFirst.status === delayedSecond.status);
-    ensure(() => delayedSecond.status === OrderStatuses.Failed);
+    zlinkStreamAssert.ensure(delayedFirst.status === delayedSecond.status, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(delayedSecond.status === OrderStatuses.Failed, 'Sample scenario assertion failed.');
     console.log('shoppingmall-consistency=completed');
 
     const [scaleA, scaleB] = await Promise.all([
@@ -133,8 +134,8 @@ class ShoppingMallClientScenario {
       this.waitForStatus(apiB, scaleA.orderId, OrderStatuses.Confirmed, signal),
       this.waitForStatus(apiA, scaleB.orderId, OrderStatuses.Confirmed, signal)
     ]);
-    ensure(() => scaleAConfirmed.status === OrderStatuses.Confirmed);
-    ensure(() => scaleBConfirmed.status === OrderStatuses.Confirmed);
+    zlinkStreamAssert.ensure(scaleAConfirmed.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(scaleBConfirmed.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
     console.log('shoppingmall-scaleout=completed');
 
     const assertion = await apiA.post('/self-check/assert')
@@ -149,7 +150,7 @@ class ShoppingMallClientScenario {
         scaleOutOrderIds: [scaleA.orderId, scaleB.orderId]
       })
       .fetch<ServerAssertionRes>();
-    ensure(() => assertion.passed);
+    zlinkStreamAssert.ensure(assertion.passed, 'Sample scenario assertion failed.');
     console.log('shoppingmall-server-evidence=completed');
   }
 
@@ -189,12 +190,6 @@ function startOrderReq(
   idempotencyKey: string
 ): StartOrderReq {
   return { cartId, shippingAddressId, paymentMethodId, idempotencyKey };
-}
-
-function ensure(condition: () => boolean): void {
-  if (!condition()) {
-    throw new Error(`Ensure failed: ${condition.toString()}`);
-  }
 }
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {

@@ -1,5 +1,6 @@
 import { CourierDecisionMsg, bindCourierSession, PacketNames, subscribeDelivery } from '../Shared/Contracts/messages';
 import type { BrowserHttpClient } from '../../browser-client-runtime';
+import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type {
   CreateDeliveryRes,
@@ -34,10 +35,10 @@ class DeliveryDispatchClientScenario {
       await this.connect(customer, courierA, courierB, signal);
       const reboundA = await this.bindCourier(courierA, 'courier-a', 'courier-node-1', signal);
       const reboundB = await this.bindCourier(courierB, 'courier-b', 'courier-node-2', signal);
-      ensure(() => reboundA.actor.generation === firstActorA.actor.generation);
-      ensure(() => reboundB.actor.generation === firstActorB.actor.generation);
-      ensure(() => reboundA.sessionRoute !== firstActorA.sessionRoute);
-      ensure(() => reboundB.sessionRoute !== firstActorB.sessionRoute);
+      zlinkStreamAssert.ensure(reboundA.actor.generation === firstActorA.actor.generation, 'Sample scenario assertion failed.');
+      zlinkStreamAssert.ensure(reboundB.actor.generation === firstActorB.actor.generation, 'Sample scenario assertion failed.');
+      zlinkStreamAssert.ensure(reboundA.sessionRoute !== firstActorA.sessionRoute, 'Sample scenario assertion failed.');
+      zlinkStreamAssert.ensure(reboundB.sessionRoute !== firstActorB.sessionRoute, 'Sample scenario assertion failed.');
 
       await this.runReassignedDelivery(http, customer, courierA, courierB, signal);
       await this.assertServerEvidence(http);
@@ -64,10 +65,10 @@ class DeliveryDispatchClientScenario {
     const bound = await courier.request(bindCourierSession(courierId), Object)
       .packetName(PacketNames.bindCourierSession)
       .submit<BindCourierSessionRes>(signal);
-    ensure(() => bound.courierId === courierId);
-    ensure(() => bound.actor.actorId === courierId);
-    ensure(() => bound.actor.nodeRid === expectedNodeRid);
-    ensure(() => bound.sessionRoute.length > 0);
+    zlinkStreamAssert.ensure(bound.courierId === courierId, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(bound.actor.actorId === courierId, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(bound.actor.nodeRid === expectedNodeRid, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(bound.sessionRoute.length > 0, 'Sample scenario assertion failed.');
     return bound;
   }
 
@@ -94,7 +95,7 @@ class DeliveryDispatchClientScenario {
     const subscribed = await customer.request(subscribeDelivery(deliveryId), Object)
       .packetName(PacketNames.subscribeDelivery)
       .submit<SubscribeDeliveryRes>(signal);
-    ensure(() => subscribed.deliveryId === deliveryId);
+    zlinkStreamAssert.ensure(subscribed.deliveryId === deliveryId, 'Sample scenario assertion failed.');
 
     const created = await http.post('/deliveries')
       .body({
@@ -104,16 +105,16 @@ class DeliveryDispatchClientScenario {
         dropoffAddress: 'Customer Lobby'
       })
       .fetch<CreateDeliveryRes>();
-    ensure(() => created.deliveryId === deliveryId);
+    zlinkStreamAssert.ensure(created.deliveryId === deliveryId, 'Sample scenario assertion failed.');
     const offered = await offerA;
-    ensure(() => offered.payload.courierId === 'courier-a');
-    ensure(() => offered.payload.attempt === 1);
+    zlinkStreamAssert.ensure(offered.payload.courierId === 'courier-a', 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(offered.payload.attempt === 1, 'Sample scenario assertion failed.');
     courierA.send(new CourierDecisionMsg(deliveryId, 'courier-a', offered.payload.attempt, true))
       .packetName(PacketNames.courierDecision)
       .submit();
     const notifications = await Promise.all(statusWaits);
-    ensure(() => arrivals.join(',') === statuses.join(','));
-    ensure(() => notifications.every((message) => message.payload.courierId === 'courier-a'));
+    zlinkStreamAssert.ensure(arrivals.join(',') === statuses.join(','), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(notifications.every((message) => message.payload.courierId === 'courier-a'), 'Sample scenario assertion failed.');
   }
 
   private async runReassignedDelivery(
@@ -143,7 +144,7 @@ class DeliveryDispatchClientScenario {
     const subscribed = await customer.request(subscribeDelivery(deliveryId), Object)
       .packetName(PacketNames.subscribeDelivery)
       .submit<SubscribeDeliveryRes>(signal);
-    ensure(() => subscribed.deliveryId === deliveryId);
+    zlinkStreamAssert.ensure(subscribed.deliveryId === deliveryId, 'Sample scenario assertion failed.');
 
     const created = await http.post('/deliveries')
       .body({
@@ -153,13 +154,13 @@ class DeliveryDispatchClientScenario {
         dropoffAddress: 'Customer Lobby'
       })
       .fetch<CreateDeliveryRes>();
-    ensure(() => created.deliveryId === deliveryId);
+    zlinkStreamAssert.ensure(created.deliveryId === deliveryId, 'Sample scenario assertion failed.');
     const firstOffer = await timedOutOffer;
-    ensure(() => firstOffer.payload.courierId === 'courier-a');
-    ensure(() => firstOffer.payload.attempt === 1);
+    zlinkStreamAssert.ensure(firstOffer.payload.courierId === 'courier-a', 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(firstOffer.payload.attempt === 1, 'Sample scenario assertion failed.');
     const secondOffer = await reassignedOffer;
-    ensure(() => secondOffer.payload.courierId === 'courier-b');
-    ensure(() => secondOffer.payload.attempt === 2);
+    zlinkStreamAssert.ensure(secondOffer.payload.courierId === 'courier-b', 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(secondOffer.payload.attempt === 2, 'Sample scenario assertion failed.');
     courierA.send(new CourierDecisionMsg(deliveryId, 'courier-a', firstOffer.payload.attempt, true))
       .packetName(PacketNames.courierDecision)
       .submit();
@@ -168,9 +169,9 @@ class DeliveryDispatchClientScenario {
       .submit();
 
     const notifications = await Promise.all(statusWaits);
-    ensure(() => arrivals.join(',') === statuses.join(','));
-    ensure(() => notifications[0]?.payload.courierId === 'courier-a');
-    ensure(() => notifications.slice(1).every((message) => message.payload.courierId === 'courier-b'));
+    zlinkStreamAssert.ensure(arrivals.join(',') === statuses.join(','), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(notifications[0]?.payload.courierId === 'courier-a', 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(notifications.slice(1).every((message) => message.payload.courierId === 'courier-b'), 'Sample scenario assertion failed.');
     console.log('deliverydispatch-reassignment=completed');
   }
 
@@ -181,14 +182,8 @@ class DeliveryDispatchClientScenario {
         reassignedDeliveryId: 'delivery-reassign'
       })
       .fetch<ServerAssertionRes>();
-    ensure(() => assertion.passed);
+    zlinkStreamAssert.ensure(assertion.passed, 'Sample scenario assertion failed.');
     console.log('deliverydispatch-server-evidence=completed');
-  }
-}
-
-function ensure(condition: () => boolean): void {
-  if (!condition()) {
-    throw new Error(`Ensure failed: ${condition.toString()}`);
   }
 }
 

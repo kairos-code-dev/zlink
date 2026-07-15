@@ -4,15 +4,24 @@ import {
 } from '../Contracts';
 import { connectorError, unwrapStreamError } from './ZlinkStreamSupport';
 
-export const zlinkStreamAssert = {
-  ensure(condition: boolean, message: string): void {
+export interface ZlinkStreamAssertions {
+  ensure(condition: boolean, message: string): asserts condition;
+  expectFailure(
+    action: (signal?: AbortSignal) => Promise<unknown>,
+    errorKind?: string
+  ): Promise<ZlinkStreamError>;
+  expectTimeout(action: (signal?: AbortSignal) => Promise<void>): Promise<void>;
+}
+
+export const zlinkStreamAssert: ZlinkStreamAssertions = {
+  ensure(condition: boolean, message: string): asserts condition {
     if (!condition) {
       throw connectorError(ZlinkStreamErrorCode.ValidationFailed, message);
     }
   },
 
   async expectFailure(
-    action: (signal?: AbortSignal) => Promise<void>,
+    action: (signal?: AbortSignal) => Promise<unknown>,
     errorKind?: string
   ): Promise<ZlinkStreamError> {
     let failure: unknown;

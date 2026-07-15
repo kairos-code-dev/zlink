@@ -38,25 +38,25 @@ class TicTacToeClientScenario {
       await api.close();
     }
 
-    ensure(() => game.gameName === 'match-ready');
-    ensure(() => game.roomId.length > 0);
-    ensure(() => game.ownerPlayEndpoint.length > 0);
-    ensure(() => game.playEndpoints.length >= 2);
-    ensure(() => new Set(game.playEndpoints).size === game.playEndpoints.length);
-    ensure(() => game.playEndpoints.includes(game.ownerPlayEndpoint));
-    ensure(() => game.playNodes.length === game.playEndpoints.length);
-    ensure(() => new Set(game.playNodes.map((node) => node.spotNodeRid)).size === game.playNodes.length);
-    ensure(() => game.playNodes.every((node) => game.playEndpoints.includes(node.streamEndpoint)));
-    ensure(() => game.requiredLevel === 3);
+    connector.zlinkStreamAssert.ensure(game.gameName === 'match-ready', 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.roomId.length > 0, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.ownerPlayEndpoint.length > 0, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.playEndpoints.length >= 2, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(new Set(game.playEndpoints).size === game.playEndpoints.length, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.playEndpoints.includes(game.ownerPlayEndpoint), 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.playNodes.length === game.playEndpoints.length, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(new Set(game.playNodes.map((node) => node.spotNodeRid)).size === game.playNodes.length, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.playNodes.every((node) => game.playEndpoints.includes(node.streamEndpoint)), 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(game.requiredLevel === 3, 'Sample scenario assertion failed.');
     const ownerPlayNode = game.playNodes.find((node) => node.streamEndpoint === game.ownerPlayEndpoint);
-    ensure(() => ownerPlayNode !== undefined);
-    ensure(() => ownerPlayNode?.spotNodeRid.length !== 0);
+    connector.zlinkStreamAssert.ensure(ownerPlayNode !== undefined, 'Sample scenario assertion failed.');
+    connector.zlinkStreamAssert.ensure(ownerPlayNode.spotNodeRid.length !== 0, 'Sample scenario assertion failed.');
 
     const guestPlayEndpoint = game.playEndpoints.find((endpoint) => endpoint !== game.ownerPlayEndpoint);
-    ensure(() => guestPlayEndpoint !== undefined);
+    connector.zlinkStreamAssert.ensure(guestPlayEndpoint !== undefined, 'Sample scenario assertion failed.');
     const observerPlayEndpoint = guestPlayEndpoint as string;
     const observerPlayNode = game.playNodes.find((node) => node.streamEndpoint === observerPlayEndpoint);
-    ensure(() => observerPlayNode !== undefined);
+    connector.zlinkStreamAssert.ensure(observerPlayNode !== undefined, 'Sample scenario assertion failed.');
 
     const observedClients = new Set<string>();
     const client1 = createPlayerClient(game.ownerPlayEndpoint, 'host', observedClients);
@@ -67,29 +67,28 @@ class TicTacToeClientScenario {
       // 2. Host, guest, and observer connect directly to Play stream endpoints from the API response.
       await client1.connect(signal);
       const client1Auth = await client1.request(authenticateReq('player-x')).submit<AuthenticateRes>(signal);
-      ensure(() => client1Auth.player.actorId === 'player-x');
-      ensure(() => client1Auth.player.displayName.length > 0);
-      ensure(() => client1Auth.player.level >= game.requiredLevel);
-      ensure(() => client1Auth.player.wins === 99);
+      connector.zlinkStreamAssert.ensure(client1Auth.player.actorId === 'player-x', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Auth.player.displayName.length > 0, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Auth.player.level >= game.requiredLevel, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Auth.player.wins === 99, 'Sample scenario assertion failed.');
 
       await client2.connect(signal);
       const client2Auth = await client2.request(authenticateReq('player-o')).submit<AuthenticateRes>(signal);
-      ensure(() => client2Auth.player.actorId === 'player-o');
-      ensure(() => client2Auth.player.actorId !== client1Auth.player.actorId);
-      ensure(() => client2Auth.player.displayName.length > 0);
-      ensure(() => client2Auth.player.level >= game.requiredLevel);
-      ensure(() => client2Auth.player.wins >= 0);
+      connector.zlinkStreamAssert.ensure(client2Auth.player.actorId === 'player-o', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client2Auth.player.displayName.length > 0, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client2Auth.player.level >= game.requiredLevel, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client2Auth.player.wins >= 0, 'Sample scenario assertion failed.');
 
       await observer.connect(signal);
       const observerAuth = await observer.request(authenticateReq('observer')).submit<AuthenticateRes>(signal);
-      ensure(() => observerAuth.player.actorId === 'observer');
-      ensure(() => observerAuth.player.displayName.length > 0);
-      ensure(() => observerAuth.player.level >= game.requiredLevel);
-      ensure(() => observerAuth.player.wins === 0);
+      connector.zlinkStreamAssert.ensure(observerAuth.player.actorId === 'observer', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(observerAuth.player.displayName.length > 0, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(observerAuth.player.level >= game.requiredLevel, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(observerAuth.player.wins === 0, 'Sample scenario assertion failed.');
       const observerSubscription = await observer
         .request(new ObserveMilestoneReq())
         .submit<ObserveMilestoneRes>(signal);
-      ensure(() => observerSubscription.subscribed);
+      connector.zlinkStreamAssert.ensure(observerSubscription.subscribed, 'Sample scenario assertion failed.');
       console.log('observer-subscription=verified');
 
       // 3. Host joins by explicit RoomId
@@ -100,11 +99,11 @@ class TicTacToeClientScenario {
         signal
       );
       const client1Join = await client1.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
-      ensure(() => stateOf(client1Join).roomId === game.roomId);
-      ensure(() => stateOf(client1Join).status === GameStatus.WaitingForPlayers);
-      ensure(() => stateOf(client1Join).xActorId === client1Auth.player.actorId);
-      ensure(() => stateOf(client1Join).oActorId === null);
-      ensure(() => stateOf(client1Join).board === '.........');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Join).roomId === game.roomId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Join).status === GameStatus.WaitingForPlayers, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Join).xActorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Join).oActorId === null, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Join).board === '.........', 'Sample scenario assertion failed.');
       const client1SawClient2Join = client1
         .waitFor<PlayerJoinedNotify>(PacketNames.playerJoinedNotify)
         .where((message) => message.payload.actorId === client2Auth.player.actorId)
@@ -122,22 +121,22 @@ class TicTacToeClientScenario {
         signal
       );
       const client2Join = await client2.request(joinGameReq(game.roomId)).submit<JoinGameRes>(signal);
-      ensure(() => stateOf(client2Join).roomId === game.roomId);
-      ensure(() => stateOf(client2Join).status === GameStatus.InProgress);
-      ensure(() => stateOf(client2Join).oActorId === client2Auth.player.actorId);
-      ensure(() => stateOf(client2Join).xActorId === client1Auth.player.actorId);
-      ensure(() => stateOf(client2Join).nextTurn === GameMarks.x);
+      connector.zlinkStreamAssert.ensure(stateOf(client2Join).roomId === game.roomId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client2Join).status === GameStatus.InProgress, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client2Join).oActorId === client2Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client2Join).xActorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client2Join).nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
       const [client1Joined, client1Running] = await Promise.all([
         client1SawClient2Join,
         client1RunningState
       ]);
-      ensure(() => client1Joined.payload.roomId === game.roomId);
-      ensure(() => client1Joined.payload.actorId === client2Auth.player.actorId);
-      ensure(() => client1Joined.payload.displayName === client2Auth.player.displayName);
-      ensure(() => client1Joined.payload.level === client2Auth.player.level);
-      ensure(() => client1Joined.payload.mark === GameMarks.o);
-      ensure(() => stateOf(client1Joined.payload).status === GameStatus.InProgress);
-      ensure(() => client1Running.payload.state.nextTurn === GameMarks.x);
+      connector.zlinkStreamAssert.ensure(client1Joined.payload.roomId === game.roomId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Joined.payload.actorId === client2Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Joined.payload.displayName === client2Auth.player.displayName, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Joined.payload.level === client2Auth.player.level, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Joined.payload.mark === GameMarks.o, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Joined.payload).status === GameStatus.InProgress, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(client1Running.payload.state.nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
       await client1SelfJoin.assertAbsent();
 
       // 7. Each move response is matched with the opponent notify.
@@ -145,29 +144,29 @@ class TicTacToeClientScenario {
       const client1Move1 = await client1.request(placeMarkStreamReq(0)).submit<PlaceMarkRes>(signal);
       requireSameState(stateOf(client1Move1), (await client2SawMove1).payload.state);
       await client2SelfJoin.assertAbsent();
-      ensure(() => stateOf(client1Move1).board === 'X........');
-      ensure(() => stateOf(client1Move1).nextTurn === GameMarks.o);
+      connector.zlinkStreamAssert.ensure(stateOf(client1Move1).board === 'X........', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Move1).nextTurn === GameMarks.o, 'Sample scenario assertion failed.');
       requireLastMove(stateOf(client1Move1), client1Auth.player.actorId, 0);
 
       const client1SawMove2 = waitState(client1, 3, signal);
       const client2Move1 = await client2.request(placeMarkStreamReq(3)).submit<PlaceMarkRes>(signal);
       requireSameState(stateOf(client2Move1), (await client1SawMove2).payload.state);
-      ensure(() => stateOf(client2Move1).board === 'X..O.....');
-      ensure(() => stateOf(client2Move1).nextTurn === GameMarks.x);
+      connector.zlinkStreamAssert.ensure(stateOf(client2Move1).board === 'X..O.....', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client2Move1).nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
       requireLastMove(stateOf(client2Move1), client2Auth.player.actorId, 3);
 
       const client2SawMove3 = waitState(client2, 1, signal);
       const client1Move2 = await client1.request(placeMarkStreamReq(1)).submit<PlaceMarkRes>(signal);
       requireSameState(stateOf(client1Move2), (await client2SawMove3).payload.state);
-      ensure(() => stateOf(client1Move2).board === 'XX.O.....');
-      ensure(() => stateOf(client1Move2).nextTurn === GameMarks.o);
+      connector.zlinkStreamAssert.ensure(stateOf(client1Move2).board === 'XX.O.....', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1Move2).nextTurn === GameMarks.o, 'Sample scenario assertion failed.');
       requireLastMove(stateOf(client1Move2), client1Auth.player.actorId, 1);
 
       const client1SawMove4 = waitState(client1, 4, signal);
       const client2Move2 = await client2.request(placeMarkStreamReq(4)).submit<PlaceMarkRes>(signal);
       requireSameState(stateOf(client2Move2), (await client1SawMove4).payload.state);
-      ensure(() => stateOf(client2Move2).board === 'XX.OO....');
-      ensure(() => stateOf(client2Move2).nextTurn === GameMarks.x);
+      connector.zlinkStreamAssert.ensure(stateOf(client2Move2).board === 'XX.OO....', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client2Move2).nextTurn === GameMarks.x, 'Sample scenario assertion failed.');
       requireLastMove(stateOf(client2Move2), client2Auth.player.actorId, 4);
 
       const client2SawFinalMove = client2
@@ -186,18 +185,18 @@ class TicTacToeClientScenario {
       // 8. The final host move wins and publishes the observer milestone.
       const client1FinalMove = await client1.request(placeMarkStreamReq(2)).submit<PlaceMarkRes>(signal);
       requireSameState(stateOf(client1FinalMove), (await client2SawFinalMove).payload.state);
-      ensure(() => stateOf(client1FinalMove).board === 'XXXOO....');
-      ensure(() => stateOf(client1FinalMove).status === GameStatus.Won);
-      ensure(() => stateOf(client1FinalMove).winner === client1Auth.player.actorId);
-      ensure(() => stateOf(client1FinalMove).nextTurn === '');
+      connector.zlinkStreamAssert.ensure(stateOf(client1FinalMove).board === 'XXXOO....', 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1FinalMove).status === GameStatus.Won, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1FinalMove).winner === client1Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(stateOf(client1FinalMove).nextTurn === '', 'Sample scenario assertion failed.');
       requireLastMove(stateOf(client1FinalMove), client1Auth.player.actorId, 2);
 
       const milestone = await observerSawMilestone;
-      ensure(() => milestone.payload.roomId === game.roomId);
-      ensure(() => milestone.payload.actorId === client1Auth.player.actorId);
-      ensure(() => milestone.payload.displayName === client1Auth.player.displayName);
-      ensure(() => milestone.payload.wins === 100);
-      ensure(() => milestone.payload.receivingSpotNodeRid === observerPlayNode?.spotNodeRid);
+      connector.zlinkStreamAssert.ensure(milestone.payload.roomId === game.roomId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(milestone.payload.actorId === client1Auth.player.actorId, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(milestone.payload.displayName === client1Auth.player.displayName, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(milestone.payload.wins === 100, 'Sample scenario assertion failed.');
+      connector.zlinkStreamAssert.ensure(milestone.payload.receivingSpotNodeRid === observerPlayNode.spotNodeRid, 'Sample scenario assertion failed.');
       console.log(
         `observer-win-milestone=verified actor=${milestone.payload.actorId} ` +
         `wins=${milestone.payload.wins} receivingSpotNodeRid=${milestone.payload.receivingSpotNodeRid}`
@@ -279,7 +278,7 @@ function createPlayerClient(endpoint: string, name: string, observedClients: Set
 }
 
 function assertInboundObserved(observedClients: ReadonlySet<string>, clientName: string): void {
-  ensure(() => observedClients.has(clientName));
+  connector.zlinkStreamAssert.ensure(observedClients.has(clientName), 'Sample scenario assertion failed.');
 }
 
 function stateOf(message: { state: GameState }): GameState {
@@ -287,33 +286,18 @@ function stateOf(message: { state: GameState }): GameState {
 }
 
 function requireLastMove(state: GameState, actorId: string, cell: number): void {
-  ensure(() => state.lastMoveActorId === actorId);
-  ensure(() => state.lastMoveCell === cell);
+  connector.zlinkStreamAssert.ensure(state.lastMoveActorId === actorId, 'Sample scenario assertion failed.');
+  connector.zlinkStreamAssert.ensure(state.lastMoveCell === cell, 'Sample scenario assertion failed.');
 }
 
 function requireSameState(actual: GameState, expected: GameState): void {
-  ensure(() => actual.roomId === expected.roomId);
-  ensure(() => actual.board === expected.board);
-  ensure(() => actual.status === expected.status);
-  ensure(() => actual.winner === expected.winner);
-  ensure(() => actual.nextTurn === expected.nextTurn);
-  ensure(() => actual.lastMoveActorId === expected.lastMoveActorId);
-  ensure(() => actual.lastMoveCell === expected.lastMoveCell);
-}
-
-function ensure(condition: () => boolean): void {
-  if (!condition()) {
-    throw new Error(`Ensure failed: ${conditionExpression(condition)}`);
-  }
-}
-
-function conditionExpression(condition: () => boolean): string {
-  return condition
-    .toString()
-    .replace(/^\s*\(\)\s*=>\s*/, '')
-    .replace(/^\s*function\s*\(\)\s*\{\s*return\s*/, '')
-    .replace(/;?\s*\}\s*$/, '')
-    .trim();
+  connector.zlinkStreamAssert.ensure(actual.roomId === expected.roomId, 'Sample scenario assertion failed.');
+  connector.zlinkStreamAssert.ensure(actual.board === expected.board, 'Sample scenario assertion failed.');
+  connector.zlinkStreamAssert.ensure(actual.status === expected.status, 'Sample scenario assertion failed.');
+  connector.zlinkStreamAssert.ensure(actual.winner === expected.winner, 'Sample scenario assertion failed.');
+  connector.zlinkStreamAssert.ensure(actual.nextTurn === expected.nextTurn, 'Sample scenario assertion failed.');
+  connector.zlinkStreamAssert.ensure(actual.lastMoveActorId === expected.lastMoveActorId, 'Sample scenario assertion failed.');
+  connector.zlinkStreamAssert.ensure(actual.lastMoveCell === expected.lastMoveCell, 'Sample scenario assertion failed.');
 }
 
 export { TicTacToeClientScenario };

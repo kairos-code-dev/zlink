@@ -12,6 +12,7 @@ import {
   unlockFeatureReq
 } from '../Shared/Contracts/messages';
 import type { BrowserHttpClient } from '../../browser-client-runtime';
+import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
 import type {
   CollectItemRes,
@@ -49,20 +50,20 @@ class GameQuestClientScenario {
         .packetName(PacketNames.joinSessionReq)
         .submit<JoinSessionRes>(signal)
     ]);
-    ensure(() => joined.activeQuests.length === 0);
-    ensure(() => bobJoined.activeQuests.length === 0);
+    zlinkStreamAssert.ensure(joined.activeQuests.length === 0, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(bobJoined.activeQuests.length === 0, 'Sample scenario assertion failed.');
 
     const wrongArea = await apiAStream.request(killMonsterReq('player-alice', 'wolf', 'desert', 'kill-wrong-area'), Object)
       .packetName(PacketNames.killMonsterReq)
       .submit<KillMonsterRes>(signal);
-    ensure(() => wrongArea.eventId === 'player-alice-kill-wrong-area');
-    await expectNoPush(apiAStream, PacketNames.questProgressNotify, signal);
-    await expectRequestFailure(
-      apiBStream.request(collectItemReq('player-bob', 'healing-herb', -1, 'invalid-negative-count'), Object)
+    zlinkStreamAssert.ensure(wrongArea.eventId === 'player-alice-kill-wrong-area', 'Sample scenario assertion failed.');
+    await apiAStream.expectNone(PacketNames.questProgressNotify).within(250).run(signal);
+    await zlinkStreamAssert.expectFailure(
+      () => apiBStream.request(collectItemReq('player-bob', 'healing-herb', -1, 'invalid-negative-count'), Object)
         .packetName(PacketNames.collectItemReq)
         .submit<CollectItemRes>(signal)
     );
-    await expectNoPush(apiBStream, PacketNames.questProgressNotify, signal);
+    await apiBStream.expectNone(PacketNames.questProgressNotify).within(250).run(signal);
 
     const firstProgress = apiAStream.waitFor<QuestProgressNotify>(PacketNames.questProgressNotify)
       .where((message) => message.payload.playerId === 'player-alice')
@@ -78,15 +79,15 @@ class GameQuestClientScenario {
         .packetName(PacketNames.collectItemReq)
         .submit<CollectItemRes>(signal)
     ]);
-    ensure(() => firstKill.eventId === 'player-alice-kill-1');
-    ensure(() => offlineItem.eventId === 'player-bob-herb-1');
+    zlinkStreamAssert.ensure(firstKill.eventId === 'player-alice-kill-1', 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(offlineItem.eventId === 'player-bob-herb-1', 'Sample scenario assertion failed.');
     const firstProgressPush = await firstProgress;
     const firstHerbPush = await firstHerbProgress;
-    ensure(() => firstProgressPush.payload.progress.questId === QuestIds.FirstHunt);
-    ensure(() => firstProgressPush.payload.progress.currentCount === 1);
-    ensure(() => !('targetConnectionId' in firstProgressPush.payload));
-    ensure(() => firstHerbPush.payload.progress.questId === QuestIds.HerbGathering);
-    ensure(() => firstHerbPush.payload.progress.currentCount === 1);
+    zlinkStreamAssert.ensure(firstProgressPush.payload.progress.questId === QuestIds.FirstHunt, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(firstProgressPush.payload.progress.currentCount === 1, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(!('targetConnectionId' in firstProgressPush.payload), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(firstHerbPush.payload.progress.questId === QuestIds.HerbGathering, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(firstHerbPush.payload.progress.currentCount === 1, 'Sample scenario assertion failed.');
     const completeFirstHunt = waitForQuestCompletion(apiAStream, QuestIds.FirstHunt, signal);
     await apiAStream.request(killMonsterReq('player-alice', 'wolf', 'forest', 'kill-2'), Object)
       .packetName(PacketNames.killMonsterReq)
@@ -94,81 +95,81 @@ class GameQuestClientScenario {
     const thirdKill = await apiAStream.request(killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'), Object)
       .packetName(PacketNames.killMonsterReq)
       .submit<KillMonsterRes>(signal);
-    ensure(() => thirdKill.eventId === 'player-alice-kill-3');
+    zlinkStreamAssert.ensure(thirdKill.eventId === 'player-alice-kill-3', 'Sample scenario assertion failed.');
     const firstHuntPush = await completeFirstHunt;
-    ensure(() => firstHuntPush.payload.rewardGranted);
-    ensure(() => !('targetConnectionId' in firstHuntPush.payload));
-    ensure(() => firstHuntPush.payload.progress.status === QuestStatuses.RewardGranted);
+    zlinkStreamAssert.ensure(firstHuntPush.payload.rewardGranted, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(!('targetConnectionId' in firstHuntPush.payload), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(firstHuntPush.payload.progress.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
 
     const duplicate = await apiAStream.request(killMonsterReq('player-alice', 'wolf', 'forest', 'kill-3'), Object)
       .packetName(PacketNames.killMonsterReq)
       .submit<KillMonsterRes>(signal);
-    ensure(() => duplicate.eventId === thirdKill.eventId);
+    zlinkStreamAssert.ensure(duplicate.eventId === thirdKill.eventId, 'Sample scenario assertion failed.');
     const afterCompletion = await apiAStream.request(killMonsterReq('player-alice', 'wolf', 'forest', 'kill-4'), Object)
       .packetName(PacketNames.killMonsterReq)
       .submit<KillMonsterRes>(signal);
-    ensure(() => afterCompletion.eventId === 'player-alice-kill-4');
-    await expectNoPush(apiAStream, PacketNames.questCompletedNotify, signal);
+    zlinkStreamAssert.ensure(afterCompletion.eventId === 'player-alice-kill-4', 'Sample scenario assertion failed.');
+    await apiAStream.expectNone(PacketNames.questCompletedNotify).within(250).run(signal);
 
     const auctionComplete = waitForQuestCompletion(apiAStream, QuestIds.OpenAuction, signal);
     const auction = await apiAStream.request(unlockFeatureReq('player-alice', 'auction', 'unlock-auction'), Object)
       .packetName(PacketNames.unlockFeatureReq)
       .submit<UnlockFeatureRes>(signal);
-    ensure(() => auction.eventId === 'player-alice-unlock-auction');
+    zlinkStreamAssert.ensure(auction.eventId === 'player-alice-unlock-auction', 'Sample scenario assertion failed.');
     const auctionCompletePush = await auctionComplete;
-    ensure(() => auctionCompletePush.payload.rewardGranted);
+    zlinkStreamAssert.ensure(auctionCompletePush.payload.rewardGranted, 'Sample scenario assertion failed.');
     const snapshot = await apiA.post('/internal/snapshot')
       .body({ playerId: 'player-alice' })
       .fetch<GetGameplaySnapshotRes>();
-    ensure(() => snapshot.unlockedFeatureIds.includes('auction'));
-    ensure(() => snapshot.killCounts.some((entry) => entry.monsterId === 'wolf' && entry.areaId === 'desert' && entry.count === 1));
+    zlinkStreamAssert.ensure(snapshot.unlockedFeatureIds.includes('auction'), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(snapshot.killCounts.some((entry) => entry.monsterId === 'wolf' && entry.areaId === 'desert' && entry.count === 1), 'Sample scenario assertion failed.');
 
     await apiAStream.close();
     await apiBReconnectStream.connect(signal);
     const aliceRejoined = await apiBReconnectStream.request(joinSessionReq('player-alice'), Object)
       .packetName(PacketNames.joinSessionReq)
       .submit<JoinSessionRes>(signal);
-    ensure(() => aliceRejoined.activeQuests.some((progress) =>
-      progress.questId === QuestIds.FirstHunt && progress.status === QuestStatuses.RewardGranted));
+    zlinkStreamAssert.ensure(aliceRejoined.activeQuests.some((progress) =>
+      progress.questId === QuestIds.FirstHunt && progress.status === QuestStatuses.RewardGranted), 'Sample scenario assertion failed.');
     const beforeDeactivate = requireQuest(aliceRejoined.activeQuests, QuestIds.FirstHunt);
 
     const closeOwnerA = await missionA.post('/self-check/owner/player-alice/close').fetch<{ closed: boolean }>();
     const closeOwnerB = await missionB.post('/self-check/owner/player-alice/close').fetch<{ closed: boolean }>();
-    ensure(() => closeOwnerA.closed || closeOwnerB.closed);
+    zlinkStreamAssert.ensure(closeOwnerA.closed || closeOwnerB.closed, 'Sample scenario assertion failed.');
 
     const earlyRuins = await apiBReconnectStream.request(enterAreaReq('player-alice', 'ruins', 'enter-ruins-too-early'), Object)
       .packetName(PacketNames.enterAreaReq)
       .submit<EnterAreaRes>(signal);
-    ensure(() => earlyRuins.eventId === 'player-alice-enter-ruins-too-early');
+    zlinkStreamAssert.ensure(earlyRuins.eventId === 'player-alice-enter-ruins-too-early', 'Sample scenario assertion failed.');
     const beforeTutorial = await getStreamProjection(apiBReconnectStream, 'player-alice', signal);
-    ensure(() => beforeTutorial.every((progress) => progress.questId !== QuestIds.RuinsExplorer));
+    zlinkStreamAssert.ensure(beforeTutorial.every((progress) => progress.questId !== QuestIds.RuinsExplorer), 'Sample scenario assertion failed.');
 
     const tutorialCompleted = waitForQuestCompletion(apiBReconnectStream, QuestIds.TutorialPath, signal);
     const tutorial = await apiBReconnectStream.request(completeMissionReq('player-alice', 'tutorial', 'mission-tutorial'), Object)
       .packetName(PacketNames.completeMissionReq)
       .submit<CompleteMissionRes>(signal);
-    ensure(() => tutorial.eventId === 'player-alice-mission-tutorial');
+    zlinkStreamAssert.ensure(tutorial.eventId === 'player-alice-mission-tutorial', 'Sample scenario assertion failed.');
     await tutorialCompleted;
     const afterReactivate = await getStreamProjection(apiBReconnectStream, 'player-alice', signal);
     const restoredFirstHunt = requireQuest(afterReactivate, QuestIds.FirstHunt);
-    ensure(() => restoredFirstHunt.currentCount === beforeDeactivate.currentCount);
-    ensure(() => restoredFirstHunt.status === beforeDeactivate.status);
-    ensure(() => restoredFirstHunt.version === beforeDeactivate.version);
+    zlinkStreamAssert.ensure(restoredFirstHunt.currentCount === beforeDeactivate.currentCount, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(restoredFirstHunt.status === beforeDeactivate.status, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(restoredFirstHunt.version === beforeDeactivate.version, 'Sample scenario assertion failed.');
     const tutorialPath = requireQuest(afterReactivate, QuestIds.TutorialPath);
-    ensure(() => tutorialPath.currentCount === 2);
-    ensure(() => tutorialPath.status === QuestStatuses.RewardGranted);
+    zlinkStreamAssert.ensure(tutorialPath.currentCount === 2, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(tutorialPath.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
     const ruinsBeforeFinalStep = requireQuest(afterReactivate, QuestIds.RuinsExplorer);
-    ensure(() => ruinsBeforeFinalStep.currentCount === 1);
-    ensure(() => ruinsBeforeFinalStep.status === QuestStatuses.Active);
+    zlinkStreamAssert.ensure(ruinsBeforeFinalStep.currentCount === 1, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(ruinsBeforeFinalStep.status === QuestStatuses.Active, 'Sample scenario assertion failed.');
     console.log('gamequest-rehydrate=completed');
     const ruinsCompleted = waitForQuestCompletion(apiBReconnectStream, QuestIds.RuinsExplorer, signal);
     const ruins = await apiBReconnectStream.request(enterAreaReq('player-alice', 'ruins', 'enter-ruins'), Object)
       .packetName(PacketNames.enterAreaReq)
       .submit<EnterAreaRes>(signal);
-    ensure(() => ruins.eventId === 'player-alice-enter-ruins');
+    zlinkStreamAssert.ensure(ruins.eventId === 'player-alice-enter-ruins', 'Sample scenario assertion failed.');
     const ruinsPush = await ruinsCompleted;
-    ensure(() => ruinsPush.payload.progress.currentCount === 2);
-    ensure(() => ruinsPush.payload.progress.status === QuestStatuses.RewardGranted);
+    zlinkStreamAssert.ensure(ruinsPush.payload.progress.currentCount === 2, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(ruinsPush.payload.progress.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
 
     const bobProgress = await waitForStreamProjection(
       apiBStream,
@@ -176,17 +177,17 @@ class GameQuestClientScenario {
       (p) => p.questId === QuestIds.HerbGathering && p.currentCount === 1,
       signal
     );
-    ensure(() => bobProgress.some((p) => p.questId === QuestIds.HerbGathering && p.currentCount === 1));
+    zlinkStreamAssert.ensure(bobProgress.some((p) => p.questId === QuestIds.HerbGathering && p.currentCount === 1), 'Sample scenario assertion failed.');
 
     const herbCompleted = waitForQuestCompletion(apiBStream, QuestIds.HerbGathering, signal);
     const onlineItem = await apiBStream.request(collectItemReq('player-bob', 'healing-herb', 4, 'herb-2'), Object)
       .packetName(PacketNames.collectItemReq)
       .submit<CollectItemRes>(signal);
-    ensure(() => onlineItem.eventId === 'player-bob-herb-2');
+    zlinkStreamAssert.ensure(onlineItem.eventId === 'player-bob-herb-2', 'Sample scenario assertion failed.');
     const herbPush = await herbCompleted;
-    ensure(() => herbPush.payload.playerId === 'player-bob');
-    ensure(() => herbPush.payload.rewardGranted);
-    ensure(() => herbPush.payload.progress.status === QuestStatuses.RewardGranted);
+    zlinkStreamAssert.ensure(herbPush.payload.playerId === 'player-bob', 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(herbPush.payload.rewardGranted, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(herbPush.payload.progress.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
 
     const bobAuctionCompleted = waitForQuestCompletion(apiBStream, QuestIds.OpenAuction, signal);
     await apiBStream.request(unlockFeatureReq('player-bob', 'auction', 'bob-unlock-auction'), Object)
@@ -198,18 +199,18 @@ class GameQuestClientScenario {
     const herbBeforeRebuild = requireQuest(beforeRebuild, QuestIds.HerbGathering);
 
     const deleted = await apiA.post(`/self-check/projection/player-bob/${QuestIds.HerbGathering}/delete`).submitRaw();
-    ensure(() => deleted.status >= 200 && deleted.status < 300);
+    zlinkStreamAssert.ensure(deleted.status >= 200 && deleted.status < 300, 'Sample scenario assertion failed.');
     const missingProjection = await getStreamProjection(apiBStream, 'player-bob', signal);
-    ensure(() => missingProjection.every((progress) => progress.questId !== QuestIds.HerbGathering));
-    ensure(() => requireQuest(missingProjection, QuestIds.OpenAuction).version === auctionBeforeRebuild.version);
+    zlinkStreamAssert.ensure(missingProjection.every((progress) => progress.questId !== QuestIds.HerbGathering), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(requireQuest(missingProjection, QuestIds.OpenAuction).version === auctionBeforeRebuild.version, 'Sample scenario assertion failed.');
     const rebuilt = await apiA.post(`/self-check/projection/player-bob/${QuestIds.HerbGathering}/rebuild`).fetch<QuestProgress>();
-    ensure(() => rebuilt.questId === QuestIds.HerbGathering);
-    ensure(() => rebuilt.status === QuestStatuses.RewardGranted);
-    ensure(() => rebuilt.version === herbBeforeRebuild.version);
+    zlinkStreamAssert.ensure(rebuilt.questId === QuestIds.HerbGathering, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(rebuilt.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(rebuilt.version === herbBeforeRebuild.version, 'Sample scenario assertion failed.');
     const rebuiltProjection = await getStreamProjection(apiBStream, 'player-bob', signal);
-    ensure(() => rebuiltProjection.some((progress) =>
-      progress.questId === QuestIds.HerbGathering && progress.status === QuestStatuses.RewardGranted));
-    ensure(() => requireQuest(rebuiltProjection, QuestIds.OpenAuction).version === auctionBeforeRebuild.version);
+    zlinkStreamAssert.ensure(rebuiltProjection.some((progress) =>
+      progress.questId === QuestIds.HerbGathering && progress.status === QuestStatuses.RewardGranted), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(requireQuest(rebuiltProjection, QuestIds.OpenAuction).version === auctionBeforeRebuild.version, 'Sample scenario assertion failed.');
 
     for (const [key, expected] of [['bob-kill-1', 1], ['bob-kill-2', 2]] as const) {
       await apiBStream.request(killMonsterReq('player-bob', 'wolf', 'forest', key), Object)
@@ -217,36 +218,36 @@ class GameQuestClientScenario {
         .submit<KillMonsterRes>(signal);
       const progress = await waitForStreamProjection(apiBStream, 'player-bob', (candidate) =>
         candidate.questId === QuestIds.FirstHunt && candidate.currentCount === expected, signal);
-      ensure(() => requireQuest(progress, QuestIds.FirstHunt).currentCount === expected);
+      zlinkStreamAssert.ensure(requireQuest(progress, QuestIds.FirstHunt).currentCount === expected, 'Sample scenario assertion failed.');
     }
     const bobMissed = await apiB.post('/self-check/gameplay/kill-without-publish/player-bob').submitRaw();
-    ensure(() => bobMissed.status >= 200 && bobMissed.status < 300);
+    zlinkStreamAssert.ensure(bobMissed.status >= 200 && bobMissed.status < 300, 'Sample scenario assertion failed.');
     const bobReconcileCompleted = waitForQuestCompletion(apiBStream, QuestIds.FirstHunt, signal);
     const bobSync = await apiBStream.request(syncQuestProgressReq('player-bob'), Object)
       .packetName(PacketNames.syncQuestProgressReq)
       .submit<SyncQuestProgressRes>(signal);
     const bobReconciled = requireQuest(bobSync.updatedQuests, QuestIds.FirstHunt);
-    ensure(() => bobReconciled.currentCount === 3);
-    ensure(() => bobReconciled.status === QuestStatuses.RewardGranted);
+    zlinkStreamAssert.ensure(bobReconciled.currentCount === 3, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(bobReconciled.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
     const bobReconcilePush = await bobReconcileCompleted;
-    ensure(() => bobReconcilePush.payload.progress.status === QuestStatuses.RewardGranted);
+    zlinkStreamAssert.ensure(bobReconcilePush.payload.progress.status === QuestStatuses.RewardGranted, 'Sample scenario assertion failed.');
 
     const missed = await apiB.post('/self-check/gameplay/kill-without-publish/player-alice').submitRaw();
-    ensure(() => missed.status >= 200 && missed.status < 300);
+    zlinkStreamAssert.ensure(missed.status >= 200 && missed.status < 300, 'Sample scenario assertion failed.');
     const sync = await apiBReconnectStream.request(syncQuestProgressReq('player-alice'), Object)
       .packetName(PacketNames.syncQuestProgressReq)
       .submit<SyncQuestProgressRes>(signal);
-    ensure(() => sync.updatedQuests.some((progress) =>
-      progress.questId === QuestIds.FirstHunt && progress.currentCount >= 4));
+    zlinkStreamAssert.ensure(sync.updatedQuests.some((progress) =>
+      progress.questId === QuestIds.FirstHunt && progress.currentCount >= 4), 'Sample scenario assertion failed.');
     const reconciled = await waitForStreamProjection(apiBReconnectStream, 'player-alice', (progress) =>
       progress.questId === QuestIds.FirstHunt && progress.currentCount >= 4, signal);
-    ensure(() => reconciled.some((progress) => progress.questId === QuestIds.FirstHunt && progress.currentCount >= 4));
+    zlinkStreamAssert.ensure(reconciled.some((progress) => progress.questId === QuestIds.FirstHunt && progress.currentCount >= 4), 'Sample scenario assertion failed.');
 
     await apiBReconnectStream.close();
     const assertion = await waitForServerAssertion(apiA, signal);
-    ensure(() => assertion.passed);
-    ensure(() => assertion.evidence.includes('owner:mission-a:player-alice'));
-    ensure(() => assertion.evidence.includes('owner:mission-b:player-bob'));
+    zlinkStreamAssert.ensure(assertion.passed, 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(assertion.evidence.includes('owner:mission-a:player-alice'), 'Sample scenario assertion failed.');
+    zlinkStreamAssert.ensure(assertion.evidence.includes('owner:mission-b:player-bob'), 'Sample scenario assertion failed.');
     console.log('gamequest-concurrent-owners=completed');
     console.log('gamequest-server-evidence=completed');
   }
@@ -309,34 +310,6 @@ function requireQuest(projection: QuestProgress[], questId: string): QuestProgre
   const progress = projection.find((candidate) => candidate.questId === questId);
   if (progress === undefined) throw new Error(`Quest '${questId}' was not found in the projection.`);
   return progress;
-}
-
-function ensure(condition: () => boolean): void {
-  if (!condition()) {
-    throw new Error(`Ensure failed: ${condition.toString()}`);
-  }
-}
-
-async function expectRequestFailure(request: Promise<unknown>): Promise<void> {
-  try {
-    await request;
-  } catch {
-    return;
-  }
-  throw new Error('Expected the server-authoritative gameplay validation to reject the request.');
-}
-
-async function expectNoPush(
-  connector: ZlinkStreamConnector,
-  packetName: string,
-  signal?: AbortSignal
-): Promise<void> {
-  try {
-    await connector.waitFor(packetName).timeout(250).submit(signal);
-  } catch {
-    return;
-  }
-  throw new Error(`Unexpected '${packetName}' push.`);
 }
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {

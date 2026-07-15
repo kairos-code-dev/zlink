@@ -39,10 +39,11 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
@@ -68,13 +69,13 @@ public final class Program {
             runtimeOptions,
             spots,
             applicationContext,
-            Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"));
+            Env.get("httpEndpoint"));
     }
 
     @Bean
     ZLinkFrameworkConfigurer frameworkConfigurer() {
         return options -> {
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = Env.get("logDirectory", "logs");
             options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3));
             options.configureLocations().setPollingInterval(Duration.ofMillis(250));
@@ -83,28 +84,28 @@ public final class Program {
                 .traceLogFile(logDir + "/service-flow.log")
                 .traceLabel("java-mon-service");
             options.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
-                .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_RID", "svc-a")))
+                .enableServer(Env.get("apiEndpoint"))
+                .setRoutingId(RoutingId.from(Env.get("routingId", "svc-a")))
                 .addRequestHandler(
                     WorkReqHandler.class,
                     Contracts.WorkReq.class,
                     Contracts.WorkRes.class,
                     "WorkReq");
-            if (enabled("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", true)) {
+            if (enabled("enableHandshake", true)) {
                 options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
-                    .enableServer(Env.get("ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT"))
-                    .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_RID", "svc-a") + "-handshake"))
+                    .enableServer(Env.get("handshakeEndpoint"))
+                    .setRoutingId(RoutingId.from(Env.get("routingId", "svc-a") + "-handshake"))
                     .addRequestHandler(
                         WorkReqHandler.class,
                         Contracts.WorkReq.class,
                         Contracts.WorkRes.class,
                         "HandshakeWorkReq");
             }
-            if (enabled("ZLINK_JAVA_E2E_ENABLE_SPOT", true)) {
+            if (enabled("enableSpot", true)) {
                 ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
-                node.enableRouter(Env.get("ZLINK_JAVA_E2E_SPOT_ENDPOINT"))
-                    .setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_RID", "svc-a") + "-spot"));
-                node.enablePubSub(Env.get("ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT"));
+                node.enableRouter(Env.get("spotEndpoint"))
+                    .setRoutingId(RoutingId.from(Env.get("routingId", "svc-a") + "-spot"));
+                node.enablePubSub(Env.get("spotPubEndpoint"));
                 node.addSpotFactory(MonitoringSpot.class);
                 node.addSpotFactory(TriggeredMonitoringSpot.class);
             }
@@ -119,10 +120,10 @@ public final class Program {
                 ZLinkSocketEventKind.CONNECTION_READY,
                 ZLinkSocketEventKind.PEER_ADMISSION_CHANGED);
             options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ofMillis(100));
-            if (enabled("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", true)) {
+            if (enabled("enableHandshake", true)) {
                 options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
             }
-            if (enabled("ZLINK_JAVA_E2E_ENABLE_SPOT", true)) {
+            if (enabled("enableSpot", true)) {
                 options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
             }
         };
@@ -136,15 +137,15 @@ public final class Program {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"))
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix"))
             .setCommandTimeout(Duration.ofMillis(500)));
     }
 
     @Bean
     ApplicationRunner createSpot(ObjectProvider<ZLinkSpotManager> spots) {
         return ignored -> {
-            if (!enabled("ZLINK_JAVA_E2E_ENABLE_SPOT", true)) {
+            if (!enabled("enableSpot", true)) {
                 return;
             }
             ZLinkSpotManager manager = spots.getIfAvailable();

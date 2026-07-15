@@ -35,10 +35,11 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
@@ -49,14 +50,14 @@ public final class Program {
     @Bean
     ZLinkFrameworkConfigurer triggerFramework() {
         return options -> {
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = Env.get("logDirectory", "logs");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/trigger-flow.log")
                 .traceLabel("java-mon-trigger");
             var channel = options.addClientServerChannel(Contracts.CHANNEL)
-                .enableClient(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"));
-            String serviceBEndpoint = Env.get("ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT");
+                .enableClient(Env.get("apiEndpoint"));
+            String serviceBEndpoint = Env.get("serviceBApiEndpoint");
             if (!serviceBEndpoint.isBlank()) {
                 channel.enableClient(serviceBEndpoint);
             }
@@ -86,7 +87,7 @@ public final class Program {
             client,
             json,
             evidence,
-            Env.get("ZLINK_JAVA_E2E_TRIGGER_HTTP"));
+            Env.get("triggerHttpEndpoint"));
     }
 
     public static final class TriggerEndpoints implements SmartLifecycle {

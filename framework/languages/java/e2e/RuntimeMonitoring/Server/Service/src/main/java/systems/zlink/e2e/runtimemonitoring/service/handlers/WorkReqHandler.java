@@ -23,6 +23,6 @@ public final class WorkReqHandler
         evidence.record("work", evidence.rid(), "WorkReq", request.value());
         return java.util.concurrent.CompletableFuture.completedFuture(new Contracts.WorkRes(
             "work:" + request.value(),
-            Env.get("ZLINK_JAVA_E2E_RID", "svc-a")));
+            Env.get("routingId", "svc-a")));
     }
 }

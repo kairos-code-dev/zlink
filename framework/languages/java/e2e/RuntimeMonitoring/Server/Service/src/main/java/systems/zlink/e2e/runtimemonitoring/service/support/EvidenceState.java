@@ -9,7 +9,7 @@ public final class EvidenceState {
     private final List<Contracts.EvidenceEntry> entries = new ArrayList<>();
 
     public String rid() {
-        return Env.get("ZLINK_JAVA_E2E_RID", "svc-a");
+        return Env.get("routingId", "svc-a");
     }
 
     public synchronized void record(

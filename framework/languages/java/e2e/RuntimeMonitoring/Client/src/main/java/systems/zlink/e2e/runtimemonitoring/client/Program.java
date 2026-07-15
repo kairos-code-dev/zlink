@@ -17,8 +17,9 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         try (MonitoringScenarioContext context = new MonitoringScenarioContext()) {
-            String scenario = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
+            String scenario = Env.get("scenario", "all");
             if (!"all".equals(scenario)) {
                 runOne(scenario, context);
                 System.out.println("monitoring e2e result=passed");

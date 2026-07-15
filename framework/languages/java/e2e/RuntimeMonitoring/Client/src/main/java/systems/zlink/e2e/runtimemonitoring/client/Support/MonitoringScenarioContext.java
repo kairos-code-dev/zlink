@@ -16,9 +16,9 @@ import systems.zlink.httpclient.RawHttpResponse;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class MonitoringScenarioContext implements AutoCloseable {
-    private final String triggerEndpoint = Env.get("ZLINK_JAVA_E2E_TRIGGER_HTTP");
-    private final String serviceEndpoint = Env.get("ZLINK_JAVA_E2E_SERVICE_HTTP");
-    private final String serviceBEndpoint = Env.get("ZLINK_JAVA_E2E_SERVICE_B_HTTP");
+    private final String triggerEndpoint = Env.get("triggerHttpEndpoint");
+    private final String serviceEndpoint = Env.get("serviceHttpEndpoint");
+    private final String serviceBEndpoint = Env.get("serviceBHttpEndpoint");
     private final ZLinkHttpClient trigger = ZLinkHttpClient.create(triggerEndpoint)
         .timeout(Duration.ofMinutes(5))
         .build();
@@ -207,22 +207,14 @@ public final class MonitoringScenarioContext implements AutoCloseable {
         if (restartedServiceB != null && restartedServiceB.isAlive()) {
             return;
         }
-        ProcessBuilder builder = new ProcessBuilder(Env.get("ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN"));
+        ProcessBuilder builder = new ProcessBuilder(
+            Env.get("filteredServiceBinary"),
+            "--config",
+            Env.get("filteredServiceConfigPath"));
         builder.redirectOutput(new java.io.File(
-            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs") + "/filtered-service-restart.stdout.log"));
+            Env.get("logDirectory", "logs") + "/filtered-service-restart.stdout.log"));
         builder.redirectError(new java.io.File(
-            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs") + "/filtered-service-restart.stderr.log"));
-        builder.environment().put("ZLINK_JAVA_E2E_RID", "svc-b");
-        builder.environment().put("ZLINK_JAVA_E2E_API_ENDPOINT",
-            Env.get("ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT"));
-        builder.environment().put("ZLINK_JAVA_E2E_HTTP_ENDPOINT", serviceBEndpoint);
-        builder.environment().put("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT",
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"));
-        builder.environment().put("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX",
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"));
-        builder.environment().put("ZLINK_JAVA_E2E_ENABLE_HANDSHAKE", "false");
-        builder.environment().put("ZLINK_JAVA_E2E_ENABLE_SPOT", "false");
-        builder.environment().put("ZLINK_JAVA_E2E_LOG_DIR", Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
+            Env.get("logDirectory", "logs") + "/filtered-service-restart.stderr.log"));
         try {
             restartedServiceB = builder.start();
         } catch (IOException error) {
@@ -276,7 +268,7 @@ public final class MonitoringScenarioContext implements AutoCloseable {
     }
 
     public void triggerHandshakeFailure() {
-        String endpoint = Env.get("ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT");
+        String endpoint = Env.get("handshakeEndpoint");
         int port = Integer.parseInt(endpoint.substring(endpoint.lastIndexOf(':') + 1));
         for (int index = 0; index < 5; index++) {
             try (Socket socket = new Socket()) {

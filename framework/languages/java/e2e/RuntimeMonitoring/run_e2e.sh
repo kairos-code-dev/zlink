@@ -9,6 +9,8 @@ pids=()
 REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 echo "start_order=${E2E_START_ORDER}"
@@ -21,8 +23,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/RuntimeMonitoring-gradle-cache}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=""
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:runtime-monitoring:${run_id}}"
+redis_location_endpoint=""
+location_key_prefix="zlink:e2e:runtime-monitoring:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -86,6 +88,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -144,8 +147,7 @@ start_redis_container() {
   fi
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
     "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+  redis_location_endpoint="127.0.0.1:${redis_port}"
 }
 
 gradle_run() {
@@ -184,19 +186,74 @@ THROW_API_ENDPOINT="$(tcp "${THROW_API_PORT}")"
 THROW_HTTP="$(http "${THROW_HTTP_PORT}")"
 TRIGGER_HTTP="$(http "${TRIGGER_HTTP_PORT}")"
 
+write_config() {
+  local path="$1"
+  shift
+  {
+    printf 'redisLocationEndpoint=%s\n' "${redis_location_endpoint}"
+    printf 'locationKeyPrefix=%s\n' "${location_key_prefix}"
+    printf 'logDirectory=%s\n' "${log_dir}"
+    printf '%s\n' "$@"
+  } >"${path}"
+  chmod 0600 "${path}"
+}
+
+service_config="${config_dir}/service.properties"
+filtered_service_config="${config_dir}/filtered-service.properties"
+throwing_service_config="${config_dir}/throwing-service.properties"
+trigger_config="${config_dir}/trigger.properties"
+client_config="${config_dir}/client.properties"
+
+create_configs() {
+  write_config "${service_config}" \
+    "routingId=svc-a" \
+    "apiEndpoint=${API_ENDPOINT}" \
+    "handshakeEndpoint=${HANDSHAKE_ENDPOINT}" \
+    "spotEndpoint=${SPOT_ENDPOINT}" \
+    "spotPubEndpoint=${SPOT_PUB_ENDPOINT}" \
+    "httpEndpoint=${SERVICE_HTTP}" \
+    "enableHandshake=true" \
+    "enableSpot=true"
+  write_config "${filtered_service_config}" \
+    "routingId=svc-b" \
+    "apiEndpoint=${FILTER_API_ENDPOINT}" \
+    "httpEndpoint=${FILTER_HTTP}" \
+    "enableHandshake=false" \
+    "enableSpot=false"
+  write_config "${throwing_service_config}" \
+    "routingId=svc-throw" \
+    "apiEndpoint=${THROW_API_ENDPOINT}" \
+    "httpEndpoint=${THROW_HTTP}" \
+    "enableHandshake=false" \
+    "enableSpot=false"
+  write_config "${trigger_config}" \
+    "apiEndpoint=${API_ENDPOINT}" \
+    "serviceBApiEndpoint=${FILTER_API_ENDPOINT}" \
+    "triggerHttpEndpoint=${TRIGGER_HTTP}"
+  write_config "${client_config}" \
+    "scenario=${SCENARIO}" \
+    "triggerHttpEndpoint=${TRIGGER_HTTP}" \
+    "serviceHttpEndpoint=${SERVICE_HTTP}" \
+    "serviceBHttpEndpoint=${FILTER_HTTP}" \
+    "serviceBApiEndpoint=${FILTER_API_ENDPOINT}" \
+    "handshakeEndpoint=${HANDSHAKE_ENDPOINT}" \
+    "filteredServiceBinary=$(filtered_service_bin)" \
+    "filteredServiceConfigPath=${filtered_service_config}"
+}
+
 start_initial_role() {
   case "$1" in
     service)
-      ZLINK_JAVA_E2E_RID="svc-a" ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT="${SPOT_PUB_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SERVICE_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(service_bin)" >"${log_dir}/service.stdout.log" 2>"${log_dir}/service.stderr.log" &
+      "$(service_bin)" --config "${service_config}" >"${log_dir}/service.stdout.log" 2>"${log_dir}/service.stderr.log" &
       ;;
     filtered-service)
-      ZLINK_JAVA_E2E_RID="svc-b" ZLINK_JAVA_E2E_API_ENDPOINT="${FILTER_API_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${FILTER_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" ZLINK_JAVA_E2E_ENABLE_SPOT="false" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(filtered_service_bin)" >"${log_dir}/filtered-service.stdout.log" 2>"${log_dir}/filtered-service.stderr.log" &
+      "$(filtered_service_bin)" --config "${filtered_service_config}" >"${log_dir}/filtered-service.stdout.log" 2>"${log_dir}/filtered-service.stderr.log" &
       ;;
     throwing-service)
-      ZLINK_JAVA_E2E_RID="svc-throw" ZLINK_JAVA_E2E_API_ENDPOINT="${THROW_API_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${THROW_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" ZLINK_JAVA_E2E_ENABLE_SPOT="false" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(throwing_service_bin)" >"${log_dir}/throwing-service.stdout.log" 2>"${log_dir}/throwing-service.stderr.log" &
+      "$(throwing_service_bin)" --config "${throwing_service_config}" >"${log_dir}/throwing-service.stdout.log" 2>"${log_dir}/throwing-service.stderr.log" &
       ;;
     trigger)
-      ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT="${FILTER_API_ENDPOINT}" ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" ZLINK_JAVA_E2E_SERVICE_B_HTTP="${FILTER_HTTP}" ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN="$(filtered_service_bin)" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
+      "$(trigger_bin)" --config "${trigger_config}" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
       ;;
   esac
   pids+=("$!")
@@ -204,6 +261,7 @@ start_initial_role() {
 
 gradle_run installDist
 start_redis_container
+create_configs
 
 mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles service filtered-service throwing-service trigger)
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
@@ -219,17 +277,8 @@ wait_port throwing-service-http "${THROW_HTTP}"
 wait_port trigger-http "${TRIGGER_HTTP}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 
-ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
-ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
-ZLINK_JAVA_E2E_SERVICE_B_HTTP="${FILTER_HTTP}" \
-ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT="${FILTER_API_ENDPOINT}" \
-ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN="$(filtered_service_bin)" \
-ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+"$(client_bin)" --config "${client_config}" \
+  >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
 if [[ "${SCENARIO}" == "all" ]]; then

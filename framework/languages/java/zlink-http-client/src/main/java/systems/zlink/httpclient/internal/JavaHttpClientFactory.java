@@ -2,6 +2,8 @@
 package systems.zlink.httpclient.internal;
 
 import java.net.InetSocketAddress;
+import java.net.Authenticator;
+import java.net.PasswordAuthentication;
 import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -27,10 +29,35 @@ final class JavaHttpClientFactory {
         if (options.proxy() != null) {
             URI proxyUri = URI.create(options.proxy());
             builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), proxyUri.getPort())));
+            if (options.proxyAuthorization() != null) {
+                PasswordAuthentication credentials = decodeBasic(options.proxyAuthorization());
+                builder.authenticator(new Authenticator() {
+                    @Override
+                    protected PasswordAuthentication getPasswordAuthentication() {
+                        return getRequestorType() == RequestorType.PROXY
+                            ? credentials
+                            : null;
+                    }
+                });
+            }
         }
         if (options.trustCertificateFile() != null || options.clientCertificate() != null) {
             builder.sslContext(TlsSupport.create(options));
         }
         return builder.build();
+    }
+
+    private static PasswordAuthentication decodeBasic(String authorization) {
+        String prefix = "Basic ";
+        if (!authorization.startsWith(prefix)) {
+            throw new IllegalArgumentException("proxy authorization must use Basic authentication");
+        }
+        String decoded = new String(
+            java.util.Base64.getDecoder().decode(authorization.substring(prefix.length())),
+            java.nio.charset.StandardCharsets.UTF_8);
+        int separator = decoded.indexOf(':');
+        String user = separator < 0 ? decoded : decoded.substring(0, separator);
+        String password = separator < 0 ? "" : decoded.substring(separator + 1);
+        return new PasswordAuthentication(user, password.toCharArray());
     }
 }

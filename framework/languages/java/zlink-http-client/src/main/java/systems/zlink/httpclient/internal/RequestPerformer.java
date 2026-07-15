@@ -62,18 +62,28 @@ public final class RequestPerformer {
         URI base = URI.create(options.baseUrl());
         String origin = RedirectPolicy.originOf(base);
         URI current = URI.create(origin + RedirectPolicy.makeTarget(base.getRawPath(), spec.target()));
+        Duration timeout = spec.timeout() != null ? spec.timeout() : options.timeout();
+        long deadlineNanos = System.nanoTime() + timeout.toNanos();
         // A streamed body provider cannot be rewound, so it is dropped once a redirect is followed.
-        return hop(spec, current, origin, spec.method(), spec.body(), spec.bodyProvider(), options.followRedirects());
+        return hop(spec, current, origin, spec.method(), spec.body(), spec.bodyProvider(),
+            options.followRedirects(), deadlineNanos);
     }
 
     private CompletionStage<RawResult> hop(
         HttpRequestSpec spec, URI current, String origin, ZLinkHttpMethod method, String body,
-        Supplier<byte[]> bodyProvider, int redirectsLeft) {
+        Supplier<byte[]> bodyProvider, int redirectsLeft, long deadlineNanos) {
+        Duration remaining = remaining(deadlineNanos);
+        if (remaining == null) {
+            return CompletableFuture.failedFuture(
+                new java.net.http.HttpTimeoutException("HTTP request attempt timed out"));
+        }
         boolean keepAuthorization = origin.equals(RedirectPolicy.originOf(current));
-        HttpRequest request = buildRequest(spec, current, method, body, bodyProvider, keepAuthorization);
+        HttpRequest request = buildRequest(
+            spec, current, method, body, bodyProvider, keepAuthorization, remaining);
         return httpClient
             .sendAsync(request, BodyHandlers.ofInputStream())
-            .thenCompose(response -> handle(spec, current, origin, method, body, bodyProvider, redirectsLeft, response));
+            .thenCompose(response -> handle(spec, current, origin, method, body, bodyProvider,
+                redirectsLeft, deadlineNanos, response));
     }
 
     private CompletionStage<RawResult> handle(
@@ -84,6 +94,7 @@ public final class RequestPerformer {
         String body,
         Supplier<byte[]> bodyProvider,
         int redirectsLeft,
+        long deadlineNanos,
         java.net.http.HttpResponse<InputStream> response) {
         int status = response.statusCode();
         if (options.cookies()) {
@@ -100,11 +111,17 @@ public final class RequestPerformer {
             }
             RedirectPolicy.Rewrite rewrite = RedirectPolicy.rewriteMethodAndBody(status, method, body);
             return hop(spec, RedirectPolicy.resolveLocation(current, location), origin,
-                rewrite.method(), rewrite.body(), null, redirectsLeft - 1);
+                rewrite.method(), rewrite.body(), null, redirectsLeft - 1, deadlineNanos);
         }
 
         Map<String, String> headers = ResponseBodyReader.collectHeaders(response.headers().map());
-        long bodyReadMillis = (spec.timeout() != null ? spec.timeout() : options.timeout()).toMillis();
+        Duration remaining = remaining(deadlineNanos);
+        if (remaining == null) {
+            closeQuietly(response.body());
+            return CompletableFuture.failedFuture(
+                new java.net.http.HttpTimeoutException("HTTP request attempt timed out"));
+        }
+        long bodyReadMillis = Math.max(1L, remaining.toMillis());
         InputStream bodyStream = response.body();
         if (spec.sink() != null) {
             return readWithDeadline(bodyStream, bodyReadMillis, () -> {
@@ -141,7 +158,7 @@ public final class RequestPerformer {
 
     private HttpRequest buildRequest(
         HttpRequestSpec spec, URI current, ZLinkHttpMethod method, String body,
-        Supplier<byte[]> bodyProvider, boolean keepAuthorization) {
+        Supplier<byte[]> bodyProvider, boolean keepAuthorization, Duration timeout) {
         BodyPublisher publisher;
         if (bodyProvider != null) {
             publisher = BodyPublishers.ofInputStream(() -> new ProviderInputStream(bodyProvider));
@@ -157,9 +174,6 @@ public final class RequestPerformer {
         if (options.compression()) {
             headers.put("accept-encoding", "gzip, deflate");
         }
-        if (options.proxy() != null && options.proxyAuthorization() != null) {
-            headers.put("proxy-authorization", options.proxyAuthorization());
-        }
         mergeHeaders(headers, options.headers(), keepAuthorization);
         mergeHeaders(headers, spec.headers(), keepAuthorization);
         if (body == null && bodyProvider == null) {
@@ -174,13 +188,17 @@ public final class RequestPerformer {
             }
         }
 
-        Duration timeout = spec.timeout() != null ? spec.timeout() : options.timeout();
         HttpRequest.Builder builder = HttpRequest.newBuilder(current)
             .version(HttpClient.Version.HTTP_1_1)
             .timeout(timeout)
             .method(method.name(), publisher);
         headers.forEach(builder::header);
         return builder.build();
+    }
+
+    private static Duration remaining(long deadlineNanos) {
+        long nanos = deadlineNanos - System.nanoTime();
+        return nanos <= 0 ? null : Duration.ofNanos(nanos);
     }
 
     private static void mergeHeaders(Map<String, String> target, Map<String, String> headers, boolean keepAuthorization) {

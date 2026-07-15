@@ -377,6 +377,51 @@ final class HttpClientContractTest {
     }
 
     @Test
+    void proxyCredentialsAreNotSentAsOriginRequestHeaders() throws Exception {
+        AtomicReference<String> proxyAuthorization = new AtomicReference<>();
+        TestSupport.Server proxy = TestSupport.httpServer(exchange -> {
+            proxyAuthorization.set(exchange.getRequestHeaders().getFirst("proxy-authorization"));
+            TestSupport.respond(exchange, 200, "{}");
+        });
+        try (ZLinkHttpClient client = ZLinkHttpClient.create("http://origin.invalid")
+            .proxy(proxy.baseUrl())
+            .proxyBasicAuth("proxy-user", "proxy-secret")
+            .build()) {
+            client.get("/resource").submitRaw().toCompletableFuture().join();
+            assertNull(proxyAuthorization.get());
+        } finally {
+            proxy.closeable().close();
+        }
+    }
+
+    @Test
+    void timeoutCoversTheWholeRedirectAttempt() throws Exception {
+        AtomicInteger hops = new AtomicInteger();
+        TestSupport.Server server = TestSupport.httpServer(exchange -> {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            if (hops.incrementAndGet() == 1) {
+                exchange.getResponseHeaders().add("location", "/second");
+                TestSupport.respond(exchange, 302, "");
+            } else {
+                TestSupport.respond(exchange, 200, "{}");
+            }
+        });
+        try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl())
+            .timeout(Duration.ofMillis(150))
+            .followRedirects(2)
+            .build()) {
+            assertThrows(CompletionException.class,
+                () -> client.get("/first").submitRaw().toCompletableFuture().join());
+        } finally {
+            server.closeable().close();
+        }
+    }
+
+    @Test
     void redirectLimitExceededThrows() throws Exception {
         TestSupport.Server server = TestSupport.httpServer(exchange -> {
             exchange.getResponseHeaders().add("location", "/loop");

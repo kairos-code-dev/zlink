@@ -270,6 +270,29 @@ TEST (CppFrameworkSampleParity, SupportChatServingPathUsesAgentAssignmentApplica
     EXPECT_EQ (support.find ("_available_agent"), std::string::npos);
 }
 
+TEST (CppFrameworkSampleParity, SupportChatSessionRelaysOpenConversationUnchanged)
+{
+    const auto root = cpp_language_root ();
+    const auto messages = read_file (root / "samples/SupportChat/Shared/Contracts/messages.hpp");
+    const auto session = read_file (root / "samples/SupportChat/Server/Session/main.cpp");
+    const auto support = read_file (root / "samples/SupportChat/Server/Support/main.cpp");
+
+    EXPECT_EQ (session.find ("open_conversation_api_req_t"), std::string::npos);
+    EXPECT_EQ (session.find ("open_conversation_req_t{opened.subject"), std::string::npos);
+    EXPECT_NE (support.find ("_context.outbound ().request (\"supportchat.api\""),
+               std::string::npos);
+    EXPECT_NE (support.find ("_runtime.assign_agent (joined.state.conversation_id)"),
+               std::string::npos);
+
+    const auto request_start = messages.find ("struct open_conversation_req_t");
+    const auto request_end = messages.find ("struct open_conversation_res_t", request_start);
+    ASSERT_NE (request_start, std::string::npos);
+    ASSERT_NE (request_end, std::string::npos);
+    EXPECT_EQ (messages.substr (request_start, request_end - request_start)
+                 .find ("conversation_id"),
+               std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 {
     using namespace zlink::samples::tictactoe;

@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.automaticturn.scenarios;
 
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.e2e.kotlin.automaticturn.Contracts;
@@ -17,6 +18,10 @@ public final class AtdD4SessionRelayActorAwaitScenario {
         String actorId,
         ZLinkStreamConnector unbound) throws Exception {
         String requestId = "ATD-D4-" + UUID.randomUUID().toString().replace("-", "");
+        CompletionStage<Void> unboundPush = unbound
+            .expectNone(Contracts.ActorPushNotify.class)
+            .within(Duration.ofMillis(400))
+            .submit();
         CompletionStage<ZLinkStreamMessage<Contracts.ActorPushNotify>> push = connector
             .waitFor(Contracts.ActorPushNotify.class)
             .timeout(ClientStreamSupport.REQUEST_TIMEOUT)
@@ -33,9 +38,7 @@ public final class AtdD4SessionRelayActorAwaitScenario {
         ScenarioAssert.that(actorId.equals(notify.actorId()), "ATD-D4 push actor mismatch");
         ScenarioAssert.that(requestId.equals(notify.requestId()), "ATD-D4 push request mismatch");
         ScenarioAssert.that("bound-session-push".equals(notify.value()), "ATD-D4 push value mismatch");
-        ClientStreamSupport.sleep(150);
-        ScenarioAssert.that(unbound.receivedCount("ActorPushNotify") == 0,
-            "ATD-D4 unbound session received actor push");
+        unboundPush.toCompletableFuture().join();
         Contracts.EvidenceRes evidence = ClientStreamSupport.evidence(connector, requestId);
         ScenarioAssert.containsMarkersInOrder(evidence.markers(),
             "actor-push-await-started",

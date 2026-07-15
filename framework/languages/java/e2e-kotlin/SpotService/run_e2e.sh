@@ -10,6 +10,11 @@ if rg -n '@EnableZLinkFramework|ClientDriverSpot|\bZLink(SpotOutbound|RouteClien
   echo "SpotService Kotlin Client must not host or call the framework runtime directly" >&2
   exit 1
 fi
+if rg -n 'receivedCount\([^)]*\)\s*==\s*0' \
+    Client/src/main/kotlin --glob '*.kt'; then
+  echo "SpotService Kotlin negative push assertions must use expectNone" >&2
+  exit 1
+fi
 
 pids=()
 PLAY_A_PID=""

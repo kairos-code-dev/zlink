@@ -36,9 +36,9 @@ public final class SmD6Scenario extends SpotServiceScenarioContext {
                 .submit(Contracts.ActorAuthRes.class).toCompletableFuture().join();
             ensure(shadowActorId.equals(shadowAuth.actorId()), "SM-D6 shadow auth actor mismatch");
 
-            var shadowPush = shadow.waitFor(Contracts.ActorPushNotify.class)
-                .timeout(Duration.ofMillis(400))
-                .submit(Contracts.ActorPushNotify.class);
+            var shadowPush = shadow.expectNone(Contracts.ActorPushNotify.class)
+                .within(Duration.ofMillis(400))
+                .submit();
             var boundPush = bound.waitFor(Contracts.ActorPushNotify.class)
                 .submit(Contracts.ActorPushNotify.class);
             Contracts.ActorEchoRes reply = bound
@@ -50,8 +50,7 @@ public final class SmD6Scenario extends SpotServiceScenarioContext {
             ensure(boundActorId.equals(reply.actorId()), "SM-D6 reply actor mismatch");
             ensure(boundActorId.equals(notify.actorId()), "SM-D6 push actor mismatch");
             ensure("push:push-bound-only".equals(notify.value()), "SM-D6 push value mismatch");
-            expectFailure(() -> awaitUnchecked(shadow, shadowPush));
-            ensure(shadow.receivedCount("ActorPushNotify") == 0, "SM-D6 shadow session received push");
+            shadowPush.toCompletableFuture().join();
 
             waitForPlayAEvidence(List.of("ActorEntryReq|play-a|entry|" + boundActorId + "/push-bound-only"));
             System.out.println("scenario SM-D6 passed");

@@ -4,6 +4,10 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 client_source="Client/src/main/kotlin/systems/zlink/samples/kotlin/bingo/client/BingoClientScenario.kt"
+if rg -n 'receivedCount\([^)]*\)\s*==\s*0' "${client_source}"; then
+  echo "Bingo negative push assertions must use expectNone" >&2
+  exit 1
+fi
 for assertion in \
   'client1Card.state.players.all { player -> player.card.size == 9 }' \
   'client2Drawn.state == client1Drawn.state' \

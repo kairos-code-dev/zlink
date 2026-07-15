@@ -38,6 +38,11 @@ if rg -n '@EnableZLinkFramework|\bZLink(SpotOutbound|RouteClient|ActorClient|Spo
   echo "SpotService Client must not host or call the framework runtime directly" >&2
   exit 1
 fi
+if rg -n 'receivedCount\([^)]*\)\s*==\s*0' \
+    "$(pwd)/Client/src/main/java" --glob '*.java'; then
+  echo "SpotService negative push assertions must use expectNone" >&2
+  exit 1
+fi
 
 if [[ "${SCENARIO}" != "all" && "${ZLINK_SPOT_SERVICE_RETRY_CHILD:-0}" != "1" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
   output="$(mktemp)"

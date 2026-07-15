@@ -1,7 +1,8 @@
 package systems.zlink.samples.kotlin.tictactoe.client
 
-import java.time.Duration
 import java.net.URI
+import java.time.Duration
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import systems.zlink.framework.codecs.msgpack.ZLinkMessagePackCodec
@@ -75,11 +76,16 @@ class TicTacToeClientScenario {
             println("observer-connected endpoint=$observerEndpoint")
             println("observer-subscription=verified subscribed=${subscription.subscribed}")
 
+            val hostNoSelfJoin = async(start = CoroutineStart.UNDISPATCHED) {
+                hostStream.expectNone<PlayerJoinedNotify>("PlayerJoinedNotify")
+                    .within(Duration.ofMillis(400))
+                    .await()
+            }
             val xJoin = hostStream.request(JoinGameReq(game.roomId)).await<JoinGameRes>()
             ensure(xJoin.state.roomId == game.roomId)
             ensure(xJoin.state.status == "WaitingForPlayers")
             ensure(xJoin.state.xActorId == options.xActorId)
-            ensure(hostStream.receivedCount("PlayerJoinedNotify") == 0)
+            hostNoSelfJoin.await()
 
             val hostSawGuestJoin = hostStream.waitFor<PlayerJoinedNotify>()
                 .where { message -> message.payload().actorId == options.oActorId }
@@ -88,6 +94,11 @@ class TicTacToeClientScenario {
                 .where { message -> message.payload().state.status == "InProgress" }
                 .let { wait -> async { wait.await() } }
 
+            val guestNoSelfJoin = async(start = CoroutineStart.UNDISPATCHED) {
+                guestStream.expectNone<PlayerJoinedNotify>("PlayerJoinedNotify")
+                    .within(Duration.ofMillis(400))
+                    .await()
+            }
             val oJoin = guestStream.request(JoinGameReq(game.roomId)).await<JoinGameRes>()
             ensure(oJoin.state.roomId == game.roomId)
             ensure(oJoin.state.status == "InProgress")
@@ -100,7 +111,7 @@ class TicTacToeClientScenario {
             ensure(guestJoinNotify.mark == "O")
             ensure(guestJoinNotify.roomId == game.roomId)
             ensure(guestJoinNotify.state.status == "InProgress")
-            ensure(guestStream.receivedCount("PlayerJoinedNotify") == 0)
+            guestNoSelfJoin.await()
 
             val gameStarted = hostSawGameStart.await().payload()
             ensure(gameStarted.state.nextTurn == "X")

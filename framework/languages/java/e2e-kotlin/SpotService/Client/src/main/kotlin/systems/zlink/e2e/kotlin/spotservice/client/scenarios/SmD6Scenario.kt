@@ -10,7 +10,6 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.Env
 import systems.zlink.e2e.kotlin.spotservice.client.support.createStreamConnector
 import systems.zlink.e2e.kotlin.spotservice.client.support.ensure
-import systems.zlink.e2e.kotlin.spotservice.client.support.expectFailure
 
 internal object SmD6Scenario {
     suspend fun run() {
@@ -30,8 +29,8 @@ internal object SmD6Scenario {
 
             val (reply, notify) = supervisorScope {
                 val shadowPush = async(start = CoroutineStart.UNDISPATCHED) {
-                    shadow.waitFor<Contracts.ActorPushNotify>()
-                        .timeout(Duration.ofMillis(400))
+                    shadow.expectNone<Contracts.ActorPushNotify>("ActorPushNotify")
+                        .within(Duration.ofMillis(400))
                         .await()
                 }
                 val boundPush = async(start = CoroutineStart.UNDISPATCHED) {
@@ -41,15 +40,13 @@ internal object SmD6Scenario {
                     .request(Contracts.ActorEchoReq("push-bound-only", 20, boundProfile))
                     .await<Contracts.ActorEchoRes>()
                 val notify = boundPush.await().payload()
-                expectFailure { shadowPush.await() }
+                shadowPush.await()
                 reply to notify
             }
 
             ensure(reply.actorId == "actor-sm-d6", "SM-D6 reply actor mismatch")
             ensure(notify.actorId == "actor-sm-d6", "SM-D6 push actor mismatch")
             ensure(notify.value == "push:push-bound-only", "SM-D6 push value mismatch")
-            ensure(shadow.receivedCount("ActorPushNotify") == 0, "SM-D6 shadow session received push")
-
             println("scenario SM-D6 passed")
         } finally {
             try {

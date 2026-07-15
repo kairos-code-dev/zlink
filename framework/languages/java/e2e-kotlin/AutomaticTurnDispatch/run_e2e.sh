@@ -136,6 +136,14 @@ gradle_run() {
 static_checks() {
   local tmp
   tmp="$(mktemp)"
+  if rg -n 'receivedCount\([^)]*\)\s*==\s*0' \
+      Client/src/main/java -g '*.java' >"${tmp}"; then
+    cat "${tmp}" >&2
+    rm -f "${tmp}"
+    echo "AutomaticTurnDispatch negative push assertions must use expectNone." >&2
+    return 1
+  fi
+
   if rg -n 'HttpClient|HttpURLConnection|RestTemplate|WebClient|@RestController|@RequestMapping|@PostMapping|@GetMapping' \
       Client Server Shared -g '*.java' -g '*.kt' >"${tmp}"; then
     cat "${tmp}" >&2

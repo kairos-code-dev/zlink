@@ -216,6 +216,39 @@ final class LocationStoreContractTest {
         }
     }
 
+    @Test
+    void runtimeQueryUsesConfiguredPageSizeForImplicitFirstPage() throws Exception {
+        ZLinkInMemoryLocationStore store = newStore();
+        ZLinkRegisteredLocationStores stores = ZLinkRegisteredLocationStores.fromUnified(store);
+        ZLinkLocationRuntime runtime =
+            new ZLinkLocationRuntime(stores, Duration.ofSeconds(30), Duration.ofSeconds(5));
+        runtime.start(NODE_A).toCompletableFuture().get();
+        try (runtime) {
+            for (int index = 1; index <= 3; index++) {
+                store.updateSpot(
+                        spot(runtime.ownerId(), 0, RoutingId.from("spot-" + index)),
+                        ZLinkLocationWriteIntent.NEW_CLAIM)
+                    .toCompletableFuture()
+                    .get();
+            }
+            ZLinkLocationOptions options = new ZLinkLocationOptions();
+            options.setListPageSize(2);
+            ZLinkLocationRuntimeQueryService query = new ZLinkLocationRuntimeQueryService(
+                stores,
+                runtime,
+                options);
+
+            ZLinkLocationPage<ZLinkSpotLocation> page = query.listSpotLocations(
+                    ZLinkSpotLocationFilter.all(),
+                    ZLinkPageRequest.firstPage())
+                .toCompletableFuture()
+                .get();
+
+            assertEquals(2, page.items().size());
+            assertNotNull(page.continuationToken());
+        }
+    }
+
     private static ZLinkInMemoryLocationStore newStore() {
         return new ZLinkInMemoryLocationStore(Clock.fixed(STORE_NOW, ZoneOffset.UTC));
     }
@@ -238,9 +271,16 @@ final class LocationStoreContractTest {
     }
 
     private static ZLinkSpotLocation spot(String ownerId, long generation) {
+        return spot(ownerId, generation, SPOT_RID);
+    }
+
+    private static ZLinkSpotLocation spot(
+        String ownerId,
+        long generation,
+        RoutingId spotRid) {
         return new ZLinkSpotLocation(
             "play",
-            SPOT_RID,
+            spotRid,
             "game",
             NODE_A,
             ZLinkSpotKind.USER,

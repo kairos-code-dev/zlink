@@ -278,7 +278,7 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
             && (filter.state() == null || entry.state() == filter.state());
     }
 
-    private static <T> ZLinkLocationPage<T> pageInMemory(List<T> rows, ZLinkPageRequest page) {
+    private <T> ZLinkLocationPage<T> pageInMemory(List<T> rows, ZLinkPageRequest page) {
         ZLinkPageRequest safePage = normalize(page);
         int offset = parseOffset(safePage.continuationToken());
         int limit = safePage.pageSize() <= 0 ? rows.size() : safePage.pageSize();
@@ -289,8 +289,11 @@ public final class ZLinkLocationRuntimeQueryService implements ZLinkLocationRunt
             nextOffset < rows.size() ? Integer.toString(nextOffset) : null);
     }
 
-    private static ZLinkPageRequest normalize(ZLinkPageRequest page) {
-        return page == null ? ZLinkPageRequest.firstPage() : page;
+    private ZLinkPageRequest normalize(ZLinkPageRequest page) {
+        ZLinkPageRequest safePage = page == null ? ZLinkPageRequest.firstPage() : page;
+        return safePage.pageSize() > 0
+            ? safePage
+            : new ZLinkPageRequest(options.listPageSize(), safePage.continuationToken());
     }
 
     private static int parseOffset(String token) {

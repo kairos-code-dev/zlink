@@ -25,25 +25,6 @@ inline std::size_t mon_a4_find_after (const std::vector<std::string> &entries,
     throw std::runtime_error ("MON-A4 ordered evidence missing: " + needle);
 }
 
-inline void mon_a4_wait_for_new_event (const std::string &base_url,
-                                       const std::string &needle,
-                                       std::size_t baseline_size)
-{
-    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-    do {
-        const auto entries = fetch_evidence (base_url);
-        if (entries.size () > baseline_size) {
-            for (auto index = baseline_size; index < entries.size (); ++index) {
-                if (contains (entries[index], needle)) {
-                    return;
-                }
-            }
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
-    } while (std::chrono::steady_clock::now () < deadline);
-    throw std::runtime_error ("MON-A4 transition evidence missing after action: " + needle);
-}
-
 inline void run_mon_a4_availability_transition_scenario (const client_options_t &options)
 {
     ensure (!options.old_service_channel_endpoint.empty ()
@@ -78,14 +59,14 @@ inline void run_mon_a4_availability_transition_scenario (const client_options_t 
     auto service_entries = fetch_evidence (options.service_url);
     auto drained = http.post ("/admin/server-weight?weight=0").submit_raw ().result ();
     ensure (drained && drained.value ().status < 400, "MON-A4 drain admin call failed");
-    mon_a4_wait_for_new_event (options.service_url, "kind=PeerAdmissionChanged",
-                               service_entries.size ());
+    wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
+                           service_entries.size ());
 
     service_entries = fetch_evidence (options.service_url);
     auto restored = http.post ("/admin/server-weight?weight=100").submit_raw ().result ();
     ensure (restored && restored.value ().status < 400, "MON-A4 restore admin call failed");
-    mon_a4_wait_for_new_event (options.service_url, "kind=PeerAdmissionChanged",
-                               service_entries.size ());
+    wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
+                           service_entries.size ());
     std::cout << "scenario MON-A4 passed\n";
 }
 

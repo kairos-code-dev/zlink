@@ -90,6 +90,25 @@ inline std::vector<std::string> wait_evidence_count_at_least (
     throw std::runtime_error ("timed out waiting for evidence count: " + required);
 }
 
+inline void wait_for_new_evidence (const std::string &base_url,
+                                   const std::string &required,
+                                   std::size_t baseline_size,
+                                   std::chrono::milliseconds timeout =
+                                     std::chrono::milliseconds (10000))
+{
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
+    do {
+        const auto entries = fetch_evidence (base_url);
+        for (auto index = baseline_size; index < entries.size (); ++index) {
+            if (contains (entries[index], required)) {
+                return;
+            }
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+    } while (std::chrono::steady_clock::now () < deadline);
+    throw std::runtime_error ("transition evidence missing after action: " + required);
+}
+
 inline profile_res_t post_profile_request (const std::string &base_url,
                                              const std::string &path,
                                              const profile_req_t &request)

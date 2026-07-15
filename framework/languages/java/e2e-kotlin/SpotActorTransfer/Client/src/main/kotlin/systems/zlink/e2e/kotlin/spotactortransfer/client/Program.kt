@@ -153,7 +153,7 @@ private class KotlinBoundSessionScenario(
     private fun connector() = ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
             URI.create(Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT")),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofSeconds(10),
             2,
             Duration.ofSeconds(5),

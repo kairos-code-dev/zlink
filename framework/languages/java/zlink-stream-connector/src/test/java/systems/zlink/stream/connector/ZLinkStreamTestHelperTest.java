@@ -101,7 +101,7 @@ final class ZLinkStreamTestHelperTest {
 
     private ZLinkStreamConnector connector(TcpStreamConnectorTestServer server) {
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
-            server.options(ZLinkStreamDispatchMode.AUTO));
+            server.options(ZLinkStreamDispatchMode.IMMEDIATE));
         connectors.add(connector);
         return connector;
     }

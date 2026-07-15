@@ -766,7 +766,7 @@ final class SampleReleaseGateContractTest {
             "TicTacToe stream client path must use connector member request contracts and assert the .NET winning scenario");
         assertTrue(clientSource.contains(".waitFor(PlayerJoinedNotify.class)")
                 && clientSource.contains(".waitFor(GameStateNotify.class)")
-                && clientSource.contains("ZLinkStreamDispatchMode.AUTO")
+                && clientSource.contains("ZLinkStreamDispatchMode.IMMEDIATE")
                 && clientSource.contains(".where(PlayerJoinedNotify.class,")
                 && clientSource.contains(".where(GameStateNotify.class,")
                 && clientSource.contains(".submit(PlayerJoinedNotify.class)")
@@ -1146,7 +1146,7 @@ final class SampleReleaseGateContractTest {
                 && clientSource.contains("class TicTacToeClientScenario")
                 && clientSource.contains("hostStream.waitFor<GameStateNotify>()")
                 && clientSource.contains("guestStream.waitFor<GameStateNotify>()")
-                && clientSource.contains("ZLinkStreamDispatchMode.AUTO")
+                && clientSource.contains("ZLinkStreamDispatchMode.IMMEDIATE")
                 && clientSource.contains("hostSawGuestJoin")
                 && clientSource.contains("hostSawGameStart")
                 && clientSource.contains("guestSawHostWin")
@@ -1448,7 +1448,7 @@ final class SampleReleaseGateContractTest {
             "Bingo client Program must close connectors through lifecycle call builders");
         assertTrue(clientProgramSource.contains("ZLinkStreamConnectorFactory.create"),
             "Bingo sample must use connector public factory");
-        assertTrue(clientProgramSource.contains("ZLinkStreamDispatchMode.AUTO"),
+        assertTrue(clientProgramSource.contains("ZLinkStreamDispatchMode.IMMEDIATE"),
             "Bingo sample must use configured auto-dispatch connectors like the .NET immediate-dispatch sample");
         assertTrue(clientAppSource.contains("ZLinkStreamConnector client1")
                 && clientAppSource.contains("ZLinkStreamConnector client2")
@@ -1674,7 +1674,7 @@ final class SampleReleaseGateContractTest {
             "Kotlin Bingo client Program must close connectors through coroutine lifecycle wrappers");
         assertTrue(clientProgramSource.contains("ZLinkStreamConnectorFactory.create"),
             "Kotlin Bingo sample must use connector public factory");
-        assertTrue(clientProgramSource.contains("ZLinkStreamDispatchMode.AUTO"),
+        assertTrue(clientProgramSource.contains("ZLinkStreamDispatchMode.IMMEDIATE"),
             "Kotlin Bingo sample must use configured auto-dispatch connectors like the .NET immediate-dispatch sample");
         assertTrue(clientAppSource.contains("client1: ZLinkKotlinStreamConnector")
                 && clientAppSource.contains("client2: ZLinkKotlinStreamConnector")

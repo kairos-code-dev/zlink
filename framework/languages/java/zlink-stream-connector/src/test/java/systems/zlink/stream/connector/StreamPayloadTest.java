@@ -47,7 +47,7 @@ final class StreamPayloadTest {
     void awaitStage_waitsForSubmittedPush() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO));
+                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             try {
             ConnectorTestAwait.await(connector.connect());
 

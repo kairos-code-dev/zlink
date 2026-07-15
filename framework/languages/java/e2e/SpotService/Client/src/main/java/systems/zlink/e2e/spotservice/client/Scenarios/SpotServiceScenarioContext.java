@@ -270,7 +270,7 @@ public class SpotServiceScenarioContext {
     }
 
     protected ZLinkStreamConnector createStreamConnector(String endpoint) {
-        return createStreamConnector(endpoint, ZLinkStreamDispatchMode.AUTO, Integer.MAX_VALUE);
+        return createStreamConnector(endpoint, ZLinkStreamDispatchMode.IMMEDIATE, Integer.MAX_VALUE);
     }
 
     protected ZLinkStreamConnector createStreamConnector(

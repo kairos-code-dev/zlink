@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -159,33 +160,37 @@ final class ZLinkStreamReceiveDispatcher {
         if (registered.isEmpty()) {
             return;
         }
-        Runnable dispatch = () -> {
+        java.util.function.Supplier<CompletionStage<Void>> dispatch = () -> {
+            CompletionStage<Void> completion = CompletableFuture.completedFuture(null);
             for (ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload> handler : registered) {
-                invokeUserCallback(() -> handler.handleAsync(new ZLinkStreamMessage<>(
-                    header.name(),
-                    new ZLinkStreamEncodedPayload(
+                completion = completion.thenCompose(ignored -> invokeUserCallback(
+                    () -> handler.handleAsync(new ZLinkStreamMessage<>(
                         header.name(),
-                        Message.from(payload),
-                        header.metadata(),
-                        ZLinkStreamConnectorPayloadCodec.fromWireCodec(header.codec())),
-                    header.metadata())));
+                        new ZLinkStreamEncodedPayload(
+                            header.name(),
+                            Message.from(payload),
+                            header.metadata(),
+                            ZLinkStreamConnectorPayloadCodec.fromWireCodec(header.codec())),
+                        header.metadata()))));
             }
+            return completion;
         };
-        if (configuration.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
-            dispatch.run();
+        if (configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE) {
+            dispatch.get();
         } else {
-            dispatchQueue.add(header.name(), dispatch);
+            dispatchQueue.addAsync(header.name(), dispatch);
         }
     }
 
-    private void invokeUserCallback(UserCallback callback) {
+    private CompletionStage<Void> invokeUserCallback(UserCallback callback) {
         try {
-            callback.invoke().exceptionally(ex -> {
+            return callback.invoke().exceptionally(ex -> {
                 errorPublisher.accept(DefaultZLinkStreamConnector.userCallbackFailed(ex));
                 return null;
             });
         } catch (Throwable ex) {
             errorPublisher.accept(DefaultZLinkStreamConnector.userCallbackFailed(ex));
+            return CompletableFuture.completedFuture(null);
         }
     }
 

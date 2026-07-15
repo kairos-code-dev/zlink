@@ -30,7 +30,7 @@ private fun createClient(endpoint: String): ZLinkKotlinStreamConnector {
     val client = ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
             URI.create(endpoint),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             SampleTimings.RequestTimeout,
             2,
             SampleTimings.ConnectTimeout,

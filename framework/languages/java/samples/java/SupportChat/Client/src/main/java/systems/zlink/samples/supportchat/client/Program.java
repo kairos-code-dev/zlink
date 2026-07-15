@@ -40,7 +40,7 @@ public final class Program {
     private static ZLinkStreamConnector createClient(ClientOptions options) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             options.streamEndpoint(),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             SampleTimings.RequestTimeout,
             SampleTimings.RequestTimeout,
             2,

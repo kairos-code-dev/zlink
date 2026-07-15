@@ -128,7 +128,7 @@ public final class Program {
         Contracts.ActorRefWire actorRef) {
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofSeconds(10),
             2,
             Duration.ofSeconds(5),

@@ -19,7 +19,7 @@ public final class SmD14Scenario extends SpotServiceScenarioContext {
         String endpoint = Env.get("ZLINK_JAVA_E2E_TLS_STREAM_A_ENDPOINT");
         ZLinkStreamConnector strict = createStreamConnector(
             endpoint,
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Integer.MAX_VALUE,
             false);
         boolean strictTlsRejected = false;
@@ -36,7 +36,7 @@ public final class SmD14Scenario extends SpotServiceScenarioContext {
         Contracts.ActorProfile profile = new Contracts.ActorProfile("Stream TLS", 14, List.of("tls"));
         ZLinkStreamConnector tls = createStreamConnector(
             endpoint,
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Integer.MAX_VALUE,
             true);
         try {

@@ -132,8 +132,7 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     private CompletionStage<Void> dispatchInternalStage() {
-        dispatchQueue.drain();
-        return CompletableFuture.completedFuture(null);
+        return dispatchQueue.drainAsync();
     }
 
     @Override
@@ -309,7 +308,11 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     private void notifyDisconnected() {
         ZLinkStreamDisconnected event = new ZLinkStreamDisconnected(closeReason);
         for (ZLinkStreamDisconnectedHandler handler : List.copyOf(disconnectedHandlers)) {
-            invokeUserCallback(() -> handler.handle(event));
+            if (configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE) {
+                invokeUserCallback(() -> handler.handle(event));
+            } else {
+                dispatchQueue.addAsync(() -> invokeUserCallback(() -> handler.handle(event)));
+            }
         }
         closeReason = ZLinkStreamCloseReason.TRANSPORT_ERROR;
     }
@@ -321,32 +324,33 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     private void publishError(ZLinkStreamError error) {
         for (ZLinkStreamErrorHandler handler : List.copyOf(errorHandlers)) {
-            Runnable dispatch = () -> invokeErrorCallback(handler, error);
-            if (configuration.dispatchMode() == ZLinkStreamDispatchMode.AUTO) {
-                dispatch.run();
+            if (configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE) {
+                invokeErrorCallback(handler, error);
             } else {
-                dispatchQueue.add(dispatch);
+                dispatchQueue.addAsync(() -> invokeErrorCallback(handler, error));
             }
         }
     }
 
-    private void invokeUserCallback(UserCallback callback) {
+    private CompletionStage<Void> invokeUserCallback(UserCallback callback) {
         try {
-            callback.invoke().exceptionally(ex -> {
+            return callback.invoke().exceptionally(ex -> {
                 publishUserCallbackFailed(ex);
                 return null;
             });
         } catch (Throwable ex) {
             publishUserCallbackFailed(ex);
+            return CompletableFuture.completedFuture(null);
         }
     }
 
-    private void invokeErrorCallback(
+    private CompletionStage<Void> invokeErrorCallback(
         ZLinkStreamErrorHandler handler,
         ZLinkStreamError error) {
         try {
-            handler.handleAsync(error).exceptionally(ex -> null);
+            return handler.handleAsync(error).exceptionally(ex -> null);
         } catch (Throwable ignored) {
+            return CompletableFuture.completedFuture(null);
         }
     }
 

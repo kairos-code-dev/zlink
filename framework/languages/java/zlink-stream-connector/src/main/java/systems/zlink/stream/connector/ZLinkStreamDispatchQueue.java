@@ -5,6 +5,9 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Supplier;
 
 final class ZLinkStreamDispatchQueue {
     private final Queue<QueuedDispatch> queue = new ArrayDeque<>();
@@ -26,6 +29,17 @@ final class ZLinkStreamDispatchQueue {
     }
 
     void add(String packetName, Runnable item) {
+        addAsync(packetName, () -> {
+            item.run();
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    void addAsync(Supplier<CompletionStage<Void>> item) {
+        addAsync(null, item);
+    }
+
+    void addAsync(String packetName, Supplier<CompletionStage<Void>> item) {
         synchronized (queue) {
             if (packetName != null && receivedMessageCount() >= maxReceivedMessages) {
                 dropOldestReceivedMessage();
@@ -50,19 +64,21 @@ final class ZLinkStreamDispatchQueue {
         }
     }
 
-    void drain() {
-        while (true) {
-            QueuedDispatch next;
-            synchronized (queue) {
-                next = queue.poll();
-                if (next != null) {
-                    decrementReceivedCount(next.packetName());
-                }
+    CompletionStage<Void> drainAsync() {
+        QueuedDispatch next;
+        synchronized (queue) {
+            next = queue.poll();
+            if (next != null) {
+                decrementReceivedCount(next.packetName());
             }
-            if (next == null) {
-                return;
-            }
-            next.action().run();
+        }
+        if (next == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        try {
+            return next.action().get().thenCompose(ignored -> drainAsync());
+        } catch (Throwable error) {
+            return CompletableFuture.failedFuture(error);
         }
     }
 
@@ -98,6 +114,8 @@ final class ZLinkStreamDispatchQueue {
         }
     }
 
-    private record QueuedDispatch(String packetName, Runnable action) {
+    private record QueuedDispatch(
+        String packetName,
+        Supplier<CompletionStage<Void>> action) {
     }
 }

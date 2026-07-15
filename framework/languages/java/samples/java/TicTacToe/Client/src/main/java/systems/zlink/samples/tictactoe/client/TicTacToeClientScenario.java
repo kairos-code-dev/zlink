@@ -274,7 +274,7 @@ public final class TicTacToeClientScenario {
     private static ZLinkStreamConnector playerConnector(String endpoint, String role) {
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             TicTacToeSampleDefaults.RequestTimeout,
             2,
             Duration.ofSeconds(5),

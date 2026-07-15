@@ -35,7 +35,7 @@ private fun createClient(options: ClientOptions): ZLinkStreamConnector =
     ZLinkStreamConnectorFactory.create(
         ZLinkStreamConnectorOptions(
             options.streamEndpoint,
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             SampleTimings.RequestTimeout,
             2,
             SampleTimings.ConnectTimeout,

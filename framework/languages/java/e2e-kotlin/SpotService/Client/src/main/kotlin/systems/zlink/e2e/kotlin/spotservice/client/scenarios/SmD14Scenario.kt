@@ -17,7 +17,7 @@ internal object SmD14Scenario {
         val endpoint = Env.get("ZLINK_KOTLIN_E2E_TLS_STREAM_A_ENDPOINT")
         val strict = createStreamConnector(
             endpoint,
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Int.MAX_VALUE,
             false
         )
@@ -35,7 +35,7 @@ internal object SmD14Scenario {
         val profile = Contracts.ActorProfile("Stream TLS", 14, listOf("tls"))
         val tls = createStreamConnector(
             endpoint,
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Int.MAX_VALUE,
             true
         )

@@ -25,7 +25,7 @@ public final class ClientStreamSupport {
     public static ZLinkStreamConnector createConnector(Duration requestTimeout) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT")),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             requestTimeout,
             2,
             Duration.ofSeconds(5),

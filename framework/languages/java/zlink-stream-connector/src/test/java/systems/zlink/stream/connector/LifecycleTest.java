@@ -29,7 +29,7 @@ final class LifecycleTest {
     void concurrentConnectCallsShareOneTransportAttempt() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.AUTO));
+                ZLinkStreamConnectorFactory.create(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             try {
                 CompletableFuture<Void> first = connector.connect().submit().toCompletableFuture();
                 CompletableFuture<Void> second = connector.connect().submit().toCompletableFuture();
@@ -47,7 +47,7 @@ final class LifecycleTest {
     void connectDuringAutomaticReconnectWaitsForThatAttempt() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
-                ZLinkStreamDispatchMode.AUTO,
+                ZLinkStreamDispatchMode.IMMEDIATE,
                 Duration.ofSeconds(1),
                 3,
                 false,
@@ -86,7 +86,7 @@ final class LifecycleTest {
     void automaticReconnectFailsAfterConfiguredMaxAttempts() throws Exception {
         TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofSeconds(1),
             2,
             false,
@@ -115,7 +115,7 @@ final class LifecycleTest {
         TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer(port);
         ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
             java.net.URI.create("tcp://127.0.0.1:" + port),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofSeconds(1),
             ZLinkStreamConnectorOptions.UNLIMITED_RECONNECT_ATTEMPTS,
             Duration.ofMillis(100),
@@ -162,7 +162,7 @@ final class LifecycleTest {
     void closeWhileAutomaticallyReconnectingKeepsConnectorClosed() throws Exception {
         TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer();
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofSeconds(1),
             2,
             false,
@@ -229,7 +229,7 @@ final class LifecycleTest {
     void heartbeatSendsReservedControlPing() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
-                 ZLinkStreamDispatchMode.AUTO,
+                 ZLinkStreamDispatchMode.IMMEDIATE,
                  Duration.ofSeconds(1),
                  1,
                  true,
@@ -255,7 +255,7 @@ final class LifecycleTest {
     void inboundHeartbeatPingReceivesPongWhenHeartbeatDisabled() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
-                 ZLinkStreamDispatchMode.AUTO,
+                 ZLinkStreamDispatchMode.IMMEDIATE,
                  Duration.ofSeconds(1),
                  1,
                  false,
@@ -282,7 +282,7 @@ final class LifecycleTest {
     void heartbeatTimeoutFailsPendingRequestsWithTimeoutCause() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(server.options(
-                 ZLinkStreamDispatchMode.AUTO,
+                 ZLinkStreamDispatchMode.IMMEDIATE,
                  Duration.ofSeconds(5),
                  1,
                  true,
@@ -310,7 +310,7 @@ final class LifecycleTest {
     void reconnectEnabledRejectsZeroMaxAttempts() {
         ZLinkStreamConnectorOptions options = new ZLinkStreamConnectorOptions(
             java.net.URI.create("tcp://127.0.0.1:1"),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofMillis(100),
             0,
             Duration.ofMillis(100),

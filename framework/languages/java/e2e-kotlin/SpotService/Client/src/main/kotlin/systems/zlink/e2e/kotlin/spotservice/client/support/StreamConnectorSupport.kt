@@ -12,7 +12,7 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 internal val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(5)
 
 internal fun createStreamConnector(endpoint: String): ZLinkKotlinStreamConnector =
-    createStreamConnector(endpoint, ZLinkStreamDispatchMode.AUTO, 2)
+    createStreamConnector(endpoint, ZLinkStreamDispatchMode.IMMEDIATE, 2)
 
 internal fun createStreamConnector(
     endpoint: String,

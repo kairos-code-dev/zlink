@@ -420,20 +420,25 @@ final class ZLinkStreamConnectionLifecycle {
         }
         state = next;
         for (ZLinkStreamConnectionStateHandler handler : List.copyOf(stateHandlers)) {
-            invokeStateCallback(handler, next);
+            if (configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE) {
+                invokeStateCallback(handler, next);
+            } else {
+                dispatchQueue.addAsync(() -> invokeStateCallback(handler, next));
+            }
         }
     }
 
-    private void invokeStateCallback(
+    private CompletionStage<Void> invokeStateCallback(
         ZLinkStreamConnectionStateHandler handler,
         ZLinkStreamConnectionState next) {
         try {
-            handler.handleAsync(next).exceptionally(ex -> {
+            return handler.handleAsync(next).exceptionally(ex -> {
                 errorPublisher.accept(DefaultZLinkStreamConnector.userCallbackFailed(ex));
                 return null;
             });
         } catch (Throwable ex) {
             errorPublisher.accept(DefaultZLinkStreamConnector.userCallbackFailed(ex));
+            return CompletableFuture.completedFuture(null);
         }
     }
 

@@ -36,7 +36,7 @@ public final class Program {
     private static ZLinkStreamConnector createClient(String endpoint) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             SampleTimings.RequestTimeout,
             SampleTimings.RequestTimeout,
             2,

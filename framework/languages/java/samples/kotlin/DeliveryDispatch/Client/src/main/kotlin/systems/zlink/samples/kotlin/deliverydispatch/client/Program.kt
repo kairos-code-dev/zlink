@@ -234,7 +234,7 @@ class DeliveryDispatchClientScenario {
         ZLinkStreamConnectorFactory.create(
             ZLinkStreamConnectorOptions(
                 URI.create(endpoint),
-                ZLinkStreamDispatchMode.AUTO,
+                ZLinkStreamDispatchMode.IMMEDIATE,
                 SampleTimings.RequestTimeout,
                 SampleTimings.RequestTimeout,
                 2,

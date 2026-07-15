@@ -65,7 +65,7 @@ final class ZLinkStreamConnectorTest {
     void packetNameOverrideWinsForRawAndTypedSendAndRequest() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             ConnectorTestAwait.await(connector.connect());
 
             CompletableFuture<TcpStreamConnectorTestServer.ReceivedFrame> rawSend =
@@ -249,7 +249,7 @@ final class ZLinkStreamConnectorTest {
         throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             CountDownLatch observed = new CountDownLatch(1);
             CountDownLatch releaseObserver = new CountDownLatch(1);
             AtomicReference<ZLinkStreamInboundObservation> snapshot = new AtomicReference<>();
@@ -299,7 +299,7 @@ final class ZLinkStreamConnectorTest {
     void inboundObserverSeesSendAndControlFrames() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             List<ZLinkStreamInboundObservation> observations = new ArrayList<>();
             connector.observeInbound(observation -> {
                 synchronized (observations) {
@@ -356,7 +356,7 @@ final class ZLinkStreamConnectorTest {
     void inboundObserverRejectsAfterConnectAndStopsAfterClose() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             AtomicInteger observed = new AtomicInteger();
             AutoCloseable registration = connector.observeInbound(observation -> {
                 observed.incrementAndGet();
@@ -398,7 +398,7 @@ final class ZLinkStreamConnectorTest {
     void inboundObserverFailureReportsObserverFailedAndDispatchContinues() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             AtomicReference<ZLinkStreamError> error = new AtomicReference<>();
             connector.onErrorReceived(received -> {
                 if (received.code() == ZLinkStreamErrorCode.OBSERVER_FAILED) {
@@ -438,7 +438,7 @@ final class ZLinkStreamConnectorTest {
     void inboundObserverPayloadPreviewUsesConfiguredLimit() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = createConnector(withObserverLimits(
-                server.options(ZLinkStreamDispatchMode.AUTO),
+                server.options(ZLinkStreamDispatchMode.IMMEDIATE),
                 4,
                 3));
             AtomicReference<ZLinkStreamInboundObservation> observed = new AtomicReference<>();
@@ -471,7 +471,7 @@ final class ZLinkStreamConnectorTest {
         throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = createConnector(withObserverLimits(
-                server.options(ZLinkStreamDispatchMode.AUTO),
+                server.options(ZLinkStreamDispatchMode.IMMEDIATE),
                 1,
                 0));
             CountDownLatch observerEntered = new CountDownLatch(1);
@@ -754,7 +754,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = createConnector(options(
                 server.endpoint(),
-                ZLinkStreamDispatchMode.AUTO,
+                ZLinkStreamDispatchMode.IMMEDIATE,
                 64 * 1024,
                 64 * 1024,
                 false,
@@ -945,7 +945,7 @@ final class ZLinkStreamConnectorTest {
         try (TlsStreamConnectorTestServer server = new TlsStreamConnectorTestServer()) {
             ZLinkStreamConnectorOptions strict = new ZLinkStreamConnectorOptions(
                 server.endpoint(),
-                ZLinkStreamDispatchMode.AUTO,
+                ZLinkStreamDispatchMode.IMMEDIATE,
                 Duration.ofSeconds(1),
                 0,
                 Duration.ofSeconds(1),
@@ -1104,9 +1104,9 @@ final class ZLinkStreamConnectorTest {
     void connectAndCloseUpdateState() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             assertFalse(connector.isConnected());
-            assertEquals(ZLinkStreamDispatchMode.AUTO, connector.options().dispatchMode());
+            assertEquals(ZLinkStreamDispatchMode.IMMEDIATE, connector.options().dispatchMode());
             ConnectorTestAwait.await(connector.connect());
             assertTrue(connector.isConnected());
             ConnectorTestAwait.await(connector.close());
@@ -1118,7 +1118,7 @@ final class ZLinkStreamConnectorTest {
     void lifecycleHandlersObserveStateChangesAndDisconnect() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             List<ZLinkStreamConnectionState> states = new ArrayList<>();
             AtomicInteger disconnected = new AtomicInteger();
 
@@ -1155,7 +1155,7 @@ final class ZLinkStreamConnectorTest {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector = createConnector(
                 server.options(
-                    ZLinkStreamDispatchMode.AUTO,
+                    ZLinkStreamDispatchMode.IMMEDIATE,
                     Duration.ofSeconds(1),
                     1,
                     false,
@@ -1217,7 +1217,7 @@ final class ZLinkStreamConnectorTest {
     void errorReceivedObservesRemoteErrorPacket() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             AtomicReference<ZLinkStreamError> received = new AtomicReference<>();
             connector.onErrorReceived(error -> {
                 received.set(error);
@@ -1248,7 +1248,7 @@ final class ZLinkStreamConnectorTest {
     void correlatedRemoteErrorFailsOnlyItsPendingRequest() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             AtomicInteger streamErrors = new AtomicInteger();
             connector.onErrorReceived(error -> {
                 streamErrors.incrementAndGet();
@@ -1283,7 +1283,7 @@ final class ZLinkStreamConnectorTest {
     void errorReceivedObservesUserCallbackFailure() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
             AtomicReference<ZLinkStreamError> received = new AtomicReference<>();
             connector.onErrorReceived(error -> {
                 received.set(error);

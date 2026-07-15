@@ -220,7 +220,7 @@ class TicTacToeClientScenario {
         ZLinkStreamConnectorFactory.create(
             ZLinkStreamConnectorOptions(
                 URI.create(endpoint),
-                ZLinkStreamDispatchMode.AUTO,
+                ZLinkStreamDispatchMode.IMMEDIATE,
                 TicTacToeSampleDefaults.RequestTimeout,
                 2,
                 Duration.ofSeconds(5),

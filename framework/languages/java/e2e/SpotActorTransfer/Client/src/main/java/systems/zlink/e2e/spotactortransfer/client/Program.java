@@ -458,7 +458,7 @@ public final class Program implements AutoCloseable {
     private static ZLinkStreamConnector connector(String endpoint) {
         return ZLinkStreamConnectorFactory.create(new ZLinkStreamConnectorOptions(
             URI.create(endpoint),
-            ZLinkStreamDispatchMode.AUTO,
+            ZLinkStreamDispatchMode.IMMEDIATE,
             Duration.ofSeconds(10),
             2,
             Duration.ofSeconds(5),

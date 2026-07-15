@@ -92,7 +92,7 @@ export class ZlinkStreamReceiveDispatcher {
     this.inboundObservers.enqueue(header, payload, signal);
     if (header.kind === ZlinkStreamMessageKind.Response && header.requestSeq !== undefined) {
       try {
-        if (!this.pendingRequests.resolve(header.requestSeq, header.name, {
+        if (!this.pendingRequests.resolve(header.requestSeq, {
           codec: header.codec,
           payload: this.protocol.decodePayload(header, payload)
         })) {
@@ -109,7 +109,6 @@ export class ZlinkStreamReceiveDispatcher {
         );
         if (!this.pendingRequests.reject(
           header.requestSeq,
-          header.name,
           decodeError
         )) {
           await this.events.publishError(decodeError, signal);
@@ -120,7 +119,7 @@ export class ZlinkStreamReceiveDispatcher {
     if (header.kind === ZlinkStreamMessageKind.Error && header.requestSeq !== undefined) {
       try {
         const remoteError = decodeRemoteError(this.protocol, header, payload);
-        if (!this.pendingRequests.reject(header.requestSeq, header.name, remoteError)) {
+        if (!this.pendingRequests.reject(header.requestSeq, remoteError)) {
           await this.events.publishError(remoteError, signal);
         }
       } catch (cause) {
@@ -131,7 +130,6 @@ export class ZlinkStreamReceiveDispatcher {
         );
         if (!this.pendingRequests.reject(
           header.requestSeq,
-          header.name,
           decodeError
         )) {
           await this.events.publishError(decodeError, signal);

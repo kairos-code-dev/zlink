@@ -229,7 +229,7 @@ export class ZLinkSpotActorPacketDrain {
         codec: ZLinkStreamCodec.Json,
         flags: ZLinkStreamHeaderFlags.None,
         requestSeq: requestHeader.requestSeq,
-        name: requestHeader.name,
+        name: '',
         metadata: new Map(),
         correlationId: requestHeader.correlationId
       }, payloadMessage.data()))) as Message;

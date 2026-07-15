@@ -83,7 +83,9 @@ export class ZLinkStreamFrameMessageFactory {
         codec,
         flags,
         requestSeq,
-        name: packetName,
+        name: kind === ZLinkStreamMessageKind.Response || kind === ZLinkStreamMessageKind.Error
+          ? ''
+          : packetName,
         metadata,
         correlationId,
         ...(flow ?? {})

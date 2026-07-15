@@ -30,7 +30,7 @@ export class ZlinkStreamPendingRequests {
     const promise = new Promise<ZlinkStreamEncodedPayload>((resolve, reject) => {
       timeout = setTimeout(() => {
         this.active.delete(requestSeq);
-        reject(connectorError(ZlinkStreamErrorCode.RequestTimeout, 'Request timed out.'));
+        reject(connectorError(ZlinkStreamErrorCode.RequestTimeout, `Request '${packetName}' timed out.`));
       }, timeoutMs);
       resolvePending = resolve;
       rejectPending = (error) => reject(connectorError(error.code, error.message, error.cause));
@@ -59,9 +59,9 @@ export class ZlinkStreamPendingRequests {
     return { requestSeq, promise };
   }
 
-  /* stream connector spec §5.2: a pending request is matched by request_seq alone. The reply's
-   * packet name is informational, so a differing name must not drop an otherwise valid reply. */
-  resolve(requestSeq: bigint, _packetName: string, value: ZlinkStreamEncodedPayload): boolean {
+  /* stream connector spec §5.2: a pending request is matched by request_seq alone. Diagnostics
+   * use the original request name retained by this registry, never a legacy reply name. */
+  resolve(requestSeq: bigint, value: ZlinkStreamEncodedPayload): boolean {
     const pending = this.active.get(requestSeq);
     if (pending === undefined) {
       return false;
@@ -71,7 +71,7 @@ export class ZlinkStreamPendingRequests {
     return true;
   }
 
-  reject(requestSeq: bigint, _packetName: string, error: ZlinkStreamError): boolean {
+  reject(requestSeq: bigint, error: ZlinkStreamError): boolean {
     const pending = this.active.get(requestSeq);
     if (pending === undefined) {
       return false;

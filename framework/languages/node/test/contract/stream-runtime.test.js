@@ -1489,7 +1489,7 @@ test('runtime host relays bound remote actor request through route channel and c
   assert.equal(stream.writes.length, 1);
   const frame = decodeFrame(bytesOf(stream.writes[0]));
   assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
-  assert.equal(frame.header.name, 'MatchBingoReq');
+  assert.equal(frame.header.name, '');
   assert.equal(frame.header.requestSeq, 2n);
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { matched: true });
 });
@@ -1638,7 +1638,7 @@ test('runtime host completes local bound actor request without native SessionRel
   assert.equal(stream.writes.length, 1);
   const frame = decodeFrame(bytesOf(stream.writes[0]));
   assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
-  assert.equal(frame.header.name, 'JoinGameReq');
+  assert.equal(frame.header.name, '');
   assert.equal(frame.header.requestSeq, 5n);
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { joined: true });
 });
@@ -1741,7 +1741,7 @@ test('runtime host completes relayed actor request on captured stream after acto
   assert.equal(stream.writes.length, 1);
   const frame = decodeFrame(stream.writes[0].bytes);
   assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
-  assert.equal(frame.header.name, 'ComplexActorReq');
+  assert.equal(frame.header.name, '');
   assert.equal(frame.header.requestSeq, 7n);
   assert.equal(frame.header.metadata.get('trace'), 'cleanup');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { value: 'pong' });
@@ -2216,7 +2216,7 @@ test('session client reply writes response frame only while dispatching request 
   const frame = decodeFrame(written[0]);
   assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
   assert.equal(frame.header.requestSeq, 42n);
-  assert.equal(frame.header.name, 'Move');
+  assert.equal(frame.header.name, '');
   assert.equal(frame.header.correlationId, 'reply-corr-42');
   assert.equal(frame.header.metadata.get('trace'), 'reply-1');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), { accepted: true });
@@ -2266,7 +2266,7 @@ test('session client reply uses configured stream payload codec', async () => {
   assert.equal(frame.header.kind, connector.ZlinkStreamMessageKind.Response);
   assert.equal(frame.header.codec, connector.ZlinkStreamCodec.Protobuf);
   assert.equal(frame.header.requestSeq, 44n);
-  assert.equal(frame.header.name, 'AuthenticateReq');
+  assert.equal(frame.header.name, '');
   assert.equal(new TextDecoder().decode(frame.payload), 'proto:true');
 });
 

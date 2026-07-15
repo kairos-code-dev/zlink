@@ -14,7 +14,8 @@ import { ZlinkStreamMetadataCodec } from './ZlinkStreamMetadataCodec';
 
 export class ZlinkStreamHeaderCodec {
   static encode(header: ZlinkStreamHeader): Uint8Array {
-    validateName(header.name, header.kind === ZlinkStreamMessageKind.Control);
+    const reply = isReplyKind(header.kind);
+    if (!reply) validateName(header.name, header.kind === ZlinkStreamMessageKind.Control);
     validateHeaderSemantics(header);
     ZlinkStreamMetadataCodec.size(header.metadata);
     try {
@@ -56,10 +57,16 @@ export class ZlinkStreamHeaderCodec {
       throw connectorError(ZlinkStreamErrorCode.FrameDecodeFailed, streamWireErrorMessage(cause), cause);
     }
     validateEnum(decoded.kind, decoded.codec, decoded.flags);
-    validateName(decoded.name, decoded.kind === ZlinkStreamMessageKind.Control);
+    if (!isReplyKind(decoded.kind)) {
+      validateName(decoded.name, decoded.kind === ZlinkStreamMessageKind.Control);
+    }
     validateHeaderSemantics(decoded);
     return decoded;
   }
+}
+
+function isReplyKind(kind: ZlinkStreamMessageKind): boolean {
+  return kind === ZlinkStreamMessageKind.Response || kind === ZlinkStreamMessageKind.Error;
 }
 
 function streamWireErrorMessage(cause: unknown): string {

@@ -806,7 +806,7 @@ test('stream session runtime replies to dispatch errors without session onError 
   const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Error);
   assert.equal(header.requestSeq, 7n);
-  assert.equal(header.name, 'Move');
+  assert.equal(header.name, '');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
     code: 'Error',
     message: 'dispatch failed'
@@ -842,7 +842,7 @@ test('stream session runtime keeps request streams open after route disconnect e
   const header = protocolCodecs.ZlinkStreamHeaderCodec.decode(frame.header);
   assert.equal(header.kind, connector.ZlinkStreamMessageKind.Error);
   assert.equal(header.requestSeq, 9n);
-  assert.equal(header.name, 'YieldShutdownScenarioReq');
+  assert.equal(header.name, '');
   assert.deepEqual(JSON.parse(new TextDecoder().decode(frame.payload)), {
     code: 'ZLinkRouteDisconnectedError',
     message: 'yield.spot.route'
@@ -1018,7 +1018,7 @@ test('stream session runtime dispatches unmatched response frames to the session
   }), fakeMessage('unmatched'));
   await runtime.dispose();
 
-  assert.deepEqual(events, [['dispatch', 'Move', 'unmatched']]);
+  assert.deepEqual(events, [['dispatch', '', 'unmatched']]);
 });
 
 test('stream session node runtime receives framed packets from public binding stream socket', async () => {

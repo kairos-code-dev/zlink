@@ -224,7 +224,7 @@ export function createStreamReplyHeader(
     codec,
     flags,
     requestSeq: requestHeader.requestSeq,
-    name: requestHeader.name,
+    name: '',
     metadata,
     correlationId: requestHeader.correlationId,
     flowId: requestHeader.flowId,

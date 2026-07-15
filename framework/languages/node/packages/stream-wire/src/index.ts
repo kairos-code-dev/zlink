@@ -44,6 +44,8 @@ const defaultHeaderFlags: ZLinkStreamWireHeaderFlags = {
 };
 
 export const ZLINK_STREAM_FORMAT_MARKER = 0xf2;
+const ZLINK_STREAM_RESPONSE_KIND = 3;
+const ZLINK_STREAM_ERROR_KIND = 4;
 
 export function encodeStreamWireFrame(header: Uint8Array, payload: Uint8Array): Uint8Array {
   if (header.length > 0xffff) {
@@ -94,8 +96,10 @@ export function encodeStreamWireHeader(
   header: ZLinkStreamWireHeader,
   flags = defaultHeaderFlags
 ): Uint8Array {
-  validateStreamWirePacketName(header.name);
-  const nameBytes = utf8Encode(header.name);
+  const reply = isReplyKind(header.kind);
+  const packetName = reply ? '' : header.name;
+  if (!reply) validateStreamWirePacketName(packetName);
+  const nameBytes = utf8Encode(packetName);
   const hasRequestSeq = header.requestSeq !== undefined;
   const hasMetadata = header.metadata.size > 0;
   const correlationBytes = header.correlationId !== undefined && header.correlationId.length > 0
@@ -195,10 +199,11 @@ export function decodeStreamWireHeader(
     throw new Error('Stream packet name length is missing.');
   }
   const nameLength = header[offset++];
-  if (nameLength === 0 || header.length - offset < nameLength) {
+  if ((!isReplyKind(kind) && nameLength === 0) || header.length - offset < nameLength) {
     throw new Error('Stream packet name is invalid.');
   }
-  const name = utf8Decode(header.subarray(offset, offset + nameLength));
+  const decodedName = utf8Decode(header.subarray(offset, offset + nameLength));
+  const name = isReplyKind(kind) ? '' : decodedName;
   offset += nameLength;
   const decodedMetadata = hasMetadata
     ? decodeStreamWireHeaderMetadata(header, offset)
@@ -380,6 +385,10 @@ function validateStreamWirePacketName(name: string): void {
   if (name.trim().length === 0 || nameBytes.length > 255) {
     throw new Error('Stream packet name is invalid.');
   }
+}
+
+function isReplyKind(kind: number): boolean {
+  return kind === ZLINK_STREAM_RESPONSE_KIND || kind === ZLINK_STREAM_ERROR_KIND;
 }
 
 function writeUInt16BE(buffer: Uint8Array, offset: number, value: number): void {

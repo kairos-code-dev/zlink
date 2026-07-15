@@ -373,7 +373,7 @@ test('stream connector request resolves when dispatch reads matching response fr
   assert.equal(instance.pendingDispatchCount, 0);
 });
 
-test('stream connector rejects a response whose packet name differs from its request', async () => {
+test('stream connector accepts a legacy response packet name and matches by sequence', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'ws://127.0.0.1:19000',
@@ -389,22 +389,19 @@ test('stream connector rejects a response whose packet name differs from its req
   const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
-    protocolCodecs.ZlinkStreamHeaderCodec.encode({
+    encodeLegacyNamedReplyHeader({
       kind: connector.ZlinkStreamMessageKind.Response,
       codec: connector.ZlinkStreamCodec.Raw,
-      flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
       requestSeq: requestHeader.requestSeq,
-      name: 'Other',
-      metadata: connector.ZlinkStreamMetadataMap.empty
+      name: 'Other'
     }),
     new Uint8Array()
   ));
 
   await instance.dispatch();
-  await assert.rejects(
-    () => pending,
-    (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameDecodeFailed
-  );
+  const reply = await pending;
+  assert.equal(reply.codec, connector.ZlinkStreamCodec.Raw);
+  assert.equal(reply.payload.length, 0);
 });
 
 test('stream connector reports a response whose request sequence has no pending request', async () => {
@@ -437,7 +434,7 @@ test('stream connector reports a response whose request sequence has no pending 
   assert.equal(errors[0].code, connector.ZlinkStreamErrorCode.FrameDecodeFailed);
 });
 
-test('stream connector decodes correlated Error JSON and validates its packet name', async () => {
+test('stream connector decodes correlated Error JSON without a packet name', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'ws://127.0.0.1:19000',
@@ -452,19 +449,22 @@ test('stream connector decodes correlated Error JSON and validates its packet na
     .submitEncoded();
   const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+  const responseHeader = protocolCodecs.ZlinkStreamHeaderCodec.encode({
+    kind: connector.ZlinkStreamMessageKind.Error,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+    requestSeq: requestHeader.requestSeq,
+    name: 'Join',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  assert.equal(responseHeader[12], 0, 'Response and Error must encode name_len = 0');
   transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
-    protocolCodecs.ZlinkStreamHeaderCodec.encode({
-      kind: connector.ZlinkStreamMessageKind.Error,
-      codec: connector.ZlinkStreamCodec.Json,
-      flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
-      requestSeq: requestHeader.requestSeq,
-      name: 'Join',
-      metadata: connector.ZlinkStreamMetadataMap.empty
-    }),
+    responseHeader,
     new TextEncoder().encode('{"code":"denied","message":"remote failed"}')
   ));
 
   await instance.dispatch();
+  assert.equal(instance.pendingDispatchCount, 0);
   await assert.rejects(
     () => pending,
     (error) => error.error?.code === connector.ZlinkStreamErrorCode.RemoteError
@@ -507,7 +507,7 @@ test('stream connector rejects malformed correlated Error JSON', async () => {
   );
 });
 
-test('stream connector rejects a correlated Error whose packet name differs from its request', async () => {
+test('stream connector accepts a legacy correlated Error packet name and matches by sequence', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({
     endpoint: 'ws://127.0.0.1:19000',
@@ -523,13 +523,11 @@ test('stream connector rejects a correlated Error whose packet name differs from
   const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
   const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
   transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
-    protocolCodecs.ZlinkStreamHeaderCodec.encode({
+    encodeLegacyNamedReplyHeader({
       kind: connector.ZlinkStreamMessageKind.Error,
       codec: connector.ZlinkStreamCodec.Json,
-      flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
       requestSeq: requestHeader.requestSeq,
-      name: 'Other',
-      metadata: connector.ZlinkStreamMetadataMap.empty
+      name: 'Other'
     }),
     new TextEncoder().encode('{"code":"denied","message":"remote failed"}')
   ));
@@ -537,9 +535,24 @@ test('stream connector rejects a correlated Error whose packet name differs from
   await instance.dispatch();
   await assert.rejects(
     () => pending,
-    (error) => error.error?.code === connector.ZlinkStreamErrorCode.FrameDecodeFailed
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.RemoteError
+      && error.error.message === 'remote failed'
+      && error.error.cause?.code === 'denied'
   );
 });
+
+function encodeLegacyNamedReplyHeader({ kind, codec, requestSeq, name }) {
+  const nameBytes = new TextEncoder().encode(name);
+  const header = new Uint8Array(13 + nameBytes.length);
+  header[0] = 0xf2;
+  header[1] = kind;
+  header[2] = codec;
+  header[3] = connector.ZlinkStreamHeaderFlags.HasRequestSeq;
+  new DataView(header.buffer).setBigUint64(4, requestSeq);
+  header[12] = nameBytes.length;
+  header.set(nameBytes, 13);
+  return header;
+}
 
 test('stream connector inbound observer sees response before pending request completes without waiting for callback', async () => {
   const transportFactory = new MemoryTransportFactory();
@@ -591,7 +604,7 @@ test('stream connector inbound observer sees response before pending request com
   const reply = await pending;
 
   assert.equal(snapshot.kind, connector.ZlinkStreamMessageKind.Response);
-  assert.equal(snapshot.name, 'Join');
+  assert.equal(snapshot.name, '');
   assert.equal(snapshot.requestSeq, requestHeader.requestSeq);
   assert.equal(snapshot.payloadLength, '{"accepted":true}'.length);
   assert.equal(new TextDecoder().decode(reply.payload), '{"accepted":true}');
@@ -794,7 +807,7 @@ test('stream connector inbound observer overflow reports observer-dropped and re
   await waitFor(() => errors.some((error) => error.code === connector.ZlinkStreamErrorCode.ObserverDropped), 1000);
   releaseObserver();
   await waitFor(() => observedNames.length >= 2, 1000);
-  assert.deepEqual(observedNames, ['Join', 'Join']);
+  assert.deepEqual(observedNames, ['', '']);
 });
 
 test('stream connector received-message queue overflow is separate from inbound observer queue', async () => {
@@ -941,7 +954,7 @@ test('stream connector rejects compressed response payloads above receive limit'
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compression: connector.ZlinkStreamCompression.Lz4,
-    maxReceivePayloadSize: 1
+    maxReceivePayloadSize: 2
   });
 
   await instance.connect();
@@ -971,6 +984,7 @@ test('stream connector rejects compressed response payloads above receive limit'
   );
 
   await instance.dispatch();
+  assert.equal(instance.pendingDispatchCount, 0);
   await assert.rejects(
     () => pending,
     (error) => error.error?.code === connector.ZlinkStreamErrorCode.DecompressionFailed

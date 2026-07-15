@@ -9,7 +9,9 @@
 
 ## 1. 목적과 범위
 
-- 다룬다: 프로세스 restart·재스케줄, client reconnect, in-flight 중 crash, cancellation, graceful shutdown, resource·stale 정리, 노드 단절 복구, rolling·blue-green 전환, 실패 중 관측.
+- 다룬다: 프로세스 restart·replacement·provider failover, client reconnect, in-flight 중 crash,
+  cancellation, graceful shutdown, resource·stale 정리, 노드 단절 복구, rolling·blue-green 전환,
+  실패 중 관측.
 - 여기서 다루지 않는 것: 정상 경로 messaging/resolve(Config 1·2), codec(Config 4), store 자체의 장애·복구 매트릭스(Config 6 — 여기서는 RL-C4가 store 독립성만 가볍게 본다).
 
 ## 2. 서버 구성 (한 번 구동 + 동적 조작)
@@ -53,13 +55,14 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 우선순위: `P1`
 
-**한마디로:** provider가 죽었다 같은 자리로 살아나면, 다운 구간엔 정해진 에러가 나고 복구 뒤엔 (consumer 재시작 없이) 정상화되는가.
+**한마디로:** 같은 논리 provider가 중단되었다가 같은 rid·endpoint로 재시작하면, 다운 구간에는
+정해진 오류가 발생하고 복구 뒤에는 consumer 재시작 없이 정상화되는가.
 
 - 절차: provider를 종료했다가 같은 endpoint로 재시작한다. consumer는 계속 request를 보낸다.
 - 검증: 다운 구간엔 정해진 public error/재시도, 복구 뒤 request 정상화. consumer 재시작 없음.
 - 세부 동작: 재기동 복구.
 
-#### RL-A2 Kubernetes식 pod 재스케줄
+#### RL-A2 Kubernetes식 pod replacement
 
 우선순위: `P2`
 
@@ -67,7 +70,8 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 - 절차: provider를 죽이고 다른 endpoint·같은 rid로 새로 띄운다. (e2e server는 channel `SetRoutingId(...)`/`routingId(...)` 구성 옵션이 있어야 대체 provider가 같은 rid로 등록할 수 있다.)
 - 검증: peer location row가 그 rid의 endpoint를 새 값으로 갱신하고(runtime query peer list로 확인), consumer가 stale로 가지 않는다. (정상 경로는 Config 1 RM-A4, 여기선 in-flight·반복 복구 관점)
-- 세부 동작: 재스케줄 복구.
+- 세부 동작: 같은 논리 identity의 새 endpoint replacement. 이미 실행 중인 다른 provider가 처리를
+  계속하는 failover와 구분한다.
 
 #### RL-A3 client reconnect storm
 
@@ -119,7 +123,8 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 - 절차: handler가 처리 중일 때 provider를 SIGKILL한다.
 - 검증: 해당 request는 정해진 public error로 끝나고 pending이 남지 않는다. 다른 provider로의 트래픽은 영향 없음.
-- 세부 동작: in-flight 실패 처리.
+- 세부 동작: in-flight 실패 처리. crash 이후 이미 실행 중인 다른 provider가 신규 부하를 계속
+  처리하는 failover 결과는 Config 1 RM-B3와 함께 검증한다.
 
 #### RL-B3 graceful shutdown
 

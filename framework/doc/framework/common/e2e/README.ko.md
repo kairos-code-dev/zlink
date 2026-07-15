@@ -91,6 +91,30 @@ channel request, route request, stream request, HTTP request에 모두 적용한
 처럼 이름 붙인다. 반대로 client가 server push로 받는 상태 변경 알림은 `StatusNotify`처럼
 이름 붙인다.
 
+### 수명·배치 시나리오 용어
+
+서버 수와 프로세스 상태가 바뀌는 시나리오는 아래 뜻을 구분해서 쓴다. 이름이 다르면 검증해야 할
+계약도 다르므로, 한 시나리오를 여러 용어로 부르지 않는다.
+
+- **scale-out**은 실행 중인 node를 추가하는 것이다. 기존 요청 처리 주체를 자동으로 바꾸는 동작을
+  뜻하지 않는다.
+- **scale-in**은 실행 중인 node를 제거하는 것이다. 정상 종료 전에 신규 부하를 제외하는 drain과,
+  기존 상태를 다른 node로 넘기는 handoff가 필요하면 각각 별도로 명시한다.
+- **restart**는 같은 논리 node를 중단한 뒤 다시 시작하는 것이다. 같은 rid와 endpoint를 사용한다.
+- **replacement**는 중단된 node와 같은 논리 identity를 새 process 또는 새 endpoint가 이어받는 것이다.
+- **failover**는 하나의 node가 비정상 종료된 뒤에도 이미 실행 중인 다른 node가 처리 가능한 작업을
+  계속 받는 것이다. 중단된 node의 상태가 자동으로 이전된다는 뜻은 아니다.
+- **actor transfer**는 특정 actor의 처리 주체를 공개 transfer 계약으로 바꾸는 명시적 동작이다.
+  운영 drain이 transfer를 시작하는 경우에는 **drain handoff**라고 구분한다.
+- **recovery**는 restart, replacement, 재join, replay처럼 실패 뒤 서비스를 정상 상태로 되돌리는
+  절차 전체를 뜻한다.
+
+SpotNode를 추가해도 기존 Spot 또는 actor의 owner는 자동으로 바뀌지 않는다. 새 node는 공개 배치
+입력과 정책에 따라 이후 새로 만드는 Spot 또는 actor의 배치 후보가 될 수 있다. 기존 owner를
+바꾸려면 명시적 actor transfer나 drain handoff처럼 별도 계약에 따른 동작이 있어야 한다. 따라서
+scale-out 시나리오는 기존 owner 유지와 신규 배치를 검증하고, actor 이동 시나리오는 상태·mailbox·
+bound session 인계 계약을 별도로 검증한다.
+
 ## 2. 표준 프로젝트 구조
 
 각 config는 언어별 표준 위치에 sample과 분리된 e2e 앱으로 둔다. 서버와 client는 실제 프로세스
@@ -465,16 +489,16 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 
 | Config | 서버 구성 | 다루는 것 |
 |--------|-----------|-----------|
-| [Config 1 — Location messaging](config-1-location-messaging.ko.md) | location store(Redis) + api 노드 2 + client-server/route channel | location store 자동/수동 연결, rid resolve, peer location row 검증, scale-out/in, same-rid failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
-| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | location store + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join 기본 smoke, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), channel↔spot route bridge, stateful 장애·복구(노드 crash·owner 이동·경합). actor join/transfer의 callback 순서, admission/commit 분리, location commit 시점은 Config 10에서 검증한다. |
+| [Config 1 — Location messaging](config-1-location-messaging.ko.md) | location store(Redis) + api 노드 2 + client-server/route channel | location store 자동/수동 연결, rid resolve, peer location row 검증, provider scale-out/in·replacement·failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
+| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | location store + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join 기본 smoke, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), channel↔spot route bridge, SpotNode scale-out의 신규 배치와 기존 owner 유지, stateful crash 격리·재join/replay 복구·경합. actor join/transfer의 callback 순서, admission/commit 분리, location commit 시점은 Config 10에서 검증한다. |
 | [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | location store + publisher + subscriber 3 | fanout, topic filter, late subscriber, subscriber 격리, publish negative, subscriber 재연결·publisher 재시작 |
 | [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리, peer 간 codec 불일치 |
-| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | restart, reconnect, cancellation, in-flight crash, shutdown, 런타임 drain/restore, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환 |
+| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | provider restart·replacement·failover, reconnect, cancellation, in-flight crash, shutdown, 런타임 drain/restore, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환 |
 | [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, owner lease 만료 stale row 제외, 복구 순서(재등록 → heartbeat 유예 → diff), polling fallback, runtime status 관측 |
 | [Config 7 — Monitoring](config-7-monitoring.ko.md) | location store + service 2 | socket/location-runtime/spot 이벤트 runtime 관찰, 가용성 전이(failover/drain)·장애 중 관측, 다중 source 격리 |
 | [Config 8 — 실행 turn과 terminator](config-8-execution-turn.ko.md) | location store + play 노드 2 + delay service 2 + **external API 1** + session gateway 2 | `submit`/`async`/`yield` 세 terminator의 실행 줄 의미, async의 turn 유지와 상태 불변식, yield의 turn 반납과 순차 재개, CPU/IO worker 분리, HTTP client yield, actor·timer mailbox 격리, join orchestration, timeout·cancellation·shutdown, 언어별 동일 의미 |
 | [Config 9 — To-actor messaging](config-9-to-actor-messaging.ko.md) | location store + actor 노드 2 + session gateway 2 + 외부 caller 서버 | bind 상태별 to-actor send/request, bound-session 비오염, mailbox 인계와 handler reply, actor 부재·stale location·route 미연결 실패 분류, 언어별 동일 의미 |
-| [Config 10 — Spot actor join/transfer](config-10-spot-actor-transfer.ko.md) | location store + actor 노드 2 + session gateway 2 + transfer controller | local join, remote transfer, admission/commit 분리, transfer state 복원, location commit 시점, moving 중 dispatch 차단, source cleanup, failure/recovery, bound session 이전 |
+| [Config 10 — Spot actor join/transfer](config-10-spot-actor-transfer.ko.md) | location store + actor 노드 2 + session gateway 2 + transfer controller | 명시적 local join·remote actor transfer, admission/commit 분리, transfer state 복원, location commit 시점, moving 중 dispatch 차단, source cleanup, failure/recovery, bound session 이전. node 추가만으로 owner가 바뀌는 동작은 검증하지 않는다. |
 | [Config 11 — 관측·운영 배포](config-11-observability-ops.ko.md) | location store + Session + Play 2 + OrderWorkflow 2 | flow correlation 로그(STREAM→actor→spot 관통, error 라인, create-if-absent·off 전파, fan-out/timer origin), 런타임 메트릭(CCU·SPOT 큐·actor 이동·fanout·lease 계기, 카디널리티 규약, 비활성 최소 비용), graceful drain(typed Draining field·연결 유지, actor 핸드오프, SPOT 정책 drain-natural/release-and-recreate, 강제 종료 통지, 동시 drain 폴백) |
 
 ## 3.1 구성 축 — config를 관통하는 변형

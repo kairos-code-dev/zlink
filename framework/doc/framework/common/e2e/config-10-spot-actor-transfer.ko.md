@@ -14,6 +14,11 @@ location commit, bound session route, failure cleanup이 같은 순서와 의미
 처리하지 않고 feature-map에 public contract parity gap으로 남긴다. 내부 helper, raw frame 조작,
 테스트 전용 adapter로 이 config를 통과시키면 안 된다.
 
+이 config의 actor 이동은 공개 transfer 계약을 호출해 처리 주체를 명시적으로 바꾸는 동작이다.
+SpotNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 동작은 계약하지 않는다. SpotNode
+증설과 신규 배치는 Config 2 SM-G2에서 검증하고, 운영자가 node를 drain해 기존 actor를 다른 node로
+인계하는 동작은 Config 11의 drain handoff 시나리오에서 검증한다.
+
 ## 1. 목적과 범위
 
 - 다룬다: 같은 node join 순서, remote actor transfer 정상 경로, transfer state 복원, 빈 state transfer, admission/commit

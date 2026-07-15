@@ -15,8 +15,8 @@ bound session이 붙는 배포다. 이걸 한 번 띄워 두고 spot messaging�
 
 ## 1. 목적과 범위
 
-- 다룬다: channel↔spot, spot↔spot messaging(send/request/publish), entry/user spot 생성과 상태, actor join과 remote actor, bound session push, stream session, RouteMesh 기반 외부 channel→특정 spot route bridge(혼재 트래픽·에러 계약·소유권 독립).
-- 여기서 다루지 않는 것(다른 config로): codec 변주, 연결·scale·failover(Config 1), resilience(Config 5), location store 장애/복구(Config 6).
+- 다룬다: channel↔spot, spot↔spot messaging(send/request/publish), entry/user spot 생성과 상태, actor join과 remote actor, bound session push, stream session, RouteMesh 기반 외부 channel→특정 spot route bridge(혼재 트래픽·에러 계약·소유권 독립), SpotNode scale-out 때 기존 owner 유지와 신규 배치.
+- 여기서 다루지 않는 것(다른 config로): codec 변주, channel provider의 scale·failover(Config 1), resilience(Config 5), location store 장애/복구(Config 6), 기존 actor owner의 명시적 transfer(Config 10), drain handoff(Config 11).
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
@@ -603,11 +603,11 @@ target user Spot을 닫아도 channel 연결 자체는 유지되는가.
 - 검증: request/send/join이 전부 노드 경계를 넘어 도달하고 reply가 돌아온다. "route channel이 없다"는 오류가 나면 framework가 spot 경로를 route mesh에 위임하고 있다는 뜻이므로 실패다.
 - 세부 동작: route mesh 부재 시 spot mesh 자체 링크의 완결성. (framework 구현이 원격 spot relay를 route mesh 채널에 얹어 두어, route mesh를 걷어내자 부러진 결함이 여러 언어에서 실제로 있었다 — §3.1 구성 축의 대표 사례.)
 
-### Track G — 장애와 복구 (stateful 노드)
+### Track G — SpotNode 증설, 장애와 복구
 
-여기서는 spot/actor/session 노드가 실제로 죽거나, scale 중 owner가 옮겨가거나, 동시 트래픽이
-경합할 때 stateful 경로가 어떻게 버티는지를 본다. Config 5(resilience)는 channel provider만
-다루므로, spot 배포(play/session 노드)를 쓰는 이 장애 시나리오는 Config 2에 둔다. 프로세스를
+여기서는 SpotNode가 추가되거나 spot/actor/session 노드가 실제로 죽고, 동시 트래픽이 경합할 때
+stateful 경로가 어떻게 동작하는지 본다. Config 5(resilience)는 channel provider를 다루므로,
+spot 배포(play/session 노드)를 쓰는 시나리오는 Config 2에 둔다. 프로세스를
 실제로 죽이는 시나리오는 harness의 `kill`/`stop`/`restart` 연산을 전제한다(없으면 "미구현(하네스
 대기)").
 
@@ -617,19 +617,27 @@ target user Spot을 닫아도 channel 연결 자체는 유지되는가.
 
 **한마디로:** actor·bound session이 붙어 있는 play 노드가 죽으면, 그 노드 것만 영향을 받고(다른 노드는 멀쩡), client가 재join·rebind로 복구할 수 있는가.
 
-- 절차: `play-a`에 actor join + session bind 상태를 만든 뒤 `play-a`를 SIGKILL한다. consumer는 그 actor로 messaging을 시도하다 실패를 관찰하고, 재시작된 `play-a`(또는 살아 있는 `play-b`)로 다시 join·rebind한다.
+- 절차: `play-a`에 actor join + session bind 상태를 만든 뒤 `play-a`를 SIGKILL한다. consumer는 그 actor로
+  messaging을 시도하다 실패를 관찰한다. 같은 논리 node를 재시작하거나, application이 `play-b`에 새
+  actor를 만들도록 명시적으로 join한 뒤 rebind한다.
 - 검증: `play-a` crash로 그 노드의 actor/spot 상태는 소실되고, 그 노드로 가던 request·relay는 정해진 public error/`Disconnected`로 끝난다(무한 대기 없음). `play-b`의 actor·session은 영향받지 않는다. 재join·rebind 후 messaging이 정상 재개되고, 필요한 상태는 app replay/snapshot으로 복구된다(자동 이전 아님).
 - 세부 동작: stateful 노드 crash 격리 + 재join·rebind 복구.
 
-#### SM-G2 owner 이동 (scale-out 중 spot owner 재배치)
+#### SM-G2 SpotNode scale-out과 신규 배치
 
 우선순위: `P1`
 
-**한마디로:** scale-out으로 어떤 key의 owner 노드가 바뀌면, 같은 key의 후속 request가 새 owner로 가고 일관성이 유지되는가.
+**한마디로:** SpotNode를 추가해도 기존 owner는 유지되고, 이후 새로 만드는 Spot 또는 actor는 공개
+배치 입력과 정책에 따라 새 node를 사용할 수 있는가.
 
-- 절차: key→RoutingId·owner 매핑(§2)이 고정된 상태에서 노드를 추가(scale-out)하고, 앱이 일부 key의 owner를 새 노드로 재배치한다. 재배치 전후로 같은 key에 request를 보낸다.
-- 검증: 재배치 후 같은 key는 새 owner 노드에서 처리된다(이전 owner에는 더 가지 않음). 재배치 진행 중 요청은 성공하거나 정해진 public error로 끝나고 유실·중복으로 깨지지 않는다. 매핑이 다시 고정되면 owner도 다시 고정된다.
-- 세부 동작: scale-out 중 owner 재배치(SM-A4가 가리키는 이동 경로). (owner 재배치는 **앱이 정의한 key→RoutingId 매핑을 바꾸는 것**이다 — framework에는 자동 owner-rebalance 표면이 없다. 이 시나리오는 앱 주도 remap이 routing에 반영되는지를 본다.)
+- 절차: `play-a`에서 기존 Spot과 actor를 만들고 owner evidence를 기록한다 → `play-b`를 추가한다 →
+  peer/capability 정보에 `play-b`가 반영될 때까지 기다린다 → 기존 대상에 다시 request한다 → 공개 배치
+  입력으로 `play-b`를 선택해 새 Spot 또는 actor를 만든다.
+- 검증: node 추가 전 만든 대상의 owner는 `play-a`로 유지되고 후속 request도 같은 owner가 처리한다.
+  새 대상은 요청한 공개 배치 조건에 따라 `play-b`에서 만들어지며, 두 node의 대상이 동시에 정상
+  처리된다. node 추가만으로 기존 owner가 이동하거나 자동 재분배되었다고 단언하지 않는다.
+- 세부 동작: SpotNode 증설 발견 + 기존 owner 유지 + 신규 대상의 명시적 배치. 기존 actor owner를
+  바꾸는 동작은 Config 10의 actor transfer 또는 Config 11의 drain handoff에서 검증한다.
 
 #### SM-G3 동시 join/leave 경합
 

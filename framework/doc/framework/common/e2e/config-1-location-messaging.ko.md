@@ -112,15 +112,17 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 
 > custom resolver는 client-server channel public API에 없다. SPOT 전송 대상 조회는 location store 기반 **spot handle resolver**가 담당하며, 반환 값은 불투명한 `SpotHandle`이다. `SpotRef`는 framework 내부 주소 snapshot이라 public 표면에 노출하지 않는다([24 §2](../../spec/server/24-spot-address-messaging.ko.md)).
 
-#### RM-A4 같은 rid, 다른 endpoint failover
+#### RM-A4 같은 rid, 다른 endpoint replacement
 
 우선순위: `P0`
 
-**한마디로:** 같은 rid의 provider가 죽고 다른 endpoint로 새로 떠도, consumer가 알아서 새 곳으로 갈아타는가(죽은 주소로 계속 안 가는가).
+**한마디로:** 같은 rid의 provider를 다른 endpoint의 process로 교체해도, consumer가 새 endpoint를
+사용하고 이전 endpoint로 계속 요청하지 않는가.
 
 - 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1 종료 → provider v2를 같은 rid `api-a`/endpoint p2로 시작 → runtime query의 peer location list가 rid `api-a`의 endpoint를 p2로 보여줄 때까지 대기 → consumer 재시작 없이 다시 request.
 - 검증: `ListPeerLocationsAsync(filter)`의 성공 결과에서 rid `api-a`의 살아 있는 row는 하나이고 endpoint가 p2다(v1의 row는 정상 종료 remove 또는 owner lease 만료로 성공 결과에서 제외된다). 교체 뒤 신규 request는 p2 evidence에 기록. consumer가 p1 stale endpoint로 반복 timeout 하지 않음. 이후 연속 20개 request 모두 성공.
-- 세부 동작: 같은 peer key의 endpoint 변경을 peer handover로 반영 + stale 회피.
+- 세부 동작: 같은 peer key의 endpoint replacement 반영 + stale 회피. 이미 실행 중인 다른 provider가
+  장애 직후 처리를 계속하는 failover는 RM-B3에서 별도로 검증한다.
 
 > 런타임 연결 수립/재시도/해제 제어 handle은 channel messaging public API에 없다(endpoint는 startup 설정). timeout 규칙 검증은 RM-C4가 다룬다.
 
@@ -157,6 +159,21 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 - 절차: A·B로 분산을 확인 → B를 정상 종료 → runtime query의 peer location list에서 B의 row가 빠질 때까지 대기 → 다시 request.
 - 검증: B 종료 뒤 request는 A로만. 정상 종료이므로 B의 peer row는 owner lease 만료를 기다리지 않고 shutdown 경로에서 제거된다. consumer가 죽은 endpoint로 timeout을 반복하지 않음. 지속 request 중 scale-in이 나도 완료된 요청은 정상 reply 또는 정해진 public error로 끝나고 pending이 남지 않음.
 - 세부 동작: 무중단 provider 감축 + shutdown 시 row 제거 + stale 정리.
+
+#### RM-B3 provider crash failover
+
+우선순위: `P0`
+
+**한마디로:** provider 하나가 비정상 종료되어도 이미 실행 중인 다른 provider가 신규 요청을 계속
+처리하는가.
+
+- 절차: provider A·B가 모두 routing 대상임을 확인한다 → A를 `SIGKILL`한다 → consumer를 재시작하지
+  않고 target을 지정하지 않은 request를 계속 보낸다 → owner lease 만료 뒤 peer location list에서 A가
+  제외되는지 확인한다.
+- 검증: A가 처리 중이던 request는 정해진 public error 또는 timeout으로 끝나고 무한 대기하지 않는다.
+  이후 신규 request는 B에서 성공한다. A를 rid로 지정한 request는 B로 바뀌어 처리되지 않고 정해진
+  target 오류로 끝난다. 이 시나리오는 A의 메모리 상태를 B로 자동 이전한다고 단언하지 않는다.
+- 세부 동작: provider crash 격리 + 이미 실행 중인 provider로 신규 부하 지속 + stale row 제외.
 
 ### Track C — resolve된 연결 위의 messaging 세부 동작
 

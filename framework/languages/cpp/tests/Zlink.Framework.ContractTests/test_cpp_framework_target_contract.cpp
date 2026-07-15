@@ -178,6 +178,9 @@ int main ()
     const auto transfer_feature_map =
       read_file (e2e_root / "SpotActorTransfer/feature-map.ko.md");
     const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
+    const auto to_actor_caller =
+      read_file (e2e_root / "ToActorMessaging/Server/Caller/main.cpp");
+    const auto to_actor_client = read_file (e2e_root / "ToActorMessaging/Client/main.cpp");
     const auto observability_server = read_file (e2e_root / "ObservabilityOps/Server/main.cpp");
     const std::vector<std::pair<std::string, std::string>> location_option_consumers{
       {"PubSub", read_file (e2e_root / "PubSub/Server/Shared/location_store.hpp")},
@@ -1229,6 +1232,17 @@ int main ()
     gate.require (observability_server.find ("ownerLeases") != std::string::npos
                     && observability_server.find ("/spot/action") != std::string::npos,
                   "E2E-CP-61", "ObservabilityOps exposes no lease or existing-route evidence");
+
+    /* E2E-CP-58/60 — caller observes framework failure; Track B proves no delivery or row. */
+    gate.require (to_actor_caller.find ("actor route was not found") == std::string::npos
+                    && to_actor_caller.find ("candidate_actor_ref") != std::string::npos,
+                  "E2E-CP-58", "ToActor caller still manufactures directory-miss errors");
+    gate.require (to_actor_client.find ("TA-B1-missing-send") == std::string::npos,
+                  "E2E-CP-58", "TA-B1 still uses send submit as an existence check");
+    gate.require (to_actor_client.find ("require_no_evidence") != std::string::npos
+                    && to_actor_client.find ("require_location_missing")
+                         != std::string::npos,
+                  "E2E-CP-60", "Track B omits negative actor evidence or location proof");
     for (const auto &[config, source] : location_option_consumers) {
         gate.require (source.find ("auto locations = framework.configure_locations ()")
                         == std::string::npos

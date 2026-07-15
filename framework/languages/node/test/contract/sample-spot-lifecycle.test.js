@@ -16,7 +16,11 @@ test('SupportChat closes a conversation Spot after the close grace deadline', as
         outputRoot,
         'Server/Support/Infrastructure/ZLink/Spots/ConversationSpot/conversation-spot.js'
       ));
-      const spot = new ConversationSpot();
+      const spot = new ConversationSpot(
+        { assignNextAgent: () => undefined },
+        { get: () => undefined },
+        { publish: () => undefined }
+      );
       let closeCalls = 0;
       spot.context = {
         close: async () => { closeCalls += 1; return true; },

@@ -1147,8 +1147,10 @@ int main ()
                     e2e_root / "DiscoveryRegistryHa/Support/redis_latency_proxy.py")
                     && store_failure_runner.find ("redis_latency_proxy.py")
                          != std::string::npos
+                    && store_failure_runner.find ("\"redisProxyAdminUrl\"")
+                         != std::string::npos
                     && store_failure_runner.find ("ZLINK_CPP_SF_REDIS_PROXY_ADMIN_URL")
-                         != std::string::npos,
+                         == std::string::npos,
                   "E2E-CP-45", "SF-E1 has no harness-owned Redis latency proxy");
     gate.require (store_failure_client.find ("redis_proxy_admin_url")
                     != std::string::npos

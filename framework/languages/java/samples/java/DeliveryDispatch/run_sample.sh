@@ -48,11 +48,11 @@ pids=()
 redis_container_id=""
 log_dir="build/sample-logs"
 flow_log_dir="$(pwd)/logs"
-config_dir="build/sample-config"
-export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
-mkdir -p "${log_dir}" "${flow_log_dir}" "${config_dir}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
+mkdir -p "${log_dir}" "${flow_log_dir}"
 rm -f "${log_dir}"/*.log
-rm -f "${flow_log_dir}"/*.log "${config_dir}"/*.properties
+rm -f "${flow_log_dir}"/*.log
 
 print_logs() {
   local status="$1"
@@ -76,7 +76,7 @@ deliverydispatch_cleanup() {
     kill "${pids[$i]}" >/dev/null 2>&1 || true
   done
 
-  for _ in $(seq 1 "${ZLINK_SAMPLE_CLEANUP_WAIT_ATTEMPTS:-300}"); do
+  for _ in $(seq 1 300); do
     local running=0
     for pid in "${pids[@]}"; do
       local state
@@ -108,6 +108,7 @@ deliverydispatch_cleanup() {
   if [[ -n "${redis_container_id}" ]]; then
     zlink_redis_remove_by_id "${redis_container_id}" || cleanup_failed=1
   fi
+  rm -rf "${config_dir}"
   if [[ "${status}" != "0" ]]; then
     exit "${status}"
   fi
@@ -162,11 +163,11 @@ read -r tracking customer_stream courier_stream dispatch_http dispatch_channel c
 endpoint_host() { echo "${1%:*}"; }
 endpoint_port() { echo "${1##*:}"; }
 
-deliverydispatch_redis_key_prefix="${DELIVERYDISPATCH_REDIS_KEY_PREFIX:-deliverydispatch:java:${RANDOM}:$$:}"
+deliverydispatch_redis_key_prefix="deliverydispatch:java:${RANDOM}:$$:"
 zlink_redis_start_scoped_assign redis_container_id redis_port \
   "zlink-redis-java-sample-deliverydispatch" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-DELIVERYDISPATCH_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
-wait_port "${DELIVERYDISPATCH_REDIS_ENDPOINT%:*}" "${DELIVERYDISPATCH_REDIS_ENDPOINT##*:}"
+redis_endpoint="127.0.0.1:${redis_port}"
+wait_port "${redis_endpoint%:*}" "${redis_endpoint##*:}"
 write_config() {
   local path="$1" courier_node="$2"
   cat >"$path" <<EOF
@@ -185,7 +186,7 @@ courierActorNode1RouterEndpoint=tcp://$(endpoint_host "${courier_node1_router}")
 courierActorNode2RouterEndpoint=tcp://$(endpoint_host "${courier_node2_router}"):$(endpoint_port "${courier_node2_router}")
 courierSessionSpotRouterEndpoint=tcp://$(endpoint_host "${courier_session_router}"):$(endpoint_port "${courier_session_router}")
 courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")
-redisEndpoint=${DELIVERYDISPATCH_REDIS_ENDPOINT}
+redisEndpoint=${redis_endpoint}
 redisKeyPrefix=${deliverydispatch_redis_key_prefix}
 courierNode=${courier_node}
 logDirectory=${flow_log_dir}

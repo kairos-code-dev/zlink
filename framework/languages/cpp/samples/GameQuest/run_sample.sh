@@ -266,7 +266,6 @@ wait_port api-b-stream "$GAMEQUEST_API_B_STREAM_ENDPOINT"
 wait_port api-b-http "$GAMEQUEST_API_B_HTTP_URL"
 wait_port api-b-spot-router "$GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT"
 
-sleep "${GAMEQUEST_CPP_STARTUP_SETTLE_SECONDS:-1}"
 echo "topology=ready"
 
 "$BIN_DIR/sample_cpp_framework_gamequest_client" \

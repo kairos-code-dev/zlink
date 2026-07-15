@@ -312,8 +312,6 @@ wait_port session-a-stream "$SESSION_A_STREAM_ENDPOINT"
 wait_port session-b-router "$SESSION_B_ROUTER_ENDPOINT"
 wait_port session-b-stream "$SESSION_B_STREAM_ENDPOINT"
 
-sleep "${BINGO_STARTUP_SETTLE_SECONDS:-4}"
-
 "$CLIENT_BIN" \
   --session-a-stream-endpoint "$SESSION_A_STREAM_ENDPOINT" \
   --session-b-stream-endpoint "$SESSION_B_STREAM_ENDPOINT" >"$LOG_DIR/client.log" 2>&1 || {

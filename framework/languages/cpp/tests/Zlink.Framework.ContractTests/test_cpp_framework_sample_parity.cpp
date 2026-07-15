@@ -449,6 +449,19 @@ TEST (CppFrameworkSampleParity, GameQuestProgressChecksRejectOvercount)
       << "GameQuest progress gates must compare the exact expected count";
 }
 
+TEST (CppFrameworkSampleParity, BingoAndGameQuestStartAfterObservedReadiness)
+{
+    const auto bingo_runner =
+      read_file (cpp_language_root () / "samples/Bingo/run_sample.sh");
+    const auto gamequest_runner =
+      read_file (cpp_language_root () / "samples/GameQuest/run_sample.sh");
+    EXPECT_EQ (bingo_runner.find ("BINGO_STARTUP_SETTLE_SECONDS"), std::string::npos)
+      << "Bingo must start its client immediately after endpoint readiness";
+    EXPECT_EQ (gamequest_runner.find ("GAMEQUEST_CPP_STARTUP_SETTLE_SECONDS"),
+               std::string::npos)
+      << "GameQuest must not use a fixed delay as topology readiness";
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeDisconnectRemovesMilestoneObserver)
 {
     const auto entry = read_file (

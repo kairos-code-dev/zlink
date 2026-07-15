@@ -688,7 +688,9 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         .bound_session_node_rid =
           bound_session ? bound_session->node_rid.to_string () : std::string{},
         .bound_session_rid =
-          bound_session ? bound_session->session_rid.to_string () : std::string{},
+          bound_session && bound_session->session_rid
+            ? bound_session->session_rid->to_string ()
+            : std::string{},
         .transfer_state = transfer.value ().state.to_bytes (),
         .handoff_backlog = {},
         .prepare = true,
@@ -726,7 +728,9 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         .bound_session_node_rid =
           bound_session ? bound_session->node_rid.to_string () : std::string{},
         .bound_session_rid =
-          bound_session ? bound_session->session_rid.to_string () : std::string{},
+          bound_session && bound_session->session_rid
+            ? bound_session->session_rid->to_string ()
+            : std::string{},
         .transfer_state = {},
         .handoff_backlog = std::move (wire_backlog),
         .prepare = false,

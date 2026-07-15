@@ -23,7 +23,7 @@ std::optional<stream_header_t> current_stream_relay_dispatch ();
 struct actor_bound_session_route_t
 {
     zlink::routing_id_t node_rid;
-    zlink::routing_id_t session_rid;
+    std::optional<zlink::routing_id_t> session_rid;
 };
 
 struct actor_record_t
@@ -106,7 +106,7 @@ class actor_gateway_runtime_t
                        bool replace_existing = true);
     void record_bound_session_route (const actor_ref_t &actor_ref,
                                      zlink::routing_id_t node_rid,
-                                     zlink::routing_id_t session_rid);
+                                     std::optional<zlink::routing_id_t> session_rid = std::nullopt);
     void unbind_session_stream (std::string actor_id);
     result_t<void> dispatch_bound_session_send (const actor_ref_t &actor_ref,
                                                 std::string packet_name,

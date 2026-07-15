@@ -1063,7 +1063,7 @@ void actor_gateway_runtime_t::bind_session_sink (
 
 void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &actor_ref,
                                                           zlink::routing_id_t node_rid,
-                                                          zlink::routing_id_t session_rid)
+                                                          std::optional<zlink::routing_id_t> session_rid)
 {
     const auto actor_id = std::string (actor_ref.actor_id ());
     const std::lock_guard lock (_state->mutex);

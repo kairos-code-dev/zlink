@@ -3224,7 +3224,8 @@ int main ()
         routed_commit_reply.actor_generation));
     if (!transferred_session_route
         || transferred_session_route->node_rid.to_string () != "session-node"
-        || transferred_session_route->session_rid.to_string () != "session-rid") {
+        || !transferred_session_route->session_rid
+        || transferred_session_route->session_rid->to_string () != "session-rid") {
         return 158;
     }
     route_join_header.message_name =

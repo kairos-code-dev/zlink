@@ -153,9 +153,8 @@ void spot_route_internal_dispatcher_t::bind_actor_session_route (
     actor_gateway.bind_session_route (actor_ref, _route_client, route_channel_name,
                                       session_node_rid, stream_codec_t::message_pack,
                                       replace_existing);
-    auto snapshot_session_rid = session_rid.value_or (session_node_rid);
     actor_gateway.record_bound_session_route (actor_ref, std::move (session_node_rid),
-                                              std::move (snapshot_session_rid));
+                                              std::move (session_rid));
 }
 
 actor_gateway_runtime_t spot_route_internal_dispatcher_t::bind_actor_route (

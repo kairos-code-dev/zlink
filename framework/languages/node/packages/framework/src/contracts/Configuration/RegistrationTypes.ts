@@ -52,13 +52,8 @@ export interface ZLinkLocationRegistration {
 }
 
 /**
- * Worker deferral pool settings (single elastic bounded pool semantics).
- *
- * The Node runtime projects these settings conservatively onto the
- * closure-based `runWorker(...)` deferral: `maxThreads` bounds the number of
- * concurrently in-flight jobs and `maxQueueLength` bounds the pending queue
- * (queue full fails the submit with `WorkerQueueFull`).
- * It does not provide CPU thread offload.
+ * CPU worker-thread pool settings. I/O workers do not consume this pool.
+ * `maxThreads` bounds active CPU jobs and `maxQueueLength` bounds queued jobs.
  */
 export interface ZLinkWorkerOptions {
   readonly maxThreads?: number;

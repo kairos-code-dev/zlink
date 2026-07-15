@@ -35,7 +35,7 @@ import type {
   ZLinkBackendSpotNode
 } from '../backend/contracts';
 import type { ZLinkDispatchErrorReporter } from '../channels';
-import { ZLinkSpotWorkerRuntime } from '../workers';
+import { ZLinkWorkerRuntime } from '../workers';
 import { ZLinkSpotActorPacketDispatch } from './spot-actor-packet-dispatch';
 import {
   ZLinkSpotActorJoinDispatch,
@@ -90,7 +90,7 @@ interface ZLinkEntrySpotActivationOptions {
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
   readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics;
-  readonly workerRuntime?: ZLinkSpotWorkerRuntime;
+  readonly workerRuntime?: ZLinkWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly entryActorRuntime?: ZLinkEntryActorRuntime;
   readonly actorTransferRuntime?: ZLinkSpotActorTransferRuntime;
@@ -106,7 +106,7 @@ export class ZLinkEntrySpotActivation {
   private readonly actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
   private readonly handlers = new DefaultZLinkSpotHandlerRegistry(this.actorHandlers);
   private readonly outbound: DefaultZLinkSpotOutbound;
-  private readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  private readonly workerRuntime: ZLinkWorkerRuntime;
   private readonly lifecycleMetrics: ZLinkSpotLifecycleMetrics;
   private initialized = false;
   private disposed = false;
@@ -132,7 +132,7 @@ export class ZLinkEntrySpotActivation {
       () => options.dispatchErrors?.flow.flowCreationEnabled() ?? true
     );
     this.lifecycleMetrics = new ZLinkSpotLifecycleMetrics(options.metrics);
-    this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
+    this.workerRuntime = options.workerRuntime ?? new ZLinkWorkerRuntime();
     this.context = createEntrySpotContext({
       nativeSpotRid: options.nativeSpot.routingId,
       nodeRid: options.nodeRid,

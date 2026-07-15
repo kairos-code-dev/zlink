@@ -42,7 +42,7 @@ import type {
 } from '../backend/contracts';
 
 import { ZLinkDispatchErrorReporter } from '../channels';
-import { ZLinkSpotWorkerRuntime } from '../workers';
+import { ZLinkWorkerRuntime } from '../workers';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
 import type { ZLinkLocationLifecycle } from '../locations';
 import {
@@ -113,7 +113,7 @@ export interface ZLinkSpotManagerOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
-  readonly workerRuntime?: ZLinkSpotWorkerRuntime;
+  readonly workerRuntime?: ZLinkWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly locationMeshName?: string;
@@ -135,7 +135,7 @@ export interface ZLinkSpotManagerOptions {
 export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   private readonly factories: ReadonlySet<Type<ZLinkSpot>>;
   private readonly activations: ZLinkSpotActivationRegistry;
-  private readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  private readonly workerRuntime: ZLinkWorkerRuntime;
   private readonly locationClaim: ZLinkSpotLocationClaim;
   private readonly routedSpotPackets: ZLinkRoutedSpotPacketDispatch;
   private readonly actorMembership: ZLinkSpotActorMembership;
@@ -144,7 +144,7 @@ export class DefaultZLinkSpotManager implements ZLinkSpotManager {
   constructor(private readonly options: ZLinkSpotManagerOptions) {
     this.activations = new ZLinkSpotActivationRegistry(options.metrics);
     this.factories = new Set(options.spotFactories);
-    this.workerRuntime = options.workerRuntime ?? new ZLinkSpotWorkerRuntime();
+    this.workerRuntime = options.workerRuntime ?? new ZLinkWorkerRuntime();
     this.locationClaim = new ZLinkSpotLocationClaim({
       lifecycle: options.locationLifecycle,
       meshName: options.locationMeshName,

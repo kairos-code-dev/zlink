@@ -34,7 +34,7 @@ import {
   ZLinkSpotActorHandlerRegistryRuntime,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
-import { ZLinkSpotWorkerRuntime } from '../workers';
+import { ZLinkWorkerRuntime } from '../workers';
 import {
   decodeFrameworkPayloadMessage,
   encodeFrameworkPayloadMessage,
@@ -79,7 +79,7 @@ export interface ZLinkSpotActivationLifecycleOptions {
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
-  readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  readonly workerRuntime: ZLinkWorkerRuntime;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly locationClaim: ZLinkSpotLocationClaim;
   readonly createNativeSpot?: (spotRid: RoutingId) => ZLinkBackendSpot | undefined;

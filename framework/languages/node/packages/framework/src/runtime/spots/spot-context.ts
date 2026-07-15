@@ -15,7 +15,7 @@ import type {
 } from '../../contracts';
 import type { ZLinkWorkerCall } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
-import { DefaultZLinkWorkerCall, ZLinkSpotWorkerRuntime } from '../workers';
+import { DefaultZLinkWorkerCall, ZLinkWorkerRuntime } from '../workers';
 import {
   createTimerDiagnostics,
   type ZLinkSpotTimerRegistry
@@ -33,7 +33,7 @@ interface ZLinkEntrySpotContextOptions {
   readonly spotNodeName: string;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
-  readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  readonly workerRuntime: ZLinkWorkerRuntime;
   readonly destroyActor?: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
@@ -52,7 +52,7 @@ interface ZLinkSpotContextOptions {
   readonly nodeRidProvider?: () => RoutingId | undefined;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly runtimeEventPublisher?: ZLinkRuntimeEventPublisher;
-  readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  readonly workerRuntime: ZLinkWorkerRuntime;
   readonly leaveActor: (actor: ZLinkActor, signal?: AbortSignal) => Promise<void>;
   readonly close: (signal?: AbortSignal) => Promise<boolean>;
 }
@@ -96,8 +96,13 @@ export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): Z
         )
       );
     },
-    runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T> {
-      return new DefaultZLinkWorkerCall(options.workerRuntime, options.serial, work);
+    runCpuWorker<T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T> {
+      return new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleCpu(work, timeoutMs, signal));
+    },
+    runIoWorker<T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T> {
+      return new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleIo(work, timeoutMs, signal));
     }
   };
 }
@@ -136,7 +141,11 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
         createTimerDiagnostics(String(options.spotRid), options.spotRid, false, name, handlerType, options.runtimeEventPublisher)
       );
     },
-    runWorker: <T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T> =>
-      new DefaultZLinkWorkerCall(options.workerRuntime, options.serial, work)
+    runCpuWorker: <T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T> =>
+      new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleCpu(work, timeoutMs, signal)),
+    runIoWorker: <T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T> =>
+      new DefaultZLinkWorkerCall(options.serial, (timeoutMs, signal) =>
+        options.workerRuntime.scheduleIo(work, timeoutMs, signal))
   };
 }

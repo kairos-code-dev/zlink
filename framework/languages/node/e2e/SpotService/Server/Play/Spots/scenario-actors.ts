@@ -444,7 +444,7 @@ export class EntryActorDestroyHandler
       throw new Error('Destroy request actor does not match dispatched actor.');
     }
     const evidence = EntryActorDestroyHandler.requireEvidence();
-    void entrySpot.context.runWorker(() => true).submit().then(async () => {
+    void entrySpot.context.runIoWorker(async () => true).submit().then(async () => {
       try {
         await entrySpot.context.destroyActor(actor);
         evidence.add(`actor-destroyed|rid=${entrySpot.context.nodeRid}|actor=${actor.actorId}`);

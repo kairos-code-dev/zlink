@@ -16,7 +16,7 @@ application helper가 아니라 public framework topology 설정이다.
 | ATD-A1 | done | `logs/20260702-051530-20410`에서 `scenario ATD-A1 passed`. Hold handler가 delay request를 기본 submit으로 기다린 뒤 같은 Spot의 probe가 실행되는 marker order를 검증했다. |
 | ATD-A2 | done | `logs/20260702-051530-20410`에서 `scenario ATD-A2 passed`. `ZLinkRequestCall.submit<TReply>()` 중 같은 Spot의 probe가 먼저 실행되고 continuation이 재개되는 marker order를 검증했다. |
 | ATD-A3 | done | `logs/20260702-051530-20410`에서 `scenario ATD-A3 passed`. `.NET`과 같은 request id, spot rid, correlation id, await continuation marker order를 검증했다. stream metadata 직접 노출은 Spot request handler public surface가 아니므로 이 시나리오의 완료 조건에 넣지 않는다. |
-| ATD-A4 | done | `logs/20260702-051530-20410`에서 `scenario ATD-A4 passed`. `runWorker(...).submit()` 중 같은 Spot의 probe가 먼저 실행되고 worker continuation이 재개되는 marker order를 검증했다. |
+| ATD-A4 | done | `logs/20260715-092009-2649385`에서 `scenario ATD-A4 passed`. `runIoWorker(...).yield()`로 turn을 반납한 동안 같은 Spot의 probe가 먼저 실행되고 worker continuation이 재개되는 marker order를 검증했다. |
 | ATD-B1 | done | `logs/20260702-051530-20410`에서 `scenario ATD-B1 passed`. actor A가 await로 delay reply를 기다리는 동안 actor B의 fast request가 먼저 완료되는 marker order와 서로 다른 actor mailbox id를 검증했다. Node stream connector는 같은 connector에서 동시에 두 request/reply를 열지 않으므로 client driver가 두 connector를 같은 actor set에 바인딩한다. |
 | ATD-B2 | done | `logs/20260702-051530-20410`에서 `scenario ATD-B2 passed`. actor A가 await 중일 때 같은 actor A의 fast packet을 같은 connector에서 send로 전달했고, fast marker가 await continuation과 completion 뒤에만 기록되는지 검증했다. |
 | ATD-B3 | done | `logs/20260702-051530-20410`에서 `scenario ATD-B3 passed`. actor A의 `joinSpot(...).submit()` 대기 중 actor B fast request가 먼저 완료되고, actor A join continuation은 target Spot join 뒤에 재개되는 marker order를 검증했다. |

@@ -59,7 +59,7 @@ import {
   DefaultZLinkSpotOutbound,
   ZLinkSpotSerialExecutor
 } from './runtime/spots';
-import { ZLinkSpotWorkerRuntime } from './runtime/workers';
+import { ZLinkWorkerRuntime } from './runtime/workers';
 import { captureZLinkExecutionTurn } from './runtime/execution';
 export {
   registerHandlerFilterScope as registerIntegrationHandlerFilterScope,
@@ -187,7 +187,7 @@ export function createIntegrationSpotManager(
     spotRouteResolver: runtimeOptions.spotRouteResolver,
     routedTransport: host.routeTransport,
     providerResolver,
-    workerRuntime: new ZLinkSpotWorkerRuntime(registration.worker)
+    workerRuntime: new ZLinkWorkerRuntime(registration.worker)
   });
   host.setSpotManager(manager);
   return manager;

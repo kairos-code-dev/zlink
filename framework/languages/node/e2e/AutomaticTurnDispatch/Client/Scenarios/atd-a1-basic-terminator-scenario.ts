@@ -33,17 +33,17 @@ export async function runYdA1(client: ZlinkStreamConnector): Promise<{ spotRid: 
     .submit();
 
   const evidence = await client
-    .request({ requestId, marker: 'hold-completed', timeoutMilliseconds: 30000 } satisfies AwaitEvidenceWaitReq)
+    .request({ requestId, marker: 'probe-completed', timeoutMilliseconds: 30000 } satisfies AwaitEvidenceWaitReq)
     .packetName('AwaitEvidenceWaitReq')
     .metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
     .submit<AwaitEvidenceRes>();
   containsRequestMarkersInOrder(evidence.evidence, requestId, [
     'hold-started',
-    'probe-started',
-    'probe-completed',
     'hold-resumed',
-    'hold-completed'
+    'hold-completed',
+    'probe-started',
+    'probe-completed'
   ], 'ATD-A1 marker order mismatch.');
   console.log('scenario ATD-A1 passed');
   return { spotRid, requestId };

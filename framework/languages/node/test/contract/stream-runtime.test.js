@@ -1749,11 +1749,14 @@ test('runtime host completes relayed actor request on captured stream after acto
 
 test('worker promise continuation resumes through the captured handler turn', async () => {
   const serial = new framework.ZLinkSpotSerialExecutor();
-  const worker = new framework.ZLinkSpotWorkerRuntime();
+  const worker = new framework.ZLinkWorkerRuntime();
   const events = [];
 
   await serial.execute(async () => {
-    void new framework.DefaultZLinkWorkerCall(worker, serial, () => true)
+    void new framework.DefaultZLinkWorkerCall(
+      serial,
+      (timeoutMs, signal) => worker.scheduleIo(async () => true, timeoutMs, signal)
+    )
       .submit().then(async () => {
         events.push('cleanup');
       });

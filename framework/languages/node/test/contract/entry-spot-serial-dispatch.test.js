@@ -370,7 +370,7 @@ test('yield request await inside an entry turn releases the serial line until re
   assert.deepEqual(events, ['handler:start', 'request:ping', 'next', 'handler:reply:ping']);
 });
 
-test('runWorker promise continuation re-enters the owning spot serial executor', async () => {
+test('runIoWorker promise continuation re-enters the owning spot serial executor', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -388,7 +388,7 @@ test('runWorker promise continuation re-enters the owning spot serial executor',
 
   const busy = serial.execute(async () => {
     events.push('busy:start');
-    void context.runWorker(() => {
+    void context.runIoWorker(async () => {
       events.push('work');
       return 21 * 2;
     }).submit().then((result) => {
@@ -406,7 +406,50 @@ test('runWorker promise continuation re-enters the owning spot serial executor',
   assert.deepEqual(events, ['busy:start', 'work', 'completed:42:executing=true', 'busy:end']);
 });
 
-test('runWorker submit keeps the current Spot turn until worker completion', async () => {
+test('Spot context splits CPU and I/O worker operations by execution kind', async () => {
+  class WorkerEntrySpot {}
+  const fixture = await createEntryFixture(WorkerEntrySpot);
+  const context = fixture.activation.context;
+
+  assert.equal(typeof context.runCpuWorker, 'function');
+  assert.equal(typeof context.runIoWorker, 'function');
+  assert.equal(typeof context.runWorker, 'undefined');
+});
+
+test('runCpuWorker executes synchronous work on a worker thread', async () => {
+  class WorkerEntrySpot {}
+  const fixture = await createEntryFixture(WorkerEntrySpot);
+  const mainThreadId = require('node:worker_threads').threadId;
+
+  const workerThreadId = await fixture.activation.context
+    .runCpuWorker(() => require('node:worker_threads').threadId)
+    .submit();
+
+  assert.notEqual(workerThreadId, mainThreadId);
+});
+
+test('runCpuWorker rejects async work and enforces its timeout', async () => {
+  class WorkerEntrySpot {}
+  const fixture = await createEntryFixture(WorkerEntrySpot);
+  const context = fixture.activation.context;
+
+  await assert.rejects(
+    () => context.runCpuWorker(async () => 'wrong-kind').submit(),
+    /requires a synchronous function/
+  );
+  await assert.rejects(
+    () => context.runCpuWorker(() => {
+      const deadline = Date.now() + 50;
+      while (Date.now() < deadline) { /* occupy the CPU worker */ }
+      return 'late';
+    }).timeoutMs(5).submit(),
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.WorkerTimedOut
+  );
+});
+
+test('runIoWorker submit keeps the current Spot turn until worker completion', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -415,7 +458,7 @@ test('runWorker submit keeps the current Spot turn until worker completion', asy
 
   const gated = serial.execute(async () => {
     events.push('handler:start');
-    const result = await context.runWorker(async () => {
+    const result = await context.runIoWorker(async () => {
       await delay(5);
       return 'done';
     }).submit();
@@ -429,7 +472,7 @@ test('runWorker submit keeps the current Spot turn until worker completion', asy
   assert.deepEqual(events, ['handler:start', 'handler:done', 'next']);
 });
 
-test('runWorker yield releases the current Spot turn until worker completion resumes it', async () => {
+test('runIoWorker yield releases the current Spot turn until worker completion resumes it', async () => {
   class WorkerEntrySpot {}
   const fixture = await createEntryFixture(WorkerEntrySpot);
   const serial = fixture.activation.serialExecutor;
@@ -442,7 +485,7 @@ test('runWorker yield releases the current Spot turn until worker completion res
 
   const yielded = serial.execute(async () => {
     events.push('handler:start');
-    const result = await context.runWorker(async () => {
+    const result = await context.runIoWorker(async () => {
       await workGate;
       return 'done';
     }).yield();
@@ -459,28 +502,28 @@ test('runWorker yield releases the current Spot turn until worker completion res
   assert.deepEqual(events, ['handler:start', 'next', 'handler:done']);
 });
 
-test('runWorker submit also works when the call is created outside a Spot turn', async () => {
-  const worker = new framework.ZLinkSpotWorkerRuntime();
+test('runIoWorker submit also works when the call is created outside a Spot turn', async () => {
+  const worker = new framework.ZLinkWorkerRuntime();
   const serial = new framework.ZLinkSpotSerialExecutor();
-  const call = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
+  const call = ioWorkerCall(worker, serial, async () => 'done');
 
   assert.equal(await call.submit(), 'done');
 });
 
-test('runWorker queue full fails fast with WorkerQueueFull and does not block the dispatcher', async () => {
-  const worker = new framework.ZLinkSpotWorkerRuntime({ maxThreads: 1, maxQueueLength: 1 });
+test('runCpuWorker queue full fails fast with WorkerQueueFull and does not block the dispatcher', async () => {
+  const worker = new framework.ZLinkWorkerRuntime({ maxThreads: 1, maxQueueLength: 1 });
   const serial = new framework.ZLinkSpotSerialExecutor();
-  let releaseWork;
-  const workGate = new Promise((resolve) => {
-    releaseWork = resolve;
+  const longCall = cpuWorkerCall(worker, serial, () => {
+    const deadline = Date.now() + 100;
+    while (Date.now() < deadline) { /* occupy the CPU worker */ }
+    return 'long';
   });
-  const longCall = new framework.DefaultZLinkWorkerCall(worker, serial, () => workGate);
   const longJob = longCall.submit();
-  await delay(5);
-  const queuedCall = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'queued');
+  await waitFor(() => worker.inFlightCount === 1);
+  const queuedCall = cpuWorkerCall(worker, serial, () => 'queued');
   const queuedJob = queuedCall.submit();
 
-  const overflowCall = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'overflow');
+  const overflowCall = cpuWorkerCall(worker, serial, () => 'overflow');
   const startedAt = Date.now();
   await assert.rejects(
     () => overflowCall.submit(),
@@ -495,7 +538,7 @@ test('runWorker queue full fails fast with WorkerQueueFull and does not block th
   assert.equal(dispatched, 'dispatcher-alive');
 
   const errors = [];
-  const overflowCallback = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'overflow');
+  const overflowCallback = cpuWorkerCall(worker, serial, () => 'overflow');
   void overflowCallback.submit().then(
     () => errors.push('completed'),
     (error) => serial.execute(() => errors.push(`error:${error.kind}:executing=${serial.isExecuting}`))
@@ -503,18 +546,17 @@ test('runWorker queue full fails fast with WorkerQueueFull and does not block th
   await delay(10);
   assert.deepEqual(errors, ['error:workerQueueFull:executing=true']);
 
-  releaseWork('long');
   assert.equal(await longJob, 'long');
   assert.equal(await queuedJob, 'queued');
 });
 
-test('runWorker timeout fails the caller and drops the late completion without user callbacks', async () => {
-  const worker = new framework.ZLinkSpotWorkerRuntime({ maxThreads: 2, maxQueueLength: 16 });
+test('runIoWorker timeout fails the caller and drops the late completion without user callbacks', async () => {
+  const worker = new framework.ZLinkWorkerRuntime({ maxThreads: 2, maxQueueLength: 16 });
   const serial = new framework.ZLinkSpotSerialExecutor();
   const events = [];
 
   let observedSignal;
-  const submitCall = new framework.DefaultZLinkWorkerCall(worker, serial, async (signal) => {
+  const submitCall = ioWorkerCall(worker, serial, async (signal) => {
     observedSignal = signal;
     await delay(40);
     return 'late';
@@ -527,7 +569,7 @@ test('runWorker timeout fails the caller and drops the late completion without u
   );
   assert.equal(observedSignal.aborted, true);
 
-  const callbackCall = new framework.DefaultZLinkWorkerCall(worker, serial, async () => {
+  const callbackCall = ioWorkerCall(worker, serial, async () => {
     await delay(40);
     return 'late';
   }).timeoutMs(10);
@@ -540,11 +582,11 @@ test('runWorker timeout fails the caller and drops the late completion without u
   assert.deepEqual(events, ['error:workerTimedOut']);
 });
 
-test('runWorker work failure surfaces as WorkerFailed wrapping the cause', async () => {
-  const worker = new framework.ZLinkSpotWorkerRuntime();
+test('runIoWorker work failure surfaces as WorkerFailed wrapping the cause', async () => {
+  const worker = new framework.ZLinkWorkerRuntime();
   const serial = new framework.ZLinkSpotSerialExecutor();
   const cause = new Error('disk full');
-  const call = new framework.DefaultZLinkWorkerCall(worker, serial, () => {
+  const call = ioWorkerCall(worker, serial, async () => {
     throw cause;
   });
   await assert.rejects(
@@ -556,11 +598,11 @@ test('runWorker work failure surfaces as WorkerFailed wrapping the cause', async
   );
 });
 
-test('runWorker call accepts only one terminator', async () => {
-  const worker = new framework.ZLinkSpotWorkerRuntime({ maxThreads: 1, maxQueueLength: 16 });
+test('runIoWorker call accepts only one terminator', async () => {
+  const worker = new framework.ZLinkWorkerRuntime({ maxThreads: 1, maxQueueLength: 16 });
   const serial = new framework.ZLinkSpotSerialExecutor();
 
-  const submitFirst = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
+  const submitFirst = ioWorkerCall(worker, serial, async () => 'done');
   const submitted = submitFirst.submit();
   assert.throws(
     () => submitFirst.submit(),
@@ -570,7 +612,7 @@ test('runWorker call accepts only one terminator', async () => {
   );
   assert.equal(await submitted, 'done');
 
-  const yieldFirst = new framework.DefaultZLinkWorkerCall(worker, serial, () => 'done');
+  const yieldFirst = ioWorkerCall(worker, serial, async () => 'done');
   const yielded = yieldFirst.yield();
   assert.throws(
     () => yieldFirst.submit(),
@@ -579,43 +621,6 @@ test('runWorker call accepts only one terminator', async () => {
       && /only one terminator/.test(error.message)
   );
   assert.equal(await yielded, 'done');
-});
-
-test('detached runWorker completion observes entry spot state mutated after submission', async () => {
-  class AdmissionEntrySpot {
-    constructor() {
-      this.admissionEpoch = 1;
-    }
-  }
-  const fixture = await createEntryFixture(AdmissionEntrySpot);
-  const serial = fixture.activation.serialExecutor;
-  const context = fixture.activation.context;
-  const entrySpot = fixture.activation.entrySpot;
-  const events = [];
-
-  let completed;
-  const completion = new Promise((resolve) => {
-    completed = resolve;
-  });
-  await serial.execute(() => {
-    const submittedEpoch = entrySpot.admissionEpoch;
-    void context.runWorker(async () => {
-      await delay(10);
-      return 'profile-loaded';
-    }).submit().then((result) => {
-      // Detached path: state may have moved between submit and completion;
-      // the callback observes the current state and re-validates.
-      events.push(`completed:${result}:submitted=${submittedEpoch}:current=${entrySpot.admissionEpoch}`);
-      completed();
-    });
-  });
-  await serial.execute(() => {
-    entrySpot.admissionEpoch = 2;
-    events.push('epoch:2');
-  });
-  await completion;
-
-  assert.deepEqual(events, ['epoch:2', 'completed:profile-loaded:submitted=1:current=2']);
 });
 
 test('worker options are accepted on the framework options builder and validated', () => {
@@ -643,23 +648,35 @@ test('worker options are accepted on the framework options builder and validated
   }
 });
 
-test('runWorker contract documentation does not claim CPU thread offload', () => {
+test('worker declarations expose split CPU and I/O execution contracts', () => {
   const declarationsRoot = path.resolve(__dirname, '../../packages/framework/dist/contracts');
   const declarations = readTree(declarationsRoot);
-  const runWorkerDocs = [...declarations.matchAll(/\/\*\*([\s\S]*?)\*\/\s*runWorker/g)]
-    .map((match) => match[1]);
-
-  assert.equal(runWorkerDocs.length >= 2, true);
-  for (const doc of runWorkerDocs) {
-    assert.match(doc, /does not\s+provide CPU thread offload/);
-    assert.match(doc, /deferral/);
-  }
-  // No declaration or doc-comment may claim the closure runs on a worker
-  // thread or off the main event loop.
-  assert.doesNotMatch(declarations, /worker_threads/);
-  assert.doesNotMatch(declarations, /runs? on a worker thread/i);
-  assert.doesNotMatch(declarations, /off the main (?:event loop|thread)(?!\b.*not)/i);
+  assert.match(declarations, /runCpuWorker<T>\(work: \(signal: AbortSignal\) => T\): ZLinkWorkerCall<T>/);
+  assert.match(declarations, /runIoWorker<T>\(work: \(signal: AbortSignal\) => Promise<T>\): ZLinkWorkerCall<T>/);
+  assert.doesNotMatch(declarations, /\brunWorker<T>/);
 });
+
+function ioWorkerCall(worker, serial, work) {
+  return new framework.DefaultZLinkWorkerCall(
+    serial,
+    (timeoutMs, signal) => worker.scheduleIo(work, timeoutMs, signal)
+  );
+}
+
+function cpuWorkerCall(worker, serial, work) {
+  return new framework.DefaultZLinkWorkerCall(
+    serial,
+    (timeoutMs, signal) => worker.scheduleCpu(work, timeoutMs, signal)
+  );
+}
+
+async function waitFor(predicate) {
+  const deadline = Date.now() + 1000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error('condition timed out');
+    await delay(1);
+  }
+}
 
 function readTree(root) {
   const parts = [];

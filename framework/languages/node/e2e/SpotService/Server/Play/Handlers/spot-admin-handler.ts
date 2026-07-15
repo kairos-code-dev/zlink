@@ -32,7 +32,9 @@ export class SpotAdminHandler implements ZLinkSpotRequestHandler<ScenarioUserSpo
         this.evidence.add(`spot-publish|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${request.marker}`);
         break;
       case 'worker': {
-        const marker = await spot.context.runWorker((signal) => delayWorker(request.marker ?? '', request.delayMs ?? 0, signal)).submit();
+        const marker = await spot.context.runIoWorker(
+          (signal) => delayWorker(request.marker ?? '', request.delayMs ?? 0, signal)
+        ).yield();
         spot.add(100);
         this.evidence.add(`worker-complete|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|marker=${marker}`);
         break;

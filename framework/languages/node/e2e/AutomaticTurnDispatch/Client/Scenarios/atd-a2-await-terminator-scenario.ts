@@ -28,7 +28,7 @@ export async function runYdA2(client: ZlinkStreamConnector, spotRid: string): Pr
     .submit();
 
   const evidence = await client
-    .request({ requestId, marker: 'await-completed', timeoutMilliseconds: 30000 } satisfies AwaitEvidenceWaitReq)
+    .request({ requestId, marker: 'probe-completed', timeoutMilliseconds: 30000 } satisfies AwaitEvidenceWaitReq)
     .packetName('AwaitEvidenceWaitReq')
     .metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, 'play-a')
     .timeout(30000)
@@ -36,10 +36,10 @@ export async function runYdA2(client: ZlinkStreamConnector, spotRid: string): Pr
   containsRequestMarkersInOrder(evidence.evidence, requestId, [
     'await-started',
     'await-released',
-    'probe-started',
-    'probe-completed',
     'await-resumed',
-    'await-completed'
+    'await-completed',
+    'probe-started',
+    'probe-completed'
   ], 'ATD-A2 marker order mismatch.');
   console.log('scenario ATD-A2 passed');
   return requestId;

@@ -31,7 +31,7 @@ import {
   type ZLinkLocationRuntimeStores
 } from '../locations';
 import type { ZLinkRemoteBoundSessionTarget } from '../actors';
-import { ZLinkSpotWorkerRuntime } from '../workers';
+import { ZLinkWorkerRuntime } from '../workers';
 import { ZLinkSpotActorJoinDispatch } from './spot-actor-join-dispatch';
 import type { ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import { ZLinkEntrySpotActivation } from './spot-entry-activation';
@@ -86,11 +86,11 @@ export class ZLinkSpotNodeRuntimeManager {
   private readonly ownedObjects: ZLinkOwnedBackendObject[] = [];
   private readonly publisherBundles = new Map<string, ZLinkSpotPublisherBundle>();
   private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
-  private readonly workerRuntime: ZLinkSpotWorkerRuntime;
+  private readonly workerRuntime: ZLinkWorkerRuntime;
   private locationAutoConnect?: ZLinkSpotNodeLocationAutoConnectContext;
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {
-    this.workerRuntime = new ZLinkSpotWorkerRuntime(options.registration.worker);
+    this.workerRuntime = new ZLinkWorkerRuntime(options.registration.worker);
   }
 
   configureLocationAutoConnect(

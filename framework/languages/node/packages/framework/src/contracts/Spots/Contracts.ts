@@ -47,29 +47,19 @@ export interface ZLinkSpotCommonContext<
     signal?: AbortSignal
   ): Promise<ZLinkTimer>;
   /**
-   * Schedules `work` as an asynchronous deferral on the main event loop.
-   *
-   * Await `submit()` to keep the current Spot turn until `work` completes, or
-   * await `yield()` to let another turn run while waiting.
-   * This does not provide CPU thread offload. `work` must not touch Spot state;
-   * mutate Spot state only after the awaited terminator completes.
+   * Runs synchronous CPU work on the bounded worker-thread pool.
+   * The function is serialized into an isolated worker, so it must be self-contained
+   * and return a value supported by the structured clone algorithm.
    */
-  runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
+  runCpuWorker<T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T>;
+  /** Runs asynchronous I/O work without occupying a CPU worker thread. */
+  runIoWorker<T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T>;
 }
 
 export interface ZLinkSpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>
 > extends ZLinkSpotCommonContext<TActor, TSpot> {
-  /**
-   * Schedules `work` as an asynchronous deferral on the main event loop.
-   *
-   * Await `submit()` to keep the current Spot turn until `work` completes, or
-   * await `yield()` to let another turn run while waiting.
-   * This does not provide CPU thread offload. `work` must not touch Spot state;
-   * mutate Spot state only after the awaited terminator completes.
-   */
-  runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
   leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
   close(signal?: AbortSignal): Promise<boolean>;
 }
@@ -78,15 +68,6 @@ export interface ZLinkEntrySpotContext<
   TActor extends ZLinkActor = ZLinkActor,
   TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>
 > extends ZLinkSpotCommonContext<TActor, TEntrySpot> {
-  /**
-   * Schedules `work` as an asynchronous deferral on the main event loop.
-   *
-   * Await `submit()` to keep the current Entry Spot turn until `work`
-   * completes, or await `yield()` to let another turn run while waiting.
-   * This does not provide CPU thread offload. `work` must not touch Spot state;
-   * mutate Spot state only after the awaited terminator completes.
-   */
-  runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
   destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
 }
 

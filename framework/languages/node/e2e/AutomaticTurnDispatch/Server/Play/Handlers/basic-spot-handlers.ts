@@ -92,12 +92,12 @@ export class WorkerAwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitPr
   async handle(spot: AwaitProbeSpot, request: WorkerAwaitMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
     this.evidence.add(`worker-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
-    const call = spot.context.runWorker(async (signal) => {
+    const call = spot.context.runIoWorker(async (signal) => {
       await delay(request.delayMs, signal);
       return request.requestId;
     });
     this.evidence.add(`worker-await-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
-    await call.submit();
+    await call.yield();
     this.evidence.add(`worker-await-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
     this.evidence.add(`worker-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}|handler=spot`);
   }

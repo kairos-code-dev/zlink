@@ -22,14 +22,6 @@ enum class handler_execution_t
     offload = 1
 };
 
-enum class unhandled_dispatch_action_t
-{
-    reply_error = 0,
-    log_and_drop = 1,
-    drop = 2,
-    throw_exception = 3
-};
-
 enum class message_flow_log_mode_t
 {
     off = 0,
@@ -50,15 +42,6 @@ enum class message_flow_outcome_t
     sent = 4,           // a message left this node toward another channel/spot/node (outbound)
     reply_received = 5, // a reply came back for an outbound request (outbound)
     error = 6           // dispatch failed before the normal lifecycle transition completed
-};
-
-struct unhandled_dispatch_options_t
-{
-    unhandled_dispatch_action_t request = unhandled_dispatch_action_t::reply_error;
-    unhandled_dispatch_action_t send = unhandled_dispatch_action_t::log_and_drop;
-    unhandled_dispatch_action_t publish = unhandled_dispatch_action_t::log_and_drop;
-    log_level_t send_log_level = log_level_t::warn;
-    log_level_t publish_log_level = log_level_t::debug;
 };
 
 // Diagnostics/tracing config. Fields are encapsulated: configure them only through
@@ -203,7 +186,6 @@ class message_flow_observer_t
 
 struct dispatch_options_t
 {
-    unhandled_dispatch_options_t unhandled;
     dispatch_diagnostics_options_t diagnostics;
     std::shared_ptr<message_flow_observer_t> message_flow_observer;
     std::function<void (const message_flow_event_t &)> message_flow_callback;

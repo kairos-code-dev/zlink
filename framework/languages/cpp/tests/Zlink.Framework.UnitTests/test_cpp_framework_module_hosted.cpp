@@ -564,9 +564,6 @@ int main ()
     options.use_filter<options_filter_t> ();
     options.metadata ().add_forwarded_metadata_key ("trace-id");
     auto &dispatch = options.configure_dispatch ();
-    dispatch.unhandled.request = zlink::framework::unhandled_dispatch_action_t::reply_error;
-    dispatch.unhandled.send = zlink::framework::unhandled_dispatch_action_t::log_and_drop;
-    dispatch.unhandled.publish = zlink::framework::unhandled_dispatch_action_t::drop;
     dispatch.message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
       .trace_sample_rate (0.5)
       .include_message_sizes (true);
@@ -693,8 +690,7 @@ int main ()
         return 20;
     }
     const auto options_dispatch = options.dispatch_options ();
-    if (options_dispatch.unhandled.publish != zlink::framework::unhandled_dispatch_action_t::drop
-        || options_dispatch.diagnostics.message_flow ()
+    if (options_dispatch.diagnostics.message_flow ()
              != zlink::framework::message_flow_log_mode_t::key_transitions
         || options_dispatch.diagnostics.sample_rate () != 0.5
         || !options_dispatch.diagnostics.include_message_sizes ()) {
@@ -719,52 +715,6 @@ int main ()
     }
     if (!invalid_dispatch_failed) {
         return 22;
-    }
-
-    bool invalid_send_reply_error_failed = false;
-    try {
-        zlink::framework::service_collection_t invalid_services;
-        zlink::framework::handler_registry_t invalid_handlers;
-        zlink::framework::serializer_registry_t invalid_serializers;
-        zlink::framework::zlink_builder_t invalid_zlink;
-        zlink::framework::monitoring_builder_t invalid_monitoring;
-        zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
-          invalid_monitoring);
-        invalid_options.configure_dispatch ().unhandled.send =
-          zlink::framework::unhandled_dispatch_action_t::reply_error;
-        invalid_options.apply ();
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        invalid_send_reply_error_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("send has no reply path") != std::string::npos;
-    }
-    if (!invalid_send_reply_error_failed) {
-        return 25;
-    }
-
-    bool invalid_publish_reply_error_failed = false;
-    try {
-        zlink::framework::service_collection_t invalid_services;
-        zlink::framework::handler_registry_t invalid_handlers;
-        zlink::framework::serializer_registry_t invalid_serializers;
-        zlink::framework::zlink_builder_t invalid_zlink;
-        zlink::framework::monitoring_builder_t invalid_monitoring;
-        zlink::framework::zlink_framework_options_t invalid_options (
-          invalid_services, invalid_handlers, invalid_serializers, invalid_zlink,
-          invalid_monitoring);
-        invalid_options.configure_dispatch ().unhandled.publish =
-          zlink::framework::unhandled_dispatch_action_t::reply_error;
-        invalid_options.apply ();
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        invalid_publish_reply_error_failed =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error
-          && std::string (error.what ()).find ("publish has no reply path") != std::string::npos;
-    }
-    if (!invalid_publish_reply_error_failed) {
-        return 26;
     }
 
     bool invalid_nan_sample_rate_failed = false;

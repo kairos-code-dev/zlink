@@ -1,0 +1,678 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { Injectable, Module } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import {
+  ZLinkMessage,
+  ZLinkEncodedPayload,
+  ZLinkLocationActorEventKind,
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
+  ZLinkMessageFlowLogMode,
+  ZLinkSpotActorRequest,
+  ZLinkSpotActorSend,
+  type ActorRef,
+  type ZLinkActor,
+  type ZLinkActorClient,
+  type ZLinkActorContext,
+  type ZLinkActorFactory,
+  type ZLinkActorManager,
+  type ZLinkActorTransferAdapter,
+  type ZLinkEntrySpot,
+  type ZLinkEntrySpotActorRequestHandler,
+  type ZLinkEntrySpotActorSendHandler,
+  type ZLinkEntrySpotContext,
+  type ZLinkLocationActorEvent,
+  type ZLinkDrainControl,
+  type ZLinkDrainResult,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkRuntimeEventHandler,
+  type ZLinkRuntimeEvent,
+  type ZLinkSpot,
+  type ZLinkSpotActorRequestContext,
+  type ZLinkSpotActorSendContext,
+  type ZLinkSpotActorRequestHandler,
+  type ZLinkSpotActorSendHandler,
+  type ZLinkSpotContext,
+  type ZLinkSpotManager,
+  type ZLinkSpotHandleResolver
+} from '@zlink-systems/framework';
+import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
+import {
+  ZLINK_ACTOR_CLIENT,
+  ZLINK_ACTOR_MANAGER,
+  ZLINK_DRAIN_CONTROL,
+  ZLINK_LOCATION_RUNTIME_QUERY,
+  ZLINK_SPOT_MANAGER,
+  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLinkModule,
+  zlinkRuntimeEventHandler,
+  zlinkFramework
+} from '@zlink-systems/nestjs';
+import {
+  BoundPushNotify,
+  BoundPushReq,
+  HandoffProbe,
+  JoinTargetReq,
+  ProbeReq,
+  ObservabilityOpsNames,
+  type ActorCreateReq,
+  type ActorCreateRes,
+  type ActorRefSnapshotRes,
+  type BoundPushRes,
+  type CreateSpotReq,
+  type CreateSpotRes,
+  type EvidenceWaitReq,
+  type GateReleaseRes,
+  type JoinTargetRes,
+  type ProbeRes,
+  type TransferStateDto
+} from '../../Shared/messages';
+import { EvidenceStore } from '../Support/evidence-store';
+import { closeHttpServer, startHttpServer } from '../Support/http-server';
+import { createFlowLogRoute } from '../Support/flow-log-route';
+import { MetricEvidenceCollector } from '../Support/metric-evidence-collector';
+import {
+  OBSERVABILITY_OPS_OPTIONS,
+  createObservabilityOpsConfigurationModule,
+  validateServerOptions
+} from '../../configuration';
+import type { ServerOptions } from '../../configuration';
+
+let options: ServerOptions;
+let evidence: EvidenceStore;
+let transferGates: GateStore;
+let locationStore: ZLinkRedisLocationStore;
+const metrics = new MetricEvidenceCollector();
+let stopping = false;
+process.once('SIGINT', () => { stopping = true; });
+process.once('SIGTERM', () => { stopping = true; });
+const actorScenarios = new Map<string, string>();
+const capturedActorRefs = new Map<string, ActorRef>();
+
+class TransferActor implements ZLinkActor {
+  actorType: string = ObservabilityOpsNames.actorTypeStateful;
+  stateVersion = 0;
+  readonly context!: ZLinkActorContext;
+
+  constructor(readonly actorId: string, context?: ZLinkActorContext) {
+    if (context !== undefined) Object.defineProperty(this, 'context', { value: context, configurable: true });
+  }
+}
+
+@Injectable()
+class TransferActorFactory implements ZLinkActorFactory {
+  async create(actorId: string, context: ZLinkActorContext): Promise<TransferActor> {
+    return new TransferActor(actorId, context);
+  }
+}
+
+@Injectable()
+class TransferActorAdapter implements ZLinkActorTransferAdapter<TransferActor> {
+  async transferOut(actor: TransferActor, signal?: AbortSignal): Promise<ZLinkMessage> {
+    signal?.throwIfAborted();
+    evidence.add('transfer', actor.actorId, 'transfer_out', String(actor.stateVersion));
+    if (
+      actor.actorId.startsWith('actor-source-down-before-commit-') ||
+      actor.actorId.startsWith('actor-handoff-gate-')
+    ) {
+      const scenario = actorScenarios.get(actor.actorId) ?? 'OBS-C1';
+      evidence.add(scenario, actor.actorId, 'before_commit_gate', String(actor.stateVersion));
+      await transferGates.wait(actor.actorId, signal);
+    }
+    return ZLinkMessage.from({
+      actorId: actor.actorId,
+      actorType: actor.actorType,
+      stateVersion: actor.stateVersion
+    } satisfies TransferStateDto);
+  }
+
+  async transferIn(actorId: string, state: ZLinkMessage, signal?: AbortSignal): Promise<TransferActor> {
+    signal?.throwIfAborted();
+    const dto = state.decode<TransferStateDto>(Object as never);
+    const actor = new TransferActor(actorId);
+    actor.actorType = dto.actorType;
+    actor.stateVersion = dto.stateVersion;
+    evidence.add('transfer', actorId, 'transfer_in', String(actor.stateVersion));
+    return actor;
+  }
+}
+
+@Injectable()
+class TransferEntrySpot implements ZLinkEntrySpot<TransferActor> {
+  readonly context!: ZLinkEntrySpotContext<TransferActor>;
+
+  configure(): void {
+    this.context.handlers.addActorPacket(JoinTargetHandler, TransferActor);
+    this.context.handlers.addActorPacket(EntryProbeHandler, TransferActor);
+    this.context.handlers.addActorPacket(EntryHandoffHandler, TransferActor);
+    this.context.handlers.addActorPacket(EntryBoundPushHandler, TransferActor);
+  }
+
+  async onCreateActor(actor: TransferActor, request: ZLinkMessage): Promise<void> {
+    if (!request.toEncodedPayload().isEmpty()) {
+      const create = request.decode<ActorCreateReq>(Object as never);
+      actor.actorType = create.actorType;
+      actor.stateVersion = create.stateVersion;
+    }
+    evidence.add('create', actor.actorId, 'create', `${actor.actorType}:${actor.stateVersion}`);
+  }
+
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<{ accepted: boolean; reply?: unknown }> {
+    evidence.add('local', actorId, 'admission', 'actor-id-only');
+    return { accepted: true, reply: request.decode(Object as never) };
+  }
+
+  async onJoinedActor(actor: TransferActor): Promise<void> {
+    evidence.add('local', actor.actorId, 'entry_joined', String(actor.stateVersion));
+  }
+
+  async onLeaveActor(actor: TransferActor): Promise<void> {
+    evidence.add('transfer', actor.actorId, 'leave', String(actor.stateVersion));
+    const scenario = actorScenarios.get(actor.actorId);
+    if (scenario !== undefined) {
+      // Returning from this callback lets the coordinator send the commit request.
+      evidence.add(scenario, actor.actorId, 'commit_request', 'after-source-leave');
+    }
+  }
+}
+
+@Injectable()
+class TransferUserSpot implements ZLinkSpot<TransferActor> {
+  readonly context!: ZLinkSpotContext<TransferActor>;
+  private mode = 'accept';
+  private readonly scenarios = new Map<string, string>();
+
+  configure(): void {
+    this.context.handlers.addActorPacket(UserJoinTargetHandler, TransferActor);
+    this.context.handlers.addActorPacket(ProbeHandler, TransferActor);
+    this.context.handlers.addActorPacket(HandoffHandler, TransferActor);
+    this.context.handlers.addActorPacket(BoundPushHandler, TransferActor);
+  }
+
+  async onCreate(request: ZLinkMessage): Promise<{ accepted: boolean }> {
+    if (!request.toEncodedPayload().isEmpty()) this.mode = request.decode<CreateSpotReq>(Object as never).mode ?? 'accept';
+    evidence.add('create_spot', String(this.context.spotRid), 'spot_created', this.mode);
+    return { accepted: true };
+  }
+
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<{ accepted: boolean; reply: JoinTargetRes }> {
+    const join = request.decode<JoinTargetReq>(Object as never);
+    evidence.correlate(actorId, join.transferId);
+    this.scenarios.set(actorId, join.scenario);
+    actorScenarios.set(actorId, join.scenario);
+    evidence.add(join.scenario, actorId, 'admission', `spot=${this.context.spotRid}|mode=${this.mode}|input=actor-id-only`);
+    const accepted = this.mode !== 'reject' && join.expectedMode !== 'reject';
+    return {
+      accepted,
+      reply: {
+        scenario: join.scenario,
+        actorId,
+        accepted,
+        sourceNodeRid: '',
+        targetSpotRid: String(this.context.spotRid),
+        stateVersion: 0
+      }
+    };
+  }
+
+  async onJoinedActor(actor: TransferActor, signal?: AbortSignal): Promise<void> {
+    const scenario = this.scenarios.get(actor.actorId) ?? 'transfer';
+    if (this.mode === 'fail-joined') {
+      evidence.add(scenario, actor.actorId, 'joined_failed', String(this.context.spotRid));
+      throw new Error('injected joined failure');
+    }
+    evidence.add('transfer', actor.actorId, 'joined', `${this.context.spotRid}:${actor.stateVersion}`);
+  }
+
+  async onLeaveActor(actor: TransferActor): Promise<void> {
+    evidence.add('transfer', actor.actorId, 'target_leave', String(this.context.spotRid));
+  }
+}
+
+@Injectable()
+class JoinTargetHandler implements ZLinkEntrySpotActorRequestHandler<TransferEntrySpot, TransferActor, JoinTargetReq, JoinTargetRes> {
+  @ZLinkSpotActorRequest(ObservabilityOpsNames.packetJoin)
+  async handle(_spot: TransferEntrySpot, actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: JoinTargetReq): Promise<JoinTargetRes> {
+    evidence.correlate(actor.actorId, request.transferId);
+    actorScenarios.set(actor.actorId, request.scenario);
+    const joined = await actor.context.joinSpot(request.targetSpotRid, request).timeout(10000).submit<JoinTargetRes>();
+    evidence.add(request.scenario, actor.actorId, 'commit_ack', request.targetSpotRid);
+    return {
+      scenario: request.scenario,
+      actorId: actor.actorId,
+      accepted: joined.status === 'accepted',
+      sourceNodeRid: options.rid,
+      targetSpotRid: request.targetSpotRid,
+      stateVersion: actor.stateVersion
+    };
+  }
+}
+
+@Injectable()
+class UserJoinTargetHandler implements ZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, JoinTargetReq, JoinTargetRes> {
+  @ZLinkSpotActorRequest(ObservabilityOpsNames.packetJoin)
+  async handle(_spot: TransferUserSpot, actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: JoinTargetReq): Promise<JoinTargetRes> {
+    evidence.correlate(actor.actorId, request.transferId);
+    actorScenarios.set(actor.actorId, request.scenario);
+    const joined = await actor.context.joinSpot(request.targetSpotRid, request).timeout(10000).submit<JoinTargetRes>();
+    evidence.add(request.scenario, actor.actorId, 'commit_ack', request.targetSpotRid);
+    return {
+      scenario: request.scenario,
+      actorId: actor.actorId,
+      accepted: joined.status === 'accepted',
+      sourceNodeRid: options.rid,
+      targetSpotRid: request.targetSpotRid,
+      stateVersion: actor.stateVersion
+    };
+  }
+}
+
+@Injectable()
+class ProbeHandler implements ZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, ProbeReq, ProbeRes> {
+  @ZLinkSpotActorRequest(ObservabilityOpsNames.packetProbe)
+  async handle(spot: TransferUserSpot, actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: ProbeReq): Promise<ProbeRes> {
+    evidence.add(request.scenario, actor.actorId, 'packet_handler', request.marker);
+    if (request.delayMs !== undefined) await delay(request.delayMs);
+    const response = probeResponse(spot.context, actor, request);
+    evidence.add(request.scenario, actor.actorId, 'request_reply', request.marker);
+    return response;
+  }
+}
+
+@Injectable()
+class HandoffHandler implements ZLinkSpotActorSendHandler<TransferUserSpot, TransferActor, HandoffProbe> {
+  @ZLinkSpotActorSend(ObservabilityOpsNames.packetHandoff)
+  async handle(_spot: TransferUserSpot, actor: TransferActor, _context: ZLinkSpotActorSendContext, message: HandoffProbe): Promise<void> {
+    evidence.add(message.scenario, actor.actorId, 'packet_handler', message.marker);
+  }
+}
+
+@Injectable()
+class EntryHandoffHandler implements ZLinkEntrySpotActorSendHandler<TransferEntrySpot, TransferActor, HandoffProbe> {
+  @ZLinkSpotActorSend(ObservabilityOpsNames.packetHandoff)
+  async handle(_spot: TransferEntrySpot, actor: TransferActor, _context: ZLinkSpotActorSendContext, message: HandoffProbe): Promise<void> {
+    evidence.add(message.scenario, actor.actorId, 'entry_packet_handler', message.marker);
+  }
+}
+
+@Injectable()
+class EntryProbeHandler implements ZLinkEntrySpotActorRequestHandler<TransferEntrySpot, TransferActor, ProbeReq, ProbeRes> {
+  @ZLinkSpotActorRequest(ObservabilityOpsNames.packetProbe)
+  async handle(spot: TransferEntrySpot, actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: ProbeReq): Promise<ProbeRes> {
+    evidence.add(request.scenario, actor.actorId, 'entry_packet_handler', request.marker);
+    if (request.delayMs !== undefined) await delay(request.delayMs);
+    const response = probeResponse(spot.context, actor, request);
+    evidence.add(request.scenario, actor.actorId, 'request_reply', request.marker);
+    return response;
+  }
+}
+
+@Injectable()
+class EntryBoundPushHandler implements ZLinkEntrySpotActorRequestHandler<TransferEntrySpot, TransferActor, BoundPushReq, BoundPushRes> {
+  @ZLinkSpotActorRequest(ObservabilityOpsNames.packetBoundPush)
+  async handle(spot: TransferEntrySpot, actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: BoundPushReq): Promise<BoundPushRes> {
+    return await pushBound(spot.context, actor, request);
+  }
+}
+
+@Injectable()
+class BoundPushHandler implements ZLinkSpotActorRequestHandler<TransferUserSpot, TransferActor, BoundPushReq, BoundPushRes> {
+  @ZLinkSpotActorRequest(ObservabilityOpsNames.packetBoundPush)
+  async handle(spot: TransferUserSpot, actor: TransferActor, _context: ZLinkSpotActorRequestContext, request: BoundPushReq): Promise<BoundPushRes> {
+    return await pushBound(spot.context, actor, request);
+  }
+}
+
+async function pushBound(context: { spotRid: unknown; nodeRid: unknown }, actor: TransferActor, request: BoundPushReq): Promise<BoundPushRes> {
+  const response = probeResponse(context, actor, request);
+  actor.context.boundSession.send(new BoundPushNotify(
+    response.scenario,
+    response.actorId,
+    response.spotRid,
+    response.nodeRid,
+    response.stateVersion,
+    response.marker
+  )).submit();
+  evidence.add(request.scenario, actor.actorId, 'bound_push', request.marker);
+  return response;
+}
+
+function probeResponse(context: { spotRid: unknown; nodeRid: unknown }, actor: TransferActor, request: ProbeReq): ProbeRes {
+  return {
+    scenario: request.scenario,
+    actorId: actor.actorId,
+    spotRid: String(context.spotRid),
+    nodeRid: String(context.nodeRid),
+    stateVersion: actor.stateVersion,
+    marker: request.marker
+  };
+}
+
+@Injectable()
+@zlinkRuntimeEventHandler()
+class ActorLocationEvidenceRecorder implements ZLinkRuntimeEventHandler<ZLinkLocationActorEvent> {
+  async handle(event: ZLinkLocationActorEvent): Promise<void> {
+    if (
+      event.sourceName !== 'observability-ops.actor-location'
+      || event.event !== ZLinkLocationActorEventKind.RowUpdated
+      || event.actor?.spotRid === undefined
+    ) {
+      return;
+    }
+    const scenario = actorScenarios.get(event.actor.actorId);
+    if (scenario === undefined) return;
+    evidence.add(
+      scenario,
+      event.actor.actorId,
+      'location_committed',
+      `node=${String(event.actor.nodeRid)}|spot=${String(event.actor.spotRid)}|generation=${event.actor.generation}`
+    );
+  }
+}
+
+interface ActorHandoffRuntimeEvent extends ZLinkRuntimeEvent {
+  readonly marker: string;
+  readonly actorId: string;
+  readonly index?: number;
+  readonly requestSeq?: string;
+  readonly flags?: number;
+}
+
+@Injectable()
+@zlinkRuntimeEventHandler()
+class ActorHandoffEvidenceRecorder implements ZLinkRuntimeEventHandler<ActorHandoffRuntimeEvent> {
+  async handle(event: ActorHandoffRuntimeEvent): Promise<void> {
+    if (event.sourceName !== 'zlink.framework.actor-handoff') return;
+    const scenario = actorScenarios.get(event.actorId);
+    if (scenario === undefined) return;
+    const value = event.marker === 'handoff_request_frame'
+      ? `index=${event.index ?? ''}|requestSeq=${event.requestSeq ?? ''}|flags=${event.flags ?? ''}`
+      : event.index === undefined ? '' : String(event.index);
+    evidence.add(scenario, event.actorId, event.marker, value);
+  }
+}
+
+class ActorNodeModule {}
+const configuration = createObservabilityOpsConfigurationModule(
+  OBSERVABILITY_OPS_OPTIONS,
+  validateServerOptions
+);
+Module({
+  imports: [
+    configuration,
+    ZLinkModule.forRootFactory({
+      imports: [configuration],
+      inject: [OBSERVABILITY_OPS_OPTIONS],
+      useFactory: (value: unknown) => {
+        options = value as ServerOptions;
+        fs.mkdirSync(options.logDir, { recursive: true });
+        evidence = new EvidenceStore(options.rid, options.evidenceFile);
+        transferGates = new GateStore();
+        const builder = zlinkFramework();
+        locationStore = new ZLinkRedisLocationStore({
+          url: `redis://${options.redisEndpoint}`,
+          keyPrefix: options.redisKeyPrefix
+        });
+        builder.addLocationStore(locationStore);
+        if (options.metricsEnabled) builder.options({ metrics: { meterProvider: metrics.provider } });
+        Object.assign(builder.configureLocations(), {
+          pollingIntervalMs: 100,
+          heartbeatIntervalMs: 1000,
+          ownerLeaseTtlMs: 3000
+        });
+        builder.configureDispatch()
+          .messageFlow(options.messageFlowEnabled ? ZLinkMessageFlowLogMode.KeyTransitions : ZLinkMessageFlowLogMode.Off)
+          .traceLogFile(path.join(options.logDir, `${options.rid}-flow.log`))
+          .traceLabel(options.rid);
+        builder.addActorTransferAdapter(TransferActor, TransferActorAdapter);
+        builder.setActorTransferForwardWindow(500);
+        builder.addSpotMesh(ObservabilityOpsNames.mesh)
+          .enableRouter(options.routerEndpoint, options.rid)
+          .configureEntrySpot({ routingId: options.rid })
+          .enablePubSub(options.pubSubEndpoint, options.rid)
+          .addEntrySpot(TransferEntrySpot)
+          .actorFactory(ObservabilityOpsNames.actorTypeStateful, TransferActorFactory)
+          .addSpotFactory(TransferUserSpot);
+        return {
+          ...builder.build(),
+          monitoring: {
+            locationActor: [{ sourceName: 'observability-ops.actor-location' }]
+          }
+        };
+      }
+    })
+  ],
+  providers: [
+    TransferActorFactory,
+    TransferActorAdapter,
+    TransferEntrySpot,
+    TransferUserSpot,
+    JoinTargetHandler,
+    UserJoinTargetHandler,
+    ProbeHandler,
+    HandoffHandler,
+    EntryProbeHandler,
+    EntryHandoffHandler,
+    EntryBoundPushHandler,
+    BoundPushHandler,
+    ActorLocationEvidenceRecorder,
+    ActorHandoffEvidenceRecorder
+  ]
+})(ActorNodeModule);
+
+let actorManager: ZLinkActorManager;
+
+async function main(): Promise<void> {
+  const app = await NestFactory.createApplicationContext(ActorNodeModule, { logger: false, abortOnError: false });
+  actorManager = app.get(ZLINK_ACTOR_MANAGER, { strict: false }) as ZLinkActorManager;
+  const actorClient = app.get(ZLINK_ACTOR_CLIENT, { strict: false }) as ZLinkActorClient;
+  const spots = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
+  const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;
+  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  let drainResult: ZLinkDrainResult | undefined;
+  let drainStarted = false;
+  const server = await startHttpServer(options.httpUrl, [
+    { method: 'GET', path: '/health', handle: () => ({ status: 'ok', rid: options.rid }) },
+    { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    createFlowLogRoute(options.logDir, options.rid),
+    { method: 'GET', path: '/metrics', handle: () => metrics.snapshot() },
+    {
+      method: 'GET', path: '/drain/status', handle: async () => ({
+        ready: drain.isReady(),
+        result: drainResult,
+        peerRows: (await locations.listPeerLocations({
+          autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+          meshName: ObservabilityOpsNames.mesh,
+          role: ZLinkLocationRole.Spot
+        })).map((row) => ({
+          nodeRid: String(row.nodeRid),
+          draining: row.draining,
+          generation: row.generation.toString()
+        })),
+        actors: (await locations.listActorLocations({})).items.map((row) => ({
+          actorId: row.actorId,
+          nodeRid: String(row.nodeRid),
+          generation: row.generation.toString()
+        }))
+      })
+    },
+    {
+      method: 'POST', path: '/drain', handle: (body) => {
+        if (!drainStarted) {
+          drainStarted = true;
+          const deadlineMs = Number((body as { deadlineMs?: number }).deadlineMs ?? 30000);
+          evidence.add('drain', options.rid, 'draining', `deadline=${deadlineMs}`);
+          void drain.drain(deadlineMs).then((result) => {
+            drainResult = result;
+            evidence.add('drain', options.rid, result.kind, result.kind === 'force-stopped' ? result.reason : 'complete');
+          });
+        }
+        return { started: true };
+      }
+    },
+    {
+      method: 'GET', path: /^\/spots\/([^/]+)\/ref$/, handle: async (_body, match) => {
+        const spot = await spotRefs.resolveSpotHandle(match![1]);
+        return spot === undefined ? { found: false } : {
+          found: true,
+          spotRid: String(spot.spotRid)
+        };
+      }
+    },
+    {
+      method: 'POST', path: '/evidence/wait', handle: (body) => {
+        const request = body as EvidenceWaitReq;
+        return evidence.waitUntil(request.containsAll, Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 40000)));
+      }
+    },
+    {
+      method: 'POST', path: /^\/transfer-gates\/([^/]+)\/release$/, handle: (_body, match) => ({
+        key: match![1], released: transferGates.release(match![1])
+      } satisfies GateReleaseRes)
+    },
+    {
+      method: 'POST', path: '/spots', handle: async (body) => {
+        const request = body as CreateSpotReq;
+        const result = await spots.getOrCreate(TransferUserSpot, request.spotRid, request);
+        return { spotRid: String(result.spotRid), nodeRid: options.rid, state: String(result.state) } satisfies CreateSpotRes;
+      }
+    },
+    {
+      method: 'POST', path: /^\/spots\/([^/]+)\/close$/, handle: async (_body, match) => ({
+        closed: await spots.close(match![1])
+      })
+    },
+    {
+      method: 'POST', path: '/actors', handle: async (body) => {
+        const request = body as ActorCreateReq;
+        const actor = await actorManager.getOrCreate(request.actorId, request.actorType, request);
+        return { actorId: actor.actorId, actorType: request.actorType, nodeRid: String(actor.nodeRid), generation: actor.generation.toString() } satisfies ActorCreateRes;
+      }
+    },
+    {
+      method: 'GET', path: /^\/actors\/([^/]+)\/ref$/, handle: async (_body, match) => {
+        const actor = await requireActor(match![1]);
+        capturedActorRefs.set(actor.actorId, actor);
+        return actorSnapshot(actor);
+      }
+    },
+    {
+      method: 'POST', path: /^\/actors\/([^/]+)\/join$/, handle: async (body, match) => {
+        const actorId = match![1];
+        const input = body as JoinTargetReq;
+        const request = new JoinTargetReq(input.scenario, input.targetSpotRid, input.expectedMode, input.transferId);
+        try {
+          const result = await actorClient.requestToActor(await requireActor(actorId), request)
+            .timeout(10000).submit<JoinTargetRes>();
+          evidence.add(request.scenario, actorId, result.accepted ? 'success_reply' : 'reject_reply', request.targetSpotRid);
+          return result;
+        } catch (error) {
+          const errorKind = error instanceof Error ? error.message : String(error);
+          evidence.add(request.scenario, actorId, 'join_failed', errorKind);
+          return { scenario: request.scenario, actorId, accepted: false, sourceNodeRid: options.rid, targetSpotRid: request.targetSpotRid, stateVersion: 0, errorKind } satisfies JoinTargetRes;
+        }
+      }
+    },
+    {
+      method: 'POST', path: /^\/actors\/([^/]+)\/probe$/, handle: async (body, match) => {
+        const input = body as ProbeReq;
+        const request = new ProbeReq(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs);
+        return await actorClient.requestToActor(await requireActor(match![1]), request)
+          .timeout(request.requestTimeoutMs ?? 10000)
+          .submit<ProbeRes>();
+      }
+    },
+    {
+      method: 'POST', path: /^\/actors\/([^/]+)\/handoff$/, handle: async (body, match) => {
+        const input = body as HandoffProbe;
+        actorClient.sendToActor(await requireActor(match![1]), new HandoffProbe(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs)).submit();
+        return { accepted: true };
+      }
+    },
+    {
+      method: 'POST', path: /^\/actors\/([^/]+)\/handoff-stale$/, handle: async (body, match) => {
+        const actor = capturedActorRefs.get(match![1]);
+        if (actor === undefined) throw new Error(`Actor '${match![1]}' does not have a captured ref.`);
+        const input = body as HandoffProbe;
+        actorClient.sendToActor(actor, new HandoffProbe(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs)).submit();
+        return { accepted: true };
+      }
+    },
+    {
+      method: 'POST', path: /^\/actors\/([^/]+)\/probe-stale$/, handle: async (body, match) => {
+        const actor = capturedActorRefs.get(match![1]);
+        if (actor === undefined) throw new Error(`Actor '${match![1]}' does not have a captured ref.`);
+        const input = body as ProbeReq;
+        return await actorClient.requestToActor(actor, new ProbeReq(input.scenario, input.marker, input.delayMs, input.requestTimeoutMs))
+          .timeout(10000).submit<ProbeRes>();
+      }
+    },
+    {
+      method: 'POST', path: /^\/actors\/([^/]+)\/bound-push$/, handle: async (body, match) => {
+        const input = body as BoundPushReq;
+        return actorClient.requestToActor(await requireActor(match![1]), new BoundPushReq(input.scenario, input.marker))
+          .timeout(10000).submit<BoundPushRes>();
+      }
+    },
+    { method: 'POST', path: '/shutdown', handle: () => { stopping = true; return { status: 'stopping' }; } }
+  ]);
+  while (!stopping) await new Promise((resolve) => setTimeout(resolve, 100));
+  await closeHttpServer(server);
+  await app.close();
+  await locationStore.dispose();
+}
+
+async function requireActor(actorId: string): Promise<ActorRef> {
+  const actor = await actorManager.find(actorId);
+  if (actor === undefined) throw new Error(`Actor '${actorId}' was not found.`);
+  return actor;
+}
+
+function actorSnapshot(actor: ActorRef): ActorRefSnapshotRes {
+  return { actorId: actor.actorId, nodeRid: String(actor.nodeRid), generation: actor.generation.toString() };
+}
+
+async function delay(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+class GateStore {
+  private readonly gates = new Map<string, { promise: Promise<void>; resolve: () => void; released: boolean }>();
+
+  wait(key: string, signal?: AbortSignal): Promise<void> {
+    let gate = this.gates.get(key);
+    if (gate === undefined) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => { resolve = done; });
+      gate = { promise, resolve, released: false };
+      this.gates.set(key, gate);
+    }
+    return signal === undefined ? gate.promise : Promise.race([
+      gate.promise,
+      new Promise<void>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    ]);
+  }
+
+  release(key: string): boolean {
+    let gate = this.gates.get(key);
+    if (gate === undefined) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => { resolve = done; });
+      gate = { promise, resolve, released: false };
+      this.gates.set(key, gate);
+    }
+    if (gate.released) return false;
+    gate.released = true;
+    gate.resolve();
+    return true;
+  }
+}
+
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+
+export {};

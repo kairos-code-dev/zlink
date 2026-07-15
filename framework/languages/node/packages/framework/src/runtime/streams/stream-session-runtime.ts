@@ -567,6 +567,12 @@ export class ZLinkStreamSessionNodeRuntime {
     switch (event.nativeEvent) {
       case ZLinkSocketNativeEventType.ConnectionReady:
         this.activityVersion += 1;
+        {
+          const endpointKey = streamMonitorEndpointKey(event.localAddr, event.remoteAddr);
+          if (this.disconnectedEndpoints.delete(endpointKey)) {
+            return;
+          }
+        }
         if (event.routingId === undefined) {
           const endpointKey = streamMonitorEndpointKey(event.localAddr, event.remoteAddr);
           const unaddressed = this.firstUnaddressedSession();
@@ -575,7 +581,9 @@ export class ZLinkStreamSessionNodeRuntime {
             unaddressed.enqueueConnected(event.localAddr, event.remoteAddr);
             return;
           }
-          if (this.disconnectedEndpoints.delete(endpointKey)) {
+          if (this.pendingConnectionMetadata.some((metadata) =>
+            streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr) === endpointKey
+          )) {
             return;
           }
           this.pendingConnectionMetadata.push({
@@ -619,6 +627,7 @@ export class ZLinkStreamSessionNodeRuntime {
       return;
     }
     const metadata = this.pendingConnectionMetadata.shift()!;
+    this.removePendingConnectionMetadata(streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr));
     session.enqueueConnected(metadata.localAddr, metadata.remoteAddr);
   }
 
@@ -659,17 +668,12 @@ export class ZLinkStreamSessionNodeRuntime {
       }
     }
     const activeSessions = this.activeSessions();
-    if (activeSessions.length !== 1) {
-      return undefined;
-    }
-    const session = streamMonitorHasEndpoint(event)
-      ? activeSessions.find((session) =>
+    if (streamMonitorHasEndpoint(event)) {
+      const matches = activeSessions.filter((session) =>
         session.stream.localAddr === event.localAddr
         && session.stream.remoteAddr === event.remoteAddr
-      )
-      : undefined;
-    if (session !== undefined) {
-      return session;
+      );
+      return matches.length === 1 ? matches[0] : undefined;
     }
     return undefined;
   }

@@ -568,6 +568,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   private async forceStopDrain(reason: import('../../contracts').ZLinkDrainForceReason): Promise<ZLinkDrainResult> {
     let terminalReason = reason;
     try {
+      await waitForForcedSessionNotification(this.streamRuntime?.notifyServerDrain());
       await this.stop();
     } catch (error) {
       terminalReason = containsOwnerCleanupError(error) ? 'OwnerCleanupFailed' : 'TeardownFailed';
@@ -862,6 +863,19 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     return this.locationOwner.createActorLocationResolver();
   }
 
+}
+
+async function waitForForcedSessionNotification(operation: Promise<void> | undefined): Promise<void> {
+  if (operation === undefined) return;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timeoutHandle = setTimeout(resolve, 100);
+  });
+  try {
+    await Promise.race([operation.catch(() => undefined), timeout]);
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+  }
 }
 
 function drainMetricState(state: import('../../contracts').ZLinkDrainState): string {

@@ -481,7 +481,7 @@ test('stream session node runtime uses monitor routing id to disconnect exactly 
   await runtime.dispose();
 });
 
-test('stream session node runtime does not guess by endpoint when a disconnect lacks routing id and multiple sessions exist', async () => {
+test('stream session node runtime maps a unique endpoint when a disconnect lacks routing id', async () => {
   const socket = new FakeStreamSocket();
   const events = [];
   let monitorHandler;
@@ -509,7 +509,7 @@ test('stream session node runtime does not guess by endpoint when a disconnect l
   });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(events, []);
+  assert.deepEqual(events, [['disconnected', 'fresh-session']]);
   await runtime.dispose();
 });
 

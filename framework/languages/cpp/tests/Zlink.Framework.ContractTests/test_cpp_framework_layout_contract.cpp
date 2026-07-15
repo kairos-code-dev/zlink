@@ -566,6 +566,38 @@ bool sample_and_e2e_code_does_not_read_the_environment (const std::filesystem::p
     return ok;
 }
 
+bool runner_generated_config_files_are_private_and_cleaned (
+  const std::filesystem::path &root)
+{
+    bool ok = true;
+    for (const auto *tree : {"samples", "e2e"}) {
+        const auto tree_root = root / tree;
+        for (const auto &entry : std::filesystem::recursive_directory_iterator (tree_root)) {
+            if (!entry.is_regular_file () || entry.path ().extension () != ".sh") {
+                continue;
+            }
+            std::ifstream input (entry.path ());
+            const std::string content ((std::istreambuf_iterator<char> (input)),
+                                       std::istreambuf_iterator<char> ());
+            if (content.find ("--config") == std::string::npos) {
+                continue;
+            }
+            if (content.find ("os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)")
+                == std::string::npos) {
+                std::cerr << "runner-generated application config must use mode 0600: "
+                          << entry.path () << '\n';
+                ok = false;
+            }
+            if (content.find ("rm -rf") == std::string::npos) {
+                std::cerr << "runner-generated application config must be cleaned on exit: "
+                          << entry.path () << '\n';
+                ok = false;
+            }
+        }
+    }
+    return ok;
+}
+
 bool sample_server_code_does_not_block_on_task_result (const std::filesystem::path &root)
 {
     bool ok = true;
@@ -1527,6 +1559,7 @@ int main ()
     ok &= sample_application_code_uses_message_codec (root);
     ok &= sample_server_code_does_not_block_on_task_result (root);
     ok &= sample_and_e2e_code_does_not_read_the_environment (root);
+    ok &= runner_generated_config_files_are_private_and_cleaned (root);
     ok &= file_does_not_contain (
       root / "e2e/run_e2e_all.sh", "exec env E2E_START_ORDER=",
       "the aggregate E2E runner must pass start order as a runner option, not an environment variable");

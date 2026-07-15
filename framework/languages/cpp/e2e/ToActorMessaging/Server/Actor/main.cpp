@@ -184,6 +184,35 @@ class evidence_handler_t
     evidence_store_t &_evidence;
 };
 
+class push_actor_handler_t
+{
+  public:
+    using dependency_types =
+      zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t>;
+    using request_type = e2e::actor_call_request_t;
+    using reply_type = e2e::actor_call_response_t;
+
+    explicit push_actor_handler_t (zlink::framework::session_actor_manager_t &actors) :
+        _actors (actors)
+    {
+    }
+
+    e2e::actor_call_response_t handle (const e2e::actor_call_request_t &request)
+    {
+        const auto actor = _actors.find (request.actor_id);
+        if (!actor) {
+            return {request.scenario, request.actor_id, "", "actor_route_not_found"};
+        }
+        actor->bound_session ()
+          .send (e2e::actor_push_notify_t{request.scenario, request.actor_id, request.value})
+          .submit ();
+        return {request.scenario, request.actor_id, "pushed", ""};
+    }
+
+  private:
+    zlink::framework::session_actor_manager_t &_actors;
+};
+
 } // namespace
 
 int main (int argc, char **argv)
@@ -220,6 +249,7 @@ int main (int argc, char **argv)
           .listen (configuration.http_endpoint)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
+          .map_post<push_actor_handler_t> ("/push")
           .map_post<ensure_actor_handler_t> ("/ensure");
     });
     return app.run (argc, argv);

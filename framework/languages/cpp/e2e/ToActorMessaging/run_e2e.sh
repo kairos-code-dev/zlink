@@ -54,11 +54,14 @@ cmake -S "$SCRIPT_DIR/../.." -B "$BUILD_DIR" >/dev/null
 cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_to_actor_messaging_actor \
   zlink_cpp_e2e_to_actor_messaging_caller \
+  zlink_cpp_e2e_to_actor_messaging_session \
   zlink_cpp_e2e_to_actor_messaging_client >/dev/null
 
 LOCATION_KEY_PREFIX="zlink:e2e:toactor:$RUN_ID"
 ACTOR_RID="actor-a"
 CALLER_RID="caller"
+SESSION_A_RID="session-a"
+SESSION_B_RID="session-b"
 
 reserve_ports() {
   python3 - <<'PY'
@@ -66,7 +69,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(6):
+    for _ in range(14):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -78,13 +81,23 @@ finally:
 PY
 }
 
-read -r actor_http caller_http actor_spot caller_spot actor_pub caller_pub < <(reserve_ports)
+read -r actor_http caller_http actor_spot caller_spot actor_pub caller_pub \
+  session_a_http session_a_stream session_a_spot session_a_pub \
+  session_b_http session_b_stream session_b_spot session_b_pub < <(reserve_ports)
 ACTOR_HTTP="http://127.0.0.1:${actor_http}"
 CALLER_HTTP="http://127.0.0.1:${caller_http}"
 ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
 CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
 ACTOR_PUBSUB="tcp://127.0.0.1:${actor_pub}"
 CALLER_PUBSUB="tcp://127.0.0.1:${caller_pub}"
+SESSION_A_HTTP="http://127.0.0.1:${session_a_http}"
+SESSION_A_STREAM="tcp://127.0.0.1:${session_a_stream}"
+SESSION_A_SPOT="tcp://127.0.0.1:${session_a_spot}"
+SESSION_A_PUBSUB="tcp://127.0.0.1:${session_a_pub}"
+SESSION_B_HTTP="http://127.0.0.1:${session_b_http}"
+SESSION_B_STREAM="tcp://127.0.0.1:${session_b_stream}"
+SESSION_B_SPOT="tcp://127.0.0.1:${session_b_spot}"
+SESSION_B_PUBSUB="tcp://127.0.0.1:${session_b_pub}"
 
 wait_tcp() {
   local host="$1"
@@ -166,6 +179,35 @@ with open(path, "w", encoding="utf-8") as file:
                        "actorSpotEndpoint": peer_spot}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
+write_session_config() {
+  local path="$1"
+  local node_rid="$2"
+  local http_endpoint="$3"
+  local stream_endpoint="$4"
+  local spot_endpoint="$5"
+  local pub_sub_endpoint="$6"
+  python3 - "$path" "$REDIS_ENDPOINT" "$LOCATION_KEY_PREFIX" "$LOG_DIR" \
+    "$node_rid" "$http_endpoint" "$stream_endpoint" "$spot_endpoint" "$pub_sub_endpoint" \
+    "$ACTOR_RID" "$ACTOR_SPOT" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, redis_endpoint, key_prefix, log_dir, node_rid, http_endpoint, stream_endpoint, spot_endpoint, pub_sub_endpoint, actor_rid, actor_spot = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"redis": {"endpoint": redis_endpoint, "keyPrefix": key_prefix},
+                       "logDir": log_dir, "nodeRid": node_rid,
+                       "httpEndpoint": http_endpoint, "streamEndpoint": stream_endpoint,
+                       "spotEndpoint": spot_endpoint, "pubSubEndpoint": pub_sub_endpoint,
+                       "actorRid": actor_rid, "actorSpotEndpoint": actor_spot}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+}
+write_session_config "$CONFIG_DIR/session-a.json" "$SESSION_A_RID" "$SESSION_A_HTTP" \
+  "$SESSION_A_STREAM" "$SESSION_A_SPOT" "$SESSION_A_PUBSUB"
+write_session_config "$CONFIG_DIR/session-b.json" "$SESSION_B_RID" "$SESSION_B_HTTP" \
+  "$SESSION_B_STREAM" "$SESSION_B_SPOT" "$SESSION_B_PUBSUB"
 
 print_logs() {
   local status="$1"
@@ -260,6 +302,11 @@ start_role() {
         --config="$CONFIG_DIR/caller.json" >"$LOG_DIR/caller.stdout.log" 2>"$LOG_DIR/caller.stderr.log" &
       pids+=("$!")
       ;;
+    session-a|session-b)
+      "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_session" \
+        --config="$CONFIG_DIR/$1.json" >"$LOG_DIR/$1.stdout.log" 2>"$LOG_DIR/$1.stderr.log" &
+      pids+=("$!")
+      ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -268,18 +315,23 @@ wait_role() {
   case "$1" in
     actor) wait_http "$ACTOR_HTTP" ;;
     caller) wait_http "$CALLER_HTTP" ;;
+    session-a) wait_http "$SESSION_A_HTTP" ;;
+    session-b) wait_http "$SESSION_B_HTTP" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
 
-mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles actor caller)
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles actor caller session-a session-b)
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_role "$role"
 done
-for role in actor caller; do
+for role in actor caller session-a session-b; do
   wait_role "$role"
 done
 
 "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_client" \
-  --actor-http="$ACTOR_HTTP" --caller-http="$CALLER_HTTP" --scenario="$SCENARIO" \
+  --actor-http="$ACTOR_HTTP" --caller-http="$CALLER_HTTP" \
+  --session-a-http="$SESSION_A_HTTP" --session-a-stream="$SESSION_A_STREAM" \
+  --session-b-http="$SESSION_B_HTTP" --session-b-stream="$SESSION_B_STREAM" \
+  --scenario="$SCENARIO" \
   > >(tee "$LOG_DIR/client.log") 2>"$LOG_DIR/client.stderr.log"

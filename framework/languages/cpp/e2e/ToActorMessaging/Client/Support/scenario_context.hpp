@@ -4,9 +4,13 @@
 #include "../../Shared/messages.hpp"
 
 #include <zlink/http_client.hpp>
+#include <zlink/stream_connector.hpp>
 
 #include <chrono>
+#include <future>
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -14,6 +18,7 @@
 #include <vector>
 
 namespace e2e = zlink::e2e::to_actor_messaging;
+namespace sc = zlink::stream_connector;
 
 namespace
 {
@@ -22,6 +27,10 @@ struct client_configuration_t
 {
     std::string actor_http;
     std::string caller_http;
+    std::string session_a_http;
+    std::string session_a_stream;
+    std::string session_b_http;
+    std::string session_b_stream;
     std::string scenario = "all";
 };
 
@@ -39,6 +48,10 @@ client_configuration_t parse_client_configuration (int argc, char **argv)
         };
         if (!assign ("--actor-http=", configuration.actor_http)
             && !assign ("--caller-http=", configuration.caller_http)
+            && !assign ("--session-a-http=", configuration.session_a_http)
+            && !assign ("--session-a-stream=", configuration.session_a_stream)
+            && !assign ("--session-b-http=", configuration.session_b_http)
+            && !assign ("--session-b-stream=", configuration.session_b_stream)
             && !assign ("--scenario=", configuration.scenario)) {
             throw std::runtime_error ("unknown ToActorMessaging client option: " + argument);
         }
@@ -49,11 +62,77 @@ client_configuration_t parse_client_configuration (int argc, char **argv)
     if (configuration.caller_http.empty ()) {
         throw std::runtime_error ("--caller-http is required");
     }
+    if (configuration.session_a_http.empty () || configuration.session_a_stream.empty ()
+        || configuration.session_b_http.empty () || configuration.session_b_stream.empty ()) {
+        throw std::runtime_error ("both session gateway HTTP and STREAM endpoints are required");
+    }
     if (configuration.scenario.empty ()) {
         throw std::runtime_error ("--scenario must not be empty");
     }
     return configuration;
 }
+
+void require (bool condition, const std::string &message);
+
+class bound_actor_session_t
+{
+  public:
+    bound_actor_session_t (const std::string &endpoint,
+                           const std::string &scenario,
+                           const std::string &actor_id)
+    {
+        sc::connector_options_t options;
+        options.endpoint = endpoint;
+        options.connect_timeout = std::chrono::seconds (5);
+        options.request_timeout = std::chrono::seconds (10);
+        options.heartbeat.enabled = false;
+        options.dispatch_mode = sc::dispatch_mode_t::immediate;
+        _connector.emplace (sc::connector_factory_t::create (options));
+        require (static_cast<bool> (_connector->connect ()), scenario + " stream connect failed");
+        auto bound = _connector
+                       ->request (e2e::bind_actor_session_req_t{scenario, actor_id})
+                       .packet_name (e2e::bind_actor_session_req_t::packet_name)
+                       .submit<e2e::bind_actor_session_res_t> ();
+        require (static_cast<bool> (bound), scenario + " stream bind failed");
+        require (bound.value ().actor_id == actor_id, scenario + " stream bind actor mismatch");
+    }
+
+    ~bound_actor_session_t ()
+    {
+        close ();
+    }
+
+    void close ()
+    {
+        if (_connector) {
+            _connector->close ();
+            _connector.reset ();
+        }
+    }
+
+    std::future<e2e::actor_push_notify_t> expect_push (const std::string &scenario)
+    {
+        auto promise = std::make_shared<std::promise<e2e::actor_push_notify_t>> ();
+        auto future = promise->get_future ();
+        _connector->wait_for<e2e::actor_push_notify_t> (e2e::actor_push_notify_t::packet_name)
+          .where ([scenario] (const e2e::actor_push_notify_t &notify) {
+              return notify.scenario == scenario;
+          })
+          .timeout (std::chrono::seconds (10))
+          .submit ([promise] (sc::result_t<e2e::actor_push_notify_t> result) {
+              if (result) {
+                  promise->set_value (std::move (result.value ()));
+              } else {
+                  promise->set_exception (std::make_exception_ptr (
+                    std::runtime_error ("bound actor push wait failed")));
+              }
+          });
+        return future;
+    }
+
+  private:
+    std::optional<sc::connector_t> _connector;
+};
 
 void require (bool condition, const std::string &message)
 {
@@ -68,6 +147,62 @@ zlink::http_client::client_t make_http (const std::string &base_url)
       .base_url (base_url)
       .timeout (std::chrono::seconds (30))
       .build ();
+}
+
+e2e::actor_call_response_t call (zlink::http_client::client_t &caller,
+                                 const std::string &endpoint,
+                                 const std::string &scenario,
+                                 const std::string &actor_id,
+                                 const std::string &value);
+
+void push_actor (zlink::http_client::client_t &actor,
+                 const std::string &scenario,
+                 const std::string &actor_id,
+                 const std::string &value)
+{
+    const auto response = call (actor, "/push", scenario, actor_id, value);
+    require (response.error_kind.empty () && response.result == "pushed",
+             scenario + " actor push failed: " + response.error_kind);
+}
+
+std::vector<e2e::actor_evidence_t> session_evidence (zlink::http_client::client_t &session)
+{
+    return session.get ("/evidence").fetch<std::vector<e2e::actor_evidence_t>> ();
+}
+
+void wait_session_evidence (zlink::http_client::client_t &session,
+                            const std::string &scenario,
+                            const std::string &actor_id,
+                            const std::string &kind)
+{
+    const auto response = call (session, "/evidence/wait", scenario, actor_id, kind);
+    require (response.result == "observed", scenario + " session " + kind + " not observed");
+}
+
+std::size_t count_session_evidence (const std::vector<e2e::actor_evidence_t> &evidence,
+                                    const std::string &actor_id,
+                                    const std::string &kind)
+{
+    std::size_t count = 0;
+    for (const auto &entry : evidence) {
+        if (entry.actor_id == actor_id && entry.kind == kind) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+void require_session_evidence (const std::vector<e2e::actor_evidence_t> &evidence,
+                               const std::string &actor_id,
+                               const std::string &kind,
+                               const std::string &gateway_rid)
+{
+    for (const auto &entry : evidence) {
+        if (entry.actor_id == actor_id && entry.kind == kind && entry.value == gateway_rid) {
+            return;
+        }
+    }
+    throw std::runtime_error (actor_id + " has no " + kind + " evidence for " + gateway_rid);
 }
 
 e2e::actor_call_response_t call (zlink::http_client::client_t &caller,

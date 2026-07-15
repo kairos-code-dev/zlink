@@ -1268,7 +1268,7 @@ int main ()
                          != std::string::npos
                     && to_actor_client_support.find ("connector_factory_t::create")
                          != std::string::npos
-                    && to_actor_client_support.find ("BindActorSessionReq")
+                    && to_actor_client_support.find ("bind_actor_session_req_t")
                          != std::string::npos
                     && to_actor_client_support.find ("wait_for<") != std::string::npos,
                   "E2E-CP-02", "Config 9 client does not observe bind and push via connector");

@@ -13,20 +13,22 @@ int main (int argc, char **argv)
     const auto configuration = parse_client_configuration (argc, argv);
     auto actor = make_http (configuration.actor_http);
     auto caller = make_http (configuration.caller_http);
+    auto session_a = make_http (configuration.session_a_http);
+    auto session_b = make_http (configuration.session_b_http);
     const auto selected = split_selector (configuration.scenario);
     validate_selector (selected);
 
     if (should_run (selected, {"TA-A1", "ta-a1"})) {
-        run_ta_a1_scenario (actor, caller);
+        run_ta_a1_scenario (actor, caller, session_a, configuration.session_a_stream);
     }
     if (should_run (selected, {"TA-A2", "ta-a2"})) {
-        run_ta_a2_scenario (actor, caller);
+        run_ta_a2_scenario (actor, caller, session_a, session_b);
     }
     if (should_run (selected, {"TA-A3", "ta-a3"})) {
-        run_ta_a3_scenario (actor, caller);
+        run_ta_a3_scenario (actor, caller, session_b, configuration.session_b_stream);
     }
     if (should_run (selected, {"TA-A4", "ta-a4"})) {
-        run_ta_a4_scenario (actor, caller);
+        run_ta_a4_scenario (actor, caller, session_a, configuration.session_a_stream);
     }
     if (should_run (selected, {"TA-B1", "ta-b1"})) {
         run_ta_b1_scenario (actor, caller);

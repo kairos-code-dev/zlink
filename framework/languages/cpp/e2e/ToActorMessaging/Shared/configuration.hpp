@@ -71,6 +71,33 @@ struct caller_configuration_t
     }
 };
 
+struct session_configuration_t
+{
+    redis_configuration_t redis;
+    std::string log_dir;
+    std::string node_rid;
+    std::string http_endpoint;
+    std::string stream_endpoint;
+    std::string spot_endpoint;
+    std::string pub_sub_endpoint;
+    std::string actor_rid;
+    std::string actor_spot_endpoint;
+
+    static session_configuration_t bind (const framework::configuration_section_t &section)
+    {
+        return {.redis = {.endpoint = section.require ("redis.endpoint"),
+                          .key_prefix = section.require ("redis.keyPrefix")},
+                .log_dir = section.require ("logDir"),
+                .node_rid = section.require ("nodeRid"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .stream_endpoint = section.require ("streamEndpoint"),
+                .spot_endpoint = section.require ("spotEndpoint"),
+                .pub_sub_endpoint = section.require ("pubSubEndpoint"),
+                .actor_rid = section.require ("actorRid"),
+                .actor_spot_endpoint = section.require ("actorSpotEndpoint")};
+    }
+};
+
 template<typename T>
 T load_role_configuration (framework::app_t &app, int argc, char **argv)
 {

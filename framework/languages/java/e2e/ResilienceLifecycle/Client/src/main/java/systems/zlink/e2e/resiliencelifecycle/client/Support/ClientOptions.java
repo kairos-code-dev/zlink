@@ -1,6 +1,9 @@
 package systems.zlink.e2e.resiliencelifecycle.client.Support;
 
-import systems.zlink.e2e.resiliencelifecycle.shared.Env;
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
 
 public record ClientOptions(
     String redisLocationEndpoint,
@@ -16,23 +19,30 @@ public record ClientOptions(
     String storePauseCommand,
     String storeResumeCommand,
     String buildDir,
-    String logDir) {
-    public static ClientOptions fromEnv() {
+    String logDir,
+    String controlDir,
+    String configDir) {
+    public static ClientOptions load(String path) {
+        Properties values = new Properties();
+        try (Reader reader = Files.newBufferedReader(Path.of(path))) {
+            values.load(reader);
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not load ResilienceLifecycle client config", error);
+        }
         return new ClientOptions(
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"),
-            Env.get("ZLINK_JAVA_E2E_API_A_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_API_B_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_API_B_GREEN_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_HTTP_B_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_HTTP_A_REPLACEMENT_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_HTTP_B_GREEN_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_STORE_PAUSE_COMMAND"),
-            Env.get("ZLINK_JAVA_E2E_STORE_RESUME_COMMAND"),
-            Env.get("ZLINK_JAVA_E2E_BUILD_DIR",
-                System.getProperty("user.home") + "/.cache/zlink/java-e2e/ResilienceLifecycle"),
-            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
+            required(values, "redisLocationEndpoint"), required(values, "locationKeyPrefix"),
+            required(values, "apiAEndpoint"), required(values, "apiBEndpoint"),
+            required(values, "apiAReplacementEndpoint"), required(values, "apiBGreenEndpoint"),
+            required(values, "httpAEndpoint"), required(values, "httpBEndpoint"),
+            required(values, "httpAReplacementEndpoint"), required(values, "httpBGreenEndpoint"),
+            required(values, "storePauseCommand"), required(values, "storeResumeCommand"),
+            required(values, "buildDir"), required(values, "logDir"),
+            required(values, "controlDir"), required(values, "configDir"));
+    }
+
+    private static String required(Properties values, String name) {
+        String value = values.getProperty(name);
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(name + " is required");
+        return value;
     }
 }

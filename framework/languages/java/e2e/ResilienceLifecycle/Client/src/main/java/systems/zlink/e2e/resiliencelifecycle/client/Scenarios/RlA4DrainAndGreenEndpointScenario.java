@@ -1,7 +1,6 @@
 package systems.zlink.e2e.resiliencelifecycle.client.Scenarios;
 
 import systems.zlink.e2e.resiliencelifecycle.client.Support.ResilienceScenarioContext;
-import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 
 public final class RlA4DrainAndGreenEndpointScenario {
     private RlA4DrainAndGreenEndpointScenario() {
@@ -17,13 +16,13 @@ public final class RlA4DrainAndGreenEndpointScenario {
         context.collectStableProvidersWithout("a4-old-down", "api-b", "api-a");
         context.waitForSignal("a4-green-up");
         context.waitForTopologyEndpoint(
-            "api-b", Env.get("ZLINK_JAVA_E2E_API_B_GREEN_ENDPOINT"));
+            "api-b", context.options().apiBGreenEndpoint());
         context.driveUntilEvidence(
             context.adminBGreen(), "a4-green", "RL-A4 green provider did not receive traffic");
         context.signal("a4-green-observed");
         context.signal("a4-restore-ready");
         context.waitForSignal("a4-restored");
-        context.waitForTopologyEndpoint("api-b", Env.get("ZLINK_JAVA_E2E_API_B_ENDPOINT"));
+        context.waitForTopologyEndpoint("api-b", context.options().apiBEndpoint());
         context.driveUntilEvidence(
             context.adminB(), "a4-restored", "RL-A4 restored provider did not receive traffic");
         System.out.println("scenario RL-A4 passed");

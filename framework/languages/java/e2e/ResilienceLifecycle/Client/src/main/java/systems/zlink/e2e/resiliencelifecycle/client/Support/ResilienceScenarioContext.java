@@ -12,7 +12,6 @@ import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
-import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 import systems.zlink.httpclient.RawHttpResponse;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
@@ -20,12 +19,16 @@ public final class ResilienceScenarioContext {
     private final String endpoint;
     private final String adminAEndpoint;
     private final ObjectMapper json;
+    private final ClientOptions options;
 
-    public ResilienceScenarioContext(String endpoint, String adminAEndpoint) {
+    public ResilienceScenarioContext(String endpoint, String adminAEndpoint, ClientOptions options) {
         this.endpoint = endpoint;
         this.adminAEndpoint = adminAEndpoint;
         this.json = new ObjectMapper();
+        this.options = options;
     }
+
+    public ClientOptions options() { return options; }
 
     public Set<String> collectProviders(String prefix, int attempts, int expectedCount) {
         Set<String> providers = new HashSet<>();
@@ -323,11 +326,11 @@ public final class ResilienceScenarioContext {
     }
 
     public String adminB() {
-        return Env.get("ZLINK_JAVA_E2E_HTTP_B_ENDPOINT");
+        return options.httpBEndpoint();
     }
 
     public String adminBGreen() {
-        return Env.get("ZLINK_JAVA_E2E_HTTP_B_GREEN_ENDPOINT");
+        return options.httpBGreenEndpoint();
     }
 
     public void signal(String name) {
@@ -357,11 +360,7 @@ public final class ResilienceScenarioContext {
     }
 
     private Path controlDir() {
-        String value = Env.get("ZLINK_JAVA_E2E_CONTROL_DIR");
-        if (value.isBlank()) {
-            throw new IllegalStateException("ZLINK_JAVA_E2E_CONTROL_DIR is required");
-        }
-        return Path.of(value);
+        return Path.of(options.controlDir());
     }
 
     public Contracts.WorkRes request(String value, Duration timeout) {

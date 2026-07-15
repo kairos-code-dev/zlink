@@ -6,10 +6,12 @@ import java.net.Socket;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.httpclient.RawHttpResponse;
@@ -27,14 +29,16 @@ public final class ResilienceProcessManager implements AutoCloseable {
     }
 
     public ManagedProcess startProvider(String name, String rid, String apiEndpoint, String httpEndpoint) {
-        Map<String, String> env = Map.of(
-            "ZLINK_JAVA_E2E_PROVIDER_RID", rid,
-            "ZLINK_JAVA_E2E_API_ENDPOINT", apiEndpoint,
-            "ZLINK_JAVA_E2E_HTTP_ENDPOINT", httpEndpoint,
-            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
-            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
-            "ZLINK_JAVA_E2E_LOG_DIR", options.logDir());
-        ManagedProcess process = start(name, providerBin(), env);
+        String config = """
+            e2e.provider-rid=%s
+            e2e.api-endpoint=%s
+            e2e.http-endpoint=%s
+            e2e.redis-location-endpoint=%s
+            e2e.location-key-prefix=%s
+            e2e.log-dir=%s
+            """.formatted(rid, apiEndpoint, httpEndpoint, options.redisLocationEndpoint(),
+                options.locationKeyPrefix(), options.logDir());
+        ManagedProcess process = start(name, providerBin(), config);
         waitTcp(name + "-api", apiEndpoint, true);
         waitTcp(name + "-http", httpEndpoint, true);
         return process;
@@ -43,22 +47,15 @@ public final class ResilienceProcessManager implements AutoCloseable {
     public ManagedProcess startConsumer(
         String name,
         String httpEndpoint,
-        String currentHttpA,
-        long stormExitDelayMillis,
         String logDir) {
-        Map<String, String> env = Map.ofEntries(
-            Map.entry("ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT", httpEndpoint),
-            Map.entry("ZLINK_JAVA_E2E_CONTROL_DIR", controlDir().toString()),
-            Map.entry("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint()),
-            Map.entry("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix()),
-            Map.entry("ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT", options.apiAReplacementEndpoint()),
-            Map.entry("ZLINK_JAVA_E2E_API_B_GREEN_ENDPOINT", options.apiBGreenEndpoint()),
-            Map.entry("ZLINK_JAVA_E2E_HTTP_A_ENDPOINT", currentHttpA),
-            Map.entry("ZLINK_JAVA_E2E_HTTP_B_ENDPOINT", options.httpBEndpoint()),
-            Map.entry("ZLINK_JAVA_E2E_HTTP_B_GREEN_ENDPOINT", options.httpBGreenEndpoint()),
-            Map.entry("ZLINK_JAVA_E2E_STORM_EXIT_DELAY_MS", Long.toString(stormExitDelayMillis)),
-            Map.entry("ZLINK_JAVA_E2E_LOG_DIR", logDir));
-        ManagedProcess process = start(name, consumerBin(), env);
+        String config = """
+            e2e.http-endpoint=%s
+            e2e.redis-location-endpoint=%s
+            e2e.location-key-prefix=%s
+            e2e.log-dir=%s
+            """.formatted(httpEndpoint, options.redisLocationEndpoint(),
+                options.locationKeyPrefix(), logDir);
+        ManagedProcess process = start(name, consumerBin(), config);
         waitTcp(name + "-http", httpEndpoint, true);
         return process;
     }
@@ -73,7 +70,7 @@ public final class ResilienceProcessManager implements AutoCloseable {
     }
 
     public Path controlDir() {
-        return Path.of(options.logDir(), "control");
+        return Path.of(options.controlDir());
     }
 
     public void prepareControlDir() {
@@ -137,18 +134,28 @@ public final class ResilienceProcessManager implements AutoCloseable {
         processes.clear();
     }
 
-    private ManagedProcess start(String name, Path bin, Map<String, String> env) {
+    private ManagedProcess start(String name, Path bin, String config) {
         try {
-            ProcessBuilder builder = new ProcessBuilder(bin.toString());
-            builder.environment().putAll(env);
+            Path configPath = writeConfig(name, config);
+            ProcessBuilder builder = new ProcessBuilder(bin.toString(), "--config", configPath.toString());
             builder.redirectOutput(Path.of(options.logDir(), name + ".stdout.log").toFile());
             builder.redirectError(Path.of(options.logDir(), name + ".stderr.log").toFile());
-            ManagedProcess process = new ManagedProcess(name, builder.start());
+            ManagedProcess process = new ManagedProcess(name, builder.start(), configPath);
             processes.add(process);
             return process;
         } catch (IOException error) {
             throw new IllegalStateException("failed to start " + name + " at " + bin, error);
         }
+    }
+
+    private Path writeConfig(String name, String contents) throws IOException {
+        Path directory = Path.of(options.configDir());
+        Files.createDirectories(directory);
+        Path path = directory.resolve(name + ".properties");
+        Files.writeString(path, contents, StandardCharsets.UTF_8);
+        Files.setPosixFilePermissions(path, Set.of(
+            PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        return path;
     }
 
     private void runStoreCommand(String action, String commandPath) {
@@ -230,11 +237,13 @@ public final class ResilienceProcessManager implements AutoCloseable {
     public final class ManagedProcess implements AutoCloseable {
         private final String name;
         private final Process process;
+        private final Path configPath;
         private boolean closed;
 
-        private ManagedProcess(String name, Process process) {
+        private ManagedProcess(String name, Process process, Path configPath) {
             this.name = name;
             this.process = process;
+            this.configPath = configPath;
         }
 
         public void killForcibly() {
@@ -248,6 +257,8 @@ public final class ResilienceProcessManager implements AutoCloseable {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("interrupted while killing " + name, error);
+            } finally {
+                deleteConfig();
             }
         }
 
@@ -258,6 +269,7 @@ public final class ResilienceProcessManager implements AutoCloseable {
             }
             closed = true;
             if (!process.isAlive()) {
+                deleteConfig();
                 return;
             }
             process.destroy();
@@ -270,6 +282,16 @@ public final class ResilienceProcessManager implements AutoCloseable {
                 Thread.currentThread().interrupt();
                 process.destroyForcibly();
                 throw new IllegalStateException("interrupted while stopping " + name, error);
+            } finally {
+                deleteConfig();
+            }
+        }
+
+        private void deleteConfig() {
+            try {
+                Files.deleteIfExists(configPath);
+            } catch (IOException error) {
+                throw new IllegalStateException("failed to delete config for " + name, error);
             }
         }
     }

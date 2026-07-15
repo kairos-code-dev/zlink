@@ -94,8 +94,8 @@ public final class ResilienceLifecycleSuite {
     private void runRestart() {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-restart", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-restart", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlA1ProviderRestartScenario.run(consumer));
             processes.waitSignal("a1-ready", scenario);
@@ -113,8 +113,8 @@ public final class ResilienceLifecycleSuite {
     private void runReschedule() {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-reschedule", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-reschedule", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlA2ProviderEndpointRemapScenario.run(consumer));
             processes.waitSignal("a2-ready", scenario);
@@ -134,8 +134,8 @@ public final class ResilienceLifecycleSuite {
     private void runFlapping() {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-flapping", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-flapping", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlA5ProviderFlappingScenario.run(consumer));
             processes.waitSignal("a5-ready", scenario);
@@ -155,8 +155,8 @@ public final class ResilienceLifecycleSuite {
     private void runRollingGreen() {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-rolling-green", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-rolling-green", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlA4DrainAndGreenEndpointScenario.run(consumer));
             processes.waitSignal("a4-drained", scenario);
@@ -183,8 +183,8 @@ public final class ResilienceLifecycleSuite {
     private void runDefault(String scenario) {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-default", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-default", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             if ("all".equals(scenario) || "RL-B1".equals(scenario)) {
                 RlB1CancellationCleanupScenario.run(consumer);
             }
@@ -219,8 +219,8 @@ public final class ResilienceLifecycleSuite {
     private void runCrashDuringInflight() {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-crash-inflight", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-crash-inflight", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlB2CrashDuringInflightScenario.run(consumer));
             processes.waitSignal("b2-in-flight", scenario);
@@ -238,8 +238,8 @@ public final class ResilienceLifecycleSuite {
     private void runTopologyRecovery() {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-topology-recovery", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-topology-recovery", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlC2TopologyRecoveryScenario.run(consumer));
             processes.waitSignal("c2-ready", scenario);
@@ -257,8 +257,8 @@ public final class ResilienceLifecycleSuite {
     private void runStoreOutage() {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-store-outage", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-store-outage", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlC4RegistryOutageScenario.run(consumer));
             processes.waitSignal("c4-pause-ready", scenario);
@@ -287,10 +287,8 @@ public final class ResilienceLifecycleSuite {
                 consumers.add(processes.startConsumer(
                     "consumer-storm-" + wave + "-" + index,
                     consumerHttp,
-                    currentHttpA,
-                    index * 250L,
                     stormLogDir.toString()));
-                ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+                ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
                 scenarios.add(CompletableFuture.runAsync(() -> RlA3ReconnectStormScenario.run(consumer)));
             }
             scenarios.forEach(CompletableFuture::join);
@@ -303,8 +301,8 @@ public final class ResilienceLifecycleSuite {
     private void runCleanup(String scenario) {
         String consumerHttp = processes.reserveHttpEndpoint();
         try (var consumerProcess = processes.startConsumer(
-            "consumer-cleanup", consumerHttp, currentHttpA, 0, options.logDir())) {
-            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA);
+            "consumer-cleanup", consumerHttp, options.logDir())) {
+            ResilienceScenarioContext consumer = new ResilienceScenarioContext(consumerHttp, currentHttpA, options);
             if ("all".equals(scenario) || "RL-C1".equals(scenario)) {
                 RlC1ClientHostLifecycleScenario.run(consumer);
             }

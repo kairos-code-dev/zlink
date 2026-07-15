@@ -1,7 +1,6 @@
 package systems.zlink.e2e.resiliencelifecycle.client.Scenarios;
 
 import systems.zlink.e2e.resiliencelifecycle.client.Support.ResilienceScenarioContext;
-import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 
 public final class RlC2TopologyRecoveryScenario {
     private RlC2TopologyRecoveryScenario() {
@@ -15,7 +14,7 @@ public final class RlC2TopologyRecoveryScenario {
         context.collectStableProvidersWithoutFailures("c2-after-crash", "api-b", "api-a");
         context.signal("c2-survivor-observed");
         context.waitForSignal("c2-restored");
-        context.waitForTopologyEndpoint("api-b", Env.get("ZLINK_JAVA_E2E_API_B_ENDPOINT"));
+        context.waitForTopologyEndpoint("api-b", context.options().apiBEndpoint());
         context.driveUntilEvidence(
             context.adminB(), "c2-restored", "RL-C2 restored provider traffic missing");
         System.out.println("scenario RL-C2 passed");

@@ -12,6 +12,8 @@ store_pause_command=""
 store_resume_command=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -24,7 +26,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/ResilienceLifecycle-gradle-cache}"
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:resilience-lifecycle:${run_id}}"
+location_key_prefix="zlink:e2e:resilience-lifecycle:${run_id}"
+redis_location_endpoint=""
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -81,6 +84,7 @@ cleanup() {
     kill -9 "${redis_proxy_pid}" >/dev/null 2>&1 || true
   fi
   wait >/dev/null 2>&1 || true
+  rm -rf "${config_dir}"
   exit "${status}"
 }
 trap cleanup EXIT
@@ -198,8 +202,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         threading.Thread(target=pump, args=(upstream, client), daemon=True).start()
 PY
   redis_proxy_pid="$!"
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${proxy_port}"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+  redis_location_endpoint="127.0.0.1:${proxy_port}"
   wait_port redis-proxy "127.0.0.1:${proxy_port}"
 }
 
@@ -248,7 +251,7 @@ EOF
 explicit_redis_endpoint=""
 zlink_redis_start_scoped_assign redis_container_name redis_port \
   "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
+redis_location_endpoint="127.0.0.1:${redis_port}"
 start_redis_proxy
 create_store_outage_commands
 
@@ -258,24 +261,29 @@ gradle_run installDist
 mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles api-a api-b)
 START_ORDER_CSV="$(IFS=,; echo "${ORDERED_SERVER_ROLES[*]}")"
 
-ZLINK_JAVA_E2E_CLIENT_MODE="suite" \
-ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_STORE_PAUSE_COMMAND="${store_pause_command}" \
-ZLINK_JAVA_E2E_STORE_RESUME_COMMAND="${store_resume_command}" \
-ZLINK_JAVA_E2E_API_A_ENDPOINT="${API_A}" \
-ZLINK_JAVA_E2E_API_B_ENDPOINT="${API_B}" \
-ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT="${API_A_REPLACEMENT}" \
-ZLINK_JAVA_E2E_API_B_GREEN_ENDPOINT="${API_B_GREEN}" \
-ZLINK_JAVA_E2E_HTTP_A_ENDPOINT="${HTTP_A}" \
-ZLINK_JAVA_E2E_HTTP_B_ENDPOINT="${HTTP_B}" \
-ZLINK_JAVA_E2E_HTTP_A_REPLACEMENT_ENDPOINT="${HTTP_A_REPLACEMENT}" \
-ZLINK_JAVA_E2E_HTTP_B_GREEN_ENDPOINT="${HTTP_B_GREEN}" \
-ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-ZLINK_JAVA_E2E_CONTROL_DIR="${log_dir}/control" \
-  "$(client_bin)" --start-order "${START_ORDER_CSV}" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+client_config="${config_dir}/client.properties"
+cat >"${client_config}" <<EOF
+redisLocationEndpoint=${redis_location_endpoint}
+locationKeyPrefix=${location_key_prefix}
+apiAEndpoint=${API_A}
+apiBEndpoint=${API_B}
+apiAReplacementEndpoint=${API_A_REPLACEMENT}
+apiBGreenEndpoint=${API_B_GREEN}
+httpAEndpoint=${HTTP_A}
+httpBEndpoint=${HTTP_B}
+httpAReplacementEndpoint=${HTTP_A_REPLACEMENT}
+httpBGreenEndpoint=${HTTP_B_GREEN}
+storePauseCommand=${store_pause_command}
+storeResumeCommand=${store_resume_command}
+buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}
+logDir=${log_dir}
+controlDir=${log_dir}/control
+configDir=${config_dir}
+EOF
+chmod 0600 "${client_config}"
+
+"$(client_bin)" --config "${client_config}" --scenario "${SCENARIO}" \
+  --start-order "${START_ORDER_CSV}" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
 if [[ "${SCENARIO}" == "all" ]]; then

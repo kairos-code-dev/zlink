@@ -2,12 +2,15 @@ package systems.zlink.e2e.resiliencelifecycle.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.resiliencelifecycle.provider.endpoints.EvidenceHttpServer;
 import systems.zlink.e2e.resiliencelifecycle.provider.handlers.RuntimeErrorEvidenceHandler;
@@ -15,7 +18,6 @@ import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkMsgHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.handlers.WorkReqHandler;
 import systems.zlink.e2e.resiliencelifecycle.provider.infrastructure.ScenarioState;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
-import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowOutcome;
@@ -25,6 +27,7 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(ProviderOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.resiliencelifecycle.provider")
@@ -33,15 +36,19 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        String config = configPath(args);
+        StandardEnvironment environment = isolatedEnvironment();
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(environment)
+            .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
-    ScenarioState scenarioState() {
-        return new ScenarioState(Env.get("ZLINK_JAVA_E2E_PROVIDER_RID", "provider-a"));
+    ScenarioState scenarioState(ProviderOptions options) {
+        return new ScenarioState(options.providerRid());
     }
 
     @Bean
@@ -54,19 +61,20 @@ public final class Program {
         ScenarioState state,
         ObjectMapper json,
         ZLinkChannelRuntimeOptions runtimeOptions,
-        ConfigurableApplicationContext applicationContext) {
+        ConfigurableApplicationContext applicationContext,
+        ProviderOptions options) {
         return new EvidenceHttpServer(
             state,
             json,
-            Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
+            options.httpEndpoint(),
             runtimeOptions,
             applicationContext);
     }
 
     @Bean
-    ZLinkFrameworkConfigurer providerFramework(ScenarioState state) {
+    ZLinkFrameworkConfigurer providerFramework(ScenarioState state, ProviderOptions provider) {
         return options -> {
-            String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
+            String logDir = provider.logDir();
             options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(2));
             options.configureDispatch()
@@ -87,17 +95,17 @@ public final class Program {
                 });
             options.addHandlersFromPackageOf(WorkReqHandler.class);
             options.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(Env.get("ZLINK_JAVA_E2E_API_ENDPOINT"))
+                .enableServer(provider.apiEndpoint())
                 .setRoutingId(RoutingId.from(state.providerRid()))
                 .addHandlerGroup(Contracts.HANDLER_GROUP);
         };
     }
 
     @Bean
-    ZLinkRedisLocationStore locationStore() {
+    ZLinkRedisLocationStore locationStore(ProviderOptions options) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(options.redisLocationEndpoint())
+            .setKeyPrefix(options.locationKeyPrefix()));
     }
 
     @Bean
@@ -113,5 +121,19 @@ public final class Program {
     @Bean
     RuntimeErrorEvidenceHandler runtimeErrorEvidenceHandler(ScenarioState state) {
         return new RuntimeErrorEvidenceHandler(state);
+    }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: resilience-lifecycle-provider --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
     }
 }

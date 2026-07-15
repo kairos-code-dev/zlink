@@ -5,7 +5,6 @@ import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
-import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 
 public final class RlB2CrashDuringInflightScenario {
     private RlB2CrashDuringInflightScenario() {
@@ -35,7 +34,7 @@ public final class RlB2CrashDuringInflightScenario {
         context.collectStableProvidersWithoutFailures("b2-after-crash", "api-b", "api-a");
         context.signal("b2-survivor-observed");
         context.waitForSignal("b2-restored");
-        context.waitForTopologyEndpoint("api-b", Env.get("ZLINK_JAVA_E2E_API_B_ENDPOINT"));
+        context.waitForTopologyEndpoint("api-b", context.options().apiBEndpoint());
         context.driveUntilEvidence(
             context.adminB(), "b2-restored", "RL-B2 restored provider traffic missing");
         System.out.println("scenario RL-B2 passed");

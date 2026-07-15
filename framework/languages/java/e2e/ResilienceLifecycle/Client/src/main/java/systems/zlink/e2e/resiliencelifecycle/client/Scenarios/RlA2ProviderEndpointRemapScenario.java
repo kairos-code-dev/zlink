@@ -2,7 +2,6 @@ package systems.zlink.e2e.resiliencelifecycle.client.Scenarios;
 
 import systems.zlink.e2e.resiliencelifecycle.client.Support.ResilienceScenarioContext;
 import java.time.Duration;
-import systems.zlink.e2e.resiliencelifecycle.shared.Env;
 
 public final class RlA2ProviderEndpointRemapScenario {
     private RlA2ProviderEndpointRemapScenario() {
@@ -24,7 +23,7 @@ public final class RlA2ProviderEndpointRemapScenario {
         context.signal("a2-down-observed");
         context.waitForSignal("a2-up");
         context.waitForTopologyEndpoint(
-            "api-a", Env.get("ZLINK_JAVA_E2E_API_A_REPLACEMENT_ENDPOINT"));
+            "api-a", context.options().apiAReplacementEndpoint());
         context.collectStableProvidersWithout("a2-after-reschedule", "api-b", "api-a");
         context.post(context.adminB() + "/admin/restore");
         context.waitForWeight(context.adminB(), 100);

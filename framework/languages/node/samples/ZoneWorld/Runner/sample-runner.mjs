@@ -14,6 +14,7 @@ export async function runSample(ctx) {
   const east = await zoneNodeConfig(ctx, shared, 'zone-node-2', 'east');
   const west = await zoneNodeConfig(ctx, shared, 'zone-node-1', 'west');
   const replacement = await zoneNodeConfig(ctx, shared, 'zone-node-2', 'east-replacement');
+  const crashReplacement = await zoneNodeConfig(ctx, shared, 'zone-node-2', 'east-crash-replacement');
   const ops = {
     streamEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
     broadcastEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
@@ -51,6 +52,24 @@ export async function runSample(ctx) {
   const generation = generationAt(after, 1);
   if (generation <= oldGeneration) throw new Error('ZW-G3 replacement generation did not increase.');
   console.log(`ZW-G3 handoff=passed slot=1 generation=${generation}`);
+  const beforeCrash = await store.listRoutingIdSlots('zoneworld.zone-node');
+  const crashGeneration = generationAt(beforeCrash, 1);
+  ctx.signal('zone-node-2-replacement', 'SIGKILL');
+  await ctx.start(
+    'zone-node-2-crash-replacement',
+    'dist/Server/ZoneNode/main.js',
+    ['--config', crashReplacement.path]
+  );
+  await delay(1_000);
+  if (await canConnect(crashReplacement.value.zoneNode.spotRouterEndpoint)) {
+    throw new Error('ZW-G4 crash replacement bound before the owner lease expired.');
+  }
+  console.log('ZW-G4 state=WaitingForSlot lease=unexpired');
+  await ctx.waitLog('zone-node-2-crash-replacement', 'slot=1');
+  const afterCrash = await store.listRoutingIdSlots('zoneworld.zone-node');
+  const recoveredGeneration = generationAt(afterCrash, 1);
+  if (recoveredGeneration <= crashGeneration) throw new Error('ZW-G4 crash replacement generation did not increase.');
+  console.log(`ZW-G4 lease=expired slot=1 generation=${recoveredGeneration}`);
   console.log('ZW-G5 fixed-routing-id=absent');
   await store.dispose();
 

@@ -14,6 +14,7 @@ import {
   WatchNodesHandler
 } from './ops-handlers';
 import { OpsSessionFactory } from './ops-session';
+import { OpsConsoleRegistry } from './ops-console-registry';
 
 function createOpsModule() {
   class OpsModule {}
@@ -45,6 +46,7 @@ function createOpsModule() {
     })],
     providers: [
       NodeRegistry,
+      OpsConsoleRegistry,
       OpsSessionFactory,
       AnnounceWorldHandler,
       NodeDiagnosticsHandler,

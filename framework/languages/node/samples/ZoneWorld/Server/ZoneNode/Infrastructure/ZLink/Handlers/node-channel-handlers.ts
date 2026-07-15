@@ -1,9 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ZLINK_ACTOR_MANAGER } from '@zlink-systems/nestjs';
+import {
+  ZLINK_ACTOR_MANAGER,
+  ZLINK_SPOT_HANDLE_RESOLVER,
+  ZLINK_SPOT_OUTBOUND
+} from '@zlink-systems/nestjs';
 import { ZONEWORLD_CONFIG } from '../../../../Configuration/configuration';
 import type { ZoneWorldConfiguration } from '../../../../Configuration/configuration';
 import { ZoneWorldNames, zonesOf } from '../../../../../Shared/spec';
-import { EnsurePlayerActorRes } from '../../../../../Shared/contracts';
+import { DeliverAnnounceMsg, EnsurePlayerActorRes } from '../../../../../Shared/contracts';
 import type {
   ApplyNodeMaintenanceReq,
   ApplyNodeMaintenanceRes,
@@ -16,7 +20,9 @@ import type {
   ZLinkPublishContext,
   ZLinkPublishHandler,
   ZLinkRequestContext,
-  ZLinkRequestHandler
+  ZLinkRequestHandler,
+  ZLinkSpotHandleResolver,
+  ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type { NodeMaintenanceChangedEvent, WorldAnnounceEvent } from '../../../../../Shared/contracts';
 
@@ -66,8 +72,22 @@ class EnsurePlayerActorHandler implements ZLinkRequestHandler<EnsurePlayerActorR
 
 @Injectable()
 class WorldAnnounceSubscriber implements ZLinkPublishHandler<WorldAnnounceEvent> {
+  constructor(
+    @Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration,
+    @Inject(ZLINK_SPOT_HANDLE_RESOLVER) private readonly handles: ZLinkSpotHandleResolver,
+    @Inject(ZLINK_SPOT_OUTBOUND) private readonly outbound: ZLinkSpotOutbound
+  ) {}
+
   async handle(message: WorldAnnounceEvent, context: ZLinkPublishContext): Promise<void> {
     console.log(`fanout subscriber received announcement id=${message.announcementId} topic=${context.topic}`);
+    const nodeId = this.config.zoneNode?.nodeId;
+    if (nodeId === undefined) return;
+    for (const zoneId of zonesOf(nodeId)) {
+      const handle = await this.handles.resolveSpotHandle(zoneId);
+      if (handle !== undefined) {
+        this.outbound.sendToSpot(handle, new DeliverAnnounceMsg(message.announcementId, message.text)).submit();
+      }
+    }
   }
 }
 

@@ -7,7 +7,6 @@ import {
   EnterZoneMsg,
   JoinWorldRes,
   MoveRejectedNotify,
-  ZoneChangedNotify
 } from '../../../../../Shared/contracts';
 import { PacketNames } from '../../../../../Shared/contracts';
 import { MoveRejectReasons, nodeOf, zoneOf } from '../../../../../Shared/spec';
@@ -79,30 +78,22 @@ class PlayerMoveHandler implements ZLinkSpotActorSendHandler<ZoneSpot, PlayerAct
       return;
     }
     const targetZone = zoneOf(message.x, message.y);
-    actor.x = message.x;
-    actor.y = message.y;
     if (!decision.zoneChanged) {
+      actor.x = message.x;
+      actor.y = message.y;
       spot.updatePosition(actor);
       return;
     }
-    actor.zoneId = targetZone;
     const joined = await actor.context.joinSpot(
       targetZone,
-      new EnterZoneMsg(actor.actorId, actor.x, actor.y, actor.isBot, nodeOf(previous.zoneId))
+      new EnterZoneMsg(actor.actorId, message.x, message.y, actor.isBot, nodeOf(previous.zoneId))
     ).timeout(10_000).submit();
+    console.log(
+      `zone change result player=${actor.actorId} from=${previous.zoneId} to=${targetZone} status=${joined.status}`
+    );
     if (joined.status !== 'accepted') {
-      actor.x = previous.x;
-      actor.y = previous.y;
-      actor.zoneId = previous.zoneId;
       await actor.push(new MoveRejectedNotify(MoveRejectReasons.zoneMaintenance, actor.x, actor.y));
-      return;
     }
-    await actor.push(new ZoneChangedNotify(
-      actor.actorId,
-      actor.zoneId,
-      nodeOf(actor.zoneId),
-      nodeOf(previous.zoneId) !== nodeOf(actor.zoneId)
-    ));
   }
 }
 

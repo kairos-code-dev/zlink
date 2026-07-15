@@ -27,6 +27,7 @@ import {
 } from './Infrastructure/ZLink/Handlers/player-handlers';
 import {
   FirstBorderSubscriptionHandler,
+  DeliverAnnounceHandler,
   SecondBorderSubscriptionHandler,
   ZoneTickHandler
 } from './Infrastructure/ZLink/Handlers/zone-runtime-handlers';
@@ -110,6 +111,7 @@ function createZoneNodeModule() {
       PlayerMoveHandler,
       ZoneJoinWorldHandler,
       FirstBorderSubscriptionHandler,
+      DeliverAnnounceHandler,
       SecondBorderSubscriptionHandler,
       ZoneTickHandler
     ]

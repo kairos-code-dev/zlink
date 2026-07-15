@@ -13,6 +13,7 @@ import {
 import { PacketNames } from '../../Shared/contracts';
 import { ZoneWorldErrors, ZoneWorldNames } from '../../Shared/spec';
 import { NodeRegistry } from './node-registry';
+import { OpsConsoleRegistry } from './ops-console-registry';
 import type {
   AnnounceWorldReq,
   ApplyNodeMaintenanceRes,
@@ -33,10 +34,11 @@ import type {
 
 @Injectable()
 class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
-  constructor(private readonly nodes: NodeRegistry) {}
+  constructor(private readonly nodes: NodeRegistry, private readonly consoles: OpsConsoleRegistry) {}
 
   async handle(message: ReportNodeStatusMsg, _context: ZLinkSendContext): Promise<void> {
-    this.nodes.report(message);
+    console.log(`node status received node=${message.nodeId} rid=${message.nodeRid}`);
+    this.consoles.publish(this.nodes.report(message));
   }
 }
 

@@ -1,5 +1,6 @@
 import { ZLINK_ALLOCATED_ROUTING_ID_PROVIDER } from '@zlink-systems/nestjs';
 import type { ZLinkAllocatedRoutingIdProvider } from '@zlink-systems/framework';
+import type { ZLinkAllocatedRoutingId } from '@zlink-systems/framework';
 
 type ApplicationContext = {
   get<T>(token: unknown, options?: { strict?: boolean }): T;
@@ -10,7 +11,7 @@ async function reportRoutingAllocation(
   role: string,
   groupName: string,
   members: readonly string[]
-): Promise<void> {
+): Promise<ZLinkAllocatedRoutingId> {
   const provider = app.get<ZLinkAllocatedRoutingIdProvider>(
     ZLINK_ALLOCATED_ROUTING_ID_PROVIDER,
     { strict: false }
@@ -30,6 +31,7 @@ async function reportRoutingAllocation(
     `zoneworld routing allocation ready role=${role} group=${groupName} slot=${allocation.slot} `
       + `members=${memberAllocations.map(([member, rid]) => `${member}=${rid}`).join(',')}`
   );
+  return allocation;
 }
 
 export { reportRoutingAllocation };

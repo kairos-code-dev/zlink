@@ -311,13 +311,6 @@ internal sealed class ZLinkInMemoryLocationStore :
             var members = NormalizeMembers(request.Members);
             if (!_routingIdGroups.TryGetValue(request.GroupName, out var group))
             {
-                var memberNames = members.Select(static member => member.ChannelName)
-                    .ToHashSet(StringComparer.Ordinal);
-                if (_peers.Rows.Values.Any(peer =>
-                        memberNames.Contains(peer.MeshName) && IsOwnerLive(peer.OwnerId, now)))
-                    return ValueTask.FromResult<ZLinkRoutingIdSlotAcquireResult>(
-                        new ZLinkRoutingIdSlotIdentityModeConflict());
-
                 group = new RoutingIdAllocationGroup(members, request.SlotCount);
                 _routingIdGroups.Add(request.GroupName, group);
             }

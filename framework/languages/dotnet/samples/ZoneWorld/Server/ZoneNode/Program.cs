@@ -54,12 +54,6 @@ builder.Services.AddZLinkFramework(options =>
     options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(shared.RedisEndpoint)
         .SetKeyPrefix(shared.RedisKeyPrefix)));
-    // A stopped node's location rows live until its owner lease expires. The default lease is
-    // 15s, which is longer than an operator — or a scenario — waits to see a node leave (§8.1).
-    var locations = options.ConfigureLocations();
-    locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
-    locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
-
     options.ConfigureDispatch()
         // Zone ticks continuously fan out state, border snapshots, and bot moves. Logging every
         // dispatch transition turns the sample log into a second high-volume workload and can
@@ -83,10 +77,11 @@ builder.Services.AddZLinkFramework(options =>
     // The zone spots and the player actors. A player entering a zone joins the spot named
     // after it, and when that spot is on another node the join is the transfer — which is
     // why the transfer adapter is not optional (§2.6).
+    const string allocationGroup = "zoneworld.zone-node";
     options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
+        .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
+        .SetRoutingIdAllocationGroup(allocationGroup)
         .EnableRouter(node.SpotRouterEndpoint)
-        .SetRoutingId(node.NodeRid)
-        .SetEntrySpotRoutingId(node.NodeRid)
         .EnablePubSub(node.SpotPubSubEndpoint)
         .AddEntrySpot<ZoneEntrySpot>()
         .AddActorFactory<PlayerActorFactory>(ZoneWorldNames.PlayerActorType)
@@ -97,9 +92,10 @@ builder.Services.AddZLinkFramework(options =>
     // from a channel handler into this node's zone spots (§8.2). It is never used to address a
     // node from the application (§1.1).
     options.AddRouteMeshChannel(ZoneWorldNames.BridgeMesh)
+        .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
+        .SetRoutingIdAllocationGroup(allocationGroup)
         .EnableServer(node.BridgeEndpoint)
-        .EnableClient()
-        .SetRoutingId(node.NodeRid);
+        .EnableClient();
 
     // The node's own channel. Ops calls the channel named after the node, so a call
     // reaches this node and no other (§8.4).
@@ -121,8 +117,9 @@ builder.Services.AddZLinkFramework(options =>
     // The report channel carries this node's identity: Ops reads the socket events on its
     // server side and needs to know *which node* connected or went away (§8.1).
     options.AddClientServerChannel(ZoneWorldNames.ReportChannel)
-        .EnableClient()
-        .SetRoutingId(node.NodeRid);
+        .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
+        .SetRoutingIdAllocationGroup(allocationGroup)
+        .EnableClient();
 });
 
 if (hostsZones)

@@ -22,10 +22,11 @@ public static class PlayServerHostFactory
     public static IHost Build(
         SampleTopology topology,
         SamplePlayNode node,
+        string nodeName,
         string logDirectory,
         bool enableMetrics = true)
     {
-        var traceLabel = $"play-{node.NodeRid}";
+        var traceLabel = $"play-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
@@ -55,22 +56,29 @@ public static class PlayServerHostFactory
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
 
+            const string allocationGroup = "bingo.play";
             options.AddClientServerChannel(SampleNames.PlayChannel)
+                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
+                .SetRoutingIdAllocationGroup(allocationGroup)
                 .EnableServer(node.PlayChannelEndpoint)
                 .EnableClient()
-                .SetRoutingId(node.NodeRid)
                 .AddHandlerGroup("play");
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
                 .UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural)
+                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
+                .SetRoutingIdAllocationGroup(allocationGroup)
                 .EnableRouter(node.SpotRouterEndpoint)
-                .SetRoutingId(node.NodeRid)
-                .SetEntrySpotRoutingId(node.NodeRid)
                 .EnablePubSub(node.SpotPubEndpoint)
                 .AddEntrySpot<BingoEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
                 .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType)
                 .AddSpotFactory<BingoRoom>();
         });
+        builder.Services.AddSingleton(new BingoRoutingIdReport(
+            "play",
+            "bingo.play",
+            [SampleNames.PlayChannel, SampleNames.RoomSpotDiscovery]));
+        builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();
     }

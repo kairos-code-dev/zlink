@@ -10,6 +10,7 @@ internal static class Program
         using var host = PlayServerHostFactory.Build(
             configuration.Topology,
             configuration.Topology.Play(configuration.NodeName),
+            configuration.NodeName,
             configuration.LogDirectory);
 
         await host.RunAsync();

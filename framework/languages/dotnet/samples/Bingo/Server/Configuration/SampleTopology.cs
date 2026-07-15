@@ -1,4 +1,3 @@
-using Systems.Zlink;
 using Microsoft.Extensions.Configuration;
 
 namespace Bingo.Server.Configuration;
@@ -28,46 +27,26 @@ public sealed record SampleTopology(
 
         var playA = new SamplePlayNode(
             settings.PlayAChannelEndpoint,
-            settings.PlayBChannelEndpoint,
             settings.PlayASpotEndpoint,
-            settings.PlayBSpotEndpoint,
-            settings.PlayASpotRouterEndpoint,
-            RoutingId.From("2201"));
+            settings.PlayASpotRouterEndpoint);
         var playB = new SamplePlayNode(
             settings.PlayBChannelEndpoint,
-            settings.PlayAChannelEndpoint,
             settings.PlayBSpotEndpoint,
-            settings.PlayASpotEndpoint,
-            settings.PlayBSpotRouterEndpoint,
-            RoutingId.From("2202"));
+            settings.PlayBSpotRouterEndpoint);
 
         var topology = new SampleTopology(
-            new SampleApiNode(
-                settings.ApiAChannelEndpoint,
-                RoutingId.From("3301")),
-            new SampleApiNode(
-                settings.ApiBChannelEndpoint,
-                RoutingId.From("3302")),
+            new SampleApiNode(settings.ApiAChannelEndpoint),
+            new SampleApiNode(settings.ApiBChannelEndpoint),
             playA,
             playB,
             new SampleSessionNode(
                 settings.SessionASpotEndpoint,
                 settings.SessionARouterEndpoint,
-                settings.SessionAStreamEndpoint,
-                RoutingId.From("1101"),
-                RoutingId.From("1102"),
-                playA.NodeRid,
-                playA.SpotRouterEndpoint,
-                playA.PlayChannelEndpoint),
+                settings.SessionAStreamEndpoint),
             new SampleSessionNode(
                 settings.SessionBSpotEndpoint,
                 settings.SessionBRouterEndpoint,
-                settings.SessionBStreamEndpoint,
-                RoutingId.From("1103"),
-                RoutingId.From("1104"),
-                playB.NodeRid,
-                playB.SpotRouterEndpoint,
-                playB.PlayChannelEndpoint),
+                settings.SessionBStreamEndpoint),
             settings.RedisEndpoint,
             settings.RedisKeyPrefix);
         return new SampleRuntimeConfiguration(topology, settings.NodeName, settings.LogDirectory);
@@ -144,24 +123,14 @@ public sealed class SampleConfiguration
     }
 }
 
-public sealed record SampleApiNode(
-    string ChannelEndpoint,
-    RoutingId RouteRid);
+public sealed record SampleApiNode(string ChannelEndpoint);
 
 public sealed record SamplePlayNode(
     string PlayChannelEndpoint,
-    string PeerPlayChannelEndpoint,
     string SpotPubEndpoint,
-    string PeerSpotPubEndpoint,
-    string SpotRouterEndpoint,
-    RoutingId NodeRid);
+    string SpotRouterEndpoint);
 
 public sealed record SampleSessionNode(
     string PubEndpoint,
     string RouterEndpoint,
-    string StreamEndpoint,
-    RoutingId RoutingId,
-    RoutingId PublisherRoutingId,
-    RoutingId PreferredPlayNodeRid,
-    string PreferredPlaySpotRouterEndpoint,
-    string PreferredPlayChannelEndpoint);
+    string StreamEndpoint);

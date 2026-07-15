@@ -15,9 +15,10 @@ public static class SessionServerHostFactory
     public static IHost Build(
         SampleTopology topology,
         SampleSessionNode session,
+        string nodeName,
         string logDirectory)
     {
-        var traceLabel = $"session-{session.RoutingId}";
+        var traceLabel = $"session-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
@@ -40,13 +41,19 @@ public static class SessionServerHostFactory
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
             options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "session")
+                .SetRoutingIdAllocationGroup("bingo.session")
                 .EnableRouter(session.RouterEndpoint)
-                .SetRoutingId(session.RoutingId)
                 .EnablePubSub(session.PubEndpoint);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
                 .RegisterSession<BingoSession>();
         });
+        builder.Services.AddSingleton(new BingoRoutingIdReport(
+            "session",
+            "bingo.session",
+            [SampleNames.RoomSpotDiscovery]));
+        builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();
     }

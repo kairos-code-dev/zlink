@@ -358,9 +358,11 @@ builder의 entry spot 규칙은 바꾸지 않는다.
 
 대표 적용 문서는 [ZoneWorld sample](../sample/zoneworld/README.ko.md)과
 [Bingo sample](../sample/bingo/README.ko.md)이다. ZoneWorld는 Spot mesh, spot bridge와 보고 channel이
-하나의 번호를 공유하는 예를 제공한다. Bingo는 Play channel과 room Spot mesh가 번호를 공유하고,
-Session이 `play1`, `play2` 같은 논리 RID로 현재 slot owner를 선택하는 예를 제공한다. 자동 slot은
-transport identity이며 application의 zone이나 room 상태를 저장하지 않는다.
+하나의 번호를 공유하는 예를 제공한다. Bingo는 API·Play·Session을 역할별 group으로 분리하고,
+Play channel과 room Spot mesh가 번호를 공유하며, Session이 `play1`, `play2` 같은 논리 RID로 현재
+slot owner를 선택하는 예를 제공한다. Session은 자기 allocation slot과 같은 번호의 Play RID를
+선택하지만 두 group의 process affinity를 가정하지 않는다. 자동 slot은 transport identity이며
+application의 zone이나 room 상태를 저장하지 않는다.
 
 ## 6. routing id 생성 규칙
 
@@ -428,18 +430,14 @@ group 구성과 개수는 첫 acquire 뒤 변경할 수 없다. 운영 중 변�
 
 ### 7.5 identity 정책 일치
 
-첫 자동 acquire는 group metadata에 `IdentityMode=Allocated`를 함께 고정한다. framework는
-startup에서 group member channel의 유효한 fixed peer와 allocated metadata 충돌을 확인하고,
-확인된 혼합 구성은 configuration error로 거부한다. allocated group이 확인된 channel에 fixed
-peer를 등록하려는 경우에도 같은 오류를 보고한다.
+첫 자동 acquire는 group metadata에 `IdentityMode=Allocated`를 함께 고정한다. framework는 한 runtime의
+같은 builder에서 fixed RID와 자동 할당을 함께 설정하면 startup 전에 configuration error로 거부한다.
 
-P0의 혼합 검사에는 peer registry와 allocator의 여러 key를 묶는 원자적 transaction을 요구하지
-않는다. 따라서 fixed peer 등록과 group 생성이 동시에 경쟁하면 best-effort 감지가 둘을 모두
-막는다고 보장하지 않는다. strict single-active 보장은 같은 routing id slot allocation
-capability를 사용하는
-runtime끼리 적용하며, fixed RID와 자동 할당을 같은 channel에 혼합하는 배포는 지원하지 않는 운영
-구성이다. 혼합 배포를 저장소의 교차 key transaction으로 원자 차단하는 기능은 이 계약에
-포함하지 않는다.
+peer row만으로는 fixed owner와 다른 allocation group의 owner를 구분할 수 없다. Bingo처럼 같은 member
+이름을 서로 다른 allocation group에서 사용하는 구성을 허용해야 하므로, store는 기존 peer row만 보고
+identity mode conflict를 추측하지 않는다. 여러 runtime이 같은 member에 fixed RID와 자동 할당을 섞는
+배포는 지원하지 않는다. 이 혼합 배포를 저장소의 교차 key transaction으로 원자 차단하는 기능은 이
+계약에 포함하지 않는다.
 
 P0에서는 한 번 `Allocated`로 고정한 group을 fixed 방식으로 되돌리는 관리 표면을 제공하지
 않는다. identity 정책을 바꿔야 하면 별도 전환 계약을 먼저 설계한다.
@@ -710,7 +708,7 @@ floor를 충족하지 않는 store는 개발·test 용도로 등록할 수는 �
 처리해야 한다.
 
 - group metadata의 member channel·prefix 목록과 `slotCount` 확인 또는 최초 생성
-- 모든 group member의 identity mode와 active fixed peer 부재 확인
+- group metadata의 identity mode 확인
 - 같은 owner의 기존 slot 확인
 - 만료 owner를 제외하고 가장 작은 빈 slot 선택
 - slot generation 증가
@@ -1642,6 +1640,10 @@ extension은 §10.2의 지원 topology, 시각 출처, write acknowledgment와 �
 9. startup bind를 지연한 상태에서도 acquire 직후 heartbeat가 lease를 유지하는지 확인한다.
 10. renew 한 번을 실패시킨 뒤 `fenceDeadline` 전에 store를 복구해 runtime이
     `LeaseAtRisk → Ready`로 돌아오고 기존 socket을 유지하는지 확인한다.
+11. ZoneWorld의 `ZW-G1..G5`로 여러 member의 번호 공유, 시작 순서 독립, bounded pool handoff와
+    crash 재할당을 확인한다.
+12. Bingo의 `BINGO-RID-1..5`로 역할별 allocation group, Play member 번호 공유, Session slot 기반
+    Play 선택과 match queue의 실제 owner RID를 확인한다.
 
 ## 14. 정식 계약 승격과 구현 순서
 

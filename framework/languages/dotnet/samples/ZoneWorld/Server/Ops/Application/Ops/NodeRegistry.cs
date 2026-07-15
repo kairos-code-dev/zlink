@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using ZoneWorld.Server.Configuration;
 using ZoneWorld.Shared.Contracts;
 
 namespace ZoneWorld.Server.Ops.Application.Ops;
@@ -12,6 +13,9 @@ namespace ZoneWorld.Server.Ops.Application.Ops;
 public sealed class NodeRegistry
 {
     private readonly ConcurrentDictionary<string, NodeState> _nodes = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _nodeByRoutingId = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _routingIdByNode = new(StringComparer.Ordinal);
+    private IReadOnlySet<string> _liveRoutingIds = new HashSet<string>(StringComparer.Ordinal);
 
     public event Action<NodeView>? Changed;
 
@@ -41,16 +45,44 @@ public sealed class NodeRegistry
             View = state.View with { Connected = state.View.Registered && connected }
         });
 
-    public void ApplyReport(ReportNodeStatusMsg report) =>
+    public string? NodeIdOf(string routingId) =>
+        _nodeByRoutingId.TryGetValue(routingId, out var nodeId) ? nodeId : null;
+
+    public void ApplyLiveRoutingIds(IReadOnlySet<string> liveRoutingIds)
+    {
+        _liveRoutingIds = liveRoutingIds;
+        foreach (var nodeId in ZoneTopology.ZoneNodes)
+        {
+            _routingIdByNode.TryGetValue(nodeId, out var routingId);
+            ApplyRegistration(
+                nodeId,
+                routingId is not null && liveRoutingIds.Contains(routingId));
+        }
+    }
+
+    public void ApplyReport(ReportNodeStatusMsg report)
+    {
+        if (_nodeByRoutingId.TryGetValue(report.NodeRid, out var previousNodeId)
+            && previousNodeId != report.NodeId)
+            _routingIdByNode.TryRemove(previousNodeId, out _);
+        if (_routingIdByNode.TryGetValue(report.NodeId, out var previousRoutingId)
+            && previousRoutingId != report.NodeRid)
+            _nodeByRoutingId.TryRemove(previousRoutingId, out _);
+        _routingIdByNode[report.NodeId] = report.NodeRid;
+        _nodeByRoutingId[report.NodeRid] = report.NodeId;
         Update(report.NodeId, state => state with
         {
+            TransportConnected = true,
             View = state.View with
             {
+                Registered = _liveRoutingIds.Contains(report.NodeRid),
+                Connected = _liveRoutingIds.Contains(report.NodeRid),
                 Zones = report.Zones,
                 PlayerCount = report.PlayerCount,
                 Maintenance = report.Maintenance
             }
         });
+    }
 
     private void Update(string nodeId, Func<NodeState, NodeState> change)
     {

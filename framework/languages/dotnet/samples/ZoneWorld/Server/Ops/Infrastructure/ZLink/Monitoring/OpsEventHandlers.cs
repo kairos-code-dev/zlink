@@ -31,8 +31,7 @@ internal sealed class LocationEventHandler(
             .Select(entry => entry.NodeRid!.Value.ToString())
             .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var nodeId in ZoneTopology.ZoneNodes)
-            nodes.ApplyRegistration(nodeId, live.Contains(ZoneTopology.RidOf(nodeId)));
+        nodes.ApplyLiveRoutingIds(live);
 
         logger.LogDebug(
             "location topology observed. entries={Count}, live={Live}",
@@ -77,7 +76,7 @@ internal sealed class SocketEventHandler(
 
         if (@event.RoutingId is not { } peer) return ValueTask.CompletedTask;
 
-        var nodeId = ZoneTopology.NodeOfRid(BaseRidOf(peer));
+        var nodeId = nodes.NodeIdOf(BaseRidOf(peer));
         if (nodeId is null) return ValueTask.CompletedTask;
 
         var connected = @event.Event switch

@@ -398,6 +398,10 @@ generation을 반환하며, 서로 다른 owner의 동시 acquire는 유효한 s
 삭제 여부와 관계없이 다시 사용할 수 있으며 generation을 증가시킨다. 이전 generation의 release는
 현재 owner를 변경하지 않는다.
 
+같은 member 이름은 서로 다른 allocation group에 포함될 수 있다. 이 경우 각 group은 독립적으로
+slot을 할당하며, 이미 게시된 peer의 owner가 다른 allocated group에서 받은 owner인지 fixed RID
+owner인지 구분해야 한다. 다른 allocated group의 peer를 fixed RID 충돌로 판정하면 안 된다.
+
 framework startup 순서는 다음과 같다.
 
 1. 모든 allocation 설정과 lease 시간을 검증한다.

@@ -138,6 +138,7 @@ public sealed record ReportSpotEventMsg(string NodeId, string Kind, string Detai
 /// <summary>ZoneNode -> Ops (channel `zoneworld.report`). Sent every second (§8.1).</summary>
 public sealed record ReportNodeStatusMsg(
     string NodeId,
+    string NodeRid,
     IReadOnlyList<string> Zones,
     int PlayerCount,
     bool Maintenance);

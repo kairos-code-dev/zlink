@@ -130,11 +130,14 @@ polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목�
 
 ## 8. routing id slot 원자성
 
-slot acquire는 Redis `TIME` 조회, group 구성 확인 또는 최초 고정, active fixed peer의 best-effort
-충돌 확인, 같은 owner의 멱등 claim 확인, 가장 작은 빈 slot 선택, generation 증가, slot·owner index
-기록과 owner lease 갱신을 Lua script 한 번으로 수행한다. slot의 유효성은 hash field가 존재하는지가
-아니라 `P:lease:{ownerId}`의 논리 유효성으로 판단한다. list 결과의 만료 시각도 같은 owner lease의
-남은 TTL과 script 안에서 읽은 store 시각으로 계산한다.
+slot acquire는 Redis `TIME` 조회, group 구성 확인 또는 최초 고정, 같은 owner의 멱등 claim 확인, 가장
+작은 빈 slot 선택, generation 증가, slot·owner index 기록과 owner lease 갱신을 Lua script 한 번으로
+수행한다. peer row만으로는 fixed owner와 다른 allocation group의 owner를 구분할 수 없으므로 acquire가
+기존 peer row를 fixed RID 충돌로 추측하지 않는다. 같은 runtime에서 fixed 설정과 자동 할당을 함께
+사용하는 구성은 framework 설정 검증에서 거부한다. 여러 runtime이 같은 member에 두 방식을 섞는
+배포는 지원하지 않는다. slot의 유효성은 hash field가 존재하는지가 아니라
+`P:lease:{ownerId}`의 논리 유효성으로 판단한다. list 결과의 만료 시각도 같은 owner lease의 남은
+TTL과 script 안에서 읽은 store 시각으로 계산한다.
 
 release는 group, slot, owner id와 generation이 모두 일치할 때만 slot과 owner index를 지운다.
 오래된 token은 `IgnoredStale`로 반환해 현재 claim을 유지한다. group metadata는 첫 acquire 뒤

@@ -168,25 +168,22 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         var members = NormalizeMembers(request.Members);
         var config = JsonSerializer.Serialize(members);
         var ttlMs = Math.Max(1L, (long)request.LeaseTtl.TotalMilliseconds);
-        var arguments = new List<RedisValue>
-        {
+        RedisValue[] arguments =
+        [
             config,
             request.SlotCount,
             request.OwnerId,
             ttlMs,
-            keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Peer.Tag),
             keys.LeaseKeyPrefix()
-        };
-        arguments.AddRange(members.Select(static member => (RedisValue)member.ChannelName));
+        ];
         var result = (RedisResult[])(await database.ScriptEvaluateAsync(
             ZLinkRedisLocationScripts.AcquireRoutingIdSlot,
             [
                 keys.RoutingIdAllocationGroupKey(request.GroupName),
                 keys.LeaseKey(request.OwnerId),
-                keys.LeaseIndexKey(),
-                keys.KindIndexKey(ZLinkRedisLocationKinds.Peer.Tag)
+                keys.LeaseIndexKey()
             ],
-            [.. arguments]).ConfigureAwait(false))!;
+            arguments).ConfigureAwait(false))!;
 
         var status = (string)result[0]!;
         if (status == "exhausted") return new ZLinkRoutingIdSlotGroupExhausted();

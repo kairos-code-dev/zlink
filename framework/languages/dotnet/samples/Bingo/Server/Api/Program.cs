@@ -10,6 +10,7 @@ internal static class Program
         await ApiServerHostFactory.Build(
                 configuration.Topology,
                 configuration.Topology.Api(configuration.NodeName),
+                configuration.NodeName,
                 configuration.LogDirectory)
             .RunAsync();
     }

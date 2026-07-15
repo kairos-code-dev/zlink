@@ -6,11 +6,16 @@
 > 언어별로 구현하되 **client는 TypeScript 하나만 구현**해 모든 언어 server에 연결한다(wire가 언어
 > 중립이므로).
 >
-> **구현 상태.** `dotnet` server와 `dotnet` 시나리오 client가 §11의 전 항목과 §12의 성공 로그를
+> **구현 상태.** `dotnet` server와 `dotnet` 시나리오 client가 §11의 현재 `ZW-A*`부터 `ZW-F*`까지와
+> §12의 성공 로그를
 > 실측으로 통과했고, 이 문서는 **그 구현과 일치한다** — 구현하며 드러난 설계 결함은 여기에
 > 반영했다(§3.1, §7.3, §8.2, §8.3). `java`·`kotlin`·`node`·`cpp` server와 브라우저 client는 남아
 > 있다. 진행 상태는
 > [구현 계획](../../../../plan/zoneworld-sample-implementation-plan.ko.md) §8이 소유한다.
+>
+> **자동 routing id 필수.** ZoneNode는 §3.2의 allocation group으로 transport RID를 받아야 하며
+> 고정 `NodeRid`나 `SetRoutingId(...)`를 사용하면 안 된다. `.NET` 샘플은 이 구성을 적용했다. 다른
+> 언어 구현도 같은 public 계약과 group 구성을 사용해야 완료로 판정한다.
 
 ## 0. 작업 위치와 진행 권한
 
@@ -337,6 +342,125 @@ graph TD
 ```
 
 client에는 `Gateway`와 `Ops` 주소만 설정한다. zone 노드 주소는 client에 노출하지 않는다.
+
+### 3.2 ZoneNode routing id 자동 할당
+
+ZoneNode의 transport routing id는 location store에서 자동 할당한다. 두 ZoneNode는
+`zoneworld.zone-node` allocation group에서 slot 하나를 받고, Spot mesh, spot bridge와 보고 channel이
+그 번호를 공유한다.
+
+| 항목 | 값 |
+|------|----|
+| allocation group | `zoneworld.zone-node` |
+| slot count | `2` |
+| routing id prefix | `zn` |
+| 할당 결과 | `zn1`, `zn2` |
+| group member | `zoneworld.zones`, `zoneworld.bridge`, `zoneworld.report` |
+| entry spot RID | `zoneworld.zones` SpotNode에 할당된 RID와 동일 |
+
+각 member에 같은 prefix를 사용하므로 한 runtime의 세 socket/node는 모두 `zn1` 또는 모두 `zn2`를
+사용한다. channel 이름은 서로 다르므로 location row와 allocation group metadata에서는 각 member를
+구분할 수 있다.
+
+Gateway도 같은 Spot mesh에 고정 RID를 설정하지 않는다. 별도 `zoneworld.gateway` group에서 slot 하나를
+자동 할당하고 prefix `gw0`을 사용하므로 현재 결과는 `gw01`이다. 이 group은 ZoneNode의 slot pool과
+수명에 참여하지 않으며 Gateway 교체 시 같은 하나의 slot을 lease handoff한다.
+
+```csharp
+options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
+    // Gateway transport identity도 설정 파일이 아니라 location store에서 받는다.
+    .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw0")
+    .SetRoutingIdAllocationGroup("zoneworld.gateway")
+    .EnableRouter(gateway.SpotRouterEndpoint)
+    .EnablePubSub(gateway.SpotPubSubEndpoint);
+```
+
+필수 구성은 다음과 같다. `.NET` 구현은 이 public API를 사용하며 다른 언어도 같은 allocation group과
+member 구성을 제공한다.
+
+```csharp
+const string zoneNodeAllocationGroup = "zoneworld.zone-node";
+
+options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
+    // 두 ZoneNode 중 하나의 slot을 받고 entry spot도 같은 RID를 사용한다.
+    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
+    .SetRoutingIdAllocationGroup(zoneNodeAllocationGroup)
+    .EnableRouter(node.SpotRouterEndpoint)
+    .EnablePubSub(node.SpotPubSubEndpoint)
+    .AddEntrySpot<ZoneEntrySpot>();
+
+options.AddRouteMeshChannel(ZoneWorldNames.BridgeMesh)
+    // Spot mesh와 같은 번호를 사용해 runtime 단위 identity를 유지한다.
+    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
+    .SetRoutingIdAllocationGroup(zoneNodeAllocationGroup)
+    .EnableServer(node.BridgeEndpoint)
+    .EnableClient();
+
+options.AddClientServerChannel(ZoneWorldNames.ReportChannel)
+    // Ops의 연결 추적과 보고 로그에서도 같은 ZoneNode RID를 관찰한다.
+    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
+    .SetRoutingIdAllocationGroup(zoneNodeAllocationGroup)
+    .EnableClient();
+```
+
+ZoneNode는 세 member에서 `SetRoutingId(node.NodeRid)`를 호출하지 않고 entry spot에도
+`SetEntrySpotRoutingId(node.NodeRid)`를 호출하지 않는다. 자동 RID와 명시적 entry spot RID를 함께
+설정하면 안 된다.
+
+자동 RID 시나리오는 heartbeat 10초, TTL 30초, fencing
+margin 5초와 renew timeout 3초의 기본값을 사용한다. crash 검증 timeout도 TTL 30초와 location
+reconcile 시간을 포함하도록 조정하고, 고정된 짧은 대기로 통과시키지 않는다.
+
+#### `NodeId`, 담당 zone과 자동 slot의 관계
+
+`NodeId`와 자동 slot은 같은 값이 아니다. `NodeId`는 점검 정책, 담당 zone과
+`zoneworld.ops.<NodeId>` channel을 정하는 application topology 식별자다. 자동 slot은 location
+runtime이 socket과 SpotNode에 적용하는 transport identity다.
+
+따라서 `slot 1`을 항상 `zone-node-1`이나 서쪽 zone으로 해석하지 않는다. 두 process의 시작 순서가
+바뀌면 `zone-node-2`가 `zn1`을 받을 수 있다. 특정 NodeId가 특정 slot을 받도록 예약하는 affinity는
+사용하지 않는다. 담당 zone은 기존 `ZoneTopology`가 결정하고 자동 slot은 그 결정을 바꾸지 않는다.
+
+framework가 ready 상태에 도달한 뒤 `ZoneNodeBootstrap`과 상태 보고기는 할당 결과 provider에서
+`zoneworld.zone-node` 결과를 읽는다. provider는 slot과 member별 RID를 반환하며 선택·반환·갱신 API를
+제공하지 않는다. application은 이 값을 로그와 운영 보고에만 사용한다.
+
+```csharp
+var allocation = await allocatedRoutingIds.WaitForReadyAllocationAsync(
+    "zoneworld.zone-node",
+    cancellationToken);
+
+var nodeRid = allocation.MemberRoutingIds[ZoneWorldNames.ZoneMesh];
+// NodeId와 실제 transport RID를 함께 보고해 시작 순서와 무관하게 노드를 식별한다.
+logger.LogInformation(
+    "zone node allocation ready. node={NodeId} slot={Slot} rid={RoutingId}",
+    node.NodeId,
+    allocation.Slot,
+    nodeRid);
+```
+
+`ReportNodeStatusMsg`는 실제 `NodeRid`를 포함한다. Ops는 status report의
+`NodeId ↔ NodeRid` 관계를 현재 연결 정보와 함께 보관한다. `ZoneTopology.RidOf(...)`와
+`NodeOfRid(...)`처럼 시작 순서를 고정한 정적 RID 변환에는 의존하지 않는다.
+
+#### 배포와 교체
+
+운영 환경에서는 두 ZoneNode가 같은 실행 이미지와 같은 RID 할당 설정을 사용한다. `NodeId`와 담당
+zone은 application topology 설정으로 유지한다. bind endpoint는 서로 다른 pod나 머신에서 같은 값을
+사용할 수 있지만, 한 머신에서 여러 process를 실행하는 sample runner는 port 충돌을 피하기 위해
+서로 다른 endpoint를 계속 생성한다. runner의 endpoint 차이는 RID를 수동으로 지정하는 배포 정책이
+아니다.
+
+한 ZoneNode가 종료되면 새 process는 이전 lease가 유효한 동안 그 slot을 받을 수 없다. socket 종료와
+slot release가 끝났거나 lease가 만료된 뒤, 남아 있는 가장 작은 빈 slot을 받는다. 다른 빈 slot이
+있으면 그 번호를 먼저 받을 수 있으므로 NodeId와 slot의 영구 결합을 가정하지 않는다. location row는
+새 endpoint와 generation으로 갱신되고 caller는 기존 location reconcile 경로로 새 process에
+연결한다.
+
+`ZW-D2`의 subscriber-only `zone-node-3`은 이 allocation group에 참여하지 않는다. 이 process는
+zone, SpotNode, bridge와 보고 channel을 호스팅하지 않으며 fanout의 동적 참여만 검증한다. group
+member 구성이 다른 probe를 같은 group에 넣으면 configuration mismatch가 되므로 두 목적을 섞지
+않는다.
 
 ## 4. 사용하는 ZLink 요소
 
@@ -1086,6 +1210,22 @@ client/src/
   현재 X(peak)를 잡는다. 이후 그 봇의 X가 **peak보다 작아질 때까지**(반전) 기다린다. **finally**: 해제.
   — 봇 이름을 미리 박지 않는다: 봇은 zone을 넘나들어 어느 것이 지금 여기 있는지는 실행마다 다르다.
 
+### 11.4 자동 routing id 검증
+
+이 절은 모든 언어의 ZoneWorld self-check가 충족해야 하는 필수 검증이다.
+
+| ID | 검증 | 성공 기준 |
+|----|------|-----------|
+| `ZW-G1` | allocation group 공유 | 한 ZoneNode의 `zoneworld.zones`, `zoneworld.bridge`, `zoneworld.report`가 모두 같은 `znN`을 사용한다 |
+| `ZW-G2` | 시작 순서 독립 | `zone-node-2`를 먼저 시작해 `zn1`을 받아도 NodeId, 담당 zone, 점검과 진단 호출이 올바르게 동작한다 |
+| `ZW-G3` | bounded pool handoff | 두 slot이 사용 중일 때 replacement를 먼저 시작하면 socket을 bind하지 않고 `WaitingForSlot`에 머문다. 이전 runtime 종료 뒤 빈 slot과 증가한 generation을 받는다 |
+| `ZW-G4` | crash 뒤 재할당 | ZoneNode를 강제 종료하면 lease 만료 전에는 해당 slot을 다른 runtime이 받지 않고, 만료 뒤 새 endpoint로 같은 빈 slot을 할당받는다 |
+| `ZW-G5` | 고정 RID 설정 제거 | ZoneNode 설정과 topology에 `zn1`·`zn2` 고정값이 없고 `SetRoutingId(...)`·`SetEntrySpotRoutingId(...)`를 호출하지 않는다 |
+
+`ZW-G2`는 slot이 application `NodeId`가 아님을 검증한다. `ZW-G3`과 `ZW-G4`는 정상 release와 crash
+lease 만료를 각각 검증하므로 하나로 합치지 않는다. runner는 할당 결과 로그뿐 아니라 Ops가 받은
+`NodeId`와 `NodeRid`, location snapshot의 endpoint와 generation을 함께 확인한다.
+
 ## 12. Smoke 실행 기준
 
 언어별 runner는 아래 순서를 따른다.
@@ -1096,6 +1236,11 @@ client/src/
 4. `Gateway` 서버를 시작한다.
 5. client(Playwright headless)가 게임 시나리오(`ZW-A*`, `ZW-B*`)를 실행한다.
 6. 관제 시나리오(`ZW-C*`, `ZW-D*`, `ZW-E*`)를 실행한다.
+
+3단계의 첫 실행 순서를 `zone-node-2`, `zone-node-1`로 바꿔
+`ZW-G2`를 검증한다. 이어서 같은 `zone-node-2` 설정의 replacement를 먼저 시작해
+`WaitingForSlot`을 확인하고 기존 process를 종료하여 `ZW-G3` handoff를 검증한다. crash 경로는
+별도 실행에서 `ZW-G4`로 검증한다.
 
 샘플 성공 로그는 아래 의미를 포함해야 한다.
 
@@ -1132,6 +1277,10 @@ zoneworld=completed
   않는다.
 - `PlayerId`·`ZoneId`·`NodeId`는 명시적 domain id이며 routing id hex를 client에 노출하지
   않는다.
+
+§3.2의 자동 routing id는 필수 완료 조건이다. ZoneNode의 세 group member가 slot 하나를 공유하고,
+시작 순서·정상 handoff·crash 재할당을 §11.4대로 통과해야 한다. 고정 `NodeRid` 구현을 이 항목의
+완료로 간주하지 않는다.
 
 ## 14. TypeScript browser connector 의존
 
@@ -1184,6 +1333,7 @@ ws.onmessage = e => ...;   // 디프레이밍을 브라우저가 수행한다
 | **bound session 없는 actor**(봇/NPC) | 없음 | **봇 8마리** — spot timer가 구동(§2.7) |
 | owner 일관 channel | 없음 | **노드 지정 점검·진단** |
 | spot pub/sub | 있음(ShoppingMall·Bingo) | 경계 동기화(인접 zone별 topic) |
+| 자동 routing id allocation group | 없음 | SpotNode·bridge·보고 channel의 번호 공유와 교체 handoff(§3.2·§11.4) |
 | 브라우저 client | 없음 | **게임·관제 UI**(§14 선행 과제) |
 
 **RouteMesh channel은 이 표에 없다.** [channel topology spec §3.1](../../../spec/server/10-channel-topology.ko.md)이

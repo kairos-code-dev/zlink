@@ -19,5 +19,9 @@ public interface IOpsReportPort
 {
     void ReportSpotEvent(string kind, string detail, DateTimeOffset occurredAt);
 
-    void ReportNodeStatus(IReadOnlyList<string> zones, int playerCount, bool maintenance);
+    void ReportNodeStatus(
+        string nodeRid,
+        IReadOnlyList<string> zones,
+        int playerCount,
+        bool maintenance);
 }

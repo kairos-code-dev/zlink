@@ -13,7 +13,7 @@ internal sealed class AuthenticateBingoSessionHandler(
     IZLinkChannelClient channels,
     IZLinkRouteClient routes,
     IZLinkSpotHandleResolver spots,
-    SampleSessionNode session,
+    IZLinkAllocatedRoutingIdProvider allocatedRoutingIds,
     ILogger<AuthenticateBingoSessionHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AuthenticateReq>
 {
@@ -33,17 +33,21 @@ internal sealed class AuthenticateBingoSessionHandler(
             || string.IsNullOrWhiteSpace(authenticated.DisplayName))
             throw new InvalidOperationException(authenticated.Reason ?? "Player authentication failed.");
 
+        var sessionAllocation = await allocatedRoutingIds.WaitForReadyAllocationAsync(
+            "bingo.session",
+            cancellationToken);
+        var preferredPlayNodeRid = RoutingId.From($"play{sessionAllocation.Slot}");
         var playEntrySpot = await spots.ResolveSpotHandleAsync(
-                                session.PreferredPlayNodeRid,
+                                preferredPlayNodeRid,
                                 cancellationToken)
                             ?? throw new InvalidOperationException(
-                                $"Play entry spot '{session.PreferredPlayNodeRid}' was not found.");
+                                $"Play entry spot '{preferredPlayNodeRid}' was not found.");
         var ensured = await routes.RequestToSpot(playEntrySpot,
                 new EnsurePlayerActorReq
                 {
                     ActorId = authenticated.ActorId,
                     DisplayName = authenticated.DisplayName,
-                    PreferredActorNodeRid = session.PreferredPlayNodeRid.ToString()
+                    PreferredActorNodeRid = preferredPlayNodeRid.ToString()
                 })
             .Async<EnsurePlayerActorRes>(cancellationToken);
 

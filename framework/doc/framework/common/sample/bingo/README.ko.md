@@ -4,6 +4,10 @@
 
 > 이 문서는 모든 framework 언어가 공유하는 Bingo 샘플 시나리오를 정의한다.
 > 언어별 샘플은 이 문서를 기준으로 서버 역할, 메시지 흐름, smoke 검증 기준을 맞춘다.
+>
+> **자동 routing id 필수.** Bingo의 API·Play·Session runtime은 §3.3의 allocation group을 사용해야
+> 하며 고정 RID를 설정하면 안 된다. `.NET` 샘플은 이 구성을 적용했다. 다른 언어 구현도 같은 public
+> 계약과 group 구성을 사용해야 완료로 판정한다.
 
 ## 1. 목적
 
@@ -100,8 +104,8 @@ client-facing stream endpoint를 열지 않는다. Session 서버는 인증과 s
 `Play A` 역할을 맡는지 달라질 수 있지만, 첫 player actor가 있는 Play SpotNode가 room
 owner가 되어야 한다. client self-check는 특정 서버 이름이 아니라 응답에 담긴 actor node
 rid와 room owner node rid를 비교해 cross-node join과 pub/sub 수신을 검증한다.
-샘플 설정은 `SessionA -> PlayA`, `SessionB -> PlayB`처럼 actor 생성 preferred node를
-정한다. 이 설정은 endpoint 직접 연결이 아니라 location store 위의 node rid 선택이다.
+각 Session은 자기 할당 slot `N`을 읽고 `playN`을 actor 생성 preferred node로 선택한다. 어느
+경우에도 process 이름이나 endpoint를 직접 선택하지 않고 location store 위의 node rid를 선택한다.
 
 ## 3. 자동 연결 방식
 
@@ -183,6 +187,116 @@ fallback으로 성공시키면 안 된다.
 - runner는 정상 종료와 실패 종료 모두에서 Redis container를 정리한다.
 - Docker를 사용할 수 없으면 runner는 명확한 오류를 출력하고 중단한다.
 - C++, .NET, Java, Kotlin, Node 샘플은 모두 같은 Redis endpoint 계약을 사용한다.
+
+### 3.3 서버 routing id 자동 할당
+
+API, Play와 Session runtime은 location store에서 역할별 slot을 받는다. 역할마다 allocation group을
+분리하므로 각 역할은 독립적으로 1번부터 번호를 사용한다. Play runtime만 Play client-server channel과
+room Spot mesh를 같은 group에 넣어 번호를 공유한다.
+
+| 역할 | allocation group | slot count | prefix와 결과 | group member |
+|------|------------------|-----------:|----------------|--------------|
+| API | `bingo.api` | 2 | `api1`, `api2` | API channel |
+| Play | `bingo.play` | 2 | `play1`, `play2` | Play channel, room Spot mesh |
+| Session | `bingo.session` | 2 | `session1`, `session2` | room Spot mesh |
+
+Play entry spot RID는 room SpotNode에 할당된 `play1` 또는 `play2`를 그대로 사용한다. Play와 Session은
+같은 room Spot mesh 이름을 사용하지만 allocation group과 prefix가 다르다. 두 역할 모두 allocated
+identity를 사용하므로 같은 channel에 fixed RID와 allocated RID를 섞지 않으며, 생성되는 RID도
+서로 충돌하지 않는다.
+
+필수 구성은 다음과 같다. `.NET` 구현은 이 구성을 사용하며, 다른 언어도 각 언어의 같은 public
+계약으로 구성한다. 언어별 sample helper로 자동 할당을 흉내 내면 안 된다.
+
+```csharp
+// API runtime
+options.AddClientServerChannel(SampleNames.ApiChannel)
+    // 동일한 API 설정의 두 runtime이 api1과 api2를 나눠 사용한다.
+    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
+    .SetRoutingIdAllocationGroup("bingo.api")
+    .EnableServer(node.ChannelEndpoint)
+    .AddHandlerGroup("api");
+
+// Play runtime
+const string playAllocationGroup = "bingo.play";
+
+options.AddClientServerChannel(SampleNames.PlayChannel)
+    // Play channel과 room SpotNode가 사용할 번호를 함께 할당받는다.
+    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
+    .SetRoutingIdAllocationGroup(playAllocationGroup)
+    .EnableServer(node.PlayChannelEndpoint)
+    .EnableClient()
+    .AddHandlerGroup("play");
+
+options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+    // 같은 group이므로 Play channel과 동일한 play1 또는 play2를 사용한다.
+    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
+    .SetRoutingIdAllocationGroup(playAllocationGroup)
+    .EnableRouter(node.SpotRouterEndpoint)
+    .EnablePubSub(node.SpotPubEndpoint)
+    .AddEntrySpot<BingoEntrySpot>()
+    .AddSpotFactory<BingoRoom>();
+
+// Session runtime
+options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
+    // Session SpotNode는 Play pool과 분리된 session1 또는 session2를 사용한다.
+    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "session")
+    .SetRoutingIdAllocationGroup("bingo.session")
+    .EnableRouter(session.RouterEndpoint)
+    .EnablePubSub(session.PubEndpoint);
+```
+
+API, Play와 Session 구성에서는 `SetRoutingId(...)`를 사용하지 않으며 Play에서도
+`SetEntrySpotRoutingId(...)`를 사용하지 않는다. `SampleApiNode`, `SamplePlayNode`와
+`SampleSessionNode`는 고정 RID field를 두지 않고 endpoint만 유지한다. Session의 preferred Play RID는
+자기 할당 slot에서 계산한다. 기존 `1101..1104`, `2201`, `2202`, `3301`, `3302` RID 상수는
+topology와 runner configuration에 남기지 않는다.
+
+location store와 match queue가 같은 Redis instance를 사용하더라도 책임은 합치지 않는다. 공식
+Redis location store가 slot lease와 generation을 원자적으로 관리하고, `RedisBingoMatchQueue`는
+계속 `RoomId`, 실제 `OwnerPlayNodeRid`와 actor reservation만 저장한다. match queue가 빈 slot을
+고르거나 lease를 갱신하지 않는다.
+
+API, Play와 Session은 heartbeat 10초, owner lease TTL 30초, fencing margin 5초와 renew timeout
+3초의 framework 기본값을 함께 사용한다. 역할별 override는 두지 않는다.
+
+#### Session의 preferred Play 선택
+
+Session은 특정 process 이름인 `PlayA`나 `PlayB`를 선택하지 않는다. 자기 `bingo.session` 할당 결과가
+`sessionN`이면 같은 번호로 `playN`을 만들어 actor 생성 대상으로 사용한다.
+
+```text
+preferredPlayRid = "play" + decimal(sessionAllocation.slot)
+```
+
+예를 들어 `session1` owner는 `play1`, `session2` owner는 `play2`를 선택한다. 이 규칙은 Play
+process에 slot을 예약하지 않는다. 현재 lease를 가진 어느 Play runtime이든 `play1` 또는 `play2`의
+owner가 될 수 있다. Session은 기존 Spot resolver로 해당 entry spot을 찾고 현재 owner에게
+`EnsurePlayerActorReq`를 보낸다.
+
+`SampleSessionNode`에서 `PreferredPlayNodeRid`를 제거한다. Session 인증 handler는 framework가 ready
+상태에 도달한 뒤 provider가 반환한 자기 slot으로 preferred Play RID를 한 번 계산한다. 두 Play
+slot과 두 Session slot이 모두 ready가 되기 전에는 client self-check를 시작하지 않는다.
+
+각 runtime은 framework가 ready 상태에 도달한 뒤 할당 결과 provider에서 자기 role group 결과를
+읽어 trace label과 운영 로그에 실제 slot과 RID를 기록한다. application이 slot을 선택·반환하거나
+Redis slot row를 직접 읽지 않는다.
+
+첫 player의 실제 `ActorNodeRid`가 room owner 선호 RID가 되고, Redis match queue의
+`OwnerPlayNodeRid`에도 그 값을 저장한다. 따라서 room allocation, remote Spot join, observer용 room
+RID와 reward 수신 검증은 고정 `2201`, `2202`가 아니라 실행 중 할당된 `play1`, `play2`를 사용한다.
+
+#### 시작과 교체
+
+runner는 두 Play runtime을 먼저 시작하고 `play1`, `play2`가 모두 ready인지 확인한 뒤 Session을
+시작한다. Play process 시작 순서와 slot 번호를 결합하지 않는다. 예를 들어 두 번째로 명명한 process가
+먼저 시작해 `play1`을 받아도 client 검증 결과는 같아야 한다.
+
+두 slot이 사용 중일 때 replacement를 먼저 시작하면 `WaitingForSlot` 상태에서 socket을 bind하지
+않는다. 기존 owner가 정상 종료해 slot을 release하거나 crash 뒤 30초 TTL이 만료되면 replacement가
+가장 작은 빈 slot과 증가한 generation을 받는다. 새 location row가 게시되면 Session과 다른 Play
+runtime은 기존 reconcile 경로로 새 endpoint에 연결한다. 이 기능은 종료된 process의 메모리 actor나
+진행 중인 room state를 복구하지 않는다.
 
 ## 4. 프로세스와 책임
 
@@ -593,6 +707,22 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
 이 검증은 성공 시나리오를 눈으로 읽기 위한 로그가 아니라 sample release gate다. 언어별
 client가 위 값을 확인하지 않으면 공통 sample 기준을 만족하지 못한다.
 
+### 10.1 자동 routing id 검증
+
+다음 검증은 모든 언어의 Bingo runner가 충족해야 한다. 자동 RID 문자열을 로그에 출력하는 것만으로
+통과한 것으로 표시하지 않는다.
+
+| ID | 검증 | 성공 기준 |
+|----|------|-----------|
+| `BINGO-RID-1` | 역할별 group과 번호 공유 | API는 `apiN`, Session은 `sessionN`을 사용하고, 각 Play runtime의 Play channel과 room SpotNode는 같은 `playN`을 사용한다 |
+| `BINGO-RID-2` | 고정 RID 제거 | topology와 설정에 기존 `1101..1104`, `2201`, `2202`, `3301`, `3302`가 없고 builder가 `SetRoutingId(...)`·`SetEntrySpotRoutingId(...)`를 호출하지 않는다 |
+| `BINGO-RID-3` | 시작 순서 독립 | 각 역할의 process 시작 순서를 바꿔도 `sessionN`의 actor는 `playN`에 생성되고 두 actor의 node RID가 다르며 기존 remote join 검증이 통과한다 |
+| `BINGO-RID-4` | match queue 정합성 | `OwnerPlayNodeRid`, room owner 응답과 실제 room SpotNode RID가 동일한 할당 RID다 |
+| `BINGO-RID-5` | slot handoff | replacement는 기존 owner 종료 전 `WaitingForSlot`이고, release 또는 lease 만료 뒤 빈 slot과 증가한 generation을 받는다 |
+
+기존 client 검증의 `ActorNodeRid`, `RoomOwnerNodeRid`, `ObserverNodeRid` 비교는 그대로 유지한다. 단순히
+`play1`, `play2` 문자열이 출력됐다는 로그만으로 remote join과 pub/sub 검증을 대체하지 않는다.
+
 ## 11. 메시지 계약
 
 아래 계약은 언어 중립 schema다. 언어별 샘플은 같은 이름과 필드를 자기 언어의
@@ -871,8 +1001,9 @@ sequenceDiagram
 Session 서버는 인증 성공 후 actor reference를 얻고 현재 stream session을 그 actor에
 bind한다. 이후 client gameplay packet은 Session 서버가 직접 처리하지 않고 bound actor로
 relay한다.
-Session 서버는 자기 역할에 대응하는 preferred Play node rid를 `EnsurePlayerActorReq`에
-담는다. `SessionA`는 `PlayA`를, `SessionB`는 `PlayB`를 preferred node로 사용한다.
+Session 서버는 자기 역할에 대응하는 preferred Play node rid를 `EnsurePlayerActorReq`에 담는다.
+자기 Session slot과 같은 번호의 `playN` lease owner를 선택하며 process 이름과 slot 번호의 결합을
+가정하지 않는다.
 
 **이 preferred node rid는 샘플이 정의한 application payload 필드이지 framework 표면이 아니다.**
 framework에는 remote node를 직접 지정하는 actor 생성 API가 없다
@@ -1178,6 +1309,10 @@ evidence를 남겨야 한다.
 - 카드 제출 flow는 제출 dispatch까지 이어지고, 각 timer tick은 별도 `origin=timer` flow로
   room dispatch와 해당 bound push까지 이어진다.
 - 언어 표준 meter/registry 연결 예제가 있고 Play는 `DrainNatural` 정책을 공개 API로 선언한다.
+
+§3.3의 자동 routing id는 필수 완료 조건이다. 모든 언어에서 `BINGO-RID-1`부터
+`BINGO-RID-5`까지 통과하고 API·Play·Session의 고정 RID 설정이 제거되어야 한다. 숫자 상수 기반
+RID 구현을 자동 할당 완료로 간주하지 않는다.
 
 ## 17. 관측·운영 켜기 (Observability & Ops)
 

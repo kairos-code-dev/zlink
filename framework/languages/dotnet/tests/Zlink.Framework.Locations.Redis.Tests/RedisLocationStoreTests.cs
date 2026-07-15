@@ -654,6 +654,23 @@ public sealed class RedisLocationStoreTests
         Assert.True(Assert.Single(snapshot.Allocations).LeaseExpiresAt > snapshot.StoreNow);
     }
 
+    [SkippableFact]
+    public async Task RoutingIdSlotAllocation_AllowsAllocatedPeersFromAnotherGroup()
+    {
+        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
+        await using var store = _fixture.CreateStore();
+        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("play", "play") };
+
+        var play = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("bingo.play", members, 2, OwnerA, LeaseTtl)));
+        await store.UpdatePeerAsync(
+            TestRows.Peer(OwnerA, nodeRid: $"play{play.Allocation.Slot}"),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("bingo.session", members, 2, OwnerB, LeaseTtl)));
+    }
+
     /// <summary>Creates an isolated store and starts the lease setup; tests
     /// must await the returned task before writing rows.</summary>
     private ZLinkRedisLocationStore CreateStoreWithLiveOwnersAsync(

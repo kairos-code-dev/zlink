@@ -11,6 +11,7 @@ internal static class Program
         await SessionServerHostFactory.Build(
                 configuration.Topology,
                 configuration.Topology.Session(configuration.NodeName),
+                configuration.NodeName,
                 configuration.LogDirectory)
             .RunAsync();
     }

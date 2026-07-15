@@ -1,6 +1,4 @@
 using Microsoft.Extensions.Configuration;
-using Systems.Zlink;
-
 namespace ZoneWorld.Server.Configuration;
 
 public sealed record ZoneWorldSettings(
@@ -16,19 +14,12 @@ public sealed record ZoneNodeSettings(
     string ActorsChannelEndpoint,
     string BridgeEndpoint,
     string? FaultTickZone = null,
-    bool DisableBots = false)
-{
-    public RoutingId NodeRid => RoutingId.From(ZoneTopology.RidOf(NodeId));
-}
+    bool DisableBots = false);
 
 public sealed record GatewaySettings(
     string StreamEndpoint,
     string SpotRouterEndpoint,
-    string SpotPubSubEndpoint,
-    string NodeRid)
-{
-    public RoutingId RoutingId => Systems.Zlink.RoutingId.From(NodeRid);
-}
+    string SpotPubSubEndpoint);
 
 public sealed record OpsSettings(
     string StreamEndpoint,

@@ -114,7 +114,6 @@ write("gateway", "gateway", {
     "streamEndpoint": f"ws://127.0.0.1:{ports[18]}",
     "spotRouterEndpoint": f"tcp://127.0.0.1:{ports[19]}",
     "spotPubSubEndpoint": f"tcp://127.0.0.1:{ports[20]}",
-    "nodeRid": "gw01",
 })
 PY
 
@@ -160,12 +159,14 @@ start_zone_node() {
   first_new_ops_line=$(($(wc -l <"$LOG_DIR/ops.log" 2>/dev/null || printf '0') + 1))
   : >"$LOG_DIR/$name.restart.marker"
   start "$name" "$SERVER_BIN" --config "$CONFIG_DIR/$name.json"
-  wait_for_log_after "$name" "topology=ready" "$first_new_line"
+  # A crashed owner keeps its allocated slot until the 30-second lease expires. Wait for that
+  # contract plus reconcile time instead of treating the old three-second test lease as current.
+  wait_for_log_after "$name" "topology=ready" "$first_new_line" 450
   # These two independent observations replace a fixed convergence delay: the restarted node
   # has submitted a status report, and Ops has observed the new socket connection.
-  wait_for_log_after "$name" "node status report submitted. node=$name" "$first_new_line"
-  wait_for_log_after ops "node connection observed. node=$name, connected=True" "$first_new_ops_line"
-  wait_for_log_after ops "ops channel observed. node=$name, connected=True, kind=ConnectionReady" "$first_new_ops_line"
+  wait_for_log_after "$name" "node status report submitted. node=$name" "$first_new_line" 450
+  wait_for_log_after ops "node connection observed. node=$name, connected=True" "$first_new_ops_line" 450
+  wait_for_log_after ops "ops channel observed. node=$name, connected=True, kind=ConnectionReady" "$first_new_ops_line" 450
 }
 
 client_config() {

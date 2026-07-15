@@ -221,28 +221,15 @@ internal static class ZLinkRedisLocationScripts
     /// Atomically fixes group metadata, renews an idempotent owner claim, or assigns the lowest
     /// logically expired/free slot. The owner lease is extended in the same Redis operation.
     ///
-    /// KEYS[1] group hash, KEYS[2] owner lease key, KEYS[3] lease index,
-    /// KEYS[4] peer row index.
+    /// KEYS[1] group hash, KEYS[2] owner lease key, KEYS[3] lease index.
     /// ARGV[1] canonical member JSON, ARGV[2] slot count, ARGV[3] owner id,
-    /// ARGV[4] lease TTL milliseconds, ARGV[5] peer row prefix,
-    /// ARGV[6] owner lease prefix, ARGV[7..] member channel names.
+    /// ARGV[4] lease TTL milliseconds, ARGV[5] owner lease prefix.
     /// </summary>
     internal const string AcquireRoutingIdSlot = Prologue + """
 
         local config = redis.call('HGET', KEYS[1], 'config')
         local slotCount = tonumber(ARGV[2])
         if not config then
-            local peerRows = redis.call('SMEMBERS', KEYS[4])
-            for _, rowKey in ipairs(peerRows) do
-                local rowHash = ARGV[5] .. rowKey
-                local mesh = redis.call('HGET', rowHash, 'mesh')
-                local owner = redis.call('HGET', rowHash, 'owner')
-                if mesh and owner and redis.call('EXISTS', ARGV[6] .. owner) == 1 then
-                    for memberIndex = 7, #ARGV do
-                        if mesh == ARGV[memberIndex] then return {'identity-conflict', nowMs} end
-                    end
-                end
-            end
             redis.call('HSET', KEYS[1],
                 'config', ARGV[1], 'slotCount', slotCount, 'identityMode', 'allocated')
         elseif config ~= ARGV[1] or tonumber(redis.call('HGET', KEYS[1], 'slotCount')) ~= slotCount then
@@ -276,7 +263,7 @@ internal static class ZLinkRedisLocationScripts
                 break
             end
             local currentOwner, generation, expiresAt = string.match(value, '([^|]*)|([^|]*)|([^|]*)')
-            if redis.call('EXISTS', ARGV[6] .. currentOwner) == 0 then
+            if redis.call('EXISTS', ARGV[5] .. currentOwner) == 0 then
                 redis.call('HDEL', KEYS[1], 'owner:' .. currentOwner)
                 selected = slot
                 break

@@ -27,12 +27,6 @@ builder.Services.AddZLinkFramework(options =>
     options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(shared.RedisEndpoint)
         .SetKeyPrefix(shared.RedisKeyPrefix)));
-    // A stopped node's location rows live until its owner lease expires. The default lease is
-    // 15s, which is longer than an operator — or a scenario — waits to see a node leave (§8.1).
-    var locations = options.ConfigureLocations();
-    locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
-    locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
-
     options.ConfigureDispatch()
         .MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
         .TraceLabel("gateway");
@@ -47,8 +41,9 @@ builder.Services.AddZLinkFramework(options =>
     // factory. Membership is what lets it bind a session to an actor living on a zone
     // node and relay packets to it.
     options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
+        .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw0")
+        .SetRoutingIdAllocationGroup("zoneworld.gateway")
         .EnableRouter(gateway.SpotRouterEndpoint)
-        .SetRoutingId(gateway.RoutingId)
         .EnablePubSub(gateway.SpotPubSubEndpoint);
 
     options.AddClientServerChannel(ZoneWorldNames.ActorsChannel)

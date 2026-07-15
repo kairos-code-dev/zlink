@@ -86,7 +86,7 @@ public sealed class InMemoryLocationStoreTests
     }
 
     [Fact]
-    public async Task RoutingIdSlots_RejectActiveFixedPeerWhenGroupIsFirstCreated()
+    public async Task RoutingIdSlots_DoNotInferIdentityModeFromPeerRows()
     {
         var store = new ZLinkInMemoryLocationStore();
         await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("fixed-node"), LeaseTtl);
@@ -101,7 +101,7 @@ public sealed class InMemoryLocationStoreTests
             OwnerB,
             LeaseTtl));
 
-        Assert.IsType<ZLinkRoutingIdSlotIdentityModeConflict>(result);
+        Assert.IsType<ZLinkRoutingIdSlotAcquired>(result);
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.Contracts.Locations;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
 using ZoneWorld.Server.ZoneNode.Application.Zone;
@@ -51,23 +52,42 @@ internal sealed class OpsReportAdapter(
                 new ReportSpotEventMsg(maintenance.OwnNodeId, kind, detail, occurredAt.ToString("O")))
             .Submit();
 
-    public void ReportNodeStatus(IReadOnlyList<string> zones, int playerCount, bool maintenanceEnabled) =>
+    public void ReportNodeStatus(
+        string nodeRid,
+        IReadOnlyList<string> zones,
+        int playerCount,
+        bool maintenanceEnabled) =>
         channels
             .SendToChannel(
                 ZoneWorldNames.ReportChannel,
-                new ReportNodeStatusMsg(maintenance.OwnNodeId, zones, playerCount, maintenanceEnabled))
+                new ReportNodeStatusMsg(
+                    maintenance.OwnNodeId,
+                    nodeRid,
+                    zones,
+                    playerCount,
+                    maintenanceEnabled))
             .Submit();
 }
 
 /// <summary>Reports this node's status every second so Ops can fill in PlayerCount (§8.1).</summary>
 internal sealed class NodeStatusReporter(
     IOpsReportPort ops,
+    IZLinkAllocatedRoutingIdProvider allocatedRoutingIds,
     NodeMaintenancePolicy maintenance,
     NodePlayerCensus census,
     ILogger<NodeStatusReporter> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var allocation = await allocatedRoutingIds.WaitForReadyAllocationAsync(
+            "zoneworld.zone-node",
+            stoppingToken);
+        var nodeRid = allocation.MemberRoutingIds[ZoneWorldNames.ZoneMesh].ToString();
+        logger.LogInformation(
+            "zone node allocation ready. node={NodeId} slot={Slot} rid={RoutingId}",
+            maintenance.OwnNodeId,
+            allocation.Slot,
+            nodeRid);
         using var timer = new PeriodicTimer(
             TimeSpan.FromMilliseconds(ZoneWorldSpec.NodeStatusReportPeriodMs));
         var firstReport = true;
@@ -77,6 +97,7 @@ internal sealed class NodeStatusReporter(
             try
             {
                 ops.ReportNodeStatus(
+                    nodeRid,
                     ZoneTopology.ZonesOf(maintenance.OwnNodeId),
                     census.TotalPlayers,
                     maintenance.IsOwnNodeUnderMaintenance);

@@ -11,9 +11,13 @@ namespace Bingo.Server.Api;
 
 public static class ApiServerHostFactory
 {
-    public static IHost Build(SampleTopology topology, SampleApiNode node, string logDirectory)
+    public static IHost Build(
+        SampleTopology topology,
+        SampleApiNode node,
+        string nodeName,
+        string logDirectory)
     {
-        var traceLabel = $"api-{node.RouteRid}";
+        var traceLabel = $"api-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
@@ -32,12 +36,18 @@ public static class ApiServerHostFactory
             options.AddHandlersFromAssemblyOf(typeof(ApiServerHostFactory));
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.AddClientServerChannel(SampleNames.ApiChannel)
+                .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
+                .SetRoutingIdAllocationGroup("bingo.api")
                 .EnableServer(node.ChannelEndpoint)
-                .SetRoutingId(node.RouteRid)
                 .AddHandlerGroup("api");
             options.AddClientServerChannel(SampleNames.PlayChannel)
                 .EnableClient();
         });
+        builder.Services.AddSingleton(new BingoRoutingIdReport(
+            "api",
+            "bingo.api",
+            [SampleNames.ApiChannel]));
+        builder.Services.AddHostedService<BingoRoutingIdReporter>();
 
         return builder.Build();
     }

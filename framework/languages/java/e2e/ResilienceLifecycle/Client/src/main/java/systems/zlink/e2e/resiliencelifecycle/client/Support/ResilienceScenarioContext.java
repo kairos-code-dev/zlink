@@ -174,7 +174,7 @@ public final class ResilienceScenarioContext {
 
     private java.util.List<Contracts.PeerLocation> peers() {
         return ZLinkHttpClient.create(endpoint).get("/operations/peers")
-            .fetch(Contracts.PeerSnapshot.class)
+            .async(Contracts.PeerSnapshot.class).toCompletableFuture().join().body()
             .peers();
     }
 
@@ -379,7 +379,7 @@ public final class ResilienceScenarioContext {
         ZLinkHttpClient.create(endpoint).post("/operations/request/unhandled")
             .timeout(timeout.plusSeconds(5))
             .body(new Contracts.UnhandledOperation(value, timeout.toMillis()))
-            .fetch(Contracts.WorkRes.class);
+            .async(Contracts.WorkRes.class).toCompletableFuture().join().body();
     }
 
     public void send(String value) {

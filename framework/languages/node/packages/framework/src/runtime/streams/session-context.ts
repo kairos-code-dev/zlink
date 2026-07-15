@@ -240,7 +240,7 @@ export class DefaultZLinkSessionContext implements ZLinkSessionContext {
 }
 
 class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry {
-  private readonly handlersByPacket = new Map<string, Type<ZLinkSessionPacketHandler<ZLinkSessionContext>>>();
+  private readonly handlersByPacket = new Map<string, SessionHandlerRegistration>();
   private registrationOpen = true;
 
   constructor(
@@ -263,7 +263,7 @@ class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry 
     }
     this.handlersByPacket.set(
       packetName,
-      handlerType as Type<ZLinkSessionPacketHandler<ZLinkSessionContext>>
+      { handlerType: handlerType as Type<ZLinkSessionPacketHandler<ZLinkSessionContext>> }
     );
     return this;
   }
@@ -273,22 +273,34 @@ class DefaultZLinkSessionHandlerRegistry implements ZLinkSessionHandlerRegistry 
   }
 
   async tryHandle(dispatch: import('../../contracts').ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<boolean> {
-    const handlerType = this.handlersByPacket.get(dispatch.packetName);
-    if (handlerType === undefined) {
+    const registration = this.handlersByPacket.get(dispatch.packetName);
+    if (registration === undefined) {
       return false;
     }
-    const handler = await this.resolveHandler(handlerType);
+    const handler = await this.resolveHandler(registration);
     await handler.handle(this.context, dispatch, payload);
     return true;
   }
 
   private async resolveHandler(
+    registration: SessionHandlerRegistration
+  ): Promise<ZLinkSessionPacketHandler<ZLinkSessionContext>> {
+    registration.instance ??= this.createHandler(registration.handlerType);
+    return await registration.instance;
+  }
+
+  private async createHandler(
     handlerType: Type<ZLinkSessionPacketHandler<ZLinkSessionContext>>
   ): Promise<ZLinkSessionPacketHandler<ZLinkSessionContext>> {
-    const resolved = this.providerResolver?.get?.(handlerType)
-      ?? await this.providerResolver?.create?.(handlerType);
-    return resolved ?? new handlerType();
+    return this.providerResolver?.get?.(handlerType)
+      ?? await this.providerResolver?.create?.(handlerType)
+      ?? new handlerType();
   }
+}
+
+interface SessionHandlerRegistration {
+  readonly handlerType: Type<ZLinkSessionPacketHandler<ZLinkSessionContext>>;
+  instance?: Promise<ZLinkSessionPacketHandler<ZLinkSessionContext>>;
 }
 
 function sessionHandlerPacketName(handlerType: new (...args: never[]) => unknown): string {

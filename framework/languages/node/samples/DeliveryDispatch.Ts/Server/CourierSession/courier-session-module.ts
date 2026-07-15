@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { CourierSessionFactory } from './courier-session';
+import { BindCourierSessionHandler, CourierSessionFactory } from './courier-session';
 import { createDeliveryDispatchLocationStore, deliveryDispatchLocationOptions } from '../Configuration/location-store';
 import {
   DELIVERYDISPATCH_SAMPLE_CONFIG,
@@ -50,6 +50,7 @@ function createCourierSessionModule() {
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
         useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
       },
+      BindCourierSessionHandler,
       CourierSessionFactory
     ]
   })(CourierSessionModule);

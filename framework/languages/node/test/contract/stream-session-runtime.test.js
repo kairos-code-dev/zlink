@@ -174,10 +174,12 @@ test('session handler registry resolves handler instances through the runtime pr
     }
   }
   framework.ZLinkPacket('session.injected')(InjectedHandler);
+  let createCount = 0;
   const runtime = new framework.ZLinkStreamSessionRuntime({
     socket: new FakeStreamSocket(),
     providerResolver: {
       create(type) {
+        createCount += 1;
         assert.equal(type, InjectedHandler);
         return new InjectedHandler(dependency);
       }
@@ -195,6 +197,13 @@ test('session handler registry resolves handler instances through the runtime pr
     canReply: false
   }, { decode: () => 'payload' }), true);
   assert.deepEqual(handled, [['resolved', 'payload']]);
+  await runtime.context.handlers.tryHandle({
+    packetName: 'session.injected',
+    metadata: new Map(),
+    canReply: false
+  }, { decode: () => 'again' });
+  assert.equal(createCount, 1);
+  assert.deepEqual(handled, [['resolved', 'payload'], ['resolved', 'again']]);
   await runtime.dispose();
 });
 

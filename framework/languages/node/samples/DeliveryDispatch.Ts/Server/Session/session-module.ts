@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../../Shared/Configuration/sample-names';
-import { CustomerSessionFactory } from './customer-session';
+import { CustomerSessionFactory, SubscribeDeliverySessionHandler } from './customer-session';
 import { CustomerActorDirectory, CustomerActorFactory } from './customer-actor';
 import { CustomerEntrySpot } from './customer-entry-spot';
 import { CustomerStatusHandler } from './customer-status-handler';
@@ -64,6 +64,7 @@ function createSessionModule() {
         inject: [DELIVERYDISPATCH_SAMPLE_CONFIG],
         useFactory: (config: DeliveryDispatchServerConfig) => createDeliveryDispatchLocationStore(config)
       },
+      SubscribeDeliverySessionHandler,
       CustomerSessionFactory,
       CustomerActorFactory,
       CustomerEntrySpot,

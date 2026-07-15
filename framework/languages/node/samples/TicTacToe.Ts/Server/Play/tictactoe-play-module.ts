@@ -18,6 +18,7 @@ import { TicTacToeGameSpot } from './Infrastructure/ZLink/Spots/TicTacToeGameSpo
 import { TICTACTOE_GAME_ROOM_PROVISIONER, TicTacToeGameCreator } from './Application/GameCreation/tictactoe-game-creator';
 import { ZLinkTicTacToeGameRoomProvisioner } from './Infrastructure/ZLink/tictactoe-game-room-provisioner';
 import { PlaySessionFactory } from './Infrastructure/ZLink/Sessions/play-session-factory';
+import { AuthenticatePlaySessionHandler } from './Infrastructure/ZLink/Sessions/Handlers/authenticate-play-session-handler';
 import { PLAY_STREAM_ENDPOINT } from './play-tokens';
 import { createTicTacToeLocationStore } from '../Configuration/location-store';
 import { TICTACTOE_SAMPLE_CONFIG, createTicTacToeConfigurationModule } from '../Configuration/sample-config';
@@ -93,6 +94,7 @@ function createTicTacToePlayModule() {
       PlayActorPlaceMarkHandler,
       PlayerWinMilestoneEventHandler,
       PlaySessionFactory,
+      AuthenticatePlaySessionHandler,
       TicTacToeGameTimerHandler,
     ]
   })(TicTacToePlayModule);

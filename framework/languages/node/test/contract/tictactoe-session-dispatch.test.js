@@ -19,6 +19,7 @@ test('TicTacToe relays ObserveMilestoneReq to the bound actor', async () => {
     ));
     let relayCalls = 0;
     let orphanEntrySpotCalls = 0;
+    let authenticated = false;
     const sessionActor = {
       relay: async (payload) => {
         assert.equal(payload, observePayload);
@@ -28,8 +29,17 @@ test('TicTacToe relays ObserveMilestoneReq to the bound actor', async () => {
     };
     const context = {
       actors: {
+        get bound() { return authenticated ? [sessionActor] : []; },
         bindOrGet: async () => sessionActor,
         find: () => sessionActor
+      },
+      handlers: {
+        addHandler: () => undefined,
+        tryHandle: async (dispatch) => {
+          if (dispatch.packetName !== 'AuthenticateReq') return false;
+          authenticated = true;
+          return true;
+        }
       },
       client: {
         reply: () => ({ submit: () => undefined }),
@@ -38,29 +48,7 @@ test('TicTacToe relays ObserveMilestoneReq to the bound actor', async () => {
         })
       }
     };
-    const session = new PlaySession({
-      actorManager: {
-        getOrCreate: async () => ({ actorId: 'player-1' })
-      },
-      apiClient: {
-        requestToChannel: () => ({
-          submit: async () => ({
-            player: {
-              actorId: 'player-1',
-              displayName: 'Player 1',
-              level: 10,
-              wins: 99
-            }
-          })
-        })
-      },
-      entrySpot: {
-        observeMilestone: async () => {
-          orphanEntrySpotCalls += 1;
-          return { subscribed: true };
-        }
-      }
-    }, context);
+    const session = new PlaySession(context);
 
     await session.onDispatch(
       { packetName: 'AuthenticateReq' },
@@ -92,6 +80,7 @@ function compileSession(outputRoot) {
       'commonjs',
       '--moduleResolution',
       'node',
+      '--experimentalDecorators',
       '--skipLibCheck',
       '--outDir',
       outputRoot,

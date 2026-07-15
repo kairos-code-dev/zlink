@@ -11,13 +11,18 @@ import {
   AuthenticateRes,
   EnsurePlayerActorReq
 } from '../../../../Shared/Contracts/bingo-messages.generated';
+import { PacketNames } from '../../../../Shared/Contracts/messages';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
+  ZLinkPacket,
   type RoutingId,
   type ZLinkChannelClient,
   type ZLinkLocationRuntimeQuery,
-  type ZLinkRouteClient
+  type ZLinkRouteClient,
+  type ZLinkMessage,
+  type ZLinkSessionContext,
+  type ZLinkSessionDispatchContext
 } from '@zlink-systems/framework';
 import type { BingoSampleConfig } from '../../../Configuration/sample-config';
 import type {
@@ -26,19 +31,8 @@ import type {
   EnsurePlayerActorRes
 } from '../../../../Shared/Contracts/messages';
 
-type AuthenticateSessionContext = {
-  actors: {
-    bindOrGet(actor: {
-      nodeRid: RoutingId;
-      actorId: string;
-      generation: bigint;
-    }): Promise<unknown>;
-  };
-  actorId: string | null;
-  displayName: string | null;
-};
-
 @Injectable()
+@ZLinkPacket(PacketNames.authenticateReq)
 class SessionAuthenticator {
   constructor(
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly zlinkClient: ZLinkChannelClient,
@@ -47,7 +41,12 @@ class SessionAuthenticator {
     @Inject(BINGO_SAMPLE_CONFIG) private readonly config: BingoSampleConfig
   ) {}
 
-  async handle(request: AuthenticateReq, context: AuthenticateSessionContext): Promise<AuthenticateRes> {
+  async handle(
+    context: ZLinkSessionContext,
+    _dispatch: ZLinkSessionDispatchContext,
+    payload: ZLinkMessage
+  ): Promise<void> {
+    const request = payload.decode<AuthenticateReq>(Object as never);
     console.log(`session-auth request api actor=${request.accessToken}`);
     const authenticated = await this.zlinkClient
         .requestToChannel(SampleNames.apiChannel, new AuthenticatePlayerReq({ accessToken: request.accessToken }))
@@ -93,13 +92,11 @@ class SessionAuthenticator {
       nodeRid: ensured.actor.nodeRid as unknown as RoutingId,
       generation: BigInt(ensured.actor.generation)
     });
-    context.actorId = ensured.actorId;
-    context.displayName = authenticated.displayName;
-    return new AuthenticateRes({
+    context.client.reply(new AuthenticateRes({
       actorId: ensured.actorId,
       displayName: authenticated.displayName,
       actorNodeRid: ensured.actor.nodeRid
-    });
+    })).submit();
   }
 }
 

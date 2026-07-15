@@ -3,7 +3,17 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SampleNames } from '../Configuration/sample-names';
 import { createSupportChatLocationStore, supportChatLocationOptions } from '../Configuration/location-store';
-import { SupportChatSessionFactory } from './Sessions/supportchat-session';
+import {
+  AuthenticateSupportChatSessionHandler,
+  CloseConversationSessionHandler,
+  JoinConversationSessionHandler,
+  OpenConversationSessionHandler,
+  SendChatMessageSessionHandler,
+  SetAgentAvailableSessionHandler,
+  SetTypingSessionHandler,
+  SupportChatSessionFactory,
+  SupportChatSessionRouter
+} from './Sessions/supportchat-session';
 import { SUPPORT_CHAT_CONFIG, createSupportChatConfigurationModule } from '../Configuration/sample-config';
 import type { SupportChatServerConfig } from '../Configuration/sample-config';
 
@@ -48,6 +58,14 @@ function createSupportChatSessionModule() {
         inject: [SUPPORT_CHAT_CONFIG],
         useFactory: (config: SupportChatServerConfig) => createSupportChatLocationStore(config)
       },
+      SupportChatSessionRouter,
+      AuthenticateSupportChatSessionHandler,
+      OpenConversationSessionHandler,
+      SetAgentAvailableSessionHandler,
+      JoinConversationSessionHandler,
+      SendChatMessageSessionHandler,
+      SetTypingSessionHandler,
+      CloseConversationSessionHandler,
       SupportChatSessionFactory
     ]
   })(SupportChatSessionModule);

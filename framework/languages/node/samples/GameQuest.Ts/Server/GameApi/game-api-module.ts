@@ -22,7 +22,7 @@ import {
   QuestCompletedNotificationHandler,
   QuestProgressNotificationHandler
 } from './Infrastructure/ZLink/quest-notification-handlers';
-import { GameQuestSessionFactory } from './game-api-session';
+import { GameQuestSessionFactory, JoinSessionHandler } from './game-api-session';
 import {
   GameQuestSelfCheckStore,
   GameplayStateStore,
@@ -116,6 +116,7 @@ function createGameApiModule(instanceId: 'api-a' | 'api-b') {
       QuestProgressNotificationHandler,
       QuestCompletedNotificationHandler,
       GameQuestSessionFactory,
+      JoinSessionHandler,
       KillMonsterHandler,
       CollectItemHandler,
       CompleteMissionHandler,

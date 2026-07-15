@@ -181,7 +181,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         std::function<void (const target_t &)> disconnect_target;
         std::size_t discovered = 0;
         std::map<std::string, target_t> last_desired;
-        bool store_unavailable = false;
+        bool recovering_from_store_failure = false;
         std::optional<std::chrono::steady_clock::time_point> store_failure_started_at;
         std::optional<std::chrono::steady_clock::time_point> reconcile_after;
         std::thread thread;
@@ -301,13 +301,13 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             if (!loop.store_failure_started_at) {
                 loop.store_failure_started_at = std::chrono::steady_clock::now ();
             }
-            loop.store_unavailable = true;
+            loop.recovering_from_store_failure = true;
             retry_pending_targets (loop);
             _runtime->record_store_error ();
             throw;
         }
-        if (loop.store_unavailable) {
-            loop.store_unavailable = false;
+        if (loop.recovering_from_store_failure) {
+            loop.recovering_from_store_failure = false;
             loop.store_failure_started_at.reset ();
             republish_after_store_recovery (loop);
             /* A restarted store can be empty. Give every live node one heartbeat

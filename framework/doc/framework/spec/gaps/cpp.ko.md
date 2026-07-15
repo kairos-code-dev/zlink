@@ -535,6 +535,7 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **SMP-CP-33** (결함) — **TicTacToe가 모든 move에서 `board`·`next_turn`을 버린다.** 미러 push는 존재 여부만 본다
   - 근거: 수정 전 sample parity 게이트가 네 move의 deterministic board·next mark와 상대 push state 대조 12개가 모두 없음을 검출했다. 각 response를 정확값으로 단언하고 상대 push의 전체 state를 비교한 뒤 게이트와 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-34** (결함) — **Bingo 게이트 5·7·8·9·11단계가 문서보다 약하다**
+  - 재검증: 5단계는 client 단언만의 문제가 아니다. C++ `BingoPlayerState` wire에는 계약의 `Wins`·`Losses`가 없고 이를 채울 `GetPlayerRecord` 흐름도 0건이라, §0.7의 join orchestration→`yield`→SMP-X1 선행 묶음 없이는 올바른 payload를 만들 수 없다. 기본값 필드만 추가해 통과시키지 않는다. 11단계는 `stop_observing_events()`가 반환된 `leave_actor()` task를 실행하지 않고 버려 `Stopped=true`가 Entry Spot 복귀를 증명하지 못하는 실제 결함임을 확인했다. 나머지 state/card/player-list 단언과 함께 선행 묶음 뒤 닫는다.
 - [x] **SMP-CP-35** (결함) — **TicTacToe 게이트 1·3·7·11단계가 필드를 빠뜨린다.** level 입장 조건은 아예 평가되지 않는다
   - 근거: sample parity 회귀 테스트가 Play endpoint 매핑, 두 player의 level 입장 조건, join push의 사용자·상태 필드, milestone display name 단언 부재를 모두 검출했다. 단계별 단언을 보강한 뒤 해당 테스트와 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-36** (결함) — **GameQuest reconnect가 정의하는 두 반쪽(unbind·복원 조회) 없이 돈다.** "다른 owner"도 미단언

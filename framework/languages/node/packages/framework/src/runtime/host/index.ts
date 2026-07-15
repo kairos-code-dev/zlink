@@ -525,6 +525,13 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
       throw new ZLinkDrainingStatePublishError(error);
     }
     await this.publishDrainState('Draining');
+    if (this.locationOwner.currentRuntime !== undefined) {
+      await waitForDrainRetry(
+        this.options.registration.locations.options.pollingIntervalMs
+          ?? zlinkDefaultLocationOptions.pollingIntervalMs,
+        signal
+      );
+    }
     const handedOffActorIds = new Set<string>();
     while (!await this.handoffActorsForDrain(handedOffActorIds, signal)) {
       await waitForDrainRetry(

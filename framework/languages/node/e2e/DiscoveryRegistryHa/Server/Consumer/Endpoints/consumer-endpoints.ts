@@ -30,7 +30,8 @@ export function createConsumerEndpoints(
         return rows.map((row) => ({
           endpoint: row.endpoint,
           nodeRid: String(row.nodeRid),
-          ownerId: row.ownerId
+          ownerId: row.ownerId,
+          draining: row.draining ?? false
         }));
       }
     },

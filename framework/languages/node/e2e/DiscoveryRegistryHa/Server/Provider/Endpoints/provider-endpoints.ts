@@ -1,8 +1,17 @@
-import type { EvidenceWaitReq } from '../../../Shared/messages';
+import type {
+  ZLinkChannelRuntimeOptions,
+  ZLinkDrainControl
+} from '@zlink-systems/framework';
+import { ChannelNames, type EvidenceWaitReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
-export function createProviderEndpoints(evidence: EvidenceStore, stop: () => void): readonly HttpRoute[] {
+export function createProviderEndpoints(
+  evidence: EvidenceStore,
+  runtimeOptions: ZLinkChannelRuntimeOptions,
+  drain: ZLinkDrainControl,
+  stop: () => void
+): readonly HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'provider', rid: evidence.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
@@ -16,6 +25,18 @@ export function createProviderEndpoints(evidence: EvidenceStore, stop: () => voi
           (entries) => entries.some((entry) => entry.includes(request.contains)),
           Math.max(1, Math.min(request.timeoutMilliseconds ?? 10000, 30000))
         );
+      }
+    },
+    {
+      method: 'POST',
+      path: '/drain',
+      handle: async () => {
+        runtimeOptions.clientServerChannel(ChannelNames.profile).configureServerSocket().weight = 0;
+        evidence.add(`drain-started|rid=${evidence.rid}|weight=0`);
+        const result = await drain.drain(30_000);
+        evidence.add(`drain-finished|rid=${evidence.rid}|kind=${result.kind}`);
+        stop();
+        return result;
       }
     },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }

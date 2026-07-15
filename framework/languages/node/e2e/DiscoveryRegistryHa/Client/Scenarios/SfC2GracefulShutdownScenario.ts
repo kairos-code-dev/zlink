@@ -1,17 +1,35 @@
 // SF-C2: graceful shutdown 대조 (drain 뒤 owner 정리) 시나리오를 검증한다.
+import type { ZLinkDrainResult } from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../../../http-client';
+import { getJson, postJson, postJsonWithin } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 interface PeerDto {
   readonly endpoint: string;
   readonly nodeRid?: string;
+  readonly draining: boolean;
 }
 
 export async function runSfC2(options: ClientOptions): Promise<void> {
-  await waitForMissingPeer(options.consumerUrl, 'api-b');
-  await waitForProviderReply(options.consumerUrl, 'api-a', 'sf-c2-stable-after-shutdown');
+  ensure(options.providerBUrl !== undefined, 'SF-C2 requires the api-b HTTP endpoint.');
+  const drainStartedAt = Date.now();
+  const drain = postJsonWithin<ZLinkDrainResult>(options.providerBUrl, '/drain', {}, 35_000);
+
+  await waitForDrainingPeer(options.consumerUrl, 'api-b');
+  await waitForProviderReply(options.consumerUrl, 'api-a', 'sf-c2-draining', 20);
+
+  for (let i = 0; i < 8; i++) {
+    const value = `sf-c2-draining-${i}`;
+    const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value });
+    ensure(reply.value === `profile:${value}`, `SF-C2 draining request ${i} value mismatch.`);
+    ensure(reply.providerRid === 'api-a', `SF-C2 draining request ${i} reached '${reply.providerRid}'.`);
+  }
+
+  const result = await drain;
+  ensure(result.kind === 'drained', `SF-C2 drain ended as '${result.kind}'.`);
+  ensure(Date.now() - drainStartedAt < 30_000, 'SF-C2 drain exceeded the 30 second deadline.');
+  await waitForMissingPeer(options.consumerUrl, 'api-b', 3_000);
 
   for (let i = 0; i < 4; i++) {
     const reply = await postJson<ProfileRes>(options.consumerUrl, '/profile/request', { value: `sf-c2-after-${i}` });
@@ -24,8 +42,19 @@ export async function runSfC2(options: ClientOptions): Promise<void> {
   console.log('scenario SF-C2 passed');
 }
 
-async function waitForMissingPeer(baseUrl: string, rid: string): Promise<void> {
-  const deadline = Date.now() + 5000;
+async function waitForDrainingPeer(baseUrl: string, rid: string): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  let last: readonly PeerDto[] = [];
+  while (Date.now() < deadline) {
+    last = await getJson<PeerDto[]>(baseUrl, '/location/peers');
+    if (last.some((peer) => peer.nodeRid === rid && peer.draining)) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`SF-C2 expected peer ${rid} to publish Draining=true, last=${JSON.stringify(last)}`);
+}
+
+async function waitForMissingPeer(baseUrl: string, rid: string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
   let last: readonly PeerDto[] = [];
   while (Date.now() < deadline) {
     last = await getJson<PeerDto[]>(baseUrl, '/location/peers');
@@ -37,7 +66,7 @@ async function waitForMissingPeer(baseUrl: string, rid: string): Promise<void> {
   throw new Error(`SF-C2 expected peer ${rid} to be absent after graceful shutdown, last=${JSON.stringify(last)}`);
 }
 
-async function waitForProviderReply(baseUrl: string, rid: string, prefix: string): Promise<void> {
+async function waitForProviderReply(baseUrl: string, rid: string, prefix: string, required = 3): Promise<void> {
   const deadline = Date.now() + 10000;
   let index = 0;
   let consecutive = 0;
@@ -48,7 +77,7 @@ async function waitForProviderReply(baseUrl: string, rid: string, prefix: string
       ensure(reply.value === `profile:${value}`, `SF-C2 reply value mismatch for ${value}.`);
       if (reply.providerRid === rid) {
         consecutive += 1;
-        if (consecutive >= 3) {
+        if (consecutive >= required) {
           return;
         }
       } else {

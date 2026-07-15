@@ -243,10 +243,20 @@ run_sf_c1() {
 }
 
 run_sf_c2() {
+  local started elapsed
   start_topology
   run_warmup
-  curl --max-time "${HTTP_PROBE_TIMEOUT_SECONDS}" -fsS -X POST "$PROVIDER_B_URL/shutdown" >/dev/null
+  started="$SECONDS"
   run_client SF-C2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
+  if ! wait "$API_B_PID"; then
+    echo "SF-C2 api-b did not exit cleanly after framework drain" >&2
+    return 1
+  fi
+  elapsed=$((SECONDS - started))
+  if (( elapsed > 30 )); then
+    echo "SF-C2 api-b exceeded the 30 second drain deadline (elapsed=${elapsed}s)" >&2
+    return 1
+  fi
 }
 
 run_sf_d1() {

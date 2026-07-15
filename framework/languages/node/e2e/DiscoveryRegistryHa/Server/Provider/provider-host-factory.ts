@@ -1,10 +1,20 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import {
+  ZLinkMessageFlowLogMode,
+  type ZLinkChannelRuntimeOptions,
+  type ZLinkDrainControl
+} from '@zlink-systems/framework';
+import {
+  ZLINK_CHANNEL_RUNTIME_OPTIONS,
+  ZLINK_DRAIN_CONTROL,
+  ZLinkModule,
+  zlinkFramework
+} from '@zlink-systems/nestjs';
 import { ChannelNames, PacketNames } from '../../Shared/messages';
 import { createRedisLocationStore, storeFailureLocationOptions } from '../../Shared/location-store';
+import type { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { validateProviderOptions } from './Configuration/provider-options';
 import type { ProviderOptions } from './Configuration/provider-options';
 import { DISCOVERY_OPTIONS, createDiscoveryConfigurationModule } from '../../configuration';
@@ -16,19 +26,32 @@ import { closeHttpServer, startHttpServer } from './Support/http-server';
 export async function startProviderHost(): Promise<void> {
   let stopping = false;
 
-  const ProviderModule = createProviderModule();
-  const app = await NestFactory.createApplicationContext(ProviderModule, { logger: false, abortOnError: false });
+  const provider = createProviderModule();
+  const app = await NestFactory.createApplicationContext(provider.moduleType, { logger: false, abortOnError: false });
   const options = app.get(DISCOVERY_OPTIONS, { strict: false }) as ProviderOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
-  const server = await startHttpServer(options.httpUrl, createProviderEndpoints(evidence, () => { stopping = true; }));
+  const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
+  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const server = await startHttpServer(
+    options.httpUrl,
+    createProviderEndpoints(evidence, runtimeOptions, drain, () => { stopping = true; })
+  );
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  evidence.add(`host-stopping|rid=${evidence.rid}|phase=http-close`);
   await closeHttpServer(server);
+  evidence.add(`host-stopping|rid=${evidence.rid}|phase=nest-close`);
   await app.close();
+  await provider.disposeLocationStore();
+  evidence.add(`host-stopped|rid=${evidence.rid}`);
 }
 
-function createProviderModule(): Function {
+function createProviderModule(): {
+  readonly moduleType: Function;
+  readonly disposeLocationStore: () => Promise<void>;
+} {
+  let locationStore: ZLinkRedisLocationStore | undefined;
   class ProviderModule {}
   const configuration = createDiscoveryConfigurationModule(validateProviderOptions);
   Module({
@@ -45,7 +68,8 @@ function createProviderModule(): Function {
               .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
               .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
               .traceLabel(options.rid);
-          builder.addLocationStore(createRedisLocationStore(options));
+          locationStore = createRedisLocationStore(options);
+          builder.addLocationStore(locationStore);
           Object.assign(builder.configureLocations(), storeFailureLocationOptions());
           builder.addClientServerChannel(ChannelNames.profile)
             .enableServer(options.channelEndpoint)
@@ -62,5 +86,11 @@ function createProviderModule(): Function {
       ProfileRequestHandler
     ]
   })(ProviderModule);
-  return ProviderModule;
+  return {
+    moduleType: ProviderModule,
+    disposeLocationStore: async () => {
+      await locationStore?.dispose();
+      locationStore = undefined;
+    }
+  };
 }

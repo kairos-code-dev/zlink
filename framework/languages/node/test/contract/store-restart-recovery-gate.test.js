@@ -20,6 +20,12 @@ test('SF-D1 and SF-D2 restart an empty store without swallowing request failures
   assert.match(d1, /SF-D1 restart-redis/);
   assert.match(d2, /SF-D2 stop-redis-and-kill-api-b/);
   assert.match(d2, /SF-D2 restart-redis/);
+  assert.match(runner, /LONG_OUTAGE_SECONDS=4/);
+  assert.match(
+    runner,
+    /SF-D2 restart-redis[\s\S]*sleep "\$LONG_OUTAGE_SECONDS"[\s\S]*start_empty_redis/
+  );
+  assert.doesNotMatch(d2, /delay\(4000\)/);
   assert.doesNotMatch(d2, /catch\s*\{/);
   assert.doesNotMatch(d2, /maxGap\s*</);
 });

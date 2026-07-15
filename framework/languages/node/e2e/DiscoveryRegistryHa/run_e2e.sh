@@ -14,6 +14,7 @@ LOCAL_READINESS_ATTEMPTS=30
 ROUTE_SETTLE_TIMEOUT_SECONDS=5
 SCENARIO_SETTLE_TIMEOUT_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
+LONG_OUTAGE_SECONDS=4
 SCENARIOS=(
   SF-A1
   SF-A2
@@ -275,6 +276,7 @@ run_sf_d2() {
   kill_pid "$API_B_PID"
   wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D2 restart-redis" \
     "SF-D2 client did not request Redis restart" "$client_pid"
+  sleep "$LONG_OUTAGE_SECONDS"
   start_empty_redis
   wait "$client_pid"
 }

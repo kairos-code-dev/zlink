@@ -13,7 +13,6 @@ export async function runSfD2(options: ClientOptions): Promise<void> {
   console.log('scenario-control SF-D2 stop-redis-and-kill-api-b');
   await waitForProviderStopped(options.providerBUrl);
   const traffic = driveRequests(options.consumerUrl, 10000);
-  await delay(4000);
   console.log('scenario-control SF-D2 restart-redis');
   const replies = await traffic;
   ensure(replies.some((reply) => reply.providerRid === 'api-a'), 'SF-D2 no request was served by surviving api-a.');

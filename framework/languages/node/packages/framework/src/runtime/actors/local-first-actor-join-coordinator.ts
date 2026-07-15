@@ -56,7 +56,12 @@ export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordi
     const movesFromLocalUserSpot = sourceSpotRid !== undefined
       && !routingIdsEqual(sourceSpotRid, spotRid)
       && localSpotManager.hasActiveSpot(sourceSpotRid);
-    let sourcePrepared = false;
+    const sourceTransfer = new LocalActorSourceTransfer(
+      localSpotManager,
+      movesFromLocalUserSpot ? sourceSpotRid : undefined,
+      actor,
+      signal
+    );
     let result: Awaited<ReturnType<DefaultZLinkSpotManager['admitActorJoin']>>;
     try {
       result = await localSpotManager.admitActorJoin(
@@ -75,27 +80,16 @@ export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordi
         },
         signal,
         movesFromLocalUserSpot
-          ? async () => {
-              await localSpotManager.beginActorTransfer(sourceSpotRid, actor.actorId);
-              try {
-                await localSpotManager.prepareActorLeaveForTransfer(sourceSpotRid, actor, signal);
-                sourcePrepared = true;
-              } catch (error) {
-                await localSpotManager.cancelActorTransfer(sourceSpotRid, actor.actorId);
-                throw error;
-              }
-            }
+          ? () => sourceTransfer.prepare()
           : undefined
       );
     } catch (error) {
-      if (sourcePrepared && sourceSpotRid !== undefined) {
-        await localSpotManager.restoreActorAfterFailedTransfer(sourceSpotRid, actor, signal);
-      }
+      await sourceTransfer.restoreIfPrepared();
       throw error;
     }
-    if (result.accepted && sourcePrepared && sourceSpotRid !== undefined) {
+    if (result.accepted) {
       try {
-        await localSpotManager.commitActorLeaveAfterTransfer(sourceSpotRid, actor.actorId);
+        await sourceTransfer.commitIfPrepared();
       } catch (error) {
         this.options.postCommitErrorReporter?.(error);
       }
@@ -137,6 +131,45 @@ export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordi
     signal: AbortSignal | undefined
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     return this.options.native.joinEntrySpot(actor, state, nodeRid, request, timeoutMs, signal);
+  }
+}
+
+class LocalActorSourceTransfer {
+  private prepared = false;
+
+  constructor(
+    private readonly spotManager: DefaultZLinkSpotManager,
+    private readonly sourceSpotRid: RoutingId | undefined,
+    private readonly actor: ZLinkActor,
+    private readonly signal: AbortSignal | undefined
+  ) {}
+
+  async prepare(): Promise<void> {
+    if (this.sourceSpotRid === undefined) {
+      return;
+    }
+    await this.spotManager.beginActorTransfer(this.sourceSpotRid, this.actor.actorId);
+    try {
+      await this.spotManager.prepareActorLeaveForTransfer(this.sourceSpotRid, this.actor, this.signal);
+      this.prepared = true;
+    } catch (error) {
+      await this.spotManager.cancelActorTransfer(this.sourceSpotRid, this.actor.actorId);
+      throw error;
+    }
+  }
+
+  async restoreIfPrepared(): Promise<void> {
+    if (!this.prepared || this.sourceSpotRid === undefined) {
+      return;
+    }
+    await this.spotManager.restoreActorAfterFailedTransfer(this.sourceSpotRid, this.actor, this.signal);
+  }
+
+  async commitIfPrepared(): Promise<void> {
+    if (!this.prepared || this.sourceSpotRid === undefined) {
+      return;
+    }
+    await this.spotManager.commitActorLeaveAfterTransfer(this.sourceSpotRid, this.actor.actorId);
   }
 }
 

@@ -524,6 +524,24 @@ int main ()
     gate.require (transfer_server.find ("location_committed") != std::string::npos,
                   "CPP-G0-E2E-004", "SpotActorTransfer emits no location_committed evidence");
 
+    /* E2E-CP-49 — ST-E2 fails transfer before commit and preserves the source binding. */
+    const auto st_e2_begin = transfer_client.find ("void bound_session_rebind_isolation ()");
+    const auto st_e2_end = transfer_client.find ("void in_flight_handoff_order ()", st_e2_begin);
+    const auto st_e2 = st_e2_begin != std::string::npos && st_e2_end != std::string::npos
+                         ? transfer_client.substr (st_e2_begin, st_e2_end - st_e2_begin)
+                         : std::string{};
+    gate.require (st_e2.find ("actor_type_fail_transfer_out") != std::string::npos
+                    && st_e2.find ("ST-E2 failed transfer was accepted")
+                         != std::string::npos,
+                  "E2E-CP-49", "ST-E2 does not inject and reject a pre-commit transfer failure");
+    gate.require (st_e2.find ("after-failed-transfer") != std::string::npos
+                    && st_e2.find ("push_reply.node_rid == \"actor-a\"")
+                         != std::string::npos,
+                  "E2E-CP-49", "ST-E2 does not prove the source bound session still receives");
+    gate.require (st_e2.find ("ST-E2 target processed bound push after failed transfer")
+                    != std::string::npos,
+                  "E2E-CP-49", "ST-E2 does not reject a target bound-session route after failure");
+
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");
     const auto st_d1_local_end =

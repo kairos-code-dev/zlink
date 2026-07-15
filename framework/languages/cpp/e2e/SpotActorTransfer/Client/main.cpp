@@ -720,29 +720,31 @@ class scenario_runner_t
         const auto actor_id = "actor-bound-session-rebind-" + unique_suffix ();
         const auto spot_rid = "spot-bound-session-rebind-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 92);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_fail_transfer_out, 92);
         const auto source_ref = get_actor_ref (_nodes.a, actor_id);
         bound_session_t old_session (_nodes.a_stream_endpoint, "ST-E2", source_ref);
-        auto before_push = old_session.expect_push ("before-rebind-transfer");
-        bound_push (_nodes.a, actor_id, {"ST-E2", "before-rebind-transfer"});
+        auto before_push = old_session.expect_push ("before-failed-transfer");
+        bound_push (_nodes.a, actor_id, {"ST-E2", "before-failed-transfer"});
         before_push.get ();
 
         const auto join = join_actor (_nodes.a, actor_id, {"ST-E2", spot_rid});
-        require (join.accepted, "ST-E2 join was rejected.");
-        const auto target_ref = get_actor_ref (_nodes.b, actor_id);
-        bound_session_t new_session (_nodes.b_stream_endpoint, "ST-E2", target_ref);
+        require (!join.accepted, "ST-E2 failed transfer was accepted.");
 
-        auto old_push = old_session.expect_push ("after-rebind");
-        auto new_push = new_session.expect_push ("after-rebind");
-        const auto push_reply = bound_push (_nodes.b, actor_id, {"ST-E2", "after-rebind"});
-        const auto notify = new_push.get ();
-        require (push_reply.node_rid == "actor-b",
-                 "ST-E2 bound push reply expected actor-b, got " + push_reply.node_rid);
-        require (notify.marker == "after-rebind",
-                 "ST-E2 new bound session notify marker mismatch.");
-        require (old_push.wait_for (std::chrono::milliseconds (500))
-                   != std::future_status::ready,
-                 "ST-E2 old bound session received push after rebind.");
+        auto source_push = old_session.expect_push ("after-failed-transfer");
+        const auto push_reply =
+          bound_push (_nodes.b, actor_id, {"ST-E2", "after-failed-transfer"});
+        const auto notify = source_push.get ();
+        require (push_reply.node_rid == "actor-a",
+                 "ST-E2 follow-up push did not execute on the source actor.");
+        require (notify.node_rid == "actor-a" && notify.marker == "after-failed-transfer",
+                 "ST-E2 source bound session did not receive the follow-up notify.");
+
+        const auto target_evidence = get_evidence (_nodes.b);
+        require_no_contains (
+          target_evidence, "ST-E2|" + actor_id + "|bound_push|after-failed-transfer",
+          "ST-E2 target processed bound push after failed transfer");
+        require_no_contains (target_evidence, "transfer|" + actor_id + "|joined|" + spot_rid,
+                             "ST-E2 target actor joined after failed transfer");
     }
 
     void in_flight_handoff_order ()

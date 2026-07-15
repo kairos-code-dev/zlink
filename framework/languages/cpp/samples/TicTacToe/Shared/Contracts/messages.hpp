@@ -6,6 +6,7 @@
 
 #include <array>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,22 @@ namespace zlink::samples::tictactoe
 {
 
 using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
+
+template <typename T>
+void write_nullable (nlohmann::json &json, const char *name, const std::optional<T> &value)
+{
+    json[name] = value ? nlohmann::json (*value) : nlohmann::json (nullptr);
+}
+
+template <typename T>
+std::optional<T> read_nullable (const nlohmann::json &json, const char *name)
+{
+    const auto found = json.find (name);
+    if (found == json.end () || found->is_null ()) {
+        return std::nullopt;
+    }
+    return found->template get<T> ();
+}
 
 struct tictactoe_marks_t
 {
@@ -145,12 +162,11 @@ struct tictactoe_state_t
     std::string board = ".........";
     std::string status = tictactoe_status_t::waiting_for_players;
     std::string next_turn;
-    std::string winner;
-    bool draw = false;
-    std::string x_actor_id;
-    std::string o_actor_id;
-    std::string last_move_actor_id;
-    int last_move_cell = -1;
+    std::optional<std::string> winner;
+    std::optional<std::string> x_actor_id;
+    std::optional<std::string> o_actor_id;
+    std::optional<std::string> last_move_actor_id;
+    std::optional<int> last_move_cell;
 };
 
 struct tictactoe_game_join_res_t
@@ -346,13 +362,12 @@ inline void to_json (nlohmann::json &json, const tictactoe_state_t &value)
     json = {{"roomId", value.room_id},
             {"board", value.board},
             {"status", value.status},
-            {"nextTurn", value.next_turn},
-            {"winner", value.winner},
-            {"draw", value.draw},
-            {"xActorId", value.x_actor_id},
-            {"oActorId", value.o_actor_id},
-            {"lastMoveActorId", value.last_move_actor_id},
-            {"lastMoveCell", value.last_move_cell}};
+            {"nextTurn", value.next_turn}};
+    write_nullable (json, "winner", value.winner);
+    write_nullable (json, "xActorId", value.x_actor_id);
+    write_nullable (json, "oActorId", value.o_actor_id);
+    write_nullable (json, "lastMoveActorId", value.last_move_actor_id);
+    write_nullable (json, "lastMoveCell", value.last_move_cell);
 }
 
 inline void from_json (const nlohmann::json &json, tictactoe_state_t &value)
@@ -361,12 +376,11 @@ inline void from_json (const nlohmann::json &json, tictactoe_state_t &value)
     value.board = json.value ("board", ".........");
     value.status = json.value ("status", "");
     value.next_turn = json.value ("nextTurn", "");
-    value.winner = json.value ("winner", "");
-    value.draw = json.value ("draw", false);
-    value.x_actor_id = json.value ("xActorId", "");
-    value.o_actor_id = json.value ("oActorId", "");
-    value.last_move_actor_id = json.value ("lastMoveActorId", "");
-    value.last_move_cell = json.value ("lastMoveCell", -1);
+    value.winner = read_nullable<std::string> (json, "winner");
+    value.x_actor_id = read_nullable<std::string> (json, "xActorId");
+    value.o_actor_id = read_nullable<std::string> (json, "oActorId");
+    value.last_move_actor_id = read_nullable<std::string> (json, "lastMoveActorId");
+    value.last_move_cell = read_nullable<int> (json, "lastMoveCell");
 }
 
 inline void to_json (nlohmann::json &json, const tictactoe_game_join_res_t &value)

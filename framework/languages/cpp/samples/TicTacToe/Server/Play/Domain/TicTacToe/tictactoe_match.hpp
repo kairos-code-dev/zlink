@@ -34,7 +34,7 @@ class tictactoe_match_t
             throw std::runtime_error ("actor id must not be empty");
         }
         auto projected = _state;
-        if (projected.x_actor_id.empty ()) {
+        if (!projected.x_actor_id) {
             projected.x_actor_id = actor_id;
             projected.next_turn = tictactoe_marks_t::x;
             projected.status = tictactoe_status_t::waiting_for_players;
@@ -43,7 +43,7 @@ class tictactoe_match_t
         if (actor_id == projected.x_actor_id) {
             return {std::move (projected)};
         }
-        if (projected.o_actor_id.empty ()) {
+        if (!projected.o_actor_id) {
             projected.o_actor_id = actor_id;
             projected.status = tictactoe_status_t::in_progress;
             return {std::move (projected)};
@@ -73,7 +73,7 @@ class tictactoe_match_t
         }
         const auto &next_actor_id =
           _state.next_turn == tictactoe_marks_t::x ? _state.x_actor_id : _state.o_actor_id;
-        if (actor_id != next_actor_id) {
+        if (!next_actor_id || actor_id != *next_actor_id) {
             throw std::runtime_error ("not actor turn");
         }
         if (request.cell < 0 || request.cell >= 9
@@ -81,8 +81,8 @@ class tictactoe_match_t
             throw std::runtime_error ("invalid move");
         }
 
-        const char mark =
-          actor_id == _state.x_actor_id ? tictactoe_marks_t::x[0] : tictactoe_marks_t::o[0];
+        const char mark = actor_id == _state.x_actor_id ? tictactoe_marks_t::x[0]
+                                                        : tictactoe_marks_t::o[0];
         _state.board[static_cast<std::size_t> (request.cell)] = mark;
         _state.last_move_cell = request.cell;
         _state.last_move_actor_id = actor_id;
@@ -91,7 +91,6 @@ class tictactoe_match_t
             _state.winner = actor_id;
         } else if (_state.board.find ('.') == std::string::npos) {
             _state.status = tictactoe_status_t::draw;
-            _state.draw = true;
         } else {
             _state.next_turn = actor_id == _state.x_actor_id ? tictactoe_marks_t::o
                                                              : tictactoe_marks_t::x;
@@ -106,15 +105,18 @@ class tictactoe_match_t
             || std::chrono::steady_clock::now () < *_turn_deadline) {
             return false;
         }
-        const auto timed_out_actor = _state.next_turn == tictactoe_marks_t::x
-                                       ? _state.x_actor_id
-                                       : _state.o_actor_id;
+        const auto &timed_out_actor = _state.next_turn == tictactoe_marks_t::x
+                                        ? _state.x_actor_id
+                                        : _state.o_actor_id;
+        if (!timed_out_actor) {
+            throw std::logic_error ("active turn is missing its player actor");
+        }
         _state.status = tictactoe_status_t::turn_timed_out;
         _state.winner = timed_out_actor == _state.x_actor_id ? _state.o_actor_id
                                                               : _state.x_actor_id;
         _state.next_turn.clear ();
-        _state.last_move_actor_id = timed_out_actor;
-        _state.last_move_cell = -1;
+        _state.last_move_actor_id = *timed_out_actor;
+        _state.last_move_cell.reset ();
         _turn_deadline.reset ();
         return true;
     }

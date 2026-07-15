@@ -339,7 +339,7 @@ TEST (CppFrameworkSampleParity, TicTacToeTurnTimeoutIsADomainTerminalState)
     EXPECT_EQ (state.status, tictactoe_status_t::turn_timed_out);
     EXPECT_EQ (state.winner, "player-o");
     EXPECT_EQ (state.last_move_actor_id, "player-x");
-    EXPECT_EQ (state.last_move_cell, -1);
+    EXPECT_FALSE (state.last_move_cell.has_value ());
     EXPECT_TRUE (state.next_turn.empty ());
     EXPECT_FALSE (match.tick ());
     EXPECT_NO_THROW (match.ensure_can_leave ("player-x"));
@@ -353,7 +353,7 @@ TEST (CppFrameworkSampleParity, TicTacToeAdmissionEvaluationDoesNotMutateMatch)
     tictactoe_match_t match ("evaluation-room");
     const auto evaluated = match.evaluate_join ("player-x", "evaluation-room");
     EXPECT_EQ (evaluated.state.x_actor_id, "player-x");
-    EXPECT_TRUE (match.snapshot ().x_actor_id.empty ());
+    EXPECT_FALSE (match.snapshot ().x_actor_id.has_value ());
 
     const auto joined = match.join ("player-x", "evaluation-room");
     EXPECT_EQ (joined.state.x_actor_id, "player-x");
@@ -1387,6 +1387,36 @@ TEST (CppFrameworkSampleParity, SupportChatUsesFrameworkActorRefSnapshot)
     EXPECT_EQ (contracts.find ("support_actor_ref_snapshot_t"), std::string::npos);
     EXPECT_NE (contracts.find ("actor_ref_snapshot_t actor;"), std::string::npos);
     EXPECT_NE (support.find ("actor_ref_snapshot_t::from (actor_ref)"), std::string::npos);
+}
+
+TEST (CppFrameworkSampleParity, TicTacToeStatePreservesNullableWireFields)
+{
+    const nlohmann::json wire = {{"roomId", "room-nullable"},
+                                 {"board", "........."},
+                                 {"status",
+                                  zlink::samples::tictactoe::tictactoe_status_t::waiting_for_players},
+                                 {"winner", nullptr},
+                                 {"nextTurn", ""},
+                                 {"xActorId", nullptr},
+                                 {"oActorId", nullptr},
+                                 {"lastMoveActorId", nullptr},
+                                 {"lastMoveCell", nullptr}};
+
+    zlink::samples::tictactoe::tictactoe_state_t state;
+    EXPECT_NO_THROW (wire.get_to (state));
+    EXPECT_FALSE (state.winner.has_value ());
+    EXPECT_FALSE (state.x_actor_id.has_value ());
+    EXPECT_FALSE (state.o_actor_id.has_value ());
+    EXPECT_FALSE (state.last_move_actor_id.has_value ());
+    EXPECT_FALSE (state.last_move_cell.has_value ());
+
+    const nlohmann::json projected = zlink::samples::tictactoe::tictactoe_state_t{};
+    EXPECT_TRUE (projected.at ("winner").is_null ());
+    EXPECT_TRUE (projected.at ("xActorId").is_null ());
+    EXPECT_TRUE (projected.at ("oActorId").is_null ());
+    EXPECT_TRUE (projected.at ("lastMoveActorId").is_null ());
+    EXPECT_TRUE (projected.at ("lastMoveCell").is_null ());
+    EXPECT_FALSE (projected.contains ("draw"));
 }
 
 TEST (CppFrameworkSampleParity, ChannelSendBackpressureUsesIndependentDefault)

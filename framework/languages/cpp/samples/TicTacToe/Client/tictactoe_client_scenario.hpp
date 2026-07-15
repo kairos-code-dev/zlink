@@ -229,7 +229,7 @@ class tictactoe_client_scenario_t
                 .async<join_game_res_t> ();
             ensure (client1_join.state.room_id == room.room_id);
             ensure (client1_join.state.x_actor_id == options.x_actor_id);
-            ensure (client1_join.state.o_actor_id.empty ());
+            ensure (!client1_join.state.o_actor_id);
             ensure (client1_join.state.status == tictactoe_status_t::waiting_for_players);
             ensure (client1_join.state.next_turn == tictactoe_marks_t::x);
             co_await client1.expect_none<player_joined_notify_t> ()
@@ -253,7 +253,11 @@ class tictactoe_client_scenario_t
               co_await client2.request (client2_join_request)
                 .async<join_game_res_t> ();
             ensure (client2_join.state.room_id == room.room_id);
-            trace ((std::string ("client2_join state: x=") + client2_join.state.x_actor_id + " o=" + client2_join.state.o_actor_id + " status=" + client2_join.state.status).c_str ());
+            trace ((std::string ("client2_join state: x=")
+                    + client2_join.state.x_actor_id.value_or ("<none>") + " o="
+                    + client2_join.state.o_actor_id.value_or ("<none>") + " status="
+                    + client2_join.state.status)
+                     .c_str ());
             ensure (client2_join.state.o_actor_id == options.o_actor_id);
             ensure (client2_join.state.status == tictactoe_status_t::in_progress);
             co_await client2.expect_none<player_joined_notify_t> ()
@@ -464,7 +468,7 @@ class tictactoe_client_scenario_t
     {
         return left.room_id == right.room_id && left.board == right.board
                && left.status == right.status && left.next_turn == right.next_turn
-               && left.winner == right.winner && left.draw == right.draw
+               && left.winner == right.winner
                && left.x_actor_id == right.x_actor_id && left.o_actor_id == right.o_actor_id
                && left.last_move_actor_id == right.last_move_actor_id
                && left.last_move_cell == right.last_move_cell;

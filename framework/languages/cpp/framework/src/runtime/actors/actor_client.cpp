@@ -189,7 +189,16 @@ class actor_client_impl_t final : public actor_client_t
                 const auto remaining =
                   std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
                 last = submit_request (actor.value (), packet_name, request, remaining, request_id);
-                if (!is_moving_stale (last)) {
+                // Native SPOT transport can collapse a remote framework error
+                // to request_failed before the envelope reaches this client.
+                // Consult the local source runtime only for the actor whose
+                // supplied ref was current; this preserves the moving retry
+                // without turning ordinary handler failures into retries.
+                const bool collapsed_moving_failure =
+                  !last && ref_was_current
+                  && last.error_kind () == framework_error_kind_t::request_failed
+                  && actor_transfer_in_progress (actor.value ().framework_ref);
+                if (!is_moving_stale (last) && !collapsed_moving_failure) {
                     co_return last;
                 }
             } else if (!actor.error () || !actor.error ()->is_retriable ()) {
@@ -446,6 +455,16 @@ class actor_client_impl_t final : public actor_client_t
             }
         }
         return std::nullopt;
+    }
+
+    bool actor_transfer_in_progress (const actor_ref_t &actor_ref) const
+    {
+        for (const auto &spot_node : _spot_nodes) {
+            if (spot_node.node_rid ().value () == actor_ref.node_rid ().value ()) {
+                return spot_node.actor_transfer_in_progress (actor_ref);
+            }
+        }
+        return false;
     }
 
     static bool is_stale_actor_error (framework_error_kind_t kind)

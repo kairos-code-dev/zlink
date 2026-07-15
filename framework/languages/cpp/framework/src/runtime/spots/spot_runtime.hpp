@@ -470,6 +470,7 @@ class spot_node_runtime_t
     // actor was moving, in arrival order. The commit path calls this once to fill
     // the commit request and once more after the ack for packets that raced it.
     std::vector<handoff_packet_t> take_actor_handoff_backlog (const actor_ref_t &actor_ref);
+    bool actor_transfer_in_progress (const actor_ref_t &actor_ref) const;
     void set_actor_transfer_forward_window (std::chrono::milliseconds window);
     result_t<remote_actor_transfer_t> transfer_actor_out (const actor_ref_t &actor_ref,
                                                           std::string transfer_id = {});

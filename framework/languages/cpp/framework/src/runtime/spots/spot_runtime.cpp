@@ -2839,6 +2839,12 @@ spot_node_runtime_t::take_actor_handoff_backlog (const actor_ref_t &actor_ref)
     return _state->actor_transfer_coordinator.take_backlog (actor_key (actor_ref));
 }
 
+bool spot_node_runtime_t::actor_transfer_in_progress (const actor_ref_t &actor_ref) const
+{
+    return !actor_ref.empty ()
+           && _state->actor_transfer_coordinator.blocks_dispatch (actor_key (actor_ref));
+}
+
 void spot_node_runtime_t::set_actor_transfer_forward_window (std::chrono::milliseconds window)
 {
     _state->actor_transfer_forward_window = window;

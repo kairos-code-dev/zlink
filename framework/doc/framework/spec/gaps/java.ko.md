@@ -305,7 +305,7 @@
 
 - [x] **§12.20** (결함) — 응답 header의 `name_len`을 0으로 고정하고, pending request가 보관한 원래 이름을 완료 payload에 사용한다. 구형 peer가 보낸 응답 이름은 decode 후 매칭에 사용하지 않는다. `ZLinkStreamWireProtocolTest`, `JavaNodeStreamInteropTest`, connector 전체 테스트 통과(2026-07-15).
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
-- [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
+- [x] **§12.22** — standalone과 서버 전용 HTTP client를 분리하고 서버 표면에 `submit`·`async`·`yield`·callback, `buildServer`와 Spring execution turn bean을 구현했다. blocking `fetch`는 제거했다. HTTP client·Kotlin·Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
 - [x] **§12.23** — `runCpuWorker`와 비동기 `runIoWorker`를 분리하고 두 표면에 turn 유지 `submit`과 turn 반납 `yield`를 제공한다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
 - [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
 

@@ -10,8 +10,8 @@
 
 `zlink-http-client`는 Java에서 HTTP request를 보내기 위한 별도 client-side 산출물이다.
 JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder 스타일로
-`java.net.http`의 낮은 수준 설정을 흡수한다. typed JSON 경로(`body(dto)`/`submit(Type)`/
-`fetch(Type)`)는 그 위에 얹은 편의 계층이다.
+`java.net.http`의 낮은 수준 설정을 흡수한다. typed JSON 경로(`body(dto)`/`async(Type)`)는
+그 위에 얹은 편의 계층이다.
 
 `zlink-framework-core`의 에러 모델(`ZLinkFrameworkException`)에 의존하지만 framework core의
 기본 의존성은 아니다(단방향 의존).
@@ -20,7 +20,7 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
 
 | 역할 | 위치 | 공개 여부 |
 |------|------|-----------|
-| 공개 contract | `systems.zlink.httpclient.{ZLinkHttpClient,ZLinkHttpClientBuilder,ZLinkHttpRequestBuilder,RawHttpResponse,HttpResponse,ZLinkHttpMethod}` | public |
+| 공개 contract | `systems.zlink.httpclient`의 client·server client·request builder·execution turn·callback·response 타입 | public |
 | runtime 구현 | `systems.zlink.httpclient.internal.*` | internal |
 | 회귀 테스트 | `src/test/java/...` | private |
 | Gradle 서브프로젝트 | `zlink-http-client` | public |
@@ -32,26 +32,35 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
 
 - `ZLinkHttpClient` — `create()` / `create(baseUrl)`, 메서드 `get/post/put/delete/
   patch/head/options`, `AutoCloseable`.
+- `ZLinkHttpServerClient` — framework 서버에 주입하는 client. 각 verb는 서버 request builder를
+  반환한다.
 - `ZLinkHttpClientBuilder` — `baseUrl`, `timeout`, `defaultHeader`, `basicAuth`,
   `bearerToken`, `maxResponseBodySize`, `trustCertificateFile`, `clientCertificateFile`,
   `followRedirects`, `retry`, `cookies`, `proxy`, `proxyBasicAuth`, `compression`,
-  `build`, 그리고 단발 verb shortcut.
+  `build`, `buildServer(executionTurn)`, 그리고 단발 verb shortcut.
 - `ZLinkHttpRequestBuilder` — `header`, `query`, `timeout`, `body(Object)`(JSON),
   `body(String, String)`(raw), `bodyStream(Supplier<byte[]>, String)`, `form`, `multipart`,
-  `multipartFile`, `submitRaw`, `download(Consumer<byte[]>)`, `submit(Class<T>)`,
-  `fetch(Class<T>)`.
+  `multipartFile`, `asyncRaw`, `download(Consumer<byte[]>)`, `async(Class<T>)`, callback.
+- `ZLinkHttpServerRequestBuilder` — request 구성에 `submit`, `async`, `yield`, callback 완료 방식을
+  추가한다. 완료 값을 동기로 꺼내는 메서드는 없다.
+- `ZLinkHttpExecutionTurn` — framework가 현재 Spot 실행 turn의 유지·반납을 연결하는 주입점이다.
 - `RawHttpResponse`(record) { `status`, `headers`, `body` }.
 - `HttpResponse<T>`(record) { `status`, `headers`, `body`, `rawBody` }.
 - `ZLinkHttpMethod`(enum).
 
 ## 4. 실행 모델
 
-- `submitRaw`/`submit`/`download`는 `CompletionStage`를 돌려준다. `java.net.http`의 NIO
+- `asyncRaw`/`async`/`download`는 `CompletionStage`를 돌려준다. `java.net.http`의 NIO
   비동기 I/O로 네트워크 대기 중 호출 스레드는 점유되지 않는다. redirect/retry 루프도
   `CompletionStage` 체인으로 합성된다.
-- handler 경로는 `CompletionStage` 합성만 쓰고 `.get()`/`.join()`은 금지(blocking).
-- `fetch(Type)`는 blocking 접근으로 테스트·CLI 전용.
+- 서버 request의 `async`는 현재 Spot turn을 유지하고 `yield`는 대기 중 turn을 반납한 뒤 Spot
+  실행 큐에서 재개한다. callback도 새 turn으로 실행 큐에 들어간다.
+- handler 경로는 `CompletionStage` 합성만 쓰고 `.get()`/`.join()`은 금지한다.
 - continuation 재개 위치는 `CompletableFuture.*Async(fn, executor)` 조합으로 지정.
+
+Spring starter는 기본 `ZLinkHttpExecutionTurn` bean을 제공한다. application은 서비스마다
+`buildServer(executionTurn)`으로 만든 server client를 서로 다른 bean 이름으로 등록한다. 서비스별
+base URL·인증·timeout·retry 정책은 handler 안의 정적 팩토리가 아니라 이 등록 지점이 소유한다.
 
 ## 5. 전송 의미론
 

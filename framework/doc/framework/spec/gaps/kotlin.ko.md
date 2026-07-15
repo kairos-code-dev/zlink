@@ -274,7 +274,7 @@
 
 - [x] **§12.20** (결함) — Kotlin이 공유하는 Java connector에서 응답 header의 `name_len`을 0으로 고정하고, pending request의 원래 이름으로 완료 payload를 구성한다. Java·Node 상호운용과 Kotlin module 전체 테스트 통과(2026-07-15).
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
-- [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
+- [x] **§12.22** — 공유 Java 서버 HTTP client의 네 완료 방식과 Spring execution turn bean을 사용하고 coroutine용 turn 유지 `await`와 turn 반납 `yieldAwait`를 제공한다. Java/Kotlin HTTP client와 Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
 - [x] **§12.23** — 공유 Java 런타임의 `runCpuWorker`와 비동기 `runIoWorker`를 사용하며 두 표면의 `submit`·`yield`를 coroutine에서 기다릴 수 있다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
 - [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
 

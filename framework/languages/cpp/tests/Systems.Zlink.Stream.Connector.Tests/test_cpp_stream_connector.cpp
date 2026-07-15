@@ -554,6 +554,29 @@ zlink::message_t make_frame_prefix (std::size_t header_size, std::size_t payload
 
 int main ()
 {
+    using zlink::stream_connector::codec_t;
+    using zlink::stream_connector::header_flags_t;
+    using zlink::stream_connector::message_kind_t;
+    using zlink::stream_connector::detail::header_codec_t;
+    using zlink::stream_connector::detail::stream_header_t;
+
+    for (const auto kind : {message_kind_t::response, message_kind_t::error}) {
+        stream_header_t reply;
+        reply.kind = kind;
+        reply.codec = kind == message_kind_t::error ? codec_t::json : codec_t::raw;
+        reply.flags = header_flags_t::has_request_seq;
+        reply.request_seq = 7;
+        const auto encoded = header_codec_t{}.encode (reply);
+        if (!encoded || encoded.value ().size () < 13 || encoded.value ()[12] != 0
+            || !header_codec_t{}.decode (encoded.value ())) {
+            return 200;
+        }
+        reply.name = "forbidden.reply.name";
+        if (header_codec_t{}.encode (reply)) {
+            return 201;
+        }
+    }
+
     {
         zlink::stream_connector::codec_registry_t codecs;
         if (!codecs.supports (zlink::stream_connector::codec_t::raw)) {

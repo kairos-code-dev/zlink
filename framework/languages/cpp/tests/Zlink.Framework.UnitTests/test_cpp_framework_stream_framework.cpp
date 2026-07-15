@@ -396,6 +396,21 @@ int main ()
         return 3;
     }
 
+    zlink::framework::detail::stream_header_t reply_header (
+      stream_message_kind_t::response, stream_codec_t::json,
+      stream_header_flags_t::has_request_seq, 77, "");
+    const auto encoded_reply = runtime.encode_header (reply_header);
+    if (!encoded_reply || encoded_reply.value ().size () < 13 || encoded_reply.value ()[12] != 0
+        || !runtime.decode_header (encoded_reply.value ())) {
+        return 33;
+    }
+    zlink::framework::detail::stream_header_t named_reply_header (
+      stream_message_kind_t::response, stream_codec_t::json,
+      stream_header_flags_t::has_request_seq, 77, "legacy.reply");
+    if (runtime.encode_header (named_reply_header)) {
+        return 34;
+    }
+
     zlink::framework::detail::stream_header_t invalid_send (
       stream_message_kind_t::send, stream_codec_t::json, stream_header_flags_t::has_request_seq, 1,
       "bad");
@@ -573,6 +588,7 @@ int main ()
     if (!delayed_dispatch || !*delayed_dispatch || !delayed_session.reply_result
         || !*delayed_session.reply_result || runtime.written_headers (delayed_stream).size () != 1
         || runtime.written_headers (delayed_stream)[0].request_seq () != 77
+        || !runtime.written_headers (delayed_stream)[0].packet_name ().empty ()
         || runtime.written_payloads (delayed_stream)[0].to_string () != "delayed-payload") {
         return 29;
     }

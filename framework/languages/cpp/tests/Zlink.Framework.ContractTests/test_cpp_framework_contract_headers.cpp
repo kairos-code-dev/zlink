@@ -153,6 +153,11 @@ template <typename T> concept has_yield = requires (T value)
     value.yield ();
 };
 
+template <typename T> concept has_packet_name = requires (T value)
+{
+    value.packet_name ("packet");
+};
+
 template <typename T> concept has_callback_submit = requires (T value)
 {
     value.submit (std::declval<std::function<
@@ -744,9 +749,8 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_wr
                                           .metadata ("trace-id", "abc")),
                               zlink::framework::stream_write_call_t &>);
 
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ()
-                                          .packet_name ("packet")),
-                              zlink::framework::stream_write_call_t &>);
+static_assert (!has_packet_name<zlink::framework::stream_write_call_t>);
+static_assert (has_packet_name<zlink::framework::stream_send_call_t>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::stream_write_call_t &> ().compress ()),
@@ -764,7 +768,7 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t 
                               zlink::framework::task_t<void>>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().write_packet (
                                 std::declval<const zlink::message_t &> ())),
-                              zlink::framework::stream_write_call_t>);
+                              zlink::framework::stream_send_call_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::stream_t &> ().reply_packet (
                                 std::declval<const zlink::message_t &> ())),
                               zlink::framework::stream_write_call_t>);

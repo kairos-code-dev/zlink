@@ -439,6 +439,16 @@ TEST (CppFrameworkSampleParity, GameQuestUsesFlatOneWayGameplayMessage)
     EXPECT_NE (contracts.find ("\"version\""), std::string::npos);
 }
 
+TEST (CppFrameworkSampleParity, GameQuestProgressChecksRejectOvercount)
+{
+    const auto scenario = read_file (
+      cpp_language_root () / "samples/GameQuest/Client/gamequest_client_scenario.hpp");
+    EXPECT_EQ (scenario.find ("progress.current_count >= current_count"), std::string::npos)
+      << "GameQuest idempotency checks must reject duplicated progress";
+    EXPECT_NE (scenario.find ("progress.current_count == current_count"), std::string::npos)
+      << "GameQuest progress gates must compare the exact expected count";
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeDisconnectRemovesMilestoneObserver)
 {
     const auto entry = read_file (

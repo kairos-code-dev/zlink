@@ -229,7 +229,7 @@ class gamequest_client_scenario_t
         return std::any_of (projection.begin (), projection.end (),
                             [&] (const quest_progress_t &progress) {
                                 return progress.quest_id == quest_id
-                                       && progress.current_count >= current_count;
+                                       && progress.current_count == current_count;
                             });
     }
 

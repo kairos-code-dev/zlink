@@ -560,7 +560,7 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 - [ ] **IMP-JV-30** (결함) — **actor가 든 spot을 닫을 수 있다** (`.NET` IMP-DN-17과 동형)
 - [x] **IMP-JV-31** (결함) — stream received·replied trace가 header의 `correlation_id`만 사용하고, 없을 때 `request_seq`로 대체하지 않도록 고쳤다. 집중 테스트의 실패를 먼저 확인했고 Java framework core 전체 테스트가 통과했다. 구현 커밋 `b4729c52e`(2026-07-15).
 - [x] **IMP-JV-32** (결함) — spot·actor·route의 암시적 첫 page에 `listPageSize`를 적용하고, 복합 topology가 kind와 store continuation을 함께 보존하는 opaque cursor로 page를 이어가도록 고쳤다. 설정값 2 집중 계약 테스트와 core unit test가 통과했다. 구현 커밋 `29a20cf8f`, `dca342242`(2026-07-15).
-- [ ] **IMP-JV-33** (미구현) — `storeFailureGrace`를 **읽는 곳이 없다.** fail-static 유예 정책 자체가 없다
+- [x] **IMP-JV-33** — auto-connect executor가 실제 connect 성공 여부를 반환하고, store 장애 중에는 마지막 desired set의 미연결 target만 `storeFailureGrace` 안에서 재시도하도록 고쳤다. 기존 ready 연결은 유지하고 grace가 지나면 신규 재시도를 중단한다. 집중 red 테스트와 Java framework core 전체 테스트가 통과했다. 구현 커밋 `f3abd4bc8`(2026-07-15).
 
 ### 상세
 
@@ -578,7 +578,7 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 | **IMP-JV-30** | [21 §close](../server/21-spot-node.ko.md) | `ZLinkSpotLifecycle.java:134-142` — `hasActorsInSpot()`이 **락 없이** actor registry를 순회하고, `joinedSpotRid`를 **쓰는** commit은 spot dispatch 줄에서 돈다. `.NET` IMP-DN-17과 **같은 경합** |
 | **IMP-JV-31** | [52 §9](../server/52-message-flow-tracing.ko.md) | **해결:** received와 replied trace가 공유하는 내부 helper는 header의 `correlation_id`만 반환하고 없으면 `null`을 유지한다. 두 trace 경로에서 각각 fallback을 지우는 안보다 규칙을 한 곳에 두어 다시 갈라지지 않게 했다. `request_seq=7`이고 corr이 없는 header가 trace corr도 비워 두는 집중 테스트와 Java framework core 전체 테스트 통과. 구현 커밋 `b4729c52e`(2026-07-15). |
 | **IMP-JV-32** | [40 §3·§8.2](../server/40-location-runtime.ko.md): 목록 조회는 `list page size`(기본 **1000**)를 따른다 | **해결:** page size 0인 암시적 첫 page를 `options.listPageSize()`로 바꾸고, `kind=null` topology는 현재 kind와 해당 store continuation을 Base64로 감싼 내부 cursor를 사용한다. 모든 kind를 먼저 읽어 메모리에서 자르는 안 대신 필요한 page 크기만 순차 조회하므로 설정값이 실제 store 비용을 제한한다. 설정값 2에서 세 spot을 2개·1개 두 page로 읽는 집중 계약 테스트와 core unit test 통과. 구현 커밋 `29a20cf8f`, `dca342242`(2026-07-15). |
-| **IMP-JV-33** | [40 §6.1·§8.2](../server/40-location-runtime.ko.md): store 장애 유예 30초 | **읽는 곳 0.** ⇒ Java e2e의 `SF-B2 GraceExceeded`가 **존재하지 않는 정책을 검증하고 있다** |
+| **IMP-JV-33** | [40 §6.1·§8.2](../server/40-location-runtime.ko.md): store 장애 유예 30초 | **해결:** executor가 connect 성공 여부를 반환하고 reconciler는 성공한 target만 active로 기록한다. store 읽기가 실패하면 마지막 desired set의 미연결 target을 설정된 grace 안에서만 재시도하며, 기존 ready target은 끊지 않는다. transport 예외 처리와 desired/active 상태 판단을 한 계층에 섞는 안 대신 executor가 결과를 보고하고 reconciler가 정책을 소유하는 .NET 구조를 적용했다. 집중 테스트와 core 전체 테스트 통과. 구현 커밋 `f3abd4bc8`(2026-07-15). |
 
 ## 교차 언어 결함 — 이 언어에서 무엇을 고치나
 
@@ -805,8 +805,8 @@ Config 11 전체 실행도 각 selector를
 - [x] **E2E-JV-06** (결함) — StoreFailure·RuntimeMonitoring·ResilienceLifecycle·SpotService의 시나리오를 Client가 소유한다
   - 근거: SpotService의 51개 정식 ID를 Client scenario 파일에 연결하고 단계와 단언을 옮겼다.
     server에는 framework primitive operation만 남았으며 `/scenario`·`runMode` 금지 gate와 전체 실행이 통과했다.
-- [ ] **E2E-JV-07** (결함) — **`SF-B2`가 `SF-B1`과 구별되는 것을 아무것도 단언하지 않고**, 죽은 옵션으로 시간을 잰다
-  - 재검증 중단: provider 재시작과 survivor-only gate를 추가하면 기존 runner에서는 `api-b` 응답을 잡아 red가 된다. grace 초과 뒤 `api-b`를 종료하고 Redis 중단 상태에서 같은 endpoint로 재시작해도 consumer가 새 연결을 만들고 `sf-b2-restarted` 요청을 전달했다. E2E만 고치면 영구 실패하므로 Java runtime 범위가 필요하다.
+- [x] ~~**E2E-JV-07** (결함) — **`SF-B2`가 `SF-B1`과 구별되는 것을 아무것도 단언하지 않고**, 죽은 옵션으로 시간을 잰다~~
+  - 재검증 취소: .NET 정본 SF-B2는 store 장애 중에도 이미 준비된 transport의 요청 성공을 요구하며, grace 이후 provider 재시작을 금지하는 시나리오가 아니다. Java SF-B2도 같은 계약을 검증한다. 죽어 있던 `storeFailureGrace` 구현은 `IMP-JV-33`에서 별도로 고쳤다.
 - [x] **E2E-JV-08** (결함) — `feature-map` 누락, `YieldDispatch`에 **`run_e2e.sh`가 없어** 실행 불가
   - 근거: 없는 `SpotActorTransfer/feature-map.ko.md`를 요구한 파일 gate가 실패했다. 새 feature-map은 공통 Config 10, Java runner와 같은 20개 ID를 가지며, E2E-JV-17·18의 알려진 증거 결함은 부분 구현으로 남겼다. `YieldDispatch`는 Git 추적 파일이 0건이므로 이 항목의 구현 대상이 아님을 다시 확인했다.
 
@@ -816,7 +816,7 @@ Config 11 전체 실행도 각 selector를
 |----|------|----------------|
 | **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | **부분 해결:** live 재검증 수치는 과거 29곳이 아니라 15곳이었다. Bingo 4곳, DeliveryDispatch 5곳, ShoppingMall 2곳은 인자 없는 `enableClient()`와 location-store Spot peer 발견으로 바꿔 각 전체 runner가 통과했으며 SupportChat은 0곳이었다. **남은 4곳:** GameQuest의 owner/notification channel은 자동 연결로 최초 client와 scale-out까지 통과하지만 mission 재기동 직후 request가 `NOT_ADMITTED`로 실패한다. 내부 runtime/query 접근이나 업무 요청 retry는 사용하지 않았다. starter의 public readiness bean 제공 또는 runtime request의 reconnect 대기 계약이 필요해 현재 범위에서는 open이다. |
 | **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | **해결:** 두 QuestMission이 `gamequest.player-quests` spot mesh에 참여하고 `PlayerQuestSpot`을 등록한다. 기존 player hash channel은 ingress 선택에만 쓰이며, 실제 소유권과 직렬 처리는 `PlayerId` routing id의 spot owner가 담당한다. |
-| **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다**(장애 중 재시작한 provider를 store 복구 전에 dial하면 안 된다) | **재검증 중단:** 기존 SF-B2 뒤에 survivor-only gate를 붙이면 계속 실행 중인 `api-b` 응답을 잡아 예상대로 실패한다. 이어 grace 초과 뒤 `api-b`를 종료하고 Redis 중단 상태에서 같은 endpoint로 재시작했지만, consumer가 새 outbound 연결을 만들고 `sf-b2-restarted` 요청을 `api-b`에 전달했다. 이는 gate 누락뿐 아니라 Java runtime 계약 위반이다. **선택지:** (1) 허용 범위를 `zlink-framework-core`까지 넓혀 store failure grace 초과 시 reconnect/new connect를 억제한 뒤 provider 재시작 gate를 정식으로 넣는다. (2) 현재 범위를 유지하고 이 항목을 open으로 남긴다. |
+| **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다** | **재검증 취소:** .NET 정본은 이미 준비된 transport를 fail-static으로 유지하고 그 연결의 요청 성공을 grace 이후까지 확인한다. 장애 중 provider를 재시작해 기존 transport의 reconnect까지 금지하는 해석은 정본과 다르다. Java runner는 기존 연결의 성공과 unhealthy 상태를 함께 검증하며, 미연결 desired target의 grace 제한은 `IMP-JV-33` 집중 테스트가 담당한다. |
 
 ### 샘플 상세
 

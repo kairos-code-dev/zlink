@@ -360,6 +360,10 @@ exact-match 집중 테스트, Java core와 Kotlin module 전체 테스트가 통
 pending actor는 resolve miss로 처리한다. pending 집중 테스트, Java core와 Kotlin module 전체
 테스트가 통과했다(구현 커밋 `0af3e6ec6`).
 
+공유 HTTP client의 **IMP-JV-18/19**도 닫혔다. proxy 자격증명은 proxy challenge에만 제공되고,
+redirect hop과 body read는 retry attempt 하나의 deadline을 함께 사용한다. 두 집중 실패 테스트와
+HTTP client 전체 테스트가 통과했다(구현 커밋 `6fc35fb4a`).
+
 [java 체크리스트](java.ko.md)를 함께 본다.
 
 ## 라운드 4 (2026-07-14) — 샘플 · E2E

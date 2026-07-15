@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 15건.**
+**전체 33건. 완료 17건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -522,8 +522,8 @@ Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check�
 - [ ] **IMP-JV-15** (미구현) — `fanout.published`/`received`에 `topic` 라벨이 없다
 - [ ] **IMP-JV-16** (결함) — **수동 endpoint가 그 역할의 자동 연결 reconcile을 끄지 않는다**
 - [ ] **IMP-JV-17** (결함) — 자동 연결 역할에 대한 런타임 `connect()`가 **거부되지 않는다**
-- [ ] **IMP-JV-18** (결함) — HTTP client가 **proxy 자격증명을 대상 서버로 흘린다**
-- [ ] **IMP-JV-19** (결함) — HTTP attempt timeout이 **redirect hop마다** 적용된다
+- [x] **IMP-JV-18** (결함) — proxy 자격증명을 origin request header에서 제거하고 JDK proxy authenticator가 proxy challenge에만 제공하도록 고쳤다. 실제 proxy 역할 서버가 header를 받지 않는 집중 테스트와 HTTP client 전체 테스트가 통과했다. 구현 커밋 `6fc35fb4a`(2026-07-15).
+- [x] **IMP-JV-19** (결함) — 한 retry attempt가 redirect와 body read 전체에서 하나의 monotonic deadline을 공유하도록 고쳤다. 각 hop은 제한 안이지만 합계가 제한을 넘는 집중 테스트와 HTTP client 전체 테스트가 통과했다. 구현 커밋 `6fc35fb4a`(2026-07-15).
 - [x] **IMP-JV-20** (결함) — connector send payload 한도를 압축된 wire payload에 적용한다. 압축 전에는 한도를 넘지만 압축 후에는 한도 안인 집중 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `cc1ea63b1`(2026-07-15).
 
 ### 상세
@@ -537,8 +537,8 @@ Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check�
 | **IMP-JV-15** | [51 §4.4b](../server/51-runtime-metrics.ko.md): `fanout.published`/`received`에 `topic`(닫힌 집합) 라벨 | `ZLinkChannelDirectCalls.java:126` 등 전부 `Map.of()`. ⇒ **topic별 발행/수신 차이**를 계산할 수 없다 — 이 한 쌍이 존재하는 이유가 그건데 |
 | **IMP-JV-16** | [10 §5.2](../server/10-channel-topology.ko.md): 같은 역할에 수동 endpoint가 **하나라도** 있으면 그 역할은 수동으로 확정되고, **자동 연결 reconcile이 돌지 않는다** | `ZLinkLocationAutoConnectHost.java:107-127` — 모든 surface에 **무조건** reconciler를 만든다. 유일한 완화는 `ConnectableSocketExecutor.connect`(:174-186)가 **문자열이 정확히 일치하는** 수동 endpoint만 건너뛰는 것. ⇒ `enableClient("tcp://10.0.0.5:5001")` + location store면 DEALER가 **store의 staging 서버들까지 물고 라운드로빈**한다 |
 | **IMP-JV-17** | [10 §5.2](../server/10-channel-topology.ko.md): 자동 연결로 확정된 역할에 런타임 수동 endpoint를 추가하려 하면 **그때 거부된다** | `RuntimeEndpointConnections.java:19-30` — 검증 후 그냥 연결한다. frozen/auto 모드가 **없다**(`.NET`은 `Freeze`, C++은 `frozen` 상태를 갖는다). ⇒ **역할마다 진실의 원천이 하나**라는 불변식이 깨진다 |
-| **IMP-JV-18** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md) | `RequestPerformer.java:160-162`가 `proxy-authorization`을 요청 헤더에 넣고, `JavaHttpClientFactory.java:27-30`은 `.authenticator(...)` 없이 `ProxySelector`만 준다. `.NET`(IMP-DN-12)과 **같은 결함** |
-| **IMP-JV-19** | [http 06 §6.2](../http-client/06-redirect-retry-cookie.ko.md): timeout은 **시도(attempt)당** 적용한다 | `RequestPerformer.java:176-181` — `hop()`마다 timeout을 **새로 건다.** ⇒ `timeout(3s)` + `followRedirects(5)` + `retry(2)`가 계약상 ~9초여야 하는데 **~45초**를 태울 수 있다 |
+| **IMP-JV-18** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md) | **해결:** origin request builder는 `proxy-authorization`을 만들지 않는다. proxy Basic 자격증명은 JDK `Authenticator`가 `RequestorType.PROXY` challenge에만 반환한다. 실제 proxy 역할 서버 집중 테스트와 HTTP client 전체 테스트 통과. 구현 커밋 `6fc35fb4a`(2026-07-15). |
+| **IMP-JV-19** | [http 06 §6.2](../http-client/06-redirect-retry-cookie.ko.md): timeout은 **시도(attempt)당** 적용한다 | **해결:** attempt 시작 시 monotonic deadline을 한 번 만들고 각 redirect request와 최종 body read에는 남은 시간만 적용한다. retry는 새 attempt이므로 새 deadline을 받는다. 누적 redirect 집중 테스트와 HTTP client 전체 테스트 통과. 구현 커밋 `6fc35fb4a`(2026-07-15). |
 | **IMP-JV-20** | [32 §4.7](../stream-connector/32-stream-connector.ko.md) | **해결:** 압축하지 않은 호출은 원본 payload, 압축 호출은 codec이 만든 wire payload의 크기를 transport write 전에 검사한다. 압축 전 검사를 유지한 채 압축 후 검사만 더하는 안은 압축으로 한도 안에 들어오는 payload를 계속 거부하므로 선택하지 않았다. 압축 전에는 한도를 넘는 payload가 2바이트로 압축되는 집중 테스트와 Java connector·Kotlin module 전체 테스트 통과. 구현 커밋 `cc1ea63b1`(2026-07-15). |
 
 ## 라운드 3 (2026-07-14) — 근거 없는 표면 · 조용한 no-op · 경합

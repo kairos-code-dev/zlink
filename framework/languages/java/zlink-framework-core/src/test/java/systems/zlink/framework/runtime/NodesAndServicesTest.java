@@ -91,7 +91,9 @@ final class NodesAndServicesTest {
     void addZLinkFramework_allowsStandaloneLocalSpotNode() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var mesh = options.addSpotMesh("game"); mesh.addSpotFactory(GameSpot.class); };
+        { var mesh = options.addSpotMesh("game");
+            mesh.enableRouter("inproc://standalone-local-spot");
+            mesh.addSpotFactory(GameSpot.class); };
 
         assertDoesNotThrow(options::validate);
     }

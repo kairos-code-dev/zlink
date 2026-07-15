@@ -182,6 +182,7 @@ final class EntrySpotActorDispatchTests {
         options.configureDispatch().setMessageFlowObserver(new CapturingFlowObserver());
         var node = options.addSpotMesh("entry");
         node.setRoutingId(RoutingId.from("entry-node"));
+        node.enableRouter("inproc://entry-actor-dispatch");
         node.configureEntrySpot().setRoutingId(RoutingId.from("entry-spot"));
         node.addEntrySpot(ProbeEntrySpot.class);
         node.addActorFactory("probe", ProbeActorFactory.class);

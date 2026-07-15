@@ -218,6 +218,18 @@ public final class SpotNodeRegistration {
     }
 
     public void validate() {
+        if (!routerEnabled && !pubSubEnabled) {
+            throw new ZLinkConfigurationException(
+                "spot node must enable router or pub/sub capability: " + nodeName);
+        }
+        if (routerEnabled && (routerBind == null || routerBind.isBlank())) {
+            throw new ZLinkConfigurationException(
+                "spot node router capability requires a bind endpoint: " + nodeName);
+        }
+        if (pubSubEnabled && (pubBind == null || pubBind.isBlank())) {
+            throw new ZLinkConfigurationException(
+                "spot node pub/sub capability requires a bind endpoint: " + nodeName);
+        }
         Set<Class<? extends ZLinkSpot<?>>> spotTypes = new HashSet<>();
         for (Class<? extends ZLinkSpot<?>> spotFactory : spotFactories) {
             if (!spotTypes.add(spotFactory)) {

@@ -97,6 +97,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         RoutingId spotRid = RoutingId.from("room-1");
         options.addSpotMesh("game")
             .setRoutingId(nodeRid)
+            .enableRouter("inproc://location-user-spot")
             .addSpotFactory(LocationSpot.class);
 
         try (ZLinkFrameworkRuntime runtime =
@@ -122,7 +123,9 @@ class ZLinkFrameworkLocationRuntimeTest {
             assertTrue(runtime.spotManager().close(spotRid).toCompletableFuture().get());
             assertEquals(
                 List.of(),
-                store.listSpotLocations(ZLinkSpotLocationFilter.all(), ZLinkPageRequest.firstPage())
+                store.listSpotLocations(
+                        new ZLinkSpotLocationFilter(null, null, null, ZLinkSpotKind.USER),
+                        ZLinkPageRequest.firstPage())
                     .toCompletableFuture()
                     .get()
                     .items());
@@ -137,6 +140,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         RoutingId nodeRid = RoutingId.from("actor-node");
         options.addSpotMesh("actors")
             .setRoutingId(nodeRid)
+            .enableRouter("inproc://location-actor-create")
             .addActorFactory("player", LocationActorFactory.class);
 
         ZLinkFrameworkRuntime runtime =
@@ -192,6 +196,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         options.addLocationStore(store);
         options.addSpotMesh("actors")
             .setRoutingId(RoutingId.from("actor-node"))
+            .enableRouter("inproc://location-actor-conflict")
             .addActorFactory("player", LocationActorFactory.class);
 
         try (ZLinkFrameworkRuntime runtime =
@@ -219,6 +224,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         LocationSpot.last.set(null);
         options.addSpotMesh("rooms")
             .setRoutingId(nodeRid)
+            .enableRouter("inproc://location-actor-join")
             .addActorFactory("player", LocationActorFactory.class)
             .addSpotFactory(LocationSpot.class);
 

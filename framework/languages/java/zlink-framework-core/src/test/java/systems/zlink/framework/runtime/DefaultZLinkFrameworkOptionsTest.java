@@ -321,7 +321,9 @@ final class DefaultZLinkFrameworkOptionsTest {
             RoutingId.from("spot-node-1");
 
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
-                node.setRoutingId(nodeRid).connectRouter("inproc://spot-router-peer");
+                node.setRoutingId(nodeRid).enableRouter("inproc://spot-router-bind")
+                    .connectRouter("inproc://spot-router-peer");
+                node.enablePubSub("inproc://spot-pub-bind");
                 node.connectPeerPub("inproc://spot-pub-peer"); }; };
 
         options.validate();
@@ -361,7 +363,9 @@ final class DefaultZLinkFrameworkOptionsTest {
         RoutingId entryRid =
             RoutingId.from("entry-spot");
 
-        { var mesh = options.addSpotMesh("game"); { var node = mesh; var entry = node.configureEntrySpot(); entry.setRoutingId(entryRid); }; };
+        { var mesh = options.addSpotMesh("game"); { var node = mesh;
+                node.enableRouter("inproc://entry-router");
+                var entry = node.configureEntrySpot(); entry.setRoutingId(entryRid); }; };
 
         options.validate();
         assertEquals(entryRid, options.registration().spotNodes().get(0).entrySpotRoutingId());
@@ -725,6 +729,21 @@ final class DefaultZLinkFrameworkOptionsTest {
             stream.registerSession(GameSession.class); };
 
         options.validate();
+    }
+
+    @Test
+    void spotNodeRequiresAtLeastOneBoundCapability() {
+        DefaultZLinkFrameworkOptions empty = new DefaultZLinkFrameworkOptions();
+        empty.addSpotMesh("empty");
+        assertThrows(ZLinkConfigurationException.class, empty::validate);
+
+        DefaultZLinkFrameworkOptions routerWithoutBind = new DefaultZLinkFrameworkOptions();
+        routerWithoutBind.addSpotMesh("router").connectRouter("inproc://peer-router");
+        assertThrows(ZLinkConfigurationException.class, routerWithoutBind::validate);
+
+        DefaultZLinkFrameworkOptions pubSubWithoutBind = new DefaultZLinkFrameworkOptions();
+        pubSubWithoutBind.addSpotMesh("pubsub").connectPeerPub("inproc://peer-pub");
+        assertThrows(ZLinkConfigurationException.class, pubSubWithoutBind::validate);
     }
 
     public static final class EchoHandler implements ZLinkRequestHandler<String, String> {

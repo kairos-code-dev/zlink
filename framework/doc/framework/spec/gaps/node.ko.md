@@ -659,6 +659,11 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 ### 체크리스트
 
 - [ ] **E2E-ND-01** (**가짜 통과**) — Config 11에 **e2e 앱이 없고 시나리오를 `echo`로 통과시킨다**
+  - 선행 대기: 독립 역할 앱과 13개 시나리오가 없으면 실패하는 집중 게이트에서 현재 runner의 하위
+    config 재실행과 합성 `PASS`가 실제로 실패했다. 그러나 OBS-C1은 E2E-ND-26과 같은 “기존 연결은
+    유지하면서 draining peer를 신규 배정에서만 제외”하는 계약을 요구한다. 현재 dealer backend에는
+    연결을 유지한 채 peer별 신규 선택만 막는 표면이 없고 연결 해제 우회는 in-flight 유지 계약을
+    깨므로, E2E-ND-26의 계약·구현 결정 뒤 Config 11 전체 배포로 함께 검증할 때까지 열린 상태로 둔다.
 - [x] **E2E-ND-02** (**가짜 통과**) — probe 서버가 **클라이언트가 검사할 값을 리터럴로 만들어 낸다**
   - 근거: probe가 합성하던 topology 값을 제거하고 실제 consumer app role의 public query와 resilience client가 같은 관측 경로를 사용하게 했다. 합성 probe 없이는 실패하던 topology/RL-A1 게이트가 통과한다. 커밋 `cc857d12a`, `31f56b068`.
 - [x] **SMP-ND-01** (미구현) — Bingo의 정본 `yield` 왕복이 **계약·서버·클라이언트 게이트 어디에도 없다**

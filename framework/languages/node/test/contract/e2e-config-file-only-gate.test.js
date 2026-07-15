@@ -76,18 +76,30 @@ test('AutomaticTurnDispatch reads each host configuration once at its Configurat
   assert.match(externalApiEntry, /Configuration\/external-api-options/);
 });
 
-test('Node framework hosts receive only one role configuration file path', () => {
-  const spotServiceRoot = path.join(root, 'e2e/SpotService');
-  const runner = fs.readFileSync(path.join(spotServiceRoot, 'run_e2e.sh'), 'utf8');
-  const hostEntries = sourceFiles(path.join(spotServiceRoot, 'Server'))
-    .filter((file) => path.basename(file) === 'main.ts');
-  const argumentDrivenHosts = hostEntries
-    .filter((file) => /process\.argv\.slice\(2\)/.test(fs.readFileSync(file, 'utf8')))
-    .map((file) => path.relative(root, file));
+test('every Node e2e framework host receives only one role configuration file path', () => {
+  const e2eRoot = path.join(root, 'e2e');
+  const runners = fs.readdirSync(e2eRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(e2eRoot, entry.name, 'Server')))
+    .map((entry) => path.join(e2eRoot, entry.name, 'run_e2e.sh'))
+    .filter((file) => fs.existsSync(file));
+  const missingLaunches = [];
+  const violations = [];
 
-  assert.deepEqual(argumentDrivenHosts, []);
-  assert.doesNotMatch(runner, /start_server[\s\S]*?--(?:rid|http-url|control-router-endpoint|stream-endpoint)\b/);
-  assert.match(runner, /start_server[\s\S]*?--config\b/);
+  for (const runner of runners) {
+    const commands = fs.readFileSync(runner, 'utf8').replace(/\\\n/g, ' ')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => /^start_server\s+/.test(line) || /^node\s+"\$[A-Z0-9_]*MAIN"/.test(line));
+    if (commands.length === 0) missingLaunches.push(path.relative(root, runner));
+    for (const command of commands) {
+      if (!/--config\s+/.test(command)) {
+        violations.push(`${path.relative(root, runner)}: ${command}`);
+      }
+    }
+  }
+
+  assert.deepEqual(missingLaunches, []);
+  assert.deepEqual(violations, []);
 });
 
 test('Node sample runners do not dispatch sample-specific behavior by sample name', () => {

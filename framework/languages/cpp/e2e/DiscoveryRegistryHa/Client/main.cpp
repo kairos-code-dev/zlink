@@ -8,6 +8,8 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include <nlohmann/json.hpp>
+#include <stdexcept>
 #include <vector>
 
 namespace sf_client = zlink::framework::e2e::store_failure::client;
@@ -18,28 +20,62 @@ namespace
 
 struct options_t
 {
-    std::string scenario = sf_client::env_or ("ZLINK_CPP_SF_SCENARIO", "SF-A1");
-    std::string consumer_url = sf_client::env_or ("ZLINK_CPP_SF_CONSUMER_URL");
-    std::string provider_a_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_A_URL");
-    std::string provider_b_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_URL");
-    std::string provider_c_url = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_C_URL");
-    std::string provider_c_start_file =
-      sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_C_START_FILE");
-    std::string redis_proxy_admin_url =
-      sf_client::env_or ("ZLINK_CPP_SF_REDIS_PROXY_ADMIN_URL");
-    std::string provider_a_endpoint = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_A_ENDPOINT");
-    std::string provider_b_endpoint = sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_ENDPOINT");
-    std::string replacement_provider_url =
-      sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_URL");
-    std::string replacement_provider_endpoint =
-      sf_client::env_or ("ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_ENDPOINT");
-    std::chrono::milliseconds heartbeat{
-      sf_client::env_int ("ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS", 1000)};
-    std::chrono::milliseconds lease_ttl{
-      sf_client::env_int ("ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS", 3000)};
-    std::chrono::milliseconds polling{sf_client::env_int ("ZLINK_CPP_SF_LOCATION_POLLING_MS", 500)};
-    std::chrono::milliseconds grace{sf_client::env_int ("ZLINK_CPP_SF_LOCATION_GRACE_MS", 6000)};
+    std::string scenario;
+    std::string consumer_url;
+    std::string provider_a_url;
+    std::string provider_b_url;
+    std::string provider_c_url;
+    std::string provider_c_start_file;
+    std::string redis_proxy_admin_url;
+    std::string redis_container;
+    std::string provider_a_endpoint;
+    std::string provider_b_endpoint;
+    std::string replacement_provider_url;
+    std::string replacement_provider_endpoint;
+    std::chrono::milliseconds heartbeat;
+    std::chrono::milliseconds lease_ttl;
+    std::chrono::milliseconds polling;
+    std::chrono::milliseconds grace;
 };
+
+options_t read_options (int argc, char **argv)
+{
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown DiscoveryRegistryHa client option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
+    }
+    if (path.empty ()) {
+        throw std::runtime_error ("DiscoveryRegistryHa client requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open DiscoveryRegistryHa client config: " + path);
+    }
+    const auto root = nlohmann::json::parse (input).at ("e2e");
+    const auto &location = root.at ("location");
+    return {.scenario = root.at ("scenario").get<std::string> (),
+            .consumer_url = root.at ("consumerUrl").get<std::string> (),
+            .provider_a_url = root.at ("providerAUrl").get<std::string> (),
+            .provider_b_url = root.at ("providerBUrl").get<std::string> (),
+            .provider_c_url = root.at ("providerCUrl").get<std::string> (),
+            .provider_c_start_file = root.at ("providerCStartFile").get<std::string> (),
+            .redis_proxy_admin_url = root.at ("redisProxyAdminUrl").get<std::string> (),
+            .redis_container = root.at ("redisContainer").get<std::string> (),
+            .provider_a_endpoint = root.at ("providerAEndpoint").get<std::string> (),
+            .provider_b_endpoint = root.at ("providerBEndpoint").get<std::string> (),
+            .replacement_provider_url = root.at ("replacementProviderUrl").get<std::string> (),
+            .replacement_provider_endpoint =
+              root.at ("replacementProviderEndpoint").get<std::string> (),
+            .heartbeat = std::chrono::milliseconds (location.at ("heartbeatMs").get<int> ()),
+            .lease_ttl = std::chrono::milliseconds (location.at ("leaseTtlMs").get<int> ()),
+            .polling = std::chrono::milliseconds (location.at ("pollingMs").get<int> ()),
+            .grace = std::chrono::milliseconds (location.at ("graceMs").get<int> ())};
+}
 
 std::chrono::milliseconds stale_peer_timeout (const options_t &options)
 {
@@ -129,7 +165,7 @@ void polling_fallback (const options_t &options)
 
 void fail_static (const options_t &options)
 {
-    sf_client::stop_store ();
+    sf_client::stop_store (options.redis_container);
     try {
         sf_client::drive_requests (options.consumer_url, "sf-b1", options.lease_ttl * 7 / 10,
                                    "SF-B1");
@@ -139,10 +175,10 @@ void fail_static (const options_t &options)
           options.heartbeat * 8, "SF-B1 outage status was not visible");
     }
     catch (...) {
-        sf_client::restart_store ();
+        sf_client::restart_store (options.redis_container);
         throw;
     }
-    sf_client::restart_store ();
+    sf_client::restart_store (options.redis_container);
     sf_client::wait_status (
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
@@ -152,7 +188,7 @@ void fail_static (const options_t &options)
 
 void grace_exceeded (const options_t &options)
 {
-    sf_client::stop_store ();
+    sf_client::stop_store (options.redis_container);
     try {
         sf_client::wait_ready (options.replacement_provider_url);
         const auto replies = sf_client::drive_requests (
@@ -166,10 +202,10 @@ void grace_exceeded (const options_t &options)
         sf_client::ensure (!status.store_healthy, "SF-B2 outage was not visible after grace");
     }
     catch (...) {
-        sf_client::restart_store ();
+        sf_client::restart_store (options.redis_container);
         throw;
     }
-    sf_client::restart_store ();
+    sf_client::restart_store (options.redis_container);
     sf_client::wait_status (
       options.consumer_url,
       [] (const auto &status) { return status.store_healthy && status.owner_lease_healthy; },
@@ -324,9 +360,9 @@ void short_recovery (const options_t &options)
         return sf_client::drive_requests (options.consumer_url, "sf-d1", options.lease_ttl * 2,
                                           "SF-D1");
     });
-    sf_client::stop_store ();
+    sf_client::stop_store (options.redis_container);
     std::this_thread::sleep_for (options.lease_ttl / 2);
-    sf_client::restart_store ();
+    sf_client::restart_store (options.redis_container);
     (void) traffic.get ();
     sf_client::wait_status (
       options.consumer_url,
@@ -363,11 +399,11 @@ void long_recovery (const options_t &options)
         return drive_tolerant_requests (
           options, options.lease_ttl * 2 + options.heartbeat * 4);
     });
-    sf_client::stop_store ();
+    sf_client::stop_store (options.redis_container);
     sf_client::post_empty (options.provider_b_url, "/admin/crash");
     sf_client::wait_down (options.provider_b_url);
     std::this_thread::sleep_for (options.lease_ttl + options.heartbeat);
-    sf_client::restart_store ();
+    sf_client::restart_store (options.redis_container);
     const auto traffic_result = traffic.get ();
     sf_client::ensure (
       std::any_of (traffic_result.replies.begin (), traffic_result.replies.end (),
@@ -428,7 +464,7 @@ void status_transition (const options_t &options)
                  && status.last_refresh_at_unix_ms > 0;
       },
       options.heartbeat * 8, "SF-D3 initial status was not healthy");
-    sf_client::stop_store ();
+    sf_client::stop_store (options.redis_container);
     sf::runtime_status_res_t outage;
     try {
         outage = sf_client::wait_status (
@@ -440,14 +476,14 @@ void status_transition (const options_t &options)
           options.heartbeat * 10, "SF-D3 outage status was not visible");
     }
     catch (...) {
-        sf_client::restart_store ();
+        sf_client::restart_store (options.redis_container);
         throw;
     }
     sf_client::ensure (
       outage.owner_lease_renewed_at_unix_ms >= initial.owner_lease_renewed_at_unix_ms
         && outage.last_refresh_at_unix_ms >= initial.last_refresh_at_unix_ms,
       "SF-D3 outage discarded the last successful runtime timestamps");
-    sf_client::restart_store ();
+    sf_client::restart_store (options.redis_container);
     const auto recovered = sf_client::wait_status (
       options.consumer_url,
       [&outage] (const auto &status) {
@@ -563,9 +599,9 @@ void store_delay_non_blocking (const options_t &options)
 
 } // namespace
 
-int main ()
+int main (int argc, char **argv)
 {
-    const options_t options;
+    const auto options = read_options (argc, argv);
     if (options.scenario == "SF-A1") {
         baseline (options);
     } else if (options.scenario == "SF-A2") {

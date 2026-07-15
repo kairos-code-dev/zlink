@@ -16,8 +16,8 @@ namespace sf_provider = zlink::framework::e2e::store_failure::provider;
 
 int main (int argc, char **argv)
 {
-    const auto options = sf_provider::read_provider_options ();
     auto app = zlink::framework::app_t::create ();
+    const auto options = sf_provider::read_provider_options (app, argc, argv);
     auto lifecycle_owner =
       std::make_unique<sf_provider::provider_lifecycle_control_t> (app);
     app.logging ()
@@ -28,8 +28,7 @@ int main (int argc, char **argv)
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/" + options.log_name + "-flow.log")
           .trace_label ("cpp-store-failure-" + options.log_name);
-        sf::server::add_redis_location_store (framework, options.redis_endpoint,
-                                              options.redis_key_prefix);
+        sf::server::add_redis_location_store (framework, options);
         framework.services ().add_singleton<sf_provider::provider_evidence_store_t> (
           std::make_unique<sf_provider::provider_evidence_store_t> (options.rid));
         framework.services ().add_singleton<sf_provider::provider_lifecycle_control_t> (

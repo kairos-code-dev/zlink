@@ -4,12 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build-redis-vcpkg}"
-SCENARIO="${1:-${SCENARIO_SET:-SF-A1}}"
-HEARTBEAT_MS="${ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS:-1000}"
-LEASE_TTL_MS="${ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS:-3000}"
-POLLING_MS="${ZLINK_CPP_SF_LOCATION_POLLING_MS:-500}"
-GRACE_MS="${ZLINK_CPP_SF_LOCATION_GRACE_MS:-6000}"
+BUILD_DIR="$CPP_DIR/build-redis-vcpkg"
+SCENARIO="${1:-all}"
+HEARTBEAT_MS=1000
+LEASE_TTL_MS=3000
+POLLING_MS=500
+GRACE_MS=6000
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -66,58 +66,9 @@ PY
 SCENARIO="$(normalize_scenario "$SCENARIO")"
 
 if [[ "$SCENARIO" == "all" ]]; then
-  REDIS_CONTAINER=""
-  REDIS_ENDPOINT=""
-  wait_tcp() {
-    local host="$1"
-    local port="$2"
-    local name="$3"
-    if python3 - "$host" "$port" "$REDIS_READINESS_TIMEOUT_SECONDS" <<'PY'
-import socket
-import sys
-import time
-
-host, port, timeout = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
-deadline = time.monotonic() + timeout
-while time.monotonic() < deadline:
-    try:
-        with socket.create_connection((host, port), timeout=1):
-            sys.exit(0)
-    except OSError:
-        time.sleep(0.2)
-sys.exit(1)
-PY
-    then
-      return 0
-    fi
-    echo "Timed out waiting ${REDIS_READINESS_TIMEOUT_SECONDS}s for $name at $host:$port" >&2
-    return 1
-  }
-
-  cleanup_all() {
-    if [[ -n "$REDIS_CONTAINER" ]]; then
-      docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
-    fi
-  }
-  trap cleanup_all EXIT
-
-  redis_port="$(pick_loopback_port)"
-  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-cpp-e2e-discoveryregistryha-all" "redis:7-alpine" \
-    "127.0.0.1:${redis_port}:6379"
-  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
-  wait_tcp "${REDIS_ENDPOINT%:*}" "${REDIS_ENDPOINT##*:}" redis
-
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-A1
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-A2
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-B1
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-B2
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-C1
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-C2
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-D1
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-D2
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-D3
-  ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" "$0" SF-E1
+  for scenario in SF-A1 SF-A2 SF-B1 SF-B2 SF-C1 SF-C2 SF-D1 SF-D2 SF-D3 SF-E1; do
+    "$0" "$scenario"
+  done
   echo "store-failure c++ e2e result=passed"
   exit 0
 fi
@@ -142,6 +93,8 @@ PY
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$LOG_DIR/config"
+mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 
 cmake -S "$CPP_DIR" -B "$BUILD_DIR" >/dev/null
@@ -279,6 +232,7 @@ cleanup() {
     redis-cli -h "${REDIS_ENDPOINT%:*}" -p "${REDIS_ENDPOINT##*:}" --scan --pattern "$REDIS_KEY_PREFIX*" 2>/dev/null \
       | xargs -r redis-cli -h "${REDIS_ENDPOINT%:*}" -p "${REDIS_ENDPOINT##*:}" DEL >/dev/null 2>&1 || true
   fi
+  rm -rf "$CONFIG_DIR"
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   elif [[ $cleanup_failed -ne 0 ]]; then
@@ -335,22 +289,13 @@ PY
   return 1
 }
 
-if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  REDIS_CONTAINER="${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}"
-  echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  echo "External Redis endpoint is not supported by the C++ DiscoveryRegistryHa e2e runner." >&2
-  exit 2
-else
-  redis_port="$(pick_loopback_port)"
-  zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
-    "zlink-redis-cpp-e2e-discoveryregistryha" "redis:7-alpine" \
-    "127.0.0.1:${redis_port}:6379"
-  REDIS_ENDPOINT="127.0.0.1:${redis_port}"
-  REDIS_OWNED=1
-  echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
-fi
+redis_port="$(pick_loopback_port)"
+zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
+  "zlink-redis-cpp-e2e-discoveryregistryha" "redis:7-alpine" \
+  "127.0.0.1:${redis_port}:6379"
+REDIS_ENDPOINT="127.0.0.1:${redis_port}"
+REDIS_OWNED=1
+echo "redis endpoint=$REDIS_ENDPOINT (container $REDIS_CONTAINER)"
 
 wait_tcp "${REDIS_ENDPOINT%:*}" "${REDIS_ENDPOINT##*:}" redis
 echo "redis key prefix=$REDIS_KEY_PREFIX"
@@ -375,23 +320,73 @@ if [[ "$SCENARIO" == "SF-E1" ]]; then
   echo "redis latency proxy endpoint=$STORE_ENDPOINT admin=$REDIS_PROXY_ADMIN_URL"
 fi
 
+write_role_config() {
+  local path="$1"
+  local rid="$2"
+  local http="$3"
+  local channel="$4"
+  local log_name="$5"
+  python3 - "$path" "$rid" "$http" "$channel" "$STORE_ENDPOINT" "$REDIS_KEY_PREFIX" \
+    "$LOG_DIR" "$log_name" "$HEARTBEAT_MS" "$LEASE_TTL_MS" "$POLLING_MS" "$GRACE_MS" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, rid, http_endpoint, channel_endpoint, redis_endpoint, redis_key_prefix,
+ log_dir, log_name, heartbeat_ms, lease_ttl_ms, polling_ms, grace_ms) = sys.argv[1:]
+role = {"rid": rid, "httpEndpoint": http_endpoint,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir, "location": {"heartbeatMs": int(heartbeat_ms),
+        "leaseTtlMs": int(lease_ttl_ms), "pollingMs": int(polling_ms),
+        "graceMs": int(grace_ms)}}
+if channel_endpoint:
+    role["channelEndpoint"] = channel_endpoint
+    role["logName"] = log_name
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": role}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+}
+
+write_client_config() {
+  local path="$1"
+  python3 - "$path" "$SCENARIO" "$HTTP_CONSUMER" "$HTTP_A" "$HTTP_B" "$HTTP_C" \
+    "$SF_A2_PROVIDER_START_FILE" "$REDIS_PROXY_ADMIN_URL" "$REDIS_CONTAINER" "$API_A" \
+    "$API_B" "$HTTP_B_REPLACEMENT" "$API_B_REPLACEMENT" "$HEARTBEAT_MS" \
+    "$LEASE_TTL_MS" "$POLLING_MS" "$GRACE_MS" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, scenario, consumer_url, provider_a_url, provider_b_url, provider_c_url,
+ provider_c_start_file, redis_proxy_admin_url, redis_container, provider_a_endpoint,
+ provider_b_endpoint, replacement_provider_url, replacement_provider_endpoint,
+ heartbeat_ms, lease_ttl_ms, polling_ms, grace_ms) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"scenario": scenario, "consumerUrl": consumer_url,
+        "providerAUrl": provider_a_url, "providerBUrl": provider_b_url,
+        "providerCUrl": provider_c_url, "providerCStartFile": provider_c_start_file,
+        "redisProxyAdminUrl": redis_proxy_admin_url, "redisContainer": redis_container,
+        "providerAEndpoint": provider_a_endpoint, "providerBEndpoint": provider_b_endpoint,
+        "replacementProviderUrl": replacement_provider_url,
+        "replacementProviderEndpoint": replacement_provider_endpoint,
+        "location": {"heartbeatMs": int(heartbeat_ms), "leaseTtlMs": int(lease_ttl_ms),
+        "pollingMs": int(polling_ms), "graceMs": int(grace_ms)}}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+}
+
 start_provider() {
   local rid="$1"
   local channel="$2"
   local http="$3"
   local log_name="${4:-$rid}"
-  ZLINK_CPP_DRHA_RID="$rid" \
-  ZLINK_CPP_DRHA_CHANNEL_ENDPOINT="$channel" \
-  ZLINK_CPP_DRHA_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$STORE_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS="$HEARTBEAT_MS" \
-  ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS="$LEASE_TTL_MS" \
-  ZLINK_CPP_SF_LOCATION_POLLING_MS="$POLLING_MS" \
-  ZLINK_CPP_SF_LOCATION_GRACE_MS="$GRACE_MS" \
-  ZLINK_CPP_DRHA_LOG_DIR="$LOG_DIR" \
-  ZLINK_CPP_DRHA_LOG_NAME="$log_name" \
-    "$PROVIDER_SERVER" >"$LOG_DIR/$log_name.stdout.log" 2>"$LOG_DIR/$log_name.stderr.log" &
+  local config_path="$CONFIG_DIR/$log_name.json"
+  write_role_config "$config_path" "$rid" "$http" "$channel" "$log_name"
+  "$PROVIDER_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$log_name.stdout.log" 2>"$LOG_DIR/$log_name.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$rid-channel" "$channel"
@@ -401,16 +396,10 @@ start_provider() {
 start_consumer() {
   local rid="$1"
   local http="$2"
-  ZLINK_CPP_DRHA_RID="$rid" \
-  ZLINK_CPP_DRHA_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$STORE_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS="$HEARTBEAT_MS" \
-  ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS="$LEASE_TTL_MS" \
-  ZLINK_CPP_SF_LOCATION_POLLING_MS="$POLLING_MS" \
-  ZLINK_CPP_SF_LOCATION_GRACE_MS="$GRACE_MS" \
-  ZLINK_CPP_DRHA_LOG_DIR="$LOG_DIR" \
-    "$CONSUMER_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  local config_path="$CONFIG_DIR/$rid.json"
+  write_role_config "$config_path" "$rid" "$http" "" "$rid"
+  "$CONSUMER_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$rid-http" "$http"
@@ -465,23 +454,9 @@ fi
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-ZLINK_CPP_SF_SCENARIO="$SCENARIO" \
-ZLINK_CPP_SF_CONSUMER_URL="$HTTP_CONSUMER" \
-ZLINK_CPP_SF_PROVIDER_A_URL="$HTTP_A" \
-ZLINK_CPP_SF_PROVIDER_B_URL="$HTTP_B" \
-ZLINK_CPP_SF_PROVIDER_C_URL="$HTTP_C" \
-ZLINK_CPP_SF_PROVIDER_A_ENDPOINT="$API_A" \
-ZLINK_CPP_SF_PROVIDER_B_ENDPOINT="$API_B" \
-ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_URL="$HTTP_B_REPLACEMENT" \
-ZLINK_CPP_SF_PROVIDER_B_REPLACEMENT_ENDPOINT="$API_B_REPLACEMENT" \
-ZLINK_CPP_SF_PROVIDER_C_START_FILE="$SF_A2_PROVIDER_START_FILE" \
-ZLINK_CPP_SF_REDIS_PROXY_ADMIN_URL="$REDIS_PROXY_ADMIN_URL" \
-ZLINK_CPP_E2E_REDIS_CONTAINER="$REDIS_CONTAINER" \
-ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS="$HEARTBEAT_MS" \
-ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS="$LEASE_TTL_MS" \
-ZLINK_CPP_SF_LOCATION_POLLING_MS="$POLLING_MS" \
-ZLINK_CPP_SF_LOCATION_GRACE_MS="$GRACE_MS" \
-  "$CLIENT" >"$LOG_DIR/client-$SCENARIO.stdout.log" 2>"$LOG_DIR/client-$SCENARIO.stderr.log"
+write_client_config "$CONFIG_DIR/client.json"
+"$CLIENT" --config="$CONFIG_DIR/client.json" \
+  >"$LOG_DIR/client-$SCENARIO.stdout.log" 2>"$LOG_DIR/client-$SCENARIO.stderr.log"
 cat "$LOG_DIR/client-$SCENARIO.stdout.log"
 
 if [[ "$SCENARIO" == "SF-A2" ]]; then

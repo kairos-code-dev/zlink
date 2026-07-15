@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -16,22 +15,6 @@
 
 namespace zlink::framework::e2e::store_failure::client
 {
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
-inline int env_int (const char *name, int fallback)
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return std::stoi (value);
-    }
-    return fallback;
-}
 
 inline void ensure (bool condition, const std::string &message)
 {
@@ -108,27 +91,19 @@ inline void wait_ready (const std::string &base_url)
     throw std::runtime_error ("node did not become ready: " + base_url);
 }
 
-inline std::string redis_container ()
+inline void docker_action (const std::string &container, const std::string &action)
 {
-    const auto container = env_or ("ZLINK_CPP_E2E_REDIS_CONTAINER");
-    ensure (!container.empty (), "ZLINK_CPP_E2E_REDIS_CONTAINER is required");
-    return container;
-}
-
-inline void docker_action (const std::string &action)
-{
-    const auto container = redis_container ();
+    ensure (!container.empty (), "Redis container name is required");
     const auto command = "docker " + action + " " + container + " >/dev/null";
     const auto code = std::system (command.c_str ());
     ensure (code == 0, "docker " + action + " failed for " + container);
 }
 
-inline void stop_store () { docker_action ("stop -t 0"); }
+inline void stop_store (const std::string &container) { docker_action (container, "stop -t 0"); }
 
-inline void restart_store ()
+inline void restart_store (const std::string &container)
 {
-    docker_action ("restart");
-    const auto container = redis_container ();
+    docker_action (container, "restart");
     const auto command = "docker exec " + container + " redis-cli ping >/dev/null 2>&1";
     for (int attempt = 0; attempt < 100; ++attempt) {
         if (std::system (command.c_str ()) == 0) {

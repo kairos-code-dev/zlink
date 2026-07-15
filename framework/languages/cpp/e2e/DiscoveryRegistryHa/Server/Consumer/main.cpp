@@ -14,8 +14,8 @@ namespace sf_consumer = zlink::framework::e2e::store_failure::consumer;
 
 int main (int argc, char **argv)
 {
-    const auto options = sf_consumer::read_consumer_options ();
     auto app = zlink::framework::app_t::create ();
+    const auto options = sf_consumer::read_consumer_options (app, argc, argv);
     app.logging ()
       .use_file (options.log_dir + "/" + options.rid + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);
@@ -28,8 +28,7 @@ int main (int argc, char **argv)
           .message_flow (zlink::framework::message_flow_log_mode_t::key_transitions)
           .trace_log_file (options.log_dir + "/" + options.rid + "-flow.log")
           .trace_label ("cpp-store-failure-" + options.rid);
-        sf::server::add_redis_location_store (framework, options.redis_endpoint,
-                                              options.redis_key_prefix);
+        sf::server::add_redis_location_store (framework, options);
         framework.add_client_server_channel (sf::api_channel).enable_client ();
         framework.monitoring ().add_socket_events (sf::api_channel);
         framework.monitoring ().on<zlink::framework::socket_event_payload_t> (

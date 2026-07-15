@@ -12,37 +12,25 @@
 namespace zlink::framework::e2e::store_failure::server
 {
 
-inline int env_int (const char *name, int fallback)
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return std::stoi (value);
-    }
-    return fallback;
-}
-
+template<typename TOptions>
 inline void add_redis_location_store (zlink::framework::zlink_framework_options_t &framework,
-                                      const std::string &redis_endpoint,
-                                      const std::string &redis_key_prefix)
+                                      const TOptions &options)
 {
-    if (redis_endpoint.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_REDIS_ENDPOINT is required");
+    if (options.redis_endpoint.empty ()) {
+        throw std::runtime_error ("Redis endpoint is required");
     }
-    if (redis_key_prefix.empty ()) {
-        throw std::runtime_error ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX is required");
+    if (options.redis_key_prefix.empty ()) {
+        throw std::runtime_error ("Redis key prefix is required");
     }
     auto redis_store = std::make_shared<zlink::framework::locations::redis::redis_location_store_t> (
       zlink::framework::locations::redis::redis_location_options_t{
-        .connection_string = redis_endpoint, .key_prefix = redis_key_prefix});
+        .connection_string = options.redis_endpoint, .key_prefix = options.redis_key_prefix});
     framework.add_location_store (std::move (redis_store));
     auto &locations = framework.configure_locations ();
-    locations.heartbeat_interval =
-      std::chrono::milliseconds (env_int ("ZLINK_CPP_SF_LOCATION_HEARTBEAT_MS", 1000));
-    locations.owner_lease_ttl =
-      std::chrono::milliseconds (env_int ("ZLINK_CPP_SF_LOCATION_LEASE_TTL_MS", 3000));
-    locations.polling_interval =
-      std::chrono::milliseconds (env_int ("ZLINK_CPP_SF_LOCATION_POLLING_MS", 500));
-    locations.store_failure_grace =
-      std::chrono::milliseconds (env_int ("ZLINK_CPP_SF_LOCATION_GRACE_MS", 6000));
+    locations.heartbeat_interval = std::chrono::milliseconds (options.heartbeat_ms);
+    locations.owner_lease_ttl = std::chrono::milliseconds (options.lease_ttl_ms);
+    locations.polling_interval = std::chrono::milliseconds (options.polling_ms);
+    locations.store_failure_grace = std::chrono::milliseconds (options.grace_ms);
 }
 
 } // namespace zlink::framework::e2e::store_failure::server

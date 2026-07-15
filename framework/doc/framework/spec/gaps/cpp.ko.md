@@ -270,6 +270,7 @@
   - 근거: 수정 전 target-contract gate가 subscription lookup에서 wire packet name 비교 부재를 검출했다. fanout envelope에서 decoded `message_name`을 보존하고 topic과 packet name이 모두 일치하는 descriptor만 선택하도록 바꿨다. 같은 topic에 `state_update_t`와 `stage_closed_t` handler를 등록해 두 event를 연속 발행하는 회귀에서 각각 9와 17을 올바른 handler가 받았고 target gate와 spot runtime test가 통과했다.
 - [ ] **IMP-CP-02** (결함) — 31
 - [ ] **IMP-CP-03** (결함) — 24 §3
+  - §0.8 대기: 재검증 결과 handle registry·location event/주기 재조회·stale 1회 refresh는 이미 구현돼 기존 행의 원인 진단은 무너졌다. 다만 `spot_context_t::send_to/request_to(node rid, spot rid, ...)`는 남아 있고, C++ context에는 이를 대체할 handle 기반 outbound가 없다. 선택지는 ① `spot_context_t::send_to(spot_handle_t, ...)`·`request_to<T>(spot_handle_t, ...)`를 언어별 interface에 확정하거나 ② 모든 Spot 생성 경로가 `route_client_t`·resolver를 주입받게 하는 것이다. 공통 24 §3의 “Spot 실행 문맥 outbound”에는 ①이 맞지만 현재 C++ interface 문서는 옛 overload를 정식 시그니처로 적으므로, 언어별 계약 결정 없이 public overload를 추가하거나 기존 호출자를 DI 우회로 옮기지 않는다.
 - [x] **IMP-CP-04** (미구현) — 20 §8·30 §7.2
   - 근거: SpotNode의 runtime capability 누락 검증은 기존 공통 options validator에 이미 존재함을 확인했다. 수정 전 module-hosted gate는 bind가 없는 STREAM 선언을 조용히 버려 exit 69로 실패했다. options가 STREAM node의 선언·bind·session과 전역 session 이름을 보존하도록 바꿔 bind 누락, session 누락, node 이름 중복, session 이름 중복을 host 시작 전에 거부한 뒤 네 회귀 gate, target-contract gate, contract-header와 module-hosted ctest가 모두 통과했다.
 - [x] **IMP-CP-05** (결함) — 40 §2.1·02 §4

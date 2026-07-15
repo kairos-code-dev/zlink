@@ -1023,6 +1023,7 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 - [x] **E2E-JV-16** (미구현) — Config 9 bind 상태 매트릭스 TA-A1~A4와 TA-B2·B3를 실제 session gateway 분리 구성에서 검증한다.
 - [ ] **E2E-JV-17** (**가짜 통과**) — transfer late backlog target evidence와 moving actor replay는 Java runtime 수정이 선행돼야 한다.
 - [ ] **E2E-JV-19** (**가짜 통과**) — OBS-A2 server dispatch error flow event는 Java runtime 발행이 선행돼야 한다.
+  - 실패 게이트 확인: `./run_e2e.sh OBS-A2`에서 client는 missing-handler 오류를 받았지만 `session-flow.log`에는 같은 flow의 `RECEIVED`만 남고 `ERROR`가 없어 runner가 exit 1로 실패했다. feature-map도 PASS에서 runtime gap을 명시한 partial로 바로잡았다. E2E 앱에서 error line을 합성하지 않으며, runtime이 request flow를 보존한 dispatch error event를 발행해야 닫힌다(2026-07-15).
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|

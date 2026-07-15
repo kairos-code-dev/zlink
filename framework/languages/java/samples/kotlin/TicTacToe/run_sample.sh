@@ -3,6 +3,18 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+client_source="Client/src/main/kotlin/systems/zlink/samples/kotlin/tictactoe/client/TicTacToeClientScenario.kt"
+for assertion in \
+  'game.playEndpoints.distinct().size == game.playEndpoints.size' \
+  'game.playNodes.map { it.streamEndpoint }.toSet() == game.playEndpoints.toSet()' \
+  'guestJoinNotify.displayName == oAuthentication.player.displayName' \
+  'milestone.roomId == game.roomId'; do
+  if ! grep -Fq "${assertion}" "${client_source}"; then
+    echo "TicTacToe client release assertion missing: ${assertion}" >&2
+    exit 1
+  fi
+done
+
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 

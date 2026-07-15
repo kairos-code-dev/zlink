@@ -318,7 +318,9 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
   - 근거: 상태별 `waitFor` completion callback이 실제 도착 순서를 기록하고, success와 reassignment가
     정본 순서와 정확히 같은지 단언한다. 전체 DeliveryDispatch runner가 통과했다.
 - [ ] **SMP-KT-10** (미구현) — Bingo의 번호 매긴 release gate가 **join·start·card·draw·reward 필드를 빠뜨린다**
-- [ ] **SMP-KT-11** (미구현) — TicTacToe의 번호 매긴 release gate가 **topology·player·join·milestone 필드를 빠뜨린다**
+- [x] **SMP-KT-11** (미구현) — TicTacToe의 번호 매긴 release gate가 **topology·player·join·milestone 필드를 빠뜨린다**
+  - 근거: endpoint 중복과 전체 node 매핑, 두 player의 사용자 정보, join과 milestone의 사용자·room
+    필드를 직접 단언한다. runner의 source gate와 `PASS TicTacToe.Kotlin` 전체 실행이 통과했다.
 - [ ] **E2E-KT-01** (결함) — **SpotService의 "클라이언트"가 사실 framework 호스트**다 — `@EnableZLinkFramework`로 mesh를 등록하고 `outbound.requestToSpot(...)`을 **클라이언트 코드에서 직접** 호출한다. **Java 쪽은 깨끗하다**
 - [ ] **E2E-KT-02** (결함) — **Config 10이 2/20**이고 나머지 18개를 **Java 클라이언트에 위임**한다. `Shared/`도 `feature-map`도 없고 Redis 컨테이너 접두사도 틀렸다
 - [ ] **E2E-KT-03** (결함) — Config 2에서 시나리오 **6개 누락**. `RC-A6`(**P0**)는 클라이언트 시나리오 없이 **셸 `grep`으로** 검증하는데 feature-map은 "구현 완료"로 적는다
@@ -343,7 +345,7 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
 | **SMP-KT-08** | `common/sample/deliverydispatch/README.ko.md:300,326,478-482` — 배송 생성 요청의 `CustomerId`가 해당 배송의 고객을 정하며, Tracking의 상태 변경은 `CustomerEntry`와 `CustomerActor`를 거쳐 **그 고객의 stream client**로 push된다 | **부분 구현:** `DeliveryStatusChangedReq`에 정본의 `customerId`를 복원하고 Dispatch → Tracking → `DeliveryStatusUpdatedMsg`까지 그대로 전달한다. Tracking의 `customer-1` 하드코딩은 제거했고 runner가 회귀를 막는다. 그러나 공통 `SubscribeDeliveryReq`는 `DeliveryId`만 가지며 현재 session identity는 상수다. 두 고객 session을 구분하려면 인증 identity 계약이나 공통 wire 결정이 먼저 필요하므로 이 항목은 open이다. |
 | **SMP-KT-09** | `common/sample/deliverydispatch/README.ko.md:671-687` — 성공 배송은 `Assigned → Accepted → PickedUp → Delivered`, 재배정 배송은 `Assigned → Reassigned → Accepted → Delivered`가 **도착한 순서대로** 검증되어야 한다 | **해결:** public `waitFor`는 그대로 사용하되 각 completion callback에서 실제 도착 상태를 기록한다. 모든 wait가 끝난 뒤 기록 순서를 정본 목록과 정확히 비교하고 courier도 같은 notification 목록에서 확인한다. POSD 재리뷰에서는 독립 future를 기대 순서로 await해 시간 정보를 잃는 것을 위험 신호로 보았다. 별도 inbox/polling을 추가하는 안보다 기존 public wait completion에서 순서를 기록하는 안이 새 대기 표면과 중복 subscription을 만들지 않아 이를 선택했다. domain 경계 변화는 없으며 전체 DeliveryDispatch runner가 통과했다. |
 | **SMP-KT-10** | `common/sample/bingo/README.ko.md:567-584` — join push의 전적, **두 client의** game-start, card 제출 응답의 두 9칸 card, draw 양쪽 state 일치, reward의 `RoomId`·`DrawSeq`까지 단계별로 직접 확인한다 | `BingoClientScenario.kt:75-78`은 join actor id와 **client 1의 start만** 보고 전적과 client 2 start를 읽지 않는다. `:80-105`는 두 card 응답에서 status만 보고 card를 검사하지 않는다. `:107-119`는 draw의 seq·number만 비교하고 양쪽 state가 같은지 확인하지 않는다. `:138-144`는 reward의 `DrawSeq`를 확인하지 않는다. ⇒ 이 필드들이 비거나 서로 달라도 release gate가 통과한다 |
-| **SMP-KT-11** | `common/sample/tictactoe/README.ko.md:523-557` — `PlayEndpoints` 두 개와 전체 `PlayNodes` 매핑, host·guest의 display name/level, join push의 `DisplayName`·`Level`·`RoomId`, milestone의 `DisplayName`·`RoomId`를 확인한다 | `TicTacToeClientScenario.kt:48-64`는 endpoint 수·중복과 전체 `PlayNodes` 매핑을 단언하지 않고 guest의 display name·level도 읽지 않는다. `:86-90`은 join push에서 actor id·mark·status만 확인한다. `:172-175`는 milestone에서 wins와 receiving rid만 확인한다. ⇒ topology 매핑이나 사용자 필드가 잘못되어도, 비-owner endpoint 하나와 rid 하나만 남아 있으면 통과한다 |
+| **SMP-KT-11** | `common/sample/tictactoe/README.ko.md:523-557` — `PlayEndpoints` 두 개와 전체 `PlayNodes` 매핑, host·guest의 display name/level, join push의 `DisplayName`·`Level`·`RoomId`, milestone의 `DisplayName`·`RoomId`를 확인한다 | **해결:** client가 서로 다른 endpoint 두 개 이상, owner 포함, endpoint와 `PlayNodes`의 일대일 집합 매핑, 비어 있지 않은 node rid를 확인한다. host·guest 인증의 display name과 최소 level, join notify의 display name·level·room, milestone의 actor·display name·room을 기존 wins·receiving rid와 함께 단언한다. POSD 재리뷰에서는 topology 검증을 별도 shallow helper로 숨기는 안보다 응답을 소비하는 시나리오 위치에 계약 단언을 두는 안을 선택했다. domain과 transport 경계는 바뀌지 않았고 전체 runner가 통과했다. |
 
 ## 라운드 4 상세 — 샘플 · E2E (뒤늦게 채운 근거)
 

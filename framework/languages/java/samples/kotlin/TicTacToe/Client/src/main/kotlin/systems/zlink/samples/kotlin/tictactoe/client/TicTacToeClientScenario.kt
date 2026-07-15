@@ -49,14 +49,24 @@ class TicTacToeClientScenario {
             ensure(game.ownerPlayEndpoint.isNotBlank())
             ensure(game.gameName == options.gameName)
             ensure(game.requiredLevel == 3)
+            ensure(game.playEndpoints.size >= 2)
+            ensure(game.playEndpoints.distinct().size == game.playEndpoints.size)
+            ensure(game.ownerPlayEndpoint in game.playEndpoints)
+            ensure(game.playNodes.size == game.playEndpoints.size)
+            ensure(game.playNodes.map { it.streamEndpoint }.toSet() == game.playEndpoints.toSet())
+            ensure(game.playNodes.all { it.spotNodeRid.isNotBlank() })
 
             val xAuthentication = hostStream.request(AuthenticateReq(options.xActorId)).await<AuthenticateRes>()
             ensure(xAuthentication.player.actorId == options.xActorId)
+            ensure(xAuthentication.player.displayName.isNotBlank())
+            ensure(xAuthentication.player.level >= game.requiredLevel)
             ensure(xAuthentication.player.wins == 99)
 
             val oAuthentication = guestStream.request(AuthenticateReq(options.oActorId)).await<AuthenticateRes>()
             ensure(oAuthentication.player.actorId == options.oActorId)
             ensure(oAuthentication.player.actorId != xAuthentication.player.actorId)
+            ensure(oAuthentication.player.displayName.isNotBlank())
+            ensure(oAuthentication.player.level >= game.requiredLevel)
 
             val observerAuthentication = observerStream.request(AuthenticateReq(options.observerActorId)).await<AuthenticateRes>()
             ensure(observerAuthentication.player.actorId == options.observerActorId)
@@ -85,7 +95,10 @@ class TicTacToeClientScenario {
 
             val guestJoinNotify = hostSawGuestJoin.await().payload()
             ensure(guestJoinNotify.actorId == options.oActorId)
+            ensure(guestJoinNotify.displayName == oAuthentication.player.displayName)
+            ensure(guestJoinNotify.level == oAuthentication.player.level)
             ensure(guestJoinNotify.mark == "O")
+            ensure(guestJoinNotify.roomId == game.roomId)
             ensure(guestJoinNotify.state.status == "InProgress")
             ensure(guestStream.receivedCount("PlayerJoinedNotify") == 0)
 
@@ -171,7 +184,10 @@ class TicTacToeClientScenario {
 
             val milestone = observerSawMilestone.await().payload()
             val expectedRid = game.playNodes.first { it.streamEndpoint == observerEndpoint }.spotNodeRid
+            ensure(milestone.actorId == xAuthentication.player.actorId)
+            ensure(milestone.displayName == xAuthentication.player.displayName)
             ensure(milestone.wins == 100)
+            ensure(milestone.roomId == game.roomId)
             ensure(milestone.receivingSpotNodeRid == expectedRid)
             println(
                 "observer-win-milestone=verified actor=${milestone.actorId} " +

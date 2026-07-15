@@ -8,10 +8,10 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_codec_coexistence_scenario ()
+inline void run_codec_coexistence_scenario (const client_options_t &options)
 {
     const auto reply = post_empty<codec_coexistence_scenario_res_t> (
-      env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "/codec/coexistence");
+      options.http_endpoint, "/codec/coexistence");
     ensure (reply.json.value == "json:coexist-json", "RC-B4 JSON reply mismatch");
     ensure (reply.json.content_type == "application/json", "RC-B4 JSON content type mismatch");
     ensure (reply.custom.value == "custom:coexist-custom", "RC-B4 custom reply mismatch");

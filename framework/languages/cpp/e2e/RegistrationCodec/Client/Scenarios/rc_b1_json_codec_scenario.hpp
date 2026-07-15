@@ -8,11 +8,12 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_json_codec_scenario (const codec_roundtrip_scenario_res_t &roundtrip)
+inline void run_json_codec_scenario (const client_options_t &options,
+                                     const codec_roundtrip_scenario_res_t &roundtrip)
 {
     ensure (roundtrip.json.value == "json:b1", "RC-B1 reply mismatch");
     ensure (roundtrip.json.content_type == "application/json", "RC-B1 content type mismatch");
-    wait_evidence_contains (env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "RC-B1-send",
+    wait_evidence_contains (options.http_endpoint, "RC-B1-send",
                             "application/json:send-b1", std::chrono::seconds (10));
     std::cout << "scenario RC-B1 passed\n";
 }

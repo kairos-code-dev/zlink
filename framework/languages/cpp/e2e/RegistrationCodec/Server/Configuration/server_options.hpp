@@ -1,27 +1,42 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <cstdlib>
+#include <zlink/framework.hpp>
+#include <stdexcept>
 #include <string>
 
 namespace zlink::framework::e2e::registration_codec::server
 {
 
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
 struct server_options_t
 {
-    std::string log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-    std::string api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
-    std::string http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    std::string invalid_mode = env_or ("ZLINK_CPP_E2E_INVALID_MODE");
-    std::string server_mode = env_or ("ZLINK_CPP_E2E_SERVER_MODE", "main");
+    std::string log_dir;
+    std::string api_endpoint;
+    std::string http_endpoint;
+    std::string invalid_mode;
+    std::string server_mode;
+
+    static server_options_t bind (const configuration_section_t &section)
+    {
+        return {.log_dir = section.require ("logDir"),
+                .api_endpoint = section.require ("apiEndpoint"),
+                .http_endpoint = section.get ("httpEndpoint").value_or (""),
+                .invalid_mode = section.get ("invalidMode").value_or (""),
+                .server_mode = section.get ("serverMode").value_or ("main")};
+    }
 };
+
+inline server_options_t read_server_options (app_t &app, int argc, char **argv,
+                                             const char *role)
+{
+    app.config ().load_cli (argc, argv);
+    const auto path = app.config ().model ().get ("config");
+    if (!path) {
+        throw std::runtime_error (std::string ("RegistrationCodec ") + role
+                                  + " requires --config=<path>");
+    }
+    app.config ().load_json (*path);
+    return app.config ().bind_required<server_options_t> ("e2e");
+}
 
 } // namespace zlink::framework::e2e::registration_codec::server

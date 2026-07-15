@@ -8,12 +8,13 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_protobuf_codec_scenario (const codec_roundtrip_scenario_res_t &roundtrip)
+inline void run_protobuf_codec_scenario (const client_options_t &options,
+                                         const codec_roundtrip_scenario_res_t &roundtrip)
 {
     ensure (roundtrip.protobuf.value == "protobuf:b2", "RC-B2 reply mismatch");
     ensure (roundtrip.protobuf.content_type == "application/x-protobuf",
             "RC-B2 content type mismatch");
-    wait_evidence_contains (env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "RC-B2-send",
+    wait_evidence_contains (options.http_endpoint, "RC-B2-send",
                             "application/x-protobuf:send-b2", std::chrono::seconds (10));
     std::cout << "scenario RC-B2 passed\n";
 }

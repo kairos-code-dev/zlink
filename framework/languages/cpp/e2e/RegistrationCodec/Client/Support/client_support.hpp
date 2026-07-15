@@ -4,23 +4,60 @@
 #include "../../Shared/registration_codec_contracts.hpp"
 
 #include <zlink/http_client.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
+#include <fstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline std::string env_or (const char *name, std::string fallback = {})
+struct client_options_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    std::string scenario;
+    std::string api_endpoint;
+    std::string http_endpoint;
+    std::string invalid_server_executable;
+    std::string invalid_endpoint;
+    std::string log_dir;
+    std::string config_dir;
+};
+
+inline client_options_t read_client_options (int argc, char **argv)
+{
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown RegistrationCodec client option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
     }
-    return fallback;
+    if (path.empty ()) {
+        throw std::runtime_error ("RegistrationCodec client requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open RegistrationCodec client config: " + path);
+    }
+    const auto section = nlohmann::json::parse (input).at ("e2e");
+    const auto value = [&] (const char *key) {
+        const auto found = section.find (key);
+        return found == section.end () ? std::string{} : found->get<std::string> ();
+    };
+    return {.scenario = value ("scenario"),
+            .api_endpoint = value ("apiEndpoint"),
+            .http_endpoint = value ("httpEndpoint"),
+            .invalid_server_executable = value ("invalidServerExecutable"),
+            .invalid_endpoint = value ("invalidEndpoint"),
+            .log_dir = value ("logDir"),
+            .config_dir = value ("configDir")};
 }
 
 inline void ensure (bool condition, const std::string &message)

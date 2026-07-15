@@ -8,10 +8,10 @@
 namespace zlink::framework::e2e::registration_codec::client
 {
 
-inline void run_di_lifecycle_scenario ()
+inline void run_di_lifecycle_scenario (const client_options_t &options)
 {
     const auto reply = post_empty<lifecycle_scenario_res_t> (
-      env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"), "/registration/di-lifecycle");
+      options.http_endpoint, "/registration/di-lifecycle");
     const auto first_reply = reply.first;
     const auto second_reply = reply.second;
     ensure (first_reply.scoped_id != second_reply.scoped_id,

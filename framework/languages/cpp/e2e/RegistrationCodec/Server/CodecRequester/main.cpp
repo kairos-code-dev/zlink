@@ -8,11 +8,11 @@ namespace rc_server = zlink::framework::e2e::registration_codec::server;
 
 int main (int argc, char **argv)
 {
-    const auto api_endpoint = rc_server::env_or ("ZLINK_CPP_E2E_API_ENDPOINT");
-    const auto http_endpoint = rc_server::env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    const auto log_dir = rc_server::env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs");
-
     auto app = zlink::framework::app_t::create ();
+    const auto configured = rc_server::read_server_options (app, argc, argv, "codec requester");
+    const auto &api_endpoint = configured.api_endpoint;
+    const auto &http_endpoint = configured.http_endpoint;
+    const auto &log_dir = configured.log_dir;
     app.logging ().use_file (log_dir + "/codec-requester.log")
       .set_min_level (zlink::framework::log_level_t::debug);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {

@@ -798,7 +798,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: 주문 A/B 시작을 `Promise.all`로 실제 동시 실행하고 이후 같은 projection을 확인한다. 순차 시작이면 실패하는 ShoppingMall scale-out gate가 통과한다. 커밋 `3c2b82602`.
 - [x] **SMP-ND-15** (결함) — GameQuest가 서로 다른 owner에서 처리됐는지 확인하지 않는다
   - 근거: 두 player 처리의 owner identity를 server evidence에 기록하고 client가 서로 다름을 단언해 owner 판단을 store 경계에 모았다. 같은 owner로도 통과하던 GameQuest scale-out gate가 통과한다. 커밋 `45fab0587`.
-- [ ] **SMP-ND-16** (결함) — DeliveryDispatch status request의 고객 식별자 계약이 어긋난다
+- ~~**SMP-ND-16** (결함) — DeliveryDispatch status request의 고객 식별자 계약이 어긋난다~~ — **갭 아님**
+  - 근거: 공통 결정 D3와 갱신된 DeliveryDispatch 계약은 `DeliveryStatusChangedReq.CustomerId`를 필수로 정의하고, Node 계약·Tracking 경로가 그 값을 사용한다. “CustomerId가 다음 hop에만 있다”는 이전 감사 전제가 재검증에서 무너졌으므로 구현 변경 없이 닫는다.
 - [x] **SMP-ND-17** (미구현) — TicTacToe 내부 join reply 전용 계약이 없다
   - 근거: client-facing `JoinGameRes`와 별도 `TicTacToeGameJoinRes`를 정의하고 Entry/Game Spot 내부 join 경로가 전용 타입을 사용한다. 타입을 재사용하면 실패하는 internal-join contract gate가 통과한다. 커밋 `c8a7c77fb`.
 - [x] **SMP-ND-18** (**wire 파손**) — TicTacToe terminal state의 `nextTurn`이 `null`이다
@@ -808,7 +809,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: participant state와 conversation id·sender·text·sequence를 두 대화 각각 대조해 잘못된 방 payload를 거부한다. sequence만 맞으면 통과하던 message-semantics gate가 통과한다. 커밋 `98f26ff9c`.
 - [x] **E2E-ND-12** (**가짜 통과**) — PubSub 측정 구간이 warm-up과 겹치고 순서를 검사하지 않는다
   - 근거: 측정 run/sequence/value를 warm-up과 분리하고 전체 순서·개수를 정확히 단언하도록 evidence 판정기를 캡슐화했다. 측정 publish를 빼면 실패하는 pubsub-evidence gate가 통과한다. 커밋 `5805e5663`.
-- [ ] **E2E-ND-13** (**가짜 통과**) — RM-C9 submit 결과가 하드코딩 문자열이다
+- ~~**E2E-ND-13** (**가짜 통과**) — RM-C9 submit 결과가 하드코딩 문자열이다~~ — **갭 아님**
+  - 근거: 갱신된 Config 1 계약은 one-way send에 public 완료 객체나 bounded-failure oracle이 없음을 명시한다. `'Submitted'`는 HTTP app의 제출 확인이고, RM-C9는 backlog 해소 뒤 follow-up request와 provider evidence 회복을 별도로 단언하므로 하드코딩 성공 판정이라는 감사 전제가 성립하지 않는다.
 - [x] **E2E-ND-14** (미구현) — PubSub이 Redis location store를 사용하지 않는다
   - 근거: publisher/subscriber 모두 실행별 Redis location store를 사용하고 runner가 store lifecycle을 소유하며 하드와이어 endpoint를 제거했다. in-memory store가 남으면 실패하는 PubSub Redis gate와 실제 PS-A1이 통과한다. 커밋 `9665b1f21`.
 - [x] **E2E-ND-15** (**가짜 통과**) — TA-B1이 stale ref를 transport에 보내지 않는다

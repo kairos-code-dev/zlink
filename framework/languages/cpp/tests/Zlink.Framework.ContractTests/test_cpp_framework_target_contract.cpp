@@ -190,6 +190,10 @@ int main ()
     const auto to_actor_session =
       read_file (e2e_root / "ToActorMessaging/Server/Session/main.cpp");
     const auto to_actor_runner = read_file (e2e_root / "ToActorMessaging/run_e2e.sh");
+    const auto to_actor_b2 =
+      read_file (e2e_root / "ToActorMessaging/Client/Scenarios/ta_b2_scenario.hpp");
+    const auto to_actor_b3 =
+      read_file (e2e_root / "ToActorMessaging/Client/Scenarios/ta_b3_scenario.hpp");
     const auto observability_server = read_file (e2e_root / "ObservabilityOps/Server/main.cpp");
     const std::vector<std::pair<std::string, std::string>> location_option_consumers{
       {"PubSub", read_file (e2e_root / "PubSub/Server/Shared/location_store.hpp")},
@@ -1272,6 +1276,25 @@ int main ()
                          != std::string::npos
                     && to_actor_client_support.find ("wait_for<") != std::string::npos,
                   "E2E-CP-02", "Config 9 client does not observe bind and push via connector");
+
+    /* E2E-CP-59 — stale and disconnected routes come from real owner/transport
+     * lifecycle. Application code never writes location rows to manufacture them. */
+    gate.require (to_actor_caller.find ("write_fault_actor_row") == std::string::npos
+                    && to_actor_caller.find ("renew_owner_lease") == std::string::npos
+                    && to_actor_caller.find ("update_actor") == std::string::npos
+                    && to_actor_caller.find ("ghost-node") == std::string::npos,
+                  "E2E-CP-59", "Config 9 caller still manufactures actor location failures");
+    gate.require (to_actor_runner.find ("actor-a") != std::string::npos
+                    && to_actor_runner.find ("actor-b") != std::string::npos,
+                  "E2E-CP-59", "Config 9 does not start two actor owner nodes");
+    gate.require (to_actor_b2.find ("capture-ref") != std::string::npos
+                    && to_actor_b2.find ("actor_b") != std::string::npos
+                    && to_actor_b2.find ("request-captured") != std::string::npos,
+                  "E2E-CP-59", "TA-B2 does not replace the owner and exercise the stale ref");
+    gate.require (to_actor_b3.find ("route/disconnect") != std::string::npos
+                    && to_actor_b3.find ("route/wait-connected") != std::string::npos
+                    && to_actor_b3.find ("request-captured") != std::string::npos,
+                  "E2E-CP-59", "TA-B3 does not disconnect and deterministically restore a live route");
     for (const auto &[config, source] : location_option_consumers) {
         gate.require (source.find ("auto locations = framework.configure_locations ()")
                         == std::string::npos

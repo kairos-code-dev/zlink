@@ -222,11 +222,6 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public ZLinkSendCall metadata(String key, String value) {
-        return this;
-    }
-
-    @Override
     public void submit() {
         outbound.submitSend(
             spot, targetNodeRid, spotRid, payload, packetName);
@@ -268,11 +263,6 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             payload,
             Optional.of(packetName),
             timeout);
-    }
-
-    @Override
-    public ZLinkRequestCall metadata(String key, String value) {
-        return this;
     }
 
     @Override
@@ -325,11 +315,6 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
     public ZLinkPublishCall packetName(String packetName) {
         return new ZLinkSpotDirectPublishCall(
             outbound, spot, topic, payload, Optional.of(packetName));
-    }
-
-    @Override
-    public ZLinkPublishCall metadata(String key, String value) {
-        return this;
     }
 
     @Override

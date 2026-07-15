@@ -141,8 +141,6 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             this.packetName = packetName;
         }
 
-        @Override public ZLinkSendCall metadata(String key, String value) { return this; }
-
         @Override public void submit() {
             resolve(target).thenAccept(address -> {
                 ZLinkSendCall call = routeMeshEnabled
@@ -167,7 +165,6 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             this.timeout = timeout;
         }
 
-        @Override public ZLinkRequestCall metadata(String key, String value) { return this; }
         @Override public ZLinkRequestCall timeout(Duration value) {
             return new DeferredSpotRequestCall(target, payload, packetName, value);
         }

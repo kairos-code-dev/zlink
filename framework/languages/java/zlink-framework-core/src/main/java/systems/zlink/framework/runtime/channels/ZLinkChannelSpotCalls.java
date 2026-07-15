@@ -119,11 +119,6 @@ final class RouteSpotSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public ZLinkSendCall metadata(String key, String value) {
-        return this;
-    }
-
-    @Override
     public void submit() {
         runtime.settleOneWay(SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
             List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
@@ -176,11 +171,6 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
             payload,
             Optional.of(packetName),
             timeout);
-    }
-
-    @Override
-    public ZLinkRequestCall metadata(String key, String value) {
-        return this;
     }
 
     @Override

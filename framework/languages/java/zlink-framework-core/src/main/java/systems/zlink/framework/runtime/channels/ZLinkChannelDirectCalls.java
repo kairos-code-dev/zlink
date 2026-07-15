@@ -117,11 +117,6 @@ final class PublishCall implements ZLinkPublishCall {
     }
 
     @Override
-    public ZLinkPublishCall metadata(String key, String value) {
-        return this;
-    }
-
-    @Override
     public void submit() {
         ZLinkRuntimeMetrics.increment("zlink.fanout.published", Map.of());
             if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
@@ -168,11 +163,6 @@ final class SendCall implements ZLinkSendCall {
     }
 
     @Override
-    public ZLinkSendCall metadata(String key, String value) {
-        return this;
-    }
-
-    @Override
     public void submit() {
             if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
                 runtime.flow().trace(new ZLinkMessageFlowEvent(
@@ -213,11 +203,6 @@ final class RequestCall implements ZLinkRequestCall {
 
     public ZLinkRequestCall packetName(String packetName) {
         return new RequestCall(runtime, client, payload, Optional.of(packetName), timeout);
-    }
-
-    @Override
-    public ZLinkRequestCall metadata(String key, String value) {
-        return this;
     }
 
     @Override

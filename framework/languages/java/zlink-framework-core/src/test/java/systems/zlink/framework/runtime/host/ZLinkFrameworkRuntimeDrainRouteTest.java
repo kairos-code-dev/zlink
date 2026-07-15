@@ -8,6 +8,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -16,6 +18,21 @@ import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
 
 final class ZLinkFrameworkRuntimeDrainRouteTest {
+    @Test
+    void drainWaiterTimeoutDoesNotCompleteSharedDrainState() {
+        CompletableFuture<String> shared = new CompletableFuture<>();
+
+        ZLinkFrameworkRuntime.independentWaiter(shared)
+            .toCompletableFuture()
+            .orTimeout(1, TimeUnit.MILLISECONDS)
+            .exceptionally(ignored -> null)
+            .join();
+
+        assertFalse(shared.isDone());
+        shared.complete("drained");
+        assertEquals("drained", shared.join());
+    }
+
     @Test
     void drainTransferUsesMappedRouteChannelWhenSpotMeshNameDiffers() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();

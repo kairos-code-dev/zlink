@@ -115,11 +115,6 @@ final class RouteSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public ZLinkSendCall metadata(String key, String value) {
-        return this;
-    }
-
-    @Override
     public void submit() {
         if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
             runtime.flow().trace(new ZLinkMessageFlowEvent(
@@ -174,11 +169,6 @@ final class RouteRequestCall implements ZLinkRequestCall {
             payload,
             Optional.of(packetName),
             timeout);
-    }
-
-    @Override
-    public ZLinkRequestCall metadata(String key, String value) {
-        return this;
     }
 
     @Override

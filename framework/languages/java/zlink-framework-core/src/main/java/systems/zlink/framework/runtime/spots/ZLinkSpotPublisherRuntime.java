@@ -212,11 +212,6 @@ final class ZLinkExternalSpotPublishCall implements ZLinkPublishCall {
     }
 
     @Override
-    public ZLinkPublishCall metadata(String key, String value) {
-        return this;
-    }
-
-    @Override
     public void submit() {
         publishers.submit(channelName, topic, payload, packetName);
     }

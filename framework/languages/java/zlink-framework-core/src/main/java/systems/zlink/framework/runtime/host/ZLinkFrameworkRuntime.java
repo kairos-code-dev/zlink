@@ -456,12 +456,17 @@ public final class ZLinkFrameworkRuntime
                 .execute(() -> forceStop(
                     systems.zlink.framework.monitoring.ZLinkDrainForceReason.DEADLINE_EXCEEDED));
         }
-        return drained;
+        return independentWaiter(drained);
     }
 
     @Override
     public java.util.concurrent.CompletionStage<systems.zlink.framework.monitoring.ZLinkDrainResult> awaitDrained() {
-        return drained;
+        return independentWaiter(drained);
+    }
+
+    static <T> java.util.concurrent.CompletionStage<T> independentWaiter(
+        java.util.concurrent.CompletionStage<T> shared) {
+        return shared.thenApply(result -> result);
     }
 
     @Override

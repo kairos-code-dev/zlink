@@ -214,11 +214,6 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public ZLinkSendCall metadata(String key, String value) {
-        return this;
-    }
-
-    @Override
     public void submit() {
         outbound.submitSend(
             routerChannelId,
@@ -264,11 +259,6 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             payload,
             Optional.of(packetName),
             timeout);
-    }
-
-    @Override
-    public ZLinkRequestCall metadata(String key, String value) {
-        return this;
     }
 
     @Override

@@ -14,6 +14,8 @@ import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRequestCall;
+import systems.zlink.framework.channels.ZLinkSendCall;
+import systems.zlink.framework.channels.ZLinkPublishCall;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.handlers.ZLinkHandlerGroups;
 import systems.zlink.framework.handlers.ZLinkPublish;
@@ -87,6 +89,13 @@ final class HandlerContractTest {
     void requestCallDoesNotExposeBlockingTerminators() {
         assertFalse(hasMethod(ZLinkRequestCall.class, "yield"));
         assertFalse(hasMethod(ZLinkRequestCall.class, "await"));
+    }
+
+    @Test
+    void channelCallsDoNotExposeDiscardedMetadataBuilder() {
+        assertFalse(hasMethod(ZLinkSendCall.class, "metadata"));
+        assertFalse(hasMethod(ZLinkRequestCall.class, "metadata"));
+        assertFalse(hasMethod(ZLinkPublishCall.class, "metadata"));
     }
 
     @Test

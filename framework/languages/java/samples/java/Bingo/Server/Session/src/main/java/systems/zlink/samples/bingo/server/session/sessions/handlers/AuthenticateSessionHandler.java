@@ -21,14 +21,17 @@ public final class AuthenticateSessionHandler
     private final ZLinkClient channels;
     private final ZLinkRouteClient routes;
     private final SpotHandleResolver spots;
+    private final String preferredPlayNodeRid;
 
     public AuthenticateSessionHandler(
         ZLinkClient channels,
         ZLinkRouteClient routes,
-        SpotHandleResolver spots) {
+        SpotHandleResolver spots,
+        SampleTopology topology) {
         this.channels = channels;
         this.routes = routes;
         this.spots = spots;
+        this.preferredPlayNodeRid = topology.preferredPlayNodeRid();
     }
 
     @Override
@@ -50,7 +53,7 @@ public final class AuthenticateSessionHandler
             .submit(Messages.AuthenticatePlayerRes.class)
             .thenCompose(authenticated -> {
                 requireAuthenticated(authenticated);
-                RoutingId preferredPlayNode = RoutingId.from(SampleTopology.preferredPlayNodeRid());
+                RoutingId preferredPlayNode = RoutingId.from(preferredPlayNodeRid);
                 return spots.resolveSpotHandle(preferredPlayNode)
                     .thenCompose(handle -> routes.requestToSpot(
                             SampleNames.RoomSpotDiscovery,
@@ -58,7 +61,7 @@ public final class AuthenticateSessionHandler
                             BingoMessages.ensurePlayerActorReq(
                                 authenticated.getActorId(),
                                 authenticated.getDisplayName(),
-                                SampleTopology.preferredPlayNodeRid()))
+                                preferredPlayNodeRid))
                         .timeout(SampleTimings.RequestTimeout)
                         .submit(Messages.EnsurePlayerActorRes.class))
                     .thenCompose(ensured -> context.actors().bind(new ActorRef(

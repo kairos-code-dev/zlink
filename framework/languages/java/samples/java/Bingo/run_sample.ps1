@@ -172,29 +172,44 @@ try {
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
     $redisKeyPrefix = "bingo:java:${PID}:$([Guid]::NewGuid().ToString('N')):"
-    $properties = @"
-apiAChannelEndpoint=tcp://$($apiAChannel.Host):$($apiAChannel.Port)
-apiBChannelEndpoint=tcp://$($apiBChannel.Host):$($apiBChannel.Port)
-playAChannelEndpoint=tcp://$($playAChannel.Host):$($playAChannel.Port)
-playBChannelEndpoint=tcp://$($playBChannel.Host):$($playBChannel.Port)
-sessionASpotEndpoint=tcp://$($sessionASpot.Host):$($sessionASpot.Port)
-sessionBSpotEndpoint=tcp://$($sessionBSpot.Host):$($sessionBSpot.Port)
-sessionARouterEndpoint=tcp://$($sessionARouter.Host):$($sessionARouter.Port)
-sessionBRouterEndpoint=tcp://$($sessionBRouter.Host):$($sessionBRouter.Port)
-playASpotEndpoint=tcp://$($playASpot.Host):$($playASpot.Port)
-playBSpotEndpoint=tcp://$($playBSpot.Host):$($playBSpot.Port)
-playASpotRouterEndpoint=tcp://$($playARouter.Host):$($playARouter.Port)
-playBSpotRouterEndpoint=tcp://$($playBRouter.Host):$($playBRouter.Port)
-sessionAStreamEndpoint=tcp://$($sessionAStream.Host):$($sessionAStream.Port)
-sessionBStreamEndpoint=tcp://$($sessionBStream.Host):$($sessionBStream.Port)
-redisEndpoint=$redisEndpoint
-redisKeyPrefix=$redisKeyPrefix
-logDirectory=$($FlowLogDir.Replace('\', '/'))
+    $commonProperties = @"
+sample.redisEndpoint=$redisEndpoint
+sample.redisKeyPrefix=$redisKeyPrefix
+sample.logDirectory=$($FlowLogDir.Replace('\', '/'))
 "@
     function Write-SampleConfig {
-        param([string]$Name, [string]$RoleName, [string]$RoleValue, [string]$PlayRid = "2202")
+        param([string]$Name, [string]$RoleName, [string]$RoleValue)
         $path = Join-Path $ConfigDir "$Name.properties"
-        Set-Content -Path $path -Value "$properties`n$RoleName=$RoleValue`nplayRid=$PlayRid" -Encoding utf8NoBOM
+        $roleProperties = switch ($RoleName) {
+            "apiNode" { @"
+sample.apiAChannelEndpoint=tcp://$($apiAChannel.Host):$($apiAChannel.Port)
+sample.apiBChannelEndpoint=tcp://$($apiBChannel.Host):$($apiBChannel.Port)
+"@ }
+            "playNode" { @"
+sample.playAChannelEndpoint=tcp://$($playAChannel.Host):$($playAChannel.Port)
+sample.playBChannelEndpoint=tcp://$($playBChannel.Host):$($playBChannel.Port)
+sample.playASpotEndpoint=tcp://$($playASpot.Host):$($playASpot.Port)
+sample.playBSpotEndpoint=tcp://$($playBSpot.Host):$($playBSpot.Port)
+sample.playASpotRouterEndpoint=tcp://$($playARouter.Host):$($playARouter.Port)
+sample.playBSpotRouterEndpoint=tcp://$($playBRouter.Host):$($playBRouter.Port)
+sample.playANodeRid=2201
+sample.playBNodeRid=2202
+"@ }
+            "sessionNode" { @"
+sample.sessionASpotEndpoint=tcp://$($sessionASpot.Host):$($sessionASpot.Port)
+sample.sessionBSpotEndpoint=tcp://$($sessionBSpot.Host):$($sessionBSpot.Port)
+sample.sessionARouterEndpoint=tcp://$($sessionARouter.Host):$($sessionARouter.Port)
+sample.sessionBRouterEndpoint=tcp://$($sessionBRouter.Host):$($sessionBRouter.Port)
+sample.sessionAStreamEndpoint=tcp://$($sessionAStream.Host):$($sessionAStream.Port)
+sample.sessionBStreamEndpoint=tcp://$($sessionBStream.Host):$($sessionBStream.Port)
+sample.sessionARouterRid=1101
+sample.sessionBRouterRid=1102
+sample.playANodeRid=2201
+sample.playBNodeRid=2202
+"@ }
+            default { throw "Unknown Bingo role config: $RoleName" }
+        }
+        Set-Content -Path $path -Value "$commonProperties`nsample.$RoleName=$RoleValue`n$roleProperties" -Encoding utf8NoBOM
         Protect-ConfigFile $path
         return $path
     }
@@ -202,9 +217,14 @@ logDirectory=$($FlowLogDir.Replace('\', '/'))
     $sessionBConfig = Write-SampleConfig "session-b" "sessionNode" "b"
     $apiAConfig = Write-SampleConfig "api-a" "apiNode" "a"
     $apiBConfig = Write-SampleConfig "api-b" "apiNode" "b"
-    $playAConfig = Write-SampleConfig "play-a" "playNode" "a" "2201"
-    $playBConfig = Write-SampleConfig "play-b" "playNode" "b" "2202"
-    $clientConfig = Write-SampleConfig "client" "clientNode" "client"
+    $playAConfig = Write-SampleConfig "play-a" "playNode" "a"
+    $playBConfig = Write-SampleConfig "play-b" "playNode" "b"
+    $clientConfig = Join-Path $ConfigDir "client.properties"
+    Set-Content -Path $clientConfig -Value @(
+        "sessionAStreamEndpoint=tcp://$($sessionAStream.Host):$($sessionAStream.Port)",
+        "sessionBStreamEndpoint=tcp://$($sessionBStream.Host):$($sessionBStream.Port)"
+    ) -Encoding utf8NoBOM
+    Protect-ConfigFile $clientConfig
 
     Push-Location "../../.."
     try {

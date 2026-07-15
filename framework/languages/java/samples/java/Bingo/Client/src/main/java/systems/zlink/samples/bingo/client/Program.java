@@ -16,10 +16,10 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
-        SampleTopology.configure(args);
-        ZLinkStreamConnector client1 = createClient(SampleTopology.SessionAStreamEndpoint);
-        ZLinkStreamConnector client2 = createClient(SampleTopology.SessionBStreamEndpoint);
-        ZLinkStreamConnector observer = createClient(SampleTopology.SessionBStreamEndpoint);
+        SampleTopology topology = SampleTopology.load(args);
+        ZLinkStreamConnector client1 = createClient(topology.sessionAStreamEndpoint());
+        ZLinkStreamConnector client2 = createClient(topology.sessionBStreamEndpoint());
+        ZLinkStreamConnector observer = createClient(topology.sessionBStreamEndpoint());
         try {
             new BingoClientScenario().run(client1, client2, observer);
         } finally {

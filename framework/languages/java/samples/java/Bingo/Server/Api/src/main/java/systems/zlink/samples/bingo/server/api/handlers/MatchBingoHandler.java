@@ -1,6 +1,7 @@
 package systems.zlink.samples.bingo.server.api.handlers;
 
-import systems.zlink.framework.channels.ZLinkClient;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkRequestContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
@@ -14,18 +15,19 @@ public final class MatchBingoHandler
     implements ZLinkRequestHandler<
         Messages.MatchBingoApiReq,
         Messages.MatchBingoApiRes> {
-    private final ZLinkClient channels;
+    private final ZLinkRouteClient routes;
 
-    public MatchBingoHandler(ZLinkClient channels) {
-        this.channels = channels;
+    public MatchBingoHandler(ZLinkRouteClient routes) {
+        this.routes = routes;
     }
 
     @Override
     public java.util.concurrent.CompletionStage<Messages.MatchBingoApiRes> handle(
         Messages.MatchBingoApiReq request,
         ZLinkRequestContext context) {
-        return channels.requestToChannel(
+        return routes.requestToNode(
                 SampleNames.PlayChannel,
+                RoutingId.from(request.getActorNodeRid()),
                 BingoMessages.allocateBingoRoomReq(
                     request.getMode(),
                     request.getActorId(),

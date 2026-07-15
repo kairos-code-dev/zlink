@@ -7,7 +7,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        SampleTopology.configure(args);
-        PlayServerApplication.run(new String[0]);
+        PlayServerApplication.run(SampleTopology.configPath(args));
     }
 }

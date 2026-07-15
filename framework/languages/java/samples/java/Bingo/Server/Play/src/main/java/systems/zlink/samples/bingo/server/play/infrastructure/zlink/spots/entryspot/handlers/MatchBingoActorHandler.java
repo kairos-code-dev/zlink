@@ -18,6 +18,12 @@ public final class MatchBingoActorHandler
         PlayerActor,
         Messages.MatchBingoReq,
         Messages.MatchBingoRes> {
+    private final String playNodeRid;
+
+    public MatchBingoActorHandler(SampleTopology topology) {
+        playNodeRid = topology.selectedPlayNodeRid();
+    }
+
     @Override
     public java.util.concurrent.CompletionStage<Messages.MatchBingoRes> handle(
         BingoEntrySpot entrySpot,
@@ -30,7 +36,7 @@ public final class MatchBingoActorHandler
                     actor.actorId(),
                     actor.displayName(),
                     request.getMode(),
-                    SampleTopology.selectedPlayNodeRid()))
+                    playNodeRid))
             .timeout(SampleTimings.RequestTimeout)
             .submit(Messages.MatchBingoApiRes.class)
             .thenCompose(matched -> actor.context().joinSpot(

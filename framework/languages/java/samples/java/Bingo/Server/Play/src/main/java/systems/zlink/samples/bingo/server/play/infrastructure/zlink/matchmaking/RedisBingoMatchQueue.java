@@ -65,10 +65,12 @@ return { roomId, existingOwnerRid }
 
     private final RedisClient client;
     private final StatefulRedisConnection<String, String> connection;
+    private final String keyPrefix;
 
-    public RedisBingoMatchQueue() {
-        client = RedisClient.create(redisUri(SampleTopology.RedisEndpoint));
+    public RedisBingoMatchQueue(SampleTopology topology) {
+        client = RedisClient.create(redisUri(topology.redisEndpoint()));
         connection = client.connect();
+        keyPrefix = topology.redisKeyPrefix();
     }
 
     @Override
@@ -100,8 +102,8 @@ return { roomId, existingOwnerRid }
         client.shutdown();
     }
 
-    private static String matchKey(String mode) {
-        return SampleTopology.RedisKeyPrefix + "match:" + mode;
+    private String matchKey(String mode) {
+        return keyPrefix + "match:" + mode;
     }
 
     private static String redisUri(String endpoint) {

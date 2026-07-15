@@ -7,7 +7,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        SampleTopology.configure(args);
-        ApiServerApplication.run(new String[0]);
+        ApiServerApplication.run(SampleTopology.configPath(args));
     }
 }

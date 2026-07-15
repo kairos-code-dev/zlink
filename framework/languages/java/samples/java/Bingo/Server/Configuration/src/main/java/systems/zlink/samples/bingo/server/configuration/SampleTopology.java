@@ -1,131 +1,115 @@
 package systems.zlink.samples.bingo.server.configuration;
 
-import java.io.Reader;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Properties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
-public final class SampleTopology {
-    public static String ApiAChannelEndpoint;
-    public static String ApiBChannelEndpoint;
-    public static String PlayAChannelEndpoint;
-    public static String PlayBChannelEndpoint;
-    public static String SessionASpotEndpoint;
-    public static String SessionBSpotEndpoint;
-    public static String SessionARouterEndpoint;
-    public static String SessionBRouterEndpoint;
-    public static String PlayASpotEndpoint;
-    public static String PlayBSpotEndpoint;
-    public static String PlayASpotRouterEndpoint;
-    public static String PlayBSpotRouterEndpoint;
-    public static String SessionAStreamEndpoint;
-    public static String SessionBStreamEndpoint;
-    public static String RedisEndpoint;
-    public static String RedisKeyPrefix;
-    public static String ApiNode;
-    public static String PlayNode;
-    public static String SessionNode;
-    public static String SessionARouterRid;
-    public static String SessionBRouterRid;
-    public static String PlayANodeRid;
-    public static String PlayBNodeRid;
-    public static String PlayRid;
-    public static String LogDirectory;
+@ConfigurationProperties("sample")
+public record SampleTopology(
+    String apiAChannelEndpoint,
+    String apiBChannelEndpoint,
+    String playAChannelEndpoint,
+    String playBChannelEndpoint,
+    String sessionASpotEndpoint,
+    String sessionBSpotEndpoint,
+    String sessionARouterEndpoint,
+    String sessionBRouterEndpoint,
+    String playASpotEndpoint,
+    String playBSpotEndpoint,
+    String playASpotRouterEndpoint,
+    String playBSpotRouterEndpoint,
+    String sessionAStreamEndpoint,
+    String sessionBStreamEndpoint,
+    String redisEndpoint,
+    String redisKeyPrefix,
+    String apiNode,
+    String playNode,
+    String sessionNode,
+    String sessionARouterRid,
+    String sessionBRouterRid,
+    String playANodeRid,
+    String playBNodeRid,
+    String logDirectory) {
 
-    private SampleTopology() {
+    public SampleTopology {
+        apiAChannelEndpoint = value(apiAChannelEndpoint, "tcp://127.0.0.1:47103");
+        apiBChannelEndpoint = value(apiBChannelEndpoint, "tcp://127.0.0.1:47117");
+        playAChannelEndpoint = value(playAChannelEndpoint, "tcp://127.0.0.1:47104");
+        playBChannelEndpoint = value(playBChannelEndpoint, "tcp://127.0.0.1:47118");
+        sessionASpotEndpoint = value(sessionASpotEndpoint, "tcp://127.0.0.1:47105");
+        sessionBSpotEndpoint = value(sessionBSpotEndpoint, "tcp://127.0.0.1:47119");
+        sessionARouterEndpoint = value(sessionARouterEndpoint, "tcp://127.0.0.1:47106");
+        sessionBRouterEndpoint = value(sessionBRouterEndpoint, "tcp://127.0.0.1:47120");
+        playASpotEndpoint = value(playASpotEndpoint, "tcp://127.0.0.1:47110");
+        playBSpotEndpoint = value(playBSpotEndpoint, "tcp://127.0.0.1:47121");
+        playASpotRouterEndpoint = value(playASpotRouterEndpoint, "tcp://127.0.0.1:47111");
+        playBSpotRouterEndpoint = value(playBSpotRouterEndpoint, "tcp://127.0.0.1:47122");
+        sessionAStreamEndpoint = value(sessionAStreamEndpoint, "tcp://127.0.0.1:47114");
+        sessionBStreamEndpoint = value(sessionBStreamEndpoint, "tcp://127.0.0.1:47125");
+        redisEndpoint = required(redisEndpoint, "redisEndpoint");
+        redisKeyPrefix = value(redisKeyPrefix, "bingo:java:");
+        apiNode = value(apiNode, "a");
+        playNode = value(playNode, "a");
+        sessionNode = value(sessionNode, "a");
+        sessionARouterRid = value(sessionARouterRid, "1101");
+        sessionBRouterRid = value(sessionBRouterRid, "1102");
+        playANodeRid = value(playANodeRid, "2201");
+        playBNodeRid = value(playBNodeRid, "2202");
+        logDirectory = required(logDirectory, "logDirectory");
     }
 
-    public static void configure(String[] args) {
-        Properties properties = load(args);
-        ApiAChannelEndpoint = value(properties, "apiAChannelEndpoint", "tcp://127.0.0.1:47103");
-        ApiBChannelEndpoint = value(properties, "apiBChannelEndpoint", "tcp://127.0.0.1:47117");
-        PlayAChannelEndpoint = value(properties, "playAChannelEndpoint", "tcp://127.0.0.1:47104");
-        PlayBChannelEndpoint = value(properties, "playBChannelEndpoint", "tcp://127.0.0.1:47118");
-        SessionASpotEndpoint = value(properties, "sessionASpotEndpoint", "tcp://127.0.0.1:47105");
-        SessionBSpotEndpoint = value(properties, "sessionBSpotEndpoint", "tcp://127.0.0.1:47119");
-        SessionARouterEndpoint = value(properties, "sessionARouterEndpoint", "tcp://127.0.0.1:47106");
-        SessionBRouterEndpoint = value(properties, "sessionBRouterEndpoint", "tcp://127.0.0.1:47120");
-        PlayASpotEndpoint = value(properties, "playASpotEndpoint", "tcp://127.0.0.1:47110");
-        PlayBSpotEndpoint = value(properties, "playBSpotEndpoint", "tcp://127.0.0.1:47121");
-        PlayASpotRouterEndpoint = value(properties, "playASpotRouterEndpoint", "tcp://127.0.0.1:47111");
-        PlayBSpotRouterEndpoint = value(properties, "playBSpotRouterEndpoint", "tcp://127.0.0.1:47122");
-        SessionAStreamEndpoint = value(properties, "sessionAStreamEndpoint", "tcp://127.0.0.1:47114");
-        SessionBStreamEndpoint = value(properties, "sessionBStreamEndpoint", "tcp://127.0.0.1:47125");
-        RedisEndpoint = required(properties, "redisEndpoint");
-        RedisKeyPrefix = value(properties, "redisKeyPrefix", "bingo:java:");
-        ApiNode = value(properties, "apiNode", "a");
-        PlayNode = value(properties, "playNode", "a");
-        SessionNode = value(properties, "sessionNode", "a");
-        SessionARouterRid = value(properties, "sessionARouterRid", "1101");
-        SessionBRouterRid = value(properties, "sessionBRouterRid", "1102");
-        PlayANodeRid = value(properties, "playANodeRid", "2201");
-        PlayBNodeRid = value(properties, "playBNodeRid", "2202");
-        PlayRid = value(properties, "playRid", PlayBNodeRid);
-        LogDirectory = required(properties, "logDirectory");
+    public String selectedApiChannelEndpoint() {
+        return "b".equals(apiNode) ? apiBChannelEndpoint : apiAChannelEndpoint;
     }
 
-    public static String selectedApiChannelEndpoint() {
-        return "b".equals(ApiNode) ? ApiBChannelEndpoint : ApiAChannelEndpoint;
+    public String selectedPlayChannelEndpoint() {
+        return "b".equals(playNode) ? playBChannelEndpoint : playAChannelEndpoint;
     }
 
-    public static String selectedPlayChannelEndpoint() {
-        return "b".equals(PlayNode) ? PlayBChannelEndpoint : PlayAChannelEndpoint;
+    public String selectedPlaySpotEndpoint() {
+        return "b".equals(playNode) ? playBSpotEndpoint : playASpotEndpoint;
     }
 
-    public static String selectedPlaySpotEndpoint() {
-        return "b".equals(PlayNode) ? PlayBSpotEndpoint : PlayASpotEndpoint;
+    public String selectedPlaySpotRouterEndpoint() {
+        return "b".equals(playNode) ? playBSpotRouterEndpoint : playASpotRouterEndpoint;
     }
 
-    public static String selectedPlaySpotRouterEndpoint() {
-        return "b".equals(PlayNode) ? PlayBSpotRouterEndpoint : PlayASpotRouterEndpoint;
+    public String selectedPlayNodeRid() {
+        return "b".equals(playNode) ? playBNodeRid : playANodeRid;
     }
 
-    public static String selectedPlayNodeRid() {
-        return "b".equals(PlayNode) ? PlayBNodeRid : PlayANodeRid;
+    public String preferredPlayNodeRid() {
+        return "b".equals(sessionNode) ? playBNodeRid : playANodeRid;
     }
 
-    public static String preferredPlayNodeRid() {
-        return "b".equals(SessionNode) ? PlayBNodeRid : PlayANodeRid;
+    public String selectedSessionSpotEndpoint() {
+        return "b".equals(sessionNode) ? sessionBSpotEndpoint : sessionASpotEndpoint;
     }
 
-    public static String selectedSessionSpotEndpoint() {
-        return "b".equals(SessionNode) ? SessionBSpotEndpoint : SessionASpotEndpoint;
+    public String selectedSessionRouterEndpoint() {
+        return "b".equals(sessionNode) ? sessionBRouterEndpoint : sessionARouterEndpoint;
     }
 
-    public static String selectedSessionRouterEndpoint() {
-        return "b".equals(SessionNode) ? SessionBRouterEndpoint : SessionARouterEndpoint;
+    public String selectedSessionRouterRid() {
+        return "b".equals(sessionNode) ? sessionBRouterRid : sessionARouterRid;
     }
 
-    public static String selectedSessionRouterRid() {
-        return "b".equals(SessionNode) ? SessionBRouterRid : SessionARouterRid;
+    public String selectedStreamEndpoint() {
+        return "b".equals(sessionNode) ? sessionBStreamEndpoint : sessionAStreamEndpoint;
     }
 
-    public static String selectedStreamEndpoint() {
-        return "b".equals(SessionNode) ? SessionBStreamEndpoint : SessionAStreamEndpoint;
-    }
-
-    private static Properties load(String[] args) {
+    public static String configPath(String[] args) {
         if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
-            throw new IllegalArgumentException("Usage: <role> --config <path>");
+            throw new IllegalArgumentException("Usage: <role executable> --config <path>");
         }
-        Properties properties = new Properties();
-        try (Reader reader = Files.newBufferedReader(Path.of(args[1]))) {
-            properties.load(reader);
-            return properties;
-        } catch (Exception error) {
-            throw new IllegalStateException("Could not load Bingo sample config.", error);
-        }
+        return args[1];
     }
 
-    private static String value(Properties properties, String name, String fallback) {
-        String value = properties.getProperty(name);
+    private static String value(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
     }
 
-    private static String required(Properties properties, String name) {
-        String value = properties.getProperty(name);
+    private static String required(String value, String name) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Missing Bingo sample config: " + name);
+            throw new IllegalArgumentException("sample." + name + " is required");
         }
         return value;
     }

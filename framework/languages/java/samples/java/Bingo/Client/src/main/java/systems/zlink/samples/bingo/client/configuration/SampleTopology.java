@@ -5,14 +5,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 
-public final class SampleTopology {
-    public static String SessionAStreamEndpoint;
-    public static String SessionBStreamEndpoint;
-
-    private SampleTopology() {
-    }
-
-    public static void configure(String[] args) {
+public record SampleTopology(String sessionAStreamEndpoint, String sessionBStreamEndpoint) {
+    public static SampleTopology load(String[] args) {
         if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
             throw new IllegalArgumentException("Usage: Client --config <path>");
         }
@@ -22,8 +16,9 @@ public final class SampleTopology {
         } catch (Exception error) {
             throw new IllegalStateException("Could not load Bingo client config.", error);
         }
-        SessionAStreamEndpoint = required(properties, "sessionAStreamEndpoint");
-        SessionBStreamEndpoint = required(properties, "sessionBStreamEndpoint");
+        return new SampleTopology(
+            required(properties, "sessionAStreamEndpoint"),
+            required(properties, "sessionBStreamEndpoint"));
     }
 
     private static String required(Properties properties, String name) {

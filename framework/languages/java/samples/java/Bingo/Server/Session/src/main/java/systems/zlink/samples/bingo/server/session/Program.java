@@ -7,7 +7,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        SampleTopology.configure(args);
-        SessionServerApplication.run(new String[0]);
+        SessionServerApplication.run(SampleTopology.configPath(args));
     }
 }

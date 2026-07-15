@@ -114,26 +114,54 @@ redis_port="${redis_endpoint##*:}"
 wait_port "${redis_host}" "${redis_port}"
 write_config() {
   local path="$1" role_key="$2" role_value="$3"
-  cat >"$path" <<EOF
-apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port}
-apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port}
-playAChannelEndpoint=tcp://${play_a_host}:${play_a_port}
-playBChannelEndpoint=tcp://${play_b_host}:${play_b_port}
-sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port}
-sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port}
-sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port}
-sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port}
-playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port}
-playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port}
-playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port}
-playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port}
+  if [[ "${role_key}" == "clientNode" ]]; then
+    cat >"$path" <<EOF
 sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port}
 sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port}
-redisEndpoint=${redis_endpoint}
-redisKeyPrefix=${bingo_redis_key_prefix}
-logDirectory=${flow_log_dir}
-${role_key}=${role_value}
 EOF
+    chmod 0600 "$path"
+    return
+  fi
+  cat >"$path" <<EOF
+sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${bingo_redis_key_prefix}
+sample.logDirectory=${flow_log_dir}
+sample.${role_key}=${role_value}
+EOF
+  case "${role_key}" in
+    apiNode)
+      cat >>"$path" <<EOF
+sample.apiAChannelEndpoint=tcp://${api_a_host}:${api_a_port}
+sample.apiBChannelEndpoint=tcp://${api_b_host}:${api_b_port}
+EOF
+      ;;
+    playNode)
+      cat >>"$path" <<EOF
+sample.playAChannelEndpoint=tcp://${play_a_host}:${play_a_port}
+sample.playBChannelEndpoint=tcp://${play_b_host}:${play_b_port}
+sample.playASpotEndpoint=tcp://${play_a_spot_host}:${play_a_spot_port}
+sample.playBSpotEndpoint=tcp://${play_b_spot_host}:${play_b_spot_port}
+sample.playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port}
+sample.playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port}
+sample.playANodeRid=2201
+sample.playBNodeRid=2202
+EOF
+      ;;
+    sessionNode)
+      cat >>"$path" <<EOF
+sample.sessionASpotEndpoint=tcp://${session_a_spot_host}:${session_a_spot_port}
+sample.sessionBSpotEndpoint=tcp://${session_b_spot_host}:${session_b_spot_port}
+sample.sessionARouterEndpoint=tcp://${session_a_router_host}:${session_a_router_port}
+sample.sessionBRouterEndpoint=tcp://${session_b_router_host}:${session_b_router_port}
+sample.sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port}
+sample.sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port}
+sample.sessionARouterRid=1101
+sample.sessionBRouterRid=1102
+sample.playANodeRid=2201
+sample.playBNodeRid=2202
+EOF
+      ;;
+  esac
   chmod 0600 "$path"
 }
 session_a_config="${config_dir}/session-a.properties"

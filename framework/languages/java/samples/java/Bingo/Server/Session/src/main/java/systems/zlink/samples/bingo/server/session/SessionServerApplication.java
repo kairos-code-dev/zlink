@@ -1,8 +1,7 @@
 package systems.zlink.samples.bingo.server.session;
 
-import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -12,6 +11,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.codecs.protobuf.ZLinkProtobufCodec;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.samples.bingo.server.configuration.SampleLocationStore;
+import systems.zlink.samples.bingo.server.configuration.SampleApplication;
 import systems.zlink.samples.bingo.server.session.sessions.BingoSession;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTopology;
@@ -21,6 +21,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = SessionServerApplication.class)
@@ -28,38 +29,35 @@ public final class SessionServerApplication {
     private SessionServerApplication() {
     }
 
-    public static AutoCloseable run(String... args) {
-        SpringApplicationBuilder builder = new SpringApplicationBuilder(SessionServerApplication.class)
-            .web(WebApplicationType.NONE);
-        builder.application().setKeepAlive(true);
-        return builder.run(args)::close;
+    public static AutoCloseable run(String configPath) {
+        return SampleApplication.start(SessionServerApplication.class, configPath)::close;
     }
 
     @Bean
-    ZLinkFrameworkConfigurer sessionFramework() {
+    ZLinkFrameworkConfigurer sessionFramework(SampleTopology topology) {
         return options -> {
             options.addHandlersFromPackageOf(SessionServerApplication.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(SampleTopology.LogDirectory + "/flow-session.log")
+                .traceLogFile(topology.logDirectory() + "/flow-session.log")
                 .traceLabel("session");
             options.codecs().use(ZLinkProtobufCodec.defaultCodec());
             options.configureLocations();
             options.addClientServerChannel(SampleNames.ApiChannel)
                 .enableClient();
             ZLinkSpotNodeBuilder node = options.addSpotMesh(SampleNames.RoomSpotDiscovery);
-            node.enableRouter(SampleTopology.selectedSessionRouterEndpoint())
-                .setRoutingId(RoutingId.from(SampleTopology.selectedSessionRouterRid()));
-            node.enablePubSub(SampleTopology.selectedSessionSpotEndpoint());
+            node.enableRouter(topology.selectedSessionRouterEndpoint())
+                .setRoutingId(RoutingId.from(topology.selectedSessionRouterRid()));
+            node.enablePubSub(topology.selectedSessionSpotEndpoint());
             options.addStreamNode(SampleNames.StreamNode)
-                .bind(SampleTopology.selectedStreamEndpoint())
+                .bind(topology.selectedStreamEndpoint())
                 .registerSession(BingoSession.class);
         };
     }
 
     @Bean
-    ZLinkRedisLocationStore locationStore() {
-        return SampleLocationStore.create();
+    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
+        return SampleLocationStore.create(topology);
     }
 
     @Bean(destroyMethod = "close")

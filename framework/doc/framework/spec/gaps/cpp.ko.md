@@ -353,7 +353,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [x] **IMP-CP-15** (결함) — 스펙이 정한 **spot source가 timer 실패 이벤트를 내지 못한다**
   - 근거: 수정 전 unit gate에서 계약 밖 `add_spot_timer_events` 등록을 제거하자 spot source로 발행한 stopped timer event가 누락되어 종료 코드 2로 실패했다. 별도 public 축과 runtime state를 제거하고 timer failure를 기존 `add_spot_events` source로 통합했다. monitoring unit, public header/target contract, RuntimeMonitoring service/client build와 실제 `MON-A3`·`MON-A5`가 통과했다.
 - [ ] **IMP-CP-16** (미구현) — 계기 8개 결측
-- [ ] **IMP-CP-17** (결함) — `add_spot_events(name, interval)`의 **interval을 읽는 곳이 없다**
+- [x] **IMP-CP-17** (결함) — `add_spot_events(name, interval)`의 **interval을 읽는 곳이 없다**
+  - 근거: 수정 전 집중 unit gate는 40ms 안의 두 `SubjectsChanged`가 모두 즉시 전달되어 종료 코드 36으로 실패했다. `a2ab2d687`에서 source별 interval gate가 event 종류별 최신 snapshot만 보존하도록 구현하고, poll 책임을 `poll_monitoring()`에 모아 peer 수집 실패가 대기 snapshot 전달을 막던 시간 결합을 제거했다. monitoring·spot runtime·module hosted unit 3건과 실제 RuntimeMonitoring `MON-A3`가 통과했다.
 - [x] **IMP-CP-18** (결함) — 폴백 로그가 `phase=` 대신 **`outcome=`**을 쓴다
   - 근거: 수정 전 message-flow unit gate를 `phase=` 계약으로 바꾸자 종료 코드 3으로 실패했다. fallback structured field를 `phase` 하나로 교체하고 SpotService·ObservabilityOps의 실제 로그 판정을 갱신한 뒤 unit test, shell syntax/no-hit gate, `ObservabilityOps/run_e2e.sh flow`의 OBS-A1·A2가 통과했다.
 - [x] **IMP-CP-19** (미구현) — **connector에 자동 재연결이 없다.** 수립된 연결이 끊기면 영원히 `Disconnected`

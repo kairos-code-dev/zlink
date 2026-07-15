@@ -5,7 +5,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
-import systems.zlink.framework.actors.ZLinkActorPlacement;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -32,8 +31,7 @@ public final class ZLinkStoreActorDirectory implements ZLinkActorDirectory {
     @Override
     public CompletionStage<ActorRef> ensure(
         String actorId,
-        ZLinkMessage createRequest,
-        ZLinkActorPlacement placement) {
+        ZLinkMessage createRequest) {
         return CompletableFuture.failedFuture(new ZLinkConfigurationException(
             "actor directory ensure requires an actor factory"));
     }

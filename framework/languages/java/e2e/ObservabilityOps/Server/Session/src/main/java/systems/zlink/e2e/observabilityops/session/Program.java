@@ -89,6 +89,7 @@ public final class Program {
         return options -> {
             String logDir = Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs");
             options.addHandlersFromPackageOf(ScenarioReqHandler.class);
+            options.addHandlersFromPackageOf(ForceReconnectSessionHandler.class);
             var dispatch = options.configureDispatch()
                 .messageFlow("off".equals(Env.get("ZLINK_JAVA_E2E_MESSAGE_FLOW"))
                     ? ZLinkMessageFlowLogMode.OFF

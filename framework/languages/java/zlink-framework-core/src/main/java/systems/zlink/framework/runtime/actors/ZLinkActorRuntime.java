@@ -27,7 +27,6 @@ import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
-import systems.zlink.framework.actors.ZLinkActorPlacement;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
 import systems.zlink.framework.actors.ZLinkBoundSession;
@@ -810,25 +809,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     @Override
     public CompletionStage<ActorRef> ensure(
         String actorId,
-        ZLinkMessage createRequest,
-        ZLinkActorPlacement placement) {
+        ZLinkMessage createRequest) {
         requireActorId(actorId);
         if (createRequest == null) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "createRequest is required"));
         }
         CompletionStage<Optional<ActorRef>> existing = find(actorId);
-        ZLinkActorPlacement safePlacement =
-            placement == null ? ZLinkActorPlacement.any() : placement;
         return existing.thenCompose(found -> {
             if (found.isPresent()) {
                 return CompletableFuture.completedFuture(found.get());
-            }
-            if (safePlacement.preferredNodeRid() != null
-                && !safePlacement.preferredNodeRid().equals(spotNode.routingId())) {
-                return CompletableFuture.failedFuture(new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
-                    "preferred actor node is not connected to this actor directory"));
             }
             return createLocalActor(actorId, resolveSingleActorType(), createRequest, false)
                 .thenApply(this::publicRefFor)

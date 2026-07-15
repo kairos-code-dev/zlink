@@ -67,19 +67,15 @@ public final class TriggerOperations {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         Metrics.addRegistry(registry);
         ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
-            ZLinkStreamConnectorOptions.createDefault(URI.create(endpoint)));
+            unlimitedReconnectOptions(endpoint));
         try {
             connector.connect().submit().toCompletableFuture().join();
             probeLifecycle(connector);
-            connector.disconnect().submit().toCompletableFuture().join();
-            connector.reconnect().submit().toCompletableFuture().join();
-            probeLifecycle(connector);
-            connector.disconnect().submit().toCompletableFuture().join();
-            connector.reconnect().submit().toCompletableFuture().join();
-            probeLifecycle(connector);
-            connector.disconnect().submit().toCompletableFuture().join();
-            connector.reconnect().submit().toCompletableFuture().join();
-            probeLifecycle(connector);
+            for (int expectedCycle = 1; expectedCycle <= 3; expectedCycle++) {
+                forceReconnect(connector, expectedCycle);
+                connector.connect().submit().toCompletableFuture().get(30, TimeUnit.SECONDS);
+                probeLifecycle(connector);
+            }
             double reconnects = registry.get("zlink.stream.reconnects").counter().count();
             new ObjectMapper().writeValue(output.toFile(), List.of(Map.of(
                 "name", "zlink.stream.reconnects",
@@ -94,6 +90,47 @@ public final class TriggerOperations {
             registry.close();
         }
     }
+
+    private static void forceReconnect(ZLinkStreamConnector connector, int cycle) {
+        try {
+            connector.request(new ForceReconnectReq(cycle))
+                .timeout(Duration.ofSeconds(5))
+                .submit(Void.class)
+                .toCompletableFuture().join();
+            throw new IllegalStateException("force reconnect request unexpectedly received a reply");
+        } catch (java.util.concurrent.CompletionException expected) {
+            // Closing the server-side session fails the pending request and starts automatic reconnect.
+        }
+    }
+
+    private static ZLinkStreamConnectorOptions unlimitedReconnectOptions(String endpoint) {
+        ZLinkStreamConnectorOptions defaults =
+            ZLinkStreamConnectorOptions.createDefault(URI.create(endpoint));
+        return new ZLinkStreamConnectorOptions(
+            defaults.endpoint(),
+            defaults.dispatchMode(),
+            defaults.requestTimeout(),
+            defaults.waitTimeout(),
+            ZLinkStreamConnectorOptions.UNLIMITED_RECONNECT_ATTEMPTS,
+            defaults.connectTimeout(),
+            defaults.maxSendPayloadSize(),
+            defaults.maxReceivePayloadSize(),
+            defaults.maxReceivedMessages(),
+            defaults.heartbeatEnabled(),
+            defaults.heartbeatInterval(),
+            defaults.heartbeatTimeout(),
+            defaults.reconnectEnabled(),
+            defaults.reconnectInitialDelay(),
+            defaults.reconnectMaxDelay(),
+            defaults.reconnectBackoffFactor(),
+            defaults.skipServerCertificateValidation(),
+            defaults.compression(),
+            defaults.compressionCodec(),
+            defaults.nameResolver(),
+            defaults.typedCodec());
+    }
+
+    private record ForceReconnectReq(int cycle) { }
 
     private static void probeLifecycle(ZLinkStreamConnector connector) {
         try {

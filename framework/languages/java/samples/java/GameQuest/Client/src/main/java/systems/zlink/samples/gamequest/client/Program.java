@@ -18,7 +18,7 @@ public final class Program {
         ZLinkStreamConnector apiA = createClient(options.apiAStreamEndpoint());
         ZLinkStreamConnector apiB = createClient(options.apiBStreamEndpoint());
         try {
-            GameQuestClientScenario scenario = new GameQuestClientScenario(options);
+            GameQuestClientScenario scenario = new GameQuestClientScenario(options, Program::createClient);
             if ("full".equals(options.scenario())) {
                 scenario.run(apiA, apiB);
             } else if ("rehydrate".equals(options.scenario())) {

@@ -7,7 +7,6 @@ import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorRequestCall
 import systems.zlink.framework.actors.ZLinkActorJoinCall
 import systems.zlink.framework.actors.ZLinkActorJoinResult
-import systems.zlink.framework.actors.ZLinkActorPlacement
 import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ActorRefSnapshot
 import systems.zlink.framework.channels.ZLinkClient
@@ -58,9 +57,8 @@ suspend fun ZLinkActorDirectory.findActor(actorId: String): ActorRef? =
 suspend fun ZLinkActorDirectory.ensureActor(
     actorId: String,
     createRequest: ZLinkMessage,
-    placement: ZLinkActorPlacement = ZLinkActorPlacement.any(),
 ): ActorRef =
-    awaitFrameworkStage(ensure(actorId, createRequest, placement))
+    awaitFrameworkStage(ensure(actorId, createRequest))
 
 suspend fun ZLinkActorDirectory.ensureActor(
     actorId: String,

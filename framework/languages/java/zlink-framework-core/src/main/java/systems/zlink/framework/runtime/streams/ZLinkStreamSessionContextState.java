@@ -8,6 +8,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
@@ -38,6 +39,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkStreamCompressionCodec compressionCodec;
     private final ZLinkMessageFlowTracer flow;
+    private final Supplier<CompletionStage<Void>> closeAction;
     private final ConcurrentHashMap<String, ZLinkStreamHeader> requestHeadersByFlow =
         new ConcurrentHashMap<>();
 
@@ -49,7 +51,8 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         ZLinkMessageSerializer serializer,
         ZLinkStreamCodec defaultCodec,
         ZLinkStreamCompressionCodec compressionCodec,
-        ZLinkMessageFlowTracer flow) {
+        ZLinkMessageFlowTracer flow,
+        Supplier<CompletionStage<Void>> closeAction) {
         this.streamNodeName = streamNodeName;
         this.stream = stream;
         this.routingId = routingId;
@@ -58,6 +61,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         this.defaultCodec = defaultCodec;
         this.compressionCodec = compressionCodec;
         this.flow = flow;
+        this.closeAction = java.util.Objects.requireNonNull(closeAction, "closeAction");
     }
 
     @Override
@@ -108,7 +112,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
 
     @Override
     public CompletionStage<Void> close() {
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        return closeAction.get();
     }
 
     CompletionStage<Void> dispatchStage(

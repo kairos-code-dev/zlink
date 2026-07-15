@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.shared.contracts.Messages;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -20,9 +21,13 @@ public final class GameQuestClientScenario {
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newHttpClient();
     private final GameQuestClientOptions options;
+    private final Function<String, ZLinkStreamConnector> connectorFactory;
 
-    public GameQuestClientScenario(GameQuestClientOptions options) {
+    public GameQuestClientScenario(
+        GameQuestClientOptions options,
+        Function<String, ZLinkStreamConnector> connectorFactory) {
         this.options = options;
+        this.connectorFactory = connectorFactory;
     }
 
     public void run(ZLinkStreamConnector apiAStream, ZLinkStreamConnector apiBStream) throws Exception {
@@ -169,29 +174,40 @@ public final class GameQuestClientScenario {
         ensure(reconciled.activeQuests().stream().anyMatch(progress ->
             progress.questId().equals(Messages.QuestIds.FirstHunt) && progress.currentCount() == 5));
 
-        apiAStream.disconnect().submit().toCompletableFuture().join();
-        apiBStream.disconnect().submit().toCompletableFuture().join();
-        apiBStream.connect().submit().toCompletableFuture().join();
-        Messages.JoinSessionRes reconnectedAlice = apiBStream
-            .request(new Messages.JoinSessionReq("player-alice"))
-            .submit(Messages.JoinSessionRes.class).toCompletableFuture().join();
-        ensure(reconnectedAlice.activeQuests().stream().anyMatch(progress ->
-            progress.questId().equals(Messages.QuestIds.FirstHunt)
-                && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
+        apiAStream.close().submit().toCompletableFuture().join();
+        apiBStream.close().submit().toCompletableFuture().join();
+        ZLinkStreamConnector reconnectedStream = connectorFactory.apply(options.apiBStreamEndpoint());
+        try {
+            reconnectedStream.connect().submit().toCompletableFuture().join();
+            Messages.JoinSessionRes reconnectedAlice = reconnectedStream
+                .request(new Messages.JoinSessionReq("player-alice"))
+                .submit(Messages.JoinSessionRes.class).toCompletableFuture().join();
+            ensure(reconnectedAlice.activeQuests().stream().anyMatch(progress ->
+                progress.questId().equals(Messages.QuestIds.FirstHunt)
+                    && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
 
-        CompletionStage<ZLinkStreamMessage<Messages.QuestProgressNotify>> reconnectedProgress =
-            apiBStream.waitFor(Messages.QuestProgressNotify.class)
-                .where(Messages.QuestProgressNotify.class, message ->
-                    message.payload().playerId().equals("player-alice")
-                        && message.payload().progress().questId().equals(Messages.QuestIds.HerbGathering))
-                .submit(Messages.QuestProgressNotify.class);
-        apiBStream.request(new Messages.CollectItemReq(
-                "player-alice", "healing-herb", 1, "reconnect-herb-1"))
-            .submit(Messages.CollectItemRes.class).toCompletableFuture().join();
-        ensure(reconnectedProgress.toCompletableFuture().join().payload().progress().currentCount() == 1);
-        apiBStream.disconnect().submit().toCompletableFuture().join();
+            CompletionStage<ZLinkStreamMessage<Messages.QuestProgressNotify>> reconnectedProgress =
+                reconnectedStream.waitFor(Messages.QuestProgressNotify.class)
+                    .where(Messages.QuestProgressNotify.class, message ->
+                        message.payload().playerId().equals("player-alice")
+                            && message.payload().progress().questId().equals(Messages.QuestIds.HerbGathering))
+                    .submit(Messages.QuestProgressNotify.class);
+            reconnectedStream.request(new Messages.CollectItemReq(
+                    "player-alice", "healing-herb", 1, "reconnect-herb-1"))
+                .submit(Messages.CollectItemRes.class).toCompletableFuture().join();
+            ensure(reconnectedProgress.toCompletableFuture().join().payload().progress().currentCount() == 1);
+        } finally {
+            reconnectedStream.close().submit().toCompletableFuture().join();
+        }
 
-        verifyScaleOut(apiAStream, apiBStream);
+        ZLinkStreamConnector scaleA = connectorFactory.apply(options.apiAStreamEndpoint());
+        ZLinkStreamConnector scaleB = connectorFactory.apply(options.apiBStreamEndpoint());
+        try {
+            verifyScaleOut(scaleA, scaleB);
+        } finally {
+            scaleA.close().submit().toCompletableFuture().join();
+            scaleB.close().submit().toCompletableFuture().join();
+        }
         Messages.GameQuestServerAssertRes assertion = waitForServerAssertion();
         ensure(assertion.passed());
         System.out.println(SampleNames.ServerEvidenceMarker);
@@ -206,7 +222,7 @@ public final class GameQuestClientScenario {
             progress.questId().equals(Messages.QuestIds.FirstHunt)
                 && progress.currentCount() == 5
                 && progress.status().equals(Messages.QuestStatuses.RewardGranted)));
-        apiAStream.disconnect().submit().toCompletableFuture().join();
+        apiAStream.close().submit().toCompletableFuture().join();
         System.out.println(SampleNames.RehydrateMarker);
     }
 
@@ -244,9 +260,6 @@ public final class GameQuestClientScenario {
         CompletableFuture.allOf(requestA, requestB, progressA, progressB).join();
         ensure(progressA.join().payload().progress().currentCount() == 1);
         ensure(progressB.join().payload().progress().currentCount() == 1);
-        CompletableFuture.allOf(
-            apiAStream.disconnect().submit().toCompletableFuture(),
-            apiBStream.disconnect().submit().toCompletableFuture()).join();
         System.out.println("gamequest-scale-out=completed");
     }
 

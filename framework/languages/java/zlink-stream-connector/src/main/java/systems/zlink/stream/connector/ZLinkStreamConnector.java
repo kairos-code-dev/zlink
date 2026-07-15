@@ -15,10 +15,6 @@ public interface ZLinkStreamConnector {
 
     ZLinkStreamLifecycleCall connect();
 
-    ZLinkStreamLifecycleCall disconnect();
-
-    ZLinkStreamLifecycleCall reconnect();
-
     ZLinkStreamLifecycleCall close();
 
     ZLinkStreamLifecycleCall dispatch();

@@ -27,7 +27,11 @@ final class TcpStreamConnectorTestServer implements Closeable {
     private volatile Socket current;
 
     TcpStreamConnectorTestServer() throws IOException {
-        server = new ServerSocket(0);
+        this(0);
+    }
+
+    TcpStreamConnectorTestServer(int port) throws IOException {
+        server = new ServerSocket(port);
         executor.execute(() -> {
             while (!server.isClosed()) {
                 try {
@@ -142,6 +146,21 @@ final class TcpStreamConnectorTestServer implements Closeable {
         }
     }
 
+    boolean hasAdditionalConnection(Duration window) {
+        socket();
+        try {
+            Socket additional = accepted.poll(window.toMillis(), TimeUnit.MILLISECONDS);
+            if (additional == null) {
+                return false;
+            }
+            accepted.add(additional);
+            return true;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(ex);
+        }
+    }
+
     static ZLinkStreamWireProtocol.Header responseTo(
         ReceivedFrame request,
         String packetName,
@@ -175,6 +194,7 @@ final class TcpStreamConnectorTestServer implements Closeable {
     @Override
     public void close() throws IOException {
         try {
+            closeCurrentSocket();
             for (Socket socket : accepted) {
                 try {
                     socket.close();

@@ -117,12 +117,6 @@ class ZLinkKotlinStreamConnector(
     fun connect(): ZLinkKotlinLifecycleCall =
         ZLinkKotlinLifecycleCall(inner.connect())
 
-    fun disconnect(): ZLinkKotlinLifecycleCall =
-        ZLinkKotlinLifecycleCall(inner.disconnect())
-
-    fun reconnect(): ZLinkKotlinLifecycleCall =
-        ZLinkKotlinLifecycleCall(inner.reconnect())
-
     fun close(): ZLinkKotlinLifecycleCall =
         ZLinkKotlinLifecycleCall(inner.close())
 

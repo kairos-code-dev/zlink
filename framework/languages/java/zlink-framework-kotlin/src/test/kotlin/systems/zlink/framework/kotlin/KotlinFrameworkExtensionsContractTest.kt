@@ -18,7 +18,6 @@ import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorDirectory
 import systems.zlink.framework.actors.ZLinkActorJoinCall
 import systems.zlink.framework.actors.ZLinkActorJoinResult
-import systems.zlink.framework.actors.ZLinkActorPlacement
 import systems.zlink.framework.actors.ZLinkActorRequestCall
 import systems.zlink.framework.actors.ZLinkActorSendCall
 import systems.zlink.framework.actors.ActorRef
@@ -144,7 +143,6 @@ class KotlinFrameworkExtensionsContractTest {
         override fun ensure(
             actorId: String,
             createRequest: ZLinkMessage,
-            placement: ZLinkActorPlacement,
         ): CompletionStage<ActorRef> {
             this.actorId = actorId
             this.request = createRequest

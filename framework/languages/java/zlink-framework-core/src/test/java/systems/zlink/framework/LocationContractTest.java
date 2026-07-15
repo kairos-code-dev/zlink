@@ -28,7 +28,6 @@ import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
 import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.actors.ZLinkActorManager;
-import systems.zlink.framework.actors.ZLinkActorPlacement;
 import systems.zlink.framework.actors.ZLinkActorRequestCall;
 import systems.zlink.framework.actors.ZLinkActorSendCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
@@ -279,10 +278,9 @@ final class LocationContractTest {
             .getMethod(
                 "ensure",
                 String.class,
-                systems.zlink.framework.messaging.ZLinkMessage.class,
-                ZLinkActorPlacement.class)
+                systems.zlink.framework.messaging.ZLinkMessage.class)
             .getReturnType());
-        assertRecordComponents(ZLinkActorPlacement.class, "preferredNodeRid", "routeMesh");
+        assertMissing("systems.zlink.framework.actors.ZLinkActorPlacement");
         assertRecordComponents(ActorRefSnapshot.class, "nodeRid", "actorId", "generation");
         assertEquals(ActorRef.class, ActorRefSnapshot.class
             .getMethod("toActorRef")

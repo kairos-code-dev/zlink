@@ -453,7 +453,11 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             serializer,
             defaultCodec,
             compressionCodec,
-            flow);
+            flow,
+            () -> {
+                sendSessionClosing(stream, routingId);
+                return CompletableFuture.completedFuture(null);
+            });
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
             new ZLinkSessionPacketDispatcherRuntime<>(
                 streamNode.sessionPacketHandlers(),

@@ -9,14 +9,7 @@ public interface ZLinkActorDirectory {
 
     CompletionStage<ActorRef> ensure(
         String actorId,
-        ZLinkMessage createRequest,
-        ZLinkActorPlacement placement);
-
-    default CompletionStage<ActorRef> ensure(
-        String actorId,
-        ZLinkMessage createRequest) {
-        return ensure(actorId, createRequest, ZLinkActorPlacement.any());
-    }
+        ZLinkMessage createRequest);
 
     default CompletionStage<ActorRef> ensure(
         String actorId,

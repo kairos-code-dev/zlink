@@ -15,6 +15,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.kotlin.await
+import systems.zlink.framework.kotlin.awaitReply
 import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.stream.connector.ZLinkStreamCodec
 import systems.zlink.stream.connector.ZLinkStreamConnectionState
@@ -57,9 +58,17 @@ private suspend fun metricsB1(endpoint: String, output: Path) {
     try {
         connector.connect().await()
         probeLifecycle(connector)
-        repeat(3) {
-            connector.disconnect().await()
-            connector.reconnect().await()
+        repeat(3) { index ->
+            val expectedCycle = index + 1
+            try {
+                connector.request(ForceReconnectReq(expectedCycle))
+                    .timeout(Duration.ofSeconds(5))
+                    .awaitReply<Unit>()
+                error("force reconnect request unexpectedly received a reply")
+            } catch (_: Exception) {
+                // Closing the server-side session fails the pending request and starts automatic reconnect.
+            }
+            connector.connect().await()
             probeLifecycle(connector)
         }
         val reconnects = registry.get("zlink.stream.reconnects").counter().count()
@@ -145,3 +154,5 @@ private fun raw(name: String, bytes: ByteArray) = ZLinkStreamEncodedPayload(
     emptyMap(),
     ZLinkStreamCodec.RAW,
 )
+
+private data class ForceReconnectReq(val cycle: Int)

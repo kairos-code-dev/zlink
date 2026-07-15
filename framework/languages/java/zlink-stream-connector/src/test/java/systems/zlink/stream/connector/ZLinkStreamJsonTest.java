@@ -219,16 +219,6 @@ final class ZLinkStreamJsonTest {
         }
 
         @Override
-        public ZLinkStreamLifecycleCall disconnect() {
-            return completedLifecycleCall();
-        }
-
-        @Override
-        public ZLinkStreamLifecycleCall reconnect() {
-            return completedLifecycleCall();
-        }
-
-        @Override
         public ZLinkStreamLifecycleCall close() {
             return completedLifecycleCall();
         }

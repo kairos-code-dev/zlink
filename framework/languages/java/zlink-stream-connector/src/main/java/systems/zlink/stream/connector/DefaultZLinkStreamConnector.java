@@ -109,19 +109,6 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
     }
 
     @Override
-    public ZLinkStreamLifecycleCall disconnect() {
-        return new DefaultZLinkStreamLifecycleCall(() -> {
-            closeReason = ZLinkStreamCloseReason.CLIENT_CLOSE;
-            return lifecycle.disconnect();
-        });
-    }
-
-    @Override
-    public ZLinkStreamLifecycleCall reconnect() {
-        return new DefaultZLinkStreamLifecycleCall(lifecycle::reconnect);
-    }
-
-    @Override
     public ZLinkStreamLifecycleCall close() {
         return new DefaultZLinkStreamLifecycleCall(this::closeInternal);
     }

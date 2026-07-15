@@ -994,33 +994,6 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
-    void reconnectRestoresConnectionAfterTransportDisconnect() throws Exception {
-        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
-            ZLinkStreamConnector connector =
-                createConnector(server.options(ZLinkStreamDispatchMode.AUTO));
-            List<ZLinkStreamConnectionState> states = new ArrayList<>();
-            connector.onConnectionStateChanged(state -> {
-                states.add(state);
-                return java.util.concurrent.CompletableFuture.completedFuture(null);
-            });
-
-            ConnectorTestAwait.await(connector.connect());
-            ConnectorTestAwait.await(connector.disconnect());
-            assertFalse(connector.isConnected());
-
-            ConnectorTestAwait.await(connector.reconnect());
-
-            assertTrue(connector.isConnected());
-            assertEquals(List.of(
-                ZLinkStreamConnectionState.CONNECTING,
-                ZLinkStreamConnectionState.CONNECTED,
-                ZLinkStreamConnectionState.DISCONNECTED,
-                ZLinkStreamConnectionState.RECONNECTING,
-                ZLinkStreamConnectionState.CONNECTED), states);
-        }
-    }
-
-    @Test
     void lifecycleHandlersObserveStateChangesAndDisconnect() throws Exception {
         try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
             ZLinkStreamConnector connector =

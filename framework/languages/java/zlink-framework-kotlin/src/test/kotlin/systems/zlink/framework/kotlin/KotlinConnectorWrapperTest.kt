@@ -98,6 +98,9 @@ final class KotlinConnectorWrapperTest {
             method.name == "await" &&
                 method.parameterTypes.firstOrNull() == ZLinkTypedStreamRequestCall::class.java
         })
+        assertTrue(ZLinkKotlinStreamConnector::class.java.methods.none { method ->
+            method.name == "disconnect" || method.name == "reconnect"
+        })
     }
 
     @Test
@@ -137,9 +140,6 @@ final class KotlinConnectorWrapperTest {
                     reply.payload().close()
                 }
 
-                connector.disconnect().await()
-                connector.reconnect().await()
-                assertTrue(connector.isConnected)
             } finally {
                 connector.close().await()
             }

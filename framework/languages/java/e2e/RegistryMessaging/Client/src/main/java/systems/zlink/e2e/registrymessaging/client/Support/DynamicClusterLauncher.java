@@ -17,6 +17,8 @@ import java.util.function.Predicate;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class DynamicClusterLauncher implements AutoCloseable {
+    private static final Duration LOCAL_READINESS_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration ROUTE_SETTLE_TIMEOUT = Duration.ofSeconds(5);
     private final List<DynamicProcess> processes = new ArrayList<>();
     private final Path logDir;
     private final String buildDir;
@@ -174,7 +176,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         ZLinkHttpClient consumer,
         Predicate<Map<String, Object>[]> predicate,
         String description) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
+        long deadline = System.nanoTime() + ROUTE_SETTLE_TIMEOUT.toNanos();
         Map<String, Object>[] latest = new Map[0];
         while (System.nanoTime() < deadline) {
             latest = consumer.get("/locations/peers").async(Map[].class).toCompletableFuture().join().body();
@@ -231,7 +233,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         }
 
         void waitReady() {
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+            long deadline = System.nanoTime() + LOCAL_READINESS_TIMEOUT.toNanos();
             while (System.nanoTime() < deadline) {
                 if (!process.isAlive()) {
                     throw new IllegalStateException("process exited before readiness: " + process.exitValue());

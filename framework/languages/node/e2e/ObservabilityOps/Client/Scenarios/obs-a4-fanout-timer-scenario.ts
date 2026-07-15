@@ -1,4 +1,4 @@
-// OBS-A4: workflow fanout branches share a flow and a timer callback starts a timer-origin flow.
+// OBS-A4: publish fan-out 트리 · timer 발원 시나리오를 검증한다.
 import { post, require, unique, workflowA, workflowB } from '../Support/scenario-support.js';
 import { readFlowLog, waitFor, waitForFlow } from '../Support/observability-support.js';
 import type { ActorEvidence, WorkflowApplyRes } from '../../Shared/messages.js';

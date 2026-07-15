@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const runner = fs.readFileSync(
-  path.resolve(__dirname, '../../samples/run-sample.mjs'),
+  path.resolve(__dirname, '../../samples/Bingo.Ts/Runner/sample-runner.mjs'),
   'utf8'
 );
 const session = fs.readFileSync(

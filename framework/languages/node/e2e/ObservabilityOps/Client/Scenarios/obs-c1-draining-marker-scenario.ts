@@ -1,4 +1,4 @@
-// OBS-C1: draining marks play-a unavailable for new placement while preserving in-flight work.
+// OBS-C1: draining 마커 — 연결 유지 + 배치 제외 시나리오를 검증한다.
 import type { BoundPushNotify, BoundPushReq, BoundPushRes } from '../../Shared/messages.js';
 import {
   ObservabilityOpsNames,

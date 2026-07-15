@@ -201,7 +201,7 @@ test('package root creates a browser bundle without Node-only modules or Buffer'
     assert.doesNotMatch(bundle, /\bBuffer\b/);
     const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'packages/stream-connector/package.json'), 'utf8'));
     assert.equal(packageJson.exports['./browser'], undefined);
-    assert.equal(packageJson.exports['.'].require, undefined);
+    assert.equal(packageJson.exports['.'].require, './dist/server/index.cjs');
   } finally {
     fs.rmSync(outputDirectory, { recursive: true, force: true });
   }

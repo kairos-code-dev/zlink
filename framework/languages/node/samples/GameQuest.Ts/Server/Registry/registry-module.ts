@@ -1,3 +1,0 @@
-class RegistryModule {}
-
-export { RegistryModule };

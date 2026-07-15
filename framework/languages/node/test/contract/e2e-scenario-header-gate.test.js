@@ -9,7 +9,7 @@ const scenarioIdPattern = /\b[A-Z]{2,3}-[A-Z][0-9]+\b/g;
 test('every Node e2e scenario starts with its verification intent', () => {
   const files = scenarioFiles(path.join(root, 'e2e'));
   const canonicalTitles = scenarioTitles(path.resolve(root, '../../doc/framework/common/e2e'));
-  assert.equal(files.length, 166);
+  assert.equal(files.length, 179);
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');

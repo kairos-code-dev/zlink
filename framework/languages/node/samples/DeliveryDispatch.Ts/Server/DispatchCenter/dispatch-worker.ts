@@ -52,13 +52,13 @@ class DispatchWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async startOffer(request: AssignDeliveryMsg, attempt: number): Promise<void> {
-    const courierId = courierCandidates[attempt - 1];
-    if (courierId === undefined) {
+    if (attempt < 1 || attempt > courierCandidates.length) {
       const previous = this.offers.get(request.deliveryId);
       if (previous !== undefined) this.saveStatus(previous, 'Failed');
       await this.publishStatus(deliveryStatusChanged(request.deliveryId, request.customerId, 'Failed'));
       return;
     }
+    const courierId = courierCandidates[attempt - 1];
 
     const entrySpot = await this.resolveEntrySpot(courierId);
     await this.findOrEnsureActor(courierId, entrySpot);

@@ -8,8 +8,8 @@ const nodeDocRoot = path.resolve(workspaceRoot, '..', '..', 'doc', 'framework', 
 const specPath = path.join(
   nodeDocRoot,
   '..',
-  'common',
   'spec',
+  'server',
   'languages',
   'node',
   '02-handler-interfaces.ko.md'

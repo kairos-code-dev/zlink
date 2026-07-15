@@ -254,7 +254,7 @@ test('node interface catalog declarations exactly match public package declarati
     catalogShapes.set(declaration.name.text, values);
   }
 
-  assert.equal(publicShapes.size, 334);
+  assert.equal(publicShapes.size, 340);
   assert.deepEqual([...catalogShapes.keys()].sort(), [...publicShapes.keys()].sort());
   for (const [name, expected] of publicShapes) {
     assert.deepEqual(

@@ -825,11 +825,11 @@ test('ZLinkSpotManager replies routed actor request dispatch errors', async () =
 
     assert.equal(replyMessages.length, 1);
     assert.equal(JSON.parse(replyMessages[0]).ok, false);
-    assert.equal(dispatchEvents.length, 1);
-    assert.equal(dispatchEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotActor);
-    assert.equal(dispatchEvents[0].outcome, framework.ZLinkMessageFlowOutcome.Error);
-    assert.equal(dispatchEvents[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerMissing);
-    assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);
+    const errorEvents = dispatchEvents.filter((event) => event.outcome === framework.ZLinkMessageFlowOutcome.Error);
+    assert.equal(errorEvents.length, 1);
+    assert.equal(errorEvents[0].surface, framework.ZLinkDispatchErrorSurface.SpotActor);
+    assert.equal(errorEvents[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerMissing);
+    assert.equal(errorEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);
   } finally {
     relay.close();
   }
@@ -1042,9 +1042,10 @@ test('ZLinkSpotManager replies no-bind actor handler exceptions as HandlerExcept
     const decoded = decodeActorReplyFrame(noBindReplies[0].replyParts[0]);
     assert.equal(decoded.header.kind, streamProtocol.ZLinkStreamMessageKind.Error);
     assert.deepEqual(decoded.payload, { code: 'Error', message: 'handler boom', isRetriable: false });
-    assert.equal(dispatchEvents.length, 1);
-    assert.equal(dispatchEvents[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerException);
-    assert.equal(dispatchEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);
+    const errorEvents = dispatchEvents.filter((event) => event.outcome === framework.ZLinkMessageFlowOutcome.Error);
+    assert.equal(errorEvents.length, 1);
+    assert.equal(errorEvents[0].errorReason, framework.ZLinkDispatchErrorReason.HandlerException);
+    assert.equal(errorEvents[0].errorAction, framework.ZLinkDispatchErrorAction.ReplyError);
   } finally {
     for (const part of parts) {
       part.close();

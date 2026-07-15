@@ -1,4 +1,4 @@
-// OBS-A3: a tracing-off Session does not log a new flow but still forwards the inbound flow.
+// OBS-A3: create-if-absent · off 노드 전파 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   assertBoundPush,

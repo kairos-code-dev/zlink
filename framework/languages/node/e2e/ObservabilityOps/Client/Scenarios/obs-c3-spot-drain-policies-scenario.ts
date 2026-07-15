@@ -1,4 +1,4 @@
-// OBS-C3: user rooms drain naturally while workflow owners release and replay on another node.
+// OBS-C3: SPOT 정책 — drain-natural vs release-and-recreate 시나리오를 검증한다.
 import {
   createSpot,
   nodeA,

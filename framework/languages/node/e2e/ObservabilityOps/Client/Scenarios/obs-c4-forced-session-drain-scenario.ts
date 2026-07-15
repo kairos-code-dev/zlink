@@ -1,4 +1,4 @@
-// OBS-C4: a deadline-forced Session sends server-drain close reason before disconnect.
+// OBS-C4: 강제 종료 + 세션 종료 통지 시나리오를 검증한다.
 import {
   ZlinkStreamDispatchMode,
   zlinkStreamConnectorFactory,

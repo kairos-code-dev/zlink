@@ -1,4 +1,4 @@
-// OBS-B2: an actor transfer and user Spot work emit queue and transfer instruments.
+// OBS-B2: SPOT 큐·actor 이동 계기 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   createActor,

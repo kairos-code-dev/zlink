@@ -1,4 +1,4 @@
-// OBS-A2: a dispatch failure remains correlated with a UUIDv7 flow in the error line.
+// OBS-A2: error 라인에도 flow 시나리오를 검증한다.
 import {
   ZlinkStreamDispatchMode,
   zlinkStreamConnectorFactory,

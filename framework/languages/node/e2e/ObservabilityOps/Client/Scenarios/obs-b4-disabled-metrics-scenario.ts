@@ -1,4 +1,4 @@
-// OBS-B4: traffic remains correct with no reader and no per-event metric storage.
+// OBS-B4: 비활성 계측의 최소 비용 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   createActor,

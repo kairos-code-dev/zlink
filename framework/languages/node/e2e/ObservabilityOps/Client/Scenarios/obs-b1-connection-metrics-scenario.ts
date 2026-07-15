@@ -1,4 +1,4 @@
-// OBS-B1: server connection gauges and connector-owned reconnect attempts reflect real sockets.
+// OBS-B1: CCU·재접속 계기 시나리오를 검증한다.
 import {
   ZlinkStreamDispatchMode,
   zlinkStreamConnectorFactory,

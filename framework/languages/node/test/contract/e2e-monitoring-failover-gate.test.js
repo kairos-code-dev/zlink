@@ -14,7 +14,7 @@ test('MON-A4 replaces one routing id at a new endpoint and compares topology pay
   assert.match(runner, /svc-b-replacement\.config\.json/);
   assert.match(runner, /--rid svc-b[\s\S]+--channel-endpoint "\$CHANNEL_B_REPLACEMENT_ENDPOINT"/);
   assert.match(runner, /--replacement-service-url "\$SVC_B_REPLACEMENT_URL"/);
-  assert.match(runner, /--replacement-service-config "\$LOG_DIR\/svc-b-replacement\.config\.json"/);
+  assert.match(runner, /--replacement-service-config "\$CONFIG_DIR\/svc-b-replacement\.config\.json"/);
   assert.match(client, /serviceBProcess = await runMonA4\(options\)/);
   assert.match(scenario, /startReplacementService\(options/);
   assert.match(scenario, /beforeFailover\.endpoint !== afterFailover\.endpoint/);

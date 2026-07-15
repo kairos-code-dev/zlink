@@ -12,8 +12,7 @@ test('TicTacToe proves self-join notification absence across the join barrier', 
   const scenario = fs.readFileSync(scenarioPath, 'utf8');
 
   assert.doesNotMatch(scenario, /\.timeout\(25\)/);
-  assert.match(scenario, /const client1SelfJoin = watchForUnexpectedMessage/);
-  assert.match(scenario, /const client2SelfJoin = watchForUnexpectedMessage/);
-  assert.match(scenario, /await client1SelfJoin\.assertAbsent\(\)/);
-  assert.match(scenario, /await client2SelfJoin\.assertAbsent\(\)/);
+  assert.match(scenario, /client1\.expectNone<PlayerJoinedNotify>\(PacketNames\.playerJoinedNotify\)\.within\(250\)\.run\(signal\)/);
+  assert.match(scenario, /client2\.expectNone<PlayerJoinedNotify>\(PacketNames\.playerJoinedNotify\)\.within\(250\)\.run\(signal\)/);
+  assert.doesNotMatch(scenario, /watchForUnexpectedMessage|assertAbsent/);
 });

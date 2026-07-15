@@ -1,4 +1,4 @@
-// OBS-C2: drain transfers a bound actor to play-b and preserves bound-session push delivery.
+// OBS-C2: actor 핸드오프 + bound session 연속성 시나리오를 검증한다.
 import {
   ObservabilityOpsNames,
   assertBoundPush,

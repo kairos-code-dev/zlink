@@ -29,7 +29,7 @@ export interface ZLinkActorManagerOptions {
   readonly nativeActorNode?: ZLinkBackendSpotNode;
   readonly nativeActorNodeProvider?: () => ZLinkBackendSpotNode | undefined;
   readonly actorCreatedNodeRidProvider?: () => RoutingId | undefined;
-  readonly actorRefResolver?: ZLinkActorRefResolver;
+  readonly actorRefResolver?: ZLinkActorRuntimeLocationLookup;
   readonly actorCreatedNotifier?: (
     nodeRid: RoutingId,
     actor: ZLinkActor,
@@ -46,7 +46,7 @@ export interface ZLinkActorManagerOptions {
   readonly admission?: ZLinkRuntimeAdmissionGate;
 }
 
-export interface ZLinkActorRefResolver {
+export interface ZLinkActorRuntimeLocationLookup {
   resolveActorRef(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
 }
 

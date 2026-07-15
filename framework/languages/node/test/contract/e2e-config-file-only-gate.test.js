@@ -81,15 +81,19 @@ test('Node framework hosts receive only one role configuration file path', () =>
 
 test('Node sample runners do not dispatch sample-specific behavior by sample name', () => {
   const sharedRunner = fs.readFileSync(path.join(root, 'samples/run-sample.mjs'), 'utf8');
-  const wrappers = fs.readdirSync(path.join(root, 'samples'), { withFileTypes: true })
+  const sampleDirectories = fs.readdirSync(path.join(root, 'samples'), { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name.endsWith('.Ts'))
-    .map((entry) => path.join(root, 'samples', entry.name, 'run_sample.sh'))
-    .filter((file) => fs.existsSync(file));
+    .map((entry) => path.join(root, 'samples', entry.name));
+  const wrappers = sampleDirectories.flatMap((directory) =>
+    ['run_sample.sh', 'run_sample.ps1']
+      .map((name) => path.join(directory, name))
+      .filter((file) => fs.existsSync(file)));
 
   assert.doesNotMatch(sharedRunner, /sampleDefinitions\s*\[/);
   assert.doesNotMatch(sharedRunner, /['"](?:Bingo|TicTacToe|SupportChat|DeliveryDispatch|GameQuest|ShoppingMall)\.Ts['"]\s*:/);
   for (const wrapper of wrappers) {
     assert.doesNotMatch(fs.readFileSync(wrapper, 'utf8'), /run-sample\.mjs['"]?\s+[A-Za-z]+\.Ts/);
+    assert.match(fs.readFileSync(wrapper, 'utf8'), /Runner[\\/]sample-runner\.mjs/);
   }
 });
 

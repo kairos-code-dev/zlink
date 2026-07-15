@@ -272,6 +272,16 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
     EXPECT_EQ (entry_handlers[2].kind, zlink::framework::spot_handler_kind_t::subscription);
 }
 
+TEST (CppFrameworkSampleParity, TicTacToeUsesFrameworkOwnedSpotLocationResolution)
+{
+    const auto host_factory = read_file (
+      cpp_language_root () / "samples/TicTacToe/Server/Play/play_server_host_factory.hpp");
+
+    EXPECT_EQ (host_factory.find ("add_spot_resolver"), std::string::npos)
+      << "TicTacToe must use the framework location runtime instead of registering an "
+         "application spot resolver";
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeTurnTimeoutIsADomainTerminalState)
 {
     using namespace zlink::samples::tictactoe;

@@ -73,17 +73,7 @@ class play_server_host_factory_t
               .add_spot<tictactoe_game_spot_t> (sample_names_t::match_spot)
               .add_actor_factory<player_actor_factory_t> (sample_names_t::actor_type)
               .add_actor_transfer_adapter<player_actor_t, player_actor_transfer_adapter_t> (
-                sample_names_t::actor_type)
-              .add_spot_resolver (
-                "redis-room-route",
-                [topology] (spot_rid_t spot_rid) -> std::optional<spot_route_t> {
-                    auto resolver_topology = topology;
-                    redis_room_route_store_t routes (std::move (resolver_topology));
-                    const auto route = routes.require (std::string (spot_rid.value ()));
-                    return spot_route_t{node_rid_t::from_string (route.owner_node_rid),
-                                        spot_rid_t::from_string (route.spot_rid),
-                                        route.spot_kind};
-                });
+                sample_names_t::actor_type);
             options.add_stream_node (sample_names_t::stream_name)
               .bind (topology.selected_stream_endpoint ())
               .register_session<play_session_t> ();

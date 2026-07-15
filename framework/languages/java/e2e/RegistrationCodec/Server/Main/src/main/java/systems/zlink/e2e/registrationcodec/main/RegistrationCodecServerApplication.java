@@ -2,13 +2,16 @@ package systems.zlink.e2e.registrationcodec.main;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.StringValue;
+import java.nio.file.Path;
 import java.util.Set;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Scope;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.e2e.registrationcodec.main.Configuration.ServerOptions;
 import systems.zlink.e2e.registrationcodec.main.Endpoints.OperationalEndpoints;
 import systems.zlink.e2e.registrationcodec.main.Handlers.AttrEchoHandler;
@@ -36,21 +39,21 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(ServerOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.registrationcodec.main.Handlers")
 public final class RegistrationCodecServerApplication {
     public AutoCloseable run(String... args) {
+        String config = configPath(args);
+        StandardEnvironment environment = isolatedEnvironment();
         SpringApplicationBuilder builder =
             new SpringApplicationBuilder(RegistrationCodecServerApplication.class)
+                .environment(environment)
+                .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri())
                 .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        return builder.run(args)::close;
-    }
-
-    @Bean
-    ServerOptions serverOptions() {
-        return ServerOptions.fromEnv();
+        return builder.run()::close;
     }
 
     @Bean
@@ -160,4 +163,18 @@ public final class RegistrationCodecServerApplication {
     @Bean ProtobufSendHandler protobufSendHandler(EvidenceStore evidence) { return new ProtobufSendHandler(evidence); }
     @Bean MsgpackRequestHandler msgpackRequestHandler(EvidenceStore evidence) { return new MsgpackRequestHandler(evidence); }
     @Bean MsgpackSendHandler msgpackSendHandler(EvidenceStore evidence) { return new MsgpackSendHandler(evidence); }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: registration-codec-main --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
+    }
 }

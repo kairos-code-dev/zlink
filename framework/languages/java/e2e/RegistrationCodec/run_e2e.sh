@@ -8,6 +8,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 pids=()
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 echo "start_order=${E2E_START_ORDER}"
@@ -67,6 +69,7 @@ cleanup() {
     kill "${pid}" >/dev/null 2>&1 || true
   done
   wait >/dev/null 2>&1 || true
+  rm -rf "${config_dir}"
   exit "${status}"
 }
 trap cleanup EXIT
@@ -174,6 +177,33 @@ MISMATCH_ENDPOINT="$(tcp "${MISMATCH_PORT}")"
 MISMATCH_HTTP_ENDPOINT="$(http "${MISMATCH_HTTP_PORT}")"
 REQUESTER_HTTP_ENDPOINT="$(http "${REQUESTER_HTTP_PORT}")"
 
+write_config() {
+  local path="$1"
+  shift
+  printf '%s\n' "$@" >"${path}"
+  chmod 0600 "${path}"
+}
+main_config="${config_dir}/main.properties"
+json_only_config="${config_dir}/json-only.properties"
+requester_config="${config_dir}/requester.properties"
+invalid_config="${config_dir}/invalid.properties"
+client_config="${config_dir}/client.properties"
+write_config "${main_config}" \
+  "e2e.server-endpoint=${SERVER_ENDPOINT}" "e2e.http-endpoint=${HTTP_ENDPOINT}" "e2e.log-dir=${log_dir}"
+write_config "${json_only_config}" \
+  "e2e.server-endpoint=${MISMATCH_ENDPOINT}" "e2e.http-endpoint=${MISMATCH_HTTP_ENDPOINT}" "e2e.log-dir=${log_dir}"
+write_config "${requester_config}" \
+  "e2e.server-endpoint=${MISMATCH_ENDPOINT}" "e2e.http-endpoint=${REQUESTER_HTTP_ENDPOINT}" "e2e.log-dir=${log_dir}"
+write_config "${invalid_config}" "e2e.server-endpoint=${INVALID_ENDPOINT}"
+write_config "${client_config}" \
+  "serverEndpoint=${SERVER_ENDPOINT}" \
+  "httpEndpoint=${HTTP_ENDPOINT}" \
+  "codecRequesterHttpEndpoint=${REQUESTER_HTTP_ENDPOINT}" \
+  "invalidServerEndpoint=${INVALID_ENDPOINT}" \
+  "buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}" \
+  "logDir=${log_dir}" \
+  "invalidServerConfig=${invalid_config}"
+
 run_main_scenarios=false
 run_mismatch_scenario=false
 case "${SCENARIO}" in
@@ -201,22 +231,13 @@ gradle_run installDist
 start_initial_role() {
   case "$1" in
     main)
-      ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
-      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(main_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+      "$(main_bin)" --config "${main_config}" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
       ;;
     json-only)
-      ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(json_only_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+      "$(json_only_bin)" --config "${json_only_config}" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
       ;;
     requester)
-      ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
-      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-        "$(requester_bin)" >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
+      "$(requester_bin)" --config "${requester_config}" >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
       ;;
   esac
   pids+=("$!")
@@ -247,14 +268,8 @@ if [[ "${run_mismatch_scenario}" == "true" ]]; then
   sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
-ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
-ZLINK_JAVA_E2E_CODEC_REQUESTER_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
-ZLINK_JAVA_E2E_INVALID_SERVER_ENDPOINT="${INVALID_ENDPOINT}" \
-ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
-ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+"$(client_bin)" --config "${client_config}" --scenario "${SCENARIO}" \
+  >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
 if [[ "${run_main_scenarios}" == "true" ]]; then

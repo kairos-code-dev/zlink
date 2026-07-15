@@ -10,7 +10,7 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        ClientOptions options = ClientOptions.fromEnv();
+        ClientOptions options = ClientOptions.load(args);
         try (
             ZLinkHttpClient server = ZLinkHttpClient.create(options.httpEndpoint()).build();
             ZLinkHttpClient codecRequester = ZLinkHttpClient.create(options.codecRequesterHttpEndpoint()).build();

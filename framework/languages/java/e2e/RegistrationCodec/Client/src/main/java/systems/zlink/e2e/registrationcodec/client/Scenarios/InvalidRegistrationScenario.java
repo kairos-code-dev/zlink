@@ -13,9 +13,10 @@ public final class InvalidRegistrationScenario {
     public static void run(ScenarioContext context) {
         Path stdout = Path.of(context.options().logDir(), "invalid-server.stdout.log");
         Path stderr = Path.of(context.options().logDir(), "invalid-server.stderr.log");
-        ProcessBuilder builder = new ProcessBuilder(invalidServerBin(context).toString());
-        builder.environment().put("ZLINK_JAVA_E2E_SERVER_ENDPOINT", context.options().invalidServerEndpoint());
-        builder.environment().put("ZLINK_JAVA_E2E_LOG_DIR", context.options().logDir());
+        ProcessBuilder builder = new ProcessBuilder(
+            invalidServerBin(context).toString(),
+            "--config",
+            context.options().invalidServerConfig());
         builder.redirectOutput(stdout.toFile());
         builder.redirectError(stderr.toFile());
 

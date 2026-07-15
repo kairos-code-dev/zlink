@@ -11,19 +11,6 @@ public static class World
     public static bool InRange(int x, int y) =>
         x >= 0 && x < ZoneWorldSpec.WorldSize && y >= 0 && y < ZoneWorldSpec.WorldSize;
 
-    public static string ZoneOf(int x, int y)
-    {
-        var west = x < ZoneWorldSpec.ZoneSplit;
-        var north = y < ZoneWorldSpec.ZoneSplit;
-        return (west, north) switch
-        {
-            (true, true) => ZoneIds.NorthWest,
-            (false, true) => ZoneIds.NorthEast,
-            (true, false) => ZoneIds.SouthWest,
-            (false, false) => ZoneIds.SouthEast
-        };
-    }
-
     /// <summary>
     /// Zones that share an edge. The diagonal pair is not adjacent, which is why a
     /// move may not cross both boundaries at once (§2.2 DiagonalCrossing).
@@ -44,7 +31,7 @@ public static class World
     /// </summary>
     public static bool InBorderBand(int x, int y, string fromZoneId, string toZoneId)
     {
-        if (ZoneOf(x, y) != fromZoneId) return false;
+        if (ZoneWorldSpec.ZoneOf(x, y) != fromZoneId) return false;
 
         var split = ZoneWorldSpec.ZoneSplit;
         var band = ZoneWorldSpec.BorderBand;
@@ -70,5 +57,5 @@ public static class World
 
 public readonly record struct PlayerPosition(int X, int Y)
 {
-    public string ZoneId => World.ZoneOf(X, Y);
+    public string ZoneId => ZoneWorldSpec.ZoneOf(X, Y);
 }

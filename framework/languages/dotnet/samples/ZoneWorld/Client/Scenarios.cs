@@ -205,19 +205,33 @@ public static class Scenarios
     /// </summary>
     private static async ValueTask B2CrossNodeTransfer(ClientOptions options, CancellationToken ct)
     {
-        await using var player = await GameClient.ConnectAsync(options.GatewayEndpoint, Unique("b2"), ct);
-        await player.JoinWorldAsync(ct);
-        await player.WalkToAsync(48, 25, ct);
+        var playerId = Unique("b2");
+        await using (var player = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct))
+        {
+            await player.JoinWorldAsync(ct);
+            await player.WalkToAsync(48, 25, ct);
 
-        var changed = await player.MoveAndWaitAsync<ZoneChangedNotify>(52, 25, _ => true, ct);
+            var changed = await player.MoveAndWaitAsync<ZoneChangedNotify>(52, 25, _ => true, ct);
 
-        ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, changed.ZoneId), "the X boundary leads into zone-ne");
-        ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, changed.NodeId), "zone-ne is hosted by zone-node-2");
-        ZlinkStreamAssert.Ensure(changed.Transferred, "a zone on another node means the actor transferred");
+            ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, changed.ZoneId), "the X boundary leads into zone-ne");
+            ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, changed.NodeId), "zone-ne is hosted by zone-node-2");
+            ZlinkStreamAssert.Ensure(changed.Transferred, "a zone on another node means the actor transferred");
 
-        // The same connection keeps working: the bound session followed the actor.
-        var state = await player.MoveAndWaitForPositionAsync(55, 25, ct);
-        ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, state.ZoneId), "the client keeps playing on the new node");
+            // The same connection keeps working: the bound session followed the actor.
+            var state = await player.MoveAndWaitForPositionAsync(55, 25, ct);
+            ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, state.ZoneId), "the client keeps playing on the new node");
+        }
+
+        // Global player identity outlives the connection and the node that created the actor.
+        // Rejoining with the same id must bind the transferred actor instead of trying to
+        // create another one on the spawn node.
+        await using var rejoined = await GameClient.ConnectAsync(options.GatewayEndpoint, playerId, ct);
+        var resumed = await rejoined.JoinWorldAsync(ct);
+        ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, resumed.ZoneId), "rejoin keeps the transferred actor's zone");
+        ZlinkStreamAssert.Ensure(resumed.X == 55 && resumed.Y == 25, "rejoin keeps the transferred actor's coordinate");
+
+        var resumedState = await rejoined.MoveAndWaitForPositionAsync(60, 25, ct);
+        ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, resumedState.ZoneId), "the rejoined client controls the same actor");
     }
 
     /// <summary>The Y boundary stays inside one node, so no transfer happens (§2.6).</summary>

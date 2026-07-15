@@ -1,6 +1,7 @@
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
@@ -16,7 +17,7 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Handlers;
 /// </summary>
 [ZLinkHandlerGroup(HandlerGroups.ZoneActors)]
 internal sealed class EnsurePlayerActorHandler(
-    IZLinkActorManager actorManager,
+    IZLinkActorDirectory actors,
     ILogger<EnsurePlayerActorHandler> logger)
     : IZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>
 {
@@ -25,15 +26,13 @@ internal sealed class EnsurePlayerActorHandler(
         ZLinkRequestContext context,
         CancellationToken cancellationToken)
     {
-        // The actor is only created here. Entering the world is a separate step the Gateway
-        // drives, and it has to come *after* the session is bound: the node hosting the
-        // actor learns where to push when the binding reaches it, and the binding travels
-        // with the join. Entering first would leave a player who never moves with no way to
-        // be pushed to.
-        var actorRef = await actorManager.GetOrCreateAsync(
+        // The directory owns world-wide player identity and returns a transferred actor when
+        // one already exists. World entry remains a separate step after session binding so
+        // the actor's current node receives the route used for server push.
+        var actorRef = await actors.EnsureAsync(
             request.PlayerId,
-            ZoneWorldNames.PlayerActorType,
-            cancellationToken);
+            ZLinkMessage.Empty,
+            cancellationToken: cancellationToken);
 
         logger.LogInformation("player actor ensured. player={PlayerId}", request.PlayerId);
 

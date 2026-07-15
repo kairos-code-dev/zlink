@@ -95,7 +95,7 @@ internal static class EnterWorld
         // spot preserves it across the join and a transfer carries it to the next node.
         actor.SetPatrol(message.DirX, message.DirY);
 
-        var zoneId = ZoneTopology.ZoneOf(message.X, message.Y);
+        var zoneId = ZoneWorldSpec.ZoneOf(message.X, message.Y);
         var joined = await actor.Context
             .JoinSpot(
                 RoutingId.From(zoneId),

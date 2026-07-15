@@ -105,15 +105,6 @@ internal sealed class RejoinWorldHandler :
         PlayerActor actor,
         ZLinkSpotActorRequestContext context,
         JoinWorldReq message,
-        CancellationToken cancellationToken)
-    {
-        var position = actor.Position;
-        return ValueTask.FromResult(new JoinWorldRes(
-            message.PlayerId,
-            actor.ZoneId,
-            ZoneTopology.NodeOf(actor.ZoneId),
-            position.X,
-            position.Y,
-            null));
-    }
+        CancellationToken cancellationToken) =>
+        ValueTask.FromResult(spot.Rejoin(actor));
 }

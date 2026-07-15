@@ -470,6 +470,7 @@ client는 `Gateway`와 `Ops`만 알기 때문에 노드를 없애는 일은 러�
 | 5 | 검증 중 발견 2건 — **RoutingId 관례 위반**(§8.5.5), **`ZW-F3-no-push` 체크 위양성**(§8.5.5) 반영 | 아래 §8.5.5 재실행 | 아래 §8.5.5 | 반영 | 판정 대기 |
 | 6 | 자동 연결 2건 수정(§8.5.4), 수동 핸들러 등록 제거, 실행 시점 사전 조건 마커 추가 | [x] `run_sample.sh all` **30/30 2회 연속**, `ZW-B4`·`ZW-E5` 각각 **5회 연속** | 자동 연결·자동 핸들러 경로 재검토 | 반영 | **dotnet 수렴** |
 | 7 | 지연 구독 수신 뒤 readiness signal이 남는 core 결함 수정(§8.5.6), 실제 local package 9.0.8로 재검증 | [x] 문제 집중 조합 **5회 연속**, `run_sample.sh all` **30/30 3회 연속**, 공통 브라우저 실서버 **3/3** | 수동 연결·고정 sleep 없이 자동 연결과 자동 핸들러 경로 재검토 | 반영 | **dotnet 수렴** |
+| 8 | POSD·DDD 재검토(§8.5.7): 전역 player identity, Ops use case 경계, 좌표→zone 규칙 소유권 정리 | [x] 강화한 `ZW-B2`, Ops 집중 조합, `run_sample.sh all` **30/30 + 공통 브라우저 3/3** | shallow service·adapter 누출·중복 규칙 제거 | 반영 | **dotnet 수렴** |
 
 #### 8.5.5 검증 중 발견 2건 (문서 대비 정합·체크 정밀화)
 
@@ -694,6 +695,24 @@ linux-x64 native 파일 3개가 해당 runtime과 같은 SHA-256인지 확인했
 통과했다. 공통 client는 Vitest 4/4, 타입 검사, 독립 Playwright 2/2를 통과했고, 실제 server에서는
 actor transfer·노드별 운영 명령·실제 노드 종료의 server push를 3/3 확인했다.
 
+#### 8.5.7 POSD·DDD 재검토와 리팩토링
+
+| 위험 신호 | 대안 | 선택 |
+|---|---|---|
+| spawn 노드의 로컬 actor manager가 transfer된 player identity까지 판단한다 | claim 예외 뒤 다시 조회 / 전역 identity를 소유한 actor directory에 ensure 위임 | `IZLinkActorDirectory.EnsureAsync`에 위임했다. 오류와 claim race를 handler가 알 필요가 없다. |
+| `MaintenanceService`는 store로 전달만 하고, 저장→fanout→owner 명령→실패 의미 변환은 ZLink handler에 있다 | 얕은 service 삭제 후 handler에 유지 / application service를 깊게 만들고 transport를 port 아래로 이동 | `IWorldOperationsPort`가 topic·channel·timeout·framework 오류를 숨기고 application service가 use case 순서를 소유한다. |
+| 좌표에서 zone을 고르는 규칙이 `ZoneTopology`와 `World`에 중복된다 | spawn zone 상수 고정 / shared 규칙 한 곳으로 통합 | `ZoneWorldSpec.ZoneOf` 하나로 통합해 spawn 좌표나 zone split 변경이 한 곳에서 끝난다. |
+
+`ZW-B2`는 transfer 뒤 기존 연결이 계속 동작하는 것에 더해, 연결을 종료한 뒤 같은 `PlayerId`로
+재접속해 동쪽 노드의 동일 actor와 좌표를 복원하고 다시 이동하는 것까지 확인한다. 연결이 없는 동안
+actor의 좌표는 유지하고 zone의 resident projection만 제거되므로, 재접속 handler가 현재 zone
+aggregate의 projection을 복원한다.
+
+`ZoneSpot`은 resident·border snapshot·tick invariant를 함께 소유하는 aggregate라 분할하지 않았다.
+시나리오 client도 정본 순서가 한 파일에서 읽히는 이점이 크므로 길이만으로 나누지 않았다. topic별
+빈 border handler type은 현재 자동 scan 계약이 type당 topic 하나를 요구하므로 유지했다. 이를
+합치려면 수동 등록이나 새 public surface가 필요해 호출자 복잡성이 늘어난다.
+
 #### 8.5.3 `dotnet` 회차 4 — 봇 스폰의 오류 삼킴 (codex 수렴 게이트)
 
 codex가 회차 3의 변경만 다시 보고 **NOT CONVERGED — 1건**을 냈다. 타당하고, 근거가 코드였다.
@@ -728,8 +747,8 @@ unavailable"). 그러면 store가 죽어도 "이미 다른 노드가 소유 중"
 transfer로 actor가 다른 노드에 가 있는 상태에서 **같은 `PlayerId`가 재입장**하면(정본 §2.4) 같은 claim
 conflict를 맞는다. 정본 §11에 이 시나리오가 없어 드러나지 않았을 뿐이다. → §8.9.2에 합류시킨다.
 
-- [ ] 마지막 회차에서 codex가 **의미 있는 항목을 제시하지 않음**을 확인했다
-- [ ] 수렴 시점의 관문 1 전 항목(§8.4)이 여전히 통과한다
+- [x] 마지막 회차에서 codex가 **의미 있는 항목을 제시하지 않음**을 확인했다
+- [x] 수렴 시점의 관문 1 전 항목(§8.4)이 여전히 통과한다
 
 codex 규약을 지킨다 — **한 요청에 한 항목만**(병렬 요청은 가능, 묶기 금지), codex는 리뷰·진단만
 맡고 반영은 이 세션이 직접 한다, 반려에는 사유를 남긴다.
@@ -864,7 +883,10 @@ codex Gateway 리뷰가 정본 §11 밖의 framework 과제 둘을 지적했다.
 |---|---|
 | 같은 actor에 대한 **두 번째 session bind가 첫 번째를 해제하지 않는다** | 같은 `PlayerId`로 재접속하면 이전 session의 binding이 남아, 두 session에서 온 packet이 actor의 push 목적지를 번갈아 덮어쓴다. 샘플이 `PlayerId → session` map을 따로 들면 framework의 binding 상태를 **중복**하게 되므로, framework가 actor당 현재 session 하나를 강제해야 한다 |
 | actor의 **노드가 사라지면 session이 stale binding에 묶인 채 남는다** | 이후 packet이 죽은 `ActorRef`를 계속 쓴다. relay가 결국 예외를 던지지만 `MoveMsg`는 one-way라 브라우저는 응답도 끊김도 받지 못한 채 얼어붙는다. 샘플 수준의 완화는 relay 실패 시 session을 닫는 것이고, 근본 수정은 framework가 소유권 상실 시 session handle을 무효화하는 것이다 |
-| **transfer 이후 같은 `PlayerId` 재입장이 claim conflict를 맞는다** (회차 4에서 발견, 미수정) | `EnsurePlayerActorHandler`가 `IZLinkActorManager.GetOrCreateAsync`를 쓴다. actor가 transfer로 다른 노드에 가 있으면 spawn 노드에서의 get-or-create는 **예외**가 된다. 정본 §2.4는 "같은 `PlayerId`로 다시 `JoinWorldReq`를 보내면 **같은 actor에 새 session이 bind**된다"고 약속하므로 실제 계약 위반이다. **정본 §11에 이 시나리오가 없어 드러나지 않았다.** 수정 방향은 봇과 같다(§8.5.3) — `IZLinkActorDirectory.EnsureAsync`. **시나리오도 함께 추가한다**(`ZW-A6` 후보: 노드 간 transfer 뒤 같은 `PlayerId`로 재접속) |
+
+transfer 이후 같은 `PlayerId` 재입장 문제는 회차 8에서 해소했다. spawn 노드는 actor directory로
+전역 identity를 해석하고, 현재 zone은 새 session의 첫 `JoinWorldReq`에서 resident projection을
+복원한다. 강화한 `ZW-B2`가 transfer→연결 종료→같은 id 재접속→추가 이동을 실제로 검증한다.
 
 ### 8.10 구현하며 드러난 정본 설계 결함 (수정해 반영함)
 

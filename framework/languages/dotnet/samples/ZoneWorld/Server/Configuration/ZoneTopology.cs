@@ -56,24 +56,8 @@ public static class ZoneTopology
     private sealed record NodeDescriptor(string NodeId, string Rid, IReadOnlyList<string> Zones);
 
     /// <summary>The zone a new player spawns into (§2, spawn coordinate is fixed).</summary>
-    public static string SpawnZone => ZoneOf(ZoneWorldSpec.SpawnX, ZoneWorldSpec.SpawnY);
+    public static string SpawnZone => ZoneWorldSpec.ZoneOf(ZoneWorldSpec.SpawnX, ZoneWorldSpec.SpawnY);
 
     public static string SpawnNode => NodeOf(SpawnZone);
 
-    /// <summary>
-    /// The zone containing a coordinate. This duplicates no rule: the ZoneNode domain
-    /// owns movement, but the topology needs the same split to place a spawn.
-    /// </summary>
-    public static string ZoneOf(int x, int y)
-    {
-        var west = x < ZoneWorldSpec.ZoneSplit;
-        var north = y < ZoneWorldSpec.ZoneSplit;
-        return (west, north) switch
-        {
-            (true, true) => ZoneIds.NorthWest,
-            (false, true) => ZoneIds.NorthEast,
-            (true, false) => ZoneIds.SouthWest,
-            (false, false) => ZoneIds.SouthEast
-        };
-    }
 }

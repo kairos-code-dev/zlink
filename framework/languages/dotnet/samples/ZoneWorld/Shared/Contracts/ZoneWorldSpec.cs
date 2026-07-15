@@ -13,6 +13,23 @@ public static class ZoneWorldSpec
     public const int SpawnX = 25;
     public const int SpawnY = 25;
 
+    /// <summary>
+    /// Returns the zone that owns a coordinate. Placement, movement and entry all use this
+    /// policy so the zone split cannot drift between server roles.
+    /// </summary>
+    public static string ZoneOf(int x, int y)
+    {
+        var west = x < ZoneSplit;
+        var north = y < ZoneSplit;
+        return (west, north) switch
+        {
+            (true, true) => ZoneIds.NorthWest,
+            (false, true) => ZoneIds.NorthEast,
+            (true, false) => ZoneIds.SouthWest,
+            (false, false) => ZoneIds.SouthEast
+        };
+    }
+
     public const int TickPeriodMs = 100;
     public const int BotTickPeriodMs = 500;
     public const int BotStep = 3;

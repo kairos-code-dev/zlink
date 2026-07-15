@@ -1,7 +1,4 @@
-using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Streams;
-using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.Ops.Application.Ops;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
 using ZoneWorld.Shared.Contracts;
@@ -29,7 +26,6 @@ internal sealed class WatchNodesHandler(NodeRegistry nodes, OpsConsoleRegistry c
 /// change to Ops.
 /// </summary>
 internal sealed class AnnounceWorldHandler(
-    IZLinkFanoutClient fanout,
     AnnouncementService announcements,
     ILogger<AnnounceWorldHandler> logger)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, AnnounceWorldReq>
@@ -40,14 +36,7 @@ internal sealed class AnnounceWorldHandler(
         AnnounceWorldReq request,
         CancellationToken cancellationToken)
     {
-        var announcementId = announcements.NextAnnouncementId();
-
-        fanout
-            .Publish(
-                ZoneWorldNames.BroadcastChannel,
-                ZoneWorldNames.AnnounceTopic,
-                new WorldAnnounceEvent(announcementId, request.Text))
-            .Submit();
+        var announcementId = announcements.Publish(request.Text);
 
         logger.LogInformation(
             "announcement published. announcement={AnnouncementId}",
@@ -65,10 +54,7 @@ internal sealed class AnnounceWorldHandler(
 /// other — a plain client-server channel would spread it across peers.
 /// </summary>
 internal sealed class SetMaintenanceHandler(
-    IZLinkChannelClient channels,
-    IZLinkFanoutClient fanout,
-    MaintenanceService maintenance,
-    ILogger<SetMaintenanceHandler> logger)
+    MaintenanceService maintenance)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, SetMaintenanceReq>
 {
     public async ValueTask HandleAsync(
@@ -77,51 +63,13 @@ internal sealed class SetMaintenanceHandler(
         SetMaintenanceReq request,
         CancellationToken cancellationToken)
     {
-        await maintenance.RecordDesiredAsync(request.NodeId, request.Enabled, cancellationToken);
-
-        // Every node caches every node's maintenance state so it can judge a move that
-        // leaves for another node (§2.3). The fanout is what keeps those caches current.
-        fanout
-            .Publish(
-                ZoneWorldNames.BroadcastChannel,
-                ZoneWorldNames.MaintenanceTopic,
-                new NodeMaintenanceChangedEvent(request.NodeId, request.Enabled))
-            .Submit();
-
-        SetMaintenanceRes reply;
-        try
-        {
-            var applied = await channels
-                .RequestToChannel(
-                    ZoneWorldNames.OpsChannel(request.NodeId),
-                    new ApplyNodeMaintenanceReq(request.NodeId, request.Enabled))
-                .Timeout(TimeSpan.FromSeconds(3))
-                .Async<ApplyNodeMaintenanceRes>(cancellationToken);
-
-            reply = new SetMaintenanceRes(applied.NodeId, applied.Enabled, applied.Zones);
-        }
-        catch (ZLinkFrameworkException error)
-        {
-            // The node is not there. The desired state is already recorded, so it will
-            // come up under maintenance when it restarts (§8.4).
-            logger.LogInformation(
-                "maintenance target unavailable. node={NodeId}, error={Error}",
-                request.NodeId,
-                error.Message);
-            reply = new SetMaintenanceRes(
-                request.NodeId,
-                request.Enabled,
-                ZoneTopology.ZonesOf(request.NodeId),
-                ZoneWorldErrors.NodeUnavailable);
-        }
-
+        var reply = await maintenance.SetAsync(request.NodeId, request.Enabled, cancellationToken);
         context.Client.Reply(reply).Submit(cancellationToken);
     }
 }
 
 internal sealed class NodeDiagnosticsHandler(
-    IZLinkChannelClient channels,
-    ILogger<NodeDiagnosticsHandler> logger)
+    NodeDiagnosticsService diagnostics)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, NodeDiagnosticsReq>
 {
     public async ValueTask HandleAsync(
@@ -130,36 +78,7 @@ internal sealed class NodeDiagnosticsHandler(
         NodeDiagnosticsReq request,
         CancellationToken cancellationToken)
     {
-        NodeDiagnosticsRes reply;
-        try
-        {
-            var diagnostics = await channels
-                .RequestToChannel(
-                    ZoneWorldNames.OpsChannel(request.NodeId),
-                    new GetNodeDiagnosticsReq(request.NodeId))
-                .Timeout(TimeSpan.FromSeconds(3))
-                .Async<GetNodeDiagnosticsRes>(cancellationToken);
-
-            reply = new NodeDiagnosticsRes(
-                diagnostics.NodeId,
-                diagnostics.Zones,
-                diagnostics.PlayerCount,
-                diagnostics.Maintenance);
-        }
-        catch (ZLinkFrameworkException error)
-        {
-            logger.LogInformation(
-                "diagnostics target unavailable. node={NodeId}, error={Error}",
-                request.NodeId,
-                error.Message);
-            reply = new NodeDiagnosticsRes(
-                request.NodeId,
-                ZoneTopology.ZonesOf(request.NodeId),
-                PlayerCount: 0,
-                Maintenance: false,
-                ZoneWorldErrors.NodeUnavailable);
-        }
-
+        var reply = await diagnostics.GetAsync(request.NodeId, cancellationToken);
         context.Client.Reply(reply).Submit(cancellationToken);
     }
 }

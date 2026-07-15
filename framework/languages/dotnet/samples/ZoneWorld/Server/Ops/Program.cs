@@ -6,6 +6,7 @@ using Zlink.Framework.Locations.Redis;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.Ops.Application.Ops;
 using ZoneWorld.Server.Ops.Infrastructure.Store;
+using ZoneWorld.Server.Ops.Infrastructure.ZLink;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Monitoring;
 using ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
 using ZoneWorld.Server.Ops.Ports;
@@ -34,8 +35,10 @@ builder.Services.AddSingleton<IMaintenanceStorePort>(services =>
         shared.RedisKeyPrefix));
 builder.Services.AddSingleton<NodeRegistry>();
 builder.Services.AddSingleton<OpsConsoleRegistry>();
+builder.Services.AddSingleton<IWorldOperationsPort, WorldOperationsAdapter>();
 builder.Services.AddSingleton<AnnouncementService>();
 builder.Services.AddSingleton<MaintenanceService>();
+builder.Services.AddSingleton<NodeDiagnosticsService>();
 builder.Services.AddHostedService<NodeStatusBroadcaster>();
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationEventHandler>();
 builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventHandler>();

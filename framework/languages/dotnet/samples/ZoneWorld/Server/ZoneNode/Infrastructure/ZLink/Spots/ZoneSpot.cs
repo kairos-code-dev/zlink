@@ -163,6 +163,27 @@ public sealed class ZoneSpot(
     internal void UpdatePosition(string playerId, int x, int y) =>
         _state.UpdatePosition(playerId, x, y);
 
+    /// <summary>
+    /// Restores a disconnected human to this zone's projection after a new session binds to
+    /// the same actor. The actor keeps the authoritative coordinate while disconnected; this
+    /// aggregate restores only the resident copy used for ticks and border synchronization.
+    /// </summary>
+    internal JoinWorldRes Rejoin(PlayerActor actor)
+    {
+        var position = actor.Position;
+        _residents[actor.ActorId] = actor;
+        _state.Enter(actor.ActorId, position.X, position.Y, actor.IsBot);
+        census.Record(ZoneId, _state.PlayerCount);
+
+        return new JoinWorldRes(
+            actor.ActorId,
+            ZoneId,
+            NodeId,
+            position.X,
+            position.Y,
+            null);
+    }
+
     internal void ApplyBorderSnapshot(ZoneBorderEvent snapshot) =>
         _state.ApplyBorderSnapshot(snapshot.FromZoneId, snapshot.Tick, snapshot.Players);
 

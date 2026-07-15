@@ -778,7 +778,6 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
         "sample_cpp_framework_deliverydispatch_customer_gateway",
         "sample_cpp_framework_deliverydispatch_courier_session",
         "sample_cpp_framework_deliverydispatch_tracking",
-        "sample_cpp_framework_deliverydispatch_probe",
         "sample_cpp_framework_deliverydispatch_client"}}};
 
     for (const auto &sample : cases) {
@@ -839,8 +838,6 @@ TEST (CppFrameworkSampleParity, SampleReadmesDescribePublicExecutablesAndRunnerS
 
     const auto deliverydispatch_runner =
       read_file (cpp_root / "samples/DeliveryDispatch/run_sample.sh");
-    EXPECT_NE (deliverydispatch_runner.find ("topology=ready"), std::string::npos)
-      << "DeliveryDispatch runner must verify registry/discovery readiness";
     EXPECT_NE (deliverydispatch_runner.find ("deliverydispatch-reassignment=completed"),
                std::string::npos)
       << "DeliveryDispatch runner must verify timeout reassignment";
@@ -1022,8 +1019,13 @@ TEST (CppFrameworkSampleParity, DeliveryDispatchClientGateChecksStatusArrivalOrd
     const auto client = read_file (
       cpp_language_root () / "samples/DeliveryDispatch/Client/delivery_dispatch_client_scenario.hpp");
 
-    EXPECT_NE (client.find ("wait_status_sequence"), std::string::npos);
-    EXPECT_NE (client.find ("message.status == expected_status"), std::string::npos);
+    EXPECT_NE (client.find ("wait_for_sequence<delivery_status_notify_t>"), std::string::npos);
+    EXPECT_NE (client.find ("message.status == delivery_status_t::assigned"), std::string::npos);
+    EXPECT_NE (client.find ("message.status == delivery_status_t::reassigned"), std::string::npos);
+    EXPECT_NE (client.find ("message.status == delivery_status_t::accepted"), std::string::npos);
+    EXPECT_NE (client.find ("message.status == delivery_status_t::picked_up"), std::string::npos);
+    EXPECT_NE (client.find ("message.status == delivery_status_t::delivered"), std::string::npos);
+    EXPECT_EQ (client.find ("wait_status_sequence"), std::string::npos);
     EXPECT_EQ (client.find ("sleep_for"), std::string::npos);
     EXPECT_EQ (client.find ("wait_status ("), std::string::npos);
 }

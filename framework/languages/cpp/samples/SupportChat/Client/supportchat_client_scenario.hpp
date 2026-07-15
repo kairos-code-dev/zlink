@@ -225,12 +225,18 @@ class supportchat_client_scenario_t
         expect (second_closed_notify.get ().state.status == conversation_status_t::closed,
                 "agent did not receive the closed notification");
 
-        expect_error<close_conversation_res_t> (second_customer, second_opened.conversation_id,
-                                                close_conversation_req_t{"resolved"},
-                                                "closing a closed conversation must fail");
-        expect_error<send_chat_message_res_t> (second_customer, second_opened.conversation_id,
-                                               send_chat_message_req_t{"anyone there?"},
-                                               "sending to a closed conversation must fail");
+        (void) zlink::stream_connector::assertions::expect_failure ([&] {
+            return second_customer.request (close_conversation_req_t{"resolved"})
+              .metadata (conversation_id_metadata_key, second_opened.conversation_id)
+              .async<close_conversation_res_t> ()
+              .result ();
+        });
+        (void) zlink::stream_connector::assertions::expect_failure ([&] {
+            return second_customer.request (send_chat_message_req_t{"anyone there?"})
+              .metadata (conversation_id_metadata_key, second_opened.conversation_id)
+              .async<send_chat_message_res_t> ()
+              .result ();
+        });
 
         /* 유휴 감지와 종료는 conversation Spot timer가 소유한다(공통 sample spec §14):
          * 클라이언트는 아무것도 보내지 않고 idle -> closed 알림을 양쪽에서 기다린다(§17-21). */
@@ -266,19 +272,6 @@ class supportchat_client_scenario_t
               .to_future ("closed notification wait failed")
               .get ();
         });
-    }
-
-    template <typename TReply, typename TRequest>
-    static void expect_error (connector_t &connector,
-                              const std::string &conversation_id,
-                              const TRequest &request,
-                              const char *message)
-    {
-        auto reply = connector.request (request)
-                       .metadata (conversation_id_metadata_key, conversation_id)
-                       .template async<TReply> ()
-                       .result ();
-        expect (!reply, message);
     }
 
     template <typename TReply, typename TRequest>

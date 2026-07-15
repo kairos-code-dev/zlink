@@ -232,13 +232,9 @@ class tictactoe_client_scenario_t
             ensure (client1_join.state.o_actor_id.empty ());
             ensure (client1_join.state.status == tictactoe_status_t::waiting_for_players);
             ensure (client1_join.state.next_turn == tictactoe_marks_t::x);
-            auto client1_self_join =
-              client1.wait_for<player_joined_notify_t> ()
-                .where (&player_joined_notify_t::actor_id, options.x_actor_id)
-                .timeout (std::chrono::milliseconds (25))
-                .async ()
-                .result ();
-            require_condition (!client1_self_join, "self join notify must not be delivered");
+            co_await client1.expect_none<player_joined_notify_t> ()
+              .within (std::chrono::milliseconds (25))
+              .async ();
 
             auto client1_wait_client2_join =
               client1.wait_for<player_joined_notify_t> ()
@@ -260,13 +256,9 @@ class tictactoe_client_scenario_t
             trace ((std::string ("client2_join state: x=") + client2_join.state.x_actor_id + " o=" + client2_join.state.o_actor_id + " status=" + client2_join.state.status).c_str ());
             ensure (client2_join.state.o_actor_id == options.o_actor_id);
             ensure (client2_join.state.status == tictactoe_status_t::in_progress);
-            auto client2_self_join =
-              client2.wait_for<player_joined_notify_t> ()
-                .where (&player_joined_notify_t::actor_id, options.o_actor_id)
-                .timeout (std::chrono::milliseconds (25))
-                .async ()
-                .result ();
-            require_condition (!client2_self_join, "self join notify must not be delivered");
+            co_await client2.expect_none<player_joined_notify_t> ()
+              .within (std::chrono::milliseconds (25))
+              .async ();
             trace ("wait client1 saw client2 join");
             auto client1_saw_client2_join = client1_wait_client2_join.get ();
             ensure (client1_saw_client2_join.actor_id == client2_auth.player.actor_id);

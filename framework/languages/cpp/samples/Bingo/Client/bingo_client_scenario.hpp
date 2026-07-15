@@ -79,13 +79,9 @@ class bingo_client_scenario_t
             ensure (client1_match.state.status == bingo_room_status_t::waiting);
             ensure (client1_match.state.host_actor_id == client1_auth.actor_id);
             ensure (client1_match.room_owner_node_rid == client1_auth.actor_node_rid);
-            auto client1_self_join =
-              client1.wait_for<player_joined_notify_t> ()
-                .where (&player_joined_notify_t::actor_id, client1_auth.actor_id)
-                .timeout (std::chrono::milliseconds (25))
-                .async ()
-                .result ();
-            ensure (!client1_self_join, "self join notify must not be delivered");
+            co_await client1.expect_none<player_joined_notify_t> ()
+              .within (std::chrono::milliseconds (25))
+              .async ();
 
             ensure (observer_auth.actor_node_rid != client1_match.room_owner_node_rid);
 
@@ -116,13 +112,9 @@ class bingo_client_scenario_t
             auto client1_joined = client1_joined_future.get ();
             auto client1_started = client1_started_future.get ();
             auto client2_started = client2_started_future.get ();
-            auto client2_self_join =
-              client2.wait_for<player_joined_notify_t> ()
-                .where (&player_joined_notify_t::actor_id, client2_auth.actor_id)
-                .timeout (std::chrono::milliseconds (25))
-                .async ()
-                .result ();
-            ensure (!client2_self_join, "self join notify must not be delivered");
+            co_await client2.expect_none<player_joined_notify_t> ()
+              .within (std::chrono::milliseconds (25))
+              .async ();
             ensure (
               std::any_of (client2_match.state.players.begin (), client2_match.state.players.end (),
                            [&client1_auth] (const bingo_player_state_t &player) {

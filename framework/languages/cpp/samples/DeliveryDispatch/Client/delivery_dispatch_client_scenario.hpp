@@ -104,10 +104,25 @@ class delivery_dispatch_client_scenario_t
         ensure (subscribed && subscribed.value ().delivery_id == delivery_id,
                 "delivery-success subscription failed");
         auto offer = wait_offer (courier, delivery_id, "courier-a");
-        auto statuses = wait_status_sequence (
-          customer, delivery_id,
-          {delivery_status_t::assigned, delivery_status_t::accepted,
-           delivery_status_t::picked_up, delivery_status_t::delivered});
+        auto statuses = customer.wait_for_sequence<delivery_status_notify_t> ()
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::assigned;
+                          })
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::accepted;
+                          })
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::picked_up;
+                          })
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::delivered;
+                          })
+                          .timeout (std::chrono::seconds (12))
+                          .async ();
 
         auto created_future = std::async (std::launch::async, [&http, delivery_id] {
             return http.post ("/deliveries")
@@ -145,10 +160,25 @@ class delivery_dispatch_client_scenario_t
                 "delivery-reassign subscription failed");
         auto first_offer = wait_offer (courier_a, delivery_id, "courier-a");
         auto second_offer = wait_offer (courier_b, delivery_id, "courier-b");
-        auto statuses = wait_status_sequence (
-          customer, delivery_id,
-          {delivery_status_t::assigned, delivery_status_t::reassigned,
-           delivery_status_t::accepted, delivery_status_t::delivered});
+        auto statuses = customer.wait_for_sequence<delivery_status_notify_t> ()
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::assigned;
+                          })
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::reassigned;
+                          })
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::accepted;
+                          })
+                          .expect ([delivery_id] (const delivery_status_notify_t &message) {
+                              return message.delivery_id == delivery_id
+                                     && message.status == delivery_status_t::delivered;
+                          })
+                          .timeout (std::chrono::seconds (12))
+                          .async ();
 
         auto created_future = std::async (std::launch::async, [&http, delivery_id] {
             return http.post ("/deliveries")
@@ -177,26 +207,6 @@ class delivery_dispatch_client_scenario_t
                            .fetch<server_assertion_res_t> ();
         ensure (assertion.passed, "server evidence assertion failed");
         std::cout << "deliverydispatch-server-evidence=completed\n";
-    }
-
-    static zlink::stream_e2e_client::task_t<std::vector<delivery_status_notify_t>>
-    wait_status_sequence (connector_t &customer,
-                          const std::string &delivery_id,
-                          std::vector<std::string> expected_statuses)
-    {
-        std::vector<delivery_status_notify_t> received;
-        received.reserve (expected_statuses.size ());
-        for (const auto &expected_status : expected_statuses) {
-            auto message = co_await customer.wait_for<delivery_status_notify_t> ()
-                             .where ([delivery_id] (const delivery_status_notify_t &candidate) {
-                                 return candidate.delivery_id == delivery_id;
-                             })
-                             .timeout (std::chrono::seconds (12))
-                             .async ();
-            ensure (message.status == expected_status, "delivery status arrived out of order");
-            received.push_back (std::move (message));
-        }
-        co_return received;
     }
 
     static std::future<offer_delivery_notify_t>

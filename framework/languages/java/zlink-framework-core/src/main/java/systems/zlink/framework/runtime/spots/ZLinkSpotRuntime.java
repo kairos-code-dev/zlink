@@ -841,7 +841,8 @@ public final class ZLinkSpotRuntime
         Object entryDispatchContext = systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.currentEntrySpotDispatch();
         try {
-            handlerExecutor.execute(() -> {
+            systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+                .propagateCurrent(handlerExecutor).execute(() -> {
                 outboundScope.run(outbound, () -> {
                     try (systems.zlink.framework.runtime.internal.handlers
                              .ZLinkSuspendInvocationContext.Scope ignored =

@@ -72,6 +72,35 @@ final class ZLinkAsyncSerialQueueTest {
     }
 
     @Test
+    void yieldRetainsTurnContextAcrossHandlerExecutor() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Void> handlerStarted = new CompletableFuture<>();
+        CompletableFuture<Void> probeStarted = new CompletableFuture<>();
+        try (var handlerExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            CompletableFuture<Void> first = queue.enqueue(() -> {
+                CompletableFuture<Void> result = new CompletableFuture<>();
+                ZLinkAsyncSerialQueue.propagateCurrent(handlerExecutor).execute(() -> {
+                    handlerStarted.complete(null);
+                    ZLinkAsyncSerialQueue.yieldCurrent(remote)
+                        .whenComplete((ignored, error) -> result.complete(null));
+                });
+                return result;
+            }).toCompletableFuture();
+            queue.enqueue(() -> {
+                probeStarted.complete(null);
+                return CompletableFuture.completedFuture(null);
+            });
+
+            handlerStarted.get(3, TimeUnit.SECONDS);
+            probeStarted.get(3, TimeUnit.SECONDS);
+            assertFalse(first.isDone());
+            remote.complete(null);
+            first.get(3, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     void continuesAfterPreviousFailure() {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
         List<String> events = new ArrayList<>();

@@ -29,6 +29,64 @@ public final class AutomaticTurnDispatchScenarioSupport {
         this.options = options;
     }
 
+    public void runTerminatorSurface() {
+        ensureMethods(systems.zlink.framework.channels.ZLinkRequestCall.class,
+            "submit", "yield");
+        ensureMethods(systems.zlink.framework.actors.ZLinkActorJoinCall.class,
+            "submit", "yield");
+        ensureMethods(systems.zlink.framework.spots.ZLinkWorkerCall.class,
+            "submit", "yield");
+        ensureMethods(systems.zlink.httpclient.ZLinkHttpServerRequestBuilder.class,
+            "submit", "async", "yield");
+        ensure(java.util.Arrays.stream(
+                systems.zlink.httpclient.ZLinkHttpRequestBuilder.class.getMethods())
+            .noneMatch(method -> "fetch".equals(method.getName())),
+            "TD-A1 blocking HTTP fetch must not be public");
+    }
+
+    public void runAsyncHoldsTurn(ZLinkStreamConnector connector) throws Exception {
+        runTurnInterleave(connector, "TD-A2", "await-held", List.of(
+            "await-held", "await-resumed", "completed", "probe-started", "probe-completed"));
+    }
+
+    public void runAsyncCompletion(ZLinkStreamConnector connector) throws Exception {
+        String requestId = "tda4-" + System.nanoTime();
+        sendTurnAwait(connector, "TD-A4", requestId);
+        assertOrder(requestId, List.of("await-held", "await-resumed", "completed"));
+    }
+
+    public void runYieldReleasesTurn(ZLinkStreamConnector connector) throws Exception {
+        runTurnInterleave(connector, "TD-B1", "yield-released", List.of(
+            "yield-released", "probe-started", "probe-completed", "yield-resumed", "completed"));
+    }
+
+    private void runTurnInterleave(
+        ZLinkStreamConnector connector,
+        String scenarioId,
+        String waitingMarker,
+        List<String> expectedOrder) throws Exception {
+        String requestId = scenarioId.toLowerCase().replace("-", "") + "-" + System.nanoTime();
+        sendTurnAwait(connector, scenarioId, requestId);
+        assertOrder(requestId, List.of(waitingMarker));
+        connector.send(new Contracts.ProbeMsg(requestId, "turn-probe"))
+            .metadata(Map.of(
+                Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
+                Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A))
+            .submit();
+        assertOrder(requestId, expectedOrder);
+    }
+
+    private void sendTurnAwait(
+        ZLinkStreamConnector connector,
+        String scenarioId,
+        String requestId) {
+        connector.send(new Contracts.AwaitMsg(requestId, 2_000, scenarioId))
+            .metadata(Map.of(
+                Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
+                Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A))
+            .submit();
+    }
+
     public void runBasicTerminator(ZLinkStreamConnector connector) throws Exception {
         runScenario(connector, "ATD-A1", List.of(
             "hold-started",
@@ -884,6 +942,16 @@ public final class AutomaticTurnDispatchScenarioSupport {
 
     private void assertOrder(String requestId, List<String> expectedOrder) throws Exception {
         assertOrder(options.playHttpEndpoint() + "/evidence", requestId, expectedOrder);
+    }
+
+    private void ensureMethods(Class<?> type, String... names) {
+        java.util.Set<String> actual = java.util.Arrays.stream(type.getMethods())
+            .map(java.lang.reflect.Method::getName)
+            .collect(java.util.stream.Collectors.toSet());
+        for (String name : names) {
+            ensure(actual.contains(name),
+                "TD-A1 missing " + type.getSimpleName() + "." + name);
+        }
     }
 
     private void assertOrder(String evidenceUrl, String requestId, List<String> expectedOrder)

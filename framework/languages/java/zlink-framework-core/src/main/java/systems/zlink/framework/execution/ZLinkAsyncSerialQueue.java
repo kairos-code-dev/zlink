@@ -4,6 +4,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
@@ -170,6 +171,44 @@ public final class ZLinkAsyncSerialQueue {
             return CompletableFuture.completedFuture(null);
         }));
         return managed;
+    }
+
+    public static Executor propagateCurrent(Executor executor) {
+        java.util.Objects.requireNonNull(executor, "executor");
+        return command -> {
+            ZLinkAsyncSerialQueue queue = CURRENT.get();
+            CompletableFuture<Void> gate = CURRENT_GATE.get();
+            Boolean deferred = CURRENT_RELEASE_DEFERRED.get();
+            executor.execute(() -> runWithContext(queue, gate, deferred, command));
+        };
+    }
+
+    private static void runWithContext(
+        ZLinkAsyncSerialQueue queue,
+        CompletableFuture<Void> gate,
+        Boolean deferred,
+        Runnable command) {
+        ZLinkAsyncSerialQueue previous = CURRENT.get();
+        CompletableFuture<Void> previousGate = CURRENT_GATE.get();
+        Boolean previousDeferred = CURRENT_RELEASE_DEFERRED.get();
+        setOrRemove(CURRENT, queue);
+        setOrRemove(CURRENT_GATE, gate);
+        setOrRemove(CURRENT_RELEASE_DEFERRED, deferred);
+        try {
+            command.run();
+        } finally {
+            setOrRemove(CURRENT, previous);
+            setOrRemove(CURRENT_GATE, previousGate);
+            setOrRemove(CURRENT_RELEASE_DEFERRED, previousDeferred);
+        }
+    }
+
+    private static <T> void setOrRemove(ThreadLocal<T> local, T value) {
+        if (value == null) {
+            local.remove();
+        } else {
+            local.set(value);
+        }
     }
 
     public static <T> CompletionStage<T> deferCurrentReleaseUntil(CompletionStage<T> entered) {

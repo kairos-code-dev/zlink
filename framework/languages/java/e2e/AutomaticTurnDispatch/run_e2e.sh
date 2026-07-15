@@ -354,10 +354,9 @@ static_checks() {
   rm -f "${tmp}"
 
   tmp="$(mktemp)"
-  if grep -RInF '.yield(' Client Server Shared --include='*.java' >"${tmp}"; then
-    cat "${tmp}" >&2
+  if ! grep -RInF '.yield(' Client Server Shared --include='*.java' >"${tmp}"; then
     rm -f "${tmp}"
-    echo "AutomaticTurnDispatch must use the single CompletionStage submit terminator." >&2
+    echo "AutomaticTurnDispatch must exercise the yield terminator." >&2
     return 1
   fi
   rm -f "${tmp}"

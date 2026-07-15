@@ -130,7 +130,7 @@ final class SpotActivation
         ZLinkBackendActorLifecycleEvent event,
         ZLinkBackendActorRef actorRef,
         ZLinkActor actor) {
-        return tail.thenCompose(ignored -> {
+        return context.enqueueDispatch(() -> {
             if (host.isClosing()) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
@@ -224,8 +224,8 @@ final class SpotActivation
 
     void drainPolledDispatchQueues() {
         drainUnhandledActorJoinsAsync().exceptionally(error -> null);
-        context.enqueueDispatch(() -> drainRoutesAsync()
-            .thenCompose(ignored -> drainActorLifecycleEvents()));
+        drainRoutesForDispatch();
+        drainActorLifecycleEvents();
     }
 
     private CompletionStage<Void> drainRoutesAsync() {

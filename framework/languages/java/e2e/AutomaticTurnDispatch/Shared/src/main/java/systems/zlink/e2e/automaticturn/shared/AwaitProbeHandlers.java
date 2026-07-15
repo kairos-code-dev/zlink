@@ -91,16 +91,26 @@ public final class AwaitProbeHandlers {
             AwaitProbeSpot spot,
             Contracts.AwaitReq request) {
             String value = "spot=" + spot.context().spotRid() + ";correlation=" + request.correlationId();
-            long delayMillis = "ATD-E3".equals(request.scenarioId()) ? 30_000 : 800;
+            long delayMillis = "ATD-E3".equals(request.scenarioId()) ? 30_000
+                : request.scenarioId().startsWith("TD-") ? 2_000 : 800;
+            boolean yields = "TD-B1".equals(request.scenarioId());
+            boolean turnContract = request.scenarioId().startsWith("TD-");
+            String waitingMarker = yields ? "yield-released"
+                : turnContract ? "await-held" : "await-released";
+            String resumedMarker = yields ? "yield-resumed" : "await-resumed";
             evidence.record("await-started", request.requestId(), value);
-            evidence.record("await-released", request.requestId(), value);
-            return spot.context().outbound()
+            evidence.record(waitingMarker, request.requestId(), value);
+            var call = spot.context().outbound()
                 .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayReq(request.requestId(), delayMillis))
-                .timeout(delayRequestTimeout(delayMillis))
-                .submit(Contracts.DelayRes.class)
+                .timeout(delayRequestTimeout(delayMillis));
+            CompletionStage<Contracts.DelayRes> completion = yields
+                ? call.yield(Contracts.DelayRes.class)
+                : call.submit(Contracts.DelayRes.class);
+            return completion
                 .thenApply(reply -> {
-                    evidence.record("await-resumed", request.requestId(), value);
-                    evidence.record("await-completed", request.requestId(), value);
+                    evidence.record(resumedMarker, request.requestId(), value);
+                    evidence.record(turnContract ? "completed" : "await-completed",
+                        request.requestId(), value);
                     return new Contracts.ScenarioRes(request.scenarioId(), request.requestId(), evidence.nodeRid());
                 });
         }
@@ -203,17 +213,26 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Void> handle(AwaitProbeSpot spot, Contracts.AwaitMsg request) {
             String value = "spot=" + spot.context().spotRid()
                 + ";correlation=" + request.correlationId() + ";handler=spot";
+            boolean yields = "TD-B1".equals(request.correlationId());
+            boolean turnContract = request.correlationId().startsWith("TD-");
             evidence.record("await-started", request.requestId(), value);
-            evidence.record("await-released", request.requestId(), value);
-            return spot.context().outbound()
+            evidence.record(yields ? "yield-released"
+                    : turnContract ? "await-held" : "await-released",
+                request.requestId(), value);
+            var call = spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayReq(request.requestId(), request.delayMillis()))
-                .timeout(delayRequestTimeout(request.delayMillis()))
-                .submit(Contracts.DelayRes.class)
+                .timeout(delayRequestTimeout(request.delayMillis()));
+            CompletionStage<Contracts.DelayRes> completion = yields
+                ? call.yield(Contracts.DelayRes.class)
+                : call.submit(Contracts.DelayRes.class);
+            return completion
                 .thenAccept(reply -> {
-                    evidence.record("await-resumed", request.requestId(), value);
-                    evidence.record("await-completed", request.requestId(), value);
+                    evidence.record(yields ? "yield-resumed" : "await-resumed",
+                        request.requestId(), value);
+                    evidence.record(turnContract ? "completed" : "await-completed",
+                        request.requestId(), value);
                 });
         }
     }

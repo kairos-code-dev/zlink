@@ -2,10 +2,6 @@ package systems.zlink.e2e.registrymessaging.client.Support;
 
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -21,9 +17,6 @@ public final class DynamicClusterLauncher implements AutoCloseable {
     private final List<DynamicProcess> processes = new ArrayList<>();
     private final Path logDir;
     private final String buildDir;
-    private final HttpClient healthClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(1))
-        .build();
 
     private DynamicClusterLauncher(Path logDir, String buildDir) {
         this.logDir = logDir;
@@ -69,7 +62,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
                     ClientOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")),
                 entry("ZLINK_JAVA_E2E_LOG_DIR", logDir.toString())),
             httpUrl);
-        process.waitReady(healthClient);
+        process.waitReady();
         return new DynamicProvider(process, httpUrl, channelEndpoint);
     }
 
@@ -89,7 +82,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
                     ClientOptions.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")),
                 entry("ZLINK_JAVA_E2E_LOG_DIR", logDir.toString())),
             httpUrl);
-        process.waitReady(healthClient);
+        process.waitReady();
         return new DynamicConsumer(process, httpUrl);
     }
 
@@ -198,33 +191,30 @@ public final class DynamicClusterLauncher implements AutoCloseable {
     public static final class DynamicProcess {
         private final Process process;
         private final String httpUrl;
+        private final ZLinkHttpClient healthClient;
         private boolean stopped;
 
         DynamicProcess(Process process, String httpUrl) {
             this.process = process;
             this.httpUrl = httpUrl;
+            this.healthClient = ZLinkHttpClient.create(httpUrl)
+                .timeout(Duration.ofMillis(300))
+                .build();
         }
 
-        void waitReady(HttpClient client) {
+        void waitReady() {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
             while (System.nanoTime() < deadline) {
                 if (!process.isAlive()) {
                     throw new IllegalStateException("process exited before readiness: " + process.exitValue());
                 }
                 try {
-                    HttpRequest request = HttpRequest.newBuilder(URI.create(httpUrl + "/health"))
-                        .timeout(Duration.ofMillis(300))
-                        .GET()
-                        .build();
-                    HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
-                    if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                    var response = healthClient.get("/health").submitRaw().toCompletableFuture().join();
+                    if (response.status() >= 200 && response.status() < 300) {
                         return;
                     }
-                } catch (IOException | InterruptedException error) {
-                    if (error instanceof InterruptedException) {
-                        Thread.currentThread().interrupt();
-                        throw new IllegalStateException("interrupted while waiting for " + httpUrl, error);
-                    }
+                } catch (RuntimeException error) {
+                    // The process may accept TCP before its HTTP handler is ready.
                 }
                 sleep(100);
             }
@@ -236,6 +226,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
                 return;
             }
             stopped = true;
+            healthClient.close();
             process.destroy();
             try {
                 if (!process.waitFor(5, TimeUnit.SECONDS)) {

@@ -895,3 +895,12 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
   - 근거: 수신 큐를 사용하는 부재·순서 builder와 별도 단언 이름 공간을 추가하고, 대기 중 handler 등록이 같은 메시지를 중복 소비하던 큐 순회도 snapshot으로 고쳤다. API가 없어 실패하던 집중 계약 테스트는 2/2, TypeScript·browser build와 실제 Chromium 게이트는 1/1 통과했다. 커밋 `5606142a5`.
 - [x] **TH-ND-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper를 connector API로 **교체**한다. negative 검증은 typed-callback 카운팅(SMP-ND-05로 이미 닫음) 대신 `expectNone`의 명시적 window로 표준화한다.
   - 근거: 6개 browser sample의 지역 단언·실패·부재 helper와 8개 E2E client의 복제 `ensure`를 `zlinkStreamAssert`와 connector 관측 builder로 교체했다. 추가 재검토에서 남아 있던 TicTacToe의 손수 만든 negative helper와 DeliveryDispatch의 병렬 `waitFor`+도착 배열 순서 검사를 각각 `expectNone(...).within(250)`과 `waitForSequence(...).expect(...)`로 제거했다. 이 누락을 잡도록 넓힌 채택 계약 테스트가 실패에서 2/2 통과로 바뀌고 Node 전체 build와 두 sample runner가 모두 통과했다. 실행 환경 차이는 package export가 흡수하고 호출 표면은 늘리지 않았다. 커밋 `faa625693`, `fcb5c84fe`, `cb2b8a515`.
+
+## Sample/E2E 설정 정책
+
+[공통 설정 정책](../../common/sample-e2e-configuration-policy.ko.md)을 Node sample과 E2E에 적용한다.
+
+- [x] **E2E-ND-36** (결함) — framework host와 복잡한 standalone client가 role 설정을 개별 CLI option과 Node 전용 경로로 전달하고, browser client가 정적 설정 파일을 읽지 않는다.
+  - 근거: 모든 host를 정확히 `--config <path>`만 받는 `ConfigModule` typed provider와 `ZLinkModule.forRootFactory(...)` 주입으로 통일하고, topology·파일 경로가 필요한 client는 typed 설정 파일, browser client는 `/config.json`을 사용하게 했다. SpotService의 개별 CLI와 browser의 파일 직접 읽기 때문에 실패하던 집중 게이트가 8/8 통과로 바뀌고 Node build·typecheck, 관련 11개 대표 E2E가 통과했다. 임시 설정·TLS 파일은 `0600`, 디렉터리는 `0700`으로 만들고 정상·실패 종료에서 정리한다. 커밋 `06486c2af`.
+- [x] **SMP-ND-21** (결함) — 하나의 공통 runner가 sample 이름으로 여섯 실행 절차를 분기하고 여러 server role에 같은 전체 topology 설정을 전달한다.
+  - 근거: 절차를 sample별 `Runner/sample-runner.mjs`로 옮기고 공통 runner에는 process·Redis·readiness·정리만 남겼으며, 각 host에는 필요한 항목만 담은 role 설정을 전달한다. 범용 runner 분기를 검출하도록 먼저 확장한 집중 게이트가 실패에서 통과로 바뀌고 여섯 sample runner가 통과했다. 재검증 중 드러난 SupportChat의 명시적 close와 close-grace 종료 책임 혼합도 분리해 집중 lifecycle test가 실패에서 3/3 통과로 바뀌었다. sample별 절차를 자료 테이블로 압축하는 안보다 변경 지식을 각 sample에 가두는 모듈 분리를 선택해 공통 runner의 조건부 지식과 lifecycle pass-through를 제거했다. 커밋 `06486c2af`, `71cc0b17e`.

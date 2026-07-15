@@ -25,10 +25,11 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
     }
 
     @Bean
@@ -38,8 +39,8 @@ public final class Program {
 
     @Bean
     EvidenceStore evidenceStore() {
-        String nodeRid = Env.require("ZLINK_JAVA_E2E_NODE_RID");
-        String logDir = Env.require("ZLINK_JAVA_E2E_LOG_DIR");
+        String nodeRid = Env.require("nodeRid");
+        String logDir = Env.require("logDirectory");
         return new EvidenceStore(nodeRid, logDir + "/" + nodeRid + ".evidence.log");
     }
 
@@ -50,7 +51,7 @@ public final class Program {
 
     @Bean
     DomainStateStore domainStateStore() {
-        return new DomainStateStore(Env.require("ZLINK_JAVA_E2E_LOG_DIR") + "/domain-state");
+        return new DomainStateStore(Env.require("logDirectory") + "/domain-state");
     }
 
     @Bean
@@ -62,7 +63,7 @@ public final class Program {
         systems.zlink.framework.actors.ZLinkActorManager actors,
         systems.zlink.framework.actors.ZLinkActorClient actorClient) {
         return new ActorNodeHttpServer(
-            Env.require("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
+            Env.require("httpEndpoint"),
             json,
             evidence,
             gates,
@@ -75,7 +76,7 @@ public final class Program {
     ZLinkFrameworkConfigurer framework(EvidenceStore evidence) {
         return options -> {
             String nodeRid = evidence.nodeRid();
-            String logDir = Env.require("ZLINK_JAVA_E2E_LOG_DIR");
+            String logDir = Env.require("logDirectory");
             options.addHandlersFromPackageOf(TransferComponents.class);
             options.setActorTransferForwardWindow(Duration.ofSeconds(2));
             options.configureDispatch()
@@ -87,9 +88,9 @@ public final class Program {
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("java-spot-transfer-" + nodeRid);
             ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.MESH);
-            node.enableRouter(Env.require("ZLINK_JAVA_E2E_ROUTER_ENDPOINT"))
+            node.enableRouter(Env.require("routerEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
-            for (String peer : Env.require("ZLINK_JAVA_E2E_ROUTER_PEERS").split(",")) {
+            for (String peer : Env.require("routerPeers").split(",")) {
                 String[] fields = peer.split("=", 2);
                 if (fields.length == 2 && !nodeRid.equals(fields[0])) {
                     node.connectRouter(RoutingId.from(fields[0]), fields[1]);
@@ -105,7 +106,7 @@ public final class Program {
             registerActor(node, Contracts.FAIL_IN, true);
             node.addSpotFactory(TransferComponents.TransferUserSpot.class);
             options.addStreamNode("spot-transfer-session-" + nodeRid)
-                .bind(Env.require("ZLINK_JAVA_E2E_STREAM_ENDPOINT"))
+                .bind(Env.require("streamEndpoint"))
                 .registerSession(TransferComponents.TransferSession.class);
         };
     }
@@ -123,7 +124,7 @@ public final class Program {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.require("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.require("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.require("redisLocationEndpoint"))
+            .setKeyPrefix(Env.require("locationKeyPrefix")));
     }
 }

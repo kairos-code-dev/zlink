@@ -6,7 +6,7 @@ JAVA_DIR="$(cd "${ROOT_DIR}/../.." && pwd)"
 source "${JAVA_DIR}/e2e-redis-common.sh"
 source "${ROOT_DIR}/../start-order-common.sh"
 
-SCENARIO="${1:-${ZLINK_JAVA_E2E_SCENARIO:-all}}"
+SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 echo "start_order=${E2E_START_ORDER}"
 if rg -q "observedAtNanos" "${ROOT_DIR}/Client" "${ROOT_DIR}/Server" "${ROOT_DIR}/Shared"; then
@@ -41,6 +41,8 @@ fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 PROJECT_ROOT="${ZLINK_JAVA_E2E_PROJECT_ROOT:-${ROOT_DIR}}"
 LOG_DIR="${ZLINK_JAVA_E2E_LOG_ROOT:-${ROOT_DIR}/log}/${RUN_ID}"
+CONFIG_DIR="$(mktemp -d)"
+chmod 0700 "${CONFIG_DIR}"
 REDIS_CONTAINER=""
 PIDS=()
 PID_A=""
@@ -63,6 +65,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${CONFIG_DIR}"
 }
 trap cleanup EXIT INT TERM
 
@@ -93,7 +96,7 @@ zlink_redis_start_scoped_assign \
   "zlink-redis-java-e2e-spot-transfer" \
   "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" \
   "127.0.0.1::6379"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${REDIS_PORT}"
+REDIS_LOCATION_ENDPOINT="127.0.0.1:${REDIS_PORT}"
 
 LOCATION_PREFIX="zlink:e2e:java:spot-transfer:${RUN_ID}:"
 NODE_BIN="${ZLINK_JAVA_E2E_NODE_BIN:-${ROOT_DIR}/Server/ActorNode/build/install/spot-actor-transfer-actor-node/bin/spot-actor-transfer-actor-node}"
@@ -109,15 +112,20 @@ start_node() {
   local router_port="$2"
   local http_port="$3"
   local stream_port="$4"
-  ZLINK_JAVA_E2E_NODE_RID="${rid}" \
-  ZLINK_JAVA_E2E_ROUTER_ENDPOINT="tcp://127.0.0.1:${router_port}" \
-  ZLINK_JAVA_E2E_ROUTER_PEERS="actor-a=tcp://127.0.0.1:${ROUTER_A_PORT},actor-b=tcp://127.0.0.1:${ROUTER_B_PORT},actor-c=tcp://127.0.0.1:${ROUTER_C_PORT}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="http://127.0.0.1:${http_port}" \
-  ZLINK_JAVA_E2E_STREAM_ENDPOINT="tcp://127.0.0.1:${stream_port}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${LOCATION_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${LOG_DIR}" \
-    "${NODE_BIN}" >"${LOG_DIR}/${rid}.stdout.log" 2>"${LOG_DIR}/${rid}.stderr.log" &
+  local config_path="${CONFIG_DIR}/${rid}.properties"
+  cat >"${config_path}" <<EOF
+nodeRid=${rid}
+routerEndpoint=tcp://127.0.0.1:${router_port}
+routerPeers=actor-a=tcp://127.0.0.1:${ROUTER_A_PORT},actor-b=tcp://127.0.0.1:${ROUTER_B_PORT},actor-c=tcp://127.0.0.1:${ROUTER_C_PORT}
+httpEndpoint=http://127.0.0.1:${http_port}
+streamEndpoint=tcp://127.0.0.1:${stream_port}
+redisLocationEndpoint=${REDIS_LOCATION_ENDPOINT}
+locationKeyPrefix=${LOCATION_PREFIX}
+logDirectory=${LOG_DIR}
+EOF
+  chmod 0600 "${config_path}"
+  "${NODE_BIN}" --config "${config_path}" \
+    >"${LOG_DIR}/${rid}.stdout.log" 2>"${LOG_DIR}/${rid}.stderr.log" &
   PIDS+=("$!")
   case "${rid}" in
     actor-a) PID_A="$!" ;;
@@ -171,15 +179,20 @@ wait_http "http://127.0.0.1:${HTTP_C_PORT}" "${PID_C}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 
 run_client() {
-  ZLINK_JAVA_E2E_NODE_A_HTTP="http://127.0.0.1:${HTTP_A_PORT}" \
-  ZLINK_JAVA_E2E_NODE_B_HTTP="http://127.0.0.1:${HTTP_B_PORT}" \
-  ZLINK_JAVA_E2E_NODE_C_HTTP="http://127.0.0.1:${HTTP_C_PORT}" \
-  ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${LOG_DIR}" \
-  ZLINK_JAVA_E2E_STREAM_A_ENDPOINT="tcp://127.0.0.1:${STREAM_A_PORT}" \
-  ZLINK_JAVA_E2E_STREAM_B_ENDPOINT="tcp://127.0.0.1:${STREAM_B_PORT}" \
-    timeout -k 5s "${ZLINK_JAVA_E2E_CLIENT_TIMEOUT_SECONDS:-240}s" \
-    "${CLIENT_BIN}" >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"
+  local config_path="${CONFIG_DIR}/client.properties"
+  cat >"${config_path}" <<EOF
+nodeAHttpEndpoint=http://127.0.0.1:${HTTP_A_PORT}
+nodeBHttpEndpoint=http://127.0.0.1:${HTTP_B_PORT}
+nodeCHttpEndpoint=http://127.0.0.1:${HTTP_C_PORT}
+scenario=${SCENARIO}
+logDirectory=${LOG_DIR}
+streamAEndpoint=tcp://127.0.0.1:${STREAM_A_PORT}
+streamBEndpoint=tcp://127.0.0.1:${STREAM_B_PORT}
+EOF
+  chmod 0600 "${config_path}"
+  timeout -k 5s "${ZLINK_JAVA_E2E_CLIENT_TIMEOUT_SECONDS:-240}s" \
+    "${CLIENT_BIN}" --config "${config_path}" \
+    >"${LOG_DIR}/client.stdout.log" 2>"${LOG_DIR}/client.stderr.log"
 }
 
 if [[ "${SCENARIO}" == "ST-B2" || "${SCENARIO}" == "ST-C1" \

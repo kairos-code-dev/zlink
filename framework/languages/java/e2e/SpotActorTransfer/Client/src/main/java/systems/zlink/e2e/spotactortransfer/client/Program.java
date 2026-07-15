@@ -21,17 +21,18 @@ import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamPacketNameResolver;
 
 public final class Program implements AutoCloseable {
-    private final String nodeA = Env.require("ZLINK_JAVA_E2E_NODE_A_HTTP");
-    private final String nodeB = Env.require("ZLINK_JAVA_E2E_NODE_B_HTTP");
-    private final String nodeC = Env.require("ZLINK_JAVA_E2E_NODE_C_HTTP");
+    private final String nodeA = Env.require("nodeAHttpEndpoint");
+    private final String nodeB = Env.require("nodeBHttpEndpoint");
+    private final String nodeC = Env.require("nodeCHttpEndpoint");
     private final ZLinkHttpClient nodeAHttp = createHttpClient(nodeA);
     private final ZLinkHttpClient nodeBHttp = createHttpClient(nodeB);
     private final ZLinkHttpClient nodeCHttp = createHttpClient(nodeC);
-    private final Path signals = Path.of(Env.get("ZLINK_JAVA_E2E_LOG_DIR", "."));
+    private final Path signals = Path.of(Env.get("logDirectory", "."));
 
     public static void main(String... args) throws Exception {
+        Env.configure(args);
         try (Program program = new Program()) {
-            String selected = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
+            String selected = Env.get("scenario", "all");
             for (String scenario : scenarios(selected)) {
                 program.run(scenario);
                 System.out.println("scenario " + scenario + " passed");
@@ -184,7 +185,7 @@ public final class Program implements AutoCloseable {
         String spotRid = id("spot-f3");
         createSpot(nodeB, spotRid, "delay-joined");
         createActor(nodeA, actorId, Contracts.STATEFUL, 93);
-        ZLinkStreamConnector connector = connector(Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+        ZLinkStreamConnector connector = connector(Env.require("streamAEndpoint"));
         try {
             connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-F3", actorId))
@@ -401,7 +402,7 @@ public final class Program implements AutoCloseable {
         createSpot(nodeB, spotRid, "accept");
         createActor(nodeA, actorId, Contracts.STATEFUL, 81);
         ZLinkStreamConnector connector = connector(
-            Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+            Env.require("streamAEndpoint"));
         try {
             connector.connect().submit().toCompletableFuture().join();
             Contracts.BindSessionRes bound = connector
@@ -423,7 +424,7 @@ public final class Program implements AutoCloseable {
         createSpot(nodeB, spotRid, "accept");
         createActor(nodeA, actorId, Contracts.FAIL_OUT, 82);
         ZLinkStreamConnector connector = connector(
-            Env.require("ZLINK_JAVA_E2E_STREAM_A_ENDPOINT"));
+            Env.require("streamAEndpoint"));
         try {
             connector.connect().submit().toCompletableFuture().join();
             connector.request(new Contracts.BindSessionReq("ST-E2", actorId))

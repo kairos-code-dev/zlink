@@ -1193,6 +1193,21 @@ int main ()
                     && channel_hpp.find ("pending_limit () const") == std::string::npos,
                   "IMP-CP-32", "message_bus still exposes its pending request table");
 
+    /* TH-CP-01 — the C++ connector helper surface has a language contract. */
+    const auto connector_contract_path =
+      root / "../../doc/framework/spec/stream-connector/languages/cpp/03-stream-connector.ko.md";
+    const auto connector_contract = std::filesystem::exists (connector_contract_path)
+                                      ? read_file (connector_contract_path)
+                                      : std::string{};
+    gate.require (!connector_contract.empty (), "TH-CP-01",
+                  "C++ stream connector language contract is missing");
+    gate.require (connector_contract.find ("expect_none") != std::string::npos
+                    && connector_contract.find ("wait_for_sequence") != std::string::npos
+                    && connector_contract.find ("namespace zlink::stream_connector::assertions")
+                         != std::string::npos,
+                  "TH-CP-01",
+                  "C++ stream connector contract omits the common test helper surface");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

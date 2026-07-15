@@ -7,7 +7,7 @@ namespace zlink::samples::tictactoe
 {
 
 inline void
-tictactoe_entry_spot_t::on_player_win_milestone (const player_win_milestone_msg_t &event)
+tictactoe_entry_spot_t::on_player_win_milestone (const player_win_milestone_event_t &event)
 {
     for (auto &[_, actor] : observers) {
         const auto notify =

@@ -22,7 +22,6 @@ struct sample_names_t
     static constexpr const char *observer_actor_id = "observer";
     static constexpr const char *game_state_packet = "GameStateNotify";
     static constexpr const char *player_joined_packet = "PlayerJoinedNotify";
-    static constexpr const char *game_ended_packet = "GameEndedNotify";
 };
 
 } // namespace zlink::samples::tictactoe

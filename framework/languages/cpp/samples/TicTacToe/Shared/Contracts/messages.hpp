@@ -199,9 +199,9 @@ struct leave_game_req_t
     std::string room_id;
 };
 
-struct player_win_milestone_msg_t
+struct player_win_milestone_event_t
 {
-    static constexpr const char *packet_name = "PlayerWinMilestoneMsg";
+    static constexpr const char *packet_name = "PlayerWinMilestoneEvent";
     std::string room_id;
     std::string actor_id;
     std::string display_name;
@@ -223,15 +223,6 @@ struct game_state_notify_t
     static constexpr const char *packet_name = "GameStateNotify";
     std::string room_id;
     std::string next_turn;
-    tictactoe_state_t state;
-};
-
-struct game_ended_notify_t
-{
-    static constexpr const char *packet_name = "GameEndedNotify";
-    std::string room_id;
-    std::string winner;
-    bool draw = false;
     tictactoe_state_t state;
 };
 
@@ -490,7 +481,7 @@ inline void from_json (const nlohmann::json &json, leave_game_req_t &value)
     value.room_id = json.value ("roomId", "");
 }
 
-inline void to_json (nlohmann::json &json, const player_win_milestone_msg_t &value)
+inline void to_json (nlohmann::json &json, const player_win_milestone_event_t &value)
 {
     json = {{"roomId", value.room_id},
             {"actorId", value.actor_id},
@@ -498,7 +489,7 @@ inline void to_json (nlohmann::json &json, const player_win_milestone_msg_t &val
             {"wins", value.wins}};
 }
 
-inline void from_json (const nlohmann::json &json, player_win_milestone_msg_t &value)
+inline void from_json (const nlohmann::json &json, player_win_milestone_event_t &value)
 {
     value.room_id = json.value ("roomId", "");
     value.actor_id = json.value ("actorId", "");
@@ -533,22 +524,6 @@ inline void from_json (const nlohmann::json &json, game_state_notify_t &value)
 {
     value.room_id = json.value ("roomId", "");
     value.next_turn = json.value ("nextTurn", "");
-    value.state = json.value ("state", tictactoe_state_t{});
-}
-
-inline void to_json (nlohmann::json &json, const game_ended_notify_t &value)
-{
-    json = {{"roomId", value.room_id},
-            {"winner", value.winner},
-            {"draw", value.draw},
-            {"state", value.state}};
-}
-
-inline void from_json (const nlohmann::json &json, game_ended_notify_t &value)
-{
-    value.room_id = json.value ("roomId", "");
-    value.winner = json.value ("winner", "");
-    value.draw = json.value ("draw", false);
     value.state = json.value ("state", tictactoe_state_t{});
 }
 

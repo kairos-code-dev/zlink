@@ -118,9 +118,6 @@ class tictactoe_game_spot_t : public spot_t
     {
         actors.erase (actor.actor_id);
         players.erase (actor.actor_id);
-        const auto &state = match ().snapshot ();
-        game_ended_notify_t notify{state.room_id, state.winner, state.draw, state};
-        publisher.publish (notify, actor.actor_id);
     }
 
     void on_disconnect_actor (const player_actor_t &actor) { actor.mark_disconnected (); }
@@ -156,7 +153,7 @@ class tictactoe_game_spot_t : public spot_t
         players[actor.actor_id] = player;
         actor.apply_player (player);
         if (player.wins == 100) {
-            const auto milestone_event = player_win_milestone_msg_t{
+            const auto milestone_event = player_win_milestone_event_t{
               state.room_id, player.actor_id, player.display_name, player.wins};
             _context.publish (sample_names_t::player_milestone_topic, milestone_event).submit ();
         }

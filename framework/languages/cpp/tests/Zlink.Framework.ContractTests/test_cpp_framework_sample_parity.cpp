@@ -227,7 +227,12 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 
     EXPECT_STREQ (sample_names_t::game_state_packet, "GameStateNotify");
     EXPECT_STREQ (sample_names_t::player_joined_packet, "PlayerJoinedNotify");
-    EXPECT_STREQ (sample_names_t::game_ended_packet, "GameEndedNotify");
+    EXPECT_STREQ (player_win_milestone_event_t::packet_name, "PlayerWinMilestoneEvent");
+
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/TicTacToe/Shared/Contracts/messages.hpp");
+    EXPECT_EQ (contracts.find ("GameEndedNotify"), std::string::npos)
+      << "the terminal state must use GameStateNotify instead of an extra client push";
 
     authenticate_player_handler_t auth;
     const auto authenticated = auth.handle ({sample_names_t::x_actor_id});

@@ -282,12 +282,16 @@ class tictactoe_client_scenario_t
             ensure (client1_saw_game_start.state.o_actor_id == options.o_actor_id);
             ensure (client1_saw_game_start.state.next_turn == tictactoe_marks_t::x);
 
-            auto premature_game_end =
-              client2.wait_for<game_ended_notify_t> ()
+            auto premature_terminal_state =
+              client2.wait_for<game_state_notify_t> ()
+                .where ([] (const game_state_notify_t &message) {
+                    return message.state.status == tictactoe_status_t::won
+                           || message.state.status == tictactoe_status_t::draw;
+                })
                 .timeout (std::chrono::milliseconds (250))
                 .async ();
             client1.send (leave_game_req_t{room.room_id}).submit ();
-            require_condition (!premature_game_end.result (),
+            require_condition (!premature_terminal_state.result (),
                                "leave during an active game must not end the game");
 
             auto client2_wait_first_move =

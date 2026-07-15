@@ -212,10 +212,14 @@ int main ()
                     && transfer_runner.find ("CONTROLLER_URL") == std::string::npos
                     && transfer_runner.find ("actor-c") == std::string::npos,
                   "E2E-CP-56", "Config 10 still uses a remote actor controller");
-    gate.require (transfer_runner.find ("ZLINK_CPP_E2E_NODE_A_STREAM")
+    gate.require (transfer_runner.find ("\"nodeAStream\"")
                          != std::string::npos
+                    && transfer_runner.find ("\"nodeBStream\"")
+                         != std::string::npos
+                    && transfer_runner.find ("ZLINK_CPP_E2E_NODE_A_STREAM")
+                         == std::string::npos
                     && transfer_runner.find ("ZLINK_CPP_E2E_NODE_B_STREAM")
-                         != std::string::npos,
+                         == std::string::npos,
                   "E2E-CP-56", "Config 10 does not pass the session gateway endpoints");
     gate.require (transfer_client.find ("create_actor (_nodes.a")
                     != std::string::npos

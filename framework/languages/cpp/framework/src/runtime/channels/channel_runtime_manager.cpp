@@ -119,6 +119,17 @@ std::vector<std::string> channel_runtime_manager_t::route_channel_ids () const
     return ids;
 }
 
+std::vector<std::string> channel_runtime_manager_t::configured_route_channel_ids (
+  const zlink_builder_t &builder)
+{
+    std::vector<std::string> ids;
+    ids.reserve (builder._state->route_channels.size ());
+    for (const auto &[route_id, _] : builder._state->route_channels) {
+        ids.push_back (route_id);
+    }
+    return ids;
+}
+
 void channel_runtime_manager_t::initialize_inbound_channels ()
 {
     for (const auto &[channel_name, channel] : _state->channels) {

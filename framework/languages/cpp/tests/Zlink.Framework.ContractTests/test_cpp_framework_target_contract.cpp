@@ -1163,6 +1163,17 @@ int main ()
                     != std::string::npos,
                   "IMP-CP-01", "spot subscription lookup ignores the wire packet name");
 
+    /* IMP-CP-32 — runtime snapshots and the pending table are not public contracts. */
+    gate.require (zlink_builder_hpp.find ("channels () const") == std::string::npos
+                    && zlink_builder_hpp.find ("route_channels () const")
+                         == std::string::npos
+                    && zlink_builder_hpp.find ("spot_nodes () const") == std::string::npos
+                    && zlink_builder_hpp.find ("streams () const") == std::string::npos,
+                  "IMP-CP-32", "zlink_builder still exposes runtime snapshots");
+    gate.require (channel_hpp.find ("pending_count () const") == std::string::npos
+                    && channel_hpp.find ("pending_limit () const") == std::string::npos,
+                  "IMP-CP-32", "message_bus still exposes its pending request table");
+
     if (gate.failures != 0) {
         std::cerr << "target contract gate failures: " << gate.failures << '\n';
         return 1;

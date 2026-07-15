@@ -3,6 +3,9 @@
 #include <zlink/framework.hpp>
 
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/channels/channel_runtime.hpp"
+#include "runtime/spots/spot_runtime.hpp"
+#include "runtime/streams/stream_runtime.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -623,7 +626,7 @@ int main ()
              != nullptr) {
         return 65;
     }
-    const auto streams = zlink.streams ();
+    const auto streams = zlink::framework::detail::stream_runtime_t::from (zlink).snapshots ();
     if (streams.size () != 1 || streams[0].name != "options.stream"
         || streams[0].packet_session_name != "options.session") {
         return 63;
@@ -965,7 +968,7 @@ int main ()
         valid_options.add_spot_mesh ("spot-routes")
           .enable_router ("tcp://127.0.0.1:9302");
         valid_options.apply ();
-        const auto spots = valid_zlink.spot_nodes ();
+        const auto spots = zlink::framework::detail::spot_node_runtime_t::snapshots (valid_zlink);
         accepted_spot_route_without_handlers_succeeded =
           spots.size () == 1 && spots[0].accepted_route_channels.size () == 1
           && spots[0].accepted_route_channels[0].channel_name == "spot-route";
@@ -990,7 +993,7 @@ int main ()
         valid_options.add_spot_mesh ("manual-spots")
           .enable_router ("tcp://127.0.0.1:9344");
         valid_options.apply ();
-        const auto spots = valid_zlink.spot_nodes ();
+        const auto spots = zlink::framework::detail::spot_node_runtime_t::snapshots (valid_zlink);
         accepted_spot_route_manual_without_discovery_succeeded =
           spots.size () == 1 && spots[0].accepted_route_channels.size () == 1
           && spots[0].accepted_route_channels[0].channel_name == "manual-spot-route"
@@ -1084,7 +1087,9 @@ int main ()
         valid_options.add_route_mesh ("route-manual-client")
           .enable_client ("tcp://127.0.0.1:9323");
         valid_options.apply ();
-        const auto routes = valid_zlink.route_channels ();
+        const auto routes =
+          zlink::framework::detail::channel_runtime_manager_t::configured_route_channel_ids (
+            valid_zlink);
         route_manual_client_without_bind_succeeded =
           routes.size () == 1 && routes.front () == "route-manual-client";
     }
@@ -1340,11 +1345,13 @@ int main ()
         return 64;
     }
 
-    const auto routes = zlink.route_channels ();
+    const auto routes =
+      zlink::framework::detail::channel_runtime_manager_t::configured_route_channel_ids (zlink);
     if (routes.size () != 1 || routes.front () != "route-channel") {
         return 64;
     }
-    const auto channels = zlink.channels ();
+    const auto channels = zlink::framework::detail::channel_runtime_t::from (zlink.message_bus ())
+                            .channel_snapshots ();
     const auto api_channel =
       std::find_if (channels.begin (), channels.end (),
                     [] (const auto &channel) { return channel.name == "api-channel"; });

@@ -2151,16 +2151,6 @@ spot_node_builder_t zlink_builder_t::add_spot_node (std::string spot_node_name)
     return spot_node_builder_t (state);
 }
 
-std::vector<spot_node_snapshot_t> zlink_builder_t::spot_nodes () const
-{
-    std::vector<spot_node_snapshot_t> result;
-    result.reserve (_state->spot_nodes.size ());
-    for (const auto &[_, state] : _state->spot_nodes) {
-        result.push_back (state->snapshot);
-    }
-    return result;
-}
-
 } // namespace zlink::framework
 
 namespace zlink::framework::detail
@@ -3897,6 +3887,17 @@ std::optional<spot_node_runtime_t> spot_node_runtime_t::from (const zlink_builde
         return std::nullopt;
     }
     return spot_node_runtime_t (found->second);
+}
+
+std::vector<spot_node_snapshot_t> spot_node_runtime_t::snapshots (
+  const zlink_builder_t &builder)
+{
+    std::vector<spot_node_snapshot_t> result;
+    result.reserve (builder._state->spot_nodes.size ());
+    for (const auto &[_, state] : builder._state->spot_nodes) {
+        result.push_back (state->snapshot);
+    }
+    return result;
 }
 
 spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name)

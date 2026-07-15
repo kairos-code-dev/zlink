@@ -604,16 +604,6 @@ stream_builder_t zlink_builder_t::stream (std::string stream_name)
     return stream_builder_t (state);
 }
 
-std::vector<stream_snapshot_t> zlink_builder_t::streams () const
-{
-    std::vector<stream_snapshot_t> result;
-    result.reserve (_state->stream_runtime->streams.size ());
-    for (const auto &[_, state] : _state->stream_runtime->streams) {
-        result.push_back (state->snapshot);
-    }
-    return result;
-}
-
 } // namespace zlink::framework
 
 namespace zlink::framework::detail
@@ -627,6 +617,16 @@ stream_runtime_t::stream_runtime_t (std::shared_ptr<stream_runtime_state_t> stat
 stream_runtime_t stream_runtime_t::from (const zlink_builder_t &builder)
 {
     return stream_runtime_t (builder._state->stream_runtime);
+}
+
+std::vector<stream_snapshot_t> stream_runtime_t::snapshots () const
+{
+    std::vector<stream_snapshot_t> result;
+    result.reserve (_state->streams.size ());
+    for (const auto &[_, state] : _state->streams) {
+        result.push_back (state->snapshot);
+    }
+    return result;
 }
 
 void bind_stream_serializers (zlink_builder_t &builder, serializer_registry_t &serializers)

@@ -1193,7 +1193,7 @@ int main ()
       .add_actor_factory<player_actor_factory_t> ("player")
       .add_spot<stage_spot_t> ("stage");
 
-    const auto snapshots = zlink.spot_nodes ();
+    const auto snapshots = zlink::framework::detail::spot_node_runtime_t::snapshots (zlink);
     if (snapshots.size () != 1 || snapshots[0].name != "stage-spot-node"
         || snapshots[0].bind_endpoint != "tcp://0.0.0.0:9000" || !snapshots[0].router_bind_endpoint
         || *snapshots[0].router_bind_endpoint != "tcp://0.0.0.0:9002"

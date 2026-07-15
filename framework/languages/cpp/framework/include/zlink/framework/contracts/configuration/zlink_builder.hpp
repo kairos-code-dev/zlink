@@ -7,10 +7,8 @@
 
 #include <cstddef>
 #include <chrono>
-#include <functional>
 #include <memory>
 #include <string>
-#include <vector>
 
 namespace zlink::framework
 {
@@ -51,10 +49,6 @@ class zlink_builder_t
     spot_node_builder_t add_spot_node (std::string spot_node_name);
     stream_builder_t stream (std::string stream_name);
 
-    std::vector<channel_snapshot_t> channels () const;
-    std::vector<std::string> route_channels () const;
-    std::vector<spot_node_snapshot_t> spot_nodes () const;
-    std::vector<stream_snapshot_t> streams () const;
     message_bus_t message_bus () const;
     request_client_t request_client (std::string channel_name) const;
     publisher_t publisher () const;

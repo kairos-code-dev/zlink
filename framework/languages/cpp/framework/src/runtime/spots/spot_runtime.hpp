@@ -330,6 +330,7 @@ class spot_node_runtime_t
     static spot_node_runtime_t from (const spot_node_builder_t &builder);
     static std::optional<spot_node_runtime_t> from (const zlink_builder_t &builder,
                                                     const std::string &spot_node_name);
+    static std::vector<spot_node_snapshot_t> snapshots (const zlink_builder_t &builder);
 
     spot_create_result_t create_spot (std::string spot_name);
     spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);

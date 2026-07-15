@@ -6,6 +6,7 @@
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
 #include "runtime/channels/channel_runtime_manager.hpp"
+#include "runtime/channels/channel_runtime.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <gtest/gtest.h>
@@ -1440,7 +1441,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostPublishesAndCleansLoc
       zlink::framework::service_lifetime_t::singleton);
     auto provider = services.build_provider ();
 
-    location_auto_connect_host_service_t service (zlink.message_bus (), zlink.channels ());
+    location_auto_connect_host_service_t service (
+      zlink.message_bus (),
+      zlink::framework::detail::channel_runtime_t::from (zlink.message_bus ())
+        .channel_snapshots ());
     service.start (provider);
 
     const auto rows = wait_for_peer_count (*store, 4);
@@ -1580,7 +1584,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostReconcilesRouteMeshCo
       zlink::framework::service_lifetime_t::singleton);
     auto provider = services.build_provider ();
 
-    location_auto_connect_host_service_t service (zlink.message_bus (), zlink.channels ());
+    location_auto_connect_host_service_t service (
+      zlink.message_bus (),
+      zlink::framework::detail::channel_runtime_t::from (zlink.message_bus ())
+        .channel_snapshots ());
     service.start (provider);
 
     EXPECT_TRUE (wait_until ([&] {
@@ -1664,7 +1671,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
     auto lower_provider = lower_services.build_provider ();
 
     location_auto_connect_host_service_t lower_service (lower_zlink.message_bus (),
-                                                        lower_zlink.channels ());
+                                                        zlink::framework::detail::channel_runtime_t::from (
+                                                          lower_zlink.message_bus ())
+                                                          .channel_snapshots ());
     lower_service.start (lower_provider);
 
     EXPECT_TRUE (wait_until ([&] {
@@ -1729,7 +1738,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers, AutoConnectHostUsesRouteMeshInitiato
     auto higher_provider = higher_services.build_provider ();
 
     location_auto_connect_host_service_t higher_service (higher_zlink.message_bus (),
-                                                         higher_zlink.channels ());
+                                                         zlink::framework::detail::channel_runtime_t::from (
+                                                           higher_zlink.message_bus ())
+                                                           .channel_snapshots ());
     higher_service.start (higher_provider);
 
     std::this_thread::sleep_for (std::chrono::milliseconds (250));

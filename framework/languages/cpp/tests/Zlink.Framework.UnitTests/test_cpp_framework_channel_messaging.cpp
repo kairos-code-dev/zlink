@@ -666,7 +666,8 @@ int main ()
       .connect ("tcp://127.0.0.1:7101");
     zlink.channel ("events").enable_publisher ().bind ("tcp://127.0.0.1:7201");
 
-    const auto channels = zlink.channels ();
+    const auto channels = zlink::framework::detail::channel_runtime_t::from (zlink.message_bus ())
+                            .channel_snapshots ();
     if (channels.size () != 2) {
         return 1;
     }
@@ -746,8 +747,10 @@ int main ()
     zlink::framework::zlink_builder_t assigned_builder;
     assigned_builder = std::move (moved_builder);
     assigned_builder.channel ("moved-channel").enable_client ().connect ("tcp://127.0.0.1:7053");
-    if (assigned_builder.channels ().size () != 1
-        || assigned_builder.channels ()[0].name != "moved-channel") {
+    const auto assigned_channels =
+      zlink::framework::detail::channel_runtime_t::from (assigned_builder.message_bus ())
+        .channel_snapshots ();
+    if (assigned_channels.size () != 1 || assigned_channels[0].name != "moved-channel") {
         return 125;
     }
     zlink::framework::message_bus_t default_bus;
@@ -756,7 +759,7 @@ int main ()
     assigned_bus = std::move (moved_bus);
     auto assigned_bus_runtime =
       zlink::framework::detail::channel_runtime_t::from (assigned_bus);
-    if (assigned_bus.pending_count () != 0 || assigned_bus.pending_limit () == 0
+    if (assigned_bus_runtime.pending_count () != 0 || assigned_bus_runtime.pending_limit () == 0
         || assigned_bus.default_request_timeout ("missing-channel")
              <= std::chrono::milliseconds::zero ()
         || assigned_bus_runtime.server_peer_weight_override ("missing-channel")) {
@@ -827,7 +830,8 @@ int main ()
     assigned_route_builder = std::move (moved_route_builder);
     assigned_route_builder.add_handler_group ("runtime-group-2");
     if (!invalid_builder_timeout_failed || !empty_route_channel_failed
-        || zlink.route_channels ().empty ()) {
+        || zlink::framework::detail::channel_runtime_manager_t::configured_route_channel_ids (zlink)
+             .empty ()) {
         return 129;
     }
 
@@ -934,7 +938,9 @@ int main ()
     auto outbound_only_channel = outbound_only.channel ("client-only");
     outbound_only_channel.enable_client ();
     outbound_only_channel.enable_publisher ();
-    const auto outbound_channels = outbound_only.channels ();
+    const auto outbound_channels =
+      zlink::framework::detail::channel_runtime_t::from (outbound_only.message_bus ())
+        .channel_snapshots ();
     if (outbound_channels.size () != 1 || outbound_channels[0].server.enabled
         || !outbound_channels[0].client.enabled || !outbound_channels[0].publisher.enabled) {
         return 7;
@@ -960,7 +966,9 @@ int main ()
       .set_routing_id (zlink::routing_id_t::from (std::string ("profile-api")))
       .bind ("tcp://127.0.0.1:7399");
     std::optional<zlink::framework::channel_snapshot_t> routed_server_snapshot;
-    for (const auto &channel : fanout.channels ()) {
+    for (const auto &channel :
+         zlink::framework::detail::channel_runtime_t::from (fanout.message_bus ())
+           .channel_snapshots ()) {
         if (channel.name == "profile") {
             routed_server_snapshot = channel;
             break;
@@ -1589,7 +1597,10 @@ int main ()
     zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
       .bind_serializers (serializers);
     zlink::framework::runtime::channel_host_service_t hosted_service (
-      hosted_builder.message_bus (), hosted_builder.channels (), handlers, serializers);
+      hosted_builder.message_bus (),
+      zlink::framework::detail::channel_runtime_t::from (hosted_builder.message_bus ())
+        .channel_snapshots (),
+      handlers, serializers);
     hosted_service.start (provider);
     auto hosted_reply = hosted_builder.request_client ("hosted")
                           .request (request_t{28})
@@ -1678,7 +1689,9 @@ int main ()
     zlink::framework::detail::channel_runtime_t::from (manual_server_builder.message_bus ())
       .bind_serializers (serializers);
     zlink::framework::runtime::channel_host_service_t manual_hosted_service (
-      manual_server_builder.message_bus (), manual_server_builder.channels (), handlers,
+      manual_server_builder.message_bus (),
+      zlink::framework::detail::channel_runtime_t::from (manual_server_builder.message_bus ())
+        .channel_snapshots (), handlers,
       serializers);
     manual_hosted_service.start (provider);
 
@@ -1751,7 +1764,9 @@ int main ()
       "hosted-nested", "request", &nested_request_handler_t::handle_request,
       {.packet_name = request_t::packet_name});
     zlink::framework::runtime::channel_host_service_t nested_hosted_service (
-      nested_hosted_builder.message_bus (), nested_hosted_builder.channels (), nested_handlers,
+      nested_hosted_builder.message_bus (),
+      zlink::framework::detail::channel_runtime_t::from (nested_hosted_builder.message_bus ())
+        .channel_snapshots (), nested_handlers,
       serializers);
     nested_hosted_service.start (nested_provider);
     auto nested_hosted_reply = nested_hosted_builder.request_client ("hosted-nested")
@@ -1780,7 +1795,9 @@ int main ()
       "hosted-scoped", "request", &scoped_channel_handler_t::handle_request,
       {.packet_name = request_t::packet_name});
     zlink::framework::runtime::channel_host_service_t scoped_hosted_service (
-      scoped_hosted_builder.message_bus (), scoped_hosted_builder.channels (), scoped_handlers,
+      scoped_hosted_builder.message_bus (),
+      zlink::framework::detail::channel_runtime_t::from (scoped_hosted_builder.message_bus ())
+        .channel_snapshots (), scoped_handlers,
       serializers);
     scoped_hosted_service.start (scoped_provider);
     auto scoped_hosted_reply = scoped_hosted_builder.request_client ("hosted-scoped")
@@ -2356,7 +2373,9 @@ int main ()
       {.packet_name = request_t::packet_name});
 
     zlink::framework::runtime::channel_host_service_t orchestrated_api_channel_service (
-      orchestrated_api_builder.message_bus (), orchestrated_api_builder.channels (),
+      orchestrated_api_builder.message_bus (),
+      zlink::framework::detail::channel_runtime_t::from (orchestrated_api_builder.message_bus ())
+        .channel_snapshots (),
       orchestrated_handlers, serializers);
     zlink::framework::runtime::route_channel_host_service_t orchestrated_api_route_service (
       orchestrated_api_builder.message_bus (), serializers, {}, {});
@@ -2785,8 +2804,10 @@ int main ()
       .add_request_handler<local_handler_t, request_t, reply_t> (
         "request", &local_handler_t::handle_route_request)
       .add_send_handler<local_handler_t, event_t> ("event", &local_handler_t::handle_route_send);
-    if (public_route_builder.route_channels ().size () != 1
-        || public_route_builder.route_channels ()[0] != "public.route") {
+    const auto public_route_channels =
+      zlink::framework::detail::channel_runtime_manager_t::configured_route_channel_ids (
+        public_route_builder);
+    if (public_route_channels.size () != 1 || public_route_channels[0] != "public.route") {
         return 56;
     }
     auto public_manager =

@@ -367,7 +367,7 @@ int main ()
       [] (const zlink::framework::encoded_payload_t &payload) { return payload.to_string (); });
     zlink::framework::detail::bind_stream_serializers (zlink, serializers);
 
-    const auto snapshots = zlink.streams ();
+    const auto snapshots = zlink::framework::detail::stream_runtime_t::from (zlink).snapshots ();
     if (snapshots.size () != 1 || snapshots[0].name != "client-stream"
         || snapshots[0].bind_endpoint != "tcp://0.0.0.0:9200"
         || snapshots[0].packet_session_name != "client")
@@ -770,7 +770,7 @@ int main ()
     transport_error_session_t transport_session;
     zlink::framework::runtime::stream_host_service_t transport_host (
       zlink::framework::detail::stream_runtime_t::from (transport_zlink),
-      transport_zlink.streams (),
+      zlink::framework::detail::stream_runtime_t::from (transport_zlink).snapshots (),
       {{"transport-session",
         [&transport_session] (zlink::framework::service_provider_t &)
           -> zlink::framework::packet_stream_session_t & { return transport_session; }}});

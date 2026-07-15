@@ -59,6 +59,7 @@ class stream_runtime_t
     explicit stream_runtime_t (std::shared_ptr<stream_runtime_state_t> state);
 
     static stream_runtime_t from (const zlink_builder_t &builder);
+    std::vector<stream_snapshot_t> snapshots () const;
 
     result_t<std::vector<std::uint8_t>> encode_header (const stream_header_t &header) const;
     result_t<stream_header_t> decode_header (const std::vector<std::uint8_t> &bytes) const;

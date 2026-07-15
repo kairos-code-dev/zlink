@@ -450,8 +450,6 @@ class message_bus_t
           });
     }
 
-    std::size_t pending_count () const noexcept;
-    std::size_t pending_limit () const noexcept;
     std::chrono::milliseconds default_request_timeout (const std::string &channel_name) const;
 
   private:

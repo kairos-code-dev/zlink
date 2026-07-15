@@ -30,6 +30,7 @@ class channel_runtime_manager_t
     route_channel_runtime_t &get_route_channel (const std::string &router_channel_id);
     const route_handler_registry_t &get_route_handlers (const std::string &router_channel_id) const;
     std::vector<std::string> route_channel_ids () const;
+    static std::vector<std::string> configured_route_channel_ids (const zlink_builder_t &builder);
 
     void initialize_inbound_channels ();
     void initialize_publisher_channels ();

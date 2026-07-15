@@ -156,6 +156,8 @@ class channel_runtime_t
   public:
     explicit channel_runtime_t (std::shared_ptr<channel_runtime_state_t> state);
 
+    std::vector<channel_snapshot_t> channel_snapshots () const;
+
     result_t<zlink::message_t> dispatch_request (std::string channel_name,
                                                  std::string topic,
                                                  std::string packet_name,

@@ -1077,7 +1077,7 @@ drain_actor_handoff_result_t drain_actors_through_route (zlink_builder_t &zlink,
     drain_actor_handoff_result_t outcome;
     auto peers = provider.get<peer_location_resolver_t> ();
     auto actor_gateway = provider.get<actor_gateway_runtime_t> ();
-    for (const auto &spot_node : zlink.spot_nodes ()) {
+    for (const auto &spot_node : spot_node_runtime_t::snapshots (zlink)) {
         auto runtime = spot_node_runtime_t::from (zlink, spot_node.name);
         if (!runtime) {
             continue;

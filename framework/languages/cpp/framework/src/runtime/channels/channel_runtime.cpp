@@ -258,6 +258,16 @@ channel_runtime_t::channel_runtime_t (std::shared_ptr<channel_runtime_state_t> s
 {
 }
 
+std::vector<channel_snapshot_t> channel_runtime_t::channel_snapshots () const
+{
+    std::vector<channel_snapshot_t> result;
+    result.reserve (_state->channels.size ());
+    for (const auto &[_, snapshot] : _state->channels) {
+        result.push_back (snapshot);
+    }
+    return result;
+}
+
 namespace
 {
 
@@ -829,18 +839,6 @@ message_bus_t::~message_bus_t () = default;
 message_bus_t::message_bus_t (message_bus_t &&) noexcept = default;
 
 message_bus_t &message_bus_t::operator= (message_bus_t &&) noexcept = default;
-
-std::size_t message_bus_t::pending_count () const noexcept
-{
-    std::lock_guard lock (_state->mutex);
-    return _state->pending;
-}
-
-std::size_t message_bus_t::pending_limit () const noexcept
-{
-    std::lock_guard lock (_state->mutex);
-    return _state->max_pending;
-}
 
 std::chrono::milliseconds
 message_bus_t::default_request_timeout (const std::string &channel_name) const
@@ -1747,26 +1745,6 @@ route_channel_builder_t zlink_builder_t::route_channel (std::string route_channe
     auto state = std::make_shared<detail::route_channel_builder_state_t> (route_channel_name);
     _state->route_channels[route_channel_name] = state;
     return route_channel_builder_t (state);
-}
-
-std::vector<channel_snapshot_t> zlink_builder_t::channels () const
-{
-    std::vector<channel_snapshot_t> result;
-    result.reserve (_state->runtime->channels.size ());
-    for (const auto &[_, snapshot] : _state->runtime->channels) {
-        result.push_back (snapshot);
-    }
-    return result;
-}
-
-std::vector<std::string> zlink_builder_t::route_channels () const
-{
-    std::vector<std::string> result;
-    result.reserve (_state->route_channels.size ());
-    for (const auto &[name, _] : _state->route_channels) {
-        result.push_back (name);
-    }
-    return result;
 }
 
 message_bus_t zlink_builder_t::message_bus () const

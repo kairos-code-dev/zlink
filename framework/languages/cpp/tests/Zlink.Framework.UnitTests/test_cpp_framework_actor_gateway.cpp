@@ -9,6 +9,7 @@
 #include "runtime/actors/actor_client.hpp"
 #include "runtime/actors/actor_route_internal_dispatcher.hpp"
 #include "runtime/channels/channel_runtime.hpp"
+#include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/route_packet_dispatcher.hpp"
 #include "runtime/host/actor_gateway_spot_bridge.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
@@ -1224,8 +1225,10 @@ int main ()
     dispatcher_spot_node.accepted_route_channels.push_back (
       zlink::framework::accepted_spot_route_channel_t{"implicit.dispatcher.route", {}});
     auto dispatchers = zlink::framework::detail::build_route_internal_dispatchers (
-      dispatcher_builder, {dispatcher_spot_node}, dispatcher_builder.route_channels (), gateway,
-      serializers);
+      dispatcher_builder, {dispatcher_spot_node},
+      zlink::framework::detail::channel_runtime_manager_t::configured_route_channel_ids (
+        dispatcher_builder),
+      gateway, serializers);
     const auto dispatcher_found = dispatchers.find ("dispatcher.route");
     const auto implicit_dispatcher_found = dispatchers.find ("implicit.dispatcher.route");
     if (dispatcher_found == dispatchers.end () || implicit_dispatcher_found == dispatchers.end ()

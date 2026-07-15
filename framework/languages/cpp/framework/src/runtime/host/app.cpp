@@ -666,10 +666,10 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     actor_gateway_runtime.bind_serializers (_state->serializers);
     actor_gateway_runtime.set_dispatch (options.configure_dispatch ());
     _state->spot_drain_policies = options.spot_drain_policies ();
-    const auto channel_snapshot = _state->zlink.channels ();
     auto channel_runtime = detail::channel_runtime_t::from (_state->zlink.message_bus ());
-    detail::channel_runtime_manager_t::from (_state->zlink).initialize_route_channels (
-      _state->zlink);
+    const auto channel_snapshot = channel_runtime.channel_snapshots ();
+    auto channel_runtime_manager = detail::channel_runtime_manager_t::from (_state->zlink);
+    channel_runtime_manager.initialize_route_channels (_state->zlink);
     /* endpoint_connections live attach (CONN-001): client-channel handles
      * mutate the runtime connection bundle from now on; disconnects apply to
      * the same set the requests iterate. */
@@ -698,7 +698,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               });
         }
     }
-    const auto spot_node_snapshot = _state->zlink.spot_nodes ();
+    const auto spot_node_snapshot = detail::spot_node_runtime_t::snapshots (_state->zlink);
     add_hosted_service (std::make_unique<runtime::location_host_service_t> (
       detail::location_owner_node_rid (spot_node_snapshot)));
     auto monitoring_state = detail::monitoring_runtime_t::from (_state->monitoring).state ();
@@ -706,7 +706,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         add_hosted_service (
           std::make_unique<runtime::location_monitoring_host_service_t> (monitoring_state));
     }
-    const auto stream_snapshot = _state->zlink.streams ();
+    const auto stream_snapshot = detail::stream_runtime_t::from (_state->zlink).snapshots ();
     detail::validate_monitoring_sources (_state->monitoring, channel_snapshot, spot_node_snapshot);
     std::vector<runtime::spot_node_host_service_t::node_runtime_t> spot_node_runtimes;
     if (!spot_node_snapshot.empty ()) {
@@ -773,7 +773,9 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::singleton);
     }
-    if (!_state->zlink.route_channels ().empty ()) {
+    const auto route_channel_ids =
+      detail::channel_runtime_manager_t::configured_route_channel_ids (_state->zlink);
+    if (!route_channel_ids.empty ()) {
         std::vector<runtime::route_channel_host_service_t::spot_node_runtime_t>
           route_spot_node_runtimes;
         route_spot_node_runtimes.reserve (spot_node_runtimes.size ());
@@ -785,7 +787,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         add_hosted_service (std::make_unique<runtime::route_channel_host_service_t> (
           _state->zlink.message_bus (), _state->serializers, std::move (route_spot_node_runtimes),
           detail::build_route_internal_dispatchers (
-            _state->zlink, spot_node_snapshot, _state->zlink.route_channels (),
+            _state->zlink, spot_node_snapshot, route_channel_ids,
             _state->services.build_provider ().get_required<detail::actor_gateway_runtime_t> (),
             _state->serializers)));
     }
@@ -1125,7 +1127,7 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
                     > 0) {
                     return true;
                 }
-                for (const auto &spot_node : state.zlink.spot_nodes ()) {
+                for (const auto &spot_node : detail::spot_node_runtime_t::snapshots (state.zlink)) {
                     auto runtime = detail::spot_node_runtime_t::from (state.zlink, spot_node.name);
                     if (runtime && runtime->has_active_callbacks ()) {
                         return true;

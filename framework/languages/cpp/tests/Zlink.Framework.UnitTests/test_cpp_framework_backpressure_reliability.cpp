@@ -13,12 +13,12 @@ int main ()
 
     auto bus = zlink.message_bus ();
     auto runtime = zlink::framework::detail::channel_runtime_t::from (bus);
-    if (bus.pending_limit () != 1 || runtime.pending_limit () != 1) {
+    if (runtime.pending_limit () != 1) {
         return 1;
     }
 
     auto first_request = runtime.reserve_outbound_request ("profile");
-    if (!first_request || runtime.pending_count () != 1 || bus.pending_count () != 1) {
+    if (!first_request || runtime.pending_count () != 1) {
         return 2;
     }
 

@@ -267,7 +267,7 @@
 ### 언어별 표면 차이 (기준선 대조)
 
 - [ ] **§12.3** — 근거 없는 공개 표면과 connect 상태 처리 (Java, Kotlin)
-- [ ] **§12.14** — Kotlin option helper가 수신 한도를 되돌린다 (Kotlin)
+- [x] **§12.14** — Kotlin compression option helper가 `maxReceivedMessages`를 그대로 보존한다. 집중 회귀 테스트와 Kotlin module 전체 테스트 통과. 구현 커밋 `f7787358d`(2026-07-15).
 - [ ] **§12.19** — typed 표면 경계 (Java, Kotlin)
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
@@ -299,10 +299,11 @@
 
 ### §12.14 Kotlin option helper가 수신 한도를 되돌린다 (Kotlin)
 
-**미충족(Kotlin).** Kotlin의 compression option helper가 options를 복사할 때
-`maxReceivedMessages`를 전달하지 않는 constructor overload를 골라, 사용자가 지정한 값을
-`Integer.MAX_VALUE`로 되돌린다. wrapper는 buffering 정책을 바꾸면 안 되며 모든 option 값을
-보존해야 한다([languages/java/03 §13](../stream-connector/languages/java/03-stream-connector.ko.md)).
+**해결(Kotlin).** compression option helper가 options를 복사할 때 `maxReceivedMessages`도 함께
+전달한다. 별도의 복사 전용 추상화를 추가하는 안과 기존의 한 곳뿐인 복사 함수에서 빠진 값을
+보완하는 안을 비교해 후자를 선택했다. 새 interface를 만들지 않으면서 수신 대기열 정책의 복사
+지점을 한 곳으로 유지한다. 한도를 7로 지정한 뒤 compression을 켜거나 꺼도 7이 유지되는 집중
+회귀 테스트와 Kotlin module 전체 테스트가 통과했다. 구현 커밋 `f7787358d`(2026-07-15).
 
 ### §12.19 typed 표면 경계 (Java, Kotlin)
 

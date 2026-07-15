@@ -658,10 +658,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 
 ### 체크리스트
 
-- [ ] **E2E-ND-01** (**가짜 통과**) — Config 11에 **e2e 앱이 없고 시나리오를 `echo`로 통과시킨다**
-  - 선행 해소: 독립 역할 앱과 13개 시나리오가 없으면 실패하는 집중 게이트에서 현재 runner의 하위
-    config 재실행과 합성 `PASS`가 실제로 실패했다. OBS-C1의 신규 배정 제외 선행 계약은 E2E-ND-26에서
-    공개 server weight와 drain 표면으로 검증했으므로, 이제 Config 11 역할 앱과 시나리오를 구현해야 한다.
+- [x] **E2E-ND-01** (**가짜 통과**) — Config 11에 **e2e 앱이 없고 시나리오를 `echo`로 통과시킨다**
+  - 근거: 독립 역할 앱과 13개 시나리오가 없으면 실패하는 집중 게이트에서 기존 하위 config 재실행·합성 `PASS`가 2건 모두 실패한 것을 확인한 뒤, Config 11 전용 Session 1개·Play 2개·OrderWorkflow 2개·브라우저 client와 OBS-A1~C5를 구현했다. 다중 STREAM endpoint 매핑과 강제 drain의 `ServerDrain` 통지 결함도 집중 contract test로 고쳤고, full runner가 C5 두 rollout 형태를 포함해 `observability-ops e2e result=passed`, 관련 contract test가 52/52 통과했다. POSD/DDD 리뷰에서 Config 10 이름·실패 주입 helper 누출과 세 역할의 flow-log 파일 지식 반복을 제거하고 ObservabilityOps 이름 공간과 단일 진단 route로 모았다. 커밋 `14989b33b`.
 - [x] **E2E-ND-02** (**가짜 통과**) — probe 서버가 **클라이언트가 검사할 값을 리터럴로 만들어 낸다**
   - 근거: probe가 합성하던 topology 값을 제거하고 실제 consumer app role의 public query와 resilience client가 같은 관측 경로를 사용하게 했다. 합성 probe 없이는 실패하던 topology/RL-A1 게이트가 통과한다. 커밋 `cc857d12a`, `31f56b068`.
 - [x] **SMP-ND-01** (미구현) — Bingo의 정본 `yield` 왕복이 **계약·서버·클라이언트 게이트 어디에도 없다**

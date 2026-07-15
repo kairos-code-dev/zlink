@@ -5,15 +5,17 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
-import systems.zlink.e2e.runtimemonitoring.shared.Env;
 import systems.zlink.e2e.runtimemonitoring.trigger.validation.BadIntervalConfig;
 import systems.zlink.e2e.runtimemonitoring.trigger.validation.MissingSocketSourceConfig;
 import systems.zlink.e2e.runtimemonitoring.trigger.validation.MissingSpotSourceConfig;
@@ -27,6 +29,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(TriggerOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.runtimemonitoring.trigger.app")
@@ -35,8 +38,10 @@ public final class Program {
     }
 
     public static void main(String... args) {
-        Env.configure(args);
+        String config = configPath(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(isolatedEnvironment())
+            .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
         builder.run();
@@ -48,16 +53,15 @@ public final class Program {
     }
 
     @Bean
-    ZLinkFrameworkConfigurer triggerFramework() {
+    ZLinkFrameworkConfigurer triggerFramework(TriggerOptions config) {
         return options -> {
-            String logDir = Env.get("logDirectory", "logs");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(logDir + "/trigger-flow.log")
+                .traceLogFile(config.logDirectory() + "/trigger-flow.log")
                 .traceLabel("java-mon-trigger");
             var channel = options.addClientServerChannel(Contracts.CHANNEL)
-                .enableClient(Env.get("apiEndpoint"));
-            String serviceBEndpoint = Env.get("serviceBApiEndpoint");
+                .enableClient(config.apiEndpoint());
+            String serviceBEndpoint = config.serviceBApiEndpoint();
             if (!serviceBEndpoint.isBlank()) {
                 channel.enableClient(serviceBEndpoint);
             }
@@ -82,12 +86,13 @@ public final class Program {
     }
 
     @Bean
-    TriggerEndpoints triggerEndpoints(ZLinkClient client, ObjectMapper json, TriggerEvidence evidence) {
+    TriggerEndpoints triggerEndpoints(
+        ZLinkClient client, ObjectMapper json, TriggerEvidence evidence, TriggerOptions config) {
         return new TriggerEndpoints(
             client,
             json,
             evidence,
-            Env.get("triggerHttpEndpoint"));
+            config.triggerHttpEndpoint());
     }
 
     public static final class TriggerEndpoints implements SmartLifecycle {
@@ -254,6 +259,20 @@ public final class Program {
                 event.event().name(),
                 event.localAddr() + "|" + event.remoteAddr());
         }
+    }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: runtime-monitoring-trigger --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
     }
 
 }

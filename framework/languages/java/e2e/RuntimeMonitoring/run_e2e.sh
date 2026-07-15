@@ -197,6 +197,18 @@ write_config() {
   } >"${path}"
   chmod 0600 "${path}"
 }
+write_role_config() {
+  local path="$1"
+  shift
+  {
+    printf 'e2e.redis-location-endpoint=%s\n' "${redis_location_endpoint}"
+    printf 'e2e.location-key-prefix=%s\n' "${location_key_prefix}"
+    printf 'e2e.log-directory=%s\n' "${log_dir}"
+    local property
+    for property in "$@"; do printf 'e2e.%s\n' "${property}"; done
+  } >"${path}"
+  chmod 0600 "${path}"
+}
 
 service_config="${config_dir}/service.properties"
 filtered_service_config="${config_dir}/filtered-service.properties"
@@ -205,33 +217,21 @@ trigger_config="${config_dir}/trigger.properties"
 client_config="${config_dir}/client.properties"
 
 create_configs() {
-  write_config "${service_config}" \
-    "routingId=svc-a" \
-    "apiEndpoint=${API_ENDPOINT}" \
-    "handshakeEndpoint=${HANDSHAKE_ENDPOINT}" \
-    "spotEndpoint=${SPOT_ENDPOINT}" \
-    "spotPubEndpoint=${SPOT_PUB_ENDPOINT}" \
-    "httpEndpoint=${SERVICE_HTTP}" \
-    "enableHandshake=true" \
-    "enableSpot=true"
-  write_config "${filtered_service_config}" \
-    "routingId=svc-b" \
-    "apiEndpoint=${FILTER_API_ENDPOINT}" \
-    "httpEndpoint=${FILTER_HTTP}" \
-    "enableHandshake=false" \
-    "enableSpot=false"
-  write_config "${throwing_service_config}" \
-    "routingId=svc-throw" \
-    "apiEndpoint=${THROW_API_ENDPOINT}" \
-    "httpEndpoint=${THROW_HTTP}" \
-    "enableHandshake=false" \
-    "enableSpot=false"
-  write_config "${trigger_config}" \
-    "apiEndpoint=${API_ENDPOINT}" \
-    "serviceBApiEndpoint=${FILTER_API_ENDPOINT}" \
-    "triggerHttpEndpoint=${TRIGGER_HTTP}"
+  write_role_config "${service_config}" \
+    "routing-id=svc-a" "api-endpoint=${API_ENDPOINT}" \
+    "handshake-endpoint=${HANDSHAKE_ENDPOINT}" "spot-endpoint=${SPOT_ENDPOINT}" \
+    "spot-pub-endpoint=${SPOT_PUB_ENDPOINT}" "http-endpoint=${SERVICE_HTTP}" \
+    "enable-handshake=true" "enable-spot=true"
+  write_role_config "${filtered_service_config}" \
+    "routing-id=svc-b" "api-endpoint=${FILTER_API_ENDPOINT}" \
+    "http-endpoint=${FILTER_HTTP}" "enable-handshake=false" "enable-spot=false"
+  write_role_config "${throwing_service_config}" \
+    "routing-id=svc-throw" "api-endpoint=${THROW_API_ENDPOINT}" \
+    "http-endpoint=${THROW_HTTP}" "enable-handshake=false" "enable-spot=false"
+  write_role_config "${trigger_config}" \
+    "api-endpoint=${API_ENDPOINT}" "service-b-api-endpoint=${FILTER_API_ENDPOINT}" \
+    "trigger-http-endpoint=${TRIGGER_HTTP}"
   write_config "${client_config}" \
-    "scenario=${SCENARIO}" \
     "triggerHttpEndpoint=${TRIGGER_HTTP}" \
     "serviceHttpEndpoint=${SERVICE_HTTP}" \
     "serviceBHttpEndpoint=${FILTER_HTTP}" \
@@ -277,7 +277,7 @@ wait_port throwing-service-http "${THROW_HTTP}"
 wait_port trigger-http "${TRIGGER_HTTP}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 
-"$(client_bin)" --config "${client_config}" \
+"$(client_bin)" --config "${client_config}" --scenario "${SCENARIO}" \
   >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"

@@ -11,18 +11,25 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.IntPredicate;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
-import systems.zlink.e2e.runtimemonitoring.shared.Env;
+import systems.zlink.e2e.runtimemonitoring.client.ClientOptions;
 import systems.zlink.httpclient.RawHttpResponse;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class MonitoringScenarioContext implements AutoCloseable {
-    private final String triggerEndpoint = Env.get("triggerHttpEndpoint");
-    private final String serviceEndpoint = Env.get("serviceHttpEndpoint");
-    private final String serviceBEndpoint = Env.get("serviceBHttpEndpoint");
-    private final ZLinkHttpClient trigger = ZLinkHttpClient.create(triggerEndpoint)
-        .timeout(Duration.ofMinutes(5))
-        .build();
+    private final ClientOptions options;
+    private final String triggerEndpoint;
+    private final String serviceEndpoint;
+    private final String serviceBEndpoint;
+    private final ZLinkHttpClient trigger;
     private Process restartedServiceB;
+
+    public MonitoringScenarioContext(ClientOptions options) {
+        this.options = options;
+        triggerEndpoint = options.triggerHttpEndpoint();
+        serviceEndpoint = options.serviceHttpEndpoint();
+        serviceBEndpoint = options.serviceBHttpEndpoint();
+        trigger = ZLinkHttpClient.create(triggerEndpoint).timeout(Duration.ofMinutes(5)).build();
+    }
 
     public String serviceEndpoint() {
         return serviceEndpoint;
@@ -208,13 +215,13 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             return;
         }
         ProcessBuilder builder = new ProcessBuilder(
-            Env.get("filteredServiceBinary"),
+            options.filteredServiceBinary(),
             "--config",
-            Env.get("filteredServiceConfigPath"));
+            options.filteredServiceConfigPath());
         builder.redirectOutput(new java.io.File(
-            Env.get("logDirectory", "logs") + "/filtered-service-restart.stdout.log"));
+            options.logDirectory() + "/filtered-service-restart.stdout.log"));
         builder.redirectError(new java.io.File(
-            Env.get("logDirectory", "logs") + "/filtered-service-restart.stderr.log"));
+            options.logDirectory() + "/filtered-service-restart.stderr.log"));
         try {
             restartedServiceB = builder.start();
         } catch (IOException error) {
@@ -268,7 +275,7 @@ public final class MonitoringScenarioContext implements AutoCloseable {
     }
 
     public void triggerHandshakeFailure() {
-        String endpoint = Env.get("handshakeEndpoint");
+        String endpoint = options.handshakeEndpoint();
         int port = Integer.parseInt(endpoint.substring(endpoint.lastIndexOf(':') + 1));
         for (int index = 0; index < 5; index++) {
             try (Socket socket = new Socket()) {

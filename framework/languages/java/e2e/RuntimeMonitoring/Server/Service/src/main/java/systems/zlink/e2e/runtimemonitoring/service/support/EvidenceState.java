@@ -3,13 +3,17 @@ package systems.zlink.e2e.runtimemonitoring.service.support;
 import java.util.ArrayList;
 import java.util.List;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
-import systems.zlink.e2e.runtimemonitoring.shared.Env;
 
 public final class EvidenceState {
     private final List<Contracts.EvidenceEntry> entries = new ArrayList<>();
+    private final String rid;
+
+    public EvidenceState(String rid) {
+        this.rid = rid;
+    }
 
     public String rid() {
-        return Env.get("routingId", "svc-a");
+        return rid;
     }
 
     public synchronized void record(

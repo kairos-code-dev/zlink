@@ -2,12 +2,15 @@ package systems.zlink.e2e.runtimemonitoring.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
+import java.nio.file.Path;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringEventHandlers;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringSpot;
@@ -16,7 +19,6 @@ import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkReqHandler;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceHttpServer;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
-import systems.zlink.e2e.runtimemonitoring.shared.Env;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
@@ -31,6 +33,7 @@ import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(ServiceOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.runtimemonitoring.service")
@@ -39,8 +42,14 @@ public final class Program {
     }
 
     public static void main(String... args) {
-        Env.configure(args);
+        run(args);
+    }
+
+    public static void run(String... args) {
+        String config = configPath(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
+            .environment(isolatedEnvironment())
+            .properties("spring.config.location=" + Path.of(config).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
         builder.run();
@@ -52,8 +61,8 @@ public final class Program {
     }
 
     @Bean
-    EvidenceState evidenceState() {
-        return new EvidenceState();
+    EvidenceState evidenceState(ServiceOptions config) {
+        return new EvidenceState(config.routingId());
     }
 
     @Bean
@@ -62,50 +71,50 @@ public final class Program {
         ObjectMapper json,
         systems.zlink.framework.channels.ZLinkChannelRuntimeOptions runtimeOptions,
         ObjectProvider<ZLinkSpotManager> spots,
-        org.springframework.context.ConfigurableApplicationContext applicationContext) {
+        org.springframework.context.ConfigurableApplicationContext applicationContext,
+        ServiceOptions config) {
         return new EvidenceHttpServer(
             state,
             json,
             runtimeOptions,
             spots,
             applicationContext,
-            Env.get("httpEndpoint"));
+            config.httpEndpoint());
     }
 
     @Bean
-    ZLinkFrameworkConfigurer frameworkConfigurer() {
+    ZLinkFrameworkConfigurer frameworkConfigurer(ServiceOptions config) {
         return options -> {
-            String logDir = Env.get("logDirectory", "logs");
             options.configureLocations().setHeartbeatInterval(Duration.ofMillis(500));
             options.configureLocations().setOwnerLeaseTtl(Duration.ofSeconds(3));
             options.configureLocations().setPollingInterval(Duration.ofMillis(250));
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(logDir + "/service-flow.log")
+                .traceLogFile(config.logDirectory() + "/service-flow.log")
                 .traceLabel("java-mon-service");
             options.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(Env.get("apiEndpoint"))
-                .setRoutingId(RoutingId.from(Env.get("routingId", "svc-a")))
+                .enableServer(config.apiEndpoint())
+                .setRoutingId(RoutingId.from(config.routingId()))
                 .addRequestHandler(
                     WorkReqHandler.class,
                     Contracts.WorkReq.class,
                     Contracts.WorkRes.class,
                     "WorkReq");
-            if (enabled("enableHandshake", true)) {
+            if (config.enableHandshake()) {
                 options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
-                    .enableServer(Env.get("handshakeEndpoint"))
-                    .setRoutingId(RoutingId.from(Env.get("routingId", "svc-a") + "-handshake"))
+                    .enableServer(config.handshakeEndpoint())
+                    .setRoutingId(RoutingId.from(config.routingId() + "-handshake"))
                     .addRequestHandler(
                         WorkReqHandler.class,
                         Contracts.WorkReq.class,
                         Contracts.WorkRes.class,
                         "HandshakeWorkReq");
             }
-            if (enabled("enableSpot", true)) {
+            if (config.enableSpot()) {
                 ZLinkSpotNodeBuilder node = options.addSpotMesh(Contracts.SPOT_MESH);
-                node.enableRouter(Env.get("spotEndpoint"))
-                    .setRoutingId(RoutingId.from(Env.get("routingId", "svc-a") + "-spot"));
-                node.enablePubSub(Env.get("spotPubEndpoint"));
+                node.enableRouter(config.spotEndpoint())
+                    .setRoutingId(RoutingId.from(config.routingId() + "-spot"));
+                node.enablePubSub(config.spotPubEndpoint());
                 node.addSpotFactory(MonitoringSpot.class);
                 node.addSpotFactory(TriggeredMonitoringSpot.class);
             }
@@ -113,39 +122,39 @@ public final class Program {
     }
 
     @Bean
-    ZLinkMonitoringOptionsCustomizer monitoringOptions() {
+    ZLinkMonitoringOptionsCustomizer monitoringOptions(ServiceOptions config) {
         return options -> {
             options.addSocketEvents(
                 Contracts.CHANNEL,
                 ZLinkSocketEventKind.CONNECTION_READY,
                 ZLinkSocketEventKind.PEER_ADMISSION_CHANGED);
             options.addLocationRuntimeEvents(Contracts.LOCATION_SOURCE, Duration.ofMillis(100));
-            if (enabled("enableHandshake", true)) {
+            if (config.enableHandshake()) {
                 options.addSocketEvents(Contracts.HANDSHAKE_CHANNEL);
             }
-            if (enabled("enableSpot", true)) {
+            if (config.enableSpot()) {
                 options.addSpotEvents(Contracts.SPOT_MESH, Duration.ofMillis(100));
             }
         };
     }
 
     @Bean
-    WorkReqHandler workRequestHandler(EvidenceState state) {
-        return new WorkReqHandler(state);
+    WorkReqHandler workRequestHandler(EvidenceState state, ServiceOptions config) {
+        return new WorkReqHandler(state, config.routingId());
     }
 
     @Bean
-    ZLinkRedisLocationStore locationStore() {
+    ZLinkRedisLocationStore locationStore(ServiceOptions config) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("redisLocationEndpoint"))
-            .setKeyPrefix(Env.get("locationKeyPrefix"))
+            .setConnectionString(config.redisLocationEndpoint())
+            .setKeyPrefix(config.locationKeyPrefix())
             .setCommandTimeout(Duration.ofMillis(500)));
     }
 
     @Bean
-    ApplicationRunner createSpot(ObjectProvider<ZLinkSpotManager> spots) {
+    ApplicationRunner createSpot(ObjectProvider<ZLinkSpotManager> spots, ServiceOptions config) {
         return ignored -> {
-            if (!enabled("enableSpot", true)) {
+            if (!config.enableSpot()) {
                 return;
             }
             ZLinkSpotManager manager = spots.getIfAvailable();
@@ -195,7 +204,17 @@ public final class Program {
         return new MonitoringEventHandlers.LocationRuntimeRecorder(state);
     }
 
-    private static boolean enabled(String name, boolean fallback) {
-        return Boolean.parseBoolean(Env.get(name, Boolean.toString(fallback)));
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: runtime-monitoring-service --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment value = new StandardEnvironment();
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        value.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return value;
     }
 }

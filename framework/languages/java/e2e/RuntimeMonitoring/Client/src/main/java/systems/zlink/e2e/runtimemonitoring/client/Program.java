@@ -10,16 +10,20 @@ import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonB2RegistrationVal
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonC1DispatchFailureScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonD1FailureRecoveryScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
-import systems.zlink.e2e.runtimemonitoring.shared.Env;
 
 public final class Program {
     private Program() {
     }
 
     public static void main(String... args) {
-        Env.configure(args);
-        try (MonitoringScenarioContext context = new MonitoringScenarioContext()) {
-            String scenario = Env.get("scenario", "all");
+        if (args.length != 4 || !"--config".equals(args[0]) || args[1].isBlank()
+            || !"--scenario".equals(args[2]) || args[3].isBlank()) {
+            throw new IllegalArgumentException(
+                "Usage: runtime-monitoring-client --config <path> --scenario <selector>");
+        }
+        ClientOptions options = ClientOptions.load(args[1]);
+        try (MonitoringScenarioContext context = new MonitoringScenarioContext(options)) {
+            String scenario = args[3];
             if (!"all".equals(scenario)) {
                 runOne(scenario, context);
                 System.out.println("monitoring e2e result=passed");

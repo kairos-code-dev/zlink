@@ -225,8 +225,9 @@ run_sf_b1() {
 run_sf_b2() {
   start_topology
   run_warmup
-  docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null
-  REDIS_CONTAINER_ID=""
+  stop_redis
+  kill_pid "$API_B_PID"
+  start_provider_b
   run_client SF-B2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log"
 }
 

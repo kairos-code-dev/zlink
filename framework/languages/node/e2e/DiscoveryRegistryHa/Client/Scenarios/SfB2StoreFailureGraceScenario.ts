@@ -19,8 +19,13 @@ export async function runSfB2(options: ClientOptions): Promise<void> {
   const replies = await driveRequestsPastGrace(options.consumerUrl, 7500);
   ensure(replies.length >= 4, `SF-B2 expected repeated successful traffic after grace, actual=${replies.length}.`);
   ensure(
-    replies.every((reply) => reply.providerRid === 'api-a' || reply.providerRid === 'api-b'),
-    'SF-B2 received a reply from an unexpected provider.'
+    replies.every((reply) => reply.providerRid === 'api-a'),
+    'SF-B2 connected to api-b while the store was unavailable.'
+  );
+  const apiBEvidence = await getJson<string[]>(options.providerBUrl, '/evidence');
+  ensure(
+    !apiBEvidence.some((entry) => entry.includes('value=sf-b2-')),
+    'SF-B2 api-b evidence shows a new connection during the store outage.'
   );
 
   console.log('scenario SF-B2 passed');

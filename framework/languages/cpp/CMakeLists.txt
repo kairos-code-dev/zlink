@@ -1376,13 +1376,28 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_registration_codec_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_spot_actor_transfer_node
+  add_library(zlink_cpp_e2e_spot_actor_transfer_host STATIC
     e2e/SpotActorTransfer/Server/ActorNode/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_spot_actor_transfer_node PRIVATE
+  target_link_libraries(zlink_cpp_e2e_spot_actor_transfer_host PRIVATE
     zlink::framework
     zlink::framework_locations_redis)
-  target_include_directories(zlink_cpp_e2e_spot_actor_transfer_node PRIVATE
+  target_include_directories(zlink_cpp_e2e_spot_actor_transfer_host PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_spot_actor_transfer_actor_node
+    e2e/SpotActorTransfer/Server/ActorNode/entrypoint.cpp)
+  add_executable(zlink_cpp_e2e_spot_actor_transfer_session
+    e2e/SpotActorTransfer/Server/Session/main.cpp)
+  foreach(transfer_target IN ITEMS
+      zlink_cpp_e2e_spot_actor_transfer_actor_node
+      zlink_cpp_e2e_spot_actor_transfer_session)
+    target_link_libraries(${transfer_target} PRIVATE
+      zlink_cpp_e2e_spot_actor_transfer_host
+      zlink::framework
+      zlink::framework_locations_redis)
+    target_include_directories(${transfer_target} PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  endforeach()
 
   add_executable(zlink_cpp_e2e_spot_actor_transfer_client
     e2e/SpotActorTransfer/Client/main.cpp)

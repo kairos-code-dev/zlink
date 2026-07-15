@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "../../Shared/messages.hpp"
+#include "../Shared/node_host.hpp"
 
 #include <zlink/framework.hpp>
 #include <zlink/locations/redis.hpp>
@@ -24,13 +25,14 @@
 
 namespace e2e = zlink::e2e::spot_actor_transfer;
 namespace fw = zlink::framework;
+using transfer_host_role_t =
+  zlink::framework::e2e::spot_actor_transfer::server::host_role_t;
 
 namespace
 {
 
 struct node_options_t
 {
-    std::string role;
     std::string initial_actor_node;
     std::string rid;
     std::string http_url;
@@ -44,8 +46,7 @@ struct node_options_t
 
     static node_options_t bind (const fw::configuration_section_t &section)
     {
-        return {.role = section.require ("role"),
-                .initial_actor_node = section.require ("initialActorNode"),
+        return {.initial_actor_node = section.require ("initialActorNode"),
                 .rid = section.require ("rid"),
                 .http_url = section.require ("httpUrl"),
                 .router_endpoint = section.require ("routerEndpoint"),
@@ -1068,7 +1069,7 @@ class shutdown_handler_t
 
 } // namespace
 
-int main (int argc, char **argv)
+int run_host_impl (transfer_host_role_t host_role, int argc, char **argv)
 {
     auto app = fw::app_t::create ();
     app.config ().load_cli (argc, argv);
@@ -1078,7 +1079,6 @@ int main (int argc, char **argv)
     }
     app.config ().load_json (*config_path);
     const auto configured = app.config ().bind_required<node_options_t> ("e2e");
-    const auto &role = configured.role;
     const auto &rid = configured.rid;
     const auto &http_url = configured.http_url;
     const auto &router_endpoint = configured.router_endpoint;
@@ -1131,7 +1131,7 @@ int main (int argc, char **argv)
         mesh.enable_router (router_endpoint)
           .enable_pub_sub (pub_endpoint)
           .set_routing_id (zlink::routing_id_t::from (rid));
-        if (role == "actor") {
+        if (host_role == transfer_host_role_t::actor_node) {
             mesh.add_entry_spot<transfer_entry_spot_t> ()
               .add_spot<transfer_user_spot_t> ("transfer-user")
               .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_stateful)
@@ -1152,7 +1152,7 @@ int main (int argc, char **argv)
                 e2e::actor_type_fail_transfer_in);
         }
 
-        if (role == "actor") {
+        if (host_role == transfer_host_role_t::actor_node) {
             framework.add_stream_node (std::string (e2e::mesh_name) + "-internal-" + rid)
               .bind (stream_endpoint)
               .register_session<transfer_session_t> ();
@@ -1170,7 +1170,7 @@ int main (int argc, char **argv)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
           .map_post<evidence_wait_handler_t> ("/evidence/wait");
-        if (role == "actor") {
+        if (host_role == transfer_host_role_t::actor_node) {
             framework.http ()
               .map_post<joined_gate_release_handler_t> ("/joined-gates/{spotRid}/release")
               .map_post<transfer_gate_release_handler_t> ("/transfer-gates/{actorId}/release")
@@ -1196,4 +1196,11 @@ int main (int argc, char **argv)
     shutdown_flag_ptr->requested.store (true);
     shutdown_watcher.join ();
     return code;
+}
+
+int zlink::framework::e2e::spot_actor_transfer::server::run_host (host_role_t role,
+                                                                  int argc,
+                                                                  char **argv)
+{
+    return run_host_impl (role, argc, argv);
 }

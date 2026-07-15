@@ -19,7 +19,8 @@ CONFIG_DIR="$LOG_DIR/config"
 mkdir -p "$LOG_DIR"
 mkdir -p "$CONFIG_DIR"
 
-NODE_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_node"
+ACTOR_NODE_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_actor_node"
+SESSION_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_session"
 CLIENT_BIN="$BUILD_DIR/zlink_cpp_e2e_spot_actor_transfer_client"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -97,18 +98,24 @@ start_role() {
   local router="$4"
   local stream="$5"
   local pub="$6"
+  local binary
+  if [[ "$role" == "actor" ]]; then
+    binary="$ACTOR_NODE_BIN"
+  else
+    binary="$SESSION_BIN"
+  fi
   local config_path="$CONFIG_DIR/$rid.json"
-  python3 - "$config_path" "$role" "$rid" "$url" "$router" "$stream" "$pub" \
+  python3 - "$config_path" "$rid" "$url" "$router" "$stream" "$pub" \
     "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
 import json
 import os
 import stat
 import sys
 
-(path, role, rid, http_url, router, stream, pub, redis_endpoint,
+(path, rid, http_url, router, stream, pub, redis_endpoint,
  redis_key_prefix, log_dir) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
-    json.dump({"e2e": {"role": role, "initialActorNode": "actor-a",
+    json.dump({"e2e": {"initialActorNode": "actor-a",
         "rid": rid, "httpUrl": http_url, "routerEndpoint": router,
         "streamEndpoint": stream, "pubEndpoint": pub,
         "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
@@ -116,7 +123,7 @@ with open(path, "w", encoding="utf-8") as file:
         file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
-  setsid "$NODE_BIN" --config="$config_path" \
+  setsid "$binary" --config="$config_path" \
     >"$LOG_DIR/${rid}.stdout.log" 2>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }

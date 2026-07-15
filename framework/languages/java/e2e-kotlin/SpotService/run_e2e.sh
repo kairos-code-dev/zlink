@@ -5,6 +5,12 @@ SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SO
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+if rg -n '@EnableZLinkFramework|ClientDriverSpot|\bZLink(SpotOutbound|RouteClient|SpotManager)\b' \
+    Client/src/main/kotlin --glob '*.kt'; then
+  echo "SpotService Kotlin Client must not host or call the framework runtime directly" >&2
+  exit 1
+fi
+
 pids=()
 PLAY_A_PID=""
 PLAY_B_PID=""

@@ -9,6 +9,7 @@ import {
   ZlinkStreamEncodedPayload,
   ZlinkStreamError,
   ZlinkStreamErrorCode,
+  ZlinkStreamExpectNoneCall,
   ZlinkStreamFlow,
   ZlinkStreamInboundObservation,
   zlinkStreamJsonCodec,
@@ -17,9 +18,11 @@ import {
   ZlinkStreamMetadata,
   ZlinkStreamRequestCall,
   ZlinkStreamSendCall,
+  ZlinkStreamSequenceCall,
   ZlinkStreamWaitCall
 } from '../Contracts';
 import { ZlinkStreamRequestBuilder, ZlinkStreamSendBuilder, ZlinkStreamWaitBuilder } from './Calls/ZlinkStreamCallBuilders';
+import { ZlinkStreamExpectNoneBuilder, ZlinkStreamSequenceBuilder } from './Calls/ZlinkStreamObservationBuilders';
 import {
   ZLINK_STREAM_HEARTBEAT_PING,
   ZLINK_STREAM_HEARTBEAT_PONG,
@@ -167,6 +170,16 @@ export class DefaultZlinkStreamConnector implements ZlinkStreamConnector {
   waitFor<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamWaitCall<TPayload> {
     validateName(name);
     return new ZlinkStreamWaitBuilder<TPayload>(this, name);
+  }
+
+  expectNone<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamExpectNoneCall<TPayload> {
+    validateName(name);
+    return new ZlinkStreamExpectNoneBuilder<TPayload>(this, name);
+  }
+
+  waitForSequence<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamSequenceCall<TPayload> {
+    validateName(name);
+    return new ZlinkStreamSequenceBuilder<TPayload>(this, name);
   }
 
   waitForMessage<TPayload>(

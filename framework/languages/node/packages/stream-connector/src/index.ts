@@ -2,6 +2,7 @@ export * from './Contracts';
 export {
   DefaultZlinkStreamConnector,
 } from './Runtime/ZlinkStreamConnector';
+export { zlinkStreamAssert } from './Runtime/ZlinkStreamAssertions';
 import { DefaultZlinkStreamConnector } from './Runtime/ZlinkStreamConnector';
 import type { ZlinkStreamConnectorOptions } from './Contracts';
 

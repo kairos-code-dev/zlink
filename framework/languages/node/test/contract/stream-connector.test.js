@@ -908,6 +908,77 @@ test('stream connector received-message cap does not block request response fram
   assert.equal(errors.some((error) => error.code === connector.ZlinkStreamErrorCode.ReceivedMessageDropped), false);
 });
 
+test('stream connector test helpers observe absence and ordered payloads through the received queue', async () => {
+  const transportFactory = new MemoryTransportFactory();
+  const instance = connector.zlinkStreamConnectorFactory.create({
+    endpoint: 'ws://127.0.0.1:19000',
+    transportFactory
+  });
+  await instance.connect();
+
+  await instance.expectNone('Notice').within(5).run();
+
+  const unexpected = instance.expectNone('Notice').within(1000).run();
+  const unexpectedRejected = assert.rejects(() => unexpected, (error) =>
+    error.error?.code === connector.ZlinkStreamErrorCode.ValidationFailed);
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'unexpected'));
+  await instance.dispatch();
+  await unexpectedRejected;
+
+  const sequence = instance.waitForSequence('Notice')
+    .expect(() => true)
+    .expect(() => true)
+    .timeout(1000)
+    .run();
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'first'));
+  await instance.dispatch();
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'second'));
+  await instance.dispatch();
+  const payloads = await sequence;
+  assert.deepEqual(payloads.map((payload) => new TextDecoder().decode(payload.payload)), ['first', 'second']);
+
+  const outOfOrder = instance.waitForSequence('Notice')
+    .expect((payload) => new TextDecoder().decode(payload.payload) === 'first')
+    .timeout(1000)
+    .run();
+  const outOfOrderRejected = assert.rejects(() => outOfOrder, (error) =>
+    error.error?.code === connector.ZlinkStreamErrorCode.ValidationFailed);
+  transportFactory.connection.pushFrame(sendFrame('Notice', 'wrong'));
+  await instance.dispatch();
+  await outOfOrderRejected;
+  await instance.close();
+});
+
+test('zlinkStreamAssert classifies failures and timeouts without pre-started promises', async () => {
+  assert.throws(
+    () => connector.zlinkStreamAssert.ensure(false, 'required explanation'),
+    /required explanation/
+  );
+  const failure = await connector.zlinkStreamAssert.expectFailure(async () => {
+    throw new connector.ZlinkStreamException({
+      code: connector.ZlinkStreamErrorCode.RemoteError,
+      message: 'remote failure'
+    });
+  }, connector.ZlinkStreamErrorCode.RemoteError);
+  assert.equal(failure.code, connector.ZlinkStreamErrorCode.RemoteError);
+
+  await connector.zlinkStreamAssert.expectTimeout(async () => {
+    throw new connector.ZlinkStreamException({
+      code: connector.ZlinkStreamErrorCode.RequestTimeout,
+      message: 'timed out'
+    });
+  });
+  await assert.rejects(
+    () => connector.zlinkStreamAssert.expectTimeout(async () => {
+      throw new connector.ZlinkStreamException({
+        code: connector.ZlinkStreamErrorCode.RemoteError,
+        message: 'not a timeout'
+      });
+    }),
+    (error) => error.error?.code === connector.ZlinkStreamErrorCode.RemoteError
+  );
+});
+
 test('stream connector request resolves compressed response payloads', async () => {
   const transportFactory = new MemoryTransportFactory();
   const instance = connector.zlinkStreamConnectorFactory.create({

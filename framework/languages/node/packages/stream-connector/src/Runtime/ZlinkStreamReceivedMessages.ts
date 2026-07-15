@@ -67,7 +67,7 @@ export class ZlinkStreamReceivedMessages {
   private async drain(): Promise<void> {
     for (let index = this.findDeliverableIndex(); index >= 0; index = this.findDeliverableIndex()) {
       const [{ message, signal }] = this.queue.splice(index, 1);
-      const handlers = this.handlers.get(message.name)!;
+      const handlers = [...this.handlers.get(message.name)!];
       for (const handler of handlers) {
         try {
           await handler(message, signal);

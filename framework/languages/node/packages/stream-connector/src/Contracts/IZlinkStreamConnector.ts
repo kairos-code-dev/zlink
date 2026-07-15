@@ -3,6 +3,8 @@ import type { RequiredZlinkStreamConnectorOptions } from './ZlinkStreamConnector
 import type {
   ZlinkStreamRequestCall,
   ZlinkStreamSendCall,
+  ZlinkStreamExpectNoneCall,
+  ZlinkStreamSequenceCall,
   ZlinkStreamWaitCall
 } from './Calls/ZlinkStreamCalls';
 import type {
@@ -37,4 +39,6 @@ export interface ZlinkStreamConnector {
     messageType?: Function
   ): Disposable;
   waitFor<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamWaitCall<TPayload>;
+  expectNone<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamExpectNoneCall<TPayload>;
+  waitForSequence<TPayload = ZlinkStreamEncodedPayload>(name: string): ZlinkStreamSequenceCall<TPayload>;
 }

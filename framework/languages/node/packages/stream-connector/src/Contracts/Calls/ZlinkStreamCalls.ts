@@ -32,3 +32,14 @@ export interface ZlinkStreamWaitCall<TPayload = ZlinkStreamEncodedPayload> {
   timeout(timeoutMs: number): ZlinkStreamWaitCall<TPayload>;
   submit(signal?: AbortSignal): Promise<ZlinkStreamMessage<TPayload>>;
 }
+
+export interface ZlinkStreamExpectNoneCall<TPayload = ZlinkStreamEncodedPayload> {
+  within(windowMs: number): ZlinkStreamExpectNoneCall<TPayload>;
+  run(signal?: AbortSignal): Promise<void>;
+}
+
+export interface ZlinkStreamSequenceCall<TPayload = ZlinkStreamEncodedPayload> {
+  expect(predicate: (payload: TPayload) => boolean): ZlinkStreamSequenceCall<TPayload>;
+  timeout(timeoutMs: number): ZlinkStreamSequenceCall<TPayload>;
+  run(signal?: AbortSignal): Promise<readonly TPayload[]>;
+}

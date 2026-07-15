@@ -38,6 +38,11 @@ if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS:-}" != 3 \
   echo "ToActorMessaging must use 3s readiness and 5s route settle limits" >&2
   exit 1
 fi
+if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
+    "$(pwd)/Client/src/main/java" "$(pwd)/Shared/src/main/java" --glob '*.java'; then
+  echo "ToActorMessaging client must use ZLinkHttpClient" >&2
+  exit 1
+fi
 
 reserve_ports() {
   python3 - <<'PY'

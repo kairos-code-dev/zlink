@@ -5,7 +5,6 @@ import java.time.Duration;
 import java.util.List;
 import systems.zlink.e2e.toactormessaging.shared.Contracts;
 import systems.zlink.e2e.toactormessaging.shared.Env;
-import systems.zlink.e2e.toactormessaging.shared.JsonHttp;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -77,7 +76,7 @@ public final class Program {
             waitRefUntilReady(callerUrl, "TA-A4-ready", actorRef);
             ZLinkStreamConnector connector = connectAndBind(sessionAStream, actorRef);
             assertBoundPush(connector, actorUrl, "TA-A4-before-disconnect", "ta-a4", "BeforeDisconnect");
-            Contracts.UnbindActorReply unbound = JsonHttp.postJson(
+            Contracts.UnbindActorReply unbound = ToActorHttpClient.postJson(
                 actorUrl + "/unbind", new Contracts.UnbindActorRequest("TA-A4-unbind", "ta-a4"),
                 Contracts.UnbindActorReply.class);
             require(unbound.unbound(), "TA-A4 unbind was not acknowledged");
@@ -87,7 +86,7 @@ public final class Program {
             assertCall(callerUrl, "TA-A4-disconnected-send", "ta-a4", "a4-send", "sent", true);
             assertCall(callerUrl, "TA-A4-disconnected-request", "ta-a4", "a4-request", "reply:a4-request", false);
             close(connector);
-            Contracts.DestroyActorReply destroyed = JsonHttp.postJson(
+            Contracts.DestroyActorReply destroyed = ToActorHttpClient.postJson(
                 actorUrl + "/destroy", new Contracts.DestroyActorRequest("TA-A4-destroy", "ta-a4"),
                 Contracts.DestroyActorReply.class);
             require(destroyed.destroyed(), "TA-A4 destroy was not acknowledged");
@@ -169,7 +168,7 @@ public final class Program {
         var waiting = connector.waitFor(Contracts.BoundPushNotify.class)
             .timeout(Duration.ofSeconds(8))
             .submit(Contracts.BoundPushNotify.class);
-        Contracts.BoundPushReply reply = JsonHttp.postJson(
+        Contracts.BoundPushReply reply = ToActorHttpClient.postJson(
             actorUrl + "/push", new Contracts.BoundPushRequest(scenario, actorId, value),
             Contracts.BoundPushReply.class);
         require(reply.submitted(), scenario + " push failed " + reply.errorKind());
@@ -184,7 +183,7 @@ public final class Program {
         String actorId,
         String value,
         String expectedKind) {
-        Contracts.BoundPushReply reply = JsonHttp.postJson(
+        Contracts.BoundPushReply reply = ToActorHttpClient.postJson(
             actorUrl + "/push", new Contracts.BoundPushRequest(scenario, actorId, value),
             Contracts.BoundPushReply.class);
         require(!reply.submitted(), scenario + " push unexpectedly succeeded");
@@ -214,7 +213,8 @@ public final class Program {
     }
 
     private static List<Contracts.ActorEvidence> sessionEvidence(String sessionUrl) {
-        return List.of(JsonHttp.getJson(sessionUrl + "/evidence", Contracts.ActorEvidence[].class));
+        return List.of(ToActorHttpClient.getJson(
+            sessionUrl + "/evidence", Contracts.ActorEvidence[].class));
     }
 
     private static void close(ZLinkStreamConnector connector) {
@@ -222,14 +222,14 @@ public final class Program {
     }
 
     private static void ensure(String actorUrl, String scenario, String actorId) {
-        JsonHttp.postJson(
+        ToActorHttpClient.postJson(
             actorUrl + "/ensure",
             new Contracts.ActorCallRequest(scenario, actorId, "ensure"),
             Contracts.ActorCallResponse.class);
     }
 
     private static Contracts.ActorRefWire ensureRef(String actorUrl, String scenario, String actorId) {
-        return JsonHttp.postJson(
+        return ToActorHttpClient.postJson(
             actorUrl + "/ensure-ref",
             new Contracts.ActorCallRequest(scenario, actorId, "ensure"),
             Contracts.ActorRefWire.class);
@@ -326,7 +326,7 @@ public final class Program {
         String expectedKind,
         boolean send) {
         String endpoint = send ? "/send" : "/request";
-        Contracts.ActorCallResponse response = JsonHttp.postJson(
+        Contracts.ActorCallResponse response = ToActorHttpClient.postJson(
             callerUrl + endpoint,
             new Contracts.ActorCallRequest(scenario, actorId, "missing"),
             Contracts.ActorCallResponse.class);
@@ -341,7 +341,7 @@ public final class Program {
         String expectedKind,
         boolean send) {
         String endpoint = send ? "/send-ref" : "/request-ref";
-        Contracts.ActorCallResponse response = JsonHttp.postJson(
+        Contracts.ActorCallResponse response = ToActorHttpClient.postJson(
             callerUrl + endpoint,
             new Contracts.ActorRefCallRequest(scenario, actorRef, "fault"),
             Contracts.ActorCallResponse.class);
@@ -356,7 +356,7 @@ public final class Program {
         String value,
         boolean send) {
         String endpoint = send ? "/send" : "/request";
-        return JsonHttp.postJson(
+        return ToActorHttpClient.postJson(
             callerUrl + endpoint,
             new Contracts.ActorCallRequest(scenario, actorId, value),
             Contracts.ActorCallResponse.class);
@@ -369,7 +369,7 @@ public final class Program {
         String value,
         boolean send) {
         String endpoint = send ? "/send-ref" : "/request-ref";
-        return JsonHttp.postJson(
+        return ToActorHttpClient.postJson(
             callerUrl + endpoint,
             new Contracts.ActorRefCallRequest(scenario, actorRef, value),
             Contracts.ActorCallResponse.class);
@@ -377,7 +377,7 @@ public final class Program {
 
     private static void assertActorEvidence(String actorUrl, String selector) {
         List<Contracts.ActorEvidence> evidence = List.of(
-            JsonHttp.getJson(actorUrl + "/evidence", Contracts.ActorEvidence[].class));
+            ToActorHttpClient.getJson(actorUrl + "/evidence", Contracts.ActorEvidence[].class));
         if (selected(selector, "TA-A1")) {
             require(containsEvidence(evidence, "TA-A1-send", "ta-a1", "send"), "TA-A1 send evidence missing");
             require(containsEvidence(evidence, "TA-A1-request", "ta-a1", "request"), "TA-A1 request evidence missing");

@@ -457,7 +457,8 @@ class spot_node_runtime_t
     // the commit request and once more after the ack for packets that raced it.
     std::vector<handoff_packet_t> take_actor_handoff_backlog (const actor_ref_t &actor_ref);
     void set_actor_transfer_forward_window (std::chrono::milliseconds window);
-    result_t<remote_actor_transfer_t> transfer_actor_out (const actor_ref_t &actor_ref);
+    result_t<remote_actor_transfer_t> transfer_actor_out (const actor_ref_t &actor_ref,
+                                                          std::string transfer_id = {});
     result_t<void> leave_actor_for_remote_transfer (const actor_ref_t &actor_ref);
     void fail_remote_actor_transfer (const actor_ref_t &actor_ref, bool reconcile);
     void complete_remote_actor_transfer (const actor_ref_t &source_actor,

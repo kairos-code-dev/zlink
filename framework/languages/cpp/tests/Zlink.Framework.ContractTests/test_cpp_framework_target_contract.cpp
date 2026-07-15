@@ -545,11 +545,13 @@ int main ()
                   "E2E-CP-49", "ST-E2 does not reject a target bound-session route after failure");
 
     /* E2E-CP-50 — missing required Track-F markers fail the runner. */
-    gate.require (transfer_runner.find ("Missing required runtime marker")
-                    != std::string::npos
-                    && transfer_runner.find ("did not fire this run (timing-dependent)")
-                         == std::string::npos,
-                  "E2E-CP-50", "Track-F required markers are still diagnostic-only warnings");
+    gate.require (transfer_client.find ("handoff_backlog") != std::string::npos
+                    && transfer_client.find ("backlog_enqueued") != std::string::npos
+                    && transfer_client.find ("mapping_evicted") != std::string::npos
+                    && transfer_client.find ("stale_fail_fast") != std::string::npos
+                    && transfer_runner.find ("timing-dependent") == std::string::npos,
+                  "E2E-CP-50",
+                  "Track-F required markers are not client assertions or remain warnings");
 
     /* E2E-CP-51 — remote transfer exposes the commit-ack and source-cleanup
      * boundaries, and ST-B1 requires their order instead of inferring it from
@@ -696,6 +698,39 @@ int main ()
                     && actor_send.find ("retry") == std::string::npos,
                   "E2E-CP-54",
                   "explicit actor send still re-resolves and retries stale refs");
+
+    /* E2E-CP-57 — Track-F evidence is consumed from role-server structured
+     * message-flow events, never an environment-gated stderr grep. */
+    gate.require (transfer_runner.find ("ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS")
+                    == std::string::npos
+                    && transfer_runner.find ("require_runtime_marker") == std::string::npos,
+                  "E2E-CP-57",
+                  "SpotActorTransfer runner still enables and greps stderr handoff markers");
+    gate.require (spot_runtime.find ("ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS")
+                    == std::string::npos
+                    && spot_runtime.find ("emit_actor_handoff_marker") == std::string::npos,
+                  "E2E-CP-57",
+                  "spot runtime still emits environment-gated stderr handoff markers");
+    gate.require (actor_gateway_spot_bridge.find (
+                    "ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS") == std::string::npos
+                    && actor_gateway_spot_bridge.find ("emit_backlog_enqueued_marker")
+                         == std::string::npos,
+                  "E2E-CP-57",
+                  "actor bridge still emits environment-gated stderr handoff markers");
+    const auto st_f1_begin = transfer_client.find ("void in_flight_handoff_order ()");
+    const auto st_f1_end = transfer_client.find ("void direct_overtake_prevention ()", st_f1_begin);
+    const auto st_f1 = st_f1_begin != std::string::npos && st_f1_end != std::string::npos
+                         ? transfer_client.substr (st_f1_begin, st_f1_end - st_f1_begin)
+                         : std::string{};
+    gate.require (st_f1.find ("handoff_backlog") != std::string::npos
+                    && st_f1.find ("backlog_enqueued") != std::string::npos
+                    && st_f1.find ("location_committed") != std::string::npos,
+                  "E2E-CP-57",
+                  "ST-F1 does not assert structured backlog and publish-order evidence");
+    gate.require (st_f2.find ("handoff_backlog") != std::string::npos
+                    && st_f2.find ("backlog_enqueued") != std::string::npos,
+                  "E2E-CP-57",
+                  "ST-F2 does not assert structured handoff evidence");
 
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");

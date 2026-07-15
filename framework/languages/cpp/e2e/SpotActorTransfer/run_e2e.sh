@@ -97,7 +97,6 @@ start_node() {
   ZLINK_CPP_E2E_LOCATION_KEY_PREFIX="$REDIS_KEY_PREFIX" \
   ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
   ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/${rid}.evidence.log" \
-  ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS=1 \
   setsid "$NODE_BIN" \
     >"$LOG_DIR/${rid}.stdout.log" 2>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
@@ -188,34 +187,6 @@ if [[ "$SCENARIO" == "all" ]]; then
   run_client "ST-C1"
 else
   run_client "$SCENARIO"
-fi
-
-# Handoff evidence markers prove which internal path a Track-F scenario
-# exercised. A scenario that misses its required marker did not create the
-# contract boundary it claims to verify, so the runner must fail.
-require_runtime_marker() {
-  local marker="$1"
-  if ! grep -h -q "$marker" "$LOG_DIR"/actor-*.stderr.log; then
-    echo "Missing required runtime marker '$marker'. Logs: $LOG_DIR" >&2
-    return 1
-  fi
-}
-
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F1"* ]]; then
-  require_runtime_marker handoff_backlog
-  require_runtime_marker backlog_enqueued
-fi
-# F4/F5 verify the forwarding-window mechanism via mapping_evicted (the retained
-# mapping is created on commit and evicted after actorTransferForwardWindow). The
-# post-window fail-fast itself is asserted by the scenarios (probe returns
-# ActorLocationStale): cpp handles stragglers client-side — sends re-resolve
-# (§10.2-5) and requests fail fast on a cross-node stale ref — so the source-side
-# straggler_forward/stale_fail_fast markers are not on this path (see F6-c).
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F4"* ]]; then
-  require_runtime_marker mapping_evicted
-fi
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ST-F5"* ]]; then
-  require_runtime_marker mapping_evicted
 fi
 
 cat "$LOG_DIR/client.stdout.log"

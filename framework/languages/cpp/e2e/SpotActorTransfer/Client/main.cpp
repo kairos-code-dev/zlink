@@ -834,9 +834,17 @@ class scenario_runner_t
         const auto source_evidence = get_evidence (_nodes.a);
         require_no_contains (source_evidence, "ST-F1|" + actor_id + "|handoff_packet|",
                              "ST-F1 packet ran on the source node.");
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|handoff_backlog|"});
 
         release_joined_gate (_nodes.b, spot_rid);
         require (join_task.get ().accepted, "ST-F1 transfer was rejected.");
+        wait_evidence (_nodes.b,
+                       {"message_flow|" + actor_id + "|backlog_enqueued|",
+                        "message_flow|" + actor_id + "|location_committed|"});
+        assert_correlated_transfer_markers (
+          {&_nodes.a, &_nodes.b}, actor_id,
+          {"handoff_backlog", "backlog_enqueued", "location_committed"});
         assert_evidence_order (_nodes.b, actor_id, "handoff_packet", {"P1", "P2", "P3"});
     }
 
@@ -855,14 +863,20 @@ class scenario_runner_t
         for (const auto *marker : {"B1", "B2"}) {
             send_ref (_nodes.a, actor_id, old_ref, {"ST-F2", marker});
         }
+        wait_evidence (_nodes.a,
+                       {"message_flow|" + actor_id + "|handoff_backlog|"});
         std::this_thread::sleep_for (std::chrono::milliseconds (300));
         release_joined_gate (_nodes.b, spot_rid);
         wait_evidence (_nodes.b,
-                       {"message_flow|" + actor_id + "|location_committed|"});
+                       {"message_flow|" + actor_id + "|backlog_enqueued|",
+                        "message_flow|" + actor_id + "|location_committed|"});
         const auto target_ref = e2e::actor_ref_snapshot_res_t{
           actor_id, "actor-b", old_ref.generation + 1};
         send_ref (_nodes.b, actor_id, target_ref, {"ST-F2", "D1"});
         require (join_task.get ().accepted, "ST-F2 transfer was rejected.");
+        assert_correlated_transfer_markers (
+          {&_nodes.a, &_nodes.b}, actor_id,
+          {"handoff_backlog", "backlog_enqueued", "location_committed"});
         assert_evidence_order (_nodes.b, actor_id, "handoff_packet", {"B1", "B2", "D1"});
     }
 

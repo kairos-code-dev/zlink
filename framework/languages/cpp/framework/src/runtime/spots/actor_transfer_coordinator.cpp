@@ -12,11 +12,12 @@ bool actor_transfer_coordinator_t::try_begin_local (const std::string &actor_key
       .second;
 }
 
-bool actor_transfer_coordinator_t::try_begin_source_remote (const std::string &actor_key)
+bool actor_transfer_coordinator_t::try_begin_source_remote (const std::string &actor_key,
+                                                            std::string transfer_id)
 {
     std::lock_guard lock (_mutex);
     return _moves
-      .emplace (actor_key, move_state_t{actor_move_phase_t::source_remote, std::string{},
+      .emplace (actor_key, move_state_t{actor_move_phase_t::source_remote, std::move (transfer_id),
                                         std::chrono::steady_clock::now ()})
       .second;
 }
@@ -89,12 +90,14 @@ actor_transfer_coordinator_t::take_backlog (const std::string &actor_key)
 void actor_transfer_coordinator_t::activate_forwarding (
   const std::string &actor_key,
   std::uint64_t old_generation,
-  std::chrono::steady_clock::time_point evict_at)
+  std::chrono::steady_clock::time_point evict_at,
+  std::string transfer_id)
 {
     std::lock_guard lock (_mutex);
     // At most one entry per actor: a re-transfer refreshes the entry toward the
     // new hop and restarts the window instead of accumulating entries (§10.4-4).
-    _forwardings[actor_key] = forwarding_entry_t{old_generation, evict_at};
+    _forwardings[actor_key] =
+      forwarding_entry_t{old_generation, evict_at, std::move (transfer_id)};
 }
 
 bool actor_transfer_coordinator_t::forwards_stale_generation (const std::string &actor_key,
@@ -113,7 +116,8 @@ actor_transfer_coordinator_t::evict_expired_forwarding (std::chrono::steady_cloc
     for (auto found = _forwardings.begin (); found != _forwardings.end ();) {
         if (found->second.evict_at <= now) {
             evicted.push_back (
-              evicted_actor_forwarding_t{found->first, found->second.old_generation});
+              evicted_actor_forwarding_t{found->first, found->second.old_generation,
+                                          found->second.transfer_id});
             found = _forwardings.erase (found);
         } else {
             ++found;
@@ -134,6 +138,16 @@ actor_transfer_coordinator_t::phase (const std::string &actor_key) const
     std::lock_guard lock (_mutex);
     const auto found = _moves.find (actor_key);
     return found == _moves.end () ? std::nullopt : std::make_optional (found->second.phase);
+}
+
+std::optional<std::string>
+actor_transfer_coordinator_t::transfer_id (const std::string &actor_key) const
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _moves.find (actor_key);
+    return found == _moves.end () || found->second.transfer_id.empty ()
+             ? std::nullopt
+             : std::make_optional (found->second.transfer_id);
 }
 
 bool actor_transfer_coordinator_t::try_add_admission (std::string transfer_id,

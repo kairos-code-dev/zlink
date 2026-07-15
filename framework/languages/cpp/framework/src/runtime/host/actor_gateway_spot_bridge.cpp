@@ -31,39 +31,6 @@ constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKi
 constexpr std::string_view actor_relay_kind_send = "send";
 constexpr std::string_view actor_relay_kind_request = "request";
 
-bool actor_handoff_markers_enabled ()
-{
-    static const bool enabled = [] {
-        const char *value = std::getenv ("ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS");
-        return value != nullptr && *value != '\0' && std::string_view (value) != "0";
-    }();
-    return enabled;
-}
-
-// config-10 Track F evidence marker (in-flight handoff runbook 4): stragglers
-// forwarded through a retained mapping are visible to the e2e runner.
-void emit_straggler_forward_marker (const actor_ref_t &actor_ref)
-{
-    if (!actor_handoff_markers_enabled ()) {
-        return;
-    }
-    std::cerr << "zlink actor-handoff marker=straggler_forward actor=" << actor_ref.actor_id ()
-              << " generation=" << actor_ref.generation () << '\n';
-}
-
-// §10.2-2: preserved backlog packets that arrive between the backlog snapshot
-// and the commit ack are enqueued at the target through the post-ack forward
-// path (not the commit-embedded replay loop), so mirror the backlog_enqueued
-// marker here too — the packet is being enqueued at the committed target.
-void emit_backlog_enqueued_marker (const actor_ref_t &actor_ref, std::string_view packet_name)
-{
-    if (!actor_handoff_markers_enabled ()) {
-        return;
-    }
-    std::cerr << "zlink actor-handoff marker=backlog_enqueued actor=" << actor_ref.actor_id ()
-              << " packet=" << packet_name << '\n';
-}
-
 void trace_actor_transfer (std::string_view stage,
                            const actor_ref_t &actor_ref,
                            const node_rid_t &target_node_rid = {},
@@ -647,7 +614,7 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     }
 
     trace_actor_transfer ("transfer-out-start", actor_ref, route->node_rid, route->spot_rid);
-    auto transfer = runtime.transfer_actor_out (actor_ref);
+    auto transfer = runtime.transfer_actor_out (actor_ref, transfer_id);
     if (!transfer) {
         return detail::propagate_failure<actor_join_reply_t> (transfer, "actor transfer-out failed");
     }
@@ -708,7 +675,6 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
     // same mapping until its window evicts it.
     auto late_backlog = runtime.take_actor_handoff_backlog (actor_ref);
     for (auto &packet : late_backlog) {
-        emit_backlog_enqueued_marker (joined.value ().actor, packet.packet_name);
         // A preserved request is replayed as a request so it reaches the target's
         // request handler (§10.5 late reply); its reply is best-effort — the
         // original caller has already re-resolved or timed out.
@@ -719,6 +685,8 @@ join_actor_to_spot_through_route (spot_node_runtime_t runtime,
         spot_actor_message_metadata_t metadata;
         metadata.content_type = std::move (packet.content_type);
         metadata.values = std::move (packet.metadata);
+        metadata.values["__zlink.actorHandoffBacklog"] = "true";
+        metadata.values["__zlink.actorTransferId"] = transfer_id;
         (void) relay_actor_packet_to_remote_actor_mesh (
           runtime, actor_gateway, joined.value ().actor, route->node_rid, route->spot_rid, header,
           zlink::message_t::from (packet.payload), metadata, serializers);
@@ -789,7 +757,6 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         && route->node_rid.value () != runtime.node_rid ().value ()) {
         if (const auto current = runtime.current_actor_ref (actor_ref);
             current && current->generation () > actor_ref.generation ()) {
-            emit_straggler_forward_marker (actor_ref);
             runtime.emit_actor_transfer_marker (
               "straggler_forward", actor_ref,
               std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),

@@ -43,6 +43,7 @@ struct evicted_actor_forwarding_t
 {
     std::string actor_key;
     std::uint64_t old_generation = 0;
+    std::string transfer_id;
 };
 
 // One in-flight actor packet preserved while its actor is moving (spot-actor
@@ -63,7 +64,7 @@ class actor_transfer_coordinator_t
 {
   public:
     bool try_begin_local (const std::string &actor_key);
-    bool try_begin_source_remote (const std::string &actor_key);
+    bool try_begin_source_remote (const std::string &actor_key, std::string transfer_id = {});
     void cancel_move (const std::string &actor_key);
     void mark_reconcile (const std::string &actor_key);
     // Returns the out→commit-ack elapsed time when the completed move was a
@@ -73,6 +74,7 @@ class actor_transfer_coordinator_t
     complete_move (const std::string &actor_key);
     bool blocks_dispatch (const std::string &actor_key) const;
     std::optional<actor_move_phase_t> phase (const std::string &actor_key) const;
+    std::optional<std::string> transfer_id (const std::string &actor_key) const;
 
     // In-flight handoff (spot-actor spec §10). One-way packets that arrive while
     // the actor is moving are preserved here in arrival order; the commit path
@@ -86,7 +88,8 @@ class actor_transfer_coordinator_t
     // and evicted after the forward window so retained state cannot pile up.
     void activate_forwarding (const std::string &actor_key,
                               std::uint64_t old_generation,
-                              std::chrono::steady_clock::time_point evict_at);
+                              std::chrono::steady_clock::time_point evict_at,
+                              std::string transfer_id = {});
     bool forwards_stale_generation (const std::string &actor_key,
                                     std::uint64_t generation) const;
     std::vector<evicted_actor_forwarding_t>
@@ -116,6 +119,7 @@ class actor_transfer_coordinator_t
     {
         std::uint64_t old_generation = 0;
         std::chrono::steady_clock::time_point evict_at;
+        std::string transfer_id;
     };
 
     mutable std::mutex _mutex;

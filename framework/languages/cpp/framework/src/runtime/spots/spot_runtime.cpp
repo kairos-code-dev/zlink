@@ -2135,33 +2135,6 @@ std::vector<spot_node_snapshot_t> zlink_builder_t::spot_nodes () const
 namespace zlink::framework::detail
 {
 
-namespace
-{
-// config-10 Track F evidence markers (in-flight handoff runbook 4): emitted to
-// stderr when the runner opts in so the e2e can assert runtime behavior.
-bool actor_handoff_markers_enabled ()
-{
-    static const bool enabled = [] {
-        const char *value = std::getenv ("ZLINK_FRAMEWORK_CPP_ACTOR_HANDOFF_MARKERS");
-        return value != nullptr && *value != '\0' && std::string_view (value) != "0";
-    }();
-    return enabled;
-}
-
-void emit_actor_handoff_marker (std::string_view marker,
-                                std::string_view actor_id,
-                                std::string_view detail_text = {})
-{
-    if (!actor_handoff_markers_enabled ()) {
-        return;
-    }
-    std::fprintf (stderr, "zlink actor-handoff marker=%.*s actor=%.*s %.*s\n",
-                  static_cast<int> (marker.size ()), marker.data (),
-                  static_cast<int> (actor_id.size ()), actor_id.data (),
-                  static_cast<int> (detail_text.size ()), detail_text.data ());
-}
-} // namespace
-
 spot_node_runtime_t::spot_node_runtime_t (std::shared_ptr<spot_node_builder_state_t> state) :
     _state (std::move (state))
 {
@@ -2827,13 +2800,14 @@ std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions_at (
             // re-materializing the actor here.
             _state->actor_routes.erase (key);
             _state->native_actors.erase (key);
-            emit_actor_handoff_marker ("mapping_evicted", key);
             const auto separator = key.find (':');
             if (separator != std::string::npos) {
                 const auto actor_ref = actor_ref_t (
                   node_rid (), key.substr (0, separator), key.substr (separator + 1),
                   entry.old_generation);
-                emit_actor_transfer_marker ("mapping_evicted", actor_ref, key);
+                emit_actor_transfer_marker (
+                  "mapping_evicted", actor_ref,
+                  entry.transfer_id.empty () ? key : entry.transfer_id);
             }
             ++removed;
         }
@@ -2923,7 +2897,8 @@ spot_node_runtime_t::admit_remote_actor_to_spot (std::string transfer_id,
 }
 
 result_t<spot_node_runtime_t::remote_actor_transfer_t>
-spot_node_runtime_t::transfer_actor_out (const actor_ref_t &actor_ref)
+spot_node_runtime_t::transfer_actor_out (const actor_ref_t &actor_ref,
+                                         std::string transfer_id)
 {
     std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
     const auto key = actor_key (actor_ref);
@@ -2936,7 +2911,11 @@ spot_node_runtime_t::transfer_actor_out (const actor_ref_t &actor_ref)
           framework_error_kind_t::actor_route_not_found,
           "source actor is not joined to a local spot");
     }
-    if (!_state->actor_transfer_coordinator.try_begin_source_remote (key)) {
+    if (transfer_id.empty ()) {
+        transfer_id = key;
+    }
+    if (!_state->actor_transfer_coordinator.try_begin_source_remote (key,
+                                                                     std::move (transfer_id))) {
         return result_t<remote_actor_transfer_t>::failure (framework_error_kind_t::request_rejected,
                                                            "actor transfer is already in progress");
     }
@@ -3071,7 +3050,8 @@ void spot_node_runtime_t::complete_remote_actor_transfer (const actor_ref_t &sou
     // eviction window so the retained state cannot outlive the transfer.
     _state->actor_transfer_coordinator.activate_forwarding (
       key, source_actor.generation (),
-      std::chrono::steady_clock::now () + _state->actor_transfer_forward_window);
+      std::chrono::steady_clock::now () + _state->actor_transfer_forward_window,
+      transfer_id);
     // Commit acknowledgement fixes the new owner and forwarding route first.
     // Releasing stale source ownership is post-commit housekeeping: losing the
     // source process now cannot roll back the accepted target generation.
@@ -3287,8 +3267,8 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
         auto &target_serializers = *target.channel_runtime->serializers;
         auto backlog_actor = _state->actor_instances[key];
         for (auto &packet : handoff_backlog) {
-            emit_actor_handoff_marker ("backlog_enqueued", committed.actor_id (),
-                                       packet.packet_name);
+            emit_actor_transfer_marker ("backlog_enqueued", committed, transfer_id,
+                                        target_spot_rid);
             const auto message = zlink::message_t::from (packet.payload);
             spot_actor_message_metadata_t metadata;
             metadata.content_type = std::move (packet.content_type);
@@ -3469,6 +3449,15 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
     }
 
     const auto key = actor_key (actor_ref);
+    const auto handoff = metadata.values.find ("__zlink.actorHandoffBacklog");
+    const auto handoff_transfer_id = metadata.values.find ("__zlink.actorTransferId");
+    if (handoff != metadata.values.end () && handoff->second == "true"
+        && handoff_transfer_id != metadata.values.end ()
+        && !handoff_transfer_id->second.empty ()) {
+        emit_actor_transfer_marker ("backlog_enqueued", actor_ref,
+                                    handoff_transfer_id->second,
+                                    actor_spot (actor_ref));
+    }
     if (_state->actor_transfer_coordinator.blocks_dispatch (key)) {
         // In-flight handoff (§10.2-1): actor packets that arrive while the actor
         // is moving are preserved in arrival order and travel to the target with
@@ -3482,7 +3471,9 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         if (_state->actor_transfer_coordinator.try_append_backlog (
               key, detail::handoff_packet_t{std::string (packet_name), message.to_bytes (),
                                             metadata.content_type, metadata.values, is_request})) {
-            emit_actor_handoff_marker ("handoff_backlog", actor_ref.actor_id (), packet_name);
+            emit_actor_transfer_marker (
+              "handoff_backlog", actor_ref,
+              _state->actor_transfer_coordinator.transfer_id (key).value_or (key));
             if (!is_request) {
                 return result_t<std::optional<zlink::message_t>>::success (zlink::message_t{});
             }
@@ -3570,7 +3561,6 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         // published record lags and re-resolving lands the committed generation
         // (ST-A3); for a genuinely stale record the client re-resolves the same
         // answer and eventually surfaces this stale on its own budget timeout.
-        emit_actor_handoff_marker ("stale_fail_fast", actor_ref.actor_id (), packet_name);
         emit_actor_transfer_marker (
           "stale_fail_fast", actor_ref,
           std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),

@@ -50,8 +50,10 @@ trap on_interrupt INT TERM
 
 selected_configs=()
 selected_scenarios=()
+RUN_START_ORDER_AXES=0
 
 if [[ "$#" -eq 0 ]]; then
+  RUN_START_ORDER_AXES=1
   for config in "${DEFAULT_CONFIGS[@]}"; do
     selected_configs+=("${config}")
     selected_scenarios+=("all")
@@ -71,6 +73,7 @@ fi
 run_config_with_retry() {
   local config="$1"
   local scenario="$2"
+  local start_order="${3:-forward}"
   local attempt output status started_at ended_at
   output="$(mktemp)"
 
@@ -80,7 +83,8 @@ run_config_with_retry() {
     set +e
     (
       cd "${SCRIPT_DIR}/${config}" &&
-        exec nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${scenario}"
+        exec env E2E_START_ORDER="${start_order}" nice -n 10 \
+          timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${scenario}"
     ) > >(tee "${output}") 2>&1 &
     active_config_pid="$!"
     wait "${active_config_pid}"
@@ -91,7 +95,7 @@ run_config_with_retry() {
 
     if [[ "${status}" == "0" ]]; then
       rm -f "${output}"
-      echo "[node-e2e] ${config} PASS ($((ended_at - started_at))s)"
+      echo "[node-e2e] ${config} PASS order=${start_order} ($((ended_at - started_at))s)"
       return 0
     fi
 
@@ -119,6 +123,13 @@ for index in "${!selected_configs[@]}"; do
   echo "[node-e2e] ${config} start scenario=${scenario}"
   run_config_with_retry "${config}" "${scenario}"
 done
+
+if [[ "${RUN_START_ORDER_AXES}" == "1" ]]; then
+  for config in RegistryMessaging SpotService ToActorMessaging; do
+    run_config_with_retry "${config}" all reverse
+    run_config_with_retry "${config}" all shuffle:20260715
+  done
+fi
 all_ended_at="$(date +%s)"
 
 echo "[node-e2e] total PASS ($((all_ended_at - all_started_at))s)"

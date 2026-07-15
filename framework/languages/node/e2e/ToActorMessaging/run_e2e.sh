@@ -4,10 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$NODE_ROOT/e2e/redis-container.sh"
+source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
-START_ORDER="${2:-forward}"
+E2E_START_ORDER="${E2E_START_ORDER:-${2:-forward}}"
 mkdir -p "$LOG_DIR"
 
 pick_port() {
@@ -97,29 +98,6 @@ start_configured_server() {
   start_server "$name" "$main" --config "$config"
 }
 
-ordered_roles() {
-  python3 - "$START_ORDER" "$@" <<'PY'
-import random
-import sys
-
-mode = sys.argv[1]
-roles = sys.argv[2:]
-if mode in ("", "forward"):
-    pass
-elif mode == "reverse":
-    roles.reverse()
-elif mode.startswith("shuffle:"):
-    seed_text = mode.split(":", 1)[1]
-    if seed_text == "":
-        raise SystemExit("start order shuffle requires a seed")
-    random.Random(int(seed_text)).shuffle(roles)
-else:
-    raise SystemExit(f"unsupported start order={mode!r}")
-for role in roles:
-    print(role)
-PY
-}
-
 start_role() {
   case "$1" in
     actor)
@@ -168,7 +146,7 @@ wait_role() {
 }
 
 echo "log_dir=$LOG_DIR"
-echo "start_order=$START_ORDER"
+echo "start_order=$E2E_START_ORDER"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 (cd "$ROOT_DIR/Server/Actor" && npm run build >/dev/null)
@@ -205,7 +183,7 @@ SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 CALLER_MAIN="$ROOT_DIR/Server/Caller/dist/Server/Caller/main.js"
 
 SERVER_ROLES=(actor session caller)
-mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_e2e_roles "$E2E_START_ORDER" "${SERVER_ROLES[@]}")
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_role "$role"
 done

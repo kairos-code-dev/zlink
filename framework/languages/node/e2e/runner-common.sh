@@ -1,5 +1,30 @@
 #!/usr/bin/env bash
 
+ordered_e2e_roles() {
+  local mode="$1"
+  shift
+  python3 - "$mode" "$@" <<'PY'
+import random
+import sys
+
+mode = sys.argv[1]
+roles = sys.argv[2:]
+if mode in ("", "forward"):
+    pass
+elif mode == "reverse":
+    roles.reverse()
+elif mode.startswith("shuffle:"):
+    seed_text = mode.split(":", 1)[1]
+    if seed_text == "":
+        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+    random.Random(int(seed_text)).shuffle(roles)
+else:
+    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+for role in roles:
+    print(role)
+PY
+}
+
 pick_port() {
   node "$NODE_ROOT/e2e/port-picker.js"
 }

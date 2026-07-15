@@ -4,7 +4,7 @@
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| RM-A1 | done | Redis location store 기반 자동 연결 request와 topology ready provider를 검증한다. |
+| RM-A1 | done | Redis location store의 live peer row와 두 provider가 실제로 처리한 request evidence를 함께 검증한다. |
 | RM-A2 | done | 수동 endpoint request를 검증한다. |
 | RM-A4 | done | 같은 rid provider 교체를 검증한다. |
 | RM-A6 | done | profile/workflow channel 독립성을 검증한다. |
@@ -20,6 +20,10 @@
 | RM-C9 | done | 느린 provider에 다량 one-way send를 제출하고, public bounded-failure oracle 없이 backlog 해소 뒤 후속 request와 evidence가 회복되는지 검증한다. |
 
 검증:
+
+- `E2E_START_ORDER=reverse ./run_e2e.sh RM-A1`과
+  `E2E_START_ORDER=shuffle:20260715 ./run_e2e.sh RM-A1`
+  - 결과: 두 실행 모두 `scenario RM-A1 passed`, `registry-messaging e2e result=passed`
 
 - `timeout 720s framework/languages/node/e2e/RegistryMessaging/run_e2e.sh all`
   - 결과: `registry-messaging e2e result=passed`

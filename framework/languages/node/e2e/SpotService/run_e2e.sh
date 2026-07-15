@@ -99,29 +99,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-ordered_roles() {
-  python3 - "$E2E_START_ORDER" "$@" <<'PY'
-import random
-import sys
-
-mode = sys.argv[1]
-roles = sys.argv[2:]
-if mode in ("", "forward"):
-    pass
-elif mode == "reverse":
-    roles.reverse()
-elif mode.startswith("shuffle:"):
-    seed_text = mode.split(":", 1)[1]
-    if seed_text == "":
-        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
-    random.Random(int(seed_text)).shuffle(roles)
-else:
-    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
-for role in roles:
-    print(role)
-PY
-}
-
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
 
@@ -484,9 +461,11 @@ if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-Q9" ]]; then
 else
   SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b)
 fi
-mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_e2e_roles "$E2E_START_ORDER" "${SERVER_ROLES[@]}")
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_named_server "$role"
+done
+for role in "${SERVER_ROLES[@]}"; do
   wait_named_server "$role"
 done
 

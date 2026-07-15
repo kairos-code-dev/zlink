@@ -8,6 +8,7 @@ source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -28,6 +29,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "log_dir=$LOG_DIR"
+echo "start_order=$E2E_START_ORDER"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 build_package "$ROOT_DIR/Server/Provider"
@@ -76,73 +78,80 @@ start_configured_server() {
   start_server "$name" "$main" --config "$config"
 }
 
-start_configured_server api-a "$PROVIDER_MAIN" \
-  --rid api-a \
-  --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --channel-endpoint "$API_A" \
-  --manual-client-endpoint "$API_A" \
-  --route-endpoint "$ROUTE_A" \
-  --route-peer "$ROUTE_B" \
-  --max-message-size "$((2 * 1024 * 1024))" \
-  --evidence-file "$LOG_DIR/api-a.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a
+start_role() {
+  case "$1" in
+    api-a)
+      start_configured_server api-a "$PROVIDER_MAIN" \
+        --rid api-a --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
+        --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --channel-endpoint "$API_A" --manual-client-endpoint "$API_A" \
+        --route-endpoint "$ROUTE_A" --route-peer "$ROUTE_B" \
+        --max-message-size "$((2 * 1024 * 1024))" \
+        --evidence-file "$LOG_DIR/api-a.evidence.log" --log-dir "$LOG_DIR"
+      ;;
+    api-b)
+      start_configured_server api-b "$PROVIDER_MAIN" \
+        --rid api-b --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
+        --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --channel-endpoint "$API_B" --manual-client-endpoint "$API_B" \
+        --route-endpoint "$ROUTE_B" --route-peer "$ROUTE_A" \
+        --max-message-size "$((2 * 1024 * 1024))" \
+        --evidence-file "$LOG_DIR/api-b.evidence.log" --log-dir "$LOG_DIR"
+      ;;
+    workflow-a)
+      start_configured_server workflow-a "$WORKFLOW_MAIN" \
+        --rid workflow-a --http-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
+        --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --workflow-endpoint "$WORKFLOW" \
+        --evidence-file "$LOG_DIR/workflow-a.evidence.log" --log-dir "$LOG_DIR"
+      ;;
+    direct-consumer)
+      start_configured_server direct-consumer "$CONSUMER_MAIN" \
+        --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
+        --provider-endpoint "$API_A" --provider-endpoint "$API_B" \
+        --trace-label direct-consumer --log-dir "$LOG_DIR"
+      ;;
+    single-consumer)
+      start_configured_server single-consumer "$CONSUMER_MAIN" \
+        --http-url "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" \
+        --provider-endpoint "$API_A" --trace-label single-consumer --log-dir "$LOG_DIR"
+      ;;
+    backpressure-consumer)
+      start_configured_server backpressure-consumer "$CONSUMER_MAIN" \
+        --http-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
+        --provider-endpoint "$API_A" --trace-label backpressure-consumer --log-dir "$LOG_DIR"
+      ;;
+    location-consumer)
+      start_configured_server location-consumer "$CONSUMER_MAIN" \
+        --http-url "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" \
+        --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
+        --trace-label location-consumer --log-dir "$LOG_DIR"
+      ;;
+    *) echo "Unknown RegistryMessaging role: $1" >&2; return 1 ;;
+  esac
+}
 
-start_configured_server api-b "$PROVIDER_MAIN" \
-  --rid api-b \
-  --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --channel-endpoint "$API_B" \
-  --manual-client-endpoint "$API_B" \
-  --route-endpoint "$ROUTE_B" \
-  --route-peer "$ROUTE_A" \
-  --max-message-size "$((2 * 1024 * 1024))" \
-  --evidence-file "$LOG_DIR/api-b.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
+wait_role() {
+  case "$1" in
+    api-a) wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a ;;
+    api-b) wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b ;;
+    workflow-a) wait_health "http://127.0.0.1:$WORKFLOW_HTTP_PORT" workflow-a ;;
+    direct-consumer) wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" direct-consumer ;;
+    single-consumer) wait_health "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" single-consumer ;;
+    backpressure-consumer) wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer ;;
+    location-consumer) wait_health "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" location-consumer ;;
+    *) echo "Unknown RegistryMessaging role: $1" >&2; return 1 ;;
+  esac
+}
 
-start_configured_server workflow-a "$WORKFLOW_MAIN" \
-  --rid workflow-a \
-  --http-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --workflow-endpoint "$WORKFLOW" \
-  --evidence-file "$LOG_DIR/workflow-a.evidence.log" \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$WORKFLOW_HTTP_PORT" workflow-a
-
-start_configured_server direct-consumer "$CONSUMER_MAIN" \
-  --http-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
-  --provider-endpoint "$API_A" \
-  --provider-endpoint "$API_B" \
-  --trace-label direct-consumer \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" direct-consumer
-
-start_configured_server single-consumer "$CONSUMER_MAIN" \
-  --http-url "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" \
-  --provider-endpoint "$API_A" \
-  --trace-label single-consumer \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" single-consumer
-
-start_configured_server backpressure-consumer "$CONSUMER_MAIN" \
-  --http-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
-  --provider-endpoint "$API_A" \
-  --trace-label backpressure-consumer \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-consumer
-
-start_configured_server location-consumer "$CONSUMER_MAIN" \
-  --http-url "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --trace-label location-consumer \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" location-consumer
+SERVER_ROLES=(api-a api-b workflow-a direct-consumer single-consumer backpressure-consumer location-consumer)
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_e2e_roles "$E2E_START_ORDER" "${SERVER_ROLES[@]}")
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_role "$role"
+done
+for role in "${SERVER_ROLES[@]}"; do
+  wait_role "$role"
+done
 
 node "$CLIENT_MAIN" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \

@@ -12,6 +12,8 @@ outer `all`은 이어서 SM-F6, SM-G2, SM-G3, SM-G4, SM-G1을 별도 child scena
 SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 검증했다. malformed relay packet 주입은 public route-client 표면으로 만들 수 없으므로 public E2E 직접 대상에서 제외한다. 이 문서는 `.NET`
 `framework/languages/dotnet/e2e/SpotService/feature-map.ko.md`와 공통 문서의 scenario ID를 기준으로
 포팅 범위를 고정한다. 내부 helper나 raw-frame 우회로 gap을 완료 표시하지 않는다.
+서버 역할은 `E2E_START_ORDER=reverse`와 고정 seed `shuffle:20260715`로도 시작하며, 선택된 순서로
+모든 역할을 시작한 뒤 readiness를 확인한다. 두 변형의 `SM-A1` runner가 통과했다.
 `.NET`의 `SmQ9Scenario.cs`는 공통 문서에 없는 보조 operation이므로 scenario 표가 아니라
 `porting-inventory.ko.md`의 보조 항목에서 추적한다. Node.js에는 MultiNode role과 선택 operation을
 추가했고 public route-to-spot request가 각 local owner spot으로 도달하는지 검증했다. `all` PASS: `logs/20260702-064908-43296`

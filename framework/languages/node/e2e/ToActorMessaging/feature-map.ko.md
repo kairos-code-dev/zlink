@@ -13,6 +13,8 @@
 | TA-B3 | implemented | `runTaB3()`가 actor row는 만든 뒤 연결되지 않은 node rid를 가진 actor snapshot을 사용한다. one-way send는 로컬 제출 완료 뒤 handler evidence가 없음을 확인하고, request는 `routeNotConnected` 실패를 확인한다. | `run_e2e.sh TA-B3` 또는 전체 실행에서 `scenario TA-B3 passed`를 출력한다. |
 
 `run_e2e.sh`는 Redis, actor owner 서버, session stream 서버, caller 서버, client runner를 모두 띄운다.
+서버 역할은 `E2E_START_ORDER=reverse`와 고정 seed `shuffle:20260715`로도 시작할 수 있으며, 두
+변형의 `TA-A1` runner가 통과했다.
 인자를 주지 않으면 전체 scenario를 실행하고, `TA-B2`처럼 공통 ID를 첫 인자로 주면 해당 scenario만
 실행한다. location store는 실행마다 Docker로 전용 Redis container를 만들며 다른 실행이나 host의
 Redis 인스턴스를 공유하지 않는다.

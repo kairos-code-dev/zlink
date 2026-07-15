@@ -404,7 +404,8 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
   - 근거: 수정 전 target-contract 검증이 C++에만 있던 신뢰성 callback과 event 형식을 검출했다. 운영 코드에서는 사용하지 않고 전용 단위 시험만 사용하던 전송 대기 상태 기계와 공개 callback을 제거했다. backpressure 검증은 실제 outbound request 예약 경로로 옮겼으며, target·header 계약 시험과 backpressure·channel messaging 단위 시험 실행 파일이 모두 통과했다.
 - [x] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다
   - 근거: 수정 전 contract gate가 one-way send의 request timeout 재사용과 독립된 1000ms 기본 부재를 모두 검출했다. send backpressure 기본을 1000ms로 분리하고 명시적 timeout만 우선하도록 수정한 뒤 gate와 channel messaging unit binary가 통과했다.
-- [ ] **IMP-CP-32** (결함) — `zlink_builder_t`·`message_bus_t`가 **C++ 스펙 스스로 비계약이라 선언한 내부 타입**을 노출한다
+- [x] **IMP-CP-32** (결함) — `zlink_builder_t`·`message_bus_t`가 **C++ 스펙 스스로 비계약이라 선언한 내부 타입**을 노출한다
+  - 근거: 수정 전 target-contract gate가 builder의 snapshot 반환 4개와 message bus의 pending-table 관측 2개를 검출해 2건으로 실패했다. 공개 메서드를 제거하고 host·단위 시험의 snapshot 조회를 channel·spot·stream runtime 소유자 안으로 옮겼다. 별도 public wrapper를 만드는 안은 비계약 상태를 다시 노출하므로 기각했고, route 등록 조회도 내부 channel runtime manager 한 곳에 모았다. `1605cece5` 뒤 target contract와 channel·backpressure·module-hosted·stream·location·spot·ActorGateway 영향 시험 8개가 모두 통과했다.
 - [x] **IMP-CP-33** (결함) — `include_native_diagnostics`를 **읽는 곳이 없다**
   - 근거: 수정 전 target-contract gate가 runtime에서 읽히지 않는 `include_native_diagnostics` public option을 검출했다. 계약에 없는 setter·getter·storage와 이를 효과가 있는 것처럼 확인하던 test 기대를 제거한 뒤 target/header contract test와 module-hosted unit test가 통과했다.
 - [x] **IMP-CP-34** (결함) — **`close_erased()`가 `callback_depth`/`close_requested`를 잘못된 mutex로 읽고 쓴다**

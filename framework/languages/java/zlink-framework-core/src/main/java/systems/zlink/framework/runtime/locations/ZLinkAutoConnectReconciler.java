@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.LongSupplier;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
@@ -23,11 +24,14 @@ final class ZLinkAutoConnectReconciler {
     private final ZLinkPeerLocationResolver peers;
     private final ZLinkAutoConnectExecutor executor;
     private final ZLinkLocationOptions options;
+    private final LongSupplier nanoTime;
     private final Map<String, ZLinkAutoConnectPlanner.Target> active = new HashMap<>();
+    private Map<String, ZLinkAutoConnectPlanner.Target> lastDesired = Map.of();
     private final Map<String, ZLinkAutoConnectPlanner.Target> observedManual = new HashMap<>();
     private long localGeneration;
     private boolean localPublished;
     private boolean storeFailed;
+    private long storeFailureStartedNanos = -1;
     private boolean draining;
     private long recoveryDeferUntilNanos;
 
@@ -38,12 +42,24 @@ final class ZLinkAutoConnectReconciler {
         ZLinkPeerLocationResolver peers,
         ZLinkAutoConnectExecutor executor,
         ZLinkLocationOptions options) {
+        this(local, localRow, runtime, peers, executor, options, System::nanoTime);
+    }
+
+    ZLinkAutoConnectReconciler(
+        ZLinkAutoConnectPlanner.Local local,
+        ZLinkPeerLocation localRow,
+        ZLinkLocationRuntime runtime,
+        ZLinkPeerLocationResolver peers,
+        ZLinkAutoConnectExecutor executor,
+        ZLinkLocationOptions options,
+        LongSupplier nanoTime) {
         this.local = Objects.requireNonNull(local, "local");
         this.localRow = localRow;
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.peers = Objects.requireNonNull(peers, "peers");
         this.executor = Objects.requireNonNull(executor, "executor");
         this.options = Objects.requireNonNull(options, "options");
+        this.nanoTime = Objects.requireNonNull(nanoTime, "nanoTime");
     }
 
     boolean storeFailed() {
@@ -56,8 +72,12 @@ final class ZLinkAutoConnectReconciler {
                 local.type(), local.meshName(), null, null, null)))
             .handle((rows, failure) -> {
                 if (failure != null) {
+                    if (!storeFailed) {
+                        storeFailureStartedNanos = nanoTime.getAsLong();
+                    }
                     storeFailed = true;
                     localPublished = false;
+                    retryPendingTargetsWithinStoreFailureGrace();
                     return null;
                 }
                 reconcile(rows);
@@ -100,11 +120,13 @@ final class ZLinkAutoConnectReconciler {
     private void reconcile(List<ZLinkPeerLocation> rows) {
         if (storeFailed) {
             storeFailed = false;
-            recoveryDeferUntilNanos = System.nanoTime() + options.heartbeatInterval().toNanos();
+            storeFailureStartedNanos = -1;
+            recoveryDeferUntilNanos = nanoTime.getAsLong() + options.heartbeatInterval().toNanos();
         }
 
         Map<String, ZLinkAutoConnectPlanner.Target> desired =
             ZLinkAutoConnectPlanner.computeDesired(local, rows);
+        lastDesired = Map.copyOf(desired);
         Map<String, ZLinkAutoConnectPlanner.Target> manualSnapshot = new HashMap<>();
         for (ZLinkPeerLocation row : rows) {
             ZLinkAutoConnectPlanner.Target target =
@@ -126,25 +148,44 @@ final class ZLinkAutoConnectReconciler {
             ZLinkAutoConnectPlanner.Target current = active.get(entry.getKey());
             ZLinkAutoConnectPlanner.Target target = entry.getValue();
             if (current == null) {
-                executor.connect(target);
-                active.put(entry.getKey(), target);
+                if (executor.connect(target)) {
+                    active.put(entry.getKey(), target);
+                }
                 continue;
             }
             if (!current.endpoint().equals(target.endpoint())
                 || !Objects.equals(current.ownerId(), target.ownerId())) {
-                executor.replace(current, target);
-                active.put(entry.getKey(), target);
+                if (executor.replace(current, target)) {
+                    active.put(entry.getKey(), target);
+                }
             }
         }
-        if (System.nanoTime() >= recoveryDeferUntilNanos) {
+        if (nanoTime.getAsLong() >= recoveryDeferUntilNanos) {
             for (String key : active.keySet()) {
                 if (!desired.containsKey(key)) {
                     toRemove.add(key);
                 }
             }
             for (String key : toRemove) {
-                ZLinkAutoConnectPlanner.Target target = active.remove(key);
-                executor.disconnect(target);
+                ZLinkAutoConnectPlanner.Target target = active.get(key);
+                if (executor.disconnect(target)) {
+                    active.remove(key);
+                }
+            }
+        }
+    }
+
+    private void retryPendingTargetsWithinStoreFailureGrace() {
+        if (storeFailureStartedNanos < 0
+            || options.storeFailureGrace().isZero()
+            || options.storeFailureGrace().isNegative()
+            || nanoTime.getAsLong() - storeFailureStartedNanos
+                > options.storeFailureGrace().toNanos()) {
+            return;
+        }
+        for (Map.Entry<String, ZLinkAutoConnectPlanner.Target> entry : lastDesired.entrySet()) {
+            if (!active.containsKey(entry.getKey()) && executor.connect(entry.getValue())) {
+                active.put(entry.getKey(), entry.getValue());
             }
         }
     }

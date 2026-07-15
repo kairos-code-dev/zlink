@@ -172,17 +172,27 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         }
 
         @Override
-        public void connect(ZLinkAutoConnectPlanner.Target target) {
+        public boolean connect(ZLinkAutoConnectPlanner.Target target) {
             if (!manualEndpoints.contains(target.endpoint())) {
-                socket.connect(target.endpoint());
+                try {
+                    socket.connect(target.endpoint());
+                } catch (RuntimeException failure) {
+                    return false;
+                }
             }
+            return true;
         }
 
         @Override
-        public void disconnect(ZLinkAutoConnectPlanner.Target target) {
+        public boolean disconnect(ZLinkAutoConnectPlanner.Target target) {
             if (!manualEndpoints.contains(target.endpoint())) {
-                socket.disconnect(target.endpoint());
+                try {
+                    socket.disconnect(target.endpoint());
+                } catch (RuntimeException failure) {
+                    return false;
+                }
             }
+            return true;
         }
 
     }
@@ -205,34 +215,49 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         }
 
         @Override
-        public void connect(ZLinkAutoConnectPlanner.Target target) {
+        public boolean connect(ZLinkAutoConnectPlanner.Target target) {
             if (manualEndpoints.contains(target.endpoint())) {
-                return;
+                return true;
             }
-            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
-                synchronized (connectGate) {
-                    socket.setConnectRoutingId(target.nodeRid());
-                    socket.setProbe(true);
-                    socket.connect(target.endpoint());
+            try {
+                if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                    synchronized (connectGate) {
+                        socket.setConnectRoutingId(target.nodeRid());
+                        socket.setProbe(true);
+                        socket.connect(target.endpoint());
+                    }
+                    return true;
                 }
-                return;
+                socket.connect(target.endpoint());
+                return true;
+            } catch (RuntimeException failure) {
+                return false;
             }
-            socket.connect(target.endpoint());
         }
 
         @Override
-        public void disconnect(ZLinkAutoConnectPlanner.Target target) {
+        public boolean disconnect(ZLinkAutoConnectPlanner.Target target) {
             if (!manualEndpoints.contains(target.endpoint())) {
-                socket.disconnect(target.endpoint());
+                try {
+                    socket.disconnect(target.endpoint());
+                } catch (RuntimeException failure) {
+                    return false;
+                }
             }
+            return true;
         }
 
         @Override
-        public void replace(
+        public boolean replace(
             ZLinkAutoConnectPlanner.Target current,
             ZLinkAutoConnectPlanner.Target replacement) {
-            socket.disconnect(current.endpoint());
-            connectReplacement(replacement);
+            try {
+                socket.disconnect(current.endpoint());
+                connectReplacement(replacement);
+                return true;
+            } catch (RuntimeException failure) {
+                return false;
+            }
         }
 
         private void connectReplacement(ZLinkAutoConnectPlanner.Target target) {
@@ -263,40 +288,50 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         }
 
         @Override
-        public void connect(ZLinkAutoConnectPlanner.Target target) {
+        public boolean connect(ZLinkAutoConnectPlanner.Target target) {
             if (manualEndpoints.contains(target.endpoint())) {
-                return;
+                return true;
             }
-            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
-                node.connectPeer(target.nodeRid(), target.endpoint());
-                if (spots != null) {
-                    spots.markAutoConnectedRouterPeer(target.nodeRid());
+            try {
+                if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                    node.connectPeer(target.nodeRid(), target.endpoint());
+                    if (spots != null) {
+                        spots.markAutoConnectedRouterPeer(target.nodeRid());
+                    }
+                } else {
+                    node.connectPeer(target.endpoint());
                 }
-            } else {
-                node.connectPeer(target.endpoint());
-            }
-            String pubEndpoint = pubEndpointOf(target);
-            if (pubEndpoint != null) {
-                node.connectPeer(pubEndpoint);
+                String pubEndpoint = pubEndpointOf(target);
+                if (pubEndpoint != null) {
+                    node.connectPeer(pubEndpoint);
+                }
+                return true;
+            } catch (RuntimeException failure) {
+                return false;
             }
         }
 
         @Override
-        public void disconnect(ZLinkAutoConnectPlanner.Target target) {
+        public boolean disconnect(ZLinkAutoConnectPlanner.Target target) {
             if (manualEndpoints.contains(target.endpoint())) {
-                return;
+                return true;
             }
-            if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
-                node.disconnectPeer(target.nodeRid());
-                if (spots != null) {
-                    spots.unmarkAutoConnectedRouterPeer(target.nodeRid());
+            try {
+                if (ZLinkAutoConnectPlanner.hasRid(target.nodeRid())) {
+                    node.disconnectPeer(target.nodeRid());
+                    if (spots != null) {
+                        spots.unmarkAutoConnectedRouterPeer(target.nodeRid());
+                    }
+                } else {
+                    node.disconnectPeer(target.endpoint());
                 }
-            } else {
-                node.disconnectPeer(target.endpoint());
-            }
-            String pubEndpoint = pubEndpointOf(target);
-            if (pubEndpoint != null) {
-                node.disconnectPeer(pubEndpoint);
+                String pubEndpoint = pubEndpointOf(target);
+                if (pubEndpoint != null) {
+                    node.disconnectPeer(pubEndpoint);
+                }
+                return true;
+            } catch (RuntimeException failure) {
+                return false;
             }
         }
 

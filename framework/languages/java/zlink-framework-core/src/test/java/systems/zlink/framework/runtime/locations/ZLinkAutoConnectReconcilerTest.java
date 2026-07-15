@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
@@ -24,6 +25,102 @@ import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkPeerLocationResolver;
 
 final class ZLinkAutoConnectReconcilerTest {
+    @Test
+    void connectExecutorReportsWhetherTheTargetBecameActive() throws Exception {
+        assertEquals(
+            boolean.class,
+            ZLinkAutoConnectExecutor.class
+                .getDeclaredMethod("connect", ZLinkAutoConnectPlanner.Target.class)
+                .getReturnType());
+    }
+
+    @Test
+    void storeFailureRetriesOnlyPendingTargetsWithinConfiguredGrace() {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
+        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+            .toCompletableFuture().join();
+        store.updatePeer(
+            peer(ZLinkLocationRole.ROUTER, RoutingId.from("remote-node"),
+                "inproc://remote", "remote-owner"),
+            ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().join();
+        FlakyPeerResolver resolver = new FlakyPeerResolver(store);
+        RecordingExecutor executor = new RecordingExecutor();
+        executor.connectAllowed = false;
+        ZLinkLocationOptions options = options();
+        options.setStoreFailureGrace(Duration.ofSeconds(3));
+        AtomicLong now = new AtomicLong();
+        ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.DEALER,
+                RoutingId.from("local-node"),
+                ""),
+            null,
+            runtime,
+            resolver,
+            executor,
+            options,
+            now::get);
+
+        reconciler.tick().toCompletableFuture().join();
+        assertEquals(1, executor.connectAttempts);
+        assertEquals(List.of(), executor.connected);
+
+        resolver.fail = true;
+        executor.connectAllowed = true;
+        now.set(Duration.ofSeconds(2).toNanos());
+        reconciler.tick().toCompletableFuture().join();
+
+        assertEquals(2, executor.connectAttempts);
+        assertEquals(List.of("inproc://remote"), executor.connected);
+        runtime.close();
+    }
+
+    @Test
+    void storeFailureDoesNotRetryPendingTargetsAfterConfiguredGrace() {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
+        ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
+        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+            .toCompletableFuture().join();
+        store.updatePeer(
+            peer(ZLinkLocationRole.ROUTER, RoutingId.from("remote-node"),
+                "inproc://remote", "remote-owner"),
+            ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().join();
+        FlakyPeerResolver resolver = new FlakyPeerResolver(store);
+        RecordingExecutor executor = new RecordingExecutor();
+        executor.connectAllowed = false;
+        ZLinkLocationOptions options = options();
+        options.setStoreFailureGrace(Duration.ofSeconds(3));
+        AtomicLong now = new AtomicLong();
+        ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
+            new ZLinkAutoConnectPlanner.Local(
+                ZLinkLocationAutoConnectType.CLIENT_SERVER,
+                "orders",
+                ZLinkLocationRole.DEALER,
+                RoutingId.from("local-node"),
+                ""),
+            null,
+            runtime,
+            resolver,
+            executor,
+            options,
+            now::get);
+
+        reconciler.tick().toCompletableFuture().join();
+        resolver.fail = true;
+        now.set(Duration.ofSeconds(1).toNanos());
+        reconciler.tick().toCompletableFuture().join();
+        executor.connectAllowed = true;
+        now.set(Duration.ofSeconds(5).toNanos());
+        reconciler.tick().toCompletableFuture().join();
+
+        assertEquals(2, executor.connectAttempts);
+        assertEquals(List.of(), executor.connected);
+        runtime.close();
+    }
+
     @Test
     void markDrainingRenewsTypedMarkerWithoutDisconnectingPeers() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
@@ -542,6 +639,8 @@ final class ZLinkAutoConnectReconcilerTest {
         final List<String> connected = new ArrayList<>();
         final List<String> disconnected = new ArrayList<>();
         final boolean manual;
+        boolean connectAllowed = true;
+        int connectAttempts;
 
         RecordingExecutor() {
             this(false);
@@ -557,13 +656,18 @@ final class ZLinkAutoConnectReconcilerTest {
         }
 
         @Override
-        public void connect(ZLinkAutoConnectPlanner.Target target) {
-            connected.add(target.endpoint());
+        public boolean connect(ZLinkAutoConnectPlanner.Target target) {
+            connectAttempts++;
+            if (connectAllowed) {
+                connected.add(target.endpoint());
+            }
+            return connectAllowed;
         }
 
         @Override
-        public void disconnect(ZLinkAutoConnectPlanner.Target target) {
+        public boolean disconnect(ZLinkAutoConnectPlanner.Target target) {
             disconnected.add(target.endpoint());
+            return true;
         }
     }
 

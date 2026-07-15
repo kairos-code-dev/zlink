@@ -12,7 +12,7 @@ import type {
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { ensure } from '../Support/scenario-assert';
-import { browserE2eFetch } from '../../../browser-client-runtime';
+import { getJson } from '../../../http-client';
 
 export async function runSmB2(options: ClientOptions): Promise<void> {
   const actorId = `actor-sm-b2-remote-${Date.now()}`;
@@ -63,11 +63,7 @@ export async function runSmB2(options: ClientOptions): Promise<void> {
 async function waitForEvidence(baseUrl: string, containsAll: readonly string[], timeoutMs: number): Promise<string[]> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const response = await browserE2eFetch(`${baseUrl}/evidence`);
-    if (!response.ok) {
-      throw new Error(`GET /evidence failed: ${response.status} ${await response.text()}`);
-    }
-    const evidence = await response.json() as string[];
+    const evidence = await getJson<string[]>(`${baseUrl}/evidence`);
     if (containsAll.every((expected) => evidence.some((line) => line.includes(expected)))) {
       return evidence;
     }

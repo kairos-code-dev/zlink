@@ -1,6 +1,6 @@
 // RC-B4: 전역 registry에서 codec 공존 시나리오를 검증한다.
 import type { CodecScenarioRes } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 // RC-B4 verifies that JSON, Protobuf, and MessagePack coexist in one host-level codec registry.

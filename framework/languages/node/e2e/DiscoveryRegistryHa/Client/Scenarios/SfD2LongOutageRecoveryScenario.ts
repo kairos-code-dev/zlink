@@ -1,7 +1,7 @@
 // SF-D2: 긴 장애 복구 — 재등록 우선과 heartbeat 유예 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, getStatus, postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 interface PeerDto {
@@ -37,8 +37,8 @@ async function delay(milliseconds: number): Promise<void> {
 async function waitForProviderStopped(baseUrl: string): Promise<void> {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    const response = await fetch(`${baseUrl}/health`).catch(() => undefined);
-    if (response === undefined || !response.ok) {
+    const status = await getStatus(`${baseUrl}/health`).catch(() => undefined);
+    if (status === undefined || status < 200 || status >= 300) {
       return;
     }
     await delay(50);

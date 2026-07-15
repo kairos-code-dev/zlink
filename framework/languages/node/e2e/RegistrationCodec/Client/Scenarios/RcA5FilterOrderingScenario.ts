@@ -1,6 +1,6 @@
 // RC-A5: filter ordering 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 // RC-A5 verifies that registered handler filters run before and after the handler in registration order.

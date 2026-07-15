@@ -17,7 +17,7 @@ import {
   type ZlinkStreamConnector
 } from '@zlink-systems/stream-connector';
 import type { ClientOptions } from './client-options';
-import { postJson } from './http-client';
+import { postJson } from '../../../http-client';
 
 export type { ActorEvidence } from '../../Shared/messages';
 

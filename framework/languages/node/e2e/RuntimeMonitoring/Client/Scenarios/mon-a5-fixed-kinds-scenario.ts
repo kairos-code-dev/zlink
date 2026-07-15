@@ -1,7 +1,7 @@
 // MON-A5: 나머지 고정 kind 관찰 (handshake·status·timer-stopped) 시나리오를 검증한다.
 import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runMonA5(options: ClientOptions): Promise<void> {

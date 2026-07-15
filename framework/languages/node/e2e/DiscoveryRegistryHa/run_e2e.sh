@@ -110,7 +110,7 @@ wait_tcp redis "tcp://$REDIS_ENDPOINT"
 LOCATION_PROBE_MAIN="$ROOT_DIR/Server/LocationProbe/dist/Server/LocationProbe/main.js"
 PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+CLIENT_MAIN="$ROOT_DIR/Client/dist/DiscoveryRegistryHa/Client/main.js"
 
 start_configured_server() {
   local name="$1"; local main="$2"; shift 2

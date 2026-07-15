@@ -110,7 +110,7 @@ SUB_LATE_URL="http://127.0.0.1:$SUB_LATE_HTTP_PORT"
 
 PUBLISHER_MAIN="$ROOT_DIR/Server/Publisher/dist/Server/Publisher/main.js"
 SUBSCRIBER_MAIN="$ROOT_DIR/Server/Subscriber/dist/Server/Subscriber/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+CLIENT_MAIN="$ROOT_DIR/Client/dist/PubSub/Client/main.js"
 
 start_configured_server pub-a "$PUBLISHER_MAIN" \
   --rid pub-a \

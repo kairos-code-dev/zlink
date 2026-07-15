@@ -5,9 +5,14 @@
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/browser/index.mjs",
       "default": "./dist/index.js"
     }
   },

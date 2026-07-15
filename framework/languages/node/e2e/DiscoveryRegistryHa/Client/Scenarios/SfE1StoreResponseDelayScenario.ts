@@ -1,7 +1,7 @@
 // SF-E1: store 응답 지연 중 무관 concurrent 처리 비블로킹 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJsonWithin, postJsonWithin } from '../Support/http-client';
+import { getJsonWithin, postJsonWithin } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSfE1(options: ClientOptions): Promise<void> {

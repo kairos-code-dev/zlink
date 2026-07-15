@@ -1,7 +1,7 @@
 // RL-D2: observer 실패 격리 시나리오를 검증한다.
 import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';
 

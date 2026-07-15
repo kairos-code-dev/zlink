@@ -1,5 +1,5 @@
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
-import { getJson, postJson } from './http-client';
+import { getJson, getStatus, postJson } from '../../../http-client';
 import { ensure } from './scenario-assert';
 
 interface PeerLocationResult {
@@ -97,8 +97,8 @@ export async function waitUntilAvailable(baseUrl: string): Promise<void> {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseUrl}/health`);
-      if (response.ok) {
+      const status = await getStatus(`${baseUrl}/health`);
+      if (status >= 200 && status < 300) {
         return;
       }
     } catch {
@@ -112,8 +112,8 @@ export async function waitUntilDown(baseUrl: string): Promise<void> {
   const deadline = Date.now() + 10000;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseUrl}/health`);
-      if (!response.ok) {
+      const status = await getStatus(`${baseUrl}/health`);
+      if (status < 200 || status >= 300) {
         return;
       }
     } catch {

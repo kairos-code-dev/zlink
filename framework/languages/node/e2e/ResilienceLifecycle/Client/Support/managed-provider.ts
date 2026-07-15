@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { getStatus, postStatus } from '../../../http-client';
 
 export interface ProviderStartOptions {
   readonly providerMain: string;
@@ -46,8 +47,8 @@ export class ManagedProcess {
         throw new Error(`Provider exited before readiness: ${this.child.exitCode}`);
       }
       try {
-        const response = await fetch(`${this.healthUrl}/health`);
-        if (response.ok) {
+        const status = await getStatus(`${this.healthUrl}/health`);
+        if (status >= 200 && status < 300) {
           return;
         }
       } catch {
@@ -63,7 +64,7 @@ export class ManagedProcess {
     }
     const exited = new Promise<void>((resolve) => this.child.once('exit', () => resolve()));
     try {
-      await fetch(`${this.healthUrl}/shutdown`, { method: 'POST' });
+      await postStatus(`${this.healthUrl}/shutdown`);
     } catch {
       this.child.kill('SIGTERM');
     }

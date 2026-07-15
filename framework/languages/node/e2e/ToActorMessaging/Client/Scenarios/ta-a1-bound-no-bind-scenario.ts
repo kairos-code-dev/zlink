@@ -1,6 +1,6 @@
 // TA-A1: bind된 actor에게 no-bind send/request 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
-import { getJson } from '../Support/http-client';
+import { getJson } from '../../../http-client';
 import {
   type ActorEvidence, assertBoundPush, assertCall, assertSameBinding,
   bindActor, bindingSnapshot, ensureActor, requireEvidence

@@ -1,6 +1,6 @@
 // RC-B3: MessagePack codec 시나리오를 검증한다.
 import type { CodecScenarioRes } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 // RC-B3 verifies MessagePack content-type selection on the main host's global codec registry.

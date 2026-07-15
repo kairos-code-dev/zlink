@@ -1,6 +1,6 @@
 // RM-A6: 다중 channel 격리 (같은 store, 다른 mesh) 시나리오를 검증한다.
 import type { ProfileRes, WorkflowRes } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
 export async function runRmA6(providerAUrl: string, providerBUrl: string, workflowUrl: string): Promise<void> {

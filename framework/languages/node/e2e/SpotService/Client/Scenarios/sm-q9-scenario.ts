@@ -8,7 +8,7 @@ import type {
 } from '../../Shared/messages';
 import { SpotServiceNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmQ9(options: ClientOptions): Promise<void> {

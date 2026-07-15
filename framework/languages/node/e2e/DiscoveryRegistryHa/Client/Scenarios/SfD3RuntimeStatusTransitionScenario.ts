@@ -1,6 +1,6 @@
 // SF-D3: runtime status 전이 관측 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
-import { getJson } from '../Support/http-client';
+import { getJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 interface LocationRuntimeStatusDto {

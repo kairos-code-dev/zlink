@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import { postBestEffort, startServiceB, waitForPortState } from '../Support/managed-service';
 import { ensure } from '../Support/scenario-assert';
 

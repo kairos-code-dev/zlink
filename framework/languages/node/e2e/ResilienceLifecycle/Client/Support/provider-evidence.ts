@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ClientOptions } from './client-options';
-import { getJson } from './http-client';
+import { getJson } from '../../../http-client';
 
 export async function readProviderEvidence(options: ClientOptions): Promise<readonly string[]> {
   const snapshots = await Promise.allSettled([

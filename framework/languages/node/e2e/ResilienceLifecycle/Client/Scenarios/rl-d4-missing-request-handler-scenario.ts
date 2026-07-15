@@ -1,7 +1,7 @@
 // RL-D4: error reply 직렬화(same-version) 시나리오를 검증한다.
 import type { RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { waitForProviderEvidenceLine } from '../Support/provider-evidence';
 import { profileReq } from '../Support/resilience-helpers';
 import { ensure } from '../Support/scenario-assert';

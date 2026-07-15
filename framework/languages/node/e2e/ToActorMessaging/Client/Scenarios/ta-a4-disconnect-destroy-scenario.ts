@@ -1,6 +1,6 @@
 // TA-A4: unbind/disconnect 뒤 actor 생존과 destroy 분리 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import {
   type ActorEvidence, assertCall, assertFailure, bindActor, ensureActor,
   requireEvidence, requireNoEvidence

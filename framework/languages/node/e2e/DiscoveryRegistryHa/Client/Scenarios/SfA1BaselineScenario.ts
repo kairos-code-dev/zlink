@@ -5,7 +5,7 @@ import {
 } from '@zlink-systems/framework';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSfA1(options: ClientOptions): Promise<void> {

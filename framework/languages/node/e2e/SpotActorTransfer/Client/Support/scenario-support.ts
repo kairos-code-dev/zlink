@@ -25,10 +25,9 @@ import {
   type ProbeRes
 } from '../../Shared/messages.js';
 import {
-  BrowserE2eHttpClientFactory,
-  browserE2eArgs,
-  type BrowserE2eHttpClient as HttpClient
+  browserE2eArgs
 } from '../../../browser-client-runtime';
+import { ZLinkHttpClient, type ZLinkHttpClient as HttpClient } from '@zlink-systems/http-client';
 
 export { SpotActorTransferNames };
 
@@ -41,8 +40,8 @@ export interface ClientOptions {
 }
 
 export const options = parseOptions(browserE2eArgs());
-export const nodeA = BrowserE2eHttpClientFactory.create(options.nodeAUrl).timeout(40000).build();
-export const nodeB = BrowserE2eHttpClientFactory.create(options.nodeBUrl).timeout(40000).build();
+export const nodeA = ZLinkHttpClient.create(options.nodeAUrl).timeout(40000).build();
+export const nodeB = ZLinkHttpClient.create(options.nodeBUrl).timeout(40000).build();
 
 export async function runRemoteTransfer(scenario: string, actorId: string, actorType: string, stateVersion: number, stateful: boolean): Promise<void> {
   const spotRid = unique('spot-remote');

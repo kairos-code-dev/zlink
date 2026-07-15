@@ -166,7 +166,7 @@ SERVICE_MAIN="$ROOT_DIR/Server/Service/dist/Server/Service/main.js"
 FILTERED_SERVICE_MAIN="$ROOT_DIR/Server/FilteredService/dist/Server/FilteredService/main.js"
 THROWING_SERVICE_MAIN="$ROOT_DIR/Server/ThrowingService/dist/Server/ThrowingService/main.js"
 TRIGGER_MAIN="$ROOT_DIR/Server/Trigger/dist/Server/Trigger/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+CLIENT_MAIN="$ROOT_DIR/Client/dist/RuntimeMonitoring/Client/main.js"
 
 start_configured_server() {
   local name="$1"

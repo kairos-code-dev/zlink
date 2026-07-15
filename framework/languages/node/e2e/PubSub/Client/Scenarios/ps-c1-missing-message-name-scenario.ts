@@ -1,7 +1,7 @@
 // PS-C1: publish 미등록 message name 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PacketNames, PubSubNames } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { publishEvent, waitForAll } from './ps-a1-fanout-basic-delivery-scenario';
 
 export async function runPsC1(publisher: string, subscribers: readonly string[]): Promise<void> {

@@ -1,7 +1,7 @@
 // RL-B5: drain 중 in-flight 완료 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRlB5(options: ClientOptions): Promise<void> {

@@ -13,7 +13,7 @@ import type {
   EvidenceWaitReq
 } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmD6(options: ClientOptions): Promise<void> {

@@ -1,7 +1,7 @@
 // RL-C3: 노드 단절(프로세스 정지) 후 복구 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { startProvider } from '../Support/managed-provider';
 import {
   profileReq,

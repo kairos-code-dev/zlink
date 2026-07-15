@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { PubSubNames, type EvidenceWaitReq } from '../../Shared/messages';
 import { commonContiguousSequence } from '../Support/evidence';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { delay, ensure } from '../Support/scenario-assert';
 
 export async function runPsA1(publisher: string, subscribers: readonly string[]): Promise<void> {

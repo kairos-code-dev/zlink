@@ -1,7 +1,7 @@
 // PS-B2: publisher 재시작 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { getStatus, postJson, postStatus } from '../../../http-client';
 import { ServerProcessLauncher, type DynamicProcess } from '../Support/server-process-launcher';
 import { delay, ensure, eventually, isConnectionFailure } from '../Support/scenario-assert';
 import { publishEvent, waitForAll } from './ps-a1-fanout-basic-delivery-scenario';
@@ -18,11 +18,11 @@ export async function runPsB2(
     timeoutMilliseconds: 10_000
   });
 
-  await fetch(`${publisher}/shutdown`, { method: 'POST' });
+  await postStatus(`${publisher}/shutdown`);
   await eventually(async () => {
     try {
-      const response = await fetch(`${publisher}/health`);
-      return !response.ok;
+      const status = await getStatus(`${publisher}/health`);
+      return status < 200 || status >= 300;
     } catch (error) {
       return isConnectionFailure(error);
     }

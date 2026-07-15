@@ -1,6 +1,6 @@
 // TA-A3: no-bind 전달 뒤 이후 bind 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
-import { getJson } from '../Support/http-client';
+import { getJson } from '../../../http-client';
 import {
   type ActorEvidence, assertBound, assertBoundPush, assertCall, assertUnbound,
   bindActor, bindingSnapshot, ensureActor, requireEvidence

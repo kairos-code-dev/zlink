@@ -2,7 +2,7 @@
 import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { PayloadRes, ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { sha256Hex } from '../../Shared/messages';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
 
 export async function runRmC8(

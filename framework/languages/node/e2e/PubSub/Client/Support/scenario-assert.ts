@@ -1,3 +1,5 @@
+import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
+
 export async function eventually(
   condition: () => Promise<boolean>,
   failureMessage: string,
@@ -29,4 +31,3 @@ export function isConnectionFailure(error: unknown): boolean {
 export function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
-import { zlinkStreamAssert } from '@zlink-systems/stream-connector';

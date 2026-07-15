@@ -1,7 +1,7 @@
 // PS-A4: subscriber 재연결·재구독 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { getStatus, postJson } from '../../../http-client';
 import { ServerProcessLauncher } from '../Support/server-process-launcher';
 import { delay, ensure, eventually, isConnectionFailure } from '../Support/scenario-assert';
 import { publishEvent, waitForAll } from './ps-a1-fanout-basic-delivery-scenario';
@@ -24,8 +24,8 @@ export async function runPsA4(
 
   await eventually(async () => {
     try {
-      const response = await fetch(`${reconnectSubscriberUrl}/health`);
-      return !response.ok;
+      const status = await getStatus(`${reconnectSubscriberUrl}/health`);
+      return status < 200 || status >= 300;
     } catch (error) {
       return isConnectionFailure(error);
     }

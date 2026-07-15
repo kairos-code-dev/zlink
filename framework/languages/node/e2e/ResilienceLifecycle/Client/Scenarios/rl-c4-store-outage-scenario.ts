@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import {
   profileReq,
   waitPeerPresent

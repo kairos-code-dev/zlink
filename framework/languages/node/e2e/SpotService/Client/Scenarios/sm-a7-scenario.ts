@@ -1,7 +1,7 @@
 // SM-A7: spot 타입 불일치 (SpotTypeMismatch) 시나리오를 검증한다.
 import type { EvidenceWaitReq, SpotTypeMismatchRes, SpotTypeMismatchReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runSmA7(options: ClientOptions): Promise<void> {

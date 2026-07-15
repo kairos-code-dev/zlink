@@ -111,7 +111,7 @@ MAIN_MAIN="$ROOT_DIR/Server/Main/dist/Server/Main/main.js"
 INVALID_MAIN="$ROOT_DIR/Server/InvalidDuplicate/dist/Server/InvalidDuplicate/main.js"
 JSON_ONLY_MAIN="$ROOT_DIR/Server/JsonOnlyPeer/dist/Server/JsonOnlyPeer/main.js"
 CODEC_REQUESTER_MAIN="$ROOT_DIR/Server/CodecRequester/dist/Server/CodecRequester/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+CLIENT_MAIN="$ROOT_DIR/Client/dist/RegistrationCodec/Client/main.js"
 
 start_configured_server reg-codec-node "$MAIN_MAIN" \
   --rid reg-codec-node \

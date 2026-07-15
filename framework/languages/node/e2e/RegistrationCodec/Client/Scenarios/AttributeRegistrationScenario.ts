@@ -1,6 +1,6 @@
 // RC-A2: attribute 등록 (.NET) 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 // RC-A2 verifies Node decorator registration as the language mapping for attribute-style handlers.

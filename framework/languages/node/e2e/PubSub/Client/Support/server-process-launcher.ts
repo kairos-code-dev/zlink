@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { ClientOptions } from './client-options';
+import { getStatus, postStatus } from '../../../http-client';
 
 export class ServerProcessLauncher {
   constructor(private readonly options: ClientOptions) {}
@@ -77,8 +78,8 @@ export class DynamicProcess {
         throw new Error(`Process exited before readiness: ${this.child.exitCode ?? this.child.signalCode}`);
       }
       try {
-        const response = await fetch(`${this.httpUrl}/health`);
-        if (response.ok) {
+        const status = await getStatus(`${this.httpUrl}/health`);
+        if (status >= 200 && status < 300) {
           return;
         }
       } catch {
@@ -96,7 +97,7 @@ export class DynamicProcess {
       this.child.once('exit', () => resolve());
     });
     try {
-      await fetch(`${this.httpUrl}/shutdown`, { method: 'POST' });
+      await postStatus(`${this.httpUrl}/shutdown`);
     } catch {
       this.child.kill('SIGTERM');
     }

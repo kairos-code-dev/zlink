@@ -1,6 +1,6 @@
 // TA-B3: route 미연결 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import type { ActorCallResponse, ActorRefSnapshot } from '../../Shared/messages';
 import {
   type ActorEvidence, assertCall, assertFailure, ensureActor, requireEvidence, requireNoEvidence

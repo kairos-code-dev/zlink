@@ -71,7 +71,7 @@ ROUTE_B="tcp://127.0.0.1:$ROUTE_B_PORT"
 PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 WORKFLOW_MAIN="$ROOT_DIR/Server/Workflow/dist/Server/Workflow/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
-CLIENT_MAIN="$ROOT_DIR/Client/dist/Client/main.js"
+CLIENT_MAIN="$ROOT_DIR/Client/dist/RegistryMessaging/Client/main.js"
 
 start_configured_server() {
   local name="$1"; local main="$2"; shift 2

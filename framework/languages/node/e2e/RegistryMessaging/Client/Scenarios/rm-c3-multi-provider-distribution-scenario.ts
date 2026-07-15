@@ -1,6 +1,6 @@
 // RM-C3: 다중 provider 분산 시나리오를 검증한다.
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
-import { getJson, postJson } from '../Support/http-client';
+import { getJson, postJson } from '../../../http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';
 
 export async function runRmC3(directConsumerUrl: string, providerAUrl: string, providerBUrl: string): Promise<void> {

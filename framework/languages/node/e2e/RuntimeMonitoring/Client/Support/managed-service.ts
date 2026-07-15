@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import type { ClientOptions } from './client-options';
-import { postJson } from './http-client';
+import { postJson } from '../../../http-client';
 
 export function startServiceB(options: ClientOptions, logName: string): ManagedProcess {
   return startService(options, options.serviceBConfig, logName);

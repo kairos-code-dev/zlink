@@ -1,7 +1,7 @@
 // PS-A3: late subscriber 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ServerProcessLauncher } from '../Support/server-process-launcher';
 import { delay, ensure } from '../Support/scenario-assert';
 import { publishEvent } from './ps-a1-fanout-basic-delivery-scenario';

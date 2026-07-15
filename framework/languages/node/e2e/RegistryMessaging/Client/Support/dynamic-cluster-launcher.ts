@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { ClientOptions } from './client-options';
+import { getJson, getStatus, postStatus } from '../../../http-client';
 
 export interface DynamicProvider {
   readonly process: DynamicProcess;
@@ -107,12 +108,9 @@ export class DynamicClusterLauncher {
     if (topology === undefined) throw new Error('Location consumer is not running.');
     const expected = [...endpoints].sort();
     for (let i = 0; i < 120; i += 1) {
-      const response = await fetch(`${topology.httpUrl}/location/topology`);
-      if (response.ok) {
-        const rows = await response.json() as Array<{ readonly endpoint?: string }>;
-        const actual = rows.flatMap((row) => row.endpoint === undefined ? [] : [row.endpoint]).sort();
-        if (actual.length === expected.length && actual.every((value, index) => value === expected[index])) return;
-      }
+      const rows = await getJson<Array<{ readonly endpoint?: string }>>(`${topology.httpUrl}/location/topology`);
+      const actual = rows.flatMap((row) => row.endpoint === undefined ? [] : [row.endpoint]).sort();
+      if (actual.length === expected.length && actual.every((value, index) => value === expected[index])) return;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error(`${description} did not converge to '${expected.join(',')}'.`);
@@ -160,8 +158,8 @@ export class DynamicProcess {
         throw new Error(`Process exited before readiness: ${this.process.exitCode}`);
       }
       try {
-        const response = await fetch(`${this.httpUrl}/health`);
-        if (response.ok) {
+        const status = await getStatus(`${this.httpUrl}/health`);
+        if (status >= 200 && status < 300) {
           return;
         }
       } catch {
@@ -188,7 +186,7 @@ export class DynamicProcess {
     }, 5000);
     try {
       await Promise.race([
-        fetch(`${this.httpUrl}/shutdown`, { method: 'POST' }),
+        postStatus(`${this.httpUrl}/shutdown`, 1000),
         new Promise((_, reject) => setTimeout(() => reject(new Error('shutdown request timed out')), 1000))
       ]);
     } catch {

@@ -19,7 +19,10 @@ const output = await build({
   write: false,
   format: 'esm',
   platform: 'browser',
-  target: 'es2022'
+  target: 'es2022',
+  alias: {
+    '@zlink-systems/http-client': path.join(nodeRoot, 'packages/http-client/dist/browser/index.mjs')
+  }
 });
 
 const server = http.createServer(async (request, response) => {
@@ -34,9 +37,14 @@ const server = http.createServer(async (request, response) => {
       await proxyRequest(request, response, url.searchParams.get('url'));
       return;
     }
+    if (url.pathname.startsWith('/proxy/')) {
+      await proxyRequest(request, response, mappedProxyTarget(url));
+      return;
+    }
     response.writeHead(200, { 'content-type': 'text/html' });
     response.end('<script type="module" src="/client.mjs"></script>');
   } catch (error) {
+    console.error('browser-e2e proxy failure:', error);
     response.writeHead(502, { 'content-type': 'text/plain' });
     response.end(error instanceof Error ? error.message : String(error));
   }
@@ -55,8 +63,9 @@ try {
     if (message.type() === 'error') console.error(text);
     else console.log(text);
   });
-  await page.addInitScript((args) => { window.__zlinkE2eArgs = args; }, clientArgs);
   const address = server.address();
+  const browserArgs = clientArgs.map((value) => mapLoopbackHttpUrl(value, address.port));
+  await page.addInitScript((args) => { window.__zlinkE2eArgs = args; }, browserArgs);
   await page.goto(`http://127.0.0.1:${address.port}`);
   const timeout = Number(process.env.ZLINK_BROWSER_E2E_TIMEOUT_MS ?? 300_000);
   await page.waitForFunction(
@@ -75,7 +84,7 @@ async function proxyRequest(request, response, targetValue) {
   if (targetValue === null) throw new Error('Proxy target is required.');
   const target = new URL(targetValue);
   if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(target.hostname)) {
-    throw new Error('Browser E2E proxy permits loopback HTTP targets only.');
+    throw new Error(`Browser E2E proxy permits loopback HTTP targets only: ${target.href}`);
   }
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -87,6 +96,28 @@ async function proxyRequest(request, response, targetValue) {
   const headers = Object.fromEntries(upstream.headers.entries());
   response.writeHead(upstream.status, headers);
   response.end(Buffer.from(await upstream.arrayBuffer()));
+}
+
+function mapLoopbackHttpUrl(value, browserPort) {
+  let target;
+  try {
+    target = new URL(value);
+  } catch {
+    return value;
+  }
+  if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(target.hostname)) return value;
+  const encodedOrigin = Buffer.from(target.origin).toString('base64url');
+  const targetPath = target.pathname === '/' ? '' : target.pathname;
+  return `http://127.0.0.1:${browserPort}/proxy/${encodedOrigin}${targetPath}${target.search}`;
+}
+
+function mappedProxyTarget(requestUrl) {
+  const [, , encodedOrigin, ...pathSegments] = requestUrl.pathname.split('/');
+  if (encodedOrigin === undefined || encodedOrigin.length === 0) throw new Error('Proxy origin is required.');
+  const origin = Buffer.from(encodedOrigin, 'base64url').toString('utf8');
+  while (pathSegments[0] === '') pathSegments.shift();
+  const target = new URL(`/${pathSegments.join('/')}${requestUrl.search}`, origin);
+  return target.toString();
 }
 
 function copyHeaders(headers) {

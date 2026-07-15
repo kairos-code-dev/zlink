@@ -1,6 +1,6 @@
 // RC-B1: JSON codec 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
-import { postJson } from '../Support/http-client';
+import { postJson } from '../../../http-client';
 import { ensure } from '../Support/scenario-assert';
 
 // RC-B1 verifies JSON request and send round-trip evidence on the main host.

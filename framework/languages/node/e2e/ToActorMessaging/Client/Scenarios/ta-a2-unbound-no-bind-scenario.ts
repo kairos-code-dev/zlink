@@ -1,6 +1,6 @@
 // TA-A2: bind 안 된 actor에게 no-bind send/request 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
-import { getJson } from '../Support/http-client';
+import { getJson } from '../../../http-client';
 import { type ActorEvidence, assertCall, assertUnbound, bindingSnapshot, ensureActor, requireEvidence } from '../Support/actor-scenario-support';
 
 export async function runTaA2(options: ClientOptions): Promise<void> {

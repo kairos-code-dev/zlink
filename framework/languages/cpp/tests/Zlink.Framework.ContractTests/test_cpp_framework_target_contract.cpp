@@ -179,6 +179,15 @@ int main ()
       read_file (e2e_root / "SpotActorTransfer/feature-map.ko.md");
     const auto observability_runner = read_file (e2e_root / "ObservabilityOps/run_e2e.sh");
     const auto observability_server = read_file (e2e_root / "ObservabilityOps/Server/main.cpp");
+    const std::vector<std::pair<std::string, std::string>> location_option_consumers{
+      {"PubSub", read_file (e2e_root / "PubSub/Server/Shared/location_store.hpp")},
+      {"ObservabilityOps", observability_server},
+      {"ResilienceLifecycle",
+       read_file (e2e_root / "ResilienceLifecycle/Server/Shared/location_store.hpp")},
+      {"RuntimeMonitoring",
+       read_file (e2e_root / "RuntimeMonitoring/Server/Shared/location_store.hpp")},
+      {"SpotService",
+       read_file (e2e_root / "SpotService/Server/Shared/Support/location_store.hpp")}};
     const auto observability_feature_map =
       read_file (e2e_root / "ObservabilityOps/feature-map.ko.md");
     const auto resilience_client =
@@ -1220,6 +1229,13 @@ int main ()
     gate.require (observability_server.find ("ownerLeases") != std::string::npos
                     && observability_server.find ("/spot/action") != std::string::npos,
                   "E2E-CP-61", "ObservabilityOps exposes no lease or existing-route evidence");
+    for (const auto &[config, source] : location_option_consumers) {
+        gate.require (source.find ("auto locations = framework.configure_locations ()")
+                        == std::string::npos
+                        && source.find ("auto &locations = framework.configure_locations ()")
+                             != std::string::npos,
+                      "E2E-CP-08", config + " mutates a copied location option object");
+    }
 
     gate.require (!std::filesystem::exists (e2e_root / "DeliveryDispatch/run_e2e.sh"),
                   "E2E-CP-64", "stray DeliveryDispatch e2e fork remains tracked");

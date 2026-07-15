@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 20건. 완료 0건.**
+**전체 20건. 완료 15건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -289,14 +289,19 @@
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
 
-- [ ] **IMP-X2** — location event source(`location-peer/spot/actor/route`, `StoreFailure`/`StoreRecovered`)가 없다
-- [ ] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
+- [x] **IMP-X2** — location event source(`location-peer/spot/actor/route`, `StoreFailure`/`StoreRecovered`)가 없다
+  - 근거: location peer·spot·actor·route별 등록과 event emitter를 분리하고 store 장애 전이를 `StoreFailure`/`StoreRecovered`로 고정해 source 종류별 관측 책임을 한곳에 모았다. source 또는 event kind가 빠지면 실패하는 monitoring-runtime 게이트가 통과한다. 커밋 `1e5ddfa5e`, `3f71435cb`.
+- [x] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
+  - 근거: 중복 STREAM·channel 등록, handler 없는 receiver 역할, 잘못된 SPOT timer를 runtime 진입 전에 공통 registration validator가 거부한다. 잘못된 설정이 startup을 통과하던 Nest·startup-validation 게이트가 통과한다. 커밋 `135d27edb`, `664d45650`, `cc380c128`, `b67ceb5e0`.
 
 ### 언어별 표면 차이 (기준선 대조)
 
-- [ ] **§12.5** — spot 메시징 표면 누락 (Node)
-- [ ] **§12.6** — session handler registry 키 (Node)
-- [ ] **§12.11** — location event kind 이름 (Node)
+- [x] **§12.5** — spot 메시징 표면 누락 (Node)
+  - 근거: route client에 SpotHandle 기반 send/request를 연결하고 stale로 확정할 수 있는 request 실패만 handle을 갱신해 1회 재전송하도록 resolve·retry 정책을 공통 경계에 모았다. 표면 누락과 stale retry 부재로 실패하던 channel-client 게이트가 통과한다. 커밋 `5045a3168`.
+- [x] **§12.6** — session handler registry 키 (Node)
+  - 근거: session handler를 decorator의 packet metadata로 등록하고 중복 packet과 session 생성 뒤 등록을 거부해 registry 키와 등록 창을 한 모듈이 소유한다. 클래스 이름이 wire 이름과 다르면 실패하던 stream-session-runtime 게이트가 통과한다. 커밋 `01a32b4eb`.
+- [x] **§12.11** — location event kind 이름 (Node)
+  - 근거: Node 전용 `StoreUnavailable`을 제거하고 닫힌 location runtime event 집합을 `StoreFailure`로 통일했다. 옛 이름이 남거나 장애·복구 순서가 다르면 실패하는 monitoring-runtime 게이트가 통과한다. 커밋 `3f71435cb`.
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
@@ -373,8 +378,10 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
   - 근거: timer 계약 검증을 별도 registration validator로 옮겨 잘못된 주기를 startup에서 거부한다. 활성화 때까지 실패가 미뤄지던 startup-validation 게이트가 통과한다. 커밋 `b67ceb5e0`.
 - [x] **IMP-ND-20** (결함) — `fanout.received`가 등록되지 않은 topic까지 라벨로 단다(`.NET` IMP-DN-08과 동형)
   - 근거: fanout receive metric에서 동적 topic label을 제거하고 닫힌 label 집합만 계측 경계가 만든다. 미등록 topic이 label로 노출돼 실패하던 runtime-metrics 게이트가 통과한다. 커밋 `e1b834eb9`.
-- [ ] **IMP-TS-01** (결함) — **TypeScript connector**: 안 읽은 backlog가 쌓이면 `FrameTooLarge`로 **세션을 끊는다**
-- [ ] **IMP-TS-02** (결함) — **TypeScript connector**: handler 없는 수신 메시지를 **버려서** `waitFor`가 이미 도착한 메시지를 못 받는다
+- [x] **IMP-TS-01** (결함) — **TypeScript connector**: 안 읽은 backlog가 쌓이면 `FrameTooLarge`로 **세션을 끊는다**
+  - 근거: WebSocket transport의 unread backlog 총량과 frame payload 크기 검증을 분리해 각 frame만 protocol 한도로 검사하고 backlog 자체로 연결을 종료하지 않는다. 여러 정상 frame의 합계가 한도를 넘으면 실패하던 browser connector 게이트가 통과한다. 커밋 `05ef3f348`.
+- [x] **IMP-TS-02** (결함) — **TypeScript connector**: handler 없는 수신 메시지를 **버려서** `waitFor`가 이미 도착한 메시지를 못 받는다
+  - 근거: handler 없는 메시지를 이름별 unread queue에 유지하고 handler가 등록되면 전달 가능한 항목만 drain하도록 수신 책임을 한 모듈에 가뒀다. 메시지가 먼저 도착한 뒤 등록한 `waitFor`가 timeout으로 실패하던 connector JSON 게이트가 통과한다. 커밋 `4eebaa1d3`.
 
 ### 상세
 

@@ -10,6 +10,7 @@ if rg -n -U '\.enableClient\(\s*[^)\s]|\.connect(?:Router|PeerPub)\(' Server --g
   exit 1
 fi
 RUN_DIR="$(mktemp -d)"
+chmod 0700 "${RUN_DIR}"
 LOG_DIR="$RUN_DIR/logs"
 mkdir -p "$LOG_DIR"
 

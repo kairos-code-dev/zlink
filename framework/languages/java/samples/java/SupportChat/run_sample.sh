@@ -22,6 +22,7 @@ if rg -n 'private static void expect(Failure|Timeout)\(' "${client_source}"; the
 fi
 
 RUN_DIR="$(mktemp -d)"
+chmod 0700 "${RUN_DIR}"
 LOG_DIR="$RUN_DIR/logs"
 BUILD_LOG="$LOG_DIR/build.log"
 mkdir -p "$LOG_DIR"

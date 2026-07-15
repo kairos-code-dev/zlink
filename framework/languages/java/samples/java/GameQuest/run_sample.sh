@@ -7,6 +7,7 @@ source "$ROOT_DIR/../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 
 RUN_DIR="$(mktemp -d)"
+chmod 0700 "${RUN_DIR}"
 LOG_DIR="$RUN_DIR/logs"
 BUILD_LOG="$LOG_DIR/build.log"
 mkdir -p "$LOG_DIR"

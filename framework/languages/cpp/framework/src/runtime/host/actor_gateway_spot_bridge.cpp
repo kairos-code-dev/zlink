@@ -1284,6 +1284,9 @@ void configure_actor_gateway_spot_bridge (
                                               "bound actor node route is empty");
           }
           for (auto &binding : bindings) {
+              if (actor_ref.node_rid ().value () == binding.local_spot_node_rid) {
+                  return result_t<void>::success ();
+              }
               if (!binding.accepts_route_channels) {
                   return register_bound_session_route_through_mesh (
                     binding.runtime, actor_ref, binding.local_spot_node_rid, serializers);

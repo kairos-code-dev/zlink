@@ -198,35 +198,49 @@ int main ()
       "E2E-CP-13",
       "Config 10 SpotActorTransfer is missing feature-map.ko.md");
 
-    /* E2E-CP-56 — the deployed topology keeps controller, session gateways,
-     * and actor nodes in their documented process roles. */
+    /* D5 / E2E-CP-56 — actor creation and join begin on the node that owns the
+     * actor. Config 10 must not recreate the removed remote-controller API. */
     gate.require (transfer_runner.find ("start_role actor actor-a") != std::string::npos
                     && transfer_runner.find ("start_role actor actor-b") != std::string::npos
                     && transfer_runner.find ("start_role session session-a")
                          != std::string::npos
                     && transfer_runner.find ("start_role session session-b")
                          != std::string::npos
-                    && transfer_runner.find ("start_role controller transfer-controller")
-                         != std::string::npos
+                    && transfer_runner.find ("start_role controller") == std::string::npos
+                    && transfer_runner.find ("CONTROLLER_URL") == std::string::npos
                     && transfer_runner.find ("actor-c") == std::string::npos,
-                  "E2E-CP-56", "Config 10 does not start the required five role servers");
-    gate.require (transfer_runner.find ("ZLINK_CPP_E2E_CONTROLLER_URL")
-                    != std::string::npos
-                    && transfer_runner.find ("ZLINK_CPP_E2E_NODE_A_STREAM")
+                  "E2E-CP-56", "Config 10 still uses a remote actor controller");
+    gate.require (transfer_runner.find ("ZLINK_CPP_E2E_NODE_A_STREAM")
                          != std::string::npos
                     && transfer_runner.find ("ZLINK_CPP_E2E_NODE_B_STREAM")
                          != std::string::npos,
-                  "E2E-CP-56", "Config 10 does not pass controller and gateway endpoints");
-    gate.require (transfer_client.find ("create_actor (_nodes.controller")
+                  "E2E-CP-56", "Config 10 does not pass the session gateway endpoints");
+    gate.require (transfer_client.find ("create_actor (_nodes.a")
                     != std::string::npos
-                    && transfer_client.find ("join_actor (_nodes.controller")
+                    && transfer_client.find ("join_actor (_nodes.a")
                          != std::string::npos
-                    && transfer_client.find ("probe_actor (_nodes.controller")
+                    && transfer_client.find (
+                         "join_actor (_nodes.b, actor_id, {\"ST-F5\", spot_a_final})")
+                         != std::string::npos
+                    && transfer_client.find ("probe_actor (_nodes.a")
                          != std::string::npos,
-                  "E2E-CP-56", "Config 10 client bypasses the transfer controller");
+                  "E2E-CP-56", "Config 10 does not create and join actors on their owner node");
     gate.require (transfer_feature_map.find ("`deferred`") == std::string::npos
-                    && transfer_feature_map.find ("actor node\n두 개") != std::string::npos,
-                  "E2E-CP-56", "Config 10 feature map still describes the old topology");
+                    && transfer_feature_map.find ("transfer controller") == std::string::npos,
+                  "E2E-CP-56", "Config 10 feature map still promises remote actor control");
+    const auto bound_session_registration =
+      actor_gateway_spot_bridge.find ("actor_gateway.on_bound_session");
+    const auto local_session_route = actor_gateway_spot_bridge.find (
+      "actor_ref.node_rid ().value () == binding.local_spot_node_rid",
+      bound_session_registration);
+    const auto remote_session_route = actor_gateway_spot_bridge.find (
+      "register_bound_session_route_through_mesh", bound_session_registration);
+    gate.require (bound_session_registration != std::string::npos
+                    && local_session_route != std::string::npos
+                    && remote_session_route != std::string::npos
+                    && local_session_route < remote_session_route,
+                  "E2E-CP-56",
+                  "local actor session binding still depends on a remote mesh route");
 
     /* E2E-CP-09 — local E2E waits use the common named defaults. */
     for (const auto *candidate : {&transfer_runner, &observability_runner}) {

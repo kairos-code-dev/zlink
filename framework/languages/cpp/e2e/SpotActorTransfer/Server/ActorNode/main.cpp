@@ -898,8 +898,11 @@ class join_actor_handler_t
         const auto request = parse_body (http_request).get<e2e::join_target_req_t> ();
         try {
             const auto ref = require_actor_ref (_directory, actor_id);
+            const auto request_timeout = request.scenario == "ST-C3"
+                                           ? std::chrono::seconds (5)
+                                           : std::chrono::seconds (12);
             auto result = co_await _actors.request_to_actor (ref, request)
-                            .timeout (std::chrono::seconds (10))
+                            .timeout (request_timeout)
                             .async<e2e::join_target_res_t> ();
             _evidence.add (request.scenario, actor_id,
                            result.accepted ? "success_reply" : "reject_reply",
@@ -1142,7 +1145,11 @@ int main (int argc, char **argv)
               .register_session<transfer_session_t> ();
         }
 
-        framework.http ().listen (http_url)
+        framework.http ()
+          .configure_server ([] (fw::http_server_options_builder_t &server) {
+              server.set_write_timeout (std::chrono::seconds (15));
+          })
+          .listen (http_url)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
           .map_post<evidence_wait_handler_t> ("/evidence/wait");
@@ -1151,16 +1158,14 @@ int main (int argc, char **argv)
               .map_post<joined_gate_release_handler_t> ("/joined-gates/{spotRid}/release")
               .map_post<transfer_gate_release_handler_t> ("/transfer-gates/{actorId}/release")
               .map_post<create_spot_handler_t> ("/spots")
+              .map_post<create_actor_handler_t> ("/actors")
+              .map_post<join_actor_handler_t> ("/actors/{actorId}/join")
+              .map_post<probe_actor_handler_t> ("/actors/{actorId}/probe")
               .map_get<actor_ref_handler_t> ("/actors/{actorId}/ref")
               .map_post<probe_ref_handler_t> ("/actors/{actorId}/probe-ref")
               .map_post<send_ref_handler_t> ("/actors/{actorId}/send-ref")
               .map_post<bound_push_handler_t> ("/actors/{actorId}/bound-push")
               .map_post<shutdown_handler_t> ("/shutdown");
-        } else if (role == "controller") {
-            framework.http ()
-              .map_post<create_actor_handler_t> ("/actors")
-              .map_post<join_actor_handler_t> ("/actors/{actorId}/join")
-              .map_post<probe_actor_handler_t> ("/actors/{actorId}/probe");
         }
     });
 

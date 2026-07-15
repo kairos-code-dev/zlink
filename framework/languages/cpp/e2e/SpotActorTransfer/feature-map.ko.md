@@ -3,9 +3,9 @@
 기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md`
 
 이 문서는 C++ Config 10 E2E의 현재 구현 상태를 공통 시나리오별로 기록한다. runner는 actor node
-두 개, session gateway 두 개, transfer controller 한 개와 consumer를 서로 다른 process로 시작한다.
-actor 생성·이동·조회는 controller가 맡고, session 연결과 actor 처리는 각각 gateway와 actor node가
-맡는다. `run_e2e.sh all`은 공통 문서의 스무 시나리오를 모두 실행한다.
+두 개와 session gateway 두 개, consumer를 서로 다른 process로 시작한다. actor는 처음 소유하는
+actor node가 만들고 join을 시작한다. 이동은 별도 원격 생성 API가 아니라 기존 actor handoff 경로로
+수행한다. `run_e2e.sh all`은 공통 문서의 스무 시나리오를 모두 실행한다.
 
 | 시나리오 | 상태 | 현재 검증 |
 |----------|------|----------------------|
@@ -42,8 +42,8 @@ actor 생성·이동·조회는 controller가 맡고, session 연결과 actor �
   - 의미: 성공 transfer와 새 session rebind가 없어도, 실패한 transfer 뒤 source binding 유지와 target route 비오염을 판별한다.
 - 2026-07-15: `./run_e2e.sh all`
   - 결과: 스무 시나리오 통과
-  - 로그: `logs/20260715-111050-3056956`
-  - 의미: 분리된 역할 배치에서 일반·실패·순서·session·request handoff 절차가 모두 통과했다.
+  - 로그: `logs/20260715-115825-3241768`
+  - 의미: actor를 소유한 node가 생성과 join을 시작하는 네 역할 배치에서 일반·실패·순서·session·request handoff 절차가 모두 통과했다. actor-a→actor-b→actor-a 연속 이동도 각 시점의 소유 node에서 시작한다.
 - 2026-07-15: `./run_e2e.sh ST-F6`
   - 결과: 통과
   - 로그: `logs/20260715-110604-3043381`
@@ -51,6 +51,9 @@ actor 생성·이동·조회는 controller가 맡고, session 연결과 actor �
 - 2026-07-15: admission burst 성능 비교
   - 결과: median throughput 94,926/s에서 95,955/s, p99 2,685.49µs에서 2,419.20µs
   - 의미: session route snapshot 리팩토링 뒤 dispatch 성능 회귀가 없었다.
+- 2026-07-15: D1~D6 구현 뒤 admission burst 재검증
+  - 결과: median throughput 91,642/s, p99 2,703.32µs
+  - 의미: 직전 95,955/s 대비 throughput 변화는 -4.5%로 10% 회귀 기준 안이다.
 
 ## 실행 범위
 
@@ -58,3 +61,16 @@ actor 생성·이동·조회는 controller가 맡고, session 연결과 actor �
 ST-B2, ST-C1, ST-C2는 다른 시나리오와 분리해 실행하며, 그 사이에 actor-a를 다시 시작한다. 모든
 시나리오는 client가 역할별 evidence와 응답을 직접 판정하고, runner는 process 수명과 실행 순서만
 관리한다.
+
+## 설계 재검토
+
+actor 생성과 join을 별도 controller가 다른 node에 요청하는 안과 현재 actor를 소유한 node가 기존
+handoff 계약을 시작하는 안을 비교했다. 전자는 제거된 원격 생성 표면을 E2E가 다시 정의하므로 사용하지
+않는다. client는 최초 소유 node에 생성과 join을 요청하고, 연속 이동은 이동할 때마다 현재 소유 node에
+요청한다.
+
+join 내부 제한 시간보다 HTTP 응답 제한 시간이 짧으면 runner 순서에 따라 정상 이동도 응답 전에 끊긴다.
+HTTP server의 응답 제한은 정상 join 요청 제한보다 길게 한 곳에서 설정했다. callback 실패를 기다리는
+ST-C3만 실패 판정 시간을 5초로 제한하고, 정상 이동은 12초를 사용한다. 또한 같은 node의 bound session은
+이미 local sink가 있으므로 remote mesh route를 중복 등록하지 않고, 다른 node에 있는 actor만 mesh
+route를 등록한다.

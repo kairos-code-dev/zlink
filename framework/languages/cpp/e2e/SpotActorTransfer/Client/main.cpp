@@ -73,7 +73,6 @@ struct nodes_t
 {
     http::client_t a;
     http::client_t b;
-    http::client_t controller;
     std::string a_stream_endpoint;
     std::string b_stream_endpoint;
 };
@@ -451,12 +450,12 @@ class scenario_runner_t
         const auto actor_id = "actor-local-ok-" + unique_suffix ();
         const auto spot_rid = "spot-local-ok-" + unique_suffix ();
         create_spot (_nodes.a, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 11);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 11);
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-A1", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-A1", spot_rid});
         require (join.accepted, "ST-A1 join was rejected.");
 
-        const auto probe = probe_actor (_nodes.controller, actor_id, {"ST-A1", "after-joined"});
+        const auto probe = probe_actor (_nodes.a, actor_id, {"ST-A1", "after-joined"});
         require (probe.node_rid == "actor-a", "ST-A1 probe expected actor-a, got " + probe.node_rid);
         require (probe.spot_rid == spot_rid, "ST-A1 probe did not reach target spot.");
 
@@ -465,7 +464,7 @@ class scenario_runner_t
                      "transfer|" + actor_id + "|leave|11",
                      "transfer|" + actor_id + "|joined|" + spot_rid + ":11",
                      "ST-A1|" + actor_id + "|location_committed|" + spot_rid});
-        wait_evidence (_nodes.controller,
+        wait_evidence (_nodes.a,
                        {"ST-A1|" + actor_id + "|success_reply|" + spot_rid});
         wait_evidence (_nodes.a,
                        {"ST-A1|" + actor_id + "|packet_handler|after-joined"});
@@ -476,9 +475,9 @@ class scenario_runner_t
         const auto actor_id = "actor-local-reject-" + unique_suffix ();
         const auto spot_rid = "spot-local-reject-" + unique_suffix ();
         create_spot (_nodes.a, spot_rid, "reject");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 12);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 12);
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-A2", spot_rid, "reject"});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-A2", spot_rid, "reject"});
         require (!join.accepted, "ST-A2 join should have been rejected.");
 
         const auto evidence =
@@ -492,10 +491,10 @@ class scenario_runner_t
         const auto actor_id = "actor-local-moving-" + unique_suffix ();
         const auto spot_rid = "spot-local-moving-" + unique_suffix ();
         create_spot (_nodes.a, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 13);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 13);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-A3", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-A3", spot_rid});
         });
         const auto waiting = wait_evidence (_nodes.a, {
                                                         "ST-A3|" + actor_id + "|admission|spot="
@@ -509,7 +508,7 @@ class scenario_runner_t
                              "ST-A3 packet should not run before on_actor_joined is released.");
 
         auto blocked_probe = std::async (std::launch::async, [&] {
-            return probe_actor (_nodes.controller, actor_id, {"ST-A3", "during-joined-wait"});
+            return probe_actor (_nodes.a, actor_id, {"ST-A3", "during-joined-wait"});
         });
         std::this_thread::sleep_for (std::chrono::milliseconds (500));
         require (blocked_probe.wait_for (std::chrono::seconds (0)) != std::future_status::ready,
@@ -529,7 +528,7 @@ class scenario_runner_t
                                    "transfer|" + actor_id + "|joined|" + spot_rid + ":13",
                                    "ST-A3|" + actor_id + "|packet_handler|during-joined-wait",
                                  });
-        wait_evidence (_nodes.controller,
+        wait_evidence (_nodes.a,
                        {"ST-A3|" + actor_id + "|success_reply|" + spot_rid});
     }
 
@@ -538,12 +537,12 @@ class scenario_runner_t
         const auto actor_id = "actor-remote-ok-" + unique_suffix ();
         const auto spot_rid = "spot-remote-ok-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 21);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 21);
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-B1", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-B1", spot_rid});
         require (join.accepted, "ST-B1 join was rejected.");
 
-        const auto probe = probe_actor (_nodes.controller, actor_id, {"ST-B1", "after-transfer"});
+        const auto probe = probe_actor (_nodes.a, actor_id, {"ST-B1", "after-transfer"});
         require (probe.node_rid == "actor-b", "ST-B1 probe expected actor-b, got " + probe.node_rid);
         require (probe.state_version == 21,
                  "ST-B1 state version expected 21, got " + std::to_string (probe.state_version));
@@ -553,7 +552,7 @@ class scenario_runner_t
                      "transfer|" + actor_id + "|leave|21",
                      "message_flow|" + actor_id + "|commit_request|",
                      "message_flow|" + actor_id + "|commit_ack|"});
-        wait_evidence (_nodes.controller,
+        wait_evidence (_nodes.a,
                        {"ST-B1|" + actor_id + "|success_reply|" + spot_rid});
         assert_evidence_sequence (
           _nodes.b, {"ST-B1|" + actor_id + "|admission|",
@@ -574,10 +573,10 @@ class scenario_runner_t
         const auto actor_id = "actor-cleanup-after-success-" + unique_suffix ();
         const auto spot_rid = "spot-cleanup-after-success-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 22);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 22);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-B2", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-B2", spot_rid});
         });
         wait_evidence (_nodes.a,
                        {"message_flow|" + actor_id + "|commit_ack|"});
@@ -586,12 +585,12 @@ class scenario_runner_t
         require_no_contains (get_evidence (_nodes.a),
                              "message_flow|" + actor_id + "|source_cleanup|",
                              "ST-B2 source cleanup completed before source shutdown.");
-        const auto before = probe_actor (_nodes.controller, actor_id, {"ST-B2", "before-source-cleanup-loss"});
+        const auto before = probe_actor (_nodes.a, actor_id, {"ST-B2", "before-source-cleanup-loss"});
         require (before.node_rid == "actor-b",
                  "ST-B2 probe expected actor-b, got " + before.node_rid);
 
         shutdown_node (_nodes.a);
-        const auto after = probe_actor (_nodes.controller, actor_id, {"ST-B2", "after-source-cleanup-loss"});
+        const auto after = probe_actor (_nodes.b, actor_id, {"ST-B2", "after-source-cleanup-loss"});
         require (after.node_rid == "actor-b",
                  "ST-B2 target ownership was lost after source shutdown: " + after.node_rid);
         require (after.state_version == 22,
@@ -608,12 +607,12 @@ class scenario_runner_t
         const auto actor_id = "actor-no-adapter-" + unique_suffix ();
         const auto spot_rid = "spot-no-adapter-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_no_adapter, 31);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_no_adapter, 31);
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-B3", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-B3", spot_rid});
         require (join.accepted, "ST-B3 join was rejected.");
 
-        const auto probe = probe_actor (_nodes.controller, actor_id, {"ST-B3", "after-default-empty-transfer"});
+        const auto probe = probe_actor (_nodes.a, actor_id, {"ST-B3", "after-default-empty-transfer"});
         require (probe.node_rid == "actor-b", "ST-B3 probe expected actor-b, got " + probe.node_rid);
         require (probe.state_version == 0,
                  "ST-B3 default empty target state expected 0, got "
@@ -623,7 +622,7 @@ class scenario_runner_t
                      "transfer|" + actor_id + "|leave|31",
                      "message_flow|" + actor_id + "|commit_request|",
                      "message_flow|" + actor_id + "|commit_ack|"});
-        wait_evidence (_nodes.controller,
+        wait_evidence (_nodes.a,
                        {"ST-B3|" + actor_id + "|success_reply|" + spot_rid});
         assert_evidence_sequence (
           _nodes.b, {"ST-B3|" + actor_id + "|admission|",
@@ -643,12 +642,12 @@ class scenario_runner_t
         const auto actor_id = "actor-empty-state-" + unique_suffix ();
         const auto spot_rid = "spot-empty-state-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_empty_state, 41);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_empty_state, 41);
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-B4", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-B4", spot_rid});
         require (join.accepted, "ST-B4 join was rejected.");
 
-        const auto probe = probe_actor (_nodes.controller, actor_id, {"ST-B4", "after-empty-state-transfer"});
+        const auto probe = probe_actor (_nodes.a, actor_id, {"ST-B4", "after-empty-state-transfer"});
         require (probe.node_rid == "actor-b", "ST-B4 probe expected actor-b, got " + probe.node_rid);
         require (probe.state_version == 41,
                  "ST-B4 loaded target state expected 41, got "
@@ -671,11 +670,11 @@ class scenario_runner_t
         const auto actor_id = "actor-source-down-before-commit-" + unique_suffix ();
         const auto spot_rid = "spot-source-down-before-commit-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 62);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 62);
 
         auto join_task = std::async (std::launch::async, [&] () -> std::optional<e2e::join_target_res_t> {
             try {
-                return join_actor (_nodes.controller, actor_id, {"ST-C1", spot_rid});
+                return join_actor (_nodes.a, actor_id, {"ST-C1", spot_rid});
             }
             catch (const std::exception &) {
                 // Source shutdown may abort the HTTP request before the
@@ -711,7 +710,7 @@ class scenario_runner_t
         const auto actor_id = "actor-source-down-after-commit-" + unique_suffix ();
         const auto spot_rid = "spot-source-down-after-commit-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 61);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 61);
         const auto source_ref = get_actor_ref (_nodes.a, actor_id);
         bound_session_t bound (_nodes.b_stream_endpoint, "ST-C2", source_ref);
         auto before_push = bound.expect_push ("bound-before-transfer");
@@ -720,7 +719,7 @@ class scenario_runner_t
                  "ST-C2 pre-transfer bound push expected actor-a, got " + before_reply.node_rid);
         before_push.get ();
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-C2", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-C2", spot_rid});
         require (join.accepted, "ST-C2 join was rejected.");
         wait_evidence (_nodes.b, {
                                    "transfer|" + actor_id + "|transfer_in|61",
@@ -739,7 +738,7 @@ class scenario_runner_t
         require (after_shutdown.generation == before_shutdown.generation,
                  "ST-C2 target generation changed after source shutdown.");
 
-        const auto probe = probe_actor (_nodes.controller, actor_id, {"ST-C2", "after-source-down"});
+        const auto probe = probe_actor (_nodes.b, actor_id, {"ST-C2", "after-source-down"});
         require (probe.node_rid == "actor-b", "ST-C2 probe expected actor-b, got " + probe.node_rid);
         require (probe.spot_rid == spot_rid,
                  "ST-C2 probe did not reach target spot after source shutdown.");
@@ -777,15 +776,15 @@ class scenario_runner_t
         const auto actor_id = "actor-stale-release-" + unique_suffix ();
         const auto spot_rid = "spot-stale-release-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 81);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 81);
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-D2", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-D2", spot_rid});
         require (join.accepted, "ST-D2 join was rejected.");
         const auto before = get_actor_ref (_nodes.b, actor_id);
         require (before.node_rid == "actor-b",
                  "ST-D2 target ref expected actor-b, got " + before.node_rid);
 
-        (void) probe_actor (_nodes.controller, actor_id, {"ST-D2", "before-delayed-cleanup"});
+        (void) probe_actor (_nodes.a, actor_id, {"ST-D2", "before-delayed-cleanup"});
         wait_evidence (_nodes.a,
                        {"message_flow|" + actor_id + "|source_cleanup|"});
         const auto after = get_actor_ref (_nodes.b, actor_id);
@@ -793,7 +792,7 @@ class scenario_runner_t
                  "ST-D2 target ref changed after delayed cleanup: " + after.node_rid);
         require (after.generation == before.generation,
                  "ST-D2 generation changed after delayed cleanup.");
-        const auto probe = probe_actor (_nodes.controller, actor_id, {"ST-D2", "after-delayed-cleanup"});
+        const auto probe = probe_actor (_nodes.a, actor_id, {"ST-D2", "after-delayed-cleanup"});
         require (probe.node_rid == "actor-b", "ST-D2 probe expected actor-b, got " + probe.node_rid);
     }
 
@@ -802,14 +801,14 @@ class scenario_runner_t
         const auto actor_id = "actor-bound-session-" + unique_suffix ();
         const auto spot_rid = "spot-bound-session-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 91);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 91);
         const auto source_ref = get_actor_ref (_nodes.a, actor_id);
         bound_session_t bound (_nodes.a_stream_endpoint, "ST-E1", source_ref);
         auto before_push = bound.expect_push ("before-transfer");
         bound_push (_nodes.a, actor_id, {"ST-E1", "before-transfer"});
         before_push.get ();
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-E1", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-E1", spot_rid});
         require (join.accepted, "ST-E1 join was rejected.");
         auto pushed = bound.expect_push ("after-remote-transfer");
         const auto push_reply = bound_push (_nodes.b, actor_id, {"ST-E1", "after-remote-transfer"});
@@ -828,14 +827,14 @@ class scenario_runner_t
         const auto actor_id = "actor-bound-session-rebind-" + unique_suffix ();
         const auto spot_rid = "spot-bound-session-rebind-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_fail_transfer_out, 92);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_fail_transfer_out, 92);
         const auto source_ref = get_actor_ref (_nodes.a, actor_id);
         bound_session_t old_session (_nodes.a_stream_endpoint, "ST-E2", source_ref);
         auto before_push = old_session.expect_push ("before-failed-transfer");
         bound_push (_nodes.a, actor_id, {"ST-E2", "before-failed-transfer"});
         before_push.get ();
 
-        const auto join = join_actor (_nodes.controller, actor_id, {"ST-E2", spot_rid});
+        const auto join = join_actor (_nodes.a, actor_id, {"ST-E2", spot_rid});
         require (!join.accepted, "ST-E2 failed transfer was accepted.");
 
         auto source_push = old_session.expect_push ("after-failed-transfer");
@@ -860,11 +859,11 @@ class scenario_runner_t
         const auto actor_id = "actor-inflight-order-" + unique_suffix ();
         const auto spot_rid = "spot-inflight-order-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 101);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 101);
         const auto old_ref = get_actor_ref (_nodes.a, actor_id);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-F1", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-F1", spot_rid});
         });
         wait_evidence (_nodes.b, {"ST-F1|" + actor_id + "|joined_wait|" + spot_rid});
         for (const auto *marker : {"P1", "P2", "P3"}) {
@@ -896,11 +895,11 @@ class scenario_runner_t
         const auto actor_id = "actor-inflight-overtake-" + unique_suffix ();
         const auto spot_rid = "spot-inflight-overtake-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 102);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 102);
         const auto old_ref = get_actor_ref (_nodes.a, actor_id);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-F2", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-F2", spot_rid});
         });
         wait_evidence (_nodes.b, {"ST-F2|" + actor_id + "|joined_wait|" + spot_rid});
         for (const auto *marker : {"B1", "B2"}) {
@@ -932,12 +931,12 @@ class scenario_runner_t
         const auto actor_id = "actor-bound-order-" + unique_suffix ();
         const auto spot_rid = "spot-bound-order-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 103);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 103);
         const auto old_ref = get_actor_ref (_nodes.a, actor_id);
         bound_session_t bound (_nodes.a_stream_endpoint, "ST-F3", old_ref);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-F3", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-F3", spot_rid});
         });
         wait_evidence (_nodes.b, {"ST-F3|" + actor_id + "|joined_wait|" + spot_rid});
         bound.send_packet ({"ST-F3", "S1"});
@@ -981,14 +980,14 @@ class scenario_runner_t
         const auto spot_a_final = "spot-map-chain-a-final-" + unique_suffix ();
         create_spot (_nodes.b, spot_b);
         create_spot (_nodes.a, spot_a_final);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 105);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 105);
         const auto old_ref_a = get_actor_ref (_nodes.a, actor_id);
-        require (join_actor (_nodes.controller, actor_id, {"ST-F5", spot_b}).accepted,
+        require (join_actor (_nodes.a, actor_id, {"ST-F5", spot_b}).accepted,
                  "ST-F5 first transfer was rejected.");
         wait_evidence (_nodes.a,
                        {"message_flow|" + actor_id + "|forwarding_entry|actor-b:" + spot_b});
         const auto old_ref_b = get_actor_ref (_nodes.b, actor_id);
-        require (join_actor (_nodes.controller, actor_id, {"ST-F5", spot_a_final}).accepted,
+        require (join_actor (_nodes.b, actor_id, {"ST-F5", spot_a_final}).accepted,
                  "ST-F5 chained transfer was rejected.");
         wait_evidence (_nodes.b,
                        {"message_flow|" + actor_id + "|forwarding_entry|actor-a:"
@@ -1034,11 +1033,11 @@ class scenario_runner_t
         const auto actor_id = "actor-inflight-req-" + unique_suffix ();
         const auto spot_rid = "spot-inflight-req-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 106);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 106);
         const auto old_ref = get_actor_ref (_nodes.a, actor_id);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-F6", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-F6", spot_rid});
         });
         wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|joined_wait|" + spot_rid});
         auto request_task = std::async (std::launch::async, [&] {
@@ -1066,11 +1065,11 @@ class scenario_runner_t
         const auto actor_id = "actor-inflight-req-timeout-" + unique_suffix ();
         const auto spot_rid = "spot-inflight-req-timeout-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 107);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 107);
         const auto old_ref = get_actor_ref (_nodes.a, actor_id);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-F6", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-F6", spot_rid});
         });
         wait_evidence (_nodes.b, {"ST-F6|" + actor_id + "|joined_wait|" + spot_rid});
         auto request_task = std::async (std::launch::async, [&] {
@@ -1093,9 +1092,9 @@ class scenario_runner_t
         const auto actor_id = "actor-straggler-" + scenario + "-" + unique_suffix ();
         const auto spot_rid = "spot-straggler-" + scenario + "-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, state_version);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, state_version);
         const auto old_ref = get_actor_ref (_nodes.a, actor_id);
-        require (join_actor (_nodes.controller, actor_id, {scenario, spot_rid}).accepted,
+        require (join_actor (_nodes.a, actor_id, {scenario, spot_rid}).accepted,
                  scenario + " transfer was rejected.");
         return {actor_id, old_ref};
     }
@@ -1105,13 +1104,13 @@ class scenario_runner_t
         const auto actor_id = "actor-fail-transfer-out-" + unique_suffix ();
         const auto spot_rid = "spot-fail-transfer-out-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_fail_transfer_out, 71);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_fail_transfer_out, 71);
 
-        const auto response = join_actor (_nodes.controller, actor_id, {"ST-C3", spot_rid});
+        const auto response = join_actor (_nodes.a, actor_id, {"ST-C3", spot_rid});
         require (!response.accepted, "ST-C3 transfer-out failure should not return accepted.");
         const auto source_evidence = wait_evidence (
           _nodes.a, {"ST-C3|" + actor_id + "|transfer_out_failed|71"});
-        wait_evidence (_nodes.controller, {"ST-C3|" + actor_id + "|join_failed|"});
+        wait_evidence (_nodes.a, {"ST-C3|" + actor_id + "|join_failed|"});
         require_no_contains (source_evidence, "transfer|" + actor_id + "|leave|71",
                              "ST-C3 transfer-out failure should not leave source.");
         const auto target_evidence = get_evidence (_nodes.b);
@@ -1124,15 +1123,15 @@ class scenario_runner_t
         const auto actor_id = "actor-fail-leave-" + unique_suffix ();
         const auto spot_rid = "spot-fail-leave-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_fail_leave, 72);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_fail_leave, 72);
 
-        const auto response = join_actor (_nodes.controller, actor_id, {"ST-C3", spot_rid});
+        const auto response = join_actor (_nodes.a, actor_id, {"ST-C3", spot_rid});
         require (!response.accepted, "ST-C3 source leave failure should not return accepted.");
         wait_evidence (_nodes.a, {
                                    "transfer|" + actor_id + "|transfer_out|72",
                                    "ST-C3|" + actor_id + "|leave_failed|72",
                                  });
-        wait_evidence (_nodes.controller, {"ST-C3|" + actor_id + "|join_failed|"});
+        wait_evidence (_nodes.a, {"ST-C3|" + actor_id + "|join_failed|"});
         const auto target_evidence = get_evidence (_nodes.b);
         require_no_contains (target_evidence, "transfer|" + actor_id + "|transfer_in|72",
                              "ST-C3 source leave failure should not transfer in target.");
@@ -1145,16 +1144,16 @@ class scenario_runner_t
         const auto actor_id = "actor-fail-transfer-in-" + unique_suffix ();
         const auto spot_rid = "spot-fail-transfer-in-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid);
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_fail_transfer_in, 73);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_fail_transfer_in, 73);
 
-        const auto response = join_actor (_nodes.controller, actor_id, {"ST-C3", spot_rid});
+        const auto response = join_actor (_nodes.a, actor_id, {"ST-C3", spot_rid});
         require (!response.accepted, "ST-C3 transfer-in failure should not return accepted.");
         wait_evidence (_nodes.b, {"ST-C3|" + actor_id + "|transfer_in_failed|73"});
         wait_evidence (_nodes.a, {
                                    "transfer|" + actor_id + "|transfer_out|73",
                                    "transfer|" + actor_id + "|leave|73",
                                  });
-        wait_evidence (_nodes.controller, {"ST-C3|" + actor_id + "|join_failed|"});
+        wait_evidence (_nodes.a, {"ST-C3|" + actor_id + "|join_failed|"});
         const auto target_evidence = get_evidence (_nodes.b);
         require_no_contains (target_evidence, "transfer|" + actor_id + "|joined|" + spot_rid,
                              "ST-C3 transfer-in failure should not join target.");
@@ -1165,19 +1164,19 @@ class scenario_runner_t
         const auto actor_id = "actor-fail-joined-" + unique_suffix ();
         const auto spot_rid = "spot-fail-joined-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid, "fail-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 74);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 74);
 
-        const auto response = join_actor (_nodes.controller, actor_id, {"ST-C3", spot_rid});
+        const auto response = join_actor (_nodes.a, actor_id, {"ST-C3", spot_rid});
         require (!response.accepted, "ST-C3 joined failure should not return accepted.");
         wait_evidence (_nodes.b, {"ST-C3|" + actor_id + "|joined_failed|" + spot_rid});
         wait_evidence (_nodes.a, {
                                    "transfer|" + actor_id + "|transfer_out|74",
                                    "transfer|" + actor_id + "|leave|74",
                                  });
-        wait_evidence (_nodes.controller, {"ST-C3|" + actor_id + "|join_failed|"});
+        wait_evidence (_nodes.a, {"ST-C3|" + actor_id + "|join_failed|"});
         bool packet_failed = false;
         try {
-            (void) probe_actor (_nodes.controller, actor_id,
+            (void) probe_actor (_nodes.a, actor_id,
                                 {"ST-C3", "after-joined-failure"});
         }
         catch (const std::exception &) {
@@ -1196,11 +1195,11 @@ class scenario_runner_t
         const auto actor_id = "actor-location-local-" + unique_suffix ();
         const auto spot_rid = "spot-location-local-" + unique_suffix ();
         create_spot (_nodes.a, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 51);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 51);
         const auto before = get_actor_ref (_nodes.a, actor_id);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-D1", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-D1", spot_rid});
         });
         const auto waiting = wait_evidence (_nodes.a, {
                                                         "ST-D1|" + actor_id + "|admission|spot="
@@ -1208,7 +1207,7 @@ class scenario_runner_t
                                                         "ST-D1|" + actor_id + "|joined_wait|"
                                                           + spot_rid,
                                                       });
-        require_no_contains (get_evidence (_nodes.controller),
+        require_no_contains (get_evidence (_nodes.a),
                              "ST-D1|" + actor_id + "|success_reply|" + spot_rid,
                              "ST-D1 local join returned success before on_actor_joined completed.");
         const auto during = get_actor_ref (_nodes.a, actor_id);
@@ -1216,7 +1215,7 @@ class scenario_runner_t
                  "ST-D1 local actor generation changed before joined completed.");
 
         auto blocked_probe = std::async (std::launch::async, [&] {
-            return probe_actor (_nodes.controller, actor_id, {"ST-D1", "during-joined-wait"});
+            return probe_actor (_nodes.a, actor_id, {"ST-D1", "during-joined-wait"});
         });
         require (blocked_probe.wait_for (std::chrono::milliseconds (500))
                    == std::future_status::timeout,
@@ -1241,7 +1240,7 @@ class scenario_runner_t
                                    "ST-D1|" + actor_id
                                      + "|packet_handler|during-joined-wait",
                                  });
-        wait_evidence (_nodes.controller,
+        wait_evidence (_nodes.a,
                        {"ST-D1|" + actor_id + "|success_reply|" + spot_rid});
     }
 
@@ -1250,10 +1249,10 @@ class scenario_runner_t
         const auto actor_id = "actor-location-remote-" + unique_suffix ();
         const auto spot_rid = "spot-location-remote-" + unique_suffix ();
         create_spot (_nodes.b, spot_rid, "delay-joined");
-        create_actor (_nodes.controller, actor_id, e2e::actor_type_stateful, 52);
+        create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 52);
 
         auto join_task = std::async (std::launch::async, [&] {
-            return join_actor (_nodes.controller, actor_id, {"ST-D1", spot_rid});
+            return join_actor (_nodes.a, actor_id, {"ST-D1", spot_rid});
         });
         wait_evidence (_nodes.b, {
                                    "ST-D1|" + actor_id + "|admission|spot=" + spot_rid,
@@ -1275,7 +1274,7 @@ class scenario_runner_t
         wait_evidence (_nodes.a, {
                                    "transfer|" + actor_id + "|leave|52",
                                  });
-        wait_evidence (_nodes.controller,
+        wait_evidence (_nodes.a,
                        {"ST-D1|" + actor_id + "|success_reply|" + spot_rid});
         wait_evidence (_nodes.b, {
                                    "ST-D1|" + actor_id + "|joined_released|" + spot_rid,
@@ -1306,7 +1305,6 @@ int main ()
     try {
         nodes_t nodes{make_http (require_env ("ZLINK_CPP_E2E_NODE_A_URL")),
                       make_http (require_env ("ZLINK_CPP_E2E_NODE_B_URL")),
-                      make_http (require_env ("ZLINK_CPP_E2E_CONTROLLER_URL")),
                       require_env ("ZLINK_CPP_E2E_NODE_A_STREAM"),
                       require_env ("ZLINK_CPP_E2E_NODE_B_STREAM")};
         scenario_runner_t runner (nodes);

@@ -25,7 +25,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Json,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 requestHeader.RequestSeq,
-                requestHeader.Name,
+                string.Empty,
                 ZlinkStreamMetadata.Empty);
             await WritePacketAsync(
                 stream,
@@ -57,7 +57,7 @@ public sealed partial class StreamConnectorTests
         Assert.Equal("pong", reply.Text);
         var snapshot = await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(ZlinkStreamMessageKind.Response, snapshot.Kind);
-        Assert.Equal("ping", snapshot.Name);
+        Assert.Equal(string.Empty, snapshot.Name);
         Assert.NotNull(snapshot.RequestSeq);
         Assert.Equal(ZlinkStreamCodec.Json, snapshot.Codec);
         Assert.True(snapshot.PayloadLength > 0);
@@ -339,7 +339,7 @@ public sealed partial class StreamConnectorTests
                     ZlinkStreamCodec.Json,
                     ZlinkStreamHeaderFlags.HasRequestSeq,
                     requestHeader.RequestSeq,
-                    requestHeader.Name,
+                    string.Empty,
                     ZlinkStreamMetadata.Empty);
                 await WritePacketAsync(
                     stream,
@@ -398,9 +398,8 @@ public sealed partial class StreamConnectorTests
             TimeSpan.FromSeconds(5));
         lock (observedNames)
         {
-            Assert.Contains("pong.0", observedNames);
-            Assert.Contains("pong.1", observedNames);
-            Assert.DoesNotContain("pong.2", observedNames);
+            Assert.Equal(2, observedNames.Count);
+            Assert.All(observedNames, name => Assert.Equal(string.Empty, name));
         }
 
         await server;

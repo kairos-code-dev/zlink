@@ -15,7 +15,7 @@ internal static class ZLinkStreamReplyHeaders
             codec,
             flags | ZlinkStreamHeaderFlags.HasRequestSeq,
             requestSeq,
-            requestHeader.Name,
+            string.Empty,
             metadata,
             requestHeader.CorrelationId,
             requestHeader.FlowId,

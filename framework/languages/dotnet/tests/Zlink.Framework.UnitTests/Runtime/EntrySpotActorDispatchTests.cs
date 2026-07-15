@@ -1597,7 +1597,11 @@ public sealed partial class EntrySpotActorDispatchTests
             ActorRequestHandler = parts =>
             {
                 var requestHeader = ZLinkStreamProtocolDefaults.DecodeHeader(parts[0].AsReadOnlyMemory());
-                var responseHeader = requestHeader with { Kind = ZlinkStreamMessageKind.Response };
+                var responseHeader = requestHeader with
+                {
+                    Kind = ZlinkStreamMessageKind.Response,
+                    Name = string.Empty
+                };
                 return
                 [
                     Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(responseHeader).Span),

@@ -1,4 +1,5 @@
 using RegistrationCodec.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 namespace RegistrationCodec.Client.Scenarios;
@@ -11,13 +12,12 @@ internal static class RcB5CodecMismatchScenario
         var mismatch = (await codecRequester.Post("/codec/protobuf/request")
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<CodecMismatchProbeRes>()).Body;
-        if (!mismatch.Rejected) throw new InvalidOperationException("RC-B5 Protobuf mismatch was not rejected.");
+        ZlinkStreamAssert.Ensure(mismatch.Rejected, "RC-B5 Protobuf mismatch was not rejected.");
 
         var json = (await codecRequester.Post("/codec/json/request")
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<EchoRes>()).Body;
-        if (json.Value != "echo:rc-b5-json")
-            throw new InvalidOperationException("RC-B5 JSON recovery reply did not match.");
+        ZlinkStreamAssert.Ensure(json.Value == "echo:rc-b5-json", "RC-B5 JSON recovery reply did not match.");
 
         Console.WriteLine("scenario RC-B5 passed");
     }

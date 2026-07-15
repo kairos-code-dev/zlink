@@ -415,16 +415,19 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return ResolveName(payload.MessageType);
     }
 
-    internal static void ValidateName(string name, bool allowReserved = false)
+    internal static void ValidateName(
+        string name,
+        bool allowReserved = false,
+        ZlinkStreamErrorCode errorCode = ZlinkStreamErrorCode.ValidationFailed)
     {
         if (string.IsNullOrEmpty(name))
-            throw Error(ZlinkStreamErrorCode.ValidationFailed, "Message name must not be empty.");
+            throw Error(errorCode, "Message name must not be empty.");
 
         if (!allowReserved && name.StartsWith(ReservedPacketNamePrefix, StringComparison.Ordinal))
-            throw Error(ZlinkStreamErrorCode.ValidationFailed, "Message name uses a reserved zlink prefix.");
+            throw Error(errorCode, "Message name uses a reserved zlink prefix.");
 
         if (Encoding.UTF8.GetByteCount(name) > byte.MaxValue)
-            throw Error(ZlinkStreamErrorCode.ValidationFailed, "Message name must not exceed 255 UTF-8 bytes.");
+            throw Error(errorCode, "Message name must not exceed 255 UTF-8 bytes.");
     }
 
     private void ThrowIfDisposed()

@@ -150,9 +150,11 @@ internal sealed class ZLinkMessageFlowTracer
             return;
         }
 
-        if (!_logger.IsEnabled(LogLevel.Information)) return;
+        var level = ZLinkTraceFormat.ResolveLogLevel(flow);
+        if (!_logger.IsEnabled(level)) return;
 
-        _logger.LogInformation(
+        _logger.Log(
+            level,
             "phase={Phase} surface={Surface} kind={Kind} label={Label} packet={Packet} channel={Channel} topic={Topic} corr={Corr} flow={Flow} origin={Origin} src={Src} localRid={LocalRid} peerRid={PeerRid} socket={Socket} spot={Spot} actor={Actor} errorReason={ErrorReason} errorAction={ErrorAction} errorType={ErrorType} errorMessage={ErrorMessage} size={Size}",
             ZLinkTraceFormat.OutcomeKey(flow.Outcome),
             flow.Surface,
@@ -271,8 +273,28 @@ internal static class ZLinkTraceFormat
         Append(builder, "errorMessage", flow.ErrorMessage);
         if (size is { } value) Append(builder, "size", value.ToString(CultureInfo.InvariantCulture));
 
-        return $"{DateTime.Now:O} info zlink.framework.dispatch - {builder}";
+        return $"{DateTime.Now:O} {LogLevelKey(flow)} zlink.framework.dispatch - {builder}";
     }
+
+    public static LogLevel ResolveLogLevel(ZLinkMessageFlowEvent flow)
+    {
+        if (flow.ErrorReason == ZLinkDispatchErrorReason.HandlerException) return LogLevel.Error;
+        if (flow.ErrorReason is ZLinkDispatchErrorReason.HandlerMissing
+            or ZLinkDispatchErrorReason.PayloadDecodeFailed
+            or ZLinkDispatchErrorReason.InvalidFrame)
+            return flow.MessageKind == ZLinkDispatchMessageKind.Publish
+                ? LogLevel.Debug
+                : LogLevel.Warning;
+        if (flow.Outcome == ZLinkMessageFlowOutcome.Error) return LogLevel.Error;
+        if (flow.Outcome == ZLinkMessageFlowOutcome.Dropped)
+            return flow.MessageKind == ZLinkDispatchMessageKind.Publish
+                ? LogLevel.Debug
+                : LogLevel.Warning;
+        return LogLevel.Information;
+    }
+
+    private static string LogLevelKey(ZLinkMessageFlowEvent flow) =>
+        ResolveLogLevel(flow).ToString().ToLowerInvariant();
 
     public static string OutcomeKey(ZLinkMessageFlowOutcome outcome)
     {

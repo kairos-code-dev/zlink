@@ -34,6 +34,37 @@ public sealed class MessageFlowTracerTests
     }
 
     [Fact]
+    public void HandlerExceptionFlowUsesErrorLogLevel()
+    {
+        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.ErrorsOnly);
+
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Error) with
+        {
+            ErrorReason = ZLinkDispatchErrorReason.HandlerException
+        });
+
+        Assert.Equal(LogLevel.Error, Assert.Single(logger.Levels));
+    }
+
+    [Theory]
+    [InlineData(ZLinkDispatchMessageKind.Send, LogLevel.Warning)]
+    [InlineData(ZLinkDispatchMessageKind.Publish, LogLevel.Debug)]
+    public void MissingHandlerFlowUsesMessageKindLogLevel(
+        ZLinkDispatchMessageKind messageKind,
+        LogLevel expected)
+    {
+        var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.ErrorsOnly);
+
+        tracer.Trace(Flow(ZLinkMessageFlowOutcome.Error) with
+        {
+            MessageKind = messageKind,
+            ErrorReason = ZLinkDispatchErrorReason.HandlerMissing
+        });
+
+        Assert.Equal(expected, Assert.Single(logger.Levels));
+    }
+
+    [Fact]
     public void KeyTransitions_EmitsLifecycleKeyedByCorrelation()
     {
         var (tracer, logger, _) = Build(ZLinkMessageFlowLogMode.KeyTransitions);
@@ -523,6 +554,7 @@ public sealed class MessageFlowTracerTests
     private sealed class RecordingLogger : ILogger
     {
         public List<string> Messages { get; } = [];
+        public List<LogLevel> Levels { get; } = [];
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
         {
@@ -541,6 +573,7 @@ public sealed class MessageFlowTracerTests
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
+            Levels.Add(logLevel);
             Messages.Add(formatter(state, exception));
         }
     }

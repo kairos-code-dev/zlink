@@ -9,7 +9,7 @@ using Xunit;
 public sealed partial class StreamConnectorTests
 {
     [Fact]
-    public async Task PendingResponseIgnoresMismatchedPacketName()
+    public async Task PendingResponseIgnoresLegacyReplyPacketName()
     {
         var requests = new ZlinkStreamPendingRequests();
         var pending = requests.Create("expected.response");
@@ -18,7 +18,7 @@ public sealed partial class StreamConnectorTests
             ZlinkStreamCodec.Raw,
             ZlinkStreamHeaderFlags.HasRequestSeq,
             pending.RequestSeq,
-            "unexpected.response",
+            "legacy.response.name",
             ZlinkStreamMetadata.Empty);
 
         Assert.True(requests.TryComplete(
@@ -28,8 +28,36 @@ public sealed partial class StreamConnectorTests
 
         var completion = await requests.WaitAsync(pending, CancellationToken.None);
         Assert.Equal(pending.RequestSeq, completion.Header.RequestSeq);
-        Assert.Equal("unexpected.response", completion.Header.Name);
+        Assert.Equal("legacy.response.name", completion.Header.Name);
         Assert.Null(completion.Error);
+    }
+
+    [Theory]
+    [InlineData(ZlinkStreamMessageKind.Response)]
+    [InlineData(ZlinkStreamMessageKind.Error)]
+    public void ReplyHeaderCodecRequiresAnEmptyPacketName(ZlinkStreamMessageKind kind)
+    {
+        var codec = new ZlinkStreamHeaderCodec();
+        var header = new ZlinkStreamHeader(
+            kind,
+            kind == ZlinkStreamMessageKind.Error ? ZlinkStreamCodec.Json : ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.HasRequestSeq,
+            new ZlinkStreamRequestSeq(7),
+            string.Empty,
+            ZlinkStreamMetadata.Empty);
+
+        var decoded = codec.Decode(codec.Encode(header));
+
+        Assert.Equal(string.Empty, decoded.Name);
+        Assert.Throws<ZlinkStreamException>(() => codec.Encode(header with { Name = "forbidden.reply.name" }));
+
+        var encoded = codec.Encode(header).ToArray();
+        var legacy = new byte[encoded.Length + 6];
+        encoded.AsSpan(0, encoded.Length - 1).CopyTo(legacy);
+        legacy[encoded.Length - 1] = 6;
+        "legacy"u8.CopyTo(legacy.AsSpan(encoded.Length));
+
+        Assert.Equal("legacy", codec.Decode(legacy).Name);
     }
 
     [Fact]

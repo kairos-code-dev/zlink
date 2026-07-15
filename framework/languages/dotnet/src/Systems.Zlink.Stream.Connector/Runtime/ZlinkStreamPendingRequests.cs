@@ -29,8 +29,8 @@ internal sealed class ZlinkStreamPendingRequests
             || !_pending.TryRemove(requestSeq.Value, out var pending))
             return false;
 
-        // Stream connector spec 5.2: a pending request is matched by request_seq alone. The reply's
-        // packet name is informational, so a differing name must not drop an otherwise valid reply.
+        // Stream connector spec 5.2: a pending request is matched by request_seq alone.
+        // New replies use an empty name; a legacy peer's non-empty name is ignored here.
         pending.Complete(new ZlinkStreamPendingCompletion(
             header,
             frame,

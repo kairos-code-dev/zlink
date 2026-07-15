@@ -52,11 +52,9 @@ internal static class HttpRedirectPolicy
 
     public static Uri ResolveLocation(Uri current, string location)
     {
-        if (location.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-            || location.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            return new Uri(location);
-
-        if (location.StartsWith('/')) return new Uri(current, location);
+        if (Uri.TryCreate(current, location, out var resolved)
+            && resolved.Scheme is "http" or "https")
+            return resolved;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.RequestFailed,

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using PubSub.Client.Support;
 using PubSub.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 namespace PubSub.Client.Scenarios;
@@ -43,19 +44,13 @@ internal static class PsB2PublisherRestartScenario
             "PS-B2 expected publisher to stop before restart.");
 
         // A publish while the process is down should fail at the HTTP boundary.
-        try
-        {
-            await publisher.Post("/publish/event")
+        await ZlinkStreamAssert.ExpectFailureAsync(async cancellationToken =>
+            _ = await publisher.Post("/publish/event")
                 .Query("topic", PubSubNames.MainTopic)
                 .Query("runId", runId)
                 .Query("sequence", "2")
                 .Query("value", "during-publisher-down")
-                .AsyncRaw();
-            throw new InvalidOperationException("PS-B2 expected publish attempt to fail while publisher is down.");
-        }
-        catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
-        {
-        }
+                .AsyncRaw(cancellationToken));
 
         // Restart the same publisher role and wait for the health endpoint before measuring recovery.
         var restartedPublisher = processes.StartPublisher();

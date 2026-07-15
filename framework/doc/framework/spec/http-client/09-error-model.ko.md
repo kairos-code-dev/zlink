@@ -12,11 +12,12 @@ HTTP client는 자체 예외 계층을 만들지 않고 framework 공용 에러 
 | `requestProtocolError` | 구성/사용 오류: builder 검증 실패, path 형식, body 소스 중복, one-shot 재제출, OpenSSL 부재 https(cpp) | false |
 | `requestFailed` | 전송 실패, typed 제출의 status ≥ 400, redirect 한도/형식 오류, body 크기 초과, proxy CONNECT 거부 | 전송 실패·timeout만 true |
 | `payloadDecodeFailed` | typed JSON 디코드 실패, 압축 해제 실패 | false |
-| (timeout) | 시도당 timeout 초과. **error kind가 아니라 언어별 timeout 경계 표현**이다 — cpp는 `boundary_error_t::timed_out`, `.NET`은 `TimeoutException` | true |
+| (timeout) | 시도당 timeout 초과. **전용 공통 error kind를 추가하지 않고 언어별 경계에서 식별**한다 — cpp는 `boundary_error_t::timed_out`, `.NET`은 `RequestFailed(IsRetriable=true)`와 inner `TimeoutException` | true |
 
 - **timeout 실패는 프로그램적으로 식별 가능해야 하고 retriable이어야 한다.**
-  다만 timeout은 framework의 22개 error kind에 **속하지 않는다.** 공용 kind를 새로 만들지 않고
-  언어별 timeout 경계 표현으로 다룬다([05 §2.3](../05-framework-api.ko.md)).
+  다만 timeout 전용 공통 kind를 새로 만들지 않는다. `.NET`·Java·Kotlin·Node는 기존
+  `requestFailed` kind와 원인 예외 또는 retriable 표식을 함께 사용하고, cpp는 언어 고유 timeout
+  경계를 사용한다([05 §2.3](../05-framework-api.ko.md)).
 - `isRetriable`은 [6장 §6.2](06-redirect-retry-cookie.ko.md)의 재시도 대상
   판정과 일치해야 한다.
 

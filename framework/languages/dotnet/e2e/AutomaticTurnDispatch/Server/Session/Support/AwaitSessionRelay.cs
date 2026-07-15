@@ -149,8 +149,4 @@ internal sealed partial class AwaitSession
         }
     }
 
-    private static void Ensure(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
-    }
 }

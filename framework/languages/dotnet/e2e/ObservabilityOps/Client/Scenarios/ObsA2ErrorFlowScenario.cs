@@ -8,15 +8,13 @@ internal static class ObsA2ErrorFlowScenario
     public static async Task RunAsync(ScenarioContext context)
     {
         await using var connector = await context.ConnectAsync();
-        try
-        {
-            await connector.Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 0xff, 0x00 }))
-                .PacketName("ObservabilityMissingPacket").Async();
-            throw new InvalidOperationException("OBS-A2 missing packet unexpectedly succeeded.");
-        }
-        catch (ZlinkStreamException)
-        {
-        }
+        await ZlinkStreamAssert.ExpectFailureAsync(
+            async cancellationToken =>
+                _ = await connector
+                    .Request(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, new byte[] { 0xff, 0x00 }))
+                    .PacketName("ObservabilityMissingPacket")
+                    .Async(cancellationToken),
+            nameof(ZlinkStreamErrorCode.RemoteError));
         await connector.Close.Async();
         Console.WriteLine("scenario OBS-A2 passed");
     }

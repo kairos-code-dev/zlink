@@ -13,6 +13,7 @@ using Zlink.Framework.Codecs.MessagePack;
 using Zlink.Framework.Codecs.Protobuf;
 using Zlink.Framework.Contracts.Codecs;
 using Zlink.Framework.Contracts.Errors;
+using Zlink.HttpClient.Runtime;
 
 namespace Zlink.HttpClient.UnitTests;
 
@@ -337,6 +338,39 @@ public sealed class HttpClientContractTests
 
         Assert.Equal("GET", finalMethod);
         Assert.Equal("game-1", response.Body.Id);
+    }
+
+    [Fact]
+    public async Task Follows_path_relative_redirect()
+    {
+        string? finalPath = null;
+        using var server = new TestHttpServer(async ctx =>
+        {
+            if (ctx.Request.Url!.AbsolutePath == "/games/start")
+            {
+                ctx.Response.StatusCode = 307;
+                ctx.Response.AddHeader("Location", "result");
+                return;
+            }
+
+            finalPath = ctx.Request.Url.AbsolutePath;
+            await ctx.Response.WriteAsync(200, "{}");
+        });
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).FollowRedirects(3).Build();
+
+        await client.Get("/games/start").AsyncRaw();
+
+        Assert.Equal("/games/result", finalPath);
+    }
+
+    [Fact]
+    public void Malformed_redirect_location_is_normalized_to_request_failed()
+    {
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            HttpRedirectPolicy.ResolveLocation(new Uri("http://127.0.0.1/start"), "http://["));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestFailed, exception.Kind);
+        Assert.False(exception.IsRetriable);
     }
 
     [Fact]

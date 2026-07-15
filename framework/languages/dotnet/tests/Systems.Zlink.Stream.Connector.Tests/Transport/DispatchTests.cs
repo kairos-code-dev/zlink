@@ -136,7 +136,7 @@ public sealed partial class StreamConnectorTests
                     ZlinkStreamCodec.Raw,
                     ZlinkStreamHeaderFlags.HasRequestSeq,
                     new ZlinkStreamRequestSeq(999),
-                    "late.response",
+                    string.Empty,
                     ZlinkStreamMetadata.Empty)).ToArray(),
                 [1]);
             await WritePacketAsync(
@@ -195,7 +195,7 @@ public sealed partial class StreamConnectorTests
                     ZlinkStreamCodec.Json,
                     ZlinkStreamHeaderFlags.HasRequestSeq,
                     new ZlinkStreamRequestSeq(999),
-                    "late.error",
+                    string.Empty,
                     ZlinkStreamMetadata.Empty)).ToArray(),
                 "{\"code\":\"late\",\"message\":\"late reply\"}"u8.ToArray());
         });
@@ -292,7 +292,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Raw,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 requestHeader.RequestSeq,
-                requestHeader.Name,
+                string.Empty,
                 ZlinkStreamMetadata.Empty);
             await WritePacketAsync(
                 stream,
@@ -357,7 +357,7 @@ public sealed partial class StreamConnectorTests
                     ZlinkStreamCodec.Raw,
                     ZlinkStreamHeaderFlags.HasRequestSeq,
                     requestHeader.RequestSeq,
-                    requestHeader.Name,
+                    string.Empty,
                     ZlinkStreamMetadata.Empty)).ToArray(),
                 [1]);
         });

@@ -202,7 +202,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Raw,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 request.RequestSeq,
-                request.Name,
+                string.Empty,
                 ZlinkStreamMetadata.Empty,
                 request.CorrelationId,
                 responseFlow,

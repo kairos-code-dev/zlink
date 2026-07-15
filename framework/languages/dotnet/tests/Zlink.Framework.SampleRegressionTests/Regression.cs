@@ -6,18 +6,20 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
-    public void Sample_And_E2e_Clients_Use_Stream_Connector_Assertions()
+    public void Sample_And_E2e_Use_Stream_Connector_Assertions()
     {
-        var clientFiles = EnumerateSourceFiles(ResolveSamplesRoot())
+        var sourceFiles = EnumerateSourceFiles(ResolveSamplesRoot())
             .Concat(EnumerateSourceFiles(ResolveE2eRoot()))
+            .ToArray();
+        var clientFiles = sourceFiles
             .Where(path => path.Contains(
                 $"{Path.DirectorySeparatorChar}Client{Path.DirectorySeparatorChar}",
                 StringComparison.Ordinal))
             .ToArray();
         var localAssertion = new Regex(
-            @"(?:private|public|internal)\s+(?:static\s+)?void\s+(?:Ensure|Require|That)\s*\(",
+            @"(?:(?:private|public|internal|protected)\s+)?(?:static\s+)?(?:async\s+)?(?:void|Task|ValueTask)\s+(?:Ensure|That|ExpectFailureAsync|ExpectTimeoutAsync)\s*\(",
             RegexOptions.CultureInvariant);
-        var offenders = clientFiles
+        var offenders = sourceFiles
             .Where(path => localAssertion.IsMatch(File.ReadAllText(path)))
             .Select(path => NormalizeRelativePath(Path.GetRelativePath(ResolveDotnetRoot(), path)))
             .Order(StringComparer.Ordinal)

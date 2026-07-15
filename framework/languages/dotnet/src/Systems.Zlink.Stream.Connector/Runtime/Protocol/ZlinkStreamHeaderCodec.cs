@@ -17,7 +17,7 @@ internal sealed class ZlinkStreamHeaderCodec
 
     public ReadOnlyMemory<byte> Encode(ZlinkStreamHeader header)
     {
-        ZlinkStreamConnector.ValidateName(header.Name, header.Kind == ZlinkStreamMessageKind.Control);
+        ValidateOutboundPacketName(header.Kind, header.Name);
         ValidateEnum(header.Kind, header.Codec, header.Flags);
 
         var nameBytes = Encoding.UTF8.GetBytes(header.Name);
@@ -143,7 +143,7 @@ internal sealed class ZlinkStreamHeaderCodec
                 "Helper header name length is missing.");
 
         var nameLength = span[offset++];
-        if (nameLength == 0 || span.Length - offset < nameLength)
+        if (span.Length - offset < nameLength)
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed,
                 "Helper header packet name is invalid.");
 
@@ -205,12 +205,31 @@ internal sealed class ZlinkStreamHeaderCodec
             throw ZlinkStreamConnector.Error(ZlinkStreamErrorCode.FrameDecodeFailed,
                 "Helper header contains trailing bytes.");
 
-        ZlinkStreamConnector.ValidateName(name, kind == ZlinkStreamMessageKind.Control);
+        if (kind is not (ZlinkStreamMessageKind.Response or ZlinkStreamMessageKind.Error))
+            ZlinkStreamConnector.ValidateName(
+                name,
+                kind == ZlinkStreamMessageKind.Control,
+                ZlinkStreamErrorCode.FrameDecodeFailed);
         ValidateHeaderSemantics(
             kind, codec, flags, requestSeq is not null, metadata.Count > 0,
             correlationId is not null, flowId is not null);
         return new ZlinkStreamHeader(
             kind, codec, flags, requestSeq, name, metadata, correlationId, flowId, flowOrigin);
+    }
+
+    private static void ValidateOutboundPacketName(ZlinkStreamMessageKind kind, string name)
+    {
+        var isReply = kind is ZlinkStreamMessageKind.Response or ZlinkStreamMessageKind.Error;
+        if (isReply)
+        {
+            if (name.Length != 0)
+                throw ZlinkStreamConnector.Error(
+                    ZlinkStreamErrorCode.ValidationFailed,
+                    "Response and error packets must not contain a packet name.");
+            return;
+        }
+
+        ZlinkStreamConnector.ValidateName(name, kind == ZlinkStreamMessageKind.Control);
     }
 
     private static void ValidateEnum(

@@ -34,7 +34,7 @@
 
 ## 2. 패키지 구조
 
-**`.NET` 배포 산출물은 6개 NuGet package다.** 이 집합은 고정이며, 검증기가 **정확히 이 6개인지**
+**`.NET` 배포 산출물은 7개 NuGet package다.** 이 집합은 고정이며, 검증기가 **정확히 이 7개인지**
 확인한다(§14).
 
 | package | 역할 | 의존 |
@@ -45,6 +45,7 @@
 | `Zlink.Framework.Codecs.MessagePack` | MessagePack codec **extension** | `Zlink.Framework` |
 | `Zlink.Framework.Locations.Redis` | Redis location store **extension** | `Zlink.Framework` |
 | `Systems.Zlink.Stream.Connector` | **client** connector — 서버 framework에 의존하지 않는다 | 없음 |
+| `Zlink.HttpClient` | standalone·framework server 양쪽에서 사용하는 typed HTTP client | `Zlink.Framework` |
 
 **분리 원칙:**
 
@@ -65,6 +66,7 @@
 | `Zlink.Framework.Codecs.*` | NuGet | codec이 필요한 서버·client |
 | `Zlink.Framework.Locations.Redis` | NuGet | 다중 프로세스 배포 |
 | `Systems.Zlink.Stream.Connector` | NuGet | 데스크톱·서버 client, **Unity(네이티브)**, **Godot C#** |
+| `Zlink.HttpClient` | NuGet | standalone client와 framework 서버 애플리케이션 |
 
 - **Unity(네이티브)와 Godot C#은 전용 package를 두지 않는다.** 위 connector package를 그대로
   사용한다. **웹(WASM) 빌드에는 쓸 수 없다** — TypeScript connector를 사용한다

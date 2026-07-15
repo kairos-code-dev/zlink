@@ -198,20 +198,6 @@ internal static class PlayHostFactory
         throw new TimeoutException(failureMessage, last);
     }
 
-    internal static async Task ExpectFailureAsync(Task task, string message)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(message);
-    }
-
     internal static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
@@ -270,8 +256,4 @@ internal static class PlayHostFactory
         return afterCount - beforeCount;
     }
 
-    private static void Ensure(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
-    }
 }

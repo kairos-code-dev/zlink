@@ -65,13 +65,15 @@ public sealed class StreamFlowEndToEndTests
             Assert.Null(ZlinkStreamFlowContext.Current);
 
             var lines = File.ReadAllLines(logPath)
-                .Where(line => line.Contains($"packet={nameof(FlowRequest)}", StringComparison.Ordinal))
+                .Where(line => line.Contains($"flow={callback.FlowId}", StringComparison.Ordinal))
                 .ToArray();
             Assert.Equal(2, lines.Length);
             var received = Assert.Single(lines.Where(line =>
                 line.Contains("phase=received", StringComparison.Ordinal)));
             var replied = Assert.Single(lines.Where(line =>
                 line.Contains("phase=replied", StringComparison.Ordinal)));
+            Assert.Contains($"packet={nameof(FlowRequest)}", received, StringComparison.Ordinal);
+            Assert.DoesNotContain("packet=", replied, StringComparison.Ordinal);
             Assert.Contains($"flow={callback.FlowId}", received, StringComparison.Ordinal);
             Assert.Contains($"flow={callback.FlowId}", replied, StringComparison.Ordinal);
             Assert.Contains("origin=application", received, StringComparison.Ordinal);

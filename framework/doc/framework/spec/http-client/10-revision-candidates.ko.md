@@ -8,7 +8,7 @@
 | ID | 제목 | 동기 | 결정할 것 |
 | --- | --- | --- | --- |
 | R1 | typed 실패 시 에러 바디 노출 | `submit<T>()`가 status ≥ 400에서 응답 body를 버려 API 에러 페이로드를 읽으려면 `submitRaw()` 우회가 필요 — 실무 함정 | 실패 값에 status+headers+raw body를 싣는 형태(예외 필드 vs 실패 봉투), 5개 언어 표현 |
-| R2 | timeout 전용 kind 통일 | timeout 표현이 cpp `timeout` kind / dotnet `TimeoutException` / node `requestFailed` / java 없음으로 4갈래 | framework 공용 enum에 timeout kind 추가 여부(HTTP 밖 영향 범위), dotnet 관용(`TimeoutException`)과의 절충 |
+| R2 | timeout 전용 kind 통일 | timeout 표현이 cpp `timeout` kind / dotnet `RequestFailed` + inner `TimeoutException` / node `requestFailed` / java `REQUEST_FAILED` + cause로 나뉜다 | framework 공용 enum에 timeout kind 추가 여부(HTTP 밖 영향 범위), 기존 원인 예외와의 절충 |
 | R3′ | retry 총 데드라인 옵션 | (R3의 백오프+지터는 2026-07-12 승격·구현 완료 — 6장 §6.2) 재시도 전체를 아우르는 총 데드라인은 여전히 계약에 없음(cpp만 두 경로 모두 총 예산 강제 — 언어 편차) | 총 데드라인 옵션(예: `totalTimeout`) 도입 여부, cpp 편차와의 통일 방향 |
 | R4 | multipart 바이너리 파일 | `multipartFile` content가 문자열이라 바이너리 업로드 불가 | 바이트 인자 오버로드 추가 vs 파일 경로 인자, 5개 언어 시그니처 |
 | R5 | kotlin coroutine 심화 | 취소가 하부 요청에 전파되지 않고, 스트리밍이 콜백 sink뿐(`Flow` 부재), java blocking `fetch`와 kotlin suspend `fetch` 동명이의 | `suspendCancellableCoroutine` 전파 범위, `Flow<ByteArray>` 다운로드 추가 여부, `fetch` 명칭 정리 |

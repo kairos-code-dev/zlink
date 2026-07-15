@@ -35,6 +35,7 @@ public sealed class StreamWireInteropTests
         Assert.Equal(request.CorrelationId, reply.CorrelationId);
         Assert.Equal(request.FlowId, reply.FlowId);
         Assert.Equal(request.FlowOrigin, reply.FlowOrigin);
+        Assert.Equal(string.Empty, reply.Name);
     }
 
     [Fact]

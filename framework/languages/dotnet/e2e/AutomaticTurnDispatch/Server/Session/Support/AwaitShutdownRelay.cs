@@ -1,5 +1,6 @@
 using Systems.Zlink;
 using AutomaticTurnDispatch.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Channels;
 
 using Zlink.Framework.Contracts.Locations;
@@ -68,7 +69,7 @@ internal sealed partial class AwaitSession
             new AwaitEvidenceReq(request.RequestId),
             "AwaitEvidenceReq",
             cancellationToken);
-        Ensure(
+        ZlinkStreamAssert.Ensure(
             evidence.Evidence.Any(line =>
                 line.Contains("probe-completed", StringComparison.Ordinal)
                 && line.Contains($"rid=play-a|spot={request.SpotRid}", StringComparison.Ordinal)

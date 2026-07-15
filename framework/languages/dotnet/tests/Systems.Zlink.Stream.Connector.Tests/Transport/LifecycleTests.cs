@@ -715,7 +715,7 @@ public sealed partial class StreamConnectorTests
                     ZlinkStreamCodec.Json,
                     ZlinkStreamHeaderFlags.None,
                     null,
-                    "manual-error",
+                    string.Empty,
                     ZlinkStreamMetadata.Empty)).ToArray(),
                 "{\"message\":\"manual error\"}"u8.ToArray());
             framesWritten.TrySetResult();
@@ -796,7 +796,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Raw,
                 ZlinkStreamHeaderFlags.HasRequestSeq,
                 requestHeader.RequestSeq,
-                requestHeader.Name,
+                string.Empty,
                 ZlinkStreamMetadata.Empty);
             await WritePacketAsync(
                 stream,
@@ -1580,7 +1580,9 @@ public sealed partial class StreamConnectorTests
                 kind == ZlinkStreamMessageKind.Error ? ZlinkStreamCodec.Json : ZlinkStreamCodec.Raw,
                 ZlinkStreamHeaderFlags.None,
                 null,
-                name,
+                kind is ZlinkStreamMessageKind.Response or ZlinkStreamMessageKind.Error
+                    ? string.Empty
+                    : name,
                 ZlinkStreamMetadata.Empty)).ToArray(),
             payload);
         var buffer = new byte[1];

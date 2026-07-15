@@ -955,27 +955,42 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
                                                    stream_t stream,
                                                    stream_codec_t codec)
 {
-    const std::lock_guard lock (_state->mutex);
-    auto found = _state->actors_by_id.find (actor_id);
-    if (found != _state->actors_by_id.end ()) {
-        found->second.bound_session_codec = codec;
-        found->second.bound_session_stream_sink = true;
-        found->second.bound_session_route.reset ();
+    actor_ref_t actor_ref;
+    actor_gateway_state_t::bound_session_registrar_t registrar;
+    {
+        const std::lock_guard lock (_state->mutex);
+        auto found = _state->actors_by_id.find (actor_id);
+        if (found != _state->actors_by_id.end ()) {
+            found->second.bound_session_codec = codec;
+            found->second.bound_session_stream_sink = true;
+            found->second.bound_session_route.reset ();
+            actor_ref = found->second.ref;
+        }
+        _state->bound_session_sinks[actor_id] = [stream = std::move (stream),
+                                                 codec] (std::string packet_name,
+                                                         const zlink::message_t &payload) mutable {
+            stream_header_t header (stream_message_kind_t::send, codec,
+                                    stream_header_flags_t::none, std::nullopt,
+                                    std::move (packet_name));
+            try {
+                stream.write_packet_with_header (std::move (header), payload).submit ();
+                return task_t<void> (result_t<void>::success ());
+            }
+            catch (const framework_exception_t &error) {
+                return task_t<void> (detail::result_access_t::failure<void> (error));
+            }
+        };
+        registrar = _state->bound_session_registrar;
     }
-    _state->bound_session_sinks[actor_id] = [stream = std::move (stream),
-                                             codec] (std::string packet_name,
-                                                     const zlink::message_t &payload) mutable {
-        stream_header_t header (stream_message_kind_t::send, codec, stream_header_flags_t::none,
-                                std::nullopt, std::move (packet_name));
-        try {
-            stream.write_packet_with_header (std::move (header), payload).submit ();
-            return task_t<void> (result_t<void>::success ());
+    if (registrar && !actor_ref.empty ()) {
+        auto registered = registrar (actor_ref);
+        if (!registered) {
+            unbind_session_stream (actor_id);
+            throw framework_exception_t (
+              registered.error_kind (), registered.error () ? registered.error ()->what ()
+                                                             : "bound session route registration failed");
         }
-        catch (const framework_exception_t &error) {
-            return task_t<void> (
-              detail::result_access_t::failure<void> (error));
-        }
-    };
+    }
 }
 
 void actor_gateway_runtime_t::bind_session_route (actor_ref_t actor_ref,
@@ -1140,6 +1155,13 @@ void actor_gateway_runtime_t::on_disconnect (
 {
     const std::lock_guard lock (_state->mutex);
     _state->disconnect_dispatcher = std::move (dispatcher);
+}
+
+void actor_gateway_runtime_t::on_bound_session (
+  actor_gateway_state_t::bound_session_registrar_t registrar)
+{
+    const std::lock_guard lock (_state->mutex);
+    _state->bound_session_registrar = std::move (registrar);
 }
 
 void actor_gateway_runtime_t::on_membership (actor_gateway_state_t::membership_query_t query)

@@ -222,6 +222,7 @@ evidence_store_t *g_evidence = nullptr;
 domain_state_store_t *g_domain_state = nullptr;
 joined_gate_store_t *g_joined_gates = nullptr;
 transfer_gate_store_t *g_transfer_gates = nullptr;
+std::string g_initial_actor_node_rid;
 
 class transfer_actor_t
 {
@@ -325,6 +326,8 @@ class transfer_entry_spot_t : public fw::entry_spot_t
           e2e::join_target_req_t::packet_name);
         context.handlers ().add_actor_request<&transfer_entry_spot_t::bound_push> (
           e2e::bound_push_req_t::packet_name);
+        context.handlers ().add_actor_request<&transfer_entry_spot_t::probe> (
+          e2e::probe_req_t::packet_name);
         _context = fw::entry_spot_context_t (context);
     }
 
@@ -411,6 +414,19 @@ class transfer_entry_spot_t : public fw::entry_spot_t
                                      std::string (_context.spot_rid ().value ()),
                                      g_evidence->node_rid (), request.marker,
                                      actor.state_version};
+    }
+
+    e2e::probe_res_t probe (const transfer_actor_t &actor,
+                            fw::spot_actor_request_context_t &,
+                            const e2e::probe_req_t &request)
+    {
+        g_evidence->add (request.scenario, actor.actor_id, "packet_handler", request.marker);
+        return e2e::probe_res_t{request.scenario,
+                                actor.actor_id,
+                                std::string (_context.spot_rid ().value ()),
+                                g_evidence->node_rid (),
+                                actor.state_version,
+                                request.marker};
     }
 
   private:
@@ -578,7 +594,8 @@ class transfer_session_t final : public fw::packet_stream_session_t
 {
   public:
     using dependency_types =
-      fw::dependency_list_t<fw::session_actor_manager_t, fw::actor_gateway_t, fw::actor_directory_t>;
+      fw::dependency_list_t<fw::session_actor_manager_t, fw::actor_gateway_t,
+                            fw::actor_directory_t>;
 
     transfer_session_t (fw::session_actor_manager_t &actors,
                         fw::actor_gateway_t &gateway,
@@ -792,7 +809,10 @@ class create_actor_handler_t
         }
         auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).async ();
         auto joined = co_await bound.context ()
-                        .join_entry_spot (fw::node_rid_t::from_string (_evidence.node_rid ()),
+                        .join_entry_spot (fw::node_rid_t::from_string (
+                                           g_initial_actor_node_rid.empty ()
+                                             ? _evidence.node_rid ()
+                                             : g_initial_actor_node_rid),
                                           request)
                         .async ();
         const auto *joined_accepted = std::get_if<fw::actor_join_accepted_t<fw::message_t>> (&joined);
@@ -1030,6 +1050,7 @@ class shutdown_handler_t
 
 int main (int argc, char **argv)
 {
+    const auto role = env_or ("ZLINK_CPP_E2E_ROLE", "actor");
     const auto rid = require_env ("ZLINK_CPP_E2E_ACTOR_RID");
     const auto http_url = require_env ("ZLINK_CPP_E2E_ACTOR_HTTP");
     const auto router_endpoint = require_env ("ZLINK_CPP_E2E_ACTOR_ROUTER");
@@ -1051,6 +1072,7 @@ int main (int argc, char **argv)
     g_domain_state = domain_state.get ();
     g_joined_gates = joined_gates.get ();
     g_transfer_gates = transfer_gates.get ();
+    g_initial_actor_node_rid = env_or ("ZLINK_CPP_E2E_INITIAL_ACTOR_NODE", rid);
     auto *shutdown_flag_ptr = shutdown_flag.get ();
 
     auto app = fw::app_t::create ();
@@ -1079,49 +1101,61 @@ int main (int argc, char **argv)
         locations.owner_lease_ttl = std::chrono::seconds (3);
         locations.polling_interval = std::chrono::milliseconds (500);
 
-        framework.add_spot_mesh (e2e::mesh_name)
-          .enable_router (router_endpoint)
+        auto mesh = framework.add_spot_mesh (e2e::mesh_name);
+        mesh.enable_router (router_endpoint)
           .enable_pub_sub (pub_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (rid))
-          .add_entry_spot<transfer_entry_spot_t> ()
-          .add_spot<transfer_user_spot_t> ("transfer-user")
-          .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_stateful)
-          .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-            e2e::actor_type_stateful)
-          .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_empty_state)
-          .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-            e2e::actor_type_empty_state)
-          .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_no_adapter)
-          .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_leave)
-          .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-            e2e::actor_type_fail_leave)
-          .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_transfer_out)
-          .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-            e2e::actor_type_fail_transfer_out)
-          .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_transfer_in)
-          .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
-            e2e::actor_type_fail_transfer_in);
+          .set_routing_id (zlink::routing_id_t::from (rid));
+        if (role == "actor") {
+            mesh.add_entry_spot<transfer_entry_spot_t> ()
+              .add_spot<transfer_user_spot_t> ("transfer-user")
+              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_stateful)
+              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
+                e2e::actor_type_stateful)
+              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_empty_state)
+              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
+                e2e::actor_type_empty_state)
+              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_no_adapter)
+              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_leave)
+              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
+                e2e::actor_type_fail_leave)
+              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_transfer_out)
+              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
+                e2e::actor_type_fail_transfer_out)
+              .add_actor_factory<transfer_actor_factory_t> (e2e::actor_type_fail_transfer_in)
+              .add_actor_transfer_adapter<transfer_actor_t, transfer_actor_adapter_t> (
+                e2e::actor_type_fail_transfer_in);
+        }
 
-        framework.add_stream_node (std::string (e2e::mesh_name) + "-stream-" + rid)
-          .bind (stream_endpoint)
-          .register_session<transfer_session_t> ();
+        if (role == "actor") {
+            framework.add_stream_node (std::string (e2e::mesh_name) + "-internal-" + rid)
+              .bind (stream_endpoint)
+              .register_session<transfer_session_t> ();
+        } else {
+            framework.add_stream_node (std::string (e2e::mesh_name) + "-stream-" + rid)
+              .bind (stream_endpoint)
+              .register_session<transfer_session_t> ();
+        }
 
-        framework.http ()
-          .listen (http_url)
+        framework.http ().listen (http_url)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
-          .map_post<evidence_wait_handler_t> ("/evidence/wait")
-          .map_post<joined_gate_release_handler_t> ("/joined-gates/{spotRid}/release")
-          .map_post<transfer_gate_release_handler_t> ("/transfer-gates/{actorId}/release")
-          .map_post<create_spot_handler_t> ("/spots")
-          .map_post<create_actor_handler_t> ("/actors")
-          .map_get<actor_ref_handler_t> ("/actors/{actorId}/ref")
-          .map_post<join_actor_handler_t> ("/actors/{actorId}/join")
-          .map_post<probe_actor_handler_t> ("/actors/{actorId}/probe")
-          .map_post<probe_ref_handler_t> ("/actors/{actorId}/probe-ref")
-          .map_post<send_ref_handler_t> ("/actors/{actorId}/send-ref")
-          .map_post<bound_push_handler_t> ("/actors/{actorId}/bound-push")
-          .map_post<shutdown_handler_t> ("/shutdown");
+          .map_post<evidence_wait_handler_t> ("/evidence/wait");
+        if (role == "actor") {
+            framework.http ()
+              .map_post<joined_gate_release_handler_t> ("/joined-gates/{spotRid}/release")
+              .map_post<transfer_gate_release_handler_t> ("/transfer-gates/{actorId}/release")
+              .map_post<create_spot_handler_t> ("/spots")
+              .map_get<actor_ref_handler_t> ("/actors/{actorId}/ref")
+              .map_post<probe_ref_handler_t> ("/actors/{actorId}/probe-ref")
+              .map_post<send_ref_handler_t> ("/actors/{actorId}/send-ref")
+              .map_post<bound_push_handler_t> ("/actors/{actorId}/bound-push")
+              .map_post<shutdown_handler_t> ("/shutdown");
+        } else if (role == "controller") {
+            framework.http ()
+              .map_post<create_actor_handler_t> ("/actors")
+              .map_post<join_actor_handler_t> ("/actors/{actorId}/join")
+              .map_post<probe_actor_handler_t> ("/actors/{actorId}/probe");
+        }
     });
 
     std::thread shutdown_watcher ([&app, shutdown_flag_ptr] {

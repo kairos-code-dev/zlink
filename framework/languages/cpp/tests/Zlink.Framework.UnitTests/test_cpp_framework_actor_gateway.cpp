@@ -434,8 +434,10 @@ int main ()
         cleanup_no_bind ();
         return 80;
     }
+    zlink::framework::runtime::live_location_reader_t no_bind_location_reader (
+      no_bind_location_store);
     auto no_bind_actor_client = zlink::framework::runtime::make_actor_client (
-      no_bind_location_store, serializers, {no_bind_runtime},
+      no_bind_location_reader, serializers, {no_bind_runtime},
       std::make_shared<zlink::framework::runtime::actor_location_observer_t> ());
     auto no_bind_client_reply =
       no_bind_actor_client->request_to_actor (no_bind_join.value ().actor, bridge_request_t{8})

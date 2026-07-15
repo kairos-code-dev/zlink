@@ -37,6 +37,21 @@ s.close()
 PY
 }
 
+pick_ports() {
+  python3 - "$1" <<'PY'
+import socket
+import sys
+sockets = []
+for _ in range(int(sys.argv[1])):
+    current = socket.socket()
+    current.bind(("127.0.0.1", 0))
+    sockets.append(current)
+print(" ".join(str(current.getsockname()[1]) for current in sockets))
+for current in sockets:
+    current.close()
+PY
+}
+
 pids=()
 REDIS_CONTAINER=""
 
@@ -82,12 +97,15 @@ PY
   return 1
 }
 
-start_node() {
-  local rid="$1"
-  local url="$2"
-  local router="$3"
-  local stream="$4"
-  local pub="$5"
+start_role() {
+  local role="$1"
+  local rid="$2"
+  local url="$3"
+  local router="$4"
+  local stream="$5"
+  local pub="$6"
+  ZLINK_CPP_E2E_ROLE="$role" \
+  ZLINK_CPP_E2E_INITIAL_ACTOR_NODE="actor-a" \
   ZLINK_CPP_E2E_ACTOR_RID="$rid" \
   ZLINK_CPP_E2E_ACTOR_HTTP="$url" \
   ZLINK_CPP_E2E_ACTOR_ROUTER="$router" \
@@ -106,9 +124,9 @@ run_client() {
   local scenario="$1"
   ZLINK_CPP_E2E_NODE_A_URL="$NODE_A_URL" \
   ZLINK_CPP_E2E_NODE_B_URL="$NODE_B_URL" \
-  ZLINK_CPP_E2E_NODE_C_URL="$NODE_C_URL" \
-  ZLINK_CPP_E2E_NODE_A_STREAM="$NODE_A_STREAM" \
-  ZLINK_CPP_E2E_NODE_B_STREAM="$NODE_B_STREAM" \
+  ZLINK_CPP_E2E_CONTROLLER_URL="$CONTROLLER_URL" \
+  ZLINK_CPP_E2E_NODE_A_STREAM="$SESSION_A_STREAM" \
+  ZLINK_CPP_E2E_NODE_B_STREAM="$SESSION_B_STREAM" \
   ZLINK_CPP_E2E_SCENARIO="$scenario" \
   "$CLIENT_BIN" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
@@ -120,55 +138,60 @@ REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="zlink:cpp-e2e:spot-actor-transfer:$(date +%s)-$$"
 
-NODE_A_HTTP_PORT="$(pick_port)"
-NODE_B_HTTP_PORT="$(pick_port)"
-NODE_C_HTTP_PORT="$(pick_port)"
-NODE_A_ROUTER_PORT="$(pick_port)"
-NODE_B_ROUTER_PORT="$(pick_port)"
-NODE_C_ROUTER_PORT="$(pick_port)"
-NODE_A_STREAM_PORT="$(pick_port)"
-NODE_B_STREAM_PORT="$(pick_port)"
-NODE_C_STREAM_PORT="$(pick_port)"
-NODE_A_PUB_PORT="$(pick_port)"
-NODE_B_PUB_PORT="$(pick_port)"
-NODE_C_PUB_PORT="$(pick_port)"
+read -r NODE_A_HTTP_PORT NODE_B_HTTP_PORT SESSION_A_HTTP_PORT SESSION_B_HTTP_PORT \
+  CONTROLLER_HTTP_PORT NODE_A_ROUTER_PORT NODE_B_ROUTER_PORT SESSION_A_ROUTER_PORT \
+  SESSION_B_ROUTER_PORT CONTROLLER_ROUTER_PORT NODE_A_STREAM_PORT NODE_B_STREAM_PORT \
+  SESSION_A_STREAM_PORT SESSION_B_STREAM_PORT CONTROLLER_STREAM_PORT NODE_A_PUB_PORT \
+  NODE_B_PUB_PORT SESSION_A_PUB_PORT SESSION_B_PUB_PORT CONTROLLER_PUB_PORT \
+  < <(pick_ports 20)
 NODE_A_PUB="tcp://127.0.0.1:$NODE_A_PUB_PORT"
 NODE_B_PUB="tcp://127.0.0.1:$NODE_B_PUB_PORT"
-NODE_C_PUB="tcp://127.0.0.1:$NODE_C_PUB_PORT"
+SESSION_A_PUB="tcp://127.0.0.1:$SESSION_A_PUB_PORT"
+SESSION_B_PUB="tcp://127.0.0.1:$SESSION_B_PUB_PORT"
+CONTROLLER_PUB="tcp://127.0.0.1:$CONTROLLER_PUB_PORT"
 NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
 NODE_B_URL="http://127.0.0.1:$NODE_B_HTTP_PORT"
-NODE_C_URL="http://127.0.0.1:$NODE_C_HTTP_PORT"
+SESSION_A_URL="http://127.0.0.1:$SESSION_A_HTTP_PORT"
+SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
+CONTROLLER_URL="http://127.0.0.1:$CONTROLLER_HTTP_PORT"
 NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
 NODE_B_ROUTER="tcp://127.0.0.1:$NODE_B_ROUTER_PORT"
-NODE_C_ROUTER="tcp://127.0.0.1:$NODE_C_ROUTER_PORT"
+SESSION_A_ROUTER="tcp://127.0.0.1:$SESSION_A_ROUTER_PORT"
+SESSION_B_ROUTER="tcp://127.0.0.1:$SESSION_B_ROUTER_PORT"
+CONTROLLER_ROUTER="tcp://127.0.0.1:$CONTROLLER_ROUTER_PORT"
 NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
 NODE_B_STREAM="tcp://127.0.0.1:$NODE_B_STREAM_PORT"
-NODE_C_STREAM="tcp://127.0.0.1:$NODE_C_STREAM_PORT"
+SESSION_A_STREAM="tcp://127.0.0.1:$SESSION_A_STREAM_PORT"
+SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
+CONTROLLER_STREAM="tcp://127.0.0.1:$CONTROLLER_STREAM_PORT"
 
 echo "log_dir=$LOG_DIR"
 
-start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM" "$NODE_A_PUB"
-start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM" "$NODE_B_PUB"
-start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" "$NODE_C_STREAM" "$NODE_C_PUB"
-
+start_role actor actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM" "$NODE_A_PUB"
 wait_health "$NODE_A_URL" actor-a
+start_role actor actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM" "$NODE_B_PUB"
 wait_health "$NODE_B_URL" actor-b
-wait_health "$NODE_C_URL" actor-c
+
+start_role session session-a "$SESSION_A_URL" "$SESSION_A_ROUTER" "$SESSION_A_STREAM" "$SESSION_A_PUB"
+wait_health "$SESSION_A_URL" session-a
+start_role session session-b "$SESSION_B_URL" "$SESSION_B_ROUTER" "$SESSION_B_STREAM" "$SESSION_B_PUB"
+wait_health "$SESSION_B_URL" session-b
+
+start_role controller transfer-controller "$CONTROLLER_URL" "$CONTROLLER_ROUTER" "$CONTROLLER_STREAM" "$CONTROLLER_PUB"
+wait_health "$CONTROLLER_URL" transfer-controller
 sleep "$ROUTE_SETTLE_SECONDS"
 
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"
 
 restart_node_a() {
-  NODE_A_HTTP_PORT="$(pick_port)"
-  NODE_A_ROUTER_PORT="$(pick_port)"
-  NODE_A_STREAM_PORT="$(pick_port)"
-  NODE_A_PUB_PORT="$(pick_port)"
+  read -r NODE_A_HTTP_PORT NODE_A_ROUTER_PORT NODE_A_STREAM_PORT NODE_A_PUB_PORT \
+    < <(pick_ports 4)
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
   NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
   NODE_A_PUB="tcp://127.0.0.1:$NODE_A_PUB_PORT"
-  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM" "$NODE_A_PUB"
+  start_role actor actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM" "$NODE_A_PUB"
   wait_health "$NODE_A_URL" actor-a
   sleep "$ROUTE_SETTLE_SECONDS"
 }

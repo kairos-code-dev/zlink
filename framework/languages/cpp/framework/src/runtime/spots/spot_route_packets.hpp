@@ -141,6 +141,17 @@ struct actor_bound_session_route_request_t
     std::vector<std::uint8_t> payload;
 };
 
+struct actor_bound_session_bind_route_request_t
+{
+    static constexpr const char *packet_name = "__zlink.actor.boundSession.bind";
+
+    std::string actor_node_rid;
+    std::string actor_type;
+    std::string actor_id;
+    std::uint64_t actor_generation = 0;
+    std::string session_node_rid;
+};
+
 struct actor_bound_session_route_reply_t
 {
     bool accepted = true;
@@ -184,6 +195,8 @@ actor_bound_session_route_request_t make_actor_bound_session_route_request (
   const actor_ref_t &actor_ref, std::string_view packet_name, const zlink::message_t &payload);
 
 actor_ref_t actor_ref_from_bound_session_route (const actor_bound_session_route_request_t &request);
+actor_ref_t
+actor_ref_from_bound_session_route (const actor_bound_session_bind_route_request_t &request);
 
 void register_spot_route_packet_serializers (serializer_registry_t &serializers);
 

@@ -266,6 +266,24 @@ void from_json (const nlohmann::json &json, actor_bound_session_route_request_t 
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }
 
+void to_json (nlohmann::json &json, const actor_bound_session_bind_route_request_t &value)
+{
+    json = nlohmann::json{{"actorNodeRid", value.actor_node_rid},
+                          {"actorType", value.actor_type},
+                          {"actorId", value.actor_id},
+                          {"actorGeneration", value.actor_generation},
+                          {"sessionNodeRid", value.session_node_rid}};
+}
+
+void from_json (const nlohmann::json &json, actor_bound_session_bind_route_request_t &value)
+{
+    value.actor_node_rid = json.at ("actorNodeRid").get<std::string> ();
+    value.actor_type = json.at ("actorType").get<std::string> ();
+    value.actor_id = json.at ("actorId").get<std::string> ();
+    value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
+    value.session_node_rid = json.at ("sessionNodeRid").get<std::string> ();
+}
+
 void to_json (nlohmann::json &json, const actor_bound_session_route_reply_t &value)
 {
     json = nlohmann::json{{"accepted", value.accepted}};
@@ -395,6 +413,13 @@ actor_ref_t actor_ref_from_bound_session_route (const actor_bound_session_route_
                         request.actor_id, request.actor_generation);
 }
 
+actor_ref_t
+actor_ref_from_bound_session_route (const actor_bound_session_bind_route_request_t &request)
+{
+    return actor_ref_t (node_rid_t::from_string (request.actor_node_rid), request.actor_type,
+                        request.actor_id, request.actor_generation);
+}
+
 void register_spot_route_packet_serializers (serializer_registry_t &serializers)
 {
     if (!serializers.contains (std::type_index (typeid (spot_actor_admission_route_request_t)))) {
@@ -495,6 +520,17 @@ void register_spot_route_packet_serializers (serializer_registry_t &serializers)
           [] (const encoded_payload_t &payload) {
               return nlohmann::json::parse (payload.to_string ())
                 .get<actor_bound_session_route_request_t> ();
+          });
+    }
+    if (!serializers.contains (
+          std::type_index (typeid (actor_bound_session_bind_route_request_t)))) {
+        serializers.add<actor_bound_session_bind_route_request_t> (
+          [] (const actor_bound_session_bind_route_request_t &value) {
+              return encoded_payload_t::from_string (nlohmann::json (value).dump ());
+          },
+          [] (const encoded_payload_t &payload) {
+              return nlohmann::json::parse (payload.to_string ())
+                .get<actor_bound_session_bind_route_request_t> ();
           });
     }
     if (!serializers.contains (std::type_index (typeid (actor_bound_session_route_reply_t)))) {

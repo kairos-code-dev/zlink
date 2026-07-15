@@ -288,6 +288,45 @@ join_actor_to_remote_spot_route_mesh (spot_node_runtime_t runtime,
       actor_join_reply_from_spot_route (decoded.value ()));
 }
 
+result_t<void>
+register_bound_session_route_through_mesh (spot_node_runtime_t runtime,
+                                           const actor_ref_t &actor_ref,
+                                           std::string session_node_rid,
+                                           serializer_registry_t &serializers)
+{
+    runtime::messaging::client_call_codec_t codec;
+    auto header = codec.create_envelope (
+      runtime::messaging::message_kind_t::request, "spot",
+      std::string (actor_bound_session_bind_route_request_t::packet_name),
+      std::chrono::seconds (30));
+    auto request = actor_bound_session_bind_route_request_t{
+      .actor_node_rid = std::string (actor_ref.node_rid ().value ()),
+      .actor_type = std::string (actor_ref.actor_type ()),
+      .actor_id = std::string (actor_ref.actor_id ()),
+      .actor_generation = actor_ref.generation (),
+      .session_node_rid = std::move (session_node_rid)};
+    auto parts = codec.encode_envelope_parts (header, request, serializers);
+    const auto target_node_rid = actor_ref.node_rid ();
+    auto reply_parts = request_spot_mesh_parts (
+      runtime, target_node_rid,
+      spot_rid_t::from_string (std::string (target_node_rid.value ())), std::move (parts));
+    if (!reply_parts) {
+        return detail::propagate_failure<void> (reply_parts,
+                                                "bound session route registration failed");
+    }
+    auto decoded = codec.decode_envelope_reply<actor_bound_session_route_reply_t> (
+      reply_parts.value (), serializers, "bound session route reply is empty",
+      "bound session route reply decode failed", "BindActorSession");
+    if (!decoded) {
+        return detail::propagate_failure<void> (decoded,
+                                                "bound session route registration failed");
+    }
+    return decoded.value ().accepted
+             ? result_t<void>::success ()
+             : result_t<void>::failure (framework_error_kind_t::actor_session_not_bound,
+                                        "bound session route registration was rejected");
+}
+
 result_t<actor_join_reply_t>
 join_actor_to_remote_spot_route_channel (route_client_t route_client,
                                          const std::optional<std::string> &route_channel_name,
@@ -1233,6 +1272,40 @@ void configure_actor_gateway_spot_bridge (
         }
         return last;
     });
+    actor_gateway.on_bound_session (
+      [bindings = actor_gateway_spot_nodes,
+       &serializers] (const actor_ref_t &actor_ref) mutable {
+          if (actor_ref.node_rid ().empty ()) {
+              return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
+                                              "bound actor node route is empty");
+          }
+          for (auto &binding : bindings) {
+              if (!binding.accepts_route_channels) {
+                  return register_bound_session_route_through_mesh (
+                    binding.runtime, actor_ref, binding.local_spot_node_rid, serializers);
+              }
+              auto reply =
+                binding.route_client
+                  .request_to_node (
+                    *binding.route_channel_name,
+                    zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
+                    actor_bound_session_bind_route_request_t{
+                      .actor_node_rid = std::string (actor_ref.node_rid ().value ()),
+                      .actor_type = std::string (actor_ref.actor_type ()),
+                      .actor_id = std::string (actor_ref.actor_id ()),
+                      .actor_generation = actor_ref.generation (),
+                      .session_node_rid = binding.local_spot_node_rid})
+                  .template async<actor_bound_session_route_reply_t> ()
+                  .result ();
+              if (!reply) {
+                  return detail::propagate_failure<void> (
+                    reply, "bound session route registration failed");
+              }
+              return result_t<void>::success ();
+          }
+          return result_t<void>::failure (framework_error_kind_t::spot_route_not_found,
+                                          "bound session route channel is not configured");
+      });
     actor_gateway.on_relay (
       [bindings = actor_gateway_spot_nodes, actor_gateway, services = &services,
        serializers = &serializers] (const actor_ref_t &actor_ref, actor_context_t actor_context,

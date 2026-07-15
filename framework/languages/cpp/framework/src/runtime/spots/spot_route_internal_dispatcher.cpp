@@ -97,7 +97,8 @@ bool spot_route_internal_dispatcher_t::can_handle_send (std::string_view packet_
 
 bool spot_route_internal_dispatcher_t::can_handle_request (std::string_view packet_name) const
 {
-    return packet_name == actor_bound_session_route_request_t::packet_name
+    return packet_name == actor_bound_session_bind_route_request_t::packet_name
+           || packet_name == actor_bound_session_route_request_t::packet_name
            || packet_name == spot_actor_admission_route_request_t::packet_name
            || packet_name == spot_actor_commit_route_request_t::packet_name
            || packet_name == spot_actor_join_route_request_t::packet_name
@@ -182,6 +183,20 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
     }
 
     try {
+        if (header.message_name == actor_bound_session_bind_route_request_t::packet_name) {
+            auto request =
+              _serializers->get<actor_bound_session_bind_route_request_t> ().deserialize (
+                detail::encoded_payload_from_raw (body.value ()));
+            auto actor_ref = actor_ref_from_bound_session_route (request);
+            auto actor_gateway = _actor_gateway;
+            bind_actor_session_route (
+              actor_gateway, actor_ref,
+              _runtime.actor_route_transport_name ().value_or (header.channel_name),
+              zlink::routing_id_t::from (request.session_node_rid), std::nullopt, true);
+            return result_t<zlink::message_t>::success (detail::encoded_payload_to_raw (
+              _serializers->get<actor_bound_session_route_reply_t> ().serialize (
+                actor_bound_session_route_reply_t{.accepted = true})));
+        }
         if (header.message_name == spot_actor_admission_route_request_t::packet_name) {
             auto request = _serializers->get<spot_actor_admission_route_request_t> ().deserialize (
               detail::encoded_payload_from_raw (body.value ()));
@@ -342,10 +357,13 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
         auto runtime = _runtime;
         auto actor_ref = actor_ref_from_spot_route (request);
         auto actor_gateway = bind_actor_route (actor_ref, header, received);
+        const auto entry_actor_ref = actor_ref_t (
+          runtime.node_rid (), std::string (actor_ref.actor_type ()),
+          std::string (actor_ref.actor_id ()), actor_ref.generation ());
         auto joined =
           request.spot_rid.empty ()
             ? runtime.join_actor_to_entry_spot_erased (
-                actor_ref, actor_ref.node_rid (), zlink::message_t::from (request.payload),
+                entry_actor_ref, runtime.node_rid (), zlink::message_t::from (request.payload),
                 request.actor_snapshot_present
                   ? std::make_optional (zlink::message_t::from (request.actor_snapshot))
                   : std::nullopt)

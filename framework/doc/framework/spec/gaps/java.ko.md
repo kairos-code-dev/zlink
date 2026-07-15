@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 8건.**
+**전체 33건. 완료 9건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -293,7 +293,7 @@
 - [ ] **§12.8** — monitoring 표면 (Java)
 - [ ] **§12.9** — spot 전송 표면에 channel 이름을 함께 받는다 (Java)
 - [x] **§12.10** — `ZLinkStreamTransport` 네 멤버를 공개하고 endpoint scheme 해석과 실제 연결 분기가 이 enum을 사용하도록 통합했다. 공개 표면 집중 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `aad0f8074`(2026-07-15).
-- [ ] **§12.12** — connector dispatch mode 이름 (Java)
+- [x] **§12.12** — dispatch mode를 `MANUAL`/`IMMEDIATE`로 맞추고, Manual의 message·state·disconnected·error callback을 dispatch queue에서 실행하며 `dispatch().submit()`이 비동기 callback 완료까지 기다리도록 고쳤다. 집중 실패 테스트와 Java 전체 Gradle 테스트가 통과했다. 구현 커밋 `d339d4386`(2026-07-15).
 - [x] **§12.13** — observer notification 큐 상한과 payload preview 바이트 한도를 options에 추가하고 실제 dispatcher가 사용하도록 연결했다. 공개 표면 테스트의 실패를 먼저 확인했고, 작은 큐 overflow·preview 절단 테스트와 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `900da7c0b`(2026-07-15).
 - [ ] **§12.15** — 예외 정규화 부재 (Java)
 - [x] **§12.16** — metadata wire 블록의 총 크기가 1024바이트를 넘으면 encode 전에 거부하도록 고쳤다. 경계값 1024 허용·1025 거부 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `47f7898af`(2026-07-15).
@@ -427,18 +427,16 @@ caller가 route channel을 함께 고르지 않는다"고 규정한다. Java `ZL
 
 ### §12.12 connector dispatch mode 이름 (Java)
 
-**미충족(Java).** [32 §7](../stream-connector/32-stream-connector.ko.md)이 고정한 dispatch mode의 닫힌 집합은
-`Manual`(기본)과 `Immediate`다. Java는 `AUTO`/`MANUAL`을 쓴다. 닫힌 enum의 멤버 이름은 관측·설정
-데이터의 안정 키이므로 언어마다 다를 수 없다 — close reason과 error code는 이미 공통 이름을
-SNAKE_CASE로 1:1 사상하고 있어 dispatch mode만 예외인 상태다.
+**충족(Java).** dispatch mode의 닫힌 집합을 `MANUAL`/`IMMEDIATE`로 맞추고 Java·Kotlin 샘플과 E2E의
+호출부도 계약 이름으로 옮겼다. Manual에서는 message·connection-state·disconnected·error callback을
+모두 하나의 dispatch queue에서 실행한다. queue 항목이 `CompletionStage<Void>`를 반환하게 해
+`dispatch().submit()`은 callback이 완료된 뒤에만 끝난다.
 
-**이름만의 문제가 아니다.** 두 가지 동작이 더 어긋난다.
-
-- **`MANUAL`에서도 connection-state와 disconnected callback이 dispatch queue를 우회해** lifecycle
-  스레드에서 직접 실행된다. 계약은 manual mode에서 모든 사용자 callback이 `dispatch()` 호출
-  문맥에서 실행되는 것이다.
-- **message callback이 반환한 `CompletionStage`를 기다리지 않는다.** 그래서
-  `dispatch().submit()`이 callback 완료 전에 끝난다. 기준선은 callback 완료까지 기다린다.
+callback마다 별도 blocking wait를 넣는 안과 queue가 비동기 완료를 합성하는 안을 비교해 후자를
+선택했다. transport thread를 막지 않고 callback 실행 문맥과 완료 순서를 queue 한 곳이 소유한다.
+구현 전 enum 이름 테스트와 느린 callback 완료 테스트가 각각 실패했다. 구현 뒤 두 테스트와 Manual
+lifecycle callback 문맥 테스트, Java 전체 `./gradlew test` 44개 task가 통과했다. 구현 커밋
+`d339d4386`(2026-07-15).
 
 ### §12.13 connector inbound observer option 부재 (Java)
 

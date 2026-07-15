@@ -6,7 +6,7 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
-LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+LOG_DIR="$ROOT_DIR/log/$RUN_ID"
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-${2:-forward}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3

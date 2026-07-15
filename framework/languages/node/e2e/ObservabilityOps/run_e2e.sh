@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
-LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
+LOG_DIR="$ROOT_DIR/log/$RUN_ID"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30

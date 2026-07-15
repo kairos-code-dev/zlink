@@ -157,6 +157,14 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_EQ (second_joined.reply->decode<bingo_room_join_res_t> ().state.players.size (), 1U);
 }
 
+TEST (CppFrameworkSampleParity, BingoWireOmitsTransportIdentityNotification)
+{
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/Bingo/Shared/Contracts/bingo_messages.proto");
+    EXPECT_EQ (contracts.find ("BingoActorEntrySpotNotify"), std::string::npos)
+      << "Bingo wire must not expose the framework-internal target node routing id";
+}
+
 TEST (CppFrameworkSampleParity, BingoRoomGameCopyOwnsItsPlayerState)
 {
     using namespace zlink::samples::bingo;

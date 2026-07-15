@@ -147,12 +147,6 @@ message BingoGameEndedNotify {
   BingoRoomState state = 1;
 }
 
-message BingoActorEntrySpotNotify {
-  string actor_id = 1;
-  string room_id = 2;
-  string target_node_rid = 3;
-}
-
 message BingoRewardAnnouncedNotify {
   string room_id = 1;
   string actor_id = 2;

@@ -107,10 +107,32 @@ public sealed partial class StreamConnectorTests
             nameof(IZlinkStreamWaitCall.Async),
             typeof(ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>>),
             (typeof(CancellationToken), true));
+        AssertMethod(
+            typeof(IZlinkStreamExpectNoneCall),
+            nameof(IZlinkStreamExpectNoneCall.Within),
+            typeof(IZlinkStreamExpectNoneCall),
+            (typeof(TimeSpan), false));
+        AssertMethod(
+            typeof(IZlinkStreamExpectNoneCall),
+            nameof(IZlinkStreamExpectNoneCall.Async),
+            typeof(ValueTask),
+            (typeof(CancellationToken), true));
+        AssertMethod(
+            typeof(IZlinkStreamSequenceCall),
+            nameof(IZlinkStreamSequenceCall.Expect),
+            typeof(IZlinkStreamSequenceCall),
+            (typeof(Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>), false));
+        AssertMethod(
+            typeof(IZlinkStreamSequenceCall),
+            nameof(IZlinkStreamSequenceCall.Async),
+            typeof(ValueTask<IReadOnlyList<ZlinkStreamMessage<ZlinkStreamEncodedPayload>>>),
+            (typeof(CancellationToken), true));
 
         Assert.Empty(typeof(ZlinkStreamTypedSendBuilder).GetConstructors());
         Assert.Empty(typeof(ZlinkStreamTypedRequestBuilder).GetConstructors());
         Assert.Empty(typeof(ZlinkStreamTypedWaitBuilder<>).GetConstructors());
+        Assert.Empty(typeof(ZlinkStreamTypedExpectNoneBuilder<>).GetConstructors());
+        Assert.Empty(typeof(ZlinkStreamTypedSequenceBuilder<>).GetConstructors());
         AssertMethod(
             typeof(ZlinkStreamTypedSendBuilder),
             nameof(ZlinkStreamTypedSendBuilder.Submit),
@@ -122,6 +144,30 @@ public sealed partial class StreamConnectorTests
                              && method.IsGenericMethodDefinition
                              && method.GetParameters() is [{ ParameterType: var token, HasDefaultValue: true }]
                              && token == typeof(CancellationToken));
+
+        Assert.Equal(
+            typeof(IZlinkStreamExpectNoneCall),
+            typeof(IZlinkStreamConnector).GetMethod(nameof(IZlinkStreamConnector.ExpectNone))!.ReturnType);
+        Assert.Equal(
+            typeof(IZlinkStreamSequenceCall),
+            typeof(IZlinkStreamConnector).GetMethod(nameof(IZlinkStreamConnector.WaitForSequence))!.ReturnType);
+        AssertMethod(
+            typeof(ZlinkStreamAssert),
+            nameof(ZlinkStreamAssert.Ensure),
+            typeof(void),
+            (typeof(bool), false),
+            (typeof(string), false));
+        AssertMethod(
+            typeof(ZlinkStreamAssert),
+            nameof(ZlinkStreamAssert.ExpectFailureAsync),
+            typeof(ValueTask<ZlinkStreamError>),
+            (typeof(Func<CancellationToken, ValueTask>), false),
+            (typeof(string), true));
+        AssertMethod(
+            typeof(ZlinkStreamAssert),
+            nameof(ZlinkStreamAssert.ExpectTimeoutAsync),
+            typeof(ValueTask),
+            (typeof(Func<CancellationToken, ValueTask>), false));
     }
 
     [Fact]

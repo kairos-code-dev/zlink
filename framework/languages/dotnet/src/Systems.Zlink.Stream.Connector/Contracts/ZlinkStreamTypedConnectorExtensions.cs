@@ -126,6 +126,125 @@ public static class ZlinkStreamTypedConnectorExtensions
         ArgumentNullException.ThrowIfNull(connector);
         return connector.WaitFor<TPayload>(connector.Options.NameResolver.Resolve(typeof(TPayload)));
     }
+
+    public static ZlinkStreamTypedExpectNoneBuilder<TPayload> ExpectNone<TPayload>(
+        this IZlinkStreamConnector connector,
+        string name)
+    {
+        ArgumentNullException.ThrowIfNull(connector);
+        return new ZlinkStreamTypedExpectNoneBuilder<TPayload>(connector.ExpectNone(name));
+    }
+
+    public static ZlinkStreamTypedExpectNoneBuilder<TPayload> ExpectNone<TPayload>(
+        this IZlinkStreamConnector connector)
+    {
+        ArgumentNullException.ThrowIfNull(connector);
+        return connector.ExpectNone<TPayload>(connector.Options.NameResolver.Resolve(typeof(TPayload)));
+    }
+
+    public static ZlinkStreamTypedSequenceBuilder<TPayload> WaitForSequence<TPayload>(
+        this IZlinkStreamConnector connector,
+        string name)
+    {
+        ArgumentNullException.ThrowIfNull(connector);
+        return new ZlinkStreamTypedSequenceBuilder<TPayload>(
+            connector.WaitForSequence(name),
+            connector.Options.PayloadCodec);
+    }
+
+    public static ZlinkStreamTypedSequenceBuilder<TPayload> WaitForSequence<TPayload>(
+        this IZlinkStreamConnector connector)
+    {
+        ArgumentNullException.ThrowIfNull(connector);
+        return connector.WaitForSequence<TPayload>(
+            connector.Options.NameResolver.Resolve(typeof(TPayload)));
+    }
+}
+
+/// <summary>
+///     Configures a typed negative observation for one packet name.
+/// </summary>
+public sealed class ZlinkStreamTypedExpectNoneBuilder<TPayload>
+{
+    private readonly IZlinkStreamExpectNoneCall _inner;
+
+    internal ZlinkStreamTypedExpectNoneBuilder(IZlinkStreamExpectNoneCall inner)
+    {
+        _inner = inner;
+    }
+
+    /// <summary>
+    ///     Sets the interval during which the packet must not arrive.
+    /// </summary>
+    public ZlinkStreamTypedExpectNoneBuilder<TPayload> Within(TimeSpan window)
+    {
+        _inner.Within(window);
+        return this;
+    }
+
+    /// <summary>
+    ///     Executes the negative observation.
+    /// </summary>
+    public ValueTask Async(CancellationToken cancellationToken = default)
+    {
+        return _inner.Async(cancellationToken);
+    }
+}
+
+/// <summary>
+///     Configures typed predicates that must match messages in arrival order.
+/// </summary>
+public sealed class ZlinkStreamTypedSequenceBuilder<TPayload>
+{
+    private readonly IZlinkStreamPayloadCodec? _codec;
+    private readonly IZlinkStreamSequenceCall _inner;
+
+    internal ZlinkStreamTypedSequenceBuilder(
+        IZlinkStreamSequenceCall inner,
+        IZlinkStreamPayloadCodec? codec)
+    {
+        _inner = inner;
+        _codec = codec;
+    }
+
+    /// <summary>
+    ///     Appends the next expected typed message predicate.
+    /// </summary>
+    public ZlinkStreamTypedSequenceBuilder<TPayload> Expect(
+        Func<ZlinkStreamMessage<TPayload>, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        _inner.Expect(message => predicate(Decode(message)));
+        return this;
+    }
+
+    /// <summary>
+    ///     Sets the total timeout for the complete sequence.
+    /// </summary>
+    public ZlinkStreamTypedSequenceBuilder<TPayload> Timeout(TimeSpan timeout)
+    {
+        _inner.Timeout(timeout);
+        return this;
+    }
+
+    /// <summary>
+    ///     Verifies the sequence and returns typed messages in arrival order.
+    /// </summary>
+    public async ValueTask<IReadOnlyList<ZlinkStreamMessage<TPayload>>> Async(
+        CancellationToken cancellationToken = default)
+    {
+        var messages = await _inner.Async(cancellationToken).ConfigureAwait(false);
+        return messages.Select(Decode).ToArray();
+    }
+
+    private ZlinkStreamMessage<TPayload> Decode(
+        ZlinkStreamMessage<ZlinkStreamEncodedPayload> message)
+    {
+        return new ZlinkStreamMessage<TPayload>(
+            message.Name,
+            message.Metadata,
+            ZlinkStreamTypedConnectorExtensions.DecodePayload<TPayload>(_codec, message.Payload));
+    }
 }
 
 public sealed class ZlinkStreamTypedWaitBuilder<TPayload>

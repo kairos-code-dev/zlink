@@ -172,6 +172,20 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         return new ZlinkStreamWaitBuilder(this, name);
     }
 
+    public IZlinkStreamExpectNoneCall ExpectNone(string name)
+    {
+        ThrowIfDisposed();
+        ValidateName(name);
+        return new ZlinkStreamExpectNoneBuilder(this, name);
+    }
+
+    public IZlinkStreamSequenceCall WaitForSequence(string name)
+    {
+        ThrowIfDisposed();
+        ValidateName(name);
+        return new ZlinkStreamSequenceBuilder(this, name);
+    }
+
     public ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> WaitForEncodedAsync(
         string name,
         Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>? predicate,

@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using DeliveryDispatch.Shared.Contracts;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -31,27 +30,32 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         // Each courier binds its own stream session to the actor chosen by the server side directory.
         var courierABinding = await courierA.Request(new BindCourierSessionReq("courier-a"))
             .Async<BindCourierSessionRes>(cancellationToken);
-        Ensure(courierABinding.CourierId == "courier-a");
-        Ensure(courierABinding.Actor.NodeRid.ToString() == "delivery-courier-node-1");
-        Ensure(courierABinding.Actor.ActorId == "courier-a");
-        Ensure(courierABinding.Actor.Generation > 0);
+        ZlinkStreamAssert.Ensure(courierABinding.CourierId == "courier-a", "courier-a binding id mismatch.");
+        ZlinkStreamAssert.Ensure(
+            courierABinding.Actor.NodeRid.ToString() == "delivery-courier-node-1",
+            "courier-a binding node mismatch.");
+        ZlinkStreamAssert.Ensure(courierABinding.Actor.ActorId == "courier-a", "courier-a actor id mismatch.");
+        ZlinkStreamAssert.Ensure(courierABinding.Actor.Generation > 0, "courier-a generation was not assigned.");
         var courierBBinding = await courierB.Request(new BindCourierSessionReq("courier-b"))
             .Async<BindCourierSessionRes>(cancellationToken);
-        Ensure(courierBBinding.CourierId == "courier-b");
-        Ensure(courierBBinding.Actor.NodeRid.ToString() == "delivery-courier-node-2");
-        Ensure(courierBBinding.Actor.ActorId == "courier-b");
-        Ensure(courierBBinding.Actor.Generation > 0);
+        ZlinkStreamAssert.Ensure(courierBBinding.CourierId == "courier-b", "courier-b binding id mismatch.");
+        ZlinkStreamAssert.Ensure(
+            courierBBinding.Actor.NodeRid.ToString() == "delivery-courier-node-2",
+            "courier-b binding node mismatch.");
+        ZlinkStreamAssert.Ensure(courierBBinding.Actor.ActorId == "courier-b", "courier-b actor id mismatch.");
+        ZlinkStreamAssert.Ensure(courierBBinding.Actor.Generation > 0, "courier-b generation was not assigned.");
         logger.LogInformation("topology=ready");
 
         // Run both dispatch paths: direct acceptance first, then timeout-based reassignment.
-        await RunSuccessfulDeliveryAsync(http, customer, courierA, cancellationToken);
+        await RunSuccessfulDeliveryAsync(http, customer, courierA, courierB, cancellationToken);
         await RunReassignedDeliveryAsync(http, customer, courierA, courierB, cancellationToken);
     }
 
     private static async ValueTask RunSuccessfulDeliveryAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
-        IZlinkStreamConnector courier,
+        IZlinkStreamConnector courierA,
+        IZlinkStreamConnector courierB,
         CancellationToken cancellationToken)
     {
         // Success path: customer subscribes, dispatch creates the delivery,
@@ -59,23 +63,27 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var deliveryId = "delivery-success";
 
         // Register waits before creating the delivery so push messages cannot race past the client.
-        var offer = courier.WaitFor<OfferDeliveryNotify>()
+        var offer = courierA.WaitFor<OfferDeliveryNotify>()
             .Where(message => message.Payload.DeliveryId == deliveryId)
             .Async(cancellationToken);
+        var noCourierBOffer = courierB.ExpectNone<OfferDeliveryNotify>()
+            .Within(TimeSpan.FromSeconds(1))
+            .Async(cancellationToken).AsTask();
 
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
             .Async<SubscribeDeliveryRes>(cancellationToken);
-        Ensure(subscribed.DeliveryId == deliveryId);
-        var statusSequenceTask = WaitForStatusSequenceAsync(
-            customer,
-            deliveryId,
-            [
-                DeliveryStatus.Assigned,
-                DeliveryStatus.Accepted,
-                DeliveryStatus.PickedUp,
-                DeliveryStatus.Delivered
-            ],
-            cancellationToken).AsTask();
+        ZlinkStreamAssert.Ensure(subscribed.DeliveryId == deliveryId, "success subscription id mismatch.");
+        var statusSequenceTask = customer.WaitForSequence<DeliveryStatusNotify>()
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.Assigned }
+                               && id == deliveryId)
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.Accepted }
+                               && id == deliveryId)
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.PickedUp }
+                               && id == deliveryId)
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.Delivered }
+                               && id == deliveryId)
+            .Timeout(customer.Options.WaitTimeout)
+            .Async(cancellationToken).AsTask();
 
         var created = http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
@@ -84,11 +92,11 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 "Kitchen 12",
                 "Customer Lobby"))
             .Async<CreateDeliveryRes>().AsTask().GetAwaiter().GetResult().Body;
-        Ensure(created.DeliveryId == deliveryId);
+        ZlinkStreamAssert.Ensure(created.DeliveryId == deliveryId, "created success delivery id mismatch.");
 
         // courier-a receives the offer through its bound stream session and accepts it.
         var courierOffer = (await offer).Payload;
-        courier.Send(new CourierDecisionMsg(
+        courierA.Send(new CourierDecisionMsg(
                 courierOffer.DeliveryId,
                 courierOffer.CourierId,
                 true,
@@ -96,15 +104,16 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
             .Submit(cancellationToken);
 
         var statuses = await statusSequenceTask;
-        var assigned = statuses[0];
-        var accepted = statuses[1];
-        var pickedUp = statuses[2];
-        var delivered = statuses[3];
+        var assigned = statuses[0].Payload;
+        var accepted = statuses[1].Payload;
+        var pickedUp = statuses[2].Payload;
+        var delivered = statuses[3].Payload;
 
-        Ensure(assigned.CourierId == "courier-a");
-        Ensure(accepted.CourierId == "courier-a");
-        Ensure(pickedUp.CourierId == "courier-a");
-        Ensure(delivered.CourierId == "courier-a");
+        ZlinkStreamAssert.Ensure(assigned.CourierId == "courier-a", "assigned courier mismatch.");
+        ZlinkStreamAssert.Ensure(accepted.CourierId == "courier-a", "accepted courier mismatch.");
+        ZlinkStreamAssert.Ensure(pickedUp.CourierId == "courier-a", "pickup courier mismatch.");
+        ZlinkStreamAssert.Ensure(delivered.CourierId == "courier-a", "delivered courier mismatch.");
+        await noCourierBOffer;
     }
 
     private async ValueTask RunReassignedDeliveryAsync(
@@ -130,17 +139,18 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
 
         var subscribed = await customer.Request(new SubscribeDeliveryReq(deliveryId))
             .Async<SubscribeDeliveryRes>(cancellationToken);
-        Ensure(subscribed.DeliveryId == deliveryId);
-        var statusSequenceTask = WaitForStatusSequenceAsync(
-            customer,
-            deliveryId,
-            [
-                DeliveryStatus.Assigned,
-                DeliveryStatus.Reassigned,
-                DeliveryStatus.Accepted,
-                DeliveryStatus.Delivered
-            ],
-            cancellationToken).AsTask();
+        ZlinkStreamAssert.Ensure(subscribed.DeliveryId == deliveryId, "reassignment subscription id mismatch.");
+        var statusSequenceTask = customer.WaitForSequence<DeliveryStatusNotify>()
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.Assigned }
+                               && id == deliveryId)
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.Reassigned }
+                               && id == deliveryId)
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.Accepted }
+                               && id == deliveryId)
+            .Expect(message => message.Payload is { DeliveryId: var id, Status: DeliveryStatus.Delivered }
+                               && id == deliveryId)
+            .Timeout(customer.Options.WaitTimeout)
+            .Async(cancellationToken).AsTask();
 
         var created = http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
@@ -149,7 +159,7 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
                 "Kitchen 12",
                 "Customer Lobby"))
             .Async<CreateDeliveryRes>().AsTask().GetAwaiter().GetResult().Body;
-        Ensure(created.DeliveryId == deliveryId);
+        ZlinkStreamAssert.Ensure(created.DeliveryId == deliveryId, "created reassignment delivery id mismatch.");
 
         // courier-a intentionally does not answer. The dispatch server times out and offers the
         // same delivery to courier-b, which accepts through its own bound stream session.
@@ -163,45 +173,15 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
             .Submit(cancellationToken);
 
         var statuses = await statusSequenceTask;
-        var assigned = statuses[0];
-        var reassigned = statuses[1];
-        var accepted = statuses[2];
-        var delivered = statuses[3];
+        var assigned = statuses[0].Payload;
+        var reassigned = statuses[1].Payload;
+        var accepted = statuses[2].Payload;
+        var delivered = statuses[3].Payload;
 
-        Ensure(assigned.CourierId == "courier-a");
-        Ensure(reassigned.CourierId == "courier-b");
-        Ensure(accepted.CourierId == "courier-b");
-        Ensure(delivered.CourierId == "courier-b");
+        ZlinkStreamAssert.Ensure(assigned.CourierId == "courier-a", "initial courier mismatch.");
+        ZlinkStreamAssert.Ensure(reassigned.CourierId == "courier-b", "reassigned courier mismatch.");
+        ZlinkStreamAssert.Ensure(accepted.CourierId == "courier-b", "accepting courier mismatch.");
+        ZlinkStreamAssert.Ensure(delivered.CourierId == "courier-b", "final courier mismatch.");
         logger.LogInformation("deliverydispatch-reassignment=completed");
-    }
-
-    private static async ValueTask<IReadOnlyList<DeliveryStatusNotify>> WaitForStatusSequenceAsync(
-        IZlinkStreamConnector customer,
-        string deliveryId,
-        IReadOnlyList<DeliveryStatus> expectedStatuses,
-        CancellationToken cancellationToken)
-    {
-        var statuses = new List<DeliveryStatusNotify>(expectedStatuses.Count);
-        foreach (var expectedStatus in expectedStatuses)
-        {
-            // Filter only by delivery id. Filtering by the expected status would hide an
-            // out-of-order notification and turn this release gate back into a presence check.
-            var received = await customer.WaitFor<DeliveryStatusNotify>()
-                .Where(message => message.Payload.DeliveryId == deliveryId)
-                .Async(cancellationToken);
-            var message = received.Payload;
-            Ensure(message.Status == expectedStatus);
-            statuses.Add(message);
-        }
-
-        return statuses;
-    }
-
-    private static void Ensure(
-        bool condition,
-        [CallerArgumentExpression(nameof(condition))]
-        string? expression = null)
-    {
-        if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 }

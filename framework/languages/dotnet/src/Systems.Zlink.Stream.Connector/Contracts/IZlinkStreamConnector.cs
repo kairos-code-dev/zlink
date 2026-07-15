@@ -114,4 +114,14 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     ///     should normally use <see cref="On" />.
     /// </remarks>
     IZlinkStreamWaitCall WaitFor(string name);
+
+    /// <summary>
+    ///     Verifies that no unread message with the given packet name arrives during a configured window.
+    /// </summary>
+    IZlinkStreamExpectNoneCall ExpectNone(string name);
+
+    /// <summary>
+    ///     Waits for messages with the given packet name and verifies their arrival order.
+    /// </summary>
+    IZlinkStreamSequenceCall WaitForSequence(string name);
 }

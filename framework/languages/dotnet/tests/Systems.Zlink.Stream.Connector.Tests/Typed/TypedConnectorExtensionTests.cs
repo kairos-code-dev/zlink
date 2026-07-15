@@ -74,6 +74,19 @@ public sealed partial class StreamConnectorTests
             .Async();
         Assert.Equal("second", filtered.Payload.Text);
         Assert.Equal("first", remaining.Payload.Text);
+
+        connector.RecordReceived("json.sequence", new JsonPayload("first").ToJson());
+        connector.RecordReceived("json.sequence", new JsonPayload("second").ToJson());
+        var sequence = await connector.WaitForSequence<JsonPayload>("json.sequence")
+            .Expect(message => message.Payload.Text == "first")
+            .Expect(message => message.Payload.Text == "second")
+            .Timeout(TimeSpan.FromSeconds(1))
+            .Async();
+        Assert.Equal(new[] { "first", "second" }, sequence.Select(message => message.Payload.Text));
+
+        await connector.ExpectNone<JsonPayload>("json.missing")
+            .Within(TimeSpan.FromMilliseconds(1))
+            .Async();
     }
 
     [Fact]
@@ -315,6 +328,16 @@ public sealed partial class StreamConnectorTests
             return new RecordingWaitCall(name, this);
         }
 
+        public IZlinkStreamExpectNoneCall ExpectNone(string name)
+        {
+            return new RecordingExpectNoneCall(name, this);
+        }
+
+        public IZlinkStreamSequenceCall WaitForSequence(string name)
+        {
+            return new RecordingSequenceCall(name, this);
+        }
+
         public ValueTask DisposeAsync()
         {
             return ValueTask.CompletedTask;
@@ -411,6 +434,86 @@ public sealed partial class StreamConnectorTests
                     _predicate ?? (static _ => true),
                     _timeout ?? _connector.Options.WaitTimeout,
                     cancellationToken);
+            }
+        }
+
+        private sealed class RecordingExpectNoneCall : IZlinkStreamExpectNoneCall
+        {
+            private readonly RecordingConnector _connector;
+            private readonly string _name;
+            private TimeSpan? _window;
+
+            public RecordingExpectNoneCall(string name, RecordingConnector connector)
+            {
+                _name = name;
+                _connector = connector;
+            }
+
+            public IZlinkStreamExpectNoneCall Within(TimeSpan window)
+            {
+                _window = window;
+                return this;
+            }
+
+            public async ValueTask Async(CancellationToken cancellationToken = default)
+            {
+                try
+                {
+                    await _connector.WaitForRecordedAsync(
+                        _name,
+                        _window ?? TimeSpan.Zero,
+                        cancellationToken);
+                }
+                catch (TimeoutException)
+                {
+                    return;
+                }
+
+                throw new InvalidOperationException($"Unexpected {_name} message.");
+            }
+        }
+
+        private sealed class RecordingSequenceCall : IZlinkStreamSequenceCall
+        {
+            private readonly RecordingConnector _connector;
+            private readonly List<Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool>> _expectations = [];
+            private readonly string _name;
+            private TimeSpan? _timeout;
+
+            public RecordingSequenceCall(string name, RecordingConnector connector)
+            {
+                _name = name;
+                _connector = connector;
+            }
+
+            public IZlinkStreamSequenceCall Expect(
+                Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate)
+            {
+                _expectations.Add(predicate);
+                return this;
+            }
+
+            public IZlinkStreamSequenceCall Timeout(TimeSpan timeout)
+            {
+                _timeout = timeout;
+                return this;
+            }
+
+            public async ValueTask<IReadOnlyList<ZlinkStreamMessage<ZlinkStreamEncodedPayload>>> Async(
+                CancellationToken cancellationToken = default)
+            {
+                var messages = new List<ZlinkStreamMessage<ZlinkStreamEncodedPayload>>(_expectations.Count);
+                foreach (var expectation in _expectations)
+                {
+                    var message = await _connector.WaitForRecordedAsync(
+                        _name,
+                        _timeout ?? _connector.Options.WaitTimeout,
+                        cancellationToken);
+                    if (!expectation(message)) throw new InvalidOperationException("Out of order.");
+                    messages.Add(message);
+                }
+
+                return messages;
             }
         }
 

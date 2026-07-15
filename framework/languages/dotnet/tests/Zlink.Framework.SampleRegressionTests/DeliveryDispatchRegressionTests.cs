@@ -11,10 +11,13 @@ public sealed partial class RegressionTests
         var scenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "DeliveryDispatchClientScenario.cs"));
         var worker = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Dispatch", "DispatchWorker.cs"));
 
-        Assert.Contains("WaitForStatusSequenceAsync(", scenario, StringComparison.Ordinal);
-        Assert.Contains("DeliveryStatus.Assigned,", scenario, StringComparison.Ordinal);
-        Assert.Contains("DeliveryStatus.Reassigned,", scenario, StringComparison.Ordinal);
-        Assert.Contains("Ensure(message.Status == expectedStatus)", scenario, StringComparison.Ordinal);
+        Assert.Contains("WaitForSequence<DeliveryStatusNotify>()", scenario, StringComparison.Ordinal);
+        Assert.Contains("ExpectNone<OfferDeliveryNotify>()", scenario, StringComparison.Ordinal);
+        Assert.Contains("Status: DeliveryStatus.Assigned", scenario, StringComparison.Ordinal);
+        Assert.Contains("Status: DeliveryStatus.Reassigned", scenario, StringComparison.Ordinal);
+        Assert.Contains("Status: DeliveryStatus.Reassigned", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("WaitForStatusSequenceAsync(", scenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("ExpectNoPushAsync(", scenario, StringComparison.Ordinal);
         Assert.DoesNotContain("var assignedWait = WaitForStatusAsync", scenario, StringComparison.Ordinal);
         Assert.Contains("if (offer.CandidateIndex == 0)", worker, StringComparison.Ordinal);
     }
@@ -119,7 +122,10 @@ public sealed partial class RegressionTests
         Assert.Contains("IZLinkSpotPacketHandler<CustomerEntrySpot, DeliveryStatusUpdatedMsg>",
             customerStatusHandler, StringComparison.Ordinal);
         Assert.Contains(".Actor.NodeRid", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("WaitForStatusSequenceAsync(", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("WaitForSequence<DeliveryStatusNotify>()", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("ExpectNone<OfferDeliveryNotify>()", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("ZlinkStreamAssert.Ensure", clientScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("WaitForStatusSequenceAsync(", clientScenario, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch courier-session: bound courier=courier-a", shellRunner,
             StringComparison.Ordinal);
         Assert.Contains("deliverydispatch courier-session: bound courier=courier-b", shellRunner,

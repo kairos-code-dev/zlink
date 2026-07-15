@@ -46,3 +46,42 @@ public interface IZlinkStreamWaitCall
     ValueTask<ZlinkStreamMessage<ZlinkStreamEncodedPayload>> Async(
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+///     Configures and executes a negative observation for one packet name.
+/// </summary>
+public interface IZlinkStreamExpectNoneCall
+{
+    /// <summary>
+    ///     Sets the interval during which the packet must not arrive.
+    /// </summary>
+    IZlinkStreamExpectNoneCall Within(TimeSpan window);
+
+    /// <summary>
+    ///     Executes the negative observation.
+    /// </summary>
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+///     Configures and executes ordered expectations for one packet name.
+/// </summary>
+public interface IZlinkStreamSequenceCall
+{
+    /// <summary>
+    ///     Appends the next expected message predicate.
+    /// </summary>
+    IZlinkStreamSequenceCall Expect(
+        Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, bool> predicate);
+
+    /// <summary>
+    ///     Sets the total timeout for the complete sequence.
+    /// </summary>
+    IZlinkStreamSequenceCall Timeout(TimeSpan timeout);
+
+    /// <summary>
+    ///     Verifies the sequence and returns the consumed messages in arrival order.
+    /// </summary>
+    ValueTask<IReadOnlyList<ZlinkStreamMessage<ZlinkStreamEncodedPayload>>> Async(
+        CancellationToken cancellationToken = default);
+}

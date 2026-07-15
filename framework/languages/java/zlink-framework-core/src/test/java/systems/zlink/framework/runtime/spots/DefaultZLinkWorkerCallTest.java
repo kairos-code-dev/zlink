@@ -20,7 +20,6 @@ import systems.zlink.framework.errors.ZLinkWorkerFailedException;
 import systems.zlink.framework.errors.ZLinkWorkerQueueFullException;
 import systems.zlink.framework.errors.ZLinkWorkerTimeoutException;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
-import systems.zlink.framework.spots.ZLinkSpotContext;
 
 class DefaultZLinkWorkerCallTest {
     private ZLinkWorkerPool pool;
@@ -111,32 +110,6 @@ class DefaultZLinkWorkerCallTest {
         DefaultZLinkWorkerCall<Integer> call = new DefaultZLinkWorkerCall<>(pool, () -> 1);
         call.submit();
         assertThrows(IllegalStateException.class, call::submit);
-    }
-
-    @Test
-    void workerSurfaceSeparatesCpuAndIoWithoutLegacyEntryPoint() throws Exception {
-        assertEquals(1, ZLinkSpotContext.class.getMethods().length > 0
-            ? java.util.Arrays.stream(ZLinkSpotContext.class.getMethods())
-                .filter(method -> method.getName().equals("runCpuWorker")).count()
-            : 0);
-        assertEquals(1, java.util.Arrays.stream(ZLinkSpotContext.class.getMethods())
-            .filter(method -> method.getName().equals("runIoWorker")).count());
-        assertEquals(0, java.util.Arrays.stream(ZLinkSpotContext.class.getMethods())
-            .filter(method -> method.getName().equals("runWorker")).count());
-    }
-
-    @Test
-    void ioWorkerDoesNotOccupyBoundedCpuPool() throws Exception {
-        pool = new ZLinkWorkerPool(0, 1, Duration.ofSeconds(30), 1);
-        CompletableFuture<Integer> pending = new CompletableFuture<>();
-
-        CompletableFuture<Integer> result = new DefaultZLinkIoWorkerCall<>(pool, () -> pending)
-            .submit().toCompletableFuture();
-
-        assertEquals(0, pool.poolSize());
-        assertEquals(0, pool.queueLength());
-        pending.complete(42);
-        assertEquals(42, result.get(5, TimeUnit.SECONDS));
     }
 
     private static void awaitCondition(Supplier<Boolean> condition) throws InterruptedException {

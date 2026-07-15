@@ -7,7 +7,6 @@ description = "ZLink Framework Java Spring Boot starter"
 
 dependencies {
     api(project(":zlink-framework-core"))
-    api(project(":zlink-http-client"))
     api("org.springframework.boot:spring-boot-autoconfigure:3.5.14")
     api("org.springframework:spring-context")
     api("org.springframework.boot:spring-boot-actuator:3.5.14")

@@ -104,10 +104,7 @@ public final class Program {
                 Contracts.DestroyActorReply.class);
             require(destroyed.destroyed(), "TA-B1 destroy was not acknowledged");
             waitUntilMissing(callerUrl, "TA-B1-row-removed", missingRef.actorId());
-            Contracts.ActorCallResponse missingSend = refCall(
-                callerUrl, "TA-B1-missing-send", missingRef, "missing", true);
-            require(missingSend.errorKind() == null && "sent".equals(missingSend.result()),
-                "TA-B1 one-way send submit was not accepted locally");
+            assertRefFailure(callerUrl, "TA-B1-missing-send", missingRef, "ACTOR_ROUTE_NOT_FOUND", true);
             assertRefFailure(callerUrl, "TA-B1-missing-request", missingRef, "ACTOR_ROUTE_NOT_FOUND", false);
         }
 

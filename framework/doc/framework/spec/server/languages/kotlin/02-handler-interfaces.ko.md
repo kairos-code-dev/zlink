@@ -592,18 +592,10 @@ suspend fun <TReply> ZLinkRequestCall.awaitReply(
     replyType: Class<TReply>,
 ): TReply
 inline suspend fun <reified TReply> ZLinkRequestCall.awaitReply(): TReply
-suspend fun <TReply> ZLinkRequestCall.yieldReply(
-    replyType: Class<TReply>,
-): TReply
-inline suspend fun <reified TReply> ZLinkRequestCall.yieldReply(): TReply
 suspend fun <TReply> ZLinkActorRequestCall.awaitReply(
     replyType: Class<TReply>,
 ): TReply
 inline suspend fun <reified TReply> ZLinkActorRequestCall.awaitReply(): TReply
-suspend fun <TReply> ZLinkActorRequestCall.yieldReply(
-    replyType: Class<TReply>,
-): TReply
-inline suspend fun <reified TReply> ZLinkActorRequestCall.yieldReply(): TReply
 suspend fun <TReply> ZLinkActorClient.requestToActorAwait(
     actorRef: ActorRef,
     request: Any,
@@ -636,12 +628,6 @@ suspend fun <TReply> ZLinkActorJoinCall.awaitJoin(
     replyType: Class<TReply>,
 ): ZLinkActorJoinResult<TReply>
 inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoinReply(): ZLinkActorJoinResult<TReply>
-suspend fun ZLinkActorJoinCall.yieldJoin(): ZLinkActorJoinResult<Void>
-suspend fun <TReply> ZLinkActorJoinCall.yieldJoin(
-    replyType: Class<TReply>,
-): ZLinkActorJoinResult<TReply>
-inline suspend fun <reified TReply> ZLinkActorJoinCall.yieldJoinReply(): ZLinkActorJoinResult<TReply>
-suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T
 ```
 
 ```kotlin

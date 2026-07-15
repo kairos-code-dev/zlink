@@ -116,10 +116,6 @@ disown "${pids[@]}" 2>/dev/null || true
 
 wait_http "$support_http_endpoint"
 wait_http "$api_http_endpoint"
-wait_port "$support_channel_endpoint"
-wait_port "$support_router_endpoint"
-wait_port "$api_channel_endpoint"
-wait_port "$session_router_endpoint"
 wait_port "$session_stream_endpoint"
 echo "topology=ready"
 

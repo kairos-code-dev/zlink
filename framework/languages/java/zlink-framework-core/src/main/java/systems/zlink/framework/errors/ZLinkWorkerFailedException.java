@@ -1,7 +1,7 @@
 package systems.zlink.framework.errors;
 
 /**
- * Raised when a worker task fails. The original failure is
+ * Raised when a {@code runWorker(...)} task throws. The original failure is
  * preserved as the cause.
  */
 public class ZLinkWorkerFailedException extends ZLinkFrameworkException {

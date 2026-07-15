@@ -21,7 +21,6 @@ import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkTimer;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
-import systems.zlink.framework.spots.ZLinkIoWorkerTask;
 import systems.zlink.framework.spots.ZLinkWorkerTask;
 
 final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispatchLine {
@@ -98,15 +97,9 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     }
 
     @Override
-    public <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work) {
+    public <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work) {
         Objects.requireNonNull(work, "work");
         return new DefaultZLinkWorkerCall<>(workerPool, work);
-    }
-
-    @Override
-    public <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work) {
-        Objects.requireNonNull(work, "work");
-        return new DefaultZLinkIoWorkerCall<>(workerPool, work);
     }
 
     void closeRegistration() {
@@ -206,15 +199,9 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     }
 
     @Override
-    public <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work) {
+    public <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work) {
         Objects.requireNonNull(work, "work");
         return new DefaultZLinkWorkerCall<>(workerPool, work);
-    }
-
-    @Override
-    public <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work) {
-        Objects.requireNonNull(work, "work");
-        return new DefaultZLinkIoWorkerCall<>(workerPool, work);
     }
 
     void closeRegistration() {

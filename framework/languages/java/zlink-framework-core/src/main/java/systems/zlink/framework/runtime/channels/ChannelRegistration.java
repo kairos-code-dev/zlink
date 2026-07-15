@@ -7,7 +7,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerCatalog;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
@@ -20,8 +19,6 @@ public final class ChannelRegistration {
     private final ClientServerState clientServer = new ClientServerState();
     private final FanoutState fanout = new FanoutState();
     private final RouteMeshState routeMesh = new RouteMeshState();
-    private final ConfiguredSocketRuntimeOptions serverSocketOptions =
-        new ConfiguredSocketRuntimeOptions();
     private final RuntimeEndpointConnections clientConnections;
     private final RuntimeEndpointConnections subscriberConnections;
     private final RuntimeEndpointConnections routeConnections;
@@ -44,10 +41,6 @@ public final class ChannelRegistration {
 
     public ChannelKind kind() {
         return kind;
-    }
-
-    ZLinkSocketRuntimeOptions serverSocketOptions() {
-        return serverSocketOptions;
     }
 
     List<String> serverBinds() {

@@ -29,83 +29,6 @@ public final class AutomaticTurnDispatchScenarioSupport {
         this.options = options;
     }
 
-    public void runTerminatorSurface() {
-        ensureMethods(systems.zlink.framework.channels.ZLinkRequestCall.class,
-            "submit", "yield");
-        ensureMethods(systems.zlink.framework.actors.ZLinkActorJoinCall.class,
-            "submit", "yield");
-        ensureMethods(systems.zlink.framework.spots.ZLinkWorkerCall.class,
-            "submit", "yield");
-        ensureMethods(systems.zlink.httpclient.ZLinkHttpServerRequestBuilder.class,
-            "submit", "async", "yield");
-        ensure(java.util.Arrays.stream(
-                systems.zlink.httpclient.ZLinkHttpRequestBuilder.class.getMethods())
-            .noneMatch(method -> "fetch".equals(method.getName())),
-            "TD-A1 blocking HTTP fetch must not be public");
-    }
-
-    public void runAsyncHoldsTurn(ZLinkStreamConnector connector) throws Exception {
-        runTurnInterleave(connector, "TD-A2", "await-held", List.of(
-            "await-held", "await-resumed", "completed", "probe-started", "probe-completed"));
-    }
-
-    public void runAsyncCompletion(ZLinkStreamConnector connector) throws Exception {
-        String requestId = "tda4-" + System.nanoTime();
-        sendTurnAwait(connector, "TD-A4", requestId);
-        assertOrder(requestId, List.of("await-held", "await-resumed", "completed"));
-    }
-
-    public void runYieldReleasesTurn(ZLinkStreamConnector connector) throws Exception {
-        runTurnInterleave(connector, "TD-B1", "yield-released", List.of(
-            "yield-released", "probe-started", "probe-completed", "yield-resumed", "completed"));
-    }
-
-    public void runYieldQueuedOrder(ZLinkStreamConnector connector) throws Exception {
-        String requestId = "tdb2-" + System.nanoTime();
-        sendTurnAwait(connector, "TD-B2", requestId);
-        assertOrder(requestId, List.of("yield-released"));
-        for (int index = 1; index <= 3; index++) {
-            connector.send(new Contracts.ProbeMsg(requestId, "probe-" + index))
-                .metadata(Map.of(
-                    Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
-                    Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A))
-                .submit();
-        }
-        assertOrder(requestId, List.of(
-            "yield-released",
-            "probe-started", "probe-completed",
-            "probe-started", "probe-completed",
-            "probe-started", "probe-completed",
-            "yield-resumed", "completed"));
-    }
-
-    private void runTurnInterleave(
-        ZLinkStreamConnector connector,
-        String scenarioId,
-        String waitingMarker,
-        List<String> expectedOrder) throws Exception {
-        String requestId = scenarioId.toLowerCase().replace("-", "") + "-" + System.nanoTime();
-        sendTurnAwait(connector, scenarioId, requestId);
-        assertOrder(requestId, List.of(waitingMarker));
-        connector.send(new Contracts.ProbeMsg(requestId, "turn-probe"))
-            .metadata(Map.of(
-                Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
-                Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A))
-            .submit();
-        assertOrder(requestId, expectedOrder);
-    }
-
-    private void sendTurnAwait(
-        ZLinkStreamConnector connector,
-        String scenarioId,
-        String requestId) {
-        connector.send(new Contracts.AwaitMsg(requestId, 2_000, scenarioId))
-            .metadata(Map.of(
-                Contracts.SPOT_RID_METADATA, Contracts.TARGET_SPOT,
-                Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A))
-            .submit();
-    }
-
     public void runBasicTerminator(ZLinkStreamConnector connector) throws Exception {
         runScenario(connector, "ATD-A1", List.of(
             "hold-started",
@@ -302,49 +225,6 @@ public final class AutomaticTurnDispatchScenarioSupport {
         assertAllValuesContain(playEvidence, requestId, List.of(
             "actor-fast-started",
             "actor-fast-completed"), "actor=" + actorB);
-    }
-
-    public void runUserSpotJoin(ZLinkStreamConnector connector) throws Exception {
-        String requestId = "tde2-" + System.nanoTime();
-        String spotA = requestId + "-spot-a";
-        String spotB = requestId + "-spot-b";
-        String actorA = requestId + "-actor-a";
-        String actorB = requestId + "-actor-b";
-        ensureSpot(connector, spotA);
-        ensureSpot(connector, spotB);
-        bindActors(connector, spotA, actorA, actorB, "TD-E2");
-        joinActor(connector, requestId + "-prepare-a", actorA, spotA);
-        joinActor(connector, requestId + "-prepare-b", actorB, spotA);
-
-        Contracts.ActorJoinRes joined = joinActor(
-            connector, requestId + "-join", actorA, spotB);
-        ensure(actorA.equals(joined.actorId()), "TD-E2 joined actor mismatch");
-        ensure("joined".equals(joined.marker()), "TD-E2 join marker mismatch");
-    }
-
-    public void runOppositeUserSpotJoins(ZLinkStreamConnector connector) throws Exception {
-        String requestId = "tde3-" + System.nanoTime();
-        String spotA = requestId + "-spot-a";
-        String spotB = requestId + "-spot-b";
-        String actorA = requestId + "-actor-a";
-        String actorB = requestId + "-actor-b";
-        ensureSpot(connector, spotA);
-        ensureSpot(connector, spotB);
-        bindActors(connector, spotA, actorA, actorB, "TD-E3");
-        joinActor(connector, requestId + "-prepare-a", actorA, spotA);
-        joinActor(connector, requestId + "-prepare-b-on-a", actorB, spotA);
-        joinActor(connector, requestId + "-prepare-b", actorB, spotB);
-
-        CompletionStage<Contracts.ActorJoinRes> aToB = requestActorJoin(
-            connector, requestId + "-a-to-b", actorA, spotB);
-        CompletionStage<Contracts.ActorJoinRes> bToA = requestActorJoin(
-            connector, requestId + "-b-to-a", actorB, spotA);
-        Contracts.ActorJoinRes joinedA = aToB.toCompletableFuture().join();
-        Contracts.ActorJoinRes joinedB = bToA.toCompletableFuture().join();
-        ensure(actorA.equals(joinedA.actorId()), "TD-E3 A to B actor mismatch");
-        ensure(actorB.equals(joinedB.actorId()), "TD-E3 B to A actor mismatch");
-        ensure("joined".equals(joinedA.marker()), "TD-E3 A to B marker mismatch");
-        ensure("joined".equals(joinedB.marker()), "TD-E3 B to A marker mismatch");
     }
 
     public void runTimerIsolation(ZLinkStreamConnector connector) throws Exception {
@@ -882,54 +762,13 @@ public final class AutomaticTurnDispatchScenarioSupport {
         ZLinkStreamConnector connector,
         String requestId,
         String actorId) throws Exception {
-        Contracts.ActorJoinRes reply = joinActor(
-            connector, requestId, actorId, Contracts.TARGET_SPOT);
-        ensure(actorId.equals(reply.actorId()), "ATD-B1 join actor mismatch");
-        ensure("joined".equals(reply.marker()), "ATD-B1 join marker mismatch");
-    }
-
-    private Contracts.ActorJoinRes joinActor(
-        ZLinkStreamConnector connector,
-        String requestId,
-        String actorId,
-        String targetSpotRid) throws Exception {
-        return requestActorJoin(connector, requestId, actorId, targetSpotRid)
-            .toCompletableFuture().join();
-    }
-
-    private CompletionStage<Contracts.ActorJoinRes> requestActorJoin(
-        ZLinkStreamConnector connector,
-        String requestId,
-        String actorId,
-        String targetSpotRid) {
-        return connector
-            .request(new Contracts.ActorJoinReq(requestId, targetSpotRid))
+        Contracts.ActorJoinRes reply = connector
+            .request(new Contracts.ActorJoinReq(requestId, Contracts.TARGET_SPOT))
             .metadata(Contracts.ACTOR_ID_METADATA, actorId)
             .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorJoinRes.class);
-    }
-
-    private void ensureSpot(ZLinkStreamConnector connector, String spotRid) {
-        Contracts.EnsureSpotRes ensured = connector
-            .request(new Contracts.EnsureSpotReq(spotRid))
-            .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
-            .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
-        ensure(spotRid.equals(ensured.spotRid()), "ensured spot mismatch: " + spotRid);
-    }
-
-    private void bindActors(
-        ZLinkStreamConnector connector,
-        String spotRid,
-        String actorA,
-        String actorB,
-        String scenarioId) {
-        Contracts.BindActorsRes bind = connector
-            .request(new Contracts.BindActorsReq(spotRid, actorA, actorB))
-            .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.BindActorsRes.class).toCompletableFuture().join();
-        ensure(actorA.equals(bind.actorA()), scenarioId + " actor A bind mismatch");
-        ensure(actorB.equals(bind.actorB()), scenarioId + " actor B bind mismatch");
+            .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
+        ensure(actorId.equals(reply.actorId()), "ATD-B1 join actor mismatch");
+        ensure("joined".equals(reply.marker()), "ATD-B1 join marker mismatch");
     }
 
     private void runScenario(
@@ -961,16 +800,6 @@ public final class AutomaticTurnDispatchScenarioSupport {
 
     private void assertOrder(String requestId, List<String> expectedOrder) throws Exception {
         assertOrder(options.playHttpEndpoint() + "/evidence", requestId, expectedOrder);
-    }
-
-    private void ensureMethods(Class<?> type, String... names) {
-        java.util.Set<String> actual = java.util.Arrays.stream(type.getMethods())
-            .map(java.lang.reflect.Method::getName)
-            .collect(java.util.stream.Collectors.toSet());
-        for (String name : names) {
-            ensure(actual.contains(name),
-                "TD-A1 missing " + type.getSimpleName() + "." + name);
-        }
     }
 
     private void assertOrder(String evidenceUrl, String requestId, List<String> expectedOrder)

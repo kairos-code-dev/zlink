@@ -11,7 +11,7 @@ public final class RcB2ProtobufCodecScenario {
     public static void run(ScenarioContext context) {
         String protobufValue = context.server()
             .post("/codec/roundtrip")
-            .async(Contracts.CodecScenarioRes.class).toCompletableFuture().join().body()
+            .fetch(Contracts.CodecScenarioRes.class)
             .protobufValue();
         ScenarioAssert.ensure("echo:protobuf-request".equals(protobufValue),
             "RC-B2 request mismatch");

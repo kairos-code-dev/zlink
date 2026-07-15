@@ -22,8 +22,6 @@ class BingoRoomGame(
     fun join(
         actorId: String,
         displayName: String,
-        wins: Int,
-        losses: Int,
     ): Change {
         val existing = player(actorId)
         if (existing != null) {
@@ -33,7 +31,7 @@ class BingoRoomGame(
             throw IllegalStateException("Room $roomId cannot accept more players.")
         }
 
-        val joined = BingoRoomPlayer(actorId, displayName, players.size, null, wins, losses)
+        val joined = BingoRoomPlayer(actorId, displayName, players.size, null)
         players += joined
         val joinedState = snapshot()
         val events = playerJoinedEvents(joined, joinedState).toMutableList()
@@ -54,7 +52,7 @@ class BingoRoomGame(
         if (status != WaitingForPlayers || players.size >= settings.requiredPlayers) {
             throw IllegalStateException("Room $roomId cannot accept more players.")
         }
-        val previewPlayers = players + BingoRoomPlayer(actorId, displayName, players.size, null, 0, 0)
+        val previewPlayers = players + BingoRoomPlayer(actorId, displayName, players.size, null)
         val previewStatus = if (previewPlayers.size == settings.requiredPlayers) Running else status
         return snapshot(previewPlayers, previewStatus)
     }
@@ -76,8 +74,6 @@ class BingoRoomGame(
             current.displayName,
             current.seat,
             BingoCard.from(submittedCard),
-            current.wins,
-            current.losses,
         )
         return Change(snapshot(), emptyList(), allCardsSubmitted())
     }

@@ -7,7 +7,6 @@ import systems.zlink.httpclient.RawHttpResponse
 import systems.zlink.httpclient.ZLinkHttpClient
 import systems.zlink.httpclient.ZLinkHttpClientBuilder
 import systems.zlink.httpclient.ZLinkHttpRequestBuilder
-import systems.zlink.httpclient.ZLinkHttpServerRequestBuilder
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.BINARY)
@@ -45,19 +44,3 @@ suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T =
 /** Suspends until the streaming download completes, delivering chunks to [sink]. */
 suspend fun ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): RawHttpResponse =
     download(sink).await()
-
-/** Awaits a typed response while retaining the current server Spot turn. */
-suspend fun <T> ZLinkHttpServerRequestBuilder.await(type: Class<T>): HttpResponse<T> =
-    async(type).await()
-
-/** Releases the current server Spot turn while awaiting the HTTP response. */
-suspend fun <T> ZLinkHttpServerRequestBuilder.yieldAwait(type: Class<T>): HttpResponse<T> =
-    yield(type).await()
-
-@JacocoGenerated
-suspend inline fun <reified T> ZLinkHttpServerRequestBuilder.await(): HttpResponse<T> =
-    await(T::class.java)
-
-@JacocoGenerated
-suspend inline fun <reified T> ZLinkHttpServerRequestBuilder.yieldAwait(): HttpResponse<T> =
-    yieldAwait(T::class.java)

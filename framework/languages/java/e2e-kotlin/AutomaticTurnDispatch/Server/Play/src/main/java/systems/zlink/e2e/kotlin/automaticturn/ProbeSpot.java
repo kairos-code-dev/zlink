@@ -94,7 +94,7 @@ public final class ProbeSpot implements ZLinkSpot<ProbeActor> {
     CompletionStage<Contracts.ProbeRes> handle(Contracts.ProbeReq request) {
         sequence++;
         if (request.op().equals("worker")) {
-            return context.runCpuWorker(() -> {
+            return context.runWorker(() -> {
                     Thread.sleep(request.millis());
                     return "worker:" + request.op();
                 })

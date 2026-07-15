@@ -336,10 +336,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
-            assertInstanceOf(
-                systems.zlink.httpclient.ZLinkFrameworkHttpExecutionTurn.class,
-                context.getBean(systems.zlink.httpclient.ZLinkHttpExecutionTurn.class));
-
             ZLinkSpotPublisherClient publisher =
                 context.getBean(ZLinkSpotPublisherClient.class);
             publisher.publish("game", "stage.events", new StageOpened("opened"))
@@ -892,7 +888,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer spotPublisherConfigurer() {
             return options -> {
                 var mesh = options.addSpotMesh("game");
-                mesh.enableRouter("inproc://spot-router");
                 mesh.enablePubSub("inproc://spot-pub");
                 mesh.addSpotFactory(GameSpot.class);
             };

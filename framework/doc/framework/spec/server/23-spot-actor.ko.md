@@ -141,18 +141,6 @@ location row 갱신은 실행하지 않는다.
 유지하거나, 이미 바뀐 내부 상태를 되돌릴 수 없으면 actor를 recoverable error 상태로 두고
 location/runtime reconcile 절차가 처리해야 한다.
 
-### 4.2 같은 node join의 실행 순서
-
-user Spot의 actor handler가 같은 node의 다른 user Spot으로 이동할 때 local join orchestration은
-caller가 이미 보유한 실행 turn에서 진행한다. Framework는 그 turn에서 target `OnActorJoin`을 호출하고,
-accept되면 source `OnLeaveActor`를 같은 turn 안에서 호출한 뒤 target membership과
-`OnJoinedActor`를 commit한다. 각 callback의 관찰 순서는 §3.3과 §4.1을 그대로 따른다.
-
-이 경로에서 target Spot의 일반 packet·timer 실행 줄을 보유한 채 source Spot의 큐를 기다리면 안 된다.
-그 구조는 A에서 B로 이동하는 join과 B에서 A로 이동하는 join이 동시에 실행될 때 실행 줄 사이의
-대기 사이클을 만든다. 같은 이유로 local join 전체를 node 전역 semaphore로 직렬화해서도 안 된다.
-서로 반대 방향인 두 join은 함께 진행되어 모두 완료될 수 있어야 한다.
-
 ## 5. 다른 node의 user Spot으로 transfer
 
 다른 SpotNode의 user Spot으로 actor를 이동할 때도 public lifecycle 의미는 같다. 다만 source node와

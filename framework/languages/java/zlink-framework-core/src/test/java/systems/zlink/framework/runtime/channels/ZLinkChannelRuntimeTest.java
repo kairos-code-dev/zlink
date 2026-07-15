@@ -834,60 +834,6 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
-    void clientServerRuntimeOptionsReadAndWriteServerMaxMessageSize() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("api")
-            .enableServer("inproc://api");
-        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
-        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
-            backend,
-            options.registration(),
-            new ZLinkJsonMessageSerializer(), handlers())) {
-            var socket = runtime.clientServerChannel("api").configureServerSocket();
-
-            assertEquals(0, socket.maxMessageSize());
-            socket.maxMessageSize(2 * 1024 * 1024L);
-            assertEquals(2 * 1024 * 1024L, socket.maxMessageSize());
-        }
-    }
-
-    @Test
-    void clientServerBuilderAppliesMaxMessageSizeBeforeRuntimeStarts() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        var channel = options.addClientServerChannel("api");
-        channel.configureServerSocket().maxMessageSize(2 * 1024 * 1024L);
-        channel.enableServer("inproc://api");
-        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
-
-        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
-            backend,
-            options.registration(),
-            new ZLinkJsonMessageSerializer(), handlers())) {
-            assertEquals(
-                2 * 1024 * 1024L,
-                runtime.clientServerChannel("api").configureServerSocket().maxMessageSize());
-        }
-    }
-
-    @Test
-    void clientServerRuntimeOptionsRejectNegativeMaxMessageSize() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("api")
-            .enableServer("inproc://api");
-        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
-        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
-            backend,
-            options.registration(),
-            new ZLinkJsonMessageSerializer(), handlers())) {
-            var socket = runtime.clientServerChannel("api").configureServerSocket();
-
-            org.junit.jupiter.api.Assertions.assertThrows(
-                ZLinkConfigurationException.class,
-                () -> socket.maxMessageSize(-1));
-        }
-    }
-
-    @Test
     void clientServerRuntimeOptionsRejectInvalidServerWeight() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("api")
@@ -1017,7 +963,6 @@ final class ZLinkChannelRuntimeTest {
 
     private static final class FakeRouterSocket implements ZLinkBackendRouterSocket {
         final ArrayDeque<ZLinkBackendReceived> inbound = new ArrayDeque<>();
-        long maxMessageSize;
         int peerWeight = 100;
         int replyCount;
         int requestAttempts;
@@ -1029,8 +974,6 @@ final class ZLinkChannelRuntimeTest {
         @Override public void setRoutingId(RoutingId routingId) { }
         @Override public void setConnectRoutingId(RoutingId routingId) { connectRoutingId = routingId; }
         @Override public void setProbe(boolean enabled) { }
-        @Override public long maxMessageSize() { return maxMessageSize; }
-        @Override public void setMaxMessageSize(long value) { maxMessageSize = value; }
         @Override public int peerWeight() { return peerWeight; }
         @Override public void setPeerWeight(int weight) { peerWeight = weight; }
         @Override public void bind(String endpoint) { }

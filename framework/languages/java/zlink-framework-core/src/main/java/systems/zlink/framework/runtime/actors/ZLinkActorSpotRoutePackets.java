@@ -233,24 +233,12 @@ public final class ZLinkActorSpotRoutePackets {
         ZLinkStreamHeader header,
         Message payload,
         ZLinkActorReplyRoute replyRoute) {
-        return createActorPacketParts(actorRef, header, payload, replyRoute, null);
-    }
-
-    public static List<Message> createActorPacketParts(
-        ZLinkBackendActorRef actorRef,
-        ZLinkStreamHeader header,
-        Message payload,
-        ZLinkActorReplyRoute replyRoute,
-        Long handoffArrivalIndex) {
         return List.of(
             Message.from(ACTOR_PACKET_NAME.getBytes(StandardCharsets.UTF_8)),
             encodeActorRef(actorRef),
             encodeReplyRoute(replyRoute),
             Message.from(ZLinkStreamHeaderCodec.encode(header)),
-            Message.from(payload),
-            Message.from((handoffArrivalIndex == null
-                ? ""
-                : Long.toString(handoffArrivalIndex)).getBytes(StandardCharsets.UTF_8)));
+            Message.from(payload));
     }
 
     public static BoundSessionSend decodeBoundSessionSend(List<Message> parts) {
@@ -272,10 +260,7 @@ public final class ZLinkActorSpotRoutePackets {
             decodeActorRef(parts.get(1), "invalid routed actor packet metadata"),
             decodeReplyRoute(parts.get(2)),
             ZLinkStreamHeaderCodec.decodeOrPlain(parts.get(3).toByteArray()),
-            Message.from(parts.get(4)),
-            parts.size() < 6 || parts.get(5).toUtf8String().isBlank()
-                ? null
-                : Long.parseLong(parts.get(5).toUtf8String()));
+            Message.from(parts.get(4)));
     }
 
     public static Message createHandoffDirectReplyAck() {
@@ -449,8 +434,7 @@ public final class ZLinkActorSpotRoutePackets {
         ZLinkBackendActorRef actorRef,
         ZLinkActorReplyRoute replyRoute,
         ZLinkStreamHeader header,
-        Message payload,
-        Long handoffArrivalIndex) implements AutoCloseable {
+        Message payload) implements AutoCloseable {
         @Override
         public void close() {
             payload.close();

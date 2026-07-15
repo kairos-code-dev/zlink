@@ -265,11 +265,6 @@ public final class Program {
     }
 
     @Bean
-    AwaitProbeHandlers.SpotActorJoinHandler spotActorJoinHandler(EvidenceStore evidence) {
-        return new AwaitProbeHandlers.SpotActorJoinHandler(evidence);
-    }
-
-    @Bean
     AwaitProbeHandlers.ActorJoinAwaitHandler actorJoinAwaitHandler(EvidenceStore evidence) {
         return new AwaitProbeHandlers.ActorJoinAwaitHandler(evidence);
     }

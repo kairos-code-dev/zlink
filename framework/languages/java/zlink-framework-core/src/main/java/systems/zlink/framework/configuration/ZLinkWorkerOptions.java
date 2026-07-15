@@ -4,7 +4,7 @@ import java.time.Duration;
 
 /**
  * Configuration for the single elastic bounded worker pool backing
- * {@code context.runCpuWorker(...)}.
+ * {@code context.runWorker(...)}.
  *
  * <p>Defaults: {@code minThreads=0}, {@code maxThreads=max(2, cpuCount*2)},
  * {@code idleTimeout=30s}, {@code maxQueueLength=1024}. A full queue fails the

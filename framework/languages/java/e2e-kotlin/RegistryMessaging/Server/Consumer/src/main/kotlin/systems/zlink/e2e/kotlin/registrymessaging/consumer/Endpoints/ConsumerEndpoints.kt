@@ -119,18 +119,6 @@ class ConsumerEndpoints(
         server.createContext("/profile/payload") { exchange ->
             exchange.writeJson(requestPayload(exchange.readJson()))
         }
-        server.createContext("/profile/payload-over-limit") { exchange ->
-            val request = exchange.readJson<PayloadReq>()
-            exchange.writeJson(
-                channels.requestToChannel(Contracts.PROFILE_CHANNEL, request)
-                    .timeout(Duration.ofSeconds(5))
-                    .submit(PayloadRes::class.java)
-                    .handle { _, error ->
-                        if (error == null) RequestFailureRes(false, "")
-                        else RequestFailureRes(true, rootName(error))
-                    },
-            )
-        }
         server.createContext("/profile/backpressure/reset") { exchange ->
             exchange.writeJson(mapOf("status" to "ready"))
         }

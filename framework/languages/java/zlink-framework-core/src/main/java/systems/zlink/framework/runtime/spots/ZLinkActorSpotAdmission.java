@@ -33,15 +33,6 @@ final class ZLinkActorSpotAdmission {
         pendingEntryJoins = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.ConcurrentMap<String, CompletableFuture<Void>>
         pendingLeaves = new java.util.concurrent.ConcurrentHashMap<>();
-    private final java.util.concurrent.ConcurrentMap<String, LocalJoin> pendingLocalJoins =
-        new java.util.concurrent.ConcurrentHashMap<>();
-
-    private record LocalJoin(
-        ZLinkBackendActorRef actorRef,
-        RoutingId spotRid,
-        ZLinkSpot<?> spot,
-        Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
-    }
 
     void attach(
         ZLinkActorRuntime actors,
@@ -231,41 +222,20 @@ final class ZLinkActorSpotAdmission {
                 if (!effective.accepted()) {
                     return CompletableFuture.completedFuture(effective);
                 }
-                LocalJoin pending = new LocalJoin(
-                    request.targetActor(), spotRid, spotSurface, joinedCallback);
-                LocalJoin previous = pendingLocalJoins.putIfAbsent(actorId, pending);
-                if (previous != null) {
-                    return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                        "local actor Spot join is already pending: " + actorId));
-                }
-                return CompletableFuture.completedFuture(effective);
+                ZLinkActorRuntime runtime = requireActors();
+                return runtime.getOrCreateLocalActor(actorId, ZLinkActor.class)
+                    .thenCompose(actor -> actor
+                        .map(value -> completeLocalAdmission(
+                            value,
+                            request.targetActor(),
+                            spotRid,
+                            spotSurface,
+                            effective,
+                            joinedCallback))
+                        .orElseGet(() -> CompletableFuture.failedFuture(
+                            new ZLinkConfigurationException(
+                                "Spot actor join target actor is not available: " + actorId))));
             });
-    }
-
-    CompletionStage<Void> completeLocalJoinFromCaller(ZLinkActor actor) {
-        LocalJoin pending = pendingLocalJoins.remove(actor.actorId());
-        if (pending == null) {
-            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
-                "local actor Spot admission is missing: " + actor.actorId()));
-        }
-        ZLinkActorRuntime runtime = requireActors();
-        return runtime.leaveSourceForLocalMove(actor)
-            .thenRun(() -> runtime.markJoined(
-                actor, pending.actorRef(), pending.spotRid(), pending.spot()))
-            .thenCompose(ignored -> pending.joinedCallback().apply(actor))
-            .thenCompose(ignored -> runtime.commitJoinedLocation(actor, pending.spotRid()))
-            .thenRun(() -> runtime.completeRemoteMove(actor))
-            .whenComplete((ignored, error) -> {
-                if (error != null) {
-                    runtime.failRemoteMove(actor, error);
-                }
-            });
-    }
-
-    void cancelLocalJoin(ZLinkActor actor) {
-        if (actor != null) {
-            pendingLocalJoins.remove(actor.actorId());
-        }
     }
 
     CompletionStage<ZLinkSpotActorJoinResponse> prepareRoutedActor(
@@ -417,6 +387,29 @@ final class ZLinkActorSpotAdmission {
         } catch (RuntimeException error) {
             return CompletableFuture.failedFuture(error);
         }
+    }
+
+    private CompletionStage<ZLinkSpotActorJoinResponse> completeLocalAdmission(
+        ZLinkActor actor,
+        ZLinkBackendActorRef actorRef,
+        RoutingId spotRid,
+        ZLinkSpot<?> spotSurface,
+        ZLinkSpotActorJoinResponse response,
+        Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
+        ZLinkActorRuntime runtime = requireActors();
+        return runtime.leaveSourceForLocalMove(actor)
+            .thenCompose(ignored -> {
+                runtime.markJoined(actor, actorRef, spotRid, spotSurface);
+                return joinedCallback.apply(actor);
+            })
+            .thenCompose(ignored -> runtime.commitJoinedLocation(actor, spotRid))
+            .thenRun(() -> runtime.completeRemoteMove(actor))
+            .thenApply(ignored -> response)
+            .whenComplete((ignored, error) -> {
+                if (error != null) {
+                    runtime.failRemoteMove(actor, error);
+                }
+            });
     }
 
     private static void clearBinding(

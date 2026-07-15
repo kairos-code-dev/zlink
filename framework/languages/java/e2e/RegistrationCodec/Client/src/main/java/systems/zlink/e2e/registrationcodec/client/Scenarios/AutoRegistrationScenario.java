@@ -9,7 +9,7 @@ public final class AutoRegistrationScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.EchoRes auto = context.server().post("/registration/auto").async(Contracts.EchoRes.class).toCompletableFuture().join().body();
+        Contracts.EchoRes auto = context.server().post("/registration/auto").fetch(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:auto-request".equals(auto.value()) && "auto".equals(auto.handler()),
             "RC-A1 request mismatch");
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "EchoAuto", "auto-send");

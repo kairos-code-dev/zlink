@@ -9,7 +9,7 @@ public final class ManualRegistrationScenario {
     }
 
     public static void run(ScenarioContext context) {
-        Contracts.EchoRes manual = context.server().post("/registration/manual").async(Contracts.EchoRes.class).toCompletableFuture().join().body();
+        Contracts.EchoRes manual = context.server().post("/registration/manual").fetch(Contracts.EchoRes.class);
         ScenarioAssert.ensure("echo:manual-request".equals(manual.value()) && "manual".equals(manual.handler()),
             "RC-A3 request mismatch");
         ScenarioAssert.waitForEvidence(context.evidence(), "Send", "EchoManual", "manual-send");

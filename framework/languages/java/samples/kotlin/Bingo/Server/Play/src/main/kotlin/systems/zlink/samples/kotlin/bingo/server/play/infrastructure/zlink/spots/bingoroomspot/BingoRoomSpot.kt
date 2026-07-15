@@ -3,7 +3,6 @@ package systems.zlink.samples.kotlin.bingo.server.play.infrastructure.zlink.spot
 import java.time.Duration
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSpot
-import systems.zlink.framework.kotlin.yieldReply
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
 import systems.zlink.framework.spots.ZLinkSpotContext
@@ -28,12 +27,8 @@ import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomJoinRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRoomState
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRewardAnnouncedNotify
 import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoStateNotify
-import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoRewardAcquiredEvent
+import systems.zlink.samples.kotlin.bingo.shared.contracts.BingoWinnerMsg
 import systems.zlink.samples.kotlin.bingo.shared.contracts.PlayerJoinedNotify
-import systems.zlink.samples.kotlin.bingo.shared.contracts.GetPlayerRecordReq
-import systems.zlink.samples.kotlin.bingo.shared.contracts.GetPlayerRecordRes
-import systems.zlink.samples.kotlin.bingo.shared.contracts.ReportBingoResultReq
-import systems.zlink.samples.kotlin.bingo.shared.contracts.ReportBingoResultRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsReq
 import systems.zlink.samples.kotlin.bingo.shared.contracts.StopObservingBingoEventsRes
 import systems.zlink.samples.kotlin.bingo.shared.contracts.SubmitBingoCardReq
@@ -80,42 +75,14 @@ class BingoRoomSpot(
     }
 
     override suspend fun onJoinedActorSuspending(actor: PlayerActor) {
-        val request = pendingJoins[actor.actorId()]
+        val request = pendingJoins.remove(actor.actorId())
             ?: error("joined actor does not have a pending admission")
-        if (request.observeOnly) {
-            pendingJoins.remove(actor.actorId())
-            join(actor, request, 0, 0)
-            return
-        }
-        val record = context.outbound()
-            .requestToChannel(SampleNames.ApiChannel, GetPlayerRecordReq(actor.actorId()))
-            .timeout(SampleTimings.RequestTimeout)
-            .yieldReply<GetPlayerRecordRes>()
-        if (pendingJoins[actor.actorId()] === request) {
-            pendingJoins.remove(actor.actorId())
-            join(actor, request, record.wins, record.losses)
-        }
+        join(actor, request)
     }
 
     override suspend fun onLeaveActorSuspending(actor: PlayerActor) {
-        if (!actors.containsKey(actor.actorId()) || game == null) {
-            observers.remove(actor.actorId())
-            return
-        }
-        val state = requireGame().snapshot()
-        context.outbound()
-            .requestToChannel(
-                SampleNames.ApiChannel,
-                ReportBingoResultReq(
-                    state.roomId,
-                    actor.actorId(),
-                    state.winners.contains(actor.actorId()),
-                    state.drawSeq,
-                ),
-            )
-            .timeout(SampleTimings.RequestTimeout)
-            .yieldReply<ReportBingoResultRes>()
         actors.remove(actor.actorId())
+        observers.remove(actor.actorId())
     }
 
     override suspend fun onDisconnectActorSuspending(actor: PlayerActor) {
@@ -141,8 +108,6 @@ class BingoRoomSpot(
     fun join(
         actor: PlayerActor,
         request: BingoRoomJoinReq,
-        wins: Int,
-        losses: Int,
     ): BingoRoomJoinRes {
         validateJoin(actor.actorId(), request)
         actor.setDisplayName(request.displayName)
@@ -151,7 +116,7 @@ class BingoRoomSpot(
             observers[actor.actorId()] = actor
             return BingoRoomJoinRes(observerJoinState(request))
         }
-        val change = requireGame().join(actor.actorId(), request.displayName, wins, losses)
+        val change = requireGame().join(actor.actorId(), request.displayName)
         actors[actor.actorId()] = actor
         publishEvents(
             change.events,
@@ -201,7 +166,7 @@ class BingoRoomSpot(
         leaveFinishedActors(change)
     }
 
-    suspend fun announceReward(event: BingoRewardAcquiredEvent) {
+    suspend fun announceWinner(event: BingoWinnerMsg) {
         if (!settings.observerMode() ||
             observers.isEmpty() ||
             event.roomId != settings.observedRoomId
@@ -269,7 +234,7 @@ class BingoRoomSpot(
         context.outbound()
             .publish(
                 SampleNames.WinnerTopic,
-                BingoRewardAcquiredEvent(
+                BingoWinnerMsg(
                     state.roomId,
                     winner,
                     state.drawSeq,

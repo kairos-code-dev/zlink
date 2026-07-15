@@ -277,12 +277,7 @@ scale-out 검증:
 - 어느 노드가 연결·action을 받아도 같은 `PlayerId`는 항상 같은 `PlayerQuestSpot` owner로 간다.
 - 서로 다른 player는 다른 노드 owner에서 동시에 처리된다.
 - notify는 현재 그 player의 연결을 가진 노드로 route된다.
-- owner tier에 node를 추가해도 기존 player owner는 자동으로 이동하지 않는다. 새 player는 공개 배치
-  입력과 정책에 따라 새 node owner를 사용할 수 있다.
-
-샘플 self-check의 복구 시나리오는 owner를 비활성화한 뒤 같은 논리 owner를 다시 만들고
-`QuestEventStore` replay로 aggregate를 복원한다. process kill/restart, replacement, failover는 정상
-사용법을 보여 주는 샘플이 아니라 공통 E2E Config 2·5의 수명 시나리오에서 검증한다.
+- 노드를 재시작해도 owner spot이 `QuestEventStore` replay로 aggregate를 rehydrate한다.
 
 ## 7. 책임 분리
 
@@ -605,8 +600,7 @@ game client는 하나의 WebSocket으로 join·action·progress push를 다룬�
   복원되는지 검증.
 - **중복(idempotency)**: 같은 IdempotencyKey 재전송 → 같은 EventId → 진행 중복 증가 없음.
 - **reward idempotency**: 완료된 quest에 같은 SourceEventId 재적용 → reward 결정 event 중복 append 없음.
-- **rehydrate 복원**: owner 비활성→재활성 → `QuestEventStore` replay로 aggregate 복원. process
-  restart·replacement·failover는 E2E에서 검증한다.
+- **rehydrate 복원**: 노드 재시작(또는 owner 비활성→재활성) → `QuestEventStore` replay로 aggregate 복원.
 - **reconnect**: 연결 끊고 binding 해제 → 다른 노드로 재접속 → 조회로 복원 → 이후 notify가 새
   노드로.
 - **reset 보정**: owner 메시징 없이 `GameplayStateStore`만 kill count 증가시킨 뒤 SyncQuestProgress →

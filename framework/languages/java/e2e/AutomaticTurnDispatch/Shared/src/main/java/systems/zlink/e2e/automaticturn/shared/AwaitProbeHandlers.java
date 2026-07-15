@@ -91,26 +91,16 @@ public final class AwaitProbeHandlers {
             AwaitProbeSpot spot,
             Contracts.AwaitReq request) {
             String value = "spot=" + spot.context().spotRid() + ";correlation=" + request.correlationId();
-            long delayMillis = "ATD-E3".equals(request.scenarioId()) ? 30_000
-                : request.scenarioId().startsWith("TD-") ? 2_000 : 800;
-            boolean yields = "TD-B1".equals(request.scenarioId());
-            boolean turnContract = request.scenarioId().startsWith("TD-");
-            String waitingMarker = yields ? "yield-released"
-                : turnContract ? "await-held" : "await-released";
-            String resumedMarker = yields ? "yield-resumed" : "await-resumed";
+            long delayMillis = "ATD-E3".equals(request.scenarioId()) ? 30_000 : 800;
             evidence.record("await-started", request.requestId(), value);
-            evidence.record(waitingMarker, request.requestId(), value);
-            var call = spot.context().outbound()
+            evidence.record("await-released", request.requestId(), value);
+            return spot.context().outbound()
                 .requestToChannel(Contracts.DELAY_CHANNEL, new Contracts.DelayReq(request.requestId(), delayMillis))
-                .timeout(delayRequestTimeout(delayMillis));
-            CompletionStage<Contracts.DelayRes> completion = yields
-                ? call.yield(Contracts.DelayRes.class)
-                : call.submit(Contracts.DelayRes.class);
-            return completion
+                .timeout(delayRequestTimeout(delayMillis))
+                .submit(Contracts.DelayRes.class)
                 .thenApply(reply -> {
-                    evidence.record(resumedMarker, request.requestId(), value);
-                    evidence.record(turnContract ? "completed" : "await-completed",
-                        request.requestId(), value);
+                    evidence.record("await-resumed", request.requestId(), value);
+                    evidence.record("await-completed", request.requestId(), value);
                     return new Contracts.ScenarioRes(request.scenarioId(), request.requestId(), evidence.nodeRid());
                 });
         }
@@ -130,7 +120,7 @@ public final class AwaitProbeHandlers {
             String value = spot.context().spotRid().toString();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
-            return spot.context().runCpuWorker(() -> {
+            return spot.context().runWorker(() -> {
                     Thread.sleep(2000);
                     return request.requestId();
                 })
@@ -173,7 +163,7 @@ public final class AwaitProbeHandlers {
             String value = spot.context().spotRid().toString();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
-            return spot.context().runCpuWorker(() -> {
+            return spot.context().runWorker(() -> {
                     Thread.sleep(request.delayMillis());
                     return request.requestId();
                 })
@@ -213,26 +203,17 @@ public final class AwaitProbeHandlers {
         public CompletionStage<Void> handle(AwaitProbeSpot spot, Contracts.AwaitMsg request) {
             String value = "spot=" + spot.context().spotRid()
                 + ";correlation=" + request.correlationId() + ";handler=spot";
-            boolean yields = request.correlationId().startsWith("TD-B");
-            boolean turnContract = request.correlationId().startsWith("TD-");
             evidence.record("await-started", request.requestId(), value);
-            evidence.record(yields ? "yield-released"
-                    : turnContract ? "await-held" : "await-released",
-                request.requestId(), value);
-            var call = spot.context().outbound()
+            evidence.record("await-released", request.requestId(), value);
+            return spot.context().outbound()
                 .requestToChannel(
                     Contracts.DELAY_CHANNEL,
                     new Contracts.DelayReq(request.requestId(), request.delayMillis()))
-                .timeout(delayRequestTimeout(request.delayMillis()));
-            CompletionStage<Contracts.DelayRes> completion = yields
-                ? call.yield(Contracts.DelayRes.class)
-                : call.submit(Contracts.DelayRes.class);
-            return completion
+                .timeout(delayRequestTimeout(request.delayMillis()))
+                .submit(Contracts.DelayRes.class)
                 .thenAccept(reply -> {
-                    evidence.record(yields ? "yield-resumed" : "await-resumed",
-                        request.requestId(), value);
-                    evidence.record(turnContract ? "completed" : "await-completed",
-                        request.requestId(), value);
+                    evidence.record("await-resumed", request.requestId(), value);
+                    evidence.record("await-completed", request.requestId(), value);
                 });
         }
     }
@@ -601,33 +582,6 @@ public final class AwaitProbeHandlers {
             ZLinkSpotActorRequestContext context,
             Contracts.ActorFastReq request) {
             return fast(spot.context().spotRid(), actor, request, evidence);
-        }
-    }
-
-    public static final class SpotActorJoinHandler
-        implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor,
-            Contracts.ActorJoinReq, Contracts.ActorJoinRes> {
-        private final EvidenceStore evidence;
-
-        public SpotActorJoinHandler(EvidenceStore evidence) {
-            this.evidence = evidence;
-        }
-
-        @Override
-        public CompletionStage<Contracts.ActorJoinRes> handle(
-            AwaitProbeSpot spot,
-            AwaitActor actor,
-            ZLinkSpotActorRequestContext context,
-            Contracts.ActorJoinReq request) {
-            return actor.context().joinSpot(RoutingId.from(request.spotRid()), "join")
-                .timeout(Duration.ofSeconds(5))
-                .submit()
-                .thenApply(joined -> {
-                    evidence.record("actor-joined", request.requestId(),
-                        "actor=" + joinedActorId(joined) + ";spot=" + request.spotRid());
-                    return new Contracts.ActorJoinRes(
-                        "TD-E", request.requestId(), actor.actorId(), "joined");
-                });
         }
     }
 

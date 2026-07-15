@@ -8,16 +8,12 @@ import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.util.ArrayDeque
 import java.util.concurrent.Executors
-import java.util.concurrent.CompletionStage
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import systems.zlink.httpclient.ZLinkHttpExecutionTurn
-import systems.zlink.httpclient.ZLinkHttpClient
 
 private data class Player(val id: Int, val name: String)
 
@@ -45,31 +41,6 @@ private fun readBody(exchange: HttpExchange): String =
     String(exchange.requestBody.readAllBytes(), StandardCharsets.UTF_8)
 
 class HttpClientCoroutineTest {
-
-    @Test
-    fun `server coroutine selects retained or yielded turn`() = runBlocking {
-        val asyncCalls = AtomicInteger()
-        val yieldCalls = AtomicInteger()
-        val turn = object : ZLinkHttpExecutionTurn {
-            override fun <T : Any?> async(operation: CompletionStage<T>): CompletionStage<T> {
-                asyncCalls.incrementAndGet()
-                return operation
-            }
-
-            override fun <T : Any?> yield(operation: CompletionStage<T>): CompletionStage<T> {
-                yieldCalls.incrementAndGet()
-                return operation
-            }
-        }
-        TestServer { exchange -> respond(exchange, 200, """{"id":7,"name":"Aria"}""") }.use { server ->
-            ZLinkHttpClient.create(server.baseUrl).buildServer(turn).use { client ->
-                assertEquals(7, client.get("/p").await<Player>().body().id)
-                assertEquals(7, client.get("/p").yieldAwait<Player>().body().id)
-                assertEquals(1, asyncCalls.get())
-                assertEquals(1, yieldCalls.get())
-            }
-        }
-    }
 
     @Test
     fun `suspend awaitRaw returns the response`() = runBlocking {

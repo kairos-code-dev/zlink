@@ -305,12 +305,9 @@
 
 - [x] **§12.20** (결함) — 응답 header의 `name_len`을 0으로 고정하고, pending request가 보관한 원래 이름을 완료 payload에 사용한다. 구형 peer가 보낸 응답 이름은 decode 후 매칭에 사용하지 않는다. `ZLinkStreamWireProtocolTest`, `JavaNodeStreamInteropTest`, connector 전체 테스트 통과(2026-07-15).
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
-- [x] **§12.22** — standalone과 서버 전용 HTTP client를 분리하고 서버 표면에 `submit`·`async`·`yield`·callback, `buildServer`와 Spring execution turn bean을 구현했다. blocking `fetch`는 제거했다. HTTP client·Kotlin·Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
-- [x] **§12.23** — `runCpuWorker`와 비동기 `runIoWorker`를 분리하고 두 표면에 turn 유지 `submit`과 turn 반납 `yield`를 제공한다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
-- [x] **§12.24** — 같은 node local join의 native admission을 일반 target dispatch queue와 분리하고,
-  caller turn에서 source `OnLeaveActor`와 target commit·`OnJoinedActor`를 순서대로 완료하도록 고쳤다.
-  Java Config 8의 user Spot A→B `TD-E2`와 A→B·B→A 동시 `TD-E3`, core·Kotlin 전체 테스트가
-  통과했다. 구현 커밋 `175d60d13`(2026-07-16).
+- [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
+- [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
+- [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
 
 본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
 
@@ -755,18 +752,18 @@ Config 11 전체 실행도 각 selector를
 
 ### 체크리스트
 
-- [x] **SMP-JV-01** — TicTacToe 밖 샘플은 location store 자동 연결을 사용하고 GameQuest owner 재활성화 뒤 replay가 수렴한다.
-  - 근거: public `ZLinkSpotManager.close`로 owner를 비활성화하고 다음 요청이 Redis event replay로 count 5를 복원했으며 GameQuest 전체 runner가 통과했다. 구현 커밋 `3b5a6dd31`.
+- [ ] **SMP-JV-01** (**부분 구현**) — TicTacToe 밖 수동 연결은 0건이지만 GameQuest 자동 재연결이 재기동 직후 안정적으로 수렴하지 않는다
+  - 재검증 재개: GameQuest의 네 channel client는 location store 자동 발견으로 바뀌었고 금지 gate도 통과한다. 그러나 전체 runner 재실행은 재기동 전 최초 시나리오에서도 notification 대기가 `TimeoutException`으로 실패했다. `GameplayMsg`와 session push의 전송 완료 stage를 handler가 반환하는 집중 수정은 Java의 one-way `submit()`이 `void`라 컴파일에서 실패했고 되돌렸다. `.NET`처럼 public readiness와 `Async`/`Yield` 완료 terminator를 제공한다는 결정을 적용한다. starter/runtime 선행 구현 뒤 runner가 준비 완료와 전송 수락을 확인해야 하며, 샘플이 runtime 내부 타입이나 업무 retry로 숨기지 않는다. 부분 구현 커밋 `311e8304c`(2026-07-15), 실패 재검증 2026-07-15.
 - [x] **SMP-JV-02** (미구현) — GameQuest에 **owner Spot이 아예 없다.** 소유권을 클라이언트 해시로 흉내낸다
   - 증거: `addSpotMesh`·`PlayerQuestSpot`과 전역 monitor 부재를 요구한 gate가 기존 코드에서 실패했다. 두 QuestMission이 같은 spot mesh에 참여하고 channel은 ingress로만 남으며, 모든 quest 요청은 `PlayerId` routing id의 owner Spot으로 전달된다. 전체 runner가 `surface=SPOT ... packet=GameplayMsg` flow와 재기동 복원까지 통과했다.
 - [x] **SMP-JV-03** (미구현) — GameQuest가 **event sourcing이 아니다.** "rehydrate" 게이트를 카운터로 통과한다
   - 증거: SMP-JV-19의 domain event delta fold, SMP-JV-13의 Redis replay, SMP-JV-12의 실제 process restart/channel 조회, SMP-JV-11의 `PlayerQuestSpot` owner turn이 함께 적용됐다. runner는 owner SPOT flow, mission 재기동, count `5` 복원과 rehydrate client를 모두 검증한다.
-- [x] **SMP-JV-04** — Java/Kotlin `yield` terminator를 구현하고 Bingo의 전적 조회·결과 기록을 교체했다.
-  - 근거: 기본 `submit` turn 유지와 명시적 `yield` 재진입 unit test가 통과했고 두 Bingo runner가 wins/losses 조회·기록을 포함해 통과했다. 구현 커밋 `4ecebee81`, `4c925aa84`.
-- [x] **SMP-JV-05** — release gate가 typed JSON 기본 계약을 검증한다.
-  - 근거: 집중 release contract test와 TicTacToe self-check가 typed JSON 기준으로 통과했다. 구현 커밋 `52415a953`.
-- [x] **SMP-JV-06** — Java/Kotlin Bingo publish wire와 handler가 `BingoRewardAcquiredEvent`를 사용한다.
-  - 근거: 두 proto·handler·inventory에서 `BingoWinnerMsg`를 제거했고 Java/Kotlin Bingo runner가 통과했다. 구현 커밋 `333a27032`.
+- [ ] **SMP-JV-04** (미구현) — Bingo의 정본 `yield` 사용처가 코드에 없다
+  - §0.7 선행 차단: `.NET`의 `Yield(...)`와 같은 turn 해제 terminator를 Java 공개 계약과 runtime에 구현한다는 결정을 적용한다. Java production public surface에는 아직 해당 terminator가 없고 §12.21·§12.24도 open이다. Bingo 전체 runner는 exit 0이지만 `yield` 회귀를 검출할 수 없다. 샘플에서 `async`나 지역 helper로 흉내 내면 선행 관계와 우회 구현 금지를 위반하므로 runtime 계약 구현 전에는 변경하지 않는다(2026-07-15 재검증).
+- [ ] **SMP-JV-05** (결함) — Java 구현 완료. 범위 밖 release gate가 여전히 **MessagePack**을 요구한다
+  - 범위 차단: `.NET`과 공통 TicTacToe 계약대로 typed JSON 기본 경로와 수동 등록을 release gate의 기준으로 삼는 결정을 적용한다. TicTacToe client/server self-check는 `PASS TicTacToe.Java`까지 통과했지만 범위 밖 `samples/runner-common.sh`의 cleanup이 종료된 프로세스를 제한 시간 안에 정리하지 못해 runner exit 1을 반환했다. MessagePack을 요구하는 범위 밖 release contract test와 공통 cleanup을 함께 고치기 전에는 완료로 표시하지 않는다(2026-07-15 재검증).
+- [ ] **SMP-JV-06** (결함) — publish 메시지를 `Msg`로 잘못 이름 붙였다. 올바른 `Event`는 **선언만 되고 죽어 있다**
+  - §0.8 중단: 공통 계약의 `BingoRewardAcquiredEvent`를 유지하고 모든 언어의 wire와 handler를 함께 이행한다는 결정을 적용한다. `BingoWinnerMsg`를 Java에서만 바꾸면 공유 proto wire 타입과 다른 언어의 handler 계약이 깨진다. 현재 범위에는 갭 인덱스·공통 spec과 다른 언어 수정 권한이 없으므로 Java만 구현하지 않고 open으로 남긴다.
 - [x] **SMP-JV-07** (결함) — DeliveryDispatch에 **문서에 없는 죽은 `CourierGateway` 프로세스**가 있고, Java가 **actor relay를 건너뛴다**
   - 증거: 기존 설정은 dead `CourierGateway` 금지 gate에서 실패했고, 이를 제거한 뒤에도 기존 직접 응답 구현은 `courier-bind-relayed=courier-a` gate에서 실패했다. `CourierSession`이 actor 위치와 session route를 채워 기존 actor handler로 relay하도록 수정하고 등록되지 않은 `customer-route` handler를 제거한 뒤 `./run_sample.sh`의 client/server self-check와 courier-a/b actor relay gate가 모두 통과했다.
 - [x] **SMP-JV-08** (결함) — Bingo·DeliveryDispatch가 여전히 **환경변수·JVM system property**를 읽는다
@@ -799,8 +796,8 @@ Config 11 전체 실행도 각 selector를
   - 증거: scale-out marker를 요구한 gate가 기존 client에서 실패했다. 두 connector의 player join 뒤 request와 push future를 모두 시작하고 `CompletableFuture.allOf`에서 합류하므로 Alice 구간 종료 뒤 Bob을 시작하지 않는다. runner는 `player-scale-a` GameplayMsg가 mission-a owner Spot, `player-scale-b`가 mission-b owner Spot에서 처리된 flow와 `gamequest-scale-out=completed`를 확인하며 전체 시나리오가 통과했다.
 - [x] **SMP-JV-22** (결함) — GameQuest inventory가 다른 언어 구현을 계약 기준으로 선언한다.
   - 증거: inventory 첫 줄의 `기준: ...dotnet`을 금지하는 runner gate가 수정 전 실패했다. 공통 GameQuest 문서와 공통 샘플 규약을 계약 기준으로 고정하고 `.NET`은 비교 자료로만 설명하도록 바꿨다. source gate와 최초 GameQuest 시나리오가 통과했으며 재기동 자동 재연결 실패는 SMP-JV-01로 분리했다. 구현 커밋 `a6dfa1665`(2026-07-15).
-- [x] **SMP-JV-26** — TicTacToe release gate가 typed JSON 기본 경로를 검증한다.
-- [x] **SMP-JV-30** — TicTacToe release gate가 명시적 handler 등록을 검증한다.
+- [ ] **SMP-JV-26** (버그) — TicTacToe JSON 구현은 완료됐다. `.NET`과 공통 계약대로 JSON을 기준으로 고치기로 한 범위 밖 release gate가 아직 MessagePack을 요구한다(SMP-JV-05와 동일 blocker).
+- [ ] **SMP-JV-30** (절대 규칙 위반) — TicTacToe 수동 등록 구현은 완료됐다. `.NET`과 공통 계약대로 수동 등록을 기준으로 고치기로 한 범위 밖 release gate가 아직 package scan을 요구한다.
 - [x] **SMP-JV-31** (미구현) — TicTacToe connector inbound observer와 `stream-inbound` marker를 구현했고 runner의 세 역할·RESPONSE·SEND 단언이 기능 PASS까지 통과했다. 공통 cleanup 종료 결함은 SMP-JV-30의 범위 밖 runner blocker로 남긴다.
 - [x] **E2E-JV-01** (결함) — `ObservabilityOps`가 전용 Delay·Play·Session 역할 서버와 Client 시나리오를 소유하며, 인접 config의 실행 파일과 OBS selector를 더 이상 빌려 쓰지 않는다. `OBS-A1`~`OBS-C5` 단독 실행과 `all` runner 통과(2026-07-15).
 - [x] **E2E-JV-02** (결함) — Config 2 커버리지 구멍(`SM-F3` 누락), 문서에 없는 `SM-Q9`
@@ -824,7 +821,7 @@ Config 11 전체 실행도 각 selector를
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. | **해결:** 나머지 샘플은 location store 자동 연결을 사용한다. GameQuest는 process restart를 가장하지 않고 public owner close 뒤 다음 요청으로 owner를 다시 만들며 Redis event replay를 검증한다. |
+| **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | **부분 구현:** Bingo 4곳, DeliveryDispatch 5곳, ShoppingMall 2곳과 GameQuest 4곳을 인자 없는 `enableClient()`와 location store 자동 발견으로 바꿨다. 재실행에서는 최초 시나리오 notification도 timeout이 발생했다. Java one-way `submit()`은 완료 stage를 반환하지 않아 샘플 handler가 전송 수락을 기다릴 수 없고 Spring starter는 공개 location readiness bean을 제공하지 않는다. 내부 runtime 접근이나 업무 retry를 사용하지 않고, `.NET`과 같은 public readiness와 `Async`/`Yield` 완료 표면을 선행 구현해야 한다. |
 | **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | **해결:** 두 QuestMission이 `gamequest.player-quests` spot mesh에 참여하고 `PlayerQuestSpot`을 등록한다. 기존 player hash channel은 ingress 선택에만 쓰이며, 실제 소유권과 직렬 처리는 `PlayerId` routing id의 spot owner가 담당한다. |
 | **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다** | **재검증 취소:** .NET 정본은 이미 준비된 transport를 fail-static으로 유지하고 그 연결의 요청 성공을 grace 이후까지 확인한다. 장애 중 provider를 재시작해 기존 transport의 reconnect까지 금지하는 해석은 정본과 다르다. Java runner는 기존 연결의 성공과 unhealthy 상태를 함께 검증하며, 미연결 desired target의 grace 제한은 `IMP-JV-33` 집중 테스트가 담당한다. |
 
@@ -833,9 +830,9 @@ Config 11 전체 실행도 각 selector를
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **SMP-JV-03** (미구현) | [gamequest:280](../../common/sample/event/gamequest.ko.md): "노드를 재시작해도 owner spot이 **`QuestEventStore` replay로 aggregate를 rehydrate**한다". §14(`:603`)도 rehydrate를 "노드 재시작 → replay로 aggregate 복원"으로 못박는다 | **해결:** `PlayerQuestSpot` owner turn이 player별 hot state 변경을 직렬화하고, `QuestStore`는 Redis stream을 domain event delta로 fold해 최초 활성 상태를 복원한다. runner가 실제 owner process 종료·재기동 뒤 정상 stream/channel 조회로 FirstHunt `RewardGranted`, count `5`를 확인한다. 가짜 rehydrate counter와 close endpoint는 없다. |
-| **SMP-JV-04** (해결) | Bingo actor join/leave의 API 전적 왕복은 `yield`를 사용한다. | Java/Kotlin 모두 전적 wire, API store/handler, room wins/losses 반영을 구현했고 두 runner가 통과했다. |
-| **SMP-JV-05** (해결) | TicTacToe payload codec은 typed JSON이다. | release gate와 sample runner가 MessagePack 없이 typed JSON 기본 경로를 검증한다. |
-| **SMP-JV-06** (해결) | Bingo reward publish wire는 `BingoRewardAcquiredEvent`다. | Java/Kotlin proto와 handler를 함께 교체하고 두 runner를 통과시켰다. |
+| **SMP-JV-04** (미구현) | [bingo §7.1:452-464](../../common/sample/bingo/README.ko.md): `BingoRoom.OnJoinedActor`는 Api 서버에 `GetPlayerRecordReq`를, `OnLeaveActor`는 `ReportBingoResultReq`를 **`yield`로** 보낸다. §5(`:192,200`)가 그 왕복을 프로세스 구성표에 넣고, `:846`이 `BingoRoomState.Wins`/`Losses`를 그 응답값으로 채운다고 적는다 | **정본 왕복이 메시지부터 없다.** `Bingo/Shared/src/main/proto/bingo_messages.proto`에 `GetPlayerRecordReq`·`ReportBingoResultReq`도, `Wins`·`Losses` 필드도 **0건**이다. `BingoRoomSpot.java:70-86`의 `onJoinedActor`/`onLeaveActor`는 로컬 맵만 만지고 Api 서버를 부르지 않는다. Java 샘플 트리 전체에 `.yield()` **0건**(언어 표면 자체가 없다 — §12.21). ⇒ **`yield`가 왜 존재하는지 보여 주는 정본 예제가 통째로 빠졌다.** room 실행 줄을 붙잡는 대기가 애초에 만들어지지 않아, terminator 축이 회귀해도 Bingo는 초록으로 남는다 |
+| **SMP-JV-05** (결함) | [tictactoe §4:46,54-56](../../common/sample/tictactoe/README.ko.md)·[§9:250-251](../../common/sample/tictactoe/README.ko.md): "TicTacToe의 payload codec은 JSON이다 … **MessagePack이나 Protobuf로 바꾸지 않는다**" | **Java 구현 완료, release gate 갱신 차단:** runner에 MessagePack source·dependency 금지 gate를 추가하자 기존 서버 2곳, client 1곳과 build 의존성 2곳을 검출해 먼저 실패했다. 명시적 MessagePack 선택과 의존성을 제거해 framework의 typed JSON 기본 경로를 사용하며 전체 runner가 `PASS TicTacToe.Java`로 통과했다. POSD/DDD 재리뷰에서는 codec 정책이 호출부와 build 파일에 중복된 것을 정보 누출로 분류했다. 명시적 JSON 등록을 다섯 곳에 다시 두는 안보다 framework 기본값을 사용하는 안이 호출자 설정과 변경 지점을 줄이고 메시지별 codec 등록을 만들지 않으므로 이를 선택했으며 domain 경계 변화는 없다. 그러나 쓰기 범위 밖의 `SampleReleaseGateContractTest:677-692,759`는 여전히 MessagePack 등록·의존성을 요구해 해당 단독 contract test가 실패한다. 이 gate가 JSON 계약으로 갱신되기 전까지 open이다. SMP-JV-26과 같은 항목이다. |
+| **SMP-JV-06** (결함) | [공통 샘플 §메시지 이름 원칙:56-58,68](../../common/sample/README.ko.md): `Msg`는 **응답 없는 단방향 send**, `Event`는 **publish 호출에만** 쓴다. [bingo:36,808,991,1026](../../common/sample/bingo/README.ko.md)은 room reward fanout 메시지를 **`BingoRewardAcquiredEvent`**로, 그 handler를 `BingoRewardAcquiredEventHandler`(`:280,426`)로 고정한다 | **§0.8 중단:** Java는 `BingoWinnerMsg`를 실제 publish하고 `BingoRewardAcquiredEvent`는 선언만 한다. 이를 Java만 rename하면 공유 proto wire 타입과 다른 언어 handler가 깨진다. **결정 선택지:** (1) 공통 `Event` 계약을 유지하고 전 언어 wire를 함께 이행, (2) 공통 문서를 `Msg`로 바꾸고 publish naming 예외를 승인. 갭 인덱스·공통 spec이 writable scope 밖이므로 결정 전 구현하지 않는다. |
 | **SMP-JV-07** (결함) | [deliverydispatch §5:191-199](../../common/sample/deliverydispatch/README.ko.md)의 프로세스 표는 `Dispatch`·`CourierSession`·`CourierSpotNode1/2`·`Tracking`·`CustomerGateway`·`Client`뿐이다. `:243-245`는 *"courier별 session route는 **별도 gateway나 registry가 아니라** 해당 courier actor가 기억한다"* | **해결:** 문서에 없고 요청 송신자도 없던 `Server/CourierGateway`를 project와 runner에서 제거했다. `CourierSession`은 actor를 찾거나 만든 뒤 현재 actor 위치와 session route를 `BindCourierSessionReq`에 채워 `BindCourierSessionActorHandler`로 relay하며, actor의 `BindCourierSessionRes`가 원래 client 요청에 응답한다. 등록되지 않은 `customer-route` handler도 제거해 status push는 기존 `Tracking` → `sendToActor` 경로 하나만 사용한다. runner는 금지된 role/handler 잔존과 courier-a/b actor relay 표식을 검사한다. 공유 `BindCourierReq`·`BindCourierRes` wire 타입은 다른 언어 호환성을 깨지 않도록 유지했다. |
 | **SMP-JV-08** (결함) | [공통 샘플:196-197](../../common/sample/README.ko.md): "Endpoint, Redis, routing id, timeout과 로그 경로를 환경 변수나 JVM system property로 전달하지 않으며, server와 client 애플리케이션 코드에서 **직접 사용할 수 있는 환경 변수는 0개다**" | **해결:** live 재검증에서 확인한 Bingo 6곳과 DeliveryDispatch 8곳의 `System.getProperty`·`System.getenv`를 제거했다. runner가 실행별 endpoint, Redis, routing id와 로그 경로를 properties 파일에 기록하고, 각 role과 client는 `--config`로 파일 경로 하나만 받아 `SampleTopology`에서 읽는다. system property를 helper 뒤에 숨기는 대안은 금지된 설정 통로를 유지하므로 사용하지 않았다. Bash runner 두 개와 Bingo PowerShell runner가 실제 프로세스 구성으로 통과하며, runner의 정적 gate가 애플리케이션 코드의 직접 호출 0건을 계속 확인한다. |
 | **SMP-JV-09** (**실패할 수 없는 단언**) | [공통 샘플 §Client self-check 기준:358](../../common/sample/README.ko.md): "**자기 자신에게 보내면 안 되는 join notify는 받지 않았음을 확인한다**" | **해결:** Bingo와 TicTacToe는 AUTO mode에서 갱신되지 않는 `receivedCount(...)`를 사용하지 않는다. 각 connector에 typed `PlayerJoinedNotify` callback을 등록해 자기 actor id 알림을 실제 계수하고 전체 시나리오 뒤 0인지 단언한다. Bingo는 두 card가 9칸인 제출 응답과 draw별 `DrawSeq`·`Number`·전체 state 동일성도 확인한다. DeliveryDispatch는 도착 대기에 public `waitFor`를 계속 사용하고, 별도 typed callback으로 상태 알림을 기록해 success와 reassignment의 실제 순서를 정확히 비교한다. |
@@ -1022,13 +1019,13 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
   - 근거: 실제 Redis 지연 marker를 요구한 gate가 기존 앱 데코레이터에서 실패했다. 데코레이터를 제거하고 TCP proxy가 peer 목록을 읽는 Redis 응답을 1.2초 늦추도록 바꾼 뒤 marker, 지연된 store read, 동시 메시징 p99 예산을 모두 확인해 `scenario SF-E1 passed`를 얻었다. 공통 proxy 경로 회귀로 `SF-D1`과 `SF-D2`도 다시 통과했다.
 - [x] **E2E-JV-18** (**가짜 통과**) — 서로 다른 JVM의 `System.nanoTime()`을 합쳐 remote transfer 순서를 정렬한다.
   - 근거: runner에 프로세스마다 따로 측정한 timestamp 사용 금지 gate를 추가하자 기존 코드가 즉시 실패했다. timestamp 필드를 제거하고 source·target evidence의 삽입 순서를 역할별로 확인하며, target join 완료 뒤 돌아오는 `commit_ack`를 역할 사이 인과 경계로 사용하도록 바꿨다. ST-B1·ST-B4와 local join 회귀 ST-A1이 통과했다.
-- [x] **E2E-JV-15** — TA-B1 request가 framework의 `ACTOR_ROUTE_NOT_FOUND`를 검증한다.
-  - 근거: backend `NOT_FOUND` request를 public actor 오류로 정규화하고 one-way send의 local submit 의미는 유지했으며 `./run_e2e.sh TA-B1`이 통과했다. 구현 커밋 `4ec0cb5b2`.
+- [ ] **E2E-JV-15** (**가짜 통과**) — TA-B1의 public actor error kind는 Java runtime 분류가 선행돼야 한다.
+  - 실패 게이트 복구: 실제 public `ActorRef`를 만든 뒤 actor를 destroy하고 row 제거를 확인한 다음 같은 ref로 send/request를 호출하도록 바꿨다. 기존 앱 합성 오류 경로는 판정에서 제외됐다. 현재 direct send는 `ACTOR_ROUTE_NOT_FOUND` 대신 성공(`errorKind=null`)으로 반환되어 `./run_e2e.sh TA-B1`이 exit 1로 실패한다. gate 커밋 `02d44860f`; runtime 오류 분류가 고쳐진 뒤 이 gate가 통과해야 닫힌다(2026-07-15).
 - [x] **E2E-JV-16** (미구현) — Config 9 bind 상태 매트릭스 TA-A1~A4와 TA-B2·B3를 실제 session gateway 분리 구성에서 검증한다.
-- [x] **E2E-JV-17** — late backlog arrival index를 target에 보존하고 replay 전 `backlog_enqueued`를 발행한다.
-  - 근거: target이 late packet의 arrival index를 받아 handler 전에 marker를 발행하며 ST-F1·ST-F2가 모두 통과했다. 구현 커밋 `13415e41f`.
-- [x] **E2E-JV-19** — OBS-A2 server dispatch `ERROR` event가 원래 request flow를 보존한다.
-  - 근거: runtime typed error event와 server evidence extractor를 연결했고 `./run_e2e.sh OBS-A2`가 같은 flow id로 통과했다. 구현 커밋 `05865538b`.
+- [ ] **E2E-JV-17** (**가짜 통과**) — transfer late backlog target evidence와 moving actor replay는 Java runtime 수정이 선행돼야 한다.
+  - 실패 게이트 복구: ST-F1·F2가 target `actor-b`의 `backlog_enqueued` 뒤에 `packet_handler`가 오는지 역할별 evidence 순서로 단언한다. 현재 ST-F1은 source의 같은 transfer id에 `handoff_backlog` 3건과 target의 P1/P2/P3 handler는 남지만 target enqueue marker가 없어 `missing evidence kind backlog_enqueued`로 exit 1이다. gate 커밋 `f86eecfc9`; runtime이 target 적재 evidence와 replay 순서를 제공해야 닫힌다(2026-07-15).
+- [ ] **E2E-JV-19** (**가짜 통과**) — OBS-A2 server dispatch error flow event는 Java runtime 발행이 선행돼야 한다.
+  - 실패 게이트 확인: `./run_e2e.sh OBS-A2`에서 client는 missing-handler 오류를 받았지만 `session-flow.log`에는 같은 flow의 `RECEIVED`만 남고 `ERROR`가 없어 runner가 exit 1로 실패했다. feature-map도 PASS에서 runtime gap을 명시한 partial로 바로잡았다. E2E 앱에서 error line을 합성하지 않으며, runtime이 request flow를 보존한 dispatch error event를 발행해야 닫힌다(2026-07-15).
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
@@ -1039,11 +1036,11 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
 | **E2E-JV-12** (**가짜 통과**) | [config-6 SF-E1](../../common/e2e/config-6-store-failure-recovery.ko.md): store client가 스레드나 이벤트 루프를 **점유하지 않음을 실측으로 증명**한다 | **해결:** 앱의 지연 데코레이터를 제거했다. SF-E1은 consumer 앞의 TCP proxy에서 실제 `SMEMBERS <prefix>:keys:peer` 응답을 1.2초 늦추고 그 marker를 확인한다. 같은 시간에 실행한 메시징의 p99가 baseline 기반 예산 안에 있는지 검증한다. provider는 base Redis에 직접 연결해 지연 대상과 무관한 lease 만료를 피한다. |
 | **E2E-JV-13** (**가짜 통과**) | [config-7 MON-A2·MON-A3(**P0**)](../../common/e2e/config-7-monitoring.ko.md): **노드를 추가/종료**하고 **spot subject를 바꾼다** | **해결:** MON-A2가 `svc-b`를 실제 종료·재시작하고 scenario 시작 이후 topology 수의 감소·복원을 확인한다. MON-A3는 새 subscription topic을 가진 Spot을 생성하고, 시작 이후 `SUBJECTS_CHANGED` payload의 subject 수 증가를 직접 확인한다. |
 | **E2E-JV-14** (**가짜 통과**) | [config-5 RL-D2](../../common/e2e/config-5-resilience-lifecycle.ko.md): observer 예외는 **runtime error sink로 보고된다** | **해결:** provider가 공개 runtime-error event handler로 `MESSAGE_FLOW_OBSERVER_FAILED`와 callback 이름을 기록하고, consumer는 그 sink evidence와 후속 request 성공을 검증한다. observer가 예외 직전에 쓰던 자체 marker는 제거했다. |
-| **E2E-JV-15** (해결) | TA-B1 실패 분류는 framework의 public error kind다. | request의 backend `NOT_FOUND`를 `ACTOR_ROUTE_NOT_FOUND`로 정규화했고 TA-B1이 통과한다. one-way send는 원격 존재 판정이 아니라 local submit 의미를 유지한다. |
+| **E2E-JV-15** (**가짜 통과**) | [config-9 TA-B1(**P0**)](../../common/e2e/config-9-to-actor-messaging.ko.md): 실패 분류는 **framework가 낸 public error kind**여야 한다 | **재검증 중단:** `.NET`처럼 미존재 actor direct-ref 호출을 framework의 `ACTOR_ROUTE_NOT_FOUND`로 분류한다는 결정을 적용한다. TA-B1을 public `ActorRef` direct call로 바꾸면 nonzero generation은 Java runtime이 `ACTOR_LOCATION_STALE`로 분류하고, generation 0은 `ZlinkSubmitException`을 그대로 노출한다. 앱에서 오류를 합성하면 같은 가짜 통과가 되므로 구현하지 않았다. 허용 범위를 `zlink-framework-core`까지 넓혀 backend `NOT_FOUND` 분류를 고친 뒤 현재 실패 gate를 통과시켜야 한다. |
 | **E2E-JV-16** (**미구현**) | [config-9 Track A(**P0 4개**)](../../common/e2e/config-9-to-actor-messaging.ko.md): **bind 상태 매트릭스**가 이 config의 표제다 | **해결:** session gateway 역할이 없으면 runner가 즉시 실패하는 gate를 먼저 추가해 기존 코드에서 실패를 확인했다. 독립된 Spot·stream endpoint를 사용하는 gateway 두 개와 실제 stream connector를 추가했다. TA-A1은 같은 bind에서 Before/After push와 외부 send/request를, TA-A2는 bind 부재와 push 실패를, TA-A3는 bind 전 send/request·push 실패와 session-b late bind 뒤 성공을 검증한다. TA-A4는 공개 `boundSession().disconnect()`로 정상 unbind한 뒤 actor 생존과 send/request 성공을 확인하고, 명시적 destroy 뒤 같은 actor 호출이 `ACTOR_ROUTE_NOT_FOUND`이며 handler에 도달하지 않는지 확인한다. TA-A1~A4와 TA-B2·B3 회귀가 각각 통과했다. |
-| **E2E-JV-17** (해결) | transfer backlog는 target 적재 뒤 arrival 순서대로 handler가 실행된다. | late packet의 arrival index를 내부 wire에 보존하고 target `backlog_enqueued` 뒤 replay하며 ST-F1·ST-F2가 통과한다. |
+| **E2E-JV-17** (**가짜 통과**) | [config-10 §5](../../common/e2e/config-10-spot-actor-transfer.ko.md): callback order는 **단순 로그 문자열 grep이 아니라** 역할 server evidence와 flow correlation id로 검증한다 | **부분 해결·재검증 중단:** `.NET`처럼 committed/late backlog 모두 target의 `backlog_enqueued` evidence를 남기고 moving actor를 유지해 순서대로 replay한다는 결정을 적용한다. actor 노드는 공개 message-flow observer가 받은 typed event를 evidence로 저장하고, transfer id·event correlation id·flow id를 함께 남긴다. ST-A1은 공개 actor 조회로 location이 보이는 것을 기록한 뒤에만 성공 응답 marker를 남긴다. ST-B1·B4는 `commit_request`·`location_committed`·`source_cleanup`과 application `commit_ack`가 같은 transfer id인지 확인한다. runner의 flow 로그 grep은 제거했다. 그러나 정상 ST-F1·F2의 late backlog 경로는 source `handoff_backlog`만 발행하고 target marker를 발행하지 않는다. moving 초기에 packet을 넣으면 target marker는 나오지만 replay가 `actor was destroyed while moving`으로 실패한다. 허용 범위를 `zlink-framework-core`까지 넓혀 runtime을 고친 뒤 현재 실패 gate로 arrival index와 publish 전 적재 순서를 검증해야 한다. |
 | **E2E-JV-18** (**가짜 통과**) | [config-10](../../common/e2e/config-10-spot-actor-transfer.ko.md) | **해결:** evidence에서 프로세스마다 따로 측정한 timestamp를 제거했다. remote transfer는 source와 target의 삽입 순서를 각각 확인하고, target join이 완료된 뒤 source에 기록되는 `commit_ack`로 역할 사이 인과 경계를 확인한다. runner는 `observedAtNanos`가 다시 들어오면 실행 전에 실패한다. |
-| **E2E-JV-19** (해결) | OBS-A2 dispatch error는 원래 request flow를 보존한다. | server runtime의 typed `ERROR` event를 실제 evidence로 검증하며 OBS-A2가 통과한다. |
+| **E2E-JV-19** (**가짜 통과**) | [config-11 OBS-A2(**P0**)](../../common/e2e/config-11-observability-ops.ko.md): **dispatch error 라인**에 `flow=`가 있어야 한다 | **재검증 중단:** `.NET`처럼 server dispatch 실패에도 원래 request flow를 보존한 `ERROR` event를 발행한다는 결정을 적용한다. 기존 성공 artifact의 `session-flow.log`에는 같은 flow의 `RECEIVED`만 있고, Java runtime의 `ZLinkStreamSessionContextState.completeDispatchError()`는 error reply만 보낸다. E2E 앱이 error line을 합성하면 계약을 검증하지 못한다. 허용 범위를 `zlink-framework-core`까지 넓혀 event를 발행한 뒤 현재 실패 gate의 extractor를 server evidence에 고정해야 한다. |
 | **E2E-KT-06** (**가짜 통과**) | [config-11](../../common/e2e/config-11-observability-ops.ko.md) | **Kotlin config-11이 Java의 AutomaticTurnDispatch 바이너리를 역할 서버로 통째로 돌린다.** ⇒ **Kotlin 호스트가 하나도 안 뜬다.** Kotlin 고유의 metric·drain·flow 결함은 **원리적으로 안 보인다.** feature-map은 13행 전부 PASS |
 
 **공통:** 여섯 config 어디에도 `Client/Scenarios/`가 없거나 12줄 위임 껍데기다(본문은 532~959줄
@@ -1060,8 +1057,7 @@ Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **READM
 - [x] **E2E-JV-20** (미구현) — 11개 config runner가 공통 role-order 정책을 적용하고 통합 runner가 reverse와 고정 seed shuffle 축을 실행한다.
   - 재검증 완료: `validate_start_order_contract.sh`가 11개 runner의 `zlink_e2e_order_roles` 적용, 명시적 `--start-order`, reverse와 `shuffle:20260715` 실행을 확인해 통과했다. RegistryMessaging 전체 selector도 두 시작 순서에서 각각 exit 0으로 통과했다. 구현 커밋 `acfd67dfd`, 명시적 옵션 정리 `9d8298db1`(2026-07-15).
 - [x] **E2E-JV-21** (미구현) — Config 2·9가 route mesh 없음과 session/spot 분리 배치 조합을 실행한다.
-- [x] **E2E-JV-23** — `MaxMessageSize`를 bind 전에 실제 server socket에 적용하고 초과 실패 뒤 회복을 검증한다.
-  - 근거: 집중 runtime test와 Java/Kotlin `./run_e2e.sh RM-C8`이 2 MiB 상한·3 MiB timeout·후속 정상 요청을 검증했다. 계약 커밋 `f38d08120`, `678de2bea`, 구현 커밋 `e1144b5bf`.
+- [ ] **E2E-JV-23** (미구현) — RM-C8 MaxMessageSize는 framework 공통 계약과 Java public 설정 결정이 선행돼야 한다.
 - [x] **E2E-JV-22** (**가짜 통과**) — RM-C2·RM-C4가 실패 종류와 느린 handler의 최종 완료를 검증하지 않는다.
   - 근거: endpoint가 기존처럼 `failed`만 반환하도록 되돌린 오류 주입에서 RM-C2가 `expected public TimeoutException, got null`로 실패했다. 실제 예외를 공통 오류 변환 코드로 해석한 뒤 RM-C2와 RM-C4가 Java의 공개 timeout 표현인 `TimeoutException`을 확인한다. RM-C4는 timeout 뒤 정상 요청 두 건과 `ProfileReq`의 `value=slow` 완료 evidence까지 확인하며, 두 scenario와 공유 응답 계약을 쓰는 RM-C5가 통과했다.
 - [x] **E2E-JV-24** (미구현) — stream 응답에 포함된 actor ref의 generation을 버리고 양수인지 확인하지 않는다.
@@ -1072,7 +1068,7 @@ Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **READM
 | **E2E-JV-20** (미구현) | [E2E README:499-512](../../common/e2e/README.ko.md): config runner는 서버 역할 기동 순서를 받고, 기본 외에 **reverse 1회 + 고정 seed shuffle 1회**를 최소 실행한다 | **해결:** 11개 config runner가 공통 `zlink_e2e_order_roles`로 실제 역할 시작 배열을 바꾼다. 통합 runner는 명시적 `--start-order`로 reverse와 `shuffle:20260715`을 실행하며 정적 계약 gate가 이 배선을 전수 확인한다. |
 | **E2E-JV-21** (미구현) | [E2E README:487-497,546-547](../../common/e2e/README.ko.md): Config 2·9의 P0는 **route mesh 없음 × session/spot 분리 배치** 조합을 실행한다 | **해결:** Config 2의 기존 SM-F6에서 multi-node만 RouteMesh를 끄고 gateway는 계속 등록하는 결함을 재현했다. 세 역할의 비활성 marker를 요구하는 gate가 기존 코드에서 `SM-F6 gateway still registers RouteMesh`로 실패했다. gateway도 같은 spot-only 구성 입력을 받아 RouteMesh 등록을 생략하고, runner는 gateway와 multi-node 두 개의 marker를 모두 확인한다. SM-F6의 원격 spot request/send와 actor join이 통과했고 RouteMesh 구성 회귀 SM-F3도 통과했다. Config 9는 actor owner와 session gateway 두 개를 별도 프로세스로 실행하며 RouteMesh 없이 SpotMesh와 location store만 등록한다. 실제 stream bind를 사용하는 TA-A1~A4가 이 분리 구성에서 통과했다. |
 | **E2E-JV-22** (**가짜 통과**) | [config-1 RM-C2:174-182](../../common/e2e/config-1-location-messaging.ko.md)는 미존재 rid가 **public error**로 실패해야 한다. [RM-C4:194-202](../../common/e2e/config-1-location-messaging.ko.md)는 첫 실패가 **timeout**이고 느린 handler가 결국 완료됐는지까지 본다 | **해결:** 두 endpoint는 완료 예외를 벗긴 뒤 framework 오류면 `ZLinkFrameworkErrorKind`, 그 밖의 공개 경계 오류면 예외 타입 이름을 응답한다. RM-C2와 RM-C4는 실제 `TimeoutException`을 확인한다. RM-C4는 후속 정상 reply뿐 아니라 느린 handler의 `ProfileReq` 완료 evidence도 직접 기다린다. |
-| **E2E-JV-23** (해결) | RM-C8은 상한 초과 public timeout과 이후 회복을 검증한다. | builder가 bind 전에 실제 `MAXMSGSIZE`를 설정하며 Java/Kotlin RM-C8이 모두 통과한다. |
+| **E2E-JV-23** (미구현) | [config-1 RM-C8:228-238](../../common/e2e/config-1-location-messaging.ko.md): `MaxMessageSize` 근접 payload는 왕복하고 **상한 초과 payload는 public error로 거부**된 뒤 정상 request가 동작해야 한다 | **재검증 중단:** `.NET`의 `MaxMessageSize` socket config와 같은 공개 설정을 framework 공통 계약과 Java에 추가한다는 결정을 적용한다. 현재 Java의 정식 interface spec과 `ZLinkSocketRuntimeOptions`는 `weight()`만 제공하고, binding option을 framework가 만든 live channel socket에 적용할 공개 경로가 없다. E2E 앱이 payload 길이만 보고 임의로 거부하면 framework 상한을 검증하지 못한다. 공통 spec·Java interface spec·`zlink-framework-core`까지 범위를 넓혀 공개 설정과 runtime 배선을 구현한 뒤 RM-C8을 확장해야 한다. |
 | **E2E-JV-24** (미구현) | [E2E README:514-519](../../common/e2e/README.ko.md): 표면을 넘은 actor ref는 node rid가 비어 있지 않고 **`generation > 0`**인지 어서션한다 | **해결:** `ActorAuthRes`가 `bound.ref().generation()`을 함께 전달한다. local·remote stream 경계에서 수신한 generation이 양수인지 직접 확인하므로 필드 누락이나 기본값 0으로의 퇴행을 잡는다. |
 
 ## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))

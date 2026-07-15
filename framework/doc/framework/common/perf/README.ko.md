@@ -23,7 +23,7 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 - server 간 channel과 Spot messaging에서 request/reply 방식과 send/send 방식의 차이가 무엇인가.
 - Spot handler가 remote request의 `Async` 완료를 기다릴 때 framework의 자동 turn 관리로
   head-of-line blocking이 얼마나 줄어드는가.
-- Spot handler가 `runCpuWorker(...)`로 local worker pool에 작업을 맡기고 완료를 기다릴 때 turn
+- Spot handler가 `runWorker(...)`로 local worker pool에 작업을 맡기고 완료를 기다릴 때 자동 turn
   관리가 queue 진행성과 continuation 재개 비용에 어떤 영향을 주는가.
 - payload 크기가 1 KiB에서 4 KiB로 커졌을 때 처리량과 지연 시간이 어떻게 변하는가.
 - client runner, server process, framework dispatch, codec, transport 중 병목 후보가 어디인지
@@ -44,7 +44,7 @@ framework public API와 stream connector public API를 사용해서, 같은 서�
 | connector → session → remote actor echo | session 서버와 actor 서버가 분리된 구조의 비용 측정 | 1 KiB | 4 KiB |
 | channel → remote Spot echo | server 간 channel에서 remote Spot으로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
 | remote Spot → channel echo | remote Spot에서 channel server로 요청하거나 전송하는 비용 측정 | 4 KiB | 1 KiB |
-| Spot worker echo | Spot handler의 remote request `async` 대기와 `runCpuWorker(...)` local worker pool offload 대기 비용, queue 진행성 측정 | 1 KiB | 4 KiB |
+| Spot automatic-turn echo | Spot handler의 remote request `Async` 대기와 `runWorker(...)` local worker pool offload 대기 비용, queue 진행성 측정 | 1 KiB | 4 KiB |
 | actor client(no-bind) → actor echo | session 없는 server 측 caller가 `ActorRef`로 직접 send/request하는 비용 측정 | 4 KiB | 1 KiB |
 | publish → subscriber fanout | publisher 하나가 여러 subscriber에게 이벤트를 뿌릴 때 fanout 처리량과 delivery latency 측정 | 1 KiB | 4 KiB |
 
@@ -116,7 +116,7 @@ shell runner에서는 아래 long option을 지원해야 한다.
 | `--connect-concurrency` | `256` | 동시에 연결을 시도하는 connector 수 |
 | `--spot-count` | `16` | Spot execution 시나리오에서 부하를 분산할 Spot RID 개수. `spot-await-contention`은 이 값과 무관하게 `1`로 고정한다 |
 | `--subscriber-count` | `8` | pub/sub 시나리오에서 fanout을 받는 subscriber process 수 |
-| `--worker-task-millis` | `5` | Spot worker offload 시나리오에서 `runCpuWorker(...)`가 수행할 고정 비용 CPU 작업 시간 |
+| `--worker-task-millis` | `5` | Spot worker offload 시나리오에서 `runWorker(...)`가 수행할 고정 비용 blocking 작업 시간 |
 | `--worker-pool-size` | `8` | Spot worker offload 시나리오에서 framework worker pool의 최대 thread 수 |
 | `--mode` | 시나리오 기본값 | `request`, `send-send`, `async-request`, `no-await`, `publish`, `worker-offload` 중 하나 |
 | `--codec` | `json` | payload codec. 시나리오가 고정하면 override하지 않는다 |
@@ -735,8 +735,8 @@ Spot execution 시나리오의 handler는 공유 mutable state를 request 전후
 
 ### 10.10 `spot-worker-offload-echo`
 
-client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runCpuWorker(...)`(언어별
-`RunCpuWorker`/`runCpuWorker`/`run_cpu_worker`)로 고정 비용 CPU 작업을 framework worker pool에 맡기고,
+client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runWorker(...)`(언어별
+`RunWorker`/`runWorker`/`run_worker`)로 고정 비용 blocking 작업을 framework worker pool에 맡기고,
 단일 완료 terminator로 기다린 뒤 client-visible completion을 기록한다. framework는 worker 완료를
 기다리는 동안 Spot turn을 자동으로 반납한다. `RemoteEcho`
 서버는 필요 없다 — 이 축은 remote I/O가 아니라 local worker pool로의 offload 비용을 잰다. worker
@@ -754,7 +754,7 @@ client가 Spot server에 trigger 요청을 보낸다. Spot handler는 `runCpuWor
 | 실패 분류 | `WorkerQueueFull`, `WorkerTimeout`을 `errors.byKind`에 구분 기록 |
 
 이 시나리오는 `config-8-execution-turn.ko.md`의 TD-C3/TD-C4가 검증하는 worker offload 대기
-경로를 같은 조건에서 측정한다. 여기서 재는 `runCpuWorker(...)`는 같은 프로세스 안의 Spot 전용
+경로를 같은 조건에서 측정한다. 여기서 재는 `runWorker(...)`는 같은 프로세스 안의 Spot 전용
 worker thread pool offload다. 여러 프로세스에 작업을 분산하는 별도 공개 계약을 뜻하지 않는다.
 
 ### 10.11 `actor-no-bind-request-echo`
@@ -904,8 +904,8 @@ subscriber별로 연속 수신 여부를 검증하는 유일한 키다. `topic`�
 | `spot.remoteRequestRtt.p99Ms` | ms | Spot handler가 호출한 remote request RTT p99 |
 | `worker.pool.queueDepth.max` | count | 측정 중 관측된 worker pool 대기열 최대 depth |
 | `worker.pool.queueDepth.mean` | count | 측정 중 관측된 worker pool 대기열 평균 depth |
-| `worker.pool.queueWaitLatency.p95Ms` | ms | `runCpuWorker(...)` 제출부터 worker thread가 집어들 때까지 p95 |
-| `worker.pool.queueWaitLatency.p99Ms` | ms | `runCpuWorker(...)` 제출부터 worker thread가 집어들 때까지 p99 |
+| `worker.pool.queueWaitLatency.p95Ms` | ms | `runWorker(...)` 제출부터 worker thread가 집어들 때까지 p95 |
+| `worker.pool.queueWaitLatency.p99Ms` | ms | `runWorker(...)` 제출부터 worker thread가 집어들 때까지 p99 |
 | `worker.taskLatency.p95Ms` | ms | worker thread에서 작업 실행(`--worker-task-millis`) 자체 소요 p95 |
 | `worker.taskLatency.p99Ms` | ms | worker thread에서 작업 실행(`--worker-task-millis`) 자체 소요 p99 |
 | `worker.resumeLatency.p95Ms` | ms | worker 작업 완료부터 원래 Spot mailbox continuation 재개까지 p95 |
@@ -1246,7 +1246,7 @@ C++ 구현은 release build 산출물을 사용한다. core runtime 또는 bindi
 10. `spot-no-await-echo`, `spot-async-request-echo`를 구현한다.
 11. `spot-await-contention`으로 단일 Spot RID 집중 부하를 구현한다.
 12. `spot-worker-offload-echo`를 구현한다. `RemoteEcho`
-    서버 없이 `SpotServer`만으로 `runCpuWorker(...)` 완료를 기다리는 경로이므로 10~11단계와 독립적으로
+    서버 없이 `SpotServer`만으로 `runWorker(...)` 완료를 기다리는 경로이므로 10~11단계와 독립적으로
     진행할 수 있다.
 13. actor client를 제공하는 모든 framework 언어는 `actor-no-bind-request-echo`,
     `actor-no-bind-send-send-echo`를 구현한다.

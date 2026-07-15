@@ -4,7 +4,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
@@ -19,7 +18,7 @@ public final class ZLinkAsyncSerialQueue {
     private CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
 
     public ZLinkAsyncSerialQueue() {
-        this(false);
+        this(true);
     }
 
     public ZLinkAsyncSerialQueue(boolean releaseOnIncompleteStage) {
@@ -94,45 +93,11 @@ public final class ZLinkAsyncSerialQueue {
     public static <T> CompletionStage<T> manageCurrent(CompletionStage<T> stage) {
         java.util.Objects.requireNonNull(stage, "stage");
         ZLinkAsyncSerialQueue queue = CURRENT.get();
-        if (queue == null) {
+        if (queue == null || !queue.releaseOnIncompleteStage) {
             return stage;
         }
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         CompletableFuture<T> managed = new CompletableFuture<>();
-        if (!queue.releaseOnIncompleteStage) {
-            CompletableFuture<Void> gate = CURRENT_GATE.get();
-            stage.whenComplete((value, error) -> HANDLER_EXECUTOR.execute(() -> {
-                ZLinkAsyncSerialQueue previous = CURRENT.get();
-                CompletableFuture<Void> previousGate = CURRENT_GATE.get();
-                CURRENT.set(queue);
-                if (gate == null) {
-                    CURRENT_GATE.remove();
-                } else {
-                    CURRENT_GATE.set(gate);
-                }
-                try (ZLinkFlowContext.Scope ignored = flow == null
-                    ? () -> { }
-                    : ZLinkFlowContext.enter(flow)) {
-                    if (error != null) {
-                        managed.completeExceptionally(error);
-                    } else {
-                        managed.complete(value);
-                    }
-                } finally {
-                    if (previous == null) {
-                        CURRENT.remove();
-                    } else {
-                        CURRENT.set(previous);
-                    }
-                    if (previousGate == null) {
-                        CURRENT_GATE.remove();
-                    } else {
-                        CURRENT_GATE.set(previousGate);
-                    }
-                }
-            }));
-            return managed;
-        }
         stage.whenComplete((value, error) -> queue.enqueue(() -> {
             try (ZLinkFlowContext.Scope ignored = flow == null
                 ? () -> { }
@@ -146,69 +111,6 @@ public final class ZLinkAsyncSerialQueue {
             return CompletableFuture.completedFuture(null);
         }));
         return managed;
-    }
-
-    public static <T> CompletionStage<T> yieldCurrent(CompletionStage<T> stage) {
-        java.util.Objects.requireNonNull(stage, "stage");
-        ZLinkAsyncSerialQueue queue = CURRENT.get();
-        CompletableFuture<Void> gate = CURRENT_GATE.get();
-        if (queue == null || gate == null || stage.toCompletableFuture().isDone()) {
-            return stage;
-        }
-        ZLinkFlowContext.State flow = ZLinkFlowContext.current();
-        CompletableFuture<T> managed = new CompletableFuture<>();
-        gate.complete(null);
-        stage.whenComplete((value, error) -> queue.enqueue(() -> {
-            try (ZLinkFlowContext.Scope ignored = flow == null
-                ? () -> { }
-                : ZLinkFlowContext.enter(flow)) {
-                if (error != null) {
-                    managed.completeExceptionally(error);
-                } else {
-                    managed.complete(value);
-                }
-            }
-            return CompletableFuture.completedFuture(null);
-        }));
-        return managed;
-    }
-
-    public static Executor propagateCurrent(Executor executor) {
-        java.util.Objects.requireNonNull(executor, "executor");
-        return command -> {
-            ZLinkAsyncSerialQueue queue = CURRENT.get();
-            CompletableFuture<Void> gate = CURRENT_GATE.get();
-            Boolean deferred = CURRENT_RELEASE_DEFERRED.get();
-            executor.execute(() -> runWithContext(queue, gate, deferred, command));
-        };
-    }
-
-    private static void runWithContext(
-        ZLinkAsyncSerialQueue queue,
-        CompletableFuture<Void> gate,
-        Boolean deferred,
-        Runnable command) {
-        ZLinkAsyncSerialQueue previous = CURRENT.get();
-        CompletableFuture<Void> previousGate = CURRENT_GATE.get();
-        Boolean previousDeferred = CURRENT_RELEASE_DEFERRED.get();
-        setOrRemove(CURRENT, queue);
-        setOrRemove(CURRENT_GATE, gate);
-        setOrRemove(CURRENT_RELEASE_DEFERRED, deferred);
-        try {
-            command.run();
-        } finally {
-            setOrRemove(CURRENT, previous);
-            setOrRemove(CURRENT_GATE, previousGate);
-            setOrRemove(CURRENT_RELEASE_DEFERRED, previousDeferred);
-        }
-    }
-
-    private static <T> void setOrRemove(ThreadLocal<T> local, T value) {
-        if (value == null) {
-            local.remove();
-        } else {
-            local.set(value);
-        }
     }
 
     public static <T> CompletionStage<T> deferCurrentReleaseUntil(CompletionStage<T> entered) {

@@ -1,12 +1,9 @@
 package systems.zlink.framework.configuration;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
 
 public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder enableServer(String endpoint);
-
-    ZLinkSocketRuntimeOptions configureServerSocket();
 
     ClientServerChannelBuilder setRoutingId(RoutingId routingId);
 

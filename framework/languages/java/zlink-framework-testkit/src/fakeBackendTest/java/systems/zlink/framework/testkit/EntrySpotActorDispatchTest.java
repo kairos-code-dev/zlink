@@ -287,7 +287,7 @@ final class EntrySpotActorDispatchTest {
                 return CompletableFuture.completedFuture(null);
             }
             if ("yield".equals(message)) {
-                return entrySpot.context().runCpuWorker(() -> message).submit()
+                return entrySpot.context().runWorker(() -> message).submit()
                     .thenAccept(ignored -> yieldObserved.countDown())
                     .exceptionally(error -> {
                         yieldError.set(error);

@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Elastic bounded worker pool for CPU offload.
+ * Single elastic bounded worker pool for {@code runWorker(...)} offload.
  *
  * <p>Semantics: threads are created on demand up to {@code maxThreads}, idle threads
  * above {@code minThreads} are reclaimed after {@code idleTimeout}, at most

@@ -11,7 +11,7 @@ public final class RcB1JsonCodecScenario {
     public static void run(ScenarioContext context) {
         Contracts.EchoRes jsonReply = context.server()
             .post("/codec/roundtrip")
-            .async(Contracts.CodecScenarioRes.class).toCompletableFuture().join().body()
+            .fetch(Contracts.CodecScenarioRes.class)
             .json();
         ScenarioAssert.ensure("echo:json-request".equals(jsonReply.value()) && "json".equals(jsonReply.handler()),
             "RC-B1 request mismatch");

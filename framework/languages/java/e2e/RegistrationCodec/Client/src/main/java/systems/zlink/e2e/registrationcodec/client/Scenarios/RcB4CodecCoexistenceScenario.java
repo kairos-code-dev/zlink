@@ -9,7 +9,7 @@ public final class RcB4CodecCoexistenceScenario {
     }
 
     public static void run(ScenarioContext context) {
-        context.server().post("/codec/roundtrip").async(Contracts.CodecScenarioRes.class).toCompletableFuture().join().body();
+        context.server().post("/codec/roundtrip").fetch(Contracts.CodecScenarioRes.class);
         ScenarioAssert.waitForEvidence(context.evidence(), "ContentType", "JsonEcho", "application/json");
         ScenarioAssert.waitForEvidence(
             context.evidence(),

@@ -70,9 +70,7 @@ public final class Program {
 
             String apiEndpoint = server.apiEndpoint();
             if (!apiEndpoint.isBlank()) {
-                var api = options.addClientServerChannel(Contracts.API_CHANNEL);
-                api.configureServerSocket().maxMessageSize(server.maxMessageSize());
-                api
+                options.addClientServerChannel(Contracts.API_CHANNEL)
                     .enableServer(apiEndpoint)
                     .enableClient()
                     .setRoutingId(RoutingId.from(state.providerRid()))
@@ -123,12 +121,12 @@ public final class Program {
     @Bean
     ApplicationRunner applyInitialSocketWeight(ZLinkChannelRuntimeOptions runtimeOptions, ServerOptions options) {
         return ignored -> {
-            var serverSocket = runtimeOptions
-                .clientServerChannel(Contracts.API_CHANNEL)
-                .configureServerSocket();
             String weight = options.apiWeight();
             if (!weight.isBlank()) {
-                serverSocket.weight(Integer.parseInt(weight));
+                runtimeOptions
+                    .clientServerChannel(Contracts.API_CHANNEL)
+                    .configureServerSocket()
+                    .weight(Integer.parseInt(weight));
             }
         };
     }

@@ -86,8 +86,8 @@ final class HandlerContractTest {
     }
 
     @Test
-    void requestCallExposesYieldWithoutBlockingAwait() throws NoSuchMethodException {
-        ZLinkRequestCall.class.getMethod("yield", Class.class);
+    void requestCallDoesNotExposeBlockingTerminators() {
+        assertFalse(hasMethod(ZLinkRequestCall.class, "yield"));
         assertFalse(hasMethod(ZLinkRequestCall.class, "await"));
     }
 
@@ -195,11 +195,10 @@ final class HandlerContractTest {
         ZLinkActorJoinCall.class.getMethod("timeout", java.time.Duration.class);
         ZLinkActorJoinCall.class.getMethod("submit");
         ZLinkActorJoinCall.class.getMethod("submit", Class.class);
-        ZLinkActorJoinCall.class.getMethod("yield");
-        ZLinkActorJoinCall.class.getMethod("yield", Class.class);
         assertFalse(hasMethod(ZLinkActorContext.class, "isJoined"));
         assertFalse(hasMethod(ZLinkActorContext.class, "getSpot"));
         assertFalse(hasMethod(ZLinkActorJoinCall.class, "await"));
+        assertFalse(hasMethod(ZLinkActorJoinCall.class, "yield"));
     }
 
     @Test

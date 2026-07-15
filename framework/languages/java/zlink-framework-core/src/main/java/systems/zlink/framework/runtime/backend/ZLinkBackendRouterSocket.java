@@ -15,10 +15,6 @@ public interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
 
     void setProbe(boolean enabled);
 
-    long maxMessageSize();
-
-    void setMaxMessageSize(long value);
-
     int peerWeight();
 
     void setPeerWeight(int weight);

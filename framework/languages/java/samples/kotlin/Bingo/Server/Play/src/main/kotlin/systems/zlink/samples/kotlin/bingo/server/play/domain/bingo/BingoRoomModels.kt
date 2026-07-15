@@ -27,8 +27,6 @@ data class BingoRoomPlayer(
     val displayName: String,
     val seat: Int,
     var card: BingoCard?,
-    val wins: Int,
-    val losses: Int,
 ) {
     fun toState(hostActorId: String): BingoPlayerState =
         BingoPlayerState(
@@ -39,8 +37,6 @@ data class BingoRoomPlayer(
             card?.numbersSnapshot() ?: emptyList(),
             card?.marksSnapshot() ?: emptyList(),
             card?.completedLines() ?: 0,
-            wins,
-            losses,
         )
 }
 

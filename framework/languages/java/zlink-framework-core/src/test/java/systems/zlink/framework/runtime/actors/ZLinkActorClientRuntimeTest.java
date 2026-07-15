@@ -176,7 +176,7 @@ final class ZLinkActorClientRuntimeTest {
     }
 
     @Test
-    void inactiveExplicitActorRefMapsNotFoundToActorRouteNotFound() {
+    void inactiveExplicitActorRefMapsNotFoundToActorLocationStale() {
         ZLinkActorClientRuntime client = new ZLinkActorClientRuntime(
             () -> new RequestFailingSpotNode(RequestResult.NOT_FOUND),
             new ZLinkStoreLocationResolvers(
@@ -195,7 +195,7 @@ final class ZLinkActorClientRuntimeTest {
                 .join());
 
         ZLinkFrameworkException frameworkError = (ZLinkFrameworkException) error.getCause();
-        assertEquals(ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND, frameworkError.kind());
+        assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, frameworkError.kind());
     }
 
     private static ZLinkInMemoryLocationStore storeWithActor(String actorId) {

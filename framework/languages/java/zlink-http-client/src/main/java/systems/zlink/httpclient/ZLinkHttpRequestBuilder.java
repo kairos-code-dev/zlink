@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -19,7 +20,9 @@ import systems.zlink.httpclient.internal.HttpRequestSpec;
 
 /**
  * Fluent builder for a single request. Mirrors the C++ {@code request_builder_t}. Submission returns
- * a {@link CompletionStage}; no thread is parked while the request is in flight.
+ * a {@link CompletionStage}; no thread is parked while the request is in flight. The blocking {@link
+ * #fetch(Class)} convenience is for tests and CLI scenarios — framework handler code should compose
+ * the {@link CompletionStage} from {@link #submit(Class)}.
  */
 public final class ZLinkHttpRequestBuilder {
 
@@ -139,10 +142,6 @@ public final class ZLinkHttpRequestBuilder {
         return execute(null);
     }
 
-    public CompletionStage<RawHttpResponse> asyncRaw() {
-        return execute(null);
-    }
-
     /**
      * Streams the response body to {@code sink} chunk by chunk instead of buffering it; the returned
      * response carries status and headers with an empty body (no decompression of chunks).
@@ -169,23 +168,7 @@ public final class ZLinkHttpRequestBuilder {
 
     /** Submits the request and decodes the JSON body to {@code type}. */
     public <T> CompletionStage<HttpResponse<T>> submit(Class<T> type) {
-        return decode(asyncRaw(), type);
-    }
-
-    public <T> CompletionStage<HttpResponse<T>> async(Class<T> type) {
-        return decode(asyncRaw(), type);
-    }
-
-    public <T> void callback(Class<T> type, ZLinkHttpCallback<T> callback) {
-        java.util.Objects.requireNonNull(callback, "callback");
-        async(type).whenComplete((response, error) ->
-            callback.complete(error, error == null ? response : null));
-    }
-
-    private static <T> CompletionStage<HttpResponse<T>> decode(
-        CompletionStage<RawHttpResponse> operation,
-        Class<T> type) {
-        return operation.thenApply(raw -> {
+        return submitRaw().thenApply(raw -> {
             if (raw.status() >= 400) {
                 throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, "HTTP request failed with status " + raw.status());
             }
@@ -199,6 +182,22 @@ public final class ZLinkHttpRequestBuilder {
                 throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.PAYLOAD_DECODE_FAILED, "HTTP response body decode failed", cause);
             }
         });
+    }
+
+    /**
+     * Blocking convenience that unwraps the typed body and throws on failure. For tests and CLI
+     * scenarios; handler/runtime code should compose {@link #submit(Class)} instead.
+     */
+    public <T> T fetch(Class<T> type) {
+        try {
+            return submit(type).toCompletableFuture().join().body();
+        } catch (CompletionException cause) {
+            Throwable actual = cause.getCause() != null ? cause.getCause() : cause;
+            if (actual instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new ZLinkFrameworkException(ZLinkFrameworkErrorKind.REQUEST_FAILED, actual.getMessage(), actual);
+        }
     }
 
     private HttpRequestSpec makeRequest(Consumer<byte[]> sink) {

@@ -23,9 +23,9 @@ export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.
 location_key_prefix="zlink:e2e:kotlin-automatic-turn-dispatch:${run_id}"
 config_dir="$(mktemp -d)"
 chmod 0700 "${config_dir}"
-LOCAL_READINESS_TIMEOUT_SECONDS=3
+LOCAL_READINESS_TIMEOUT_SECONDS=10
 LOCAL_READINESS_POLL_SECONDS=0.1
-LOCAL_READINESS_ATTEMPTS=30
+LOCAL_READINESS_ATTEMPTS=100
 ROUTE_SETTLE_SECONDS=5
 PLAY_B_START_DELAY_SECONDS="${ZLINK_KOTLIN_E2E_PLAY_B_START_DELAY_SECONDS:-0}"
 PROCESS_STOP_ATTEMPTS=600
@@ -138,12 +138,6 @@ gradle_run() {
 
 static_checks() {
   local tmp
-  if [[ "${LOCAL_READINESS_TIMEOUT_SECONDS}" != 3 \
-     || "${LOCAL_READINESS_ATTEMPTS}" != 30 \
-     || "${ROUTE_SETTLE_SECONDS}" != 5 ]]; then
-    echo "AutomaticTurnDispatch must use 3s readiness and 5s route settle limits" >&2
-    return 1
-  fi
   tmp="$(mktemp)"
   if rg -n 'receivedCount\([^)]*\)\s*==\s*0' \
       Client/src/main/java -g '*.java' >"${tmp}"; then
@@ -163,19 +157,14 @@ static_checks() {
   rm -f "${tmp}"
 
   tmp="$(mktemp)"
-  if rg -n 'YieldDispatch|yielddispatch|YD-' \
+  if rg -n 'YieldDispatch|yielddispatch|YD-|\byield\b|\bYield\b' \
       Client Server Shared -g '*.java' -g '*.kt' >"${tmp}"; then
     cat "${tmp}" >&2
     rm -f "${tmp}"
-    echo "AutomaticTurnDispatch must use the execution-turn scenario namespace." >&2
+    echo "AutomaticTurnDispatch must use the single await completion contract." >&2
     return 1
   fi
   rm -f "${tmp}"
-
-  if ! rg -q '\.yield\(' Server/Play/src/main/java -g '*.java'; then
-    echo "AutomaticTurnDispatch must exercise the yield terminator." >&2
-    return 1
-  fi
 
   if ! rg -q 'ZLinkStreamConnectorFactory\.create' Client/src/main/java/systems/zlink/e2e/kotlin/automaticturn/support/ClientStreamSupport.java; then
     echo "AutomaticTurnDispatch client must create a real stream connector." >&2

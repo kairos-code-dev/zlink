@@ -1,3 +1,4 @@
+// RM-A2: 수동 endpoint 연결 (대조군) 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';

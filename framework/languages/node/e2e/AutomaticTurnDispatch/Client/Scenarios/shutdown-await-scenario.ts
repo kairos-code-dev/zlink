@@ -1,3 +1,4 @@
+// ATD-E3: pending await 중 shutdown과 재기동 뒤 복구 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

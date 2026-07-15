@@ -1,3 +1,4 @@
+// RL-D5: 지속 혼합 워크로드 soak 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

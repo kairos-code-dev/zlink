@@ -1,3 +1,4 @@
+// RM-C3: 다중 provider 분산 시나리오를 검증한다.
 import type { ProfileRes, ProfileReq } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
 import { countNewEvidence, ensure, uniqueMarker } from '../Support/scenario-assert';

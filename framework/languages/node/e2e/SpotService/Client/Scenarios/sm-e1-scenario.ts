@@ -1,3 +1,4 @@
+// SM-E1: spot route 미등록 request 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

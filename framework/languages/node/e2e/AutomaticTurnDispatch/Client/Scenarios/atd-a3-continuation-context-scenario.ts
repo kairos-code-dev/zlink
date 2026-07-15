@@ -1,3 +1,4 @@
+// ATD-A3: await 전후 request와 correlation 문맥 보존 검증한다.
 import type {
   AwaitMsg,
   AwaitEvidenceRes,

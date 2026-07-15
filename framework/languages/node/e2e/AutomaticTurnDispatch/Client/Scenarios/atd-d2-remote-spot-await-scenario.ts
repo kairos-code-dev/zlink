@@ -1,3 +1,4 @@
+// ATD-D2: remote Spot request await와 owner continuation 검증한다.
 import type {
   EnsureSpotRes,
   EnsureSpotReq,

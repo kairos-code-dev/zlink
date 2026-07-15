@@ -1,3 +1,4 @@
+// RC-B5: codec registry 불일치 (peer 간) 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';

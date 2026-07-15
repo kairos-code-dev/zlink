@@ -1,3 +1,4 @@
+// SM-Q9: 두 노드의 local Spot route가 각 owner에서 독립적으로 처리되는지 검증한다.
 import type {
   EvidenceWaitReq,
   MultiNodeCreateSpotRes,

@@ -1,3 +1,4 @@
+// SM-B5: actor 미등록 request 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

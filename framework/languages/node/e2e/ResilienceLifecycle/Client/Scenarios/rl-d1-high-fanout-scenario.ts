@@ -1,3 +1,4 @@
+// RL-D1: high fanout stability 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';

@@ -1,3 +1,4 @@
+// SM-F6: spot mesh 단독 구성의 target spot 도달 (route mesh 미등록) 시나리오를 검증한다.
 import type {
   EvidenceWaitReq,
   CreateSpotReq,

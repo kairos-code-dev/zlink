@@ -1,3 +1,4 @@
+// SF-D2: 긴 장애 복구 — 재등록 우선과 heartbeat 유예 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';

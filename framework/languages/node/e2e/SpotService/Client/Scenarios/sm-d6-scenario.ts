@@ -1,3 +1,4 @@
+// SM-D6: bound session push 타깃팅 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

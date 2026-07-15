@@ -1,3 +1,4 @@
+// SM-A5: Stage wrapper 시나리오를 검증한다.
 import type {
   CloseSpotRes,
   CloseSpotReq,

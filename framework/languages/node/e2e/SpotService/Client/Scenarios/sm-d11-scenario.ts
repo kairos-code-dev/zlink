@@ -1,3 +1,4 @@
+// SM-D11: stream request와 channel request 혼합 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

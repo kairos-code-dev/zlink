@@ -1,3 +1,4 @@
+// RM-C4: timeout과 late reply 비오염 시나리오를 검증한다.
 import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';

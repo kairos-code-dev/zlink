@@ -1,3 +1,4 @@
+// ATD-C3: actor와 timer await 사이의 상호 진행 검증한다.
 import type {
   ActorFastReq,
   ActorAwaitReq,

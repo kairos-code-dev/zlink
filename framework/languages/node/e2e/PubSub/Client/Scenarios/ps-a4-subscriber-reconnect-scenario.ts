@@ -1,3 +1,4 @@
+// PS-A4: subscriber 재연결·재구독 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';

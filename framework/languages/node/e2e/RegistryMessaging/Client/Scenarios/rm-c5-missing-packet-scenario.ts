@@ -1,3 +1,4 @@
+// RM-C5: 미등록 packet 처리 시나리오를 검증한다.
 import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';

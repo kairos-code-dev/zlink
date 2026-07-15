@@ -1,3 +1,4 @@
+// ATD-A2: await terminator가 Spot turn을 반납하고 continuation을 재개하는 순서 검증한다.
 import type {
   ProbeMsg,
   AwaitMsg,

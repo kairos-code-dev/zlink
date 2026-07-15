@@ -1,3 +1,4 @@
+// RL-B4: 런타임 drain / restore (무중단 배포) 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';

@@ -1,3 +1,4 @@
+// RC-A6: 잘못된 등록은 시작 단계에서 차단 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { expectStartupFailure } from '../Support/process-support';
 import { ensure } from '../Support/scenario-assert';

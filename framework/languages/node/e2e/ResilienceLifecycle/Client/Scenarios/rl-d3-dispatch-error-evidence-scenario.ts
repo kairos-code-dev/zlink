@@ -1,3 +1,4 @@
+// RL-D3: 로그 marker 관측 시나리오를 검증한다.
 import type { RequestFailureRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';

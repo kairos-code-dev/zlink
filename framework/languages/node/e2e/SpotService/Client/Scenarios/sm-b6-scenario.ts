@@ -1,3 +1,4 @@
+// SM-B6: actor leave vs disconnect callback 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

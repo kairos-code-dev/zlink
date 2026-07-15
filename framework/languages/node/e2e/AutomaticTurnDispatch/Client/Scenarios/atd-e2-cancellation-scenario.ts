@@ -1,3 +1,4 @@
+// ATD-E2: await cancellation 뒤 같은 Spot의 후속 처리 복구 검증한다.
 import type {
   EnsureSpotRes,
   EnsureSpotReq,

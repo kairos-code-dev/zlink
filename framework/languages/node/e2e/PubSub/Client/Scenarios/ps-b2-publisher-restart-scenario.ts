@@ -1,3 +1,4 @@
+// PS-B2: publisher 재시작 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';

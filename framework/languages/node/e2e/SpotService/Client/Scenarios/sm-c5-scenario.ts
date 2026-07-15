@@ -1,3 +1,4 @@
+// SM-C5: SpotMesh pub/sub 노드 간 도달 (발행 성공 ≠ 도달) 시나리오를 검증한다.
 import type {
   CreateSpotReq,
   CreateSpotRes,

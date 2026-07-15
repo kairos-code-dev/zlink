@@ -1,3 +1,4 @@
+// RM-C1: request / send happy path 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';

@@ -1,3 +1,4 @@
+// SF-A1: store 정상 상태 baseline 시나리오를 검증한다.
 import {
   ZLinkLocationRole,
   ZLinkLocationTopologyState

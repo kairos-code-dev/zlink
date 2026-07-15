@@ -1,3 +1,4 @@
+// SM-A4: owner routing — key → RoutingId 매핑 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

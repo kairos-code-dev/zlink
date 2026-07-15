@@ -1,3 +1,4 @@
+// ATD-B2: 한 actor의 await 중 같은 actor mailbox 재진입 방지 검증한다.
 import type {
   ActorFastMsg,
   ActorAwaitReq,

@@ -1,3 +1,4 @@
+// ATD-A4: I/O worker yield 중 같은 Spot의 다른 callback 진행 검증한다.
 import type {
   ProbeMsg,
   WorkerAwaitMsg,

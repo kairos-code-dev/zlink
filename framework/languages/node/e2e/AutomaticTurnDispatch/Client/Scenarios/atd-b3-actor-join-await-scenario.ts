@@ -1,3 +1,4 @@
+// ATD-B3: actor join 대기 중 다른 actor mailbox 진행 검증한다.
 import type {
   ActorFastReq,
   ActorJoinAwaitReq,

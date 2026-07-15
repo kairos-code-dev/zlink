@@ -1,3 +1,4 @@
+// RM-C9: backpressure / HWM 포화 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';

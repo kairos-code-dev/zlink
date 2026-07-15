@@ -1,3 +1,4 @@
+// SM-F3: 한 channel에 일반 packet과 spot route packet 혼재 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

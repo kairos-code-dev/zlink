@@ -1,3 +1,4 @@
+// MON-A3: spot 이벤트 관찰 시나리오를 검증한다.
 import type { EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';

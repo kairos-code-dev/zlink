@@ -1,3 +1,4 @@
+// SM-G2: owner 이동 (scale-out 중 spot owner 재배치) 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

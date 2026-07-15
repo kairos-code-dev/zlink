@@ -1,3 +1,4 @@
+// MON-B1: event kind 필터 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';

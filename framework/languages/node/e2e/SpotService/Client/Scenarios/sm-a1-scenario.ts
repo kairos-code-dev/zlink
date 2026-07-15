@@ -1,3 +1,4 @@
+// SM-A1: entry spot 생성과 request 시나리오를 검증한다.
 import type { CreateSpotRes, CreateSpotReq, EvidenceWaitReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';

@@ -1,3 +1,4 @@
+// ATD-B1: 한 actor의 await 중 다른 actor mailbox 진행 검증한다.
 import type {
   ActorFastReq,
   ActorAwaitReq,

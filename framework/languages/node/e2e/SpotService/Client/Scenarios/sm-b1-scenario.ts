@@ -1,3 +1,4 @@
+// SM-B1: local actor join 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

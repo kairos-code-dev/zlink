@@ -1,3 +1,4 @@
+// SM-D7: stream session auth와 packet dispatch 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

@@ -1,3 +1,4 @@
+// SM-G4: 다수 bound session push 부하 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

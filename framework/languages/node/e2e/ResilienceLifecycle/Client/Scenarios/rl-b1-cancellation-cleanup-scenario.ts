@@ -1,3 +1,4 @@
+// RL-B1: client 취소와 pending 정리 시나리오를 검증한다.
 import type { ProfileRes, TimeoutRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { postJson } from '../Support/http-client';

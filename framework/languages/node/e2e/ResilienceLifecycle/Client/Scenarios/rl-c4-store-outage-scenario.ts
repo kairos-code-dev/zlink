@@ -1,3 +1,4 @@
+// RL-C4: location store restart/outage 복구 시나리오를 검증한다.
 import { spawn } from 'node:child_process';
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

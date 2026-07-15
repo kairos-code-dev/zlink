@@ -1,3 +1,4 @@
+// SM-B3: 요청 message 객체 충실도 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

@@ -1,3 +1,4 @@
+// ATD-D4: session relay actor await와 bound-session push 격리 검증한다.
 import type {
   ActorPushNotify,
   ActorPushAwaitReq,

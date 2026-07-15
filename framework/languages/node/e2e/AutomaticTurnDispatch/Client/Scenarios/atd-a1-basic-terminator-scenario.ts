@@ -1,3 +1,4 @@
+// ATD-A1: 기본 submit 대기 중 같은 Spot의 다른 callback이 시작되지 않는 순서 검증한다.
 import type {
   EnsureSpotRes,
   EnsureSpotReq,

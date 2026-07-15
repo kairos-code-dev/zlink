@@ -1,3 +1,4 @@
+// SM-F5: channel socket 소유권 독립 (spot routing이 channel을 흔들지 않음) 시나리오를 검증한다.
 import type {
   ChannelRouteRes,
   ChannelRouteReq,

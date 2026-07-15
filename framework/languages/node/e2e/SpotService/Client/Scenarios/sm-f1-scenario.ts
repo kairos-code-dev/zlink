@@ -1,3 +1,4 @@
+// SM-F1: route client → target spot 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

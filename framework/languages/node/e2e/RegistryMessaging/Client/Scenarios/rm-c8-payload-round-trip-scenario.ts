@@ -1,3 +1,4 @@
+// RM-C8: 메시지 크기 다양성 시나리오를 검증한다.
 import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { PayloadRes, ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { sha256Hex } from '../../Shared/messages';

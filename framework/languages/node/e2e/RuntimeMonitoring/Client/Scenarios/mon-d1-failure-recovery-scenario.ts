@@ -1,3 +1,4 @@
+// MON-D1: 장애·복구 반복 중 이벤트 연속성 시나리오를 검증한다.
 import fs from 'node:fs';
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

@@ -1,3 +1,4 @@
+// ATD-C2: 같은 timer의 await 중 다음 tick 재진입 방지 검증한다.
 import type { TimerStartMsg } from '../../Shared/messages';
 import { containsRequestMarkersInOrder } from '../Support/scenario-assert';
 import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';

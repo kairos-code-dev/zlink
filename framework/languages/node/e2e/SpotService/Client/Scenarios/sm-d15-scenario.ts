@@ -1,3 +1,4 @@
+// SM-D15: cross-role 다단 push 사슬 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

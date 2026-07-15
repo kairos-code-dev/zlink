@@ -1,3 +1,4 @@
+// PS-A2: topic filter 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
 import { isEvent } from '../Support/evidence';

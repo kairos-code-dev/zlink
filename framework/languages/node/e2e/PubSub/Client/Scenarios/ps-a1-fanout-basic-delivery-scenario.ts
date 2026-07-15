@@ -1,3 +1,4 @@
+// PS-A1: fanout basic delivery 시나리오를 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames, type EvidenceWaitReq } from '../../Shared/messages';
 import { commonContiguousSequence } from '../Support/evidence';

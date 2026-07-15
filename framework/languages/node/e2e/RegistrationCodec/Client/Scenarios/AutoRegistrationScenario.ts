@@ -1,3 +1,4 @@
+// RC-A1: assembly·module 자동 등록 시나리오를 검증한다.
 import type { EchoRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';

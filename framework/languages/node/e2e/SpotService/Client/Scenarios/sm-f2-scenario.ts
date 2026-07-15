@@ -1,3 +1,4 @@
+// SM-F2: route mesh channel → target spot (ROUTER egress, target node 지정) 시나리오를 검증한다.
 import type {
   CreateSpotRes,
   CreateSpotReq,

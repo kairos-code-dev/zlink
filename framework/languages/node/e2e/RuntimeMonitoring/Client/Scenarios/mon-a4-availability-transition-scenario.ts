@@ -1,3 +1,4 @@
+// MON-A4: 가용성 전이 관측 (failover / drain) 시나리오를 검증한다.
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import { RuntimeMonitoringNames } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';

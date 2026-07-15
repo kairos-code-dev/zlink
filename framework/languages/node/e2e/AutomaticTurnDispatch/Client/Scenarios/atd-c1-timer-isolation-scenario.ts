@@ -1,3 +1,4 @@
+// ATD-C1: 한 timer의 await 중 다른 timer 진행 검증한다.
 import type {
   EnsureSpotRes,
   EnsureSpotReq,

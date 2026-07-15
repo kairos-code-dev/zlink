@@ -1,3 +1,4 @@
+// RM-B1: scale-out (트래픽 중 provider 추가) 시나리오를 검증한다.
 import type { ClientOptions } from '../Support/client-options';
 import { DynamicClusterLauncher } from '../Support/dynamic-cluster-launcher';
 import { getJson, postJson } from '../Support/http-client';

@@ -1,3 +1,4 @@
+// ATD-D3: route bridge를 경유한 target Spot await 순서 검증한다.
 import type {
   EnsureSpotRes,
   EnsureSpotReq,

@@ -1,3 +1,4 @@
+// SM-D12: session 재접속 이전성 (다른 연결 서버로) 시나리오를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,

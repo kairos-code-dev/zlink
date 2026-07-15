@@ -1,3 +1,4 @@
+// SF-A2: polling fallback (watch 없는 store) 시나리오를 검증한다.
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../Support/http-client';

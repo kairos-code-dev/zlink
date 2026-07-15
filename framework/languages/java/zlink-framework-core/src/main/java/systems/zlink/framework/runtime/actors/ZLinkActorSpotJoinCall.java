@@ -174,7 +174,13 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                 }
             })
             .thenCompose(stage -> stage)
-            .thenCompose(result -> applyRemoteActorMigration(result)
+            .whenComplete((result, error) -> {
+                if (localSpot != null && error != null) {
+                    services.actors().cancelLocalJoin(context.actor());
+                }
+            })
+            .thenCompose(result -> completeLocalJoin(localSpot, result)
+                .thenCompose(ignored -> applyRemoteActorMigration(result))
                 .thenCompose(ignored -> decodeJoinResultAsync(result)))
             .whenComplete((r, e) -> traceJoinReplyReceived(e)));
     }
@@ -217,13 +223,29 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
                 }
             })
             .thenCompose(stage -> stage)
-            .thenCompose(result -> applyRemoteActorMigration(result)
+            .whenComplete((result, error) -> {
+                if (localSpot != null && error != null) {
+                    services.actors().cancelLocalJoin(context.actor());
+                }
+            })
+            .thenCompose(result -> completeLocalJoin(localSpot, result)
+                .thenCompose(ignored -> applyRemoteActorMigration(result))
                 .thenCompose(ignored -> decodeJoinResultAsync(result, replyType)))
             .whenComplete((r, e) -> traceJoinReplyReceived(e)));
     }
 
     private static <T> CompletionStage<T> manage(CompletionStage<T> stage) {
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
+    }
+
+    private CompletionStage<Void> completeLocalJoin(
+        ZLinkSpot<?> localSpot,
+        ZLinkBackendActorJoinResult result) {
+        if (localSpot == null || result.result() != ZLinkBackendRequestResult.OK
+            || result.joinResultCode() != 0) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return services.actors().completeLocalJoinFromCaller(context.actor());
     }
 
     private void traceJoinSent() {

@@ -61,6 +61,12 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         CompletionStage<Void> leave(ZLinkActor actor);
     }
 
+    public interface LocalJoinCompleter {
+        CompletionStage<Void> complete(ZLinkActor actor);
+
+        void cancel(ZLinkActor actor);
+    }
+
     private final ZLinkInternalSpotNode spotNode;
     private final Map<String, Class<? extends ZLinkActorFactory>> factories;
     private final ZLinkActorTransferRegistry actorTransfers;
@@ -81,6 +87,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         ignored -> CompletableFuture.completedFuture(null);
     private SourceActorLeaver sourceActorLeaver =
         ignored -> CompletableFuture.completedFuture(null);
+    private LocalJoinCompleter localJoinCompleter =
+        unavailableLocalJoinCompleter();
     private Function<RoutingId, ZLinkSpot<?>> spotResolver = ignored -> null;
     private SpotTransportAddressResolver remoteAddressResolver;
     private final ZLinkActorLocationCoordinator locations =
@@ -1267,6 +1275,34 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         this.sourceActorLeaver = sourceActorLeaver == null
             ? ignored -> CompletableFuture.completedFuture(null)
             : sourceActorLeaver;
+    }
+
+    public void setLocalJoinCompleter(LocalJoinCompleter localJoinCompleter) {
+        this.localJoinCompleter = localJoinCompleter == null
+            ? unavailableLocalJoinCompleter()
+            : localJoinCompleter;
+    }
+
+    public CompletionStage<Void> completeLocalJoinFromCaller(ZLinkActor actor) {
+        return localJoinCompleter.complete(actor);
+    }
+
+    public void cancelLocalJoin(ZLinkActor actor) {
+        localJoinCompleter.cancel(actor);
+    }
+
+    private static LocalJoinCompleter unavailableLocalJoinCompleter() {
+        return new LocalJoinCompleter() {
+            @Override
+            public CompletionStage<Void> complete(ZLinkActor actor) {
+                return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                    "local actor Spot join completion is unavailable"));
+            }
+
+            @Override
+            public void cancel(ZLinkActor actor) {
+            }
+        };
     }
 
     public void setCreatedNotifier(CreatedNotifier createdNotifier) {

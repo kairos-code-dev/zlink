@@ -540,11 +540,12 @@ final class SpotActivation
                 ZLinkMessage.fromEncoded(
                     ZLinkMessagePayloads.encoded(payload),
                     host.serializerForSpot()))),
-            actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
-                spot,
-                actor,
-                backendSpot.routingId(),
-                true));
+            actor -> context.enqueueDispatch(() ->
+                host.notifySpotActorLifecycleAndSuppressBackendEvent(
+                    spot,
+                    actor,
+                    backendSpot.routingId(),
+                    true)));
     }
 
     @Override

@@ -11,6 +11,9 @@ namespace zlink::framework::e2e::observability_ops
 inline constexpr const char *spot_mesh = "obs.play";
 inline constexpr const char *spot_route_channel = "obs.play.route";
 inline constexpr const char *room_spot = "obs.room";
+inline constexpr const char *workflow_spot_mesh = "obs.workflow";
+inline constexpr const char *workflow_route_channel = "obs.workflow.route";
+inline constexpr const char *order_workflow_spot = "OrderWorkflowSpot";
 inline constexpr const char *spot_rid_metadata = "obs-spot-rid";
 
 struct obs_action_req_t

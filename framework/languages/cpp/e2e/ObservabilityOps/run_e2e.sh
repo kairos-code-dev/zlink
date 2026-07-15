@@ -24,18 +24,23 @@ mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 
 assign_ports() {
-  read -r PLAY_A_HTTP PLAY_B_HTTP PLAY_A_ROUTE PLAY_B_ROUTE PLAY_A_SPOT_ROUTER \
-    PLAY_B_SPOT_ROUTER PLAY_A_SPOT_PUB PLAY_B_SPOT_PUB STREAM_ENDPOINT <<<"$(python3 - <<'PY'
+  read -r PLAY_A_HTTP PLAY_B_HTTP SESSION_HTTP WORKFLOW_A_HTTP WORKFLOW_B_HTTP \
+    PLAY_A_ROUTE PLAY_B_ROUTE SESSION_ROUTE WORKFLOW_A_ROUTE WORKFLOW_B_ROUTE \
+    PLAY_A_SPOT_ROUTER PLAY_B_SPOT_ROUTER SESSION_SPOT_ROUTER \
+    WORKFLOW_A_SPOT_ROUTER WORKFLOW_B_SPOT_ROUTER \
+    PLAY_A_SPOT_PUB PLAY_B_SPOT_PUB SESSION_SPOT_PUB \
+    WORKFLOW_A_SPOT_PUB WORKFLOW_B_SPOT_PUB \
+    STREAM_ENDPOINT <<<"$(python3 - <<'PY'
 import socket
 sockets = []
 ports = []
-for _ in range(9):
+for _ in range(21):
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
     sockets.append(s)
     ports.append(s.getsockname()[1])
-values = [f"http://127.0.0.1:{ports[0]}", f"http://127.0.0.1:{ports[1]}"]
-values += [f"tcp://127.0.0.1:{p}" for p in ports[2:9]]
+values = [f"http://127.0.0.1:{p}" for p in ports[:5]]
+values += [f"tcp://127.0.0.1:{p}" for p in ports[5:21]]
 print(" ".join(values))
 for s in sockets:
     s.close()
@@ -139,15 +144,23 @@ PY
   return 1
 }
 
-# play-a hosts the STREAM session gateway (and the timer-enabled subscriber
-# room for OBS-A4); play-b hosts the target room.
-launch_role "$SESSION_SERVER" play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
-  "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT" \
+launch_role "$SESSION_SERVER" session "$SESSION_HTTP" "$SESSION_ROUTE" "$PLAY_A_ROUTE" \
+  "$SESSION_SPOT_ROUTER" "$SESSION_SPOT_PUB" "$STREAM_ENDPOINT" \
+  "$LOG_DIR" key_transitions on drain_natural off
+wait_health "$SESSION_HTTP"
+launch_role "$PLAY_SERVER" play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
+  "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "" \
   "$LOG_DIR" key_transitions on drain_natural on
+wait_health "$PLAY_A_HTTP"
 launch_role "$PLAY_SERVER" play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
   "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" ""
-wait_health "$PLAY_A_HTTP"
 wait_health "$PLAY_B_HTTP"
+launch_role "$ORDER_WORKFLOW_SERVER" workflow-a "$WORKFLOW_A_HTTP" "$WORKFLOW_A_ROUTE" \
+  "$WORKFLOW_B_ROUTE" "$WORKFLOW_A_SPOT_ROUTER" "$WORKFLOW_A_SPOT_PUB" ""
+wait_health "$WORKFLOW_A_HTTP"
+launch_role "$ORDER_WORKFLOW_SERVER" workflow-b "$WORKFLOW_B_HTTP" "$WORKFLOW_B_ROUTE" \
+  "$WORKFLOW_A_ROUTE" "$WORKFLOW_B_SPOT_ROUTER" "$WORKFLOW_B_SPOT_PUB" ""
+wait_health "$WORKFLOW_B_HTTP"
 sleep "$ROUTE_SETTLE_SECONDS"
 
 ensure() {
@@ -175,6 +188,7 @@ PY
 }
 
 SPOT_RID="obs-room-1"
+WORKFLOW_SPOT_RID="obs-workflow-1"
 curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
   -d "{\"spotRid\":\"$SPOT_RID\"}" >"$LOG_DIR/create-room.json"
 python3 - "$LOG_DIR/create-room.json" <<'PY'
@@ -189,7 +203,7 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "flow" ]]; then
   # trigger -> play-a session inbound -> play-b room-spot dispatch.
   write_trigger_config "$CONFIG_DIR/trigger-flow.json" flow "$SPOT_RID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-flow.json" >"$LOG_DIR/trigger-flow.log" 2>&1
-  python3 - "$LOG_DIR/play-a-flow.log" "$LOG_DIR/play-b-flow.log" <<'PY'
+  python3 - "$LOG_DIR/session-flow.log" "$LOG_DIR/play-b-flow.log" <<'PY'
 import re, sys
 def flows(path, needle=None):
     ids = []
@@ -217,7 +231,7 @@ PY
   # OBS-A2 — the dispatch error line carries flow= too.
   write_trigger_config "$CONFIG_DIR/trigger-error.json" error "$SPOT_RID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-error.json" >"$LOG_DIR/trigger-error.log" 2>&1
-  python3 - "$LOG_DIR/play-a-flow.log" <<'PY'
+  python3 - "$LOG_DIR/session-flow.log" <<'PY'
 import re, sys
 error_flow = None
 for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
@@ -235,7 +249,9 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "metrics" ]]; then
   # channel.request.duration samples appear in the evidence collector.
   curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.metrics.evidence.json"
   curl_local -fsS "$PLAY_A_HTTP/evidence" >"$LOG_DIR/play-a.metrics.evidence.json"
-  python3 - "$LOG_DIR/play-b.metrics.evidence.json" "$LOG_DIR/play-a.metrics.evidence.json" <<'PY'
+  curl_local -fsS "$SESSION_HTTP/evidence" >"$LOG_DIR/session.metrics.evidence.json"
+  python3 - "$LOG_DIR/play-b.metrics.evidence.json" "$LOG_DIR/play-a.metrics.evidence.json" \
+    "$LOG_DIR/session.metrics.evidence.json" <<'PY'
 import json, sys
 play_b = json.load(open(sys.argv[1], encoding="utf-8"))["metrics"]
 created = [m for m in play_b if m["name"] == "zlink.spot.created" and m["kind"] == "counter"]
@@ -243,12 +259,13 @@ count = [m for m in play_b if m["name"] == "zlink.spot.count" and m["kind"] == "
 assert created and created[0]["tags"].get("kind") in ("user", "entry"), created
 assert count, "zlink.spot.count missing"
 play_a = json.load(open(sys.argv[2], encoding="utf-8"))["metrics"]
-durations = [m for m in play_a if m["name"] == "zlink.channel.request.duration"]
+session = json.load(open(sys.argv[3], encoding="utf-8"))["metrics"]
+durations = [m for m in session if m["name"] == "zlink.channel.request.duration"]
 assert durations and durations[0]["kind"] == "histogram" and durations[0]["unit"] == "s", durations
 # OBS-B1 subset — server-side session counters follow accepts/closes.
-opened = [m for m in play_a if m["name"] == "zlink.stream.connections.opened"]
-closed = [m for m in play_a if m["name"] == "zlink.stream.connections.closed"]
-active = [m for m in play_a if m["name"] == "zlink.stream.connections.active"]
+opened = [m for m in session if m["name"] == "zlink.stream.connections.opened"]
+closed = [m for m in session if m["name"] == "zlink.stream.connections.closed"]
+active = [m for m in session if m["name"] == "zlink.stream.connections.active"]
 assert len(opened) >= 2 and len(active) >= 2, (opened, active)
 assert closed and all(
     m["tags"].get("close_reason") in ("client_close", "idle_timeout", "heartbeat_timeout",
@@ -263,7 +280,7 @@ assert queue_depth and all(m["tags"].get("kind") in ("user", "entry") for m in q
 assert queue_wait and queue_wait[0]["kind"] == "histogram" and queue_wait[0]["unit"] == "s", queue_wait
 assert sum(m["value"] for m in queue_depth) == 0, "queue depth should net to zero"
 forbidden = {"correlation_id", "flow_id", "actor_id", "spot_rid"}
-for sample in play_a + play_b:
+for sample in play_a + play_b + session:
     assert not (forbidden & set(sample["tags"])), f"high-cardinality label: {sample}"
 print("OBS-B(subset) PASS (spot/queue/channel/stream instruments, closed labels)")
 PY
@@ -273,13 +290,19 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
   # OBS-A4 — one action fans out to every mesh subscriber under the same
   # flow id; a timer-originated publish starts a fresh flow (origin=timer).
   # OBS-B3 — fanout.published/received counters with the closed topic label.
-  curl_local -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
+  curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d '{"spotRid":"obs-room-sub"}' >"$LOG_DIR/create-room-sub.json"
+  curl_local -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-timer-room"}' >"$LOG_DIR/create-timer-room.json"
+  curl_local -fsS -X POST "$WORKFLOW_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$LOG_DIR/create-workflow.json"
   sleep "$ROUTE_SETTLE_SECONDS"
-  write_trigger_config "$CONFIG_DIR/trigger-fanout.json" fanout "$SPOT_RID"
-  "$CLIENT" --config="$CONFIG_DIR/trigger-fanout.json" >"$LOG_DIR/trigger-fanout.log" 2>&1
+  curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/action" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"obs-a4\",\"value\":7}" \
+    >"$LOG_DIR/workflow-action.json"
   sleep "$ROUTE_SETTLE_SECONDS"
-  python3 - "$LOG_DIR/play-b-flow.log" "$LOG_DIR/play-a-flow.log" <<'PY'
+  python3 - "$LOG_DIR/workflow-b-flow.log" "$LOG_DIR/workflow-a-flow.log" \
+    "$LOG_DIR/play-a-flow.log" <<'PY'
 import re, sys
 def lines(path):
     return open(path, encoding="utf-8", errors="replace").readlines()
@@ -298,13 +321,13 @@ for line in lines(sys.argv[2]):
             subscriber_flows.add(m.group(1))
 shared = publish_flows & subscriber_flows
 assert shared, f"subscriber lines do not share the publish flow: {publish_flows} / {subscriber_flows}"
-timer_flow = any("origin=timer" in line for line in lines(sys.argv[2]))
+timer_flow = any("origin=timer" in line for line in lines(sys.argv[3]))
 assert timer_flow, "no origin=timer line on the timer-enabled node"
 print("OBS-A4 PASS (fan-out shares one flow, timer origin starts fresh)")
 PY
-  curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.fanout.evidence.json"
-  curl_local -fsS "$PLAY_A_HTTP/evidence" >"$LOG_DIR/play-a.fanout.evidence.json"
-  python3 - "$LOG_DIR/play-b.fanout.evidence.json" "$LOG_DIR/play-a.fanout.evidence.json" <<'PY'
+  curl_local -fsS "$WORKFLOW_B_HTTP/evidence" >"$LOG_DIR/workflow-b.fanout.evidence.json"
+  curl_local -fsS "$WORKFLOW_A_HTTP/evidence" >"$LOG_DIR/workflow-a.fanout.evidence.json"
+  python3 - "$LOG_DIR/workflow-b.fanout.evidence.json" "$LOG_DIR/workflow-a.fanout.evidence.json" <<'PY'
 import json, sys
 published = [m for m in json.load(open(sys.argv[1], encoding="utf-8"))["metrics"]
              if m["name"] == "zlink.fanout.published"]
@@ -320,6 +343,17 @@ PY
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "drain" ]]; then
+  # Establish the play-a -> play-b route before the owner starts draining.
+  # C1 verifies continuity of an existing route, not a first lookup after the
+  # owner has already stopped accepting new placement and route discovery.
+  curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$SPOT_RID\",\"marker\":\"before-drain\",\"value\":1}" \
+    >"$LOG_DIR/action-before-drain.json"
+  python3 - "$LOG_DIR/action-before-drain.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+assert body["marker"] == "before-drain", body
+PY
   curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.before-drain.evidence.json"
   # OBS-C1 — draining excludes new placement while the typed row, lease, and
   # existing route traffic remain available throughout the propagation window.
@@ -427,14 +461,26 @@ relaunch_topology() {
   assign_ports
   REDIS_KEY_PREFIX="zlink:cpp:observability-ops:${RUN_ID}:${phase}"
   PHASE_LOG_DIR="$LOG_DIR/$phase"
-  launch_role "$SESSION_SERVER" play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
-    "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$STREAM_ENDPOINT" \
+  launch_role "$SESSION_SERVER" session "$SESSION_HTTP" "$SESSION_ROUTE" "$PLAY_A_ROUTE" \
+    "$SESSION_SPOT_ROUTER" "$SESSION_SPOT_PUB" "$STREAM_ENDPOINT" \
+    "$PHASE_LOG_DIR" key_transitions on
+  wait_health "$SESSION_HTTP"
+  launch_role "$PLAY_SERVER" play-a "$PLAY_A_HTTP" "$PLAY_A_ROUTE" "$PLAY_B_ROUTE" \
+    "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "" \
     "$PHASE_LOG_DIR" "${trace_a:-key_transitions}" "${metrics_a:-on}"
+  wait_health "$PLAY_A_HTTP"
   launch_role "$PLAY_SERVER" play-b "$PLAY_B_HTTP" "$PLAY_B_ROUTE" "$PLAY_A_ROUTE" \
     "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" "" \
     "$PHASE_LOG_DIR" key_transitions on "${policy_b:-drain_natural}"
-  wait_health "$PLAY_A_HTTP"
   wait_health "$PLAY_B_HTTP"
+  launch_role "$ORDER_WORKFLOW_SERVER" workflow-a "$WORKFLOW_A_HTTP" "$WORKFLOW_A_ROUTE" \
+    "$WORKFLOW_B_ROUTE" "$WORKFLOW_A_SPOT_ROUTER" "$WORKFLOW_A_SPOT_PUB" "" \
+    "$PHASE_LOG_DIR"
+  wait_health "$WORKFLOW_A_HTTP"
+  launch_role "$ORDER_WORKFLOW_SERVER" workflow-b "$WORKFLOW_B_HTTP" "$WORKFLOW_B_ROUTE" \
+    "$WORKFLOW_A_ROUTE" "$WORKFLOW_B_SPOT_ROUTER" "$WORKFLOW_B_SPOT_PUB" "" \
+    "$PHASE_LOG_DIR"
+  wait_health "$WORKFLOW_B_HTTP"
   sleep "$ROUTE_SETTLE_SECONDS"
 }
 
@@ -542,15 +588,17 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "force" ]]; then
   }
   drain_and_wait_terminal "$PLAY_B_HTTP" 8000 "$PHASE_LOG_DIR/play-b.evidence.json"
   drain_and_wait_terminal "$PLAY_A_HTTP" 3000 "$PHASE_LOG_DIR/play-a.evidence.json"
-  python3 - "$PHASE_LOG_DIR/play-a.evidence.json" <<'PY'
+  drain_and_wait_terminal "$SESSION_HTTP" 3000 "$PHASE_LOG_DIR/session.evidence.json"
+  python3 - "$PHASE_LOG_DIR/play-a.evidence.json" \
+    "$PHASE_LOG_DIR/session.evidence.json" <<'PY'
 import json, sys
-body = json.load(open(sys.argv[1], encoding="utf-8"))
-states = [event["state"] for event in body["drainEvents"]]
-assert "force_stopping" in states, states
-metrics = body["metrics"]
-forced_actor = [m for m in metrics if m["name"] == "zlink.drain.forced"
+actor_body = json.load(open(sys.argv[1], encoding="utf-8"))
+session_body = json.load(open(sys.argv[2], encoding="utf-8"))
+session_states = [event["state"] for event in session_body["drainEvents"]]
+assert "force_stopping" in session_states, session_states
+forced_actor = [m for m in actor_body["metrics"] if m["name"] == "zlink.drain.forced"
                 and m["tags"].get("kind") == "actor"]
-forced_session = [m for m in metrics if m["name"] == "zlink.drain.forced"
+forced_session = [m for m in session_body["metrics"] if m["name"] == "zlink.drain.forced"
                   and m["tags"].get("kind") == "session"]
 assert forced_session and sum(m["value"] for m in forced_session) >= 1, forced_session
 if forced_actor:
@@ -572,12 +620,12 @@ fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "policy" ]]; then
   # OBS-C3 — release-and-recreate frees the owner rows so the next
   # GetOrCreate rebuilds on another owner; rooms.drained counts per policy.
-  relaunch_topology policy release_and_recreate
-  curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
+  relaunch_topology policy
+  curl_local -fsS -X POST "$WORKFLOW_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
   sleep "$SCENARIO_SETTLE_SECONDS"
-  drain_and_wait_terminal "$PLAY_B_HTTP" 15000 "$PHASE_LOG_DIR/play-b.evidence.json"
-  python3 - "$PHASE_LOG_DIR/play-b.evidence.json" <<'PY'
+  drain_and_wait_terminal "$WORKFLOW_B_HTTP" 15000 "$PHASE_LOG_DIR/workflow-b.evidence.json"
+  python3 - "$PHASE_LOG_DIR/workflow-b.evidence.json" <<'PY'
 import json, sys
 body = json.load(open(sys.argv[1], encoding="utf-8"))
 states = [event["state"] for event in body["drainEvents"]]
@@ -585,8 +633,8 @@ assert "drained" in states, states
 rooms = [m for m in body["metrics"] if m["name"] == "zlink.drain.rooms.drained"]
 assert rooms and all(m["tags"].get("policy") == "release_and_recreate" for m in rooms), rooms
 PY
-  curl_local -fsS -X POST "$PLAY_A_HTTP/spot/create" -H 'Content-Type: application/json' \
-    -d "{\"spotRid\":\"$SPOT_RID\"}" >"$PHASE_LOG_DIR/recreate.json"
+  curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$PHASE_LOG_DIR/recreate.json"
   python3 - "$PHASE_LOG_DIR/recreate.json" <<'PY'
 import json, sys
 body = json.load(open(sys.argv[1], encoding="utf-8"))

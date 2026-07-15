@@ -53,8 +53,8 @@ struct server_options_t
                 .http_endpoint = section.require ("httpEndpoint"),
                 .route_endpoint = section.require ("routeEndpoint"),
                 .peer_route_endpoint = section.get ("peerRouteEndpoint").value_or (""),
-                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
-                .spot_pub_endpoint = section.require ("spotPubEndpoint"),
+                .spot_router_endpoint = section.get ("spotRouterEndpoint").value_or (""),
+                .spot_pub_endpoint = section.get ("spotPubEndpoint").value_or (""),
                 .stream_endpoint = section.get ("streamEndpoint").value_or (""),
                 .log_dir = section.require ("logDir"),
                 .trace_mode = section.get ("traceMode").value_or ("key_transitions"),
@@ -136,6 +136,11 @@ struct drain_control_t
 {
     std::function<void (std::chrono::milliseconds)> start_drain;
     std::function<bool ()> is_ready;
+};
+
+struct host_role_descriptor_t
+{
+    zlink::framework::e2e::observability_ops::server::host_role_t value;
 };
 
 class room_spot_t;
@@ -508,10 +513,13 @@ class create_room_handler_t
   public:
     using request_type = obs::create_room_req_t;
     using reply_type = obs::create_room_res_t;
-    using dependency_types = fw::dependency_list_t<fw::spot_node_manager_t, drain_control_t>;
+    using dependency_types =
+      fw::dependency_list_t<fw::spot_node_manager_t, drain_control_t, host_role_descriptor_t>;
 
-    create_room_handler_t (fw::spot_node_manager_t &spots, drain_control_t &drain) :
-        _spots (spots), _drain (drain)
+    create_room_handler_t (fw::spot_node_manager_t &spots,
+                           drain_control_t &drain,
+                           host_role_descriptor_t &role) :
+        _spots (spots), _drain (drain), _role (role)
     {
     }
 
@@ -521,7 +529,11 @@ class create_room_handler_t
             return obs::create_room_res_t{request.spot_rid, "rejected"};
         }
         const auto created = _spots.get_or_create_spot (
-          obs::room_spot, fw::spot_rid_t::from_string (request.spot_rid));
+          _role.value ==
+              zlink::framework::e2e::observability_ops::server::host_role_t::order_workflow
+            ? obs::order_workflow_spot
+            : obs::room_spot,
+          fw::spot_rid_t::from_string (request.spot_rid));
         const auto state = created.state == fw::spot_create_state_t::created ? "created"
                            : created.state == fw::spot_create_state_t::existing
                              ? "existing"
@@ -532,6 +544,7 @@ class create_room_handler_t
   private:
     fw::spot_node_manager_t &_spots;
     drain_control_t &_drain;
+    host_role_descriptor_t &_role;
 };
 
 class drain_handler_t
@@ -575,6 +588,9 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
     if (role != host_role_t::session && !options.stream_endpoint.empty ()) {
         throw std::runtime_error ("only ObservabilityOps Session accepts streamEndpoint");
     }
+    if (options.spot_router_endpoint.empty () || options.spot_pub_endpoint.empty ()) {
+        throw std::runtime_error ("ObservabilityOps Spot host requires router and pub endpoints");
+    }
     auto evidence_owner = std::make_unique<observability_evidence_t> ();
     auto *evidence = evidence_owner.get ();
     auto drain_control_owner = std::make_unique<drain_control_t> ();
@@ -601,6 +617,8 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
         framework.services ().add_singleton<observability_evidence_t> (
           std::move (evidence_owner));
         framework.services ().add_singleton<drain_control_t> (std::move (drain_control_owner));
+        framework.services ().add_singleton<host_role_descriptor_t> (
+          std::make_unique<host_role_descriptor_t> (host_role_descriptor_t{role}));
         framework.add_location_store (
           std::make_shared<fw::locations::redis::redis_location_store_t> (
             fw::locations::redis::redis_location_options_t{
@@ -611,7 +629,12 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
             locations.heartbeat_interval = std::chrono::seconds (1);
             locations.owner_lease_ttl = std::chrono::seconds (5);
             locations.polling_interval = std::chrono::milliseconds (250);
-            locations.spot_router_channels[obs::spot_mesh] = obs::spot_route_channel;
+            if (role == host_role_t::order_workflow) {
+                locations.spot_router_channels[obs::workflow_spot_mesh] =
+                  obs::workflow_route_channel;
+            } else {
+                locations.spot_router_channels[obs::spot_mesh] = obs::spot_route_channel;
+            }
         }
         /* OBS-A3(b): an off node must not create flows but still propagates
          * the received pair to the next hop. */
@@ -621,47 +644,77 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
           .trace_log_file (options.log_dir + "/" + options.node_rid + "-flow.log")
           .trace_label ("cpp-obs-" + options.node_rid);
 
-        auto spot_route = framework.add_route_mesh (obs::spot_route_channel);
+        const auto *route_channel = role == host_role_t::order_workflow
+                                      ? obs::workflow_route_channel
+                                      : obs::spot_route_channel;
+        auto spot_route = framework.add_route_mesh (route_channel);
         spot_route.enable_server (options.route_endpoint);
         spot_route.set_routing_id (zlink::routing_id_t::from (options.node_rid));
         if (!options.peer_route_endpoint.empty ()) {
             spot_route.enable_client (options.peer_route_endpoint);
         }
 
-        auto spot_mesh = framework.add_spot_mesh (obs::spot_mesh);
-        /* OBS-C3: room mesh policy is configurable per run — drain_natural
-         * keeps in-progress rooms; release_and_recreate frees the rows for
-         * a GetOrCreate rebuild on another owner. */
-        spot_mesh.use_drain_policy (options.drain_policy == "release_and_recreate"
-                                      ? fw::spot_drain_policy_t::release_and_recreate
-                                      : fw::spot_drain_policy_t::drain_natural);
-        spot_mesh.set_routing_id (zlink::routing_id_t::from (options.node_rid))
-          .enable_router (options.spot_router_endpoint)
-          .enable_pub_sub (options.spot_pub_endpoint)
-          .accept_route_mesh (obs::spot_route_channel)
-          .add_entry_spot<obs_entry_spot_t> ()
-          .add_spot<room_spot_t> (
-            obs::room_spot,
-            [timer_enabled = options.room_timer_enabled] {
-                return std::make_shared<room_spot_t> (timer_enabled);
-            })
-          .add_actor_factory<obs_actor_factory_t> (obs::actor_type);
+        if (role == host_role_t::session) {
+            framework.add_spot_mesh (obs::spot_mesh)
+              .use_drain_policy (fw::spot_drain_policy_t::drain_natural)
+              .set_routing_id (zlink::routing_id_t::from (options.node_rid))
+              .enable_router (options.spot_router_endpoint)
+              .enable_pub_sub (options.spot_pub_endpoint)
+              .accept_route_mesh (route_channel);
+        } else {
+            const auto *mesh_name = role == host_role_t::order_workflow
+                                      ? obs::workflow_spot_mesh
+                                      : obs::spot_mesh;
+            const auto *spot_type = role == host_role_t::order_workflow
+                                      ? obs::order_workflow_spot
+                                      : obs::room_spot;
+            if (role == host_role_t::play) {
+                framework.add_spot_mesh (mesh_name)
+                  .use_drain_policy (fw::spot_drain_policy_t::drain_natural)
+                  .set_routing_id (zlink::routing_id_t::from (options.node_rid))
+                  .enable_router (options.spot_router_endpoint)
+                  .enable_pub_sub (options.spot_pub_endpoint)
+                  .accept_route_mesh (route_channel)
+                  .add_entry_spot<obs_entry_spot_t> ()
+                  .add_spot<room_spot_t> (
+                    spot_type,
+                    [timer_enabled = options.room_timer_enabled] {
+                        return std::make_shared<room_spot_t> (timer_enabled);
+                    })
+                  .add_actor_factory<obs_actor_factory_t> (obs::actor_type);
+            } else {
+                framework.add_spot_mesh (mesh_name)
+                  .use_drain_policy (fw::spot_drain_policy_t::release_and_recreate)
+                  .set_routing_id (zlink::routing_id_t::from (options.node_rid))
+                  .enable_router (options.spot_router_endpoint)
+                  .enable_pub_sub (options.spot_pub_endpoint)
+                  .accept_route_mesh (route_channel)
+                  .add_spot<room_spot_t> (
+                    spot_type,
+                    [timer_enabled = options.room_timer_enabled] {
+                        return std::make_shared<room_spot_t> (timer_enabled);
+                    });
+            }
+        }
 
-        if (!options.stream_endpoint.empty ()) {
+        if (role == host_role_t::session) {
             framework.add_stream_node ("obs.session")
               .bind (options.stream_endpoint)
               .register_session<obs_session_t> ();
         }
 
-        framework.http ()
-          .listen (options.http_endpoint)
+        auto &http = framework.http ().listen (options.http_endpoint)
           .map_health ("/health")
           .map_get<evidence_handler_t> ("/evidence")
-          .map_post<action_handler_t> ("/spot/action")
-          .map_post<create_room_handler_t> ("/spot/create")
-          .map_post<join_actor_handler_t> ("/actor/join")
-          .map_post<actor_ping_handler_t> ("/actor/ping")
           .map_post<drain_handler_t> ("/drain");
+        if (role != host_role_t::session) {
+            http.map_post<action_handler_t> ("/spot/action")
+              .map_post<create_room_handler_t> ("/spot/create");
+        }
+        if (role == host_role_t::play) {
+            http.map_post<join_actor_handler_t> ("/actor/join")
+              .map_post<actor_ping_handler_t> ("/actor/ping");
+        }
     });
     return app.run (argc, argv);
 }

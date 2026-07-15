@@ -19,7 +19,7 @@ public final class WorkerAwaitMsgHandler
         String value = "spot=" + spot.context().spotRid()
             + ";handler=spot";
         evidence.record(command.requestId(), "worker-await-started", value);
-        var call = spot.context().runWorker(() -> {
+        var call = spot.context().runCpuWorker(() -> {
                 Thread.sleep(command.delayMillis());
                 return command.requestId();
             })

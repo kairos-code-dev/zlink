@@ -120,7 +120,7 @@ public final class AwaitProbeHandlers {
             String value = spot.context().spotRid().toString();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
-            return spot.context().runWorker(() -> {
+            return spot.context().runCpuWorker(() -> {
                     Thread.sleep(2000);
                     return request.requestId();
                 })
@@ -163,7 +163,7 @@ public final class AwaitProbeHandlers {
             String value = spot.context().spotRid().toString();
             evidence.record("worker-await-started", request.requestId(), value);
             evidence.record("worker-await-released", request.requestId(), value);
-            return spot.context().runWorker(() -> {
+            return spot.context().runCpuWorker(() -> {
                     Thread.sleep(request.delayMillis());
                     return request.requestId();
                 })

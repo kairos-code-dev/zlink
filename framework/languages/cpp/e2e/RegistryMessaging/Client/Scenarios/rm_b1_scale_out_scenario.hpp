@@ -10,9 +10,9 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_b1_scale_out_scenario ()
+inline void run_rm_b1_scale_out_scenario (const client_options_t &options)
 {
-    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto provider_a_url = options.http_a_endpoint;
     for (int index = 0; index < 5; ++index) {
         auto reply = post_json<profile_req_t, profile_res_t> (
           provider_a_url, "/profile/request",
@@ -21,8 +21,8 @@ inline void run_rm_b1_scale_out_scenario ()
                 "RM-B1 initial traffic should only use api-a");
     }
 
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file, options.control_wait);
 
     std::set<std::string> providers;
     for (int index = 0; index < 80 && providers.size () < 2; ++index) {

@@ -9,9 +9,9 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c1_request_send_scenario ()
+inline void run_rm_c1_request_send_scenario (const client_options_t &options)
 {
-    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto provider_a_url = options.http_a_endpoint;
     auto request = post_json<profile_req_t, profile_res_t> (
       provider_a_url, "/profile/request", profile_req_t{.value = "c1"});
     ensure (request.value == "profile:c1", "RM-C1 reply mismatch");
@@ -21,8 +21,8 @@ inline void run_rm_c1_request_send_scenario ()
     ensure (sent.status == "sent", "RM-C1 send endpoint failed");
     std::this_thread::sleep_for (std::chrono::milliseconds (100));
 
-    const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
-    const auto evidence_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const auto evidence_a = fetch_evidence (options.http_a_endpoint);
+    const auto evidence_b = fetch_evidence (options.http_b_endpoint);
     bool command_recorded = false;
     for (const auto &snapshot : {evidence_a, evidence_b}) {
         for (const auto &entry : snapshot.entries) {

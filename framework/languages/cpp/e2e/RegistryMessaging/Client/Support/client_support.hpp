@@ -5,24 +5,73 @@
 #include "../../Shared/registry_messaging_contracts.hpp"
 
 #include <zlink/http_client.hpp>
+#include <nlohmann/json.hpp>
 
 #include <chrono>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <string_view>
 
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline std::string env_or (const char *name, std::string fallback = {})
+struct client_options_t
 {
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
+    std::string scenario;
+    std::string api_a2_endpoint;
+    std::string http_a_endpoint;
+    std::string http_b_endpoint;
+    std::string http_a2_endpoint;
+    std::string http_workflow_endpoint;
+    std::string direct_consumer_url;
+    std::string single_consumer_url;
+    std::string store_consumer_url;
+    std::string backpressure_consumer_url;
+    std::string ready_file;
+    std::string continue_file;
+    std::chrono::milliseconds control_wait{60000};
+};
+
+inline client_options_t read_client_options (int argc, char **argv)
+{
+    std::string path;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        constexpr std::string_view prefix = "--config=";
+        if (argument.rfind (prefix, 0) != 0) {
+            throw std::runtime_error ("unknown RegistryMessaging client option: " + argument);
+        }
+        path = argument.substr (prefix.size ());
     }
-    return fallback;
+    if (path.empty ()) {
+        throw std::runtime_error ("RegistryMessaging client requires --config=<path>");
+    }
+    std::ifstream input (path);
+    if (!input) {
+        throw std::runtime_error ("cannot open RegistryMessaging client config: " + path);
+    }
+    const auto section = nlohmann::json::parse (input).at ("e2e");
+    const auto value = [&] (const char *key) {
+        const auto found = section.find (key);
+        return found == section.end () ? std::string{} : found->get<std::string> ();
+    };
+    return {.scenario = value ("scenario"),
+            .api_a2_endpoint = value ("apiA2Endpoint"),
+            .http_a_endpoint = value ("httpAEndpoint"),
+            .http_b_endpoint = value ("httpBEndpoint"),
+            .http_a2_endpoint = value ("httpA2Endpoint"),
+            .http_workflow_endpoint = value ("httpWorkflowEndpoint"),
+            .direct_consumer_url = value ("directConsumerUrl"),
+            .single_consumer_url = value ("singleConsumerUrl"),
+            .store_consumer_url = value ("storeConsumerUrl"),
+            .backpressure_consumer_url = value ("backpressureConsumerUrl"),
+            .ready_file = value ("readyFile"),
+            .continue_file = value ("continueFile"),
+            .control_wait = std::chrono::milliseconds (
+              section.value ("controlWaitMs", 60000))};
 }
 
 inline void ensure (bool condition, const std::string &message)
@@ -41,14 +90,12 @@ inline void touch_file (const std::string &path)
     file << "ready\n";
 }
 
-inline void wait_for_file (const std::string &path)
+inline void wait_for_file (const std::string &path, std::chrono::milliseconds timeout)
 {
     if (path.empty ()) {
         return;
     }
-    const auto timeout_ms =
-      std::chrono::milliseconds (std::stoi (env_or ("ZLINK_CPP_E2E_CONTROL_WAIT_MS", "60000")));
-    const auto deadline = std::chrono::steady_clock::now () + timeout_ms;
+    const auto deadline = std::chrono::steady_clock::now () + timeout;
     do {
         if (std::filesystem::exists (path)) {
             return;
@@ -117,21 +164,22 @@ inline void post_raw (const std::string &base_url,
     ensure (response && response.value ().status < 400, "HTTP POST failed: " + path);
 }
 
-inline bool any_provider_evidence_contains (const std::string &marker, const std::string &value)
+inline bool any_provider_evidence_contains (const client_options_t &options,
+                                            const std::string &marker,
+                                            const std::string &value)
 {
-    return evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT")), marker,
-                              value)
-           || evidence_contains (fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT")),
-                                 marker, value);
+    return evidence_contains (fetch_evidence (options.http_a_endpoint), marker, value)
+           || evidence_contains (fetch_evidence (options.http_b_endpoint), marker, value);
 }
 
-inline void wait_provider_evidence_contains (const std::string &marker,
+inline void wait_provider_evidence_contains (const client_options_t &options,
+                                             const std::string &marker,
                                              const std::string &value,
                                              std::chrono::milliseconds timeout)
 {
     const auto deadline = std::chrono::steady_clock::now () + timeout;
     while (std::chrono::steady_clock::now () < deadline) {
-        if (any_provider_evidence_contains (marker, value)) {
+        if (any_provider_evidence_contains (options, marker, value)) {
             return;
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (100));

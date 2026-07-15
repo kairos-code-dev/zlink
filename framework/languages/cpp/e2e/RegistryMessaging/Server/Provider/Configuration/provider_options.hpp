@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <cstdlib>
+#include <zlink/framework.hpp>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -9,14 +9,6 @@
 
 namespace zlink::framework::e2e::registry_messaging::provider
 {
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
 
 inline std::vector<std::string> split_csv (const std::string &text)
 {
@@ -31,13 +23,14 @@ inline std::vector<std::string> split_csv (const std::string &text)
     return result;
 }
 
-inline std::optional<int> parse_int_env (const char *name)
+inline std::optional<int> parse_optional_int (const configuration_section_t &section,
+                                             const char *name)
 {
-    const auto value = env_or (name);
-    if (value.empty ()) {
+    const auto value = section.get (name);
+    if (!value || value->empty ()) {
         return std::nullopt;
     }
-    return std::stoi (value);
+    return std::stoi (*value);
 }
 
 struct provider_options_t
@@ -53,22 +46,21 @@ struct provider_options_t
     std::string log_dir;
     std::optional<int> server_weight;
     std::optional<int> max_message_size;
+    static provider_options_t bind (const configuration_section_t &section)
+    {
+        const auto rid = section.get ("rid").value_or ("api-a");
+        return {.rid = rid,
+                .instance_id = section.get ("instanceId").value_or (rid),
+                .api_endpoint = section.get ("apiEndpoint").value_or (""),
+                .route_endpoint = section.get ("routeEndpoint").value_or (""),
+                .http_endpoint = section.get ("httpEndpoint").value_or (""),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .route_peers = split_csv (section.get ("routePeers").value_or ("")),
+                .log_dir = section.require ("logDir"),
+                .server_weight = parse_optional_int (section, "serverWeight"),
+                .max_message_size = parse_optional_int (section, "maxMessageSize")};
+    }
 };
-
-inline provider_options_t read_provider_options ()
-{
-    auto rid = env_or ("ZLINK_CPP_E2E_PROVIDER_RID", "api-a");
-    return {.rid = rid,
-            .instance_id = env_or ("ZLINK_CPP_E2E_PROVIDER_INSTANCE", rid),
-            .api_endpoint = env_or ("ZLINK_CPP_E2E_API_ENDPOINT"),
-            .route_endpoint = env_or ("ZLINK_CPP_E2E_ROUTE_ENDPOINT"),
-            .http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-            .redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
-            .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
-            .route_peers = split_csv (env_or ("ZLINK_CPP_E2E_ROUTE_PEERS")),
-            .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-            .server_weight = parse_int_env ("ZLINK_CPP_E2E_SERVER_WEIGHT"),
-            .max_message_size = parse_int_env ("ZLINK_CPP_E2E_MAX_MESSAGE_SIZE")};
-}
 
 } // namespace zlink::framework::e2e::registry_messaging::provider

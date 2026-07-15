@@ -21,49 +21,50 @@
 
 namespace rm_client = zlink::framework::e2e::registry_messaging::client;
 
-int main ()
+int main (int argc, char **argv)
 {
-    const auto scenario = rm_client::env_or ("ZLINK_CPP_E2E_SCENARIO", "common");
+    const auto options = rm_client::read_client_options (argc, argv);
+    const auto &scenario = options.scenario;
     if (scenario == "rm-a1") {
-        rm_client::run_rm_a1_discovery_request_scenario ();
+        rm_client::run_rm_a1_discovery_request_scenario (options);
     } else if (scenario == "rm-a2") {
-        rm_client::run_rm_a2_manual_endpoint_scenario ();
+        rm_client::run_rm_a2_manual_endpoint_scenario (options);
     } else if (scenario == "common") {
-        rm_client::run_rm_a1_discovery_request_scenario ();
-        rm_client::run_rm_c1_request_send_scenario ();
-        rm_client::run_rm_a2_manual_endpoint_scenario ();
-        rm_client::run_rm_c3_multi_provider_distribution_scenario ();
-        rm_client::run_rm_a6_multiple_channels_scenario ();
-        rm_client::run_rm_c8_payload_round_trip_scenario ();
-        rm_client::run_rm_c2_targeted_route_scenario ();
-        rm_client::run_rm_c4_timeout_isolation_scenario ();
-        rm_client::run_rm_c5_missing_packet_scenario ();
+        rm_client::run_rm_a1_discovery_request_scenario (options);
+        rm_client::run_rm_c1_request_send_scenario (options);
+        rm_client::run_rm_a2_manual_endpoint_scenario (options);
+        rm_client::run_rm_c3_multi_provider_distribution_scenario (options);
+        rm_client::run_rm_a6_multiple_channels_scenario (options);
+        rm_client::run_rm_c8_payload_round_trip_scenario (options);
+        rm_client::run_rm_c2_targeted_route_scenario (options);
+        rm_client::run_rm_c4_timeout_isolation_scenario (options);
+        rm_client::run_rm_c5_missing_packet_scenario (options);
     } else if (scenario == "rm-a6") {
-        rm_client::run_rm_a6_multiple_channels_scenario ();
+        rm_client::run_rm_a6_multiple_channels_scenario (options);
     } else if (scenario == "rm-c1") {
-        rm_client::run_rm_c1_request_send_scenario ();
+        rm_client::run_rm_c1_request_send_scenario (options);
     } else if (scenario == "rm-c2") {
-        rm_client::run_rm_c2_targeted_route_scenario ();
+        rm_client::run_rm_c2_targeted_route_scenario (options);
     } else if (scenario == "rm-c3") {
-        rm_client::run_rm_c3_multi_provider_distribution_scenario ();
+        rm_client::run_rm_c3_multi_provider_distribution_scenario (options);
     } else if (scenario == "rm-c4" || scenario == "timeout-cleanup") {
-        rm_client::run_rm_c4_timeout_isolation_scenario ();
+        rm_client::run_rm_c4_timeout_isolation_scenario (options);
     } else if (scenario == "rm-c5") {
-        rm_client::run_rm_c5_missing_packet_scenario ();
+        rm_client::run_rm_c5_missing_packet_scenario (options);
     } else if (scenario == "rm-b1" || scenario == "scale-out") {
-        rm_client::run_rm_b1_scale_out_scenario ();
+        rm_client::run_rm_b1_scale_out_scenario (options);
     } else if (scenario == "rm-b2" || scenario == "scale-in") {
-        rm_client::run_rm_b2_scale_in_scenario ();
+        rm_client::run_rm_b2_scale_in_scenario (options);
     } else if (scenario == "rm-a4" || scenario == "failover") {
-        rm_client::run_rm_a4_same_rid_failover_scenario ();
+        rm_client::run_rm_a4_same_rid_failover_scenario (options);
     } else if (scenario == "rm-c7" || scenario == "weighted") {
-        rm_client::run_rm_c7_weighted_provider_scenario ();
+        rm_client::run_rm_c7_weighted_provider_scenario (options);
     } else if (scenario == "rm-c8") {
-        rm_client::run_rm_c8_payload_round_trip_scenario ();
+        rm_client::run_rm_c8_payload_round_trip_scenario (options);
     } else if (scenario == "rm-c8-max" || scenario == "max-size") {
-        rm_client::run_rm_c8_max_message_size_scenario ();
+        rm_client::run_rm_c8_max_message_size_scenario (options);
     } else if (scenario == "rm-c9" || scenario == "backpressure") {
-        rm_client::run_rm_c9_backpressure_scenario ();
+        rm_client::run_rm_c9_backpressure_scenario (options);
     } else {
         throw std::runtime_error ("unknown scenario " + scenario);
     }

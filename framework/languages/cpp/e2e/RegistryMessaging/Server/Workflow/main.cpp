@@ -26,8 +26,14 @@ void configure_common_codecs (zlink::framework::codec_options_builder_t codecs)
 
 int main (int argc, char **argv)
 {
-    const auto options = rm_workflow::read_workflow_options ();
     auto app = zlink::framework::app_t::create ();
+    app.config ().load_cli (argc, argv);
+    const auto config_path = app.config ().model ().get ("config");
+    if (!config_path) {
+        throw std::runtime_error ("RegistryMessaging workflow requires --config=<path>");
+    }
+    app.config ().load_json (*config_path);
+    const auto options = app.config ().bind_required<rm_workflow::workflow_options_t> ("e2e");
     app.logging ()
       .use_file (options.log_dir + "/" + options.rid + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);

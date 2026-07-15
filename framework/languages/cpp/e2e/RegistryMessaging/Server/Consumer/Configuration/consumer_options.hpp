@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <cstdlib>
+#include <zlink/framework.hpp>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -9,14 +9,6 @@
 
 namespace zlink::framework::e2e::registry_messaging::consumer
 {
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
 
 inline std::vector<std::string> split_csv (const std::string &text)
 {
@@ -31,6 +23,16 @@ inline std::vector<std::string> split_csv (const std::string &text)
     return result;
 }
 
+inline std::optional<int> parse_optional_int (const configuration_section_t &section,
+                                             const char *name)
+{
+    const auto value = section.get (name);
+    if (!value || value->empty ()) {
+        return std::nullopt;
+    }
+    return std::stoi (*value);
+}
+
 struct consumer_options_t
 {
     std::string http_endpoint;
@@ -40,27 +42,19 @@ struct consumer_options_t
     std::string log_dir;
     std::string trace_label;
     std::optional<int> client_max_message_size;
-};
 
-inline std::optional<int> parse_int_env (const char *name)
-{
-    const char *value = std::getenv (name);
-    if (value == nullptr || *value == '\0') {
-        return std::nullopt;
+    static consumer_options_t bind (const configuration_section_t &section)
+    {
+        return {.http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.get ("redis.endpoint").value_or (""),
+                .redis_key_prefix = section.get ("redis.keyPrefix").value_or (""),
+                .provider_endpoints =
+                  split_csv (section.get ("providerEndpoints").value_or ("")),
+                .log_dir = section.require ("logDir"),
+                .trace_label = section.get ("traceLabel").value_or ("consumer"),
+                .client_max_message_size =
+                  parse_optional_int (section, "clientMaxMessageSize")};
     }
-    return std::stoi (value);
-}
-
-inline consumer_options_t read_consumer_options ()
-{
-    return {.http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-            .redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
-            .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
-            .provider_endpoints = split_csv (env_or ("ZLINK_CPP_E2E_PROVIDER_ENDPOINTS")),
-            .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs"),
-            .trace_label = env_or ("ZLINK_CPP_E2E_TRACE_LABEL", "consumer"),
-            .client_max_message_size =
-              parse_int_env ("ZLINK_CPP_E2E_CLIENT_MAX_MESSAGE_SIZE")};
-}
+};
 
 } // namespace zlink::framework::e2e::registry_messaging::consumer

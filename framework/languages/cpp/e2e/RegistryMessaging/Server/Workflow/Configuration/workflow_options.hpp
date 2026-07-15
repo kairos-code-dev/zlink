@@ -1,19 +1,11 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
-#include <cstdlib>
+#include <zlink/framework.hpp>
 #include <string>
 
 namespace zlink::framework::e2e::registry_messaging::workflow
 {
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
 
 struct workflow_options_t
 {
@@ -24,18 +16,17 @@ struct workflow_options_t
     std::string redis_endpoint;
     std::string redis_key_prefix;
     std::string log_dir;
+    static workflow_options_t bind (const configuration_section_t &section)
+    {
+        const auto rid = section.get ("rid").value_or ("workflow-a");
+        return {.rid = rid,
+                .instance_id = section.get ("instanceId").value_or (rid),
+                .workflow_endpoint = section.require ("workflowEndpoint"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .log_dir = section.require ("logDir")};
+    }
 };
-
-inline workflow_options_t read_workflow_options ()
-{
-    auto rid = env_or ("ZLINK_CPP_E2E_PROVIDER_RID", "workflow-a");
-    return {.rid = rid,
-            .instance_id = env_or ("ZLINK_CPP_E2E_PROVIDER_INSTANCE", rid),
-            .workflow_endpoint = env_or ("ZLINK_CPP_E2E_WORKFLOW_ENDPOINT"),
-            .http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT"),
-            .redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT"),
-            .redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX"),
-            .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR", "logs")};
-}
 
 } // namespace zlink::framework::e2e::registry_messaging::workflow

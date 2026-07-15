@@ -14,9 +14,9 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_b2_scale_in_scenario ()
+inline void run_rm_b2_scale_in_scenario (const client_options_t &options)
 {
-    const auto consumer_url = env_or ("ZLINK_CPP_E2E_STORE_CONSUMER_URL");
+    const auto consumer_url = options.store_consumer_url;
     auto location_client = zlink::http_client::client_t::create ()
                              .base_url (consumer_url)
                              .timeout (std::chrono::milliseconds (1000))
@@ -59,8 +59,8 @@ inline void run_rm_b2_scale_in_scenario ()
           }));
     }
     start_requests.store (true, std::memory_order_release);
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file, options.control_wait);
 
     int transition_successes = 0;
     int transition_errors = 0;

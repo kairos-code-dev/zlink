@@ -4,8 +4,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CPP_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-$CPP_DIR/build}"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+BUILD_DIR="$CPP_DIR/build"
+SCENARIO="all"
+E2E_START_ORDER="forward"
+INTERNAL_REDIS_ENDPOINT=""
+INTERNAL_REDIS_CONTAINER=""
+if (($# > 0)) && [[ "$1" != --* ]]; then
+  SCENARIO="$1"
+  shift
+fi
+while (($# > 0)); do
+  case "$1" in
+    --start-order=*) E2E_START_ORDER="${1#*=}" ;;
+    --redis-endpoint=*) INTERNAL_REDIS_ENDPOINT="${1#*=}" ;;
+    --redis-container=*) INTERNAL_REDIS_CONTAINER="${1#*=}" ;;
+    *) echo "Unknown RegistryMessaging runner option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 PROCESS_SHUTDOWN_TIMEOUT_SECONDS=15
@@ -56,7 +72,8 @@ PY
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$RUN_ID"
-mkdir -p "$LOG_DIR"
+CONFIG_DIR="$LOG_DIR/config"
+mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
 
@@ -112,13 +129,10 @@ PY
 REDIS_CONTAINER=""
 REDIS_CONTAINER_OWNED=0
 REDIS_KEY_PREFIX="zlink:e2e:cfg1:$(date +%s)-$$"
-if [[ -n "${ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER:-}" && -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  REDIS_ENDPOINT="$ZLINK_REDIS_E2E_ENDPOINT"
-  REDIS_CONTAINER="$ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER"
+if [[ -n "$INTERNAL_REDIS_CONTAINER" && -n "$INTERNAL_REDIS_ENDPOINT" ]]; then
+  REDIS_ENDPOINT="$INTERNAL_REDIS_ENDPOINT"
+  REDIS_CONTAINER="$INTERNAL_REDIS_CONTAINER"
   echo "redis endpoint=$REDIS_ENDPOINT (existing owned container $REDIS_CONTAINER)"
-elif [[ -n "${ZLINK_REDIS_E2E_ENDPOINT:-}" ]]; then
-  echo "External Redis endpoint is not supported by the C++ RegistryMessaging e2e runner." >&2
-  exit 2
 else
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
     "zlink-redis-cpp-e2e-registrymessaging" "redis:7-alpine"
@@ -142,7 +156,6 @@ PROVIDER_SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_provider"
 WORKFLOW_SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_workflow"
 CONSUMER_SERVER="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_consumer"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_registry_messaging_client"
-SCENARIO="${1:-all}"
 PIDS=()
 LAST_PID=""
 
@@ -202,6 +215,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER" && "$REDIS_CONTAINER_OWNED" == "1" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
+  rm -rf "$CONFIG_DIR"
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   elif [[ $cleanup_failed -ne 0 ]]; then
@@ -244,17 +258,32 @@ start_provider() {
   else
     shift 4
   fi
-  env "$@" \
-    ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
-    ZLINK_CPP_E2E_PROVIDER_INSTANCE="$instance" \
-    ZLINK_CPP_E2E_API_ENDPOINT="$api" \
-    ZLINK_CPP_E2E_ROUTE_ENDPOINT="$route" \
-    ZLINK_CPP_E2E_ROUTE_PEERS="$ROUTE_A,$ROUTE_B" \
-    ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-    ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-    ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-    ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$PROVIDER_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  local config_path="$CONFIG_DIR/provider-$rid-$(date +%s%N).json"
+  python3 - "$config_path" "$rid" "$instance" "$api" "$route" "$http" \
+    "$ROUTE_A,$ROUTE_B" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" "$@" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, rid, instance, api, route, http, route_peers, redis_endpoint,
+ redis_key_prefix, log_dir, *overrides) = sys.argv[1:]
+config = {"rid": rid, "instanceId": instance, "apiEndpoint": api,
+    "routeEndpoint": route, "httpEndpoint": http, "routePeers": route_peers,
+    "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+    "logDir": log_dir}
+allowed = {"serverWeight", "maxMessageSize"}
+for override in overrides:
+    key, separator, value = override.partition("=")
+    if not separator or key not in allowed:
+        raise SystemExit(f"unknown provider configuration override: {override}")
+    config[key] = value
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": config}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$PROVIDER_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$rid-api" "$api"
@@ -283,14 +312,24 @@ start_standard_provider_pair() {
 start_workflow_provider() {
   local rid="$1"
   local workflow="$2"
-  ZLINK_CPP_E2E_PROVIDER_RID="$rid" \
-  ZLINK_CPP_E2E_PROVIDER_INSTANCE="$rid" \
-  ZLINK_CPP_E2E_WORKFLOW_ENDPOINT="$workflow" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_WORKFLOW" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$WORKFLOW_SERVER" >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
+  local config_path="$CONFIG_DIR/workflow-$rid.json"
+  python3 - "$config_path" "$rid" "$workflow" "$HTTP_WORKFLOW" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, rid, workflow, http, redis_endpoint, redis_key_prefix, log_dir = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"rid": rid, "instanceId": rid,
+        "workflowEndpoint": workflow, "httpEndpoint": http,
+        "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+        "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$WORKFLOW_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$rid.stdout.log" 2>"$LOG_DIR/$rid.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$rid-workflow" "$workflow"
@@ -303,14 +342,30 @@ start_consumer() {
   local endpoints="$3"
   local redis_endpoint="$4"
   shift 4
-  env "$@" \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http" \
-  ZLINK_CPP_E2E_PROVIDER_ENDPOINTS="$endpoints" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$redis_endpoint" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_TRACE_LABEL="$name" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CONSUMER_SERVER" >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
+  local config_path="$CONFIG_DIR/consumer-$name.json"
+  python3 - "$config_path" "$name" "$http" "$endpoints" "$redis_endpoint" \
+    "$REDIS_KEY_PREFIX" "$LOG_DIR" "$@" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, name, http, endpoints, redis_endpoint, redis_key_prefix, log_dir,
+ *overrides) = sys.argv[1:]
+config = {"httpEndpoint": http, "providerEndpoints": endpoints,
+    "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+    "traceLabel": name, "logDir": log_dir}
+for override in overrides:
+    key, separator, value = override.partition("=")
+    if not separator or key != "clientMaxMessageSize":
+        raise SystemExit(f"unknown consumer configuration override: {override}")
+    config[key] = value
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": config}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$CONSUMER_SERVER" --config="$config_path" \
+    >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   LAST_PID="$!"
   PIDS+=("$LAST_PID")
   wait_port "$name-http" "$http"
@@ -367,24 +422,36 @@ run_client() {
   local scenario="$1"
   local suffix="$2"
   shift 2
-  ZLINK_CPP_E2E_SCENARIO="$scenario" \
-  ZLINK_CPP_E2E_API_A_ENDPOINT="$API_A" \
-  ZLINK_CPP_E2E_API_A2_ENDPOINT="$API_A2" \
-  ZLINK_CPP_E2E_API_B_ENDPOINT="$API_B" \
-  ZLINK_CPP_E2E_ROUTE_A_ENDPOINT="$ROUTE_A" \
-  ZLINK_CPP_E2E_ROUTE_B_ENDPOINT="$ROUTE_B" \
-  ZLINK_CPP_E2E_HTTP_A_ENDPOINT="$HTTP_A" \
-  ZLINK_CPP_E2E_HTTP_B_ENDPOINT="$HTTP_B" \
-  ZLINK_CPP_E2E_HTTP_A2_ENDPOINT="$HTTP_A2" \
-  ZLINK_CPP_E2E_HTTP_WORKFLOW_ENDPOINT="$HTTP_WORKFLOW" \
-  ZLINK_CPP_E2E_DIRECT_CONSUMER_URL="$HTTP_DIRECT_CONSUMER" \
-  ZLINK_CPP_E2E_SINGLE_CONSUMER_URL="$HTTP_SINGLE_CONSUMER" \
-  ZLINK_CPP_E2E_STORE_CONSUMER_URL="$HTTP_STORE_CONSUMER" \
-  ZLINK_CPP_E2E_BACKPRESSURE_CONSUMER_URL="$HTTP_BACKPRESSURE_CONSUMER" \
-  ZLINK_CPP_E2E_CLIENT_ROUTE_ENDPOINT="$CLIENT_ROUTE" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$@" \
-    "$CLIENT" >"$LOG_DIR/client-$suffix.stdout.log" 2>"$LOG_DIR/client-$suffix.stderr.log"
+  local config_path="$CONFIG_DIR/client-$suffix.json"
+  python3 - "$config_path" "$scenario" "$API_A2" "$HTTP_A" "$HTTP_B" "$HTTP_A2" \
+    "$HTTP_WORKFLOW" "$HTTP_DIRECT_CONSUMER" "$HTTP_SINGLE_CONSUMER" \
+    "$HTTP_STORE_CONSUMER" "$HTTP_BACKPRESSURE_CONSUMER" "$@" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, scenario, api_a2, http_a, http_b, http_a2, http_workflow,
+ direct_consumer, single_consumer, store_consumer, backpressure_consumer,
+ *overrides) = sys.argv[1:]
+config = {"scenario": scenario, "apiA2Endpoint": api_a2,
+    "httpAEndpoint": http_a, "httpBEndpoint": http_b,
+    "httpA2Endpoint": http_a2, "httpWorkflowEndpoint": http_workflow,
+    "directConsumerUrl": direct_consumer, "singleConsumerUrl": single_consumer,
+    "storeConsumerUrl": store_consumer,
+    "backpressureConsumerUrl": backpressure_consumer}
+allowed = {"readyFile", "continueFile", "singleConsumerUrl"}
+for override in overrides:
+    key, separator, value = override.partition("=")
+    if not separator or key not in allowed:
+        raise SystemExit(f"unknown client configuration override: {override}")
+    config[key] = value
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": config}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$CLIENT" --config="$config_path" \
+    >"$LOG_DIR/client-$suffix.stdout.log" 2>"$LOG_DIR/client-$suffix.stderr.log"
 }
 
 if [[ "$SCENARIO" == "all" ]]; then
@@ -392,10 +459,8 @@ if [[ "$SCENARIO" == "all" ]]; then
   for scenario in RM-A1 RM-A2 RM-A4 RM-A6 RM-B1 RM-B2 RM-C1 RM-C2 RM-C3 RM-C4 RM-C5 RM-C7 RM-C8 RM-C9; do
     echo "running $scenario"
     child_output="$LOG_DIR/child-$scenario.output.log"
-    ZLINK_CPP_E2E_BUILD_DIR="$BUILD_DIR" \
-      ZLINK_REDIS_E2E_ENDPOINT="$REDIS_ENDPOINT" \
-      ZLINK_CPP_E2E_OWNED_REDIS_CONTAINER="$REDIS_CONTAINER" \
-      "$0" "$scenario" | tee "$child_output"
+    "$0" "$scenario" --redis-endpoint="$REDIS_ENDPOINT" \
+      --redis-container="$REDIS_CONTAINER" | tee "$child_output"
     child_log_dir="$(sed -n 's/^log_dir=//p' "$child_output" | tail -1)"
     if [[ -z "$child_log_dir" || ! -d "$child_log_dir" ]]; then
       echo "missing child log directory for $scenario" >&2
@@ -418,7 +483,7 @@ esac
 
 if [[ "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
   if ! rg -q 'std::async' "$SCRIPT_DIR/Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp" \
-    || ! rg -q 'ZLINK_CPP_E2E_SINGLE_CONSUMER_URL' \
+    || ! rg -q 'options.single_consumer_url' \
       "$SCRIPT_DIR/Client/Scenarios/rm_a2_manual_endpoint_scenario.hpp"; then
     echo "RM-A2 contract gate failed: manual and auto endpoints do not share one channel" >&2
     exit 1
@@ -429,9 +494,9 @@ if [[ "$SCENARIO" == "RM-A2" || "$SCENARIO" == "rm-a2" ]]; then
   SINGLE_CONSUMER_PID="$LAST_PID"
   READY="$LOG_DIR/rm-a2-ready"
   CONTINUE="$LOG_DIR/rm-a2-continue"
-  run_client rm-a2 rm-a2 env \
-    ZLINK_CPP_E2E_READY_FILE="$READY" \
-    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  run_client rm-a2 rm-a2 \
+    readyFile="$READY" \
+    continueFile="$CONTINUE" &
   A2_CLIENT_PID="$!"
   wait_marker "$READY"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
@@ -445,13 +510,13 @@ fi
 if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
   start_standard_provider_pair
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-a1 rm-a1 env
+  run_client rm-a1 rm-a1
   cat "$LOG_DIR/client-rm-a1.stdout.log"
   exit 0
 fi
 
 if [[ "$SCENARIO" == "RM-A4" || "$SCENARIO" == "rm-a4" ]]; then
-  if ! rg -q 'ZLINK_CPP_E2E_STORE_CONSUMER_URL' \
+  if ! rg -q 'options.store_consumer_url' \
       "$SCRIPT_DIR/Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp" \
     || ! rg -q 'locations/peers' \
       "$SCRIPT_DIR/Client/Scenarios/rm_a4_same_rid_failover_scenario.hpp"; then
@@ -464,9 +529,9 @@ if [[ "$SCENARIO" == "RM-A4" || "$SCENARIO" == "rm-a4" ]]; then
   STORE_CONSUMER_PID="$LAST_PID"
   READY="$LOG_DIR/rm-a4-ready"
   CONTINUE="$LOG_DIR/rm-a4-continue"
-  run_client rm-a4 rm-a4 env \
-    ZLINK_CPP_E2E_READY_FILE="$READY" \
-    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  run_client rm-a4 rm-a4 \
+    readyFile="$READY" \
+    continueFile="$CONTINUE" &
   A4_CLIENT_PID="$!"
   wait_marker "$READY"
   stop_pid "$API_A_PID"
@@ -486,7 +551,7 @@ if [[ "$SCENARIO" == "RM-A6" || "$SCENARIO" == "rm-a6" ]]; then
   start_workflow_provider workflow-a "$WORKFLOW_A"
   WORKFLOW_A_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-a6 rm-a6 env
+  run_client rm-a6 rm-a6
   cat "$LOG_DIR/client-rm-a6.stdout.log"
   exit 0
 fi
@@ -496,9 +561,9 @@ if [[ "$SCENARIO" == "RM-B1" || "$SCENARIO" == "rm-b1" ]]; then
   API_A_PID="$LAST_PID"
   READY="$LOG_DIR/rm-b1-ready"
   CONTINUE="$LOG_DIR/rm-b1-continue"
-  run_client rm-b1 rm-b1 env \
-    ZLINK_CPP_E2E_READY_FILE="$READY" \
-    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  run_client rm-b1 rm-b1 \
+    readyFile="$READY" \
+    continueFile="$CONTINUE" &
   B1_CLIENT_PID="$!"
   wait_marker "$READY"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
@@ -522,9 +587,9 @@ if [[ "$SCENARIO" == "RM-B2" || "$SCENARIO" == "rm-b2" ]]; then
   STORE_CONSUMER_PID="$LAST_PID"
   READY="$LOG_DIR/rm-b2-ready"
   CONTINUE="$LOG_DIR/rm-b2-continue"
-  run_client rm-b2 rm-b2 env \
-    ZLINK_CPP_E2E_READY_FILE="$READY" \
-    ZLINK_CPP_E2E_CONTINUE_FILE="$CONTINUE" &
+  run_client rm-b2 rm-b2 \
+    readyFile="$READY" \
+    continueFile="$CONTINUE" &
   B2_CLIENT_PID="$!"
   wait_marker "$READY"
   stop_pid "$API_B_PID"
@@ -540,7 +605,7 @@ if [[ "$SCENARIO" == "RM-C1" || "$SCENARIO" == "rm-c1" ]]; then
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c1 rm-c1 env
+  run_client rm-c1 rm-c1
   cat "$LOG_DIR/client-rm-c1.stdout.log"
   exit 0
 fi
@@ -551,7 +616,7 @@ if [[ "$SCENARIO" == "RM-C2" || "$SCENARIO" == "rm-c2" ]]; then
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c2 rm-c2 env
+  run_client rm-c2 rm-c2
   cat "$LOG_DIR/client-rm-c2.stdout.log"
   exit 0
 fi
@@ -564,7 +629,7 @@ if [[ "$SCENARIO" == "RM-C3" || "$SCENARIO" == "rm-c3" ]]; then
   start_consumer direct-consumer "$HTTP_DIRECT_CONSUMER" "$API_A,$API_B" ""
   DIRECT_CONSUMER_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c3 rm-c3 env
+  run_client rm-c3 rm-c3
   cat "$LOG_DIR/client-rm-c3.stdout.log"
   exit 0
 fi
@@ -577,7 +642,7 @@ if [[ "$SCENARIO" == "RM-C4" || "$SCENARIO" == "rm-c4" ]]; then
   start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
   STORE_CONSUMER_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c4 rm-c4 env
+  run_client rm-c4 rm-c4
   cat "$LOG_DIR/client-rm-c4.stdout.log"
   exit 0
 fi
@@ -590,20 +655,20 @@ if [[ "$SCENARIO" == "RM-C5" || "$SCENARIO" == "rm-c5" ]]; then
   start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
   STORE_CONSUMER_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c5 rm-c5 env
+  run_client rm-c5 rm-c5
   cat "$LOG_DIR/client-rm-c5.stdout.log"
   exit 0
 fi
 
 if [[ "$SCENARIO" == "RM-C7" || "$SCENARIO" == "rm-c7" ]]; then
-  start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a ZLINK_CPP_E2E_SERVER_WEIGHT=75
+  start_provider api-a "$API_A" "$ROUTE_A" "$HTTP_A" api-a serverWeight=75
   API_A_PID="$LAST_PID"
-  start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B" api-b ZLINK_CPP_E2E_SERVER_WEIGHT=25
+  start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B" api-b serverWeight=25
   API_B_PID="$LAST_PID"
   start_consumer weighted-consumer "$HTTP_SINGLE_CONSUMER" "" "$REDIS_ENDPOINT"
   WEIGHTED_CONSUMER_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c7 rm-c7 env
+  run_client rm-c7 rm-c7
   cat "$LOG_DIR/client-rm-c7.stdout.log"
   exit 0
 fi
@@ -616,19 +681,19 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" ""
   SINGLE_CONSUMER_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c8 rm-c8 env
+  run_client rm-c8 rm-c8
   cat "$LOG_DIR/client-rm-c8.stdout.log"
   stop_pid "$SINGLE_CONSUMER_PID"
   stop_pid "$API_A_PID"
   stop_pid "$API_B_PID"
 
-  start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a ZLINK_CPP_E2E_MAX_MESSAGE_SIZE=2097152
+  start_provider api-a "$API_A2" "$ROUTE_A2" "$HTTP_A2" api-a maxMessageSize=2097152
   API_A_PID="$LAST_PID"
   start_consumer single-consumer-max "$HTTP_STORE_CONSUMER" "$API_A2" "" \
-    ZLINK_CPP_E2E_CLIENT_MAX_MESSAGE_SIZE=2097152
+    clientMaxMessageSize=2097152
   SINGLE_CONSUMER_PID="$LAST_PID"
   wait_consumer_profile_ready single-consumer-max "$HTTP_STORE_CONSUMER" "rm-c8-max-ready"
-  run_client rm-c8-max rm-c8-max env ZLINK_CPP_E2E_SINGLE_CONSUMER_URL="$HTTP_STORE_CONSUMER"
+  run_client rm-c8-max rm-c8-max singleConsumerUrl="$HTTP_STORE_CONSUMER"
   cat "$LOG_DIR/client-rm-c8-max.stdout.log"
   exit 0
 fi
@@ -639,7 +704,7 @@ if [[ "$SCENARIO" == "RM-C9" || "$SCENARIO" == "rm-c9" ]]; then
   start_consumer backpressure-consumer "$HTTP_BACKPRESSURE_CONSUMER" "$API_A" ""
   BACKPRESSURE_CONSUMER_PID="$LAST_PID"
   sleep "$ROUTE_SETTLE_SECONDS"
-  run_client rm-c9 rm-c9 env
+  run_client rm-c9 rm-c9
   cat "$LOG_DIR/client-rm-c9.stdout.log"
   exit 0
 fi

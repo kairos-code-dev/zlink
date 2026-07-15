@@ -9,25 +9,25 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_a6_multiple_channels_scenario ()
+inline void run_rm_a6_multiple_channels_scenario (const client_options_t &options)
 {
     auto api = post_json<profile_req_t, profile_res_t> (
-      env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"), "/profile/request",
+      options.http_a_endpoint, "/profile/request",
       profile_req_t{.value = "a6-api"});
     ensure (api.provider_rid.rfind ("api-", 0) == 0,
             "RM-A6 api channel resolved a non-api provider");
 
     auto workflow = post_json<workflow_req_t, workflow_res_t> (
-      env_or ("ZLINK_CPP_E2E_HTTP_WORKFLOW_ENDPOINT"), "/workflow/request",
+      options.http_workflow_endpoint, "/workflow/request",
       workflow_req_t{.value = "a6-workflow"});
     ensure (workflow.value == "workflow:a6-workflow",
             "RM-A6 workflow reply value mismatch");
     ensure (workflow.provider_rid == "workflow-a",
             "RM-A6 workflow channel resolved the wrong provider");
 
-    const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
-    const auto evidence_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
-    const auto workflow_evidence = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_WORKFLOW_ENDPOINT"));
+    const auto evidence_a = fetch_evidence (options.http_a_endpoint);
+    const auto evidence_b = fetch_evidence (options.http_b_endpoint);
+    const auto workflow_evidence = fetch_evidence (options.http_workflow_endpoint);
     bool workflow_recorded = false;
     bool workflow_leaked_to_provider = false;
     for (const auto &entry : workflow_evidence.entries) {

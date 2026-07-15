@@ -10,12 +10,12 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c3_multi_provider_distribution_scenario ()
+inline void run_rm_c3_multi_provider_distribution_scenario (const client_options_t &options)
 {
-    const auto before_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
-    const auto before_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const auto before_a = fetch_evidence (options.http_a_endpoint);
+    const auto before_b = fetch_evidence (options.http_b_endpoint);
     const std::string marker = "rm-c3";
-    const auto consumer = env_or ("ZLINK_CPP_E2E_DIRECT_CONSUMER_URL");
+    const auto consumer = options.direct_consumer_url;
     std::map<std::string, int> counts;
     for (int index = 0; index < 60; ++index) {
         const auto value = marker + "-" + std::to_string (index);
@@ -29,8 +29,8 @@ inline void run_rm_c3_multi_provider_distribution_scenario ()
     ensure (counts["api-a"] > 0 && counts["api-b"] > 0,
             "RM-C3 did not distribute to both providers");
     ensure (counts["api-a"] + counts["api-b"] == 60, "RM-C3 count mismatch");
-    const auto after_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
-    const auto after_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const auto after_a = fetch_evidence (options.http_a_endpoint);
+    const auto after_b = fetch_evidence (options.http_b_endpoint);
     const auto evidence_delta =
       evidence_value_prefix_count (after_a, "ProfileReq", marker)
       - evidence_value_prefix_count (before_a, "ProfileReq", marker)

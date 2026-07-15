@@ -14,8 +14,14 @@ namespace rm_consumer = zlink::framework::e2e::registry_messaging::consumer;
 
 int main (int argc, char **argv)
 {
-    const auto options = rm_consumer::read_consumer_options ();
     auto app = zlink::framework::app_t::create ();
+    app.config ().load_cli (argc, argv);
+    const auto config_path = app.config ().model ().get ("config");
+    if (!config_path) {
+        throw std::runtime_error ("RegistryMessaging consumer requires --config=<path>");
+    }
+    app.config ().load_json (*config_path);
+    const auto options = app.config ().bind_required<rm_consumer::consumer_options_t> ("e2e");
     app.logging ()
       .use_file (options.log_dir + "/" + options.trace_label + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);

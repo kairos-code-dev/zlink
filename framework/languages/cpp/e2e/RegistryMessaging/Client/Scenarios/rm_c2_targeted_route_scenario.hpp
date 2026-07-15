@@ -9,15 +9,15 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c2_targeted_route_scenario ()
+inline void run_rm_c2_targeted_route_scenario (const client_options_t &options)
 {
-    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto provider_a_url = options.http_a_endpoint;
     auto to_b = post_json<scenario_route_req_t, scenario_route_res_t> (
       provider_a_url, "/profile/route/request", scenario_route_req_t{.value = "target-b"});
     ensure (to_b.target_rid == "api-b", "RM-C2 target rid mismatch");
 
-    const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
-    const auto evidence_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const auto evidence_a = fetch_evidence (options.http_a_endpoint);
+    const auto evidence_b = fetch_evidence (options.http_b_endpoint);
     bool found_on_a = false;
     bool found_on_b = false;
     for (const auto &entry : evidence_a.entries) {

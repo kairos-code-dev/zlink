@@ -10,10 +10,10 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_a1_discovery_request_scenario ()
+inline void run_rm_a1_discovery_request_scenario (const client_options_t &options)
 {
-    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
-    const auto provider_b_url = env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT");
+    const auto provider_a_url = options.http_a_endpoint;
+    const auto provider_b_url = options.http_b_endpoint;
     const auto reply = post_json<profile_req_t, profile_res_t> (
       provider_a_url, "/profile/request", profile_req_t{.value = "rm-a1"});
     ensure (reply.value == "profile:rm-a1", "RM-A1 reply payload mismatch");

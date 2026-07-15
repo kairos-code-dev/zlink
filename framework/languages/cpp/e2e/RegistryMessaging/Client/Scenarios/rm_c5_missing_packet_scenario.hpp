@@ -9,9 +9,9 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c5_missing_packet_scenario ()
+inline void run_rm_c5_missing_packet_scenario (const client_options_t &options)
 {
-    const auto consumer = env_or ("ZLINK_CPP_E2E_STORE_CONSUMER_URL");
+    const auto consumer = options.store_consumer_url;
     auto missing = post_json<profile_req_t, request_failure_res_t> (
       consumer, "/profile/missing-request", profile_req_t{.value = "missing"});
     ensure (missing.failed, "RM-C5 missing request unexpectedly succeeded");
@@ -25,8 +25,8 @@ inline void run_rm_c5_missing_packet_scenario ()
     ensure (normal.value == "profile:normal", "RM-C5 normal request after missing packet failed");
 
     std::this_thread::sleep_for (std::chrono::milliseconds (200));
-    const auto evidence_a = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT"));
-    const auto evidence_b = fetch_evidence (env_or ("ZLINK_CPP_E2E_HTTP_B_ENDPOINT"));
+    const auto evidence_a = fetch_evidence (options.http_a_endpoint);
+    const auto evidence_b = fetch_evidence (options.http_b_endpoint);
     bool reply_error_recorded = false;
     bool drop_recorded = false;
     for (const auto &snapshot : {evidence_a, evidence_b}) {

@@ -9,9 +9,9 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c4_timeout_isolation_scenario ()
+inline void run_rm_c4_timeout_isolation_scenario (const client_options_t &options)
 {
-    const auto consumer = env_or ("ZLINK_CPP_E2E_STORE_CONSUMER_URL");
+    const auto consumer = options.store_consumer_url;
     const auto timeout = post_json<profile_req_t, request_failure_res_t> (
       consumer, "/profile/slow-request", profile_req_t{.value = "slow"});
     ensure (timeout.failed, "RM-C4 expected the slow request to time out");
@@ -24,9 +24,9 @@ inline void run_rm_c4_timeout_isolation_scenario ()
     auto later = post_json<profile_req_t, profile_res_t> (
       consumer, "/profile/request", profile_req_t{.value = "rm-c4-later"});
     ensure (later.value == "profile:rm-c4-later", "RM-C4 later reply mismatch");
-    wait_provider_evidence_contains ("ProfileReq", "rm-c4-after-timeout",
+    wait_provider_evidence_contains (options, "ProfileReq", "rm-c4-after-timeout",
                                      std::chrono::seconds (10));
-    wait_provider_evidence_contains ("ProfileReq", "rm-c4-later", std::chrono::seconds (10));
+    wait_provider_evidence_contains (options, "ProfileReq", "rm-c4-later", std::chrono::seconds (10));
     std::cout << "scenario RM-C4 passed\n";
 }
 

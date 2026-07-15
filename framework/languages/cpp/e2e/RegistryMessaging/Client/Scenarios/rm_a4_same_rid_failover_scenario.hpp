@@ -10,13 +10,13 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_a4_same_rid_failover_scenario ()
+inline void run_rm_a4_same_rid_failover_scenario (const client_options_t &options)
 {
-    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
+    const auto provider_a_url = options.http_a_endpoint;
     const auto replacement_provider_url =
-      env_or ("ZLINK_CPP_E2E_HTTP_A2_ENDPOINT", provider_a_url);
-    const auto consumer_url = env_or ("ZLINK_CPP_E2E_STORE_CONSUMER_URL");
-    const auto replacement_api_endpoint = env_or ("ZLINK_CPP_E2E_API_A2_ENDPOINT");
+      options.http_a2_endpoint.empty () ? provider_a_url : options.http_a2_endpoint;
+    const auto consumer_url = options.store_consumer_url;
+    const auto replacement_api_endpoint = options.api_a2_endpoint;
     auto first = post_json<profile_req_t, profile_res_t> (
       consumer_url, "/profile/request", profile_req_t{.value = "failover-before"});
     ensure (first.provider_rid == "api-a" && first.instance_id == "api-a-v1",
@@ -25,8 +25,8 @@ inline void run_rm_a4_same_rid_failover_scenario ()
     ensure (evidence_value_prefix_count (v1_evidence, "ProfileReq", "failover-before") == 1,
             "RM-A4 initial provider evidence mismatch");
 
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file, options.control_wait);
 
     auto location_client = zlink::http_client::client_t::create ()
                              .base_url (consumer_url)

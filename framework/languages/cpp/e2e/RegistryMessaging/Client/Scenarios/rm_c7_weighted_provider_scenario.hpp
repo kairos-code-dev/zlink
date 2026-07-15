@@ -14,9 +14,9 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c7_weighted_provider_scenario ()
+inline void run_rm_c7_weighted_provider_scenario (const client_options_t &options)
 {
-    const auto consumer_url = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
+    const auto consumer_url = options.single_consumer_url;
     std::set<std::string> seen;
     for (int attempt = 0; attempt < 120 && seen.size () < 2; ++attempt) {
         auto reply = post_json<profile_req_t, profile_res_t> (

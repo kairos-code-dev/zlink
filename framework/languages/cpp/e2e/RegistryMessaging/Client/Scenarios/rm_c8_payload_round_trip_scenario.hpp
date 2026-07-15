@@ -10,9 +10,9 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_c8_payload_round_trip_scenario ()
+inline void run_rm_c8_payload_round_trip_scenario (const client_options_t &options)
 {
-    const auto consumer = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
+    const auto consumer = options.single_consumer_url;
     const std::vector<std::size_t> sizes = {1, 4096, 256 * 1024, 1024 * 1024};
     for (const auto size : sizes) {
         const auto payload = std::string (size, static_cast<char> ('a' + (size % 23)));
@@ -33,9 +33,9 @@ inline void run_rm_c8_payload_round_trip_scenario ()
     std::cout << "scenario RM-C8 passed\n";
 }
 
-inline void run_rm_c8_max_message_size_scenario ()
+inline void run_rm_c8_max_message_size_scenario (const client_options_t &options)
 {
-    const auto consumer = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
+    const auto consumer = options.single_consumer_url;
     const auto oversized_payload = std::string (3 * 1024 * 1024, 'x');
     auto oversized = post_json<payload_req_t, request_failure_res_t> (
       consumer, "/profile/payload-over-limit",

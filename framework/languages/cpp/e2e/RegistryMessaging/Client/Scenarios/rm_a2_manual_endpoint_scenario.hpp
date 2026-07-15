@@ -12,10 +12,10 @@
 namespace zlink::framework::e2e::registry_messaging::client
 {
 
-inline void run_rm_a2_manual_endpoint_scenario ()
+inline void run_rm_a2_manual_endpoint_scenario (const client_options_t &options)
 {
-    const auto provider_a_url = env_or ("ZLINK_CPP_E2E_HTTP_A_ENDPOINT");
-    const auto consumer_url = env_or ("ZLINK_CPP_E2E_SINGLE_CONSUMER_URL");
+    const auto provider_a_url = options.http_a_endpoint;
+    const auto consumer_url = options.single_consumer_url;
     auto reply = post_json<profile_req_t, profile_res_t> (
       consumer_url, "/profile/request", profile_req_t{.value = "rm-a2"});
     ensure (reply.value == "profile:rm-a2", "RM-A2 reply payload mismatch");
@@ -27,8 +27,8 @@ inline void run_rm_a2_manual_endpoint_scenario ()
           consumer_url, "/profile/request", profile_req_t{.value = "slow"},
           std::chrono::seconds (3));
     });
-    touch_file (env_or ("ZLINK_CPP_E2E_READY_FILE"));
-    wait_for_file (env_or ("ZLINK_CPP_E2E_CONTINUE_FILE"));
+    touch_file (options.ready_file);
+    wait_for_file (options.continue_file, options.control_wait);
     const auto inflight_reply = inflight.get ();
     ensure (inflight_reply.provider_rid == "api-a" && inflight_reply.value == "profile:slow",
             "RM-A2 manual in-flight request was disrupted by auto reconcile");

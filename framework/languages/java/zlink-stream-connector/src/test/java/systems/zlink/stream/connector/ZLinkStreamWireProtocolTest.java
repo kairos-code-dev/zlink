@@ -103,6 +103,16 @@ final class ZLinkStreamWireProtocolTest {
     }
 
     @Test
+    void headerProtocol_acceptsMetadataAtTotalLimitAndRejectsOneByteMore() {
+        assertEquals(1024, encodedMetadataLength(1019));
+        ZLinkStreamWireProtocol.encodeHeader(headerWithMetadataValue("v".repeat(1019)));
+
+        assertEquals(1025, encodedMetadataLength(1020));
+        assertThrows(IllegalArgumentException.class, () ->
+            ZLinkStreamWireProtocol.encodeHeader(headerWithMetadataValue("v".repeat(1020))));
+    }
+
+    @Test
     void headerProtocol_omitsReplyNameAndAcceptsLegacyReplyName() {
         ZLinkStreamWireProtocol.Header response = new ZLinkStreamWireProtocol.Header(
             ZLinkStreamWireProtocol.KIND_RESPONSE,
@@ -129,5 +139,20 @@ final class ZLinkStreamWireProtocolTest {
             bytes[i] = (byte) Integer.parseInt(compact.substring(i * 2, i * 2 + 2), 16);
         }
         return bytes;
+    }
+
+    private static ZLinkStreamWireProtocol.Header headerWithMetadataValue(String value) {
+        return new ZLinkStreamWireProtocol.Header(
+            ZLinkStreamWireProtocol.KIND_SEND,
+            ZLinkStreamWireProtocol.CODEC_JSON,
+            ZLinkStreamWireProtocol.FLAG_HAS_METADATA,
+            null,
+            "MetadataLimit",
+            Map.of("k", value),
+            null);
+    }
+
+    private static int encodedMetadataLength(int valueLength) {
+        return 1 + 1 + 1 + 2 + valueLength;
     }
 }

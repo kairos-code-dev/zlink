@@ -30,6 +30,7 @@ final class ZLinkStreamWireProtocol {
         FLAG_HAS_REQUEST_SEQ | FLAG_HAS_METADATA | FLAG_PAYLOAD_COMPRESSED
             | FLAG_HAS_CORRELATION_ID | FLAG_HAS_FLOW_ID;
     private static final int MAX_PACKET_NAME_BYTES = 255;
+    private static final int MAX_METADATA_BYTES = 1024;
 
     private ZLinkStreamWireProtocol() {
     }
@@ -236,6 +237,9 @@ final class ZLinkStreamWireProtocol {
                 throw new IllegalArgumentException("metadata value is too large");
             }
             size += 1 + key.length + 2 + value.length;
+            if (size > MAX_METADATA_BYTES) {
+                throw new IllegalArgumentException("metadata must not exceed 1024 bytes");
+            }
         }
         ByteBuffer buffer = ByteBuffer.allocate(size);
         buffer.put((byte) metadata.size());

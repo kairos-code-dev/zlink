@@ -95,6 +95,8 @@ int main ()
     const auto pubsub_slow_scenario =
       read_file (pubsub_client_root / "Scenarios/slow_subscriber_scenario.hpp");
     const auto runtime_monitoring_runner = read_file (e2e_root / "RuntimeMonitoring/run_e2e.sh");
+    const auto runtime_monitoring_a1 = read_file (
+      e2e_root / "RuntimeMonitoring/Client/Scenarios/mon_a1_socket_events_scenario.hpp");
     const auto runtime_monitoring_a4 = read_file (
       e2e_root / "RuntimeMonitoring/Client/Scenarios/mon_a4_availability_transition_scenario.hpp");
     const auto runtime_monitoring_d1 = read_file (
@@ -989,6 +991,14 @@ int main ()
                   "E2E-CP-35", "MON-A4 does not tie evidence to old and new endpoints");
     gate.require (runtime_monitoring_d1.find ("verify_down_up_cycles") != std::string::npos,
                   "E2E-CP-35", "MON-D1 does not verify each ordered down/up transition");
+    gate.require (runtime_monitoring_a1.find ("wait_for_new_evidence") != std::string::npos
+                    && runtime_monitoring_a1.find ("kind=PeerAdmissionChanged")
+                         != std::string::npos,
+                  "E2E-CP-35",
+                  "MON-A1 does not verify drain and restore admission transitions");
+    gate.require (runtime_monitoring_a1.find ("before_restore_topology_count")
+                    == std::string::npos,
+                  "E2E-CP-35", "MON-A1 still substitutes topology counts for admission events");
 
     /* E2E-CP-37 — store outage scenarios stop and restart Redis instead of pausing it. */
     gate.require (store_failure_client.find ("docker (\"pause\")") == std::string::npos

@@ -357,6 +357,14 @@ int main ()
                   "IMP-CP-30",
                   "channel contract still exposes C++-only reliability event types");
 
+    /* IMP-CP-29 — unhandled action and log levels are fixed framework policy. */
+    gate.require (execution_hpp.find ("unhandled_dispatch_options_t") == std::string::npos
+                    && execution_hpp.find ("unhandled_dispatch_action_t")
+                         == std::string::npos,
+                  "IMP-CP-29", "fixed unhandled dispatch policy remains configurable");
+    gate.require (execution_hpp.find ("unhandled;") == std::string::npos,
+                  "IMP-CP-29", "dispatch options still expose the no-op unhandled policy");
+
     /* IMP-CP-08 — session-owned transport failures reach the session callback. */
     gate.require (stream_host.find ("stream_session_error_t::transport_error")
                     != std::string::npos,

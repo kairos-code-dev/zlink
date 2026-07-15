@@ -451,6 +451,14 @@ class spot_node_runtime_t
     void complete_remote_actor_transfer (const actor_ref_t &source_actor,
                                          const actor_ref_t &target_actor,
                                          spot_route_t target_route);
+    // Emits an internal transfer lifecycle boundary through the configured
+    // public message-flow observer. The transfer id is both the correlation
+    // key and lifecycle flow key so role-server evidence can join source and
+    // target events without parsing runtime logs.
+    void emit_actor_transfer_marker (std::string marker,
+                                     const actor_ref_t &actor_ref,
+                                     std::string transfer_id,
+                                     std::optional<spot_rid_t> spot_rid = std::nullopt) const;
     result_t<actor_join_reply_t> join_actor_to_entry_spot_erased (
       const actor_ref_t &actor_ref,
       node_rid_t spot_node_rid,

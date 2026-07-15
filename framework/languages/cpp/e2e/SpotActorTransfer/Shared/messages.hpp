@@ -187,6 +187,9 @@ struct actor_evidence_t
     std::string kind;
     std::string value;
     std::string node_rid;
+    std::string transfer_id;
+    std::string correlation_id;
+    std::string flow_id;
 };
 
 inline void to_json (nlohmann::json &json, const actor_create_req_t &value)
@@ -505,7 +508,10 @@ inline void to_json (nlohmann::json &json, const actor_evidence_t &value)
             {"actorId", value.actor_id},
             {"kind", value.kind},
             {"value", value.value},
-            {"nodeRid", value.node_rid}};
+            {"nodeRid", value.node_rid},
+            {"transferId", value.transfer_id},
+            {"correlationId", value.correlation_id},
+            {"flowId", value.flow_id}};
 }
 
 inline void from_json (const nlohmann::json &json, actor_evidence_t &value)
@@ -515,12 +521,16 @@ inline void from_json (const nlohmann::json &json, actor_evidence_t &value)
     value.kind = json.value ("kind", "");
     value.value = json.value ("value", "");
     value.node_rid = json.value ("nodeRid", "");
+    value.transfer_id = json.value ("transferId", "");
+    value.correlation_id = json.value ("correlationId", "");
+    value.flow_id = json.value ("flowId", "");
 }
 
 inline std::string evidence_text (const actor_evidence_t &evidence)
 {
     return evidence.scenario + "|" + evidence.actor_id + "|" + evidence.kind + "|" + evidence.value
-           + "|" + evidence.node_rid;
+           + "|" + evidence.node_rid + "|" + evidence.transfer_id + "|"
+           + evidence.correlation_id + "|" + evidence.flow_id;
 }
 
 // Bridges the nlohmann to_json/from_json contracts above into the stream payload

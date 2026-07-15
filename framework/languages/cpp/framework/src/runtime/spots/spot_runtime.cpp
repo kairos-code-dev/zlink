@@ -3032,6 +3032,31 @@ void spot_node_runtime_t::complete_remote_actor_transfer (const actor_ref_t &sou
     release_actor_location (*_state, source_actor);
 }
 
+void spot_node_runtime_t::emit_actor_transfer_marker (
+  std::string marker,
+  const actor_ref_t &actor_ref,
+  std::string transfer_id,
+  std::optional<spot_rid_t> spot_rid) const
+{
+    message_flow_tracer_t (_state->dispatch).trace (
+      message_flow_outcome_t::dispatched,
+      [marker = std::move (marker), actor_ref, transfer_id = std::move (transfer_id),
+       spot_rid = std::move (spot_rid), node_rid = node_rid ()] () mutable {
+          return message_flow_event_t{
+            .outcome = message_flow_outcome_t::dispatched,
+            .surface = dispatch_error_surface_t::spot_actor,
+            .message_kind = dispatch_message_kind_t::actor_request,
+            .packet_name = std::move (marker),
+            .correlation_id = transfer_id,
+            .source_rid = std::string (node_rid.value ()),
+            .spot_rid = spot_rid ? std::make_optional (std::string (spot_rid->value ()))
+                                 : std::nullopt,
+            .actor_id = std::string (actor_ref.actor_id ()),
+            .flow_id = std::move (transfer_id),
+            .flow_origin = flow_origin_t::lifecycle};
+      });
+}
+
 result_t<actor_join_reply_t>
 spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
                                                   const actor_ref_t &actor_ref,
@@ -3283,6 +3308,8 @@ spot_node_runtime_t::commit_remote_actor_to_spot (std::string transfer_id,
                                                         ? location_updated.error ()->what ()
                                                         : "actor committed location update failed");
     }
+    emit_actor_transfer_marker ("location_committed", committed, transfer_id,
+                                target_spot_rid);
     if (_state->update_actor_registry_ref) {
         const auto updated = _state->update_actor_registry_ref (committed);
         if (!updated) {

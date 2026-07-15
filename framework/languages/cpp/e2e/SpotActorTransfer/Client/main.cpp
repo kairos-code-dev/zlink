@@ -14,6 +14,7 @@
 #include <map>
 #include <optional>
 #include <random>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -237,6 +238,36 @@ void assert_evidence_sequence (http::client_t &node,
         }
     }
     require (next == expected.size (), "Lifecycle evidence order mismatch.");
+}
+
+void assert_correlated_transfer_markers (
+  const std::vector<http::client_t *> &nodes,
+  const std::string &actor_id,
+  const std::vector<std::string> &kinds)
+{
+    std::optional<std::string> transfer_id;
+    std::set<std::string> observed;
+    for (auto *node : nodes) {
+        for (const auto &entry : get_evidence (*node)) {
+            if (entry.scenario != "message_flow" || entry.actor_id != actor_id
+                || std::find (kinds.begin (), kinds.end (), entry.kind) == kinds.end ()) {
+                continue;
+            }
+            require (!entry.transfer_id.empty () && !entry.correlation_id.empty ()
+                       && !entry.flow_id.empty (),
+                     "Transfer marker has no correlation fields: " + entry.kind);
+            if (!transfer_id) {
+                transfer_id = entry.transfer_id;
+            }
+            require (entry.transfer_id == *transfer_id
+                       && entry.correlation_id == *transfer_id
+                       && entry.flow_id == *transfer_id,
+                     "Transfer marker correlation mismatch: " + entry.kind);
+            observed.insert (entry.kind);
+        }
+    }
+    require (transfer_id.has_value () && observed.size () == kinds.size (),
+             "Correlated transfer marker set is incomplete.");
 }
 
 class bound_session_t
@@ -466,16 +497,23 @@ class scenario_runner_t
         require (probe.state_version == 21,
                  "ST-B1 state version expected 21, got " + std::to_string (probe.state_version));
 
-        wait_evidence (_nodes.a, {
-                                   "transfer|" + actor_id + "|transfer_out|21",
-                                   "transfer|" + actor_id + "|leave|21",
-                                   "ST-B1|" + actor_id + "|success_reply|" + spot_rid,
-                                 });
-        wait_evidence (_nodes.b, {
-                                   "transfer|" + actor_id + "|transfer_in|21",
-                                   "transfer|" + actor_id + "|joined|" + spot_rid + ":21",
-                                   "ST-B1|" + actor_id + "|packet_handler|after-transfer",
-                                 });
+        assert_evidence_sequence (
+          _nodes.a, {"transfer|" + actor_id + "|transfer_out|21",
+                     "transfer|" + actor_id + "|leave|21",
+                     "message_flow|" + actor_id + "|commit_request|",
+                     "message_flow|" + actor_id + "|commit_ack|",
+                     "message_flow|" + actor_id + "|source_cleanup|",
+                     "ST-B1|" + actor_id + "|success_reply|" + spot_rid});
+        assert_evidence_sequence (
+          _nodes.b, {"ST-B1|" + actor_id + "|admission|",
+                     "transfer|" + actor_id + "|transfer_in|21",
+                     "transfer|" + actor_id + "|joined|" + spot_rid + ":21",
+                     "message_flow|" + actor_id + "|location_committed|",
+                     "ST-B1|" + actor_id + "|packet_handler|after-transfer"});
+
+        assert_correlated_transfer_markers (
+          {&_nodes.a, &_nodes.b}, actor_id,
+          {"commit_request", "location_committed", "commit_ack", "source_cleanup"});
     }
 
     void source_cleanup_failure_after_success ()
@@ -521,15 +559,22 @@ class scenario_runner_t
         require (probe.state_version == 0,
                  "ST-B3 default empty target state expected 0, got "
                    + std::to_string (probe.state_version));
-        wait_evidence (_nodes.a, {
-                                   "transfer|" + actor_id + "|transfer_out_empty_default|no-adapter",
-                                   "transfer|" + actor_id + "|leave|31",
-                                 });
-        wait_evidence (_nodes.b, {
-                                   "transfer|" + actor_id + "|transfer_in_empty_default|actor-factory",
-                                   "transfer|" + actor_id + "|joined|" + spot_rid + ":0",
-                                   "ST-B3|" + actor_id + "|packet_handler|after-default-empty-transfer",
-                                 });
+        assert_evidence_sequence (
+          _nodes.a, {"transfer|" + actor_id + "|transfer_out_empty_default|no-adapter",
+                     "transfer|" + actor_id + "|leave|31",
+                     "message_flow|" + actor_id + "|commit_request|",
+                     "message_flow|" + actor_id + "|commit_ack|",
+                     "message_flow|" + actor_id + "|source_cleanup|",
+                     "ST-B3|" + actor_id + "|success_reply|" + spot_rid});
+        assert_evidence_sequence (
+          _nodes.b, {"ST-B3|" + actor_id + "|admission|",
+                     "transfer|" + actor_id + "|transfer_in_empty_default|actor-factory",
+                     "transfer|" + actor_id + "|joined|" + spot_rid + ":0",
+                     "message_flow|" + actor_id + "|location_committed|",
+                     "ST-B3|" + actor_id + "|packet_handler|after-default-empty-transfer"});
+        assert_correlated_transfer_markers (
+          {&_nodes.a, &_nodes.b}, actor_id,
+          {"commit_request", "location_committed", "commit_ack", "source_cleanup"});
     }
 
     void remote_empty_state_transfer ()

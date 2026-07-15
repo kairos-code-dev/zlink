@@ -60,6 +60,29 @@ class evidence_store_t
     {
         e2e::actor_evidence_t entry{std::move (scenario), std::move (actor_id), std::move (kind),
                                     std::move (value), _node_rid};
+        append (std::move (entry));
+    }
+
+    void add_flow (const fw::message_flow_event_t &event)
+    {
+        if (!event.packet_name || !event.actor_id || !event.correlation_id
+            || !event.flow_id) {
+            return;
+        }
+        static const std::set<std::string> transfer_markers{
+          "commit_request", "location_committed", "commit_ack", "source_cleanup"};
+        if (!transfer_markers.contains (*event.packet_name)) {
+            return;
+        }
+        e2e::actor_evidence_t entry{"message_flow", *event.actor_id, *event.packet_name,
+                                    *event.correlation_id, _node_rid, *event.correlation_id,
+                                    *event.correlation_id, *event.flow_id};
+        append (std::move (entry));
+    }
+
+  private:
+    void append (e2e::actor_evidence_t entry)
+    {
         const auto line = e2e::evidence_text (entry);
         {
             std::lock_guard<std::mutex> lock (_mutex);
@@ -71,6 +94,8 @@ class evidence_store_t
         }
         _changed.notify_all ();
     }
+
+  public:
 
     std::vector<e2e::actor_evidence_t> snapshot () const
     {
@@ -340,15 +365,14 @@ class transfer_entry_spot_t : public fw::entry_spot_t
                                                     const e2e::join_target_req_t &request)
     {
         auto context = actor.context;
-        g_evidence->add (request.scenario, actor.actor_id, "commit_request",
-                         request.target_spot_rid);
         auto joined = co_await context
                         .join_spot (fw::spot_rid_t::from_string (request.target_spot_rid), request)
                         .timeout (std::chrono::seconds (10))
                         .async<e2e::join_target_res_t> ();
         const auto *joined_accepted =
           std::get_if<fw::actor_join_accepted_t<e2e::join_target_res_t>> (&joined);
-        if (joined_accepted != nullptr) {
+        if (joined_accepted != nullptr
+            && joined_accepted->actor.node_rid ().value () == g_evidence->node_rid ()) {
             g_evidence->add (request.scenario, actor.actor_id, "location_committed",
                              request.target_spot_rid);
         }
@@ -472,8 +496,6 @@ class transfer_user_spot_t : public fw::spot_t
                         .join_spot (fw::spot_rid_t::from_string (request.target_spot_rid), request)
                         .timeout (std::chrono::seconds (10))
                         .async<e2e::join_target_res_t> ();
-        g_evidence->add (request.scenario, actor.actor_id, "commit_request",
-                         request.target_spot_rid);
         const auto *joined_accepted =
           std::get_if<fw::actor_join_accepted_t<e2e::join_target_res_t>> (&joined);
         co_return e2e::join_target_res_t{request.scenario,
@@ -1029,6 +1051,11 @@ int main (int argc, char **argv)
         framework.services ().add_singleton<joined_gate_store_t> (std::move (joined_gates));
         framework.services ().add_singleton<transfer_gate_store_t> (std::move (transfer_gates));
         framework.services ().add_singleton<shutdown_flag_t> (std::move (shutdown_flag));
+
+        framework.configure_dispatch ()
+          .message_flow (fw::message_flow_log_mode_t::key_transitions)
+          .set_message_flow_observer (
+            [] (const fw::message_flow_event_t &event) { g_evidence->add_flow (event); });
 
         framework.set_actor_transfer_forward_window (std::chrono::seconds (3));
         framework.add_location_store (

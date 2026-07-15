@@ -16,9 +16,9 @@ client와 `run_e2e.sh all`에 등록되어 있지만, 현재 배치와 일부 �
 | ST-A1 | `deferred` | local admission부터 성공 응답까지의 순서를 client가 검사한다. 역할별 배치가 공통 구성과 다르다(`E2E-CP-56`). |
 | ST-A2 | `deferred` | local admission 거절과 joined side effect 부재를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-A3 | `deferred` | joined gate가 유지되는 동안 actor packet이 완료되지 않는지 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
-| ST-B1 | `deferred` | stateful remote transfer와 target state를 검사하지만 `commit_ack`, `source_cleanup` 순서 evidence가 없다(`E2E-CP-51`, `E2E-CP-56`). |
+| ST-B1 | `deferred` | stateful remote transfer와 target state를 검사하고, source·target 역할 evidence의 `commit_request`, `location_committed`, `commit_ack`, `source_cleanup`이 같은 transfer id와 message-flow correlation을 공유하는지 확인한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-B2 | `deferred` | transfer가 끝난 뒤 source를 중단하므로 commit과 cleanup 사이의 장애를 만들지 못한다(`E2E-CP-52`, `E2E-CP-56`). |
-| ST-B3 | `deferred` | adapter 미등록 시 빈 state transfer를 검사하지만 전체 callback 순서 evidence가 없다(`E2E-CP-51`, `E2E-CP-56`). |
+| ST-B3 | `deferred` | adapter 미등록 시 빈 state transfer와 source·target callback 순서를 검사하고, commit 경계 marker가 같은 transfer id와 message-flow correlation을 공유하는지 확인한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-B4 | `deferred` | 명시적인 빈 state transfer 뒤 target state를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-C1 | `deferred` | commit 전 source 중단과 target negative를 검사하지만 pending admission timeout cleanup evidence가 없다(`E2E-CP-52`, `E2E-CP-56`). |
 | ST-C2 | `deferred` | target commit 뒤 source 중단 후 location과 bound push를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |

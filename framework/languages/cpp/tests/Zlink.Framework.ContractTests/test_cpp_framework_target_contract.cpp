@@ -83,6 +83,8 @@ int main ()
     const auto live_location_reader =
       read_file (root / "framework/src/runtime/locations/live_location_reader.hpp");
     const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
+    const auto actor_gateway_spot_bridge =
+      read_file (root / "framework/src/runtime/host/actor_gateway_spot_bridge.cpp");
     const auto channel_outbound_exchange =
       read_file (root / "framework/src/runtime/channels/channel_outbound_exchange.cpp");
     const auto pubsub_client_root = e2e_root / "PubSub/Client";
@@ -548,6 +550,38 @@ int main ()
                     && transfer_runner.find ("did not fire this run (timing-dependent)")
                          == std::string::npos,
                   "E2E-CP-50", "Track-F required markers are still diagnostic-only warnings");
+
+    /* E2E-CP-51 — remote transfer exposes the commit-ack and source-cleanup
+     * boundaries, and ST-B1 requires their order instead of inferring it from
+     * the completed join call. */
+    gate.require (actor_gateway_spot_bridge.find (
+                    "emit_actor_transfer_marker (\"commit_ack\"")
+                    != std::string::npos
+                    && actor_gateway_spot_bridge.find (
+                         "emit_actor_transfer_marker (\"source_cleanup\"")
+                         != std::string::npos,
+                  "E2E-CP-51",
+                  "remote transfer emits no structured commit_ack/source_cleanup boundaries");
+    const auto st_b1_begin = transfer_client.find ("void remote_stateful_transfer ()");
+    const auto st_b1_end =
+      transfer_client.find ("void source_cleanup_failure_after_success ()", st_b1_begin);
+    const auto st_b1 = st_b1_begin != std::string::npos && st_b1_end != std::string::npos
+                         ? transfer_client.substr (st_b1_begin, st_b1_end - st_b1_begin)
+                         : std::string{};
+    gate.require (st_b1.find ("commit_ack") != std::string::npos
+                    && st_b1.find ("source_cleanup") != std::string::npos,
+                  "E2E-CP-51",
+                  "ST-B1 does not require commit_ack and source_cleanup evidence");
+    const auto st_b3_begin = transfer_client.find ("void remote_missing_adapter ()");
+    const auto st_b3_end =
+      transfer_client.find ("void remote_empty_state_transfer ()", st_b3_begin);
+    const auto st_b3 = st_b3_begin != std::string::npos && st_b3_end != std::string::npos
+                         ? transfer_client.substr (st_b3_begin, st_b3_end - st_b3_begin)
+                         : std::string{};
+    gate.require (st_b3.find ("commit_ack") != std::string::npos
+                    && st_b3.find ("source_cleanup") != std::string::npos,
+                  "E2E-CP-51",
+                  "ST-B3 does not require commit_ack and source_cleanup evidence");
 
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");

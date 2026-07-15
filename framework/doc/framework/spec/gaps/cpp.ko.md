@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 20건. 완료 0건.**
+**전체 20건. 완료 6건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -352,11 +352,16 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 - [ ] **IMP-CP-17** (결함) — `add_spot_events(name, interval)`의 **interval을 읽는 곳이 없다**
 - [x] **IMP-CP-18** (결함) — 폴백 로그가 `phase=` 대신 **`outcome=`**을 쓴다
   - 근거: 수정 전 message-flow unit gate를 `phase=` 계약으로 바꾸자 종료 코드 3으로 실패했다. fallback structured field를 `phase` 하나로 교체하고 SpotService·ObservabilityOps의 실제 로그 판정을 갱신한 뒤 unit test, shell syntax/no-hit gate, `ObservabilityOps/run_e2e.sh flow`의 OBS-A1·A2가 통과했다.
-- [ ] **IMP-CP-19** (미구현) — **connector에 자동 재연결이 없다.** 수립된 연결이 끊기면 영원히 `Disconnected`
-- [ ] **IMP-CP-20** (결함) — connector `connect()`가 **현재 상태를 무시**한다(`Closed`도 되살아나고, `Connected`면 소켓이 하나 더 열린다)
-- [ ] **IMP-CP-21** (미구현) — connector `connect_timeout`(기본 5초)을 **적용하지 않는다**
-- [ ] **IMP-CP-22** (결함) — connector heartbeat이 **`dispatch()` 안에서만** 돈다
-- [ ] **IMP-CP-23** (결함) — `Manual` 모드인데 error/state/disconnected callback을 **IO 스레드에서 인라인 호출**한다
+- [x] **IMP-CP-19** (미구현) — **connector에 자동 재연결이 없다.** 수립된 연결이 끊기면 영원히 `Disconnected`
+  - 근거: 수립된 transport 손실 뒤 `Reconnecting`으로 전이해 설정된 backoff와 최대 횟수로 다시 연결하고, 기존 pending request는 한 번만 실패시키며 reconnect 중 새 전송은 거부하도록 구현했다(`e8f8eb3ab`). 실제 서버가 두 번째 연결을 받아 send를 관측하는 회귀와 connector 전체 테스트가 통과했다.
+- [x] **IMP-CP-20** (결함) — connector `connect()`가 **현재 상태를 무시**한다(`Closed`도 되살아나고, `Connected`면 소켓이 하나 더 열린다)
+  - 근거: 상태별 connect 정책을 한곳에 두어 `Connected` 재호출은 성공 no-op, `Connecting`·`Reconnecting`은 거부, `Closed`는 되살리지 않도록 고쳤다(`0c0ed5b79`). sync·callback connect 상태 회귀와 connector 전체 테스트가 통과했다.
+- [x] **IMP-CP-21** (미구현) — connector `connect_timeout`(기본 5초)을 **적용하지 않는다**
+  - 근거: 개별 dial이 아니라 reconnect를 포함한 전체 connect 작업에 `connect_timeout` deadline을 적용했다(`3853c74e4`). 응답하지 않는 실제 TCP peer를 대상으로 sync·callback 경로가 `connect_timeout`으로 끝나는 회귀와 connector 전체 테스트가 통과했다.
+- [x] **IMP-CP-22** (결함) — connector heartbeat이 **`dispatch()` 안에서만** 돈다
+  - 근거: heartbeat ping/pong과 liveness 판정을 수신 pump와 독립 timer가 소유하게 해 callback dispatch 없이도 연결이 유지되도록 고쳤다(`0dd7c7b5e`). dispatch를 호출하지 않고 heartbeat 창을 넘기는 실제 transport 회귀와 connector 전체 테스트가 통과했다.
+- [x] **IMP-CP-23** (결함) — `Manual` 모드인데 error/state/disconnected callback을 **IO 스레드에서 인라인 호출**한다
+  - 근거: Manual의 lifecycle·error·disconnected callback을 connector delivery queue로 보내고 `dispatch()`가 하나씩 실행하도록 고쳤다(`e8d658b1f`). 묶음 끝에서 connect·callback·heartbeat 정책과 실행 runner를 통합해 중복 lifecycle 계층을 제거했다(`5e33ae2ad`). connector, core sample, perf smoke, Unreal 게이트가 모두 통과했다.
 - [x] **IMP-CP-24** (결함) — connector metadata 디코더가 **빈 값을 거부**한다 (교차 언어 wire 파손)
   - 근거: 수정 전 metadata codec 회귀 테스트에서 encoder가 만든 `{key: ""}` 프레임을 decoder가 거부해 종료 코드 70으로 실패했다. decoder는 key 길이만 1 이상으로 유지하고 0 길이 value를 허용하도록 수정한 뒤 connector 전체 protocol/integration ctest가 통과했다.
 - [x] **IMP-CP-25** (결함) — HTTP: streaming body가 **redirect에서 빈 채로 재전송**된다
@@ -465,19 +470,25 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 contract gate가 runner의 in-memory Probe 실행과 위조된 server-invariants marker를 검출했다. Probe를 릴리스 게이트에서 제거하고 실제 stream client의 request·push·reconnect·idle-close 단언만 성공 기준으로 남긴 뒤 gate와 `./run_sample.sh`가 `PASS SupportChat.Cpp`로 통과했다.
 - [x] **SMP-CP-02** (결함) — Bingo에서 **2번째 참가자가 `GameStartedNotify`를 영원히 못 받는다**
   - 근거: 수정 전 두 번째 client 대기가 `client2 game started wait failed`로 실패했다. joining actor를 기존 참가자 broadcast에서 제외한 뒤 완료된 join lifecycle의 bound session으로 보상하고, 원격 commit이 callback 전에 gateway ref를 갱신하도록 수정한 뒤 spot runtime 회귀 테스트와 `./run_sample.sh`가 통과했다.
-- [ ] **SMP-CP-03** (결함) — TicTacToe가 **스펙 근거 0인 public API**(`add_spot_resolver`)를 샘플에서 쓴다
-- [ ] **SMP-CP-04** (결함) — TicTacToe 발행 메시지에 `Msg` 접미어(`PlayerWinMilestoneMsg`)
-- [ ] **SMP-CP-05** (결함) — TicTacToe가 문서에 없는 push(`GameEndedNotify`)를 추가로 쏜다
-- [ ] **SMP-CP-06** (결함) — Bingo wire 이름이 **샘플 안에서 갈라져 있다**(`...Msg` vs proto `...Event`)
+- [x] **SMP-CP-03** (결함) — TicTacToe가 **스펙 근거 0인 public API**(`add_spot_resolver`)를 샘플에서 쓴다
+  - 근거: 샘플의 resolver 등록과 node 직접 지정을 제거하고 framework의 spot location resolution을 사용하게 했다(`2af52fb1e`). sample parity gate가 금지 표면 부재와 표준 routing 사용을 확인하고 관련 client/server 타깃이 빌드됐다.
+- [x] **SMP-CP-04** (결함) — TicTacToe 발행 메시지에 `Msg` 접미어(`PlayerWinMilestoneMsg`)
+  - 근거: milestone event 이름을 공통 계약의 `PlayerWinMilestoneEvent`로 통일하고 publisher·subscriber·계약 테스트를 함께 갱신했다(`9a4b9c94f`). sample parity와 관련 타깃 빌드가 통과했다.
+- [x] **SMP-CP-05** (결함) — TicTacToe가 문서에 없는 push(`GameEndedNotify`)를 추가로 쏜다
+  - 근거: 계약 밖 종료 push를 제거하고 종료 상태를 기존 `GameStateNotify`로만 전달하게 정리했다(`9a4b9c94f`). 금지 packet 이름 no-hit gate와 sample parity가 통과했다.
+- [x] **SMP-CP-06** (결함) — Bingo wire 이름이 **샘플 안에서 갈라져 있다**(`...Msg` vs proto `...Event`)
+  - 근거: reward event 이름을 proto와 같은 `BingoRewardAcquiredEvent`로 통일하고 모든 발행·구독 지점을 갱신했다(`6f7ce5187`). sample parity와 관련 타깃 빌드가 통과했다.
 - [x] **SMP-CP-07** (결함) — TicTacToe `NextTurn`이 mark가 아니라 **actor id**를 싣는다
   - 근거: 수정 전 도메인 회귀 테스트가 `NextTurn`의 실제값을 `player-x`·`player-o`로 검출했다. 공개 state에는 X/O mark를 저장하고 turn actor는 mark와 참가자 정보에서 도출하도록 수정한 뒤 sample parity와 `./run_sample.sh`가 통과했다.
-- [ ] **SMP-CP-08** (미구현) — SupportChat·DeliveryDispatch에 **문서에 없는 `Probe` 프로세스**
+- [x] **SMP-CP-08** (미구현) — SupportChat·DeliveryDispatch에 **문서에 없는 `Probe` 프로세스**
+  - 근거: 두 샘플의 Probe executable·소스·runner 배선을 제거하고 공개 client와 서버의 실제 self-check evidence만 남겼다(`89c404159`). sample inventory/parity gate와 DeliveryDispatch·SupportChat 전체 runner가 통과했다.
 - [x] **SMP-CP-09** (미구현) — ShoppingMall에 **`ClientScenario`가 없다**
   - 근거: 수정 전 sample parity gate가 named scenario 부재와 `main.cpp`의 workflow orchestration 소유를 검출했다. HTTP 호출·polling·단언을 `shoppingmall_client_scenario_t`로 옮기고 entrypoint를 CLI 검증과 scenario 호출만 남긴 뒤 parity와 `./run_sample.sh`가 `PASS ShoppingMall.Cpp`로 통과했다.
 - [x] **SMP-CP-10** (결함) — SupportChat이 typed connector wait 대신 **raw packet + 수동 JSON 파싱**
   - 근거: 수정 전 sample parity gate가 raw `packet_t` wait, 수동 `parse_json`, 네 typed wait 부재를 검출했다. assignment·participant join·chat·typing push를 각각 connector의 `wait_for<T>()`로 직접 받도록 수정한 뒤 parity와 `./run_sample.sh`가 `PASS SupportChat.Cpp`로 통과했다.
 - [ ] **SMP-CP-11** (미구현) — ShoppingMall·GameQuest의 **"동시" 시나리오가 실제로는 순차**다
-- [ ] **SMP-CP-12** (결함) — Bingo·GameQuest runner가 **고정 sleep을 readiness로 쓴다**(문서가 명시적으로 금지)
+- [x] **SMP-CP-12** (결함) — Bingo·GameQuest runner가 **고정 sleep을 readiness로 쓴다**(문서가 명시적으로 금지)
+  - 근거: 두 runner의 고정 readiness sleep을 제거하고 실제 endpoint/role 준비 상태를 bounded probe로 확인하게 했다(`439f60967`). shell syntax, sample parity와 readiness no-hit gate가 통과했다.
 - [ ] **SMP-CP-13** (미구현) — ShoppingMall·GameQuest에 **Domain/Application/Infrastructure 레이어가 없다.** SupportChat엔 **Infrastructure가 없다**
 
 **아래는 흐름·레이어·runner 축을 따로 훑어 나온 것이다. 여기서 진짜 기능 버그가 나왔다.**
@@ -513,7 +524,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 
 - [x] **SMP-CP-31** (결함) — **Bingo 게이트가 SMP-CP-02를 구조적으로 잡을 수 없다.** client1만 start를 기다리고 `status`도 안 본다
   - 근거: 두 player client 모두 typed wait로 start push를 받고 각 state의 room id와 `Running` 상태를 단언하게 했다. 강화된 게이트가 수정 전 client2 누락을 검출했고 수정 후 `./run_sample.sh`가 `bingo full client/server self-check completed`로 통과했다.
-- [ ] **SMP-CP-32** (결함) — **GameQuest 멱등성 단언이 `>=`라 실패할 수 없다.** 중복 증가해도 통과한다
+- [x] **SMP-CP-32** (결함) — **GameQuest 멱등성 단언이 `>=`라 실패할 수 없다.** 중복 증가해도 통과한다
+  - 근거: 수정 전 과다 진행값을 허용하는 집중 gate를 정확 일치 단언으로 바꾸자 실패함을 확인하고, 중복 event 뒤 progress·version·source event가 정확히 한 번만 반영됐는지 검사하도록 강화했다(`5ba25155c`). GameQuest progress 회귀와 sample parity가 통과했다.
 - [x] **SMP-CP-33** (결함) — **TicTacToe가 모든 move에서 `board`·`next_turn`을 버린다.** 미러 push는 존재 여부만 본다
   - 근거: 수정 전 sample parity 게이트가 네 move의 deterministic board·next mark와 상대 push state 대조 12개가 모두 없음을 검출했다. 각 response를 정확값으로 단언하고 상대 push의 전체 state를 비교한 뒤 게이트와 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
 - [ ] **SMP-CP-34** (결함) — **Bingo 게이트 5·7·8·9·11단계가 문서보다 약하다**
@@ -527,14 +539,17 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 `.NET`은 `null`을 wire에 싣고 enum을 정수로 내보내는데, C++ nlohmann은 `null`을 만나면 던진다.
 그래서 여기 wire 파손이 몰려 있다.**
 
-- [ ] **SMP-CP-38** (**wire 파손**) — **DeliveryDispatch `DeliveryStatus`가 C++는 문자열, `.NET`은 정수**다. client-facing push에서 깨진다
+- [x] **SMP-CP-38** (재검증에서 무너짐) — ~~DeliveryDispatch `DeliveryStatus`가 C++는 문자열, `.NET`은 정수라 client-facing push에서 깨진다~~
+  - 근거: 확정된 공통 계약이 이름 있는 문자열 enum을 정본으로 선택했고 C++의 `delivery_status_t`와 JSON codec은 이미 그 표현을 사용했다. C++ wire 변경 없이 "이미 정본 준수"로 닫았으며 DeliveryDispatch 전체 runner가 통과했다.
 - [ ] **SMP-CP-39** (**wire 파손**) — **GameQuest `QuestProgress`가 필드 이름이 다르고 `.NET`엔 `Version`이 아예 없다**
 - [ ] **SMP-CP-40** (**wire 파손**) — **TicTacToe `GameState`의 nullable 5개를 C++가 sentinel로 뭉갠다.** 양방향으로 깨진다
 - [ ] **SMP-CP-41** (결함) — **SupportChat `JoinConversationReq`가 C++에선 빈 구조체**다. 문서가 요구한 참가자 신원을 **보낼 수단이 없다**
 - [ ] **SMP-CP-42** (결함) — **SupportChat이 framework의 `ActorRefSnapshot`을 자기 것으로 포크**했다. 문서가 "샘플이 정의하지 않는다"고 명시한 타입이다
 - [ ] **SMP-CP-43** (결함) — **ShoppingMall이 금액을 `double`로 쓴다.** 문서·`.NET`은 `decimal`이다
-- [ ] **SMP-CP-44** (결함) — **DeliveryDispatch `BindCourierSessionRes.Actor`가 언어마다 다른 타입**이다. `.NET`엔 `actorId`·`generation`이 없다
-- [ ] **SMP-CP-45** (결함) — **GameQuest의 entry→owner hop이 언어마다 packet 이름도 호출 방식도 다르다**(C++ one-way vs `.NET` request)
+- [x] **SMP-CP-44** (결함) — **DeliveryDispatch `BindCourierSessionRes.Actor`가 언어마다 다른 타입**이다. `.NET`엔 `actorId`·`generation`이 없다
+  - 근거: 확정 계약대로 응답이 framework의 전체 `actor_ref_snapshot_t`를 사용하고 actor id·spot/node rid·generation을 실제 bind 결과에서 채우는 것을 확인·정렬했다(`0ad4f40c4`). DeliveryDispatch client/server 빌드와 전체 runner가 통과했다.
+- [x] **SMP-CP-45** (결함) — **GameQuest의 entry→owner hop이 언어마다 packet 이름도 호출 방식도 다르다**(C++ one-way vs `.NET` request)
+  - 근거: envelope request wrapper를 제거하고 확정 계약의 flat one-way `GameplayMsg`로 entry→owner 전송을 통일했으며 기존 `Version`·`LastSourceEventId`는 유지했다(`d3825dbea`). GameQuest wire/parity gate와 관련 타깃 빌드가 통과했다.
 - [ ] **SMP-CP-46** (미구현) — **TicTacToe `TicTacToeGameJoinRes`가 C++에 없다**
 - [ ] **SMP-CP-47** (결함) — **문서에 없는 필드가 응답·push에 실린다**(TicTacToe 4개, GameQuest 1개, `.NET` DeliveryDispatch 1개)
 - [ ] **SMP-CP-48** (결함) — **계약에 없는 wire 타입이 9종 더 있다**(GameQuest 4, ShoppingMall 5)
@@ -551,8 +566,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 game-room player의 stop-observing 오류 단언이 실패했다. observer room 목적·대상 room·observer 등록 여부를 검증하도록 수정한 뒤 `./run_sample.sh`의 전체 self-check와 관련 ctest 3개가 통과했다.
 - [x] **SMP-CP-54** (**버그**) — **TicTacToe `LeaveGameReq`가 상태·소속 검사 없이** 게임 도중 나가기를 허용한다
   - 근거: 수정 전 진행 중 leave가 상대에게 `GameEndedNotify`를 보내 bounded negative가 실패했다. domain이 final 상태와 참가자 여부를 검증하도록 수정한 뒤 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
-- [ ] **SMP-CP-55** (**버그**) — **DeliveryDispatch Tracking이 고객을 `"customer-1"`로 하드코딩**한다. 계약에 `customer_id`가 없다
-  - §0.8 중단: C++만 고치면 공유 wire가 달라진다. 선택지 A는 `DeliveryStatusChangedReq`에 `CustomerId`를 추가해 모든 언어가 전달하게 하는 것이고, 선택지 B는 Tracking이 생성 시점부터 `DeliveryId → CustomerId` 관계를 저장해 상태 변경 메시지에 고객 필드를 싣지 않는 것이다. 공통 계약에서 한 방식을 결정한 뒤 구현해야 한다.
+- [x] **SMP-CP-55** (**버그**) — **DeliveryDispatch Tracking이 고객을 `"customer-1"`로 하드코딩**한다. 계약에 `customer_id`가 없다
+  - 근거: 공통 계약이 선택지 A로 확정된 뒤 C++ `DeliveryStatusChangedReq`가 `customer_id`를 수신하고 Tracking이 그 값으로 `actor_directory_t`에서 고객 actor를 찾도록 고쳤다(`0ad4f40c4`). 하드코딩 no-hit gate, sample parity와 DeliveryDispatch 전체 runner가 통과했다.
 - [x] **SMP-CP-56** (결함) — **Bingo room Spot이 절대 닫히지 않는다.** `close()` 호출이 0건이고 observer 방 timer가 **프로세스 수명 내내** 돈다
   - 근거: 수정 전 sample parity gate가 마지막 actor 이탈 뒤 빈 player·observer 방의 종료 요청이 없음을 검출했다. `on_leave_actor`가 두 점유 집합이 모두 비면 `close()`를 요청하도록 수정한 뒤 Bingo parity 테스트 6개, 관련 ctest 3개, `./run_sample.sh` 전체 client/server self-check가 통과했다.
 - [x] **SMP-CP-57** (결함) — **TicTacToe game Spot에 timer가 없다.** 문서가 요구한 turn timeout이 통째로 미구현
@@ -582,7 +597,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 target-contract 검증이 client에서 제한 시간 안에 evidence를 기다리는 기능이 없고 7개 시나리오가 단언 없이 PASS를 출력하는 문제를 검출했다. HTTP 요청 처리는 client support에 모으고, 각 시나리오가 세 subscriber의 수신·필터·재연결·실패 경로 marker를 직접 단언하도록 옮겼다. shell runner의 중복 판정을 제거한 뒤 target-contract 검증과 `./run_e2e.sh all`의 7개 시나리오가 모두 통과했다.
 - [x] **E2E-CP-05** (결함) — **SpotService `all`이 문서 시나리오를 빼먹고**(SM-F3·F4·F5) **문서에 없는 걸 돌린다**(SM-Q9)
   - 근거: 수정 전 target-contract gate가 `all` 목록의 SM-F3·F4·F5 누락과 비계약 SM-Q9 포함을 네 건 모두 검출했다. 목록을 공통 scenario inventory에 맞춘 뒤 gate와 `./run_e2e.sh SM-F3`, `SM-F4`, `SM-F5`의 client·server evidence 검증이 모두 통과했다.
-- [ ] **E2E-CP-06** (미구현) — actor ref **`generation`이 리터럴 0**이고 검증하는 곳이 없다
+- [x] **E2E-CP-06** (미구현) — actor ref **`generation`이 리터럴 0**이고 검증하는 곳이 없다
+  - 근거: joined actor 결과를 임의 조립하지 않고 framework가 반환한 구체 `actor_ref_t` snapshot으로 전달해 실제 generation을 보존하도록 고쳤다(`daf9e3021`). 리터럴 generation no-hit와 nonzero generation 회귀, 관련 E2E 타깃 빌드가 통과했다.
 - [x] **E2E-CP-07** (결함) — **Config 10의 순서 계약이 검증되지 않는다**(포함 여부만 본다)
   - 근거: 수정 전 target-contract gate가 cross-kind 순서 helper와 `location_committed` marker 부재를 검출했다. join 완료 지점에 marker를 기록하고 ST-A1이 다섯 lifecycle evidence의 상대 순서를 검사하도록 수정한 뒤 gate와 `./run_e2e.sh ST-A1`이 통과했다.
 - [ ] **E2E-CP-08** (결함) — **§2.6 설정 정책을 `ToActorMessaging` 빼고 전 config가 위반**하고, feature-map에 기록한 곳이 0개다

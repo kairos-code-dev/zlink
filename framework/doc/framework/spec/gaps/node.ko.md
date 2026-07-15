@@ -434,7 +434,8 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
   - 근거: location runtime이 호출자가 page size를 생략했을 때 등록된 `listPageSize`를 적용하도록 paging 결정을 한곳에 모았다. 무한 기본값을 잡는 location-runtime 게이트가 통과한다. 커밋 `cbc18227e`.
 - [x] **IMP-ND-31** (미구현) — `storeFailureGrace`를 **읽는 곳이 없다**
   - 근거: auto-connect reconciler가 마지막 정상 target을 grace 안에서만 재사용하도록 option을 실제 정책에 연결했다. grace 안/밖 동작이 같아 실패하던 location-autoconnect 게이트가 통과한다. 커밋 `c3ce36a31`.
-- [ ] **IMP-ND-32** (미구현) — channel·SpotNode routing id 자동 할당과 store slot capability가 없다
+- [x] **IMP-ND-32** (미구현) — channel·SpotNode routing id 자동 할당과 store slot capability가 없다
+  - 근거: 네 channel·SpotNode builder와 NestJS DI에 고정/자동 RID 충돌 검증, group·slot·prefix 설정과 준비 결과 provider를 추가하고, in-memory·Redis store의 원자 acquire/release/list, 최소 빈 slot·generation·stale release fencing을 구현했다. runtime은 socket 생성 전에 모든 group을 정렬 취득하고 bind·location 게시 뒤 readiness를 완료하며, bind 실패·종료 때 socket 폐기 후 release하고 heartbeat 갱신이 renew timeout을 넘으면 lease 만료 전에 fencing한다. API 부재로 0/5 실패하던 집중 게이트를 확장해 9/9, 실제 Redis 4/4, Node build·typecheck·lint·Chromium·전체 P0와 coverage 게이트가 통과했다. builder 정책과 allocation lifecycle을 각각 한 모듈에 모아 framework/Nest 중복과 host의 시간적 분해를 제거했다. 커밋 `d41dfa931`.
 
 ### 상세
 

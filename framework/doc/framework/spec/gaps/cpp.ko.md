@@ -543,7 +543,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 
 - [x] **SMP-CP-38** (재검증에서 무너짐) — ~~DeliveryDispatch `DeliveryStatus`가 C++는 문자열, `.NET`은 정수라 client-facing push에서 깨진다~~
   - 근거: 확정된 공통 계약이 이름 있는 문자열 enum을 정본으로 선택했고 C++의 `delivery_status_t`와 JSON codec은 이미 그 표현을 사용했다. C++ wire 변경 없이 "이미 정본 준수"로 닫았으며 DeliveryDispatch 전체 runner가 통과했다.
-- [ ] **SMP-CP-39** (**wire 파손**) — **GameQuest `QuestProgress`가 필드 이름이 다르고 `.NET`엔 `Version`이 아예 없다**
+- [x] **SMP-CP-39** (**wire 파손**) — **GameQuest `QuestProgress`가 필드 이름이 다르고 `.NET`엔 `Version`이 아예 없다**
+  - 근거: §13.4 D4 확정 뒤 C++을 재검증하니 `QuestProgress`는 이미 `lastSourceEventId`와 64-bit `version`을 함께 직렬화해 정본을 준수했다. D4의 flat one-way `GameplayMsg` 정리는 `d3825dbea`에서 완료됐고, `test_cpp_framework_sample_parity`가 wrapper/request 부재와 두 진행 필드를 함께 확인해 통과했다. `.NET` 수정은 C++ 범위 밖이며 C++ shared wire에는 추가 변경이 필요하지 않다.
 - [ ] **SMP-CP-40** (**wire 파손**) — **TicTacToe `GameState`의 nullable 5개를 C++가 sentinel로 뭉갠다.** 양방향으로 깨진다
 - [ ] **SMP-CP-41** (결함) — **SupportChat `JoinConversationReq`가 C++에선 빈 구조체**다. 문서가 요구한 참가자 신원을 **보낼 수단이 없다**
 - [ ] **SMP-CP-42** (결함) — **SupportChat이 framework의 `ActorRefSnapshot`을 자기 것으로 포크**했다. 문서가 "샘플이 정의하지 않는다"고 명시한 타입이다

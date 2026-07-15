@@ -191,15 +191,13 @@ else
 fi
 
 # Handoff evidence markers prove which internal path a Track-F scenario
-# exercised. They are timing-dependent (a send that lands after commit takes the
-# direct path instead of the source backlog; only one of two mappings may evict
-# within the window during a batch run) and the scenario assertions already
-# gate the observable behaviour (arrival order, ActorLocationStale). So a
-# missing marker is reported as a diagnostic warning, not a run failure.
+# exercised. A scenario that misses its required marker did not create the
+# contract boundary it claims to verify, so the runner must fail.
 require_runtime_marker() {
   local marker="$1"
   if ! grep -h -q "$marker" "$LOG_DIR"/actor-*.stderr.log; then
-    echo "Note: runtime marker '$marker' did not fire this run (timing-dependent). Logs: $LOG_DIR" >&2
+    echo "Missing required runtime marker '$marker'. Logs: $LOG_DIR" >&2
+    return 1
   fi
 }
 

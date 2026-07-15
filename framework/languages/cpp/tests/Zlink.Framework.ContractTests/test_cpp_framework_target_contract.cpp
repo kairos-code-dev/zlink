@@ -542,6 +542,13 @@ int main ()
                     != std::string::npos,
                   "E2E-CP-49", "ST-E2 does not reject a target bound-session route after failure");
 
+    /* E2E-CP-50 — missing required Track-F markers fail the runner. */
+    gate.require (transfer_runner.find ("Missing required runtime marker")
+                    != std::string::npos
+                    && transfer_runner.find ("did not fire this run (timing-dependent)")
+                         == std::string::npos,
+                  "E2E-CP-50", "Track-F required markers are still diagnostic-only warnings");
+
     /* E2E-CP-55 — ST-D1 proves both sides of the local commit boundary. */
     const auto st_d1_local_begin = transfer_client.find ("void local_location_commit_timing ()");
     const auto st_d1_local_end =

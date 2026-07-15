@@ -27,7 +27,7 @@ client와 `run_e2e.sh all`에 등록되어 있지만, 현재 배치와 일부 �
 | ST-D2 | `deferred` | transfer 뒤 대기와 재조회만 수행하며 stale source cleanup 지연과 실행을 주입하지 않는다(`E2E-CP-52`, `E2E-CP-56`). |
 | ST-E1 | `deferred` | transfer 전후 같은 connector의 bound push 수신을 검사한다. 별도 session gateway 역할이 없다(`E2E-CP-56`). |
 | ST-E2 | `deferred` | transfer-out adapter 실패로 commit 전 transfer를 거절하고, source의 기존 bound session이 follow-up notify를 받으며 target에는 `bound_push`·`joined` evidence가 없는지 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
-| ST-F1 | `deferred` | target 처리 순서는 검사하지만 필수 handoff marker 부재가 실행 실패로 이어지지 않고 stderr 문자열에 의존한다(`E2E-CP-50`, `E2E-CP-57`). |
+| ST-F1 | `deferred` | target 처리 순서와 필수 `handoff_backlog`·`backlog_enqueued` marker를 검사하며, marker가 없으면 runner가 실패한다. marker 전달이 stderr 환경 변수 경로에 의존하는 gap은 남아 있다(`E2E-CP-57`). |
 | ST-F2 | `deferred` | direct packet을 transfer 완료 대기 뒤 보내 실제 추월 경합을 만들지 못하며 필수 marker도 단언하지 않는다(`E2E-CP-50`, `E2E-CP-53`, `E2E-CP-57`). |
 | ST-F3 | `deferred` | rebind 이후 packet을 transfer 완료 대기 뒤 보내 cross-move 경합 창을 닫는다(`E2E-CP-53`, `E2E-CP-57`). |
 | ST-F4 | `deferred` | window 전후 packet의 message kind가 달라 같은 send 동작의 forwarding과 fail-fast를 비교하지 못한다(`E2E-CP-54`, `E2E-CP-57`). |
@@ -36,6 +36,10 @@ client와 `run_e2e.sh all`에 등록되어 있지만, 현재 배치와 일부 �
 
 ## 검증
 
+- 2026-07-15: `./run_e2e.sh ST-F1`
+  - 결과: 통과
+  - 로그: `logs/20260715-090842-2606499`
+  - 의미: 필수 handoff marker가 없으면 경고가 아니라 실행 실패가 되며, ST-F1은 두 marker를 모두 남겼다.
 - 2026-07-15: `./run_e2e.sh ST-E2`
   - 결과: 통과
   - 로그: `logs/20260715-090612-2594420`

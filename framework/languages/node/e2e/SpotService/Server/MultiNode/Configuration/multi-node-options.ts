@@ -25,7 +25,6 @@ export function parseMultiNodeOptions(args: readonly string[]): MultiNodeOptions
     values.set(key.slice(2), args[++i]);
   }
   const rid = required(values, 'rid');
-  process.env.ZLINK_E2E_RID = rid;
   return {
     rid,
     httpUrl: required(values, 'http-url'),

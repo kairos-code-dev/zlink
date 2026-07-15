@@ -2,14 +2,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 class EvidenceStore {
-  constructor(first, second) {
-    if (second !== undefined) {
-      this.rid = first ?? process.env.ZLINK_E2E_RID ?? 'node';
-      this.filePath = second;
-    } else {
-      this.rid = process.env.ZLINK_E2E_RID ?? 'node';
-      this.filePath = first;
-    }
+  constructor(rid, filePath) {
+    this.rid = rid;
+    this.filePath = filePath;
     this.entries = [];
     this.waiters = new Set();
     if (this.filePath !== undefined && this.filePath.length > 0) {

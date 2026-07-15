@@ -157,7 +157,6 @@ function parseGatewayOptions(args: readonly string[]): GatewayOptions {
     values.set(key.slice(2), args[++i]);
   }
   const rid = required(values, 'rid');
-  process.env.ZLINK_E2E_RID = rid;
   return {
     rid,
     httpUrl: required(values, 'http-url'),

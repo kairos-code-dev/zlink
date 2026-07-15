@@ -1,6 +1,5 @@
 export declare class EvidenceStore {
   readonly rid: string;
-  constructor(filePath?: string);
   constructor(rid: string, filePath?: string);
   add(entry: string): void;
   snapshot(): string[];

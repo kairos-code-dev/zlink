@@ -4,7 +4,7 @@ import type { EvidenceStore as EvidenceStoreType } from '../evidence-store';
 
 const requireEvidenceStore = createRequire(__filename);
 const evidenceStoreModule = requireEvidenceStore(
-  path.resolve(process.env.ZLINK_NODE_E2E_ROOT ?? path.resolve(process.cwd(), 'e2e'), 'evidence-store.js')
+  path.resolve(__dirname, '../../../..', 'evidence-store.js')
 ) as { EvidenceStore: typeof EvidenceStoreType };
 
 export const EvidenceStore = evidenceStoreModule.EvidenceStore;

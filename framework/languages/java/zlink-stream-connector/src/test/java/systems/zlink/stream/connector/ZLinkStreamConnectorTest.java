@@ -1346,6 +1346,40 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void errorCallbackFailureIsReportedToAnotherErrorHandler() throws Exception {
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector =
+                createConnector(server.options(ZLinkStreamDispatchMode.IMMEDIATE));
+            connector.onErrorReceived(error -> {
+                throw new IllegalStateException("error handler failed");
+            });
+            List<ZLinkStreamErrorCode> observed =
+                Collections.synchronizedList(new ArrayList<>());
+            connector.onErrorReceived(error -> {
+                observed.add(error.code());
+                return CompletableFuture.completedFuture(null);
+            });
+
+            ConnectorTestAwait.await(connector.connect());
+            server.sendAsync(new ZLinkStreamWireProtocol.Header(
+                    ZLinkStreamWireProtocol.KIND_ERROR,
+                    ZLinkStreamWireProtocol.CODEC_JSON,
+                    0,
+                    null,
+                    "",
+                    Map.of(),
+                    null),
+                "{\"code\":\"remote\",\"message\":\"failed\"}"
+                    .getBytes(StandardCharsets.UTF_8)).join();
+
+            TcpStreamConnectorTestServer.awaitCondition(
+                () -> observed.contains(ZLinkStreamErrorCode.USER_CALLBACK_FAILED)
+                    && observed.contains(ZLinkStreamErrorCode.REMOTE_ERROR));
+            assertTrue(observed.contains(ZLinkStreamErrorCode.REMOTE_ERROR));
+        }
+    }
+
+    @Test
     void reservedPacketNamesAreRejectedForUserHandlers() throws Exception {
         ZLinkStreamConnector connector =
             createConnector(options(ZLinkStreamDispatchMode.MANUAL));

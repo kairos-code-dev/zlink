@@ -12,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import systems.zlink.contracts.messaging.Message;
 
@@ -326,11 +327,18 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     private void publishError(ZLinkStreamError error) {
         for (ZLinkStreamErrorHandler handler : List.copyOf(errorHandlers)) {
-            if (configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE) {
-                invokeErrorCallback(handler, error);
-            } else {
-                dispatchQueue.addAsync(() -> invokeErrorCallback(handler, error));
-            }
+            dispatchErrorCallback(handler, error, true);
+        }
+    }
+
+    private void dispatchErrorCallback(
+        ZLinkStreamErrorHandler handler,
+        ZLinkStreamError error,
+        boolean reportFailure) {
+        if (configuration.dispatchMode() == ZLinkStreamDispatchMode.IMMEDIATE) {
+            invokeErrorCallback(handler, error, reportFailure);
+        } else {
+            dispatchQueue.addAsync(() -> invokeErrorCallback(handler, error, reportFailure));
         }
     }
 
@@ -348,11 +356,32 @@ final class DefaultZLinkStreamConnector implements ZLinkStreamConnector {
 
     private CompletionStage<Void> invokeErrorCallback(
         ZLinkStreamErrorHandler handler,
-        ZLinkStreamError error) {
+        ZLinkStreamError error,
+        boolean reportFailure) {
         try {
-            return handler.handleAsync(error).exceptionally(ex -> null);
-        } catch (Throwable ignored) {
+            return handler.handleAsync(error).exceptionally(ex -> {
+                if (reportFailure) {
+                    reportErrorCallbackFailure(handler, ex);
+                }
+                return null;
+            });
+        } catch (Throwable ex) {
+            if (reportFailure) {
+                reportErrorCallbackFailure(handler, ex);
+            }
             return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    private void reportErrorCallbackFailure(
+        ZLinkStreamErrorHandler failedHandler,
+        Throwable failure) {
+        LOGGER.log(Level.WARNING, "STREAM connector error callback failed", failure);
+        ZLinkStreamError callbackError = userCallbackFailed(failure);
+        for (ZLinkStreamErrorHandler handler : List.copyOf(errorHandlers)) {
+            if (handler != failedHandler) {
+                dispatchErrorCallback(handler, callbackError, false);
+            }
         }
     }
 

@@ -511,7 +511,8 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
   - 근거: 수정 전 공개 client에 customer의 `SetAgentAvailableReq` 실패 단언을 추가하자 전체 runner가 `customer must not set agent availability`로 실패했다. Entry Spot handler가 인증된 actor role을 검사해 customer 요청을 `request_rejected`로 반환하도록 수정한 뒤 `./run_sample.sh`가 `PASS SupportChat.Cpp`로 통과했다.
 - [x] **SMP-CP-18** (결함) — **TicTacToe notification publisher가 아무것도 발행하지 않는다.** vector에 쌓기만 하고 읽는 곳이 0
   - 근거: 수정 전 contract gate가 publisher의 session 전송 부재와 읽히지 않는 vector 보관을 모두 검출했다. room actor registry를 주입받은 publisher가 제외 대상을 처리하고 bound session으로 직접 전송하도록 책임을 모은 뒤 TicTacToe parity 8건과 `./run_sample.sh`가 `PASS TicTacToe.Cpp`로 통과했다.
-- [ ] **SMP-CP-19** (결함) — **SupportChat이 Api hop을 Support actor에서 Session으로 옮기고 payload를 고쳐 쓴다**
+- [x] **SMP-CP-19** (결함) — **SupportChat이 Api hop을 Support actor에서 Session으로 옮기고 payload를 고쳐 쓴다**
+  - 근거: 수정 전 집중 gate `467de32b6`가 Session의 API 요청·payload 재작성, Support actor orchestration 부재, `OpenConversationReq`의 비계약 `ConversationId`를 5건으로 검출했다. `0955f94b1`에서 Session은 원본 actor request만 relay하고 Support actor가 API 요청과 customer join을 수행하며, conversation Spot이 Application reservation 결과를 commit하도록 옮겼다. `OpenConversationReq` wire도 문서대로 `Subject`만 남겼다. 집중 gate와 sample parity 53건, 실제 SupportChat runner가 통과했다. POSD/DDD 재검토에서는 Session helper로 orchestration을 감추는 대안을 배제하고 상담 use case를 Support actor 경계에 모았다.
 - [ ] **SMP-CP-20** (결함) — **GameQuest가 event마다 문서에 없는 blocking ensure 왕복**을 하고, owner를 샘플이 직접 해시한다
 - [ ] **SMP-CP-21** (결함) — **ShoppingMall이 owner routing 대신 named mesh 2개 + 샘플 해시 + node 지정 request**를 쓴다
 - [ ] **SMP-CP-22** (결함) — **Domain이 framework 헤더를 include하고 wire DTO를 직접 만든다**(Bingo·TicTacToe)

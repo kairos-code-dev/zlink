@@ -555,7 +555,11 @@ final class ZLinkActorSpotJoinCall implements ZLinkActorJoinCall {
         ZLinkBackendActorRef targetActorRef,
         ZLinkActorHandoffPacket packet) {
         List<Message> parts = ZLinkActorSpotRoutePackets.createActorPacketParts(
-            targetActorRef, packet.header(), packet.payload(), packet.replyRoute());
+            targetActorRef,
+            packet.header(),
+            packet.payload(),
+            packet.replyRoute(),
+            packet.arrivalIndex());
         try {
             if (internalRouteChannel != null) {
                 return requestTransfer(address, parts)

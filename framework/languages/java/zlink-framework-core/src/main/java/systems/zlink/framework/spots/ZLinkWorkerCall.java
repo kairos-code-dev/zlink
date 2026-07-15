@@ -28,4 +28,8 @@ public interface ZLinkWorkerCall<T> {
 
     CompletionStage<T> submit();
 
+    default CompletionStage<T> yield() {
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.yieldCurrent(submit());
+    }
+
 }

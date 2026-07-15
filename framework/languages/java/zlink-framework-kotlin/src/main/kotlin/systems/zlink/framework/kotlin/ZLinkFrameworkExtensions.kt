@@ -21,6 +21,7 @@ import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotCreateResult
 import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.framework.spots.ZLinkWorkerCall
 import systems.zlink.framework.spots.SpotHandle
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionActors
@@ -32,11 +33,23 @@ suspend fun <TReply> ZLinkRequestCall.awaitReply(replyType: Class<TReply>): TRep
 inline suspend fun <reified TReply> ZLinkRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
 
+suspend fun <TReply> ZLinkRequestCall.yieldReply(replyType: Class<TReply>): TReply =
+    awaitFrameworkStage(yield(replyType))
+
+inline suspend fun <reified TReply> ZLinkRequestCall.yieldReply(): TReply =
+    yieldReply(TReply::class.java)
+
 suspend fun <TReply> ZLinkActorRequestCall.awaitReply(replyType: Class<TReply>): TReply =
     awaitFrameworkStage(submit(replyType))
 
 inline suspend fun <reified TReply> ZLinkActorRequestCall.awaitReply(): TReply =
     awaitReply(TReply::class.java)
+
+suspend fun <TReply> ZLinkActorRequestCall.yieldReply(replyType: Class<TReply>): TReply =
+    awaitFrameworkStage(yield(replyType))
+
+inline suspend fun <reified TReply> ZLinkActorRequestCall.yieldReply(): TReply =
+    yieldReply(TReply::class.java)
 
 suspend fun <TReply> ZLinkActorClient.requestToActorAwait(
     actorRef: ActorRef,
@@ -93,6 +106,21 @@ suspend fun <TReply> ZLinkActorJoinCall.awaitJoin(replyType: Class<TReply>): ZLi
 @JvmName("awaitJoinCallReified")
 inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoinReply(): ZLinkActorJoinResult<TReply> =
     awaitJoin(TReply::class.java)
+
+@JvmName("yieldJoinCallVoid")
+suspend fun ZLinkActorJoinCall.yieldJoin(): ZLinkActorJoinResult<Void> =
+    awaitFrameworkStage(yield())
+
+@JvmName("yieldJoinCall")
+suspend fun <TReply> ZLinkActorJoinCall.yieldJoin(replyType: Class<TReply>): ZLinkActorJoinResult<TReply> =
+    awaitFrameworkStage(yield(replyType))
+
+@JvmName("yieldJoinCallReified")
+inline suspend fun <reified TReply> ZLinkActorJoinCall.yieldJoinReply(): ZLinkActorJoinResult<TReply> =
+    yieldJoin(TReply::class.java)
+
+suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T =
+    awaitFrameworkStage(yield())
 
 fun ZLinkClient.send(
     channelName: String,

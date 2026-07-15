@@ -18,7 +18,7 @@ public final class ZLinkAsyncSerialQueue {
     private CompletionStage<Void> tail = CompletableFuture.completedFuture(null);
 
     public ZLinkAsyncSerialQueue() {
-        this(true);
+        this(false);
     }
 
     public ZLinkAsyncSerialQueue(boolean releaseOnIncompleteStage) {
@@ -98,6 +98,31 @@ public final class ZLinkAsyncSerialQueue {
         }
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         CompletableFuture<T> managed = new CompletableFuture<>();
+        stage.whenComplete((value, error) -> queue.enqueue(() -> {
+            try (ZLinkFlowContext.Scope ignored = flow == null
+                ? () -> { }
+                : ZLinkFlowContext.enter(flow)) {
+                if (error != null) {
+                    managed.completeExceptionally(error);
+                } else {
+                    managed.complete(value);
+                }
+            }
+            return CompletableFuture.completedFuture(null);
+        }));
+        return managed;
+    }
+
+    public static <T> CompletionStage<T> yieldCurrent(CompletionStage<T> stage) {
+        java.util.Objects.requireNonNull(stage, "stage");
+        ZLinkAsyncSerialQueue queue = CURRENT.get();
+        CompletableFuture<Void> gate = CURRENT_GATE.get();
+        if (queue == null || gate == null || stage.toCompletableFuture().isDone()) {
+            return stage;
+        }
+        ZLinkFlowContext.State flow = ZLinkFlowContext.current();
+        CompletableFuture<T> managed = new CompletableFuture<>();
+        gate.complete(null);
         stage.whenComplete((value, error) -> queue.enqueue(() -> {
             try (ZLinkFlowContext.Scope ignored = flow == null
                 ? () -> { }

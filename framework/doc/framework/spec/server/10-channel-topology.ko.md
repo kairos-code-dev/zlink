@@ -280,7 +280,23 @@ monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대�
 공용 표면은 "channel별 역할 등록 방식"을 먼저 보이고, 내부 구현은
 "channel별 역할 + 역할별 transport 매핑"을 기본으로 둔다.
 
-## 6. 범위 밖에 두는 것
+## 6. routing id 자동 할당
+
+고정 routing id를 미리 정할 수 없는 배포에서는 client/server channel, fanout channel과 route mesh
+channel builder가 location store에서 routing id 번호를 할당받을 수 있다. builder는 할당 가능한
+번호 수와 선택적인 prefix를 선언한다. group 이름을 따로 지정하지 않으면 channel 이름을 group
+이름과 prefix로 사용한다.
+
+같은 allocation group의 모든 member는 slot 하나를 공유한다. 예를 들어 prefix가 `zone-`와
+`route-`인 두 member가 slot 2를 공유하면 각각 `zone-2`, `route-2`를 사용한다. 번호는 1부터
+시작하며 store는 유효한 owner가 없는 가장 작은 번호를 원자적으로 선택한다.
+
+고정 routing id와 자동 할당은 같은 builder에서 함께 사용할 수 없다. group 이름만 지정하고 자동
+할당을 설정하지 않은 경우도 설정 오류다. routing id는 socket을 만들거나 bind하기 전에 확정되어야
+한다. fanout routing id는 목적지 선택에 사용하지 않고 해당 runtime의 추적·진단 identity로만
+사용한다. 정확한 저장소와 lease 계약은 [location runtime](40-location-runtime.ko.md)을 따른다.
+
+## 7. 범위 밖에 두는 것
 
 - `DEALER <-> DEALER`를 **channel 등록 표면**에 공용 모델로 노출하는 일(location 계층에는
   `DealerMesh` 종류가 있으나 channel 등록 API가 그 값을 받지 않는다)

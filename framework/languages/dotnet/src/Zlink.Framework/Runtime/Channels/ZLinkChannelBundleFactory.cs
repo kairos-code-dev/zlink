@@ -106,7 +106,9 @@ internal sealed class ZLinkChannelBundleFactory(
             if (channel.RoutingId.Size > 0)
             {
                 localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "sub");
-                subscriber.SetRoutingId(localRid);
+                // SUB has no addressable routing-id socket option. Keep the allocated identity
+                // in the framework bundle for tracking and diagnostics; it is not a publish
+                // destination and therefore is not written to the native socket.
             }
 
             subscriber.SetSubscription(string.Empty);
@@ -144,7 +146,8 @@ internal sealed class ZLinkChannelBundleFactory(
             if (channel.RoutingId.Size > 0)
             {
                 localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "pub");
-                publisher.SetRoutingId(localRid);
+                // PUB has no addressable routing-id socket option. The framework retains this
+                // identity for packet tracking and diagnostics only.
             }
 
             publisher.Bind(channel.Publisher!.BindEndpoint!);

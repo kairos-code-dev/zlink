@@ -49,6 +49,28 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
     {
         registration.RoutingId = routingId;
+        registration.HasExplicitRoutingId = true;
+        return this;
+    }
+
+    public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount) =>
+        UseAllocatedRoutingId(slotCount, registration.SpotNodeName);
+
+    public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.Create(
+            slotCount,
+            routingIdPrefix,
+            registration.RoutingIdAllocation?.GroupName);
+        return this;
+    }
+
+    public IZLinkSpotNodeBuilder SetRoutingIdAllocationGroup(string groupName)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.WithGroup(
+            groupName,
+            registration.RoutingIdAllocation,
+            registration.SpotNodeName);
         return this;
     }
 
@@ -99,6 +121,7 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
     public IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
     {
         registration.EntrySpotOptions.RoutingId = routingId;
+        registration.HasExplicitEntrySpotRoutingId = true;
         return this;
     }
 

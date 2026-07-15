@@ -10,24 +10,36 @@ internal sealed class ZLinkFrameworkHostedService(
     ZLinkLocationRuntime? locationRuntime,
     ZLinkLocationAutoConnectHost? autoConnect,
     ZLinkLocationLifecycle? locationLifecycle,
+    ZLinkAllocatedRoutingIdRuntime? allocatedRoutingIds,
+    IHostApplicationLifetime? applicationLifetime,
     ZLinkDrainCoordinator drain) : IHostedService
 {
     private readonly RoutingId _locationNodeRid = RoutingId.From(Guid.NewGuid().ToString("n"));
+    private readonly object _fencingGate = new();
+    private Task? _fencingTask;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (monitoringRegistration is not null)
             new ZLinkMonitoringSourceValidator(monitoringRegistration).PreflightFrameworkSources(runtime);
 
-        if (locationRuntime is not null)
-            await locationRuntime.StartAsync(
-                    _locationNodeRid,
-                    cancellationToken)
-                .ConfigureAwait(false);
-
         try
         {
+            if (locationRuntime is not null)
+                await locationRuntime.StartAsync(
+                        _locationNodeRid,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+            if (allocatedRoutingIds is not null)
+            {
+                if (applicationLifetime is not null)
+                    allocatedRoutingIds.FencingRequired += OnFencingRequired;
+                await allocatedRoutingIds.StartAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             await runtime.StartAsync(cancellationToken).ConfigureAwait(false);
+            allocatedRoutingIds?.MarkReady();
             if (autoConnect is not null)
             {
                 var state = await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
@@ -75,7 +87,15 @@ internal sealed class ZLinkFrameworkHostedService(
         await TryStopAsync(
             () => runtime.StopAsync(CancellationToken.None).AsTask()).ConfigureAwait(false);
         await TryStopAsync(
+            () => locationRuntime?.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(CancellationToken.None).AsTask()
+                  ?? Task.CompletedTask).ConfigureAwait(false);
+        await TryStopAsync(
+            () => allocatedRoutingIds?.StopAsync(CancellationToken.None).AsTask() ?? Task.CompletedTask)
+            .ConfigureAwait(false);
+        await TryStopAsync(
             () => locationRuntime?.StopAsync(CancellationToken.None).AsTask() ?? Task.CompletedTask).ConfigureAwait(false);
+        if (allocatedRoutingIds is not null && applicationLifetime is not null)
+            allocatedRoutingIds.FencingRequired -= OnFencingRequired;
         locationLifecycle?.ResetGeneration();
 
         if (failures is { Count: 1 }) throw failures[0];
@@ -92,6 +112,27 @@ internal sealed class ZLinkFrameworkHostedService(
             {
                 (failures ??= []).Add(exception);
             }
+        }
+    }
+
+    private void OnFencingRequired()
+    {
+        lock (_fencingGate)
+            _fencingTask ??= FenceRuntimeAndStopHostAsync();
+    }
+
+    private async Task FenceRuntimeAndStopHostAsync()
+    {
+        try
+        {
+            // Self-fencing must not wait for the normal graceful-drain deadline. Closing the
+            // framework runtime first removes every socket that uses the allocated identity;
+            // the host then performs the remaining idempotent cleanup.
+            await runtime.StopAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            applicationLifetime?.StopApplication();
         }
     }
 }

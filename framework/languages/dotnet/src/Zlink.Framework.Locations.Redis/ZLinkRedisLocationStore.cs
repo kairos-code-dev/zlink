@@ -11,6 +11,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// </summary>
 public sealed class ZLinkRedisLocationStore :
     IZLinkLocationStore,
+    IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore,
     IAsyncDisposable
 {
@@ -252,6 +253,43 @@ public sealed class ZLinkRedisLocationStore :
     {
         return await ExecuteAsync(
                 database => _commands.GetChangeStampAsync(database, scope),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    // ----- routing-id slot allocation ------------------------------------
+
+    public async ValueTask<ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(
+        ZLinkRoutingIdSlotAcquireRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ZLinkRoutingIdSlotAllocationValidator.ValidateAcquire(request);
+        return await ExecuteAsync(
+                database => _commands.AcquireRoutingIdSlotAsync(database, request),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkRoutingIdSlotReleaseResult> ReleaseRoutingIdSlotAsync(
+        string groupName,
+        int slot,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default)
+    {
+        ZLinkRoutingIdSlotAllocationValidator.ValidateRelease(groupName, slot, owner);
+        return await ExecuteAsync(
+                database => _commands.ReleaseRoutingIdSlotAsync(database, groupName, slot, owner),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkRoutingIdSlotAllocationSnapshot> ListRoutingIdSlotsAsync(
+        string groupName,
+        CancellationToken cancellationToken = default)
+    {
+        ZLinkRoutingIdSlotAllocationValidator.ValidateGroupName(groupName);
+        return await ExecuteAsync(
+                database => _commands.ListRoutingIdSlotsAsync(database, groupName),
                 cancellationToken)
             .ConfigureAwait(false);
     }

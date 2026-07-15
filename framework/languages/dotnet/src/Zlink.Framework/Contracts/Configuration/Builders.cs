@@ -45,6 +45,12 @@ public interface IZLinkRouteMeshChannelBuilder : IZLinkRouteMeshChannelOptions
 
     IZLinkRouteMeshChannelBuilder SetRoutingId(RoutingId routingId);
 
+    IZLinkRouteMeshChannelBuilder UseAllocatedRoutingId(int slotCount);
+
+    IZLinkRouteMeshChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
+
+    IZLinkRouteMeshChannelBuilder SetRoutingIdAllocationGroup(string groupName);
+
     IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
 
     IZLinkRouteMeshChannelBuilder AddHandlerGroup(string groupName);
@@ -85,6 +91,12 @@ public interface IZLinkClientServerChannelBuilder : IZLinkClientServerChannelOpt
 
     IZLinkClientServerChannelBuilder SetRoutingId(RoutingId routingId);
 
+    IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount);
+
+    IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
+
+    IZLinkClientServerChannelBuilder SetRoutingIdAllocationGroup(string groupName);
+
     IZLinkClientServerChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout);
 
     IZLinkClientServerChannelBuilder AddHandlerGroup(string groupName);
@@ -114,6 +126,12 @@ public interface IZLinkFanoutChannelBuilder
 
     IZLinkFanoutChannelBuilder SetRoutingId(RoutingId routingId);
 
+    IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount);
+
+    IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
+
+    IZLinkFanoutChannelBuilder SetRoutingIdAllocationGroup(string groupName);
+
     IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName);
 
     IZLinkFanoutChannelBuilder AddPublishHandler<THandler, TMessage>(string? packetName = null)
@@ -132,6 +150,12 @@ public interface IZLinkSpotNodeBuilder
     IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint);
 
     IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId);
+
+    IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount);
+
+    IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
+
+    IZLinkSpotNodeBuilder SetRoutingIdAllocationGroup(string groupName);
 
     IZLinkSocketConfig ConfigureRouterSocket();
 

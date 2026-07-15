@@ -1,4 +1,5 @@
 using StackExchange.Redis;
+using System.Text.Json;
 
 namespace Zlink.Framework.Locations.Redis;
 
@@ -159,6 +160,116 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
             keys.StampKey(ZLinkRedisLocationKeys.TagOf(scope.Kind), scope.MeshName)).ConfigureAwait(false);
         return value.IsNull ? 0 : (long)value;
     }
+
+    public async ValueTask<ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(
+        IDatabase database,
+        ZLinkRoutingIdSlotAcquireRequest request)
+    {
+        var members = NormalizeMembers(request.Members);
+        var config = JsonSerializer.Serialize(members);
+        var ttlMs = Math.Max(1L, (long)request.LeaseTtl.TotalMilliseconds);
+        var arguments = new List<RedisValue>
+        {
+            config,
+            request.SlotCount,
+            request.OwnerId,
+            ttlMs,
+            keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Peer.Tag),
+            keys.LeaseKeyPrefix()
+        };
+        arguments.AddRange(members.Select(static member => (RedisValue)member.ChannelName));
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.AcquireRoutingIdSlot,
+            [
+                keys.RoutingIdAllocationGroupKey(request.GroupName),
+                keys.LeaseKey(request.OwnerId),
+                keys.LeaseIndexKey(),
+                keys.KindIndexKey(ZLinkRedisLocationKinds.Peer.Tag)
+            ],
+            [.. arguments]).ConfigureAwait(false))!;
+
+        var status = (string)result[0]!;
+        if (status == "exhausted") return new ZLinkRoutingIdSlotGroupExhausted();
+        if (status == "identity-conflict") return new ZLinkRoutingIdSlotIdentityModeConflict();
+        if (status == "mismatch")
+        {
+            var expectedMembers = JsonSerializer.Deserialize<ZLinkRoutingIdSlotAllocationMember[]>(
+                                      (string)result[1]!)
+                                  ?? [];
+            return new ZLinkRoutingIdSlotGroupConfigurationMismatch(
+                expectedMembers,
+                (int)(long)result[2],
+                members,
+                request.SlotCount);
+        }
+
+        if (status != "acquired")
+            throw new InvalidOperationException($"Unknown routing-id slot acquire result '{status}'.");
+
+        var slot = (int)(long)result[1];
+        var generation = (long)result[2];
+        var expiresAt = DateTimeOffset.FromUnixTimeMilliseconds((long)result[3]);
+        var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[4]);
+        return new ZLinkRoutingIdSlotAcquired(new ZLinkRoutingIdSlotAllocation(
+            slot,
+            new ZLinkLocationOwnerToken(request.OwnerId, generation),
+            expiresAt,
+            storeNow));
+    }
+
+    public async ValueTask<ZLinkRoutingIdSlotReleaseResult> ReleaseRoutingIdSlotAsync(
+        IDatabase database,
+        string groupName,
+        int slot,
+        ZLinkLocationOwnerToken owner)
+    {
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.ReleaseRoutingIdSlot,
+            [keys.RoutingIdAllocationGroupKey(groupName)],
+            [slot, owner.OwnerId, owner.Generation]).ConfigureAwait(false))!;
+        return (string)result[0]! == "released"
+            ? ZLinkRoutingIdSlotReleaseResult.Released
+            : ZLinkRoutingIdSlotReleaseResult.IgnoredStale;
+    }
+
+    public async ValueTask<ZLinkRoutingIdSlotAllocationSnapshot> ListRoutingIdSlotsAsync(
+        IDatabase database,
+        string groupName)
+    {
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.ListRoutingIdSlots,
+            [keys.RoutingIdAllocationGroupKey(groupName)],
+            [keys.LeaseKeyPrefix()]).ConfigureAwait(false))!;
+        var config = (string)result[0]!;
+        var members = string.IsNullOrEmpty(config)
+            ? []
+            : JsonSerializer.Deserialize<ZLinkRoutingIdSlotAllocationMember[]>(config) ?? [];
+        var slotCount = (int)(long)result[1];
+        var storeNow = DateTimeOffset.FromUnixTimeMilliseconds((long)result[2]);
+        var entries = (RedisResult[])result[3]!;
+        var allocations = new List<ZLinkRoutingIdSlotAllocation>(entries.Length / 4);
+        for (var index = 0; index + 3 < entries.Length; index += 4)
+        {
+            allocations.Add(new ZLinkRoutingIdSlotAllocation(
+                (int)(long)entries[index],
+                new ZLinkLocationOwnerToken((string)entries[index + 1]!, (long)entries[index + 2]),
+                DateTimeOffset.FromUnixTimeMilliseconds((long)entries[index + 3]),
+                storeNow));
+        }
+
+        return new ZLinkRoutingIdSlotAllocationSnapshot(
+            groupName,
+            members,
+            slotCount,
+            allocations,
+            storeNow);
+    }
+
+    private static IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> NormalizeMembers(
+        IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> members) =>
+        members.OrderBy(static member => member.ChannelName, StringComparer.Ordinal)
+            .ThenBy(static member => member.RoutingIdPrefix, StringComparer.Ordinal)
+            .ToArray();
 
     private static ZLinkLocationWriteResult ToWriteResult(RedisResult[] result)
     {

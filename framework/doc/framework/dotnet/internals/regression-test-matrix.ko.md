@@ -217,6 +217,10 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 
 ## 7. Location / Monitoring Regression 항목
 
+routing id 자동 할당의 정확한 `.NET` public interface와 lifecycle 증거는
+[routing id 자동 할당 공개 계약](../../spec/server/languages/dotnet/04-routing-id-allocation.ko.md)을
+따른다.
+
 | 항목 | 계층 | 통과 기준 |
 |------|------|-----------|
 | location store 시작 순서 | `integration-single-process` | framework runtime 이 location store 등록 뒤 자동 연결을 시작한다 |
@@ -272,6 +276,7 @@ backend gate 와 별도로 유지한다.
 - `01-system-structure.ko.md`
 - `02-handler-interfaces.ko.md`
 - `03-stream-connector.ko.md`
+- `04-routing-id-allocation.ko.md`
 - `dotnet-http-client.ko.md`
 - `regression-test-matrix.ko.md`
 - `runtime-lifecycle.ko.md`

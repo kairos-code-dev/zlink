@@ -37,6 +37,28 @@ internal sealed class ZLinkRouteChannelBuilder(ZLinkRouteChannelRegistration reg
     public IZLinkRouteMeshChannelBuilder SetRoutingId(RoutingId routingId)
     {
         registration.RoutingId = routingId;
+        registration.HasExplicitRoutingId = true;
+        return this;
+    }
+
+    public IZLinkRouteMeshChannelBuilder UseAllocatedRoutingId(int slotCount) =>
+        UseAllocatedRoutingId(slotCount, registration.RouterChannelId);
+
+    public IZLinkRouteMeshChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.Create(
+            slotCount,
+            routingIdPrefix,
+            registration.RoutingIdAllocation?.GroupName);
+        return this;
+    }
+
+    public IZLinkRouteMeshChannelBuilder SetRoutingIdAllocationGroup(string groupName)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.WithGroup(
+            groupName,
+            registration.RoutingIdAllocation,
+            registration.RouterChannelId);
         return this;
     }
 

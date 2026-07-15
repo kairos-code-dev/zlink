@@ -358,7 +358,7 @@ public sealed class AutoConnectReconcilerTests
         Assert.Empty(fixture.Executor.Disconnected);
 
         // After the grace the fresh list wins and the vanished peer drops.
-        fixture.Time.Advance(TimeSpan.FromSeconds(6));
+        fixture.Time.Advance(TimeSpan.FromSeconds(11));
         await fixture.Reconciler.TickAsync();
         Assert.Single(fixture.Executor.Disconnected);
     }
@@ -414,7 +414,7 @@ public sealed class AutoConnectReconcilerTests
             ["tcp://r:1", "tcp://r:2"],
             fixture.Reconciler.ActiveTargets.Select(target => target.Endpoint).Order());
 
-        fixture.Time.Advance(TimeSpan.FromSeconds(6));
+        fixture.Time.Advance(TimeSpan.FromSeconds(11));
         await fixture.Reconciler.TickAsync();
 
         Assert.Equal("tcp://r:1", Assert.Single(fixture.Executor.Disconnected).Endpoint);

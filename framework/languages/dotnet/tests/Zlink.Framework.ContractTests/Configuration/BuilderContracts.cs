@@ -109,6 +109,24 @@ public sealed class BuilderContracts
 
     [Fact]
     [ContractExample(
+        typeof(IZLinkAllocatedRoutingIdProvider),
+        typeof(IZLinkRoutingIdSlotAllocationStore))]
+    public void Routing_id_allocation_is_consistent_across_every_routed_builder()
+    {
+        var options = new FrameworkOptions();
+
+        var api = options.AddClientServerChannel("api");
+        Assert.Same(api, api.UseAllocatedRoutingId(100, "api-").SetRoutingIdAllocationGroup("workers"));
+        var events = options.AddFanoutChannel("events");
+        Assert.Same(events, events.SetRoutingIdAllocationGroup("workers").UseAllocatedRoutingId(100));
+        var routes = options.AddRouteMeshChannel("routes");
+        Assert.Same(routes, routes.UseAllocatedRoutingId(100).SetRoutingIdAllocationGroup("workers"));
+        var spots = options.AddSpotMesh("spots");
+        Assert.Same(spots, spots.UseAllocatedRoutingId(100).SetRoutingIdAllocationGroup("workers"));
+    }
+
+    [Fact]
+    [ContractExample(
         typeof(IZLinkStreamNodeBuilder),
         typeof(IZLinkSpotNodeBuilder),
         typeof(IZLinkSpotMeshBuilder))]
@@ -373,6 +391,12 @@ public sealed class BuilderContracts
             return this;
         }
 
+        public IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount) => this;
+
+        public IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix) => this;
+
+        public IZLinkClientServerChannelBuilder SetRoutingIdAllocationGroup(string groupName) => this;
+
         public IZLinkSocketConfig ConfigureServerSocket()
         {
             return _serverSocket;
@@ -452,6 +476,12 @@ public sealed class BuilderContracts
             return this;
         }
 
+        public IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount) => this;
+
+        public IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix) => this;
+
+        public IZLinkFanoutChannelBuilder SetRoutingIdAllocationGroup(string groupName) => this;
+
         public IZLinkFanoutChannelBuilder AddHandlerGroup(string groupName)
         {
             return this;
@@ -500,6 +530,12 @@ public sealed class BuilderContracts
         {
             return this;
         }
+
+        public IZLinkRouteMeshChannelBuilder UseAllocatedRoutingId(int slotCount) => this;
+
+        public IZLinkRouteMeshChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix) => this;
+
+        public IZLinkRouteMeshChannelBuilder SetRoutingIdAllocationGroup(string groupName) => this;
 
         public IZLinkRouteMeshChannelBuilder SetDefaultRequestTimeout(TimeSpan timeout)
         {
@@ -584,6 +620,12 @@ public sealed class BuilderContracts
         {
             return this;
         }
+
+        public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount) => this;
+
+        public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix) => this;
+
+        public IZLinkSpotNodeBuilder SetRoutingIdAllocationGroup(string groupName) => this;
 
         public IZLinkSocketConfig ConfigureRouterSocket()
         {

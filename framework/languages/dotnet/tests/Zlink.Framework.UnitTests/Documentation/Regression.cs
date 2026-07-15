@@ -8,11 +8,12 @@ public sealed class RegressionTests
     private static readonly string[] DotNetContractDocuments =
     [
         "README.ko.md",
-        // 언어별 공개 계약은 3문서로 압축한다: 시스템 구조 · 인터페이스 · connector.
+        // 언어별 공개 계약은 시스템 구조, 인터페이스와 선택 capability의 정확한 시그니처를 고정한다.
         // 기능별 의미는 공통 스펙(framework/doc/framework/spec)이 소유한다.
         "01-system-structure.ko.md",
         "02-handler-interfaces.ko.md",
         "03-stream-connector.ko.md",
+        "04-routing-id-allocation.ko.md",
         "dotnet-http-client.ko.md",
         "regression-test-matrix.ko.md",
         "runtime-lifecycle.ko.md",

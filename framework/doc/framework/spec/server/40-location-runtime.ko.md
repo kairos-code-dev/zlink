@@ -383,3 +383,42 @@ store 구현체가 지켜야 하는 최소 요구:
 공식 참조 구현은 Redis extension([location-store-redis](41-location-store-redis.ko.md))이다.
 framework 본체는 특정 store 제품에 의존하지 않으며, in-memory 구현은 단일 process 테스트
 전용이다. store 제품 자체의 HA/복제는 store 구현체 책임이고 framework가 검증하지 않는다.
+
+## 12. routing id slot allocation
+
+자동 routing id 할당은 기존 location store에 선택 capability를 추가하는 방식으로 제공한다. 사용자가
+등록한 **같은 store 인스턴스**가 location row, owner lease와 slot allocation을 함께 구현해야 한다.
+별도 slot store 등록 API는 제공하지 않는다. 자동 할당을 설정했는데 capability가 없으면 startup
+전에 설정 오류로 실패한다.
+
+acquire는 group의 정렬된 member·prefix 목록과 slot count를 처음 호출에서 고정한다. 이후 구성이
+다르면 재시도하지 않고 configuration mismatch를 반환한다. 같은 owner의 재시도는 같은 slot과
+generation을 반환하며, 서로 다른 owner의 동시 acquire는 유효한 slot 하나를 중복 반환해서는 안
+된다. 빈 slot은 `1..slotCount`에서 가장 작은 번호를 선택한다. owner lease가 만료된 slot은 물리 row
+삭제 여부와 관계없이 다시 사용할 수 있으며 generation을 증가시킨다. 이전 generation의 release는
+현재 owner를 변경하지 않는다.
+
+framework startup 순서는 다음과 같다.
+
+1. 모든 allocation 설정과 lease 시간을 검증한다.
+2. 첫 slot과 owner lease를 확보하고 heartbeat와 fencing deadline 감시를 시작한다.
+3. group 이름 순서로 나머지 slot을 확보한다. 어느 group이 소진되면 앞서 확보한 slot을 반환하고
+   bind 없이 다시 대기한다.
+4. 확정한 routing id를 각 member에 적용한 뒤 socket을 만들고 bind한다.
+5. location row를 게시한 뒤 readiness와 할당 결과 provider를 완료한다.
+
+정상 종료는 readiness 차단과 drain 뒤 socket, location row, slot, owner lease 순으로 정리한다. bind
+실패도 확보한 slot을 반환한다. owner lease renew를 확인하지 못하면 마지막 성공 응답의 store 시각과
+local monotonic 경과 시간으로 안전 기한을 계산한다. 기한까지 회복되지 않으면 host 종료를 요청해
+lease 만료 전에 관련 socket을 닫는다. 임의의 새 slot으로 전환하지 않는다.
+
+| option | 기본값 | 제약 |
+|--------|-------:|------|
+| heartbeat interval (`H`) | 10s | 0보다 커야 한다 |
+| owner lease TTL (`T`) | 30s | 0보다 커야 한다 |
+| routing id fencing margin (`M`) | 5s | 0보다 커야 한다 |
+| owner lease renew timeout (`R`) | 3s | 0보다 커야 한다 |
+
+네 값은 `H + R < T - M`을 만족해야 한다. 자동 할당을 사용하지 않는 runtime에는 새 fencing
+정책을 적용하지 않는다. application은 readiness 이후 allocation group 이름으로 확정된 slot과
+member별 routing id를 조회할 수 있지만, slot 선택·갱신·반환은 framework가 소유한다.

@@ -216,4 +216,125 @@ internal static class ZLinkRedisLocationScripts
         end
         return {nowMs, out}
         """;
+
+    /// <summary>
+    /// Atomically fixes group metadata, renews an idempotent owner claim, or assigns the lowest
+    /// logically expired/free slot. The owner lease is extended in the same Redis operation.
+    ///
+    /// KEYS[1] group hash, KEYS[2] owner lease key, KEYS[3] lease index,
+    /// KEYS[4] peer row index.
+    /// ARGV[1] canonical member JSON, ARGV[2] slot count, ARGV[3] owner id,
+    /// ARGV[4] lease TTL milliseconds, ARGV[5] peer row prefix,
+    /// ARGV[6] owner lease prefix, ARGV[7..] member channel names.
+    /// </summary>
+    internal const string AcquireRoutingIdSlot = Prologue + """
+
+        local config = redis.call('HGET', KEYS[1], 'config')
+        local slotCount = tonumber(ARGV[2])
+        if not config then
+            local peerRows = redis.call('SMEMBERS', KEYS[4])
+            for _, rowKey in ipairs(peerRows) do
+                local rowHash = ARGV[5] .. rowKey
+                local mesh = redis.call('HGET', rowHash, 'mesh')
+                local owner = redis.call('HGET', rowHash, 'owner')
+                if mesh and owner and redis.call('EXISTS', ARGV[6] .. owner) == 1 then
+                    for memberIndex = 7, #ARGV do
+                        if mesh == ARGV[memberIndex] then return {'identity-conflict', nowMs} end
+                    end
+                end
+            end
+            redis.call('HSET', KEYS[1],
+                'config', ARGV[1], 'slotCount', slotCount, 'identityMode', 'allocated')
+        elseif config ~= ARGV[1] or tonumber(redis.call('HGET', KEYS[1], 'slotCount')) ~= slotCount then
+            return {'mismatch', config, redis.call('HGET', KEYS[1], 'slotCount'), nowMs}
+        end
+
+        local ownerField = 'owner:' .. ARGV[3]
+        local existingSlot = tonumber(redis.call('HGET', KEYS[1], ownerField))
+        if existingSlot then
+            local value = redis.call('HGET', KEYS[1], 'slot:' .. existingSlot)
+            if value then
+                local currentOwner, generation, expiresAt = string.match(value, '([^|]*)|([^|]*)|([^|]*)')
+                if currentOwner == ARGV[3] and redis.call('EXISTS', KEYS[2]) == 1 then
+                    local renewedExpiry = nowMs + tonumber(ARGV[4])
+                    redis.call('HSET', KEYS[1], 'slot:' .. existingSlot,
+                        currentOwner .. '|' .. generation .. '|' .. renewedExpiry)
+                    local leaseValue = redis.call('GET', KEYS[2])
+                    local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
+                    redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+                    redis.call('SADD', KEYS[3], ARGV[3])
+                    return {'acquired', existingSlot, tonumber(generation), renewedExpiry, nowMs}
+                end
+            end
+        end
+
+        local selected = 0
+        for slot = 1, slotCount do
+            local value = redis.call('HGET', KEYS[1], 'slot:' .. slot)
+            if not value then
+                selected = slot
+                break
+            end
+            local currentOwner, generation, expiresAt = string.match(value, '([^|]*)|([^|]*)|([^|]*)')
+            if redis.call('EXISTS', ARGV[6] .. currentOwner) == 0 then
+                redis.call('HDEL', KEYS[1], 'owner:' .. currentOwner)
+                selected = slot
+                break
+            end
+        end
+
+        if selected == 0 then return {'exhausted', nowMs} end
+
+        local generationField = 'generation:' .. selected
+        local generation = redis.call('HINCRBY', KEYS[1], generationField, 1)
+        local expiresAt = nowMs + tonumber(ARGV[4])
+        redis.call('HSET', KEYS[1],
+            'slot:' .. selected, ARGV[3] .. '|' .. generation .. '|' .. expiresAt,
+            ownerField, selected)
+        local leaseValue = redis.call('GET', KEYS[2])
+        local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
+        redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+        redis.call('SADD', KEYS[3], ARGV[3])
+        return {'acquired', selected, generation, expiresAt, nowMs}
+        """;
+
+    /// <summary>Releases only an exact owner id and slot generation.</summary>
+    internal const string ReleaseRoutingIdSlot = Prologue + """
+
+        local slotField = 'slot:' .. ARGV[1]
+        local value = redis.call('HGET', KEYS[1], slotField)
+        if not value then return {'stale', nowMs} end
+        local currentOwner, generation = string.match(value, '([^|]*)|([^|]*)|')
+        if currentOwner ~= ARGV[2] or tonumber(generation) ~= tonumber(ARGV[3]) then
+            return {'stale', nowMs}
+        end
+        redis.call('HDEL', KEYS[1], slotField, 'owner:' .. currentOwner)
+        return {'released', nowMs}
+        """;
+
+    /// <summary>
+    /// Returns group metadata and all logically live slot values at one store time.
+    /// ARGV[1] is the owner lease key prefix.
+    /// </summary>
+    internal const string ListRoutingIdSlots = Prologue + """
+
+        local config = redis.call('HGET', KEYS[1], 'config')
+        if not config then return {'', 0, nowMs, {}} end
+        local slotCount = tonumber(redis.call('HGET', KEYS[1], 'slotCount'))
+        local allocations = {}
+        for slot = 1, slotCount do
+            local value = redis.call('HGET', KEYS[1], 'slot:' .. slot)
+            if value then
+                local owner, generation, expiresAt = string.match(value, '([^|]*)|([^|]*)|([^|]*)')
+                local remaining = redis.call('PTTL', ARGV[1] .. owner)
+                if remaining >= 0 then
+                    allocations[#allocations + 1] = slot
+                    allocations[#allocations + 1] = owner
+                    allocations[#allocations + 1] = tonumber(generation)
+                    allocations[#allocations + 1] = nowMs + remaining
+                end
+            end
+        end
+        return {config, slotCount, nowMs, allocations}
+        """;
 }

@@ -834,3 +834,20 @@ framework 정책으로 고정한 로그 레벨 표**를 덮어쓰게 한다. Nod
 각 문서는 세 묶음을 담는다 — **구현 감사에서 발굴한 것**(IMP-*), **교차 언어 결함**(IMP-X*),
 **언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20~§12.24)은 이 문서가 소유하고 각 언어
 체크리스트가 참조한다.
+
+## 17. routing id 자동 할당 구현 상태
+
+[channel topology](server/10-channel-topology.ko.md), [SpotNode](server/21-spot-node.ko.md),
+[location runtime](server/40-location-runtime.ko.md)과 [Redis extension](server/41-location-store-redis.ko.md)이
+자동 routing id 할당의 목표 계약을 소유한다.
+
+| 언어 | builder·runtime | in-memory store | Redis store | 상태 |
+|------|-----------------|-----------------|-------------|------|
+| `.NET` | 구현 | 구현 | 구현 | 정식 API snapshot과 회귀 검증 대상 |
+| Java/Kotlin | 미구현 | 미구현 | 미구현 | public contract와 구현 필요 |
+| Node.js | 미구현 | 미구현 | 미구현 | public contract와 구현 필요 |
+| C++ | 미구현 | 미구현 | 미구현 | public contract와 구현 필요 |
+
+다른 언어의 미구현을 이유로 공통 계약을 축소하지 않는다. 반대로 이 표는 `.NET` 구현만으로 다른
+언어가 완료됐다고 판정하지 않는다. 각 언어는 정식 interface 문서, store contract test와 lifecycle
+검증을 함께 추가해야 완료다.

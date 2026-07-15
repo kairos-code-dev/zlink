@@ -8,6 +8,7 @@ contract test는 이 디렉토리의 시그니처와 동작을 따라야 한다.
 | `01` | [시스템 구조](01-system-structure.ko.md) | 패키지 구조·배포, ASP.NET Core host 등록, DI, lifecycle, startup validation |
 | `02` | [인터페이스](02-handler-interfaces.ko.md) | 전체 public interface·타입·시그니처 카탈로그, 공개 계약 산출물 검증 절차(§17) |
 | `03` | [Stream Connector](../../../stream-connector/languages/dotnet/03-stream-connector.ko.md) | client connector의 public 표면 |
+| `04` | [routing id 자동 할당](04-routing-id-allocation.ko.md) | builder, allocation store와 결과 조회의 정확한 public 시그니처 |
 
 **기능의 의미와 동작 규칙은 [공통 스펙](../../../README.ko.md)이 소유한다.** 이 디렉토리는 그 의미가
 이 언어에서 갖는 **정확한 public API**만 고정한다.

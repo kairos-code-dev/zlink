@@ -186,6 +186,10 @@ internal sealed class ZLinkChannelRegistration
 
     public RoutingId RoutingId { get; set; }
 
+    public bool HasExplicitRoutingId { get; set; }
+
+    public ZLinkRoutingIdAllocationRegistration? RoutingIdAllocation { get; set; }
+
     public HashSet<string> HandlerGroups { get; } = new(StringComparer.Ordinal);
 
     public List<ZLinkChannelHandlerRegistration> SendHandlers { get; } = [];
@@ -267,6 +271,10 @@ internal sealed class ZLinkRouteChannelRegistration
 
     public RoutingId RoutingId { get; set; }
 
+    public bool HasExplicitRoutingId { get; set; }
+
+    public ZLinkRoutingIdAllocationRegistration? RoutingIdAllocation { get; set; }
+
     public ZLinkEndpointConnections ManualConnections { get; } = new();
 
     public List<ZLinkRouteHandlerRegistration> SendHandlers { get; } = [];
@@ -308,9 +316,24 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public RoutingId RoutingId { get; set; }
 
+    public bool HasExplicitRoutingId { get; set; }
+
+    public ZLinkRoutingIdAllocationRegistration? RoutingIdAllocation { get; set; }
+
     public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
 
+    public bool HasExplicitEntrySpotRoutingId { get; set; }
+
     public Type? EntrySpotType { get; set; }
+}
+
+internal sealed class ZLinkRoutingIdAllocationRegistration
+{
+    public required int SlotCount { get; init; }
+
+    public required string RoutingIdPrefix { get; init; }
+
+    public string? GroupName { get; set; }
 }
 
 internal sealed record ZLinkActorTransferRegistration(

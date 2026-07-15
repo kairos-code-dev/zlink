@@ -24,6 +24,9 @@ internal sealed class ZLinkRedisLocationKeys(string prefix)
 
     public RedisKey LeaseIndexKey() => $"{prefix}:leases";
 
+    public RedisKey RoutingIdAllocationGroupKey(string groupName) =>
+        $"{prefix}:ridalloc:{groupName}";
+
     public string StampKey(string tag, string? meshName) =>
         meshName is null ? $"{prefix}:stamp:{tag}" : $"{prefix}:stamp:{tag}:{meshName}";
 

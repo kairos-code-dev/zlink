@@ -34,6 +34,28 @@ internal sealed class ZLinkClientServerChannelBuilder(ZLinkChannelRegistration r
     public IZLinkClientServerChannelBuilder SetRoutingId(RoutingId routingId)
     {
         registration.RoutingId = routingId;
+        registration.HasExplicitRoutingId = true;
+        return this;
+    }
+
+    public IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount) =>
+        UseAllocatedRoutingId(slotCount, registration.ChannelName);
+
+    public IZLinkClientServerChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.Create(
+            slotCount,
+            routingIdPrefix,
+            registration.RoutingIdAllocation?.GroupName);
+        return this;
+    }
+
+    public IZLinkClientServerChannelBuilder SetRoutingIdAllocationGroup(string groupName)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.WithGroup(
+            groupName,
+            registration.RoutingIdAllocation,
+            registration.ChannelName);
         return this;
     }
 
@@ -145,6 +167,28 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
     public IZLinkFanoutChannelBuilder SetRoutingId(RoutingId routingId)
     {
         registration.RoutingId = routingId;
+        registration.HasExplicitRoutingId = true;
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount) =>
+        UseAllocatedRoutingId(slotCount, registration.ChannelName);
+
+    public IZLinkFanoutChannelBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.Create(
+            slotCount,
+            routingIdPrefix,
+            registration.RoutingIdAllocation?.GroupName);
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder SetRoutingIdAllocationGroup(string groupName)
+    {
+        registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.WithGroup(
+            groupName,
+            registration.RoutingIdAllocation,
+            registration.ChannelName);
         return this;
     }
 
@@ -170,6 +214,44 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
             registration,
             packetName);
         return this;
+    }
+}
+
+internal static class ZLinkRoutingIdAllocationBuilderSupport
+{
+    public static ZLinkRoutingIdAllocationRegistration Create(
+        int slotCount,
+        string routingIdPrefix,
+        string? groupName)
+    {
+        if (slotCount < 1)
+            throw new ZLinkConfigurationException("Routing-id allocation slot count must be at least one.");
+        if (string.IsNullOrWhiteSpace(routingIdPrefix))
+            throw new ZLinkConfigurationException("Routing-id allocation prefix must not be empty.");
+
+        return new ZLinkRoutingIdAllocationRegistration
+        {
+            SlotCount = slotCount,
+            RoutingIdPrefix = routingIdPrefix,
+            GroupName = groupName
+        };
+    }
+
+    public static ZLinkRoutingIdAllocationRegistration WithGroup(
+        string groupName,
+        ZLinkRoutingIdAllocationRegistration? allocation,
+        string defaultPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(groupName))
+            throw new ZLinkConfigurationException("Routing-id allocation group name must not be empty.");
+
+        allocation ??= new ZLinkRoutingIdAllocationRegistration
+        {
+            SlotCount = 0,
+            RoutingIdPrefix = defaultPrefix
+        };
+        allocation.GroupName = groupName;
+        return allocation;
     }
 }
 

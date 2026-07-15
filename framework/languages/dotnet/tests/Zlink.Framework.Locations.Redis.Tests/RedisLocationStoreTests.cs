@@ -594,6 +594,66 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(0, await _fixture.CountPrefixAsync(prefix));
     }
 
+    [SkippableFact]
+    public async Task RoutingIdSlotAllocation_IsAtomicIdempotentAndFenced()
+    {
+        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
+        await using var store = _fixture.CreateStore();
+        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone-") };
+        var acquired = await Task.WhenAll(Enumerable.Range(1, 20).Select(async owner =>
+            Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+                new ZLinkRoutingIdSlotAcquireRequest(
+                    "zone",
+                    members,
+                    20,
+                    $"owner-{owner}",
+                    LeaseTtl)))));
+
+        Assert.Equal(Enumerable.Range(1, 20), acquired.Select(static item => item.Allocation.Slot).Order());
+        Assert.IsType<ZLinkRoutingIdSlotGroupExhausted>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 20, "overflow", LeaseTtl)));
+
+        var first = acquired.Single(static item => item.Allocation.Slot == 1).Allocation;
+        var retried = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 20, first.Owner.OwnerId, LeaseTtl)));
+        Assert.Equal(first.Owner, retried.Allocation.Owner);
+        Assert.Equal(
+            ZLinkRoutingIdSlotReleaseResult.Released,
+            await store.ReleaseRoutingIdSlotAsync("zone", first.Slot, first.Owner));
+        var recycled = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 20, "replacement", LeaseTtl)));
+        Assert.Equal(1, recycled.Allocation.Slot);
+        Assert.True(recycled.Allocation.Owner.Generation > first.Owner.Generation);
+        Assert.Equal(
+            ZLinkRoutingIdSlotReleaseResult.IgnoredStale,
+            await store.ReleaseRoutingIdSlotAsync("zone", first.Slot, first.Owner));
+
+        var snapshot = await store.ListRoutingIdSlotsAsync("zone");
+        Assert.Equal(20, snapshot.Allocations.Count);
+        Assert.Equal(members, snapshot.Members);
+    }
+
+    [SkippableFact]
+    public async Task RoutingIdSlotAllocation_FollowsSharedOwnerLeaseRenewal()
+    {
+        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
+        await using var store = _fixture.CreateStore();
+        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone") };
+        var initialTtl = TimeSpan.FromMilliseconds(500);
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-a"), initialTtl);
+        await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerA, initialTtl));
+
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-a"), TimeSpan.FromSeconds(2));
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
+
+        Assert.IsType<ZLinkRoutingIdSlotGroupExhausted>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerB, LeaseTtl)));
+        var snapshot = await store.ListRoutingIdSlotsAsync("zone");
+        Assert.True(Assert.Single(snapshot.Allocations).LeaseExpiresAt > snapshot.StoreNow);
+    }
+
     /// <summary>Creates an isolated store and starts the lease setup; tests
     /// must await the returned task before writing rows.</summary>
     private ZLinkRedisLocationStore CreateStoreWithLiveOwnersAsync(

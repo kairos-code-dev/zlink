@@ -141,6 +141,8 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<ZLinkLocationRuntime>(),
                 provider.GetService<ZLinkLocationAutoConnectHost>(),
                 provider.GetService<ZLinkLocationLifecycle>(),
+                provider.GetService<ZLinkAllocatedRoutingIdRuntime>(),
+                provider.GetService<IHostApplicationLifetime>(),
                 provider.GetRequiredService<ZLinkDrainCoordinator>()));
 
         return services;
@@ -265,6 +267,8 @@ internal static class ZLinkFrameworkServiceRegistrar
                 services.AddSingleton(changeStamps);
             if (store is IZLinkLocationWatchStore watch)
                 services.AddSingleton(watch);
+            if (store is IZLinkRoutingIdSlotAllocationStore slotAllocator)
+                services.AddSingleton(slotAllocator);
         }
         else if (locations.UseInMemoryStores)
         {
@@ -282,6 +286,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkOwnerLeaseStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkLocationChangeStampStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkRoutingIdSlotAllocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
         }
         else
@@ -348,6 +354,16 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<IZLinkRouteLocationStore>(),
             provider.GetRequiredService<IZLinkOwnerLeaseStore>(),
             events: provider.GetRequiredService<ZLinkLocationEventEmitter>()));
+        if (registration.Locations.Options.AllocatedRoutingIdsEnabled)
+        {
+            services.AddSingleton(static provider => new ZLinkAllocatedRoutingIdRuntime(
+                provider.GetRequiredService<ZLinkFrameworkRegistration>(),
+                provider.GetRequiredService<IZLinkRoutingIdSlotAllocationStore>(),
+                provider.GetRequiredService<ZLinkLocationRuntime>(),
+                provider.GetRequiredService<ZLinkLocationOptions>()));
+            services.AddSingleton<IZLinkAllocatedRoutingIdProvider>(static provider =>
+                provider.GetRequiredService<ZLinkAllocatedRoutingIdRuntime>());
+        }
         services.AddSingleton<IZLinkLocationRuntimeQuery>(
             static provider => new ZLinkLocationRuntimeQueryService(
                 provider.GetRequiredService<ZLinkLocationOptions>(),

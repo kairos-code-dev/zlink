@@ -11,11 +11,11 @@ public sealed class ZLinkLocationOptions
 
     /// <summary>Owner lease renewal period. One write per runtime instance
     /// per interval; location rows are never written by heartbeat.</summary>
-    public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(5);
+    public TimeSpan HeartbeatInterval { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>Owner lease lifetime. Rows of an expired owner are treated
     /// as stale everywhere.</summary>
-    public TimeSpan OwnerLeaseTtl { get; set; } = TimeSpan.FromSeconds(15);
+    public TimeSpan OwnerLeaseTtl { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Store re-read period when the store has no watch support.
     /// Also bounds the staleness of the local owner lease snapshot.</summary>
@@ -29,6 +29,18 @@ public sealed class ZLinkLocationOptions
     /// connections remain available; after this time, auto connect does not
     /// start new outbound connections until location state recovers.</summary>
     public TimeSpan StoreFailureGrace { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Time reserved to stop every socket that uses an allocated routing id before the
+    /// owner lease expires. This policy is used only when allocated routing ids are configured.
+    /// </summary>
+    public TimeSpan RoutingIdFencingMargin { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Maximum time allowed for one owner-lease renewal attempt when allocated routing ids
+    /// require a bounded fencing decision.
+    /// </summary>
+    public TimeSpan OwnerLeaseRenewTimeout { get; set; } = TimeSpan.FromSeconds(3);
 
     /// <summary>Maps a Spot mesh name from location rows to the route channel
     /// used to reach that mesh. If no mapping is registered, the Spot mesh
@@ -52,4 +64,6 @@ public sealed class ZLinkLocationOptions
     }
 
     internal IReadOnlyDictionary<string, string> SpotRouterChannels => _spotRouterChannels;
+
+    internal bool AllocatedRoutingIdsEnabled { get; set; }
 }

@@ -64,7 +64,7 @@ owner 문서의 `DN-COMMON-*`/`DN-DOC-*`와 plan §6의 exact test가 소유한�
 | `Zlink.Framework.Contracts.Channels`, `Configuration` | `system-structure.ko.md`, `21-spot-node.ko.md` |
 | `Zlink.Framework.Contracts.Spots`, `Timers`, `Workers` | `system-structure.ko.md`, `handler-interfaces.ko.md` |
 | `Zlink.Framework.Contracts.Streams` | `system-structure.ko.md`, `31-session-actor-dispatch.ko.md` |
-| `Zlink.Framework.Contracts.Locations`, `Zlink.Framework.Locations.Redis` | `system-structure.ko.md` |
+| `Zlink.Framework.Contracts.Locations`, `Zlink.Framework.Locations.Redis` | `system-structure.ko.md`, `04-routing-id-allocation.ko.md` |
 | `Zlink.Framework.Contracts.Dispatch`, `Eventing`, `Monitoring` | `system-structure.ko.md` |
 | `Zlink.Framework.AspNetCore` | 언어 `README.ko.md`와 각 capability의 ASP.NET Core 계약 |
 | `Zlink.Framework.Codecs.*` | `handler-interfaces.ko.md`의 codec extension 계약 |
@@ -130,7 +130,8 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 | DN-DOC-002 | `01-system-structure.ko.md` | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-A1` |
 | DN-DOC-003 | `02-handler-interfaces.ko.md` | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그와 §17 공개 계약 산출물 검증 절차 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions`; `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` |
 | DN-DOC-004 | `03-stream-connector.ko.md` | 별도 client connector의 lifecycle, dispatch, codec, transport와 종료 사유 | `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` |
-| DN-DOC-005 | `dotnet-http-client.ko.md` | standalone/server client 분리, callback·scheduler와 패키지 의존성 | `HttpClientContractTests.Standalone_and_server_request_surfaces_expose_only_valid_terminators`; `HttpClientContractTests.Callback_completion_enters_the_captured_execution_turn`; `HttpExecutionSchedulerTests.Captured_http_callback_is_posted_as_a_new_serial_turn` |
+| DN-DOC-005 | `04-routing-id-allocation.ko.md` | 네 builder의 자동 할당, 같은 store capability, bind 전 lifecycle과 준비된 결과 조회 | `NodesAndServicesTests.AddZLinkFramework_RegistersOneAllocatedRoutingIdCapabilityForAllBuilders`; `NodesAndServicesTests.HostStartup_AllocatesRoutingIdBeforeBindingAndPublishesReadyResult`; `RedisLocationStoreTests.RoutingIdSlotAllocation_IsAtomicIdempotentAndFenced` |
+| DN-DOC-006 | `dotnet-http-client.ko.md` | standalone/server client 분리, callback·scheduler와 패키지 의존성 | `HttpClientContractTests.Standalone_and_server_request_surfaces_expose_only_valid_terminators`; `HttpClientContractTests.Callback_completion_enters_the_captured_execution_turn`; `HttpExecutionSchedulerTests.Captured_http_callback_is_posted_as_a_new_serial_turn` |
 
 `02-framework-interfaces.ko.md`는 상위 사용 모델 guide이므로 정식 interface 분모에서는 제외한다.
 문서의 회귀 참조는 active unit test 또는 실제 `.NET` feature-map scenario로만 해석되며, 삭제된
@@ -265,14 +266,14 @@ E2E class allowlist는 존재하지 않는다.
 8ffae3ae36f3305e1dfa35d1874a1c2c9c57342f5f2116abbe7f5e432f79f595 README.ko.md
 8cf0cac1e46c6086de082d8ad4aeae51f339245d05da1b7bc6175f9b622ec79e server/22-actor-model.ko.md
 6614f5efd549442f95ac4f67f8ff1e10bba9c7061ee63a7608ffd91f43fea4bd 04-async-execution-policy.ko.md
-5f190e3b4f1b93d4a0e03c9ba23b625a1b8a56c5d79dc361917215be73fa0839 server/10-channel-topology.ko.md
+3db7422c17d4a9ca1b24fa741ceb2fb88e975feda3829a133242f322332ab278 server/10-channel-topology.ko.md
 077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c server/53-flow-correlation.ko.md
 06f3d56438301a80afd983475e58c65d3b0e678a32b832c5f13813bf937ffcb6 05-framework-api.ko.md
 822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f server/54-graceful-drain-handoff.ko.md
-07de3ec4f39558d3d8c092203c9fcaabcc0eca55c4b4c2b1e7bcfd6f2f932b39 90-implementation-gap.ko.md
+98b6cb5eb517b4e1168444814a7f54d57cb32c256e095e4ca7a9805d4384e8b6 90-implementation-gap.ko.md
 df441c4de567865658b0b79ded6c840d020ccf60865f58e7990a248e9fa361a0 02-interaction-model.ko.md
-e88a06f5622c94acddcd3734c5a0a6052b3dca6b62208ab3b8920de1ad8302ef server/40-location-runtime.ko.md
-f84d4a035cd773d6fe8aa0096151909e92be0743b57445dd51e5b38eeab9376c server/41-location-store-redis.ko.md
+d9224e8beda9065481bd0546e03914324145c8dd8a2947ba62cdb33a5ed451e3 server/40-location-runtime.ko.md
+e2804b71e85df288f626698a511012efa893f55dd30911b05f804ae420bbd41c server/41-location-store-redis.ko.md
 0635851f5d9b3cf0fa6f481fb886200e1802f3bda6fe80db3648b35b53e22108 server/52-message-flow-tracing.ko.md
 a165665cbb47ef2b69744cfa7614d40c35274154af47439693f811080934f914 03-message-model.ko.md
 136b4b2378c404b4728a4e526f985da6303456c294c06e9e425a39abb99d816b 01-overview.ko.md
@@ -283,10 +284,11 @@ d30ea2acfbee45009ee2e0d000f2b37009ccf9f5f134c8ad29dd2035e3b8ab99 server/50-runti
 ae0c25c9f67cb397da861e82d8aaf1311472dfe5e28212a88f1e0aa32ec20998 server/23-spot-actor.ko.md
 45576c26b8061e0a1965d219d539080a4917c6c06572b5d63bccddfb2f1bbe4d server/24-spot-address-messaging.ko.md
 d9546cf37a3f9f34e863ac4a63eda2e2af6f1985269279579fa5b53632978108 server/20-spot-messaging.ko.md
-d9a36ee80739f7035a0371c703871cea26f952e353d0f123e45b69e44c540088 server/21-spot-node.ko.md
+ab578a47597159198b5ed4f37ef96d1fd0b94190a0b0014fbb29061e139572ef server/21-spot-node.ko.md
 700c8504cfa71315b2598349eb2cc38c6cb52fb813b5b80650f46268412cae6c stream-connector/32-stream-connector.ko.md
 623bca5e070513cc314c2d7f93d00dcdeab8b5f473bdeb883bfb5711eaa028e0 server/30-stream-session.ko.md
-25ed1dd2bb81af78a61695bfaadbdba35edb15be565ca2c53e8f0e2cabaf65ec server/languages/dotnet/README.ko.md
+c395d2aafc4a8e5d86013b7290e6e220b892eb767373df1262d3094b1a31c910 server/languages/dotnet/README.ko.md
+9c35fe1f4c2ada3bbb77dac8ed7da369b1271236795c0a8016c7ded1fccf795a server/languages/dotnet/04-routing-id-allocation.ko.md
 8db5adb28d0775b4181554a614bf2bfd77f3b62caad6a9ce55bdc21f17f7d17a stream-connector/languages/dotnet/03-stream-connector.ko.md
 e1d338345b91de9461785e43b9c1c3cbfe85279cb0fb54d5fa8022d8218e66ee server/languages/dotnet/02-handler-interfaces.ko.md
 cc97d50a67777d2221aa0e0f7dc149e9b5ae3b2321d9c60dd40766f002fc293c server/languages/dotnet/01-system-structure.ko.md

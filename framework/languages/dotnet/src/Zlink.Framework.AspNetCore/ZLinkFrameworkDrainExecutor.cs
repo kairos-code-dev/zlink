@@ -107,7 +107,7 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         if (_operations.HasAutoConnect)
             await CaptureAsync(() => _operations.StopAutoConnect(CancellationToken.None), failures).ConfigureAwait(false);
         var ownerCleanupFailed = false;
-        if (_operations.HasLocationRuntime)
+        if (_operations.HasLocationRuntime && !_locationOptions.AllocatedRoutingIdsEnabled)
         {
             using var cleanupBound = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             try
@@ -159,6 +159,9 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
     private async ValueTask<bool> CleanupOwnerAsync(CancellationToken cancellationToken)
     {
         if (!_operations.HasLocationRuntime) return true;
+        // Allocated routing ids require socket close -> location row removal -> slot release ->
+        // owner lease removal. The hosted stop sequence owns that ordering after drain.
+        if (_locationOptions.AllocatedRoutingIdsEnabled) return true;
         while (true)
         {
             try

@@ -9,6 +9,23 @@ public sealed class LocationContracts
         new(2026, 7, 2, 0, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    [ContractExample(
+        typeof(IZLinkAllocatedRoutingIdProvider),
+        typeof(IZLinkRoutingIdSlotAllocationStore))]
+    public void Routing_id_slot_allocation_uses_one_optional_store_capability()
+    {
+        Assert.Contains(
+            typeof(IZLinkRoutingIdSlotAllocationStore).GetMethods(),
+            static method => method.Name == nameof(IZLinkRoutingIdSlotAllocationStore.AcquireRoutingIdSlotAsync));
+        Assert.Contains(
+            typeof(IZLinkRoutingIdSlotAllocationStore).GetMethods(),
+            static method => method.Name == nameof(IZLinkRoutingIdSlotAllocationStore.ReleaseRoutingIdSlotAsync));
+        Assert.Contains(
+            typeof(IZLinkRoutingIdSlotAllocationStore).GetMethods(),
+            static method => method.Name == nameof(IZLinkRoutingIdSlotAllocationStore.ListRoutingIdSlotsAsync));
+    }
+
+    [Fact]
     public void Location_options_expose_one_explicit_spot_mesh_to_route_channel_mapping_method()
     {
         var method = Assert.Single(

@@ -31,6 +31,7 @@ options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
 | key prefix | 이 배포의 모든 key 앞에 붙는 격리 접두사. 배포(또는 테스트 실행)별로 달라야 한다 |
 
 Redis extension 인스턴스는 store 5종 통합 계약과 optional **change stamp** 계약을 구현한다.
+같은 인스턴스가 optional **routing id slot allocation** 계약도 구현한다.
 watch(변경 이벤트 stream)는 구현하지 않는다. 이 extension은 polling과 change stamp로 변경을 감지한다.
 polling은 주기적으로 store를 다시 읽는 방식이고, change stamp는 row가 바뀔 때 증가하는 번호다. 계약상
 polling만으로도 올바른 연결 상태에 도달해야 하므로 Redis extension이 watch를 제공하지 않아도 충분하다.
@@ -51,6 +52,7 @@ prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key �
 | `P:lease:{ownerId}` | STRING | `nodeRidHex\|updatedAtMs`, Redis `PX` TTL로 만료 |
 | `P:leases` | SET | lease를 가진 적 있는 owner id 목록 |
 | `P:stamp:{kind}[:{mesh}]` | STRING | scope별 change stamp counter |
+| `P:ridalloc:{groupName}` | HASH | 정렬된 member·prefix JSON, slot count, identity mode, slot owner·generation과 owner별 slot index |
 
 row key 예 (peer): `AutoConnectType 공통 문자열 + MeshName + Role 공통 문자열 +
 identity(NodeRid hex, 없으면 endpoint)`를 length-prefix로 연결한 값.
@@ -125,3 +127,20 @@ polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목�
 - store 계약 회귀는 언어 공통 store contract 테스트(같은 시나리오를 in-memory 구현과 Redis
   구현에 함께 실행)로 검증한다. Redis 자체의 HA/복제(sentinel, cluster)는 이 extension의 검증
   범위가 아니다.
+
+## 8. routing id slot 원자성
+
+slot acquire는 Redis `TIME` 조회, group 구성 확인 또는 최초 고정, active fixed peer의 best-effort
+충돌 확인, 같은 owner의 멱등 claim 확인, 가장 작은 빈 slot 선택, generation 증가, slot·owner index
+기록과 owner lease 갱신을 Lua script 한 번으로 수행한다. slot의 유효성은 hash field가 존재하는지가
+아니라 `P:lease:{ownerId}`의 논리 유효성으로 판단한다. list 결과의 만료 시각도 같은 owner lease의
+남은 TTL과 script 안에서 읽은 store 시각으로 계산한다.
+
+release는 group, slot, owner id와 generation이 모두 일치할 때만 slot과 owner index를 지운다.
+오래된 token은 `IgnoredStale`로 반환해 현재 claim을 유지한다. group metadata는 첫 acquire 뒤
+자동으로 변경하거나 삭제하지 않는다.
+
+공식 지원 topology는 기존 location row와 마찬가지로 standalone Redis다. 비동기 replica failover
+뒤 성공 응답을 받은 write가 유실될 수 있는 구성은 strict single-active 보장을 제공하지 않는다.
+Sentinel이나 Cluster를 지원 범위로 확대하려면 성공한 acquire의 failover durability와 모든 관련
+key의 동일 hash slot 배치를 별도로 검증해야 한다.

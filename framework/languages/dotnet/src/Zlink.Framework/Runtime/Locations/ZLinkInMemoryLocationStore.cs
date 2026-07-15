@@ -11,6 +11,7 @@ namespace Zlink.Framework.Runtime.Locations;
 /// </summary>
 internal sealed class ZLinkInMemoryLocationStore :
     IZLinkLocationStore,
+    IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore
 {
     private readonly object _gate = new();
@@ -21,6 +22,8 @@ internal sealed class ZLinkInMemoryLocationStore :
     private readonly RowTable<ZLinkActorLocation> _actors = new();
     private readonly RowTable<ZLinkRouteLocation> _routes = new();
     private readonly Dictionary<ZLinkLocationChangeStampScope, long> _stamps = [];
+    private readonly Dictionary<string, RoutingIdAllocationGroup> _routingIdGroups =
+        new(StringComparer.Ordinal);
 
     public ZLinkInMemoryLocationStore(TimeProvider? timeProvider = null)
     {
@@ -297,6 +300,137 @@ internal sealed class ZLinkInMemoryLocationStore :
         }
     }
 
+    public ValueTask<ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(
+        ZLinkRoutingIdSlotAcquireRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ZLinkRoutingIdSlotAllocationValidator.ValidateAcquire(request);
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var members = NormalizeMembers(request.Members);
+            if (!_routingIdGroups.TryGetValue(request.GroupName, out var group))
+            {
+                var memberNames = members.Select(static member => member.ChannelName)
+                    .ToHashSet(StringComparer.Ordinal);
+                if (_peers.Rows.Values.Any(peer =>
+                        memberNames.Contains(peer.MeshName) && IsOwnerLive(peer.OwnerId, now)))
+                    return ValueTask.FromResult<ZLinkRoutingIdSlotAcquireResult>(
+                        new ZLinkRoutingIdSlotIdentityModeConflict());
+
+                group = new RoutingIdAllocationGroup(members, request.SlotCount);
+                _routingIdGroups.Add(request.GroupName, group);
+            }
+            else if (group.SlotCount != request.SlotCount
+                     || !group.Members.SequenceEqual(members))
+            {
+                return ValueTask.FromResult<ZLinkRoutingIdSlotAcquireResult>(
+                    new ZLinkRoutingIdSlotGroupConfigurationMismatch(
+                        group.Members,
+                        group.SlotCount,
+                        members,
+                        request.SlotCount));
+            }
+
+            var existing = group.Allocations.Values.FirstOrDefault(allocation =>
+                allocation.Owner.OwnerId == request.OwnerId
+                && IsOwnerLive(allocation.Owner.OwnerId, now));
+            if (existing is not null)
+            {
+                var renewed = existing with { LeaseExpiresAt = now + request.LeaseTtl, StoreNow = now };
+                group.Allocations[renewed.Slot] = renewed;
+                RenewAllocationLeaseNoLock(request.OwnerId, request.LeaseTtl, now);
+                return ValueTask.FromResult<ZLinkRoutingIdSlotAcquireResult>(
+                    new ZLinkRoutingIdSlotAcquired(renewed));
+            }
+
+            var slot = Enumerable.Range(1, request.SlotCount).FirstOrDefault(candidate =>
+                !group.Allocations.TryGetValue(candidate, out var allocation)
+                || !IsOwnerLive(allocation.Owner.OwnerId, now));
+            if (slot == 0)
+                return ValueTask.FromResult<ZLinkRoutingIdSlotAcquireResult>(
+                    new ZLinkRoutingIdSlotGroupExhausted());
+
+            group.Generations.TryGetValue(slot, out var generation);
+            generation++;
+            group.Generations[slot] = generation;
+            var acquired = new ZLinkRoutingIdSlotAllocation(
+                slot,
+                new ZLinkLocationOwnerToken(request.OwnerId, generation),
+                now + request.LeaseTtl,
+                now);
+            group.Allocations[slot] = acquired;
+            RenewAllocationLeaseNoLock(request.OwnerId, request.LeaseTtl, now);
+            return ValueTask.FromResult<ZLinkRoutingIdSlotAcquireResult>(
+                new ZLinkRoutingIdSlotAcquired(acquired));
+        }
+    }
+
+    public ValueTask<ZLinkRoutingIdSlotReleaseResult> ReleaseRoutingIdSlotAsync(
+        string groupName,
+        int slot,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default)
+    {
+        ZLinkRoutingIdSlotAllocationValidator.ValidateRelease(groupName, slot, owner);
+        lock (_gate)
+        {
+            if (!_routingIdGroups.TryGetValue(groupName, out var group)
+                || !group.Allocations.TryGetValue(slot, out var allocation)
+                || allocation.Owner != owner)
+                return ValueTask.FromResult(ZLinkRoutingIdSlotReleaseResult.IgnoredStale);
+
+            group.Allocations.Remove(slot);
+            return ValueTask.FromResult(ZLinkRoutingIdSlotReleaseResult.Released);
+        }
+    }
+
+    public ValueTask<ZLinkRoutingIdSlotAllocationSnapshot> ListRoutingIdSlotsAsync(
+        string groupName,
+        CancellationToken cancellationToken = default)
+    {
+        ZLinkRoutingIdSlotAllocationValidator.ValidateGroupName(groupName);
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            if (!_routingIdGroups.TryGetValue(groupName, out var group))
+                return ValueTask.FromResult(new ZLinkRoutingIdSlotAllocationSnapshot(
+                    groupName,
+                    [],
+                    0,
+                    [],
+                    now));
+
+            var liveAllocations = group.Allocations.Values
+                .Where(allocation => IsOwnerLive(allocation.Owner.OwnerId, now))
+                .Select(allocation => allocation with
+                {
+                    LeaseExpiresAt = _leases[allocation.Owner.OwnerId].LeaseExpiresAt,
+                    StoreNow = now
+                })
+                .OrderBy(static allocation => allocation.Slot)
+                .ToArray();
+            return ValueTask.FromResult(new ZLinkRoutingIdSlotAllocationSnapshot(
+                groupName,
+                group.Members,
+                group.SlotCount,
+                liveAllocations,
+                now));
+        }
+    }
+
+    private void RenewAllocationLeaseNoLock(string ownerId, TimeSpan leaseTtl, DateTimeOffset now)
+    {
+        var nodeRid = _leases.TryGetValue(ownerId, out var current) ? current.NodeRid : default;
+        _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, now + leaseTtl, now);
+    }
+
+    private static IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> NormalizeMembers(
+        IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> members) =>
+        members.OrderBy(static member => member.ChannelName, StringComparer.Ordinal)
+            .ThenBy(static member => member.RoutingIdPrefix, StringComparer.Ordinal)
+            .ToArray();
+
     private ZLinkLocationWriteResult Write<TRow>(
         RowTable<TRow> table,
         string key,
@@ -448,5 +582,18 @@ internal sealed class ZLinkInMemoryLocationStore :
         public Dictionary<string, TRow> Rows { get; } = [];
 
         public Dictionary<string, long> Generations { get; } = [];
+    }
+
+    private sealed class RoutingIdAllocationGroup(
+        IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> members,
+        int slotCount)
+    {
+        public IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> Members { get; } = members;
+
+        public int SlotCount { get; } = slotCount;
+
+        public Dictionary<int, ZLinkRoutingIdSlotAllocation> Allocations { get; } = [];
+
+        public Dictionary<int, long> Generations { get; } = [];
     }
 }

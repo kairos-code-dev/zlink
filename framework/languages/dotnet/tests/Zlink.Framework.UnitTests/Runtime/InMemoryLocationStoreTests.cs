@@ -9,6 +9,122 @@ public sealed class InMemoryLocationStoreTests
     private static readonly TimeSpan LeaseTtl = TimeSpan.FromSeconds(15);
 
     [Fact]
+    public async Task RoutingIdSlots_AssignLowestAvailableAndFenceStaleRelease()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone-") };
+
+        var first = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 3, OwnerA, LeaseTtl)));
+        var second = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 3, OwnerB, LeaseTtl)));
+        Assert.Equal(1, first.Allocation.Slot);
+        Assert.Equal(2, second.Allocation.Slot);
+
+        Assert.Equal(
+            ZLinkRoutingIdSlotReleaseResult.Released,
+            await store.ReleaseRoutingIdSlotAsync("zone", 1, first.Allocation.Owner));
+        var replacement = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 3, "owner-c", LeaseTtl)));
+        Assert.Equal(1, replacement.Allocation.Slot);
+        Assert.True(replacement.Allocation.Owner.Generation > first.Allocation.Owner.Generation);
+        Assert.Equal(
+            ZLinkRoutingIdSlotReleaseResult.IgnoredStale,
+            await store.ReleaseRoutingIdSlotAsync("zone", 1, first.Allocation.Owner));
+    }
+
+    [Fact]
+    public async Task RoutingIdSlots_AreConcurrentIdempotentAndGroupScoped()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone") };
+        var acquisitions = await Task.WhenAll(Enumerable.Range(1, 100).Select(async owner =>
+            Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+                new ZLinkRoutingIdSlotAcquireRequest(
+                    "zone",
+                    members,
+                    100,
+                    $"owner-{owner}",
+                    LeaseTtl)))));
+
+        Assert.Equal(Enumerable.Range(1, 100), acquisitions.Select(static result => result.Allocation.Slot).Order());
+        Assert.IsType<ZLinkRoutingIdSlotGroupExhausted>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 100, "overflow", LeaseTtl)));
+
+        var retried = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 100, "owner-1", LeaseTtl)));
+        Assert.Equal(acquisitions.Single(result => result.Allocation.Owner.OwnerId == "owner-1").Allocation.Owner, retried.Allocation.Owner);
+
+        var otherGroup = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("other", members, 100, "other-owner", LeaseTtl)));
+        Assert.Equal(1, otherGroup.Allocation.Slot);
+    }
+
+    [Fact]
+    public async Task RoutingIdSlots_RejectChangedGroupConfigurationAndRecycleLogicalExpiry()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone") };
+        var first = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerA, LeaseTtl)));
+
+        Assert.IsType<ZLinkRoutingIdSlotGroupConfigurationMismatch>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest(
+                "zone",
+                [new ZLinkRoutingIdSlotAllocationMember("zone", "changed")],
+                1,
+                OwnerB,
+                LeaseTtl)));
+
+        time.Advance(LeaseTtl + TimeSpan.FromMilliseconds(1));
+        var recycled = Assert.IsType<ZLinkRoutingIdSlotAcquired>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerB, LeaseTtl)));
+        Assert.Equal(first.Allocation.Slot, recycled.Allocation.Slot);
+        Assert.True(recycled.Allocation.Owner.Generation > first.Allocation.Owner.Generation);
+    }
+
+    [Fact]
+    public async Task RoutingIdSlots_RejectActiveFixedPeerWhenGroupIsFirstCreated()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("fixed-node"), LeaseTtl);
+        await store.UpdatePeerAsync(
+            Peer(OwnerA, endpoint: "tcp://127.0.0.1:5001", nodeRid: "fixed-node"),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var result = await store.AcquireRoutingIdSlotAsync(new ZLinkRoutingIdSlotAcquireRequest(
+            "play",
+            [new ZLinkRoutingIdSlotAllocationMember("play", "play")],
+            10,
+            OwnerB,
+            LeaseTtl));
+
+        Assert.IsType<ZLinkRoutingIdSlotIdentityModeConflict>(result);
+    }
+
+    [Fact]
+    public async Task RoutingIdSlots_FollowTheSharedOwnerLeaseRenewal()
+    {
+        var time = new ManualTimeProvider();
+        var store = new ZLinkInMemoryLocationStore(time);
+        var members = new[] { new ZLinkRoutingIdSlotAllocationMember("zone", "zone") };
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-a"), LeaseTtl);
+        await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerA, LeaseTtl));
+
+        time.Advance(TimeSpan.FromSeconds(10));
+        await store.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-a"), LeaseTtl);
+        time.Advance(TimeSpan.FromSeconds(10));
+
+        Assert.IsType<ZLinkRoutingIdSlotGroupExhausted>(await store.AcquireRoutingIdSlotAsync(
+            new ZLinkRoutingIdSlotAcquireRequest("zone", members, 1, OwnerB, LeaseTtl)));
+        var snapshot = await store.ListRoutingIdSlotsAsync("zone");
+        Assert.True(Assert.Single(snapshot.Allocations).LeaseExpiresAt > snapshot.StoreNow);
+    }
+
+    [Fact]
     public async Task NewClaim_Issues_Monotonic_Generations_And_Rejects_Live_Row_Claims()
     {
         var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA, OwnerB);

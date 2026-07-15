@@ -103,6 +103,27 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
+    public async Task AllocatedRoutingId_ForcedDrain_LeavesOwnerAndLeaseForHostedReleaseOrder()
+    {
+        var probe = new DrainExecutionProbe();
+        var options = new ZLinkLocationOptions { AllocatedRoutingIdsEnabled = true };
+        var executor = new ZLinkFrameworkDrainExecutor(probe.Operations, options);
+
+        await executor.ForceStopAsync(
+            ZLinkDrainForceReason.DeadlineExceeded,
+            CancellationToken.None);
+
+        Assert.Equal(
+            new[]
+            {
+                "drain-sessions",
+                "stop-runtime",
+                "stop-auto-connect"
+            },
+            probe.Events);
+    }
+
+    [Fact]
     public async Task ReleaseAndRecreate_Waits_For_Spot_Queue_Close_Before_Row_Release()
     {
         var closeStarted = new TaskCompletionSource(

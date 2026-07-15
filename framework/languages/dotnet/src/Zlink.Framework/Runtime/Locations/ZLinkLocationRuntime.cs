@@ -68,6 +68,10 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     /// came back IgnoredStale. The argument is the canonical location key.</summary>
     internal event Action<ZLinkLocationKind, string>? OwnershipLost;
 
+    internal event Action<ZLinkOwnerLeaseRenewal>? OwnerLeaseRenewed;
+
+    internal event Action? OwnerLeaseRenewalFailed;
+
     internal async ValueTask StartAsync(
         RoutingId nodeRid,
         CancellationToken cancellationToken = default)
@@ -131,16 +135,17 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
             heartbeat?.Dispose();
             UpdateHealth(static health => health with { Healthy = false });
 
-            // Shutdown order: drop the lease first so every row of this owner
-            // turns stale at once, then bulk-remove the rows without a call per
-            // row.
+            // Keep the lease valid while owned rows are removed. Allocated routing-id slots are
+            // released by their lifecycle before this method removes the shared owner lease.
+            // That order prevents another runtime from taking the same id while an old socket or
+            // location row can still be observed.
             try
             {
                 if (!_ownerCleanedForDrain)
                 {
+                    await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
                     await _ownerLeaseStore.RemoveOwnerLeaseAsync(OwnerId, cancellationToken)
                         .ConfigureAwait(false);
-                    await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -207,6 +212,12 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         {
             _lifecycleGate.Release();
         }
+    }
+
+    internal async ValueTask RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+        CancellationToken cancellationToken)
+    {
+        _ = await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
     }
 
     private void StartHeartbeatAfterCleanupFailure()
@@ -401,8 +412,15 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     {
         try
         {
+            using var timeout = _options.AllocatedRoutingIdsEnabled
+                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+                : null;
+            timeout?.CancelAfter(_options.OwnerLeaseRenewTimeout);
             var result = await _ownerLeaseStore.RenewOwnerLeaseAsync(
-                OwnerId, _nodeRid, _options.OwnerLeaseTtl, cancellationToken)
+                OwnerId,
+                _nodeRid,
+                _options.OwnerLeaseTtl,
+                timeout?.Token ?? cancellationToken)
                 .ConfigureAwait(false);
             UpdateHealth(
                 health => health with
@@ -411,6 +429,8 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                     RenewedAt = result.StoreNow,
                     LeaseError = null
                 });
+
+            OwnerLeaseRenewed?.Invoke(result);
 
             return true;
         }
@@ -423,6 +443,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
             // Fail-static: record the failure and retry on the next tick.
             // Existing rows stay valid until the lease actually expires.
             RecordLeaseFailure(exception.Message);
+            OwnerLeaseRenewalFailed?.Invoke();
             return false;
         }
     }

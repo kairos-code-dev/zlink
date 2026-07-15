@@ -117,3 +117,16 @@ spot handle을 사용한다 — 두 표면의 대상 값을 섞지 않는다.
 | getOrCreate | ready·initializing·타입 불일치 세 갈래가 §3.1대로 동작한다 |
 | close | actor가 남은 user Spot을 종료하지 않는다 |
 | public 표면 | 제거된 route 계약이 public API로 다시 노출되지 않고 actor·session 계약은 유지된다 |
+
+## 6. routing id 자동 할당
+
+SpotNode builder는 고정 routing id 대신 location store가 관리하는 allocation group에서 번호를
+할당받을 수 있다. group을 생략하면 SpotNode 등록 이름을 group 이름과 routing id prefix로 사용한다.
+같은 group을 사용하는 다른 channel과는 같은 slot 번호를 공유한다.
+
+할당된 routing id는 router와 pub/sub socket을 만들기 전에 SpotNode에 적용한다. Entry Spot을
+등록한 경우 Entry Spot도 같은 값을 기본으로 사용한다. 자동 할당과 명시적인 SpotNode routing id,
+또는 명시적인 Entry Spot routing id를 함께 설정하면 startup 전에 설정 오류로 실패한다.
+
+slot을 확보하지 못한 runtime은 socket을 bind하지 않고 대기한다. 할당, owner lease, fencing과 종료
+순서는 [location runtime §12](40-location-runtime.ko.md#12-routing-id-slot-allocation)을 따른다.

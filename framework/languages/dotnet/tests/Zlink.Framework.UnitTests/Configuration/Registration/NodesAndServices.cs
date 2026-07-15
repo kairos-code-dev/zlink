@@ -789,6 +789,173 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public async Task AddZLinkFramework_RegistersOneAllocatedRoutingIdCapabilityForAllBuilders()
+    {
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.UseInMemoryLocationStores();
+            options.AddClientServerChannel("api")
+                .EnableClient()
+                .UseAllocatedRoutingId(10)
+                .SetRoutingIdAllocationGroup("node");
+            options.AddFanoutChannel("events")
+                .EnablePublisher("inproc://allocated-events")
+                .UseAllocatedRoutingId(10)
+                .SetRoutingIdAllocationGroup("node");
+            options.AddRouteMeshChannel("route")
+                .EnableClient()
+                .UseAllocatedRoutingId(10)
+                .SetRoutingIdAllocationGroup("node");
+            options.AddSpotMesh("spot")
+                .EnableRouter("inproc://allocated-spot")
+                .UseAllocatedRoutingId(10)
+                .SetRoutingIdAllocationGroup("node");
+        });
+
+        await using var provider = services.BuildServiceProvider();
+        Assert.Same(
+            provider.GetRequiredService<ZLinkInMemoryLocationStore>(),
+            provider.GetRequiredService<IZLinkRoutingIdSlotAllocationStore>());
+        Assert.Same(
+            provider.GetRequiredService<ZLinkAllocatedRoutingIdRuntime>(),
+            provider.GetRequiredService<IZLinkAllocatedRoutingIdProvider>());
+    }
+
+    [Fact]
+    public void AllocatedRoutingIdPolicy_UsesTheContractDefaults()
+    {
+        var options = new ZLinkLocationOptions();
+
+        Assert.Equal(TimeSpan.FromSeconds(10), options.HeartbeatInterval);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.OwnerLeaseTtl);
+        Assert.Equal(TimeSpan.FromSeconds(5), options.RoutingIdFencingMargin);
+        Assert.Equal(TimeSpan.FromSeconds(3), options.OwnerLeaseRenewTimeout);
+    }
+
+    [Fact]
+    public void AddZLinkFramework_RejectsInvalidAllocatedRoutingIdConfigurations()
+    {
+        var missingStore = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+                options.AddFanoutChannel("events")
+                    .EnablePublisher("inproc://allocated-no-store")
+                    .UseAllocatedRoutingId(10)));
+        Assert.Contains("require", missingStore.Message, StringComparison.OrdinalIgnoreCase);
+
+        var storeWithoutCapability = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
+        var missingCapability = Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.AddLocationStore(storeWithoutCapability);
+                options.AddFanoutChannel("events")
+                    .EnablePublisher("inproc://allocated-no-capability")
+                    .UseAllocatedRoutingId(10);
+            }));
+        Assert.Contains("does not provide", missingCapability.Message, StringComparison.Ordinal);
+
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.UseInMemoryLocationStores();
+                options.AddFanoutChannel("events")
+                    .EnablePublisher("inproc://allocated-fixed")
+                    .SetRoutingId(RoutingId.From("fixed"))
+                    .UseAllocatedRoutingId(10);
+            }));
+
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.UseInMemoryLocationStores();
+                options.AddFanoutChannel("events")
+                    .EnablePublisher("inproc://allocated-fixed-reversed")
+                    .UseAllocatedRoutingId(10)
+                    .SetRoutingId(RoutingId.From("fixed"));
+            }));
+
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.UseInMemoryLocationStores();
+                options.AddSpotMesh("spot")
+                    .EnableRouter("inproc://allocated-entry")
+                    .UseAllocatedRoutingId(10)
+                    .SetEntrySpotRoutingId(RoutingId.From("entry"));
+            }));
+
+        Assert.Throws<ZLinkConfigurationException>(() =>
+            new ServiceCollection().AddZLinkFramework(options =>
+            {
+                options.UseInMemoryLocationStores();
+                options.AddFanoutChannel("events")
+                    .EnablePublisher("inproc://allocated-group-only")
+                    .SetRoutingIdAllocationGroup("group");
+            }));
+    }
+
+    [Fact]
+    public async Task HostStartup_AllocatesRoutingIdBeforeBindingAndPublishesReadyResult()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.UseInMemoryLocationStores();
+            options.AddFanoutChannel("events")
+                .EnablePublisher($"inproc://allocated-ready-{Guid.NewGuid():N}")
+                .UseAllocatedRoutingId(2);
+        });
+        using var host = builder.Build();
+
+        await host.StartAsync();
+        var allocation = await host.Services
+            .GetRequiredService<IZLinkAllocatedRoutingIdProvider>()
+            .WaitForReadyAllocationAsync("events");
+
+        Assert.Equal(1, allocation.Slot);
+        Assert.Equal(RoutingId.From("events1"), allocation.MemberRoutingIds["events"]);
+        await host.StopAsync();
+    }
+
+    [Fact]
+    public async Task AllocatedRoutingIdRuntime_RetriesTransientStoreFailureWithTheSameOwner()
+    {
+        var services = new ServiceCollection();
+        services.AddZLinkFramework(options =>
+        {
+            options.UseInMemoryLocationStores();
+            options.ConfigureLocations().PollingInterval = TimeSpan.FromMilliseconds(1);
+            options.AddFanoutChannel("events")
+                .EnablePublisher($"inproc://allocated-retry-{Guid.NewGuid():N}")
+                .UseAllocatedRoutingId(2);
+        });
+        await using var provider = services.BuildServiceProvider();
+        var locations = provider.GetRequiredService<ZLinkLocationRuntime>();
+        var innerStore = provider.GetRequiredService<IZLinkRoutingIdSlotAllocationStore>();
+        var flakyStore = new FailOnceRoutingIdSlotStore(innerStore);
+        var allocation = new ZLinkAllocatedRoutingIdRuntime(
+            provider.GetRequiredService<ZLinkFrameworkRegistration>(),
+            flakyStore,
+            locations,
+            provider.GetRequiredService<ZLinkLocationOptions>());
+
+        await locations.StartAsync(RoutingId.From("retry-node"));
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await allocation.StartAsync(timeout.Token);
+
+            Assert.Equal(2, flakyStore.AcquireAttempts);
+            Assert.Single((await innerStore.ListRoutingIdSlotsAsync("events")).Allocations);
+        }
+        finally
+        {
+            await allocation.StopAsync(CancellationToken.None);
+            await locations.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public void AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithInMemoryStore()
     {
         var inMemory = new ServiceCollection();
@@ -1052,5 +1219,34 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
 
             return targetMethod.Invoke(_inner, args);
         }
+    }
+
+    private sealed class FailOnceRoutingIdSlotStore(IZLinkRoutingIdSlotAllocationStore inner)
+        : IZLinkRoutingIdSlotAllocationStore
+    {
+        private int _acquireAttempts;
+
+        public int AcquireAttempts => Volatile.Read(ref _acquireAttempts);
+
+        public ValueTask<ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(
+            ZLinkRoutingIdSlotAcquireRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _acquireAttempts) == 1)
+                throw new IOException("transient allocation store failure");
+            return inner.AcquireRoutingIdSlotAsync(request, cancellationToken);
+        }
+
+        public ValueTask<ZLinkRoutingIdSlotReleaseResult> ReleaseRoutingIdSlotAsync(
+            string groupName,
+            int slot,
+            ZLinkLocationOwnerToken owner,
+            CancellationToken cancellationToken = default) =>
+            inner.ReleaseRoutingIdSlotAsync(groupName, slot, owner, cancellationToken);
+
+        public ValueTask<ZLinkRoutingIdSlotAllocationSnapshot> ListRoutingIdSlotsAsync(
+            string groupName,
+            CancellationToken cancellationToken = default) =>
+            inner.ListRoutingIdSlotsAsync(groupName, cancellationToken);
     }
 }

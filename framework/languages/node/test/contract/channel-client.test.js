@@ -954,7 +954,9 @@ test('route channel request uses call timeout after native router accepts submit
   const startedAt = Date.now();
   await assert.rejects(
     () => manager.routeRequest('room.route', 'play-node', 'EnsurePlayerActorReq', { actorId: 'player-1' }, 30),
-    /ZLink async submit timed out/
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.RequestFailed
+      && /ZLink async submit timed out/.test(error.message)
   );
   assert.equal(router.requestAttempts, 1);
   assert.ok(Date.now() - startedAt < 1000);
@@ -1946,7 +1948,9 @@ test('REG-003 ZLinkFrameworkRuntimeHost dispatches manual channel handlers and r
         .requestToChannel('manual-reg', typedPacket('ManualMissingReq', { value: 'missing' }))
         .timeout(1000)
         .submit(),
-      /No channel request handler is registered for 'manual-reg:ManualMissingReq'/
+      (error) => error instanceof framework.ZLinkFrameworkException
+        && error.kind === framework.ZLinkFrameworkErrorKind.HandlerNotFound
+        && /No channel request handler is registered for 'manual-reg:ManualMissingReq'/.test(error.message)
     );
 
     await client

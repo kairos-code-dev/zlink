@@ -1,17 +1,31 @@
+import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 export async function runRmC5(locationConsumerUrl: string, providerAUrl: string, providerBUrl: string): Promise<void> {
   const missingRequest = await postJson<RequestFailureRes>(locationConsumerUrl, '/profile/missing-request', { value: 'missing-request' });
-  ensure(missingRequest.failed, 'RM-C5 missing request should fail.');
+  ensure(
+    missingRequest.failed && missingRequest.failureType === ZLinkFrameworkErrorKind.HandlerNotFound,
+    'RM-C5 missing request should fail with HandlerNotFound.'
+  );
   await postJson(locationConsumerUrl, '/profile/missing-command', { commandId: 'missing-send' });
   const evidence = [
     ...await firstDispatchErrorEvidence(providerAUrl, providerBUrl, 'MissingProfileReq'),
     ...await firstDispatchErrorEvidence(providerAUrl, providerBUrl, 'MissingProfileMsg')
   ];
-  ensure(evidence.some((line) => line.includes('dispatch-error') && line.includes('MissingProfileReq')), 'RM-C5 missing request evidence missing.');
-  ensure(evidence.some((line) => line.includes('dispatch-error') && line.includes('MissingProfileMsg')), 'RM-C5 missing send evidence missing.');
+  ensure(
+    evidence.some((line) => line.includes('packet=MissingProfileReq')
+      && line.includes('reason=handlerMissing')
+      && line.includes('action=replyError')),
+    'RM-C5 missing request HandlerMissing/ReplyError evidence missing.'
+  );
+  ensure(
+    evidence.some((line) => line.includes('packet=MissingProfileMsg')
+      && line.includes('reason=handlerMissing')
+      && line.includes('action=drop')),
+    'RM-C5 missing send HandlerMissing/Drop evidence missing.'
+  );
   const reply = await postJson<ProfileRes>(locationConsumerUrl, '/profile/request', { value: 'rm-c5-after' });
   ensure(reply.value === 'profile:rm-c5-after', 'RM-C5 normal request after negative path failed.');
   console.log('scenario RM-C5 passed');

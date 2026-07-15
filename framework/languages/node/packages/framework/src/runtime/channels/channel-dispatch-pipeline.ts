@@ -114,7 +114,10 @@ export class ZLinkChannelDispatchPipeline {
   async dispatchRequest<TContext extends ZLinkHandlerContext>(dispatch: ZLinkRequestDispatch<TContext>): Promise<void> {
     this.trace(ZLinkMessageFlowOutcome.Received, dispatch.fields);
     if (dispatch.handler === undefined) {
-      const missing = new Error(dispatch.missingHandlerMessage);
+      const missing = new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.HandlerNotFound,
+        dispatch.missingHandlerMessage
+      );
       if (this.unhandled.request === ZLinkUnhandledDispatchAction.ReplyError) {
         await dispatch.writeError(missing);
       }

@@ -1,3 +1,4 @@
+import { ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { PayloadRes, ProfileRes, RequestFailureRes } from '../../Shared/messages';
 import { sha256Hex } from '../../Shared/messages';
 import { getJson, postJson } from '../Support/http-client';
@@ -24,7 +25,10 @@ export async function runRmC8(
     marker: uniqueMarker('rm-c8-over-limit'),
     payload: buildPayload(3 * 1024 * 1024)
   });
-  ensure(oversized.failed === true, 'RM-C8 oversized payload should fail.');
+  ensure(
+    oversized.failed && oversized.failureType === ZLinkFrameworkErrorKind.RequestFailed,
+    'RM-C8 oversized payload should fail with RequestFailed.'
+  );
 
   const followUp = await postJson<ProfileRes>(directConsumerUrl, '/profile/request', { value: 'rm-c8-after' });
   ensure(followUp.value === 'profile:rm-c8-after', 'RM-C8 follow-up request failed.');

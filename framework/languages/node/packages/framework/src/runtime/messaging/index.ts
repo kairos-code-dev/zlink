@@ -1,3 +1,7 @@
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { createAbortError, throwIfAborted } from '../abort';
 
@@ -275,7 +279,10 @@ class ZLinkPendingSubmit<TReply> {
     });
     if (options.timeoutMs !== undefined) {
       this.timeout = setTimeout(
-        () => this.reject(new ZLinkConfigurationException('ZLink async submit timed out.')),
+        () => this.reject(new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RequestFailed,
+          'ZLink async submit timed out.'
+        )),
         options.timeoutMs
       );
     }

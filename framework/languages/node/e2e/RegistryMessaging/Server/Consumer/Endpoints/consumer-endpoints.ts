@@ -1,4 +1,7 @@
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import {
+  ZLinkFrameworkException,
+  type ZLinkChannelClient
+} from '@zlink-systems/framework';
 import {
   MissingProfileMsg,
   MissingProfileReq,
@@ -70,7 +73,7 @@ async function requestPayloadFailure(channel: ZLinkChannelClient, request: Paylo
       .submit<PayloadRes>();
     return { failed: false, failureType: '' };
   } catch (error) {
-    return { failed: true, failureType: error instanceof Error ? error.name : 'Error' };
+    return { failed: true, failureType: publicFailureType(error) };
   }
 }
 
@@ -83,7 +86,7 @@ async function requestProfileFailure(
     await requestProfile(channel, request, timeoutMs);
     return { failed: false, failureType: '' };
   } catch (error) {
-    return { failed: true, failureType: error instanceof Error ? error.name : 'Error' };
+    return { failed: true, failureType: publicFailureType(error) };
   }
 }
 
@@ -95,8 +98,14 @@ async function requestMissingProfile(channel: ZLinkChannelClient, request: Missi
       .submit<ProfileRes>();
     return { failed: false, failureType: '' };
   } catch (error) {
-    return { failed: true, failureType: error instanceof Error ? error.name : 'Error' };
+    return { failed: true, failureType: publicFailureType(error) };
   }
+}
+
+function publicFailureType(error: unknown): string {
+  return error instanceof ZLinkFrameworkException ? error.kind
+    : error instanceof Error ? error.name
+      : 'Error';
 }
 
 function toPayloadReq(body: unknown): PayloadReq {

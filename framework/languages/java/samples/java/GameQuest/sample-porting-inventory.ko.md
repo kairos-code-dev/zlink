@@ -1,13 +1,15 @@
 # Java GameQuest Sample Porting Inventory
 
-기준: `framework/languages/dotnet/samples/GameQuest`.
+계약 기준은 `framework/doc/framework/common/sample/event/gamequest.ko.md`와
+`framework/doc/framework/common/sample/README.ko.md`다. `.NET` 구현은 언어별 동작 차이를
+찾기 위한 비교 자료로만 사용하며, Java 완료 여부는 공통 계약과 Java runner 결과로 판단한다.
 
 ## 상태
 
 | 영역 | Java 포트 | 비고 |
 |------|-----------|------|
 | Gradle wiring | 완료 | `settings.gradle.kts`, samples aggregate, standalone settings에 등록 |
-| Shared contracts | 완료 | dotnet 메시지 이름과 주요 필드 유지 |
+| Shared contracts | 완료 | 공통 GameQuest 계약의 메시지 이름과 주요 필드를 유지한다. |
 | GameApi 역할 | 완료 | stream session이 gameplay request를 받고 EventId를 응답한 뒤 `GameplayMsg`를 one-way로 owner routing한다. API별 역방향 channel의 처리 결과는 현재 player에 bind된 session에만 push한다. |
 | QuestMission 역할 | 완료 | 두 노드가 같은 spot mesh에 참여하고 `PlayerId` routing id의 `PlayerQuestSpot`이 quest 처리를 직렬화한다. player별 quest projection, dedupe, progress/completion/reward event를 기록하며, 최초 활성과 projection rebuild는 Redis stream의 progress delta와 후속 domain event를 fold한다. |
 | GameplayStateStore | 완료 | API 노드가 Redis에 누적 gameplay fact를 기록하고 QuestMission의 sync가 같은 fact를 읽어 보정한다. 동일 event id는 한 번만 반영한다. |

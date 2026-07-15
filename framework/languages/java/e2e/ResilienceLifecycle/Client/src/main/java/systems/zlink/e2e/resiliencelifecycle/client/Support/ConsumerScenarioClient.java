@@ -1,37 +1,28 @@
 package systems.zlink.e2e.resiliencelifecycle.client.Support;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
+import systems.zlink.httpclient.RawHttpResponse;
+import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class ConsumerScenarioClient {
     private final String endpoint;
-    private final HttpClient http;
 
     public ConsumerScenarioClient(String endpoint) {
         this.endpoint = endpoint;
-        this.http = HttpClient.newHttpClient();
     }
 
     public void runMode(String mode) {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint + "/scenario/" + mode))
-            .timeout(Duration.ofMinutes(10))
-            .POST(HttpRequest.BodyPublishers.noBody())
-            .build();
-        try {
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+        try (ZLinkHttpClient http = ZLinkHttpClient.create(endpoint).build()) {
+            RawHttpResponse response = http.post("/scenario/" + mode)
+                .timeout(Duration.ofMinutes(10))
+                .submitRaw()
+                .toCompletableFuture()
+                .join();
+            if (response.status() < 200 || response.status() >= 300) {
                 throw new IllegalStateException(
-                    "consumer scenario " + mode + " returned " + response.statusCode() + ": " + response.body());
+                    "consumer scenario " + mode + " returned " + response.status()
+                        + ": " + response.body());
             }
-        } catch (IOException error) {
-            throw new IllegalStateException("failed to call consumer scenario " + mode, error);
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while calling consumer scenario " + mode, error);
         }
     }
 }

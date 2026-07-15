@@ -4,9 +4,6 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -14,13 +11,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import systems.zlink.httpclient.RawHttpResponse;
+import systems.zlink.httpclient.ZLinkHttpClient;
 
 public final class ResilienceProcessManager implements AutoCloseable {
     private static final Duration READY_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration SIGNAL_TIMEOUT = Duration.ofSeconds(30);
 
     private final ClientOptions options;
-    private final HttpClient http = HttpClient.newHttpClient();
     private final List<ManagedProcess> processes = new ArrayList<>();
 
     public ResilienceProcessManager(ClientOptions options) {
@@ -189,14 +187,14 @@ public final class ResilienceProcessManager implements AutoCloseable {
                 return false;
             }
         }
-        try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint + "/health"))
+        try (ZLinkHttpClient http = ZLinkHttpClient.create(endpoint).build()) {
+            RawHttpResponse response = http.get("/health")
                 .timeout(Duration.ofMillis(300))
-                .GET()
-                .build();
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() >= 200 && response.statusCode() < 300;
-        } catch (Exception ignored) {
+                .submitRaw()
+                .toCompletableFuture()
+                .join();
+            return response.status() >= 200 && response.status() < 300;
+        } catch (RuntimeException ignored) {
             return false;
         }
     }

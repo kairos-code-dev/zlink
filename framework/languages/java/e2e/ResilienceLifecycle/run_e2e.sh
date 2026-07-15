@@ -25,6 +25,11 @@ export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
+if rg -n 'java\.net\.http\.HttpClient|HttpClient\.new' \
+    "$(pwd)/Client/src/main/java" --glob '*.java'; then
+  echo "ResilienceLifecycle client must use ZLinkHttpClient" >&2
+  exit 1
+fi
 
 print_logs() {
   local status="$1"

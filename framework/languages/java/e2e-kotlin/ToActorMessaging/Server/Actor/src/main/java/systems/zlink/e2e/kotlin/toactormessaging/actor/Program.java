@@ -46,13 +46,14 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         boot("main builder");
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         boot("main keepAlive");
         builder.application().setKeepAlive(true);
         boot("main run");
-        builder.run(args);
+        builder.run();
         boot("main run done");
     }
 
@@ -65,14 +66,14 @@ public final class Program {
     @Bean(destroyMethod = "close")
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix")));
     }
 
     @Bean(destroyMethod = "close")
     JsonHttp http(EvidenceStore evidence, ZLinkActorManager actors, ZLinkRedisLocationStore locations) {
         boot("http create");
-        JsonHttp http = new JsonHttp(Env.get("ZLINK_KOTLIN_E2E_ACTOR_HTTP"));
+        JsonHttp http = new JsonHttp(Env.get("actorHttpEndpoint"));
         boot("http route health");
         http.get("/health", () -> java.util.Map.of("status", "ok"));
         boot("http route evidence");
@@ -121,7 +122,7 @@ public final class Program {
             boot("configureDispatch");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs") + "/actor-flow.log")
+                .traceLogFile(Env.get("logDirectory", "logs") + "/actor-flow.log")
                 .traceLabel("kotlin-to-actor-actor");
             boot("configureDispatch done");
             boot("addLocationStore");
@@ -131,10 +132,10 @@ public final class Program {
             var spotMesh = options.addSpotMesh(Contracts.SPOT_MESH);
             boot("addSpotMesh done");
             boot("enableRouter");
-            spotMesh.enableRouter(Env.get("ZLINK_KOTLIN_E2E_ACTOR_SPOT"));
+            spotMesh.enableRouter(Env.get("actorSpotEndpoint"));
             boot("enableRouter done");
             boot("setRoutingId");
-            spotMesh.setRoutingId(RoutingId.from(Env.get("ZLINK_KOTLIN_E2E_ACTOR_RID", "actor-a")));
+            spotMesh.setRoutingId(RoutingId.from(Env.get("actorRid", "actor-a")));
             boot("setRoutingId done");
             boot("addEntrySpot");
             spotMesh.addEntrySpot(TestEntrySpot.class);

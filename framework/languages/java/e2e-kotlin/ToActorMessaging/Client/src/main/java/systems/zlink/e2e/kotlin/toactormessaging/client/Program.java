@@ -9,8 +9,9 @@ public final class Program {
     }
 
     public static void main(String... args) {
-        String actorUrl = Env.get("ZLINK_KOTLIN_E2E_ACTOR_HTTP");
-        String callerUrl = Env.get("ZLINK_KOTLIN_E2E_CALLER_HTTP");
+        Env.configure(args);
+        String actorUrl = Env.get("actorHttpEndpoint");
+        String callerUrl = Env.get("callerHttpEndpoint");
 
         ensureReady(actorUrl, callerUrl, "TA-A1", "ta-a1");
         assertCall(callerUrl, "TA-A1-send", "ta-a1", "a1-send", "sent", true);

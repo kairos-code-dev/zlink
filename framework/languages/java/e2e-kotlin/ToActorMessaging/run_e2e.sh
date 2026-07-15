@@ -19,8 +19,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 
-export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:toactor:${run_id}}"
-export ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}"
+location_key_prefix="zlink:e2e:toactor:${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 
 reserve_ports() {
   python3 - <<'PY'
@@ -70,18 +71,38 @@ PY
 zlink_redis_start_scoped_assign redis_container redis_port \
   "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
 redis_endpoint="127.0.0.1:${redis_port}"
-export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
 wait_tcp "${redis_host}" "${redis_port}" redis
 
 read -r actor_http caller_http actor_spot caller_spot < <(reserve_ports)
-export ZLINK_KOTLIN_E2E_ACTOR_HTTP="http://127.0.0.1:${actor_http}"
-export ZLINK_KOTLIN_E2E_CALLER_HTTP="http://127.0.0.1:${caller_http}"
-export ZLINK_KOTLIN_E2E_ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
-export ZLINK_KOTLIN_E2E_CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
-export ZLINK_KOTLIN_E2E_ACTOR_RID="actor-a"
-export ZLINK_KOTLIN_E2E_CALLER_RID="${ZLINK_KOTLIN_E2E_CALLER_RID:-caller}"
+actor_http_endpoint="http://127.0.0.1:${actor_http}"
+caller_http_endpoint="http://127.0.0.1:${caller_http}"
+actor_config="${config_dir}/actor.properties"
+caller_config="${config_dir}/caller.properties"
+client_config="${config_dir}/client.properties"
+write_config() {
+  local path="$1"
+  shift
+  {
+    printf 'redisLocationEndpoint=%s\n' "${redis_endpoint}"
+    printf 'locationKeyPrefix=%s\n' "${location_key_prefix}"
+    printf 'logDirectory=%s\n' "${log_dir}"
+    printf '%s\n' "$@"
+  } >"${path}"
+  chmod 0600 "${path}"
+}
+write_config "${actor_config}" \
+  "actorHttpEndpoint=${actor_http_endpoint}" \
+  "actorSpotEndpoint=tcp://127.0.0.1:${actor_spot}" \
+  "actorRid=actor-a"
+write_config "${caller_config}" \
+  "callerHttpEndpoint=${caller_http_endpoint}" \
+  "callerSpotEndpoint=tcp://127.0.0.1:${caller_spot}" \
+  "callerRid=caller"
+write_config "${client_config}" \
+  "actorHttpEndpoint=${actor_http_endpoint}" \
+  "callerHttpEndpoint=${caller_http_endpoint}"
 
 print_logs() {
   local status="$1"
@@ -119,6 +140,7 @@ cleanup() {
   if [[ -n "${redis_container}" ]]; then
     docker rm -fv "${redis_container}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -168,11 +190,13 @@ PY
 start_role() {
   case "$1" in
     actor)
-      ./Server/Actor/build/install/to-actor-kotlin-actor/bin/to-actor-kotlin-actor >"${log_dir}/actor.log" 2>&1 &
+      ./Server/Actor/build/install/to-actor-kotlin-actor/bin/to-actor-kotlin-actor \
+        --config "${actor_config}" >"${log_dir}/actor.log" 2>&1 &
       pids+=("$!")
       ;;
     caller)
-      ./Server/Caller/build/install/to-actor-kotlin-caller/bin/to-actor-kotlin-caller >"${log_dir}/caller.log" 2>&1 &
+      ./Server/Caller/build/install/to-actor-kotlin-caller/bin/to-actor-kotlin-caller \
+        --config "${caller_config}" >"${log_dir}/caller.log" 2>&1 &
       pids+=("$!")
       ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
@@ -181,8 +205,8 @@ start_role() {
 
 wait_role() {
   case "$1" in
-    actor) wait_http "${ZLINK_KOTLIN_E2E_ACTOR_HTTP}" ;;
-    caller) wait_http "${ZLINK_KOTLIN_E2E_CALLER_HTTP}" ;;
+    actor) wait_http "${actor_http_endpoint}" ;;
+    caller) wait_http "${caller_http_endpoint}" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -223,4 +247,5 @@ for role in "${SERVER_ROLES[@]}"; do
   wait_role_ready "$role"
 done
 
-./Client/build/install/to-actor-kotlin-client/bin/to-actor-kotlin-client > >(tee "${log_dir}/client.log") 2>"${log_dir}/client.stderr.log"
+./Client/build/install/to-actor-kotlin-client/bin/to-actor-kotlin-client \
+  --config "${client_config}" > >(tee "${log_dir}/client.log") 2>"${log_dir}/client.stderr.log"

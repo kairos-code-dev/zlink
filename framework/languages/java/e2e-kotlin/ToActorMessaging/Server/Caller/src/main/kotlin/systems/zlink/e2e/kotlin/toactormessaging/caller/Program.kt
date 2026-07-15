@@ -23,13 +23,14 @@ import systems.zlink.framework.spring.EnableZLinkFramework
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer
 
 fun main(args: Array<String>) {
+    Env.configure(args)
     boot("main builder")
     val builder = SpringApplicationBuilder(Program::class.java)
         .web(WebApplicationType.NONE)
     boot("main keepAlive")
     builder.application().setKeepAlive(true)
     boot("main run")
-    builder.run(*args)
+    builder.run()
     boot("main run done")
 }
 
@@ -42,7 +43,7 @@ class Program {
         directory: ZLinkActorDirectory,
     ): JsonHttp {
         boot("http create")
-        val http = JsonHttp(Env.get("ZLINK_KOTLIN_E2E_CALLER_HTTP"))
+        val http = JsonHttp(Env.get("callerHttpEndpoint"))
         boot("http route health")
         http.get("/health") { mapOf("status" to "ok") }
         boot("http route send")
@@ -91,15 +92,15 @@ class Program {
             boot("configureDispatch")
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs") + "/caller-flow.log")
+                .traceLogFile(Env.get("logDirectory", "logs") + "/caller-flow.log")
                 .traceLabel("kotlin-to-actor-caller")
             boot("configureDispatch done")
             boot("addLocationStore")
             options.addLocationStore(
                 ZLinkRedisLocationStore(
                     ZLinkRedisLocationOptions()
-                        .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-                        .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")),
+                        .setConnectionString(Env.get("redisLocationEndpoint"))
+                        .setKeyPrefix(Env.get("locationKeyPrefix")),
                 ),
             )
             boot("addLocationStore done")
@@ -107,10 +108,10 @@ class Program {
             val spotMesh = options.addSpotMesh(Contracts.SPOT_MESH)
             boot("addSpotMesh done")
             boot("enableRouter")
-            spotMesh.enableRouter(Env.get("ZLINK_KOTLIN_E2E_CALLER_SPOT"))
+            spotMesh.enableRouter(Env.get("callerSpotEndpoint"))
             boot("enableRouter done")
             boot("setRoutingId")
-            spotMesh.setRoutingId(RoutingId.from(Env.get("ZLINK_KOTLIN_E2E_CALLER_RID", "caller")))
+            spotMesh.setRoutingId(RoutingId.from(Env.get("callerRid", "caller")))
             boot("setRoutingId done")
         }
     }

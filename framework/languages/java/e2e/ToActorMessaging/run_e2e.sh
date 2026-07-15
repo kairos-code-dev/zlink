@@ -125,29 +125,33 @@ write_config() {
   } >"${path}"
   chmod 0600 "${path}"
 }
+write_role_config() {
+  local path="$1"
+  shift
+  {
+    printf 'e2e.redis-location-endpoint=%s\n' "${redis_endpoint}"
+    printf 'e2e.location-key-prefix=%s\n' "${location_key_prefix}"
+    printf 'e2e.log-directory=%s\n' "${log_dir}"
+    local property
+    for property in "$@"; do printf 'e2e.%s\n' "${property}"; done
+  } >"${path}"
+  chmod 0600 "${path}"
+}
 actor_config="${config_dir}/actor.properties"
 caller_config="${config_dir}/caller.properties"
 session_a_config="${config_dir}/session-a.properties"
 session_b_config="${config_dir}/session-b.properties"
 client_config="${config_dir}/client.properties"
-write_config "${actor_config}" \
-  "actorHttpEndpoint=${actor_http_endpoint}" \
-  "actorSpotEndpoint=${actor_spot_endpoint}" \
-  "actorRid=${actor_rid}"
-write_config "${caller_config}" \
-  "callerHttpEndpoint=${caller_http_endpoint}" \
-  "callerSpotEndpoint=${caller_spot_endpoint}" \
-  "callerRid=${caller_rid}"
-write_config "${session_a_config}" \
-  "sessionRid=session-a" \
-  "sessionHttpEndpoint=${session_a_http_endpoint}" \
-  "sessionSpotEndpoint=tcp://127.0.0.1:${session_a_spot}" \
-  "sessionStreamEndpoint=${session_a_stream_endpoint}"
-write_config "${session_b_config}" \
-  "sessionRid=session-b" \
-  "sessionHttpEndpoint=${session_b_http_endpoint}" \
-  "sessionSpotEndpoint=tcp://127.0.0.1:${session_b_spot}" \
-  "sessionStreamEndpoint=${session_b_stream_endpoint}"
+write_role_config "${actor_config}" \
+  "actor-http-endpoint=${actor_http_endpoint}" "actor-spot-endpoint=${actor_spot_endpoint}" "actor-rid=${actor_rid}"
+write_role_config "${caller_config}" \
+  "caller-http-endpoint=${caller_http_endpoint}" "caller-spot-endpoint=${caller_spot_endpoint}" "caller-rid=${caller_rid}"
+write_role_config "${session_a_config}" \
+  "session-rid=session-a" "session-http-endpoint=${session_a_http_endpoint}" \
+  "session-spot-endpoint=tcp://127.0.0.1:${session_a_spot}" "session-stream-endpoint=${session_a_stream_endpoint}"
+write_role_config "${session_b_config}" \
+  "session-rid=session-b" "session-http-endpoint=${session_b_http_endpoint}" \
+  "session-spot-endpoint=tcp://127.0.0.1:${session_b_spot}" "session-stream-endpoint=${session_b_stream_endpoint}"
 write_config "${client_config}" \
   "actorHttpEndpoint=${actor_http_endpoint}" \
   "callerHttpEndpoint=${caller_http_endpoint}" \

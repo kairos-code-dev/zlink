@@ -4,7 +4,6 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import systems.zlink.e2e.toactormessaging.shared.Contracts;
-import systems.zlink.e2e.toactormessaging.shared.Env;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -19,13 +18,13 @@ public final class Program {
     public static void main(String... args) {
         require(args.length == 4 && "--config".equals(args[0]) && "--scenario".equals(args[2]),
             "Usage: Client --config <path> --scenario <selector>");
-        Env.configure(new String[] {args[0], args[1]});
-        String actorUrl = Env.get("actorHttpEndpoint");
-        String callerUrl = Env.get("callerHttpEndpoint");
-        String sessionAUrl = Env.get("sessionAHttpEndpoint");
-        String sessionBUrl = Env.get("sessionBHttpEndpoint");
-        String sessionAStream = Env.get("sessionAStreamEndpoint");
-        String sessionBStream = Env.get("sessionBStreamEndpoint");
+        ClientOptions options = ClientOptions.load(args[1]);
+        String actorUrl = options.actorHttpEndpoint();
+        String callerUrl = options.callerHttpEndpoint();
+        String sessionAUrl = options.sessionAHttpEndpoint();
+        String sessionBUrl = options.sessionBHttpEndpoint();
+        String sessionAStream = options.sessionAStreamEndpoint();
+        String sessionBStream = options.sessionBStreamEndpoint();
         String selector = args[3];
         require(java.util.Set.of("all", "TA-A1", "TA-A2", "TA-A3", "TA-A4",
             "TA-B1", "TA-B2", "TA-B3").contains(selector),

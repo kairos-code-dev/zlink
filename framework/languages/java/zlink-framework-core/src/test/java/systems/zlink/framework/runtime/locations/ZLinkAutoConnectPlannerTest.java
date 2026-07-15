@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.locations;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
@@ -13,6 +14,14 @@ import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 
 final class ZLinkAutoConnectPlannerTest {
+    @Test
+    void actorCapabilitiesUseExactConfiguredActorTypes() {
+        assertEquals(
+            List.of("actor:enemy", "actor:player"),
+            ZLinkLocationAutoConnectHost.actorCapabilities(
+                List.of("player", "enemy", "player")));
+    }
+
     @Test
     void routeMeshUsesUnidirectionalInitiatorOrderingAndKeepsSelfExclusion() {
         var lower = local(

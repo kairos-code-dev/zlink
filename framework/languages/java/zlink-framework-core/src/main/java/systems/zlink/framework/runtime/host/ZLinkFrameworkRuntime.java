@@ -515,43 +515,46 @@ public final class ZLinkFrameworkRuntime
         for (ZLinkInternalSpotNode node : spots.nodesByName().values()) {
             localNodes.add(node.routingId());
         }
-        java.util.List<String> meshNames = registration.spotNodes().stream()
-            .map(systems.zlink.framework.runtime.spots.SpotNodeRegistration::meshName)
-            .distinct()
-            .toList();
-        java.util.concurrent.CompletionStage<java.util.List<ServingTarget>> rows =
-            java.util.concurrent.CompletableFuture.completedFuture(java.util.List.of());
-        for (String meshName : meshNames) {
+        java.util.concurrent.CompletionStage<Integer> transferred =
+            java.util.concurrent.CompletableFuture.completedFuture(0);
+        for (String actorType : actors.activeActorTypes().stream().sorted().toList()) {
+            String meshName = actorDrainMeshName(registration, actorType);
+            if (meshName == null) {
+                continue;
+            }
             String transferRouteChannel = transferRouteChannelName(registration, meshName);
             if (transferRouteChannel == null) {
                 continue;
             }
-            rows = rows.thenCompose(current -> storeLocationResolvers.listLivePeers(
+            transferred = transferred.thenCompose(count -> storeLocationResolvers.listLivePeers(
                     new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
                         systems.zlink.framework.locations.ZLinkLocationAutoConnectType.SPOT_MESH,
                         meshName,
                         systems.zlink.framework.locations.ZLinkLocationRole.SPOT,
                         null,
                         null))
-                .thenApply(found -> {
-                    java.util.ArrayList<ServingTarget> merged =
-                        new java.util.ArrayList<>(current);
-                    found.forEach(peer -> merged.add(
-                        new ServingTarget(transferRouteChannel, meshName, peer)));
-                    return java.util.List.copyOf(merged);
-                }));
+                .thenCompose(found -> found.stream()
+                    .filter(peer -> !peer.draining())
+                    .filter(peer -> isEligibleActorHandoffTarget(peer, actorType, localNodes))
+                    .sorted(java.util.Comparator.comparing(peer -> peer.nodeRid().toString()))
+                    .findFirst()
+                    .<java.util.concurrent.CompletionStage<Integer>>map(peer ->
+                        actors.handoffActorsToEntrySpot(
+                            actorType, transferRouteChannel, peer.nodeRid()))
+                    .orElseGet(() -> java.util.concurrent.CompletableFuture.completedFuture(0)))
+                .thenApply(moved -> count + moved));
         }
-        return rows.thenCompose(found -> found.stream()
-            .filter(target -> !target.peer().draining())
-            .filter(target -> isEligibleActorHandoffTarget(target.peer(), localNodes))
-            .sorted(java.util.Comparator
-                .comparing(ServingTarget::spotMeshName)
-                .thenComparing(target -> target.peer().nodeRid().toString()))
+        return transferred;
+    }
+
+    static String actorDrainMeshName(
+        systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration registration,
+        String actorType) {
+        return registration.spotNodes().stream()
+            .filter(node -> node.actorFactories().containsKey(actorType))
+            .map(systems.zlink.framework.runtime.spots.SpotNodeRegistration::meshName)
             .findFirst()
-            .<java.util.concurrent.CompletionStage<Integer>>map(target ->
-                actors.handoffActorsToEntrySpot(
-                    target.routeChannelName(), target.peer().nodeRid()))
-            .orElseGet(() -> java.util.concurrent.CompletableFuture.completedFuture(0)));
+            .orElse(null);
     }
 
     static String transferRouteChannelName(
@@ -570,19 +573,13 @@ public final class ZLinkFrameworkRuntime
 
     static boolean isEligibleActorHandoffTarget(
         systems.zlink.framework.locations.ZLinkPeerLocation peer,
+        String actorType,
         java.util.Set<RoutingId> localNodes) {
         return peer != null
-            && peer.metadata() != null
-            && "true".equals(peer.metadata().get(
-                systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost
-                    .ACTOR_HOST_CAPABILITY_METADATA_KEY))
+            && actorType != null
+            && peer.capabilities() != null
+            && peer.capabilities().contains("actor:" + actorType)
             && !localNodes.contains(peer.nodeRid());
-    }
-
-    private record ServingTarget(
-        String routeChannelName,
-        String spotMeshName,
-        systems.zlink.framework.locations.ZLinkPeerLocation peer) {
     }
 
     private java.util.concurrent.CompletionStage<Void> awaitWorkloadsDrained() {

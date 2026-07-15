@@ -23,8 +23,6 @@ import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
 
 public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
-    public static final String ACTOR_HOST_CAPABILITY_METADATA_KEY =
-        "zlink.framework.actor-host";
     public static final String SPOT_PUB_ENDPOINT_METADATA_KEY = "pub-endpoint";
 
     private final ZLinkLocationRuntime runtime;
@@ -63,11 +61,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             if (spot.pubBind() != null) {
                 metadata.put(SPOT_PUB_ENDPOINT_METADATA_KEY, spot.pubBind());
             }
-            if (!spot.actorFactories().isEmpty()
-                && !spot.entrySpots().isEmpty()
-                && registration.streamNodes().isEmpty()) {
-                metadata.put(ACTOR_HOST_CAPABILITY_METADATA_KEY, "true");
-            }
+            List<String> capabilities = actorCapabilities(spot.actorFactories().keySet());
             Set<String> manual = spot.routerManualConnections().stream()
                 .map(SpotNodeRegistration.RouterManualConnection::endpoint)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
@@ -79,7 +73,8 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                 spot.routerBind() == null ? "" : spot.routerBind(),
                 100,
                 new SpotNodeExecutor(node, manual, spots),
-                metadata.isEmpty() ? null : Map.copyOf(metadata));
+                metadata.isEmpty() ? null : Map.copyOf(metadata),
+                capabilities.isEmpty() ? null : capabilities);
         }
 
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
@@ -95,6 +90,14 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             chain = chain.thenCompose(ignored -> loop.stop());
         }
         return chain.whenComplete((ignored, failure) -> loops.clear());
+    }
+
+    static List<String> actorCapabilities(java.util.Collection<String> actorTypes) {
+        return actorTypes.stream()
+            .map(actorType -> "actor:" + actorType)
+            .distinct()
+            .sorted()
+            .toList();
     }
 
     public CompletionStage<Void> markDraining() {
@@ -121,6 +124,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             surface.endpoint(),
             surface.weight(),
             executor,
+            null,
             null);
     }
 
@@ -132,7 +136,8 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         String endpoint,
         long weight,
         ZLinkAutoConnectExecutor executor,
-        Map<String, String> metadata) {
+        Map<String, String> metadata,
+        List<String> capabilities) {
         boolean advertisable = ZLinkAutoConnectPlanner.hasRid(nodeRid)
             || (endpoint != null && !endpoint.isBlank());
         if (!advertisable && executor == ZLinkAutoConnectExecutor.NONE) {
@@ -143,7 +148,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         ZLinkPeerLocation row = advertisable
             ? new ZLinkPeerLocation(
                 type, meshName, nodeRid, role, endpoint, weight, false, 0,
-                metadata, null, "", 0, Instant.EPOCH)
+                metadata, capabilities, "", 0, Instant.EPOCH)
             : null;
         ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
             local,

@@ -50,19 +50,21 @@ final class ZLinkFrameworkRuntimeDrainRouteTest {
     @Test
     void drainTransferRequiresActorHostCapabilityAndRejectsLocalNode() {
         RoutingId remote = RoutingId.from("play-b");
-        ZLinkPeerLocation capable = peer(remote, Map.of(
-            ZLinkLocationAutoConnectHost.ACTOR_HOST_CAPABILITY_METADATA_KEY, "true"));
-        ZLinkPeerLocation unrelated = peer(RoutingId.from("session-a"), Map.of());
+        ZLinkPeerLocation capable = peer(remote, List.of("actor:player"));
+        ZLinkPeerLocation wrongType = peer(RoutingId.from("enemy-a"), List.of("actor:enemy"));
+        ZLinkPeerLocation prefixOnly = peer(RoutingId.from("play-a"), List.of("actor:play"));
 
-        assertTrue(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(capable, Set.of()));
-        assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(unrelated, Set.of()));
-        assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(capable, Set.of(remote)));
+        assertTrue(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(capable, "player", Set.of()));
+        assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(wrongType, "player", Set.of()));
+        assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(prefixOnly, "player", Set.of()));
+        assertFalse(ZLinkFrameworkRuntime.isEligibleActorHandoffTarget(
+            capable, "player", Set.of(remote)));
     }
 
-    private static ZLinkPeerLocation peer(RoutingId nodeRid, Map<String, String> metadata) {
+    private static ZLinkPeerLocation peer(RoutingId nodeRid, List<String> capabilities) {
         return new ZLinkPeerLocation(
             ZLinkLocationAutoConnectType.SPOT_MESH, "game-spots", nodeRid,
-            ZLinkLocationRole.SPOT, "", 100, false, 0, metadata, List.of(),
+            ZLinkLocationRole.SPOT, "", 100, false, 0, Map.of(), capabilities,
             "owner", 1, Instant.now());
     }
 }

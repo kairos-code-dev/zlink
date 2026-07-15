@@ -105,14 +105,25 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return true;
     }
 
+    public java.util.Set<String> activeActorTypes() {
+        return actorRegistry.entries().stream()
+            .map(ActorEntry::actorType)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     public CompletionStage<Integer> handoffActorsToEntrySpot(
+        String actorType,
         String routeChannelName,
         RoutingId targetNodeRid) {
-        if (routeChannelName == null || routeChannelName.isBlank() || targetNodeRid == null) {
+        if (actorType == null || actorType.isBlank()
+            || routeChannelName == null || routeChannelName.isBlank() || targetNodeRid == null) {
             return CompletableFuture.completedFuture(0);
         }
         CompletionStage<Integer> transferred = CompletableFuture.completedFuture(0);
         for (ActorEntry entry : actorRegistry.entries()) {
+            if (!actorType.equals(entry.actorType())) {
+                continue;
+            }
             transferred = transferred.thenCompose(count -> handoffActorToEntrySpot(
                     entry, routeChannelName, targetNodeRid)
                 .thenApply(moved -> moved ? count + 1 : count));

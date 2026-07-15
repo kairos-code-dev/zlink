@@ -34,7 +34,7 @@ public final class ZLinkFrameworkLifecycle
         systems.zlink.framework.configuration.ZLinkMessageFlowControl,
         systems.zlink.framework.monitoring.ZLinkDrainControl {
     public static final int PHASE = 0;
-    private static final Duration SPRING_SHUTDOWN_DRAIN_DEADLINE = Duration.ofSeconds(25);
+    private static final Duration SPRING_SHUTDOWN_DRAIN_DEADLINE = Duration.ofSeconds(30);
 
     private final DefaultZLinkFrameworkOptions options;
     private final ZLinkBackendAdapterProvider backendAdapterFactory;
@@ -106,8 +106,7 @@ public final class ZLinkFrameworkLifecycle
                 return;
             }
         }
-        // Spring's default shutdown-phase timeout is 30 seconds. Leave time for
-        // location ownership cleanup and for the lifecycle callback to complete.
+        // Host-driven shutdown uses the same 30-second framework drain contract.
         current.drain(SPRING_SHUTDOWN_DRAIN_DEADLINE).whenComplete((result, failure) -> {
             synchronized (ZLinkFrameworkLifecycle.this) {
                 runtime = null;

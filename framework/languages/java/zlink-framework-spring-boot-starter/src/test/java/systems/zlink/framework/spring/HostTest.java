@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -14,6 +15,15 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory;
 
 final class HostTest {
+    @Test
+    void springShutdownUsesFrameworkDefaultDrainDeadline() throws Exception {
+        var field = ZLinkFrameworkLifecycle.class
+            .getDeclaredField("SPRING_SHUTDOWN_DRAIN_DEADLINE");
+        field.setAccessible(true);
+
+        assertEquals(Duration.ofSeconds(30), field.get(null));
+    }
+
     @Test
     void host_startsAndStops_frameworkRuntimeContext() {
         FakeZLinkBackendAdapterFactory backendFactory =

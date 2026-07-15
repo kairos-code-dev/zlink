@@ -1,6 +1,6 @@
 import type { InjectionToken } from '@nestjs/common';
 import type { DiscoveryService, ModuleRef } from '@nestjs/core';
-import type { Type } from '@zlink-systems/framework/nest-integration';
+import type { Type } from '@zlink-systems/framework';
 import { framework } from './framework-loader';
 import {
   nestHandlerMetadataEntries,

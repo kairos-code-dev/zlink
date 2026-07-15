@@ -11,7 +11,7 @@ import type {
   ZLinkSendContext,
   ZLinkSpot,
   ZLinkTimerOptions
-} from '@zlink-systems/framework/nest-integration';
+} from '@zlink-systems/framework';
 import { ZLINK_NEST_HANDLER_GROUP } from './tokens';
 
 export type ZLinkNestHandlerKind = 'request' | 'send' | 'publish';

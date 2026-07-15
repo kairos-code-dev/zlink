@@ -3,24 +3,14 @@ import type {
   Type,
   ZLinkActor,
   ZLinkActorTransferAdapter,
-  ZLinkChannelPublishHandlerRegistration,
-  ZLinkChannelRequestHandlerRegistration,
-  ZLinkChannelSendHandlerRegistration,
-  ZLinkClientCapabilityOptions,
   ZLinkCodecExtension,
-  ZLinkCodecRegistryOptions,
   ZLinkDispatchOptionsBuilder,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
-  ZLinkFrameworkRegistrationOptions,
   ZLinkLocationStore,
   ZLinkLocationOptions,
   ZLinkPublishContext,
-  ZLinkPublisherCapabilityOptions,
   ZLinkRequestContext,
-  ZLinkRouteChannelOptions,
-  ZLinkRouteChannelRequestHandlerRegistration,
-  ZLinkRouteChannelSendHandlerRegistration,
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkSendContext,
@@ -28,12 +18,24 @@ import type {
   ZLinkSessionFactory,
   ZLinkSocketConfig,
   ZLinkSpot,
-  ZLinkSpotNodeOptions,
-  ZLinkSpotNodeRegistrationOptions,
-  ZLinkStreamNodeOptions,
   ZLinkStreamCompressionBuilder,
   ZLinkTimerOptions
-} from '@zlink-systems/framework/nest-integration';
+} from '@zlink-systems/framework';
+import type {
+  ZLinkChannelPublishHandlerRegistration,
+  ZLinkChannelRequestHandlerRegistration,
+  ZLinkChannelSendHandlerRegistration,
+  ZLinkClientCapabilityOptions,
+  ZLinkCodecRegistryOptions,
+  ZLinkFrameworkRegistrationOptions,
+  ZLinkPublisherCapabilityOptions,
+  ZLinkRouteChannelOptions,
+  ZLinkRouteChannelRequestHandlerRegistration,
+  ZLinkRouteChannelSendHandlerRegistration,
+  ZLinkSpotNodeOptions,
+  ZLinkSpotNodeRegistrationOptions,
+  ZLinkStreamNodeOptions
+} from './framework-integration-contracts';
 
 export type MutableCodecRegistryOptions = {
   serializers: NonNullable<ZLinkCodecRegistryOptions['serializers']>[number][];

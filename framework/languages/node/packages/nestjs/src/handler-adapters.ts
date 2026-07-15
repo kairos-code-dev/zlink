@@ -2,13 +2,13 @@ import type { InjectionToken } from '@nestjs/common';
 import { ContextIdFactory, ModuleRef } from '@nestjs/core';
 import type {
   Type,
-  ZLinkChannelOptions,
   ZLinkPublishContext,
   ZLinkRequestContext,
   ZLinkRouteRequestContext,
   ZLinkRouteSendContext,
   ZLinkSendContext
-} from '@zlink-systems/framework/nest-integration';
+} from '@zlink-systems/framework';
+import type { ZLinkChannelOptions } from './framework-integration-contracts';
 import { framework } from './framework-loader';
 import type { ZLinkNestManualHandlerOptions } from './contracts';
 import type { ZLinkNestHandlerMetadata } from './handler-metadata';

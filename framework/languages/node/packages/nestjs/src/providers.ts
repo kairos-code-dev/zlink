@@ -2,12 +2,12 @@ import type { InjectionToken, OnModuleDestroy, OnModuleInit, Provider } from '@n
 import { DiscoveryService, ModuleRef } from '@nestjs/core';
 import type {
   Type,
-  ZLinkFrameworkRegistration,
   ZLinkProviderResolver,
   ZLinkRuntimeEvent,
   ZLinkRuntimeEventHandler,
   ZLinkRuntimeEventPublisher
-} from '@zlink-systems/framework/nest-integration';
+} from '@zlink-systems/framework';
+import type { ZLinkFrameworkRegistration } from './framework-integration-contracts';
 import {
   ZLINK_ACTOR_CLIENT,
   ZLINK_ACTOR_MANAGER,

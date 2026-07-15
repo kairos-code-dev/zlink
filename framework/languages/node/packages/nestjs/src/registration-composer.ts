@@ -1,10 +1,10 @@
 import type { DiscoveryService, ModuleRef } from '@nestjs/core';
+import type { Type } from '@zlink-systems/framework';
 import type {
-  Type,
   ZLinkChannelOptions,
   ZLinkFrameworkRegistrationOptions,
   ZLinkRouteChannelOptions,
-} from '@zlink-systems/framework/nest-integration';
+} from './framework-integration-contracts';
 import {
   ZLINK_MODULE_OPTIONS_BRAND,
   type ZLinkModuleOptions,

@@ -169,6 +169,18 @@ test('framework package exports only the public root contract', () => {
   assert.equal(packageJson.exports['.'].types, './dist/index.d.ts');
 });
 
+test('NestJS package declarations stay inside declared public package boundaries', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(workspaceRoot, 'packages', 'nestjs', 'package.json'), 'utf8'));
+  const declarations = readTree(path.join(workspaceRoot, 'packages', 'nestjs', 'dist'));
+
+  assert.deepEqual(Object.keys(packageJson.exports).sort(), ['.']);
+  assert.deepEqual(packageJson.files, ['dist']);
+  assert.equal(packageJson.exports['.'].default, './dist/index.js');
+  assert.equal(packageJson.exports['.'].types, './dist/index.d.ts');
+  assert.doesNotMatch(declarations, /@zlink-systems\/framework\/nest-integration/);
+});
+
 test('spot actor lifecycle handler registration API is not public', () => {
   const declarations = readTree(declarationsRoot);
   const workspaceText = [

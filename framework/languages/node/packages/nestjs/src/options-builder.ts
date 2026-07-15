@@ -7,7 +7,6 @@ import type {
   ZLinkDispatchOptionsBuilder,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
-  ZLinkFrameworkRegistrationOptions,
   ZLinkLocationStore,
   ZLinkLocationOptions,
   ZLinkMessageSerializer,
@@ -15,10 +14,13 @@ import type {
   ZLinkSessionFactory,
   ZLinkSocketConfig,
   ZLinkSpot,
-  ZLinkSpotNodeOptions,
   ZLinkStreamCompressionBuilder,
+} from '@zlink-systems/framework';
+import type {
+  ZLinkFrameworkRegistrationOptions,
+  ZLinkSpotNodeOptions,
   ZLinkStreamNodeOptions
-} from '@zlink-systems/framework/nest-integration';
+} from './framework-integration-contracts';
 import {
   ZLinkMessageFlowLogMode,
   ZLinkUnhandledDispatchAction

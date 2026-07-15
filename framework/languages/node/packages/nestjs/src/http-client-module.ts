@@ -6,7 +6,7 @@ import {
   type ZLinkHttpClientBuilder,
   type ZLinkHttpRequestBuilder
 } from '@zlink-systems/http-client';
-import type { ZLinkNestIntegrationRuntimeHost } from '@zlink-systems/framework/nest-integration';
+import type { ZLinkNestIntegrationRuntimeHost } from './framework-integration-contracts';
 import { framework } from './framework-loader';
 import { ZLINK_FRAMEWORK_RUNTIME } from './tokens';
 

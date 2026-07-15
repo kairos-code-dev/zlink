@@ -4,7 +4,8 @@ import path from 'node:path';
 import { Module } from '@nestjs/common';
 import type { DynamicModule, ModuleMetadata, Provider } from '@nestjs/common';
 import { DiscoveryModule, DiscoveryService, ModuleRef } from '@nestjs/core';
-import type { Type, ZLinkFrameworkRegistration } from '@zlink-systems/framework/nest-integration';
+import type { Type } from '@zlink-systems/framework';
+import type { ZLinkFrameworkRegistration } from './framework-integration-contracts';
 import {
   ZLINK_FRAMEWORK_REGISTRATION,
   ZLINK_FRAMEWORK_RUNTIME,

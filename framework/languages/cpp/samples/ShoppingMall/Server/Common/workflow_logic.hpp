@@ -73,7 +73,7 @@ struct order_aggregate_t
     std::string payment_id;
     std::string reason;
     std::vector<order_line_input_t> lines;
-    double amount{};
+    decimal_t amount;
     std::string currency;
     std::int64_t version{};
 
@@ -98,7 +98,7 @@ inline order_aggregate_t fold (const std::vector<stored_order_event_t> &stream,
             aggregate.shipping_address_id = payload.value ("shippingAddressId", "");
             aggregate.payment_method_id = payload.value ("paymentMethodId", "");
             aggregate.lines = payload.value ("lines", std::vector<order_line_input_t>{});
-            aggregate.amount = payload.value ("amount", 0.0);
+            aggregate.amount = json_decimal (payload, "amount", "amount");
             aggregate.currency = payload.value ("currency", "");
         } else if (event.event_type == order_event_types_t::inventory_reserved) {
             aggregate.status = order_status_t::inventory_reserved;

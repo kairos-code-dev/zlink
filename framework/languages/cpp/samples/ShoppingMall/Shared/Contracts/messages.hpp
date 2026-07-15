@@ -3,12 +3,104 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <optional>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace zlink::samples::shoppingmall
 {
+
+class decimal_t
+{
+  public:
+    decimal_t () = default;
+    explicit decimal_t (std::string_view value) : _value (normalize (value)) {}
+
+    const std::string &value () const noexcept { return _value; }
+
+    friend bool operator== (const decimal_t &, const decimal_t &) = default;
+
+  private:
+    static std::string normalize (std::string_view value)
+    {
+        if (value.empty ()) {
+            throw std::invalid_argument ("decimal value must not be empty");
+        }
+        bool negative = false;
+        if (value.front () == '-' || value.front () == '+') {
+            negative = value.front () == '-';
+            value.remove_prefix (1);
+        }
+        const auto point = value.find ('.');
+        auto integral = std::string (value.substr (0, point));
+        auto fractional = point == std::string_view::npos
+                            ? std::string{}
+                            : std::string (value.substr (point + 1));
+        if (integral.empty () || (point != std::string_view::npos && fractional.empty ())
+            || !std::all_of (integral.begin (), integral.end (), [] (unsigned char ch) {
+                   return std::isdigit (ch) != 0;
+               })
+            || !std::all_of (fractional.begin (), fractional.end (), [] (unsigned char ch) {
+                   return std::isdigit (ch) != 0;
+               })) {
+            throw std::invalid_argument ("decimal value must use ordinary JSON number syntax");
+        }
+        const auto first_digit = integral.find_first_not_of ('0');
+        integral = first_digit == std::string::npos ? "0" : integral.substr (first_digit);
+        while (!fractional.empty () && fractional.back () == '0') {
+            fractional.pop_back ();
+        }
+        const auto significant_digits =
+          (integral == "0" ? std::size_t{0} : integral.size ()) + fractional.size ();
+        if (significant_digits > 29 || fractional.size () > 28) {
+            throw std::out_of_range ("decimal value exceeds the .NET decimal range");
+        }
+        if (integral == "0" && fractional.empty ()) {
+            negative = false;
+        }
+        return std::string (negative ? "-" : "") + integral
+               + (fractional.empty () ? std::string{} : "." + fractional);
+    }
+
+    std::string _value{"0"};
+};
+
+inline void to_json (nlohmann::json &json, const decimal_t &value)
+{
+    json = nlohmann::json::parse (value.value ());
+}
+
+inline void from_json (const nlohmann::json &json, decimal_t &value)
+{
+    if (!json.is_number ()) {
+        throw nlohmann::json::type_error::create (302, "decimal must be a JSON number", &json);
+    }
+    value = decimal_t (json.dump ());
+}
+
+inline decimal_t json_decimal (const nlohmann::json &json,
+                               const char *camel,
+                               const char *snake)
+{
+    const auto name = json.contains (camel) ? camel : snake;
+    return json.contains (name) ? json.at (name).get<decimal_t> () : decimal_t{};
+}
+
+inline std::optional<decimal_t> json_nullable_decimal (const nlohmann::json &json,
+                                                       const char *camel,
+                                                       const char *snake)
+{
+    const auto name = json.contains (camel) ? camel : snake;
+    if (!json.contains (name) || json.at (name).is_null ()) {
+        return std::nullopt;
+    }
+    return json.at (name).get<decimal_t> ();
+}
 
 struct order_status_t
 {
@@ -55,7 +147,7 @@ struct order_state_t
     std::string reservation_id;
     std::string payment_id;
     std::string reason;
-    double amount{};
+    std::optional<decimal_t> amount;
     std::string currency;
     std::int64_t updated_at_unix_ms{};
 };
@@ -122,7 +214,7 @@ struct authorize_payment_command_t
     std::string order_id;
     std::string payment_id;
     std::string payment_method_id;
-    double amount{};
+    decimal_t amount;
     std::string currency;
 };
 
@@ -137,7 +229,7 @@ struct cart_seed_t
 {
     std::string cart_id;
     std::vector<order_line_input_t> lines;
-    double amount{};
+    decimal_t amount;
     std::string currency;
 };
 
@@ -163,7 +255,7 @@ struct start_order_workflow_req_t
     std::string payment_method_id;
     std::string idempotency_key;
     std::vector<order_line_input_t> lines;
-    double amount{};
+    decimal_t amount;
     std::string currency;
 };
 
@@ -323,7 +415,7 @@ inline void from_json (const nlohmann::json &json, cart_seed_t &value)
 {
     value.cart_id = json.value ("cartId", "");
     value.lines = json.value ("lines", std::vector<order_line_input_t>{});
-    value.amount = json.value ("amount", 0.0);
+    value.amount = json_decimal (json, "amount", "amount");
     value.currency = json.value ("currency", "");
 }
 
@@ -398,9 +490,9 @@ inline void to_json (nlohmann::json &json, const order_state_t &value)
             {"reservationId", value.reservation_id.empty () ? nullptr : nlohmann::json (value.reservation_id)},
             {"paymentId", value.payment_id.empty () ? nullptr : nlohmann::json (value.payment_id)},
             {"reason", value.reason.empty () ? nullptr : nlohmann::json (value.reason)},
-            {"amount", value.amount},
             {"currency", value.currency},
             {"updatedAtUnixMs", value.updated_at_unix_ms}};
+    json["amount"] = value.amount ? nlohmann::json (*value.amount) : nlohmann::json (nullptr);
 }
 
 inline void from_json (const nlohmann::json &json, order_state_t &value)
@@ -411,7 +503,7 @@ inline void from_json (const nlohmann::json &json, order_state_t &value)
     value.reservation_id = json_nullable_string (json, "reservationId", "reservation_id");
     value.payment_id = json_nullable_string (json, "paymentId", "payment_id");
     value.reason = json_nullable_string (json, "reason", "reason");
-    value.amount = json.value ("amount", 0.0);
+    value.amount = json_nullable_decimal (json, "amount", "amount");
     value.currency = json.value ("currency", "");
     value.updated_at_unix_ms = json.value ("updatedAtUnixMs", std::int64_t{0});
 }
@@ -446,7 +538,7 @@ inline void from_json (const nlohmann::json &json, start_order_workflow_req_t &v
     value.payment_method_id = json_string (json, "paymentMethodId", "payment_method_id");
     value.idempotency_key = json_string (json, "idempotencyKey", "idempotency_key");
     value.lines = json.value ("lines", std::vector<order_line_input_t>{});
-    value.amount = json.value ("amount", 0.0);
+    value.amount = json_decimal (json, "amount", "amount");
     value.currency = json.value ("currency", "");
 }
 

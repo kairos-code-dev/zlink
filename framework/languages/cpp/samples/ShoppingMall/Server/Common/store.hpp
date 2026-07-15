@@ -75,9 +75,10 @@ class redis_state_store_t
 
             state["carts"] = nlohmann::json::object ();
             state["carts"]["cart-success"] =
-              cart_seed_t{"cart-success", {{"sku-ok", 1}}, 120.0, "USD"};
+              cart_seed_t{"cart-success", {{"sku-ok", 1}}, decimal_t ("120.00"), "USD"};
             state["carts"]["cart-inventory-fail"] =
-              cart_seed_t{"cart-inventory-fail", {{"sku-rare", 1}}, 120.0, "USD"};
+              cart_seed_t{"cart-inventory-fail", {{"sku-rare", 1}}, decimal_t ("120.00"),
+                          "USD"};
 
             state["inventory"] = nlohmann::json::object ();
             state["inventory"]["sku-ok"] = inventory_seed_t{"sku-ok", 100};

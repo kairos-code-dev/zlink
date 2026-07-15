@@ -21,6 +21,7 @@
 #include "../../samples/TicTacToe/Server/Play/Domain/TicTacToe/tictactoe_match.hpp"
 #include "../../samples/DeliveryDispatch/Shared/Contracts/messages.hpp"
 #include "../../samples/GameQuest/Shared/Contracts/messages.hpp"
+#include "../../samples/ShoppingMall/Shared/Contracts/messages.hpp"
 
 #include <gtest/gtest.h>
 
@@ -1417,6 +1418,34 @@ TEST (CppFrameworkSampleParity, TicTacToeStatePreservesNullableWireFields)
     EXPECT_TRUE (projected.at ("lastMoveActorId").is_null ());
     EXPECT_TRUE (projected.at ("lastMoveCell").is_null ());
     EXPECT_FALSE (projected.contains ("draw"));
+}
+
+TEST (CppFrameworkSampleParity, ShoppingMallUsesNullableDecimalAmounts)
+{
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/ShoppingMall/Shared/Contracts/messages.hpp");
+    EXPECT_EQ (contracts.find ("double amount"), std::string::npos);
+
+    const nlohmann::json wire = {{"orderId", "order-null-amount"},
+                                 {"status", "Created"},
+                                 {"shippingAddressId", "shipping-1"},
+                                 {"reservationId", nullptr},
+                                 {"paymentId", nullptr},
+                                 {"reason", nullptr},
+                                 {"amount", nullptr},
+                                 {"currency", "USD"},
+                                 {"updatedAtUnixMs", 1}};
+    zlink::samples::shoppingmall::order_state_t state;
+    EXPECT_NO_THROW (wire.get_to (state));
+    EXPECT_FALSE (state.amount.has_value ());
+
+    const nlohmann::json projected = zlink::samples::shoppingmall::order_state_t{};
+    EXPECT_TRUE (projected.at ("amount").is_null ());
+
+    const auto amount = zlink::samples::shoppingmall::decimal_t ("120.01");
+    const nlohmann::json amount_wire = amount;
+    EXPECT_TRUE (amount_wire.is_number ());
+    EXPECT_EQ (amount_wire.get<zlink::samples::shoppingmall::decimal_t> (), amount);
 }
 
 TEST (CppFrameworkSampleParity, ChannelSendBackpressureUsesIndependentDefault)

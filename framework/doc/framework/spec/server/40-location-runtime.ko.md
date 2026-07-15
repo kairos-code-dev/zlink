@@ -270,8 +270,9 @@ mesh별 reconcile 루프를 돌린다.
    desired set이 아니라 구성원 snapshot 기준). peer의 `Draining=true`(§2.1)는 desired set에서
    **제외하지 않는다** — 연결은 유지하고, 신규 배치 결정(spot/actor placement)만 그 peer를 제외한다.
 3. **diff 적용**: 새 target은 connect, desired set에서 빠진 target은 disconnect. 같은 peer
-   key의 endpoint 또는 **owner 변경**은 handover다 — 재시작한 peer가 같은 endpoint로 떠도 새
-   dial이 필요하므로 disconnect 후 connect한다.
+   key의 endpoint 또는 연결 식별 정보가 바뀌면 disconnect 후 connect한다. 재시작한 peer가 같은
+   endpoint를 새 owner로 다시 등록하면 transport가 끊어진 연결을 이미 새로 연결하므로, reconcile
+   루프는 owner 정보만 갱신하고 같은 endpoint를 중복으로 disconnect/connect하지 않는다.
 4. **crash 전파**: row write 없이 죽은 node는 owner lease 만료만으로 전파된다. lease join에서
    그 owner의 row가 제외되고 desired set에서 빠져 disconnect된다.
 

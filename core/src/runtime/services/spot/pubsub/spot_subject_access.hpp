@@ -90,6 +90,12 @@ int spot_subject_set_tls_client (void *handle_,
                                  int trust_system_);
 int spot_subject_set_subscription (void *handle_, const char *filter_);
 int spot_subject_unset_subscription (void *handle_, const char *filter_);
+int recv_logical_spot_subscription (spot_handle_t *spot_,
+                                    zlink_routing_id_t *source_rid_out_,
+                                    zlink_msg_t **parts_out_,
+                                    size_t *part_count_out_,
+                                    char *topic_id_out_,
+                                    size_t *topic_id_len_out_);
 int spot_subject_subscription_at (
   void *handle_, size_t index_, char *filter_out_, size_t *filter_len_inout_, int *is_pattern_out_);
 int spot_pub_install_send_ready_handler (void *spot_pub_,

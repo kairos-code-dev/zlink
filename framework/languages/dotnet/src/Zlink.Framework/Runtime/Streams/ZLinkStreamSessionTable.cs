@@ -12,6 +12,7 @@ internal sealed class ZLinkStreamSessionTable(
 {
     private readonly object _gate = new();
     private readonly Queue<(string LocalAddr, string RemoteAddr)> _pendingConnectionMetadata = [];
+    private readonly Queue<string> _unaddressedMonitorSessions = [];
     private readonly Dictionary<string, ZLinkStreamSessionRuntime> _sessions = [];
     private bool _rejectNewSessions;
     private bool _stopping;
@@ -48,6 +49,7 @@ internal sealed class ZLinkStreamSessionTable(
             var sessions = _sessions.Values.ToArray();
             _sessions.Clear();
             _pendingConnectionMetadata.Clear();
+            _unaddressedMonitorSessions.Clear();
             return sessions;
         }
     }
@@ -158,7 +160,10 @@ internal sealed class ZLinkStreamSessionTable(
             if (session.Stream.LocalAddr is null
                 && session.Stream.RemoteAddr is null
                 && _pendingConnectionMetadata.Count > 0)
+            {
                 metadata = _pendingConnectionMetadata.Dequeue();
+                _unaddressedMonitorSessions.Enqueue(session.Stream.SessionId);
+            }
         }
 
         if (metadata is { } value) session.EnqueueConnected(value.LocalAddr, value.RemoteAddr);
@@ -180,10 +185,18 @@ internal sealed class ZLinkStreamSessionTable(
                 }
             }
 
-            if (_sessions.Count == 1)
+            if (_unaddressedMonitorSessions.Count > 0)
             {
-                session = _sessions.Values.First();
-                return true;
+                // Some STREAM transports do not attach a routing id to monitor events. Match
+                // those disconnects to the same FIFO order used when their connection metadata
+                // was assigned. A removed id is an intentional tombstone: consuming it without
+                // falling through prevents a late disconnect from terminating a newer session.
+                var sessionId = _unaddressedMonitorSessions.Dequeue();
+                if (_sessions.TryGetValue(sessionId, out var existing))
+                {
+                    session = existing;
+                    return true;
+                }
             }
         }
 

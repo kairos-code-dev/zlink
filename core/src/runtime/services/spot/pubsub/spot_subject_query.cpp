@@ -151,12 +151,12 @@ int copy_topic_to_output (const std::string &topic_, char *topic_id_out_, size_t
                                               topic_id_len_out_);
 }
 
-int recv_logical_spot_subscription (spot_handle_t *spot_,
-                                    zlink_routing_id_t *source_rid_out_,
-                                    zlink_msg_t **parts_out_,
-                                    size_t *part_count_out_,
-                                    char *topic_id_out_,
-                                    size_t *topic_id_len_out_)
+int recv_logical_spot_subscription_impl (spot_handle_t *spot_,
+                                         zlink_routing_id_t *source_rid_out_,
+                                         zlink_msg_t **parts_out_,
+                                         size_t *part_count_out_,
+                                         char *topic_id_out_,
+                                         size_t *topic_id_len_out_)
 {
     if (!spot_ || !spot_->logical_state || !parts_out_ || !part_count_out_) {
         errno = EFAULT;
@@ -221,6 +221,18 @@ int recv_logical_spot_subscription (spot_handle_t *spot_,
     return 0;
 }
 } // namespace
+
+int recv_logical_spot_subscription (spot_handle_t *spot_,
+                                    zlink_routing_id_t *source_rid_out_,
+                                    zlink_msg_t **parts_out_,
+                                    size_t *part_count_out_,
+                                    char *topic_id_out_,
+                                    size_t *topic_id_len_out_)
+{
+    return recv_logical_spot_subscription_impl (spot_, source_rid_out_, parts_out_,
+                                                part_count_out_, topic_id_out_,
+                                                topic_id_len_out_);
+}
 
 int spot_append_subscription_subjects (void *handle_,
                                        std::vector<zlink::spot_sub_t::subject_descriptor_t> *out_)

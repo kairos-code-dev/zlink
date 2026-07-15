@@ -4,7 +4,8 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <Version>9.0.7</Version>
+        <Version>9.0.8</Version>
+        <ZLinkLinuxX64NativeRoot Condition="'$(ZLinkLinuxX64NativeRoot)' == ''">$(MSBuildThisFileDirectory)..\..\native\linux-x64</ZLinkLinuxX64NativeRoot>
         <AssemblyName>Systems.Zlink</AssemblyName>
         <PackageId>Systems.Zlink</PackageId>
         <RootNamespace>Systems.Zlink</RootNamespace>
@@ -13,7 +14,7 @@
         <Description>zlink .NET bindings - high-performance async messaging library</Description>
     </PropertyGroup>
     <ItemGroup>
-        <None Include="..\..\native\linux-x64\*.*" Exclude="..\..\native\linux-x64\libzlink_c.*">
+        <None Include="$(ZLinkLinuxX64NativeRoot)\*.*" Exclude="$(ZLinkLinuxX64NativeRoot)\libzlink_c.*">
             <Pack>true</Pack>
             <PackagePath>runtimes\linux-x64\native\%(Filename)%(Extension)</PackagePath>
             <Link>runtimes\linux-x64\native\%(Filename)%(Extension)</Link>

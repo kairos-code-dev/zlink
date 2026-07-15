@@ -13,7 +13,7 @@ export const ZONE_SW = 'zone-sw';
 export const ZONE_SE = 'zone-se';
 
 export const ZONE_IDS = [ZONE_NW, ZONE_NE, ZONE_SW, ZONE_SE] as const;
-export type ZoneId = (typeof ZONE_IDS)[number];
+export type zoneId = (typeof ZONE_IDS)[number];
 
 export const NODE_WEST = 'zone-node-1';
 export const NODE_EAST = 'zone-node-2';

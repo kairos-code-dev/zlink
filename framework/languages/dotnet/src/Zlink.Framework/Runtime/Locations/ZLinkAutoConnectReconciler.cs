@@ -117,7 +117,7 @@ internal sealed class ZLinkAutoConnectReconciler
 
             foreach (var (key, desired) in _lastDesired)
                 if (!_active.TryGetValue(key, out var active)
-                    || RequiresHandover(active, desired)) return true;
+                    || RequiresTargetRefresh(active, desired)) return true;
             return false;
         }
     }
@@ -259,11 +259,10 @@ internal sealed class ZLinkAutoConnectReconciler
                 continue;
             }
 
-            if (RequiresHandover(current, target))
+            if (RequiresConnectionHandover(current, target))
             {
-                // Same peer key with a new endpoint or a new owner is a
-                // handover: a restarted peer re-claims its row under a new
-                // owner and needs a fresh dial even at the old endpoint.
+                // An endpoint or connection-identity change needs a new
+                // transport connection.
                 if (!_executor.Disconnect(current)) continue;
                 disconnected.Add(current.Endpoint);
                 _active.Remove(key);
@@ -272,6 +271,14 @@ internal sealed class ZLinkAutoConnectReconciler
                     _active[key] = target;
                     connected.Add(target.Endpoint);
                 }
+            }
+            else if (OwnerChanged(current, target))
+            {
+                // A restarted process can reclaim the same endpoint under a new owner.
+                // The transport already reconnects that broken endpoint. Tearing it down
+                // again here races the reconnect and can leave a stale pipe beside the
+                // replacement connection, so only refresh the reconciler's owner metadata.
+                _active[key] = target;
             }
         }
 
@@ -297,15 +304,24 @@ internal sealed class ZLinkAutoConnectReconciler
         }
     }
 
-    private static bool RequiresHandover(
+    private static bool RequiresTargetRefresh(
+        ZLinkAutoConnectTarget current,
+        ZLinkAutoConnectTarget target) =>
+        RequiresConnectionHandover(current, target) || OwnerChanged(current, target);
+
+    private static bool RequiresConnectionHandover(
         ZLinkAutoConnectTarget current,
         ZLinkAutoConnectTarget target) =>
         !string.Equals(current.Endpoint, target.Endpoint, StringComparison.Ordinal)
-        || !string.Equals(current.OwnerId, target.OwnerId, StringComparison.Ordinal)
         || !string.Equals(
             current.ConnectionFingerprint,
             target.ConnectionFingerprint,
             StringComparison.Ordinal);
+
+    private static bool OwnerChanged(
+        ZLinkAutoConnectTarget current,
+        ZLinkAutoConnectTarget target) =>
+        !string.Equals(current.OwnerId, target.OwnerId, StringComparison.Ordinal);
 
     private void RetryPendingTargetsWithinStoreFailureGrace()
     {

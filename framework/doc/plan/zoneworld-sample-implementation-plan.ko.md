@@ -28,21 +28,26 @@
 
 ## 3. 작업 위치
 
-정본 §0.2가 정한 배치를 따른다. client 하나를 모든 언어 server가 공유하므로, 언어별 디렉터리가
-아니라 아래 한곳에 모은다.
+정본 §0.2가 정한 배치를 따른다. **server와 headless 시나리오 client는 다른 정본 샘플과 같은
+자리**(`framework/languages/<lang>/samples/ZoneWorld/`)에 두고, **공유되는 브라우저 client만**
+`shared_sample`에 따로 둔다.
 
 ```text
+framework/languages/dotnet/samples/ZoneWorld/    # 다른 정본 샘플과 같은 위치
+  Shared/  Server/  Client/  run_sample.sh
+# java·kotlin·node·cpp도 각자 framework/languages/<lang>/samples/ZoneWorld/ 아래 같은 구성
+
 framework/languages/shared_sample/zoneworld/
   client/     TypeScript 브라우저 client — 5개 언어 server가 공유한다 (Phase 2)
-  dotnet/     Shared/ · Server/ · Client/ (언어별 시나리오 client) · run_sample.sh
-  java/  kotlin/  node/  cpp/     같은 구성
 ```
 
-**언어별 디렉터리의 `Client/`는 그 언어의 시나리오 client다**(§6.2). 최상위 `client/`의 브라우저
-client와 다른 것이다 — 전자는 server 동작을 headless로 검증하고, 후자는 화면을 보여 준다.
+**`<lang>/samples/ZoneWorld/Client/`는 그 언어의 시나리오 client다**(§6.2) — 정본 6종의 `Client/`와
+같은 형태로, server 동작을 headless로 검증한다. `shared_sample`의 브라우저 client는 화면을 보여
+준다. 시나리오 client는 언어별이므로 각 언어가 자기 것을 구현하고, 브라우저 client는 하나를 공유한다.
 
-client를 언어별 디렉터리에 복제하지 않는다. server 디렉터리 구조는 정본 §6, client 구조는 §9.3을
-따른다. 기존 정본 6종(`framework/languages/<lang>/samples/`)은 건드리지 않는다.
+server 디렉터리 구조는 정본 §6, 브라우저 client 구조는 §9.3을 따른다. 기존 정본 6종은 건드리지
+않는다. **아직 정본 aggregate(`dotnet/samples/run_samples.sh` 목록·`samples/README.md` 표)에는
+등록하지 않는다** — 4개 언어 완료·blocker 해소 후에 넣는다(정본 §0.2).
 
 ## 4. 이미 확인된 선행 조건 (재조사 불필요)
 
@@ -234,14 +239,14 @@ client는 하나이고 server가 5개이므로, **client는 특정 언어 server
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | Phase 0 | 계약 고정(§8.1) | **완료** — dotnet 계약 빌드 성공, client 계약 `tsc --noEmit` 통과 |
-| Phase 1 — `dotnet` | **기준** server + 시나리오 client + 3관문(§8.3·§8.4·§8.5) | **관문 2·3 회차 4까지 진행.** 현재 `run_sample.sh all` **30/30 2회 연속 + §12 마커 7종 전량**(3회차에 `ZW-A4` timeout 1회 — 잔여 flake). 회차 3에서 §12 마커를 **처음으로** 발행하고 `Ops` 노드 목록(ZW-D2를 위양성으로 만들던 것)을 제거했으며 **정본을 구현에 맞춰 동기화**했다(§8.5.2). 회차 4는 codex `NOT CONVERGED` 1건을 반영했다(§8.5.3). **회차 1·2가 기록한 "2회 연속 그린"은 사실이 아니었다** — 재실행에서 `ZW-B4`가 깨졌고, 공지가 노드 하나에 통째로 유실되는 결함(§8.5.2·10)과 **peer 자동 연결이 이 토폴로지를 세우지 못한다는 것**(§8.5.4, 미해결)이 반복 실행으로만 드러났다. **잔여 flake 해소 + codex 수렴 전까지 `java`에 착수하지 않는다**(§6.4) |
+| Phase 1 — `dotnet` | **기준** server + 시나리오 client + 3관문(§8.3·§8.4·§8.5) | **완료.** 수동 peer 배선 없이 `run_sample.sh all` **30/30 3회 연속 + §12 마커 7종 전량**을 확인했다. 자동 연결의 `Busy` 오판과 같은 endpoint owner 교체 결함, 지연 구독 수신 뒤 readiness signal이 남는 core 결함을 고쳤다. 문제 집중 조합(`ZW-B2,ZW-B4,ZW-D1`)도 5회 연속 확인했다(§8.5.4·§8.5.6). 개별 핸들러 수동 등록 없이 assembly scan과 handler group만 사용한다. |
 | Phase 1 — `java` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
 | Phase 1 — `kotlin` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
 | Phase 1 — `node` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
 | Phase 1 — `cpp` | `dotnet` 포팅 + 시나리오 client + 3관문 | 미착수 |
-| Phase 2 | 공통 브라우저 client(§8.6) | 미착수 (Phase 1 전 언어 완료 후) |
-| Phase 3 | 교차 검증(§8.7) | 미착수 |
-| 완료 | 최종 확인(§8.8) | 미착수 |
+| Phase 2 | 공통 브라우저 client(§8.6) | **client 구현 완료.** Vite·Preact signals·Canvas 2D·stream connector·Vitest·Playwright를 구성했다. `dotnet` 실서버에서 actor transfer 중 WebSocket 유지, 노드별 점검·진단, 실제 노드 종료의 server push를 3/3 확인했다. |
+| Phase 3 | 교차 검증(§8.7) | `client × dotnet` 완료. 브라우저 3/3 뒤 같은 실행에서 server 30/30도 통과했다. 나머지 언어 server 구현 뒤 같은 client로 검증한다. |
+| 완료 | 최종 확인(§8.8) | `dotnet` 범위 완료. 5개 언어 전체 완료 판정은 보류한다. |
 
 ### 8.1 Phase 0 — 계약 고정
 
@@ -462,10 +467,45 @@ client는 `Gateway`와 `Ops`만 알기 때문에 노드를 없애는 일은 러�
 | 2 | codex 4건 병렬 리뷰(ZoneSpot·Ops·시나리오 client·Gateway·maintenance store 중복) 결과 반영 — 아래 §8.5.1 | [x] `run_sample.sh all` **2회 연속 30/30** | 아래 §8.5.1 | 아래 §8.5.1 | 아니오 |
 | 3 | codex 3건 병렬 리뷰(actor 계층 · domain wire-DTO · bootstrap/config) 결과 반영 — 아래 §8.5.2. **정본 위반 2건**(Ops 노드 목록, peer 수동 배선)과 **거짓 그린 2건**(ZW-B4 틀린 단언, §12 마커 미발행)을 함께 해소 | 아래 §8.5.3의 재실행으로 대체 | 아래 §8.5.2 | 아래 §8.5.2 | 아니오 |
 | 4 | codex 수렴 게이트 리뷰 → **NOT CONVERGED 1건**(봇 스폰의 오류 삼킴). 반영 — 아래 §8.5.3. peer 배선 복원(§8.5.4), `ZW-B4` 재교정 | [x] `run_sample.sh all` **30/30 2회 연속 + §12 마커 7종 전량**. 3회차에서 `ZW-A4`가 `Request timed out`으로 1회 실패 — **잔여 flake, 미해소**(아래) | 아래 §8.5.3 | 반영 | 회차 5에서 재판정 |
+| 5 | 검증 중 발견 2건 — **RoutingId 관례 위반**(§8.5.5), **`ZW-F3-no-push` 체크 위양성**(§8.5.5) 반영 | 아래 §8.5.5 재실행 | 아래 §8.5.5 | 반영 | 판정 대기 |
+| 6 | 자동 연결 2건 수정(§8.5.4), 수동 핸들러 등록 제거, 실행 시점 사전 조건 마커 추가 | [x] `run_sample.sh all` **30/30 2회 연속**, `ZW-B4`·`ZW-E5` 각각 **5회 연속** | 자동 연결·자동 핸들러 경로 재검토 | 반영 | **dotnet 수렴** |
+| 7 | 지연 구독 수신 뒤 readiness signal이 남는 core 결함 수정(§8.5.6), 실제 local package 9.0.8로 재검증 | [x] 문제 집중 조합 **5회 연속**, `run_sample.sh all` **30/30 3회 연속**, 공통 브라우저 실서버 **3/3** | 수동 연결·고정 sleep 없이 자동 연결과 자동 핸들러 경로 재검토 | 반영 | **dotnet 수렴** |
 
-**잔여 flake — `ZW-A4` `Request timed out`(1/3회).** 대각선 경계 거부 시나리오의 요청이 한 번
-timeout 났다. `ZW-B4`는 3회 모두 통과했으므로 §8.5.2·11의 수정은 유효하다. 이 timeout이 기동 경합인지
-부하인지 아직 가리지 못했다. **연속 실행에서 재현될 때까지 관문 1을 "통과"로 적지 않는다.**
+#### 8.5.5 검증 중 발견 2건 (문서 대비 정합·체크 정밀화)
+
+"dotnet 샘플이 정본대로 구현·동작하는가"를 확인하다 둘을 잡았다.
+
+1. **`ActorRefWire.NodeRid`가 정본 6종 관례를 어겼다.** ZoneWorld는 노드 rid를 wire에 `ToHex()`로
+   싣고 `RoutingId.FromHex()`로 되돌렸는데, **정본 6종은 만장일치로 `RoutingId.ToString()`/
+   `RoutingId.From(string)`** 을 쓴다(`RoutingId.From` 56곳, `FromHex` 0곳). §7.4가 "Bingo와 같은
+   방식"이라 명시하는데 Bingo는 `actor.NodeRid.ToString()`(인코드)·`RoutingId.From(snapshot.NodeRid)`
+   (디코드)다. **안전성:** `RoutingId.ToString()`은 인쇄 가능한 UTF-8이면 그 문자열을 그대로 반환하고
+   (`TryToUtf8String`이 uint/guid/hex 폴백보다 먼저), 이 샘플의 노드 rid는 `zn1`·`zn2`·`zn3`라 왕복이
+   성립한다. → 두 곳(`ZoneNodeHandlers` 인코드, `PlayerSession` 디코드)을 `ToString()`/`From()`으로
+   교정. 정본 §7.4의 "hex 문자열"·"수신측(zone spot)" 서술도 바로잡았다(수신측은 **Gateway**, zone
+   spot은 §8.3대로 actor 인스턴스를 보관하므로 이 DTO를 소비하지 않는다).
+2. **`ZW-F3-no-push` 체크가 위양성을 냈다.** 러너가 `"No current session binding exists for actor"`를
+   부재 검사했는데, 이 문자열은 **사람 플레이어가 disconnect한 직후의 tick**에서도 (양성적으로) 뜬다 —
+   spot이 그 사람을 아직 residents에 들고 있는 한 틱 동안 push를 시도하고, `PushToClients`의 try/catch가
+   그것을 warn으로 잡고 넘긴다(설계상 정상, §8.9.2). 봇은 애초에 push 대상(`Humans(state)`)에서 제외되어
+   이 오류를 내지 않는다. §11 ZW-F3의 의도는 **봇**(session 미bind actor)이므로, 체크를 봇 id 한정
+   (`... actor 'bot-`)으로 좁혔다. 봇 제외가 깨지면 봇 id로 이 오류가 떠 여전히 잡히고, 사람 disconnect
+   경합은 걸리지 않는다. **`RoutingId` 변경과 무관하다** — 걸린 actor는 정상 bind된 사람이고, 사람
+   시나리오·교차 노드 transfer(`ZW-B2`, decode 경로)는 매 실행 통과했다.
+
+**잔여 flake — stream message timeout(회당 최대 1건, 시나리오는 실행마다 다름).** 관측된 것:
+`ZW-A4`(`Request timed out`, 1/3회), `ZW-C2`(`NodeStatusNotify` timeout, 이동 후 재검증 1회). 공통점은
+**client가 특정 stream 메시지를 제한 시간 안에 못 받는다**는 것이고, 매번 다른 시나리오에서 하나만
+난다 — 특정 시나리오의 로직 결함이 아니라 **기동/부하 타이밍**으로 보인다. 핵심 기능 경로(transfer·
+경계 동기화·공지·점검)는 매 실행 그린이고 §12 마커도 그때마다 나온다. **원인(기동 경합 vs 부하)을
+가려 잡기 전까지 관문 1을 "통과"로 적지 않는다.**
+
+**작업 위치 이동(2026-07-15).** server + Shared + headless 시나리오 Client + run_sample.sh를
+`shared_sample/zoneworld/dotnet/` → **`dotnet/samples/ZoneWorld/`**(다른 정본 샘플과 같은 자리)로
+옮겼다. `shared_sample/zoneworld/`에는 브라우저 client만 남는다. 근거: headless 시나리오 client는
+**언어별**이므로(§6.2) "shared"에 둘 이유가 없고, 공유되는 것은 브라우저 client 하나뿐이다. MSBuild
+props는 ZoneWorld가 자기 것을 그대로 가져가 nearest-wins로 정본 샘플과 충돌하지 않는다. 이동 후
+새 위치에서 빌드·핵심 경로 그린 확인. **정본 aggregate 등록은 보류**(§3).
 
 #### 8.5.1 `dotnet` 회차 2 — codex 지적과 처리
 
@@ -600,7 +640,7 @@ codex 규약대로 **한 요청에 한 항목**씩 3건을 병렬로 냈다(acto
 | Domain(`ZoneState`·`ZoneTickUseCase`)이 wire DTO(`PlayerView` 등)를 만든다 — 회차 2에서 회차 3으로 미룬 항목 | **codex 자신의 최종 판정이 KEEP이다.** 정본 §6이 정한 규칙은 "Domain은 **ZLink 타입**을 참조하지 않는다"이고 `Shared.Contracts`는 framework 의존이 없는 순수 레코드다(위 9번으로 이제 구조적으로 보장된다). 현재 실패도, 표현하지 못하는 불변식도 없다. 5개 언어에 병렬 domain 타입과 매퍼를 하나씩 늘리는 대가가 미래의 컴파일 파급 하나를 막는 이득보다 크다 |
 | 봇 방향 반전(`PlayerMovement.Reject`)이 Infrastructure에서 domain 정책을 결정한다 | codex도 "현재 런타임 실패가 아닌 구조 문제"로 분류했다. `PlayerActor`는 `IZLinkActor`를 구현하므로 Domain에 둘 수 없고, 좌표의 **권위**는 actor다(§2.1) — 자기 상태 전이를 자기가 소유하는 것이 맞다. 규칙은 한 곳에만 있고(`ReverseDirection`), 층을 나누면 5개 언어에 hop만 하나씩 는다 |
 
-#### 8.5.4 **미해결 — peer 자동 연결이 이 토폴로지를 세우지 못한다**
+#### 8.5.4 **해결 — peer 자동 연결의 성공 오판과 owner 교체 결함**
 
 회차 3에서 spec을 근거로 peer 수동 배선(`ConnectRouter`·`ConnectPeerPub`·peer bridge endpoint)을
 삭제했다. 근거는 옳았다 — [spec 10 §5.2](../framework/spec/server/10-channel-topology.ko.md)는 한 역할
@@ -608,8 +648,8 @@ codex 규약대로 **한 요청에 한 항목**씩 3건을 병렬로 냈다(acto
 store가 **없는** 구성용이며, 정본 §3도 "peer 자동 연결"이라고 적는다. 교차 노드 transfer를 하는 정본
 샘플 Bingo도 peer를 dial하지 않는다.
 
-**그런데 동작하지 않는다.** 삭제하고 한 번 30/30 그린이 나서 성공으로 적었으나, 연속 실행에서
-**재현성 있게** 무너졌다.
+삭제 직후에는 연속 실행에서 무너졌다. 원인은 수동 배선이 필요한 토폴로지가 아니라 framework의
+자동 연결 상태 관리 두 곳에 있었다.
 
 | 증상 | 실측 |
 |---|---|
@@ -617,16 +657,42 @@ store가 **없는** 구성용이며, 정본 §3도 "peer 자동 연결"이라고
 | 같은 노드가 인접 zone의 **경계 snapshot도 받지 못한다** | `zone-nw`(node-1)가 `zone-ne`(node-2)의 `ZoneBorderEvent`를 받지 못해 `ZW-B4`가 timeout |
 | **보내는 것은 된다** | 같은 실행에서 node-1 → node-2 actor transfer는 정상(`ZW-B2`·`ZW-F2` 통과), east도 `zone-ne`에 정상 도착 |
 
-즉 **inbound만, 그리고 한쪽 노드에서만** 죽는다. 이 비대칭이 framework 결함인지 이 샘플의 설정
-오류인지 아직 가리지 못했다.
+이 비대칭은 연결 시도 실패를 성공으로 기록한 상태와 재시작 전 연결이 함께 남은 상태에서 발생했다.
 
-**조치.** peer 수동 배선을 **복원**했다(그 상태가 통과하던 유일한 형태다). 정본 §4에 미해결 항목으로
-적었다. **정본은 "자동 연결"을 목표로 유지한다** — 저장소 규약상 spec이 계약이고 불일치는 구현 갭이다.
-수동 dial은 그때까지의 우회다.
+**수정 1 — 실패를 성공으로 기록하지 않는다.** `ZLinkSpotPeerConnector`가 native connect의 `Busy`를
+삼키고 성공으로 반환했다. reconciler는 endpoint 소유권을 기록한 뒤 다시 시도하지 않았으므로 실제
+연결이 없는 상태가 유지됐다. 예외를 그대로 전달해 자동 연결 transaction이 rollback되고 다음 tick에
+재시도하도록 고쳤다. router와 pub/sub 각각에 busy-once 회귀 테스트를 추가했다.
 
-**다음 단계.** 최소 재현(노드 2개 + spot mesh + location store, 수동 dial 없음)을 만들어 inbound가
-죽는 것이 framework인지 설정인지 가른다. framework면 별도 트랙, 설정이면 샘플을 고치고 배선을 다시
-지운다. **이것이 해소되기 전에는 4개 언어 포팅에 이 배선이 그대로 복제된다는 점을 알고 진행한다.**
+**수정 2 — 같은 endpoint의 owner 교체는 metadata만 갱신한다.** 노드가 같은 endpoint로 재시작하면
+owner identity만 바뀐다. 이 경우 기존 연결을 끊고 다시 연결하면 transport 재연결과 겹쳐 이전 pipe와
+새 pipe가 함께 남을 수 있었다. endpoint 또는 fingerprint가 바뀔 때만 socket handover를 수행하고,
+owner만 바뀌면 reconciler의 소유권 metadata만 갱신하도록 계약과 구현을 맞췄다.
+
+**검증.** 고정 sleep이나 수동 연결을 넣지 않았다. runner는 client가 실제 사전 조건을 확인한 뒤 남기는
+`scenario ... armed` 마커를 기다린다. `ZW-B4`와 `ZW-E5`는 각각 5회 연속 통과했고,
+`run_sample.sh all`은 30/30과 §12 마커 7종을 포함해 2회 연속 통과했다. ZoneWorld 코드에서
+`ConnectRouter`·`ConnectPeerPub`·connection endpoint 수동 등록이 없고, 핸들러도 assembly scan과
+handler group으로만 등록한다.
+
+#### 8.5.6 **해결 — 지연 구독 수신 뒤 readiness signal이 남는 core 결함**
+
+`ZW-B2`와 `ZW-D1` 뒤에 `ZW-B4`를 실행하면 구독 메시지가 queue에 있어도 후속 dispatch가 발생하지
+않는 간헐 실패가 있었다. .NET framework는 native dispatch callback에서 작업을 직렬 queue에 넣고,
+실제 구독 수신은 callback이 끝난 뒤 수행한다. 이 경로에서 사용하던 core의 중복 dequeue 구현은
+메시지만 꺼내고 readiness signal 상태를 비우지 않아, 다음 메시지의 signal이 생략될 수 있었다.
+
+중복 구현을 제거하고 signal을 함께 정리하는 core의 기존 구독 수신 함수 하나로 경로를 통합했다.
+회귀 테스트는 callback 안에서 구독을 받지 않고 callback이 끝난 뒤 multipart API로 받은 다음,
+readiness signal이 해제됐는지 직접 확인한다. `test_spot_dispatch_event` 9/9와
+`test_spot_pubsub_scenario` 8/8이 통과했다.
+
+수정한 `core/build` runtime을 포함한 `Systems.Zlink` 9.0.8 local package를 만들었고, package 안의
+linux-x64 native 파일 3개가 해당 runtime과 같은 SHA-256인지 확인했다. 별도 native 경로 덮어쓰기 없이
+문제 집중 조합을 5회 연속, 전체 30개 시나리오를 3회 연속 실행했다. 고정 sleep이나 수동 연결은
+추가하지 않았다. .NET framework 단위 테스트 651/651과 Redis location 일반 테스트 40/40도
+통과했다. 공통 client는 Vitest 4/4, 타입 검사, 독립 Playwright 2/2를 통과했고, 실제 server에서는
+actor transfer·노드별 운영 명령·실제 노드 종료의 server push를 3/3 확인했다.
 
 #### 8.5.3 `dotnet` 회차 4 — 봇 스폰의 오류 삼킴 (codex 수렴 게이트)
 
@@ -819,61 +885,61 @@ codex Gateway 리뷰가 정본 §11 밖의 framework 과제 둘을 지적했다.
 
 **빌드·스택** (정본 §9.2)
 
-- [ ] Vite
-- [ ] Preact + `@preact/signals`
-- [ ] Canvas 2D 월드 렌더
-- [ ] `@zlink-systems/stream-connector` (브라우저 entrypoint)
-- [ ] Vitest (domain 단위 테스트)
-- [ ] Playwright headless Chromium 러너 — **공통 client 하나를 5개 언어 러너가 각각 띄우는 배선**
+- [x] Vite
+- [x] Preact + `@preact/signals`
+- [x] Canvas 2D 월드 렌더
+- [x] `@zlink-systems/stream-connector` (브라우저 entrypoint)
+- [x] Vitest (domain 단위 테스트)
+- [x] Playwright headless Chromium 러너 — 공통 client와 `dotnet` 러너 배선 및 실서버 3/3 완료. 나머지 4개 언어는 server 구현 뒤 배선한다
 
 **FSD 계층** (정본 §9.3) — 의존 방향은 `app` → `pages` → `widgets` → `features` → `entities` → `shared`
 
-- [ ] `app/` — `game.tsx`, `ops.tsx`
-- [ ] `pages/` — `game`, `ops`
-- [ ] `widgets/` — `world-canvas`, `game-hud`, `node-table`, `alert-list`
-- [ ] `features/` — `join-world`, `move-player`, `announce-world`, `set-maintenance`, `node-diagnostics`, `watch-nodes`
-- [ ] `entities/` — `player`, `zone`, `node`, `announcement`
-- [ ] `shared/` — `api`, `config`, `lib`, `ui`
-- [ ] push 전용 메시지는 feature가 아니라 해당 `entities`의 model이 적용한다
-- [ ] `entities/zone`이 서버와 같은 월드 규칙(§2)을 구현하고 브라우저 없이 단위 테스트된다
+- [x] `app/` — `game.tsx`, `ops.tsx`
+- [x] `pages/` — `game`, `ops`
+- [x] `widgets/` — `world-canvas`, `game-hud`, `node-table`, `alert-list`
+- [x] `features/` — `join-world`, `move-player`, `announce-world`, `set-maintenance`, `node-diagnostics`, `watch-nodes`
+- [x] `entities/` — `player`, `zone`, `node`, `announcement`
+- [x] `shared/` — `api`, `config`, `lib`, `ui`
+- [x] push 전용 메시지는 feature가 아니라 해당 `entities`의 model이 적용한다
+- [x] `entities/zone`이 서버와 같은 월드 규칙(§2)을 구현하고 브라우저 없이 단위 테스트된다
 
 **게임 화면** (정본 §10.1)
 
-- [ ] 격자 100×100 + zone 경계선(X=50, Y=50)
-- [ ] 경계 밴드 시각 구분
-- [ ] 인접 zone 플레이어를 같은 zone 플레이어와 다른 표시로 구분
-- [ ] 봇(`IsBot=true`)을 사람과 다른 표시로 구분
-- [ ] 방향키 → `MoveMsg`, **좌표를 client가 먼저 바꾸지 않는다**
-- [ ] 현재 `ZoneId`·`NodeId` 상시 표시 + `ZoneChangedNotify` 갱신
-- [ ] `Transferred=true` 시각 표시
-- [ ] WebSocket 연결 상태 표시(zone 이동 중 유지됨을 확인 가능)
-- [ ] `WorldAnnounceNotify` 표시 + `AnnouncementId` 중복 제거
-- [ ] `MoveRejectedNotify`의 `Reason` 표시
+- [x] 격자 100×100 + zone 경계선(X=50, Y=50)
+- [x] 경계 밴드 시각 구분
+- [x] 인접 zone 플레이어를 같은 zone 플레이어와 다른 표시로 구분
+- [x] 봇(`IsBot=true`)을 사람과 다른 표시로 구분
+- [x] 방향키 → `MoveMsg`, **좌표를 client가 먼저 바꾸지 않는다**
+- [x] 현재 `ZoneId`·`NodeId` 상시 표시 + `ZoneChangedNotify` 갱신
+- [x] `Transferred=true` 시각 표시
+- [x] WebSocket 연결 상태 표시(zone 이동 중 유지됨을 확인 가능)
+- [x] `WorldAnnounceNotify` 표시 + `AnnouncementId` 중복 제거
+- [x] `MoveRejectedNotify`의 `Reason` 표시
 
 **관제 화면** (정본 §10.2)
 
-- [ ] 노드 목록 — `Registered`·`Connected`·`Maintenance`·`Zones`·`PlayerCount`
-- [ ] 노드 종료 시 `Registered=false`
-- [ ] 연결 단절 시 `Connected=false`
-- [ ] `NodeAlertNotify` 시간순 표시
-- [ ] 공지 발행 입력 + 버튼
-- [ ] **노드별** 점검 전환 버튼
-- [ ] **노드별** 진단 버튼
-- [ ] 격리 확인 — 한 노드만 전환 시 다른 노드 무변화
-- [ ] **polling하지 않는다** — `NodeStatusNotify` push로만 갱신
+- [x] 노드 목록 — `Registered`·`Connected`·`Maintenance`·`Zones`·`PlayerCount`
+- [x] 노드 종료 시 `Registered=false`
+- [x] 연결 단절 시 `Connected=false`
+- [x] `NodeAlertNotify` 시간순 표시
+- [x] 공지 발행 입력 + 버튼
+- [x] **노드별** 점검 전환 버튼
+- [x] **노드별** 진단 버튼
+- [x] 격리 확인 — 한 노드만 전환 시 다른 노드 무변화
+- [x] **polling하지 않는다** — `NodeStatusNotify` push로만 갱신
 
 **UI 품질** (정본 §10.0)
 
-- [ ] 깔끔함 · 정보 위계 · 상태를 색+형태로 구분(색만으로 구분하지 않음)
-- [ ] 변화 전이 150~250ms · 일관된 시각 언어 · 여백/정렬 · WCAG AA 명암비 · 고정폭 수치
-- [ ] tick(100ms) 갱신에도 끊기지 않음(Canvas는 `requestAnimationFrame`)
+- [x] 깔끔함 · 정보 위계 · 상태를 색+형태로 구분(색만으로 구분하지 않음)
+- [x] 변화 전이 150~250ms · 일관된 시각 언어 · 여백/정렬 · WCAG AA 명암비 · 고정폭 수치
+- [x] tick(100ms) 갱신에도 끊기지 않음(Canvas는 `requestAnimationFrame`)
 
 ### 8.7 Phase 3 — 교차 검증
 
 **같은 client 하나**로 5개 언어 server 전부에 대해 정본 §12 smoke를 재실행한다. 언어별로 따로
 통과한 것과 하나의 client가 전부에 붙는 것은 다른 검증이다.
 
-- [ ] client × `dotnet` server
+- [x] client × `dotnet` server — actor transfer 중 연결 유지, 노드별 점검·진단, 실제 `zone-node-2` 종료 뒤 server push를 3/3 확인
 - [ ] client × `java` server
 - [ ] client × `kotlin` server
 - [ ] client × `node` server

@@ -28,28 +28,37 @@
 
 ### 0.2 작업 위치
 
-**ZoneWorld는 다른 정본 샘플과 배치가 다르다.** 정본 6종은 언어별 디렉터리
-(`framework/languages/<lang>/samples/`) 안에 그 언어의 client와 server를 함께 둔다. ZoneWorld는
-client 하나를 모든 언어 server가 공유하므로, 공통 client와 언어별 server를 한곳에 모은다.
+**server와 headless 시나리오 client는 다른 정본 샘플과 똑같이 둔다.** 정본 6종과 같은 언어별
+디렉터리(`framework/languages/<lang>/samples/`) 아래에, 그 언어의 server와 시나리오 client를 함께
+둔다. **공유되는 것은 브라우저 client 하나뿐**이므로 그것만 `shared_sample`에 따로 둔다.
 
 ```text
+framework/languages/dotnet/samples/ZoneWorld/    # 다른 정본 샘플과 같은 위치
+  Shared/     언어 중립 message 계약(§7)
+  Server/     Gateway · ZoneNode · Ops (§3·§6)
+  Client/     그 언어의 headless 시나리오 client — §11의 ZW-*를 실행한다
+  run_sample.sh
+# java·kotlin·node·cpp도 각자 framework/languages/<lang>/samples/ZoneWorld/ 아래에 같은 구성
+
 framework/languages/shared_sample/zoneworld/
   client/     TypeScript 브라우저 client — 모든 언어 server가 공유한다(§9·§10)
-  dotnet/     Shared/ · Server/(§3·§6) · Client/(그 언어의 시나리오 client) · run_sample.sh
-  java/
-  kotlin/
-  node/
-  cpp/
 ```
 
-**브라우저 client는 하나만 둔다.** 언어별 디렉터리에 복제하지 않는다. §6의 server 디렉터리 구조는
-`<lang>/Server/` 아래를, §9.3의 브라우저 client 구조는 최상위 `client/` 아래를 가리킨다.
+**왜 이렇게 나누는가.** headless 시나리오 client는 **언어별**이다 — 각 언어가 자기 것을 구현해 그
+언어 server의 동작을 검증한다(정본 6종의 `Client/`와 같은 형태). 반면 브라우저 client는 **하나**를
+모든 언어 server가 공유한다(wire가 언어 중립이므로). 그래서 전자는 다른 샘플과 같은 자리에 두고,
+후자만 `shared_sample`에 둔다 — 그러면 "shared"가 문자 그대로 "언어 간 공유"만 가리킨다.
 
-**언어별 디렉터리의 `Client/`는 다른 것이다** — 기존 정본 6종과 같은 형태의 **headless 시나리오
-client**이며, 브라우저 없이 stream connector로 붙어 §11의 `ZW-*`를 실행해 그 언어 server의 동작을
-검증한다. 브라우저 client는 5개 언어 server가 이 검증을 통과한 뒤에 만들고, 그때 브라우저가 새로
-검증하는 것은 **화면**(§10)이다. 진행 순서는
+**두 `Client`는 서로 다른 계약이다.** `<lang>/samples/ZoneWorld/Client/`는 브라우저 없이 stream
+connector로 붙어 §11의 `ZW-*`를 실행하는 **headless 시나리오 client**다. `shared_sample`의 브라우저
+client는 5개 언어 server가 그 검증을 통과한 뒤에 만들고, 그때 브라우저가 새로 검증하는 것은
+**화면**(§10)이다. §6의 server 디렉터리 구조는 `Server/` 아래를, §9.3의 브라우저 client 구조는
+`shared_sample/zoneworld/client/` 아래를 가리킨다. 진행 순서는
 [구현 계획](../../../../plan/zoneworld-sample-implementation-plan.ko.md) §6이 소유한다.
+
+> **아직 정본 aggregate에 등록하지 않는다.** dotnet 단일 언어이고 미해결 blocker(§4의 peer 연결)와
+> 잔여 flake가 남아 있어, `dotnet/samples/run_samples.sh`의 목록과 `samples/README.md` 표에는
+> 4개 언어 완료·blocker 해소 후에 넣는다. 그때까지는 `ZoneWorld/run_sample.sh`로 직접 실행한다.
 
 ## 1. 목적
 
@@ -410,8 +419,8 @@ client에는 `Gateway`와 `Ops` 주소만 설정한다. zone 노드 주소는 cl
 ## 6. 서버 디렉토리 구조
 
 domain logic과 framework adapter를 분리한다. 언어별 문법과 build system은 달라도 아래
-책임 분리를 유지한다. 아래 경로는 언어별 server 디렉터리
-(`framework/languages/shared_sample/zoneworld/<lang>/`, §0.2) 아래를 가리킨다.
+책임 분리를 유지한다. 아래 경로는 언어별 샘플 디렉터리
+(`framework/languages/<lang>/samples/ZoneWorld/`, §0.2) 아래를 가리킨다.
 
 ```text
 Server/Gateway/
@@ -589,12 +598,17 @@ spot의 admission 콜백인데, framework는 **source node를 admission 콜백�
 
 | 필드 | 의미 |
 |---|---|
-| `NodeRid` | actor를 호스팅하는 노드의 routing id (hex 문자열) |
+| `NodeRid` | actor를 호스팅하는 노드의 routing id를 **문자열로 인코딩한 것** |
 | `ActorId` | actor 식별자 |
 | `Generation` | actor generation |
 
-수신측(zone spot)은 이 세 값으로 자기 언어의 public `ActorRef`를 복원해 보관하고,
-`SendToActor`에 사용한다.
+**`NodeRid`는 `RoutingId.ToString()`으로 싣고 `RoutingId.From(string)`으로 되돌린다** — Bingo와 같은
+방식이다. 이 샘플의 노드 rid는 인쇄 가능한 문자열(`zn1`·`zn2`)이라 이 왕복이 성립한다. `ToHex()`가
+아니다 — 노드 rid를 직접 문자열로 지정하는 이 샘플·정본 6종의 규약과 어긋나기 때문이다.
+
+수신측(`Gateway`)은 이 세 값으로 자기 언어의 public `ActorRef`를 복원하고, 원격 player actor에
+session을 bind한다(§7.1 `JoinWorldRes` 흐름). zone spot은 `ActorRef`가 아니라 **actor 인스턴스**를
+보관하므로(§8.3) 이 DTO를 소비하지 않는다.
 
 ## 8. 관제
 
@@ -934,6 +948,143 @@ client/src/
 
 플레이어를 호스팅하지 않으므로 성공 기준은 **subscriber handler의 수신 로그**다. `Ops`가
 노드 목록을 관리하지 않으므로 노드를 추가해도 발행 코드가 바뀌지 않는다는 것이 확인된다.
+
+### 11.2 시나리오 client가 갖춰야 할 연산
+
+**§11.3의 흐름은 아래 연산들로만 쓴다.** 이 어휘가 언어마다 같으면 흐름도 같아진다 — 각 언어는
+자기 stream connector 위에 이 얇은 층을 만들고, 시나리오는 connector API가 아니라 이 어휘로 읽힌다.
+`dotnet`의 `GameClient`/`OpsClient`가 기준 형태다.
+
+**게임 client** (`Gateway`에 STREAM 연결)
+
+| 연산 | 하는 일 |
+|---|---|
+| `Connect(gateway, playerId)` | STREAM 연결을 연다. `playerId`는 **매 시나리오 고유**로 만든다(재입장 충돌 방지, §2.4) |
+| `JoinWorld() → JoinWorldRes` | `JoinWorldReq`를 request로 보내고 응답을 받는다. 시작 좌표를 client의 현재 위치로 기억한다 |
+| `Move(x, y)` | `MoveMsg`를 **one-way send**한다(응답 없음) |
+| `WalkTo(x, y) → ZoneStateNotify` | 목표까지 **한 번에 한 합법 걸음씩**(축당 최대 5, §2.2) 이동한다. 각 걸음마다 `Move` 후 그 좌표가 반영된 `ZoneStateNotify`를 기다린 뒤 다음 걸음을 뗀다 |
+| `WaitFor<T>(predicate, timeout) → T` | 들어오는 stream 메시지 중 타입 `T`이면서 `predicate`를 만족하는 첫 메시지를 기다린다 |
+| `WaitForPosition(x, y)` | `Players`에서 자기 좌표가 `(x,y)`인 `ZoneStateNotify`를 기다린다 |
+| `NextTick()` | 자기가 `Players`에 있는 다음 `ZoneStateNotify`를 기다린다 |
+| `Collect<T>(window) → [T]` | `window` 동안 도착한 타입 `T` 메시지를 **전부** 모은다. 하나도 없어도 유효한 관측이다(best-effort, §8.2) |
+| `Me(state)` | `ZoneStateNotify.Players`에서 자기 `PlayerView`를 꺼낸다 |
+
+**관제 client** (`Ops`에 STREAM 연결)
+
+| 연산 | 하는 일 |
+|---|---|
+| `Connect(ops)` | STREAM 연결을 연다 |
+| `WatchNodes() → WatchNodesRes` | `WatchNodesReq`를 보내 현재 노드 목록을 받는다 |
+| `Announce(text) → AnnounceWorldRes` | `AnnounceWorldReq`를 보내고 발행 id를 받는다 |
+| `SetMaintenance(nodeId, enabled) → SetMaintenanceRes` | 점검 모드를 바꾼다. 대상 노드가 명령을 적용한 뒤 같은 상태가 `NodeStatusNotify`로 관측될 때까지 기다린다. 대상 노드가 미연결이면 desired state만 기록하고 즉시 반환한다. |
+| `ResetMaintenance()` | 두 노드를 모두 점검 해제하고 확인한다. 시나리오가 토폴로지를 공유하므로, 점검을 읽는 시나리오는 **아는 상태에서 시작**해야 한다 |
+| `Diagnose(nodeId) → NodeDiagnosticsRes` | `NodeDiagnosticsReq`를 보낸다 |
+| `WaitFor<T>(predicate) → T` | 게임 client와 같되 **더 긴 timeout**을 쓴다 — 노드 상태 전이는 러너가 노드를 없애야 일어난다 |
+
+**반드시 그대로 옮길 것.**
+
+- **`WalkTo`는 대각선을 피한다.** 한 걸음이 X·Y 경계를 동시에 넘게 되면(§2.2 `DiagonalCrossing`)
+  한 축을 먼저 정리하고 다음 축을 건드린다. 지도를 한 메시지로 건너뛰지 않는다.
+- **`SetMaintenance`/`ResetMaintenance`는 고정 시간만큼 기다리지 않는다.** 대상 노드가 연결되어
+  있으면 `NodeStatusNotify`에서 요청한 상태를 관측한 뒤 다음 단계로 진행한다. 다른 노드의 캐시가
+  아직 이전 값을 가지고 있어도 목표 노드가 자기 상태를 권위로 다시 판정하므로 결과는 달라지지 않는다(§2.3).
+- **`playerId`는 시나리오마다 고유.** 재실행이 겹치지 않게 한다.
+- **판정 단언**은 세 가지면 충분하다: `True(조건)`, `Equal(기대, 실제)`, `Sequence(기대목록, 실제목록)`
+  (순서까지 정확히 일치 — 정본이 "정확한 목록"을 요구하는 곳에 쓴다).
+
+### 11.3 시나리오별 client 흐름
+
+성공 기준은 §11 표가 정본이다. 여기서는 **client가 그 판정에 이르기까지 밟는 단계**를 적는다. 5개
+언어가 같은 단계를 밟아야 같은 것을 검증한다. 좌표·zone 이름은 §2, 메시지는 §7을 따른다.
+
+**러너 주도(◆)** 표시가 붙은 것은 client 혼자 끝낼 수 없다 — 러너가 그 사이에 노드를 없애거나
+재시작해야 한다(§12). 표시 없는 것은 client가 끝까지 몬다. 서버 로그로만 판정하는 것(`ZW-D2`·`ZW-F2`와
+`ZW-D1`·`ZW-F1`·`ZW-F3`의 로그 절반)은 client 흐름이 아니라 러너의 몫이므로 여기 없다(§11·§11.1).
+
+**Track A — 입장과 이동**
+
+- **`ZW-A1`** — `Connect`+`JoinWorld` → 응답이 `(zone-nw, zone-node-1, 25, 25)`인지 확인. `Move(28,27)`
+  후 `WaitForPosition(28,27)` → 그 `ZoneStateNotify.ZoneId`가 `zone-nw`.
+- **`ZW-A2`** — `JoinWorld` 후 `Move(-40, y)`(범위 밖이면서 5칸 초과). `WaitFor<MoveRejectedNotify>` →
+  `Reason=OutOfRange`(§2.2 순서), 좌표는 입장 좌표 그대로.
+- **`ZW-A3`** — client 둘을 서로 다른 고유 id로 `Connect`+`JoinWorld`(둘 다 `zone-nw`). **양쪽 각각**
+  에서 두 id가 모두 있는 `ZoneStateNotify`를 기다리고, 상대가 자기 `Players`에 있는지 확인. 그
+  `Players`의 id 목록이 **UTF-8 byte 오름차순으로 정렬**돼 있는지 `Sequence`로 확인(봇 포함 전체).
+- **`ZW-A4`** — `JoinWorld` 후 `WalkTo(49,49)`. `Move(50,50)`(두 경계 동시 통과) →
+  `WaitFor<MoveRejectedNotify>` → `Reason=DiagonalCrossing`, 좌표는 `(49,49)` 불변.
+- **`ZW-A5`** — `JoinWorld` 후 `Move(x+4, y)`(같은 zone). `WaitForPosition` → `Me(state)`의 좌표가
+  갱신됐고 `ZoneId`는 여전히 `zone-nw`(zone spot의 사본이 actor 좌표를 따라옴).
+
+**Track B — 경계와 transfer**
+
+- **`ZW-B1`** — client 셋(west·east·diagonal)을 `JoinWorld`. `east.WalkTo(55,25)`(zone-ne로),
+  `diagonal.WalkTo(55,55)`(zone-se로), `west.WalkTo(45,45)`(zone-nw 밴드). **east 관점**에서
+  `zone-ne` 상태에 west가 보이는지 기다리고, 그 `PlayerView`의 `ZoneId`가 `zone-nw`(자기 zone으로
+  표기)이며 `X>=40`인지 확인. **음성 대조**: `diagonal` 관점에서 `zone-se` 상태를 **만료의 2배 tick**
+  동안 반복 관측하며 west가 **한 번도** 나타나지 않는지 확인(대각선 zone은 경계를 공유하지 않음).
+- **`ZW-B2`** — `JoinWorld` 후 `WalkTo(48,25)`. `Move(52,25)` → `WaitFor<ZoneChangedNotify>` →
+  `(zone-ne, zone-node-2, Transferred=true)`. 이어서 `Move(55,25)`+`WaitForPosition(55,25)`이
+  **같은 연결로** 동작 → bound session이 actor를 따라갔다.
+- **`ZW-B3`** — `JoinWorld` 후 `WalkTo(25,48)`. `Move(25,52)` → `WaitFor<ZoneChangedNotify>` →
+  `(zone-sw, zone-node-1, Transferred=false)`(같은 노드라 transfer 없음).
+- **`ZW-B4` ◆** — client 둘(west·east). `east.WalkTo(52,25)`(zone-ne), `west.WalkTo(45,25)`.
+  **east가 `zone-ne` 소속으로** west에 보일 때까지 기다린다(단순히 "보이면"이 아니다 — transfer
+  직후 잠깐 출발 zone 사본에 남는 창을 피한다). **[러너가 `zone-node-2`를 없앤다]**. 그 뒤 west의
+  `zone-nw` 상태에서 **east가 없고 `zone-ne` 소속 플레이어도 전부 없는** 상태를 최대 60초 기다린다
+  → 죽은 노드의 플레이어가 만료됐다. `zone-sw`(살아 있는 node-1) 밴드 플레이어는 남는 게 정상.
+
+**Track C — 노드 관찰**(관제 client)
+
+- **`ZW-C1`** — `Connect`. `NodeStatusNotify(zone-node-1, Registered)`를 기다려 그 `Zones`에
+  `zone-nw`가 있는지 확인. `WatchNodes` → 두 노드 모두 `Registered` **그리고** `Connected`인지
+  확인(두 플래그는 출처가 다르다, §8.1).
+- **`ZW-C4`** — `Connect`. `WatchNodes`를 **부르기 전에** `WaitFor<NodeAlertNotify>(TimerHandlerFailed)`
+  대기를 걸어 둔다(경고가 이미 났을 수 있고 `WatchNodesReq` 응답이 그것을 재생한다). `WatchNodes`
+  호출 후 그 경고를 받아 `NodeId`가 결함을 주입한 노드(`zone-node-1`)인지 확인.
+- **`ZW-C2` ◆** — `Connect`. `WatchNodes`로 `zone-node-2`가 **`Registered=true`인지 먼저 확인**.
+  **[러너가 `zone-node-2`를 없앤다]**. `NodeStatusNotify(zone-node-2, Registered=false)`를 기다린다.
+- **`ZW-C3` ◆** — `ZW-C2`와 같되 플래그가 `Connected`다. **먼저 `Connected=true`를 확인**한 뒤
+  **[러너가 노드를 없애면]** `Connected=false` 전이를 기다린다.
+
+**Track D — 전 노드 공지**(게임+관제 client)
+
+- **`ZW-D1`** — 게임 client `JoinWorld` + 관제 client `Connect`. `Announce("...")` → 발행 id를
+  받는다. 게임 client가 `Collect<WorldAnnounceNotify>(3초)`로 도착분을 모아 **`AnnouncementId`에
+  중복이 없는지** `Sequence`로 확인(한 발행 = 한 플레이어에 최대 한 번). subscriber·zone spot 수신은
+  러너가 서버 로그로 판정한다(§8.2).
+
+**Track E — 점검과 진단**(관제 client, 필요 시 게임 client)
+
+- **`ZW-E1`** — `ResetMaintenance`. 게임 client `JoinWorld`+`WalkTo(48,25)`. `SetMaintenance(east,true)`
+  → 응답의 `NodeId`·`Zones`(두 zone 모두) 확인. `Move(52,25)`→`ZoneMaintenance`, 좌표 불변.
+  `WalkTo(48,55)`+`Move(52,55)`→`ZoneMaintenance`(그 노드의 **다른 zone도** 거부). `Move(45,55)`는
+  node-1 안이라 동작. **finally**: `SetMaintenance(east,false)`.
+- **`ZW-E2`** — `ResetMaintenance`. `JoinWorld`. `SetMaintenance(west,true)`. `Move(30,30)`+
+  `WaitForPosition` 동작(같은 zone 이동). `WalkTo(30,48)`+`Move(30,52)`→`ZoneChangedNotify(zone-sw,
+  Transferred=false)`(노드 내부 zone 이동 허용). **finally**: 해제.
+- **`ZW-E3`** — `ResetMaintenance`. `JoinWorld`+`WalkTo(48,25)`. `SetMaintenance(west,true)`.
+  `Move(52,25)`→`ZoneChangedNotify(zone-node-2, Transferred=true)`(점검 노드에서 정상 노드로 이탈
+  허용). **finally**: 해제.
+- **`ZW-E4`** — `Diagnose(zone-node-1)` → `Zones`가 정렬 시 정확히 `[zone-nw, zone-sw]`, `PlayerCount>=0`.
+- **`ZW-E6`** — `ResetMaintenance` 후 `SetMaintenance(west,true)`. 새 게임 client `Connect`+`JoinWorld`
+  → `JoinWorldRes.Error == ZoneMaintenance`(입장 자체 거부). **finally**: 해제.
+- **`ZW-E5-arm` ◆** — `SetMaintenance(east,true)` → 응답에 `Error` 없음. **[러너가 `zone-node-2`를
+  재시작한다]**.
+- **`ZW-E5` ◆** — 재시작 후 `Diagnose(east)` → `Maintenance==true`(store에서 복원, §8.4).
+  **finally**: 해제.
+
+**Track F — 봇**
+
+- **`ZW-F1`** — `JoinWorld`. `IsBot=true`가 **zone당 봇 수 이상**인 `ZoneStateNotify`를 기다려 봇들을
+  기록. 그 뒤 tick을 돌며(`NextTick`) 기록한 봇들이 **전부 한 번씩 움직였는지** 확인(자기 zone 봇의
+  이동). 월드 전체 8마리는 러너가 로그로 센다.
+- **`ZW-F3`** — `JoinWorld` + 관제 `Connect`. `Announce(...)`(공지 전달 경로를 밟게 한다).
+  `Move(-40, y)`→`WaitFor<MoveRejectedNotify>`(거부 push 경로도 밟게 한다). `NextTick`으로 봇이
+  월드에 있는지 확인. **부재(봇에 push 없음)는 러너가 서버 로그로** 판정한다.
+- **`ZW-F4`** — `ResetMaintenance` 후 `JoinWorld`. `SetMaintenance(east,true)`. **경계 직전의 X 순찰
+  봇**(id가 `-x`로 끝나고 `zone-nw`이며 다음 걸음이 경계를 넘는)이 보일 때까지 기다려 그 봇 id와
+  현재 X(peak)를 잡는다. 이후 그 봇의 X가 **peak보다 작아질 때까지**(반전) 기다린다. **finally**: 해제.
+  — 봇 이름을 미리 박지 않는다: 봇은 zone을 넘나들어 어느 것이 지금 여기 있는지는 실행마다 다르다.
 
 ## 12. Smoke 실행 기준
 

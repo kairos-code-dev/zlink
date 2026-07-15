@@ -154,25 +154,11 @@ internal sealed class ZLinkSpotPeerConnector(
 
     private void ConnectPeer(string endpoint)
     {
-        try
-        {
-            node.ConnectPeer(endpoint);
-        }
-        catch (ZlinkConnectException error)
-            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
-        {
-        }
+        node.ConnectPeer(endpoint);
     }
 
     private void ConnectPeer(RoutingId peerRid, string endpoint)
     {
-        try
-        {
-            node.ConnectPeer(peerRid, endpoint);
-        }
-        catch (ZlinkConnectException error)
-            when (error.Result == ZlinkConnectException.ErrorCode.Busy)
-        {
-        }
+        node.ConnectPeer(peerRid, endpoint);
     }
 }

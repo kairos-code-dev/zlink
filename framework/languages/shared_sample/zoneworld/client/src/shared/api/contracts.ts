@@ -4,64 +4,64 @@
 // (§7.3) never reach the client.
 
 export interface PlayerView {
-  PlayerId: string;
-  X: number;
-  Y: number;
-  ZoneId: string;
-  IsBot: boolean;
+  playerId: string;
+  x: number;
+  y: number;
+  zoneId: string;
+  isBot: boolean;
 }
 
 export interface NodeView {
-  NodeId: string;
-  Registered: boolean;
-  Connected: boolean;
-  Maintenance: boolean;
-  Zones: string[];
-  PlayerCount: number;
+  nodeId: string;
+  registered: boolean;
+  connected: boolean;
+  maintenance: boolean;
+  zones: string[];
+  playerCount: number;
 }
 
 // --- §7.1 game — browser <-> Gateway ---------------------------------------
 
 export interface JoinWorldReq {
-  PlayerId: string;
+  playerId: string;
 }
 
 export interface JoinWorldRes {
-  PlayerId: string;
-  ZoneId: string;
-  NodeId: string;
-  X: number;
-  Y: number;
-  Error?: string | null;
+  playerId: string;
+  zoneId: string;
+  nodeId: string;
+  x: number;
+  y: number;
+  error?: string | null;
 }
 
 export interface MoveMsg {
-  X: number;
-  Y: number;
+  x: number;
+  y: number;
 }
 
 export interface ZoneStateNotify {
-  ZoneId: string;
-  Tick: number;
-  Players: PlayerView[];
+  zoneId: string;
+  tick: number;
+  players: PlayerView[];
 }
 
 export interface ZoneChangedNotify {
-  PlayerId: string;
-  ZoneId: string;
-  NodeId: string;
-  Transferred: boolean;
+  playerId: string;
+  zoneId: string;
+  nodeId: string;
+  transferred: boolean;
 }
 
 export interface WorldAnnounceNotify {
-  AnnouncementId: string;
-  Text: string;
+  announcementId: string;
+  text: string;
 }
 
 export interface MoveRejectedNotify {
-  Reason: MoveRejectReason;
-  X: number;
-  Y: number;
+  reason: MoveRejectReason;
+  x: number;
+  y: number;
 }
 
 export type MoveRejectReason =
@@ -75,60 +75,60 @@ export type MoveRejectReason =
 export type WatchNodesReq = Record<string, never>;
 
 export interface WatchNodesRes {
-  Nodes: NodeView[];
+  nodes: NodeView[];
 }
 
 export interface NodeStatusNotify {
-  NodeId: string;
-  Registered: boolean;
-  Connected: boolean;
-  Maintenance: boolean;
-  Zones: string[];
-  PlayerCount: number;
+  nodeId: string;
+  registered: boolean;
+  connected: boolean;
+  maintenance: boolean;
+  zones: string[];
+  playerCount: number;
 }
 
 export interface NodeAlertNotify {
-  NodeId: string;
-  Kind: NodeAlertKind;
-  Detail: string;
-  OccurredAt: string;
+  nodeId: string;
+  kind: NodeAlertKind;
+  detail: string;
+  occurredAt: string;
 }
 
 export type NodeAlertKind = 'TimerHandlerFailed' | 'PeersChanged';
 
 export interface AnnounceWorldReq {
-  Text: string;
+  text: string;
 }
 
 export interface AnnounceWorldRes {
-  AnnouncementId: string;
+  announcementId: string;
 }
 
 export interface SetMaintenanceReq {
-  NodeId: string;
-  Enabled: boolean;
+  nodeId: string;
+  enabled: boolean;
 }
 
 export interface SetMaintenanceRes {
-  NodeId: string;
-  Enabled: boolean;
-  Zones: string[];
-  Error?: string | null;
+  nodeId: string;
+  enabled: boolean;
+  zones: string[];
+  error?: string | null;
 }
 
 export interface NodeDiagnosticsReq {
-  NodeId: string;
+  nodeId: string;
 }
 
 export interface NodeDiagnosticsRes {
-  NodeId: string;
-  Zones: string[];
-  PlayerCount: number;
-  Maintenance: boolean;
-  Error?: string | null;
+  nodeId: string;
+  zones: string[];
+  playerCount: number;
+  maintenance: boolean;
+  error?: string | null;
 }
 
-/** A request whose target node is not connected returns this in `Error`. */
+/** A request whose target node is not connected returns this in `error`. */
 export const NODE_UNAVAILABLE = 'NodeUnavailable';
 
 /** Packet names are the contract type names; the servers register them the same way. */

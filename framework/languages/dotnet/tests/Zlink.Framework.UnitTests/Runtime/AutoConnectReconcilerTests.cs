@@ -274,15 +274,16 @@ public sealed class AutoConnectReconcilerTests
     }
 
     [Fact]
-    public async Task Owner_Change_For_The_Same_Peer_Key_Is_A_Handover()
+    public async Task Owner_Change_At_The_Same_Endpoint_Refreshes_Without_A_Second_Dial()
     {
         var fixture = await FixtureAsync();
         await fixture.PublishPeerAsync("r1", "tcp://r:1");
         await fixture.Reconciler.TickAsync();
 
         // The peer restarts: same rid and endpoint, re-claimed by a new
-        // owner. The old dial points at a dead process, so the reconciler
-        // must replace the connection even though nothing else changed.
+        // owner. The socket transport has already reconnected the broken
+        // endpoint, so the reconciler must not race it with another
+        // disconnect/connect pair.
         await fixture.Store.RenewOwnerLeaseAsync(
             "peer-owner-2", RoutingId.From("peer-node-2"), TimeSpan.FromMinutes(10));
         var restarted = Peer(
@@ -293,9 +294,9 @@ public sealed class AutoConnectReconcilerTests
         await fixture.Store.UpdatePeerAsync(restarted, ZLinkLocationWriteIntent.Takeover);
         await fixture.Reconciler.TickAsync();
 
-        Assert.Equal(["tcp://r:1", "tcp://r:1"], fixture.Executor.Connected.Select(t => t.Endpoint));
-        var dropped = Assert.Single(fixture.Executor.Disconnected);
-        Assert.Equal("tcp://r:1", dropped.Endpoint);
+        Assert.Equal("tcp://r:1", Assert.Single(fixture.Executor.Connected).Endpoint);
+        Assert.Empty(fixture.Executor.Disconnected);
+        Assert.Equal("peer-owner-2", Assert.Single(fixture.Reconciler.ActiveTargets).OwnerId);
     }
 
     [Fact]

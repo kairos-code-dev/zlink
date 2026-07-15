@@ -2,6 +2,8 @@
 
 #include "testutil.hpp"
 #include "testutil_unity.hpp"
+#include "services/spot/pubsub/spot_subject_access.hpp"
+#include "services/spot/runtime/spot_handle.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -474,6 +476,59 @@ void test_spot_dispatch_subscribe_recv_inside_callback ()
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
 }
 
+void test_spot_dispatch_deferred_subscribe_recv_clears_readiness_signal ()
+{
+    void *ctx = zlink_ctx_new ();
+    void *node = zlink_spot_node_new (ctx, NULL);
+    void *sub_spot = zlink_spot_new (node);
+    void *pub_spot = zlink_spot_new (node);
+    TEST_ASSERT_NOT_NULL (ctx);
+    TEST_ASSERT_NOT_NULL (node);
+    TEST_ASSERT_NOT_NULL (sub_spot);
+    TEST_ASSERT_NOT_NULL (pub_spot);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (sub_spot, "dispatch.topic.deferred"));
+    spot_dispatch_probe_t probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_spot_dispatch_event_handler (sub_spot, &on_spot_dispatch_event, &probe));
+
+    zlink_msg_t part;
+    init_string_part (&part, "deferred-payload");
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_publish (pub_spot, "dispatch.topic.deferred", &part, 1, 0));
+
+    {
+        std::unique_lock<std::mutex> lock (probe.mutex);
+        TEST_ASSERT_TRUE (probe.cv.wait_for (lock, std::chrono::milliseconds (500), [&probe] () {
+            return probe.called;
+        }));
+    }
+
+    const zlink_routing_id_t *source_rid = NULL;
+    zlink_msg_t received_part;
+    zlink_msg_init (&received_part);
+    zlink_part_flag_t has_more = ZLINK_PART_MORE;
+    char topic[64];
+    size_t topic_len = 0;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_spot_subscribe_part (sub_spot, &source_rid, topic, sizeof (topic), &topic_len,
+                                 &received_part, &has_more,
+                                 static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&received_part));
+
+    spot_handle_t *handle = as_spot_handle (sub_spot);
+    TEST_ASSERT_NOT_NULL (handle);
+    TEST_ASSERT_FALSE (handle->logical_state->subscribe_signal_armed);
+    TEST_ASSERT_EQUAL_INT (-1, handle->logical_state->subscribe_signaler.recv_failable ());
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&pub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&sub_spot));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_term (ctx));
+}
+
 void test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot ()
 {
     void *ctx = zlink_ctx_new ();
@@ -855,6 +910,7 @@ int main (void)
     UNITY_BEGIN ();
     RUN_TEST (test_spot_timer_dispatch_event_and_recv);
     RUN_TEST (test_spot_dispatch_subscribe_recv_inside_callback);
+    RUN_TEST (test_spot_dispatch_deferred_subscribe_recv_clears_readiness_signal);
     RUN_TEST (test_spot_dispatch_subscribe_event_is_not_fanned_out_to_unrelated_spot);
     RUN_TEST (test_spot_dispatch_subscribe_drain_until_eagain);
     RUN_TEST (test_spot_dispatch_subscription_change_applies_to_later_fanout);

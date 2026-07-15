@@ -9,8 +9,6 @@
 #include "api/socket/socket_message_api_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
 #include "api/message/submit_result_internal.hpp"
-#include "core/c_api_copy_internal.hpp"
-#include "core/recv_tls_view.hpp"
 #include "services/spot/runtime/spot_handle.hpp"
 #include "services/spot/node/spot_node.hpp"
 #include "services/spot/node/spot_node_access.hpp"
@@ -27,11 +25,6 @@ zlink_routing_id_t &spot_service_event_source_rid_tls ()
     return rid;
 }
 
-int copy_text_to_output (const std::string &value_, char *out_, size_t *len_inout_)
-{
-    return zlink::copy_bytes_to_sized_output (value_.data (), value_.size (), out_, len_inout_);
-}
-
 zlink_recv_result_t try_dequeue_logical_subscribe (spot_handle_t *spot_,
                                                    zlink_routing_id_t *source_rid_out_,
                                                    zlink_msg_t **parts_out_,
@@ -42,47 +35,9 @@ zlink_recv_result_t try_dequeue_logical_subscribe (spot_handle_t *spot_,
     if (!spot_ || !spot_->logical_state)
         return ZLINK_RECV_NO_DATA;
 
-    std::shared_ptr<spot_logical_pubsub_message_t> message;
-    {
-        zlink::scoped_lock_t lock (spot_->logical_state->pubsub_sync);
-        if (spot_->logical_state->subscribe_queue.empty ())
-            return ZLINK_RECV_NO_DATA;
-        message = spot_->logical_state->subscribe_queue.front ();
-        spot_->logical_state->subscribe_queue.pop_front ();
-    }
-    if (!message)
-        return ZLINK_RECV_NO_DATA;
-
-    if (zlink::recv_tls_view::begin (parts_out_, part_count_out_) != 0)
-        return zlink::recv_result_internal::from_errno (errno);
-    for (size_t i = 0; i < message->parts.size (); ++i) {
-        zlink_msg_t frame;
-        zlink_msg_init (&frame);
-        if (zlink_msg_init_size (&frame, message->parts[i].size ()) != 0) {
-            zlink_msg_close (&frame);
-            zlink::recv_tls_view::abort ();
-            return zlink::recv_result_internal::from_errno (errno);
-        }
-        if (!message->parts[i].empty ()) {
-            memcpy (zlink_msg_data (&frame), message->parts[i].data (), message->parts[i].size ());
-        }
-        if (zlink::recv_tls_view::push (&frame) != 0) {
-            zlink_msg_close (&frame);
-            zlink::recv_tls_view::abort ();
-            return zlink::recv_result_internal::from_errno (errno);
-        }
-    }
-    if (zlink::recv_tls_view::commit (parts_out_, part_count_out_) != 0) {
-        zlink::recv_tls_view::abort ();
-        return zlink::recv_result_internal::from_errno (errno);
-    }
-    if (source_rid_out_)
-        *source_rid_out_ = message->source_rid;
-    if (copy_text_to_output (message->topic_id, topic_id_out_, topic_id_len_out_) != 0) {
-        zlink::recv_tls_view::abort ();
-        return zlink::recv_result_internal::from_errno (errno);
-    }
-    return ZLINK_RECV_OK;
+    return zlink::recv_result_internal::from_rc (
+      recv_logical_spot_subscription (spot_, source_rid_out_, parts_out_, part_count_out_,
+                                      topic_id_out_, topic_id_len_out_));
 }
 
 bool send_sequence_active (void *handle_)

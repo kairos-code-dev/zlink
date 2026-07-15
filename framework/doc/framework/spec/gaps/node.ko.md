@@ -824,11 +824,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: client-facing `JoinGameRes`와 별도 `TicTacToeGameJoinRes`를 정의하고 Entry/Game Spot 내부 join 경로가 전용 타입을 사용한다. 타입을 재사용하면 실패하는 internal-join contract gate가 통과한다. 커밋 `c8a7c77fb`.
 - [x] **SMP-ND-18** (**wire 파손**) — TicTacToe terminal state의 `nextTurn`이 `null`이다
   - 근거: terminal state도 non-null `nextTurn` 계약을 유지하도록 domain snapshot과 client 단언을 맞췄다. `null` wire를 허용하면 실패하는 next-turn gate가 통과한다. 커밋 `933b9eb28`.
-- [ ] **SMP-ND-19** (**wire 파손**) — ShoppingMall decimal 금액을 JavaScript `number`로 표현한다
-  - 결정 대기: 공통 계약의 `decimal`을 JSON number로 유지할지, 정규화한 decimal 문자열로 바꿀지,
-    통화별 scale을 정한 minor-unit 정수로 바꿀지 갭 인덱스에서 먼저 결정해야 한다. 뒤의 두 선택지는
-    공유 wire 타입을 바꾸고, 첫 선택지는 JavaScript의 정확한 왕복을 보장하지 못한다. §0.8의 1단계
-    결정이 없으므로 Node만 타입이나 codec을 바꾸지 않고 열린 상태로 둔다.
+- [x] **SMP-ND-19** (**wire 파손**) — ShoppingMall decimal 금액을 JavaScript `number`로 표현한다
+  - 근거: `.NET`과 같은 JSON number wire를 유지하되 scale을 2자리로 제한하고, JSON parse 뒤에도 cent를 유일하게 복원할 수 있는 연속 범위인 `0..3,518,437,208,883,199` minor units를 `DecimalAmount`가 검증·보관한다. 파일 저장소도 read 경계에서 값 객체를 복원해 Domain이 이진 부동소수를 보관하지 않는다. scale 초과·범위 초과에서 실패하던 decimal gate 3건과 실제 ShoppingMall runner, 전체 Node runtime gate가 통과한다. 커밋 `301e7b6c6`.
 - [x] **SMP-ND-20** (결함) — SupportChat client가 대화별 message 의미 값을 충분히 검증하지 않는다
   - 근거: participant state와 conversation id·sender·text·sequence를 두 대화 각각 대조해 잘못된 방 payload를 거부한다. sequence만 맞으면 통과하던 message-semantics gate가 통과한다. 커밋 `98f26ff9c`.
 - [x] **E2E-ND-12** (**가짜 통과**) — PubSub 측정 구간이 warm-up과 겹치고 순서를 검사하지 않는다

@@ -42,7 +42,7 @@ public final class MonitoringScenarioContext implements AutoCloseable {
     public Contracts.WorkRes request(String value) {
         Contracts.WorkRes reply = trigger.post("/request")
             .body(new Contracts.WorkReq(value))
-            .fetch(Contracts.WorkRes.class);
+            .async(Contracts.WorkRes.class).toCompletableFuture().join().body();
         ensure(reply.value().equals("work:" + value), "reply mismatch for " + value);
         return reply;
     }
@@ -62,7 +62,7 @@ public final class MonitoringScenarioContext implements AutoCloseable {
     }
 
     public ValidationResult validation(String name) {
-        return trigger.post("/validation/" + name).fetch(ValidationResult.class);
+        return trigger.post("/validation/" + name).async(ValidationResult.class).toCompletableFuture().join().body();
     }
 
     public void post(String baseUrl, String path) {
@@ -87,7 +87,7 @@ public final class MonitoringScenarioContext implements AutoCloseable {
         return ZLinkHttpClient.create(baseUrl)
             .timeout(Duration.ofSeconds(3))
             .get("/evidence")
-            .fetch(Contracts.EvidenceSnapshot.class);
+            .async(Contracts.EvidenceSnapshot.class).toCompletableFuture().join().body();
     }
 
     public int evidenceEntryCount(String baseUrl) {

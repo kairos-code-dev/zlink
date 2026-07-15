@@ -902,8 +902,11 @@ API를 쓴다. 샘플 로컬 inbox 루프는 없다. (GameQuest `wait_for_progre
 
 **Config 10·11에서 진짜인 것**: `ST-B4`(custom empty-state adapter + `domain_state_loaded`), `ST-F1`(유일하게
 순서 helper `assert_evidence_order`를 쓰는 진짜 순서 검사), `ST-C2`, `ST-E1`, `ST-F6`의 correlation 절반.
-`OBS-C4`(connector의 public close reason으로 `closeReason=server_drain` 확인)와 `OBS-C5`(a: `"force_stopping"
-not in states`, b: `drain.forced{kind=actor|session}` 카운터)는 **깨끗하다**.
+`OBS-C4`(connector의 public close reason으로 `closeReason=server_drain` 확인)와 `OBS-C5(a)`의
+`"force_stopping" not in states` 단언은 **깨끗하다**. `OBS-C5(b)`가 actor와 session의 forced 카운터를
+둘 다 필수로 보던 주장은 재검증에서 무너졌다. config-11 §OBS-C5는 actor가 source에서 자연 종료하거나
+deadline에 강제 종료되는 두 결과를 허용하고, §OBS-C4가 필수로 요구하는 forced 카운터는 session이다.
+runner를 이 두 actor 결과와 `drain.forced{kind=session}`을 검증하도록 바로잡았고 Config 11 전체가 통과했다.
 
 **Config 3에서 확인한 깨끗한 축**: 모든 PS 단언이 **subscriber 역할 서버의 bounded `/evidence/wait`**에
 걸려 있다(shell 로그 grep이 아니다) — `run_e2e.sh:380-389`가 subscriber endpoint로 POST하고

@@ -1378,6 +1378,17 @@ TEST (CppFrameworkSampleParity, SupportChatConversationJoinCarriesParticipantIde
       << "Support server must fill participant identity for the conversation actor join";
 }
 
+TEST (CppFrameworkSampleParity, SupportChatUsesFrameworkActorRefSnapshot)
+{
+    const auto contracts = read_file (
+      cpp_language_root () / "samples/SupportChat/Shared/Contracts/messages.hpp");
+    const auto support = read_file (
+      cpp_language_root () / "samples/SupportChat/Server/Support/main.cpp");
+    EXPECT_EQ (contracts.find ("support_actor_ref_snapshot_t"), std::string::npos);
+    EXPECT_NE (contracts.find ("actor_ref_snapshot_t actor;"), std::string::npos);
+    EXPECT_NE (support.find ("actor_ref_snapshot_t::from (actor_ref)"), std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, ChannelSendBackpressureUsesIndependentDefault)
 {
     const auto source = read_file (

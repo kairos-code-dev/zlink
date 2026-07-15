@@ -26,11 +26,11 @@ inline constexpr const char *supportchat_support_node = "supportchat-support";
 inline constexpr const char *support_user_actor_type = "support-user";
 inline constexpr const char *support_conversation_spot = "supportchat.conversation";
 
-support_actor_ref_snapshot_t snapshot_of (const zlink::framework::actor_ref_t &actor_ref)
+actor_ref_snapshot_t snapshot_of (const zlink::framework::actor_ref_t &actor_ref)
 {
-    return {supportchat_support_node,
-            std::string (actor_ref.actor_id ()),
-            actor_ref.generation ()};
+    auto snapshot = actor_ref_snapshot_t::from (actor_ref);
+    snapshot.node_rid = node_rid_t::from_string (supportchat_support_node);
+    return snapshot;
 }
 
 class support_user_actor_t

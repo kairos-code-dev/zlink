@@ -1,14 +1,40 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 #pragma once
 
+#include <zlink/framework/contracts/actors/actor.hpp>
+
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <vector>
 
+#ifndef ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
+#define ZLINK_CPP_FRAMEWORK_ACTOR_REF_SNAPSHOT_JSON_HPP
+namespace zlink::framework
+{
+inline void to_json (nlohmann::json &json, const actor_ref_snapshot_t &value)
+{
+    json = {{"nodeRid", std::string (value.node_rid.value ())},
+            {"actorId", value.actor_id},
+            {"generation", value.generation}};
+}
+inline void from_json (const nlohmann::json &json, actor_ref_snapshot_t &value)
+{
+    const auto node_rid = json.contains ("nodeRid") ? json.value ("nodeRid", std::string{})
+                                                    : json.value ("node_rid", std::string{});
+    value.node_rid = node_rid_t::from_string (node_rid);
+    value.actor_id = json.contains ("actorId") ? json.value ("actorId", std::string{})
+                                               : json.value ("actor_id", std::string{});
+    value.generation = json.value ("generation", std::uint64_t{0});
+}
+} // namespace zlink::framework
+#endif
+
 namespace zlink::samples::supportchat
 {
+
+using actor_ref_snapshot_t = zlink::framework::actor_ref_snapshot_t;
 
 struct role_t
 {
@@ -105,13 +131,6 @@ struct allocate_conversation_res_t
     std::string status;
 };
 
-struct support_actor_ref_snapshot_t
-{
-    std::string node_rid;
-    std::string actor_id;
-    std::uint64_t generation{0};
-};
-
 struct ensure_support_user_actor_req_t
 {
     static constexpr const char *packet_name = "EnsureSupportUserActorReq";
@@ -124,7 +143,7 @@ struct ensure_support_user_actor_req_t
 struct ensure_support_user_actor_res_t
 {
     static constexpr const char *packet_name = "EnsureSupportUserActorRes";
-    support_actor_ref_snapshot_t actor;
+    actor_ref_snapshot_t actor;
 };
 
 struct ensure_agent_conversation_req_t
@@ -138,7 +157,7 @@ struct ensure_agent_conversation_req_t
 struct ensure_agent_conversation_res_t
 {
     static constexpr const char *packet_name = "EnsureAgentConversationRes";
-    support_actor_ref_snapshot_t actor;
+    actor_ref_snapshot_t actor;
     conversation_state_t state;
 };
 
@@ -430,20 +449,6 @@ inline void from_json (const nlohmann::json &json, allocate_conversation_res_t &
     value.status = json.value ("status", "");
 }
 
-inline void to_json (nlohmann::json &json, const support_actor_ref_snapshot_t &value)
-{
-    json = {{"nodeRid", value.node_rid},
-            {"actorId", value.actor_id},
-            {"generation", value.generation}};
-}
-
-inline void from_json (const nlohmann::json &json, support_actor_ref_snapshot_t &value)
-{
-    value.node_rid = json.value ("nodeRid", "");
-    value.actor_id = json.value ("actorId", "");
-    value.generation = json.value ("generation", std::uint64_t{0});
-}
-
 inline void to_json (nlohmann::json &json, const ensure_support_user_actor_req_t &value)
 {
     json = {{"actorId", value.actor_id},
@@ -467,7 +472,7 @@ inline void to_json (nlohmann::json &json, const ensure_support_user_actor_res_t
 
 inline void from_json (const nlohmann::json &json, ensure_support_user_actor_res_t &value)
 {
-    value.actor = json.value ("actor", support_actor_ref_snapshot_t{});
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
 }
 
 inline void to_json (nlohmann::json &json, const ensure_agent_conversation_req_t &value)
@@ -491,7 +496,7 @@ inline void to_json (nlohmann::json &json, const ensure_agent_conversation_res_t
 
 inline void from_json (const nlohmann::json &json, ensure_agent_conversation_res_t &value)
 {
-    value.actor = json.value ("actor", support_actor_ref_snapshot_t{});
+    value.actor = json.value ("actor", actor_ref_snapshot_t{});
     value.state = json.value ("state", conversation_state_t{});
 }
 

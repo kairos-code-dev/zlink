@@ -75,7 +75,7 @@ class supportchat_session_t final : public packet_stream_session_t
                                                           authenticated.actor_id};
             auto ensured = co_await _channels.request ("supportchat.support", ensure)
                               .async<ensure_support_user_actor_res_t> ();
-            auto actor_ref = to_actor_ref (ensured.actor);
+            auto actor_ref = ensured.actor.to_actor_ref (support_user_actor_type);
             auto bound = co_await _actors.bind_or_get (actor_ref).async ();
             _identity_actor_id = std::string (bound.actor_id ());
             _identity_display_name = authenticated.display_name;
@@ -124,14 +124,6 @@ class supportchat_session_t final : public packet_stream_session_t
     }
 
   private:
-    static zlink::framework::actor_ref_t to_actor_ref (
-      const support_actor_ref_snapshot_t &snapshot)
-    {
-        return zlink::framework::actor_ref_t (
-          node_rid_t::from_string (snapshot.node_rid), support_user_actor_type,
-          snapshot.actor_id, snapshot.generation);
-    }
-
     task_t<session_actor_t> select_actor (stream_t &stream,
                                           const stream_dispatch_context_t &dispatch)
     {
@@ -157,9 +149,7 @@ class supportchat_session_t final : public packet_stream_session_t
                                             zlink::message_t::from_json (join_conversation_req_t {}))
                 .async ();
             co_return ensure_agent_conversation_res_t{
-              support_actor_ref_snapshot_t{"supportchat-support",
-                                           std::string (actor.actor_id ()),
-                                           actor.ref ().generation ()},
+              actor_ref_snapshot_t::from (actor.ref ()),
               refreshed.parse_json<join_conversation_res_t> ().state};
         }
 
@@ -169,7 +159,7 @@ class supportchat_session_t final : public packet_stream_session_t
                       ensure_agent_conversation_req_t{_identity_actor_id, _identity_display_name,
                                                       conversation_id})
             .async<ensure_agent_conversation_res_t> ();
-        auto actor_ref = to_actor_ref (ensured.actor);
+        auto actor_ref = ensured.actor.to_actor_ref (support_user_actor_type);
         auto bound = co_await _actors.bind_or_get (actor_ref).async ();
         const auto conversation_actor_id = std::string (bound.actor_id ());
         _conversation_actor_ids[conversation_id] = conversation_actor_id;

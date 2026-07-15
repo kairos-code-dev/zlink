@@ -281,7 +281,9 @@
 - [x] **IMP-CP-08** (미구현) — 30 §6
   - 근거: 수정 전 target-contract gate가 STREAM host의 transport 오류 분류와 session callback dispatch 부재를 각각 검출했다. 연결이 설정된 뒤의 비정상 socket 오류만 `transport_error`로 분류해 기존 직렬 callback 경로로 전달하도록 연결한 뒤, 정상 TCP 종료는 오류 callback 0회이고 TCP reset은 native errno를 포함한 오류 callback 1회인 실제 host 회귀 테스트를 3회 반복했으며 target gate와 관련 ctest 2개가 통과했다.
 - [ ] **IMP-CP-09** (미구현) — 40 §9
-- [ ] **IMP-CP-10** (결함) — 40 §7
+  - §0.8 대기: `location-runtime`의 두 event kind 추가만으로는 항목이 닫히지 않는다. `location-peer`·`location-spot`·`location-actor`·`location-route` 등록은 현재 정식 C++ interface에 없는 새 public 표면이 필요하다. 선택지는 ① 언어별 계약에 네 등록 API와 payload를 먼저 확정하거나 ② 기존 `add_location_events`가 source kind까지 선택하는 계약으로 바꾸는 것이다. 계약 없이 source name 문자열을 해석하는 우회는 만들지 않는다.
+- [x] **IMP-CP-10** (결함) — 40 §7
+  - 근거: 수정 전 location runtime 회귀가 live `Weight=0` peer를 `Lost`·ready count 0으로 투영하고 Spot/actor/route topology를 0건 반환해 실패했다. raw row와 live-owner snapshot의 결합을 내부 `live_location_reader_t`에 모으고 query가 네 kind와 service summary를 같은 lease 기준으로 투영하도록 수정했다(`fce598193`). 조회당 owner snapshot은 한 번만 취한다. target-contract·location resolver 27개·monitoring 시험이 모두 통과했다.
 - [ ] **IMP-CP-11** (미구현) — 31
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
@@ -289,6 +291,7 @@
 - [x] **IMP-X1** — pending actor row(`ActorRef` 비어 있음)를 resolve 성공으로 반환한다
   - 근거: C++ 언어 작업인 IMP-CP-07에서 pending row를 resolve와 목록의 miss로 처리하고 동일 runtime의 observed generation guard를 함께 구현해 닫았다.
 - [ ] **IMP-X2** — location event source(`location-peer/spot/actor/route`, `StoreFailure`/`StoreRecovered`)가 없다
+  - 현재 상태: C++ 구현 선택지는 IMP-CP-09에 기록했다. 네 per-kind source의 public 등록 계약이 확정되기 전에는 §0.8에 따라 구현하지 않는다.
 - [ ] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
 
 ### 언어별 표면 차이 (기준선 대조)
@@ -320,7 +323,7 @@
 | **IMP-CP-07** | 결함 | [40 §2.3·§5.1](../server/40-location-runtime.ko.md) | pending actor row를 성공 resolve로 반환하고(IMP-X1), **observed generation 상태가 아예 없다.** ⇒ `.NET`이 쓴 pre-activation claim row를 C++가 **커밋된 위치로 착각**한다 |
 | **IMP-CP-08** | 미구현 | [30 §6](../server/30-stream-session.ko.md): session에 귀속되는 transport 오류 → **session 오류 callback** | `on_error`가 선언돼 있고 `dispatch_error`가 정의돼 있는데 **호출하는 곳이 없다.** `stream_session_error_t::transport_error`가 **한 번도 생성되지 않는다.** ⇒ 앱이 정상 로그아웃과 전송 장애를 구분할 수 없다 |
 | **IMP-CP-09** | 미구현 | [40 §9](../server/40-location-runtime.ko.md) | `location_event_kind_t`에 `StoreFailure`/`StoreRecovered`가 **없고**(`events.hpp:56-61`), per-row source 4개도 없다(IMP-X2). ⇒ **store 장애가 관측자에게 보이지 않는다** |
-| **IMP-CP-10** | 결함 | [40 §7](../server/40-location-runtime.ko.md): topology는 row + connection state + **lease** + generation의 projection. [54 §3.2](../server/54-graceful-drain-handoff.ko.md): **`Weight`는 전송 부하 가중치이지 lifecycle 신호가 아니다** | `store_location_resolvers.hpp:269-303` — peer만 투영하고 `state = weight==0 ? lost : ready`. ⇒ 부하를 덜려고 weight를 0으로 두면 **멀쩡한 노드가 `Lost`로 보고**되고, spot/actor/route topology 조회는 **항상 빈 페이지**를 반환한다 |
+| **IMP-CP-10** | 결함 | [40 §7](../server/40-location-runtime.ko.md): topology는 row + connection state + **lease** + generation의 projection. [54 §3.2](../server/54-graceful-drain-handoff.ko.md): **`Weight`는 전송 부하 가중치이지 lifecycle 신호가 아니다** | **해결.** peer·Spot·actor·route raw row를 live-owner snapshot과 결합해 `Ready`/`Lost`를 투영하고, pending actor와 관찰 generation을 거른다. `Weight=0`은 placement에만 쓰며 topology와 service summary의 lifecycle 판정에는 쓰지 않는다. |
 | **IMP-CP-11** | 미구현 | [31](../server/31-session-actor-dispatch.ko.md): session context는 **packet handler registry**를 갖는다. 같은 packet name 중복 등록은 startup 오류. **packet-name switch를 금지한다** | `stream.hpp:253-270` — session context 타입도 `Configure()`도 **없다.** 그래서 모든 C++ session이 **packet-name switch를 손으로 쓴다** — 스펙이 명시적으로 금지한 형태다 |
 
 ## 3. 언어별 표면 차이 상세

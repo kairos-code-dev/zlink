@@ -5,9 +5,10 @@ $ErrorActionPreference = "Stop"
 $SampleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $SampleDir
 
-$LogDir = Join-Path $SampleDir "build/sample-logs"
-$FlowLogDir = if ($env:SHOPPINGMALL_LOG_DIR) { $env:SHOPPINGMALL_LOG_DIR } else { Join-Path $SampleDir "logs" }
-New-Item -ItemType Directory -Force -Path $LogDir, $FlowLogDir | Out-Null
+$RunDir = Join-Path ([IO.Path]::GetTempPath()) ("zlink-shoppingmall-" + [Guid]::NewGuid().ToString("N"))
+$LogDir = Join-Path $RunDir "logs"
+$FlowLogDir = $LogDir
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $FlowLogDir "*.log")
 
@@ -62,6 +63,7 @@ function Cleanup {
     if ($RedisContainer) {
         Remove-ZlinkSampleRedis $RedisContainer
     }
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $RunDir
 }
 
 function Reserve-Endpoints {
@@ -117,18 +119,32 @@ function Invoke-Gradle {
     }
 }
 
+function Protect-ConfigFile {
+    param([string]$Path)
+    if ($IsWindows) {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        & icacls $Path /inheritance:r /grant:r "${identity}:(R,W)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config file ACL: $Path" }
+    } else {
+        & chmod 0600 $Path
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config file mode: $Path" }
+    }
+}
+
+function Write-ConfigFile {
+    param([string]$Name, [string[]]$Lines)
+    $path = Join-Path $RunDir "$Name.properties"
+    Set-Content -Path $path -Value $Lines -Encoding utf8NoBOM
+    Protect-ConfigFile $path
+    return $path
+}
+
 function Start-Role {
-    param([string]$ScriptPath, [string]$LogName, [string]$JavaToolOptions)
+    param([string]$ScriptPath, [string]$LogName, [string]$ConfigPath)
     $logPath = Join-Path $LogDir $LogName
     $errorLogPath = Join-Path $LogDir ($LogName + ".err.log")
-    $previous = $env:JAVA_TOOL_OPTIONS
-    try {
-        $env:JAVA_TOOL_OPTIONS = $JavaToolOptions
-        $process = Start-Process -FilePath $ScriptPath -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
-        $Processes.Add($process)
-    } finally {
-        $env:JAVA_TOOL_OPTIONS = $previous
-    }
+    $process = Start-Process -FilePath $ScriptPath -ArgumentList @("--config", $ConfigPath) -WorkingDirectory $SampleDir -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errorLogPath -PassThru
+    $Processes.Add($process)
 }
 
 function App-Bin {
@@ -141,18 +157,18 @@ function App-Bin {
 }
 
 $Status = 1
-$oldJavaToolOptions = $env:JAVA_TOOL_OPTIONS
-$oldLogDir = $env:SHOPPINGMALL_LOG_DIR
 try {
-    $endpoints = Reserve-Endpoints 8
+    $endpoints = Reserve-Endpoints 10
     $apiAHttp = Split-Endpoint $endpoints[0]
     $apiBHttp = Split-Endpoint $endpoints[1]
-    $workflowAChannel = Split-Endpoint $endpoints[2]
-    $workflowBChannel = Split-Endpoint $endpoints[3]
-    $workflowASpot = Split-Endpoint $endpoints[4]
-    $workflowBSpot = Split-Endpoint $endpoints[5]
-    $workflowARouter = Split-Endpoint $endpoints[6]
-    $workflowBRouter = Split-Endpoint $endpoints[7]
+    $workflowAHttp = Split-Endpoint $endpoints[2]
+    $workflowBHttp = Split-Endpoint $endpoints[3]
+    $workflowAChannel = Split-Endpoint $endpoints[4]
+    $workflowBChannel = Split-Endpoint $endpoints[5]
+    $workflowASpot = Split-Endpoint $endpoints[6]
+    $workflowBSpot = Split-Endpoint $endpoints[7]
+    $workflowARouter = Split-Endpoint $endpoints[8]
+    $workflowBRouter = Split-Endpoint $endpoints[9]
 
     $redis = Start-ZlinkSampleRedis "zlink-redis-java-sample-shoppingmall"
     $RedisContainer = $redis.ContainerId
@@ -160,9 +176,38 @@ try {
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
 
-    $redisKeyPrefix = if ($env:SHOPPINGMALL_REDIS_KEY_PREFIX) { $env:SHOPPINGMALL_REDIS_KEY_PREFIX } else { "shoppingmall:java:${PID}:$([Guid]::NewGuid().ToString('N')):" }
-    $env:SHOPPINGMALL_LOG_DIR = $FlowLogDir
-    $commonJavaOptions = "$oldJavaToolOptions -Dzlink.samples.shoppingmall.apiAHttpUrl=http://$($apiAHttp.Host):$($apiAHttp.Port) -Dzlink.samples.shoppingmall.apiBHttpUrl=http://$($apiBHttp.Host):$($apiBHttp.Port) -Dzlink.samples.shoppingmall.workflowAChannelEndpoint=tcp://$($workflowAChannel.Host):$($workflowAChannel.Port) -Dzlink.samples.shoppingmall.workflowBChannelEndpoint=tcp://$($workflowBChannel.Host):$($workflowBChannel.Port) -Dzlink.samples.shoppingmall.workflowASpotEndpoint=tcp://$($workflowASpot.Host):$($workflowASpot.Port) -Dzlink.samples.shoppingmall.workflowBSpotEndpoint=tcp://$($workflowBSpot.Host):$($workflowBSpot.Port) -Dzlink.samples.shoppingmall.workflowASpotRouterEndpoint=tcp://$($workflowARouter.Host):$($workflowARouter.Port) -Dzlink.samples.shoppingmall.workflowBSpotRouterEndpoint=tcp://$($workflowBRouter.Host):$($workflowBRouter.Port) -Dzlink.samples.shoppingmall.redisEndpoint=$redisEndpoint -Dzlink.samples.shoppingmall.redisKeyPrefix=$redisKeyPrefix"
+    $redisKeyPrefix = "shoppingmall:java:${PID}:$([Guid]::NewGuid().ToString('N')):"
+    $commonConfig = @(
+        "sample.logDirectory=$($LogDir.Replace('\', '/'))",
+        "sample.redisEndpoint=$redisEndpoint",
+        "sample.redisKeyPrefix=$redisKeyPrefix"
+    )
+    $workflowAConfig = Write-ConfigFile "workflow-a" ($commonConfig + @(
+        "sample.instanceName=workflow-a",
+        "sample.httpUrl=http://$($workflowAHttp.Host):$($workflowAHttp.Port)",
+        "sample.channelEndpoint=tcp://$($workflowAChannel.Host):$($workflowAChannel.Port)",
+        "sample.spotEndpoint=tcp://$($workflowASpot.Host):$($workflowASpot.Port)",
+        "sample.spotRouterEndpoint=tcp://$($workflowARouter.Host):$($workflowARouter.Port)"
+    ))
+    $workflowBConfig = Write-ConfigFile "workflow-b" ($commonConfig + @(
+        "sample.instanceName=workflow-b",
+        "sample.httpUrl=http://$($workflowBHttp.Host):$($workflowBHttp.Port)",
+        "sample.channelEndpoint=tcp://$($workflowBChannel.Host):$($workflowBChannel.Port)",
+        "sample.spotEndpoint=tcp://$($workflowBSpot.Host):$($workflowBSpot.Port)",
+        "sample.spotRouterEndpoint=tcp://$($workflowBRouter.Host):$($workflowBRouter.Port)"
+    ))
+    $apiAConfig = Write-ConfigFile "api-a" ($commonConfig + @(
+        "sample.instanceName=api-a",
+        "sample.httpUrl=http://$($apiAHttp.Host):$($apiAHttp.Port)"
+    ))
+    $apiBConfig = Write-ConfigFile "api-b" ($commonConfig + @(
+        "sample.instanceName=api-b",
+        "sample.httpUrl=http://$($apiBHttp.Host):$($apiBHttp.Port)"
+    ))
+    $clientConfig = Write-ConfigFile "client" @(
+        "sample.apiAHttpUrl=http://$($apiAHttp.Host):$($apiAHttp.Port)",
+        "sample.apiBHttpUrl=http://$($apiBHttp.Host):$($apiBHttp.Port)"
+    )
 
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue `
         (Join-Path $SampleDir "Server/CommerceApi/build/install/CommerceApi"), `
@@ -171,24 +216,25 @@ try {
 
     Invoke-Gradle @("--settings-file", "standalone.settings.gradle.kts", "--no-daemon", ":Server:CommerceApi:installDist", ":Server:OrderWorkflow:installDist", ":Client:installDist", "--quiet")
 
-    Start-Role -ScriptPath (App-Bin "Server/OrderWorkflow" "OrderWorkflow") -LogName "workflow-a.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.shoppingmall.workflowName=workflow-a"
-    Start-Role -ScriptPath (App-Bin "Server/OrderWorkflow" "OrderWorkflow") -LogName "workflow-b.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.shoppingmall.workflowName=workflow-b"
+    Start-Role -ScriptPath (App-Bin "Server/OrderWorkflow" "OrderWorkflow") -LogName "workflow-a.log" -ConfigPath $workflowAConfig
+    Start-Role -ScriptPath (App-Bin "Server/OrderWorkflow" "OrderWorkflow") -LogName "workflow-b.log" -ConfigPath $workflowBConfig
     Wait-Port $workflowAChannel.Host $workflowAChannel.Port
     Wait-Port $workflowBChannel.Host $workflowBChannel.Port
     Wait-Port $workflowASpot.Host $workflowASpot.Port
     Wait-Port $workflowBSpot.Host $workflowBSpot.Port
     Wait-Port $workflowARouter.Host $workflowARouter.Port
     Wait-Port $workflowBRouter.Host $workflowBRouter.Port
+    Wait-Port $workflowAHttp.Host $workflowAHttp.Port
+    Wait-Port $workflowBHttp.Host $workflowBHttp.Port
 
-    Start-Role -ScriptPath (App-Bin "Server/CommerceApi" "CommerceApi") -LogName "api-a.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.shoppingmall.apiName=api-a"
-    Start-Role -ScriptPath (App-Bin "Server/CommerceApi" "CommerceApi") -LogName "api-b.log" -JavaToolOptions "$commonJavaOptions -Dzlink.samples.shoppingmall.apiName=api-b"
+    Start-Role -ScriptPath (App-Bin "Server/CommerceApi" "CommerceApi") -LogName "api-a.log" -ConfigPath $apiAConfig
+    Start-Role -ScriptPath (App-Bin "Server/CommerceApi" "CommerceApi") -LogName "api-b.log" -ConfigPath $apiBConfig
     Wait-Port $apiAHttp.Host $apiAHttp.Port
     Wait-Port $apiBHttp.Host $apiBHttp.Port
 
     Write-Host "topology=ready"
     $clientLog = Join-Path $LogDir "client.log"
-    $env:JAVA_TOOL_OPTIONS = $commonJavaOptions
-    & (App-Bin "Client" "Client") *> $clientLog
+    & (App-Bin "Client" "Client") --config $clientConfig *> $clientLog
     if ($LASTEXITCODE -ne 0) {
         throw "Client run failed."
     }
@@ -207,6 +253,4 @@ try {
     $Status = 0
 } finally {
     Cleanup $Status
-    $env:JAVA_TOOL_OPTIONS = $oldJavaToolOptions
-    $env:SHOPPINGMALL_LOG_DIR = $oldLogDir
 }

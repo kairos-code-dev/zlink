@@ -163,14 +163,19 @@ static_checks() {
   rm -f "${tmp}"
 
   tmp="$(mktemp)"
-  if rg -n 'YieldDispatch|yielddispatch|YD-|\byield\b|\bYield\b' \
+  if rg -n 'YieldDispatch|yielddispatch|YD-' \
       Client Server Shared -g '*.java' -g '*.kt' >"${tmp}"; then
     cat "${tmp}" >&2
     rm -f "${tmp}"
-    echo "AutomaticTurnDispatch must use the single await completion contract." >&2
+    echo "AutomaticTurnDispatch must use the execution-turn scenario namespace." >&2
     return 1
   fi
   rm -f "${tmp}"
+
+  if ! rg -q '\.yield\(' Server/Play/src/main/java -g '*.java'; then
+    echo "AutomaticTurnDispatch must exercise the yield terminator." >&2
+    return 1
+  fi
 
   if ! rg -q 'ZLinkStreamConnectorFactory\.create' Client/src/main/java/systems/zlink/e2e/kotlin/automaticturn/support/ClientStreamSupport.java; then
     echo "AutomaticTurnDispatch client must create a real stream connector." >&2

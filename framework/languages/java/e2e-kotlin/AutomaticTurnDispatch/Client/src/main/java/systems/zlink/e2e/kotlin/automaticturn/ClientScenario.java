@@ -21,6 +21,7 @@ import systems.zlink.e2e.kotlin.automaticturn.scenarios.AtdE1TimeoutScenario;
 import systems.zlink.e2e.kotlin.automaticturn.scenarios.AtdE2CancellationScenario;
 import systems.zlink.e2e.kotlin.automaticturn.scenarios.AtdE3ShutdownRecoveryScenario;
 import systems.zlink.e2e.kotlin.automaticturn.scenarios.TdEJoinScenario;
+import systems.zlink.e2e.kotlin.automaticturn.scenarios.TdBasicTurnScenario;
 import systems.zlink.e2e.kotlin.automaticturn.support.ClientStreamSupport;
 import systems.zlink.e2e.kotlin.automaticturn.support.ScenarioAssert;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -96,6 +97,10 @@ public final class ClientScenario {
             case "ATD-E1" -> AtdE1TimeoutScenario.run(roomA);
             case "ATD-E2" -> AtdE2CancellationScenario.run(roomA);
             case "ATD-E3" -> runE3Scenario(roomA);
+            case "TD-A1" -> TdBasicTurnScenario.runSurface();
+            case "TD-A2" -> TdBasicTurnScenario.runAsyncHoldsTurn(roomA);
+            case "TD-A4" -> TdBasicTurnScenario.runAsyncCompletion(roomA);
+            case "TD-B1" -> TdBasicTurnScenario.runYieldInterleave(roomA);
             default -> throw new IllegalArgumentException("unknown AutomaticTurnDispatch scenario: " + scenario);
         }
     }

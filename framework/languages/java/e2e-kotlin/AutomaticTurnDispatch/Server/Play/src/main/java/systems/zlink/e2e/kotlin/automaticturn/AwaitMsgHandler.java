@@ -19,17 +19,23 @@ public final class AwaitMsgHandler
         String value = "spot=" + spot.context().spotRid()
             + ";correlation=" + command.correlationId()
             + ";handler=spot";
+        boolean yields = "TD-B1".equals(command.correlationId());
+        boolean turnContract = command.correlationId().startsWith("TD-");
         evidence.record(command.requestId(), "await-started", value);
-        evidence.record(command.requestId(), "await-released", value);
-        return spot.context().outbound()
+        evidence.record(command.requestId(), yields ? "yield-released"
+            : turnContract ? "await-held" : "await-released", value);
+        var call = spot.context().outbound()
             .requestToChannel(
                 Contracts.DELAY_CHANNEL,
                 new Contracts.DelayReq(command.requestId(), command.delayMillis()))
-            .timeout(Duration.ofSeconds(5))
-            .submit(Contracts.DelayRes.class)
+            .timeout(Duration.ofSeconds(5));
+        CompletionStage<Contracts.DelayRes> completion = yields
+            ? call.yield(Contracts.DelayRes.class)
+            : call.submit(Contracts.DelayRes.class);
+        return completion
             .thenAccept(reply -> {
-                evidence.record(command.requestId(), "await-resumed", value);
-                evidence.record(command.requestId(), "await-completed", value);
+                evidence.record(command.requestId(), yields ? "yield-resumed" : "await-resumed", value);
+                evidence.record(command.requestId(), turnContract ? "completed" : "await-completed", value);
             });
     }
 }

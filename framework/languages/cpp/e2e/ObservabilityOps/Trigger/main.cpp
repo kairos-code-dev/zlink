@@ -10,6 +10,7 @@
  * The trigger only uses the public connector surface. */
 
 #include "../Shared/observability_contracts.hpp"
+#include "../Client/Support/client_runner.hpp"
 
 #include <zlink/stream_connector.hpp>
 #include <zlink/stream_connector/codecs/auto_codec.hpp>
@@ -72,7 +73,7 @@ void ensure (bool condition, const std::string &message)
 
 } // namespace
 
-int main (int argc, char **argv)
+int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv)
 {
     try {
         const auto configured = read_options (argc, argv);
@@ -135,7 +136,9 @@ int main (int argc, char **argv)
                           .packet_name (obs::obs_action_req_t::packet_name)
                           .timeout (std::chrono::milliseconds (10000))
                           .submit<obs::obs_action_res_t> ();
-            ensure (static_cast<bool> (warm), "OBS-C4 warm-up action failed");
+            ensure (static_cast<bool> (warm),
+                    std::string ("OBS-C4 warm-up action failed: ")
+                      + (warm.error () ? warm.error ()->message : "unknown error"));
             std::cout << "hold-session ready" << std::endl;
             /* Keep dispatching: the connector pump answers server liveness
              * pings and surfaces the session-closing control; a passive wait

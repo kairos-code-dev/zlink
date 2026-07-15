@@ -6,6 +6,7 @@
  * config-11 §3 minimal JSON arrays: metrics / drainEvents / peerRows. */
 
 #include "../Shared/observability_contracts.hpp"
+#include "Shared/observability_host.hpp"
 
 #include <zlink/framework.hpp>
 #include <zlink/locations/redis.hpp>
@@ -29,7 +30,7 @@ namespace
 
 struct server_options_t
 {
-    std::string role;
+    std::string node_rid;
     std::string redis_endpoint;
     std::string redis_key_prefix;
     std::string http_endpoint;
@@ -46,7 +47,7 @@ struct server_options_t
 
     static server_options_t bind (const fw::configuration_section_t &section)
     {
-        return {.role = section.require ("role"),
+        return {.node_rid = section.require ("nodeRid"),
                 .redis_endpoint = section.require ("redis.endpoint"),
                 .redis_key_prefix = section.require ("redis.keyPrefix"),
                 .http_endpoint = section.require ("httpEndpoint"),
@@ -268,7 +269,7 @@ class join_actor_handler_t
 
     join_actor_handler_t (fw::session_actor_manager_t &actors,
                           server_options_t &options) :
-        _actors (actors), _role (options.role)
+        _actors (actors), _node_rid (options.node_rid)
     {
     }
 
@@ -285,7 +286,7 @@ class join_actor_handler_t
              * the fixture joins the local entry spot (rid == node rid). */
             auto joined = actor.value ()
                             .context ()
-                            .join_spot (fw::spot_rid_t::from_string (_role),
+                            .join_spot (fw::spot_rid_t::from_string (_node_rid),
                                         obs::join_actor_req_t{request.actor_id})
                             .async ()
                             .result ();
@@ -310,7 +311,7 @@ class join_actor_handler_t
 
   private:
     fw::session_actor_manager_t &_actors;
-    std::string _role;
+    std::string _node_rid;
 };
 
 class actor_ping_handler_t
@@ -556,7 +557,9 @@ class drain_handler_t
 
 } // namespace
 
-int main (int argc, char **argv)
+int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role,
+                                                                int argc,
+                                                                char **argv)
 {
     auto app = fw::app_t::create ();
     app.config ().load_cli (argc, argv);
@@ -566,6 +569,12 @@ int main (int argc, char **argv)
     }
     app.config ().load_json (*config_path);
     const auto options = app.config ().bind_required<server_options_t> ("e2e");
+    if (role == host_role_t::session && options.stream_endpoint.empty ()) {
+        throw std::runtime_error ("ObservabilityOps Session requires streamEndpoint");
+    }
+    if (role != host_role_t::session && !options.stream_endpoint.empty ()) {
+        throw std::runtime_error ("only ObservabilityOps Session accepts streamEndpoint");
+    }
     auto evidence_owner = std::make_unique<observability_evidence_t> ();
     auto *evidence = evidence_owner.get ();
     auto drain_control_owner = std::make_unique<drain_control_t> ();
@@ -609,12 +618,12 @@ int main (int argc, char **argv)
         framework.configure_dispatch ()
           .message_flow (options.trace_mode == "off" ? fw::message_flow_log_mode_t::off
                                                      : fw::message_flow_log_mode_t::key_transitions)
-          .trace_log_file (options.log_dir + "/" + options.role + "-flow.log")
-          .trace_label ("cpp-obs-" + options.role);
+          .trace_log_file (options.log_dir + "/" + options.node_rid + "-flow.log")
+          .trace_label ("cpp-obs-" + options.node_rid);
 
         auto spot_route = framework.add_route_mesh (obs::spot_route_channel);
         spot_route.enable_server (options.route_endpoint);
-        spot_route.set_routing_id (zlink::routing_id_t::from (options.role));
+        spot_route.set_routing_id (zlink::routing_id_t::from (options.node_rid));
         if (!options.peer_route_endpoint.empty ()) {
             spot_route.enable_client (options.peer_route_endpoint);
         }
@@ -626,7 +635,7 @@ int main (int argc, char **argv)
         spot_mesh.use_drain_policy (options.drain_policy == "release_and_recreate"
                                       ? fw::spot_drain_policy_t::release_and_recreate
                                       : fw::spot_drain_policy_t::drain_natural);
-        spot_mesh.set_routing_id (zlink::routing_id_t::from (options.role))
+        spot_mesh.set_routing_id (zlink::routing_id_t::from (options.node_rid))
           .enable_router (options.spot_router_endpoint)
           .enable_pub_sub (options.spot_pub_endpoint)
           .accept_route_mesh (obs::spot_route_channel)

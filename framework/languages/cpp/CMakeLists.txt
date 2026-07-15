@@ -1265,19 +1265,45 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_automatic_turn_dispatch_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_observability_ops_server
+  add_library(zlink_cpp_e2e_observability_ops_host STATIC
     e2e/ObservabilityOps/Server/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_observability_ops_server PRIVATE
+  target_link_libraries(zlink_cpp_e2e_observability_ops_host PRIVATE
     zlink::framework_locations_redis)
-  target_include_directories(zlink_cpp_e2e_observability_ops_server PRIVATE
+  target_include_directories(zlink_cpp_e2e_observability_ops_host PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
-  add_executable(zlink_cpp_e2e_observability_ops_trigger
+  add_executable(zlink_cpp_e2e_observability_ops_session
+    e2e/ObservabilityOps/Server/Session/main.cpp)
+  add_executable(zlink_cpp_e2e_observability_ops_play
+    e2e/ObservabilityOps/Server/Play/main.cpp)
+  add_executable(zlink_cpp_e2e_observability_ops_order_workflow
+    e2e/ObservabilityOps/Server/OrderWorkflow/main.cpp)
+  foreach(observability_target IN ITEMS
+      zlink_cpp_e2e_observability_ops_session
+      zlink_cpp_e2e_observability_ops_play
+      zlink_cpp_e2e_observability_ops_order_workflow)
+    target_link_libraries(${observability_target} PRIVATE
+      zlink_cpp_e2e_observability_ops_host
+      zlink::framework_locations_redis)
+    target_include_directories(${observability_target} PRIVATE
+      ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+  endforeach()
+
+  add_library(zlink_cpp_e2e_observability_ops_client_runner STATIC
     e2e/ObservabilityOps/Trigger/main.cpp)
-  target_link_libraries(zlink_cpp_e2e_observability_ops_trigger PRIVATE
+  target_link_libraries(zlink_cpp_e2e_observability_ops_client_runner PRIVATE
     zlink::framework
     zlink::stream_e2e_client)
-  target_include_directories(zlink_cpp_e2e_observability_ops_trigger PRIVATE
+  target_include_directories(zlink_cpp_e2e_observability_ops_client_runner PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+
+  add_executable(zlink_cpp_e2e_observability_ops_client
+    e2e/ObservabilityOps/Client/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_observability_ops_client PRIVATE
+    zlink_cpp_e2e_observability_ops_client_runner
+    zlink::framework
+    zlink::stream_e2e_client)
+  target_include_directories(zlink_cpp_e2e_observability_ops_client PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
   add_executable(zlink_cpp_e2e_pubsub_publisher

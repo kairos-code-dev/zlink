@@ -62,6 +62,8 @@ class ProviderApplication {
 
             if (!options.channelEndpoint.isNullOrBlank()) {
                 val channel = framework.addClientServerChannel(Contracts.PROFILE_CHANNEL)
+                channel.configureServerSocket().maxMessageSize(options.maxMessageSize)
+                channel
                     .enableServer(options.channelEndpoint)
                     .enableClient()
                     .setRoutingId(RoutingId.from(options.rid))
@@ -119,10 +121,10 @@ class ProviderApplication {
         runtimeOptions: ZLinkChannelRuntimeOptions,
     ): ApplicationRunner =
         ApplicationRunner {
-            runtimeOptions
+            val serverSocket = runtimeOptions
                 .clientServerChannel(Contracts.PROFILE_CHANNEL)
                 .configureServerSocket()
-                .weight(options.weight)
+            serverSocket.weight(options.weight)
         }
 
     @Bean

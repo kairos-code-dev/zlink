@@ -144,8 +144,8 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | [§12.19](#1219-typed-표면-경계-java-kotlin) | **Java, Kotlin** | `send(Object)`가 raw payload를 받고, Kotlin에 목표 계약에 없는 `await<T>()` overload가 있다 |
 | [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **Java/Kotlin, Node, C++** | `Response`·`Error` header에 packet name을 싣는다. 계약은 그 필드를 **두지 않는 것**이다 |
 | [§12.21](#1221-yield-terminator-부재-전-언어) | **Java/Kotlin, Node, C++** | `yield` terminator가 없고 `async`가 **자동으로 turn을 반납**한다. 계약은 `async`가 turn을 유지하고 `yield`만 반납하는 것이다 |
-| [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **Java/Kotlin, Node, C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다. `SubmitAsync` 이름과 blocking `Fetch` 표면은 framework 계약 위반이다 |
-| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **Java/Kotlin, Node, C++** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다 |
+| [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **Node, C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다. Java/Kotlin은 서버 client와 execution turn 주입을 구현하고 blocking 표면을 제거했다 |
+| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **Node, C++** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다. Java/Kotlin은 `runCpuWorker`·`runIoWorker`와 두 terminator를 구현했다 |
 | [§13](#13-샘플-연결등록-축-준수-현황) | **Java, Kotlin** | TicTacToe가 **수동 등록** 대신 package 스캔을 쓴다. 규약상 TicTacToe만 수동 연결 + 수동 등록이다(Node가 참조 구현) |
 
 **connector wire 계약(§10.1~§10.7b)은 3개 구현 모두 해소했다**(§10).
@@ -286,7 +286,7 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 | [§12.21](#1221-yield-terminator-부재-전-언어) | **결함 + 미구현** | `async`가 **자동으로 turn을 반납한다**(결함). `yield` 표면이 없다(미구현) |
 | [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **결함 + 미구현** | terminator 이름이 계약과 다르고 blocking 표면이 public이다(결함). turn seam·DI 서버 표면이 없다(미구현) |
 | [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **미구현** | CPU/I/O worker 분리와 worker의 `yield`가 없다 |
-| [§12.24](#1224-actor-join의-orchestration이-뒤집혀-있다-전-언어) | **결함** | join이 **target 줄을 잡은 채 source 줄을 기다린다.** 그 사이클을 노드 전역 세마포어로 덮어 두었다 |
+| [§12.24](#1224-actor-join의-orchestration이-뒤집혀-있다-전-언어) | **일부 충족** | `.NET`·Java·Kotlin은 caller turn orchestration과 반대 방향 동시 join을 구현했다. Node·C++은 아직 확인과 구현이 필요하다 |
 
 나머지 §12.1~§12.19는 언어별 표면 차이이며, 각 항목이 미구현인지 결함인지를 본문에 적었다.
 
@@ -393,17 +393,19 @@ actor join·worker에 **세 terminator**를 요구한다.
 
 ### 12.22 HTTP client가 framework 계약 밖에 있다 (전 언어)
 
-**미충족(`.NET`, Java, Kotlin, Node, C++).** [12 HTTP client](http-client/12-http-client.ko.md)는 HTTP client를
+**Java/Kotlin 충족, Node/C++ 미충족.** [12 HTTP client](http-client/12-http-client.ko.md)는 HTTP client를
 STREAM connector와 같은 **framework 동반 client**로 규정하고 terminator·turn seam·서버 등록
-표면을 고정한다. 현재는 그 축이 전부 없다.
+표면을 고정한다. Java/Kotlin은 standalone과 서버 client를 분리하고 서버 표면에 네 완료 방식,
+Spring execution turn bean, Kotlin의 `await`·`yieldAwait`를 구현했다. Java의 blocking `fetch`도
+제거했다(구현 커밋 `6a62b031d`, `49c40c2fe`). Node/C++에는 이 통합이 남아 있다.
 
 | 항목 | 계약 | 현재 |
 |------|------|------|
-| terminator | `submit` / `async` / `yield` / callback | `async` 계열만(+cpp에 callback 하나). **`yield`가 5개 언어 전부 없다** |
-| Spot turn 인지 | `yield`가 turn을 반납한다 | **개념 자체가 없다.** HTTP client 스펙 트리에 "spot"·"turn" 언급 0건 |
-| 서버 표면 | DI 주입 client(`submit`/`async`/`yield`/callback) | **없다.** 정적 팩토리뿐이고 framework DI 등록도 없다. 실제로 **서버 코드에서 쓰는 곳이 하나도 없다** |
+| terminator | `submit` / `async` / `yield` / callback | Node/C++는 완료 방식 전체를 제공하지 않는다 |
+| Spot turn 인지 | `yield`가 turn을 반납한다 | Node/C++는 framework 실행 turn과 연결되지 않는다 |
+| 서버 표면 | DI 주입 client(`submit`/`async`/`yield`/callback) | Node/C++에는 서버 등록 표면이 없다 |
 | terminator 이름(`.NET`) | `Async(...)` | `SubmitAsync<T>` — [04 §2](04-async-execution-policy.ko.md)가 **이름을 찍어 금지**한 형태이며, `Submit`은 one-way 전용 동사다 |
-| blocking 표면 | 두지 않는다 | cpp `fetch<T>()`, `.NET` `Fetch<T>()`, Java `fetch(...)`가 public이고 **문서가 사용을 권장**한다 |
+| blocking 표면 | 두지 않는다 | C++ `fetch<T>()`가 남아 있다 |
 
 그 결과 **spot handler에서 외부 API를 호출하면 실행 줄이 그대로 막힌다.** actor 입·퇴장 시 외부
 데이터를 가져오는 흐름이 room 전체와 timer를 멈춘다 — 이 client가 존재해야 하는 이유가 바로
@@ -424,10 +426,13 @@ STREAM connector와 같은 **framework 동반 client**로 규정하고 terminato
 
 ### 12.23 worker 축 분리와 yield 부재 (전 언어)
 
-**미충족(`.NET`, Java, Kotlin, Node, C++).** [04 §1.2](04-async-execution-policy.ko.md)는 worker를
+**Java/Kotlin 충족, Node/C++ 미충족.** [04 §1.2](04-async-execution-policy.ko.md)는 worker를
 **CPU worker**와 **I/O worker**로 나누고, 둘 다 `async`·`yield` terminator를 갖도록 규정한다.
 
-현재는 worker가 하나뿐이고 **동기 델리게이트만 받는다.** terminator도 `async` 하나뿐이다.
+Java/Kotlin은 CPU 동기 작업과 I/O 비동기 작업을 분리했다. I/O 작업은 bounded CPU pool에 넣지 않고
+반환된 `CompletionStage`를 그대로 추적하며, 두 호출은 turn 유지 `submit`과 turn 반납 `yield`를
+제공한다. 집중 테스트는 I/O 대기 중 CPU pool thread와 queue가 모두 0인지 확인한다(구현 커밋
+`146afe0a5`). Node/C++에는 아직 worker 하나만 있고 **동기 델리게이트만 받는다.**
 
 그래서 외부 I/O를 worker로 감싸면 **worker 스레드 안에서 blocking으로 기다려야 한다.** in-flight
 호출 하나마다 bounded pool의 스레드 하나가 잠기고, 외부 서비스가 느려지면 pool이 고갈되어
@@ -457,13 +462,13 @@ E2E는 이미 정본을 따른다 — [config-2 SM-A8](../common/e2e/config-2-sp
 
 ### 12.24 actor join의 orchestration이 뒤집혀 있다 (전 언어)
 
-**결함(`.NET`, Java, Kotlin, Node, C++).** 표면은 있고 동작한다. 그런데 **join이 target 줄을 잡은
-채 source 줄을 기다린다** — 방향이 거꾸로다.
+**충족(`.NET`, Java, Kotlin), 미충족(Node, C++).** 기존 구현은 **join이 target 줄을 잡은 채
+source 줄을 기다리는** 반대 방향 orchestration을 사용했다.
 
 admission과 commit이 **target Spot의 줄**에서 돌고, source cleanup(`OnLeaveActor`)을 **source Spot의
 큐에 post**한다. 즉 **한 join이 두 실행 줄을 걸치면서, 잡은 줄과 기다리는 줄이 반대**다.
 
-**`.NET` 기준선 근거:**
+**수정 전 `.NET` 기준선에서 확인한 결함:**
 
 | 사실 | 위치 |
 |------|------|
@@ -495,7 +500,8 @@ admission과 commit이 **target Spot의 줄**에서 돌고, source cleanup(`OnLe
    줄이므로 안전하다.
 2. **source `OnLeaveActor`를 그 turn 안에서 inline 실행한다.** 이미 source 줄 위에 있으므로 post가
    필요 없다.
-3. target **commit**과 `OnJoinedActor`를 target 줄에서 실행한다.
+3. target membership **commit**과 `OnJoinedActor`도 caller turn에서 순서대로 실행한다. target의 일반
+   packet·timer 실행 줄을 보유한 채 source 큐를 기다리는 경로를 만들지 않는다.
 4. 결과를 caller에게 반환한다.
 
 [23 §3.3~§4.1](server/23-spot-actor.ko.md)이 고정한 순서(source `OnLeaveActor` → target membership
@@ -504,6 +510,10 @@ commit → target `OnJoinedActor`)를 **그대로 지킨다.** source 큐로 되
 
 **E2E:** [config-8 TD-E2](../common/e2e/config-8-execution-turn.ko.md)(user→user join)와
 TD-E3(반대 방향 동시 join)이 이 갭의 검증 축이다.
+
+Java와 Kotlin은 공유 Java runtime에서 native admission을 일반 target dispatch queue 밖에서 받아
+caller turn에 반환하고, source leave와 target commit을 그 turn에서 순서대로 완료한다. Java와 Kotlin
+Config 8의 `TD-E2`와 `TD-E3`가 모두 통과했다. 구현 커밋 `175d60d13`(2026-07-16).
 
 ## 13. 샘플 연결·등록 축 준수 현황
 

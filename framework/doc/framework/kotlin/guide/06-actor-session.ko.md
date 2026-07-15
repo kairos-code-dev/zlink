@@ -155,12 +155,13 @@ Entry Spot 전체 실행 turn이 없으므로, handler 안에서 만든 call obj
 시간 초과가 아니라 즉시 계약 오류가 난다. Entry Spot actor handler의 대기 작업은
 `submit(...).await()` 또는 call object의 `await(...)`로 표현한다.
 
-짧은 local 작업을 Spot 실행 큐 밖에서 처리해야 하면 `context.runWorker(...)`를 사용한다.
-worker 함수는 Spot 상태를 직접 만지지 않고, 완료 후 Spot 큐로 돌아온 자리에서 상태를
-갱신한다.
+CPU 계산은 `context.runCpuWorker(...)`로 실행 큐 밖에 맡긴다. 비동기 I/O는
+`context.runIoWorker(...)`에 `CompletionStage`를 반환하는 작업을 넘긴다. I/O 대기에는 bounded
+CPU worker thread를 사용하지 않는다. 두 작업 모두 Spot 상태를 직접 변경하지 않고 완료 후 Spot
+큐로 돌아온 자리에서 상태를 다시 확인한다.
 
 ```kotlin
-val result = context.runWorker { ScoreCalculator.calculate(snapshot) }
+val result = context.runCpuWorker { ScoreCalculator.calculate(snapshot) }
     .submit()
     .await()
 currentScore = result   // Spot 실행 큐로 복귀한 지점에서 갱신

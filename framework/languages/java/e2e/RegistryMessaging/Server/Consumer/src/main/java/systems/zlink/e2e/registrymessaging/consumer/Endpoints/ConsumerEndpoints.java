@@ -107,6 +107,15 @@ public final class ConsumerEndpoints {
             .submit(Contracts.PayloadRes.class);
     }
 
+    @PostMapping("/profile/payload-over-limit")
+    public CompletionStage<Contracts.RequestFailureRes> payloadOverLimit(
+        @RequestBody Contracts.PayloadReq request) {
+        return client.requestToChannel(Contracts.API_CHANNEL, request)
+            .timeout(Duration.ofSeconds(5))
+            .submit(Contracts.PayloadRes.class)
+            .handle((ignored, error) -> FailureEvidence.from(error));
+    }
+
     @PostMapping("/profile/backpressure/reset")
     public java.util.Map<String, String> backpressureReset() {
         return java.util.Map.of("status", "ready");

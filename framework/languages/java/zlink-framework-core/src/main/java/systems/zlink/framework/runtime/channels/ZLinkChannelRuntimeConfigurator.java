@@ -62,6 +62,7 @@ final class ZLinkChannelRuntimeConfigurator {
         if (channel.routingId() != null) {
             router.setRoutingId(channel.routingId());
         }
+        applyServerSocketOptions(channel, router);
         for (String endpoint : channel.serverBinds()) {
             router.bind(endpoint);
         }
@@ -105,6 +106,7 @@ final class ZLinkChannelRuntimeConfigurator {
         if (channel.routeRoutingId() != null) {
             router.setRoutingId(channel.routeRoutingId());
         }
+        applyServerSocketOptions(channel, router);
         channel.routeConnections().attach(router);
         for (String endpoint : channel.routeBinds()) {
             router.bind(endpoint);
@@ -115,5 +117,15 @@ final class ZLinkChannelRuntimeConfigurator {
             handlers.routeSendHandlers(channel),
             handlers.routeRequestHandlers(channel));
         startRouteLoop.accept(channel.name(), router);
+    }
+
+    private static void applyServerSocketOptions(
+        ChannelRegistration channel,
+        ZLinkBackendRouterSocket router) {
+        var options = channel.serverSocketOptions();
+        if (options.maxMessageSize() > 0) {
+            router.setMaxMessageSize(options.maxMessageSize());
+        }
+        router.setPeerWeight(options.weight());
     }
 }

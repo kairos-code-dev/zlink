@@ -280,6 +280,18 @@ monitoring source 이름도 channel grouping과 역할 구분 원칙을 그대�
 공용 표면은 "channel별 역할 등록 방식"을 먼저 보이고, 내부 구현은
 "channel별 역할 + 역할별 transport 매핑"을 기본으로 둔다.
 
+### 5.5 서버 소켓의 최대 수신 메시지 크기
+
+client/server channel과 route mesh channel의 서버 소켓 설정은 최대 수신 메시지 크기를
+바이트 단위로 읽고 바꿀 수 있어야 한다. 양수 값은 실제 서버 소켓의 `MaxMessageSize`에
+즉시 적용하며, `0`은 framework가 별도 상한을 지정하지 않는다는 뜻이다. 음수 값은 설정
+오류로 거부한다.
+
+상한은 수신하는 전체 transport 메시지에 적용한다. 애플리케이션 handler나 E2E 코드가
+역직렬화한 payload 길이를 따로 검사해서 이 동작을 흉내 내면 안 된다. 상한을 넘긴 request는
+응답을 만들 수 없으므로 호출자에게 기존 request timeout 오류로 끝나며, 해당 실패가 같은
+channel의 이후 정상 크기 request를 막아서는 안 된다.
+
 ## 6. routing id 자동 할당
 
 고정 routing id를 미리 정할 수 없는 배포에서는 client/server channel, fanout channel과 route mesh

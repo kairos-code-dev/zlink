@@ -164,7 +164,7 @@ public final class UserSpot implements ZLinkSpot<ScenarioActor> {
         workerFollowUp = new CountDownLatch(1);
         evidence.record("WorkerStarted", context.spotRid().toString(), op);
         CountDownLatch latch = workerFollowUp;
-        context.runWorker(() -> {
+        context.runCpuWorker(() -> {
             latch.await(5, TimeUnit.SECONDS);
             return op + "-done";
         }).submit().whenComplete((value, error) -> {

@@ -28,7 +28,7 @@ public final class BingoRoomGame {
         }
     }
 
-    public Change join(String actorId, String displayName) {
+    public Change join(String actorId, String displayName, int wins, int losses) {
         BingoRoomModels.RoomPlayer existing = player(actorId);
         if (existing != null) {
             return new Change(snapshot(), List.of(), false);
@@ -37,7 +37,7 @@ public final class BingoRoomGame {
             throw new IllegalStateException("Room " + roomId + " cannot accept more players.");
         }
         BingoRoomModels.RoomPlayer joined =
-            new BingoRoomModels.RoomPlayer(actorId, displayName, players.size(), null);
+            new BingoRoomModels.RoomPlayer(actorId, displayName, players.size(), null, wins, losses);
         players.add(joined);
         Messages.BingoRoomState joinedState = snapshot();
         ArrayList<BingoRoomModels.RoomEvent> events = new ArrayList<>(playerJoinedEvents(joined, joinedState));
@@ -65,7 +65,9 @@ public final class BingoRoomGame {
             actorId,
             displayName,
             previewPlayers.size(),
-            null));
+            null,
+            0,
+            0));
         String previewStatus = previewPlayers.size() == settings.requiredPlayers()
             ? Running
             : status;
@@ -85,7 +87,9 @@ public final class BingoRoomGame {
             current.actorId(),
             current.displayName(),
             current.seat(),
-            BingoCard.from(submittedCard)));
+            BingoCard.from(submittedCard),
+            current.wins(),
+            current.losses()));
         return new Change(snapshot(), List.of(), allCardsSubmitted());
     }
 

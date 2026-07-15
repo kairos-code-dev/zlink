@@ -426,7 +426,10 @@ public interface ZLinkActorContext {
 public interface ZLinkActorJoinCall {
     ZLinkActorJoinCall timeout(Duration timeout);
     CompletionStage<ZLinkActorJoinResult<Void>> submit();
+    CompletionStage<ZLinkActorJoinResult<Void>> yield();
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
+        Class<TReply> replyType);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yield(
         Class<TReply> replyType);
 }
 
@@ -512,6 +515,7 @@ public interface ZLinkStreamNodeBuilder {
 
 public interface ClientServerChannelBuilder {
     ClientServerChannelBuilder enableServer(String endpoint);
+    ZLinkSocketRuntimeOptions configureServerSocket();
     ClientServerChannelBuilder setRoutingId(RoutingId routingId);
     ClientServerChannelBuilder enableClient();
     ClientServerChannelBuilder enableClient(String endpoint);
@@ -541,6 +545,7 @@ public interface FanoutChannelBuilder {
 
 public interface RouteMeshChannelBuilder {
     RouteMeshChannelBuilder enableServer(String endpoint);
+    ZLinkSocketRuntimeOptions configureServerSocket();
     RouteMeshChannelBuilder setRoutingId(RoutingId routingId);
     RouteMeshChannelBuilder enableClient();
     RouteMeshChannelBuilder enableClient(String endpoint);
@@ -653,6 +658,7 @@ public interface ZLinkSendCall {
 public interface ZLinkRequestCall {
     ZLinkRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
+    <TReply> CompletionStage<TReply> yield(Class<TReply> replyType);
 }
 
 public interface ZLinkSpotOutbound {
@@ -690,7 +696,8 @@ public interface ZLinkSpotContext {
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
     ZLinkSpotHandlerRegistry handlers();
-    <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work);
     CompletionStage<Void> leaveActor(ZLinkActor actor);
     CompletionStage<Boolean> close();
     CompletionStage<ZLinkTimer> addTimer(
@@ -705,7 +712,8 @@ public interface ZLinkEntrySpotContext {
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
     ZLinkSpotHandlerRegistry handlers();
-    <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work);
     CompletionStage<Void> destroyActor(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
         String name,
@@ -717,6 +725,7 @@ public interface ZLinkEntrySpotContext {
 public interface ZLinkWorkerCall<T> {
     ZLinkWorkerCall<T> timeout(Duration timeout);
     CompletionStage<T> submit();
+    CompletionStage<T> yield();
 }
 
 public interface ZLinkRouteClient {
@@ -1229,6 +1238,7 @@ public interface ZLinkActorSendCall {
 public interface ZLinkActorRequestCall {
     ZLinkActorRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
+    <TReply> CompletionStage<TReply> yield(Class<TReply> replyType);
 }
 
 public interface ZLinkActorDirectory {
@@ -1266,6 +1276,8 @@ public interface ZLinkRouteMeshChannelRuntimeOptions {
 }
 
 public interface ZLinkSocketRuntimeOptions {
+    long maxMessageSize();
+    void maxMessageSize(long value);
     int weight();
     void weight(int value);
 }

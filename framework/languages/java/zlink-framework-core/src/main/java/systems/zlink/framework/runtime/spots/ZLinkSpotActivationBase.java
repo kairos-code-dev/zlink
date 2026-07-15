@@ -269,6 +269,12 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
         List<Message> parts) {
         ZLinkActorSpotRoutePackets.ActorPacket packet =
             ZLinkActorSpotRoutePackets.decodeActorPacket(parts);
+        if (packet.handoffArrivalIndex() != null) {
+            host.actorAdmissions().traceTransferMarker(
+                "backlog_enqueued",
+                packet.actorRef().actorId(),
+                packet.handoffArrivalIndex());
+        }
         return host.dispatchLocalSessionActor(packet.actorRef(), packet.header(), packet.payload())
             .thenApply(reply -> {
                 Optional<Message> completed = host.replyTransferredRequestDirect(

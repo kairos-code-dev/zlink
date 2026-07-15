@@ -24,6 +24,8 @@ record ZLinkJavaRouterSocket(RouterSocket socket)
     @Override public void setRoutingId(RoutingId routingId) { socket.setRoutingId(routingId); }
     @Override public void setConnectRoutingId(RoutingId routingId) { socket.options().setConnectRoutingId(routingId); }
     @Override public void setProbe(boolean enabled) { socket.options().probe(enabled); }
+    @Override public long maxMessageSize() { return Math.max(0, socket.options().maxMessageSize()); }
+    @Override public void setMaxMessageSize(long value) { socket.options().maxMessageSize(value == 0 ? -1 : value); }
     @Override public int peerWeight() { return socket.options().peerWeight(); }
     @Override public void setPeerWeight(int weight) { socket.options().peerWeight(weight); }
 

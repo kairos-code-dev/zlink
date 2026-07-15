@@ -1,7 +1,7 @@
 package systems.zlink.framework.errors;
 
 /**
- * Raised when a {@code runWorker(...)} task does not complete before its timeout.
+ * Raised when a worker task does not complete before its timeout.
  * The caller completion fails with this exception; a late worker result is dropped
  * and never re-enters the Spot dispatcher.
  */

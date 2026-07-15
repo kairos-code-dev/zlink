@@ -274,9 +274,12 @@
 
 - [x] **§12.20** (결함) — Kotlin이 공유하는 Java connector에서 응답 header의 `name_len`을 0으로 고정하고, pending request의 원래 이름으로 완료 payload를 구성한다. Java·Node 상호운용과 Kotlin module 전체 테스트 통과(2026-07-15).
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
-- [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
-- [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
-- [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
+- [x] **§12.22** — 공유 Java 서버 HTTP client의 네 완료 방식과 Spring execution turn bean을 사용하고 coroutine용 turn 유지 `await`와 turn 반납 `yieldAwait`를 제공한다. Java/Kotlin HTTP client와 Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
+- [x] **§12.23** — 공유 Java 런타임의 `runCpuWorker`와 비동기 `runIoWorker`를 사용하며 두 표면의 `submit`·`yield`를 coroutine에서 기다릴 수 있다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
+- [x] **§12.24** — 공유 Java runtime이 같은 node local join을 caller turn에서 orchestrate하고 source
+  `OnLeaveActor`와 target commit·`OnJoinedActor`를 순서대로 완료한다. Kotlin Config 8의 user Spot
+  A→B `TD-E2`와 A→B·B→A 동시 `TD-E3`, core·Kotlin 전체 테스트가 통과했다. 구현 커밋
+  `175d60d13`(2026-07-16).
 
 본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
 
@@ -417,7 +420,7 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
 | **E2E-KT-08** (미구현) | [E2E README:499-512](../../common/e2e/README.ko.md): 기본 외에 **reverse 1회 + 고정 seed shuffle 1회**를 최소 실행한다 | `e2e-kotlin/run_e2e_all.sh:24-28,50-53`은 모든 config에 `all`만 한 번 전달한다. `E2E_START_ORDER`를 실제로 읽는 Kotlin runner는 `ToActorMessaging/run_e2e.sh:15-16` 하나뿐이며 통합 게이트가 reverse/shuffle을 호출하는 곳은 0건이다. ⇒ 대부분 config는 축이 없고, 유일하게 구현한 config도 기본 게이트에서 forward만 돈다 |
 | **E2E-KT-09** (미구현) | [E2E README:487-497,546-547](../../common/e2e/README.ko.md): Config 2·9 P0는 **route mesh 없음 × session/spot 분리 배치** 조합을 실행한다 | Config 2의 Play와 Session이 route mesh를 조건 없이 등록한다(`SpotService/.../PlayApplication.kt:82-98`, `.../SessionApplication.kt:78-84`). runner의 P0 topology selector에도 route mesh 제거 변형이 없다(`SpotService/run_e2e.sh:734-765`). Config 9는 E2E-JV-16과 같은 두 역할(actor/caller)뿐이라 session 분리 자체가 없다. ⇒ 요구 조합이 생성되지 않는다 |
 | **E2E-KT-10** (**가짜 통과**) | [config-1 RM-C2:174-182](../../common/e2e/config-1-location-messaging.ko.md)는 미존재 rid의 **public error**를, [RM-C4:194-202](../../common/e2e/config-1-location-messaging.ko.md)는 **timeout + 늦은 handler 완료**를 요구한다 | `RmC2TargetedRouteScenario.kt:26-27`은 앱이 만든 `failed` boolean만 본다. `RmC4TimeoutIsolationScenario.kt:11-24`도 `failed` 하나와 follow-up evidence만 보고 slow 요청의 완료 evidence는 검사하지 않는다. ⇒ 임의 예외나 즉시 실패도 두 시나리오를 통과시킨다 |
-| **E2E-KT-11** (미구현) | [config-1 RM-C8:228-238](../../common/e2e/config-1-location-messaging.ko.md): 상한 근접 왕복뿐 아니라 **`MaxMessageSize` 초과 거부와 이후 회복**을 검증한다 | `RmC8PayloadRoundTripScenario.kt:15-30`은 1 B·4 KiB·256 KiB·1 MiB 성공 왕복만 보낸다. 초과 payload와 실패 단언은 없다. 그런데 `feature-map.ko.md:23-24`는 상태를 `implemented`로 쓰고, `:28-29`에서 후반부 미구현을 별도 설명으로만 인정한다 |
+| **E2E-KT-11** (해결) | [config-1 RM-C8:228-238](../../common/e2e/config-1-location-messaging.ko.md): 상한 근접 왕복뿐 아니라 **`MaxMessageSize` 초과 거부와 이후 회복**을 검증한다 | Java 공용 runtime의 build-time server socket 설정을 Kotlin provider가 사용한다. 2 MiB 상한에서 3 MiB request의 `TimeoutException`과 후속 정상 request를 검증했으며 `./run_e2e.sh RM-C8`이 통과했다. 구현 커밋 `e1144b5bf`. |
 | **E2E-KT-12** (결함) | [E2E README §2.6:336-353](../../common/e2e/README.ko.md): **로그/evidence 경로를 JVM system property로 전달하지 않는다** | Kotlin E2E의 `System.getProperty` 세 곳은 모두 `java.io.tmpdir`을 **로그 경로 기본값**으로 읽는다 — `RegistryMessaging/.../ConsumerOptions.kt:30`, `.../Provider/.../ServerOptions.kt:37`, `.../Workflow/.../ServerOptions.kt:30`. 즉 금지 대상을 정확히 읽고 있으며, 이 config의 역할 서버 셋이 CLI/config 파일 밖의 JVM 전역 상태에 의존한다 |
 | **E2E-KT-13** (미구현) | [E2E README:514-519](../../common/e2e/README.ko.md): 표면을 넘은 actor ref는 **`generation > 0`**을 어서션한다 | `EnsureActorHandler.kt:18-25`가 generation을 응답에 싣고 `RemoteActorAuthHandler.kt:26-35`가 그대로 `ActorRef` 생성에 사용하지만 양수 검사는 없다. client-visible `ActorAuthRes`는 generation을 아예 버린다(`SpotService/Shared/.../Contracts.kt:263-270`). Kotlin E2E production source 전체에 generation 양수 단언은 0건이다 |
 

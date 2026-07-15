@@ -38,6 +38,9 @@ DSL과 확장은 `systems.zlink.httpclient.kotlin` 패키지의 top-level 함수
 - `suspend inline fun <reified T> ZLinkHttpRequestBuilder.await(): HttpResponse<T>`
 - `suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T` — `await<T>().body()` 편의.
 - `suspend ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): RawHttpResponse`
+- `suspend ZLinkHttpServerRequestBuilder.await(type)` / `await<T>()` — 현재 Spot turn을 유지한다.
+- `suspend ZLinkHttpServerRequestBuilder.yieldAwait(type)` / `yieldAwait<T>()` — HTTP 대기 중
+  현재 Spot turn을 반납하고 Spot 실행 큐에서 재개한다.
 
 request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `timeout`,
 `body`, `bodyStream`, `form`, `multipart`, `multipartFile`)과 응답 타입
@@ -52,6 +55,8 @@ request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `tim
   전용이다.
 - continuation은 호출한 coroutine의 dispatcher에서 재개된다. 재개 위치는 `withContext`로
   바꾼다.
+- 서버 전용 `await`와 `yieldAwait`는 Java server client의 execution turn을 통하므로 각각 turn
+  유지와 반납 의미를 보존한다.
 
 ## 5. 전송 의미론
 

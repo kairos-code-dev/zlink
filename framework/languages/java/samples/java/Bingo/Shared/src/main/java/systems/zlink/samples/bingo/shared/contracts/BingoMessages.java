@@ -44,6 +44,29 @@ public final class BingoMessages {
         return builder.build();
     }
 
+    public static Messages.GetPlayerRecordReq getPlayerRecordReq(String actorId) {
+        return Messages.GetPlayerRecordReq.newBuilder().setActorId(actorId).build();
+    }
+
+    public static Messages.GetPlayerRecordRes getPlayerRecordRes(
+        String actorId, int wins, int losses) {
+        return Messages.GetPlayerRecordRes.newBuilder()
+            .setActorId(actorId).setWins(wins).setLosses(losses).build();
+    }
+
+    public static Messages.ReportBingoResultReq reportBingoResultReq(
+        String roomId, String actorId, boolean won, int finalDrawSeq) {
+        return Messages.ReportBingoResultReq.newBuilder()
+            .setRoomId(roomId).setActorId(actorId).setWon(won)
+            .setFinalDrawSeq(finalDrawSeq).build();
+    }
+
+    public static Messages.ReportBingoResultRes reportBingoResultRes(
+        String actorId, int wins, int losses) {
+        return Messages.ReportBingoResultRes.newBuilder()
+            .setActorId(actorId).setWins(wins).setLosses(losses).build();
+    }
+
     public static Messages.EnsurePlayerActorReq ensurePlayerActorReq(
         String actorId,
         String displayName,
@@ -256,14 +279,14 @@ public final class BingoMessages {
             .build();
     }
 
-    public static Messages.BingoWinnerMsg bingoWinnerMsg(
+    public static Messages.BingoRewardAcquiredEvent bingoRewardAcquiredEvent(
         String roomId,
         String actorId,
         int drawSeq,
         String itemId,
         String itemName,
         String rarity) {
-        return Messages.BingoWinnerMsg.newBuilder()
+        return Messages.BingoRewardAcquiredEvent.newBuilder()
             .setRoomId(roomId)
             .setActorId(actorId)
             .setDrawSeq(drawSeq)
@@ -305,7 +328,9 @@ public final class BingoMessages {
         boolean host,
         List<Integer> card,
         List<Boolean> marks,
-        int completedLines) {
+        int completedLines,
+        int wins,
+        int losses) {
         return Messages.BingoPlayerState.newBuilder()
             .setActorId(actorId)
             .setDisplayName(displayName)
@@ -314,6 +339,8 @@ public final class BingoMessages {
             .addAllCard(card)
             .addAllMarks(marks)
             .setCompletedLines(completedLines)
+            .setWins(wins)
+            .setLosses(losses)
             .build();
     }
 }

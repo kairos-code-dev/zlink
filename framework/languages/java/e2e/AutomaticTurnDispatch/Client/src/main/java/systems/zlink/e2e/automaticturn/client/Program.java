@@ -66,6 +66,13 @@ public final class Program {
             case "ATD-E1" -> support.runTimeoutCleanup(connector);
             case "ATD-E2" -> support.runCancellationCleanup(connector);
             case "ATD-E4", "ATD-E5" -> System.out.println("scenario " + scenario + " passed");
+            case "TD-E2" -> support.runUserSpotJoin(connector);
+            case "TD-E3" -> support.runOppositeUserSpotJoins(connector);
+            case "TD-A1" -> support.runTerminatorSurface();
+            case "TD-A2" -> support.runAsyncHoldsTurn(connector);
+            case "TD-A4" -> support.runAsyncCompletion(connector);
+            case "TD-B1" -> support.runYieldReleasesTurn(connector);
+            case "TD-B2" -> support.runYieldQueuedOrder(connector);
             default -> throw new IllegalArgumentException("unknown AutomaticTurnDispatch scenario: " + scenario);
         }
         if (!"all".equals(scenario) && !"ATD-D1".equals(scenario)

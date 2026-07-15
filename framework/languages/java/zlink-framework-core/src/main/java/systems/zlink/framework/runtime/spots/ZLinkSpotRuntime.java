@@ -654,6 +654,17 @@ public final class ZLinkSpotRuntime
             this::spotFor,
             this::meshNameForSpot);
         actorAdmissions.attach(actorRuntime, this::isDraining);
+        actorRuntime.setLocalJoinCompleter(new ZLinkActorRuntime.LocalJoinCompleter() {
+            @Override
+            public CompletionStage<Void> complete(ZLinkActor actor) {
+                return actorAdmissions.completeLocalJoinFromCaller(actor);
+            }
+
+            @Override
+            public void cancel(ZLinkActor actor) {
+                actorAdmissions.cancelLocalJoin(actor);
+            }
+        });
     }
 
     public Map<String, ZLinkInternalSpotNode> nodesByName() {
@@ -830,7 +841,8 @@ public final class ZLinkSpotRuntime
         Object entryDispatchContext = systems.zlink.framework.runtime.internal.handlers
             .ZLinkSuspendInvocationContext.currentEntrySpotDispatch();
         try {
-            handlerExecutor.execute(() -> {
+            systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+                .propagateCurrent(handlerExecutor).execute(() -> {
                 outboundScope.run(outbound, () -> {
                     try (systems.zlink.framework.runtime.internal.handlers
                              .ZLinkSuspendInvocationContext.Scope ignored =

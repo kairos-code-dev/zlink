@@ -22,9 +22,17 @@ import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOption
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
+import systems.zlink.httpclient.ZLinkFrameworkHttpExecutionTurn;
+import systems.zlink.httpclient.ZLinkHttpExecutionTurn;
 
 @AutoConfiguration
 public class ZLinkFrameworkAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    public ZLinkHttpExecutionTurn zlinkHttpExecutionTurn() {
+        return new ZLinkFrameworkHttpExecutionTurn();
+    }
+
     @Bean
     @ConditionalOnBean(ZLinkFrameworkEnabled.class)
     public static BeanFactoryPostProcessor zlinkFrameworkCapabilityBeanRegistrar() {

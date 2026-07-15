@@ -31,7 +31,9 @@ public final class BingoRoomModels {
         String actorId,
         String displayName,
         int seat,
-        BingoCard card) {
+        BingoCard card,
+        int wins,
+        int losses) {
         public Messages.BingoPlayerState toState(String hostActorId) {
             return BingoMessages.bingoPlayerState(
                 actorId,
@@ -40,7 +42,9 @@ public final class BingoRoomModels {
                 actorId.equals(hostActorId),
                 card == null ? List.of() : card.numbersSnapshot(),
                 card == null ? List.of() : card.marksSnapshot(),
-                card == null ? 0 : card.completedLines());
+                card == null ? 0 : card.completedLines(),
+                wins,
+                losses);
         }
     }
 

@@ -303,9 +303,8 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                     true,
                     request);
                 case NOT_FOUND -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
-                    operationName + " failed because the actor ref is no longer active.",
-                    true,
+                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    operationName + " failed because the actor route was not found.",
                     request);
                 case CONFLICT -> new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
@@ -323,9 +322,8 @@ public final class ZLinkActorClientRuntime implements ZLinkActorClient {
                     true,
                     submit);
                 case NOT_FOUND -> new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE,
-                    operationName + " failed because the actor ref is no longer active.",
-                    true,
+                    ZLinkFrameworkErrorKind.ACTOR_ROUTE_NOT_FOUND,
+                    operationName + " failed because the actor route was not found.",
                     submit);
                 default -> submit;
             };

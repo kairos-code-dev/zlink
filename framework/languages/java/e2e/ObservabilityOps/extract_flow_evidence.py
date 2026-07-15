@@ -57,14 +57,21 @@ if SELECTOR in ("all", "OBS-A1"):
     write("OBS-A1", [("connector_outbound", connector), ("stream_inbound", inbound), ("actor_relay", relay), ("spot_dispatch", dispatch)])
 
 if SELECTOR in ("all", "OBS-A2"):
-    connector = require([line for line in lines("a2-client.stderr.log") if "connector write-start" in line and "name=ObservabilityMissingPacket" in line and flow_of(line)], "OBS-A2 connector request log missing")[-1]
-    flow = flow_of(connector)
+    received = require([
+        line for line in lines("session-flow.log")
+        if "outcome=RECEIVED" in line
+        and "surface=STREAM_SESSION" in line
+        and "packet=ObservabilityMissingPacket" in line
+        and flow_of(line)
+    ], "OBS-A2 received log missing")[-1]
+    flow = flow_of(received)
     session = [line for line in lines("session-flow.log") if f"flow={flow}" in line]
-    received = require([line for line in session if "outcome=RECEIVED" in line], "OBS-A2 received log missing")[0]
     error = require([
-        line for line in lines("a2-client.stderr.log")
-        if f"flow={flow}" in line and "connector read-frame" in line and "kind=4" in line
-    ], "OBS-A2 error reply log missing")[0]
+        line for line in session
+        if "outcome=ERROR" in line
+        and "surface=STREAM_SESSION" in line
+        and "packet=ObservabilityMissingPacket" in line
+    ], "OBS-A2 server dispatch error log missing")[0]
     write("OBS-A2", [("stream_inbound", received), ("stream_error", error)])
 
 if SELECTOR in ("all", "OBS-A3"):

@@ -224,6 +224,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         ZLinkStreamHeader header,
         Throwable error,
         CompletableFuture<Void> result) {
+        traceDispatchError(header, error);
         if (header.requestSequence().isEmpty()) {
             result.completeExceptionally(error);
             return;
@@ -235,6 +236,35 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
                 result.complete(null);
             }
         });
+    }
+
+    private void traceDispatchError(ZLinkStreamHeader header, Throwable error) {
+        if (!flow.enabled(systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.ERROR)) {
+            return;
+        }
+        Throwable actual = unwrap(error);
+        flow.trace(new systems.zlink.framework.configuration.ZLinkMessageFlowEvent(
+            systems.zlink.framework.configuration.ZLinkMessageFlowOutcome.ERROR,
+            systems.zlink.framework.configuration.ZLinkDispatchErrorSurface.STREAM_SESSION,
+            header.requestSequence().isPresent()
+                ? systems.zlink.framework.configuration.ZLinkDispatchMessageKind.REQUEST
+                : systems.zlink.framework.configuration.ZLinkDispatchMessageKind.SEND,
+            header.packetName(),
+            null,
+            null,
+            ZLinkStreamCorrelations.forTrace(header),
+            null,
+            null,
+            null,
+            null,
+            systems.zlink.framework.configuration.ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
+            header.requestSequence().isPresent()
+                ? systems.zlink.framework.configuration.ZLinkDispatchErrorAction.REPLY_ERROR
+                : systems.zlink.framework.configuration.ZLinkDispatchErrorAction.DROP,
+            actual.getClass().getName(),
+            actual.getMessage(),
+            header.flowId().orElse(null),
+            header.flowOrigin().orElse(null)));
     }
 
     private CompletionStage<Void> sendErrorReply(

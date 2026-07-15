@@ -51,9 +51,9 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 - `RL-B3`: provider 정상 종료 뒤 location peer row에서 빠지고 같은 client의 후속 request가 남은
   provider로만 가는지 확인한다.
 - `RL-B4`: provider admin 경로가 `clientServerChannel(name).configureServerSocket().weight(0/100)`을
-  호출해 runtime drain/restore를 검증한다.
-- `RL-B5`: 느린 handler가 이미 받은 request는 drain 뒤에도 정상 reply하고, drain 이후 새 request는
-  다른 provider로 가는지 검증한다.
+  호출해 transport 부하 제외와 복원을 검증한다. 이 동작을 graceful drain으로 판정하지 않는다.
+- `RL-B5`: 느린 handler가 이미 받은 request는 weight 0 변경 뒤에도 정상 reply하고, 전파 완료 뒤의
+  새 request는 다른 provider로 가는지 검증한다. `Draining`이나 actor handoff는 단언하지 않는다.
 - `RL-B6`: provider-a에 public admin fault를 주입해 일부 request가 public 실패로 끝나는 동안,
   provider-b의 정상 reply가 계속 유지되고 follow-up request가 성공하는지 확인한다.
 - `RL-C1`: 같은 Consumer role이 반복 request 뒤 follow-up request를 보내 public 경로의 client
@@ -82,6 +82,12 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 
 ## 남은 항목
 
-- 현재 남은 항목 없음.
+- 갱신된 `RL-A1`은 terminal `Drained`, old row 제거, down 구간의 정확한 `RouteNotConnected`, 새 owner
+  generation과 `ConnectionReady`를 요구한다. 현재 시나리오는 이 완료 조건을 모두 검증하지 않는다.
+- 갱신된 `RL-A2`는 slow request handler-start 뒤 `SIGKILL`, owner lease 만료, 다른 endpoint의 새
+  generation을 요구한다. 현재 시나리오는 weight 0 제어와 정상 process 교체가 섞여 있어 crash
+  replacement 계약을 검증하지 않는다.
+- `RL-B3`은 row 제거와 남은 provider 성공은 확인하지만 terminal `Drained`와 종료 직전 완료된
+  in-flight reply를 확인하지 않는다.
 - `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
   `Server/Consumer`의 HTTP endpoint를 호출한다.

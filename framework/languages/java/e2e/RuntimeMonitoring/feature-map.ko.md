@@ -14,16 +14,17 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 
 ## 구현됨
 
-- `MON-A1`: service host의 `monitoring.api` socket source에서 `CONNECTED` 또는
-  `CONNECTION_READY`를 관찰한다.
+- `MON-A1` (차단): service host의 bare `monitoring.api` source를 사용한다. 정식 source인
+  `monitoring.api.client`로 바꾼 집중 실행은 startup에서 "source is not configured"로 실패했으며,
+  연결 해제도 유발하지 않아 현재 계약의 연결·해제 identity를 검증하지 못한다.
 - `MON-A2`: service host의 `ops-locations` source에서 `STATUS_CHANGED`,
   `TOPOLOGY_CHANGED`, `SERVICE_SUMMARY_CHANGED`를 관찰한다.
 - `MON-A3`: service host의 `monitoring.spot.mesh` source에서 `STATUS_CHANGED`,
   `PEERS_CHANGED`, `SUBJECTS_CHANGED`를 관찰하고, failing timer가 `TIMER_HANDLER_FAILED`를
   발행해도 channel messaging이 멈추지 않는지 확인한다.
-- `MON-A4`: service의 public runtime channel option으로 drain/restore를 수행하고, trigger host의
-  `monitoring.api` client socket source에서 `PEER_ADMISSION_CHANGED`를 관찰한다. service host는
-  admin drain marker와 location runtime `TOPOLOGY_CHANGED`를 함께 기록한다.
+- `MON-A4` (미구현): 현재 시나리오는 socket weight를 0/100으로 바꾸는 한 전이만 검증한다. 별도
+  observer host가 정상 replacement, `SIGKILL` failover, weight 변경을 구분해 관찰하는 갱신 계약은
+  구현하지 않았다.
 - `MON-A5`: handshake 전용 public channel에 잘못된 TCP 연결을 보내 socket 전이를 관찰하고,
   location runtime/spot `STATUS_CHANGED`와 stop-on-unhandled timer의
   `TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION`을 함께 확인한다. 현재 Java native backend는 raw malformed
@@ -40,5 +41,5 @@ public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 ho
 
 ## public API/harness 대기
 
-현재 Java `RuntimeMonitoring` feature map에는 남은 `gap` 또는 `partial` 항목이 없다. 이후 공통
-RuntimeMonitoring 문서나 release gate가 바뀌면 이 문서도 같은 기준으로 다시 대조한다.
+socket source registry가 capability가 붙은 정식 이름을 받아들이도록 Java runtime을 먼저 고쳐야 한다.
+그 뒤 MON-A1과 MON-A4를 별도 observer topology로 다시 구현한다.

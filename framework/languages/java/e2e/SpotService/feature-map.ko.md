@@ -145,9 +145,10 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   같은 endpoint로 재시작한다. crash 중 기존 actor request가 bounded failure로 끝나고 `play-b`
   spot request는 계속 성공하며, 재시작 뒤 같은 actor id로 재auth, rejoin, rebind한 actor request가
   정상 처리되는지 확인한다.
-- `SM-G2`: 앱이 같은 logical key에 대해 새 owner spot rid를 만들고, play-a에서 처리되던 요청과
-  play-b로 remap한 요청이 각각 해당 owner role의 public RouteMesh 경로와 evidence에만 남는지
-  확인한다.
+- `SM-G2` (부분 구현): 현재 구현은 처음부터 실행 중인 play-a와 play-b에 서로 다른 Spot을 직접
+  만들 뿐이다. SpotNode scale-out 뒤 기존 owner 유지, peer/capability와 Entry Spot handle readiness,
+  선택한 play-b Entry Spot의 application `JoinReq`로 새 actor 생성, play-b 로컬 manager의 새 Spot
+  생성을 순서대로 검증하지 않는다.
 - `SM-G3`: public stream connector actor들이 같은 user spot에 join한 뒤 동시 actor request와
   leave를 수행해 `ActorUserJoined` / `ActorUserLeft` evidence가 actor별 1회만 남고, 늦게 도착한
   entry spot lifecycle event가 user spot dispatch를 되돌리지 않는지 확인한다.
@@ -164,7 +165,9 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 
 ## Java public contract 기반 E2E 미구현
 
-현재 이 구역에 남은 항목은 없다.
+`SM-G2`는 runner가 play-a의 기존 owner를 먼저 만든 뒤 play-b를 추가로 시작하고, Client가 public
+readiness를 확인한 다음 신규 actor와 Spot을 play-b에 배치하도록 orchestration을 분리해야 한다.
+node 추가만으로 기존 owner가 이동하거나 자동 재분배된다고 단언하면 안 된다.
 
 ## E2E/harness 대기
 

@@ -1088,3 +1088,67 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 
 - [x] **TH-JV-01** (미구현) — connector에 `expectNone`·`waitForSequence`와 `ZLinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §7.1](../stream-connector/languages/java/03-stream-connector.ko.md)대로 구현했다. 관측·순서·오류 분류를 connector 내부에 모으고, timeout·동시 callback·payload 소유권을 한 모듈에서 처리한다. `String`과 `Class<?>` 진입점, action 실행, 오류 종류 확인, timeout 외 오류 재전파를 재검토했고 `ZLinkStreamTestHelperTest`와 connector 전체 테스트가 통과했다. 구현 커밋 `22484d93e`(2026-07-15).
 - [x] **TH-JV-02** (리팩토링) — DeliveryDispatch의 지역 `assertStatusOrder`·독립 `waitFor` 목록·잔여 `waitStatuses` wrapper를 삭제하고 connector `waitForSequence`를 직접 사용한다. `.NET` TH-DN-02와 같은 결정으로 성공 배송이 다른 courier에게 전달되지 않는지도 `expectNone`으로 검증하고, 단언에는 필수 메시지가 있는 `ZLinkStreamAssert`를 사용한다. SupportChat의 수동 failure·timeout·negative push helper도 `ZLinkStreamAssert`와 `expectNone`으로 교체했다. SpotService의 AUTO dispatch negative 단언도 동작 전에 등록하는 `expectNone(...).within(...)`을 유지한다. connector 전체 테스트, Java DeliveryDispatch·SupportChat 전체 self-check, SpotService `SM-D6`, runner 재도입 방지 검사가 통과했다. 구현 커밋 `22484d93e`, 추가 재검토 커밋 `9b5a8527e`, 최종 지역 helper 제거 커밋 `bdce6f188`(2026-07-15).
+
+## 라운드 7 (2026-07-16) — 갱신된 공통 E2E 의미 재검증
+
+공통 Config 1·2·3·5·7·10·11과 framework 오류 계약이 갱신되어 라운드 4~6의 완료 근거를 다시
+대조했다. 아래 항목은 기존 scenario ID가 실행된다는 사실과 갱신된 완료 조건을 충족한다는 판정을
+분리한다. 이 절의 open 항목이 닫히기 전에는 E2E-JV-01·05·20의 "전체 통과" 문구를 현재 계약의
+완료 근거로 사용하지 않는다.
+
+- [ ] **E2E-JV-25** (가짜 통과) — Config 1 lifecycle 의미와 target 오류가 갱신 계약과 다르다.
+  - 재검증: `RM-A4`는 정상 replacement이지만 class와 runner alias가 failover라고 부른다. `RM-B2`는
+    process 종료와 row 부재만 보고 terminal `Drained`와 drain 전파 중 요청 완료를 확인하지 않는다.
+    `RM-B3` provider `SIGKILL` failover는 catalog에 없다. `RM-C2`의 미존재 rid 기대값을
+    `REQUEST_TARGET_NOT_FOUND`로 바꾼 집중 gate는 실제 `TimeoutException`으로 실패했다
+    (`RegistryMessaging/logs/20260716-084751-3147390/`).
+- [ ] **E2E-JV-26** (가짜 통과) — `SM-G2`가 SpotNode scale-out과 신규 배치를 검증하지 않는다.
+  - 재검증: 현재 runner는 두 play node를 먼저 시작하고 scenario는 양쪽 local manager에 서로 다른
+    Spot을 직접 만든다. 기존 play-a owner 유지, play-b peer/capability와 Entry Spot handle readiness,
+    application `JoinReq` actor 생성 순서가 없다. node 추가만으로 owner가 바뀐다는 기존
+    `owner-remap` 표현도 갱신 계약과 반대다.
+- [ ] **E2E-JV-27** (가짜 통과) — PubSub reconnect와 publisher restart의 lifecycle gate가 다르다.
+  - 재검증: `PS-A4`는 subscriber process를 종료·재시작해 application startup이 handler를 다시
+    등록하므로 같은 process의 transport reconnect와 기존 subscription 재적용을 검증하지 않는다.
+    `PS-B2`는 subscriber process 유지와 새 event 수신은 확인하지만 terminal `Drained`, old row 제거,
+    새 publisher `ConnectionReady`를 기다리지 않는다. `PS-B2` 전체 실행의 evidence HTTP timeout은
+    단독 재실행에서 통과해 별도 flaky gate로 남는다.
+- [ ] **E2E-JV-28** (가짜 통과) — Config 5 restart·replacement와 Weight·graceful drain 의미가 섞여 있다.
+  - 재검증: `RL-A1`은 terminal `Drained`, old row 제거, down 구간의 정확한
+    `RouteNotConnected`, 새 owner generation과 `ConnectionReady`를 모두 보지 않는다. `RL-A2`는
+    handler-start 뒤 `SIGKILL`과 lease 만료를 거치는 crash replacement가 아니다. `RL-B3`은 terminal
+    `Drained`와 종료 직전 완료된 reply를 보지 않는다. `RL-B4`·`RL-B5`의 실제 동작은 weight 0/100
+    부하 제외이므로 문서에서 graceful drain 표현을 제거했다.
+- [ ] **E2E-JV-29** (가짜 통과) — `MON-A1`·`MON-A4`가 갱신된 source와 가용성 전이를 검증하지 않는다.
+  - 재검증: 정식 source `monitoring.api.client`와 `monitoring.handshake.server`를 사용한 집중 실행은
+    Java runtime이 "monitoring socket source is not configured"로 startup을 거부했다. 현재 `MON-A4`는
+    weight 변경 한 종류만 실행하며 별도 observer가 정상 replacement, crash failover, weight 변경을
+    구분해 관찰하지 않는다.
+- [ ] **E2E-JV-30** (결함) — Config 8 automatic turn 순서 gate가 runtime 위반을 잡았다.
+  - 재검증: `ATD-A1`은 기대한 `hold-started → probe-started → probe-completed → hold-resumed →
+    hold-completed` 대신 hold가 끝난 뒤 probe가 시작되어 실패했다. E2E sleep이나 순서 완화가 아니라
+    Java execution-turn runtime 수정이 필요하다.
+- [ ] **E2E-JV-31** (결함) — Config 10 transfer callback 순서 gate가 runtime 위반을 잡았다.
+  - 재검증: `ST-A1` standalone은 readiness 뒤 실행됐지만 target `joined`가 source `leave`보다 먼저
+    기록되어 `admission → leave → joined → location_visible → success_reply` 계약을 위반했다.
+- [ ] **E2E-JV-32** (결함) — Config 11 flow evidence가 비공개 환경 변수에 의존한다.
+  - 재검증: `OBS-A1` 기능 client는 통과했지만 connector outbound flow 로그가 없어 verifier가
+    실패했다. connector trace는 `ZLINK_JAVA_STREAM_TRACE` 환경 변수를 직접 읽는 경로에만 있으며,
+    공통 설정 정책은 E2E 전용 환경 변수 주입을 금지한다.
+- [ ] **SMP-JV-32** (runner blocker) — Java sample cleanup 관측 상한이 public drain deadline과 같다.
+  - 재검증: 공통 runner는 30초만 기다리고 Spring 자동 drain 기본값도 30초다. TicTacToe는 기능
+    `PASS` 뒤 cleanup deadline으로 실패했으며 관측 횟수를 350으로 늘린 진단 실행은 약 38초에
+    정상 종료했다. sample별 sleep이나 강제 종료로 숨기지 않고 공유 runner 정책에서 deadline보다
+    큰 bounded margin을 결정해야 한다.
+
+### §0.8 blocker와 선택지
+
+| blocker | 현재 증거 | 계약을 소유한 계층의 선택지 |
+|---------|-----------|------------------------------|
+| RouteMesh target 오류 | 없는 rid가 `TimeoutException`; enum에는 `REQUEST_TARGET_NOT_FOUND`가 이미 있음 | (A) runtime이 현재 member snapshot 부재를 submit 전에 판정, (B) native route 결과에 target-not-found를 추가해 Java 오류로 매핑. E2E에서 timeout을 정답으로 유지하는 안은 계약과 충돌하므로 제외한다. |
+| Monitoring source registry | 언어별 spec의 capability-qualified source를 startup이 거부 | (A) runtime registry key를 `<channel>.<capability>`로 통일, (B) 등록 시 bare 이름을 정식 이름으로 확장. E2E가 bare 이름을 계속 쓰는 안은 source identity 계약을 검증하지 못한다. |
+| Execution turn | ATD-A1 실제 순서가 계약과 반대 | (A) incomplete stage 완료까지 turn을 보유, (B) 정식 terminator가 suspension 지점에서만 turn을 양도. 현재 계약에 맞는 선택을 공통 runtime에서 확정한 뒤 Java에 구현한다. |
+| Transfer callback order | target join이 source leave보다 먼저 기록 | source leave 완료를 transfer commit의 선행 gate로 만들고 target join·location publish를 뒤에 둔다. E2E timestamp 정렬이나 기대 순서 완화는 금지한다. |
+| Connector flow 설정 | 표준 logger가 아니라 환경 변수에만 trace가 연결됨 | (A) 공통 dispatch/flow 설정에 connector를 연결, (B) 언어별 정식 logging option을 계약에 추가. runner가 비공개 환경 변수를 주입하는 안은 제외한다. |
+| PS-A4 network fault | process 재시작밖에 없어 application 재등록을 피할 수 없음 | subscriber 한 연결만 차단·복구하는 process-external proxy/netem harness를 공통 E2E 도구로 제공하거나, 제공 전까지 계약 지시대로 `blocked`를 유지한다. |
+| sample cleanup margin | runner 상한과 public drain 기본값이 모두 30초 | 공유 sample runner의 관측 상한을 drain deadline보다 크게 두거나, framework가 deadline 안에서 terminal 결과와 process 종료를 보장하도록 lifecycle을 고친다. sample별 우회는 제외한다. |

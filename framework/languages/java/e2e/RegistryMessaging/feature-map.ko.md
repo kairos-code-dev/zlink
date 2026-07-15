@@ -14,8 +14,8 @@ public HTTP client만 사용한다.
 - `implemented`: provider, workflow, consumer role은 HTTP health endpoint를 제공한다. provider와
   workflow는 evidence 조회와 대기 endpoint도 제공한다.
 - `implemented`: scenario ID별 client 파일과 공통 support 파일을 분리했다.
-- `implemented`: `RM-A4`, `RM-B1`, `RM-B2`의 provider start/stop/replacement support는 Redis
-  location store 입력을 넘기고, consumer 재시작 없이 lifecycle 변화를 검증한다.
+- `partial`: `RM-A4`와 `RM-B2`의 process 제어는 consumer 재시작 없이 topology 변화를 만들지만,
+  정상 종료의 terminal `Drained`와 drain 전파 중인 요청 완료를 아직 검증하지 않는다.
 
 ## 구현됨
 
@@ -23,16 +23,21 @@ public HTTP client만 사용한다.
   public runtime query에서 API channel의 live provider peer row가 둘 이상 보이는지, provider
   evidence에 request가 남는지 함께 검증한다.
 - `RM-A2`: 수동 endpoint 연결로 provider에 직접 request를 보낸다.
-- `RM-A4`: 같은 rid의 provider를 새 endpoint로 교체한 뒤, consumer 재시작 없이 replacement
-  provider로 request가 가는지 검증한다.
+- `RM-A4` (부분 구현): 같은 rid의 provider를 새 endpoint로 교체한 뒤 replacement provider로
+  request가 가는지는 검증한다. terminal `Drained`, old row 제거 뒤 유효 row가 정확히 하나인지,
+  이전 endpoint evidence가 증가하지 않는지는 아직 검증하지 않는다.
 - `RM-A6`: API channel과 workflow channel이 같은 location store를 공유해도 channel 이름별로
   분리되는지 검증한다.
 - `RM-B1`: provider 추가 뒤 consumer가 location store row를 보고 새 provider를 routing 대상에
   포함하는지 검증한다.
-- `RM-B2`: provider 정상 종료 뒤 row 제거와 남은 provider routing을 검증한다.
+- `RM-B2` (부분 구현): process 종료 뒤 row 제거와 남은 provider routing을 검증한다. 정상 종료의
+  terminal `Drained`와 drain 전파 구간의 target 미지정 요청이 오류나 pending 없이 끝나는지는
+  아직 검증하지 않는다.
 - `RM-C1`: request와 send happy path를 함께 검증한다. request와 command가 provider evidence에
   기록됐는지도 확인한다.
-- `RM-C2`: route mesh에서 target rid request와 없는 rid 실패를 검증한다.
+- `RM-C2` (차단): 존재하는 rid의 target request는 검증한다. 미존재 rid의 기대값을
+  `REQUEST_TARGET_NOT_FOUND`로 바꾼 집중 gate는 실제 `TimeoutException`으로 실패했다. Java runtime이
+  현재 RouteMesh member snapshot을 target 선택 전에 판정하지 못하므로 runtime 수정 뒤 닫는다.
 - `RM-C3`: 수동 multi-endpoint client/server channel에서 두 provider가 모두 처리하는지 검증한다.
 - `RM-C4`: timeout 뒤 정상 request가 late reply에 오염되지 않는지 검증한다.
 - `RM-C5`: 미등록 packet request 실패와 send drop 이후 정상 request 복구를 검증한다. message-flow
@@ -48,6 +53,13 @@ public HTTP client만 사용한다.
 - `RM-C9`: Java는 느린 handler에 다량 one-way send를 동시에 제출하고, public bounded-failure
   oracle 없이 후속 request와 evidence가 회복되는지 검증한다. 직접적인 HWM 오류 결과 검증은
   binding/runtime 내부 테스트 범위로 둔다.
+
+## 갱신된 계약의 남은 항목
+
+- `RM-B3`은 미구현이다. Java catalog의 `failover` 별칭은 실제로 `RM-A4` 정상 replacement를 실행하며,
+  provider `SIGKILL`, lease 만료 전후의 유한 결과, 남은 provider의 지속 성공을 검증하지 않는다.
+- 동적 역할 readiness는 아직 60초, peer convergence는 45초를 사용한다. 공통 3초 readiness와 이름
+  있는 5초 route settle 상한으로 줄인 gate를 통과해야 한다.
 
 ## 검증
 

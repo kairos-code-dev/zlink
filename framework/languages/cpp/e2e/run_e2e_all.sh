@@ -74,7 +74,7 @@ start_orders_for() {
 verify_start_order_contract() {
   local config
   for config in "${START_ORDER_CONFIGS[@]}"; do
-    if ! rg -q 'E2E_START_ORDER' "${SCRIPT_DIR}/${config}/run_e2e.sh"; then
+    if ! rg -q -- '--start-order=' "${SCRIPT_DIR}/${config}/run_e2e.sh"; then
       echo "[cpp-e2e] start-order contract missing in ${config}" >&2
       return 1
     fi
@@ -159,6 +159,10 @@ run_config_with_retry() {
   local scenario="$2"
   local start_order="$3"
   local attempt output status started_at ended_at
+  local -a runner_command=(./run_e2e.sh "${scenario}")
+  if uses_start_order_axis "${config}"; then
+    runner_command+=("--start-order=${start_order}")
+  fi
   output="$(mktemp)"
 
   for attempt in $(seq 1 "${MAX_ATTEMPTS}"); do
@@ -167,7 +171,7 @@ run_config_with_retry() {
     set +e
     (
       cd "${SCRIPT_DIR}/${config}" &&
-        exec env E2E_START_ORDER="${start_order}" timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${scenario}"
+        exec timeout "${SCENARIO_TIMEOUT_SECONDS}s" "${runner_command[@]}"
     ) > >(tee "${output}") 2>&1 &
     active_config_pid="$!"
     wait "${active_config_pid}"

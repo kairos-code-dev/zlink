@@ -300,10 +300,40 @@ wait_port trigger "$HTTP_TRIGGER"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
+write_client_config() {
+  local scenario="$1"
+  local old_channel="${2-}"
+  local new_channel="${3-}"
+  python3 - "$CONFIG_DIR/client.json" "$scenario" "$HTTP_SERVICE" "$HTTP_FILTERED" \
+    "$HTTP_THROW" "$HTTP_TRIGGER" "$LOG_DIR" "$old_channel" "$new_channel" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, scenario, service_url, filtered_service_url, throw_service_url,
+ trigger_url, log_dir, old_channel, new_channel) = sys.argv[1:]
+document = {"e2e": {
+    "scenario": scenario,
+    "serviceUrl": service_url,
+    "filteredServiceUrl": filtered_service_url,
+    "throwServiceUrl": throw_service_url,
+    "triggerUrl": trigger_url,
+    "logDir": log_dir,
+}}
+if old_channel:
+    document["e2e"]["oldServiceChannelEndpoint"] = old_channel
+if new_channel:
+    document["e2e"]["newServiceChannelEndpoint"] = new_channel
+with open(path, "w", encoding="utf-8") as file:
+    json.dump(document, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+}
+
 if [[ "$SCENARIO_LOWER" != "mon-a4" && "$SCENARIO_LOWER" != "mon-d1" ]]; then
-  "$CLIENT" --scenario="$SCENARIO_LOWER" --service-url="$HTTP_SERVICE" \
-    --filtered-service-url="$HTTP_FILTERED" --throw-service-url="$HTTP_THROW" \
-    --trigger-url="$HTTP_TRIGGER" --log-dir="$LOG_DIR" \
+  write_client_config "$SCENARIO_LOWER"
+  "$CLIENT" --config="$CONFIG_DIR/client.json" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
   cat "$LOG_DIR/client.stdout.log"
@@ -329,10 +359,8 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-a4" ]]; then
   wait_trigger_route_state svc-a "$CHANNEL"
   request_profile mon-a4-after-remap
 
-  "$CLIENT" --scenario=mon-a4 --service-url="$HTTP_SERVICE" \
-    --filtered-service-url="$HTTP_FILTERED" --trigger-url="$HTTP_TRIGGER" \
-    --log-dir="$LOG_DIR" --old-service-channel-endpoint="$OLD_SERVICE_CHANNEL" \
-    --new-service-channel-endpoint="$CHANNEL" \
+  write_client_config mon-a4 "$OLD_SERVICE_CHANNEL" "$CHANNEL"
+  "$CLIENT" --config="$CONFIG_DIR/client.json" \
     >"$LOG_DIR/client-a4.stdout.log" 2>"$LOG_DIR/client-a4.stderr.log"
 
   cat "$LOG_DIR/client-a4.stdout.log"
@@ -348,9 +376,8 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-d1" ]]; then
     wait_trigger_route_state svc-b "$CHANNEL_FILTERED"
   done
 
-  "$CLIENT" --scenario=mon-d1 --service-url="$HTTP_SERVICE" \
-    --filtered-service-url="$HTTP_FILTERED" --trigger-url="$HTTP_TRIGGER" \
-    --log-dir="$LOG_DIR" \
+  write_client_config mon-d1
+  "$CLIENT" --config="$CONFIG_DIR/client.json" \
     >"$LOG_DIR/client-d1.stdout.log" 2>"$LOG_DIR/client-d1.stderr.log"
 
   cat "$LOG_DIR/client-d1.stdout.log"

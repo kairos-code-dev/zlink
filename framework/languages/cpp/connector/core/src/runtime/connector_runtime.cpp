@@ -956,6 +956,7 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
             detail::change_state (state, connection_state_t::connected);
             detail::resume_pending_writes_after_connect (state);
             schedule_start_read_loop (state);
+            detail::start_heartbeat_monitor (state);
             return result_t<void>::success ();
         }
         last_error = connected.error () ? connected.error ()->message
@@ -1011,6 +1012,7 @@ namespace
 result_t<void> close_state (std::shared_ptr<detail::connector_state_t> state)
 {
     state->close_requested.store (true);
+    detail::stop_heartbeat_monitor (state);
     state->state_changed.notify_all ();
     std::vector<std::function<void ()>> closed_write_callbacks;
     std::vector<std::function<void ()>> closed_send_callbacks;

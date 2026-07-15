@@ -124,6 +124,8 @@ class connector_state_t : public std::enable_shared_from_this<connector_state_t>
     bool heartbeat_pong_due = false;
     std::chrono::steady_clock::time_point last_heartbeat_sent{};
     std::chrono::steady_clock::time_point last_inbound_received{};
+    std::uint64_t heartbeat_generation = 0;
+    std::shared_ptr<boost::asio::steady_timer> heartbeat_timer;
     boost::asio::io_context &io_context;
     boost::asio::strand<boost::asio::io_context::executor_type> write_strand;
     std::shared_ptr<stream_connection_t> connection;
@@ -154,6 +156,8 @@ void submit_send_async (std::shared_ptr<connector_state_t> state,
                         packet_t packet,
                         std::function<void (result_t<void>)> callback);
 void start_read_loop (std::shared_ptr<connector_state_t> state);
+void start_heartbeat_monitor (std::shared_ptr<connector_state_t> state);
+void stop_heartbeat_monitor (std::shared_ptr<connector_state_t> state);
 void resume_pending_writes_after_connect (std::shared_ptr<connector_state_t> state);
 result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state);
 result_t<packet_t> receive_next (std::shared_ptr<connector_state_t> state,

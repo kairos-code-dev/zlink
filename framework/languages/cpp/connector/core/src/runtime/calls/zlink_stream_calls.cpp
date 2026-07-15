@@ -735,6 +735,77 @@ void enqueue_async_write (std::shared_ptr<connector_state_t> state,
                           std::vector<std::uint8_t> frame,
                           std::function<void (result_t<void>)> callback);
 
+std::chrono::milliseconds heartbeat_maintenance_delay (const heartbeat_options_t &options)
+{
+    const auto interval = std::max (options.interval, std::chrono::milliseconds (1));
+    const auto timeout = std::max (options.timeout, std::chrono::milliseconds (1));
+    return std::min (interval, timeout);
+}
+
+void schedule_heartbeat_maintenance (const std::shared_ptr<connector_state_t> &state,
+                                     std::uint64_t generation);
+
+void run_heartbeat_maintenance (std::shared_ptr<connector_state_t> state,
+                                std::uint64_t generation)
+{
+    std::vector<std::uint8_t> heartbeat_frame;
+    std::optional<error_t> timeout_error;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        if (generation != state->heartbeat_generation || state->close_requested.load ()
+            || !is_transport_connected (*state)) {
+            return;
+        }
+        const auto now = steady_clock_t::now ();
+        heartbeat_monitor_t monitor (state->options.heartbeat);
+        if (monitor.timed_out (state->last_inbound_received, now)) {
+            if (state->connection) {
+                boost::system::error_code ignored;
+                state->connection->close (ignored);
+            }
+            ++state->heartbeat_generation;
+            state->heartbeat_timer.reset ();
+            timeout_error =
+              error_t{error_code_t::disconnected, "stream connector heartbeat timed out"};
+        } else if (monitor.due (state->last_heartbeat_sent, now)) {
+            packet_t heartbeat;
+            heartbeat.name = "$zlink.heartbeat.ping";
+            heartbeat.codec = codec_t::raw;
+            heartbeat.payload = zlink::message_t::from (std::string{});
+            auto encoded =
+              encode_packet_frame (*state, message_kind_t::control, heartbeat, std::nullopt);
+            if (encoded) {
+                heartbeat_frame = std::move (encoded.value ());
+                state->last_heartbeat_sent = now;
+            }
+        }
+    }
+    if (timeout_error) {
+        publish_error (*state, *timeout_error);
+        change_state (state, connection_state_t::disconnected, *timeout_error);
+        return;
+    }
+    if (!heartbeat_frame.empty ()) {
+        enqueue_async_write (state, std::move (heartbeat_frame), {});
+    }
+    schedule_heartbeat_maintenance (state, generation);
+}
+
+void schedule_heartbeat_maintenance (const std::shared_ptr<connector_state_t> &state,
+                                     std::uint64_t generation)
+{
+    auto timer = post_runtime_operation_after (
+      heartbeat_maintenance_delay (state->options.heartbeat),
+      [state, generation] { run_heartbeat_maintenance (state, generation); });
+    std::lock_guard<std::mutex> lock (state->transport_mutex);
+    if (generation != state->heartbeat_generation || state->close_requested.load ()
+        || !is_transport_connected (*state)) {
+        cancel_timer (timer);
+        return;
+    }
+    state->heartbeat_timer = std::move (timer);
+}
+
 /* 수신 콜백(io 스레드) 문맥에서 due pong을 write pump에 싣는다. 이 문맥에서는 동기 write를
  * 쓰면 안 된다. in-flight async_write와 같은 소켓에서 바이트가 섞이고, 상대가 읽지 않으면
  * io 스레드 자체가 blocking write에 갇힌다. */
@@ -848,6 +919,7 @@ void process_inbound_buffer (std::shared_ptr<connector_state_t> state,
         complete_pending_request (state, request_seq, std::move (result));
     }
     if (transport_error) {
+        stop_heartbeat_monitor (state);
         std::vector<std::uint64_t> request_ids;
         {
             std::lock_guard<std::mutex> lock (state->transport_mutex);
@@ -1135,6 +1207,33 @@ void start_next_async_send (std::shared_ptr<connector_state_t> state)
 void start_read_loop (std::shared_ptr<connector_state_t> state)
 {
     schedule_request_pump (std::move (state));
+}
+
+void start_heartbeat_monitor (std::shared_ptr<connector_state_t> state)
+{
+    if (!state->options.heartbeat.enabled) {
+        return;
+    }
+    std::uint64_t generation;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        if (state->heartbeat_timer) {
+            cancel_timer (state->heartbeat_timer);
+        }
+        generation = ++state->heartbeat_generation;
+    }
+    schedule_heartbeat_maintenance (state, generation);
+}
+
+void stop_heartbeat_monitor (std::shared_ptr<connector_state_t> state)
+{
+    std::shared_ptr<boost::asio::steady_timer> timer;
+    {
+        std::lock_guard<std::mutex> lock (state->transport_mutex);
+        ++state->heartbeat_generation;
+        timer = std::move (state->heartbeat_timer);
+    }
+    cancel_timer (timer);
 }
 
 void resume_pending_writes_after_connect (std::shared_ptr<connector_state_t> state)
@@ -1429,21 +1528,6 @@ result_t<void> dispatch_pending (std::shared_ptr<connector_state_t> state)
                 publish_error (*state, *inbound_error);
                 change_state (state, connection_state_t::disconnected, *inbound_error);
                 return result_t<void>::failure (inbound_error->code, inbound_error->message);
-            }
-            heartbeat_monitor_t monitor (state->options.heartbeat);
-            const auto now = steady_clock_t::now ();
-            if (monitor.timed_out (state->last_inbound_received, now)) {
-                boost::system::error_code ignored;
-                if (state->connection) {
-                    state->connection->close (ignored);
-                }
-                error_t error{error_code_t::disconnected, "stream connector heartbeat timed out"};
-                publish_error (*state, error);
-                change_state (state, connection_state_t::disconnected, error);
-                return result_t<void>::failure (error.code, error.message);
-            }
-            if (auto heartbeat = send_due_heartbeat (*state); !heartbeat) {
-                return heartbeat;
             }
             if (auto pong = send_due_pong (*state); !pong) {
                 return pong;

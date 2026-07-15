@@ -1008,6 +1008,60 @@ int main ()
     }
 
     {
+        boost::asio::io_context heartbeat_io;
+        boost::asio::ip::tcp::acceptor heartbeat_acceptor (
+          heartbeat_io, {boost::asio::ip::make_address ("127.0.0.1"), 0});
+        const auto heartbeat_endpoint =
+          std::string ("tcp://127.0.0.1:")
+          + std::to_string (heartbeat_acceptor.local_endpoint ().port ());
+        std::atomic_bool heartbeat_seen_without_dispatch{false};
+        joining_thread_t heartbeat_server (
+          [&heartbeat_acceptor, &heartbeat_seen_without_dispatch] {
+              boost::asio::ip::tcp::socket socket (heartbeat_acceptor.get_executor ());
+              heartbeat_acceptor.accept (socket);
+              socket.non_blocking (true);
+              std::string buffer;
+              std::array<char, 512> chunk{};
+              const auto deadline =
+                std::chrono::steady_clock::now () + std::chrono::milliseconds (250);
+              while (std::chrono::steady_clock::now () < deadline) {
+                  boost::system::error_code error;
+                  const auto size = socket.read_some (boost::asio::buffer (chunk), error);
+                  if (!error) {
+                      buffer.append (chunk.data (), size);
+                      if (auto frame = try_read_server_frame (buffer)) {
+                          heartbeat_seen_without_dispatch =
+                            frame->header.kind
+                              == zlink::stream_connector::message_kind_t::control
+                            && frame->header.name == "$zlink.heartbeat.ping";
+                          break;
+                      }
+                  } else if (error != boost::asio::error::would_block
+                             && error != boost::asio::error::try_again) {
+                      break;
+                  }
+                  std::this_thread::sleep_for (std::chrono::milliseconds (1));
+              }
+          });
+
+        zlink::stream_connector::connector_options_t heartbeat_options;
+        heartbeat_options.endpoint = heartbeat_endpoint;
+        heartbeat_options.heartbeat.interval = std::chrono::milliseconds (20);
+        heartbeat_options.heartbeat.timeout = std::chrono::milliseconds (500);
+        heartbeat_options.reconnect.enabled = false;
+        auto heartbeat_connector =
+          zlink::stream_connector::connector_factory_t::create (heartbeat_options);
+        if (!heartbeat_connector.connect ()) {
+            return 171;
+        }
+        heartbeat_server.join ();
+        heartbeat_connector.close ();
+        if (!heartbeat_seen_without_dispatch) {
+            return 171;
+        }
+    }
+
+    {
         zlink::stream_connector::connector_options_t lifecycle_options;
         lifecycle_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         bool connect_lifetime_seen = false;
@@ -2895,12 +2949,15 @@ int main ()
     if (!heartbeat_timeout_connector.connect ()) {
         return 45;
     }
-    auto heartbeat_timeout_result = heartbeat_timeout_connector.dispatch ();
-    if (heartbeat_timeout_result
-        || heartbeat_timeout_result.error_code ()
-             != zlink::stream_connector::error_code_t::disconnected
-        || heartbeat_timeout_connector.state ()
-             != zlink::stream_connector::connection_state_t::disconnected) {
+    const auto heartbeat_timeout_deadline =
+      std::chrono::steady_clock::now () + std::chrono::milliseconds (250);
+    while (heartbeat_timeout_connector.state ()
+             != zlink::stream_connector::connection_state_t::disconnected
+           && std::chrono::steady_clock::now () < heartbeat_timeout_deadline) {
+        std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+    if (heartbeat_timeout_connector.state ()
+        != zlink::stream_connector::connection_state_t::disconnected) {
         return 46;
     }
 

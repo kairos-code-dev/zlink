@@ -555,6 +555,7 @@ runtime scanner가 없으므로 compile-time 명시 등록이 정답이다. 아�
 - [x] **SMP-CP-42** (결함) — **SupportChat이 framework의 `ActorRefSnapshot`을 자기 것으로 포크**했다. 문서가 "샘플이 정의하지 않는다"고 명시한 타입이다
   - 근거: 사설 snapshot DTO와 사설 `to_actor_ref` 변환을 제거하고 두 응답이 framework의 전체 `actor_ref_snapshot_t`를 직렬화·복원·변환하도록 정리했다(`258fc8717`). 수정 전 집중 parity gate가 사설 타입을 검출해 실패했고, 수정 뒤 전체 parity gate와 SupportChat runner(`PASS SupportChat.Cpp`)가 통과했다.
 - [ ] **SMP-CP-43** (결함) — **ShoppingMall이 금액을 `double`로 쓴다.** 문서·`.NET`은 `decimal`이다
+  - §0.8 결정 대기: 공통 계약은 `decimal`의 JSON wire 표현을 아직 고정하지 않았다. 선택지는 (1) 정규화한 decimal 문자열을 공통 wire로 정하거나, (2) JSON number를 유지하면서 각 언어가 보장해야 할 정밀도·범위를 계약에 명시하는 것이다. C++만 임의의 금액 타입이나 변환 helper를 추가하지 않는다.
 - [x] **SMP-CP-44** (결함) — **DeliveryDispatch `BindCourierSessionRes.Actor`가 언어마다 다른 타입**이다. `.NET`엔 `actorId`·`generation`이 없다
   - 근거: 확정 계약대로 응답이 framework의 전체 `actor_ref_snapshot_t`를 사용하고 actor id·spot/node rid·generation을 실제 bind 결과에서 채우는 것을 확인·정렬했다(`0ad4f40c4`). DeliveryDispatch client/server 빌드와 전체 runner가 통과했다.
 - [x] **SMP-CP-45** (결함) — **GameQuest의 entry→owner hop이 언어마다 packet 이름도 호출 방식도 다르다**(C++ one-way vs `.NET` request)

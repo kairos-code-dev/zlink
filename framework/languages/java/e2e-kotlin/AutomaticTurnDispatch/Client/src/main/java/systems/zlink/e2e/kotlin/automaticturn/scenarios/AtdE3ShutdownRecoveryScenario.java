@@ -20,7 +20,7 @@ public final class AtdE3ShutdownRecoveryScenario {
         ZLinkStreamConnector connector,
         ZLinkStreamConnector recoveryConnector) {
         String requestId = "ATD-E3-" + UUID.randomUUID();
-        Path controlDir = Path.of(Env.get("ZLINK_KOTLIN_E2E_CONTROL_DIR"));
+        Path controlDir = Path.of(Env.get("controlDirectory"));
         CompletableFuture<Contracts.ScenarioRes> pending = connector
             .request(new Contracts.ShutdownAwaitReq(requestId, 5000))
             .metadata(Contracts.TARGET_NODE_RID_METADATA, "play-a")

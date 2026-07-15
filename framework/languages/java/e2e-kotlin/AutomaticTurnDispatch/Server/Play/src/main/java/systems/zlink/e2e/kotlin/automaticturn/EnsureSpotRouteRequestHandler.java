@@ -28,7 +28,7 @@ public final class EnsureSpotRouteRequestHandler
                 RoutingId.from(request.spotRid()),
                 ZLinkMessage.of("ensure"))
             .thenApply(ignored -> {
-                String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "play-a");
+                String nodeRid = Env.get("nodeRid", "play-a");
                 evidence.record(request.spotRid(), "spot-ensured", "node=" + nodeRid);
                 return new Contracts.EnsureSpotRes(request.spotRid(), nodeRid);
             });

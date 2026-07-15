@@ -1,5 +1,6 @@
 package systems.zlink.e2e.kotlin.automaticturn
 
 fun main(args: Array<String>) {
-    ClientApplication.run(*args)
+    Env.configure(args)
+    ClientApplication.run(*args.drop(2).toTypedArray())
 }

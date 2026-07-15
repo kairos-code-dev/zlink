@@ -20,7 +20,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_KOTLIN_E2E_BUILD_DIR="${ZLINK_KOTLIN_E2E_BUILD_DIR:-${HOME}/.cache/zlink/kotlin-e2e/AutomaticTurnDispatch}"
 export ZLINK_KOTLIN_E2E_GRADLE_CACHE="${ZLINK_KOTLIN_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/kotlin-e2e/AutomaticTurnDispatch-gradle-cache}"
-export ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:kotlin-automatic-turn-dispatch:${run_id}}"
+location_key_prefix="zlink:e2e:kotlin-automatic-turn-dispatch:${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 LOCAL_READINESS_TIMEOUT_SECONDS=10
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=100
@@ -77,6 +79,7 @@ cleanup() {
   if [[ -n "${redis_container}" ]]; then
     docker rm -fv "${redis_container}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -125,7 +128,7 @@ start_redis_if_needed() {
   zlink_redis_start_scoped_assign redis_container redis_port \
     "zlink-redis-kotlin-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
   redis_endpoint="127.0.0.1:${redis_port}"
-  export ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
+  redis_location_endpoint="${redis_endpoint}"
   wait_port redis "tcp://${redis_endpoint}"
 }
 
@@ -201,13 +204,23 @@ session_bin() {
   echo "${ZLINK_KOTLIN_E2E_BUILD_DIR}/Server-Session/install/automatic-turn-dispatch-kotlin-session/bin/automatic-turn-dispatch-kotlin-session"
 }
 
+write_config() {
+  local path="$1"
+  shift
+  {
+    printf 'redisLocationEndpoint=%s\n' "${redis_location_endpoint}"
+    printf 'locationKeyPrefix=%s\n' "${location_key_prefix}"
+    printf 'logDirectory=%s\n' "${log_dir}"
+    printf '%s\n' "$@"
+  } >"${path}"
+  chmod 0600 "${path}"
+}
+
 start_delay() {
-  ZLINK_KOTLIN_E2E_NODE_RID=delay-a \
-  ZLINK_KOTLIN_E2E_DELAY_ENDPOINT="${DELAY}" \
-  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(delay_bin)" >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
+  local config_path="${config_dir}/delay.properties"
+  write_config "${config_path}" "nodeRid=delay-a" "delayEndpoint=${DELAY}"
+  "$(delay_bin)" --config "${config_path}" \
+    >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
   pids+=("$!")
   wait_port delay "${DELAY}"
 }
@@ -217,15 +230,13 @@ start_play() {
   local spot_endpoint="$2"
   local play_route_endpoint="$3"
   local log_name="$4"
-  ZLINK_KOTLIN_E2E_NODE_RID="${node_rid}" \
-  ZLINK_KOTLIN_E2E_DELAY_ENDPOINT="${DELAY}" \
-  ZLINK_KOTLIN_E2E_SPOT_ENDPOINT="${spot_endpoint}" \
-  ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT="${play_route_endpoint}" \
-  ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE}" \
-  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(play_bin)" >"${log_dir}/${log_name}.stdout.log" 2>"${log_dir}/${log_name}.stderr.log" &
+  local config_path="${config_dir}/${log_name}.properties"
+  write_config "${config_path}" \
+    "nodeRid=${node_rid}" "delayEndpoint=${DELAY}" \
+    "spotEndpoint=${spot_endpoint}" "playRouteEndpoint=${play_route_endpoint}" \
+    "sessionRouteEndpoint=${SESSION_ROUTE}"
+  "$(play_bin)" --config "${config_path}" \
+    >"${log_dir}/${log_name}.stdout.log" 2>"${log_dir}/${log_name}.stderr.log" &
   pids+=("$!")
   if [[ "${log_name}" == "play" ]]; then
     play_a_pid="$!"
@@ -258,16 +269,13 @@ stop_recorded_pid() {
 }
 
 start_session() {
-  ZLINK_KOTLIN_E2E_NODE_RID=session-a \
-  ZLINK_KOTLIN_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT}" \
-  ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT="${PLAY_ROUTE}" \
-  ZLINK_KOTLIN_E2E_PLAY_B_ROUTE_ENDPOINT="${PLAY_B_ROUTE}" \
-  ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE}" \
-  ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-  ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="${ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_KOTLIN_E2E_LOG_DIR="${log_dir}" \
-    "$(session_bin)" >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
+  local config_path="${config_dir}/session.properties"
+  write_config "${config_path}" \
+    "nodeRid=session-a" "sessionSpotEndpoint=${SESSION_SPOT}" \
+    "playRouteEndpoint=${PLAY_ROUTE}" "playBRouteEndpoint=${PLAY_B_ROUTE}" \
+    "sessionRouteEndpoint=${SESSION_ROUTE}" "streamEndpoint=${STREAM}"
+  "$(session_bin)" --config "${config_path}" \
+    >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
   pids+=("$!")
   wait_port session-spot "${SESSION_SPOT}"
   wait_port session-route "${SESSION_ROUTE}"
@@ -275,8 +283,10 @@ start_session() {
 }
 
 run_client() {
-  ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-    timeout -k 5s 45s "$(client_bin)" "${SCENARIO}" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+  local config_path="${config_dir}/client.properties"
+  write_config "${config_path}" "streamEndpoint=${STREAM}" "controlDirectory=${log_dir}/control"
+  timeout -k 5s 45s "$(client_bin)" --config "${config_path}" "${SCENARIO}" \
+    >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 }
 
 run_d2_client() {
@@ -284,17 +294,18 @@ run_d2_client() {
   if [[ "${client_scenario}" == "all" ]]; then
     client_scenario="d2"
   fi
-  ZLINK_KOTLIN_E2E_CLIENT_MODE=d2 \
-  ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-    timeout -k 5s 45s "$(client_bin)" "${client_scenario}" >"${log_dir}/client-d2.stdout.log" 2>"${log_dir}/client-d2.stderr.log"
+  local config_path="${config_dir}/client-d2.properties"
+  write_config "${config_path}" "streamEndpoint=${STREAM}" "controlDirectory=${log_dir}/control"
+  timeout -k 5s 45s "$(client_bin)" --config "${config_path}" "${client_scenario}" \
+    >"${log_dir}/client-d2.stdout.log" 2>"${log_dir}/client-d2.stderr.log"
 }
 
 run_e3_client() {
   local client_e3_pid
-  ZLINK_KOTLIN_E2E_CLIENT_MODE=ATD-E3 \
-  ZLINK_KOTLIN_E2E_STREAM_ENDPOINT="${STREAM}" \
-  ZLINK_KOTLIN_E2E_CONTROL_DIR="${log_dir}/control" \
-    timeout -k 5s 120s "$(client_bin)" ATD-E3 >"${log_dir}/client-e3.stdout.log" 2>"${log_dir}/client-e3.stderr.log" &
+  local config_path="${config_dir}/client-e3.properties"
+  write_config "${config_path}" "streamEndpoint=${STREAM}" "controlDirectory=${log_dir}/control"
+  timeout -k 5s 120s "$(client_bin)" --config "${config_path}" ATD-E3 \
+    >"${log_dir}/client-e3.stdout.log" 2>"${log_dir}/client-e3.stderr.log" &
   client_e3_pid="$!"
   pids+=("${client_e3_pid}")
 

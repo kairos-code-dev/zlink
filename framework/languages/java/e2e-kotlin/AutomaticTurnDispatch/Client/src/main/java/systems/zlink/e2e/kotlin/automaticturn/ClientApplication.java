@@ -5,10 +5,7 @@ public final class ClientApplication {
     }
 
     public static void run(String... args) {
-        String scenario = Env.get("ZLINK_KOTLIN_E2E_CLIENT_MODE", "all");
-        if (args.length > 0) {
-            scenario = args[0];
-        }
+        String scenario = args.length > 0 ? args[0] : "all";
         if ("d2".equals(scenario) || "ATD-D2".equals(scenario) || "ATD-D3".equals(scenario)) {
             ClientScenario.runD2(scenario);
         } else if ("ATD-E3".equals(scenario)) {

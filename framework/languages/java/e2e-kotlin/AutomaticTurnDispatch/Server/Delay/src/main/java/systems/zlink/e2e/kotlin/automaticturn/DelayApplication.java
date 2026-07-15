@@ -30,14 +30,14 @@ public final class DelayApplication {
     @Bean
     ZLinkFrameworkConfigurer framework() {
         return options -> {
-            String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "delay-a");
-            String logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs");
+            String nodeRid = Env.get("nodeRid", "delay-a");
+            String logDir = Env.get("logDirectory", "logs");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/delay-flow.log")
                 .traceLabel("kotlin-atd-delay");
             ClientServerChannelBuilder delay = options.addClientServerChannel(Contracts.DELAY_CHANNEL)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_DELAY_ENDPOINT"))
+                .enableServer(Env.get("delayEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
             delay.addRequestHandler(
                 DelayHandler.class,
@@ -50,7 +50,7 @@ public final class DelayApplication {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix")));
     }
 }

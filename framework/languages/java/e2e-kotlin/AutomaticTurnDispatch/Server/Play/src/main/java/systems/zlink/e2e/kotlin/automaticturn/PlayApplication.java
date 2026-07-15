@@ -34,15 +34,15 @@ public final class PlayApplication {
     @Bean
     ZLinkFrameworkConfigurer framework() {
         return options -> {
-            String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "play-a");
-            String logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs");
+            String nodeRid = Env.get("nodeRid", "play-a");
+            String logDir = Env.get("logDirectory", "logs");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/" + nodeRid + "-flow.log")
                 .traceLabel("kotlin-atd-" + nodeRid);
             RouteMeshChannelBuilder route = options.addRouteMeshChannel(Contracts.SPOT_MESH)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT"))
+                .enableServer(Env.get("playRouteEndpoint"))
+                .enableClient(Env.get("sessionRouteEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
             route.addRequestHandler(
                 EvidenceRouteRequestHandler.class,
@@ -57,9 +57,9 @@ public final class PlayApplication {
                 Contracts.BindActorsReq.class,
                 Contracts.BindActorsRes.class);
             options.addClientServerChannel(Contracts.DELAY_CHANNEL)
-                .enableClient(Env.get("ZLINK_KOTLIN_E2E_DELAY_ENDPOINT"));
+                .enableClient(Env.get("delayEndpoint"));
             ZLinkSpotNodeBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(Env.get("ZLINK_KOTLIN_E2E_SPOT_ENDPOINT"))
+                .enableRouter(Env.get("spotEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
             spot.addEntrySpot(ProbeEntrySpot.class);
             spot.addSpotFactory(ProbeSpot.class);
@@ -70,14 +70,14 @@ public final class PlayApplication {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix")));
     }
 
     @Bean
     ApplicationRunner createSpots(ZLinkSpotManager spots) {
         return ignored -> {
-            if (!"play-a".equals(Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "play-a"))) {
+            if (!"play-a".equals(Env.get("nodeRid", "play-a"))) {
                 return;
             }
             spots.getOrCreate(ProbeSpot.class, RoutingId.from("room-a"), ZLinkMessage.of("bootstrap"))

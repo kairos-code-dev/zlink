@@ -28,27 +28,27 @@ public final class SessionApplication {
     @Bean
     ZLinkFrameworkConfigurer framework() {
         return options -> {
-            String nodeRid = Env.get("ZLINK_KOTLIN_E2E_NODE_RID", "session-a");
-            String logDir = Env.get("ZLINK_KOTLIN_E2E_LOG_DIR", "logs");
+            String nodeRid = Env.get("nodeRid", "session-a");
+            String logDir = Env.get("logDirectory", "logs");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(logDir + "/session-flow.log")
                 .traceLabel("kotlin-atd-session");
             var route = options.addRouteMeshChannel(Contracts.SPOT_MESH)
-                .enableServer(Env.get("ZLINK_KOTLIN_E2E_SESSION_ROUTE_ENDPOINT"))
-                .enableClient(Env.get("ZLINK_KOTLIN_E2E_PLAY_ROUTE_ENDPOINT"))
+                .enableServer(Env.get("sessionRouteEndpoint"))
+                .enableClient(Env.get("playRouteEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
-            String playBRoute = Env.get("ZLINK_KOTLIN_E2E_PLAY_B_ROUTE_ENDPOINT", "");
+            String playBRoute = Env.get("playBRouteEndpoint", "");
             if (!playBRoute.isBlank()) {
                 route.enableClient(playBRoute);
             }
             ZLinkSpotNodeBuilder spot = options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(Env.get("ZLINK_KOTLIN_E2E_SESSION_SPOT_ENDPOINT"))
+                .enableRouter(Env.get("sessionSpotEndpoint"))
                 .setRoutingId(RoutingId.from(nodeRid));
             spot.addEntrySpot(ProbeEntrySpot.class);
             spot.addActorFactory("probe", ProbeActorFactory.class);
             options.addStreamNode("gateway")
-                .bind(Env.get("ZLINK_KOTLIN_E2E_STREAM_ENDPOINT"))
+                .bind(Env.get("streamEndpoint"))
                 .registerSession(ProbeSession.class)
                 .addSessionPacketHandler(ActorAuthReqHandler.class)
                 .addSessionPacketHandler(BindActorsReqHandler.class)
@@ -75,7 +75,7 @@ public final class SessionApplication {
     @Bean
     ZLinkRedisLocationStore locationStore() {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-            .setConnectionString(Env.get("ZLINK_KOTLIN_E2E_REDIS_LOCATION_ENDPOINT"))
-            .setKeyPrefix(Env.get("ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX")));
+            .setConnectionString(Env.get("redisLocationEndpoint"))
+            .setKeyPrefix(Env.get("locationKeyPrefix")));
     }
 }

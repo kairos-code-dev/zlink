@@ -1,7 +1,8 @@
 package systems.zlink.e2e.kotlin.automaticturn
 
 fun main(args: Array<String>) {
-    SessionApplication.run(*args).use {
+    Env.configure(args)
+    SessionApplication.run().use {
         Thread.currentThread().join()
     }
 }

@@ -145,7 +145,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **Java/Kotlin, Node, C++** | `Response`·`Error` header에 packet name을 싣는다. 계약은 그 필드를 **두지 않는 것**이다 |
 | [§12.21](#1221-yield-terminator-부재-전-언어) | **Java/Kotlin, Node, C++** | `yield` terminator가 없고 `async`가 **자동으로 turn을 반납**한다. 계약은 `async`가 turn을 유지하고 `yield`만 반납하는 것이다 |
 | [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **Java/Kotlin, Node, C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다. `SubmitAsync` 이름과 blocking `Fetch` 표면은 framework 계약 위반이다 |
-| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **Java/Kotlin, Node, C++** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다 |
+| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **Node, C++** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다. Java/Kotlin은 `runCpuWorker`·`runIoWorker`와 두 terminator를 구현했다 |
 | [§13](#13-샘플-연결등록-축-준수-현황) | **Java, Kotlin** | TicTacToe가 **수동 등록** 대신 package 스캔을 쓴다. 규약상 TicTacToe만 수동 연결 + 수동 등록이다(Node가 참조 구현) |
 
 **connector wire 계약(§10.1~§10.7b)은 3개 구현 모두 해소했다**(§10).
@@ -424,10 +424,13 @@ STREAM connector와 같은 **framework 동반 client**로 규정하고 terminato
 
 ### 12.23 worker 축 분리와 yield 부재 (전 언어)
 
-**미충족(`.NET`, Java, Kotlin, Node, C++).** [04 §1.2](04-async-execution-policy.ko.md)는 worker를
+**Java/Kotlin 충족, Node/C++ 미충족.** [04 §1.2](04-async-execution-policy.ko.md)는 worker를
 **CPU worker**와 **I/O worker**로 나누고, 둘 다 `async`·`yield` terminator를 갖도록 규정한다.
 
-현재는 worker가 하나뿐이고 **동기 델리게이트만 받는다.** terminator도 `async` 하나뿐이다.
+Java/Kotlin은 CPU 동기 작업과 I/O 비동기 작업을 분리했다. I/O 작업은 bounded CPU pool에 넣지 않고
+반환된 `CompletionStage`를 그대로 추적하며, 두 호출은 turn 유지 `submit`과 turn 반납 `yield`를
+제공한다. 집중 테스트는 I/O 대기 중 CPU pool thread와 queue가 모두 0인지 확인한다(구현 커밋
+`146afe0a5`). Node/C++에는 아직 worker 하나만 있고 **동기 델리게이트만 받는다.**
 
 그래서 외부 I/O를 worker로 감싸면 **worker 스레드 안에서 blocking으로 기다려야 한다.** in-flight
 호출 하나마다 bounded pool의 스레드 하나가 잠기고, 외부 서비스가 느려지면 pool이 고갈되어

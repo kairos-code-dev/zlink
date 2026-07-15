@@ -696,7 +696,8 @@ public interface ZLinkSpotContext {
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
     ZLinkSpotHandlerRegistry handlers();
-    <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work);
     CompletionStage<Void> leaveActor(ZLinkActor actor);
     CompletionStage<Boolean> close();
     CompletionStage<ZLinkTimer> addTimer(
@@ -711,7 +712,8 @@ public interface ZLinkEntrySpotContext {
     RoutingId nodeRid();
     ZLinkSpotOutbound outbound();
     ZLinkSpotHandlerRegistry handlers();
-    <T> ZLinkWorkerCall<T> runWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runCpuWorker(ZLinkWorkerTask<T> work);
+    <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work);
     CompletionStage<Void> destroyActor(ZLinkActor actor);
     CompletionStage<ZLinkTimer> addTimer(
         String name,

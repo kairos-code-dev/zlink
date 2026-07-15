@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 9건.**
+**전체 33건. 완료 10건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -298,7 +298,7 @@
 - [ ] **§12.15** — 예외 정규화 부재 (Java)
 - [x] **§12.16** — metadata wire 블록의 총 크기가 1024바이트를 넘으면 encode 전에 거부하도록 고쳤다. 경계값 1024 허용·1025 거부 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `47f7898af`(2026-07-15).
 - [x] **§12.17** — Error JSON의 `code`·`message`를 검증해 파싱하고, 일치하는 `request_seq`가 있으면 pending request만 실패시키며 stream error callback에는 중복 발행하지 않도록 고쳤다. 집중 테스트의 실패를 먼저 확인했고 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `e00b77cc7`(2026-07-15).
-- [ ] **§12.18** — flow_id 미전파 (Java)
+- [x] **§12.18** — inbound callback 실행 범위에 내부 flow context를 설정하고 그 안에서 시작한 send/request가 같은 `flow_id`와 origin을 사용하도록 고쳤다. 실제 inbound→outbound wire 집중 테스트의 실패를 먼저 확인했고 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `e52cf94e2`(2026-07-15).
 - [x] **§12.19** — Java typed 호출이 raw payload를 거부하고 Kotlin request 완료 표면을 `awaitReply<T>()`로 통일했다. 집중 계약 테스트, Java connector·Kotlin module 전체 테스트, Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check 통과. 구현 커밋 `c372ebbfc`(2026-07-15).
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
@@ -482,9 +482,16 @@ callback에 두 번 전달되는 집중 테스트가 모두 실패했다. 구현
 
 ### §12.18 flow_id 미전파 (Java)
 
-**미충족(Java).** [53 §6](../server/53-flow-correlation.ko.md)은 inbound callback 안에서 시작한 send/request가
-그 inbound의 `flow_id`를 이어받도록 규정한다. Java connector는 매 호출마다 새 UUIDv7을 만들어
-flow가 경계에서 끊긴다.
+**충족(Java).** inbound callback 실행 범위에 connector 내부 flow context를 설정한다. 이 범위에서
+시작한 send/request는 inbound header의 `flow_id`와 origin을 그대로 사용하고, inbound에 flow가 없으면
+UUIDv7과 `INBOUND` origin을 만든다. callback 밖의 application 호출만 새 UUIDv7과 `APPLICATION` origin을
+사용한다.
+
+flow 값을 send/request 공개 인자로 노출하는 안과 callback 실행 문맥을 내부에서 보존하는 안을 비교해
+후자를 선택했다. 호출자가 tracing header를 알아야 하는 복잡성을 만들지 않고 receive dispatcher가 flow
+수명을 소유한다. 구현 전 known flow를 가진 inbound callback에서 시작한 outbound send가 다른 UUID와
+`APPLICATION` origin을 보내 집중 테스트가 실패했다. 구현 뒤 같은 wire 테스트와
+`:zlink-stream-connector:test :zlink-framework-kotlin:test`가 통과했다. 구현 커밋 `e52cf94e2`(2026-07-15).
 
 ### §12.19 typed 표면 경계 (Java, Kotlin)
 

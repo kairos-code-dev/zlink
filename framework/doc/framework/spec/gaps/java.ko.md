@@ -558,7 +558,7 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 - [ ] **IMP-JV-28** (결함) — `ZLinkStoreSpotHandleResolver`가 **내부 transport 주소 타입을 공개 표면으로 흘린다**
 - [ ] **IMP-JV-29** (결함) — connector의 `ZLinkStreamJson`·`ZLinkStreamCompressionCodecs`가 **스펙 근거가 없다**
 - [ ] **IMP-JV-30** (결함) — **actor가 든 spot을 닫을 수 있다** (`.NET` IMP-DN-17과 동형)
-- [ ] **IMP-JV-31** (결함) — 서버가 `correlation_id`를 `request_seq`로 **날조한다**
+- [x] **IMP-JV-31** (결함) — stream received·replied trace가 header의 `correlation_id`만 사용하고, 없을 때 `request_seq`로 대체하지 않도록 고쳤다. 집중 테스트의 실패를 먼저 확인했고 Java framework core 전체 테스트가 통과했다. 구현 커밋 `b4729c52e`(2026-07-15).
 - [ ] **IMP-JV-32** (결함) — `listPageSize`를 **읽는 곳이 없다.** 내부 기본값이 1000이 아니라 **무한**이다
 - [ ] **IMP-JV-33** (미구현) — `storeFailureGrace`를 **읽는 곳이 없다.** fail-static 유예 정책 자체가 없다
 
@@ -576,7 +576,7 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 | **IMP-JV-28** | [00 §5](../00-public-contract-governance.ko.md): transport 주소는 framework 내부다 | `spots/ZLinkStoreSpotHandleResolver.java:10-11,34`가 **사용자 대면 `framework.spots` 패키지에서 public**이고 `runtime.internal.spots.SpotTransportAddress`를 반환한다. **코드베이스 자신이 그 타입을 `runtime/internal/` 아래 둔다** |
 | **IMP-JV-29** | [00 §3](../00-public-contract-governance.ko.md): 스펙 근거 없이 public API를 만들지 않는다 | connector의 `ZLinkStreamJson`·`ZLinkStreamCompressionCodecs` — 스펙 트리 grep **0건**(형제 connector 타입은 전부 항목이 있다). `ZLinkStreamJson`은 고정된 `send`/`request`/`on` 표면을 **중복하는 두 번째 static facade**다 |
 | **IMP-JV-30** | [21 §close](../server/21-spot-node.ko.md) | `ZLinkSpotLifecycle.java:134-142` — `hasActorsInSpot()`이 **락 없이** actor registry를 순회하고, `joinedSpotRid`를 **쓰는** commit은 spot dispatch 줄에서 돈다. `.NET` IMP-DN-17과 **같은 경합** |
-| **IMP-JV-31** | [52 §9](../server/52-message-flow-tracing.ko.md) | `ZLinkStreamRuntime.java:272-273` — `.orElseGet(() -> requestSequence()...)`. `.NET` IMP-DN-09과 **같은 결함**(C++만 올바르다) |
+| **IMP-JV-31** | [52 §9](../server/52-message-flow-tracing.ko.md) | **해결:** received와 replied trace가 공유하는 내부 helper는 header의 `correlation_id`만 반환하고 없으면 `null`을 유지한다. 두 trace 경로에서 각각 fallback을 지우는 안보다 규칙을 한 곳에 두어 다시 갈라지지 않게 했다. `request_seq=7`이고 corr이 없는 header가 trace corr도 비워 두는 집중 테스트와 Java framework core 전체 테스트 통과. 구현 커밋 `b4729c52e`(2026-07-15). |
 | **IMP-JV-32** | [40 §3·§8.2](../server/40-location-runtime.ko.md): 목록 조회는 `list page size`(기본 **1000**)를 따른다 | `ZLinkLocationOptions.java:12,40-48` — **읽는 곳 0.** 내부 조회가 `ZLinkPageRequest.firstPage()`(pageSize 0)를 써서 Redis `SMEMBERS`로 **kind 인덱스 전체**를 읽는다. ⇒ 모든 `listSpots`/`listActors`가 **O(N) 전체 읽기**이고, 그걸 제한하라는 옵션이 **아무 일도 안 한다** |
 | **IMP-JV-33** | [40 §6.1·§8.2](../server/40-location-runtime.ko.md): store 장애 유예 30초 | **읽는 곳 0.** ⇒ Java e2e의 `SF-B2 GraceExceeded`가 **존재하지 않는 정책을 검증하고 있다** |
 

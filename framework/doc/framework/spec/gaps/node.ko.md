@@ -434,6 +434,7 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
   - 근거: location runtime이 호출자가 page size를 생략했을 때 등록된 `listPageSize`를 적용하도록 paging 결정을 한곳에 모았다. 무한 기본값을 잡는 location-runtime 게이트가 통과한다. 커밋 `cbc18227e`.
 - [x] **IMP-ND-31** (미구현) — `storeFailureGrace`를 **읽는 곳이 없다**
   - 근거: auto-connect reconciler가 마지막 정상 target을 grace 안에서만 재사용하도록 option을 실제 정책에 연결했다. grace 안/밖 동작이 같아 실패하던 location-autoconnect 게이트가 통과한다. 커밋 `c3ce36a31`.
+- [ ] **IMP-ND-32** (미구현) — channel·SpotNode routing id 자동 할당과 store slot capability가 없다
 
 ### 상세
 
@@ -450,6 +451,7 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 | **IMP-ND-29** | [52 §9](../server/52-message-flow-tracing.ko.md) | `stream-session-runtime.ts:200,236,281` — `?? decodedHeader.requestSeq?.toString()` |
 | **IMP-ND-30** | [40 §3·§8.2](../server/40-location-runtime.ko.md) | `contracts/Locations/Options.ts:5,13` — 읽는 곳 0. `framework-locations-redis/src/store.ts:369-373`이 `pageSize <= 0`이면 `SMEMBERS`로 **전체**를 읽는다 |
 | **IMP-ND-31** | [40 §6.1](../server/40-location-runtime.ko.md) | `contracts/Locations/Options.ts:6,14` — **어느 패키지에도** 읽는 곳이 없다 |
+| **IMP-ND-32** | [10 §6](../server/10-channel-topology.ko.md)·[21 §6](../server/21-spot-node.ko.md)·[40 §12](../server/40-location-runtime.ko.md)·[41 §8](../server/41-location-store-redis.ko.md) | channel·SpotNode builder에 allocation group/slot count/prefix 표면이 없고, in-memory·Redis store에 원자적 slot acquire/renew/release capability가 없다. startup 전 할당·bind 전 routing id 적용·fencing·결과 provider도 모두 미구현이다 |
 
 ## 교차 언어 결함 — 이 언어에서 무엇을 고치나
 

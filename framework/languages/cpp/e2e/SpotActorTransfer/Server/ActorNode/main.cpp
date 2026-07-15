@@ -928,6 +928,15 @@ class join_actor_handler_t
               request.scenario, actor_id, false, std::string{}, request.target_spot_rid, 0,
               error_kind_name (error)}));
         }
+        catch (const std::exception &error) {
+            /* Callback failures are an application-visible rejected join.
+             * Keep them inside the HTTP result contract instead of letting
+             * an escaped exception close the transport without a response. */
+            _evidence.add (request.scenario, actor_id, "join_failed", error.what ());
+            co_return json_response (nlohmann::json (e2e::join_target_res_t{
+              request.scenario, actor_id, false, std::string{}, request.target_spot_rid, 0,
+              error.what ()}));
+        }
     }
 
   private:

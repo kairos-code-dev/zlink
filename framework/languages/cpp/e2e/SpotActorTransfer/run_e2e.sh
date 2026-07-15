@@ -33,13 +33,26 @@ SHUTDOWN_GRACE_SECONDS=0.5
 pick_ports() {
   python3 - "$1" <<'PY'
 import socket
+import secrets
 import sys
 sockets = []
-for _ in range(int(sys.argv[1])):
-    current = socket.socket()
-    current.bind(("127.0.0.1", 0))
+ports = []
+candidates = list(range(10000, 30000))
+secrets.SystemRandom().shuffle(candidates)
+for port in candidates:
+    try:
+        current = socket.socket()
+        current.bind(("127.0.0.1", port))
+    except OSError:
+        current.close()
+        continue
     sockets.append(current)
-print(" ".join(str(current.getsockname()[1]) for current in sockets))
+    ports.append(port)
+    if len(ports) == int(sys.argv[1]):
+        break
+if len(ports) != int(sys.argv[1]):
+    raise SystemExit(f"cannot reserve {sys.argv[1]} listener ports")
+print(" ".join(str(port) for port in ports))
 for current in sockets:
     current.close()
 PY

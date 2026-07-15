@@ -4,7 +4,9 @@
 
 이 문서는 C++ Config-6 E2E의 현재 구현 상태를 기록한다. 디렉터리 이름은 아직
 `DiscoveryRegistryHa`이지만, 실행 표면과 CMake target은 Redis location store 기반
-`StoreFailure`로 전환했다. registry/embedded/probe 레거시 role은 제거했다.
+`StoreFailure`로 전환했다. registry/embedded/probe 레거시 role은 제거했다. 열 개 client 검증은
+`Client/Scenarios/sf_*_scenario.hpp`에 ID별로 분리되어 있고 `Client/main.cpp`는 설정과 dispatch만
+담당한다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|

@@ -6,6 +6,8 @@
 두 개와 session gateway 두 개, consumer를 서로 다른 process로 시작한다. actor는 처음 소유하는
 actor node가 만들고 join을 시작한다. 이동은 별도 원격 생성 API가 아니라 기존 actor handoff 경로로
 수행한다. `run_e2e.sh all`은 공통 문서의 스무 시나리오를 모두 실행한다.
+각 client 흐름은 `Client/Scenarios/st_*_scenario.hpp`에 ID별로 분리되어 있으며, 공통 client
+context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한다.
 
 | 시나리오 | 상태 | 현재 검증 |
 |----------|------|----------------------|

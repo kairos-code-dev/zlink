@@ -32,13 +32,27 @@ assign_ports() {
     WORKFLOW_A_SPOT_PUB WORKFLOW_B_SPOT_PUB \
     STREAM_ENDPOINT <<<"$(python3 - <<'PY'
 import socket
+import secrets
 sockets = []
 ports = []
-for _ in range(21):
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
+# Do not ask the kernel's port-0 allocator for listener candidates. The same
+# allocator immediately chooses outbound local ports while roles start
+# sequentially, which can reclaim a later role's not-yet-bound candidate.
+candidates = list(range(10000, 30000))
+secrets.SystemRandom().shuffle(candidates)
+for port in candidates:
+    try:
+        s = socket.socket()
+        s.bind(("127.0.0.1", port))
+    except OSError:
+        s.close()
+        continue
     sockets.append(s)
-    ports.append(s.getsockname()[1])
+    ports.append(port)
+    if len(ports) == 21:
+        break
+if len(ports) != 21:
+    raise SystemExit("cannot reserve 21 listener ports")
 values = [f"http://127.0.0.1:{p}" for p in ports[:5]]
 values += [f"tcp://127.0.0.1:{p}" for p in ports[5:21]]
 print(" ".join(values))
@@ -187,6 +201,28 @@ os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 }
 
+verify_scenario() {
+  local scenario_id="$1"
+  shift
+  local path="$CONFIG_DIR/verify-${scenario_id,,}-$(date +%s%N).json"
+  python3 - "$path" "$scenario_id" "$@" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, scenario_id, *pairs = sys.argv[1:]
+if len(pairs) % 2:
+    raise SystemExit(f"{scenario_id} verification files must be key/path pairs")
+files = {pairs[index]: pairs[index + 1] for index in range(0, len(pairs), 2)}
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"verification": {
+        "scenarioId": scenario_id, "files": files}}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  "$CLIENT" --config="$path"
+}
+
 SPOT_RID="obs-room-1"
 WORKFLOW_SPOT_RID="obs-workflow-1"
 curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
@@ -203,45 +239,13 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "flow" ]]; then
   # trigger -> play-a session inbound -> play-b room-spot dispatch.
   write_trigger_config "$CONFIG_DIR/trigger-flow.json" flow "$SPOT_RID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-flow.json" >"$LOG_DIR/trigger-flow.log" 2>&1
-  python3 - "$LOG_DIR/session-flow.log" "$LOG_DIR/play-b-flow.log" <<'PY'
-import re, sys
-def flows(path, needle=None):
-    ids = []
-    for line in open(path, encoding="utf-8", errors="replace"):
-        if needle and needle not in line:
-            continue
-        m = re.search(r"flow=([0-9a-f-]{36})", line)
-        if m:
-            ids.append(m.group(1))
-    return ids
-session_ids = set(flows(sys.argv[1]))
-spot_ids = set(flows(sys.argv[2]))
-shared = session_ids & spot_ids
-assert shared, f"no shared flow id between session and spot logs: {session_ids} / {spot_ids}"
-# OBS-A1: the shared flow was created by the connector (origin=application).
-origin_ok = False
-for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    if any(f"flow={fid}" in line for fid in shared) and "origin=application" in line:
-        origin_ok = True
-        break
-assert origin_ok, "shared flow line lacks origin=application"
-print("OBS-A1 PASS (flow threads connector->session->room-spot)")
-PY
+  verify_scenario OBS-A1 sessionLog "$LOG_DIR/session-flow.log" \
+    spotLog "$LOG_DIR/play-b-flow.log"
 
   # OBS-A2 — the dispatch error line carries flow= too.
   write_trigger_config "$CONFIG_DIR/trigger-error.json" error "$SPOT_RID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-error.json" >"$LOG_DIR/trigger-error.log" 2>&1
-  python3 - "$LOG_DIR/session-flow.log" <<'PY'
-import re, sys
-error_flow = None
-for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    if "phase=error" in line or "zlink dispatch error" in line:
-        m = re.search(r"flow=([0-9a-f-]{36})", line)
-        if m:
-            error_flow = m.group(1)
-assert error_flow, "no error line with flow= found"
-print("OBS-A2 PASS (error line carries flow=)")
-PY
+  verify_scenario OBS-A2 sessionLog "$LOG_DIR/session-flow.log"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "metrics" ]]; then
@@ -284,6 +288,8 @@ for sample in play_a + play_b + session:
     assert not (forbidden & set(sample["tags"])), f"high-cardinality label: {sample}"
 print("OBS-B(subset) PASS (spot/queue/channel/stream instruments, closed labels)")
 PY
+  verify_scenario OBS-B1 sessionEvidence "$LOG_DIR/session.metrics.evidence.json"
+  verify_scenario OBS-B2 playEvidence "$LOG_DIR/play-b.metrics.evidence.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
@@ -301,45 +307,12 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
     -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"obs-a4\",\"value\":7}" \
     >"$LOG_DIR/workflow-action.json"
   sleep "$ROUTE_SETTLE_SECONDS"
-  python3 - "$LOG_DIR/workflow-b-flow.log" "$LOG_DIR/workflow-a-flow.log" \
-    "$LOG_DIR/play-a-flow.log" <<'PY'
-import re, sys
-def lines(path):
-    return open(path, encoding="utf-8", errors="replace").readlines()
-publish_flows = set()
-for line in lines(sys.argv[1]):
-    if "kind=publish" in line and "phase=sent" in line:
-        m = re.search(r"flow=([0-9a-f-]{36})", line)
-        if m:
-            publish_flows.add(m.group(1))
-assert publish_flows, "play-b has no publish sent line with flow="
-subscriber_flows = set()
-for line in lines(sys.argv[2]):
-    if "spot_subscription" in line:
-        m = re.search(r"flow=([0-9a-f-]{36})", line)
-        if m:
-            subscriber_flows.add(m.group(1))
-shared = publish_flows & subscriber_flows
-assert shared, f"subscriber lines do not share the publish flow: {publish_flows} / {subscriber_flows}"
-timer_flow = any("origin=timer" in line for line in lines(sys.argv[3]))
-assert timer_flow, "no origin=timer line on the timer-enabled node"
-print("OBS-A4 PASS (fan-out shares one flow, timer origin starts fresh)")
-PY
+  verify_scenario OBS-A4 publisherLog "$LOG_DIR/workflow-b-flow.log" \
+    subscriberLog "$LOG_DIR/workflow-a-flow.log" timerLog "$LOG_DIR/play-a-flow.log"
   curl_local -fsS "$WORKFLOW_B_HTTP/evidence" >"$LOG_DIR/workflow-b.fanout.evidence.json"
   curl_local -fsS "$WORKFLOW_A_HTTP/evidence" >"$LOG_DIR/workflow-a.fanout.evidence.json"
-  python3 - "$LOG_DIR/workflow-b.fanout.evidence.json" "$LOG_DIR/workflow-a.fanout.evidence.json" <<'PY'
-import json, sys
-published = [m for m in json.load(open(sys.argv[1], encoding="utf-8"))["metrics"]
-             if m["name"] == "zlink.fanout.published"]
-received = [m for m in json.load(open(sys.argv[2], encoding="utf-8"))["metrics"]
-            if m["name"] == "zlink.fanout.received"]
-assert published and all(m["tags"].get("topic") == "obs.projection" for m in published), published
-assert received and all(m["tags"].get("topic") == "obs.projection" for m in received), received
-dropped = [m for m in json.load(open(sys.argv[1], encoding="utf-8"))["metrics"]
-           if m["name"] == "zlink.fanout.dropped"]
-assert not dropped, "fanout.dropped must not emit without an observable drop capability"
-print("OBS-B3 PASS (fanout published/received with closed topic label)")
-PY
+  verify_scenario OBS-B3 publisherEvidence "$LOG_DIR/workflow-b.fanout.evidence.json" \
+    subscriberEvidence "$LOG_DIR/workflow-a.fanout.evidence.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "drain" ]]; then
@@ -453,6 +426,9 @@ states = [event["state"] for event in body["drainEvents"]]
 assert "drained" in states, f"drain did not reach a terminal state: {states}"
 print("OBS-C1 terminal PASS (drained)")
 PY
+  verify_scenario OBS-C1 duringEvidence "$LOG_DIR/play-b.drain.evidence.json" \
+    finalEvidence "$LOG_DIR/play-b.drain-final.evidence.json" \
+    rejectedCreate "$LOG_DIR/create-while-draining.json"
 fi
 
 relaunch_topology() {
@@ -557,6 +533,8 @@ body = json.load(open(sys.argv[1], encoding="utf-8"))
 assert body["nodeRid"] == "play-b", body
 print("OBS-C2 continuity PASS (post-move ping served by play-b)")
 PY
+  verify_scenario OBS-C2 sourceEvidence "$PHASE_LOG_DIR/play-a.evidence.json" \
+    postMovePing "$PHASE_LOG_DIR/ping-after.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "force" ]]; then
@@ -615,6 +593,12 @@ PY
     exit 1
   }
   echo "OBS-C4 PASS (forced stop notified the held session with server_drain)"
+  verify_scenario OBS-C4 sessionEvidence "$PHASE_LOG_DIR/session.evidence.json" \
+    connectorLog "$PHASE_LOG_DIR/hold-session.log"
+  if [[ "$SCENARIO" == "all" ]]; then
+    verify_scenario OBS-C5 rollingEvidence "$LOG_DIR/handoff/play-a.evidence.json" \
+      forcedEvidence "$PHASE_LOG_DIR/session.evidence.json"
+  fi
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "policy" ]]; then
@@ -641,6 +625,8 @@ body = json.load(open(sys.argv[1], encoding="utf-8"))
 assert body["state"] in ("created", "existing"), body
 print("OBS-C3 PASS (release-and-recreate freed the row; peer rebuilt the room)")
 PY
+  verify_scenario OBS-C3 drainedEvidence "$PHASE_LOG_DIR/workflow-b.evidence.json" \
+    recreate "$PHASE_LOG_DIR/recreate.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
@@ -654,26 +640,10 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
   write_trigger_config "$CONFIG_DIR/trigger-offnode-flow.json" flow "$SPOT_RID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-offnode-flow.json" \
     >"$PHASE_LOG_DIR/trigger-flow.log" 2>&1
-  python3 - "$PHASE_LOG_DIR/play-b-flow.log" "$PHASE_LOG_DIR/play-a-flow.log" <<'PY'
-import os, re, sys
-flows = set()
-for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    m = re.search(r"flow=([0-9a-f-]{36})", line)
-    if m and "origin=application" in line:
-        flows.add(m.group(1))
-assert flows, "flow pair did not cross the tracing-off node"
-if os.path.exists(sys.argv[2]):
-    for line in open(sys.argv[2], encoding="utf-8", errors="replace"):
-        assert "flow=" not in line, f"off node emitted a flow line: {line}"
-print("OBS-A3 PASS (off node propagates without creating or logging)")
-PY
+  verify_scenario OBS-A3 downstreamLog "$PHASE_LOG_DIR/play-b-flow.log" \
+    offNodeLog "$PHASE_LOG_DIR/play-a-flow.log"
   curl_local -fsS "$PLAY_A_HTTP/evidence" >"$PHASE_LOG_DIR/play-a.evidence.json"
-  python3 - "$PHASE_LOG_DIR/play-a.evidence.json" <<'PY'
-import json, sys
-body = json.load(open(sys.argv[1], encoding="utf-8"))
-assert body["metrics"] == [], "reader-less node must not accumulate metric samples"
-print("OBS-B4 PASS (no reader: messaging intact, no metric accumulation)")
-PY
+  verify_scenario OBS-B4 offNodeEvidence "$PHASE_LOG_DIR/play-a.evidence.json"
 fi
 
 cat <<'EOF'

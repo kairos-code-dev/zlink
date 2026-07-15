@@ -11,8 +11,8 @@
 
 | 공통 항목 | 상태 | C++ 구현 |
 |-----------|------|----------|
-| TA-A1 bind된 actor send/request | 구현 | `Client/main.cpp`가 actor를 준비한 뒤 caller 서버의 `/send`, `/request`를 호출한다. client는 actor owner evidence에서 `TA-A1-send`와 `TA-A1-request` handler marker를 확인한다. |
-| TA-A2 bind 안 된 actor send/request | 구현 | `TA-A2-unbound-*`가 session binding 없이 서버 측 caller에서 actor mailbox 전달과 reply를 확인한다. |
+| TA-A1 bind된 actor send/request | 구현 | `Client/Scenarios/ta_a1_scenario.hpp`가 actor를 준비한 뒤 caller 서버의 `/send`, `/request`를 호출하고 actor owner evidence의 handler marker를 확인한다. |
+| TA-A2 bind 안 된 actor send/request | 구현 | `Client/Scenarios/ta_a2_scenario.hpp`가 session binding 없이 서버 측 caller에서 actor mailbox 전달과 reply를 확인한다. |
 | TA-A3 no-bind 전달 뒤 이후 bind | 구현 | `TA-A3-before-bind`가 생성 전 fail-fast를 확인하고, 생성 뒤 `TA-A3-after-bind-*`가 성공을 확인한다. |
 | TA-A4 unbind/disconnect 후 | 구현 | `TA-A4-disconnected-*`가 session-bound 상태 없이 actor row가 유지되는 상태에서 호출하고, destroy 뒤 `actor_route_not_found`를 확인한다. |
 | TA-B1 row 없음 | 구현 | `TA-B1-missing*`가 send/request 양쪽에서 `actor_route_not_found`를 검증한다. |

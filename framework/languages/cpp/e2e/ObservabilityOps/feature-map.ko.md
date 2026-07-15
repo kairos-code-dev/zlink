@@ -3,9 +3,9 @@
 정본 시나리오: [config-11-observability-ops.ko.md](../../../../doc/framework/common/e2e/config-11-observability-ops.ko.md)
 
 현재 runner는 `Session`, `Play`, `OrderWorkflow`를 별도 실행 진입점과 역할별 설정 파일로 시작하고,
-standalone `Client`도 별도 실행 대상으로 사용한다. 다만 시나리오의 실행과 결과 단언 대부분이
-shell과 인라인 Python에 남아 있어 시나리오 파일 분리 작업은 완료되지 않았다(`E2E-CP-10`). 따라서
-각 시나리오에 실행 경로가 있더라도 아래의 판별력 gap을 해소하기 전에는 완료로 표시하지 않는다.
+standalone `Client`도 별도 실행 대상으로 사용한다. 열세 시나리오의 결과 단언은
+`Client/Scenarios/obs_*_scenario.hpp`에 ID별로 분리했고, runner에는 process 수명주기와 drain 중간
+상태 확인만 남겼다. 아래의 판별력 gap을 해소하기 전에는 각 시나리오를 완료로 표시하지 않는다.
 
 | 시나리오 | 상태 | 비고 |
 |----------|------|------|
@@ -17,11 +17,11 @@ shell과 인라인 Python에 남아 있어 시나리오 파일 분리 작업은 
 | OBS-B2 | `deferred` | room 부하를 만들지 않고 transfer 계기의 횟수와 구간을 계약값에 대조하지 않는다(`E2E-CP-63`). |
 | OBS-B3 | `deferred` | fan-out 1:N 값을 대조하지 않으며 Redis lease 지연 주입도 없다(`E2E-CP-11`, `E2E-CP-63`). |
 | OBS-B4 | `deferred` | meter가 꺼진 app collector의 빈 결과만 확인해 framework 내부 무적재를 판별하지 못한다(`E2E-CP-63`). |
-| OBS-C1 | `deferred` | typed draining row 유지, 기존 route 요청 8/8, owner lease 갱신, drain state 전이와 명시적 create 거절은 검증한다. 시나리오 파일 분리 작업이 남아 있다(`E2E-CP-10`). |
+| OBS-C1 | `deferred` | typed draining row 유지, 기존 route 요청 8/8, owner lease 갱신, drain state 전이와 명시적 create 거절은 검증한다. |
 | OBS-C2 | `deferred` | actor 이동 뒤 ping은 확인하지만 bound-session push 연속성과 pending request 결과를 확인하지 않는다(`E2E-CP-11`). |
 | OBS-C3 | `deferred` | 실제 `OrderWorkflow` 두 역할에서 release-and-recreate를 실행하지만, 재생성 응답이 기존 row 반환과 구분되는지 단언하지 못한다(`E2E-CP-63`). |
-| OBS-C4 | `deferred` | 별도 `Session`과 `Play` 역할에서 강제 종료 통지와 public `closeReason` 검사는 동작한다. 시나리오 파일 분리 작업이 남아 있다(`E2E-CP-10`). |
-| OBS-C5 | `deferred` | 별도 역할 배치에서 rolling drain과 zero-target의 terminal state·counter 검사는 동작한다. 시나리오 파일 분리 작업이 남아 있다(`E2E-CP-10`). |
+| OBS-C4 | `deferred` | 별도 `Session`과 `Play` 역할에서 강제 종료 통지와 public `closeReason` 검사는 동작한다. |
+| OBS-C5 | `deferred` | 별도 역할 배치에서 rolling drain과 zero-target의 terminal state·counter 검사는 동작한다. |
 
 실행: `./run_e2e.sh [all|flow|metrics|fanout|drain|handoff|force|policy|offnode]`
 

@@ -38,6 +38,8 @@ struct trigger_options_t
     std::string scenario;
     std::string stream_endpoint;
     std::string spot_rid;
+    std::optional<zlink::framework::e2e::observability_ops::client::verification_input_t>
+      verification;
 };
 
 trigger_options_t read_options (int argc, char **argv)
@@ -59,6 +61,13 @@ trigger_options_t read_options (int argc, char **argv)
         throw std::runtime_error ("cannot open ObservabilityOps trigger config: " + path);
     }
     const auto section = nlohmann::json::parse (input).at ("e2e");
+    if (section.contains ("verification")) {
+        const auto &verification = section.at ("verification");
+        return {.verification =
+                  zlink::framework::e2e::observability_ops::client::verification_input_t{
+                    .scenario_id = verification.at ("scenarioId").get<std::string> (),
+                    .files = verification.at ("files").get<std::map<std::string, std::string>> ()}};
+    }
     return {.scenario = section.at ("scenario").get<std::string> (),
             .stream_endpoint = section.at ("streamEndpoint").get<std::string> (),
             .spot_rid = section.at ("spotRid").get<std::string> ()};
@@ -77,6 +86,9 @@ int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv
 {
     try {
         const auto configured = read_options (argc, argv);
+        if (configured.verification) {
+            return run_scenario_verification (*configured.verification);
+        }
         const auto &scenario = configured.scenario;
         const auto &stream_endpoint = configured.stream_endpoint;
         const auto &spot_rid = configured.spot_rid;
@@ -130,9 +142,8 @@ int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv
               });
             // one action proves the session is live before the drain begins
             auto warm = client
-                          .request (obs::obs_action_req_t{.spot_rid = spot_rid,
-                                                          .marker = "obs-c4",
-                                                          .value = 1})
+                          .request (obs::obs_action_req_t{
+                            .spot_rid = spot_rid, .marker = "obs-c4", .value = 1})
                           .packet_name (obs::obs_action_req_t::packet_name)
                           .timeout (std::chrono::milliseconds (10000))
                           .submit<obs::obs_action_res_t> ();
@@ -143,7 +154,8 @@ int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv
             /* Keep dispatching: the connector pump answers server liveness
              * pings and surfaces the session-closing control; a passive wait
              * would starve both and the server would see a pong timeout. */
-            const auto wait_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
+            const auto wait_deadline =
+              std::chrono::steady_clock::now () + std::chrono::seconds (30);
             bool arrived = false;
             while (std::chrono::steady_clock::now () < wait_deadline) {
                 (void) client.dispatch ();
@@ -159,7 +171,7 @@ int zlink::framework::e2e::observability_ops::client::run (int argc, char **argv
             ensure (arrived, "OBS-C4 no close reason observed within 30s");
             const auto reason = *observed;
             const char *name =
-              reason == zlink::stream_connector::close_reason_t::server_drain ? "server_drain"
+              reason == zlink::stream_connector::close_reason_t::server_drain   ? "server_drain"
               : reason == zlink::stream_connector::close_reason_t::client_close ? "client_close"
               : reason == zlink::stream_connector::close_reason_t::idle_timeout ? "idle_timeout"
               : reason == zlink::stream_connector::close_reason_t::heartbeat_timeout

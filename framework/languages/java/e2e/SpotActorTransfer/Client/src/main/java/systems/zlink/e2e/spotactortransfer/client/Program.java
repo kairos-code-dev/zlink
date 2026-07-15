@@ -1,11 +1,7 @@
 package systems.zlink.e2e.spotactortransfer.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import systems.zlink.e2e.spotactortransfer.shared.Contracts;
 import systems.zlink.e2e.spotactortransfer.shared.Env;
+import systems.zlink.httpclient.ZLinkHttpClient;
 import systems.zlink.stream.connector.ZLinkStreamCompression;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
@@ -23,24 +20,24 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode;
 import systems.zlink.stream.connector.ZLinkStreamPacketNameResolver;
 
-public final class Program {
-    private final ObjectMapper json = new ObjectMapper();
-    private final HttpClient http = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(3))
-        .build();
+public final class Program implements AutoCloseable {
     private final String nodeA = Env.require("ZLINK_JAVA_E2E_NODE_A_HTTP");
     private final String nodeB = Env.require("ZLINK_JAVA_E2E_NODE_B_HTTP");
     private final String nodeC = Env.require("ZLINK_JAVA_E2E_NODE_C_HTTP");
+    private final ZLinkHttpClient nodeAHttp = createHttpClient(nodeA);
+    private final ZLinkHttpClient nodeBHttp = createHttpClient(nodeB);
+    private final ZLinkHttpClient nodeCHttp = createHttpClient(nodeC);
     private final Path signals = Path.of(Env.get("ZLINK_JAVA_E2E_LOG_DIR", "."));
 
     public static void main(String... args) throws Exception {
-        Program program = new Program();
-        String selected = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
-        for (String scenario : scenarios(selected)) {
-            program.run(scenario);
-            System.out.println("scenario " + scenario + " passed");
+        try (Program program = new Program()) {
+            String selected = Env.get("ZLINK_JAVA_E2E_SCENARIO", "all");
+            for (String scenario : scenarios(selected)) {
+                program.run(scenario);
+                System.out.println("scenario " + scenario + " passed");
+            }
+            System.out.println("spot-actor-transfer e2e result=passed");
         }
-        System.out.println("spot-actor-transfer e2e result=passed");
     }
 
     private static List<String> scenarios(String selected) {
@@ -744,34 +741,55 @@ public final class Program {
 
     private <T> CompletableFuture<T> postAsync(String uri, Object body, Class<T> type)
         throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(uri))
+        RequestTarget target = requestTarget(uri);
+        return target.client().post(target.path())
             .timeout(Duration.ofSeconds(14))
-            .header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(body)))
-            .build();
-        return http.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
-            .thenApply(response -> decode(response, type));
+            .body(body)
+            .submit(type)
+            .thenApply(response -> response.body())
+            .toCompletableFuture();
     }
 
     private <T> T get(String uri, Class<T> type) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(uri))
+        RequestTarget target = requestTarget(uri);
+        return target.client().get(target.path())
             .timeout(Duration.ofSeconds(5))
-            .GET()
-            .build();
-        return decode(http.send(request, HttpResponse.BodyHandlers.ofByteArray()), type);
+            .fetch(type);
     }
 
-    private <T> T decode(HttpResponse<byte[]> response, Class<T> type) {
-        if (response.statusCode() / 100 != 2) {
-            throw new IllegalStateException(
-                "HTTP " + response.statusCode() + ": " + new String(response.body()));
+    private RequestTarget requestTarget(String uri) {
+        URI target = URI.create(uri);
+        String baseUrl = target.getScheme() + "://" + target.getRawAuthority();
+        String path = target.getRawPath();
+        if (target.getRawQuery() != null) {
+            path += "?" + target.getRawQuery();
         }
-        try {
-            return json.readValue(response.body(), type);
-        } catch (Exception error) {
-            throw new IllegalStateException("failed to decode HTTP response", error);
+        if (nodeA.equals(baseUrl)) {
+            return new RequestTarget(nodeAHttp, path);
         }
+        if (nodeB.equals(baseUrl)) {
+            return new RequestTarget(nodeBHttp, path);
+        }
+        if (nodeC.equals(baseUrl)) {
+            return new RequestTarget(nodeCHttp, path);
+        }
+        throw new IllegalArgumentException("unknown SpotActorTransfer HTTP endpoint: " + baseUrl);
     }
+
+    private static ZLinkHttpClient createHttpClient(String baseUrl) {
+        return ZLinkHttpClient.create(baseUrl)
+            .timeout(Duration.ofSeconds(3))
+            .build();
+    }
+
+    @Override
+    public void close() {
+        nodeCHttp.close();
+        nodeBHttp.close();
+        nodeAHttp.close();
+    }
+
+    private record RequestTarget(ZLinkHttpClient client, String path) { }
 
     private static String id(String prefix) {
         return prefix + "-" + UUID.randomUUID().toString().replace("-", "");

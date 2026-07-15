@@ -35,6 +35,33 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         nativeSpotNode.SetPubBind(endpoint);
     }
 
+    public void ApplyRoleConfig(
+        IZLinkSpotPublisherConfig? publisher,
+        IZLinkSpotSubscriberConfig? subscriber)
+    {
+        if (publisher is not null)
+        {
+            if (publisher.SendHighWaterMark > 0)
+                nativeSpotNode.PubSubHighWaterMark = publisher.SendHighWaterMark;
+            nativeSpotNode.PublisherSendTimeout = publisher.SendTimeout;
+            nativeSpotNode.PublisherLinger = publisher.Linger;
+            nativeSpotNode.PublisherNoDrop = publisher.NoDrop;
+        }
+
+        if (subscriber is not null)
+        {
+            if (subscriber.ReceiveHighWaterMark > 0)
+                nativeSpotNode.PubSubHighWaterMark = subscriber.ReceiveHighWaterMark;
+            nativeSpotNode.SubscriberReceiveTimeout = subscriber.ReceiveTimeout;
+            nativeSpotNode.SubscriberLinger = subscriber.Linger;
+        }
+    }
+
+    public void OnSendReady(Action handler)
+    {
+        nativeSpotNode.SetSendReadyHandler(() => handler());
+    }
+
     public void ConnectPeer(string endpoint)
     {
         nativeSpotNode.ConnectPeer(endpoint);

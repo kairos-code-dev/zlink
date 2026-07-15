@@ -1,6 +1,8 @@
 namespace Zlink.Framework.Runtime.Streams;
 
-internal interface IZLinkBoundSessionFactory
+internal interface IZLinkBoundSessionService
 {
     IZLinkBoundSession Create(string actorId);
+
+    ValueTask ResetAsync();
 }

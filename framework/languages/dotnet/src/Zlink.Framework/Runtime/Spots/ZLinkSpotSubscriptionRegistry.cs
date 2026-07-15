@@ -26,6 +26,22 @@ internal sealed class ZLinkSpotSubscriptionRegistry
 
     public void Bind(object spot, IZLinkBackendSpot nativeSpot)
     {
+        foreach (var (topic, handlers) in BuildDescriptors(spot))
+        {
+            _descriptorsByTopic.Add(topic, handlers);
+            nativeSpot.SetSubscription(topic);
+        }
+    }
+
+    public void Validate(object spot)
+    {
+        _ = BuildDescriptors(spot);
+    }
+
+    private Dictionary<string, List<ZLinkSpotSubscriptionDescriptor>> BuildDescriptors(object spot)
+    {
+        var descriptorsByTopic = new Dictionary<string, List<ZLinkSpotSubscriptionDescriptor>>(
+            StringComparer.Ordinal);
         foreach (var subscription in _registrations)
         {
             var descriptor = subscription.Method is { } method
@@ -34,10 +50,10 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 : ZLinkSpotDescriptorFactory.CreateSubscriptionDescriptor(
                     subscription.Topic, subscription.HandlerType, spot.GetType());
 
-            if (!_descriptorsByTopic.TryGetValue(subscription.Topic, out var handlers))
+            if (!descriptorsByTopic.TryGetValue(subscription.Topic, out var handlers))
             {
                 handlers = [];
-                _descriptorsByTopic.Add(subscription.Topic, handlers);
+                descriptorsByTopic.Add(subscription.Topic, handlers);
             }
 
             if (handlers.Any(existing => string.Equals(
@@ -47,8 +63,9 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 throw new ZLinkConfigurationException(
                     $"SPOT subscription handler for topic '{subscription.Topic}' and packet '{descriptor.MessageName}' is already registered.");
             handlers.Add(descriptor);
-            nativeSpot.SetSubscription(subscription.Topic);
         }
+
+        return descriptorsByTopic;
     }
 
     public async ValueTask DrainAsync(

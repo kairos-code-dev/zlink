@@ -89,6 +89,19 @@ public sealed class test_ctx_options
     }
 
     [Fact]
+    public void socket_handshake_interval_is_public_and_reaches_native_option()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+        router.Options.HandshakeInterval = TimeSpan.FromMilliseconds(750);
+
+        Assert.Equal(TimeSpan.FromMilliseconds(750), router.Options.HandshakeInterval);
+    }
+
+    [Fact]
     public void shutdown_context_is_callable()
     {
         if (!CoreTestSupport.IsNativeAvailable())

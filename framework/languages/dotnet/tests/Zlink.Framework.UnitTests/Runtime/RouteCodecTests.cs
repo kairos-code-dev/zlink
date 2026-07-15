@@ -142,6 +142,7 @@ public sealed class RouteCodecTests
 
         Assert.Equal("application/route-test", router.ReplyContentType);
         Assert.Equal("ROUTE:reply", router.ReplyBody);
+        Assert.Equal(string.Empty, router.SentHeader?.MessageName);
     }
 
     [Fact]
@@ -417,6 +418,13 @@ public sealed class RouteCodecTests
 
         public int ReceiveHighWaterMark { get; private set; }
 
+        public void ApplySocketConfig(IZLinkSocketConfig config)
+        {
+            if (config.MaxMessageSize > 0) SetMaxMessageSize(config.MaxMessageSize);
+            if (config.SendHighWaterMark > 0) SetSendHighWaterMark(config.SendHighWaterMark);
+            if (config.ReceiveHighWaterMark > 0) SetReceiveHighWaterMark(config.ReceiveHighWaterMark);
+        }
+
         public ValueTask DisposeAsync()
         {
             return ValueTask.CompletedTask;
@@ -451,6 +459,8 @@ public sealed class RouteCodecTests
     private sealed class RecordingRoutingDealer : IZLinkBackendDealerSocket
     {
         public bool ProbeRouterOnConnect { get; private set; }
+
+        public void ApplySocketConfig(IZLinkSocketConfig config) => throw new NotSupportedException();
 
         public void SetProbe(bool enabled)
         {
@@ -523,6 +533,8 @@ public sealed class RouteCodecTests
         public bool Probe { get; private set; }
 
         public RoutingId ConnectRoutingId { get; private set; }
+
+        public void ApplySocketConfig(IZLinkSocketConfig config) => throw new NotSupportedException();
 
         public async ValueTask DisposeAsync()
         {
@@ -678,7 +690,8 @@ public sealed class RouteCodecTests
         {
             _ = routingId;
             _ = requestSeq;
-            ReplyContentType = ZLinkEnvelopeCodec.DecodeHeader(parts).ContentType;
+            SentHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
+            ReplyContentType = SentHeader.ContentType;
             ReplyBody = parts[1].GetString();
         }
     }
@@ -725,6 +738,8 @@ public sealed class RouteCodecTests
         public RoutingId? ConnectRoutingId { get; private set; }
 
         public bool ProbeEnabled { get; private set; }
+
+        public void ApplySocketConfig(IZLinkSocketConfig config) => throw new NotSupportedException();
 
         public ValueTask DisposeAsync()
         {

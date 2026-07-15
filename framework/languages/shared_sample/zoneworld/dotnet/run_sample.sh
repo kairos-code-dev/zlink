@@ -4,17 +4,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$ROOT_DIR/../../../dotnet/samples/redis-common.sh"
 SCENARIO="${1:-all}"
-RUN_ID="$(date +%Y%m%d-%H%M%S)"
-LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
-mkdir -p "$LOG_DIR"
-
-REDIS_PORT="${ZONEWORLD_REDIS_PORT:-6379}"
-export ZONEWORLD_REDIS_ENDPOINT="${ZONEWORLD_REDIS_ENDPOINT:-127.0.0.1:$REDIS_PORT}"
-export ZONEWORLD_REDIS_KEY_PREFIX="zoneworld-$RUN_ID:"
-export ZONEWORLD_LOG_DIR="$LOG_DIR"
+RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
+RUN_ID="$(basename "$RUN_DIR")-$$-$RANDOM"
+LOG_DIR="$RUN_DIR/logs"
+CONFIG_DIR="$RUN_DIR/config"
+mkdir -p "$LOG_DIR" "$CONFIG_DIR"
 
 PIDS=()
+REDIS_CONTAINER=""
 
 cleanup() {
   for pid in "${PIDS[@]:-}"; do
@@ -23,25 +22,59 @@ cleanup() {
   for pid in "${PIDS[@]:-}"; do
     wait "$pid" 2>/dev/null || true
   done
-  redis-cli -p "$REDIS_PORT" --scan --pattern "zoneworld-$RUN_ID:*" 2>/dev/null \
-    | xargs -r redis-cli -p "$REDIS_PORT" del >/dev/null 2>&1 || true
+  if [[ -n "$REDIS_CONTAINER" ]]; then
+    docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
-# A node left over from an earlier run keeps its routing id bound, so the mesh routes to the
-# ghost instead of the node this run just started — every cross-node transfer then vanishes
-# and the scenarios fail as if the code were broken. Refuse to start until they are gone.
-echo "==> orphan check"
-if pgrep -f "bin/Debug/net8.0/ZoneWorld.Server" >/dev/null 2>&1; then
-  echo "    a ZoneWorld server from an earlier run is still alive; terminating it"
-  pkill -f "bin/Debug/net8.0/ZoneWorld.Server" 2>/dev/null || true
-  sleep 3
-  pkill -9 -f "bin/Debug/net8.0/ZoneWorld.Server" 2>/dev/null || true
-  sleep 1
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is required to run ZoneWorld (it provisions a dedicated Redis container)." >&2
+  exit 1
 fi
+REDIS_CONTAINER="zlink-zoneworld-dotnet-redis-$RUN_ID"
+zlink_redis_start_scoped_assign REDIS_CONTAINER REDIS_ENDPOINT \
+  "zlink-zoneworld-dotnet-redis" redis:7.2-alpine
 
-echo "==> redis check"
-redis-cli -p "$REDIS_PORT" ping >/dev/null
+python3 - "$CONFIG_DIR" "$REDIS_ENDPOINT" "$RUN_ID" "$LOG_DIR" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+redis = sys.argv[2]
+run_id = sys.argv[3]
+log_dir = sys.argv[4]
+shared = {"redisEndpoint": redis, "redisKeyPrefix": f"zoneworld-{run_id}:", "logDirectory": log_dir}
+
+def write(name, role, value):
+    (root / f"{name}.json").write_text(json.dumps({"shared": shared, role: value}), encoding="utf-8")
+
+for index in (1, 2, 3):
+    base = 48100 + index * 10
+    write(f"zone-node-{index}", "zoneNode", {
+        "nodeId": f"zone-node-{index}",
+        "spotRouterEndpoint": f"tcp://127.0.0.1:{base}",
+        "spotPubSubEndpoint": f"tcp://127.0.0.1:{base + 1}",
+        "opsChannelEndpoint": f"tcp://127.0.0.1:{base + 2}",
+        "actorsChannelEndpoint": f"tcp://127.0.0.1:{base + 3}",
+        "bridgeEndpoint": f"tcp://127.0.0.1:{base + 4}",
+        "faultTickZone": "zone-nw" if index == 1 else None,
+        "disableBots": False,
+    })
+
+write("ops", "ops", {
+    "streamEndpoint": "ws://127.0.0.1:48090",
+    "broadcastEndpoint": "tcp://127.0.0.1:48091",
+    "reportEndpoint": "tcp://127.0.0.1:48092",
+})
+write("gateway", "gateway", {
+    "streamEndpoint": "ws://127.0.0.1:48080",
+    "spotRouterEndpoint": "tcp://127.0.0.1:48081",
+    "spotPubSubEndpoint": "tcp://127.0.0.1:48082",
+    "nodeRid": "gw01",
+})
+PY
 
 echo "==> build"
 dotnet build "$ROOT_DIR/Server/Ops/ZoneWorld.Server.Ops.csproj" -v q --nologo >/dev/null
@@ -78,23 +111,45 @@ stop_node() {
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   unset "NODE_PID[$name]"
-  # Give the kernel a moment to release the node's endpoints; a restart that races the old
-  # process's sockets fails to bind and looks like a sample bug.
-  sleep 3
 }
 
 start_zone_node() {
   local name="$1"
+  local first_new_line first_new_ops_line
+  first_new_line=$(($(wc -l <"$LOG_DIR/$name.log" 2>/dev/null || printf '0') + 1))
+  first_new_ops_line=$(($(wc -l <"$LOG_DIR/ops.log" 2>/dev/null || printf '0') + 1))
   : >"$LOG_DIR/$name.restart.marker"
-  start "$name" "$SERVER_BIN" "$name"
-  wait_for_log "$name" "topology=ready"
-  # The node is up, but its peers still have to notice it: auto-connect and the location rows
-  # settle over the next few seconds. Starting the next scenario before that just makes it flaky.
-  sleep 12
+  start "$name" "$SERVER_BIN" --config "$CONFIG_DIR/$name.json"
+  wait_for_log_after "$name" "topology=ready" "$first_new_line"
+  # These two independent observations replace a fixed convergence delay: the restarted node
+  # has submitted a status report, and Ops has observed the new socket connection.
+  wait_for_log_after "$name" "packet=ReportNodeStatusMsg" "$first_new_line"
+  wait_for_log_after ops "node connection observed. node=$name, connected=True" "$first_new_ops_line"
+}
+
+client_config() {
+  local scenarios="$1" path="$CONFIG_DIR/client.json"
+  python3 - "$CONFIG_DIR/ops.json" "$path" "$scenarios" <<'PY'
+import json
+import pathlib
+import sys
+
+source = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+source.pop("ops")
+source["client"] = {
+    "gatewayEndpoint": "ws://127.0.0.1:48080",
+    "opsEndpoint": "ws://127.0.0.1:48090",
+    "scenarios": sys.argv[3],
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(source), encoding="utf-8")
+PY
+  printf '%s\n' "$path"
 }
 
 run_client() {
-  "$CLIENT_BIN" "$1" 2>&1 | tee -a "$LOG_DIR/client.log"
+  local config
+  config="$(client_config "$1")"
+  "$CLIENT_BIN" --config "$config" 2>&1 | tee -a "$LOG_DIR/client.log"
   return "${PIPESTATUS[0]}"
 }
 
@@ -122,16 +177,28 @@ wait_for_log() {
   return 1
 }
 
+wait_for_log_after() {
+  local name="$1" pattern="$2" first_line="$3" attempts="${4:-200}"
+  for ((i = 0; i < attempts; i++)); do
+    if tail -n +"$first_line" "$LOG_DIR/$name.log" 2>/dev/null | grep -q "$pattern"; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "!! $name never logged '$pattern' after line $first_line" >&2
+  tail -20 "$LOG_DIR/$name.log" >&2 || true
+  return 1
+}
+
 echo "==> ops"
-start ops "$OPS_BIN"
-sleep 2
+start ops "$OPS_BIN" --config "$CONFIG_DIR/ops.json"
+wait_for_log ops "Application started."
 
 echo "==> zone nodes"
 # ZW-C4 needs a real spot runtime event, so zone-node-1's zone-nw tick is made to throw
 # once. `env` keeps the switch on this one process — the other nodes must stay healthy.
-start zone-node-1 env ZONEWORLD_FAULT_TICK_ZONE="${ZONEWORLD_FAULT_TICK_ZONE:-zone-nw}" \
-  "$SERVER_BIN" zone-node-1
-start zone-node-2 "$SERVER_BIN" zone-node-2
+start zone-node-1 "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-1.json"
+start zone-node-2 "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-2.json"
 wait_for_log zone-node-1 "topology=ready"
 wait_for_log zone-node-2 "topology=ready"
 
@@ -139,19 +206,19 @@ wait_for_log zone-node-2 "topology=ready"
 # show that Ops publishes without a node list — adding a node changes nothing on the
 # publishing side (ZW-D2, scenario §11.1).
 echo "==> zone-node-3 (fanout subscriber only)"
-start zone-node-3 "$SERVER_BIN" zone-node-3
+start zone-node-3 "$SERVER_BIN" --config "$CONFIG_DIR/zone-node-3.json"
 wait_for_log zone-node-3 "topology=ready"
 
 echo "==> gateway"
-start gateway "$GATEWAY_BIN"
-sleep 3
+start gateway "$GATEWAY_BIN" --config "$CONFIG_DIR/gateway.json"
+wait_for_log gateway "Application started."
 
 echo "==> scenarios ($SCENARIO)"
 set +e
 CLIENT_SCENARIO="$(printf '%s' "$SCENARIO" | tr ',' '\n' | grep -vxE 'ZW-D2|ZW-F2|ZW-C2|ZW-C3|ZW-B4|ZW-E5|ZW-E5-arm' | paste -sd, -)"
 if [[ "$SCENARIO" == "all" || -n "$CLIENT_SCENARIO" ]]; then
-  "$CLIENT_BIN" \
-    "${CLIENT_SCENARIO:-$SCENARIO}" 2>&1 | tee "$LOG_DIR/client.log"
+  CLIENT_CONFIG="$(client_config "${CLIENT_SCENARIO:-$SCENARIO}")"
+  "$CLIENT_BIN" --config "$CLIENT_CONFIG" 2>&1 | tee "$LOG_DIR/client.log"
   status=${PIPESTATUS[0]}
 else
   status=0
@@ -162,44 +229,59 @@ set -e
 # node the client is never told about (ZW-D2), another node's fanout subscriber (ZW-D1), the
 # whole bot population (ZW-F1), or a push that must never be attempted (ZW-F3). The runner reads
 # those out of the server logs.
+# The client writes its verdicts to client.log; these write theirs here. The §12 markers below
+# are decided from both, so a runner verdict has to be recorded, not just printed.
+RUNNER_LOG="$LOG_DIR/runner.log"
+: >"$RUNNER_LOG"
+
+pass() { echo "scenario $1 passed" | tee -a "$RUNNER_LOG"; }
+fail() { echo "scenario $1 FAILED: $2" >&2; echo "scenario $1 failed" >>"$RUNNER_LOG"; status=1; }
+
+# A runner verdict such as ZW-D1-spots belongs to ZW-D1: it asserts the half of that scenario a
+# client cannot see. Selecting ZW-D1 has to select it too, or a targeted run quietly proves less
+# than the same scenario proves in a full one.
+selects() {
+  [[ "$SCENARIO" == "all" ]] && return 0
+  local base
+  base="$(printf '%s' "$1" | cut -d- -f1,2)"
+  [[ "$SCENARIO" == *"$base"* ]]
+}
+
 runner_scenario() {
   local id="$1" description="$2" log="$3" pattern="$4"
-  if [[ "$SCENARIO" != "all" && "$SCENARIO" != *"$id"* ]]; then return 0; fi
+  selects "$id" || return 0
   if grep -q "$pattern" "$LOG_DIR/$log" 2>/dev/null; then
-    echo "scenario $id passed"
+    pass "$id"
   else
-    echo "scenario $id FAILED: $description" >&2
-    status=1
+    fail "$id" "$description"
   fi
 }
 
 # Passes only when the pattern appears in *every* named log.
 runner_scenario_all() {
   local id="$1" description="$2" pattern="$3"; shift 3
-  if [[ "$SCENARIO" != "all" && "$SCENARIO" != *"$id"* ]]; then return 0; fi
+  selects "$id" || return 0
   local log
   for log in "$@"; do
     if ! grep -q "$pattern" "$LOG_DIR/$log" 2>/dev/null; then
-      echo "scenario $id FAILED: $description ($log)" >&2
-      status=1
+      fail "$id" "$description ($log)"
       return 0
     fi
   done
-  echo "scenario $id passed"
+  pass "$id"
 }
 
 # Passes only when the pattern appears nowhere. An assertion about something that must not
 # happen has to be written as an absence, or it asserts nothing.
 runner_scenario_absent() {
   local id="$1" description="$2" pattern="$3"; shift 3
-  if [[ "$SCENARIO" != "all" && "$SCENARIO" != *"$id"* ]]; then return 0; fi
+  selects "$id" || return 0
   local hits
   hits="$(grep -l "$pattern" "${@/#/$LOG_DIR/}" 2>/dev/null || true)"
   if [[ -n "$hits" ]]; then
-    echo "scenario $id FAILED: $description ($hits)" >&2
-    status=1
+    fail "$id" "$description ($hits)"
   else
-    echo "scenario $id passed"
+    pass "$id"
   fi
 }
 
@@ -222,22 +304,22 @@ fi
 
 # ZW-D1: one publish, no node list, and it comes out of *both* nodes' fanout subscribers and
 # reaches *every* zone spot. The client half of ZW-D1 asserts what a client can see — that an
-# announcement it receives is never a duplicate.
-runner_scenario_all ZW-D1 "a node's fanout subscriber never received the announcement" \
+# announcement it receives is never a duplicate — so these carry their own ids: a client verdict
+# and a runner verdict on the same id would be indistinguishable in the log.
+runner_scenario_all ZW-D1-subscribers "a node's fanout subscriber never received the announcement" \
   "fanout subscriber received announcement" zone-node-1.log zone-node-2.log
 runner_scenario_all ZW-D1-spots "a zone spot never received the announcement" \
   "zone spot: announcement delivered" zone-node-1.log zone-node-2.log
 
 # ZW-F1: the world holds eight bots. No client sees them all — a client only ever receives one
 # zone's view — so the population is counted here.
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ZW-F1"* ]]; then
+if selects ZW-F1-population; then
   bots="$(grep -ho "bot spawned. bot=[a-z0-9-]*" "$LOG_DIR"/zone-node-*.log 2>/dev/null \
     | sort -u | wc -l)"
   if [[ "$bots" -eq 8 ]]; then
-    echo "scenario ZW-F1-population passed"
+    pass ZW-F1-population
   else
-    echo "scenario ZW-F1-population FAILED: the world holds $bots bots, not 8" >&2
-    status=1
+    fail ZW-F1-population "the world holds $bots bots, not 8"
   fi
 fi
 
@@ -255,6 +337,48 @@ runner_scenario ZW-D2 "zone-node-3 never received a world announcement" \
 # transfer recorded here proves the actor moved without a bound session.
 runner_scenario ZW-F2 "no bot transferred across nodes" \
   zone-node-2.log "player entered. zone=zone-ne, player=bot-nw-x, bot=True, from=zone-node-1"
+
+# §12 asks the sample to say what it proved, not just that it exited zero. The runner owns these
+# markers because no single client run sees the whole suite: the client's batch leaves out the
+# scenarios that need a node taken away, and six more are judged from server logs. A marker is
+# printed only when every scenario behind it actually passed — a phase that says "completed"
+# without having run is worse than no marker at all.
+declare -A PASSED=()
+while read -r id; do PASSED["$id"]=1; done < <(
+  sed -nE 's/^scenario ([A-Za-z0-9-]+) passed$/\1/p' \
+    "$LOG_DIR/client.log" "$RUNNER_LOG" 2>/dev/null
+)
+
+phase() {
+  local marker="$1"; shift
+  local id
+  for id in "$@"; do
+    if [[ -z "${PASSED[$id]:-}" ]]; then
+      echo "!! $marker withheld: $id did not pass" >&2
+      return 0
+    fi
+  done
+  echo "$marker"
+}
+
+# Only a full run can claim a phase. A selective run proves one scenario, not a capability.
+if [[ "$SCENARIO" == "all" ]]; then
+  phase "zoneworld-transfer=completed"        ZW-B2 ZW-B3 ZW-F2
+  phase "zoneworld-border-sync=completed"     ZW-B1 ZW-B4
+  phase "zoneworld-ops-observe=completed"     ZW-C1 ZW-C2 ZW-C3 ZW-C4
+  phase "zoneworld-ops-announce=completed"    ZW-D1 ZW-D1-subscribers ZW-D1-spots ZW-D2
+  phase "zoneworld-ops-maintenance=completed" ZW-E1 ZW-E2 ZW-E3 ZW-E4 ZW-E5 ZW-E6
+
+  # The whole of §11, plus the six verdicts only the runner can reach. Gated on status as well:
+  # a scenario can fail without its id ever reaching the log.
+  phase "zoneworld=completed" \
+    ZW-A1 ZW-A2 ZW-A3 ZW-A4 ZW-A5 \
+    ZW-B1 ZW-B2 ZW-B3 ZW-B4 \
+    ZW-C1 ZW-C2 ZW-C3 ZW-C4 \
+    ZW-D1 ZW-D1-subscribers ZW-D1-spots ZW-D2 \
+    ZW-E1 ZW-E2 ZW-E3 ZW-E4 ZW-E5 ZW-E5-arm ZW-E6 \
+    ZW-F1 ZW-F1-population ZW-F2 ZW-F3 ZW-F3-no-push ZW-F4
+fi
 
 echo "==> logs: $LOG_DIR"
 exit "$status"

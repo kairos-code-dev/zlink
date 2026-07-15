@@ -116,7 +116,7 @@ internal sealed class ZLinkSpotActorHandlerRegistry
             return;
 
         if (existing is not null)
-            throw new InvalidOperationException(
+            throw new ZLinkConfigurationException(
                 $"Actor packet '{descriptor.MessageName}' for '{descriptor.ActorType}' is already registered.");
 
         _packets.Add(key, descriptor);
@@ -196,7 +196,7 @@ internal sealed class ZLinkSpotActorHandlerRegistry
             return;
 
         if (existing is not null)
-            throw new InvalidOperationException(
+            throw new ZLinkConfigurationException(
                 $"Actor lifecycle callback for '{descriptor.ActorType}' is already declared.");
 
         target.Add(descriptor.ActorType, descriptor);

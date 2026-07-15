@@ -29,7 +29,7 @@ internal sealed class LocationEventHandler(
             .Select(entry => entry.NodeRid!.Value.ToString())
             .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var nodeId in ZoneTopology.AllNodes)
+        foreach (var nodeId in ZoneTopology.ZoneNodes)
             nodes.ApplyRegistration(nodeId, live.Contains(ZoneTopology.RidOf(nodeId)));
 
         logger.LogDebug(

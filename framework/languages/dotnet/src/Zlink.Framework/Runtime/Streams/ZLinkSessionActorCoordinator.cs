@@ -70,15 +70,58 @@ internal sealed class ZLinkSessionActorCoordinator(
             EnsureConcreteActorRef(actor);
             var actorRef = actor.ToBackend();
             await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
-            return await _bindings.BindAsync(
-                context,
-                actor,
-                cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await ConfirmRemoteBindingAsync(context, actor, cancellationToken).ConfigureAwait(false);
+                return await _bindings.BindAsync(
+                    context,
+                    actor,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception bindingFailure)
+            {
+                try
+                {
+                    await UnbindNativeActorAsync(actor.ActorId, CancellationToken.None)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception rollbackFailure)
+                {
+                    throw new AggregateException(bindingFailure, rollbackFailure);
+                }
+
+                throw;
+            }
         }
         finally
         {
             ZLinkRuntimeMetrics.CompleteStreamSessionBind(metricStarted);
         }
+    }
+
+    private async ValueTask ConfirmRemoteBindingAsync(
+        ZLinkSessionContext context,
+        ActorRef actor,
+        CancellationToken cancellationToken)
+    {
+        // Contexts constructed before runtime startup are used only by the
+        // transport-level unit boundary; no remote route exists to confirm.
+        if (!runtime.IsStarted) return;
+        if (context.RoutingId is not { } sessionRid)
+            throw new InvalidOperationException("Actor session binding requires a stream routing id.");
+        var sessionNodeRid = runtime.GetActorClientSpotNode().RoutingId;
+        if (actor.NodeRid == sessionNodeRid) return;
+        var response = await new ZLinkActorClient(runtime)
+            .RequestToActor(actor, new ZLinkRemoteSessionBindRequest(
+                sessionNodeRid.ToBytes().ToArray(),
+                sessionRid.ToBytes().ToArray()))
+            .Timeout(runtime.Registration.DefaultRequestTimeout)
+            .Async<ZLinkRemoteSessionBindResponse>(cancellationToken)
+            .ConfigureAwait(false);
+        if (!response.Acknowledged)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                $"Actor '{actor.ActorId}' did not acknowledge its remote session binding.");
     }
 
     public IZLinkSessionActor? FindActor(string actorId)

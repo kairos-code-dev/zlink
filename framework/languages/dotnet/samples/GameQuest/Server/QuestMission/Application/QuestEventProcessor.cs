@@ -1,94 +1,100 @@
 using GameQuest.QuestMission.Domain;
-using GameQuest.Server.Configuration;
-using GameQuest.Shared;
 
 namespace GameQuest.QuestMission.Application;
+
+internal sealed record QuestProcessorIdentity(string MissionName);
+
+internal sealed record GameplaySnapshot(string PlayerId, int KillCount, long Version);
 
 internal sealed class QuestEventProcessor(
     IQuestStore store,
     IGameApiSnapshotClient snapshots,
     IQuestProgressNotifier notifications,
-    QuestMissionInstanceTopology instance,
+    QuestProcessorIdentity identity,
     ILogger<QuestEventProcessor> logger)
 {
-    private readonly string _missionName = instance.MissionName;
-    private readonly QuestProjectionBuilder _projectionBuilder = new();
-
     public async ValueTask ProcessAsync(
-        GameplayEventEnvelope gameplayEvent,
+        GameplayFact gameplayFact,
         CancellationToken cancellationToken)
     {
-        var definition = gameplayEvent.EventType == "SnapshotKillCount"
-            ? QuestCatalog.All.First(definition => definition.QuestId == QuestIds.FirstHunt)
-            : QuestCatalog.Match(gameplayEvent);
+        var definition = gameplayFact.EventType == "SnapshotKillCount"
+            ? QuestCatalog.All.First(candidate => candidate.QuestId == "first-hunt")
+            : QuestCatalog.Match(gameplayFact);
         if (definition is null) return;
 
-        var stream = await store.ReadQuestStreamAsync(gameplayEvent.PlayerId, definition.QuestId, cancellationToken);
-        var before = _projectionBuilder.Replay(definition, stream);
-        if (await store.HasSourceEventAsync(gameplayEvent.PlayerId, definition.QuestId, gameplayEvent.EventId,
+        var stream = await store.ReadQuestStreamAsync(
+            gameplayFact.PlayerId,
+            definition.QuestId,
+            cancellationToken);
+        var aggregate = QuestProgressAggregate.Rehydrate(definition, stream);
+        var decision = aggregate.Decide(gameplayFact);
+        if (decision is null) return;
+        if (!await store.AppendAndProjectAsync(
+                decision.State,
+                decision.Events,
                 cancellationToken)) return;
 
-        var after = _projectionBuilder.Apply(definition, before, gameplayEvent);
-        var questEvents = _projectionBuilder.ToEvents(definition, before, after, gameplayEvent);
-        if (questEvents.Length == 0) return;
-
-        if (!await store.AppendAndProjectAsync(after, questEvents, cancellationToken)) return;
-
-        var projection = await store.ReadProjectionAsync(gameplayEvent.PlayerId, cancellationToken);
-        var notified = await NotifyBoundGameApiAsync(gameplayEvent.SourceApi, new NotifyQuestProgressReq(
-                gameplayEvent.PlayerId,
-                projection,
-                questEvents.Any(e => e.EventType == nameof(QuestCompletedEvent)) ? definition.QuestId : null),
+        var projection = await store.ReadProjectionAsync(gameplayFact.PlayerId, cancellationToken);
+        var completedQuestId = decision.Events.OfType<QuestCompleted>().Any()
+            ? definition.QuestId
+            : null;
+        var notified = await NotifyBoundGameApiAsync(
+            gameplayFact.PlayerId,
+            projection,
+            completedQuestId,
             cancellationToken);
 
         logger.LogInformation(
             "gamequest mission processed mission={Mission} player={PlayerId} quest={QuestId} source={SourceEventId} events={EventCount} notified={Notified}",
-            _missionName,
-            gameplayEvent.PlayerId,
+            identity.MissionName,
+            gameplayFact.PlayerId,
             definition.QuestId,
-            gameplayEvent.EventId,
-            questEvents.Length,
+            gameplayFact.EventId,
+            decision.Events.Count,
             notified);
     }
 
-    public async ValueTask<SyncQuestProgressRes> SyncAsync(
-        SyncQuestProgressReq request,
+    public async ValueTask<QuestProgressState[]> SyncAsync(
+        string playerId,
         CancellationToken cancellationToken)
     {
-        var snapshotRequest = new GetGameplaySnapshotReq(request.PlayerId);
-        var snapshot = await snapshots.ReadSnapshotAsync(snapshotRequest, cancellationToken);
-        var killCount = snapshot.KillCounts.Sum(kill => kill.Count);
-        if (killCount > 0)
+        var snapshot = await snapshots.ReadSnapshotAsync(playerId, cancellationToken);
+        if (snapshot.KillCount > 0)
             await ProcessAsync(
-                new GameplayEventEnvelope(
-                    $"{request.PlayerId}-snapshot-{snapshot.SnapshotVersion}",
-                    request.PlayerId,
-                    $"snapshot-{snapshot.SnapshotVersion}",
+                new GameplayFact(
+                    $"{playerId}-snapshot-{snapshot.Version}",
+                    playerId,
                     "SnapshotKillCount",
                     "kills",
-                    killCount,
+                    snapshot.KillCount,
                     "api-a",
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
                 cancellationToken);
 
-        return new SyncQuestProgressRes(await store.ReadProjectionAsync(request.PlayerId, cancellationToken));
+        return await store.ReadProjectionAsync(playerId, cancellationToken);
     }
 
     private async ValueTask<bool> NotifyBoundGameApiAsync(
-        string sourceApi,
-        NotifyQuestProgressReq request,
+        string playerId,
+        IReadOnlyList<QuestProgressState> projection,
+        string? completedQuestId,
         CancellationToken cancellationToken)
     {
-        var result = await notifications.NotifyAsync(sourceApi, request, cancellationToken);
+        var result = await notifications.NotifyAsync(
+            playerId,
+            projection,
+            completedQuestId,
+            cancellationToken);
         if (result.FailureStatus is not null)
             logger.LogWarning(
                 "gamequest mission projection kept while stream notify failed. player={PlayerId} status={StatusCode}",
-                request.PlayerId,
+                playerId,
                 result.FailureStatus);
         else if (result.UnavailableError is not null)
-            logger.LogWarning(result.UnavailableError,
+            logger.LogWarning(
+                result.UnavailableError,
                 "gamequest mission projection kept while stream notify endpoint was unavailable. player={PlayerId}",
-                request.PlayerId);
+                playerId);
 
         return result.Delivered;
     }
@@ -96,39 +102,34 @@ internal sealed class QuestEventProcessor(
 
 internal interface IQuestStore
 {
-    ValueTask<QuestProgress[]> ReadProjectionAsync(
+    ValueTask<QuestProgressState[]> ReadProjectionAsync(
         string playerId,
         CancellationToken cancellationToken);
 
-    ValueTask<StoredQuestEvent[]> ReadQuestStreamAsync(
+    ValueTask<QuestDomainEvent[]> ReadQuestStreamAsync(
         string playerId,
         string questId,
-        CancellationToken cancellationToken);
-
-    ValueTask<bool> HasSourceEventAsync(
-        string playerId,
-        string questId,
-        string sourceEventId,
         CancellationToken cancellationToken);
 
     ValueTask<bool> AppendAndProjectAsync(
-        QuestProgress projection,
-        IReadOnlyList<StoredQuestEvent> events,
+        QuestProgressState projection,
+        IReadOnlyList<QuestDomainEvent> events,
         CancellationToken cancellationToken);
 }
 
 internal interface IGameApiSnapshotClient
 {
-    ValueTask<GetGameplaySnapshotRes> ReadSnapshotAsync(
-        GetGameplaySnapshotReq request,
+    ValueTask<GameplaySnapshot> ReadSnapshotAsync(
+        string playerId,
         CancellationToken cancellationToken);
 }
 
 internal interface IQuestProgressNotifier
 {
     ValueTask<QuestProgressNotifyResult> NotifyAsync(
-        string sourceApi,
-        NotifyQuestProgressReq request,
+        string playerId,
+        IReadOnlyList<QuestProgressState> projection,
+        string? completedQuestId,
         CancellationToken cancellationToken);
 }
 

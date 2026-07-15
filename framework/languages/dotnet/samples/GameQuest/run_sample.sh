@@ -246,7 +246,7 @@ grep -q "gamequest mission processed" "${LOG_DIR}/mission-b.log"
 grep -q "gamequest player quest spot ready" "${LOG_DIR}/mission-a.log"
 grep -q "gamequest player quest spot ready" "${LOG_DIR}/mission-b.log"
 curl -fsS -X POST "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}/self-check/assert" | grep -q '"passed":true'
-curl -fsS "${GAMEQUEST_MISSION_A_HTTP_URL}/self-check/events" | grep -q "QuestProgressReconciledEvent"
+curl -fsS "${GAMEQUEST_MISSION_A_HTTP_URL}/self-check/events" | grep -q "QuestReconciled"
 grep -Rq "message flow" "${SAMPLE_LOG_DIR}"
 echo "gamequest-server-evidence=completed"
 RUN_SUCCEEDED=1

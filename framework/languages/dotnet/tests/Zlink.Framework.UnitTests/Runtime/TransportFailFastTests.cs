@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Diagnostics.Metrics;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Runtime.Diagnostics;
@@ -6,6 +7,7 @@ using Zlink.Framework.Runtime.Messaging;
 
 namespace Zlink.Framework.UnitTests;
 
+[Collection(RuntimeMetricsCollection.Name)]
 public sealed class TransportFailFastTests
 {
     [Fact]
@@ -98,6 +100,51 @@ public sealed class TransportFailFastTests
         {
             errorSink.UnhandledCallbackException -= handler;
         }
+    }
+
+    [Theory]
+    [InlineData("timeout", "backpressure")]
+    [InlineData("stale", "stale_route")]
+    public async Task Unawaited_Channel_Submit_Records_Closed_Drop_Reason(
+        string failure,
+        string expectedReason)
+    {
+        var reasons = new List<string>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name == "zlink.channel.messages.dropped")
+                    meterListener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+                if (tag.Key == "reason" && tag.Value is string reason)
+                    reasons.Add(reason);
+        });
+        listener.Start();
+
+        using var errorSink = new ZLinkRuntimeErrorSink();
+        Exception exception = failure == "timeout"
+            ? new TimeoutException("backpressured")
+            : new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RouteNotConnected,
+                "stale route",
+                true);
+        ZLinkUnawaitedSubmit.Observe(
+            ValueTask.FromException(exception),
+            "channel send",
+            errorSink,
+            "Channel",
+            "send");
+
+        for (var attempt = 0; attempt < 100 && reasons.Count == 0; attempt++)
+            await Task.Delay(10);
+
+        Assert.Equal([expectedReason], reasons);
     }
 
     [Fact]

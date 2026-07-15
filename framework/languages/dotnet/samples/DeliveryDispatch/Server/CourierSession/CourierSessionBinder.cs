@@ -40,7 +40,7 @@ internal sealed class CourierSessionBinder(
             Zlink.Framework.Contracts.Messaging.ZLinkMessage.From(
                 new BindCourierReq(courierId, context.SessionId)),
             cancellationToken);
-        return new BindCourierSessionRes(courierId, actor.NodeRid.ToString(), context.SessionId);
+        return new BindCourierSessionRes(courierId, actor, context.SessionId);
     }
 
     private async ValueTask<ActorRefSnapshot> FindOrEnsureActorAsync(

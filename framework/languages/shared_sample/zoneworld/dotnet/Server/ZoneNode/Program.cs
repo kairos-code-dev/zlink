@@ -15,11 +15,17 @@ using ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Spots.Handlers;
 using ZoneWorld.Server.ZoneNode.Ports;
 using ZoneWorld.Shared.Contracts;
 
-var nodeId = args.FirstOrDefault()
-             ?? throw new InvalidOperationException("Usage: ZoneNode <node-id>");
+var configuration = ZoneWorldConfiguration.Load(args);
+var shared = configuration.Shared;
+var node = configuration.ZoneNode
+           ?? throw new InvalidOperationException("ZoneNode configuration is required.");
+var nodeId = node.NodeId;
 
-var shared = ZoneWorldSettings.Create();
-var node = ZoneNodeSettings.Create(nodeId);
+// A node with no zones is the probe of §11.1: it hosts nothing, serves nothing, and is known
+// to no other role. All it does is subscribe to the broadcast channel, which is what makes it
+// evidence for ZW-D2 — Ops publishes to a node it was never told about.
+var zones = ZoneTopology.ZonesOf(nodeId);
+var hostsZones = zones.Count > 0;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
@@ -59,35 +65,37 @@ builder.Services.AddZLinkFramework(options =>
         .TraceLabel(nodeId);
     options.AddHandlersFromAssemblyOf(typeof(ZoneSpot));
 
+    // The node that hosts no zone registers the broadcast subscriber and nothing else — no
+    // mesh, no bridge, no channel of its own (§11.1). Anything more would make it a node Ops
+    // could have been told about, and ZW-D2 would stop meaning anything.
+    if (!hostsZones)
+    {
+        options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
+            .EnableSubscriber()
+            .AddPublishHandler<BroadcastProbeSubscriber, WorldAnnounceEvent>(nameof(WorldAnnounceEvent));
+        return;
+    }
+
     // The zone spots and the player actors. A player entering a zone joins the spot named
     // after it, and when that spot is on another node the join is the transfer — which is
     // why the transfer adapter is not optional (§2.6).
-    var mesh = options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
+    options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
         .EnableRouter(node.SpotRouterEndpoint)
         .SetRoutingId(node.NodeRid)
         .SetEntrySpotRoutingId(node.NodeRid)
-        .EnablePubSub(node.SpotPubSubEndpoint);
-
-    if (node.PeerNodeRid is not null)
-        mesh = mesh
-            .ConnectRouter(node.PeerNodeRid.Value, node.PeerSpotRouterEndpoint!)
-            .ConnectPeerPub(node.PeerSpotPubSubEndpoint!);
-
-    mesh
+        .EnablePubSub(node.SpotPubSubEndpoint)
         .AddEntrySpot<ZoneEntrySpot>()
         .AddActorFactory<PlayerActorFactory>(ZoneWorldNames.PlayerActorType)
         .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(ZoneWorldNames.PlayerActorType)
         .AddSpotFactory<ZoneSpot>();
 
-    // Registered only so the runtime can build the spot bridge that carries the
-    // announcement from a channel handler into this node's zone spots (§8.2). It is never
-    // used to address a node from the application (§1.1).
-    var bridge = options.AddRouteMeshChannel(ZoneWorldNames.BridgeMesh)
+    // Registered only so the runtime can build the spot bridge that carries the announcement
+    // from a channel handler into this node's zone spots (§8.2). It is never used to address a
+    // node from the application (§1.1).
+    options.AddRouteMeshChannel(ZoneWorldNames.BridgeMesh)
         .EnableServer(node.BridgeEndpoint)
         .EnableClient()
         .SetRoutingId(node.NodeRid);
-
-    if (node.PeerBridgeEndpoint is not null) bridge.EnableClient(node.PeerBridgeEndpoint);
 
     // The node's own channel. Ops calls the channel named after the node, so a call
     // reaches this node and no other (§8.4).
@@ -115,16 +123,34 @@ builder.Services.AddZLinkFramework(options =>
         .SetRoutingId(node.NodeRid);
 });
 
-builder.Services.AddZLinkMonitoring(monitor =>
+if (hostsZones)
 {
-    // Ops cannot subscribe to a remote node's spot events, so this node watches its own
-    // and reports them explicitly (§8.1).
-    monitor.AddSpotEvents(ZoneWorldNames.ZoneSpotSource, TimeSpan.FromMilliseconds(200));
-});
+    builder.Services.AddZLinkMonitoring(monitor =>
+    {
+        // Ops cannot subscribe to a remote node's spot events, so this node watches its own
+        // and reports them explicitly (§8.1).
+        monitor.AddSpotEvents(ZoneWorldNames.ZoneSpotSource, TimeSpan.FromMilliseconds(200));
+    });
 
-// Registered after the framework so they start after it: the bootstrap creates spots and
-// actors, and the runtime has to be accepting operations before it can.
-builder.Services.AddHostedService<ZoneNodeBootstrap>();
-builder.Services.AddHostedService<NodeStatusReporter>();
+    // Registered after the framework so they start after it: the bootstrap creates spots and
+    // actors, and the runtime has to be accepting operations before it can.
+    builder.Services.AddHostedService<ZoneNodeBootstrap>();
+    builder.Services.AddHostedService<NodeStatusReporter>();
+}
+var host = builder.Build();
 
-await builder.Build().RunAsync();
+if (!hostsZones)
+{
+    // The probe node has no spots or actors to bring up, but the runner still waits for the
+    // line that says a node has finished starting. It must not appear before the subscriber is
+    // running, or an announcement can be published into a node that is not yet listening.
+    await host.StartAsync();
+    host.Services
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("ZoneWorld.BroadcastProbe")
+        .LogInformation("topology=ready node={NodeId} zones=", nodeId);
+    await host.WaitForShutdownAsync();
+    return;
+}
+
+await host.RunAsync();

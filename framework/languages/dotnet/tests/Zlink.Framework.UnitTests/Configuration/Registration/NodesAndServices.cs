@@ -869,6 +869,45 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
+    public async Task HostStartup_Rejects_Duplicate_UserSpot_Subscription_Registration()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.DisableImplicitHandlerAutoRegistration();
+            options.AddSpotMesh("duplicate-subscription")
+                .EnableRouter($"inproc://duplicate-subscription-{Guid.NewGuid():N}")
+                .EnablePubSub($"inproc://duplicate-subscription-pub-{Guid.NewGuid():N}")
+                .AddSpotFactory<DuplicateSubscriptionSpot>();
+        });
+        using var host = builder.Build();
+
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
+
+        Assert.Contains("SPOT subscription handler", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("already registered", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HostStartup_Rejects_Duplicate_UserSpot_Actor_Registration()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddZLinkFramework(options =>
+        {
+            options.DisableImplicitHandlerAutoRegistration();
+            options.AddSpotMesh("duplicate-actor")
+                .EnableRouter($"inproc://duplicate-actor-{Guid.NewGuid():N}")
+                .AddSpotFactory<DuplicateActorSpot>();
+        });
+        using var host = builder.Build();
+
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(() => host.StartAsync());
+
+        Assert.Contains("actor packet", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("already registered", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task HostStartup_Rejects_Invalid_ScannedSpotTimer()
     {
         var builder = Host.CreateApplicationBuilder();
@@ -913,6 +952,70 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         public ValueTask HandleAsync(
             DuplicatePacketSpot spot,
             DuplicatePacketMessage message,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed record DuplicateSubscriptionMessage(string Value);
+
+    private sealed class DuplicateSubscriptionSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.Handlers.AddSubscribe<DuplicateSubscriptionHandler>("duplicate-topic");
+            Context.Handlers.AddSubscribe<DuplicateSubscriptionHandler>("duplicate-topic");
+        }
+    }
+
+    private sealed class DuplicateSubscriptionHandler
+        : IZLinkSpotSubscriptionHandler<DuplicateSubscriptionSpot, DuplicateSubscriptionMessage>
+    {
+        public ValueTask HandleAsync(
+            DuplicateSubscriptionSpot spot,
+            DuplicateSubscriptionMessage message,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed record DuplicateActorMessage(string Value);
+
+    private sealed class DuplicateActor(string actorId, IZLinkActorContext context) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context { get; } = context;
+    }
+
+    private sealed class DuplicateActorSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+
+        public void Configure()
+        {
+            Context.Handlers.AddActorPacket<DuplicateActorHandler, DuplicateActor>();
+            Context.Handlers.AddActorPacket<SecondDuplicateActorHandler, DuplicateActor>();
+        }
+    }
+
+    private sealed class DuplicateActorHandler
+        : IZLinkSpotActorSendHandler<DuplicateActorSpot, DuplicateActor, DuplicateActorMessage>
+    {
+        public ValueTask HandleAsync(
+            DuplicateActorSpot spot,
+            DuplicateActor actor,
+            ZLinkSpotActorSendContext context,
+            DuplicateActorMessage message,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class SecondDuplicateActorHandler
+        : IZLinkSpotActorSendHandler<DuplicateActorSpot, DuplicateActor, DuplicateActorMessage>
+    {
+        public ValueTask HandleAsync(
+            DuplicateActorSpot spot,
+            DuplicateActor actor,
+            ZLinkSpotActorSendContext context,
+            DuplicateActorMessage message,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 

@@ -55,9 +55,14 @@ internal sealed class WorldAnnounceSubscriber(
                     continue;
                 }
 
+                // Submitted without the handler's token on purpose. The send is one-way, so it
+                // outlives this handler — and the handler's token is done the moment the handler
+                // returns. Passing it here cancels the send that has not left yet, which loses
+                // the announcement for a whole node with no error anywhere: no send is logged,
+                // nothing is dropped, the subscriber just reports success.
                 routes
                     .SendToSpot(handle, new DeliverAnnounceMsg(message.AnnouncementId, message.Text))
-                    .Submit(cancellationToken);
+                    .Submit();
             }
             catch (Exception error)
             {
@@ -67,6 +72,30 @@ internal sealed class WorldAnnounceSubscriber(
                     zoneId);
             }
         }
+    }
+}
+
+/// <summary>
+/// The subscriber of the node that hosts no zone (§11.1). There is nowhere to deliver an
+/// announcement to, and that is the point: receiving one is the evidence that Ops published
+/// to a node it was never configured with, without a line of Ops changing (ZW-D2).
+/// </summary>
+internal sealed class BroadcastProbeSubscriber(
+    NodeMaintenancePolicy maintenance,
+    ILogger<BroadcastProbeSubscriber> logger)
+    : IZLinkPublishHandler<WorldAnnounceEvent>
+{
+    public ValueTask HandleAsync(
+        WorldAnnounceEvent message,
+        ZLinkPublishContext context,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation(
+            "fanout subscriber received announcement. node={NodeId}, announcement={AnnouncementId}, zones={ZoneCount}",
+            maintenance.OwnNodeId,
+            message.AnnouncementId,
+            0);
+        return ValueTask.CompletedTask;
     }
 }
 

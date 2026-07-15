@@ -1,4 +1,3 @@
-using ObservabilityOps.Server.Play.Domain;
 using ObservabilityOps.Server.Play.Infrastructure;
 using ObservabilityOps.Server.Play.Spots;
 using ObservabilityOps.Server.Play.Support;

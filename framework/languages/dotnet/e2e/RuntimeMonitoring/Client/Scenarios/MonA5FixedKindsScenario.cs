@@ -8,14 +8,15 @@ internal static class MonA5FixedKindsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
+        using var service = ZLinkHttpClient.Create(options.ServiceUrl)
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Build();
         await MonitoringChannelClient.SendInvalidHandshakeAsync(options.ServiceChannelEndpoint);
         var serviceEvidence = await WaitForFixedKindsAsync(service);
 
         ScenarioAssert.That(
-            serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                                        && (line.Contains("kind=HandshakeFailed", StringComparison.Ordinal)
-                                            || line.Contains("kind=Internal", StringComparison.Ordinal))),
+                serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
+                                        && line.Contains("kind=HandshakeFailed", StringComparison.Ordinal)),
             "MON-A5 handshake failure evidence missing.");
         ScenarioAssert.That(
             serviceEvidence.Any(line =>
@@ -42,7 +43,7 @@ internal static class MonA5FixedKindsScenario
             .Body(new EvidenceWaitReq(
                 [],
                 [
-                    ["kind=HandshakeFailed", "kind=Internal"],
+                    ["kind=HandshakeFailed"],
                     ["monitor-location-runtime|source=location-runtime|kind=StatusChanged"],
                     ["monitor-spot|source=monitor.spot|kind=StatusChanged"],
                     ["monitor-spot|source=monitor.spot|kind=TimerStoppedAfterUnhandledException"],
@@ -57,8 +58,7 @@ internal static class MonA5FixedKindsScenario
     private static bool HasFixedKinds(string[] evidence)
     {
         return evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                                    && (line.Contains("kind=HandshakeFailed", StringComparison.Ordinal)
-                                        || line.Contains("kind=Internal", StringComparison.Ordinal)))
+                                    && line.Contains("kind=HandshakeFailed", StringComparison.Ordinal))
                && evidence.Any(line => line.Contains(
                    "monitor-location-runtime|source=location-runtime|kind=StatusChanged",
                    StringComparison.Ordinal))

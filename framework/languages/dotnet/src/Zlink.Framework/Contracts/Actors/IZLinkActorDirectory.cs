@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using Zlink.Framework.Runtime.Codecs;
+
 namespace Zlink.Framework.Contracts.Actors;
 
 public interface IZLinkActorDirectory
@@ -17,6 +20,7 @@ public readonly record struct ZLinkActorPlacement(
     RoutingId? PreferredNodeRid = null,
     string? RouteMesh = null);
 
+[JsonConverter(typeof(ActorRefSnapshotJsonConverter))]
 public sealed record ActorRefSnapshot(
     RoutingId NodeRid,
     string ActorId,

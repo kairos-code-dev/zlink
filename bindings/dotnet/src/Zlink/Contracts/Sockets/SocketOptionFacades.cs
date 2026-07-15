@@ -134,6 +134,17 @@ public partial class CommonSocketOptions
     }
 
     /// <summary>
+    ///     Gets or sets the maximum time allowed for protocol handshaking; null
+    ///     keeps the native default.
+    /// </summary>
+    public TimeSpan? HandshakeInterval
+    {
+        get => DecodeDuration(Socket.GetOption(SocketOptions.HandshakeIvl));
+        set => Socket.SetOption(SocketOptions.HandshakeIvl,
+            EncodeDuration(value, nameof(value)));
+    }
+
+    /// <summary>
     ///     Gets or sets TCP keep-alive: -1 uses the OS default, 0 disables it, 1
     ///     enables it.
     /// </summary>

@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket) : IZLinkBackendRouterSocket
 {
+    public void ApplySocketConfig(IZLinkSocketConfig config) =>
+        ZLinkBackendSocketOptionsMapper.Apply(nativeSocket.Options, config);
     private readonly object _gate = new();
 
     internal IRouterSocket NativeSocket => nativeSocket;

@@ -11,8 +11,10 @@ using ZoneWorld.Server.Ops.Infrastructure.ZLink.Sessions;
 using ZoneWorld.Server.Ops.Ports;
 using ZoneWorld.Shared.Contracts;
 
-var shared = ZoneWorldSettings.Create();
-var ops = OpsSettings.Create();
+var configuration = ZoneWorldConfiguration.Load(args);
+var shared = configuration.Shared;
+var ops = configuration.Ops
+          ?? throw new InvalidOperationException("Ops configuration is required.");
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
@@ -67,9 +69,11 @@ builder.Services.AddZLinkFramework(options =>
         .EnableServer(ops.ReportEndpoint)
         .AddHandlerGroup(HandlerGroups.Ops);
 
-    // A node is addressed by the channel named after it, so the call lands on that node
-    // and no other (§8.4).
-    foreach (var nodeId in ZoneTopology.AllNodes)
+    // A node is addressed by the channel named after it, so the call lands on that node and no
+    // other (§8.4). What is enumerated here is the §2 zone placement — the nodes an operator can
+    // select — not a list of who is out there. The announcement above leaves without consulting
+    // it, and a node outside the placement (§11.1) is unknown here yet still receives it (ZW-D2).
+    foreach (var nodeId in ZoneTopology.ZoneNodes)
         options.AddClientServerChannel(ZoneWorldNames.OpsChannel(nodeId))
             .EnableClient();
 });

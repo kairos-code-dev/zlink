@@ -33,9 +33,10 @@ internal static class Program
         builder.Services.AddSingleton<QuestStore>();
         builder.Services.AddSingleton<IQuestStore>(sp => sp.GetRequiredService<QuestStore>());
         builder.Services.AddSingleton<PlayerQuestOwnerProvisioner>();
-        builder.Services.AddSingleton<IGameApiSnapshotClient, ZLinkGameApiSnapshotClient>();
+        builder.Services.AddSingleton<IGameApiSnapshotClient, HttpGameApiSnapshotClient>();
         builder.Services.AddSingleton<IQuestProgressNotifier, ZLinkQuestProgressNotifier>();
         builder.Services.AddSingleton<QuestOwnerRouter>();
+        builder.Services.AddSingleton(new QuestProcessorIdentity(missionName));
         builder.Services.AddScoped<QuestEventProcessor>();
         builder.Services.AddZLinkFramework(options =>
         {
@@ -66,8 +67,21 @@ internal static class Program
         app.MapGet("/self-check/events",
             async (QuestStore store, CancellationToken cancellationToken) =>
             {
-                return Results.Ok(await store.ReadEventsAsync(cancellationToken));
+                return Results.Ok(await store.ReadStoredEventsAsync(cancellationToken));
             });
+        app.MapPost("/self-check/owner/{playerId}/close", async (
+            string playerId,
+            IZLinkSpotManager spots,
+            CancellationToken cancellationToken) =>
+        {
+            if (GameQuestRouting.OwnerIndex(playerId) != instance.OwnerIndex)
+                return Results.NotFound();
+
+            var spotRid = RoutingId.From(System.Text.Encoding.UTF8.GetBytes($"player:{playerId}"));
+            return await spots.CloseAsync(spotRid, cancellationToken)
+                ? Results.Ok()
+                : Results.Conflict();
+        });
         await app.RunAsync();
     }
 }

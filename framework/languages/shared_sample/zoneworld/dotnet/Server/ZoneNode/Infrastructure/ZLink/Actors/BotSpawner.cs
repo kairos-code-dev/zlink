@@ -1,7 +1,6 @@
 using Systems.Zlink;
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
-using Zlink.Framework.Contracts.Errors;
+using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.ZoneNode.Application.Node;
@@ -22,10 +21,11 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Actors;
 /// </summary>
 internal sealed class ZoneNodeBootstrap(
     IZLinkSpotManager spots,
-    IZLinkActorManager actorManager,
+    IZLinkActorDirectory directory,
     IZLinkActorClient actors,
     IMaintenanceStorePort store,
     NodeMaintenancePolicy maintenance,
+    ZoneNodeSettings settings,
     ILogger<ZoneNodeBootstrap> logger) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -39,10 +39,7 @@ internal sealed class ZoneNodeBootstrap(
             logger.LogInformation("zone hosted. node={NodeId}, zone={ZoneId}", maintenance.OwnNodeId, zoneId);
         }
 
-        // Diagnostic switch: the bots keep a cross-node transfer running all the time, which
-        // is exactly what makes a join failure hard to isolate. Turning them off leaves only
-        // the moves the scenario itself makes.
-        if (ZoneWorldSettings.Text("ZONEWORLD_DISABLE_BOTS", "0") != "1")
+        if (!settings.DisableBots)
             foreach (var route in zones.SelectMany(BotPatrolPolicy.RoutesOf))
                 await SpawnBotAsync(route, cancellationToken);
 
@@ -74,33 +71,27 @@ internal sealed class ZoneNodeBootstrap(
     private async Task SpawnBotAsync(BotRoute route, CancellationToken cancellationToken)
     {
         // A bot outlives the node that spawned it. The X patrollers cross the boundary, so by
-        // the time this node restarts one of "its" bots may be alive on the other node — and
-        // it is still the same actor. Recreating it would be a second actor with the same id.
-        if (await actorManager.FindAsync(route.PlayerId, cancellationToken) is not null)
+        // the time this node restarts one of "its" bots may be alive on the other node — and it
+        // is still the same actor. Recreating it would be a second actor with the same id.
+        //
+        // The *directory* is what can answer that: it looks this node up first and then falls
+        // back to the location store, so it sees the whole world. `IZLinkActorManager.FindAsync`
+        // only knows actors this node created, so on a fresh restart it says "no" about a bot
+        // that is very much alive next door.
+        if (await directory.FindAsync(route.PlayerId, cancellationToken) is not null)
         {
             logger.LogInformation("bot already in the world, not respawned. bot={PlayerId}", route.PlayerId);
             return;
         }
 
-        ActorRef actorRef;
-        try
-        {
-            actorRef = await actorManager.GetOrCreateAsync(
-                route.PlayerId,
-                ZoneWorldNames.PlayerActorType,
-                cancellationToken);
-        }
-        catch (ZLinkFrameworkException error)
-        {
-            // The bot is alive on the other node and this node's view of the actor location has
-            // not caught up yet. The claim conflict is the authoritative answer: it already
-            // exists, so there is nothing to spawn.
-            logger.LogInformation(
-                "bot already claimed by another node, not respawned. bot={PlayerId}, detail={Detail}",
-                route.PlayerId,
-                error.Message);
-            return;
-        }
+        // Ensure, not create. If the create loses a claim race the directory looks again and
+        // returns the winner; and if the actor genuinely cannot be placed — the location store
+        // is unreachable, say — it throws. That distinction matters: swallowing the failure here
+        // would let the node log topology=ready over a world with no bots in it (§2.7).
+        var actorRef = await directory.EnsureAsync(
+            route.PlayerId,
+            ZLinkMessage.Empty,
+            cancellationToken: cancellationToken);
 
         var entered = await actors
             .RequestToActor(

@@ -253,7 +253,6 @@ dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.cs
 grep -q "deliverydispatch=completed" "${LOG_DIR}/client.log"
 grep -q "topology=ready" "${LOG_DIR}/client.log"
 grep -q "deliverydispatch-reassignment=completed" "${LOG_DIR}/client.log"
-grep -q "deliverydispatch-server-evidence=completed" "${LOG_DIR}/client.log"
 wait_log "deliverydispatch tracking: status" "${LOG_DIR}/tracking.log"
 wait_log "deliverydispatch customer-session: bound customer" "${LOG_DIR}/customer-gateway.log"
 wait_log "deliverydispatch customer-entry: pushed status" "${LOG_DIR}/customer-gateway.log"

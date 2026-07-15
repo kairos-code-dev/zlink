@@ -12,15 +12,15 @@ namespace GameQuest.QuestMission.Infrastructure.ZLink;
 internal sealed class ApplyGameplayEventRouteHandler(
     PlayerQuestOwnerProvisioner owners,
     QuestOwnerRouter ownerRouter)
-    : IZLinkRequestHandler<ApplyGameplayEventReq, ApplyGameplayEventRes>
+    : IZLinkSendHandler<GameplayMsg>
 {
-    public async ValueTask<ApplyGameplayEventRes> HandleAsync(
-        ApplyGameplayEventReq request,
-        ZLinkRequestContext context,
+    public async ValueTask HandleAsync(
+        GameplayMsg message,
+        ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
-        if (!ownerRouter.IsLocalOwner(request.Event.PlayerId)) return new ApplyGameplayEventRes(false);
-        return await owners.ApplyGameplayEventAsync(request.Event, cancellationToken);
+        if (!ownerRouter.IsLocalOwner(message.PlayerId)) return;
+        await owners.ApplyGameplayEventAsync(message, cancellationToken);
     }
 }
 
@@ -37,24 +37,10 @@ internal sealed class SyncQuestProgressRouteHandler(
         CancellationToken cancellationToken)
     {
         if (!ownerRouter.IsLocalOwner(request.PlayerId))
-            return new SyncQuestProgressRes(await store.ReadProjectionAsync(request.PlayerId, cancellationToken));
+            return new SyncQuestProgressRes(
+                (await store.ReadProjectionAsync(request.PlayerId, cancellationToken))
+                .Select(QuestContractMapper.ToContract)
+                .ToArray());
         return await owners.SyncAsync(request, cancellationToken);
-    }
-}
-
-[ZLinkHandlerGroup("quest-owner")]
-internal sealed class ClosePlayerQuestOwnerRouteHandler(
-    IZLinkSpotManager spots,
-    QuestOwnerRouter ownerRouter)
-    : IZLinkRequestHandler<ClosePlayerQuestOwnerReq, ClosePlayerQuestOwnerRes>
-{
-    public async ValueTask<ClosePlayerQuestOwnerRes> HandleAsync(
-        ClosePlayerQuestOwnerReq request,
-        ZLinkRequestContext context,
-        CancellationToken cancellationToken)
-    {
-        if (!ownerRouter.IsLocalOwner(request.PlayerId)) return new ClosePlayerQuestOwnerRes(false);
-        var spotRid = RoutingId.From(System.Text.Encoding.UTF8.GetBytes($"player:{request.PlayerId}"));
-        return new ClosePlayerQuestOwnerRes(await spots.CloseAsync(spotRid, cancellationToken));
     }
 }

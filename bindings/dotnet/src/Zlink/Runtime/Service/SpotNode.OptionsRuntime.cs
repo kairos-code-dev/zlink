@@ -40,6 +40,21 @@ internal sealed partial class SpotNode : ISpotNode
         set => PublisherOptions.SendTimeout = value;
     }
 
+    public TimeSpan? PublisherLinger
+    {
+        set => PublisherOptions.Linger = value;
+    }
+
+    public TimeSpan? SubscriberReceiveTimeout
+    {
+        set => SubscriberOptions.ReceiveTimeout = value;
+    }
+
+    public TimeSpan? SubscriberLinger
+    {
+        set => SubscriberOptions.Linger = value;
+    }
+
     public int DispatchWorkersMin
     {
         get => GetAdmissionOption(SpotNodeOption.DispatchWorkersMin);

@@ -31,8 +31,7 @@ public sealed class NodeRegistry
         {
             Zones = report.Zones,
             PlayerCount = report.PlayerCount,
-            Maintenance = report.Maintenance,
-            Registered = true
+            Maintenance = report.Maintenance
         });
 
     private void Update(string nodeId, Func<NodeView, NodeView> change)

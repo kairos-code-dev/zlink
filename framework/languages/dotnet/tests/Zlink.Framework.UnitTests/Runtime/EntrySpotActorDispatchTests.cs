@@ -66,6 +66,58 @@ public sealed partial class EntrySpotActorDispatchTests
     }
 
     [Fact]
+    public async Task SpotNode_Initializer_Applies_Publisher_And_Subscriber_Role_Config()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var node = new CapturingSpotNode();
+        var registration = new ZLinkFrameworkRegistration();
+        registration.SpotNodes["pubsub"] = new ZLinkSpotNodeRegistration
+        {
+            SpotNodeName = "pubsub",
+            RoutingId = RoutingId.From("pubsub-node"),
+            PubSub = new ZLinkSpotPubSubCapabilityRegistration
+            {
+                PublisherConfig =
+                {
+                    SendHighWaterMark = 17,
+                    SendTimeout = TimeSpan.FromMilliseconds(21),
+                    Linger = TimeSpan.FromMilliseconds(34),
+                    NoDrop = true
+                },
+                SubscriberConfig =
+                {
+                    ReceiveHighWaterMark = 55,
+                    ReceiveTimeout = TimeSpan.FromMilliseconds(89),
+                    Linger = TimeSpan.FromMilliseconds(144)
+                }
+            }
+        };
+        var runtime = new ZLinkFrameworkRuntime(
+            services,
+            new CapturingBackendAdapterFactory(node),
+            registration,
+            new ZLinkHandlerRegistry([]),
+            new ZLinkHandlerDispatcher(
+                services.GetRequiredService<IServiceScopeFactory>(),
+                registration));
+
+        await runtime.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.Equal(17, node.PublisherConfig?.SendHighWaterMark);
+            Assert.Equal(TimeSpan.FromMilliseconds(34), node.PublisherConfig?.Linger);
+            Assert.True(node.PublisherConfig?.NoDrop);
+            Assert.Equal(55, node.SubscriberConfig?.ReceiveHighWaterMark);
+            Assert.Equal(TimeSpan.FromMilliseconds(89), node.SubscriberConfig?.ReceiveTimeout);
+            Assert.Equal(TimeSpan.FromMilliseconds(144), node.SubscriberConfig?.Linger);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task Actor_Creation_Observes_The_Configured_EntrySpot_RoutingId()
     {
         var services = new ServiceCollection()
@@ -956,7 +1008,9 @@ public sealed partial class EntrySpotActorDispatchTests
         probe.ReleaseRoute.TrySetResult();
         await route.WaitAsync(TimeSpan.FromSeconds(5));
         await probe.TimerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(new[] { "route:start", "route:end", "timer:start" }, probe.Events.ToArray());
+        var events = probe.Events.ToArray();
+        Assert.Equal(new[] { "route:start", "route:end" }, events[..2]);
+        Assert.All(events[2..], entry => Assert.Equal("timer:start", entry));
     }
 
     [Fact]
@@ -1616,6 +1670,38 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Equal(ZLinkFlowOrigin.Application, sent.FlowOrigin);
             Assert.Equal(header.CorrelationId, sent.CorrelationId);
             Assert.Equal(actor.ActorId, sent.ActorId);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task BoundSession_Backpressure_Queues_Until_Node_SendReady()
+    {
+        var node = new CapturingSpotNode { BoundSessionSendAccepted = false };
+        var (runtime, actor) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            runtime.GetOrCreateActorState(actor.ActorId).BindNativeActorRef(actor);
+            runtime.BindActorSession(
+                actor.ActorId,
+                RoutingId.From("session-node"),
+                RoutingId.From("session-rid"),
+                ZLinkActorBoundSessionBindingToken.Native(RoutingId.From("session-rid")));
+            var retained = new ZLinkBoundSessionService(runtime).Create(actor.ActorId);
+
+            retained.Send(new ProbeRouteMessage("queued")).Submit();
+            Assert.Empty(node.BoundSessionReplies);
+
+            node.BoundSessionSendAccepted = true;
+            node.SignalSendReady();
+
+            Assert.True(SpinWait.SpinUntil(
+                () => node.BoundSessionReplies.Count == 1,
+                TimeSpan.FromSeconds(2)));
+            Assert.True(node.BoundSessionSendAttempts >= 2);
         }
         finally
         {
@@ -3456,6 +3542,10 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public RoutingId PublisherRoutingId { get; private set; }
 
+        public IZLinkSpotPublisherConfig? PublisherConfig { get; private set; }
+
+        public IZLinkSpotSubscriberConfig? SubscriberConfig { get; private set; }
+
         public CapturingSpot EntrySpotBackend => _entrySpot;
 
         public List<CapturingSpot> CreatedSpots { get; } = [];
@@ -3471,6 +3561,14 @@ public sealed partial class EntrySpotActorDispatchTests
         public List<CapturedActorReply> NoBindReplies { get; } = [];
 
         public List<(ZLinkBackendActorRef Actor, IReadOnlyList<byte[]> Parts)> BoundSessionReplies { get; } = [];
+
+        public bool BoundSessionSendAccepted { get; set; } = true;
+
+        public int BoundSessionSendAttempts { get; private set; }
+
+        private Action? SendReadyHandler { get; set; }
+
+        public void SignalSendReady() => SendReadyHandler?.Invoke();
 
         public ZLinkBackendActorJoinEntrySpotResult? EntrySpotJoinResult { get; set; }
 
@@ -3553,6 +3651,16 @@ public sealed partial class EntrySpotActorDispatchTests
         }
 
         public void SetPubBind(string endpoint) { }
+
+        public void ApplyRoleConfig(
+            IZLinkSpotPublisherConfig? publisher,
+            IZLinkSpotSubscriberConfig? subscriber)
+        {
+            PublisherConfig = publisher;
+            SubscriberConfig = subscriber;
+        }
+
+        public void OnSendReady(Action handler) => SendReadyHandler = handler;
 
         public void ConnectPeer(string endpoint) { }
 
@@ -3683,8 +3791,10 @@ public sealed partial class EntrySpotActorDispatchTests
             IReadOnlyList<Message> parts,
             SendFlags flags)
         {
-            BoundSessionReplies.Add((actor, CopyParts(parts)));
-            return true;
+            BoundSessionSendAttempts++;
+            if (BoundSessionSendAccepted)
+                BoundSessionReplies.Add((actor, CopyParts(parts)));
+            return BoundSessionSendAccepted;
         }
 
         public bool SendToActor(

@@ -64,7 +64,7 @@ internal static class ZLinkChannelReplyWriter
         return new ZLinkEnvelopeHeader(
             kind,
             channelName,
-            request.MessageName,
+            kind == ZLinkMessageKind.Response ? string.Empty : request.MessageName,
             ZLinkEnvelopeCodec.DefaultContentType,
             request.CorrelationId,
             null,

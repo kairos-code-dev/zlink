@@ -8,34 +8,37 @@ using Zlink.Framework.Contracts.Actors;
 namespace GameQuest.GameApi.Infrastructure.ZLink;
 
 [ZLinkHandlerGroup("game-api")]
-internal sealed class GetGameplaySnapshotHandler(GameQuestStore store)
-    : IZLinkRequestHandler<GetGameplaySnapshotReq, GetGameplaySnapshotRes>
+internal sealed class QuestProgressNotifyHandler(
+    IZLinkActorDirectory actors,
+    IZLinkActorClient actorClient)
+    : IZLinkSendHandler<QuestProgressNotify>
 {
-    public ValueTask<GetGameplaySnapshotRes> HandleAsync(
-        GetGameplaySnapshotReq request,
-        ZLinkRequestContext context,
+    public async ValueTask HandleAsync(
+        QuestProgressNotify request,
+        ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
-        return store.ReadSnapshotAsync(request.PlayerId, cancellationToken);
+        var actor = await actors.FindAsync(request.PlayerId, cancellationToken);
+        if (actor is null) return;
+
+        actorClient.SendToActor(actor.Value, request).Submit(cancellationToken);
     }
 }
 
 [ZLinkHandlerGroup("game-api")]
-internal sealed class NotifyQuestProgressHandler(
+internal sealed class QuestCompletedNotifyHandler(
     IZLinkActorDirectory actors,
     IZLinkActorClient actorClient)
-    : IZLinkRequestHandler<NotifyQuestProgressReq, NotifyQuestProgressRes>
+    : IZLinkSendHandler<QuestCompletedNotify>
 {
-    public async ValueTask<NotifyQuestProgressRes> HandleAsync(
-        NotifyQuestProgressReq request,
-        ZLinkRequestContext context,
+    public async ValueTask HandleAsync(
+        QuestCompletedNotify request,
+        ZLinkSendContext context,
         CancellationToken cancellationToken)
     {
         var actor = await actors.FindAsync(request.PlayerId, cancellationToken);
-        if (actor is null) return new NotifyQuestProgressRes(false);
+        if (actor is null) return;
 
-        actorClient.SendToActor(actor.Value, new NotifyQuestProgressActorReq(request))
-            .Submit(cancellationToken);
-        return new NotifyQuestProgressRes(true);
+        actorClient.SendToActor(actor.Value, request).Submit(cancellationToken);
     }
 }

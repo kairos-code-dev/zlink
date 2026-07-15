@@ -1,5 +1,5 @@
-using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.OrderWorkflow.Domain.ShoppingMall;
+using ShoppingMall.Server.Shared.Contracts;
 using ShoppingMall.Server.Shared.Domain;
 using ShoppingMall.Server.Shared.Ports.Outbound;
 using ShoppingMall.Shared.Contracts;
@@ -20,15 +20,26 @@ internal sealed class OrderWorkflowService(
         if (aggregate.HasProcessedMsg(command.IdempotencyKey))
         {
             await commerce.MarkIdempotencyStartedAsync(command.IdempotencyKey, cancellationToken);
-            return await SaveProjectionFromEventsAsync(stored, cancellationToken);
+            return OrderContractMapper.ToContract(
+                await SaveProjectionFromEventsAsync(stored, cancellationToken));
         }
 
         var now = NowUnixMs();
-        var started = aggregate.Start(command, NewEventId("started", command.OrderId), now);
+        var started = aggregate.Start(
+            command.IdempotencyKey,
+            command.OrderId,
+            command.CartId,
+            command.ShippingAddressId,
+            command.Lines.Select(static line => new OrderLine(line.Sku, line.Quantity)).ToArray(),
+            command.Amount,
+            command.Currency,
+            NewEventId("started", command.OrderId),
+            now);
         if (started.Count > 0) await AppendAndProjectAsync(command.OrderId, stored.Count, started, cancellationToken);
 
         await commerce.MarkIdempotencyStartedAsync(command.IdempotencyKey, cancellationToken);
-        return await RequireProjectionAsync(command.OrderId, cancellationToken);
+        return OrderContractMapper.ToContract(
+            await RequireProjectionAsync(command.OrderId, cancellationToken));
     }
 
     public async ValueTask<OrderState> StartAndContinueAsync(
@@ -36,7 +47,7 @@ internal sealed class OrderWorkflowService(
         CancellationToken cancellationToken)
     {
         var state = await StartAsync(command, cancellationToken);
-        if (state.Status is OrderStatuses.Confirmed or OrderStatuses.Failed) return state;
+        if (state.Status is nameof(OrderStatus.Confirmed) or nameof(OrderStatus.Failed)) return state;
 
         _ = ContinueWorkflowInBackgroundAsync(command.OrderId)
             .ContinueWith(
@@ -67,31 +78,33 @@ internal sealed class OrderWorkflowService(
             .ConfigureAwait(false);
     }
 
-    public ValueTask<OrderState> ContinueAsync(
+    public async ValueTask<OrderState> ContinueAsync(
         ContinueOrderWorkflowReq command,
         CancellationToken cancellationToken)
     {
-        return ContinueUntilAsync(
+        var state = await ContinueUntilAsync(
             command.OrderId,
-            static status => status is OrderStatuses.Confirmed or OrderStatuses.Failed,
+            static status => status is OrderStatus.Confirmed or OrderStatus.Failed,
             cancellationToken);
+        return OrderContractMapper.ToContract(state);
     }
 
-    internal ValueTask<OrderState> ContinueUntilInventoryReservedAsync(
+    internal async ValueTask<OrderState> ContinueUntilInventoryReservedAsync(
         string orderId,
         CancellationToken cancellationToken)
     {
-        return ContinueUntilAsync(
+        var state = await ContinueUntilAsync(
             orderId,
-            static status => status is OrderStatuses.InventoryReserved
-                or OrderStatuses.Confirmed
-                or OrderStatuses.Failed,
+            static status => status is OrderStatus.InventoryReserved
+                or OrderStatus.Confirmed
+                or OrderStatus.Failed,
             cancellationToken);
+        return OrderContractMapper.ToContract(state);
     }
 
-    private async ValueTask<OrderState> ContinueUntilAsync(
+    private async ValueTask<OrderProjectionState> ContinueUntilAsync(
         string orderId,
-        Func<string, bool> shouldStop,
+        Func<OrderStatus?, bool> shouldStop,
         CancellationToken cancellationToken)
     {
         while (true)
@@ -105,7 +118,7 @@ internal sealed class OrderWorkflowService(
 
             var next = aggregate.Status switch
             {
-                OrderStatuses.Created => aggregate.ApplyInventoryResult(
+                OrderStatus.Created => aggregate.ApplyInventoryResult(
                     await commerce.ReserveInventoryAsync(
                         new ReserveInventoryCommand(
                             orderId,
@@ -115,17 +128,17 @@ internal sealed class OrderWorkflowService(
                     NewEventId("inventory", orderId),
                     NewEventId("failed", orderId),
                     NowUnixMs()),
-                OrderStatuses.InventoryReserved => await AuthorizePaymentAsync(
+                OrderStatus.InventoryReserved => await AuthorizePaymentAsync(
                     aggregate,
                     current,
                     await commerce.GetOrderPaymentMethodAsync(orderId, cancellationToken),
                     cancellationToken),
-                OrderStatuses.PaymentAuthorized => aggregate.Confirm(NewEventId("confirmed", orderId), NowUnixMs()),
-                OrderStatuses.PaymentFailed => await ReleaseInventoryAsync(
+                OrderStatus.PaymentAuthorized => aggregate.Confirm(NewEventId("confirmed", orderId), NowUnixMs()),
+                OrderStatus.PaymentFailed => await ReleaseInventoryAsync(
                     aggregate,
                     current,
                     cancellationToken),
-                OrderStatuses.InventoryReleased => aggregate.FailAfterInventoryRelease(
+                OrderStatus.InventoryReleased => aggregate.FailAfterInventoryRelease(
                     NewEventId("failed", orderId),
                     NowUnixMs()),
                 _ => []
@@ -142,18 +155,18 @@ internal sealed class OrderWorkflowService(
         CancellationToken cancellationToken)
     {
         var stored = await events.ReadAsync(orderId, cancellationToken);
-        OrderState? state = null;
+        OrderProjectionState? state = null;
         foreach (var storedEvent in stored) state = OrderProjection.Apply(state, storedEvent.Decode());
 
         if (state is null) throw new InvalidOperationException($"Order '{orderId}' has no event stream.");
 
         await readModels.SaveAsync(state, cancellationToken);
-        return state;
+        return OrderContractMapper.ToContract(state);
     }
 
     private async ValueTask<IReadOnlyList<OrderDomainEvent>> AuthorizePaymentAsync(
         OrderAggregate aggregate,
-        OrderState current,
+        OrderProjectionState current,
         string paymentMethodId,
         CancellationToken cancellationToken)
     {
@@ -173,7 +186,7 @@ internal sealed class OrderWorkflowService(
 
     private async ValueTask<IReadOnlyList<OrderDomainEvent>> ReleaseInventoryAsync(
         OrderAggregate aggregate,
-        OrderState current,
+        OrderProjectionState current,
         CancellationToken cancellationToken)
     {
         var reservationId = current.ReservationId
@@ -202,7 +215,7 @@ internal sealed class OrderWorkflowService(
         }
     }
 
-    private async ValueTask<OrderState> RequireProjectionAsync(
+    private async ValueTask<OrderProjectionState> RequireProjectionAsync(
         string orderId,
         CancellationToken cancellationToken)
     {
@@ -210,11 +223,11 @@ internal sealed class OrderWorkflowService(
                ?? throw new InvalidOperationException($"Order projection '{orderId}' does not exist.");
     }
 
-    private async ValueTask<OrderState> SaveProjectionFromEventsAsync(
+    private async ValueTask<OrderProjectionState> SaveProjectionFromEventsAsync(
         IReadOnlyList<StoredOrderEvent> stored,
         CancellationToken cancellationToken)
     {
-        OrderState? state = null;
+        OrderProjectionState? state = null;
         foreach (var storedEvent in stored) state = OrderProjection.Apply(state, storedEvent.Decode());
 
         if (state is null)
@@ -243,6 +256,7 @@ internal sealed class OrderWorkflowService(
     {
         return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
+
 }
 
 internal static class StoredOrderEventExtensions

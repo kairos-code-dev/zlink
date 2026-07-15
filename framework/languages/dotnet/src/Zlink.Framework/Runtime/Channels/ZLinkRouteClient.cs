@@ -54,7 +54,12 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
                 ZLinkMessageNameResolver.ResolveFromMessage(message),
                 message,
                 cancellationToken);
-        ZLinkUnawaitedSubmit.Observe(accepted, "route send submit", runtime.ErrorSink);
+        ZLinkUnawaitedSubmit.Observe(
+            accepted,
+            "route send submit",
+            runtime.ErrorSink,
+            "RouteMeshChannel",
+            "Send");
     }
 }
 
@@ -121,7 +126,12 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
     {
         cancellationToken.ThrowIfCancellationRequested();
         var accepted = SubmitToSnapshotAsync(target.Snapshot, cancellationToken);
-        ZLinkUnawaitedSubmit.Observe(accepted, "route spot send submit", runtime.ErrorSink);
+        ZLinkUnawaitedSubmit.Observe(
+            accepted,
+            "route spot send submit",
+            runtime.ErrorSink,
+            "RouteMeshChannel",
+            "Send");
     }
 
     private ValueTask SubmitToSnapshotAsync(

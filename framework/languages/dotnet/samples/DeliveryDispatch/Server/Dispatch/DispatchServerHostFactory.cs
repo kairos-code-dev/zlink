@@ -24,7 +24,6 @@ public static class DispatchServerHostFactory
         builder.WebHost.UseUrls(topology.DispatchHttpUrl);
         builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(topology);
-        builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddSingleton<DispatchWorkQueue>();
         builder.Services.AddSingleton<DeliveryOfferStore>();
         builder.Services.AddSingleton<CourierSelectionPolicy>();
@@ -93,25 +92,6 @@ public static class DispatchServerHostFactory
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);
             return Results.Ok(new CreateDeliveryRes(request.DeliveryId));
         });
-        app.MapPost("/self-check/assert", (
-            ServerAssertionReq request,
-            EvidenceStore evidence) =>
-        {
-            var success = evidence.HasSequence(
-                request.SuccessfulDeliveryId,
-                DeliveryStatus.Assigned,
-                DeliveryStatus.Accepted,
-                DeliveryStatus.PickedUp,
-                DeliveryStatus.Delivered);
-            var reassigned = evidence.HasSequence(
-                request.ReassignedDeliveryId,
-                DeliveryStatus.Assigned,
-                DeliveryStatus.Reassigned,
-                DeliveryStatus.Accepted,
-                DeliveryStatus.Delivered);
-            return Results.Ok(new ServerAssertionRes(success && reassigned, evidence.ReadLines()));
-        });
-
         return app;
     }
 }

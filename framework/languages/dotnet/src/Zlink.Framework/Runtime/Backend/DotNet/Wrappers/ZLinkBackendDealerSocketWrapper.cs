@@ -9,6 +9,9 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 
     internal IDealerSocket NativeSocket => nativeSocket;
 
+    public void ApplySocketConfig(IZLinkSocketConfig config) =>
+        ZLinkBackendSocketOptionsMapper.Apply(nativeSocket.Options, config);
+
     public void Bind(string endpoint)
     {
         nativeSocket.Bind(endpoint);

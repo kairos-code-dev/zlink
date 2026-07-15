@@ -24,9 +24,11 @@ builder.Services.AddZLinkFramework(framework =>
         .EnableRouter(options.RouterEndpoint)
         .SetRoutingId(RoutingId.From(options.Rid))
         .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
-        .ConnectRouter(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint)
-        .ConnectRouter(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint)
         .EnablePubSub(options.PubSubEndpoint);
+    if (options.ConnectActorRoutes)
+        spot
+            .ConnectRouter(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint)
+            .ConnectRouter(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint);
     actorConnections = spot.RouterConnections;
 });
 
@@ -40,12 +42,7 @@ app.MapPost("/send", async (
 {
     try
     {
-        var actor = request.Scenario.StartsWith("TA-B1", StringComparison.Ordinal)
-            ? new ActorRef(RoutingId.From(options.ActorRid), request.ActorId, 1)
-            : await actorDirectory.FindAsync(request.ActorId, ct)
-              ?? throw new ZLinkFrameworkException(
-                  ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                  $"Actor route '{request.ActorId}' was not found.");
+        var actor = await ResolveActorAsync(request, actorDirectory, ct);
         actors.SendToActor(actor, new ActorNotify(request.Scenario, request.ActorId, request.Value))
             .Submit(ct);
         return Results.Ok(new ActorCallResponse(request.Scenario, request.ActorId, "sent"));
@@ -63,12 +60,7 @@ app.MapPost("/request", async (
 {
     try
     {
-        var actor = request.Scenario.StartsWith("TA-B1", StringComparison.Ordinal)
-            ? new ActorRef(RoutingId.From(options.ActorRid), request.ActorId, 1)
-            : await actorDirectory.FindAsync(request.ActorId, ct)
-              ?? throw new ZLinkFrameworkException(
-                  ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                  $"Actor route '{request.ActorId}' was not found.");
+        var actor = await ResolveActorAsync(request, actorDirectory, ct);
         var reply = await actors.RequestToActor(actor, new ActorAsk(request.Scenario, request.ActorId, request.Value))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ActorReply>(ct);
@@ -142,6 +134,21 @@ app.MapPost("/shutdown", async (IHostApplicationLifetime lifetime) =>
 });
 await app.RunAsync();
 
+static async ValueTask<ActorRef> ResolveActorAsync(
+    ActorCallRequest request,
+    IZLinkActorDirectory actorDirectory,
+    CancellationToken cancellationToken)
+{
+    if (!string.IsNullOrWhiteSpace(request.TargetNodeRid)
+        && request.TargetGeneration is { } generation)
+        return new ActorRef(RoutingId.From(request.TargetNodeRid), request.ActorId, generation);
+
+    return await actorDirectory.FindAsync(request.ActorId, cancellationToken)
+           ?? throw new ZLinkFrameworkException(
+               ZLinkFrameworkErrorKind.ActorRouteNotFound,
+               $"Actor route '{request.ActorId}' was not found.");
+}
+
 namespace ToActorMessaging.Caller
 {
     internal sealed record ServerOptions(
@@ -155,7 +162,8 @@ namespace ToActorMessaging.Caller
         string ActorRouterEndpoint,
         string ActorBRid,
         string ActorBRouterEndpoint,
-        string LogDir)
+        string LogDir,
+        bool ConnectActorRoutes)
     {
         public static ServerOptions Parse(string[] args, string role)
         {
@@ -172,7 +180,9 @@ namespace ToActorMessaging.Caller
                 Get(values, "actor-router-endpoint", "tcp://127.0.0.1:0"),
                 Get(values, "actor-b-rid", "actor-b"),
                 Get(values, "actor-b-router-endpoint", "tcp://127.0.0.1:0"),
-                logDir);
+                logDir,
+                !values.TryGetValue("connect-actor-routes", out var connect)
+                || bool.Parse(connect));
         }
 
         private static Dictionary<string, string> ParseArgs(string[] args)

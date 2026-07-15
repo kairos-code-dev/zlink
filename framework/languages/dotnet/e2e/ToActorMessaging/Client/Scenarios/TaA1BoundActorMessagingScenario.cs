@@ -10,10 +10,16 @@ internal static class TaA1BoundActorMessagingScenario
         await context.EnsureActorAAsync(actorId);
         await using var bound = await context.ConnectAndBindAsync(context.Options.SessionAStreamEndpoint, actorId);
         await using var unbound = await context.ConnectAsync(context.Options.SessionBStreamEndpoint);
+        var bindingBefore = await context.GetBoundSessionSnapshotsAsync(actorId);
+        ToActorScenarioContext.Require(bindingBefore.Count(snapshot => snapshot.SessionRid is not null) == 1,
+            "TA-A1 expected exactly one bound session before no-bind messaging.");
         await context.AssertBoundPushAsync(bound, unbound, "TA-A1", actorId, "BeforeNotify");
         await context.AssertCallAsync("TA-A1-send", actorId, "a1-send", "sent", send: true);
         await context.AssertCallAsync("TA-A1-request", actorId, "a1-request", "reply:a1-request", send: false);
         await context.AssertBoundPushAsync(bound, unbound, "TA-A1", actorId, "AfterNotify");
+        var bindingAfter = await context.GetBoundSessionSnapshotsAsync(actorId);
+        ToActorScenarioContext.Require(bindingBefore.SequenceEqual(bindingAfter),
+            "TA-A1 no-bind messaging changed the bound-session snapshot.");
 
         var evidence = await context.GetAllActorEvidenceAsync();
         ToActorScenarioContext.Require(evidence.Any(item => item is

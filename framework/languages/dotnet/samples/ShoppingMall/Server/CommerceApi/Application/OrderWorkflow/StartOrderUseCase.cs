@@ -1,4 +1,5 @@
 using ShoppingMall.Server.CommerceApi.Ports.Outbound;
+using ShoppingMall.Server.Shared.Contracts;
 using ShoppingMall.Server.Shared.Ports.Outbound;
 using ShoppingMall.Shared.Contracts;
 
@@ -21,7 +22,7 @@ internal sealed class StartOrderUseCase(
             var existingState = await readModels.FindAsync(existing.OrderId, cancellationToken)
                                 ?? throw new InvalidOperationException(
                                     $"Started order '{existing.OrderId}' has no projection.");
-            return new StartOrderRes(existingState.OrderId, existingState.Status);
+            return new StartOrderRes(existingState.OrderId, existingState.Status.ToString());
         }
 
         var cart = await preparation.LoadCartAndValidateAsync(request, cancellationToken);
@@ -33,9 +34,19 @@ internal sealed class StartOrderUseCase(
         var command = await preparation.BuildCommandAsync(request, mapping, cart, cancellationToken);
         var state = existing is null
             ? await workflows.StartAsync(command, cancellationToken)
-            : await readModels.FindAsync(mapping.OrderId, cancellationToken)
-              ?? await workflows.StartAsync(command, cancellationToken);
+            : await ReadOrStartAsync(mapping.OrderId, command, cancellationToken);
         return new StartOrderRes(state.OrderId, state.Status);
+
+        async ValueTask<OrderState> ReadOrStartAsync(
+            string orderId,
+            StartOrderWorkflowReq workflowCommand,
+            CancellationToken token)
+        {
+            var projection = await readModels.FindAsync(orderId, token);
+            return projection is null
+                ? await workflows.StartAsync(workflowCommand, token)
+                : OrderContractMapper.ToContract(projection);
+        }
     }
 }
 
@@ -104,6 +115,6 @@ internal sealed class GetOrderStateUseCase(
     {
         var state = await readModels.FindAsync(request.OrderId, cancellationToken)
                     ?? throw new InvalidOperationException($"Order projection '{request.OrderId}' does not exist.");
-        return new GetOrderStateRes(state);
+        return new GetOrderStateRes(OrderContractMapper.ToContract(state));
     }
 }

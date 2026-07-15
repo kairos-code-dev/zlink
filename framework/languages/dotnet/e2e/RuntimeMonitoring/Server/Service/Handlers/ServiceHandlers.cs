@@ -50,3 +50,22 @@ internal sealed class FailingTimerHandler : IZLinkSpotTimerHandler<MonitoringEnt
         throw new InvalidOperationException("monitoring timer failure");
     }
 }
+
+internal sealed class MonitoringSubjectSpot(IZLinkSpotContext context) : IZLinkSpot
+{
+    public IZLinkSpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddSubscribe<MonitoringSubjectHandler>("monitor.dynamic");
+    }
+}
+
+internal sealed class MonitoringSubjectHandler
+    : IZLinkSpotSubscriptionHandler<MonitoringSubjectSpot, ProfileReq>
+{
+    public ValueTask HandleAsync(
+        MonitoringSubjectSpot spot,
+        ProfileReq message,
+        CancellationToken cancellationToken) => ValueTask.CompletedTask;
+}

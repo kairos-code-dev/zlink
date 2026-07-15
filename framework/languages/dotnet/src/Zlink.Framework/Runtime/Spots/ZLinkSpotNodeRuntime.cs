@@ -18,6 +18,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private Task? _disposeTask;
     private bool _stopSourceDisposed;
     private IZLinkBackendSpot? _entrySpot;
+    private ZLinkEntrySpotDispatchPump? _entryDispatchPump;
     private ZLinkSpotOutboundTransport? _entryOutbound;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
     private int _entrySpotMetricActive;
@@ -100,6 +101,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             _stopSource.Cancel();
         }
         _spots.RequestStop();
+        _entryDispatchPump?.RequestStop();
         _entrySpotActivation?.RequestStop();
     }
 
@@ -129,6 +131,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         var failures = new List<Exception>();
         await CaptureAsync(CloseLifecycleAsync).ConfigureAwait(false);
         Capture(RequestStop);
+        if (_entryDispatchPump is { } entryDispatchPump)
+            await CaptureAsync(entryDispatchPump.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_taskRunner.StopAsync).ConfigureAwait(false);
         await CaptureAsync(_spots.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_bundles.DisposeAsync).ConfigureAwait(false);
@@ -193,8 +197,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         {
             if (ShouldAttachActorDispatchPump())
             {
-                new ZLinkEntrySpotDispatchPump(_runtime, null, _taskRunner)
-                    .Attach(_entrySpot);
+                _entryDispatchPump = new ZLinkEntrySpotDispatchPump(_runtime, null, _taskRunner);
+                _entryDispatchPump.Attach(_entrySpot);
                 if (Interlocked.Exchange(ref _entrySpotMetricActive, 1) == 0)
                     ZLinkRuntimeMetrics.RecordSpotCreated("entry");
             }
@@ -215,8 +219,8 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             _entrySpotActivation = activation;
         }
 
-        new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner)
-            .Attach(entrySpot);
+        _entryDispatchPump = new ZLinkEntrySpotDispatchPump(_runtime, activation, _taskRunner);
+        _entryDispatchPump.Attach(entrySpot);
         if (Interlocked.Exchange(ref _entrySpotMetricActive, 1) == 0)
             ZLinkRuntimeMetrics.RecordSpotCreated("entry");
     }

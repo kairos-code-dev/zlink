@@ -57,7 +57,12 @@ internal sealed class ZLinkSendCall : IZLinkSendCall
                 message,
                 pending => dealer.Send(pending, SendFlags.DontWait),
                 cancellationToken);
-        ZLinkUnawaitedSubmit.Observe(accepted, "channel submit", _runtime.ErrorSink);
+        ZLinkUnawaitedSubmit.Observe(
+            accepted,
+            "channel submit",
+            _runtime.ErrorSink,
+            "Channel",
+            "Send");
     }
 }
 

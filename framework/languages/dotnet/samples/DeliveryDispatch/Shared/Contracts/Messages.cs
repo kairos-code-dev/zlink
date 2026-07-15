@@ -1,7 +1,9 @@
 namespace DeliveryDispatch.Shared.Contracts;
 
+using System.Text.Json.Serialization;
 using Zlink.Framework.Contracts.Actors;
 
+[JsonConverter(typeof(JsonStringEnumConverter<DeliveryStatus>))]
 public enum DeliveryStatus
 {
     Created,
@@ -43,14 +45,8 @@ public sealed record BindCourierSessionReq(
 
 public sealed record BindCourierSessionRes(
     string CourierId,
-    string NodeRid,
-    string SessionRoute)
-{
-    public CourierActorBindingSnapshot Actor => new(NodeRid);
-}
-
-public sealed record CourierActorBindingSnapshot(
-    string NodeRid);
+    ActorRefSnapshot Actor,
+    string SessionRoute);
 
 public sealed record BindCourierReq(
     string CourierId,
@@ -144,11 +140,3 @@ public sealed record DeliveryStatusUpdatedMsg(
     DeliveryStatus Status,
     string? CourierId,
     DateTimeOffset OccurredAt);
-
-public sealed record ServerAssertionReq(
-    string SuccessfulDeliveryId,
-    string ReassignedDeliveryId);
-
-public sealed record ServerAssertionRes(
-    bool Passed,
-    string[] Evidence);

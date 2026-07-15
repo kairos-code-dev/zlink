@@ -1,6 +1,4 @@
-using ShoppingMall.Server.Configuration;
 using ShoppingMall.Server.Shared.Domain;
-using ShoppingMall.Shared.Contracts;
 
 namespace ShoppingMall.Server.OrderWorkflow.Domain.ShoppingMall;
 
@@ -10,20 +8,29 @@ internal sealed class OrderAggregate
 
     public string OrderId { get; private set; } = string.Empty;
 
-    public string Status { get; private set; } = string.Empty;
+    public OrderStatus? Status { get; private set; }
 
     public string? ReservationId { get; private set; }
 
     public bool HasStarted => !string.IsNullOrWhiteSpace(OrderId);
 
-    public bool IsTerminal => Status is OrderStatuses.Confirmed or OrderStatuses.Failed;
+    public bool IsTerminal => Status is OrderStatus.Confirmed or OrderStatus.Failed;
 
     public bool HasProcessedMsg(string sourceCommandId)
     {
         return _sourceCommands.Contains(sourceCommandId);
     }
 
-    public IReadOnlyList<OrderDomainEvent> Start(StartOrderWorkflowReq command, string eventId, long nowUnixMs)
+    public IReadOnlyList<OrderDomainEvent> Start(
+        string sourceCommandId,
+        string orderId,
+        string cartId,
+        string shippingAddressId,
+        OrderLine[] lines,
+        decimal amount,
+        string currency,
+        string eventId,
+        long nowUnixMs)
     {
         if (HasStarted) return [];
 
@@ -31,13 +38,13 @@ internal sealed class OrderAggregate
         [
             new OrderStartedEvent(
                 eventId,
-                command.IdempotencyKey,
-                command.OrderId,
-                command.CartId,
-                command.ShippingAddressId,
-                command.Lines,
-                command.Amount,
-                command.Currency,
+                sourceCommandId,
+                orderId,
+                cartId,
+                shippingAddressId,
+                lines,
+                amount,
+                currency,
                 nowUnixMs)
         ];
     }
@@ -48,7 +55,7 @@ internal sealed class OrderAggregate
         string failureEventId,
         long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.Created) return [];
+        if (IsTerminal || Status != OrderStatus.Created) return [];
 
         if (!result.Accepted)
         {
@@ -75,7 +82,7 @@ internal sealed class OrderAggregate
         string eventId,
         long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.InventoryReserved) return [];
+        if (IsTerminal || Status != OrderStatus.InventoryReserved) return [];
 
         if (!result.Accepted)
         {
@@ -95,7 +102,7 @@ internal sealed class OrderAggregate
 
     public IReadOnlyList<OrderDomainEvent> Confirm(string eventId, long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.PaymentAuthorized) return [];
+        if (IsTerminal || Status != OrderStatus.PaymentAuthorized) return [];
 
         return [new OrderConfirmedEvent(eventId, OrderId, nowUnixMs)];
     }
@@ -104,7 +111,7 @@ internal sealed class OrderAggregate
         string eventId,
         long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.PaymentFailed) return [];
+        if (IsTerminal || Status != OrderStatus.PaymentFailed) return [];
 
         return
         [
@@ -121,7 +128,7 @@ internal sealed class OrderAggregate
         string eventId,
         long nowUnixMs)
     {
-        if (IsTerminal || Status != OrderStatuses.InventoryReleased) return [];
+        if (IsTerminal || Status != OrderStatus.InventoryReleased) return [];
 
         return [new OrderFailedEvent(eventId, OrderId, "payment failed", nowUnixMs)];
     }
@@ -132,30 +139,30 @@ internal sealed class OrderAggregate
         {
             case OrderStartedEvent started:
                 OrderId = started.OrderId;
-                Status = OrderStatuses.Created;
+                Status = OrderStatus.Created;
                 _sourceCommands.Add(started.SourceCommandId);
                 break;
             case InventoryReservedEvent reserved:
                 ReservationId = reserved.ReservationId;
-                Status = OrderStatuses.InventoryReserved;
+                Status = OrderStatus.InventoryReserved;
                 break;
             case InventoryReservationFailedEvent:
-                Status = OrderStatuses.Failed;
+                Status = OrderStatus.Failed;
                 break;
             case PaymentAuthorizedEvent:
-                Status = OrderStatuses.PaymentAuthorized;
+                Status = OrderStatus.PaymentAuthorized;
                 break;
             case PaymentFailedEvent:
-                Status = OrderStatuses.PaymentFailed;
+                Status = OrderStatus.PaymentFailed;
                 break;
             case InventoryReleasedEvent:
-                Status = OrderStatuses.InventoryReleased;
+                Status = OrderStatus.InventoryReleased;
                 break;
             case OrderConfirmedEvent:
-                Status = OrderStatuses.Confirmed;
+                Status = OrderStatus.Confirmed;
                 break;
             case OrderFailedEvent:
-                Status = OrderStatuses.Failed;
+                Status = OrderStatus.Failed;
                 break;
         }
     }

@@ -86,8 +86,12 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("BindQuestSession", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("UnbindQuestSession", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("TargetConnectionId", messages, StringComparison.Ordinal);
-        Assert.Contains("record ApplyGameplayEventReq", topology, StringComparison.Ordinal);
-        Assert.Contains("record ApplyGameplayEventRes", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyGameplayEventReq", topology, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyGameplayEventRes", topology, StringComparison.Ordinal);
+        Assert.Contains("record GameplayMsg", messages, StringComparison.Ordinal);
+        Assert.Contains("byte[] Payload", messages, StringComparison.Ordinal);
+        Assert.Contains("long Version", messages, StringComparison.Ordinal);
+        Assert.Contains("LastSourceEventId", messages, StringComparison.Ordinal);
         Assert.Contains("apiAStream.Request(new JoinSessionReq", clientScenario, StringComparison.Ordinal);
         Assert.Contains("apiAStream.Request(new KillMonsterReq", clientScenario, StringComparison.Ordinal);
         Assert.Contains("apiAStream.Request(new UnlockFeatureReq", clientScenario, StringComparison.Ordinal);
@@ -113,7 +117,7 @@ public sealed partial class RegressionTests
         Assert.Contains("await actor.RelayAsync(payload, cancellationToken)", session, StringComparison.Ordinal);
         Assert.Contains("BindOrGetAsync(actor, cancellationToken)", sessionHandlers, StringComparison.Ordinal);
         Assert.Contains("actor.Context.BoundSession", playerSessionActor, StringComparison.Ordinal);
-        Assert.Contains("ZLinkSpotActorSendHandler(nameof(NotifyQuestProgressActorReq))", playerSessionActor,
+        Assert.Contains("ZLinkSpotActorSendHandler(nameof(QuestProgressNotify))", playerSessionActor,
             StringComparison.Ordinal);
         Assert.DoesNotContain("BindSessionAsync", gameApiStore, StringComparison.Ordinal);
         Assert.DoesNotContain("ReadBindingHistoryAsync", gameApiStore, StringComparison.Ordinal);
@@ -146,7 +150,8 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("IGameplayEventOwnerDispatcher", actionService, StringComparison.Ordinal);
         Assert.Contains("IZLinkChannelClient", eventDispatcher, StringComparison.Ordinal);
-        Assert.Contains("RequestToChannel", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("SendToChannel", eventDispatcher, StringComparison.Ordinal);
+        Assert.Contains("new GameplayMsg", eventDispatcher, StringComparison.Ordinal);
         Assert.DoesNotContain("ZLinkHttpClient", eventDispatcher, StringComparison.Ordinal);
         Assert.DoesNotContain("interface IPlayerQuestOwnerProvisioner", questProcessor, StringComparison.Ordinal);
         Assert.DoesNotContain("IPlayerQuestOwnerProvisioner", gameplayIngress, StringComparison.Ordinal);
@@ -155,18 +160,20 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("ResolveSpotHandleAsync", playerQuestProvisioner,
             StringComparison.Ordinal);
-        Assert.Contains("RequestToSpot(address", playerQuestProvisioner,
+        Assert.Contains("SendToSpot(address", playerQuestProvisioner,
             StringComparison.Ordinal);
-        Assert.Contains("IZLinkSpotRequestHandler<PlayerQuestSpot, ApplyGameplayEventReq, ApplyGameplayEventRes>",
+        Assert.Contains("IZLinkSpotPacketHandler<PlayerQuestSpot, GameplayMsg>",
             playerQuestSpot, StringComparison.Ordinal);
-        Assert.Contains("processor.ProcessAsync(request.Event, cancellationToken)", playerQuestSpot,
+        Assert.Contains("QuestContractMapper.ToDomain(message)", playerQuestSpot,
             StringComparison.Ordinal);
-        Assert.Contains("ReadQuestStreamAsync(gameplayEvent.PlayerId, definition.QuestId", questProcessor,
+        Assert.Contains("ReadQuestStreamAsync(\n            gameplayFact.PlayerId,\n            definition.QuestId", questProcessor,
             StringComparison.Ordinal);
-        Assert.Contains("Replay(QuestDefinition definition, IReadOnlyList<StoredQuestEvent> stream)", questDomain,
+        Assert.Contains("Rehydrate(\n        QuestDefinition definition,\n        IReadOnlyList<QuestDomainEvent> stream)", questDomain,
+            StringComparison.Ordinal);
+        Assert.Contains("public QuestProgressDecision? Decide(GameplayFact gameplayFact)", questDomain,
             StringComparison.Ordinal);
         Assert.Contains("RecordOwnerRehydratedAsync", playerQuestSpot, StringComparison.Ordinal);
-        Assert.Contains("spots.CloseAsync(spotRid, cancellationToken)", questOwnerHandlers,
+        Assert.Contains("spots.CloseAsync(spotRid, cancellationToken)", missionProgram,
             StringComparison.Ordinal);
         Assert.Contains("ReadOwnerRehydrateEvidenceAsync", gameApiProgram, StringComparison.Ordinal);
         Assert.Contains("rehydrates.GetValueOrDefault(\"player-alice\") >= 2", gameApiProgram, StringComparison.Ordinal);
@@ -175,5 +182,38 @@ public sealed partial class RegressionTests
         Assert.Contains("외부 Redis endpoint", readme, StringComparison.Ordinal);
         Assert.Contains("재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
         Assert.Contains("같은 stream으로", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GameQuest_Domain_Does_Not_Depend_On_Transport_Or_Persistence_Contracts()
+    {
+        var sampleRoot = ResolveSampleRoot("GameQuest");
+        var domainFiles = Directory.GetFiles(
+            Path.Combine(sampleRoot, "Server"),
+            "*.cs",
+            SearchOption.AllDirectories)
+            .Where(static path => path.Contains(
+                $"{Path.DirectorySeparatorChar}Domain{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal));
+
+        foreach (var domainFile in domainFiles)
+        {
+            var source = File.ReadAllText(domainFile);
+            Assert.DoesNotContain("using GameQuest.Shared", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("using System.Text.Json", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("using Zlink.", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("using Systems.Zlink", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("using StackExchange.Redis", source, StringComparison.Ordinal);
+        }
+
+        var mapper = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "QuestMission",
+            "Infrastructure",
+            "Store",
+            "QuestContractMapper.cs"));
+        Assert.Contains("static class QuestContractMapper", mapper, StringComparison.Ordinal);
+        Assert.Contains("JsonSerializer.SerializeToUtf8Bytes", mapper, StringComparison.Ordinal);
     }
 }

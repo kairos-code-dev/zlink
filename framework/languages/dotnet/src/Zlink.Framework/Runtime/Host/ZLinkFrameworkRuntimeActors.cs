@@ -697,7 +697,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         ZLinkSpotActivation? UserSpot,
         ZLinkEntrySpotActivation? EntrySpot);
 
-    private async ValueTask BindRemoteBoundSessionRouteAsync(
+    internal async ValueTask BindRemoteBoundSessionRouteAsync(
         string actorId,
         ZLinkBackendActorRef actorRef,
         RoutingId? boundSessionNodeRid,
@@ -718,16 +718,16 @@ internal sealed partial class ZLinkFrameworkRuntime
             return;
         }
 
-        BindActorSession(
-            actorId,
-            sourceNodeRid,
-            sourceSessionRid,
-            ZLinkActorBoundSessionBindingToken.Native(sourceSessionRid));
         var node = GetActorSpotNode()
                    ?? throw new ZLinkFrameworkException(
                        ZLinkFrameworkErrorKind.ActorSessionNotBound,
                        "Remote actor session binding requires a router-capable SpotNode.");
         node.BindRemoteActorBoundSession(actorRef, sourceNodeRid, sourceSessionRid);
+        BindActorSession(
+            actorId,
+            sourceNodeRid,
+            sourceSessionRid,
+            ZLinkActorBoundSessionBindingToken.Native(sourceSessionRid));
     }
 
     internal ValueTask JoinActorToSpotAsync(
@@ -1077,6 +1077,19 @@ internal sealed partial class ZLinkFrameworkRuntime
                            false);
 
         return node.SendActorBoundSession(actorRef, parts, flags);
+    }
+
+    internal ZLinkAsyncSubmitter CreateActorBoundSessionSubmitter()
+    {
+        var node = GetActorSpotNode()
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                       "Actor bound session send requires a router-capable SpotNode.",
+                       false);
+        return new ZLinkAsyncSubmitter(
+            node.OnSendReady,
+            Registration.DefaultSocketSendTimeout,
+            ShutdownToken);
     }
 
     internal void ReplyActorNoBind(

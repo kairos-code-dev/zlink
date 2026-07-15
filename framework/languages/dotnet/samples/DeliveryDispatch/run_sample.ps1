@@ -145,10 +145,6 @@ try {
     if (-not (Select-String -Path $clientLog -Pattern "deliverydispatch-reassignment=completed" -Quiet)) {
         throw "DeliveryDispatch client did not verify reassignment."
     }
-    if (-not (Select-String -Path $clientLog -Pattern "deliverydispatch-server-evidence=completed" -Quiet)) {
-        throw "DeliveryDispatch client did not verify server evidence."
-    }
-
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch tracking: status"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch customer-session: bound customer"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "deliverydispatch customer-entry: pushed status"

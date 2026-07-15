@@ -555,6 +555,24 @@ public sealed partial class UnhandledDispatchPolicyTests
     [Fact]
     public async Task ChannelPublishDecodeFailure_DoesNotStopOtherEndpointTypes()
     {
+        var dropReasons = new ConcurrentQueue<string>();
+        using var metricListener = new MeterListener
+        {
+            InstrumentPublished = (instrument, listener) =>
+            {
+                if (instrument.Meter.Name == ZLinkMeters.Framework
+                    && instrument.Name == "zlink.channel.messages.dropped")
+                    listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        metricListener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+                if (tag.Key == "reason" && tag.Value is string reason)
+                    dropReasons.Enqueue(reason);
+        });
+        metricListener.Start();
+
         var probe = new PublishProbe();
         var services = new ServiceCollection()
             .AddSingleton(probe)
@@ -659,6 +677,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         Assert.Equal(ZLinkMessageFlowOutcome.Dropped, dropped.Outcome);
         Assert.Equal(ZLinkDispatchErrorReason.PayloadDecodeFailed, dropped.ErrorReason);
         Assert.Equal(ZLinkDispatchErrorAction.Drop, dropped.ErrorAction);
+        Assert.Contains("decode_error", dropReasons);
         await runner.StopAsync();
     }
 

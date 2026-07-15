@@ -177,7 +177,7 @@ public sealed partial class RegressionTests
         var dotnetRoot = ResolveDotnetRoot();
         var frameworkDocRoot = Path.GetFullPath(Path.Combine(dotnetRoot, "..", "..", "doc", "framework"));
         var dotnetDocRoot = Path.Combine(frameworkDocRoot, "dotnet");
-        var dotnetContractRoot = Path.Combine(frameworkDocRoot, "common", "spec", "languages", "dotnet");
+        var dotnetContractRoot = Path.Combine(frameworkDocRoot, "spec", "server", "languages", "dotnet");
         var docs = EnumerateMarkdownFiles(Path.Combine(dotnetDocRoot, "guide"))
             .Concat(EnumerateMarkdownFiles(dotnetContractRoot))
             .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetDocRoot, "internals")))
@@ -210,9 +210,9 @@ public sealed partial class RegressionTests
                     offenders.Add($"{Path.GetRelativePath(dotnetRoot, file)}: {reason}");
         }
 
-        var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "handler-interfaces.ko.md"));
+        var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "02-handler-interfaces.ko.md"));
         var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "07-actor-spot.ko.md"));
-        Assert.Contains("DestroyActorAsync: Entry Spot", actorSpec, StringComparison.Ordinal);
+        Assert.Contains("`DestroyActorAsync`: Entry Spot", actorSpec, StringComparison.Ordinal);
         Assert.Contains("session 종료가 곧 actor leave 나 actor destroy 를 뜻하지 않는다", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);
         Assert.Contains("lifecycle callback을", actorGuide, StringComparison.Ordinal);

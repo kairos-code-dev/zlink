@@ -38,33 +38,36 @@ internal sealed class PlayerQuestSpot(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask<ApplyGameplayEventRes> ApplyGameplayEventAsync(
-        ApplyGameplayEventReq request,
+    public async ValueTask ApplyGameplayEventAsync(
+        GameplayMsg message,
         CancellationToken cancellationToken)
     {
-        await processor.ProcessAsync(request.Event, cancellationToken);
-        return new ApplyGameplayEventRes(true);
+        await processor.ProcessAsync(
+            QuestContractMapper.ToDomain(message),
+            cancellationToken);
     }
 
-    public ValueTask<SyncQuestProgressRes> SyncAsync(
+    public async ValueTask<SyncQuestProgressRes> SyncAsync(
         SyncQuestProgressReq request,
         CancellationToken cancellationToken)
     {
-        return processor.SyncAsync(request, cancellationToken);
+        var projection = await processor.SyncAsync(request.PlayerId, cancellationToken);
+        return new SyncQuestProgressRes(
+            projection.Select(QuestContractMapper.ToContract).ToArray());
     }
 }
 
 internal sealed record PlayerQuestSpotCreateReq(string PlayerId);
 
 internal sealed class ApplyGameplayEventHandler :
-    IZLinkSpotRequestHandler<PlayerQuestSpot, ApplyGameplayEventReq, ApplyGameplayEventRes>
+    IZLinkSpotPacketHandler<PlayerQuestSpot, GameplayMsg>
 {
-    public ValueTask<ApplyGameplayEventRes> HandleAsync(
+    public ValueTask HandleAsync(
         PlayerQuestSpot spot,
-        ApplyGameplayEventReq request,
+        GameplayMsg message,
         CancellationToken cancellationToken)
     {
-        return spot.ApplyGameplayEventAsync(request, cancellationToken);
+        return spot.ApplyGameplayEventAsync(message, cancellationToken);
     }
 }
 

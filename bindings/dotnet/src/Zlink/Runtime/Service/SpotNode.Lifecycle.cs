@@ -85,6 +85,9 @@ internal sealed partial class SpotNode : ISpotNode
         if (rc == 0)
         {
             Handle = IntPtr.Zero;
+            _sendReadyHandler = null;
+            _sendReadyHandlerContext = null;
+            _sendReadyHandlerNative = null;
         }
         else
         {

@@ -8,9 +8,21 @@ internal static class TaB1MissingActorScenario
     {
         const string actorId = "missing-actor";
         await context.AssertRouteAbsentAsync(actorId);
-        await context.AssertCallAsync("TA-B1-missing", actorId, "missing", "sent", send: true);
+        await context.AssertCallAsync(
+            "TA-B1-missing",
+            actorId,
+            "missing",
+            "sent",
+            send: true,
+            targetNodeRid: "actor-a",
+            targetGeneration: 1);
         await context.AssertFailureAsync(
-            "TA-B1-missing-request", actorId, "ActorRouteNotFound", send: false);
+            "TA-B1-missing-request",
+            actorId,
+            "ActorRouteNotFound",
+            send: false,
+            targetNodeRid: "actor-a",
+            targetGeneration: 1);
         await context.AssertNoActorEvidenceAsync(actorId);
         await context.AssertRouteAbsentAsync(actorId);
     }

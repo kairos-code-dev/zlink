@@ -10,4 +10,8 @@
     <ItemGroup>
         <ProjectReference Include="../Server/TicTacToe.Server.csproj"/>
     </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="../Server/Api/**/*.cs" Link="Api/%(RecursiveDir)%(Filename)%(Extension)"/>
+    </ItemGroup>
 </Project>

@@ -1,80 +1,80 @@
 using GameQuest.GameApi.Domain;
 using GameQuest.Server.Configuration;
-using GameQuest.Shared;
 
 namespace GameQuest.GameApi.Application;
 
 internal sealed class GameplayActionService(
     IGameplayEventStore store,
     IGameplayEventOwnerDispatcher ownerDispatcher,
-    IQuestProgressSynchronizer quests,
     GameQuestRuntimeConfiguration configuration,
     ILogger<GameplayActionService> logger)
 {
     private readonly string _apiName = configuration.InstanceName;
 
-    public async ValueTask<KillMonsterRes> KillMonsterAsync(
-        KillMonsterReq request,
-        CancellationToken cancellationToken)
-    {
-        var dispatched = await StoreAndDispatchAsync(
-            GameplayDomain.CreateMonsterKilled(request.PlayerId, request.MonsterId, request.AreaId,
-                request.IdempotencyKey, _apiName),
-            cancellationToken);
-        return new KillMonsterRes(dispatched.EventId);
-    }
-
-    public async ValueTask<CollectItemRes> CollectItemAsync(
-        CollectItemReq request,
-        CancellationToken cancellationToken)
-    {
-        var dispatched = await StoreAndDispatchAsync(
-            GameplayDomain.CreateItemCollected(request.PlayerId, request.ItemId, request.Count, request.IdempotencyKey,
-                _apiName),
-            cancellationToken);
-        return new CollectItemRes(dispatched.EventId);
-    }
-
-    public async ValueTask<CompleteMissionRes> CompleteMissionAsync(
-        CompleteMissionReq request,
-        CancellationToken cancellationToken)
-    {
-        var dispatched = await StoreAndDispatchAsync(
-            GameplayDomain.CreateMissionCompleted(request.PlayerId, request.MissionId, request.IdempotencyKey,
-                _apiName),
-            cancellationToken);
-        return new CompleteMissionRes(dispatched.EventId);
-    }
-
-    public async ValueTask<EnterAreaRes> EnterAreaAsync(
-        EnterAreaReq request,
-        CancellationToken cancellationToken)
-    {
-        var dispatched = await StoreAndDispatchAsync(
-            GameplayDomain.CreateAreaEntered(request.PlayerId, request.AreaId, request.IdempotencyKey, _apiName),
-            cancellationToken);
-        return new EnterAreaRes(dispatched.EventId);
-    }
-
-    public async ValueTask<UnlockFeatureRes> UnlockFeatureAsync(
-        UnlockFeatureReq request,
-        CancellationToken cancellationToken)
-    {
-        var dispatched = await StoreAndDispatchAsync(
-            GameplayDomain.CreateFeatureUnlocked(request.PlayerId, request.FeatureId, request.IdempotencyKey, _apiName),
-            cancellationToken);
-        return new UnlockFeatureRes(dispatched.EventId);
-    }
-
-    public async ValueTask<SyncQuestProgressRes> SyncAsync(
+    public async ValueTask<string> KillMonsterAsync(
         string playerId,
+        string monsterId,
+        string areaId,
+        string idempotencyKey,
         CancellationToken cancellationToken)
     {
-        return await quests.SyncAsync(playerId, cancellationToken);
+        var dispatched = await StoreAndDispatchAsync(
+            GameplayDomain.CreateMonsterKilled(playerId, monsterId, areaId, idempotencyKey, _apiName),
+            cancellationToken);
+        return dispatched.EventId;
     }
 
-    private async ValueTask<GameplayEventEnvelope> StoreAndDispatchAsync(
-        GameplayEventEnvelope candidate,
+    public async ValueTask<string> CollectItemAsync(
+        string playerId,
+        string itemId,
+        int count,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var dispatched = await StoreAndDispatchAsync(
+            GameplayDomain.CreateItemCollected(playerId, itemId, count, idempotencyKey, _apiName),
+            cancellationToken);
+        return dispatched.EventId;
+    }
+
+    public async ValueTask<string> CompleteMissionAsync(
+        string playerId,
+        string missionId,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var dispatched = await StoreAndDispatchAsync(
+            GameplayDomain.CreateMissionCompleted(playerId, missionId, idempotencyKey, _apiName),
+            cancellationToken);
+        return dispatched.EventId;
+    }
+
+    public async ValueTask<string> EnterAreaAsync(
+        string playerId,
+        string areaId,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var dispatched = await StoreAndDispatchAsync(
+            GameplayDomain.CreateAreaEntered(playerId, areaId, idempotencyKey, _apiName),
+            cancellationToken);
+        return dispatched.EventId;
+    }
+
+    public async ValueTask<string> UnlockFeatureAsync(
+        string playerId,
+        string featureId,
+        string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var dispatched = await StoreAndDispatchAsync(
+            GameplayDomain.CreateFeatureUnlocked(playerId, featureId, idempotencyKey, _apiName),
+            cancellationToken);
+        return dispatched.EventId;
+    }
+
+    private async ValueTask<GameplayEvent> StoreAndDispatchAsync(
+        GameplayEvent candidate,
         CancellationToken cancellationToken)
     {
         var stored = await store.GetOrAddGameplayEventAsync(candidate, cancellationToken);
@@ -90,41 +90,16 @@ internal sealed class GameplayActionService(
     }
 }
 
-internal sealed class JoinQuestSessionUseCase(IQuestSessionStore sessions)
-{
-    public async ValueTask<JoinSessionRes> ExecuteAsync(
-        string playerId,
-        CancellationToken cancellationToken)
-    {
-        var projection = await sessions.ReadProjectionAsync(playerId, cancellationToken);
-        return new JoinSessionRes(projection);
-    }
-}
-
 internal interface IGameplayEventStore
 {
-    ValueTask<GameplayEventEnvelope> GetOrAddGameplayEventAsync(
-        GameplayEventEnvelope candidate,
+    ValueTask<GameplayEvent> GetOrAddGameplayEventAsync(
+        GameplayEvent candidate,
         CancellationToken cancellationToken);
 }
 
 internal interface IGameplayEventOwnerDispatcher
 {
     ValueTask<string> DispatchAsync(
-        GameplayEventEnvelope gameplayEvent,
-        CancellationToken cancellationToken);
-}
-
-internal interface IQuestProgressSynchronizer
-{
-    ValueTask<SyncQuestProgressRes> SyncAsync(
-        string playerId,
-        CancellationToken cancellationToken);
-}
-
-internal interface IQuestSessionStore
-{
-    ValueTask<QuestProgress[]> ReadProjectionAsync(
-        string playerId,
+        GameplayEvent gameplayEvent,
         CancellationToken cancellationToken);
 }

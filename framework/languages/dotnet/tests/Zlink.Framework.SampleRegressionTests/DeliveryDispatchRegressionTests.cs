@@ -38,7 +38,7 @@ public sealed partial class RegressionTests
         Assert.Contains("deliverydispatch=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("topology=ready", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-reassignment=completed", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("deliverydispatch-server-evidence=completed", shellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("deliverydispatch-server-evidence=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-runner-evidence=completed", shellRunner, StringComparison.Ordinal);
         Assert.Contains("grep -Rq \"message flow\" \"${FLOW_LOG_DIR}\"", shellRunner,
             StringComparison.Ordinal);
@@ -53,7 +53,7 @@ public sealed partial class RegressionTests
         Assert.Contains("deliverydispatch=completed", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("topology=ready", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-reassignment=completed", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("deliverydispatch-server-evidence=completed", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("deliverydispatch-server-evidence=completed", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("deliverydispatch-runner-evidence=completed", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Wait-SampleLogContains \"message flow\" \"DeliveryDispatch message-flow evidence\"",
             powershellRunner, StringComparison.Ordinal);

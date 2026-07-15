@@ -23,12 +23,6 @@ public static class SampleNames
     public static string GameApiChannelFor(string apiName) => $"gamequest.game-api.{apiName}";
 }
 
-public sealed record ApplyGameplayEventReq(GameplayEventEnvelope Event);
-
-public sealed record ApplyGameplayEventRes(bool Applied);
-
-public sealed record NotifyQuestProgressActorReq(NotifyQuestProgressReq Notification);
-
 public static class QuestIds
 {
     public const string FirstHunt = "first-hunt";

@@ -17,6 +17,7 @@ internal static class MonD1FailureRecoveryScenario
         using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl)
             .Timeout(TimeSpan.FromSeconds(20))
             .Build();
+        var baseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
 
         await serviceB.Post("/shutdown").Async<object>();
         var serviceBUri = new Uri(options.ServiceBUrl);
@@ -28,6 +29,16 @@ internal static class MonD1FailureRecoveryScenario
         await WaitForProcessExitAsync(
             options.ServiceBProcessId,
             "MON-D1 expected the original service-b process to complete framework shutdown.");
+        var removed = (await observer.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(
+                ["kind=TopologyChanged", "removed=svc-b"],
+                [],
+                TimeoutMilliseconds: 30000,
+                AfterIndex: baseline))
+            .Async<string[]>()).Body;
+        ScenarioAssert.That(removed.Any(line => line.Contains("removed=svc-b", StringComparison.Ordinal)),
+            "MON-D1 did not observe svc-b leaving the topology.");
+        var afterRemoved = baseline + removed.Length;
 
         using var restartedService = StartServiceB(options);
         try
@@ -48,7 +59,21 @@ internal static class MonD1FailureRecoveryScenario
             using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
                 .Timeout(TimeSpan.FromSeconds(35))
                 .Build();
-            var reply = await RequestRestartedServiceAsync(options);
+            var added = (await observer.Post("/evidence/wait")
+                .Body(new EvidenceWaitReq(
+                    ["kind=TopologyChanged", "added=svc-b"],
+                    [],
+                    TimeoutMilliseconds: 30000,
+                    AfterIndex: afterRemoved))
+                .Async<string[]>()).Body;
+            ScenarioAssert.That(added.Any(line => line.Contains("added=svc-b", StringComparison.Ordinal)),
+                "MON-D1 did not observe svc-b returning to the topology.");
+
+            await using var trigger = await MonitoringChannelClient.StartAsync(
+                options,
+                options.ServiceBChannelEndpoint,
+                "trigger-mon-d1");
+            var reply = await trigger.RequestAsync(new ProfileReq("restart", "mon-d1-request"));
             ScenarioAssert.That(
                 reply.ProviderRid == "svc-b"
                 && reply.Marker == "mon-d1-request"
@@ -66,25 +91,6 @@ internal static class MonD1FailureRecoveryScenario
                     StringComparison.Ordinal)),
                 "MON-D1 restarted service evidence missing.");
 
-            // The observer's own projection must have seen the full
-            // remove/re-add cycle: initial convergence, svc-b leaving,
-            // and svc-b returning are at least three TopologyChanged
-            // emissions.
-            var continuitySeen = false;
-            for (var attempt = 0; attempt < 60 && !continuitySeen; attempt++)
-            {
-                var observerEvidence = (await observer.Post("/evidence/wait")
-                    .Body(new EvidenceWaitReq(
-                        ["monitor-location-runtime|source=location-runtime"],
-                        [["kind=TopologyChanged"]]))
-                    .Async<string[]>()).Body;
-                continuitySeen = observerEvidence.Count(line => line.Contains(
-                    "monitor-location-runtime|source=location-runtime|kind=TopologyChanged",
-                    StringComparison.Ordinal)) >= 3;
-                if (!continuitySeen) await Task.Delay(250);
-            }
-
-            ScenarioAssert.That(continuitySeen, "MON-D1 location runtime topology continuity evidence missing.");
         }
         finally
         {
@@ -106,28 +112,6 @@ internal static class MonD1FailureRecoveryScenario
         Console.WriteLine("scenario MON-D1 passed");
     }
 
-    private static async Task<ProfileRes> RequestRestartedServiceAsync(ClientOptions options)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(60);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                await using var trigger = await MonitoringChannelClient.StartAsync(
-                    options, options.ServiceBChannelEndpoint, "trigger-mon-d1");
-                return await trigger.RequestAsync(new ProfileReq("restart", "mon-d1-request"));
-            }
-            catch (Exception ex) when (ex is ZLinkFrameworkException or HttpRequestException or TaskCanceledException)
-            {
-                last = ex;
-                await Task.Delay(500);
-            }
-        }
-
-        throw new TimeoutException("MON-D1 restarted service did not accept a routed request.", last);
-    }
-
     private static Process StartServiceB(ClientOptions options)
     {
         var stdout = Path.Combine(options.LogDir, "svc-b-restart.stdout.log");
@@ -141,7 +125,7 @@ internal static class MonD1FailureRecoveryScenario
         startInfo.Environment["ZLINK_E2E_RID"] = "svc-b";
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
-        startInfo.ArgumentList.Add(options.FilteredServiceProject);
+        startInfo.ArgumentList.Add(options.ServiceProject);
         startInfo.ArgumentList.Add("--");
         startInfo.ArgumentList.Add("--rid");
         startInfo.ArgumentList.Add("svc-b");
@@ -153,6 +137,10 @@ internal static class MonD1FailureRecoveryScenario
         startInfo.ArgumentList.Add(options.RedisKeyPrefix);
         startInfo.ArgumentList.Add("--channel-endpoint");
         startInfo.ArgumentList.Add(options.ServiceBChannelEndpoint);
+        startInfo.ArgumentList.Add("--spot-router-endpoint");
+        startInfo.ArgumentList.Add(options.ServiceBSpotRouterEndpoint);
+        startInfo.ArgumentList.Add("--spot-pub-endpoint");
+        startInfo.ArgumentList.Add(options.ServiceBSpotPubEndpoint);
         startInfo.ArgumentList.Add("--evidence-file");
         startInfo.ArgumentList.Add(Path.Combine(options.LogDir, "svc-b-restart.evidence.log"));
         startInfo.ArgumentList.Add("--log-dir");

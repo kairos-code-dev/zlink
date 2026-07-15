@@ -14,7 +14,7 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
     // 3. Create a delivery where courier-a receives an offer and accepts it.
     // 4. Create another delivery where courier-a receives an offer but stays silent.
     // 5. Let the dispatch server time out courier-a, reassign to courier-b, and finish the delivery.
-    // 6. Ask the server to verify that tracking saw the expected status sequences.
+    // 6. Verify both ordered status sequences from the customer-facing notifications.
     public async ValueTask RunAsync(
         ZLinkHttpClient http,
         IZlinkStreamConnector customer,
@@ -32,17 +32,20 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         var courierABinding = await courierA.Request(new BindCourierSessionReq("courier-a"))
             .Async<BindCourierSessionRes>(cancellationToken);
         Ensure(courierABinding.CourierId == "courier-a");
-        Ensure(courierABinding.Actor.NodeRid == "delivery-courier-node-1");
+        Ensure(courierABinding.Actor.NodeRid.ToString() == "delivery-courier-node-1");
+        Ensure(courierABinding.Actor.ActorId == "courier-a");
+        Ensure(courierABinding.Actor.Generation > 0);
         var courierBBinding = await courierB.Request(new BindCourierSessionReq("courier-b"))
             .Async<BindCourierSessionRes>(cancellationToken);
         Ensure(courierBBinding.CourierId == "courier-b");
-        Ensure(courierBBinding.Actor.NodeRid == "delivery-courier-node-2");
+        Ensure(courierBBinding.Actor.NodeRid.ToString() == "delivery-courier-node-2");
+        Ensure(courierBBinding.Actor.ActorId == "courier-b");
+        Ensure(courierBBinding.Actor.Generation > 0);
         logger.LogInformation("topology=ready");
 
         // Run both dispatch paths: direct acceptance first, then timeout-based reassignment.
         await RunSuccessfulDeliveryAsync(http, customer, courierA, cancellationToken);
         await RunReassignedDeliveryAsync(http, customer, courierA, courierB, cancellationToken);
-        await AssertServerEvidenceAsync(http, cancellationToken);
     }
 
     private static async ValueTask RunSuccessfulDeliveryAsync(
@@ -192,19 +195,6 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         }
 
         return statuses;
-    }
-
-    private ValueTask AssertServerEvidenceAsync(
-        ZLinkHttpClient http,
-        CancellationToken cancellationToken)
-    {
-        // The final HTTP check proves that server-side tracking saw the full status sequences.
-        var assertion = http.Post("/self-check/assert")
-            .Body(new ServerAssertionReq("delivery-success", "delivery-reassign"))
-            .Async<ServerAssertionRes>().AsTask().GetAwaiter().GetResult().Body;
-        Ensure(assertion.Passed);
-        logger.LogInformation("deliverydispatch-server-evidence=completed");
-        return ValueTask.CompletedTask;
     }
 
     private static void Ensure(

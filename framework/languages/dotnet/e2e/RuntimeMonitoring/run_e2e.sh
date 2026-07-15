@@ -15,8 +15,6 @@ mkdir -p "$LOG_DIR"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
@@ -33,6 +31,7 @@ SERVICE_PROJECT="$ROOT_DIR/Server/Service/RuntimeMonitoring.Service.csproj"
 FILTERED_SERVICE_PROJECT="$ROOT_DIR/Server/FilteredService/RuntimeMonitoring.FilteredService.csproj"
 THROWING_SERVICE_PROJECT="$ROOT_DIR/Server/ThrowingService/RuntimeMonitoring.ThrowingService.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/RuntimeMonitoring.Client.csproj"
+VALIDATION_HOST_PROJECT="$ROOT_DIR/Server/ValidationHost/RuntimeMonitoring.ValidationHost.csproj"
 
 pick_port() {
   python3 - <<'PY'
@@ -47,20 +46,28 @@ PY
 SVC_HTTP_PORT="$(pick_port)"
 SVC_B_HTTP_PORT="$(pick_port)"
 THROW_HTTP_PORT="$(pick_port)"
+FILTERED_HTTP_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
 CHANNEL_B_PORT="$(pick_port)"
 THROW_CHANNEL_PORT="$(pick_port)"
+FILTERED_CHANNEL_PORT="$(pick_port)"
 SPOT_ROUTER_PORT="$(pick_port)"
 SPOT_PUB_PORT="$(pick_port)"
+SPOT_B_ROUTER_PORT="$(pick_port)"
+SPOT_B_PUB_PORT="$(pick_port)"
 
 SVC_URL="http://127.0.0.1:$SVC_HTTP_PORT"
 SVC_B_URL="http://127.0.0.1:$SVC_B_HTTP_PORT"
 THROW_URL="http://127.0.0.1:$THROW_HTTP_PORT"
+FILTERED_URL="http://127.0.0.1:$FILTERED_HTTP_PORT"
 CHANNEL_ENDPOINT="tcp://127.0.0.1:$CHANNEL_PORT"
 CHANNEL_B_ENDPOINT="tcp://127.0.0.1:$CHANNEL_B_PORT"
 THROW_CHANNEL_ENDPOINT="tcp://127.0.0.1:$THROW_CHANNEL_PORT"
+FILTERED_CHANNEL_ENDPOINT="tcp://127.0.0.1:$FILTERED_CHANNEL_PORT"
 SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:$SPOT_ROUTER_PORT"
 SPOT_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_PUB_PORT"
+SPOT_B_ROUTER_ENDPOINT="tcp://127.0.0.1:$SPOT_B_ROUTER_PORT"
+SPOT_B_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_B_PUB_PORT"
 
 pids=()
 cleanup() {
@@ -143,6 +150,7 @@ dotnet build "$SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$FILTERED_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$THROWING_SERVICE_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$VALIDATION_HOST_PROJECT" --maxcpucount:1 >/dev/null
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the RuntimeMonitoring E2E (it provisions a dedicated Redis container)." >&2
@@ -157,7 +165,7 @@ zlink_redis_start_scoped_assign \
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="monitoring-e2e:$$:"
 
-setsid env ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJECT" -- \
+setsid dotnet run --no-build --project "$SERVICE_PROJECT" -- \
   --rid svc-a \
   --http-url "$SVC_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -171,12 +179,14 @@ setsid env ZLINK_E2E_RID="svc-a" dotnet run --no-build --project "$SERVICE_PROJE
 pids+=("$!")
 wait_health "$SVC_URL" svc-a
 
-setsid env ZLINK_E2E_RID="svc-b" dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT" -- \
+setsid dotnet run --no-build --project "$SERVICE_PROJECT" -- \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$CHANNEL_B_ENDPOINT" \
+  --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
+  --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-b.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/svc-b.stdout.log" 2>"$LOG_DIR/svc-b.stderr.log" &
@@ -184,19 +194,29 @@ SERVICE_B_PID="$!"
 pids+=("$SERVICE_B_PID")
 wait_health "$SVC_B_URL" svc-b
 
-setsid env ZLINK_E2E_RID="svc-throw" dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
+setsid dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT" -- \
+  --rid svc-filtered \
+  --http-url "$FILTERED_URL" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "${REDIS_KEY_PREFIX}filtered:" \
+  --channel-endpoint "$FILTERED_CHANNEL_ENDPOINT" \
+  --evidence-file "$LOG_DIR/svc-filtered.evidence.log" \
+  --log-dir "$LOG_DIR" \
+  >"$LOG_DIR/svc-filtered.stdout.log" 2>"$LOG_DIR/svc-filtered.stderr.log" &
+pids+=("$!")
+wait_health "$FILTERED_URL" svc-filtered
+
+setsid dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
+  --redis-key-prefix "${REDIS_KEY_PREFIX}throwing:" \
   --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/svc-throw.stdout.log" 2>"$LOG_DIR/svc-throw.stderr.log" &
 pids+=("$!")
 wait_health "$THROW_URL" svc-throw
-
-sleep "$ROUTE_SETTLE_SECONDS"
 
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -206,9 +226,15 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --service-b-url "$SVC_B_URL" \
   --service-b-process-id "$SERVICE_B_PID" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
+  --service-b-spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
+  --service-b-spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
+  --filtered-service-url "$FILTERED_URL" \
+  --filtered-channel-endpoint "$FILTERED_CHANNEL_ENDPOINT" \
   --throw-service-url "$THROW_URL" \
   --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --filtered-service-project "$FILTERED_SERVICE_PROJECT" \
+  --service-project "$SERVICE_PROJECT" \
+  --validation-host-project "$VALIDATION_HOST_PROJECT" \
   --scenario "$SCENARIO" \
   --log-dir "$LOG_DIR" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

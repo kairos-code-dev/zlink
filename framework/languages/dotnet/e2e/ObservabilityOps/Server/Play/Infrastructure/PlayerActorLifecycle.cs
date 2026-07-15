@@ -5,13 +5,26 @@ using Zlink.Framework.Contracts.Spots;
 
 namespace ObservabilityOps.Server.Play.Infrastructure;
 
+internal sealed class PlayerActor(
+    Player player,
+    IZLinkActorContext context) : IZLinkActor
+{
+    public string ActorId => Player.PlayerId;
+
+    public IZLinkActorContext Context { get; } = context;
+
+    public Player Player { get; } = player;
+}
+
+internal sealed record PlayerTransferState(string RoomRid);
+
 internal sealed class PlayerActorFactory : IZLinkActorFactory
 {
     public ValueTask<IZLinkActor> CreateAsync(string actorId, IZLinkActorContext context,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<IZLinkActor>(new PlayerActor(actorId, context));
+        return ValueTask.FromResult<IZLinkActor>(new PlayerActor(new Player(actorId), context));
     }
 }
 
@@ -20,7 +33,7 @@ internal sealed class PlayerActorTransferAdapter : IZLinkActorTransferAdapter<Pl
     public ValueTask<ZLinkMessage> TransferOutAsync(PlayerActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(ZLinkMessage.From(new PlayerTransferState(actor.RoomRid)));
+        return ValueTask.FromResult(ZLinkMessage.From(new PlayerTransferState(actor.Player.RoomRid)));
     }
 
     public ValueTask<PlayerActor> TransferInAsync(string actorId, IZLinkActorContext context,
@@ -28,6 +41,8 @@ internal sealed class PlayerActorTransferAdapter : IZLinkActorTransferAdapter<Pl
     {
         cancellationToken.ThrowIfCancellationRequested();
         var transferred = state.Decode<PlayerTransferState>();
-        return ValueTask.FromResult(new PlayerActor(actorId, context) { RoomRid = transferred.RoomRid });
+        var player = new Player(actorId);
+        if (!string.IsNullOrWhiteSpace(transferred.RoomRid)) player.JoinRoom(transferred.RoomRid);
+        return ValueTask.FromResult(new PlayerActor(player, context));
     }
 }

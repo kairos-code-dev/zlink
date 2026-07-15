@@ -1,16 +1,5 @@
-using System.Text.Json.Serialization;
-using ShoppingMall.Shared.Contracts;
-
 namespace ShoppingMall.Server.Shared.Domain;
 
-[JsonDerivedType(typeof(OrderStartedEvent), nameof(OrderStartedEvent))]
-[JsonDerivedType(typeof(InventoryReservedEvent), nameof(InventoryReservedEvent))]
-[JsonDerivedType(typeof(InventoryReservationFailedEvent), nameof(InventoryReservationFailedEvent))]
-[JsonDerivedType(typeof(PaymentAuthorizedEvent), nameof(PaymentAuthorizedEvent))]
-[JsonDerivedType(typeof(PaymentFailedEvent), nameof(PaymentFailedEvent))]
-[JsonDerivedType(typeof(InventoryReleasedEvent), nameof(InventoryReleasedEvent))]
-[JsonDerivedType(typeof(OrderConfirmedEvent), nameof(OrderConfirmedEvent))]
-[JsonDerivedType(typeof(OrderFailedEvent), nameof(OrderFailedEvent))]
 public abstract record OrderDomainEvent(
     string EventId,
     string OrderId,
@@ -22,7 +11,7 @@ public sealed record OrderStartedEvent(
     string OrderId,
     string CartId,
     string ShippingAddressId,
-    OrderLineInput[] Lines,
+    OrderLine[] Lines,
     decimal Amount,
     string Currency,
     long CreatedAtUnixMs) : OrderDomainEvent(EventId, OrderId, CreatedAtUnixMs);
@@ -82,7 +71,7 @@ public sealed record AuthorizePaymentResult(
 public sealed record ReserveInventoryCommand(
     string OrderId,
     string ReservationId,
-    IReadOnlyList<OrderLineInput> Lines);
+    IReadOnlyList<OrderLine> Lines);
 
 public sealed record ReleaseInventoryCommand(
     string OrderId,
@@ -97,3 +86,27 @@ public sealed record AuthorizePaymentCommand(
     string PaymentMethodId,
     decimal Amount,
     string Currency);
+
+public sealed record OrderLine(string Sku, int Quantity);
+
+public enum OrderStatus
+{
+    Created,
+    InventoryReserved,
+    PaymentAuthorized,
+    PaymentFailed,
+    InventoryReleased,
+    Confirmed,
+    Failed
+}
+
+public sealed record OrderProjectionState(
+    string OrderId,
+    OrderStatus Status,
+    string? ShippingAddressId,
+    string? ReservationId,
+    string? PaymentId,
+    string? Reason,
+    decimal? Amount,
+    string? Currency,
+    long UpdatedAtUnixMs);

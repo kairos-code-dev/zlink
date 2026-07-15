@@ -12,7 +12,7 @@ internal static class ZLinkSpotReplyEnvelope
         var replyHeader = new ZLinkEnvelopeHeader(
             ZLinkMessageKind.Command,
             channelName,
-            messageName,
+            string.Empty,
             ZLinkEnvelopeCodec.DefaultContentType,
             null,
             null,

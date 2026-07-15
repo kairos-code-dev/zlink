@@ -7,6 +7,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
+using Zlink.Framework.Contracts.Spots;
 
 using Zlink.Framework.Locations.Redis;
 
@@ -15,21 +16,6 @@ namespace RuntimeMonitoring.Server.Service;
 internal static class ServiceHostFactory
 {
     public static WebApplication CreateAll(string[] args)
-    {
-        return Create(args, ServiceMonitorProfile.All);
-    }
-
-    public static WebApplication CreateSocketFilter(string[] args)
-    {
-        return Create(args, ServiceMonitorProfile.SocketFilter);
-    }
-
-    public static WebApplication CreateThrowing(string[] args)
-    {
-        return Create(args, ServiceMonitorProfile.Throwing);
-    }
-
-    public static WebApplication Create(string[] args, ServiceMonitorProfile profile)
     {
         var options = ServerOptions.Parse(args, "service");
         Directory.CreateDirectory(options.LogDir);
@@ -42,12 +28,11 @@ internal static class ServiceHostFactory
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
+        builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile, options.Rid));
+        builder.Services.AddSingleton<LocationTopologyTransitionTracker>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventRecorder>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, SpotEventRecorder>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationRuntimeEventRecorder>();
-        if (profile == ServiceMonitorProfile.Throwing)
-            builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ThrowingSocketEventRecorder>();
 
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -66,26 +51,17 @@ internal static class ServiceHostFactory
                 .SetRoutingId(RoutingId.From(options.Rid));
             channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
 
-            if (profile == ServiceMonitorProfile.All)
-            {
-                var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
-                spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
-                    .SetRoutingId(RoutingId.From(options.Rid))
-                    .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
-                    .AddEntrySpot<MonitoringEntrySpot>();
-            }
+            var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
+            spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "--spot-router-endpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid))
+                .EnablePubSub(Require(options.SpotPubEndpoint, "--spot-pub-endpoint"))
+                .AddEntrySpot<MonitoringEntrySpot>()
+                .AddSpotFactory<MonitoringSubjectSpot>();
         });
         builder.Services.AddZLinkMonitoring(monitor =>
         {
-            if (profile == ServiceMonitorProfile.SocketFilter)
-                monitor.AddSocketEvents(
-                    RuntimeMonitoringNames.ChannelServerSource,
-                    ZLinkSocketEventKind.ConnectionReady);
-            else
-                monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource);
-
-            if (profile == ServiceMonitorProfile.All)
-                monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
+            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource);
+            monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
 
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
                 monitor.AddLocationRuntimeEvents(
@@ -104,18 +80,36 @@ internal static class ServiceHostFactory
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var snapshot = await evidence.WaitUntilAsync(
                 entries => request.ContainsAll.All(expected =>
-                               entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
+                               entries.Skip(request.AfterIndex)
+                                   .Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
                            && request.ContainsAnyGroups.All(group =>
                                group.Any(expected =>
-                                   entries.Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
+                                   entries.Skip(request.AfterIndex)
+                                       .Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
                 timeout,
                 cancellationToken);
-            return Results.Ok(snapshot);
+            return Results.Ok(snapshot.Skip(request.AfterIndex).ToArray());
         });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
+        });
+        app.MapPost("/admin/subject/create", async (
+            [FromServices] IZLinkSpotManager spots,
+            CancellationToken cancellationToken) =>
+        {
+            await spots.GetOrCreateAsync<MonitoringSubjectSpot>(
+                RoutingId.From("monitor-subject"),
+                cancellationToken);
+            return Results.Ok(new { status = "created" });
+        });
+        app.MapPost("/admin/subject/close", async (
+            [FromServices] IZLinkSpotManager spots,
+            CancellationToken cancellationToken) =>
+        {
+            var closed = await spots.CloseAsync(RoutingId.From("monitor-subject"), cancellationToken);
+            return Results.Ok(new { status = closed ? "closed" : "not-found" });
         });
         app.MapPost("/admin/drain", (
             [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,

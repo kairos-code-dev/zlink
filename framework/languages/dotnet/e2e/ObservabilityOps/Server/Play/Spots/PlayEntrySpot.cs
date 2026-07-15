@@ -1,4 +1,4 @@
-using ObservabilityOps.Server.Play.Domain;
+using ObservabilityOps.Server.Play.Infrastructure;
 using ObservabilityOps.Server.Play.Support;
 using ObservabilityOps.Shared;
 using Zlink.Framework.Contracts.Messaging;
@@ -25,7 +25,7 @@ internal sealed class PlayEntrySpot(IZLinkEntrySpotContext context, EvidenceStor
 
     public ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
     {
-        evidence.Add($"actor-entry-joined|actor={actor.ActorId}|node={Context.NodeRid}|previous-room={actor.RoomRid}");
+        evidence.Add($"actor-entry-joined|actor={actor.ActorId}|node={Context.NodeRid}|previous-room={actor.Player.RoomRid}");
         actor.Context.BoundSession.Send(new PlayerMovedNotify(actor.ActorId, Context.NodeRid.ToString()))
             .Submit(cancellationToken);
         return ValueTask.CompletedTask;

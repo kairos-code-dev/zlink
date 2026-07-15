@@ -1,4 +1,4 @@
-using ObservabilityOps.Server.Play.Domain;
+using ObservabilityOps.Server.Play.Infrastructure;
 using ObservabilityOps.Server.Play.Support;
 using ObservabilityOps.Shared;
 using Zlink.Framework.Contracts.Messaging;
@@ -32,8 +32,8 @@ internal sealed class RoomSpot(IZLinkSpotContext context, EvidenceStore evidence
 
     public ValueTask OnJoinedActorAsync(PlayerActor actor, CancellationToken cancellationToken)
     {
-        actor.RoomRid = Context.SpotRid.ToString();
-        evidence.Add($"actor-joined|actor={actor.ActorId}|room={actor.RoomRid}|node={Context.NodeRid}");
+        actor.Player.JoinRoom(Context.SpotRid.ToString());
+        evidence.Add($"actor-joined|actor={actor.ActorId}|room={actor.Player.RoomRid}|node={Context.NodeRid}");
         return ValueTask.CompletedTask;
     }
 

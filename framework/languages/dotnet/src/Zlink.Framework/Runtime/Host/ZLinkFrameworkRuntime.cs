@@ -424,6 +424,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         if (workerPool is not null) Capture(workerPool.RequestStop);
         if (_locationLifecycle is not null)
             await CaptureAsync(_locationLifecycle.PauseBackgroundWorkAsync).ConfigureAwait(false);
+        await CaptureAsync(_actorSessionManager.ResetBoundSessionGenerationAsync).ConfigureAwait(false);
         if (state is not null)
             await CaptureAsync(state.DisposeAsync).ConfigureAwait(false);
         if (state is not null) DetachErrorSink(state.ErrorSink);

@@ -152,7 +152,7 @@ public sealed partial class RegressionTests
         Assert.Contains("OrderStatuses.PaymentAuthorized", clientScenario, StringComparison.Ordinal);
         Assert.Contains("SaveProjectionFromEventsAsync(stored, cancellationToken)", workflowService,
             StringComparison.Ordinal);
-        Assert.Contains("static status => status is OrderStatuses.Confirmed or OrderStatuses.Failed",
+        Assert.Contains("static status => status is OrderStatus.Confirmed or OrderStatus.Failed",
             workflowService, StringComparison.Ordinal);
         Assert.Contains("CancellationToken.None", workflowService, StringComparison.Ordinal);
         Assert.Contains("ContinueWorkflowInBackgroundAsync", workflowService, StringComparison.Ordinal);
@@ -162,11 +162,11 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("await commerce.MarkIdempotencyStartedAsync(command.IdempotencyKey, cancellationToken);",
             workflowService, StringComparison.Ordinal);
-        Assert.Contains("return await SaveProjectionFromEventsAsync(stored, cancellationToken);", workflowService,
+        Assert.Contains("OrderContractMapper.ToContract(\n                await SaveProjectionFromEventsAsync(stored, cancellationToken))", workflowService,
             StringComparison.Ordinal);
-        Assert.Contains("OrderStatuses.PaymentFailed => await ReleaseInventoryAsync", workflowService,
+        Assert.Contains("OrderStatus.PaymentFailed => await ReleaseInventoryAsync", workflowService,
             StringComparison.Ordinal);
-        Assert.Contains("OrderStatuses.InventoryReleased => aggregate.FailAfterInventoryRelease", workflowService,
+        Assert.Contains("OrderStatus.InventoryReleased => aggregate.FailAfterInventoryRelease", workflowService,
             StringComparison.Ordinal);
         Assert.Contains("public sealed class RedisCommerceStores", stores, StringComparison.Ordinal);
         Assert.Contains("ConnectionMultiplexer.Connect(topology.RedisEndpoint)", stores, StringComparison.Ordinal);
@@ -192,5 +192,36 @@ public sealed partial class RegressionTests
         Assert.Contains("동시에 도는 다른 테스트와 섞이지 않는다", readme, StringComparison.Ordinal);
         Assert.Contains("같은 멱등 키의 동시 시작 경쟁", readme, StringComparison.Ordinal);
         Assert.Contains("`InventoryReserved` 이후 명시 재개", readme, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ShoppingMall_Domain_Does_Not_Depend_On_Transport_Configuration_Or_Storage_Format()
+    {
+        var sampleRoot = ResolveSampleRoot("ShoppingMall");
+        var domainFiles = Directory.GetFiles(
+                Path.Combine(sampleRoot, "Server"),
+                "*.cs",
+                SearchOption.AllDirectories)
+            .Where(static path => path.Contains(
+                $"{Path.DirectorySeparatorChar}Domain{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal));
+
+        foreach (var domainFile in domainFiles)
+        {
+            var source = File.ReadAllText(domainFile);
+            Assert.DoesNotContain("using ShoppingMall.Shared", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("using ShoppingMall.Server.Configuration", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("using System.Text.Json", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("JsonDerivedType", source, StringComparison.Ordinal);
+        }
+
+        var mapper = File.ReadAllText(Path.Combine(
+            sampleRoot,
+            "Server",
+            "Shared",
+            "Contracts",
+            "OrderContractMapper.cs"));
+        Assert.Contains("OrderProjectionState", mapper, StringComparison.Ordinal);
+        Assert.Contains("OrderState ToContract", mapper, StringComparison.Ordinal);
     }
 }

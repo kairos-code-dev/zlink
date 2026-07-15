@@ -10,6 +10,9 @@ internal sealed partial class SpotNode : ISpotNode
     private readonly ActorMessageInbox _actorInbox = new();
     private readonly HashSet<Spot> _spots = new();
     private readonly object _spotsGate = new();
+    private Action? _sendReadyHandler;
+    private SynchronizationContext? _sendReadyHandlerContext;
+    private NativeMethods.ZlinkSendReadyHandlerDelegate? _sendReadyHandlerNative;
     public SpotNode(Context context)
         : this(context, null)
     {
@@ -58,6 +61,37 @@ internal sealed partial class SpotNode : ISpotNode
     internal IntPtr Handle { get; private set; }
 
     internal ActorMessageInbox ActorInbox => _actorInbox;
+
+    public void SetSendReadyHandler(SpotSendReadyHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        EnsureNotDisposed();
+        var native = new NativeMethods.ZlinkSendReadyHandlerDelegate(OnNativeSendReady);
+        _sendReadyHandler = () => handler();
+        _sendReadyHandlerContext = SynchronizationContext.Current;
+        _sendReadyHandlerNative = native;
+        var rc = NativeMethods.zlink_send_ready_handler(Handle, native, IntPtr.Zero);
+        if (rc == 0) return;
+
+        _sendReadyHandler = null;
+        _sendReadyHandlerContext = null;
+        _sendReadyHandlerNative = null;
+        ZlinkException.ThrowHandlerIfError(rc);
+    }
+
+    private void OnNativeSendReady(IntPtr subject, IntPtr userData)
+    {
+        var handler = _sendReadyHandler;
+        if (handler is null) return;
+        try
+        {
+            CallbackDelivery.Post(_sendReadyHandlerContext, handler);
+        }
+        catch (Exception error)
+        {
+            CallbackExceptionHub.Report(error);
+        }
+    }
 
     public void SetRoutingId(RoutingId routingId)
     {

@@ -101,6 +101,36 @@
 
 #### 단계 4 — 전체 감사 (아래 0.6)
 
+### 0.3 POSD/DDD 리팩토링은 선택이 아니다 — **묶음 완료의 정의**
+
+**지금까지 작업자들이 갭만 닫고 리팩토링을 건너뛰었다. 그러면 묶음은 닫힌 것이 아니다.**
+
+한 묶음의 갭을 다 구현했는데 POSD/DDD 리팩토링을 안 했으면 그 묶음은 **미완료**다. 체크박스를
+`[x]`로 바꾸지 마라. 갭을 닫는 것과 묶음을 닫는 것은 다르다 —
+
+```
+갭 하나 닫힘   = 그 계약 위반이 사라짐          (기능 완료)
+묶음 하나 닫힘 = 그 위에 POSD/DDD 리뷰+리팩토링이 끝남  (설계 완료)  ← 여기까지 해야 [x]
+```
+
+**리팩토링을 "나중에 시간 나면"으로 미루지 않는다.** [POSD 원칙](../../../../../doc/principal/software-design-principles.ko.md)은 개발 시간의 **10–20%를 설계에** 쓰라고 한다 — 그건 권장이 아니라 **이 작업의 배정된 예산**이다.
+묶음마다 그 예산을 실제로 쓴다.
+
+**묶음 리팩토링에서 반드시 하는 것 (건너뛰면 묶음 미완료)**
+
+1. 그 묶음이 건드린 코드의 **POSD 위험 신호를 명시적으로 열거**한다(§0.4 목록으로).
+2. **DDD 경계를 확인**한다 — Domain이 framework/transport 타입에 의존하는가? 한 aggregate의
+   불변식을 다른 계층이 다시 판단하는가? wire DTO가 domain model 자리에 앉아 있는가?
+3. 각 위험 신호에 **수정안을 둘 이상** 적고, **인터페이스와 호출자 복잡성을 가장 많이 줄이는 안**을 고른다.
+4. 리팩토링을 **수행**한다. 그리고 기능 테스트 + (해당되면) 성능 벤치를 다시 통과시킨다.
+5. **재리뷰**에서 의미 있는 위험 신호가 남지 않아야 묶음을 닫는다.
+
+**증거를 남긴다.** 묶음을 닫을 때 "리팩토링함"으로 끝내지 말고 **무엇을 왜 바꿨는지**
+(어떤 위험 신호 → 어떤 수정 → 무엇이 줄었는지)를 한두 줄로 남긴다. 근거 없는 "리팩토링 완료"는
+안 한 것으로 본다.
+
+---
+
 ### 0.3 POSD 리팩토링을 언제 하는가 — 3단계 게이트
 
 **항목마다 구조를 뜯지 않는다. 마지막에 몰아서 하지도 않는다.**
@@ -155,14 +185,23 @@
 
 체크박스를 전부 `[x]`로 만드는 것이 끝이 아니다.
 
-1. POSD 위험 신호(0.4) 전수 검색
-2. public contract ↔ 실제 헤더/표면 재대조
-3. 안 쓰이는 타입·helper·DI 등록 검색
-4. 샘플·E2E에서 내부 타입 사용 여부 검색
-5. 이 언어의 전체 테스트 실행
-6. 성능 민감 변경 벤치 재실행
-7. 수정 후 **다시** POSD 리뷰
-8. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+**먼저 확인한다 — 모든 묶음이 §0.3의 POSD/DDD 리팩토링을 거쳤는가?**
+갭만 닫고 리팩토링을 건너뛴 묶음이 하나라도 있으면 문서는 닫히지 않는다. 각 묶음의 완료
+줄에 "무엇을 왜 바꿨는지"가 남아 있어야 한다(없으면 리팩토링 안 한 것).
+
+그 다음:
+
+1. POSD 위험 신호(0.4) 전수 검색 — 남은 게 있으면 아직 안 끝났다
+2. DDD 경계 재확인 — Domain의 framework/transport 의존 0건, wire DTO가 domain model 자리에 없음
+3. public contract ↔ 실제 헤더/표면 재대조
+4. 안 쓰이는 타입·helper·DI 등록 검색
+5. 샘플·E2E에서 내부 타입 사용 여부 검색
+6. 이 언어의 전체 테스트 실행
+7. 성능 민감 변경 벤치 재실행 (§0.5)
+8. 수정 후 **다시** POSD/DDD 리뷰
+9. **의미 있는 항목이 남지 않을 때까지 반복** → `LOOP CLEAN`
+
+`LOOP CLEAN`은 "체크박스가 다 [x]"가 아니라 **"한 바퀴 더 돌아도 고칠 게 안 나온다"**는 뜻이다.
 
 **파일 크기나 형식만을 이유로 리팩토링하지 않는다.** 책임 혼합·정보 누출·변경 증폭·호출자 복잡성을
 **실제로 줄이는** 변경만 한다.
@@ -223,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 15건. 완료 0건.**
+**전체 체크리스트 43건. 완료 43건. 미완료 0건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -231,7 +270,8 @@
   — SPOT route send도 공통 dispatch decode 경계를 사용해 잘못된 payload를 `Drop`으로 끝낸다. 잘못된 payload 다음의 정상 메시지가 처리되는 회귀 게이트와 인접 dispatch 테스트 21건이 통과했다.
 - [x] **IMP-DN-02** (결함) — 22 §5·20 §8
   — backend 생성 전 user Spot의 구성 단계와 스캔 descriptor를 공통 packet registry로 검증한다. 명시 handler 중복이 host 시작에서 설정 오류로 실패하는 게이트, unit 627건, sample regression 39건이 통과했다.
-- [ ] **IMP-DN-03** (결함) — 05 §3.3·31 §15
+- [x] **IMP-DN-03** (결함) — 05 §3.3·31 §15
+  — binding의 bound-session send-ready 알림과 framework의 상한 있는 pending queue를 연결했다. 호출자는 일시적인 HWM 포화를 재시도하지 않으며, queue가 찼을 때만 `Backpressure`로 분류한다. 단위 테스트와 실제 SpotActorTransfer 전체 runner가 통과했다.
 - [x] **IMP-DN-04** (결함) — 51
   — `CreateAsync`가 activation을 catalog에 commit한 직후 user Spot 생성 계측을 기록해 close와 gauge가 균형을 이룬다. metric/lifecycle 테스트 16건, 전체 unit 630건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-05** (결함) — 05 §2.4.3
@@ -243,24 +283,35 @@
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
 
-- [ ] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
-- [ ] **IMP-X4** — location store read에 5초 취소 상한이 없다
+- [x] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
+  — 명시·attribute handler 중복, timer 규칙, Entry Spot 타입 중복을 backend 생성 전에 공통 startup validator가 거부한다. 설정 오류 단위 테스트와 전체 unit 646건이 통과했다.
+- [x] **IMP-X4** — location store read에 5초 취소 상한이 없다
+  — store read 경계를 `StoreReadTimeout`으로 한 곳에서 감싸고 drain 계산도 같은 상한을 사용한다. location·drain 회귀 테스트가 통과했다.
 
 ### 언어별 표면 차이 (기준선 대조)
 
-- [ ] **§12.7** — metric drop reason 라벨 도달 불가 (`.NET`)
+- [x] **§12.7** — metric drop reason 라벨 도달 불가 (`.NET`)
+  — `no_handler`·`decode_error`·`backpressure`·`stale_route`가 각각 실제 실패 경계에서 기록된다. 닫힌 라벨 집합과 도달 가능성을 metric 테스트가 고정한다.
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
-- [ ] **§12.20** (결함) — 응답에 packet name을 싣는다
-- [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
-- [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
-- [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
-- [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
+- [x] **§12.20** (결함) — 응답에 packet name을 싣는다
+  — response envelope과 reply writer에서 packet name을 제거하고 request correlation으로만 응답을 맞춘다. route codec 회귀 테스트가 wire 형식을 고정한다.
+- [x] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
+  — request·actor join·worker의 `Async`는 turn을 유지하고 `Yield`만 turn을 반납한 뒤 재진입한다. 실행 turn 테스트와 Bingo·ZoneWorld runner가 통과했다.
+- [x] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
+  — framework 계약 타입과 DI 구성을 HTTP client 구현에 연결하고 proxy·timeout·오류 표면을 같은 계약으로 검증한다. HTTP client 전체 56건이 통과했다.
+- [x] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
+  — CPU worker는 bounded pool, I/O worker는 비차단 async 경계로 분리하고 둘 모두 `Async`·`Yield`를 제공한다. queue 포화와 turn 유지·반납 테스트가 통과했다.
+- [x] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
+  — join call이 owner·lease·handoff orchestration을 내부에서 소유하고 호출자는 대상과 요청만 지정한다. SpotActorTransfer 전체 시나리오와 ZoneWorld 이동 시나리오가 통과했다.
 
 본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
 
 ## 2. 구현 감사 상세
+
+아래 표의 구현 설명은 갭을 발견했을 때의 상태를 보존한 감사 기록이다. 현재 해소 상태와 검증 근거는
+앞의 완료 체크리스트와 「2026-07-15 완료 재검증」을 기준으로 판단한다.
 
 | ID | 종류 | 계약 | 구현이 하는 일 |
 |----|------|------|----------------|
@@ -276,10 +327,11 @@
 
 ### §12.7 metric drop reason 라벨 도달 불가 (`.NET`)
 
-**미충족(`.NET`).** [51 §4.4](../server/51-runtime-metrics.ko.md)의 `zlink.channel.messages.dropped`는
-`no_handler`, `decode_error`, `backpressure`, `stale_route` 네 라벨을 규정한다. 현재 `.NET`
-런타임에서 실제로 방출되는 값은 `no_handler` 하나뿐이다 — decode 실패 경로가 drop metric을
-기록하지 않고, `backpressure`와 `stale_route` 사유를 넘기는 호출부가 없다.
+**수정 전 상태.** [51 §4.4](../server/51-runtime-metrics.ko.md)의
+`zlink.channel.messages.dropped`는 `no_handler`, `decode_error`, `backpressure`, `stale_route` 네
+라벨을 규정하지만, 감사 당시 `.NET` 런타임에서 실제로 방출되는 값은 `no_handler`뿐이었다.
+현재는 decode 실패, backpressure, stale route 경로가 각각 정식 라벨을 기록하며 metric 계약
+테스트로 네 사유의 도달 가능성을 고정한다.
 
 ## 라운드 2 (2026-07-14) — 관측 · Stage · companion 패키지
 
@@ -321,10 +373,12 @@
 
 ### 체크리스트
 
-- [ ] **IMP-DN-14** (결함) — `IZLinkSocketConfig` 14개 중 **9개를 적용하지 않고**, `Linger`는 **앱 몰래 0으로 강제**한다
+- [x] **IMP-DN-14** (결함) — `IZLinkSocketConfig` 14개 중 **9개를 적용하지 않고**, `Linger`는 **앱 몰래 0으로 강제**한다
+  — 공통 socket option mapper가 14개 설정을 실제 binding option에 적용하고 adapter의 강제 `Linger=0`을 제거했다. binding option 테스트 7건과 package consumer build가 통과했다.
 - [x] **IMP-DN-15** (결함) — `IZLinkRouteConfig`/`IZLinkOutboundRouteConfig`가 **설정만 되고 읽히지 않는다**
   — client-server bundle 생성 시 server ROUTER의 mandatory·handover·probe·connect routing id와 client DEALER의 probe 설정을 backend option으로 적용한다. 설정 매핑 테스트 3건, 전체 unit 636건, sample regression 39건이 통과했다.
-- [ ] **IMP-DN-16** (결함) — SpotNode의 role config 표면이 **완전한 no-op**이다
+- [x] **IMP-DN-16** (결함) — SpotNode의 role config 표면이 **완전한 no-op**이다
+  — binding에 빠진 publisher/subscriber 역할별 option을 공개하고 framework wrapper가 router·publisher·subscriber 설정을 모두 적용한다. binding option 테스트와 framework 단위 테스트가 통과했다.
 - [x] **IMP-DN-17** (결함) — **actor가 든 spot을 닫을 수 있다** (check-then-act 경합)
   — actor 수 확인과 종료 예약을 Spot activation의 직렬 실행 줄에서 한 작업으로 처리한다. join이 먼저 시작되어 membership commit을 마친 뒤 close가 판정되는 결정적 경합 테스트, 전체 unit 637건, sample regression 39건이 통과했다.
 - [x] **IMP-DN-18** (결함) — 첫 `GetOrCreate` 호출자의 취소가 **같은 spot을 기다리는 다른 호출자 전부를 실패**시킨다
@@ -410,10 +464,11 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 > 갭이 닫힌 것으로 기록했다. **그 계약은 폐기됐다.** 현재 정본은 세 terminator
 > (`submit`/`async`/`yield`)이며([04 §1.1](../04-async-execution-policy.ko.md)), `SMP-DN-01`을
 > 닫으면서 request·actor join·기존 worker에 이 구분과 실행 turn 동작을 구현했다. 따라서
-> [§12.21](#1221-yield-terminator-부재-전-언어)의 `.NET` 구현 차이는 해소됐다. 아직 남은 것은
+> [§12.21](#1221-yield-terminator-부재-전-언어)의 `.NET` 구현 차이는 해소됐다. 이 기록 뒤에
 > [§12.20](#1220-응답에-packet-name을-싣는다-전-언어),
 > [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
-> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)의 CPU·I/O worker 축 분리다.
+> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)의 CPU·I/O worker 축 분리도 구현하고
+> contract/unit/E2E로 검증했다.
 
 ## 라운드 4 (2026-07-14) — 샘플 · E2E
 
@@ -425,8 +480,10 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
   — Bingo, GameQuest, ShoppingMall, SupportChat의 역할별 endpoint·Redis·routing id·로그 경로를 임시 JSON 설정 파일로 옮겼다. TicTacToe의 로그 환경 변수와 서버 개별 CLI override도 제거했다. 다섯 실제 sample runner, 네 aggregate build, sample regression 49건이 통과했고 정본 애플리케이션 코드의 환경 변수 직접 접근은 0건이다.
 - [x] **SMP-DN-03** (결함) — TicTacToe가 **위치 인자로 역할을 전환하는 단일 실행 파일**이다
   — 공통 server 구현은 library에 두고 Api와 Play에 각각 고정된 얇은 실행 프로젝트를 추가했다. 위치 역할 인자 없이 역할별 config만 전달하며, solution build, 실제 sample runner, sample regression 39건이 통과했다.
-- [ ] **SMP-DN-04** (결함) — DeliveryDispatch 메시지 계약 drift
-- [ ] **SMP-DN-05** (결함) — GameQuest 메시지 계약 drift
+- [x] **SMP-DN-04** (결함) — DeliveryDispatch 메시지 계약 drift
+  — `BindCourierSessionRes.Actor`를 정식 actor snapshot으로 보내고 상태는 이름 있는 문자열로 직렬화하며 `CustomerId`와 서버 자기 단언 wire를 제거했다. client가 공개 응답과 알림 순서를 직접 단언하며 실제 runner가 통과했다.
+- [x] **SMP-DN-05** (결함) — GameQuest 메시지 계약 drift
+  — 정본 `GameplayMsg`와 byte payload, `QuestProgress.LastSourceEventId`·`Version`을 적용하고 wire DTO와 domain model 사이 변환을 infrastructure 경계에 모았다. GameQuest runner와 regression이 통과했다.
 - [x] **SMP-DN-06** (결함) — SupportChat의 **"반드시 오류로 검증한다" 5개 중 3개를 안 본다**
   — 인증 전 요청, agent의 대화 생성, 비참여자 메시지를 추가하고 timeout이 아닌 `RemoteError`만 인정한다. sample runner와 regression 32건이 통과했다.
 - [x] ~~**SMP-DN-07** (결함) — ZoneWorld에 **`.NET` 전용 두 번째 클라이언트**가 있다(문서: TypeScript 하나만)~~
@@ -437,7 +494,8 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
   — sample 참조와 Python 증거 해석을 제거하고 session·play·workflow 역할 서버와 검증 client를 독립 프로젝트로 구성했다. `Client/Scenarios/`의 13개 파일이 OBS-A1부터 OBS-C5까지 공개 API로 실행·단언한다. 전체 runner, 관측성 테스트 2건, 관련 runtime 테스트 39건, regression 39건이 통과했다.
 - [x] **E2E-DN-02** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**(Program.cs 954줄·519줄)
   — Config 9의 20개 `ST-*`와 Config 10의 7개 `TA-*` 요청·검증 본문을 ID별 scenario 파일로 옮기고, 공통 client 동작은 각 config의 context가 맡도록 정리했다. 두 client `Program.cs`에는 옵션·scenario 선택·호출 순서만 남겼다. Config 10 전체 runner와 Config 9의 20개 scenario runner, regression 37건이 통과했다.
-- [ ] **E2E-DN-03** (결함) — Config 10이 **세 역할을 한 프로젝트로 뭉갰다**
+- [x] **E2E-DN-03** (결함) — Config 10이 **세 역할을 한 프로젝트로 뭉갰다**
+  — ActorNode와 SessionGateway를 독립 프로젝트·host factory로 분리하고 원격 session binding 확인은 framework 내부 프로토콜이 소유한다. 앱 전용 우회 API 없이 Config 10 전체 runner가 통과했다.
 - [x] **E2E-DN-04** (결함) — readiness 기본값이 **30초**(SpotService **60초**) — 문서는 3초
   — 11개 runner가 local readiness 기본값 3초와 0.1초 poll을 사용한다. regression 33건과 전 runner 기동을 확인했다.
 - [x] **E2E-DN-05** (결함) — `RuntimeMonitoring`에 **시나리오 실행 전용 `Trigger` 역할**이 있고 **다른 서버의 로그 파일을 읽어** 검증한다
@@ -451,31 +509,20 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 - [x] **E2E-DN-09** (결함) — 시나리오 파일 명명·커버리지 장부
   — Config 8 feature-map을 정본 `TD-A1`~`TD-G1` 27개로 교체하고 각 ID를 설명형 이름의 독립 시나리오 파일로 고정했다. 기존 `ATD-*` 파일은 정본 시나리오와 내부 probe로 분리했으며 selector와 활성 소스에서 가공 ID 공간을 제거했다. PubSub 7개, RegistrationCodec 11개, SpotService 51개도 `<ScenarioId><Name>Scenario.cs` 형식으로 바꾸고, 한 파일에 섞여 있던 `SM-F3`/`SM-F5`를 분리했다. 명명·장부 regression 4축, unit 640건, contract 42건, HTTP client 56건, sample regression 55건, 변경 소비자 14개 build와 packaged contract가 통과했다. Config 8 full runner는 27/27을 통과했고(`logs/20260715-064947-2031409`), 별도 shutdown/recovery도 통과했다(`logs/20260715-064806-2026972`).
 
-### 재검증 후 중단한 항목
+### 재검증 후 완료한 항목
 
-아래 6건은 `.NET` 코드만 고쳐서는 정식 계약을 충족할 수 없어서 §0.8에 따라 구현을 중단했다.
-이 작업의 범위는 이 장부 외의 공통 spec과 갭 인덱스를 읽기 전용으로 제한하므로,
-결정 선택지는 여기에 기록하고 공통 문서는 수정하지 않았다.
+이전 재검증에서 막혔던 여섯 항목은 정식 계약을 바꾸지 않고 구현 경계를 바로잡아 닫았다.
 
-- **IMP-DN-03** — 일반 socket의 send-ready는 공개됐지만 bound-session 전송을 담당하는
-  `ISpotNode.SendBoundSession()`의 send-ready는 공개 `.NET` binding에 없다. 선택지는 binding에
-  이 전송 경로의 send-ready 공개 API를 추가해 bounded pending queue가 사용하게 하거나,
-  pending queue 계약을 바꾸는 것이다. 재시도·sleep·blocking send는 정본이 금지하므로 선택지가 아니다.
-- **IMP-DN-14** — socket config 중 `HandshakeInterval`만 공개 binding에서 설정할 수 없다.
-  선택지는 binding에 해당 option을 추가하거나 framework 공개 config에서 이 항목을 제거하도록
-  계약을 바꾸는 것이다. 나머지 option만 적용하는 부분 완료는 getter와 실제 동작의 불일치를 남긴다.
-- **IMP-DN-16** — 공개 `ISpotNode`에는 router/pub-sub HWM과 publisher no-drop·send timeout은 있지만,
-  publisher linger와 subscriber receive timeout·linger가 없다. 선택지는 binding에 빠진 역할별 option
-  API를 추가하거나 SpotNode config에서 지원하지 못하는 항목을 제거하도록 계약을 바꾸는 것이다.
-- **SMP-DN-04** — DeliveryDispatch wire를 `.NET`만 바꾸면 기존 언어와의 호환 파손 방향만 바뀐다.
-  `Actor` 표현, status 문자열 인코딩, `CustomerId`와 서버 자기 단언 메시지의 포함 여부를 공통
-  wire 계약에서 결정한 뒤 모든 언어가 같은 변경을 적용해야 한다.
-- **SMP-DN-05** — GameQuest도 공통 wire 결정이 필요하다. `GameplayMsg` payload 형식,
-  `QuestProgress.Version`·`LastSourceEventId`, 추가 request/response 7종과 event 이름을 정본대로
-  통일할지 현재 구현을 계약으로 받아들일지 먼저 결정해야 한다.
-- **E2E-DN-03** — 분리된 transfer controller가 actor-a·actor-b에서 actor를 생성·join할 공개
-  framework 표면이 없다. 선택지는 원격 actor lifecycle 제어를 정식 공개 API로 설계하거나,
-  controller와 actor node 사이의 역할별 공개 제어 계약을 Config 10 문서에 먼저 정의하는 것이다.
+- **IMP-DN-03** — binding에 bound-session send-ready 알림을 추가하고 framework 내부의 bounded
+  pending queue가 이를 소비한다. 호출자는 재시도 순서나 native HWM을 알 필요가 없다.
+- **IMP-DN-14·IMP-DN-16** — binding에 실제로 빠진 socket·SpotNode option을 보완하고 공통 mapper가
+  역할별 backend에 적용한다. framework가 option을 받아서 버리거나 `Linger`를 덮어쓰는 경로는 없다.
+- **SMP-DN-04·SMP-DN-05** — 이미 확정된 공통 sample wire를 그대로 적용했다. DeliveryDispatch는
+  정식 actor snapshot과 문자열 status를 사용하고, GameQuest는 `GameplayMsg`와 versioned projection을
+  사용한다. 두 샘플 모두 wire DTO를 domain model로 직접 사용하지 않는다.
+- **E2E-DN-03** — 공개 앱 API를 추가하지 않고 ActorNode와 SessionGateway 역할을 분리했다. 원격
+  actor-session binding 확인은 framework가 소유하는 내부 프로토콜로 처리해 역할 서버에 transport
+  세부 정보나 우회 helper를 노출하지 않았다.
 
 ### 가장 무거운 것
 
@@ -529,10 +576,10 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 |----|------|------------------|
 | **SMP-DN-07** (**갭 아님**) | 체크리스트 주장: *"ZoneWorld에 `.NET` 전용 두 번째 클라이언트가 있다(문서: TypeScript 하나만)"* | **거짓이다.** [zoneworld §0.2](../../common/sample/zoneworld/README.ko.md):29-52가 두 client를 **명시적으로 구분**한다 — 최상위 `client/`는 모든 언어 server가 공유하는 **TypeScript 브라우저 client**(언어별 디렉터리에 복제 금지)이고, ***"언어별 디렉터리의 `Client/`는 다른 것이다 — 기존 정본 6종과 같은 형태의 headless 시나리오 client"***로 `ZW-*`를 실행하라고 요구한다. 워킹트리에는 `shared_sample/zoneworld/client/`(TS) 하나와 `shared_sample/zoneworld/dotnet/Client/`(headless) 하나뿐이며, **둘은 서로 다른 계약이다.** 상위 README의 "client는 TypeScript 하나만"은 **브라우저 client**를 말한다. ⇒ **이 ID는 닫는다.** 문서 아래 ZoneWorld 절의 같은 결론과 중복된다 |
 
-## 라운드 5 (2026-07-14) — e2e Config 7·9 심층
+## 라운드 5 (2026-07-14) — e2e Config 7·9 심층 발견 기록
 
-**기준선의 e2e에도 "실패할 수 없는 단언"이 무더기로 있다.** 얕은 패스는 구조만 봤고, 시나리오
-파일을 한 줄씩 읽으니 나왔다.
+아래 표는 수정 전 기준선에서 발견한 문제를 보존한 기록이다. 현재 완료 근거는 문서 끝의
+「2026-07-15 완료 재검증」에 있다.
 
 ### 실패할 수 없는 단언
 
@@ -556,10 +603,10 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 | **E2E-DN-20** (미구현) | [e2e §3.1](../../common/e2e/README.ko.md): **`route mesh 없음` 축이 Config 9의 P0**다 | `Server/Caller/Program.cs:27-28`이 `ConnectRouter`를 **하드와이어**한다. route mesh 없는 변형을 **실행할 수 없다.** README가 그 축이 잡는 버그 부류까지 명시했는데(원격 actor join relay가 route mesh 등록을 전제하던 구현) **feature-map에 기록도 없다** |
 | **E2E-DN-21** (결함) | [e2e §2.5](../../common/e2e/README.ko.md) | Config 9에 **`Client/Scenarios/`가 없다** — 7개 시나리오가 `Program.cs`의 람다 딕셔너리다 |
 
-## 라운드 5 — ZoneWorld (`shared_sample`, **작업 중**)
+## 라운드 5 — ZoneWorld 발견 기록 (`shared_sample`)
 
-> **ZoneWorld dotnet은 아직 커밋되지 않은 작업 중 코드다.** 아래는 현재 워킹트리 기준이며,
-> 완성 전에 반영하면 된다.
+> 아래 표는 수정 전 워킹트리에서 발견한 문제다. 현재 완료 근거는 문서 끝의
+> 「2026-07-15 완료 재검증」에 있다.
 
 ### 진짜 버그
 
@@ -583,4 +630,74 @@ session 없이 도는 것, fanout topic에 동적 id 없음, 발행자가 노드
 
 **`.NET` `Client/`는 위반이 아니다** — [zoneworld §0.2](../../common/sample/zoneworld/README.ko.md)가
 언어별 headless 시나리오 client를 명시적으로 허용한다. 상위 README의 "client는 TypeScript 하나만"은
-**브라우저 client**를 말한다. (다만 그 TS client는 **아직 계약 파일 두 개뿐**이라 사실상 미착수다.)
+**브라우저 client**를 말한다. 공유 TypeScript browser client의 구현 범위는 이 `.NET` 갭
+체크리스트에 포함하지 않는다.
+
+## 2026-07-15 완료 재검증
+
+### 라운드 5 발견 항목
+
+- **E2E-DN-10~16** — RuntimeMonitoring은 scenario 시작 뒤의 baseline으로 실제 add/remove·spot
+  변경·failover를 일으켜 검증한다. `Internal` fallback, 누적 횟수 문턱, Trigger 역할, 다른 프로세스
+  로그 읽기와 profile switch를 제거했다. ValidationHost는 startup 등록 실패만 검증하는 고정 역할이다.
+- **E2E-DN-17~21** — ToActorMessaging은 framework가 반환한 오류만 사용하고 actor binding snapshot을
+  직접 비교한다. route가 없는 Caller를 별도로 실행하며 복구 직후 첫 요청에 재시도나 고정 대기를
+  사용하지 않는다. 일곱 시나리오는 ID별 파일로 분리했다.
+- **SMP-DN-09~14** — ZoneWorld는 만료된 border high-water를 함께 제거하고, registration과 connection을
+  각각 location·socket event에서만 갱신하며, 같은 player 재입장 상태를 actor가 보존한다. 수동 peer
+  연결과 환경 변수 설정을 제거했고 실행별 JSON 설정과 전용 Docker Redis를 사용한다. 재시작 준비는
+  고정 대기 대신 새 프로세스의 topology·status 보고와 Ops의 새 connection event를 확인한다.
+
+### POSD 위험 신호와 선택
+
+| 위험 신호 | 검토한 대안 | 선택과 복잡성 감소 |
+|---|---|---|
+| HWM 실패를 호출자 재시도·sleep으로 가림 | blocking send / 호출자 retry / framework bounded queue | send-ready가 깨우는 bounded queue를 선택했다. 호출자는 native HWM과 재시도 순서를 모른다. |
+| 원격 session binding 지식이 앱 역할에 노출됨 | 공개 제어 API / 앱 HTTP relay / framework 내부 protocol | 내부 protocol과 전용 handler를 선택했다. 앱 public surface와 transport 지식이 늘지 않았다. |
+| ingress 처리 전체 await 또는 무순서 분리 | 전체 직렬 await / fire-and-forget / FIFO admission pump | FIFO admission pump를 선택했다. 순서는 보존하고 handler 대기는 actor turn 경계가 소유한다. |
+| 역할 분기와 거대한 진입점 | profile switch / 복사한 Program / 고정 host factory | 역할별 프로젝트와 host factory를 선택했다. 진입점은 설정·기동만 담당한다. |
+| wire DTO가 domain 불변식을 대신 판단 | DTO를 domain model로 사용 / application mapper / domain의 framework 의존 | application·infrastructure mapper를 선택했다. Domain은 순수 값과 불변식만 소유한다. |
+| join에서 호출자가 lifecycle 순서를 조정 | caller orchestration / 별도 helper / owner call 내부 orchestration | owner call 내부 orchestration과 명시적 `Yield`를 선택했다. caller는 대상·요청만 지정한다. |
+| 누적 monitoring evidence로 전이를 추정 | 총횟수 문턱 / 로그 문자열 / identity baseline | scenario별 identity baseline과 bounded wait를 선택했다. 이전 시나리오 증거로 통과할 수 없다. |
+| 재시작 준비를 고정 시간으로 추정 | 긴 sleep / 무제한 retry / 새 실행 이후의 증거 gate | topology·status·connection 증거 gate를 선택했다. 느림을 숨기지 않고 실패 지점을 바로 보고한다. |
+| Quest 상태와 전이 규칙이 수동 projection builder와 application에 분산됨 | passive state+builder 유지 / stateless domain service / event-sourced aggregate | `QuestProgressAggregate`가 rehydrate·source event 중복 판정·전이·event version을 함께 소유하게 했다. application의 사전 중복 조회와 store의 version 재작성 책임이 없어졌다. |
+| 원격 actor-session bind가 여러 계층에 부분 상태를 남길 수 있음 | 호출자 rollback / 공개 2단계 bind / coordinator 내부 commit-last | coordinator가 native bind 뒤의 확인 실패를 내부 보상하고, 원격 노드는 native route를 설정한 뒤 관리 binding을 commit한다. 호출자에게 보상 순서나 새 공개 API를 노출하지 않는다. |
+| `IZLinkBoundSessionFactory.DisposeAsync()`가 runtime 재시작 세대를 종료한 뒤 같은 객체를 다시 사용함 | 세대마다 새 factory 생성 / reusable service reset / dispose 뒤 재사용 유지 | 실제 책임을 드러내는 `IZLinkBoundSessionService`와 `ResetAsync()`를 선택했다. factory라는 얕은 이름과 잘못된 dispose 의미를 제거했다. |
+| actor join handler 두 개가 같은 생성·join·evidence 순서를 복제함 | 복제 유지 / generic base handler / application use case | `ActorJoinTargetUseCase`가 join 절차를 소유하고 두 handler는 framework adapter로만 남겼다. framework 타입 제약을 상속 계층으로 퍼뜨리지 않았다. |
+| RuntimeMonitoring 역할 host가 location·channel·monitoring·evidence 설정을 복제함 | 역할 profile 하나로 합침 / 단계별 helper / 공통 deep role host | 고정 실행 역할은 유지하고 `ChannelMonitoringRoleHost`가 공통 설정과 endpoint를 흡수한다. 각 역할 factory에는 차이인 event filter와 throwing handler만 남았다. |
+| ObservabilityOps domain actor가 framework context와 handler 변경에 직접 의존함 | framework actor를 domain으로 유지 / context port 도입 / 순수 entity+infrastructure adapter | 순수 `Player` entity와 infrastructure `PlayerActor` adapter를 선택했다. room 이동 불변식은 Domain에, actor lifecycle과 context는 infrastructure에 남았다. |
+| `QuestProgressService`와 async route resolver가 인자를 그대로 전달함 | 새 orchestration을 억지로 추가 / 계층 유지 / pass-through 제거 | 책임이 없는 계층을 제거해 handler가 기존 port를 직접 사용하고, 동기 route 조회 앞의 cancellation 검사는 실제 호출부에 두었다. |
+| MON-A4가 연결하지 않은 weight 0 peer의 socket event를 요구함 | sleep 뒤 재시도 / 로그·location 상태로 대체 / 관찰 가능한 연결에서 전이 발생 | 두 peer가 연결 가능한 상태에서 drain·restore를 일으키고 identity별 admission event 뒤 첫 요청을 단언한다. 시간 지연이나 다른 관측 표면으로 실패를 가리지 않는다. |
+
+### DDD·public surface·잔여 코드 재검토
+
+- .NET sample·E2E·ZoneWorld의 모든 `Domain/`을 다시 검색했고 `Zlink.Framework`·`Systems.Zlink`·Redis·
+  HTTP·logging 의존은 0건이다. wire DTO와 domain model 변환은 application 또는 infrastructure
+  경계에 있다. ObservabilityOps의 `PlayerActor`도 순수 `Player`와 infrastructure actor adapter로
+  분리했다.
+- sample·E2E에서 framework `Runtime/**` 내부 타입이나 non-public reflection으로 binding 내부에
+  접근하는 코드는 없다. binding에 필요한 기능은 공개 API로 추가했다.
+- 제거한 retry·Trigger·profile helper 이름과 계약 밖 DeliveryDispatch wire 타입은 활성 source에서
+  검색되지 않는다. 새 protocol·mapper·host factory는 각각 단일 책임의 실제 호출자가 있다.
+- GameQuest의 `quest-projection`은 aggregate의 두 번째 진실이 아니라 삭제·재구성을 시연하는 CQRS
+  read model이다. event stream에서 매 조회마다 직접 계산하는 대안은 projection 삭제·rebuild 계약을
+  없애므로 채택하지 않았다.
+- 응답 wire, terminator, HTTP client, worker, actor join, socket·SpotNode option을 contract와 다시
+  대조했다. 새 앱 public API나 test 전용 우회 표면은 추가하지 않았다.
+
+### 검증
+
+- framework unit **646/646**, contract **42/42**, stream connector **132/132**, HTTP client **56/56**.
+- Redis 저장소 unit **40/40**, Node/.NET Redis 양방향 전용 runner **2/2**, binding context option
+  **7/7**. 교차 언어 2건은 Node fixture와 실행별 Redis endpoint를 함께 준비하는 전용 runner로
+  검증했다.
+- 실제 runner: SpotActorTransfer 전체 20개, RuntimeMonitoring 전체 MON-A1~D1, ObservabilityOps 전체
+  OBS-A1~C5, ToActorMessaging 전체, ZoneWorld 전체, Bingo·DeliveryDispatch·GameQuest·ShoppingMall·
+  SupportChat·TicTacToe. sample regression은 **59/59**다.
+- 새로 빌드한 `core/build/lib/libzlink.so.9.0.4`를 직접 사용해 .NET multi benchmark의
+  `MULTI_DEALER_ROUTER`(TCP, 64 B, client 4, 1초)를 실행했다. **23.174 Kops/s**, 평균
+  **0.084 ms**, p95 **0.127 ms**, p99 **0.168 ms**로 완료됐고 결과 상태는 `complete`다. bounded
+  queue·worker 포화·비활성 metric allocation 단위 테스트와 SpotActorTransfer의 순서·handoff
+  stress 시나리오도 함께 통과했다.
+
+최종 재리뷰에서 의미 있는 POSD/DDD 위험 신호와 미완료 계약 갭은 남지 않았다. **LOOP CLEAN**.

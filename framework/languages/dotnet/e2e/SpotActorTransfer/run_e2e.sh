@@ -16,8 +16,10 @@ LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 
 SERVER_PROJECT="$ROOT_DIR/Server/ActorNode/SpotActorTransfer.ActorNode.csproj"
+SESSION_GATEWAY_PROJECT="$ROOT_DIR/Server/SessionGateway/SpotActorTransfer.SessionGateway.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/SpotActorTransfer.Client.csproj"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
+PROCESS_EXIT_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_PROCESS_EXIT_TIMEOUT_SECONDS:-30}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -80,7 +82,7 @@ PY
 wait_process_exit() {
   local pid="$1"
   local name="$2"
-  local attempts=$((LOCAL_READINESS_TIMEOUT_SECONDS * 10))
+  local attempts=$((PROCESS_EXIT_TIMEOUT_SECONDS * 10))
   for _ in $(seq 1 "$attempts"); do
     if ! kill -0 "$pid" >/dev/null 2>&1; then
       wait "$pid" >/dev/null 2>&1 || true
@@ -88,7 +90,7 @@ wait_process_exit() {
     fi
     sleep "$LOCAL_READINESS_POLL_SECONDS"
   done
-  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name process $pid to exit" >&2
+  echo "Timed out waiting ${PROCESS_EXIT_TIMEOUT_SECONDS}s for $name process $pid to exit" >&2
   return 1
 }
 
@@ -96,8 +98,21 @@ start_node() {
   local rid="$1"
   local url="$2"
   local router="$3"
-  local stream="$4"
   ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
+    --rid "$rid" \
+    --http-url "$url" \
+    --redis-endpoint "$REDIS_ENDPOINT" \
+    --redis-key-prefix "$REDIS_KEY_PREFIX" \
+    --router-endpoint "$router" \
+    --evidence-file "$LOG_DIR/${rid}.evidence.log" \
+    --log-dir "$LOG_DIR" \
+    >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
+  pids+=("$!")
+}
+
+start_session_gateway() {
+  local rid="$1" url="$2" router="$3" stream="$4"
+  setsid dotnet run --no-build --project "$SESSION_GATEWAY_PROJECT" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -105,7 +120,6 @@ start_node() {
     --router-endpoint "$router" \
     --stream-endpoint "$stream" \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
-    --log-dir "$LOG_DIR" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }
@@ -116,8 +130,8 @@ run_client() {
     --node-a-url "$NODE_A_URL" \
     --node-b-url "$NODE_B_URL" \
     --node-c-url "$NODE_C_URL" \
-    --node-a-stream-endpoint "$NODE_A_STREAM" \
-    --node-b-stream-endpoint "$NODE_B_STREAM" \
+    --node-a-stream-endpoint "$SESSION_A_STREAM" \
+    --node-b-stream-endpoint "$SESSION_B_STREAM" \
     --scenario "$scenario" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
@@ -137,32 +151,42 @@ NODE_C_HTTP_PORT="$(pick_port)"
 NODE_A_ROUTER_PORT="$(pick_port)"
 NODE_B_ROUTER_PORT="$(pick_port)"
 NODE_C_ROUTER_PORT="$(pick_port)"
-NODE_A_STREAM_PORT="$(pick_port)"
-NODE_B_STREAM_PORT="$(pick_port)"
-NODE_C_STREAM_PORT="$(pick_port)"
+SESSION_A_HTTP_PORT="$(pick_port)"
+SESSION_B_HTTP_PORT="$(pick_port)"
+SESSION_A_ROUTER_PORT="$(pick_port)"
+SESSION_B_ROUTER_PORT="$(pick_port)"
+SESSION_A_STREAM_PORT="$(pick_port)"
+SESSION_B_STREAM_PORT="$(pick_port)"
 NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
 NODE_B_URL="http://127.0.0.1:$NODE_B_HTTP_PORT"
 NODE_C_URL="http://127.0.0.1:$NODE_C_HTTP_PORT"
 NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
 NODE_B_ROUTER="tcp://127.0.0.1:$NODE_B_ROUTER_PORT"
 NODE_C_ROUTER="tcp://127.0.0.1:$NODE_C_ROUTER_PORT"
-NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
-NODE_B_STREAM="tcp://127.0.0.1:$NODE_B_STREAM_PORT"
-NODE_C_STREAM="tcp://127.0.0.1:$NODE_C_STREAM_PORT"
+SESSION_A_URL="http://127.0.0.1:$SESSION_A_HTTP_PORT"
+SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
+SESSION_A_ROUTER="tcp://127.0.0.1:$SESSION_A_ROUTER_PORT"
+SESSION_B_ROUTER="tcp://127.0.0.1:$SESSION_B_ROUTER_PORT"
+SESSION_A_STREAM="tcp://127.0.0.1:$SESSION_A_STREAM_PORT"
+SESSION_B_STREAM="tcp://127.0.0.1:$SESSION_B_STREAM_PORT"
 
 echo "log_dir=$LOG_DIR"
 dotnet build "$SERVER_PROJECT" --maxcpucount:1 >/dev/null
+dotnet build "$SESSION_GATEWAY_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
 NODE_A_PID="${pids[${#pids[@]}-1]}"
-start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER" "$NODE_B_STREAM"
-start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER" "$NODE_C_STREAM"
+start_node actor-b "$NODE_B_URL" "$NODE_B_ROUTER"
+start_node actor-c "$NODE_C_URL" "$NODE_C_ROUTER"
 
 wait_health "$NODE_A_URL" actor-a
 wait_health "$NODE_B_URL" actor-b
 wait_health "$NODE_C_URL" actor-c
-sleep 5
+start_session_gateway session-a "$SESSION_A_URL" "$SESSION_A_ROUTER" "$SESSION_A_STREAM"
+wait_health "$SESSION_A_URL" session-a
+start_session_gateway session-b "$SESSION_B_URL" "$SESSION_B_ROUTER" "$SESSION_B_STREAM"
+wait_health "$SESSION_B_URL" session-b
 
 : >"$LOG_DIR/client.stdout.log"
 : >"$LOG_DIR/client.stderr.log"
@@ -173,26 +197,20 @@ if [[ "$SCENARIO" == "all" ]]; then
   wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_ROUTER_PORT="$(pick_port)"
-  NODE_A_STREAM_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
-  NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
-  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
-  sleep 5
   run_client "ST-C2"
   wait_process_exit "$NODE_A_PID" actor-a
   NODE_A_HTTP_PORT="$(pick_port)"
   NODE_A_ROUTER_PORT="$(pick_port)"
-  NODE_A_STREAM_PORT="$(pick_port)"
   NODE_A_URL="http://127.0.0.1:$NODE_A_HTTP_PORT"
   NODE_A_ROUTER="tcp://127.0.0.1:$NODE_A_ROUTER_PORT"
-  NODE_A_STREAM="tcp://127.0.0.1:$NODE_A_STREAM_PORT"
-  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER" "$NODE_A_STREAM"
+  start_node actor-a "$NODE_A_URL" "$NODE_A_ROUTER"
   NODE_A_PID="${pids[${#pids[@]}-1]}"
   wait_health "$NODE_A_URL" actor-a
-  sleep 5
   run_client "ST-C1"
 else
   run_client "$SCENARIO"

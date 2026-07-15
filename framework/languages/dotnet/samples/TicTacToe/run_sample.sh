@@ -133,7 +133,7 @@ def sample(instance_name, api_index, play_index, peer_play_index):
             "PeerSpotPubEndpoint": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"][peer_play_index],
             "RedisEndpoint": "${REDIS_ENDPOINT}",
             "RedisKeyPrefix": "${TICTACTOE_REDIS_KEY_PREFIX}",
-            "LogDirectory": "${LOG_DIR}"
+            "LogDirectory": "${SAMPLE_LOG_DIR}"
         }
     }
 

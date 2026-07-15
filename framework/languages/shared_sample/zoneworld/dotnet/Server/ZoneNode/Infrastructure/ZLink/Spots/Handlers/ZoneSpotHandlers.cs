@@ -3,11 +3,12 @@ using ZoneWorld.Server.Configuration;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
 using ZoneWorld.Shared.Contracts;
+using ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Actors;
 
 namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Spots.Handlers;
 
 /// <summary>The 100ms world tick (§2.5).</summary>
-internal sealed class ZoneTickHandler : IZLinkSpotTimerHandler<ZoneSpot>
+internal sealed class ZoneTickHandler(ZoneNodeSettings settings) : IZLinkSpotTimerHandler<ZoneSpot>
 {
     private static int _faultsInjected;
 
@@ -16,7 +17,7 @@ internal sealed class ZoneTickHandler : IZLinkSpotTimerHandler<ZoneSpot>
         // Fault injection for ZW-C4. The scenario has to see a real spot runtime event —
         // a timer handler that throws — and the only way to get one is to make a timer
         // handler throw. It fires once so the world keeps running afterwards.
-        var faultZone = ZoneWorldSettings.Text("ZONEWORLD_FAULT_TICK_ZONE", string.Empty);
+        var faultZone = settings.FaultTickZone;
         if (faultZone == spot.ZoneId && Interlocked.Exchange(ref _faultsInjected, 1) == 0)
             throw new InvalidOperationException(
                 $"injected tick failure for ZW-C4. zone={spot.ZoneId}");
@@ -61,7 +62,35 @@ internal sealed class ZoneBorderSubscriptionHandler : IZLinkSpotSubscriptionHand
         ZoneBorderEvent message,
         CancellationToken cancellationToken)
     {
-        spot.ApplyBorderSnapshot(message);
+        if (string.Equals(message.ToZoneId, spot.ZoneId, StringComparison.Ordinal))
+            spot.ApplyBorderSnapshot(message);
         return ValueTask.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Handles a reconnect after the player has already joined a zone. Rebinding the
+/// session must not reset the actor's authoritative coordinate or move it back to
+/// the spawn zone.
+/// </summary>
+[ZLinkSpotActorRequestHandler(nameof(JoinWorldReq))]
+internal sealed class RejoinWorldHandler :
+    IZLinkSpotActorRequestHandler<ZoneSpot, PlayerActor, JoinWorldReq, JoinWorldRes>
+{
+    public ValueTask<JoinWorldRes> HandleAsync(
+        ZoneSpot spot,
+        PlayerActor actor,
+        ZLinkSpotActorRequestContext context,
+        JoinWorldReq message,
+        CancellationToken cancellationToken)
+    {
+        var position = actor.Position;
+        return ValueTask.FromResult(new JoinWorldRes(
+            message.PlayerId,
+            actor.ZoneId,
+            ZoneTopology.NodeOf(actor.ZoneId),
+            position.X,
+            position.Y,
+            null));
     }
 }

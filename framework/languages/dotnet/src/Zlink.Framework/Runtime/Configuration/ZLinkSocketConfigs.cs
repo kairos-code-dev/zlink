@@ -17,7 +17,7 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
 
     public int ReceiveBufferSize { get; set; }
 
-    public TimeSpan? Linger { get; set; }
+    public TimeSpan? Linger { get; set; } = TimeSpan.Zero;
 
     public TimeSpan? ReceiveTimeout { get; set; }
 

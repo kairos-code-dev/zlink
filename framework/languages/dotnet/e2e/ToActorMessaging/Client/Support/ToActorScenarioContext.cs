@@ -10,6 +10,7 @@ internal sealed class ToActorScenarioContext : IDisposable
     private readonly ZLinkHttpClient _actorHttp;
     private readonly ZLinkHttpClient _actorBHttp;
     private readonly ZLinkHttpClient _callerHttp;
+    private readonly ZLinkHttpClient _noRouteCallerHttp;
     private readonly ZLinkHttpClient _sessionAHttp;
     private readonly ZLinkHttpClient _sessionBHttp;
 
@@ -19,6 +20,7 @@ internal sealed class ToActorScenarioContext : IDisposable
         _actorHttp = CreateClient(options.ActorUrl);
         _actorBHttp = CreateClient(options.ActorBUrl);
         _callerHttp = CreateClient(options.CallerUrl);
+        _noRouteCallerHttp = CreateClient(options.NoRouteCallerUrl);
         _sessionAHttp = CreateClient(options.SessionAUrl);
         _sessionBHttp = CreateClient(options.SessionBUrl);
     }
@@ -30,6 +32,7 @@ internal sealed class ToActorScenarioContext : IDisposable
         _actorHttp.Dispose();
         _actorBHttp.Dispose();
         _callerHttp.Dispose();
+        _noRouteCallerHttp.Dispose();
         _sessionAHttp.Dispose();
         _sessionBHttp.Dispose();
     }
@@ -58,20 +61,43 @@ internal sealed class ToActorScenarioContext : IDisposable
         await _callerHttp.Post("/route/reconnect").Body(new { }).Async<object>();
     }
 
-    public async Task AssertCallAsync(string scenario, string actorId, string value, string expected, bool send)
+    public async Task AssertCallAsync(
+        string scenario,
+        string actorId,
+        string value,
+        string expected,
+        bool send,
+        string? targetNodeRid = null,
+        ulong? targetGeneration = null)
     {
         var endpoint = send ? "send" : "request";
         var response = await PostJsonAsync<ActorCallResponse>(
-            $"/{endpoint}", new ActorCallRequest(scenario, actorId, value));
+            $"/{endpoint}", new ActorCallRequest(
+                scenario,
+                actorId,
+                value,
+                targetNodeRid,
+                targetGeneration));
         Require(response.Result == expected, $"{scenario} expected '{expected}', got '{response.Result}'.");
         Require(response.ErrorKind is null, $"{scenario} unexpected error '{response.ErrorKind}'.");
     }
 
-    public async Task AssertFailureAsync(string scenario, string actorId, string expectedKind, bool send)
+    public async Task AssertFailureAsync(
+        string scenario,
+        string actorId,
+        string expectedKind,
+        bool send,
+        string? targetNodeRid = null,
+        ulong? targetGeneration = null)
     {
         var endpoint = send ? "send" : "request";
         var response = await PostJsonAsync<ActorCallResponse>(
-            $"/{endpoint}", new ActorCallRequest(scenario, actorId, "missing"));
+            $"/{endpoint}", new ActorCallRequest(
+                scenario,
+                actorId,
+                "missing",
+                targetNodeRid,
+                targetGeneration));
         Require(response.ErrorKind == expectedKind,
             $"{scenario} expected '{expectedKind}', got '{response.ErrorKind}'.");
     }
@@ -92,9 +118,20 @@ internal sealed class ToActorScenarioContext : IDisposable
 
     public async Task AssertRouteAbsentAsync(string actorId)
     {
-        var status = (await _callerHttp.Get($"/directory/{actorId}")
-            .Async<ActorRouteStatus>()).Body;
+        var status = await GetRouteStatusAsync(actorId);
         Require(!status.Exists, $"Actor route '{actorId}' was created unexpectedly.");
+    }
+
+    public async Task WaitForRouteAbsentAsync(string actorId)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        do
+        {
+            if (!(await GetRouteStatusAsync(actorId)).Exists) return;
+            await Task.Delay(100);
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        throw new InvalidOperationException($"Actor route '{actorId}' remained after destroy completed.");
     }
 
     public async Task AssertCachedFailureAsync(string scenario, string actorId, string expectedKind)
@@ -105,19 +142,41 @@ internal sealed class ToActorScenarioContext : IDisposable
             $"{scenario} expected '{expectedKind}', got '{response.ErrorKind}'.");
     }
 
-    public async Task AssertCachedFailureWithRetryAsync(string scenario, string actorId, string expectedKind)
+    public async Task AssertNoRouteCallerFailureAsync(
+        string scenario,
+        ActorRefSnapshot actor)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        ActorCallResponse? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            last = await PostJsonAsync<ActorCallResponse>(
-                "/cached/request", new ActorCallRequest(scenario, actorId, "failure"));
-            if (last.ErrorKind == expectedKind) return;
-            await Task.Delay(100);
-        }
+        await _noRouteCallerHttp.Post("/route/disconnect")
+            .Body(new { })
+            .Async<object>();
+        var response = (await _noRouteCallerHttp.Post("/request")
+            .Body(new ActorCallRequest(
+                scenario,
+                actor.ActorId,
+                "no-route",
+                actor.NodeRid.ToString(),
+                actor.Generation))
+            .Async<ActorCallResponse>()).Body;
+        Require(response.ErrorKind == "RouteNotConnected",
+            $"{scenario} expected RouteNotConnected without a route mesh, got '{response.ErrorKind}'.");
+    }
 
-        throw new InvalidOperationException($"{scenario} expected '{expectedKind}', got '{last?.ErrorKind}'.");
+    public async Task AssertNoRouteCallerRecoveryAsync(
+        string scenario,
+        ActorRefSnapshot actor,
+        string value)
+    {
+        await _noRouteCallerHttp.Post("/route/reconnect").Body(new { }).Async<object>();
+        var response = (await _noRouteCallerHttp.Post("/request")
+            .Body(new ActorCallRequest(
+                scenario,
+                actor.ActorId,
+                value,
+                actor.NodeRid.ToString(),
+                actor.Generation))
+            .Async<ActorCallResponse>()).Body;
+        Require(response.Result == $"reply:{value}" && response.ErrorKind is null,
+            $"{scenario} first request after route recovery failed: '{response.ErrorKind ?? response.Result}'.");
     }
 
     public async Task<IZlinkStreamConnector> ConnectAsync(string endpoint)
@@ -175,26 +234,9 @@ internal sealed class ToActorScenarioContext : IDisposable
         var received = bound.WaitFor<BoundPushNotify>().Async().AsTask();
         var unexpected = unbound?.WaitFor<BoundPushNotify>()
             .Timeout(TimeSpan.FromMilliseconds(300)).Async().AsTask();
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        BoundPushReply? reply = null;
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                reply = (await _actorHttp.Post($"/actors/{actorId}/push")
-                    .Body(new BoundPushRequest(scenario, actorId, value))
-                    .Async<BoundPushReply>()).Body;
-                break;
-            }
-            catch (Exception error)
-            {
-                last = error;
-                await Task.Delay(100);
-            }
-        }
-
-        if (reply is null) throw new InvalidOperationException($"{scenario} bound session did not become ready.", last);
+        var reply = (await _actorHttp.Post($"/actors/{actorId}/push")
+            .Body(new BoundPushRequest(scenario, actorId, value))
+            .Async<BoundPushReply>()).Body;
         var notify = await received;
         Require(reply.Submitted, $"{scenario} bound push was not submitted.");
         Require(notify.Payload == new BoundPushNotify(scenario, actorId, value),
@@ -220,73 +262,42 @@ internal sealed class ToActorScenarioContext : IDisposable
         string value)
     {
         var actor = actorB ? _actorBHttp : _actorHttp;
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        BoundPushReply? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            last = (await actor.Post($"/actors/{actorId}/push")
-                .Body(new BoundPushRequest(scenario, actorId, value))
-                .Async<BoundPushReply>()).Body;
-            if (!last.Submitted && last.ErrorKind == "ActorSessionNotBound") return;
-            await Task.Delay(100);
-        }
-        throw new InvalidOperationException(
-            $"{scenario} expected ActorSessionNotBound after disconnect, got '{last?.ErrorKind}'.");
+        var reply = (await actor.Post($"/actors/{actorId}/push")
+            .Body(new BoundPushRequest(scenario, actorId, value))
+            .Async<BoundPushReply>()).Body;
+        Require(!reply.Submitted && reply.ErrorKind == "ActorSessionNotBound",
+            $"{scenario} expected ActorSessionNotBound after disconnect, got '{reply.ErrorKind}'.");
     }
 
-    public async Task WaitForSessionAEvidenceAsync(string marker, string failureMessage)
+    public async Task<BoundSessionSnapshot[]> GetBoundSessionSnapshotsAsync(string actorId)
+    {
+        var sessionA = (await _sessionAHttp.Get($"/bindings/{actorId}")
+            .Async<BoundSessionSnapshot>()).Body;
+        var sessionB = (await _sessionBHttp.Get($"/bindings/{actorId}")
+            .Async<BoundSessionSnapshot>()).Body;
+        return [sessionA, sessionB];
+    }
+
+    public async Task<BoundSessionSnapshot[]> WaitForSessionUnboundAsync(string actorId)
     {
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTimeOffset.UtcNow < deadline)
+        BoundSessionSnapshot[] snapshots;
+        do
         {
-            var entries = (await _sessionAHttp.Get("/evidence").Async<string[]>()).Body;
-            if (entries.Any(entry => entry.Contains(marker, StringComparison.Ordinal))) return;
+            snapshots = await GetBoundSessionSnapshotsAsync(actorId);
+            if (snapshots.All(snapshot => snapshot.SessionRid is null)) return snapshots;
             await Task.Delay(100);
-        }
-        throw new InvalidOperationException(failureMessage);
+        } while (DateTimeOffset.UtcNow < deadline);
+
+        throw new InvalidOperationException(
+            $"Actor '{actorId}' still had a live bound-session snapshot after disconnect.");
     }
 
     public async Task AssertNoActorEvidenceAsync(string actorId)
     {
-        await Task.Delay(300);
         var entries = (await _actorHttp.Get("/evidence").Async<ActorEvidence[]>()).Body;
         Require(entries.All(item => item.ActorId != actorId),
             $"Missing actor '{actorId}' unexpectedly produced handler or lifecycle evidence.");
-    }
-
-    public async Task AssertCallWithRetryAsync(string scenario, string actorId, string value, string expected)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        ActorCallResponse? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            last = await PostJsonAsync<ActorCallResponse>(
-                "/request", new ActorCallRequest(scenario, actorId, value));
-            if (last.ErrorKind is null && last.Result == expected) return;
-            await Task.Delay(100);
-        }
-        throw new InvalidOperationException(
-            $"{scenario} did not recover; result='{last?.Result}', error='{last?.ErrorKind}'.");
-    }
-
-    public async Task PostActorAWithRetryAsync(string path)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                await PostActorAAsync(path);
-                return;
-            }
-            catch (Exception error)
-            {
-                last = error;
-                await Task.Delay(100);
-            }
-        }
-        throw new InvalidOperationException($"Endpoint '{path}' did not become ready.", last);
     }
 
     public static void Require(bool condition, string message)
@@ -304,6 +315,10 @@ internal sealed class ToActorScenarioContext : IDisposable
         return (await _callerHttp.Post(path).Body(body).Async<T>()).Body
                ?? throw new InvalidOperationException($"Endpoint '{path}' returned null.");
     }
+
+    private async Task<ActorRouteStatus> GetRouteStatusAsync(string actorId) =>
+        (await _callerHttp.Get($"/directory/{actorId}")
+            .Async<ActorRouteStatus>()).Body;
 
     private static ZLinkHttpClient CreateClient(string url) =>
         ZLinkHttpClient.Create(url).Timeout(TimeSpan.FromSeconds(30)).Build();

@@ -9,28 +9,30 @@ internal static class MonB2RegistrationValidationScenario
         _ = options;
         var scenarioEvidence = new[]
         {
-            MonitoringRegistrationValidation.VerifyDuplicateSocketSource(),
-            MonitoringRegistrationValidation.VerifyPollingInterval(),
-            await MonitoringRegistrationValidation.VerifyMissingSpotSourceAsync(),
-            await MonitoringRegistrationValidation.VerifyMissingSocketSourceAsync()
+            await MonitoringRegistrationValidation.VerifyDuplicateSocketSourceAsync(options),
+            await MonitoringRegistrationValidation.VerifyPollingIntervalAsync(options),
+            await MonitoringRegistrationValidation.VerifyMissingSpotSourceAsync(options),
+            await MonitoringRegistrationValidation.VerifyMissingSocketSourceAsync(options)
         };
 
         ScenarioAssert.That(
-            scenarioEvidence.Any(line => line.Contains("mon-b2|duplicate=", StringComparison.Ordinal)
+            scenarioEvidence.Any(line => line.Contains("case=duplicate-socket", StringComparison.Ordinal)
                                          && line.Contains("Duplicate monitoring socket source",
                                              StringComparison.Ordinal)),
             "MON-B2 duplicate source validation evidence missing.");
         ScenarioAssert.That(
-            scenarioEvidence.Any(line => line.Contains("mon-b2|interval=", StringComparison.Ordinal)
+            scenarioEvidence.Any(line => line.Contains("case=zero-interval", StringComparison.Ordinal)
                                          && line.Contains("interval must be greater than zero",
                                              StringComparison.Ordinal)),
             "MON-B2 interval validation evidence missing.");
         ScenarioAssert.That(
-            scenarioEvidence.Any(line => line.Contains("mon-b2|missing-spot=not registered", StringComparison.Ordinal)),
+            scenarioEvidence.Any(line => line.Contains("case=missing-spot", StringComparison.Ordinal)
+                                         && line.Contains("not registered", StringComparison.Ordinal)),
             "MON-B2 missing spot validation evidence missing.");
         ScenarioAssert.That(
             scenarioEvidence.Any(line =>
-                line.Contains("mon-b2|missing-socket=not registered", StringComparison.Ordinal)),
+                line.Contains("case=missing-socket", StringComparison.Ordinal)
+                && line.Contains("not registered", StringComparison.Ordinal)),
             "MON-B2 missing socket validation evidence missing.");
         Console.WriteLine("scenario MON-B2 passed");
     }

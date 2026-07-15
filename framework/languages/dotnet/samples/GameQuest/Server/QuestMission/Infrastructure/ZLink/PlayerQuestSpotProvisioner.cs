@@ -15,14 +15,12 @@ internal sealed class PlayerQuestOwnerProvisioner(
     IZLinkRouteClient routes,
     IZLinkSpotHandleResolver spotHandles)
 {
-    public async ValueTask<ApplyGameplayEventRes> ApplyGameplayEventAsync(
-        GameplayEventEnvelope gameplayEvent,
+    public async ValueTask ApplyGameplayEventAsync(
+        GameplayMsg gameplayEvent,
         CancellationToken cancellationToken)
     {
         var address = await EnsureAddressAsync(gameplayEvent.PlayerId, cancellationToken);
-        return await routes
-            .RequestToSpot(address, new ApplyGameplayEventReq(gameplayEvent))
-            .Async<ApplyGameplayEventRes>(cancellationToken);
+        routes.SendToSpot(address, gameplayEvent).Submit(cancellationToken);
     }
 
     public async ValueTask<SyncQuestProgressRes> SyncAsync(

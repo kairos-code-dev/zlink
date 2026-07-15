@@ -37,6 +37,21 @@ public interface ISpotNodeConfiguration
     /// </summary>
     TimeSpan? PublisherSendTimeout { set; }
 
+    /// <summary>Sets how long publisher close waits for queued messages.</summary>
+    TimeSpan? PublisherLinger { set; }
+
+    /// <summary>Sets how long subscriber receive waits for a message.</summary>
+    TimeSpan? SubscriberReceiveTimeout { set; }
+
+    /// <summary>Sets how long subscriber close waits for queued messages.</summary>
+    TimeSpan? SubscriberLinger { set; }
+
+    /// <summary>
+    ///     Registers a callback invoked when the node can accept more sends after
+    ///     back-pressure.
+    /// </summary>
+    void SetSendReadyHandler(SpotSendReadyHandler handler);
+
     /// <summary>
     ///     Gets or sets the dispatch workers min.
     /// </summary>

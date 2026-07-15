@@ -64,7 +64,12 @@ internal sealed class KillMonsterHandler(GameplayActionService actions)
         CancellationToken cancellationToken)
     {
         actor.EnsurePlayer(request.PlayerId);
-        return await actions.KillMonsterAsync(request, cancellationToken);
+        return new KillMonsterRes(await actions.KillMonsterAsync(
+            request.PlayerId,
+            request.MonsterId,
+            request.AreaId,
+            request.IdempotencyKey,
+            cancellationToken));
     }
 }
 
@@ -80,7 +85,12 @@ internal sealed class CollectItemHandler(GameplayActionService actions)
         CancellationToken cancellationToken)
     {
         actor.EnsurePlayer(request.PlayerId);
-        return await actions.CollectItemAsync(request, cancellationToken);
+        return new CollectItemRes(await actions.CollectItemAsync(
+            request.PlayerId,
+            request.ItemId,
+            request.Count,
+            request.IdempotencyKey,
+            cancellationToken));
     }
 }
 
@@ -96,7 +106,11 @@ internal sealed class CompleteMissionHandler(GameplayActionService actions)
         CancellationToken cancellationToken)
     {
         actor.EnsurePlayer(request.PlayerId);
-        return await actions.CompleteMissionAsync(request, cancellationToken);
+        return new CompleteMissionRes(await actions.CompleteMissionAsync(
+            request.PlayerId,
+            request.MissionId,
+            request.IdempotencyKey,
+            cancellationToken));
     }
 }
 
@@ -112,7 +126,11 @@ internal sealed class EnterAreaHandler(GameplayActionService actions)
         CancellationToken cancellationToken)
     {
         actor.EnsurePlayer(request.PlayerId);
-        return await actions.EnterAreaAsync(request, cancellationToken);
+        return new EnterAreaRes(await actions.EnterAreaAsync(
+            request.PlayerId,
+            request.AreaId,
+            request.IdempotencyKey,
+            cancellationToken));
     }
 }
 
@@ -128,12 +146,16 @@ internal sealed class UnlockFeatureHandler(GameplayActionService actions)
         CancellationToken cancellationToken)
     {
         actor.EnsurePlayer(request.PlayerId);
-        return await actions.UnlockFeatureAsync(request, cancellationToken);
+        return new UnlockFeatureRes(await actions.UnlockFeatureAsync(
+            request.PlayerId,
+            request.FeatureId,
+            request.IdempotencyKey,
+            cancellationToken));
     }
 }
 
 [ZLinkSpotActorRequestHandler(nameof(SyncQuestProgressReq))]
-internal sealed class SyncQuestProgressHandler(GameplayActionService actions)
+internal sealed class SyncQuestProgressHandler(IQuestProgressSynchronizer quests)
     : IZLinkEntrySpotActorRequestHandler<
         GameQuestEntrySpot,
         PlayerSessionActor,
@@ -148,6 +170,6 @@ internal sealed class SyncQuestProgressHandler(GameplayActionService actions)
         CancellationToken cancellationToken)
     {
         actor.EnsurePlayer(request.PlayerId);
-        return await actions.SyncAsync(actor.ActorId, cancellationToken);
+        return await quests.SyncAsync(actor.ActorId, cancellationToken);
     }
 }

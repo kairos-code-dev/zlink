@@ -39,18 +39,24 @@ internal sealed class PlayerActorTransferAdapter : IZLinkActorTransferAdapter<Pl
         ZLinkMessage state,
         CancellationToken cancellationToken)
     {
+        // An empty state is the framework's fallback when no adapter carried the player over
+        // (§2.6). Accepting it here would rebuild the player at (0,0) — a human teleported to
+        // the spawn corner, a bot with no patrol direction — and the sample would keep running
+        // as if nothing were wrong. The transfer is the one thing this adapter exists to do.
+        if (state.IsEmpty)
+            throw new InvalidOperationException(
+                $"Player '{actorId}' arrived with no transfer state. The transfer adapter is "
+                + "registered, so the state must travel with the actor (§2.6).");
+
+        var transferred = state.Decode<PlayerTransferState>();
         var actor = new PlayerActor(actorId, context);
-        if (!state.IsEmpty)
-        {
-            var transferred = state.Decode<PlayerTransferState>();
-            actor.Restore(
-                transferred.X,
-                transferred.Y,
-                transferred.ZoneId,
-                transferred.IsBot,
-                transferred.DirX,
-                transferred.DirY);
-        }
+        actor.Restore(
+            transferred.X,
+            transferred.Y,
+            transferred.ZoneId,
+            transferred.IsBot,
+            transferred.DirX,
+            transferred.DirY);
 
         return ValueTask.FromResult(actor);
     }

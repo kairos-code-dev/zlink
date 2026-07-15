@@ -1,17 +1,33 @@
+using System.Threading.Channels;
+
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkEntrySpotDispatchPump(
     ZLinkFrameworkRuntime runtime,
     ZLinkEntrySpotActivation? activation,
-    ZLinkRuntimeTaskRunner taskRunner)
+    ZLinkRuntimeTaskRunner taskRunner) : IAsyncDisposable
 {
+    private readonly object _activeDispatchGate = new();
+    private readonly HashSet<Task> _activeDispatches = [];
     private readonly ZLinkActorInboundPipeline _actorPipeline = new(
         runtime,
         new ZLinkEntrySpotActorInboundEndpoint(runtime));
+    private readonly Channel<ZLinkSpotActorFrameBatch> _actorDispatch =
+        Channel.CreateUnbounded<ZLinkSpotActorFrameBatch>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
+        });
+    private Task? _actorDispatchStarter;
     private IZLinkBackendSpot? _entrySpot;
 
     public void Attach(IZLinkBackendSpot entrySpot)
     {
+        _actorDispatchStarter ??= taskRunner.Run(
+            "entry-spot-actor-ingress",
+            StartActorDispatchesAsync);
+        if (_actorDispatchStarter.IsCompleted) RequestStop();
         _entrySpot = entrySpot;
         var previous = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(null);
@@ -22,6 +38,27 @@ internal sealed class ZLinkEntrySpotDispatchPump(
         finally
         {
             SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
+    public void RequestStop() => _actorDispatch.Writer.TryComplete();
+
+    public async ValueTask DisposeAsync()
+    {
+        _actorDispatch.Writer.TryComplete();
+        if (_actorDispatchStarter is not null)
+            await _actorDispatchStarter.ConfigureAwait(false);
+        while (_actorDispatch.Reader.TryRead(out var pending)) pending.Dispose();
+        while (true)
+        {
+            Task[] active;
+            lock (_activeDispatchGate)
+            {
+                _activeDispatches.RemoveWhere(static task => task.IsCompleted);
+                if (_activeDispatches.Count == 0) return;
+                active = _activeDispatches.ToArray();
+            }
+            await Task.WhenAll(active).ConfigureAwait(false);
         }
     }
 
@@ -74,10 +111,51 @@ internal sealed class ZLinkEntrySpotDispatchPump(
         var dispatchable = ZLinkActorHandoffIngress.CaptureMovingFrames(runtime, actorParts);
         if (dispatchable.Count == 0) return;
 
-        if (!taskRunner.TryRunDetached(
-                "entry-spot-actor-dispatch",
-                ct => _actorPipeline.DispatchAsync(dispatchable, ct)))
+        if (!_actorDispatch.Writer.TryWrite(dispatchable))
             dispatchable.Dispose();
+    }
+
+    private async ValueTask StartActorDispatchesAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var frames in _actorDispatch.Reader.ReadAllAsync(cancellationToken)
+                           .ConfigureAwait(false))
+            StartActorDispatch(frames, cancellationToken);
+    }
+
+    private void StartActorDispatch(
+        ZLinkSpotActorFrameBatch frames,
+        CancellationToken cancellationToken)
+    {
+        var dispatch = _actorPipeline.DispatchAsync(frames, cancellationToken);
+        if (dispatch.IsCompletedSuccessfully) return;
+
+        var observed = ObserveActorDispatchAsync(dispatch);
+        lock (_activeDispatchGate) _activeDispatches.Add(observed);
+        _ = observed.ContinueWith(
+            static (completed, state) =>
+            {
+                var pump = (ZLinkEntrySpotDispatchPump)state!;
+                lock (pump._activeDispatchGate) pump._activeDispatches.Remove(completed);
+            },
+            this,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private async Task ObserveActorDispatchAsync(ValueTask dispatch)
+    {
+        try
+        {
+            await dispatch.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (runtime.ShutdownToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            runtime.ErrorSink.ReportRuntimeTaskException("entry-spot-actor-dispatch", exception);
+        }
     }
 
     private async ValueTask DispatchActorLifecycleDrainAsync(CancellationToken cancellationToken)

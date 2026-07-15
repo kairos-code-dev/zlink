@@ -1,12 +1,5 @@
 namespace RuntimeMonitoring.Server.Service.Support;
 
-internal enum ServiceMonitorProfile
-{
-    All,
-    SocketFilter,
-    Throwing
-}
-
 internal sealed record ServerOptions(
     string Role,
     string HttpUrl,
@@ -45,7 +38,7 @@ internal sealed record ServerOptions(
             Get("--http-url", "http://127.0.0.1:0"),
             Get("--log-dir", "logs"),
             Get("--evidence-file"),
-            Get("--rid", Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node"),
+            Get("--rid", "node"),
             Get("--redis-endpoint"),
             Get("--redis-key-prefix"),
             Get("--channel-endpoint"),

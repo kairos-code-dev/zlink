@@ -18,12 +18,12 @@ public interface IOrderEventStore
 
 public interface IOrderReadModelStore
 {
-    ValueTask<OrderState?> FindAsync(
+    ValueTask<OrderProjectionState?> FindAsync(
         string orderId,
         CancellationToken cancellationToken);
 
     ValueTask SaveAsync(
-        OrderState state,
+        OrderProjectionState state,
         CancellationToken cancellationToken);
 
     ValueTask DeleteAsync(
@@ -98,12 +98,31 @@ public sealed record StoredOrderEvent(
 public static class StoredOrderEventPayload
 {
     public static byte[] Encode(OrderDomainEvent domainEvent) =>
-        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes<OrderDomainEvent>(domainEvent);
+        System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
+            domainEvent,
+            domainEvent.GetType());
 
-    public static OrderDomainEvent Decode(this StoredOrderEvent storedEvent) =>
-        System.Text.Json.JsonSerializer.Deserialize<OrderDomainEvent>(storedEvent.Payload)
-        ?? throw new InvalidOperationException(
-            $"Stored order event '{storedEvent.EventId}' has an empty payload.");
+    public static OrderDomainEvent Decode(this StoredOrderEvent storedEvent)
+    {
+        var type = storedEvent.EventType switch
+        {
+            nameof(OrderStartedEvent) => typeof(OrderStartedEvent),
+            nameof(InventoryReservedEvent) => typeof(InventoryReservedEvent),
+            nameof(InventoryReservationFailedEvent) => typeof(InventoryReservationFailedEvent),
+            nameof(PaymentAuthorizedEvent) => typeof(PaymentAuthorizedEvent),
+            nameof(PaymentFailedEvent) => typeof(PaymentFailedEvent),
+            nameof(InventoryReleasedEvent) => typeof(InventoryReleasedEvent),
+            nameof(OrderConfirmedEvent) => typeof(OrderConfirmedEvent),
+            nameof(OrderFailedEvent) => typeof(OrderFailedEvent),
+            _ => throw new InvalidOperationException(
+                $"Unsupported stored order event type '{storedEvent.EventType}'.")
+        };
+        return (OrderDomainEvent?)System.Text.Json.JsonSerializer.Deserialize(
+                   storedEvent.Payload,
+                   type)
+               ?? throw new InvalidOperationException(
+                   $"Stored order event '{storedEvent.EventId}' has an empty payload.");
+    }
 }
 
 public sealed record IdempotencyMapping(

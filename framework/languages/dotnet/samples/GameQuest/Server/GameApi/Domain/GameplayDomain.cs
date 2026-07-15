@@ -1,10 +1,18 @@
-using GameQuest.Shared;
-
 namespace GameQuest.GameApi.Domain;
+
+internal sealed record GameplayEvent(
+    string EventId,
+    string PlayerId,
+    string IdempotencyKey,
+    string EventType,
+    string Value,
+    int Count,
+    string SourceApi,
+    long CreatedAtUnixMs);
 
 internal static class GameplayDomain
 {
-    public static GameplayEventEnvelope CreateMonsterKilled(
+    public static GameplayEvent CreateMonsterKilled(
         string playerId,
         string monsterId,
         string areaId,
@@ -14,7 +22,7 @@ internal static class GameplayDomain
         return Create(playerId, idempotencyKey, "MonsterKilled", monsterId, 1, sourceApi);
     }
 
-    public static GameplayEventEnvelope CreateItemCollected(
+    public static GameplayEvent CreateItemCollected(
         string playerId,
         string itemId,
         int count,
@@ -24,7 +32,7 @@ internal static class GameplayDomain
         return Create(playerId, idempotencyKey, "ItemCollected", itemId, count, sourceApi);
     }
 
-    public static GameplayEventEnvelope CreateMissionCompleted(
+    public static GameplayEvent CreateMissionCompleted(
         string playerId,
         string missionId,
         string idempotencyKey,
@@ -33,7 +41,7 @@ internal static class GameplayDomain
         return Create(playerId, idempotencyKey, "MissionCompleted", missionId, 1, sourceApi);
     }
 
-    public static GameplayEventEnvelope CreateAreaEntered(
+    public static GameplayEvent CreateAreaEntered(
         string playerId,
         string areaId,
         string idempotencyKey,
@@ -42,7 +50,7 @@ internal static class GameplayDomain
         return Create(playerId, idempotencyKey, "AreaEntered", areaId, 1, sourceApi);
     }
 
-    public static GameplayEventEnvelope CreateFeatureUnlocked(
+    public static GameplayEvent CreateFeatureUnlocked(
         string playerId,
         string featureId,
         string idempotencyKey,
@@ -51,7 +59,7 @@ internal static class GameplayDomain
         return Create(playerId, idempotencyKey, "FeatureUnlocked", featureId, 1, sourceApi);
     }
 
-    private static GameplayEventEnvelope Create(
+    private static GameplayEvent Create(
         string playerId,
         string idempotencyKey,
         string eventType,
@@ -66,7 +74,7 @@ internal static class GameplayDomain
 
         if (count <= 0) throw new InvalidOperationException("Count must be positive.");
 
-        return new GameplayEventEnvelope(
+        return new GameplayEvent(
             $"{playerId}-{idempotencyKey}",
             playerId,
             idempotencyKey,

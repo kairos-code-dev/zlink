@@ -19,6 +19,7 @@ public static class ZlinkStreamJsonCodec
         ArgumentNullException.ThrowIfNull(options);
         SerializerOptions = options;
     }
+
 }
 
 public static class ZlinkStreamJsonExtensions

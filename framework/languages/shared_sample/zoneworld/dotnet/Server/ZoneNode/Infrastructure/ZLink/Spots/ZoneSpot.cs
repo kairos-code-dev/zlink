@@ -45,13 +45,12 @@ public sealed class ZoneSpot(
 
     public void Configure()
     {
-        // A border topic names both the publishing and the receiving zone, so a zone only
-        // receives the players standing along the edge it actually shares (§4.1). Which
-        // topics this spot listens to depends on which zone it is, so it cannot be an
-        // attribute.
-        foreach (var adjacent in World.AdjacentZones(ZoneId))
+        // Register the closed topic set during startup as well as activation. The handler
+        // selects the destination zone, so configuration does not depend on a runtime SpotRid.
+        foreach (var destination in ZoneTopology.ZoneNodes.SelectMany(ZoneTopology.ZonesOf))
+        foreach (var source in World.AdjacentZones(destination))
             Context.Handlers.AddSubscribe<ZoneBorderSubscriptionHandler>(
-                ZoneWorldNames.BorderTopic(adjacent, ZoneId));
+                ZoneWorldNames.BorderTopic(source, destination));
     }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)

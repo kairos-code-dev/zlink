@@ -5,8 +5,10 @@ using ZoneWorld.Server.Configuration;
 using ZoneWorld.Server.Gateway.Infrastructure.ZLink.Sessions;
 using ZoneWorld.Shared.Contracts;
 
-var shared = ZoneWorldSettings.Create();
-var gateway = GatewaySettings.Create();
+var configuration = ZoneWorldConfiguration.Load(args);
+var shared = configuration.Shared;
+var gateway = configuration.Gateway
+              ?? throw new InvalidOperationException("Gateway configuration is required.");
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();
@@ -46,7 +48,7 @@ builder.Services.AddZLinkFramework(options =>
     // node and relay packets to it.
     options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
         .EnableRouter(gateway.SpotRouterEndpoint)
-        .SetRoutingId(gateway.NodeRid)
+        .SetRoutingId(gateway.RoutingId)
         .EnablePubSub(gateway.SpotPubSubEndpoint);
 
     options.AddClientServerChannel(ZoneWorldNames.ActorsChannel)

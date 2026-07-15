@@ -14,14 +14,15 @@ internal static class TaA4DisconnectAndDestroyScenario
             await context.AssertBoundPushAsync(bound, null, "TA-A4", actorId, "BeforeDisconnect");
             await bound.Close.Async();
         }
-        await context.WaitForSessionAEvidenceAsync(
-            "session-disconnected|", "TA-A4 session disconnect evidence missing.");
+        var afterDisconnect = await context.WaitForSessionUnboundAsync(actorId);
+        ToActorScenarioContext.Require(afterDisconnect.All(snapshot => snapshot.SessionRid is null),
+            "TA-A4 disconnected actor still had a live bound-session snapshot.");
         await context.AssertBoundPushFailureAsync(actorB: false, "TA-A4", actorId, "AfterDisconnect");
-        await context.AssertCallWithRetryAsync(
-            "TA-A4-disconnected-request", actorId, "a4-request", "reply:a4-request");
+        await context.AssertCallAsync(
+            "TA-A4-disconnected-request", actorId, "a4-request", "reply:a4-request", send: false);
         await context.AssertCallAsync("TA-A4-disconnected-send", actorId, "a4-send", "sent", send: true);
         await context.DestroyActorAAsync(actorId, "TA-A4");
-        await context.AssertCachedFailureWithRetryAsync(
+        await context.AssertCachedFailureAsync(
             "TA-A4-destroyed-request", actorId, "ActorRouteNotFound");
 
         var evidence = await context.GetAllActorEvidenceAsync();

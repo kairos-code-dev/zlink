@@ -111,6 +111,14 @@ internal static class Program
             return Results.Ok(new { accepted = true });
         });
 
+        app.MapGet("/self-check/gameplay/snapshot/{playerId}", async (
+            string playerId,
+            GameQuestStore store,
+            CancellationToken cancellationToken) =>
+        {
+            return Results.Ok(await store.ReadSnapshotAsync(playerId, cancellationToken));
+        });
+
         app.MapPost("/self-check/gameplay/collect/{playerId}/{itemId}/{count:int}/{idempotencyKey}", async (
             string playerId,
             string itemId,
@@ -119,29 +127,21 @@ internal static class Program
             GameplayActionService actions,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await actions.CollectItemAsync(
-                new CollectItemReq(playerId, itemId, count, idempotencyKey),
-                cancellationToken));
+            var eventId = await actions.CollectItemAsync(
+                playerId,
+                itemId,
+                count,
+                idempotencyKey,
+                cancellationToken);
+            return Results.Ok(new CollectItemRes(eventId));
         });
 
         app.MapPost("/self-check/sync/{playerId}", async (
             string playerId,
-            GameplayActionService actions,
+            IQuestProgressSynchronizer quests,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await actions.SyncAsync(playerId, cancellationToken));
-        });
-
-        app.MapPost("/self-check/owner/{playerId}/close", async (
-            string playerId,
-            IZLinkChannelClient channels,
-            CancellationToken cancellationToken) =>
-        {
-            var response = await channels.RequestToChannel(
-                    topology.QuestOwnerChannel(playerId),
-                    new ClosePlayerQuestOwnerReq(playerId))
-                .Async<ClosePlayerQuestOwnerRes>(cancellationToken);
-            return Results.Ok(response);
+            return Results.Ok(await quests.SyncAsync(playerId, cancellationToken));
         });
 
         app.MapPost("/self-check/projection/{playerId}/{questId}/delete", async (
@@ -181,7 +181,7 @@ internal static class Program
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestProgressedEvent)) == 3
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestCompletedEvent)) == 1
                          && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestRewardGrantedEvent)) == 1
-                         && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestProgressReconciledEvent)) == 1
+                         && Count(events, "player-alice", QuestIds.FirstHunt, nameof(QuestReconciled)) == 1
                          && Count(events, "player-alice", QuestIds.OpenAuction, nameof(QuestCompletedEvent)) == 1
                          && Count(events, "player-alice", QuestIds.OpenAuction, nameof(QuestRewardGrantedEvent)) == 1
                          && Count(events, "player-bob", QuestIds.HerbGathering, nameof(QuestCompletedEvent)) == 1
@@ -191,13 +191,15 @@ internal static class Program
                          && events
                              .GroupBy(e => (e.PlayerId, e.QuestId, e.Version))
                              .All(group => group.Count() == 1);
-            return Results.Ok(new GameQuestServerAssertRes(
+            return Results.Ok(new
+            {
                 passed,
-                evidence.Concat(events.Select(e =>
-                        $"event:{e.PlayerId}:{e.QuestId}:{e.EventType}:v{e.Version}:source={e.SourceEventId}"))
+                evidence = evidence.Concat(events.Select(e =>
+                        $"event:{e.PlayerId}:{e.QuestId}:{e.Type}:v{e.Version}:source={e.SourceEventId}"))
                     .Concat(rehydrates.Select(pair => $"rehydrated:{pair.Key}:{pair.Value}"))
                     .Order(StringComparer.Ordinal)
-                    .ToArray()));
+                    .ToArray()
+            });
         });
 
         await app.RunAsync();
@@ -229,7 +231,7 @@ internal static class Program
         return events.Count(e =>
             e.PlayerId == playerId
             && e.QuestId == questId
-            && e.EventType == eventType);
+            && e.Type == eventType);
     }
 
     private static async Task CopyWebSocketToStreamAsync(

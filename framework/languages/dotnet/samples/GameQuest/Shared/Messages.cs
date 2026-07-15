@@ -32,25 +32,6 @@ public sealed record SyncQuestProgressReq(string PlayerId);
 
 public sealed record SyncQuestProgressRes(QuestProgress[] UpdatedQuests);
 
-public sealed record ClosePlayerQuestOwnerReq(string PlayerId);
-
-public sealed record ClosePlayerQuestOwnerRes(bool Closed);
-
-public sealed record GetGameplaySnapshotReq(string PlayerId);
-
-public sealed record GetGameplaySnapshotRes(
-    string PlayerId,
-    KillCountSnapshot[] KillCounts,
-    ItemCountSnapshot[] ItemCounts,
-    string[] CompletedMissionIds,
-    string[] UnlockedFeatureIds,
-    string[] EnteredAreaIds,
-    long SnapshotVersion);
-
-public sealed record KillCountSnapshot(string MonsterId, string? AreaId, int Count);
-
-public sealed record ItemCountSnapshot(string ItemId, int Count);
-
 public sealed record QuestProgressNotify(string PlayerId, QuestProgress Progress);
 
 public sealed record QuestCompletedNotify(
@@ -64,18 +45,16 @@ public sealed record QuestProgress(
     string Status,
     int CurrentCount,
     int RequiredCount,
-    string? LastEventId,
+    string? LastSourceEventId,
+    long Version,
     long UpdatedAtUnixMs);
 
-public sealed record GameplayEventEnvelope(
+public sealed record GameplayMsg(
     string EventId,
     string PlayerId,
-    string IdempotencyKey,
-    string EventType,
-    string Value,
-    int Count,
-    string SourceApi,
-    long CreatedAtUnixMs);
+    string Type,
+    byte[] Payload,
+    long OccurredAtUnixMs);
 
 public sealed record QuestProgressedEvent(
     string EventId,
@@ -101,7 +80,7 @@ public sealed record QuestRewardGrantedEvent(
     string RewardId,
     long GrantedAtUnixMs);
 
-public sealed record QuestProgressReconciledEvent(
+public sealed record QuestReconciled(
     string EventId,
     string PlayerId,
     string QuestId,
@@ -114,15 +93,7 @@ public sealed record StoredQuestEvent(
     string? SourceEventId,
     string PlayerId,
     string QuestId,
-    string EventType,
+    string Type,
     byte[] Payload,
     long Version,
     long CreatedAtUnixMs);
-
-public sealed record NotifyQuestProgressReq(string PlayerId, QuestProgress[] Projection, string? CompletedQuestId);
-
-public sealed record NotifyQuestProgressRes(bool Delivered);
-
-public sealed record GameQuestServerAssertRes(
-    bool Passed,
-    string[] Evidence);

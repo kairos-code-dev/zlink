@@ -1,7 +1,11 @@
 using ZoneWorld.Client;
+using ZoneWorld.Server.Configuration;
 
-var requested = args.FirstOrDefault() ?? "all";
-var options = ClientOptions.Create();
+var configuration = ZoneWorldConfiguration.Load(args);
+var client = configuration.Client
+             ?? throw new InvalidOperationException("Client configuration is required.");
+var requested = client.Scenarios;
+var options = ClientOptions.From(client);
 
 // Each scenario gets its own budget. A shared one would make a scenario fail because the ones
 // before it took their time waiting for things the world is allowed to take time over — a
@@ -42,5 +46,8 @@ if (failures.Count > 0)
     return 1;
 }
 
-Console.WriteLine("zoneworld=completed");
+// Not the §12 marker: this run is one batch of the suite, never the whole of it. The scenarios
+// that need a node taken away are driven by the runner, and five more are judged from server
+// logs, so only the runner can say the sample completed.
+Console.WriteLine($"zoneworld-batch=passed scenarios={string.Join(',', selected)}");
 return 0;

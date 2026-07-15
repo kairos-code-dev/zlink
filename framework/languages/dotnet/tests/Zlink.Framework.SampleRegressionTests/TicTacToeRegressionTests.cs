@@ -5,6 +5,31 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void TicTacToe_Server_Assemblies_Preserve_Role_Boundaries()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var sharedServerProject = File.ReadAllText(
+            Path.Combine(sampleRoot, "Server", "TicTacToe.Server.csproj"));
+        var apiProject = File.ReadAllText(
+            Path.Combine(sampleRoot, "Server.Api", "TicTacToe.Server.Api.csproj"));
+        var playProject = File.ReadAllText(
+            Path.Combine(sampleRoot, "Server.Play", "TicTacToe.Server.Play.csproj"));
+
+        Assert.Contains("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>",
+            sharedServerProject,
+            StringComparison.Ordinal);
+        Assert.Contains("<Compile Include=\"Configuration/**/*.cs\"/>",
+            sharedServerProject,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Api/**/*.cs", sharedServerProject, StringComparison.Ordinal);
+        Assert.DoesNotContain("Play/**/*.cs", sharedServerProject, StringComparison.Ordinal);
+        Assert.Contains("<Compile Include=\"../Server/Api/**/*.cs\"", apiProject, StringComparison.Ordinal);
+        Assert.DoesNotContain("../Server/Play/**/*.cs", apiProject, StringComparison.Ordinal);
+        Assert.Contains("<Compile Include=\"../Server/Play/**/*.cs\"", playProject, StringComparison.Ordinal);
+        Assert.DoesNotContain("../Server/Api/**/*.cs", playProject, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TicTacToe_Registers_Stateful_Actor_Transfer_Adapter()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");

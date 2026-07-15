@@ -4,8 +4,11 @@ using Zlink.Framework.Runtime.Messaging;
 namespace Zlink.Framework.Runtime.Streams;
 
 internal sealed class ZLinkBoundSessionService(
-    ZLinkFrameworkRuntime runtime) : IZLinkBoundSessionFactory
+    ZLinkFrameworkRuntime runtime) : IZLinkBoundSessionService
 {
+    private readonly object _submitterGate = new();
+    private ZLinkAsyncSubmitter? _submitter;
+
     public IZLinkBoundSession Create(string actorId)
     {
         return new ZLinkBoundSession(this, actorId);
@@ -39,8 +42,8 @@ internal sealed class ZLinkBoundSessionService(
         string actorId,
         CancellationToken cancellationToken)
     {
-        var route = await ResolveSessionRouteAsync(actorId, cancellationToken)
-            .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        var route = ResolveSessionRoute(actorId);
         try
         {
             await runtime.CloseActorBoundSessionAsync(actorId, cancellationToken)
@@ -76,18 +79,13 @@ internal sealed class ZLinkBoundSessionService(
         TraceSent(actorId, packetName, frame);
         if (ZLinkBoundSessionDispatchScope.TryDefer(
                 actorId,
-                ct => SendFrameWithRetryAsync(actorId, frame, ct)))
+                ct => SubmitFrameAsync(actorId, frame, ct)))
             return;
 
-        using var frameMessage = Message.From(frame);
-        if (!runtime.SendActorBoundSession(
-                actorId,
-                new[] { frameMessage },
-                SendFlags.DontWait))
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RouteNotConnected,
-                "Actor bound session send was not accepted by the local transport.",
-                true);
+        ZLinkUnawaitedSubmit.Observe(
+            SubmitFrameAsync(actorId, frame, cancellationToken),
+            "actor bound-session submit",
+            runtime.ErrorSink);
     }
 
     private void TraceSent(string actorId, string? packetName, byte[] frame)
@@ -106,32 +104,37 @@ internal sealed class ZLinkBoundSessionService(
             ActorId: actorId));
     }
 
-    private async ValueTask SendFrameWithRetryAsync(
+    private ValueTask SubmitFrameAsync(
         string actorId,
         byte[] frame,
         CancellationToken cancellationToken)
     {
-        await ZLinkRetryingSubmitter.Async(
-                () =>
-                {
-                    using var frameMessage = Message.From(frame);
-                    return runtime.SendActorBoundSession(
-                        actorId,
-                        new[] { frameMessage },
-                        SendFlags.None);
-                },
-                runtime.Registration.DefaultRequestTimeout,
-                "Actor bound session send failed.",
-                cancellationToken)
-            .ConfigureAwait(false);
+        var message = Message.From(frame);
+        return GetSubmitter().Async(
+            message,
+            pending => runtime.SendActorBoundSession(
+                actorId,
+                new[] { pending },
+                SendFlags.DontWait),
+            cancellationToken);
     }
 
-    private ValueTask<ZLinkActorBoundSession> ResolveSessionRouteAsync(
-        string actorId,
-        CancellationToken cancellationToken)
+    private ZLinkAsyncSubmitter GetSubmitter()
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(ResolveSessionRoute(actorId));
+        lock (_submitterGate)
+            return _submitter ??= runtime.CreateActorBoundSessionSubmitter();
+    }
+
+    public ValueTask ResetAsync()
+    {
+        ZLinkAsyncSubmitter? submitter;
+        lock (_submitterGate)
+        {
+            submitter = _submitter;
+            _submitter = null;
+        }
+
+        return submitter?.DisposeAsync() ?? ValueTask.CompletedTask;
     }
 
     private ZLinkActorBoundSession ResolveSessionRoute(string actorId)

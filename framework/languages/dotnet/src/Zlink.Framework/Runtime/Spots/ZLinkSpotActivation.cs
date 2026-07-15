@@ -23,6 +23,7 @@ internal sealed partial class ZLinkSpotActivation :
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkSpotSubscriptionRegistry _subscriptions = new();
     private readonly ZLinkSpotTimerRegistry _timers;
+    private readonly RoutingId _spotRid;
     private readonly object _lifecycleGate = new();
     private ZLinkSpotActorHandlerRegistry? _actorHandlers;
     private bool _configurationOpen = true;
@@ -47,6 +48,7 @@ internal sealed partial class ZLinkSpotActivation :
         _scope = scope;
         _handlerInstances = new ZLinkScopedHandlerInstanceOwner(scope.ServiceProvider);
         NativeSpot = nativeSpot;
+        _spotRid = nativeSpot.RoutingId;
         NodeRid = nodeRid;
         SpotNodeName = spotNodeName;
         ChannelName = channelName;
@@ -112,7 +114,7 @@ internal sealed partial class ZLinkSpotActivation :
 
     ZLinkSpotOutboundEndpoint IZLinkCurrentSpotActivation.OutboundEndpoint => _outboundEndpoint;
 
-    public RoutingId SpotRid => NativeSpot.RoutingId;
+    public RoutingId SpotRid => _spotRid;
 
     public RoutingId NodeRid { get; }
 

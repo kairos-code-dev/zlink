@@ -8,10 +8,11 @@ internal static class TaB2StaleActorReferenceScenario
     public static async Task RunAsync(ToActorScenarioContext context)
     {
         const string actorId = "ta-b2";
-        await context.PostActorAWithRetryAsync($"/actors/{actorId}/ensure");
+        await context.EnsureActorAAsync(actorId);
         var staleRef = await context.CaptureAsync(actorId);
         await context.DestroyActorAAsync(actorId, "TA-B2");
-        await context.PostActorAWithRetryAsync($"/actors/{actorId}/ensure");
+        await context.WaitForRouteAbsentAsync(actorId);
+        await context.EnsureActorAAsync(actorId);
 
         await context.AssertCachedFailureAsync("TA-B2-stale-request", actorId, "ActorLocationStale");
         var afterStale = await context.GetAllActorEvidenceAsync();
@@ -21,8 +22,8 @@ internal static class TaB2StaleActorReferenceScenario
         ToActorScenarioContext.Require(
             freshRef.NodeRid == staleRef.NodeRid && freshRef.Generation > staleRef.Generation,
             $"TA-B2 expected a newer generation on the same owner. stale={staleRef}, fresh={freshRef}");
-        await context.AssertCallWithRetryAsync(
-            "TA-B2-fresh-request", actorId, "b2-fresh", "reply:b2-fresh");
+        await context.AssertCallAsync(
+            "TA-B2-fresh-request", actorId, "b2-fresh", "reply:b2-fresh", send: false);
         var afterFresh = await context.GetAllActorEvidenceAsync();
         ToActorScenarioContext.Require(afterFresh.Any(item => item is
         {

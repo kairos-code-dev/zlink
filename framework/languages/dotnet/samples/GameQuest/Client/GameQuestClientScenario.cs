@@ -60,7 +60,8 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(auctionCompletePush.Payload.PlayerId == "player-alice");
         Ensure(auctionCompletePush.Payload.Progress.QuestId == QuestIds.OpenAuction);
         Ensure(auctionCompletePush.Payload.RewardGranted);
-        var closeOwner = await apiA.Post("/self-check/owner/player-alice/close")
+        using var mission = ZLinkHttpClient.Create(topology.MissionAHttpBaseUrl).Build();
+        var closeOwner = await mission.Post("/self-check/owner/player-alice/close")
             .AsyncRaw(cancellationToken);
         Ensure(closeOwner.Status is >= 200 and < 300);
 
@@ -131,15 +132,15 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         Ensure(assertion.Passed);
     }
 
-    private async ValueTask<GameQuestServerAssertRes> WaitForServerAssertionAsync(
+    private async ValueTask<ServerAssertionResponse> WaitForServerAssertionAsync(
         ZLinkHttpClient api,
         CancellationToken cancellationToken)
     {
         var deadline = DateTimeOffset.UtcNow + SampleNames.RequestTimeout;
-        GameQuestServerAssertRes? last = null;
+        ServerAssertionResponse? last = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            last = api.Post("/self-check/assert").Async<GameQuestServerAssertRes>().AsTask().GetAwaiter().GetResult().Body;
+            last = api.Post("/self-check/assert").Async<ServerAssertionResponse>().AsTask().GetAwaiter().GetResult().Body;
             if (last.Passed) return last;
 
             await Task.Delay(50, cancellationToken);
@@ -203,3 +204,5 @@ internal sealed class GameQuestClientScenario(GameQuestTopology topology)
         if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 }
+
+internal sealed record ServerAssertionResponse(bool Passed, string[] Evidence);

@@ -18,7 +18,9 @@ public sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZ
 
     public PlayerPosition Position { get; private set; }
 
-    public string ZoneId { get; private set; } = string.Empty;
+    /// <summary>The zone the coordinate falls in. Derived, not stored: the authority for a
+    /// player cannot be allowed to disagree with itself about where that player is (§2.1).</summary>
+    public string ZoneId => Position.ZoneId;
 
     public bool IsBot { get; private set; }
 
@@ -28,12 +30,20 @@ public sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZ
 
     public int DirY { get; private set; }
 
-    public bool HasEnteredWorld => ZoneId.Length > 0;
-
+    /// <summary>
+    /// Rebuilds the player on the node it transferred to (§2.6). The zone travels on the wire
+    /// alongside the coordinate, so it is checked rather than trusted: if the two disagree, the
+    /// transfer is corrupt, and a player silently teleporting is worse than a failed transfer.
+    /// </summary>
     public void Restore(int x, int y, string zoneId, bool isBot, int dirX, int dirY)
     {
-        Position = new PlayerPosition(x, y);
-        ZoneId = zoneId;
+        var position = new PlayerPosition(x, y);
+        if (position.ZoneId != zoneId)
+            throw new InvalidOperationException(
+                $"Transferred state for '{ActorId}' disagrees with itself: ({x},{y}) is in "
+                + $"'{position.ZoneId}', but the state says '{zoneId}'.");
+
+        Position = position;
         IsBot = isBot;
         DirX = dirX;
         DirY = dirY;
@@ -45,11 +55,7 @@ public sealed class PlayerActor(string actorId, IZLinkActorContext context) : IZ
         DirY = dirY;
     }
 
-    public void MoveTo(PlayerPosition position)
-    {
-        Position = position;
-        ZoneId = position.ZoneId;
-    }
+    public void MoveTo(PlayerPosition position) => Position = position;
 
     public void ReverseDirection()
     {

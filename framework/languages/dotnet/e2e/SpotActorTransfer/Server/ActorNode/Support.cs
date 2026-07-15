@@ -9,7 +9,6 @@ internal sealed record ServerOptions(
     string RedisEndpoint,
     string RedisKeyPrefix,
     string RouterEndpoint,
-    string StreamEndpoint,
     string EvidenceFile,
     string LogDir)
 {
@@ -23,7 +22,6 @@ internal sealed record ServerOptions(
             Get(values, "redis-endpoint", "127.0.0.1:6379"),
             Get(values, "redis-key-prefix", "zlink:e2e:spot-actor-transfer"),
             Get(values, "router-endpoint", "tcp://127.0.0.1:0"),
-            Get(values, "stream-endpoint", "tcp://127.0.0.1:0"),
             Get(values, "evidence-file", Path.Combine(logDir, $"{role}.evidence.log")),
             logDir);
     }

@@ -248,7 +248,6 @@ public sealed class OpsClient(IZlinkStreamConnector connector) : IAsyncDisposabl
 
 public sealed record ClientOptions(string GatewayEndpoint, string OpsEndpoint)
 {
-    public static ClientOptions Create() => new(
-        ZoneWorldSettings.Text("ZONEWORLD_GATEWAY_STREAM", "ws://127.0.0.1:48080"),
-        ZoneWorldSettings.Text("ZONEWORLD_OPS_STREAM", "ws://127.0.0.1:48090"));
+    public static ClientOptions From(ZoneWorldClientSettings settings) =>
+        new(settings.GatewayEndpoint, settings.OpsEndpoint);
 }

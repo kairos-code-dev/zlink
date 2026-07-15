@@ -6,11 +6,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="../Service/ServiceHostFactory.cs" Link="ServiceHostFactory.cs" />
     <Compile Include="../Service/Handlers/ServiceEventRecorders.cs" Link="Handlers/ServiceEventRecorders.cs" />
     <Compile Include="../Service/Handlers/ServiceHandlers.cs" Link="Handlers/ServiceHandlers.cs" />
     <Compile Include="../Service/Support/ServiceEvidenceStore.cs" Link="Support/ServiceEvidenceStore.cs" />
     <Compile Include="../Service/Support/ServiceOptions.cs" Link="Support/ServiceOptions.cs" />
+    <Compile Include="../Service/Support/ChannelMonitoringRoleHost.cs" Link="Support/ChannelMonitoringRoleHost.cs" />
   </ItemGroup>
 
   <ItemGroup>

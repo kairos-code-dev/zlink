@@ -100,7 +100,7 @@ internal static class EnterWorld
             .JoinSpot(
                 RoutingId.From(zoneId),
                 new EnterZoneMsg(actor.ActorId, message.X, message.Y, message.IsBot, FromNodeId: null))
-            .Async(cancellationToken);
+            .Yield(cancellationToken);
 
         var reply = joined switch
         {

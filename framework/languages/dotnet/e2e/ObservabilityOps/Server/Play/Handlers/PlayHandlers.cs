@@ -1,4 +1,4 @@
-using ObservabilityOps.Server.Play.Domain;
+using ObservabilityOps.Server.Play.Infrastructure;
 using ObservabilityOps.Server.Play.Spots;
 using ObservabilityOps.Server.Play.Support;
 using ObservabilityOps.Shared;
@@ -75,7 +75,7 @@ internal sealed class ReturnToLobbyHandler
             .Async(cancellationToken);
         if (joined is not ZLinkActorJoinResult.Accepted)
             throw new InvalidOperationException("Actor could not return to its Entry Spot.");
-        actor.RoomRid = string.Empty;
+        actor.Player.ReturnToLobby();
         return new ReturnToLobbyRes(actor.ActorId, spot.Context.NodeRid.ToString(), request.Marker);
     }
 }

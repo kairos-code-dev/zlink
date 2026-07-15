@@ -99,7 +99,7 @@ internal sealed class PlayerMovement(
             .JoinSpot(
                 RoutingId.From(to.ZoneId),
                 new EnterZoneMsg(actor.ActorId, to.X, to.Y, actor.IsBot, maintenance.OwnNodeId))
-            .Async(cancellationToken);
+            .Yield(cancellationToken);
 
         if (joined is ZLinkActorJoinResult.Rejected rejected)
         {

@@ -1,4 +1,5 @@
 using GameQuest.QuestMission.Application;
+using GameQuest.QuestMission.Domain;
 using GameQuest.Server.Configuration;
 using GameQuest.Shared;
 
@@ -20,19 +21,19 @@ internal sealed class QuestStore : IQuestStore, IAsyncDisposable
         await _redis.DisposeAsync().ConfigureAwait(false);
     }
 
-    public async ValueTask<StoredQuestEvent[]> ReadQuestStreamAsync(
+    public async ValueTask<QuestDomainEvent[]> ReadQuestStreamAsync(
         string playerId,
         string questId,
         CancellationToken cancellationToken)
     {
-        var events = await ReadEventsAsync(cancellationToken);
+        var events = await ReadDomainEventsAsync(cancellationToken);
         return events
             .Where(e => e.PlayerId == playerId && e.QuestId == questId)
             .OrderBy(e => e.Version)
             .ToArray();
     }
 
-    public async ValueTask<QuestProgress[]> ReadProjectionAsync(
+    public async ValueTask<QuestProgressState[]> ReadProjectionAsync(
         string playerId,
         CancellationToken cancellationToken)
     {
@@ -43,27 +44,16 @@ internal sealed class QuestStore : IQuestStore, IAsyncDisposable
         return all
             .Where(progress => progress.PlayerId == playerId)
             .OrderBy(progress => progress.QuestId, StringComparer.Ordinal)
+            .Select(QuestContractMapper.ToDomain)
             .ToArray();
     }
 
-    public async ValueTask<bool> HasSourceEventAsync(
-        string playerId,
-        string questId,
-        string sourceEventId,
-        CancellationToken cancellationToken)
-    {
-        var events = await ReadEventsAsync(cancellationToken);
-        return events.Any(e =>
-            e.PlayerId == playerId
-            && e.QuestId == questId
-            && e.SourceEventId == sourceEventId);
-    }
-
     public async ValueTask<bool> AppendAndProjectAsync(
-        QuestProgress progress,
-        IReadOnlyList<StoredQuestEvent> events,
+        QuestProgressState progress,
+        IReadOnlyList<QuestDomainEvent> events,
         CancellationToken cancellationToken)
     {
+        var contracts = events.Select(QuestContractMapper.ToContract).ToArray();
         var appended = false;
         await UpdateAsync(
             Key("quest-events"),
@@ -73,7 +63,7 @@ internal sealed class QuestStore : IQuestStore, IAsyncDisposable
                 if (stored.Any(existing =>
                         existing.PlayerId == progress.PlayerId
                         && existing.QuestId == progress.QuestId
-                        && existing.SourceEventId == progress.LastEventId))
+                        && existing.SourceEventId == progress.LastSourceEventId))
                     return;
 
                 var nextVersion = stored
@@ -81,12 +71,14 @@ internal sealed class QuestStore : IQuestStore, IAsyncDisposable
                     .Select(existing => existing.Version)
                     .DefaultIfEmpty(0)
                     .Max() + 1;
-                foreach (var @event in events)
-                    if (stored.All(existing => existing.EventId != @event.EventId))
-                    {
-                        stored.Add(@event with { Version = nextVersion++ });
-                        appended = true;
-                    }
+                if (contracts.Length == 0
+                    || contracts[0].Version != nextVersion
+                    || contracts.Where((item, index) => item.Version != nextVersion + index).Any()
+                    || contracts.Any(item => stored.Any(existing => existing.EventId == item.EventId)))
+                    return;
+
+                stored.AddRange(contracts);
+                appended = true;
             },
             cancellationToken);
 
@@ -98,13 +90,13 @@ internal sealed class QuestStore : IQuestStore, IAsyncDisposable
             projection =>
             {
                 projection.RemoveAll(p => p.PlayerId == progress.PlayerId && p.QuestId == progress.QuestId);
-                projection.Add(progress);
+                projection.Add(QuestContractMapper.ToContract(progress));
             },
             cancellationToken);
         return true;
     }
 
-    public async ValueTask<StoredQuestEvent[]> ReadEventsAsync(CancellationToken cancellationToken)
+    public async ValueTask<StoredQuestEvent[]> ReadStoredEventsAsync(CancellationToken cancellationToken)
     {
         var events = await ReadAsync<List<StoredQuestEvent>>(
             Key("quest-events"),
@@ -114,6 +106,13 @@ internal sealed class QuestStore : IQuestStore, IAsyncDisposable
             .OrderBy(e => e.PlayerId, StringComparer.Ordinal)
             .ThenBy(e => e.QuestId, StringComparer.Ordinal)
             .ThenBy(e => e.Version)
+            .ToArray();
+    }
+
+    private async ValueTask<QuestDomainEvent[]> ReadDomainEventsAsync(CancellationToken cancellationToken)
+    {
+        return (await ReadStoredEventsAsync(cancellationToken))
+            .Select(QuestContractMapper.ToDomain)
             .ToArray();
     }
 

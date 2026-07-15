@@ -16,7 +16,12 @@ public sealed record ActorEvidence(
     string? PacketName = null,
     string? RequestId = null);
 
-public sealed record ActorCallRequest(string Scenario, string ActorId, string Value);
+public sealed record ActorCallRequest(
+    string Scenario,
+    string ActorId,
+    string Value,
+    string? TargetNodeRid = null,
+    ulong? TargetGeneration = null);
 
 public sealed record ActorCallResponse(string Scenario, string ActorId, string Result, string? ErrorKind = null);
 
@@ -39,3 +44,8 @@ public sealed record BoundPushReply(
 public sealed record BoundPushNotify(string Scenario, string ActorId, string Value);
 
 public sealed record ActorRouteStatus(string ActorId, bool Exists);
+
+public sealed record BoundSessionSnapshot(
+    string ActorId,
+    string? SessionRid,
+    long Revision);

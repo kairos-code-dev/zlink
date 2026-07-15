@@ -1,40 +1,66 @@
 using GameQuest.QuestMission.Application;
+using GameQuest.QuestMission.Domain;
+using GameQuest.QuestMission.Infrastructure.Store;
 using GameQuest.Server.Configuration;
 using GameQuest.Shared;
+using System.Net.Http.Json;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Errors;
 
 namespace GameQuest.QuestMission.Infrastructure.ZLink;
 
-internal sealed class ZLinkGameApiSnapshotClient(IZLinkChannelClient channels) : IGameApiSnapshotClient
+internal sealed class HttpGameApiSnapshotClient(GameQuestTopology topology) : IGameApiSnapshotClient
 {
-    public ValueTask<GetGameplaySnapshotRes> ReadSnapshotAsync(
-        GetGameplaySnapshotReq request,
+    private static readonly HttpClient Client = new();
+
+    public async ValueTask<GameplaySnapshot> ReadSnapshotAsync(
+        string playerId,
         CancellationToken cancellationToken)
     {
-        return channels.RequestToChannel(SampleNames.GameApiChannel, request)
-            .Async<GetGameplaySnapshotRes>(cancellationToken);
+        var response = await Client.GetFromJsonAsync<GameplaySnapshotResponse>(
+                           $"{topology.GameApiAHttpBaseUrl}/self-check/gameplay/snapshot/{Uri.EscapeDataString(playerId)}",
+                           cancellationToken)
+                       ?? throw new InvalidOperationException("Game API returned an empty gameplay snapshot.");
+        return new GameplaySnapshot(
+            response.PlayerId,
+            response.KillCount,
+            response.SnapshotVersion);
     }
+
+    private sealed record GameplaySnapshotResponse(string PlayerId, int KillCount, long SnapshotVersion);
 }
 
 internal sealed class ZLinkQuestProgressNotifier(IZLinkChannelClient channels) : IQuestProgressNotifier
 {
-    public async ValueTask<QuestProgressNotifyResult> NotifyAsync(
-        string sourceApi,
-        NotifyQuestProgressReq request,
+    public ValueTask<QuestProgressNotifyResult> NotifyAsync(
+        string playerId,
+        IReadOnlyList<QuestProgressState> projection,
+        string? completedQuestId,
         CancellationToken cancellationToken)
     {
         try
         {
-            var response = await channels.RequestToChannel(
-                    SampleNames.GameApiChannel,
-                    request)
-                .Async<NotifyQuestProgressRes>(cancellationToken);
-            return new QuestProgressNotifyResult(response.Delivered, null, null);
+            var contracts = projection.Select(QuestContractMapper.ToContract).ToArray();
+            foreach (var progress in contracts)
+                channels.SendToChannel(
+                        SampleNames.GameApiChannel,
+                        new QuestProgressNotify(playerId, progress))
+                    .Submit(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(completedQuestId))
+            {
+                var completed = contracts.First(progress => progress.QuestId == completedQuestId);
+                channels.SendToChannel(
+                        SampleNames.GameApiChannel,
+                        new QuestCompletedNotify(playerId, completed, true))
+                    .Submit(cancellationToken);
+            }
+
+            return ValueTask.FromResult(new QuestProgressNotifyResult(true, null, null));
         }
         catch (ZLinkFrameworkException error)
         {
-            return new QuestProgressNotifyResult(false, null, error);
+            return ValueTask.FromResult(new QuestProgressNotifyResult(false, null, error));
         }
     }
 }

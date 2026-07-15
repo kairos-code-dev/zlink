@@ -257,7 +257,7 @@ public abstract partial class ZlinkException
             11 or 35 or 10035 => RecvResult.NoData,
             16 => RecvResult.Busy,
             156384765 => RecvResult.Terminated,
-            9 or 88 => RecvResult.InvalidHandle,
+            9 or 14 or 88 => RecvResult.InvalidHandle,
             95 or 93 or 97 => RecvResult.NotSupported,
             _ => RecvResult.InternalError
         };

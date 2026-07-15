@@ -61,6 +61,8 @@ internal static class ZLinkMessageFlowLogger
     {
         if (string.Equals(action, "reply-error", StringComparison.Ordinal))
             ZLinkTelemetry.RecordReplyError(surfaceName, kindName, reason);
+        else if (string.Equals(action, "drop", StringComparison.Ordinal))
+            ZLinkTelemetry.RecordDropped(surfaceName, kindName, reason);
         ZLinkTelemetry.TraceFlowEvent(
             "failed",
             flow,

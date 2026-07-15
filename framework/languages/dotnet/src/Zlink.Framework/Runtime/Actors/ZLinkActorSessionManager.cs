@@ -5,7 +5,7 @@ internal sealed partial class ZLinkActorSessionManager(
     IServiceProvider services,
     Func<IZLinkBackendSpotNode?> getActorSpotNode,
     ZLinkLocationLifecycle? locationLifecycle,
-    IZLinkBoundSessionFactory boundSessionFactory)
+    IZLinkBoundSessionService boundSessionService)
 {
     private readonly ZLinkActorSessionRegistry _actorSessions = new();
 
@@ -276,7 +276,7 @@ internal sealed partial class ZLinkActorSessionManager(
         return state.GetOrCreateContext(() => new ZLinkActorContext(
             runtime,
             state,
-            boundSessionFactory));
+            boundSessionService));
     }
 
     public ZLinkActorRuntimeState GetOrCreateState(string actorId)
@@ -288,4 +288,7 @@ internal sealed partial class ZLinkActorSessionManager(
     {
         _actorSessions.ResetGeneration();
     }
+
+    internal ValueTask ResetBoundSessionGenerationAsync() =>
+        boundSessionService.ResetAsync();
 }

@@ -14,6 +14,12 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     void SetPubBind(string endpoint);
 
+    void ApplyRoleConfig(
+        IZLinkSpotPublisherConfig? publisher,
+        IZLinkSpotSubscriberConfig? subscriber);
+
+    void OnSendReady(Action handler);
+
     void ConnectPeer(string endpoint);
 
     void ConnectPeer(RoutingId peerRid, string endpoint);

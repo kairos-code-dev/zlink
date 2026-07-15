@@ -170,11 +170,7 @@ internal sealed class ZLinkChannelBundleFactory(
         IZLinkBackendSocketOptions socket,
         IZLinkSocketConfig config)
     {
-        if (config.MaxMessageSize > 0) socket.SetMaxMessageSize(config.MaxMessageSize);
-
-        if (config.SendHighWaterMark > 0) socket.SetSendHighWaterMark(config.SendHighWaterMark);
-
-        if (config.ReceiveHighWaterMark > 0) socket.SetReceiveHighWaterMark(config.ReceiveHighWaterMark);
+        socket.ApplySocketConfig(config);
     }
 
     internal static void ApplyServerRoutingConfig(

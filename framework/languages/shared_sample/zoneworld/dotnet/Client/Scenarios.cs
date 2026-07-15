@@ -514,29 +514,42 @@ public static class Scenarios
         // The eastern player stands in zone-ne's band, so the western one can see it.
         await east.WalkToAsync(52, 25, ct);
         await west.WalkToAsync(45, 25, ct);
+
+        // Wait until east is visible *as a zone-ne player*, not merely visible. Right after the
+        // transfer there is a tick or two where east is still in zone-nw's own copy — the spot
+        // holds a copy of a coordinate the actor owns (§2.1), and the copy lags the actor by a
+        // turn. "Visible" is satisfied by that stale copy, and a test that starts from there is
+        // watching the wrong player: it would then see the copy disappear and call it expiry.
+        // The snapshot from the *other node* is the thing whose expiry this scenario is about.
         await west.WaitAsync<ZoneStateNotify>(
-            notify => notify.Players.Any(p => p.PlayerId == eastId),
+            notify => notify.Players.Any(p =>
+                p.PlayerId == eastId && p.ZoneId == ZoneIds.NorthEast),
             ct);
 
         // zone-node-2 goes away — the runner takes it away, and it waits long enough first for
         // the cross-node walk above to have finished. The wait here has to outlast that, or it
         // gives up before the thing it is watching for has been arranged.
+        //
+        // Expiry has to be waited for as *both* facts at once: east is gone, and the zone it was
+        // in is gone with it — a snapshot is replaced whole, never merged (§2.4). Neither alone
+        // is sound. "east is gone" is briefly true of the wrong thing: right after the transfer
+        // the source zone still holds its copy of east (§2.1 — the spot's copy lags the actor by
+        // a turn), so east is on screen as a zone-nw player while zone-ne has yet to report it.
+        // And "zone-ne is gone" is true before zone-ne's first snapshot ever lands. Requiring
+        // both leaves only the state this scenario is about.
+        //
+        // Only zone-ne goes. zone-nw's other neighbour, zone-sw, is on zone-node-1 and is still
+        // publishing, so its band players legitimately stay in view (§4.1).
         var expired = await west.WaitAsync<ZoneStateNotify>(
             notify => notify.ZoneId == ZoneIds.NorthWest
-                      && notify.Players.All(p => p.PlayerId != eastId),
+                      && notify.Players.All(p =>
+                          p.PlayerId != eastId && p.ZoneId != ZoneIds.NorthEast),
             TimeSpan.FromSeconds(60),
             ct);
 
         Assert.True(
             expired.Players.All(p => p.PlayerId != eastId),
             "a stopped node's players expire out of the neighbour's view");
-
-        // Expiry drops the adjacent zone's snapshot whole, so *every* player it was reporting
-        // goes at once — a snapshot is replaced, never merged (§2.4). The neighbour's own
-        // players are untouched.
-        Assert.True(
-            expired.Players.All(p => p.ZoneId == ZoneIds.NorthWest),
-            "the whole snapshot expires, not the one player the scenario was watching");
     }
 
     /// <summary>Puts zone-node-2 into maintenance so the runner can restart it (§8.4, ZW-E5).</summary>

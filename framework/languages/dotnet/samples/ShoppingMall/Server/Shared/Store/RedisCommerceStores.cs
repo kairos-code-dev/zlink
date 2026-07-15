@@ -264,7 +264,7 @@ public sealed class RedisCommerceStores :
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask<OrderState?> FindAsync(
+    public async ValueTask<OrderProjectionState?> FindAsync(
         string orderId,
         CancellationToken cancellationToken)
     {
@@ -274,7 +274,7 @@ public sealed class RedisCommerceStores :
     }
 
     public async ValueTask SaveAsync(
-        OrderState state,
+        OrderProjectionState state,
         CancellationToken cancellationToken)
     {
         await WithStateAsync(
@@ -439,7 +439,7 @@ internal sealed class PersistedCommerceState
 
     public Dictionary<string, List<StoredOrderEvent>> Events { get; set; } = new(StringComparer.Ordinal);
 
-    public Dictionary<string, OrderState> ReadModels { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, OrderProjectionState> ReadModels { get; set; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, InventoryReservation> Reservations { get; set; } = new(StringComparer.Ordinal);
 

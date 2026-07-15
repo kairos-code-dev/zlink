@@ -21,8 +21,6 @@ E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
-ROUTE_SETTLE_SECONDS=5
-SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
@@ -141,19 +139,21 @@ start_session() {
 }
 
 start_caller() {
+  local role="$1" rid="$2" url="$3" router_port="$4" pubsub_port="$5" connect_routes="$6" redis_prefix="$7"
   setsid dotnet run --no-build --project "$CALLER_PROJECT" -- \
-    --rid "$CALLER_RID" \
-    --http-url "$CALLER_URL" \
+    --rid "$rid" \
+    --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
-    --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --router-endpoint "tcp://127.0.0.1:$CALLER_ROUTER_PORT" \
-    --pubsub-endpoint "tcp://127.0.0.1:$CALLER_PUBSUB_PORT" \
+    --redis-key-prefix "$redis_prefix" \
+    --router-endpoint "tcp://127.0.0.1:$router_port" \
+    --pubsub-endpoint "tcp://127.0.0.1:$pubsub_port" \
     --actor-rid "$ACTOR_A_RID" \
     --actor-router-endpoint "tcp://127.0.0.1:$ACTOR_A_ROUTER_PORT" \
     --actor-b-rid "$ACTOR_B_RID" \
     --actor-b-router-endpoint "tcp://127.0.0.1:$ACTOR_B_ROUTER_PORT" \
+    --connect-actor-routes "$connect_routes" \
     --log-dir "$LOG_DIR" \
-    >"$LOG_DIR/caller.stdout.log" 2>"$LOG_DIR/caller.stderr.log" &
+    >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
   pids+=("$!")
 }
 
@@ -163,7 +163,8 @@ start_role() {
     actor-b) start_actor actor-b "$ACTOR_B_RID" "$ACTOR_B_URL" "$ACTOR_B_ROUTER_PORT" "$ACTOR_B_PUBSUB_PORT" "$LOG_DIR/actor-b.evidence.log" ;;
     session-a) start_session session-a "$SESSION_A_RID" "$SESSION_A_URL" "$SESSION_A_ROUTER_PORT" "$SESSION_A_PUBSUB_PORT" "$SESSION_A_STREAM_PORT" "$LOG_DIR/session-a.evidence.log" ;;
     session-b) start_session session-b "$SESSION_B_RID" "$SESSION_B_URL" "$SESSION_B_ROUTER_PORT" "$SESSION_B_PUBSUB_PORT" "$SESSION_B_STREAM_PORT" "$LOG_DIR/session-b.evidence.log" ;;
-    caller) start_caller ;;
+    caller) start_caller caller "$CALLER_RID" "$CALLER_URL" "$CALLER_ROUTER_PORT" "$CALLER_PUBSUB_PORT" true "$REDIS_KEY_PREFIX" ;;
+    caller-no-route) start_caller caller-no-route "$NO_ROUTE_CALLER_RID" "$NO_ROUTE_CALLER_URL" "$NO_ROUTE_CALLER_ROUTER_PORT" "$NO_ROUTE_CALLER_PUBSUB_PORT" true "${REDIS_KEY_PREFIX}:no-route:" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -181,6 +182,7 @@ ACTOR_B_RID="actor-b"
 SESSION_A_RID="session-a"
 SESSION_B_RID="session-b"
 CALLER_RID="${TO_ACTOR_CALLER_RID:-to-actor-caller}"
+NO_ROUTE_CALLER_RID="to-actor-no-route-caller"
 
 read -r \
   ACTOR_A_HTTP_PORT ACTOR_A_ROUTER_PORT ACTOR_A_PUBSUB_PORT \
@@ -188,13 +190,15 @@ read -r \
   SESSION_A_HTTP_PORT SESSION_A_ROUTER_PORT SESSION_A_PUBSUB_PORT SESSION_A_STREAM_PORT \
   SESSION_B_HTTP_PORT SESSION_B_ROUTER_PORT SESSION_B_PUBSUB_PORT SESSION_B_STREAM_PORT \
   CALLER_HTTP_PORT CALLER_ROUTER_PORT CALLER_PUBSUB_PORT \
-  <<<"$(allocate_ports 17)"
+  NO_ROUTE_CALLER_HTTP_PORT NO_ROUTE_CALLER_ROUTER_PORT NO_ROUTE_CALLER_PUBSUB_PORT \
+  <<<"$(allocate_ports 20)"
 
 ACTOR_A_URL="http://127.0.0.1:$ACTOR_A_HTTP_PORT"
 ACTOR_B_URL="http://127.0.0.1:$ACTOR_B_HTTP_PORT"
 SESSION_A_URL="http://127.0.0.1:$SESSION_A_HTTP_PORT"
 SESSION_B_URL="http://127.0.0.1:$SESSION_B_HTTP_PORT"
 CALLER_URL="http://127.0.0.1:$CALLER_HTTP_PORT"
+NO_ROUTE_CALLER_URL="http://127.0.0.1:$NO_ROUTE_CALLER_HTTP_PORT"
 
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
@@ -203,7 +207,7 @@ dotnet build "$SESSION_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CALLER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-mapfile -t SERVER_ROLES < <(ordered_roles actor-a actor-b session-a session-b caller)
+mapfile -t SERVER_ROLES < <(ordered_roles actor-a actor-b session-a session-b caller caller-no-route)
 for role in "${SERVER_ROLES[@]}"; do
   start_role "$role"
 done
@@ -213,12 +217,13 @@ wait_health "$ACTOR_B_URL" actor-b
 wait_health "$SESSION_A_URL" session-a
 wait_health "$SESSION_B_URL" session-b
 wait_health "$CALLER_URL" caller
-sleep 5
+wait_health "$NO_ROUTE_CALLER_URL" caller-no-route
 
 dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --actor-url "$ACTOR_A_URL" \
   --actor-b-url "$ACTOR_B_URL" \
   --caller-url "$CALLER_URL" \
+  --no-route-caller-url "$NO_ROUTE_CALLER_URL" \
   --session-a-stream-endpoint "tcp://127.0.0.1:$SESSION_A_STREAM_PORT" \
   --session-b-stream-endpoint "tcp://127.0.0.1:$SESSION_B_STREAM_PORT" \
   --session-a-url "$SESSION_A_URL" \

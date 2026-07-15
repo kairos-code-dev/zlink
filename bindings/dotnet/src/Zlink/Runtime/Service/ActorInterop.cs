@@ -95,8 +95,19 @@ internal static partial class ActorInterop
         List<ActorReceived> messages = new();
         while (true)
         {
-            var message = RecvActor(node, actorRef,
-                RecvFlags.DontWait);
+            ActorReceived? message;
+            try
+            {
+                message = RecvActor(node, actorRef, RecvFlags.DontWait);
+            }
+            catch (ZlinkRecvException error)
+                when (error.Result == ZlinkRecvException.ErrorCode.InvalidHandle)
+            {
+                // Actor dispatch notifications can outlive an actor that was
+                // destroyed after the native event was queued. The stale
+                // notification has no remaining message to drain.
+                break;
+            }
             if (message == null)
                 break;
             messages.Add(message);

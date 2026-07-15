@@ -20,7 +20,6 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
     public IZLinkBackendDealerSocket CreateDealerSocket(IZLinkBackendContext context)
     {
         var socket = RequireContext(context).NativeContext.CreateDealerSocket();
-        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendDealerSocketWrapper(
             socket);
     }
@@ -28,7 +27,6 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
     public IZLinkBackendRouterSocket CreateRouterSocket(IZLinkBackendContext context)
     {
         var socket = RequireContext(context).NativeContext.CreateRouterSocket();
-        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendRouterSocketWrapper(
             socket);
     }
@@ -36,7 +34,6 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
     public IZLinkBackendPublisherSocket CreatePublisherSocket(IZLinkBackendContext context)
     {
         var socket = RequireContext(context).NativeContext.CreatePubSocket();
-        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendPublisherSocketWrapper(
             socket);
     }
@@ -44,7 +41,6 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
     public IZLinkBackendSubscriberSocket CreateSubscriberSocket(IZLinkBackendContext context)
     {
         var socket = RequireContext(context).NativeContext.CreateSubSocket();
-        socket.Options.Linger = TimeSpan.Zero;
         return new ZLinkBackendSubscriberSocketWrapper(
             socket);
     }

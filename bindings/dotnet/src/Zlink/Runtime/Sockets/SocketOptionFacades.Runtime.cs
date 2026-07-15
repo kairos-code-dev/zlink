@@ -36,13 +36,6 @@ public partial class CommonSocketOptions
         set => Socket.SetOption(SocketOptions.MulticastHops, value);
     }
 
-    internal TimeSpan? HandshakeInterval
-    {
-        get => DecodeDuration(Socket.GetOption(SocketOptions.HandshakeIvl));
-        set => Socket.SetOption(SocketOptions.HandshakeIvl,
-            EncodeDuration(value, nameof(value)));
-    }
-
     internal int TcpKeepAliveCount
     {
         get => Socket.GetOption(SocketOptions.TcpKeepaliveCnt);

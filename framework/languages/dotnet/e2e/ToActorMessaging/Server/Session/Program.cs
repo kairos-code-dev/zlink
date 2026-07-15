@@ -30,6 +30,9 @@ builder.Services.AddZLinkFramework(framework =>
 var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", options.Rid }));
 app.MapGet("/evidence", (SessionEvidence evidence) => Results.Ok(evidence.All()));
+app.MapGet("/bindings/{actorId}", (
+    string actorId,
+    SessionEvidence evidence) => Results.Ok(evidence.Snapshot(actorId)));
 await app.RunAsync();
 
 internal sealed class ToActorSession(
@@ -51,7 +54,10 @@ internal sealed class ToActorSession(
     {
         evidence.Add($"session-disconnected-start|session={Context.SessionId}");
         foreach (var actor in Context.Actors.Bound)
+        {
+            evidence.Unbind(actor.ActorId, Context.SessionId.ToString());
             await actor.NotifyDisconnectedAsync(CancellationToken.None);
+        }
         evidence.Add($"session-disconnected|session={Context.SessionId}");
     }
 
@@ -91,6 +97,7 @@ internal sealed class BindActorHandler(
         var actor = await actorDirectory.FindAsync(request.ActorId, cancellationToken)
                     ?? throw new InvalidOperationException($"Actor '{request.ActorId}' was not found.");
         await context.Actors.BindOrGetAsync(actor, cancellationToken);
+        evidence.Bind(actor.ActorId, context.SessionId.ToString());
         evidence.Add(
             $"actor-bound|session={context.SessionId}|actor={actor.ActorId}"
             + $"|node={actor.NodeRid}|generation={actor.Generation}");
@@ -102,6 +109,7 @@ internal sealed class BindActorHandler(
 internal sealed class SessionEvidence(string? file)
 {
     private readonly ConcurrentQueue<string> _entries = new();
+    private readonly ConcurrentDictionary<string, BoundSessionSnapshot> _bindings = new(StringComparer.Ordinal);
 
     public void Add(string value)
     {
@@ -110,6 +118,29 @@ internal sealed class SessionEvidence(string? file)
     }
 
     public string[] All() => _entries.ToArray();
+
+    public void Bind(string actorId, string sessionRid)
+    {
+        _bindings.AddOrUpdate(
+            actorId,
+            _ => new BoundSessionSnapshot(actorId, sessionRid, 1),
+            (_, current) => current with { SessionRid = sessionRid, Revision = current.Revision + 1 });
+    }
+
+    public void Unbind(string actorId, string sessionRid)
+    {
+        _bindings.AddOrUpdate(
+            actorId,
+            _ => new BoundSessionSnapshot(actorId, null, 1),
+            (_, current) => string.Equals(current.SessionRid, sessionRid, StringComparison.Ordinal)
+                ? current with { SessionRid = null, Revision = current.Revision + 1 }
+                : current);
+    }
+
+    public BoundSessionSnapshot Snapshot(string actorId) =>
+        _bindings.TryGetValue(actorId, out var snapshot)
+            ? snapshot
+            : new BoundSessionSnapshot(actorId, null, 0);
 }
 
 internal sealed record SessionOptions(

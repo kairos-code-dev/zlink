@@ -12,12 +12,6 @@ public sealed class ZoneState(string zoneId)
     private readonly Dictionary<string, ResidentPlayer> _residents = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BorderSnapshot> _adjacent = new(StringComparer.Ordinal);
 
-    /// <summary>The newest tick seen from each adjacent zone. It outlives expiry on purpose: a
-    /// snapshot that was in flight when the neighbour's node died would otherwise arrive after
-    /// the expiry, find no entry to compare against, and put the dead node's players back on
-    /// screen (§2.4).</summary>
-    private readonly Dictionary<string, long> _adjacentHighWater = new(StringComparer.Ordinal);
-
     public string ZoneId { get; } = zoneId;
 
     public long Tick { get; private set; }
@@ -47,9 +41,8 @@ public sealed class ZoneState(string zoneId)
     /// </summary>
     public void ApplyBorderSnapshot(string fromZoneId, long tick, IReadOnlyList<PlayerView> players)
     {
-        if (_adjacentHighWater.TryGetValue(fromZoneId, out var newest) && tick <= newest) return;
+        if (_adjacent.TryGetValue(fromZoneId, out var current) && tick <= current.Tick) return;
 
-        _adjacentHighWater[fromZoneId] = tick;
         _adjacent[fromZoneId] = new BorderSnapshot(tick, Tick, players);
     }
 

@@ -23,6 +23,9 @@ internal sealed class ZLinkSpotNodeInitializer(
                 ResolveSpotNodeMode(spotNodeRegistration));
             var nodeRoutingId = CreateNodeRoutingId(spotNodeRegistration);
             node.SetRoutingId(nodeRoutingId);
+            node.ApplyRoleConfig(
+                spotNodeRegistration.PubSub?.PublisherConfig,
+                spotNodeRegistration.PubSub?.SubscriberConfig);
             if (nodeRoutingId.Size > 0 && spotNodeRegistration.PubSub is not null)
             {
                 node.SetPublisherRoutingId(

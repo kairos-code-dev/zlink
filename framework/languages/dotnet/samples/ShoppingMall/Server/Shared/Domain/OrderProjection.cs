@@ -1,17 +1,16 @@
-using ShoppingMall.Server.Configuration;
-using ShoppingMall.Shared.Contracts;
-
 namespace ShoppingMall.Server.Shared.Domain;
 
 public static class OrderProjection
 {
-    public static OrderState Apply(OrderState? current, OrderDomainEvent domainEvent)
+    public static OrderProjectionState Apply(
+        OrderProjectionState? current,
+        OrderDomainEvent domainEvent)
     {
         return domainEvent switch
         {
-            OrderStartedEvent started => new OrderState(
+            OrderStartedEvent started => new OrderProjectionState(
                 started.OrderId,
-                OrderStatuses.Created,
+                OrderStatus.Created,
                 started.ShippingAddressId,
                 null,
                 null,
@@ -20,44 +19,46 @@ public static class OrderProjection
                 started.Currency,
                 started.CreatedAtUnixMs),
             InventoryReservedEvent reserved => Ensure(current, reserved).With(
-                OrderStatuses.InventoryReserved,
+                OrderStatus.InventoryReserved,
                 reserved.ReservationId,
                 UpdatedAtUnixMs: reserved.CreatedAtUnixMs),
             InventoryReservationFailedEvent failed => Ensure(current, failed).With(
-                OrderStatuses.Failed,
+                OrderStatus.Failed,
                 Reason: failed.Reason,
                 UpdatedAtUnixMs: failed.CreatedAtUnixMs),
             PaymentAuthorizedEvent paid => Ensure(current, paid).With(
-                OrderStatuses.PaymentAuthorized,
+                OrderStatus.PaymentAuthorized,
                 PaymentId: paid.PaymentId,
                 UpdatedAtUnixMs: paid.CreatedAtUnixMs),
             PaymentFailedEvent failed => Ensure(current, failed).With(
-                OrderStatuses.Failed,
+                OrderStatus.Failed,
                 Reason: failed.Reason,
                 UpdatedAtUnixMs: failed.CreatedAtUnixMs),
             InventoryReleasedEvent released => Ensure(current, released).With(
                 Reason: released.Reason,
                 UpdatedAtUnixMs: released.CreatedAtUnixMs),
             OrderConfirmedEvent confirmed => Ensure(current, confirmed).With(
-                OrderStatuses.Confirmed,
+                OrderStatus.Confirmed,
                 UpdatedAtUnixMs: confirmed.ConfirmedAtUnixMs),
             OrderFailedEvent failed => Ensure(current, failed).With(
-                OrderStatuses.Failed,
+                OrderStatus.Failed,
                 Reason: failed.Reason,
                 UpdatedAtUnixMs: failed.FailedAtUnixMs),
             _ => throw new InvalidOperationException($"Unsupported order event '{domainEvent.GetType()}'.")
         };
     }
 
-    private static OrderState Ensure(OrderState? current, OrderDomainEvent domainEvent)
+    private static OrderProjectionState Ensure(
+        OrderProjectionState? current,
+        OrderDomainEvent domainEvent)
     {
         return current ?? throw new InvalidOperationException(
             $"Projection cannot apply '{domainEvent.GetType().Name}' before OrderStartedEvent.");
     }
 
-    private static OrderState With(
-        this OrderState current,
-        string? Status = null,
+    private static OrderProjectionState With(
+        this OrderProjectionState current,
+        OrderStatus? Status = null,
         string? ReservationId = null,
         string? PaymentId = null,
         string? Reason = null,

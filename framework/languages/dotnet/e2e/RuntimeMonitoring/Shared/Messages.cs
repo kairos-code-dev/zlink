@@ -17,4 +17,5 @@ public sealed record ProfileRes(string Value, string ProviderRid, string Marker)
 public sealed record EvidenceWaitReq(
     string[] ContainsAll,
     string[][] ContainsAnyGroups,
-    int TimeoutMilliseconds = 10000);
+    int TimeoutMilliseconds = 10000,
+    int AfterIndex = 0);

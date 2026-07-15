@@ -8,9 +8,15 @@ internal sealed record ClientOptions(
     string ServiceBUrl,
     int ServiceBProcessId,
     string ServiceBChannelEndpoint,
+    string ServiceBSpotRouterEndpoint,
+    string ServiceBSpotPubEndpoint,
+    string FilteredServiceUrl,
+    string FilteredChannelEndpoint,
     string ThrowServiceUrl,
     string ThrowChannelEndpoint,
     string FilteredServiceProject,
+    string ServiceProject,
+    string ValidationHostProject,
     string Scenario,
     string LogDir)
 {
@@ -43,9 +49,15 @@ internal sealed record ClientOptions(
             Get("--service-b-url"),
             int.Parse(Get("--service-b-process-id"), System.Globalization.CultureInfo.InvariantCulture),
             Get("--service-b-channel-endpoint"),
+            Get("--service-b-spot-router-endpoint"),
+            Get("--service-b-spot-pub-endpoint"),
+            Get("--filtered-service-url"),
+            Get("--filtered-channel-endpoint"),
             Get("--throw-service-url"),
             Get("--throw-channel-endpoint"),
             Get("--filtered-service-project"),
+            Get("--service-project"),
+            Get("--validation-host-project"),
             values.TryGetValue("--scenario", out var scenario) && !string.IsNullOrWhiteSpace(scenario)
                 ? scenario
                 : "all",

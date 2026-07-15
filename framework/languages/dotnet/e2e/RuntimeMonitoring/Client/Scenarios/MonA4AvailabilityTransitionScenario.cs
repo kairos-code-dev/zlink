@@ -8,67 +8,50 @@ internal static class MonA4AvailabilityTransitionScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
-        await using var trigger = await MonitoringChannelClient.StartAsync(
-            options, options.ServiceChannelEndpoint, "trigger-mon-a4", monitorSocketEvents: true);
-        var before = await trigger.RequestAsync(new ProfileReq("drain", "mon-a4-before-drain"));
-        ScenarioAssert.That(before.ProviderRid == "svc-a", "MON-A4 direct trigger did not hit drained service.");
+        using var serviceA = ZLinkHttpClient.Create(options.ServiceUrl).Build();
+        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl).Build();
 
-        await service.Post("/admin/drain").AsyncRaw();
-        var triggerEvidence = await WaitForTriggerDrainEvidenceAsync(trigger);
-        await service.Post("/admin/restore").AsyncRaw();
+        await using var caller = await MonitoringChannelClient.StartAutoConnectedAsync(
+            options,
+            "trigger-mon-a4");
 
-        ScenarioAssert.That(
-            triggerEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                                        && line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal)),
-            "MON-A4 trigger socket drain transition evidence missing.");
+        await serviceB.Post("/admin/drain").AsyncRaw();
+        await caller.WaitForEvidenceAsync(entries =>
+            HasAdmission(entries, 0, options.ServiceBChannelEndpoint, 0));
+        var before = await caller.RequestAsync(new ProfileReq("before", "mon-a4-before"));
+        ScenarioAssert.That(before.ProviderRid == "svc-a", "MON-A4 initial request did not use svc-a.");
 
-        var serviceEvidence = await WaitForServiceDrainEvidenceAsync(service);
-        ScenarioAssert.That(
-            serviceEvidence.Any(line => line.Contains("admin|", StringComparison.Ordinal)
-                                        && line.Contains("action=drain", StringComparison.Ordinal)),
-            "MON-A4 service drain evidence missing.");
+        var failoverBaseline = caller.GetEvidence().Length;
+        await serviceB.Post("/admin/restore").AsyncRaw();
+        await serviceA.Post("/admin/drain").AsyncRaw();
+        await caller.WaitForEvidenceAsync(entries =>
+            HasAdmission(entries, failoverBaseline, options.ServiceBChannelEndpoint, 100)
+            && HasAdmission(entries, failoverBaseline, options.ServiceChannelEndpoint, 0));
 
-        var topologyEvidence = await WaitForLocationTopologyEvidenceAsync(service);
-        ScenarioAssert.That(
-            topologyEvidence.Any(line =>
-                line.Contains(
-                    "monitor-location-runtime|source=location-runtime|kind=TopologyChanged",
-                    StringComparison.Ordinal)),
-            "MON-A4 location runtime topology evidence missing.");
+        // This is deliberately the first request after the admission transition: no retry
+        // loop or delay is allowed to hide a failed failover.
+        var failedOver = await caller.RequestAsync(new ProfileReq("after", "mon-a4-after"));
+        ScenarioAssert.That(failedOver.ProviderRid == "svc-b",
+            "MON-A4 request did not fail over to svc-b. evidence="
+            + string.Join(";", caller.GetEvidence().Skip(failoverBaseline)));
+
+        var restoreBaseline = caller.GetEvidence().Length;
+        await serviceA.Post("/admin/restore").AsyncRaw();
+        var evidence = await caller.WaitForEvidenceAsync(entries =>
+            HasAdmission(entries, restoreBaseline, options.ServiceChannelEndpoint, 100));
+        ScenarioAssert.That(HasAdmission(
+                evidence, restoreBaseline, options.ServiceChannelEndpoint, 100),
+            "MON-A4 restore admission transition was not observed.");
         Console.WriteLine("scenario MON-A4 passed");
     }
 
-    private static async Task<string[]> WaitForTriggerDrainEvidenceAsync(MonitoringChannelClient trigger)
-    {
-        var evidence = await trigger.WaitForEvidenceAsync(entries => entries.Any(line =>
-            line.Contains("monitor-socket|", StringComparison.Ordinal)
-            && line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal)));
-        if (evidence.Any(line => line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal))) return evidence;
+    private static bool HasAdmission(
+        IEnumerable<string> evidence,
+        int afterIndex,
+        string endpoint,
+        uint value) => evidence.Skip(afterIndex).Any(line =>
+        line.Contains("kind=PeerAdmissionChanged", StringComparison.Ordinal)
+        && line.Contains($"remote={endpoint}", StringComparison.Ordinal)
+        && line.Contains($"value={value}", StringComparison.Ordinal));
 
-        throw new InvalidOperationException("MON-A4 drain transition evidence was incomplete.");
-    }
-
-    private static async Task<string[]> WaitForLocationTopologyEvidenceAsync(ZLinkHttpClient service)
-    {
-        return (await service.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["monitor-location-runtime|source=location-runtime"],
-                [["kind=TopologyChanged"]]))
-            .Async<string[]>()).Body;
-    }
-
-    private static async Task<string[]> WaitForServiceDrainEvidenceAsync(ZLinkHttpClient service)
-    {
-        var evidence = (await service.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["admin|"],
-                [["action=drain"]]))
-            .Async<string[]>()).Body;
-        if (evidence.Any(line => line.Contains("admin|", StringComparison.Ordinal)
-                                 && line.Contains("action=drain", StringComparison.Ordinal)))
-            return evidence;
-
-        throw new InvalidOperationException("MON-A4 service drain evidence was incomplete.");
-    }
 }

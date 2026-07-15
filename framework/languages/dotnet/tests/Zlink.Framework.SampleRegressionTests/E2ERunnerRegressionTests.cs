@@ -97,6 +97,26 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
+    public void SpotActorTransfer_Separates_Host_Endpoints_From_Actor_Runtime()
+    {
+        var actorNode = Path.Combine(
+            ResolveE2eRoot(),
+            "SpotActorTransfer",
+            "Server",
+            "ActorNode");
+        var program = File.ReadAllText(Path.Combine(actorNode, "Program.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(actorNode, "ActorNodeEndpoints.cs"));
+        var runtime = File.ReadAllText(Path.Combine(actorNode, "ActorRuntime.cs"));
+
+        Assert.DoesNotContain("app.MapPost", program, StringComparison.Ordinal);
+        Assert.Contains("ActorNodeEndpoints.Map(app, options)", program, StringComparison.Ordinal);
+        Assert.Contains("app.MapPost(\"/actors\"", endpoints, StringComparison.Ordinal);
+        Assert.DoesNotContain("class TransferActorAdapter", program, StringComparison.Ordinal);
+        Assert.Contains("class TransferActorAdapter", runtime, StringComparison.Ordinal);
+        Assert.DoesNotContain("app.MapPost", runtime, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RuntimeMonitoring_Uses_A_Client_Trigger_And_Role_Evidence()
     {
         var root = Path.Combine(ResolveE2eRoot(), "RuntimeMonitoring");

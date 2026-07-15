@@ -109,7 +109,7 @@ try {
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "gamequest api event routed"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "gamequest mission processed"
     Assert-SampleLogContains -LogDirectory $LogDir -Pattern "gamequest player quest spot ready"
-    Invoke-WebRequest -Method Get -Uri "$($env:GAMEQUEST_MISSION_A_HTTP_URL)/self-check/events" -UseBasicParsing | Select-String -Pattern "QuestProgressReconciledEvent" | Out-Null
+    Invoke-WebRequest -Method Get -Uri "$($env:GAMEQUEST_MISSION_A_HTTP_URL)/self-check/events" -UseBasicParsing | Select-String -Pattern "QuestReconciled" | Out-Null
     Invoke-WebRequest -Method Post -Uri "$($env:GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL)/self-check/assert" -UseBasicParsing | Select-String -Pattern '"passed":true' | Out-Null
     Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern "message flow"
     Write-Host "gamequest-server-evidence=completed"

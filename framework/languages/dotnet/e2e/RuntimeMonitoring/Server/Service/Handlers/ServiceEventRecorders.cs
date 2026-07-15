@@ -10,7 +10,8 @@ internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntim
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
             $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
-            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}");
+            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}"
+            + $"|native={@event.Diagnostic?.NativeEvent}|value={@event.Diagnostic?.NativeValue}");
         return ValueTask.CompletedTask;
     }
 }
@@ -25,7 +26,9 @@ internal sealed class ThrowingSocketEventRecorder(EvidenceStore evidence) : IZLi
     }
 }
 
-internal sealed class LocationRuntimeEventRecorder(EvidenceStore evidence)
+internal sealed class LocationRuntimeEventRecorder(
+    EvidenceStore evidence,
+    LocationTopologyTransitionTracker transitions)
     : IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>
 {
     public ValueTask HandleAsync(ZLinkLocationRuntimeEvent @event, CancellationToken cancellationToken)
@@ -37,10 +40,46 @@ internal sealed class LocationRuntimeEventRecorder(EvidenceStore evidence)
         var summaryCount = @event is ZLinkLocationRuntimeEvent.ServiceSummaryChanged summary
             ? summary.ServiceSummary.Count
             : -1;
+        var topologyEntries = @event is ZLinkLocationRuntimeEvent.TopologyChanged changed
+            ? changed.Topology
+                .Where(entry => entry.NodeRid is not null)
+                .Select(entry => $"{entry.NodeRid}:{entry.State}")
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray()
+            : [];
+        var transition = @event is ZLinkLocationRuntimeEvent.TopologyChanged topologyChanged
+            ? transitions.Apply(topologyChanged.Topology)
+            : default;
         evidence.Add(
             $"monitor-location-runtime|source={@event.SourceName}|kind={@event.GetType().Name}"
-            + $"|topology={topologyCount}|summary={summaryCount}");
+            + $"|topology={topologyCount}|summary={summaryCount}"
+            + $"|entries={string.Join(',', topologyEntries)}"
+            + $"|added={string.Join(',', transition.Added ?? [])}"
+            + $"|removed={string.Join(',', transition.Removed ?? [])}");
         return ValueTask.CompletedTask;
+    }
+}
+
+internal sealed class LocationTopologyTransitionTracker
+{
+    private readonly object _gate = new();
+    private HashSet<string> _nodes = new(StringComparer.Ordinal);
+
+    public (string[] Added, string[] Removed) Apply(
+        IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry> topology)
+    {
+        var current = topology
+            .Where(entry => entry.NodeRid is not null)
+            .Select(entry => entry.NodeRid!.Value.ToString())
+            .ToHashSet(StringComparer.Ordinal);
+        lock (_gate)
+        {
+            var added = current.Except(_nodes, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            var removed = _nodes.Except(current, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+            _nodes = current;
+            return (added, removed);
+        }
     }
 }
 
@@ -51,6 +90,9 @@ internal sealed class SpotEventRecorder(EvidenceStore evidence) : IZLinkRuntimeE
         cancellationToken.ThrowIfCancellationRequested();
         var peerCount = @event is ZLinkSpotEvent.PeersChanged peers ? peers.Peers.Count : -1;
         var subjectCount = @event is ZLinkSpotEvent.SubjectsChanged subjects ? subjects.Subjects.Count : -1;
+        var subjectNames = @event is ZLinkSpotEvent.SubjectsChanged subjectChange
+            ? subjectChange.Subjects.Select(subject => subject.Subject).Order(StringComparer.Ordinal).ToArray()
+            : [];
         var timerName = @event switch
         {
             ZLinkSpotEvent.TimerHandlerFailed failed => failed.Diagnostic.TimerName,
@@ -60,6 +102,7 @@ internal sealed class SpotEventRecorder(EvidenceStore evidence) : IZLinkRuntimeE
         evidence.Add(
             $"monitor-spot|source={@event.SourceName}|kind={@event.GetType().Name}"
             + $"|peers={peerCount}|subjects={subjectCount}"
+            + $"|subject-names={string.Join(',', subjectNames)}"
             + $"|timer={timerName}");
         return ValueTask.CompletedTask;
     }

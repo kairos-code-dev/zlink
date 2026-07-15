@@ -66,34 +66,40 @@ internal sealed class GameQuestEntrySpot(
     }
 }
 
-[ZLinkSpotActorSendHandler(nameof(NotifyQuestProgressActorReq))]
-internal sealed class NotifyQuestProgressActorHandler
+[ZLinkSpotActorSendHandler(nameof(QuestProgressNotify))]
+internal sealed class QuestProgressNotifyActorHandler
     : IZLinkEntrySpotActorSendHandler<
         GameQuestEntrySpot,
         PlayerSessionActor,
-        NotifyQuestProgressActorReq>
+        QuestProgressNotify>
 {
     public ValueTask HandleAsync(
         GameQuestEntrySpot entrySpot,
         PlayerSessionActor actor,
         ZLinkSpotActorSendContext context,
-        NotifyQuestProgressActorReq request,
+        QuestProgressNotify request,
         CancellationToken cancellationToken)
     {
-        foreach (var progress in request.Notification.Projection)
-            actor.Context.BoundSession
-                .Send(new QuestProgressNotify(actor.ActorId, progress))
-                .Submit(cancellationToken);
+        actor.Context.BoundSession.Send(request).Submit(cancellationToken);
+        return ValueTask.CompletedTask;
+    }
+}
 
-        if (!string.IsNullOrWhiteSpace(request.Notification.CompletedQuestId))
-        {
-            var completed = request.Notification.Projection.First(
-                progress => progress.QuestId == request.Notification.CompletedQuestId);
-            actor.Context.BoundSession
-                .Send(new QuestCompletedNotify(actor.ActorId, completed, true))
-                .Submit(cancellationToken);
-        }
-
+[ZLinkSpotActorSendHandler(nameof(QuestCompletedNotify))]
+internal sealed class QuestCompletedNotifyActorHandler
+    : IZLinkEntrySpotActorSendHandler<
+        GameQuestEntrySpot,
+        PlayerSessionActor,
+        QuestCompletedNotify>
+{
+    public ValueTask HandleAsync(
+        GameQuestEntrySpot entrySpot,
+        PlayerSessionActor actor,
+        ZLinkSpotActorSendContext context,
+        QuestCompletedNotify request,
+        CancellationToken cancellationToken)
+    {
+        actor.Context.BoundSession.Send(request).Submit(cancellationToken);
         return ValueTask.CompletedTask;
     }
 }

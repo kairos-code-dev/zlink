@@ -705,6 +705,7 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 - [x] **E2E-ND-25** (결함) — `SF-D1`·`SF-D2`가 store stop/restart 대신 **pause/unpause**만 한다
   - 근거: runner가 Redis를 실제 stop/restart하고 빈 store 재등록·auto-connect recovery를 framework 경계에서 처리한다. pause만으로는 통과하지 않는 restart-recovery/location gates와 SF-D1·D2가 통과한다. 커밋 `0a9c1f084`.
 - [ ] **E2E-ND-26** (미구현) — `SF-C2`가 draining marker·drain deadline·정상 종료를 검증하지 않는다
+  - 재검증: marker barrier를 둔 실제 SF-C2 red gate에서 `Draining=true` row가 게시된 뒤에도 새 request가 `api-b`에 배정됐다. auto-connect reconciler는 기존 연결 유지를 위해 draining target을 active set에 남기지만, dealer backend에는 연결을 유지한 채 새 request 선택에서만 특정 peer를 제외하는 표면이 없다. 연결을 끊는 우회는 기존 연결·작업 유지 계약을 깨므로 적용하지 않았으며, peer별 신규 배정 차단 표면의 계약·구현 결정 전까지 열린 상태로 둔다.
 - [x] **E2E-ND-27** (미구현) — `MON-A1`이 socket event의 **RemoteAddr·RoutingId를 단언하지 않는다**
   - 근거: MON-A1이 실제 socket event의 remote address와 routing id를 필수로 단언한다. identity 필드가 비어도 통과하던 monitoring socket gate가 실패에서 통과로 바뀌었다. 커밋 `e21abc645`.
 - [x] **E2E-ND-28** (**가짜 통과**) — `MON-A2`가 provider 추가·종료를 일으키지 않고 **기존 startup event만 기다린다**

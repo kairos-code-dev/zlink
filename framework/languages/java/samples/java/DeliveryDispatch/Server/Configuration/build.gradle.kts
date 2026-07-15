@@ -17,6 +17,7 @@ dependencies {
     api(sampleProject("Shared"))
     api("systems.zlink:zlink-framework-core:0.1.0-SNAPSHOT")
     api("systems.zlink:zlink-framework-locations-redis:0.1.0-SNAPSHOT")
+    api("org.springframework.boot:spring-boot:3.5.14")
 }
 
 java {

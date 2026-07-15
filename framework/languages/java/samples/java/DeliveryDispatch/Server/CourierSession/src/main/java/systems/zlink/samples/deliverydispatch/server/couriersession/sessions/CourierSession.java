@@ -23,16 +23,19 @@ public final class CourierSession implements ZLinkSession {
     private final ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers;
     private final ZLinkRouteClient routes;
     private final SpotHandleResolver spotHandles;
+    private final SampleTopology topology;
 
     public CourierSession(
         ZLinkSessionContext context,
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> handlers,
         ZLinkRouteClient routes,
-        SpotHandleResolver spotHandles) {
+        SpotHandleResolver spotHandles,
+        SampleTopology topology) {
         this.context = context;
         this.handlers = handlers;
         this.routes = routes;
         this.spotHandles = spotHandles;
+        this.topology = topology;
     }
 
     @Override
@@ -94,7 +97,7 @@ public final class CourierSession implements ZLinkSession {
 
     private CompletionStage<systems.zlink.framework.actors.ActorRefSnapshot> findOrEnsureActor(
         String courierId) {
-        String placement = SampleTopology.courierPlacement(courierId);
+        String placement = topology.courierPlacement(courierId);
         return resolveSpot(placement).thenCompose(address -> routes
                 .requestToSpot(
                     SampleNames.CourierSpotDiscovery,

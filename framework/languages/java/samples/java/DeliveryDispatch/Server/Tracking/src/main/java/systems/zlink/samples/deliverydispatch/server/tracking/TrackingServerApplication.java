@@ -1,8 +1,7 @@
 package systems.zlink.samples.deliverydispatch.server.tracking;
 
-import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -12,10 +11,12 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.deliverydispatch.server.configuration.EvidenceStore;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocationStore;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleApplication;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = TrackingServerApplication.class)
@@ -23,37 +24,34 @@ public final class TrackingServerApplication {
     private TrackingServerApplication() {
     }
 
-    public static AutoCloseable run(String... args) {
-        SpringApplicationBuilder builder = new SpringApplicationBuilder(TrackingServerApplication.class)
-            .web(WebApplicationType.NONE);
-        builder.application().setKeepAlive(true);
-        return builder.run(args)::close;
+    public static AutoCloseable run(String configPath) {
+        return SampleApplication.start(TrackingServerApplication.class, configPath)::close;
     }
 
     @Bean
-    ZLinkFrameworkConfigurer trackingFramework() {
+    ZLinkFrameworkConfigurer trackingFramework(SampleTopology topology) {
         return options -> {
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(SampleTopology.LogDirectory + "/flow-tracking.log")
+                .traceLogFile(topology.logDirectory() + "/flow-tracking.log")
                 .traceLabel("tracking");
             options.addHandlersFromPackageOf(TrackingServerApplication.class);
             ZLinkSpotNodeBuilder trackingSpot = options.addSpotMesh(SampleNames.CustomerSpotDiscovery);
-            trackingSpot.enableRouter(SampleTopology.TrackingSpotEndpoint)
+            trackingSpot.enableRouter(topology.trackingSpotEndpoint())
                 .setRoutingId(RoutingId.from(SampleNames.TrackingSpotNode));
             trackingSpot.configureEntrySpot()
                 .setRoutingId(RoutingId.from(SampleNames.TrackingSpotNode));
-            trackingSpot.enablePubSub(SampleTopology.TrackingSpotPubEndpoint);
+            trackingSpot.enablePubSub(topology.trackingSpotPubEndpoint());
             options.addClientServerChannel(SampleNames.TrackingChannel)
-                .enableServer(SampleTopology.TrackingChannelEndpoint)
+                .enableServer(topology.trackingChannelEndpoint())
                 .setRoutingId(RoutingId.from("delivery-tracking-server"))
                 .addHandlerGroup("tracking");
         };
     }
 
     @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore() {
-        return SampleLocationStore.create();
+    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
+        return SampleLocationStore.create(topology);
     }
 
     @Bean

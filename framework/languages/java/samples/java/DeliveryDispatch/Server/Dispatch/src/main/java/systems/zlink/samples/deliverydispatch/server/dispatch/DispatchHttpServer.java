@@ -16,13 +16,13 @@ public final class DispatchHttpServer implements AutoCloseable {
 
     public DispatchHttpServer(
         ObjectMapper json,
-        DispatchWorkQueue queue) throws IOException {
+        DispatchWorkQueue queue,
+        String endpoint) throws IOException {
         this.json = json;
         this.queue = queue;
-        URI endpoint = URI.create(systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology
-            .DispatchHttpEndpoint);
+        URI uri = URI.create(endpoint);
         this.server = HttpServer.create(
-            new InetSocketAddress(endpoint.getHost(), endpoint.getPort()),
+            new InetSocketAddress(uri.getHost(), uri.getPort()),
             0);
         server.createContext("/deliveries", this::handleCreateDelivery);
         server.createContext("/self-check/assert", this::handleServerAssertion);

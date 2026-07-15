@@ -8,11 +8,11 @@ public final class SampleLocationStore {
     private SampleLocationStore() {
     }
 
-    public static ZLinkRedisLocationStore create() {
+    public static ZLinkRedisLocationStore create(SampleTopology topology) {
         return new ZLinkRedisLocationStore(
             new ZLinkRedisLocationOptions()
-                .setConnectionString(SampleTopology.RedisEndpoint)
-                .setKeyPrefix(SampleTopology.RedisKeyPrefix + "locations:")
+                .setConnectionString(topology.redisEndpoint())
+                .setKeyPrefix(topology.redisKeyPrefix() + "locations:")
                 .setCommandTimeout(Duration.ofMillis(500)));
     }
 }

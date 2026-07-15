@@ -7,7 +7,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        SampleTopology.configure(args);
-        CourierSpotNodeApplication.run(new String[0]);
+        CourierSpotNodeApplication.run(SampleTopology.configPath(args));
     }
 }

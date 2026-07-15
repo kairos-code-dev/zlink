@@ -2,9 +2,8 @@ package systems.zlink.samples.deliverydispatch.server.dispatch;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -13,10 +12,12 @@ import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleLocationStore;
+import systems.zlink.samples.deliverydispatch.server.configuration.SampleApplication;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SampleTopology.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackageClasses = DispatchServerApplication.class)
@@ -24,27 +25,24 @@ public final class DispatchServerApplication {
     private DispatchServerApplication() {
     }
 
-    public static AutoCloseable run(String... args) {
-        SpringApplicationBuilder builder = new SpringApplicationBuilder(DispatchServerApplication.class)
-            .web(WebApplicationType.NONE);
-        builder.application().setKeepAlive(true);
-        return builder.run(args)::close;
+    public static AutoCloseable run(String configPath) {
+        return SampleApplication.start(DispatchServerApplication.class, configPath)::close;
     }
 
     @Bean
-    ZLinkFrameworkConfigurer dispatchFramework() {
+    ZLinkFrameworkConfigurer dispatchFramework(SampleTopology topology) {
         return options -> {
             options.addHandlersFromPackageOf(DispatchServerApplication.class);
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(SampleTopology.LogDirectory + "/flow-dispatch.log")
+                .traceLogFile(topology.logDirectory() + "/flow-dispatch.log")
                 .traceLabel("dispatch");
             options.addClientServerChannel(SampleNames.CourierChannel)
                 .enableClient();
             // The courier's decision comes back here as its own one-way message, so dispatch has
             // to be a channel server (common sample spec section 7.4).
             options.addClientServerChannel(SampleNames.DispatchChannel)
-                .enableServer(SampleTopology.DispatchChannelEndpoint)
+                .enableServer(topology.dispatchChannelEndpoint())
                 .setRoutingId(RoutingId.from("delivery-dispatch-channel"))
                 .addHandlerGroup(SampleNames.DispatchChannel);
             options.addClientServerChannel(SampleNames.TrackingChannel)
@@ -58,8 +56,8 @@ public final class DispatchServerApplication {
     }
 
     @Bean(destroyMethod = "close")
-    ZLinkRedisLocationStore locationStore() {
-        return SampleLocationStore.create();
+    ZLinkRedisLocationStore locationStore(SampleTopology topology) {
+        return SampleLocationStore.create(topology);
     }
 
     @Bean
@@ -77,8 +75,9 @@ public final class DispatchServerApplication {
         systems.zlink.framework.channels.ZLinkClient channels,
         systems.zlink.framework.channels.ZLinkRouteClient routes,
         systems.zlink.framework.spots.SpotHandleResolver spotHandles,
-        DeliveryOfferStore offers) {
-        return new DispatchWorker(channels, routes, spotHandles, offers);
+        DeliveryOfferStore offers,
+        SampleTopology topology) {
+        return new DispatchWorker(channels, routes, spotHandles, offers, topology);
     }
 
     @Bean(destroyMethod = "close")
@@ -89,8 +88,9 @@ public final class DispatchServerApplication {
     @Bean
     DispatchHttpServer dispatchHttpServer(
         ObjectMapper json,
-        DispatchWorkQueue queue) throws IOException {
-        return new DispatchHttpServer(json, queue);
+        DispatchWorkQueue queue,
+        SampleTopology topology) throws IOException {
+        return new DispatchHttpServer(json, queue, topology.dispatchHttpEndpoint());
     }
 
     @Bean

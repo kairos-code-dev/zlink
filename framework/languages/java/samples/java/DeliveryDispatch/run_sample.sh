@@ -10,6 +10,18 @@ if rg -n 'System\.(getProperty|getenv)' Server Client --glob '*.java'; then
   echo "DeliveryDispatch application code must use sample config files" >&2
   exit 1
 fi
+if rg -n 'java\.util\.Properties|SampleTopology\.[A-Z]|SampleTopology\.configure' \
+    Server --glob '*.java'; then
+  echo "DeliveryDispatch server config must use typed Spring binding" >&2
+  exit 1
+fi
+if ! rg -q '@ConfigurationProperties\("sample"\)' \
+    Server/Configuration/src/main/java --glob 'SampleTopology.java' || \
+    ! rg -q 'SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME' \
+    Server/Configuration/src/main/java --glob 'SampleApplication.java'; then
+  echo "DeliveryDispatch must isolate Spring config from environment and JVM providers" >&2
+  exit 1
+fi
 if rg -n -U '\.enableClient\(\s*[^)\s]|\.connect(?:Router|PeerPub)\(' Server --glob '*.java'; then
   echo "DeliveryDispatch server code must use location-store automatic connections" >&2
   exit 1
@@ -169,28 +181,74 @@ zlink_redis_start_scoped_assign redis_container_id redis_port \
 redis_endpoint="127.0.0.1:${redis_port}"
 wait_port "${redis_endpoint%:*}" "${redis_endpoint##*:}"
 write_config() {
-  local path="$1" courier_node="$2"
-  cat >"$path" <<EOF
-trackingChannelEndpoint=tcp://$(endpoint_host "${tracking}"):$(endpoint_port "${tracking}")
+  local path="$1" role="$2" courier_node="${3:-node1}"
+  if [[ "${role}" == "client" ]]; then
+    cat >"$path" <<EOF
 customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")
 courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")
 dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")
-dispatchChannelEndpoint=tcp://$(endpoint_host "${dispatch_channel}"):$(endpoint_port "${dispatch_channel}")
-trackingSpotEndpoint=tcp://$(endpoint_host "${tracking_spot_router}"):$(endpoint_port "${tracking_spot_router}")
-customerSpotEndpoint=tcp://$(endpoint_host "${customer_spot}"):$(endpoint_port "${customer_spot}")
-customerSpotRouterEndpoint=tcp://$(endpoint_host "${customer_router}"):$(endpoint_port "${customer_router}")
-trackingSpotPubEndpoint=tcp://$(endpoint_host "${tracking_spot_pub}"):$(endpoint_port "${tracking_spot_pub}")
-courierActorNode1SpotEndpoint=tcp://$(endpoint_host "${courier_node1_spot}"):$(endpoint_port "${courier_node1_spot}")
-courierActorNode2SpotEndpoint=tcp://$(endpoint_host "${courier_node2_spot}"):$(endpoint_port "${courier_node2_spot}")
-courierActorNode1RouterEndpoint=tcp://$(endpoint_host "${courier_node1_router}"):$(endpoint_port "${courier_node1_router}")
-courierActorNode2RouterEndpoint=tcp://$(endpoint_host "${courier_node2_router}"):$(endpoint_port "${courier_node2_router}")
-courierSessionSpotRouterEndpoint=tcp://$(endpoint_host "${courier_session_router}"):$(endpoint_port "${courier_session_router}")
-courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")
-redisEndpoint=${redis_endpoint}
-redisKeyPrefix=${deliverydispatch_redis_key_prefix}
-courierNode=${courier_node}
-logDirectory=${flow_log_dir}
 EOF
+    chmod 0600 "$path"
+    return
+  fi
+  cat >"$path" <<EOF
+sample.redisEndpoint=${redis_endpoint}
+sample.redisKeyPrefix=${deliverydispatch_redis_key_prefix}
+sample.logDirectory=${flow_log_dir}
+EOF
+  case "${role}" in
+    tracking)
+      cat >>"$path" <<EOF
+sample.trackingChannelEndpoint=tcp://$(endpoint_host "${tracking}"):$(endpoint_port "${tracking}")
+sample.trackingSpotEndpoint=tcp://$(endpoint_host "${tracking_spot_router}"):$(endpoint_port "${tracking_spot_router}")
+sample.trackingSpotPubEndpoint=tcp://$(endpoint_host "${tracking_spot_pub}"):$(endpoint_port "${tracking_spot_pub}")
+EOF
+      ;;
+    customer-gateway)
+      cat >>"$path" <<EOF
+sample.customerStreamEndpoint=tcp://$(endpoint_host "${customer_stream}"):$(endpoint_port "${customer_stream}")
+sample.customerSpotEndpoint=tcp://$(endpoint_host "${customer_spot}"):$(endpoint_port "${customer_spot}")
+sample.customerSpotRouterEndpoint=tcp://$(endpoint_host "${customer_router}"):$(endpoint_port "${customer_router}")
+sample.customerSpotNodeRid=customer-node-1
+EOF
+      ;;
+    courier-session)
+      cat >>"$path" <<EOF
+sample.courierStreamEndpoint=tcp://$(endpoint_host "${courier_stream}"):$(endpoint_port "${courier_stream}")
+sample.courierSessionSpotRouterEndpoint=tcp://$(endpoint_host "${courier_session_router}"):$(endpoint_port "${courier_session_router}")
+sample.courierSessionSpotEndpoint=tcp://$(endpoint_host "${courier_session_spot}"):$(endpoint_port "${courier_session_spot}")
+sample.courierSessionSpotNodeRid=courier-session-node
+sample.courierActorNode1Rid=courier-node-1
+sample.courierActorNode2Rid=courier-node-2
+EOF
+      ;;
+    courier-node)
+      cat >>"$path" <<EOF
+sample.courierNode=${courier_node}
+EOF
+      if [[ "${courier_node}" == "node2" ]]; then
+        cat >>"$path" <<EOF
+sample.courierActorNode2Rid=courier-node-2
+sample.courierActorNode2SpotEndpoint=tcp://$(endpoint_host "${courier_node2_spot}"):$(endpoint_port "${courier_node2_spot}")
+sample.courierActorNode2RouterEndpoint=tcp://$(endpoint_host "${courier_node2_router}"):$(endpoint_port "${courier_node2_router}")
+EOF
+      else
+        cat >>"$path" <<EOF
+sample.courierActorNode1Rid=courier-node-1
+sample.courierActorNode1SpotEndpoint=tcp://$(endpoint_host "${courier_node1_spot}"):$(endpoint_port "${courier_node1_spot}")
+sample.courierActorNode1RouterEndpoint=tcp://$(endpoint_host "${courier_node1_router}"):$(endpoint_port "${courier_node1_router}")
+EOF
+      fi
+      ;;
+    dispatch)
+      cat >>"$path" <<EOF
+sample.dispatchHttpEndpoint=http://$(endpoint_host "${dispatch_http}"):$(endpoint_port "${dispatch_http}")
+sample.dispatchChannelEndpoint=tcp://$(endpoint_host "${dispatch_channel}"):$(endpoint_port "${dispatch_channel}")
+sample.courierActorNode1Rid=courier-node-1
+sample.courierActorNode2Rid=courier-node-2
+EOF
+      ;;
+  esac
   chmod 0600 "$path"
 }
 tracking_config="${config_dir}/tracking.properties"
@@ -200,13 +258,13 @@ courier_node1_config="${config_dir}/courier-node1.properties"
 courier_node2_config="${config_dir}/courier-node2.properties"
 dispatch_config="${config_dir}/dispatch.properties"
 client_config="${config_dir}/client.properties"
-write_config "$tracking_config" node1
-write_config "$customer_gateway_config" node1
-write_config "$courier_session_config" node1
-write_config "$courier_node1_config" node1
-write_config "$courier_node2_config" node2
-write_config "$dispatch_config" node1
-write_config "$client_config" node1
+write_config "$tracking_config" tracking
+write_config "$customer_gateway_config" customer-gateway
+write_config "$courier_session_config" courier-session
+write_config "$courier_node1_config" courier-node node1
+write_config "$courier_node2_config" courier-node node2
+write_config "$dispatch_config" dispatch
+write_config "$client_config" client
 
 build_framework_jars
 gradle_run \

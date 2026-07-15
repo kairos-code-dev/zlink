@@ -7,7 +7,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        SampleTopology.configure(args);
-        DispatchServerApplication.run(new String[0]);
+        DispatchServerApplication.run(SampleTopology.configPath(args));
     }
 }

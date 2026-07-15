@@ -4,7 +4,6 @@ import java.net.URI;
 import java.time.Duration;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTimings;
-import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -15,14 +14,14 @@ public final class Program {
     }
 
     public static void main(String[] args) throws Exception {
-        SampleTopology.configure(args);
-        ZLinkStreamConnector customer = createClient(SampleTopology.CustomerStreamEndpoint);
-        ZLinkStreamConnector courierA = createClient(SampleTopology.CourierStreamEndpoint);
-        ZLinkStreamConnector courierB = createClient(SampleTopology.CourierStreamEndpoint);
+        ClientOptions options = ClientOptions.load(args);
+        ZLinkStreamConnector customer = createClient(options.customerStreamEndpoint());
+        ZLinkStreamConnector courierA = createClient(options.courierStreamEndpoint());
+        ZLinkStreamConnector courierB = createClient(options.courierStreamEndpoint());
         java.util.concurrent.ScheduledExecutorService processLifetime =
             java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
         processLifetime.schedule(() -> { }, 5, java.util.concurrent.TimeUnit.MINUTES);
-        new DeliveryDispatchClientScenario().run(customer, courierA, courierB)
+        new DeliveryDispatchClientScenario(options.dispatchHttpEndpoint()).run(customer, courierA, courierB)
             .toCompletableFuture()
             .orTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
             .whenComplete((ignored, error) -> java.util.concurrent.CompletableFuture.allOf(

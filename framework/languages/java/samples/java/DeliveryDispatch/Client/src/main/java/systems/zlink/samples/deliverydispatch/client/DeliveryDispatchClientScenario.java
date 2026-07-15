@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
-import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
 import systems.zlink.stream.connector.ZLinkStreamAssert;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -19,6 +18,11 @@ import systems.zlink.stream.connector.ZLinkStreamMessage;
 public final class DeliveryDispatchClientScenario {
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newHttpClient();
+    private final String dispatchHttpEndpoint;
+
+    public DeliveryDispatchClientScenario(String dispatchHttpEndpoint) {
+        this.dispatchHttpEndpoint = dispatchHttpEndpoint;
+    }
 
     public CompletionStage<Void> run(
         ZLinkStreamConnector customer,
@@ -197,7 +201,7 @@ public final class DeliveryDispatchClientScenario {
         Class<TResponse> responseType) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(SampleTopology.DispatchHttpEndpoint + path))
+                .uri(URI.create(dispatchHttpEndpoint + path))
                 .header("content-type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
                 .build();

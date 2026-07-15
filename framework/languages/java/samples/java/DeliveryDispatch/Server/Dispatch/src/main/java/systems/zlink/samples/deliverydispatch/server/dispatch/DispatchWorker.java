@@ -27,16 +27,19 @@ public final class DispatchWorker {
     private final ZLinkRouteClient routes;
     private final SpotHandleResolver spotHandles;
     private final DeliveryOfferStore offers;
+    private final SampleTopology topology;
 
     public DispatchWorker(
         ZLinkClient channels,
         ZLinkRouteClient routes,
         SpotHandleResolver spotHandles,
-        DeliveryOfferStore offers) {
+        DeliveryOfferStore offers,
+        SampleTopology topology) {
         this.channels = channels;
         this.routes = routes;
         this.spotHandles = spotHandles;
         this.offers = offers;
+        this.topology = topology;
     }
 
     /** The first offer. Records it, sends it, and returns — nobody is left waiting. */
@@ -114,7 +117,7 @@ public final class DispatchWorker {
     }
 
     private CompletionStage<SpotHandle> courierAddress(String courierId) {
-        RoutingId nodeRid = RoutingId.from(SampleTopology.courierPlacement(courierId));
+        RoutingId nodeRid = RoutingId.from(topology.courierPlacement(courierId));
         return spotHandles.resolveSpotHandle(nodeRid).thenApply(found -> found.orElseThrow(() ->
             new IllegalStateException("courier Spot is not registered: " + nodeRid)));
     }

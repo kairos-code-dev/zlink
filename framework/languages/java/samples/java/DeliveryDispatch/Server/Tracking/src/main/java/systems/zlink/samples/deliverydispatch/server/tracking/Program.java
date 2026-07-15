@@ -7,7 +7,6 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        SampleTopology.configure(args);
-        TrackingServerApplication.run(new String[0]);
+        TrackingServerApplication.run(SampleTopology.configPath(args));
     }
 }

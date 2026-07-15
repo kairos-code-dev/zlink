@@ -1041,4 +1041,4 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
 
 - [ ] **TH-CP-01** (미구현) — **선행: cpp connector 언어별 계약 문서가 없다**([§14](../90-implementation-gap.ko.md)). 그 문서를 만들면서 `expect_none`·`wait_for_sequence`와 assert 유틸(`ensure`/`expect_failure`/`expect_timeout`)을 §10.2대로 정의·구현한다.
-- [ ] **TH-CP-02** (리팩토링) — cpp가 다섯 언어 중 negative 단언이 가장 얕다(`expect_error` 하나). SMP-CP-31·SMP-CP-37은 지역적으로 이미 닫혔지만, `expect_none`·`wait_for_sequence`를 connector에 두면 그 지역 구현이 **표준 표면으로 대체**되고 교차 언어 SMP-X3의 공통 게이트가 채워진다.
+- [ ] **TH-CP-02** (리팩토링) — cpp가 다섯 언어 중 negative 단언이 가장 얕다(`expect_error` 하나). `expect_none`·`wait_for_sequence`를 connector에 두고, **기존 지역 negative/order helper를 삭제하고** 그 표준 표면으로 교체한다. **둘을 병존시키지 마라 — 지역 helper가 하나라도 남으면 미완료다.** SMP-CP-31·SMP-CP-37은 지역적으로 이미 닫혔고, 이 교체로 교차 언어 SMP-X3의 공통 게이트가 채워진다.

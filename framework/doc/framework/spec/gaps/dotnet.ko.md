@@ -574,7 +574,7 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 
 | ID | 계약 | 실제로 확인한 것 |
 |----|------|------------------|
-| **SMP-DN-07** (**갭 아님**) | 체크리스트 주장: *"ZoneWorld에 `.NET` 전용 두 번째 클라이언트가 있다(문서: TypeScript 하나만)"* | **거짓이다.** [zoneworld §0.2](../../common/sample/zoneworld/README.ko.md):29-52가 두 client를 **명시적으로 구분**한다 — 최상위 `client/`는 모든 언어 server가 공유하는 **TypeScript 브라우저 client**(언어별 디렉터리에 복제 금지)이고, ***"언어별 디렉터리의 `Client/`는 다른 것이다 — 기존 정본 6종과 같은 형태의 headless 시나리오 client"***로 `ZW-*`를 실행하라고 요구한다. 워킹트리에는 `shared_sample/zoneworld/client/`(TS) 하나와 `shared_sample/zoneworld/dotnet/Client/`(headless) 하나뿐이며, **둘은 서로 다른 계약이다.** 상위 README의 "client는 TypeScript 하나만"은 **브라우저 client**를 말한다. ⇒ **이 ID는 닫는다.** 문서 아래 ZoneWorld 절의 같은 결론과 중복된다 |
+| **SMP-DN-07** (**갭 아님**) | 체크리스트 주장: *"ZoneWorld에 `.NET` 전용 두 번째 클라이언트가 있다(문서: TypeScript 하나만)"* | **거짓이다.** [zoneworld §0.2](../../common/sample/zoneworld/README.ko.md):29-52가 두 client를 **명시적으로 구분**한다 — 최상위 `client/`는 모든 언어 server가 공유하는 **TypeScript 브라우저 client**(언어별 디렉터리에 복제 금지)이고, ***"언어별 디렉터리의 `Client/`는 다른 것이다 — 기존 정본 6종과 같은 형태의 headless 시나리오 client"***로 `ZW-*`를 실행하라고 요구한다. 워킹트리에는 `shared_sample/zoneworld/client/`(TS 브라우저) 하나와 `dotnet/samples/ZoneWorld/Client/`(headless 시나리오) 하나뿐이며, **둘은 서로 다른 계약이다.** 상위 README의 "client는 TypeScript 하나만"은 **브라우저 client**를 말한다. ⇒ **이 ID는 닫는다.** 문서 아래 ZoneWorld 절의 같은 결론과 중복된다 |
 
 ## 라운드 5 (2026-07-14) — e2e Config 7·9 심층 발견 기록
 
@@ -714,4 +714,4 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
 
 - [ ] **TH-DN-01** (미구현) — connector에 `ExpectNone`·`WaitForSequence`와 `ZlinkStreamAssert`(`Ensure`/`ExpectFailureAsync`/`ExpectTimeoutAsync`)를 [03 §8.1](../stream-connector/languages/dotnet/03-stream-connector.ko.md)대로 구현한다. `Send`/`WaitFor`와 같은 builder·완료 규약을 따른다.
-- [ ] **TH-DN-02** (리팩토링) — DeliveryDispatch 시나리오의 지역 helper(`WaitForStatusSequenceAsync`·`ExpectNoPushAsync`)를 이 connector API로 **교체**한다. 지역 helper로 이미 닫은 SMP-DN-08을 표준 표면으로 대체하는 것이며, 그러면 교차 언어 SMP-X3의 "공통 게이트"가 채워진다.
+- [ ] **TH-DN-02** (리팩토링) — DeliveryDispatch 시나리오의 지역 helper(`WaitForStatusSequenceAsync`·`ExpectNoPushAsync`)를 **삭제하고** 이 connector API로 교체한다. **둘을 병존시키지 마라 — 지역 helper가 하나라도 남으면 미완료다.** 지역 helper로 이미 닫은 SMP-DN-08을 표준 표면으로 대체하는 것이며, 그러면 교차 언어 SMP-X3의 "공통 게이트"가 채워진다.

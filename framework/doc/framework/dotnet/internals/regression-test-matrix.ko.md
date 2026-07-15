@@ -243,18 +243,17 @@ runtime failure 의미까지 테스트로 같이 고정되어 있어야 한다.
 registration, lifecycle, DI, monitoring 계층을 더 쌓는다. 그래서 플랫폼 gate 는
 backend gate 와 별도로 유지한다.
 
-## 9. Automatic turn dispatch regression
+## 9. Explicit turn terminator regression
 
 | 테스트 케이스 | 확인 기준 |
 |---------------|-----------|
 | `SerialExecutorTests.SerialExecutionQueue_DefaultAwait_Holds_Gate_Until_Work_Completes` | 일반 callback은 완료될 때까지 같은 실행 줄의 다음 작업을 시작하지 않는다. |
-| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line` | request, join 또는 worker의 `Async(...)`를 기다리는 동안 관련 없는 다음 작업을 실행하고 continuation은 원래 실행 줄에서 재개한다. |
-| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Fault_Cleans_Pending_Turn` | 비동기 작업 실패 뒤 pending turn을 정리하고 실행 줄을 계속 사용할 수 있다. |
-| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Cancellation_Cleans_Pending_Turn` | 비동기 작업 취소 뒤 pending turn을 정리하고 다음 작업을 실행한다. |
-| `WorkerPoolTests.RunWorker_Async_Returns_Result_From_Pool_Thread` | `RunWorker(...).Async(...)`가 worker 결과를 반환하고 호출자의 실행 문맥 복귀를 framework가 관리한다. |
-| `ChannelContracts.Route_request_call_does_not_expose_yield_terminator` | route request는 단일 `Async(...)` 완료 terminator만 공개한다. |
-| `E2E:ATD-B3` | actor join을 기다리는 동안 다른 actor 요청이 먼저 완료되고 join continuation이 원래 actor mailbox로 돌아온다. |
-| `E2E:ATD-A4` | worker 완료를 기다리는 동안 Spot turn을 반납하고 continuation이 원래 Spot mailbox에서 재개된다. |
+| `WorkerPoolTests.RunCpuWorker_Async_Holds_Serial_Turn_Until_Work_Completes` | `Async(...)`를 기다리는 동안 Spot turn을 유지하여 다음 callback이 시작되지 않는다. |
+| `WorkerPoolTests.RunCpuWorker_Yield_Releases_And_Resumes_Through_Serial_Turn` | `Yield(...)`가 Spot turn을 반납하고 완료 continuation을 같은 실행 줄의 큐에서 재개한다. |
+| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Fault_Cleans_Pending_Turn` | `Yield(...)` 대상의 실패 뒤 pending turn을 정리하고 실행 줄을 계속 사용할 수 있다. |
+| `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Cancellation_Cleans_Pending_Turn` | `Yield(...)` 대상의 취소 뒤 pending turn을 정리하고 다음 작업을 실행한다. |
+| `E2E:ATD-B3` | actor join의 `Yield(...)`를 기다리는 동안 다른 actor 요청이 먼저 완료되고 continuation이 원래 actor mailbox로 돌아온다. |
+| `E2E:ATD-A4` | worker의 `Yield(...)`를 기다리는 동안 Spot turn을 반납하고 continuation이 원래 Spot 실행 줄에서 재개된다. |
 
 ## 10. 문서별 회귀 테스트 단락
 
@@ -273,6 +272,7 @@ backend gate 와 별도로 유지한다.
 - `01-system-structure.ko.md`
 - `02-handler-interfaces.ko.md`
 - `03-stream-connector.ko.md`
+- `dotnet-http-client.ko.md`
 - `regression-test-matrix.ko.md`
 - `runtime-lifecycle.ko.md`
 - `runtime-execution.ko.md`

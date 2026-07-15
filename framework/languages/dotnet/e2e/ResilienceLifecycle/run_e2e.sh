@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"
 else
@@ -65,6 +67,7 @@ API_B_GREEN="tcp://127.0.0.1:$API_B_GREEN_PORT"
 pids=()
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
@@ -144,7 +147,9 @@ start_server() {
   local project="$2"
   shift
   shift
-  setsid env ZLINK_E2E_RID="$name" dotnet run --no-build --project "$project" -- "$@" \
+  local config="$CONFIG_DIR/$name.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- --role "$name" "$@"
+  setsid dotnet run --no-build --project "$project" -- --config "$config" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -175,6 +180,7 @@ start_server api-a "$PROVIDER_PROJECT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
+  --weight 100 \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
   --log-dir "$LOG_DIR"
 API_A_PID="${pids[$((${#pids[@]} - 1))]}"
@@ -186,6 +192,7 @@ start_server api-b "$PROVIDER_PROJECT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_B" \
+  --weight 100 \
   --evidence-file "$LOG_DIR/api-b.evidence.log" \
   --log-dir "$LOG_DIR"
 API_B_PID="${pids[$((${#pids[@]} - 1))]}"
@@ -200,7 +207,8 @@ wait_health "http://127.0.0.1:$CONSUMER_HTTP_PORT" consumer
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
+    --config-dir "$CONFIG_DIR" \
   --consumer-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --topology-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -220,7 +228,8 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --provider-b-green-endpoint "$API_B_GREEN" \
   --provider-project "$PROVIDER_PROJECT" \
   --log-dir "$LOG_DIR" \
-  --scenario "$SCENARIO" \
+  --scenario "$SCENARIO"
+dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

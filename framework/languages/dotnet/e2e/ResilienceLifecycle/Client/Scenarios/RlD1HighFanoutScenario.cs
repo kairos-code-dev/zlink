@@ -19,7 +19,7 @@ internal static class RlD1HighFanoutScenario
                 .Async<ProfileRes>()).Body;
         });
         var replies = await Task.WhenAll(tasks);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             replies.Length == 120 && replies.All(reply => reply.Value == "profile:fast"),
             "RL-D1 high request fanout did not complete.");
 
@@ -32,7 +32,7 @@ internal static class RlD1HighFanoutScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-d1-", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(evidence.Any(line => line.Contains("marker=rl-d1-", StringComparison.Ordinal)),
                 "RL-D1 did not record expected evidence 'marker=rl-d1-'.");
         }
 

@@ -1,3 +1,4 @@
+using Zlink.Framework.E2E.Configuration;
 using ToActorMessaging.Client.Scenarios;
 using ToActorMessaging.Client.Support;
 
@@ -39,24 +40,5 @@ internal sealed record ClientOptions(
     string Scenario)
 {
     public static ClientOptions Parse(string[] args)
-    {
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        for (var i = 0; i < args.Length; i += 2)
-        {
-            var key = args[i].TrimStart('-');
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{args[i]}'.");
-            values[key] = args[i + 1];
-        }
-
-        return new ClientOptions(
-            values["actor-url"],
-            values["actor-b-url"],
-            values["caller-url"],
-            values["no-route-caller-url"],
-            values["session-a-stream-endpoint"],
-            values["session-b-stream-endpoint"],
-            values["session-a-url"],
-            values["session-b-url"],
-            values.TryGetValue("scenario", out var scenario) ? scenario : "all");
-    }
+        => E2eConfiguration.Load<ClientOptions>(args);
 }

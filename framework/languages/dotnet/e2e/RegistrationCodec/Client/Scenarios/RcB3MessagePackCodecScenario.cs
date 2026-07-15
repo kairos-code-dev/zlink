@@ -9,9 +9,9 @@ internal static class RcB3MessagePackCodecScenario
     public static async Task RunAsync(ZLinkHttpClient server)
     {
         var result = (await server.Post("/codec/roundtrip").Async<CodecScenarioRes>()).Body;
-        ScenarioAssert.That(result.MessagePackValue.Contains("echo:rc-b3", StringComparison.Ordinal),
+        ZlinkStreamAssert.Ensure(result.MessagePackValue.Contains("echo:rc-b3", StringComparison.Ordinal),
             "RC-B3 MessagePack reply mismatch.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             result.MessagePackValue.Contains("content:application/x-msgpack", StringComparison.Ordinal),
             "RC-B3 MessagePack content type mismatch.");
 

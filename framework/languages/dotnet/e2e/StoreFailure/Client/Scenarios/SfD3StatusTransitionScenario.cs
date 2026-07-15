@@ -40,10 +40,10 @@ internal static class SfD3StatusTransitionScenario
                 storeHealthy: true, ownerLeaseHealthy: true, requireLastRefresh: true),
             "SF-D3: status did not return to healthy after recovery.");
 
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             before.LastRefreshAt is not null && after.LastRefreshAt > before.LastRefreshAt,
             "SF-D3: the post-recovery refresh timestamp did not advance.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             !during.WatchEnabled && during.LastError is not null,
             "SF-D3: outage status fields (watch/polling, last error) were not observable.");
 

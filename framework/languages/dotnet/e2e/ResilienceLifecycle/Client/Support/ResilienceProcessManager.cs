@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Zlink.HttpClient;
+using Zlink.Framework.E2E.Configuration;
 
 namespace ResilienceLifecycle.Client.Support;
 
@@ -182,12 +183,15 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
             RedirectStandardError = true,
             UseShellExecute = false
         };
-        startInfo.Environment["ZLINK_E2E_RID"] = rid;
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
-        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+        startInfo.ArgumentList.Add("--config");
+        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(
+            options.ConfigDir,
+            name,
+            ["--role", "provider", "--weight", "100", .. arguments]));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException($"Failed to start {name}.");

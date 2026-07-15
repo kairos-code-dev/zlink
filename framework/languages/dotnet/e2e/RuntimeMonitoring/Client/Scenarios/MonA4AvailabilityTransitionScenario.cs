@@ -19,7 +19,7 @@ internal static class MonA4AvailabilityTransitionScenario
         await caller.WaitForEvidenceAsync(entries =>
             HasAdmission(entries, 0, options.ServiceBChannelEndpoint, 0));
         var before = await caller.RequestAsync(new ProfileReq("before", "mon-a4-before"));
-        ScenarioAssert.That(before.ProviderRid == "svc-a", "MON-A4 initial request did not use svc-a.");
+        ZlinkStreamAssert.Ensure(before.ProviderRid == "svc-a", "MON-A4 initial request did not use svc-a.");
 
         var failoverBaseline = caller.GetEvidence().Length;
         await serviceB.Post("/admin/restore").AsyncRaw();
@@ -31,7 +31,7 @@ internal static class MonA4AvailabilityTransitionScenario
         // This is deliberately the first request after the admission transition: no retry
         // loop or delay is allowed to hide a failed failover.
         var failedOver = await caller.RequestAsync(new ProfileReq("after", "mon-a4-after"));
-        ScenarioAssert.That(failedOver.ProviderRid == "svc-b",
+        ZlinkStreamAssert.Ensure(failedOver.ProviderRid == "svc-b",
             "MON-A4 request did not fail over to svc-b. evidence="
             + string.Join(";", caller.GetEvidence().Skip(failoverBaseline)));
 
@@ -39,7 +39,7 @@ internal static class MonA4AvailabilityTransitionScenario
         await serviceA.Post("/admin/restore").AsyncRaw();
         var evidence = await caller.WaitForEvidenceAsync(entries =>
             HasAdmission(entries, restoreBaseline, options.ServiceChannelEndpoint, 100));
-        ScenarioAssert.That(HasAdmission(
+        ZlinkStreamAssert.Ensure(HasAdmission(
                 evidence, restoreBaseline, options.ServiceChannelEndpoint, 100),
             "MON-A4 restore admission transition was not observed.");
         Console.WriteLine("scenario MON-A4 passed");

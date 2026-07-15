@@ -32,13 +32,13 @@ internal static class SessionRelayActorAwaitProbe
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<ActorAwaitRes>();
         var notify = await push;
-        ScenarioAssert.That(reply.ScenarioId == "probe-D4", "probe-D4 reply scenario mismatch.");
-        ScenarioAssert.That(notify.Payload.ActorId == actors.ActorA, "probe-D4 push actor mismatch.");
-        ScenarioAssert.That(notify.Payload.RequestId == requestId, "probe-D4 push request mismatch.");
-        ScenarioAssert.That(notify.Payload.Value == "bound-session-push", "probe-D4 push value mismatch.");
-        await Task.Delay(150);
-        ScenarioAssert.That(unbound.ReceivedCount("ActorPushNotify") == 0,
-            "probe-D4 unbound session received actor push.");
+        ZlinkStreamAssert.Ensure(reply.ScenarioId == "probe-D4", "probe-D4 reply scenario mismatch.");
+        ZlinkStreamAssert.Ensure(notify.Payload.ActorId == actors.ActorA, "probe-D4 push actor mismatch.");
+        ZlinkStreamAssert.Ensure(notify.Payload.RequestId == requestId, "probe-D4 push request mismatch.");
+        ZlinkStreamAssert.Ensure(notify.Payload.Value == "bound-session-push", "probe-D4 push value mismatch.");
+        await unbound.ExpectNone<ActorPushNotify>()
+            .Within(TimeSpan.FromMilliseconds(150))
+            .Async();
 
         var evidence = await client.Request(new AwaitEvidenceReq(requestId))
             .PacketName("AwaitEvidenceReq")

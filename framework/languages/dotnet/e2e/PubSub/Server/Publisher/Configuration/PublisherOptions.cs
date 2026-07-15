@@ -1,5 +1,7 @@
 namespace PubSub.Server.Publisher.Configuration;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal sealed record PublisherOptions(
     string Rid,
     string HttpUrl,
@@ -10,15 +12,5 @@ internal sealed record PublisherOptions(
     string? EvidenceFile)
 {
     public static PublisherOptions Parse(string[] args)
-    {
-        var values = ServerArgs.Parse(args);
-        return new PublisherOptions(
-            values.Get("--rid") ?? "publisher",
-            values.Get("--http-url") ?? "http://127.0.0.1:0",
-            values.Get("--log-dir") ?? "logs",
-            values.Require("--redis-endpoint"),
-            values.Require("--redis-key-prefix"),
-            values.Require("--publisher-endpoint"),
-            values.Get("--evidence-file"));
-    }
+        => E2eConfiguration.Load<PublisherOptions>(args);
 }

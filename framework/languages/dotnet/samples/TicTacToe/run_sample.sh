@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
@@ -7,15 +8,16 @@ RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
-export TICTACTOE_LOG_DIR="${SAMPLE_LOG_DIR}"
+TICTACTOE_LOG_DIR="${SAMPLE_LOG_DIR}"
 mkdir -p "${LOG_DIR}" "${TICTACTOE_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER_ID=""
 RUN_SUCCEEDED=0
-export TICTACTOE_REDIS_KEY_PREFIX="tictactoe:dotnet:${RUN_ID}:"
+TICTACTOE_REDIS_KEY_PREFIX="tictactoe:dotnet:${RUN_ID}:"
 
 cleanup() {
+  find "${RUN_DIR}" -type f -name "*.json" -delete 2>/dev/null || true
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -105,7 +107,6 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 zlink_redis_start_scoped_assign REDIS_CONTAINER_ID TICTACTOE_REDIS_ENDPOINT "zlink-tictactoe-dotnet-redis" redis:7.2-alpine
-export TICTACTOE_REDIS_ENDPOINT
 REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT}"
 
 python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" <<PY
@@ -225,8 +226,7 @@ wait_port api-b-http "${API_B_BIND_URL}"
 wait_port api-b-channel "${API_B_CHANNEL_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.Client.csproj" -- \
-  --api-url "${API_A_PUBLIC_URL}" \
-  --log-dir "${SAMPLE_LOG_DIR}" >"${LOG_DIR}/client.log" 2>&1
+  --config "${API_A_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 wait_log_contains "stream inbound evidence" "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound sequenced packet" "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound notify packet" "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"

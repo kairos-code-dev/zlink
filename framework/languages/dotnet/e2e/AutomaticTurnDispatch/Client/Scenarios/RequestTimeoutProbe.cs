@@ -12,7 +12,7 @@ internal static class RequestTimeoutProbe
             .PacketName("EnsureSpotReq")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<EnsureSpotRes>();
-        ScenarioAssert.That(spot.SpotRid == spotRid, "probe-E1 spot creation mismatch.");
+        ZlinkStreamAssert.Ensure(spot.SpotRid == spotRid, "probe-E1 spot creation mismatch.");
 
         var requestId = $"probe-E1-{Guid.NewGuid():N}";
         client.Send(new AwaitTimeoutMsg(requestId, 700, 100))
@@ -31,11 +31,11 @@ internal static class RequestTimeoutProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Evidence.Any(line => line.Contains($"request={requestId}", StringComparison.Ordinal)
                                           && line.Contains("timeout-await-completed", StringComparison.Ordinal)),
             "probe-E1 timeout marker missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Evidence.Any(line => line.Contains($"request={requestId}", StringComparison.Ordinal)
                                           && line.Contains("probe-completed", StringComparison.Ordinal)
                                           && line.Contains("timeout-probe", StringComparison.Ordinal)),

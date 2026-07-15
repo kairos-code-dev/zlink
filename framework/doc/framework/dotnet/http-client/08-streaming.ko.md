@@ -28,7 +28,7 @@ transfer-encoding으로 전송한다. provider가 `null`을 돌려주면 본문�
 ```csharp
 await client.Post("/upload-stream")
     .BodyStream(() => NextChunk(), "application/octet-stream")
-    .SubmitRawAsync();
+    .AsyncRaw();
 ```
 
 streaming 업로드는 provider를 rewind할 수 없으므로 **자동 retry에서 제외**된다

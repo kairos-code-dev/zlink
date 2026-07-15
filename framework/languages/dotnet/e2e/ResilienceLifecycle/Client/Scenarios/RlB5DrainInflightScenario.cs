@@ -36,20 +36,20 @@ internal static class RlB5DrainInflightScenario
             var reply = await ProviderTrafficProbe.RequestWithoutRetryAsync(
                 consumer,
                 new ProfileReq("fast", $"rl-b5-drained-{i}"));
-            ScenarioAssert.That(reply.ProviderRid == healthyProvider,
+            ZlinkStreamAssert.Ensure(reply.ProviderRid == healthyProvider,
                 "RL-B5 drain did not block new requests to the drained provider.");
         }
 
         var slowReply = (await slowTask).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             slowReply.ProviderRid == slowProvider && slowReply.Marker == slowMarker,
             "RL-B5 in-flight slow reply did not complete on the drained provider.");
 
         var afterDrain = (await drainedProvider.Get("/evidence").Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             CountNew(afterDrain, beforeDrain, $"profile-request|rid={slowProvider}|marker=rl-b5-drained-") == 0,
             "RL-B5 drained provider accepted new requests after drain.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             afterDrain.Any(line =>
                 line.Contains($"profile-request|rid={slowProvider}|marker={slowMarker}", StringComparison.Ordinal)),
             "RL-B5 in-flight completion evidence missing.");
@@ -62,7 +62,7 @@ internal static class RlB5DrainInflightScenario
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", $"rl-b5-after-{i}"))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.Value == "profile:fast", "RL-B5 restored request returned an unexpected value.");
+            ZlinkStreamAssert.Ensure(reply.Value == "profile:fast", "RL-B5 restored request returned an unexpected value.");
         }
 
         await drainedProvider.Post("/evidence/wait")

@@ -78,8 +78,8 @@ internal sealed class ToActorScenarioContext : IDisposable
                 value,
                 targetNodeRid,
                 targetGeneration));
-        Require(response.Result == expected, $"{scenario} expected '{expected}', got '{response.Result}'.");
-        Require(response.ErrorKind is null, $"{scenario} unexpected error '{response.ErrorKind}'.");
+        ZlinkStreamAssert.Ensure(response.Result == expected, $"{scenario} expected '{expected}', got '{response.Result}'.");
+        ZlinkStreamAssert.Ensure(response.ErrorKind is null, $"{scenario} unexpected error '{response.ErrorKind}'.");
     }
 
     public async Task AssertFailureAsync(
@@ -98,7 +98,7 @@ internal sealed class ToActorScenarioContext : IDisposable
                 "missing",
                 targetNodeRid,
                 targetGeneration));
-        Require(response.ErrorKind == expectedKind,
+        ZlinkStreamAssert.Ensure(response.ErrorKind == expectedKind,
             $"{scenario} expected '{expectedKind}', got '{response.ErrorKind}'.");
     }
 
@@ -119,7 +119,7 @@ internal sealed class ToActorScenarioContext : IDisposable
     public async Task AssertRouteAbsentAsync(string actorId)
     {
         var status = await GetRouteStatusAsync(actorId);
-        Require(!status.Exists, $"Actor route '{actorId}' was created unexpectedly.");
+        ZlinkStreamAssert.Ensure(!status.Exists, $"Actor route '{actorId}' was created unexpectedly.");
     }
 
     public async Task WaitForRouteAbsentAsync(string actorId)
@@ -138,7 +138,7 @@ internal sealed class ToActorScenarioContext : IDisposable
     {
         var response = await PostJsonAsync<ActorCallResponse>(
             "/cached/request", new ActorCallRequest(scenario, actorId, "failure"));
-        Require(response.ErrorKind == expectedKind,
+        ZlinkStreamAssert.Ensure(response.ErrorKind == expectedKind,
             $"{scenario} expected '{expectedKind}', got '{response.ErrorKind}'.");
     }
 
@@ -157,7 +157,7 @@ internal sealed class ToActorScenarioContext : IDisposable
                 actor.NodeRid.ToString(),
                 actor.Generation))
             .Async<ActorCallResponse>()).Body;
-        Require(response.ErrorKind == "RouteNotConnected",
+        ZlinkStreamAssert.Ensure(response.ErrorKind == "RouteNotConnected",
             $"{scenario} expected RouteNotConnected without a route mesh, got '{response.ErrorKind}'.");
     }
 
@@ -175,7 +175,7 @@ internal sealed class ToActorScenarioContext : IDisposable
                 actor.NodeRid.ToString(),
                 actor.Generation))
             .Async<ActorCallResponse>()).Body;
-        Require(response.Result == $"reply:{value}" && response.ErrorKind is null,
+        ZlinkStreamAssert.Ensure(response.Result == $"reply:{value}" && response.ErrorKind is null,
             $"{scenario} first request after route recovery failed: '{response.ErrorKind ?? response.Result}'.");
     }
 
@@ -210,11 +210,11 @@ internal sealed class ToActorScenarioContext : IDisposable
             var reply = await connector.Request(new BindActorRequest(actorId))
                 .PacketName("BindActorRequest")
                 .Async<BindActorReply>();
-            Require(reply.ActorId == actorId, $"Actor bind reply mismatch for '{actorId}'.");
+            ZlinkStreamAssert.Ensure(reply.ActorId == actorId, $"Actor bind reply mismatch for '{actorId}'.");
             var probe = await connector.Request(new ActorAsk("bind-probe", actorId, "bound"))
                 .PacketName("ActorAsk")
                 .Async<ActorReply>();
-            Require(probe.ActorId == actorId, $"Actor bind probe mismatch for '{actorId}'.");
+            ZlinkStreamAssert.Ensure(probe.ActorId == actorId, $"Actor bind probe mismatch for '{actorId}'.");
             return connector;
         }
         catch
@@ -232,27 +232,17 @@ internal sealed class ToActorScenarioContext : IDisposable
         string value)
     {
         var received = bound.WaitFor<BoundPushNotify>().Async().AsTask();
-        var unexpected = unbound?.WaitFor<BoundPushNotify>()
-            .Timeout(TimeSpan.FromMilliseconds(300)).Async().AsTask();
         var reply = (await _actorHttp.Post($"/actors/{actorId}/push")
             .Body(new BoundPushRequest(scenario, actorId, value))
             .Async<BoundPushReply>()).Body;
         var notify = await received;
-        Require(reply.Submitted, $"{scenario} bound push was not submitted.");
-        Require(notify.Payload == new BoundPushNotify(scenario, actorId, value),
+        ZlinkStreamAssert.Ensure(reply.Submitted, $"{scenario} bound push was not submitted.");
+        ZlinkStreamAssert.Ensure(notify.Payload == new BoundPushNotify(scenario, actorId, value),
             $"{scenario} bound push payload mismatch.");
-        if (unexpected is null) return;
-
-        var timedOut = false;
-        try
-        {
-            await unexpected;
-        }
-        catch (TimeoutException)
-        {
-            timedOut = true;
-        }
-        Require(timedOut, $"{scenario} unbound session received a bound push.");
+        if (unbound is null) return;
+        await unbound.ExpectNone<BoundPushNotify>()
+            .Within(TimeSpan.FromMilliseconds(300))
+            .Async();
     }
 
     public async Task AssertBoundPushFailureAsync(
@@ -265,7 +255,7 @@ internal sealed class ToActorScenarioContext : IDisposable
         var reply = (await actor.Post($"/actors/{actorId}/push")
             .Body(new BoundPushRequest(scenario, actorId, value))
             .Async<BoundPushReply>()).Body;
-        Require(!reply.Submitted && reply.ErrorKind == "ActorSessionNotBound",
+        ZlinkStreamAssert.Ensure(!reply.Submitted && reply.ErrorKind == "ActorSessionNotBound",
             $"{scenario} expected ActorSessionNotBound after disconnect, got '{reply.ErrorKind}'.");
     }
 
@@ -296,13 +286,8 @@ internal sealed class ToActorScenarioContext : IDisposable
     public async Task AssertNoActorEvidenceAsync(string actorId)
     {
         var entries = (await _actorHttp.Get("/evidence").Async<ActorEvidence[]>()).Body;
-        Require(entries.All(item => item.ActorId != actorId),
+        ZlinkStreamAssert.Ensure(entries.All(item => item.ActorId != actorId),
             $"Missing actor '{actorId}' unexpectedly produced handler or lifecycle evidence.");
-    }
-
-    public static void Require(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
     }
 
     private async Task PostActorAAsync(string path)

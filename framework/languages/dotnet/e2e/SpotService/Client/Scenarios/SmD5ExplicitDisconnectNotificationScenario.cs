@@ -72,7 +72,7 @@ internal static class SmD5ExplicitDisconnectNotificationScenario
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([expectedEvidence]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains(expectedEvidence, StringComparison.Ordinal)),
             "SM-D5 expected only the selected bound actor to receive disconnect notification.");
 

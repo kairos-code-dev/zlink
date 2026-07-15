@@ -64,7 +64,7 @@ internal static class PsA3LateSubscriberScenario
                 .Async<string[]>()).Body;
 
             // Pub/Sub has no replay contract, so pre-join events must stay absent from late evidence.
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 lateEvidence.All(line => !line.Contains($"run={beforeLateRun}", StringComparison.Ordinal)),
                 "PS-A3 late subscriber replayed pre-join events.");
             Console.WriteLine("scenario PS-A3 passed");

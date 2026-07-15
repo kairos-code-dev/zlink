@@ -13,6 +13,7 @@ public sealed class RegressionTests
         "01-system-structure.ko.md",
         "02-handler-interfaces.ko.md",
         "03-stream-connector.ko.md",
+        "dotnet-http-client.ko.md",
         "regression-test-matrix.ko.md",
         "runtime-lifecycle.ko.md",
         "runtime-execution.ko.md",
@@ -283,18 +284,21 @@ public sealed class RegressionTests
     }
 
     [Fact]
-    public void DotNetRegressionMatrix_Uses_AutomaticTurnDispatch_Contract()
+    public void DotNetRegressionMatrix_Uses_ExplicitTurnTerminator_Contract()
     {
         var matrix = File.ReadAllText(ResolveDoc("regression-test-matrix.ko.md"));
 
-        Assert.Contains("Automatic turn dispatch regression", matrix, StringComparison.Ordinal);
+        Assert.Contains("Explicit turn terminator regression", matrix, StringComparison.Ordinal);
         Assert.Contains(
-            "SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line",
+            "RunCpuWorker_Async_Holds_Serial_Turn_Until_Work_Completes",
+            matrix,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RunCpuWorker_Yield_Releases_And_Resumes_Through_Serial_Turn",
             matrix,
             StringComparison.Ordinal);
         Assert.Contains("E2E:ATD-B3", matrix, StringComparison.Ordinal);
-        Assert.DoesNotContain("Spot yield dispatch regression", matrix, StringComparison.Ordinal);
-        Assert.DoesNotContain("`Yield(...)`", matrix, StringComparison.Ordinal);
+        Assert.Contains("`Yield(...)`", matrix, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -517,7 +521,7 @@ public sealed class RegressionTests
     }
 
     /// <summary>
-    /// `.NET`의 공개 계약 문서는 두 패키지에 걸쳐 있다 — framework(server)와 stream connector.
+    /// `.NET`의 공개 계약 문서는 framework server, HTTP client와 stream connector에 걸쳐 있다.
     /// </summary>
     private static string[] GetDotNetContractDocs()
     {
@@ -526,10 +530,16 @@ public sealed class RegressionTests
             "stream-connector",
             "languages",
             "dotnet");
+        var httpClientRoot = Path.Combine(
+            GetCommonSpecRoot(),
+            "http-client",
+            "languages",
+            "dotnet");
 
         return Directory
             .EnumerateFiles(GetDotNetContractDocRoot(), "*.ko.md", SearchOption.TopDirectoryOnly)
             .Concat(Directory.EnumerateFiles(connectorRoot, "*.ko.md", SearchOption.TopDirectoryOnly))
+            .Concat(Directory.EnumerateFiles(httpClientRoot, "*.ko.md", SearchOption.TopDirectoryOnly))
             .Order(StringComparer.Ordinal)
             .ToArray();
     }

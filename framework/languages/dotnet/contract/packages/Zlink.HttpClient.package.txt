@@ -5,7 +5,7 @@ entry _rels/.rels
 entry lib/net8.0/Zlink.HttpClient.dll
 entry lib/net8.0/Zlink.HttpClient.xml
 entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
-content-sha256 lib/net8.0/Zlink.HttpClient.xml=07f8164154461ca8758ec2a8abfa70e9732b9c12416da9bd2564eee84fca07d1
+content-sha256 lib/net8.0/Zlink.HttpClient.xml=97785cc1fb5db10842a23c10f8d7570f1fe19a3eb2f78efe19657843f9bfa288
 metadata authors=Zlink.HttpClient
 metadata description=ZLink-style fluent HTTP client wrapping System.Net.Http for the ZLink framework.
 metadata id=Zlink.HttpClient
@@ -14,3 +14,9 @@ metadata licenseUrl=https://licenses.nuget.org/Apache-2.0
 metadata projectUrl=https://github.com/kairos-code-dev/zlink
 metadata version={VERSION}
 metadata repository commit={COMMIT} type=git
+dependency-group targetFramework=net8.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=K4os.Compression.LZ4 version=1.3.8
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.DependencyInjection.Abstractions version=8.0.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Logging.Abstractions version=8.0.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=9.0.7
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework version={VERSION}

@@ -31,11 +31,11 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
         await Task.Delay(200);
         await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
 
-        SpotActorTransferScenarioContext.Require((await joinTask).Accepted, "ST-F6 correlation transfer was rejected.");
+        ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F6 correlation transfer was rejected.");
         var response = await requestTask;
-        SpotActorTransferScenarioContext.Require(response.Succeeded && response.Reply?.NodeRid == "actor-b",
+        ZlinkStreamAssert.Ensure(response.Succeeded && response.Reply?.NodeRid == "actor-b",
             $"ST-F6 reply did not correlate to the original caller: {response.ErrorKind}");
-        SpotActorTransferScenarioContext.Require(response.Reply?.Marker == "correlated-reply", "ST-F6 correlated reply marker mismatch.");
+        ZlinkStreamAssert.Ensure(response.Reply?.Marker == "correlated-reply", "ST-F6 correlated reply marker mismatch.");
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F6|{actorId}|packet_handler|correlated-reply"]);
     }
 
@@ -57,11 +57,11 @@ internal static class StF6InFlightRequestCorrelationAndTimeoutScenario
             TimeSpan.FromMilliseconds(250));
         await Task.Delay(400);
         var timeout = await requestTask;
-        SpotActorTransferScenarioContext.Require(!timeout.Succeeded && timeout.ErrorKind == nameof(TimeoutException),
+        ZlinkStreamAssert.Ensure(!timeout.Succeeded && timeout.ErrorKind == nameof(TimeoutException),
             $"ST-F6 expected normal TimeoutException, got '{timeout.ErrorKind}'.");
 
         await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
-        SpotActorTransferScenarioContext.Require((await joinTask).Accepted, "ST-F6 timeout transfer was rejected.");
+        ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F6 timeout transfer was rejected.");
         await context.WaitEvidenceAsync(context.NodeB, [
             $"ST-F6|{actorId}|packet_handler|late-reply",
             $"ST-F6|{actorId}|late_reply_created|late-reply"

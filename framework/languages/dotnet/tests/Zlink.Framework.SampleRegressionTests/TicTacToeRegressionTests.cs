@@ -53,7 +53,7 @@ public sealed partial class RegressionTests
         var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.md"));
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export TICTACTOE_REDIS_KEY_PREFIX=\"tictactoe:dotnet:${RUN_ID}:\"", shellRunner,
+        Assert.Contains("TICTACTOE_REDIS_KEY_PREFIX=\"tictactoe:dotnet:${RUN_ID}:\"", shellRunner,
             StringComparison.Ordinal);
         AssertShellRunnerUsesRedisDockerHelper(
             shellRunner,
@@ -61,7 +61,7 @@ public sealed partial class RegressionTests
             "TICTACTOE_REDIS_ENDPOINT",
             "REDIS_CONTAINER_ID");
         Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export TICTACTOE_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("TICTACTOE_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("if [[ -z \"${TICTACTOE_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when TICTACTOE_REDIS_ENDPOINT is not set", shellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("TICTACTOE_BASE_PORT", shellRunner, StringComparison.Ordinal);
@@ -101,7 +101,7 @@ public sealed partial class RegressionTests
 
         Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$env:TICTACTOE_REDIS_KEY_PREFIX = \"tictactoe:dotnet:${RunId}:\"", powershellRunner,
+        Assert.Contains("$TICTACTOE_REDIS_KEY_PREFIX = \"tictactoe:dotnet:${RunId}:\"", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("Start-SampleRedisContainer \"zlink-tictactoe-dotnet-redis\"", powershellRunner,
             StringComparison.Ordinal);
@@ -112,28 +112,28 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$ports = New-SamplePorts -Count 13 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("if (-not $env:TICTACTOE_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (-not $TICTACTOE_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when TICTACTOE_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_BASE_PORT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_API_A_BIND_URL", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_API_B_BIND_URL", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_API_A_PUBLIC_URL", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_API_B_PUBLIC_URL", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_API_A_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_API_B_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_PLAY_A_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_PLAY_B_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_PLAY_A_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_PLAY_B_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_SPOT_A_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_SPOT_B_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_SPOT_A_PUBSUB_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:TICTACTOE_SPOT_B_PUBSUB_ENDPOINT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("if ($env:TICTACTOE_LOG_DIR)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_API_A_BIND_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_API_B_BIND_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_API_A_PUBLIC_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_API_B_PUBLIC_URL", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_API_A_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_API_B_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_PLAY_A_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_PLAY_B_CHANNEL_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_PLAY_A_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_PLAY_B_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_SPOT_A_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_SPOT_B_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_SPOT_A_PUBSUB_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$TICTACTOE_SPOT_B_PUBSUB_ENDPOINT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if ($TICTACTOE_LOG_DIR)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Remove-Item -Path (Join-Path $SampleLogDir \"*.log\")", powershellRunner,
             StringComparison.Ordinal);
         Assert.Contains("TICTACTOE_REDIS_KEY_PREFIX", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("RedisKeyPrefix = $env:TICTACTOE_REDIS_KEY_PREFIX", powershellRunner,
+        Assert.Contains("RedisKeyPrefix = $TICTACTOE_REDIS_KEY_PREFIX", powershellRunner,
             StringComparison.Ordinal);
         Assert.DoesNotContain("intentionally derived here, not read", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Start-Sleep -Seconds 2", powershellRunner, StringComparison.Ordinal);

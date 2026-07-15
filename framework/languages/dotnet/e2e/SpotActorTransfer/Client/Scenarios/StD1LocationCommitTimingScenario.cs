@@ -30,15 +30,15 @@ internal static class StD1LocationCommitTimingScenario
             $"ST-D1|{actorId}|success_reply|{spotRid}",
             "ST-D1 local join returned success before OnJoinedActorAsync completed.");
         var during = await context.GetActorRefAsync(context.NodeA, actorId);
-        SpotActorTransferScenarioContext.Require(
+        ZlinkStreamAssert.Ensure(
             during.Generation == before.Generation,
             $"ST-D1 local actor generation changed before joined completed. before={before.Generation}, during={during.Generation}");
 
         await context.ReleaseJoinedGateAsync(context.NodeA, spotRid);
         var join = await joinTask;
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-D1 local join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-D1 local join was rejected.");
         var after = await context.GetActorRefAsync(context.NodeA, actorId);
-        SpotActorTransferScenarioContext.Require(after.Generation >= before.Generation, "ST-D1 local actor generation regressed after commit.");
+        ZlinkStreamAssert.Ensure(after.Generation >= before.Generation, "ST-D1 local actor generation regressed after commit.");
 
         await context.WaitEvidenceAsync(context.NodeA, [
             $"ST-D1|{actorId}|joined_released|{spotRid}",
@@ -60,15 +60,15 @@ internal static class StD1LocationCommitTimingScenario
             $"ST-D1|{actorId}|joined_wait|{spotRid}"
         ]);
         var sourceDuring = await context.GetActorRefAsync(context.NodeA, actorId);
-        SpotActorTransferScenarioContext.Require(
+        ZlinkStreamAssert.Ensure(
             sourceDuring.NodeRid == "actor-a",
             $"ST-D1 remote source ref moved before target joined completed. got={sourceDuring.NodeRid}");
 
         await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
         var join = await joinTask;
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-D1 remote join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-D1 remote join was rejected.");
         var targetAfter = await context.GetActorRefAsync(context.NodeB, actorId);
-        SpotActorTransferScenarioContext.Require(
+        ZlinkStreamAssert.Ensure(
             targetAfter.NodeRid == "actor-b",
             $"ST-D1 remote target ref was not committed after joined completed. got={targetAfter.NodeRid}");
 

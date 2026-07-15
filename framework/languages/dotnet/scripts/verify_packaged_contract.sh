@@ -12,6 +12,7 @@ VERSION="0.0.0-contract.$(date +%s).$$"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/zlink-dotnet-contract.XXXXXX")"
 PACKAGE_DIR="$WORK_DIR/nuget"
 CONSUMER_DIR="$WORK_DIR/consumer"
+HTTP_CONSUMER_DIR="$WORK_DIR/http-consumer"
 SOURCE_CONSUMER_DIR="$WORK_DIR/source-consumer"
 INSPECTOR_DIR="$WORK_DIR/package-inspector"
 SNAPSHOT_OUTPUT=""
@@ -86,12 +87,13 @@ if [[ "$(printf '%s\n' "${packable_projects[@]}")" != "$(printf '%s\n' "${expect
   exit 1
 fi
 
-mkdir -p "$PACKAGE_DIR" "$CONSUMER_DIR" "$SOURCE_CONSUMER_DIR" "$INSPECTOR_DIR"
+mkdir -p "$PACKAGE_DIR" "$CONSUMER_DIR" "$HTTP_CONSUMER_DIR" "$SOURCE_CONSUMER_DIR" "$INSPECTOR_DIR"
 for project in "${PROJECTS[@]}"; do
   dotnet pack "$DOTNET_ROOT/$project" \
     --configuration Release \
     --output "$PACKAGE_DIR" \
     --property:PackageVersion="$VERSION" \
+    --property:ZLinkHttpClientDependencyVersion="$VERSION" \
     --nologo >/dev/null
 done
 
@@ -155,9 +157,15 @@ dotnet run --project "$INSPECTOR_DIR/PackageInspector.csproj" \
   "$VERSION" "$WORK_DIR/package-snapshots" "$PACKAGE_DIR"/*.nupkg
 
 framework_snapshot="$WORK_DIR/package-snapshots/Zlink.Framework.package.txt"
+http_client_snapshot="$WORK_DIR/package-snapshots/Zlink.HttpClient.package.txt"
 exact_connector_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]"
+exact_http_framework_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework version={VERSION}"
 grep -Fxq "$exact_connector_dependency" "$framework_snapshot" || {
   echo "Zlink.Framework must pin the connector package to the exact framework package version." >&2
+  exit 1
+}
+grep -Fxq "$exact_http_framework_dependency" "$http_client_snapshot" || {
+  echo "Zlink.HttpClient must declare its Zlink.Framework package dependency." >&2
   exit 1
 }
 
@@ -210,6 +218,7 @@ cat >"$CONSUMER_DIR/NuGet.Config" <<EOF
   </packageSourceMapping>
 </configuration>
 EOF
+cp "$CONSUMER_DIR/NuGet.Config" "$HTTP_CONSUMER_DIR/NuGet.Config"
 
 cp "$SCRIPT_DIR/PublicContractSnapshot.cs" "$CONSUMER_DIR/PublicContractSnapshot.cs"
 cp "$SCRIPT_DIR/PublicContractSnapshot.cs" "$SOURCE_CONSUMER_DIR/PublicContractSnapshot.cs"
@@ -276,6 +285,28 @@ cat >"$CONSUMER_DIR/Consumer.csproj" <<EOF
 </Project>
 EOF
 
+cat >"$HTTP_CONSUMER_DIR/HttpConsumer.csproj" <<EOF
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Zlink.HttpClient" Version="$VERSION" />
+  </ItemGroup>
+</Project>
+EOF
+
+cat >"$HTTP_CONSUMER_DIR/Program.cs" <<'EOF'
+using Zlink.HttpClient;
+
+using var client = ZLinkHttpClient.Create("http://127.0.0.1:1").Build();
+if (client.Get("/contract") is not ZLinkHttpRequestBuilder)
+    throw new InvalidOperationException("The standalone HTTP client package did not load its public request surface.");
+Console.WriteLine("dotnet standalone http package result=passed");
+EOF
+
 cat >"$CONSUMER_DIR/Program.cs" <<'EOF'
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
@@ -335,6 +366,9 @@ dotnet run --project "$SOURCE_CONSUMER_DIR/SourceConsumer.csproj" \
 NUGET_PACKAGES="$WORK_DIR/packages" dotnet run \
   --project "$CONSUMER_DIR/Consumer.csproj" \
   --configuration Release -- "$WORK_DIR/package-api.txt"
+NUGET_PACKAGES="$WORK_DIR/http-packages" dotnet run \
+  --project "$HTTP_CONSUMER_DIR/HttpConsumer.csproj" \
+  --configuration Release
 
 if [[ -n "$SNAPSHOT_OUTPUT" ]]; then
   mkdir -p "$SNAPSHOT_OUTPUT/api"

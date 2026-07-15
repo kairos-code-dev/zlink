@@ -178,7 +178,7 @@ internal sealed class WorkerStartHandler(EvidenceStore evidence)
                 Thread.Sleep(TimeSpan.FromMilliseconds(request.DelayMs));
                 return request.Marker;
             })
-            .Async(cancellationToken);
+            .Yield(cancellationToken);
         spot.Add(100);
         evidence.Add($"worker-complete|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={marker}");
         return new WorkerStartRes(

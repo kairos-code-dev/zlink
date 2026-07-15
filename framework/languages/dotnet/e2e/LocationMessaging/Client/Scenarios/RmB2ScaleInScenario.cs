@@ -37,7 +37,7 @@ internal static class RmB2ScaleInScenario
             if (warmSeen.Count < 2) await Task.Delay(150);
         }
 
-        ScenarioAssert.That(warmSeen.Count == 2, "RM-B2 warm-up never reached both providers.");
+        ZlinkStreamAssert.Ensure(warmSeen.Count == 2, "RM-B2 warm-up never reached both providers.");
         var markerBefore = $"rm-b2-before-{Guid.NewGuid():N}";
         var valuesBefore = Enumerable.Range(0, 40)
             .Select(index => $"{markerBefore}-{index}")
@@ -51,8 +51,8 @@ internal static class RmB2ScaleInScenario
             repliesBefore.Add(reply);
         }
 
-        ScenarioAssert.That(repliesBefore.Count == valuesBefore.Length, "RM-B2 pre-scale reply count mismatch.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(repliesBefore.Count == valuesBefore.Length, "RM-B2 pre-scale reply count mismatch.");
+        ZlinkStreamAssert.Ensure(
             repliesBefore.All(reply => reply.ProviderRid is "api-a" or "api-b"),
             "RM-B2 reply provider mismatch before scale-in.");
 
@@ -64,13 +64,13 @@ internal static class RmB2ScaleInScenario
             .Where(reply => reply.ProviderRid == "api-b")
             .Select(reply => reply.Value)
             .ToArray();
-        ScenarioAssert.That(apiABeforeValues.Length > 0 && apiBBeforeValues.Length > 0,
+        ZlinkStreamAssert.Ensure(apiABeforeValues.Length > 0 && apiBBeforeValues.Length > 0,
             "RM-B2 expected both providers before scale-in.");
         var scaleOutA = await WaitEvidenceAsync(requester, apiABeforeValues[^1]);
         var scaleOutB = await WaitEvidenceAsync(providerBClient, apiBBeforeValues[^1]);
         var preA = ScenarioAssert.CountNewEvidence(scaleOutA, beforeA, "profile-request|rid=api-a", markerBefore);
         var preB = ScenarioAssert.CountNewEvidence(scaleOutB, beforeB, "profile-request|rid=api-b", markerBefore);
-        ScenarioAssert.That(preA == apiABeforeValues.Length && preB == apiBBeforeValues.Length
+        ZlinkStreamAssert.Ensure(preA == apiABeforeValues.Length && preB == apiBBeforeValues.Length
                                                             && preA + preB == valuesBefore.Length,
             "RM-B2 expected both providers before scale-in.");
 
@@ -99,7 +99,7 @@ internal static class RmB2ScaleInScenario
             }
         }
 
-        ScenarioAssert.That(settled >= 3, "RM-B2 traffic did not settle on the surviving provider.");
+        ZlinkStreamAssert.Ensure(settled >= 3, "RM-B2 traffic did not settle on the surviving provider.");
 
         beforeA = await ReadEvidenceAsync(requester);
         beforeB = await ReadEvidenceIgnoringStoppedAsync(providerBClient);
@@ -116,8 +116,8 @@ internal static class RmB2ScaleInScenario
             repliesAfter.Add(reply);
         }
 
-        ScenarioAssert.That(repliesAfter.Count == valuesAfter.Length, "RM-B2 post-scale reply count mismatch.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(repliesAfter.Count == valuesAfter.Length, "RM-B2 post-scale reply count mismatch.");
+        ZlinkStreamAssert.Ensure(
             repliesAfter.All(reply => reply.ProviderRid == "api-a"),
             "RM-B2 after scale-in should reach api-a only.");
 
@@ -125,7 +125,7 @@ internal static class RmB2ScaleInScenario
         var afterB = await ReadEvidenceIgnoringStoppedAsync(providerBClient);
         var a = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", markerAfter);
         var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", markerAfter);
-        ScenarioAssert.That(a == valuesAfter.Length && b == 0, "RM-B2 expected only api-a after scale-in.");
+        ZlinkStreamAssert.Ensure(a == valuesAfter.Length && b == 0, "RM-B2 expected only api-a after scale-in.");
     }
 
     private static async Task WaitForPeerRowGoneAsync(ZLinkHttpClient http, string rid)

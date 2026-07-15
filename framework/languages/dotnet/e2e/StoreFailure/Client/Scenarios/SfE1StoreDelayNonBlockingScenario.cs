@@ -32,15 +32,15 @@ internal static class SfE1StoreDelayNonBlockingScenario
             var concurrentP99 = PercentileMilliseconds(concurrent, 0.99);
             var budget = Math.Max(baselineP99 * 8, 750);
 
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 delayedStoreReadMs >= DelayMilliseconds * 0.75,
                 $"SF-E1: delayed store read finished too quickly ({delayedStoreReadMs:0} ms).");
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 concurrentP99 <= budget,
                 $"SF-E1: unrelated request p99 grew too much during store delay. baseline={baselineP99:0} ms concurrent={concurrentP99:0} ms budget={budget:0} ms.");
 
             var recovery = await SfProbe.RequestAsync(consumer, "SF-E1-recovery");
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 recovery.Value == "profile:fast",
                 "SF-E1: request path did not recover after delayed store read.");
 
@@ -60,7 +60,7 @@ internal static class SfE1StoreDelayNonBlockingScenario
             SfProbe.PeerRows(TimeSpan.FromSeconds(10), present: ["api-a", "api-b"]),
             "SF-E1: delayed peer query did not return both providers.");
         sw.Stop();
-        ScenarioAssert.That(peers.Length >= 2, "SF-E1: delayed peer query returned too few rows.");
+        ZlinkStreamAssert.Ensure(peers.Length >= 2, "SF-E1: delayed peer query returned too few rows.");
         return sw.Elapsed.TotalMilliseconds;
     }
 
@@ -75,7 +75,7 @@ internal static class SfE1StoreDelayNonBlockingScenario
             var sw = Stopwatch.StartNew();
             var reply = await SfProbe.RequestAsync(consumer, $"{markerPrefix}-{i}", 3000);
             sw.Stop();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.Value == "profile:fast",
                 $"SF-E1: request {i} returned an unexpected value.");
             timings.Add(sw.Elapsed.TotalMilliseconds);

@@ -18,11 +18,6 @@ internal static class ScenarioAssert
         throw new InvalidOperationException(failureMessage);
     }
 
-    public static void That(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
-    }
-
     public static bool IsConnectionFailure(Exception ex)
     {
         return ex is HttpRequestException

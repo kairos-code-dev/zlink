@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
@@ -12,6 +13,7 @@ fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
@@ -72,6 +74,7 @@ SPOT_B_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_B_PUB_PORT"
 pids=()
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
@@ -92,6 +95,16 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+start_service() {
+  local name="$1" project="$2"
+  shift 2
+  local config="$CONFIG_DIR/$name.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- --role "$name" "$@"
+  setsid dotnet run --no-build --project "$project" -- --config "$config" \
+    >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
+  pids+=("$!")
+}
 
 wait_health() {
   local url="$1"
@@ -165,7 +178,7 @@ zlink_redis_start_scoped_assign \
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="monitoring-e2e:$$:"
 
-setsid dotnet run --no-build --project "$SERVICE_PROJECT" -- \
+start_service svc-a "$SERVICE_PROJECT" \
   --rid svc-a \
   --http-url "$SVC_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -174,12 +187,10 @@ setsid dotnet run --no-build --project "$SERVICE_PROJECT" -- \
   --spot-router-endpoint "$SPOT_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$SPOT_PUB_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-a.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/svc-a.stdout.log" 2>"$LOG_DIR/svc-a.stderr.log" &
-pids+=("$!")
+  --log-dir "$LOG_DIR"
 wait_health "$SVC_URL" svc-a
 
-setsid dotnet run --no-build --project "$SERVICE_PROJECT" -- \
+start_service svc-b "$SERVICE_PROJECT" \
   --rid svc-b \
   --http-url "$SVC_B_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -188,37 +199,32 @@ setsid dotnet run --no-build --project "$SERVICE_PROJECT" -- \
   --spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
   --spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-b.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/svc-b.stdout.log" 2>"$LOG_DIR/svc-b.stderr.log" &
-SERVICE_B_PID="$!"
-pids+=("$SERVICE_B_PID")
+  --log-dir "$LOG_DIR"
+SERVICE_B_PID="${pids[-1]}"
 wait_health "$SVC_B_URL" svc-b
 
-setsid dotnet run --no-build --project "$FILTERED_SERVICE_PROJECT" -- \
+start_service svc-filtered "$FILTERED_SERVICE_PROJECT" \
   --rid svc-filtered \
   --http-url "$FILTERED_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "${REDIS_KEY_PREFIX}filtered:" \
   --channel-endpoint "$FILTERED_CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-filtered.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/svc-filtered.stdout.log" 2>"$LOG_DIR/svc-filtered.stderr.log" &
-pids+=("$!")
+  --log-dir "$LOG_DIR"
 wait_health "$FILTERED_URL" svc-filtered
 
-setsid dotnet run --no-build --project "$THROWING_SERVICE_PROJECT" -- \
+start_service svc-throw "$THROWING_SERVICE_PROJECT" \
   --rid svc-throw \
   --http-url "$THROW_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "${REDIS_KEY_PREFIX}throwing:" \
   --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/svc-throw.stdout.log" 2>"$LOG_DIR/svc-throw.stderr.log" &
-pids+=("$!")
+  --log-dir "$LOG_DIR"
 wait_health "$THROW_URL" svc-throw
 
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
+    --config-dir "$CONFIG_DIR" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --service-url "$SVC_URL" \
@@ -236,7 +242,8 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --service-project "$SERVICE_PROJECT" \
   --validation-host-project "$VALIDATION_HOST_PROJECT" \
   --scenario "$SCENARIO" \
-  --log-dir "$LOG_DIR" \
+  --log-dir "$LOG_DIR"
+dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

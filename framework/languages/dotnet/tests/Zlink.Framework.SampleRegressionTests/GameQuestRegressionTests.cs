@@ -45,8 +45,8 @@ public sealed partial class RegressionTests
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export GAMEQUEST_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export GAMEQUEST_REDIS_KEY_PREFIX=\"gamequest:dotnet:${RUN_ID}:\"", shellRunner,
+        Assert.Contains("GAMEQUEST_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("GAMEQUEST_REDIS_KEY_PREFIX=\"gamequest:dotnet:${RUN_ID}:\"", shellRunner,
             StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-gamequest-dotnet-redis-${RUN_ID}\"", shellRunner,
             StringComparison.Ordinal);
@@ -67,7 +67,7 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$ports = New-SamplePorts -Count 21 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$env:GAMEQUEST_REDIS_KEY_PREFIX = \"gamequest:dotnet:${RunId}:\"", powershellRunner,
+        Assert.Contains("$GAMEQUEST_REDIS_KEY_PREFIX = \"gamequest:dotnet:${RunId}:\"", powershellRunner,
             StringComparison.Ordinal);
         AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-gamequest-dotnet-redis");
         Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);

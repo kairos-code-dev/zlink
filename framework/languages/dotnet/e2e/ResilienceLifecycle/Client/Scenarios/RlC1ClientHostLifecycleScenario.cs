@@ -17,7 +17,7 @@ internal static class RlC1ClientHostLifecycleScenario
             var reply = (await consumer.Post("/profile/request/new-client")
                 .Body(new ProfileReq("fast", $"rl-c1-{index}"))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.Value == "profile:fast",
                 "RL-C1 request failed before cleanup.");
         }
@@ -25,7 +25,7 @@ internal static class RlC1ClientHostLifecycleScenario
         var followUp = (await consumer.Post("/profile/request/new-client")
             .Body(new ProfileReq("fast", "rl-c1-after-cleanup"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(followUp.Value == "profile:fast", "RL-C1 follow-up failed after client cleanup.");
+        ZlinkStreamAssert.Ensure(followUp.Value == "profile:fast", "RL-C1 follow-up failed after client cleanup.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -36,7 +36,7 @@ internal static class RlC1ClientHostLifecycleScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-c1-", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(evidence.Any(line => line.Contains("marker=rl-c1-", StringComparison.Ordinal)),
                 "RL-C1 did not record expected evidence 'marker=rl-c1-'.");
         }
         {
@@ -50,7 +50,7 @@ internal static class RlC1ClientHostLifecycleScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("marker=rl-c1-after-cleanup", StringComparison.Ordinal)),
                 "RL-C1 did not record expected evidence 'marker=rl-c1-after-cleanup'.");
         }

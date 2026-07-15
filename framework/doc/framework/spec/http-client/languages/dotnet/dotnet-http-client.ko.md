@@ -10,8 +10,8 @@
 
 `Zlink.HttpClient`는 .NET에서 HTTP request를 보내기 위한 별도 client-side 산출물이다.
 JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder 스타일로
-`System.Net.Http`의 낮은 수준 설정을 흡수한다. typed JSON 경로
-(`Body(dto)`/`SubmitAsync<T>()`/`Fetch<T>()`)는 그 위에 얹은 편의 계층이다.
+`System.Net.Http`의 낮은 수준 설정을 흡수한다. typed 경로
+(`Body(dto)`/`Async<T>()`)는 그 위에 얹은 편의 계층이다.
 
 이 client는 `Zlink.Framework`의 에러 모델(`ZLinkFrameworkException`)에 의존하지만
 framework core의 기본 의존성은 아니다(단방향 의존).
@@ -30,29 +30,34 @@ framework core의 기본 의존성은 아니다(단방향 의존).
 
 ## 3. 공개 타입
 
-- `ZLinkHttpClient` — `Create()` / `Create(baseUrl)`, 메서드 `Get/Post/Put/Delete/
-  Patch/Head/Options`, `IDisposable`.
+- `ZLinkHttpClient` — 정적 팩토리에서 만드는 standalone client. `Get/Post/Put/Delete/
+  Patch/Head/Options`, `IDisposable`을 제공한다.
+- `ZLinkHttpServerClient` — framework 서버가 DI로 제공하는 client. 각 verb는
+  `ZLinkHttpServerRequestBuilder`를 반환한다.
 - `ZLinkHttpClientBuilder` — `BaseUrl`, `Codecs`, `Timeout`, `DefaultHeader`,
   `BasicAuth`, `BearerToken`, `MaxResponseBodySize`, `TrustCertificateFile`,
   `ClientCertificateFile`, `FollowRedirects`, `Retry`, `Cookies`, `Proxy`,
-  `ProxyBasicAuth`, `Compression`, `Build`, 그리고 단발 verb shortcut.
+  `ProxyBasicAuth`, `Compression`, `Build`, `BuildServer`, 그리고 단발 verb shortcut.
   (`Codecs`는 framework codec extension 등록 — .NET 고유 확장점,
   [공통 spec 2.3장](../../02-client-builder.ko.md) 언어 편차)
-- `ZLinkHttpRequestBuilder` — `Header`, `Query`, `Timeout`, `Body<T>`, `Body(content,
-  contentType)`, `BodyStream`, `Form`, `Multipart`, `MultipartFile`, `SubmitRawAsync`,
-  `DownloadAsync`, `SubmitAsync<T>`, `Fetch<T>`.
+- `ZLinkHttpRequestBuilder` — standalone 표면. `Header`, `Query`, `Timeout`, `Body<T>`,
+  `Body(content, contentType)`, `BodyStream`, `Form`, `Multipart`, `MultipartFile`,
+  `AsyncRaw`, `DownloadAsync`, `Async<T>`와 callback overload를 제공한다.
+- `ZLinkHttpServerRequestBuilder` — standalone 표면을 포함하고 `Submit`, `Yield<T>`를 추가한다.
+- `IZLinkHttpExecutionScheduler` / `IZLinkHttpExecutionTurn` — DI 통합이 현재 Spot turn을
+  캡처하고 callback 완료와 `Yield<T>` 재개를 원래 실행 줄에 배치하는 공개 주입점이다.
 - `RawHttpResponse` { `Status`, `Headers`, `Body` }.
 - `HttpResponse<T>` { `Status`, `Headers`, `Body`, `RawBody` }.
 - `ZLinkHttpMethod` enum.
 
 ## 4. 실행 모델
 
-- 모든 제출은 `ValueTask<T>`를 돌려준다. `SocketsHttpHandler`의 비동기 I/O로
-  네트워크 대기 중 호출 스레드는 점유되지 않는다.
-- .NET은 continuation 재개 위치 주입을 제공하지 않는다. 평범한 `Task`를
-  돌려주는 라이브러리는 `await` continuation 재개 위치를 강제할 수 없기 때문이다.
-  표준 `Task`/`await` 동작만 제공한다.
-- `Fetch<T>()`는 blocking 접근으로 테스트·CLI 전용이다.
+- `Async<T>`는 `ValueTask<T>`를 반환하며 Spot turn을 유지한다.
+- `Yield<T>`는 DI server client에서만 노출되며, 대기 중 Spot turn을 반납하고 완료 뒤 원래
+  실행 줄의 큐에서 continuation을 재개한다.
+- callback overload는 awaitable을 반환하지 않는다. 완료 callback은 요청을 만든 Spot turn의
+  실행 줄에 새 turn으로 배치한다. standalone client에서는 비동기 완료 문맥에서 직접 호출한다.
+- 완료 값을 동기로 꺼내는 blocking terminator는 제공하지 않는다.
 
 ## 5. 전송 의미론
 

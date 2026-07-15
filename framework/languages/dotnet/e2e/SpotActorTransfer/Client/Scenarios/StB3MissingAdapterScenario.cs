@@ -14,11 +14,11 @@ internal static class StB3MissingAdapterScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeNoAdapter, 31);
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-B3", spotRid));
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-B3 join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-B3 join was rejected.");
 
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B3", "after-default-empty-transfer"));
-        SpotActorTransferScenarioContext.Require(probe.NodeRid == "actor-b", $"ST-B3 probe expected actor-b, got {probe.NodeRid}.");
-        SpotActorTransferScenarioContext.Require(probe.StateVersion == 0, $"ST-B3 default empty target state expected 0, got {probe.StateVersion}.");
+        ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-b", $"ST-B3 probe expected actor-b, got {probe.NodeRid}.");
+        ZlinkStreamAssert.Ensure(probe.StateVersion == 0, $"ST-B3 default empty target state expected 0, got {probe.StateVersion}.");
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out_empty_default|no-adapter",
             $"transfer|{actorId}|leave|31"

@@ -58,10 +58,10 @@ internal static class SmD3EntryAndUserSpotSessionRelayScenario
                 .PacketName("ActorPushReq")
                 .Async<ActorPingRes>();
             var entryNotify = await entryPushed;
-            ScenarioAssert.That(entryReply.ActorId == entryActorId, "SM-D3 entry bind actor mismatch.");
-            ScenarioAssert.That(entryReply.NodeRid == "play-a", "SM-D3 entry bind node mismatch.");
-            ScenarioAssert.That(entryNotify.Payload.ActorId == entryActorId, "SM-D3 entry push actor mismatch.");
-            ScenarioAssert.That(entryNotify.Payload.Value == "entry-push", "SM-D3 entry push value mismatch.");
+            ZlinkStreamAssert.Ensure(entryReply.ActorId == entryActorId, "SM-D3 entry bind actor mismatch.");
+            ZlinkStreamAssert.Ensure(entryReply.NodeRid == "play-a", "SM-D3 entry bind node mismatch.");
+            ZlinkStreamAssert.Ensure(entryNotify.Payload.ActorId == entryActorId, "SM-D3 entry push actor mismatch.");
+            ZlinkStreamAssert.Ensure(entryNotify.Payload.Value == "entry-push", "SM-D3 entry push value mismatch.");
 
             deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
             last = null;
@@ -114,13 +114,13 @@ internal static class SmD3EntryAndUserSpotSessionRelayScenario
                 .PacketName("UserActorPushReq")
                 .Async<ActorPingRes>();
             var userNotify = await userPushed;
-            ScenarioAssert.That(userReply.ActorId == userActorId, "SM-D3 user bind actor mismatch.");
-            ScenarioAssert.That(userReply.NodeRid == "play-a", "SM-D3 user bind node mismatch.");
-            ScenarioAssert.That(userReply.SpotRid == userSpotRid, "SM-D3 user bind spot mismatch.");
-            ScenarioAssert.That(userReply.Value == "user-relay", "SM-D3 user relay value mismatch.");
-            ScenarioAssert.That(userPushReply.ActorId == userActorId, "SM-D3 user push reply actor mismatch.");
-            ScenarioAssert.That(userNotify.Payload.ActorId == userActorId, "SM-D3 user push actor mismatch.");
-            ScenarioAssert.That(userNotify.Payload.Value == "user-push", "SM-D3 user push value mismatch.");
+            ZlinkStreamAssert.Ensure(userReply.ActorId == userActorId, "SM-D3 user bind actor mismatch.");
+            ZlinkStreamAssert.Ensure(userReply.NodeRid == "play-a", "SM-D3 user bind node mismatch.");
+            ZlinkStreamAssert.Ensure(userReply.SpotRid == userSpotRid, "SM-D3 user bind spot mismatch.");
+            ZlinkStreamAssert.Ensure(userReply.Value == "user-relay", "SM-D3 user relay value mismatch.");
+            ZlinkStreamAssert.Ensure(userPushReply.ActorId == userActorId, "SM-D3 user push reply actor mismatch.");
+            ZlinkStreamAssert.Ensure(userNotify.Payload.ActorId == userActorId, "SM-D3 user push actor mismatch.");
+            ZlinkStreamAssert.Ensure(userNotify.Payload.Value == "user-push", "SM-D3 user push value mismatch.");
         }
         finally
         {
@@ -134,7 +134,7 @@ internal static class SmD3EntryAndUserSpotSessionRelayScenario
                 $"actor-ping|rid=play-a|actor={userActorId}|spot={userSpotRid}|value=user-relay"
             ]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains(
                 $"spot-actor-joined|rid=play-a|spot={userSpotRid}|actor={userActorId}",
                 StringComparison.Ordinal))

@@ -13,7 +13,7 @@ internal static class RmC1RequestSendScenario
         var reply = (await providerA.Post("/profile/request")
             .Body(new ProfileReq("rm-c1-request"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(reply.Value == "profile:rm-c1-request", "RM-C1 request reply mismatch.");
+        ZlinkStreamAssert.Ensure(reply.Value == "profile:rm-c1-request", "RM-C1 request reply mismatch.");
 
         var commandId = $"cmd-{Guid.NewGuid():N}";
         await providerA.Post("/profile/command")
@@ -21,11 +21,11 @@ internal static class RmC1RequestSendScenario
             .Async<object>();
 
         var evidence = await WaitForProviderEvidenceAsync(providerA, providerB, commandId);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("profile-request|", StringComparison.Ordinal)
                                  && line.Contains("rm-c1-request", StringComparison.Ordinal)),
             "RM-C1 request evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("profile-command|", StringComparison.Ordinal)),
             "RM-C1 send evidence missing.");
     }

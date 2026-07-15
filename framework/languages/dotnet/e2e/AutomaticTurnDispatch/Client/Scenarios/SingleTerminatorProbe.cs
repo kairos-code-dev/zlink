@@ -12,7 +12,7 @@ internal static class SingleTerminatorProbe
             .PacketName("EnsureSpotReq")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<EnsureSpotRes>();
-        ScenarioAssert.That(spot.SpotRid == spotRid, "probe-A spot creation mismatch.");
+        ZlinkStreamAssert.Ensure(spot.SpotRid == spotRid, "probe-A spot creation mismatch.");
 
         var requestId = $"probe-A1-{Guid.NewGuid():N}";
         client.Send(new HoldMsg(requestId, 350))

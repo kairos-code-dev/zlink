@@ -3,6 +3,8 @@ using Zlink.Framework.Contracts.Dispatch;
 
 namespace SpotService.Server.Play;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
     : IZLinkMessageFlowObserver
 {
@@ -103,46 +105,5 @@ internal sealed record ServerOptions(
     string? MultiSpotRouterBEndpoint)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < args.Length; i++)
-        {
-            var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal)) continue;
-
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {key}.");
-
-            values[key[2..]] = args[++i];
-        }
-
-        string Required(string key)
-        {
-            return values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
-                ? value
-                : throw new ArgumentException($"--{key} is required.");
-        }
-
-        return new ServerOptions(
-            defaultRole,
-            Required("rid"),
-            Required("http-url"),
-            values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")),
-            values.GetValueOrDefault("evidence-file"),
-            values.GetValueOrDefault("redis-endpoint"),
-            values.GetValueOrDefault("redis-key-prefix"),
-            values.GetValueOrDefault("control-endpoint"),
-            values.GetValueOrDefault("spot-router-endpoint"),
-            values.GetValueOrDefault("spot-pub-endpoint"),
-            values.GetValueOrDefault("external-client-endpoint"),
-            values.GetValueOrDefault("external-spot-endpoint"),
-            values.GetValueOrDefault("client-spot-pub-endpoint"),
-            values.GetValueOrDefault("stream-endpoint"),
-            values.GetValueOrDefault("tls-stream-endpoint"),
-            values.GetValueOrDefault("tls-cert-path"),
-            values.GetValueOrDefault("tls-key-path"),
-            values.GetValueOrDefault("multi-route-a-endpoint"),
-            values.GetValueOrDefault("multi-route-b-endpoint"),
-            values.GetValueOrDefault("multi-spot-router-a-endpoint"),
-            values.GetValueOrDefault("multi-spot-router-b-endpoint"));
-    }
+        => E2eConfiguration.Load<ServerOptions>(args) with { Role = defaultRole };
 }

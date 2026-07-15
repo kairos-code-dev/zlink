@@ -58,12 +58,11 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configure);
 
         services.TryAddSingleton<IZLinkHttpExecutionScheduler, ZLinkSpotHttpExecutionScheduler>();
-        services.AddKeyedSingleton<ZLinkHttpClient>(name, (provider, _) =>
+        services.AddKeyedSingleton<ZLinkHttpServerClient>(name, (provider, _) =>
         {
-            var builder = ZLinkHttpClient.Create()
-                .ExecutionScheduler(provider.GetRequiredService<IZLinkHttpExecutionScheduler>());
+            var builder = ZLinkHttpClient.Create();
             configure(builder);
-            return builder.Build();
+            return builder.BuildServer(provider.GetRequiredService<IZLinkHttpExecutionScheduler>());
         });
         return services;
     }

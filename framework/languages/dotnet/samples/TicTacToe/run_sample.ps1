@@ -9,7 +9,7 @@ $LogDir = Join-Path $RunDir "logs"
 $SampleLogDir = Join-Path $RunDir "sample-logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
-$env:TICTACTOE_LOG_DIR = $SampleLogDir
+$TICTACTOE_LOG_DIR = $SampleLogDir
 $redisContainerId = $null
 $RunSucceeded = $false
 
@@ -52,7 +52,7 @@ function Wait-SampleLogContains {
 }
 
 try {
-    $env:TICTACTOE_REDIS_KEY_PREFIX = "tictactoe:dotnet:${RunId}:"
+    $TICTACTOE_REDIS_KEY_PREFIX = "tictactoe:dotnet:${RunId}:"
 
     $ports = New-SamplePorts -Count 13 -BasePort 0
 
@@ -77,8 +77,8 @@ try {
 
     $redis = Start-SampleRedisContainer "zlink-tictactoe-dotnet-redis"
     $redisContainerId = $redis.ContainerId
-    $env:TICTACTOE_REDIS_ENDPOINT = $redis.Endpoint
-    $redisEndpoint = $env:TICTACTOE_REDIS_ENDPOINT
+    $TICTACTOE_REDIS_ENDPOINT = $redis.Endpoint
+    $redisEndpoint = $TICTACTOE_REDIS_ENDPOINT
 
     function New-TicTacToeSettings {
         param(
@@ -105,7 +105,7 @@ try {
                 PeerSpotEndpoint = @($spotAEndpoint, $spotBEndpoint)[$PeerPlayIndex]
                 PeerSpotPubEndpoint = @($spotAPubSubEndpoint, $spotBPubSubEndpoint)[$PeerPlayIndex]
                 RedisEndpoint = $redisEndpoint
-                RedisKeyPrefix = $env:TICTACTOE_REDIS_KEY_PREFIX
+                RedisKeyPrefix = $TICTACTOE_REDIS_KEY_PREFIX
                 LogDirectory = $LogDir
             }
         }
@@ -140,7 +140,7 @@ try {
     Wait-SampleTcpEndpoint "api-b-channel" $apiBChannelEndpoint
 
     $clientLog = Join-Path $LogDir "client.log"
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--api-url", $apiAPublicUrl, "--log-dir", $SampleLogDir) *> $clientLog
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/TicTacToe.Client.csproj") -Arguments @("--config", $apiAConfigFile) *> $clientLog
     Wait-LogContains $clientLog "stream-inbound sample=TicTacToe" "TicTacToe stream-inbound marker"
     Wait-LogContains $clientLog "stream-inbound sample=TicTacToe .* seq=[0-9]" "TicTacToe sequenced stream-inbound response marker"
     Wait-LogContains $clientLog "stream-inbound sample=TicTacToe .* name=.*Notify" "TicTacToe stream-inbound push marker"
@@ -166,11 +166,12 @@ try {
     $RunSucceeded = $true
 }
 finally {
+    Remove-SampleConfigurationFiles -RunDirectory $RunDir
     Stop-SampleProcesses
     if ($redisContainerId) {
         Remove-SampleRedisContainer $redisContainerId
     }
-    if (-not $RunSucceeded -or $env:TICTACTOE_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $TICTACTOE_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

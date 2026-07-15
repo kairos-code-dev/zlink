@@ -13,14 +13,14 @@ public static class RegistrationCodecServerHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        return CreateWithMode(args.Concat(["--codec-mode", "json-only"]).ToArray(), null);
+        return CreateWithMode(args, null);
     }
 
     private static WebApplication CreateWithMode(
         string[] args,
         Action<WebApplication, ServerOptions>? configureApp)
     {
-        var options = ServerOptions.Parse(args);
+        var options = ServerOptions.Parse(args) with { CodecMode = "json-only" };
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);

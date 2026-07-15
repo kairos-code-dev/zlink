@@ -9,7 +9,7 @@
 var response = await ZLinkHttpClient.Create("https://api.internal")
     .Compression()
     .Get("/large-report")
-    .SubmitAsync<Report>();
+    .Async<Report>();
 ```
 
 ## 래퍼 통제 해제

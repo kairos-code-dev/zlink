@@ -34,7 +34,7 @@ internal static class RouteBridgeAwaitProbe
             "await-resumed",
             "await-completed"
         ]);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Evidence.Any(line => line.Contains("await-started|rid=play-b", StringComparison.Ordinal)
                                           && line.Contains("handler=spot", StringComparison.Ordinal)),
             "probe-D3 target Spot handler marker missing.");

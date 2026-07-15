@@ -229,7 +229,11 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
                     ZLinkRuntimeMetrics.RecordSpotQueueStarted(
                         _spotMetricKind,
                         item.MetricEnqueuedTimestamp);
-                var turn = new ZLinkSerialTurn(PostResume, _executionToken);
+                var turn = new ZLinkSerialTurn(
+                    PostResume,
+                    TryPostCallback,
+                    ReportHandlerException,
+                    _executionToken);
                 var result = await item.InvokeAsync(
                     ReportHandlerException,
                     _executionToken,
@@ -312,5 +316,10 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
         ScheduleDrain();
         return true;
+    }
+
+    private bool TryPostCallback(Func<CancellationToken, ValueTask> callback)
+    {
+        return TryPost(callback, out _);
     }
 }

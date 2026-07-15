@@ -417,8 +417,11 @@ public interface IZLinkSpotCommonContext
         CancellationToken cancellationToken = default)
         where THandler : class;
 
-    IZLinkWorkerCall<TResult> RunWorker<TResult>(
+    IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
         Func<CancellationToken, TResult> work);
+
+    IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+        Func<CancellationToken, ValueTask<TResult>> work);
 }
 
 public interface IZLinkSpotContext : IZLinkSpotCommonContext
@@ -4123,7 +4126,9 @@ public interface IZLinkCodecRegistrar
 public interface IZLinkWorkerCall<TResult>
 {
     IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout);
+    void Submit(CancellationToken cancellationToken = default);
     ValueTask<TResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<TResult> Yield(CancellationToken cancellationToken = default);
 }
 ```
 
@@ -4520,7 +4525,7 @@ interface가 그 동작을 보장하도록 한다.
 | 확인 항목 | 목표 계약 | 현재 구현 | 후속 작업 |
 |-----------|-----------|-----------|-----------|
 | 공개 interface inventory | 이 문서의 시그니처 | `Contracts/*`와 Stream Connector contracts에 선언됨 | 일치. exported type coverage와 실제 package consumer로 검증한다. |
-| request/join/worker/HTTP client 완료 | terminator 세 축 — `submit`(one-way) / `Async(...)`(turn 유지) / `Yield(...)`(turn 반납) | `Async(...)` 하나뿐이고 그것이 **자동으로 turn을 반납**한다. `Yield` 표면이 없다 | **미충족** — [구현 차이 §12.21](../../../90-implementation-gap.ko.md) |
+| request/join/worker/HTTP client 완료 | terminator 세 축 — `submit`(one-way) / `Async(...)`(turn 유지) / `Yield(...)`(turn 반납) | request·join·worker와 DI HTTP client가 같은 의미를 제공한다 | 일치. `Async(...)`와 `Yield(...)`의 직렬 실행 차이를 unit·E2E로 검증한다. |
 | Spot 메시징 대상 | 불투명한 `SpotHandle`; 내부 주소 갱신 1회 | handle resolver와 handle 기반 outbound를 제공 | 일치. stale route에서 안전한 1회 refresh를 unit test로 검증한다. |
 | custom Spot route resolver | 정식 location store와 handle resolver만 public | transport route lookup은 runtime 내부에만 존재 | 일치. package reflection에서 public type 부재를 검증한다. |
 | dispatch 최적화 | registration 시 최적화하며 public mode 없음 | public mode type과 property 없음 | 일치. contract test로 검증한다. |
@@ -4886,7 +4891,7 @@ NuGet package에서 **한 항목도 빠뜨리지 않고 검사하기 위한 기�
 
 ### 17.1 API snapshot
 
-`framework/languages/dotnet/contract/api/`에는 정식 배포 대상 assembly 여섯 개의 모든 public type과 member를 기록한다.
+`framework/languages/dotnet/contract/api/`에는 정식 배포 대상 assembly 일곱 개의 모든 public type과 member를 기록한다.
 각 파일은 다음 항목을 구분한다.
 
 - assembly와 type 소유권
@@ -4931,7 +4936,7 @@ cd framework/languages/dotnet
 생성 모드는 정식 snapshot 디렉토리를 직접 덮어쓰지 못한다. 후보와 현재 snapshot의 diff를 기능별 공개
 계약 문서의 전·후 시그니처와 함께 리뷰한 뒤, 승인된 항목만 정식 snapshot에 반영한다. 구현이
 달라졌다는 이유만으로 snapshot을 먼저 갱신하지 않는다. 검증기는 모든 project의 MSBuild
-`IsPackable` 평가 결과, 정확한 6개 package 집합, package source mapping, 임시 package cache와
+`IsPackable` 평가 결과, 정확한 7개 package 집합, package source mapping, 임시 package cache와
 깨끗한 consumer 실행까지 함께 확인한다.
 
 ### 17.4 회귀 테스트

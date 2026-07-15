@@ -19,12 +19,12 @@ internal static class StE1BoundSessionPushAfterTransferScenario
         await beforeTransferPush;
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-E1", spotRid));
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-E1 join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-E1 join was rejected.");
         var pushed = context.WaitBoundPushAsync(bound, "after-remote-transfer");
         var pushReply = await context.BoundPushAsync(context.NodeB, actorId, new BoundPushReq("ST-E1", "after-remote-transfer"));
         var notify = await pushed;
-        SpotActorTransferScenarioContext.Require(pushReply.NodeRid == "actor-b", $"ST-E1 bound push reply expected actor-b, got {pushReply.NodeRid}.");
-        SpotActorTransferScenarioContext.Require(notify.Payload.NodeRid == "actor-b", $"ST-E1 bound push notify expected actor-b, got {notify.Payload.NodeRid}.");
-        SpotActorTransferScenarioContext.Require(notify.Payload.StateVersion == 91, $"ST-E1 bound push state expected 91, got {notify.Payload.StateVersion}.");
+        ZlinkStreamAssert.Ensure(pushReply.NodeRid == "actor-b", $"ST-E1 bound push reply expected actor-b, got {pushReply.NodeRid}.");
+        ZlinkStreamAssert.Ensure(notify.Payload.NodeRid == "actor-b", $"ST-E1 bound push notify expected actor-b, got {notify.Payload.NodeRid}.");
+        ZlinkStreamAssert.Ensure(notify.Payload.StateVersion == 91, $"ST-E1 bound push state expected 91, got {notify.Payload.StateVersion}.");
     }
 }

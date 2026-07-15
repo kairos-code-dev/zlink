@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
@@ -7,7 +8,7 @@ RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
-export SHOPPINGMALL_LOG_DIR="${SAMPLE_LOG_DIR}"
+SHOPPINGMALL_LOG_DIR="${SAMPLE_LOG_DIR}"
 mkdir -p "${LOG_DIR}" "${SAMPLE_LOG_DIR}"
 
 PIDS=()
@@ -15,6 +16,7 @@ REDIS_CONTAINER=""
 RUN_SUCCEEDED=0
 
 cleanup() {
+  find "${RUN_DIR}" -type f -name "*.json" -delete 2>/dev/null || true
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -77,17 +79,17 @@ finally:
 PY
 )"
 
-export SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:dotnet:${RUN_ID}:"
-export SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${PORTS[0]}"
-export SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${PORTS[1]}"
-export SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${PORTS[4]}"
-export SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${PORTS[5]}"
-export SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
-export SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
-export SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
-export SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
-export SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
-export SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
+SHOPPINGMALL_REDIS_KEY_PREFIX="shoppingmall:dotnet:${RUN_ID}:"
+SHOPPINGMALL_API_A_HTTP_URL="http://127.0.0.1:${PORTS[0]}"
+SHOPPINGMALL_API_B_HTTP_URL="http://127.0.0.1:${PORTS[1]}"
+SHOPPINGMALL_WORKFLOW_A_HTTP_URL="http://127.0.0.1:${PORTS[4]}"
+SHOPPINGMALL_WORKFLOW_B_HTTP_URL="http://127.0.0.1:${PORTS[5]}"
+SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -157,7 +159,6 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 REDIS_CONTAINER="zlink-shoppingmall-dotnet-redis-${RUN_ID}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER SHOPPINGMALL_REDIS_ENDPOINT "zlink-shoppingmall-dotnet-redis" redis:7.2-alpine
-export SHOPPINGMALL_REDIS_ENDPOINT
 wait_port redis "tcp://${SHOPPINGMALL_REDIS_ENDPOINT}"
 WORKFLOW_A_CONFIG_FILE="${RUN_DIR}/appsettings.workflow-a.json"
 WORKFLOW_B_CONFIG_FILE="${RUN_DIR}/appsettings.workflow-b.json"

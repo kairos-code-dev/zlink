@@ -56,7 +56,7 @@ internal static class PsB1SlowSubscriberScenario
                 ]
             })
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             slowEvidence.Any(line => line.Contains("delay-start|", StringComparison.Ordinal)
                                      && line.Contains($"run={runId}", StringComparison.Ordinal)),
             "PS-B1 expected slow subscriber delay evidence.");

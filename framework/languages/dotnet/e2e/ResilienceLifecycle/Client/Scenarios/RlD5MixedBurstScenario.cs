@@ -24,7 +24,7 @@ internal static class RlD5MixedBurstScenario
                 .AsyncRaw().AsTask());
         var replies = await Task.WhenAll(requestTasks);
         await Task.WhenAll(sendTasks);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             replies.All(reply => reply.Value == "profile:fast"),
             "RL-D5 mixed workload replies were invalid.");
 
@@ -38,7 +38,7 @@ internal static class RlD5MixedBurstScenario
             var completed = await Task.WhenAny(waitA, waitB);
             requestEvidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 requestEvidence.Any(line => line.Contains("marker=rl-d5-req-", StringComparison.Ordinal)),
                 "RL-D5 evidence missing for marker=rl-d5-req-.");
         }
@@ -53,16 +53,16 @@ internal static class RlD5MixedBurstScenario
             var completed = await Task.WhenAny(waitA, waitB);
             commandEvidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 commandEvidence.Any(line => line.Contains("marker=rl-d5-cmd-", StringComparison.Ordinal)),
                 "RL-D5 evidence missing for marker=rl-d5-cmd-.");
         }
 
         var evidence = requestEvidence.Concat(commandEvidence).ToArray();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("marker=rl-d5-req-", StringComparison.Ordinal)),
             "RL-D5 did not record expected evidence 'marker=rl-d5-req-'.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("marker=rl-d5-cmd-", StringComparison.Ordinal)),
             "RL-D5 did not record expected evidence 'marker=rl-d5-cmd-'.");
 

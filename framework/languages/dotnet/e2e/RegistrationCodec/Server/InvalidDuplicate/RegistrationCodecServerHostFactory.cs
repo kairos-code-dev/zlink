@@ -13,14 +13,14 @@ public static class RegistrationCodecServerHostFactory
 {
     public static WebApplication Create(string[] args)
     {
-        return CreateWithMode(args.Concat(["--invalid-mode", "duplicate"]).ToArray(), null);
+        return CreateWithMode(args, null);
     }
 
     private static WebApplication CreateWithMode(
         string[] args,
         Action<WebApplication, ServerOptions>? configureApp)
     {
-        var options = ServerOptions.Parse(args);
+        var options = ServerOptions.Parse(args) with { InvalidMode = "duplicate" };
         Directory.CreateDirectory(options.LogDir);
 
         var builder = WebApplication.CreateBuilder(args);

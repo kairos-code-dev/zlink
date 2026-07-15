@@ -70,12 +70,12 @@ internal static class SmG3ConcurrentSessionActorLifecycleScenario
                 var ping = await client.Request(new ActorPingReq(actorId))
                     .PacketName("UserActorPingReq")
                     .Async<ActorPingRes>();
-                ScenarioAssert.That(ping.ActorId == actorId, "SM-G3 actor request target mismatch.");
-                ScenarioAssert.That(ping.NodeRid == "play-a", "SM-G3 actor request reached the wrong node.");
+                ZlinkStreamAssert.Ensure(ping.ActorId == actorId, "SM-G3 actor request target mismatch.");
+                ZlinkStreamAssert.Ensure(ping.NodeRid == "play-a", "SM-G3 actor request reached the wrong node.");
                 var left = await client.Request(new LeaveReq(actorId))
                     .PacketName("LeaveReq")
                     .Async<LeaveRes>();
-                ScenarioAssert.That(left.Accepted && left.ActorId == actorId, "SM-G3 leave reply mismatch.");
+                ZlinkStreamAssert.Ensure(left.Accepted && left.ActorId == actorId, "SM-G3 leave reply mismatch.");
             }));
 
             var expectedEvidence = actorIds
@@ -88,18 +88,18 @@ internal static class SmG3ConcurrentSessionActorLifecycleScenario
             var evidence = (await playA.Post("/evidence/wait")
                 .Body(new EvidenceWaitReq(expectedEvidence))
                 .Async<string[]>()).Body;
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 expectedEvidence.All(expected =>
                     evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
                 "SM-G3 expected concurrent join and leave evidence.");
             foreach (var actorId in actorIds)
             {
-                ScenarioAssert.That(
+                ZlinkStreamAssert.Ensure(
                     evidence.Any(line => line.Contains(
                         $"spot-actor-joined|rid=play-a|spot={spotRid}|actor={actorId}",
                         StringComparison.Ordinal)),
                     $"SM-G3 join evidence count mismatch for {actorId}.");
-                ScenarioAssert.That(
+                ZlinkStreamAssert.Ensure(
                     evidence.Any(line => line.Contains(
                         $"spot-actor-left|rid=play-a|spot={spotRid}|actor={actorId}",
                         StringComparison.Ordinal)),

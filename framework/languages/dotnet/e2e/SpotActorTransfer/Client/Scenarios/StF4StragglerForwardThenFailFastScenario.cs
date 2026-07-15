@@ -14,7 +14,7 @@ internal static class StF4StragglerForwardThenFailFastScenario
 
         await Task.Delay(TimeSpan.FromMilliseconds(5300));
         var stale = await context.ProbeRefAsync(context.NodeA, actorId, oldRef, new ProbeReq("ST-F4", "G2"));
-        SpotActorTransferScenarioContext.Require(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
+        ZlinkStreamAssert.Ensure(!stale.Succeeded && stale.ErrorKind == "ActorLocationStale",
             $"ST-F4 expected ActorLocationStale, got '{stale.ErrorKind}'.");
     }
 }

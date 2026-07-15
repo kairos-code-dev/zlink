@@ -29,12 +29,12 @@ internal static class RlB6GrayFaultScenario
                 failures++;
             }
 
-        ScenarioAssert.That(successes > 0 && failures > 0, "RL-B6 expected both healthy successes and gray failures.");
+        ZlinkStreamAssert.Ensure(successes > 0 && failures > 0, "RL-B6 expected both healthy successes and gray failures.");
         await providerB.Post("/admin/fault/none").AsyncRaw();
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-b6-after"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(followUp.Value == "profile:fast", "RL-B6 follow-up request failed after clearing fault.");
+        ZlinkStreamAssert.Ensure(followUp.Value == "profile:fast", "RL-B6 follow-up request failed after clearing fault.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -45,7 +45,7 @@ internal static class RlB6GrayFaultScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-b6-", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(evidence.Any(line => line.Contains("marker=rl-b6-", StringComparison.Ordinal)),
                 "RL-B6 did not record expected evidence 'marker=rl-b6-'.");
         }
         {
@@ -57,7 +57,7 @@ internal static class RlB6GrayFaultScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-b6-after", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(evidence.Any(line => line.Contains("marker=rl-b6-after", StringComparison.Ordinal)),
                 "RL-B6 did not record expected evidence 'marker=rl-b6-after'.");
         }
 

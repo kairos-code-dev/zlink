@@ -12,7 +12,7 @@ internal static class TimerIsolationProbe
             .PacketName("EnsureSpotReq")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<EnsureSpotRes>();
-        ScenarioAssert.That(spot.SpotRid == spotRid, "probe-C timer spot creation mismatch.");
+        ZlinkStreamAssert.Ensure(spot.SpotRid == spotRid, "probe-C timer spot creation mismatch.");
 
         var requestId = $"probe-C1-{Guid.NewGuid():N}";
         client.Send(new TimerStartMsg(requestId, $"{requestId}-await", "await-on-first", 50, 350))

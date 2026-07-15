@@ -41,8 +41,8 @@ internal static class RmC7WeightedProviderScenario
             replies.Add(reply);
         }
 
-        ScenarioAssert.That(replies.Count == values.Length, "RM-C7 reply count mismatch.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(replies.Count == values.Length, "RM-C7 reply count mismatch.");
+        ZlinkStreamAssert.Ensure(
             replies.All(reply => reply.ProviderRid is "api-a" or "api-b"),
             "RM-C7 reply provider mismatch.");
 
@@ -54,7 +54,7 @@ internal static class RmC7WeightedProviderScenario
             .Where(reply => reply.ProviderRid == "api-b")
             .Select(reply => reply.Value)
             .ToArray();
-        ScenarioAssert.That(apiAValues.Length > 0 && apiBValues.Length > 0, "RM-C7 expected both weighted providers.");
+        ZlinkStreamAssert.Ensure(apiAValues.Length > 0 && apiBValues.Length > 0, "RM-C7 expected both weighted providers.");
         var afterA = await WaitEvidenceAsync(providerAClient, apiAValues[^1]);
         var afterB = await WaitEvidenceAsync(providerBClient, apiBValues[^1]);
         var counts = new Dictionary<string, int>(StringComparer.Ordinal)
@@ -62,7 +62,7 @@ internal static class RmC7WeightedProviderScenario
             ["apiA"] = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", marker),
             ["apiB"] = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker)
         };
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             counts["apiA"] == apiAValues.Length
             && counts["apiB"] == apiBValues.Length
             && counts["apiA"] + counts["apiB"] == values.Length
@@ -94,6 +94,6 @@ internal static class RmC7WeightedProviderScenario
             if (seen.Count < 2) await Task.Delay(150);
         }
 
-        ScenarioAssert.That(seen.SetEquals(["api-a", "api-b"]), "RM-C7 warm-up never reached both weighted providers.");
+        ZlinkStreamAssert.Ensure(seen.SetEquals(["api-a", "api-b"]), "RM-C7 warm-up never reached both weighted providers.");
     }
 }

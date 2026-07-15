@@ -48,14 +48,14 @@ internal static class ObsB3FanoutAndLeaseMetricsScenario
                        + Total(afterB.Metrics, "zlink.fanout.received")
                        - Total(beforeA.Metrics, "zlink.fanout.received")
                        - Total(beforeB.Metrics, "zlink.fanout.received");
-        ScenarioContext.Require(published == 1 && received == 2,
+        ZlinkStreamAssert.Ensure(published == 1 && received == 2,
             $"OBS-B3 expected fanout delta 1:2, got {published}:{received}.");
         var all = afterA.Metrics.Concat(afterB.Metrics).ToArray();
-        ScenarioContext.Require(all.All(sample => sample.Name != "zlink.fanout.dropped"),
+        ZlinkStreamAssert.Ensure(all.All(sample => sample.Name != "zlink.fanout.dropped"),
             "OBS-B3 unobservable fanout backend exposed fanout.dropped.");
-        ScenarioContext.Require(all.All(sample => ForbiddenTags.All(tag => !sample.Tags.ContainsKey(tag))),
+        ZlinkStreamAssert.Ensure(all.All(sample => ForbiddenTags.All(tag => !sample.Tags.ContainsKey(tag))),
             "OBS-B3 a metric exposed a forbidden high-cardinality tag.");
-        ScenarioContext.Require(all.Any(sample => sample.Name == "zlink.location.owner_lease.renew.lateness"
+        ZlinkStreamAssert.Ensure(all.Any(sample => sample.Name == "zlink.location.owner_lease.renew.lateness"
                                                   && sample.Max >= 0.5m),
             "OBS-B3 external Redis pause did not produce lease renewal lateness.");
         Console.WriteLine("scenario OBS-B3 passed");

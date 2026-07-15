@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
@@ -22,6 +23,7 @@ else
   SCENARIO="${SCENARIO// /,}"
 fi
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
@@ -184,6 +186,7 @@ static_checks() {
 PIDS=()
 cleanup() {
   set +e
+  rm -rf "$CONFIG_DIR"
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
@@ -343,7 +346,9 @@ start_server() {
   local name="$1"
   local dll="$2"
   shift 2
-  setsid dotnet "$dll" "$@" >"$LOG_DIR/${name}.stdout.log" 2>"$LOG_DIR/${name}.stderr.log" &
+  local config="$CONFIG_DIR/${name}.json"
+  python3 "$SCRIPT_DIR/../write_role_config.py" "$config" -- "$@"
+  setsid dotnet "$dll" --config "$config" >"$LOG_DIR/${name}.stdout.log" 2>"$LOG_DIR/${name}.stderr.log" &
   PIDS+=("$!")
 }
 
@@ -576,10 +581,14 @@ wait_port session-b-stream "$SESSION_B_STREAM"
 sleep "$ROUTE_SETTLE_SECONDS"
 
 if scenario_selected full; then
-  dotnet "$CLIENT_DLL" \
+  python3 "$SCRIPT_DIR/../write_role_config.py" "$CONFIG_DIR/client-full.json" -- \
+    --config-dir "$CONFIG_DIR" \
     --scenario full \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --request-id "client-${STAMP//[^a-zA-Z0-9]/}" \
+    --spot-rid "await-client-${STAMP//[^a-zA-Z0-9]/}"
+  dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-full.json" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
   cat "$LOG_DIR/client.stdout.log"
   echo "TD-G1 PASS language=dotnet scenario-ids=common"
@@ -588,12 +597,14 @@ fi
 if scenario_selected shutdown; then
   SHUTDOWN_ID="TD-F5-$(date +%s)-$$"
   SHUTDOWN_SPOT="await-shutdown-${STAMP//[^a-zA-Z0-9]/}"
-  dotnet "$CLIENT_DLL" \
+  python3 "$SCRIPT_DIR/../write_role_config.py" "$CONFIG_DIR/client-shutdown-wait.json" -- \
+    --config-dir "$CONFIG_DIR" \
     --scenario shutdown-wait \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --request-id "$SHUTDOWN_ID" \
-    --spot-rid "$SHUTDOWN_SPOT" \
+    --spot-rid "$SHUTDOWN_SPOT"
+  dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-shutdown-wait.json" \
     >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
   SHUTDOWN_CLIENT_PID=$!
   wait_file_contains \
@@ -637,12 +648,14 @@ if scenario_selected shutdown; then
   wait_port play-a-spot-route "$PLAY_A_SPOT_ROUTE"
   sleep "$ROUTE_SETTLE_SECONDS"
 
-  dotnet "$CLIENT_DLL" \
+  python3 "$SCRIPT_DIR/../write_role_config.py" "$CONFIG_DIR/client-shutdown-recovery.json" -- \
+    --config-dir "$CONFIG_DIR" \
     --scenario shutdown-recovery \
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --request-id "${SHUTDOWN_ID}-recovery" \
-    --spot-rid "$SHUTDOWN_SPOT" \
+    --spot-rid "$SHUTDOWN_SPOT"
+  dotnet "$CLIENT_DLL" --config "$CONFIG_DIR/client-shutdown-recovery.json" \
     >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
   cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
 fi

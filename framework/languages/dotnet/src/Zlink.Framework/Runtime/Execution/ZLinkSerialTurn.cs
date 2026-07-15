@@ -5,6 +5,8 @@ internal sealed class ZLinkSerialTurn
     private static readonly AsyncLocal<ZLinkSerialTurn?> CurrentTurn = new();
 
     private readonly Func<ZLinkSerialTurn, Action, bool> _postResume;
+    private readonly Func<Func<CancellationToken, ValueTask>, bool> _postCallback;
+    private readonly Action<Exception> _reportError;
     private readonly CancellationToken _executionToken;
     private Task? _ownerTask;
 
@@ -15,9 +17,13 @@ internal sealed class ZLinkSerialTurn
 
     public ZLinkSerialTurn(
         Func<ZLinkSerialTurn, Action, bool> postResume,
+        Func<Func<CancellationToken, ValueTask>, bool> postCallback,
+        Action<Exception> reportError,
         CancellationToken executionToken)
     {
         _postResume = postResume;
+        _postCallback = postCallback;
+        _reportError = reportError;
         _executionToken = executionToken;
     }
 
@@ -38,6 +44,16 @@ internal sealed class ZLinkSerialTurn
             ref _suspended,
             new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
         Volatile.Write(ref _suspendSignaled, 0);
+    }
+
+    public bool TryPost(Func<CancellationToken, ValueTask> callback)
+    {
+        return _postCallback(callback);
+    }
+
+    public void ReportError(Exception exception)
+    {
+        _reportError(exception);
     }
 
     public static Scope Push(ZLinkSerialTurn turn)

@@ -10,7 +10,7 @@ internal static class SmB5MissingActorPacketScenario
     public static async Task RunAsync(ZLinkHttpClient playA, string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b5-missing-{Guid.NewGuid():N}";
-        ScenarioAssert.That(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint),
+        ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint),
             "session-a stream endpoint is required.");
         await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
@@ -38,13 +38,13 @@ internal static class SmB5MissingActorPacketScenario
             missingActorRequestFailed = true;
         }
 
-        ScenarioAssert.That(missingActorRequestFailed, "SM-B5 expected missing actor handler request to fail.");
+        ZlinkStreamAssert.Ensure(missingActorRequestFailed, "SM-B5 expected missing actor handler request to fail.");
         var expectedEvidence = new[]
             { "dispatch-error|surface=SpotActor|reason=HandlerMissing|action=ReplyError|packet=MissingActorReq" };
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B5 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b5 passed");

@@ -12,14 +12,14 @@ internal static class MonB1KindFilterScenario
         await using var trigger = await MonitoringChannelClient.StartAsync(
             options, options.FilteredChannelEndpoint, "trigger-mon-b1");
         var reply = await trigger.RequestAsync(new ProfileReq("filter", "mon-b1-request"));
-        ScenarioAssert.That(reply.ProviderRid == "svc-filtered", "MON-B1 direct trigger did not hit filtered service.");
+        ZlinkStreamAssert.Ensure(reply.ProviderRid == "svc-filtered", "MON-B1 direct trigger did not hit filtered service.");
 
         var serviceBEvidence = await WaitForFilteredSocketEvidenceAsync(serviceB);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             serviceBEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                          && line.Contains("kind=ConnectionReady", StringComparison.Ordinal)),
             "MON-B1 filtered socket evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             serviceBEvidence
                 .Where(line => line.Contains("monitor-socket|", StringComparison.Ordinal))
                 .All(line => line.Contains("kind=ConnectionReady", StringComparison.Ordinal)),

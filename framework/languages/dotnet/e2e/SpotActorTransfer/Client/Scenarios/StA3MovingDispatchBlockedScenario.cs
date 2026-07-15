@@ -26,15 +26,15 @@ internal static class StA3MovingDispatchBlockedScenario
 
         var blockedProbe = context.ProbeAsync(context.NodeA, actorId, new ProbeReq("ST-A3", "during-joined-wait"));
         await Task.Delay(500);
-        SpotActorTransferScenarioContext.Require(!blockedProbe.IsCompleted, "ST-A3 actor packet completed while OnJoinedActorAsync was still blocked.");
+        ZlinkStreamAssert.Ensure(!blockedProbe.IsCompleted, "ST-A3 actor packet completed while OnJoinedActorAsync was still blocked.");
 
         var release = await context.ReleaseJoinedGateAsync(context.NodeA, spotRid);
-        SpotActorTransferScenarioContext.Require(release.Released, "ST-A3 joined gate was already released before the scenario released it.");
+        ZlinkStreamAssert.Ensure(release.Released, "ST-A3 joined gate was already released before the scenario released it.");
 
         var join = await joinTask;
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-A3 join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-A3 join was rejected.");
         var probe = await blockedProbe.WaitAsync(TimeSpan.FromSeconds(10));
-        SpotActorTransferScenarioContext.Require(probe.SpotRid == spotRid, "ST-A3 blocked packet did not resume on the target spot.");
+        ZlinkStreamAssert.Ensure(probe.SpotRid == spotRid, "ST-A3 blocked packet did not resume on the target spot.");
 
         await context.WaitEvidenceAsync(context.NodeA, [
             $"ST-A3|{actorId}|joined_released|{spotRid}",

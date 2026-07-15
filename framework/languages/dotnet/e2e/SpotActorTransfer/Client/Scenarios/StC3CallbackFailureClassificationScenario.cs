@@ -22,7 +22,7 @@ internal static class StC3CallbackFailureClassificationScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeFailTransferOut, 71);
 
         var response = await context.JoinRawAsync(context.NodeA, actorId, new JoinTargetReq("ST-C3", spotRid));
-        SpotActorTransferScenarioContext.Require(!response.Accepted, "ST-C3 transfer-out failure should not return accepted.");
+        ZlinkStreamAssert.Ensure(!response.Accepted, "ST-C3 transfer-out failure should not return accepted.");
         var sourceEvidence = await context.WaitEvidenceAsync(context.NodeA, [
             $"ST-C3|{actorId}|transfer_out_failed|71",
             $"ST-C3|{actorId}|join_failed|"
@@ -40,7 +40,7 @@ internal static class StC3CallbackFailureClassificationScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeFailLeave, 72);
 
         var response = await context.JoinRawAsync(context.NodeA, actorId, new JoinTargetReq("ST-C3", spotRid));
-        SpotActorTransferScenarioContext.Require(!response.Accepted, "ST-C3 source leave failure should not return accepted.");
+        ZlinkStreamAssert.Ensure(!response.Accepted, "ST-C3 source leave failure should not return accepted.");
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out|72",
             $"ST-C3|{actorId}|leave_failed|72",
@@ -59,7 +59,7 @@ internal static class StC3CallbackFailureClassificationScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeFailTransferIn, 73);
 
         var response = await context.JoinRawAsync(context.NodeA, actorId, new JoinTargetReq("ST-C3", spotRid));
-        SpotActorTransferScenarioContext.Require(!response.Accepted, "ST-C3 transfer-in failure should not return accepted.");
+        ZlinkStreamAssert.Ensure(!response.Accepted, "ST-C3 transfer-in failure should not return accepted.");
         await context.WaitEvidenceAsync(context.NodeB, [
             $"ST-C3|{actorId}|transfer_in_failed|73"
         ]);
@@ -80,7 +80,7 @@ internal static class StC3CallbackFailureClassificationScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 74);
 
         var response = await context.JoinRawAsync(context.NodeA, actorId, new JoinTargetReq("ST-C3", spotRid));
-        SpotActorTransferScenarioContext.Require(!response.Accepted, "ST-C3 joined failure should not return accepted.");
+        ZlinkStreamAssert.Ensure(!response.Accepted, "ST-C3 joined failure should not return accepted.");
         await context.WaitEvidenceAsync(context.NodeB, [
             $"ST-C3|{actorId}|joined_failed|{spotRid}"
         ]);

@@ -39,7 +39,7 @@ internal static class SfD2LongOutageRecoveryScenario
         // round-robined into the killed peer may time out until the dead
         // transport is noticed, but successes must never stop flowing.
         var replies = await traffic;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             replies.Any(reply => reply.ProviderRid == "api-a"),
             "SF-D2: no request was served by the surviving provider.");
 
@@ -61,7 +61,7 @@ internal static class SfD2LongOutageRecoveryScenario
         for (var i = 0; i < 8; i++)
         {
             var reply = await SfProbe.RequestAsync(consumer, $"sf-d2-after-{i}");
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "api-a",
                 $"SF-D2: post-recovery request {i} was served by '{reply.ProviderRid}'.");
         }
@@ -89,7 +89,7 @@ internal static class SfD2LongOutageRecoveryScenario
             try
             {
                 var reply = await SfProbe.RequestAsync(consumer, $"sf-d2-{index++}");
-                ScenarioAssert.That(
+                ZlinkStreamAssert.Ensure(
                     reply.Value == "profile:fast",
                     "SF-D2: request returned an unexpected value.");
                 replies.Add(reply);
@@ -109,8 +109,8 @@ internal static class SfD2LongOutageRecoveryScenario
         var finalGap = DateTimeOffset.UtcNow - lastSuccess;
         if (finalGap > maxGap) maxGap = finalGap;
 
-        ScenarioAssert.That(replies.Count > 0, "SF-D2: the request window produced no successful traffic.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(replies.Count > 0, "SF-D2: the request window produced no successful traffic.");
+        ZlinkStreamAssert.Ensure(
             maxGap < options.OwnerLeaseTtl * 2,
             $"SF-D2: successful traffic stalled for {maxGap}, longer than the dead-transport tolerance.");
         return replies;

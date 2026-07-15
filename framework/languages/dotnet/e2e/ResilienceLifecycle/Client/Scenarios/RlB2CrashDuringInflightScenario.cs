@@ -55,7 +55,7 @@ internal static class RlB2CrashDuringInflightScenario
             failed = true;
         }
 
-        ScenarioAssert.That(failed, "RL-B2 in-flight request unexpectedly completed after provider crash.");
+        ZlinkStreamAssert.Ensure(failed, "RL-B2 in-flight request unexpectedly completed after provider crash.");
 
         await providerA.Post("/admin/restore").AsyncRaw();
         await providerA.Post("/admin/weight/wait")
@@ -68,7 +68,7 @@ internal static class RlB2CrashDuringInflightScenario
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-b2-after-crash"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(followUp.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
+        ZlinkStreamAssert.Ensure(followUp.ProviderRid == "api-a", "RL-B2 surviving provider traffic failed.");
 
         var restarted = await processes.StartProviderBAsync();
         using var restartedProviderB = ZLinkHttpClient.Create(restarted.Url)

@@ -10,7 +10,7 @@ body 소스는 **상호 배타**다. `Body`, `BodyStream`, `Form`, `Multipart` �
 ```csharp
 await client.Post("/games")
     .Body(new CreateGameReq("ranked-match-0611"))
-    .SubmitAsync<CreateGameRes>();
+    .Async<CreateGameRes>();
 ```
 
 `Body<T>(dto)`는 DTO를 Web 기본값(`JsonSerializerDefaults.Web`)으로 직렬화하고
@@ -19,7 +19,7 @@ await client.Post("/games")
 ## raw body
 
 ```csharp
-await client.Post("/raw").Body("plain text payload", "text/plain").SubmitRawAsync();
+await client.Post("/raw").Body("plain text payload", "text/plain").AsyncRaw();
 ```
 
 ## form-urlencoded
@@ -28,7 +28,7 @@ await client.Post("/raw").Body("plain text payload", "text/plain").SubmitRawAsyn
 await client.Post("/login")
     .Form("user", "aria")
     .Form("password", "secret value")
-    .SubmitRawAsync();
+    .AsyncRaw();
 // content-type: application/x-www-form-urlencoded, percent-encoding 적용
 ```
 
@@ -38,7 +38,7 @@ await client.Post("/login")
 await client.Post("/upload")
     .Multipart("title", "patch notes")
     .MultipartFile("file", "notes.txt", fileContent, "text/plain")
-    .SubmitRawAsync();
+    .AsyncRaw();
 ```
 
 ## streaming 업로드
@@ -53,7 +53,7 @@ await client.Post("/upload-stream")
     .BodyStream(
         () => chunks.Count > 0 ? chunks.Dequeue() : null,
         "application/octet-stream")
-    .SubmitRawAsync();
+    .AsyncRaw();
 ```
 
 provider는 `Func<byte[]?>`다 — 끝나면 `null`을 돌려준다(참조형이라 `? chunk : null`이

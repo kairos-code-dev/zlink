@@ -25,7 +25,7 @@ path는 반드시 `/`로 시작한다. `BaseUrl`에 경로 prefix가 있으면 p
 await client.Get("/search")
     .Query("q", "ranked match")
     .Query("limit", "20")
-    .SubmitRawAsync();
+    .AsyncRaw();
 // → /search?q=ranked%20match&limit=20
 ```
 
@@ -37,13 +37,13 @@ await client.Get("/search")
 ```csharp
 await client.Get("/players/7281")
     .Header("x-trace-id", "abc-123")
-    .SubmitRawAsync();
+    .AsyncRaw();
 ```
 
 ## 요청별 timeout
 
 ```csharp
-await client.Get("/slow").Timeout(TimeSpan.FromSeconds(10)).SubmitRawAsync();
+await client.Get("/slow").Timeout(TimeSpan.FromSeconds(10)).AsyncRaw();
 ```
 
 [다음: Request Body →](05-request-body.ko.md)

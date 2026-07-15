@@ -16,6 +16,8 @@ using Zlink.Framework.Locations.Redis;
 
 namespace StoreFailure.Server.Consumer;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal static class ConsumerHostFactory
 {
     public static WebApplication Create(string[] args)
@@ -306,45 +308,5 @@ internal sealed record ConsumerOptions(
     int LocationGraceMs)
 {
     public static ConsumerOptions Parse(string[] args)
-    {
-        var values = ParseArgs(args);
-        return new ConsumerOptions(
-            Require(values, "http-url"),
-            Require(values, "redis-endpoint"),
-            Require(values, "redis-key-prefix"),
-            Require(values, "log-dir"),
-            values.TryGetValue("trace-label", out var label) ? label : "consumer",
-            values.TryGetValue("store-mode", out var mode) ? mode : "stamp",
-            values.TryGetValue("location-heartbeat-ms", out var hb) ? int.Parse(hb) : 1000,
-            values.TryGetValue("location-lease-ttl-ms", out var ttl) ? int.Parse(ttl) : 3000,
-            values.TryGetValue("location-polling-ms", out var poll) ? int.Parse(poll) : 500,
-            values.TryGetValue("location-grace-ms", out var grace) ? int.Parse(grace) : 6000);
-    }
-
-    static IReadOnlyDictionary<string, string> ParseArgs(string[] args)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < args.Length; i++)
-        {
-            var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {key}.");
-            }
-
-            values[key[2..]] = args[++i];
-        }
-
-        return values;
-    }
-
-    static string Require(IReadOnlyDictionary<string, string> values, string key) =>
-        values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new ArgumentException($"--{key} is required.");
+        => E2eConfiguration.Load<ConsumerOptions>(args);
 }

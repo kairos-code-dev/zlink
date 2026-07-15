@@ -14,11 +14,11 @@ internal static class StB4EmptyStateTransferScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeEmptyState, 41);
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-B4", spotRid));
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-B4 join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-B4 join was rejected.");
 
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B4", "after-empty-state-transfer"));
-        SpotActorTransferScenarioContext.Require(probe.NodeRid == "actor-b", $"ST-B4 probe expected actor-b, got {probe.NodeRid}.");
-        SpotActorTransferScenarioContext.Require(probe.StateVersion == 41, $"ST-B4 loaded target state expected 41, got {probe.StateVersion}.");
+        ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-b", $"ST-B4 probe expected actor-b, got {probe.NodeRid}.");
+        ZlinkStreamAssert.Ensure(probe.StateVersion == 41, $"ST-B4 loaded target state expected 41, got {probe.StateVersion}.");
 
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out_empty|custom-adapter",

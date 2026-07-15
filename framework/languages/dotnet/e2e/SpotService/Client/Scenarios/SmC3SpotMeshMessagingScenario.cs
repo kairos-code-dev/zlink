@@ -16,26 +16,26 @@ internal static class SmC3SpotMeshMessagingScenario
             var created = (await playA.Post("/spot/create")
                 .Body(new CreateSpotReq(spotRid))
                 .Async<CreateSpotRes>()).Body;
-            ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            ZlinkStreamAssert.Ensure(created.SpotRid == spotRid && created.NodeRid == "play-a",
                 "SM-C3 spot was not created on play-a.");
         }
 
         var direct = (await playA.Post("/spot/to-spot/request")
             .Body(new SpotToSpotRouteReq(sourceSpotRid, targetSpotRid, "direct"))
             .Async<SpotToSpotRes>()).Body;
-        ScenarioAssert.That(direct.SourceSpotRid == sourceSpotRid, "SM-C3 source spot mismatch.");
-        ScenarioAssert.That(direct.TargetSpotRid == targetSpotRid, "SM-C3 target spot mismatch.");
-        ScenarioAssert.That(direct.TargetValue >= 3, "SM-C3 target state was not updated.");
+        ZlinkStreamAssert.Ensure(direct.SourceSpotRid == sourceSpotRid, "SM-C3 source spot mismatch.");
+        ZlinkStreamAssert.Ensure(direct.TargetSpotRid == targetSpotRid, "SM-C3 target spot mismatch.");
+        ZlinkStreamAssert.Ensure(direct.TargetValue >= 3, "SM-C3 target state was not updated.");
 
         var timeout = (await playA.Post("/spot/to-spot/timeout")
             .Body(new SpotToSpotTimeoutRouteReq(sourceSpotRid, targetSpotRid, "slow"))
             .Async<SpotToSpotTimeoutRes>()).Body;
-        ScenarioAssert.That(timeout.Failed, "SM-C3 slow target request did not time out.");
+        ZlinkStreamAssert.Ensure(timeout.Failed, "SM-C3 slow target request did not time out.");
 
         var negative = (await playA.Post("/spot/to-spot/negative")
             .Body(new SpotToSpotNegativeRouteReq(sourceSpotRid, targetSpotRid, "missing"))
             .Async<SpotToSpotNegativeRes>()).Body;
-        ScenarioAssert.That(negative.RequestFailed, "SM-C3 missing target handler request did not fail.");
+        ZlinkStreamAssert.Ensure(negative.RequestFailed, "SM-C3 missing target handler request did not fail.");
 
         var expectedEvidence = new[]
         {
@@ -50,7 +50,7 @@ internal static class SmC3SpotMeshMessagingScenario
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-C3 evidence mismatch.");
 

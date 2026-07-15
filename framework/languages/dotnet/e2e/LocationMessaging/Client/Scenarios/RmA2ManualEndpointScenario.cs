@@ -12,13 +12,13 @@ internal static class RmA2ManualEndpointScenario
     {
         var reply = (await providerA.Post("/profile/manual").Body(new ProfileReq("rm-a2"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(reply.Value == "profile:rm-a2", "RM-A2 reply value mismatch.");
-        ScenarioAssert.That(reply.ProviderRid == "api-a", "RM-A2 manual endpoint should reach api-a.");
+        ZlinkStreamAssert.Ensure(reply.Value == "profile:rm-a2", "RM-A2 reply value mismatch.");
+        ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a", "RM-A2 manual endpoint should reach api-a.");
 
         var evidence = (await providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq("value=rm-a2"))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("value=rm-a2", StringComparison.Ordinal)),
             "RM-A2 api-a evidence missing.");
     }

@@ -21,7 +21,7 @@ internal static class RmA4SameRidFailoverScenario
         var first = (await providerV1Client.Post("/profile/request")
             .Body(new ProfileReq("rm-a4-v1"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             first.ProviderRid == "api-a",
             "RM-A4 initial request should reach api-a.");
 
@@ -46,7 +46,7 @@ internal static class RmA4SameRidFailoverScenario
             var reply = (await providerV2Client.Post("/profile/request")
                 .Body(new ProfileReq($"{marker}-{i}"))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "api-a",
                 "RM-A4 replacement request should reach api-a.");
         }
@@ -63,7 +63,7 @@ internal static class RmA4SameRidFailoverScenario
             beforeV2,
             "profile-request|rid=api-a",
             marker);
-        ScenarioAssert.That(v1Count == 0 && v2Count == 20, "RM-A4 replacement provider evidence did not match.");
+        ZlinkStreamAssert.Ensure(v1Count == 0 && v2Count == 20, "RM-A4 replacement provider evidence did not match.");
     }
 
     private static async Task WaitForSingleLiveRowAsync(ZLinkHttpClient client, string expectedEndpoint)

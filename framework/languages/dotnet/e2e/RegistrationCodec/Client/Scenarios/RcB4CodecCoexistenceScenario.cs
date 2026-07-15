@@ -15,7 +15,7 @@ internal static class RcB4CodecCoexistenceScenario
                 "codec-request|codec=json", "codec-request|codec=protobuf", "codec-request|codec=msgpack"
             ]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             EvidenceText.HasCodec(evidence, "json", "application/json")
             && EvidenceText.HasCodec(evidence, "protobuf", "application/x-protobuf")
             && EvidenceText.HasCodec(evidence, "msgpack", "application/x-msgpack"),

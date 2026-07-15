@@ -16,7 +16,7 @@ internal static class RmC5MissingPacketScenario
         var missingRequest = (await storeConsumer.Post("/profile/missing-request")
             .Body(new ProfileReq("missing-request"))
             .Async<RequestFailureRes>()).Body;
-        ScenarioAssert.That(missingRequest.Failed, "RM-C5 missing request should fail.");
+        ZlinkStreamAssert.Ensure(missingRequest.Failed, "RM-C5 missing request should fail.");
 
         await storeConsumer.Post("/profile/missing-command")
             .Body(new ProfileMsg("missing-send"))
@@ -31,11 +31,11 @@ internal static class RmC5MissingPacketScenario
                 providerB,
                 "MissingProfileMsg"))
             .ToArray();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("dispatch-error", StringComparison.Ordinal)
                                  && line.Contains("MissingProfileReq", StringComparison.Ordinal)),
             "RM-C5 missing request evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("dispatch-error", StringComparison.Ordinal)
                                  && line.Contains("MissingProfileMsg", StringComparison.Ordinal)),
             "RM-C5 missing send evidence missing.");
@@ -43,7 +43,7 @@ internal static class RmC5MissingPacketScenario
         var reply = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c5-after"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(reply.Value == "profile:rm-c5-after", "RM-C5 normal request after negative path failed.");
+        ZlinkStreamAssert.Ensure(reply.Value == "profile:rm-c5-after", "RM-C5 normal request after negative path failed.");
     }
 
     private static async Task<string[]> WaitForDispatchErrorEvidenceAsync(

@@ -19,6 +19,8 @@ using Zlink.Framework.Locations.Redis;
 
 namespace SpotService.Server.Gateway;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal static class GatewayHostFactory
 {
     public static WebApplication Create(string[] args)
@@ -236,37 +238,5 @@ internal sealed record GatewayOptions(
     string? ExternalSpotEndpoint)
 {
     public static GatewayOptions Parse(string[] args)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < args.Length; i++)
-        {
-            var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (i + 1 >= args.Length)
-            {
-                throw new ArgumentException($"Missing value for {key}.");
-            }
-
-            values[key[2..]] = args[++i];
-        }
-
-        string Required(string key) => values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new ArgumentException($"--{key} is required.");
-
-        return new GatewayOptions(
-            Required("rid"),
-            Required("http-url"),
-            values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-spot-e2e")),
-            values.GetValueOrDefault("evidence-file"),
-            values.GetValueOrDefault("redis-endpoint"),
-            values.GetValueOrDefault("redis-key-prefix"),
-            values.GetValueOrDefault("spot-router-endpoint"),
-            values.GetValueOrDefault("spot-pub-endpoint"),
-            values.GetValueOrDefault("external-spot-endpoint"));
-    }
+        => E2eConfiguration.Load<GatewayOptions>(args);
 }

@@ -19,13 +19,13 @@ internal static class ObsA3FlowPropagationScenario
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
         await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();
         var response = await connector.Request(new GameActionReq("obs-a3-off-hop")).Async<GameActionRes>();
-        ScenarioContext.Require(response.Marker == "obs-a3-off-hop", "OBS-A3 action failed after the off hop.");
+        ZlinkStreamAssert.Ensure(response.Marker == "obs-a3-off-hop", "OBS-A3 action failed after the off hop.");
         var playLines = context.ReadFlowLines("play-a");
         var sessionLines = context.ReadFlowLines("session-a");
-        ScenarioContext.Require(playLines.Any(line => line.Contains("packet=GameActionReq", StringComparison.Ordinal)
+        ZlinkStreamAssert.Ensure(playLines.Any(line => line.Contains("packet=GameActionReq", StringComparison.Ordinal)
                                                      && line.Contains("flow=", StringComparison.Ordinal)),
             "OBS-A3 downstream Play flow was not preserved.");
-        ScenarioContext.Require(sessionLines.Count(line =>
+        ZlinkStreamAssert.Ensure(sessionLines.Count(line =>
                 line.Contains("packet=GameActionReq", StringComparison.Ordinal)) == sessionActionLinesBefore,
             "OBS-A3 tracing-off Session unexpectedly wrote a new flow line.");
         await connector.Close.Async();

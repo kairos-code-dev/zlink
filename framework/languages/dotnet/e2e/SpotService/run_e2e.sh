@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
@@ -15,6 +16,7 @@ GATEWAY_DLL="$SCRIPT_DIR/Server/Gateway/bin/Debug/net8.0/SpotService.Gateway.dll
 CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
+CONFIG_DIR="$(mktemp -d)"
 if [[ "$#" -gt 0 ]]; then
   SCENARIO_SET="$*"
   SCENARIO_SET="${SCENARIO_SET// /,}"
@@ -175,6 +177,7 @@ PIDS=()
 
 cleanup() {
   set +e
+  rm -rf "$CONFIG_DIR"
   if [[ -n "${REDIS_CONTAINER:-}" ]]; then
     docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   fi
@@ -436,17 +439,20 @@ start_server() {
   local name="$1"
   local dll="$2"
   shift 2
+  local config="$CONFIG_DIR/$name.json"
+  python3 "$SCRIPT_DIR/../write_role_config.py" "$config" -- --role "$name" "$@"
   setsid bash -c '
     set +e
     name="$1"
     dll="$2"
     log_dir="$3"
-    shift 3
-    dotnet "$dll" "$@" >"$log_dir/${name}.stdout.log" 2>"$log_dir/${name}.stderr.log"
+    config="$4"
+    shift 4
+    dotnet "$dll" --config "$config" >"$log_dir/${name}.stdout.log" 2>"$log_dir/${name}.stderr.log"
     rc=$?
     echo "server_exit name=${name} exit_code=${rc}" >"$log_dir/${name}.exit.log"
     exit "$rc"
-  ' bash "$name" "$dll" "$LOG_DIR" "$@" &
+  ' bash "$name" "$dll" "$LOG_DIR" "$config" &
   PIDS+=("$!")
 }
 
@@ -741,8 +747,10 @@ run_client() {
   local operation_group="$1"
   assert_servers_alive "client ${operation_group}"
   echo "client operation_group=${operation_group}" >>"$LOG_DIR/client.stdout.log"
-  timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" \
-    --gateway-url "$GATEWAY_HTTP" \
+  local config="$CONFIG_DIR/client-$operation_group.json"
+  python3 "$SCRIPT_DIR/../write_role_config.py" "$config" -- \
+    --config-dir "$CONFIG_DIR" \
+	    --gateway-url "$GATEWAY_HTTP" \
 	    --play-a-url "$PLAY_A_HTTP" \
 	    --play-b-url "$PLAY_B_HTTP" \
 	    --multi-a-url "$MULTI_A_HTTP" \
@@ -751,7 +759,8 @@ run_client() {
     --session-a-stream-endpoint "$SESSION_A_STREAM" \
     --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --operation-group "$operation_group" \
+    --operation-group "$operation_group"
+  timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
   if [[ "$operation_group" == "sm-g1" ]]; then
     assert_expected_server_exit play-a 137 "client ${operation_group} completion"

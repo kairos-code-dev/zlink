@@ -5,11 +5,11 @@
 ## 프로젝트 참조
 
 `Zlink.HttpClient`는 `Zlink.Framework`를 참조하는 라이브러리 프로젝트다. 소비 프로젝트
-에서는 프로젝트/패키지 참조를 추가한다.
+에서는 패키지 참조를 추가한다. 이 패키지는 필요한 `Zlink.Framework` 의존성을 함께 선언한다.
 
 ```xml
 <ItemGroup>
-  <ProjectReference Include="../Zlink.HttpClient/Zlink.HttpClient.csproj" />
+  <PackageReference Include="Zlink.HttpClient" Version="0.4.0" />
 </ItemGroup>
 ```
 
@@ -23,7 +23,7 @@ using Zlink.HttpClient;
 using var client = ZLinkHttpClient.Create("http://127.0.0.1:18080")
     .Build();
 
-var player = await client.Get("/players/7281").SubmitAsync<PlayerProfile>();
+var player = await client.Get("/players/7281").Async<PlayerProfile>();
 Console.WriteLine(player.Body.Name);
 ```
 
@@ -40,21 +40,28 @@ client를 만들어 요청을 수행한다.
 var res = await ZLinkHttpClient.Create("https://game-api.example.internal")
     .Post("/games")
     .Body(new CreateGameReq("ranked-match-0611"))
-    .SubmitAsync<CreateGameRes>();
+    .Async<CreateGameRes>();
 ```
 
 반복 호출한다면 client를 한 번 만들어 재사용하는 편이 connection pool 재사용 측면에서
 유리하다.
 
-## blocking 한 줄(테스트/CLI)
+## callback으로 완료 받기
 
 ```csharp
-var board = ZLinkHttpClient.Create("http://127.0.0.1:18080")
-    .Get("/leaderboard")
-    .Fetch<Leaderboard>();
+client.Get("/leaderboard").Async<Leaderboard>((error, response) =>
+{
+    if (error is not null)
+    {
+        Console.Error.WriteLine(error.Message); // 실패도 같은 callback에서 확인한다.
+        return;
+    }
+
+    Console.WriteLine(response!.Body.TopPlayer); // 성공 응답의 typed body를 사용한다.
+});
 ```
 
-`Fetch<T>()`는 결과를 기다려 typed body를 돌려주고 실패를 예외로 던진다. handler
-스레드에서는 쓰지 않는다([7장](07-async.ko.md)).
+callback은 awaitable을 사용하지 않는 client나 이벤트 루프 코드에 적합하다. 완료 값을 이어서
+계산해야 하는 일반 코드는 `Async<T>()`를 `await`한다([7장](07-async.ko.md)).
 
 [다음: Client 구성 →](03-client-configuration.ko.md)

@@ -18,20 +18,20 @@ internal static class SmF6RemoteSpotOutboundScenario
         var target = (await multiB.Post("/spot/create-user-local")
             .Body(new CreateSpotReq(targetSpotRid))
             .Async<CreateSpotRes>()).Body;
-        ScenarioAssert.That(target.NodeRid == SpotServiceNames.MultiSpotNodeB,
+        ZlinkStreamAssert.Ensure(target.NodeRid == SpotServiceNames.MultiSpotNodeB,
             "SM-F6 target spot was not created on node B.");
 
         var mesh = (await multiA.Post("/spot/spot-only/request-send")
             .Body(new SpotOnlyMeshReq(sourceSpotRid, targetSpotRid, marker))
             .Async<SpotOnlyMeshRes>()).Body;
-        ScenarioAssert.That(mesh.TargetSpotRid == targetSpotRid, "SM-F6 request target mismatch.");
-        ScenarioAssert.That(mesh.TargetValue == 7, "SM-F6 target request value mismatch.");
+        ZlinkStreamAssert.Ensure(mesh.TargetSpotRid == targetSpotRid, "SM-F6 request target mismatch.");
+        ZlinkStreamAssert.Ensure(mesh.TargetValue == 7, "SM-F6 target request value mismatch.");
 
         var join = (await multiA.Post("/actor/spot-only-join")
             .Body(new SpotOnlyJoinReq(targetSpotRid, actorId, marker))
             .Async<SpotOnlyJoinRes>()).Body;
-        ScenarioAssert.That(join.Accepted, "SM-F6 spot-only actor join was rejected.");
-        ScenarioAssert.That(join.ActorId == actorId, "SM-F6 actor join id mismatch.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "SM-F6 spot-only actor join was rejected.");
+        ZlinkStreamAssert.Ensure(join.ActorId == actorId, "SM-F6 actor join id mismatch.");
 
         var evidence = (await multiB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([
@@ -40,7 +40,7 @@ internal static class SmF6RemoteSpotOutboundScenario
                 $"spot-actor-joined|rid={SpotServiceNames.MultiSpotNodeB}|spot={targetSpotRid}|actor={actorId}"
             ]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains(
                 $"spot-actor-joined|rid={SpotServiceNames.MultiSpotNodeB}|spot={targetSpotRid}|actor={actorId}",
                 StringComparison.Ordinal)),

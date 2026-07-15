@@ -12,19 +12,19 @@ internal static class MonC1DispatchFailureScenario
         await using var trigger = await MonitoringChannelClient.StartAsync(
             options, options.ThrowChannelEndpoint, "trigger-mon-c1");
         var failureReply = await trigger.RequestAsync(new ProfileReq("throw", "mon-c1-request"));
-        ScenarioAssert.That(failureReply.ProviderRid == "svc-throw",
+        ZlinkStreamAssert.Ensure(failureReply.ProviderRid == "svc-throw",
             "MON-C1 direct trigger did not hit throwing-monitor service.");
 
         var throwServiceEvidence = await WaitForDispatchFailureEvidenceAsync(throwService);
 
         var recoveryReply = await trigger.RequestAsync(new ProfileReq("throw", "mon-c1-recovery"));
-        ScenarioAssert.That(recoveryReply.Value == "profile:throw",
+        ZlinkStreamAssert.Ensure(recoveryReply.Value == "profile:throw",
             "MON-C1 messaging did not recover after monitoring handler failure.");
 
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             throwServiceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)),
             "MON-C1 socket evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             throwServiceEvidence.Any(line => line.Contains("monitor-throw|", StringComparison.Ordinal)),
             "MON-C1 throwing monitor evidence missing.");
         Console.WriteLine("scenario MON-C1 passed");

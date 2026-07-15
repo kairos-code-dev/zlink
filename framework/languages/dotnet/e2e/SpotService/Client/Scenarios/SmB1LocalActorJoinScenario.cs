@@ -10,7 +10,7 @@ internal static class SmB1LocalActorJoinScenario
     public static async Task RunAsync(ZLinkHttpClient playA, string sessionAStreamEndpoint)
     {
         var actorId = $"actor-sm-b1-local-{Guid.NewGuid():N}";
-        ScenarioAssert.That(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint),
+        ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(sessionAStreamEndpoint),
             "session-a stream endpoint is required.");
         await using var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
@@ -28,8 +28,8 @@ internal static class SmB1LocalActorJoinScenario
         var ping = await client.Request(new ActorPingReq("b1"))
             .PacketName("ActorPingReq")
             .Async<ActorPingRes>();
-        ScenarioAssert.That(ping.ActorId == actorId, "SM-B1 actor reply mismatch.");
-        ScenarioAssert.That(ping.NodeRid == "play-a", "SM-B1 local node mismatch.");
+        ZlinkStreamAssert.Ensure(ping.ActorId == actorId, "SM-B1 actor reply mismatch.");
+        ZlinkStreamAssert.Ensure(ping.NodeRid == "play-a", "SM-B1 local node mismatch.");
         var expectedEvidence = new[]
         {
             $"entry-created|rid=play-a|actor={actorId}",
@@ -38,7 +38,7 @@ internal static class SmB1LocalActorJoinScenario
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B1 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b1 passed");

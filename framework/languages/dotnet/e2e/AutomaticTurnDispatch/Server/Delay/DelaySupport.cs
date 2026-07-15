@@ -1,5 +1,7 @@
 namespace AutomaticTurnDispatch.Server.Delay;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal sealed record NodeOptions(string Rid);
 
 internal sealed class EvidenceStore
@@ -43,37 +45,5 @@ internal sealed record DelayOptions(
     public string EvidenceFile => Path.Combine(LogDir, $"{Rid}.evidence.log");
 
     public static DelayOptions Parse(string[] args)
-    {
-        var values = Cli.Parse(args);
-        return new DelayOptions(
-            Cli.Required(values, "rid"),
-            Cli.Required(values, "http-url"),
-            Cli.Required(values, "delay-endpoint"),
-            Cli.Required(values, "log-dir"));
-    }
-}
-
-internal static class Cli
-{
-    public static Dictionary<string, string> Parse(string[] args)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < args.Length; i++)
-        {
-            if (!args[i].StartsWith("--", StringComparison.Ordinal)) continue;
-
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
-
-            values[args[i][2..]] = args[++i];
-        }
-
-        return values;
-    }
-
-    public static string Required(Dictionary<string, string> values, string key)
-    {
-        return values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new ArgumentException($"--{key} is required.");
-    }
+        => E2eConfiguration.Load<DelayOptions>(args);
 }

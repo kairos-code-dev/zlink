@@ -26,7 +26,7 @@ internal static class SmB8ExplicitActorDestroyScenario
         var destroyed = await client.Request(new DestroyActorReq(actorId))
             .PacketName("DestroyActorReq")
             .Async<DestroyActorRes>();
-        ScenarioAssert.That(destroyed.Destroyed && destroyed.ActorId == actorId, "SM-B8 destroy reply mismatch.");
+        ZlinkStreamAssert.Ensure(destroyed.Destroyed && destroyed.ActorId == actorId, "SM-B8 destroy reply mismatch.");
 
         var snapshotFailed = false;
         for (var attempt = 0; attempt < 10; attempt++)
@@ -47,16 +47,16 @@ internal static class SmB8ExplicitActorDestroyScenario
             await Task.Delay(150);
         }
 
-        ScenarioAssert.That(snapshotFailed, "SM-B8 expected request to destroyed actor to fail.");
+        ZlinkStreamAssert.Ensure(snapshotFailed, "SM-B8 expected request to destroyed actor to fail.");
 
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"actor-destroyed|rid=play-a|actor={actorId}"]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains($"actor-destroyed|rid=play-a|actor={actorId}", StringComparison.Ordinal)),
             "SM-B8 expected actor destroy evidence.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.All(line =>
                 !line.Contains($"actor-destroy-failed|rid=play-a|actor={actorId}", StringComparison.Ordinal)),
             "SM-B8 actor destroy reported a failure.");

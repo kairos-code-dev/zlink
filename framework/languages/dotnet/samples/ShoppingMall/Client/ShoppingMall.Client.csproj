@@ -14,5 +14,6 @@
         <ProjectReference Include="../../Common/Logging/Zlink.Samples.Logging.csproj"/>
         <PackageReference Include="Zlink.HttpClient"/>
         <ProjectReference Include="../../../src/Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../../../src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
     </ItemGroup>
 </Project>

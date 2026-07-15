@@ -1,5 +1,7 @@
 namespace LocationMessaging.Server.Provider.Configuration;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal sealed record ServerOptions(
     string Role,
     string HttpUrl,
@@ -13,44 +15,8 @@ internal sealed record ServerOptions(
     string? RouteEndpoint,
     int Weight,
     long MaxMessageSize,
-    IReadOnlyList<string> RoutePeers)
+    IReadOnlyList<string>? RoutePeers = null)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var routePeers = new List<string>();
-
-        for (var i = 0; i < args.Length; i++)
-        {
-            var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal)) continue;
-
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {key}.");
-
-            var value = args[++i];
-            if (key == "--route-peer")
-                routePeers.Add(value);
-            else
-                values[key[2..]] = value;
-        }
-
-        var rid = values.GetValueOrDefault("rid", "node");
-        Environment.SetEnvironmentVariable("ZLINK_E2E_RID", rid);
-        return new ServerOptions(
-            defaultRole,
-            values.GetValueOrDefault("http-url", "http://127.0.0.1:0"),
-            values.GetValueOrDefault("log-dir", Path.Combine(Path.GetTempPath(), "zlink-dotnet-e2e-log")),
-            values.GetValueOrDefault("evidence-file"),
-            rid,
-            values.GetValueOrDefault("redis-endpoint"),
-            values.GetValueOrDefault("redis-key-prefix"),
-            values.GetValueOrDefault("channel-endpoint"),
-            values.GetValueOrDefault("manual-client-endpoint"),
-            values.GetValueOrDefault("route-endpoint"),
-            int.TryParse(values.GetValueOrDefault("weight"), out var weight) ? weight : 100,
-            long.TryParse(values.GetValueOrDefault("max-message-size"), out var maxMessageSize)
-                ? maxMessageSize
-                : 0,
-            routePeers);
-    }
+        => E2eConfiguration.Load<ServerOptions>(args) with { Role = defaultRole };
 }

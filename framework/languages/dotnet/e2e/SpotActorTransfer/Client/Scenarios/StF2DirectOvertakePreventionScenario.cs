@@ -20,7 +20,7 @@ internal static class StF2DirectOvertakePreventionScenario
             await context.SendRefAsync(context.NodeA, actorId, oldRef, new HandoffPacket("ST-F2", marker));
         await Task.Delay(300);
         await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
-        SpotActorTransferScenarioContext.Require((await joinTask).Accepted, "ST-F2 transfer was rejected.");
+        ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F2 transfer was rejected.");
         var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
         await context.SendRefAsync(context.NodeB, actorId, targetRef, new HandoffPacket("ST-F2", "D1"));
         await context.AssertEvidenceOrderAsync(context.NodeB, actorId, "handoff_packet", ["B1", "B2", "D1"]);

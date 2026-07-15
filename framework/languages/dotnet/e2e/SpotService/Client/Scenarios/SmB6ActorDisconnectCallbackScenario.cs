@@ -64,21 +64,21 @@ internal static class SmB6ActorDisconnectCallbackScenario
                     : $"SM-B6 leave flow did not become routable. Last error: {last.Message}",
                 last);
 
-        ScenarioAssert.That(left.Accepted && left.ActorId == leaveActorId, "SM-B6 leave reply mismatch.");
+        ZlinkStreamAssert.Ensure(left.Accepted && left.ActorId == leaveActorId, "SM-B6 leave reply mismatch.");
         var expectedLeaveEvidence = new[] { $"spot-actor-left|rid=play-a|spot={spotRid}|actor={leaveActorId}" };
         var playAAfterLeave = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedLeaveEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedLeaveEvidence.All(expected =>
                 playAAfterLeave.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B6 expected explicit leave evidence.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             playAAfterLeave.Any(line => line.Contains(
                 $"spot-actor-left|rid=play-a|spot={spotRid}|actor={leaveActorId}",
                 StringComparison.Ordinal)),
             "SM-B6 expected explicit leave evidence.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             playAAfterLeave.All(line => !line.Contains(
                 $"spot-actor-disconnected|rid=play-a|spot={spotRid}|actor={leaveActorId}",
                 StringComparison.Ordinal)),
@@ -112,10 +112,10 @@ internal static class SmB6ActorDisconnectCallbackScenario
         var playAAfterDisconnect = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([expectedDisconnectEvidence]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             playAAfterDisconnect.Any(line => line.Contains(expectedDisconnectEvidence, StringComparison.Ordinal)),
             "SM-B6 expected disconnect evidence.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             playAAfterDisconnect.All(line => !line.Contains(
                 $"spot-actor-left|rid=play-a|spot={spotRid}|actor={disconnectActorId}",
                 StringComparison.Ordinal)),

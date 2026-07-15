@@ -35,8 +35,8 @@ public sealed partial class RegressionTests
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export SHOPPINGMALL_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export SHOPPINGMALL_REDIS_KEY_PREFIX=\"shoppingmall:dotnet:${RUN_ID}:\"", shellRunner,
+        Assert.Contains("SHOPPINGMALL_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("SHOPPINGMALL_REDIS_KEY_PREFIX=\"shoppingmall:dotnet:${RUN_ID}:\"", shellRunner,
             StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-shoppingmall-dotnet-redis-${RUN_ID}\"", shellRunner,
             StringComparison.Ordinal);
@@ -73,13 +73,13 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$ports = New-SamplePorts -Count 12 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$env:SHOPPINGMALL_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$env:SHOPPINGMALL_REDIS_KEY_PREFIX = \"shoppingmall:dotnet:${RunId}:\"",
+        Assert.Contains("$SHOPPINGMALL_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$SHOPPINGMALL_REDIS_KEY_PREFIX = \"shoppingmall:dotnet:${RunId}:\"",
             powershellRunner, StringComparison.Ordinal);
         AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-shoppingmall-dotnet-redis");
         Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SHOPPINGMALL_BASE_PORT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SHOPPINGMALL_STORE_DIR", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SHOPPINGMALL_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SHOPPINGMALL_STORE_DIR", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("SHOPPINGMALL_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Assert-SampleLogContains -LogDirectory $SampleLogDir -Pattern \"shoppingmall=completed\"",
             powershellRunner, StringComparison.Ordinal);

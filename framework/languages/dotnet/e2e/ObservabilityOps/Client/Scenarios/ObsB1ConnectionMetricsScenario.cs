@@ -23,7 +23,7 @@ internal static class ObsB1ConnectionMetricsScenario
             var active = (await context.Session.Post("/metrics/wait")
                 .Body(new MetricWaitReq("zlink.stream.connections.active", 3))
                 .Async<MetricSample[]>()).Body;
-            ScenarioContext.Require(active.Any(sample => sample.Name == "zlink.stream.connections.active"
+            ZlinkStreamAssert.Ensure(active.Any(sample => sample.Name == "zlink.stream.connections.active"
                                                          && sample.Value == 3),
                 "OBS-B1 active connection gauge did not reach three.");
             foreach (var connector in connectors) await connector.Close.Async();
@@ -32,13 +32,13 @@ internal static class ObsB1ConnectionMetricsScenario
             var closed = (await context.Session.Post("/metrics/wait")
                 .Body(new MetricWaitReq("zlink.stream.connections.closed", 3))
                 .Async<MetricSample[]>()).Body;
-            ScenarioContext.Require(closed.Any(sample => sample.Name == "zlink.stream.connections.closed"
+            ZlinkStreamAssert.Ensure(closed.Any(sample => sample.Name == "zlink.stream.connections.closed"
                                                          && sample.Value >= 3),
                 "OBS-B1 closed connection counter did not increase by three.");
             var inactive = (await context.Session.Post("/metrics/wait")
                 .Body(new MetricWaitReq("zlink.stream.connections.active", 0, 0))
                 .Async<MetricSample[]>()).Body;
-            ScenarioContext.Require(inactive.Any(sample => sample.Name == "zlink.stream.connections.active"
+            ZlinkStreamAssert.Ensure(inactive.Any(sample => sample.Name == "zlink.stream.connections.active"
                                                            && sample.Value == 0),
                 "OBS-B1 active connection gauge did not return to zero.");
         }
@@ -77,7 +77,7 @@ internal static class ObsB1ConnectionMetricsScenario
         proxy.DropConnection();
         await proxy.WaitForConnectionAsync();
         await sawReconnect.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        ScenarioContext.Require(Interlocked.Read(ref reconnectAttempts) > 0,
+        ZlinkStreamAssert.Ensure(Interlocked.Read(ref reconnectAttempts) > 0,
             "OBS-B1 connector reconnect counter did not increase.");
         await reconnecting.Close.Async();
         Console.WriteLine("scenario OBS-B1 passed");

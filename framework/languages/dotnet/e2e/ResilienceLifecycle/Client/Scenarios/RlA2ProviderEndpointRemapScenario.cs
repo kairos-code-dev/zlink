@@ -53,7 +53,7 @@ internal static class RlA2ProviderEndpointRemapScenario
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", marker))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.Value == "profile:fast", "RL-A2 request returned an unexpected value.");
+            ZlinkStreamAssert.Ensure(reply.Value == "profile:fast", "RL-A2 request returned an unexpected value.");
         }
     }
 
@@ -73,7 +73,7 @@ internal static class RlA2ProviderEndpointRemapScenario
             await Task.Delay(100);
         }
 
-        ScenarioAssert.That(false, "RL-A2 provider did not become healthy.");
+        ZlinkStreamAssert.Ensure(false, "RL-A2 provider did not become healthy.");
     }
 
     private static async Task WaitUntilUnavailableAsync(ZLinkHttpClient http)
@@ -93,6 +93,6 @@ internal static class RlA2ProviderEndpointRemapScenario
             await Task.Delay(100);
         }
 
-        ScenarioAssert.That(false, "RL-A2 provider did not stop.");
+        ZlinkStreamAssert.Ensure(false, "RL-A2 provider did not stop.");
     }
 }

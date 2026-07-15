@@ -30,10 +30,10 @@ internal static class ObsC5RolloutScenario
         await WaitActorAsync(context, actorId, "play-b", TimeSpan.FromSeconds(15));
         var status = await ScenarioContext.WaitForDrainAsync(
             context.PlayA, TimeSpan.FromSeconds(35));
-        ScenarioContext.Require(status.Result == "Drained",
+        ZlinkStreamAssert.Ensure(status.Result == "Drained",
             $"OBS-C5 sequential rollout returned {status.Result}/{status.Reason}.");
         var metrics = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body.Metrics;
-        ScenarioContext.Require(metrics.All(sample => sample.Name != "zlink.drain.forced"),
+        ZlinkStreamAssert.Ensure(metrics.All(sample => sample.Name != "zlink.drain.forced"),
             "OBS-C5 sequential rollout entered ForceStopping.");
         await connector.Close.Async();
     }
@@ -47,14 +47,14 @@ internal static class ObsC5RolloutScenario
             context.PlayA.Post("/drain?deadlineMs=10000").AsyncRaw().AsTask(),
             context.PlayB.Post("/drain?deadlineMs=10000").AsyncRaw().AsTask());
         var draining = await WaitBothDrainingAsync(context);
-        ScenarioContext.Require(draining.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == "play-a"),
+        ZlinkStreamAssert.Ensure(draining.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == "play-a"),
             "OBS-C5 zero-target drain moved the actor to a draining peer.");
         var source = await ScenarioContext.WaitForDrainAsync(
             context.PlayA, TimeSpan.FromSeconds(15));
-        ScenarioContext.Require(source.Result == "ForceStopped" && source.Reason == "DeadlineExceeded",
+        ZlinkStreamAssert.Ensure(source.Result == "ForceStopped" && source.Reason == "DeadlineExceeded",
             $"OBS-C5 zero-target source returned {source.Result}/{source.Reason}.");
         var metrics = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body.Metrics;
-        ScenarioContext.Require(metrics.Any(sample => sample.Name == "zlink.drain.forced"
+        ZlinkStreamAssert.Ensure(metrics.Any(sample => sample.Name == "zlink.drain.forced"
                                                       && sample.Tags.GetValueOrDefault("kind") == "actor"
                                                       && sample.Value >= 1),
             "OBS-C5 zero-target forced actor metric was not recorded.");

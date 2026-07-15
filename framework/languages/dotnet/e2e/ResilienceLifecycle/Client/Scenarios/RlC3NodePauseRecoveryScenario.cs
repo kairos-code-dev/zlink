@@ -24,7 +24,7 @@ internal static class RlC3NodePauseRecoveryScenario
         var during = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c3-during-down"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(during.ProviderRid == "api-a", "RL-C3 did not use surviving provider during node down.");
+        ZlinkStreamAssert.Ensure(during.ProviderRid == "api-a", "RL-C3 did not use surviving provider during node down.");
 
         await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
@@ -46,7 +46,7 @@ internal static class RlC3NodePauseRecoveryScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("marker=rl-c3-during-down", StringComparison.Ordinal)),
                 "RL-C3 did not record expected evidence 'marker=rl-c3-during-down'.");
         }
@@ -61,7 +61,7 @@ internal static class RlC3NodePauseRecoveryScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line =>
                     line.Contains("profile-request|rid=api-b|marker=rl-c3-recovered-", StringComparison.Ordinal)),
                 "RL-C3 did not record expected evidence 'marker=rl-c3-recovered-'.");

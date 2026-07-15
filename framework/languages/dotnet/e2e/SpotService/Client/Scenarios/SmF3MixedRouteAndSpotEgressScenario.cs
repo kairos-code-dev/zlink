@@ -12,23 +12,23 @@ internal static class SmF3MixedRouteAndSpotEgressScenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .Async<CreateSpotRes>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid, "SM-F3 target spot was not created.");
+        ZlinkStreamAssert.Ensure(created.SpotRid == spotRid, "SM-F3 target spot was not created.");
 
         var before = await RoutePingAsync(gateway, "sm-f3-before");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             before is { Value: "sm-f3-before", NodeRid: "play-a" },
             "SM-F3 ordinary route request did not use the shared route channel.");
 
         var state = (await gateway.Post("/spot/route-state")
             .Body(new SpotStateRouteReq(spotRid, "add", 3))
             .Async<StateRes>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             state is { SpotRid: var actualSpotRid, NodeRid: "play-a", Value: 3 }
             && actualSpotRid == spotRid,
             "SM-F3 spot route request was not dispatched to its target spot.");
 
         var afterMixed = await RoutePingAsync(gateway, "sm-f3-after");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             afterMixed is { Value: "sm-f3-after", NodeRid: "play-a" },
             "SM-F3 spot routing interfered with ordinary route messaging.");
 
@@ -41,7 +41,7 @@ internal static class SmF3MixedRouteAndSpotEgressScenario
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line =>
                 line.Contains(expected, StringComparison.Ordinal))),
             "SM-F3 evidence mismatch.");

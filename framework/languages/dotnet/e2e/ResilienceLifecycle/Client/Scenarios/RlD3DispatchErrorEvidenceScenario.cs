@@ -15,7 +15,7 @@ internal static class RlD3DispatchErrorEvidenceScenario
         var failed = await consumer.Post("/profile/request/missing")
             .Body(new ProfileReq("fast", "rl-d3-missing"))
             .AsyncRaw();
-        ScenarioAssert.That(failed.Status >= 500, "RL-D3 expected missing request handler failure.");
+        ZlinkStreamAssert.Ensure(failed.Status >= 500, "RL-D3 expected missing request handler failure.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -25,7 +25,7 @@ internal static class RlD3DispatchErrorEvidenceScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("packet=MissingProfileReq", StringComparison.Ordinal)),
                 "RL-D3 dispatch-error evidence did not include MissingProfileReq.");
         }

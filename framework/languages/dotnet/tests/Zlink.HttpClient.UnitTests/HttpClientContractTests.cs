@@ -761,6 +761,59 @@ public sealed class HttpClientContractTests
         Assert.Equal(3, player.Body.Id);
     }
 
+    [Fact]
+    public void Standalone_and_server_request_surfaces_expose_only_valid_terminators()
+    {
+        Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Yield"));
+        Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Submit"));
+        Assert.NotNull(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Yield"));
+        Assert.NotNull(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Submit"));
+    }
+
+    [Fact]
+    public async Task Callback_completion_enters_the_captured_execution_turn()
+    {
+        using var server = new TestHttpServer(async ctx =>
+            await ctx.Response.WriteAsync(200, """{"id":11,"name":"Callback"}"""));
+        var turn = new CapturedExecutionTurn();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl)
+            .BuildServer(new FixedExecutionScheduler(turn));
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Exception? callbackError = null;
+        Player? callbackBody = null;
+
+        client.Get("/callback").Async<Player>((error, response) =>
+        {
+            callbackError = error;
+            callbackBody = response?.Body;
+            completed.TrySetResult();
+        });
+
+        await turn.Posted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(completed.Task.IsCompleted);
+        turn.RunPosted();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Null(callbackError);
+        Assert.Equal(11, callbackBody?.Id);
+        Assert.Empty(turn.Errors);
+    }
+
+    [Fact]
+    public async Task Server_yield_uses_the_captured_execution_turn()
+    {
+        using var server = new TestHttpServer(async ctx =>
+            await ctx.Response.WriteAsync(200, """{"id":12,"name":"Yield"}"""));
+        var turn = new CapturedExecutionTurn();
+        using var client = ZLinkHttpClient.Create(server.BaseUrl)
+            .BuildServer(new FixedExecutionScheduler(turn));
+
+        var response = await client.Get("/yield").Yield<Player>();
+
+        Assert.True(turn.Yielded);
+        Assert.Equal(12, response.Body.Id);
+    }
+
     private static byte[] Compress(byte[] input, string encoding)
     {
         using var output = new MemoryStream();
@@ -780,6 +833,48 @@ public sealed class HttpClientContractTests
     private sealed record CreateGameReq(string Name);
 
     private sealed record CreateGameRes(string Id, bool Ranked);
+
+    private sealed class FixedExecutionScheduler(IZLinkHttpExecutionTurn turn) : IZLinkHttpExecutionScheduler
+    {
+        public IZLinkHttpExecutionTurn Capture() => turn;
+    }
+
+    private sealed class CapturedExecutionTurn : IZLinkHttpExecutionTurn
+    {
+        private Action? _posted;
+
+        public TaskCompletionSource Posted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public List<Exception> Errors { get; } = [];
+
+        public bool Yielded { get; private set; }
+
+        public ValueTask<TResult> YieldAsync<TResult>(
+            Func<CancellationToken, ValueTask<TResult>> operation,
+            CancellationToken cancellationToken = default)
+        {
+            Yielded = true;
+            return operation(cancellationToken);
+        }
+
+        public void Post(Action callback)
+        {
+            _posted = callback;
+            Posted.TrySetResult();
+        }
+
+        public void ReportError(Exception exception)
+        {
+            Errors.Add(exception);
+        }
+
+        public void RunPosted()
+        {
+            Assert.NotNull(_posted);
+            _posted();
+        }
+    }
 
     private sealed class StreamOnlyCodecExtension : IZLinkCodecExtension
     {

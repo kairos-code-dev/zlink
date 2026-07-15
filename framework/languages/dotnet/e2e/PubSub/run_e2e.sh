@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
@@ -12,6 +13,7 @@ else
   SCENARIO="${SCENARIO// /,}"
 fi
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
@@ -61,6 +63,7 @@ pids=()
 REDIS_CONTAINER=""
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
@@ -139,7 +142,9 @@ start_server() {
   local project="$2"
   shift
   shift
-  setsid env ZLINK_E2E_RID="$name" dotnet run --no-build --project "$project" -- "$@" \
+  local config="$CONFIG_DIR/$name.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- "$@"
+  setsid dotnet run --no-build --project "$project" -- --config "$config" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -193,7 +198,8 @@ done
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
+    --config-dir "$CONFIG_DIR" \
   --publisher-url "$PUB_URL" \
   --subscriber-url "$SUB_1_URL" \
   --subscriber-url "$SUB_2_URL" \
@@ -205,7 +211,8 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --publisher-project "$PUBLISHER_PROJECT" \
   --subscriber-project "$SUBSCRIBER_PROJECT" \
   --log-dir "$LOG_DIR" \
-  --scenario "$SCENARIO" \
+  --scenario "$SCENARIO"
+dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

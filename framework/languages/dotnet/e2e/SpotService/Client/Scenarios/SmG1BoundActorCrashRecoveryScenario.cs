@@ -37,17 +37,17 @@ internal static class SmG1BoundActorCrashRecoveryScenario
         var beforeCrash = await playA.Request(new ActorPingReq("before-crash"))
             .PacketName("ActorPingReq")
             .Async<ActorPingRes>();
-        ScenarioAssert.That(beforeCrash.NodeRid == "play-a", "SM-G1 play-a actor setup mismatch.");
+        ZlinkStreamAssert.Ensure(beforeCrash.NodeRid == "play-a", "SM-G1 play-a actor setup mismatch.");
         var beforeSurvivor = await playB.Request(new ActorPingReq("before-crash"))
             .PacketName("ActorPingReq")
             .Async<ActorPingRes>();
-        ScenarioAssert.That(beforeSurvivor.NodeRid == "play-b", "SM-G1 play-b actor setup mismatch.");
+        ZlinkStreamAssert.Ensure(beforeSurvivor.NodeRid == "play-b", "SM-G1 play-b actor setup mismatch.");
 
         using var http = ZLinkHttpClient.Create(playAUrl)
             .Timeout(TimeSpan.FromSeconds(5))
             .Build();
         var response = await http.Post("/crash").AsyncRaw();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             response.Status >= 200 && response.Status < 300,
             $"SM-G1 crash endpoint returned HTTP {response.Status}.");
         await Task.Delay(TimeSpan.FromMilliseconds(200));
@@ -65,13 +65,13 @@ internal static class SmG1BoundActorCrashRecoveryScenario
             afterCrashFailed = true;
         }
 
-        ScenarioAssert.That(afterCrashFailed, "SM-G1 expected play-a actor request to fail after crash.");
+        ZlinkStreamAssert.Ensure(afterCrashFailed, "SM-G1 expected play-a actor request to fail after crash.");
 
         var survivor = await playB.Request(new ActorPingReq("after-crash"))
             .PacketName("ActorPingReq")
             .Async<ActorPingRes>();
-        ScenarioAssert.That(survivor.ActorId == "actor-sm-g1-survivor", "SM-G1 survivor actor mismatch.");
-        ScenarioAssert.That(survivor.NodeRid == "play-b", "SM-G1 survivor node mismatch.");
+        ZlinkStreamAssert.Ensure(survivor.ActorId == "actor-sm-g1-survivor", "SM-G1 survivor actor mismatch.");
+        ZlinkStreamAssert.Ensure(survivor.NodeRid == "play-b", "SM-G1 survivor node mismatch.");
 
         await using var recovered = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
@@ -100,8 +100,8 @@ internal static class SmG1BoundActorCrashRecoveryScenario
         var rebound = await recovered.Request(new ActorPingReq("rebound"))
             .PacketName("ActorPingReq")
             .Async<ActorPingRes>();
-        ScenarioAssert.That(rebound.ActorId == "actor-sm-g1-crash", "SM-G1 rebound actor mismatch.");
-        ScenarioAssert.That(rebound.NodeRid == "play-b", "SM-G1 rebound node mismatch.");
+        ZlinkStreamAssert.Ensure(rebound.ActorId == "actor-sm-g1-crash", "SM-G1 rebound actor mismatch.");
+        ZlinkStreamAssert.Ensure(rebound.NodeRid == "play-b", "SM-G1 rebound node mismatch.");
 
         Console.WriteLine("operation SpotService.sm-g1 passed");
     }

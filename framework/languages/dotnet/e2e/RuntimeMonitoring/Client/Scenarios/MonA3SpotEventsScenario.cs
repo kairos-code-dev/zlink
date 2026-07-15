@@ -13,20 +13,20 @@ internal static class MonA3SpotEventsScenario
         await service.Post("/admin/subject/create").AsyncRaw();
         var evidence = await WaitForSpotEvidenceAsync(service, before);
         await service.Post("/admin/subject/close").AsyncRaw();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains("monitor-spot|source=monitor.spot|kind=StatusChanged", StringComparison.Ordinal)),
             "MON-A3 spot status evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains("monitor-spot|source=monitor.spot|kind=PeersChanged", StringComparison.Ordinal)),
             "MON-A3 spot peer evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains("monitor-spot|source=monitor.spot|kind=SubjectsChanged", StringComparison.Ordinal)
                 && line.Contains("monitor.dynamic", StringComparison.Ordinal)),
             "MON-A3 spot subject evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains("monitor-spot|source=monitor.spot|kind=TimerHandlerFailed", StringComparison.Ordinal)
                 && line.Contains("timer=failing", StringComparison.Ordinal)),

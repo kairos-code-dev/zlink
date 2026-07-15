@@ -70,7 +70,7 @@ internal static class ProviderTrafficProbe
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", marker))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.Value == "profile:fast",
                 $"{scenario} request returned an unexpected value.");
 
@@ -79,7 +79,7 @@ internal static class ProviderTrafficProbe
         }
 
         var snapshot = (await evidence).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             snapshot.Any(entry => entry.Contains(pattern, StringComparison.Ordinal)),
             $"{scenario}: provider did not receive '{markerPrefix}' traffic before the probe deadline.");
     }

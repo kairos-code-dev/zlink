@@ -13,10 +13,10 @@ internal static class SmA2UserSpotStateMutationScenario
         var evidence = (await api.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-A2 state mutation evidence mismatch.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains($"spot-state-request|rid=play-a|spot={context.SpotRid}|value={context.CurrentValue}",
                     StringComparison.Ordinal)),

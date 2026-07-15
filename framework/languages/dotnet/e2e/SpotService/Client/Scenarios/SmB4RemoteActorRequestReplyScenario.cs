@@ -49,12 +49,12 @@ internal static class SmB4RemoteActorRequestReplyScenario
                     : $"SM-B4 remote actor request did not become routable. Last error: {last.Message}",
                 last);
 
-        ScenarioAssert.That(reply.NodeRid == "play-b", "SM-B4 remote actor request reached the wrong node.");
+        ZlinkStreamAssert.Ensure(reply.NodeRid == "play-b", "SM-B4 remote actor request reached the wrong node.");
         var expectedEvidence = new[] { $"actor-ping|rid=play-b|actor={actorId}" };
         var evidence = (await playB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B4 evidence did not include remote actor request.");
         Console.WriteLine("operation SpotService.sm-b4 passed");

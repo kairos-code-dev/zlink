@@ -15,7 +15,7 @@ internal static class RlD4MissingRequestHandlerScenario
         var failed = await consumer.Post("/profile/request/missing")
             .Body(new ProfileReq("fast", "rl-d4-missing"))
             .AsyncRaw();
-        ScenarioAssert.That(failed.Status >= 500, "RL-D4 expected public failure for missing request handler.");
+        ZlinkStreamAssert.Ensure(failed.Status >= 500, "RL-D4 expected public failure for missing request handler.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -25,7 +25,7 @@ internal static class RlD4MissingRequestHandlerScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("dispatch-error|", StringComparison.Ordinal)
                                      && line.Contains("packet=MissingProfileReq", StringComparison.Ordinal)),
                 "RL-D4 dispatch-error marker missing.");

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using StoreFailure.Shared;
 using Zlink.HttpClient;
+using Zlink.Framework.E2E.Configuration;
 
 namespace StoreFailure.Client.Support;
 
@@ -131,14 +132,17 @@ internal sealed class StoreFailureProcessManager(ClientOptions options) : IAsync
             RedirectStandardError = true,
             UseShellExecute = false
         };
-        startInfo.Environment["ZLINK_E2E_RID"] = rid;
         startInfo.ArgumentList.Add("dotnet");
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--no-build");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
-        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+        startInfo.ArgumentList.Add("--config");
+        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(
+            options.ConfigDir,
+            name,
+            ["--role", name, "--weight", "100", .. arguments]));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException($"Failed to start {name}.");

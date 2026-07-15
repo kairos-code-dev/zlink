@@ -75,7 +75,7 @@ public sealed partial class RegressionTests
         var readme = File.ReadAllText(Path.Combine(sampleRoot, "README.md"));
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export BINGO_REDIS_KEY_PREFIX=\"bingo:dotnet:${RUN_ID}:\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("BINGO_REDIS_KEY_PREFIX=\"bingo:dotnet:${RUN_ID}:\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-bingo-dotnet-redis-${RUN_ID}\"", shellRunner, StringComparison.Ordinal);
         AssertShellRunnerUsesRedisDockerHelper(shellRunner, "zlink-bingo-dotnet-redis", "BINGO_REDIS_ENDPOINT");
         Assert.DoesNotContain("if [[ -z \"${BINGO_REDIS_ENDPOINT:-}\" ]]", shellRunner, StringComparison.Ordinal);
@@ -86,15 +86,16 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("intentionally derived here, not read", shellRunner, StringComparison.Ordinal);
 
         Assert.Contains("$RunId = \"$PID-$([Guid]::NewGuid().ToString('N'))\"", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("[Environment]::SetEnvironmentVariable(\"BINGO_REDIS_KEY_PREFIX\", \"bingo:dotnet:${RunId}:\", \"Process\")",
+        Assert.Contains("$BINGO_REDIS_KEY_PREFIX = \"bingo:dotnet:${RunId}:\"",
             powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Environment]::SetEnvironmentVariable", powershellRunner, StringComparison.Ordinal);
         AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-bingo-dotnet-redis");
         Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("if (-not $env:BINGO_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (-not $BINGO_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when BINGO_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("BINGO_STARTUP_DELAY_SECONDS", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("BINGO_STARTUP_SETTLE_SECONDS", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$env:BINGO_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$BINGO_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("function Wait-LogContains", powershellRunner, StringComparison.Ordinal);
         Assert.Contains("Select-String -Pattern $Pattern -List", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Select-String -Pattern $Pattern -Quiet", powershellRunner, StringComparison.Ordinal);

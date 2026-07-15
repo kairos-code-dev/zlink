@@ -41,7 +41,7 @@ internal static class RlA1ProviderRestartScenario
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", marker))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.ProviderRid == "api-a",
+            ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a",
                 "RL-A1 request during api-b restart did not use surviving provider.");
         }
 

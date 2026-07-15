@@ -10,10 +10,14 @@ public sealed partial class RegressionTests
         var sampleRoot = ResolveSampleRoot("SupportChat");
         var scenario = File.ReadAllText(Path.Combine(sampleRoot, "Client", "SupportChatClientScenario.cs"));
 
-        Assert.Contains("Unauthenticated client must not open a conversation.", scenario, StringComparison.Ordinal);
-        Assert.Contains("Unauthenticated client must not send chat messages.", scenario, StringComparison.Ordinal);
-        Assert.Contains("Agent must not open a customer conversation.", scenario, StringComparison.Ordinal);
-        Assert.Contains("Non-participant must not send chat messages.", scenario, StringComparison.Ordinal);
+        Assert.Equal(
+            7,
+            scenario.Split("ZlinkStreamAssert.ExpectFailureAsync(", StringSplitOptions.None).Length - 1);
+        Assert.Contains("new OpenConversationReq(\"unauthenticated\")", scenario, StringComparison.Ordinal);
+        Assert.Contains("new SendChatMessageReq(\"unauthenticated\")", scenario, StringComparison.Ordinal);
+        Assert.Contains("new OpenConversationReq(\"agent cannot open\")", scenario, StringComparison.Ordinal);
+        Assert.Contains("new SendChatMessageReq(\"not a participant\")", scenario, StringComparison.Ordinal);
+        Assert.Contains("nameof(ZlinkStreamErrorCode.RemoteError)", scenario, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -61,8 +65,8 @@ public sealed partial class RegressionTests
 
         Assert.Contains("RUN_ID=\"$(basename \"${RUN_DIR}\")-$$-${RANDOM}\"", shellRunner, StringComparison.Ordinal);
         Assert.Contains("SAMPLE_LOG_DIR=\"${RUN_DIR}/sample-logs\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export SUPPORTCHAT_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
-        Assert.Contains("export SUPPORTCHAT_REDIS_KEY_PREFIX=\"supportchat:dotnet:${RUN_ID}:\"", shellRunner,
+        Assert.Contains("SUPPORTCHAT_LOG_DIR=\"${SAMPLE_LOG_DIR}\"", shellRunner, StringComparison.Ordinal);
+        Assert.Contains("SUPPORTCHAT_REDIS_KEY_PREFIX=\"supportchat:dotnet:${RUN_ID}:\"", shellRunner,
             StringComparison.Ordinal);
         Assert.Contains("REDIS_CONTAINER=\"zlink-supportchat-dotnet-redis-${RUN_ID}\"", shellRunner,
             StringComparison.Ordinal);
@@ -108,30 +112,30 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("$ports = New-SamplePorts -Count 7 -BasePort 0", powershellRunner,
             StringComparison.Ordinal);
-        Assert.Contains("$env:SUPPORTCHAT_REDIS_KEY_PREFIX = \"supportchat:dotnet:${RunId}:\"",
+        Assert.Contains("$SUPPORTCHAT_REDIS_KEY_PREFIX = \"supportchat:dotnet:${RunId}:\"",
             powershellRunner, StringComparison.Ordinal);
         AssertPowerShellRunnerUsesRedisDockerHelper(powershellRunner, "zlink-supportchat-dotnet-redis");
         Assert.Contains("if ($RedisContainer)", powershellRunner, StringComparison.Ordinal);
-        Assert.Contains("$env:SUPPORTCHAT_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("if (-not $env:SUPPORTCHAT_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
+        Assert.Contains("$SUPPORTCHAT_LOG_DIR = $SampleLogDir", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (-not $SUPPORTCHAT_REDIS_ENDPOINT)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("when SUPPORTCHAT_REDIS_ENDPOINT is not set", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_BASE_PORT", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_API_CHANNEL_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_STREAM_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("$env:SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
-        Assert.DoesNotContain("if ($env:SUPPORTCHAT_LOG_DIR)", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_BASE_PORT", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_API_CHANNEL_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_SESSION_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_SESSION_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_SUPPORT_ROUTER_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_ENTRY_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_CONVERSATION_SPOT_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_CONVERSATION_SPOT_ROUTER_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_STREAM_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT) {", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("$SUPPORTCHAT_RECONNECT_STREAM_ENDPOINT =", powershellRunner, StringComparison.Ordinal);
+        Assert.DoesNotContain("if ($SUPPORTCHAT_LOG_DIR)", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Set-DefaultEnv", powershellRunner, StringComparison.Ordinal);
         Assert.DoesNotContain("Remove-Item -Path (Join-Path $SampleLogDir \"*.log\")", powershellRunner,
             StringComparison.Ordinal);
@@ -170,7 +174,7 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.Contains("support conversation: state changed", conversationSpot, StringComparison.Ordinal);
         Assert.Contains("supportchat-closed-typing-ignore=verified", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("ExpectTimeoutAsync", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("ExpectNone<TypingChangedNotify>()", clientScenario, StringComparison.Ordinal);
 
         Assert.Contains("외부 Redis endpoint 재사용 mode는 제공하지 않는다", readme, StringComparison.Ordinal);
         Assert.Contains("실행별 key prefix를 역할들이 읽는 임시 config 파일에 기록한다", readme,

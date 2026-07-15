@@ -12,12 +12,12 @@ internal static class SmA6SpotInitializeCloseLifecycleScenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .Async<CreateSpotRes>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+        ZlinkStreamAssert.Ensure(created.SpotRid == spotRid && created.NodeRid == "play-a",
             "SM-A6 lifecycle spot was not created on play-a.");
         var closeReply = (await playA.Post("/spot/close")
             .Body(new CloseSpotReq(spotRid))
             .Async<CloseSpotRes>()).Body;
-        ScenarioAssert.That(closeReply.Closed, "SM-A6 did not close the lifecycle spot.");
+        ZlinkStreamAssert.Ensure(closeReply.Closed, "SM-A6 did not close the lifecycle spot.");
         var expectedEvidence = new[]
         {
             $"spot-initialize|rid=play-a|spot={spotRid}",
@@ -26,7 +26,7 @@ internal static class SmA6SpotInitializeCloseLifecycleScenario
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-A6 evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-a6 passed");

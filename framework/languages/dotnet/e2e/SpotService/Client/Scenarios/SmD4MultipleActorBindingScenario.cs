@@ -30,7 +30,7 @@ internal static class SmD4MultipleActorBindingScenario
                     var bound = await candidate.Request(new MultiBindReq("actor-sm-d4-x", "actor-sm-d4-y", "play-a"))
                         .PacketName("MultiBindReq")
                         .Async<MultiBindRes>();
-                    ScenarioAssert.That(bound.BoundCount == 2, "SM-D4 expected two bound actors.");
+                    ZlinkStreamAssert.Ensure(bound.BoundCount == 2, "SM-D4 expected two bound actors.");
                     client = candidate;
                     break;
                 }
@@ -57,8 +57,8 @@ internal static class SmD4MultipleActorBindingScenario
                 .PacketName("ActorPingReq")
                 .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-y")
                 .Async<ActorPingRes>();
-            ScenarioAssert.That(x.ActorId == "actor-sm-d4-x" && x.Value == "to-x", "SM-D4 x relay mismatch.");
-            ScenarioAssert.That(y.ActorId == "actor-sm-d4-y" && y.Value == "to-y", "SM-D4 y relay mismatch.");
+            ZlinkStreamAssert.Ensure(x.ActorId == "actor-sm-d4-x" && x.Value == "to-x", "SM-D4 x relay mismatch.");
+            ZlinkStreamAssert.Ensure(y.ActorId == "actor-sm-d4-y" && y.Value == "to-y", "SM-D4 y relay mismatch.");
 
             var xPushed = client.WaitFor<ActorPushNotify>()
                 .Where(message => message.Payload.ActorId == "actor-sm-d4-x")
@@ -68,8 +68,8 @@ internal static class SmD4MultipleActorBindingScenario
                 .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-x")
                 .Async<ActorPingRes>();
             var xNotify = await xPushed;
-            ScenarioAssert.That(xPushReply.ActorId == "actor-sm-d4-x", "SM-D4 x push reply actor mismatch.");
-            ScenarioAssert.That(xNotify.Payload.Value == "push-x", "SM-D4 x push payload mismatch.");
+            ZlinkStreamAssert.Ensure(xPushReply.ActorId == "actor-sm-d4-x", "SM-D4 x push reply actor mismatch.");
+            ZlinkStreamAssert.Ensure(xNotify.Payload.Value == "push-x", "SM-D4 x push payload mismatch.");
 
             var yPushed = client.WaitFor<ActorPushNotify>()
                 .Where(message => message.Payload.ActorId == "actor-sm-d4-y")
@@ -79,8 +79,8 @@ internal static class SmD4MultipleActorBindingScenario
                 .Metadata(SpotServiceNames.ActorIdMetadata, "actor-sm-d4-y")
                 .Async<ActorPingRes>();
             var yNotify = await yPushed;
-            ScenarioAssert.That(yPushReply.ActorId == "actor-sm-d4-y", "SM-D4 y push reply actor mismatch.");
-            ScenarioAssert.That(yNotify.Payload.Value == "push-y", "SM-D4 y push payload mismatch.");
+            ZlinkStreamAssert.Ensure(yPushReply.ActorId == "actor-sm-d4-y", "SM-D4 y push reply actor mismatch.");
+            ZlinkStreamAssert.Ensure(yNotify.Payload.Value == "push-y", "SM-D4 y push payload mismatch.");
 
             var actorIdLessRequestFailed = false;
             try
@@ -95,7 +95,7 @@ internal static class SmD4MultipleActorBindingScenario
                 actorIdLessRequestFailed = true;
             }
 
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 actorIdLessRequestFailed,
                 "SM-D4 expected actor-id-less request to fail with multiple bound actors.");
         }

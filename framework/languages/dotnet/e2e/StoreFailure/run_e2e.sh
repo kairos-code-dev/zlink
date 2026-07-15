@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"
 else
@@ -70,6 +72,7 @@ CONSUMER_NW_URL="http://127.0.0.1:$CONSUMER_NW_HTTP_PORT"
 pids=()
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -TERM -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
@@ -149,7 +152,9 @@ start_server() {
   local project="$2"
   shift
   shift
-  setsid env ZLINK_E2E_RID="$name" dotnet run --no-build --project "$project" -- "$@" \
+  local config="$CONFIG_DIR/$name.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- --role "$name" "$@"
+  setsid dotnet run --no-build --project "$project" -- --config "$config" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -180,6 +185,7 @@ start_server api-a "$PROVIDER_PROJECT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --channel-endpoint "$API_A" \
+  --weight 100 \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
   --location-heartbeat-ms "$LOCATION_HEARTBEAT_MS" \
   --location-lease-ttl-ms "$LOCATION_LEASE_TTL_MS" \
@@ -197,12 +203,14 @@ start_server consumer "$CONSUMER_PROJECT" \
   --location-polling-ms "$LOCATION_POLLING_MS" \
   --location-grace-ms "$LOCATION_GRACE_MS" \
   --store-mode delay \
+  --trace-label consumer \
   --log-dir "$LOG_DIR"
 wait_health "$CONSUMER_URL" consumer
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
+    --config-dir "$CONFIG_DIR" \
   --consumer-url "$CONSUMER_URL" \
   --consumer-project "$CONSUMER_PROJECT" \
   --consumer-nw-url "$CONSUMER_NW_URL" \
@@ -223,7 +231,8 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --location-heartbeat-ms "$LOCATION_HEARTBEAT_MS" \
   --location-lease-ttl-ms "$LOCATION_LEASE_TTL_MS" \
   --location-polling-ms "$LOCATION_POLLING_MS" \
-  --location-grace-ms "$LOCATION_GRACE_MS" \
+  --location-grace-ms "$LOCATION_GRACE_MS"
+dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

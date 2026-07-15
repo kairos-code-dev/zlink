@@ -65,9 +65,9 @@ internal static class ShutdownAwaitProbe
             .PacketName("AwaitShutdownRecoveryReq")
             .Timeout(TimeSpan.FromSeconds(45))
             .Async<AwaitShutdownRecoveryRes>();
-        ScenarioAssert.That(result.Operation == "await.e3-shutdown-recovery", "TD-F5 recovery operation mismatch.");
-        ScenarioAssert.That(result.SpotRid == options.SpotRid, "TD-F5 recovery spot rid mismatch.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(result.Operation == "await.e3-shutdown-recovery", "TD-F5 recovery operation mismatch.");
+        ZlinkStreamAssert.Ensure(result.SpotRid == options.SpotRid, "TD-F5 recovery spot rid mismatch.");
+        ZlinkStreamAssert.Ensure(
             result.Evidence.Any(line => line.Contains($"request={options.RequestId}", StringComparison.Ordinal)
                                         && line.Contains("marker=shutdown-recovery-probe", StringComparison.Ordinal)),
             "TD-F5 recovery probe marker missing.");

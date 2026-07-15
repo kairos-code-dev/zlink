@@ -20,30 +20,30 @@ internal static class RmA6MultipleChannelsScenario
         var profileReply = (await providerA.Post("/profile/request")
             .Body(new ProfileReq(profileMarker))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(profileReply.Value == $"profile:{profileMarker}", "RM-A6 profile reply value mismatch.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(profileReply.Value == $"profile:{profileMarker}", "RM-A6 profile reply value mismatch.");
+        ZlinkStreamAssert.Ensure(
             profileReply.ProviderRid is "api-a" or "api-b",
             "RM-A6 profile request reached an unexpected provider.");
 
         var workflowReply = (await workflow.Post("/workflow/request")
             .Body(new WorkflowReq(workflowMarker))
             .Async<WorkflowRes>()).Body;
-        ScenarioAssert.That(workflowReply.Value == $"workflow:{workflowMarker}",
+        ZlinkStreamAssert.Ensure(workflowReply.Value == $"workflow:{workflowMarker}",
             "RM-A6 workflow reply value mismatch.");
-        ScenarioAssert.That(workflowReply.ProviderRid == "workflow-a",
+        ZlinkStreamAssert.Ensure(workflowReply.ProviderRid == "workflow-a",
             "RM-A6 workflow request should reach workflow-a.");
 
         // Mesh-name filtered runtime query rows must not mix across channels
         // even though they share one store and key prefix (doc RM-A6).
         var profileRows = providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
         var workflowRows = providerA.Get("/locations/peers?mesh=workflow").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             profileRows.Length > 0 && profileRows.All(row => row.MeshName == "profile"),
             "RM-A6 profile mesh filter returned rows from another mesh.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             workflowRows.Length > 0 && workflowRows.All(row => row.MeshName == "workflow"),
             "RM-A6 workflow mesh filter returned rows from another mesh.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             workflowRows.Any(row => row.Role == "Router" && row.NodeRid == "workflow-a")
             && workflowRows.All(row => row.NodeRid is not ("api-a" or "api-b")),
             "RM-A6 workflow mesh rows should contain workflow-a only.");
@@ -61,15 +61,15 @@ internal static class RmA6MultipleChannelsScenario
         var workflowEvidence = (await workflow.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(workflowMarker))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             providerEvidence.Any(line => line.Contains("profile-request|", StringComparison.Ordinal)
                                          && line.Contains(profileMarker, StringComparison.Ordinal)),
             "RM-A6 profile evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             workflowEvidence.Any(line => line.Contains("workflow-request|rid=workflow-a", StringComparison.Ordinal)
                                          && line.Contains(workflowMarker, StringComparison.Ordinal)),
             "RM-A6 workflow evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             !providerEvidence.Any(line => line.Contains("workflow-request|", StringComparison.Ordinal)
                                           && line.Contains(workflowMarker, StringComparison.Ordinal)),
             "RM-A6 workflow request was recorded on profile providers.");

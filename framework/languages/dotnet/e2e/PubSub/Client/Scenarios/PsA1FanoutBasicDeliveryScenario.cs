@@ -50,7 +50,7 @@ internal static class PsA1FanoutBasicDeliveryScenario
                     [$"seq={measureStart + 1}|"],
                     [$"seq={measureStart + 2}|"]
                 ]));
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             Evidence.CommonContiguousSequence(
                 measuredSnapshots,
                 runId,

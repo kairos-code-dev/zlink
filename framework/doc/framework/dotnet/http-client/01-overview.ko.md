@@ -12,11 +12,11 @@
 ```csharp
 // HttpClient 직접 사용: SocketsHttpHandler, CookieContainer, AutomaticDecompression ...
 // Zlink.HttpClient: 아래 한 문장
-var profile = await client.Get("/players/7281").SubmitAsync<PlayerProfile>();
+var profile = await client.Get("/players/7281").Async<PlayerProfile>();
 ```
 
-JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
-(`Body(dto)` / `SubmitAsync<T>()` / `Fetch<T>()`)는 그 위에 얹은 편의 계층이다.
+JSON 전용 client가 아니다. 일반 HTTP client이며 typed 경로
+(`Body(dto)` / `Async<T>()`)는 그 위에 얹은 편의 계층이다.
 
 ## 설계 원칙
 
@@ -41,16 +41,17 @@ JSON 전용 client가 아니다. 일반 HTTP client이며 typed JSON 경로
 
 요청 실행은 .NET의 비동기 기본형 위에서 동작한다.
 
-- `SubmitRawAsync()` / `SubmitAsync<T>()` / `DownloadAsync(sink)`는 `ValueTask<T>`를
+- `AsyncRaw()` / `Async<T>()` / `DownloadAsync(sink)`는 `ValueTask<T>`를
   돌려준다. `await`하는 동안 HTTP I/O는 `SocketsHttpHandler`의 비동기 소켓
   (epoll/IOCP)에서 처리되고 **호출 스레드(handler 스레드)는 점유되지 않는다.**
-- blocking 접근(`Fetch<T>()`)은 테스트·CLI 시나리오 전용이다.
+- 완료 값을 동기로 꺼내는 blocking terminator는 제공하지 않는다.
+- standalone client는 `Async`와 callback을 제공한다. DI로 주입받는 server client는
+  여기에 `Submit`과 `Yield`를 추가한다.
 
 이 모델의 실용적 결론 하나만 기억하면 된다:
 
-> framework runtime/handler 코드에서는 `SubmitAsync<T>()`를 `await`하고,
-> `Fetch<T>()` 같은 blocking 접근은 테스트·client 시나리오처럼 blocking이 허용되는
-> 곳에서만 쓴다.
+> 일반 요청은 `Async<T>()`로 기다린다. Spot의 다른 처리를 진행해야 하는 외부 I/O만
+> DI server client의 `Yield<T>()`로 기다린다.
 
 자세한 규칙은 [7. 비동기](07-async.ko.md)에서 다룬다.
 

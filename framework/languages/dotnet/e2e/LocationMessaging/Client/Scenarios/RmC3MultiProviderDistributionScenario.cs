@@ -23,18 +23,18 @@ internal static class RmC3MultiProviderDistributionScenario
         var replies = (await directConsumer.Post("/profile/batch-request")
             .Body(requests)
             .Async<ProfileRes[]>()).Body;
-        ScenarioAssert.That(replies.Length == requests.Length, "RM-C3 reply count mismatch.");
+        ZlinkStreamAssert.Ensure(replies.Length == requests.Length, "RM-C3 reply count mismatch.");
         for (var i = 0; i < requests.Length; i++)
         {
-            ScenarioAssert.That(replies[i].Value == $"profile:{marker}-{i}", "RM-C3 reply value mismatch.");
-            ScenarioAssert.That(replies[i].ProviderRid is "api-a" or "api-b", "RM-C3 reply provider mismatch.");
+            ZlinkStreamAssert.Ensure(replies[i].Value == $"profile:{marker}-{i}", "RM-C3 reply value mismatch.");
+            ZlinkStreamAssert.Ensure(replies[i].ProviderRid is "api-a" or "api-b", "RM-C3 reply provider mismatch.");
         }
 
         var afterA = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
         var afterB = providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
         var a = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", marker);
         var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             a > 0 && b > 0 && a + b == requests.Length,
             "RM-C3 expected both providers to handle the direct multi-endpoint request set.");
     }

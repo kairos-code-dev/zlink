@@ -14,11 +14,11 @@ internal static class StA1LocalAcceptScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 11);
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-A1", spotRid));
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-A1 join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-A1 join was rejected.");
 
         var probe = await context.ProbeAsync(context.NodeA, actorId, new ProbeReq("ST-A1", "after-joined"));
-        SpotActorTransferScenarioContext.Require(probe.NodeRid == "actor-a", $"ST-A1 probe expected actor-a, got {probe.NodeRid}.");
-        SpotActorTransferScenarioContext.Require(probe.SpotRid == spotRid, "ST-A1 probe did not reach target spot.");
+        ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-a", $"ST-A1 probe expected actor-a, got {probe.NodeRid}.");
+        ZlinkStreamAssert.Ensure(probe.SpotRid == spotRid, "ST-A1 probe did not reach target spot.");
 
         var evidence = await context.WaitEvidenceAsync(context.NodeA, [
             $"ST-A1|{actorId}|admission|spot={spotRid}",

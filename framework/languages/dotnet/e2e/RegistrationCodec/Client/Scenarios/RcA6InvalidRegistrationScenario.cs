@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using RegistrationCodec.Client.Support;
+using Zlink.Framework.E2E.Configuration;
 
 namespace RegistrationCodec.Client.Scenarios;
 
@@ -24,14 +25,17 @@ internal static class RcA6InvalidRegistrationScenario
         process.StartInfo.ArgumentList.Add("--project");
         process.StartInfo.ArgumentList.Add(options.InvalidServerProject);
         process.StartInfo.ArgumentList.Add("--");
-        process.StartInfo.ArgumentList.Add("--rid");
-        process.StartInfo.ArgumentList.Add("invalid-duplicate");
-        process.StartInfo.ArgumentList.Add("--http-url");
-        process.StartInfo.ArgumentList.Add($"http://127.0.0.1:{invalidHttpPort}");
-        process.StartInfo.ArgumentList.Add("--channel-endpoint");
-        process.StartInfo.ArgumentList.Add($"tcp://127.0.0.1:{invalidChannelPort}");
-        process.StartInfo.ArgumentList.Add("--log-dir");
-        process.StartInfo.ArgumentList.Add(options.LogDir);
+        process.StartInfo.ArgumentList.Add("--config");
+        process.StartInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(
+            options.ConfigDir,
+            "invalid-duplicate",
+            [
+                "--rid", "invalid-duplicate",
+                "--http-url", $"http://127.0.0.1:{invalidHttpPort}",
+                "--channel-endpoint", $"tcp://127.0.0.1:{invalidChannelPort}",
+                "--log-dir", options.LogDir,
+                "--codec-mode", "all"
+            ]));
         process.Start();
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
@@ -53,9 +57,9 @@ internal static class RcA6InvalidRegistrationScenario
         File.WriteAllText(stderr, errorText);
 
         // A duplicate handler should stop the server before it becomes usable.
-        ScenarioAssert.That(completed, "RC-A6 invalid registration server did not exit.");
-        ScenarioAssert.That(process.ExitCode != 0, "RC-A6 invalid registration server unexpectedly started.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(completed, "RC-A6 invalid registration server did not exit.");
+        ZlinkStreamAssert.Ensure(process.ExitCode != 0, "RC-A6 invalid registration server unexpectedly started.");
+        ZlinkStreamAssert.Ensure(
             errorText.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
             || errorText.Contains("EchoManual", StringComparison.Ordinal),
             "RC-A6 invalid registration error did not mention duplicate registration.");

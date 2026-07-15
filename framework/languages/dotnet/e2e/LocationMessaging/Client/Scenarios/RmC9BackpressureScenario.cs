@@ -19,7 +19,7 @@ internal static class RmC9BackpressureScenario
             .Select(index => SendBackpressureCommandAsync(
                 backpressureConsumer,
                 $"rm-c9-slow-{marker}-{index}")));
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             outcomes.All(outcome => outcome == "Submitted"),
             "RM-C9 expected all one-way sends to be submitted without a public bounded-failure oracle.");
 
@@ -28,7 +28,7 @@ internal static class RmC9BackpressureScenario
         var evidence = (await providerA.Post("/evidence/wait-count")
             .Body(new EvidenceCountWaitReq(marker, PressureEvidenceCount, 20000))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Count(line => line.Contains(marker, StringComparison.Ordinal)
                                    && line.Contains("profile-command", StringComparison.Ordinal))
             >= PressureEvidenceCount,
@@ -43,13 +43,13 @@ internal static class RmC9BackpressureScenario
         var followUp = (await backpressureConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c9-after"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(followUp.Value == "profile:rm-c9-after",
+        ZlinkStreamAssert.Ensure(followUp.Value == "profile:rm-c9-after",
             "RM-C9 follow-up request failed after backlog cleared.");
 
         var recoveryEvidence = (await providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq("rm-c9-after", 20000))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             recoveryEvidence.Any(line => line.Contains("rm-c9-after", StringComparison.Ordinal)),
             "RM-C9 recovery evidence missing.");
     }

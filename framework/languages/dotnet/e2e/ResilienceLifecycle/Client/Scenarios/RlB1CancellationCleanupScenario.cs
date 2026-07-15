@@ -16,13 +16,13 @@ internal static class RlB1CancellationCleanupScenario
         var timeout = await consumer.Post("/profile/request/timeout/100")
             .Body(new ProfileReq("slow", slowMarker))
             .AsyncRaw();
-        ScenarioAssert.That(timeout.Status == 408, "RL-B1 expected the slow request to time out.");
+        ZlinkStreamAssert.Ensure(timeout.Status == 408, "RL-B1 expected the slow request to time out.");
 
         var followUpMarker = $"rl-b1-follow-up-{Guid.NewGuid():N}";
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", followUpMarker))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(followUp.Value == "profile:fast", "RL-B1 follow-up request failed after timeout.");
+        ZlinkStreamAssert.Ensure(followUp.Value == "profile:fast", "RL-B1 follow-up request failed after timeout.");
 
         using (var evidenceTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
         {
@@ -35,7 +35,7 @@ internal static class RlB1CancellationCleanupScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             evidenceTimeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains($"marker={slowMarker}", StringComparison.Ordinal)),
                 "RL-B1 slow request completion evidence missing.");
         }
@@ -43,7 +43,7 @@ internal static class RlB1CancellationCleanupScenario
         var later = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", $"rl-b1-later-{Guid.NewGuid():N}"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(later.Value == "profile:fast", "RL-B1 later request failed after slow completion.");
+        ZlinkStreamAssert.Ensure(later.Value == "profile:fast", "RL-B1 later request failed after slow completion.");
 
         Console.WriteLine("scenario RL-B1 passed");
     }

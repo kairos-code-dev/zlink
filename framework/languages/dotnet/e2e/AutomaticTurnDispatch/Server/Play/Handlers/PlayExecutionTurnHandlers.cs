@@ -64,7 +64,7 @@ internal sealed class CounterReadHandler
 
 [ZLinkSpotPacketHandler("HttpAwaitMsg")]
 internal sealed class HttpAwaitHandler(
-    [FromKeyedServices("external-api")] ZLinkHttpClient client,
+    [FromKeyedServices("external-api")] ZLinkHttpServerClient client,
     EvidenceStore evidence)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, HttpAwaitMsg>
 {
@@ -95,7 +95,7 @@ internal sealed class HttpAwaitHandler(
 
 [ZLinkSpotPacketHandler("IoWorkerAwaitMsg")]
 internal sealed class IoWorkerAwaitHandler(
-    [FromKeyedServices("external-api")] ZLinkHttpClient client,
+    [FromKeyedServices("external-api")] ZLinkHttpServerClient client,
     EvidenceStore evidence)
     : IZLinkSpotPacketHandler<AwaitProbeSpot, IoWorkerAwaitMsg>
 {

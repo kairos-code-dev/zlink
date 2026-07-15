@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 
 namespace ResilienceLifecycle.Server.Provider;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal sealed class FaultState
 {
     public string Mode { get; set; } = "none";
@@ -15,10 +17,10 @@ internal sealed class EvidenceStore
     private readonly object _waiterGate = new();
     private readonly List<TaskCompletionSource> _waiters = new();
 
-    public EvidenceStore(string? filePath)
+    public EvidenceStore(string rid, string? filePath)
     {
         _filePath = filePath;
-        Rid = Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node";
+        Rid = rid;
         if (!string.IsNullOrWhiteSpace(_filePath))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
@@ -137,40 +139,5 @@ internal sealed record ServerOptions(
     int Weight)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
-    {
-        var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        for (var i = 0; i < args.Length; i++)
-        {
-            var key = args[i];
-            if (!key.StartsWith("--", StringComparison.Ordinal))
-                throw new ArgumentException($"Unexpected argument '{key}'.");
-
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{key}'.");
-
-            var value = args[++i];
-            if (!values.TryGetValue(key, out var bucket))
-            {
-                bucket = [];
-                values.Add(key, bucket);
-            }
-
-            bucket.Add(value);
-        }
-
-        string? Get(string name)
-        {
-            return values.TryGetValue(name, out var bucket) ? bucket[^1] : null;
-        }
-
-        return new ServerOptions(
-            defaultRole,
-            Get("--rid") ?? "node",
-            Get("--http-url") ?? "http://127.0.0.1:0",
-            Get("--log-dir") ?? "logs",
-            Get("--redis-endpoint"),
-            Get("--redis-key-prefix"),
-            Get("--channel-endpoint"),
-            Get("--evidence-file"),
-            int.TryParse(Get("--weight"), out var weight) ? weight : 100);
-    }
+        => E2eConfiguration.Load<ServerOptions>(args) with { Role = defaultRole };
 }

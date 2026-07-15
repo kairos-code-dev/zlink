@@ -12,12 +12,12 @@ internal static class TaB3RouteReconnectScenario
         var actor = await context.CaptureAsync(actorId);
         await context.AssertNoRouteCallerFailureAsync("TA-B3-no-route-mesh", actor);
         var disconnectedEvidence = await context.GetAllActorEvidenceAsync();
-        ToActorScenarioContext.Require(
+        ZlinkStreamAssert.Ensure(
             disconnectedEvidence.All(item => item.Scenario != "TA-B3-no-route-mesh"),
             "TA-B3 disconnected request unexpectedly reached an actor handler.");
         await context.AssertNoRouteCallerRecoveryAsync("TA-B3-recovered-request", actor, "b3-recovered");
         var recoveredEvidence = await context.GetAllActorEvidenceAsync();
-        ToActorScenarioContext.Require(recoveredEvidence.Any(item => item is
+        ZlinkStreamAssert.Ensure(recoveredEvidence.Any(item => item is
         {
             Scenario: "TA-B3-recovered-request",
             Kind: "request",

@@ -10,10 +10,10 @@ public sealed class EvidenceStore
     private readonly object _waiterGate = new();
     private readonly List<TaskCompletionSource> _waiters = new();
 
-    public EvidenceStore(string? filePath)
+    public EvidenceStore(string rid, string? filePath)
     {
         _filePath = filePath;
-        Rid = Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node";
+        Rid = rid;
         if (!string.IsNullOrWhiteSpace(_filePath))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);

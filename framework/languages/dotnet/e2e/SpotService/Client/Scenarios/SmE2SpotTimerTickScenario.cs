@@ -12,20 +12,20 @@ internal static class SmE2SpotTimerTickScenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .Async<CreateSpotRes>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+        ZlinkStreamAssert.Ensure(created.SpotRid == spotRid && created.NodeRid == "play-a",
             "SM-E2 timer spot was not created on play-a.");
         var timer = (await playA.Post("/spot/timer/start")
             .Body(new SpotTimerStartReq(spotRid, "sm-e2-basic", 50))
             .Async<SpotTimerStartRes>()).Body;
-        ScenarioAssert.That(timer.Started, "SM-E2 timer did not start.");
+        ZlinkStreamAssert.Ensure(timer.Started, "SM-E2 timer did not start.");
         var closeReply = (await playA.Post("/spot/close")
             .Body(new CloseSpotReq(spotRid))
             .Async<CloseSpotRes>()).Body;
-        ScenarioAssert.That(closeReply.Closed, "SM-E2 timer spot close reply mismatch.");
+        ZlinkStreamAssert.Ensure(closeReply.Closed, "SM-E2 timer spot close reply mismatch.");
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"timer-basic|rid=play-a|spot={spotRid}|name=sm-e2-basic"]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Count(line => line.Contains(
                 $"timer-basic|rid=play-a|spot={spotRid}|name=sm-e2-basic",
                 StringComparison.Ordinal)) >= 2,

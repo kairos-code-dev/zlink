@@ -15,21 +15,21 @@ internal static class MonB2RegistrationValidationScenario
             await MonitoringRegistrationValidation.VerifyMissingSocketSourceAsync(options)
         };
 
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             scenarioEvidence.Any(line => line.Contains("case=duplicate-socket", StringComparison.Ordinal)
                                          && line.Contains("Duplicate monitoring socket source",
                                              StringComparison.Ordinal)),
             "MON-B2 duplicate source validation evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             scenarioEvidence.Any(line => line.Contains("case=zero-interval", StringComparison.Ordinal)
                                          && line.Contains("interval must be greater than zero",
                                              StringComparison.Ordinal)),
             "MON-B2 interval validation evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             scenarioEvidence.Any(line => line.Contains("case=missing-spot", StringComparison.Ordinal)
                                          && line.Contains("not registered", StringComparison.Ordinal)),
             "MON-B2 missing spot validation evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             scenarioEvidence.Any(line =>
                 line.Contains("case=missing-socket", StringComparison.Ordinal)
                 && line.Contains("not registered", StringComparison.Ordinal)),

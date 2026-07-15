@@ -39,9 +39,9 @@ internal static class SmD15GatewayActorSessionPushScenario
             .Async<ActorPushByActorRes>()).Body;
         var notify = await pushed;
 
-        ScenarioAssert.That(result.Delivered, $"SM-D15 gateway actor push failed: {result.ErrorKind}");
-        ScenarioAssert.That(notify.Payload.ActorId == actorId, "SM-D15 push actor mismatch.");
-        ScenarioAssert.That(notify.Payload.Value == marker, "SM-D15 push marker mismatch.");
+        ZlinkStreamAssert.Ensure(result.Delivered, $"SM-D15 gateway actor push failed: {result.ErrorKind}");
+        ZlinkStreamAssert.Ensure(notify.Payload.ActorId == actorId, "SM-D15 push actor mismatch.");
+        ZlinkStreamAssert.Ensure(notify.Payload.Value == marker, "SM-D15 push marker mismatch.");
 
         await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([

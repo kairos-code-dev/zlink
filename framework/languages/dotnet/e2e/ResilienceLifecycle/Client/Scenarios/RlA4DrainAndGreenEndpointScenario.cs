@@ -27,8 +27,8 @@ internal static class RlA4DrainAndGreenEndpointScenario
             var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", marker))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.Value == "profile:fast", "RL-A4 rolling request returned an unexpected value.");
-            ScenarioAssert.That(reply.ProviderRid is "api-a" or "api-b",
+            ZlinkStreamAssert.Ensure(reply.Value == "profile:fast", "RL-A4 rolling request returned an unexpected value.");
+            ZlinkStreamAssert.Ensure(reply.ProviderRid is "api-a" or "api-b",
                 "RL-A4 rolling request used an unexpected provider.");
         }
 
@@ -116,6 +116,6 @@ internal static class RlA4DrainAndGreenEndpointScenario
             await Task.Delay(100);
         }
 
-        ScenarioAssert.That(false, "RL-A4 provider did not stop.");
+        ZlinkStreamAssert.Ensure(false, "RL-A4 provider did not stop.");
     }
 }

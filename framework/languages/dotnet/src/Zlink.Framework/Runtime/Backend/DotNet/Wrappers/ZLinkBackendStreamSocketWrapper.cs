@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket) : IZLinkBackendStreamSocket
 {
+    private readonly object _sendGate = new();
+
     internal IStreamSocket NativeSocket => nativeSocket;
 
     public void Bind(string endpoint)
@@ -29,10 +31,11 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
         Message payload,
         SendFlags flags)
     {
-        return nativeSocket.Send(routingId)
-            .Message(payload)
-            .Flags(flags)
-            .Submit();
+        lock (_sendGate)
+            return nativeSocket.Send(routingId)
+                .Message(payload)
+                .Flags(flags)
+                .Submit();
     }
 
     public bool Send(
@@ -40,10 +43,11 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSocket.Send(routingId)
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        lock (_sendGate)
+            return nativeSocket.Send(routingId)
+                .Messages(parts)
+                .Flags(flags)
+                .Submit();
     }
 
     public void DisconnectPeer(RoutingId routingId)
@@ -81,10 +85,11 @@ internal sealed class ZLinkBackendStreamSocketWrapper(IStreamSocket nativeSocket
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSocket.SendBoundActor(sessionRid, actorId)
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        lock (_sendGate)
+            return nativeSocket.SendBoundActor(sessionRid, actorId)
+                .Messages(parts)
+                .Flags(flags)
+                .Submit();
     }
 
     public ValueTask DisposeAsync()

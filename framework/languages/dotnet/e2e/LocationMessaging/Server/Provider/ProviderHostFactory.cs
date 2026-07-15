@@ -26,7 +26,7 @@ internal static class ProviderHostFactory
         });
 
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
+        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
 
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -69,7 +69,7 @@ internal static class ProviderHostFactory
                 var route = framework.AddRouteMeshChannel("profile.route")
                     .EnableServer(options.RouteEndpoint)
                     .SetRoutingId(RoutingId.From(options.Rid));
-                foreach (var peer in options.RoutePeers) route.EnableClient(peer);
+                foreach (var peer in options.RoutePeers ?? []) route.EnableClient(peer);
 
                 route.AddRequestHandler<RoutePingHandler, ScenarioRoutePing, ScenarioRoutePong>("ScenarioRoutePing");
             }

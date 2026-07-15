@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
+using Zlink.Framework.E2E.Configuration;
 using Zlink.Framework.Contracts.Errors;
 
 namespace RuntimeMonitoring.Client.Scenarios;
@@ -36,7 +37,7 @@ internal static class MonD1FailureRecoveryScenario
                 TimeoutMilliseconds: 30000,
                 AfterIndex: baseline))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(removed.Any(line => line.Contains("removed=svc-b", StringComparison.Ordinal)),
+        ZlinkStreamAssert.Ensure(removed.Any(line => line.Contains("removed=svc-b", StringComparison.Ordinal)),
             "MON-D1 did not observe svc-b leaving the topology.");
         var afterRemoved = baseline + removed.Length;
 
@@ -66,7 +67,7 @@ internal static class MonD1FailureRecoveryScenario
                     TimeoutMilliseconds: 30000,
                     AfterIndex: afterRemoved))
                 .Async<string[]>()).Body;
-            ScenarioAssert.That(added.Any(line => line.Contains("added=svc-b", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(added.Any(line => line.Contains("added=svc-b", StringComparison.Ordinal)),
                 "MON-D1 did not observe svc-b returning to the topology.");
 
             await using var trigger = await MonitoringChannelClient.StartAsync(
@@ -74,7 +75,7 @@ internal static class MonD1FailureRecoveryScenario
                 options.ServiceBChannelEndpoint,
                 "trigger-mon-d1");
             var reply = await trigger.RequestAsync(new ProfileReq("restart", "mon-d1-request"));
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "svc-b"
                 && reply.Marker == "mon-d1-request"
                 && reply.Value == "profile:restart",
@@ -85,7 +86,7 @@ internal static class MonD1FailureRecoveryScenario
                     ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
                     []))
                 .Async<string[]>()).Body;
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 serviceBEvidence.Any(line => line.Contains(
                     "profile-request|rid=svc-b|marker=mon-d1-request|value=restart",
                     StringComparison.Ordinal)),
@@ -122,29 +123,24 @@ internal static class MonD1FailureRecoveryScenario
             RedirectStandardError = true,
             UseShellExecute = false
         };
-        startInfo.Environment["ZLINK_E2E_RID"] = "svc-b";
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(options.ServiceProject);
         startInfo.ArgumentList.Add("--");
-        startInfo.ArgumentList.Add("--rid");
-        startInfo.ArgumentList.Add("svc-b");
-        startInfo.ArgumentList.Add("--http-url");
-        startInfo.ArgumentList.Add(options.ServiceBUrl);
-        startInfo.ArgumentList.Add("--redis-endpoint");
-        startInfo.ArgumentList.Add(options.RedisEndpoint);
-        startInfo.ArgumentList.Add("--redis-key-prefix");
-        startInfo.ArgumentList.Add(options.RedisKeyPrefix);
-        startInfo.ArgumentList.Add("--channel-endpoint");
-        startInfo.ArgumentList.Add(options.ServiceBChannelEndpoint);
-        startInfo.ArgumentList.Add("--spot-router-endpoint");
-        startInfo.ArgumentList.Add(options.ServiceBSpotRouterEndpoint);
-        startInfo.ArgumentList.Add("--spot-pub-endpoint");
-        startInfo.ArgumentList.Add(options.ServiceBSpotPubEndpoint);
-        startInfo.ArgumentList.Add("--evidence-file");
-        startInfo.ArgumentList.Add(Path.Combine(options.LogDir, "svc-b-restart.evidence.log"));
-        startInfo.ArgumentList.Add("--log-dir");
-        startInfo.ArgumentList.Add(options.LogDir);
+        startInfo.ArgumentList.Add("--config");
+        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(options.ConfigDir, "svc-b-restart",
+        [
+            "--role", "service",
+            "--rid", "svc-b",
+            "--http-url", options.ServiceBUrl,
+            "--redis-endpoint", options.RedisEndpoint,
+            "--redis-key-prefix", options.RedisKeyPrefix,
+            "--channel-endpoint", options.ServiceBChannelEndpoint,
+            "--spot-router-endpoint", options.ServiceBSpotRouterEndpoint,
+            "--spot-pub-endpoint", options.ServiceBSpotPubEndpoint,
+            "--evidence-file", Path.Combine(options.LogDir, "svc-b-restart.evidence.log"),
+            "--log-dir", options.LogDir
+        ]));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException("Failed to restart service-b.");

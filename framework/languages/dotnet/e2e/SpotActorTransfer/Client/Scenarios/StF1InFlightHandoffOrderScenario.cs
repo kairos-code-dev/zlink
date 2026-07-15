@@ -23,7 +23,7 @@ internal static class StF1InFlightHandoffOrderScenario
         SpotActorTransferScenarioContext.RequireNoContains(sourceEvidence, $"ST-F1|{actorId}|handoff_packet|", "ST-F1 packet ran on the source node.");
 
         await context.ReleaseJoinedGateAsync(context.NodeB, spotRid);
-        SpotActorTransferScenarioContext.Require((await joinTask).Accepted, "ST-F1 transfer was rejected.");
+        ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F1 transfer was rejected.");
         await context.AssertEvidenceOrderAsync(context.NodeB, actorId, "handoff_packet", ["P1", "P2", "P3"]);
     }
 }

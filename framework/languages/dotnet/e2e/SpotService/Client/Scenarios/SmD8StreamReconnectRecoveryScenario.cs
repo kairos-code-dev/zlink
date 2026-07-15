@@ -68,7 +68,7 @@ internal static class SmD8StreamReconnectRecoveryScenario
                 pendingFailed = true;
             }
 
-            ScenarioAssert.That(pendingFailed, "SM-D8 expected pending request to fail after stream disconnect.");
+            ZlinkStreamAssert.Ensure(pendingFailed, "SM-D8 expected pending request to fail after stream disconnect.");
             await Task.Delay(TimeSpan.FromMilliseconds(1200));
 
             deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
@@ -111,9 +111,9 @@ internal static class SmD8StreamReconnectRecoveryScenario
             var resumed = await second.Request(new ActorPingReq("after-reconnect"))
                 .PacketName("ActorPingReq")
                 .Async<ActorPingRes>();
-            ScenarioAssert.That(resumed.ActorId == actorId, "SM-D8 reconnected actor mismatch.");
-            ScenarioAssert.That(resumed.NodeRid == "play-a", "SM-D8 reconnected node mismatch.");
-            ScenarioAssert.That(resumed.Value == "after-reconnect", "SM-D8 reconnected value mismatch.");
+            ZlinkStreamAssert.Ensure(resumed.ActorId == actorId, "SM-D8 reconnected actor mismatch.");
+            ZlinkStreamAssert.Ensure(resumed.NodeRid == "play-a", "SM-D8 reconnected node mismatch.");
+            ZlinkStreamAssert.Ensure(resumed.Value == "after-reconnect", "SM-D8 reconnected value mismatch.");
         }
         finally
         {

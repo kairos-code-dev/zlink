@@ -27,7 +27,7 @@ internal static class StF3BoundSessionCrossMoveOrderScenario
         // observe the pre-cutover backlog first.
         bound.Send(new HandoffPacket("ST-F3", "S3")).PacketName(nameof(HandoffPacket)).Submit();
         bound.Send(new HandoffPacket("ST-F3", "S4")).PacketName(nameof(HandoffPacket)).Submit();
-        SpotActorTransferScenarioContext.Require((await joinTask).Accepted, "ST-F3 transfer was rejected.");
+        ZlinkStreamAssert.Ensure((await joinTask).Accepted, "ST-F3 transfer was rejected.");
         await context.AssertEvidenceOrderAsync(context.NodeB, actorId, "handoff_packet", ["S1", "S2", "S3", "S4"]);
     }
 }

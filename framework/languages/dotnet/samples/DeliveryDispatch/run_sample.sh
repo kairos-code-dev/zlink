@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
@@ -16,6 +17,7 @@ REDIS_CONTAINER=""
 RUN_SUCCEEDED=0
 
 cleanup() {
+  find "${RUN_DIR}" -type f -name "*.json" -delete 2>/dev/null || true
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -218,6 +220,7 @@ write_role_config courier-session
 write_role_config dispatch
 write_role_config courier-actor-node1 delivery-courier-node-1
 write_role_config courier-actor-node2 delivery-courier-node-2
+write_role_config client
 
 dotnet build "${SCRIPT_DIR}/DeliveryDispatch.sln" --maxcpucount:1
 
@@ -245,10 +248,7 @@ wait_port dispatch-spot-router "${DISPATCH_SPOT_ROUTER}"
 wait_http dispatch "${DISPATCH_HTTP}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/DeliveryDispatch.Client.csproj" -- \
-  --api-url "${DISPATCH_HTTP}" \
-  --stream-endpoint "${CUSTOMER_STREAM}" \
-  --courier-stream-endpoint "${COURIER_STREAM}" \
-  --log-dir "${FLOW_LOG_DIR}" >"${LOG_DIR}/client.log" 2>&1
+  --config "${CONFIG_DIR}/client.json" >"${LOG_DIR}/client.log" 2>&1
 
 grep -q "deliverydispatch=completed" "${LOG_DIR}/client.log"
 grep -q "topology=ready" "${LOG_DIR}/client.log"

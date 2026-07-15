@@ -1,5 +1,5 @@
 using Systems.Zlink;
-using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 
 namespace Bingo.Server.Configuration;
 
@@ -15,15 +15,15 @@ public sealed record SampleTopology(
 {
     public static SampleRuntimeConfiguration Load(string[] args)
     {
-        var index = Array.IndexOf(args, "--config");
-        if (index < 0 || index + 1 >= args.Length)
+        if (args.Length != 2 || args[0] != "--config")
             throw new ArgumentException("Usage: --config PATH");
 
-        var document = JsonSerializer.Deserialize<SampleConfigurationDocument>(
-                           File.ReadAllText(args[index + 1]),
-                           new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                       ?? throw new InvalidOperationException("Bingo configuration is empty.");
-        var settings = document.Sample;
+        var settings = new ConfigurationBuilder()
+                           .AddJsonFile(Path.GetFullPath(args[1]), optional: false, reloadOnChange: false)
+                           .Build()
+                           .GetRequiredSection("Sample")
+                           .Get<SampleConfiguration>()
+                       ?? throw new InvalidOperationException("Bingo Sample configuration is empty.");
         settings.Validate();
 
         var playA = new SamplePlayNode(
@@ -94,11 +94,6 @@ public sealed record SampleRuntimeConfiguration(
     SampleTopology Topology,
     string NodeName,
     string LogDirectory);
-
-public sealed class SampleConfigurationDocument
-{
-    public SampleConfiguration Sample { get; init; } = new();
-}
 
 public sealed class SampleConfiguration
 {

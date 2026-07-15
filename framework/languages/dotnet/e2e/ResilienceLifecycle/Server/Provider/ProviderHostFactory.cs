@@ -23,7 +23,7 @@ internal static class ProviderHostFactory
             console.TimestampFormat = "HH:mm:ss.fff ";
         });
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
+        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddSingleton<FaultState>();
 
         builder.Services.AddZLinkFramework(framework =>

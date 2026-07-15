@@ -12,7 +12,7 @@ internal static class RcA4DiLifecycleScenario
         var replies = (await server.Post("/registration/di-filter-order").Async<EchoRes[]>()).Body;
         var first = replies[0];
         var second = replies[1];
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             first.Value == "echo:rc-a4-1" && second.Value == "echo:rc-a4-2",
             "RC-A4 DI reply mismatch.");
 
@@ -26,7 +26,7 @@ internal static class RcA4DiLifecycleScenario
         var scopedIds = di.Select(line => EvidenceText.ExtractValue(line, "scoped"))
             .Distinct(StringComparer.Ordinal)
             .Count();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             di.Length >= 2 && singletonIds == 1 && scopedIds >= 2,
             "RC-A4 expected stable singleton and per-dispatch scoped dependencies.");
 

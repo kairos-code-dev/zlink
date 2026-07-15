@@ -25,14 +25,14 @@ internal static class RemoteSpotAwaitProbe
             .Metadata(AutomaticTurnDispatchNames.SpotRidMetadata, ownerSpotRid)
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AutomaticTurnDispatchRes>();
-        ScenarioAssert.That(reply.ScenarioId == "probe-D2", "probe-D2 reply scenario mismatch.");
-        ScenarioAssert.That(reply.NodeRid == "play-a", "probe-D2 caller continuation node mismatch.");
+        ZlinkStreamAssert.Ensure(reply.ScenarioId == "probe-D2", "probe-D2 reply scenario mismatch.");
+        ZlinkStreamAssert.Ensure(reply.NodeRid == "play-a", "probe-D2 caller continuation node mismatch.");
         var ownerEvidence = await client.Request(new AwaitEvidenceWaitReq(requestId, "remote-await-completed"))
             .PacketName("AwaitEvidenceWaitReq")
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             ownerEvidence.Evidence.Any(line =>
                 line.Contains("remote-await-resumed|rid=play-a", StringComparison.Ordinal)
                 && line.Contains("targetNode=play-b", StringComparison.Ordinal)),
@@ -48,12 +48,12 @@ internal static class RemoteSpotAwaitProbe
             "remote-await-resumed",
             "remote-await-completed"
         ]);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             targetEvidence.Evidence.Any(line =>
                 line.Contains($"await-started|rid=play-b|spot={targetSpotRid}|request={requestId}",
                     StringComparison.Ordinal)),
             "probe-D2 target play-b marker missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             targetEvidence.Evidence.All(line =>
                 !line.Contains("remote-await-resumed|rid=play-b", StringComparison.Ordinal)),
             "probe-D2 target node must not own the caller continuation.");

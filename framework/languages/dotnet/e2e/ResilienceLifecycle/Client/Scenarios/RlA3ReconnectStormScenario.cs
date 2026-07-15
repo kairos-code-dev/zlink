@@ -18,7 +18,7 @@ internal static class RlA3ReconnectStormScenario
             var reply = (await consumer.Post("/profile/request/new-client")
                 .Body(new ProfileReq("fast", marker))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.Value == "profile:fast" && reply.ProviderRid is "api-a" or "api-b",
                 "RL-A3 storm request returned an unexpected reply.");
         }
@@ -34,7 +34,7 @@ internal static class RlA3ReconnectStormScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("marker=rl-a3-", StringComparison.Ordinal)),
                 "RL-A3 did not record expected provider evidence.");
         }

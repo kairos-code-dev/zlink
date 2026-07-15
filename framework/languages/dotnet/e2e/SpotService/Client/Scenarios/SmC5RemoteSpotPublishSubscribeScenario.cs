@@ -30,7 +30,7 @@ internal static class SmC5RemoteSpotPublishSubscribeScenario
                 $"spot-msg|rid=play-b|spot={targetSpotRid}|marker={publishMarker}"
             ]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line =>
                 line.Contains($"spot-msg|rid=play-b|spot={targetSpotRid}|marker={publishMarker}",
                     StringComparison.Ordinal)),

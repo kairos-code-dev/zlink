@@ -12,12 +12,12 @@ internal static class SmA8WorkerOffloadScenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .Async<CreateSpotRes>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+        ZlinkStreamAssert.Ensure(created.SpotRid == spotRid && created.NodeRid == "play-a",
             "SM-A8 worker spot was not created on play-a.");
         var ready = (await playA.Post("/spot/state/request")
             .Body(new SpotStateRouteReq(spotRid, "noop", 0))
             .Async<StateRes>()).Body;
-        ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
+        ZlinkStreamAssert.Ensure(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
             "SM-A8 worker spot route did not become ready.");
         var workerTask = playA.Post("/spot/worker/start")
             .Body(new SpotWorkerStartReq(spotRid, "sm-a8-worker", 5000))
@@ -34,17 +34,17 @@ internal static class SmA8WorkerOffloadScenario
         var completed = (await playA.Post("/spot/worker/complete")
             .Body(new SpotWorkerCompleteReq(spotRid, "sm-a8-worker"))
             .Async<SpotWorkerCompleteRes>()).Body;
-        ScenarioAssert.That(worker.SpotRid == spotRid, "SM-A8 worker start target mismatch.");
-        ScenarioAssert.That(duringWorker.Value == 1,
+        ZlinkStreamAssert.Ensure(worker.SpotRid == spotRid, "SM-A8 worker start target mismatch.");
+        ZlinkStreamAssert.Ensure(duringWorker.Value == 1,
             "SM-A8 concurrent spot request did not run before worker completion.");
-        ScenarioAssert.That(completed.Completed, "SM-A8 worker did not complete.");
+        ZlinkStreamAssert.Ensure(completed.Completed, "SM-A8 worker did not complete.");
         var workerStartIndex = ScenarioAssert.FindIndex(completed.Evidence,
             $"worker-start|rid=play-a|spot={spotRid}|marker=sm-a8-worker");
         var stateIndex =
             ScenarioAssert.FindIndex(completed.Evidence, $"spot-state-request|rid=play-a|spot={spotRid}|value=1");
         var workerCompleteIndex = ScenarioAssert.FindIndex(completed.Evidence,
             $"worker-complete|rid=play-a|spot={spotRid}|marker=sm-a8-worker");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             workerStartIndex >= 0 && stateIndex > workerStartIndex && workerCompleteIndex > stateIndex,
             "SM-A8 expected spot request evidence between worker start and completion.");
         Console.WriteLine("operation SpotService.sm-a8 passed");

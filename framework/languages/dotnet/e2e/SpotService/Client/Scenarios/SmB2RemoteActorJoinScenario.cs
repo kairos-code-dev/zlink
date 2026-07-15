@@ -49,8 +49,8 @@ internal static class SmB2RemoteActorJoinScenario
                     : $"SM-B2 remote actor flow did not become routable. Last error: {last.Message}",
                 last);
 
-        ScenarioAssert.That(reply.ActorId == actorId, "SM-B2 actor reply mismatch.");
-        ScenarioAssert.That(reply.NodeRid == "play-b", "SM-B2 remote node mismatch.");
+        ZlinkStreamAssert.Ensure(reply.ActorId == actorId, "SM-B2 actor reply mismatch.");
+        ZlinkStreamAssert.Ensure(reply.NodeRid == "play-b", "SM-B2 remote node mismatch.");
         var expectedEvidence = new[]
         {
             $"entry-created|rid=play-b|actor={actorId}",
@@ -59,7 +59,7 @@ internal static class SmB2RemoteActorJoinScenario
         var evidence = (await playB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-B2 remote lifecycle evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-b2 passed");

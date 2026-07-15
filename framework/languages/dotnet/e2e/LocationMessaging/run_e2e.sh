@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"
 else
@@ -86,6 +88,7 @@ cleanup_redis() {
 pids=()
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
@@ -202,7 +205,9 @@ start_server() {
   local project="$2"
   shift
   shift
-  setsid dotnet run --no-build --project "$project" -- "$@" \
+  local config="$CONFIG_DIR/$name.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- "$@"
+  setsid dotnet run --no-build --project "$project" -- --config "$config" \
     >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
   pids+=("$!")
 }
@@ -214,6 +219,7 @@ dotnet build "$CONSUMER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
 start_server api-a "$PROVIDER_PROJECT" \
+  --role provider \
   --rid api-a \
   --http-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -223,11 +229,13 @@ start_server api-a "$PROVIDER_PROJECT" \
   --manual-client-endpoint "$API_A" \
   --route-endpoint "$ROUTE_A" \
   --route-peer "$ROUTE_B" \
+  --weight 100 \
   --evidence-file "$LOG_DIR/api-a.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" api-a
 
 start_server api-b "$PROVIDER_PROJECT" \
+  --role provider \
   --rid api-b \
   --http-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -237,16 +245,19 @@ start_server api-b "$PROVIDER_PROJECT" \
   --manual-client-endpoint "$API_B" \
   --route-endpoint "$ROUTE_B" \
   --route-peer "$ROUTE_A" \
+  --weight 100 \
   --evidence-file "$LOG_DIR/api-b.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" api-b
 
 start_server workflow-a "$WORKFLOW_PROJECT" \
+  --role workflow \
   --rid workflow-a \
   --http-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --workflow-endpoint "$WORKFLOW" \
+  --weight 100 \
   --evidence-file "$LOG_DIR/workflow-a.evidence.log" \
   --log-dir "$LOG_DIR"
 wait_health "http://127.0.0.1:$WORKFLOW_HTTP_PORT" workflow-a
@@ -284,7 +295,8 @@ wait_health "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" backpressure-con
 sleep "$ROUTE_SETTLE_SECONDS"
 
 set +e
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
+    --config-dir "$CONFIG_DIR" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --workflow-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
@@ -297,7 +309,8 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --provider-project "$PROVIDER_PROJECT" \
   --consumer-project "$CONSUMER_PROJECT" \
   --log-dir "$LOG_DIR" \
-  --scenario "$SCENARIO" \
+  --scenario "$SCENARIO"
+dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
   > >(tee "$LOG_DIR/client.stdout.log") \
   2> >(tee "$LOG_DIR/client.stderr.log" >&2)
 client_status=$?

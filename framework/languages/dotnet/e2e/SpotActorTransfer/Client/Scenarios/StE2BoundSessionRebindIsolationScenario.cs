@@ -19,7 +19,7 @@ internal static class StE2BoundSessionRebindIsolationScenario
         await beforeTransferPush;
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-E2", spotRid));
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-E2 join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-E2 join was rejected.");
         var targetRef = await context.GetActorRefAsync(context.NodeB, actorId);
         await using var newSession = await context.ConnectAndBindAsync(context.Options.NodeBStreamEndpoint, "ST-E2", targetRef);
 
@@ -27,9 +27,9 @@ internal static class StE2BoundSessionRebindIsolationScenario
         var newPush = context.WaitBoundPushAsync(newSession, "after-rebind");
         var pushReply = await context.BoundPushAsync(context.NodeB, actorId, new BoundPushReq("ST-E2", "after-rebind"));
         var notify = await newPush;
-        SpotActorTransferScenarioContext.Require(pushReply.NodeRid == "actor-b", $"ST-E2 bound push reply expected actor-b, got {pushReply.NodeRid}.");
-        SpotActorTransferScenarioContext.Require(notify.Payload.Marker == "after-rebind", "ST-E2 new bound session notify marker mismatch.");
+        ZlinkStreamAssert.Ensure(pushReply.NodeRid == "actor-b", $"ST-E2 bound push reply expected actor-b, got {pushReply.NodeRid}.");
+        ZlinkStreamAssert.Ensure(notify.Payload.Marker == "after-rebind", "ST-E2 new bound session notify marker mismatch.");
         await Task.Delay(500);
-        SpotActorTransferScenarioContext.Require(!oldPush.IsCompleted, "ST-E2 old bound session received push after rebind.");
+        ZlinkStreamAssert.Ensure(!oldPush.IsCompleted, "ST-E2 old bound session received push after rebind.");
     }
 }

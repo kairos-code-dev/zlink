@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
@@ -8,6 +9,7 @@ SCENARIO="${SCENARIO// /,}"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 
 PLAY_PROJECT="$ROOT_DIR/Server/Play/ObservabilityOps.Play.csproj"
 SESSION_PROJECT="$ROOT_DIR/Server/Session/ObservabilityOps.Session.csproj"
@@ -55,6 +57,7 @@ REDIS_CONTAINER=""
 cleanup() {
   local code=$?
   terminate_roles
+  rm -rf "$CONFIG_DIR"
   [[ -n "$REDIS_CONTAINER" ]] && docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
   [[ "$code" -ne 0 ]] && echo "ObservabilityOps failed. Logs: $LOG_DIR" >&2
   return "$code"
@@ -87,7 +90,9 @@ wait_health() {
 
 start_role() {
   local name="$1" project="$2"; shift 2
-  setsid dotnet run --no-build --project "$project" -- "$@" \
+  local config="$CONFIG_DIR/$TOPOLOGY_PHASE-$name.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- "$@"
+  setsid dotnet run --no-build --project "$project" -- --config "$config" \
     >"$LOG_DIR/$TOPOLOGY_PHASE-$name.stdout.log" 2>"$LOG_DIR/$TOPOLOGY_PHASE-$name.stderr.log" &
   pids+=("$!")
 }
@@ -99,7 +104,7 @@ start_topology() {
   wait_health "$PLAY_A_URL" play-a
   start_role play-b "$PLAY_PROJECT" --rid play-b --http-url "$PLAY_B_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
-    --router-endpoint "$PLAY_B_ROUTER" --pub-endpoint "$PLAY_B_PUB" --log-dir "$LOG_DIR" --metrics off
+    --router-endpoint "$PLAY_B_ROUTER" --pub-endpoint "$PLAY_B_PUB" --log-dir "$LOG_DIR" --metrics-enabled false
   wait_health "$PLAY_B_URL" play-b
   start_role workflow-a "$WORKFLOW_PROJECT" --rid workflow-a --http-url "$WORKFLOW_A_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
@@ -118,12 +123,15 @@ start_topology() {
 
 run_client() {
   local scenario="$1" c5_phase="${2:-both}"
-  dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+  local config="$CONFIG_DIR/client-$scenario-$c5_phase.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
+    --config-dir "$CONFIG_DIR" \
     --play-a-url "$PLAY_A_URL" --play-b-url "$PLAY_B_URL" \
     --session-url "$SESSION_URL" --session-endpoint "$SESSION_STREAM" \
     --workflow-a-url "$WORKFLOW_A_URL" --workflow-b-url "$WORKFLOW_B_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" --scenario "$scenario" --log-dir "$LOG_DIR" \
     --c5-phase "$c5_phase"
+  dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$config"
 }
 
 echo "log_dir=$LOG_DIR"

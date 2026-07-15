@@ -1,3 +1,4 @@
+using Zlink.Framework.E2E.Configuration;
 using SpotActorTransfer.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
@@ -162,7 +163,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                 scenario, actor.ActorId, actor.NodeRid, actor.Generation))
             .PacketName(nameof(BindActorSessionReq))
             .Async<BindActorSessionRes>();
-        Require(bound.ActorId == actor.ActorId, $"{scenario} session bind actor mismatch.");
+        ZlinkStreamAssert.Ensure(bound.ActorId == actor.ActorId, $"{scenario} session bind actor mismatch.");
         return stream;
     }
 
@@ -189,7 +190,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             .Where(item => item.ActorId == actorId && item.Kind == kind)
             .Select(item => item.Value)
             .ToArray();
-        Require(evidence.SequenceEqual(values),
+        ZlinkStreamAssert.Ensure(evidence.SequenceEqual(values),
             $"Actor '{actorId}' {kind} order mismatch: {string.Join(",", evidence)}.");
     }
 
@@ -202,24 +203,19 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         await CreateSpotAsync(NodeB, spotRid);
         await CreateActorAsync(NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, stateVersion);
         var oldRef = await GetActorRefAsync(NodeA, actorId);
-        Require((await JoinAsync(NodeA, actorId, new JoinTargetReq(scenario, spotRid))).Accepted,
+        ZlinkStreamAssert.Ensure((await JoinAsync(NodeA, actorId, new JoinTargetReq(scenario, spotRid))).Accepted,
             $"{scenario} transfer was rejected.");
         return (actorId, oldRef);
     }
 
-    public static void Require(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
-    }
-
     public static void RequireContains(IEnumerable<ActorEvidence> evidence, string expected, string message)
     {
-        Require(evidence.Any(item => EvidenceText(item).Contains(expected, StringComparison.Ordinal)), message);
+        ZlinkStreamAssert.Ensure(evidence.Any(item => EvidenceText(item).Contains(expected, StringComparison.Ordinal)), message);
     }
 
     public static void RequireNoContains(IEnumerable<ActorEvidence> evidence, string expected, string message)
     {
-        Require(!evidence.Any(item => EvidenceText(item).Contains(expected, StringComparison.Ordinal)), message);
+        ZlinkStreamAssert.Ensure(!evidence.Any(item => EvidenceText(item).Contains(expected, StringComparison.Ordinal)), message);
     }
 
     private static string EvidenceText(ActorEvidence evidence) =>
@@ -238,19 +234,7 @@ internal sealed record ClientOptions(
     string Scenario)
 {
     public static ClientOptions Parse(string[] args)
-    {
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        for (var i = 0; i < args.Length; i += 2)
-        {
-            var key = args[i].TrimStart('-');
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for '{args[i]}'.");
-            values[key] = args[i + 1];
-        }
-        return new ClientOptions(
-            values["node-a-url"], values["node-b-url"], values["node-c-url"],
-            values["node-a-stream-endpoint"], values["node-b-stream-endpoint"],
-            values.TryGetValue("scenario", out var scenario) ? scenario : "all");
-    }
+        => E2eConfiguration.Load<ClientOptions>(args);
 }
 
 internal sealed record JoinResponse(

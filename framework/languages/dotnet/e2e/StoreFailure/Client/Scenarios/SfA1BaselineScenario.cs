@@ -24,11 +24,11 @@ internal static class SfA1BaselineScenario
         for (var i = 0; i < 8; i++)
         {
             var reply = await SfProbe.RequestAsync(consumer, $"sf-a1-{i}");
-            ScenarioAssert.That(reply.Value == "profile:fast", "SF-A1: request returned an unexpected value.");
+            ZlinkStreamAssert.Ensure(reply.Value == "profile:fast", "SF-A1: request returned an unexpected value.");
             served.Add(reply.ProviderRid);
         }
 
-        ScenarioAssert.That(served.Count > 0, "SF-A1: no provider served the baseline traffic.");
+        ZlinkStreamAssert.Ensure(served.Count > 0, "SF-A1: no provider served the baseline traffic.");
 
         foreach (var (node, name) in new[] { (consumer, "consumer"), (providerA, "api-a"), (providerB, "api-b") })
         {
@@ -37,7 +37,7 @@ internal static class SfA1BaselineScenario
                 SfProbe.Status(options.HeartbeatInterval * 4,
                     storeHealthy: true, ownerLeaseHealthy: true),
                 $"SF-A1: {name} runtime status did not report a healthy store and lease.");
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 status.LastRefreshAt is not null,
                 $"SF-A1: {name} did not report a last refresh timestamp.");
         }

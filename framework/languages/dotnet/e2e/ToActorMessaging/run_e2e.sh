@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
@@ -12,6 +13,7 @@ fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 
 ACTOR_PROJECT="$ROOT_DIR/Server/Actor/ToActorMessaging.Actor.csproj"
 SESSION_PROJECT="$ROOT_DIR/Server/Session/ToActorMessaging.Session.csproj"
@@ -52,6 +54,7 @@ pids=()
 REDIS_CONTAINER=""
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     kill -- "-$pid" >/dev/null 2>&1 || kill "$pid" >/dev/null 2>&1 || true
   done
@@ -109,7 +112,8 @@ PY
 
 start_actor() {
   local role="$1" rid="$2" url="$3" router_port="$4" pubsub_port="$5" evidence="$6"
-  setsid dotnet run --no-build --project "$ACTOR_PROJECT" -- \
+  local config="$CONFIG_DIR/$role.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -117,14 +121,16 @@ start_actor() {
     --router-endpoint "tcp://127.0.0.1:$router_port" \
     --pubsub-endpoint "tcp://127.0.0.1:$pubsub_port" \
     --evidence-file "$evidence" \
-    --log-dir "$LOG_DIR" \
+    --log-dir "$LOG_DIR"
+  setsid dotnet run --no-build --project "$ACTOR_PROJECT" -- --config "$config" \
     >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
   pids+=("$!")
 }
 
 start_session() {
   local role="$1" rid="$2" url="$3" router_port="$4" pubsub_port="$5" stream_port="$6" evidence="$7"
-  setsid dotnet run --no-build --project "$SESSION_PROJECT" -- \
+  local config="$CONFIG_DIR/$role.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -133,14 +139,16 @@ start_session() {
     --pubsub-endpoint "tcp://127.0.0.1:$pubsub_port" \
     --stream-endpoint "tcp://127.0.0.1:$stream_port" \
     --evidence-file "$evidence" \
-    --log-dir "$LOG_DIR" \
+    --log-dir "$LOG_DIR"
+  setsid dotnet run --no-build --project "$SESSION_PROJECT" -- --config "$config" \
     >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
   pids+=("$!")
 }
 
 start_caller() {
   local role="$1" rid="$2" url="$3" router_port="$4" pubsub_port="$5" connect_routes="$6" redis_prefix="$7"
-  setsid dotnet run --no-build --project "$CALLER_PROJECT" -- \
+  local config="$CONFIG_DIR/$role.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
@@ -152,7 +160,8 @@ start_caller() {
     --actor-b-rid "$ACTOR_B_RID" \
     --actor-b-router-endpoint "tcp://127.0.0.1:$ACTOR_B_ROUTER_PORT" \
     --connect-actor-routes "$connect_routes" \
-    --log-dir "$LOG_DIR" \
+    --log-dir "$LOG_DIR"
+  setsid dotnet run --no-build --project "$CALLER_PROJECT" -- --config "$config" \
     >"$LOG_DIR/$role.stdout.log" 2>"$LOG_DIR/$role.stderr.log" &
   pids+=("$!")
 }
@@ -219,7 +228,8 @@ wait_health "$SESSION_B_URL" session-b
 wait_health "$CALLER_URL" caller
 wait_health "$NO_ROUTE_CALLER_URL" caller-no-route
 
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
+    --config-dir "$CONFIG_DIR" \
   --actor-url "$ACTOR_A_URL" \
   --actor-b-url "$ACTOR_B_URL" \
   --caller-url "$CALLER_URL" \
@@ -228,7 +238,8 @@ dotnet run --no-build --project "$CLIENT_PROJECT" -- \
   --session-b-stream-endpoint "tcp://127.0.0.1:$SESSION_B_STREAM_PORT" \
   --session-a-url "$SESSION_A_URL" \
   --session-b-url "$SESSION_B_URL" \
-  --scenario "$SCENARIO" \
+  --scenario "$SCENARIO"
+dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

@@ -1,4 +1,4 @@
-using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Systems.Zlink;
 
 namespace ZoneWorld.Server.Configuration;
@@ -49,13 +49,13 @@ public sealed record ZoneWorldConfiguration(
 {
     public static ZoneWorldConfiguration Load(string[] args)
     {
-        var index = Array.IndexOf(args, "--config");
-        if (index < 0 || index + 1 >= args.Length || args.Length != 2)
+        if (args.Length != 2 || args[0] != "--config")
             throw new ArgumentException("Usage: --config PATH");
 
-        var configuration = JsonSerializer.Deserialize<ZoneWorldConfiguration>(
-            File.ReadAllText(args[index + 1]),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(Path.GetFullPath(args[1]), optional: false, reloadOnChange: false)
+            .Build()
+            .Get<ZoneWorldConfiguration>()
             ?? throw new InvalidOperationException("ZoneWorld configuration is empty.");
         configuration.Validate();
         return configuration;

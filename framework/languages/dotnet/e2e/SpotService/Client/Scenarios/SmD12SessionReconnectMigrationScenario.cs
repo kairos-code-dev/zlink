@@ -53,9 +53,9 @@ internal static class SmD12SessionReconnectMigrationScenario
             var firstReply = await first.Request(new ActorPingReq("before-transfer"))
                 .PacketName("ActorPingReq")
                 .Async<ActorPingRes>();
-            ScenarioAssert.That(firstReply.ActorId == actorId, "SM-D12 first api actor mismatch.");
-            ScenarioAssert.That(firstReply.NodeRid == "play-a", "SM-D12 first api node mismatch.");
-            ScenarioAssert.That(firstReply.Seen == 1, "SM-D12 expected initial actor state.");
+            ZlinkStreamAssert.Ensure(firstReply.ActorId == actorId, "SM-D12 first api actor mismatch.");
+            ZlinkStreamAssert.Ensure(firstReply.NodeRid == "play-a", "SM-D12 first api node mismatch.");
+            ZlinkStreamAssert.Ensure(firstReply.Seen == 1, "SM-D12 expected initial actor state.");
             await first.Close.Async();
 
             deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
@@ -97,20 +97,20 @@ internal static class SmD12SessionReconnectMigrationScenario
             var snapshot = await second.Request(new SnapshotReq(actorId))
                 .PacketName("SnapshotReq")
                 .Async<SnapshotRes>();
-            ScenarioAssert.That(snapshot.ActorId == actorId, "SM-D12 snapshot actor mismatch.");
-            ScenarioAssert.That(snapshot.Seen == 1, "SM-D12 actor state was not preserved across apis.");
+            ZlinkStreamAssert.Ensure(snapshot.ActorId == actorId, "SM-D12 snapshot actor mismatch.");
+            ZlinkStreamAssert.Ensure(snapshot.Seen == 1, "SM-D12 actor state was not preserved across apis.");
 
             var pushed = second.WaitFor<ActorPushNotify>().Async().AsTask();
             var resumed = await second.Request(new ActorPushReq("after-transfer"))
                 .PacketName("ActorPushReq")
                 .Async<ActorPingRes>();
             var notify = await pushed;
-            ScenarioAssert.That(resumed.ActorId == actorId, "SM-D12 resumed actor mismatch.");
-            ScenarioAssert.That(resumed.NodeRid == "play-a", "SM-D12 resumed node mismatch.");
-            ScenarioAssert.That(resumed.Seen == 2, "SM-D12 resumed actor state mismatch.");
-            ScenarioAssert.That(notify.Payload.ActorId == actorId, "SM-D12 resumed push actor mismatch.");
-            ScenarioAssert.That(notify.Payload.Value == "after-transfer", "SM-D12 resumed push value mismatch.");
-            ScenarioAssert.That(notify.Payload.Seen == 2, "SM-D12 resumed push state mismatch.");
+            ZlinkStreamAssert.Ensure(resumed.ActorId == actorId, "SM-D12 resumed actor mismatch.");
+            ZlinkStreamAssert.Ensure(resumed.NodeRid == "play-a", "SM-D12 resumed node mismatch.");
+            ZlinkStreamAssert.Ensure(resumed.Seen == 2, "SM-D12 resumed actor state mismatch.");
+            ZlinkStreamAssert.Ensure(notify.Payload.ActorId == actorId, "SM-D12 resumed push actor mismatch.");
+            ZlinkStreamAssert.Ensure(notify.Payload.Value == "after-transfer", "SM-D12 resumed push value mismatch.");
+            ZlinkStreamAssert.Ensure(notify.Payload.Seen == 2, "SM-D12 resumed push state mismatch.");
         }
         finally
         {

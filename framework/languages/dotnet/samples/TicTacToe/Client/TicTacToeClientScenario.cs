@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Systems.Zlink.Stream.Connector.Contracts;
 using TicTacToe.Shared.Contracts;
@@ -26,15 +25,15 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             .Body(new CreateGameHttpReq(options.GameName))
             .Async<CreateGameHttpRes>().AsTask().GetAwaiter().GetResult().Body;
 
-        Ensure(!string.IsNullOrWhiteSpace(room.RoomId));
-        Ensure(!string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint));
-        Ensure(room.PlayEndpoints.Count >= 2);
-        Ensure(room.PlayEndpoints.Contains(room.OwnerPlayEndpoint, StringComparer.Ordinal));
-        Ensure(room.PlayNodes.Count == room.PlayEndpoints.Count);
-        Ensure(room.PlayNodes.Any(node =>
-            string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal)));
-        Ensure(room.RequiredLevel == 3);
-        Ensure(room.GameName == options.GameName);
+        ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(room.RoomId), "Assertion failed: !string.IsNullOrWhiteSpace(room.RoomId)");
+        ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint), "Assertion failed: !string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint)");
+        ZlinkStreamAssert.Ensure(room.PlayEndpoints.Count >= 2, "Assertion failed: room.PlayEndpoints.Count >= 2");
+        ZlinkStreamAssert.Ensure(room.PlayEndpoints.Contains(room.OwnerPlayEndpoint, StringComparer.Ordinal), "Assertion failed: room.PlayEndpoints.Contains(room.OwnerPlayEndpoint, StringComparer.Ordinal)");
+        ZlinkStreamAssert.Ensure(room.PlayNodes.Count == room.PlayEndpoints.Count, "Assertion failed: room.PlayNodes.Count == room.PlayEndpoints.Count");
+        ZlinkStreamAssert.Ensure(room.PlayNodes.Any(node =>
+            string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal)), "Assertion failed: room.PlayNodes.Any(node => string.Equals(node.StreamEndpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal))");
+        ZlinkStreamAssert.Ensure(room.RequiredLevel == 3, "Assertion failed: room.RequiredLevel == 3");
+        ZlinkStreamAssert.Ensure(room.GameName == options.GameName, "Assertion failed: room.GameName == options.GameName");
 
         var guestPlayEndpoint = room.PlayEndpoints.First(endpoint =>
             !string.Equals(endpoint, room.OwnerPlayEndpoint, StringComparison.Ordinal));
@@ -54,138 +53,142 @@ public sealed class TicTacToeClientScenario(ILogger logger)
 
         var client1Authentication = await client1.Request(new AuthenticateReq(options.XActorId))
             .Async<AuthenticateRes>(cancellationToken);
-        Ensure(client1Authentication.Player.ActorId == options.XActorId);
-        Ensure(client1Authentication.Player.Level >= room.RequiredLevel);
-        Ensure(client1Authentication.Player.Wins == 99);
+        ZlinkStreamAssert.Ensure(client1Authentication.Player.ActorId == options.XActorId, "Assertion failed: client1Authentication.Player.ActorId == options.XActorId");
+        ZlinkStreamAssert.Ensure(client1Authentication.Player.Level >= room.RequiredLevel, "Assertion failed: client1Authentication.Player.Level >= room.RequiredLevel");
+        ZlinkStreamAssert.Ensure(client1Authentication.Player.Wins == 99, "Assertion failed: client1Authentication.Player.Wins == 99");
 
         await observer.Connect.Async(cancellationToken);
         var observerAuthentication = await observer.Request(new AuthenticateReq(options.ObserverActorId))
             .Async<AuthenticateRes>(cancellationToken);
-        Ensure(observerAuthentication.Player.ActorId == options.ObserverActorId);
+        ZlinkStreamAssert.Ensure(observerAuthentication.Player.ActorId == options.ObserverActorId, "Assertion failed: observerAuthentication.Player.ActorId == options.ObserverActorId");
         var observerSubscription =
             await observer.Request(new ObserveMilestoneReq()).Async<ObserveMilestoneRes>(cancellationToken);
-        Ensure(observerSubscription.Subscribed);
+        ZlinkStreamAssert.Ensure(observerSubscription.Subscribed, "Assertion failed: observerSubscription.Subscribed");
 
         var client1Join = await client1.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
-        Ensure(client1Join.State.RoomId == room.RoomId);
-        Ensure(client1Join.State.Status == TicTacToeGameStatuses.WaitingForPlayers);
-        Ensure(client1Join.State.XActorId == options.XActorId);
-        Ensure(client1.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
+        ZlinkStreamAssert.Ensure(client1Join.State.RoomId == room.RoomId, "Assertion failed: client1Join.State.RoomId == room.RoomId");
+        ZlinkStreamAssert.Ensure(client1Join.State.Status == TicTacToeGameStatuses.WaitingForPlayers, "Assertion failed: client1Join.State.Status == TicTacToeGameStatuses.WaitingForPlayers");
+        ZlinkStreamAssert.Ensure(client1Join.State.XActorId == options.XActorId, "Assertion failed: client1Join.State.XActorId == options.XActorId");
+        await client1.ExpectNone<PlayerJoinedNotify>()
+            .Within(TimeSpan.FromMilliseconds(250))
+            .Async(cancellationToken);
 
         // Client 2 connects, authenticates as player O, and joins the same room.
         await client2.Connect.Async(cancellationToken);
 
         var client2Authentication = await client2.Request(new AuthenticateReq(options.OActorId))
             .Async<AuthenticateRes>(cancellationToken);
-        Ensure(client2Authentication.Player.ActorId == options.OActorId);
-        Ensure(client2Authentication.Player.Level >= room.RequiredLevel);
-        Ensure(client2Authentication.Player.ActorId != client1Authentication.Player.ActorId);
+        ZlinkStreamAssert.Ensure(client2Authentication.Player.ActorId == options.OActorId, "Assertion failed: client2Authentication.Player.ActorId == options.OActorId");
+        ZlinkStreamAssert.Ensure(client2Authentication.Player.Level >= room.RequiredLevel, "Assertion failed: client2Authentication.Player.Level >= room.RequiredLevel");
+        ZlinkStreamAssert.Ensure(client2Authentication.Player.ActorId != client1Authentication.Player.ActorId, "Assertion failed: client2Authentication.Player.ActorId != client1Authentication.Player.ActorId");
 
         var client2Join = await client2.Request(new JoinGameReq(room.RoomId)).Async<JoinGameRes>(cancellationToken);
-        Ensure(client2Join.State.RoomId == room.RoomId);
-        Ensure(client2Join.State.Status == TicTacToeGameStatuses.InProgress);
-        Ensure(client2Join.State.OActorId == options.OActorId);
+        ZlinkStreamAssert.Ensure(client2Join.State.RoomId == room.RoomId, "Assertion failed: client2Join.State.RoomId == room.RoomId");
+        ZlinkStreamAssert.Ensure(client2Join.State.Status == TicTacToeGameStatuses.InProgress, "Assertion failed: client2Join.State.Status == TicTacToeGameStatuses.InProgress");
+        ZlinkStreamAssert.Ensure(client2Join.State.OActorId == options.OActorId, "Assertion failed: client2Join.State.OActorId == options.OActorId");
 
         // Existing room members receive push packets when another player joins.
         var client1SawClient2Join = await client1.WaitFor<PlayerJoinedNotify>()
             .Where(message => message.Payload.ActorId == options.OActorId)
             .Async(cancellationToken);
-        Ensure(client1SawClient2Join.Payload.ActorId == options.OActorId);
-        Ensure(client1SawClient2Join.Payload.DisplayName == client2Authentication.Player.DisplayName);
-        Ensure(client1SawClient2Join.Payload.Level == client2Authentication.Player.Level);
-        Ensure(client1SawClient2Join.Payload.Mark == TicTacToeMarks.O);
-        Ensure(client1SawClient2Join.Payload.RoomId == room.RoomId);
-        Ensure(client1SawClient2Join.Payload.State.Status == TicTacToeGameStatuses.InProgress);
-        Ensure(client2.ReceivedCount(nameof(PlayerJoinedNotify)) == 0);
+        ZlinkStreamAssert.Ensure(client1SawClient2Join.Payload.ActorId == options.OActorId, "Assertion failed: client1SawClient2Join.Payload.ActorId == options.OActorId");
+        ZlinkStreamAssert.Ensure(client1SawClient2Join.Payload.DisplayName == client2Authentication.Player.DisplayName, "Assertion failed: client1SawClient2Join.Payload.DisplayName == client2Authentication.Player.DisplayName");
+        ZlinkStreamAssert.Ensure(client1SawClient2Join.Payload.Level == client2Authentication.Player.Level, "Assertion failed: client1SawClient2Join.Payload.Level == client2Authentication.Player.Level");
+        ZlinkStreamAssert.Ensure(client1SawClient2Join.Payload.Mark == TicTacToeMarks.O, "Assertion failed: client1SawClient2Join.Payload.Mark == TicTacToeMarks.O");
+        ZlinkStreamAssert.Ensure(client1SawClient2Join.Payload.RoomId == room.RoomId, "Assertion failed: client1SawClient2Join.Payload.RoomId == room.RoomId");
+        ZlinkStreamAssert.Ensure(client1SawClient2Join.Payload.State.Status == TicTacToeGameStatuses.InProgress, "Assertion failed: client1SawClient2Join.Payload.State.Status == TicTacToeGameStatuses.InProgress");
+        await client2.ExpectNone<PlayerJoinedNotify>()
+            .Within(TimeSpan.FromMilliseconds(250))
+            .Async(cancellationToken);
 
         var client1SawGameStart = await client1.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.Status == TicTacToeGameStatuses.InProgress
                               && message.Payload.State.OActorId == options.OActorId)
             .Async(cancellationToken);
 
-        Ensure(client1SawGameStart.Payload.State.Status == TicTacToeGameStatuses.InProgress);
-        Ensure(client1SawGameStart.Payload.State.OActorId == options.OActorId);
-        Ensure(client1SawGameStart.Payload.State.NextTurn == TicTacToeMarks.X);
+        ZlinkStreamAssert.Ensure(client1SawGameStart.Payload.State.Status == TicTacToeGameStatuses.InProgress, "Assertion failed: client1SawGameStart.Payload.State.Status == TicTacToeGameStatuses.InProgress");
+        ZlinkStreamAssert.Ensure(client1SawGameStart.Payload.State.OActorId == options.OActorId, "Assertion failed: client1SawGameStart.Payload.State.OActorId == options.OActorId");
+        ZlinkStreamAssert.Ensure(client1SawGameStart.Payload.State.NextTurn == TicTacToeMarks.X, "Assertion failed: client1SawGameStart.Payload.State.NextTurn == TicTacToeMarks.X");
 
         // The move sequence is deterministic: client 1 completes the top row.
         var client1Move1 = await client1.Request(new PlaceMarkReq(0)).Async<PlaceMarkRes>(cancellationToken);
-        Ensure(client1Move1.State.Board == "X........");
-        Ensure(client1Move1.State.NextTurn == TicTacToeMarks.O);
-        Ensure(client1Move1.State.LastMoveActorId == options.XActorId);
-        Ensure(client1Move1.State.LastMoveCell == 0);
+        ZlinkStreamAssert.Ensure(client1Move1.State.Board == "X........", "Assertion failed: client1Move1.State.Board == \"X........\"");
+        ZlinkStreamAssert.Ensure(client1Move1.State.NextTurn == TicTacToeMarks.O, "Assertion failed: client1Move1.State.NextTurn == TicTacToeMarks.O");
+        ZlinkStreamAssert.Ensure(client1Move1.State.LastMoveActorId == options.XActorId, "Assertion failed: client1Move1.State.LastMoveActorId == options.XActorId");
+        ZlinkStreamAssert.Ensure(client1Move1.State.LastMoveCell == 0, "Assertion failed: client1Move1.State.LastMoveCell == 0");
 
         var client2SawClient1Move1 = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.XActorId
                               && message.Payload.State.LastMoveCell == 0)
             .Async(cancellationToken);
-        Ensure(client2SawClient1Move1.Payload.State.LastMoveActorId == options.XActorId);
-        Ensure(client2SawClient1Move1.Payload.State.LastMoveCell == 0);
-        Ensure(client2SawClient1Move1.Payload.State.Board == client1Move1.State.Board);
+        ZlinkStreamAssert.Ensure(client2SawClient1Move1.Payload.State.LastMoveActorId == options.XActorId, "Assertion failed: client2SawClient1Move1.Payload.State.LastMoveActorId == options.XActorId");
+        ZlinkStreamAssert.Ensure(client2SawClient1Move1.Payload.State.LastMoveCell == 0, "Assertion failed: client2SawClient1Move1.Payload.State.LastMoveCell == 0");
+        ZlinkStreamAssert.Ensure(client2SawClient1Move1.Payload.State.Board == client1Move1.State.Board, "Assertion failed: client2SawClient1Move1.Payload.State.Board == client1Move1.State.Board");
 
         var client2Move1 = await client2.Request(new PlaceMarkReq(3)).Async<PlaceMarkRes>(cancellationToken);
-        Ensure(client2Move1.State.Board == "X..O.....");
-        Ensure(client2Move1.State.NextTurn == TicTacToeMarks.X);
-        Ensure(client2Move1.State.LastMoveActorId == options.OActorId);
-        Ensure(client2Move1.State.LastMoveCell == 3);
+        ZlinkStreamAssert.Ensure(client2Move1.State.Board == "X..O.....", "Assertion failed: client2Move1.State.Board == \"X..O.....\"");
+        ZlinkStreamAssert.Ensure(client2Move1.State.NextTurn == TicTacToeMarks.X, "Assertion failed: client2Move1.State.NextTurn == TicTacToeMarks.X");
+        ZlinkStreamAssert.Ensure(client2Move1.State.LastMoveActorId == options.OActorId, "Assertion failed: client2Move1.State.LastMoveActorId == options.OActorId");
+        ZlinkStreamAssert.Ensure(client2Move1.State.LastMoveCell == 3, "Assertion failed: client2Move1.State.LastMoveCell == 3");
 
         var client1SawClient2Move1 = await client1.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.OActorId
                               && message.Payload.State.LastMoveCell == 3)
             .Async(cancellationToken);
-        Ensure(client1SawClient2Move1.Payload.State.LastMoveActorId == options.OActorId);
-        Ensure(client1SawClient2Move1.Payload.State.LastMoveCell == 3);
-        Ensure(client1SawClient2Move1.Payload.State.Board == client2Move1.State.Board);
+        ZlinkStreamAssert.Ensure(client1SawClient2Move1.Payload.State.LastMoveActorId == options.OActorId, "Assertion failed: client1SawClient2Move1.Payload.State.LastMoveActorId == options.OActorId");
+        ZlinkStreamAssert.Ensure(client1SawClient2Move1.Payload.State.LastMoveCell == 3, "Assertion failed: client1SawClient2Move1.Payload.State.LastMoveCell == 3");
+        ZlinkStreamAssert.Ensure(client1SawClient2Move1.Payload.State.Board == client2Move1.State.Board, "Assertion failed: client1SawClient2Move1.Payload.State.Board == client2Move1.State.Board");
 
         var client1Move2 = await client1.Request(new PlaceMarkReq(1)).Async<PlaceMarkRes>(cancellationToken);
-        Ensure(client1Move2.State.Board == "XX.O.....");
-        Ensure(client1Move2.State.NextTurn == TicTacToeMarks.O);
-        Ensure(client1Move2.State.LastMoveActorId == options.XActorId);
-        Ensure(client1Move2.State.LastMoveCell == 1);
+        ZlinkStreamAssert.Ensure(client1Move2.State.Board == "XX.O.....", "Assertion failed: client1Move2.State.Board == \"XX.O.....\"");
+        ZlinkStreamAssert.Ensure(client1Move2.State.NextTurn == TicTacToeMarks.O, "Assertion failed: client1Move2.State.NextTurn == TicTacToeMarks.O");
+        ZlinkStreamAssert.Ensure(client1Move2.State.LastMoveActorId == options.XActorId, "Assertion failed: client1Move2.State.LastMoveActorId == options.XActorId");
+        ZlinkStreamAssert.Ensure(client1Move2.State.LastMoveCell == 1, "Assertion failed: client1Move2.State.LastMoveCell == 1");
 
         var client2SawClient1Move2 = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.XActorId
                               && message.Payload.State.LastMoveCell == 1)
             .Async(cancellationToken);
-        Ensure(client2SawClient1Move2.Payload.State.LastMoveActorId == options.XActorId);
-        Ensure(client2SawClient1Move2.Payload.State.LastMoveCell == 1);
-        Ensure(client2SawClient1Move2.Payload.State.Board == client1Move2.State.Board);
+        ZlinkStreamAssert.Ensure(client2SawClient1Move2.Payload.State.LastMoveActorId == options.XActorId, "Assertion failed: client2SawClient1Move2.Payload.State.LastMoveActorId == options.XActorId");
+        ZlinkStreamAssert.Ensure(client2SawClient1Move2.Payload.State.LastMoveCell == 1, "Assertion failed: client2SawClient1Move2.Payload.State.LastMoveCell == 1");
+        ZlinkStreamAssert.Ensure(client2SawClient1Move2.Payload.State.Board == client1Move2.State.Board, "Assertion failed: client2SawClient1Move2.Payload.State.Board == client1Move2.State.Board");
 
         var client2Move2 = await client2.Request(new PlaceMarkReq(4)).Async<PlaceMarkRes>(cancellationToken);
-        Ensure(client2Move2.State.Board == "XX.OO....");
-        Ensure(client2Move2.State.NextTurn == TicTacToeMarks.X);
-        Ensure(client2Move2.State.LastMoveActorId == options.OActorId);
-        Ensure(client2Move2.State.LastMoveCell == 4);
+        ZlinkStreamAssert.Ensure(client2Move2.State.Board == "XX.OO....", "Assertion failed: client2Move2.State.Board == \"XX.OO....\"");
+        ZlinkStreamAssert.Ensure(client2Move2.State.NextTurn == TicTacToeMarks.X, "Assertion failed: client2Move2.State.NextTurn == TicTacToeMarks.X");
+        ZlinkStreamAssert.Ensure(client2Move2.State.LastMoveActorId == options.OActorId, "Assertion failed: client2Move2.State.LastMoveActorId == options.OActorId");
+        ZlinkStreamAssert.Ensure(client2Move2.State.LastMoveCell == 4, "Assertion failed: client2Move2.State.LastMoveCell == 4");
 
         var client1SawClient2Move2 = await client1.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.LastMoveActorId == options.OActorId
                               && message.Payload.State.LastMoveCell == 4)
             .Async(cancellationToken);
-        Ensure(client1SawClient2Move2.Payload.State.LastMoveActorId == options.OActorId);
-        Ensure(client1SawClient2Move2.Payload.State.LastMoveCell == 4);
-        Ensure(client1SawClient2Move2.Payload.State.Board == client2Move2.State.Board);
+        ZlinkStreamAssert.Ensure(client1SawClient2Move2.Payload.State.LastMoveActorId == options.OActorId, "Assertion failed: client1SawClient2Move2.Payload.State.LastMoveActorId == options.OActorId");
+        ZlinkStreamAssert.Ensure(client1SawClient2Move2.Payload.State.LastMoveCell == 4, "Assertion failed: client1SawClient2Move2.Payload.State.LastMoveCell == 4");
+        ZlinkStreamAssert.Ensure(client1SawClient2Move2.Payload.State.Board == client2Move2.State.Board, "Assertion failed: client1SawClient2Move2.Payload.State.Board == client2Move2.State.Board");
 
         var client1FinalMove = await client1.Request(new PlaceMarkReq(2)).Async<PlaceMarkRes>(cancellationToken);
-        Ensure(client1FinalMove.State.Board == "XXXOO....");
-        Ensure(client1FinalMove.State.Status == TicTacToeGameStatuses.Won);
-        Ensure(client1FinalMove.State.Winner == options.XActorId);
-        Ensure(client1FinalMove.State.LastMoveActorId == options.XActorId);
-        Ensure(client1FinalMove.State.LastMoveCell == 2);
+        ZlinkStreamAssert.Ensure(client1FinalMove.State.Board == "XXXOO....", "Assertion failed: client1FinalMove.State.Board == \"XXXOO....\"");
+        ZlinkStreamAssert.Ensure(client1FinalMove.State.Status == TicTacToeGameStatuses.Won, "Assertion failed: client1FinalMove.State.Status == TicTacToeGameStatuses.Won");
+        ZlinkStreamAssert.Ensure(client1FinalMove.State.Winner == options.XActorId, "Assertion failed: client1FinalMove.State.Winner == options.XActorId");
+        ZlinkStreamAssert.Ensure(client1FinalMove.State.LastMoveActorId == options.XActorId, "Assertion failed: client1FinalMove.State.LastMoveActorId == options.XActorId");
+        ZlinkStreamAssert.Ensure(client1FinalMove.State.LastMoveCell == 2, "Assertion failed: client1FinalMove.State.LastMoveCell == 2");
 
         var client2SawFinal = await client2.WaitFor<GameStateNotify>()
             .Where(message => message.Payload.State.Status == TicTacToeGameStatuses.Won
                               && message.Payload.State.Winner == options.XActorId)
             .Async(cancellationToken);
-        Ensure(client2SawFinal.Payload.State.Status == TicTacToeGameStatuses.Won);
-        Ensure(client2SawFinal.Payload.State.Winner == options.XActorId);
-        Ensure(client2SawFinal.Payload.State.Board == client1FinalMove.State.Board);
+        ZlinkStreamAssert.Ensure(client2SawFinal.Payload.State.Status == TicTacToeGameStatuses.Won, "Assertion failed: client2SawFinal.Payload.State.Status == TicTacToeGameStatuses.Won");
+        ZlinkStreamAssert.Ensure(client2SawFinal.Payload.State.Winner == options.XActorId, "Assertion failed: client2SawFinal.Payload.State.Winner == options.XActorId");
+        ZlinkStreamAssert.Ensure(client2SawFinal.Payload.State.Board == client1FinalMove.State.Board, "Assertion failed: client2SawFinal.Payload.State.Board == client1FinalMove.State.Board");
 
         var observerSawMilestone = await observer.WaitFor<WinMilestoneNotify>()
             .Where(message => message.Payload.ActorId == options.XActorId
                               && message.Payload.RoomId == room.RoomId)
             .Async(cancellationToken);
-        Ensure(observerSawMilestone.Payload.DisplayName == client1Authentication.Player.DisplayName);
-        Ensure(observerSawMilestone.Payload.Wins == 100);
-        Ensure(observerSawMilestone.Payload.ReceivingSpotNodeRid == observerPlayNode.SpotNodeRid);
+        ZlinkStreamAssert.Ensure(observerSawMilestone.Payload.DisplayName == client1Authentication.Player.DisplayName, "Assertion failed: observerSawMilestone.Payload.DisplayName == client1Authentication.Player.DisplayName");
+        ZlinkStreamAssert.Ensure(observerSawMilestone.Payload.Wins == 100, "Assertion failed: observerSawMilestone.Payload.Wins == 100");
+        ZlinkStreamAssert.Ensure(observerSawMilestone.Payload.ReceivingSpotNodeRid == observerPlayNode.SpotNodeRid, "Assertion failed: observerSawMilestone.Payload.ReceivingSpotNodeRid == observerPlayNode.SpotNodeRid");
         logger.LogInformation(
             "observer-win-milestone=verified actor={0} wins={1} receivingSpotNodeRid={2}",
             observerSawMilestone.Payload.ActorId,
@@ -194,13 +197,5 @@ public sealed class TicTacToeClientScenario(ILogger logger)
 
         client1.Send(new LeaveGameReq(room.RoomId)).Submit(cancellationToken);
         client2.Send(new LeaveGameReq(room.RoomId)).Submit(cancellationToken);
-    }
-
-    private static void Ensure(
-        bool condition,
-        [CallerArgumentExpression(nameof(condition))]
-        string? expression = null)
-    {
-        if (!condition) throw new InvalidOperationException($"Ensure failed: {expression}");
     }
 }

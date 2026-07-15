@@ -14,11 +14,11 @@ internal static class StB1RemoteStatefulTransferScenario
         await context.CreateActorAsync(context.NodeA, actorId, SpotActorTransferNames.ActorTypeStateful, 21);
 
         var join = await context.JoinAsync(context.NodeA, actorId, new JoinTargetReq("ST-B1", spotRid));
-        SpotActorTransferScenarioContext.Require(join.Accepted, "ST-B1 join was rejected.");
+        ZlinkStreamAssert.Ensure(join.Accepted, "ST-B1 join was rejected.");
 
         var probe = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B1", "after-transfer"));
-        SpotActorTransferScenarioContext.Require(probe.NodeRid == "actor-b", $"ST-B1 probe expected actor-b, got {probe.NodeRid}.");
-        SpotActorTransferScenarioContext.Require(probe.StateVersion == 21, $"ST-B1 state version expected 21, got {probe.StateVersion}.");
+        ZlinkStreamAssert.Ensure(probe.NodeRid == "actor-b", $"ST-B1 probe expected actor-b, got {probe.NodeRid}.");
+        ZlinkStreamAssert.Ensure(probe.StateVersion == 21, $"ST-B1 state version expected 21, got {probe.StateVersion}.");
 
         await context.WaitEvidenceAsync(context.NodeA, [
             $"transfer|{actorId}|transfer_out|21",

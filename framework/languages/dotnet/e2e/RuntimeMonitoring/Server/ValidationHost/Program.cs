@@ -7,10 +7,9 @@ using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Handlers;
+using Zlink.Framework.E2E.Configuration;
 
-var validationCase = args.Length == 2 && args[0] == "--case"
-    ? args[1]
-    : throw new ArgumentException("--case is required.");
+var validationCase = E2eConfiguration.Load<ValidationOptions>(args).Case;
 var builder = Host.CreateApplicationBuilder();
 
 switch (validationCase)
@@ -64,3 +63,5 @@ internal sealed class ValidationRequestHandler : IZLinkRequestHandler<ProfileReq
         return ValueTask.FromResult(new ProfileRes(request.Value, "validation", request.Marker));
     }
 }
+
+internal sealed record ValidationOptions(string Case);

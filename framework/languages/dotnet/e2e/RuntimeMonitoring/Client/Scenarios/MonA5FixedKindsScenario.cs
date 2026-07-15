@@ -14,21 +14,21 @@ internal static class MonA5FixedKindsScenario
         await MonitoringChannelClient.SendInvalidHandshakeAsync(options.ServiceChannelEndpoint);
         var serviceEvidence = await WaitForFixedKindsAsync(service);
 
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
                 serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                         && line.Contains("kind=HandshakeFailed", StringComparison.Ordinal)),
             "MON-A5 handshake failure evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             serviceEvidence.Any(line =>
                 line.Contains(
                     "monitor-location-runtime|source=location-runtime|kind=StatusChanged",
                     StringComparison.Ordinal)),
             "MON-A5 location runtime status evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             serviceEvidence.Any(line =>
                 line.Contains("monitor-spot|source=monitor.spot|kind=StatusChanged", StringComparison.Ordinal)),
             "MON-A5 spot status evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             serviceEvidence.Any(line =>
                 line.Contains("monitor-spot|source=monitor.spot|kind=TimerStoppedAfterUnhandledException",
                     StringComparison.Ordinal)

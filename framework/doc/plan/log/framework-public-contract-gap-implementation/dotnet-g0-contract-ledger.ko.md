@@ -6,9 +6,9 @@
 
 ## 1. 판정 규칙
 
-- 공개 type과 member의 분모는 `framework/languages/dotnet/contract/api/*.api.txt` 여섯 파일의 `type`, `field`,
+- 공개 type과 member의 분모는 `framework/languages/dotnet/contract/api/*.api.txt` 일곱 파일의 `type`, `field`,
   `ctor`, `property`, `event`, `method`, `generic`, `where` 행 전체다.
-- package 분모는 `framework/languages/dotnet/contract/packages/*.package.txt` 여섯 파일의 archive, metadata,
+- package 분모는 `framework/languages/dotnet/contract/packages/*.package.txt` 일곱 파일의 archive, metadata,
   dependency와 assembly 행 전체다.
 - 동작 계약은 아래 표의 exact test method 또는 `E2E:<scenario-id>`로 연결한다. test class
   전체나 단순 solution PASS는 개별 동작의 증거로 사용하지 않는다.
@@ -37,8 +37,9 @@ custom modifier를 서로 다른 텍스트 행으로 보존한다. 같은 내용
 | DN-SURFACE-004 | `Zlink.Framework.Codecs.Protobuf` 전체 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Zlink.Framework.Codecs.Protobuf.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
 | DN-SURFACE-005 | `Zlink.Framework.Locations.Redis` 전체 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Zlink.Framework.Locations.Redis.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
 | DN-SURFACE-006 | `Systems.Zlink.Stream.Connector` 전체 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Systems.Zlink.Stream.Connector.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
-| DN-PACKAGE-001 | 위 여섯 package의 archive와 export | `languages/dotnet/framework/languages/dotnet/contract/packages/*.package.txt` | `scripts/verify_packaged_contract.sh` clean consumer와 package snapshot |
-| DN-BINDING-001 | framework가 사용하는 bindings package | `Systems.Zlink` `8.6.6`, local package `Systems.Zlink.8.6.6.nupkg`, SHA-256 `dae37c26458d965cc63114d1fe846b129208feff815dc0a22ddd5f904854f84e` | `dotnet list src/Zlink.Framework/Zlink.Framework.csproj package --include-transitive` resolved `8.6.6`; framework `PackageReference` 사용, source 직접 참조 없음 |
+| DN-SURFACE-007 | `Zlink.HttpClient` 전체 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Zlink.HttpClient.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
+| DN-PACKAGE-001 | 위 일곱 package의 archive와 export | `languages/dotnet/framework/languages/dotnet/contract/packages/*.package.txt` | `scripts/verify_packaged_contract.sh` aggregate consumer, HTTP client 단독 consumer와 package snapshot |
+| DN-BINDING-001 | framework가 사용하는 bindings package | `Systems.Zlink` `9.0.7`, local package `Systems.Zlink.9.0.7.nupkg`, SHA-256 `508efef467174441aa1024c9c5dcd993d4ded861238a6517869e1759e9e93d40` | `dotnet list src/Zlink.Framework/Zlink.Framework.csproj package --include-transitive` resolved `9.0.7`; framework `PackageReference` 사용, source 직접 참조 없음 |
 | DN-REUSE-001 | core/bindings와 framework의 동일 기능 재구현 | correlation generator만 중복으로 확정 | `DN-025`; connector의 단일 `ZlinkStreamCorrelation` 사용, framework duplicate symbol/file no-hit |
 
 현재 snapshot의 symbol/constraint 행 수는 다음과 같다. 이 수는 고정 상수가 아니라 checkout에서
@@ -46,12 +47,13 @@ custom modifier를 서로 다른 텍스트 행으로 보존한다. 같은 내용
 
 | artifact | symbol/constraint ledger 행 |
 |----------|-----------------------------|
-| `Systems.Zlink.Stream.Connector.api.txt` | 301 |
-| `Zlink.Framework.AspNetCore.api.txt` | 4 |
-| `Zlink.Framework.Codecs.MessagePack.api.txt` | 7 |
-| `Zlink.Framework.Codecs.Protobuf.api.txt` | 7 |
+| `Systems.Zlink.Stream.Connector.api.txt` | 316 |
+| `Zlink.Framework.AspNetCore.api.txt` | 5 |
+| `Zlink.Framework.Codecs.MessagePack.api.txt` | 5 |
+| `Zlink.Framework.Codecs.Protobuf.api.txt` | 5 |
 | `Zlink.Framework.Locations.Redis.api.txt` | 32 |
-| `Zlink.Framework.api.txt` | 2,126 |
+| `Zlink.Framework.api.txt` | 2,022 |
+| `Zlink.HttpClient.api.txt` | 103 |
 
 namespace별 정식 계약 owner는 다음과 같다. 한 symbol의 정확한 서명은 snapshot 행이 소유하고, 동작은
 owner 문서의 `DN-COMMON-*`/`DN-DOC-*`와 plan §6의 exact test가 소유한다.
@@ -66,11 +68,12 @@ owner 문서의 `DN-COMMON-*`/`DN-DOC-*`와 plan §6의 exact test가 소유한�
 | `Zlink.Framework.Contracts.Dispatch`, `Eventing`, `Monitoring` | `system-structure.ko.md` |
 | `Zlink.Framework.AspNetCore` | 언어 `README.ko.md`와 각 capability의 ASP.NET Core 계약 |
 | `Zlink.Framework.Codecs.*` | `handler-interfaces.ko.md`의 codec extension 계약 |
+| `Zlink.HttpClient.*` | `http-client/languages/dotnet/dotnet-http-client.ko.md` |
 | `Systems.Zlink.Stream.Connector.*` | `system-structure.ko.md`의 connector 절과 `handler-interfaces.ko.md` |
 
 ### 2.1 bindings public capability audit
 
-framework 목표 계약에 필요한 low-level 기능은 현재 `Systems.Zlink 8.6.6` package의 public API로
+framework 목표 계약에 필요한 low-level 기능은 현재 `Systems.Zlink 9.0.7` package의 public API로
 충족한다. framework는 이 표의 기능을 backend wrapper에서 직접 호출하며 reflection이나 friend
 assembly로 우회하지 않는다.
 
@@ -94,10 +97,10 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 |----|-----------|-----------------------|-------------|
 | DN-COMMON-001 | `README.ko.md` | `.NET/README.ko.md`, 계약 문서 위치와 취소 표현 | `RegressionTests.DotNetContractReadme_Exposes_Resolvable_Regression_Evidence` |
 | DN-COMMON-002 | `01-overview.ko.md` | `handler-interfaces.ko.md`, host/DI와 역할별 공개 표면 | `ScaffoldSmokeTests.FrameworkRoot_IsDiscoverable_FromTestRuntime`; `NodesAndServicesTests.AddZLinkFramework_Uses_Standard_DI_For_Application_Dependencies` |
-| DN-COMMON-003 | `05-framework-api.ko.md` | `handler-interfaces.ko.md`, 여섯 public API snapshot | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `ScaffoldSmokeTests.FrameworkExportedTypes_UseContractsNamespace` |
+| DN-COMMON-003 | `05-framework-api.ko.md` | `handler-interfaces.ko.md`, 일곱 public API snapshot | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `ScaffoldSmokeTests.FrameworkExportedTypes_UseContractsNamespace` |
 | DN-COMMON-004 | `02-interaction-model.ko.md` | channel, Spot, actor와 session interaction owner | `SerialExecutorTests.SerialExecutionQueue_DefaultAwait_Holds_Gate_Until_Work_Completes`; `E2E:SM-D11` |
 | DN-COMMON-005 | `03-message-model.ko.md` | typed packet identity와 framework envelope codec | `EnvelopeCodecTests.Envelope_requires_marker_and_roundtrips_flow_fields`; `ContractSurfaceCoverage.Frozen_public_surface_excludes_replaced_contracts` |
-| DN-COMMON-006 | `04-async-execution-policy.ko.md` | one-way bounded/nonblocking 수락, 단일 `Async(...)` terminator와 automatic turn | `ZLinkAsyncSubmitterTests.Async_ThrowsWhenQueueIsFull`; `StreamConnectorTests.OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously`; `SessionActorCoordinatorTests.Session_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `EntrySpotActorDispatchTests.BoundSession_Submit_Rejects_Missing_Binding_On_The_Caller`; `EntrySpotActorDispatchTests.Actor_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `SerialExecutorTests.SerialExecutionQueue_AutomaticTurn_Allows_Later_Work_Then_Resumes_On_Line`; `E2E:ATD-A1`; `E2E:ATD-B3` |
+| DN-COMMON-006 | `04-async-execution-policy.ko.md` | one-way bounded/nonblocking 수락과 `Async(...)` turn 유지, `Yield(...)` turn 반납 | `ZLinkAsyncSubmitterTests.Async_ThrowsWhenQueueIsFull`; `StreamConnectorTests.OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously`; `SessionActorCoordinatorTests.Session_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `EntrySpotActorDispatchTests.BoundSession_Submit_Rejects_Missing_Binding_On_The_Caller`; `EntrySpotActorDispatchTests.Actor_Send_Submit_Rejects_Nonblocking_Transport_Failure_On_The_Caller`; `WorkerPoolTests.RunCpuWorker_Async_Holds_Serial_Turn_Until_Work_Completes`; `WorkerPoolTests.RunCpuWorker_Yield_Releases_And_Resumes_Through_Serial_Turn`; `E2E:ATD-A1`; `E2E:ATD-B3` |
 | DN-COMMON-007 | `10-channel-topology.ko.md` | `system-structure.ko.md`, manual/location 연결 | `ChannelsTests.AddZLinkFramework_Throws_WhenClientHasNoPeerAcquisitionPath`; `E2E:RM-A1`; `E2E:RM-A2`; `E2E:PS-A1` |
 | DN-COMMON-008 | `22-actor-model.ko.md` | `handler-interfaces.ko.md`, actor context와 join 결과 | `ActorContracts.Actor_context_creates_actors_and_joins_a_spot_by_routing_id`; `EntrySpotActorDispatchTests.EntrySpotActorDispatch_BoundRequest_UsesBoundSession_AndBindsSession`; `E2E:SM-B7` |
 | DN-COMMON-009 | `23-spot-actor.ko.md` | `handler-interfaces.ko.md`, `system-structure.ko.md` | `EntrySpotActorDispatchTests.EntrySpotActorDispatch_ConcurrentActors_StartsOutsideEntrySpotSerialLine_AndKeepsSameActorOrdering`; `E2E:SM-B1`; `E2E:SM-B2` |
@@ -127,6 +130,7 @@ assembly인 `Systems.Zlink`의 non-public member를 `NonPublic`, `MethodInfo.Inv
 | DN-DOC-002 | `01-system-structure.ko.md` | ASP.NET Core host 등록·부트스트랩·DI·lifecycle — channel · SPOT · SpotNode/Entry Spot · STREAM · session actor dispatch · monitoring · location 등록 표면과 startup validation | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenSpotFactoryTypeIsDuplicatedAcrossNodes`; `NodesAndServicesTests.AddZLinkFramework_Throws_WhenStreamNodeRegistersMultipleSessions`; `NodesAndServicesTests.AddZLinkFramework_AllowsStandaloneLocalSpotNode`; `E2E:SM-A1` |
 | DN-DOC-003 | `02-handler-interfaces.ko.md` | 전체 public interface·context·handler·client·등록·timer·filter·attribute·관측 투영 카탈로그와 §17 공개 계약 산출물 검증 절차 | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature`; `PublicContractSnapshotTests.Renderer_Preserves_CSharp_PublicContract_Distinctions`; `CoverageCriticalRuntimeTests.SpotTimerFailureEventFactory_MapsStoppedAndContinuingFailures` |
 | DN-DOC-004 | `03-stream-connector.ko.md` | 별도 client connector의 lifecycle, dispatch, codec, transport와 종료 사유 | `StreamConnectorTests.TcpSendUsesHeaderPayloadFrame`; `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` |
+| DN-DOC-005 | `dotnet-http-client.ko.md` | standalone/server client 분리, callback·scheduler와 패키지 의존성 | `HttpClientContractTests.Standalone_and_server_request_surfaces_expose_only_valid_terminators`; `HttpClientContractTests.Callback_completion_enters_the_captured_execution_turn`; `HttpExecutionSchedulerTests.Captured_http_callback_is_posted_as_a_new_serial_turn` |
 
 `02-framework-interfaces.ko.md`는 상위 사용 모델 guide이므로 정식 interface 분모에서는 제외한다.
 문서의 회귀 참조는 active unit test 또는 실제 `.NET` feature-map scenario로만 해석되며, 삭제된
@@ -244,7 +248,7 @@ E2E class allowlist는 존재하지 않는다.
 ## 6. 아직 남은 G0 판정
 
 - public API와 package export 분모: 최종 checkout package verifier와 clean consumer 재검증 완료
-- bindings package/version/hash: `Systems.Zlink 8.6.6`과 package SHA-256 `dae37c26458d965cc63114d1fe846b129208feff815dc0a22ddd5f904854f84e` 재검증 완료
+- bindings package/version/hash: `Systems.Zlink 9.0.7`과 package SHA-256 `508efef467174441aa1024c9c5dcd993d4ded861238a6517869e1759e9e93d40` 재검증 완료
 - core/bindings 기능 재사용 감사: 1차 완료, G4/G7 재감사 필요
 - 공통 spec 및 언어별 문서 파일 inventory: 완료
 - 모든 규범 문장의 조항별 symbol/behavior/test 연결: 완료
@@ -280,12 +284,13 @@ ae0c25c9f67cb397da861e82d8aaf1311472dfe5e28212a88f1e0aa32ec20998 server/23-spot-
 45576c26b8061e0a1965d219d539080a4917c6c06572b5d63bccddfb2f1bbe4d server/24-spot-address-messaging.ko.md
 d9546cf37a3f9f34e863ac4a63eda2e2af6f1985269279579fa5b53632978108 server/20-spot-messaging.ko.md
 d9a36ee80739f7035a0371c703871cea26f952e353d0f123e45b69e44c540088 server/21-spot-node.ko.md
-fe9072b34809ccc20b489f6a3ebdd093fdd35470d3f1ee291e065f5644cc5f99 stream-connector/32-stream-connector.ko.md
+700c8504cfa71315b2598349eb2cc38c6cb52fb813b5b80650f46268412cae6c stream-connector/32-stream-connector.ko.md
 623bca5e070513cc314c2d7f93d00dcdeab8b5f473bdeb883bfb5711eaa028e0 server/30-stream-session.ko.md
 25ed1dd2bb81af78a61695bfaadbdba35edb15be565ca2c53e8f0e2cabaf65ec server/languages/dotnet/README.ko.md
-9ce0f5144fc1a828de539d0c49a900d43b2d2a81ef47e5d8411e4600a72283ce stream-connector/languages/dotnet/03-stream-connector.ko.md
-09451c4d9c3bc707e5ce7108dfe4ca636e975ca9e8e4f9b1110f5e9065a505ea server/languages/dotnet/02-handler-interfaces.ko.md
+8db5adb28d0775b4181554a614bf2bfd77f3b62caad6a9ce55bdc21f17f7d17a stream-connector/languages/dotnet/03-stream-connector.ko.md
+e1d338345b91de9461785e43b9c1c3cbfe85279cb0fb54d5fa8022d8218e66ee server/languages/dotnet/02-handler-interfaces.ko.md
 8c1dc04eb9193658092a96cb0bcd44e1dde64789a40835ff74680726ffd162aa server/languages/dotnet/01-system-structure.ko.md
 54f7a53bc1ff7cc97ada0a41d28f50678e43d68c3ad46e0beef43466dd8ccf5c server/25-stage-wrapper-on-spot.ko.md
 7a1a32c29bc2cfc642ce465f71e5f405741a2a8c23b95d0426b132947fdd0202 server/11-channel-messaging.ko.md
+55f8355b8e77bfacc1dce4466db71de045fd1f4f2b38629fd2ebd516f6cad4c2 http-client/languages/dotnet/dotnet-http-client.ko.md
 ```

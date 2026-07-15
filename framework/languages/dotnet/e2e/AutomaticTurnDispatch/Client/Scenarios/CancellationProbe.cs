@@ -12,7 +12,7 @@ internal static class CancellationProbe
             .PacketName("EnsureSpotReq")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<EnsureSpotRes>();
-        ScenarioAssert.That(spot.SpotRid == spotRid, "probe-E2 spot creation mismatch.");
+        ZlinkStreamAssert.Ensure(spot.SpotRid == spotRid, "probe-E2 spot creation mismatch.");
 
         var requestId = $"probe-E2-{Guid.NewGuid():N}";
         client.Send(new AwaitCancelMsg(requestId, 800, 100))

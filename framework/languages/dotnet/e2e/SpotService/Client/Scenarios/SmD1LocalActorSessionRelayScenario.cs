@@ -86,9 +86,9 @@ internal static class SmD1LocalActorSessionRelayScenario
                 .PacketName("ActorPushReq")
                 .Async<ActorPingRes>();
             var notify = await pushed;
-            ScenarioAssert.That(reply.ActorId == "actor-sm-d1", "SM-D1 actor reply mismatch.");
-            ScenarioAssert.That(notify.Payload.ActorId == "actor-sm-d1", "SM-D1 push actor mismatch.");
-            ScenarioAssert.That(notify.Payload.Value == "push-local", "SM-D1 push value mismatch.");
+            ZlinkStreamAssert.Ensure(reply.ActorId == "actor-sm-d1", "SM-D1 actor reply mismatch.");
+            ZlinkStreamAssert.Ensure(notify.Payload.ActorId == "actor-sm-d1", "SM-D1 push actor mismatch.");
+            ZlinkStreamAssert.Ensure(notify.Payload.Value == "push-local", "SM-D1 push value mismatch.");
         }
         finally
         {

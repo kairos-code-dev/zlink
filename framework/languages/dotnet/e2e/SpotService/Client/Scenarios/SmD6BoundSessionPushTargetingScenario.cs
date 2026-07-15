@@ -93,11 +93,11 @@ internal static class SmD6BoundSessionPushTargetingScenario
                 .PacketName("ActorPushReq")
                 .Async<ActorPingRes>();
             var notify = await pushed;
-            ScenarioAssert.That(notify.Payload.ActorId == "actor-sm-d6", "SM-D6 push actor mismatch.");
-            ScenarioAssert.That(notify.Payload.Value == "push-bound-only", "SM-D6 push value mismatch.");
-            await Task.Delay(200);
-            ScenarioAssert.That(activeUnbound.ReceivedCount("ActorPushNotify") == 0,
-                "SM-D6 unbound session received push.");
+            ZlinkStreamAssert.Ensure(notify.Payload.ActorId == "actor-sm-d6", "SM-D6 push actor mismatch.");
+            ZlinkStreamAssert.Ensure(notify.Payload.Value == "push-bound-only", "SM-D6 push value mismatch.");
+            await activeUnbound.ExpectNone<ActorPushNotify>()
+                .Within(TimeSpan.FromMilliseconds(200))
+                .Async();
         }
         finally
         {

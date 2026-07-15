@@ -63,7 +63,7 @@ internal static class SmD9StreamInboundObserverScenario
             await activeStream.Request(new ActorPingReq("observer-2"))
                 .PacketName("ActorPingReq")
                 .Async<ActorPingRes>();
-            ScenarioAssert.That(observed.Count >= 2, "SM-D9 inbound observer did not observe stream replies.");
+            ZlinkStreamAssert.Ensure(observed.Count >= 2, "SM-D9 inbound observer did not observe stream replies.");
         }
         finally
         {

@@ -41,7 +41,7 @@ internal static class RlA5ProviderFlappingScenario
                 var reply = (await consumer.Post("/profile/request")
                     .Body(new ProfileReq("fast", marker))
                     .Async<ProfileRes>()).Body;
-                ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-A5 down window did not converge to api-a.");
+                ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a", "RL-A5 down window did not converge to api-a.");
             }
 
             await providerA.Post("/evidence/wait")

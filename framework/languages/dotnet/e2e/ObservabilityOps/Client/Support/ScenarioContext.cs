@@ -46,11 +46,6 @@ internal sealed class ScenarioContext(ClientOptions options) : IDisposable
         return connector;
     }
 
-    public static void Require(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
-    }
-
     public async Task<string[]> WaitPlayAEvidenceAsync(params string[] markers)
     {
         return (await PlayA.Post("/evidence/wait")

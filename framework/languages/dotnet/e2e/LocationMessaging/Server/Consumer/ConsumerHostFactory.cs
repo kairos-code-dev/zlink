@@ -46,7 +46,7 @@ internal static class ConsumerHostFactory
             }
             else
             {
-                foreach (var endpoint in options.ProviderEndpoints)
+                foreach (var endpoint in options.ProviderEndpoints ?? [])
                 {
                     profile.EnableClient(endpoint);
                 }

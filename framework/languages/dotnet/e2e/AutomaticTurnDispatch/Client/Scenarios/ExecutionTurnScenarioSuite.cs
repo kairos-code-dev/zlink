@@ -19,7 +19,8 @@ internal sealed class ExecutionTurnScenarioSuite(
         AssertTerminators(typeof(IZLinkRequestCall));
         AssertTerminators(typeof(IZLinkActorJoinCall));
         AssertTerminators(typeof(IZLinkWorkerCall<>));
-        AssertTerminators(typeof(ZLinkHttpRequestBuilder));
+        AssertTerminators(typeof(ZLinkHttpServerRequestBuilder));
+        AssertStandaloneHttpTerminators();
         return Task.CompletedTask;
     }
 
@@ -36,7 +37,7 @@ internal sealed class ExecutionTurnScenarioSuite(
             .Metadata(AutomaticTurnDispatchNames.SpotRidMetadata, spot)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<AutomaticTurnDispatchRes>();
-        ScenarioAssert.That(reply.Marker == "async-completed", "TD-A4 async completion did not resume.");
+        ZlinkStreamAssert.Ensure(reply.Marker == "async-completed", "TD-A4 async completion did not resume.");
     }
 
     public async Task TdA5Async() => await VerifyTimerInterleaveAsync("TD-A5", "async", false);
@@ -87,11 +88,11 @@ internal sealed class ExecutionTurnScenarioSuite(
                 break;
             await Task.Delay(25);
         }
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Count(line => line.Contains($"request={requestId}", StringComparison.Ordinal)
                                    && line.Contains("io-worker-completed", StringComparison.Ordinal)) == 32,
             "TD-C3 did not complete all I/O workers.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.All(line => !line.Contains("WorkerQueueFull", StringComparison.Ordinal)),
             "TD-C3 exhausted the CPU worker queue.");
     }
@@ -110,7 +111,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         {
             var source = File.ReadAllText(file);
             if (!source.Contains("RunCpuWorker", StringComparison.Ordinal)) continue;
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 !source.Contains("GetAwaiter().GetResult()", StringComparison.Ordinal),
                 $"TD-C5 found blocking I/O in CPU worker source: {file}");
         }
@@ -138,7 +139,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         var requestId = NewId("TD-E1");
         var reply = await ActorRequestAsync<ActorAwaitRes>(actors.ActorA,
             new ActorJoinAwaitReq(requestId, actors.SpotRid), "ActorJoinAwaitReq");
-        ScenarioAssert.That(reply.Marker == "actor-join-await-completed", "TD-E1 entry join failed.");
+        ZlinkStreamAssert.Ensure(reply.Marker == "actor-join-await-completed", "TD-E1 entry join failed.");
     }
 
     public async Task TdE2Async()
@@ -149,7 +150,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         await EnsureSpotAsync(target, "play-a");
         var reply = await ActorRequestAsync<ActorAwaitRes>(actors.ActorA,
             new ActorJoinAwaitReq(NewId("TD-E2"), target), "ActorJoinAwaitReq");
-        ScenarioAssert.That(reply.Marker == "actor-join-completed", "TD-E2 user Spot join failed.");
+        ZlinkStreamAssert.Ensure(reply.Marker == "actor-join-completed", "TD-E2 user Spot join failed.");
     }
 
     public async Task TdE3Async()
@@ -166,7 +167,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         var moveB = ActorRequestAsync<ActorAwaitRes>(actors.ActorB,
             new ActorJoinAwaitReq(NewId("TD-E3-B"), spotA), "ActorJoinAwaitReq");
         var replies = await Task.WhenAll(moveA, moveB);
-        ScenarioAssert.That(replies.All(reply => reply.Marker == "actor-join-completed"),
+        ZlinkStreamAssert.Ensure(replies.All(reply => reply.Marker == "actor-join-completed"),
             "TD-E3 opposite joins did not both complete.");
     }
 
@@ -192,7 +193,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         await EvidenceAsync(requestId, "self-cycle-timed-out");
         var reply = await SpotRequestAsync<AutomaticTurnDispatchRes>(spot,
             new ProbeReq(requestId, "post-cycle"), "ProbeReq");
-        ScenarioAssert.That(reply.Marker == "post-cycle", "TD-F6 Spot did not recover after timeout.");
+        ZlinkStreamAssert.Ensure(reply.Marker == "post-cycle", "TD-F6 Spot did not recover after timeout.");
     }
 
     public async Task TdG1Async()
@@ -234,7 +235,7 @@ internal sealed class ExecutionTurnScenarioSuite(
             SendSpot(new CounterAwaitMsg(requestId, $"op-{index}", 200, terminator), "CounterAwaitMsg", spot);
         await Task.Delay(600);
         var counter = await SpotRequestAsync<CounterReadRes>(spot, new CounterReadReq(requestId), "CounterReadReq");
-        ScenarioAssert.That(counter.Value == expected,
+        ZlinkStreamAssert.Ensure(counter.Value == expected,
             $"{scenarioId} expected counter {expected}, actual {counter.Value}.");
     }
 
@@ -292,7 +293,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         var completion = evidence.First(line => line.Contains($"request={requestId}", StringComparison.Ordinal)
                                                 && line.Contains("cpu-worker", StringComparison.Ordinal)
                                                 && line.Contains("completed", StringComparison.Ordinal));
-        ScenarioAssert.That(!completion.Contains("caller-thread=0|worker-thread=0", StringComparison.Ordinal),
+        ZlinkStreamAssert.Ensure(!completion.Contains("caller-thread=0|worker-thread=0", StringComparison.Ordinal),
             $"{scenarioId} did not record CPU worker thread evidence.");
     }
 
@@ -321,7 +322,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         await EnsureSpotAsync(target, "play-b");
         var reply = await SpotRequestAsync<AutomaticTurnDispatchRes>(owner,
             new RemoteSpotAwaitReq(NewId(scenarioId), target, 100), "RemoteSpotAwaitReq");
-        ScenarioAssert.That(reply.NodeRid == "play-a", "TD-F1 continuation did not return to the caller node.");
+        ZlinkStreamAssert.Ensure(reply.NodeRid == "play-a", "TD-F1 continuation did not return to the caller node.");
     }
 
     private async Task<string> SpotAsync()
@@ -342,7 +343,7 @@ internal sealed class ExecutionTurnScenarioSuite(
             .PacketName("BindAwaitActorsReq")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<BindAwaitActorsRes>();
-        ScenarioAssert.That(result.Actors.Length == 2, "Execution turn actor binding failed.");
+        ZlinkStreamAssert.Ensure(result.Actors.Length == 2, "Execution turn actor binding failed.");
         _actors = new AwaitActorScenarioContext(spot, actorA, actorB);
         return _actors;
     }
@@ -351,7 +352,7 @@ internal sealed class ExecutionTurnScenarioSuite(
     {
         var reply = await ActorRequestAsync<ActorAwaitRes>(actorId,
             new ActorJoinAwaitReq(NewId(scenarioId), spotRid), "ActorJoinAwaitReq");
-        ScenarioAssert.That(reply.Marker.Contains("actor-join", StringComparison.Ordinal),
+        ZlinkStreamAssert.Ensure(reply.Marker.Contains("actor-join", StringComparison.Ordinal),
             $"{scenarioId} actor placement failed.");
     }
 
@@ -361,7 +362,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         if (targetNode != "play-a")
             builder.Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, targetNode);
         var result = await builder.Timeout(TimeSpan.FromSeconds(30)).Async<EnsureSpotRes>();
-        ScenarioAssert.That(result.SpotRid == spotRid, $"Spot creation failed for {spotRid}.");
+        ZlinkStreamAssert.Ensure(result.SpotRid == spotRid, $"Spot creation failed for {spotRid}.");
     }
 
     private void SendSpot<T>(T message, string packetName, string spotRid)
@@ -398,8 +399,21 @@ internal sealed class ExecutionTurnScenarioSuite(
     {
         var methods = type.GetMethods().Select(method => method.Name).ToHashSet(StringComparer.Ordinal);
         foreach (var name in new[] { "Submit", "Async", "Yield" })
-            ScenarioAssert.That(methods.Contains(name), $"TD-A1 {type.Name} is missing {name}.");
-        ScenarioAssert.That(!methods.Contains("Fetch"), $"TD-A1 {type.Name} exposes blocking Fetch.");
+            ZlinkStreamAssert.Ensure(methods.Contains(name), $"TD-A1 {type.Name} is missing {name}.");
+        ZlinkStreamAssert.Ensure(!methods.Contains("Fetch"), $"TD-A1 {type.Name} exposes blocking Fetch.");
+    }
+
+    private static void AssertStandaloneHttpTerminators()
+    {
+        var methods = typeof(ZLinkHttpRequestBuilder).GetMethods()
+            .Select(method => method.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        ZlinkStreamAssert.Ensure(methods.Contains("Async"),
+            "TD-A1 standalone HTTP request builder is missing Async.");
+        ZlinkStreamAssert.Ensure(!methods.Contains("Submit") && !methods.Contains("Yield"),
+            "TD-A1 standalone HTTP request builder exposes server-only terminators.");
+        ZlinkStreamAssert.Ensure(!methods.Contains("Fetch"),
+            "TD-A1 standalone HTTP request builder exposes blocking Fetch.");
     }
 
     private static string FindAutomaticTurnDispatchRoot()

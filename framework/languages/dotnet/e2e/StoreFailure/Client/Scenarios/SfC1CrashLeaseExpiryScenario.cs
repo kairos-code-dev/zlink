@@ -31,13 +31,13 @@ internal static class SfC1CrashLeaseExpiryScenario
         for (var i = 0; i < 12; i++)
         {
             var reply = await SfProbe.RequestAsync(consumer, $"sf-c1-{i}");
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "api-a",
                 $"SF-C1: request {i} was served by '{reply.ProviderRid}' instead of the survivor.");
         }
 
         stopwatch.Stop();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             stopwatch.Elapsed < TimeSpan.FromSeconds(12),
             "SF-C1: follow-up requests were slow, suggesting repeated timeouts against the dead endpoint.");
 

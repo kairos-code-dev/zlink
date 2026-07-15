@@ -25,15 +25,15 @@ internal static class ObsA4FanoutAndTimerScenario
         var receivedB = (await context.WorkflowB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([expected], [["projection-received|"]]))
             .Async<string[]>()).Body;
-        ScenarioContext.Require(receivedA.Any(line => line.Contains($"subscriber={subscriberA}", StringComparison.Ordinal)),
+        ZlinkStreamAssert.Ensure(receivedA.Any(line => line.Contains($"subscriber={subscriberA}", StringComparison.Ordinal)),
             "OBS-A4 workflow-a subscriber did not receive the fanout.");
-        ScenarioContext.Require(receivedB.Any(line => line.Contains($"subscriber={subscriberB}", StringComparison.Ordinal)),
+        ZlinkStreamAssert.Ensure(receivedB.Any(line => line.Contains($"subscriber={subscriberB}", StringComparison.Ordinal)),
             "OBS-A4 workflow-b subscriber did not receive the fanout.");
 
         var roomRid = $"timer-room-{suffix}";
         await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
         var timer = await context.WaitPlayAEvidenceAsync($"timer-tick|room={roomRid}");
-        ScenarioContext.Require(timer.Any(line => line.Contains($"timer-tick|room={roomRid}", StringComparison.Ordinal)),
+        ZlinkStreamAssert.Ensure(timer.Any(line => line.Contains($"timer-tick|room={roomRid}", StringComparison.Ordinal)),
             "OBS-A4 timer origin evidence missing.");
         Console.WriteLine("scenario OBS-A4 passed");
     }

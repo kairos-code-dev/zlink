@@ -104,7 +104,7 @@ internal static class PsA4SubscriberReconnectScenario
         var reconnectEvidence = await WaitForSubscriberAsync(reconnectSubscriberClient, runId);
 
         // Reconnect should not replay events that were published during the disconnect gap.
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             reconnectEvidence.All(line =>
                 !line.Contains($"run={runId}", StringComparison.Ordinal)
                 || !line.Contains("value=gap-", StringComparison.Ordinal)),

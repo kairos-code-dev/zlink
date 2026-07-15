@@ -42,10 +42,10 @@ internal static class SmG4ConcurrentBoundSessionPushScenario
 
             foreach (var (actorId, value, reply, notify) in results)
             {
-                ScenarioAssert.That(reply.ActorId == actorId, "SM-G4 push reply actor mismatch.");
-                ScenarioAssert.That(reply.Value == value, "SM-G4 push reply value mismatch.");
-                ScenarioAssert.That(notify.ActorId == actorId, "SM-G4 push notify actor mismatch.");
-                ScenarioAssert.That(notify.Value == value, "SM-G4 push notify value mismatch.");
+                ZlinkStreamAssert.Ensure(reply.ActorId == actorId, "SM-G4 push reply actor mismatch.");
+                ZlinkStreamAssert.Ensure(reply.Value == value, "SM-G4 push reply value mismatch.");
+                ZlinkStreamAssert.Ensure(notify.ActorId == actorId, "SM-G4 push notify actor mismatch.");
+                ZlinkStreamAssert.Ensure(notify.Value == value, "SM-G4 push notify value mismatch.");
             }
         }
         finally

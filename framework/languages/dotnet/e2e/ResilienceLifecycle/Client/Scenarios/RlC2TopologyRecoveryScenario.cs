@@ -25,7 +25,7 @@ internal static class RlC2TopologyRecoveryScenario
             var reply = (await consumer.Post("/profile/request/new-client")
                 .Body(new ProfileReq("fast", $"rl-c2-after-crash-{i}"))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(reply.ProviderRid == "api-a", "RL-C2 request used stale crashed api-b.");
+            ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a", "RL-C2 request used stale crashed api-b.");
         }
 
         await processes.StartProviderBAsync();
@@ -50,7 +50,7 @@ internal static class RlC2TopologyRecoveryScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("marker=rl-c2-after-crash-", StringComparison.Ordinal)),
                 "RL-C2 did not record expected evidence 'marker=rl-c2-after-crash-'.");
         }

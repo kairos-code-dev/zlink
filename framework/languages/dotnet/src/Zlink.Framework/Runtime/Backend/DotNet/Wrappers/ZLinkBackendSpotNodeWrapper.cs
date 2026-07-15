@@ -3,6 +3,10 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZLinkBackendSpotNode
 {
     private readonly SemaphoreSlim _actorLifecycleGate = new(1, 1);
+    // Actor handlers are serialized by the Spot turn, but reply relay completes
+    // after that turn. Keep bound-session submissions on the shared SpotNode
+    // contiguous when multiple completed actor requests relay replies together.
+    private readonly object _actorBoundSessionSendGate = new();
     private readonly Dictionary<ZLinkBackendActorRef, IActor> _ownedActors = [];
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
@@ -294,10 +298,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSpotNode.SendActorBoundSession(actor.ToNative())
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        lock (_actorBoundSessionSendGate)
+            return nativeSpotNode.SendActorBoundSession(actor.ToNative())
+                .Messages(parts)
+                .Flags(flags)
+                .Submit();
     }
 
     public bool SendToActor(

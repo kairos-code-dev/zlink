@@ -4,6 +4,8 @@ using Zlink.Framework.Contracts.Channels;
 
 namespace AutomaticTurnDispatch.Server.Play;
 
+using Zlink.Framework.E2E.Configuration;
+
 internal sealed record NodeOptions(string Rid);
 
 internal sealed class EvidenceStore
@@ -105,46 +107,7 @@ internal sealed record PlayOptions(
     public string EvidenceFile => Path.Combine(LogDir, $"{Rid}.evidence.log");
 
     public static PlayOptions Parse(string[] args)
-    {
-        var values = Cli.Parse(args);
-        return new PlayOptions(
-            Cli.Required(values, "rid"),
-            Cli.Required(values, "http-url"),
-            Cli.Required(values, "redis-endpoint"),
-            Cli.Required(values, "redis-key-prefix"),
-            Cli.Required(values, "control-endpoint"),
-            Cli.Required(values, "delay-endpoint"),
-            Cli.Required(values, "external-api-base-url"),
-            Cli.Required(values, "spot-router-endpoint"),
-            Cli.Required(values, "spot-pub-endpoint"),
-            Cli.Required(values, "spot-route-endpoint"),
-            Cli.Required(values, "log-dir"));
-    }
-}
-
-internal static class Cli
-{
-    public static Dictionary<string, string> Parse(string[] args)
-    {
-        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < args.Length; i++)
-        {
-            if (!args[i].StartsWith("--", StringComparison.Ordinal)) continue;
-
-            if (i + 1 >= args.Length) throw new ArgumentException($"Missing value for {args[i]}.");
-
-            values[args[i][2..]] = args[++i];
-        }
-
-        return values;
-    }
-
-    public static string Required(Dictionary<string, string> values, string key)
-    {
-        return values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw new ArgumentException($"--{key} is required.");
-    }
+        => E2eConfiguration.Load<PlayOptions>(args);
 }
 
 internal static class AwaitReplies

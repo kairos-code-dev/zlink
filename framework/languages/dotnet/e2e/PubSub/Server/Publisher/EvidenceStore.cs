@@ -8,10 +8,10 @@ public sealed class EvidenceStore
     private readonly object _fileGate = new();
     private readonly string? _filePath;
 
-    public EvidenceStore(string? filePath)
+    public EvidenceStore(string rid, string? filePath)
     {
         _filePath = filePath;
-        Rid = Environment.GetEnvironmentVariable("ZLINK_E2E_RID") ?? "node";
+        Rid = rid;
         if (!string.IsNullOrWhiteSpace(_filePath))
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);

@@ -15,16 +15,16 @@ internal static class MonA1SocketEventsScenario
         {
             reply = await trigger.RequestAsync(new ProfileReq("monitor", "mon-a1-request"));
         }
-        ScenarioAssert.That(reply.Value == "profile:monitor", "MON-A1 trigger request failed.");
+        ZlinkStreamAssert.Ensure(reply.Value == "profile:monitor", "MON-A1 trigger request failed.");
 
         var serviceEvidence = await WaitForSocketEvidenceAsync(service);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                         && line.Contains("source=monitor.profile.server", StringComparison.Ordinal)
                                         && (line.Contains("kind=Connected", StringComparison.Ordinal)
                                             || line.Contains("kind=ConnectionReady", StringComparison.Ordinal))),
             "MON-A1 socket connection evidence missing.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                         && (line.Contains("kind=Disconnected", StringComparison.Ordinal)
                                             || line.Contains("kind=Closed", StringComparison.Ordinal))),

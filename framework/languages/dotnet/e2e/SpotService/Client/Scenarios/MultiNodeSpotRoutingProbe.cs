@@ -25,7 +25,7 @@ internal static class MultiNodeSpotRoutingProbe
                 $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11"
             ]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidenceA.Count(line =>
                 line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spotA}|value=11") >= 2,
             "SM-Q9 node A did not process both route-to-spot requests.");
@@ -44,25 +44,25 @@ internal static class MultiNodeSpotRoutingProbe
                 $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17"
             ]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidenceB.Count(line =>
                 line == $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spotB}|value=17") >= 2,
             "SM-Q9 node B did not process both route-to-spot requests.");
 
-        ScenarioAssert.That(createdA.NodeRid == SpotServiceNames.MultiSpotNodeA,
+        ZlinkStreamAssert.Ensure(createdA.NodeRid == SpotServiceNames.MultiSpotNodeA,
             "SM-Q9 node A create reply node mismatch.");
-        ScenarioAssert.That(firstA.Value == 11, "SM-Q9 node A route-to-spot reply value mismatch.");
-        ScenarioAssert.That(directA.SpotRid == spotA, "SM-Q9 node A direct spot reply target mismatch.");
-        ScenarioAssert.That(directA.NodeRid == SpotServiceNames.MultiSpotNodeA,
+        ZlinkStreamAssert.Ensure(firstA.Value == 11, "SM-Q9 node A route-to-spot reply value mismatch.");
+        ZlinkStreamAssert.Ensure(directA.SpotRid == spotA, "SM-Q9 node A direct spot reply target mismatch.");
+        ZlinkStreamAssert.Ensure(directA.NodeRid == SpotServiceNames.MultiSpotNodeA,
             "SM-Q9 node A direct spot reply node mismatch.");
-        ScenarioAssert.That(directA.Value == 11, "SM-Q9 node A direct spot reply value mismatch.");
-        ScenarioAssert.That(createdB.NodeRid == SpotServiceNames.MultiSpotNodeB,
+        ZlinkStreamAssert.Ensure(directA.Value == 11, "SM-Q9 node A direct spot reply value mismatch.");
+        ZlinkStreamAssert.Ensure(createdB.NodeRid == SpotServiceNames.MultiSpotNodeB,
             "SM-Q9 node B create reply node mismatch.");
-        ScenarioAssert.That(firstB.Value == 17, "SM-Q9 node B route-to-spot reply value mismatch.");
-        ScenarioAssert.That(directB.SpotRid == spotB, "SM-Q9 node B direct spot reply target mismatch.");
-        ScenarioAssert.That(directB.NodeRid == SpotServiceNames.MultiSpotNodeB,
+        ZlinkStreamAssert.Ensure(firstB.Value == 17, "SM-Q9 node B route-to-spot reply value mismatch.");
+        ZlinkStreamAssert.Ensure(directB.SpotRid == spotB, "SM-Q9 node B direct spot reply target mismatch.");
+        ZlinkStreamAssert.Ensure(directB.NodeRid == SpotServiceNames.MultiSpotNodeB,
             "SM-Q9 node B direct spot reply node mismatch.");
-        ScenarioAssert.That(directB.Value == 17, "SM-Q9 node B direct spot reply value mismatch.");
+        ZlinkStreamAssert.Ensure(directB.Value == 17, "SM-Q9 node B direct spot reply value mismatch.");
         Console.WriteLine("operation SpotService.sm-q9 passed");
     }
 }

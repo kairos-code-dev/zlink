@@ -25,7 +25,7 @@ internal static class SfB2GraceExceededScenario
                 "SF-B2");
 
             var status = await SfProbe.GetStatusAsync(consumer);
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 !status.StoreHealthy,
                 "SF-B2: the store outage was not visible in runtime status past the grace.");
         }

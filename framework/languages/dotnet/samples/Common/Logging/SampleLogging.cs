@@ -22,10 +22,6 @@ public static class SampleLogging
         return LoggerFactory.Create(logging => Configure(logging, logDirectory, role));
     }
 
-    public static string DirectoryFromEnvironment(string environmentVariableName, string fallback = "logs")
-    {
-        return Environment.GetEnvironmentVariable(environmentVariableName) ?? fallback;
-    }
 }
 
 internal sealed class SampleFileLoggerProvider : ILoggerProvider

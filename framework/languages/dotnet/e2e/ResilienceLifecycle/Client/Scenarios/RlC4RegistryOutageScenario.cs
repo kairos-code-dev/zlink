@@ -18,7 +18,7 @@ internal static class RlC4RegistryOutageScenario
         var before = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c4-before-outage"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(before.Value == "profile:fast", "RL-C4 request failed before the store outage.");
+        ZlinkStreamAssert.Ensure(before.Value == "profile:fast", "RL-C4 request failed before the store outage.");
 
         // The store goes away; every established connection must keep
         // working (fail-static) while resolves are impossible.
@@ -27,7 +27,7 @@ internal static class RlC4RegistryOutageScenario
         var during = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c4-during-outage"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(during.Value == "profile:fast", "RL-C4 existing channel failed during the store outage.");
+        ZlinkStreamAssert.Ensure(during.Value == "profile:fast", "RL-C4 existing channel failed during the store outage.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -40,7 +40,7 @@ internal static class RlC4RegistryOutageScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("marker=rl-c4-before-outage", StringComparison.Ordinal)),
                 "RL-C4 did not record expected evidence 'marker=rl-c4-before-outage'.");
         }
@@ -55,7 +55,7 @@ internal static class RlC4RegistryOutageScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("marker=rl-c4-during-outage", StringComparison.Ordinal)),
                 "RL-C4 did not record expected evidence 'marker=rl-c4-during-outage'.");
         }
@@ -73,7 +73,7 @@ internal static class RlC4RegistryOutageScenario
         var after = (await consumer.Post("/profile/request/new-client")
             .Body(new ProfileReq("fast", "rl-c4-after-restart"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(after.Value == "profile:fast", "RL-C4 follow-up request failed after store recovery.");
+        ZlinkStreamAssert.Ensure(after.Value == "profile:fast", "RL-C4 follow-up request failed after store recovery.");
 
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -86,7 +86,7 @@ internal static class RlC4RegistryOutageScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(line => line.Contains("marker=rl-c4-after-restart", StringComparison.Ordinal)),
                 "RL-C4 did not record expected evidence 'marker=rl-c4-after-restart'.");
         }

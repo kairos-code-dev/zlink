@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
@@ -14,6 +15,7 @@ fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 
 SERVER_PROJECT="$ROOT_DIR/Server/ActorNode/SpotActorTransfer.ActorNode.csproj"
 SESSION_GATEWAY_PROJECT="$ROOT_DIR/Server/SessionGateway/SpotActorTransfer.SessionGateway.csproj"
@@ -39,6 +41,7 @@ REDIS_CONTAINER=""
 
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     kill -- "-$pid" >/dev/null 2>&1 || kill "$pid" >/dev/null 2>&1 || true
   done
@@ -98,41 +101,49 @@ start_node() {
   local rid="$1"
   local url="$2"
   local router="$3"
-  ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
+  local config="$CONFIG_DIR/$rid.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
-    --log-dir "$LOG_DIR" \
+    --log-dir "$LOG_DIR"
+  ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 \
+    setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }
 
 start_session_gateway() {
   local rid="$1" url="$2" router="$3" stream="$4"
-  setsid dotnet run --no-build --project "$SESSION_GATEWAY_PROJECT" -- \
+  local config="$CONFIG_DIR/$rid.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --rid "$rid" \
     --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" \
     --stream-endpoint "$stream" \
-    --evidence-file "$LOG_DIR/${rid}.evidence.log" \
+    --evidence-file "$LOG_DIR/${rid}.evidence.log"
+  setsid dotnet run --no-build --project "$SESSION_GATEWAY_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }
 
 run_client() {
   local scenario="$1"
-  dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+  local config="$CONFIG_DIR/client-$scenario.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
+    --config-dir "$CONFIG_DIR" \
     --node-a-url "$NODE_A_URL" \
     --node-b-url "$NODE_B_URL" \
     --node-c-url "$NODE_C_URL" \
     --node-a-stream-endpoint "$SESSION_A_STREAM" \
     --node-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario "$scenario" \
+    --scenario "$scenario"
+  dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
 

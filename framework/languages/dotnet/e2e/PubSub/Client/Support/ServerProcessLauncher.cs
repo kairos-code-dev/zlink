@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Zlink.Framework.E2E.Configuration;
 
 namespace PubSub.Client.Support;
 
@@ -6,41 +7,40 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
 {
     public Process StartSubscriber(string name, string httpUrl, string evidenceFile)
     {
-        var startInfo = CreateServerStartInfo(options.SubscriberProject, name);
-        startInfo.ArgumentList.Add("--http-url");
-        startInfo.ArgumentList.Add(httpUrl);
-        startInfo.ArgumentList.Add("--redis-endpoint");
-        startInfo.ArgumentList.Add(options.RedisEndpoint);
-        startInfo.ArgumentList.Add("--redis-key-prefix");
-        startInfo.ArgumentList.Add(options.RedisKeyPrefix);
-        startInfo.ArgumentList.Add("--evidence-file");
-        startInfo.ArgumentList.Add(Path.Combine(options.LogDir, evidenceFile));
-        startInfo.ArgumentList.Add("--log-dir");
-        startInfo.ArgumentList.Add(options.LogDir);
+        var startInfo = CreateServerStartInfo(options.SubscriberProject, name,
+        [
+            "--rid", name,
+            "--http-url", httpUrl,
+            "--redis-endpoint", options.RedisEndpoint,
+            "--redis-key-prefix", options.RedisKeyPrefix,
+            "--evidence-file", Path.Combine(options.LogDir, evidenceFile),
+            "--log-dir", options.LogDir,
+            "--handler-delay-ms", "0"
+        ]);
 
         return Start(name, startInfo);
     }
 
     public Process StartPublisher()
     {
-        var startInfo = CreateServerStartInfo(options.PublisherProject, "pub-a");
-        startInfo.ArgumentList.Add("--http-url");
-        startInfo.ArgumentList.Add(options.PublisherUrl);
-        startInfo.ArgumentList.Add("--redis-endpoint");
-        startInfo.ArgumentList.Add(options.RedisEndpoint);
-        startInfo.ArgumentList.Add("--redis-key-prefix");
-        startInfo.ArgumentList.Add(options.RedisKeyPrefix);
-        startInfo.ArgumentList.Add("--publisher-endpoint");
-        startInfo.ArgumentList.Add(options.PublisherEndpoint);
-        startInfo.ArgumentList.Add("--evidence-file");
-        startInfo.ArgumentList.Add(Path.Combine(options.LogDir, "pub-restart.evidence.log"));
-        startInfo.ArgumentList.Add("--log-dir");
-        startInfo.ArgumentList.Add(options.LogDir);
+        var startInfo = CreateServerStartInfo(options.PublisherProject, "pub-a",
+        [
+            "--rid", "pub-a",
+            "--http-url", options.PublisherUrl,
+            "--redis-endpoint", options.RedisEndpoint,
+            "--redis-key-prefix", options.RedisKeyPrefix,
+            "--publisher-endpoint", options.PublisherEndpoint,
+            "--evidence-file", Path.Combine(options.LogDir, "pub-restart.evidence.log"),
+            "--log-dir", options.LogDir
+        ]);
 
         return Start("pub-restart", startInfo);
     }
 
-    private static ProcessStartInfo CreateServerStartInfo(string project, string rid)
+    private ProcessStartInfo CreateServerStartInfo(
+        string project,
+        string name,
+        IReadOnlyList<string> arguments)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -48,13 +48,12 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
             RedirectStandardError = true,
             UseShellExecute = false
         };
-        startInfo.Environment["ZLINK_E2E_RID"] = rid;
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(project);
         startInfo.ArgumentList.Add("--");
-        startInfo.ArgumentList.Add("--rid");
-        startInfo.ArgumentList.Add(rid);
+        startInfo.ArgumentList.Add("--config");
+        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(options.ConfigDir, name, arguments));
         return startInfo;
     }
 

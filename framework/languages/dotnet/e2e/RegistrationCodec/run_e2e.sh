@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$#" -eq 0 ]]; then
@@ -11,6 +12,7 @@ fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$(mktemp -d)"
 LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
 LOCAL_READINESS_POLL_SECONDS=0.1
 ROUTE_SETTLE_SECONDS=5
@@ -57,6 +59,7 @@ CODEC_REQUESTER_URL="http://127.0.0.1:$CODEC_REQUESTER_HTTP_PORT"
 pids=()
 cleanup() {
   local code=$?
+  rm -rf "$CONFIG_DIR"
   for pid in "${pids[@]:-}"; do
     if kill -0 "$pid" 2>/dev/null; then
       kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
@@ -74,6 +77,16 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+start_server() {
+  local name="$1" project="$2"
+  shift 2
+  local config="$CONFIG_DIR/$name.json"
+  python3 "$ROOT_DIR/../write_role_config.py" "$config" -- "$@"
+  setsid dotnet run --no-build --project "$project" -- --config "$config" \
+    >"$LOG_DIR/$name.stdout.log" 2>"$LOG_DIR/$name.stderr.log" &
+  pids+=("$!")
+}
 
 wait_health() {
   local url="$1"
@@ -134,44 +147,42 @@ dotnet build "$JSON_ONLY_PEER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CODEC_REQUESTER_PROJECT" --maxcpucount:1 >/dev/null
 dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 
-setsid dotnet run --no-build --project "$SERVER_PROJECT" -- \
+start_server server "$SERVER_PROJECT" \
   --rid reg-codec-node \
   --http-url "$SERVER_URL" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/server.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/server.stdout.log" 2>"$LOG_DIR/server.stderr.log" &
-pids+=("$!")
+  --codec-mode all \
+  --log-dir "$LOG_DIR"
 wait_health "$SERVER_URL" server
 
-setsid dotnet run --no-build --project "$JSON_ONLY_PEER_PROJECT" -- \
+start_server codec-mismatch-json-only "$JSON_ONLY_PEER_PROJECT" \
   --rid codec-mismatch-json-only \
   --http-url "$JSON_ONLY_URL" \
   --channel-endpoint "$JSON_ONLY_CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/codec-mismatch-json-only.evidence.log" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/codec-mismatch-json-only.stdout.log" 2>"$LOG_DIR/codec-mismatch-json-only.stderr.log" &
-pids+=("$!")
+  --codec-mode all \
+  --log-dir "$LOG_DIR"
 wait_health "$JSON_ONLY_URL" codec-mismatch-json-only
 
-setsid dotnet run --no-build --project "$CODEC_REQUESTER_PROJECT" -- \
+start_server codec-mismatch-requester "$CODEC_REQUESTER_PROJECT" \
   --rid codec-mismatch-requester \
   --http-url "$CODEC_REQUESTER_URL" \
   --channel-endpoint "$JSON_ONLY_CHANNEL_ENDPOINT" \
-  --log-dir "$LOG_DIR" \
-  >"$LOG_DIR/codec-mismatch-requester.stdout.log" 2>"$LOG_DIR/codec-mismatch-requester.stderr.log" &
-pids+=("$!")
+  --log-dir "$LOG_DIR"
 wait_health "$CODEC_REQUESTER_URL" codec-mismatch-requester
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
-dotnet run --no-build --project "$CLIENT_PROJECT" -- \
+python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
+    --config-dir "$CONFIG_DIR" \
   --channel-endpoint "$CHANNEL_ENDPOINT" \
   --server-url "$SERVER_URL" \
   --codec-requester-url "$CODEC_REQUESTER_URL" \
   --invalid-server-project "$INVALID_SERVER_PROJECT" \
   --scenario "$SCENARIO" \
-  --log-dir "$LOG_DIR" \
+  --log-dir "$LOG_DIR"
+dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

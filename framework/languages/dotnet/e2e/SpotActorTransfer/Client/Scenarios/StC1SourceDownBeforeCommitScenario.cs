@@ -26,7 +26,7 @@ internal static class StC1SourceDownBeforeCommitScenario
         try
         {
             var response = await joinTask.WaitAsync(TimeSpan.FromSeconds(3));
-            SpotActorTransferScenarioContext.Require(!response.Accepted, "ST-C1 join should not be accepted after source shutdown before commit.");
+            ZlinkStreamAssert.Ensure(!response.Accepted, "ST-C1 join should not be accepted after source shutdown before commit.");
         }
         catch (Exception ex) when (ex is TimeoutException or InvalidOperationException or HttpRequestException)
         {

@@ -13,7 +13,7 @@ internal static class RcA5FilterOrderingScenario
         var lines = (await server.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(["filter|", "packet=EchoDi"]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             lines.Count(line => line.Contains("filter|", StringComparison.Ordinal)
                                 && line.Contains("packet=EchoDi", StringComparison.Ordinal)) >= 4,
             "RC-A5 filter evidence missing.");
@@ -23,7 +23,7 @@ internal static class RcA5FilterOrderingScenario
                            && line.Contains("packet=EchoDi", StringComparison.Ordinal))
             .Take(4)
             .ToArray();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             filter[0].Contains("name=first|phase=before", StringComparison.Ordinal)
             && filter[1].Contains("name=second|phase=before", StringComparison.Ordinal)
             && filter[2].Contains("name=second|phase=after", StringComparison.Ordinal)

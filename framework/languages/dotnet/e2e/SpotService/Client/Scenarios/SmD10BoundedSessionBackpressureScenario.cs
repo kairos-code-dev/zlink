@@ -91,37 +91,37 @@ internal static class SmD10BoundedSessionBackpressureScenario
                 var reply = await congested.Request(new ActorPushReq($"burst-{index}"))
                     .PacketName("ActorPushReq")
                     .Async<ActorPingRes>();
-                ScenarioAssert.That(reply.ActorId == "actor-sm-d10-congested",
+                ZlinkStreamAssert.Ensure(reply.ActorId == "actor-sm-d10-congested",
                     "SM-D10 congested reply actor mismatch.");
             }
 
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 congested.ReceivedCount("ActorPushNotify") <= 1,
                 "SM-D10 expected bounded received-message queue for congested session.");
             var retained = await congested.WaitFor<ActorPushNotify>()
                 .Where(message => message.Payload.ActorId == "actor-sm-d10-congested")
                 .Timeout(TimeSpan.FromSeconds(2))
                 .Async();
-            ScenarioAssert.That(retained.Payload.Value == "burst-7",
-                "SM-D10 expected the newest congested push to be retained.");
+            ZlinkStreamAssert.Ensure(retained.Payload.Value == "burst-0",
+                "SM-D10 expected the first accepted push to remain while newer pushes were rejected.");
 
             var stillAlive = await congested.Request(new ActorPingReq("after-backpressure"))
                 .PacketName("ActorPingReq")
                 .Async<ActorPingRes>();
-            ScenarioAssert.That(stillAlive.ActorId == "actor-sm-d10-congested",
+            ZlinkStreamAssert.Ensure(stillAlive.ActorId == "actor-sm-d10-congested",
                 "SM-D10 congested session stopped routing.");
-            ScenarioAssert.That(stillAlive.Value == "after-backpressure", "SM-D10 congested session reply mismatch.");
+            ZlinkStreamAssert.Ensure(stillAlive.Value == "after-backpressure", "SM-D10 congested session reply mismatch.");
 
             var isolatedPush = isolated.WaitFor<ActorPushNotify>().Async().AsTask();
             var isolatedReply = await isolated.Request(new ActorPushReq("isolated-push"))
                 .PacketName("ActorPushReq")
                 .Async<ActorPingRes>();
             var isolatedNotify = await isolatedPush;
-            ScenarioAssert.That(isolatedReply.ActorId == "actor-sm-d10-isolated",
+            ZlinkStreamAssert.Ensure(isolatedReply.ActorId == "actor-sm-d10-isolated",
                 "SM-D10 isolated reply actor mismatch.");
-            ScenarioAssert.That(isolatedNotify.Payload.ActorId == "actor-sm-d10-isolated",
+            ZlinkStreamAssert.Ensure(isolatedNotify.Payload.ActorId == "actor-sm-d10-isolated",
                 "SM-D10 isolated push actor mismatch.");
-            ScenarioAssert.That(isolatedNotify.Payload.Value == "isolated-push",
+            ZlinkStreamAssert.Ensure(isolatedNotify.Payload.Value == "isolated-push",
                 "SM-D10 isolated session push mismatch.");
         }
         finally

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Zlink.Framework.E2E.Configuration;
 
 namespace RuntimeMonitoring.Client.Support;
 
@@ -32,17 +33,20 @@ internal static class MonitoringRegistrationValidation
         start.ArgumentList.Add("--project");
         start.ArgumentList.Add(options.ValidationHostProject);
         start.ArgumentList.Add("--");
-        start.ArgumentList.Add("--case");
-        start.ArgumentList.Add(validationCase);
+        start.ArgumentList.Add("--config");
+        start.ArgumentList.Add(E2eConfiguration.Write(
+            options.ConfigDir,
+            $"validation-{validationCase}",
+            new { Case = validationCase }));
         using var process = Process.Start(start)
                             ?? throw new InvalidOperationException("Failed to start monitoring validation host.");
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         var output = $"{await stdout}\n{await stderr}";
-        ScenarioAssert.That(process.ExitCode != 0,
+        ZlinkStreamAssert.Ensure(process.ExitCode != 0,
             $"MON-B2 validation host '{validationCase}' unexpectedly started.");
-        ScenarioAssert.That(output.Contains(expected, StringComparison.Ordinal),
+        ZlinkStreamAssert.Ensure(output.Contains(expected, StringComparison.Ordinal),
             $"MON-B2 validation host '{validationCase}' did not report '{expected}'.");
         return $"mon-b2|case={validationCase}|exit={process.ExitCode}|error={expected}";
     }

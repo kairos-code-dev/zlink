@@ -24,13 +24,13 @@ internal static class ObsC1DrainingMarkerScenario
             && snapshot.Metrics.Any(sample => sample.Name == "zlink.drain.state"
                                               && sample.Value == 1
                                               && sample.Tags.GetValueOrDefault("state") == "draining"));
-        ScenarioContext.Require(draining.PeerRows.Any(row => row.NodeRid == "play-a" && row.Draining),
+        ZlinkStreamAssert.Ensure(draining.PeerRows.Any(row => row.NodeRid == "play-a" && row.Draining),
             "OBS-C1 typed draining peer row was not published.");
         var action = await connector.Request(new GameActionReq("obs-c1-existing-session"))
             .Async<GameActionRes>();
-        ScenarioContext.Require(action.ActorId == actorId,
+        ZlinkStreamAssert.Ensure(action.ActorId == actorId,
             "OBS-C1 existing bound session request failed during drain propagation.");
-        ScenarioContext.Require((await EvidenceAsync(context)).SpotRows.Any(row => row.SpotRid == roomRid),
+        ZlinkStreamAssert.Ensure((await EvidenceAsync(context)).SpotRows.Any(row => row.SpotRid == roomRid),
             "OBS-C1 drain-natural room disappeared before natural close.");
         await connector.Close.Async();
         Console.WriteLine("scenario OBS-C1 passed");

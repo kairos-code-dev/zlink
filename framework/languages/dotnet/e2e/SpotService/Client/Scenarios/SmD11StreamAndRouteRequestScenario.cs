@@ -53,7 +53,7 @@ internal static class SmD11StreamAndRouteRequestScenario
             var streamReply = await activeStream.Request(new ActorPingReq("stream-side"))
                 .PacketName("ActorPingReq")
                 .Async<ActorPingRes>();
-            ScenarioAssert.That(streamReply.ActorId == "actor-sm-d11", "SM-D11 stream request actor mismatch.");
+            ZlinkStreamAssert.Ensure(streamReply.ActorId == "actor-sm-d11", "SM-D11 stream request actor mismatch.");
         }
         finally
         {
@@ -63,8 +63,8 @@ internal static class SmD11StreamAndRouteRequestScenario
         var channelReply = (await sessionA.Post("/channel/control-ping/play-a")
             .Body(new ControlPingReq("channel-side"))
             .Async<ControlPingRes>()).Body;
-        ScenarioAssert.That(channelReply.NodeRid == "play-a", "SM-D11 channel request node mismatch.");
-        ScenarioAssert.That(channelReply.Value == "channel-side", "SM-D11 channel reply value mismatch.");
+        ZlinkStreamAssert.Ensure(channelReply.NodeRid == "play-a", "SM-D11 channel request node mismatch.");
+        ZlinkStreamAssert.Ensure(channelReply.Value == "channel-side", "SM-D11 channel reply value mismatch.");
         Console.WriteLine("operation SpotService.sm-d11 passed");
     }
 }

@@ -17,7 +17,7 @@ internal static class SfA2PollingFallbackScenario
         try
         {
             var status = await SfProbe.GetStatusAsync(observer);
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 !status.WatchEnabled,
                 "SF-A2: the polling-only consumer unexpectedly reports watch enabled.");
 

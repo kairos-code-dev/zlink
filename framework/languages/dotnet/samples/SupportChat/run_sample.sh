@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
@@ -7,15 +8,16 @@ RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
-export SUPPORTCHAT_LOG_DIR="${SAMPLE_LOG_DIR}"
+SUPPORTCHAT_LOG_DIR="${SAMPLE_LOG_DIR}"
 mkdir -p "${LOG_DIR}" "${SUPPORTCHAT_LOG_DIR}"
 
 PIDS=()
 REDIS_CONTAINER=""
 RUN_SUCCEEDED=0
-export SUPPORTCHAT_REDIS_KEY_PREFIX="supportchat:dotnet:${RUN_ID}:"
+SUPPORTCHAT_REDIS_KEY_PREFIX="supportchat:dotnet:${RUN_ID}:"
 
 cleanup() {
+  find "${RUN_DIR}" -type f -name "*.json" -delete 2>/dev/null || true
   for ((i=${#PIDS[@]}-1; i>=0; i--)); do
     local pid="${PIDS[$i]}"
     if kill -0 "${pid}" 2>/dev/null; then
@@ -81,13 +83,13 @@ finally:
 PY
 )"
 
-export SUPPORTCHAT_API_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
-export SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
-export SUPPORTCHAT_SESSION_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
-export SUPPORTCHAT_SESSION_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
-export SUPPORTCHAT_ENTRY_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
-export SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
-export SUPPORTCHAT_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+SUPPORTCHAT_API_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[0]}"
+SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[1]}"
+SUPPORTCHAT_SESSION_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+SUPPORTCHAT_SESSION_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+SUPPORTCHAT_ENTRY_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+SUPPORTCHAT_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
 
 endpoint_host() {
   local endpoint="$1"
@@ -151,7 +153,6 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 REDIS_CONTAINER="zlink-supportchat-dotnet-redis-${RUN_ID}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER SUPPORTCHAT_REDIS_ENDPOINT "zlink-supportchat-dotnet-redis" redis:7.2-alpine
-export SUPPORTCHAT_REDIS_ENDPOINT
 wait_port redis "tcp://${SUPPORTCHAT_REDIS_ENDPOINT}"
 CONFIG_FILE="${RUN_DIR}/appsettings.json"
 python3 - "${CONFIG_FILE}" <<PY

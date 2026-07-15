@@ -12,16 +12,16 @@ internal static class SmE1MissingSpotRouteScenario
         var created = (await playA.Post("/spot/create")
             .Body(new CreateSpotReq(spotRid))
             .Async<CreateSpotRes>()).Body;
-        ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+        ZlinkStreamAssert.Ensure(created.SpotRid == spotRid && created.NodeRid == "play-a",
             "SM-E1 spot was not created on play-a.");
         var missingRequest = (await playA.Post("/spot/missing-handler/request")
             .Body(new SpotMissingHandlerReq(spotRid))
             .Async<SpotMissingHandlerRes>()).Body;
-        ScenarioAssert.That(missingRequest.Failed, "SM-E1 missing handler request did not fail.");
+        ZlinkStreamAssert.Ensure(missingRequest.Failed, "SM-E1 missing handler request did not fail.");
         var missingCommand = (await playA.Post("/spot/missing-handler/command")
             .Body(new SpotMissingCommandReq(spotRid, "missing-command"))
             .Async<SpotMissingCommandRes>()).Body;
-        ScenarioAssert.That(missingCommand.Sent, "SM-E1 missing handler command was not sent.");
+        ZlinkStreamAssert.Ensure(missingCommand.Sent, "SM-E1 missing handler command was not sent.");
         var expectedEvidence = new[]
         {
             "dispatch-error|surface=SpotRoute|reason=HandlerMissing|action=ReplyError|packet=MissingSpotReq",
@@ -30,7 +30,7 @@ internal static class SmE1MissingSpotRouteScenario
         var evidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(expectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             expectedEvidence.All(expected => evidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-E1 missing handler evidence mismatch.");
         Console.WriteLine("operation SpotService.sm-e1 passed");

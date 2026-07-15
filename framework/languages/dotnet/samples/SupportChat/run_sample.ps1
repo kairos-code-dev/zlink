@@ -11,7 +11,7 @@ $LogDir = Join-Path $RunDir "logs"
 $SampleLogDir = Join-Path $RunDir "sample-logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
-$env:SUPPORTCHAT_LOG_DIR = $SampleLogDir
+$SUPPORTCHAT_LOG_DIR = $SampleLogDir
 
 function Wait-SampleLogContains {
     param(
@@ -36,49 +36,49 @@ function Wait-SampleLogContains {
 try {
     $ports = New-SamplePorts -Count 7 -BasePort 0
 
-    $env:SUPPORTCHAT_API_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[0])"
-    $env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[1])"
-    $env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
-    $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
-    $env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[4])"
-    $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[5])"
-    $env:SUPPORTCHAT_STREAM_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
-    $env:SUPPORTCHAT_REDIS_KEY_PREFIX = "supportchat:dotnet:${RunId}:"
+    $SUPPORTCHAT_API_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[0])"
+    $SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT = "tcp://127.0.0.1:$($ports[1])"
+    $SUPPORTCHAT_SESSION_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[2])"
+    $SUPPORTCHAT_SESSION_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[3])"
+    $SUPPORTCHAT_ENTRY_SPOT_ENDPOINT = "tcp://127.0.0.1:$($ports[4])"
+    $SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT = "tcp://127.0.0.1:$($ports[5])"
+    $SUPPORTCHAT_STREAM_ENDPOINT = "tcp://127.0.0.1:$($ports[6])"
+    $SUPPORTCHAT_REDIS_KEY_PREFIX = "supportchat:dotnet:${RunId}:"
 
     $redis = Start-SampleRedisContainer "zlink-supportchat-dotnet-redis"
     $RedisContainer = $redis.ContainerId
-    $env:SUPPORTCHAT_REDIS_ENDPOINT = $redis.Endpoint
-    Wait-SampleTcpEndpoint "redis" "tcp://$env:SUPPORTCHAT_REDIS_ENDPOINT"
+    $SUPPORTCHAT_REDIS_ENDPOINT = $redis.Endpoint
+    Wait-SampleTcpEndpoint "redis" "tcp://$SUPPORTCHAT_REDIS_ENDPOINT"
     $configFile = Join-Path $RunDir "appsettings.json"
     @{
         Sample = [ordered]@{
             LogDirectory = $SampleLogDir
-            RedisEndpoint = $env:SUPPORTCHAT_REDIS_ENDPOINT
-            RedisKeyPrefix = $env:SUPPORTCHAT_REDIS_KEY_PREFIX
-            ApiChannelEndpoint = $env:SUPPORTCHAT_API_CHANNEL_ENDPOINT
-            SupportChannelEndpoint = $env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
-            SessionSpotEndpoint = $env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT
-            SessionRouterEndpoint = $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
-            SupportEntrySpotEndpoint = $env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
-            SupportEntrySpotRouterEndpoint = $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
-            StreamEndpoint = $env:SUPPORTCHAT_STREAM_ENDPOINT
+            RedisEndpoint = $SUPPORTCHAT_REDIS_ENDPOINT
+            RedisKeyPrefix = $SUPPORTCHAT_REDIS_KEY_PREFIX
+            ApiChannelEndpoint = $SUPPORTCHAT_API_CHANNEL_ENDPOINT
+            SupportChannelEndpoint = $SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
+            SessionSpotEndpoint = $SUPPORTCHAT_SESSION_SPOT_ENDPOINT
+            SessionRouterEndpoint = $SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
+            SupportEntrySpotEndpoint = $SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
+            SupportEntrySpotRouterEndpoint = $SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
+            StreamEndpoint = $SUPPORTCHAT_STREAM_ENDPOINT
         }
     } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $configFile
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "SupportChat.csproj")
 
     Start-SampleDotnetAssembly -Name "support" -Project (Join-Path $ScriptDir "Server/Support/SupportChat.Server.Support.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFile) | Out-Null
-    Wait-SampleTcpEndpoint "support-channel" $env:SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "support-spot-router" $env:SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "support-spot-pub" $env:SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "support-channel" $SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "support-spot-router" $SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "support-spot-pub" $SUPPORTCHAT_ENTRY_SPOT_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "api" -Project (Join-Path $ScriptDir "Server/Api/SupportChat.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFile) | Out-Null
-    Wait-SampleTcpEndpoint "api" $env:SUPPORTCHAT_API_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api" $SUPPORTCHAT_API_CHANNEL_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "session" -Project (Join-Path $ScriptDir "Server/Session/SupportChat.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFile) | Out-Null
-    Wait-SampleTcpEndpoint "session-route" $env:SUPPORTCHAT_SESSION_SPOT_ENDPOINT
-    Wait-SampleTcpEndpoint "session-router" $env:SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "session-stream" $env:SUPPORTCHAT_STREAM_ENDPOINT
+    Wait-SampleTcpEndpoint "session-route" $SUPPORTCHAT_SESSION_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "session-router" $SUPPORTCHAT_SESSION_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "session-stream" $SUPPORTCHAT_STREAM_ENDPOINT
 
     $clientLog = Join-Path $LogDir "client.log"
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/SupportChat.Client.csproj") -Arguments @("--config", $configFile) *> $clientLog
@@ -100,11 +100,12 @@ try {
     $RunSucceeded = $true
 }
 finally {
+    Remove-SampleConfigurationFiles -RunDirectory $RunDir
     Stop-SampleProcesses
     if ($RedisContainer) {
         Remove-SampleRedisContainer $RedisContainer
     }
-    if (-not $RunSucceeded -or $env:SUPPORTCHAT_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $SUPPORTCHAT_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

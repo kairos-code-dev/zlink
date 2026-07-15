@@ -28,7 +28,7 @@ internal static class SmD14TlsStreamValidationScenario
             strictTlsRejected = true;
         }
 
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             strictTlsRejected,
             "SM-D14 expected strict TLS validation to reject the self-signed stream certificate.");
 
@@ -52,10 +52,10 @@ internal static class SmD14TlsStreamValidationScenario
             .PacketName("ActorPushReq")
             .Async<ActorPingRes>();
         var notify = await pushed;
-        ScenarioAssert.That(reply.ActorId == "actor-sm-d14-tls", "SM-D14 TLS actor reply mismatch.");
-        ScenarioAssert.That(reply.NodeRid == "play-a", "SM-D14 TLS actor node mismatch.");
-        ScenarioAssert.That(notify.Payload.ActorId == "actor-sm-d14-tls", "SM-D14 TLS push actor mismatch.");
-        ScenarioAssert.That(notify.Payload.Value == "tls-push", "SM-D14 TLS push payload mismatch.");
+        ZlinkStreamAssert.Ensure(reply.ActorId == "actor-sm-d14-tls", "SM-D14 TLS actor reply mismatch.");
+        ZlinkStreamAssert.Ensure(reply.NodeRid == "play-a", "SM-D14 TLS actor node mismatch.");
+        ZlinkStreamAssert.Ensure(notify.Payload.ActorId == "actor-sm-d14-tls", "SM-D14 TLS push actor mismatch.");
+        ZlinkStreamAssert.Ensure(notify.Payload.Value == "tls-push", "SM-D14 TLS push payload mismatch.");
 
         Console.WriteLine("operation SpotService.sm-d14 passed");
     }

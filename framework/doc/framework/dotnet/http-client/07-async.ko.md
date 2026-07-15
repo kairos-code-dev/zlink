@@ -2,8 +2,9 @@
 
 # 7. 비동기
 
-`SubmitRawAsync()` / `SubmitAsync<T>()` / `DownloadAsync(sink)`는 모두 `ValueTask<T>`를
-돌려준다. .NET에서는 `async`/`await`가 코루틴 역할을 한다.
+`AsyncRaw()` / `Async<T>()` / `DownloadAsync(sink)`는 `ValueTask<T>`를 돌려준다.
+완료를 기다리지 않는 server 호출에는 `Submit()`, Spot turn을 반납하며 기다리는 server
+호출에는 `Yield<T>()`를 사용한다.
 
 ## non-blocking 보장
 
@@ -16,7 +17,7 @@ public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResul
 {
     var response = await client.Post($"/matches/{result.MatchId}/result")
         .Body(result)
-        .SubmitAsync<AckRes>();
+        .Async<AckRes>();
 
     if (!response.Body.Accepted)
     {
@@ -29,34 +30,45 @@ public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResul
 > DNS 해석(`getaddrinfo`)만 OS 레벨에서 blocking이지만 .NET은 이를 threadpool로
 > offload하므로 호출/handler 스레드는 막히지 않는다.
 
-## continuation 재개 위치
+## Spot turn 선택
 
-`Zlink.HttpClient`는 continuation 재개 위치 주입을 제공하지 않는다. 평범한 `Task<T>`를 돌려주는
-라이브러리는 호출자의 `await` continuation 재개 위치를 강제할 수 없다(재개는 호출자의
-`SynchronizationContext`/awaiter가 결정). 따라서 `Zlink.HttpClient`는 표준 `Task`/
-`await` 동작만 제공하며 재개 위치가 필요하면 호출자가 `ConfigureAwait`나 자신의
-스케줄러로 제어한다.
+`Async<T>()`는 현재 Spot turn을 유지한다. 응답을 기다리는 동안 같은 Spot의 다음 callback이
+시작하지 않으므로, 요청 전후의 상태 불변식을 유지해야 할 때 사용한다.
 
-## blocking: Fetch&lt;T&gt;()
-
-`Fetch<T>()`는 결과가 올 때까지 호출 스레드를 멈추고 typed body를 돌려주며 실패를
-예외로 던진다. 테스트·CLI 전용이다.
+`Yield<T>()`는 DI로 주입받은 `ZLinkHttpServerClient`에만 있다. 외부 HTTP 응답을 기다리는 동안
+Spot turn을 반납하고, 완료된 continuation을 같은 실행 줄의 큐에서 재개한다. 이 경로를 넘으면
+다른 callback이 Spot 상태를 바꿀 수 있으므로 상태를 다시 확인한다.
 
 ```csharp
-var board = client.Get("/leaderboard").Fetch<Leaderboard>();   // blocking + 언래핑
+public async ValueTask<PlayerProfile> LoadProfileAsync(ZLinkHttpServerClient client, string playerId)
+{
+    var response = await client.Get($"/players/{playerId}")
+        .Yield<PlayerProfile>(); // 외부 API 대기 동안 다른 Spot callback을 처리할 수 있다.
+    return response.Body;
+}
 ```
 
-## 어디서 무엇을 쓰나 — blocking 규칙
-
-> **framework runtime/handler 스레드에서는 blocking 접근(`Fetch<T>()`,
-> `.GetAwaiter().GetResult()`)을 쓰지 않는다.** runtime 스레드를 멈추면 같은 스레드에서
-> 처리될 다른 작업까지 막힌다.
+완료 값을 동기로 꺼내는 public terminator는 없다. `.GetAwaiter().GetResult()` 같은 blocking
+언래핑도 framework handler에서 사용하지 않는다.
 
 | 호출 위치 | 권장 |
 |-----------|------|
-| framework handler / actor / spot 코드 | `await SubmitAsync<T>()` |
-| 테스트 코드 | `Fetch<T>()` |
-| client 시나리오·CLI·배치 | `Fetch<T>()` |
+| framework handler의 상태 보존 요청 | `await Async<T>()` |
+| framework handler의 독립된 외부 I/O | `await Yield<T>()` |
+| 테스트·client 시나리오·CLI·배치 | `await Async<T>()` |
+
+## callback 완료
+
+callback overload는 awaitable을 돌려주지 않는다. Spot handler에서 호출하면 현재 실행 줄을
+점유하지 않고 반환하며, 완료 callback은 같은 실행 줄의 새 turn으로 처리된다.
+
+```csharp
+client.Get("/health").Async<HealthRes>((error, response) =>
+{
+    if (error is not null) return; // 전송·status·decode 실패를 확인한다.
+    RecordHealth(response!.Body);  // 이 callback은 별도 Spot turn에서 실행된다.
+});
+```
 
 ## streaming callback 위치
 

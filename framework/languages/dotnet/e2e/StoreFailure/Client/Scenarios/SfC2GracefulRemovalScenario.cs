@@ -27,7 +27,7 @@ internal static class SfC2GracefulRemovalScenario
             "SF-C2: api-b did not publish its draining marker promptly.");
 
         var drainingStatus = await SfProbe.GetStatusAsync(provider);
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             drainingStatus.OwnerLeaseHealthy,
             "SF-C2: api-b stopped renewing its owner lease while drain was in progress.");
 
@@ -54,20 +54,20 @@ internal static class SfC2GracefulRemovalScenario
             }
         }
 
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             consecutiveSurvivorReplies == 20,
             "SF-C2: the consumer did not exclude draining api-b within the propagation bound.");
 
         for (var i = 0; i < 8; i++)
         {
             var reply = await SfProbe.RequestAsync(consumer, $"sf-c2-draining-{i}");
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "api-a",
                 $"SF-C2: request {i} was assigned to draining provider '{reply.ProviderRid}'.");
         }
 
         var drainResult = await drainTask;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             drainResult.Result == "drained" && drainResult.Reason is null,
             $"SF-C2: framework drain ended as '{drainResult.Result}' ({drainResult.Reason}).");
 
@@ -83,7 +83,7 @@ internal static class SfC2GracefulRemovalScenario
 
         // The whole removal must beat the lease TTL by a margin — that is
         // what distinguishes shutdown cleanup from lease expiry.
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             stopwatch.Elapsed < options.OwnerLeaseTtl,
             $"SF-C2: row removal took {stopwatch.Elapsed}, which does not beat the lease TTL.");
 
@@ -93,7 +93,7 @@ internal static class SfC2GracefulRemovalScenario
         for (var i = 0; i < 8; i++)
         {
             var reply = await SfProbe.RequestAsync(consumer, $"sf-c2-{i}");
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "api-a",
                 $"SF-C2: request {i} was served by '{reply.ProviderRid}' after api-b left.");
         }

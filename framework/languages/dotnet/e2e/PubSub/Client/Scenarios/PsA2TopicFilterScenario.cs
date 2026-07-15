@@ -39,10 +39,10 @@ internal static class PsA2TopicFilterScenario
             });
 
         // The non-interest topic must not be recorded as an accepted business event.
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             snapshots.All(lines => lines.Any(line => Evidence.IsEvent(line, runId, PubSubNames.MainTopic))),
             "PS-A2 accepted topic was not recorded.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             snapshots.All(lines => lines.All(line =>
                 !line.Contains("event|", StringComparison.Ordinal)
                 || !line.Contains($"run={runId}", StringComparison.Ordinal)

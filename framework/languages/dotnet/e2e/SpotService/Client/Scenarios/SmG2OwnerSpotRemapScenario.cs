@@ -22,7 +22,7 @@ internal static class SmG2OwnerSpotRemapScenario
         var firstEvidence = (await playA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(firstExpectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             firstExpectedEvidence.All(expected =>
                 firstEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-G2 play-a evidence did not include the first owner request.");
@@ -37,20 +37,20 @@ internal static class SmG2OwnerSpotRemapScenario
         var secondEvidence = (await playB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(secondExpectedEvidence))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             secondExpectedEvidence.All(expected =>
                 secondEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
             "SM-G2 play-b evidence did not include the remapped owner request.");
 
-        ScenarioAssert.That(firstCreated.NodeRid == "play-a", "SM-G2 first owner was not created on play-a.");
-        ScenarioAssert.That(secondCreated.NodeRid == "play-b", "SM-G2 remapped owner was not created on play-b.");
-        ScenarioAssert.That(firstReply.NodeRid == "play-a", "SM-G2 first owner request reached the wrong node.");
-        ScenarioAssert.That(secondReply.NodeRid == "play-b", "SM-G2 remapped owner request reached the wrong node.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(firstCreated.NodeRid == "play-a", "SM-G2 first owner was not created on play-a.");
+        ZlinkStreamAssert.Ensure(secondCreated.NodeRid == "play-b", "SM-G2 remapped owner was not created on play-b.");
+        ZlinkStreamAssert.Ensure(firstReply.NodeRid == "play-a", "SM-G2 first owner request reached the wrong node.");
+        ZlinkStreamAssert.Ensure(secondReply.NodeRid == "play-b", "SM-G2 remapped owner request reached the wrong node.");
+        ZlinkStreamAssert.Ensure(
             !firstEvidence.Any(line =>
                 line.Contains($"spot-state-request|rid=play-a|spot={secondOwnerSpotRid}", StringComparison.Ordinal)),
             "SM-G2 remapped owner leaked to play-a.");
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             !secondEvidence.Any(line =>
                 line.Contains($"spot-state-request|rid=play-b|spot={firstOwnerSpotRid}", StringComparison.Ordinal)),
             "SM-G2 first owner leaked to play-b.");

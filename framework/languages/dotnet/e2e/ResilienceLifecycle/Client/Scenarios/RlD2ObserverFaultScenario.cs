@@ -16,12 +16,12 @@ internal static class RlD2ObserverFaultScenario
         var missing = await consumer.Post("/profile/request/missing")
             .Body(new ProfileReq("fast", "rl-d2-error"))
             .AsyncRaw();
-        ScenarioAssert.That(missing.Status >= 500, "RL-D2 missing handler request should fail.");
+        ZlinkStreamAssert.Ensure(missing.Status >= 500, "RL-D2 missing handler request should fail.");
 
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-d2-after"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(followUp.Value == "profile:fast",
+        ZlinkStreamAssert.Ensure(followUp.Value == "profile:fast",
             "RL-D2 messaging did not continue after observer failure.");
         await providerB.Post("/admin/fault/none").AsyncRaw();
 
@@ -34,7 +34,7 @@ internal static class RlD2ObserverFaultScenario
             var completed = await Task.WhenAny(waitA, waitB);
             var evidence = (await completed).Body;
             timeout.Cancel();
-            ScenarioAssert.That(evidence.Any(line => line.Contains("marker=rl-d2-after", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(evidence.Any(line => line.Contains("marker=rl-d2-after", StringComparison.Ordinal)),
                 "RL-D2 did not record expected evidence 'marker=rl-d2-after'.");
         }
 

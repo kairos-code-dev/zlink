@@ -27,25 +27,25 @@ internal static class RmC8PayloadRoundTripScenario
             var reply = (await directConsumer.Post("/profile/payload")
                 .Body(new PayloadReq(marker, payload))
                 .Async<PayloadRes>()).Body;
-            ScenarioAssert.That(reply.Marker == marker, "RM-C8 marker mismatch.");
-            ScenarioAssert.That(reply.Length == payload.Length, "RM-C8 payload length mismatch.");
-            ScenarioAssert.That(reply.Sha256 == expectedHash, "RM-C8 payload hash mismatch.");
+            ZlinkStreamAssert.Ensure(reply.Marker == marker, "RM-C8 marker mismatch.");
+            ZlinkStreamAssert.Ensure(reply.Length == payload.Length, "RM-C8 payload length mismatch.");
+            ZlinkStreamAssert.Ensure(reply.Sha256 == expectedHash, "RM-C8 payload hash mismatch.");
         }
 
         var oversizedMarker = $"rm-c8-over-limit-{Guid.NewGuid():N}";
         var oversized = (await directConsumer.Post("/profile/payload-over-limit")
             .Body(new PayloadReq(oversizedMarker, BuildPayload(3 * 1024 * 1024)))
             .Async<RequestFailureRes>()).Body;
-        ScenarioAssert.That(oversized.Failed, "RM-C8 oversized payload should fail.");
+        ZlinkStreamAssert.Ensure(oversized.Failed, "RM-C8 oversized payload should fail.");
 
         var followUp = (await directConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c8-after"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(followUp.Value == "profile:rm-c8-after", "RM-C8 follow-up request failed.");
+        ZlinkStreamAssert.Ensure(followUp.Value == "profile:rm-c8-after", "RM-C8 follow-up request failed.");
 
         var afterA = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
         var afterB = providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             markers.All(marker =>
                 ScenarioAssert.CountNewEvidence(afterA, beforeA, "payload-request|rid=api-a", marker)
                 + ScenarioAssert.CountNewEvidence(afterB, beforeB, "payload-request|rid=api-b", marker) == 1),

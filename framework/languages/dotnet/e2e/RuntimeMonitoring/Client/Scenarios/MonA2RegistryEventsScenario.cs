@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
+using Zlink.Framework.E2E.Configuration;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -30,7 +31,7 @@ internal static class MonA2RegistryEventsScenario
                     [],
                     AfterIndex: baseline))
                 .Async<string[]>()).Body;
-            ScenarioAssert.That(added.Any(line => line.Contains("added=svc-c", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(added.Any(line => line.Contains("added=svc-c", StringComparison.Ordinal)),
                 "MON-A2 did not observe the added service identity.");
 
             var afterAdded = baseline + added.Length;
@@ -45,7 +46,7 @@ internal static class MonA2RegistryEventsScenario
                     AfterIndex: afterAdded,
                     TimeoutMilliseconds: 30000))
                 .Async<string[]>()).Body;
-            ScenarioAssert.That(removed.Any(line => line.Contains("removed=svc-c", StringComparison.Ordinal)),
+            ZlinkStreamAssert.Ensure(removed.Any(line => line.Contains("removed=svc-c", StringComparison.Ordinal)),
                 "MON-A2 did not observe the removed service identity.");
         }
         finally
@@ -68,21 +69,20 @@ internal static class MonA2RegistryEventsScenario
         start.ArgumentList.Add("--project");
         start.ArgumentList.Add(options.FilteredServiceProject);
         start.ArgumentList.Add("--");
-        Add(start, "--rid", "svc-c");
-        Add(start, "--http-url", serviceUrl);
-        Add(start, "--redis-endpoint", options.RedisEndpoint);
-        Add(start, "--redis-key-prefix", options.RedisKeyPrefix);
-        Add(start, "--channel-endpoint", channelEndpoint);
-        Add(start, "--evidence-file", Path.Combine(options.LogDir, "svc-c.evidence.log"));
-        Add(start, "--log-dir", options.LogDir);
+        start.ArgumentList.Add("--config");
+        start.ArgumentList.Add(E2eConfiguration.WriteArguments(options.ConfigDir, "svc-c",
+        [
+            "--role", "filtered-service",
+            "--rid", "svc-c",
+            "--http-url", serviceUrl,
+            "--redis-endpoint", options.RedisEndpoint,
+            "--redis-key-prefix", options.RedisKeyPrefix,
+            "--channel-endpoint", channelEndpoint,
+            "--evidence-file", Path.Combine(options.LogDir, "svc-c.evidence.log"),
+            "--log-dir", options.LogDir
+        ]));
         return Process.Start(start)
                ?? throw new InvalidOperationException("Failed to start MON-A2 service-c.");
-    }
-
-    private static void Add(ProcessStartInfo start, string name, string value)
-    {
-        start.ArgumentList.Add(name);
-        start.ArgumentList.Add(value);
     }
 
     private static int ReservePort()

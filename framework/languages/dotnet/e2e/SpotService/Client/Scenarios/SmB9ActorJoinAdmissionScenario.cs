@@ -57,8 +57,8 @@ internal static class SmB9ActorJoinAdmissionScenario
         var allowed = await client.Request(new JoinAdmittedUserSpotActorReq(spotRid, actorId, true, "allowed"))
             .PacketName("JoinAdmittedUserSpotActorReq")
             .Async<JoinAdmittedUserSpotActorRes>();
-        ScenarioAssert.That(allowed.Accepted, "SM-B9 allowed join was rejected.");
-        ScenarioAssert.That(allowed.SpotRid == spotRid, "SM-B9 allowed join spot mismatch.");
+        ZlinkStreamAssert.Ensure(allowed.Accepted, "SM-B9 allowed join was rejected.");
+        ZlinkStreamAssert.Ensure(allowed.SpotRid == spotRid, "SM-B9 allowed join spot mismatch.");
 
         var rejectedActorId = $"{actorId}-rejected";
         await client.Request(new AuthReq(rejectedActorId, $"rejected {nodeRid}", nodeRid))
@@ -72,8 +72,8 @@ internal static class SmB9ActorJoinAdmissionScenario
             .PacketName("JoinAdmittedUserSpotActorReq")
             .Metadata(SpotServiceNames.ActorIdMetadata, rejectedActorId)
             .Async<JoinAdmittedUserSpotActorRes>();
-        ScenarioAssert.That(!rejected.Accepted, "SM-B9 rejected join was accepted.");
-        ScenarioAssert.That(rejected.ErrorKind == "ActorJoinRejected", "SM-B9 rejection was not classified.");
+        ZlinkStreamAssert.Ensure(!rejected.Accepted, "SM-B9 rejected join was accepted.");
+        ZlinkStreamAssert.Ensure(rejected.ErrorKind == "ActorJoinRejected", "SM-B9 rejection was not classified.");
 
         var evidence = (await owner.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([
@@ -82,7 +82,7 @@ internal static class SmB9ActorJoinAdmissionScenario
                 $"spot-actor-join-rejected|rid={nodeRid}|spot={spotRid}|actor={rejectedActorId}|reason=capacity"
             ]))
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.All(line =>
                 !line.Contains($"spot-actor-joined|rid={nodeRid}|spot={spotRid}|actor={rejectedActorId}",
                     StringComparison.Ordinal)),

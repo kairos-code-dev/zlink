@@ -6,18 +6,18 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RunDir = New-SampleRunDirectory "bingo-dotnet"
 $RunId = "$PID-$([Guid]::NewGuid().ToString('N'))"
 $LogDir = Join-Path $RunDir "logs"
-$SampleLogDir = if ($env:BINGO_LOG_DIR) { $env:BINGO_LOG_DIR } else { Join-Path $ScriptDir "logs" }
+$SampleLogDir = Join-Path $ScriptDir "logs"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
 Remove-Item -Path (Join-Path $SampleLogDir "*.log") -Force -ErrorAction SilentlyContinue
-$env:BINGO_LOG_DIR = $SampleLogDir
+$BINGO_LOG_DIR = $SampleLogDir
 $RedisContainer = $null
 $RunSucceeded = $false
 
-function Set-DefaultEnv {
+function Set-DefaultValue {
     param([string]$Name, [string]$Value)
-    if (-not [Environment]::GetEnvironmentVariable($Name, "Process")) {
-        [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+    if (-not (Get-Variable -Name $Name -Scope Script -ErrorAction SilentlyContinue)) {
+        Set-Variable -Name $Name -Value $Value -Scope Script
     }
 }
 
@@ -73,48 +73,48 @@ function Wait-SampleLogContains {
 }
 
 try {
-    [Environment]::SetEnvironmentVariable("BINGO_REDIS_KEY_PREFIX", "bingo:dotnet:${RunId}:", "Process")
+    $BINGO_REDIS_KEY_PREFIX = "bingo:dotnet:${RunId}:"
 
-    $basePort = if ($env:BINGO_BASE_PORT) { [int]$env:BINGO_BASE_PORT } else { 0 }
+    $basePort = if ($BINGO_BASE_PORT) { [int]$BINGO_BASE_PORT } else { 0 }
     $ports = New-SamplePorts -Count 22 -BasePort $basePort
 
-    Set-DefaultEnv "BINGO_API_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[2])"
-    Set-DefaultEnv "BINGO_PLAY_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[3])"
-    Set-DefaultEnv "BINGO_SESSION_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[4])"
-    Set-DefaultEnv "BINGO_SESSION_A_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[5])"
-    Set-DefaultEnv "BINGO_SESSION_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[6])"
-    Set-DefaultEnv "BINGO_SESSION_B_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[7])"
-    Set-DefaultEnv "BINGO_PLAY_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[8])"
-    Set-DefaultEnv "BINGO_PLAY_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[9])"
-    Set-DefaultEnv "BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[10])"
-    Set-DefaultEnv "BINGO_SESSION_A_STREAM_ENDPOINT" "tcp://127.0.0.1:$($ports[11])"
-    Set-DefaultEnv "BINGO_SESSION_B_STREAM_ENDPOINT" "tcp://127.0.0.1:$($ports[12])"
-    Set-DefaultEnv "BINGO_PLAY_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[13])"
-    Set-DefaultEnv "BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[14])"
-    Set-DefaultEnv "BINGO_API_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[15])"
+    Set-DefaultValue "BINGO_API_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[2])"
+    Set-DefaultValue "BINGO_PLAY_A_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[3])"
+    Set-DefaultValue "BINGO_SESSION_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[4])"
+    Set-DefaultValue "BINGO_SESSION_A_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[5])"
+    Set-DefaultValue "BINGO_SESSION_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[6])"
+    Set-DefaultValue "BINGO_SESSION_B_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[7])"
+    Set-DefaultValue "BINGO_PLAY_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[8])"
+    Set-DefaultValue "BINGO_PLAY_A_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[9])"
+    Set-DefaultValue "BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[10])"
+    Set-DefaultValue "BINGO_SESSION_A_STREAM_ENDPOINT" "tcp://127.0.0.1:$($ports[11])"
+    Set-DefaultValue "BINGO_SESSION_B_STREAM_ENDPOINT" "tcp://127.0.0.1:$($ports[12])"
+    Set-DefaultValue "BINGO_PLAY_B_SPOT_ENDPOINT" "tcp://127.0.0.1:$($ports[13])"
+    Set-DefaultValue "BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT" "tcp://127.0.0.1:$($ports[14])"
+    Set-DefaultValue "BINGO_API_B_CHANNEL_ENDPOINT" "tcp://127.0.0.1:$($ports[15])"
     $redis = Start-SampleRedisContainer "zlink-bingo-dotnet-redis"
     $RedisContainer = $redis.ContainerId
-    $env:BINGO_REDIS_ENDPOINT = $redis.Endpoint
-    Wait-SampleTcpEndpoint "redis" "tcp://$env:BINGO_REDIS_ENDPOINT"
+    $BINGO_REDIS_ENDPOINT = $redis.Endpoint
+    Wait-SampleTcpEndpoint "redis" "tcp://$BINGO_REDIS_ENDPOINT"
 
     $baseSettings = [ordered]@{
         LogDirectory = $SampleLogDir
-        RedisEndpoint = $env:BINGO_REDIS_ENDPOINT
-        RedisKeyPrefix = $env:BINGO_REDIS_KEY_PREFIX
-        ApiAChannelEndpoint = $env:BINGO_API_A_CHANNEL_ENDPOINT
-        ApiBChannelEndpoint = $env:BINGO_API_B_CHANNEL_ENDPOINT
-        PlayAChannelEndpoint = $env:BINGO_PLAY_A_CHANNEL_ENDPOINT
-        PlayBChannelEndpoint = $env:BINGO_PLAY_B_CHANNEL_ENDPOINT
-        PlayASpotEndpoint = $env:BINGO_PLAY_A_SPOT_ENDPOINT
-        PlayBSpotEndpoint = $env:BINGO_PLAY_B_SPOT_ENDPOINT
-        PlayASpotRouterEndpoint = $env:BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
-        PlayBSpotRouterEndpoint = $env:BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
-        SessionASpotEndpoint = $env:BINGO_SESSION_A_SPOT_ENDPOINT
-        SessionBSpotEndpoint = $env:BINGO_SESSION_B_SPOT_ENDPOINT
-        SessionARouterEndpoint = $env:BINGO_SESSION_A_ROUTER_ENDPOINT
-        SessionBRouterEndpoint = $env:BINGO_SESSION_B_ROUTER_ENDPOINT
-        SessionAStreamEndpoint = $env:BINGO_SESSION_A_STREAM_ENDPOINT
-        SessionBStreamEndpoint = $env:BINGO_SESSION_B_STREAM_ENDPOINT
+        RedisEndpoint = $BINGO_REDIS_ENDPOINT
+        RedisKeyPrefix = $BINGO_REDIS_KEY_PREFIX
+        ApiAChannelEndpoint = $BINGO_API_A_CHANNEL_ENDPOINT
+        ApiBChannelEndpoint = $BINGO_API_B_CHANNEL_ENDPOINT
+        PlayAChannelEndpoint = $BINGO_PLAY_A_CHANNEL_ENDPOINT
+        PlayBChannelEndpoint = $BINGO_PLAY_B_CHANNEL_ENDPOINT
+        PlayASpotEndpoint = $BINGO_PLAY_A_SPOT_ENDPOINT
+        PlayBSpotEndpoint = $BINGO_PLAY_B_SPOT_ENDPOINT
+        PlayASpotRouterEndpoint = $BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
+        PlayBSpotRouterEndpoint = $BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
+        SessionASpotEndpoint = $BINGO_SESSION_A_SPOT_ENDPOINT
+        SessionBSpotEndpoint = $BINGO_SESSION_B_SPOT_ENDPOINT
+        SessionARouterEndpoint = $BINGO_SESSION_A_ROUTER_ENDPOINT
+        SessionBRouterEndpoint = $BINGO_SESSION_B_ROUTER_ENDPOINT
+        SessionAStreamEndpoint = $BINGO_SESSION_A_STREAM_ENDPOINT
+        SessionBStreamEndpoint = $BINGO_SESSION_B_STREAM_ENDPOINT
     }
     $configFiles = @{}
     foreach ($role in @("api-a", "api-b", "play-a", "play-b", "session-a", "session-b", "client")) {
@@ -130,25 +130,25 @@ try {
 
 
     Start-SampleDotnetAssembly -Name "api-a" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-a"]) | Out-Null
-    Wait-SampleTcpEndpoint "api-a" $env:BINGO_API_A_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api-a" $BINGO_API_A_CHANNEL_ENDPOINT
     Start-SampleDotnetAssembly -Name "api-b" -Project (Join-Path $ScriptDir "Server/Api/Bingo.Server.Api.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["api-b"]) | Out-Null
-    Wait-SampleTcpEndpoint "api-b" $env:BINGO_API_B_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "api-b" $BINGO_API_B_CHANNEL_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "play-a" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["play-a"]) | Out-Null
-    Wait-SampleTcpEndpoint "play-a" $env:BINGO_PLAY_A_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "play-a-spot-router" $env:BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "play-a-spot-pub" $env:BINGO_PLAY_A_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "play-a" $BINGO_PLAY_A_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "play-a-spot-router" $BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "play-a-spot-pub" $BINGO_PLAY_A_SPOT_ENDPOINT
     Start-SampleDotnetAssembly -Name "play-b" -Project (Join-Path $ScriptDir "Server/Play/Bingo.Server.Play.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["play-b"]) | Out-Null
-    Wait-SampleTcpEndpoint "play-b" $env:BINGO_PLAY_B_CHANNEL_ENDPOINT
-    Wait-SampleTcpEndpoint "play-b-spot-router" $env:BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "play-b-spot-pub" $env:BINGO_PLAY_B_SPOT_ENDPOINT
+    Wait-SampleTcpEndpoint "play-b" $BINGO_PLAY_B_CHANNEL_ENDPOINT
+    Wait-SampleTcpEndpoint "play-b-spot-router" $BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "play-b-spot-pub" $BINGO_PLAY_B_SPOT_ENDPOINT
 
     Start-SampleDotnetAssembly -Name "session-a" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["session-a"]) | Out-Null
-    Wait-SampleTcpEndpoint "session-a-router" $env:BINGO_SESSION_A_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "session-a-stream" $env:BINGO_SESSION_A_STREAM_ENDPOINT
+    Wait-SampleTcpEndpoint "session-a-router" $BINGO_SESSION_A_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "session-a-stream" $BINGO_SESSION_A_STREAM_ENDPOINT
     Start-SampleDotnetAssembly -Name "session-b" -Project (Join-Path $ScriptDir "Server/Session/Bingo.Server.Session.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["session-b"]) | Out-Null
-    Wait-SampleTcpEndpoint "session-b-router" $env:BINGO_SESSION_B_ROUTER_ENDPOINT
-    Wait-SampleTcpEndpoint "session-b-stream" $env:BINGO_SESSION_B_STREAM_ENDPOINT
+    Wait-SampleTcpEndpoint "session-b-router" $BINGO_SESSION_B_ROUTER_ENDPOINT
+    Wait-SampleTcpEndpoint "session-b-stream" $BINGO_SESSION_B_STREAM_ENDPOINT
 
     $clientLog = Join-Path $LogDir "client.log"
     Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/Bingo.Client.csproj") -Arguments @("--config", $configFiles["client"]) *> $clientLog
@@ -186,11 +186,12 @@ try {
     $RunSucceeded = $true
 }
 finally {
+    Remove-SampleConfigurationFiles -RunDirectory $RunDir
     Stop-SampleProcesses
     if ($RedisContainer) {
         Remove-SampleRedisContainer $RedisContainer
     }
-    if (-not $RunSucceeded -or $env:BINGO_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $BINGO_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

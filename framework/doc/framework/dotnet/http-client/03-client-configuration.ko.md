@@ -25,6 +25,20 @@ builder는 client 전역 설정을 모은다. 옵션은 네이티브 `SocketsHtt
 | `Compression()` | gzip/deflate 투명 해제 | off | **래퍼 해제** |
 | `Codecs(configure)` | framework codec extension 등록(.NET 고유) | JSON | 래퍼 |
 
+## framework 서버에 등록
+
+Spot handler에서 사용하는 client는 이름을 붙여 DI에 등록한다. 서버 등록은 connection pool을
+재사용하고 `Yield`와 callback 완료를 현재 Spot 실행 줄에 연결한다.
+
+```csharp
+services.AddZLinkHttpClient("player-api", http => http
+    .BaseUrl("https://player-api.internal") // 이 이름으로 주입되는 client의 기준 URL을 고정한다.
+    .Timeout(TimeSpan.FromSeconds(3)));      // 외부 API의 시도당 timeout을 한곳에서 관리한다.
+```
+
+handler는 같은 이름의 `ZLinkHttpServerClient`를 주입받는다. 정적 팩토리로 만든
+`ZLinkHttpClient`는 client-side 코드용이므로 `Submit`과 `Yield`를 제공하지 않는다.
+
 ## 네이티브 위임 vs 래퍼 구현
 
 `SocketsHttpHandler`에서 **auto-redirect, auto-decompression, cookie container는 끈다.**
@@ -43,7 +57,7 @@ client를 만들지만 반복 호출에는 재사용이 낫다.
 ## 요청별 timeout override
 
 ```csharp
-await client.Get("/slow-report").Timeout(TimeSpan.FromSeconds(30)).SubmitRawAsync();
+await client.Get("/slow-report").Timeout(TimeSpan.FromSeconds(30)).AsyncRaw();
 ```
 
 [다음: Request 만들기 →](04-making-requests.ko.md)

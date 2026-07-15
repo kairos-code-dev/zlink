@@ -16,19 +16,19 @@ internal static class RmC4TimeoutIsolationScenario
         var timeout = (await storeConsumer.Post("/profile/slow-request")
             .Body(new ProfileReq("slow"))
             .Async<RequestFailureRes>()).Body;
-        ScenarioAssert.That(timeout.Failed, "RM-C4 expected the slow request to time out.");
-        ScenarioAssert.That(timeout.FailureType == nameof(TimeoutException), "RM-C4 expected TimeoutException.");
+        ZlinkStreamAssert.Ensure(timeout.Failed, "RM-C4 expected the slow request to time out.");
+        ZlinkStreamAssert.Ensure(timeout.FailureType == nameof(TimeoutException), "RM-C4 expected TimeoutException.");
 
         var immediate = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c4-after-timeout"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(immediate.Value == "profile:rm-c4-after-timeout", "RM-C4 follow-up reply mismatch.");
+        ZlinkStreamAssert.Ensure(immediate.Value == "profile:rm-c4-after-timeout", "RM-C4 follow-up reply mismatch.");
 
         await Task.Delay(TimeSpan.FromMilliseconds(1200));
         var later = (await storeConsumer.Post("/profile/request")
             .Body(new ProfileReq("rm-c4-later"))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(later.Value == "profile:rm-c4-later", "RM-C4 later reply mismatch.");
+        ZlinkStreamAssert.Ensure(later.Value == "profile:rm-c4-later", "RM-C4 later reply mismatch.");
 
         var afterTimeoutWaitA = providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq("rm-c4-after-timeout"))
@@ -52,7 +52,7 @@ internal static class RmC4TimeoutIsolationScenario
         var laterCompleted = await Task.WhenAny(laterWaitA, laterWaitB);
         var laterEvidence = (await laterCompleted).Body;
         var evidence = afterTimeoutEvidence.Concat(laterEvidence).ToArray();
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             evidence.Any(line => line.Contains("rm-c4-after-timeout", StringComparison.Ordinal))
             && evidence.Any(line => line.Contains("rm-c4-later", StringComparison.Ordinal)),
             "RM-C4 follow-up evidence missing.");

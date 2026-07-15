@@ -10,7 +10,7 @@
 | 상황 | kind |
 |------|------|
 | 구성/요청 검증 실패(base_url, path, single body source, proxy scheme, 0 timeout 등) | `RequestProtocolError` |
-| status ≥ 400 (`SubmitAsync<T>`/`Fetch<T>`) | `RequestFailed` |
+| status ≥ 400 (`Async<T>` 또는 typed callback) | `RequestFailed` |
 | redirect 한도 초과 | `RequestFailed` |
 | 응답 JSON 디코드 실패 | `PayloadDecodeFailed` |
 | 압축 본문 손상 | `PayloadDecodeFailed` |
@@ -21,9 +21,9 @@
 
 .NET framework의
 `ZLinkFrameworkErrorKind`에는 timeout 전용 kind가 없다. 따라서 timeout은 .NET 관용에
-맞춰 **`TimeoutException`**으로 보고된다. retriable 성격이며 `Retry`가 설정돼 있으면
-재시도된다(framework 코덱 자체도 timeout을 `TimeoutException`
-으로 변환한다).
+맞춰 `RequestFailed`인 `ZLinkFrameworkException`으로 보고하며 `IsRetriable`은 `true`다.
+원인은 `InnerException`의 `TimeoutException`으로 확인할 수 있다. `Retry`가 설정돼 있으면
+재시도된다.
 
 ## retriable
 
@@ -36,7 +36,7 @@ retry에서 제외된다([10장](10-redirects-retries-cookies.ko.md)).
 ```csharp
 try
 {
-    var res = await client.Post("/games").Body(req).SubmitAsync<CreateGameRes>();
+    var res = await client.Post("/games").Body(req).Async<CreateGameRes>();
 }
 catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.RequestFailed)
 {
@@ -46,9 +46,11 @@ catch (ZLinkFrameworkException ex) when (ex.Kind == ZLinkFrameworkErrorKind.Payl
 {
     // 응답 본문 디코드 실패
 }
-catch (TimeoutException)
+catch (ZLinkFrameworkException ex)
+    when (ex.Kind == ZLinkFrameworkErrorKind.RequestFailed
+          && ex.InnerException is TimeoutException)
 {
-    // 요청 timeout
+    // 요청 timeout. 일반 transport 실패와 구분해야 할 때 inner exception을 확인한다.
 }
 ```
 

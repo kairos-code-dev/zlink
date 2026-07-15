@@ -2,10 +2,15 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using Zlink.HttpClient;
+using Zlink.Framework.E2E.Configuration;
 
 namespace LocationMessaging.Client.Support;
 
-internal sealed class DynamicClusterLauncher(string providerProject, string consumerProject, string logDir) : IAsyncDisposable
+internal sealed class DynamicClusterLauncher(
+    string providerProject,
+    string consumerProject,
+    string configDir,
+    string logDir) : IAsyncDisposable
 {
     private readonly List<DynamicProcess> _processes = [];
 
@@ -25,7 +30,11 @@ internal sealed class DynamicClusterLauncher(string providerProject, string cons
         // No registry process exists. Each dynamic cluster shares the run's
         // Redis instance but isolates its peer location rows under a
         // scenario-specific key prefix (mirrors the doc's per-run isolation).
-        var launcher = new DynamicClusterLauncher(options.ProviderProject, options.ConsumerProject, options.LogDir)
+        var launcher = new DynamicClusterLauncher(
+            options.ProviderProject,
+            options.ConsumerProject,
+            options.ConfigDir,
+            options.LogDir)
         {
             RedisEndpoint = options.RedisEndpoint,
             RedisKeyPrefix = $"{options.RedisKeyPrefix}:{scenarioName}"
@@ -41,6 +50,7 @@ internal sealed class DynamicClusterLauncher(string providerProject, string cons
             name,
             providerProject,
             [
+                "--role", "provider",
                 "--rid", rid,
                 "--http-url", httpUrl,
                 "--redis-endpoint", RedisEndpoint,
@@ -100,7 +110,8 @@ internal sealed class DynamicClusterLauncher(string providerProject, string cons
         startInfo.ArgumentList.Add("--project");
         startInfo.ArgumentList.Add(projectPath);
         startInfo.ArgumentList.Add("--");
-        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+        startInfo.ArgumentList.Add("--config");
+        startInfo.ArgumentList.Add(E2eConfiguration.WriteArguments(configDir, name, arguments));
 
         var process = Process.Start(startInfo)
                       ?? throw new InvalidOperationException($"Failed to start {name}.");

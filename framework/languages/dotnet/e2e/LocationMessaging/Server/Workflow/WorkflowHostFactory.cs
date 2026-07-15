@@ -30,7 +30,7 @@ internal static class WorkflowHostFactory
         });
 
         builder.WebHost.UseUrls(options.HttpUrl);
-        builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
+        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
 
         builder.Services.AddZLinkFramework(framework =>
         {

@@ -16,13 +16,6 @@ New-Item -ItemType Directory -Force -Path $SampleLogDir | Out-Null
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 Remove-Item -Path (Join-Path $SampleLogDir "*.log") -Force -ErrorAction SilentlyContinue
 
-function Set-DefaultEnv {
-    param([string]$Name, [string]$Value)
-    if (-not [Environment]::GetEnvironmentVariable($Name, "Process")) {
-        [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
-    }
-}
-
 function Wait-SampleLogContains {
     param(
         [Parameter(Mandatory = $true)][string]$Pattern,
@@ -44,7 +37,7 @@ function Wait-SampleLogContains {
 }
 
 try {
-    $basePort = if ($env:DELIVERYDISPATCH_BASE_PORT) { [int]$env:DELIVERYDISPATCH_BASE_PORT } else { 0 }
+    $basePort = if ($DELIVERYDISPATCH_BASE_PORT) { [int]$DELIVERYDISPATCH_BASE_PORT } else { 0 }
     $ports = New-SamplePorts -Count 19 -BasePort $basePort
 
     $RedisKeyPrefix = "deliverydispatch:dotnet:${PID}:$([Guid]::NewGuid().ToString('N')):"
@@ -109,6 +102,7 @@ try {
     Write-RoleConfig "dispatch"
     Write-RoleConfig "courier-actor-node1" "delivery-courier-node-1"
     Write-RoleConfig "courier-actor-node2" "delivery-courier-node-2"
+    Write-RoleConfig "client"
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "DeliveryDispatch.sln")
 
@@ -135,7 +129,7 @@ try {
     Wait-SampleHttpHealth "dispatch" $DispatchHttp
 
     $clientLog = Join-Path $LogDir "client.log"
-    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/DeliveryDispatch.Client.csproj") -Arguments @("--api-url", $DispatchHttp, "--stream-endpoint", $CustomerStream, "--courier-stream-endpoint", $CourierStream, "--log-dir", $SampleLogDir) *> $clientLog
+    Invoke-SampleDotnetRun -Project (Join-Path $ScriptDir "Client/DeliveryDispatch.Client.csproj") -Arguments @("--config", (Join-Path $ConfigDir "client.json")) *> $clientLog
     if (-not (Select-String -Path $clientLog -Pattern "deliverydispatch=completed" -Quiet)) {
         throw "DeliveryDispatch client did not complete."
     }
@@ -155,11 +149,12 @@ try {
     $RunSucceeded = $true
 }
 finally {
+    Remove-SampleConfigurationFiles -RunDirectory $RunDir
     Stop-SampleProcesses
     if ($RedisContainer) {
         Remove-SampleRedisContainer $RedisContainer
     }
-    if (-not $RunSucceeded -or $env:DELIVERYDISPATCH_KEEP_RUN_DIR -eq "1") {
+    if (-not $RunSucceeded -or $DELIVERYDISPATCH_KEEP_RUN_DIR -eq "1") {
         Write-Host "runDir=$RunDir"
     }
     else {

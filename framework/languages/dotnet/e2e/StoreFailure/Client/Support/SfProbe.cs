@@ -115,14 +115,14 @@ internal static class SfProbe
         {
             var marker = $"{markerPrefix}-{index++}";
             var reply = await RequestAsync(consumer, marker);
-            ScenarioAssert.That(
+            ZlinkStreamAssert.Ensure(
                 reply.Value == "profile:fast",
                 $"{scenario}: request '{marker}' returned an unexpected value.");
             replies.Add(reply);
             await Task.Delay(150);
         }
 
-        ScenarioAssert.That(replies.Count > 0, $"{scenario}: the request window produced no traffic.");
+        ZlinkStreamAssert.Ensure(replies.Count > 0, $"{scenario}: the request window produced no traffic.");
         return replies;
     }
 }

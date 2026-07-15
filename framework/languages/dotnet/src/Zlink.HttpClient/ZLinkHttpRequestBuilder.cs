@@ -9,10 +9,10 @@ namespace Zlink.HttpClient;
 /// <summary>
 ///     Fluent builder for a single request. Mirrors the C++ <c>request_builder_t</c>. Submission
 ///     returns a <see cref="ValueTask{T}" />; no thread is parked while the request is in flight. The
-///     <c>Async</c> keeps a server Spot turn while <c>Yield</c> releases it through an injected
-///     execution scheduler. Standalone clients provide <c>Async</c> and <c>Submit</c> only.
+///     <c>Async</c> keeps a server Spot turn. Server-only terminators are provided by
+///     <see cref="ZLinkHttpServerRequestBuilder" />.
 /// </summary>
-public sealed class ZLinkHttpRequestBuilder
+public class ZLinkHttpRequestBuilder
 {
     private readonly ZLinkHttpClientBuilder? _clientFactory;
     private readonly List<KeyValuePair<string, string>> _form = new();
@@ -26,11 +26,13 @@ public sealed class ZLinkHttpRequestBuilder
     private Func<byte[]?>? _bodyProvider;
     private ZLinkHttpClient? _client;
     private bool _consumed;
+    private readonly IZLinkHttpExecutionTurn? _executionTurn;
     private TimeSpan? _timeout;
 
     internal ZLinkHttpRequestBuilder(ZLinkHttpClient client, ZLinkHttpMethod method, string path)
     {
         _client = client;
+        _executionTurn = client.Runtime.Options.ExecutionScheduler?.Capture();
         _method = method;
         _path = path;
         ValidatePath(path);
@@ -55,21 +57,21 @@ public sealed class ZLinkHttpRequestBuilder
                 "HTTP request path must start with /");
     }
 
-    public ZLinkHttpRequestBuilder Header(string name, string value)
+    public virtual ZLinkHttpRequestBuilder Header(string name, string value)
     {
         HttpClientText.RequireNonBlank(name, "HTTP request header name is required");
         _headers[name] = value;
         return this;
     }
 
-    public ZLinkHttpRequestBuilder Query(string name, string value)
+    public virtual ZLinkHttpRequestBuilder Query(string name, string value)
     {
         HttpClientText.RequireNonBlank(name, "HTTP request query name is required");
         _query.Add(new KeyValuePair<string, string>(name, value));
         return this;
     }
 
-    public ZLinkHttpRequestBuilder Timeout(TimeSpan value)
+    public virtual ZLinkHttpRequestBuilder Timeout(TimeSpan value)
     {
         HttpClientText.RequirePositiveTimeout(value);
         _timeout = value;
@@ -77,7 +79,7 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     /// <summary>Sets a typed body. JSON is the default; registered codec extensions may override it.</summary>
-    public ZLinkHttpRequestBuilder Body<T>(T value)
+    public virtual ZLinkHttpRequestBuilder Body<T>(T value)
     {
         var encoded = ResolveCodecs().Encode(value, typeof(T));
         _body = encoded.Body;
@@ -86,7 +88,7 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     /// <summary>Sets a raw body with an explicit content type.</summary>
-    public ZLinkHttpRequestBuilder Body(string content, string contentType)
+    public virtual ZLinkHttpRequestBuilder Body(string content, string contentType)
     {
         if (content is null)
             throw new ZLinkFrameworkException(
@@ -102,7 +104,7 @@ public sealed class ZLinkHttpRequestBuilder
     ///     Streams the request body chunk by chunk with chunked transfer-encoding; the provider
     ///     returns <c>null</c> when the body is complete. Streamed requests are excluded from retry.
     /// </summary>
-    public ZLinkHttpRequestBuilder BodyStream(Func<byte[]?> provider, string contentType)
+    public virtual ZLinkHttpRequestBuilder BodyStream(Func<byte[]?> provider, string contentType)
     {
         ArgumentNullException.ThrowIfNull(provider);
         HttpClientText.RequireNonBlank(contentType, "HTTP request body content type is required");
@@ -111,21 +113,21 @@ public sealed class ZLinkHttpRequestBuilder
         return this;
     }
 
-    public ZLinkHttpRequestBuilder Form(string name, string value)
+    public virtual ZLinkHttpRequestBuilder Form(string name, string value)
     {
         HttpClientText.RequireNonBlank(name, "HTTP request form field name is required");
         _form.Add(new KeyValuePair<string, string>(name, value));
         return this;
     }
 
-    public ZLinkHttpRequestBuilder Multipart(string name, string value)
+    public virtual ZLinkHttpRequestBuilder Multipart(string name, string value)
     {
         HttpClientText.RequireNonBlank(name, "HTTP request multipart field name is required");
         _multipart.Add(new MultipartPart(name, string.Empty, value, string.Empty));
         return this;
     }
 
-    public ZLinkHttpRequestBuilder MultipartFile(string name, string filename, string content, string contentType)
+    public virtual ZLinkHttpRequestBuilder MultipartFile(string name, string filename, string content, string contentType)
     {
         HttpClientText.RequireNonBlank(name, "HTTP request multipart field name is required");
         HttpClientText.RequireNonBlank(filename, "HTTP request multipart filename is required");
@@ -192,18 +194,18 @@ public sealed class ZLinkHttpRequestBuilder
         return ExecuteTypedAsync<T>(cancellationToken);
     }
 
-    public ValueTask<HttpResponse<T>> Yield<T>(CancellationToken cancellationToken = default)
+    /// <summary>
+    ///     Starts the request and reports completion through a callback. Exactly one of
+    ///     <c>error</c> and <c>response</c> is non-null. A server callback is queued as a new turn on
+    ///     the execution line captured when this request was created.
+    /// </summary>
+    public void Async<T>(ZLinkHttpCallback<T> callback, CancellationToken cancellationToken = default)
     {
-        var scheduler = ResolveScheduler();
-        return scheduler.YieldAsync(ExecuteTypedAsync<T>, cancellationToken);
+        ArgumentNullException.ThrowIfNull(callback);
+        _ = CompleteCallbackAsync(ExecuteTypedAsync<T>(cancellationToken), callback);
     }
 
-    public void Submit(CancellationToken cancellationToken = default)
-    {
-        _ = ObserveSubmissionAsync(cancellationToken);
-    }
-
-    private async ValueTask<HttpResponse<T>> ExecuteTypedAsync<T>(CancellationToken cancellationToken)
+    protected async ValueTask<HttpResponse<T>> ExecuteTypedAsync<T>(CancellationToken cancellationToken)
     {
         var codecs = ResolveCodecs();
         var raw = await AsyncRaw(cancellationToken).ConfigureAwait(false);
@@ -237,31 +239,66 @@ public sealed class ZLinkHttpRequestBuilder
         };
     }
 
-    private IZLinkHttpExecutionScheduler ResolveScheduler()
+    protected IZLinkHttpExecutionTurn RequireExecutionTurn(string operation)
     {
-        var client = _client ?? _clientFactory?.Build();
-        if (client is null || client.Runtime.Options.ExecutionScheduler is not { } scheduler)
-        {
-            client?.Dispose();
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
-                "HTTP Yield requires a server client with an execution scheduler.");
-        }
-
-        if (_client is null) _client = client;
-        return scheduler;
+        return _executionTurn
+               ?? throw new ZLinkFrameworkException(
+                   ZLinkFrameworkErrorKind.RequestProtocolError,
+                   $"HTTP {operation} can only run inside a framework execution turn.");
     }
 
-    private async Task ObserveSubmissionAsync(CancellationToken cancellationToken)
+    protected async Task ObserveSubmissionAsync(
+        IZLinkHttpExecutionTurn turn,
+        CancellationToken cancellationToken)
     {
         try
         {
             _ = await AsyncRaw(cancellationToken).ConfigureAwait(false);
         }
-        catch
+        catch (Exception exception)
         {
-            // Submit is one-way. Callers that need an observable result use Async or Yield.
+            turn.ReportError(exception);
         }
+    }
+
+    private async Task CompleteCallbackAsync<T>(
+        ValueTask<HttpResponse<T>> pending,
+        ZLinkHttpCallback<T> callback)
+    {
+        Exception? error = null;
+        HttpResponse<T>? response = null;
+        try
+        {
+            response = await pending.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            error = exception;
+        }
+
+        void Complete()
+        {
+            try
+            {
+                callback(error, response);
+            }
+            catch (Exception exception)
+            {
+                _executionTurn?.ReportError(exception);
+            }
+        }
+
+        if (_executionTurn is null)
+            Complete();
+        else
+            try
+            {
+                _executionTurn.Post(Complete);
+            }
+            catch (Exception exception)
+            {
+                _executionTurn.ReportError(exception);
+            }
     }
 
     private HttpRequestSpec MakeRequest(Action<ReadOnlyMemory<byte>>? sink)
@@ -371,4 +408,98 @@ public sealed class ZLinkHttpRequestBuilder
     }
 
     private readonly record struct MultipartPart(string Name, string Filename, string Content, string ContentType);
+}
+
+/// <summary>
+///     Callback completion path for callers that do not use an awaitable. Exactly one argument is
+///     non-null.
+/// </summary>
+public delegate void ZLinkHttpCallback<T>(Exception? error, HttpResponse<T>? response);
+
+/// <summary>Request builder used by framework server clients.</summary>
+public sealed class ZLinkHttpServerRequestBuilder : ZLinkHttpRequestBuilder
+{
+    internal ZLinkHttpServerRequestBuilder(
+        ZLinkHttpServerClient client,
+        ZLinkHttpMethod method,
+        string path) : base(client, method, path)
+    {
+    }
+
+    public override ZLinkHttpServerRequestBuilder Header(string name, string value)
+    {
+        base.Header(name, value);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder Query(string name, string value)
+    {
+        base.Query(name, value);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder Timeout(TimeSpan value)
+    {
+        base.Timeout(value);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder Body<T>(T value)
+    {
+        base.Body(value);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder Body(string content, string contentType)
+    {
+        base.Body(content, contentType);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder BodyStream(Func<byte[]?> provider, string contentType)
+    {
+        base.BodyStream(provider, contentType);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder Form(string name, string value)
+    {
+        base.Form(name, value);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder Multipart(string name, string value)
+    {
+        base.Multipart(name, value);
+        return this;
+    }
+
+    public override ZLinkHttpServerRequestBuilder MultipartFile(
+        string name,
+        string filename,
+        string content,
+        string contentType)
+    {
+        base.MultipartFile(name, filename, content, contentType);
+        return this;
+    }
+
+    /// <summary>
+    ///     Waits for a typed response while releasing the captured Spot turn. The continuation is
+    ///     queued on the same execution line, and caller cancellation cancels the wait.
+    /// </summary>
+    public ValueTask<HttpResponse<T>> Yield<T>(CancellationToken cancellationToken = default)
+    {
+        return RequireExecutionTurn("Yield").YieldAsync(ExecuteTypedAsync<T>, cancellationToken);
+    }
+
+    /// <summary>
+    ///     Starts a one-way server request. Transport and response failures are reported through the
+    ///     framework runtime error boundary.
+    /// </summary>
+    public void Submit(CancellationToken cancellationToken = default)
+    {
+        var turn = RequireExecutionTurn("Submit");
+        _ = ObserveSubmissionAsync(turn, cancellationToken);
+    }
 }

@@ -18,7 +18,7 @@ internal static class RlB3GracefulShutdownScenario
         var before = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", beforeMarker))
             .Async<ProfileRes>()).Body;
-        ScenarioAssert.That(before.ProviderRid is "api-a" or "api-b", "RL-B3 pre-shutdown request failed.");
+        ZlinkStreamAssert.Ensure(before.ProviderRid is "api-a" or "api-b", "RL-B3 pre-shutdown request failed.");
 
         await providerB.Post("/shutdown").AsyncRaw();
         for (var attempt = 0; attempt < 100; attempt++)
@@ -46,7 +46,7 @@ internal static class RlB3GracefulShutdownScenario
             var after = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", $"rl-b3-after-{i}"))
                 .Async<ProfileRes>()).Body;
-            ScenarioAssert.That(after.ProviderRid == "api-a",
+            ZlinkStreamAssert.Ensure(after.ProviderRid == "api-a",
                 "RL-B3 request after graceful shutdown used stale api-b.");
         }
 

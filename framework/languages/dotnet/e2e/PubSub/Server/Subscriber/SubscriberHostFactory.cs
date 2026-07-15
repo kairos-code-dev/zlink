@@ -14,7 +14,7 @@ internal static class SubscriberHostFactory
         var options = SubscriberOptions.Parse(args);
         var builder = HostFactorySupport.CreateBuilder(args, options.HttpUrl, options.LogDir);
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile));
+        builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddSingleton(new HandlerDelayOptions(options.HandlerDelayMs));
 
         builder.Services.AddZLinkFramework(framework =>

@@ -114,7 +114,36 @@ function New-SampleRunDirectory {
 
     $path = Join-Path ([System.IO.Path]::GetTempPath()) "$Name-$([System.Guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Force -Path $path | Out-Null
+    if ($IsWindows) {
+        $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        $security = [System.Security.AccessControl.DirectorySecurity]::new()
+        $security.SetAccessRuleProtection($true, $false)
+        $inheritance = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+            [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+            $identity,
+            [System.Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow)
+        $security.AddAccessRule($rule)
+        [System.IO.Directory]::SetAccessControl($path, $security)
+    }
+    else {
+        [System.IO.File]::SetUnixFileMode(
+            $path,
+            [System.IO.UnixFileMode]::UserRead -bor
+            [System.IO.UnixFileMode]::UserWrite -bor
+            [System.IO.UnixFileMode]::UserExecute)
+    }
     return $path
+}
+
+function Remove-SampleConfigurationFiles {
+    param([Parameter(Mandatory = $true)][string]$RunDirectory)
+
+    Get-ChildItem -Path $RunDirectory -Filter "*.json" -File -Recurse -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
 function New-SamplePorts {

@@ -6,6 +6,33 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void Sample_And_E2e_Clients_Use_Stream_Connector_Assertions()
+    {
+        var clientFiles = EnumerateSourceFiles(ResolveSamplesRoot())
+            .Concat(EnumerateSourceFiles(ResolveE2eRoot()))
+            .Where(path => path.Contains(
+                $"{Path.DirectorySeparatorChar}Client{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
+            .ToArray();
+        var localAssertion = new Regex(
+            @"(?:private|public|internal)\s+(?:static\s+)?void\s+(?:Ensure|Require|That)\s*\(",
+            RegexOptions.CultureInvariant);
+        var offenders = clientFiles
+            .Where(path => localAssertion.IsMatch(File.ReadAllText(path)))
+            .Select(path => NormalizeRelativePath(Path.GetRelativePath(ResolveDotnetRoot(), path)))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(offenders);
+        var clientText = string.Join(Environment.NewLine, clientFiles.Select(File.ReadAllText));
+        Assert.Contains("ZlinkStreamAssert.Ensure(", clientText, StringComparison.Ordinal);
+        Assert.Contains("ExpectNone<", clientText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ScenarioAssert.That(", clientText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ScenarioContext.Require(", clientText, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReceivedCount(nameof(PlayerJoinedNotify))", clientText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Only_TicTacToe_May_Use_Manual_Server_Connections()
     {
         var samplesRoot = ResolveSamplesRoot();

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Samples.Logging;
 
@@ -8,9 +9,13 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var options = TicTacToeClientArguments.Parse(args);
+        var configuration = TicTacToeClientConfiguration.Load(args);
+        var options = TicTacToeClientOptions.CreateDefault() with
+        {
+            ApiUrl = new Uri(configuration.ApiPublicUrls[0])
+        };
         using var loggerFactory = SampleLogging.CreateFactory(
-            TicTacToeClientArguments.ReadLogDirectory(args),
+            configuration.LogDirectory,
             "client");
         var logger = loggerFactory.CreateLogger("TicTacToe.Client");
         await new TicTacToeClientScenario(logger).RunAsync(options);
@@ -18,38 +23,28 @@ internal static class Program
     }
 }
 
-internal static class TicTacToeClientArguments
+internal sealed class TicTacToeClientConfiguration
 {
-    public static string ReadLogDirectory(string[] args) =>
-        ReadOption(args, "--log-dir") ?? "logs";
+    public string[] ApiPublicUrls { get; set; } = [];
 
-    public static TicTacToeClientOptions Parse(string[] args)
+    public string LogDirectory { get; set; } = string.Empty;
+
+    public static TicTacToeClientConfiguration Load(string[] args)
     {
-        var defaults = TicTacToeClientOptions.CreateDefault();
-        var apiUrl = ReadOption(args, "--api-url") ?? defaults.ApiUrl.ToString();
-        var gameName = ReadOption(args, "--game-name") ?? defaults.GameName;
-        var xActorId = ReadOption(args, "--x-actor-id") ?? defaults.XActorId;
-        var oActorId = ReadOption(args, "--o-actor-id") ?? defaults.OActorId;
-        var observerActorId = ReadOption(args, "--observer-actor-id") ?? defaults.ObserverActorId;
-
-        return defaults with
-        {
-            ApiUrl = new Uri(apiUrl),
-            GameName = gameName,
-            XActorId = xActorId,
-            OActorId = oActorId,
-            ObserverActorId = observerActorId
-        };
-    }
-
-    private static string? ReadOption(string[] args, string name)
-    {
-        var index = Array.IndexOf(args, name);
-        if (index < 0) return null;
-
-        if (index + 1 >= args.Length) throw new ArgumentException($"Missing value for '{name}'.");
-
-        return args[index + 1];
+        if (args.Length != 2 || args[0] != "--config")
+            throw new ArgumentException("Usage: --config PATH");
+        var settings = new ConfigurationBuilder()
+            .AddJsonFile(Path.GetFullPath(args[1]), optional: false, reloadOnChange: false)
+            .Build()
+            .GetRequiredSection("Sample")
+            .Get<TicTacToeClientConfiguration>()
+            ?? throw new InvalidOperationException("Sample client configuration is missing.");
+        if (settings.ApiPublicUrls.Length == 0
+            || !Uri.TryCreate(settings.ApiPublicUrls[0], UriKind.Absolute, out _))
+            throw new InvalidOperationException("Sample.ApiPublicUrls[0] is required.");
+        if (string.IsNullOrWhiteSpace(settings.LogDirectory))
+            throw new InvalidOperationException("Sample.LogDirectory is required.");
+        return settings;
     }
 }
 

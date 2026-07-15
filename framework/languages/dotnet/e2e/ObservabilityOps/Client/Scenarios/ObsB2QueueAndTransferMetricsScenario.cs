@@ -25,7 +25,7 @@ internal static class ObsB2QueueAndTransferMetricsScenario
         await Task.WhenAll(queued);
 
         var moved = await connector.Request(new JoinRoomReq(targetRoom)).Async<JoinRoomRes>();
-        ScenarioContext.Require(moved.NodeRid == "play-b", "OBS-B2 actor did not transfer to play-b.");
+        ZlinkStreamAssert.Ensure(moved.NodeRid == "play-b", "OBS-B2 actor did not transfer to play-b.");
         var queueDepth = await WaitMetricAsync(context, "zlink.spot.queue.depth", 0,
             new Dictionary<string, string> { ["kind"] = "user" });
         var queueWait = await WaitMetricAsync(context, "zlink.spot.queue.wait.duration", 0,
@@ -34,15 +34,15 @@ internal static class ObsB2QueueAndTransferMetricsScenario
         var transferDuration = await WaitMetricAsync(context, "zlink.actor.transfer.duration", 0);
         var pending = await WaitMetricAsync(context, "zlink.actor.transfer.pending_requests.count", 0);
 
-        ScenarioContext.Require(queueDepth.Any(sample => sample.Count > 0),
+        ZlinkStreamAssert.Ensure(queueDepth.Any(sample => sample.Count > 0),
             "OBS-B2 queue depth metric was not recorded.");
-        ScenarioContext.Require(queueWait.Any(sample => sample.Count > 0 && sample.Max >= 0),
+        ZlinkStreamAssert.Ensure(queueWait.Any(sample => sample.Count > 0 && sample.Max >= 0),
             "OBS-B2 queue wait histogram was not recorded.");
-        ScenarioContext.Require(transfers.Any(sample => sample.Value >= 1),
+        ZlinkStreamAssert.Ensure(transfers.Any(sample => sample.Value >= 1),
             "OBS-B2 transfer counter did not increase.");
-        ScenarioContext.Require(transferDuration.Any(sample => sample.Count > 0),
+        ZlinkStreamAssert.Ensure(transferDuration.Any(sample => sample.Count > 0),
             "OBS-B2 transfer duration histogram was not recorded.");
-        ScenarioContext.Require(pending.Any(sample => sample.Count > 0),
+        ZlinkStreamAssert.Ensure(pending.Any(sample => sample.Count > 0),
             "OBS-B2 pending-request sample was not recorded at transfer start.");
         await connector.Close.Async();
         Console.WriteLine("scenario OBS-B2 passed");

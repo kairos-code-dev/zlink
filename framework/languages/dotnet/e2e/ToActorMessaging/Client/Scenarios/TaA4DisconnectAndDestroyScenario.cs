@@ -15,7 +15,7 @@ internal static class TaA4DisconnectAndDestroyScenario
             await bound.Close.Async();
         }
         var afterDisconnect = await context.WaitForSessionUnboundAsync(actorId);
-        ToActorScenarioContext.Require(afterDisconnect.All(snapshot => snapshot.SessionRid is null),
+        ZlinkStreamAssert.Ensure(afterDisconnect.All(snapshot => snapshot.SessionRid is null),
             "TA-A4 disconnected actor still had a live bound-session snapshot.");
         await context.AssertBoundPushFailureAsync(actorB: false, "TA-A4", actorId, "AfterDisconnect");
         await context.AssertCallAsync(
@@ -32,7 +32,7 @@ internal static class TaA4DisconnectAndDestroyScenario
                      ("TA-A4-disconnected-request", "request"),
                      ("TA-A4", "destroy")
                  })
-            ToActorScenarioContext.Require(
+            ZlinkStreamAssert.Ensure(
                 evidence.Any(item => item.Scenario == scenario && item.Kind == kind),
                 $"{scenario} {kind} evidence missing.");
     }

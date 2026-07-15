@@ -55,7 +55,7 @@ internal static class SmD13HeartbeatRequestScenario
 
             var activeStream = stream;
             await Task.Delay(600);
-            ScenarioAssert.That(activeStream.IsConnected, "SM-D13 heartbeat-enabled stream disconnected.");
+            ZlinkStreamAssert.Ensure(activeStream.IsConnected, "SM-D13 heartbeat-enabled stream disconnected.");
         }
         finally
         {

@@ -21,12 +21,12 @@ internal static class SmE4TimerOverrunPolicyScenario
             var created = (await playA.Post("/spot/create")
                 .Body(new CreateSpotReq(spotRid))
                 .Async<CreateSpotRes>()).Body;
-            ScenarioAssert.That(created.SpotRid == spotRid && created.NodeRid == "play-a",
+            ZlinkStreamAssert.Ensure(created.SpotRid == spotRid && created.NodeRid == "play-a",
                 "SM-E4 timer spot was not created on play-a.");
             var ready = (await playA.Post("/spot/state/request")
                 .Body(new SpotStateRouteReq(spotRid, "noop", 0))
                 .Async<StateRes>()).Body;
-            ScenarioAssert.That(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
+            ZlinkStreamAssert.Ensure(ready.SpotRid == spotRid && ready.NodeRid == "play-a",
                 "SM-E4 timer spot route did not become ready.");
         }
 
@@ -35,7 +35,7 @@ internal static class SmE4TimerOverrunPolicyScenario
             var started = (await playA.Post("/spot/overrun/start")
                 .Body(new SpotOverrunStartReq(spotRid, $"sm-e4-{policy}", policy, 25))
                 .Async<SpotOverrunStartRes>()).Body;
-            ScenarioAssert.That(started.Started, $"SM-E4 {policy} overrun timer did not start.");
+            ZlinkStreamAssert.Ensure(started.Started, $"SM-E4 {policy} overrun timer did not start.");
         }
 
         var evidenceRequest = new EvidenceWaitReq(
@@ -44,7 +44,7 @@ internal static class SmE4TimerOverrunPolicyScenario
         var evidence = (await playA.Post("/evidence/wait")
             .Body(evidenceRequest)
             .Async<string[]>()).Body;
-        ScenarioAssert.That(
+        ZlinkStreamAssert.Ensure(
             EvidenceIncludesExpectedTimerPolicies(evidence),
             "SM-E4 timer overrun evidence missing or incomplete.");
         var skipLateTicksSkipped = evidence
@@ -59,10 +59,10 @@ internal static class SmE4TimerOverrunPolicyScenario
             .All(line => ExtractUInt64(line, "skipped") == 0
                          && ExtractUInt64(line, "delivery") == ExtractUInt64(line, "scheduled"));
 
-        ScenarioAssert.That(skipLateTicksSkipped, "SM-E4 SkipLateTicks did not skip late ticks.");
-        ScenarioAssert.That(catchUpBoundedSkipped, "SM-E4 CatchUpBounded did not show bounded catch-up evidence.");
-        ScenarioAssert.That(delayNextTickStayedOnSchedule, "SM-E4 DelayNextTick did not stay on schedule.");
-        ScenarioAssert.That(EvidenceIncludesExpectedTimerPolicies(evidence), "SM-E4 timer evidence missing.");
+        ZlinkStreamAssert.Ensure(skipLateTicksSkipped, "SM-E4 SkipLateTicks did not skip late ticks.");
+        ZlinkStreamAssert.Ensure(catchUpBoundedSkipped, "SM-E4 CatchUpBounded did not show bounded catch-up evidence.");
+        ZlinkStreamAssert.Ensure(delayNextTickStayedOnSchedule, "SM-E4 DelayNextTick did not stay on schedule.");
+        ZlinkStreamAssert.Ensure(EvidenceIncludesExpectedTimerPolicies(evidence), "SM-E4 timer evidence missing.");
 
         Console.WriteLine("operation SpotService.sm-e4 passed");
 

@@ -1,6 +1,6 @@
 using GameQuest.Shared;
+using Microsoft.Extensions.Configuration;
 using Systems.Zlink;
-using System.Text.Json;
 
 namespace GameQuest.Server.Configuration;
 
@@ -69,14 +69,14 @@ public sealed record GameQuestTopology(
 {
     public static GameQuestRuntimeConfiguration Load(string[] args)
     {
-        var index = Array.IndexOf(args, "--config");
-        if (index < 0 || index + 1 >= args.Length)
+        if (args.Length != 2 || args[0] != "--config")
             throw new ArgumentException("Usage: --config PATH");
-        var document = JsonSerializer.Deserialize<GameQuestConfigurationDocument>(
-                           File.ReadAllText(args[index + 1]),
-                           new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                       ?? throw new InvalidOperationException("GameQuest configuration is empty.");
-        var settings = document.Sample;
+        var settings = new ConfigurationBuilder()
+                           .AddJsonFile(Path.GetFullPath(args[1]), optional: false, reloadOnChange: false)
+                           .Build()
+                           .GetRequiredSection("Sample")
+                           .Get<GameQuestConfiguration>()
+                       ?? throw new InvalidOperationException("GameQuest Sample configuration is empty.");
         settings.Validate();
         var topology = new GameQuestTopology(
             settings.RedisEndpoint,
@@ -169,11 +169,6 @@ public sealed record GameQuestRuntimeConfiguration(
     string InstanceName,
     string LogDirectory,
     string StreamBindEndpoint);
-
-public sealed class GameQuestConfigurationDocument
-{
-    public GameQuestConfiguration Sample { get; init; } = new();
-}
 
 public sealed class GameQuestConfiguration
 {

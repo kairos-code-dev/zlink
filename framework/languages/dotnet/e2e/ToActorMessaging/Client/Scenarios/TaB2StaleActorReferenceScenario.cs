@@ -16,16 +16,16 @@ internal static class TaB2StaleActorReferenceScenario
 
         await context.AssertCachedFailureAsync("TA-B2-stale-request", actorId, "ActorLocationStale");
         var afterStale = await context.GetAllActorEvidenceAsync();
-        ToActorScenarioContext.Require(afterStale.All(item => item.Scenario != "TA-B2-stale-request"),
+        ZlinkStreamAssert.Ensure(afterStale.All(item => item.Scenario != "TA-B2-stale-request"),
             "TA-B2 stale generation unexpectedly reached an actor handler.");
         var freshRef = await context.CaptureAsync(actorId);
-        ToActorScenarioContext.Require(
+        ZlinkStreamAssert.Ensure(
             freshRef.NodeRid == staleRef.NodeRid && freshRef.Generation > staleRef.Generation,
             $"TA-B2 expected a newer generation on the same owner. stale={staleRef}, fresh={freshRef}");
         await context.AssertCallAsync(
             "TA-B2-fresh-request", actorId, "b2-fresh", "reply:b2-fresh", send: false);
         var afterFresh = await context.GetAllActorEvidenceAsync();
-        ToActorScenarioContext.Require(afterFresh.Any(item => item is
+        ZlinkStreamAssert.Ensure(afterFresh.Any(item => item is
         {
             Scenario: "TA-B2-fresh-request",
             Kind: "request",

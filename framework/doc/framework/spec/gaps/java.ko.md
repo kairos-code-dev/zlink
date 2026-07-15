@@ -303,7 +303,7 @@
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
-- [ ] **§12.20** (결함) — 응답에 packet name을 싣는다
+- [x] **§12.20** (결함) — 응답 header의 `name_len`을 0으로 고정하고, pending request가 보관한 원래 이름을 완료 payload에 사용한다. 구형 peer가 보낸 응답 이름은 decode 후 매칭에 사용하지 않는다. `ZLinkStreamWireProtocolTest`, `JavaNodeStreamInteropTest`, connector 전체 테스트 통과(2026-07-15).
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
 - [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
 - [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
@@ -1016,5 +1016,5 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
 검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
 
-- [ ] **TH-JV-01** (미구현) — connector에 `expectNone`·`waitForSequence`와 `ZLinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §7.1](../stream-connector/languages/java/03-stream-connector.ko.md)대로 구현한다.
-- [ ] **TH-JV-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper(`assertStatusOrder` 등)를 connector API로 **교체**한다. `assertStatusOrder`는 이미 java에 있으니 그 로직을 connector `waitForSequence`로 올린다 — 다른 언어가 참조하는 정본이 된다.
+- [x] **TH-JV-01** (미구현) — connector에 `expectNone`·`waitForSequence`와 `ZLinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §7.1](../stream-connector/languages/java/03-stream-connector.ko.md)대로 구현했다. 관측·순서·오류 분류를 connector 내부에 모으고, timeout·동시 callback·payload 소유권을 한 모듈에서 처리한다. `ZLinkStreamTestHelperTest`와 connector 전체 테스트 통과(2026-07-15).
+- [x] **TH-JV-02** (리팩토링) — DeliveryDispatch의 지역 `assertStatusOrder`와 독립 `waitFor` 목록을 connector `waitForSequence`로 교체했다. 엄격한 순서 검증으로 재배정 흐름에서 빠졌던 `PickedUp` 단언도 복구했다. Java DeliveryDispatch 전체 client/server self-check와 runner 재도입 방지 검사 통과(2026-07-15).

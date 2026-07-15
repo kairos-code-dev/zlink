@@ -272,7 +272,7 @@
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
-- [ ] **§12.20** (결함) — 응답에 packet name을 싣는다
+- [x] **§12.20** (결함) — Kotlin이 공유하는 Java connector에서 응답 header의 `name_len`을 0으로 고정하고, pending request의 원래 이름으로 완료 payload를 구성한다. Java·Node 상호운용과 Kotlin module 전체 테스트 통과(2026-07-15).
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
 - [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
 - [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
@@ -432,5 +432,5 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
 검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
 
-- [ ] **TH-KT-01** (미구현) — Kotlin connector 표면(suspend/`Flow`, [java doc §13](../stream-connector/languages/java/03-stream-connector.ko.md))이 `expectNone`·`waitForSequence`와 assert 유틸을 노출한다. Java 런타임을 공유하므로 구현은 java(TH-JV-01)를 따르되 **coroutine 관용**(suspend `await` 계열)으로 감싼다. **그 시그니처를 java doc §13 Kotlin 표면에 먼저 명시**한다.
-- [ ] **TH-KT-02** (리팩토링) — Kotlin 샘플·e2e 시나리오의 지역 helper를 이 표면으로 교체한다.
+- [x] **TH-KT-01** (미구현) — [java doc §13](../stream-connector/languages/java/03-stream-connector.ko.md)에 먼저 고정한 시그니처대로 `expectNone`·`waitForSequence`의 suspend `await()` wrapper와 `ZLinkKotlinStreamAssert`를 구현했다. 관측과 오류 분류는 Java connector에 남겨 정책 중복을 만들지 않았다. `KotlinConnectorWrapperTest`와 Kotlin module 전체 테스트 통과(2026-07-15).
+- [x] **TH-KT-02** (리팩토링) — DeliveryDispatch의 지역 `StatusWaits`와 독립 `waitFor` 목록을 Kotlin `waitForSequence` wrapper로 교체했다. 관측 coroutine을 트리거 전에 시작해 등록 순서를 명시하고, 재배정 흐름의 `PickedUp` 단언도 복구했다. Kotlin DeliveryDispatch 전체 client/server self-check와 runner 재도입 방지 검사 통과(2026-07-15).

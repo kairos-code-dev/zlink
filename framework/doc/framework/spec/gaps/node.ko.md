@@ -719,7 +719,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: TA-A1~A3가 bind 전후 actor snapshot과 no-bind 비오염을 server evidence로 대조한다. snapshot 단언이 없으면 실패하는 binding gate와 실제 TA 시나리오가 통과한다. 커밋 `3e7e37698`.
 - [x] **E2E-ND-33** (미구현) — `TA-A4`가 actor destroy 뒤 `ActorRouteNotFound` 절반을 실행하지 않는다
   - 근거: TA-A4가 actor destroy 완료 뒤 같은 ref로 request해 public `ActorRouteNotFound`를 확인한다. destroy 후 요청이 없으면 실패하는 gate와 실제 TA-A4가 통과한다. 커밋 `82f52000d`.
-- [ ] **E2E-ND-34** (결함) — `TA-B2`·`TA-B3`가 실제 owner 교체·route 단절 대신 **ActorRef 필드를 위조한다**
+- [x] **E2E-ND-34** (결함) — `TA-B2`·`TA-B3`가 실제 owner 교체·route 단절 대신 **ActorRef 필드를 위조한다**
+  - 근거: TA-B2는 actor destroy/recreate로 실제 generation을 바꾸어 이전 ref의 `ActorLocationStale`·handler 무실행과 새 ref 성공을 대조하고, TA-B3는 owner peer row를 실제 제거·복원해 같은 ref의 `RouteNotConnected`·handler 무실행·복구 성공을 검증한다. ActorRef 위조를 금지하는 게이트가 실패에서 통과로 바뀌고 실제 `TA-B2`·`TA-B3`가 통과했다. fault 지식은 전용 helper에 모으고 client 대기 정책도 한 함수로 합쳤다. 커밋 `d0831c37d`.
 - [x] **E2E-ND-35** (결함) — Config 10이 spot 생성마다 500ms sleep해 **수렴 직후 첫 요청 결함을 가린다**
   - 근거: spot 생성 뒤 고정 500ms sleep을 제거하고 준비 상태 직후 첫 요청을 보낸다. sleep이 남으면 실패하는 first-request gate와 SpotActorTransfer 시나리오가 통과한다. 커밋 `c92360970`.
 
@@ -746,7 +747,7 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | **E2E-ND-31** | [e2e README §3.1:514-519](../../common/e2e/README.ko.md): 응답 actor ref는 node rid가 비어 있지 않고 **generation > 0**인 concrete snapshot이어야 한다 | Node E2E client의 generation 비교는 값 보존 또는 존재만 본다. 대표적으로 `SpotService/Client/Scenarios/sm-d15-scenario.ts:30-55`는 `generation !== undefined`, `ToActorMessaging/Client/main.ts:143-160`은 bind reply와 입력의 동등성만 확인한다. `generation > 0` 단언은 전체 `e2e/*/Client`에 0건이라 양쪽이 0이어도 통과한다 |
 | **E2E-ND-32** | [config-9 TA-A1:69-77](../../common/e2e/config-9-to-actor-messaging.ko.md)·[TA-A2:79-87](../../common/e2e/config-9-to-actor-messaging.ko.md)·[TA-A3:89-97](../../common/e2e/config-9-to-actor-messaging.ko.md): no-bind 전후 bound-session snapshot과 session gateway/client의 bind·push **부재 evidence**까지 대조한다 | `ToActorMessaging/Client/main.ts:54-101`은 send/request/push positive와 actor handler evidence만 본다. bound-session snapshot을 조회하는 호출이 없고, A2의 session/client negative와 A3의 bind 전 snapshot·no-bind-created marker 부재도 단언하지 않는다 |
 | **E2E-ND-33** | [config-9 TA-A4:99-107](../../common/e2e/config-9-to-actor-messaging.ko.md): disconnect 뒤 생존 actor 성공에 이어 actor를 destroy하고 같은 ref가 `ActorRouteNotFound`, 새 handler evidence 0인지 확인한다 | `ToActorMessaging/Client/main.ts:104-113`은 connector close 뒤 send/request 성공까지만 실행하고 끝난다. destroy 호출·destroy 뒤 request·부재 error·negative evidence가 모두 없다 |
-| **E2E-ND-34** | [config-9 TA-B2:121-129](../../common/e2e/config-9-to-actor-messaging.ko.md): owner 교체/generation 변경 뒤 old ref 실패와 새 live ref 성공을 본다. [TA-B3:131-139](../../common/e2e/config-9-to-actor-messaging.ko.md): 실제 route 단절 뒤 `RouteNotConnected`, 복구 뒤 같은 ref 성공을 본다 | `ToActorMessaging/Client/main.ts:122-140`은 owner를 교체하지 않고 generation에 `+1`, route를 끊지 않고 `nodeRid='to-actor-missing-route'`로 **입력 DTO를 위조**한다. 새 live ref 성공과 route 복구 follow-up도 없다 |
+| **E2E-ND-34** | [config-9 TA-B2:121-129](../../common/e2e/config-9-to-actor-messaging.ko.md): owner 교체/generation 변경 뒤 old ref 실패와 새 live ref 성공을 본다. [TA-B3:131-139](../../common/e2e/config-9-to-actor-messaging.ko.md): 실제 route 단절 뒤 `RouteNotConnected`, 복구 뒤 같은 ref 성공을 본다 | 닫힘. TA-B2는 실제 actor를 destroy/recreate해 generation을 바꾸고 이전 ref와 새 live ref를 대조한다. TA-B3는 runner가 owner peer row를 제거·복원하고 client는 같은 ref를 유지한 채 단절 실패와 복구 성공을 대조한다 |
 | **E2E-ND-35** | [e2e README §3.1:527-529](../../common/e2e/README.ko.md): location 발견·dial 수렴 직후 settle delay 없이 첫 요청을 보내며 retry/sleep으로 가리지 않는다 | `SpotActorTransfer/Client/main.ts:685-690`의 공용 `createSpot()`은 모든 spot 생성 뒤 **무조건 500ms sleep**하고, 그 뒤 remote join/request를 보낸다. 첫 요청 수렴 race가 재현될 창을 스스로 닫는다 |
 
 ### 샘플 — 정본 흐름 누락과 우회
@@ -862,3 +863,13 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 > **감사자 자신의 한계 보고:** samples는 수렴했으나 **e2e는 수렴하지 않았다.** config-2(SpotService,
 > 시나리오 51개)와 config-11을 C++ 수준 깊이로 보지 못했다. **SpotService가 가장 크고 거의 확실히
 > 더 있다.**
+
+
+## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+
+**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
+표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
+공개 API로 제공한다. 지금까지 각 시나리오가 이걸 손으로 재구현했고, 그 부재가 실제 갭을 만들었다.
+
+- [ ] **TH-ND-01** (미구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`와 `zlinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §6.1](../stream-connector/languages/typescript/03-stream-connector.ko.md)대로 구현한다.
+- [ ] **TH-ND-02** (결함) — 샘플·e2e 시나리오의 지역 helper를 connector API로 교체한다. 특히 `expectNone`으로 negative 검증을 25ms 창 대신 명시적 window로 바꾼다.

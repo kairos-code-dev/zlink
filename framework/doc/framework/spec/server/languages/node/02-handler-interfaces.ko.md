@@ -95,6 +95,7 @@ export interface ZLinkActorHandlerRegistry {
 export interface ZLinkActorJoinCall<TSelf> {
     timeout(timeoutMs: number): TSelf;
     submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+    yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorJoinEntrySpotCall extends ZLinkActorJoinCall<ZLinkActorJoinEntrySpotCall> {
@@ -175,6 +176,7 @@ export interface ZLinkActorRequestCall {
     metadata(key: string, value: string): this;
     timeout(timeoutMs: number): this;
     submit<TReply>(signal?: AbortSignal): Promise<TReply>;
+    yield<TReply>(signal?: AbortSignal): Promise<TReply>;
 }
 
 export interface ZLinkActorSendCall {
@@ -274,7 +276,6 @@ export interface ZLinkDiagnosticsOptions {
     messageFlow: ZLinkMessageFlowLogMode;
     sampleRate: number;
     includeMessageSizes: boolean;
-    includeNativeDiagnostics: boolean;
 
     logFile?: string;
 
@@ -412,8 +413,6 @@ export interface ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor extends ZLink
 }
 
 export interface ZLinkEntrySpotContext<TActor extends ZLinkActor = ZLinkActor, TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>> extends ZLinkSpotCommonContext<TActor, TEntrySpot> {
-
-    runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
     destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
 }
 
@@ -666,14 +665,14 @@ export type ZLinkLocationRuntimeEvent = (ZLinkRuntimeEvent & {
     readonly serviceSummary: readonly ZLinkLocationServiceSummary[];
     readonly serviceSummaryFilter?: ZLinkLocationServiceSummaryFilter;
 }) | (ZLinkRuntimeEvent & {
-    readonly event: ZLinkLocationRuntimeEventKind.StoreUnavailable | ZLinkLocationRuntimeEventKind.StoreRecovered;
+    readonly event: ZLinkLocationRuntimeEventKind.StoreFailure | ZLinkLocationRuntimeEventKind.StoreRecovered;
 });
 
 export declare enum ZLinkLocationRuntimeEventKind {
     StatusChanged = 0,
     TopologyChanged = 1,
     ServiceSummaryChanged = 2,
-    StoreUnavailable = 3,
+    StoreFailure = 3,
     StoreRecovered = 4
 }
 
@@ -1057,6 +1056,7 @@ export declare function ZLinkRequest(packetName?: string): MethodDecorator;
 export interface ZLinkRequestCall {
     timeout(timeoutMs: number): this;
     submit<TReply>(signal?: AbortSignal): Promise<TReply>;
+    yield<TReply>(signal?: AbortSignal): Promise<TReply>;
 }
 
 export interface ZLinkRequestContext extends ZLinkHandlerContext {
@@ -1069,6 +1069,8 @@ export interface ZLinkRequestHandler<TRequest, TResponse> {
 export interface ZLinkRouteClient {
     sendToNode(routerChannelId: string, targetNodeRid: RoutingId, message: unknown): ZLinkSendCall;
     requestToNode(routerChannelId: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
+    sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
+    requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
 }
 
 export interface ZLinkRouteConfig {
@@ -1376,12 +1378,11 @@ export interface ZLinkSpotCommonContext<TActor extends ZLinkActor = ZLinkActor, 
     readonly outbound: ZLinkSpotOutbound;
     addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(name: string, periodMs: number, handlerType: Type<THandler>, options?: ZLinkTimerOptions, signal?: AbortSignal): Promise<ZLinkTimer>;
 
-    runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
+    runCpuWorker<T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T>;
+    runIoWorker<T>(work: (signal: AbortSignal) => Promise<T>): ZLinkWorkerCall<T>;
 }
 
 export interface ZLinkSpotContext<TActor extends ZLinkActor = ZLinkActor, TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>> extends ZLinkSpotCommonContext<TActor, TSpot> {
-
-    runWorker<T>(work: (signal: AbortSignal) => T | Promise<T>): ZLinkWorkerCall<T>;
     leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
     close(signal?: AbortSignal): Promise<boolean>;
 }
@@ -1751,6 +1752,7 @@ export interface ZLinkUnhandledDispatchOptions {
 export interface ZLinkWorkerCall<T> {
     timeoutMs(durationMs: number): ZLinkWorkerCall<T>;
     submit(signal?: AbortSignal): Promise<T>;
+    yield(signal?: AbortSignal): Promise<T>;
 }
 ```
 
@@ -2032,6 +2034,46 @@ export declare function zlinkSpotPacketHandler<TSpot extends ZLinkSpot>(options:
 export declare function zlinkSpotSubscriptionHandler<TSpot extends ZLinkSpot>(options: ZLinkNestSpotSubscriptionHandlerOptions<TSpot>): ClassDecorator;
 
 export declare function zlinkSpotTimerHandler<TSpot extends ZLinkSpot = ZLinkSpot>(options?: ZLinkNestSpotTimerHandlerOptions<TSpot>): ClassDecorator;
+```
+
+### 2.30 @zlink-systems/nestjs: HTTP client 통합
+
+서버 handler에서 HTTP 요청을 실행할 때는 이름으로 등록한 client를 주입받는다. 실행 scheduler는
+framework가 소유하므로 handler는 명시적으로 `yield()`를 선택할 수 있고, 등록한 client는 Nest module의
+수명과 함께 정리된다.
+
+```ts
+export interface ZLinkNamedHttpClientOptions {
+    readonly name: string;
+    readonly baseUrl: string;
+    readonly configure?: (builder: ZLinkHttpClientBuilder) => void;
+}
+
+export interface ZLinkHttpClientModuleOptions {
+    readonly imports: ModuleMetadata['imports'];
+    readonly clients: readonly ZLinkNamedHttpClientOptions[];
+}
+
+export interface ZLinkServerHttpRequestBuilder extends ZLinkHttpRequestBuilder {
+    submit(): void;
+    yield<T>(): Promise<HttpResponse<T>>;
+}
+
+export interface ZLinkServerHttpClient extends Omit<ZLinkHttpClient, 'get' | 'post' | 'put' | 'delete' | 'patch' | 'head' | 'options'> {
+    get(path: string): ZLinkServerHttpRequestBuilder;
+    post(path: string): ZLinkServerHttpRequestBuilder;
+    put(path: string): ZLinkServerHttpRequestBuilder;
+    delete(path: string): ZLinkServerHttpRequestBuilder;
+    patch(path: string): ZLinkServerHttpRequestBuilder;
+    head(path: string): ZLinkServerHttpRequestBuilder;
+    options(path: string): ZLinkServerHttpRequestBuilder;
+}
+
+export declare function zlinkHttpClientToken(name: string): InjectionToken;
+
+export declare class ZLinkHttpClientModule {
+    static forRoot(options: ZLinkHttpClientModuleOptions): DynamicModule;
+}
 ```
 
 ## 3. 검증

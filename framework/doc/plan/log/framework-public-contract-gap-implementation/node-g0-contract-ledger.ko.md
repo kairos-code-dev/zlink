@@ -36,20 +36,20 @@ snapshot을 함께 갱신해야 한다.
 | server | `25-stage-wrapper-on-spot.ko.md` | `54f7a53bc1ff7cc97ada0a41d28f50678e43d68c3ad46e0beef43466dd8ccf5c` |
 | server | `30-stream-session.ko.md` | `623bca5e070513cc314c2d7f93d00dcdeab8b5f473bdeb883bfb5711eaa028e0` |
 | server | `31-session-actor-dispatch.ko.md` | `49f5154412ed827496ba50f2e49a0f6bc84f3e1bcfdb4022b561dbded9b64147` |
-| stream-connector | `32-stream-connector.ko.md` | `fe9072b34809ccc20b489f6a3ebdd093fdd35470d3f1ee291e065f5644cc5f99` |
-| server | `40-location-runtime.ko.md` | `dfa08a0db46f59bcd107347c9f02256ff023d7c64c3f8caac42772c37d7b058b` |
+| stream-connector | `32-stream-connector.ko.md` | `700c8504cfa71315b2598349eb2cc38c6cb52fb813b5b80650f46268412cae6c` |
+| server | `40-location-runtime.ko.md` | `e88a06f5622c94acddcd3734c5a0a6052b3dca6b62208ab3b8920de1ad8302ef` |
 | server | `41-location-store-redis.ko.md` | `f84d4a035cd773d6fe8aa0096151909e92be0743b57445dd51e5b38eeab9376c` |
 | server | `50-runtime-monitoring.ko.md` | `d30ea2acfbee45009ee2e0d000f2b37009ccf9f5f134c8ad29dd2035e3b8ab99` |
 | server | `51-runtime-metrics.ko.md` | `d34e9b26860a2ee285b340c5234bb27fc4c82438bbdf375e697f1350a0c1ef1f` |
 | server | `52-message-flow-tracing.ko.md` | `0635851f5d9b3cf0fa6f481fb886200e1802f3bda6fe80db3648b35b53e22108` |
 | server | `53-flow-correlation.ko.md` | `077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c` |
 | server | `54-graceful-drain-handoff.ko.md` | `822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f` |
-| . | `90-implementation-gap.ko.md` | `b40d643a75203a8c632e24304e0a0d06603556843d0958fc6a253a771310b1ed` |
+| . | `90-implementation-gap.ko.md` | `07de3ec4f39558d3d8c092203c9fcaabcc0eca55c4b4c2b1e7bcfd6f2f932b39` |
 | . | `README.ko.md` | `8ffae3ae36f3305e1dfa35d1874a1c2c9c57342f5f2116abbe7f5e432f79f595` |
 | server/languages/node | `01-system-structure.ko.md` | `5a9134273d25fb8f8ca7ef503e7a4dc06139852cd0e559564c06f93cda55231a` |
-| server/languages/node | `02-handler-interfaces.ko.md` | `705be40bf9f33e803aa775e42dd7a5e9ab7fc8b7df079ef807d04bd3b6179447` |
+| server/languages/node | `02-handler-interfaces.ko.md` | `030c3a26a1d80952d3ec986a6553f858c4da5dfbaccdb9f6cf62eab0d44dc34f` |
 | stream-connector/languages/typescript | `README.ko.md` | `aa714dbe2a429a5244722a1ad1ba6e409715677f8cd9960f0f1c2b7a7900bfde` |
-| stream-connector/languages/typescript | `03-stream-connector.ko.md` | `a5d1a5ea77765d04af31d5e68eed47d64cb4f7bd30813fc13a8b33c1a3912fe0` |
+| stream-connector/languages/typescript | `03-stream-connector.ko.md` | `c70d521cd993055dda63b67bafaf56b1111cfd0c88c746d7963b387601879e20` |
 
 공통 `02-handler-interfaces.ko.md`는 정식 Node.js 언어 interface 2개 분모에서는 제외한다. 다만
 공통 spec 26개 분모에는 포함해 G0 hash를 고정했으며, G7 문서 정합성 검토 대상으로도 유지한다.

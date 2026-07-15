@@ -30,6 +30,8 @@ PY
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
+CONFIG_DIR="$LOG_DIR/config"
+mkdir -p "$CONFIG_DIR"
 
 echo "log_dir=$LOG_DIR"
 
@@ -88,6 +90,7 @@ cleanup() {
     fi
   done
   docker rm -fv "$REDIS_CONTAINER" >/dev/null 2>&1 || true
+  rm -rf "$CONFIG_DIR"
   if [[ $code -ne 0 ]]; then
     echo "E2E failed. Logs: $LOG_DIR" >&2
   elif [[ "$cleanup_failed" -ne 0 ]]; then
@@ -119,6 +122,60 @@ wait_port() {
 }
 
 wait_port redis "$REDIS_ENDPOINT"
+
+write_service_config() {
+  local path="$1"
+  local rid="$2"
+  local http_endpoint="$3"
+  local channel_endpoint="$4"
+  local router_endpoint="$5"
+  local pub_endpoint="$6"
+  local evidence_file="$7"
+  local monitor_profile="$8"
+  python3 - "$path" "$rid" "$http_endpoint" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" \
+    "$channel_endpoint" "$router_endpoint" "$pub_endpoint" "$evidence_file" \
+    "$monitor_profile" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, rid, http_endpoint, redis_endpoint, redis_key_prefix, channel_endpoint,
+ router_endpoint, pub_endpoint, evidence_file, monitor_profile, log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"rid": rid, "httpEndpoint": http_endpoint,
+                       "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+                       "channelEndpoint": channel_endpoint,
+                       "spotRouterEndpoint": router_endpoint,
+                       "spotPubEndpoint": pub_endpoint,
+                       "evidenceFile": evidence_file,
+                       "monitorProfile": monitor_profile,
+                       "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+}
+
+write_trigger_config() {
+  local path="$1"
+  python3 - "$path" "$HTTP_TRIGGER" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$CHANNEL" \
+    "$CHANNEL_FILTERED" "$CHANNEL_THROW" "$LOG_DIR/trigger.evidence.log" "$LOG_DIR" <<'PY'
+import json
+import os
+import stat
+import sys
+
+(path, http_endpoint, redis_endpoint, redis_key_prefix, service_channel,
+ service_b_channel, throw_channel, evidence_file, log_dir) = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"rid": "trigger", "httpEndpoint": http_endpoint,
+                       "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
+                       "serviceChannelEndpoint": service_channel,
+                       "serviceBChannelEndpoint": service_b_channel,
+                       "throwChannelEndpoint": throw_channel,
+                       "evidenceFile": evidence_file, "logDir": log_dir}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+}
 
 wait_port_closed() {
   local name="$1"
@@ -201,16 +258,11 @@ start_service_a() {
   local pub_endpoint="$3"
   local http_endpoint="$4"
   local label="$5"
-  ZLINK_CPP_E2E_RID=svc-a \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$http_endpoint" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$channel_endpoint" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$router_endpoint" \
-  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$pub_endpoint" \
-  ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/$label.evidence.log" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$SERVICE" >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
+  local config_path="$CONFIG_DIR/$label.json"
+  write_service_config "$config_path" svc-a "$http_endpoint" "$channel_endpoint" \
+    "$router_endpoint" "$pub_endpoint" "$LOG_DIR/$label.evidence.log" all
+  "$SERVICE" --config="$config_path" \
+    >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
   SERVICE_PID="$!"
   PIDS+=("$SERVICE_PID")
   wait_port "$label" "$http_endpoint"
@@ -218,16 +270,12 @@ start_service_a() {
 
 start_service_b() {
   local label="$1"
-  ZLINK_CPP_E2E_RID=svc-b \
-  ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_FILTERED" \
-  ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
-  ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_FILTERED" \
-  ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_FILTERED" \
-  ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/$label.evidence.log" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$FILTERED_SERVICE" >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
+  local config_path="$CONFIG_DIR/$label.json"
+  write_service_config "$config_path" svc-b "$HTTP_FILTERED" "$CHANNEL_FILTERED" \
+    "$SPOT_ROUTER_FILTERED" "$SPOT_PUB_FILTERED" "$LOG_DIR/$label.evidence.log" \
+    socket-filter
+  "$FILTERED_SERVICE" --config="$config_path" \
+    >"$LOG_DIR/$label.stdout.log" 2>"$LOG_DIR/$label.stderr.log" &
   FILTERED_PID="$!"
   PIDS+=("$FILTERED_PID")
   wait_port "$label" "$HTTP_FILTERED"
@@ -237,42 +285,25 @@ start_service_a "$CHANNEL" "$SPOT_ROUTER_SERVICE" "$SPOT_PUB_SERVICE" \
   "$HTTP_SERVICE" service
 start_service_b filtered
 
-ZLINK_CPP_E2E_RID=svc-throw \
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_THROW" \
-ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-ZLINK_CPP_E2E_CHANNEL_ENDPOINT="$CHANNEL_THROW" \
-ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT="$SPOT_ROUTER_THROW" \
-ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT="$SPOT_PUB_THROW" \
-ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/throw.evidence.log" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$THROWING_SERVICE" >"$LOG_DIR/throw.stdout.log" 2>"$LOG_DIR/throw.stderr.log" &
+write_service_config "$CONFIG_DIR/throw.json" svc-throw "$HTTP_THROW" "$CHANNEL_THROW" \
+  "$SPOT_ROUTER_THROW" "$SPOT_PUB_THROW" "$LOG_DIR/throw.evidence.log" throwing
+"$THROWING_SERVICE" --config="$CONFIG_DIR/throw.json" \
+  >"$LOG_DIR/throw.stdout.log" 2>"$LOG_DIR/throw.stderr.log" &
 PIDS+=("$!")
 wait_port throwing-service "$HTTP_THROW"
 
-ZLINK_CPP_E2E_RID=trigger \
-ZLINK_CPP_E2E_HTTP_ENDPOINT="$HTTP_TRIGGER" \
-ZLINK_CPP_E2E_REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-ZLINK_CPP_E2E_REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-ZLINK_CPP_E2E_SERVICE_CHANNEL_ENDPOINT="$CHANNEL" \
-ZLINK_CPP_E2E_SERVICE_B_CHANNEL_ENDPOINT="$CHANNEL_FILTERED" \
-ZLINK_CPP_E2E_THROW_CHANNEL_ENDPOINT="$CHANNEL_THROW" \
-ZLINK_CPP_E2E_EVIDENCE_FILE="$LOG_DIR/trigger.evidence.log" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-  "$TRIGGER" >"$LOG_DIR/trigger.stdout.log" 2>"$LOG_DIR/trigger.stderr.log" &
+write_trigger_config "$CONFIG_DIR/trigger.json"
+"$TRIGGER" --config="$CONFIG_DIR/trigger.json" \
+  >"$LOG_DIR/trigger.stdout.log" 2>"$LOG_DIR/trigger.stderr.log" &
 PIDS+=("$!")
 wait_port trigger "$HTTP_TRIGGER"
 
 sleep "$ROUTE_SETTLE_SECONDS"
 
 if [[ "$SCENARIO_LOWER" != "mon-a4" && "$SCENARIO_LOWER" != "mon-d1" ]]; then
-  ZLINK_CPP_E2E_SCENARIO="$SCENARIO_LOWER" \
-  ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
-ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
-ZLINK_CPP_E2E_THROW_SERVICE_URL="$HTTP_THROW" \
-ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" \
+  "$CLIENT" --scenario="$SCENARIO_LOWER" --service-url="$HTTP_SERVICE" \
+    --filtered-service-url="$HTTP_FILTERED" --throw-service-url="$HTTP_THROW" \
+    --trigger-url="$HTTP_TRIGGER" --log-dir="$LOG_DIR" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
   cat "$LOG_DIR/client.stdout.log"
@@ -298,14 +329,10 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-a4" ]]; then
   wait_trigger_route_state svc-a "$CHANNEL"
   request_profile mon-a4-after-remap
 
-  ZLINK_CPP_E2E_SCENARIO=mon-a4 \
-  ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
-  ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
-  ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
-  ZLINK_CPP_E2E_OLD_SERVICE_CHANNEL_ENDPOINT="$OLD_SERVICE_CHANNEL" \
-  ZLINK_CPP_E2E_NEW_SERVICE_CHANNEL_ENDPOINT="$CHANNEL" \
-  ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" \
+  "$CLIENT" --scenario=mon-a4 --service-url="$HTTP_SERVICE" \
+    --filtered-service-url="$HTTP_FILTERED" --trigger-url="$HTTP_TRIGGER" \
+    --log-dir="$LOG_DIR" --old-service-channel-endpoint="$OLD_SERVICE_CHANNEL" \
+    --new-service-channel-endpoint="$CHANNEL" \
     >"$LOG_DIR/client-a4.stdout.log" 2>"$LOG_DIR/client-a4.stderr.log"
 
   cat "$LOG_DIR/client-a4.stdout.log"
@@ -321,12 +348,9 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "mon-d1" ]]; then
     wait_trigger_route_state svc-b "$CHANNEL_FILTERED"
   done
 
-  ZLINK_CPP_E2E_SCENARIO=mon-d1 \
-ZLINK_CPP_E2E_SERVICE_URL="$HTTP_SERVICE" \
-ZLINK_CPP_E2E_FILTERED_SERVICE_URL="$HTTP_FILTERED" \
-ZLINK_CPP_E2E_TRIGGER_URL="$HTTP_TRIGGER" \
-ZLINK_CPP_E2E_LOG_DIR="$LOG_DIR" \
-    "$CLIENT" \
+  "$CLIENT" --scenario=mon-d1 --service-url="$HTTP_SERVICE" \
+    --filtered-service-url="$HTTP_FILTERED" --trigger-url="$HTTP_TRIGGER" \
+    --log-dir="$LOG_DIR" \
     >"$LOG_DIR/client-d1.stdout.log" 2>"$LOG_DIR/client-d1.stderr.log"
 
   cat "$LOG_DIR/client-d1.stdout.log"

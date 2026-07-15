@@ -2,34 +2,51 @@
 
 #pragma once
 
-#include <cstdlib>
+#include <zlink/framework.hpp>
+
+#include <stdexcept>
 #include <string>
 
 namespace zlink::framework::e2e::runtime_monitoring::service
 {
 
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
-
 struct service_options_t
 {
-    std::string rid = env_or ("ZLINK_CPP_E2E_RID", "svc-a");
-    std::string http_endpoint = env_or ("ZLINK_CPP_E2E_HTTP_ENDPOINT");
-    std::string redis_endpoint = env_or ("ZLINK_CPP_E2E_REDIS_ENDPOINT");
-    std::string redis_key_prefix = env_or ("ZLINK_CPP_E2E_REDIS_KEY_PREFIX");
-    std::string channel_endpoint = env_or ("ZLINK_CPP_E2E_CHANNEL_ENDPOINT");
-    std::string spot_router_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_ROUTER_ENDPOINT");
-    std::string spot_pub_endpoint = env_or ("ZLINK_CPP_E2E_SPOT_PUB_ENDPOINT");
-    std::string evidence_file = env_or ("ZLINK_CPP_E2E_EVIDENCE_FILE");
-    std::string monitor_profile = env_or ("ZLINK_CPP_E2E_MONITOR_PROFILE", "all");
-    std::string log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR");
+    std::string rid;
+    std::string http_endpoint;
+    std::string redis_endpoint;
+    std::string redis_key_prefix;
+    std::string channel_endpoint;
+    std::string spot_router_endpoint;
+    std::string spot_pub_endpoint;
+    std::string evidence_file;
+    std::string monitor_profile;
+    std::string log_dir;
+
+    static service_options_t bind (const configuration_section_t &section)
+    {
+        return {.rid = section.require ("rid"),
+                .http_endpoint = section.require ("httpEndpoint"),
+                .redis_endpoint = section.require ("redis.endpoint"),
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .channel_endpoint = section.require ("channelEndpoint"),
+                .spot_router_endpoint = section.require ("spotRouterEndpoint"),
+                .spot_pub_endpoint = section.require ("spotPubEndpoint"),
+                .evidence_file = section.require ("evidenceFile"),
+                .monitor_profile = section.require ("monitorProfile"),
+                .log_dir = section.require ("logDir")};
+    }
 };
 
-inline service_options_t read_service_options () { return {}; }
+inline service_options_t read_service_options (app_t &app, int argc, char **argv)
+{
+    app.config ().load_cli (argc, argv);
+    const auto path = app.config ().model ().get ("config");
+    if (!path) {
+        throw std::runtime_error ("RuntimeMonitoring service requires --config=<path>");
+    }
+    app.config ().load_json (*path);
+    return app.config ().bind_required<service_options_t> ("e2e");
+}
 
 } // namespace zlink::framework::e2e::runtime_monitoring::service

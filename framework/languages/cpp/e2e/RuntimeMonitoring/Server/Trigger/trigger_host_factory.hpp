@@ -60,8 +60,8 @@ inline void configure_trigger_host (zlink::framework::zlink_framework_options_t 
 
 inline int run_trigger_host (int argc, char **argv)
 {
-    const auto options = read_trigger_options ();
     auto app = zlink::framework::app_t::create ();
+    const auto options = read_trigger_options (app, argc, argv);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
         configure_trigger_host (framework, options);
     });

@@ -2,19 +2,11 @@
 
 #pragma once
 
-#include <cstdlib>
+#include <stdexcept>
 #include <string>
 
 namespace zlink::framework::e2e::runtime_monitoring::client
 {
-
-inline std::string env_or (const char *name, std::string fallback = {})
-{
-    if (const char *value = std::getenv (name); value != nullptr && *value != '\0') {
-        return value;
-    }
-    return fallback;
-}
 
 struct client_options_t
 {
@@ -28,18 +20,38 @@ struct client_options_t
     std::string new_service_channel_endpoint;
 };
 
-inline client_options_t read_client_options ()
+inline client_options_t read_client_options (int argc, char **argv)
 {
-    return client_options_t{
-      .scenario = env_or ("ZLINK_CPP_E2E_SCENARIO", "common"),
-      .service_url = env_or ("ZLINK_CPP_E2E_SERVICE_URL"),
-      .filtered_service_url = env_or ("ZLINK_CPP_E2E_FILTERED_SERVICE_URL"),
-      .throw_service_url = env_or ("ZLINK_CPP_E2E_THROW_SERVICE_URL"),
-      .trigger_url = env_or ("ZLINK_CPP_E2E_TRIGGER_URL"),
-      .log_dir = env_or ("ZLINK_CPP_E2E_LOG_DIR"),
-      .old_service_channel_endpoint = env_or ("ZLINK_CPP_E2E_OLD_SERVICE_CHANNEL_ENDPOINT"),
-      .new_service_channel_endpoint = env_or ("ZLINK_CPP_E2E_NEW_SERVICE_CHANNEL_ENDPOINT"),
-    };
+    client_options_t options;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        const auto assign = [&] (const std::string &prefix, std::string &target) {
+            if (argument.rfind (prefix, 0) != 0) {
+                return false;
+            }
+            target = argument.substr (prefix.size ());
+            return true;
+        };
+        if (!assign ("--scenario=", options.scenario)
+            && !assign ("--service-url=", options.service_url)
+            && !assign ("--filtered-service-url=", options.filtered_service_url)
+            && !assign ("--throw-service-url=", options.throw_service_url)
+            && !assign ("--trigger-url=", options.trigger_url)
+            && !assign ("--log-dir=", options.log_dir)
+            && !assign ("--old-service-channel-endpoint=",
+                        options.old_service_channel_endpoint)
+            && !assign ("--new-service-channel-endpoint=",
+                        options.new_service_channel_endpoint)) {
+            throw std::runtime_error ("unknown RuntimeMonitoring client option: " + argument);
+        }
+    }
+    if (options.scenario.empty () || options.service_url.empty ()
+        || options.filtered_service_url.empty () || options.trigger_url.empty ()
+        || options.log_dir.empty ()) {
+        throw std::runtime_error (
+          "RuntimeMonitoring client requires scenario, service URLs, trigger URL, and log dir");
+    }
+    return options;
 }
 
 } // namespace zlink::framework::e2e::runtime_monitoring::client

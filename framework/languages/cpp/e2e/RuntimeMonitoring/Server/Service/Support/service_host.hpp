@@ -13,22 +13,16 @@
 #include <zlink/framework.hpp>
 
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string>
 
 namespace zlink::framework::e2e::runtime_monitoring::service
 {
 
-inline int
-run_service_host (int argc, char **argv, std::optional<std::string> monitor_profile = std::nullopt)
+inline int run_service_host (int argc, char **argv)
 {
-    const auto read_options = read_service_options ();
-    auto options = read_options;
-    if (monitor_profile) {
-        options.monitor_profile = *monitor_profile;
-    }
     auto app = zlink::framework::app_t::create ();
+    const auto options = read_service_options (app, argc, argv);
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &framework) {
         auto evidence =
           std::make_unique<server::evidence_store_t> (options.rid, options.evidence_file);

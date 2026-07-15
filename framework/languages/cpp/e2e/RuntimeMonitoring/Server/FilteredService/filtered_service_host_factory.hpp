@@ -8,7 +8,7 @@ namespace zlink::framework::e2e::runtime_monitoring::filtered_service
 
 inline int run_filtered_service_host (int argc, char **argv)
 {
-    return service::run_service_host (argc, argv, "socket-filter");
+    return service::run_service_host (argc, argv);
 }
 
 } // namespace zlink::framework::e2e::runtime_monitoring::filtered_service

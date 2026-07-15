@@ -67,10 +67,8 @@ int run_scenarios (const client_options_t &client_options)
 
 int main (int argc, char **argv)
 {
-    (void) argc;
-    (void) argv;
-    auto client_options = rm_client::read_client_options ();
     try {
+        auto client_options = rm_client::read_client_options (argc, argv);
         run_scenarios (client_options);
     }
     catch (const std::exception &ex) {

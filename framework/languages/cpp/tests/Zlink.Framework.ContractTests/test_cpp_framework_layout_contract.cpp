@@ -520,8 +520,7 @@ bool sample_application_code_uses_message_codec (const std::filesystem::path &ro
 bool sample_and_e2e_code_does_not_read_the_environment (const std::filesystem::path &root)
 {
     bool ok = true;
-    /* TODO(e2e): e2e 픽스처는 아직 환경 변수를 읽는다. 이관 후 이 목록에 "e2e"를 넣는다. */
-    for (const auto *tree : {"samples"}) {
+    for (const auto *tree : {"samples", "e2e"}) {
         const auto tree_root = root / tree;
         if (!std::filesystem::exists (tree_root)) {
             continue;

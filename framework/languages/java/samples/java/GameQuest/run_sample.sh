@@ -161,7 +161,6 @@ start_role() {
 }
 
 start_role mission-a "$(app_bin Server/QuestMission QuestMission)" "$mission_a_config"
-mission_a_pid="${pids[${#pids[@]}-1]}"
 start_role mission-b "$(app_bin Server/QuestMission QuestMission)" "$mission_b_config"
 wait_port "$mission_a_channel"
 wait_port "$mission_b_channel"
@@ -199,13 +198,9 @@ if grep -h -q 'kind=REQUEST.*packet=GameplayMsg' "$LOG_DIR"/flow-*.log; then
 fi
 echo "gamequest player owner Spot routing completed"
 
-kill "$mission_a_pid"
-wait "$mission_a_pid" || true
-start_role mission-a-restarted "$(app_bin Server/QuestMission QuestMission)" "$mission_a_config"
-wait_port "$mission_a_channel"
-wait_port "$mission_a_spot"
-wait_port "$mission_a_router"
-wait_http "$mission_a_http"
+curl --fail --silent --request POST \
+  "$mission_a_http/self-check/owner/player-alice/close" \
+  | grep -q '"closed":true'
 "$(app_bin Client Client)" --config "$rehydrate_client_config" >"$LOG_DIR/rehydrate-client.log" 2>&1
 cat "$LOG_DIR/rehydrate-client.log"
 grep -q "gamequest-rehydrate=completed" "$LOG_DIR/rehydrate-client.log"
@@ -213,5 +208,5 @@ alice_events="$(curl --fail --silent "$mission_a_http/self-check/events")"
 grep -q '"questId":"first-hunt"' <<<"$alice_events"
 grep -q '"eventType":"QuestProgressReconciledEvent"' <<<"$alice_events"
 grep -q '"currentCount":5' <<<"$alice_events"
-echo "gamequest startup replay restored player-alice"
+echo "gamequest owner replay restored player-alice"
 echo "gamequest full client/server self-check completed"

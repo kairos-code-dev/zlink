@@ -8,6 +8,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import systems.zlink.contracts.core.RoutingId;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -39,8 +40,9 @@ public class Program {
     public static void main(String[] args) throws Exception {
         ConfigurableApplicationContext app = run(SampleTopology.configPath(args));
         QuestStore store = app.getBean(QuestStore.class);
+        ZLinkSpotManager spots = app.getBean(ZLinkSpotManager.class);
         SampleTopology topology = app.getBean(SampleTopology.class);
-        HttpServer http = startHttp(store, topology);
+        HttpServer http = startHttp(store, spots, topology);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             http.stop(0);
             try {
@@ -107,12 +109,31 @@ public class Program {
         return new PlayerQuestRouter(spots, routes, handles);
     }
 
-    private static HttpServer startHttp(QuestStore store, SampleTopology topology) throws IOException {
+    private static HttpServer startHttp(
+        QuestStore store,
+        ZLinkSpotManager spots,
+        SampleTopology topology) throws IOException {
         ObjectMapper json = new ObjectMapper();
         URI uri = URI.create(topology.questMission().httpEndpoint());
         HttpServer server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
         server.createContext("/health", exchange -> writeJson(exchange, json, 200, new Health("ok")));
         server.createContext("/self-check/events", exchange -> writeJson(exchange, json, 200, store.events()));
+        server.createContext("/self-check/owner/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            String suffix = path.substring("/self-check/owner/".length());
+            String[] parts = suffix.split("/");
+            if (parts.length != 2 || !"close".equals(parts[1])) {
+                writeJson(exchange, json, 404, new ErrorBody("unknown owner operation"));
+                return;
+            }
+            spots.close(RoutingId.from(parts[0])).whenComplete((closed, error) -> {
+                if (error != null) {
+                    writeJsonUnchecked(exchange, json, 500, new ErrorBody(error.getMessage()));
+                    return;
+                }
+                writeJsonUnchecked(exchange, json, closed ? 200 : 404, new OwnerClosed(closed));
+            });
+        });
         server.start();
         return server;
     }
@@ -126,7 +147,25 @@ public class Program {
         exchange.close();
     }
 
+    private static void writeJsonUnchecked(
+        HttpExchange exchange,
+        ObjectMapper json,
+        int status,
+        Object body) {
+        try {
+            writeJson(exchange, json, status, body);
+        } catch (IOException error) {
+            throw new java.util.concurrent.CompletionException(error);
+        }
+    }
+
     private record Health(String status) {
+    }
+
+    private record OwnerClosed(boolean closed) {
+    }
+
+    private record ErrorBody(String error) {
     }
 
     private static final class ApplicationContextHolder {

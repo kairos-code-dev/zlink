@@ -17,13 +17,16 @@ public final class Program {
     }
 
     public static void main(String... args) {
-        String actorUrl = Env.get("ZLINK_JAVA_E2E_ACTOR_HTTP");
-        String callerUrl = Env.get("ZLINK_JAVA_E2E_CALLER_HTTP");
-        String sessionAUrl = Env.get("ZLINK_JAVA_E2E_SESSION_A_HTTP");
-        String sessionBUrl = Env.get("ZLINK_JAVA_E2E_SESSION_B_HTTP");
-        String sessionAStream = Env.get("ZLINK_JAVA_E2E_SESSION_A_STREAM");
-        String sessionBStream = Env.get("ZLINK_JAVA_E2E_SESSION_B_STREAM");
-        String selector = args.length == 0 ? "all" : args[0];
+        require(args.length == 4 && "--config".equals(args[0]) && "--scenario".equals(args[2]),
+            "Usage: Client --config <path> --scenario <selector>");
+        Env.configure(new String[] {args[0], args[1]});
+        String actorUrl = Env.get("actorHttpEndpoint");
+        String callerUrl = Env.get("callerHttpEndpoint");
+        String sessionAUrl = Env.get("sessionAHttpEndpoint");
+        String sessionBUrl = Env.get("sessionBHttpEndpoint");
+        String sessionAStream = Env.get("sessionAStreamEndpoint");
+        String sessionBStream = Env.get("sessionBStreamEndpoint");
+        String selector = args[3];
         require(java.util.Set.of("all", "TA-A1", "TA-A2", "TA-A3", "TA-A4",
             "TA-B1", "TA-B2", "TA-B3").contains(selector),
             "unknown ToActorMessaging selector: " + selector);

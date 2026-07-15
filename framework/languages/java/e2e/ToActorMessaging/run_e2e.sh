@@ -27,8 +27,9 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
 
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:toactor:${run_id}}"
-export ZLINK_JAVA_E2E_LOG_DIR="${log_dir}"
+location_key_prefix="zlink:e2e:toactor:${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -93,7 +94,6 @@ PY
 zlink_redis_start_scoped_assign redis_container redis_port \
   "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}" "127.0.0.1::6379"
 redis_endpoint="127.0.0.1:${redis_port}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${redis_endpoint}"
 redis_host="${redis_endpoint%:*}"
 redis_port="${redis_endpoint##*:}"
 wait_tcp "${redis_host}" "${redis_port}" redis
@@ -101,18 +101,60 @@ wait_tcp "${redis_host}" "${redis_port}" redis
 read -r actor_http caller_http session_a_http session_b_http \
   actor_spot caller_spot session_a_spot session_b_spot \
   session_a_stream session_b_stream < <(reserve_ports)
-export ZLINK_JAVA_E2E_ACTOR_HTTP="http://127.0.0.1:${actor_http}"
-export ZLINK_JAVA_E2E_CALLER_HTTP="http://127.0.0.1:${caller_http}"
-export ZLINK_JAVA_E2E_SESSION_A_HTTP="http://127.0.0.1:${session_a_http}"
-export ZLINK_JAVA_E2E_SESSION_B_HTTP="http://127.0.0.1:${session_b_http}"
-export ZLINK_JAVA_E2E_ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
-export ZLINK_JAVA_E2E_CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
-export ZLINK_JAVA_E2E_SESSION_A_STREAM="tcp://127.0.0.1:${session_a_stream}"
-export ZLINK_JAVA_E2E_SESSION_B_STREAM="tcp://127.0.0.1:${session_b_stream}"
-export ZLINK_JAVA_E2E_ACTOR_RID="actor-a"
-export ZLINK_JAVA_E2E_CALLER_RID="${ZLINK_JAVA_E2E_CALLER_RID:-aaa-caller}"
-echo "session_a_spot=tcp://127.0.0.1:${session_a_spot} session_a_stream=${ZLINK_JAVA_E2E_SESSION_A_STREAM}"
-echo "session_b_spot=tcp://127.0.0.1:${session_b_spot} session_b_stream=${ZLINK_JAVA_E2E_SESSION_B_STREAM}"
+actor_http_endpoint="http://127.0.0.1:${actor_http}"
+caller_http_endpoint="http://127.0.0.1:${caller_http}"
+session_a_http_endpoint="http://127.0.0.1:${session_a_http}"
+session_b_http_endpoint="http://127.0.0.1:${session_b_http}"
+actor_spot_endpoint="tcp://127.0.0.1:${actor_spot}"
+caller_spot_endpoint="tcp://127.0.0.1:${caller_spot}"
+session_a_stream_endpoint="tcp://127.0.0.1:${session_a_stream}"
+session_b_stream_endpoint="tcp://127.0.0.1:${session_b_stream}"
+actor_rid="actor-a"
+caller_rid="aaa-caller"
+echo "session_a_spot=tcp://127.0.0.1:${session_a_spot} session_a_stream=${session_a_stream_endpoint}"
+echo "session_b_spot=tcp://127.0.0.1:${session_b_spot} session_b_stream=${session_b_stream_endpoint}"
+
+write_config() {
+  local path="$1"
+  shift
+  {
+    printf 'redisLocationEndpoint=%s\n' "${redis_endpoint}"
+    printf 'locationKeyPrefix=%s\n' "${location_key_prefix}"
+    printf 'logDirectory=%s\n' "${log_dir}"
+    printf '%s\n' "$@"
+  } >"${path}"
+  chmod 0600 "${path}"
+}
+actor_config="${config_dir}/actor.properties"
+caller_config="${config_dir}/caller.properties"
+session_a_config="${config_dir}/session-a.properties"
+session_b_config="${config_dir}/session-b.properties"
+client_config="${config_dir}/client.properties"
+write_config "${actor_config}" \
+  "actorHttpEndpoint=${actor_http_endpoint}" \
+  "actorSpotEndpoint=${actor_spot_endpoint}" \
+  "actorRid=${actor_rid}"
+write_config "${caller_config}" \
+  "callerHttpEndpoint=${caller_http_endpoint}" \
+  "callerSpotEndpoint=${caller_spot_endpoint}" \
+  "callerRid=${caller_rid}"
+write_config "${session_a_config}" \
+  "sessionRid=session-a" \
+  "sessionHttpEndpoint=${session_a_http_endpoint}" \
+  "sessionSpotEndpoint=tcp://127.0.0.1:${session_a_spot}" \
+  "sessionStreamEndpoint=${session_a_stream_endpoint}"
+write_config "${session_b_config}" \
+  "sessionRid=session-b" \
+  "sessionHttpEndpoint=${session_b_http_endpoint}" \
+  "sessionSpotEndpoint=tcp://127.0.0.1:${session_b_spot}" \
+  "sessionStreamEndpoint=${session_b_stream_endpoint}"
+write_config "${client_config}" \
+  "actorHttpEndpoint=${actor_http_endpoint}" \
+  "callerHttpEndpoint=${caller_http_endpoint}" \
+  "sessionAHttpEndpoint=${session_a_http_endpoint}" \
+  "sessionBHttpEndpoint=${session_b_http_endpoint}" \
+  "sessionAStreamEndpoint=${session_a_stream_endpoint}" \
+  "sessionBStreamEndpoint=${session_b_stream_endpoint}"
 
 print_logs() {
   local status="$1"
@@ -150,6 +192,7 @@ cleanup() {
   if [[ -n "${redis_container}" ]]; then
     docker rm -fv "${redis_container}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -176,28 +219,24 @@ PY
 start_role() {
   case "$1" in
     actor)
-      ./Server/Actor/build/install/to-actor-actor/bin/to-actor-actor >"${log_dir}/actor.log" 2>&1 &
+      ./Server/Actor/build/install/to-actor-actor/bin/to-actor-actor \
+        --config "${actor_config}" >"${log_dir}/actor.log" 2>&1 &
       pids+=("$!")
       ;;
     caller)
-      ./Server/Caller/build/install/to-actor-caller/bin/to-actor-caller >"${log_dir}/caller.log" 2>&1 &
+      ./Server/Caller/build/install/to-actor-caller/bin/to-actor-caller \
+        --config "${caller_config}" >"${log_dir}/caller.log" 2>&1 &
       pids+=("$!")
       ;;
     session-a)
-      ZLINK_JAVA_E2E_SESSION_RID="session-a" \
-      ZLINK_JAVA_E2E_SESSION_HTTP="${ZLINK_JAVA_E2E_SESSION_A_HTTP}" \
-      ZLINK_JAVA_E2E_SESSION_SPOT="tcp://127.0.0.1:${session_a_spot}" \
-      ZLINK_JAVA_E2E_SESSION_STREAM="${ZLINK_JAVA_E2E_SESSION_A_STREAM}" \
-        ./Server/Session/build/install/to-actor-session/bin/to-actor-session \
+      ./Server/Session/build/install/to-actor-session/bin/to-actor-session \
+        --config "${session_a_config}" \
         >"${log_dir}/session-a.log" 2>&1 &
       pids+=("$!")
       ;;
     session-b)
-      ZLINK_JAVA_E2E_SESSION_RID="session-b" \
-      ZLINK_JAVA_E2E_SESSION_HTTP="${ZLINK_JAVA_E2E_SESSION_B_HTTP}" \
-      ZLINK_JAVA_E2E_SESSION_SPOT="tcp://127.0.0.1:${session_b_spot}" \
-      ZLINK_JAVA_E2E_SESSION_STREAM="${ZLINK_JAVA_E2E_SESSION_B_STREAM}" \
-        ./Server/Session/build/install/to-actor-session/bin/to-actor-session \
+      ./Server/Session/build/install/to-actor-session/bin/to-actor-session \
+        --config "${session_b_config}" \
         >"${log_dir}/session-b.log" 2>&1 &
       pids+=("$!")
       ;;
@@ -207,10 +246,10 @@ start_role() {
 
 wait_role() {
   case "$1" in
-    actor) wait_http "${ZLINK_JAVA_E2E_ACTOR_HTTP}" ;;
-    caller) wait_http "${ZLINK_JAVA_E2E_CALLER_HTTP}" ;;
-    session-a) wait_http "${ZLINK_JAVA_E2E_SESSION_A_HTTP}" ;;
-    session-b) wait_http "${ZLINK_JAVA_E2E_SESSION_B_HTTP}" ;;
+    actor) wait_http "${actor_http_endpoint}" ;;
+    caller) wait_http "${caller_http_endpoint}" ;;
+    session-a) wait_http "${session_a_http_endpoint}" ;;
+    session-b) wait_http "${session_b_http_endpoint}" ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
 }
@@ -254,5 +293,6 @@ for role in "${SERVER_ROLES[@]}"; do
 done
 sleep "${ROUTE_SETTLE_SECONDS}"
 
-./Client/build/install/to-actor-client/bin/to-actor-client "${SCENARIO}" \
+./Client/build/install/to-actor-client/bin/to-actor-client \
+  --config "${client_config}" --scenario "${SCENARIO}" \
   > >(tee "${log_dir}/client.log") 2>"${log_dir}/client.stderr.log"

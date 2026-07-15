@@ -30,12 +30,13 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        builder.run(args);
+        builder.run();
         System.out.println("[boot] role=session rid="
-            + Env.get("ZLINK_JAVA_E2E_SESSION_RID") + " step=main run done");
+            + Env.get("sessionRid") + " step=main run done");
     }
 
     @Bean
@@ -45,9 +46,9 @@ public final class Program {
 
     @Bean(destroyMethod = "close")
     JsonHttp http(EvidenceStore evidence) {
-        JsonHttp http = new JsonHttp(Env.get("ZLINK_JAVA_E2E_SESSION_HTTP"));
+        JsonHttp http = new JsonHttp(Env.get("sessionHttpEndpoint"));
         http.get("/health", () -> java.util.Map.of(
-            "status", "ok", "rid", Env.get("ZLINK_JAVA_E2E_SESSION_RID")));
+            "status", "ok", "rid", Env.get("sessionRid")));
         http.get("/evidence", evidence::all);
         http.start();
         return http;
@@ -56,16 +57,16 @@ public final class Program {
     @Bean
     ZLinkFrameworkConfigurer framework() {
         return options -> {
-            String rid = Env.get("ZLINK_JAVA_E2E_SESSION_RID");
+            String rid = Env.get("sessionRid");
             options.addHandlersFromPackageOf(BindActorHandler.class);
             options.addLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"))));
+                .setConnectionString(Env.get("redisLocationEndpoint"))
+                .setKeyPrefix(Env.get("locationKeyPrefix"))));
             options.addSpotMesh(Contracts.SPOT_MESH)
-                .enableRouter(Env.get("ZLINK_JAVA_E2E_SESSION_SPOT"))
+                .enableRouter(Env.get("sessionSpotEndpoint"))
                 .setRoutingId(RoutingId.from(rid));
             options.addStreamNode("to-actor-" + rid)
-                .bind(Env.get("ZLINK_JAVA_E2E_SESSION_STREAM"))
+                .bind(Env.get("sessionStreamEndpoint"))
                 .registerSession(ToActorSession.class);
         };
     }
@@ -134,7 +135,7 @@ public final class Program {
         }
 
         private static String gatewayRid() {
-            return Env.get("ZLINK_JAVA_E2E_SESSION_RID");
+            return Env.get("sessionRid");
         }
     }
 
@@ -163,7 +164,7 @@ public final class Program {
             return context.actors().bindOrGet(actor).thenAccept(bound -> {
                 evidence.append(new Contracts.ActorEvidence(
                     "bind", actor.actorId(), "actor-bound",
-                    Env.get("ZLINK_JAVA_E2E_SESSION_RID") + ":" + context.sessionId()));
+                    Env.get("sessionRid") + ":" + context.sessionId()));
                 context.client().reply(new Contracts.BindActorReply(
                     actor.actorId(), actor.nodeRid().toString(), actor.generation())).submit();
             });

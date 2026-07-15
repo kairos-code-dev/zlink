@@ -29,20 +29,21 @@ public final class Program {
     }
 
     public static void main(String... args) {
+        Env.configure(args);
         boot("main builder");
         SpringApplicationBuilder builder = new SpringApplicationBuilder(Program.class)
             .web(WebApplicationType.NONE);
         boot("main keepAlive");
         builder.application().setKeepAlive(true);
         boot("main run");
-        builder.run(args);
+        builder.run();
         boot("main run done");
     }
 
     @Bean(destroyMethod = "close")
     JsonHttp http(ZLinkActorClient actors, ZLinkActorDirectory actorRefs) {
         boot("http create");
-        JsonHttp http = new JsonHttp(Env.get("ZLINK_JAVA_E2E_CALLER_HTTP"));
+        JsonHttp http = new JsonHttp(Env.get("callerHttpEndpoint"));
         boot("http route health");
         http.get("/health", () -> java.util.Map.of("status", "ok"));
         boot("http route send");
@@ -101,22 +102,22 @@ public final class Program {
             boot("configureDispatch");
             options.configureDispatch()
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
-                .traceLogFile(Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs") + "/caller-flow.log")
+                .traceLogFile(Env.get("logDirectory", "logs") + "/caller-flow.log")
                 .traceLabel("java-to-actor-caller");
             boot("configureDispatch done");
             boot("addLocationStore");
             options.addLocationStore(new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
-                .setConnectionString(Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"))
-                .setKeyPrefix(Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"))));
+                .setConnectionString(Env.get("redisLocationEndpoint"))
+                .setKeyPrefix(Env.get("locationKeyPrefix"))));
             boot("addLocationStore done");
             boot("addSpotMesh");
             var spotMesh = options.addSpotMesh(Contracts.SPOT_MESH);
             boot("addSpotMesh done");
             boot("enableRouter");
-            spotMesh.enableRouter(Env.get("ZLINK_JAVA_E2E_CALLER_SPOT"));
+            spotMesh.enableRouter(Env.get("callerSpotEndpoint"));
             boot("enableRouter done");
             boot("setRoutingId");
-            spotMesh.setRoutingId(RoutingId.from(Env.get("ZLINK_JAVA_E2E_CALLER_RID", "caller")));
+            spotMesh.setRoutingId(RoutingId.from(Env.get("callerRid", "caller")));
             boot("setRoutingId done");
         };
     }

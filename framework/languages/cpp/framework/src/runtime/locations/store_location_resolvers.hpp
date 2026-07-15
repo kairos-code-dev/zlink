@@ -314,43 +314,113 @@ class store_location_runtime_query_t final : public location_runtime_query_t
     task_t<location_page_t<location_topology_entry_t>>
     list_topology (location_topology_filter_t filter, location_page_request_t page = {}) override
     {
-        auto peers = _store->list_peers (peer_location_filter_t{}).result ().value ();
-        std::vector<location_topology_entry_t> matched;
-        matched.reserve (peers.size ());
-        for (const auto &peer : peers) {
-            location_topology_entry_t entry;
-            entry.kind = location_kind_t::peer;
-            entry.mesh_name = peer.mesh_name;
-            entry.role = peer.role;
-            entry.node_rid = peer.node_rid;
-            entry.endpoint = peer.endpoint;
-            entry.state = peer.weight == 0 ? location_topology_state_t::lost
-                                           : location_topology_state_t::ready;
-            entry.desired_count = 1;
-            entry.ready_count = peer.weight == 0 ? 0 : 1;
-            entry.updated_at = peer.updated_at;
-            if (matches (entry, filter)) {
-                matched.push_back (std::move (entry));
+        const auto kind = filter.kind.value_or (location_kind_t::peer);
+        if (kind == location_kind_t::peer) {
+            auto rows = _store
+                          ->list_raw_peers (peer_location_filter_t{
+                            .mesh_name = filter.mesh_name,
+                            .role = filter.role,
+                            .node_rid = filter.node_rid})
+                          .result ()
+                          .value ();
+            std::vector<location_topology_entry_t> entries;
+            entries.reserve (rows.size ());
+            const auto live_owners = _store->live_owner_ids ();
+            for (const auto &row : rows) {
+                const auto live = live_owners.contains (row.owner_id);
+                location_topology_entry_t entry{
+                  .kind = location_kind_t::peer,
+                  .mesh_name = row.mesh_name,
+                  .role = row.role,
+                  .node_rid = row.node_rid,
+                  .endpoint = row.endpoint,
+                  .state = live ? location_topology_state_t::ready
+                                : location_topology_state_t::lost,
+                  .desired_count = 1,
+                  .ready_count = live ? 1u : 0u,
+                  .updated_at = row.updated_at};
+                if (matches (entry, filter)) {
+                    entries.push_back (std::move (entry));
+                }
             }
+            return completed (page_in_memory (std::move (entries), page));
         }
-        location_page_t<location_topology_entry_t> result;
-        const auto offset = page.continuation_token ? parse_offset (*page.continuation_token) : 0;
-        const auto page_size =
-          page.page_size > 0 ? static_cast<std::size_t> (page.page_size) : matched.size ();
-        for (std::size_t i = offset; i < matched.size () && result.items.size () < page_size; ++i) {
-            result.items.push_back (matched[i]);
+        if (kind == location_kind_t::spot) {
+            auto rows = _store
+                          ->list_raw_spots (spot_location_filter_t{
+                                             .mesh_name = filter.mesh_name,
+                                             .node_rid = filter.node_rid},
+                                           page)
+                          .result ()
+                          .value ();
+            const auto live_owners = _store->live_owner_ids ();
+            return completed (project_page (
+              std::move (rows), filter, [&live_owners] (const spot_location_t &row) {
+                  const auto live = live_owners.contains (row.owner_id);
+                  return location_topology_entry_t{
+                    .kind = location_kind_t::spot,
+                    .mesh_name = row.mesh_name,
+                    .node_rid = row.node_rid,
+                    .spot_rid = row.spot_rid,
+                    .endpoint = row.route_endpoint,
+                    .state = live ? location_topology_state_t::ready
+                                  : location_topology_state_t::lost,
+                    .desired_count = 1,
+                    .ready_count = live ? 1u : 0u,
+                    .updated_at = row.updated_at};
+              }));
         }
-        const auto next = offset + result.items.size ();
-        if (next < matched.size ()) {
-            result.continuation_token = std::to_string (next);
+        if (kind == location_kind_t::actor) {
+            auto rows = _store
+                          ->list_raw_actors (actor_location_filter_t{.node_rid = filter.node_rid},
+                                            page)
+                          .result ()
+                          .value ();
+            std::erase_if (rows.items, [this] (const actor_location_t &row) {
+                return !row.actor_ref || !_actor_locations->accepts (row);
+            });
+            const auto live_owners = _store->live_owner_ids ();
+            return completed (project_page (
+              std::move (rows), filter, [&live_owners] (const actor_location_t &row) {
+                  const auto live = live_owners.contains (row.owner_id);
+                  return location_topology_entry_t{
+                    .kind = location_kind_t::actor,
+                    .mesh_name = row.spot_mesh_name,
+                    .node_rid = row.node_rid,
+                    .spot_rid = row.spot_rid,
+                    .actor_id = row.actor_id,
+                    .state = live ? location_topology_state_t::ready
+                                  : location_topology_state_t::lost,
+                    .desired_count = 1,
+                    .ready_count = live ? 1u : 0u,
+                    .updated_at = row.updated_at};
+              }));
         }
-        return completed (std::move (result));
+        auto rows = _store
+                      ->list_raw_routes (route_location_filter_t{.owner_node_rid = filter.node_rid},
+                                        page)
+                      .result ()
+                      .value ();
+        const auto live_owners = _store->live_owner_ids ();
+        return completed (project_page (
+          std::move (rows), filter, [&live_owners] (const route_location_t &row) {
+              const auto live = live_owners.contains (row.owner_id);
+              return location_topology_entry_t{
+                .kind = location_kind_t::route,
+                .node_rid = row.owner_node_rid,
+                .state = live ? location_topology_state_t::ready
+                              : location_topology_state_t::lost,
+                .desired_count = 1,
+                .ready_count = live ? 1u : 0u,
+                .updated_at = row.updated_at};
+          }));
     }
 
     task_t<std::vector<location_service_summary_t>>
     list_service_summaries (location_service_summary_filter_t filter) override
     {
-        auto peers = _store->list_peers (peer_location_filter_t{}).result ().value ();
+        auto peers = _store->list_raw_peers (peer_location_filter_t{}).result ().value ();
+        const auto live_owners = _store->live_owner_ids ();
         std::map<std::string, location_service_summary_t> grouped;
         for (const auto &peer : peers) {
             if (filter.mesh_name && peer.mesh_name != *filter.mesh_name) {
@@ -371,10 +441,10 @@ class store_location_runtime_query_t final : public location_runtime_query_t
             summary.auto_connect_type = peer.auto_connect_type;
             summary.role = peer.role;
             ++summary.total_count;
-            if (peer.weight == 0) {
-                ++summary.lost_count;
-            } else {
+            if (live_owners.contains (peer.owner_id)) {
                 ++summary.ready_count;
+            } else {
+                ++summary.lost_count;
             }
         }
         std::vector<location_service_summary_t> result;
@@ -405,6 +475,42 @@ class store_location_runtime_query_t final : public location_runtime_query_t
                && (!filter.role || (entry.role && *entry.role == *filter.role))
                && (!filter.node_rid || (entry.node_rid && *entry.node_rid == *filter.node_rid))
                && (!filter.state || entry.state == *filter.state);
+    }
+
+    static location_page_t<location_topology_entry_t>
+    page_in_memory (std::vector<location_topology_entry_t> entries,
+                    const location_page_request_t &page)
+    {
+        location_page_t<location_topology_entry_t> result;
+        const auto offset = page.continuation_token ? parse_offset (*page.continuation_token) : 0;
+        const auto page_size =
+          page.page_size > 0 ? static_cast<std::size_t> (page.page_size) : entries.size ();
+        for (std::size_t i = offset; i < entries.size () && result.items.size () < page_size; ++i) {
+            result.items.push_back (std::move (entries[i]));
+        }
+        const auto next = offset + result.items.size ();
+        if (next < entries.size ()) {
+            result.continuation_token = std::to_string (next);
+        }
+        return result;
+    }
+
+    template <typename TRow, typename Project>
+    static location_page_t<location_topology_entry_t>
+    project_page (location_page_t<TRow> rows,
+                  const location_topology_filter_t &filter,
+                  Project project)
+    {
+        location_page_t<location_topology_entry_t> result;
+        result.continuation_token = std::move (rows.continuation_token);
+        result.items.reserve (rows.items.size ());
+        for (const auto &row : rows.items) {
+            auto entry = project (row);
+            if (matches (entry, filter)) {
+                result.items.push_back (std::move (entry));
+            }
+        }
+        return result;
     }
 
     static std::size_t parse_offset (const std::string &value)

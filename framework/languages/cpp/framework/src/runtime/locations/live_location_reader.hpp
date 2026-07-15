@@ -34,6 +34,11 @@ class live_location_reader_t final
         return completed (std::move (rows));
     }
 
+    task_t<std::vector<peer_location_t>> list_raw_peers (peer_location_filter_t filter)
+    {
+        return _store->list_peers (std::move (filter));
+    }
+
     task_t<std::optional<spot_location_t>> resolve_spot (spot_location_key_t key)
     {
         auto row = _store->resolve_spot (std::move (key)).result ().value ();
@@ -46,6 +51,13 @@ class live_location_reader_t final
         auto rows = _store->list_spots (std::move (filter), page).result ().value ();
         filter_live (rows.items);
         return completed (std::move (rows));
+    }
+
+
+    task_t<location_page_t<spot_location_t>>
+    list_raw_spots (spot_location_filter_t filter, location_page_request_t page = {})
+    {
+        return _store->list_spots (std::move (filter), std::move (page));
     }
 
     task_t<std::optional<actor_location_t>> resolve_actor (actor_location_key_t key)
@@ -62,6 +74,12 @@ class live_location_reader_t final
         return completed (std::move (rows));
     }
 
+    task_t<location_page_t<actor_location_t>>
+    list_raw_actors (actor_location_filter_t filter, location_page_request_t page = {})
+    {
+        return _store->list_actors (std::move (filter), std::move (page));
+    }
+
     task_t<std::optional<route_location_t>> resolve_route (route_location_key_t key)
     {
         auto row = _store->resolve_route (std::move (key)).result ().value ();
@@ -75,6 +93,14 @@ class live_location_reader_t final
         filter_live (rows.items);
         return completed (std::move (rows));
     }
+
+    task_t<location_page_t<route_location_t>>
+    list_raw_routes (route_location_filter_t filter, location_page_request_t page = {})
+    {
+        return _store->list_routes (std::move (filter), std::move (page));
+    }
+
+    std::set<std::string> live_owner_ids () { return live_owners (); }
 
     task_t<owner_lease_snapshot_t> list_owner_leases () { return _store->list_owner_leases (); }
 

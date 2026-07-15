@@ -766,6 +766,15 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         return relayed;
     };
 
+    if (const auto forwarding = runtime.actor_forwarding_target (actor_ref)) {
+        runtime.emit_actor_transfer_marker (
+          "straggler_forward", actor_ref,
+          std::string (actor_ref.actor_type ()) + ":" + std::string (actor_ref.actor_id ()),
+          forwarding->route.spot_rid, forwarding->route.node_rid);
+        return send_remote (forwarding->route, forwarding->route.spot_rid,
+                            forwarding->actor);
+    }
+
     auto route = runtime.actor_route (actor_ref);
     if (route && !route->node_rid.empty ()
         && route->node_rid.value () != runtime.node_rid ().value ()) {

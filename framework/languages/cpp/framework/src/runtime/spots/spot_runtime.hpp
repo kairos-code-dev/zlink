@@ -345,6 +345,8 @@ class spot_node_runtime_t
     std::optional<spot_rid_t> actor_spot (const actor_ref_t &actor_ref) const;
     void record_actor_spot (const actor_ref_t &actor_ref, spot_rid_t spot_rid);
     std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
+    std::optional<actor_forwarding_target_t>
+    actor_forwarding_target (const actor_ref_t &actor_ref) const;
     void record_actor_route (const actor_ref_t &actor_ref, spot_route_t route);
     std::optional<std::string> actor_route_transport_name () const;
     void request_stop () noexcept;

@@ -46,6 +46,12 @@ struct evicted_actor_forwarding_t
     std::string transfer_id;
 };
 
+struct actor_forwarding_target_t
+{
+    actor_ref_t actor;
+    spot_route_t route;
+};
+
 // One in-flight actor packet preserved while its actor is moving (spot-actor
 // spec §10). Sends are preserved and replayed transparently; a request is also
 // preserved (§10.2-1) so it still reaches the committed target's handler even
@@ -88,10 +94,14 @@ class actor_transfer_coordinator_t
     // and evicted after the forward window so retained state cannot pile up.
     void activate_forwarding (const std::string &actor_key,
                               std::uint64_t old_generation,
+                              actor_ref_t target_actor,
+                              spot_route_t target_route,
                               std::chrono::steady_clock::time_point evict_at,
                               std::string transfer_id = {});
     bool forwards_stale_generation (const std::string &actor_key,
                                     std::uint64_t generation) const;
+    std::optional<actor_forwarding_target_t>
+    forwarding_target (const std::string &actor_key, std::uint64_t generation) const;
     std::vector<evicted_actor_forwarding_t>
     evict_expired_forwarding (std::chrono::steady_clock::time_point now);
 
@@ -122,6 +132,8 @@ class actor_transfer_coordinator_t
     struct forwarding_entry_t
     {
         std::uint64_t old_generation = 0;
+        actor_ref_t target_actor;
+        spot_route_t target_route;
         std::chrono::steady_clock::time_point evict_at;
         std::string transfer_id;
     };

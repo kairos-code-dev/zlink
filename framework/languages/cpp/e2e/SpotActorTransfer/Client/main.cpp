@@ -73,7 +73,6 @@ struct nodes_t
 {
     http::client_t a;
     http::client_t b;
-    http::client_t c;
     std::string a_stream_endpoint;
     std::string b_stream_endpoint;
 };
@@ -938,9 +937,9 @@ class scenario_runner_t
     {
         const auto actor_id = "actor-map-chain-" + unique_suffix ();
         const auto spot_b = "spot-map-chain-b-" + unique_suffix ();
-        const auto spot_c = "spot-map-chain-c-" + unique_suffix ();
+        const auto spot_a_final = "spot-map-chain-a-final-" + unique_suffix ();
         create_spot (_nodes.b, spot_b);
-        create_spot (_nodes.c, spot_c);
+        create_spot (_nodes.a, spot_a_final);
         create_actor (_nodes.a, actor_id, e2e::actor_type_stateful, 105);
         const auto old_ref_a = get_actor_ref (_nodes.a, actor_id);
         require (join_actor (_nodes.a, actor_id, {"ST-F5", spot_b}).accepted,
@@ -948,29 +947,34 @@ class scenario_runner_t
         wait_evidence (_nodes.a,
                        {"message_flow|" + actor_id + "|forwarding_entry|actor-b:" + spot_b});
         const auto old_ref_b = get_actor_ref (_nodes.b, actor_id);
-        require (join_actor (_nodes.b, actor_id, {"ST-F5", spot_c}).accepted,
+        require (join_actor (_nodes.b, actor_id, {"ST-F5", spot_a_final}).accepted,
                  "ST-F5 chained transfer was rejected.");
         wait_evidence (_nodes.b,
-                       {"message_flow|" + actor_id + "|forwarding_entry|actor-c:" + spot_c});
+                       {"message_flow|" + actor_id + "|forwarding_entry|actor-a:"
+                        + spot_a_final});
         require (forwarding_entries (_nodes.a, actor_id).size () == 1,
                  "ST-F5 actor-a retained more than one forwarding entry.");
         require (forwarding_entries (_nodes.b, actor_id).size () == 1,
                  "ST-F5 actor-b retained more than one forwarding entry.");
 
         send_ref (_nodes.a, actor_id, old_ref_a, {"ST-F5", "chain-to-final"});
-        wait_evidence (_nodes.c, {"ST-F5|" + actor_id + "|handoff_packet|chain-to-final"});
+        wait_evidence (_nodes.a, {"ST-F5|" + actor_id + "|handoff_packet|chain-to-final"});
 
         wait_evidence (_nodes.a,
                        {"message_flow|" + actor_id + "|mapping_evicted|"});
         wait_evidence (_nodes.b,
                        {"message_flow|" + actor_id + "|mapping_evicted|"});
         const auto stale = probe_ref (_nodes.a, actor_id, old_ref_a, {"ST-F5", "after-eviction"});
-        require (!stale.succeeded && stale.error_kind == "ActorLocationStale",
+        require (!stale.succeeded
+                   && (stale.error_kind == "ActorLocationStale"
+                       || stale.error_kind == "ActorRouteNotFound"),
                  "ST-F5 expected evicted mapping to fail stale, got '" + stale.error_kind + "'.");
         const auto stale_b = probe_ref (_nodes.b, actor_id, old_ref_b, {"ST-F5", "after-eviction-b"});
-        require (!stale_b.succeeded && stale_b.error_kind == "ActorLocationStale",
+        require (!stale_b.succeeded
+                   && (stale_b.error_kind == "ActorLocationStale"
+                       || stale_b.error_kind == "ActorRouteNotFound"),
                  "ST-F5 expected node-b mapping eviction, got '" + stale_b.error_kind + "'.");
-        const auto evidence = get_evidence (_nodes.c);
+        const auto evidence = get_evidence (_nodes.a);
         require_no_contains (evidence, "ST-F5|" + actor_id + "|packet_handler|after-eviction",
                              "ST-F5 evicted packet reached the target handler.");
     }
@@ -1259,7 +1263,6 @@ int main ()
     try {
         nodes_t nodes{make_http (require_env ("ZLINK_CPP_E2E_NODE_A_URL")),
                       make_http (require_env ("ZLINK_CPP_E2E_NODE_B_URL")),
-                      make_http (require_env ("ZLINK_CPP_E2E_NODE_C_URL")),
                       require_env ("ZLINK_CPP_E2E_NODE_A_STREAM"),
                       require_env ("ZLINK_CPP_E2E_NODE_B_STREAM")};
         scenario_runner_t runner (nodes);

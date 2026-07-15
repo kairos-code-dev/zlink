@@ -31,7 +31,7 @@ client와 `run_e2e.sh all`에 등록되어 있지만, 현재 배치와 일부 �
 | ST-F2 | `deferred` | moving 중 B1/B2를 보내고 target의 `backlog_enqueued`가 `location_committed`보다 앞서는지 검사한다. location 공개 직후 D1을 보내 join caller가 완료를 읽기 전에 B1→B2→D1 순서가 유지되는지도 확인한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-F3 | `deferred` | moving 중 S1/S2를 보내고 target의 구조화된 location commit evidence 직후 기존 bound session으로 S3/S4를 보내 join caller가 완료를 읽기 전에 전체 순서를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-F4 | `deferred` | 같은 explicit old ref one-way send로 G1/G2를 보내고, G1의 구조화된 `straggler_forward`와 target 처리 뒤 `mapping_evicted`, G2의 구조화된 `stale_fail_fast`와 target 미처리를 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
-| ST-F5 | `deferred` | source 역할별 구조화 evidence로 다음 hop forwarding entry가 하나뿐인지 확인하고, `mapping_evicted`를 기다린 뒤 두 old ref가 stale로 실패하는지 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
+| ST-F5 | `deferred` | actor-a→actor-b→actor-a의 다른 Spot으로 연속 이동하고, source 역할별 구조화 evidence로 다음 hop forwarding entry가 하나뿐인지 확인한다. `mapping_evicted` 뒤 두 old ref가 즉시 실패하는지도 검사한다. 역할별 배치 gap이 남아 있다(`E2E-CP-56`). |
 | ST-F6 | `deferred` | reply correlation과 timeout 결과는 검사하지만 handoff 과정의 request id와 flags 보존을 역할 evidence로 직접 비교하지 않는다. |
 
 ## 검증

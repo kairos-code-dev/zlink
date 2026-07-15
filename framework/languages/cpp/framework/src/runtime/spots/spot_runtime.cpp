@@ -518,7 +518,11 @@ result_t<void> claim_pending_actor_location_before_activation (
     if (!state->location_lifecycle) {
         return result_t<void>::success ();
     }
-    if (state->location_lifecycle->owns_actor (
+    const bool source_is_local =
+      !source_actor.node_rid ().empty ()
+      && source_actor.node_rid ().value () == detail::effective_spot_node_rid (state->snapshot);
+    if (source_is_local
+        && state->location_lifecycle->owns_actor (
           actor_location_key_t{std::string (committed.actor_id ())})) {
         return result_t<void>::success ();
     }
@@ -2775,11 +2779,21 @@ std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions_at (
                 continue;
             }
             const auto key = actor_key (found->source_actor);
-            _state->actor_instances.erase (key);
-            detail::erase_actor_instance_index_unlocked (
-              *_state, found->source_actor.actor_type (), found->source_actor.actor_id ());
-            _state->actor_mailboxes.erase (key);
-            release_actor_location (*_state, found->source_actor);
+            const auto generation = _state->actor_generations.find (key);
+            const auto route = _state->actor_routes.find (key);
+            const bool actor_has_newer_local_incarnation =
+              generation != _state->actor_generations.end ()
+              && generation->second > found->source_actor.generation ()
+              && route != _state->actor_routes.end ()
+              && route->second.node_rid.value ()
+                   == detail::effective_spot_node_rid (_state->snapshot);
+            if (!actor_has_newer_local_incarnation) {
+                _state->actor_instances.erase (key);
+                detail::erase_actor_instance_index_unlocked (
+                  *_state, found->source_actor.actor_type (), found->source_actor.actor_id ());
+                _state->actor_mailboxes.erase (key);
+                release_actor_location (*_state, found->source_actor);
+            }
             cleaned_sources.push_back (std::move (*found));
             found = _state->pending_remote_source_cleanups.erase (found);
             ++removed;
@@ -2798,8 +2812,12 @@ std::size_t spot_node_runtime_t::cleanup_expired_actor_admissions_at (
             // this node stops forwarding. The generation record stays behind as
             // a tombstone so stale refs keep failing fast instead of
             // re-materializing the actor here.
-            _state->actor_routes.erase (key);
-            _state->native_actors.erase (key);
+            const auto generation = _state->actor_generations.find (key);
+            if (generation == _state->actor_generations.end ()
+                || generation->second <= entry.old_generation + 1) {
+                _state->actor_routes.erase (key);
+                _state->native_actors.erase (key);
+            }
             const auto separator = key.find (':');
             if (separator != std::string::npos) {
                 const auto actor_ref = actor_ref_t (
@@ -3043,15 +3061,15 @@ void spot_node_runtime_t::complete_remote_actor_transfer (const actor_ref_t &sou
                                std::chrono::duration<double> (*transfer_elapsed).count ());
         }
     }
-    detail::record_actor_route_unlocked (*_state, key, std::move (target_route),
-                                         target_actor.generation ());
-    // The route recorded above is the forwarding mapping of §10.4: stragglers
-    // that still carry the old generation follow it to the next hop. Arm its
-    // eviction window so the retained state cannot outlive the transfer.
+    // Keep the old-generation forwarding hop independent from the actor's
+    // current route. On A→B→A, recording the final local route must not erase
+    // the generation-1 A→B hop that still chains through B to generation 3.
     _state->actor_transfer_coordinator.activate_forwarding (
-      key, source_actor.generation (),
+      key, source_actor.generation (), target_actor, target_route,
       std::chrono::steady_clock::now () + _state->actor_transfer_forward_window,
       transfer_id);
+    detail::record_actor_route_unlocked (*_state, key, std::move (target_route),
+                                         target_actor.generation ());
     // Commit acknowledgement fixes the new owner and forwarding route first.
     // Releasing stale source ownership is post-commit housekeeping: losing the
     // source process now cannot roll back the accepted target generation.
@@ -4203,6 +4221,13 @@ std::optional<spot_route_t> spot_node_runtime_t::actor_route (const actor_ref_t 
         return std::nullopt;
     }
     return found->second;
+}
+
+std::optional<actor_forwarding_target_t>
+spot_node_runtime_t::actor_forwarding_target (const actor_ref_t &actor_ref) const
+{
+    return _state->actor_transfer_coordinator.forwarding_target (
+      actor_key (actor_ref), actor_ref.generation ());
 }
 
 void spot_node_runtime_t::record_actor_route (const actor_ref_t &actor_ref, spot_route_t route)

@@ -637,9 +637,11 @@ int main ()
                          ? transfer_client.substr (st_f5_begin, st_f5_end - st_f5_begin)
                          : std::string{};
     gate.require (st_f5.find ("mapping_evicted") != std::string::npos
-                    && st_f5.find ("forwarding_entries") != std::string::npos,
+                    && st_f5.find ("forwarding_entries") != std::string::npos
+                    && st_f5.find ("spot-map-chain-a-final-") != std::string::npos
+                    && st_f5.find ("_nodes.c") == std::string::npos,
                   "E2E-CP-52",
-                  "ST-F5 does not observe mapping eviction and per-node forwarding entries");
+                  "ST-F5 does not use the two-node chained topology or observe mapping eviction");
 
     /* E2E-CP-53 — direct and bound-session packets cross the location publish
      * boundary before the join caller observes completion. */

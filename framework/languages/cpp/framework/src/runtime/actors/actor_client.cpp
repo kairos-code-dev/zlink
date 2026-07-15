@@ -116,6 +116,7 @@ class actor_client_impl_t final : public actor_client_t
         const auto caller_node_rid =
           actor_ref.node_rid ().empty () ? std::string{}
                                          : std::string (actor_ref.node_rid ().value ());
+        const auto caller_generation = actor_ref.generation ();
         // Stable across every retry and the commit replay so the target
         // dispatches this request exactly once (§10.2-1). Scoped by the client
         // instance so ids do not collide across nodes.
@@ -155,9 +156,10 @@ class actor_client_impl_t final : public actor_client_t
         while (true) {
             auto actor = resolve_actor (actor_id, policy);
             if (actor) {
-                const bool node_matches =
+                const bool ref_matches =
                   caller_node_rid.empty ()
-                  || actor.value ().node_rid.value () == caller_node_rid;
+                  || (actor.value ().node_rid.value () == caller_node_rid
+                      && actor.value ().framework_ref.generation () == caller_generation);
                 if (first_resolve) {
                     // Whether the ref was current when the request was issued
                     // decides the two in-flight cases (spot-actor.ko.md §10.2-5/6):
@@ -167,15 +169,17 @@ class actor_client_impl_t final : public actor_client_t
                     //   - ref current at issue but the actor moves mid-request →
                     //     follow it to the committed location so the reply still
                     //     correlates to this caller (§10.5 in-flight, ST-F6).
-                    ref_was_current = node_matches;
+                    ref_was_current = ref_matches;
                     first_resolve = false;
                 }
-                if (!ref_was_current && !node_matches) {
+                if (!ref_was_current && !ref_matches) {
                     co_return result_t<message_t>::failure (
                       framework_error_kind_t::actor_location_stale,
-                      "actor ref is stale: the actor is on node '"
-                        + std::string (actor.value ().node_rid.value ()) + "', ref names node '"
-                        + caller_node_rid + "'. actor=" + actor_id,
+                      "actor ref is stale: current node/generation='"
+                        + std::string (actor.value ().node_rid.value ()) + "/"
+                        + std::to_string (actor.value ().framework_ref.generation ())
+                        + "', supplied node/generation='" + caller_node_rid + "/"
+                        + std::to_string (caller_generation) + "'. actor=" + actor_id,
                       false);
                 }
                 const auto now = std::chrono::steady_clock::now ();

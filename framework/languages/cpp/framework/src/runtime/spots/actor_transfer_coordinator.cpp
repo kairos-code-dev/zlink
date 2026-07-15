@@ -90,14 +90,17 @@ actor_transfer_coordinator_t::take_backlog (const std::string &actor_key)
 void actor_transfer_coordinator_t::activate_forwarding (
   const std::string &actor_key,
   std::uint64_t old_generation,
+  actor_ref_t target_actor,
+  spot_route_t target_route,
   std::chrono::steady_clock::time_point evict_at,
   std::string transfer_id)
 {
     std::lock_guard lock (_mutex);
     // At most one entry per actor: a re-transfer refreshes the entry toward the
     // new hop and restarts the window instead of accumulating entries (§10.4-4).
-    _forwardings[actor_key] =
-      forwarding_entry_t{old_generation, evict_at, std::move (transfer_id)};
+    _forwardings[actor_key] = forwarding_entry_t{
+      old_generation, std::move (target_actor), std::move (target_route), evict_at,
+      std::move (transfer_id)};
 }
 
 bool actor_transfer_coordinator_t::forwards_stale_generation (const std::string &actor_key,
@@ -106,6 +109,19 @@ bool actor_transfer_coordinator_t::forwards_stale_generation (const std::string 
     std::lock_guard lock (_mutex);
     const auto found = _forwardings.find (actor_key);
     return found != _forwardings.end () && generation <= found->second.old_generation;
+}
+
+std::optional<actor_forwarding_target_t>
+actor_transfer_coordinator_t::forwarding_target (const std::string &actor_key,
+                                                 std::uint64_t generation) const
+{
+    std::lock_guard lock (_mutex);
+    const auto found = _forwardings.find (actor_key);
+    if (found == _forwardings.end () || found->second.old_generation != generation
+        || found->second.evict_at <= std::chrono::steady_clock::now ()) {
+        return std::nullopt;
+    }
+    return actor_forwarding_target_t{found->second.target_actor, found->second.target_route};
 }
 
 std::vector<evicted_actor_forwarding_t>

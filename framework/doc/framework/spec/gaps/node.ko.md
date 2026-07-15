@@ -877,5 +877,5 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 
 - [x] **TH-ND-01** (미구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`와 `zlinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §4.1](../stream-connector/languages/typescript/03-stream-connector.ko.md)대로 구현한다.
   - 근거: 수신 큐를 사용하는 부재·순서 builder와 별도 단언 이름 공간을 추가하고, 대기 중 handler 등록이 같은 메시지를 중복 소비하던 큐 순회도 snapshot으로 고쳤다. API가 없어 실패하던 집중 계약 테스트는 2/2, TypeScript·browser build와 실제 Chromium 게이트는 1/1 통과했다. 커밋 `5606142a5`.
-- [x] **TH-ND-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper를 connector API로 **교체**한다. negative 검증은 typed-callback 카운팅(SMP-ND-05로 이미 닫음) 대신 `expectNone`의 명시적 window로 표준화한다.
-  - 근거: 변경 전 검색에서 샘플의 지역 `ensure`·`expectFailure`·`expectNoPush`와 Bingo의 callback 기반 부재 검증을 검출했고, 이를 `zlinkStreamAssert`와 `expectNone(...).within(250)`으로 교체했다. 채택 계약 테스트 1/1, connector 집중 테스트 2/2, 6개 샘플과 8개 e2e client typecheck가 통과했다. 커밋 `faa625693`.
+- [ ] **TH-ND-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper를 connector API로 **교체**한다. negative 검증은 typed-callback 카운팅(SMP-ND-05로 이미 닫음) 대신 `expectNone`의 명시적 window로 표준화한다.
+  - 부분 근거: connector를 사용하는 6개 browser sample의 지역 `ensure`·`expectFailure`·`expectNoPush`와 Bingo의 callback 기반 부재 검증은 `zlinkStreamAssert`와 `expectNone(...).within(250)`으로 교체했고 채택 계약 테스트 1/1과 sample typecheck가 통과했다(`faa625693`). 그러나 HTTP-only Node e2e client까지 browser-only package root를 import하면 `ERR_PACKAGE_PATH_NOT_EXPORTED`로 실행이 실패한다. 공개 실행 환경 계약을 우회하지 않도록 그 변경은 되돌렸으며(`77884a2e1`), e2e 적용 범위의 계약 결정 전에는 이 항목을 닫지 않는다.

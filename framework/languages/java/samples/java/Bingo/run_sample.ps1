@@ -7,7 +7,7 @@ Set-Location $SampleDir
 
 $LogDir = Join-Path $SampleDir "build/sample-logs"
 $FlowLogDir = Join-Path $SampleDir "logs"
-$ConfigDir = Join-Path $SampleDir "build/sample-config"
+$ConfigDir = Join-Path ([IO.Path]::GetTempPath()) ("zlink-bingo-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $LogDir, $FlowLogDir, $ConfigDir | Out-Null
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $LogDir "*.log")
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $FlowLogDir "*.log")
@@ -66,6 +66,7 @@ function Cleanup {
     if ($RedisContainer) {
         Remove-ZlinkSampleRedis $RedisContainer
     }
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $ConfigDir
 }
 
 function Reserve-Endpoints {
@@ -135,6 +136,18 @@ function Start-AppRole {
     $Processes.Add($process)
 }
 
+function Protect-ConfigFile {
+    param([string]$Path)
+    if ($IsWindows) {
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        & icacls $Path /inheritance:r /grant:r "${identity}:(R,W)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config file ACL: $Path" }
+    } else {
+        & chmod 0600 $Path
+        if ($LASTEXITCODE -ne 0) { throw "Could not restrict config file mode: $Path" }
+    }
+}
+
 $Status = 1
 try {
     $endpoints = Reserve-Endpoints 15
@@ -158,7 +171,7 @@ try {
     $redisEndpoint = $redis.Endpoint
     $redis = Split-Endpoint $redisEndpoint
     Wait-Port $redis.Host $redis.Port
-    $redisKeyPrefix = if ($env:BINGO_REDIS_KEY_PREFIX) { $env:BINGO_REDIS_KEY_PREFIX } else { "bingo:java:${PID}:$([Guid]::NewGuid().ToString('N')):" }
+    $redisKeyPrefix = "bingo:java:${PID}:$([Guid]::NewGuid().ToString('N')):"
     $properties = @"
 apiAChannelEndpoint=tcp://$($apiAChannel.Host):$($apiAChannel.Port)
 apiBChannelEndpoint=tcp://$($apiBChannel.Host):$($apiBChannel.Port)
@@ -182,6 +195,7 @@ logDirectory=$($FlowLogDir.Replace('\', '/'))
         param([string]$Name, [string]$RoleName, [string]$RoleValue, [string]$PlayRid = "2202")
         $path = Join-Path $ConfigDir "$Name.properties"
         Set-Content -Path $path -Value "$properties`n$RoleName=$RoleValue`nplayRid=$PlayRid" -Encoding utf8NoBOM
+        Protect-ConfigFile $path
         return $path
     }
     $sessionAConfig = Write-SampleConfig "session-a" "sessionNode" "a"

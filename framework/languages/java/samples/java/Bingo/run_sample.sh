@@ -20,11 +20,11 @@ pids=()
 redis_container_id=""
 log_dir="build/sample-logs"
 flow_log_dir="$(pwd)/logs"
-config_dir="build/sample-config"
-export ZLINK_JAVA_STREAM_TRACE="${ZLINK_JAVA_STREAM_TRACE:-1}"
-mkdir -p "${log_dir}" "${flow_log_dir}" "${config_dir}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
+mkdir -p "${log_dir}" "${flow_log_dir}"
 rm -f "${log_dir}"/*.log
-rm -f "${flow_log_dir}"/*.log "${config_dir}"/*.properties
+rm -f "${flow_log_dir}"/*.log
 
 print_logs() {
   local status="$1"
@@ -38,7 +38,21 @@ print_logs() {
   done
 }
 
-trap cleanup EXIT
+cleanup_sample() {
+  local status="$?"
+  trap - EXIT
+  set +e
+  set_cleanup_status() { return "$1"; }
+  set_cleanup_status "${status}"
+  cleanup
+  local cleanup_status="$?"
+  rm -rf "${config_dir}"
+  if [[ "${status}" != "0" ]]; then
+    exit "${status}"
+  fi
+  exit "${cleanup_status}"
+}
+trap cleanup_sample EXIT
 
 reserve_ports() {
   local base=$((20000 + ((RANDOM + $$) % 1000) * 15 % 9000))
@@ -91,12 +105,12 @@ stream_a_host="${session_a_stream%:*}"
 stream_a_port="${session_a_stream##*:}"
 stream_b_host="${session_b_stream%:*}"
 stream_b_port="${session_b_stream##*:}"
-bingo_redis_key_prefix="${BINGO_REDIS_KEY_PREFIX:-bingo:java:${RANDOM}:$$:}"
+bingo_redis_key_prefix="bingo:java:${RANDOM}:$$:"
 zlink_redis_start_scoped_assign redis_container_id redis_port \
   "zlink-redis-java-sample-bingo" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-BINGO_REDIS_ENDPOINT="127.0.0.1:${redis_port}"
-redis_host="${BINGO_REDIS_ENDPOINT%:*}"
-redis_port="${BINGO_REDIS_ENDPOINT##*:}"
+redis_endpoint="127.0.0.1:${redis_port}"
+redis_host="${redis_endpoint%:*}"
+redis_port="${redis_endpoint##*:}"
 wait_port "${redis_host}" "${redis_port}"
 write_config() {
   local path="$1" role_key="$2" role_value="$3"
@@ -115,7 +129,7 @@ playASpotRouterEndpoint=tcp://${play_a_router_host}:${play_a_router_port}
 playBSpotRouterEndpoint=tcp://${play_b_router_host}:${play_b_router_port}
 sessionAStreamEndpoint=tcp://${stream_a_host}:${stream_a_port}
 sessionBStreamEndpoint=tcp://${stream_b_host}:${stream_b_port}
-redisEndpoint=${BINGO_REDIS_ENDPOINT}
+redisEndpoint=${redis_endpoint}
 redisKeyPrefix=${bingo_redis_key_prefix}
 logDirectory=${flow_log_dir}
 ${role_key}=${role_value}

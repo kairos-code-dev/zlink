@@ -17,7 +17,7 @@
 | OBS-B2 | `deferred` | room 부하를 만들지 않고 transfer 계기의 횟수와 구간을 계약값에 대조하지 않는다(`E2E-CP-63`). |
 | OBS-B3 | `deferred` | fan-out 1:N 값을 대조하지 않으며 Redis lease 지연 주입도 없다(`E2E-CP-11`, `E2E-CP-63`). |
 | OBS-B4 | `deferred` | meter가 꺼진 app collector의 빈 결과만 확인해 framework 내부 무적재를 판별하지 못한다(`E2E-CP-63`). |
-| OBS-C1 | `deferred` | draining row 삭제와 생성 요청 실패도 성공으로 받아들일 수 있어 연결 유지 계약을 판별하지 못한다(`E2E-CP-61`). |
+| OBS-C1 | `deferred` | typed draining row 유지, 기존 route 요청 8/8, owner lease 갱신, drain state 전이와 명시적 create 거절은 검증한다. 역할별 process 배치 gap이 남아 있다(`E2E-CP-03`). |
 | OBS-C2 | `deferred` | actor 이동 뒤 ping은 확인하지만 bound-session push 연속성과 pending request 결과를 확인하지 않는다(`E2E-CP-11`). |
 | OBS-C3 | `deferred` | release-and-recreate 절반만 실행하고 row 해제 뒤 재생성을 기존 row 반환과 구분하지 못한다(`E2E-CP-63`). |
 | OBS-C4 | `deferred` | 강제 종료 통지와 public `closeReason` 검사는 동작한다. 역할별 process 배치 gap이 남아 있다(`E2E-CP-03`). |

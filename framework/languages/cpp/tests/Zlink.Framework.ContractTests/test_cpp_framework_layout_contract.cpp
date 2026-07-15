@@ -598,6 +598,52 @@ bool runner_generated_config_files_are_private_and_cleaned (
     return ok;
 }
 
+/* 공통 설정 정책 §2.1과 Config 11 §2: server 역할은 설정 값으로 한 실행 파일을
+ * 전환하지 않고 역할별 진입점으로 구성한다. Client 시나리오도 역할 host와 분리한다. */
+bool observability_ops_uses_role_specific_entrypoints (const std::filesystem::path &root)
+{
+    const auto scenario = root / "e2e/ObservabilityOps";
+    bool ok = true;
+    for (const auto &relative : {
+           "Server/Session/main.cpp",
+           "Server/Play/main.cpp",
+           "Server/OrderWorkflow/main.cpp",
+           "Client/main.cpp",
+           "Client/Scenarios/obs_a1_scenario.hpp",
+         }) {
+        if (!std::filesystem::is_regular_file (scenario / relative)) {
+            std::cerr << "ObservabilityOps requires a role-specific entrypoint: "
+                      << (scenario / relative) << '\n';
+            ok = false;
+        }
+    }
+
+    std::ifstream cmake_input (root / "CMakeLists.txt");
+    const std::string cmake ((std::istreambuf_iterator<char> (cmake_input)),
+                             std::istreambuf_iterator<char> ());
+    for (const auto *target : {
+           "zlink_cpp_e2e_observability_ops_session",
+           "zlink_cpp_e2e_observability_ops_play",
+           "zlink_cpp_e2e_observability_ops_order_workflow",
+           "zlink_cpp_e2e_observability_ops_client",
+         }) {
+        if (cmake.find (target) == std::string::npos) {
+            std::cerr << "ObservabilityOps CMake target is missing: " << target << '\n';
+            ok = false;
+        }
+    }
+
+    std::ifstream runner_input (scenario / "run_e2e.sh");
+    const std::string runner ((std::istreambuf_iterator<char> (runner_input)),
+                              std::istreambuf_iterator<char> ());
+    if (runner.find ("zlink_cpp_e2e_observability_ops_server") != std::string::npos
+        || runner.find ('\"' + std::string ("role") + '\"') != std::string::npos) {
+        std::cerr << "ObservabilityOps must not select server roles through one binary/config key\n";
+        ok = false;
+    }
+    return ok;
+}
+
 bool sample_server_code_does_not_block_on_task_result (const std::filesystem::path &root)
 {
     bool ok = true;
@@ -1560,6 +1606,7 @@ int main ()
     ok &= sample_server_code_does_not_block_on_task_result (root);
     ok &= sample_and_e2e_code_does_not_read_the_environment (root);
     ok &= runner_generated_config_files_are_private_and_cleaned (root);
+    ok &= observability_ops_uses_role_specific_entrypoints (root);
     ok &= file_does_not_contain (
       root / "e2e/run_e2e_all.sh", "exec env E2E_START_ORDER=",
       "the aggregate E2E runner must pass start order as a runner option, not an environment variable");

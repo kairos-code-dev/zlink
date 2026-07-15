@@ -161,6 +161,10 @@ final class SpotActivation
             drainActorLifecycleEvents();
             return;
         }
+        if (info.event() == ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE) {
+            drainUnhandledActorJoinsAsync().exceptionally(error -> null);
+            return;
+        }
         context.enqueueDispatch(() -> dispatchEventAsync(info)
             .whenComplete((ignored, error) -> {
                 for (ZLinkBackendActorReceived actorMessage : info.actorMessages()) {
@@ -219,8 +223,8 @@ final class SpotActivation
     }
 
     void drainPolledDispatchQueues() {
+        drainUnhandledActorJoinsAsync().exceptionally(error -> null);
         context.enqueueDispatch(() -> drainRoutesAsync()
-            .thenCompose(ignored -> drainUnhandledActorJoinsAsync())
             .thenCompose(ignored -> drainActorLifecycleEvents()));
     }
 
@@ -540,12 +544,11 @@ final class SpotActivation
                 ZLinkMessage.fromEncoded(
                     ZLinkMessagePayloads.encoded(payload),
                     host.serializerForSpot()))),
-            actor -> context.enqueueDispatch(() ->
-                host.notifySpotActorLifecycleAndSuppressBackendEvent(
-                    spot,
-                    actor,
-                    backendSpot.routingId(),
-                    true)));
+            actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
+                spot,
+                actor,
+                backendSpot.routingId(),
+                true));
     }
 
     @Override

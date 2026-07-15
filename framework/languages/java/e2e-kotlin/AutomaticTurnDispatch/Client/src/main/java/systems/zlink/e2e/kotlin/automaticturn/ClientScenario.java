@@ -20,6 +20,7 @@ import systems.zlink.e2e.kotlin.automaticturn.scenarios.AtdD4SessionRelayActorAw
 import systems.zlink.e2e.kotlin.automaticturn.scenarios.AtdE1TimeoutScenario;
 import systems.zlink.e2e.kotlin.automaticturn.scenarios.AtdE2CancellationScenario;
 import systems.zlink.e2e.kotlin.automaticturn.scenarios.AtdE3ShutdownRecoveryScenario;
+import systems.zlink.e2e.kotlin.automaticturn.scenarios.TdEJoinScenario;
 import systems.zlink.e2e.kotlin.automaticturn.support.ClientStreamSupport;
 import systems.zlink.e2e.kotlin.automaticturn.support.ScenarioAssert;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
@@ -29,7 +30,8 @@ public final class ClientScenario {
     }
 
     public static void run(String scenario) {
-        if ("ATD-C1".equals(scenario) || "ATD-C2".equals(scenario) || "ATD-E1".equals(scenario)) {
+        if ("ATD-C1".equals(scenario) || "ATD-C2".equals(scenario) || "ATD-E1".equals(scenario)
+            || "TD-E2".equals(scenario) || "TD-E3".equals(scenario)) {
             runSingleConnectorScenario(scenario);
             return;
         }
@@ -58,6 +60,8 @@ public final class ClientScenario {
                 case "ATD-C1" -> AtdC1TimerIsolationScenario.run(connector);
                 case "ATD-C2" -> AtdC2TimerReentryScenario.run(connector);
                 case "ATD-E1" -> AtdE1TimeoutScenario.run(connector);
+                case "TD-E2" -> TdEJoinScenario.runUserSpotJoin(connector);
+                case "TD-E3" -> TdEJoinScenario.runOppositeUserSpotJoins(connector);
                 default -> throw new IllegalArgumentException("unknown AutomaticTurnDispatch single-connector scenario: " + scenario);
             }
         } finally {

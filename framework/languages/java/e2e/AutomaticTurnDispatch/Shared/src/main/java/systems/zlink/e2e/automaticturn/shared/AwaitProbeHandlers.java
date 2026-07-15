@@ -585,6 +585,33 @@ public final class AwaitProbeHandlers {
         }
     }
 
+    public static final class SpotActorJoinHandler
+        implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor,
+            Contracts.ActorJoinReq, Contracts.ActorJoinRes> {
+        private final EvidenceStore evidence;
+
+        public SpotActorJoinHandler(EvidenceStore evidence) {
+            this.evidence = evidence;
+        }
+
+        @Override
+        public CompletionStage<Contracts.ActorJoinRes> handle(
+            AwaitProbeSpot spot,
+            AwaitActor actor,
+            ZLinkSpotActorRequestContext context,
+            Contracts.ActorJoinReq request) {
+            return actor.context().joinSpot(RoutingId.from(request.spotRid()), "join")
+                .timeout(Duration.ofSeconds(5))
+                .submit()
+                .thenApply(joined -> {
+                    evidence.record("actor-joined", request.requestId(),
+                        "actor=" + joinedActorId(joined) + ";spot=" + request.spotRid());
+                    return new Contracts.ActorJoinRes(
+                        "TD-E", request.requestId(), actor.actorId(), "joined");
+                });
+        }
+    }
+
     private static CompletionStage<Contracts.ActorAwaitRes> actorAwait(
         systems.zlink.framework.spots.ZLinkSpotOutbound outbound,
         RoutingId spotRid,

@@ -227,6 +227,49 @@ public final class AutomaticTurnDispatchScenarioSupport {
             "actor-fast-completed"), "actor=" + actorB);
     }
 
+    public void runUserSpotJoin(ZLinkStreamConnector connector) throws Exception {
+        String requestId = "tde2-" + System.nanoTime();
+        String spotA = requestId + "-spot-a";
+        String spotB = requestId + "-spot-b";
+        String actorA = requestId + "-actor-a";
+        String actorB = requestId + "-actor-b";
+        ensureSpot(connector, spotA);
+        ensureSpot(connector, spotB);
+        bindActors(connector, spotA, actorA, actorB, "TD-E2");
+        joinActor(connector, requestId + "-prepare-a", actorA, spotA);
+        joinActor(connector, requestId + "-prepare-b", actorB, spotA);
+
+        Contracts.ActorJoinRes joined = joinActor(
+            connector, requestId + "-join", actorA, spotB);
+        ensure(actorA.equals(joined.actorId()), "TD-E2 joined actor mismatch");
+        ensure("joined".equals(joined.marker()), "TD-E2 join marker mismatch");
+    }
+
+    public void runOppositeUserSpotJoins(ZLinkStreamConnector connector) throws Exception {
+        String requestId = "tde3-" + System.nanoTime();
+        String spotA = requestId + "-spot-a";
+        String spotB = requestId + "-spot-b";
+        String actorA = requestId + "-actor-a";
+        String actorB = requestId + "-actor-b";
+        ensureSpot(connector, spotA);
+        ensureSpot(connector, spotB);
+        bindActors(connector, spotA, actorA, actorB, "TD-E3");
+        joinActor(connector, requestId + "-prepare-a", actorA, spotA);
+        joinActor(connector, requestId + "-prepare-b-on-a", actorB, spotA);
+        joinActor(connector, requestId + "-prepare-b", actorB, spotB);
+
+        CompletionStage<Contracts.ActorJoinRes> aToB = requestActorJoin(
+            connector, requestId + "-a-to-b", actorA, spotB);
+        CompletionStage<Contracts.ActorJoinRes> bToA = requestActorJoin(
+            connector, requestId + "-b-to-a", actorB, spotA);
+        Contracts.ActorJoinRes joinedA = aToB.toCompletableFuture().join();
+        Contracts.ActorJoinRes joinedB = bToA.toCompletableFuture().join();
+        ensure(actorA.equals(joinedA.actorId()), "TD-E3 A to B actor mismatch");
+        ensure(actorB.equals(joinedB.actorId()), "TD-E3 B to A actor mismatch");
+        ensure("joined".equals(joinedA.marker()), "TD-E3 A to B marker mismatch");
+        ensure("joined".equals(joinedB.marker()), "TD-E3 B to A marker mismatch");
+    }
+
     public void runTimerIsolation(ZLinkStreamConnector connector) throws Exception {
         String requestId = "atdc1-" + System.nanoTime();
         Map<String, String> metadata = Map.of(
@@ -762,13 +805,54 @@ public final class AutomaticTurnDispatchScenarioSupport {
         ZLinkStreamConnector connector,
         String requestId,
         String actorId) throws Exception {
-        Contracts.ActorJoinRes reply = connector
-            .request(new Contracts.ActorJoinReq(requestId, Contracts.TARGET_SPOT))
-            .metadata(Contracts.ACTOR_ID_METADATA, actorId)
-            .timeout(REQUEST_TIMEOUT)
-            .submit(Contracts.ActorJoinRes.class).toCompletableFuture().join();
+        Contracts.ActorJoinRes reply = joinActor(
+            connector, requestId, actorId, Contracts.TARGET_SPOT);
         ensure(actorId.equals(reply.actorId()), "ATD-B1 join actor mismatch");
         ensure("joined".equals(reply.marker()), "ATD-B1 join marker mismatch");
+    }
+
+    private Contracts.ActorJoinRes joinActor(
+        ZLinkStreamConnector connector,
+        String requestId,
+        String actorId,
+        String targetSpotRid) throws Exception {
+        return requestActorJoin(connector, requestId, actorId, targetSpotRid)
+            .toCompletableFuture().join();
+    }
+
+    private CompletionStage<Contracts.ActorJoinRes> requestActorJoin(
+        ZLinkStreamConnector connector,
+        String requestId,
+        String actorId,
+        String targetSpotRid) {
+        return connector
+            .request(new Contracts.ActorJoinReq(requestId, targetSpotRid))
+            .metadata(Contracts.ACTOR_ID_METADATA, actorId)
+            .timeout(REQUEST_TIMEOUT)
+            .submit(Contracts.ActorJoinRes.class);
+    }
+
+    private void ensureSpot(ZLinkStreamConnector connector, String spotRid) {
+        Contracts.EnsureSpotRes ensured = connector
+            .request(new Contracts.EnsureSpotReq(spotRid))
+            .metadata(Contracts.TARGET_NODE_RID_METADATA, Contracts.PLAY_NODE_A)
+            .timeout(REQUEST_TIMEOUT)
+            .submit(Contracts.EnsureSpotRes.class).toCompletableFuture().join();
+        ensure(spotRid.equals(ensured.spotRid()), "ensured spot mismatch: " + spotRid);
+    }
+
+    private void bindActors(
+        ZLinkStreamConnector connector,
+        String spotRid,
+        String actorA,
+        String actorB,
+        String scenarioId) {
+        Contracts.BindActorsRes bind = connector
+            .request(new Contracts.BindActorsReq(spotRid, actorA, actorB))
+            .timeout(REQUEST_TIMEOUT)
+            .submit(Contracts.BindActorsRes.class).toCompletableFuture().join();
+        ensure(actorA.equals(bind.actorA()), scenarioId + " actor A bind mismatch");
+        ensure(actorB.equals(bind.actorB()), scenarioId + " actor B bind mismatch");
     }
 
     private void runScenario(

@@ -490,25 +490,38 @@ start_initial_role() {
   pids+=("$!")
 }
 
+wait_initial_role() {
+  case "$1" in
+    delay)
+      wait_port delay "${DELAY_ENDPOINT}"
+      ;;
+    play-a)
+      wait_port play-a-route "${ROUTE_A_ENDPOINT}"
+      wait_port play-a-spot "${SPOT_A_ENDPOINT}"
+      wait_http play-a-http "${PLAY_A_HTTP}"
+      ;;
+    play-b)
+      wait_port play-b-route "${ROUTE_B_ENDPOINT}"
+      wait_port play-b-spot "${SPOT_B_ENDPOINT}"
+      wait_http play-b-http "${PLAY_B_HTTP}"
+      ;;
+    session)
+      wait_port session-route "${SESSION_ROUTE_ENDPOINT}"
+      wait_port session-spot "${SESSION_SPOT_ENDPOINT}"
+      wait_port session-stream "${STREAM_ENDPOINT}"
+      wait_http session-http "${SESSION_HTTP}"
+      ;;
+  esac
+}
+
 static_checks
 gradle_run installDist
 
 mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles delay play-a play-b session)
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_initial_role "${role}"
+  wait_initial_role "${role}"
 done
-
-wait_port delay "${DELAY_ENDPOINT}"
-wait_port play-a-route "${ROUTE_A_ENDPOINT}"
-wait_port play-a-spot "${SPOT_A_ENDPOINT}"
-wait_http play-a-http "${PLAY_A_HTTP}"
-wait_port play-b-route "${ROUTE_B_ENDPOINT}"
-wait_port play-b-spot "${SPOT_B_ENDPOINT}"
-wait_http play-b-http "${PLAY_B_HTTP}"
-wait_port session-route "${SESSION_ROUTE_ENDPOINT}"
-wait_port session-spot "${SESSION_SPOT_ENDPOINT}"
-wait_port session-stream "${STREAM_ENDPOINT}"
-wait_http session-http "${SESSION_HTTP}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 assert_readiness
 

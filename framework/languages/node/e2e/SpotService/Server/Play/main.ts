@@ -1,6 +1,6 @@
 import { startPlayHost } from './play-host-factory';
 
-startPlayHost(process.argv.slice(2)).catch((error: unknown) => {
+startPlayHost().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
 });

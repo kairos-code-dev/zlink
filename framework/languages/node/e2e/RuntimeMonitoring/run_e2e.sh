@@ -6,6 +6,7 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-all}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -66,6 +67,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER_ID" ]]; then
     docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
   fi
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 || "$background_failure" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
@@ -80,6 +82,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 start_server() {
   local name="$1"
@@ -172,7 +176,7 @@ start_configured_server() {
   local name="$1"
   local main="$2"
   shift 2
-  local config="$LOG_DIR/$name.config.json"
+  local config="$CONFIG_DIR/$name.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
@@ -201,7 +205,7 @@ start_configured_server svc-b "$FILTERED_SERVICE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_B_URL" svc-b
 
-node "$ROOT_DIR/write-config.mjs" "$LOG_DIR/svc-b-replacement.config.json" \
+node "$ROOT_DIR/write-config.mjs" "$CONFIG_DIR/svc-b-replacement.config.json" \
   --rid svc-b \
   --http-url "$SVC_B_REPLACEMENT_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
@@ -233,7 +237,8 @@ start_configured_server trigger "$TRIGGER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$TRIGGER_URL" trigger
 
-node "$CLIENT_MAIN" \
+CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
+node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --trigger-url "$TRIGGER_URL" \
   --service-url "$SVC_URL" \
   --service-b-url "$SVC_B_URL" \
@@ -244,12 +249,13 @@ node "$CLIENT_MAIN" \
   --service-b-spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
   --service-b-spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
   --service-main "$SERVICE_MAIN" \
-  --service-b-config "$LOG_DIR/svc-b.config.json" \
+  --service-b-config "$CONFIG_DIR/svc-b.config.json" \
   --replacement-service-url "$SVC_B_REPLACEMENT_URL" \
   --replacement-service-channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \
-  --replacement-service-config "$LOG_DIR/svc-b-replacement.config.json" \
+  --replacement-service-config "$CONFIG_DIR/svc-b-replacement.config.json" \
   --log-dir "$LOG_DIR" \
-  --scenario "$SCENARIO" \
+  --scenario "$SCENARIO"
+node "$CLIENT_MAIN" --config "$CLIENT_CONFIG" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

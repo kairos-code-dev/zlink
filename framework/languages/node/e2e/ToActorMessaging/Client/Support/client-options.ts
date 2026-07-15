@@ -6,21 +6,15 @@ export interface ClientOptions {
   readonly scenario: string;
 }
 
-export function parseClientOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const key = args[index]?.replace(/^--/, '');
-    const value = args[index + 1];
-    if (key === undefined || value === undefined) {
-      throw new Error(`Missing value for '${args[index]}'.`);
-    }
-    values.set(key, value);
-  }
+export function parseClientOptions(value: unknown): ClientOptions {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Client configuration must be an object.');
+  const values = value as Record<string, unknown>;
+  const optional = (key: string, fallback: string): string => typeof values[key] === 'string' ? values[key] as string : fallback;
   return {
-    actorUrl: values.get('actor-url') ?? 'http://127.0.0.1:0',
-    callerUrl: values.get('caller-url') ?? 'http://127.0.0.1:0',
-    sessionUrl: values.get('session-url') ?? 'http://127.0.0.1:0',
-    sessionStreamEndpoint: values.get('session-stream-endpoint') ?? 'ws://127.0.0.1:0',
-    scenario: values.get('scenario') ?? 'all'
+    actorUrl: optional('actorUrl', 'http://127.0.0.1:0'),
+    callerUrl: optional('callerUrl', 'http://127.0.0.1:0'),
+    sessionUrl: optional('sessionUrl', 'http://127.0.0.1:0'),
+    sessionStreamEndpoint: optional('sessionStreamEndpoint', 'ws://127.0.0.1:0'),
+    scenario: optional('scenario', 'all')
   };
 }

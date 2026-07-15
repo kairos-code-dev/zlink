@@ -1,4 +1,4 @@
-import { browserE2eArgs, runBrowserE2e } from '../../browser-client-runtime';
+import { browserE2eConfig, runBrowserE2e } from '../../browser-client-runtime';
 import { runTaA1 } from './Scenarios/ta-a1-bound-no-bind-scenario';
 import { runTaA2 } from './Scenarios/ta-a2-unbound-no-bind-scenario';
 import { runTaA3 } from './Scenarios/ta-a3-no-bind-then-bind-scenario';
@@ -20,7 +20,7 @@ const scenarios: Record<string, (options: ClientOptions) => Promise<void>> = {
 };
 
 async function main(): Promise<void> {
-  const options = parseClientOptions(browserE2eArgs());
+  const options = parseClientOptions(await browserE2eConfig());
   if (options.scenario === 'all') {
     for (const scenario of Object.values(scenarios)) await scenario(options);
   } else {

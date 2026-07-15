@@ -7,6 +7,7 @@ source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-full}"
 CHILD_RUN="${2:-}"
 if [[ "$CHILD_RUN" != "--child-run" && ("$SCENARIO" == "full" || "$SCENARIO" == "all") ]]; then
@@ -37,7 +38,7 @@ start_configured_server() {
   local name="$1"
   local main="$2"
   shift 2
-  local config="$LOG_DIR/$name.config.json"
+  local config="$CONFIG_DIR/$name.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
@@ -163,11 +164,14 @@ cleanup() {
   stop_live_pids
   wait_all_pids_ignoring_status
   remove_redis_container
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     tail_failure_logs
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 echo "log_dir=$LOG_DIR"
 
@@ -360,10 +364,12 @@ if needs_secondary_session; then
 fi
 
 if [[ "$CLIENT_SCENARIO" != "ATD-E3" ]]; then
+  CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
+    --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --scenario "$CLIENT_SCENARIO"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
-    --session-a-stream-endpoint "$SESSION_STREAM" \
-    --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario "$CLIENT_SCENARIO" \
+    --config "$CLIENT_CONFIG" \
     >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
   cat "$LOG_DIR/client.stdout.log"
@@ -373,12 +379,12 @@ fi
 if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
   SHUTDOWN_ID="ATD-E3-$(date +%s)-$$"
   SHUTDOWN_SPOT="await-shutdown-${RUN_ID//[^a-zA-Z0-9]/}"
+  SHUTDOWN_WAIT_CONFIG="$CONFIG_DIR/client-shutdown-wait.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$SHUTDOWN_WAIT_CONFIG" \
+    --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --scenario shutdown-wait --request-id "$SHUTDOWN_ID" --spot-rid "$SHUTDOWN_SPOT"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
-    --session-a-stream-endpoint "$SESSION_STREAM" \
-    --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario shutdown-wait \
-    --request-id "$SHUTDOWN_ID" \
-    --spot-rid "$SHUTDOWN_SPOT" \
+    --config "$SHUTDOWN_WAIT_CONFIG" \
     >"$LOG_DIR/client-shutdown-wait.stdout.log" 2>"$LOG_DIR/client-shutdown-wait.stderr.log" &
   SHUTDOWN_CLIENT_PID=$!
   wait_file_contains \
@@ -454,12 +460,12 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
     wait_health "$SESSION_B_URL" session-b "$SESSION_B_PID"
   fi
 
+  SHUTDOWN_RECOVERY_CONFIG="$CONFIG_DIR/client-shutdown-recovery.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$SHUTDOWN_RECOVERY_CONFIG" \
+    --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --scenario shutdown-recovery --request-id "${SHUTDOWN_ID}-recovery" --spot-rid "$SHUTDOWN_SPOT"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
-    --session-a-stream-endpoint "$SESSION_STREAM" \
-    --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario shutdown-recovery \
-    --request-id "${SHUTDOWN_ID}-recovery" \
-    --spot-rid "$SHUTDOWN_SPOT" \
+    --config "$SHUTDOWN_RECOVERY_CONFIG" \
     >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
   cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
   echo "scenario ATD-E3 passed" | tee -a "$LOG_DIR/client-shutdown-recovery.stdout.log"

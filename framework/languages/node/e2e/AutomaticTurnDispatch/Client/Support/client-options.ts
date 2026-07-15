@@ -6,31 +6,27 @@ export interface ClientOptions {
   readonly spotRid?: string;
 }
 
-export function parseClientOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--')) {
-      continue;
-    }
-    if (i + 1 >= args.length) {
-      throw new Error(`Missing value for ${key}.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
+export function parseClientOptions(value: unknown): ClientOptions {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Client configuration must be an object.');
+  const values = value as Record<string, unknown>;
   return {
-    sessionAStreamEndpoint: required(values, 'session-a-stream-endpoint'),
-    sessionBStreamEndpoint: required(values, 'session-b-stream-endpoint'),
-    scenario: values.get('scenario') ?? 'full',
-    requestId: values.get('request-id'),
-    spotRid: values.get('spot-rid')
+    sessionAStreamEndpoint: required(values, 'sessionAStreamEndpoint'),
+    sessionBStreamEndpoint: required(values, 'sessionBStreamEndpoint'),
+    scenario: optional(values, 'scenario') ?? 'full',
+    requestId: optional(values, 'requestId'),
+    spotRid: optional(values, 'spotRid')
   };
 }
 
-function required(values: ReadonlyMap<string, string>, key: string): string {
-  const value = values.get(key);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${key} is required.`);
-  }
+function required(values: Record<string, unknown>, key: string): string {
+  const value = values[key];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`Configuration value '${key}' is required.`);
+  return value;
+}
+
+function optional(values: Record<string, unknown>, key: string): string | undefined {
+  const value = values[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error(`Configuration value '${key}' must be a string.`);
   return value;
 }

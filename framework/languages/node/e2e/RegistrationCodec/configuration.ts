@@ -6,11 +6,10 @@ const REGISTRATION_CODEC_OPTIONS = Symbol.for('REGISTRATION_CODEC_OPTIONS');
 
 function createRegistrationCodecConfigurationModule<T>(validate: (value: unknown) => T): DynamicModule {
   const args = process.argv.slice(2);
-  const index = args.indexOf('--config');
-  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) {
-    throw new Error('--config <path> is required.');
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) {
+    throw new Error('--config <path> is the only supported framework host argument.');
   }
-  const configPath = args[index + 1];
+  const configPath = args[1];
   class RegistrationCodecConfigurationModule {}
   Module({})(RegistrationCodecConfigurationModule);
   return {

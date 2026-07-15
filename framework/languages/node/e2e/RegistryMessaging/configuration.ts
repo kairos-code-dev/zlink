@@ -6,9 +6,8 @@ const REGISTRY_MESSAGING_OPTIONS = Symbol.for('@zlink-systems/e2e-registry-messa
 
 function createRegistryMessagingConfigurationModule<T>(validate: (value: unknown) => T): DynamicModule {
   const args = process.argv.slice(2);
-  const index = args.indexOf('--config');
-  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) throw new Error('--config <path> is required.');
-  const configPath = args[index + 1];
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) throw new Error('--config <path> is the only supported framework host argument.');
+  const configPath = args[1];
   class RegistryMessagingConfigurationModule {}
   Module({})(RegistryMessagingConfigurationModule);
   return {

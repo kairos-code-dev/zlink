@@ -7,6 +7,7 @@ source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-all}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -38,11 +39,14 @@ cleanup() {
   stop_live_pids
   wait_all_pids_ignoring_status
   remove_redis_container
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     tail_failure_logs
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 kill_pid() {
   local pid="$1"
@@ -115,7 +119,7 @@ CLIENT_MAIN="$ROOT_DIR/Client/dist/DiscoveryRegistryHa/Client/main.js"
 
 start_configured_server() {
   local name="$1"; local main="$2"; shift 2
-  local config="$LOG_DIR/$name.config.json"
+  local config="$CONFIG_DIR/$name.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
@@ -186,12 +190,12 @@ run_client() {
   local scenario="$1"
   local stdout="$2"
   local stderr="$3"
+  local client_config="$CONFIG_DIR/client-${scenario}.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$client_config" \
+    --topology-url "$LOCATION_PROBE_URL" --consumer-url "$CONSUMER_URL" \
+    --provider-a-url "$PROVIDER_A_URL" --provider-b-url "$PROVIDER_B_URL" --scenario "$scenario"
   node "$CLIENT_MAIN" \
-    --topology-url "$LOCATION_PROBE_URL" \
-    --consumer-url "$CONSUMER_URL" \
-    --provider-a-url "$PROVIDER_A_URL" \
-    --provider-b-url "$PROVIDER_B_URL" \
-    --scenario "$scenario" \
+    --config "$client_config" \
     >"$stdout" 2>"$stderr"
 }
 

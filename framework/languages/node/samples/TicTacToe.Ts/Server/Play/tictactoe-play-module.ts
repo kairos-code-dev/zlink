@@ -31,6 +31,7 @@ function createTicTacToePlayModule() {
     'playSpotEndpoint',
     'playSpotPubSubEndpoint',
     'playStreamEndpoint',
+    'playEndpoints',
     'redisEndpoint',
     'redisKeyPrefix',
     'playSpotNodeRid',

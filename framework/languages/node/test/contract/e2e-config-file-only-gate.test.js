@@ -19,10 +19,139 @@ function sourceFiles(directory) {
   });
 }
 
-test('Node e2e application code receives configuration only through files and arguments', () => {
-  const offenders = sourceFiles(path.join(root, 'e2e'))
+test('Node sample and e2e application code does not read environment configuration', () => {
+  const applicationFiles = [
+    ...sourceFiles(path.join(root, 'e2e')),
+    ...sourceFiles(path.join(root, 'samples')).filter((file) =>
+      !file.includes(`${path.sep}Runner${path.sep}`) && path.basename(file) !== 'run-sample.mjs')
+  ];
+  const offenders = applicationFiles
     .filter((file) => /\bprocess\.env\b/.test(fs.readFileSync(file, 'utf8')))
     .map((file) => path.relative(root, file));
 
   assert.deepEqual(offenders, []);
+});
+
+test('Node configuration modules disable environment providers and reject extra host arguments', () => {
+  const applicationRoots = [path.join(root, 'samples'), path.join(root, 'e2e')];
+  const modules = applicationRoots
+    .flatMap(sourceFiles)
+    .filter((file) => /ConfigModule\.forRoot\(/.test(fs.readFileSync(file, 'utf8')));
+  const violations = [];
+
+  for (const file of modules) {
+    const source = fs.readFileSync(file, 'utf8');
+    for (const contract of [
+      ['ignoreEnvFile', /ignoreEnvFile:\s*true/],
+      ['skipProcessEnv', /skipProcessEnv:\s*true/],
+      ['typed provider', /inject:\s*\[ConfigService\]/],
+      ['config-only arguments', /args\.length\s*!==\s*2/]
+    ]) {
+      if (!contract[1].test(source)) violations.push(`${path.relative(root, file)}:${contract[0]}`);
+    }
+  }
+
+  assert.deepEqual(violations, []);
+});
+
+test('Node framework factories receive validated configuration through injection', () => {
+  const factories = [path.join(root, 'samples'), path.join(root, 'e2e')]
+    .flatMap(sourceFiles)
+    .filter((file) => /ZLinkModule\.forRootFactory\(/.test(fs.readFileSync(file, 'utf8')));
+  const offenders = factories
+    .filter((file) => !/inject:\s*\[[^\]]+\]/s.test(fs.readFileSync(file, 'utf8')))
+    .map((file) => path.relative(root, file));
+
+  assert.deepEqual(offenders, []);
+});
+
+test('Node framework hosts receive only one role configuration file path', () => {
+  const spotServiceRoot = path.join(root, 'e2e/SpotService');
+  const runner = fs.readFileSync(path.join(spotServiceRoot, 'run_e2e.sh'), 'utf8');
+  const hostEntries = sourceFiles(path.join(spotServiceRoot, 'Server'))
+    .filter((file) => path.basename(file) === 'main.ts');
+  const argumentDrivenHosts = hostEntries
+    .filter((file) => /process\.argv\.slice\(2\)/.test(fs.readFileSync(file, 'utf8')))
+    .map((file) => path.relative(root, file));
+
+  assert.deepEqual(argumentDrivenHosts, []);
+  assert.doesNotMatch(runner, /start_server[\s\S]*?--(?:rid|http-url|control-router-endpoint|stream-endpoint)\b/);
+  assert.match(runner, /start_server[\s\S]*?--config\b/);
+});
+
+test('Node sample runners do not dispatch sample-specific behavior by sample name', () => {
+  const sharedRunner = fs.readFileSync(path.join(root, 'samples/run-sample.mjs'), 'utf8');
+  const wrappers = fs.readdirSync(path.join(root, 'samples'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.endsWith('.Ts'))
+    .map((entry) => path.join(root, 'samples', entry.name, 'run_sample.sh'))
+    .filter((file) => fs.existsSync(file));
+
+  assert.doesNotMatch(sharedRunner, /sampleDefinitions\s*\[/);
+  assert.doesNotMatch(sharedRunner, /['"](?:Bingo|TicTacToe|SupportChat|DeliveryDispatch|GameQuest|ShoppingMall)\.Ts['"]\s*:/);
+  for (const wrapper of wrappers) {
+    assert.doesNotMatch(fs.readFileSync(wrapper, 'utf8'), /run-sample\.mjs['"]?\s+[A-Za-z]+\.Ts/);
+  }
+});
+
+test('Node topology sample runners write one configuration per server role', () => {
+  for (const sample of ['DeliveryDispatch.Ts', 'GameQuest.Ts', 'ShoppingMall.Ts', 'TicTacToe.Ts']) {
+    const runner = fs.readFileSync(path.join(root, 'samples', sample, 'Runner/sample-runner.mjs'), 'utf8');
+    assert.match(runner, /roleConfig\(/, sample);
+    assert.doesNotMatch(runner, /const configPath\s*=\s*ctx\.writeConfig/, sample);
+  }
+});
+
+test('Node clients that consume topology or file paths use typed configuration files', () => {
+  const nodeClients = [
+    'DiscoveryRegistryHa/Client/Support/client-options.ts',
+    'PubSub/Client/Support/client-options.ts',
+    'RegistrationCodec/Client/Support/client-options.ts',
+    'RegistryMessaging/Client/Support/client-options.ts',
+    'ResilienceLifecycle/Client/Support/client-options.ts',
+    'RuntimeMonitoring/Client/Support/client-options.ts'
+  ];
+  const browserClients = [
+    'AutomaticTurnDispatch/Client/main.ts',
+    'ObservabilityOps/Client/Support/scenario-support.ts',
+    'SpotActorTransfer/Client/Support/scenario-support.ts',
+    'SpotService/Client/main.ts',
+    'ToActorMessaging/Client/main.ts'
+  ];
+  const violations = [];
+  for (const client of nodeClients) {
+    const source = fs.readFileSync(path.join(root, 'e2e', client), 'utf8');
+    if (!/args\.length\s*!==\s*2/.test(source) || !/args\[0\]\s*!==\s*['"]--config['"]/.test(source)) {
+      violations.push(client);
+    }
+  }
+  for (const client of browserClients) {
+    const source = fs.readFileSync(path.join(root, 'e2e', client), 'utf8');
+    if (!/browserE2eConfig/.test(source) || /node:fs/.test(source)) violations.push(client);
+  }
+  const browserRunner = fs.readFileSync(path.join(root, 'scripts/browser-e2e/run-e2e-client.mjs'), 'utf8');
+  if (!/url\.pathname === ['"]\/config\.json['"]/.test(browserRunner)) violations.push('scripts/browser-e2e/run-e2e-client.mjs:/config.json');
+  assert.deepEqual(violations, []);
+});
+
+test('Node runners protect and remove generated configuration files', () => {
+  const e2eRoot = path.join(root, 'e2e');
+  const writers = sourceFiles(e2eRoot)
+    .filter((file) => path.basename(file) === 'write-config.mjs');
+  const writerViolations = writers
+    .filter((file) => !/mode:\s*0o600/.test(fs.readFileSync(file, 'utf8')))
+    .map((file) => path.relative(root, file));
+  const runnerViolations = [];
+
+  for (const writer of writers) {
+    const runner = path.join(path.dirname(writer), 'run_e2e.sh');
+    if (!fs.existsSync(runner)) continue;
+    const source = fs.readFileSync(runner, 'utf8');
+    if (!/CONFIG_DIR="\$\(mktemp -d\)"/.test(source)) runnerViolations.push(`${path.relative(root, runner)}:temporary directory`);
+    if (!/chmod 700 "\$CONFIG_DIR"/.test(source)) runnerViolations.push(`${path.relative(root, runner)}:directory mode`);
+    if (!/rm -rf "\$CONFIG_DIR"/.test(source)) runnerViolations.push(`${path.relative(root, runner)}:cleanup`);
+    if (/\$LOG_DIR\/[^"]*config\.json/.test(source)) runnerViolations.push(`${path.relative(root, runner)}:persistent configuration`);
+  }
+
+  assert.deepEqual(writerViolations, []);
+  assert.deepEqual(runnerViolations, []);
 });

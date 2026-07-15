@@ -20,6 +20,7 @@ import {
 } from '@zlink-systems/nestjs';
 import type { SpotPublishReq } from '../../Shared/messages';
 import { SpotMsg, SpotServiceNames, spotServicePacket } from '../../Shared/messages';
+import { createSpotServiceConfigurationModule, objectValues, optionalString, requiredString, stringList } from '../../configuration';
 import { EvidenceStore } from '../Play/Infrastructure/evidence-store';
 import { closeHttpServer, startHttpServer, type HttpRoute } from '../Play/Support/http-server';
 
@@ -33,11 +34,16 @@ interface GatewayOptions {
   readonly logDir: string;
 }
 
-export async function startGatewayHost(args: readonly string[]): Promise<void> {
-  const options = parseGatewayOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
-  evidence.add(`start|rid=${options.rid}`);
+const GATEWAY_OPTIONS = Symbol.for('SPOT_SERVICE_GATEWAY_OPTIONS');
+
+export async function startGatewayHost(): Promise<void> {
+  const configuration = createSpotServiceConfigurationModule(GATEWAY_OPTIONS, validateGatewayOptions);
+  const createEvidence = (options: GatewayOptions): EvidenceStore => {
+    fs.mkdirSync(options.logDir, { recursive: true });
+    const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+    evidence.add(`start|rid=${options.rid}`);
+    return evidence;
+  };
   let stopping = false;
 
   @Injectable()
@@ -63,8 +69,12 @@ export async function startGatewayHost(args: readonly string[]): Promise<void> {
   class GatewayModule {}
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [GATEWAY_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as GatewayOptions;
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -85,12 +95,14 @@ export async function startGatewayHost(args: readonly string[]): Promise<void> {
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      { provide: EvidenceStore, inject: [GATEWAY_OPTIONS], useFactory: createEvidence },
       GatewayPubSubReadiness
     ]
   })(GatewayModule);
 
   const app = await NestFactory.createApplicationContext(GatewayModule, { logger: false, abortOnError: false });
+  const options = app.get(GATEWAY_OPTIONS) as GatewayOptions;
+  const evidence = app.get(EvidenceStore);
   const publisher = app.get(ZLINK_SPOT_PUBLISHER_CLIENT, { strict: false }) as ZLinkSpotPublisherClient;
   const readiness = app.get(GatewayPubSubReadiness);
   const server = await startHttpServer(
@@ -144,41 +156,15 @@ function createGatewayEndpoints(
   ];
 }
 
-function parseGatewayOptions(args: readonly string[]): GatewayOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--')) {
-      continue;
-    }
-    if (i + 1 >= args.length) {
-      throw new Error(`Missing value for ${key}.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
-  const rid = required(values, 'rid');
+function validateGatewayOptions(value: unknown): GatewayOptions {
+  const values = objectValues(value);
   return {
-    rid,
-    httpUrl: required(values, 'http-url'),
-    spotRouterEndpoint: required(values, 'spot-router-endpoint'),
-    spotPubEndpoint: required(values, 'spot-pub-endpoint'),
-    spotPubPeers: splitList(values.get('spot-pub-peer')),
-    evidenceFile: values.get('evidence-file'),
-    logDir: required(values, 'log-dir')
+    rid: requiredString(values, 'rid'),
+    httpUrl: requiredString(values, 'httpUrl'),
+    spotRouterEndpoint: requiredString(values, 'spotRouterEndpoint'),
+    spotPubEndpoint: requiredString(values, 'spotPubEndpoint'),
+    spotPubPeers: stringList(values, 'spotPubPeers'),
+    evidenceFile: optionalString(values, 'evidenceFile'),
+    logDir: requiredString(values, 'logDir')
   };
-}
-
-function splitList(value: string | undefined): readonly string[] {
-  if (value === undefined || value.trim().length === 0) {
-    return [];
-  }
-  return value.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
-}
-
-function required(values: ReadonlyMap<string, string>, key: string): string {
-  const value = values.get(key);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${key} is required.`);
-  }
-  return value;
 }

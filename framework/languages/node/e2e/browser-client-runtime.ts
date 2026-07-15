@@ -17,6 +17,12 @@ function browserE2eArgs(): readonly string[] {
   return window.__zlinkE2eArgs ?? [];
 }
 
+async function browserE2eConfig<T>(): Promise<T> {
+  const response = await fetch('/config.json', { cache: 'no-store' });
+  if (!response.ok) throw new Error(`Browser E2E configuration request failed with status ${response.status}.`);
+  return await response.json() as T;
+}
+
 async function runBrowserE2e(name: string, scenario: () => Promise<void>): Promise<void> {
   window.__zlinkE2eResult = { name, status: 'running' };
   try {
@@ -31,6 +37,7 @@ async function runBrowserE2e(name: string, scenario: () => Promise<void>): Promi
 
 export {
   browserE2eArgs,
+  browserE2eConfig,
   runBrowserE2e
 };
 

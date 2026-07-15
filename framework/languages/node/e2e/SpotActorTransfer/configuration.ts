@@ -29,11 +29,10 @@ function createSpotActorTransferConfigurationModule<T>(
 }
 
 function readConfigPath(args: readonly string[]): string {
-  const index = args.indexOf('--config');
-  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) {
-    throw new Error('--config <path> is required.');
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) {
+    throw new Error('--config <path> is the only supported framework host argument.');
   }
-  return args[index + 1];
+  return args[1];
 }
 
 function readConfiguration(path: string): unknown {

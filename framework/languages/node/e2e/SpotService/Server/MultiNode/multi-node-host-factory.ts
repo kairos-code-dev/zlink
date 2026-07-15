@@ -5,7 +5,9 @@ import { ZLinkMessageFlowLogMode, type ZLinkActorClient, type ZLinkActorManager,
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
 import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
-import { parseMultiNodeOptions } from './Configuration/multi-node-options';
+import { createSpotServiceConfigurationModule } from '../../configuration';
+import { validateMultiNodeOptions } from './Configuration/multi-node-options';
+import type { MultiNodeOptions } from './Configuration/multi-node-options';
 import { createMultiNodeEndpoints } from './Endpoints/multi-node-endpoints';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import {
@@ -24,23 +26,31 @@ import {
 } from './Spots/multi-node-spots';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startMultiNodeHost(args: readonly string[]): Promise<void> {
-  const options = parseMultiNodeOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
-  MultiNodeSpotA.useEvidence(evidence);
-  MultiNodeSpotB.useEvidence(evidence);
-  MultiNodeEntrySpot.useEvidence(evidence);
-  let stopping = false;
+const MULTI_NODE_OPTIONS = Symbol.for('SPOT_SERVICE_MULTI_NODE_OPTIONS');
 
-  const isNodeA = options.rid === SpotServiceNames.multiSpotNodeA;
-  const routeChannel = isNodeA ? SpotServiceNames.multiRouteChannelA : SpotServiceNames.multiRouteChannelB;
+export async function startMultiNodeHost(): Promise<void> {
+  const configuration = createSpotServiceConfigurationModule(MULTI_NODE_OPTIONS, validateMultiNodeOptions);
+  const createEvidence = (options: MultiNodeOptions): EvidenceStore => {
+    fs.mkdirSync(options.logDir, { recursive: true });
+    const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+    MultiNodeSpotA.useEvidence(evidence);
+    MultiNodeSpotB.useEvidence(evidence);
+    MultiNodeEntrySpot.useEvidence(evidence);
+    return evidence;
+  };
+  let stopping = false;
 
   class MultiNodeModule {}
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [MULTI_NODE_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as MultiNodeOptions;
+          const isNodeA = options.rid === SpotServiceNames.multiSpotNodeA;
+          const routeChannel = isNodeA ? SpotServiceNames.multiRouteChannelA : SpotServiceNames.multiRouteChannelB;
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -93,7 +103,7 @@ export async function startMultiNodeHost(args: readonly string[]): Promise<void>
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      { provide: EvidenceStore, inject: [MULTI_NODE_OPTIONS], useFactory: createEvidence },
       MultiNodeCreateSpotAHandler,
       MultiNodeCreateSpotBHandler,
       MultiNodeEntrySpot,
@@ -110,6 +120,8 @@ export async function startMultiNodeHost(args: readonly string[]): Promise<void>
   })(MultiNodeModule);
 
   const app = await NestFactory.createApplicationContext(MultiNodeModule, { logger: false, abortOnError: false });
+  const options = app.get(MULTI_NODE_OPTIONS) as MultiNodeOptions;
+  const evidence = app.get(EvidenceStore);
   const spots = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
   const outbound = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
   const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;

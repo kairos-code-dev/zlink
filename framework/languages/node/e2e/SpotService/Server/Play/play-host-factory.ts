@@ -5,7 +5,9 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import type { ZLinkRouteClient, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotHandleResolver } from '@zlink-systems/framework';
 import { ZLINK_ROUTE_CLIENT, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
-import { parsePlayOptions } from './Configuration/play-options';
+import { createSpotServiceConfigurationModule } from '../../configuration';
+import { validatePlayOptions } from './Configuration/play-options';
+import type { PlayOptions } from './Configuration/play-options';
 import { createPlayEndpoints } from './Endpoints/play-endpoints';
 import { ChannelEchoHandler, ChannelNotifyHandler } from './Handlers/channel-handlers';
 import { ControlPingHandler, CreateSpotHandler, CrossRoleActorPushHandler, EnsureActorHandler } from './Handlers/control-handlers';
@@ -38,10 +40,13 @@ import {
 } from './Spots/scenario-spots';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startPlayHost(args: readonly string[]): Promise<void> {
-  const options = parsePlayOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+const PLAY_OPTIONS = Symbol.for('SPOT_SERVICE_PLAY_OPTIONS');
+
+export async function startPlayHost(): Promise<void> {
+  const configuration = createSpotServiceConfigurationModule(PLAY_OPTIONS, validatePlayOptions);
+  const createEvidence = (options: PlayOptions): EvidenceStore => {
+    fs.mkdirSync(options.logDir, { recursive: true });
+    const evidence = new EvidenceStore(options.rid, options.evidenceFile);
   ScenarioEntrySpot.useEvidence(evidence);
   ScenarioUserSpot.useEvidence(evidence);
   EntryActorPingHandler.useEvidence(evidence);
@@ -50,13 +55,19 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   ComplexActorHandler.useEvidence(evidence);
   EntryActorLeaveHandler.useEvidence(evidence);
   EntryActorDestroyHandler.useEvidence(evidence);
+    return evidence;
+  };
   let stopping = false;
 
   class PlayModule {}
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [PLAY_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as PlayOptions;
           const builder = zlinkFramework();
           builder
             .configureDispatch()
@@ -110,7 +121,7 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      { provide: EvidenceStore, inject: [PLAY_OPTIONS], useFactory: createEvidence },
       EvidenceDispatchErrorObserver,
       ChannelEchoHandler,
       ChannelNotifyHandler,
@@ -151,6 +162,8 @@ export async function startPlayHost(args: readonly string[]): Promise<void> {
   })(PlayModule);
 
   const app = await NestFactory.createApplicationContext(PlayModule, { logger: false, abortOnError: false });
+  const options = app.get(PLAY_OPTIONS) as PlayOptions;
+  const evidence = app.get(EvidenceStore);
   const spotManager = app.get(ZLINK_SPOT_MANAGER, { strict: false }) as ZLinkSpotManager;
   const spotOutbound = app.get(ZLINK_SPOT_OUTBOUND, { strict: false }) as ZLinkSpotOutbound;
   const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;

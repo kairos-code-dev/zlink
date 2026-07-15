@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-all}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -50,6 +51,7 @@ cleanup() {
     fi
   done
   wait "${pids[@]:-}" 2>/dev/null || true
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
@@ -61,6 +63,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 start_server() {
   local name="$1"
@@ -75,7 +79,7 @@ start_configured_server() {
   local name="$1"
   local main="$2"
   shift 2
-  local config="$LOG_DIR/$name.config.json"
+  local config="$CONFIG_DIR/$name.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
@@ -136,28 +140,29 @@ start_configured_server codec-requester "$CODEC_REQUESTER_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$CODEC_REQUESTER_URL" codec-requester
 
-INVALID_CONFIG="$LOG_DIR/invalid-duplicate.config.json"
+INVALID_CONFIG="$CONFIG_DIR/invalid-duplicate.config.json"
 node "$ROOT_DIR/write-config.mjs" "$INVALID_CONFIG" \
   --rid invalid-duplicate \
   --channel-endpoint "$INVALID_CHANNEL" \
   --invalid-case duplicate \
   --log-dir "$LOG_DIR"
 
-INVALID_HANDLER_GROUP_CONFIG="$LOG_DIR/invalid-handler-group.config.json"
+INVALID_HANDLER_GROUP_CONFIG="$CONFIG_DIR/invalid-handler-group.config.json"
 node "$ROOT_DIR/write-config.mjs" "$INVALID_HANDLER_GROUP_CONFIG" \
   --rid invalid-handler-group \
   --channel-endpoint "$INVALID_CHANNEL" \
   --invalid-case missing-handler-group \
   --log-dir "$LOG_DIR"
 
-INVALID_CHANNEL_KINDS_CONFIG="$LOG_DIR/invalid-channel-kinds.config.json"
+INVALID_CHANNEL_KINDS_CONFIG="$CONFIG_DIR/invalid-channel-kinds.config.json"
 node "$ROOT_DIR/write-config.mjs" "$INVALID_CHANNEL_KINDS_CONFIG" \
   --rid invalid-channel-kinds \
   --channel-endpoint "$INVALID_CHANNEL" \
   --invalid-case mixed-channel-kinds \
   --log-dir "$LOG_DIR"
 
-node "$CLIENT_MAIN" \
+CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
+node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --scenario "$SCENARIO" \
   --server-url "$MAIN_URL" \
   --json-only-url "$JSON_ONLY_URL" \
@@ -166,7 +171,8 @@ node "$CLIENT_MAIN" \
   --invalid-duplicate-config "$INVALID_CONFIG" \
   --invalid-handler-group-config "$INVALID_HANDLER_GROUP_CONFIG" \
   --invalid-channel-kinds-config "$INVALID_CHANNEL_KINDS_CONFIG" \
-  --log-dir "$LOG_DIR" \
+  --log-dir "$LOG_DIR"
+node "$CLIENT_MAIN" --config "$CLIENT_CONFIG" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

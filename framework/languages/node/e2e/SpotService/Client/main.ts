@@ -51,10 +51,10 @@ import { runSmG3 } from './Scenarios/sm-g3-scenario';
 import { runSmG4 } from './Scenarios/sm-g4-scenario';
 import { runSmQ9 } from './Scenarios/sm-q9-scenario';
 import { parseClientOptions } from './Support/client-options';
-import { browserE2eArgs, runBrowserE2e } from '../../browser-client-runtime';
+import { browserE2eConfig, runBrowserE2e } from '../../browser-client-runtime';
 
 async function main(): Promise<void> {
-  const options = parseClientOptions(browserE2eArgs());
+  const options = parseClientOptions(await browserE2eConfig());
   const scenarios: Record<string, () => Promise<void>> = {
     'SM-A1': () => runSmA1(options),
     'SM-A2': () => runSmA2(options),

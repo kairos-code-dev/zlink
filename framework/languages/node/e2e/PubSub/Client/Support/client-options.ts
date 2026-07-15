@@ -12,48 +12,43 @@ export interface ClientOptions {
 }
 
 export function parseClientOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string[]>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--') || i + 1 >= args.length) {
-      throw new Error(`Invalid argument '${key}'.`);
-    }
-    const bucket = values.get(key.slice(2)) ?? [];
-    bucket.push(args[++i]);
-    values.set(key.slice(2), bucket);
-  }
+  const values = readConfig(args);
 
   return {
-    publisherUrl: required(values, 'publisher-url'),
-    lateSubscriberUrl: required(values, 'late-subscriber-url'),
-    publisherEndpoint: required(values, 'publisher-endpoint'),
-    redisEndpoint: required(values, 'redis-endpoint'),
-    redisKeyPrefix: required(values, 'redis-key-prefix'),
-    publisherMain: required(values, 'publisher-main'),
-    subscriberMain: required(values, 'subscriber-main'),
-    logDir: required(values, 'log-dir'),
+    publisherUrl: required(values, 'publisherUrl'),
+    lateSubscriberUrl: required(values, 'lateSubscriberUrl'),
+    publisherEndpoint: required(values, 'publisherEndpoint'),
+    redisEndpoint: required(values, 'redisEndpoint'),
+    redisKeyPrefix: required(values, 'redisKeyPrefix'),
+    publisherMain: required(values, 'publisherMain'),
+    subscriberMain: required(values, 'subscriberMain'),
+    logDir: required(values, 'logDir'),
     scenario: optional(values, 'scenario', 'all'),
-    subscriberUrls: many(values, 'subscriber-url')
+    subscriberUrls: many(values, 'subscriberUrls')
   };
 }
 
-function required(values: Map<string, string[]>, name: string): string {
-  const bucket = values.get(name);
-  if (bucket === undefined || bucket.length === 0) {
-    throw new Error(`--${name} is required.`);
-  }
-  return bucket[bucket.length - 1];
+function readConfig(args: readonly string[]): Record<string, unknown> {
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) throw new Error('--config <path> is required.');
+  const document = JSON.parse(fs.readFileSync(args[1], 'utf8')) as { e2e?: unknown };
+  if (document.e2e === null || typeof document.e2e !== 'object' || Array.isArray(document.e2e)) throw new Error("Configuration section 'e2e' must be an object.");
+  return document.e2e as Record<string, unknown>;
 }
 
-function optional(values: Map<string, string[]>, name: string, fallback: string): string {
-  const bucket = values.get(name);
-  return bucket === undefined || bucket.length === 0 ? fallback : bucket[bucket.length - 1];
+function required(values: Record<string, unknown>, name: string): string {
+  const value = values[name];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`Configuration value 'e2e.${name}' is required.`);
+  return value;
 }
 
-function many(values: Map<string, string[]>, name: string): readonly string[] {
-  const bucket = values.get(name);
-  if (bucket === undefined || bucket.length === 0) {
-    throw new Error(`--${name} is required.`);
-  }
-  return bucket;
+function optional(values: Record<string, unknown>, name: string, fallback: string): string {
+  const value = values[name];
+  return typeof value === 'string' ? value : fallback;
 }
+
+function many(values: Record<string, unknown>, name: string): readonly string[] {
+  const value = values[name];
+  if (!Array.isArray(value) || value.length === 0 || value.some((entry) => typeof entry !== 'string')) throw new Error(`Configuration value 'e2e.${name}' must be a string array.`);
+  return value as string[];
+}
+import fs from 'node:fs';

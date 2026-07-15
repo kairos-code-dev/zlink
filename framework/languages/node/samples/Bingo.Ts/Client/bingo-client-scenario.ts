@@ -24,7 +24,7 @@ import type {
   SubmitBingoCardRes
 } from '../Shared/Contracts/messages';
 import { zlinkStreamAssert } from '@zlink-systems/stream-connector';
-import type { ZlinkStreamConnector } from '@zlink-systems/stream-connector';
+import type { ZlinkStreamConnector, ZlinkStreamMessage } from '@zlink-systems/stream-connector';
 
 type BingoRoomState = {
   roomId: string;

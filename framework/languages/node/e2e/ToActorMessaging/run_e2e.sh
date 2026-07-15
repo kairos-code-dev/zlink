@@ -7,6 +7,7 @@ source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-${2:-forward}}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -81,6 +82,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER_ID" ]]; then
     docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
   fi
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log; do
@@ -92,6 +94,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 start_server() {
   local name="$1"
@@ -107,7 +111,7 @@ start_configured_server() {
   local name="$1"
   local main="$2"
   shift 2
-  local config="$LOG_DIR/$name.config.json"
+  local config="$CONFIG_DIR/$name.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
@@ -208,12 +212,12 @@ done
 wait_topology
 
 run_client() {
+  local client_config="$CONFIG_DIR/client.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$client_config" \
+    --actor-url "$ACTOR_URL" --caller-url "$CALLER_URL" --session-url "$SESSION_URL" \
+    --session-stream-endpoint "$SESSION_STREAM_ENDPOINT" --scenario "$SCENARIO"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
-    --actor-url "$ACTOR_URL" \
-    --caller-url "$CALLER_URL" \
-    --session-url "$SESSION_URL" \
-    --session-stream-endpoint "$SESSION_STREAM_ENDPOINT" \
-    --scenario "$SCENARIO"
+    --config "$client_config"
 }
 
 if [[ "$SCENARIO" == "TA-B3" ]]; then

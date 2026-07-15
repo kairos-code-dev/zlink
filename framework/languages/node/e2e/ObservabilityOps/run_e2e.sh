@@ -31,6 +31,7 @@ esac
 
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -47,9 +48,12 @@ cleanup() {
   stop_live_pids
   wait_all_pids_ignoring_status
   remove_redis_container
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then tail_failure_logs; fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 if [[ "${OBSERVABILITY_OPS_SKIP_BUILD:-0}" != "1" ]]; then
   (cd "$NODE_ROOT" && npm run build >/dev/null)
@@ -94,7 +98,7 @@ WORKFLOW_MAIN="$ROOT_DIR/Server/Workflow/dist/Server/Workflow/main.js"
 
 write_role_config() {
   local name="$1" url="$2" router="$3" pubsub="$4"; shift 4
-  node "$ROOT_DIR/write-config.mjs" "$LOG_DIR/$name.config.json" \
+  node "$ROOT_DIR/write-config.mjs" "$CONFIG_DIR/$name.config.json" \
     --rid "$name" --http-url "$url" \
     --redis-endpoint "$REDIS_ENDPOINT" --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --router-endpoint "$router" --pubsub-endpoint "$pubsub" \
@@ -105,7 +109,7 @@ start_play() {
   local name="$1" url="$2" router="$3" pubsub="$4" metrics_enabled=true
   [[ "$SCENARIO" == "OBS-B4" && "$name" == "play-a" ]] && metrics_enabled=false
   write_role_config "$name" "$url" "$router" "$pubsub" --metrics-enabled "$metrics_enabled"
-  start_server "$name" "$PLAY_MAIN" --config "$LOG_DIR/$name.config.json"
+  start_server "$name" "$PLAY_MAIN" --config "$CONFIG_DIR/$name.config.json"
   wait_health "$url" "$name" "$LAST_STARTED_PID"
 }
 
@@ -113,7 +117,7 @@ start_workflow() {
   local name="$1" url="$2" router="$3" pubsub="$4" fanout="$5"
   write_role_config "$name" "$url" "$router" "$pubsub" \
     --fanout-endpoint "$fanout" --state-file "$STATE_FILE"
-  start_server "$name" "$WORKFLOW_MAIN" --config "$LOG_DIR/$name.config.json"
+  start_server "$name" "$WORKFLOW_MAIN" --config "$CONFIG_DIR/$name.config.json"
   wait_health "$url" "$name" "$LAST_STARTED_PID"
 }
 
@@ -122,7 +126,7 @@ start_session() {
   [[ "$SCENARIO" == "OBS-A3" ]] && flow_enabled=false
   write_role_config session-a "$SESSION_URL" "$SESSION_ROUTER" "$SESSION_PUBSUB" \
     --stream-endpoint "$SESSION_STREAM" --message-flow-enabled "$flow_enabled"
-  start_server session-a "$SESSION_MAIN" --config "$LOG_DIR/session-a.config.json"
+  start_server session-a "$SESSION_MAIN" --config "$CONFIG_DIR/session-a.config.json"
   wait_health "$SESSION_URL" session-a "$LAST_STARTED_PID"
   wait_tcp session-stream "$SESSION_STREAM" 100
 }
@@ -152,11 +156,14 @@ if [[ "$SCENARIO" == "OBS-B3" ]]; then
   sleep 3
 fi
 
-node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
+CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
+node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --node-a-url "$PLAY_A_URL" --node-b-url "$PLAY_B_URL" \
   --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_STREAM" \
   --session-url "$SESSION_URL" --workflow-a-url "$WORKFLOW_A_URL" --workflow-b-url "$WORKFLOW_B_URL" \
-  --log-dir "$LOG_DIR" --scenario "$SCENARIO" --c5-phase "$C5_PHASE" \
+  --log-dir "$LOG_DIR" --scenario "$SCENARIO" --c5-phase "$C5_PHASE"
+node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
+  --config "$CLIENT_CONFIG" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

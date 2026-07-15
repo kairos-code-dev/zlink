@@ -12,37 +12,33 @@ export interface ClientOptions {
   readonly scenario: string;
 }
 
-export function parseClientOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--')) {
-      continue;
-    }
-    if (i + 1 >= args.length) {
-      throw new Error(`Missing value for ${key}.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
+export function parseClientOptions(value: unknown): ClientOptions {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Client configuration must be an object.');
+  const values = value as Record<string, unknown>;
   return {
-    playAUrl: required(values, 'play-a-url'),
-    playBUrl: required(values, 'play-b-url'),
-    gatewayUrl: required(values, 'gateway-url'),
-    sessionAUrl: required(values, 'session-a-url'),
-    sessionBUrl: required(values, 'session-b-url'),
-    sessionAStreamEndpoint: required(values, 'session-a-stream-endpoint'),
-    sessionATlsStreamEndpoint: values.get('session-a-tls-stream-endpoint') ?? '',
-    sessionBStreamEndpoint: required(values, 'session-b-stream-endpoint'),
-    multiAUrl: values.get('multi-a-url') ?? 'http://127.0.0.1:0',
-    multiBUrl: values.get('multi-b-url') ?? 'http://127.0.0.1:0',
-    scenario: values.get('scenario') ?? 'all'
+    playAUrl: required(values, 'playAUrl'),
+    playBUrl: required(values, 'playBUrl'),
+    gatewayUrl: required(values, 'gatewayUrl'),
+    sessionAUrl: required(values, 'sessionAUrl'),
+    sessionBUrl: required(values, 'sessionBUrl'),
+    sessionAStreamEndpoint: required(values, 'sessionAStreamEndpoint'),
+    sessionATlsStreamEndpoint: optional(values, 'sessionATlsStreamEndpoint', ''),
+    sessionBStreamEndpoint: required(values, 'sessionBStreamEndpoint'),
+    multiAUrl: optional(values, 'multiAUrl', 'http://127.0.0.1:0'),
+    multiBUrl: optional(values, 'multiBUrl', 'http://127.0.0.1:0'),
+    scenario: optional(values, 'scenario', 'all')
   };
 }
 
-function required(values: ReadonlyMap<string, string>, key: string): string {
-  const value = values.get(key);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${key} is required.`);
-  }
+function required(values: Record<string, unknown>, key: string): string {
+  const value = values[key];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`Configuration value 'e2e.${key}' is required.`);
+  return value;
+}
+
+function optional(values: Record<string, unknown>, key: string, fallback: string): string {
+  const value = values[key];
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string') throw new Error(`Configuration value 'e2e.${key}' must be a string.`);
   return value;
 }

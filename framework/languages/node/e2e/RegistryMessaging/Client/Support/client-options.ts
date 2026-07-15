@@ -15,38 +15,34 @@ export interface ClientOptions {
 }
 
 export function parseClientOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--')) {
-      continue;
-    }
-    if (i + 1 >= args.length) {
-      throw new Error(`Missing value for ${key}.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
+  const values = readConfig(args);
   return {
-    providerAUrl: required(values, 'provider-a-url'),
-    providerBUrl: required(values, 'provider-b-url'),
-    workflowUrl: required(values, 'workflow-url'),
-    directConsumerUrl: required(values, 'direct-consumer-url'),
-    singleConsumerUrl: required(values, 'single-consumer-url'),
-    backpressureConsumerUrl: required(values, 'backpressure-consumer-url'),
-    locationConsumerUrl: required(values, 'location-consumer-url'),
-    providerMain: required(values, 'provider-main'),
-    consumerMain: required(values, 'consumer-main'),
-    redisEndpoint: required(values, 'redis-endpoint'),
-    redisKeyPrefix: required(values, 'redis-key-prefix'),
-    logDir: required(values, 'log-dir'),
-    scenario: values.get('scenario') ?? 'all'
+    providerAUrl: required(values, 'providerAUrl'),
+    providerBUrl: required(values, 'providerBUrl'),
+    workflowUrl: required(values, 'workflowUrl'),
+    directConsumerUrl: required(values, 'directConsumerUrl'),
+    singleConsumerUrl: required(values, 'singleConsumerUrl'),
+    backpressureConsumerUrl: required(values, 'backpressureConsumerUrl'),
+    locationConsumerUrl: required(values, 'locationConsumerUrl'),
+    providerMain: required(values, 'providerMain'),
+    consumerMain: required(values, 'consumerMain'),
+    redisEndpoint: required(values, 'redisEndpoint'),
+    redisKeyPrefix: required(values, 'redisKeyPrefix'),
+    logDir: required(values, 'logDir'),
+    scenario: typeof values.scenario === 'string' ? values.scenario : 'all'
   };
 }
 
-function required(values: ReadonlyMap<string, string>, key: string): string {
-  const value = values.get(key);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${key} is required.`);
-  }
+function readConfig(args: readonly string[]): Record<string, unknown> {
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) throw new Error('--config <path> is required.');
+  const document = JSON.parse(fs.readFileSync(args[1], 'utf8')) as { e2e?: unknown };
+  if (document.e2e === null || typeof document.e2e !== 'object' || Array.isArray(document.e2e)) throw new Error("Configuration section 'e2e' must be an object.");
+  return document.e2e as Record<string, unknown>;
+}
+
+function required(values: Record<string, unknown>, key: string): string {
+  const value = values[key];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`Configuration value 'e2e.${key}' is required.`);
   return value;
 }
+import fs from 'node:fs';

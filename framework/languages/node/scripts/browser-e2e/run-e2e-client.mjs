@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import process from 'node:process';
@@ -9,6 +10,14 @@ const separator = process.argv.indexOf('--');
 const entry = process.argv[2];
 if (entry === undefined) throw new Error('Browser E2E entry path is required.');
 const clientArgs = separator < 0 ? process.argv.slice(3) : process.argv.slice(separator + 1);
+const configIndex = clientArgs.indexOf('--config');
+if (configIndex < 0 || configIndex + 1 >= clientArgs.length || clientArgs.length !== 2) {
+  throw new Error('--config <path> is required for browser E2E clients.');
+}
+const configDocument = JSON.parse(fs.readFileSync(clientArgs[configIndex + 1], 'utf8'));
+if (configDocument.e2e === null || typeof configDocument.e2e !== 'object' || Array.isArray(configDocument.e2e)) {
+  throw new Error("Browser E2E configuration section 'e2e' must be an object.");
+}
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 process.env.PLAYWRIGHT_BROWSERS_PATH ??= path.join(nodeRoot, '.cache/ms-playwright');
 const { chromium } = await import('playwright');
@@ -31,6 +40,12 @@ const server = http.createServer(async (request, response) => {
     if (url.pathname === '/client.mjs') {
       response.writeHead(200, { 'content-type': 'text/javascript' });
       response.end(output.outputFiles[0].contents);
+      return;
+    }
+    if (url.pathname === '/config.json') {
+      const address = server.address();
+      response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      response.end(JSON.stringify(mapConfigUrls(configDocument.e2e, address.port)));
       return;
     }
     if (url.pathname === '/proxy') {
@@ -64,8 +79,7 @@ try {
     else console.log(text);
   });
   const address = server.address();
-  const browserArgs = clientArgs.map((value) => mapLoopbackHttpUrl(value, address.port));
-  await page.addInitScript((args) => { window.__zlinkE2eArgs = args; }, browserArgs);
+  await page.addInitScript(() => { window.__zlinkE2eArgs = []; });
   await page.goto(`http://127.0.0.1:${address.port}`);
   const timeout = Number(process.env.ZLINK_BROWSER_E2E_TIMEOUT_MS ?? 300_000);
   await page.waitForFunction(
@@ -109,6 +123,15 @@ function mapLoopbackHttpUrl(value, browserPort) {
   const encodedOrigin = Buffer.from(target.origin).toString('base64url');
   const targetPath = target.pathname === '/' ? '' : target.pathname;
   return `http://127.0.0.1:${browserPort}/proxy/${encodedOrigin}${targetPath}${target.search}`;
+}
+
+function mapConfigUrls(value, browserPort) {
+  if (typeof value === 'string') return mapLoopbackHttpUrl(value, browserPort);
+  if (Array.isArray(value)) return value.map((entry) => mapConfigUrls(entry, browserPort));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, mapConfigUrls(entry, browserPort)]));
+  }
+  return value;
 }
 
 function mappedProxyTarget(requestUrl) {

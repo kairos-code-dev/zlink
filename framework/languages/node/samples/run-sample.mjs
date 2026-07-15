@@ -4,15 +4,20 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { spawn, spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const samplesRoot = path.dirname(fileURLToPath(import.meta.url));
 const nodeRoot = path.dirname(samplesRoot);
-const sampleName = process.argv[2];
-if (!sampleName) {
-  throw new Error('Usage: node samples/run-sample.mjs <Sample.Ts>');
+const definitionPath = process.argv[2];
+if (!definitionPath) {
+  throw new Error('Usage: node samples/run-sample.mjs <sample-runner.mjs>');
 }
 const runnerOptions = parseRunnerOptions(process.argv.slice(3));
+const definition = await import(pathToFileURL(path.resolve(definitionPath)).href);
+const { sampleName, runSample } = definition;
+if (typeof sampleName !== 'string' || typeof runSample !== 'function') {
+  throw new Error('The sample runner definition must export sampleName and runSample.');
+}
 
 const sampleRoot = path.join(samplesRoot, sampleName);
 if (!fs.existsSync(path.join(sampleRoot, 'package.json'))) {
@@ -20,6 +25,7 @@ if (!fs.existsSync(path.join(sampleRoot, 'package.json'))) {
 }
 
 const runDir = fs.mkdtempSync(path.join(os.tmpdir(), `zlink-${sampleName.toLowerCase()}-`));
+fs.chmodSync(runDir, 0o700);
 const logDir = path.join(runDir, 'logs');
 const workDir = path.join(runDir, 'work');
 fs.mkdirSync(logDir, { recursive: true });
@@ -36,8 +42,6 @@ async function main() {
     run('npm', ['run', 'build'], { cwd: sampleRoot });
     const redisEndpoint = await startRedis();
     const context = createContext(redisEndpoint);
-    const runSample = sampleDefinitions[sampleName];
-    if (!runSample) throw new Error(`Unknown Node sample '${sampleName}'.`);
     await runSample(context);
   } catch (error) {
     failed = true;
@@ -66,7 +70,8 @@ function createContext(redisEndpoint) {
     port: reserveBrowserSafePort,
     writeConfig(name, sample) {
       const target = path.join(runDir, `${name}.json`);
-      fs.writeFileSync(target, `${JSON.stringify({ sample }, null, 2)}\n`);
+      fs.writeFileSync(target, `${JSON.stringify({ sample }, null, 2)}\n`, { mode: 0o600 });
+      fs.chmodSync(target, 0o600);
       return target;
     },
     async start(name, entry, args = [], extraEnv = {}) {
@@ -83,7 +88,8 @@ function createContext(redisEndpoint) {
     },
     runBrowser(definition, entryName) {
       const configPath = path.join(runDir, 'browser-runner.json');
-      fs.writeFileSync(configPath, `${JSON.stringify(definition, null, 2)}\n`);
+      fs.writeFileSync(configPath, `${JSON.stringify(definition, null, 2)}\n`, { mode: 0o600 });
+      fs.chmodSync(configPath, 0o600);
       const args = [
         path.join(nodeRoot, 'scripts/browser-e2e/run-sample.mjs'),
         sampleName,
@@ -94,338 +100,6 @@ function createContext(redisEndpoint) {
       run(process.execPath, args, { cwd: sampleRoot, env });
     }
   };
-}
-
-const sampleDefinitions = {
-  'Bingo.Ts': runBingo,
-  'TicTacToe.Ts': runTicTacToe,
-  'SupportChat.Ts': runSupportChat,
-  'DeliveryDispatch.Ts': runDeliveryDispatch,
-  'GameQuest.Ts': runGameQuest,
-  'ShoppingMall.Ts': runShoppingMall
-};
-
-async function runBingo(ctx) {
-  const redisKeyPrefix = `bingo:node:${process.pid}:`;
-  const apiA = `tcp://127.0.0.1:${await ctx.port()}`;
-  const apiB = `tcp://127.0.0.1:${await ctx.port()}`;
-  const playA = await bingoPlayConfig(ctx, 'a', redisKeyPrefix);
-  const playB = await bingoPlayConfig(ctx, 'b', redisKeyPrefix);
-  const sessionA = await bingoSessionConfig(ctx, 'a', playA.sample.playSpotNodeRid, redisKeyPrefix);
-  const sessionB = await bingoSessionConfig(ctx, 'b', playB.sample.playSpotNodeRid, redisKeyPrefix);
-  const common = { redisEndpoint: ctx.redisEndpoint, redisKeyPrefix };
-  const flowDir = path.join(ctx.logDir, 'flow');
-  fs.mkdirSync(flowDir, { recursive: true });
-  const apiAConfig = ctx.writeConfig('api-a', { ...common, apiEndpoint: apiA, logDir: flowDir });
-  const apiBConfig = ctx.writeConfig('api-b', { ...common, apiEndpoint: apiB, logDir: flowDir });
-
-  await ctx.start('api-a', 'dist/Server/Api/main.js', ['--config', apiAConfig]);
-  await ctx.waitTcp(apiA);
-  await ctx.start('api-b', 'dist/Server/Api/main.js', ['--config', apiBConfig]);
-  await ctx.waitTcp(apiB);
-  await ctx.start('play-a', 'dist/Server/Play/main.js', ['--config', playA.path]);
-  await ctx.waitTcp(playA.sample.playSpotEndpoint);
-  await ctx.start('play-b', 'dist/Server/Play/main.js', ['--config', playB.path]);
-  await ctx.waitTcp(playB.sample.playSpotEndpoint);
-  await ctx.start('session-a', 'dist/Server/Session/main.js', ['--config', sessionA.path]);
-  await ctx.waitTcp(sessionA.sample.sessionEndpoint);
-  await ctx.start('session-b', 'dist/Server/Session/main.js', ['--config', sessionB.path]);
-  await ctx.waitTcp(sessionB.sample.sessionEndpoint);
-  ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
-    '--redis-endpoint', ctx.redisEndpoint,
-    '--key-prefix', `${redisKeyPrefix}location`,
-    '--peer', 'client-server', 'bingo.api', 'router', apiA, apiB,
-    '--peer', 'spot-mesh', 'bingo.room', 'spot', playA.sample.playSpotEndpoint, playB.sample.playSpotEndpoint
-  ]);
-  ctx.runBrowser({
-    timeoutMs: 90_000,
-    config: {
-      sessionAEndpoint: sessionA.sample.sessionEndpoint,
-      sessionBEndpoint: sessionB.sample.sessionEndpoint
-    },
-    proxies: []
-  });
-  await ctx.waitLog('play-a', 'bingo-record fetched actor=player-1 wins=0 losses=0');
-  await ctx.waitLog('play-a', 'bingo-record fetched actor=player-2 wins=0 losses=0');
-  await ctx.waitLog('play-a', 'bingo-record reported actor=player-1 wins=1 losses=0');
-  await ctx.waitLog('play-a', 'bingo-record reported actor=player-2 wins=0 losses=1');
-  await ctx.waitLog('play-a', 'bingo-lifecycle room-leave actor=player-1');
-  await ctx.waitLog('play-a', 'bingo-lifecycle room-leave actor=player-2');
-  await ctx.waitLog('play-a', 'bingo-lifecycle entry-destroy-complete actor=player-1');
-  await ctx.waitLog('play-b', 'bingo-lifecycle entry-destroy-complete actor=player-2');
-  await ctx.waitLog('session-a', 'bingo-lifecycle session-disconnect actor=player-1 destroy=false');
-  await ctx.waitLog('session-b', 'bingo-lifecycle session-disconnect actor=player-2 destroy=false');
-  ctx.assertLogCount('play-a', 'bingo-lifecycle room-leave actor=player-1', 1);
-  ctx.assertLogCount('play-a', 'bingo-lifecycle room-leave actor=player-2', 1);
-  ctx.assertLogCount('play-a', 'bingo-lifecycle entry-destroy-complete actor=player-1', 1);
-  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-destroy-complete actor=player-2', 1);
-  ctx.assertLogCount('play-a', 'bingo-lifecycle entry-leave actor=player-1', 1);
-  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-leave actor=player-2', 1);
-  ctx.assertLogCount('play-b', 'bingo-lifecycle entry-leave actor=observer', 1);
-  ctx.assertLogCount('play-b', 'bingo-record reported actor=observer', 0);
-}
-
-async function bingoPlayConfig(ctx, suffix, redisKeyPrefix) {
-  const sample = {
-    redisEndpoint: ctx.redisEndpoint,
-    redisKeyPrefix,
-    logDir: path.join(ctx.logDir, 'flow'),
-    playEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    playRouteEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    playSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    playSpotPubSubEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    playSpotNodeRid: `bingo-play-node-${suffix}`
-  };
-  return { sample, path: ctx.writeConfig(`play-${suffix}`, sample) };
-}
-
-async function bingoSessionConfig(ctx, suffix, preferredPlayNodeRid, redisKeyPrefix) {
-  const sample = {
-    redisEndpoint: ctx.redisEndpoint,
-    redisKeyPrefix,
-    sessionEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
-    sessionRouteEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    sessionSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    sessionSpotNodeRid: `bingo-session-node-${suffix}`,
-    preferredPlayNodeRid,
-    logDir: path.join(ctx.logDir, 'flow')
-  };
-  return { sample, path: ctx.writeConfig(`session-${suffix}`, sample) };
-}
-
-async function runTicTacToe(ctx) {
-  const endpoints = {
-    apiHttp: [`http://127.0.0.1:${await ctx.port()}`, `http://127.0.0.1:${await ctx.port()}`],
-    api: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`],
-    playChannel: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`],
-    playStream: [`ws://127.0.0.1:${await ctx.port()}`, `ws://127.0.0.1:${await ctx.port()}`],
-    playSpot: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`],
-    playPub: [`tcp://127.0.0.1:${await ctx.port()}`, `tcp://127.0.0.1:${await ctx.port()}`]
-  };
-  const redisKeyPrefix = `tictactoe:node:${process.pid}:`;
-  const config = (instanceName, apiIndex, playIndex, peerPlayIndex) => ({
-    instanceName,
-    apiIndex,
-    playIndex,
-    apiHttpEndpoint: endpoints.apiHttp[apiIndex],
-    apiEndpoints: endpoints.api,
-    apiHttpEndpoints: endpoints.apiHttp,
-    playEndpoint: endpoints.playChannel[playIndex],
-    playChannelEndpoints: endpoints.playChannel,
-    playEndpoints: endpoints.playStream,
-    playSpotEndpoint: endpoints.playSpot[playIndex],
-    playSpotEndpoints: endpoints.playSpot,
-    playSpotPubSubEndpoint: endpoints.playPub[playIndex],
-    playSpotPubSubEndpoints: endpoints.playPub,
-    playStreamEndpoint: endpoints.playStream[playIndex],
-    redisEndpoint: ctx.redisEndpoint,
-    redisKeyPrefix,
-    logDir: path.join(ctx.logDir, 'flow'),
-    playSpotNodeRid: `play-node-${playIndex + 1}`,
-    peerPlaySpotNodeRid: `play-node-${peerPlayIndex + 1}`,
-    peerPlaySpotEndpoint: endpoints.playSpot[peerPlayIndex],
-    peerPlaySpotPubEndpoint: endpoints.playPub[peerPlayIndex]
-  });
-  const configs = {
-    playA: ctx.writeConfig('play-a', config('play-a', 0, 0, 1)),
-    playB: ctx.writeConfig('play-b', config('play-b', 0, 1, 0)),
-    apiA: ctx.writeConfig('api-a', config('api-a', 0, 0, 1)),
-    apiB: ctx.writeConfig('api-b', config('api-b', 1, 0, 1))
-  };
-  fs.mkdirSync(path.join(ctx.logDir, 'flow'), { recursive: true });
-  await ctx.start('play-b', 'dist/Server/Play/main.js', ['--config', configs.playB]);
-  await ctx.waitTcp(endpoints.playStream[1]);
-  await ctx.start('play-a', 'dist/Server/Play/main.js', ['--config', configs.playA]);
-  await ctx.waitTcp(endpoints.playStream[0]);
-  await ctx.waitLog('play-a', 'spotPeerReady');
-  await ctx.waitLog('play-b', 'spotPeerReady');
-  await ctx.start('api-a', 'dist/Server/Api/main.js', ['--config', configs.apiA]);
-  await ctx.waitTcp(endpoints.apiHttp[0]);
-  await ctx.start('api-b', 'dist/Server/Api/main.js', ['--config', configs.apiB]);
-  await ctx.waitTcp(endpoints.apiHttp[1]);
-  ctx.runBrowser({
-    timeoutMs: 90_000,
-    config: { apiHttpEndpoint: '/api/tictactoe' },
-    proxies: [{ prefix: '/api/tictactoe', target: endpoints.apiHttp[0] }]
-  });
-}
-
-async function runSupportChat(ctx) {
-  const logDir = path.join(ctx.logDir, 'flow');
-  fs.mkdirSync(logDir, { recursive: true });
-  const apiChannelEndpoint = `tcp://127.0.0.1:${await ctx.port()}`;
-  const supportChannelEndpoint = `tcp://127.0.0.1:${await ctx.port()}`;
-  const supportSpotEndpoint = `tcp://127.0.0.1:${await ctx.port()}`;
-  const sessionSpotEndpoint = `tcp://127.0.0.1:${await ctx.port()}`;
-  const sessionStreamEndpoint = `ws://127.0.0.1:${await ctx.port()}`;
-  const redisKeyPrefix = `supportchat:node:${process.pid}:`;
-  const common = { redisEndpoint: ctx.redisEndpoint, redisKeyPrefix, logDir };
-  const supportConfig = ctx.writeConfig('support', {
-    ...common, supportChannelEndpoint, supportSpotEndpoint
-  });
-  const apiConfig = ctx.writeConfig('api', { ...common, apiChannelEndpoint });
-  const sessionConfig = ctx.writeConfig('session', {
-    ...common, sessionSpotEndpoint, sessionStreamEndpoint
-  });
-  await ctx.start('support', 'dist/Server/Support/main.js', ['--config', supportConfig]);
-  await ctx.waitTcp(supportSpotEndpoint);
-  await ctx.start('api', 'dist/Server/Api/main.js', ['--config', apiConfig]);
-  await ctx.waitTcp(apiChannelEndpoint);
-  await ctx.start('session', 'dist/Server/Session/main.js', ['--config', sessionConfig]);
-  await ctx.waitTcp(sessionStreamEndpoint);
-  ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
-    '--redis-endpoint', ctx.redisEndpoint,
-    '--key-prefix', `${redisKeyPrefix}location`,
-    '--peer', 'client-server', 'supportchat.api', 'router', apiChannelEndpoint,
-    '--peer', 'client-server', 'supportchat.support', 'router', supportChannelEndpoint,
-    '--peer', 'spot-mesh', 'supportchat-conversations', 'spot', supportSpotEndpoint
-  ]);
-  ctx.runBrowser({
-    timeoutMs: 90_000,
-    config: { sessionStreamEndpoint },
-    proxies: []
-  });
-}
-
-async function runDeliveryDispatch(ctx) {
-  const flowDir = path.join(ctx.logDir, 'flow');
-  fs.mkdirSync(flowDir, { recursive: true });
-  const sample = {
-    dispatchApiHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    dispatchEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    dispatchSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    courierStreamEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
-    courierActorNode1SpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    courierActorNode2SpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    trackingEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    trackingSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    sessionStreamEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
-    sessionSpotRouterEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    courierSessionSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    sessionSpotNodeRid: 'delivery-session-node',
-    redisEndpoint: ctx.redisEndpoint,
-    redisKeyPrefix: `deliverydispatch:node:${process.pid}:`,
-    logDir: flowDir,
-    workDir: ctx.workDir
-  };
-  const configPath = ctx.writeConfig('deliverydispatch', sample);
-  for (const [role, entry, ready] of [
-    ['tracking', 'dist/Server/Tracking/main.js', sample.trackingEndpoint],
-    ['customer-gateway', 'dist/Server/Session/main.js', sample.sessionStreamEndpoint],
-    ['courier-session', 'dist/Server/CourierSession/main.js', sample.courierStreamEndpoint],
-    ['courier-spot-node1', 'dist/Server/Courier/node1-main.js', sample.courierActorNode1SpotEndpoint],
-    ['courier-spot-node2', 'dist/Server/Courier/node2-main.js', sample.courierActorNode2SpotEndpoint],
-    ['dispatch', 'dist/Server/Dispatch/main.js', sample.dispatchEndpoint]
-  ]) {
-    await ctx.start(role, entry, ['--config', configPath]);
-    await ctx.waitTcp(ready);
-  }
-  await ctx.waitHttp(sample.dispatchApiHttpUrl);
-  ctx.runNode(path.join(ctx.nodeRoot, 'e2e/location-readiness.js'), [
-    '--redis-endpoint', ctx.redisEndpoint,
-    '--key-prefix', `${sample.redisKeyPrefix}location`,
-    '--peer', 'client-server', 'deliverydispatch.dispatch', 'router', sample.dispatchEndpoint,
-    '--peer', 'client-server', 'deliverydispatch.tracking', 'router', sample.trackingEndpoint,
-    '--peer', 'spot-mesh', 'delivery-couriers', 'spot',
-      sample.dispatchSpotEndpoint, sample.courierSessionSpotEndpoint,
-      sample.courierActorNode1SpotEndpoint, sample.courierActorNode2SpotEndpoint,
-    '--peer', 'spot-mesh', 'delivery-customers', 'spot',
-      sample.sessionSpotRouterEndpoint, sample.trackingSpotEndpoint
-  ]);
-  console.log('topology=ready');
-  ctx.runBrowser({
-    timeoutMs: 90_000,
-    config: {
-      dispatchApiHttpUrl: '/api/delivery',
-      sessionStreamEndpoint: sample.sessionStreamEndpoint,
-      courierStreamEndpoint: sample.courierStreamEndpoint
-    },
-    proxies: [{ prefix: '/api/delivery', target: sample.dispatchApiHttpUrl }]
-  });
-  await ctx.waitLog('dispatch', 'ignored stale decision delivery=delivery-reassign courier=courier-a attempt=1');
-}
-
-async function runGameQuest(ctx) {
-  const sample = {
-    apiAHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    apiBHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    apiAStreamEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
-    apiBStreamEndpoint: `ws://127.0.0.1:${await ctx.port()}`,
-    apiAActorSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    apiBActorSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    missionAEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    missionBEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    missionASpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    missionBSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    missionASpotRouterEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    missionBSpotRouterEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    missionAHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    missionBHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    redisEndpoint: ctx.redisEndpoint,
-    redisKeyPrefix: `gamequest:node:${process.pid}:`,
-    logDir: ctx.logDir,
-    workDir: ctx.workDir
-  };
-  const configPath = ctx.writeConfig('gamequest', sample);
-  for (const [role, entry, ready] of [
-    ['mission-a', 'dist/Server/MissionA/main.js', sample.missionAHttpUrl],
-    ['mission-b', 'dist/Server/MissionB/main.js', sample.missionBHttpUrl],
-    ['api-a', 'dist/Server/ApiA/main.js', sample.apiAHttpUrl],
-    ['api-b', 'dist/Server/ApiB/main.js', sample.apiBHttpUrl]
-  ]) {
-    await ctx.start(role, entry, ['--config', configPath]);
-    await ctx.waitHttp(ready);
-  }
-  ctx.runBrowser({
-    timeoutMs: 120_000,
-    config: {
-      apiAHttpUrl: '/api/gamequest/api-a',
-      apiBHttpUrl: '/api/gamequest/api-b',
-      apiAStreamEndpoint: sample.apiAStreamEndpoint,
-      apiBStreamEndpoint: sample.apiBStreamEndpoint,
-      missionAHttpUrl: '/api/gamequest/mission-a',
-      missionBHttpUrl: '/api/gamequest/mission-b'
-    },
-    proxies: [
-      { prefix: '/api/gamequest/api-a', target: sample.apiAHttpUrl },
-      { prefix: '/api/gamequest/api-b', target: sample.apiBHttpUrl },
-      { prefix: '/api/gamequest/mission-a', target: sample.missionAHttpUrl },
-      { prefix: '/api/gamequest/mission-b', target: sample.missionBHttpUrl }
-    ]
-  });
-}
-
-async function runShoppingMall(ctx) {
-  const sample = {
-    apiAHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    apiBHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    workflowAHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    workflowBHttpUrl: `http://127.0.0.1:${await ctx.port()}`,
-    workflowAChannelEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    workflowBChannelEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    workflowASpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    workflowBSpotEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    workflowASpotPubEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    workflowBSpotPubEndpoint: `tcp://127.0.0.1:${await ctx.port()}`,
-    redisEndpoint: ctx.redisEndpoint,
-    redisKeyPrefix: `shoppingmall:node:${process.pid}:`,
-    logDir: ctx.logDir,
-    workDir: ctx.workDir
-  };
-  const configPath = ctx.writeConfig('shoppingmall', sample);
-  for (const [role, entry, ready] of [
-    ['workflow-a', 'dist/Server/WorkflowA/main.js', sample.workflowAHttpUrl],
-    ['workflow-b', 'dist/Server/WorkflowB/main.js', sample.workflowBHttpUrl],
-    ['api-a', 'dist/Server/ApiA/main.js', sample.apiAHttpUrl],
-    ['api-b', 'dist/Server/ApiB/main.js', sample.apiBHttpUrl]
-  ]) {
-    await ctx.start(role, entry, ['--config', configPath]);
-    await ctx.waitHttp(ready);
-  }
-  ctx.runNode(path.join(ctx.sampleRoot, 'dist/Client/main.js'), [
-    '--api-a-http', sample.apiAHttpUrl,
-    '--api-b-http', sample.apiBHttpUrl
-  ]);
 }
 
 async function reserveBrowserSafePort() {

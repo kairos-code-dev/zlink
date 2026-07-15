@@ -20,9 +20,7 @@ import {
   type ProbeReq,
   type ProbeRes
 } from '../../Shared/messages.js';
-import {
-  browserE2eArgs
-} from '../../../browser-client-runtime';
+import { browserE2eConfig } from '../../../browser-client-runtime';
 import { ZLinkHttpClient, type ZLinkHttpClient as HttpClient } from '@zlink-systems/http-client';
 
 export { ObservabilityOpsNames };
@@ -40,7 +38,7 @@ export interface ClientOptions {
   scenario: string;
 }
 
-export const options = parseOptions(browserE2eArgs());
+export const options = parseOptions(await browserE2eConfig());
 export const nodeA = ZLinkHttpClient.create(options.nodeAUrl).timeout(40000).build();
 export const nodeB = ZLinkHttpClient.create(options.nodeBUrl).timeout(40000).build();
 export const session = ZLinkHttpClient.create(options.sessionUrl).timeout(40000).build();
@@ -139,29 +137,25 @@ export function require(condition: unknown, message: string): asserts condition 
   if (!condition) throw new Error(message);
 }
 
-export function parseOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const value = args[index + 1];
-    if (value === undefined) throw new Error(`Missing value for '${args[index]}'.`);
-    values.set(args[index].replace(/^--/, ''), value);
-  }
+export function parseOptions(value: unknown): ClientOptions {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('Client configuration must be an object.');
+  const values = value as Record<string, unknown>;
   const get = (key: string): string => {
-    const value = values.get(key);
-    if (value === undefined) throw new Error(`--${key} is required.`);
+    const value = values[key];
+    if (typeof value !== 'string' || value.length === 0) throw new Error(`Configuration value 'e2e.${key}' is required.`);
     return value;
   };
   return {
-    nodeAUrl: get('node-a-url'),
-    nodeBUrl: get('node-b-url'),
-    sessionAStreamEndpoint: get('session-a-stream-endpoint'),
-    sessionBStreamEndpoint: get('session-b-stream-endpoint'),
-    sessionUrl: get('session-url'),
-    workflowAUrl: get('workflow-a-url'),
-    workflowBUrl: get('workflow-b-url'),
-    logDir: get('log-dir'),
-    c5Phase: values.get('c5-phase') ?? 'sequential',
-    scenario: values.get('scenario') ?? 'all'
+    nodeAUrl: get('nodeAUrl'),
+    nodeBUrl: get('nodeBUrl'),
+    sessionAStreamEndpoint: get('sessionAStreamEndpoint'),
+    sessionBStreamEndpoint: get('sessionBStreamEndpoint'),
+    sessionUrl: get('sessionUrl'),
+    workflowAUrl: get('workflowAUrl'),
+    workflowBUrl: get('workflowBUrl'),
+    logDir: get('logDir'),
+    c5Phase: typeof values.c5Phase === 'string' ? values.c5Phase : 'sequential',
+    scenario: typeof values.scenario === 'string' ? values.scenario : 'all'
   };
 }
 

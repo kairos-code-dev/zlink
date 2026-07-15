@@ -11,31 +11,30 @@ export interface ClientOptions {
 }
 
 export function parseClientOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--') || i + 1 >= args.length) {
-      throw new Error(`Invalid argument '${key}'.`);
-    }
-    values.set(key.slice(2), args[++i]);
-  }
+  const values = readConfig(args);
   return {
-    serverUrl: required(values, 'server-url'),
-    jsonOnlyUrl: required(values, 'json-only-url'),
-    codecRequesterUrl: required(values, 'codec-requester-url'),
-    invalidMain: required(values, 'invalid-main'),
-    invalidDuplicateConfig: required(values, 'invalid-duplicate-config'),
-    invalidHandlerGroupConfig: required(values, 'invalid-handler-group-config'),
-    invalidChannelKindsConfig: required(values, 'invalid-channel-kinds-config'),
-    logDir: required(values, 'log-dir'),
-    scenario: values.get('scenario') ?? 'all'
+    serverUrl: required(values, 'serverUrl'),
+    jsonOnlyUrl: required(values, 'jsonOnlyUrl'),
+    codecRequesterUrl: required(values, 'codecRequesterUrl'),
+    invalidMain: required(values, 'invalidMain'),
+    invalidDuplicateConfig: required(values, 'invalidDuplicateConfig'),
+    invalidHandlerGroupConfig: required(values, 'invalidHandlerGroupConfig'),
+    invalidChannelKindsConfig: required(values, 'invalidChannelKindsConfig'),
+    logDir: required(values, 'logDir'),
+    scenario: typeof values.scenario === 'string' ? values.scenario : 'all'
   };
 }
 
-function required(values: Map<string, string>, name: string): string {
-  const value = values.get(name);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${name} is required.`);
-  }
+function readConfig(args: readonly string[]): Record<string, unknown> {
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) throw new Error('--config <path> is required.');
+  const document = JSON.parse(fs.readFileSync(args[1], 'utf8')) as { e2e?: unknown };
+  if (document.e2e === null || typeof document.e2e !== 'object' || Array.isArray(document.e2e)) throw new Error("Configuration section 'e2e' must be an object.");
+  return document.e2e as Record<string, unknown>;
+}
+
+function required(values: Record<string, unknown>, name: string): string {
+  const value = values[name];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`Configuration value 'e2e.${name}' is required.`);
   return value;
 }
+import fs from 'node:fs';

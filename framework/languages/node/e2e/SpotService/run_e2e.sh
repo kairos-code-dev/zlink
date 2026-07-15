@@ -7,6 +7,7 @@ source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -91,6 +92,7 @@ cleanup() {
     fi
   done
   remove_redis_container
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 || "$background_failure" -ne 0 ]]; then
     tail_failure_logs
   fi
@@ -99,6 +101,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
@@ -254,117 +258,98 @@ SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 GATEWAY_MAIN="$ROOT_DIR/Server/Gateway/dist/Server/Gateway/main.js"
 MULTI_NODE_MAIN="$ROOT_DIR/Server/MultiNode/dist/Server/MultiNode/main.js"
 
-TLS_CERT="$LOG_DIR/session-a-tls.crt"
-TLS_KEY="$LOG_DIR/session-a-tls.key"
+TLS_CERT="$CONFIG_DIR/session-a-tls.crt"
+TLS_KEY="$CONFIG_DIR/session-a-tls.key"
 openssl req -x509 -newkey rsa:2048 -nodes \
   -keyout "$TLS_KEY" \
   -out "$TLS_CERT" \
   -subj "/CN=localhost" \
   -days 1 >/dev/null 2>&1
+chmod 600 "$TLS_CERT" "$TLS_KEY"
+
+write_config() {
+  local name="$1"
+  shift
+  node "$ROOT_DIR/write-config.mjs" "$CONFIG_DIR/$name.json" "$@"
+}
+
+write_config play-a \
+  --string rid play-a --string httpUrl "$PLAY_A_URL" \
+  --string controlRouterEndpoint "$PLAY_A_CONTROL" --string externalSpotEndpoint "$PLAY_A_EXTERNAL_SPOT" \
+  --string spotRouterEndpoint "$PLAY_A_ROUTER" --string spotPubEndpoint "$PLAY_A_SPOT_PUB" \
+  --array clientSpotPubEndpoints "$GATEWAY_SPOT_PUB,$PLAY_B_SPOT_PUB" \
+  --string externalClientEndpoint "$PLAY_A_EXTERNAL_CLIENT" \
+  --string evidenceFile "$LOG_DIR/play-a.evidence.log" --string logDir "$LOG_DIR"
+write_config play-b \
+  --string rid play-b --string httpUrl "$PLAY_B_URL" \
+  --string controlRouterEndpoint "$PLAY_B_CONTROL" --string externalSpotEndpoint "$PLAY_B_EXTERNAL_SPOT" \
+  --string playAExternalSpotEndpoint "$PLAY_A_EXTERNAL_SPOT" \
+  --string spotRouterEndpoint "$PLAY_B_ROUTER" --string spotPubEndpoint "$PLAY_B_SPOT_PUB" \
+  --array clientSpotPubEndpoints "$GATEWAY_SPOT_PUB,$PLAY_A_SPOT_PUB" \
+  --string externalClientEndpoint "$PLAY_B_EXTERNAL_CLIENT" \
+  --string evidenceFile "$LOG_DIR/play-b.evidence.log" --string logDir "$LOG_DIR"
+write_config session-a \
+  --string rid session-a --string httpUrl "$SESSION_A_URL" \
+  --string controlRouterEndpoint "$SESSION_A_CONTROL" --array playControlEndpoints "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
+  --string spotRouterEndpoint "$SESSION_A_ROUTER" \
+  --array playSpotRouterEndpoints "play-a=$PLAY_A_ROUTER,play-b=$PLAY_B_ROUTER" \
+  --string streamEndpoint "$SESSION_A_STREAM" --string tlsStreamEndpoint "$SESSION_A_TLS_STREAM" \
+  --string tlsCertPath "$TLS_CERT" --string tlsKeyPath "$TLS_KEY" \
+  --string evidenceFile "$LOG_DIR/session-a.evidence.log" --string logDir "$LOG_DIR"
+write_config session-b \
+  --string rid session-b --string httpUrl "$SESSION_B_URL" \
+  --string controlRouterEndpoint "$SESSION_B_CONTROL" --array playControlEndpoints "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
+  --string spotRouterEndpoint "$SESSION_B_ROUTER" \
+  --array playSpotRouterEndpoints "play-a=$PLAY_A_ROUTER,play-b=$PLAY_B_ROUTER" \
+  --string streamEndpoint "$SESSION_B_STREAM" \
+  --string evidenceFile "$LOG_DIR/session-b.evidence.log" --string logDir "$LOG_DIR"
+write_config gateway \
+  --string rid gateway --string httpUrl "$GATEWAY_URL" \
+  --string spotRouterEndpoint "$GATEWAY_ROUTER" --string spotPubEndpoint "$GATEWAY_SPOT_PUB" \
+  --array spotPubPeers "$PLAY_A_SPOT_PUB,$PLAY_B_SPOT_PUB" \
+  --string evidenceFile "$LOG_DIR/gateway.evidence.log" --string logDir "$LOG_DIR"
+
+multi_a_peer=()
+multi_b_peer=()
+if [[ "$SCENARIO" != "SM-F6" ]]; then
+  multi_a_peer=(--string peerSpotRouterEndpoint "$MULTI_B_SPOT_ROUTER")
+  multi_b_peer=(--string peerSpotRouterEndpoint "$MULTI_A_SPOT_ROUTER")
+fi
+write_config multi-node-a \
+  --string rid multi-node-a --string httpUrl "$MULTI_A_URL" --string routeEndpoint "$MULTI_A_ROUTE" \
+  --string spotRouterEndpoint "$MULTI_A_SPOT_ROUTER" --string spotPubEndpoint "$MULTI_A_SPOT_PUB" \
+  "${multi_a_peer[@]}" --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
+  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" ]] && echo true || echo false)" \
+  --string evidenceFile "$LOG_DIR/multi-node-a.evidence.log" --string logDir "$LOG_DIR"
+write_config multi-node-b \
+  --string rid multi-node-b --string httpUrl "$MULTI_B_URL" --string routeEndpoint "$MULTI_B_ROUTE" \
+  --string spotRouterEndpoint "$MULTI_B_SPOT_ROUTER" --string spotPubEndpoint "$MULTI_B_SPOT_PUB" \
+  "${multi_b_peer[@]}" --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
+  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" ]] && echo true || echo false)" \
+  --string evidenceFile "$LOG_DIR/multi-node-b.evidence.log" --string logDir "$LOG_DIR"
 
 start_named_server() {
   case "$1" in
     play-a)
-      start_server play-a "$PLAY_MAIN" \
-        --rid play-a \
-        --http-url "$PLAY_A_URL" \
-        --control-router-endpoint "$PLAY_A_CONTROL" \
-        --external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-        --spot-router-endpoint "$PLAY_A_ROUTER" \
-        --spot-pub-endpoint "$PLAY_A_SPOT_PUB" \
-        --client-spot-pub-endpoint "$GATEWAY_SPOT_PUB,$PLAY_B_SPOT_PUB" \
-        --external-client-endpoint "$PLAY_A_EXTERNAL_CLIENT" \
-        --evidence-file "$LOG_DIR/play-a.evidence.log" \
-        --log-dir "$LOG_DIR"
+      start_server play-a "$PLAY_MAIN" --config "$CONFIG_DIR/play-a.json"
       ;;
     play-b)
-      start_server play-b "$PLAY_MAIN" \
-        --rid play-b \
-        --http-url "$PLAY_B_URL" \
-        --control-router-endpoint "$PLAY_B_CONTROL" \
-        --external-spot-endpoint "$PLAY_B_EXTERNAL_SPOT" \
-        --play-a-external-spot-endpoint "$PLAY_A_EXTERNAL_SPOT" \
-        --spot-router-endpoint "$PLAY_B_ROUTER" \
-        --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
-        --client-spot-pub-endpoint "$GATEWAY_SPOT_PUB,$PLAY_A_SPOT_PUB" \
-        --external-client-endpoint "$PLAY_B_EXTERNAL_CLIENT" \
-        --evidence-file "$LOG_DIR/play-b.evidence.log" \
-        --log-dir "$LOG_DIR"
+      start_server play-b "$PLAY_MAIN" --config "$CONFIG_DIR/play-b.json"
       ;;
     session-a)
-      start_server session-a "$SESSION_MAIN" \
-        --rid session-a \
-        --http-url "$SESSION_A_URL" \
-        --control-router-endpoint "$SESSION_A_CONTROL" \
-        --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
-        --spot-router-endpoint "$SESSION_A_ROUTER" \
-        --play-spot-router-play-a "$PLAY_A_ROUTER" \
-        --play-spot-router-play-b "$PLAY_B_ROUTER" \
-        --stream-endpoint "$SESSION_A_STREAM" \
-        --tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
-        --tls-cert-path "$TLS_CERT" \
-        --tls-key-path "$TLS_KEY" \
-        --evidence-file "$LOG_DIR/session-a.evidence.log" \
-        --log-dir "$LOG_DIR"
+      start_server session-a "$SESSION_MAIN" --config "$CONFIG_DIR/session-a.json"
       ;;
     session-b)
-      start_server session-b "$SESSION_MAIN" \
-        --rid session-b \
-        --http-url "$SESSION_B_URL" \
-        --control-router-endpoint "$SESSION_B_CONTROL" \
-        --play-control-endpoint "$PLAY_A_CONTROL,$PLAY_B_CONTROL" \
-        --spot-router-endpoint "$SESSION_B_ROUTER" \
-        --play-spot-router-play-a "$PLAY_A_ROUTER" \
-        --play-spot-router-play-b "$PLAY_B_ROUTER" \
-        --stream-endpoint "$SESSION_B_STREAM" \
-        --evidence-file "$LOG_DIR/session-b.evidence.log" \
-        --log-dir "$LOG_DIR"
+      start_server session-b "$SESSION_MAIN" --config "$CONFIG_DIR/session-b.json"
       ;;
     gateway)
-      start_server gateway "$GATEWAY_MAIN" \
-        --rid gateway \
-        --http-url "$GATEWAY_URL" \
-        --spot-router-endpoint "$GATEWAY_ROUTER" \
-        --spot-pub-endpoint "$GATEWAY_SPOT_PUB" \
-        --spot-pub-peer "$PLAY_A_SPOT_PUB,$PLAY_B_SPOT_PUB" \
-        --evidence-file "$LOG_DIR/gateway.evidence.log" \
-        --log-dir "$LOG_DIR"
+      start_server gateway "$GATEWAY_MAIN" --config "$CONFIG_DIR/gateway.json"
       ;;
     multi-node-a)
-      local peer_args=()
-      if [[ "$SCENARIO" != "SM-F6" ]]; then
-        peer_args+=(--peer-spot-router-endpoint "$MULTI_B_SPOT_ROUTER")
-      fi
-      start_server multi-node-a "$MULTI_NODE_MAIN" \
-        --rid multi-node-a \
-        --http-url "$MULTI_A_URL" \
-        --route-endpoint "$MULTI_A_ROUTE" \
-        --spot-router-endpoint "$MULTI_A_SPOT_ROUTER" \
-        --spot-pub-endpoint "$MULTI_A_SPOT_PUB" \
-        "${peer_args[@]}" \
-        --redis-endpoint "$REDIS_ENDPOINT" \
-        --redis-key-prefix "$REDIS_KEY_PREFIX" \
-        --spot-only "$([[ "$SCENARIO" == "SM-F6" ]] && echo true || echo false)" \
-        --evidence-file "$LOG_DIR/multi-node-a.evidence.log" \
-        --log-dir "$LOG_DIR"
+      start_server multi-node-a "$MULTI_NODE_MAIN" --config "$CONFIG_DIR/multi-node-a.json"
       ;;
     multi-node-b)
-      local peer_args=()
-      if [[ "$SCENARIO" != "SM-F6" ]]; then
-        peer_args+=(--peer-spot-router-endpoint "$MULTI_A_SPOT_ROUTER")
-      fi
-      start_server multi-node-b "$MULTI_NODE_MAIN" \
-        --rid multi-node-b \
-        --http-url "$MULTI_B_URL" \
-        --route-endpoint "$MULTI_B_ROUTE" \
-        --spot-router-endpoint "$MULTI_B_SPOT_ROUTER" \
-        --spot-pub-endpoint "$MULTI_B_SPOT_PUB" \
-        "${peer_args[@]}" \
-        --redis-endpoint "$REDIS_ENDPOINT" \
-        --redis-key-prefix "$REDIS_KEY_PREFIX" \
-        --spot-only "$([[ "$SCENARIO" == "SM-F6" ]] && echo true || echo false)" \
-        --evidence-file "$LOG_DIR/multi-node-b.evidence.log" \
-        --log-dir "$LOG_DIR"
+      start_server multi-node-b "$MULTI_NODE_MAIN" --config "$CONFIG_DIR/multi-node-b.json"
       ;;
     *) echo "Unknown server role '$1'" >&2; return 1 ;;
   esac
@@ -475,22 +460,19 @@ wait_topology_routes
 run_client() {
   local scenario="$1"
   echo "client scenario=${scenario}" >>"$LOG_DIR/client.stdout.log"
+  local client_config="$CONFIG_DIR/client-${scenario}.json"
+  node "$ROOT_DIR/write-config.mjs" "$client_config" \
+    --string playAUrl "$PLAY_A_URL" --string playBUrl "$PLAY_B_URL" --string gatewayUrl "$GATEWAY_URL" \
+    --string sessionAUrl "$SESSION_A_URL" --string sessionBUrl "$SESSION_B_URL" \
+    --string sessionAStreamEndpoint "$SESSION_A_STREAM" --string sessionATlsStreamEndpoint "$SESSION_A_TLS_STREAM" \
+    --string sessionBStreamEndpoint "$SESSION_B_STREAM" --string multiAUrl "$MULTI_A_URL" \
+    --string multiBUrl "$MULTI_B_URL" --string scenario "$scenario"
   local -a browser_env=()
   if [[ "$scenario" == "sm-d14" || "$scenario" == "SM-D14" ]]; then
     browser_env=(env ZLINK_BROWSER_IGNORE_HTTPS_ERRORS=1)
   fi
   "${browser_env[@]}" node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
-    --play-a-url "$PLAY_A_URL" \
-    --play-b-url "$PLAY_B_URL" \
-    --gateway-url "$GATEWAY_URL" \
-    --session-a-url "$SESSION_A_URL" \
-    --session-b-url "$SESSION_B_URL" \
-    --session-a-stream-endpoint "$SESSION_A_STREAM" \
-    --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
-    --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --multi-a-url "$MULTI_A_URL" \
-    --multi-b-url "$MULTI_B_URL" \
-    --scenario "$scenario" \
+    --config "$client_config" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
 

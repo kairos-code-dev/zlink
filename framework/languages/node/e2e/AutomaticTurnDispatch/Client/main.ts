@@ -20,7 +20,7 @@ import { runYdE1 } from './Scenarios/atd-e1-timeout-scenario';
 import { runYdE2 } from './Scenarios/atd-e2-cancellation-scenario';
 import { runShutdownRecovery, runShutdownWait } from './Scenarios/shutdown-await-scenario';
 import { parseClientOptions } from './Support/client-options';
-import { browserE2eArgs, runBrowserE2e } from '../../browser-client-runtime';
+import { browserE2eConfig, runBrowserE2e } from '../../browser-client-runtime';
 import {
   AutomaticTurnDispatchNames,
   type AutomaticTurnDispatchRes,
@@ -30,7 +30,7 @@ import {
 } from '../Shared/messages';
 
 async function main(): Promise<void> {
-  const options = parseClientOptions(browserE2eArgs());
+  const options = parseClientOptions(await browserE2eConfig());
   const scenario = options.scenario.toUpperCase();
   const full = scenario === 'FULL' || scenario === 'FULL-CORE';
   if (scenario === 'SHUTDOWN-WAIT') {

@@ -5,25 +5,36 @@ import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import type { ZLinkRouteClient } from '@zlink-systems/framework';
 import { ZLINK_ROUTE_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
-import { parseSessionOptions } from './Configuration/session-options';
+import { createSpotServiceConfigurationModule } from '../../configuration';
+import { validateSessionOptions } from './Configuration/session-options';
+import type { SessionOptions } from './Configuration/session-options';
 import { createSessionEndpoints } from './Endpoints/session-endpoints';
 import { ScenarioSessionFactory } from './Handlers/scenario-session';
 import { EvidenceStore } from './Infrastructure/evidence-store';
 import { ScenarioActorFactory, ScenarioEntrySpot } from './Spots/scenario-actors';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
 
-export async function startSessionHost(args: readonly string[]): Promise<void> {
-  const options = parseSessionOptions(args);
-  fs.mkdirSync(options.logDir, { recursive: true });
-  const evidence = new EvidenceStore(options.rid, options.evidenceFile);
-  ScenarioEntrySpot.useEvidence(evidence);
+const SESSION_OPTIONS = Symbol.for('SPOT_SERVICE_SESSION_OPTIONS');
+
+export async function startSessionHost(): Promise<void> {
+  const configuration = createSpotServiceConfigurationModule(SESSION_OPTIONS, validateSessionOptions);
+  const createEvidence = (options: SessionOptions): EvidenceStore => {
+    fs.mkdirSync(options.logDir, { recursive: true });
+    const evidence = new EvidenceStore(options.rid, options.evidenceFile);
+    ScenarioEntrySpot.useEvidence(evidence);
+    return evidence;
+  };
   let stopping = false;
 
   class SessionModule {}
   Module({
     imports: [
+      configuration,
       ZLinkModule.forRootFactory({
-        useFactory: () => {
+        imports: [configuration],
+        inject: [SESSION_OPTIONS],
+        useFactory: (value: unknown) => {
+          const options = value as SessionOptions;
           const builder = zlinkFramework();
           builder
             .useInMemoryLocationStores()
@@ -62,7 +73,7 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
       })
     ],
     providers: [
-      { provide: EvidenceStore, useValue: evidence },
+      { provide: EvidenceStore, inject: [SESSION_OPTIONS], useFactory: createEvidence },
       ScenarioActorFactory,
       ScenarioEntrySpot,
       ScenarioSessionFactory
@@ -70,6 +81,8 @@ export async function startSessionHost(args: readonly string[]): Promise<void> {
   })(SessionModule);
 
   const app = await NestFactory.createApplicationContext(SessionModule, { logger: false, abortOnError: false });
+  const options = app.get(SESSION_OPTIONS) as SessionOptions;
+  const evidence = app.get(EvidenceStore);
   const route = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
   const server = await startHttpServer(options.httpUrl, createSessionEndpoints(evidence, route, () => { stopping = true; }));
   while (!stopping) {

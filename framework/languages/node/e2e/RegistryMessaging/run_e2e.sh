@@ -7,6 +7,7 @@ source "$NODE_ROOT/e2e/redis-container.sh"
 source "$NODE_ROOT/e2e/runner-common.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
@@ -24,11 +25,14 @@ cleanup() {
   stop_live_pids
   wait_all_pids_ignoring_status
   remove_redis_container
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     tail_failure_logs
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
@@ -75,7 +79,7 @@ CLIENT_MAIN="$ROOT_DIR/Client/dist/RegistryMessaging/Client/main.js"
 
 start_configured_server() {
   local name="$1"; local main="$2"; shift 2
-  local config="$LOG_DIR/$name.config.json"
+  local config="$CONFIG_DIR/$name.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
@@ -155,7 +159,8 @@ for role in "${SERVER_ROLES[@]}"; do
   wait_role "$role"
 done
 
-node "$CLIENT_MAIN" \
+CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
+node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --workflow-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
@@ -168,7 +173,8 @@ node "$CLIENT_MAIN" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --log-dir "$LOG_DIR" \
-  --scenario "$SCENARIO" \
+  --scenario "$SCENARIO"
+node "$CLIENT_MAIN" --config "$CLIENT_CONFIG" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

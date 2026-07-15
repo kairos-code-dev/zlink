@@ -13,60 +13,33 @@ export interface SessionOptions {
   readonly logDir: string;
 }
 
-export function parseSessionOptions(args: readonly string[]): SessionOptions {
-  const values = new Map<string, string>();
-  for (let i = 0; i < args.length; i += 1) {
-    const key = args[i];
-    if (!key.startsWith('--')) {
-      continue;
+export function validateSessionOptions(value: unknown): SessionOptions {
+  const values = objectValues(value);
+  const peers = stringList(values, 'playSpotRouterEndpoints');
+  const peerMap = new Map<string, string>();
+  for (const peer of peers) {
+    const separator = peer.indexOf('=');
+    if (separator <= 0 || separator === peer.length - 1) {
+      throw new Error("Configuration value 'e2e.playSpotRouterEndpoints' entries must use '<rid>=<endpoint>'.");
     }
-    if (i + 1 >= args.length) {
-      throw new Error(`Missing value for ${key}.`);
-    }
-    values.set(key.slice(2), args[++i]);
+    peerMap.set(peer.slice(0, separator), peer.slice(separator + 1));
   }
-  const rid = required(values, 'rid');
+  if (peerMap.size === 0) {
+    throw new Error("Configuration value 'e2e.playSpotRouterEndpoints' must contain at least one peer.");
+  }
   return {
-    rid,
-    httpUrl: required(values, 'http-url'),
-    controlRouterEndpoint: required(values, 'control-router-endpoint'),
-    playControlEndpoints: requiredList(values, 'play-control-endpoint'),
-    spotRouterEndpoint: required(values, 'spot-router-endpoint'),
-    playSpotRouterEndpoints: requiredPeerMap(values, 'play-spot-router'),
-    streamEndpoint: required(values, 'stream-endpoint'),
-    tlsStreamEndpoint: values.get('tls-stream-endpoint'),
-    tlsCertPath: values.get('tls-cert-path'),
-    tlsKeyPath: values.get('tls-key-path'),
-    evidenceFile: values.get('evidence-file'),
-    logDir: required(values, 'log-dir')
+    rid: requiredString(values, 'rid'),
+    httpUrl: requiredString(values, 'httpUrl'),
+    controlRouterEndpoint: requiredString(values, 'controlRouterEndpoint'),
+    playControlEndpoints: stringList(values, 'playControlEndpoints'),
+    spotRouterEndpoint: requiredString(values, 'spotRouterEndpoint'),
+    playSpotRouterEndpoints: peerMap,
+    streamEndpoint: requiredString(values, 'streamEndpoint'),
+    tlsStreamEndpoint: optionalString(values, 'tlsStreamEndpoint'),
+    tlsCertPath: optionalString(values, 'tlsCertPath'),
+    tlsKeyPath: optionalString(values, 'tlsKeyPath'),
+    evidenceFile: optionalString(values, 'evidenceFile'),
+    logDir: requiredString(values, 'logDir')
   };
 }
-
-function requiredList(values: ReadonlyMap<string, string>, key: string): readonly string[] {
-  return required(values, key).split(',').map((value) => value.trim()).filter((value) => value.length > 0);
-}
-
-function requiredPeerMap(values: ReadonlyMap<string, string>, keyPrefix: string): ReadonlyMap<string, string> {
-  const result = new Map<string, string>();
-  for (const [key, value] of values) {
-    if (!key.startsWith(`${keyPrefix}-`)) {
-      continue;
-    }
-    const peerRid = key.slice(keyPrefix.length + 1);
-    if (peerRid.length > 0 && value.length > 0) {
-      result.set(peerRid, value);
-    }
-  }
-  if (result.size === 0) {
-    throw new Error(`--${keyPrefix}-<rid> is required.`);
-  }
-  return result;
-}
-
-function required(values: ReadonlyMap<string, string>, key: string): string {
-  const value = values.get(key);
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${key} is required.`);
-  }
-  return value;
-}
+import { objectValues, optionalString, requiredString, stringList } from '../../../configuration';

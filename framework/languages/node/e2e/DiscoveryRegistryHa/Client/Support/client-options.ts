@@ -7,24 +7,33 @@ export interface ClientOptions {
 }
 
 export function parseClientOptions(args: readonly string[]): ClientOptions {
-  const values = new Map<string, string>();
-  for (let index = 0; index < args.length; index += 2) {
-    const flag = args[index];
-    const value = args[index + 1];
-    if (!flag?.startsWith('--') || value === undefined) throw new Error(`Invalid client argument '${flag}'.`);
-    values.set(flag.slice(2), value);
-  }
+  const values = readConfig(args);
   return {
-    topologyUrl: required(values, 'topology-url'),
-    consumerUrl: required(values, 'consumer-url'),
-    providerAUrl: required(values, 'provider-a-url'),
-    providerBUrl: values.get('provider-b-url'),
-    scenario: values.get('scenario') ?? 'all'
+    topologyUrl: required(values, 'topologyUrl'),
+    consumerUrl: required(values, 'consumerUrl'),
+    providerAUrl: required(values, 'providerAUrl'),
+    providerBUrl: optional(values, 'providerBUrl'),
+    scenario: optional(values, 'scenario') ?? 'all'
   };
 }
 
-function required(values: ReadonlyMap<string, string>, name: string): string {
-  const value = values.get(name);
-  if (!value) throw new Error(`--${name} is required.`);
+function readConfig(args: readonly string[]): Record<string, unknown> {
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) throw new Error('--config <path> is required.');
+  const document = JSON.parse(fs.readFileSync(args[1], 'utf8')) as { e2e?: unknown };
+  if (document.e2e === null || typeof document.e2e !== 'object' || Array.isArray(document.e2e)) throw new Error("Configuration section 'e2e' must be an object.");
+  return document.e2e as Record<string, unknown>;
+}
+
+function required(values: Record<string, unknown>, name: string): string {
+  const value = values[name];
+  if (typeof value !== 'string' || value.length === 0) throw new Error(`Configuration value 'e2e.${name}' is required.`);
   return value;
 }
+
+function optional(values: Record<string, unknown>, name: string): string | undefined {
+  const value = values[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') throw new Error(`Configuration value 'e2e.${name}' must be a string.`);
+  return value;
+}
+import fs from 'node:fs';

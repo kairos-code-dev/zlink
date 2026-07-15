@@ -16,6 +16,7 @@ if [[ "$CHILD_RUN" != "--child-run" && "$SCENARIO" == "all" ]]; then
 fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -94,6 +95,7 @@ cleanup() {
   for pid in "${pids[@]:-}"; do kill -KILL "$pid" >/dev/null 2>&1 || true; done
   wait "${pids[@]:-}" >/dev/null 2>&1 || true
   if [[ -n "$REDIS_CONTAINER_ID" ]]; then docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true; fi
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log; do
@@ -104,10 +106,12 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 start_node() {
   local rid="$1" url="$2" router="$3" pubsub="$4"
-  local config="$LOG_DIR/$rid.config.json"
+  local config="$CONFIG_DIR/$rid.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" \
     --rid "$rid" \
     --http-url "$url" \
@@ -124,7 +128,7 @@ start_node() {
 
 start_session() {
   local rid="$1" url="$2" router="$3" pubsub="$4" stream="$5"
-  local config="$LOG_DIR/$rid.config.json"
+  local config="$CONFIG_DIR/$rid.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" \
     --rid "$rid" \
     --http-url "$url" \
@@ -151,12 +155,13 @@ start_node_a() {
 
 run_client() {
   local scenario="$1"
+  local client_config="$CONFIG_DIR/client-${scenario//,/_}.config.json"
+  node "$ROOT_DIR/write-config.mjs" "$client_config" \
+    --node-a-url "$NODE_A_URL" --node-b-url "$NODE_B_URL" \
+    --session-a-stream-endpoint "$SESSION_A_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
+    --scenario "$scenario"
   node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$ROOT_DIR/Client/main.ts" -- \
-    --node-a-url "$NODE_A_URL" \
-    --node-b-url "$NODE_B_URL" \
-    --session-a-stream-endpoint "$SESSION_A_STREAM" \
-    --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario "$scenario" \
+    --config "$client_config" \
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
 

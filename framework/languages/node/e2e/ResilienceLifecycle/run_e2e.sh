@@ -6,6 +6,7 @@ NODE_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
 source "$NODE_ROOT/e2e/redis-container.sh"
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
+CONFIG_DIR=""
 SCENARIO="${1:-all}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
@@ -52,6 +53,7 @@ cleanup() {
   if [[ -n "$REDIS_CONTAINER_ID" ]]; then
     docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null 2>&1 || true
   fi
+  [[ -z "$CONFIG_DIR" ]] || rm -rf "$CONFIG_DIR"
   if [[ "$code" -ne 0 ]]; then
     echo "E2E failed. log_dir=$LOG_DIR" >&2
     for file in "$LOG_DIR"/*.stderr.log "$LOG_DIR"/client.stderr.log; do
@@ -63,6 +65,8 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+CONFIG_DIR="$(mktemp -d)"
+chmod 700 "$CONFIG_DIR"
 
 start_server() {
   local name="$1"
@@ -129,7 +133,7 @@ CLIENT_MAIN="$ROOT_DIR/Client/dist/ResilienceLifecycle/Client/main.js"
 
 start_configured_server() {
   local name="$1"; local main="$2"; shift 2
-  local config="$LOG_DIR/$name.config.json"
+  local config="$CONFIG_DIR/$name.config.json"
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
@@ -182,7 +186,8 @@ for index in $(seq 2 "$RESILIENCE_CONSUMER_COUNT"); do
 done
 CONSUMER_URL_LIST="$(IFS=,; echo "${CONSUMER_URLS[*]}")"
 
-node "$CLIENT_MAIN" \
+CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
+node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --peer-location-url "http://127.0.0.1:$CONSUMER_HTTP_PORT" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
@@ -200,7 +205,8 @@ node "$CLIENT_MAIN" \
   --provider-b-green-channel-endpoint "$API_B_GREEN" \
   --provider-main "$PROVIDER_MAIN" \
   --log-dir "$LOG_DIR" \
-  --scenario "$SCENARIO" \
+  --scenario "$SCENARIO"
+node "$CLIENT_MAIN" --config "$CLIENT_CONFIG" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
 
 cat "$LOG_DIR/client.stdout.log"

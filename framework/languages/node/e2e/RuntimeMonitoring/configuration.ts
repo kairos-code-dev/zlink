@@ -4,9 +4,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 
 const MONITORING_OPTIONS = Symbol.for('@zlink-systems/e2e-runtime-monitoring:options');
 function createMonitoringConfigurationModule<T>(validate: (value: unknown) => T): DynamicModule {
-  const args = process.argv.slice(2); const index = args.indexOf('--config');
-  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) throw new Error('--config <path> is required.');
-  const configPath = args[index + 1]; class MonitoringConfigurationModule {} Module({})(MonitoringConfigurationModule);
+  const args = process.argv.slice(2);
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) throw new Error('--config <path> is the only supported framework host argument.');
+  const configPath = args[1]; class MonitoringConfigurationModule {} Module({})(MonitoringConfigurationModule);
   return { module: MonitoringConfigurationModule,
     imports: [ConfigModule.forRoot({ cache: true, ignoreEnvFile: true, isGlobal: false, load: [() => ({ e2e: readConfig(configPath) })], skipProcessEnv: true, validatePredefined: false })],
     providers: [{ provide: MONITORING_OPTIONS, inject: [ConfigService], useFactory: (config: ConfigService) => validate(config.get('e2e')) }], exports: [MONITORING_OPTIONS] };

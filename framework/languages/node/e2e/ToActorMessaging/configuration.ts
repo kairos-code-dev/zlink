@@ -18,11 +18,10 @@ const TO_ACTOR_OPTIONS = Symbol.for('TO_ACTOR_OPTIONS');
 
 function createToActorConfigurationModule(): DynamicModule {
   const args = process.argv.slice(2);
-  const index = args.indexOf('--config');
-  if (index < 0 || index + 1 >= args.length || args[index + 1].startsWith('--')) {
-    throw new Error('--config <path> is required.');
+  if (args.length !== 2 || args[0] !== '--config' || args[1].startsWith('--')) {
+    throw new Error('--config <path> is the only supported framework host argument.');
   }
-  const configPath = args[index + 1];
+  const configPath = args[1];
   class ToActorConfigurationModule {}
   Module({})(ToActorConfigurationModule);
   return {

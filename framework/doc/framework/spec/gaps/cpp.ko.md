@@ -1057,4 +1057,6 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
 
 - [ ] **TH-CP-01** (미구현) — **선행: cpp connector 언어별 계약 문서가 없다**([§14](../90-implementation-gap.ko.md)). 그 문서를 만들면서 `expect_none`·`wait_for_sequence`와 assert 유틸(`ensure`/`expect_failure`/`expect_timeout`)을 §10.2대로 정의·구현한다.
-- [ ] **TH-CP-02** (리팩토링) — cpp가 다섯 언어 중 negative 단언이 가장 얕다(`expect_error` 하나). `expect_none`·`wait_for_sequence`를 connector에 두고, **기존 지역 negative/order helper를 삭제하고** 그 표준 표면으로 교체한다. **둘을 병존시키지 마라 — 지역 helper가 하나라도 남으면 미완료다.** SMP-CP-31·SMP-CP-37은 지역적으로 이미 닫혔고, 이 교체로 교차 언어 SMP-X3의 공통 게이트가 채워진다.
+  - 현재 상태: C++ 구현과 집중 계약 테스트는 완료했다(`8e355273d`). 다만 선행인 C++ 언어별 계약 문서는 이 작업의 `spec/**` 읽기 전용 경계 때문에 추가하지 않았으므로 체크박스는 열어 둔다. 선택지는 해당 문서 하나를 범위 예외로 허용하거나 별도 계약 문서 작업에서 먼저 추가하는 것이다.
+- [x] **TH-CP-02** (리팩토링) — cpp가 다섯 언어 중 negative 단언이 가장 얕다(`expect_error` 하나). `expect_none`·`wait_for_sequence`를 connector에 두고, **기존 지역 negative/order helper를 삭제하고** 그 표준 표면으로 교체한다. **둘을 병존시키지 마라 — 지역 helper가 하나라도 남으면 미완료다.** SMP-CP-31·SMP-CP-37은 지역적으로 이미 닫혔고, 이 교체로 교차 언어 SMP-X3의 공통 게이트가 채워진다.
+  - 근거: DeliveryDispatch의 지역 순서 helper, Bingo·TicTacToe의 timeout 반전 negative, SupportChat의 `expect_error`를 공통 connector·assert 표면으로 교체했다(`34a9911e7`). 수정 전 source gate가 두 coroutine client의 blocking future bridge를 검출해 실패했고 connector task의 `co_await`로 통일했다(`835cc0b20`). connector 집중 테스트, sample parity, DeliveryDispatch·SupportChat·Bingo·TicTacToe 전체 runner가 통과했다. POSD 리뷰에서는 실행 runner thread 수를 늘리는 우회를 기각하고 샘플의 blocking 실행 순서 지식을 제거했다.

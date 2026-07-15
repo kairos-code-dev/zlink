@@ -794,6 +794,40 @@ final class ZLinkStreamConnectorTest {
     }
 
     @Test
+    void compressedSendLimitUsesCompressedPayloadSize() throws Exception {
+        ZLinkStreamCompressionCodec codec = new ZLinkStreamCompressionCodec() {
+            @Override
+            public byte[] compress(byte[] payload) {
+                return new byte[] {1, 2};
+            }
+
+            @Override
+            public byte[] decompress(byte[] payload, int maxDecompressedSize) {
+                return payload;
+            }
+        };
+        try (TcpStreamConnectorTestServer server = new TcpStreamConnectorTestServer()) {
+            ZLinkStreamConnector connector = createConnector(options(
+                server.endpoint(),
+                ZLinkStreamDispatchMode.IMMEDIATE,
+                2,
+                64 * 1024,
+                false,
+                false,
+                ZLinkStreamCompression.LZ4,
+                codec));
+            ConnectorTestAwait.await(connector.connect());
+
+            var sentFrame = server.readFrameAsync();
+            connector.send(payload("CompressedLimit", "larger-before-compression"))
+                .compress()
+                .submit();
+
+            assertArrayEquals(new byte[] {1, 2}, sentFrame.join().payload());
+        }
+    }
+
+    @Test
     void customDecompressionResultIsCheckedAgainstReceiveLimit() throws Exception {
         ZLinkStreamCompressionCodec codec = new ZLinkStreamCompressionCodec() {
             @Override

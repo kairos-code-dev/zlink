@@ -22,17 +22,17 @@ final class ZLinkStreamConnectorPayloadCodec {
 
     byte[] encode(ZLinkStreamEncodedPayload payload, boolean compress) {
         byte[] body = drainPayload(payload);
-        if (body.length > configuration.limits().sendPayload()) {
-            throw new IllegalArgumentException("payload exceeds max payload size");
-        }
         if (!compress) {
+            requireWithinSendLimit(body);
             return body;
         }
         ZLinkStreamCompressionCodec codec = configuration.transport().compressionCodec();
         if (codec == null) {
             throw new IllegalStateException("compression codec is not configured");
         }
-        return codec.compress(body);
+        byte[] compressed = codec.compress(body);
+        requireWithinSendLimit(compressed);
+        return compressed;
     }
 
     byte[] decode(ZLinkStreamWireProtocol.Header header, byte[] payload) {
@@ -74,6 +74,12 @@ final class ZLinkStreamConnectorPayloadCodec {
             return payload.payload().toByteArray();
         } finally {
             payload.payload().close();
+        }
+    }
+
+    private void requireWithinSendLimit(byte[] payload) {
+        if (payload.length > configuration.limits().sendPayload()) {
+            throw new IllegalArgumentException("payload exceeds max payload size");
         }
     }
 }

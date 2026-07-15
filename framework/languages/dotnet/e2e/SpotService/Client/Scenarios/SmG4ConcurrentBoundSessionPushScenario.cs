@@ -1,3 +1,4 @@
+// Verifies SM-G4 Concurrent Bound Session Push behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

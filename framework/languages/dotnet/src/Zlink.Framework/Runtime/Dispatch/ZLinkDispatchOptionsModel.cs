@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace Zlink.Framework.Runtime.Dispatch;
 
 internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
@@ -90,10 +88,6 @@ internal sealed class ZLinkUnhandledDispatchOptionsModel : IZLinkUnhandledDispat
     public ZLinkUnhandledDispatchAction Send { get; set; } = ZLinkUnhandledDispatchAction.LogAndDrop;
 
     public ZLinkUnhandledDispatchAction Publish { get; set; } = ZLinkUnhandledDispatchAction.LogAndDrop;
-
-    public LogLevel SendLogLevel { get; set; } = LogLevel.Warning;
-
-    public LogLevel PublishLogLevel { get; set; } = LogLevel.Debug;
 }
 
 internal sealed class ZLinkDiagnosticsOptionsModel : IZLinkDiagnosticsOptions

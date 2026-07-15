@@ -83,9 +83,6 @@ terminator는 계약 위반이다([04 §2](../04-async-execution-policy.ko.md)).
   (`GetAwaiter().GetResult()`, `runBlocking`, `.join()`).
 - 합성은 `co_await` / `await` / `thenCompose` / suspend로 한다.
 
-> 현재 cpp·dotnet·java가 blocking 표면을 public으로 제공하고 문서가 사용을 권장한다. 계약 위반이며
-> [구현 차이 §12.22](../90-implementation-gap.ko.md)가 소유한다.
-
 ## 5.5 서버 표면과 client 수명
 
 **서버(Spot handler·channel handler)에서 쓰는 client는 DI로 주입받는다.** handler 안에서 정적

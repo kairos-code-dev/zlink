@@ -1,3 +1,4 @@
+// Verifies SM-B6 Actor Disconnect Callback behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

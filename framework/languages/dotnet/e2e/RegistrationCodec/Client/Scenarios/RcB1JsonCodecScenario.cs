@@ -1,3 +1,4 @@
+// Verifies RC-B1 Json Codec behavior.
 using RegistrationCodec.Client.Support;
 using Zlink.HttpClient;
 

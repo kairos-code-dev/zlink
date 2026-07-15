@@ -1,3 +1,4 @@
+// Verifies OBS-B3 Fanout And Lease Metrics behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 using StackExchange.Redis;

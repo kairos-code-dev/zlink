@@ -5,8 +5,8 @@ zlink_redis_start_scoped() {
   local image="${2:-redis:7.2-alpine}"
   local log_dir="${3:-.}"
   local port_mapping="${4:-127.0.0.1::6379}"
-  local docker_timeout_seconds="${ZLINK_REDIS_DOCKER_TIMEOUT_SECONDS:-10}"
-  local run_id="${ZLINK_REDIS_RUN_ID:-$$}"
+  local docker_timeout_seconds=10
+  local run_id="$$"
   local name="${scope}-${run_id}-${BASHPID}-${RANDOM}"
 
   local create_output create_status container_id start_output start_status running host_port
@@ -73,7 +73,7 @@ zlink_redis_start_scoped_assign() {
 
 zlink_redis_wait_ready() {
   local container_id="$1"
-  local timeout_seconds="${2:-${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}}"
+  local timeout_seconds="${2:-60}"
   local poll_seconds="${3:-1}"
   local deadline=$((SECONDS + timeout_seconds))
 

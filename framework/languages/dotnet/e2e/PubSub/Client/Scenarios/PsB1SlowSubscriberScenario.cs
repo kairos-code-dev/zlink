@@ -1,3 +1,4 @@
+// Verifies PS-B1 Slow Subscriber behavior.
 using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;

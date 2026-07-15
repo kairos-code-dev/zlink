@@ -10,7 +10,9 @@ internal sealed record PlayOptions(
     string RouterEndpoint,
     string PubEndpoint,
     string LogDir,
-    bool MetricsEnabled = true)
+    bool MetricsEnabled = true,
+    int LocationHeartbeatMs = 1000,
+    int LocationLeaseTtlMs = 3000)
 {
     public static PlayOptions Parse(string[] args)
         => E2eConfiguration.Load<PlayOptions>(args);

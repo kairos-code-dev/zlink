@@ -140,6 +140,21 @@ public sealed partial class StreamConnectorTests
                 nameof(ZlinkStreamErrorCode.ConnectTimeout)).AsTask());
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ZlinkStreamAssert.ExpectFailureAsync(_ => ValueTask.CompletedTask).AsTask());
+        var programmingFailure = new InvalidOperationException("programming failure");
+        var propagatedFailure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ZlinkStreamAssert.ExpectFailureAsync(
+                _ => ValueTask.FromException(programmingFailure),
+                nameof(ZlinkStreamErrorCode.RemoteError)).AsTask());
+        Assert.Same(programmingFailure, propagatedFailure);
+
+        var wrappedTransportFailure = new InvalidOperationException(
+            "request failed",
+            new HttpRequestException("connection refused"));
+        var disconnected = await ZlinkStreamAssert.ExpectFailureAsync(
+            _ => ValueTask.FromException(wrappedTransportFailure),
+            nameof(ZlinkStreamErrorCode.Disconnected));
+        Assert.Equal(ZlinkStreamErrorCode.Disconnected, disconnected.Code);
+        Assert.Same(wrappedTransportFailure, disconnected.Exception);
 
         await ZlinkStreamAssert.ExpectTimeoutAsync(
             _ => ValueTask.FromException(new TimeoutException("wait timed out")));

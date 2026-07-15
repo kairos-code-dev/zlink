@@ -1,3 +1,4 @@
+// Verifies SM-D15 Gateway Actor Session Push behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

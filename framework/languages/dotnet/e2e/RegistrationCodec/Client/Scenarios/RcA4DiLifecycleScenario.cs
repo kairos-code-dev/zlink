@@ -1,3 +1,4 @@
+// Verifies RC-A4 Di Lifecycle behavior.
 using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;

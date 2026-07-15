@@ -29,6 +29,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../../src/Zlink.Framework/Zlink.Framework.csproj"/>
+        <ProjectReference Include="../../src/Zlink.Framework.Contracts/Zlink.Framework.Contracts.csproj"/>
         <ProjectReference Include="../../src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj"/>
         <ProjectReference Include="../../src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj"/>
         <ProjectReference Include="../../src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj"/>

@@ -1,3 +1,4 @@
+// Verifies RL-A4 Drain And Green Endpoint behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

@@ -36,7 +36,7 @@ internal static class TimerIsolationProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
+        EvidenceOrder.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "timer-await-started",
             "timer-await-released",
             "timer-fast-started",

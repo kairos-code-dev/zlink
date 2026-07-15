@@ -1,3 +1,4 @@
+// Verifies PS-B2 Publisher Restart behavior.
 using System.Diagnostics;
 using PubSub.Client.Support;
 using PubSub.Shared;
@@ -29,14 +30,14 @@ internal static class PsB2PublisherRestartScenario
 
         // Stop the HTTP publisher server and wait until the client observes the process gap.
         await publisher.Post("/shutdown").AsyncRaw();
-        await ScenarioAssert.EventuallyAsync(
+        await StateObservation.WaitUntilAsync(
             async () =>
             {
                 try
                 {
                     return (await publisher.Get("/health").AsyncRaw()).Status != 200;
                 }
-                catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
+                catch (Exception ex) when ((ex is HttpRequestException || ex.InnerException is HttpRequestException))
                 {
                     return true;
                 }
@@ -54,14 +55,14 @@ internal static class PsB2PublisherRestartScenario
 
         // Restart the same publisher role and wait for the health endpoint before measuring recovery.
         var restartedPublisher = processes.StartPublisher();
-        await ScenarioAssert.EventuallyAsync(
+        await StateObservation.WaitUntilAsync(
             async () =>
             {
                 try
                 {
                     return (await publisher.Get("/health").AsyncRaw()).Status == 200;
                 }
-                catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
+                catch (Exception ex) when ((ex is HttpRequestException || ex.InnerException is HttpRequestException))
                 {
                     return false;
                 }

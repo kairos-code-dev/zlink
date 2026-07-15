@@ -6,11 +6,11 @@ public sealed record ServerOptions(
     string Rid,
     string HttpUrl,
     string LogDir,
-    string? ChannelEndpoint,
-    string? EvidenceFile,
-    string? InvalidMode,
     string CodecMode,
-    string? JsonOnlyPeerProject)
+    string? ChannelEndpoint = null,
+    string? EvidenceFile = null,
+    string? InvalidMode = null,
+    string? JsonOnlyPeerProject = null)
 {
     public static ServerOptions Parse(string[] args)
         => E2eConfiguration.Load<ServerOptions>(args);

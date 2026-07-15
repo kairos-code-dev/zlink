@@ -4,10 +4,10 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
-RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
-BINGO_LOG_DIR="${BINGO_LOG_DIR:-${SCRIPT_DIR}/logs}"
+BINGO_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "${LOG_DIR}" "${BINGO_LOG_DIR}"
 rm -f "${BINGO_LOG_DIR}"/*.log
 
@@ -50,21 +50,15 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${RUN_SUCCEEDED}" == "1" && "${BINGO_KEEP_RUN_DIR:-}" != "1" ]]; then
-    [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
+  if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
+    rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
   fi
 }
 trap cleanup EXIT
 
-if [[ -n "${BINGO_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 22); do
-    PORTS+=("$((BINGO_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
@@ -89,22 +83,21 @@ finally:
         sock.close()
 PY
 )"
-fi
 
-BINGO_API_A_CHANNEL_ENDPOINT="${BINGO_API_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[2]}}"
-BINGO_PLAY_A_CHANNEL_ENDPOINT="${BINGO_PLAY_A_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[3]}}"
-BINGO_SESSION_A_SPOT_ENDPOINT="${BINGO_SESSION_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[4]}}"
-BINGO_SESSION_A_ROUTER_ENDPOINT="${BINGO_SESSION_A_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[5]}}"
-BINGO_SESSION_B_SPOT_ENDPOINT="${BINGO_SESSION_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[6]}}"
-BINGO_SESSION_B_ROUTER_ENDPOINT="${BINGO_SESSION_B_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[7]}}"
-BINGO_PLAY_B_CHANNEL_ENDPOINT="${BINGO_PLAY_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[8]}}"
-BINGO_PLAY_A_SPOT_ENDPOINT="${BINGO_PLAY_A_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[9]}}"
-BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[10]}}"
-BINGO_SESSION_A_STREAM_ENDPOINT="${BINGO_SESSION_A_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[11]}}"
-BINGO_SESSION_B_STREAM_ENDPOINT="${BINGO_SESSION_B_STREAM_ENDPOINT:-tcp://127.0.0.1:${PORTS[12]}}"
-BINGO_PLAY_B_SPOT_ENDPOINT="${BINGO_PLAY_B_SPOT_ENDPOINT:-tcp://127.0.0.1:${PORTS[13]}}"
-BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT="${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT:-tcp://127.0.0.1:${PORTS[14]}}"
-BINGO_API_B_CHANNEL_ENDPOINT="${BINGO_API_B_CHANNEL_ENDPOINT:-tcp://127.0.0.1:${PORTS[15]}}"
+BINGO_API_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[2]}"
+BINGO_PLAY_A_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[3]}"
+BINGO_SESSION_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[4]}"
+BINGO_SESSION_A_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[5]}"
+BINGO_SESSION_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[6]}"
+BINGO_SESSION_B_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[7]}"
+BINGO_PLAY_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[8]}"
+BINGO_PLAY_A_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[9]}"
+BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[10]}"
+BINGO_SESSION_A_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[11]}"
+BINGO_SESSION_B_STREAM_ENDPOINT="tcp://127.0.0.1:${PORTS[12]}"
+BINGO_PLAY_B_SPOT_ENDPOINT="tcp://127.0.0.1:${PORTS[13]}"
+BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:${PORTS[14]}"
+BINGO_API_B_CHANNEL_ENDPOINT="tcp://127.0.0.1:${PORTS[15]}"
 API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
@@ -166,28 +159,32 @@ python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" 
 import json
 import sys
 
-settings = {
+common = {
     "LogDirectory": "${BINGO_LOG_DIR}",
     "RedisEndpoint": "${BINGO_REDIS_ENDPOINT}",
     "RedisKeyPrefix": "${BINGO_REDIS_KEY_PREFIX}",
-    "ApiAChannelEndpoint": "${BINGO_API_A_CHANNEL_ENDPOINT}",
-    "ApiBChannelEndpoint": "${BINGO_API_B_CHANNEL_ENDPOINT}",
-    "PlayAChannelEndpoint": "${BINGO_PLAY_A_CHANNEL_ENDPOINT}",
-    "PlayBChannelEndpoint": "${BINGO_PLAY_B_CHANNEL_ENDPOINT}",
-    "PlayASpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}",
-    "PlayBSpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}",
-    "PlayASpotRouterEndpoint": "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}",
-    "PlayBSpotRouterEndpoint": "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}",
-    "SessionASpotEndpoint": "${BINGO_SESSION_A_SPOT_ENDPOINT}",
-    "SessionBSpotEndpoint": "${BINGO_SESSION_B_SPOT_ENDPOINT}",
-    "SessionARouterEndpoint": "${BINGO_SESSION_A_ROUTER_ENDPOINT}",
-    "SessionBRouterEndpoint": "${BINGO_SESSION_B_ROUTER_ENDPOINT}",
-    "SessionAStreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}",
-    "SessionBStreamEndpoint": "${BINGO_SESSION_B_STREAM_ENDPOINT}",
 }
-for path, node_name in zip(sys.argv[1:], ["a", "b", "a", "b", "a", "b", "client"]):
+roles = [
+    {**common, "NodeName": "a", "ChannelEndpoint": "${BINGO_API_A_CHANNEL_ENDPOINT}"},
+    {**common, "NodeName": "b", "ChannelEndpoint": "${BINGO_API_B_CHANNEL_ENDPOINT}"},
+    {**common, "NodeName": "a", "ChannelEndpoint": "${BINGO_PLAY_A_CHANNEL_ENDPOINT}",
+     "SpotEndpoint": "${BINGO_PLAY_A_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"},
+    {**common, "NodeName": "b", "ChannelEndpoint": "${BINGO_PLAY_B_CHANNEL_ENDPOINT}",
+     "SpotEndpoint": "${BINGO_PLAY_B_SPOT_ENDPOINT}", "SpotRouterEndpoint": "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"},
+    {**common, "NodeName": "a", "SpotEndpoint": "${BINGO_SESSION_A_SPOT_ENDPOINT}",
+     "SpotRouterEndpoint": "${BINGO_SESSION_A_ROUTER_ENDPOINT}", "StreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}"},
+    {**common, "NodeName": "b", "SpotEndpoint": "${BINGO_SESSION_B_SPOT_ENDPOINT}",
+     "SpotRouterEndpoint": "${BINGO_SESSION_B_ROUTER_ENDPOINT}", "StreamEndpoint": "${BINGO_SESSION_B_STREAM_ENDPOINT}"},
+]
+for path, role in zip(sys.argv[1:-1], roles):
     with open(path, "w", encoding="utf-8") as output:
-        json.dump({"Sample": {**settings, "NodeName": node_name}}, output, indent=2)
+        json.dump({"Sample": role}, output, indent=2)
+with open(sys.argv[-1], "w", encoding="utf-8") as output:
+    json.dump({"Client": {
+        "LogDirectory": "${BINGO_LOG_DIR}",
+        "SessionAStreamEndpoint": "${BINGO_SESSION_A_STREAM_ENDPOINT}",
+        "SessionBStreamEndpoint": "${BINGO_SESSION_B_STREAM_ENDPOINT}",
+    }}, output, indent=2)
 PY
 
 start_server() {

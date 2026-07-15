@@ -79,6 +79,10 @@ public sealed partial class RegressionTests
 
         Assert.Contains("record JoinSessionReq", messages, StringComparison.Ordinal);
         Assert.Contains("record JoinSessionRes", messages, StringComparison.Ordinal);
+        Assert.Contains("record JoinSessionRes(string PlayerId, QuestProgress[] ActiveQuests)", messages,
+            StringComparison.Ordinal);
+        Assert.Contains("joined.PlayerId == \"player-alice\"", clientScenario, StringComparison.Ordinal);
+        Assert.Contains("bobJoined.PlayerId == \"player-bob\"", clientScenario, StringComparison.Ordinal);
         Assert.DoesNotContain("SubscribeQuestReq", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("SubscribeQuestRes", messages, StringComparison.Ordinal);
         Assert.DoesNotContain("ApplyGameplayEventReq", messages, StringComparison.Ordinal);

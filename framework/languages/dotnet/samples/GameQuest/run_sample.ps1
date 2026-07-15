@@ -43,40 +43,46 @@ try {
     $RedisContainer = $redis.ContainerId
     $GAMEQUEST_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$GAMEQUEST_REDIS_ENDPOINT"
-    $baseSettings = [ordered]@{
+    $common = @{
         LogDirectory = $SampleLogDir
         RedisEndpoint = $GAMEQUEST_REDIS_ENDPOINT
         RedisKeyPrefix = $GAMEQUEST_REDIS_KEY_PREFIX
-        GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
-        GameApiBHttpBaseUrl = $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
-        MissionAHttpBaseUrl = $GAMEQUEST_MISSION_A_HTTP_URL
-        MissionBHttpBaseUrl = $GAMEQUEST_MISSION_B_HTTP_URL
-        GameApiAStreamEndpoint = $GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT
-        GameApiBStreamEndpoint = $GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT
-        GameApiAStreamBindEndpoint = $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT
-        GameApiBStreamBindEndpoint = $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT
-        GameApiAChannelEndpoint = $GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT
-        GameApiBChannelEndpoint = $GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT
-        MissionAChannelEndpoint = $GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT
-        MissionBChannelEndpoint = $GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT
-        MissionASpotEndpoint = $GAMEQUEST_MISSION_A_SPOT_ENDPOINT
-        MissionASpotRouterEndpoint = $GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
-        MissionBSpotEndpoint = $GAMEQUEST_MISSION_B_SPOT_ENDPOINT
-        MissionBSpotRouterEndpoint = $GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
-        GameApiASpotEndpoint = $GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT
-        GameApiASpotRouterEndpoint = $GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT
-        GameApiBSpotEndpoint = $GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT
-        GameApiBSpotRouterEndpoint = $GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT
     }
     $configFiles = @{}
-    foreach ($instance in @("mission-a", "mission-b", "api-a", "api-b", "client")) {
-        $sample = [ordered]@{}
-        foreach ($key in $baseSettings.Keys) { $sample[$key] = $baseSettings[$key] }
-        $sample.InstanceName = $instance
+    $roles = @{
+        "mission-a" = $common + @{
+            InstanceName = "mission-a"; GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
+            MissionAHttpBaseUrl = $GAMEQUEST_MISSION_A_HTTP_URL; MissionAChannelEndpoint = $GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT
+            MissionASpotEndpoint = $GAMEQUEST_MISSION_A_SPOT_ENDPOINT; MissionASpotRouterEndpoint = $GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT
+        }
+        "mission-b" = $common + @{
+            InstanceName = "mission-b"; GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
+            MissionBHttpBaseUrl = $GAMEQUEST_MISSION_B_HTTP_URL; MissionBChannelEndpoint = $GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT
+            MissionBSpotEndpoint = $GAMEQUEST_MISSION_B_SPOT_ENDPOINT; MissionBSpotRouterEndpoint = $GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT
+        }
+        "api-a" = $common + @{
+            InstanceName = "api-a"; GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL
+            GameApiAStreamBindEndpoint = $GAMEQUEST_API_A_STREAM_BIND_ENDPOINT; GameApiAChannelEndpoint = $GAMEQUEST_GAMEAPI_A_CHANNEL_ENDPOINT
+            GameApiASpotEndpoint = $GAMEQUEST_GAMEAPI_A_SPOT_ENDPOINT; GameApiASpotRouterEndpoint = $GAMEQUEST_GAMEAPI_A_SPOT_ROUTER_ENDPOINT
+        }
+        "api-b" = $common + @{
+            InstanceName = "api-b"; GameApiBHttpBaseUrl = $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
+            GameApiBStreamBindEndpoint = $GAMEQUEST_API_B_STREAM_BIND_ENDPOINT; GameApiBChannelEndpoint = $GAMEQUEST_GAMEAPI_B_CHANNEL_ENDPOINT
+            GameApiBSpotEndpoint = $GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT; GameApiBSpotRouterEndpoint = $GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT
+        }
+    }
+    foreach ($instance in $roles.Keys) {
         $path = Join-Path $RunDir "appsettings.$instance.json"
-        @{ Sample = $sample } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
+        @{ Sample = $roles[$instance] } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
         $configFiles[$instance] = $path
     }
+    $clientPath = Join-Path $RunDir "appsettings.client.json"
+    @{ Client = @{
+        GameApiAHttpBaseUrl = $GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL; GameApiBHttpBaseUrl = $GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL
+        MissionAHttpBaseUrl = $GAMEQUEST_MISSION_A_HTTP_URL; MissionBHttpBaseUrl = $GAMEQUEST_MISSION_B_HTTP_URL
+        GameApiAStreamEndpoint = $GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT; GameApiBStreamEndpoint = $GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT
+    } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $clientPath
+    $configFiles["client"] = $clientPath
 
     Start-SampleDotnetAssembly -Name "mission-a" -Project (Join-Path $ScriptDir "Server/QuestMission/GameQuest.QuestMission.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["mission-a"]) | Out-Null
     Wait-SampleTcpEndpoint "mission-a-spot-router" $GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT

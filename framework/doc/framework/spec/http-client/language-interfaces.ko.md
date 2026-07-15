@@ -83,9 +83,11 @@
 | java/kotlin | `ZLinkFrameworkException` | `kind()` (UPPER_SNAKE) + `retriable()` |
 | node | `ZLinkFrameworkException` | `ZLinkFrameworkErrorKind` (camelCase) + `isRetriable` |
 
-## 2. 언어별 공개 표면 전량 (normative)
+## 2. 언어별 공개 표면 요약 (비규범)
 
-각 언어의 공개 심볼은 아래 목록이 전부다. 목록 밖 심볼을 공개하면 계약 위반.
+아래 목록은 언어 간 이름 대응을 읽기 위한 요약이다. 언어별 public 심볼의 정확한
+전량과 시그니처는 `languages/<lang>/`의 정식 interface 문서가 소유한다. 이 요약에
+보조 타입이 빠져 있다는 이유만으로 구현을 제거하거나 public 계약을 바꾸지 않는다.
 
 - **cpp** `zlink::http_client`: `client_t`, `client_builder_t`,
   `request_builder_t`, `http_method_t`, `http_response_t<T>`,

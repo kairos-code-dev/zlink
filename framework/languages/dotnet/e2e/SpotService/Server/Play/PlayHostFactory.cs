@@ -112,91 +112,30 @@ internal static class PlayHostFactory
         }
     }
 
-    internal static async Task<StateRes> RequestSpotStateWithRetryAsync(
+    internal static async Task<StateRes> RequestSpotStateAsync(
         IZLinkRouteClient routes,
         IZLinkSpotHandleResolver locator,
         string targetSpotRid,
-        StateReq request,
-        string failureMessage,
-        string channelName = SpotServiceNames.ExternalSpotChannel)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-            try
-            {
-                return await routes.RequestToSpot(await locator.ResolveRequiredAsync(targetSpotRid),
-                        request)
-                    .Timeout(TimeSpan.FromSeconds(1))
-                    .Async<StateRes>();
-            }
-            catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
-            {
-                last = ex;
-                await Task.Delay(100);
-            }
+        StateReq request)
+        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(targetSpotRid), request)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<StateRes>();
 
-        throw new InvalidOperationException(
-            last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
-    }
-
-    internal static async Task SendSpotCommandWithRetryAsync(
+    internal static async Task SendSpotCommandAsync(
         IZLinkRouteClient routes,
         IZLinkSpotHandleResolver locator,
-        string channelName,
         string targetSpotRid,
-        object command,
-        string packetName,
-        string failureMessage)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(5);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-            try
-            {
-                routes.SendToSpot(await locator.ResolveRequiredAsync(targetSpotRid), command).Submit();
-                return;
-            }
-            catch (Exception ex) when (ex is TimeoutException or ZLinkFrameworkException)
-            {
-                last = ex;
-                await Task.Delay(100);
-            }
+        object command)
+        => routes.SendToSpot(await locator.ResolveRequiredAsync(targetSpotRid), command).Submit();
 
-        throw new InvalidOperationException(
-            last is null ? failureMessage : $"{failureMessage} Last error: {last.Message}", last);
-    }
-
-    internal static async Task<SpotToSpotRes> RequestSpotToSpotWithRetryAsync(
+    internal static async Task<SpotToSpotRes> RequestSpotToSpotAsync(
         IZLinkRouteClient routes,
         IZLinkSpotHandleResolver locator,
         string sourceSpotRid,
-        SpotToSpotReq request,
-        string failureMessage)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                return await routes.RequestToSpot(await locator.ResolveRequiredAsync(sourceSpotRid),
-                        request)
-                    .Timeout(TimeSpan.FromSeconds(2))
-                    .Async<SpotToSpotRes>();
-            }
-            catch (Exception ex) when (
-                ex is TimeoutException or OperationCanceledException or ZlinkRequestException or ZlinkSubmitException
-                || ex is ZLinkFrameworkException { InnerException: ZlinkRequestException or ZlinkSubmitException })
-            {
-                last = ex;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(100));
-        }
-
-        throw new TimeoutException(failureMessage, last);
-    }
+        SpotToSpotReq request)
+        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(sourceSpotRid), request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<SpotToSpotRes>();
 
     internal static async Task WaitUntilAsync(Func<bool> condition, string failureMessage)
     {

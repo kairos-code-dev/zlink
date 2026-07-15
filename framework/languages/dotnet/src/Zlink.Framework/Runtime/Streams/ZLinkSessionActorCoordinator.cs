@@ -157,7 +157,10 @@ internal sealed class ZLinkSessionActorCoordinator(
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
-        return runtime.NotifyActorDisconnectedAsync(actorRef.Ref, cancellationToken);
+        return runtime.NotifyActorDisconnectedAsync(
+            actorRef.Ref,
+            actorRef.BindingToken,
+            cancellationToken);
     }
 
     public ValueTask CleanupAsync(

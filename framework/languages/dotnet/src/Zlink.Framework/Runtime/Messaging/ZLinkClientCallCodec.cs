@@ -77,14 +77,52 @@ internal static class ZLinkEnvelopeReplyDecoder
         string errorMessage,
         ZLinkCodecRegistryBuilder? codecs)
     {
-        if (reply.Count == 0) throw new InvalidOperationException(emptyMessage);
+        if (reply.Count == 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                emptyMessage);
 
-        var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
+        ZLinkEnvelopeHeader replyHeader;
+        try
+        {
+            replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
+        }
+        catch (ZLinkFrameworkException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                "Reply envelope is malformed.",
+                innerException: exception);
+        }
         if (replyHeader.Kind == ZLinkMessageKind.Error)
             throw ZLinkEnvelopeErrorMapper.CreateException(replyHeader, errorMessage);
 
-        return (TReply?)ZLinkEnvelopeCodec.DecodeBody(reply, typeof(TReply), replyHeader.ContentType, codecs)
-               ?? throw new InvalidOperationException("Reply body is null.");
+        try
+        {
+            return (TReply?)ZLinkEnvelopeCodec.DecodeBody(
+                       reply,
+                       typeof(TReply),
+                       replyHeader.ContentType,
+                       codecs)
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                       "Reply body is null.");
+        }
+        catch (ZLinkFrameworkException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                "Reply body could not be decoded.",
+                innerException: exception);
+        }
     }
 }
 
@@ -103,7 +141,9 @@ internal static class ZLinkEnvelopeErrorMapper
             nameof(TaskCanceledException) => new TaskCanceledException(message),
             nameof(OperationCanceledException) => new OperationCanceledException(message),
             nameof(ZLinkActorHandoffRejectedException) => new ZLinkActorHandoffRejectedException(message),
-            _ => new InvalidOperationException(message)
+            _ => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                message)
         };
     }
 }

@@ -1,3 +1,4 @@
+// Verifies SM-D2 Remote Actor Session Relay behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

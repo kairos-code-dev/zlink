@@ -56,6 +56,7 @@ internal sealed class DynamicClusterLauncher(
                 "--redis-endpoint", RedisEndpoint,
                 "--redis-key-prefix", RedisKeyPrefix,
                 "--channel-endpoint", channelEndpoint,
+                "--max-message-size", "2097152",
                 "--route-endpoint", PickEndpoint(),
                 "--weight", weight.ToString(),
                 "--evidence-file", Path.Combine(logDir, $"{name}.evidence.log"),

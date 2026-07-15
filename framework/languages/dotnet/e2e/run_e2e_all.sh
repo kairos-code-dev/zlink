@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAX_ATTEMPTS="${ZLINK_E2E_RETRY_ATTEMPTS:-3}"
-CONFIG_TIMEOUT_SECONDS="${ZLINK_E2E_CONFIG_TIMEOUT_SECONDS:-1800}"
+MAX_ATTEMPTS=3
+CONFIG_TIMEOUT_SECONDS=1800
 BIND_RETRY_PATTERN="ZlinkBindException|BindException|Address already in use|EADDRINUSE"
 
 CONFIGS=(
@@ -51,14 +51,37 @@ trap on_interrupt INT TERM
 
 SELECTED_CONFIGS=()
 SELECTED_SCENARIOS=()
+SELECTORS=()
 
-if [[ "$#" -eq 0 ]]; then
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --max-attempts)
+      MAX_ATTEMPTS="$2"
+      shift 2
+      ;;
+    --config-timeout-seconds)
+      CONFIG_TIMEOUT_SECONDS="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      SELECTORS+=("$@")
+      break
+      ;;
+    *)
+      SELECTORS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ "${#SELECTORS[@]}" -eq 0 ]]; then
   for config in "${CONFIGS[@]}"; do
     SELECTED_CONFIGS+=("$config")
     SELECTED_SCENARIOS+=("all")
   done
 else
-  for selector in "$@"; do
+  for selector in "${SELECTORS[@]}"; do
     config="${selector%%:*}"
     scenario="all"
     if [[ "$selector" == *:* ]]; then

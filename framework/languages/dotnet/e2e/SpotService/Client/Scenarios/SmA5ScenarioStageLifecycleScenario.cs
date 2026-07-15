@@ -1,3 +1,4 @@
+// Verifies SM-A5 Scenario Stage Lifecycle behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

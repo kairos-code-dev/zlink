@@ -1,3 +1,4 @@
+// Verifies SM-G2 Owner Spot Remap behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

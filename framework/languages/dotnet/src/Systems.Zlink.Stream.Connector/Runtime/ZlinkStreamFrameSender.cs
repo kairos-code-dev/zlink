@@ -161,13 +161,7 @@ internal sealed class ZlinkStreamFrameSender(
 
         try
         {
-            var decompressed = compressionCodec.Decompress(payload, options.MaxReceivePayloadSize);
-            if (decompressed.Length > options.MaxReceivePayloadSize)
-                throw ZlinkStreamConnector.Error(
-                    ZlinkStreamErrorCode.FrameTooLarge,
-                    "Decompressed payload exceeds MaxReceivePayloadSize.");
-
-            return decompressed;
+            return compressionCodec.Decompress(payload, int.MaxValue);
         }
         catch (Exception ex)
         {

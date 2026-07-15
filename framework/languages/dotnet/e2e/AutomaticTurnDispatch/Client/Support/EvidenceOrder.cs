@@ -1,13 +1,13 @@
 namespace AutomaticTurnDispatch.Client.Support;
 
-internal static class ScenarioAssert
+internal static class EvidenceOrder
 {
     public static void ContainsInOrder(string[] evidence, string requestPrefix, string[] markers)
     {
-        var requestLine = evidence.FirstOrDefault(line => line.Contains(requestPrefix, StringComparison.Ordinal))
-                          ?? throw new InvalidOperationException(
-                              $"No evidence found for request prefix '{requestPrefix}'.");
-        var requestStart = requestLine.IndexOf(requestPrefix, StringComparison.Ordinal);
+        var requestLine = evidence.FirstOrDefault(line => line.Contains(requestPrefix, StringComparison.Ordinal));
+        ZlinkStreamAssert.Ensure(requestLine is not null,
+            $"No evidence found for request prefix '{requestPrefix}'.");
+        var requestStart = requestLine!.IndexOf(requestPrefix, StringComparison.Ordinal);
         var requestEnd = requestLine.IndexOf('|', requestStart);
         var requestId = requestEnd < 0
             ? requestLine[requestStart..]
@@ -20,9 +20,8 @@ internal static class ScenarioAssert
                 cursor + 1,
                 line => line.Contains(requestId, StringComparison.Ordinal)
                         && line.Contains(marker, StringComparison.Ordinal));
-            if (index < 0)
-                throw new InvalidOperationException(
-                    $"Missing ordered marker '{marker}' for request '{requestId}'.");
+            ZlinkStreamAssert.Ensure(index >= 0,
+                $"Missing ordered marker '{marker}' for request '{requestId}'.");
 
             cursor = index;
         }
@@ -38,9 +37,8 @@ internal static class ScenarioAssert
                 cursor + 1,
                 line => line.Contains($"request={requestId}", StringComparison.Ordinal)
                         && line.Contains(marker, StringComparison.Ordinal));
-            if (index < 0)
-                throw new InvalidOperationException(
-                    $"Missing ordered marker '{marker}' for request '{requestId}'.");
+            ZlinkStreamAssert.Ensure(index >= 0,
+                $"Missing ordered marker '{marker}' for request '{requestId}'.");
 
             cursor = index;
         }

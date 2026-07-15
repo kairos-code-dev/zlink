@@ -85,13 +85,13 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
             .Timeout(customer.Options.WaitTimeout)
             .Async(cancellationToken).AsTask();
 
-        var created = http.Post("/deliveries")
+        var created = (await http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
                 deliveryId,
                 "customer-1",
                 "Kitchen 12",
                 "Customer Lobby"))
-            .Async<CreateDeliveryRes>().AsTask().GetAwaiter().GetResult().Body;
+            .Async<CreateDeliveryRes>(cancellationToken)).Body;
         ZlinkStreamAssert.Ensure(created.DeliveryId == deliveryId, "created success delivery id mismatch.");
 
         // courier-a receives the offer through its bound stream session and accepts it.
@@ -152,13 +152,13 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
             .Timeout(customer.Options.WaitTimeout)
             .Async(cancellationToken).AsTask();
 
-        var created = http.Post("/deliveries")
+        var created = (await http.Post("/deliveries")
             .Body(new CreateDeliveryReq(
                 deliveryId,
                 "customer-1",
                 "Kitchen 12",
                 "Customer Lobby"))
-            .Async<CreateDeliveryRes>().AsTask().GetAwaiter().GetResult().Body;
+            .Async<CreateDeliveryRes>(cancellationToken)).Body;
         ZlinkStreamAssert.Ensure(created.DeliveryId == deliveryId, "created reassignment delivery id mismatch.");
 
         // courier-a intentionally does not answer. The dispatch server times out and offers the

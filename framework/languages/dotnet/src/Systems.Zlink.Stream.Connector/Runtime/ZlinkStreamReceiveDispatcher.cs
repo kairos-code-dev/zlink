@@ -107,9 +107,13 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         try
         {
             var dto = JsonSerializer.Deserialize<WireError>(payload.Span, JsonOptions);
+            if (dto is null || string.IsNullOrWhiteSpace(dto.Code))
+                throw new JsonException("Remote stream error code is required.");
             return new ZlinkStreamError(
                 ZlinkStreamErrorCode.RemoteError,
-                dto?.Message ?? "Remote stream error.");
+                string.IsNullOrWhiteSpace(dto.Message)
+                    ? dto.Code
+                    : $"{dto.Code}: {dto.Message}");
         }
         catch (Exception ex)
         {
@@ -120,5 +124,5 @@ internal sealed class ZlinkStreamReceiveDispatcher(
         }
     }
 
-    private sealed record WireError(string? Message);
+    private sealed record WireError(string? Code, string? Message);
 }

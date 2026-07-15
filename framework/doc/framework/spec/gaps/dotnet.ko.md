@@ -262,7 +262,79 @@
 
 ## 1. 진행 체크리스트
 
-**전체 체크리스트 45건. 완료 45건. 미완료 0건.**
+**전체 체크리스트 62건. 완료 62건. 미완료 0건.**
+
+### 2026-07-15 독립 재검토에서 추가로 닫은 항목
+
+- [x] **IMP-DN-19** (결함) — actor straggler relay queue 포화가 Spot 실행 줄을 blocking한다
+  — bounded queue admission을 즉시 판정하고 포화 시 `ActorLocationStale`로 fail-fast한다. 호출자는
+  내부 queue 해제를 기다리지 않고 actor 위치를 다시 조회할 수 있다. capacity 1 회귀 테스트가
+  포화 호출이 대기하지 않는지 검증한다.
+- [x] **IMP-DN-20** (계약 밖 공개 표면) — `SendLogLevel`·`PublishLogLevel`이 공통 spec의 고정 로그
+  수준을 application이 덮어쓰게 한다
+  — 두 공개 option을 제거하고 send `Warning`, publish `Debug`, handler 예외 `Error` 결정을 dispatch
+  내부에 고정했다. public API snapshot과 dispatch/logging 테스트가 이를 고정한다.
+- [x] **IMP-DN-21** (결함) — connector test helper가 상위 예외 안의 transport 실패를 분류하지 못한다
+  — exception 원인 체인에서 `HttpRequestException`·`IOException`을 `Disconnected`로 분류하고, 알 수
+  없는 programming exception은 그대로 재전파한다.
+- [x] **SMP-DN-15** (결함) — GameQuest join 응답에 binding identity가 없어 client self-check를 할 수 없다
+  — `JoinSessionRes.PlayerId`를 계약에 추가하고 Alice·Bob 요청값과 응답값을 각각 대조한다. actor의
+  routing id나 generation은 client에 노출하지 않는다.
+- [x] **SMP-DN-16** (결함) — async sample/E2E client가 HTTP 완료를 `GetResult()`로 동기화한다
+  — client 시나리오의 동기 unwrap을 모두 `await`로 바꾸고 Client 소스 전체 회귀 검사를 추가했다.
+- [x] **E2E-DN-22** (결함) — LocationMessaging의 동적 provider 역할 설정이 필수 `MaxMessageSize`를 누락한다
+  — 정적 provider와 같은 2 MiB 한도를 동적 역할 설정에 기록한다. RM-A4 독립 실행이 통과한다.
+- [x] **E2E-DN-23** (결함) — PubSub 일반 subscriber에서 선택 설정 `HandlerDelayMs`가 필수로 바뀐다
+  — 기본값 0을 typed 설정에 명시하고 느린 subscriber만 3000 ms를 설정한다. PubSub 7개 시나리오가
+  통과한다.
+- [x] **E2E-DN-24** (결함) — LocationMessaging consumer·workflow가 route 수렴 실패를 30초
+  application retry로 가린다
+  — 역할 endpoint는 첫 framework request 결과를 그대로 반환한다. LocationMessaging 역할 소스 전체에
+  retry helper가 없음을 regression이 고정한다.
+- [x] **E2E-DN-25** (가짜 통과) — ResilienceLifecycle·StoreFailure consumer가 profile request 실패를
+  최대 30초 동안 다시 보내 첫 요청의 오류를 성공으로 바꾼다
+  — profile endpoint와 새 client-host 경로는 framework request를 한 번만 보낸다. RL-B6는 gray provider
+  실패와 정상 provider 성공을 모두 관찰하고, StoreFailure 전체 10개 시나리오도 통과한다.
+- [x] **E2E-DN-26** (규약 위반) — SpotService·AutomaticTurnDispatch의 routed request helper가
+  `Timeout`·`RouteNotConnected`·`RequestTargetNotFound` 등을 5~20초 동안 반복한다
+  — location handle을 resolve한 뒤 단일 request/send를 수행하도록 바꿨다. Config 2 전체 runner와
+  Config 8의 27개 시나리오·shutdown·recovery가 재시도 없이 통과한다.
+- [x] **IMP-DN-22** (결함) — Entry Spot actor의 미등록 request가 remote bound-session 오류 reply를
+  보내기 전에 예외로 빠져나가 client timeout이 된다
+  — actor dispatch router가 local·remote 경로에 공통으로 쓰이는 `ZLinkActorReply` 오류 frame을 반환한다.
+  bound-session 회귀 테스트와 실제 SM-B5가 `RemoteError`를 확인한다.
+- [x] **IMP-DN-23** (결함) — 같은 actor에 새 session이 bind된 직후 이전 session이 disconnect되면,
+  이전 session의 `NotifyDisconnectedAsync()`가 binding identity를 잃고 최신 session을 disconnect한다
+  — session actor가 보유한 binding token을 runtime까지 전달하고 현재 token과 일치할 때만 disconnect를
+  처리한다. 오래된 disconnect가 교체 binding을 유지하는 회귀 테스트와 실제 ZoneWorld ZW-B2가 통과한다.
+- [x] **E2E-DN-27** (결함) — SM-C1의 정상 후속 request timeout이 앞선 1.5초 slow handler의 남은 실행
+  시간보다 짧은 1초로 고정되어, 재시도를 제거하면 처리 후에도 호출자가 먼저 만료된다
+  — 후속 request는 한 번만 보내되 5초 deadline으로 같은 Spot mailbox의 순차 완료를 기다린다. 의도한
+  100ms timeout request와 후속 상태 증가를 모두 검증하는 SM-C1 독립·전체 runner가 통과한다.
+- [x] **E2E-DN-28** (가짜 실패·검증 순서 결함) — ResilienceLifecycle의 restart·flapping·crash·shutdown
+  시나리오가 peer row 삭제를 consumer connection 제외 수렴으로 간주하고, 직후 여러 요청의 무조건
+  성공을 요구한다
+  — down window의 허용 public error는 typed attempt 결과로 분류한다. stale provider 제외가 성공 기준인
+  시나리오는 고유 marker traffic으로 연속 surviving-provider 수렴을 먼저 증명하고, 그 직후 첫 요청을
+  한 번만 보낸다. RL-A1·A5·B2·B3·C3 독립 실행과 ResilienceLifecycle 전체 20개가 통과한다.
+- [x] **E2E-DN-29** (검증 시간 예산 결함) — StoreFailure SF-D2가 약 3초인 disconnect 수렴 창 안에서
+  각 probe에 같은 3초 timeout을 사용해, 죽은 transport가 한 번 선택되면 첫 probe 하나가 전체 판정
+  시간을 소진한다
+  — probe timeout을 location polling interval로 제한해 여러 routing 관측이 하나의 수렴 창 안에서
+  끝나도록 했다. 수렴을 확인한 뒤의 여덟 요청은 재시도 없이 각각 한 번만 보내며, 회귀 검사와 실제
+  SF-D2 runner가 통과한다.
+- [x] **E2E-DN-30** (설정·검증 불일치) — ObservabilityOps OBS-B3가 11초 Redis 정지로 lease 갱신
+  지연을 검사하면서 Workflow 역할은 기본 10초 heartbeat를 사용해, 장애 주입 시점에 따라 0.5초
+  이상의 lateness가 발생하지 않는다
+  — Play와 Workflow가 같은 typed location 설정(heartbeat 1초, lease TTL 3초)을 configuration 경계에서
+  받도록 통일했다. 역할 코드의 시간 상수를 제거했고 설정 회귀 검사와 실제 OBS-B3가 통과한다.
+- [x] **SMP-DN-17** (결함) — ZoneWorld의 500ms bot timer가 완료를 관찰할 수 없는 one-way 이동
+  명령을 계속 적재해, 원격 actor transfer와 대상 노드 중단이 겹치면 같은 actor에 수십 개의 이동이
+  쌓인다
+  — bot step을 request/response로 바꾸고 timer turn에서 `Yield`로 한 step의 완료를 기다린다. transfer가
+  지연되면 이후 period는 timer의 `SkipLateTicks` 정책에 따라 건너뛰므로 stale 이동을 재생하지 않는다.
+  노드 중단 중인 join 자체의 timeout은 그대로 보고하며 retry나 sleep을 추가하지 않았다. 정적 회귀
+  검사와 브라우저 노드 중단을 포함한 ZoneWorld 전체에서 B1·B4·D1-spots와 모든 시나리오가 통과했다.
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -633,7 +705,7 @@ session 없이 도는 것, fanout topic에 동적 id 없음, 발행자가 노드
 **브라우저 client**를 말한다. 공유 TypeScript browser client의 구현 범위는 이 `.NET` 갭
 체크리스트에 포함하지 않는다.
 
-## 2026-07-15 완료 재검증
+## 2026-07-16 완료 재검증
 
 ### 라운드 5 발견 항목
 
@@ -687,13 +759,14 @@ session 없이 도는 것, fanout topic에 동적 id 없음, 발행자가 노드
 
 ### 검증
 
-- framework unit **646/646**, contract **42/42**, stream connector **132/132**, HTTP client **56/56**.
-- Redis 저장소 unit **40/40**, Node/.NET Redis 양방향 전용 runner **2/2**, binding context option
+- framework unit **670/670**, contract **44/44**, stream connector **137/137**, HTTP client **63/63**.
+- Redis 저장소 unit은 standalone 실행에서 환경 독립 항목 **43/43**, Node/.NET Redis 양방향 전용 runner **2/2**, binding context option
   **7/7**. 교차 언어 2건은 Node fixture와 실행별 Redis endpoint를 함께 준비하는 전용 runner로
   검증했다.
 - 실제 runner: SpotActorTransfer 전체 20개, RuntimeMonitoring 전체 MON-A1~D1, ObservabilityOps 전체
   OBS-A1~C5, ToActorMessaging 전체, ZoneWorld 전체, Bingo·DeliveryDispatch·GameQuest·ShoppingMall·
-  SupportChat·TicTacToe. sample regression은 **59/59**다.
+  SupportChat·TicTacToe. ZoneWorld는 공유 브라우저 smoke와 노드 중단·재시작을 포함한 전체 시나리오가
+  통과했다. sample regression은 **88/88**이다.
 - 새로 빌드한 `core/build/lib/libzlink.so.9.0.4`를 직접 사용해 .NET multi benchmark의
   `MULTI_DEALER_ROUTER`(TCP, 64 B, client 4, 1초)를 실행했다. **23.174 Kops/s**, 평균
   **0.084 ms**, p95 **0.127 ms**, p99 **0.168 ms**로 완료됐고 결과 상태는 `complete`다. bounded

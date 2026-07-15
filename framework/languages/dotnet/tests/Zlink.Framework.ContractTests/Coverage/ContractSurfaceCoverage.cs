@@ -68,8 +68,13 @@ public sealed class ContractSurfaceCoverage
     [Fact]
     public void Every_public_contract_interface_has_a_scenario_example()
     {
-        var exportedContracts = typeof(IZLinkFrameworkOptions).Assembly
-            .GetExportedTypes()
+        var exportedContracts = new[]
+            {
+                typeof(IZLinkFrameworkOptions).Assembly,
+                typeof(Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension).Assembly
+            }
+            .Distinct()
+            .SelectMany(static assembly => assembly.GetExportedTypes())
             .Where(type => type is { IsInterface: true, Namespace: not null }
                            && type.Namespace.StartsWith("Zlink.Framework.Contracts", StringComparison.Ordinal))
             .OrderBy(type => type.FullName, StringComparer.Ordinal)
@@ -163,6 +168,7 @@ public sealed class ContractSurfaceCoverage
         var assemblies = new[]
             {
                 typeof(IZLinkFrameworkOptions).Assembly,
+                typeof(Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension).Assembly,
                 typeof(ServiceCollectionExtensions).Assembly,
                 typeof(ZLinkMessagePackCodec).Assembly,
                 typeof(ZLinkProtobufCodec).Assembly,

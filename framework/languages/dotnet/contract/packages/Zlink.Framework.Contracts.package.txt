@@ -1,0 +1,20 @@
+package Zlink.Framework.Contracts
+entry LICENSE
+entry Zlink.Framework.Contracts.nuspec
+entry [Content_Types].xml
+entry _rels/.rels
+entry lib/net8.0/Zlink.Framework.Contracts.dll
+entry lib/net8.0/Zlink.Framework.Contracts.xml
+entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
+content-sha256 lib/net8.0/Zlink.Framework.Contracts.xml=cf9e41aba74eb23b46d5f78046ec9a90264d357124c927eca4b2edaf5ca542d0
+metadata authors=Zlink.Framework.Contracts
+metadata description=Shared error and payload codec contracts for ZLink framework companion packages.
+metadata id=Zlink.Framework.Contracts
+metadata license=LICENSE type=file
+metadata licenseUrl=https://aka.ms/deprecateLicenseUrl
+metadata projectUrl=https://github.com/kairos-code-dev/zlink
+metadata version={VERSION}
+metadata repository commit={COMMIT} type=git
+dependency-group targetFramework=net8.0
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=K4os.Compression.LZ4 version=1.3.8
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]

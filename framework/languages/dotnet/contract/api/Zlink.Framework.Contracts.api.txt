@@ -1,0 +1,52 @@
+assembly Zlink.Framework.Contracts
+  type interface Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension
+    method abstract System.Void Register(Zlink.Framework.Contracts.Codecs.IZLinkCodecRegistrar codecs [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Codecs.IZLinkCodecRegistrar
+    method abstract System.Void AddSerializer(System.String contentType [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Codecs.IZLinkMessageSerializer serializer [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Void AddSerializer(System.String contentType [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Codecs.IZLinkMessageSerializer serializer [nullability=read:not-null,write:not-null], System.Func<System.Type, System.Boolean> canSerialize [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Void AddStreamCodec(System.String contentType [nullability=read:not-null,write:not-null], Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamCodec codec [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Codecs.IZLinkCodecRegistryBuilder
+    method abstract System.Void Use(Zlink.Framework.Contracts.Codecs.IZLinkCodecExtension extension [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Codecs.IZLinkMessageSerializer
+    method abstract System.Object? Deserialize(Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload payload [nullability=read:not-null,write:not-null], System.Type type [nullability=read:not-null,write:not-null]) [return=read:nullable,write:nullable]
+    method abstract Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload Serialize(System.Object value [nullability=read:not-null,write:not-null], System.Type type [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type readonly-struct Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload : System.IEquatable<Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload>
+    property System.ReadOnlyMemory<System.Byte> Bytes { get; } [nullability=read:not-null,write:unknown]
+    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload From(System.Byte[] bytes [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload From(System.ReadOnlyMemory<System.Byte> bytes [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload From(System.ReadOnlySpan<System.Byte> bytes [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method System.Byte[] ToArray() [return=read:not-null,write:not-null]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type sealed-class Zlink.Framework.Contracts.Errors.ZLinkConfigurationException : System.InvalidOperationException, System.Runtime.Serialization.ISerializable
+    ctor ZLinkConfigurationException(System.String message [nullability=read:not-null,write:not-null])
+  type enum Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorAlreadyExists = 2 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorCreateFailed = 1 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorCreateRejected = 21 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorDispatchHandlerNotFound = 10 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorLocationStale = 20 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorRouteNotFound = 0 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorSessionNotBound = 7 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind ActorTypeMismatch = 3 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind HandlerNotFound = 8 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind PayloadDecodeFailed = 11 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind RequestFailed = 16 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind RequestProtocolError = 15 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind RequestRejected = 14 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind RequestTargetNotFound = 13 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind RouteHandlerNotFound = 9 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind RouteNotConnected = 12 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind SpotCreateFailed = 4 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind SpotRouteNotFound = 5 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind SpotTypeMismatch = 6 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind WorkerFailed = 19 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind WorkerQueueFull = 17 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind WorkerTimedOut = 18 [nullability=read:not-null,write:not-null]
+  type sealed-class Zlink.Framework.Contracts.Errors.ZLinkFrameworkException : System.Exception, System.Runtime.Serialization.ISerializable
+    ctor ZLinkFrameworkException(Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind kind [nullability=read:not-null,write:not-null], System.String message [nullability=read:not-null,write:not-null], System.Nullable<System.Boolean> isRetriable = null [nullability=read:nullable,write:nullable], System.Exception? innerException = null [nullability=read:nullable,write:nullable])
+    property System.Boolean IsRetriable { get; } [nullability=read:not-null,write:unknown]
+    property Zlink.Framework.Contracts.Errors.ZLinkFrameworkErrorKind Kind { get; } [nullability=read:not-null,write:unknown]

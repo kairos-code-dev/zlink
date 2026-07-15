@@ -1,3 +1,4 @@
+// Verifies MON-B1 Kind Filter behavior.
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
@@ -8,13 +9,18 @@ internal static class MonB1KindFilterScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var serviceB = ZLinkHttpClient.Create(options.FilteredServiceUrl).Build();
-        await using var trigger = await MonitoringChannelClient.StartAsync(
-            options, options.FilteredChannelEndpoint, "trigger-mon-b1");
-        var reply = await trigger.RequestAsync(new ProfileReq("filter", "mon-b1-request"));
+        using var serviceB = ZLinkHttpClient.Create(options.FilteredServiceUrl)
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Build();
+        var reply = (await serviceB.Post("/profile/request")
+            .Body(new ProfileReq("filter", "mon-b1-request"))
+            .Async<ProfileRes>()).Body;
         ZlinkStreamAssert.Ensure(reply.ProviderRid == "svc-filtered", "MON-B1 direct trigger did not hit filtered service.");
+        var baseline = (await serviceB.Get("/evidence").Async<string[]>()).Body.Length;
+        await serviceB.Post("/admin/disconnect").AsyncRaw();
+        await serviceB.Post("/admin/connect").AsyncRaw();
+        var serviceBEvidence = await WaitForFilteredSocketEvidenceAsync(serviceB, baseline);
 
-        var serviceBEvidence = await WaitForFilteredSocketEvidenceAsync(serviceB);
         ZlinkStreamAssert.Ensure(
             serviceBEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                          && line.Contains("kind=ConnectionReady", StringComparison.Ordinal)),
@@ -27,12 +33,15 @@ internal static class MonB1KindFilterScenario
         Console.WriteLine("scenario MON-B1 passed");
     }
 
-    private static async Task<string[]> WaitForFilteredSocketEvidenceAsync(ZLinkHttpClient serviceB)
+    private static async Task<string[]> WaitForFilteredSocketEvidenceAsync(
+        ZLinkHttpClient serviceB,
+        int afterIndex)
     {
         var evidence = (await serviceB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(
                 ["monitor-socket|"],
-                [["kind=ConnectionReady"]]))
+                [["kind=ConnectionReady"]],
+                AfterIndex: afterIndex))
             .Async<string[]>()).Body;
         if (evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
                                  && line.Contains("kind=ConnectionReady", StringComparison.Ordinal))

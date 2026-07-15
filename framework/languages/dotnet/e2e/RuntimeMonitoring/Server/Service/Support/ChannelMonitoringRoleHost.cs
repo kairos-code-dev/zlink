@@ -3,8 +3,8 @@ using RuntimeMonitoring.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Eventing;
-using Zlink.Framework.Locations.Redis;
 
 namespace RuntimeMonitoring.Server.Service.Support;
 
@@ -24,14 +24,12 @@ internal sealed class ChannelMonitoringRoleHost
         _builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationRuntimeEventRecorder>();
         _builder.Services.AddZLinkFramework(framework =>
         {
-            if (!string.IsNullOrWhiteSpace(_options.RedisEndpoint))
-                framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                    .SetConnectionString(_options.RedisEndpoint)
-                    .SetKeyPrefix(Require(_options.RedisKeyPrefix, "--redis-key-prefix"))));
-            framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
+            var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
                 .EnableServer(Require(_options.ChannelEndpoint, "--channel-endpoint"))
+                .EnableClient(Require(_options.ChannelEndpoint, "--channel-endpoint"))
                 .SetRoutingId(RoutingId.From(_options.Rid))
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
+            _builder.Services.AddSingleton(channel.ClientConnections);
         });
     }
 
@@ -51,10 +49,7 @@ internal sealed class ChannelMonitoringRoleHost
         _builder.Services.AddZLinkMonitoring(monitor =>
         {
             monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource, socketEvents);
-            if (!string.IsNullOrWhiteSpace(_options.RedisEndpoint))
-                monitor.AddLocationRuntimeEvents(
-                    RuntimeMonitoringNames.LocationRuntimeSource,
-                    TimeSpan.FromMilliseconds(100));
+            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelClientSource, socketEvents);
         });
     }
 
@@ -70,7 +65,10 @@ internal sealed class ChannelMonitoringRoleHost
         {
             var snapshot = await evidence.WaitUntilAsync(
                 entries => request.ContainsAll.All(expected => entries.Skip(request.AfterIndex)
-                    .Any(entry => entry.Contains(expected, StringComparison.Ordinal))),
+                               .Any(entry => entry.Contains(expected, StringComparison.Ordinal)))
+                           && request.ContainsAnyGroups.All(group => group.Any(expected =>
+                               entries.Skip(request.AfterIndex)
+                                   .Any(entry => entry.Contains(expected, StringComparison.Ordinal)))),
                 TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
                 cancellationToken);
             return Results.Ok(snapshot.Skip(request.AfterIndex).ToArray());
@@ -79,6 +77,26 @@ internal sealed class ChannelMonitoringRoleHost
         {
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
+        });
+        app.MapPost("/profile/request", async (
+            ProfileReq request,
+            IZLinkChannelClient channel,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Async<ProfileRes>(cancellationToken);
+            return Results.Ok(response);
+        });
+        app.MapPost("/admin/connect", (IZLinkEndpointConnections connections) =>
+        {
+            connections.Connect(Require(_options.ChannelEndpoint, "--channel-endpoint"));
+            return Results.Ok(new { status = "connected" });
+        });
+        app.MapPost("/admin/disconnect", (IZLinkEndpointConnections connections) =>
+        {
+            connections.Disconnect(Require(_options.ChannelEndpoint, "--channel-endpoint"));
+            return Results.Ok(new { status = "disconnected" });
         });
         return app;
     }

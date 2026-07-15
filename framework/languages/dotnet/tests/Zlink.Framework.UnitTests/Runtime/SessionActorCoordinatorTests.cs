@@ -149,6 +149,46 @@ public sealed class SessionActorCoordinatorTests
         Assert.Equal(sharedSessionRid, remaining.SessionRid);
     }
 
+    [Fact]
+    public async Task Stale_Session_Disconnect_Does_Not_Notify_Or_Clear_The_Replacement_Binding()
+    {
+        var runtime = CreateRuntime();
+        var firstContext = CreateSessionContext(runtime, "session-old");
+        var replacementContext = CreateSessionContext(runtime, "session-new");
+        var actor = new ActorRef(RoutingId.From("actor-node"), "actor-1", 1);
+        var oldBinding = await firstContext.ActorCoordinator.BindOrGetActorAsync(
+            firstContext,
+            actor,
+            CancellationToken.None);
+        _ = await replacementContext.ActorCoordinator.BindOrGetActorAsync(
+            replacementContext,
+            actor,
+            CancellationToken.None);
+        Assert.True(runtime.TryGetActorBoundSession(actor.ActorId, out var replacement));
+
+        await oldBinding.NotifyDisconnectedAsync();
+
+        Assert.True(runtime.TryGetActorBoundSession(actor.ActorId, out var current));
+        Assert.Equal(replacement.BindingToken, current.BindingToken);
+        Assert.True(runtime.TryGetSessionActorContext(
+            actor.ActorId,
+            current.BindingToken,
+            out var currentContext));
+        Assert.Same(replacementContext, currentContext);
+    }
+
+    private static ZLinkSessionContext CreateSessionContext(
+        ZLinkFrameworkRuntime runtime,
+        string sessionRid)
+    {
+        return new ZLinkSessionContext(
+            runtime,
+            new TestStream(RoutingId.From(sessionRid)),
+            new TestSessionHandlerRegistry(),
+            static () => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask);
+    }
+
     private static ZLinkFrameworkRuntime CreateRuntime()
     {
         var registration = new ZLinkFrameworkRegistration();

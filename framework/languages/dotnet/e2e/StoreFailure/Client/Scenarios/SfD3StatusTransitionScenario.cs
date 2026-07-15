@@ -1,3 +1,4 @@
+// Verifies SF-D3 Status Transition behavior.
 using StoreFailure.Client.Support;
 using StoreFailure.Shared;
 using Zlink.HttpClient;

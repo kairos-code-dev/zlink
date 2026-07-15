@@ -1,3 +1,4 @@
+// Verifies RM-A4 Same Rid Failover behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -53,12 +54,12 @@ internal static class RmA4SameRidFailoverScenario
 
         var afterV2 = await WaitForEvidenceAsync(providerV2Client, $"{marker}-19");
         var afterV1 = await ReadEvidenceIgnoringStoppedAsync(providerV1Client);
-        var v1Count = ScenarioAssert.CountNewEvidence(
+        var v1Count = EvidenceDelta.CountMatching(
             afterV1,
             beforeV1,
             "profile-request|rid=api-a",
             marker);
-        var v2Count = ScenarioAssert.CountNewEvidence(
+        var v2Count = EvidenceDelta.CountMatching(
             afterV2,
             beforeV2,
             "profile-request|rid=api-a",

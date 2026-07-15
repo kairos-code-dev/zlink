@@ -96,8 +96,13 @@ public sealed record NodeMaintenanceChangedEvent(string NodeId, bool Enabled);
 /// <summary>Fanout subscriber -> the zone spots of its own node, through the spot bridge (§8.2).</summary>
 public sealed record DeliverAnnounceMsg(string AnnouncementId, string Text);
 
-/// <summary>Zone spot -> bot actor. Drives one patrol step (§2.7).</summary>
-public sealed record BotTickMsg();
+/// <summary>
+/// Zone spot -> bot actor. Drives one patrol step (§2.7). This is a request so the periodic
+/// producer cannot build an unbounded movement backlog while the actor is transferring.
+/// </summary>
+public sealed record BotTickReq();
+
+public sealed record BotTickRes();
 
 /// <summary>
 /// Gateway -> the ZoneNode that owns the spawn zone (channel `zoneworld.actors`).

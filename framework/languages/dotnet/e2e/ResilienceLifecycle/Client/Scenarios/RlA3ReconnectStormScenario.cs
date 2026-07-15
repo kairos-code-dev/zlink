@@ -1,3 +1,4 @@
+// Verifies RL-A3 Reconnect Storm behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

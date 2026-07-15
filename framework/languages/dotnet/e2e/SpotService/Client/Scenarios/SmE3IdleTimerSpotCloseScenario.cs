@@ -1,3 +1,4 @@
+// Verifies SM-E3 Idle Timer Spot Close behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

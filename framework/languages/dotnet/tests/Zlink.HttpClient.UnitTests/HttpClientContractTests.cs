@@ -182,7 +182,7 @@ public sealed class HttpClientContractTests
     }
 
     [Fact]
-    public async Task Fetch_unwraps_typed_body()
+    public async Task Caller_can_unwrap_typed_body()
     {
         using var server = new TestHttpServer(async ctx =>
             await ctx.Response.WriteAsync(200, """{"id":7,"name":"Aria"}"""));
@@ -192,6 +192,23 @@ public sealed class HttpClientContractTests
 
         Assert.Equal(7, player.Id);
         Assert.Equal("Aria", player.Name);
+    }
+
+    [Fact]
+    public async Task Typed_204_returns_null_body()
+    {
+        using var server = new TestHttpServer(async ctx =>
+        {
+            ctx.Response.StatusCode = 204;
+            await Task.CompletedTask;
+        });
+        using var client = ZLinkHttpClient.Create(server.BaseUrl).Build();
+
+        var response = await client.Get("/empty").Async<Player>();
+
+        Assert.Equal(204, response.Status);
+        Assert.Null(response.Body);
+        Assert.Equal(string.Empty, response.RawBody);
     }
 
     [Fact]
@@ -421,6 +438,41 @@ public sealed class HttpClientContractTests
     }
 
     [Fact]
+    public async Task Does_not_restore_authorization_after_cross_origin_redirect_returns_to_origin()
+    {
+        string? authAtOther = null;
+        string? authWhenReturned = null;
+        TestHttpServer? origin = null;
+        using var other = new TestHttpServer(async ctx =>
+        {
+            authAtOther = ctx.Request.Headers["authorization"];
+            ctx.Response.StatusCode = 307;
+            ctx.Response.AddHeader("Location", $"{origin!.BaseUrl}/returned");
+            await Task.CompletedTask;
+        });
+        using (origin = new TestHttpServer(async ctx =>
+               {
+                   if (ctx.Request.Url!.AbsolutePath == "/start")
+                   {
+                       ctx.Response.StatusCode = 307;
+                       ctx.Response.AddHeader("Location", $"{other.BaseUrl}/hop");
+                       return;
+                   }
+
+                   authWhenReturned = ctx.Request.Headers["authorization"];
+                   await ctx.Response.WriteAsync(200, "{}");
+               }))
+        using (var client = ZLinkHttpClient.Create(origin.BaseUrl)
+                   .BearerToken("secret").FollowRedirects(3).Build())
+        {
+            await client.Get("/start").AsyncRaw();
+        }
+
+        Assert.Null(authAtOther);
+        Assert.Null(authWhenReturned);
+    }
+
+    [Fact]
     public async Task Redirect_limit_exceeded_throws()
     {
         using var server = new TestHttpServer(async ctx =>
@@ -583,7 +635,8 @@ public sealed class HttpClientContractTests
     public void Validation_rejects_invalid_configuration()
     {
         Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create().Build());
-        Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("ftp://x").Build());
+        Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("ftp://x"));
+        Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://["));
         Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://h").Timeout(TimeSpan.Zero));
         Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://h").Proxy("https://p").Build());
         Assert.Throws<ZLinkFrameworkException>(() => ZLinkHttpClient.Create("http://h").FollowRedirects(0));

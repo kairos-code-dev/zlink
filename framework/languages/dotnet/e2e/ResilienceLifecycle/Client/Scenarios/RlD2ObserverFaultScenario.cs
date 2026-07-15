@@ -1,3 +1,4 @@
+// Verifies RL-D2 Observer Fault behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

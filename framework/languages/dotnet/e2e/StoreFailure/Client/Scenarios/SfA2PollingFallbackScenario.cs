@@ -1,3 +1,4 @@
+// Verifies SF-A2 Polling Fallback behavior.
 using StoreFailure.Client.Support;
 using Zlink.HttpClient;
 

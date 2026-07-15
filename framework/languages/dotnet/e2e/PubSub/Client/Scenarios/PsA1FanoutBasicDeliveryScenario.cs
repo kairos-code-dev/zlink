@@ -1,3 +1,4 @@
+// Verifies PS-A1 Fanout Basic Delivery behavior.
 using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;

@@ -28,7 +28,7 @@ internal static class OtherActorProgressProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
+        EvidenceOrder.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "actor-await-started",
             "actor-await-released",
             "actor-fast-started",

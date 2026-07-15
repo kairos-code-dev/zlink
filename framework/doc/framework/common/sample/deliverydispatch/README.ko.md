@@ -317,6 +317,7 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 | `EnsureCourierActorReq` | CourierSession server 또는 DispatchWorker module -> target SpotNode | `CourierId` | 기존 actor가 없을 때 선택된 SpotNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |
 | `EnsureCourierActorRes` | target SpotNode -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 배송원 actor 위치를 반환한다. |
 | `OfferDeliveryMsg` | DispatchWorker module -> target SpotNode -> CourierActor | `DeliveryId`, `CourierId`, `Attempt`, `PickupAddress`, `DropoffAddress` | 특정 배송원 actor에게 배송 제안을 보낸다(**응답 없는 one-way send**). `Attempt`는 이 배송의 몇 번째 제안인지다. |
+| `CourierDecisionMsg` | Courier client -> CourierSession server -> CourierActor | `DeliveryId`, `CourierId`, `Accepted`, `Reason` | 배송원 client가 stream session을 통해 수락 또는 거절 결정을 보낸다. actor는 현재 제안의 `Attempt`와 결합해 배차 결과를 만든다. |
 | `OfferDeliveryResultMsg` | CourierActor -> DispatchWorker module | `DeliveryId`, `CourierId`, `Attempt`, `Accepted`, `Reason` | 배송원의 결정을 배차 쪽으로 돌려준다(**응답 없는 one-way send**). `Attempt`가 현재 제안과 다르면 늦게 도착한 결정이므로 버린다. |
 
 ### 7.3 Tracking과 actor/session bind

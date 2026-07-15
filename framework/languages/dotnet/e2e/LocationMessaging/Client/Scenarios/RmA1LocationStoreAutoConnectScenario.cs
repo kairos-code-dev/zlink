@@ -1,3 +1,4 @@
+// Verifies RM-A1 Location Store Auto Connect behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -22,23 +23,23 @@ internal static class RmA1LocationStoreAutoConnectScenario
         ZlinkStreamAssert.Ensure(reply.Value == "profile:rm-a1", "RM-A1 reply value mismatch.");
         ZlinkStreamAssert.Ensure(reply.ProviderRid is "api-a" or "api-b", "RM-A1 provider rid was not api-a/api-b.");
 
-        var rawPeers = providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
+        var rawPeers = (await providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>()).Body;
         var liveProviderRows = rawPeers.Count(row =>
             row.Role == "Router" && row.NodeRid is "api-a" or "api-b");
         ZlinkStreamAssert.Ensure(
             liveProviderRows >= 2,
             "RM-A1 expected live peer location rows for both profile providers in the runtime query.");
 
-        var memberPeers = providerA.Get("/locations/member-peers?mesh=profile").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
+        var memberPeers = (await providerA.Get("/locations/member-peers?mesh=profile").Async<PeerLocationRow[]>()).Body;
         ZlinkStreamAssert.Ensure(
             memberPeers.Count(row => row.Role == "Router" && row.NodeRid is "api-a" or "api-b") >= 2,
             "RM-A1 expected both providers on the member-peer resolver surface (Refresh).");
 
-        var status = providerA.Get("/locations/status").Async<LocationStatusRes>().AsTask().GetAwaiter().GetResult().Body;
+        var status = (await providerA.Get("/locations/status").Async<LocationStatusRes>()).Body;
         ZlinkStreamAssert.Ensure(status.StoreHealthy, "RM-A1 expected a healthy location store.");
 
-        var providerEvidence = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body
-            .Concat(providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body)
+        var providerEvidence = (await providerA.Get("/evidence").Async<string[]>()).Body
+            .Concat((await providerB.Get("/evidence").Async<string[]>()).Body)
             .ToArray();
         ZlinkStreamAssert.Ensure(
             providerEvidence.Any(line => line.Contains("value=rm-a1", StringComparison.Ordinal)),

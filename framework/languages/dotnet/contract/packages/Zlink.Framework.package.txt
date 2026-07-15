@@ -6,7 +6,7 @@ entry _rels/.rels
 entry lib/net8.0/Zlink.Framework.dll
 entry lib/net8.0/Zlink.Framework.xml
 entry package/services/metadata/core-properties/{CORE_PROPERTIES}.psmdcp
-content-sha256 lib/net8.0/Zlink.Framework.xml=c9168d173d2d31afb1a4aeef550b13d2b4d0a7fa1026c517bf17993229cdbd9c
+content-sha256 lib/net8.0/Zlink.Framework.xml=eb73aa801aeee81b529aa85852fd309d80484399288c9f39549e84b1d1265ffa
 metadata authors=Zlink.Framework
 metadata description=ZLink framework core abstractions and runtime for .NET.
 metadata id=Zlink.Framework
@@ -21,3 +21,4 @@ dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extension
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Microsoft.Extensions.Logging.Abstractions version=8.0.0
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink version=9.0.8
 dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]
+dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Contracts version=[{VERSION}]

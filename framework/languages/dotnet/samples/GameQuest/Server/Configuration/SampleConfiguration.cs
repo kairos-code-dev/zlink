@@ -67,7 +67,11 @@ public sealed record GameQuestTopology(
     RoutingId GameApiASpotRid,
     RoutingId GameApiBSpotRid)
 {
-    public static GameQuestRuntimeConfiguration Load(string[] args)
+    public static GameQuestRuntimeConfiguration LoadGameApi(string[] args) => Load(args, "api");
+
+    public static GameQuestRuntimeConfiguration LoadQuestMission(string[] args) => Load(args, "mission");
+
+    private static GameQuestRuntimeConfiguration Load(string[] args, string role)
     {
         if (args.Length != 2 || args[0] != "--config")
             throw new ArgumentException("Usage: --config PATH");
@@ -77,7 +81,7 @@ public sealed record GameQuestTopology(
                            .GetRequiredSection("Sample")
                            .Get<GameQuestConfiguration>()
                        ?? throw new InvalidOperationException("GameQuest Sample configuration is empty.");
-        settings.Validate();
+        settings.Validate(role);
         var topology = new GameQuestTopology(
             settings.RedisEndpoint,
             settings.RedisKeyPrefix,
@@ -197,12 +201,44 @@ public sealed class GameQuestConfiguration
     public string GameApiBSpotEndpoint { get; init; } = "";
     public string GameApiBSpotRouterEndpoint { get; init; } = "";
 
-    public void Validate()
+    public void Validate(string role)
     {
-        foreach (var value in GetType().GetProperties().Select(property =>
-                     (property.Name, Value: (string?)property.GetValue(this))))
-            if (string.IsNullOrWhiteSpace(value.Value))
-                throw new InvalidOperationException($"GameQuest Sample.{value.Name} is required.");
+        Require(InstanceName, nameof(InstanceName));
+        Require(LogDirectory, nameof(LogDirectory));
+        Require(RedisEndpoint, nameof(RedisEndpoint));
+        Require(RedisKeyPrefix, nameof(RedisKeyPrefix));
+        var isB = InstanceName.EndsWith("-b", StringComparison.Ordinal);
+        if (role == "api")
+        {
+            Require(isB ? GameApiBHttpBaseUrl : GameApiAHttpBaseUrl,
+                isB ? nameof(GameApiBHttpBaseUrl) : nameof(GameApiAHttpBaseUrl));
+            Require(isB ? GameApiBStreamBindEndpoint : GameApiAStreamBindEndpoint,
+                isB ? nameof(GameApiBStreamBindEndpoint) : nameof(GameApiAStreamBindEndpoint));
+            Require(isB ? GameApiBChannelEndpoint : GameApiAChannelEndpoint,
+                isB ? nameof(GameApiBChannelEndpoint) : nameof(GameApiAChannelEndpoint));
+            Require(isB ? GameApiBSpotEndpoint : GameApiASpotEndpoint,
+                isB ? nameof(GameApiBSpotEndpoint) : nameof(GameApiASpotEndpoint));
+            Require(isB ? GameApiBSpotRouterEndpoint : GameApiASpotRouterEndpoint,
+                isB ? nameof(GameApiBSpotRouterEndpoint) : nameof(GameApiASpotRouterEndpoint));
+            return;
+        }
+        if (role != "mission")
+            throw new InvalidOperationException($"Unknown GameQuest role '{role}'.");
+        Require(GameApiAHttpBaseUrl, nameof(GameApiAHttpBaseUrl));
+        Require(isB ? MissionBHttpBaseUrl : MissionAHttpBaseUrl,
+            isB ? nameof(MissionBHttpBaseUrl) : nameof(MissionAHttpBaseUrl));
+        Require(isB ? MissionBChannelEndpoint : MissionAChannelEndpoint,
+            isB ? nameof(MissionBChannelEndpoint) : nameof(MissionAChannelEndpoint));
+        Require(isB ? MissionBSpotEndpoint : MissionASpotEndpoint,
+            isB ? nameof(MissionBSpotEndpoint) : nameof(MissionASpotEndpoint));
+        Require(isB ? MissionBSpotRouterEndpoint : MissionASpotRouterEndpoint,
+            isB ? nameof(MissionBSpotRouterEndpoint) : nameof(MissionASpotRouterEndpoint));
+    }
+
+    private static void Require(string value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException($"GameQuest Sample.{name} is required.");
     }
 }
 

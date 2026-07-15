@@ -9,17 +9,13 @@
 | raw | `submitRaw()` | `RawHttpResponse` | 전송 실패만. **status는 실패 아님**(4xx/5xx도 성공 반환) |
 | typed | `submit<T>()` | `HttpResponse<T>` | 전송 실패 + **status ≥ 400** + 디코드 실패 |
 | 다운로드 | `download(sink)` | `RawHttpResponse`(body 빈 값) | 전송 실패. status는 raw와 동일 취급 |
-| body 언래핑 | `fetch<T>()` | `T` (body만) | typed와 동일, 실패 시 던짐 |
 
 - typed 제출의 status ≥ 400은 `requestFailed`로 보고한다. 현행 계약에서는
   이때 응답 body가 노출되지 않는다 — 에러 페이로드가 필요하면 `submitRaw()`를
   쓴다(개정 후보 [R1](10-revision-candidates.ko.md)).
-- `fetch<T>()`는 cpp/dotnet/java에서 **blocking**이며 테스트/CLI 전용이다.
-  framework handler/runtime 스레드에서 금지([5장](05-execution-model.ko.md)).
-  언어 편차: node의 `fetch<T>()`는 비동기(`Promise<T>`, body만)이고 blocking
-  경로가 아예 없다(event loop 단일 스레드). kotlin의 `fetch<T>()`도
-  suspend(non-blocking)다 — java blocking `fetch`와의 동명이의 정리는 개정
-  후보 [R5](10-revision-candidates.ko.md)와 함께 다룬다.
+- 완료 값을 동기로 언래핑하는 public terminator는 두지 않는다. typed response의 body만
+  필요하면 비동기 typed terminator를 완료한 뒤 호출자가 body를 선택한다
+  ([5장](05-execution-model.ko.md)).
 
 ## 4.2 응답 타입
 

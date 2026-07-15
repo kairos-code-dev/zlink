@@ -4,7 +4,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
-RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 LOG_DIR="${RUN_DIR}/logs"
 WORK_DIR="${RUN_DIR}/work"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
@@ -46,21 +46,15 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${RUN_SUCCEEDED}" == "1" && "${DELIVERYDISPATCH_KEEP_RUN_DIR:-}" != "1" ]]; then
-    [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
+  if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
+    rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
   fi
 }
 trap cleanup EXIT
 
-if [[ -n "${DELIVERYDISPATCH_BASE_PORT:-}" ]]; then
-  PORTS=()
-  for offset in $(seq 1 19); do
-    PORTS+=("$((DELIVERYDISPATCH_BASE_PORT + offset))")
-  done
-else
-  read -r -a PORTS <<<"$(python3 - <<'PY'
+read -r -a PORTS <<<"$(python3 - <<'PY'
 import random
 import socket
 
@@ -85,7 +79,6 @@ finally:
         sock.close()
 PY
 )"
-fi
 
 REDIS_KEY_PREFIX="deliverydispatch:dotnet:${RANDOM}:$$:"
 DISPATCH_HTTP="http://127.0.0.1:${PORTS[2]}"

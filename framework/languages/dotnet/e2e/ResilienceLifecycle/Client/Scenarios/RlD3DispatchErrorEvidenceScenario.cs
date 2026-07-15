@@ -1,3 +1,4 @@
+// Verifies RL-D3 Dispatch Error Evidence behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

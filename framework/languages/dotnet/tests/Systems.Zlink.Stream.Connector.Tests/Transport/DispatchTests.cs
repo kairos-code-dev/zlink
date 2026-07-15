@@ -222,7 +222,7 @@ public sealed partial class StreamConnectorTests
             TimeSpan.FromSeconds(5));
 
         var error = await remoteError.Task.WaitAsync(TimeSpan.FromMilliseconds(100));
-        Assert.Equal("late reply", error.Message);
+        Assert.Equal("late: late reply", error.Message);
         Assert.Equal(0, connector.ReceivedCount("late.error"));
     }
 

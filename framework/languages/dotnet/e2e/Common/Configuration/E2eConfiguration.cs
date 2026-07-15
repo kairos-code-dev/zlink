@@ -82,43 +82,31 @@ internal static class E2eConfiguration
         var fileConfiguration = new ConfigurationBuilder()
             .AddJsonFile(path, optional: false, reloadOnChange: false)
             .Build();
-        var defaults = MissingValueDefaults<T>(fileConfiguration);
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(defaults)
-            .AddConfiguration(fileConfiguration)
-            .Build();
-        var options = configuration.GetRequiredSection("Options").Get<T>()
+        var section = fileConfiguration.GetRequiredSection("Options");
+        ValidatePresence<T>(section);
+        var options = section.Get<T>()
                       ?? throw new InvalidOperationException(
                           $"Options could not be bound to {typeof(T).Name}.");
         Validate(options);
         return options;
     }
 
-    private static Dictionary<string, string?> MissingValueDefaults<T>(IConfiguration configuration)
+    private static void ValidatePresence<T>(IConfigurationSection section)
         where T : class
     {
-        var defaults = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var constructor = typeof(T).GetConstructors().SingleOrDefault();
-        if (constructor is null) return defaults;
+        if (constructor is null) return;
 
         var nullability = new NullabilityInfoContext();
         foreach (var parameter in constructor.GetParameters())
         {
-            var key = $"Options:{parameter.Name}";
-            if (configuration.GetSection(key).Exists() || parameter.HasDefaultValue) continue;
-
-            if (parameter.ParameterType.IsValueType)
-            {
-                defaults[key] = parameter.ParameterType == typeof(bool) ? "false" : "0";
-            }
-            else if (parameter.ParameterType == typeof(string)
-                     && nullability.Create(parameter).ReadState == NullabilityState.Nullable)
-            {
-                defaults[key] = " ";
-            }
+            if (parameter.HasDefaultValue) continue;
+            if (!parameter.ParameterType.IsValueType
+                && nullability.Create(parameter).ReadState == NullabilityState.Nullable)
+                continue;
+            if (!section.GetSection(parameter.Name!).Exists())
+                throw new InvalidOperationException($"Options.{parameter.Name} is required.");
         }
-
-        return defaults;
     }
 
     private static void Validate<T>(T options)

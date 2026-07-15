@@ -1,3 +1,4 @@
+// Verifies SM-B9 Actor Join Admission behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

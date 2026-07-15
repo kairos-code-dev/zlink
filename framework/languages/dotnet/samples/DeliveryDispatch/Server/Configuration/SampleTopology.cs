@@ -47,32 +47,46 @@ public sealed class SampleTopologyOptions
 
     /// <summary>Turns the file's values into the typed topology, failing on the first one that is
     /// missing. Routing ids are names the sample owns, so they are not configuration.</summary>
-    public SampleTopology ToTopology()
+    public SampleTopology ToTopology(string role, string? nodeRid)
     {
+        var dispatch = role == "dispatch";
+        var tracking = role == "tracking";
+        var customer = role == "customer-gateway";
+        var courierSession = role == "courier-session";
+        var courierNode1 = role == "courier-actor-node1";
+        var courierNode2 = role == "courier-actor-node2";
+        if (!dispatch && !tracking && !customer && !courierSession && !courierNode1 && !courierNode2)
+            throw new InvalidOperationException($"Unknown DeliveryDispatch server role '{role}'.");
+        if ((courierNode1 || courierNode2) && string.IsNullOrWhiteSpace(nodeRid))
+            throw new InvalidOperationException("sample.role.nodeRid is required for a courier actor node.");
+
         return new SampleTopology(
             Required(RedisEndpoint, nameof(RedisEndpoint)),
             Required(RedisKeyPrefix, nameof(RedisKeyPrefix)),
-            Required(DispatchHttpUrl, nameof(DispatchHttpUrl)),
-            Required(DispatchChannelEndpoint, nameof(DispatchChannelEndpoint)),
-            Required(DispatchSpotRouterEndpoint, nameof(DispatchSpotRouterEndpoint)),
-            Required(TrackingChannelEndpoint, nameof(TrackingChannelEndpoint)),
-            Required(TrackingSpotRouterEndpoint, nameof(TrackingSpotRouterEndpoint)),
-            Required(TrackingSpotEndpoint, nameof(TrackingSpotEndpoint)),
-            Required(CustomerStreamEndpoint, nameof(CustomerStreamEndpoint)),
-            Required(CustomerSpotRouterEndpoint, nameof(CustomerSpotRouterEndpoint)),
-            Required(CustomerSpotEndpoint, nameof(CustomerSpotEndpoint)),
+            Select(dispatch, DispatchHttpUrl, nameof(DispatchHttpUrl)),
+            Select(dispatch, DispatchChannelEndpoint, nameof(DispatchChannelEndpoint)),
+            Select(dispatch, DispatchSpotRouterEndpoint, nameof(DispatchSpotRouterEndpoint)),
+            Select(tracking, TrackingChannelEndpoint, nameof(TrackingChannelEndpoint)),
+            Select(tracking, TrackingSpotRouterEndpoint, nameof(TrackingSpotRouterEndpoint)),
+            Select(tracking, TrackingSpotEndpoint, nameof(TrackingSpotEndpoint)),
+            Select(customer, CustomerStreamEndpoint, nameof(CustomerStreamEndpoint)),
+            Select(customer, CustomerSpotRouterEndpoint, nameof(CustomerSpotRouterEndpoint)),
+            Select(customer, CustomerSpotEndpoint, nameof(CustomerSpotEndpoint)),
             RoutingId.From(SampleNames.CustomerSpotNode),
-            Required(CourierStreamEndpoint, nameof(CourierStreamEndpoint)),
-            Required(CourierSessionSpotRouterEndpoint, nameof(CourierSessionSpotRouterEndpoint)),
-            Required(CourierSessionSpotEndpoint, nameof(CourierSessionSpotEndpoint)),
+            Select(courierSession, CourierStreamEndpoint, nameof(CourierStreamEndpoint)),
+            Select(courierSession, CourierSessionSpotRouterEndpoint, nameof(CourierSessionSpotRouterEndpoint)),
+            Select(courierSession, CourierSessionSpotEndpoint, nameof(CourierSessionSpotEndpoint)),
             RoutingId.From(SampleNames.CourierSessionSpotNode),
-            Required(CourierActorNode1RouterEndpoint, nameof(CourierActorNode1RouterEndpoint)),
-            Required(CourierActorNode1Endpoint, nameof(CourierActorNode1Endpoint)),
+            Select(courierNode1, CourierActorNode1RouterEndpoint, nameof(CourierActorNode1RouterEndpoint)),
+            Select(courierNode1, CourierActorNode1Endpoint, nameof(CourierActorNode1Endpoint)),
             RoutingId.From(SampleNames.CourierActorNode1),
-            Required(CourierActorNode2RouterEndpoint, nameof(CourierActorNode2RouterEndpoint)),
-            Required(CourierActorNode2Endpoint, nameof(CourierActorNode2Endpoint)),
+            Select(courierNode2, CourierActorNode2RouterEndpoint, nameof(CourierActorNode2RouterEndpoint)),
+            Select(courierNode2, CourierActorNode2Endpoint, nameof(CourierActorNode2Endpoint)),
             RoutingId.From(SampleNames.CourierActorNode2));
     }
+
+    private static string Select(bool required, string value, string name) =>
+        required ? Required(value, name) : string.Empty;
 
     private static string Required(string value, string name)
     {

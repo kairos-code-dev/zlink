@@ -47,31 +47,57 @@ def main() -> None:
     if args.node_rid:
         role["nodeRid"] = args.node_rid
 
-    document = {
-        "sample": {
-            "role": role,
-            "topology": {
-                "redisEndpoint": args.redis_endpoint,
-                "redisKeyPrefix": args.redis_key_prefix,
+    if args.role == "client":
+        document = {
+            "client": {
+                "logDirectory": args.log_dir,
+                "dispatchHttpUrl": args.dispatch_http,
+                "customerStreamEndpoint": args.customer_stream,
+                "courierStreamEndpoint": args.courier_stream,
+            }
+        }
+    else:
+        topology = {
+            "redisEndpoint": args.redis_endpoint,
+            "redisKeyPrefix": args.redis_key_prefix,
+        }
+        role_topology = {
+            "dispatch": {
                 "dispatchHttpUrl": args.dispatch_http,
                 "dispatchChannelEndpoint": args.dispatch_channel,
                 "dispatchSpotRouterEndpoint": args.dispatch_spot_router,
+            },
+            "tracking": {
                 "trackingChannelEndpoint": args.tracking_channel,
                 "trackingSpotRouterEndpoint": args.tracking_spot_router,
                 "trackingSpotEndpoint": args.tracking_spot,
+            },
+            "customer-gateway": {
                 "customerStreamEndpoint": args.customer_stream,
                 "customerSpotRouterEndpoint": args.customer_spot_router,
                 "customerSpotEndpoint": args.customer_spot,
+            },
+            "courier-session": {
                 "courierStreamEndpoint": args.courier_stream,
                 "courierSessionSpotRouterEndpoint": args.courier_session_spot_router,
                 "courierSessionSpotEndpoint": args.courier_session_spot,
+            },
+            "courier-actor-node1": {
                 "courierActorNode1RouterEndpoint": args.courier_node1_router,
                 "courierActorNode1Endpoint": args.courier_node1,
+            },
+            "courier-actor-node2": {
                 "courierActorNode2RouterEndpoint": args.courier_node2_router,
                 "courierActorNode2Endpoint": args.courier_node2,
             },
         }
-    }
+        topology.update(role_topology[args.role])
+        document = {
+            "sample": {
+                "role": role,
+                "topology": topology,
+            }
+        }
 
     with open(args.output, "w", encoding="utf-8") as file:
         json.dump(document, file, indent=2)

@@ -1,5 +1,5 @@
-using System.Text.RegularExpressions;
 using Xunit;
+using System.Text.RegularExpressions;
 
 namespace Zlink.Framework.SampleRegressionTests;
 
@@ -16,11 +16,7 @@ public sealed partial class RegressionTests
         foreach (var runner in runners)
         {
             var text = File.ReadAllText(runner);
-            Assert.Matches(
-                new Regex(
-                    "LOCAL_READINESS_TIMEOUT_SECONDS=\\\"\\$\\{[A-Z0-9_]+:-3\\}\\\"",
-                    RegexOptions.CultureInvariant),
-                text);
+            Assert.Contains("LOCAL_READINESS_TIMEOUT_SECONDS=3", text, StringComparison.Ordinal);
             Assert.Contains("LOCAL_READINESS_POLL_SECONDS=0.1", text, StringComparison.Ordinal);
         }
     }
@@ -28,16 +24,127 @@ public sealed partial class RegressionTests
     [Fact]
     public void LocationMessaging_Role_Requests_Do_Not_Retry_Route_Convergence()
     {
-        var endpoints = File.ReadAllText(Path.Combine(
+        var serverRoot = Path.Combine(ResolveE2eRoot(), "LocationMessaging", "Server");
+        foreach (var sourceFile in Directory.EnumerateFiles(serverRoot, "*.cs", SearchOption.AllDirectories)
+                     .Where(static path => !path.Contains(
+                         $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")))
+        {
+            var source = File.ReadAllText(sourceFile);
+            Assert.DoesNotContain("WithRetryAsync", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("IsRetriableRequestStartupFailure", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("IsRetriableStartupFailure", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void Failure_Scenarios_Observe_The_First_Profile_Request_Result()
+    {
+        var root = ResolveE2eRoot();
+        foreach (var configuration in new[] { "ResilienceLifecycle", "StoreFailure" })
+        {
+            var source = File.ReadAllText(Path.Combine(
+                root, configuration, "Server", "Consumer", "ConsumerHostFactory.cs"));
+            Assert.DoesNotContain("RequestProfileWithRetryAsync", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("IsRetriableStartupFailure", source, StringComparison.Ordinal);
+            Assert.Contains("RequestProfileAsync(channel, request)", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void Routed_E2e_Requests_Do_Not_Use_Application_Retry_Helpers()
+    {
+        var root = ResolveE2eRoot();
+        foreach (var configuration in new[]
+                 {
+                     "AutomaticTurnDispatch", "LocationMessaging", "ResilienceLifecycle",
+                     "SpotService", "StoreFailure"
+                 })
+        foreach (var sourcePath in Directory.GetFiles(
+                     Path.Combine(root, configuration), "*.cs", SearchOption.AllDirectories))
+        {
+            var source = File.ReadAllText(sourcePath);
+            Assert.DoesNotContain("WithRetryAsync", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void Resilience_Down_Window_Separates_Topology_From_Routing_Convergence()
+    {
+        var scenarios = Path.Combine(ResolveE2eRoot(), "ResilienceLifecycle", "Client", "Scenarios");
+        var restart = File.ReadAllText(Path.Combine(scenarios, "RlA1ProviderRestartScenario.cs"));
+        Assert.Contains("/profile/request/attempt/1000", restart, StringComparison.Ordinal);
+        Assert.Contains("attempt.ErrorKind", restart, StringComparison.Ordinal);
+
+        foreach (var name in new[]
+                 {
+                     "RlA5ProviderFlappingScenario.cs", "RlB2CrashDuringInflightScenario.cs",
+                     "RlB3GracefulShutdownScenario.cs", "RlC3NodePauseRecoveryScenario.cs"
+                 })
+        {
+            var source = File.ReadAllText(Path.Combine(scenarios, name));
+            Assert.Contains("WaitUntilProviderExcludedAsync", source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void StoreFailure_Disconnect_Probe_Uses_A_Timeout_Inside_Its_Convergence_Window()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            ResolveE2eRoot(),
+            "StoreFailure",
+            "Client",
+            "Scenarios",
+            "SfD2LongOutageRecoveryScenario.cs"));
+
+        Assert.Contains("options.PollingInterval.TotalMilliseconds", source, StringComparison.Ordinal);
+        Assert.Contains("probeTimeoutMilliseconds", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "sf-d2-disconnect-probe-{Guid.NewGuid():N}\");",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Observability_Lease_Lateness_Uses_Typed_Heartbeat_Configuration()
+    {
+        var server = Path.Combine(ResolveE2eRoot(), "ObservabilityOps", "Server");
+        foreach (var role in new[] { "Play", "Workflow" })
+        {
+            var host = File.ReadAllText(Path.Combine(server, role, $"{role}HostFactory.cs"));
+            var options = File.ReadAllText(Path.Combine(server, role, "Support", $"{role}Options.cs"));
+
+            Assert.Contains("options.LocationHeartbeatMs", host, StringComparison.Ordinal);
+            Assert.Contains("options.LocationLeaseTtlMs", host, StringComparison.Ordinal);
+            Assert.Contains("int LocationHeartbeatMs = 1000", options, StringComparison.Ordinal);
+            Assert.Contains("int LocationLeaseTtlMs = 3000", options, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void LocationMessaging_Dynamic_Providers_Receive_The_Required_Message_Size_Limit()
+    {
+        var launcher = File.ReadAllText(Path.Combine(
             ResolveE2eRoot(),
             "LocationMessaging",
-            "Server",
-            "Provider",
-            "Endpoints",
-            "ProviderEndpoints.cs"));
+            "Client",
+            "Support",
+            "DynamicClusterLauncher.cs"));
 
-        Assert.DoesNotContain("WithRetryAsync", endpoints, StringComparison.Ordinal);
-        Assert.DoesNotContain("IsRetriableRequestStartupFailure", endpoints, StringComparison.Ordinal);
+        Assert.Contains("\"--max-message-size\", \"2097152\"", launcher, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PubSub_Handler_Delay_Is_Optional_For_Normal_Subscribers()
+    {
+        var options = File.ReadAllText(Path.Combine(
+            ResolveE2eRoot(),
+            "PubSub",
+            "Server",
+            "Subscriber",
+            "Configuration",
+            "SubscriberOptions.cs"));
+
+        Assert.Contains("int HandlerDelayMs = 0", options, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -94,6 +201,23 @@ public sealed partial class RegressionTests
         var root = ResolveE2eRoot();
         AssertScenarioFiles(root, "SpotActorTransfer", "St", 20);
         AssertScenarioFiles(root, "ToActorMessaging", "Ta", 7);
+    }
+
+    [Fact]
+    public void SpotService_Client_Exposes_Every_Scenario_As_A_Direct_Selector()
+    {
+        var root = Path.Combine(ResolveE2eRoot(), "SpotService", "Client");
+        var program = File.ReadAllText(Path.Combine(root, "Program.cs"));
+        var scenarioIds = Directory.GetFiles(Path.Combine(root, "Scenarios"), "Sm*Scenario.cs")
+            .Select(Path.GetFileNameWithoutExtension)
+            .Select(static name => Regex.Match(name!, @"^Sm(?<track>[A-Z])(?<number>\d+)"))
+            .Select(static match => $"sm-{match.Groups["track"].Value.ToLowerInvariant()}{match.Groups["number"].Value}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(51, scenarioIds.Length);
+        foreach (var scenarioId in scenarioIds)
+            Assert.Contains($"\"{scenarioId}\" =>", program, StringComparison.Ordinal);
     }
 
     [Fact]

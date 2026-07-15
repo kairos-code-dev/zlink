@@ -1,3 +1,4 @@
+// Verifies ST-E2 Bound Session Rebind Isolation behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

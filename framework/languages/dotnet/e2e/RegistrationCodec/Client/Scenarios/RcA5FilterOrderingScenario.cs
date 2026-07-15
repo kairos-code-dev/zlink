@@ -1,3 +1,4 @@
+// Verifies RC-A5 Filter Ordering behavior.
 using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;

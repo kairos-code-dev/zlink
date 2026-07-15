@@ -7,6 +7,7 @@ using TicTacToe.Server.Play.Infrastructure.ZLink.Handlers;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Sessions;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot;
+using TicTacToe.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Locations.Redis;
@@ -27,6 +28,7 @@ internal sealed class PlayServer(SampleSettings settings)
 
         builder.Services.AddZLinkFramework(options =>
         {
+            options.DisableImplicitHandlerAutoRegistration();
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(settings.RedisEndpoint)
                 .SetKeyPrefix(settings.RedisKeyPrefix)));
@@ -34,15 +36,13 @@ internal sealed class PlayServer(SampleSettings settings)
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
-            options.AddHandlersFromAssemblyOf(typeof(PlayServer));
-
             options.AddClientServerChannel(SampleChannels.Api)
                 .EnableClient(settings.ApiChannelEndpoints[0])
                 .EnableClient(settings.ApiChannelEndpoints[1]);
 
             options.AddClientServerChannel(SampleChannels.Play(settings.PlayIndex))
                 .EnableServer(settings.PlayChannelEndpoint)
-                .AddHandlerGroup("play");
+                .AddRequestHandler<CreateGameHandler, CreateGameReq, CreateGameRes>();
 
             options.AddStreamNode(SampleNodes.ClientStream)
                 .Bind(settings.PlayEndpoint)

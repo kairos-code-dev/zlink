@@ -34,7 +34,7 @@ internal static class ActorTimerIsolationProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsExactRequestInOrder(actorThenTimerEvidence.Evidence, actorThenTimer, [
+        EvidenceOrder.ContainsExactRequestInOrder(actorThenTimerEvidence.Evidence, actorThenTimer, [
             "actor-await-started",
             "actor-await-released",
             "timer-fast-started",
@@ -67,7 +67,7 @@ internal static class ActorTimerIsolationProbe
             .PacketName("TimerStopMsg")
             .Metadata(AutomaticTurnDispatchNames.SpotRidMetadata, actors.SpotRid).Submit();
 
-        ScenarioAssert.ContainsExactRequestInOrder(timerThenActorEvidence.Evidence, timerThenActor, [
+        EvidenceOrder.ContainsExactRequestInOrder(timerThenActorEvidence.Evidence, timerThenActor, [
             "timer-await-started",
             "timer-await-released",
             "actor-fast-started",

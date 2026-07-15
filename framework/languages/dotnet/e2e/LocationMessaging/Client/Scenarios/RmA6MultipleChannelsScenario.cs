@@ -1,3 +1,4 @@
+// Verifies RM-A6 Multiple Channels behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -35,8 +36,8 @@ internal static class RmA6MultipleChannelsScenario
 
         // Mesh-name filtered runtime query rows must not mix across channels
         // even though they share one store and key prefix (doc RM-A6).
-        var profileRows = providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
-        var workflowRows = providerA.Get("/locations/peers?mesh=workflow").Async<PeerLocationRow[]>().AsTask().GetAwaiter().GetResult().Body;
+        var profileRows = (await providerA.Get("/locations/peers?mesh=profile").Async<PeerLocationRow[]>()).Body;
+        var workflowRows = (await providerA.Get("/locations/peers?mesh=workflow").Async<PeerLocationRow[]>()).Body;
         ZlinkStreamAssert.Ensure(
             profileRows.Length > 0 && profileRows.All(row => row.MeshName == "profile"),
             "RM-A6 profile mesh filter returned rows from another mesh.");

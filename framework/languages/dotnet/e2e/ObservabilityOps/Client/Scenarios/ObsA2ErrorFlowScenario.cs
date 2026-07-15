@@ -1,3 +1,4 @@
+// Verifies OBS-A2 Error Flow behavior.
 using ObservabilityOps.Client.Support;
 using Systems.Zlink.Stream.Connector.Contracts;
 

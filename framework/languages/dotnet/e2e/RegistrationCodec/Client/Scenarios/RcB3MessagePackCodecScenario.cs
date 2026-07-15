@@ -1,3 +1,4 @@
+// Verifies RC-B3 Message Pack Codec behavior.
 using RegistrationCodec.Client.Support;
 using Zlink.HttpClient;
 

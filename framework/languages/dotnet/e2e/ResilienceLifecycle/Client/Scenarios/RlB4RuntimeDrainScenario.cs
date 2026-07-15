@@ -1,3 +1,4 @@
+// Verifies RL-B4 Runtime Drain behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

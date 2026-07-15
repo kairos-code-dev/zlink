@@ -49,7 +49,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${RUN_SUCCEEDED}" == "1" && "${SUPPORTCHAT_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
@@ -154,8 +154,11 @@ fi
 REDIS_CONTAINER="zlink-supportchat-dotnet-redis-${RUN_ID}"
 zlink_redis_start_scoped_assign REDIS_CONTAINER SUPPORTCHAT_REDIS_ENDPOINT "zlink-supportchat-dotnet-redis" redis:7.2-alpine
 wait_port redis "tcp://${SUPPORTCHAT_REDIS_ENDPOINT}"
-CONFIG_FILE="${RUN_DIR}/appsettings.json"
-python3 - "${CONFIG_FILE}" <<PY
+SUPPORT_CONFIG_FILE="${RUN_DIR}/appsettings.support.json"
+API_CONFIG_FILE="${RUN_DIR}/appsettings.api.json"
+SESSION_CONFIG_FILE="${RUN_DIR}/appsettings.session.json"
+CLIENT_CONFIG_FILE="${RUN_DIR}/appsettings.client.json"
+python3 - "${SUPPORT_CONFIG_FILE}" "${API_CONFIG_FILE}" "${SESSION_CONFIG_FILE}" "${CLIENT_CONFIG_FILE}" <<PY
 import json
 import sys
 
@@ -171,27 +174,51 @@ settings = {
     "SupportEntrySpotRouterEndpoint": "${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT}",
     "StreamEndpoint": "${SUPPORTCHAT_STREAM_ENDPOINT}",
 }
+server_settings = {
+    "LogDirectory": settings["LogDirectory"],
+    "RedisEndpoint": settings["RedisEndpoint"],
+    "RedisKeyPrefix": settings["RedisKeyPrefix"],
+}
 with open(sys.argv[1], "w", encoding="utf-8") as output:
-    json.dump({"Sample": settings}, output, indent=2)
+    json.dump({"Sample": {**server_settings,
+        "SupportChannelEndpoint": settings["SupportChannelEndpoint"],
+        "SupportEntrySpotEndpoint": settings["SupportEntrySpotEndpoint"],
+        "SupportEntrySpotRouterEndpoint": settings["SupportEntrySpotRouterEndpoint"],
+    }}, output, indent=2)
+with open(sys.argv[2], "w", encoding="utf-8") as output:
+    json.dump({"Sample": {**server_settings,
+        "ApiChannelEndpoint": settings["ApiChannelEndpoint"],
+    }}, output, indent=2)
+with open(sys.argv[3], "w", encoding="utf-8") as output:
+    json.dump({"Sample": {**server_settings,
+        "SessionSpotEndpoint": settings["SessionSpotEndpoint"],
+        "SessionRouterEndpoint": settings["SessionRouterEndpoint"],
+        "StreamEndpoint": settings["StreamEndpoint"],
+    }}, output, indent=2)
+with open(sys.argv[4], "w", encoding="utf-8") as output:
+    json.dump({"Client": {
+        "LogDirectory": "${SUPPORTCHAT_LOG_DIR}",
+        "StreamEndpoint": "${SUPPORTCHAT_STREAM_ENDPOINT}",
+    }}, output, indent=2)
 PY
 
 dotnet build "${SCRIPT_DIR}/SupportChat.csproj" --maxcpucount:1
 
-start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj" --config "${CONFIG_FILE}"
+start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj" --config "${SUPPORT_CONFIG_FILE}"
 wait_port support-channel "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}"
 wait_port support-spot-router "${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT}"
 wait_port support-spot-pub "${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT}"
 
-start_server api "${SCRIPT_DIR}/Server/Api/SupportChat.Server.Api.csproj" --config "${CONFIG_FILE}"
+start_server api "${SCRIPT_DIR}/Server/Api/SupportChat.Server.Api.csproj" --config "${API_CONFIG_FILE}"
 wait_port api "${SUPPORTCHAT_API_CHANNEL_ENDPOINT}"
 
-start_server session "${SCRIPT_DIR}/Server/Session/SupportChat.Server.Session.csproj" --config "${CONFIG_FILE}"
+start_server session "${SCRIPT_DIR}/Server/Session/SupportChat.Server.Session.csproj" --config "${SESSION_CONFIG_FILE}"
 wait_port session-route "${SUPPORTCHAT_SESSION_SPOT_ENDPOINT}"
 wait_port session-router "${SUPPORTCHAT_SESSION_ROUTER_ENDPOINT}"
 wait_port session-stream "${SUPPORTCHAT_STREAM_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/SupportChat.Client.csproj" -- \
-  --config "${CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
+  --config "${CLIENT_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 
 grep -q "supportchat=completed" "${LOG_DIR}/client.log"
 grep -q "supportchat-closed-typing-ignore=verified" "${LOG_DIR}/client.log"

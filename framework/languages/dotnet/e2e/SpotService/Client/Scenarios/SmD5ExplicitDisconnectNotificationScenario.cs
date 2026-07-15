@@ -1,3 +1,4 @@
+// Verifies SM-D5 Explicit Disconnect Notification behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

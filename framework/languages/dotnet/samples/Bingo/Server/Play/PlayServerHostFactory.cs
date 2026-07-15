@@ -20,22 +20,22 @@ namespace Bingo.Server.Play;
 public static class PlayServerHostFactory
 {
     public static IHost Build(
-        SampleTopology topology,
-        SamplePlayNode node,
-        string nodeName,
-        string logDirectory,
+        SampleRuntimeConfiguration<SamplePlayNode> configuration,
         bool enableMetrics = true)
     {
+        var node = configuration.Node;
+        var nodeName = configuration.NodeName;
+        var logDirectory = configuration.LogDirectory;
         var traceLabel = $"play-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
             logDirectory,
             traceLabel);
-        builder.Services.AddSingleton(topology);
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(node);
         builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(topology.RedisEndpoint));
+            ConnectionMultiplexer.Connect(configuration.RedisEndpoint));
         builder.Services.AddSingleton<IBingoMatchQueue, RedisBingoMatchQueue>();
         builder.Services.AddSingleton<BingoRoomAllocator>();
         builder.Services.AddSingleton<BingoRoomEventMapper>();
@@ -45,8 +45,8 @@ public static class PlayServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+                .SetConnectionString(configuration.RedisEndpoint)
+                .SetKeyPrefix(configuration.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))

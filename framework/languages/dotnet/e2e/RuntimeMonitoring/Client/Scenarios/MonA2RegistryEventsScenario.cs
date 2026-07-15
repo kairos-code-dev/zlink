@@ -1,10 +1,7 @@
-using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
+// Verifies that adding and removing a provider changes both topology and service-summary projections.
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
-using Zlink.Framework.E2E.Configuration;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -13,102 +10,55 @@ internal static class MonA2RegistryEventsScenario
     public static async Task RunAsync(ClientOptions options)
     {
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
-            .Timeout(TimeSpan.FromSeconds(30))
+            .Timeout(TimeSpan.FromSeconds(35))
             .Build();
         var baseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
-        var httpPort = ReservePort();
-        var channelPort = ReservePort();
-        var serviceUrl = $"http://127.0.0.1:{httpPort}";
-        var channelEndpoint = $"tcp://127.0.0.1:{channelPort}";
-        using var service = StartService(options, serviceUrl, channelEndpoint);
+        var service = await EphemeralService.StartAsync(options, "svc-c");
+        var added = await WaitForProjectionAsync(observer, baseline, "added=svc-c");
+        var addedSummary = AssertProjection(added, "added=svc-c", "MON-A2 add");
+        ZlinkStreamAssert.Ensure(HasReadyServiceCount(addedSummary, 3),
+            "MON-A2 add did not project three ready services.");
 
-        try
-        {
-            await WaitForHealthAsync(serviceUrl);
-            var added = (await observer.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(
-                    ["kind=TopologyChanged", "added=svc-c"],
-                    [],
-                    AfterIndex: baseline))
-                .Async<string[]>()).Body;
-            ZlinkStreamAssert.Ensure(added.Any(line => line.Contains("added=svc-c", StringComparison.Ordinal)),
-                "MON-A2 did not observe the added service identity.");
-
-            var afterAdded = baseline + added.Length;
-            using var serviceHttp = ZLinkHttpClient.Create(serviceUrl).Build();
-            await serviceHttp.Post("/shutdown").AsyncRaw();
-            await service.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-
-            var removed = (await observer.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(
-                    ["kind=TopologyChanged", "removed=svc-c"],
-                    [],
-                    AfterIndex: afterAdded,
-                    TimeoutMilliseconds: 30000))
-                .Async<string[]>()).Body;
-            ZlinkStreamAssert.Ensure(removed.Any(line => line.Contains("removed=svc-c", StringComparison.Ordinal)),
-                "MON-A2 did not observe the removed service identity.");
-        }
-        finally
-        {
-            if (!service.HasExited) service.Kill(true);
-            await service.WaitForExitAsync();
-        }
-
+        var removedBaseline = baseline + added.Length;
+        await service.DisposeAsync();
+        var removed = await WaitForProjectionAsync(observer, removedBaseline, "removed=svc-c");
+        var removedSummary = AssertProjection(removed, "removed=svc-c", "MON-A2 remove");
+        ZlinkStreamAssert.Ensure(HasReadyServiceCount(removedSummary, 2),
+            "MON-A2 remove did not restore the two-service projection.");
         Console.WriteLine("scenario MON-A2 passed");
     }
 
-    private static Process StartService(
-        ClientOptions options,
-        string serviceUrl,
-        string channelEndpoint)
+    private static async Task<string[]> WaitForProjectionAsync(
+        ZLinkHttpClient observer,
+        int afterIndex,
+        string transition)
+        => (await observer.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(
+                ["kind=TopologyChanged", transition, "kind=ServiceSummaryChanged"],
+                [],
+                TimeoutMilliseconds: 30000,
+                AfterIndex: afterIndex))
+            .Async<string[]>()).Body;
+
+    private static string AssertProjection(string[] evidence, string transition, string operation)
     {
-        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false };
-        start.ArgumentList.Add("run");
-        start.ArgumentList.Add("--no-build");
-        start.ArgumentList.Add("--project");
-        start.ArgumentList.Add(options.FilteredServiceProject);
-        start.ArgumentList.Add("--");
-        start.ArgumentList.Add("--config");
-        start.ArgumentList.Add(E2eConfiguration.WriteArguments(options.ConfigDir, "svc-c",
-        [
-            "--role", "filtered-service",
-            "--rid", "svc-c",
-            "--http-url", serviceUrl,
-            "--redis-endpoint", options.RedisEndpoint,
-            "--redis-key-prefix", options.RedisKeyPrefix,
-            "--channel-endpoint", channelEndpoint,
-            "--evidence-file", Path.Combine(options.LogDir, "svc-c.evidence.log"),
-            "--log-dir", options.LogDir
-        ]));
-        return Process.Start(start)
-               ?? throw new InvalidOperationException("Failed to start MON-A2 service-c.");
+        ZlinkStreamAssert.Ensure(evidence.Any(line =>
+                line.Contains("kind=TopologyChanged", StringComparison.Ordinal)
+                && line.Contains(transition, StringComparison.Ordinal)
+                && line.Contains("entries=", StringComparison.Ordinal)),
+            $"{operation} topology projection did not contain the actual transition.");
+        ZlinkStreamAssert.Ensure(evidence.Any(line =>
+                line.Contains("kind=ServiceSummaryChanged", StringComparison.Ordinal)
+                && line.Contains("summary-entries=", StringComparison.Ordinal)
+                && !line.EndsWith("summary-entries=", StringComparison.Ordinal)),
+            $"{operation} service-summary projection evidence missing.");
+        return LatestSummary(evidence);
     }
 
-    private static int ReservePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
+    private static string LatestSummary(IEnumerable<string> evidence)
+        => evidence.LastOrDefault(line => line.Contains("kind=ServiceSummaryChanged", StringComparison.Ordinal))
+           ?? throw new InvalidOperationException("Location service-summary evidence is missing.");
 
-    private static async Task WaitForHealthAsync(string url)
-    {
-        using var http = ZLinkHttpClient.Create(url)
-            .Timeout(TimeSpan.FromMilliseconds(500))
-            .Build();
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
-            }
-            catch
-            {
-            }
-            await Task.Delay(50);
-        }
-        throw new TimeoutException("MON-A2 service-c did not become ready.");
-    }
+    private static bool HasReadyServiceCount(string summary, int count)
+        => summary.Contains($":{count}:{count}:0:0", StringComparison.Ordinal);
 }

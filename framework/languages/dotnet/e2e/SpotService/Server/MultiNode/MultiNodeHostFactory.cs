@@ -209,13 +209,9 @@ internal static class MultiNodeHostFactory
             CancellationToken cancellationToken) =>
         {
             var isNodeA = string.Equals(node.Rid, SpotServiceNames.MultiSpotNodeA, StringComparison.Ordinal);
-            var channelName = isNodeA
-                ? SpotServiceNames.MultiRouteChannelA
-                : SpotServiceNames.MultiRouteChannelB;
-            var result = await MultiNodeScenario.RequestStateWithRetryAsync(
+            var result = await MultiNodeScenario.RequestStateAsync(
                 routes,
                 locator,
-                channelName,
                 request.SpotRid,
                 request.Delta,
                 cancellationToken);

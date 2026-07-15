@@ -206,10 +206,6 @@ public sealed class ConnectionAndConfigContracts
         public ZLinkUnhandledDispatchAction Send { get; set; }
 
         public ZLinkUnhandledDispatchAction Publish { get; set; }
-
-        public LogLevel SendLogLevel { get; set; }
-
-        public LogLevel PublishLogLevel { get; set; }
     }
 
     private sealed class DiagnosticsOptions : IZLinkDiagnosticsOptions

@@ -1,3 +1,4 @@
+// Verifies ST-D2 Stale Source Release Fencing behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

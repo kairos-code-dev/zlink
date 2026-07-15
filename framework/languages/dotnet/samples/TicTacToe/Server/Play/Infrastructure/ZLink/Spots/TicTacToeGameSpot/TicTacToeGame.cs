@@ -26,6 +26,12 @@ internal sealed class TicTacToeGame(
 
     public IZLinkSpotContext Context { get; } = context;
 
+    public void Configure()
+    {
+        Context.Handlers.AddActorPacket<PlayActorPlaceMarkHandler, PlayActor>();
+        Context.Handlers.AddActorPacket<PlayActorLeaveGameHandler, PlayActor>();
+    }
+
     public async ValueTask OnJoinedActorAsync(
         PlayActor actor,
         CancellationToken cancellationToken)

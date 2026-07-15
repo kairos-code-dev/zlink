@@ -1,3 +1,4 @@
+// Verifies RC-A6 Invalid Registration behavior.
 using System.Diagnostics;
 using RegistrationCodec.Client.Support;
 using Zlink.Framework.E2E.Configuration;

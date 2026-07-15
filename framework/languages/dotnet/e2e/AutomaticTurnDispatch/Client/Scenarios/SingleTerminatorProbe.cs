@@ -23,7 +23,7 @@ internal static class SingleTerminatorProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
+        EvidenceOrder.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "hold-started",
             "hold-resumed",
             "hold-completed"

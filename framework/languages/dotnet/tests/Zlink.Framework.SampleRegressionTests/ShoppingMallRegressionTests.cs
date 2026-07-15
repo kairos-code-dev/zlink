@@ -135,7 +135,7 @@ public sealed partial class RegressionTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("ForwardStartAsync", startUseCase, StringComparison.Ordinal);
         Assert.Contains("Task.WhenAll(concurrentA, concurrentB)", clientScenario, StringComparison.Ordinal);
-        Assert.Contains("concurrentA.Result.OrderId == concurrentB.Result.OrderId", clientScenario,
+        Assert.Contains("concurrentAResult.OrderId == concurrentBResult.OrderId", clientScenario,
             StringComparison.Ordinal);
         Assert.Contains("/self-check/workflow/inventory-reserved", clientScenario, StringComparison.Ordinal);
         Assert.Contains($"/self-check/workflow/{{inventoryReserved.OrderId}}/continue", clientScenario,

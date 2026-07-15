@@ -1,3 +1,4 @@
+// Verifies RL-A5 Provider Flapping behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
@@ -35,21 +36,24 @@ internal static class RlA5ProviderFlappingScenario
                 }
             }
 
-            for (var i = 0; i < 4; i++)
-            {
-                var marker = $"rl-a5-down-{cycle}-{i}";
-                var reply = (await consumer.Post("/profile/request")
-                    .Body(new ProfileReq("fast", marker))
-                    .Async<ProfileRes>()).Body;
-                ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a", "RL-A5 down window did not converge to api-a.");
-            }
-
-            await providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq([$"marker=rl-a5-down-{cycle}-"], []))
-                .Async<string[]>();
             await registry.Post("/topology/wait")
                 .Body(new TopologyWaitReq("api-b", "Ready", 0))
                 .Async<TopologyEntryRes[]>();
+            await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
+                consumer,
+                "api-b",
+                $"rl-a5-converge-{cycle}",
+                "RL-A5");
+
+            var downMarker = $"rl-a5-down-{cycle}";
+            var downReply = (await consumer.Post("/profile/request")
+                .Body(new ProfileReq("fast", downMarker))
+                .Async<ProfileRes>()).Body;
+            ZlinkStreamAssert.Ensure(downReply.ProviderRid == "api-a",
+                "RL-A5 first request after observed convergence did not use api-a.");
+            await providerA.Post("/evidence/wait")
+                .Body(new EvidenceWaitReq([$"marker={downMarker}"], []))
+                .Async<string[]>();
 
             var restarted = await processes.StartProviderBAsync();
             using var restartedProviderB = ZLinkHttpClient.Create(restarted.Url)

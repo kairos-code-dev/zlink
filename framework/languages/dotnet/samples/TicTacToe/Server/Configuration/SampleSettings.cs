@@ -31,113 +31,95 @@ internal sealed record SampleSettings(
             .Select((endpoint, index) => new PlayNodeInfo(endpoint, PlaySpotNodeRidAt(index)))
             .ToArray();
 
-    public static SampleSettings Load(string[] args, string? mode = null)
+    public static SampleSettings LoadApi(string[] args)
     {
-        var defaults = CreateDefault(mode);
+        var section = LoadSection(args);
+        var apiIndex = RequireIndex(section, nameof(ApiIndex));
+        var playEndpoints = RequireList(section, nameof(PlayEndpoints), 2);
+        return new SampleSettings(
+            RequireString(section, nameof(InstanceName)),
+            apiIndex,
+            0,
+            RequireString(section, nameof(ApiBindUrl)),
+            string.Empty,
+            RequireString(section, nameof(ApiChannelEndpoint)),
+            [],
+            string.Empty,
+            RequireList(section, nameof(PlayChannelEndpoints), 2),
+            string.Empty,
+            playEndpoints,
+            string.Empty,
+            [],
+            string.Empty,
+            [],
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            RequireString(section, nameof(LogDirectory)));
+    }
+
+    public static SampleSettings LoadPlay(string[] args)
+    {
+        var section = LoadSection(args);
+        var playIndex = RequireIndex(section, nameof(PlayIndex));
+        return new SampleSettings(
+            RequireString(section, nameof(InstanceName)),
+            0,
+            playIndex,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            RequireList(section, nameof(ApiChannelEndpoints), 2),
+            RequireString(section, nameof(PlayChannelEndpoint)),
+            [],
+            RequireString(section, nameof(PlayEndpoint)),
+            RequireList(section, nameof(PlayEndpoints), 2),
+            RequireString(section, nameof(SpotEndpoint)),
+            [],
+            RequireString(section, nameof(SpotPubSubEndpoint)),
+            [],
+            RequireString(section, nameof(PlaySpotNodeRid)),
+            RequireString(section, nameof(PeerPlaySpotNodeRid)),
+            RequireString(section, nameof(PeerSpotEndpoint)),
+            RequireString(section, nameof(PeerSpotPubEndpoint)),
+            RequireString(section, nameof(RedisEndpoint)),
+            RequireString(section, nameof(RedisKeyPrefix)),
+            RequireString(section, nameof(LogDirectory)));
+    }
+
+    private static IConfigurationSection LoadSection(string[] args)
+    {
         if (args.Length != 2 || args[0] != "--config" || string.IsNullOrWhiteSpace(args[1]))
             throw new ArgumentException("Usage: --config PATH");
 
-        var configPath = args[1];
-        var builder = new ConfigurationBuilder();
-        builder.AddJsonFile(configPath, false);
-
-        var section = builder.Build().GetSection("Sample");
-        var apiIndex = ReadInt(section[nameof(ApiIndex)], defaults.ApiIndex);
-        var playIndex = ReadInt(section[nameof(PlayIndex)], defaults.PlayIndex);
-        var apiBindUrls = ReadList(section, "ApiBindUrls", defaults.ApiBindUrl);
-        var apiPublicUrls = ReadList(section, "ApiPublicUrls", defaults.ApiPublicUrl);
-        var apiChannelEndpoints = ReadList(section, nameof(ApiChannelEndpoints), defaults.ApiChannelEndpoint);
-        var playChannelEndpoints = ReadList(section, nameof(PlayChannelEndpoints), defaults.PlayChannelEndpoint);
-        var playEndpoints = ReadList(section, nameof(PlayEndpoints), defaults.PlayEndpoint);
-        var spotEndpoints = ReadList(section, nameof(SpotEndpoints), defaults.SpotEndpoint);
-        var spotPubSubEndpoints = ReadList(section, nameof(SpotPubSubEndpoints), defaults.SpotPubSubEndpoint);
-        var peerPlayIndex = playIndex == 0 ? 1 : 0;
-        var resolved = new SampleSettings(
-            section[nameof(InstanceName)] ?? defaults.InstanceName,
-            apiIndex,
-            playIndex,
-            section[nameof(ApiBindUrl)] ?? At(apiBindUrls, apiIndex),
-            section[nameof(ApiPublicUrl)] ?? At(apiPublicUrls, apiIndex),
-            section[nameof(ApiChannelEndpoint)] ?? At(apiChannelEndpoints, apiIndex),
-            apiChannelEndpoints,
-            section[nameof(PlayChannelEndpoint)] ?? At(playChannelEndpoints, playIndex),
-            playChannelEndpoints,
-            section[nameof(PlayEndpoint)] ?? At(playEndpoints, playIndex),
-            playEndpoints,
-            section[nameof(SpotEndpoint)] ?? At(spotEndpoints, playIndex),
-            spotEndpoints,
-            section[nameof(SpotPubSubEndpoint)] ?? At(spotPubSubEndpoints, playIndex),
-            spotPubSubEndpoints,
-            section[nameof(PlaySpotNodeRid)] ?? PlaySpotNodeRidAt(playIndex),
-            section[nameof(PeerPlaySpotNodeRid)] ?? PlaySpotNodeRidAt(peerPlayIndex),
-            section[nameof(PeerSpotEndpoint)] ?? At(spotEndpoints, peerPlayIndex),
-            section[nameof(PeerSpotPubEndpoint)] ?? At(spotPubSubEndpoints, peerPlayIndex),
-            section[nameof(RedisEndpoint)] ?? defaults.RedisEndpoint,
-            section[nameof(RedisKeyPrefix)] ?? defaults.RedisKeyPrefix,
-            section[nameof(LogDirectory)] ?? defaults.LogDirectory);
-
-        // The sample owns its Redis via run_sample.sh/run_sample.ps1, which provisions
-        // an isolated container; require the endpoint so a stray direct run never
-        // silently falls back to a developer's local Redis.
-        if (string.IsNullOrWhiteSpace(resolved.RedisEndpoint))
-            throw new InvalidOperationException(
-                "RedisEndpoint is required; run the sample via run_sample.sh/run_sample.ps1, "
-                + "which provisions an isolated Redis container.");
-
-        return resolved;
+        return new ConfigurationBuilder()
+            .AddJsonFile(Path.GetFullPath(args[1]), optional: false, reloadOnChange: false)
+            .Build()
+            .GetRequiredSection("Sample");
     }
 
-    private static SampleSettings CreateDefault(string? mode)
+    private static string RequireString(IConfigurationSection section, string name)
     {
-        var (instanceName, apiIndex, playIndex) = ResolveMode(mode);
-        var apiBindUrls = new[] { "http://127.0.0.1:18080", "http://127.0.0.1:18085" };
-        var apiChannelEndpoints = new[] { "tcp://127.0.0.1:18081", "tcp://127.0.0.1:18086" };
-        var playChannelEndpoints = new[] { "tcp://127.0.0.1:18082", "tcp://127.0.0.1:18087" };
-        var playEndpoints = new[] { "tcp://127.0.0.1:18084", "tcp://127.0.0.1:18089" };
-        var spotEndpoints = new[] { "tcp://127.0.0.1:18090", "tcp://127.0.0.1:18091" };
-        var spotPubSubEndpoints = new[] { "tcp://127.0.0.1:18092", "tcp://127.0.0.1:18093" };
-        var peerPlayIndex = playIndex == 0 ? 1 : 0;
-        return new SampleSettings(
-            instanceName,
-            apiIndex,
-            playIndex,
-            At(apiBindUrls, apiIndex),
-            At(apiBindUrls, apiIndex),
-            At(apiChannelEndpoints, apiIndex),
-            apiChannelEndpoints,
-            At(playChannelEndpoints, playIndex),
-            playChannelEndpoints,
-            At(playEndpoints, playIndex),
-            playEndpoints,
-            At(spotEndpoints, playIndex),
-            spotEndpoints,
-            At(spotPubSubEndpoints, playIndex),
-            spotPubSubEndpoints,
-            PlaySpotNodeRidAt(playIndex),
-            PlaySpotNodeRidAt(peerPlayIndex),
-            At(spotEndpoints, peerPlayIndex),
-            At(spotPubSubEndpoints, peerPlayIndex),
-            string.Empty,
-            "tictactoe:",
-            Path.Combine("logs", "tictactoe"));
+        var value = section[name];
+        return string.IsNullOrWhiteSpace(value)
+            ? throw new InvalidOperationException($"Sample.{name} is required.")
+            : value;
     }
 
-    private static (string InstanceName, int ApiIndex, int PlayIndex) ResolveMode(string? mode)
+    private static int RequireIndex(IConfigurationSection section, string name)
     {
-        return mode switch
-        {
-            "api-b" => ("api-b", 1, 0),
-            "play-b" => ("play-b", 0, 1),
-            "api-a" or "api" => ("api-a", 0, 0),
-            "play-a" or "play" => ("play-a", 0, 0),
-            _ => ("sample", 0, 0)
-        };
+        return int.TryParse(section[name], out var value) && value is 0 or 1
+            ? value
+            : throw new InvalidOperationException($"Sample.{name} must be 0 or 1.");
     }
 
-    private static IReadOnlyList<string> ReadList(
+    private static IReadOnlyList<string> RequireList(
         IConfigurationSection section,
         string name,
-        string fallback)
+        int count)
     {
         var values = section.GetSection(name)
             .GetChildren()
@@ -145,24 +127,11 @@ internal sealed record SampleSettings(
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Select(static value => value!)
             .ToArray();
-        return values.Length == 0 ? new[] { fallback } : values;
+        return values.Length == count
+            ? values
+            : throw new InvalidOperationException($"Sample.{name} must contain {count} values.");
     }
 
-    private static string At(IReadOnlyList<string> values, int index)
-    {
-        if (values.Count == 0) throw new ArgumentException("Endpoint list must not be empty.", nameof(values));
-
-        return values[Math.Clamp(index, 0, values.Count - 1)];
-    }
-
-    private static int ReadInt(string? value, int fallback)
-    {
-        return int.TryParse(value, out var parsed) ? parsed : fallback;
-    }
-
-    private static string PlaySpotNodeRidAt(int index)
-    {
-        return $"play-node-{index + 1}";
-    }
+    private static string PlaySpotNodeRidAt(int index) => $"play-node-{index + 1}";
 
 }

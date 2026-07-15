@@ -1,3 +1,4 @@
+// Verifies SF-E1 Store Delay Non Blocking behavior.
 using System.Diagnostics;
 using StoreFailure.Client.Support;
 using StoreFailure.Shared;

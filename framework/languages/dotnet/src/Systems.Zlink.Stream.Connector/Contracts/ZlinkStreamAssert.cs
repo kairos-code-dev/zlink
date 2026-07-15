@@ -1,5 +1,7 @@
 namespace Systems.Zlink.Stream.Connector.Contracts;
 
+using System.Runtime.ExceptionServices;
+
 /// <summary>
 ///     Provides assertions that do not depend on connector state.
 /// </summary>
@@ -71,13 +73,21 @@ public static class ZlinkStreamAssert
     {
         if (exception is ZlinkStreamException streamException) return streamException.Error;
 
-        var code = exception switch
+        for (var current = exception; current is not null; current = current.InnerException)
         {
-            TimeoutException => ZlinkStreamErrorCode.RequestTimeout,
-            ArgumentException => ZlinkStreamErrorCode.ValidationFailed,
-            IOException => ZlinkStreamErrorCode.Disconnected,
-            _ => ZlinkStreamErrorCode.RemoteError
-        };
-        return new ZlinkStreamError(code, exception.Message, exception);
+            var code = current switch
+            {
+                TimeoutException => ZlinkStreamErrorCode.RequestTimeout,
+                ArgumentException => ZlinkStreamErrorCode.ValidationFailed,
+                HttpRequestException => ZlinkStreamErrorCode.Disconnected,
+                IOException => ZlinkStreamErrorCode.Disconnected,
+                _ => (ZlinkStreamErrorCode?)null
+            };
+            if (code is { } knownCode)
+                return new ZlinkStreamError(knownCode, exception.Message, exception);
+        }
+
+        ExceptionDispatchInfo.Capture(exception).Throw();
+        throw new InvalidOperationException("Unreachable code.");
     }
 }

@@ -1,3 +1,4 @@
+// Verifies RL-C2 Topology Recovery behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFrameworks>$(ZLinkFrameworkTargetFrameworks)</TargetFrameworks>
+        <AssemblyName>Zlink.Framework.Contracts</AssemblyName>
+        <RootNamespace>Zlink.Framework.Contracts</RootNamespace>
+        <Description>Shared error and payload codec contracts for ZLink framework companion packages.</Description>
+        <IsPackable>true</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
+    </ItemGroup>
+
+    <Target Name="PinStreamConnectorPackageDependency"
+            AfterTargets="_GetProjectReferenceVersions">
+        <ItemGroup>
+            <_ProjectReferencesWithVersions
+                Update="@(_ProjectReferencesWithVersions)"
+                Condition="'%(_ProjectReferencesWithVersions.Filename)' == 'Systems.Zlink.Stream.Connector'">
+                <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
+            </_ProjectReferencesWithVersions>
+        </ItemGroup>
+    </Target>
+</Project>

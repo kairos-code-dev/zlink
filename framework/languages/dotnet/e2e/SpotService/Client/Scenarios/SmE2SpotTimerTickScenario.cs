@@ -1,3 +1,4 @@
+// Verifies SM-E2 Spot Timer Tick behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

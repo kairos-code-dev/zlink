@@ -42,7 +42,7 @@ internal static class RemoteSpotAwaitProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-b")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsInOrder(ownerEvidence.Evidence, requestId, [
+        EvidenceOrder.ContainsInOrder(ownerEvidence.Evidence, requestId, [
             "remote-await-started",
             "remote-await-released",
             "remote-await-resumed",

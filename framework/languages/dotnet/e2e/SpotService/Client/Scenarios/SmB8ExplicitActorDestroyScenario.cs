@@ -1,3 +1,4 @@
+// Verifies SM-B8 Explicit Actor Destroy behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

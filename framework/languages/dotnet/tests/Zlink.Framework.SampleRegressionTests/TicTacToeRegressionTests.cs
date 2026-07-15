@@ -5,6 +5,29 @@ namespace Zlink.Framework.SampleRegressionTests;
 public sealed partial class RegressionTests
 {
     [Fact]
+    public void TicTacToeUsesExplicitHandlerRegistrationWithoutAssemblyScanning()
+    {
+        var sampleRoot = ResolveSampleRoot("TicTacToe");
+        var sourceFiles = Directory.GetFiles(sampleRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(static path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            .Select(File.ReadAllText)
+            .ToArray();
+
+        Assert.All(sourceFiles, static source =>
+            Assert.DoesNotContain("AddHandlersFromAssembly", source, StringComparison.Ordinal));
+        Assert.Contains(sourceFiles, static source =>
+            source.Contains("AddRequestHandler<AuthenticatePlayerHandler", StringComparison.Ordinal));
+        Assert.Contains(sourceFiles, static source =>
+            source.Contains("AddRequestHandler<CreateGameHandler", StringComparison.Ordinal));
+        Assert.Contains(sourceFiles, static source =>
+            source.Contains("AddActorPacket<PlayActorJoinGameHandler", StringComparison.Ordinal));
+        Assert.Contains(sourceFiles, static source =>
+            source.Contains("AddHandler<AuthenticatePlaySessionHandler>", StringComparison.Ordinal));
+        Assert.Equal(2, sourceFiles.Count(static source =>
+            source.Contains("DisableImplicitHandlerAutoRegistration()", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public void TicTacToe_Server_Assemblies_Preserve_Role_Boundaries()
     {
         var sampleRoot = ResolveSampleRoot("TicTacToe");
@@ -139,8 +162,8 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("Start-Sleep -Seconds 2", powershellRunner, StringComparison.Ordinal);
 
         Assert.DoesNotContain("AddEnvironmentVariables(\"TICTACTOE_\")", settings, StringComparison.Ordinal);
-        Assert.Contains("section[nameof(RedisEndpoint)]", settings, StringComparison.Ordinal);
-        Assert.Contains("section[nameof(RedisKeyPrefix)]", settings, StringComparison.Ordinal);
+        Assert.Contains("RequireString(section, nameof(RedisEndpoint))", settings, StringComparison.Ordinal);
+        Assert.Contains("RequireString(section, nameof(RedisKeyPrefix))", settings, StringComparison.Ordinal);
 
         Assert.Contains("Redis is required for the room route store", readme, StringComparison.Ordinal);
         Assert.Contains("always provisions a", readme, StringComparison.Ordinal);
@@ -204,7 +227,7 @@ public sealed partial class RegressionTests
         var playServer = File.ReadAllText(Path.Combine(sampleRoot, "Server", "Play", "PlayServer.cs"));
 
         Assert.Contains("string RedisKeyPrefix", settings, StringComparison.Ordinal);
-        Assert.Contains("section[nameof(RedisKeyPrefix)]", settings, StringComparison.Ordinal);
+        Assert.Contains("RequireString(section, nameof(RedisKeyPrefix))", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("\"--redis-key-prefix\"", settings, StringComparison.Ordinal);
         Assert.Contains("SetKeyPrefix(settings.RedisKeyPrefix)", playServer, StringComparison.Ordinal);
     }
@@ -332,7 +355,7 @@ public sealed partial class RegressionTests
     }
 
     [Fact]
-    public void DotNet_Samples_Use_Declarative_Handler_Registration()
+    public void NonTicTacToe_DotNet_Samples_Use_Declarative_Handler_Registration()
     {
         var samplesRoot = ResolveSamplesRoot();
         var manualRegistrationTokens = new[]
@@ -346,6 +369,9 @@ public sealed partial class RegressionTests
             ".AddPublishHandler<"
         };
         var manualRegistrations = EnumerateSourceFiles(samplesRoot)
+            .Where(file => !file.Contains(
+                $"{Path.DirectorySeparatorChar}TicTacToe{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
             .Where(file =>
             {
                 var text = File.ReadAllText(file);

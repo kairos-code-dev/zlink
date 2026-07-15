@@ -1,3 +1,4 @@
+// Verifies SF-A1 Baseline behavior.
 using StoreFailure.Client.Support;
 using Zlink.HttpClient;
 

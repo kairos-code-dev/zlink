@@ -1,3 +1,4 @@
+// Verifies SM-A8 Worker Offload behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
@@ -38,12 +39,12 @@ internal static class SmA8WorkerOffloadScenario
         ZlinkStreamAssert.Ensure(duringWorker.Value == 1,
             "SM-A8 concurrent spot request did not run before worker completion.");
         ZlinkStreamAssert.Ensure(completed.Completed, "SM-A8 worker did not complete.");
-        var workerStartIndex = ScenarioAssert.FindIndex(completed.Evidence,
-            $"worker-start|rid=play-a|spot={spotRid}|marker=sm-a8-worker");
-        var stateIndex =
-            ScenarioAssert.FindIndex(completed.Evidence, $"spot-state-request|rid=play-a|spot={spotRid}|value=1");
-        var workerCompleteIndex = ScenarioAssert.FindIndex(completed.Evidence,
-            $"worker-complete|rid=play-a|spot={spotRid}|marker=sm-a8-worker");
+        var workerStartIndex = Array.FindIndex(completed.Evidence,
+            line => line.Contains($"worker-start|rid=play-a|spot={spotRid}|marker=sm-a8-worker", StringComparison.Ordinal));
+        var stateIndex = Array.FindIndex(completed.Evidence,
+            line => line.Contains($"spot-state-request|rid=play-a|spot={spotRid}|value=1", StringComparison.Ordinal));
+        var workerCompleteIndex = Array.FindIndex(completed.Evidence,
+            line => line.Contains($"worker-complete|rid=play-a|spot={spotRid}|marker=sm-a8-worker", StringComparison.Ordinal));
         ZlinkStreamAssert.Ensure(
             workerStartIndex >= 0 && stateIndex > workerStartIndex && workerCompleteIndex > stateIndex,
             "SM-A8 expected spot request evidence between worker start and completion.");

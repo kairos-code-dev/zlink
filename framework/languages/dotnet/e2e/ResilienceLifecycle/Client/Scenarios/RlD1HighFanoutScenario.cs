@@ -1,3 +1,4 @@
+// Verifies RL-D1 High Fanout behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

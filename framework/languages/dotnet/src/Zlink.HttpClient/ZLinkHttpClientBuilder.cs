@@ -29,7 +29,7 @@ public sealed class ZLinkHttpClientBuilder
 
     public ZLinkHttpClientBuilder BaseUrl(string value)
     {
-        HttpClientText.RequireNonBlank(value, "HTTP client base_url is required");
+        ValidateBaseUrl(value);
         _baseUrl = value;
         return this;
     }
@@ -153,11 +153,7 @@ public sealed class ZLinkHttpClientBuilder
     {
         HttpClientText.RequireNonBlank(_baseUrl, "HTTP client base_url is required");
         HttpClientText.RequirePositiveTimeout(_timeout);
-        if (!_baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-            && !_baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
-                "HTTP client base_url must start with http:// or https://");
+        ValidateBaseUrl(_baseUrl);
 
         return new ZLinkHttpClient(new HttpClientRuntime(BuildOptions(null)));
     }
@@ -168,13 +164,20 @@ public sealed class ZLinkHttpClientBuilder
         ArgumentNullException.ThrowIfNull(scheduler);
         HttpClientText.RequireNonBlank(_baseUrl, "HTTP client base_url is required");
         HttpClientText.RequirePositiveTimeout(_timeout);
-        if (!_baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-            && !_baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestProtocolError,
-                "HTTP client base_url must start with http:// or https://");
+        ValidateBaseUrl(_baseUrl);
 
         return new ZLinkHttpServerClient(new HttpClientRuntime(BuildOptions(scheduler)));
+    }
+
+    private static void ValidateBaseUrl(string value)
+    {
+        HttpClientText.RequireNonBlank(value, "HTTP client base_url is required");
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            || string.IsNullOrWhiteSpace(uri.Host))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestProtocolError,
+                "HTTP client base_url must be an absolute http or https URL");
     }
 
     private HttpClientOptions BuildOptions(IZLinkHttpExecutionScheduler? scheduler)

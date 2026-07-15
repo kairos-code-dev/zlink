@@ -1,3 +1,4 @@
+// Verifies RC-B5 Codec Mismatch behavior.
 using RegistrationCodec.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;

@@ -1,3 +1,4 @@
+// Verifies SM-C4 Spot Publisher Client behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

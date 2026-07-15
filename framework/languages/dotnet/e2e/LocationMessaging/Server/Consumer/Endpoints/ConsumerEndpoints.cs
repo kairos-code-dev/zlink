@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Errors;
 using LocationMessaging.Server.Consumer.Configuration;
 using LocationMessaging.Server.Consumer;
 
@@ -20,7 +19,7 @@ internal static class ConsumerEndpoints
             var replies = new List<ProfileRes>(requests.Length);
             foreach (var request in requests)
             {
-                replies.Add(await RequestProfileWithRetryAsync(channel, request, TimeSpan.FromSeconds(5)));
+                replies.Add(await RequestProfileAsync(channel, request, TimeSpan.FromSeconds(5)));
             }
 
             return Results.Ok(replies.ToArray());
@@ -29,7 +28,7 @@ internal static class ConsumerEndpoints
             ProfileReq request,
             IZLinkChannelClient channel) =>
         {
-            var reply = await RequestProfileWithRetryAsync(channel, request, TimeSpan.FromSeconds(5));
+            var reply = await RequestProfileAsync(channel, request, TimeSpan.FromSeconds(5));
             return Results.Ok(reply);
         });
         app.MapPost("/profile/slow-request", async (
@@ -61,7 +60,7 @@ internal static class ConsumerEndpoints
             PayloadReq request,
             IZLinkChannelClient channel) =>
         {
-            var reply = await RequestPayloadWithRetryAsync(channel, request);
+            var reply = await RequestPayloadAsync(channel, request);
             return Results.Ok(reply);
         });
         app.MapPost("/profile/payload-over-limit", async (
@@ -86,54 +85,22 @@ internal static class ConsumerEndpoints
         });
     }
 
-    static async Task<ProfileRes> RequestProfileWithRetryAsync(
+    static Task<ProfileRes> RequestProfileAsync(
         IZLinkChannelClient channel,
         ProfileReq request,
         TimeSpan timeout)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                return await channel.RequestToChannel("profile", request)
-                    .Timeout(timeout)
-                    .Async<ProfileRes>();
-            }
-            catch (ZLinkFrameworkException ex) when (IsRetriableStartupFailure(ex))
-            {
-                last = ex;
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
-            }
-        }
+        => channel.RequestToChannel("profile", request)
+            .Timeout(timeout)
+            .Async<ProfileRes>()
+            .AsTask();
 
-        throw new InvalidOperationException("Timed out waiting for direct profile endpoints.", last);
-    }
-
-    static async Task<PayloadRes> RequestPayloadWithRetryAsync(
+    static Task<PayloadRes> RequestPayloadAsync(
         IZLinkChannelClient channel,
         PayloadReq request)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                return await channel.RequestToChannel("profile", request)
-                    .Timeout(TimeSpan.FromSeconds(10))
-                    .Async<PayloadRes>();
-            }
-            catch (ZLinkFrameworkException ex) when (IsRetriableStartupFailure(ex))
-            {
-                last = ex;
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
-            }
-        }
-
-        throw new InvalidOperationException("Timed out waiting for payload profile endpoint.", last);
-    }
+        => channel.RequestToChannel("profile", request)
+            .Timeout(TimeSpan.FromSeconds(10))
+            .Async<PayloadRes>()
+            .AsTask();
 
     static async Task<RequestFailureRes> RequestPayloadFailureAsync(
         IZLinkChannelClient channel,
@@ -157,17 +124,14 @@ internal static class ConsumerEndpoints
         ProfileReq request,
         TimeSpan timeout)
     {
-        while (true)
+        try
         {
-            try
-            {
-                await RequestProfileWithRetryAsync(channel, request, timeout);
-                return new RequestFailureRes(false, "");
-            }
-            catch (TimeoutException ex)
-            {
-                return new RequestFailureRes(true, ex.GetType().Name);
-            }
+            await RequestProfileAsync(channel, request, timeout);
+            return new RequestFailureRes(false, "");
+        }
+        catch (TimeoutException ex)
+        {
+            return new RequestFailureRes(true, ex.GetType().Name);
         }
     }
 
@@ -196,9 +160,4 @@ internal static class ConsumerEndpoints
         return "Submitted";
     }
 
-    static bool IsRetriableStartupFailure(ZLinkFrameworkException ex) =>
-        ex.IsRetriable
-        || ex.Kind is ZLinkFrameworkErrorKind.RouteNotConnected
-            or ZLinkFrameworkErrorKind.RequestTargetNotFound
-            or ZLinkFrameworkErrorKind.RequestProtocolError;
 }

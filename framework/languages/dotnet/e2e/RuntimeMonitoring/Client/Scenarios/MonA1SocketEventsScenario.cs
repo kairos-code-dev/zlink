@@ -1,3 +1,4 @@
+// Verifies socket connect, ready, and disconnect events with endpoint and routing identity payloads.
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
@@ -8,46 +9,50 @@ internal static class MonA1SocketEventsScenario
 {
     public static async Task RunAsync(ClientOptions options)
     {
-        using var service = ZLinkHttpClient.Create(options.ServiceUrl).Build();
-        ProfileRes reply;
-        await using (var trigger = await MonitoringChannelClient.StartAsync(
-                         options, options.ServiceChannelEndpoint, "trigger-mon-a1"))
-        {
-            reply = await trigger.RequestAsync(new ProfileReq("monitor", "mon-a1-request"));
-        }
-        ZlinkStreamAssert.Ensure(reply.Value == "profile:monitor", "MON-A1 trigger request failed.");
+        using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
+            .Timeout(TimeSpan.FromSeconds(30))
+            .Build();
+        var baseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+        var service = await EphemeralService.StartAsync(options, "svc-a1");
+        var connected = await WaitAsync(
+            observer,
+            ["source=monitor.profile.client", service.ChannelEndpoint, "routing=svc-a1"],
+            [["kind=Connected", "kind=ConnectionReady"]],
+            baseline);
+        ZlinkStreamAssert.Ensure(connected.Any(line =>
+                IsSocketEvent(line, service.ChannelEndpoint, "svc-a1")
+                && (line.Contains("kind=Connected", StringComparison.Ordinal)
+                    || line.Contains("kind=ConnectionReady", StringComparison.Ordinal))),
+            "MON-A1 socket connection identity evidence missing.");
 
-        var serviceEvidence = await WaitForSocketEvidenceAsync(service);
-        ZlinkStreamAssert.Ensure(
-            serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                                        && line.Contains("source=monitor.profile.server", StringComparison.Ordinal)
-                                        && (line.Contains("kind=Connected", StringComparison.Ordinal)
-                                            || line.Contains("kind=ConnectionReady", StringComparison.Ordinal))),
-            "MON-A1 socket connection evidence missing.");
-        ZlinkStreamAssert.Ensure(
-            serviceEvidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                                        && (line.Contains("kind=Disconnected", StringComparison.Ordinal)
-                                            || line.Contains("kind=Closed", StringComparison.Ordinal))),
-            "MON-A1 socket disconnect evidence missing.");
+        var disconnectBaseline = baseline + connected.Length;
+        await service.DisposeAsync();
+        var disconnected = await WaitAsync(
+            observer,
+            ["source=monitor.profile.client", service.ChannelEndpoint],
+            [["kind=Disconnected", "kind=Closed"]],
+            disconnectBaseline);
+        ZlinkStreamAssert.Ensure(disconnected.Any(line =>
+                line.Contains("source=monitor.profile.client", StringComparison.Ordinal)
+                && line.Contains($"remote={service.ChannelEndpoint}", StringComparison.Ordinal)
+                && (line.Contains("kind=Disconnected", StringComparison.Ordinal)
+                    || line.Contains("kind=Closed", StringComparison.Ordinal))),
+            "MON-A1 socket disconnect endpoint evidence missing.");
         Console.WriteLine("scenario MON-A1 passed");
     }
 
-    private static async Task<string[]> WaitForSocketEvidenceAsync(ZLinkHttpClient service)
-    {
-        var evidence = (await service.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["monitor-socket|", "source=monitor.profile.server"],
-                [["kind=Connected", "kind=ConnectionReady"], ["kind=Disconnected", "kind=Closed"]]))
-            .Async<string[]>()).Body;
-        if (evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                                 && line.Contains("source=monitor.profile.server", StringComparison.Ordinal)
-                                 && (line.Contains("kind=Connected", StringComparison.Ordinal)
-                                     || line.Contains("kind=ConnectionReady", StringComparison.Ordinal)))
-            && evidence.Any(line => line.Contains("monitor-socket|", StringComparison.Ordinal)
-                                    && (line.Contains("kind=Disconnected", StringComparison.Ordinal)
-                                        || line.Contains("kind=Closed", StringComparison.Ordinal))))
-            return evidence;
+    private static bool IsSocketEvent(string line, string endpoint, string rid)
+        => line.Contains("monitor-socket|", StringComparison.Ordinal)
+           && line.Contains("source=monitor.profile.client", StringComparison.Ordinal)
+           && line.Contains($"remote={endpoint}", StringComparison.Ordinal)
+           && line.Contains($"routing={rid}", StringComparison.Ordinal);
 
-        throw new InvalidOperationException("MON-A1 socket connect/disconnect evidence was incomplete.");
-    }
+    private static async Task<string[]> WaitAsync(
+        ZLinkHttpClient observer,
+        string[] all,
+        string[][] any,
+        int afterIndex)
+        => (await observer.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(all, any, TimeoutMilliseconds: 30000, AfterIndex: afterIndex))
+            .Async<string[]>()).Body;
 }

@@ -1,3 +1,4 @@
+// Verifies RL-D4 Missing Request Handler behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

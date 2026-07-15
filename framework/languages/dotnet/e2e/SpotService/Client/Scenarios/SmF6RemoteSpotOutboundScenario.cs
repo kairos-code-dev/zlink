@@ -1,3 +1,4 @@
+// Verifies SM-F6 Remote Spot Outbound behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

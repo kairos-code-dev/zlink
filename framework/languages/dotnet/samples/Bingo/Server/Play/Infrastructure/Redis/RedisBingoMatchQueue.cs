@@ -4,7 +4,9 @@ using StackExchange.Redis;
 
 namespace Bingo.Server.Play.Infrastructure.Redis;
 
-internal sealed class RedisBingoMatchQueue(IConnectionMultiplexer redis, SampleTopology topology) : IBingoMatchQueue
+internal sealed class RedisBingoMatchQueue(
+    IConnectionMultiplexer redis,
+    SampleRuntimeConfiguration<SamplePlayNode> configuration) : IBingoMatchQueue
 {
     private const string Script = """
                                   local key = KEYS[1]
@@ -89,6 +91,6 @@ internal sealed class RedisBingoMatchQueue(IConnectionMultiplexer redis, SampleT
 
     private RedisKey MatchKey(string mode)
     {
-        return $"{topology.RedisKeyPrefix}match:{mode}";
+        return $"{configuration.RedisKeyPrefix}match:{mode}";
     }
 }

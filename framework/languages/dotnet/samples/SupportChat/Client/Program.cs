@@ -9,8 +9,8 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var configuration = SupportChat.Server.Configuration.SampleTopology.Load(args);
-        var streamEndpoint = configuration.Topology.StreamEndpoint;
+        var configuration = SupportChatClientConfiguration.Load(args);
+        var streamEndpoint = configuration.StreamEndpoint;
         using var loggerFactory = SampleLogging.CreateFactory(
             configuration.LogDirectory,
             "client");

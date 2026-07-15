@@ -1,3 +1,4 @@
+// Verifies ST-C3 Callback Failure Classification behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

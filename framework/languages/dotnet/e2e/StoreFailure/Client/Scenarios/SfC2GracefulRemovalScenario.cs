@@ -1,3 +1,4 @@
+// Verifies SF-C2 Graceful Removal behavior.
 using System.Diagnostics;
 using StoreFailure.Client.Support;
 using StoreFailure.Shared;

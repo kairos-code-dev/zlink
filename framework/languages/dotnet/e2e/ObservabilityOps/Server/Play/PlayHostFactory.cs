@@ -31,8 +31,8 @@ internal static class PlayHostFactory
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
             var locations = framework.ConfigureLocations();
-            locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
-            locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+            locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
+            locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             locations.PollingInterval = TimeSpan.FromMilliseconds(250);
             framework.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)

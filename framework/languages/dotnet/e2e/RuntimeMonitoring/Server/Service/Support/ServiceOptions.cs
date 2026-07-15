@@ -6,13 +6,13 @@ internal sealed record ServerOptions(
     string Role,
     string HttpUrl,
     string LogDir,
-    string? EvidenceFile,
     string Rid,
-    string? RedisEndpoint,
-    string? RedisKeyPrefix,
-    string? ChannelEndpoint,
-    string? SpotRouterEndpoint,
-    string? SpotPubEndpoint)
+    string? EvidenceFile = null,
+    string? RedisEndpoint = null,
+    string? RedisKeyPrefix = null,
+    string? ChannelEndpoint = null,
+    string? SpotRouterEndpoint = null,
+    string? SpotPubEndpoint = null)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
         => E2eConfiguration.Load<ServerOptions>(args) with { Role = defaultRole };

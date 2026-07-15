@@ -49,7 +49,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER_ID}" ]]; then
     docker rm -fv "${REDIS_CONTAINER_ID}" >/dev/null 2>&1 || true
   fi
-  if [[ "${RUN_SUCCEEDED}" == "1" && "${TICTACTOE_KEEP_RUN_DIR:-}" != "1" ]]; then
+  if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
     rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
@@ -101,6 +101,7 @@ API_A_CONFIG_FILE="${RUN_DIR}/appsettings.api-a.json"
 API_B_CONFIG_FILE="${RUN_DIR}/appsettings.api-b.json"
 PLAY_A_CONFIG_FILE="${RUN_DIR}/appsettings.play-a.json"
 PLAY_B_CONFIG_FILE="${RUN_DIR}/appsettings.play-b.json"
+CLIENT_CONFIG_FILE="${RUN_DIR}/appsettings.client.json"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run the TicTacToe sample." >&2
@@ -109,25 +110,37 @@ fi
 zlink_redis_start_scoped_assign REDIS_CONTAINER_ID TICTACTOE_REDIS_ENDPOINT "zlink-tictactoe-dotnet-redis" redis:7.2-alpine
 REDIS_ENDPOINT="${TICTACTOE_REDIS_ENDPOINT}"
 
-python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" <<PY
+python3 - "${API_A_CONFIG_FILE}" "${API_B_CONFIG_FILE}" "${PLAY_A_CONFIG_FILE}" "${PLAY_B_CONFIG_FILE}" "${CLIENT_CONFIG_FILE}" <<PY
 import json
 import sys
 
-api_a_path, api_b_path, play_a_path, play_b_path = sys.argv[1:]
+api_a_path, api_b_path, play_a_path, play_b_path, client_path = sys.argv[1:]
 
-def sample(instance_name, api_index, play_index, peer_play_index):
+def api(instance_name, api_index, bind_url, channel_endpoint):
     return {
         "Sample": {
             "InstanceName": instance_name,
             "ApiIndex": api_index,
-            "PlayIndex": play_index,
-            "ApiBindUrls": ["${API_A_BIND_URL}", "${API_B_BIND_URL}"],
-            "ApiPublicUrls": ["${API_A_PUBLIC_URL}", "${API_B_PUBLIC_URL}"],
-            "ApiChannelEndpoints": ["${API_A_CHANNEL_ENDPOINT}", "${API_B_CHANNEL_ENDPOINT}"],
+            "ApiBindUrl": bind_url,
+            "ApiChannelEndpoint": channel_endpoint,
             "PlayChannelEndpoints": ["${PLAY_A_CHANNEL_ENDPOINT}", "${PLAY_B_CHANNEL_ENDPOINT}"],
             "PlayEndpoints": ["${PLAY_A_ENDPOINT}", "${PLAY_B_ENDPOINT}"],
-            "SpotEndpoints": ["${SPOT_A_ENDPOINT}", "${SPOT_B_ENDPOINT}"],
-            "SpotPubSubEndpoints": ["${SPOT_A_PUBSUB_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}"],
+            "LogDirectory": "${SAMPLE_LOG_DIR}"
+        }
+    }
+
+def play(instance_name, play_index, channel_endpoint, play_endpoint, spot_endpoint,
+         spot_pubsub_endpoint, peer_play_index):
+    return {
+        "Sample": {
+            "InstanceName": instance_name,
+            "PlayIndex": play_index,
+            "ApiChannelEndpoints": ["${API_A_CHANNEL_ENDPOINT}", "${API_B_CHANNEL_ENDPOINT}"],
+            "PlayChannelEndpoint": channel_endpoint,
+            "PlayEndpoint": play_endpoint,
+            "PlayEndpoints": ["${PLAY_A_ENDPOINT}", "${PLAY_B_ENDPOINT}"],
+            "SpotEndpoint": spot_endpoint,
+            "SpotPubSubEndpoint": spot_pubsub_endpoint,
             "PlaySpotNodeRid": f"play-node-{play_index + 1}",
             "PeerPlaySpotNodeRid": f"play-node-{peer_play_index + 1}",
             "PeerSpotEndpoint": ["${SPOT_A_ENDPOINT}", "${SPOT_B_ENDPOINT}"][peer_play_index],
@@ -139,10 +152,11 @@ def sample(instance_name, api_index, play_index, peer_play_index):
     }
 
 for path, settings in [
-    (api_a_path, sample("api-a", 0, 0, 1)),
-    (api_b_path, sample("api-b", 1, 0, 1)),
-    (play_a_path, sample("play-a", 0, 0, 1)),
-    (play_b_path, sample("play-b", 0, 1, 0)),
+    (api_a_path, api("api-a", 0, "${API_A_BIND_URL}", "${API_A_CHANNEL_ENDPOINT}")),
+    (api_b_path, api("api-b", 1, "${API_B_BIND_URL}", "${API_B_CHANNEL_ENDPOINT}")),
+    (play_a_path, play("play-a", 0, "${PLAY_A_CHANNEL_ENDPOINT}", "${PLAY_A_ENDPOINT}", "${SPOT_A_ENDPOINT}", "${SPOT_A_PUBSUB_ENDPOINT}", 1)),
+    (play_b_path, play("play-b", 1, "${PLAY_B_CHANNEL_ENDPOINT}", "${PLAY_B_ENDPOINT}", "${SPOT_B_ENDPOINT}", "${SPOT_B_PUBSUB_ENDPOINT}", 0)),
+    (client_path, {"Sample": {"ApiPublicUrls": ["${API_A_PUBLIC_URL}"], "LogDirectory": "${SAMPLE_LOG_DIR}"}}),
 ]:
     with open(path, "w", encoding="utf-8") as output:
         json.dump(settings, output, indent=2)
@@ -226,7 +240,7 @@ wait_port api-b-http "${API_B_BIND_URL}"
 wait_port api-b-channel "${API_B_CHANNEL_ENDPOINT}"
 
 dotnet run --no-build --project "${SCRIPT_DIR}/Client/TicTacToe.Client.csproj" -- \
-  --config "${API_A_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
+  --config "${CLIENT_CONFIG_FILE}" >"${LOG_DIR}/client.log" 2>&1
 wait_log_contains "stream inbound evidence" "stream-inbound sample=TicTacToe" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound sequenced packet" "stream-inbound sample=TicTacToe .* seq=[0-9]" "${LOG_DIR}/client.log"
 wait_log_contains "stream inbound notify packet" "stream-inbound sample=TicTacToe .* name=.*Notify" "${LOG_DIR}/client.log"

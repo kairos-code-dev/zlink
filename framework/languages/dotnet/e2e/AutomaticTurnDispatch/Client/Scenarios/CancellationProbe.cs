@@ -31,7 +31,7 @@ internal static class CancellationProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
+        EvidenceOrder.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "cancel-await-started",
             "cancel-await-released",
             "cancel-await-completed",

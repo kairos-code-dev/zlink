@@ -1,3 +1,4 @@
+// Verifies SM-B5 Missing Actor Packet behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -25,20 +26,12 @@ internal static class SmB5MissingActorPacketScenario
         await client.Request(new AuthReq(actorId, "missing handler actor", "play-a"))
             .PacketName("AuthReq")
             .Async<AuthRes>();
-        var missingActorRequestFailed = false;
-        try
-        {
-            await client.Request(new ActorPingReq("missing-handler"))
+        await ZlinkStreamAssert.ExpectFailureAsync(
+            async cancellationToken => _ = await client.Request(new ActorPingReq("missing-handler"))
                 .PacketName("MissingActorReq")
                 .Timeout(TimeSpan.FromSeconds(2))
-                .Async<ActorPingRes>();
-        }
-        catch
-        {
-            missingActorRequestFailed = true;
-        }
-
-        ZlinkStreamAssert.Ensure(missingActorRequestFailed, "SM-B5 expected missing actor handler request to fail.");
+                .Async<ActorPingRes>(cancellationToken),
+            nameof(ZlinkStreamErrorCode.RemoteError));
         var expectedEvidence = new[]
             { "dispatch-error|surface=SpotActor|reason=HandlerMissing|action=ReplyError|packet=MissingActorReq" };
         var evidence = (await playA.Post("/evidence/wait")

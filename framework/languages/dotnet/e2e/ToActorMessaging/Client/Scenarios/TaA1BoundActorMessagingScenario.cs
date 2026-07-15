@@ -1,3 +1,4 @@
+// Verifies TA-A1 Bound Actor Messaging behavior.
 using ToActorMessaging.Client.Support;
 
 namespace ToActorMessaging.Client.Scenarios;

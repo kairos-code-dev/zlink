@@ -1,3 +1,4 @@
+// Verifies PS-A2 Topic Filter behavior.
 using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;

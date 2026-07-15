@@ -1,3 +1,4 @@
+// Verifies OBS-C4 Forced Session Drain behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

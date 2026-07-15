@@ -1,3 +1,4 @@
+// Verifies RL-B3 Graceful Shutdown behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
@@ -40,6 +41,11 @@ internal static class RlB3GracefulShutdownScenario
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
+        await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
+            consumer,
+            "api-b",
+            "rl-b3-converge",
+            "RL-B3");
 
         for (var i = 0; i < 12; i++)
         {

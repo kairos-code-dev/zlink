@@ -4,7 +4,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
-RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
@@ -45,8 +45,8 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${RUN_SUCCEEDED}" == "1" && "${SHOPPINGMALL_KEEP_RUN_DIR:-}" != "1" ]]; then
-    [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
+  if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
+    rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
   fi
@@ -184,9 +184,32 @@ settings = {
     "WorkflowBSpotEndpoint": "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}",
     "WorkflowBSpotRouterEndpoint": "${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT}",
 }
-for path, instance_id in zip(sys.argv[1:], ["workflow-a", "workflow-b", "api-a", "api-b", "client"]):
+common = {
+    "LogDirectory": settings["LogDirectory"],
+    "RedisEndpoint": settings["RedisEndpoint"],
+    "RedisKeyPrefix": settings["RedisKeyPrefix"],
+}
+roles = [
+    {**common, "InstanceId": "workflow-a", "WorkflowAHttpUrl": settings["WorkflowAHttpUrl"],
+     "WorkflowAChannelEndpoint": settings["WorkflowAChannelEndpoint"],
+     "WorkflowASpotEndpoint": settings["WorkflowASpotEndpoint"],
+     "WorkflowASpotRouterEndpoint": settings["WorkflowASpotRouterEndpoint"]},
+    {**common, "InstanceId": "workflow-b", "WorkflowBHttpUrl": settings["WorkflowBHttpUrl"],
+     "WorkflowBChannelEndpoint": settings["WorkflowBChannelEndpoint"],
+     "WorkflowBSpotEndpoint": settings["WorkflowBSpotEndpoint"],
+     "WorkflowBSpotRouterEndpoint": settings["WorkflowBSpotRouterEndpoint"]},
+    {**common, "InstanceId": "api-a", "ApiAHttpUrl": settings["ApiAHttpUrl"]},
+    {**common, "InstanceId": "api-b", "ApiBHttpUrl": settings["ApiBHttpUrl"]},
+]
+for path, role in zip(sys.argv[1:-1], roles):
     with open(path, "w", encoding="utf-8") as output:
-        json.dump({"Sample": {**settings, "InstanceId": instance_id}}, output, indent=2)
+        json.dump({"Sample": role}, output, indent=2)
+with open(sys.argv[-1], "w", encoding="utf-8") as output:
+    json.dump({"Client": {
+        "LogDirectory": "${SHOPPINGMALL_LOG_DIR}",
+        "ApiAHttpUrl": "${SHOPPINGMALL_API_A_HTTP_URL}",
+        "ApiBHttpUrl": "${SHOPPINGMALL_API_B_HTTP_URL}",
+    }}, output, indent=2)
 PY
 
 start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --config "${WORKFLOW_A_CONFIG_FILE}"

@@ -17,13 +17,40 @@ CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/SpotService.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
 CONFIG_DIR="$(mktemp -d)"
-if [[ "$#" -gt 0 ]]; then
-  SCENARIO_SET="$*"
-  SCENARIO_SET="${SCENARIO_SET// /,}"
+ALL_CHILD=0
+SKIP_BUILD=0
+E2E_START_ORDER="forward"
+SCENARIOS=()
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --all-child)
+      ALL_CHILD=1
+      shift
+      ;;
+    --skip-build)
+      SKIP_BUILD=1
+      shift
+      ;;
+    --start-order)
+      [[ "$#" -ge 2 ]] || { echo "--start-order requires a value" >&2; exit 2; }
+      E2E_START_ORDER="$2"
+      shift 2
+      ;;
+    --*)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+    *)
+      SCENARIOS+=("$1")
+      shift
+      ;;
+  esac
+done
+if [[ "${#SCENARIOS[@]}" -eq 0 ]]; then
+  SCENARIO_SET="all"
 else
-  SCENARIO_SET="${SCENARIO_SET:-all}"
+  SCENARIO_SET="$(IFS=,; echo "${SCENARIOS[*]}")"
 fi
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 NEED_SESSION_NODES=1
 NEED_SESSION_B=0
 NEED_PLAY_B=1
@@ -91,9 +118,9 @@ if scenario_selector_contains sm-d14; then
   NEED_TLS_STREAM=1
 fi
 mkdir -p "$LOG_DIR"
-LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_SPOTSERVICE_READY_TIMEOUT_SECONDS:-3}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+REDIS_READINESS_TIMEOUT_SECONDS=60
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -137,7 +164,7 @@ build_projects() {
   dotnet build "$CLIENT_PROJECT" --maxcpucount:1 >/dev/null
 }
 
-if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]; then
+if [[ "$SCENARIO_SET" == "all" && "$ALL_CHILD" != "1" ]]; then
   echo "log_dir=$LOG_DIR"
   build_projects
   for child_group in default-batch sm-f6 sm-g2 sm-g3 sm-g4 sm-g1 sm-q9; do
@@ -148,8 +175,7 @@ if [[ "$SCENARIO_SET" == "all" && "${ZLINK_SPOT_SERVICE_ALL_CHILD:-0}" != "1" ]]
       : >"$child_output"
       set +e
       timeout "${CHILD_PROCESS_TIMEOUT_SECONDS}s" \
-        env SCENARIO_SET="$child_group" ZLINK_SPOT_SERVICE_ALL_CHILD=1 ZLINK_SPOT_SERVICE_SKIP_BUILD=1 \
-        "$SCRIPT_DIR/run_e2e.sh" \
+        "$SCRIPT_DIR/run_e2e.sh" --all-child --skip-build --start-order "$E2E_START_ORDER" "$child_group" \
         2>&1 | tee "$child_output"
       child_status="${PIPESTATUS[0]}"
       set -e
@@ -426,10 +452,10 @@ elif mode == "reverse":
 elif mode.startswith("shuffle:"):
     seed_text = mode.split(":", 1)[1]
     if seed_text == "":
-        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
+        raise SystemExit("start order shuffle requires a seed")
     random.Random(int(seed_text)).shuffle(roles)
 else:
-    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
+    raise SystemExit(f"unsupported start order={mode!r}")
 for role in roles:
     print(role)
 PY
@@ -673,7 +699,7 @@ wait_named_server() {
 
 echo "log_dir=$LOG_DIR"
 echo "start_order=$E2E_START_ORDER"
-if [[ "${ZLINK_SPOT_SERVICE_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "$SKIP_BUILD" != "1" ]]; then
   build_projects
 fi
 TLS_CERT="$LOG_DIR/session-a-tls.crt"
@@ -761,7 +787,8 @@ run_client() {
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --operation-group "$operation_group"
   timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
-    >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
+    2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
+    | tee -a "$LOG_DIR/client.stdout.log"
   if [[ "$operation_group" == "sm-g1" ]]; then
     assert_expected_server_exit play-a 137 "client ${operation_group} completion"
   else
@@ -820,5 +847,3 @@ elif [[ "$SCENARIO_SET" == "all" || "$SCENARIO_SET" == "default-batch" ]]; then
 else
   run_client_list
 fi
-
-cat "$LOG_DIR/client.stdout.log"

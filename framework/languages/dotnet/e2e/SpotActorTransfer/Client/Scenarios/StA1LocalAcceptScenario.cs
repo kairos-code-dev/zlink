@@ -1,3 +1,4 @@
+// Verifies ST-A1 Local Accept behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

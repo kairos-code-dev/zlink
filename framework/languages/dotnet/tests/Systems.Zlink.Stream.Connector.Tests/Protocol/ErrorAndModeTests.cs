@@ -120,7 +120,7 @@ public sealed partial class StreamConnectorTests
                 .PacketName("h")
                 .Submit());
 
-        Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+        Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public sealed partial class StreamConnectorTests
             compress: true,
             requestSeq: null));
 
-        Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+        Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public sealed partial class StreamConnectorTests
                 .PacketName("h")
                 .Async());
 
-        Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+        Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
     }
 
     [Fact]

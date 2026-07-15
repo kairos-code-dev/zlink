@@ -1,8 +1,8 @@
 namespace PubSub.Client.Support;
 
-internal static class ScenarioAssert
+internal static class StateObservation
 {
-    public static async Task EventuallyAsync(
+    public static async Task WaitUntilAsync(
         Func<Task<bool>> condition,
         string failureMessage,
         TimeSpan? timeout = null)
@@ -15,12 +15,6 @@ internal static class ScenarioAssert
             await Task.Delay(100, timeoutSource.Token).ContinueWith(_ => { });
         }
 
-        throw new InvalidOperationException(failureMessage);
-    }
-
-    public static bool IsConnectionFailure(Exception ex)
-    {
-        return ex is HttpRequestException
-               || ex.InnerException is HttpRequestException;
+        throw new TimeoutException(failureMessage);
     }
 }

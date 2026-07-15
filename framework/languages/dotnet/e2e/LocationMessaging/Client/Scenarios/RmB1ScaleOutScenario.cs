@@ -1,3 +1,4 @@
+// Verifies RM-B1 Scale Out behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -29,7 +30,7 @@ internal static class RmB1ScaleOutScenario
 
         var preScaleEvidence = await WaitEvidenceAsync(requester, $"{markerBefore}-9");
         ZlinkStreamAssert.Ensure(
-            ScenarioAssert.CountNewEvidence(
+            EvidenceDelta.CountMatching(
                 preScaleEvidence,
                 beforeA,
                 "profile-request|rid=api-a",
@@ -91,8 +92,8 @@ internal static class RmB1ScaleOutScenario
 
         var afterA = await WaitEvidenceAsync(requester, apiAValues[^1]);
         var afterB = await WaitEvidenceAsync(providerBClient, apiBValues[^1]);
-        var a = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", markerAfter);
-        var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", markerAfter);
+        var a = EvidenceDelta.CountMatching(afterA, beforeA, "profile-request|rid=api-a", markerAfter);
+        var b = EvidenceDelta.CountMatching(afterB, beforeB, "profile-request|rid=api-b", markerAfter);
         ZlinkStreamAssert.Ensure(a == apiAValues.Length && b == apiBValues.Length && a + b == values.Length,
             "RM-B1 expected evidence to match scale-out replies.");
     }

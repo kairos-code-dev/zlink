@@ -1,3 +1,4 @@
+// Verifies RL-C3 Node Pause Recovery behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
@@ -20,6 +21,11 @@ internal static class RlC3NodePauseRecoveryScenario
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
+        await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
+            consumer,
+            "api-b",
+            "rl-c3-converge",
+            "RL-C3");
 
         var during = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-c3-during-down"))

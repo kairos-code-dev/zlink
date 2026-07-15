@@ -14,9 +14,9 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/logs/$RUN_ID"
 mkdir -p "$LOG_DIR"
 CONFIG_DIR="$(mktemp -d)"
-LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+REDIS_READINESS_TIMEOUT_SECONDS=60
 HTTP_PROBE_TIMEOUT_SECONDS=3
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
@@ -206,8 +206,6 @@ wait_health "$SVC_B_URL" svc-b
 start_service svc-filtered "$FILTERED_SERVICE_PROJECT" \
   --rid svc-filtered \
   --http-url "$FILTERED_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "${REDIS_KEY_PREFIX}filtered:" \
   --channel-endpoint "$FILTERED_CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-filtered.evidence.log" \
   --log-dir "$LOG_DIR"
@@ -216,8 +214,6 @@ wait_health "$FILTERED_URL" svc-filtered
 start_service svc-throw "$THROWING_SERVICE_PROJECT" \
   --rid svc-throw \
   --http-url "$THROW_URL" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "${REDIS_KEY_PREFIX}throwing:" \
   --channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --evidence-file "$LOG_DIR/svc-throw.evidence.log" \
   --log-dir "$LOG_DIR"
@@ -244,6 +240,5 @@ python3 "$ROOT_DIR/../write_role_config.py" "$CONFIG_DIR/client.json" -- \
   --scenario "$SCENARIO" \
   --log-dir "$LOG_DIR"
 dotnet run --no-build --project "$CLIENT_PROJECT" -- --config "$CONFIG_DIR/client.json" \
-  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
-
-cat "$LOG_DIR/client.stdout.log"
+  > >(tee "$LOG_DIR/client.stdout.log") \
+  2> >(tee "$LOG_DIR/client.stderr.log" >&2)

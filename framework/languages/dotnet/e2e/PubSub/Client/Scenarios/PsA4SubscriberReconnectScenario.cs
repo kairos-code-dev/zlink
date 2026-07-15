@@ -1,3 +1,4 @@
+// Verifies PS-A4 Subscriber Reconnect behavior.
 using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;
@@ -22,14 +23,14 @@ internal static class PsA4SubscriberReconnectScenario
                    reconnectSubscriberUrl,
                    "sub-reconnect.evidence.log"))
         {
-            await ScenarioAssert.EventuallyAsync(
+            await StateObservation.WaitUntilAsync(
                 async () =>
                 {
                     try
                     {
                         return (await reconnectSubscriberClient.Get("/health").AsyncRaw()).Status == 200;
                     }
-                    catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
+                    catch (Exception ex) when ((ex is HttpRequestException || ex.InnerException is HttpRequestException))
                     {
                         return false;
                     }
@@ -48,14 +49,14 @@ internal static class PsA4SubscriberReconnectScenario
         }
 
         // Wait until the endpoint is gone before publishing the no-replay gap range.
-        await ScenarioAssert.EventuallyAsync(
+        await StateObservation.WaitUntilAsync(
             async () =>
             {
                 try
                 {
                     return (await reconnectSubscriberClient.Get("/health").AsyncRaw()).Status != 200;
                 }
-                catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
+                catch (Exception ex) when ((ex is HttpRequestException || ex.InnerException is HttpRequestException))
                 {
                     return true;
                 }
@@ -79,14 +80,14 @@ internal static class PsA4SubscriberReconnectScenario
             "sub-reconnect",
             reconnectSubscriberUrl,
             "sub-reconnect.evidence.log");
-        await ScenarioAssert.EventuallyAsync(
+        await StateObservation.WaitUntilAsync(
             async () =>
             {
                 try
                 {
                     return (await reconnectSubscriberClient.Get("/health").AsyncRaw()).Status == 200;
                 }
-                catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
+                catch (Exception ex) when ((ex is HttpRequestException || ex.InnerException is HttpRequestException))
                 {
                     return false;
                 }

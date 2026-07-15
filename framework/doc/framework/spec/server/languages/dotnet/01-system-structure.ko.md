@@ -34,18 +34,19 @@
 
 ## 2. 패키지 구조
 
-**`.NET` 배포 산출물은 7개 NuGet package다.** 이 집합은 고정이며, 검증기가 **정확히 이 7개인지**
+**`.NET` 배포 산출물은 8개 NuGet package다.** 이 집합은 고정이며, 검증기가 **정확히 이 8개인지**
 확인한다(§14).
 
 | package | 역할 | 의존 |
 |---|---|---|
-| `Zlink.Framework` | framework core — contract, runtime, dispatcher | 없음(core 바인딩만) |
+| `Zlink.Framework.Contracts` | framework와 companion client가 공유하는 오류·codec 계약 | `Systems.Zlink.Stream.Connector` |
+| `Zlink.Framework` | framework core — server contract, runtime, dispatcher | `Zlink.Framework.Contracts`, `Systems.Zlink.Stream.Connector` |
 | `Zlink.Framework.AspNetCore` | ASP.NET Core host adapter — `AddZLinkFramework(...)` 등록 표면 | `Zlink.Framework` |
 | `Zlink.Framework.Codecs.Protobuf` | Protobuf codec **extension** | `Zlink.Framework` |
 | `Zlink.Framework.Codecs.MessagePack` | MessagePack codec **extension** | `Zlink.Framework` |
 | `Zlink.Framework.Locations.Redis` | Redis location store **extension** | `Zlink.Framework` |
 | `Systems.Zlink.Stream.Connector` | **client** connector — 서버 framework에 의존하지 않는다 | 없음 |
-| `Zlink.HttpClient` | standalone·framework server 양쪽에서 사용하는 typed HTTP client | `Zlink.Framework` |
+| `Zlink.HttpClient` | standalone·framework server 양쪽에서 사용하는 typed HTTP client | `Zlink.Framework.Contracts` |
 
 **분리 원칙:**
 
@@ -54,7 +55,9 @@
   **공유한다**([channel-messaging §6](../../11-channel-messaging.ko.md)).
 - **location store 구현도 extension이다.** core는 `IZLinkLocationStore` 계약만 알고, Redis 구현은
   별도 package가 제공한다(§10).
-- **connector는 서버 framework package를 참조하지 않는다.** 반대 방향도 같다
+- **connector는 서버 framework runtime package를 참조하지 않는다.** server framework와 HTTP client는
+  connector가 정의한 wire codec 값과 공유 오류·codec 계약만 사용하며, connector가 server runtime을
+  역으로 참조하지 않는다
   ([stream-connector §1](../../../stream-connector/languages/dotnet/03-stream-connector.ko.md)).
 - **host adapter(`AspNetCore`)와 core를 나눈다.** core는 ASP.NET Core에 의존하지 않는다.
 
@@ -62,7 +65,7 @@
 
 | package | 배포 채널 | 소비자 |
 |---|---|---|
-| `Zlink.Framework` · `Zlink.Framework.AspNetCore` | NuGet | 서버 애플리케이션 |
+| `Zlink.Framework` · `Zlink.Framework.Contracts` · `Zlink.Framework.AspNetCore` | NuGet | 서버 애플리케이션과 companion client |
 | `Zlink.Framework.Codecs.*` | NuGet | codec이 필요한 서버·client |
 | `Zlink.Framework.Locations.Redis` | NuGet | 다중 프로세스 배포 |
 | `Systems.Zlink.Stream.Connector` | NuGet | 데스크톱·서버 client, **Unity(네이티브)**, **Godot C#** |

@@ -34,7 +34,7 @@ internal sealed class ZLinkChannelPacketDispatcher
             handlerRegistry,
             dispatcher,
             channelName => ResolveMappedGroups(registration, channelName),
-            registration.DispatchOptions.Unhandled.SendLogLevel,
+            LogLevel.Warning,
             _dispatchErrors,
             registration.Codecs,
             resolvedLogger);
@@ -42,7 +42,7 @@ internal sealed class ZLinkChannelPacketDispatcher
             handlerRegistry,
             dispatcher,
             channelName => ResolveMappedGroups(registration, channelName),
-            registration.DispatchOptions.Unhandled.PublishLogLevel,
+            LogLevel.Debug,
             _dispatchErrors,
             registration.Codecs,
             resolvedLogger);

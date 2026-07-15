@@ -1,3 +1,4 @@
+// Verifies RL-C1 Client Host Lifecycle behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

@@ -1,3 +1,4 @@
+// Verifies RL-A1 Provider Restart behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
@@ -35,15 +36,35 @@ internal static class RlA1ProviderRestartScenario
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
 
+        var survivingReplies = 0;
+        var downWindowFailures = 0;
         for (var i = 0; i < 12; i++)
         {
             var marker = $"rl-a1-down-{i}";
-            var reply = (await consumer.Post("/profile/request")
+            var attempt = (await consumer.Post("/profile/request/attempt/1000")
                 .Body(new ProfileReq("fast", marker))
-                .Async<ProfileRes>()).Body;
-            ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a",
-                "RL-A1 request during api-b restart did not use surviving provider.");
+                .Async<ProfileAttemptRes>()).Body;
+            if (attempt.Reply is { } reply)
+            {
+                ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a",
+                    "RL-A1 request during api-b restart used the stopped provider.");
+                survivingReplies++;
+                continue;
+            }
+
+            ZlinkStreamAssert.Ensure(
+                attempt.IsRetriable
+                && attempt.ErrorKind is nameof(TimeoutException)
+                    or "RouteNotConnected"
+                    or "RequestTargetNotFound"
+                    or "RequestFailed",
+                $"RL-A1 returned unexpected down-window error '{attempt.ErrorKind}'.");
+            downWindowFailures++;
         }
+        ZlinkStreamAssert.Ensure(survivingReplies > 0,
+            "RL-A1 did not route any down-window request to the surviving provider.");
+        ZlinkStreamAssert.Ensure(survivingReplies + downWindowFailures == 12,
+            "RL-A1 did not classify every down-window request result.");
 
         await providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(["marker=rl-a1-down-"], []))

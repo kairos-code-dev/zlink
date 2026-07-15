@@ -26,7 +26,7 @@ internal static class RouteBridgeAwaitProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-b")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsInOrder(evidence.Evidence, requestId, [
+        EvidenceOrder.ContainsInOrder(evidence.Evidence, requestId, [
             "await-started",
             "await-released",
             "probe-started",

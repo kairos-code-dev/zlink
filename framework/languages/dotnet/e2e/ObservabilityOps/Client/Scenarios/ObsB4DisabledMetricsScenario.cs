@@ -1,3 +1,4 @@
+// Verifies OBS-B4 Disabled Metrics behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

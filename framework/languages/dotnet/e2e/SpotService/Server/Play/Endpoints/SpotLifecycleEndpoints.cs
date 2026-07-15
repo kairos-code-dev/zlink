@@ -83,19 +83,13 @@ internal static class SpotLifecycleEndpoints
         app.MapPost("/spot/state/request", async (
             IZLinkRouteClient routes,
             IZLinkSpotHandleResolver locator,
-            NodeOptions node,
             SpotStateRouteReq request) =>
         {
-            var channelName = string.Equals(node.Rid, "play-b", StringComparison.Ordinal)
-                ? SpotServiceNames.ExternalSpotChannelB
-                : SpotServiceNames.ExternalSpotChannel;
-            var result = await RequestSpotStateWithRetryAsync(
+            var result = await RequestSpotStateAsync(
                 routes,
                 locator,
                 request.SpotRid,
-                new StateReq(request.Operation, request.Delta),
-                "Spot state route request timed out.",
-                channelName);
+                new StateReq(request.Operation, request.Delta));
             return Results.Ok(result);
         });
         app.MapPost("/spot/state/command", async (
@@ -106,14 +100,11 @@ internal static class SpotLifecycleEndpoints
             SpotStateCommandReq request) =>
         {
             var before = evidence.Snapshot();
-            await SendSpotCommandWithRetryAsync(
+            await SendSpotCommandAsync(
                 routes,
                 locator,
-                SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new StateMsg(request.Marker),
-                "StateMsg",
-                "Spot state command route timed out.");
+                new StateMsg(request.Marker));
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"spot-state-command|rid={node.Rid}|spot={request.SpotRid}|marker={request.Marker}") == 1,

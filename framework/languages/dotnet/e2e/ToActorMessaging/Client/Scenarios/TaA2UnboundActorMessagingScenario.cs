@@ -1,3 +1,4 @@
+// Verifies TA-A2 Unbound Actor Messaging behavior.
 using ToActorMessaging.Client.Support;
 
 namespace ToActorMessaging.Client.Scenarios;

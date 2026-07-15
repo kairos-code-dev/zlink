@@ -1,3 +1,4 @@
+// Verifies SM-D3 Entry And User Spot Session Relay behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

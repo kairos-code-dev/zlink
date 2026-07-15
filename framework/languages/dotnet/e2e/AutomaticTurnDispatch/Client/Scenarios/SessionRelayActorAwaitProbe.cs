@@ -45,7 +45,7 @@ internal static class SessionRelayActorAwaitProbe
             .Metadata(AutomaticTurnDispatchNames.TargetNodeRidMetadata, "play-a")
             .Timeout(TimeSpan.FromSeconds(30))
             .Async<AwaitEvidenceRes>();
-        ScenarioAssert.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
+        EvidenceOrder.ContainsExactRequestInOrder(evidence.Evidence, requestId, [
             "actor-push-await-started",
             "actor-push-await-released",
             "actor-push-await-resumed",

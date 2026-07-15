@@ -38,7 +38,8 @@ internal static class ProcessSupport
             {
                 if ((await http.Get("/health").AsyncRaw()).Status == 200) return;
             }
-            catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
+            catch (Exception ex) when (
+                ex is HttpRequestException || ex.InnerException is HttpRequestException)
             {
             }
 

@@ -1,3 +1,4 @@
+// Verifies SF-D1 Short Outage Recovery behavior.
 using StoreFailure.Client.Support;
 using Zlink.HttpClient;
 

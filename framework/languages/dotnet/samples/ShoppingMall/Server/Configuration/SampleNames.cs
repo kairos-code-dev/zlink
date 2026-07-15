@@ -51,7 +51,11 @@ public sealed record SampleTopology(
     RoutingId WorkflowASpotRid,
     RoutingId WorkflowBSpotRid)
 {
-    public static SampleRuntimeConfiguration Load(string[] args)
+    public static SampleRuntimeConfiguration LoadApi(string[] args) => Load(args, "api");
+
+    public static SampleRuntimeConfiguration LoadWorkflow(string[] args) => Load(args, "workflow");
+
+    private static SampleRuntimeConfiguration Load(string[] args, string role)
     {
         if (args.Length != 2 || args[0] != "--config")
             throw new ArgumentException("Usage: --config PATH");
@@ -61,7 +65,7 @@ public sealed record SampleTopology(
                            .GetRequiredSection("Sample")
                            .Get<SampleConfiguration>()
                        ?? throw new InvalidOperationException("ShoppingMall Sample configuration is empty.");
-        settings.Validate();
+        settings.Validate(role);
         var topology = new SampleTopology(
             settings.RedisEndpoint,
             settings.RedisKeyPrefix,
@@ -157,12 +161,41 @@ public sealed class SampleConfiguration
     public string WorkflowBSpotEndpoint { get; init; } = "";
     public string WorkflowBSpotRouterEndpoint { get; init; } = "";
 
-    public void Validate()
+    public void Validate(string role)
     {
-        foreach (var value in GetType().GetProperties().Select(property =>
-                     (property.Name, Value: (string?)property.GetValue(this))))
-            if (string.IsNullOrWhiteSpace(value.Value))
-                throw new InvalidOperationException($"ShoppingMall Sample.{value.Name} is required.");
+        Require(InstanceId, nameof(InstanceId));
+        Require(LogDirectory, nameof(LogDirectory));
+        Require(RedisEndpoint, nameof(RedisEndpoint));
+        Require(RedisKeyPrefix, nameof(RedisKeyPrefix));
+        var suffix = InstanceId.EndsWith("-b", StringComparison.Ordinal) ? "b" : "a";
+        if (role == "api")
+        {
+            Require(suffix == "b" ? ApiBHttpUrl : ApiAHttpUrl,
+                suffix == "b" ? nameof(ApiBHttpUrl) : nameof(ApiAHttpUrl));
+            return;
+        }
+        if (role != "workflow")
+            throw new InvalidOperationException($"Unknown ShoppingMall role '{role}'.");
+        if (suffix == "b")
+        {
+            Require(WorkflowBHttpUrl, nameof(WorkflowBHttpUrl));
+            Require(WorkflowBChannelEndpoint, nameof(WorkflowBChannelEndpoint));
+            Require(WorkflowBSpotEndpoint, nameof(WorkflowBSpotEndpoint));
+            Require(WorkflowBSpotRouterEndpoint, nameof(WorkflowBSpotRouterEndpoint));
+        }
+        else
+        {
+            Require(WorkflowAHttpUrl, nameof(WorkflowAHttpUrl));
+            Require(WorkflowAChannelEndpoint, nameof(WorkflowAChannelEndpoint));
+            Require(WorkflowASpotEndpoint, nameof(WorkflowASpotEndpoint));
+            Require(WorkflowASpotRouterEndpoint, nameof(WorkflowASpotRouterEndpoint));
+        }
+    }
+
+    private static void Require(string value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException($"ShoppingMall Sample.{name} is required.");
     }
 }
 

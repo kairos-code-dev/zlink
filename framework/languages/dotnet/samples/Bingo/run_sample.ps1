@@ -97,34 +97,44 @@ try {
     $BINGO_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$BINGO_REDIS_ENDPOINT"
 
-    $baseSettings = [ordered]@{
+    $common = @{
         LogDirectory = $SampleLogDir
         RedisEndpoint = $BINGO_REDIS_ENDPOINT
         RedisKeyPrefix = $BINGO_REDIS_KEY_PREFIX
-        ApiAChannelEndpoint = $BINGO_API_A_CHANNEL_ENDPOINT
-        ApiBChannelEndpoint = $BINGO_API_B_CHANNEL_ENDPOINT
-        PlayAChannelEndpoint = $BINGO_PLAY_A_CHANNEL_ENDPOINT
-        PlayBChannelEndpoint = $BINGO_PLAY_B_CHANNEL_ENDPOINT
-        PlayASpotEndpoint = $BINGO_PLAY_A_SPOT_ENDPOINT
-        PlayBSpotEndpoint = $BINGO_PLAY_B_SPOT_ENDPOINT
-        PlayASpotRouterEndpoint = $BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
-        PlayBSpotRouterEndpoint = $BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
-        SessionASpotEndpoint = $BINGO_SESSION_A_SPOT_ENDPOINT
-        SessionBSpotEndpoint = $BINGO_SESSION_B_SPOT_ENDPOINT
-        SessionARouterEndpoint = $BINGO_SESSION_A_ROUTER_ENDPOINT
-        SessionBRouterEndpoint = $BINGO_SESSION_B_ROUTER_ENDPOINT
-        SessionAStreamEndpoint = $BINGO_SESSION_A_STREAM_ENDPOINT
-        SessionBStreamEndpoint = $BINGO_SESSION_B_STREAM_ENDPOINT
+    }
+    $roles = @{
+        "api-a" = $common + @{ NodeName = "a"; ChannelEndpoint = $BINGO_API_A_CHANNEL_ENDPOINT }
+        "api-b" = $common + @{ NodeName = "b"; ChannelEndpoint = $BINGO_API_B_CHANNEL_ENDPOINT }
+        "play-a" = $common + @{
+            NodeName = "a"; ChannelEndpoint = $BINGO_PLAY_A_CHANNEL_ENDPOINT
+            SpotEndpoint = $BINGO_PLAY_A_SPOT_ENDPOINT; SpotRouterEndpoint = $BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT
+        }
+        "play-b" = $common + @{
+            NodeName = "b"; ChannelEndpoint = $BINGO_PLAY_B_CHANNEL_ENDPOINT
+            SpotEndpoint = $BINGO_PLAY_B_SPOT_ENDPOINT; SpotRouterEndpoint = $BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT
+        }
+        "session-a" = $common + @{
+            NodeName = "a"; SpotEndpoint = $BINGO_SESSION_A_SPOT_ENDPOINT
+            SpotRouterEndpoint = $BINGO_SESSION_A_ROUTER_ENDPOINT; StreamEndpoint = $BINGO_SESSION_A_STREAM_ENDPOINT
+        }
+        "session-b" = $common + @{
+            NodeName = "b"; SpotEndpoint = $BINGO_SESSION_B_SPOT_ENDPOINT
+            SpotRouterEndpoint = $BINGO_SESSION_B_ROUTER_ENDPOINT; StreamEndpoint = $BINGO_SESSION_B_STREAM_ENDPOINT
+        }
     }
     $configFiles = @{}
-    foreach ($role in @("api-a", "api-b", "play-a", "play-b", "session-a", "session-b", "client")) {
-        $sample = [ordered]@{}
-        foreach ($key in $baseSettings.Keys) { $sample[$key] = $baseSettings[$key] }
-        $sample.NodeName = if ($role.EndsWith("-b")) { "b" } elseif ($role -eq "client") { "client" } else { "a" }
+    foreach ($role in $roles.Keys) {
         $path = Join-Path $RunDir "appsettings.$role.json"
-        @{ Sample = $sample } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
+        @{ Sample = $roles[$role] } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
         $configFiles[$role] = $path
     }
+    $clientPath = Join-Path $RunDir "appsettings.client.json"
+    @{ Client = @{
+        LogDirectory = $SampleLogDir
+        SessionAStreamEndpoint = $BINGO_SESSION_A_STREAM_ENDPOINT
+        SessionBStreamEndpoint = $BINGO_SESSION_B_STREAM_ENDPOINT
+    } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $clientPath
+    $configFiles["client"] = $clientPath
 
     Invoke-SampleDotnetBuild (Join-Path $ScriptDir "Bingo.csproj")
 

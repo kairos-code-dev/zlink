@@ -10,8 +10,9 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Shared\SupportChat.Shared.csproj"/>
-        <ProjectReference Include="..\Server\Configuration\SupportChat.Server.Configuration.csproj"/>
         <ProjectReference Include="..\..\Common\Logging\Zlink.Samples.Logging.csproj"/>
         <ProjectReference Include="..\..\..\src\Systems.Zlink.Stream.Connector\Systems.Zlink.Stream.Connector.csproj"/>
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
     </ItemGroup>
 </Project>

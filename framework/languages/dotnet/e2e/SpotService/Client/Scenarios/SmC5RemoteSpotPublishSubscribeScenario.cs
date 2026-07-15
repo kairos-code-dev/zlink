@@ -1,3 +1,4 @@
+// Verifies SM-C5 Remote Spot Publish Subscribe behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

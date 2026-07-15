@@ -220,5 +220,60 @@ public sealed class EnvelopeCodecTests
         Assert.Equal("A task was canceled.", exception.Message);
     }
 
+    [Fact]
+    public void DecodeEnvelopeReply_Maps_Empty_Reply_To_Framework_Error()
+    {
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(
+                [],
+                "reply was empty",
+                "failed",
+                null));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+    }
+
+    [Fact]
+    public void DecodeEnvelopeReply_Maps_Malformed_Header_To_Framework_Error()
+    {
+        var parts = ZLinkMessageParts.Create(
+            Message.From("not-json"u8),
+            Message.From(ReadOnlySpan<byte>.Empty));
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(
+                parts,
+                "empty",
+                "failed",
+                null));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+    }
+
+    [Fact]
+    public void DecodeEnvelopeReply_Maps_Unknown_Remote_Error_To_Framework_Error()
+    {
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Error,
+            "route",
+            "Request",
+            ZLinkEnvelopeCodec.DefaultContentType,
+            "correlation",
+            null,
+            null,
+            "UnknownRemoteError",
+            "remote failed");
+        var parts = ZLinkEnvelopeCodec.EncodeParts(header, null, null, null);
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(
+                parts,
+                "empty",
+                "failed",
+                null));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+    }
+
     private sealed record ActorSnapshotReply(ActorRefSnapshot Actor);
 }

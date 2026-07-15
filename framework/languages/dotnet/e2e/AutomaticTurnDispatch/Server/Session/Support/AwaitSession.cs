@@ -49,10 +49,9 @@ internal sealed partial class AwaitSession(
                 var request = payload.Decode<BindAwaitActorsReq>();
                 evidence.Add(
                     $"session-bind-actors|rid={evidence.Rid}|session={Context.SessionId}|spot={request.SpotRid}");
-                var result = await RequestPlayControlWithRetryAsync<BindAwaitActorsRes>(
+                var result = await RequestPlayControlAsync<BindAwaitActorsRes>(
                     routes,
                     request,
-                    "BindAwaitActorsReq",
                     cancellationToken);
                 foreach (var actor in result.Actors)
                 {
@@ -99,10 +98,9 @@ internal sealed partial class AwaitSession(
             case "AwaitEvidenceReq":
             {
                 var request = payload.Decode<AwaitEvidenceReq>();
-                var result = await RequestPlayControlWithRetryAsync<AwaitEvidenceRes>(
+                var result = await RequestPlayControlAsync<AwaitEvidenceRes>(
                     routes,
                     request,
-                    "AwaitEvidenceReq",
                     TargetOrDefault(dispatch),
                     cancellationToken);
                 Context.Client.Reply(result).Submit();
@@ -111,10 +109,9 @@ internal sealed partial class AwaitSession(
             case "AwaitEvidenceWaitReq":
             {
                 var request = payload.Decode<AwaitEvidenceWaitReq>();
-                var result = await RequestPlayControlWithRetryAsync<AwaitEvidenceRes>(
+                var result = await RequestPlayControlAsync<AwaitEvidenceRes>(
                     routes,
                     request,
-                    "AwaitEvidenceWaitReq",
                     TargetOrDefault(dispatch),
                     cancellationToken);
                 Context.Client.Reply(result).Submit();
@@ -123,10 +120,9 @@ internal sealed partial class AwaitSession(
             case "EnsureSpotReq":
             {
                 var request = payload.Decode<EnsureSpotReq>();
-                var result = await RequestPlayControlWithRetryAsync<EnsureSpotRes>(
+                var result = await RequestPlayControlAsync<EnsureSpotRes>(
                     routes,
                     request,
-                    "EnsureSpotReq",
                     TargetOrDefault(dispatch),
                     cancellationToken);
                 Context.Client.Reply(result).Submit();
@@ -276,12 +272,11 @@ internal sealed partial class AwaitSession(
 
         var request = payload.Decode<TReq>()
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
-        var result = await RequestSpotWithRetryAsync<TRes>(
+        var result = await RequestSpotAsync<TRes>(
             routes,
             spots,
             spotRid,
             request,
-            dispatch.PacketName,
             cancellationToken);
         Context.Client.Reply(result).Submit();
     }
@@ -297,12 +292,11 @@ internal sealed partial class AwaitSession(
 
         var command = payload.Decode<TMsg>()
                       ?? throw new InvalidOperationException($"Failed to decode packet '{dispatch.PacketName}'.");
-        await SendSpotWithRetryAsync(
+        await SendSpotAsync(
             routes,
             spots,
             spotRid,
             command,
-            dispatch.PacketName,
             cancellationToken);
     }
 }

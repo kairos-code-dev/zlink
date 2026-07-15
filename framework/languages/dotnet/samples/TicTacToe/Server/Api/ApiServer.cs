@@ -1,5 +1,6 @@
 using TicTacToe.Server.Api.Handlers;
 using TicTacToe.Server.Configuration;
+using TicTacToe.Shared.Contracts;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Samples.Logging;
@@ -16,15 +17,14 @@ internal sealed class ApiServer(SampleSettings settings)
         builder.Services.AddSingleton(settings);
         builder.Services.AddZLinkFramework(options =>
         {
+            options.DisableImplicitHandlerAutoRegistration();
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(settings.LogDirectory, settings.InstanceName))
                 .TraceLabel(settings.InstanceName);
-            options.AddHandlersFromAssemblyOf(typeof(ApiServer));
-
             options.AddClientServerChannel(SampleChannels.Api)
                 .EnableServer(settings.ApiChannelEndpoint)
-                .AddHandlerGroup("api");
+                .AddRequestHandler<AuthenticatePlayerHandler, AuthenticatePlayerReq, AuthenticatePlayerRes>();
 
             options.AddClientServerChannel(SampleChannels.Play(0))
                 .EnableClient(settings.PlayChannelEndpoints[0]);

@@ -29,6 +29,7 @@ internal sealed class RequestPerformer(
         var origin = new Uri(baseUri.GetLeftPart(UriPartial.Authority));
         var combinedTarget = HttpRedirectPolicy.MakeTarget(baseUri.AbsolutePath, request.Target);
         var current = new Uri(origin, combinedTarget);
+        var authorizationAllowed = HttpRedirectPolicy.SameOrigin(origin, current);
         var method = request.Method;
         var body = request.Body;
         // A streamed body provider cannot be rewound, so it is dropped once a redirect is followed
@@ -38,8 +39,13 @@ internal sealed class RequestPerformer(
 
         while (true)
         {
-            var keepAuthorization = HttpRedirectPolicy.SameOrigin(origin, current);
-            using var message = BuildMessage(method, body, bodyProvider, request.Headers, current, keepAuthorization);
+            using var message = BuildMessage(
+                method,
+                body,
+                bodyProvider,
+                request.Headers,
+                current,
+                authorizationAllowed);
             var completion = request.Sink is null
                 ? HttpCompletionOption.ResponseContentRead
                 : HttpCompletionOption.ResponseHeadersRead;
@@ -63,7 +69,9 @@ internal sealed class RequestPerformer(
                 --redirectsLeft;
                 (method, body) = HttpRedirectPolicy.RewriteForRedirect(status, method, body);
                 bodyProvider = null; // consumed; never replay a non-rewindable stream on a redirect
-                current = HttpRedirectPolicy.ResolveLocation(current, location!);
+                var next = HttpRedirectPolicy.ResolveLocation(current, location!);
+                authorizationAllowed &= HttpRedirectPolicy.SameOrigin(current, next);
+                current = next;
                 continue;
             }
 

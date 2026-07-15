@@ -909,9 +909,17 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal async ValueTask NotifyActorDisconnectedAsync(
         ActorRef actor,
+        string bindingToken,
         CancellationToken cancellationToken = default)
     {
         var state = GetOrCreateActorState(actor.ActorId);
+        if (!state.TryGetBoundSession(out var boundSession)
+            || !string.Equals(
+                boundSession.BindingToken,
+                bindingToken,
+                StringComparison.Ordinal))
+            return;
+
         if (state.Actor is not null
             && state.NativeActorRef is { } localActor
             && localActor.NodeRid == actor.NodeRid

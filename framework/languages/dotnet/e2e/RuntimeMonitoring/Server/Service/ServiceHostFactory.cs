@@ -48,6 +48,7 @@ internal static class ServiceHostFactory
 
             var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
                 .EnableServer(Require(options.ChannelEndpoint, "--channel-endpoint"))
+                .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
             channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
 
@@ -61,6 +62,7 @@ internal static class ServiceHostFactory
         builder.Services.AddZLinkMonitoring(monitor =>
         {
             monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource);
+            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelClientSource);
             monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
 
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))
@@ -94,6 +96,16 @@ internal static class ServiceHostFactory
         {
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
+        });
+        app.MapPost("/profile/request", async (
+            ProfileReq request,
+            [FromServices] IZLinkChannelClient channel,
+            CancellationToken cancellationToken) =>
+        {
+            var response = await channel.RequestToChannel(RuntimeMonitoringNames.Channel, request)
+                .Timeout(TimeSpan.FromSeconds(10))
+                .Async<ProfileRes>(cancellationToken);
+            return Results.Ok(response);
         });
         app.MapPost("/admin/subject/create", async (
             [FromServices] IZLinkSpotManager spots,

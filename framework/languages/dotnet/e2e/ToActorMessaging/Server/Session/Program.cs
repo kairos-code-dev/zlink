@@ -153,7 +153,7 @@ internal sealed record SessionOptions(
     string PubSubEndpoint,
     string StreamEndpoint,
     string LogDir,
-    string? EvidenceFile)
+    string? EvidenceFile = null)
 {
     public static SessionOptions Parse(string[] args)
         => E2eConfiguration.Load<SessionOptions>(args);

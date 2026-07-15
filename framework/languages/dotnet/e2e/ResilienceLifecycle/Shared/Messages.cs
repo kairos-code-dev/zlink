@@ -11,6 +11,11 @@ public sealed record MissingProfileReq(string Value, string Marker);
 
 public sealed record ProfileRes(string Value, string ProviderRid, string Marker);
 
+public sealed record ProfileAttemptRes(
+    ProfileRes? Reply,
+    string? ErrorKind,
+    bool IsRetriable);
+
 public sealed record ProfileMsg(string Marker);
 
 public sealed record EvidenceWaitReq(

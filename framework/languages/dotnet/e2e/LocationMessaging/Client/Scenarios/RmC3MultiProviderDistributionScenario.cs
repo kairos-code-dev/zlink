@@ -1,3 +1,4 @@
+// Verifies RM-C3 Multi Provider Distribution behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -13,8 +14,8 @@ internal static class RmC3MultiProviderDistributionScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        var beforeA = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
-        var beforeB = providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
+        var beforeA = (await providerA.Get("/evidence").Async<string[]>()).Body;
+        var beforeB = (await providerB.Get("/evidence").Async<string[]>()).Body;
         var marker = $"rm-c3-{Guid.NewGuid():N}";
         var requests = Enumerable.Range(0, 60)
             .Select(index => new ProfileReq($"{marker}-{index}"))
@@ -30,10 +31,10 @@ internal static class RmC3MultiProviderDistributionScenario
             ZlinkStreamAssert.Ensure(replies[i].ProviderRid is "api-a" or "api-b", "RM-C3 reply provider mismatch.");
         }
 
-        var afterA = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
-        var afterB = providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
-        var a = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", marker);
-        var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker);
+        var afterA = (await providerA.Get("/evidence").Async<string[]>()).Body;
+        var afterB = (await providerB.Get("/evidence").Async<string[]>()).Body;
+        var a = EvidenceDelta.CountMatching(afterA, beforeA, "profile-request|rid=api-a", marker);
+        var b = EvidenceDelta.CountMatching(afterB, beforeB, "profile-request|rid=api-b", marker);
         ZlinkStreamAssert.Ensure(
             a > 0 && b > 0 && a + b == requests.Length,
             "RM-C3 expected both providers to handle the direct multi-endpoint request set.");

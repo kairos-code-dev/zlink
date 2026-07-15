@@ -15,6 +15,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj"/>
+        <ProjectReference Include="../Zlink.Framework.Contracts/Zlink.Framework.Contracts.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
@@ -27,7 +28,8 @@
         <ItemGroup>
             <_ProjectReferencesWithVersions
                 Update="@(_ProjectReferencesWithVersions)"
-                Condition="'%(_ProjectReferencesWithVersions.Filename)' == 'Systems.Zlink.Stream.Connector'">
+                Condition="'%(_ProjectReferencesWithVersions.Filename)' == 'Systems.Zlink.Stream.Connector'
+                           or '%(_ProjectReferencesWithVersions.Filename)' == 'Zlink.Framework.Contracts'">
                 <ProjectVersion>[%(_ProjectReferencesWithVersions.ProjectVersion)]</ProjectVersion>
             </_ProjectReferencesWithVersions>
         </ItemGroup>

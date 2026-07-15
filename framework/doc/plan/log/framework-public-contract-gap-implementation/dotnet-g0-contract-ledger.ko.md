@@ -6,9 +6,9 @@
 
 ## 1. 판정 규칙
 
-- 공개 type과 member의 분모는 `framework/languages/dotnet/contract/api/*.api.txt` 일곱 파일의 `type`, `field`,
+- 공개 type과 member의 분모는 `framework/languages/dotnet/contract/api/*.api.txt` 여덟 파일의 `type`, `field`,
   `ctor`, `property`, `event`, `method`, `generic`, `where` 행 전체다.
-- package 분모는 `framework/languages/dotnet/contract/packages/*.package.txt` 일곱 파일의 archive, metadata,
+- package 분모는 `framework/languages/dotnet/contract/packages/*.package.txt` 여덟 파일의 archive, metadata,
   dependency와 assembly 행 전체다.
 - 동작 계약은 아래 표의 exact test method 또는 `E2E:<scenario-id>`로 연결한다. test class
   전체나 단순 solution PASS는 개별 동작의 증거로 사용하지 않는다.
@@ -38,8 +38,9 @@ custom modifier를 서로 다른 텍스트 행으로 보존한다. 같은 내용
 | DN-SURFACE-005 | `Zlink.Framework.Locations.Redis` 전체 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Zlink.Framework.Locations.Redis.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
 | DN-SURFACE-006 | `Systems.Zlink.Stream.Connector` 전체 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Systems.Zlink.Stream.Connector.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
 | DN-SURFACE-007 | `Zlink.HttpClient` 전체 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Zlink.HttpClient.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
-| DN-PACKAGE-001 | 위 일곱 package의 archive와 export | `languages/dotnet/framework/languages/dotnet/contract/packages/*.package.txt` | `scripts/verify_packaged_contract.sh` aggregate consumer, HTTP client 단독 consumer와 package snapshot |
-| DN-BINDING-001 | framework가 사용하는 bindings package | `Systems.Zlink` `9.0.7`, local package `Systems.Zlink.9.0.7.nupkg`, SHA-256 `508efef467174441aa1024c9c5dcd993d4ded861238a6517869e1759e9e93d40` | `dotnet list src/Zlink.Framework/Zlink.Framework.csproj package --include-transitive` resolved `9.0.7`; framework `PackageReference` 사용, source 직접 참조 없음 |
+| DN-SURFACE-008 | `Zlink.Framework.Contracts` 오류·codec 공개 서명 | `languages/dotnet/framework/languages/dotnet/contract/api/Zlink.Framework.Contracts.api.txt` | `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` |
+| DN-PACKAGE-001 | 위 여덟 package의 archive와 export | `languages/dotnet/framework/languages/dotnet/contract/packages/*.package.txt` | `scripts/verify_packaged_contract.sh` aggregate consumer, HTTP client 단독 consumer와 package snapshot |
+| DN-BINDING-001 | framework가 사용하는 bindings package | `Systems.Zlink` `9.0.8`, local package `Systems.Zlink.9.0.8.nupkg`, SHA-256 `7bf4b1e5a1e6de51a840290db63bd47e4b6ec850a3a60676a2cc6a065dfcedb9` | `dotnet list src/Zlink.Framework/Zlink.Framework.csproj package --include-transitive` resolved `9.0.8`; framework `PackageReference` 사용, source 직접 참조 없음 |
 | DN-REUSE-001 | core/bindings와 framework의 동일 기능 재구현 | correlation generator만 중복으로 확정 | `DN-025`; connector의 단일 `ZlinkStreamCorrelation` 사용, framework duplicate symbol/file no-hit |
 
 현재 snapshot의 symbol/constraint 행 수는 다음과 같다. 이 수는 고정 상수가 아니라 checkout에서
@@ -51,8 +52,9 @@ custom modifier를 서로 다른 텍스트 행으로 보존한다. 같은 내용
 | `Zlink.Framework.AspNetCore.api.txt` | 5 |
 | `Zlink.Framework.Codecs.MessagePack.api.txt` | 5 |
 | `Zlink.Framework.Codecs.Protobuf.api.txt` | 5 |
-| `Zlink.Framework.Locations.Redis.api.txt` | 32 |
-| `Zlink.Framework.api.txt` | 2,022 |
+| `Zlink.Framework.Contracts.api.txt` | 51 |
+| `Zlink.Framework.Locations.Redis.api.txt` | 35 |
+| `Zlink.Framework.api.txt` | 2,118 |
 | `Zlink.HttpClient.api.txt` | 103 |
 
 namespace별 정식 계약 owner는 다음과 같다. 한 symbol의 정확한 서명은 snapshot 행이 소유하고, 동작은
@@ -68,12 +70,13 @@ owner 문서의 `DN-COMMON-*`/`DN-DOC-*`와 plan §6의 exact test가 소유한�
 | `Zlink.Framework.Contracts.Dispatch`, `Eventing`, `Monitoring` | `system-structure.ko.md` |
 | `Zlink.Framework.AspNetCore` | 언어 `README.ko.md`와 각 capability의 ASP.NET Core 계약 |
 | `Zlink.Framework.Codecs.*` | `handler-interfaces.ko.md`의 codec extension 계약 |
+| `Zlink.Framework.Contracts.Codecs`, `Errors` | `handler-interfaces.ko.md`의 codec extension 계약과 HTTP client 오류 모델 |
 | `Zlink.HttpClient.*` | `http-client/languages/dotnet/dotnet-http-client.ko.md` |
 | `Systems.Zlink.Stream.Connector.*` | `system-structure.ko.md`의 connector 절과 `handler-interfaces.ko.md` |
 
 ### 2.1 bindings public capability audit
 
-framework 목표 계약에 필요한 low-level 기능은 현재 `Systems.Zlink 9.0.7` package의 public API로
+framework 목표 계약에 필요한 low-level 기능은 현재 `Systems.Zlink 9.0.8` package의 public API로
 충족한다. framework는 이 표의 기능을 backend wrapper에서 직접 호출하며 reflection이나 friend
 assembly로 우회하지 않는다.
 
@@ -249,7 +252,7 @@ E2E class allowlist는 존재하지 않는다.
 ## 6. 아직 남은 G0 판정
 
 - public API와 package export 분모: 최종 checkout package verifier와 clean consumer 재검증 완료
-- bindings package/version/hash: `Systems.Zlink 9.0.7`과 package SHA-256 `508efef467174441aa1024c9c5dcd993d4ded861238a6517869e1759e9e93d40` 재검증 완료
+- bindings package/version/hash: `Systems.Zlink 9.0.8`과 package SHA-256 `7bf4b1e5a1e6de51a840290db63bd47e4b6ec850a3a60676a2cc6a065dfcedb9` 재검증 완료
 - core/bindings 기능 재사용 감사: 1차 완료, G4/G7 재감사 필요
 - 공통 spec 및 언어별 문서 파일 inventory: 완료
 - 모든 규범 문장의 조항별 symbol/behavior/test 연결: 완료
@@ -270,7 +273,7 @@ E2E class allowlist는 존재하지 않는다.
 077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c server/53-flow-correlation.ko.md
 06f3d56438301a80afd983475e58c65d3b0e678a32b832c5f13813bf937ffcb6 05-framework-api.ko.md
 822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f server/54-graceful-drain-handoff.ko.md
-98b6cb5eb517b4e1168444814a7f54d57cb32c256e095e4ca7a9805d4384e8b6 90-implementation-gap.ko.md
+e9c1c124f4a79e59d2dba5506830868b1b406c9944bdaaf79a6a568ad15a34ee 90-implementation-gap.ko.md
 df441c4de567865658b0b79ded6c840d020ccf60865f58e7990a248e9fa361a0 02-interaction-model.ko.md
 ce511f3396de7853d8e746f973aacdf1d28b3654560726135ef608697b990e11 server/40-location-runtime.ko.md
 76320eb54586db883dd436c481ff3427b8df7e9d2948f0c95ad9e9dcb6b4e02f server/41-location-store-redis.ko.md
@@ -280,7 +283,7 @@ a165665cbb47ef2b69744cfa7614d40c35274154af47439693f811080934f914 03-message-mode
 883e767f3c2b673c9dabc4083fa42a7fc29799d25ef9ad04761d9cbdbc5cb245 00-public-contract-governance.ko.md
 d34e9b26860a2ee285b340c5234bb27fc4c82438bbdf375e697f1350a0c1ef1f server/51-runtime-metrics.ko.md
 d30ea2acfbee45009ee2e0d000f2b37009ccf9f5f134c8ad29dd2035e3b8ab99 server/50-runtime-monitoring.ko.md
-49f5154412ed827496ba50f2e49a0f6bc84f3e1bcfdb4022b561dbded9b64147 server/31-session-actor-dispatch.ko.md
+a780a2e75f7e18f3efa27d8fc783555d47b2e4c012e6f9ff4a66b2d49058ded7 server/31-session-actor-dispatch.ko.md
 ae0c25c9f67cb397da861e82d8aaf1311472dfe5e28212a88f1e0aa32ec20998 server/23-spot-actor.ko.md
 45576c26b8061e0a1965d219d539080a4917c6c06572b5d63bccddfb2f1bbe4d server/24-spot-address-messaging.ko.md
 d9546cf37a3f9f34e863ac4a63eda2e2af6f1985269279579fa5b53632978108 server/20-spot-messaging.ko.md
@@ -290,9 +293,9 @@ ab578a47597159198b5ed4f37ef96d1fd0b94190a0b0014fbb29061e139572ef server/21-spot-
 c395d2aafc4a8e5d86013b7290e6e220b892eb767373df1262d3094b1a31c910 server/languages/dotnet/README.ko.md
 9c35fe1f4c2ada3bbb77dac8ed7da369b1271236795c0a8016c7ded1fccf795a server/languages/dotnet/04-routing-id-allocation.ko.md
 8db5adb28d0775b4181554a614bf2bfd77f3b62caad6a9ce55bdc21f17f7d17a stream-connector/languages/dotnet/03-stream-connector.ko.md
-e1d338345b91de9461785e43b9c1c3cbfe85279cb0fb54d5fa8022d8218e66ee server/languages/dotnet/02-handler-interfaces.ko.md
-cc97d50a67777d2221aa0e0f7dc149e9b5ae3b2321d9c60dd40766f002fc293c server/languages/dotnet/01-system-structure.ko.md
+2f8219a47065c7b378f6347c6fc3dc0061cd52ddb794eb0d6ccfcf7914e19fa1 server/languages/dotnet/02-handler-interfaces.ko.md
+6133d322633c12a16b98f68ebec4417d31b5f4a327379908b4a7fea9df563fca server/languages/dotnet/01-system-structure.ko.md
 54f7a53bc1ff7cc97ada0a41d28f50678e43d68c3ad46e0beef43466dd8ccf5c server/25-stage-wrapper-on-spot.ko.md
 7a1a32c29bc2cfc642ce465f71e5f405741a2a8c23b95d0426b132947fdd0202 server/11-channel-messaging.ko.md
-55f8355b8e77bfacc1dce4466db71de045fd1f4f2b38629fd2ebd516f6cad4c2 http-client/languages/dotnet/dotnet-http-client.ko.md
+0395ef43b3ab9d2e6dfae6cea9ba8e67fa765c624ff335fe31595331377b5063 http-client/languages/dotnet/dotnet-http-client.ko.md
 ```

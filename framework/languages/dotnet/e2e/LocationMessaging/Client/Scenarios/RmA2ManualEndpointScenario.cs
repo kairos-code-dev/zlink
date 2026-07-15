@@ -1,3 +1,4 @@
+// Verifies RM-A2 Manual Endpoint behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;

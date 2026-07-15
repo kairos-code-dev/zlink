@@ -1,3 +1,4 @@
+// Verifies RC-B4 Codec Coexistence behavior.
 using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;

@@ -770,7 +770,7 @@ sample 중심에 두면 실제 사용 모델과 어긋난다.
 
 diagnostic helper는 retry helper와 다르다. diagnostic helper는 location runtime query
 결과와 local routed channel state를 보여 주는 역할만 한다. 구체 .NET
-시그니처(`IZLinkTopologyDiagnostics`)는
+시그니처(`IZLinkLocationRuntimeQuery.ListTopologyAsync`)는
 [bindings/dotnet/handler-interfaces.ko.md](languages/dotnet/02-handler-interfaces.ko.md)
 §10을 참고한다.
 

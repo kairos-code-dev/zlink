@@ -364,7 +364,7 @@ public sealed partial class StreamConnectorTests
             listener,
             ZlinkStreamMessageKind.Error,
             "remote-error",
-            "{\"message\":\"close requested\"}"u8.ToArray());
+            "{\"code\":\"remote_close\",\"message\":\"close requested\"}"u8.ToArray());
 
         await using var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
@@ -717,7 +717,7 @@ public sealed partial class StreamConnectorTests
                     null,
                     string.Empty,
                     ZlinkStreamMetadata.Empty)).ToArray(),
-                "{\"message\":\"manual error\"}"u8.ToArray());
+                "{\"code\":\"manual_error\",\"message\":\"manual error\"}"u8.ToArray());
             framesWritten.TrySetResult();
             var buffer = new byte[1];
             Assert.Equal(0, await stream.ReadAsync(buffer, 0, buffer.Length));

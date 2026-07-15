@@ -266,18 +266,15 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public void Lz4CodecRejectsDecodedPayloadAboveReceiveLimit()
+    public void Lz4CodecUsesWirePayloadLimitInsteadOfDecodedSize()
     {
         var source = Encoding.UTF8.GetBytes(new string('A', 1024));
         var compressed = new ZlinkStreamLz4CompressionCodec().Compress(source);
         var codec = new ZlinkStreamLz4CompressionCodec();
 
-        var exception = Assert.Throws<ZlinkStreamException>(() =>
-        {
-            _ = codec.Decompress(compressed, 64);
-        });
+        var decoded = codec.Decompress(compressed, int.MaxValue);
 
-        Assert.Equal(ZlinkStreamErrorCode.FrameTooLarge, exception.Error.Code);
+        Assert.Equal(source, decoded.ToArray());
     }
 
     [Fact]

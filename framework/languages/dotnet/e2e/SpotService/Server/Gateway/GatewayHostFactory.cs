@@ -230,12 +230,12 @@ internal sealed record GatewayOptions(
     string Rid,
     string HttpUrl,
     string LogDir,
-    string? EvidenceFile,
-    string? RedisEndpoint,
-    string? RedisKeyPrefix,
-    string? SpotRouterEndpoint,
-    string? SpotPubEndpoint,
-    string? ExternalSpotEndpoint)
+    string? EvidenceFile = null,
+    string? RedisEndpoint = null,
+    string? RedisKeyPrefix = null,
+    string? SpotRouterEndpoint = null,
+    string? SpotPubEndpoint = null,
+    string? ExternalSpotEndpoint = null)
 {
     public static GatewayOptions Parse(string[] args)
         => E2eConfiguration.Load<GatewayOptions>(args);

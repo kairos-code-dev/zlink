@@ -48,8 +48,8 @@ builder.Services.AddZLinkFramework(options =>
     options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(shared.RedisEndpoint)
         .SetKeyPrefix(shared.RedisKeyPrefix)));
-    // A stopped node's location rows live until its owner lease expires. The default lease is
-    // 15s, which is longer than an operator — or a scenario — waits to see a node leave (§8.1).
+    // These values govern registrations owned by Ops. Zone nodes keep the documented 30-second
+    // defaults, so crash scenarios still exercise real lease expiry (§4.2 and §8.1).
     var locations = options.ConfigureLocations();
     locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
     locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);

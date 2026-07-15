@@ -1,10 +1,10 @@
+// Verifies MON-D1 Failure Recovery behavior.
 using System.Diagnostics;
 using System.Net.Sockets;
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
 using Zlink.Framework.E2E.Configuration;
-using Zlink.Framework.Contracts.Errors;
 
 namespace RuntimeMonitoring.Client.Scenarios;
 
@@ -32,8 +32,9 @@ internal static class MonD1FailureRecoveryScenario
             "MON-D1 expected the original service-b process to complete framework shutdown.");
         var removed = (await observer.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(
-                ["kind=TopologyChanged", "removed=svc-b"],
-                [],
+                ["kind=TopologyChanged", "removed=svc-b", "kind=ServiceSummaryChanged",
+                    "source=monitor.profile.client", options.ServiceBChannelEndpoint],
+                [["kind=Disconnected", "kind=Closed"]],
                 TimeoutMilliseconds: 30000,
                 AfterIndex: baseline))
             .Async<string[]>()).Body;
@@ -62,19 +63,19 @@ internal static class MonD1FailureRecoveryScenario
                 .Build();
             var added = (await observer.Post("/evidence/wait")
                 .Body(new EvidenceWaitReq(
-                    ["kind=TopologyChanged", "added=svc-b"],
-                    [],
+                    ["kind=TopologyChanged", "added=svc-b", "kind=ServiceSummaryChanged",
+                        "source=monitor.profile.client", options.ServiceBChannelEndpoint],
+                    [["kind=Connected", "kind=ConnectionReady"]],
                     TimeoutMilliseconds: 30000,
                     AfterIndex: afterRemoved))
                 .Async<string[]>()).Body;
             ZlinkStreamAssert.Ensure(added.Any(line => line.Contains("added=svc-b", StringComparison.Ordinal)),
                 "MON-D1 did not observe svc-b returning to the topology.");
 
-            await using var trigger = await MonitoringChannelClient.StartAsync(
-                options,
-                options.ServiceBChannelEndpoint,
-                "trigger-mon-d1");
-            var reply = await trigger.RequestAsync(new ProfileReq("restart", "mon-d1-request"));
+            await observer.Post("/admin/drain").AsyncRaw();
+            var reply = (await restartedServiceB.Post("/profile/request")
+                .Body(new ProfileReq("restart", "mon-d1-request"))
+                .Async<ProfileRes>()).Body;
             ZlinkStreamAssert.Ensure(
                 reply.ProviderRid == "svc-b"
                 && reply.Marker == "mon-d1-request"
@@ -95,6 +96,7 @@ internal static class MonD1FailureRecoveryScenario
         }
         finally
         {
+            await PostBestEffortAsync(observer, "/admin/restore");
             using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
                 .Timeout(TimeSpan.FromSeconds(20))
                 .Build();

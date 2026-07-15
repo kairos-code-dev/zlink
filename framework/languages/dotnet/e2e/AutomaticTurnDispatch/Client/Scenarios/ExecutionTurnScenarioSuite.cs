@@ -53,7 +53,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         for (var index = 1; index <= 3; index++)
             SendSpot(new ProbeMsg(requestId, $"probe-{index}"), "ProbeMsg", spot);
         var evidence = await EvidenceAsync(requestId, "yield-completed");
-        ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+        EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
         [
             "yield-released", "marker=probe-1", "marker=probe-2", "marker=probe-3", "yield-resumed",
             "yield-completed"
@@ -128,7 +128,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         var requestId = NewId("TD-D3");
         SendSpot(new TimerStartMsg(requestId, requestId, "yield-on-first", 40, 250), "TimerStartMsg", spot);
         var evidence = await EvidenceAsync(requestId, "timer-next-completed");
-        ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+        EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
             ["timer-yield-released", "timer-yield-resumed", "timer-yield-completed", "timer-next-started"]);
         SendSpot(new TimerStopMsg(requestId), "TimerStopMsg", spot);
     }
@@ -218,10 +218,10 @@ internal sealed class ExecutionTurnScenarioSuite(
         await EvidenceAsync(requestId, terminator == "yield" ? "yield-completed" : "async-completed", targetNode);
         var evidence = await EvidenceAsync(requestId, "probe-completed", targetNode);
         if (probeDuringWait)
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["yield-released", "probe-started", "probe-completed", "yield-resumed"]);
         else
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["await-held", "async-resumed", "async-completed", "probe-started", "probe-completed"]);
     }
 
@@ -250,10 +250,10 @@ internal sealed class ExecutionTurnScenarioSuite(
         await EvidenceAsync(requestId, terminator == "yield" ? "yield-completed" : "async-completed");
         var evidence = await EvidenceAsync(requestId, "timer-fast-completed");
         if (tickDuringWait)
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["yield-released", "timer-fast-started", "timer-fast-completed", "yield-resumed"]);
         else
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["await-held", "async-completed", "timer-fast-started", "timer-fast-completed"]);
         SendSpot(new TimerStopMsg(requestId), "TimerStopMsg", spot);
     }
@@ -268,10 +268,10 @@ internal sealed class ExecutionTurnScenarioSuite(
         await EvidenceAsync(requestId, $"http-{terminator}-completed");
         var evidence = await EvidenceAsync(requestId, "probe-completed");
         if (probeDuringWait)
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["http-yield-released", "probe-started", "probe-completed", "http-yield-resumed"]);
         else
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["http-async-held", "http-async-completed", "probe-started", "probe-completed"]);
     }
 
@@ -285,10 +285,10 @@ internal sealed class ExecutionTurnScenarioSuite(
         await EvidenceAsync(requestId, $"cpu-worker-{terminator}-completed");
         var evidence = await EvidenceAsync(requestId, "probe-completed");
         if (probeDuringWait)
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["cpu-worker-yield-released", "probe-started", "probe-completed", "cpu-worker-yield-completed"]);
         else
-            ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId,
+            EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId,
                 ["cpu-worker-async-held", "cpu-worker-async-completed", "probe-started", "probe-completed"]);
         var completion = evidence.First(line => line.Contains($"request={requestId}", StringComparison.Ordinal)
                                                 && line.Contains("cpu-worker", StringComparison.Ordinal)
@@ -312,7 +312,7 @@ internal sealed class ExecutionTurnScenarioSuite(
         var markers = sameActor
             ? new[] { "actor-await-released", "actor-await-resumed", "actor-await-completed", "actor-fast-started" }
             : ["actor-await-released", "actor-fast-started", "actor-fast-completed", "actor-await-resumed"];
-        ScenarioAssert.ContainsExactRequestInOrder(evidence, requestId, markers);
+        EvidenceOrder.ContainsExactRequestInOrder(evidence, requestId, markers);
     }
 
     private async Task VerifyRemoteTopologyAsync(string scenarioId)

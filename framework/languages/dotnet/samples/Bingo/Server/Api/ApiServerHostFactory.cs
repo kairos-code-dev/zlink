@@ -12,11 +12,11 @@ namespace Bingo.Server.Api;
 public static class ApiServerHostFactory
 {
     public static IHost Build(
-        SampleTopology topology,
-        SampleApiNode node,
-        string nodeName,
-        string logDirectory)
+        SampleRuntimeConfiguration<SampleApiNode> configuration)
     {
+        var node = configuration.Node;
+        var nodeName = configuration.NodeName;
+        var logDirectory = configuration.LogDirectory;
         var traceLabel = $"api-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
@@ -27,8 +27,8 @@ public static class ApiServerHostFactory
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+                .SetConnectionString(configuration.RedisEndpoint)
+                .SetKeyPrefix(configuration.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))

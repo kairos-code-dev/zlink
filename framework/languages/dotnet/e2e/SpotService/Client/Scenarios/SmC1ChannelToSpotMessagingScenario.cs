@@ -1,3 +1,4 @@
+// Verifies SM-C1 Channel To Spot Messaging behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

@@ -87,7 +87,7 @@ internal static class ConsumerHostFactory
             ProfileReq request,
             IZLinkChannelClient channel) =>
         {
-            var reply = await RequestProfileWithRetryAsync(channel, request);
+            var reply = await RequestProfileAsync(channel, request);
             return Results.Ok(reply);
         });
         app.MapPost("/profile/request/timeout/{milliseconds:int}", async (
@@ -105,6 +105,27 @@ internal static class ConsumerHostFactory
             catch (TimeoutException)
             {
                 return Results.StatusCode(StatusCodes.Status408RequestTimeout);
+            }
+        });
+        app.MapPost("/profile/request/attempt/{milliseconds:int}", async (
+            int milliseconds,
+            ProfileReq request,
+            IZLinkChannelClient channel) =>
+        {
+            try
+            {
+                var reply = await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
+                    .Timeout(TimeSpan.FromMilliseconds(milliseconds))
+                    .Async<ProfileRes>();
+                return new ProfileAttemptRes(reply, null, false);
+            }
+            catch (TimeoutException)
+            {
+                return new ProfileAttemptRes(null, nameof(TimeoutException), true);
+            }
+            catch (ZLinkFrameworkException error)
+            {
+                return new ProfileAttemptRes(null, error.Kind.ToString(), error.IsRetriable);
             }
         });
         app.MapPost("/profile/request/missing", async (
@@ -139,7 +160,7 @@ internal static class ConsumerHostFactory
             try
             {
                 var channel = host.Services.GetRequiredService<IZLinkChannelClient>();
-                var reply = await RequestProfileWithRetryAsync(channel, request);
+                var reply = await RequestProfileAsync(channel, request);
                 return Results.Ok(reply);
             }
             finally
@@ -183,42 +204,12 @@ internal static class ConsumerHostFactory
         }
     }
 
-    static async Task<ProfileRes> RequestProfileWithRetryAsync(
+    static async Task<ProfileRes> RequestProfileAsync(
         IZLinkChannelClient channel,
         ProfileReq request)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                return await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
-                    .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<ProfileRes>();
-            }
-            catch (Exception ex) when (IsRetriableProfileRequestFailure(ex))
-            {
-                // A request that rode a dying connection times out inside
-                // the down window; the next attempt takes the surviving
-                // provider once reconcile drops the dead link.
-                last = ex;
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
-            }
-        }
-
-        throw new InvalidOperationException("Timed out waiting for resilience profile providers.", last);
-    }
-
-    static bool IsRetriableProfileRequestFailure(Exception ex) =>
-        ex is TimeoutException
-        || (ex is ZLinkFrameworkException framework && IsRetriableStartupFailure(framework));
-
-    static bool IsRetriableStartupFailure(ZLinkFrameworkException ex) =>
-        ex.IsRetriable
-        || ex.Kind is ZLinkFrameworkErrorKind.RouteNotConnected
-            or ZLinkFrameworkErrorKind.RequestTargetNotFound
-            or ZLinkFrameworkErrorKind.RequestProtocolError;
+        => await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
+            .Timeout(TimeSpan.FromSeconds(5))
+            .Async<ProfileRes>();
 }
 
 internal sealed record ConsumerOptions(

@@ -4,10 +4,39 @@ umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
-if [[ "$#" -eq 0 ]]; then
+E2E_START_ORDER="forward"
+ACTOR_A_RID="actor-a"
+CALLER_RID="to-actor-caller"
+SCENARIO_ARGS=()
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --start-order)
+      E2E_START_ORDER="$2"
+      shift 2
+      ;;
+    --actor-rid)
+      ACTOR_A_RID="$2"
+      shift 2
+      ;;
+    --caller-rid)
+      CALLER_RID="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      SCENARIO_ARGS+=("$@")
+      break
+      ;;
+    *)
+      SCENARIO_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+if [[ "${#SCENARIO_ARGS[@]}" -eq 0 ]]; then
   SCENARIO="all"
 else
-  SCENARIO="$*"
+  SCENARIO="${SCENARIO_ARGS[*]}"
   SCENARIO="${SCENARIO// /,}"
 fi
 RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
@@ -19,10 +48,9 @@ ACTOR_PROJECT="$ROOT_DIR/Server/Actor/ToActorMessaging.Actor.csproj"
 SESSION_PROJECT="$ROOT_DIR/Server/Session/ToActorMessaging.Session.csproj"
 CALLER_PROJECT="$ROOT_DIR/Server/Caller/ToActorMessaging.Caller.csproj"
 CLIENT_PROJECT="$ROOT_DIR/Client/ToActorMessaging.Client.csproj"
-E2E_START_ORDER="${E2E_START_ORDER:-forward}"
-LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+REDIS_READINESS_TIMEOUT_SECONDS=60
 HTTP_PROBE_TIMEOUT_SECONDS=3
 LOCAL_READINESS_ATTEMPTS="$(
   python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
@@ -186,11 +214,9 @@ zlink_redis_start_scoped_assign \
   "$LOG_DIR"
 zlink_redis_wait_ready "$REDIS_CONTAINER" "$REDIS_READINESS_TIMEOUT_SECONDS"
 REDIS_KEY_PREFIX="zlink:e2e:to-actor:$(date +%s)-$$"
-ACTOR_A_RID="${TO_ACTOR_ACTOR_RID:-actor-a}"
 ACTOR_B_RID="actor-b"
 SESSION_A_RID="session-a"
 SESSION_B_RID="session-b"
-CALLER_RID="${TO_ACTOR_CALLER_RID:-to-actor-caller}"
 NO_ROUTE_CALLER_RID="to-actor-no-route-caller"
 
 read -r \

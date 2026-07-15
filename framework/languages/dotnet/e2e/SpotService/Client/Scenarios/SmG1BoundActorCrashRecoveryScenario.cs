@@ -1,3 +1,4 @@
+// Verifies SM-G1 Bound Actor Crash Recovery behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

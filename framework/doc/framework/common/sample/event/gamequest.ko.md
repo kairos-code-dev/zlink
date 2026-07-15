@@ -478,7 +478,7 @@ SessionServer/
 
 ```text
 JoinSessionReq  { PlayerId }
-JoinSessionRes  { ActiveQuests: QuestProgress[] }     # bind 후 현재 진행
+JoinSessionRes  { PlayerId, ActiveQuests: QuestProgress[] } # bind 신원과 현재 진행
 
 KillMonsterReq  { PlayerId, MonsterId, AreaId, IdempotencyKey }
 KillMonsterRes  { EventId }                            # 같은 IdempotencyKey → 같은 EventId
@@ -554,7 +554,7 @@ sequenceDiagram
 
     C->>ES: WebSocket JoinSessionReq
     ES->>ES: session actor bind (PlayerId, location store 등록)
-    ES-->>C: JoinSessionRes(ActiveQuests)
+    ES-->>C: JoinSessionRes(PlayerId, ActiveQuests)
 
     C->>ES: KillMonsterReq
     ES->>ES: authoritative 처리 → MonsterKilled(EventId)

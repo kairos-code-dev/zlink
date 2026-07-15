@@ -1,3 +1,4 @@
+// Verifies RC-B2 Protobuf Codec behavior.
 using RegistrationCodec.Client.Support;
 using Zlink.HttpClient;
 

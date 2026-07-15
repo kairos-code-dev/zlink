@@ -35,6 +35,9 @@ internal static class WorkflowHostFactory
         {
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint).SetKeyPrefix(options.RedisKeyPrefix)));
+            var locations = framework.ConfigureLocations();
+            locations.HeartbeatInterval = TimeSpan.FromMilliseconds(options.LocationHeartbeatMs);
+            locations.OwnerLeaseTtl = TimeSpan.FromMilliseconds(options.LocationLeaseTtlMs);
             framework.ConfigureDispatch().MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);

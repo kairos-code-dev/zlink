@@ -32,21 +32,22 @@ internal sealed class PlayerMoveHandler(PlayerMovement movement)
 /// movement path — validation, zone change and transfer are identical. The only
 /// difference is that a rejection turns it around instead of being pushed to a client.
 /// </summary>
-[ZLinkSpotActorSendHandler(nameof(BotTickMsg))]
+[ZLinkSpotActorRequestHandler(nameof(BotTickReq))]
 internal sealed class PlayerBotTickHandler(PlayerMovement movement)
-    : IZLinkSpotActorSendHandler<ZoneSpot, PlayerActor, BotTickMsg>
+    : IZLinkSpotActorRequestHandler<ZoneSpot, PlayerActor, BotTickReq, BotTickRes>
 {
-    public ValueTask HandleAsync(
+    public async ValueTask<BotTickRes> HandleAsync(
         ZoneSpot spot,
         PlayerActor actor,
-        ZLinkSpotActorSendContext context,
-        BotTickMsg message,
+        ZLinkSpotActorRequestContext context,
+        BotTickReq request,
         CancellationToken cancellationToken)
     {
-        if (!actor.IsBot) return ValueTask.CompletedTask;
+        if (!actor.IsBot) return new BotTickRes();
 
         var target = BotPatrolPolicy.NextStep(actor.Position, actor.DirX, actor.DirY);
-        return movement.MoveAsync(spot, actor, target.X, target.Y, cancellationToken);
+        await movement.MoveAsync(spot, actor, target.X, target.Y, cancellationToken);
+        return new BotTickRes();
     }
 }
 

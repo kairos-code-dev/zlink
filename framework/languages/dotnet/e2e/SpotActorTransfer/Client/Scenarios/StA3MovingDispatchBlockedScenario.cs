@@ -1,3 +1,4 @@
+// Verifies ST-A3 Moving Dispatch Blocked behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

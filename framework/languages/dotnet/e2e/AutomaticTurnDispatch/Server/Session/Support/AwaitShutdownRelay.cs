@@ -15,10 +15,9 @@ internal sealed partial class AwaitSession
         AwaitShutdownScenarioReq request,
         CancellationToken cancellationToken)
     {
-        await RequestPlayControlWithRetryAsync<EnsureSpotRes>(
+        await RequestPlayControlAsync<EnsureSpotRes>(
             routes,
             new EnsureSpotReq(request.SpotRid),
-            "EnsureSpotReq",
             cancellationToken);
         var address = await spots.ResolveSpotHandleAsync(
                           RoutingId.From(request.SpotRid), cancellationToken)
@@ -32,10 +31,9 @@ internal sealed partial class AwaitSession
             .Timeout(TimeSpan.FromSeconds(10))
             .Async<AutomaticTurnDispatchRes>(cancellationToken);
 
-        var evidence = await RequestPlayControlWithRetryAsync<AwaitEvidenceRes>(
+        var evidence = await RequestPlayControlAsync<AwaitEvidenceRes>(
             routes,
             new AwaitEvidenceReq(request.RequestId),
-            "AwaitEvidenceReq",
             cancellationToken);
         return new AwaitShutdownScenarioRes("await.e3-shutdown-unexpected-completion", request.SpotRid, evidence.Evidence);
     }
@@ -46,28 +44,24 @@ internal sealed partial class AwaitSession
         AwaitShutdownRecoveryReq request,
         CancellationToken cancellationToken)
     {
-        await RequestPlayControlWithRetryAsync<EnsureSpotRes>(
+        await RequestPlayControlAsync<EnsureSpotRes>(
             routes,
             new EnsureSpotReq(request.SpotRid),
-            "EnsureSpotReq",
             cancellationToken);
-        await RequestSpotWithRetryAsync<AutomaticTurnDispatchRes>(
+        await RequestSpotAsync<AutomaticTurnDispatchRes>(
             routes,
             spots,
             request.SpotRid,
             new ProbeReq(request.RequestId, "shutdown-recovery-probe"),
-            "ProbeReq",
             cancellationToken);
-        await RequestPlayControlWithRetryAsync<AwaitEvidenceRes>(
+        await RequestPlayControlAsync<AwaitEvidenceRes>(
             routes,
             new AwaitEvidenceWaitReq(request.RequestId, "probe-completed"),
-            "AwaitEvidenceWaitReq",
             cancellationToken);
 
-        var evidence = await RequestPlayControlWithRetryAsync<AwaitEvidenceRes>(
+        var evidence = await RequestPlayControlAsync<AwaitEvidenceRes>(
             routes,
             new AwaitEvidenceReq(request.RequestId),
-            "AwaitEvidenceReq",
             cancellationToken);
         ZlinkStreamAssert.Ensure(
             evidence.Evidence.Any(line =>

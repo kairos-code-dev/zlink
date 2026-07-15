@@ -1,3 +1,4 @@
+// Verifies SM-F3 Mixed Route And Spot Egress behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

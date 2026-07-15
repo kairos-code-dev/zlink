@@ -132,15 +132,15 @@ internal sealed record ServerOptions(
     string Rid,
     string HttpUrl,
     string LogDir,
-    string? RedisEndpoint,
-    string? RedisKeyPrefix,
-    string? ChannelEndpoint,
-    string? EvidenceFile,
     int Weight,
     int LocationHeartbeatMs,
     int LocationLeaseTtlMs,
     int LocationPollingMs,
-    int LocationGraceMs)
+    int LocationGraceMs,
+    string? RedisEndpoint = null,
+    string? RedisKeyPrefix = null,
+    string? ChannelEndpoint = null,
+    string? EvidenceFile = null)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)
         => E2eConfiguration.Load<ServerOptions>(args) with { Role = defaultRole };

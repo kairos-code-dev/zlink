@@ -1,3 +1,4 @@
+// Verifies SM-D7 Stream Authentication Dispatch behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

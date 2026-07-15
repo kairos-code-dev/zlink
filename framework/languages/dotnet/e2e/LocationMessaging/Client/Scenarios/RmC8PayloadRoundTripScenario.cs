@@ -1,3 +1,4 @@
+// Verifies RM-C8 Payload Round Trip behavior.
 using System.Security.Cryptography;
 using System.Text;
 using LocationMessaging.Client.Support;
@@ -15,8 +16,8 @@ internal static class RmC8PayloadRoundTripScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        var beforeA = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
-        var beforeB = providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
+        var beforeA = (await providerA.Get("/evidence").Async<string[]>()).Body;
+        var beforeB = (await providerB.Get("/evidence").Async<string[]>()).Body;
         var markers = new List<string>();
         foreach (var size in new[] { 1, 4096, 256 * 1024, 1024 * 1024 })
         {
@@ -43,12 +44,12 @@ internal static class RmC8PayloadRoundTripScenario
             .Async<ProfileRes>()).Body;
         ZlinkStreamAssert.Ensure(followUp.Value == "profile:rm-c8-after", "RM-C8 follow-up request failed.");
 
-        var afterA = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
-        var afterB = providerB.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
+        var afterA = (await providerA.Get("/evidence").Async<string[]>()).Body;
+        var afterB = (await providerB.Get("/evidence").Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
             markers.All(marker =>
-                ScenarioAssert.CountNewEvidence(afterA, beforeA, "payload-request|rid=api-a", marker)
-                + ScenarioAssert.CountNewEvidence(afterB, beforeB, "payload-request|rid=api-b", marker) == 1),
+                EvidenceDelta.CountMatching(afterA, beforeA, "payload-request|rid=api-a", marker)
+                + EvidenceDelta.CountMatching(afterB, beforeB, "payload-request|rid=api-b", marker) == 1),
             "RM-C8 payload evidence missing.");
     }
 

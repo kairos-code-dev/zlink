@@ -2,77 +2,56 @@ using Microsoft.Extensions.Configuration;
 
 namespace Bingo.Server.Configuration;
 
-public sealed record SampleTopology(
-    SampleApiNode ApiA,
-    SampleApiNode ApiB,
-    SamplePlayNode PlayA,
-    SamplePlayNode PlayB,
-    SampleSessionNode SessionA,
-    SampleSessionNode SessionB,
-    string RedisEndpoint,
-    string RedisKeyPrefix)
+public static class SampleConfigurationLoader
 {
-    public static SampleRuntimeConfiguration Load(string[] args)
+    public static SampleRuntimeConfiguration<SampleApiNode> LoadApi(string[] args)
+    {
+        var settings = Load(args);
+        settings.ValidateCommon();
+        return settings.ToRuntime(new SampleApiNode(
+            settings.Require(nameof(settings.ChannelEndpoint), settings.ChannelEndpoint)));
+    }
+
+    public static SampleRuntimeConfiguration<SamplePlayNode> LoadPlay(string[] args)
+    {
+        var settings = Load(args);
+        settings.ValidateCommon();
+        return settings.ToRuntime(new SamplePlayNode(
+            settings.Require(nameof(settings.ChannelEndpoint), settings.ChannelEndpoint),
+            settings.Require(nameof(settings.SpotEndpoint), settings.SpotEndpoint),
+            settings.Require(nameof(settings.SpotRouterEndpoint), settings.SpotRouterEndpoint)));
+    }
+
+    public static SampleRuntimeConfiguration<SampleSessionNode> LoadSession(string[] args)
+    {
+        var settings = Load(args);
+        settings.ValidateCommon();
+        return settings.ToRuntime(new SampleSessionNode(
+            settings.Require(nameof(settings.SpotEndpoint), settings.SpotEndpoint),
+            settings.Require(nameof(settings.SpotRouterEndpoint), settings.SpotRouterEndpoint),
+            settings.Require(nameof(settings.StreamEndpoint), settings.StreamEndpoint)));
+    }
+
+    private static SampleConfiguration Load(string[] args)
     {
         if (args.Length != 2 || args[0] != "--config")
             throw new ArgumentException("Usage: --config PATH");
 
-        var settings = new ConfigurationBuilder()
-                           .AddJsonFile(Path.GetFullPath(args[1]), optional: false, reloadOnChange: false)
-                           .Build()
-                           .GetRequiredSection("Sample")
-                           .Get<SampleConfiguration>()
-                       ?? throw new InvalidOperationException("Bingo Sample configuration is empty.");
-        settings.Validate();
-
-        var playA = new SamplePlayNode(
-            settings.PlayAChannelEndpoint,
-            settings.PlayASpotEndpoint,
-            settings.PlayASpotRouterEndpoint);
-        var playB = new SamplePlayNode(
-            settings.PlayBChannelEndpoint,
-            settings.PlayBSpotEndpoint,
-            settings.PlayBSpotRouterEndpoint);
-
-        var topology = new SampleTopology(
-            new SampleApiNode(settings.ApiAChannelEndpoint),
-            new SampleApiNode(settings.ApiBChannelEndpoint),
-            playA,
-            playB,
-            new SampleSessionNode(
-                settings.SessionASpotEndpoint,
-                settings.SessionARouterEndpoint,
-                settings.SessionAStreamEndpoint),
-            new SampleSessionNode(
-                settings.SessionBSpotEndpoint,
-                settings.SessionBRouterEndpoint,
-                settings.SessionBStreamEndpoint),
-            settings.RedisEndpoint,
-            settings.RedisKeyPrefix);
-        return new SampleRuntimeConfiguration(topology, settings.NodeName, settings.LogDirectory);
+        return new ConfigurationBuilder()
+                   .AddJsonFile(Path.GetFullPath(args[1]), optional: false, reloadOnChange: false)
+                   .Build()
+                   .GetRequiredSection("Sample")
+                   .Get<SampleConfiguration>()
+               ?? throw new InvalidOperationException("Bingo Sample configuration is empty.");
     }
-
-    public SampleApiNode Api(string nodeName)
-    {
-        return string.Equals(nodeName, "b", StringComparison.OrdinalIgnoreCase) ? ApiB : ApiA;
-    }
-
-    public SamplePlayNode Play(string nodeName)
-    {
-        return string.Equals(nodeName, "b", StringComparison.OrdinalIgnoreCase) ? PlayB : PlayA;
-    }
-
-    public SampleSessionNode Session(string nodeName)
-    {
-        return string.Equals(nodeName, "b", StringComparison.OrdinalIgnoreCase) ? SessionB : SessionA;
-    }
-
 }
 
-public sealed record SampleRuntimeConfiguration(
-    SampleTopology Topology,
+public sealed record SampleRuntimeConfiguration<TNode>(
+    TNode Node,
     string NodeName,
-    string LogDirectory);
+    string LogDirectory,
+    string RedisEndpoint,
+    string RedisKeyPrefix);
 
 public sealed class SampleConfiguration
 {
@@ -80,46 +59,36 @@ public sealed class SampleConfiguration
     public string LogDirectory { get; init; } = "";
     public string RedisEndpoint { get; init; } = "";
     public string RedisKeyPrefix { get; init; } = "";
-    public string ApiAChannelEndpoint { get; init; } = "";
-    public string ApiBChannelEndpoint { get; init; } = "";
-    public string PlayAChannelEndpoint { get; init; } = "";
-    public string PlayBChannelEndpoint { get; init; } = "";
-    public string PlayASpotEndpoint { get; init; } = "";
-    public string PlayBSpotEndpoint { get; init; } = "";
-    public string PlayASpotRouterEndpoint { get; init; } = "";
-    public string PlayBSpotRouterEndpoint { get; init; } = "";
-    public string SessionASpotEndpoint { get; init; } = "";
-    public string SessionBSpotEndpoint { get; init; } = "";
-    public string SessionARouterEndpoint { get; init; } = "";
-    public string SessionBRouterEndpoint { get; init; } = "";
-    public string SessionAStreamEndpoint { get; init; } = "";
-    public string SessionBStreamEndpoint { get; init; } = "";
+    public string ChannelEndpoint { get; init; } = "";
+    public string SpotEndpoint { get; init; } = "";
+    public string SpotRouterEndpoint { get; init; } = "";
+    public string StreamEndpoint { get; init; } = "";
 
-    public void Validate()
+    public void ValidateCommon()
     {
-        foreach (var (name, value) in new Dictionary<string, string>
-                 {
-                     [nameof(NodeName)] = NodeName,
-                     [nameof(LogDirectory)] = LogDirectory,
-                     [nameof(RedisEndpoint)] = RedisEndpoint,
-                     [nameof(RedisKeyPrefix)] = RedisKeyPrefix,
-                     [nameof(ApiAChannelEndpoint)] = ApiAChannelEndpoint,
-                     [nameof(ApiBChannelEndpoint)] = ApiBChannelEndpoint,
-                     [nameof(PlayAChannelEndpoint)] = PlayAChannelEndpoint,
-                     [nameof(PlayBChannelEndpoint)] = PlayBChannelEndpoint,
-                     [nameof(PlayASpotEndpoint)] = PlayASpotEndpoint,
-                     [nameof(PlayBSpotEndpoint)] = PlayBSpotEndpoint,
-                     [nameof(PlayASpotRouterEndpoint)] = PlayASpotRouterEndpoint,
-                     [nameof(PlayBSpotRouterEndpoint)] = PlayBSpotRouterEndpoint,
-                     [nameof(SessionASpotEndpoint)] = SessionASpotEndpoint,
-                     [nameof(SessionBSpotEndpoint)] = SessionBSpotEndpoint,
-                     [nameof(SessionARouterEndpoint)] = SessionARouterEndpoint,
-                     [nameof(SessionBRouterEndpoint)] = SessionBRouterEndpoint,
-                     [nameof(SessionAStreamEndpoint)] = SessionAStreamEndpoint,
-                     [nameof(SessionBStreamEndpoint)] = SessionBStreamEndpoint
-                 })
-            if (string.IsNullOrWhiteSpace(value))
-                throw new InvalidOperationException($"Bingo Sample.{name} is required.");
+        Require(nameof(NodeName), NodeName);
+        Require(nameof(LogDirectory), LogDirectory);
+        Require(nameof(RedisEndpoint), RedisEndpoint);
+        Require(nameof(RedisKeyPrefix), RedisKeyPrefix);
+        if (NodeName is not ("a" or "b"))
+            throw new InvalidOperationException("Bingo Sample.NodeName must be 'a' or 'b'.");
+    }
+
+    public string Require(string name, string value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? throw new InvalidOperationException($"Bingo Sample.{name} is required.")
+            : value;
+    }
+
+    public SampleRuntimeConfiguration<TNode> ToRuntime<TNode>(TNode node)
+    {
+        return new SampleRuntimeConfiguration<TNode>(
+            node,
+            NodeName,
+            LogDirectory,
+            RedisEndpoint,
+            RedisKeyPrefix);
     }
 }
 

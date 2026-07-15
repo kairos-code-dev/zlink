@@ -1,3 +1,4 @@
+// Verifies OBS-C3 Spot Drain Policies behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 

@@ -9,7 +9,7 @@ internal sealed class JoinQuestSessionUseCase(IQuestSessionStore sessions)
         CancellationToken cancellationToken)
     {
         var projection = await sessions.ReadProjectionAsync(playerId, cancellationToken);
-        return new JoinSessionRes(projection);
+        return new JoinSessionRes(playerId, projection);
     }
 }
 

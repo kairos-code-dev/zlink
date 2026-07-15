@@ -1,3 +1,4 @@
+// Verifies RL-B5 Drain Inflight behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

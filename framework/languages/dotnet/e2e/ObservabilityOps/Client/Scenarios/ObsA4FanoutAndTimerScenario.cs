@@ -1,3 +1,4 @@
+// Verifies OBS-A4 Fanout And Timer behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 

@@ -6,15 +6,15 @@ internal sealed record ServerOptions(
     string Role,
     string HttpUrl,
     string LogDir,
-    string? EvidenceFile,
     string Rid,
-    string? RedisEndpoint,
-    string? RedisKeyPrefix,
-    string? ChannelEndpoint,
-    string? ManualClientEndpoint,
-    string? RouteEndpoint,
     int Weight,
     long MaxMessageSize,
+    string? EvidenceFile = null,
+    string? RedisEndpoint = null,
+    string? RedisKeyPrefix = null,
+    string? ChannelEndpoint = null,
+    string? ManualClientEndpoint = null,
+    string? RouteEndpoint = null,
     IReadOnlyList<string>? RoutePeers = null)
 {
     public static ServerOptions Parse(string[] args, string defaultRole)

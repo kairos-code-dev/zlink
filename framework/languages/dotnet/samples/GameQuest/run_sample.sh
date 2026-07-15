@@ -4,7 +4,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../redis-common.sh"
-RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
+RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"
 SAMPLE_LOG_DIR="${RUN_DIR}/sample-logs"
@@ -45,8 +45,8 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
-  if [[ "${RUN_SUCCEEDED}" == "1" && "${GAMEQUEST_KEEP_RUN_DIR:-}" != "1" ]]; then
-    [[ -z "${SAMPLE_RUN_DIR:-}" ]] && rm -rf "${RUN_DIR}" || true
+  if [[ "${RUN_SUCCEEDED}" == "1" ]]; then
+    rm -rf "${RUN_DIR}"
   else
     echo "runDir=${RUN_DIR}"
   fi
@@ -206,9 +206,45 @@ settings = {
     "GameApiBSpotEndpoint": "${GAMEQUEST_GAMEAPI_B_SPOT_ENDPOINT}",
     "GameApiBSpotRouterEndpoint": "${GAMEQUEST_GAMEAPI_B_SPOT_ROUTER_ENDPOINT}",
 }
-for path, instance_name in zip(sys.argv[1:], ["mission-a", "mission-b", "api-a", "api-b", "client"]):
+common = {
+    "LogDirectory": settings["LogDirectory"],
+    "RedisEndpoint": settings["RedisEndpoint"],
+    "RedisKeyPrefix": settings["RedisKeyPrefix"],
+}
+roles = [
+    {**common, "InstanceName": "mission-a", "GameApiAHttpBaseUrl": settings["GameApiAHttpBaseUrl"],
+     "MissionAHttpBaseUrl": settings["MissionAHttpBaseUrl"],
+     "MissionAChannelEndpoint": settings["MissionAChannelEndpoint"],
+     "MissionASpotEndpoint": settings["MissionASpotEndpoint"],
+     "MissionASpotRouterEndpoint": settings["MissionASpotRouterEndpoint"]},
+    {**common, "InstanceName": "mission-b", "GameApiAHttpBaseUrl": settings["GameApiAHttpBaseUrl"],
+     "MissionBHttpBaseUrl": settings["MissionBHttpBaseUrl"],
+     "MissionBChannelEndpoint": settings["MissionBChannelEndpoint"],
+     "MissionBSpotEndpoint": settings["MissionBSpotEndpoint"],
+     "MissionBSpotRouterEndpoint": settings["MissionBSpotRouterEndpoint"]},
+    {**common, "InstanceName": "api-a", "GameApiAHttpBaseUrl": settings["GameApiAHttpBaseUrl"],
+     "GameApiAStreamBindEndpoint": settings["GameApiAStreamBindEndpoint"],
+     "GameApiAChannelEndpoint": settings["GameApiAChannelEndpoint"],
+     "GameApiASpotEndpoint": settings["GameApiASpotEndpoint"],
+     "GameApiASpotRouterEndpoint": settings["GameApiASpotRouterEndpoint"]},
+    {**common, "InstanceName": "api-b", "GameApiBHttpBaseUrl": settings["GameApiBHttpBaseUrl"],
+     "GameApiBStreamBindEndpoint": settings["GameApiBStreamBindEndpoint"],
+     "GameApiBChannelEndpoint": settings["GameApiBChannelEndpoint"],
+     "GameApiBSpotEndpoint": settings["GameApiBSpotEndpoint"],
+     "GameApiBSpotRouterEndpoint": settings["GameApiBSpotRouterEndpoint"]},
+]
+for path, role in zip(sys.argv[1:-1], roles):
     with open(path, "w", encoding="utf-8") as output:
-        json.dump({"Sample": {**settings, "InstanceName": instance_name}}, output, indent=2)
+        json.dump({"Sample": role}, output, indent=2)
+with open(sys.argv[-1], "w", encoding="utf-8") as output:
+    json.dump({"Client": {
+        "GameApiAHttpBaseUrl": "${GAMEQUEST_GAMEAPI_A_HTTP_BASE_URL}",
+        "GameApiBHttpBaseUrl": "${GAMEQUEST_GAMEAPI_B_HTTP_BASE_URL}",
+        "MissionAHttpBaseUrl": "${GAMEQUEST_MISSION_A_HTTP_URL}",
+        "MissionBHttpBaseUrl": "${GAMEQUEST_MISSION_B_HTTP_URL}",
+        "GameApiAStreamEndpoint": "${GAMEQUEST_GAMEAPI_A_STREAM_ENDPOINT}",
+        "GameApiBStreamEndpoint": "${GAMEQUEST_GAMEAPI_B_STREAM_ENDPOINT}",
+    }}, output, indent=2)
 PY
 
 start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj" --config "${MISSION_A_CONFIG_FILE}"

@@ -6,7 +6,7 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var configuration = SampleTopology.Load(args);
+        var configuration = SampleTopology.LoadWorkflow(args);
         var instance = configuration.Topology.ForWorkflowInstance(configuration.InstanceId);
         await using var app = OrderWorkflowServerHostFactory.Build(
             configuration.Topology,

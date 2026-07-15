@@ -1,3 +1,4 @@
+// Verifies RC-A2 Attribute Registration behavior.
 using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;

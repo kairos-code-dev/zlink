@@ -31,7 +31,7 @@ default 헤더 + 요청별 override · Basic/Bearer 주입.
 `maxResponseBodySize` 강제.
 
 **redirect**: 303 POST→GET rewrite · same-origin `Authorization` 보존 ·
-cross-origin 제거 · 한도 초과 · (cpp) 상대/절대 Location.
+cross-origin 제거 · 한도 초과 · 상대/절대 Location.
 
 **retry/timeout**: 전송 실패 후 재시도 성공 · 재시도 소진 · timeout →
 retriable · streaming 재시도 제외.

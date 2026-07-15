@@ -25,38 +25,68 @@ using var sessionA = ZLinkHttpClient.Create(options.SessionAUrl)
 
 await (options.OperationGroup switch
 {
-    "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, options.SessionAStreamEndpoint),
+    "sm-a1" => SmA1EntrySpotRequestScenario.RunAsync(playA),
+    "sm-a2" => SmA2UserSpotStateMutationScenario.RunAsync(playA),
+    "sm-a3" => SmA3SpecificSpotOwnerRoutingScenario.RunAsync(playA, playB),
+    "sm-a4" => SmA4OwnerRoutingScenario.RunAsync(playA),
+    "sm-a5" => SmA5ScenarioStageLifecycleScenario.RunAsync(playA),
+    "sm-a6" => SmA6SpotInitializeCloseLifecycleScenario.RunAsync(playA),
+    "sm-a7" => SmA7SpotTypeMismatchScenario.RunAsync(playA),
+    "sm-a8" => SmA8WorkerOffloadScenario.RunAsync(playA),
+    "sm-b1" => SmB1LocalActorJoinScenario.RunAsync(playA, options.SessionAStreamEndpoint),
+    "sm-b2" => SmB2RemoteActorJoinScenario.RunAsync(playB, options.SessionAStreamEndpoint),
+    "sm-b3" => SmB3RequestMessageFidelityScenario.RunAsync(playA, options.SessionAStreamEndpoint),
+    "sm-b4" => SmB4RemoteActorRequestReplyScenario.RunAsync(playB, options.SessionAStreamEndpoint),
+    "sm-b5" => SmB5MissingActorPacketScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b6" => SmB6ActorDisconnectCallbackScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
+    "sm-b7" => SmB7ActorLifecycleOrderScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b8" => SmB8ExplicitActorDestroyScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-b9" => SmB9ActorJoinAdmissionScenario.RunAsync(playA, playB, options.SessionAStreamEndpoint),
-    "sm-d1-d6" => RunD1D2D6Async(sessionA, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-c1" => SmC1ChannelToSpotMessagingScenario.RunAsync(playA),
+    "sm-c2" => SmC2SpotToChannelMessagingScenario.RunAsync(playA),
+    "sm-c3" => SmC3SpotMeshMessagingScenario.RunAsync(playA),
+    "sm-c4" => SmC4SpotPublisherClientScenario.RunAsync(playA, gateway),
+    "sm-c5" => SmC5RemoteSpotPublishSubscribeScenario.RunAsync(playA, playB),
+    "sm-d1" => SmD1LocalActorSessionRelayScenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
+    "sm-d2" => SmD2RemoteActorSessionRelayScenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
     "sm-d3" => SmD3EntryAndUserSpotSessionRelayScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d4" => SmD4MultipleActorBindingScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d5" => SmD5ExplicitDisconnectNotificationScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
+    "sm-d6" => SmD6BoundSessionPushTargetingScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-d7" => SmD7StreamAuthenticationDispatchScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d8" => SmD8StreamReconnectRecoveryScenario.RunAsync(options.SessionAStreamEndpoint),
-    "sm-d9-d11-d13" => RunD9D11D13Async(sessionA, options.SessionAStreamEndpoint),
+    "sm-d9" => SmD9StreamInboundObserverScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d10" => SmD10BoundedSessionBackpressureScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-d11" => SmD11StreamAndRouteRequestScenario.RunAsync(sessionA, options.SessionAStreamEndpoint),
     "sm-d12" => SmD12SessionReconnectMigrationScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-d13" => SmD13HeartbeatRequestScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d14" => SmD14TlsStreamValidationScenario.RunAsync(options.SessionATlsStreamEndpoint),
     "sm-d15" => SmD15GatewayActorSessionPushScenario.RunAsync(playA, gateway, options.SessionAStreamEndpoint),
-    "sm-c1-c2" => RunC1C2Async(playA),
-    "sm-c3" => SmC3SpotMeshMessagingScenario.RunAsync(playA),
-    "sm-c5" => SmC5RemoteSpotPublishSubscribeScenario.RunAsync(playA, playB),
+    "sm-e1" => SmE1MissingSpotRouteScenario.RunAsync(playA),
+    "sm-e2" => SmE2SpotTimerTickScenario.RunAsync(playA),
+    "sm-e3" => SmE3IdleTimerSpotCloseScenario.RunAsync(playA),
+    "sm-e4" => SmE4TimerOverrunPolicyScenario.RunAsync(playA),
+    "sm-f1" => SmF1ClientServerChannelToSpotScenario.RunAsync(playA),
+    "sm-f2" => SmF2RouteMeshChannelToSpotScenario.RunAsync(playA),
+    "sm-f3" => RunF3Async(playA, gateway),
+    "sm-f4" => SmF4MissingTargetSpotRouteScenario.RunAsync(playA),
+    "sm-f5" => SmF5ClosedSpotRouteIsolationScenario.RunAsync(playA, gateway),
+    "sm-f6" => SmF6RemoteSpotOutboundScenario.RunAsync(multiA, multiB),
+    "sm-g1" => SmG1BoundActorCrashRecoveryScenario.RunAsync(options.PlayAUrl, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-g2" => SmG2OwnerSpotRemapScenario.RunAsync(playA, playB),
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),
-    "sm-g1" => SmG1BoundActorCrashRecoveryScenario.RunAsync(options.PlayAUrl, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, options.SessionAStreamEndpoint),
+    "sm-d1-d6" => RunD1D2D6Async(sessionA, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-d9-d11-d13" => RunD9D11D13Async(sessionA, options.SessionAStreamEndpoint),
+    "sm-c1-c2" => RunC1C2Async(playA),
     "sm-q9" => MultiNodeSpotRoutingProbe.RunAsync(multiA, multiB),
-    "sm-f6" => SmF6RemoteSpotOutboundScenario.RunAsync(multiA, multiB),
     "sm-f3-f5" => RunF3F5Async(playA, gateway),
     "sm-e1-f4" => RunE1F4Async(playA),
     "sm-e2-e3" => RunE2E3Async(playA),
     "sm-a7-a8-c4" => RunA7A8C4Async(playA, gateway),
     "sm-a3-a6-b4-b7" => RunA3A6B4B7Async(playA, playB, options.SessionAStreamEndpoint),
-    "sm-a5" => SmA5ScenarioStageLifecycleScenario.RunAsync(playA),
     "sm-a1-a2-a4-f1-f2" => RunA1A2A4F1F2Async(playA),
-    "sm-e4" => SmE4TimerOverrunPolicyScenario.RunAsync(playA),
     _ => throw new InvalidOperationException($"Unsupported SpotService operation group '{options.OperationGroup}'.")
 });
 
@@ -64,12 +94,11 @@ Console.WriteLine($"spot-service client operation_group={options.OperationGroup}
 
 static async Task RunA1A2A4F1F2Async(ZLinkHttpClient playA)
 {
-    var context = new SpotLifecycleOrderContext();
-    await SmA1EntrySpotRequestScenario.RunAsync(playA, context);
-    await SmA4OwnerRoutingScenario.RunAsync(playA, context);
-    await SmF1ClientServerChannelToSpotScenario.RunAsync(playA, context);
-    await SmF2RouteMeshChannelToSpotScenario.RunAsync(playA, context);
-    await SmA2UserSpotStateMutationScenario.RunAsync(playA, context);
+    await SmA1EntrySpotRequestScenario.RunAsync(playA);
+    await SmA4OwnerRoutingScenario.RunAsync(playA);
+    await SmF1ClientServerChannelToSpotScenario.RunAsync(playA);
+    await SmF2RouteMeshChannelToSpotScenario.RunAsync(playA);
+    await SmA2UserSpotStateMutationScenario.RunAsync(playA);
 }
 
 static async Task RunA3A6B4B7Async(
@@ -138,6 +167,11 @@ static async Task RunD9D11D13Async(ZLinkHttpClient sessionA, string sessionAStre
 
 static async Task RunF3F5Async(ZLinkHttpClient playA, ZLinkHttpClient gateway)
 {
-    var spotRid = await SmF3MixedRouteAndSpotEgressScenario.RunAsync(playA, gateway);
-    await SmF5ClosedSpotRouteIsolationScenario.RunAsync(playA, gateway, spotRid);
+    await SmF3MixedRouteAndSpotEgressScenario.RunAsync(playA, gateway);
+    await SmF5ClosedSpotRouteIsolationScenario.RunAsync(playA, gateway);
+}
+
+static async Task RunF3Async(ZLinkHttpClient playA, ZLinkHttpClient gateway)
+{
+    await SmF3MixedRouteAndSpotEgressScenario.RunAsync(playA, gateway);
 }

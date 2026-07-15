@@ -1,3 +1,4 @@
+// Verifies RM-C7 Weighted Provider behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -59,8 +60,8 @@ internal static class RmC7WeightedProviderScenario
         var afterB = await WaitEvidenceAsync(providerBClient, apiBValues[^1]);
         var counts = new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            ["apiA"] = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", marker),
-            ["apiB"] = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", marker)
+            ["apiA"] = EvidenceDelta.CountMatching(afterA, beforeA, "profile-request|rid=api-a", marker),
+            ["apiB"] = EvidenceDelta.CountMatching(afterB, beforeB, "profile-request|rid=api-b", marker)
         };
         ZlinkStreamAssert.Ensure(
             counts["apiA"] == apiAValues.Length

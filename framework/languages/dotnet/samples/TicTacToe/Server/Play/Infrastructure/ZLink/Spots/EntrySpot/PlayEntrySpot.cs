@@ -1,4 +1,6 @@
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
+using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.EntrySpot.Handlers;
+using TicTacToe.Server.Configuration;
 using TicTacToe.Shared.Contracts;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
@@ -12,6 +14,13 @@ internal sealed class PlayEntrySpot(
     private readonly MilestoneObserverRegistry _milestoneObservers = new();
 
     public IZLinkEntrySpotContext Context { get; } = context;
+
+    public void Configure()
+    {
+        Context.Handlers.AddActorPacket<PlayActorJoinGameHandler, PlayActor>();
+        Context.Handlers.AddActorPacket<PlayActorObserveMilestoneHandler, PlayActor>();
+        Context.Handlers.AddSubscribe<PlayerWinMilestoneEventHandler>(SampleTopics.PlayerMilestone);
+    }
 
     public ValueTask OnCreateActorAsync(
         PlayActor actor,

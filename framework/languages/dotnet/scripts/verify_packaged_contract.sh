@@ -29,6 +29,7 @@ fi
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 PROJECTS=(
+  src/Zlink.Framework.Contracts/Zlink.Framework.Contracts.csproj
   src/Zlink.Framework/Zlink.Framework.csproj
   src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj
   src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj
@@ -38,6 +39,7 @@ PROJECTS=(
   src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj
 )
 PACKAGE_IDS=(
+  Zlink.Framework.Contracts
   Zlink.Framework
   Zlink.Framework.AspNetCore
   Zlink.Framework.Codecs.MessagePack
@@ -157,15 +159,26 @@ dotnet run --project "$INSPECTOR_DIR/PackageInspector.csproj" \
   "$VERSION" "$WORK_DIR/package-snapshots" "$PACKAGE_DIR"/*.nupkg
 
 framework_snapshot="$WORK_DIR/package-snapshots/Zlink.Framework.package.txt"
+contracts_snapshot="$WORK_DIR/package-snapshots/Zlink.Framework.Contracts.package.txt"
 http_client_snapshot="$WORK_DIR/package-snapshots/Zlink.HttpClient.package.txt"
 exact_connector_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]"
-exact_http_framework_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework version={VERSION}"
+exact_contracts_connector_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Systems.Zlink.Stream.Connector version=[{VERSION}]"
+exact_framework_contracts_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Contracts version=[{VERSION}]"
+exact_http_contracts_dependency="dependency targetFramework=net8.0 exclude=Build,Analyzers id=Zlink.Framework.Contracts version={VERSION}"
 grep -Fxq "$exact_connector_dependency" "$framework_snapshot" || {
   echo "Zlink.Framework must pin the connector package to the exact framework package version." >&2
   exit 1
 }
-grep -Fxq "$exact_http_framework_dependency" "$http_client_snapshot" || {
-  echo "Zlink.HttpClient must declare its Zlink.Framework package dependency." >&2
+grep -Fxq "$exact_contracts_connector_dependency" "$contracts_snapshot" || {
+  echo "Zlink.Framework.Contracts must pin the connector package to the exact contracts package version." >&2
+  exit 1
+}
+grep -Fxq "$exact_framework_contracts_dependency" "$framework_snapshot" || {
+  echo "Zlink.Framework must pin the contracts package to the exact framework package version." >&2
+  exit 1
+}
+grep -Fxq "$exact_http_contracts_dependency" "$http_client_snapshot" || {
+  echo "Zlink.HttpClient must declare its Zlink.Framework.Contracts package dependency." >&2
   exit 1
 }
 
@@ -196,6 +209,7 @@ cat >"$CONSUMER_DIR/NuGet.Config" <<EOF
   <packageSourceMapping>
     <packageSource key="contract">
       <package pattern="Zlink.Framework" />
+      <package pattern="Zlink.Framework.Contracts" />
       <package pattern="Zlink.Framework.AspNetCore" />
       <package pattern="Zlink.Framework.Codecs.MessagePack" />
       <package pattern="Zlink.Framework.Codecs.Protobuf" />
@@ -233,6 +247,7 @@ cat >"$SOURCE_CONSUMER_DIR/SourceConsumer.csproj" <<EOF
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework/Zlink.Framework.csproj" />
+    <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework.Contracts/Zlink.Framework.Contracts.csproj" />
     <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework.AspNetCore/Zlink.Framework.AspNetCore.csproj" />
     <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework.Codecs.MessagePack/Zlink.Framework.Codecs.MessagePack.csproj" />
     <ProjectReference Include="$DOTNET_ROOT/src/Zlink.Framework.Codecs.Protobuf/Zlink.Framework.Codecs.Protobuf.csproj" />
@@ -255,6 +270,7 @@ using Zlink.HttpClient;
 var assemblies = new[]
 {
     typeof(IZLinkRequestCall).Assembly,
+    typeof(Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload).Assembly,
     typeof(ServiceCollectionExtensions).Assembly,
     typeof(ZLinkMessagePackCodec).Assembly,
     typeof(ZLinkProtobufCodec).Assembly,
@@ -275,6 +291,7 @@ cat >"$CONSUMER_DIR/Consumer.csproj" <<EOF
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Zlink.Framework" Version="$VERSION" />
+    <PackageReference Include="Zlink.Framework.Contracts" Version="$VERSION" />
     <PackageReference Include="Zlink.Framework.AspNetCore" Version="$VERSION" />
     <PackageReference Include="Zlink.Framework.Codecs.MessagePack" Version="$VERSION" />
     <PackageReference Include="Zlink.Framework.Codecs.Protobuf" Version="$VERSION" />
@@ -341,6 +358,7 @@ if (!typeof(SpotHandle).IsAbstract
 var packagedAssemblies = new[]
 {
     typeof(IZLinkRequestCall).Assembly,
+    typeof(Zlink.Framework.Contracts.Codecs.ZLinkEncodedPayload).Assembly,
     typeof(ServiceCollectionExtensions).Assembly,
     typeof(ZLinkMessagePackCodec).Assembly,
     typeof(ZLinkProtobufCodec).Assembly,
@@ -348,7 +366,7 @@ var packagedAssemblies = new[]
     typeof(ZLinkHttpClient).Assembly,
     typeof(IZlinkStreamConnector).Assembly
 };
-if (packagedAssemblies.Select(static item => item.GetName().Name).Distinct(StringComparer.Ordinal).Count() != 7)
+if (packagedAssemblies.Select(static item => item.GetName().Name).Distinct(StringComparer.Ordinal).Count() != 8)
     throw new InvalidOperationException("Every framework contract package must load its own public assembly.");
 if (typeof(ZLinkMessagePackCodec).GetProperty(nameof(ZLinkMessagePackCodec.Default)) is null
     || typeof(ZLinkProtobufCodec).GetProperty(nameof(ZLinkProtobufCodec.Default)) is null

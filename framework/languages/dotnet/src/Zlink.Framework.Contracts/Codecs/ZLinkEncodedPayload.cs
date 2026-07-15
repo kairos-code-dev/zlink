@@ -30,12 +30,6 @@ public readonly struct ZLinkEncodedPayload : IEquatable<ZLinkEncodedPayload>
         return new ZLinkEncodedPayload(bytes.ToArray());
     }
 
-    internal static ZLinkEncodedPayload FromOwned(byte[] bytes)
-    {
-        ArgumentNullException.ThrowIfNull(bytes);
-        return new ZLinkEncodedPayload(bytes);
-    }
-
     public byte[] ToArray()
     {
         return Bytes.ToArray();

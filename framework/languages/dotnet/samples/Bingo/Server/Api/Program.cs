@@ -6,12 +6,8 @@ internal static class Program
 {
     private static async Task Main(string[] args)
     {
-        var configuration = SampleTopology.Load(args);
-        await ApiServerHostFactory.Build(
-                configuration.Topology,
-                configuration.Topology.Api(configuration.NodeName),
-                configuration.NodeName,
-                configuration.LogDirectory)
+        var configuration = SampleConfigurationLoader.LoadApi(args);
+        await ApiServerHostFactory.Build(configuration)
             .RunAsync();
     }
 }

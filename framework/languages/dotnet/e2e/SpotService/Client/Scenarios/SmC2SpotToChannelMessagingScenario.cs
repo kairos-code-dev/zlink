@@ -1,3 +1,4 @@
+// Verifies SM-C2 Spot To Channel Messaging behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

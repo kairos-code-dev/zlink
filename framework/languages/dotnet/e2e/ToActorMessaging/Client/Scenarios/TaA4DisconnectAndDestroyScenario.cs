@@ -1,3 +1,4 @@
+// Verifies TA-A4 Disconnect And Destroy behavior.
 using ToActorMessaging.Client.Support;
 
 namespace ToActorMessaging.Client.Scenarios;

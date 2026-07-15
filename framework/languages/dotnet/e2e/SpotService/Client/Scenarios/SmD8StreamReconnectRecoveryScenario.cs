@@ -1,3 +1,4 @@
+// Verifies SM-D8 Stream Reconnect Recovery behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

@@ -1,3 +1,4 @@
+// Verifies SM-D14 Tls Stream Validation behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

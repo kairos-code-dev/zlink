@@ -1,3 +1,4 @@
+// Verifies RC-A1 Auto Registration behavior.
 using RegistrationCodec.Client.Support;
 using RegistrationCodec.Shared;
 using Zlink.HttpClient;

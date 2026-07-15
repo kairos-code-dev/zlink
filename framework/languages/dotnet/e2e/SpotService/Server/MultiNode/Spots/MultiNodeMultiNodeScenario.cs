@@ -24,10 +24,9 @@ internal sealed class MultiNodeCreateSpotAHandler(
         var result = await spots.GetOrCreateAsync<MultiNodeSpotA>(
             RoutingId.From(request.SpotRid),
             cancellationToken);
-        var state = await MultiNodeScenario.RequestStateWithRetryAsync(
+        var state = await MultiNodeScenario.RequestStateAsync(
             routes,
             locator,
-            SpotServiceNames.MultiRouteChannelA,
             request.SpotRid,
             request.Delta,
             cancellationToken);
@@ -57,10 +56,9 @@ internal sealed class MultiNodeCreateSpotBHandler(
         var result = await spots.GetOrCreateAsync<MultiNodeSpotB>(
             RoutingId.From(request.SpotRid),
             cancellationToken);
-        var state = await MultiNodeScenario.RequestStateWithRetryAsync(
+        var state = await MultiNodeScenario.RequestStateAsync(
             routes,
             locator,
-            SpotServiceNames.MultiRouteChannelB,
             request.SpotRid,
             request.Delta,
             cancellationToken);
@@ -76,46 +74,16 @@ internal sealed class MultiNodeCreateSpotBHandler(
 
 internal static class MultiNodeScenario
 {
-    public static async Task<StateRes> RequestStateWithRetryAsync(
+    public static async Task<StateRes> RequestStateAsync(
         IZLinkRouteClient routes,
         IZLinkSpotHandleResolver locator,
-        string channelName,
         string spotRid,
         int delta,
         CancellationToken cancellationToken)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                return await routes.RequestToSpot(await locator.ResolveRequiredAsync(spotRid, cancellationToken),
-                        new StateReq("add", delta))
-                    .Timeout(TimeSpan.FromSeconds(2))
-                    .Async<StateRes>(cancellationToken);
-            }
-            catch (TimeoutException ex)
-            {
-                last = ex;
-            }
-            catch (ZLinkFrameworkException ex) when (
-                ex.Kind == ZLinkFrameworkErrorKind.RequestTargetNotFound
-                || ex.InnerException is ZlinkRequestException or ZlinkSubmitException)
-            {
-                last = ex;
-            }
-            catch (Exception ex) when (ex is ZlinkRequestException or ZlinkSubmitException)
-            {
-                last = ex;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
-        }
-
-        throw new TimeoutException($"Timed out waiting for multi-node spot route '{spotRid}' on '{channelName}'.",
-            last);
-    }
+        => await routes.RequestToSpot(await locator.ResolveRequiredAsync(spotRid, cancellationToken),
+                new StateReq("add", delta))
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async<StateRes>(cancellationToken);
 }
 
 internal sealed class MultiNodeSpotA(IZLinkSpotContext context, EvidenceStore evidence) : IZLinkSpot

@@ -48,6 +48,13 @@ internal sealed class LocationRuntimeEventRecorder(
                 .Order(StringComparer.Ordinal)
                 .ToArray()
             : [];
+        var summaryEntries = @event is ZLinkLocationRuntimeEvent.ServiceSummaryChanged summaryChanged
+            ? summaryChanged.ServiceSummary
+                .Select(entry => $"{entry.MeshName}:{entry.AutoConnectType}:{entry.Role}:"
+                                 + $"{entry.TotalCount}:{entry.ReadyCount}:{entry.ErrorCount}:{entry.StoppedCount}")
+                .Order(StringComparer.Ordinal)
+                .ToArray()
+            : [];
         var transition = @event is ZLinkLocationRuntimeEvent.TopologyChanged topologyChanged
             ? transitions.Apply(topologyChanged.Topology)
             : default;
@@ -55,6 +62,7 @@ internal sealed class LocationRuntimeEventRecorder(
             $"monitor-location-runtime|source={@event.SourceName}|kind={@event.GetType().Name}"
             + $"|topology={topologyCount}|summary={summaryCount}"
             + $"|entries={string.Join(',', topologyEntries)}"
+            + $"|summary-entries={string.Join(',', summaryEntries)}"
             + $"|added={string.Join(',', transition.Added ?? [])}"
             + $"|removed={string.Join(',', transition.Removed ?? [])}");
         return ValueTask.CompletedTask;
@@ -72,6 +80,7 @@ internal sealed class LocationTopologyTransitionTracker
         var current = topology
             .Where(entry => entry.NodeRid is not null)
             .Select(entry => entry.NodeRid!.Value.ToString())
+            .Where(static nodeRid => !nodeRid.StartsWith("hex:", StringComparison.Ordinal))
             .ToHashSet(StringComparer.Ordinal);
         lock (_gate)
         {

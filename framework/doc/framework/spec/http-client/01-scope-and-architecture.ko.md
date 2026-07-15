@@ -4,9 +4,11 @@
 
 ## 1.1 정체성
 
-zlink HTTP client는 각 언어의 대표 HTTP 전송 스택을 zlink fluent builder 뒤로
-감춘 **범용 클라이언트-사이드 HTTP client**다. JSON 전용 client가 아니며,
-typed JSON 경로(`body(dto)` / typed 제출)는 그 위에 얹은 편의 계층이다.
+zlink HTTP client는 framework handler와 관리 도구가 같은 framework 오류·codec·실행
+계약으로 HTTP를 호출하도록 제공하는 companion client다. 각 언어의 대표 HTTP
+전송 스택을 fluent builder 뒤로 감추지만, 일반 HTTP library를 대체하는 범용
+client가 아니다. JSON 전용 client도 아니며, typed JSON 경로는 raw HTTP 경로 위에
+얹은 framework codec 편의 계층이다.
 
 바닥부터 만들지 않는다. 전송은 언어별 대표 스택에 위임하되, **의미론
 (redirect, retry, cookie, 압축, 인증 스크럽)은 래퍼가 직접 소유**하여 5개
@@ -34,10 +36,11 @@ typed JSON 경로(`body(dto)` / typed 제출)는 그 위에 얹은 편의 계층
 
 ## 1.3 framework와의 관계 — 단방향 의존
 
-- HTTP client는 framework core의 **에러 모델**(`ZLinkFrameworkException` 계열)과
-  **codec extension**(typed body 직렬화)을 소비한다.
+- HTTP client는 framework 공통 계약 package의 **에러 모델**(`ZLinkFrameworkException` 계열)과
+  **codec extension**(typed body 직렬화)을 소비한다. `.NET`에서는 이 runtime 비의존 계약을
+  `Zlink.Framework.Contracts`가 제공한다.
 - framework core는 HTTP client에 의존하지 않는다. HTTP client는 framework
-  없이 별도 배포 가능한 독립 산출물이되, 에러/코덱 계약은 framework 것을
+  runtime 없이 별도 배포 가능한 독립 산출물이되, 에러/코덱 계약은 framework 것을
   재사용한다(자체 예외 계층을 만들지 않는다).
 - typed body encode/decode는 framework · stream-connector와 **같은 codec
   extension을 공유**한다. raw body는 extension을 경유하지 않는다.

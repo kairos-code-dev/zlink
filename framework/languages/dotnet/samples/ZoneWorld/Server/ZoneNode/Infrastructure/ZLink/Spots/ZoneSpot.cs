@@ -206,7 +206,9 @@ public sealed class ZoneSpot(
     /// <summary>
     /// Drives this zone's bots (§2.7). A bot moves down the same path a human does, and
     /// that path can end in a JoinSpot, which only an actor handler turn may start — so
-    /// the bot is driven by a packet addressed to it rather than by calling into it here.
+    /// the bot is driven by a request addressed to it rather than by calling into it here.
+    /// Waiting for each result applies backpressure at the periodic producer: if a transfer
+    /// is pending, later timer periods are skipped instead of accumulating stale move steps.
     /// </summary>
     internal async ValueTask BotTickAsync(CancellationToken cancellationToken)
     {
@@ -214,7 +216,9 @@ public sealed class ZoneSpot(
         {
             var actorRef = await ResolveBotAsync(playerId, cancellationToken);
             if (actorRef is null) continue;
-            actors.SendToActor(actorRef.Value, new BotTickMsg()).Submit();
+            _ = await actors
+                .RequestToActor(actorRef.Value, new BotTickReq())
+                .Yield<BotTickRes>(cancellationToken);
         }
     }
 

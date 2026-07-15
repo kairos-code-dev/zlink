@@ -1,3 +1,4 @@
+// Verifies RM-C5 Missing Packet behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -55,6 +56,6 @@ internal static class RmC5MissingPacketScenario
         var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
         var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
         await Task.WhenAll(providerAEvidence, providerBEvidence);
-        return providerAEvidence.Result.Body.Concat(providerBEvidence.Result.Body).ToArray();
+        return (await providerAEvidence).Body.Concat((await providerBEvidence).Body).ToArray();
     }
 }

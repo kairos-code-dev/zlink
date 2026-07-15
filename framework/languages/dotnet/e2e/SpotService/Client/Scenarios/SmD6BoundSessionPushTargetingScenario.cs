@@ -1,3 +1,4 @@
+// Verifies SM-D6 Bound Session Push Targeting behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -12,79 +13,33 @@ internal static class SmD6BoundSessionPushTargetingScenario
         IZlinkStreamConnector? unbound = null;
         try
         {
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-            Exception? last = null;
-            while (DateTimeOffset.UtcNow < deadline)
+            bound = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
             {
-                var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                {
-                    Endpoint = new Uri(sessionAStreamEndpoint),
-                    ConnectTimeout = TimeSpan.FromSeconds(5),
-                    RequestTimeout = TimeSpan.FromSeconds(10),
-                    Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024
-                });
-                try
-                {
-                    await client.Connect.Async();
-                    await client.Request(new AuthReq("actor-sm-d6", "bound", "play-a"))
-                        .PacketName("AuthReq")
-                        .Async<AuthRes>();
-                    bound = client;
-                    break;
-                }
-                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-                {
-                    last = ex;
-                    await client.DisposeAsync();
-                    await Task.Delay(500);
-                }
-            }
+                Endpoint = new Uri(sessionAStreamEndpoint),
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                RequestTimeout = TimeSpan.FromSeconds(10),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                MaxReceivedMessages = 1024
+            });
+            await bound.Connect.Async();
+            await bound.Request(new AuthReq("actor-sm-d6", "bound", "play-a"))
+                .PacketName("AuthReq")
+                .Async<AuthRes>();
 
-            if (bound is null)
-                throw new InvalidOperationException(
-                    last is null
-                        ? "Actor auth did not become routable: actor-sm-d6"
-                        : $"Actor auth did not become routable: actor-sm-d6. Last error: {last.Message}",
-                    last);
-
-            deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-            last = null;
-            while (DateTimeOffset.UtcNow < deadline)
+            unbound = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
             {
-                var client = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                {
-                    Endpoint = new Uri(sessionBStreamEndpoint),
-                    ConnectTimeout = TimeSpan.FromSeconds(5),
-                    RequestTimeout = TimeSpan.FromSeconds(10),
-                    Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024
-                });
-                try
-                {
-                    await client.Connect.Async();
-                    await client.Request(new AuthReq("actor-sm-d6-shadow", "unbound", "play-b"))
-                        .PacketName("AuthReq")
-                        .Async<AuthRes>();
-                    unbound = client;
-                    break;
-                }
-                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-                {
-                    last = ex;
-                    await client.DisposeAsync();
-                    await Task.Delay(500);
-                }
-            }
-
-            if (unbound is null)
-                throw new InvalidOperationException(
-                    last is null
-                        ? "Actor auth did not become routable: actor-sm-d6-shadow"
-                        : $"Actor auth did not become routable: actor-sm-d6-shadow. Last error: {last.Message}",
-                    last);
+                Endpoint = new Uri(sessionBStreamEndpoint),
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                RequestTimeout = TimeSpan.FromSeconds(10),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                MaxReceivedMessages = 1024
+            });
+            await unbound.Connect.Async();
+            await unbound.Request(new AuthReq("actor-sm-d6-shadow", "unbound", "play-b"))
+                .PacketName("AuthReq")
+                .Async<AuthRes>();
 
             var activeBound = bound;
             var activeUnbound = unbound;

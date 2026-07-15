@@ -4316,8 +4316,6 @@ public interface IZLinkUnhandledDispatchOptions
     ZLinkUnhandledDispatchAction Request { get; set; }
     ZLinkUnhandledDispatchAction Send { get; set; }
     ZLinkUnhandledDispatchAction Publish { get; set; }
-    LogLevel SendLogLevel { get; set; }
-    LogLevel PublishLogLevel { get; set; }
 }
 
 public interface IZLinkDiagnosticsOptions
@@ -4936,7 +4934,7 @@ cd framework/languages/dotnet
 생성 모드는 정식 snapshot 디렉토리를 직접 덮어쓰지 못한다. 후보와 현재 snapshot의 diff를 기능별 공개
 계약 문서의 전·후 시그니처와 함께 리뷰한 뒤, 승인된 항목만 정식 snapshot에 반영한다. 구현이
 달라졌다는 이유만으로 snapshot을 먼저 갱신하지 않는다. 검증기는 모든 project의 MSBuild
-`IsPackable` 평가 결과, 정확한 7개 package 집합, package source mapping, 임시 package cache와
+`IsPackable` 평가 결과, 정확한 8개 package 집합, package source mapping, 임시 package cache와
 깨끗한 consumer 실행까지 함께 확인한다.
 
 ### 17.4 회귀 테스트

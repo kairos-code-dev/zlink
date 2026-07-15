@@ -1,3 +1,4 @@
+// Verifies SM-F5 Closed Spot Route Isolation behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;
@@ -8,9 +9,10 @@ internal static class SmF5ClosedSpotRouteIsolationScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient playA,
-        ZLinkHttpClient gateway,
-        string spotRid)
+        ZLinkHttpClient gateway)
     {
+        var spotRid = $"spot-sm-f5-{Guid.NewGuid():N}";
+        await playA.Post("/spot/create").Body(new CreateSpotReq(spotRid)).Async<CreateSpotRes>();
         var closed = (await playA.Post("/spot/close")
             .Body(new CloseSpotReq(spotRid))
             .Async<CloseSpotRes>()).Body;

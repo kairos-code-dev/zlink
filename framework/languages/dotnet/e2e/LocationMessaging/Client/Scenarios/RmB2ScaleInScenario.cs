@@ -1,3 +1,4 @@
+// Verifies RM-B2 Scale In behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -68,8 +69,8 @@ internal static class RmB2ScaleInScenario
             "RM-B2 expected both providers before scale-in.");
         var scaleOutA = await WaitEvidenceAsync(requester, apiABeforeValues[^1]);
         var scaleOutB = await WaitEvidenceAsync(providerBClient, apiBBeforeValues[^1]);
-        var preA = ScenarioAssert.CountNewEvidence(scaleOutA, beforeA, "profile-request|rid=api-a", markerBefore);
-        var preB = ScenarioAssert.CountNewEvidence(scaleOutB, beforeB, "profile-request|rid=api-b", markerBefore);
+        var preA = EvidenceDelta.CountMatching(scaleOutA, beforeA, "profile-request|rid=api-a", markerBefore);
+        var preB = EvidenceDelta.CountMatching(scaleOutB, beforeB, "profile-request|rid=api-b", markerBefore);
         ZlinkStreamAssert.Ensure(preA == apiABeforeValues.Length && preB == apiBBeforeValues.Length
                                                             && preA + preB == valuesBefore.Length,
             "RM-B2 expected both providers before scale-in.");
@@ -123,8 +124,8 @@ internal static class RmB2ScaleInScenario
 
         var afterA = await WaitEvidenceAsync(requester, valuesAfter[^1]);
         var afterB = await ReadEvidenceIgnoringStoppedAsync(providerBClient);
-        var a = ScenarioAssert.CountNewEvidence(afterA, beforeA, "profile-request|rid=api-a", markerAfter);
-        var b = ScenarioAssert.CountNewEvidence(afterB, beforeB, "profile-request|rid=api-b", markerAfter);
+        var a = EvidenceDelta.CountMatching(afterA, beforeA, "profile-request|rid=api-a", markerAfter);
+        var b = EvidenceDelta.CountMatching(afterB, beforeB, "profile-request|rid=api-b", markerAfter);
         ZlinkStreamAssert.Ensure(a == valuesAfter.Length && b == 0, "RM-B2 expected only api-a after scale-in.");
     }
 

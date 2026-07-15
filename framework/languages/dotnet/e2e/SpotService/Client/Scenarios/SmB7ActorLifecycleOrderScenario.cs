@@ -1,3 +1,4 @@
+// Verifies SM-B7 Actor Lifecycle Order behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

@@ -1,3 +1,4 @@
+// Verifies SM-B3 Request Message Fidelity behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

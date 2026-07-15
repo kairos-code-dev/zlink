@@ -57,7 +57,7 @@ public sealed record SampleConfiguration(SampleTopology Topology, SampleRoleOpti
         Require(role.LogDir, "sample.role.logDir");
         Require(role.WorkDir, "sample.role.workDir");
 
-        return new SampleConfiguration(topology.ToTopology(), role);
+        return new SampleConfiguration(topology.ToTopology(role.Name, role.NodeRid), role);
     }
 
     private static void Require(string value, string key)

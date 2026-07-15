@@ -1,3 +1,4 @@
+// Verifies SF-D2 Long Outage Recovery behavior.
 using StoreFailure.Client.Support;
 using StoreFailure.Shared;
 using Zlink.HttpClient;
@@ -121,6 +122,10 @@ internal static class SfD2LongOutageRecoveryScenario
         ClientOptions options)
     {
         var deadline = DateTimeOffset.UtcNow + options.HeartbeatInterval + options.PollingInterval * 4;
+        var probeTimeoutMilliseconds = (int)Math.Clamp(
+            Math.Ceiling(options.PollingInterval.TotalMilliseconds),
+            1,
+            1000);
         Exception? last = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -131,7 +136,8 @@ internal static class SfD2LongOutageRecoveryScenario
                 {
                     var reply = await SfProbe.RequestAsync(
                         consumer,
-                        $"sf-d2-disconnect-probe-{Guid.NewGuid():N}");
+                        $"sf-d2-disconnect-probe-{Guid.NewGuid():N}",
+                        probeTimeoutMilliseconds);
                     if (reply.ProviderRid != "api-a")
                     {
                         allOnSurvivor = false;

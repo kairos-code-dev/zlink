@@ -1,3 +1,4 @@
+// Verifies ST-B3 Missing Adapter behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

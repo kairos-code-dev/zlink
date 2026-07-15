@@ -1,3 +1,4 @@
+// Verifies RL-B2 Crash During Inflight behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
@@ -65,6 +66,11 @@ internal static class RlB2CrashDuringInflightScenario
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
+        await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
+            consumer,
+            "api-b",
+            "rl-b2-converge",
+            "RL-B2");
         var followUp = (await consumer.Post("/profile/request")
             .Body(new ProfileReq("fast", "rl-b2-after-crash"))
             .Async<ProfileRes>()).Body;

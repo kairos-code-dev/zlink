@@ -1,3 +1,4 @@
+// Verifies ST-F4 Straggler Forward Then Fail Fast behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

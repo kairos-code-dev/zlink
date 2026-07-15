@@ -1,3 +1,4 @@
+// Verifies SM-A7 Spot Type Mismatch behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

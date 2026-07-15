@@ -1,3 +1,4 @@
+// Verifies TA-B1 Missing Actor behavior.
 using ToActorMessaging.Client.Support;
 
 namespace ToActorMessaging.Client.Scenarios;

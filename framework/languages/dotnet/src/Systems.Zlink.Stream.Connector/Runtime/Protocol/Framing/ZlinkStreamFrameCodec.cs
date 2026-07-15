@@ -88,7 +88,7 @@ internal static class ZlinkStreamFrameCodec
     {
         if (payloadLength > maxPayloadSize)
             throw ZlinkStreamConnector.Error(
-                ZlinkStreamErrorCode.FrameTooLarge,
+                ZlinkStreamErrorCode.ValidationFailed,
                 "Payload exceeds MaxSendPayloadSize.");
     }
 

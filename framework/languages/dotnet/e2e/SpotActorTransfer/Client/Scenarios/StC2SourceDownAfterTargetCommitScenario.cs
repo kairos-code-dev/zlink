@@ -1,3 +1,4 @@
+// Verifies ST-C2 Source Down After Target Commit behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

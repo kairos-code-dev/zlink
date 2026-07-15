@@ -1,3 +1,4 @@
+// Verifies RL-D5 Mixed Burst behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

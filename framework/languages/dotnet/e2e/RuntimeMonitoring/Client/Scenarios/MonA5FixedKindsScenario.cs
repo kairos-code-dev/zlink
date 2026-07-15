@@ -1,3 +1,4 @@
+// Verifies MON-A5 Fixed Kinds behavior.
 using RuntimeMonitoring.Client.Support;
 using RuntimeMonitoring.Shared;
 using Zlink.HttpClient;
@@ -11,7 +12,7 @@ internal static class MonA5FixedKindsScenario
         using var service = ZLinkHttpClient.Create(options.ServiceUrl)
             .Timeout(TimeSpan.FromSeconds(30))
             .Build();
-        await MonitoringChannelClient.SendInvalidHandshakeAsync(options.ServiceChannelEndpoint);
+        await MonitoringProtocolTrigger.SendInvalidHandshakeAsync(options.ServiceChannelEndpoint);
         var serviceEvidence = await WaitForFixedKindsAsync(service);
 
         ZlinkStreamAssert.Ensure(

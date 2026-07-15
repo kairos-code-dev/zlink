@@ -1,8 +1,8 @@
 namespace LocationMessaging.Client.Support;
 
-internal static class ScenarioAssert
+internal static class EvidenceDelta
 {
-    public static int CountNewEvidence(
+    public static int CountMatching(
         IReadOnlyCollection<string> after,
         IReadOnlyCollection<string> before,
         string prefix,

@@ -1,3 +1,4 @@
+// Verifies SM-B2 Remote Actor Join behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

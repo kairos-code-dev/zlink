@@ -20,14 +20,11 @@ internal static class SpotInteractionEndpoints
             SpotOutboundRouteReq request) =>
         {
             var before = evidence.Snapshot();
-            await SendSpotCommandWithRetryAsync(
+            await SendSpotCommandAsync(
                 routes,
                 locator,
-                SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new SpotOutboundMsg(request.Marker),
-                "SpotOutboundMsg",
-                "Spot outbound route timed out.");
+                new SpotOutboundMsg(request.Marker));
             await WaitUntilAsync(
                 () =>
                 {
@@ -55,14 +52,11 @@ internal static class SpotInteractionEndpoints
             SpotOutboundRouteReq request) =>
         {
             var before = evidence.Snapshot();
-            await SendSpotCommandWithRetryAsync(
+            await SendSpotCommandAsync(
                 routes,
                 locator,
-                SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new SpotOutboundNegativeMsg(request.Marker),
-                "SpotOutboundNegativeMsg",
-                "Spot outbound negative route timed out.");
+                new SpotOutboundNegativeMsg(request.Marker));
             await WaitUntilAsync(
                 () =>
                 {
@@ -102,14 +96,11 @@ internal static class SpotInteractionEndpoints
             SpotStageTimerReq request) =>
         {
             var before = evidence.Snapshot();
-            await SendSpotCommandWithRetryAsync(
+            await SendSpotCommandAsync(
                 routes,
                 locator,
-                SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new StageTimerStartMsg(request.Name, request.PeriodMs),
-                "StageTimerStartMsg",
-                "Spot stage timer command route timed out.");
+                new StageTimerStartMsg(request.Name, request.PeriodMs));
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"stage-timer|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 1,
@@ -128,14 +119,11 @@ internal static class SpotInteractionEndpoints
             SpotTimerStartReq request) =>
         {
             var before = evidence.Snapshot();
-            await SendSpotCommandWithRetryAsync(
+            await SendSpotCommandAsync(
                 routes,
                 locator,
-                SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new TimerStartMsg(request.Name, request.PeriodMs),
-                "TimerStartMsg",
-                "Spot timer start command timed out.");
+                new TimerStartMsg(request.Name, request.PeriodMs));
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"timer-basic|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 2,
@@ -154,14 +142,11 @@ internal static class SpotInteractionEndpoints
             SpotIdleCloseReq request) =>
         {
             var before = evidence.Snapshot();
-            await SendSpotCommandWithRetryAsync(
+            await SendSpotCommandAsync(
                 routes,
                 locator,
-                SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new IdleCloseMsg(request.Name, request.PeriodMs),
-                "IdleCloseMsg",
-                "Spot idle close command timed out.");
+                new IdleCloseMsg(request.Name, request.PeriodMs));
             await WaitUntilAsync(
                 () =>
                 {
@@ -186,14 +171,11 @@ internal static class SpotInteractionEndpoints
             SpotOverrunStartReq request) =>
         {
             var before = evidence.Snapshot();
-            await SendSpotCommandWithRetryAsync(
+            await SendSpotCommandAsync(
                 routes,
                 locator,
-                SpotServiceNames.ExternalSpotChannel,
                 request.SpotRid,
-                new OverrunStartMsg(request.Name, request.Policy, request.PeriodMs),
-                "OverrunStartMsg",
-                "Spot overrun timer start command timed out.");
+                new OverrunStartMsg(request.Name, request.Policy, request.PeriodMs));
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"timer-overrun|rid={node.Rid}|spot={request.SpotRid}|name={request.Name}") >= 3,
@@ -239,12 +221,11 @@ internal static class SpotInteractionEndpoints
             NodeOptions node,
             SpotToSpotRouteReq request) =>
         {
-            var result = await RequestSpotToSpotWithRetryAsync(
+            var result = await RequestSpotToSpotAsync(
                 routes,
                 locator,
                 request.SourceSpotRid,
-                new SpotToSpotReq(request.TargetSpotRid, request.Marker),
-                "Spot-to-spot request timed out.");
+                new SpotToSpotReq(request.TargetSpotRid, request.Marker));
             await WaitUntilAsync(
                 () =>
                 {
@@ -270,12 +251,11 @@ internal static class SpotInteractionEndpoints
             SpotToSpotRouteReq request) =>
         {
             var before = evidence.Snapshot();
-            var result = await RequestSpotToSpotWithRetryAsync(
+            var result = await RequestSpotToSpotAsync(
                 routes,
                 locator,
                 request.SourceSpotRid,
-                new SpotToSpotReq(request.TargetSpotRid, request.Marker),
-                "Cross-node spot-to-spot request timed out.");
+                new SpotToSpotReq(request.TargetSpotRid, request.Marker));
             await WaitUntilAsync(
                 () => CountNew(evidence.Snapshot(), before,
                     $"spot-to-spot|rid={node.Rid}|source={request.SourceSpotRid}|target={request.TargetSpotRid}|value=") >= 1,

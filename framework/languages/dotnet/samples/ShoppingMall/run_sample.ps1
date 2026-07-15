@@ -33,30 +33,38 @@ try {
     $RedisContainer = $redis.ContainerId
     $SHOPPINGMALL_REDIS_ENDPOINT = $redis.Endpoint
     Wait-SampleTcpEndpoint "redis" "tcp://$SHOPPINGMALL_REDIS_ENDPOINT"
-    $baseSettings = [ordered]@{
+    $common = @{
         LogDirectory = $SampleLogDir
         RedisEndpoint = $SHOPPINGMALL_REDIS_ENDPOINT
         RedisKeyPrefix = $SHOPPINGMALL_REDIS_KEY_PREFIX
-        ApiAHttpUrl = $SHOPPINGMALL_API_A_HTTP_URL
-        ApiBHttpUrl = $SHOPPINGMALL_API_B_HTTP_URL
-        WorkflowAHttpUrl = $SHOPPINGMALL_WORKFLOW_A_HTTP_URL
-        WorkflowBHttpUrl = $SHOPPINGMALL_WORKFLOW_B_HTTP_URL
-        WorkflowAChannelEndpoint = $SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT
-        WorkflowBChannelEndpoint = $SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT
-        WorkflowASpotEndpoint = $SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT
-        WorkflowASpotRouterEndpoint = $SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT
-        WorkflowBSpotEndpoint = $SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT
-        WorkflowBSpotRouterEndpoint = $SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT
     }
     $configFiles = @{}
-    foreach ($instance in @("workflow-a", "workflow-b", "api-a", "api-b", "client")) {
-        $sample = [ordered]@{}
-        foreach ($key in $baseSettings.Keys) { $sample[$key] = $baseSettings[$key] }
-        $sample.InstanceId = $instance
+    $roles = @{
+        "workflow-a" = $common + @{
+            InstanceId = "workflow-a"; WorkflowAHttpUrl = $SHOPPINGMALL_WORKFLOW_A_HTTP_URL
+            WorkflowAChannelEndpoint = $SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT
+            WorkflowASpotEndpoint = $SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT; WorkflowASpotRouterEndpoint = $SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT
+        }
+        "workflow-b" = $common + @{
+            InstanceId = "workflow-b"; WorkflowBHttpUrl = $SHOPPINGMALL_WORKFLOW_B_HTTP_URL
+            WorkflowBChannelEndpoint = $SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT
+            WorkflowBSpotEndpoint = $SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT; WorkflowBSpotRouterEndpoint = $SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT
+        }
+        "api-a" = $common + @{ InstanceId = "api-a"; ApiAHttpUrl = $SHOPPINGMALL_API_A_HTTP_URL }
+        "api-b" = $common + @{ InstanceId = "api-b"; ApiBHttpUrl = $SHOPPINGMALL_API_B_HTTP_URL }
+    }
+    foreach ($instance in $roles.Keys) {
         $path = Join-Path $RunDir "appsettings.$instance.json"
-        @{ Sample = $sample } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
+        @{ Sample = $roles[$instance] } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $path
         $configFiles[$instance] = $path
     }
+    $clientPath = Join-Path $RunDir "appsettings.client.json"
+    @{ Client = @{
+        LogDirectory = $SampleLogDir
+        ApiAHttpUrl = $SHOPPINGMALL_API_A_HTTP_URL
+        ApiBHttpUrl = $SHOPPINGMALL_API_B_HTTP_URL
+    } } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 -Path $clientPath
+    $configFiles["client"] = $clientPath
 
     Start-SampleDotnetAssembly -Name "workflow-a" -Project (Join-Path $ScriptDir "Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj") -LogDirectory $LogDir -Arguments @("--config", $configFiles["workflow-a"]) | Out-Null
     Wait-SampleTcpEndpoint "workflow-a-channel" $SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT

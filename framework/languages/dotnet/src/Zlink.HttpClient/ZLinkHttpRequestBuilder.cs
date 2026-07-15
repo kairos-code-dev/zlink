@@ -217,12 +217,19 @@ public class ZLinkHttpRequestBuilder
         T body;
         try
         {
-            var contentType = HttpHeaderLookup.Find(raw.Headers, "content-type");
-            body = (T?)codecs.Decode(
-                       raw.BodyBytes,
-                       typeof(T),
-                       contentType)
-                   ?? throw new InvalidOperationException("HTTP response body decoded to null");
+            if (raw.BodyBytes.Length == 0)
+            {
+                body = default!;
+            }
+            else
+            {
+                var contentType = HttpHeaderLookup.Find(raw.Headers, "content-type");
+                body = (T?)codecs.Decode(
+                           raw.BodyBytes,
+                           typeof(T),
+                           contentType)
+                       ?? throw new InvalidOperationException("HTTP response body decoded to null");
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or JsonException)
         {

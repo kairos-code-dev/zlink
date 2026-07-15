@@ -1,3 +1,4 @@
+// Verifies SF-B1 Fail Static behavior.
 using StoreFailure.Client.Support;
 using Zlink.HttpClient;
 

@@ -5,7 +5,6 @@ using LocationMessaging.Server.Workflow.Configuration;
 using LocationMessaging.Server.Workflow.Infrastructure;
 using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Errors;
 
 namespace LocationMessaging.Server.Workflow.Endpoints;
 
@@ -19,7 +18,9 @@ internal static class WorkflowEndpoints
             WorkflowReq request,
             IZLinkChannelClient channel) =>
         {
-            var reply = await RequestWorkflowWithRetryAsync(channel, request);
+            var reply = await channel.RequestToChannel("workflow", request)
+                .Timeout(TimeSpan.FromSeconds(5))
+                .Async<WorkflowRes>();
             return Results.Ok(reply);
         });
         app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
@@ -46,33 +47,4 @@ internal static class WorkflowEndpoints
         });
     }
 
-    static async Task<WorkflowRes> RequestWorkflowWithRetryAsync(
-        IZLinkChannelClient channel,
-        WorkflowReq request)
-    {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        Exception? last = null;
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            try
-            {
-                return await channel.RequestToChannel("workflow", request)
-                    .Timeout(TimeSpan.FromSeconds(5))
-                    .Async<WorkflowRes>();
-            }
-            catch (ZLinkFrameworkException ex) when (IsRetriableRequestStartupFailure(ex))
-            {
-                last = ex;
-                await Task.Delay(TimeSpan.FromMilliseconds(100));
-            }
-        }
-
-        throw new InvalidOperationException("Timed out waiting for workflow request channel route.", last);
-    }
-
-    static bool IsRetriableRequestStartupFailure(ZLinkFrameworkException ex) =>
-        ex.IsRetriable
-        || ex.Kind is ZLinkFrameworkErrorKind.RouteNotConnected
-            or ZLinkFrameworkErrorKind.RequestTargetNotFound
-            or ZLinkFrameworkErrorKind.RequestProtocolError;
 }

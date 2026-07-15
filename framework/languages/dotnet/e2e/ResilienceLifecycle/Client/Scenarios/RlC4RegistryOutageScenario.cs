@@ -1,3 +1,4 @@
+// Verifies RL-C4 Registry Outage behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;

@@ -21,9 +21,9 @@ public sealed class TicTacToeClientScenario(ILogger logger)
         using var api = ZLinkHttpClient.Create(options.ApiUrl.ToString())
             .Timeout(options.HttpTimeout)
             .Build();
-        var room = api.Post("/games")
+        var room = (await api.Post("/games")
             .Body(new CreateGameHttpReq(options.GameName))
-            .Async<CreateGameHttpRes>().AsTask().GetAwaiter().GetResult().Body;
+            .Async<CreateGameHttpRes>(cancellationToken)).Body;
 
         ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(room.RoomId), "Assertion failed: !string.IsNullOrWhiteSpace(room.RoomId)");
         ZlinkStreamAssert.Ensure(!string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint), "Assertion failed: !string.IsNullOrWhiteSpace(room.OwnerPlayEndpoint)");

@@ -1,3 +1,4 @@
+// Verifies TA-B2 Stale Actor Reference behavior.
 using ToActorMessaging.Client.Support;
 using ToActorMessaging.Shared;
 

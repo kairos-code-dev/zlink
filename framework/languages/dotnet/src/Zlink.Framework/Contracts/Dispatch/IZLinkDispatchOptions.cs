@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging;
-
 namespace Zlink.Framework.Contracts.Dispatch;
 
 public interface IZLinkDispatchOptions
@@ -88,10 +86,6 @@ public interface IZLinkUnhandledDispatchOptions
     ZLinkUnhandledDispatchAction Send { get; set; }
 
     ZLinkUnhandledDispatchAction Publish { get; set; }
-
-    LogLevel SendLogLevel { get; set; }
-
-    LogLevel PublishLogLevel { get; set; }
 }
 
 // Read-only diagnostics view. Configure via the fluent builder on

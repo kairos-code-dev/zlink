@@ -191,7 +191,7 @@ internal sealed class ZLinkActorDispatchRouter(
             var replyPathError = new InvalidOperationException(
                 $"Entry Spot actor request handler for '{header.Name}' returned no reply.");
             ReportReplyPathMissing(actor, header, replyPathError);
-            throw replyPathError;
+            return ZLinkActorReply.FromError(replyPathError);
         }
 
         var error = new ZLinkFrameworkException(
@@ -203,7 +203,7 @@ internal sealed class ZLinkActorDispatchRouter(
             ZLinkDispatchMessageKind.ActorRequest,
             ZLinkDispatchErrorAction.ReplyError,
             error);
-        throw error;
+        return ZLinkActorReply.FromError(error);
     }
 
     private async ValueTask NotifyDisconnectedByCurrentLocationAsync(

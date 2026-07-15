@@ -16,17 +16,36 @@ SESSION_DLL="$SCRIPT_DIR/Server/Session/bin/Debug/net8.0/AutomaticTurnDispatch.S
 CLIENT_DLL="$SCRIPT_DIR/Client/bin/Debug/net8.0/AutomaticTurnDispatch.Client.dll"
 STAMP="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$SCRIPT_DIR/logs/$STAMP"
-if [[ "$#" -eq 0 ]]; then
+SKIP_BUILD=0
+SCENARIO_ARGS=()
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --skip-build)
+      SKIP_BUILD=1
+      shift
+      ;;
+    --)
+      shift
+      SCENARIO_ARGS+=("$@")
+      break
+      ;;
+    *)
+      SCENARIO_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+if [[ "${#SCENARIO_ARGS[@]}" -eq 0 ]]; then
   SCENARIO="all"
 else
-  SCENARIO="$*"
+  SCENARIO="${SCENARIO_ARGS[*]}"
   SCENARIO="${SCENARIO// /,}"
 fi
 mkdir -p "$LOG_DIR"
 CONFIG_DIR="$(mktemp -d)"
-LOCAL_READINESS_TIMEOUT_SECONDS="${ZLINK_DOTNET_E2E_READY_TIMEOUT_SECONDS:-3}"
+LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
-REDIS_READINESS_TIMEOUT_SECONDS="${ZLINK_REDIS_READY_TIMEOUT_SECONDS:-60}"
+REDIS_READINESS_TIMEOUT_SECONDS=60
 ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
@@ -441,7 +460,7 @@ wait_process_exit() {
 }
 
 echo "log_dir=$LOG_DIR"
-if [[ "${ZLINK_TURN_DISPATCH_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "$SKIP_BUILD" != "1" ]]; then
   build_projects
 fi
 static_checks

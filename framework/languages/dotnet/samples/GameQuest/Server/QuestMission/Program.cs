@@ -17,7 +17,7 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var configuration = GameQuestTopology.Load(args);
+        var configuration = GameQuestTopology.LoadQuestMission(args);
         var topology = configuration.Topology;
         var missionName = configuration.InstanceName;
         var instance = topology.ForQuestMission(missionName);

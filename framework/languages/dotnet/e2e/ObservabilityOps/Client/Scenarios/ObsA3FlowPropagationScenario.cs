@@ -1,3 +1,4 @@
+// Verifies OBS-A3 Flow Propagation behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

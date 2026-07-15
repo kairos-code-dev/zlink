@@ -726,6 +726,22 @@ public sealed partial class EntrySpotActorDispatchTests
                 forwardingLease);
 
             await node.FinalPartAttempted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            using var overflowBody = Message.From(Encoding.UTF8.GetBytes("overflow"));
+            var overflow = await Assert.ThrowsAsync<ZLinkFrameworkException>(() => Task.Run(() =>
+                    forwarder.Enqueue(
+                        source,
+                        target,
+                        RoutingId.From("session-node"),
+                        RoutingId.From("session-overflow"),
+                        8,
+                        0,
+                        CreateHeader("forward-overflow"),
+                        overflowBody,
+                        forwardingLease))
+                .WaitAsync(TimeSpan.FromSeconds(1)));
+            Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, overflow.Kind);
+
             forwardingLease.Cancel();
             await Task.Delay(25);
             var attemptsAfterCutoff = node.ForwardedParts.Count;
@@ -743,7 +759,7 @@ public sealed partial class EntrySpotActorDispatchTests
                     target,
                     RoutingId.From("session-node"),
                     RoutingId.From("session-1"),
-                    8,
+                    9,
                     0,
                     CreateHeader("forward-next"),
                     nextBody,
@@ -1794,6 +1810,34 @@ public sealed partial class EntrySpotActorDispatchTests
             var decoded = DecodeReplyFrame<ProbeReply>(Assert.Single(boundReply.Parts));
             Assert.Equal(ZlinkStreamMessageKind.Response, decoded.Header.Kind);
             Assert.Equal("bound:actor-a", decoded.Payload.Value);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task EntrySpotActorDispatch_BoundMissingHandler_RepliesWithAnErrorFrame()
+    {
+        var node = new CapturingSpotNode();
+        var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
+        try
+        {
+            RegisterProbeActor(runtime, actorRef);
+
+            await DispatchEntryActorPartsAsync(
+                runtime,
+                CreateActorRequestParts(actorRef, "missing-handler", "missing", requestId: 0, flags: 0),
+                CancellationToken.None);
+
+            var boundReply = Assert.Single(node.BoundSessionReplies);
+            var decoded = DecodeReplyFrame<ZLinkStreamWireError>(Assert.Single(boundReply.Parts));
+            Assert.Equal(ZlinkStreamMessageKind.Error, decoded.Header.Kind);
+            Assert.Equal(
+                ZLinkFrameworkErrorKind.ActorDispatchHandlerNotFound.ToString(),
+                decoded.Payload.Code);
+            Assert.Contains("No Spot actor request handler", decoded.Payload.Message, StringComparison.Ordinal);
         }
         finally
         {

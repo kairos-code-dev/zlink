@@ -1,3 +1,4 @@
+// Verifies SF-B2 Grace Exceeded behavior.
 using StoreFailure.Client.Support;
 using Zlink.HttpClient;
 

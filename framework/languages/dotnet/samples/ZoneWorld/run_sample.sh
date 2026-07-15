@@ -6,8 +6,31 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
-SCENARIO="${1:-all}"
-RUN_DIR="${SAMPLE_RUN_DIR:-$(mktemp -d)}"
+BROWSER_SMOKE=0
+SCENARIO="all"
+SCENARIO_SET=0
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --browser-smoke)
+      BROWSER_SMOKE=1
+      shift
+      ;;
+    --*)
+      echo "Unknown option: $1" >&2
+      exit 2
+      ;;
+    *)
+      if [[ "$SCENARIO_SET" == "1" ]]; then
+        echo "Only one scenario selector may be supplied." >&2
+        exit 2
+      fi
+      SCENARIO="$1"
+      SCENARIO_SET=1
+      shift
+      ;;
+  esac
+done
+RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "$RUN_DIR")-$$-$RANDOM"
 LOG_DIR="$RUN_DIR/logs"
 CONFIG_DIR="$RUN_DIR/config"
@@ -253,6 +276,18 @@ wait_for_file_while_running() {
   return 1
 }
 
+wait_for_port() {
+  local port="$1"
+  for _ in $(seq 1 200); do
+    if (echo >/dev/tcp/127.0.0.1/"$port") >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "Timed out waiting for browser preview port $port." >&2
+  return 1
+}
+
 echo "==> ops"
 start ops "$OPS_BIN" --config "$CONFIG_DIR/ops.json"
 wait_for_log ops "Application started."
@@ -281,14 +316,38 @@ wait_for_log ops "ops channel observed. node=zone-node-2, connected=True, kind=C
 echo "==> scenarios ($SCENARIO)"
 # The same browser client is shared by every language implementation. Language runners opt in
 # to the live browser smoke with one flag; the client receives only Gateway and Ops endpoints.
-if [[ "${ZONEWORLD_BROWSER_SMOKE:-0}" == "1" ]]; then
+if [[ "$BROWSER_SMOKE" == "1" ]]; then
   echo "==> shared browser client"
+  browser_client="$ROOT_DIR/../../../shared_sample/zoneworld/client"
+  browser_dist="$RUN_DIR/browser-dist"
   browser_marker="$RUN_DIR/browser-lifecycle-armed"
-  ZONEWORLD_GATEWAY="$GATEWAY_ENDPOINT" \
-  ZONEWORLD_OPS="$OPS_ENDPOINT" \
-  ZONEWORLD_BROWSER_PREVIEW_PORT="$BROWSER_PREVIEW_PORT" \
-  ZONEWORLD_BROWSER_LIFECYCLE_MARKER="$browser_marker" \
-    npm --prefix "$ROOT_DIR/../../../shared_sample/zoneworld/client" run test:e2e:live &
+  browser_config="$RUN_DIR/playwright.live.config.mjs"
+  (cd "$browser_client" && npm exec vite build -- --outDir "$browser_dist")
+  python3 - "$browser_dist/config.json" "$GATEWAY_ENDPOINT" "$OPS_ENDPOINT" \
+    "$browser_config" "$browser_client/tests/live" "$BROWSER_PREVIEW_PORT" "$browser_marker" <<'PY'
+import json
+import pathlib
+import sys
+
+config_path, gateway, ops, playwright_path, test_dir, port, marker = sys.argv[1:]
+pathlib.Path(config_path).write_text(
+    json.dumps({"gateway": gateway, "ops": ops}), encoding="utf-8")
+pathlib.Path(playwright_path).write_text(
+    "export default " + json.dumps({
+        "testDir": test_dir,
+        "timeout": 45_000,
+        "workers": 1,
+        "use": {"baseURL": f"http://127.0.0.1:{port}", "headless": True},
+        "metadata": {"lifecycleMarker": marker},
+    }), encoding="utf-8")
+PY
+  (cd "$browser_client" && npm exec vite preview -- \
+    --host 127.0.0.1 --port "$BROWSER_PREVIEW_PORT" --outDir "$browser_dist" \
+    >"$LOG_DIR/browser-preview.stdout.log" 2>"$LOG_DIR/browser-preview.stderr.log") &
+  preview_pid=$!
+  PIDS+=("$preview_pid")
+  wait_for_port "$BROWSER_PREVIEW_PORT"
+  (cd "$browser_client" && npm exec playwright test -- --config "$browser_config") &
   browser_pid=$!
   browser_node_stopped=0
 

@@ -28,7 +28,11 @@ internal sealed class ZLinkActorStragglerForwarder
         Message body,
         ZLinkActorForwardingLease lease)
     {
-        _admissionSlots.Wait(_runtime.ShutdownToken);
+        _runtime.ShutdownToken.ThrowIfCancellationRequested();
+        if (!_admissionSlots.Wait(0))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor ref '{sourceActor.ActorId}' could not be forwarded because the relay queue is full.");
         ForwardedFrame? frame = null;
         try
         {

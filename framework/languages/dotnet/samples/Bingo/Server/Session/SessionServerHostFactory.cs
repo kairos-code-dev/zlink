@@ -13,25 +13,25 @@ namespace Bingo.Server.Session;
 public static class SessionServerHostFactory
 {
     public static IHost Build(
-        SampleTopology topology,
-        SampleSessionNode session,
-        string nodeName,
-        string logDirectory)
+        SampleRuntimeConfiguration<SampleSessionNode> configuration)
     {
+        var session = configuration.Node;
+        var nodeName = configuration.NodeName;
+        var logDirectory = configuration.LogDirectory;
         var traceLabel = $"session-{nodeName}";
         var builder = Host.CreateApplicationBuilder();
         SampleLogging.Configure(
             builder.Logging,
             logDirectory,
             traceLabel);
-        builder.Services.AddSingleton(topology);
+        builder.Services.AddSingleton(configuration);
         builder.Services.AddSingleton(session);
         builder.Services.AddBingoMetrics();
         builder.Services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
-                .SetConnectionString(topology.RedisEndpoint)
-                .SetKeyPrefix(topology.RedisKeyPrefix)));
+                .SetConnectionString(configuration.RedisEndpoint)
+                .SetKeyPrefix(configuration.RedisKeyPrefix)));
             options.ConfigureDispatch()
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(SampleFlowLog.Path(logDirectory, traceLabel))

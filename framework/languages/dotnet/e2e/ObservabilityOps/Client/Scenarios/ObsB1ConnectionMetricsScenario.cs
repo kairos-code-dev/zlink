@@ -1,3 +1,4 @@
+// Verifies OBS-B1 Connection Metrics behavior.
 using System.Diagnostics.Metrics;
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;

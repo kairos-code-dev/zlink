@@ -1,3 +1,4 @@
+// Verifies SM-C3 Spot Mesh Messaging behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

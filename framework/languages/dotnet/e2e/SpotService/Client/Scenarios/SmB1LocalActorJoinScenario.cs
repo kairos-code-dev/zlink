@@ -1,3 +1,4 @@
+// Verifies SM-B1 Local Actor Join behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

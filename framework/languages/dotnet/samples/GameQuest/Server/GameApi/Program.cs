@@ -20,7 +20,7 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var configuration = GameQuestTopology.Load(args);
+        var configuration = GameQuestTopology.LoadGameApi(args);
         var topology = configuration.Topology;
         var apiName = configuration.InstanceName;
         var streamEndpoint = configuration.StreamBindEndpoint;

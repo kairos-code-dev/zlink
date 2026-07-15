@@ -1,3 +1,4 @@
+// Verifies MON-B2 Registration Validation behavior.
 using RuntimeMonitoring.Client.Support;
 
 namespace RuntimeMonitoring.Client.Scenarios;

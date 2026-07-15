@@ -10,9 +10,9 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var configuration = Bingo.Server.Configuration.SampleTopology.Load(args);
-        var streamAEndpoint = configuration.Topology.SessionA.StreamEndpoint;
-        var streamBEndpoint = configuration.Topology.SessionB.StreamEndpoint;
+        var configuration = BingoClientConfiguration.Load(args);
+        var streamAEndpoint = configuration.SessionAStreamEndpoint;
+        var streamBEndpoint = configuration.SessionBStreamEndpoint;
         using var loggerFactory = SampleLogging.CreateFactory(
             configuration.LogDirectory,
             "client");

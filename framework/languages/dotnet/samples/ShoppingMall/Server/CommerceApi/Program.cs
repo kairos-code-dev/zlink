@@ -19,7 +19,7 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var configuration = SampleTopology.Load(args);
+        var configuration = SampleTopology.LoadApi(args);
         var topology = configuration.Topology;
         var instance = topology.ForInstance(configuration.InstanceId);
         var builder = WebApplication.CreateBuilder(args);

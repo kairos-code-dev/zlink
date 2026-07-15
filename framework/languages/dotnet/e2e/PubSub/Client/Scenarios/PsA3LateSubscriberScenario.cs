@@ -1,3 +1,4 @@
+// Verifies PS-A3 Late Subscriber behavior.
 using PubSub.Client.Support;
 using PubSub.Shared;
 using Zlink.HttpClient;
@@ -31,14 +32,14 @@ internal static class PsA3LateSubscriberScenario
             "sub-late.evidence.log");
         try
         {
-            await ScenarioAssert.EventuallyAsync(
+            await StateObservation.WaitUntilAsync(
                 async () =>
                 {
                     try
                     {
                         return (await lateSubscriberClient.Get("/health").AsyncRaw()).Status == 200;
                     }
-                    catch (Exception ex) when (ScenarioAssert.IsConnectionFailure(ex))
+                    catch (Exception ex) when ((ex is HttpRequestException || ex.InnerException is HttpRequestException))
                     {
                         return false;
                     }

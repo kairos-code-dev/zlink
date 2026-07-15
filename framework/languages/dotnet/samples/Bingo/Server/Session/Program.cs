@@ -6,13 +6,9 @@ internal static class Program
 {
     private static async Task Main(string[] args)
     {
-        var configuration = SampleTopology.Load(args);
+        var configuration = SampleConfigurationLoader.LoadSession(args);
 
-        await SessionServerHostFactory.Build(
-                configuration.Topology,
-                configuration.Topology.Session(configuration.NodeName),
-                configuration.NodeName,
-                configuration.LogDirectory)
+        await SessionServerHostFactory.Build(configuration)
             .RunAsync();
     }
 }

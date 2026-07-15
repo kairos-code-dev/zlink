@@ -13,14 +13,16 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
 `System.Net.Http`의 낮은 수준 설정을 흡수한다. typed 경로
 (`Body(dto)`/`Async<T>()`)는 그 위에 얹은 편의 계층이다.
 
-이 client는 `Zlink.Framework`의 에러 모델(`ZLinkFrameworkException`)에 의존하지만
-framework core의 기본 의존성은 아니다(단방향 의존).
+이 client는 `Zlink.Framework.Contracts`의 에러 모델(`ZLinkFrameworkException`)과 codec 계약에
+의존하지만 `Zlink.Framework` server runtime에는 의존하지 않는다. 따라서 standalone client가
+server runtime assembly를 함께 배포하지 않아도 같은 오류·codec 계약을 사용한다.
 
 ## 2. 산출물 경계
 
 | 역할 | 위치 | 공개 여부 |
 |------|------|-----------|
 | 공개 contract | `src/Zlink.HttpClient/*.cs`, `Contracts/*` | public |
+| 공유 오류·codec contract | `src/Zlink.Framework.Contracts/*` | public dependency |
 | runtime 구현 | `src/Zlink.HttpClient/Runtime/*` | internal |
 | 회귀 테스트 | `tests/Zlink.HttpClient.UnitTests/*` | private |
 | 프로젝트 | `Zlink.HttpClient` | public package |
@@ -52,7 +54,7 @@ framework core의 기본 의존성은 아니다(단방향 의존).
 
 ## 4. 실행 모델
 
-- `Async<T>`는 `ValueTask<T>`를 반환하며 Spot turn을 유지한다.
+- `Async<T>`는 `ValueTask<HttpResponse<T>>`를 반환하며 Spot turn을 유지한다.
 - `Yield<T>`는 DI server client에서만 노출되며, 대기 중 Spot turn을 반납하고 완료 뒤 원래
   실행 줄의 큐에서 continuation을 재개한다.
 - callback overload는 awaitable을 반환하지 않는다. 완료 callback은 요청을 만든 Spot turn의

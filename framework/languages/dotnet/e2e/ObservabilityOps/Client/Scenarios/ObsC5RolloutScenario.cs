@@ -1,3 +1,4 @@
+// Verifies OBS-C5 Rollout behavior.
 using ObservabilityOps.Client.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;

@@ -1,3 +1,4 @@
+// Verifies SM-D10 Bounded Session Backpressure behavior.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
@@ -12,79 +13,33 @@ internal static class SmD10BoundedSessionBackpressureScenario
         IZlinkStreamConnector? isolated = null;
         try
         {
-            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-            Exception? last = null;
-            while (DateTimeOffset.UtcNow < deadline)
+            congested = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
             {
-                var candidate = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                {
-                    Endpoint = new Uri(sessionAStreamEndpoint),
-                    ConnectTimeout = TimeSpan.FromSeconds(5),
-                    RequestTimeout = TimeSpan.FromSeconds(5),
-                    Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1
-                });
-                try
-                {
-                    await candidate.Connect.Async();
-                    await candidate.Request(new AuthReq("actor-sm-d10-congested", "stream backpressure", "play-a"))
-                        .PacketName("AuthReq")
-                        .Async<AuthRes>();
-                    congested = candidate;
-                    break;
-                }
-                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-                {
-                    last = ex;
-                    await candidate.DisposeAsync();
-                    await Task.Delay(200);
-                }
-            }
+                Endpoint = new Uri(sessionAStreamEndpoint),
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                RequestTimeout = TimeSpan.FromSeconds(5),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                MaxReceivedMessages = 1
+            });
+            await congested.Connect.Async();
+            await congested.Request(new AuthReq("actor-sm-d10-congested", "stream backpressure", "play-a"))
+                .PacketName("AuthReq")
+                .Async<AuthRes>();
 
-            if (congested is null)
-                throw new InvalidOperationException(
-                    last is null
-                        ? "Actor auth did not become routable: actor-sm-d10-congested"
-                        : $"Actor auth did not become routable: actor-sm-d10-congested. Last error: {last.Message}",
-                    last);
-
-            deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
-            last = null;
-            while (DateTimeOffset.UtcNow < deadline)
+            isolated = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
             {
-                var candidate = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-                {
-                    Endpoint = new Uri(sessionBStreamEndpoint),
-                    ConnectTimeout = TimeSpan.FromSeconds(5),
-                    RequestTimeout = TimeSpan.FromSeconds(5),
-                    Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
-                    DispatchMode = ZlinkStreamDispatchMode.Immediate,
-                    MaxReceivedMessages = 1024
-                });
-                try
-                {
-                    await candidate.Connect.Async();
-                    await candidate.Request(new AuthReq("actor-sm-d10-isolated", "stream backpressure peer", "play-b"))
-                        .PacketName("AuthReq")
-                        .Async<AuthRes>();
-                    isolated = candidate;
-                    break;
-                }
-                catch (Exception ex) when (ex is ZlinkStreamException or TimeoutException)
-                {
-                    last = ex;
-                    await candidate.DisposeAsync();
-                    await Task.Delay(200);
-                }
-            }
-
-            if (isolated is null)
-                throw new InvalidOperationException(
-                    last is null
-                        ? "Actor auth did not become routable: actor-sm-d10-isolated"
-                        : $"Actor auth did not become routable: actor-sm-d10-isolated. Last error: {last.Message}",
-                    last);
+                Endpoint = new Uri(sessionBStreamEndpoint),
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                RequestTimeout = TimeSpan.FromSeconds(5),
+                Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false },
+                DispatchMode = ZlinkStreamDispatchMode.Immediate,
+                MaxReceivedMessages = 1024
+            });
+            await isolated.Connect.Async();
+            await isolated.Request(new AuthReq("actor-sm-d10-isolated", "stream backpressure peer", "play-b"))
+                .PacketName("AuthReq")
+                .Async<AuthRes>();
 
             for (var index = 0; index < 8; index++)
             {

@@ -1,3 +1,4 @@
+// Verifies TA-A3 Late Bind behavior.
 using ToActorMessaging.Client.Support;
 
 namespace ToActorMessaging.Client.Scenarios;

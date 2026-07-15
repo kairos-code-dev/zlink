@@ -1,3 +1,4 @@
+// Verifies RM-C2 Targeted Route behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
 using Zlink.HttpClient;
@@ -23,7 +24,7 @@ internal static class RmC2TargetedRouteScenario
         var afterB = (await providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(marker))
             .Async<string[]>()).Body;
-        var afterA = providerA.Get("/evidence").Async<string[]>().AsTask().GetAwaiter().GetResult().Body;
+        var afterA = (await providerA.Get("/evidence").Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
             afterB.Count(line => line.Contains("route-request|rid=api-b", StringComparison.Ordinal)
                                  && line.Contains(marker, StringComparison.Ordinal)) == 1

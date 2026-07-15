@@ -8,8 +8,8 @@ internal sealed record SubscriberOptions(
     string LogDir,
     string RedisEndpoint,
     string RedisKeyPrefix,
-    string? EvidenceFile,
-    int HandlerDelayMs)
+    int HandlerDelayMs = 0,
+    string? EvidenceFile = null)
 {
     public static SubscriberOptions Parse(string[] args)
         => E2eConfiguration.Load<SubscriberOptions>(args);

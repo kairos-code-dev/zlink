@@ -22,7 +22,7 @@ public sealed record UnlockFeatureRes(string EventId);
 
 public sealed record JoinSessionReq(string PlayerId);
 
-public sealed record JoinSessionRes(QuestProgress[] ActiveQuests);
+public sealed record JoinSessionRes(string PlayerId, QuestProgress[] ActiveQuests);
 
 public sealed record GetQuestProgressReq(string PlayerId);
 

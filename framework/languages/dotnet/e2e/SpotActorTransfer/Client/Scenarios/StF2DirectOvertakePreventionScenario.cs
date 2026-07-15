@@ -1,3 +1,4 @@
+// Verifies ST-F2 Direct Overtake Prevention behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

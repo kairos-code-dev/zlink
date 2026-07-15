@@ -7,15 +7,7 @@ internal static class Program
 {
     public static async Task Main(string[] args)
     {
-        var serverConfiguration = GameQuest.Server.Configuration.GameQuestTopology.Load(args);
-        var configured = serverConfiguration.Topology;
-        var topology = new GameQuestTopology(
-            configured.GameApiAHttpBaseUrl,
-            configured.GameApiBHttpBaseUrl,
-            configured.MissionAHttpBaseUrl,
-            configured.MissionBHttpBaseUrl,
-            configured.GameApiAStreamEndpoint,
-            configured.GameApiBStreamEndpoint);
+        var topology = GameQuestTopology.Load(args);
         await using var apiA = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
         {
             Endpoint = new Uri(topology.GameApiAStreamEndpoint),

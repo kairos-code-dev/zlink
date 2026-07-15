@@ -1,3 +1,4 @@
+// Verifies ST-E1 Bound Session Push After Transfer behavior.
 using SpotActorTransfer.Client.Support;
 using SpotActorTransfer.Shared;
 using Zlink.HttpClient;

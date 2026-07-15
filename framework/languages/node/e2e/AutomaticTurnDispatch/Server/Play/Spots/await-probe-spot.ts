@@ -2,17 +2,27 @@ import { Injectable, Scope } from '@nestjs/common';
 import type { ZLinkMessage, ZLinkSpot, ZLinkSpotActorJoinResponse, ZLinkSpotContext } from '@zlink-systems/framework';
 import type { DelayReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Support/evidence-store';
-import { HoldCommandHandler, ProbeCommandHandler, WorkerAwaitCommandHandler, AwaitCommandHandler, AwaitRequestHandler } from '../Handlers/basic-spot-handlers';
+import { HoldCommandHandler, ProbeCommandHandler, ProbeRequestHandler, WorkerAwaitCommandHandler, AwaitCommandHandler, AwaitRequestHandler } from '../Handlers/basic-spot-handlers';
+import {
+  CounterAwaitHandler,
+  CounterReadHandler,
+  CounterResetHandler,
+  CpuWorkerAwaitHandler,
+  HttpAwaitHandler,
+  IoWorkerBatchHandler,
+  SelfCycleHandler
+} from '../Handlers/execution-turn-handlers';
 import { AwaitCancelCommandHandler, AwaitTimeoutCommandHandler } from '../Handlers/failure-spot-handlers';
 import { RemoteSpotAwaitCommandHandler, RemoteSpotAwaitHandler } from '../Handlers/remote-spot-handlers';
 import { TimerStartCommandHandler, TimerStopCommandHandler } from '../Handlers/timer-spot-handlers';
-import { SpotActorFastHandler, SpotActorFastSendHandler, SpotActorPushAwaitHandler, SpotActorAwaitHandler, AwaitActor } from './await-actors';
+import { SpotActorFastHandler, SpotActorFastSendHandler, SpotActorJoinAwaitHandler, SpotActorPushAwaitHandler, SpotActorAwaitHandler, AwaitActor } from './await-actors';
 import { AwaitTimerState } from './await-timer-state';
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
   readonly context!: ZLinkSpotContext<AwaitActor>;
   private readonly timers = new Map<string, AwaitTimerState>();
+  private counter = 0;
 
   constructor(private readonly evidence: EvidenceStore) {}
 
@@ -24,6 +34,14 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
     this.context.handlers.addPacket(AwaitTimeoutCommandHandler);
     this.context.handlers.addPacket(AwaitCancelCommandHandler);
     this.context.handlers.addPacket(ProbeCommandHandler);
+    this.context.handlers.addPacket(ProbeRequestHandler);
+    this.context.handlers.addPacket(CounterResetHandler);
+    this.context.handlers.addPacket(CounterAwaitHandler);
+    this.context.handlers.addPacket(CounterReadHandler);
+    this.context.handlers.addPacket(HttpAwaitHandler);
+    this.context.handlers.addPacket(IoWorkerBatchHandler);
+    this.context.handlers.addPacket(CpuWorkerAwaitHandler);
+    this.context.handlers.addPacket(SelfCycleHandler);
     this.context.handlers.addPacket(RemoteSpotAwaitHandler);
     this.context.handlers.addPacket(RemoteSpotAwaitCommandHandler);
     this.context.handlers.addPacket(TimerStartCommandHandler);
@@ -31,6 +49,7 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
     this.context.handlers.addActorPacket(SpotActorAwaitHandler, AwaitActor);
     this.context.handlers.addActorPacket(SpotActorFastSendHandler, AwaitActor);
     this.context.handlers.addActorPacket(SpotActorFastHandler, AwaitActor);
+    this.context.handlers.addActorPacket(SpotActorJoinAwaitHandler, AwaitActor);
     this.context.handlers.addActorPacket(SpotActorPushAwaitHandler, AwaitActor);
   }
 
@@ -47,12 +66,18 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
   }
 
   async onJoinedActor(actor: AwaitActor): Promise<void> {
-    void actor;
+    this.evidence.add(`actor-joined|rid=${this.evidence.rid}|spot=${this.context.spotRid}|actor=${actor.actorId}`);
   }
 
   async onLeaveActor(actor: AwaitActor): Promise<void> {
-    void actor;
+    this.evidence.add(`actor-left|rid=${this.evidence.rid}|spot=${this.context.spotRid}|actor=${actor.actorId}`);
   }
+
+  readCounter(): number { return this.counter; }
+
+  writeCounter(value: number): void { this.counter = value; }
+
+  resetCounter(): void { this.counter = 0; }
 
   tryAddTimerState(state: AwaitTimerState): boolean {
     if (this.timers.has(state.timerName)) {
@@ -66,11 +91,11 @@ export class AwaitProbeSpot implements ZLinkSpot<AwaitActor> {
     return this.timers.get(timerName);
   }
 
-  async stopScenarioTimers(requestId: string): Promise<void> {
+  stopScenarioTimers(requestId: string): void {
     const matches = [...this.timers.values()].filter((state) => state.requestId === requestId);
     for (const state of matches) {
       this.timers.delete(state.timerName);
     }
-    await Promise.all(matches.map((state) => state.timer?.cancel()));
+    void Promise.all(matches.map((state) => state.timer?.cancel())).catch(() => undefined);
   }
 }

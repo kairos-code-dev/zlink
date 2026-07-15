@@ -14,10 +14,15 @@ const certificate = path.join(workspaceRoot, 'test/fixtures/tls/server-cert.pem'
 const key = path.join(workspaceRoot, 'test/fixtures/tls/server-key.pem');
 
 test('actual Chromium uses ws/wss, explicit flow, reconnect, drain, and browser trust', { timeout: 120_000 }, async () => {
-  const [wsPort, wssPort] = await freePorts(2);
+  const [wsPort, wssPort, untrustedWssPort] = await freePorts(3);
   const staticServer = await startStaticServer();
   let wsServer = await startStreamServer(`ws://127.0.0.1:${wsPort}`);
   const wssServer = await startStreamServer(`wss://127.0.0.1:${wssPort}`, certificate, key);
+  const untrustedWssServer = await startStreamServer(
+    `wss://127.0.0.1:${untrustedWssPort}`,
+    certificate,
+    key
+  );
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -43,10 +48,14 @@ test('actual Chromium uses ws/wss, explicit flow, reconnect, drain, and browser 
     assert.deepEqual(await requestFromPage(page, 'after-reconnect', wsServer), { value: 'after-reconnect' });
 
     await assert.rejects(
-      () => untrustedPage.evaluate((endpoint) => window.browserConnectorTest.connect(endpoint), `wss://127.0.0.1:${wssPort}`),
+      () => untrustedPage.evaluate(
+        (endpoint) => window.browserConnectorTest.connect(endpoint),
+        `wss://127.0.0.1:${untrustedWssPort}`
+      ),
       /connect|WebSocket|transport/i
     );
-    await securePage.evaluate((endpoint) => window.browserConnectorTest.connect(endpoint), `wss://127.0.0.1:${wssPort}`);
+    assert.equal(untrustedWssServer.exitCode, null);
+    await connectFromPage(securePage, `wss://127.0.0.1:${wssPort}`, wssServer);
     assert.deepEqual(await requestFromPage(securePage, 'secure-wss', wssServer), { value: 'secure-wss' });
 
     await stopStreamServer(wsServer);
@@ -63,7 +72,11 @@ test('actual Chromium uses ws/wss, explicit flow, reconnect, drain, and browser 
       untrustedPage.evaluate(() => window.browserConnectorTest.close())
     ]);
     await browser.close();
-    await Promise.allSettled([stopStreamServer(wsServer), stopStreamServer(wssServer)]);
+    await Promise.allSettled([
+      stopStreamServer(wsServer),
+      stopStreamServer(wssServer),
+      stopStreamServer(untrustedWssServer)
+    ]);
     await staticServer.close();
   }
 });
@@ -134,6 +147,16 @@ async function requestFromPage(page, value, server, explicitFlowId) {
     );
   } catch (error) {
     error.message += `\nstream server output for '${value}':\n${server.capturedOutput?.() ?? '<unavailable>'}`;
+    throw error;
+  }
+}
+
+async function connectFromPage(page, endpoint, server) {
+  try {
+    await page.evaluate((target) => window.browserConnectorTest.connect(target), endpoint);
+  } catch (error) {
+    error.message += `\nstream server exit code: ${server.exitCode ?? '<running>'}`;
+    error.message += `\nstream server output:\n${server.capturedOutput?.() ?? '<unavailable>'}`;
     throw error;
   }
 }

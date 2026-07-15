@@ -9,19 +9,6 @@ RUN_ID="$(date +%Y%m%d-%H%M%S)-$$"
 LOG_DIR="$ROOT_DIR/log/$RUN_ID"
 CONFIG_DIR=""
 SCENARIO="${1:-full}"
-CHILD_RUN="${2:-}"
-if [[ "$CHILD_RUN" != "--child-run" && ("$SCENARIO" == "full" || "$SCENARIO" == "all") ]]; then
-  for child_scenario in \
-    ATD-A1 ATD-A2 ATD-A3 ATD-A4 \
-    ATD-B1 ATD-B2 ATD-B3 \
-    ATD-C1 ATD-C2 ATD-C3 \
-    ATD-D1 ATD-D2 ATD-D3 ATD-D4 \
-    ATD-E1 ATD-E2 ATD-E3 ATD-E5; do
-    "$0" "$child_scenario" --child-run
-  done
-  echo "await-dispatch e2e result=passed"
-  exit 0
-fi
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -45,22 +32,19 @@ start_configured_server() {
 
 needs_secondary_play() {
   case "$CLIENT_SCENARIO" in
-    full-core|ATD-D2) return 0 ;;
+    full|TD-F1|TD-F2) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 needs_secondary_session() {
   case "$CLIENT_SCENARIO" in
-    full-core|ATD-D4) return 0 ;;
+    full|TD-F3) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 PRIMARY_PLAY_RID="play-a"
-if [[ "$CLIENT_SCENARIO" == "ATD-D3" ]]; then
-  PRIMARY_PLAY_RID="play-b"
-fi
 
 used_ports=()
 
@@ -79,23 +63,38 @@ static_checks() {
   fi
 
   local scenario_file
-  for scenario_file in "$ROOT_DIR"/Client/Scenarios/atd-*.ts; do
-    if ! rg -q 'ZlinkStreamConnector' "$scenario_file"; then
+  for scenario_file in "$ROOT_DIR"/Client/Scenarios/td-*.ts; do
+    if ! rg -q 'ExecutionTurnScenarioSuite' "$scenario_file"; then
       echo "$scenario_file" >&2
-      echo "AutomaticTurnDispatch ATD scenario files must receive the stream connector directly." >&2
+      echo "AutomaticTurnDispatch TD scenario files must receive the execution-turn suite directly." >&2
       return 1
     fi
     if rg -n 'zlinkStreamConnectorFactory|AwaitConnectorFactory|AutomaticTurnDispatchScenarioContext' "$scenario_file" >/tmp/zlink-await-dispatch-static-helper.$$; then
       cat /tmp/zlink-await-dispatch-static-helper.$$ >&2
       rm -f /tmp/zlink-await-dispatch-static-helper.$$
-      echo "AutomaticTurnDispatch ATD scenario files must not hide connector usage behind scenario helpers." >&2
+      echo "AutomaticTurnDispatch TD scenario files must not create transport clients." >&2
       return 1
     fi
     rm -f /tmp/zlink-await-dispatch-static-helper.$$
   done
 
-  if ! rg -q 'zlinkStreamConnectorFactory\.create' "$ROOT_DIR/Client/Scenarios/shutdown-await-scenario.ts"; then
+  if ! rg -q 'zlinkStreamConnectorFactory\.create' "$ROOT_DIR/Client/Support/shutdown-probe.ts"; then
     echo "AutomaticTurnDispatch shutdown scenario must create and use a real stream connector directly." >&2
+    return 1
+  fi
+
+  local cpu_worker_source
+  cpu_worker_source="$(sed -n '/runCpuWorker(/,/^    });/p' "$ROOT_DIR/Server/Play/Handlers/execution-turn-handlers.ts")"
+  if rg -n 'readFileSync|writeFileSync|execSync|spawnSync|curl|fetch\(|\.async<|\.yield<' <<<"$cpu_worker_source"; then
+    echo "TD-C5 CPU worker contains blocking or asynchronous I/O." >&2
+    return 1
+  fi
+  if ! rg -q 'runIoWorker' "$ROOT_DIR/Server/Play/Handlers/execution-turn-handlers.ts"; then
+    echo "TD-C3 requires the I/O worker path." >&2
+    return 1
+  fi
+  if ! rg -q "zlinkHttpClientToken\('external-api'\)" "$ROOT_DIR/Server/Play/Handlers/execution-turn-handlers.ts"; then
+    echo "TD-C1/TD-C2 require the named framework HTTP client." >&2
     return 1
   fi
 }
@@ -177,11 +176,12 @@ echo "log_dir=$LOG_DIR"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
 build_package "$ROOT_DIR/Server/Delay"
+build_package "$ROOT_DIR/Server/ExternalApi"
 build_package "$ROOT_DIR/Server/Play"
 build_package "$ROOT_DIR/Server/Session"
 build_package "$ROOT_DIR/Client"
 static_checks
-echo "scenario ATD-E4 passed" | tee "$LOG_DIR/static-checks.stdout.log"
+echo "TD-C5 source-gate result=passed" | tee "$LOG_DIR/static-checks.stdout.log"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required to run AutomaticTurnDispatch because it provisions a dedicated Redis location store." >&2
@@ -216,6 +216,7 @@ PLAY_SPOT_PUB_PORT="$(allocate_port)"
 PLAY_B_SPOT_PUB_PORT="$(allocate_port)"
 SESSION_STREAM_PORT="$(allocate_port)"
 SESSION_B_STREAM_PORT="$(allocate_port)"
+EXTERNAL_API_HTTP_PORT="$(allocate_port)"
 
 DELAY_URL="http://127.0.0.1:$DELAY_HTTP_PORT"
 DELAY_B_URL="http://127.0.0.1:$DELAY_B_HTTP_PORT"
@@ -241,6 +242,7 @@ PLAY_SPOT_PUB="tcp://127.0.0.1:$PLAY_SPOT_PUB_PORT"
 PLAY_B_SPOT_PUB="tcp://127.0.0.1:$PLAY_B_SPOT_PUB_PORT"
 SESSION_STREAM="ws://127.0.0.1:$SESSION_STREAM_PORT"
 SESSION_B_STREAM="ws://127.0.0.1:$SESSION_B_STREAM_PORT"
+EXTERNAL_API_URL="http://127.0.0.1:$EXTERNAL_API_HTTP_PORT"
 
 PLAY_A_SPOT_ROUTER_PEERS="session-a@$SESSION_SPOT_ROUTER"
 PLAY_B_SPOT_ROUTER_PEERS=""
@@ -252,12 +254,17 @@ if needs_secondary_play; then
   SESSION_A_SPOT_ROUTER_PEERS="play-a@$PLAY_SPOT_ROUTER"
 fi
 if needs_secondary_session; then
-  PLAY_A_SPOT_ROUTER_PEERS="session-a@$SESSION_SPOT_ROUTER,session-b@$SESSION_B_SPOT_ROUTER"
-  SESSION_A_SPOT_ROUTER_PEERS="session-b@$SESSION_B_SPOT_ROUTER"
-  SESSION_B_SPOT_ROUTER_PEERS=""
+  if needs_secondary_play; then
+    PLAY_A_SPOT_ROUTER_PEERS="play-b@$PLAY_B_SPOT_ROUTER,session-a@$SESSION_SPOT_ROUTER,session-b@$SESSION_B_SPOT_ROUTER"
+  else
+    PLAY_A_SPOT_ROUTER_PEERS="session-a@$SESSION_SPOT_ROUTER,session-b@$SESSION_B_SPOT_ROUTER"
+  fi
+  SESSION_A_SPOT_ROUTER_PEERS="play-a@$PLAY_SPOT_ROUTER,session-b@$SESSION_B_SPOT_ROUTER"
+  SESSION_B_SPOT_ROUTER_PEERS="play-a@$PLAY_SPOT_ROUTER,session-a@$SESSION_SPOT_ROUTER"
 fi
 
 DELAY_MAIN="$ROOT_DIR/Server/Delay/dist/Server/Delay/main.js"
+EXTERNAL_API_MAIN="$ROOT_DIR/Server/ExternalApi/dist/AutomaticTurnDispatch/Server/ExternalApi/main.js"
 PLAY_MAIN="$ROOT_DIR/Server/Play/dist/Server/Play/main.js"
 SESSION_MAIN="$ROOT_DIR/Server/Session/dist/Server/Session/main.js"
 CLIENT_ENTRY="$ROOT_DIR/Client/main.ts"
@@ -278,6 +285,11 @@ DELAY_B_PID="${pids[-1]}"
 wait_health "$DELAY_URL" delay-a "$DELAY_A_PID"
 wait_health "$DELAY_B_URL" delay-b "$DELAY_B_PID"
 
+start_configured_server external-api "$EXTERNAL_API_MAIN" \
+  --http-url "$EXTERNAL_API_URL"
+EXTERNAL_API_PID="${pids[-1]}"
+wait_health "$EXTERNAL_API_URL" external-api "$EXTERNAL_API_PID"
+
 if needs_secondary_play; then
   start_configured_server play-b "$PLAY_MAIN" \
     --rid play-b \
@@ -289,6 +301,7 @@ if needs_secondary_play; then
     --spot-pub-endpoint "$PLAY_B_SPOT_PUB" \
     --spot-router-peer "$PLAY_B_SPOT_ROUTER_PEERS" \
     --delay-endpoint "$DELAY_B_ENDPOINT" \
+    --external-api-url "$EXTERNAL_API_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --evidence-file "$LOG_DIR/play-b.evidence.log" \
@@ -312,6 +325,7 @@ start_configured_server play-a "$PLAY_MAIN" \
   --spot-pub-endpoint "$PLAY_SPOT_PUB" \
   --spot-router-peer "$PLAY_A_SPOT_ROUTER_PEERS" \
   --delay-endpoint "$DELAY_ENDPOINT" \
+  --external-api-url "$EXTERNAL_API_URL" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --evidence-file "$LOG_DIR/play-a.evidence.log" \
@@ -363,21 +377,17 @@ if needs_secondary_session; then
   wait_health "$SESSION_B_URL" session-b "$SESSION_B_PID"
 fi
 
-if [[ "$CLIENT_SCENARIO" != "ATD-E3" ]]; then
-  CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
-  node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
-    --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
-    --scenario "$CLIENT_SCENARIO"
-  node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
-    --config "$CLIENT_CONFIG" \
-    >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+CLIENT_CONFIG="$CONFIG_DIR/client.config.json"
+node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
+  --session-a-stream-endpoint "$SESSION_STREAM" --session-b-stream-endpoint "$SESSION_B_STREAM" \
+  --scenario "$CLIENT_SCENARIO"
+node "$NODE_ROOT/scripts/browser-e2e/run-e2e-client.mjs" "$CLIENT_ENTRY" -- \
+  --config "$CLIENT_CONFIG" \
+  >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"
+cat "$LOG_DIR/client.stdout.log"
 
-  cat "$LOG_DIR/client.stdout.log"
-
-fi
-
-if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; then
-  SHUTDOWN_ID="ATD-E3-$(date +%s)-$$"
+if [[ "$CLIENT_SCENARIO" == "full" || "$CLIENT_SCENARIO" == "TD-F5" ]]; then
+  SHUTDOWN_ID="TD-F5-$(date +%s)-$$"
   SHUTDOWN_SPOT="await-shutdown-${RUN_ID//[^a-zA-Z0-9]/}"
   SHUTDOWN_WAIT_CONFIG="$CONFIG_DIR/client-shutdown-wait.config.json"
   node "$ROOT_DIR/write-config.mjs" "$SHUTDOWN_WAIT_CONFIG" \
@@ -389,14 +399,14 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
   SHUTDOWN_CLIENT_PID=$!
   wait_file_contains \
     "$LOG_DIR/play-a.evidence.log" \
-    "await-released|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
-    "ATD-E3 pending await marker was not observed before shutdown." \
+    "async-held|rid=play-a|spot=$SHUTDOWN_SPOT|request=$SHUTDOWN_ID" \
+    "TD-F5 pending await marker was not observed before shutdown." \
     "$SHUTDOWN_CLIENT_PID"
   terminate_gracefully play-a "$PLAY_A_PID"
   wait_file_contains \
     "$LOG_DIR/client-shutdown-wait.stdout.log" \
-    "await-dispatch shutdown wait result=passed" \
-    "ATD-E3 shutdown client did not observe the public closed/cancelled error." \
+    "execution-turn shutdown wait result=passed" \
+    "TD-F5 shutdown client did not observe the public closed/cancelled error." \
     "$SHUTDOWN_CLIENT_PID" \
     900
   wait "$SHUTDOWN_CLIENT_PID"
@@ -412,11 +422,12 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
     --http-url "$PLAY_URL" \
     --control-endpoint "$PLAY_CONTROL" \
     --spot-route-endpoint "$PLAY_SPOT_ROUTE" \
-    --peer-spot-route-endpoint "$([[ "$CLIENT_SCENARIO" == "ATD-E3" ]] && echo "" || echo "$PLAY_B_SPOT_ROUTE")" \
+    "${PLAY_A_PEER_ARGS[@]}" \
     --spot-router-endpoint "$PLAY_SPOT_ROUTER" \
     --spot-pub-endpoint "$PLAY_SPOT_PUB" \
     --spot-router-peer "$PLAY_A_SPOT_ROUTER_PEERS" \
     --delay-endpoint "$DELAY_ENDPOINT" \
+    --external-api-url "$EXTERNAL_API_URL" \
     --redis-endpoint "$REDIS_ENDPOINT" \
     --redis-key-prefix "$REDIS_KEY_PREFIX" \
     --evidence-file "$LOG_DIR/play-a.evidence.log" \
@@ -441,7 +452,7 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
   SESSION_A_PID="${pids[-1]}"
   wait_health "$SESSION_URL" session-a "$SESSION_A_PID"
 
-  if [[ "$CLIENT_SCENARIO" != "ATD-E3" ]]; then
+  if needs_secondary_session; then
     start_configured_server session-b "$SESSION_MAIN" \
       --rid session-b \
       --http-url "$SESSION_B_URL" \
@@ -468,7 +479,7 @@ if [[ "$CLIENT_SCENARIO" == "full-core" || "$CLIENT_SCENARIO" == "ATD-E3" ]]; th
     --config "$SHUTDOWN_RECOVERY_CONFIG" \
     >"$LOG_DIR/client-shutdown-recovery.stdout.log" 2>"$LOG_DIR/client-shutdown-recovery.stderr.log"
   cat "$LOG_DIR/client-shutdown-recovery.stdout.log"
-  echo "scenario ATD-E3 passed" | tee -a "$LOG_DIR/client-shutdown-recovery.stdout.log"
+  echo "TD-F5 shutdown-recovery result=passed" | tee -a "$LOG_DIR/client-shutdown-recovery.stdout.log"
 fi
 
-echo "await-dispatch e2e result=passed"
+echo "automatic-turn-dispatch e2e result=passed"

@@ -90,29 +90,42 @@ class GameSpot implements ZLinkSpot {
 있다. 현재 가이드 예시는 실제 샘플에서 사용하는 actor request 와 timer 중심으로
 보여 준다.
 
-## 4. worker deferral
+## 4. CPU 작업과 I/O 작업
 
-짧은 local 작업을 Spot 실행 문맥 밖으로 잠시 넘겨야 하면 `context.runWorker(...)`
-를 사용한다. worker 함수는 Spot 상태를 직접 바꾸지 않고, 완료 callback 에서 Spot
-실행 문맥으로 돌아온 뒤 상태를 갱신한다.
+Spot handler에서 오래 걸리는 계산은 `context.runCpuWorker(...)`로 실행한다. 이 함수에 넘기는
+작업은 격리된 worker thread에서 실행되므로 외부 변수를 참조하지 않는 독립 함수여야 한다.
+반환값도 structured clone으로 복사할 수 있어야 한다.
 
 ```ts
-context.runWorker(() => calculateScore(snapshot))
-  .onCompleted((score) => {
-    this.currentScore = score;
-  });
+const score = await context.runCpuWorker(() => {
+  // 계산은 Spot 상태나 handler의 외부 변수를 참조하지 않는다.
+  return Array.from({ length: 10_000 }, (_, index) => index).reduce((sum, value) => sum + value, 0);
+}).submit();
+this.currentScore = score; // 완료 뒤 Spot 실행 문맥에서 상태를 갱신한다.
 ```
 
-Node.js 의 `runWorker(...)` 는 closure 를 `worker_threads` 로 옮겨 실행한다고
-보장하지 않는다. 오래 걸리는 CPU 작업이나 재시도가 필요한 작업은 별도 ZLink
-service/server 로 요청한다.
+네트워크나 파일처럼 Promise를 기다리는 작업은 CPU worker thread를 점유하지 않도록
+`context.runIoWorker(...)`를 사용한다.
+
+```ts
+const profile = await context.runIoWorker(async (signal) => {
+  // I/O 취소 신호를 실제 요청에도 전달한다.
+  const response = await fetch(profileUrl, { signal });
+  return response.json() as Promise<PlayerProfile>;
+}).yield();
+this.profile = profile; // 재개된 Spot 실행 문맥에서 결과를 반영한다.
+```
 
 ## 5. 비동기 handler의 실행 순서
 
-Spot handler가 반환한 Promise가 끝날 때까지 같은 직렬 실행 경계의 다음 작업은 시작되지
-않는다. 따라서 `await` 전후에 같은 상태를 읽고 수정해도 별도 public turn 반납 API가 필요하지
-않다. 오래 걸리는 CPU 작업은 별도 worker 또는 service로 분리하고, `AsyncLocalStorage`는
-logging이나 request context 용도로만 사용한다.
+비동기 호출을 시작한 뒤 `.submit()`을 선택하면 현재 실행 턴을 유지한다. 완료를 기다리는 동안
+같은 직렬 실행 경계의 다음 작업은 시작되지 않으므로, 완료 전후의 Spot 상태를 한 작업으로
+보호해야 할 때 사용한다.
+
+`.yield()`를 선택하면 기다리는 동안 현재 실행 턴을 반납한다. 같은 Spot의 다른 작업을 처리할 수
+있고, 비동기 호출이 끝난 뒤 continuation이 다시 실행 큐에 들어간다. 따라서 기다리는 동안 다른
+handler가 바꿀 수 있는 Spot 상태를 완료 뒤에도 그대로라고 가정하면 안 된다. 한 호출에서는
+`.submit()`과 `.yield()` 중 하나만 선택한다.
 
 ## 회귀 테스트
 

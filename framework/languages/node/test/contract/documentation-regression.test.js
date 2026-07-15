@@ -39,6 +39,16 @@ const nodeG0Ledger = path.join(
   'framework-public-contract-gap-implementation',
   'node-g0-contract-ledger.ko.md'
 );
+const nodeGapDocument = path.join(
+  workspaceRoot,
+  '..',
+  '..',
+  'doc',
+  'framework',
+  'spec',
+  'gaps',
+  'node.ko.md'
+);
 
 const guideFiles = [
   '01-overview.ko.md',
@@ -77,6 +87,27 @@ test('node README links every guide chapter', () => {
   const missing = guideFiles.filter((file) => !readme.includes(`guide/${file}`));
 
   assert.deepEqual(missing, []);
+});
+
+test('node Spot guide documents the current execution-turn APIs', () => {
+  const guide = fs.readFileSync(path.join(docRoot, 'guide', '05-spot.ko.md'), 'utf8');
+
+  assert.doesNotMatch(guide, /runWorker\(/);
+  for (const api of ['runCpuWorker', 'runIoWorker', '.submit()', '.yield()']) {
+    assert.match(guide, new RegExp(api.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.doesNotMatch(guide, /public turn 반납 API가 필요하지 않다/);
+});
+
+test('node gap checklist summary matches its completed first-round items', () => {
+  const gapDocument = fs.readFileSync(nodeGapDocument, 'utf8');
+  const firstRound = gapDocument.match(/## 1\. 진행 체크리스트(?<body>[\s\S]*?)## 2\. 구현 감사 상세/);
+  assert.notEqual(firstRound, null);
+
+  const checked = [...firstRound.groups.body.matchAll(/^- \[x\] /gm)].length;
+  const open = [...firstRound.groups.body.matchAll(/^- \[ \] /gm)].length;
+  assert.equal(open, 0);
+  assert.match(firstRound.groups.body, new RegExp(`\\*\\*전체 ${checked}건\\. 완료 ${checked}건\\.\\*\\*`));
 });
 
 test('node documentation relative markdown links resolve', () => {

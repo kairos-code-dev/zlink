@@ -9,7 +9,7 @@ const scenarioIdPattern = /\b[A-Z]{2,3}-[A-Z][0-9]+\b/g;
 test('every Node e2e scenario starts with its verification intent', () => {
   const files = scenarioFiles(path.join(root, 'e2e'));
   const canonicalTitles = scenarioTitles(path.resolve(root, '../../doc/framework/common/e2e'));
-  assert.equal(files.length, 179);
+  const implementedIds = new Set();
 
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
@@ -19,11 +19,18 @@ test('every Node e2e scenario starts with its verification intent', () => {
     const firstLine = source.split(/\r?\n/, 1)[0];
     assert.match(firstLine, /^\/\/ [A-Z]{2,3}-[A-Z][0-9]+: .+\.$/, `${file} header`);
     assert.ok(firstLine.startsWith(`// ${ids[0]}: `), `${file} header must name ${ids[0]}`);
+    assert.equal(implementedIds.has(ids[0]), false, `${ids[0]} must have exactly one Node scenario file`);
+    implementedIds.add(ids[0]);
     const canonicalTitle = canonicalTitles.get(ids[0]);
     if (canonicalTitle !== undefined) {
       assert.equal(firstLine, `// ${ids[0]}: ${canonicalTitle} 시나리오를 검증한다.`);
     }
   }
+
+  const missing = [...canonicalTitles.keys()].filter((id) => !implementedIds.has(id)).sort();
+  const obsolete = [...implementedIds].filter((id) => id.startsWith('ATD-')).sort();
+  assert.deepEqual(missing, []);
+  assert.deepEqual(obsolete, []);
 });
 
 function scenarioFiles(e2eRoot) {

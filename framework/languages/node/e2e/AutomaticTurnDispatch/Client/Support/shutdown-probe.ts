@@ -1,4 +1,3 @@
-// ATD-E3: pending await 중 shutdown과 재기동 뒤 복구 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,
@@ -6,8 +5,8 @@ import {
   ZlinkStreamException
 } from '@zlink-systems/stream-connector';
 import type { AwaitScenarioRes, AwaitShutdownRecoveryReq, AwaitShutdownScenarioReq } from '../../Shared/messages';
-import type { ClientOptions } from '../Support/client-options';
-import { ensure } from '../Support/scenario-assert';
+import type { ClientOptions } from './client-options';
+import { ensure } from './scenario-assert';
 
 export async function runShutdownWait(options: ClientOptions): Promise<void> {
   const requestId = requireOption(options.requestId, 'request-id');
@@ -15,15 +14,12 @@ export async function runShutdownWait(options: ClientOptions): Promise<void> {
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    const reply = await client
-      .request({ requestId, spotRid, delayMs: 30000 } satisfies AwaitShutdownScenarioReq)
-      .packetName('AwaitShutdownScenarioReq')
-      .timeout(90000)
-      .submit<AwaitScenarioRes>();
-    throw new Error(`ATD-E3 expected play-a shutdown while await was pending, but request completed as ${reply.operation}.`);
+    const reply = await client.request({ requestId, spotRid, delayMs: 30000 } satisfies AwaitShutdownScenarioReq)
+      .packetName('AwaitShutdownScenarioReq').timeout(90000).submit<AwaitScenarioRes>();
+    throw new Error(`TD-F5 expected shutdown during a pending await, but '${reply.operation}' completed.`);
   } catch (error) {
     if (error instanceof ZlinkStreamException || isAbortLike(error)) {
-      console.log('await-dispatch shutdown wait result=passed');
+      console.log('execution-turn shutdown wait result=passed');
       return;
     }
     throw error;
@@ -38,21 +34,14 @@ export async function runShutdownRecovery(options: ClientOptions): Promise<void>
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    const result = await client
-      .request({ requestId, spotRid } satisfies AwaitShutdownRecoveryReq)
-      .packetName('AwaitShutdownRecoveryReq')
-      .timeout(30000)
-      .submit<AwaitScenarioRes>();
-    ensure(result.operation === 'await.e3-shutdown-recovery', 'ATD-E3 recovery operation mismatch.');
-    ensure(result.spotRid === spotRid, 'ATD-E3 recovery spot rid mismatch.');
-    ensure(
-      result.evidence.some((line) =>
-        line.includes(`request=${requestId}`)
-        && line.includes('marker=shutdown-recovery-probe')
-      ),
-      'ATD-E3 recovery probe marker missing.'
-    );
-    console.log('await-dispatch shutdown recovery result=passed');
+    const result = await client.request({ requestId, spotRid } satisfies AwaitShutdownRecoveryReq)
+      .packetName('AwaitShutdownRecoveryReq').timeout(30000).submit<AwaitScenarioRes>();
+    ensure(result.operation === 'await.e3-shutdown-recovery', 'TD-F5 recovery operation mismatch.');
+    ensure(result.spotRid === spotRid, 'TD-F5 recovery Spot routing id mismatch.');
+    ensure(result.evidence.some((line) => line.includes(`request=${requestId}`)
+      && line.includes('marker=shutdown-recovery-probe')),
+    'TD-F5 recovery probe marker missing.');
+    console.log('execution-turn shutdown recovery result=passed');
   } finally {
     await client.close();
   }
@@ -71,9 +60,7 @@ function createClient(endpoint: string) {
 }
 
 function requireOption(value: string | undefined, name: string): string {
-  if (value === undefined || value.length === 0) {
-    throw new Error(`--${name} is required for shutdown scenarios.`);
-  }
+  if (value === undefined || value.length === 0) throw new Error(`--${name} is required for shutdown probes.`);
   return value;
 }
 

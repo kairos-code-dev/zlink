@@ -65,6 +65,17 @@ test('Node framework factories receive validated configuration through injection
   assert.deepEqual(offenders, []);
 });
 
+test('AutomaticTurnDispatch reads each host configuration once at its Configuration boundary', () => {
+  const rootDirectory = path.join(root, 'e2e/AutomaticTurnDispatch');
+  const playFactory = fs.readFileSync(path.join(rootDirectory, 'Server/Play/play-host-factory.ts'), 'utf8');
+  const externalApiEntry = fs.readFileSync(path.join(rootDirectory, 'Server/ExternalApi/main.ts'), 'utf8');
+
+  assert.doesNotMatch(playFactory, /readAutomaticTurnConfiguration/);
+  assert.match(playFactory, /createAutomaticTurnConfiguration\(/);
+  assert.doesNotMatch(externalApiEntry, /function readConfig\(/);
+  assert.match(externalApiEntry, /Configuration\/external-api-options/);
+});
+
 test('Node framework hosts receive only one role configuration file path', () => {
   const spotServiceRoot = path.join(root, 'e2e/SpotService');
   const runner = fs.readFileSync(path.join(spotServiceRoot, 'run_e2e.sh'), 'utf8');

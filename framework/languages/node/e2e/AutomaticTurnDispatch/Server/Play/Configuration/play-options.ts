@@ -8,6 +8,7 @@ export interface PlayOptions {
   readonly spotPubEndpoint: string;
   readonly spotRouterPeers: readonly { rid: string; endpoint: string }[];
   readonly delayEndpoint: string;
+  readonly externalApiUrl: string;
   readonly redisEndpoint: string;
   readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
@@ -28,6 +29,7 @@ export function validatePlayOptions(value: unknown): PlayOptions {
     spotPubEndpoint: requiredString(values, 'spotPubEndpoint'),
     spotRouterPeers: peerList(values, 'spotRouterPeers'),
     delayEndpoint: requiredString(values, 'delayEndpoint'),
+    externalApiUrl: requiredString(values, 'externalApiUrl'),
     redisEndpoint: requiredString(values, 'redisEndpoint'),
     redisKeyPrefix: requiredString(values, 'redisKeyPrefix'),
     evidenceFile: optionalString(values, 'evidenceFile'),

@@ -6,7 +6,19 @@ function createAutomaticTurnConfigurationModule<T>(
   token: InjectionToken,
   validate: (value: unknown) => T
 ): DynamicModule {
-  const configPath = readConfigPath(process.argv.slice(2));
+  const options = validate(readConfiguration(readConfigPath(process.argv.slice(2))));
+  return automaticTurnConfigurationModule(token, options);
+}
+
+function createAutomaticTurnConfiguration<T>(
+  token: InjectionToken,
+  validate: (value: unknown) => T
+): { readonly module: DynamicModule; readonly options: T } {
+  const options = validate(readConfiguration(readConfigPath(process.argv.slice(2))));
+  return { module: automaticTurnConfigurationModule(token, options), options };
+}
+
+function automaticTurnConfigurationModule<T>(token: InjectionToken, options: T): DynamicModule {
   class AutomaticTurnConfigurationModule {}
   Module({})(AutomaticTurnConfigurationModule);
   return {
@@ -15,14 +27,18 @@ function createAutomaticTurnConfigurationModule<T>(
       cache: true,
       ignoreEnvFile: true,
       isGlobal: false,
-      load: [() => ({ e2e: readConfiguration(configPath) })],
+      load: [() => ({ e2e: options })],
       skipProcessEnv: true,
       validatePredefined: false
     })],
     providers: [{
       provide: token,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => validate(config.get('e2e'))
+      useFactory: (config: ConfigService) => {
+        const configured = config.get<T>('e2e');
+        if (configured === undefined) throw new Error("Configuration section 'e2e' is required.");
+        return configured;
+      }
     }],
     exports: [token]
   };
@@ -86,6 +102,7 @@ function peerList(values: Record<string, unknown>, key: string): readonly { rid:
 }
 
 export {
+  createAutomaticTurnConfiguration,
   createAutomaticTurnConfigurationModule,
   objectValue,
   optionalString,

@@ -3,36 +3,52 @@ import {
   zlinkStreamJsonCodec,
   ZlinkStreamDispatchMode
 } from '@zlink-systems/stream-connector';
-import { runYdA1 } from './Scenarios/atd-a1-basic-terminator-scenario';
-import { runYdA2 } from './Scenarios/atd-a2-await-terminator-scenario';
-import { runYdA3 } from './Scenarios/atd-a3-continuation-context-scenario';
-import { runYdA4 } from './Scenarios/atd-a4-worker-await-scenario';
-import { bindAwaitActors, runYdB1 } from './Scenarios/atd-b1-other-actor-progress-scenario';
-import { runYdB2 } from './Scenarios/atd-b2-same-actor-reentry-scenario';
-import { runYdB3 } from './Scenarios/atd-b3-actor-join-await-scenario';
-import { runYdC1 } from './Scenarios/atd-c1-timer-isolation-scenario';
-import { runYdC2 } from './Scenarios/atd-c2-timer-reentry-scenario';
-import { runYdC3 } from './Scenarios/atd-c3-actor-timer-isolation-scenario';
-import { runYdD2 } from './Scenarios/atd-d2-remote-spot-await-scenario';
-import { runYdD3 } from './Scenarios/atd-d3-route-bridge-await-scenario';
-import { runYdD4 } from './Scenarios/atd-d4-session-relay-actor-await-scenario';
-import { runYdE1 } from './Scenarios/atd-e1-timeout-scenario';
-import { runYdE2 } from './Scenarios/atd-e2-cancellation-scenario';
-import { runShutdownRecovery, runShutdownWait } from './Scenarios/shutdown-await-scenario';
+import { runTdA1 } from './Scenarios/td-a1-terminator-surface-scenario';
+import { runTdA2 } from './Scenarios/td-a2-async-completion-order-scenario';
+import { runTdA3 } from './Scenarios/td-a3-async-counter-serialization-scenario';
+import { runTdA4 } from './Scenarios/td-a4-delayed-async-completion-scenario';
+import { runTdA5 } from './Scenarios/td-a5-async-timer-exclusion-scenario';
+import { runTdB1 } from './Scenarios/td-b1-yield-probe-interleave-scenario';
+import { runTdB2 } from './Scenarios/td-b2-yield-queued-probe-order-scenario';
+import { runTdB3 } from './Scenarios/td-b3-yield-lost-update-scenario';
+import { runTdB4 } from './Scenarios/td-b4-yield-timer-interleave-scenario';
+import { runTdC1 } from './Scenarios/td-c1-http-yield-interleave-scenario';
+import { runTdC2 } from './Scenarios/td-c2-http-async-exclusion-scenario';
+import { runTdC3 } from './Scenarios/td-c3-io-worker-capacity-scenario';
+import { runTdC4 } from './Scenarios/td-c4-cpu-worker-turn-order-scenario';
+import { runTdC5 } from './Scenarios/td-c5-cpu-worker-source-gate-scenario';
+import { runTdD1 } from './Scenarios/td-d1-cross-actor-yield-interleave-scenario';
+import { runTdD2 } from './Scenarios/td-d2-same-actor-no-reentry-scenario';
+import { runTdD3 } from './Scenarios/td-d3-timer-no-reentry-scenario';
+import { runTdE1 } from './Scenarios/td-e1-entry-to-user-spot-join-scenario';
+import { runTdE2 } from './Scenarios/td-e2-user-to-user-spot-join-scenario';
+import { runTdE3 } from './Scenarios/td-e3-opposite-spot-join-scenario';
+import { runTdF1 } from './Scenarios/td-f1-remote-spot-continuation-scenario';
+import { runTdF2 } from './Scenarios/td-f2-route-bridge-yield-scenario';
+import { runTdF3 } from './Scenarios/td-f3-session-relay-yield-scenario';
+import { runTdF4 } from './Scenarios/td-f4-request-timeout-recovery-scenario';
+import { runTdF5 } from './Scenarios/td-f5-cancellation-shutdown-recovery-scenario';
+import { runTdF6 } from './Scenarios/td-f6-self-request-timeout-recovery-scenario';
+import { runTdG1 } from './Scenarios/td-g1-terminator-conformance-scenario';
+import { ExecutionTurnScenarioSuite } from './Support/execution-turn-scenario-suite';
+import { runShutdownRecovery, runShutdownWait } from './Support/shutdown-probe';
 import { parseClientOptions } from './Support/client-options';
 import { browserE2eConfig, runBrowserE2e } from '../../browser-client-runtime';
-import {
-  AutomaticTurnDispatchNames,
-  type AutomaticTurnDispatchRes,
-  type AwaitReq,
-  type EnsureSpotReq,
-  type EnsureSpotRes
-} from '../Shared/messages';
+
+const scenarios = new Map<string, (suite: ExecutionTurnScenarioSuite) => Promise<void>>([
+  ['TD-A1', runTdA1], ['TD-A2', runTdA2], ['TD-A3', runTdA3], ['TD-A4', runTdA4], ['TD-A5', runTdA5],
+  ['TD-B1', runTdB1], ['TD-B2', runTdB2], ['TD-B3', runTdB3], ['TD-B4', runTdB4],
+  ['TD-C1', runTdC1], ['TD-C2', runTdC2], ['TD-C3', runTdC3], ['TD-C4', runTdC4], ['TD-C5', runTdC5],
+  ['TD-D1', runTdD1], ['TD-D2', runTdD2], ['TD-D3', runTdD3],
+  ['TD-E1', runTdE1], ['TD-E2', runTdE2], ['TD-E3', runTdE3],
+  ['TD-F1', runTdF1], ['TD-F2', runTdF2], ['TD-F3', runTdF3], ['TD-F4', runTdF4], ['TD-F5', runTdF5],
+  ['TD-F6', runTdF6], ['TD-G1', runTdG1]
+]);
 
 async function main(): Promise<void> {
   const options = parseClientOptions(await browserE2eConfig());
   const scenario = options.scenario.toUpperCase();
-  const full = scenario === 'FULL' || scenario === 'FULL-CORE';
+  const full = scenario === 'FULL' || scenario === 'ALL';
   if (scenario === 'SHUTDOWN-WAIT') {
     await runShutdownWait(options);
     return;
@@ -45,146 +61,23 @@ async function main(): Promise<void> {
   const client = createClient(options.sessionAStreamEndpoint);
   await client.connect();
   try {
-    if (scenario !== 'ATD-D2' && scenario !== 'ATD-D4') {
-      await waitForSpotRoutes(client, scenario);
-    }
-    if (full || scenario === 'ATD-A1') {
-      const { spotRid } = await runYdA1(client);
-      if (full) {
-        await runYdA2(client, spotRid);
-        await runYdA3(client, spotRid);
-        await runYdA4(client, spotRid);
-        const actors = await bindAwaitActors(client, spotRid);
-        await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
-          await bindAwaitActors(peer, spotRid, actors, [actors.actorB]);
-          await runYdB1(client, peer, actors);
-        });
-        await runYdB2(client, actors);
-        await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
-          await bindAwaitActors(peer, spotRid, actors, [actors.actorB]);
-          await runYdB3(client, peer, actors);
-        });
-        const timer = await runYdC1(client);
-        await runYdC2(client, timer.spotRid);
-        await bindAwaitActors(client, spotRid, actors, [actors.actorB]);
-        await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
-          await runYdC3(client, peer, actors);
-        });
-        await runYdD2(client);
-        await runYdD4(client, () => createClient(options.sessionBStreamEndpoint), actors);
-        console.log('scenario ATD-D1 passed');
-        await runYdE1(client);
-        await runYdE2(client);
-        console.log('scenario ATD-E5 passed');
+    const suite = new ExecutionTurnScenarioSuite(client);
+    if (full) {
+      for (const [id, run] of scenarios) {
+        await run(suite);
+        console.log(`${id} result=passed`);
       }
-    } else if (scenario === 'ATD-A2') {
-      const { spotRid } = await runYdA1(client);
-      await runYdA2(client, spotRid);
-    } else if (scenario === 'ATD-A3') {
-      const { spotRid } = await runYdA1(client);
-      await runYdA3(client, spotRid);
-    } else if (scenario === 'ATD-A4') {
-      const { spotRid } = await runYdA1(client);
-      await runYdA4(client, spotRid);
-    } else if (scenario === 'ATD-B1') {
-      const { spotRid } = await runYdA1(client);
-      const actors = await bindAwaitActors(client, spotRid);
-      await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
-        await bindAwaitActors(peer, spotRid, actors, [actors.actorB]);
-        await runYdB1(client, peer, actors);
-      });
-    } else if (scenario === 'ATD-B2') {
-      const { spotRid } = await runYdA1(client);
-      const actors = await bindAwaitActors(client, spotRid);
-      await runYdB2(client, actors);
-    } else if (scenario === 'ATD-B3') {
-      const { spotRid } = await runYdA1(client);
-      const actors = await bindAwaitActors(client, spotRid);
-      await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
-        await bindAwaitActors(peer, spotRid, actors, [actors.actorB]);
-        await runYdB3(client, peer, actors);
-      });
-    } else if (scenario === 'ATD-C1') {
-      await runYdC1(client);
-    } else if (scenario === 'ATD-C2') {
-      const timer = await runYdC1(client);
-      await runYdC2(client, timer.spotRid);
-    } else if (scenario === 'ATD-C3') {
-      const { spotRid } = await runYdA1(client);
-      const actors = await bindAwaitActors(client, spotRid);
-      await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
-        await runYdC3(client, peer, actors);
-      });
-    } else if (scenario === 'ATD-D2') {
-      await runYdD2(client);
-    } else if (scenario === 'ATD-D3') {
-      await runYdD3(client);
-    } else if (scenario === 'ATD-D4') {
-      const { spotRid } = await runYdA1(client);
-      const actors = await bindAwaitActors(client, spotRid);
-      await runYdD4(client, () => createClient(options.sessionBStreamEndpoint), actors);
-    } else if (scenario === 'ATD-D1') {
-      const { spotRid } = await runYdA1(client);
-      const actors = await bindAwaitActors(client, spotRid);
-      await runYdC1(client);
-      await withPeerClient(options.sessionAStreamEndpoint, async (peer) => {
-        await runYdC3(client, peer, actors);
-      });
-      await runYdE1(client);
-      console.log('scenario ATD-D1 passed');
-    } else if (scenario === 'ATD-E1') {
-      await runYdE1(client);
-    } else if (scenario === 'ATD-E2') {
-      await runYdE2(client);
-    } else if (scenario === 'ATD-E5') {
-      console.log('scenario ATD-E5 passed');
     } else {
-      throw new Error(`Unknown scenario '${options.scenario}'.`);
+      const run = scenarios.get(scenario);
+      if (run === undefined) throw new Error(`Unknown scenario '${options.scenario}'.`);
+      await run(suite);
+      console.log(`${scenario} result=passed`);
     }
   } finally {
     await client.close();
   }
 
-  console.log('await-dispatch client result=passed');
-}
-
-async function waitForSpotRoutes(client: ReturnType<typeof createClient>, scenario: string): Promise<void> {
-  const targetNodeRids = [scenario === 'ATD-D3' ? 'play-b' : 'play-a'];
-  for (const targetNodeRid of targetNodeRids) {
-    const spotRid = `topology-${targetNodeRid}-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
-    const spot = await client
-      .request({ spotRid } satisfies EnsureSpotReq)
-      .packetName('EnsureSpotReq')
-      .metadata(AutomaticTurnDispatchNames.targetNodeRidMetadata, targetNodeRid)
-      .timeout(30000)
-      .submit<EnsureSpotRes>();
-    if (spot.nodeRid !== targetNodeRid) {
-      throw new Error(`Topology probe expected ${targetNodeRid}, received ${spot.nodeRid}.`);
-    }
-
-    const deadline = Date.now() + 30000;
-    while (true) {
-      try {
-        await client
-          .request({
-            requestId: `topology-${targetNodeRid}`,
-            delayMs: 0,
-            correlationId: 'topology-ready'
-          } satisfies AwaitReq)
-          .packetName('AwaitReq')
-          .metadata(AutomaticTurnDispatchNames.spotRidMetadata, spotRid)
-          .timeout(5000)
-          .submit<AutomaticTurnDispatchRes>();
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!/Host unreachable|timed out|not connected|disconnected/i.test(message) || Date.now() >= deadline) {
-          throw new Error(`SPOT route to ${targetNodeRid} did not become ready: ${message}`);
-        }
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-  }
+  console.log('execution-turn client result=passed');
 }
 
 function createClient(endpoint: string) {
@@ -197,16 +90,6 @@ function createClient(endpoint: string) {
     requestTimeoutMs: 60000,
     maxReceivedMessages: 1024
   });
-}
-
-async function withPeerClient<T>(endpoint: string, run: (client: ReturnType<typeof createClient>) => Promise<T>): Promise<T> {
-  const client = createClient(endpoint);
-  await client.connect();
-  try {
-    return await run(client);
-  } finally {
-    await client.close();
-  }
 }
 
 void runBrowserE2e('AutomaticTurnDispatch', main);

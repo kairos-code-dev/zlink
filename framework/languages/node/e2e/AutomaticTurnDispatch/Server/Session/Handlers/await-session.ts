@@ -26,7 +26,17 @@ import {
   AwaitScenarioRes,
   AwaitShutdownRecoveryReq,
   AwaitShutdownScenarioReq,
-  AwaitTimeoutMsg
+  AwaitTimeoutMsg,
+  CounterResetMsg,
+  CounterAwaitMsg,
+  CounterReadReq,
+  CounterReadRes,
+  HttpAwaitMsg,
+  IoWorkerBatchReq,
+  IoWorkerBatchRes,
+  CpuWorkerAwaitMsg,
+  SelfCycleMsg,
+  ProbeReq
 } from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
 import type {
@@ -162,6 +172,61 @@ class AwaitSession implements ZLinkSession {
       return;
     }
 
+    if (dispatch.packetName === 'CounterResetMsg') {
+      await this.relayToSpot(dispatch, decodePacket(payload, CounterResetMsg), signal);
+      return;
+    }
+
+    if (dispatch.packetName === 'CounterAwaitMsg') {
+      await this.relayToSpot(dispatch, decodePacket(payload, CounterAwaitMsg), signal);
+      return;
+    }
+
+    if (dispatch.packetName === 'HttpAwaitMsg') {
+      await this.relayToSpot(dispatch, decodePacket(payload, HttpAwaitMsg), signal);
+      return;
+    }
+
+    if (dispatch.packetName === 'IoWorkerBatchReq') {
+      const reply = await this.relayToSpotRequest<IoWorkerBatchRes>(
+        dispatch,
+        decodePacket(payload, IoWorkerBatchReq),
+        signal
+      );
+      this.context.client.reply(reply).submit();
+      return;
+    }
+
+    if (dispatch.packetName === 'CpuWorkerAwaitMsg') {
+      await this.relayToSpot(dispatch, decodePacket(payload, CpuWorkerAwaitMsg), signal);
+      return;
+    }
+
+    if (dispatch.packetName === 'SelfCycleMsg') {
+      await this.relayToSpot(dispatch, decodePacket(payload, SelfCycleMsg), signal);
+      return;
+    }
+
+    if (dispatch.packetName === 'CounterReadReq') {
+      const reply = await this.relayToSpotRequest<CounterReadRes>(
+        dispatch,
+        decodePacket(payload, CounterReadReq),
+        signal
+      );
+      this.context.client.reply(reply).submit();
+      return;
+    }
+
+    if (dispatch.packetName === 'ProbeReq') {
+      const reply = await this.relayToSpotRequest<AutomaticTurnDispatchRes>(
+        dispatch,
+        decodePacket(payload, ProbeReq),
+        signal
+      );
+      this.context.client.reply(reply).submit();
+      return;
+    }
+
     if (dispatch.packetName === 'TimerStartMsg') {
       await this.relayTimerControl(dispatch, decodePacket(payload, TimerStartMsg), signal);
       return;
@@ -292,7 +357,7 @@ class AwaitSession implements ZLinkSession {
       && line.includes(`rid=play-a|spot=${request.spotRid}`)
       && line.includes('marker=shutdown-recovery-probe')
     )) {
-      throw new Error('ATD-E3 recovery probe marker missing.');
+      throw new Error('TD-F5 recovery probe marker missing.');
     }
     return {
       operation: 'await.e3-shutdown-recovery',
@@ -340,7 +405,9 @@ class AwaitSession implements ZLinkSession {
 
   private async relayToSpot(
     dispatch: ZLinkSessionDispatchContext,
-    request: HoldMsg | AwaitMsg | WorkerAwaitMsg | AwaitTimeoutMsg | AwaitCancelMsg | ProbeMsg | TimerStartMsg | TimerStopMsg | RemoteSpotAwaitMsg,
+    request: HoldMsg | AwaitMsg | WorkerAwaitMsg | AwaitTimeoutMsg | AwaitCancelMsg | ProbeMsg
+      | CounterResetMsg | CounterAwaitMsg | HttpAwaitMsg | CpuWorkerAwaitMsg | SelfCycleMsg
+      | TimerStartMsg | TimerStopMsg | RemoteSpotAwaitMsg,
     signal?: AbortSignal
   ): Promise<void> {
     const spotRid = dispatch.metadata.get(AutomaticTurnDispatchNames.spotRidMetadata);
@@ -354,11 +421,11 @@ class AwaitSession implements ZLinkSession {
     this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=sent`);
   }
 
-  private async relayToSpotRequest(
+  private async relayToSpotRequest<TReply = AutomaticTurnDispatchRes>(
     dispatch: ZLinkSessionDispatchContext,
-    request: RemoteSpotAwaitReq | AwaitReq,
+    request: RemoteSpotAwaitReq | AwaitReq | CounterReadReq | ProbeReq | IoWorkerBatchReq,
     signal?: AbortSignal
-  ): Promise<AutomaticTurnDispatchRes> {
+  ): Promise<TReply> {
     const spotRid = dispatch.metadata.get(AutomaticTurnDispatchNames.spotRidMetadata);
     if (spotRid === undefined || spotRid.trim() === '') {
       throw new Error(`${AutomaticTurnDispatchNames.spotRidMetadata} metadata is required for '${dispatch.packetName}'.`);
@@ -367,7 +434,7 @@ class AwaitSession implements ZLinkSession {
     const reply = await this.outbound
       .requestToSpot(spot, request)
       .timeout(5000)
-      .submit<AutomaticTurnDispatchRes>(signal);
+      .submit<TReply>(signal);
     this.evidence.add(`spot-relay|rid=${this.evidence.rid}|spot=${spotRid}|packet=${dispatch.packetName}|status=replied`);
     return reply;
   }

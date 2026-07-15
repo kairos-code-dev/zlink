@@ -24,6 +24,11 @@ export interface DelayRes {
   readonly nodeRid: string;
 }
 
+export interface ExternalDelayRes {
+  readonly requestId: string;
+  readonly marker: string;
+}
+
 export interface AwaitShutdownScenarioReq {
   readonly requestId: string;
   readonly spotRid: string;
@@ -52,12 +57,62 @@ export interface AwaitMsg {
   readonly requestId: string;
   readonly delayMs: number;
   readonly correlationId: string;
+  readonly terminator?: 'async' | 'yield';
 }
 
 export interface AwaitReq {
   readonly requestId: string;
   readonly delayMs: number;
   readonly correlationId: string;
+  readonly terminator?: 'async' | 'yield';
+}
+
+export interface CounterResetMsg {
+  readonly requestId: string;
+}
+
+export interface CounterAwaitMsg {
+  readonly requestId: string;
+  readonly operationId: string;
+  readonly delayMs: number;
+  readonly terminator: 'async' | 'yield';
+}
+
+export interface CounterReadReq {
+  readonly requestId: string;
+}
+
+export interface CounterReadRes {
+  readonly requestId: string;
+  readonly value: number;
+}
+
+export interface HttpAwaitMsg {
+  readonly requestId: string;
+  readonly delayMs: number;
+  readonly terminator: 'async' | 'yield';
+}
+
+export interface IoWorkerBatchReq {
+  readonly requestId: string;
+  readonly count: number;
+  readonly delayMs: number;
+}
+
+export interface IoWorkerBatchRes {
+  readonly requestId: string;
+  readonly completed: number;
+}
+
+export interface CpuWorkerAwaitMsg {
+  readonly requestId: string;
+  readonly delayMs: number;
+  readonly terminator: 'async' | 'yield';
+}
+
+export interface SelfCycleMsg {
+  readonly requestId: string;
+  readonly timeoutMs: number;
 }
 
 export interface RemoteSpotAwaitReq {
@@ -65,6 +120,7 @@ export interface RemoteSpotAwaitReq {
   readonly targetSpotRid: string;
   readonly targetSpot?: SpotHandle;
   readonly delayMs: number;
+  readonly terminator?: 'async' | 'yield';
 }
 
 export interface RemoteSpotAwaitMsg {
@@ -72,6 +128,7 @@ export interface RemoteSpotAwaitMsg {
   readonly targetSpotRid: string;
   readonly targetSpot?: SpotHandle;
   readonly delayMs: number;
+  readonly terminator?: 'async' | 'yield';
 }
 
 export interface WorkerAwaitMsg {
@@ -83,12 +140,14 @@ export interface AwaitTimeoutMsg {
   readonly requestId: string;
   readonly delayMs: number;
   readonly timeoutMs: number;
+  readonly terminator?: 'async' | 'yield';
 }
 
 export interface AwaitCancelMsg {
   readonly requestId: string;
   readonly delayMs: number;
   readonly cancelAfterMs: number;
+  readonly terminator?: 'async' | 'yield';
 }
 
 export interface TimerStartMsg {
@@ -107,6 +166,8 @@ export interface ProbeMsg {
   readonly requestId: string;
   readonly marker: string;
 }
+
+export interface ProbeReq extends ProbeMsg {}
 
 export interface EnsureSpotReq {
   readonly spotRid: string;
@@ -151,6 +212,7 @@ export interface AwaitActorBinding {
 export interface ActorAwaitReq {
   readonly requestId: string;
   readonly delayMs: number;
+  readonly terminator?: 'async' | 'yield';
 }
 
 export interface ActorFastReq {
@@ -207,6 +269,13 @@ export class AwaitShutdownRecoveryReq {}
 export class HoldMsg {}
 export class AwaitMsg {}
 export class AwaitReq {}
+export class CounterResetMsg {}
+export class CounterAwaitMsg {}
+export class CounterReadReq {}
+export class HttpAwaitMsg {}
+export class IoWorkerBatchReq {}
+export class CpuWorkerAwaitMsg {}
+export class SelfCycleMsg {}
 export class RemoteSpotAwaitReq {}
 export class RemoteSpotAwaitMsg {}
 export class WorkerAwaitMsg {}
@@ -215,6 +284,7 @@ export class AwaitCancelMsg {}
 export class TimerStartMsg {}
 export class TimerStopMsg {}
 export class ProbeMsg {}
+export class ProbeReq {}
 export class EnsureSpotReq {}
 export class AwaitEvidenceWaitReq {}
 export class AwaitEvidenceReq {}

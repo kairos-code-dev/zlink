@@ -8,6 +8,7 @@ import type {
   WorkerAwaitMsg,
   AwaitMsg,
   AwaitReq,
+  ProbeReq,
   AutomaticTurnDispatchRes
 } from '../../../Shared/messages';
 import { AutomaticTurnDispatchNames } from '../../../Shared/messages';
@@ -39,8 +40,9 @@ export class AwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
 
   async handle(spot: AwaitProbeSpot, request: AwaitMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
+    const terminator = request.terminator ?? 'async';
     this.evidence.add(
-      `await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      `${terminator}-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
       + `|correlation=${request.correlationId}|handler=spot`
     );
     const call = spot.context.outbound
@@ -48,16 +50,21 @@ export class AwaitCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
         new DelayReq(request.requestId, request.delayMs, 'await'))
       .timeout(5000);
     this.evidence.add(
-      `await-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      `${terminator}-${terminator === 'yield' ? 'released' : 'held'}|rid=${this.evidence.rid}`
+      + `|spot=${spot.context.spotRid}|request=${request.requestId}`
       + `|correlation=${request.correlationId}|handler=spot`
     );
-    await call.submit<DelayRes>();
+    if (terminator === 'yield') {
+      await call.yield<DelayRes>();
+    } else {
+      await call.submit<DelayRes>();
+    }
     this.evidence.add(
-      `await-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      `${terminator}-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
       + `|correlation=${request.correlationId}|handler=spot`
     );
     this.evidence.add(
-      `await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
+      `${terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
       + `|correlation=${request.correlationId}|handler=spot`
     );
   }
@@ -75,11 +82,11 @@ export class AwaitRequestHandler implements ZLinkSpotRequestHandler<AwaitProbeSp
   ): Promise<AutomaticTurnDispatchRes> {
     await new AwaitCommandHandler(this.evidence).handle(spot, request, context);
     return {
-      scenarioId: request.correlationId === 'remote-spot' ? 'ATD-D2-target' : 'ATD-A2',
+      scenarioId: request.correlationId,
       requestId: request.requestId,
       spotRid: String(spot.context.spotRid),
       nodeRid: String(spot.context.nodeRid),
-      marker: 'await-completed'
+      marker: `${request.terminator ?? 'async'}-completed`
     };
   }
 }
@@ -118,6 +125,23 @@ export class ProbeCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
       `probe-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
       + `|marker=${request.marker}|handler=spot`
     );
+  }
+}
+
+@Injectable()
+@ZLinkPacket('ProbeReq')
+export class ProbeRequestHandler implements ZLinkSpotRequestHandler<AwaitProbeSpot, ProbeReq, AutomaticTurnDispatchRes> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(spot: AwaitProbeSpot, request: ProbeReq, context: ZLinkHandlerContext): Promise<AutomaticTurnDispatchRes> {
+    await new ProbeCommandHandler(this.evidence).handle(spot, request, context);
+    return {
+      scenarioId: request.requestId.split('-', 1)[0] ?? 'TD',
+      requestId: request.requestId,
+      spotRid: String(spot.context.spotRid),
+      nodeRid: String(spot.context.nodeRid),
+      marker: request.marker
+    };
   }
 }
 

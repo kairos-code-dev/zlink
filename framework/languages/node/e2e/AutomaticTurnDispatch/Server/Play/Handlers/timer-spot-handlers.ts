@@ -40,7 +40,7 @@ export class TimerStartCommandHandler implements ZLinkSpotPacketHandler<AwaitPro
 export class TimerStopCommandHandler implements ZLinkSpotPacketHandler<AwaitProbeSpot, TimerStopMsg> {
   async handle(spot: AwaitProbeSpot, request: TimerStopMsg, context: ZLinkHandlerContext): Promise<void> {
     void context;
-    await spot.stopScenarioTimers(request.requestId);
+    spot.stopScenarioTimers(request.requestId);
   }
 }
 
@@ -66,9 +66,9 @@ export class AwaitTimerHandler implements ZLinkSpotTimerHandler<AwaitProbeSpot> 
       return;
     }
 
-    if (tickNumber === 1 && (state.mode === 'await-on-first' || state.mode === 'await-then-next')) {
+    if (tickNumber === 1 && (state.mode === 'yield-on-first' || state.mode === 'yield-then-next')) {
       this.evidence.add(
-        `timer-await-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `timer-yield-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`
       );
       const call = spot.context.outbound
@@ -76,22 +76,22 @@ export class AwaitTimerHandler implements ZLinkSpotTimerHandler<AwaitProbeSpot> 
           new DelayReq(state.requestId, state.delayMs, state.timerName))
         .timeout(5000);
       this.evidence.add(
-        `timer-await-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `timer-yield-released|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`
       );
-      await call.submit<DelayRes>();
+      await call.yield<DelayRes>();
       this.evidence.add(
-        `timer-await-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `timer-yield-resumed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`
       );
       this.evidence.add(
-        `timer-await-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+        `timer-yield-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`
       );
       return;
     }
 
-    if (state.mode === 'await-then-next' && tickNumber === 2) {
+    if (state.mode === 'yield-then-next' && tickNumber === 2) {
       this.evidence.add(
         `timer-next-started|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
         + `|request=${state.requestId}|timer=${state.timerName}|tick=${tickNumber}|handler=timer`

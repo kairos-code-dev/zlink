@@ -26,7 +26,7 @@ export class RemoteSpotAwaitHandler implements ZLinkSpotRequestHandler<AwaitProb
   ): Promise<AutomaticTurnDispatchRes> {
     void context;
     await runRemoteSpotAwait(this.evidence, this.spotHandles, spot, request);
-    return reply('ATD-D2', request.requestId, spot, 'remote-await-completed');
+    return reply('TD-F1', request.requestId, spot, 'remote-await-completed');
   }
 }
 
@@ -54,8 +54,9 @@ async function runRemoteSpotAwait(
   spot: AwaitProbeSpot,
   request: RemoteSpotAwaitReq | RemoteSpotAwaitMsg
 ): Promise<void> {
+  const terminator = request.terminator ?? 'async';
   evidence.add(
-    `remote-await-started|rid=${evidence.rid}|spot=${spot.context.spotRid}`
+    `remote-${terminator}-started|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
   );
   const targetSpot = request.targetSpot ?? await spotHandles.resolveSpotHandle(request.targetSpotRid);
@@ -66,20 +67,24 @@ async function runRemoteSpotAwait(
     .requestToSpot(targetSpot, Object.assign(new AwaitReq(), {
       requestId: request.requestId,
       delayMs: request.delayMs,
-      correlationId: 'remote-spot'
+      correlationId: 'remote-spot',
+      terminator
     }))
     .timeout(5000);
   evidence.add(
-    `remote-await-released|rid=${evidence.rid}|spot=${spot.context.spotRid}`
+    `remote-${terminator}-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}`
+    + `|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|handler=spot`
   );
-  const targetReply = await call.submit<AutomaticTurnDispatchRes>();
+  const targetReply = terminator === 'yield'
+    ? await call.yield<AutomaticTurnDispatchRes>()
+    : await call.submit<AutomaticTurnDispatchRes>();
   evidence.add(
-    `remote-await-resumed|rid=${evidence.rid}|spot=${spot.context.spotRid}`
+    `remote-${terminator}-resumed|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|targetNode=${targetReply.nodeRid}|handler=spot`
   );
   evidence.add(
-    `remote-await-completed|rid=${evidence.rid}|spot=${spot.context.spotRid}`
+    `remote-${terminator}-completed|rid=${evidence.rid}|spot=${spot.context.spotRid}`
     + `|request=${request.requestId}|target=${request.targetSpotRid}|targetNode=${targetReply.nodeRid}|handler=spot`
   );
 }

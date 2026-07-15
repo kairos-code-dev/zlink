@@ -3,14 +3,23 @@ import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkHttpClientModule, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { AutomaticTurnDispatchNames } from '../../Shared/messages';
 import { EvidenceStore } from './Support/evidence-store';
 import { closeHttpServer, startHttpServer } from './Support/http-server';
-import { createAutomaticTurnConfigurationModule } from '../../configuration';
+import { createAutomaticTurnConfiguration } from '../../configuration';
 import { PLAY_OPTIONS, validatePlayOptions } from './Configuration/play-options';
 import type { PlayOptions } from './Configuration/play-options';
-import { HoldCommandHandler, ProbeCommandHandler, WorkerAwaitCommandHandler, AwaitCommandHandler, AwaitRequestHandler } from './Handlers/basic-spot-handlers';
+import { HoldCommandHandler, ProbeCommandHandler, ProbeRequestHandler, WorkerAwaitCommandHandler, AwaitCommandHandler, AwaitRequestHandler } from './Handlers/basic-spot-handlers';
+import {
+  CounterAwaitHandler,
+  CounterReadHandler,
+  CounterResetHandler,
+  CpuWorkerAwaitHandler,
+  HttpAwaitHandler,
+  IoWorkerBatchHandler,
+  SelfCycleHandler
+} from './Handlers/execution-turn-handlers';
 import {
   BindAwaitActorsControlHandler,
   EnsureSpotControlHandler,
@@ -29,6 +38,7 @@ import {
   EntryActorAwaitHandler,
   SpotActorFastHandler,
   SpotActorFastSendHandler,
+  SpotActorJoinAwaitHandler,
   SpotActorPushAwaitHandler,
   SpotActorAwaitHandler,
   AwaitActorFactory,
@@ -38,55 +48,62 @@ import { AwaitProbeSpot } from './Spots/await-probe-spot';
 
 export async function startPlayHost(): Promise<void> {
   let stopping = false;
-  const configuration = createAutomaticTurnConfigurationModule(PLAY_OPTIONS, validatePlayOptions);
+  const configured = createAutomaticTurnConfiguration(PLAY_OPTIONS, validatePlayOptions);
+  const configuration = configured.module;
+  const frameworkModule = ZLinkModule.forRootFactory({
+    imports: [configuration],
+    inject: [PLAY_OPTIONS],
+    useFactory: (value: unknown) => {
+      const options = value as PlayOptions;
+      fs.mkdirSync(options.logDir, { recursive: true });
+      const locationStore = new ZLinkRedisLocationStore({
+        url: `redis://${options.redisEndpoint}`,
+        keyPrefix: options.redisKeyPrefix
+      });
+      const builder = zlinkFramework();
+      builder
+        .configureDispatch()
+          .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
+          .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
+          .traceLabel(options.rid);
+      builder.addLocationStore(locationStore);
+      builder.addRouteMeshChannel(AutomaticTurnDispatchNames.controlChannel)
+        .enableRouter(options.controlEndpoint)
+        .routingId(options.rid)
+        .addRequestHandler('EnsureSpotReq', EnsureSpotControlHandler)
+        .addRequestHandler('BindAwaitActorsReq', BindAwaitActorsControlHandler)
+        .addRequestHandler('AwaitEvidenceReq', AwaitEvidenceControlHandler)
+        .addRequestHandler('AwaitEvidenceWaitReq', AwaitEvidenceWaitControlHandler);
+      builder.addClientServerChannel(AutomaticTurnDispatchNames.delayChannel)
+        .enableClient(options.delayEndpoint);
+      const spotRoute = builder.addRouteMeshChannel(AutomaticTurnDispatchNames.spotRouteChannel)
+        .enableRouter(options.spotRouteEndpoint)
+        .routingId(options.rid);
+      if (options.peerSpotRouteEndpoints.length > 0) {
+        spotRoute.connect(options.peerSpotRouteEndpoints);
+      }
+      const spotMesh = builder.addSpotMesh(AutomaticTurnDispatchNames.spotChannel)
+        .routingId(options.rid)
+        .enableRouter(options.spotRouterEndpoint)
+        .enablePubSub(options.spotPubEndpoint)
+        .addEntrySpot(AwaitEntrySpot)
+        .actorFactory(AutomaticTurnDispatchNames.actorType, AwaitActorFactory)
+        .addSpotFactory(AwaitProbeSpot);
+      for (const peer of options.spotRouterPeers) spotMesh.connectRouter(peer.rid, peer.endpoint);
+      return builder.build();
+    }
+  });
+  const httpClientModule = ZLinkHttpClientModule.forRoot({
+    imports: [frameworkModule],
+    clients: [{ name: 'external-api', baseUrl: configured.options.externalApiUrl }]
+  });
 
   class PlayModule {}
   Module({
     imports: [
       configuration,
-      ZLinkModule.forRootFactory({
-        imports: [configuration],
-        inject: [PLAY_OPTIONS],
-        useFactory: (value: unknown) => {
-          const options = value as PlayOptions;
-          fs.mkdirSync(options.logDir, { recursive: true });
-          const locationStore = new ZLinkRedisLocationStore({
-            url: `redis://${options.redisEndpoint}`,
-            keyPrefix: options.redisKeyPrefix
-          });
-          const builder = zlinkFramework();
-          builder
-            .configureDispatch()
-              .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
-              .traceLogFile(`${options.logDir}/${options.rid}-flow.log`)
-              .traceLabel(options.rid);
-          builder.addLocationStore(locationStore);
-          builder.addRouteMeshChannel(AutomaticTurnDispatchNames.controlChannel)
-            .enableRouter(options.controlEndpoint)
-            .routingId(options.rid)
-            .addRequestHandler('EnsureSpotReq', EnsureSpotControlHandler)
-            .addRequestHandler('BindAwaitActorsReq', BindAwaitActorsControlHandler)
-            .addRequestHandler('AwaitEvidenceReq', AwaitEvidenceControlHandler)
-            .addRequestHandler('AwaitEvidenceWaitReq', AwaitEvidenceWaitControlHandler);
-          builder.addClientServerChannel(AutomaticTurnDispatchNames.delayChannel)
-            .enableClient(options.delayEndpoint);
-          const spotRoute = builder.addRouteMeshChannel(AutomaticTurnDispatchNames.spotRouteChannel)
-            .enableRouter(options.spotRouteEndpoint)
-            .routingId(options.rid);
-          if (options.peerSpotRouteEndpoints.length > 0) {
-            spotRoute.connect(options.peerSpotRouteEndpoints);
-          }
-          const spotMesh = builder.addSpotMesh(AutomaticTurnDispatchNames.spotChannel)
-            .routingId(options.rid)
-            .enableRouter(options.spotRouterEndpoint)
-            .enablePubSub(options.spotPubEndpoint)
-            .addEntrySpot(AwaitEntrySpot)
-            .actorFactory(AutomaticTurnDispatchNames.actorType, AwaitActorFactory)
-            .addSpotFactory(AwaitProbeSpot);
-          for (const peer of options.spotRouterPeers) spotMesh.connectRouter(peer.rid, peer.endpoint);
-          return builder.build();
-        }
-      })
+      frameworkModule,
+      httpClientModule
     ],
     providers: [
       {
@@ -106,6 +123,14 @@ export async function startPlayHost(): Promise<void> {
       HoldCommandHandler,
       AwaitCommandHandler,
       AwaitRequestHandler,
+      ProbeRequestHandler,
+      CounterResetHandler,
+      CounterAwaitHandler,
+      CounterReadHandler,
+      HttpAwaitHandler,
+      IoWorkerBatchHandler,
+      CpuWorkerAwaitHandler,
+      SelfCycleHandler,
       WorkerAwaitCommandHandler,
       AwaitTimeoutCommandHandler,
       AwaitCancelCommandHandler,
@@ -125,6 +150,7 @@ export async function startPlayHost(): Promise<void> {
       SpotActorAwaitHandler,
       SpotActorFastHandler,
       SpotActorFastSendHandler,
+      SpotActorJoinAwaitHandler,
       SpotActorPushAwaitHandler,
       AwaitProbeSpot
     ]

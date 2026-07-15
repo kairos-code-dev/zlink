@@ -75,8 +75,8 @@ export class EntryActorAwaitHandler
     request: ActorAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorAwaitEvidence(this.evidence, entrySpot, actor, request, false);
-    return actorReply('ATD-B', request.requestId, actor, entrySpot, 'actor-await-completed');
+    await recordActorAwaitEvidence(this.evidence, entrySpot, actor, request);
+    return actorReply('TD-D', request.requestId, actor, entrySpot, 'actor-await-completed');
   }
 }
 
@@ -93,8 +93,8 @@ export class SpotActorAwaitHandler
     request: ActorAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    await recordActorAwaitEvidence(this.evidence, spot, actor, request, true);
-    return actorReply('ATD-B', request.requestId, actor, spot, 'actor-await-completed');
+    await recordActorAwaitEvidence(this.evidence, spot, actor, request);
+    return actorReply('TD-D', request.requestId, actor, spot, 'actor-await-completed');
   }
 }
 
@@ -112,7 +112,7 @@ export class EntryActorFastHandler
   ): Promise<ActorAwaitRes> {
     void context;
     recordActorFastEvidence(this.evidence, entrySpot, actor, request);
-    return actorReply('ATD-B', request.requestId, actor, entrySpot, request.marker);
+    return actorReply('TD-D', request.requestId, actor, entrySpot, request.marker);
   }
 }
 
@@ -147,7 +147,7 @@ export class SpotActorFastHandler
   ): Promise<ActorAwaitRes> {
     void context;
     recordActorFastEvidence(this.evidence, spot, actor, request);
-    return actorReply('ATD-B', request.requestId, actor, spot, request.marker);
+    return actorReply('TD-D', request.requestId, actor, spot, request.marker);
   }
 }
 
@@ -182,7 +182,7 @@ export class EntryActorPushAwaitHandler
   ): Promise<ActorAwaitRes> {
     void context;
     await recordActorPushAwaitEvidence(this.evidence, entrySpot, actor, request, false);
-    return actorReply('ATD-D4', request.requestId, actor, entrySpot, 'actor-push-await-completed');
+    return actorReply('TD-F3', request.requestId, actor, entrySpot, 'actor-push-await-completed');
   }
 }
 
@@ -200,7 +200,7 @@ export class SpotActorPushAwaitHandler
   ): Promise<ActorAwaitRes> {
     void context;
     await recordActorPushAwaitEvidence(this.evidence, spot, actor, request, true);
-    return actorReply('ATD-D4', request.requestId, actor, spot, 'actor-push-await-completed');
+    return actorReply('TD-F3', request.requestId, actor, spot, 'actor-push-await-completed');
   }
 }
 
@@ -217,29 +217,26 @@ export class EntryActorJoinAwaitHandler
     request: ActorJoinAwaitReq
   ): Promise<ActorAwaitRes> {
     void context;
-    const mailboxId = `actor:${actor.actorId}`;
-    this.evidence.add(
-      `actor-join-await-started|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
-      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotRid}`
-    );
-    const call = actor.context.joinSpot(
-      request.targetSpotRid,
-      new DelayReq(request.requestId, 350, 'join')
-    );
-    this.evidence.add(
-      `actor-join-await-released|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
-      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotRid}`
-    );
-    const joined = await call.submit<DelayRes>();
-    this.evidence.add(
-      `actor-join-await-resumed|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
-      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.status === 'accepted'}`
-    );
-    this.evidence.add(
-      `actor-join-await-completed|rid=${this.evidence.rid}|spot=${entrySpot.context.spotRid}`
-      + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|accepted=${joined.status === 'accepted'}`
-    );
-    return actorReply('ATD-B3', request.requestId, actor, entrySpot, 'actor-join-await-completed');
+    await recordActorJoinEvidence(this.evidence, entrySpot, actor, request, 'actor-join-await-completed');
+    return actorReply('TD-E1', request.requestId, actor, entrySpot, 'actor-join-await-completed');
+  }
+}
+
+@Injectable()
+export class SpotActorJoinAwaitHandler
+  implements ZLinkSpotActorRequestHandler<AwaitProbeSpot, AwaitActor, ActorJoinAwaitReq, ActorAwaitRes> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  @ZLinkSpotActorRequest('ActorJoinAwaitReq')
+  async handle(
+    spot: AwaitProbeSpot,
+    actor: AwaitActor,
+    context: ZLinkSpotActorRequestContext,
+    request: ActorJoinAwaitReq
+  ): Promise<ActorAwaitRes> {
+    void context;
+    await recordActorJoinEvidence(this.evidence, spot, actor, request, 'actor-join-completed');
+    return actorReply('TD-E', request.requestId, actor, spot, 'actor-join-completed');
   }
 }
 
@@ -251,9 +248,9 @@ async function recordActorAwaitEvidence(
   evidence: EvidenceStore,
   target: ActorEvidenceTarget,
   actor: AwaitActor,
-  request: ActorAwaitReq,
-  useAwait: boolean
+  request: ActorAwaitReq
 ): Promise<void> {
+  const terminator = request.terminator ?? 'async';
   const mailboxId = `actor:${actor.actorId}`;
   evidence.add(
     `actor-await-started|rid=${evidence.rid}|spot=${target.context.spotRid}`
@@ -264,11 +261,11 @@ async function recordActorAwaitEvidence(
       new DelayReq(request.requestId, request.delayMs, `actor-${actor.actorId}`))
     .timeout(5000);
   evidence.add(
-    `actor-await-released|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    `actor-await-${terminator === 'yield' ? 'released' : 'held'}|rid=${evidence.rid}|spot=${target.context.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
   );
-  if (useAwait) {
-    await call.submit<DelayRes>();
+  if (terminator === 'yield') {
+    await call.yield<DelayRes>();
   } else {
     await call.submit<DelayRes>();
   }
@@ -279,6 +276,28 @@ async function recordActorAwaitEvidence(
   evidence.add(
     `actor-await-completed|rid=${evidence.rid}|spot=${target.context.spotRid}`
     + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|handler=actor`
+  );
+}
+
+async function recordActorJoinEvidence(
+  evidence: EvidenceStore,
+  target: ActorEvidenceTarget,
+  actor: AwaitActor,
+  request: ActorJoinAwaitReq,
+  completedMarker: string
+): Promise<void> {
+  const mailboxId = `actor:${actor.actorId}`;
+  evidence.add(
+    `actor-join-started|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}|target=${request.targetSpotRid}`
+  );
+  const joined = await actor.context
+    .joinSpot(request.targetSpotRid, new DelayReq(request.requestId, 0, 'join'))
+    .submit<DelayRes>();
+  evidence.add(
+    `${completedMarker}|rid=${evidence.rid}|spot=${target.context.spotRid}`
+    + `|actor=${actor.actorId}|mailbox=${mailboxId}|request=${request.requestId}`
+    + `|target=${request.targetSpotRid}|accepted=${joined.status === 'accepted'}`
   );
 }
 

@@ -16,7 +16,7 @@ import type {
 } from '@zlink-systems/framework';
 import { ZLinkLocationRuntimeEventKind, ZLinkSpotEventKind } from '@zlink-systems/framework';
 import { zlinkRuntimeEventHandler, zlinkSpotTimerHandler } from '@zlink-systems/nestjs';
-import { RuntimeMonitoringNames, type ProfileRes, type ProfileReq } from '../../../Shared/messages';
+import { RuntimeMonitoringNames, socketEventName, type ProfileRes, type ProfileReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 
 @Injectable()
@@ -39,7 +39,7 @@ export class SocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocket
       return;
     }
     this.evidence.add(
-      `monitor-socket|source=${event.sourceName}|kind=${event.event}`
+      `monitor-socket|source=${event.sourceName}|kind=${socketEventName(event.event)}`
       + `|remote=${event.remoteAddr}|routing=${event.routingId ?? '<null>'}`
       + `|native=${event.diagnostic?.nativeEvent ?? '<none>'}|value=${event.diagnostic?.nativeValue ?? '<none>'}`
     );
@@ -140,7 +140,10 @@ function locationEventDetails(event: ZLinkLocationRuntimeEvent): string {
     case ZLinkLocationRuntimeEventKind.StatusChanged:
       return `topology=-1|summary=-1|storeHealthy=${event.status.storeHealthy}`;
     case ZLinkLocationRuntimeEventKind.TopologyChanged:
-      return `topology=${event.topology.length}|summary=-1|storeHealthy=<none>`;
+      return `topology=${event.topology.length}|topologyNodes=${event.topology
+        .map((entry) => `${entry.nodeRid ?? '<none>'}@${entry.endpoint ?? '<none>'}:${entry.state}`)
+        .sort()
+        .join(',')}|summary=-1|storeHealthy=<none>`;
     case ZLinkLocationRuntimeEventKind.ServiceSummaryChanged:
       return `topology=-1|summary=${event.serviceSummary.length}`
         + `|summaryTotal=${event.serviceSummary.reduce((total, entry) => total + entry.totalCount, 0)}`

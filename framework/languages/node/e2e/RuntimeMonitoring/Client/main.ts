@@ -17,7 +17,7 @@ async function main(): Promise<void> {
     'MON-A1': () => runMonA1(options),
     'MON-A2': async () => { serviceBProcess = await runMonA2(options); },
     'MON-A3': () => runMonA3(options),
-    'MON-A4': () => runMonA4(options),
+    'MON-A4': async () => { serviceBProcess = await runMonA4(options); },
     'MON-A5': () => runMonA5(options),
     'MON-B1': () => runMonB1(options),
     'MON-B2': () => runMonB2(options),

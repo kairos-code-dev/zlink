@@ -119,29 +119,37 @@ build_package "$ROOT_DIR/Client"
 
 SVC_HTTP_PORT="$(pick_port)"
 SVC_B_HTTP_PORT="$(pick_port)"
+SVC_B_REPLACEMENT_HTTP_PORT="$(pick_port)"
 THROW_HTTP_PORT="$(pick_port)"
 TRIGGER_HTTP_PORT="$(pick_port)"
 CHANNEL_PORT="$(pick_port)"
 CHANNEL_B_PORT="$(pick_port)"
+CHANNEL_B_REPLACEMENT_PORT="$(pick_port)"
 THROW_CHANNEL_PORT="$(pick_port)"
 SPOT_ROUTER_PORT="$(pick_port)"
 SPOT_PUB_PORT="$(pick_port)"
 SPOT_B_ROUTER_PORT="$(pick_port)"
 SPOT_B_PUB_PORT="$(pick_port)"
+SPOT_B_REPLACEMENT_ROUTER_PORT="$(pick_port)"
+SPOT_B_REPLACEMENT_PUB_PORT="$(pick_port)"
 THROW_SPOT_ROUTER_PORT="$(pick_port)"
 THROW_SPOT_PUB_PORT="$(pick_port)"
 
 SVC_URL="http://127.0.0.1:$SVC_HTTP_PORT"
 SVC_B_URL="http://127.0.0.1:$SVC_B_HTTP_PORT"
+SVC_B_REPLACEMENT_URL="http://127.0.0.1:$SVC_B_REPLACEMENT_HTTP_PORT"
 THROW_URL="http://127.0.0.1:$THROW_HTTP_PORT"
 TRIGGER_URL="http://127.0.0.1:$TRIGGER_HTTP_PORT"
 CHANNEL_ENDPOINT="tcp://127.0.0.1:$CHANNEL_PORT"
 CHANNEL_B_ENDPOINT="tcp://127.0.0.1:$CHANNEL_B_PORT"
+CHANNEL_B_REPLACEMENT_ENDPOINT="tcp://127.0.0.1:$CHANNEL_B_REPLACEMENT_PORT"
 THROW_CHANNEL_ENDPOINT="tcp://127.0.0.1:$THROW_CHANNEL_PORT"
 SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:$SPOT_ROUTER_PORT"
 SPOT_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_PUB_PORT"
 SPOT_B_ROUTER_ENDPOINT="tcp://127.0.0.1:$SPOT_B_ROUTER_PORT"
 SPOT_B_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_B_PUB_PORT"
+SPOT_B_REPLACEMENT_ROUTER_ENDPOINT="tcp://127.0.0.1:$SPOT_B_REPLACEMENT_ROUTER_PORT"
+SPOT_B_REPLACEMENT_PUB_ENDPOINT="tcp://127.0.0.1:$SPOT_B_REPLACEMENT_PUB_PORT"
 THROW_SPOT_ROUTER_ENDPOINT="tcp://127.0.0.1:$THROW_SPOT_ROUTER_PORT"
 THROW_SPOT_PUB_ENDPOINT="tcp://127.0.0.1:$THROW_SPOT_PUB_PORT"
 
@@ -194,6 +202,17 @@ start_configured_server svc-b "$FILTERED_SERVICE_MAIN" \
   --log-dir "$LOG_DIR"
 wait_health "$SVC_B_URL" svc-b
 
+node "$ROOT_DIR/write-config.mjs" "$LOG_DIR/svc-b-replacement.config.json" \
+  --rid svc-b \
+  --http-url "$SVC_B_REPLACEMENT_URL" \
+  --redis-endpoint "$REDIS_ENDPOINT" \
+  --redis-key-prefix "$REDIS_KEY_PREFIX" \
+  --channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \
+  --spot-router-endpoint "$SPOT_B_REPLACEMENT_ROUTER_ENDPOINT" \
+  --spot-pub-endpoint "$SPOT_B_REPLACEMENT_PUB_ENDPOINT" \
+  --evidence-file "$LOG_DIR/svc-b-replacement.evidence.log" \
+  --log-dir "$LOG_DIR"
+
 start_configured_server svc-throw "$THROWING_SERVICE_MAIN" \
   --rid svc-throw \
   --http-url "$THROW_URL" \
@@ -210,6 +229,7 @@ start_configured_server trigger "$TRIGGER_MAIN" \
   --http-url "$TRIGGER_URL" \
   --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
+  --replacement-service-channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \
   --throw-channel-endpoint "$THROW_CHANNEL_ENDPOINT" \
   --log-dir "$LOG_DIR"
 wait_health "$TRIGGER_URL" trigger
@@ -226,6 +246,9 @@ node "$CLIENT_MAIN" \
   --service-b-spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
   --service-main "$SERVICE_MAIN" \
   --service-b-config "$LOG_DIR/svc-b.config.json" \
+  --replacement-service-url "$SVC_B_REPLACEMENT_URL" \
+  --replacement-service-channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \
+  --replacement-service-config "$LOG_DIR/svc-b-replacement.config.json" \
   --log-dir "$LOG_DIR" \
   --scenario "$SCENARIO" \
   >"$LOG_DIR/client.stdout.log" 2>"$LOG_DIR/client.stderr.log"

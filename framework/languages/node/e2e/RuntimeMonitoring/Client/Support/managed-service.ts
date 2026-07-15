@@ -5,10 +5,17 @@ import type { ClientOptions } from './client-options';
 import { postJson } from './http-client';
 
 export function startServiceB(options: ClientOptions, logName: string): ManagedProcess {
+  return startService(options, options.serviceBConfig, logName);
+}
+
+export function startReplacementService(options: ClientOptions, logName: string): ManagedProcess {
+  return startService(options, options.replacementServiceConfig, logName);
+}
+
+function startService(options: ClientOptions, config: string, logName: string): ManagedProcess {
   const stdout = fs.openSync(`${options.logDir}/${logName}.stdout.log`, 'w');
   const stderr = fs.openSync(`${options.logDir}/${logName}.stderr.log`, 'w');
-  const child = spawn(process.execPath, [options.serviceMain, '--config', options.serviceBConfig], {
-    env: { ...process.env, ZLINK_E2E_RID: 'svc-b' },
+  const child = spawn(process.execPath, [options.serviceMain, '--config', config], {
     stdio: ['ignore', stdout, stderr]
   });
   return new ManagedProcess(child);

@@ -10,6 +10,9 @@ export interface ClientOptions {
   readonly serviceBSpotPubEndpoint: string;
   readonly serviceMain: string;
   readonly serviceBConfig: string;
+  readonly replacementServiceUrl: string;
+  readonly replacementServiceChannelEndpoint: string;
+  readonly replacementServiceConfig: string;
   readonly logDir: string;
   readonly scenario: string;
 }
@@ -38,6 +41,9 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     serviceBSpotPubEndpoint: required(values, 'service-b-spot-pub-endpoint'),
     serviceMain: required(values, 'service-main'),
     serviceBConfig: required(values, 'service-b-config'),
+    replacementServiceUrl: required(values, 'replacement-service-url'),
+    replacementServiceChannelEndpoint: required(values, 'replacement-service-channel-endpoint'),
+    replacementServiceConfig: required(values, 'replacement-service-config'),
     logDir: required(values, 'log-dir'),
     scenario: values.get('scenario') ?? 'all'
   };

@@ -4,7 +4,7 @@ import type {
   ZLinkSocketEvent
 } from '@zlink-systems/framework';
 import { zlinkRuntimeEventHandler } from '@zlink-systems/nestjs';
-import { RuntimeMonitoringNames } from '../../../Shared/messages';
+import { RuntimeMonitoringNames, socketEventName } from '../../../Shared/messages';
 import { EvidenceStore } from '../../Service/Infrastructure/evidence-store';
 
 @Injectable()
@@ -17,7 +17,7 @@ export class TriggerSocketEventRecorder implements ZLinkRuntimeEventHandler<ZLin
       return;
     }
     this.evidence.add(
-      `monitor-socket|source=${event.sourceName}|kind=${event.event}`
+      `monitor-socket|source=${event.sourceName}|kind=${socketEventName(event.event)}`
       + `|remote=${event.remoteAddr}|routing=${event.routingId ?? '<null>'}`
     );
   }

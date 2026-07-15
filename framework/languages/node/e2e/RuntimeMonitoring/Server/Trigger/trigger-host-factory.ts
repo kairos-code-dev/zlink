@@ -31,12 +31,35 @@ export async function startTriggerHost(): Promise<void> {
     options.httpUrl,
     createTriggerEndpoints(options, channel, evidence, (request, endpoint) => requestWithTransientHost(options, request, endpoint), () => { stopping = true; })
   );
+  const failoverMonitor = await NestFactory.createApplicationContext(
+    createFailoverMonitorModule(options, evidence),
+    { logger: false, abortOnError: false }
+  );
 
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   await closeHttpServer(server);
+  await failoverMonitor.close();
   await app.close();
+}
+
+function createFailoverMonitorModule(options: TriggerOptions, evidence: EvidenceStore): Function {
+  class FailoverMonitorModule {}
+  Module({
+    imports: [ZLinkModule.forRootFactory({
+      useFactory: () => buildTriggerFramework(
+        options,
+        'trigger-failover',
+        [options.serviceBChannelEndpoint, options.replacementServiceChannelEndpoint]
+      )
+    })],
+    providers: [
+      { provide: EvidenceStore, useValue: evidence },
+      TriggerSocketEventRecorder
+    ]
+  })(FailoverMonitorModule);
+  return FailoverMonitorModule;
 }
 
 function createConfiguredTriggerModule(): Function {
@@ -89,7 +112,7 @@ function createTriggerModule(
   Module({
     imports: [
       ZLinkModule.forRootFactory({
-        useFactory: () => buildTriggerFramework(options, traceLabel, channelEndpoint)
+      useFactory: () => buildTriggerFramework(options, traceLabel, [channelEndpoint])
       })
     ],
     providers: [
@@ -100,12 +123,16 @@ function createTriggerModule(
   return TriggerModule;
 }
 
-function buildTriggerFramework(options: TriggerOptions, traceLabel = 'trigger', channelEndpoint = options.serviceChannelEndpoint) {
+function buildTriggerFramework(
+  options: TriggerOptions,
+  traceLabel = 'trigger',
+  channelEndpoints: readonly string[] = [options.serviceChannelEndpoint]
+) {
   fs.mkdirSync(options.logDir, { recursive: true });
   const builder = zlinkFramework();
   builder.configureDispatch().messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
     .traceLogFile(`${options.logDir}/${traceLabel}-flow.log`).traceLabel(traceLabel);
-  builder.addClientServerChannel(RuntimeMonitoringNames.channel).enableClient([channelEndpoint]);
+  builder.addClientServerChannel(RuntimeMonitoringNames.channel).enableClient(channelEndpoints);
   return { ...builder.build(), monitoring: { socket: [{ sourceName: RuntimeMonitoringNames.channelClientSource }] } };
 }
 

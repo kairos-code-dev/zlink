@@ -29,3 +29,8 @@ export interface EvidenceWaitReq {
   readonly containsAnyGroups: readonly (readonly string[])[];
   readonly timeoutMilliseconds?: number;
 }
+
+export function socketEventName(event: unknown): string {
+  const value = String(event);
+  return value.length === 0 ? value : `${value[0].toLowerCase()}${value.slice(1)}`;
+}

@@ -5,6 +5,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 
+client_source="Client/src/main/kotlin/systems/zlink/samples/kotlin/supportchat/client/SupportChatClientScenario.kt"
+if ! rg -q 'expectNone<(TypingChangedNotify|ConversationClosedNotify)>' "${client_source}"; then
+  echo "SupportChat negative push checks must use connector expectNone." >&2
+  exit 1
+fi
+if rg -n 'fun ([^ (]+ )?(expectFailure|expectTimeout|expectNoPush|awaitPush)\(' "${client_source}"; then
+  echo "SupportChat must not rebuild connector test helpers locally." >&2
+  exit 1
+fi
+
 RUN_DIR="$(mktemp -d)"
 RUN_ID="$(basename "${RUN_DIR}")-$$-${RANDOM}"
 LOG_DIR="${RUN_DIR}/logs"

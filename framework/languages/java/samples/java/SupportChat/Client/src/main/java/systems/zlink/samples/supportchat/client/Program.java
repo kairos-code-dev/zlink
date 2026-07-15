@@ -5,10 +5,10 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.TimeoutException;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
 import systems.zlink.samples.supportchat.shared.contracts.Messages;
+import systems.zlink.stream.connector.ZLinkStreamAssert;
 import systems.zlink.stream.connector.ZLinkStreamConnector;
 import systems.zlink.stream.connector.ZLinkStreamConnectorFactory;
 import systems.zlink.stream.connector.ZLinkStreamConnectorOptions;
@@ -181,7 +181,7 @@ final class SupportChatClientScenario {
         ensure(SampleNames.Statuses.Closed.equals(customerRoom2.close("resolved").state().status()));
         ensure(join(closedAgent2).payload().conversationId().equals(conversation2));
         ConversationClient closedRoom2 = customerRoom2;
-        expectFailure(() -> closedRoom2.close("again"));
+        ZLinkStreamAssert.expectFailure(() -> closedRoom2.close("again"), null);
 
         ensure(SampleNames.Statuses.WaitingForClose.equals(join(idleCustomer1).payload().state().status()));
         ensure(join(idleAgent1).payload().conversationId().equals(conversation1));
@@ -189,25 +189,30 @@ final class SupportChatClientScenario {
         ensure(join(closedAgent1).payload().conversationId().equals(conversation1));
 
         ConversationClient closedRoom1 = customerRoom1;
-        expectFailure(() -> closedRoom1.sendChat("are you there?"));
-        CompletionStage<ZLinkStreamMessage<Messages.TypingChangedNotify>> closedTyping =
-            waitFor(reconnectingAgent, Messages.TypingChangedNotify.class,
-                Duration.ofMillis(500), conversation1);
+        ZLinkStreamAssert.expectFailure(
+            () -> closedRoom1.sendChat("are you there?"), null);
+        CompletionStage<Void> closedTyping = reconnectingAgent
+            .expectNone(Messages.TypingChangedNotify.class)
+            .within(Duration.ofMillis(500))
+            .submit();
         closedRoom1.sendTyping(true);
-        expectTimeout(closedTyping);
+        join(closedTyping);
         System.out.println("supportchat-closed-typing-ignore=verified");
 
         ensure(!setAvailability(reconnectingAgent, false).isAvailable());
         connectAndAuthenticate(waitingCustomer, "customer-3", SampleNames.Roles.Customer);
-        expectFailure(() -> setAvailability(waitingCustomer, true));
+        ZLinkStreamAssert.expectFailure(
+            () -> setAvailability(waitingCustomer, true), null);
+        CompletionStage<Void> noClosedNotification = waitingCustomer
+            .expectNone(Messages.ConversationClosedNotify.class)
+            .within(Duration.ofMillis(500))
+            .submit();
         Messages.OpenConversationRes waiting = request(
             waitingCustomer, new Messages.OpenConversationReq("agent unavailable"),
             Messages.OpenConversationRes.class);
         ensure(SampleNames.Statuses.WaitingForAgent.equals(waiting.state().status()));
         ensure("agent unavailable".equals(waiting.state().subject()));
-        expectTimeout(waitingCustomer.waitFor(Messages.ConversationClosedNotify.class)
-            .timeout(Duration.ofMillis(500))
-            .submit(Messages.ConversationClosedNotify.class));
+        join(noClosedNotification);
         System.out.println("supportchat-conversation=" + conversation1);
     }
 
@@ -254,31 +259,6 @@ final class SupportChatClientScenario {
 
     private static void close(ZLinkStreamConnector connector) {
         join(connector.close().submit());
-    }
-
-    private static void expectFailure(Runnable action) {
-        try {
-            action.run();
-        } catch (RuntimeException expected) {
-            return;
-        }
-        throw new IllegalStateException("Expected request failure");
-    }
-
-    private static void expectTimeout(CompletionStage<?> stage) {
-        try {
-            join(stage);
-        } catch (RuntimeException error) {
-            Throwable cause = error;
-            while (cause.getCause() != null) {
-                cause = cause.getCause();
-            }
-            if (cause instanceof TimeoutException) {
-                return;
-            }
-            throw error;
-        }
-        throw new IllegalStateException("Expected wait timeout");
     }
 
     private static <T> T join(CompletionStage<T> stage) {

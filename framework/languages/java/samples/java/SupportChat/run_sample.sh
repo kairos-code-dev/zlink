@@ -11,6 +11,16 @@ if grep -R --include='*.java' -n '\.connectRouter(' Server; then
   exit 1
 fi
 
+client_source="Client/src/main/java/systems/zlink/samples/supportchat/client/Program.java"
+if ! rg -q 'expectNone\(Messages\.(TypingChangedNotify|ConversationClosedNotify)\.class\)' "${client_source}"; then
+  echo "SupportChat negative push checks must use connector expectNone." >&2
+  exit 1
+fi
+if rg -n 'private static void expect(Failure|Timeout)\(' "${client_source}"; then
+  echo "SupportChat must not rebuild connector assertion helpers locally." >&2
+  exit 1
+fi
+
 RUN_DIR="$(mktemp -d)"
 LOG_DIR="$RUN_DIR/logs"
 BUILD_LOG="$LOG_DIR/build.log"

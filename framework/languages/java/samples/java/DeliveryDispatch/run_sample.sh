@@ -19,7 +19,17 @@ if ! rg -q 'waitForSequence\(Messages\.DeliveryStatusNotify\.class\)' \
   echo "DeliveryDispatch client must use the connector sequence helper" >&2
   exit 1
 fi
-if rg -n 'assertStatusOrder|observedStatuses' \
+if ! rg -q 'expectNone\(Messages\.OfferDeliveryNotify\.class\)' \
+    Client/src/main/java --glob 'DeliveryDispatchClientScenario.java'; then
+  echo "DeliveryDispatch must verify that the other courier receives no offer" >&2
+  exit 1
+fi
+if ! rg -q 'ZLinkStreamAssert\.ensure\(' \
+    Client/src/main/java --glob 'DeliveryDispatchClientScenario.java'; then
+  echo "DeliveryDispatch must use the connector assertion utility" >&2
+  exit 1
+fi
+if rg -n 'assertStatusOrder|observedStatuses|waitStatuses\(' \
     Client/src/main/java --glob 'DeliveryDispatchClientScenario.java'; then
   echo "DeliveryDispatch client must not rebuild the connector sequence helper locally" >&2
   exit 1

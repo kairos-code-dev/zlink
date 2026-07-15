@@ -1,11 +1,12 @@
 package systems.zlink.samples.kotlin.supportchat.client
 
 import java.time.Duration
-import java.util.concurrent.CompletionStage
-import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.future.await
+import systems.zlink.framework.kotlin.ZLinkKotlinStreamAssert
+import systems.zlink.framework.kotlin.kotlin
 import systems.zlink.samples.kotlin.supportchat.server.configuration.ConversationStatuses
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.supportchat.server.configuration.SampleTimings
@@ -30,7 +31,6 @@ import systems.zlink.samples.kotlin.supportchat.shared.contracts.SetAgentAvailab
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.SetTypingReq
 import systems.zlink.samples.kotlin.supportchat.shared.contracts.TypingChangedNotify
 import systems.zlink.stream.connector.ZLinkStreamConnector
-import systems.zlink.stream.connector.ZLinkStreamMessage
 
 class SupportChatClientScenario {
     suspend fun run(
@@ -153,46 +153,50 @@ class SupportChatClientScenario {
             .submit(ConversationClosedNotify::class.java)
         val closed2 = customerRoom2.close("resolved")
         ensure(closed2.state.status == ConversationStatuses.Closed)
-        val closed2Agent = awaitPush("agent closed notification for $cid2", closed2ForAgent).payload()
+        val closed2Agent = closed2ForAgent.await().payload()
         ensure(closed2Agent.conversationId == cid2)
         ensure(closed2Agent.state.status == ConversationStatuses.Closed)
 
-        expectFailure("Closed conversation must reject a duplicate close.") {
+        ZLinkKotlinStreamAssert.expectFailure {
             customerRoom2.close("again")
         }
 
-        ensure(awaitPush("customer idle notification for $cid1", idle1ForCustomer).payload().state.status == ConversationStatuses.WaitingForClose)
-        val idle1Agent = awaitPush("agent idle notification for $cid1", idle1ForAgent).payload()
+        ensure(idle1ForCustomer.await().payload().state.status == ConversationStatuses.WaitingForClose)
+        val idle1Agent = idle1ForAgent.await().payload()
         ensure(idle1Agent.conversationId == cid1)
         ensure(idle1Agent.state.status == ConversationStatuses.WaitingForClose)
-        ensure(awaitPush("customer closed notification for $cid1", closed1ForCustomer).payload().state.status == ConversationStatuses.Closed)
-        val closed1Agent = awaitPush("agent closed notification for $cid1", closed1ForAgent).payload()
+        ensure(closed1ForCustomer.await().payload().state.status == ConversationStatuses.Closed)
+        val closed1Agent = closed1ForAgent.await().payload()
         ensure(closed1Agent.conversationId == cid1)
         ensure(closed1Agent.state.status == ConversationStatuses.Closed)
 
-        expectFailure("Closed conversation must reject follow-up messages.") {
+        ZLinkKotlinStreamAssert.expectFailure {
             customerRoom1.sendChat("are you there?")
         }
-        val closedTypingForAgent = reconnectingAgent.waitFor(TypingChangedNotify::class.java)
-            .where(TypingChangedNotify::class.java) { it.payload().conversationId == cid1 }
-            .timeout(Duration.ofMillis(500))
-            .submit(TypingChangedNotify::class.java)
-        customerRoom1.sendTyping(true)
-        expectTimeout("Closed conversation must ignore typing sends without notifying participants.") {
-            closedTypingForAgent.await()
+        val closedTypingForAgent = async(start = CoroutineStart.UNDISPATCHED) {
+            reconnectingAgent.kotlin().expectNone<TypingChangedNotify>(TypingChangedNotify::class.java.simpleName)
+                .within(Duration.ofMillis(500))
+                .await()
         }
+        customerRoom1.sendTyping(true)
+        closedTypingForAgent.await()
         println("supportchat-closed-typing-ignore=verified")
 
         ensure(!reconnectingAgent.request(SetAgentAvailableReq(false)).submit(SetAgentAvailableRes::class.java).await().isAvailable)
         waitingCustomer.connect().submit().await()
         ensure(waitingCustomer.request(AuthenticateReq("customer-3")).submit(AuthenticateRes::class.java).await().actorId == "customer-3")
-        expectFailure("Customer must not set agent availability.") {
+        ZLinkKotlinStreamAssert.expectFailure {
             waitingCustomer.request(SetAgentAvailableReq(true)).submit(SetAgentAvailableRes::class.java).await()
+        }
+        val noClosedNotification = async(start = CoroutineStart.UNDISPATCHED) {
+            waitingCustomer.kotlin().expectNone<ConversationClosedNotify>(ConversationClosedNotify::class.java.simpleName)
+                .within(Duration.ofMillis(500))
+                .await()
         }
         val noAgentOpen = waitingCustomer.request(OpenConversationReq("agent unavailable")).submit(OpenConversationRes::class.java).await()
         ensure(noAgentOpen.state.status == ConversationStatuses.WaitingForAgent)
         ensure(noAgentOpen.state.subject == "agent unavailable")
-        expectNoPush<ConversationClosedNotify>(waitingCustomer, Duration.ofMillis(500))
+        noClosedNotification.await()
     }
 
     private class ConversationClient(
@@ -224,50 +228,6 @@ class SupportChatClientScenario {
                 .await()
     }
 }
-
-private suspend inline fun expectFailure(message: String, block: suspend () -> Unit) {
-    try {
-        block()
-    } catch (error: Throwable) {
-        if (error !is kotlinx.coroutines.CancellationException) {
-            return
-        }
-    }
-    throw IllegalStateException(message)
-}
-
-private suspend inline fun expectTimeout(message: String, block: suspend () -> Unit) {
-    try {
-        block()
-    } catch (error: TimeoutException) {
-        return
-    }
-    throw IllegalStateException(message)
-}
-
-private suspend inline fun <reified TPayload> expectNoPush(
-    client: ZLinkStreamConnector,
-    timeout: Duration,
-) {
-    try {
-        val message = client.waitFor(TPayload::class.java)
-            .timeout(timeout)
-            .submit(TPayload::class.java)
-            .await()
-        throw IllegalStateException("Unexpected '${TPayload::class.java.simpleName}' push was received: ${message.packetName()}.")
-    } catch (error: TimeoutException) {
-    }
-}
-
-private suspend fun <TPayload> awaitPush(
-    label: String,
-    stage: CompletionStage<ZLinkStreamMessage<TPayload>>,
-): ZLinkStreamMessage<TPayload> =
-    try {
-        stage.await()
-    } catch (error: TimeoutException) {
-        throw TimeoutException("Timed out waiting for $label").also { it.initCause(error) }
-    }
 
 private fun ensure(condition: Boolean) {
     if (!condition) {

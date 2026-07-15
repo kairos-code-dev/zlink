@@ -18,7 +18,17 @@ if ! rg -q 'waitForSequence<DeliveryStatusNotify>' \
   echo "Client must assert notification arrival order with the connector helper" >&2
   exit 1
 fi
-if rg -n 'StatusWaits|arrivals|waitStatus\(' \
+if ! rg -q 'expectNone<OfferDeliveryNotify>' \
+    Client/src/main/kotlin --glob 'Program.kt'; then
+  echo "Client must verify that the other courier receives no offer" >&2
+  exit 1
+fi
+if ! rg -q 'ZLinkKotlinStreamAssert\.ensure\(' \
+    Client/src/main/kotlin --glob 'Program.kt'; then
+  echo "Client must use the connector assertion utility" >&2
+  exit 1
+fi
+if rg -n 'StatusWaits|arrivals|waitStatus\(|waitStatuses\(' \
     Client/src/main/kotlin --glob 'Program.kt'; then
   echo "Client must not rebuild the connector sequence helper locally" >&2
   exit 1

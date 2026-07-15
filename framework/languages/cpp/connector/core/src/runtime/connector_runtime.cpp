@@ -565,6 +565,11 @@ parse_connect_options (const std::shared_ptr<detail::connector_state_t> &state)
           error_code_t::configuration_error,
           "stream connector max_received_messages must be greater than zero");
     }
+    if (state->options.connect_timeout <= std::chrono::milliseconds::zero ()) {
+        return result_t<parsed_endpoint_options_t>::failure (
+          error_code_t::configuration_error,
+          "stream connector connect_timeout must be greater than zero");
+    }
     parsed_endpoint_options_t parsed;
     parsed.tcp = state->options.transport == transport_t::tcp
                    ? detail::parse_tcp_endpoint (state->options.endpoint)
@@ -645,6 +650,113 @@ class connect_attempt_guard_t
   private:
     std::shared_ptr<detail::connector_state_t> _state;
 };
+
+class bounded_transport_connect_t : public std::enable_shared_from_this<bounded_transport_connect_t>
+{
+  public:
+    void complete (boost::system::error_code error,
+                   std::unique_ptr<detail::stream_connection_t> connection)
+    {
+        std::unique_lock<std::mutex> lock (_mutex);
+        if (_completed) {
+            lock.unlock ();
+            if (connection) {
+                connection->shutdown_and_close ();
+            }
+            return;
+        }
+        _completed = true;
+        _error = error;
+        _connection = std::move (connection);
+        lock.unlock ();
+        _ready.notify_all ();
+    }
+
+    std::pair<boost::system::error_code, std::unique_ptr<detail::stream_connection_t>> wait ()
+    {
+        std::unique_lock<std::mutex> lock (_mutex);
+        _ready.wait (lock, [&] { return _completed; });
+        return {_error, std::move (_connection)};
+    }
+
+  private:
+    std::mutex _mutex;
+    std::condition_variable _ready;
+    bool _completed = false;
+    boost::system::error_code _error;
+    std::unique_ptr<detail::stream_connection_t> _connection;
+};
+
+result_t<std::unique_ptr<detail::stream_connection_t>>
+connect_transport (const std::shared_ptr<detail::connector_state_t> &state,
+                   const parsed_endpoint_options_t &parsed,
+                   std::chrono::milliseconds timeout)
+{
+    auto operation = std::make_shared<bounded_transport_connect_t> ();
+    auto timeout_timer = detail::post_runtime_operation_after (timeout, [operation] {
+        operation->complete (boost::asio::error::timed_out, nullptr);
+    });
+    auto completion = [operation] (
+                        boost::system::error_code error,
+                        std::unique_ptr<detail::stream_connection_t> connection) mutable {
+        operation->complete (error, std::move (connection));
+    };
+
+    if (state->options.transport == transport_t::websocket) {
+        detail::connect_websocket_async (state->io_context, *parsed.websocket,
+                                         std::move (completion));
+    } else if (state->options.transport == transport_t::websocket_secure) {
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+        detail::connect_websocket_secure_async (
+          state->io_context, *parsed.websocket_secure,
+          state->options.skip_server_certificate_validation, std::move (completion));
+#else
+        operation->complete (boost::asio::error::operation_not_supported, nullptr);
+#endif
+    } else if (state->options.transport == transport_t::tls) {
+#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
+        detail::connect_tls_async (state->io_context, *parsed.tls,
+                                   state->options.skip_server_certificate_validation,
+                                   std::move (completion));
+#else
+        operation->complete (boost::asio::error::operation_not_supported, nullptr);
+#endif
+    } else {
+        auto resolver = std::make_shared<boost::asio::ip::tcp::resolver> (state->io_context);
+        auto socket = std::make_shared<boost::asio::ip::tcp::socket> (state->io_context);
+        resolver->async_resolve (
+          parsed.tcp->host, parsed.tcp->port,
+          [resolver, socket, completion = std::move (completion)] (
+            boost::system::error_code error,
+            boost::asio::ip::tcp::resolver::results_type endpoints) mutable {
+              if (error) {
+                  completion (error, nullptr);
+                  return;
+              }
+              boost::asio::async_connect (
+                *socket, endpoints,
+                [socket, completion = std::move (completion)] (
+                  boost::system::error_code connect_error,
+                  const boost::asio::ip::tcp::endpoint &) mutable {
+                    if (connect_error) {
+                        completion (connect_error, nullptr);
+                        return;
+                    }
+                    completion ({}, detail::make_tcp_connection (std::move (*socket)));
+                });
+          });
+    }
+
+    auto [error, connection] = operation->wait ();
+    detail::cancel_timer (timeout_timer);
+    if (error || !connection) {
+        return result_t<std::unique_ptr<detail::stream_connection_t>>::failure (
+          error_code_t::connect_timeout,
+          error ? error.message () : "stream connector transport connect failed");
+    }
+    return result_t<std::unique_ptr<detail::stream_connection_t>>::success (
+      std::move (connection));
+}
 
 void complete_connect_callback (std::shared_ptr<detail::connector_state_t> state,
                                 std::function<void (result_t<void>)> callback,
@@ -814,72 +926,57 @@ result_t<void> connect_state (std::shared_ptr<detail::connector_state_t> state)
     }
 
     const auto max_attempts = state->options.reconnect.enabled
-                                ? std::max (1, state->options.reconnect.max_attempts.value_or (1))
-                                : 1;
+                                ? state->options.reconnect.max_attempts
+                                : std::optional<int> (1);
     auto retry_delay = state->options.reconnect.initial_delay;
     std::string last_error;
+    const auto deadline = std::chrono::steady_clock::now () + state->options.connect_timeout;
 
-    for (int attempt = 1; attempt <= max_attempts; ++attempt) {
-        detail::change_state (state, attempt == 1 ? connection_state_t::connecting
-                                                  : connection_state_t::reconnecting);
-        try {
-            std::unique_ptr<detail::stream_connection_t> connected_transport;
-            if (state->options.transport == transport_t::websocket) {
-                connected_transport =
-                  detail::connect_websocket (state->io_context, *parsed.value ().websocket);
-            } else if (state->options.transport == transport_t::websocket_secure) {
-#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-                connected_transport = detail::connect_websocket_secure (
-                  state->io_context, *parsed.value ().websocket_secure,
-                  state->options.skip_server_certificate_validation);
-#else
-                throw std::runtime_error ("stream connector WSS support requires OpenSSL");
-#endif
-            } else if (state->options.transport == transport_t::tls) {
-#ifdef ZLINK_STREAM_CONNECTOR_WITH_OPENSSL
-                connected_transport =
-                  detail::connect_tls (state->io_context, *parsed.value ().tls,
-                                       state->options.skip_server_certificate_validation);
-#else
-                throw std::runtime_error ("stream connector TLS support requires OpenSSL");
-#endif
-            } else {
-                boost::asio::ip::tcp::resolver resolver (state->io_context);
-                auto endpoints =
-                  resolver.resolve (parsed.value ().tcp->host, parsed.value ().tcp->port);
-                boost::asio::ip::tcp::socket socket (state->io_context);
-                boost::asio::connect (socket, endpoints);
-                connected_transport = detail::make_tcp_connection (std::move (socket));
-            }
+    for (int attempt_number = 1;
+         !max_attempts || attempt_number <= std::max (1, *max_attempts);
+         ++attempt_number) {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline) {
+            last_error = "stream connector connect timed out";
+            break;
+        }
+        detail::change_state (state, attempt_number == 1 ? connection_state_t::connecting
+                                                         : connection_state_t::reconnecting);
+        const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+        auto connected = connect_transport (state, parsed.value (), remaining);
+        if (connected) {
             {
                 std::lock_guard<std::mutex> lock (state->transport_mutex);
-                state->connection = std::move (connected_transport);
-                const auto now = std::chrono::steady_clock::now ();
-                state->last_heartbeat_sent = now;
-                state->last_inbound_received = now;
+                state->connection = std::move (connected.value ());
+                const auto connected_at = std::chrono::steady_clock::now ();
+                state->last_heartbeat_sent = connected_at;
+                state->last_inbound_received = connected_at;
             }
             detail::change_state (state, connection_state_t::connected);
             detail::resume_pending_writes_after_connect (state);
             schedule_start_read_loop (state);
             return result_t<void>::success ();
         }
-        catch (const std::exception &ex) {
-            last_error = ex.what ();
-            boost::system::error_code ignored;
-            if (state->connection) {
-                state->connection->close (ignored);
-            }
-            if (attempt < max_attempts) {
-                std::mutex retry_mutex;
-                std::condition_variable retry_ready;
-                std::unique_lock<std::mutex> retry_lock (retry_mutex);
-                retry_ready.wait_for (retry_lock, retry_delay);
-                retry_delay =
-                  std::min (state->options.reconnect.max_delay,
-                            std::chrono::milliseconds (static_cast<int> (
-                              retry_delay.count () * state->options.reconnect.backoff_factor)));
-            }
+        last_error = connected.error () ? connected.error ()->message
+                                        : "stream connector transport connect failed";
+        if (max_attempts && attempt_number >= std::max (1, *max_attempts)) {
+            break;
         }
+        const auto delay = std::min (
+          retry_delay,
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - std::chrono::steady_clock::now ()));
+        if (delay > std::chrono::milliseconds::zero ()) {
+            std::mutex retry_mutex;
+            std::condition_variable retry_ready;
+            std::unique_lock<std::mutex> retry_lock (retry_mutex);
+            retry_ready.wait_for (retry_lock, delay);
+        }
+        retry_delay =
+          std::min (state->options.reconnect.max_delay,
+                    std::chrono::milliseconds (static_cast<int> (
+                      retry_delay.count () * state->options.reconnect.backoff_factor)));
     }
 
     detail::change_state (state, connection_state_t::disconnected,

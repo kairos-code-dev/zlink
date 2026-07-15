@@ -930,6 +930,84 @@ int main ()
     }
 
     {
+        boost::asio::io_context timeout_io;
+        boost::asio::ip::tcp::acceptor timeout_acceptor (
+          timeout_io, {boost::asio::ip::make_address ("127.0.0.1"), 0});
+        const auto timeout_endpoint =
+          std::string ("ws://127.0.0.1:")
+          + std::to_string (timeout_acceptor.local_endpoint ().port ()) + "/stream";
+        callback_latch_t timeout_server_accepted;
+        callback_latch_t timeout_server_release;
+        joining_thread_t timeout_server (
+          [&timeout_acceptor, &timeout_server_accepted, &timeout_server_release] {
+              boost::asio::ip::tcp::socket socket (timeout_acceptor.get_executor ());
+              timeout_acceptor.accept (socket);
+              timeout_server_accepted.signal ();
+              timeout_server_release.wait_for (std::chrono::milliseconds (500));
+          });
+
+        zlink::stream_connector::connector_options_t timeout_options;
+        timeout_options.endpoint = timeout_endpoint;
+        timeout_options.transport = zlink::stream_connector::transport_t::websocket;
+        timeout_options.connect_timeout = std::chrono::milliseconds (50);
+        timeout_options.reconnect.enabled = false;
+        auto timeout_connector =
+          zlink::stream_connector::connector_factory_t::create (timeout_options);
+        const auto connect_started_at = std::chrono::steady_clock::now ();
+        const auto timed_connect = timeout_connector.connect ();
+        const auto connect_elapsed = std::chrono::steady_clock::now () - connect_started_at;
+        timeout_server_release.signal ();
+        timeout_server.join ();
+        if (!timeout_server_accepted.wait_for (std::chrono::milliseconds (100)) || timed_connect
+            || timed_connect.error_code ()
+                 != zlink::stream_connector::error_code_t::connect_timeout
+            || connect_elapsed >= std::chrono::milliseconds (250)) {
+            return 169;
+        }
+    }
+
+    {
+        boost::asio::io_context timeout_io;
+        boost::asio::ip::tcp::acceptor timeout_acceptor (
+          timeout_io, {boost::asio::ip::make_address ("127.0.0.1"), 0});
+        const auto timeout_endpoint =
+          std::string ("ws://127.0.0.1:")
+          + std::to_string (timeout_acceptor.local_endpoint ().port ()) + "/stream";
+        callback_latch_t timeout_server_release;
+        joining_thread_t timeout_server ([&timeout_acceptor, &timeout_server_release] {
+            boost::asio::ip::tcp::socket socket (timeout_acceptor.get_executor ());
+            timeout_acceptor.accept (socket);
+            timeout_server_release.wait_for (std::chrono::milliseconds (500));
+        });
+
+        zlink::stream_connector::connector_options_t timeout_options;
+        timeout_options.endpoint = timeout_endpoint;
+        timeout_options.transport = zlink::stream_connector::transport_t::websocket;
+        timeout_options.connect_timeout = std::chrono::milliseconds (50);
+        timeout_options.reconnect.enabled = false;
+        timeout_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
+        auto timeout_connector =
+          zlink::stream_connector::connector_factory_t::create (timeout_options);
+        callback_latch_t timeout_completed;
+        std::optional<zlink::stream_connector::error_code_t> timeout_error;
+        const auto connect_started_at = std::chrono::steady_clock::now ();
+        timeout_connector.connect ([&timeout_completed, &timeout_error] (auto result) {
+            timeout_error = result.error_code ();
+            timeout_completed.signal ();
+        });
+        const auto callback_arrived =
+          timeout_completed.wait_for (std::chrono::milliseconds (250));
+        const auto connect_elapsed = std::chrono::steady_clock::now () - connect_started_at;
+        timeout_server_release.signal ();
+        timeout_server.join ();
+        if (!callback_arrived
+            || timeout_error != zlink::stream_connector::error_code_t::connect_timeout
+            || connect_elapsed >= std::chrono::milliseconds (250)) {
+            return 170;
+        }
+    }
+
+    {
         zlink::stream_connector::connector_options_t lifecycle_options;
         lifecycle_options.dispatch_mode = zlink::stream_connector::dispatch_mode_t::immediate;
         bool connect_lifetime_seen = false;

@@ -1241,7 +1241,8 @@ class spot_publisher_client_t
         try {
             auto payload =
               detail::encoded_payload_to_raw (_serializers->get<TEvent> ().serialize (event));
-            return publish_raw (std::move (channel_name), std::move (topic), std::move (payload));
+            return publish_raw (std::move (channel_name), std::move (topic),
+                                detail::message_name<TEvent> (), std::move (payload));
         }
         catch (const framework_exception_t &error) {
             return task_t<void> (
@@ -1251,7 +1252,10 @@ class spot_publisher_client_t
 
   private:
     task_t<void>
-    publish_raw (std::string channel_name, std::string topic, zlink::message_t payload) const;
+    publish_raw (std::string channel_name,
+                 std::string topic,
+                 std::string packet_name,
+                 zlink::message_t payload) const;
 
     spot_node_manager_t _manager;
     serializer_registry_t *_serializers = nullptr;

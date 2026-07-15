@@ -365,6 +365,37 @@ void report_spot_dispatch_trace (const std::shared_ptr<detail::spot_node_builder
     });
 }
 
+zlink::message_t encode_spot_publish_frame (std::string channel_name,
+                                            std::string packet_name,
+                                            const std::string &topic,
+                                            const zlink::message_t &payload)
+{
+    runtime::messaging::envelope_header_t header;
+    header.kind = runtime::messaging::message_kind_t::publish;
+    header.channel_name = std::move (channel_name);
+    header.message_name = std::move (packet_name);
+    header.topic = topic;
+    header.source = header.channel_name;
+
+    const auto header_bytes =
+      runtime::messaging::envelope_codec_t{}.encode_header (header).to_bytes ();
+    const auto body_bytes = payload.to_bytes ();
+    std::vector<std::uint8_t> frame;
+    frame.reserve (8 + header_bytes.size () + body_bytes.size ());
+    frame.push_back (static_cast<std::uint8_t> ('Z'));
+    frame.push_back (static_cast<std::uint8_t> ('L'));
+    frame.push_back (static_cast<std::uint8_t> ('F'));
+    frame.push_back (static_cast<std::uint8_t> ('E'));
+    const auto header_size = static_cast<std::uint32_t> (header_bytes.size ());
+    frame.push_back (static_cast<std::uint8_t> (header_size >> 24));
+    frame.push_back (static_cast<std::uint8_t> (header_size >> 16));
+    frame.push_back (static_cast<std::uint8_t> (header_size >> 8));
+    frame.push_back (static_cast<std::uint8_t> (header_size));
+    frame.insert (frame.end (), header_bytes.begin (), header_bytes.end ());
+    frame.insert (frame.end (), body_bytes.begin (), body_bytes.end ());
+    return zlink::message_t::from (frame);
+}
+
 void report_actor_handoff_request_trace (
   const std::shared_ptr<detail::spot_node_builder_state_t> &state,
   std::string marker,
@@ -1361,12 +1392,6 @@ send_call_t spot_context_t::publish_erased (std::string topic,
                     && detail::message_flow_tracer_t (state->node->dispatch).capture_enabled ();
                   auto flow_scope = runtime::flow_context_t::enter_current_or_create (
                     flow_origin_t::application, capture_enabled);
-                  runtime::messaging::envelope_header_t header;
-                  header.kind = runtime::messaging::message_kind_t::publish;
-                  header.channel_name = state->node ? state->node->snapshot.name : std::string{};
-                  header.message_name = submitted_packet_name;
-                  header.topic = topic;
-                  header.source = header.channel_name;
                   /* Self-delimited single frame: ['Z''L''F''E'][u32 BE
                    * header_len][header JSON][body]. The node-attached fanout
                    * path does not keep multipart boundaries end to end, so
@@ -1375,24 +1400,9 @@ send_call_t spot_context_t::publish_erased (std::string topic,
                    * parts. The magic makes the format discriminable from a
                    * legacy raw payload, so a validation failure after a
                    * magic match is definitively a corrupted framework frame. */
-                  const auto header_message =
-                    runtime::messaging::envelope_codec_t{}.encode_header (header);
-                  const auto header_bytes = header_message.to_bytes ();
-                  const auto body_bytes = payload.to_bytes ();
-                  std::vector<std::uint8_t> frame;
-                  frame.reserve (8 + header_bytes.size () + body_bytes.size ());
-                  frame.push_back (static_cast<std::uint8_t> ('Z'));
-                  frame.push_back (static_cast<std::uint8_t> ('L'));
-                  frame.push_back (static_cast<std::uint8_t> ('F'));
-                  frame.push_back (static_cast<std::uint8_t> ('E'));
-                  const auto header_size = static_cast<std::uint32_t> (header_bytes.size ());
-                  frame.push_back (static_cast<std::uint8_t> (header_size >> 24));
-                  frame.push_back (static_cast<std::uint8_t> (header_size >> 16));
-                  frame.push_back (static_cast<std::uint8_t> (header_size >> 8));
-                  frame.push_back (static_cast<std::uint8_t> (header_size));
-                  frame.insert (frame.end (), header_bytes.begin (), header_bytes.end ());
-                  frame.insert (frame.end (), body_bytes.begin (), body_bytes.end ());
-                  auto frame_part = zlink::message_t::from (frame);
+                  auto frame_part = encode_spot_publish_frame (
+                    state->node ? state->node->snapshot.name : std::string{},
+                    submitted_packet_name, topic, payload);
                   if (!std::move (native->publish (topic)).message (frame_part).submit ()) {
                       return result_t<void>::failure (framework_error_kind_t::request_failed,
                                                       "spot publish failed");
@@ -2319,6 +2329,7 @@ spot_publisher_client_t::spot_publisher_client_t (spot_node_manager_t manager,
 
 task_t<void> spot_publisher_client_t::publish_raw (std::string channel_name,
                                                    std::string topic,
+                                                   std::string packet_name,
                                                    zlink::message_t payload) const
 {
     if (!_serializers) {
@@ -2347,7 +2358,12 @@ task_t<void> spot_publisher_client_t::publish_raw (std::string channel_name,
     }
 
     try {
-        std::vector<zlink::message_t> parts{std::move (payload)};
+        const bool capture_enabled =
+          detail::message_flow_tracer_t (_manager._state->dispatch).capture_enabled ();
+        auto flow_scope = runtime::flow_context_t::enter_current_or_create (
+          flow_origin_t::application, capture_enabled);
+        std::vector<zlink::message_t> parts{encode_spot_publish_frame (
+          channel_name, std::move (packet_name), topic, payload)};
         auto publisher = native_node->create_publisher ();
         if (!publisher.valid ()) {
             return task_t<void> (detail::boundary_failure<void> (detail::boundary_error_t::disconnected, "SPOT publisher client is not available"));

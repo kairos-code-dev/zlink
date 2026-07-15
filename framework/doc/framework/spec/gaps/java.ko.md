@@ -753,7 +753,7 @@ Config 11 전체 실행도 각 selector를
 ### 체크리스트
 
 - [ ] **SMP-JV-01** (**부분 구현**) — TicTacToe 밖 수동 연결은 0건이지만 GameQuest 자동 재연결이 재기동 직후 안정적으로 수렴하지 않는다
-  - 재검증 재개: GameQuest의 네 channel client는 location store 자동 발견으로 바뀌었고 금지 gate도 통과한다. 그러나 전체 runner 반복 실행에서 mission-a 재기동 직후 rehydrate 요청이 `remote error payload is invalid`로 실패해 최초 exit 0만으로 자동 재연결 안정성을 증명하지 못했다. `.NET`처럼 public readiness를 애플리케이션에 제공한다는 결정을 적용한다. Java는 공개 `ZLinkLocationReadiness`가 있지만 Spring starter bean이 없으므로, starter가 이 계약을 제공한 뒤 runner가 준비 완료를 확인해야 한다. 샘플이 runtime 내부 타입을 가져오거나 업무 요청을 retry해서 숨기지 않는다. 부분 구현 커밋 `311e8304c`(2026-07-15).
+  - 재검증 재개: GameQuest의 네 channel client는 location store 자동 발견으로 바뀌었고 금지 gate도 통과한다. 그러나 전체 runner 재실행은 재기동 전 최초 시나리오에서도 notification 대기가 `TimeoutException`으로 실패했다. `GameplayMsg`와 session push의 전송 완료 stage를 handler가 반환하는 집중 수정은 Java의 one-way `submit()`이 `void`라 컴파일에서 실패했고 되돌렸다. `.NET`처럼 public readiness와 `Async`/`Yield` 완료 terminator를 제공한다는 결정을 적용한다. starter/runtime 선행 구현 뒤 runner가 준비 완료와 전송 수락을 확인해야 하며, 샘플이 runtime 내부 타입이나 업무 retry로 숨기지 않는다. 부분 구현 커밋 `311e8304c`(2026-07-15), 실패 재검증 2026-07-15.
 - [x] **SMP-JV-02** (미구현) — GameQuest에 **owner Spot이 아예 없다.** 소유권을 클라이언트 해시로 흉내낸다
   - 증거: `addSpotMesh`·`PlayerQuestSpot`과 전역 monitor 부재를 요구한 gate가 기존 코드에서 실패했다. 두 QuestMission이 같은 spot mesh에 참여하고 channel은 ingress로만 남으며, 모든 quest 요청은 `PlayerId` routing id의 owner Spot으로 전달된다. 전체 runner가 `surface=SPOT ... packet=GameplayMsg` flow와 재기동 복원까지 통과했다.
 - [x] **SMP-JV-03** (미구현) — GameQuest가 **event sourcing이 아니다.** "rehydrate" 게이트를 카운터로 통과한다
@@ -821,7 +821,7 @@ Config 11 전체 실행도 각 selector를
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | **부분 구현:** Bingo 4곳, DeliveryDispatch 5곳, ShoppingMall 2곳과 GameQuest 4곳을 인자 없는 `enableClient()`와 location store 자동 발견으로 바꿨다. GameQuest 최초 시나리오는 통과하지만 mission 재기동 직후 자동 재연결이 간헐적으로 수렴하지 않아 전체 runner가 실패한다. 내부 readiness 접근이나 업무 요청 retry는 사용하지 않았으며, public Spring readiness 경로 또는 runtime reconnect 대기가 선행돼야 한다. |
+| **SMP-JV-01** | [샘플 규약](../../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다. *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다"* | **부분 구현:** Bingo 4곳, DeliveryDispatch 5곳, ShoppingMall 2곳과 GameQuest 4곳을 인자 없는 `enableClient()`와 location store 자동 발견으로 바꿨다. 재실행에서는 최초 시나리오 notification도 timeout이 발생했다. Java one-way `submit()`은 완료 stage를 반환하지 않아 샘플 handler가 전송 수락을 기다릴 수 없고 Spring starter는 공개 location readiness bean을 제공하지 않는다. 내부 runtime 접근이나 업무 retry를 사용하지 않고, `.NET`과 같은 public readiness와 `Async`/`Yield` 완료 표면을 선행 구현해야 한다. |
 | **SMP-JV-02** | [GameQuest §1](../../common/sample/event/gamequest.ko.md): 이 샘플의 존재 이유가 **`PlayerId`별 owner spot을 노드에 분산**하는 것이다 | **해결:** 두 QuestMission이 `gamequest.player-quests` spot mesh에 참여하고 `PlayerQuestSpot`을 등록한다. 기존 player hash channel은 ingress 선택에만 쓰이며, 실제 소유권과 직렬 처리는 `PlayerId` routing id의 spot owner가 담당한다. |
 | **E2E-JV-07** | [config-6 SF-B2](../../common/e2e/config-6-store-failure-recovery.ko.md): 유예가 지나면 **새 outbound connect가 멈춘다** | **재검증 취소:** .NET 정본은 이미 준비된 transport를 fail-static으로 유지하고 그 연결의 요청 성공을 grace 이후까지 확인한다. 장애 중 provider를 재시작해 기존 transport의 reconnect까지 금지하는 해석은 정본과 다르다. Java runner는 기존 연결의 성공과 unhealthy 상태를 함께 검증하며, 미연결 desired target의 grace 제한은 `IMP-JV-33` 집중 테스트가 담당한다. |
 

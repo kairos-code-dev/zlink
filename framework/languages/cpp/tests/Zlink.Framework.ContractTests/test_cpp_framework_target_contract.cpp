@@ -829,8 +829,12 @@ int main ()
                   "E2E-CP-15", "RC-A6 has no executable client scenario");
     gate.require (registration_codec_runner.find ("run_invalid()") == std::string::npos
                     && registration_codec_runner.find ("grep -q") == std::string::npos
+                    && registration_codec_runner.find ("invalidServerExecutable")
+                         != std::string::npos
+                    && registration_codec_runner.find ("invalidEndpoint")
+                         != std::string::npos
                     && registration_codec_runner.find ("ZLINK_CPP_E2E_INVALID_SERVER_EXE")
-                         != std::string::npos,
+                         == std::string::npos,
                   "E2E-CP-15",
                   "RegistrationCodec runner still owns RC-A6 result assertions");
 

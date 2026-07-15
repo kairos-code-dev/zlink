@@ -70,20 +70,46 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     @Override
     public java.util.concurrent.CompletionStage<Void> onJoinedActor(
         PlayerActor actor) {
-        Messages.BingoRoomJoinReq request = pendingJoins.remove(actor.actorId());
+        Messages.BingoRoomJoinReq request = pendingJoins.get(actor.actorId());
         if (request == null) {
             throw new IllegalStateException("joined actor does not have a pending admission");
         }
-        join(actor, request);
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        if (request.getObserveOnly()) {
+            pendingJoins.remove(actor.actorId());
+            join(actor, request, 0, 0);
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+        return context.outbound()
+            .requestToChannel(SampleNames.ApiChannel, BingoMessages.getPlayerRecordReq(actor.actorId()))
+            .timeout(SampleTimings.RequestTimeout)
+            .yield(Messages.GetPlayerRecordRes.class)
+            .thenAccept(record -> {
+                if (pendingJoins.get(actor.actorId()) != request) {
+                    return;
+                }
+                pendingJoins.remove(actor.actorId());
+                join(actor, request, record.getWins(), record.getLosses());
+            });
     }
 
     @Override
     public java.util.concurrent.CompletionStage<Void> onLeaveActor(
         PlayerActor actor) {
-        actors.remove(actor.actorId());
-        observers.remove(actor.actorId());
-        return java.util.concurrent.CompletableFuture.completedFuture(null);
+        if (!actors.containsKey(actor.actorId()) || game == null) {
+            observers.remove(actor.actorId());
+            return java.util.concurrent.CompletableFuture.completedFuture(null);
+        }
+        Messages.BingoRoomState finalState = game.snapshot();
+        Messages.ReportBingoResultReq report = BingoMessages.reportBingoResultReq(
+            finalState.getRoomId(),
+            actor.actorId(),
+            finalState.getWinnersList().contains(actor.actorId()),
+            finalState.getDrawSeq());
+        return context.outbound()
+            .requestToChannel(SampleNames.ApiChannel, report)
+            .timeout(SampleTimings.RequestTimeout)
+            .yield(Messages.ReportBingoResultRes.class)
+            .thenAccept(ignored -> actors.remove(actor.actorId()));
     }
 
     @Override
@@ -115,7 +141,9 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
 
     public Messages.BingoRoomJoinRes join(
         PlayerActor actor,
-        Messages.BingoRoomJoinReq request) {
+        Messages.BingoRoomJoinReq request,
+        int wins,
+        int losses) {
         validateJoin(actor.actorId(), request);
         actor.setDisplayName(request.getDisplayName());
         actor.joinRoom(request.getRoomId());
@@ -124,7 +152,8 @@ public final class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
             return BingoMessages.bingoRoomJoinRes(observerJoinState(request));
         }
         actors.put(actor.actorId(), actor);
-        BingoRoomGame.Change change = game.join(actor.actorId(), request.getDisplayName());
+        BingoRoomGame.Change change = game.join(
+            actor.actorId(), request.getDisplayName(), wins, losses);
         publishEvents(
             change.events(),
             actorId -> actorId.equals(actor.actorId()) ? null : actors.get(actorId));

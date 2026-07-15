@@ -4,6 +4,10 @@ typealias AuthenticateReq = Messages.AuthenticateReq
 typealias AuthenticateRes = Messages.AuthenticateRes
 typealias AuthenticatePlayerReq = Messages.AuthenticatePlayerReq
 typealias AuthenticatePlayerRes = Messages.AuthenticatePlayerRes
+typealias GetPlayerRecordReq = Messages.GetPlayerRecordReq
+typealias GetPlayerRecordRes = Messages.GetPlayerRecordRes
+typealias ReportBingoResultReq = Messages.ReportBingoResultReq
+typealias ReportBingoResultRes = Messages.ReportBingoResultRes
 typealias EnsurePlayerActorReq = Messages.EnsurePlayerActorReq
 typealias ActorRefWire = Messages.ActorRefWire
 typealias EnsurePlayerActorRes = Messages.EnsurePlayerActorRes
@@ -87,6 +91,27 @@ fun AuthenticatePlayerRes(
             }
         }
         .build()
+
+fun GetPlayerRecordReq(actorId: String): GetPlayerRecordReq =
+    Messages.GetPlayerRecordReq.newBuilder().setActorId(actorId).build()
+
+fun GetPlayerRecordRes(actorId: String, wins: Int, losses: Int): GetPlayerRecordRes =
+    Messages.GetPlayerRecordRes.newBuilder()
+        .setActorId(actorId).setWins(wins).setLosses(losses).build()
+
+fun ReportBingoResultReq(
+    roomId: String,
+    actorId: String,
+    won: Boolean,
+    finalDrawSeq: Int,
+): ReportBingoResultReq =
+    Messages.ReportBingoResultReq.newBuilder()
+        .setRoomId(roomId).setActorId(actorId).setWon(won)
+        .setFinalDrawSeq(finalDrawSeq).build()
+
+fun ReportBingoResultRes(actorId: String, wins: Int, losses: Int): ReportBingoResultRes =
+    Messages.ReportBingoResultRes.newBuilder()
+        .setActorId(actorId).setWins(wins).setLosses(losses).build()
 
 fun EnsurePlayerActorReq(
     actorId: String,
@@ -372,6 +397,8 @@ fun BingoPlayerState(
     card: List<Int>,
     marks: List<Boolean>,
     completedLines: Int,
+    wins: Int,
+    losses: Int,
 ): BingoPlayerState =
     Messages.BingoPlayerState.newBuilder()
         .setActorId(actorId)
@@ -381,4 +408,6 @@ fun BingoPlayerState(
         .addAllCard(card)
         .addAllMarks(marks)
         .setCompletedLines(completedLines)
+        .setWins(wins)
+        .setLosses(losses)
         .build()

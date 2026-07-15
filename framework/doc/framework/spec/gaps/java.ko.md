@@ -262,11 +262,11 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 13건.**
+**전체 33건. 완료 14건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
-- [ ] **IMP-JV-01** (결함) — 40 §2.1
+- [x] **IMP-JV-01** (결함) — Spot peer row가 실제 actor factory마다 정렬된 `actor:<type>` capability를 게시하고, drain은 actor type별 소유 mesh에서 정확히 일치하는 capability를 가진 원격 노드만 선택하도록 고쳤다. exact-match 집중 테스트, core 전체 테스트와 Kotlin module 전체 테스트가 통과했다. 구현 커밋 `23f066b2e`(2026-07-15).
 - [ ] **IMP-JV-02** (결함) — 24 §3·§5
 - [x] **IMP-JV-03** (결함) — `drain(...)`과 `awaitDrained()`가 공유 완료 상태의 독립 waiter를 반환하도록 고쳤다. 한 호출자가 waiter에 timeout을 적용해도 런타임의 drain 상태는 완료되지 않는 집중 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `3db218ee0`(2026-07-15).
 - [ ] **IMP-JV-04** (결함) — 24 §4.1·05 §2.3
@@ -315,7 +315,7 @@
 
 | ID | 종류 | 계약 | 구현이 하는 일 |
 |----|------|------|----------------|
-| **IMP-JV-01** | 결함 | [40 §2.1](../server/40-location-runtime.ko.md): actor type마다 `actor:<type>` **capability**를 기록하고, handoff는 **정확히 일치하는** capability를 가진 노드만 고른다. **application metadata로 대신 기록하지 않는다** | `ZLinkLocationAutoConnectHost.java:26-27,66-70` — `metadata["zlink.framework.actor-host"]="true"` **불리언 하나**뿐이고 `capabilities`는 **항상 `null`**(:144-146). `ZLinkFrameworkRuntime.java:566-575`는 **actor type을 보지 않는다.** ⇒ `Warrior`만 만들 줄 아는 노드에 `Mage`를 넘겨 **drain 중 actor 유실**. 게다가 stream node가 있으면 그 플래그를 아예 안 써서, 두 노드가 모두 stream을 호스팅하는 흔한 구성에선 **handoff 대상이 0** |
+| **IMP-JV-01** | 결함 | [40 §2.1](../server/40-location-runtime.ko.md): actor type마다 `actor:<type>` **capability**를 기록하고, handoff는 **정확히 일치하는** capability를 가진 노드만 고른다. **application metadata로 대신 기록하지 않는다** | **해결:** Spot peer row는 actor factory key를 정렬·중복 제거한 capability로 게시한다. drain은 활성 actor type별로 그 factory를 소유한 mesh만 조회하고 exact capability를 가진 비-draining 원격 노드로 같은 type의 actor만 넘긴다. prefix·다른 type·local node 거부 집중 테스트, core와 Kotlin 전체 테스트 통과. 구현 커밋 `23f066b2e`(2026-07-15). |
 | **IMP-JV-02** | 결함 | [24 §3·§5](../server/24-spot-address-messaging.ko.md): **정상 전송 경로는 store를 읽지 않는다.** handle이 snapshot을 들고, stale 실패 시 **1회 갱신 + 1회 재전송** | `FrameworkSpotHandle.java:6` — `record FrameworkSpotHandle(RoutingId spotRid)`, **rid 하나뿐**. snapshot도 swap도 없다. 그래서 `ZLinkChannelSpotCalls.java:128,200` 등 **모든 spot 전송이 매번 store를 읽는다.** ⇒ 룸 핫패스마다 Redis 왕복, store 장애 시 라우트 소켓이 멀쩡해도 **모든 spot 전송 실패**(스펙은 fail-static 요구) |
 | **IMP-JV-03** | 결함 | [54 §6](../server/54-graceful-drain-handoff.ko.md): **호출자의 취소는 그 호출자의 대기만 중단한다** | **해결:** 각 호출은 공유 drain stage에 `thenApply`로 연결한 독립 waiter를 받는다. waiter timeout이 공유 상태를 완료하지 않는 집중 테스트와 core 전체 테스트 통과. 구현 커밋 `3db218ee0`(2026-07-15). |
 | **IMP-JV-04** | 결함 | [24 §4.1](../server/24-spot-address-messaging.ko.md)·[05 §2.3](../05-framework-api.ko.md): `SpotRouteNotFound`/`RouteNotConnected`/`RequestTargetNotFound`를 구분한다 | `ZLinkChannelSpotCalls.java:228-236` — 전부 `ZLinkConfigurationException`(kind=`REQUEST_FAILED`, retriable=false). ⇒ **"spot이 사라졌다"와 "mesh가 아직 수렴 중이다"를 구분할 수 없다.** retriable 기반 재시도 정책이 영영 안 돈다 |

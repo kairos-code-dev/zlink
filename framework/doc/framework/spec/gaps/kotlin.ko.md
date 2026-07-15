@@ -352,6 +352,10 @@ Kotlin은 Java 런타임을 공유하므로 라운드 3의 Java 항목(**IMP-JV-
 없거나 활성 capability의 bind endpoint가 없으면 시작 전에 설정 오류로 거부한다. 세 집중 테스트와
 Java core 전체 테스트가 통과했다(구현 커밋 `d7a62647e`).
 
+공유 drain runtime의 **IMP-JV-01**도 닫혔다. Kotlin actor factory가 등록된 Spot peer는
+`actor:<type>` capability를 게시하며, drain은 정확히 일치하는 type을 지원하는 원격 노드만 고른다.
+exact-match 집중 테스트, Java core와 Kotlin module 전체 테스트가 통과했다(구현 커밋 `23f066b2e`).
+
 [java 체크리스트](java.ko.md)를 함께 본다.
 
 ## 라운드 4 (2026-07-14) — 샘플 · E2E

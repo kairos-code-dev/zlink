@@ -353,11 +353,16 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 
 ### 체크리스트
 
-- [ ] **IMP-ND-11** (결함) — `flow_id`를 **홉마다 새로 만든다.** wire에 실린 id와 로그의 id가 **다르다**
-- [ ] **IMP-ND-12** (결함) — tracing이 `off`인데도 **wire에 flow id를 생성한다**
-- [ ] **IMP-ND-13** (결함) — 모니터링 dispatcher가 예외 시 `continue`가 아니라 **`return`**한다
-- [ ] **IMP-ND-14** (결함) — 샘플링이 **flow 단위가 아니라 이벤트 단위**다
-- [ ] **IMP-ND-15** (미구현) — Entry Spot이 `spot.count`/`created`/`closed`에 **잡히지 않는다**
+- [x] **IMP-ND-11** (결함) — `flow_id`를 **홉마다 새로 만든다.** wire에 실린 id와 로그의 id가 **다르다**
+  - 근거: 생성된 flow를 async context에 보존해 후속 hop·wire·로그가 같은 id를 재사용하고 flow 생성 책임을 context에 모았다. hop마다 id가 달라 실패하던 message-flow continuation 게이트가 통과한다. 커밋 `196559482`.
+- [x] **IMP-ND-12** (결함) — tracing이 `off`인데도 **wire에 flow id를 생성한다**
+  - 근거: 새 flow 생성은 diagnostics mode가 활성일 때만 수행하고 inbound ambient flow 보존과 분리했다. off host가 flow field를 만들던 message-flow 게이트가 통과한다. 커밋 `afc26ae07`.
+- [x] **IMP-ND-13** (결함) — 모니터링 dispatcher가 예외 시 `continue`가 아니라 **`return`**한다
+  - 근거: runtime event publisher가 handler 예외를 해당 handler에 격리하고 다음 handler dispatch를 계속한다. 첫 예외 뒤 전달이 중단되어 실패하던 monitoring-runtime 게이트가 통과한다. 커밋 `fcdc9a98c`.
+- [x] **IMP-ND-14** (결함) — 샘플링이 **flow 단위가 아니라 이벤트 단위**다
+  - 근거: sampling 결정을 flow id에서 한 번 계산해 같은 flow의 모든 event가 함께 유지되거나 제외되게 했다. 한 flow가 섞여 기록되던 message-flow sampling 게이트가 통과한다. 커밋 `1d2bcd789`.
+- [x] **IMP-ND-15** (미구현) — Entry Spot이 `spot.count`/`created`/`closed`에 **잡히지 않는다**
+  - 근거: Entry Spot activation·close를 공통 `spot-lifecycle-metrics` 경계로 연결해 일반 Spot과 같은 count/counter 정책을 사용한다. Entry metric 부재로 실패하던 runtime-metrics 게이트가 통과하고 중복 계측 책임도 제거했다. 커밋 `ec5002070`, `8751f0e19`.
 - [x] **IMP-ND-16** (결함) — handler 없는 `server`/`subscriber` 역할이 startup을 통과하고 **소켓을 아예 bind하지 않는다**
   - 근거: receiver 역할의 handler 존재 검증을 registration validator로 모아 bind 없는 성공을 startup에서 거부한다. handlerless server/subscriber 게이트가 실패에서 통과로 바뀌었다. 커밋 `664d45650`.
 - [x] **IMP-ND-17** (결함) — channel 종류가 **배타적이지 않고**, 같은 이름을 두 번 등록하면 **조용히 병합**된다
@@ -366,7 +371,8 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
   - 근거: 수동 endpoint 역할은 lookup만 유지하고 auto-connect reconcile 대상에서 제외하도록 lifecycle 정책을 한곳에 뒀다. 이중 연결을 잡는 location auto-connect/host 게이트가 통과한다. 커밋 `7b715d30f`.
 - [x] **IMP-ND-19** (결함) — SPOT timer 등록 검증이 **startup이 아니라 spot 활성화 시점**
   - 근거: timer 계약 검증을 별도 registration validator로 옮겨 잘못된 주기를 startup에서 거부한다. 활성화 때까지 실패가 미뤄지던 startup-validation 게이트가 통과한다. 커밋 `b67ceb5e0`.
-- [ ] **IMP-ND-20** (결함) — `fanout.received`가 등록되지 않은 topic까지 라벨로 단다(`.NET` IMP-DN-08과 동형)
+- [x] **IMP-ND-20** (결함) — `fanout.received`가 등록되지 않은 topic까지 라벨로 단다(`.NET` IMP-DN-08과 동형)
+  - 근거: fanout receive metric에서 동적 topic label을 제거하고 닫힌 label 집합만 계측 경계가 만든다. 미등록 topic이 label로 노출돼 실패하던 runtime-metrics 게이트가 통과한다. 커밋 `e1b834eb9`.
 - [ ] **IMP-TS-01** (결함) — **TypeScript connector**: 안 읽은 backlog가 쌓이면 `FrameTooLarge`로 **세션을 끊는다**
 - [ ] **IMP-TS-02** (결함) — **TypeScript connector**: handler 없는 수신 메시지를 **버려서** `waitFor`가 이미 도착한 메시지를 못 받는다
 
@@ -394,12 +400,14 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 
 ### 체크리스트
 
-- [ ] **IMP-ND-21** (결함) — connector 패키지가 **raw header bytes API를 root export**한다
+- [x] **IMP-ND-21** (결함) — connector 패키지가 **raw header bytes API를 root export**한다
+  - 근거: raw frame/header codec을 connector public root에서 제거하고 내부 protocol helper로만 사용해 wire 결정을 숨겼다. root export가 남으면 실패하는 contract-surface 게이트가 통과한다. 커밋 `e38e811fd`.
 - [x] **IMP-ND-22** (결함) — nestjs의 배포된 `.d.ts`가 **선언되지 않은 subpath를 import**해 내부 등록 레코드를 앱 타입 그래프로 끌고 온다
   - 근거: Nest 공개 계약 타입을 패키지 내부의 안정된 contracts 경계로 분리해 선언되지 않은 framework subpath 의존을 제거했다. package 선언 검사가 실패하던 build/type gate가 통과한다. 커밋 `c09ccdf3d`.
 - [x] **IMP-ND-23** (결함) — payload decode 실패를 **조용히 문자열로 바꾼다.** actor 경로에서 `PayloadDecodeFailed`가 **도달 불가**
   - 근거: actor payload codec이 잘못된 JSON을 fallback 문자열로 바꾸지 않고 `PayloadDecodeFailed`로 분류하며 dispatcher는 handler를 호출하지 않는다. malformed payload 게이트가 통과한다. 커밋 `6bf0df118`.
-- [ ] **IMP-ND-24** (결함) — `ZLinkWorkerOptions.minThreads`/`idleTimeoutMs`가 **조용한 no-op**
+- [x] **IMP-ND-24** (결함) — `ZLinkWorkerOptions.minThreads`/`idleTimeoutMs`가 **조용한 no-op**
+  - 근거: Node runtime이 적용하지 않는 두 option을 public surface와 validator에서 제거해 효과 없는 설정을 없앴다. inert option 노출을 금지하는 contract-surface gate가 통과한다. 커밋 `79e8b1681`.
 - [x] **IMP-ND-25** (결함) — `includeNativeDiagnostics`를 **읽는 곳이 없다**
   - 근거: 효과 없는 public option을 제거하고 진단 정책을 실제 message-flow 설정만 소유하게 해 얕은 표면을 줄였다. option 존재를 금지하는 contract/message-flow 게이트가 통과한다. 커밋 `43d9e7029`.
 - [x] **IMP-ND-26** (결함) — **actor가 든 spot을 닫을 수 있다** (`.NET` IMP-DN-17과 동형)
@@ -773,10 +781,12 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 - [x] **SMP-ND-06** (**버그**) — SupportChat open 응답이 실제 conversation state를 버린다
   - 근거: allocate 응답부터 Entry Spot까지 도메인이 만든 8필드 conversation state를 그대로 전달하고 중복 조립을 계약 mapper로 모았다. 하드코딩 `WaitingForAgent` 때문에 실패하던 open-state gate가 통과한다. 커밋 `c72ff6c1a`.
 - [ ] **SMP-ND-07** (**버그**) — 닫힌 SupportChat·TicTacToe Spot의 timer가 계속 실행된다
-- [ ] **SMP-ND-08** (**버그**) — SupportChat 상담원 재연결이 `WaitingForClose`를 `Active`로 되돌린다
+- [x] **SMP-ND-08** (**버그**) — SupportChat 상담원 재연결이 `WaitingForClose`를 `Active`로 되돌린다
+  - 근거: 상담원 rejoin은 `WaitingForClose` 상태와 기존 close deadline을 보존하고 새 message만 재활성화하도록 domain transition을 고쳤다. rejoin으로 상태가 되돌아가 실패하던 SupportChat domain gate가 통과한다. 커밋 `1ab5ce152`.
 - [x] **SMP-ND-09** (**버그**) — TicTacToe timeout을 승리로 기록한다
   - 근거: turn timeout을 승리와 분리한 terminal outcome으로 유지하고 수를 두지 않은 player/cell을 마지막 수처럼 만들지 않게 domain 규칙을 고쳤다. timeout 승리·milestone 오염으로 실패하던 match test가 통과한다. 커밋 `2366f8908`.
-- [ ] **SMP-ND-10** (**버그**) — TicTacToe Entry Spot handler가 framework lifecycle 밖 객체를 사용한다
+- [x] **SMP-ND-10** (**버그**) — TicTacToe Entry Spot handler가 framework lifecycle 밖 객체를 사용한다
+  - 근거: milestone 관측을 lifecycle이 만든 Entry Spot handler로 라우팅하고 session factory의 고아 `new PlayEntrySpot`·packet switch를 제거했다. context 접근에서 실패하던 TicTacToe session-dispatch gate가 통과한다. 커밋 `e2212e9e2`.
 - [x] **SMP-ND-11** (결함) — 샘플 wire 응답이 inline object와 흩어진 packet 문자열로 만들어진다
   - 근거: SupportChat·DeliveryDispatch·GameQuest 응답을 이름 있는 wire contract로 옮겨 호출부가 payload 모양을 다시 결정하지 않게 했다. inline 응답을 검출하는 named-wire gate가 통과한다. 커밋 `0d98a2384`.
 - [x] **SMP-ND-12** (결함) — Bingo·TicTacToe inbound observer marker를 release gate가 확인하지 않는다

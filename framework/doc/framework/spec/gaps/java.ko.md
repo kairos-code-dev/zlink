@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 3건.**
+**전체 33건. 완료 4건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -289,7 +289,7 @@
 - [ ] **§12.1** — STREAM connector 수신 큐 overflow (Java)
 - [ ] **§12.2** — actor join admission이 선택 사항 (Java, C++)
 - [x] **§12.3** — 계약 밖 수동 disconnect/reconnect와 원격 actor placement 표면을 제거하고, 동시 connect와 자동 reconnect가 하나의 진행 중 시도를 공유하도록 고쳤다. Java 전체 Gradle 테스트, Kotlin ObservabilityOps Trigger build, Java GameQuest 전체 self-check, OBS-B1 통과. 구현 커밋 `943486d05`(2026-07-15).
-- [ ] **§12.4** — connector 호출별 packet name override (Java)
+- [x] **§12.4** — raw·typed send/request call에 `packetName(String)`을 추가하고 명시한 이름이 타입 기반 기본 이름보다 우선하도록 구현했다. 공개 표면 집중 테스트의 실패를 먼저 확인했고, 네 호출 경로의 wire 이름 테스트와 Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `4071e369f`(2026-07-15).
 - [ ] **§12.8** — monitoring 표면 (Java)
 - [ ] **§12.9** — spot 전송 표면에 channel 이름을 함께 받는다 (Java)
 - [ ] **§12.10** — connector transport enum 부재 (Java)
@@ -384,8 +384,15 @@ OBS-B1이 통과했다. 구현 커밋 `943486d05`(2026-07-15).
 
 ### §12.4 connector 호출별 packet name override (Java)
 
-**미충족(Java).** [32 §5](../stream-connector/32-stream-connector.ko.md)는 호출자가 명시한 packet name이 타입 기반
-기본 이름보다 우선한다고 규정한다. Java connector의 send/request call에는 `packetName(...)`이 없다.
+**충족(Java).** raw·typed send/request call 네 곳에 `packetName(String)`을 추가했다. 호출 객체를 불변으로
+복사하면서 이름만 바꾸므로 원래 payload·metadata·codec은 유지되고, 명시한 이름이 타입 기반 기본 이름보다
+우선한다. 이름을 connector 생성 시점에 미리 인코딩하는 안보다 호출별 설정 책임을 call 객체 안에 두는 안이
+호출자 표면과 내부 책임을 더 단순하게 유지하므로 이를 선택했다.
+
+구현 전에는 네 인터페이스에서 `packetName(String)`을 찾는 집중 계약 테스트가
+`NoSuchMethodException`으로 실패했다. 구현 뒤 raw·typed send/request 네 경로에서 실제 wire header 이름이
+덮어써지는 테스트와 `:zlink-stream-connector:test :zlink-framework-kotlin:test`가 통과했다. 구현 커밋
+`4071e369f`(2026-07-15).
 
 ### §12.8 monitoring 표면 (Java)
 

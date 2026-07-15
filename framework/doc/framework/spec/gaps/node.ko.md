@@ -663,7 +663,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: 샘플 전용 room-route store와 병렬 schema를 제거하고 framework location store를 유일한 routing 책임으로 사용한다. 자체 schema가 남으면 실패하는 TicTacToe location-store 게이트가 통과한다. 커밋 `53bf76b30`.
 - [x] **SMP-ND-05** (결함) — TicTacToe의 "self-join notify 없음" 검사가 **25ms 창**이다
   - 근거: 짧은 무발생 sleep 대신 후속 관측 구간과 명시적 notify 수를 사용해 self-join 비오염을 검증한다. 25ms timing oracle을 금지하는 self-join 게이트가 통과한다. 커밋 `921b146a0`.
-- [ ] **E2E-ND-03** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**
+- [x] **E2E-ND-03** (결함) — Config 9·10에 **`Client/Scenarios/`가 없다**
+  - 근거: Config 9의 7개와 Config 10의 20개 ID를 각각 `Client/Scenarios/` 한 파일로 분리하고 공통 HTTP·assertion·설정은 `Client/Support/`가 소유하게 해 두 거대 `main.ts`의 책임 혼합을 제거했다. 디렉터리와 27개 파일이 없어 실패하던 layout gate가 통과하고 두 client build·ToActor 7/7·SpotActorTransfer 전체 시나리오가 통과한다. 커밋 `92bdfbf4d`.
 - [x] **E2E-ND-04** (결함) — `§2.1` settle 상수가 **어느 runner에도 없고** readiness가 최대 **60초**
   - 근거: 11개 runner의 readiness·settle budget을 runner-local 상수로 고정해 숨은 장기 대기를 제거했다. 60초 대기와 상수 누락을 잡는 local-wait gate가 실패에서 통과로 바뀌고 TA-A1·ST-A1도 통과했다. 커밋 `a22a2169f`.
 - [x] **E2E-ND-05** (결함) — Redis 격리에 **탈출구**가 있다(`ZLINK_REDIS_E2E_ENDPOINT`)

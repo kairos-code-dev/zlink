@@ -168,16 +168,12 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     private class RecordingSendCall : ZLinkSendCall {
-        override fun metadata(key: String, value: String): ZLinkSendCall = this
-
         override fun submit() = Unit
     }
 
     private class RecordingRequestCall<TReply>(
         private val reply: TReply,
     ) : ZLinkRequestCall {
-        override fun metadata(key: String, value: String): ZLinkRequestCall = this
-
         override fun timeout(timeout: Duration): ZLinkRequestCall = this
 
         override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<T> =
@@ -221,8 +217,6 @@ class KotlinFrameworkExtensionsContractTest {
     private class FailingRequestCall(
         private val error: Throwable,
     ) : ZLinkRequestCall {
-        override fun metadata(key: String, value: String): ZLinkRequestCall = this
-
         override fun timeout(timeout: Duration): ZLinkRequestCall = this
 
         override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<T> {

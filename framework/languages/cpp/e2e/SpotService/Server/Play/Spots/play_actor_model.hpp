@@ -874,7 +874,20 @@ class entry_spot_t : public zlink::framework::entry_spot_t
                            std::string (_context.spot_rid ().value ()), request.key);
             auto joined =
               co_await actor.context.join_spot (rid, request).async<e2e::join_res_t> ();
-            co_return std::visit ([] (const auto &value) { return value.reply; }, joined);
+            const auto *accepted =
+              std::get_if<zlink::framework::actor_join_accepted_t<e2e::join_res_t>> (&joined);
+            if (accepted == nullptr) {
+                co_return std::get<zlink::framework::actor_join_rejected_t<e2e::join_res_t>> (
+                            joined)
+                  .reply;
+            }
+
+            auto reply = accepted->reply;
+            reply.actor = {.node_rid = std::string (accepted->actor.node_rid ().value ()),
+                           .actor_type = std::string (accepted->actor.actor_type ()),
+                           .actor_id = std::string (accepted->actor.actor_id ()),
+                           .generation = accepted->actor.generation ()};
+            co_return reply;
         }
         catch (const zlink::framework::framework_exception_t &error) {
             std::cerr << "entry spot join failed: kind="

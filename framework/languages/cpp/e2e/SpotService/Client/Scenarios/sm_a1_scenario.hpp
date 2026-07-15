@@ -80,6 +80,10 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint)
     if (created.actor_id != "alice" || created.display_name != "Alice" || created.level != 7) {
         throw std::runtime_error ("SM-A1 join payload mismatch");
     }
+    if (created.actor.node_rid.empty () || created.actor.actor_id != created.actor_id
+        || created.actor.generation == 0) {
+        throw std::runtime_error ("SM-A1 actor ref is not concrete");
+    }
 
     auto location_raw = api.get ("/locations/spots").submit_raw ().result ();
     if (!location_raw) {

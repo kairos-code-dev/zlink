@@ -8,7 +8,6 @@ import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleTopology;
 import systems.zlink.samples.deliverydispatch.shared.contracts.Messages;
@@ -23,13 +22,6 @@ public final class DeliveryDispatchClientScenario {
         ZLinkStreamConnector customer,
         ZLinkStreamConnector courierA,
         ZLinkStreamConnector courierB) {
-        List<Messages.DeliveryStatusNotify> observedStatuses = new CopyOnWriteArrayList<>();
-        AutoCloseable statusObserver = customer.on(
-            Messages.DeliveryStatusNotify.class,
-            message -> {
-                observedStatuses.add(message.payload());
-                return CompletableFuture.completedFuture(null);
-            });
         return CompletableFuture.allOf(
                 customer.connect().submit().toCompletableFuture(),
                 courierA.connect().submit().toCompletableFuture(),
@@ -47,29 +39,25 @@ public final class DeliveryDispatchClientScenario {
                         return null;
                     });
             })
-            .thenCompose(ignored -> runSuccessfulDelivery(customer, courierA, observedStatuses))
-            .thenCompose(ignored -> runReassignedDelivery(customer, courierA, courierB, observedStatuses))
-            .thenCompose(ignored -> assertServerEvidence())
-            .whenComplete((ignored, error) -> close(statusObserver));
+            .thenCompose(ignored -> runSuccessfulDelivery(customer, courierA))
+            .thenCompose(ignored -> runReassignedDelivery(customer, courierA, courierB))
+            .thenCompose(ignored -> assertServerEvidence());
     }
 
     private CompletionStage<Void> runSuccessfulDelivery(
         ZLinkStreamConnector customer,
-        ZLinkStreamConnector courier,
-        List<Messages.DeliveryStatusNotify> observedStatuses) {
+        ZLinkStreamConnector courier) {
         String deliveryId = "delivery-success";
         CompletionStage<ZLinkStreamMessage<Messages.OfferDeliveryNotify>> offer =
             courier.waitFor(Messages.OfferDeliveryNotify.class)
                 .where(Messages.OfferDeliveryNotify.class, message -> message.payload().deliveryId().equals(deliveryId))
                 .submit(Messages.OfferDeliveryNotify.class);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> assigned =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.Assigned);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> accepted =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.Accepted);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> pickedUp =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.PickedUp);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> delivered =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.Delivered);
+        CompletionStage<List<ZLinkStreamMessage<Messages.DeliveryStatusNotify>>> statuses =
+            waitStatuses(customer, deliveryId, List.of(
+                Messages.DeliveryStatus.Assigned,
+                Messages.DeliveryStatus.Accepted,
+                Messages.DeliveryStatus.PickedUp,
+                Messages.DeliveryStatus.Delivered));
 
         return customer.request(new Messages.SubscribeDeliveryReq(deliveryId))
             .submit(Messages.SubscribeDeliveryRes.class)
@@ -87,28 +75,16 @@ public final class DeliveryDispatchClientScenario {
                 Messages.OfferDeliveryNotify courierOffer = message.payload();
                 courier.send(new Messages.CourierDecision(
                     courierOffer.deliveryId(), courierOffer.courierId(), true, null)).submit();
-                return CompletableFuture.allOf(
-                    assigned.toCompletableFuture(), accepted.toCompletableFuture(),
-                    pickedUp.toCompletableFuture(), delivered.toCompletableFuture());
+                return statuses;
             })
-            .thenRun(() -> {
-                assertStatusOrder(observedStatuses, deliveryId, List.of(
-                    Messages.DeliveryStatus.Assigned,
-                    Messages.DeliveryStatus.Accepted,
-                    Messages.DeliveryStatus.PickedUp,
-                    Messages.DeliveryStatus.Delivered));
-                ensure(assigned.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
-                ensure(accepted.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
-                ensure(pickedUp.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
-                ensure(delivered.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
-            });
+            .thenAccept(notifications -> ensure(notifications.stream()
+                .allMatch(message -> message.payload().courierId().equals("courier-a"))));
     }
 
     private CompletionStage<Void> runReassignedDelivery(
         ZLinkStreamConnector customer,
         ZLinkStreamConnector courierA,
-        ZLinkStreamConnector courierB,
-        List<Messages.DeliveryStatusNotify> observedStatuses) {
+        ZLinkStreamConnector courierB) {
         String deliveryId = "delivery-reassign";
         CompletionStage<ZLinkStreamMessage<Messages.OfferDeliveryNotify>> firstOffer =
             courierA.waitFor(Messages.OfferDeliveryNotify.class)
@@ -122,14 +98,13 @@ public final class DeliveryDispatchClientScenario {
                     message.payload().deliveryId().equals(deliveryId)
                         && message.payload().courierId().equals("courier-b"))
                 .submit(Messages.OfferDeliveryNotify.class);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> assigned =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.Assigned);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> reassigned =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.Reassigned);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> accepted =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.Accepted);
-        CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> delivered =
-            waitStatus(customer, deliveryId, Messages.DeliveryStatus.Delivered);
+        CompletionStage<List<ZLinkStreamMessage<Messages.DeliveryStatusNotify>>> statuses =
+            waitStatuses(customer, deliveryId, List.of(
+                Messages.DeliveryStatus.Assigned,
+                Messages.DeliveryStatus.Reassigned,
+                Messages.DeliveryStatus.Accepted,
+                Messages.DeliveryStatus.PickedUp,
+                Messages.DeliveryStatus.Delivered));
 
         return customer.request(new Messages.SubscribeDeliveryReq(deliveryId))
             .submit(Messages.SubscribeDeliveryRes.class)
@@ -148,53 +123,28 @@ public final class DeliveryDispatchClientScenario {
                 Messages.OfferDeliveryNotify acceptedOffer = message.payload();
                 courierB.send(new Messages.CourierDecision(
                     acceptedOffer.deliveryId(), acceptedOffer.courierId(), true, null)).submit();
-                return CompletableFuture.allOf(
-                    assigned.toCompletableFuture(), reassigned.toCompletableFuture(),
-                    accepted.toCompletableFuture(), delivered.toCompletableFuture());
+                return statuses;
             })
-            .thenRun(() -> {
-                assertStatusOrder(observedStatuses, deliveryId, List.of(
-                    Messages.DeliveryStatus.Assigned,
-                    Messages.DeliveryStatus.Reassigned,
-                    Messages.DeliveryStatus.Accepted,
-                    Messages.DeliveryStatus.Delivered));
-                ensure(assigned.toCompletableFuture().getNow(null).payload().courierId().equals("courier-a"));
-                ensure(reassigned.toCompletableFuture().getNow(null).payload().courierId().equals("courier-b"));
-                ensure(accepted.toCompletableFuture().getNow(null).payload().courierId().equals("courier-b"));
-                ensure(delivered.toCompletableFuture().getNow(null).payload().courierId().equals("courier-b"));
+            .thenAccept(notifications -> {
+                ensure(notifications.get(0).payload().courierId().equals("courier-a"));
+                ensure(notifications.subList(1, notifications.size()).stream()
+                    .allMatch(message -> message.payload().courierId().equals("courier-b")));
                 System.out.println(SampleNames.ReassignmentMarker);
             });
     }
 
-    private CompletionStage<ZLinkStreamMessage<Messages.DeliveryStatusNotify>> waitStatus(
+    private CompletionStage<List<ZLinkStreamMessage<Messages.DeliveryStatusNotify>>> waitStatuses(
         ZLinkStreamConnector customer,
         String deliveryId,
-        Messages.DeliveryStatus status) {
-        return customer.waitFor(Messages.DeliveryStatusNotify.class)
-            .where(Messages.DeliveryStatusNotify.class, message ->
-                message.payload().deliveryId().equals(deliveryId)
-                    && message.payload().status() == status)
-            .submit(Messages.DeliveryStatusNotify.class);
-    }
-
-    private static void assertStatusOrder(
-        List<Messages.DeliveryStatusNotify> observedStatuses,
-        String deliveryId,
         List<Messages.DeliveryStatus> expected) {
-        List<Messages.DeliveryStatus> actual = observedStatuses.stream()
-            .filter(notification -> notification.deliveryId().equals(deliveryId))
-            .map(Messages.DeliveryStatusNotify::status)
-            .filter(expected::contains)
-            .toList();
-        ensure(actual.equals(expected));
-    }
-
-    private static void close(AutoCloseable closeable) {
-        try {
-            closeable.close();
-        } catch (Exception error) {
-            throw new IllegalStateException("Failed to close status observer", error);
+        var sequence = customer.waitForSequence(Messages.DeliveryStatusNotify.class);
+        for (Messages.DeliveryStatus status : expected) {
+            sequence = sequence.expect(Messages.DeliveryStatusNotify.class, message ->
+                message.payload().deliveryId().equals(deliveryId)
+                    && message.payload().status() == status);
         }
+        return sequence
+            .submit(Messages.DeliveryStatusNotify.class);
     }
 
     private CompletionStage<Void> assertServerEvidence() {

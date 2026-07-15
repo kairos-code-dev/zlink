@@ -160,6 +160,77 @@ final class KotlinConnectorWrapperTest {
         }
     }
 
+    @Test
+    fun kotlinObservationBuildersPreserveJavaQueueSemantics() = runBlocking {
+        TcpServer().use { server ->
+            val connector = ZLinkStreamConnectorFactory.create(options(server.endpoint())).kotlin()
+            try {
+                connector.connect().await()
+
+                connector.expectNone<Map<String, String>>("Notice")
+                    .within(java.time.Duration.ofMillis(25))
+                    .await()
+
+                val sequence = async(start = CoroutineStart.UNDISPATCHED) {
+                    connector.waitForSequence<Map<String, String>>("Notice")
+                        .expect { it.payload()["value"] == "first" }
+                        .expect { it.payload()["value"] == "second" }
+                        .timeout(ofSeconds(1))
+                        .await()
+                }
+                server.sendFrame(Frame(
+                    kind = 1,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "Notice",
+                    payload = "{\"value\":\"first\"}".toByteArray(StandardCharsets.UTF_8),
+                ))
+                dispatchNext(connector)
+                server.sendFrame(Frame(
+                    kind = 1,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "Notice",
+                    payload = "{\"value\":\"second\"}".toByteArray(StandardCharsets.UTF_8),
+                ))
+                dispatchNext(connector)
+
+                assertEquals(listOf("first", "second"), sequence.await().map { it.payload()["value"] })
+
+                val unexpected = async(start = CoroutineStart.UNDISPATCHED) {
+                    runCatching {
+                        connector.expectNone<Map<String, String>>("Notice")
+                            .within(ofSeconds(1))
+                            .await()
+                    }.exceptionOrNull()
+                }
+                server.sendFrame(Frame(
+                    kind = 1,
+                    codec = 1,
+                    requestSeq = null,
+                    name = "Notice",
+                    payload = "{\"value\":\"unexpected\"}".toByteArray(StandardCharsets.UTF_8),
+                ))
+                dispatchNext(connector)
+                assertTrue(unexpected.await() != null)
+            } finally {
+                connector.close().await()
+            }
+        }
+    }
+
+    @Test
+    fun kotlinAssertionsUseJavaFailureClassification() = runBlocking {
+        ZLinkKotlinStreamAssert.ensure(true, "condition should pass")
+        val timeout = ZLinkKotlinStreamAssert.expectFailure("REQUEST_TIMEOUT") {
+            throw java.util.concurrent.TimeoutException("request timed out")
+        }
+        assertEquals(ZLinkStreamErrorCode.REQUEST_TIMEOUT, timeout.code())
+        ZLinkKotlinStreamAssert.expectTimeout {
+            throw java.util.concurrent.TimeoutException("request timed out")
+        }
+    }
+
     private fun options(endpoint: URI = URI.create("tcp://127.0.0.1:7200")) =
         ZLinkStreamConnectorOptions(
             endpoint,
@@ -209,6 +280,15 @@ final class KotlinConnectorWrapperTest {
             Thread.onSpinWait()
         }
         throw AssertionError("flow message was not received within 5s")
+    }
+
+    private suspend fun dispatchNext(connector: ZLinkKotlinStreamConnector) {
+        withTimeout(1_000) {
+            while (connector.pendingDispatchCount == 0) {
+                yield()
+            }
+        }
+        connector.dispatch().await()
     }
 
     private suspend fun sendErrorAndDispatchUntilReceived(

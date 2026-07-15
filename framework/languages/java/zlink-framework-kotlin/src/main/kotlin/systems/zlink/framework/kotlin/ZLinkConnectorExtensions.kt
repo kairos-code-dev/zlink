@@ -24,8 +24,11 @@ import systems.zlink.stream.connector.ZLinkStreamConnectionState
 import systems.zlink.stream.connector.ZLinkStreamConnectionStateHandler
 import systems.zlink.stream.connector.ZLinkStreamDisconnectedHandler
 import systems.zlink.stream.connector.ZLinkStreamErrorHandler
+import systems.zlink.stream.connector.ZLinkStreamExpectNoneCall
 import systems.zlink.stream.connector.ZLinkStreamInboundObserver
 import systems.zlink.stream.connector.ZLinkStreamMessageHandler
+import systems.zlink.stream.connector.ZLinkStreamSequenceCall
+import systems.zlink.stream.connector.ZLinkStreamAssert
 
 fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector =
     ZLinkKotlinStreamConnector(this)
@@ -144,6 +147,12 @@ class ZLinkKotlinStreamConnector(
     inline fun <reified TPayload> waitFor(name: String): ZLinkStreamTypedWaitCall<TPayload> =
         ZLinkStreamTypedWaitCall(inner.waitFor(name), TPayload::class.java)
 
+    inline fun <reified TPayload> expectNone(name: String): ZLinkStreamTypedExpectNoneCall<TPayload> =
+        ZLinkStreamTypedExpectNoneCall(inner.expectNone(name))
+
+    inline fun <reified TPayload> waitForSequence(name: String): ZLinkStreamTypedSequenceCall<TPayload> =
+        ZLinkStreamTypedSequenceCall(inner.waitForSequence(name), TPayload::class.java)
+
     fun messages(packetName: String): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>> =
         inner.messages(packetName)
 
@@ -207,6 +216,61 @@ class ZLinkStreamTypedWaitCall<TPayload>(
 
     suspend fun await(): ZLinkStreamMessage<TPayload> =
         inner.submit(payloadType).await()
+}
+
+class ZLinkStreamTypedExpectNoneCall<TPayload>(
+    private val inner: ZLinkStreamExpectNoneCall,
+) {
+    fun within(window: Duration): ZLinkStreamTypedExpectNoneCall<TPayload> =
+        ZLinkStreamTypedExpectNoneCall(inner.within(window))
+
+    suspend fun await() {
+        inner.submit().await()
+    }
+}
+
+class ZLinkStreamTypedSequenceCall<TPayload>(
+    private val inner: ZLinkStreamSequenceCall,
+    private val payloadType: Class<TPayload>,
+) {
+    fun expect(
+        predicate: (ZLinkStreamMessage<TPayload>) -> Boolean,
+    ): ZLinkStreamTypedSequenceCall<TPayload> =
+        ZLinkStreamTypedSequenceCall(inner.expect(payloadType, predicate), payloadType)
+
+    fun timeout(timeout: Duration): ZLinkStreamTypedSequenceCall<TPayload> =
+        ZLinkStreamTypedSequenceCall(inner.timeout(timeout), payloadType)
+
+    suspend fun await(): List<ZLinkStreamMessage<TPayload>> =
+        inner.submit(payloadType).await()
+}
+
+object ZLinkKotlinStreamAssert {
+    fun ensure(condition: Boolean, message: String) {
+        ZLinkStreamAssert.ensure(condition, message)
+    }
+
+    suspend fun expectFailure(
+        errorKind: String? = null,
+        action: suspend () -> Unit,
+    ): ZLinkStreamError {
+        val failure = captureFailure(action)
+        return ZLinkStreamAssert.expectFailure({ throw failure }, errorKind)
+    }
+
+    suspend fun expectTimeout(action: suspend () -> Unit) {
+        val failure = captureFailure(action)
+        ZLinkStreamAssert.expectTimeout { throw failure }
+    }
+
+    private suspend fun captureFailure(action: suspend () -> Unit): Throwable {
+        try {
+            action()
+        } catch (error: Throwable) {
+            return error
+        }
+        throw IllegalStateException("Expected action to fail.")
+    }
 }
 
 fun ZLinkStreamConnector.messages(

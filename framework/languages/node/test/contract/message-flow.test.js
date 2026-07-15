@@ -38,7 +38,6 @@ function diagnostics(messageFlow, overrides = {}) {
     messageFlow,
     sampleRate: 1,
     includeMessageSizes: false,
-    includeNativeDiagnostics: false,
     ...overrides
   };
 }

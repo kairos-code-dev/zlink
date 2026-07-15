@@ -87,6 +87,13 @@ test('worker options expose only scheduler limits that the Node runtime applies'
   assert.equal(workerOptions.includes('idleTimeoutMs'), false);
 });
 
+test('diagnostics options do not expose inert native diagnostics configuration', () => {
+  const declarations = readTree(declarationsRoot);
+  const diagnosticsOptions = declarationBody(declarations, 'ZLinkDiagnosticsOptions');
+
+  assert.equal(diagnosticsOptions.includes('includeNativeDiagnostics'), false);
+});
+
 test('monitoring options expose only common-spec socket location and Spot sources', () => {
   const contracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Eventing', 'Contracts.ts'),

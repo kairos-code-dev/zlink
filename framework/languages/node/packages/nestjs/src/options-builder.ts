@@ -93,8 +93,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
         diagnostics: {
           messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,
           sampleRate: 1,
-          includeMessageSizes: false,
-          includeNativeDiagnostics: false
+          includeMessageSizes: false
         }
       }
     };

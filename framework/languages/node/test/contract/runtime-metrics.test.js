@@ -239,7 +239,7 @@ test('RMETRIC-009 channel drops use normalized closed labels when tracing is off
     undefined,
     { reportRuntimeTaskException() {} },
     {
-      diagnostics: { messageFlow: 'off', sampleRate: 1, includeMessageSizes: false, includeNativeDiagnostics: false },
+      diagnostics: { messageFlow: 'off', sampleRate: 1, includeMessageSizes: false },
       liveMode: { mode: 'off' }
     },
     metrics
@@ -276,7 +276,7 @@ test('RMETRIC-015 bounded flow observer queue counts overflow even when tracing 
     async onMessageFlow() { await blocked; }
   }
   const tracer = new framework.ZLinkMessageFlowTracer({
-    diagnostics: { messageFlow: 'off', sampleRate: 1, includeMessageSizes: false, includeNativeDiagnostics: false },
+    diagnostics: { messageFlow: 'off', sampleRate: 1, includeMessageSizes: false },
     liveMode: { mode: 'off' },
     messageFlowObserverType: BlockingObserver
   }, { reportRuntimeTaskException() {} }, metrics, 1);

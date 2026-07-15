@@ -100,7 +100,6 @@ export interface ZLinkDiagnosticsOptions {
   messageFlow: ZLinkMessageFlowLogMode;
   sampleRate: number;
   includeMessageSizes: boolean;
-  includeNativeDiagnostics: boolean;
   /** When set, tracing/error logs go to this dedicated file (separated from app logs). */
   logFile?: string;
   /** Human-readable runtime label stamped on each trace line. */

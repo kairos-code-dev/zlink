@@ -259,8 +259,7 @@ function defaultDispatchOptions(): ZLinkDispatchOptions {
     diagnostics: {
       messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,
       sampleRate: 1,
-      includeMessageSizes: false,
-      includeNativeDiagnostics: false
+      includeMessageSizes: false
     }
   };
 }

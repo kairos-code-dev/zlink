@@ -38,8 +38,7 @@ export interface ZLinkDiagnosticsContext {
 export const DEFAULT_ZLINK_DIAGNOSTICS: ZLinkDiagnosticsOptions = {
   messageFlow: ZLinkMessageFlowLogMode.ErrorsOnly,
   sampleRate: 1,
-  includeMessageSizes: false,
-  includeNativeDiagnostics: false
+  includeMessageSizes: false
 };
 
 export function effectiveMessageFlow(ctx: ZLinkDiagnosticsContext): ZLinkMessageFlowLogMode {

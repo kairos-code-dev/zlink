@@ -14,9 +14,9 @@ interface PeerDto {
 
 export async function runSfD1(options: ClientOptions): Promise<void> {
   const traffic = driveRequests(options.consumerUrl, 6000);
-  console.log('scenario-control SF-D1 pause-redis');
+  console.log('scenario-control SF-D1 stop-redis');
   await delay(1500);
-  console.log('scenario-control SF-D1 unpause-redis');
+  console.log('scenario-control SF-D1 restart-redis');
   await traffic;
 
   await waitForHealthyStatus(options.consumerUrl);

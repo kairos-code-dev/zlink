@@ -7,8 +7,8 @@
 | SF-A1 | 구현 | Redis location store + provider 2개 + consumer baseline. public runtime query topology와 request/evidence를 검증한다. |
 | SF-B1 | 구현 | Redis container를 정지한 동안 fail-static으로 기존 연결 request가 유지되고 runtime status가 unhealthy/lastError를 노출하는지 검증한다. |
 | SF-C1 | 구현 | `api-b` SIGKILL 뒤 owner lease 만료만으로 stale peer row가 `/location/peers` 성공 결과에서 제외되고 후속 request가 `api-a`로만 가는지 검증한다. |
-| SF-D1 | 구현 | Redis container를 짧게 `pause/unpause`하고 request window, runtime status recovery, peer list recovery를 검증한다. |
-| SF-D2 | 구현 | Redis 장기 pause 중 `api-b`를 SIGKILL하고, 복구 뒤 `api-a` 재등록, `api-b` 제외, 후속 request의 `api-a` 단독 routing을 검증한다. |
+| SF-D1 | 구현 | Redis container를 짧게 제거한 뒤 같은 endpoint에 빈 container로 재기동하고 request 전 구간 성공, runtime status recovery, peer list recovery를 검증한다. |
+| SF-D2 | 구현 | Redis 장기 중단 중 `api-b`를 SIGKILL하고 빈 store 재기동 뒤 `api-a` 재등록, `api-b` 제외, request 전 구간 성공과 `api-a` 단독 routing을 검증한다. |
 | SF-A2 | 구현 | Redis location store의 `watchEnabled=false` 상태에서 provider 추가와 정상 제거가 polling interval 안에 peer list와 request routing에 반영되는지 검증한다. |
 | SF-B2 | 구현 | store 중단 뒤 `storeFailureGraceMs` 6000ms를 넘겨도 기존 ready 연결 request가 계속 성공하는지 검증한다. store 복구 전 새 provider row 등록은 만들지 않는다. |
 | SF-C2 | 구현 | `api-b` 정상 종료 뒤 lease TTL을 기다리지 않고 peer list에서 빠지고 후속 request가 `api-a`로만 가는지 검증한다. |

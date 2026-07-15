@@ -174,6 +174,59 @@ test('auto-connect reconciler does not mark a target active when executor skips 
   await runtime.stop();
 });
 
+test('auto-connect reconciler removes a disconnected endpoint until a fresh store read', async () => {
+  let storeFailed = false;
+  let disconnected;
+  const calls = [];
+  const remote = peer(
+    'owner-remote',
+    framework.ZLinkLocationAutoConnectType.ClientServer,
+    framework.ZLinkLocationRole.Router,
+    'node-remote',
+    'tcp://remote'
+  );
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(
+      framework.ZLinkLocationAutoConnectType.ClientServer,
+      framework.ZLinkLocationRole.Dealer,
+      'node-local',
+      'tcp://dealer'
+    ),
+    runtime: {},
+    peerResolver: {
+      async listLivePeers() {
+        if (storeFailed) throw new Error('store unavailable');
+        return [remote];
+      }
+    },
+    executor: {
+      connect(target) {
+        calls.push(`connect:${target.endpoint}`);
+        return true;
+      },
+      disconnect() {},
+      onDisconnected(handler) {
+        disconnected = handler;
+      }
+    },
+    options: { storeFailureGraceMs: 3000 },
+    monotonicNowMs: () => 0
+  });
+
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://remote']);
+  storeFailed = true;
+  disconnected('tcp://remote');
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://remote']);
+  assert.deepEqual(reconciler.activeTargets, []);
+
+  storeFailed = false;
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://remote', 'connect:tcp://remote']);
+  assert.equal(reconciler.activeTargets.length, 1);
+});
+
 test('auto-connect reconciler retries the last desired target only within store failure grace', async () => {
   let nowMs = 0;
   let storeFailed = false;

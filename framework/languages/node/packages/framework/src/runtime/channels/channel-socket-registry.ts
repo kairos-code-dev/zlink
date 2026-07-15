@@ -231,6 +231,22 @@ export class ZLinkChannelSocketRegistry {
     return submitter;
   }
 
+  monitorDisconnects(
+    socket: ZLinkBackendDealerSocket | ZLinkBackendSubscriberSocket,
+    handler: (endpoint: string) => void
+  ): void {
+    if (this.monitoringAdapter === undefined) {
+      return;
+    }
+    const monitor = this.monitoringAdapter.openSocketMonitor(socket);
+    this.ownedMonitors.add(monitor);
+    monitor.onEvent((event) => {
+      if (event.nativeEvent === ZLinkSocketNativeEventType.Disconnected && event.remoteAddr.length > 0) {
+        handler(event.remoteAddr);
+      }
+    });
+  }
+
   private trackSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): void {
     const submitter = new ZLinkAsyncSubmitter((handler) => socket.onSendReady(handler), {
       ...('sendTimeoutMs' in socket && socket.sendTimeoutMs !== -1

@@ -1,6 +1,6 @@
 import type { ProfileRes } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
-import { getJson, postJson, postJsonWithin } from '../Support/http-client';
+import { getJson, postJson } from '../Support/http-client';
 import { ensure } from '../Support/scenario-assert';
 
 interface PeerDto {
@@ -9,10 +9,11 @@ interface PeerDto {
 }
 
 export async function runSfD2(options: ClientOptions): Promise<void> {
-  const traffic = driveTolerantRequests(options.consumerUrl, 10000);
-  console.log('scenario-control SF-D2 pause-redis-and-kill-api-b');
+  console.log('scenario-control SF-D2 stop-redis-and-kill-api-b');
+  await waitForProviderStopped(options.providerBUrl);
+  const traffic = driveRequests(options.consumerUrl, 10000);
   await delay(4000);
-  console.log('scenario-control SF-D2 unpause-redis');
+  console.log('scenario-control SF-D2 restart-redis');
   const replies = await traffic;
   ensure(replies.some((reply) => reply.providerRid === 'api-a'), 'SF-D2 no request was served by surviving api-a.');
 
@@ -32,29 +33,30 @@ async function delay(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function driveTolerantRequests(baseUrl: string, windowMs: number): Promise<ProfileRes[]> {
+async function waitForProviderStopped(baseUrl: string): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const response = await fetch(`${baseUrl}/health`).catch(() => undefined);
+    if (response === undefined || !response.ok) {
+      return;
+    }
+    await delay(50);
+  }
+  throw new Error('SF-D2 provider api-b did not stop.');
+}
+
+async function driveRequests(baseUrl: string, windowMs: number): Promise<ProfileRes[]> {
   const replies: ProfileRes[] = [];
   const deadline = Date.now() + windowMs;
-  let lastSuccess = Date.now();
-  let maxGap = 0;
   let index = 0;
   while (Date.now() < deadline) {
-    try {
-      const reply = await postJsonWithin<ProfileRes>(baseUrl, '/profile/request-once', { value: `sf-d2-${index++}` }, 1500);
-      ensure(reply.value.startsWith('profile:sf-d2-'), 'SF-D2 request returned an unexpected value.');
-      replies.push(reply);
-      const now = Date.now();
-      maxGap = Math.max(maxGap, now - lastSuccess);
-      lastSuccess = now;
-    } catch {
-      // A request can land on the provider killed during the long outage.
-    }
+    const reply = await postJson<ProfileRes>(baseUrl, '/profile/request', { value: `sf-d2-${index++}` });
+    ensure(reply.value.startsWith('profile:sf-d2-'), 'SF-D2 request returned an unexpected value.');
+    replies.push(reply);
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
 
-  maxGap = Math.max(maxGap, Date.now() - lastSuccess);
   ensure(replies.length > 0, 'SF-D2 request window produced no successful traffic.');
-  ensure(maxGap < 6000, `SF-D2 successful traffic stalled for ${maxGap}ms.`);
   return replies;
 }
 

@@ -69,6 +69,17 @@ wait_location_unhealthy() {
   return 1
 }
 
+stop_redis() {
+  docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null
+  REDIS_CONTAINER_ID=""
+}
+
+start_empty_redis() {
+  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" \
+    -p "127.0.0.1:$REDIS_PORT:6379" "redis:7.2-alpine"
+  wait_tcp redis "tcp://$REDIS_ENDPOINT"
+}
+
 echo "log_dir=$LOG_DIR"
 
 if [[ "$SCENARIO" == "all" ]]; then
@@ -239,12 +250,12 @@ run_sf_d1() {
   run_warmup
   run_client SF-D1 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log" &
   client_pid="$!"
-  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D1 pause-redis" \
-    "SF-D1 client did not request Redis pause" "$client_pid"
-  docker pause "$REDIS_CONTAINER_ID" >/dev/null
-  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D1 unpause-redis" \
-    "SF-D1 client did not request Redis unpause" "$client_pid"
-  docker unpause "$REDIS_CONTAINER_ID" >/dev/null
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D1 stop-redis" \
+    "SF-D1 client did not request Redis stop" "$client_pid"
+  stop_redis
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D1 restart-redis" \
+    "SF-D1 client did not request Redis restart" "$client_pid"
+  start_empty_redis
   wait "$client_pid"
 }
 
@@ -254,13 +265,13 @@ run_sf_d2() {
   run_warmup
   run_client SF-D2 "$LOG_DIR/client.stdout.log" "$LOG_DIR/client.stderr.log" &
   client_pid="$!"
-  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D2 pause-redis-and-kill-api-b" \
-    "SF-D2 client did not request Redis pause and api-b kill" "$client_pid"
-  docker pause "$REDIS_CONTAINER_ID" >/dev/null
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D2 stop-redis-and-kill-api-b" \
+    "SF-D2 client did not request Redis stop and api-b kill" "$client_pid"
+  stop_redis
   kill_pid "$API_B_PID"
-  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D2 unpause-redis" \
-    "SF-D2 client did not request Redis unpause" "$client_pid"
-  docker unpause "$REDIS_CONTAINER_ID" >/dev/null
+  wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D2 restart-redis" \
+    "SF-D2 client did not request Redis restart" "$client_pid"
+  start_empty_redis
   wait "$client_pid"
 }
 
@@ -271,11 +282,9 @@ run_sf_d3() {
   client_pid="$!"
   wait_file_contains "$LOG_DIR/client.stdout.log" "scenario-control SF-D3 stop-redis" \
     "SF-D3 client did not request Redis stop" "$client_pid"
-  docker rm -fv "$REDIS_CONTAINER_ID" >/dev/null
-  REDIS_CONTAINER_ID=""
+  stop_redis
   wait_location_unhealthy "$CONSUMER_URL" consumer
-  start_redis_container "zlink-redis-node-e2e-${RANDOM}-$$" -p "127.0.0.1:$REDIS_PORT:6379" "redis:7.2-alpine"
-  wait_tcp redis "tcp://$REDIS_ENDPOINT"
+  start_empty_redis
   wait "$client_pid"
 }
 

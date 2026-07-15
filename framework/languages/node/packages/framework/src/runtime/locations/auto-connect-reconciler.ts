@@ -44,6 +44,7 @@ export class ZLinkAutoConnectReconciler {
   private readonly options: Required<ZLinkLocationOptions>;
   private readonly monotonicNowMs: () => number;
   private readonly active = new Map<string, ZLinkAutoConnectTarget>();
+  private readonly failedEndpoints = new Set<string>();
   private localGeneration = 0n;
   private localPublished = false;
   private storeFailedValue = false;
@@ -62,6 +63,7 @@ export class ZLinkAutoConnectReconciler {
     this.events = options.events;
     this.options = { ...zlinkDefaultLocationOptions, ...options.options };
     this.monotonicNowMs = options.monotonicNowMs ?? (() => performance.now());
+    this.executor.onDisconnected?.((endpoint) => this.recordDisconnectedEndpoint(endpoint));
   }
 
   get storeFailed(): boolean {
@@ -116,6 +118,12 @@ export class ZLinkAutoConnectReconciler {
       .map((nodeRid) => encodeRoutingIdHex(nodeRid)));
 
     const desired = new Map(ZLinkAutoConnectPlanner.computeDesired(this.local, rows));
+    const desiredEndpoints = new Set([...desired.values()].map((target) => target.endpoint));
+    for (const endpoint of this.failedEndpoints) {
+      if (!desiredEndpoints.has(endpoint)) {
+        this.failedEndpoints.delete(endpoint);
+      }
+    }
     const existingTargets = ZLinkAutoConnectPlanner.computeDesired(this.local, rows, true);
     for (const [key, target] of existingTargets) {
       if (this.active.has(key)) desired.set(key, target);
@@ -130,6 +138,7 @@ export class ZLinkAutoConnectReconciler {
         if (connected) {
           connectedEndpoints.push(target.endpoint);
           this.active.set(key, target);
+          this.failedEndpoints.delete(target.endpoint);
         }
         continue;
       }
@@ -142,6 +151,7 @@ export class ZLinkAutoConnectReconciler {
         if (connected) {
           connectedEndpoints.push(target.endpoint);
           this.active.set(key, target);
+          this.failedEndpoints.delete(target.endpoint);
         }
       }
     }
@@ -213,9 +223,22 @@ export class ZLinkAutoConnectReconciler {
       return;
     }
     for (const [key, target] of this.lastDesired) {
-      if (!this.active.has(key) && this.executor.connect(target)) {
+      if (!this.active.has(key) && !this.failedEndpoints.has(target.endpoint) && this.executor.connect(target)) {
         this.active.set(key, target);
       }
+    }
+  }
+
+  private recordDisconnectedEndpoint(endpoint: string): void {
+    let removed = false;
+    for (const [key, target] of this.active) {
+      if (target.endpoint === endpoint) {
+        this.active.delete(key);
+        removed = true;
+      }
+    }
+    if (removed) {
+      this.failedEndpoints.add(endpoint);
     }
   }
 

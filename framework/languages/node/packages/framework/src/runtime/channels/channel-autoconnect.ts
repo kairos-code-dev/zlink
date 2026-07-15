@@ -98,6 +98,7 @@ export function buildChannelAutoConnectCapabilities(
       channel.client !== undefined
       && (channel.client.manualConnections?.length ?? 0) === 0
     ) {
+      const socket = sockets.clientDealer(channelName);
       const local = autoConnectLocal(
         ZLinkLocationAutoConnectType.ClientServer,
         channelName,
@@ -108,8 +109,11 @@ export function buildChannelAutoConnectCapabilities(
       capabilities.push({
         local,
         executor: new ZLinkSocketAutoConnectExecutor(
-          sockets.clientDealer(channelName),
-          new Set(channel.client.manualConnections ?? [])
+          socket,
+          new Set(channel.client.manualConnections ?? []),
+          {
+            monitorDisconnected: (handler) => sockets.monitorDisconnects(socket, handler)
+          }
         )
       });
     }
@@ -135,6 +139,7 @@ export function buildChannelAutoConnectCapabilities(
       channel.subscriber !== undefined
       && (channel.subscriber.manualConnections?.length ?? 0) === 0
     ) {
+      const socket = sockets.subscriber(channelName);
       const local = autoConnectLocal(
         ZLinkLocationAutoConnectType.Fanout,
         channelName,
@@ -145,8 +150,11 @@ export function buildChannelAutoConnectCapabilities(
       capabilities.push({
         local,
         executor: new ZLinkSocketAutoConnectExecutor(
-          sockets.subscriber(channelName),
-          new Set(channel.subscriber.manualConnections ?? [])
+          socket,
+          new Set(channel.subscriber.manualConnections ?? []),
+          {
+            monitorDisconnected: (handler) => sockets.monitorDisconnects(socket, handler)
+          }
         )
       });
     }
@@ -184,12 +192,23 @@ export function buildChannelAutoConnectCapabilities(
 class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
   private readonly recentlyDisconnected = new Set<string>();
   private readonly pendingReconnects = new Map<string, NodeJS.Immediate>();
+  private readonly expectedDisconnects = new Set<string>();
+  private disconnectedHandler?: (endpoint: string) => void;
 
   constructor(
     private readonly socket: ZLinkBackendConnectableSocket,
     private readonly manualEndpoints: ReadonlySet<string>,
-    private readonly options: { readonly routerInitiatorDial?: boolean } = {}
-  ) {}
+    private readonly options: {
+      readonly routerInitiatorDial?: boolean;
+      readonly monitorDisconnected?: (handler: (endpoint: string) => void) => void;
+    } = {}
+  ) {
+    options.monitorDisconnected?.((endpoint) => this.handleDisconnected(endpoint));
+  }
+
+  onDisconnected(handler: (endpoint: string) => void): void {
+    this.disconnectedHandler = handler;
+  }
 
   connect(target: ZLinkAutoConnectTarget): boolean {
     if (this.manualEndpoints.has(target.endpoint)) {
@@ -219,10 +238,22 @@ class ZLinkSocketAutoConnectExecutor implements IZLinkAutoConnectExecutor {
       clearImmediate(pending);
       this.pendingReconnects.delete(target.endpoint);
     } else {
+      this.expectedDisconnects.add(target.endpoint);
       this.socket.disconnect(target.endpoint);
+      setTimeout(() => this.expectedDisconnects.delete(target.endpoint), 5000).unref();
     }
     this.recentlyDisconnected.add(target.endpoint);
     setImmediate(() => this.recentlyDisconnected.delete(target.endpoint));
+  }
+
+  private handleDisconnected(endpoint: string): void {
+    if (this.expectedDisconnects.delete(endpoint)) {
+      return;
+    }
+    this.expectedDisconnects.add(endpoint);
+    this.socket.disconnect(endpoint);
+    setTimeout(() => this.expectedDisconnects.delete(endpoint), 5000).unref();
+    this.disconnectedHandler?.(endpoint);
   }
 }
 

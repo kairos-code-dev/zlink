@@ -1638,9 +1638,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
   function(add_zlink_framework_sample_runner sample_name labels timeout_seconds)
     add_test(
       NAME sample_smoke_sample_cpp_framework_${sample_name}
-      COMMAND "${CMAKE_COMMAND}" -E env
-        "ZLINK_CPP_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}"
-        "${ZLINK_FRAMEWORK_CPP_DIR}/samples/${sample_name}/run_sample.sh")
+      COMMAND "${ZLINK_FRAMEWORK_CPP_DIR}/samples/${sample_name}/run_sample.sh")
     set_tests_properties(sample_smoke_sample_cpp_framework_${sample_name} PROPERTIES
       LABELS "${labels};framework-sample-smoke"
       TIMEOUT ${timeout_seconds})

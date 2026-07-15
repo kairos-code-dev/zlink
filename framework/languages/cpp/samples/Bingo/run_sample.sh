@@ -8,7 +8,7 @@ CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FLOW_LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
+BUILD_DIR="$CPP_ROOT/build"
 BIN_DIR="$BUILD_DIR"
 
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
@@ -217,58 +217,56 @@ mkdir -p "$CONFIG_DIR"
 
 # 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
 write_role_config() {
-  ROLE="$1" API_NODE="$2" PLAY_NODE="$3" SESSION_NODE="$4" STREAM_ENDPOINT="$5" \
-  SESSION_SPOT_ENDPOINT="$6" SESSION_ROUTER_ENDPOINT="$7" CONFIG_PATH="$CONFIG_DIR/$1.json" \
-  FLOW_LOG_DIR="$FLOW_LOG_DIR" \
-  API_A_CHANNEL_ENDPOINT="$API_A_CHANNEL_ENDPOINT" API_B_CHANNEL_ENDPOINT="$API_B_CHANNEL_ENDPOINT" \
-  PLAY_A_CHANNEL_ENDPOINT="$PLAY_A_CHANNEL_ENDPOINT" \
-  PLAY_B_CHANNEL_ENDPOINT="$PLAY_B_CHANNEL_ENDPOINT" \
-  PLAY_A_ROUTE_ENDPOINT="$PLAY_A_ROUTE_ENDPOINT" PLAY_B_ROUTE_ENDPOINT="$PLAY_B_ROUTE_ENDPOINT" \
-  PLAY_A_SPOT_ENDPOINT="$PLAY_A_SPOT_ENDPOINT" PLAY_B_SPOT_ENDPOINT="$PLAY_B_SPOT_ENDPOINT" \
-  PLAY_A_SPOT_ROUTER_ENDPOINT="$PLAY_A_SPOT_ROUTER_ENDPOINT" \
-  PLAY_B_SPOT_ROUTER_ENDPOINT="$PLAY_B_SPOT_ROUTER_ENDPOINT" \
-  SESSION_A_STREAM_ENDPOINT="$SESSION_A_STREAM_ENDPOINT" \
-  SESSION_B_STREAM_ENDPOINT="$SESSION_B_STREAM_ENDPOINT" \
-  REDIS_ENDPOINT="$BINGO_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$BINGO_REDIS_KEY_PREFIX" \
-  python3 - <<'CONFIG_PY'
+  python3 - "$CONFIG_DIR/$1.json" "$2" "$3" "$4" "$5" "$6" "$7" "$FLOW_LOG_DIR" \
+    "$API_A_CHANNEL_ENDPOINT" "$API_B_CHANNEL_ENDPOINT" "$PLAY_A_CHANNEL_ENDPOINT" \
+    "$PLAY_B_CHANNEL_ENDPOINT" "$PLAY_A_ROUTE_ENDPOINT" "$PLAY_B_ROUTE_ENDPOINT" \
+    "$PLAY_A_SPOT_ENDPOINT" "$PLAY_B_SPOT_ENDPOINT" "$PLAY_A_SPOT_ROUTER_ENDPOINT" \
+    "$PLAY_B_SPOT_ROUTER_ENDPOINT" "$SESSION_A_STREAM_ENDPOINT" \
+    "$SESSION_B_STREAM_ENDPOINT" "$BINGO_REDIS_ENDPOINT" "$BINGO_REDIS_KEY_PREFIX" <<'CONFIG_PY'
 import json
 import os
 import stat
+import sys
+
+(path, api_node, play_node, session_node, stream_endpoint, session_spot_endpoint,
+ session_router_endpoint, flow_log_dir, api_a_channel, api_b_channel,
+ play_a_channel, play_b_channel, play_a_route, play_b_route, play_a_spot,
+ play_b_spot, play_a_spot_router, play_b_spot_router, session_a_stream,
+ session_b_stream, redis_endpoint, redis_key_prefix) = sys.argv[1:]
 
 document = {
     "sample": {
         "host": {"keepRunning": True},
         "topology": {
-            "logDir": os.environ["FLOW_LOG_DIR"],
-            "apiNode": os.environ["API_NODE"],
-            "playNode": os.environ["PLAY_NODE"],
-            "sessionNode": os.environ["SESSION_NODE"],
-            "apiChannelEndpoint": os.environ["API_A_CHANNEL_ENDPOINT"],
-            "apiAChannelEndpoint": os.environ["API_A_CHANNEL_ENDPOINT"],
-            "apiBChannelEndpoint": os.environ["API_B_CHANNEL_ENDPOINT"],
-            "playChannelEndpoint": os.environ["PLAY_A_CHANNEL_ENDPOINT"],
-            "playAChannelEndpoint": os.environ["PLAY_A_CHANNEL_ENDPOINT"],
-            "playBChannelEndpoint": os.environ["PLAY_B_CHANNEL_ENDPOINT"],
-            "playARouteEndpoint": os.environ["PLAY_A_ROUTE_ENDPOINT"],
-            "playBRouteEndpoint": os.environ["PLAY_B_ROUTE_ENDPOINT"],
-            "playASpotEndpoint": os.environ["PLAY_A_SPOT_ENDPOINT"],
-            "playBSpotEndpoint": os.environ["PLAY_B_SPOT_ENDPOINT"],
-            "playASpotRouterEndpoint": os.environ["PLAY_A_SPOT_ROUTER_ENDPOINT"],
-            "playBSpotRouterEndpoint": os.environ["PLAY_B_SPOT_ROUTER_ENDPOINT"],
-            "sessionSpotEndpoint": os.environ["SESSION_SPOT_ENDPOINT"],
-            "sessionRouterEndpoint": os.environ["SESSION_ROUTER_ENDPOINT"],
+            "logDir": flow_log_dir,
+            "apiNode": api_node,
+            "playNode": play_node,
+            "sessionNode": session_node,
+            "apiChannelEndpoint": api_a_channel,
+            "apiAChannelEndpoint": api_a_channel,
+            "apiBChannelEndpoint": api_b_channel,
+            "playChannelEndpoint": play_a_channel,
+            "playAChannelEndpoint": play_a_channel,
+            "playBChannelEndpoint": play_b_channel,
+            "playARouteEndpoint": play_a_route,
+            "playBRouteEndpoint": play_b_route,
+            "playASpotEndpoint": play_a_spot,
+            "playBSpotEndpoint": play_b_spot,
+            "playASpotRouterEndpoint": play_a_spot_router,
+            "playBSpotRouterEndpoint": play_b_spot_router,
+            "sessionSpotEndpoint": session_spot_endpoint,
+            "sessionRouterEndpoint": session_router_endpoint,
             "sessionASpotNodeRid": "1201-spot",
             "sessionBSpotNodeRid": "1202-spot",
-            "streamEndpoint": os.environ["STREAM_ENDPOINT"],
-            "sessionAStreamEndpoint": os.environ["SESSION_A_STREAM_ENDPOINT"],
-            "sessionBStreamEndpoint": os.environ["SESSION_B_STREAM_ENDPOINT"],
-            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
-            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
+            "streamEndpoint": stream_endpoint,
+            "sessionAStreamEndpoint": session_a_stream,
+            "sessionBStreamEndpoint": session_b_stream,
+            "redisEndpoint": redis_endpoint,
+            "redisKeyPrefix": redis_key_prefix,
         },
     }
 }
 
-path = os.environ["CONFIG_PATH"]
 with open(path, "w", encoding="utf-8") as file:
     json.dump(document, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

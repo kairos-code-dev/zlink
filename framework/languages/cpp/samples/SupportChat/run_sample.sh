@@ -7,7 +7,7 @@ CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
+BUILD_DIR="$CPP_ROOT/build"
 BIN_DIR="$BUILD_DIR"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_supportchat_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_supportchat_client" ]]; then
@@ -114,42 +114,42 @@ mkdir -p "$CONFIG_DIR"
 
 # 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
 write_role_config() {
-  ROLE="$1" CONFIG_PATH="$CONFIG_DIR/$1.json" FLOW_LOG_DIR="$FLOW_LOG_DIR" \
-  REDIS_ENDPOINT="$SUPPORTCHAT_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$SUPPORTCHAT_REDIS_KEY_PREFIX" \
-  API_ROUTE="$SUPPORTCHAT_API_ROUTE" SUPPORT_ROUTE="$SUPPORTCHAT_SUPPORT_ROUTE" \
-  SUPPORT_SPOT_ROUTER="$SUPPORTCHAT_SUPPORT_SPOT_ROUTER" SUPPORT_SPOT="$SUPPORTCHAT_SUPPORT_SPOT" \
-  SUPPORT_HTTP_URL="$SUPPORTCHAT_SUPPORT_HTTP_URL" \
-  SUPPORT_ACTOR_ROUTE="$SUPPORTCHAT_SUPPORT_ACTOR_ROUTE" \
-  SESSION_STREAM="$SUPPORTCHAT_SESSION_STREAM" \
-  SESSION_SPOT_ROUTER="$SUPPORTCHAT_SESSION_SPOT_ROUTER" \
-  SESSION_SPOT="$SUPPORTCHAT_SESSION_SPOT" \
-  SESSION_ACTOR_ROUTE="$SUPPORTCHAT_SESSION_ACTOR_ROUTE" \
-  python3 - <<'CONFIG_PY'
+  python3 - "$CONFIG_DIR/$1.json" "$1" "$FLOW_LOG_DIR" "$SUPPORTCHAT_REDIS_ENDPOINT" \
+    "$SUPPORTCHAT_REDIS_KEY_PREFIX" "$SUPPORTCHAT_API_ROUTE" "$SUPPORTCHAT_SUPPORT_ROUTE" \
+    "$SUPPORTCHAT_SUPPORT_SPOT_ROUTER" "$SUPPORTCHAT_SUPPORT_SPOT" \
+    "$SUPPORTCHAT_SUPPORT_HTTP_URL" "$SUPPORTCHAT_SUPPORT_ACTOR_ROUTE" \
+    "$SUPPORTCHAT_SESSION_STREAM" "$SUPPORTCHAT_SESSION_SPOT_ROUTER" \
+    "$SUPPORTCHAT_SESSION_SPOT" "$SUPPORTCHAT_SESSION_ACTOR_ROUTE" <<'CONFIG_PY'
 import json
 import os
 import stat
+import sys
+
+(path, role_name, flow_log_dir, redis_endpoint, redis_key_prefix, api_route,
+ support_route, support_spot_router, support_spot, support_http_url,
+ support_actor_route, session_stream, session_spot_router, session_spot,
+ session_actor_route) = sys.argv[1:]
 
 document = {
     "sample": {
-        "role": {"name": os.environ["ROLE"], "logDir": os.environ["FLOW_LOG_DIR"]},
+        "role": {"name": role_name, "logDir": flow_log_dir},
         "topology": {
-            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
-            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
-            "apiRouteEndpoint": os.environ["API_ROUTE"],
-            "supportRouteEndpoint": os.environ["SUPPORT_ROUTE"],
-            "supportSpotRouterEndpoint": os.environ["SUPPORT_SPOT_ROUTER"],
-            "supportSpotEndpoint": os.environ["SUPPORT_SPOT"],
-            "supportHttpUrl": os.environ["SUPPORT_HTTP_URL"],
-            "supportActorRouteEndpoint": os.environ["SUPPORT_ACTOR_ROUTE"],
-            "sessionStreamEndpoint": os.environ["SESSION_STREAM"],
-            "sessionSpotRouterEndpoint": os.environ["SESSION_SPOT_ROUTER"],
-            "sessionSpotEndpoint": os.environ["SESSION_SPOT"],
-            "sessionActorRouteEndpoint": os.environ["SESSION_ACTOR_ROUTE"],
+            "redisEndpoint": redis_endpoint,
+            "redisKeyPrefix": redis_key_prefix,
+            "apiRouteEndpoint": api_route,
+            "supportRouteEndpoint": support_route,
+            "supportSpotRouterEndpoint": support_spot_router,
+            "supportSpotEndpoint": support_spot,
+            "supportHttpUrl": support_http_url,
+            "supportActorRouteEndpoint": support_actor_route,
+            "sessionStreamEndpoint": session_stream,
+            "sessionSpotRouterEndpoint": session_spot_router,
+            "sessionSpotEndpoint": session_spot,
+            "sessionActorRouteEndpoint": session_actor_route,
         },
     }
 }
 
-path = os.environ["CONFIG_PATH"]
 with open(path, "w", encoding="utf-8") as file:
     json.dump(document, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

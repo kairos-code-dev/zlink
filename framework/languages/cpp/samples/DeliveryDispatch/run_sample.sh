@@ -7,7 +7,7 @@ CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
+BUILD_DIR="$CPP_ROOT/build"
 BIN_DIR="$BUILD_DIR"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_deliverydispatch_client" ]]; then
@@ -105,60 +105,60 @@ API_HTTP_URL="http://127.0.0.1:${API_HTTP_PORT}"
 write_role_config() {
   local role="$1"
   local node_rid="${2:-}"
-  ROLE="$role" NODE_RID="$node_rid" CONFIG_PATH="$CONFIG_DIR/${role}.json" \
-  FLOW_LOG_DIR="$FLOW_LOG_DIR" REDIS_ENDPOINT="$REDIS_ENDPOINT" \
-  REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" API_HTTP_URL="$API_HTTP_URL" \
-  DISPATCH_ROUTE="$DISPATCH_ROUTE" DISPATCH_SPOT_ROUTER="$DISPATCH_SPOT_ROUTER" \
-  DISPATCH_SPOT="$DISPATCH_SPOT" TRACKING_ROUTE="$TRACKING_ROUTE" \
-  TRACKING_SPOT_ROUTER="$TRACKING_SPOT_ROUTER" TRACKING_SPOT="$TRACKING_SPOT" \
-  CUSTOMER_STREAM="$CUSTOMER_STREAM" CUSTOMER_SPOT_ROUTER="$CUSTOMER_SPOT_ROUTER" \
-  CUSTOMER_SPOT="$CUSTOMER_SPOT" COURIER_STREAM="$COURIER_STREAM" \
-  COURIER_SESSION_ROUTE="$COURIER_SESSION_ROUTE" \
-  COURIER_SESSION_SPOT_ROUTER="$COURIER_SESSION_SPOT_ROUTER" \
-  COURIER_SESSION_SPOT="$COURIER_SESSION_SPOT" COURIER_NODE1_ROUTE="$COURIER_NODE1_ROUTE" \
-  COURIER_NODE1_ROUTER="$COURIER_NODE1_ROUTER" COURIER_NODE1="$COURIER_NODE1" \
-  COURIER_NODE2_ROUTE="$COURIER_NODE2_ROUTE" COURIER_NODE2_ROUTER="$COURIER_NODE2_ROUTER" \
-  COURIER_NODE2="$COURIER_NODE2" \
-  python3 - <<'PY'
+  python3 - "$CONFIG_DIR/${role}.json" "$role" "$node_rid" "$FLOW_LOG_DIR" \
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$API_HTTP_URL" "$DISPATCH_ROUTE" \
+    "$DISPATCH_SPOT_ROUTER" "$DISPATCH_SPOT" "$TRACKING_ROUTE" \
+    "$TRACKING_SPOT_ROUTER" "$TRACKING_SPOT" "$CUSTOMER_STREAM" \
+    "$CUSTOMER_SPOT_ROUTER" "$CUSTOMER_SPOT" "$COURIER_STREAM" \
+    "$COURIER_SESSION_ROUTE" "$COURIER_SESSION_SPOT_ROUTER" "$COURIER_SESSION_SPOT" \
+    "$COURIER_NODE1_ROUTE" "$COURIER_NODE1_ROUTER" "$COURIER_NODE1" \
+    "$COURIER_NODE2_ROUTE" "$COURIER_NODE2_ROUTER" "$COURIER_NODE2" <<'PY'
 import json
 import os
 import stat
+import sys
 
-role = {"name": os.environ["ROLE"], "logDir": os.environ["FLOW_LOG_DIR"]}
-if os.environ["NODE_RID"]:
-    role["nodeRid"] = os.environ["NODE_RID"]
+(path, role_name, node_rid, flow_log_dir, redis_endpoint, redis_key_prefix,
+ api_http_url, dispatch_route, dispatch_spot_router, dispatch_spot, tracking_route,
+ tracking_spot_router, tracking_spot, customer_stream, customer_spot_router,
+ customer_spot, courier_stream, courier_session_route, courier_session_spot_router,
+ courier_session_spot, courier_node1_route, courier_node1_router, courier_node1,
+ courier_node2_route, courier_node2_router, courier_node2) = sys.argv[1:]
+
+role = {"name": role_name, "logDir": flow_log_dir}
+if node_rid:
+    role["nodeRid"] = node_rid
 
 document = {
     "sample": {
         "role": role,
         "topology": {
-            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
-            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
-            "dispatchApiHttpUrl": os.environ["API_HTTP_URL"],
-            "dispatchRouteEndpoint": os.environ["DISPATCH_ROUTE"],
-            "dispatchSpotRouterEndpoint": os.environ["DISPATCH_SPOT_ROUTER"],
-            "dispatchSpotEndpoint": os.environ["DISPATCH_SPOT"],
-            "trackingRouteEndpoint": os.environ["TRACKING_ROUTE"],
-            "trackingSpotRouterEndpoint": os.environ["TRACKING_SPOT_ROUTER"],
-            "trackingSpotEndpoint": os.environ["TRACKING_SPOT"],
-            "customerStreamEndpoint": os.environ["CUSTOMER_STREAM"],
-            "customerSpotRouterEndpoint": os.environ["CUSTOMER_SPOT_ROUTER"],
-            "customerSpotEndpoint": os.environ["CUSTOMER_SPOT"],
-            "courierStreamEndpoint": os.environ["COURIER_STREAM"],
-            "courierSessionRouteEndpoint": os.environ["COURIER_SESSION_ROUTE"],
-            "courierSessionSpotRouterEndpoint": os.environ["COURIER_SESSION_SPOT_ROUTER"],
-            "courierSessionSpotEndpoint": os.environ["COURIER_SESSION_SPOT"],
-            "courierActorNode1RouteEndpoint": os.environ["COURIER_NODE1_ROUTE"],
-            "courierActorNode1RouterEndpoint": os.environ["COURIER_NODE1_ROUTER"],
-            "courierActorNode1Endpoint": os.environ["COURIER_NODE1"],
-            "courierActorNode2RouteEndpoint": os.environ["COURIER_NODE2_ROUTE"],
-            "courierActorNode2RouterEndpoint": os.environ["COURIER_NODE2_ROUTER"],
-            "courierActorNode2Endpoint": os.environ["COURIER_NODE2"],
+            "redisEndpoint": redis_endpoint,
+            "redisKeyPrefix": redis_key_prefix,
+            "dispatchApiHttpUrl": api_http_url,
+            "dispatchRouteEndpoint": dispatch_route,
+            "dispatchSpotRouterEndpoint": dispatch_spot_router,
+            "dispatchSpotEndpoint": dispatch_spot,
+            "trackingRouteEndpoint": tracking_route,
+            "trackingSpotRouterEndpoint": tracking_spot_router,
+            "trackingSpotEndpoint": tracking_spot,
+            "customerStreamEndpoint": customer_stream,
+            "customerSpotRouterEndpoint": customer_spot_router,
+            "customerSpotEndpoint": customer_spot,
+            "courierStreamEndpoint": courier_stream,
+            "courierSessionRouteEndpoint": courier_session_route,
+            "courierSessionSpotRouterEndpoint": courier_session_spot_router,
+            "courierSessionSpotEndpoint": courier_session_spot,
+            "courierActorNode1RouteEndpoint": courier_node1_route,
+            "courierActorNode1RouterEndpoint": courier_node1_router,
+            "courierActorNode1Endpoint": courier_node1,
+            "courierActorNode2RouteEndpoint": courier_node2_route,
+            "courierActorNode2RouterEndpoint": courier_node2_router,
+            "courierActorNode2Endpoint": courier_node2,
         },
     }
 }
 
-path = os.environ["CONFIG_PATH"]
 with open(path, "w", encoding="utf-8") as file:
     json.dump(document, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAX_ATTEMPTS="${ZLINK_SAMPLE_RETRY_ATTEMPTS:-3}"
+MAX_ATTEMPTS=3
 BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|errno=98"
 
 SAMPLE_RUNNERS=(
@@ -15,6 +15,20 @@ SAMPLE_RUNNERS=(
 )
 
 SELECTED_RUNNERS=()
+
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --max-attempts=*) MAX_ATTEMPTS="${arg#*=}" ;;
+    --*) echo "Unknown sample runner option '${arg}'." >&2; exit 2 ;;
+    *) POSITIONAL_ARGS+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
+if [[ ! "$MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "--max-attempts must be a positive integer." >&2
+  exit 2
+fi
 
 if [[ "$#" -eq 0 ]]; then
   SELECTED_RUNNERS=("${SAMPLE_RUNNERS[@]}")

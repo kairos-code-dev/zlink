@@ -2,14 +2,27 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUNNER_CWD="$(pwd)"
-
-MAX_ATTEMPTS="${ZLINK_E2E_RETRY_ATTEMPTS:-3}"
-SCENARIO_TIMEOUT_SECONDS="${ZLINK_E2E_SCENARIO_TIMEOUT_SECONDS:-1800}"
+MAX_ATTEMPTS=3
+SCENARIO_TIMEOUT_SECONDS=1800
 BIND_RETRY_PATTERN="Address already in use|EADDRINUSE|already bound|errno=98"
 
-if [[ -n "${ZLINK_CPP_E2E_BUILD_DIR:-}" && "${ZLINK_CPP_E2E_BUILD_DIR}" != /* ]]; then
-  export ZLINK_CPP_E2E_BUILD_DIR="${RUNNER_CWD}/${ZLINK_CPP_E2E_BUILD_DIR}"
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --max-attempts=*) MAX_ATTEMPTS="${arg#*=}" ;;
+    --scenario-timeout-seconds=*) SCENARIO_TIMEOUT_SECONDS="${arg#*=}" ;;
+    --*) echo "Unknown C++ E2E runner option '${arg}'." >&2; exit 2 ;;
+    *) POSITIONAL_ARGS+=("$arg") ;;
+  esac
+done
+set -- "${POSITIONAL_ARGS[@]}"
+if [[ ! "$MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "--max-attempts must be a positive integer." >&2
+  exit 2
+fi
+if [[ ! "$SCENARIO_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "--scenario-timeout-seconds must be a positive integer." >&2
+  exit 2
 fi
 
 CONFIGS=(

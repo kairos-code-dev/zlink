@@ -7,7 +7,7 @@ CPP_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FLOW_LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
+BUILD_DIR="$CPP_ROOT/build"
 BIN_DIR="$BUILD_DIR"
 
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
@@ -197,53 +197,53 @@ mkdir -p "$CONFIG_DIR"
 
 # 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
 write_role_config() {
-  ROLE="$1" API_NODE="$2" PLAY_NODE="$3" CONFIG_PATH="$CONFIG_DIR/$1.json" \
-  FLOW_LOG_DIR="$FLOW_LOG_DIR" API_A_ENDPOINT="$API_A_ENDPOINT" API_B_ENDPOINT="$API_B_ENDPOINT" \
-  API_A_HTTP_ENDPOINT="$API_A_HTTP_ENDPOINT" API_B_HTTP_ENDPOINT="$API_B_HTTP_ENDPOINT" \
-  PLAY_A_ENDPOINT="$PLAY_A_ENDPOINT" PLAY_B_ENDPOINT="$PLAY_B_ENDPOINT" \
-  PLAY_A_ROUTE_ENDPOINT="$PLAY_A_ROUTE_ENDPOINT" PLAY_B_ROUTE_ENDPOINT="$PLAY_B_ROUTE_ENDPOINT" \
-  PLAY_A_SPOT_ENDPOINT="$PLAY_A_SPOT_ENDPOINT" PLAY_B_SPOT_ENDPOINT="$PLAY_B_SPOT_ENDPOINT" \
-  PLAY_A_SPOT_ROUTER_ENDPOINT="$PLAY_A_SPOT_ROUTER_ENDPOINT" \
-  PLAY_B_SPOT_ROUTER_ENDPOINT="$PLAY_B_SPOT_ROUTER_ENDPOINT" \
-  PLAY_A_STREAM_ENDPOINT="$PLAY_A_STREAM_ENDPOINT" \
-  PLAY_B_STREAM_ENDPOINT="$PLAY_B_STREAM_ENDPOINT" \
-  REDIS_ENDPOINT="$TICTACTOE_CPP_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$REDIS_KEY_PREFIX" \
-  python3 - <<'CONFIG_PY'
+  python3 - "$CONFIG_DIR/$1.json" "$2" "$3" "$FLOW_LOG_DIR" "$API_A_ENDPOINT" \
+    "$API_B_ENDPOINT" "$API_A_HTTP_ENDPOINT" "$API_B_HTTP_ENDPOINT" "$PLAY_A_ENDPOINT" \
+    "$PLAY_B_ENDPOINT" "$PLAY_A_ROUTE_ENDPOINT" "$PLAY_B_ROUTE_ENDPOINT" \
+    "$PLAY_A_SPOT_ENDPOINT" "$PLAY_B_SPOT_ENDPOINT" "$PLAY_A_SPOT_ROUTER_ENDPOINT" \
+    "$PLAY_B_SPOT_ROUTER_ENDPOINT" "$PLAY_A_STREAM_ENDPOINT" "$PLAY_B_STREAM_ENDPOINT" \
+    "$TICTACTOE_CPP_REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" <<'CONFIG_PY'
 import json
 import os
 import stat
+import sys
+
+(path, api_node, play_node, flow_log_dir, api_a_endpoint, api_b_endpoint,
+ api_a_http, api_b_http, play_a_endpoint, play_b_endpoint, play_a_route,
+ play_b_route, play_a_spot, play_b_spot, play_a_spot_router,
+ play_b_spot_router, play_a_stream, play_b_stream, redis_endpoint,
+ redis_key_prefix) = sys.argv[1:]
 
 document = {
     "sample": {
         "host": {"keepRunning": True},
         "topology": {
-            "logDir": os.environ["FLOW_LOG_DIR"],
-            "apiNode": os.environ["API_NODE"],
-            "playNode": os.environ["PLAY_NODE"],
-            "apiEndpoint": os.environ["API_A_ENDPOINT"],
-            "apiAEndpoint": os.environ["API_A_ENDPOINT"],
-            "apiBEndpoint": os.environ["API_B_ENDPOINT"],
-            "apiHttpEndpoint": os.environ["API_A_HTTP_ENDPOINT"],
-            "apiAHttpEndpoint": os.environ["API_A_HTTP_ENDPOINT"],
-            "apiBHttpEndpoint": os.environ["API_B_HTTP_ENDPOINT"],
-            "playEndpoint": os.environ["PLAY_A_ENDPOINT"],
-            "playAEndpoint": os.environ["PLAY_A_ENDPOINT"],
-            "playBEndpoint": os.environ["PLAY_B_ENDPOINT"],
-            "playARouteEndpoint": os.environ["PLAY_A_ROUTE_ENDPOINT"],
-            "playBRouteEndpoint": os.environ["PLAY_B_ROUTE_ENDPOINT"],
-            "playASpotEndpoint": os.environ["PLAY_A_SPOT_ENDPOINT"],
-            "playBSpotEndpoint": os.environ["PLAY_B_SPOT_ENDPOINT"],
-            "playASpotRouterEndpoint": os.environ["PLAY_A_SPOT_ROUTER_ENDPOINT"],
-            "playBSpotRouterEndpoint": os.environ["PLAY_B_SPOT_ROUTER_ENDPOINT"],
-            "playAStreamEndpoint": os.environ["PLAY_A_STREAM_ENDPOINT"],
-            "playBStreamEndpoint": os.environ["PLAY_B_STREAM_ENDPOINT"],
-            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
-            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
+            "logDir": flow_log_dir,
+            "apiNode": api_node,
+            "playNode": play_node,
+            "apiEndpoint": api_a_endpoint,
+            "apiAEndpoint": api_a_endpoint,
+            "apiBEndpoint": api_b_endpoint,
+            "apiHttpEndpoint": api_a_http,
+            "apiAHttpEndpoint": api_a_http,
+            "apiBHttpEndpoint": api_b_http,
+            "playEndpoint": play_a_endpoint,
+            "playAEndpoint": play_a_endpoint,
+            "playBEndpoint": play_b_endpoint,
+            "playARouteEndpoint": play_a_route,
+            "playBRouteEndpoint": play_b_route,
+            "playASpotEndpoint": play_a_spot,
+            "playBSpotEndpoint": play_b_spot,
+            "playASpotRouterEndpoint": play_a_spot_router,
+            "playBSpotRouterEndpoint": play_b_spot_router,
+            "playAStreamEndpoint": play_a_stream,
+            "playBStreamEndpoint": play_b_stream,
+            "redisEndpoint": redis_endpoint,
+            "redisKeyPrefix": redis_key_prefix,
         },
     }
 }
 
-path = os.environ["CONFIG_PATH"]
 with open(path, "w", encoding="utf-8") as file:
     json.dump(document, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

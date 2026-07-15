@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR/../redis-common.sh"
-BUILD_DIR="${ZLINK_CPP_E2E_BUILD_DIR:-${ZLINK_CPP_BUILD_DIR:-$SCRIPT_DIR/../../build}}"
+BUILD_DIR="$SCRIPT_DIR/../../build"
 SCENARIO="all"
 E2E_START_ORDER="forward"
 REDIS_ENDPOINT=""

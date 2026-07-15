@@ -7,7 +7,7 @@ CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FLOW_LOG_DIR="${SCRIPT_DIR}/logs"
 mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
+BUILD_DIR="$CPP_ROOT/build"
 BIN_DIR="$BUILD_DIR"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_gamequest_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_gamequest_client" ]]; then
@@ -185,56 +185,55 @@ mkdir -p "$CONFIG_DIR"
 
 # 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
 write_role_config() {
-  ROLE="$1" API_NAME="$2" MISSION_NAME="$3" CONFIG_PATH="$CONFIG_DIR/$1.json" \
-  FLOW_LOG_DIR="$FLOW_LOG_DIR" REDIS_ENDPOINT="$GAMEQUEST_REDIS_ENDPOINT" \
-  REDIS_KEY_PREFIX="$GAMEQUEST_REDIS_KEY_PREFIX" \
-  API_A_STREAM="$GAMEQUEST_API_A_STREAM_ENDPOINT" API_B_STREAM="$GAMEQUEST_API_B_STREAM_ENDPOINT" \
-  API_A_HTTP="$GAMEQUEST_API_A_HTTP_URL" API_B_HTTP="$GAMEQUEST_API_B_HTTP_URL" \
-  MISSION_A_ROUTE="$GAMEQUEST_MISSION_A_ROUTE_ENDPOINT" \
-  MISSION_B_ROUTE="$GAMEQUEST_MISSION_B_ROUTE_ENDPOINT" \
-  MISSION_A_SPOT_ROUTE="$GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT" \
-  MISSION_B_SPOT_ROUTE="$GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT" \
-  MISSION_A_SPOT_ROUTER="$GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT" \
-  MISSION_B_SPOT_ROUTER="$GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT" \
-  MISSION_A_SPOT="$GAMEQUEST_MISSION_A_SPOT_ENDPOINT" \
-  MISSION_B_SPOT="$GAMEQUEST_MISSION_B_SPOT_ENDPOINT" \
-  API_A_SPOT_ROUTER="$GAMEQUEST_API_A_SPOT_ROUTER_ENDPOINT" \
-  API_B_SPOT_ROUTER="$GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT" \
-  API_A_SPOT_ROUTE="$GAMEQUEST_API_A_SPOT_ROUTE" API_B_SPOT_ROUTE="$GAMEQUEST_API_B_SPOT_ROUTE" \
-  python3 - <<'CONFIG_PY'
+  python3 - "$CONFIG_DIR/$1.json" "$1" "$2" "$3" "$FLOW_LOG_DIR" \
+    "$GAMEQUEST_REDIS_ENDPOINT" "$GAMEQUEST_REDIS_KEY_PREFIX" \
+    "$GAMEQUEST_API_A_STREAM_ENDPOINT" "$GAMEQUEST_API_B_STREAM_ENDPOINT" \
+    "$GAMEQUEST_API_A_HTTP_URL" "$GAMEQUEST_API_B_HTTP_URL" \
+    "$GAMEQUEST_MISSION_A_ROUTE_ENDPOINT" "$GAMEQUEST_MISSION_B_ROUTE_ENDPOINT" \
+    "$GAMEQUEST_MISSION_A_SPOT_ROUTE_ENDPOINT" "$GAMEQUEST_MISSION_B_SPOT_ROUTE_ENDPOINT" \
+    "$GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT" "$GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT" \
+    "$GAMEQUEST_MISSION_A_SPOT_ENDPOINT" "$GAMEQUEST_MISSION_B_SPOT_ENDPOINT" \
+    "$GAMEQUEST_API_A_SPOT_ROUTER_ENDPOINT" "$GAMEQUEST_API_B_SPOT_ROUTER_ENDPOINT" \
+    "$GAMEQUEST_API_A_SPOT_ROUTE" "$GAMEQUEST_API_B_SPOT_ROUTE" <<'CONFIG_PY'
 import json
 import os
 import stat
+import sys
+
+(path, role_name, api_name, mission_name, flow_log_dir, redis_endpoint,
+ redis_key_prefix, api_a_stream, api_b_stream, api_a_http, api_b_http,
+ mission_a_route, mission_b_route, mission_a_spot_route, mission_b_spot_route,
+ mission_a_spot_router, mission_b_spot_router, mission_a_spot, mission_b_spot,
+ api_a_spot_router, api_b_spot_router, api_a_spot_route, api_b_spot_route) = sys.argv[1:]
 
 document = {
     "sample": {
-        "role": {"name": os.environ["ROLE"], "logDir": os.environ["FLOW_LOG_DIR"]},
+        "role": {"name": role_name, "logDir": flow_log_dir},
         "topology": {
-            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
-            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
-            "apiAStreamEndpoint": os.environ["API_A_STREAM"],
-            "apiBStreamEndpoint": os.environ["API_B_STREAM"],
-            "apiAHttpUrl": os.environ["API_A_HTTP"],
-            "apiBHttpUrl": os.environ["API_B_HTTP"],
-            "missionARouteEndpoint": os.environ["MISSION_A_ROUTE"],
-            "missionBRouteEndpoint": os.environ["MISSION_B_ROUTE"],
-            "missionASpotRouteEndpoint": os.environ["MISSION_A_SPOT_ROUTE"],
-            "missionBSpotRouteEndpoint": os.environ["MISSION_B_SPOT_ROUTE"],
-            "missionASpotRouterEndpoint": os.environ["MISSION_A_SPOT_ROUTER"],
-            "missionBSpotRouterEndpoint": os.environ["MISSION_B_SPOT_ROUTER"],
-            "missionASpotEndpoint": os.environ["MISSION_A_SPOT"],
-            "missionBSpotEndpoint": os.environ["MISSION_B_SPOT"],
-            "apiASpotRouterEndpoint": os.environ["API_A_SPOT_ROUTER"],
-            "apiBSpotRouterEndpoint": os.environ["API_B_SPOT_ROUTER"],
-            "apiName": os.environ["API_NAME"],
-            "missionName": os.environ["MISSION_NAME"],
-            "apiASpotRouteEndpoint": os.environ["API_A_SPOT_ROUTE"],
-            "apiBSpotRouteEndpoint": os.environ["API_B_SPOT_ROUTE"],
+            "redisEndpoint": redis_endpoint,
+            "redisKeyPrefix": redis_key_prefix,
+            "apiAStreamEndpoint": api_a_stream,
+            "apiBStreamEndpoint": api_b_stream,
+            "apiAHttpUrl": api_a_http,
+            "apiBHttpUrl": api_b_http,
+            "missionARouteEndpoint": mission_a_route,
+            "missionBRouteEndpoint": mission_b_route,
+            "missionASpotRouteEndpoint": mission_a_spot_route,
+            "missionBSpotRouteEndpoint": mission_b_spot_route,
+            "missionASpotRouterEndpoint": mission_a_spot_router,
+            "missionBSpotRouterEndpoint": mission_b_spot_router,
+            "missionASpotEndpoint": mission_a_spot,
+            "missionBSpotEndpoint": mission_b_spot,
+            "apiASpotRouterEndpoint": api_a_spot_router,
+            "apiBSpotRouterEndpoint": api_b_spot_router,
+            "apiName": api_name,
+            "missionName": mission_name,
+            "apiASpotRouteEndpoint": api_a_spot_route,
+            "apiBSpotRouteEndpoint": api_b_spot_route,
         },
     }
 }
 
-path = os.environ["CONFIG_PATH"]
 with open(path, "w", encoding="utf-8") as file:
     json.dump(document, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

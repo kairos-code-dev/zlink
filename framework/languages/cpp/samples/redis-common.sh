@@ -4,8 +4,8 @@ zlink_redis_start_scoped() {
   local scope="$1"
   local image="${2:-redis:7-alpine}"
   local port_mapping="${3:-127.0.0.1::6379}"
-  local docker_timeout_seconds="${ZLINK_REDIS_DOCKER_TIMEOUT_SECONDS:-10}"
-  local run_id="${ZLINK_REDIS_RUN_ID:-$$}"
+  local docker_timeout_seconds="${4:-10}"
+  local run_id="${5:-$$}"
   local name="${scope}-${run_id}-${BASHPID}-${RANDOM}"
 
   local create_output create_status container_id start_output start_status running host_port

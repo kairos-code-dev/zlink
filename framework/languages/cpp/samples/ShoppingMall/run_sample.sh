@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../redis-common.sh"
 CPP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
+BUILD_DIR="$CPP_ROOT/build"
 BIN_DIR="$BUILD_DIR"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_shoppingmall_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_shoppingmall_client" ]]; then
@@ -164,54 +164,53 @@ mkdir -p "$CONFIG_DIR"
 
 # 각 role은 자기 설정 파일 하나만 받는다(공통 정책 sample-e2e-configuration-policy.ko.md §2.1).
 write_role_config() {
-  ROLE="$1" CONFIG_PATH="$CONFIG_DIR/$1.json" FLOW_LOG_DIR="$FLOW_LOG_DIR" \
-  REDIS_ENDPOINT="$SHOPPINGMALL_REDIS_ENDPOINT" REDIS_KEY_PREFIX="$SHOPPINGMALL_REDIS_KEY_PREFIX" \
-  API_A_HTTP="$SHOPPINGMALL_API_A_HTTP_URL" API_B_HTTP="$SHOPPINGMALL_API_B_HTTP_URL" \
-  API_A_ROUTE="$SHOPPINGMALL_API_A_ROUTE" API_B_ROUTE="$SHOPPINGMALL_API_B_ROUTE" \
-  API_A_SPOT_ROUTER="$SHOPPINGMALL_API_A_SPOT_ROUTER_ENDPOINT" \
-  API_B_SPOT_ROUTER="$SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT" \
-  WORKFLOW_A_HTTP="$SHOPPINGMALL_WORKFLOW_A_HTTP_URL" \
-  WORKFLOW_B_HTTP="$SHOPPINGMALL_WORKFLOW_B_HTTP_URL" \
-  WORKFLOW_A_ROUTE="$SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT" \
-  WORKFLOW_B_ROUTE="$SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT" \
-  WORKFLOW_A_SPOT_ROUTE="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT" \
-  WORKFLOW_B_SPOT_ROUTE="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE_ENDPOINT" \
-  WORKFLOW_A_SPOT="$SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT" \
-  WORKFLOW_A_SPOT_ROUTER="$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT" \
-  WORKFLOW_B_SPOT="$SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT" \
-  WORKFLOW_B_SPOT_ROUTER="$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT" \
-  python3 - <<'CONFIG_PY'
+  python3 - "$CONFIG_DIR/$1.json" "$1" "$FLOW_LOG_DIR" "$SHOPPINGMALL_REDIS_ENDPOINT" \
+    "$SHOPPINGMALL_REDIS_KEY_PREFIX" "$SHOPPINGMALL_API_A_HTTP_URL" \
+    "$SHOPPINGMALL_API_B_HTTP_URL" "$SHOPPINGMALL_API_A_ROUTE" "$SHOPPINGMALL_API_B_ROUTE" \
+    "$SHOPPINGMALL_API_A_SPOT_ROUTER_ENDPOINT" "$SHOPPINGMALL_API_B_SPOT_ROUTER_ENDPOINT" \
+    "$SHOPPINGMALL_WORKFLOW_A_HTTP_URL" "$SHOPPINGMALL_WORKFLOW_B_HTTP_URL" \
+    "$SHOPPINGMALL_WORKFLOW_A_ROUTE_ENDPOINT" "$SHOPPINGMALL_WORKFLOW_B_ROUTE_ENDPOINT" \
+    "$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTE_ENDPOINT" \
+    "$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTE_ENDPOINT" "$SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT" \
+    "$SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT" "$SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT" \
+    "$SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT" <<'CONFIG_PY'
 import json
 import os
 import stat
+import sys
+
+(path, role_name, flow_log_dir, redis_endpoint, redis_key_prefix, api_a_http,
+ api_b_http, api_a_route, api_b_route, api_a_spot_router, api_b_spot_router,
+ workflow_a_http, workflow_b_http, workflow_a_route, workflow_b_route,
+ workflow_a_spot_route, workflow_b_spot_route, workflow_a_spot,
+ workflow_a_spot_router, workflow_b_spot, workflow_b_spot_router) = sys.argv[1:]
 
 document = {
     "sample": {
-        "role": {"name": os.environ["ROLE"], "logDir": os.environ["FLOW_LOG_DIR"]},
+        "role": {"name": role_name, "logDir": flow_log_dir},
         "topology": {
-            "redisEndpoint": os.environ["REDIS_ENDPOINT"],
-            "redisKeyPrefix": os.environ["REDIS_KEY_PREFIX"],
-            "apiAHttpUrl": os.environ["API_A_HTTP"],
-            "apiBHttpUrl": os.environ["API_B_HTTP"],
-            "apiARouteEndpoint": os.environ["API_A_ROUTE"],
-            "apiBRouteEndpoint": os.environ["API_B_ROUTE"],
-            "apiASpotRouterEndpoint": os.environ["API_A_SPOT_ROUTER"],
-            "apiBSpotRouterEndpoint": os.environ["API_B_SPOT_ROUTER"],
-            "workflowAHttpUrl": os.environ["WORKFLOW_A_HTTP"],
-            "workflowBHttpUrl": os.environ["WORKFLOW_B_HTTP"],
-            "workflowARouteEndpoint": os.environ["WORKFLOW_A_ROUTE"],
-            "workflowBRouteEndpoint": os.environ["WORKFLOW_B_ROUTE"],
-            "workflowASpotRouteEndpoint": os.environ["WORKFLOW_A_SPOT_ROUTE"],
-            "workflowBSpotRouteEndpoint": os.environ["WORKFLOW_B_SPOT_ROUTE"],
-            "workflowASpotEndpoint": os.environ["WORKFLOW_A_SPOT"],
-            "workflowASpotRouterEndpoint": os.environ["WORKFLOW_A_SPOT_ROUTER"],
-            "workflowBSpotEndpoint": os.environ["WORKFLOW_B_SPOT"],
-            "workflowBSpotRouterEndpoint": os.environ["WORKFLOW_B_SPOT_ROUTER"],
+            "redisEndpoint": redis_endpoint,
+            "redisKeyPrefix": redis_key_prefix,
+            "apiAHttpUrl": api_a_http,
+            "apiBHttpUrl": api_b_http,
+            "apiARouteEndpoint": api_a_route,
+            "apiBRouteEndpoint": api_b_route,
+            "apiASpotRouterEndpoint": api_a_spot_router,
+            "apiBSpotRouterEndpoint": api_b_spot_router,
+            "workflowAHttpUrl": workflow_a_http,
+            "workflowBHttpUrl": workflow_b_http,
+            "workflowARouteEndpoint": workflow_a_route,
+            "workflowBRouteEndpoint": workflow_b_route,
+            "workflowASpotRouteEndpoint": workflow_a_spot_route,
+            "workflowBSpotRouteEndpoint": workflow_b_spot_route,
+            "workflowASpotEndpoint": workflow_a_spot,
+            "workflowASpotRouterEndpoint": workflow_a_spot_router,
+            "workflowBSpotEndpoint": workflow_b_spot,
+            "workflowBSpotRouterEndpoint": workflow_b_spot_router,
         },
     }
 }
 
-path = os.environ["CONFIG_PATH"]
 with open(path, "w", encoding="utf-8") as file:
     json.dump(document, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

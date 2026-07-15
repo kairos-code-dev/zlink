@@ -530,7 +530,7 @@ bool sample_and_e2e_code_does_not_read_the_environment (const std::filesystem::p
                 continue;
             }
             const auto ext = entry.path ().extension ();
-            if (ext != ".hpp" && ext != ".cpp") {
+            if (ext != ".hpp" && ext != ".cpp" && ext != ".sh") {
                 continue;
             }
 
@@ -542,7 +542,10 @@ bool sample_and_e2e_code_does_not_read_the_environment (const std::filesystem::p
                 const bool reads_environment = line.find ("getenv (") != std::string::npos
                                                || line.find ("getenv(") != std::string::npos
                                                || line.find ("load_env (") != std::string::npos
-                                               || line.find ("load_env(") != std::string::npos;
+                                               || line.find ("load_env(") != std::string::npos
+                                               || line.find ("os.environ") != std::string::npos
+                                               || line.find ("${ZLINK_") != std::string::npos
+                                               || line.find ("$ZLINK_") != std::string::npos;
                 if (reads_environment) {
                     std::cerr << "sample/e2e application code must take configuration from its "
                                  "config file, not the environment: "

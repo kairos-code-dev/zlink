@@ -60,6 +60,7 @@ import {
   ZLinkSpotSerialExecutor
 } from './runtime/spots';
 import { ZLinkSpotWorkerRuntime } from './runtime/workers';
+import { captureZLinkExecutionTurn } from './runtime/execution';
 export {
   registerHandlerFilterScope as registerIntegrationHandlerFilterScope,
   type ZLinkHandlerFilterScopeRunner
@@ -203,6 +204,16 @@ export function createIntegrationSpotOutbound(runtime: ZLinkNestIntegrationRunti
     host.routeTransport,
     runtimeOptions.spotRouterChannelIdForMesh
   );
+}
+
+export function createIntegrationHttpExecutionScheduler(runtime: ZLinkNestIntegrationRuntimeHost) {
+  return {
+    capture: captureZLinkExecutionTurn,
+    reportError(error: unknown): void {
+      const host = runtimeHost(runtime);
+      host.errorSink?.reportRuntimeTaskException('http client submit', error);
+    }
+  };
 }
 
 function runtimeHost(runtime: ZLinkNestIntegrationRuntimeHost): ZLinkFrameworkRuntimeHost {

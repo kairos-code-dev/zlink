@@ -36,3 +36,21 @@ export type BodyChunkProvider = () => Uint8Array | null;
 
 /** Sink for a streamed response download; receives chunks as they arrive (no decompression). */
 export type DownloadSink = (chunk: Uint8Array) => void;
+
+/** Completion scheduling seam supplied by a framework server integration. */
+export interface ZLinkHttpExecutionTurn {
+  yieldPromise<T>(pending: Promise<T>): Promise<T>;
+  post(callback: () => void): void;
+}
+
+/** Captures the current framework execution turn when an HTTP call is built. */
+export interface ZLinkHttpExecutionScheduler {
+  capture(): ZLinkHttpExecutionTurn | undefined;
+  reportError(error: unknown): void;
+}
+
+/** Callback completion path for callers that do not use an awaitable. */
+export type ZLinkHttpCallback<T> = (
+  error: unknown | undefined,
+  response: HttpResponse<T> | undefined
+) => void;

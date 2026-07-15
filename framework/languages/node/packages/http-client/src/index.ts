@@ -8,4 +8,7 @@ export type {
   HttpResponse,
   BodyChunkProvider,
   DownloadSink,
+  ZLinkHttpCallback,
+  ZLinkHttpExecutionScheduler,
+  ZLinkHttpExecutionTurn,
 } from './types';

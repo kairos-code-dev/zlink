@@ -13,6 +13,7 @@ interface ZLinkSpotSerialTurnContext {
 
 interface ZLinkSpotSerialExecutorLike {
   readonly activeTurnId: number;
+  post<T>(operation: () => Promise<T> | T): Promise<T>;
 }
 
 const spotSerialTurnStorage = new AsyncLocalStorage<ZLinkSpotSerialTurnContext>();
@@ -103,6 +104,22 @@ export function captureZLinkSpotSerialTurn(
     return undefined;
   }
   return current.turn;
+}
+
+export interface ZLinkCapturedExecutionTurn {
+  yieldPromise<T>(pending: Promise<T>): Promise<T>;
+  post(callback: () => void): void;
+}
+
+export function captureZLinkExecutionTurn(): ZLinkCapturedExecutionTurn | undefined {
+  const current = spotSerialTurnStorage.getStore();
+  if (current === undefined) {
+    return undefined;
+  }
+  return {
+    yieldPromise: <T>(pending: Promise<T>) => current.turn.yieldPromise(pending),
+    post: (callback: () => void) => { void current.executor.post(callback); }
+  };
 }
 
 export function isCurrentZLinkSpotSerialTurn(executor: ZLinkSpotSerialExecutorLike): boolean {

@@ -4,15 +4,19 @@ import { ZLinkFrameworkException, ZLinkFrameworkErrorKind } from '@zlink-systems
 import { HttpClientRuntime } from './runtime/runtime';
 import type { HttpClientOptions } from './runtime/options';
 import { basicAuthorization, requireNonBlank, requirePositiveTimeout } from './runtime/text';
-import { ZLinkHttpRequestBuilder } from './request-builder';
+import { createZLinkHttpRequestBuilder, ZLinkHttpRequestBuilder } from './request-builder';
+import type { ZLinkHttpExecutionScheduler } from './types';
 
 /**
  * ZLink-style fluent HTTP client. Wraps undici behind a builder so transport types never leak into
- * application code. A general HTTP client; the typed-JSON path (`body(dto)` / `submit<T>()`) is a
+ * application code. A general HTTP client; the typed-JSON path (`body(dto)` / `async<T>()`) is a
  * convenience layer on top. Mirrors the C++ `zlink::http_client::client_t`.
  */
 export class ZLinkHttpClient {
-  constructor(private readonly runtimeInstance: HttpClientRuntime) {}
+  constructor(
+    private readonly runtimeInstance: HttpClientRuntime,
+    readonly executionScheduler?: ZLinkHttpExecutionScheduler
+  ) {}
 
   /** @internal */
   get runtime(): HttpClientRuntime {
@@ -25,31 +29,31 @@ export class ZLinkHttpClient {
   }
 
   get(path: string): ZLinkHttpRequestBuilder {
-    return new ZLinkHttpRequestBuilder(this, 'GET', path);
+    return createZLinkHttpRequestBuilder(this, 'GET', path);
   }
 
   post(path: string): ZLinkHttpRequestBuilder {
-    return new ZLinkHttpRequestBuilder(this, 'POST', path);
+    return createZLinkHttpRequestBuilder(this, 'POST', path);
   }
 
   put(path: string): ZLinkHttpRequestBuilder {
-    return new ZLinkHttpRequestBuilder(this, 'PUT', path);
+    return createZLinkHttpRequestBuilder(this, 'PUT', path);
   }
 
   delete(path: string): ZLinkHttpRequestBuilder {
-    return new ZLinkHttpRequestBuilder(this, 'DELETE', path);
+    return createZLinkHttpRequestBuilder(this, 'DELETE', path);
   }
 
   patch(path: string): ZLinkHttpRequestBuilder {
-    return new ZLinkHttpRequestBuilder(this, 'PATCH', path);
+    return createZLinkHttpRequestBuilder(this, 'PATCH', path);
   }
 
   head(path: string): ZLinkHttpRequestBuilder {
-    return new ZLinkHttpRequestBuilder(this, 'HEAD', path);
+    return createZLinkHttpRequestBuilder(this, 'HEAD', path);
   }
 
   options(path: string): ZLinkHttpRequestBuilder {
-    return new ZLinkHttpRequestBuilder(this, 'OPTIONS', path);
+    return createZLinkHttpRequestBuilder(this, 'OPTIONS', path);
   }
 
   /** Releases the underlying dispatcher (connection pool). */
@@ -72,6 +76,7 @@ export class ZLinkHttpClientBuilder {
   private proxyValue: string | undefined;
   private proxyAuthorizationValue: string | undefined;
   private compressionValue = false;
+  private executionSchedulerValue: ZLinkHttpExecutionScheduler | undefined;
 
   baseUrl(value: string): this {
     requireNonBlank(value, 'HTTP client base_url is required');
@@ -177,6 +182,17 @@ export class ZLinkHttpClientBuilder {
     return this;
   }
 
+  /** Supplies the framework turn scheduler used by server-side terminators. */
+  executionScheduler(scheduler: ZLinkHttpExecutionScheduler): this {
+    this.executionSchedulerValue = scheduler;
+    return this;
+  }
+
+  /** @internal Captures a turn for one-shot requests before the client is built. */
+  captureExecutionTurn() {
+    return this.executionSchedulerValue?.capture();
+  }
+
   build(): ZLinkHttpClient {
     requireNonBlank(this.baseUrlValue, 'HTTP client base_url is required');
     requirePositiveTimeout(this.timeoutMsValue);
@@ -203,7 +219,7 @@ export class ZLinkHttpClientBuilder {
       compression: this.compressionValue,
     };
 
-    return new ZLinkHttpClient(new HttpClientRuntime(options));
+    return new ZLinkHttpClient(new HttpClientRuntime(options), this.executionSchedulerValue);
   }
 
   get(path: string): ZLinkHttpRequestBuilder {

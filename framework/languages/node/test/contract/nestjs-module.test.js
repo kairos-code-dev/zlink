@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
@@ -106,6 +107,50 @@ test('ZLinkModule.forRoot registers always-available providers for empty options
   assert.equal(tokens.has(nestjs.ZLINK_MESSAGE_METADATA_POLICY), true);
   assert.equal(tokens.has(nestjs.ZLINK_SPOT_MANAGER), false);
   assert.equal(tokens.has(nestjs.ZLINK_ACTOR_MANAGER), false);
+});
+
+test('ZLinkHttpClientModule registers named server clients through Nest DI', async () => {
+  const server = http.createServer((_req, res) => {
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ source: 'profiles' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const profilesToken = nestjs.zlinkHttpClientToken('profiles');
+
+  class AppModule {}
+  Module({
+    imports: [nestjs.ZLinkHttpClientModule.forRoot({
+      imports: [nestjs.ZLinkModule.forRoot()],
+      clients: [{
+        name: 'profiles',
+        baseUrl,
+        configure: (builder) => builder.timeout(500)
+      }]
+    })]
+  })(AppModule);
+
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
+  try {
+    const client = app.get(profilesToken);
+    const response = await client.get('/profile').async();
+    assert.equal(response.body.source, 'profiles');
+    assert.equal(typeof client.get('/profile').yield, 'function');
+  } finally {
+    await app.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+
+  assert.throws(
+    () => nestjs.ZLinkHttpClientModule.forRoot({
+      imports: [],
+      clients: [
+        { name: 'profiles', baseUrl },
+        { name: 'profiles', baseUrl }
+      ]
+    }),
+    /already registered/
+  );
 });
 
 test('ZLinkMonitoringModule.forRoot exposes runtime event publisher provider path', () => {

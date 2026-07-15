@@ -2,7 +2,16 @@
 
 import { ZLinkFrameworkException, ZLinkFrameworkErrorKind } from '@zlink-systems/framework';
 import type { ZLinkHttpClient, ZLinkHttpClientBuilder } from './client';
-import type { BodyChunkProvider, DownloadSink, HttpResponse, RawHttpResponse, ZLinkHttpMethod } from './types';
+import type {
+  BodyChunkProvider,
+  DownloadSink,
+  HttpResponse,
+  RawHttpResponse,
+  ZLinkHttpCallback,
+  ZLinkHttpExecutionScheduler,
+  ZLinkHttpExecutionTurn,
+  ZLinkHttpMethod
+} from './types';
 import type { HttpRequestSpec } from './runtime/request-performer';
 import { makeMultipartBoundary, percentEncode, requireNonBlank, requirePositiveTimeout } from './runtime/text';
 
@@ -29,6 +38,8 @@ export class ZLinkHttpRequestBuilder {
   private clientInstance: ZLinkHttpClient | undefined;
   private readonly clientFactory: ZLinkHttpClientBuilder | undefined;
   private readonly ownsClient: boolean;
+  protected readonly executionTurn: ZLinkHttpExecutionTurn | undefined;
+  protected readonly executionScheduler: ZLinkHttpExecutionScheduler | undefined;
   private consumed = false;
 
   constructor(
@@ -42,6 +53,9 @@ export class ZLinkHttpRequestBuilder {
     // A one-shot request (builder verb shortcut) owns the lazily-built client and closes it once the
     // request completes.
     this.ownsClient = clientFactory !== undefined;
+    this.executionScheduler = client?.executionScheduler;
+    this.executionTurn = client?.executionScheduler?.capture()
+      ?? clientFactory?.captureExecutionTurn();
     if (path.length === 0 || path[0] !== '/') {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestProtocolError,
@@ -155,8 +169,8 @@ export class ZLinkHttpRequestBuilder {
     return this;
   }
 
-  /** Submits the request and returns the raw response. */
-  async submitRaw(): Promise<RawHttpResponse> {
+  /** Executes the request and returns the raw response while retaining the current turn. */
+  async asyncRaw(): Promise<RawHttpResponse> {
     const request = this.makeRequest(undefined);
     const client = this.resolveClient();
     try {
@@ -186,9 +200,21 @@ export class ZLinkHttpRequestBuilder {
     }
   }
 
-  /** Submits the request and decodes the JSON body to `T`. */
-  async submit<T>(): Promise<HttpResponse<T>> {
-    const raw = await this.submitRaw();
+  async async<T>(): Promise<HttpResponse<T>>;
+  async<T>(callback: ZLinkHttpCallback<T>): void;
+  async<T>(callback?: ZLinkHttpCallback<T>): Promise<HttpResponse<T>> | void {
+    const pending = this.executeTyped<T>();
+    if (callback === undefined) {
+      return pending;
+    }
+    void pending.then(
+      (response) => this.completeCallback(() => callback(undefined, response)),
+      (error) => this.completeCallback(() => callback(error, undefined))
+    );
+  }
+
+  protected async executeTyped<T>(): Promise<HttpResponse<T>> {
+    const raw = await this.asyncRaw();
     if (raw.status >= 400) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestFailed,
@@ -213,9 +239,17 @@ export class ZLinkHttpRequestBuilder {
     return { status: raw.status, headers: raw.headers, body, rawBody: raw.body };
   }
 
-  /** Submits the request and returns only the decoded JSON body. */
+  /** Returns only the decoded body for client-side scenarios that do not need the HTTP envelope. */
   async fetch<T>(): Promise<T> {
-    return (await this.submit<T>()).body;
+    return (await this.executeTyped<T>()).body;
+  }
+
+  private completeCallback(callback: () => void): void {
+    if (this.executionTurn === undefined) {
+      callback();
+      return;
+    }
+    this.executionTurn.post(callback);
   }
 
   private makeRequest(sink: DownloadSink | undefined): HttpRequestSpec {
@@ -305,6 +339,41 @@ export class ZLinkHttpRequestBuilder {
     encoded += `--${boundary}--\r\n`;
     return encoded;
   }
+}
+
+class ZLinkFrameworkHttpRequestBuilder extends ZLinkHttpRequestBuilder {
+  /** Starts a server-side one-way request and ignores its response body. */
+  submit(): void {
+    const scheduler = this.executionScheduler;
+    if (scheduler === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestProtocolError,
+        'HTTP submit requires a framework server client'
+      );
+    }
+    void this.asyncRaw().catch((error) => scheduler.reportError(error));
+  }
+
+  /** Executes a typed request while yielding the current Spot turn. */
+  yield<T>(): Promise<HttpResponse<T>> {
+    if (this.executionTurn === undefined) {
+      return Promise.reject(new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestProtocolError,
+        'HTTP yield requires a framework Spot turn'
+      ));
+    }
+    return this.executionTurn.yieldPromise(this.executeTyped<T>());
+  }
+}
+
+export function createZLinkHttpRequestBuilder(
+  client: ZLinkHttpClient,
+  method: ZLinkHttpMethod,
+  path: string
+): ZLinkHttpRequestBuilder {
+  return client.executionScheduler === undefined
+    ? new ZLinkHttpRequestBuilder(client, method, path)
+    : new ZLinkFrameworkHttpRequestBuilder(client, method, path);
 }
 
 // Prototype-pollution guard, mirroring the framework's stream JSON codec.

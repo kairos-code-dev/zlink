@@ -302,7 +302,8 @@
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
-- [ ] **§12.20** (결함) — 응답에 packet name을 싣는다
+- [x] **§12.20** (결함) — 응답에 packet name을 싣는다
+  - 근거: 수정 전 계약·framework·connector 집중 게이트가 `stream_write_call_t`의 reply 이름 setter와 빈 `Response`/`Error` 이름 인코딩 거부를 재현했다(`72fa02791`). Send와 reply call 타입을 분리하고 공통 제출 구현은 하나의 내부 함수에 유지해 reply에서 이름 setter를 제거했으며, 새 응답은 `name_len = 0`으로만 인코딩하고 이름 있는 구형 응답은 계속 디코딩하도록 수정했다(`76a5fae0d`). 관련 CTest 4개, 전체 C++ 빌드, layout 계약과 sample parity 53개가 통과했다. POSD/DDD 재검토에서는 Send의 dispatch 이름과 reply의 sequence 상관관계를 타입 경계로 분리하고 중복 transport 제출 정책을 제거했으며 추가 도메인 책임 누출이 없음을 확인했다.
 - [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
 - [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
 - [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재

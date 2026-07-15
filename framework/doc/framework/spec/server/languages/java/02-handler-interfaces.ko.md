@@ -426,7 +426,10 @@ public interface ZLinkActorContext {
 public interface ZLinkActorJoinCall {
     ZLinkActorJoinCall timeout(Duration timeout);
     CompletionStage<ZLinkActorJoinResult<Void>> submit();
+    CompletionStage<ZLinkActorJoinResult<Void>> yield();
     <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
+        Class<TReply> replyType);
+    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> yield(
         Class<TReply> replyType);
 }
 
@@ -655,6 +658,7 @@ public interface ZLinkSendCall {
 public interface ZLinkRequestCall {
     ZLinkRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
+    <TReply> CompletionStage<TReply> yield(Class<TReply> replyType);
 }
 
 public interface ZLinkSpotOutbound {
@@ -719,6 +723,7 @@ public interface ZLinkEntrySpotContext {
 public interface ZLinkWorkerCall<T> {
     ZLinkWorkerCall<T> timeout(Duration timeout);
     CompletionStage<T> submit();
+    CompletionStage<T> yield();
 }
 
 public interface ZLinkRouteClient {
@@ -1231,6 +1236,7 @@ public interface ZLinkActorSendCall {
 public interface ZLinkActorRequestCall {
     ZLinkActorRequestCall timeout(Duration timeout);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
+    <TReply> CompletionStage<TReply> yield(Class<TReply> replyType);
 }
 
 public interface ZLinkActorDirectory {

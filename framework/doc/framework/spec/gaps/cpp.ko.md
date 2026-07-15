@@ -404,8 +404,9 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 
 - [x] **IMP-CP-28** (결함) — `extension_boundaries.hpp` — **설치되는 공개 헤더인데 스펙 근거도 구현도 0**
   - 근거: 수정 전 target-contract gate가 무근거 extension 설치 헤더 2개와 no-op CMake export 표면을 검출했다. 11개 placeholder target, umbrella/boundary header, 이를 양성으로 고정하던 unit·layout·package test 의존성을 제거한 뒤 target/header/layout contract test와 실제 install-consumer package test가 모두 통과했다.
-- [ ] **IMP-CP-29** (결함) — `unhandled_dispatch_options_t` 5개 필드가 **검증만 되고 읽히지 않는다**
-  - 결정 필요: 공통 channel 계약은 미처리 정책을 framework 고정값으로 정하지만, 정식 C++ interface spec은 `unhandled_dispatch_action_t`와 `unhandled_dispatch_options_t`를 공개 계약으로 명시한다. 선택지는 ① C++ interface 계약과 구현에서 이 설정 표면을 함께 제거하거나 ② 공통 계약을 설정 가능한 정책으로 바꾸고 모든 언어에서 구현하는 것이다. §0.8에 따라 계약 소유자가 방향을 정할 때까지 구현하지 않는다.
+- [x] **IMP-CP-29** (결함) — `unhandled_dispatch_options_t` 5개 필드가 **검증만 되고 읽히지 않는다**
+  - 근거: §13.4 D6와 공통 framework API·channel messaging 계약을 다시 대조해 action과 log level은 호출자가 정하는 option이 아니라 framework가 고정하는 정책임을 확인했다. 수정 전 target gate는 validation-only 공개 enum·options·member를 2건으로 검출해 실패했다(`b40f78a6b`). 다섯 필드와 enum, no-op validation 및 거짓 양성 시험을 제거했다(`0cc3a81b2`). target·header·module-hosted와 channel messaging·message-flow 시험이 모두 통과했다.
+  - POSD/DDD: 다섯 동작을 runtime까지 전파하는 안과 거짓 설정 표면을 제거하는 안을 비교했다. 전자는 공통 고정 정책을 호출자에게 누출하고 모든 dispatch 경로에 조건을 퍼뜨리므로 기각했다. 제거로 validation-only 얕은 모듈과 pass-through 상태를 없앴으며 domain·wire 경계 변화는 없다.
 - [x] **IMP-CP-30** (결함) — `on_retry`/`on_dead_letter` — **C++에만 있는 메시지 신뢰성 계약**, 스펙 근거 0
   - 근거: 수정 전 target-contract 검증이 C++에만 있던 신뢰성 callback과 event 형식을 검출했다. 운영 코드에서는 사용하지 않고 전용 단위 시험만 사용하던 전송 대기 상태 기계와 공개 callback을 제거했다. backpressure 검증은 실제 outbound request 예약 경로로 옮겼으며, target·header 계약 시험과 backpressure·channel messaging 단위 시험 실행 파일이 모두 통과했다.
 - [x] **IMP-CP-31** (결함) — send backpressure 기한이 **30초** — 스펙은 1000ms이고, request timeout을 재사용한다

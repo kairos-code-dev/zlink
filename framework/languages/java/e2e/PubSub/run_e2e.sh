@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -9,6 +10,8 @@ REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -252,14 +255,36 @@ PRELATE_CONTINUE="${log_dir}/prelate-continue"
 LATE_READY="${log_dir}/late-ready"
 LATE_CONTINUE="${log_dir}/late-continue"
 
-start_publisher publisher
-PUBLISHER_PID="${LAST_PID}"
+start_ordered_roles() {
+  local sub1_delay_ms="${1:-}"
+  shift
+  local role
+  mapfile -t ordered_roles < <(zlink_e2e_order_roles "$@")
+  for role in "${ordered_roles[@]}"; do
+    case "${role}" in
+      publisher)
+        start_publisher publisher
+        PUBLISHER_PID="${LAST_PID}"
+        ;;
+      sub-1)
+        start_subscriber sub-1 alpha "${SUB1_HTTP}" "${sub1_delay_ms}"
+        SUB1_PID="${LAST_PID}"
+        ;;
+      sub-2)
+        start_subscriber sub-2 beta "${SUB2_HTTP}"
+        SUB2_PID="${LAST_PID}"
+        ;;
+      sub-3)
+        start_subscriber sub-3 gamma "${SUB3_HTTP}"
+        SUB3_PID="${LAST_PID}"
+        ;;
+    esac
+  done
+}
 
 case "${SCENARIO}" in
   PS-A1|PS-A2|PS-C1)
-    start_subscriber sub-1 alpha "${SUB1_HTTP}"
-    start_subscriber sub-2 beta "${SUB2_HTTP}"
-    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    start_ordered_roles "" publisher sub-1 sub-2 sub-3
     sleep "${ROUTE_SETTLE_SECONDS}"
     run_client_mode "${SCENARIO}" "${SCENARIO}"
     grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
@@ -267,6 +292,7 @@ case "${SCENARIO}" in
     exit 0
     ;;
   PS-A3)
+    start_ordered_roles "" publisher
     ZLINK_JAVA_E2E_CLIENT_MODE="${SCENARIO}" \
     ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
     ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
@@ -300,16 +326,14 @@ case "${SCENARIO}" in
     exit 0
     ;;
   PS-A4)
-    start_subscriber sub-2 beta "${SUB2_HTTP}"
+    start_ordered_roles "" publisher sub-2
     run_client_mode "${SCENARIO}" "${SCENARIO}"
     grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
     grep -Rq "message flow" "${log_dir}"/*-flow.log
     exit 0
     ;;
   PS-B1)
-    start_subscriber sub-1 alpha "${SUB1_HTTP}" 750
-    start_subscriber sub-2 beta "${SUB2_HTTP}"
-    start_subscriber sub-3 gamma "${SUB3_HTTP}"
+    start_ordered_roles 750 publisher sub-1 sub-2 sub-3
     sleep "${ROUTE_SETTLE_SECONDS}"
     run_client_mode "${SCENARIO}" "${SCENARIO}"
     grep -q "scenario ${SCENARIO} passed" "${log_dir}/client-${SCENARIO}.stdout.log"
@@ -317,6 +341,7 @@ case "${SCENARIO}" in
     exit 0
     ;;
   PS-B2)
+    start_ordered_roles "" publisher
     stop_pid "${PUBLISHER_PID}"
     start_subscriber sub-1 alpha "${SUB1_HTTP}"
     start_subscriber sub-2 beta "${SUB2_HTTP}"
@@ -333,6 +358,8 @@ case "${SCENARIO}" in
     exit 1
     ;;
 esac
+
+start_ordered_roles "" publisher
 
 ZLINK_JAVA_E2E_CLIENT_MODE=default \
 ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \

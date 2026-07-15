@@ -2,6 +2,7 @@
 set -euo pipefail
 # Config 8 AutomaticTurnDispatch deployment runner.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -14,6 +15,8 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
@@ -407,59 +410,71 @@ SESSION_HTTP="$(http "${SESSION_HTTP_PORT}")"
 SESSION_ROUTE_ENDPOINT="$(tcp "${SESSION_ROUTE_PORT}")"
 SESSION_SPOT_ENDPOINT="$(tcp "${SESSION_SPOT_PORT}")"
 
+start_initial_role() {
+  case "$1" in
+    delay)
+      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(delay_bin)" >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
+      ;;
+    play-a)
+      ZLINK_JAVA_E2E_NODE_RID="play-a" \
+      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
+      ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" \
+      ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" \
+      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(play_bin)" >"${log_dir}/play-a.stdout.log" 2>"${log_dir}/play-a.stderr.log" &
+      ;;
+    play-b)
+      ZLINK_JAVA_E2E_NODE_RID="play-b" \
+      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_B_ENDPOINT}" \
+      ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_A_ENDPOINT}" \
+      ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_B_ENDPOINT}" \
+      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_B_HTTP}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(play_bin)" >"${log_dir}/play-b.stdout.log" 2>"${log_dir}/play-b.stderr.log" &
+      ;;
+    session)
+      ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
+      ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" \
+      ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" \
+      ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" \
+      ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
+      ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
+      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
+      ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
+      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(session_bin)" >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
+      ;;
+  esac
+  pids+=("$!")
+}
+
 static_checks
 gradle_run installDist
 
-ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(delay_bin)" >"${log_dir}/delay.stdout.log" 2>"${log_dir}/delay.stderr.log" &
-pids+=("$!")
-wait_port delay "${DELAY_ENDPOINT}"
+mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles delay play-a play-b session)
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_initial_role "${role}"
+done
 
-ZLINK_JAVA_E2E_NODE_RID="play-a" \
-ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
-ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_B_ENDPOINT}" \
-ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_A_ENDPOINT}" \
-ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_A_HTTP}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(play_bin)" >"${log_dir}/play-a.stdout.log" 2>"${log_dir}/play-a.stderr.log" &
-pids+=("$!")
+wait_port delay "${DELAY_ENDPOINT}"
 wait_port play-a-route "${ROUTE_A_ENDPOINT}"
 wait_port play-a-spot "${SPOT_A_ENDPOINT}"
 wait_http play-a-http "${PLAY_A_HTTP}"
-
-ZLINK_JAVA_E2E_NODE_RID="play-b" \
-ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_B_ENDPOINT}" \
-ZLINK_JAVA_E2E_ROUTE_PEER_ENDPOINT="${ROUTE_A_ENDPOINT}" \
-ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_B_ENDPOINT}" \
-ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${PLAY_B_HTTP}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(play_bin)" >"${log_dir}/play-b.stdout.log" 2>"${log_dir}/play-b.stderr.log" &
-pids+=("$!")
 wait_port play-b-route "${ROUTE_B_ENDPOINT}"
 wait_port play-b-spot "${SPOT_B_ENDPOINT}"
 wait_http play-b-http "${PLAY_B_HTTP}"
-
-ZLINK_JAVA_E2E_ROUTE_ENDPOINT="${ROUTE_A_ENDPOINT}" \
-ZLINK_JAVA_E2E_ROUTE_B_ENDPOINT="${ROUTE_B_ENDPOINT}" \
-ZLINK_JAVA_E2E_SESSION_ROUTE_ENDPOINT="${SESSION_ROUTE_ENDPOINT}" \
-ZLINK_JAVA_E2E_SESSION_SPOT_ENDPOINT="${SESSION_SPOT_ENDPOINT}" \
-ZLINK_JAVA_E2E_DELAY_ENDPOINT="${DELAY_ENDPOINT}" \
-ZLINK_JAVA_E2E_STREAM_ENDPOINT="${STREAM_ENDPOINT}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SESSION_HTTP}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(session_bin)" >"${log_dir}/session.stdout.log" 2>"${log_dir}/session.stderr.log" &
-pids+=("$!")
 wait_port session-route "${SESSION_ROUTE_ENDPOINT}"
 wait_port session-spot "${SESSION_SPOT_ENDPOINT}"
 wait_port session-stream "${STREAM_ENDPOINT}"

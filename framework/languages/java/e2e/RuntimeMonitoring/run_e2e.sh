@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -9,6 +10,8 @@ REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -181,61 +184,38 @@ THROW_API_ENDPOINT="$(tcp "${THROW_API_PORT}")"
 THROW_HTTP="$(http "${THROW_HTTP_PORT}")"
 TRIGGER_HTTP="$(http "${TRIGGER_HTTP_PORT}")"
 
+start_initial_role() {
+  case "$1" in
+    service)
+      ZLINK_JAVA_E2E_RID="svc-a" ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_ENDPOINT}" ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT="${SPOT_PUB_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SERVICE_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(service_bin)" >"${log_dir}/service.stdout.log" 2>"${log_dir}/service.stderr.log" &
+      ;;
+    filtered-service)
+      ZLINK_JAVA_E2E_RID="svc-b" ZLINK_JAVA_E2E_API_ENDPOINT="${FILTER_API_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${FILTER_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" ZLINK_JAVA_E2E_ENABLE_SPOT="false" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(filtered_service_bin)" >"${log_dir}/filtered-service.stdout.log" 2>"${log_dir}/filtered-service.stderr.log" &
+      ;;
+    throwing-service)
+      ZLINK_JAVA_E2E_RID="svc-throw" ZLINK_JAVA_E2E_API_ENDPOINT="${THROW_API_ENDPOINT}" ZLINK_JAVA_E2E_HTTP_ENDPOINT="${THROW_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" ZLINK_JAVA_E2E_ENABLE_SPOT="false" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(throwing_service_bin)" >"${log_dir}/throwing-service.stdout.log" 2>"${log_dir}/throwing-service.stderr.log" &
+      ;;
+    trigger)
+      ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT="${FILTER_API_ENDPOINT}" ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" ZLINK_JAVA_E2E_SERVICE_B_HTTP="${FILTER_HTTP}" ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN="$(filtered_service_bin)" ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
+      ;;
+  esac
+  pids+=("$!")
+}
+
 gradle_run installDist
 start_redis_container
 
-ZLINK_JAVA_E2E_RID="svc-a" \
-ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
-ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
-ZLINK_JAVA_E2E_SPOT_ENDPOINT="${SPOT_ENDPOINT}" \
-ZLINK_JAVA_E2E_SPOT_PUB_ENDPOINT="${SPOT_PUB_ENDPOINT}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${SERVICE_HTTP}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(service_bin)" >"${log_dir}/service.stdout.log" 2>"${log_dir}/service.stderr.log" &
-pids+=("$!")
+mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles service filtered-service throwing-service trigger)
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_initial_role "${role}"
+done
+
 wait_port service-api "${API_ENDPOINT}"
 wait_port service-http "${SERVICE_HTTP}"
-
-ZLINK_JAVA_E2E_RID="svc-b" \
-ZLINK_JAVA_E2E_API_ENDPOINT="${FILTER_API_ENDPOINT}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${FILTER_HTTP}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" \
-ZLINK_JAVA_E2E_ENABLE_SPOT="false" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(filtered_service_bin)" >"${log_dir}/filtered-service.stdout.log" 2>"${log_dir}/filtered-service.stderr.log" &
-pids+=("$!")
 wait_port filtered-service-api "${FILTER_API_ENDPOINT}"
 wait_port filtered-service-http "${FILTER_HTTP}"
-
-ZLINK_JAVA_E2E_RID="svc-throw" \
-ZLINK_JAVA_E2E_API_ENDPOINT="${THROW_API_ENDPOINT}" \
-ZLINK_JAVA_E2E_HTTP_ENDPOINT="${THROW_HTTP}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_ENABLE_HANDSHAKE="false" \
-ZLINK_JAVA_E2E_ENABLE_SPOT="false" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(throwing_service_bin)" >"${log_dir}/throwing-service.stdout.log" 2>"${log_dir}/throwing-service.stderr.log" &
-pids+=("$!")
 wait_port throwing-service-api "${THROW_API_ENDPOINT}"
 wait_port throwing-service-http "${THROW_HTTP}"
-
-ZLINK_JAVA_E2E_API_ENDPOINT="${API_ENDPOINT}" \
-ZLINK_JAVA_E2E_SERVICE_B_API_ENDPOINT="${FILTER_API_ENDPOINT}" \
-ZLINK_JAVA_E2E_HANDSHAKE_ENDPOINT="${HANDSHAKE_ENDPOINT}" \
-ZLINK_JAVA_E2E_SERVICE_HTTP="${SERVICE_HTTP}" \
-ZLINK_JAVA_E2E_SERVICE_B_HTTP="${FILTER_HTTP}" \
-ZLINK_JAVA_E2E_TRIGGER_HTTP="${TRIGGER_HTTP}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_FILTERED_SERVICE_BIN="$(filtered_service_bin)" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(trigger_bin)" >"${log_dir}/trigger.stdout.log" 2>"${log_dir}/trigger.stderr.log" &
-pids+=("$!")
 wait_port trigger-http "${TRIGGER_HTTP}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 

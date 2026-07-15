@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -13,6 +14,8 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
@@ -311,18 +314,40 @@ start_redis_container
 install_dist
 
 if is_common_scenario "${SCENARIO}"; then
-  start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
-  API_A_PID="${LAST_PID}"
-  start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
-  API_B_PID="${LAST_PID}"
+  SERVER_ROLES=(api-a api-b)
   if needs_workflow_role "${SCENARIO}"; then
-    start_provider workflow-a "" "" "${WORKFLOW_A}" workflow-a "" "${HTTP_WORKFLOW}"
-    WORKFLOW_A_PID="${LAST_PID}"
+    SERVER_ROLES+=(workflow-a)
   fi
-  start_consumer discovery-consumer discovery "${HTTP_DISCOVERY_CONSUMER}"
-  start_consumer direct-consumer direct "${HTTP_DIRECT_CONSUMER}" "${API_A},${API_B}"
-  start_consumer single-consumer direct "${HTTP_SINGLE_CONSUMER}" "${API_A}"
-  start_consumer backpressure-consumer direct "${HTTP_BACKPRESSURE_CONSUMER}" "${API_A}"
+  SERVER_ROLES+=(discovery-consumer direct-consumer single-consumer backpressure-consumer)
+  mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles "${SERVER_ROLES[@]}")
+  for role in "${ORDERED_SERVER_ROLES[@]}"; do
+    case "${role}" in
+      api-a)
+        start_provider api-a "${API_A}" "${ROUTE_A}" "" api-a "" "${HTTP_API_A}"
+        API_A_PID="${LAST_PID}"
+        ;;
+      api-b)
+        start_provider api-b "${API_B}" "${ROUTE_B}" "" api-b "" "${HTTP_API_B}"
+        API_B_PID="${LAST_PID}"
+        ;;
+      workflow-a)
+        start_provider workflow-a "" "" "${WORKFLOW_A}" workflow-a "" "${HTTP_WORKFLOW}"
+        WORKFLOW_A_PID="${LAST_PID}"
+        ;;
+      discovery-consumer)
+        start_consumer discovery-consumer discovery "${HTTP_DISCOVERY_CONSUMER}"
+        ;;
+      direct-consumer)
+        start_consumer direct-consumer direct "${HTTP_DIRECT_CONSUMER}" "${API_A},${API_B}"
+        ;;
+      single-consumer)
+        start_consumer single-consumer direct "${HTTP_SINGLE_CONSUMER}" "${API_A}"
+        ;;
+      backpressure-consumer)
+        start_consumer backpressure-consumer direct "${HTTP_BACKPRESSURE_CONSUMER}" "${API_A}"
+        ;;
+    esac
+  done
   sleep "${ROUTE_SETTLE_SECONDS}"
 
   common_client_scenario="${SCENARIO}"

@@ -4,8 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 JAVA_DIR="$(cd "${ROOT_DIR}/../.." && pwd)"
 source "${JAVA_DIR}/e2e-redis-common.sh"
+source "${ROOT_DIR}/../start-order-common.sh"
 
 SCENARIO="${1:-${ZLINK_JAVA_E2E_SCENARIO:-all}}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 if rg -q "observedAtNanos" "${ROOT_DIR}/Client" "${ROOT_DIR}/Server" "${ROOT_DIR}/Shared"; then
   echo "SpotActorTransfer evidence must not compare process-local nanoTime values" >&2
   exit 1
@@ -154,11 +157,16 @@ wait_log_contains() {
   return 1
 }
 
-start_node actor-a "${ROUTER_A_PORT}" "${HTTP_A_PORT}" "${STREAM_A_PORT}"
+mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles actor-a actor-b actor-c)
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  case "${role}" in
+    actor-a) start_node actor-a "${ROUTER_A_PORT}" "${HTTP_A_PORT}" "${STREAM_A_PORT}" ;;
+    actor-b) start_node actor-b "${ROUTER_B_PORT}" "${HTTP_B_PORT}" "${STREAM_B_PORT}" ;;
+    actor-c) start_node actor-c "${ROUTER_C_PORT}" "${HTTP_C_PORT}" "${STREAM_C_PORT}" ;;
+  esac
+done
 wait_http "http://127.0.0.1:${HTTP_A_PORT}" "${PID_A}"
-start_node actor-b "${ROUTER_B_PORT}" "${HTTP_B_PORT}" "${STREAM_B_PORT}"
 wait_http "http://127.0.0.1:${HTTP_B_PORT}" "${PID_B}"
-start_node actor-c "${ROUTER_C_PORT}" "${HTTP_C_PORT}" "${STREAM_C_PORT}"
 wait_http "http://127.0.0.1:${HTTP_C_PORT}" "${PID_C}"
 sleep "${ROUTE_SETTLE_SECONDS}"
 

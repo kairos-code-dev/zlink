@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -172,29 +173,6 @@ PY
   return 1
 }
 
-ordered_roles() {
-  python3 - "${E2E_START_ORDER}" "$@" <<'PY'
-import random
-import sys
-
-mode = sys.argv[1]
-roles = sys.argv[2:]
-if mode in ("", "forward"):
-    pass
-elif mode == "reverse":
-    roles.reverse()
-elif mode.startswith("shuffle:"):
-    seed_text = mode.split(":", 1)[1]
-    if seed_text == "":
-        raise SystemExit("E2E_START_ORDER shuffle requires a seed")
-    random.Random(int(seed_text)).shuffle(roles)
-else:
-    raise SystemExit(f"unsupported E2E_START_ORDER={mode!r}")
-for role in roles:
-    print(role)
-PY
-}
-
 start_role() {
   case "$1" in
     actor)
@@ -264,7 +242,7 @@ wait_role_ready() {
 ../../gradlew --no-daemon --no-parallel --max-workers=1 --gradle-user-home "${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/toactor-gradle}" -p . installDist
 
 SERVER_ROLES=(actor caller session-a session-b)
-mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles "${SERVER_ROLES[@]}")
+mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles "${SERVER_ROLES[@]}")
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_role "$role"
 done

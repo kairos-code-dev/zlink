@@ -19,6 +19,8 @@ DEFAULT_SCENARIOS=(
   SpotActorTransfer
   ObservabilityOps
 )
+START_ORDER_CONFIGS=(RegistryMessaging SpotService ToActorMessaging)
+START_ORDER_MODES=(reverse "shuffle:20260715")
 
 cleanup_done=0
 active_scenario_pid=""
@@ -72,6 +74,7 @@ fi
 run_scenario_with_retry() {
   local scenario="$1"
   local selector="$2"
+  local start_order="${3:-forward}"
   local attempt output status started_at ended_at
   output="$(mktemp)"
 
@@ -81,7 +84,8 @@ run_scenario_with_retry() {
     set +e
     (
       cd "$SCRIPT_DIR/$scenario" &&
-        exec nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" ./run_e2e.sh "${selector}"
+        exec nice -n 10 timeout "${SCENARIO_TIMEOUT_SECONDS}s" \
+          env E2E_START_ORDER="${start_order}" ./run_e2e.sh "${selector}"
     ) > >(tee "${output}") 2>&1 &
     active_scenario_pid="$!"
     wait "${active_scenario_pid}"
@@ -92,11 +96,11 @@ run_scenario_with_retry() {
 
     if [[ "${status}" == "0" ]]; then
       rm -f "${output}"
-      echo "[java-e2e] ${scenario} PASS ($((ended_at - started_at))s)"
+      echo "[java-e2e] ${scenario} PASS start_order=${start_order} ($((ended_at - started_at))s)"
       return 0
     fi
 
-    echo "[java-e2e] ${scenario} FAIL ($((ended_at - started_at))s, attempt ${attempt})" >&2
+    echo "[java-e2e] ${scenario} FAIL start_order=${start_order} ($((ended_at - started_at))s, attempt ${attempt})" >&2
     if ! grep -Eq "${BIND_RETRY_PATTERN}" "${output}"; then
       rm -f "${output}"
       return "${status}"
@@ -118,8 +122,17 @@ for index in "${!selected_scenarios[@]}"; do
   scenario="${selected_scenarios[$index]}"
   selector="${selected_selectors[$index]}"
   echo "[java-e2e] ${scenario} start scenario=${selector}"
-  run_scenario_with_retry "${scenario}" "${selector}"
+  run_scenario_with_retry "${scenario}" "${selector}" forward
 done
+
+if [[ "$#" -eq 0 ]]; then
+  for start_order in "${START_ORDER_MODES[@]}"; do
+    for scenario in "${START_ORDER_CONFIGS[@]}"; do
+      echo "[java-e2e] ${scenario} start scenario=all start_order=${start_order}"
+      run_scenario_with_retry "${scenario}" all "${start_order}"
+    done
+  done
+fi
 all_ended_at="$(date +%s)"
 
 echo "[java-e2e] total PASS ($((all_ended_at - all_started_at))s)"

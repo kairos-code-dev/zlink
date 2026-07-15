@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -16,6 +17,8 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-SF-A1}"
+E2E_START_ORDER="$(zlink_e2e_start_order_mode)"
+echo "start_order=${E2E_START_ORDER}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
@@ -374,6 +377,38 @@ start_consumer() {
   wait_port "${name}-http" "${http_endpoint}"
 }
 
+start_initial_topology() {
+  local consumer_name="$1"
+  local consumer_mode="${2:-stamp}"
+  local provider_http="${3:-true}"
+  local -a roles
+  mapfile -t roles < <(zlink_e2e_order_roles api-a api-b consumer)
+  local role
+  for role in "${roles[@]}"; do
+    case "${role}" in
+      api-a)
+        if [[ "${provider_http}" == "true" ]]; then
+          start_provider api-a "${API_A}" api-a "${HTTP_A}"
+        else
+          start_provider api-a "${API_A}" api-a
+        fi
+        API_A_PID="${LAST_PID}"
+        ;;
+      api-b)
+        if [[ "${provider_http}" == "true" ]]; then
+          start_provider api-b "${API_B}" api-b "${HTTP_B}"
+        else
+          start_provider api-b "${API_B}" api-b
+        fi
+        API_B_PID="${LAST_PID}"
+        ;;
+      consumer)
+        start_consumer "${consumer_name}" "${CONSUMER_HTTP}" "${consumer_mode}"
+        ;;
+    esac
+  done
+}
+
 stop_all() {
   set +e
   for ((i=${#pids[@]}-1; i>=0; i--)); do
@@ -475,9 +510,7 @@ if should_run SF-A1; then
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a
-start_provider api-b "${API_B}" api-b
-start_consumer "consumer-SF-A1" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-A1" stamp false
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -492,9 +525,7 @@ if should_run SF-A2; then
 read -r AH BH CH CPH A B C <<<"$(reserve_ports 7)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; API_C="$(tcp "${C}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; HTTP_C="$(http "${CPH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
-start_consumer "consumer-SF-A2" "${CONSUMER_HTTP}" polling
+start_initial_topology "consumer-SF-A2" polling
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A2" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -533,9 +564,7 @@ start_redis_container
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
-start_consumer "consumer-SF-B1" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-B1"
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -575,9 +604,7 @@ start_redis_container
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
-start_consumer "consumer-SF-B2" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-B2"
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -619,10 +646,7 @@ if should_run SF-C1; then
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a
-start_provider api-b "${API_B}" api-b
-API_B_PID="${LAST_PID}"
-start_consumer "consumer-SF-C1" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-C1" stamp false
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -650,10 +674,7 @@ if should_run SF-C2; then
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
-API_B_PID="${LAST_PID}"
-start_consumer "consumer-SF-C2" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-C2"
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -682,9 +703,7 @@ start_redis_container
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
-start_consumer "consumer-SF-D1" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-D1"
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -733,10 +752,7 @@ start_redis_container
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
-API_B_PID="${LAST_PID}"
-start_consumer "consumer-SF-D2" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-D2"
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-A1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -783,9 +799,7 @@ start_redis_container
 read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
-start_consumer "consumer-SF-D3" "${CONSUMER_HTTP}"
+start_initial_topology "consumer-SF-D3"
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-D3-HEALTHY" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \
@@ -832,11 +846,26 @@ read -r AH BH CH A B <<<"$(reserve_ports 5)"
 API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"
 HTTP_A="$(http "${AH}")"; HTTP_B="$(http "${BH}")"; CONSUMER_HTTP="$(http "${CH}")"
 SF_E1_PROXY_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}"
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
-start_provider api-a "${API_A}" api-a "${HTTP_A}"
-start_provider api-b "${API_B}" api-b "${HTTP_B}"
+mapfile -t SF_E1_ROLES < <(zlink_e2e_order_roles api-a api-b consumer)
+for role in "${SF_E1_ROLES[@]}"; do
+  case "${role}" in
+    api-a)
+      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
+      start_provider api-a "${API_A}" api-a "${HTTP_A}"
+      API_A_PID="${LAST_PID}"
+      ;;
+    api-b)
+      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_BASE_REDIS_LOCATION_ENDPOINT}"
+      start_provider api-b "${API_B}" api-b "${HTTP_B}"
+      API_B_PID="${LAST_PID}"
+      ;;
+    consumer)
+      ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${SF_E1_PROXY_ENDPOINT}"
+      start_consumer "consumer-SF-E1" "${CONSUMER_HTTP}" delay
+      ;;
+  esac
+done
 ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${SF_E1_PROXY_ENDPOINT}"
-start_consumer "consumer-SF-E1" "${CONSUMER_HTTP}" delay
 sleep "${ROUTE_SETTLE_SECONDS}"
 ZLINK_JAVA_E2E_SCENARIO="SF-E1" \
 ZLINK_JAVA_E2E_CONSUMER_HTTP_ENDPOINT="${CONSUMER_HTTP}" \

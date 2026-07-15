@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -16,6 +17,8 @@ default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
 echo "log_dir=${log_dir}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
   export ZLINK_LIBRARY_PATH="${default_core_lib}"
 fi
@@ -252,6 +255,8 @@ create_store_outage_commands
 read -r API_A API_B API_A_REPLACEMENT API_B_GREEN HTTP_A HTTP_B HTTP_A_REPLACEMENT HTTP_B_GREEN <<<"$(reserve_ports)"
 
 gradle_run installDist
+mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles api-a api-b)
+START_ORDER_CSV="$(IFS=,; echo "${ORDERED_SERVER_ROLES[*]}")"
 
 ZLINK_JAVA_E2E_CLIENT_MODE="suite" \
 ZLINK_JAVA_E2E_SCENARIO="${SCENARIO}" \
@@ -270,7 +275,7 @@ ZLINK_JAVA_E2E_HTTP_B_GREEN_ENDPOINT="${HTTP_B_GREEN}" \
 ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
 ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
 ZLINK_JAVA_E2E_CONTROL_DIR="${log_dir}/control" \
-  "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
+  "$(client_bin)" --start-order "${START_ORDER_CSV}" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log"
 
 cat "${log_dir}/client.stdout.log"
 if [[ "${SCENARIO}" == "all" ]]; then

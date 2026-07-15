@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/e2e-redis-common.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/start-order-common.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -8,6 +9,8 @@ pids=()
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
 SCENARIO="${1:-all}"
+E2E_START_ORDER="${E2E_START_ORDER:-forward}"
+echo "start_order=${E2E_START_ORDER}"
 repo_root="$(cd ../../../../.. && pwd)"
 default_core_lib="${repo_root}/core/build/lib/libzlink.so"
 mkdir -p "${log_dir}"
@@ -195,32 +198,51 @@ esac
 rm -rf "${ZLINK_JAVA_E2E_BUILD_DIR}"
 gradle_run installDist
 
-if [[ "${run_main_scenarios}" == "true" ]]; then
-  ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(main_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+start_initial_role() {
+  case "$1" in
+    main)
+      ZLINK_JAVA_E2E_SERVER_ENDPOINT="${SERVER_ENDPOINT}" \
+      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${HTTP_ENDPOINT}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(main_bin)" >"${log_dir}/server.stdout.log" 2>"${log_dir}/server.stderr.log" &
+      ;;
+    json-only)
+      ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(json_only_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
+      ;;
+    requester)
+      ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
+      ZLINK_JAVA_E2E_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
+      ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
+        "$(requester_bin)" >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
+      ;;
+  esac
   pids+=("$!")
+}
+
+SERVER_ROLES=()
+if [[ "${run_main_scenarios}" == "true" ]]; then
+  SERVER_ROLES+=(main)
+fi
+if [[ "${run_mismatch_scenario}" == "true" ]]; then
+  SERVER_ROLES+=(json-only requester)
+fi
+mapfile -t ORDERED_SERVER_ROLES < <(zlink_e2e_order_roles "${SERVER_ROLES[@]}")
+for role in "${ORDERED_SERVER_ROLES[@]}"; do
+  start_initial_role "${role}"
+done
+
+if [[ "${run_main_scenarios}" == "true" ]]; then
   wait_port server "${SERVER_ENDPOINT}"
   wait_health server "${HTTP_ENDPOINT}"
   sleep "${ROUTE_SETTLE_SECONDS}"
 fi
 
 if [[ "${run_mismatch_scenario}" == "true" ]]; then
-  ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${MISMATCH_HTTP_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(json_only_bin)" >"${log_dir}/mismatch-server.stdout.log" 2>"${log_dir}/mismatch-server.stderr.log" &
-  pids+=("$!")
   wait_port mismatch-server "${MISMATCH_ENDPOINT}"
   wait_health mismatch-server "${MISMATCH_HTTP_ENDPOINT}"
-  sleep "${ROUTE_SETTLE_SECONDS}"
-
-  ZLINK_JAVA_E2E_SERVER_ENDPOINT="${MISMATCH_ENDPOINT}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${REQUESTER_HTTP_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(requester_bin)" >"${log_dir}/codec-requester.stdout.log" 2>"${log_dir}/codec-requester.stderr.log" &
-  pids+=("$!")
   wait_health codec-requester "${REQUESTER_HTTP_ENDPOINT}"
   sleep "${ROUTE_SETTLE_SECONDS}"
 fi

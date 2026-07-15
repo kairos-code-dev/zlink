@@ -30,13 +30,18 @@ import systems.zlink.e2e.resiliencelifecycle.client.Support.ResilienceProcessMan
 public final class ResilienceLifecycleSuite {
     private final ClientOptions options;
     private final ResilienceProcessManager processes;
+    private final List<String> startOrder;
     private ResilienceProcessManager.ManagedProcess providerA;
     private ResilienceProcessManager.ManagedProcess providerB;
     private String currentHttpA;
 
-    public ResilienceLifecycleSuite(ClientOptions options, ResilienceProcessManager processes) {
+    public ResilienceLifecycleSuite(
+        ClientOptions options,
+        ResilienceProcessManager processes,
+        List<String> startOrder) {
         this.options = options;
         this.processes = processes;
+        this.startOrder = List.copyOf(startOrder);
         this.currentHttpA = options.httpAEndpoint();
     }
 
@@ -46,8 +51,15 @@ public final class ResilienceLifecycleSuite {
 
     public void run(String scenario) {
         processes.prepareControlDir();
-        providerA = processes.startProvider("api-a", "api-a", options.apiAEndpoint(), options.httpAEndpoint());
-        providerB = processes.startProvider("api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
+        for (String role : startOrder) {
+            if ("api-a".equals(role)) {
+                providerA = processes.startProvider(
+                    "api-a", "api-a", options.apiAEndpoint(), options.httpAEndpoint());
+            } else {
+                providerB = processes.startProvider(
+                    "api-b", "api-b", options.apiBEndpoint(), options.httpBEndpoint());
+            }
+        }
         processes.sleep(2_000);
 
         switch (scenario) {

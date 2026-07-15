@@ -305,12 +305,16 @@
 
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
-- [ ] **§12.20** (결함) — 응답에 packet name을 싣는다
-- [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
-- [ ] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
-- [ ] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
-- [ ] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
-  - Node 진행 근거: target commit 전에 source leave를 준비하고 실패 시 복구한 뒤 성공 시에만 source를 정리하도록 join 순서를 바로잡았다. 이어 prepare·restore·commit의 시간적 상태를 `LocalActorSourceTransfer`에 모아 호출부의 mutable 분기와 lint 오류를 제거했으며 actor-manager·spot-manager 회귀 게이트와 전체 Node runtime gate가 통과한다. Node 코드 커밋 `0abc8afac`, POSD 리팩토링 커밋 `285df6af1`. 전 언어 공통 항목이므로 다른 언어가 닫힐 때까지 체크박스는 열린 상태로 둔다.
+- [x] **§12.20** (결함) — 응답에 packet name을 싣는다
+  - 근거: STREAM response·error header의 packet name을 비우고 pending request를 request sequence로만 맞추며 진단 이름은 원 요청에서 가져오도록 wire와 관측 책임을 분리했다. 이름 있는 reply를 기대하면 실패하는 stream wire·connector·session 게이트가 통과한다. 커밋 `514db8195`.
+- [x] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
+  - 근거: request·actor join·worker의 기본 async는 Spot turn을 유지하고 명시적 `yield`만 실행 줄을 반납한 뒤 같은 줄에서 continuation을 재개한다. 자동 interleave를 허용하면 실패하는 entry-spot serial·actor-manager 게이트가 통과한다. 커밋 `7e167573a`.
+- [x] **§12.22** (결함+미구현) — HTTP client가 framework 계약 밖에 있다
+  - 근거: HTTP client에 server용 async·yield·callback terminator와 execution scheduler seam을 연결하고 Nest 명명 DI 등록을 제공하되 standalone client 표면과 분리했다. async/yield turn 동작과 DI 연결이 없으면 실패하는 HTTP client·Nest 게이트가 통과한다. 커밋 `a7f40be66`.
+- [x] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
+  - 근거: 동기 작업은 bounded worker-thread CPU 경계로, 비동기 작업은 thread를 점유하지 않는 I/O 경계로 분리하고 둘 모두 async·yield를 제공한다. 실행 종류·queue 포화·turn 유지와 반납을 검증하는 worker 게이트가 통과한다. 커밋 `64ec401c0`.
+- [x] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
+  - 근거: target commit 전에 caller turn에서 source leave를 준비하고 실패 시 복구한 뒤 성공 시에만 source를 정리하도록 join 순서를 바로잡았다. 이어 prepare·restore·commit의 시간적 상태를 `LocalActorSourceTransfer`에 모아 호출부의 mutable 분기를 제거했다. actor-manager·spot-manager 회귀 게이트와 전체 Node runtime gate가 통과한다. 코드 커밋 `0abc8afac`, POSD 리팩토링 커밋 `285df6af1`.
 
 본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
 

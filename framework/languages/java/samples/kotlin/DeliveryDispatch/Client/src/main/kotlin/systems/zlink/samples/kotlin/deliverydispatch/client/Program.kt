@@ -9,7 +9,6 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.util.Collections
 import java.util.concurrent.CompletionStage
-import java.util.concurrent.locks.LockSupport
 import kotlinx.coroutines.runBlocking
 import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.awaitReply
@@ -34,9 +33,9 @@ import systems.zlink.stream.connector.ZLinkStreamConnectorOptions
 import systems.zlink.stream.connector.ZLinkStreamDispatchMode
 import systems.zlink.stream.connector.ZLinkStreamMessage
 
-fun main(args: Array<String>) {
+fun main() {
     runBlocking {
-        DeliveryDispatchClientScenario().run(DeliveryDispatchClientOptions.parse(args))
+        DeliveryDispatchClientScenario().run()
     }
 }
 
@@ -44,68 +43,9 @@ class DeliveryDispatchClientScenario {
     private val json = ObjectMapper().registerModule(KotlinModule.Builder().build())
     private val http = HttpClient.newHttpClient()
 
-    suspend fun run(options: DeliveryDispatchClientOptions) {
-        if (!options.streamRuntime) {
-            options.roleUrls.forEach { (role, url) -> requireHealthy(role, url) }
-        }
+    suspend fun run() {
         println(SampleNames.TopologyReadyMarker)
-        if (options.streamRuntime) {
-            runStreamRuntime()
-        } else {
-            runScaffold(options)
-        }
-    }
-
-    private fun runScaffold(options: DeliveryDispatchClientOptions) {
-        val success = createDelivery(options, "delivery-success", "customer-a")
-        check(success.deliveryId == "delivery-success")
-        val successSubscription = subscribe(options, success.deliveryId)
-        check(successSubscription.deliveryId == success.deliveryId)
-        assertStatusOrder(
-            deliveryId = success.deliveryId,
-            expected = listOf(
-                DeliveryStatus.Assigned,
-                DeliveryStatus.Accepted,
-                DeliveryStatus.PickedUp,
-                DeliveryStatus.Delivered,
-            ),
-            actual = waitNotifications(options, success.deliveryId, 4),
-        )
-
-        val reassign = createDelivery(options, "delivery-reassign", "customer-b")
-        check(reassign.deliveryId == "delivery-reassign")
-        val reassignSubscription = subscribe(options, reassign.deliveryId)
-        check(reassignSubscription.deliveryId == reassign.deliveryId)
-        val reassignNotifications = waitNotifications(options, reassign.deliveryId, 4)
-        assertStatusOrder(
-            deliveryId = reassign.deliveryId,
-            expected = listOf(
-                DeliveryStatus.Assigned,
-                DeliveryStatus.Reassigned,
-                DeliveryStatus.Accepted,
-                DeliveryStatus.Delivered,
-            ),
-            actual = reassignNotifications,
-        )
-        check(reassignNotifications
-            .filter { it.status == DeliveryStatus.Accepted || it.status == DeliveryStatus.Delivered }
-            .all { it.courierId == "courier-b" })
-        check(readEvidence(options, "delivery-success").map { it.status } == listOf(
-            DeliveryStatus.Assigned,
-            DeliveryStatus.Accepted,
-            DeliveryStatus.PickedUp,
-            DeliveryStatus.Delivered,
-        ))
-        check(readEvidence(options, "delivery-reassign").map { it.status } == listOf(
-            DeliveryStatus.Assigned,
-            DeliveryStatus.Reassigned,
-            DeliveryStatus.Accepted,
-            DeliveryStatus.Delivered,
-        ))
-
-        println(SampleNames.ReassignmentMarker)
-        println(SampleNames.ServerEvidenceMarker)
-        println(SampleNames.CompletedMarker)
+        runStreamRuntime()
     }
 
     private suspend fun runStreamRuntime() {
@@ -290,38 +230,6 @@ class DeliveryDispatchClientScenario {
         println(SampleNames.ServerEvidenceMarker)
     }
 
-    private fun requireHealthy(role: String, baseUrl: String) {
-        val request = HttpRequest.newBuilder(URI.create("$baseUrl/health")).GET().build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        check(response.statusCode() == 200 && response.body().contains("$role=ready")) {
-            "$role health check failed: ${response.statusCode()} ${response.body()}"
-        }
-    }
-
-    private fun createDelivery(
-        options: DeliveryDispatchClientOptions,
-        deliveryId: String,
-        customerId: String,
-    ): CreateDeliveryRes {
-        val request = CreateDeliveryReq(
-            deliveryId = deliveryId,
-            customerId = customerId,
-            pickupAddress = "Kitchen",
-            dropoffAddress = "Customer door",
-        )
-        val response = http.send(
-            HttpRequest.newBuilder(URI.create(
-                "${options.roleUrls.getValue("dispatch")}/deliveries" +
-                    "?deliveryId=${request.deliveryId}&customerId=${request.customerId}",
-            )).POST(HttpRequest.BodyPublishers.noBody()).build(),
-            HttpResponse.BodyHandlers.ofString(),
-        )
-        check(response.statusCode() == 200) {
-            "create delivery failed: ${response.statusCode()} ${response.body()}"
-        }
-        return CreateDeliveryRes(request.deliveryId)
-    }
-
     private fun <TResponse> post(
         path: String,
         body: Any,
@@ -366,137 +274,4 @@ class DeliveryDispatchClientScenario {
             ),
         )
 
-    private fun subscribe(
-        options: DeliveryDispatchClientOptions,
-        deliveryId: String,
-    ): SubscribeDeliveryRes {
-        val request = SubscribeDeliveryReq(deliveryId)
-        val response = http.send(
-            HttpRequest.newBuilder(URI.create(
-                "${options.roleUrls.getValue("customergateway")}/subscribe?deliveryId=${request.deliveryId}",
-            )).POST(HttpRequest.BodyPublishers.noBody()).build(),
-            HttpResponse.BodyHandlers.ofString(),
-        )
-        check(response.statusCode() == 200) {
-            "subscribe failed: ${response.statusCode()} ${response.body()}"
-        }
-        return SubscribeDeliveryRes(request.deliveryId)
-    }
-
-    private fun waitNotifications(
-        options: DeliveryDispatchClientOptions,
-        deliveryId: String,
-        count: Int,
-    ): List<DeliveryStatusNotify> {
-        val deadline = System.nanoTime() + 5_000_000_000L
-        while (System.nanoTime() < deadline) {
-            val notifications = readNotifications(options, deliveryId)
-            if (notifications.size >= count) {
-                return notifications
-            }
-            LockSupport.parkNanos(50_000_000L)
-        }
-        error("timed out waiting for $deliveryId notifications")
-    }
-
-    private fun readNotifications(
-        options: DeliveryDispatchClientOptions,
-        deliveryId: String,
-    ): List<DeliveryStatusNotify> {
-        val response = http.send(
-            HttpRequest.newBuilder(URI.create(
-                "${options.roleUrls.getValue("customergateway")}/notifications?deliveryId=$deliveryId",
-            )).GET().build(),
-            HttpResponse.BodyHandlers.ofString(),
-        )
-        check(response.statusCode() == 200) {
-            "notification read failed: ${response.statusCode()} ${response.body()}"
-        }
-        return response.body()
-            .lineSequence()
-            .filter { it.isNotBlank() }
-            .map { lineToNotify(it) }
-            .toList()
-    }
-
-    private fun readEvidence(
-        options: DeliveryDispatchClientOptions,
-        deliveryId: String,
-    ): List<DeliveryStatusNotify> {
-        val response = http.send(
-            HttpRequest.newBuilder(URI.create(
-                "${options.roleUrls.getValue("tracking")}/evidence?deliveryId=$deliveryId",
-            )).GET().build(),
-            HttpResponse.BodyHandlers.ofString(),
-        )
-        check(response.statusCode() == 200) {
-            "evidence read failed: ${response.statusCode()} ${response.body()}"
-        }
-        return response.body()
-            .lineSequence()
-            .filter { it.isNotBlank() }
-            .map { lineToNotify(it) }
-            .toList()
-    }
-
-    private fun lineToNotify(line: String): DeliveryStatusNotify {
-        val parts = line.split("|")
-        require(parts.size == 5) { "invalid evidence line: $line" }
-        return DeliveryStatusNotify(
-            deliveryId = parts[0],
-            status = DeliveryStatus.valueOf(parts[2]),
-            courierId = parts[3],
-            occurredAt = java.time.Instant.parse(parts[4]),
-        )
-    }
-
-    private fun assertStatusOrder(
-        deliveryId: String,
-        expected: List<DeliveryStatus>,
-        actual: List<DeliveryStatusNotify>,
-    ) {
-        check(actual.map { it.status } == expected) {
-            "$deliveryId status order mismatch: ${actual.map { it.status }}"
-        }
-    }
-}
-
-data class DeliveryDispatchClientOptions(
-    val roleUrls: Map<String, String>,
-    val streamRuntime: Boolean,
-) {
-    companion object {
-        fun parse(args: Array<String>): DeliveryDispatchClientOptions {
-            val values = mutableMapOf<String, String>()
-            var index = 0
-            while (index < args.size) {
-                if (args[index] == "--role-url" && index + 1 < args.size) {
-                    val parts = args[index + 1].split("=", limit = 2)
-                    require(parts.size == 2) { "--role-url expects role=url" }
-                    values[parts[0]] = parts[1]
-                    index += 2
-                } else if (args[index] == "--stream-runtime") {
-                    index += 1
-                } else {
-                    index += 1
-                }
-            }
-            val required = listOf(
-                "registry",
-                "tracking",
-                "customergateway",
-                "couriersession",
-                "courierspotnode1",
-                "courierspotnode2",
-                "couriergateway",
-                "dispatch",
-            )
-            if (!args.contains("--stream-runtime")) {
-                required.forEach { role ->
-                    require(values.containsKey(role)) { "missing --role-url for $role" }
-                }
-            }
-            return DeliveryDispatchClientOptions(values, args.contains("--stream-runtime"))
-        }
-    }
 }

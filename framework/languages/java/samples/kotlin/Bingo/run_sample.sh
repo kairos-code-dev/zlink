@@ -3,6 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+client_source="Client/src/main/kotlin/systems/zlink/samples/kotlin/bingo/client/BingoClientScenario.kt"
+for assertion in \
+  'client1Card.state.players.all { player -> player.card.size == 9 }' \
+  'client2Drawn.state == client1Drawn.state' \
+  'reward.drawSeq == drawnNumbers.last().drawSeq'; do
+  if ! grep -Fq "${assertion}" "${client_source}"; then
+    echo "Bingo client release assertion missing: ${assertion}" >&2
+    exit 1
+  fi
+done
+
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
 

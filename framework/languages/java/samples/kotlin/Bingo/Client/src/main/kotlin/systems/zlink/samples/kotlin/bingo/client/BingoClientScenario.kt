@@ -74,11 +74,17 @@ class BingoClientScenario {
 
         val join = client1SawClient2Join.await().payload()
         ensure(join.actorId == client2Auth.actorId)
+        ensure(join.roomId == client1Match.roomId)
+        ensure(join.state.players.map { player -> player.actorId }.toSet() ==
+            setOf(client1Auth.actorId, client2Auth.actorId))
         ensure(client2.receivedCount(SampleNames.PlayerJoinedPacket) == 0)
         ensure(client1Started.await().payload().state.status == "Running")
 
         val client2Card = client2.request(SubmitBingoCardReq(client2Match.roomId, BingoClientCards.Player2)).await<SubmitBingoCardRes>()
         ensure(client2Card.state.status == "Running")
+        ensure(client2Card.state.players
+            .single { player -> player.actorId == client2Auth.actorId }
+            .card.size == 9)
 
         val rewardAnnounced = observer.waitFor<BingoRewardAnnouncedNotify>()
             .where { message -> message.payload().roomId == client1Match.roomId }
@@ -103,6 +109,8 @@ class BingoClientScenario {
 
         val client1Card = client1.request(SubmitBingoCardReq(client1Match.roomId, BingoClientCards.Player1)).await<SubmitBingoCardRes>()
         ensure(client1Card.state.status == "Running")
+        ensure(client1Card.state.players.size == 2)
+        ensure(client1Card.state.players.all { player -> player.card.size == 9 })
 
         val drawnNumbers = mutableListOf<BingoNumberDrawnNotify>()
         for (drawSeq in 1..15) {
@@ -112,6 +120,7 @@ class BingoClientScenario {
             ensure(client1Drawn.drawSeq == drawSeq)
             ensure(client2Drawn.drawSeq == drawSeq)
             ensure(client2Drawn.number == client1Drawn.number)
+            ensure(client2Drawn.state == client1Drawn.state)
 
             if (client1Drawn.state.status == "Finished") {
                 break
@@ -136,7 +145,9 @@ class BingoClientScenario {
         ensure(client1Result.players.all { player -> player.marks[4] })
 
         val reward = rewardAnnounced.await().payload()
+        ensure(reward.roomId == client1Match.roomId)
         ensure(reward.actorId == client1Auth.actorId)
+        ensure(reward.drawSeq == drawnNumbers.last().drawSeq)
         ensure(reward.itemId == "rare-golden-dauber")
         ensure(reward.itemName == "Golden Dauber")
         ensure(reward.rarity == "Legendary")

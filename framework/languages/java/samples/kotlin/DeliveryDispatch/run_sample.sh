@@ -18,6 +18,11 @@ if ! rg -q 'statuses.arrivals.toList\(\) == expected' \
   echo "Client must assert notification arrival order" >&2
   exit 1
 fi
+if rg -n 'runScaffold|waitNotifications|readNotifications|--stream-runtime' \
+    Client/src/main/kotlin --glob '*.kt'; then
+  echo "DeliveryDispatch client must use the stream connector path only" >&2
+  exit 1
+fi
 
 source "../../runner-common.sh"
 ZLINK_SAMPLE_GRADLE_SETTINGS_ARGS=(--settings-file standalone.settings.gradle.kts)
@@ -144,7 +149,7 @@ pids+=("$!")
 wait_port "$(endpoint_host "${dispatch_http}")" "$(endpoint_port "${dispatch_http}")"
 
 echo "topology=ready"
-JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" --stream-runtime >"${log_dir}/client.log" 2>&1
+JAVA_TOOL_OPTIONS="${common_java_options}" "$(app_bin Client Client)" >"${log_dir}/client.log" 2>&1
 cat "${log_dir}/client.log"
 
 grep -q "deliverydispatch-reassignment=completed" "${log_dir}/client.log"

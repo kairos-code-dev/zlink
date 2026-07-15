@@ -35,8 +35,11 @@ import {
 } from '../execution';
 import {
   createDiagnosticsContext,
+  createInboundFlow,
+  currentOrCreateFlow,
   DefaultZLinkRuntimeEventPublisher,
   flowIfEnabled,
+  runWithFlow,
   type ZLinkDiagnosticsContext,
   type ZLinkMessageFlowModeCell,
   ZLinkRuntimeMetrics
@@ -318,6 +321,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   }
 
   async start(): Promise<void> {
+    await this.runLifecycle(() => this.startCore());
+  }
+
+  private async startCore(): Promise<void> {
     if (this.state !== undefined) {
       return;
     }
@@ -397,6 +404,10 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   }
 
   async stop(): Promise<void> {
+    await this.runLifecycle(() => this.stopCore());
+  }
+
+  private async stopCore(): Promise<void> {
     const state = this.state;
     if (state === undefined) {
       return;
@@ -440,7 +451,7 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
     if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
       return Promise.reject(new TypeError('Drain deadlineMs must be greater than zero.'));
     }
-    this.drainOperation ??= this.performDrain(deadlineMs).then((result) => {
+    this.drainOperation ??= this.runLifecycle(() => this.performDrain(deadlineMs)).then((result) => {
       for (const resolve of this.drainedWaiters.splice(0)) resolve(result);
       return result;
     });
@@ -806,7 +817,18 @@ export class ZLinkFrameworkRuntimeHost implements ZLinkFrameworkRuntime, ZLinkMe
   }
 
   private flowCreationEnabled(): boolean {
-    return this.messageFlowModeCell.mode !== ZLinkMessageFlowLogMode.Off;
+    const mode = this.state === undefined
+      ? this.options.registration.dispatch?.diagnostics.messageFlow ?? ZLinkMessageFlowLogMode.ErrorsOnly
+      : this.messageFlowModeCell.mode;
+    return mode !== ZLinkMessageFlowLogMode.Off;
+  }
+
+  private runLifecycle<T>(operation: () => T): T {
+    const current = currentOrCreateFlow('Lifecycle', false);
+    const flow = current?.flowOrigin === 'Lifecycle'
+      ? current
+      : createInboundFlow(undefined, 'Lifecycle', this.flowCreationEnabled());
+    return runWithFlow(flow, operation);
   }
 
   requirePrimarySpotNode(): ZLinkBackendSpotNode {

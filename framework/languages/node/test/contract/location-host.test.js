@@ -3,6 +3,7 @@ const test = require('node:test');
 
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
+const flowContext = require('../../packages/framework/dist/runtime/diagnostics/flow-context');
 const nestjs = require('../../packages/nestjs/dist');
 
 test('framework and NestJS builders register in-memory and integrated location stores', async () => {
@@ -110,6 +111,34 @@ test('framework runtime host starts location runtime and injects lifecycle into 
     'spot:dispose',
     'context:dispose'
   ]);
+});
+
+test('framework host startup begins a lifecycle flow', async () => {
+  const calls = [];
+  const backendAdapterFactory = fakeBackendAdapterFactory(calls, rid('lifecycle-node'));
+  const createChannelAdapter = backendAdapterFactory.createChannelAdapter;
+  let startupFlow;
+  backendAdapterFactory.createChannelAdapter = () => {
+    startupFlow = flowContext.currentOrCreateFlow('Lifecycle', false);
+    return createChannelAdapter();
+  };
+  const runtime = new framework.ZLinkFrameworkRuntimeHost({
+    registration: framework.createFrameworkRegistration({
+      dispatch: {
+        diagnostics: {
+          messageFlow: framework.ZLinkMessageFlowLogMode.KeyTransitions,
+          sampleRate: 1,
+          includeMessageSizes: false
+        }
+      }
+    })
+  }, { backendAdapterFactory });
+
+  await runtime.start();
+  await runtime.stop();
+
+  assert.equal(startupFlow?.flowOrigin, 'Lifecycle');
+  assert.match(startupFlow?.flowId ?? '', /^[0-9a-f-]{36}$/);
 });
 
 test('framework runtime host starts channel auto-connect loops from location peers', async () => {

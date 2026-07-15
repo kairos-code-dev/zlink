@@ -125,4 +125,30 @@ final class ZLinkAsyncSerialQueueTest {
 
         assertEquals(flow.flowId(), observed.get(3, TimeUnit.SECONDS));
     }
+
+    @Test
+    void retainedTurnContinuationCanExplicitlyYield() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Void> afterYield = new CompletableFuture<>();
+        CompletableFuture<Void> firstStarted = new CompletableFuture<>();
+        CompletableFuture<Void> secondStarted = new CompletableFuture<>();
+
+        CompletableFuture<Void> first = queue.enqueue(() -> {
+            firstStarted.complete(null);
+            return ZLinkAsyncSerialQueue.manageCurrent(remote)
+                .thenCompose(ignored -> ZLinkAsyncSerialQueue.yieldCurrent(afterYield));
+        }).toCompletableFuture();
+        queue.enqueue(() -> {
+            secondStarted.complete(null);
+            return CompletableFuture.completedFuture(null);
+        });
+
+        firstStarted.get(3, TimeUnit.SECONDS);
+        CompletableFuture.runAsync(() -> remote.complete(null)).join();
+        secondStarted.get(3, TimeUnit.SECONDS);
+        assertFalse(first.isDone());
+        afterYield.complete(null);
+        first.get(3, TimeUnit.SECONDS);
+    }
 }

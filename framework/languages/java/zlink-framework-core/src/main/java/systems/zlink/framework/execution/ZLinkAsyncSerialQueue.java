@@ -93,11 +93,45 @@ public final class ZLinkAsyncSerialQueue {
     public static <T> CompletionStage<T> manageCurrent(CompletionStage<T> stage) {
         java.util.Objects.requireNonNull(stage, "stage");
         ZLinkAsyncSerialQueue queue = CURRENT.get();
-        if (queue == null || !queue.releaseOnIncompleteStage) {
+        if (queue == null) {
             return stage;
         }
         ZLinkFlowContext.State flow = ZLinkFlowContext.current();
         CompletableFuture<T> managed = new CompletableFuture<>();
+        if (!queue.releaseOnIncompleteStage) {
+            CompletableFuture<Void> gate = CURRENT_GATE.get();
+            stage.whenComplete((value, error) -> HANDLER_EXECUTOR.execute(() -> {
+                ZLinkAsyncSerialQueue previous = CURRENT.get();
+                CompletableFuture<Void> previousGate = CURRENT_GATE.get();
+                CURRENT.set(queue);
+                if (gate == null) {
+                    CURRENT_GATE.remove();
+                } else {
+                    CURRENT_GATE.set(gate);
+                }
+                try (ZLinkFlowContext.Scope ignored = flow == null
+                    ? () -> { }
+                    : ZLinkFlowContext.enter(flow)) {
+                    if (error != null) {
+                        managed.completeExceptionally(error);
+                    } else {
+                        managed.complete(value);
+                    }
+                } finally {
+                    if (previous == null) {
+                        CURRENT.remove();
+                    } else {
+                        CURRENT.set(previous);
+                    }
+                    if (previousGate == null) {
+                        CURRENT_GATE.remove();
+                    } else {
+                        CURRENT_GATE.set(previousGate);
+                    }
+                }
+            }));
+            return managed;
+        }
         stage.whenComplete((value, error) -> queue.enqueue(() -> {
             try (ZLinkFlowContext.Scope ignored = flow == null
                 ? () -> { }

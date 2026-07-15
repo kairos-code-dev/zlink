@@ -1,3 +1,4 @@
+// Verifies a timer callback cannot reenter before its current callback completes.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

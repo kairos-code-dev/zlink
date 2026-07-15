@@ -110,8 +110,7 @@ start_node() {
     --router-endpoint "$router" \
     --evidence-file "$LOG_DIR/${rid}.evidence.log" \
     --log-dir "$LOG_DIR"
-  ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1 \
-    setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
+  setsid dotnet run --no-build --project "$SERVER_PROJECT" -- --config "$config" \
     >>"$LOG_DIR/${rid}.stdout.log" 2>>"$LOG_DIR/${rid}.stderr.log" &
   pids+=("$!")
 }

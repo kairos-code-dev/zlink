@@ -53,20 +53,6 @@ function Remove-SampleRedisContainer {
     Invoke-SampleDockerCommand -Arguments @("rm", "-fv", $ContainerId) -AllowFailure | Out-Null
 }
 
-function Remove-SampleRedisScope {
-    param([Parameter(Mandatory = $true)][string]$Scope)
-
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return }
-    $listed = Invoke-SampleDockerCommand -Arguments @("ps", "-a", "--format", "{{.ID}} {{.Names}}")
-    foreach ($line in @($listed.StdOut -split "`r?`n")) {
-        if (-not $line) { continue }
-        $parts = $line -split "\s+", 2
-        if ($parts.Count -eq 2 -and $parts[1].StartsWith($Scope, [StringComparison]::Ordinal)) {
-            Remove-SampleRedisContainer $parts[0]
-        }
-    }
-}
-
 function Start-SampleRedisContainer {
     param(
         [Parameter(Mandatory = $true)][string]$Scope,

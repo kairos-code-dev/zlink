@@ -1,3 +1,4 @@
+// Verifies shutdown cancels an outstanding await without hanging the host.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

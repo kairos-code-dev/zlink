@@ -1,3 +1,4 @@
+// Verifies terminator behavior when the target Spot is remote.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

@@ -1,3 +1,4 @@
+// Provides the shared multi-node routing probe used by SpotService routing scenarios.
 using SpotService.Client.Support;
 using SpotService.Shared;
 using Zlink.HttpClient;

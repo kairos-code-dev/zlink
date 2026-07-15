@@ -1,3 +1,4 @@
+// Coordinates execution-turn scenarios over their shared deployment and client connection.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 using Zlink.Framework.Contracts.Actors;

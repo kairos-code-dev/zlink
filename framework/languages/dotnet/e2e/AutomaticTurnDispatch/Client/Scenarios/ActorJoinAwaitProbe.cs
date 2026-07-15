@@ -1,3 +1,4 @@
+// Verifies actor join completion without blocking unrelated work.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

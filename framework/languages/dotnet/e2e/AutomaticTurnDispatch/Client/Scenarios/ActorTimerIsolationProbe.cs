@@ -1,3 +1,4 @@
+// Verifies actor and timer mailboxes remain isolated during yield.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

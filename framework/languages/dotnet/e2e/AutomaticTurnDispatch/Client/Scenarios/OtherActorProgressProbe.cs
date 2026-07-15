@@ -1,3 +1,4 @@
+// Verifies another actor progresses while the selected actor has yielded.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

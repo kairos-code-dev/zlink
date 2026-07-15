@@ -1,3 +1,4 @@
+// Exercises one terminator and returns its observable evidence.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

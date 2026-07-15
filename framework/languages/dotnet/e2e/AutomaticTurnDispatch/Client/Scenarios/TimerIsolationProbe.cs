@@ -1,3 +1,4 @@
+// Verifies timer progress while another callback has yielded its turn.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

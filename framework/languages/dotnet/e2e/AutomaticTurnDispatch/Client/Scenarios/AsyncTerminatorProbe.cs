@@ -1,3 +1,4 @@
+// Verifies completion ordering for an async terminator invocation.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

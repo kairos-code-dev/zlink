@@ -1,3 +1,4 @@
+// Verifies worker completion and the caller Spot's turn behavior.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

@@ -109,7 +109,20 @@ public sealed partial class RegressionTests
             Assert.Contains("rm -rf \"$CONFIG_DIR\"", source, StringComparison.Ordinal);
             Assert.Contains("write_role_config.py", source, StringComparison.Ordinal);
             Assert.DoesNotContain("env ZLINK_E2E_RID", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("ZLINK_DEBUG_FRAMEWORK_", source, StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public void PowerShellSampleRunnerCannotRemoveRedisBySharedPrefix()
+    {
+        var samplesRoot = Path.Combine(ResolveDotnetRoot(), "samples");
+        var helper = File.ReadAllText(Path.Combine(samplesRoot, "sample_runner.ps1"));
+        var aggregate = File.ReadAllText(Path.Combine(samplesRoot, "run_samples.ps1"));
+
+        Assert.DoesNotContain("Remove-SampleRedisScope", helper, StringComparison.Ordinal);
+        Assert.DoesNotContain("Remove-SampleRedisScope", aggregate, StringComparison.Ordinal);
+        Assert.Contains("Remove-SampleRedisContainer", helper, StringComparison.Ordinal);
     }
 
     [Fact]

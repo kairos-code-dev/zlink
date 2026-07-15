@@ -1,3 +1,4 @@
+// Captures the execution context observed when a continuation resumes.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

@@ -1,3 +1,4 @@
+// Verifies a timed-out request releases the turn for subsequent work.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

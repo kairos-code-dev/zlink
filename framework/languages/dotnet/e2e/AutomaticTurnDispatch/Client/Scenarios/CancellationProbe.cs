@@ -1,3 +1,4 @@
+// Verifies cancellation releases the active turn and permits recovery work.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

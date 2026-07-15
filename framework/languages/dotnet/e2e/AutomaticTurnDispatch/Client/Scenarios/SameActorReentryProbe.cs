@@ -1,3 +1,4 @@
+// Verifies a yielded actor callback does not permit same-actor reentry.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

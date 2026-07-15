@@ -1,3 +1,4 @@
+// Verifies actor awaiting through the session relay path.
 using AutomaticTurnDispatch.Client.Support;
 using AutomaticTurnDispatch.Shared;
 

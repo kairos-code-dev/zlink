@@ -9,18 +9,21 @@
 #include <future>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace zlink::stream_e2e_client
 {
 
 using zlink::stream_connector::codec_t;
 using zlink::stream_connector::connector_t;
+using zlink::stream_connector::expect_none_call_t;
 using zlink::stream_connector::metadata_t;
 using zlink::stream_connector::packet_t;
 using zlink::stream_connector::request_call_t;
 using zlink::stream_connector::result_t;
 using zlink::stream_connector::send_call_t;
 using zlink::stream_connector::wait_call_t;
+using zlink::stream_connector::wait_for_sequence_call_t;
 
 class coroutine_send_call_t
 {
@@ -184,6 +187,84 @@ template <typename TMessage> class coroutine_wait_call_t
     wait_call_t<TMessage> _inner;
 };
 
+template <typename TMessage> class coroutine_expect_none_call_t
+{
+  public:
+    explicit coroutine_expect_none_call_t (expect_none_call_t<TMessage> inner) :
+        _inner (std::move (inner))
+    {
+    }
+
+    coroutine_expect_none_call_t &within (std::chrono::milliseconds window)
+    {
+        _inner.within (window);
+        return *this;
+    }
+
+    result_t<void> submit () { return _inner.submit (); }
+
+    void submit (std::function<void (result_t<void>)> callback)
+    {
+        _inner.submit (std::move (callback));
+    }
+
+    task_t<void> async ()
+    {
+        auto task = task_t<void> (
+          [inner = std::move (_inner)] (std::function<void (result_t<void>)> callback) mutable {
+              inner.submit (std::move (callback));
+          });
+        task.start ();
+        return task;
+    }
+
+  private:
+    expect_none_call_t<TMessage> _inner;
+};
+
+template <typename TMessage> class coroutine_wait_for_sequence_call_t
+{
+  public:
+    explicit coroutine_wait_for_sequence_call_t (wait_for_sequence_call_t<TMessage> inner) :
+        _inner (std::move (inner))
+    {
+    }
+
+    coroutine_wait_for_sequence_call_t &expect (
+      std::function<bool (const TMessage &)> predicate)
+    {
+        _inner.expect (std::move (predicate));
+        return *this;
+    }
+
+    coroutine_wait_for_sequence_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        _inner.timeout (timeout);
+        return *this;
+    }
+
+    result_t<std::vector<TMessage>> submit () { return _inner.submit (); }
+
+    void submit (std::function<void (result_t<std::vector<TMessage>>)> callback)
+    {
+        _inner.submit (std::move (callback));
+    }
+
+    task_t<std::vector<TMessage>> async ()
+    {
+        auto task = task_t<std::vector<TMessage>> (
+          [inner = std::move (_inner)] (
+            std::function<void (result_t<std::vector<TMessage>>)> callback) mutable {
+              inner.submit (std::move (callback));
+          });
+        task.start ();
+        return task;
+    }
+
+  private:
+    wait_for_sequence_call_t<TMessage> _inner;
+};
+
 class coroutine_connector_t
 {
   public:
@@ -275,6 +356,44 @@ class coroutine_connector_t
     {
         return coroutine_wait_call_t<TMessage> (
           _connector->wait_for<TMessage> (std::move (packet_name), timeout));
+    }
+
+    coroutine_expect_none_call_t<packet_t> expect_none (std::string packet_name)
+    {
+        return coroutine_expect_none_call_t<packet_t> (
+          _connector->expect_none (std::move (packet_name)));
+    }
+
+    template <typename TMessage> coroutine_expect_none_call_t<TMessage> expect_none ()
+    {
+        return coroutine_expect_none_call_t<TMessage> (_connector->expect_none<TMessage> ());
+    }
+
+    template <typename TMessage>
+    coroutine_expect_none_call_t<TMessage> expect_none (std::string packet_name)
+    {
+        return coroutine_expect_none_call_t<TMessage> (
+          _connector->expect_none<TMessage> (std::move (packet_name)));
+    }
+
+    coroutine_wait_for_sequence_call_t<packet_t> wait_for_sequence (std::string packet_name)
+    {
+        return coroutine_wait_for_sequence_call_t<packet_t> (
+          _connector->wait_for_sequence (std::move (packet_name)));
+    }
+
+    template <typename TMessage>
+    coroutine_wait_for_sequence_call_t<TMessage> wait_for_sequence ()
+    {
+        return coroutine_wait_for_sequence_call_t<TMessage> (
+          _connector->wait_for_sequence<TMessage> ());
+    }
+
+    template <typename TMessage>
+    coroutine_wait_for_sequence_call_t<TMessage> wait_for_sequence (std::string packet_name)
+    {
+        return coroutine_wait_for_sequence_call_t<TMessage> (
+          _connector->wait_for_sequence<TMessage> (std::move (packet_name)));
     }
 
     lifecycle_call_t connect ()

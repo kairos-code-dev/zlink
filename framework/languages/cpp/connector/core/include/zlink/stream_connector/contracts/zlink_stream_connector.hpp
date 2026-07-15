@@ -121,6 +121,44 @@ class connector_t
         return wait_for<TMessage> (std::move (packet_name)).timeout (timeout);
     }
 
+    /// Starts a negative observation for an untyped packet name.
+    expect_none_call_t<packet_t> expect_none (std::string packet_name)
+    {
+        return expect_none<packet_t> (std::move (packet_name));
+    }
+
+    /// Starts a negative observation for the packet name resolved from TMessage.
+    template <typename TMessage> expect_none_call_t<TMessage> expect_none ()
+    {
+        return expect_none<TMessage> (detail::message_packet_name<TMessage> ());
+    }
+
+    /// Starts a typed negative observation for the given packet name.
+    template <typename TMessage> expect_none_call_t<TMessage> expect_none (std::string packet_name)
+    {
+        return expect_none_call_t<TMessage> (_state, std::move (packet_name));
+    }
+
+    /// Starts an ordered wait for untyped packets with the given name.
+    wait_for_sequence_call_t<packet_t> wait_for_sequence (std::string packet_name)
+    {
+        return wait_for_sequence<packet_t> (std::move (packet_name));
+    }
+
+    /// Starts an ordered wait for the packet name resolved from TMessage.
+    template <typename TMessage> wait_for_sequence_call_t<TMessage> wait_for_sequence ()
+    {
+        return wait_for_sequence<TMessage> (detail::message_packet_name<TMessage> ());
+    }
+
+    /// Starts a typed ordered wait for the given packet name.
+    template <typename TMessage>
+    wait_for_sequence_call_t<TMessage> wait_for_sequence (std::string packet_name)
+    {
+        return wait_for_sequence_call_t<TMessage> (
+          _state, std::move (packet_name), options ().wait_timeout);
+    }
+
     /// Registers a connection state callback owned by this connector.
     connector_t &
     on_connection_state_changed (std::function<void (const connection_state_changed_t &)> handler);

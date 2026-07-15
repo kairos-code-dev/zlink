@@ -45,6 +45,20 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::stream_connector::connector_t &> ().wait_for (
                    "packet", std::chrono::milliseconds (1))),
                  zlink::stream_connector::result_t<zlink::stream_connector::packet_t>>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::stream_connector::connector_t &> ()
+                           .expect_none<zlink::stream_connector::packet_t> ("packet")
+                           .within (std::chrono::milliseconds (1))
+                           .submit ()),
+               zlink::stream_connector::result_t<void>>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::stream_connector::connector_t &> ()
+                           .wait_for_sequence<zlink::stream_connector::packet_t> ("packet")
+                           .expect ([] (const zlink::stream_connector::packet_t &) { return true; })
+                           .timeout (std::chrono::milliseconds (1))
+                           .submit ()),
+               zlink::stream_connector::result_t<
+                 std::vector<zlink::stream_connector::packet_t>>>);
 namespace
 {
 
@@ -312,6 +326,18 @@ static_assert (
                              .wait_for<auto_payload_t> ()
                              .async ()),
                  zlink::stream_e2e_client::task_t<auto_payload_t>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
+                             .expect_none<auto_payload_t> ()
+                             .within (std::chrono::milliseconds (1))
+                             .async ()),
+                 zlink::stream_e2e_client::task_t<void>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
+                             .wait_for_sequence<auto_payload_t> ()
+                             .expect ([] (const auto_payload_t &) { return true; })
+                             .async ()),
+                 zlink::stream_e2e_client::task_t<std::vector<auto_payload_t>>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::stream_e2e_client::coroutine_connector_t &> ()
                              .wait_for<auto_payload_t> ()
@@ -1483,6 +1509,118 @@ int main ()
 
     connector.send (login_request_t{}).metadata ("trace", "t1").compress ().submit ();
     auto runtime = zlink::stream_connector::detail::connector_runtime_t::from (connector);
+    auto none_observed = connector.expect_none ("test.none")
+                           .within (std::chrono::milliseconds (5))
+                           .submit ();
+    if (!none_observed) {
+        return 193;
+    }
+    bool async_none_observed = false;
+    callback_latch_t async_none_latch;
+    connector.expect_none ("test.none.async")
+      .within (std::chrono::milliseconds (5))
+      .submit ([&] (zlink::stream_connector::result_t<void> result) {
+          async_none_observed = static_cast<bool> (result);
+          async_none_latch.signal ();
+      });
+    dispatch_until (connector, async_none_latch, std::chrono::milliseconds (100));
+    if (!async_none_observed) {
+        return 201;
+    }
+    runtime.receive_packet (
+      zlink::stream_connector::packet_t{"test.unexpected",
+                                        {},
+                                        zlink::stream_connector::codec_t::raw,
+                                        false,
+                                        zlink::message_t::from (std::string ("unexpected"))});
+    auto unexpected = connector.expect_none ("test.unexpected")
+                        .within (std::chrono::milliseconds (5))
+                        .submit ();
+    if (unexpected
+        || unexpected.error_code () != zlink::stream_connector::error_code_t::validation_failed) {
+        return 194;
+    }
+    for (const auto *payload : {"first", "second", "third"}) {
+        runtime.receive_packet (
+          zlink::stream_connector::packet_t{"test.sequence",
+                                            {},
+                                            zlink::stream_connector::codec_t::raw,
+                                            false,
+                                            zlink::message_t::from (std::string (payload))});
+    }
+    auto sequence = connector.wait_for_sequence ("test.sequence")
+                      .expect ([] (const zlink::stream_connector::packet_t &packet) {
+                          return packet.payload.to_string () == "first";
+                      })
+                      .expect ([] (const zlink::stream_connector::packet_t &packet) {
+                          return packet.payload.to_string () == "second";
+                      })
+                      .expect ([] (const zlink::stream_connector::packet_t &packet) {
+                          return packet.payload.to_string () == "third";
+                      })
+                      .timeout (std::chrono::milliseconds (20))
+                      .submit ();
+    if (!sequence || sequence.value ().size () != 3) {
+        return 195;
+    }
+    runtime.receive_packet (
+      zlink::stream_connector::packet_t{"test.out-of-order",
+                                        {},
+                                        zlink::stream_connector::codec_t::raw,
+                                        false,
+                                        zlink::message_t::from (std::string ("second"))});
+    auto out_of_order = connector.wait_for_sequence ("test.out-of-order")
+                          .expect ([] (const zlink::stream_connector::packet_t &packet) {
+                              return packet.payload.to_string () == "first";
+                          })
+                          .timeout (std::chrono::milliseconds (20))
+                          .submit ();
+    if (out_of_order
+        || out_of_order.error_code ()
+             != zlink::stream_connector::error_code_t::validation_failed) {
+        return 196;
+    }
+    int action_invocations = 0;
+    auto asserted_error = zlink::stream_connector::assertions::expect_failure (
+      [&] {
+          ++action_invocations;
+          return zlink::stream_connector::result_t<void>::failure (
+            zlink::stream_connector::error_code_t::validation_failed, "expected failure");
+      },
+      zlink::stream_connector::error_code_t::validation_failed);
+    if (action_invocations != 1
+        || asserted_error.code != zlink::stream_connector::error_code_t::validation_failed) {
+        return 197;
+    }
+    auto timeout_error = zlink::stream_connector::assertions::expect_timeout ([] {
+        return zlink::stream_connector::result_t<void>::failure (
+          zlink::stream_connector::error_code_t::request_timeout, "expected timeout");
+    });
+    if (timeout_error.code != zlink::stream_connector::error_code_t::request_timeout) {
+        return 198;
+    }
+    bool non_timeout_rethrown = false;
+    try {
+        (void) zlink::stream_connector::assertions::expect_timeout ([] {
+            return zlink::stream_connector::result_t<void>::failure (
+              zlink::stream_connector::error_code_t::disconnected, "not a timeout");
+        });
+    } catch (const zlink::stream_connector::assertions::failure_t &failure) {
+        non_timeout_rethrown =
+          failure.error ().code == zlink::stream_connector::error_code_t::disconnected;
+    }
+    if (!non_timeout_rethrown) {
+        return 199;
+    }
+    bool ensure_message_required = false;
+    try {
+        zlink::stream_connector::assertions::ensure (true, "");
+    } catch (const std::invalid_argument &) {
+        ensure_message_required = true;
+    }
+    if (!ensure_message_required) {
+        return 200;
+    }
     if (runtime.sent_packets ().size () != 1
         || runtime.sent_packets ()[0].name != login_request_t::packet_name
         || runtime.sent_packets ()[0].codec != zlink::stream_connector::codec_t::json
@@ -2400,6 +2538,14 @@ int main ()
     auto immediate = zlink::stream_connector::connector_factory_t::create (immediate_options);
     if (!immediate.connect ()) {
         return 9;
+    }
+    auto immediate_coroutine = zlink::stream_e2e_client::use (immediate);
+    auto immediate_none = immediate_coroutine.expect_none ("server.none.coroutine")
+                            .within (std::chrono::milliseconds (5))
+                            .async ()
+                            .result ();
+    if (!immediate_none) {
+        return 202;
     }
     int immediate_count = 0;
     immediate.on<zlink::stream_connector::packet_t> (

@@ -12,10 +12,12 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace zlink::stream_connector
 {
@@ -383,6 +385,311 @@ template <typename TMessage> class wait_call_t
     std::string _packet_name;
     std::chrono::milliseconds _timeout{0};
     std::function<bool (const TMessage &)> _predicate;
+};
+
+template <typename TMessage> class expect_none_call_t
+{
+  public:
+    expect_none_call_t () = default;
+
+    /// Sets the observation window in which the packet must not arrive.
+    expect_none_call_t &within (std::chrono::milliseconds window)
+    {
+        _window = window;
+        _has_window = true;
+        return *this;
+    }
+
+    /// Observes the receive queue for the configured window.
+    result_t<void> submit ()
+    {
+        if (auto invalid = validation_error ()) {
+            return result_t<void>::failure (invalid->code, std::move (invalid->message));
+        }
+
+        auto packet = detail::submit_wait (_state, _packet_name, {}, _window);
+        return evaluate (std::move (packet));
+    }
+
+    /// Observes the receive queue and invokes the callback with the assertion result.
+    void submit (std::function<void (result_t<void>)> callback)
+    {
+        if (auto invalid = validation_error ()) {
+            if (callback) {
+                callback (result_t<void>::failure (invalid->code, std::move (invalid->message)));
+            }
+            return;
+        }
+        detail::submit_wait_async (
+          _state, std::move (_packet_name), {}, _window,
+          [callback = std::move (callback)] (result_t<packet_t> packet) mutable {
+              if (callback) {
+                  callback (evaluate (std::move (packet)));
+              }
+          });
+    }
+
+  private:
+    friend class connector_t;
+
+    expect_none_call_t (std::shared_ptr<void> state, std::string packet_name) :
+        _state (std::move (state)), _packet_name (std::move (packet_name))
+    {
+    }
+
+    static result_t<void> evaluate (result_t<packet_t> packet)
+    {
+        if (!packet && packet.error_code () == error_code_t::request_timeout) {
+            return result_t<void>::success ();
+        }
+        if (!packet) {
+            return result_t<void>::failure (
+              packet.error_code (),
+              packet.error () ? packet.error ()->message : "expect-none observation failed");
+        }
+        return result_t<void>::failure (error_code_t::validation_failed,
+                                        "an unexpected packet arrived during the observation window");
+    }
+
+    std::optional<error_t> validation_error () const
+    {
+        if (!_state) {
+            return error_t{error_code_t::configuration_error,
+                           "expect-none call has no connector"};
+        }
+        if (!_has_window || _window <= std::chrono::milliseconds::zero ()) {
+            return error_t{error_code_t::validation_failed,
+                           "expect-none requires a positive observation window"};
+        }
+        return std::nullopt;
+    }
+
+    std::shared_ptr<void> _state;
+    std::string _packet_name;
+    std::chrono::milliseconds _window{0};
+    bool _has_window = false;
+};
+
+template <typename TMessage> class wait_for_sequence_call_t
+{
+  public:
+    wait_for_sequence_call_t () = default;
+
+    /// Appends the next payload predicate in required arrival order.
+    wait_for_sequence_call_t &expect (std::function<bool (const TMessage &)> predicate)
+    {
+        _predicates.push_back (std::move (predicate));
+        return *this;
+    }
+
+    /// Sets one overall deadline for the complete sequence.
+    wait_for_sequence_call_t &timeout (std::chrono::milliseconds timeout)
+    {
+        _timeout = timeout;
+        return *this;
+    }
+
+    /// Waits for same-name packets and verifies each payload in arrival order.
+    result_t<std::vector<TMessage>> submit ()
+    {
+        if (auto invalid = validation_error (_state, _predicates, _timeout)) {
+            return failure (invalid->code, std::move (invalid->message));
+        }
+
+        std::vector<TMessage> messages;
+        messages.reserve (_predicates.size ());
+        const auto deadline = std::chrono::steady_clock::now () + _timeout;
+        for (const auto &predicate : _predicates) {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline) {
+                return failure (error_code_t::request_timeout,
+                                "stream connector sequence wait timed out");
+            }
+            auto packet = detail::submit_wait (
+              _state, _packet_name, {},
+              std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now));
+            if (!packet) {
+                return failure (packet.error_code (),
+                                packet.error () ? packet.error ()->message
+                                                : "stream connector sequence wait failed");
+            }
+            auto accepted = accept_packet (std::move (packet.value ()), predicate, messages);
+            if (!accepted) {
+                return failure (accepted.error_code (), accepted.error ()->message);
+            }
+        }
+        return result_t<std::vector<TMessage>>::success (std::move (messages));
+    }
+
+    /// Waits for the sequence and invokes the callback with the ordered payloads.
+    void submit (std::function<void (result_t<std::vector<TMessage>>)> callback)
+    {
+        auto operation = std::make_shared<async_operation_t> (
+          _state, std::move (_packet_name), std::move (_predicates), _timeout,
+          std::move (callback));
+        operation->start ();
+    }
+
+  private:
+    friend class connector_t;
+
+    using sequence_result_t = result_t<std::vector<TMessage>>;
+
+    struct async_operation_t : std::enable_shared_from_this<async_operation_t>
+    {
+        async_operation_t (std::shared_ptr<void> state_value,
+                           std::string packet_name_value,
+                           std::vector<std::function<bool (const TMessage &)>> predicates_value,
+                           std::chrono::milliseconds timeout_value,
+                           std::function<void (sequence_result_t)> callback_value) :
+            state (std::move (state_value)),
+            packet_name (std::move (packet_name_value)),
+            predicates (std::move (predicates_value)),
+            timeout (timeout_value),
+            callback (std::move (callback_value))
+        {
+        }
+
+        void start ()
+        {
+            if (auto invalid = validation_error (state, predicates, timeout)) {
+                complete (failure (invalid->code, std::move (invalid->message)));
+                return;
+            }
+            messages.reserve (predicates.size ());
+            deadline = std::chrono::steady_clock::now () + timeout;
+            advance ();
+        }
+
+        void advance ()
+        {
+            const auto now = std::chrono::steady_clock::now ();
+            if (now >= deadline) {
+                complete (failure (error_code_t::request_timeout,
+                                   "stream connector sequence wait timed out"));
+                return;
+            }
+            auto self = this->shared_from_this ();
+            detail::submit_wait_async (
+              state, packet_name, {},
+              std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now),
+              [self = std::move (self)] (result_t<packet_t> packet) mutable {
+                  self->received (std::move (packet));
+              });
+        }
+
+        void received (result_t<packet_t> packet)
+        {
+            if (!packet) {
+                complete (failure (packet.error_code (),
+                                   packet.error () ? packet.error ()->message
+                                                   : "stream connector sequence wait failed"));
+                return;
+            }
+            const auto &predicate = predicates[index];
+            auto accepted = accept_packet (std::move (packet.value ()), predicate, messages);
+            if (!accepted) {
+                complete (failure (accepted.error_code (), accepted.error ()->message));
+                return;
+            }
+            ++index;
+            if (index == predicates.size ()) {
+                complete (sequence_result_t::success (std::move (messages)));
+                return;
+            }
+            advance ();
+        }
+
+        void complete (sequence_result_t result)
+        {
+            auto completed = std::move (callback);
+            if (completed) {
+                completed (std::move (result));
+            }
+        }
+
+        std::shared_ptr<void> state;
+        std::string packet_name;
+        std::vector<std::function<bool (const TMessage &)>> predicates;
+        std::chrono::milliseconds timeout;
+        std::function<void (sequence_result_t)> callback;
+        std::chrono::steady_clock::time_point deadline{};
+        std::vector<TMessage> messages;
+        std::size_t index = 0;
+    };
+
+    wait_for_sequence_call_t (std::shared_ptr<void> state,
+                              std::string packet_name,
+                              std::chrono::milliseconds default_timeout) :
+        _state (std::move (state)),
+        _packet_name (std::move (packet_name)),
+        _timeout (default_timeout)
+    {
+    }
+
+    static result_t<TMessage> decode (packet_t packet)
+    {
+        if constexpr (std::is_same_v<TMessage, packet_t>) {
+            return result_t<TMessage>::success (std::move (packet));
+        } else {
+            try {
+                TMessage message{};
+                detail::apply_packet_payload (message, packet.codec, packet.payload, 0);
+                return result_t<TMessage>::success (std::move (message));
+            } catch (const std::exception &error) {
+                return result_t<TMessage>::failure (error_code_t::frame_decode_failed,
+                                                    error.what ());
+            }
+        }
+    }
+
+    static result_t<void> accept_packet (
+      packet_t packet,
+      const std::function<bool (const TMessage &)> &predicate,
+      std::vector<TMessage> &messages)
+    {
+        auto decoded = decode (std::move (packet));
+        if (!decoded) {
+            return result_t<void>::failure (decoded.error_code (), decoded.error ()->message);
+        }
+        if (!predicate || !predicate (decoded.value ())) {
+            return result_t<void>::failure (
+              error_code_t::validation_failed,
+              "packet payload arrived out of the expected sequence");
+        }
+        messages.push_back (std::move (decoded.value ()));
+        return result_t<void>::success ();
+    }
+
+    static std::optional<error_t> validation_error (
+      const std::shared_ptr<void> &state,
+      const std::vector<std::function<bool (const TMessage &)>> &predicates,
+      std::chrono::milliseconds timeout)
+    {
+        if (!state) {
+            return error_t{error_code_t::configuration_error,
+                           "sequence wait call has no connector"};
+        }
+        if (predicates.empty ()) {
+            return error_t{error_code_t::validation_failed,
+                           "sequence wait requires at least one expectation"};
+        }
+        if (timeout <= std::chrono::milliseconds::zero ()) {
+            return error_t{error_code_t::validation_failed,
+                           "sequence wait requires a positive timeout"};
+        }
+        return std::nullopt;
+    }
+
+    static sequence_result_t failure (error_code_t code, std::string message)
+    {
+        return sequence_result_t::failure (code, std::move (message));
+    }
+
+    std::shared_ptr<void> _state;
+    std::string _packet_name;
+    std::vector<std::function<bool (const TMessage &)>> _predicates;
+    std::chrono::milliseconds _timeout{0};
 };
 
 } // namespace zlink::stream_connector

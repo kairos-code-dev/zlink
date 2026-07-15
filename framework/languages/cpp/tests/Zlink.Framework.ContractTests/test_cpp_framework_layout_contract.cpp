@@ -644,6 +644,38 @@ bool observability_ops_uses_role_specific_entrypoints (const std::filesystem::pa
     return ok;
 }
 
+bool spot_actor_transfer_uses_role_specific_entrypoints (const std::filesystem::path &root)
+{
+    const auto scenario = root / "e2e/SpotActorTransfer";
+    bool ok = true;
+    for (const auto &relative : {"Server/ActorNode/main.cpp", "Server/Session/main.cpp"}) {
+        if (!std::filesystem::is_regular_file (scenario / relative)) {
+            std::cerr << "SpotActorTransfer requires a role-specific entrypoint: "
+                      << (scenario / relative) << '\n';
+            ok = false;
+        }
+    }
+    std::ifstream cmake_input (root / "CMakeLists.txt");
+    const std::string cmake ((std::istreambuf_iterator<char> (cmake_input)),
+                             std::istreambuf_iterator<char> ());
+    for (const auto *target : {"zlink_cpp_e2e_spot_actor_transfer_actor_node",
+                               "zlink_cpp_e2e_spot_actor_transfer_session"}) {
+        if (cmake.find (target) == std::string::npos) {
+            std::cerr << "SpotActorTransfer CMake target is missing: " << target << '\n';
+            ok = false;
+        }
+    }
+    std::ifstream runner_input (scenario / "run_e2e.sh");
+    const std::string runner ((std::istreambuf_iterator<char> (runner_input)),
+                              std::istreambuf_iterator<char> ());
+    if (runner.find ('\"' + std::string ("role") + '\"') != std::string::npos
+        || runner.find ("zlink_cpp_e2e_spot_actor_transfer_node") != std::string::npos) {
+        std::cerr << "SpotActorTransfer must not select ActorNode/Session through config\n";
+        ok = false;
+    }
+    return ok;
+}
+
 bool sample_server_code_does_not_block_on_task_result (const std::filesystem::path &root)
 {
     bool ok = true;
@@ -1607,6 +1639,7 @@ int main ()
     ok &= sample_and_e2e_code_does_not_read_the_environment (root);
     ok &= runner_generated_config_files_are_private_and_cleaned (root);
     ok &= observability_ops_uses_role_specific_entrypoints (root);
+    ok &= spot_actor_transfer_uses_role_specific_entrypoints (root);
     ok &= file_does_not_contain (
       root / "e2e/run_e2e_all.sh", "exec env E2E_START_ORDER=",
       "the aggregate E2E runner must pass start order as a runner option, not an environment variable");

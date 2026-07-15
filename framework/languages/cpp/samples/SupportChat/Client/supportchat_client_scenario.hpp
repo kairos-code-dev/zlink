@@ -25,7 +25,7 @@ class supportchat_client_scenario_t
 {
   public:
     /* 공통 sample spec §1: client는 Session stream 하나만 사용한다. 서버 내부 불변식
-     * (상담원 가용성, 대화 순서 등) 검증은 probe 프로세스가 Support self-check로 수행한다. */
+     * 상담원 가용성과 대화 순서는 실제 request·push 흐름의 결과로 검증한다. */
     void run (const std::string &session_stream_endpoint)
     {
         run_stream_conversation (session_stream_endpoint);

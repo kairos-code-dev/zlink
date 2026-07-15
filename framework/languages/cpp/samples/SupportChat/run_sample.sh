@@ -101,7 +101,6 @@ cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_supportchat_api \
   sample_cpp_framework_supportchat_session \
   sample_cpp_framework_supportchat_support \
-  sample_cpp_framework_supportchat_probe \
   sample_cpp_framework_supportchat_client >/dev/null
 
 # 공통 sample spec: Redis가 필요한 실행은 전용 Docker container를 띄운다. 만들지 못하면

@@ -1565,12 +1565,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     "framework-sample-deliverydispatch;framework-sample-tracking"
     zlink::framework
     zlink::framework_locations_redis)
-  add_zlink_framework_sample(
-    sample_cpp_framework_deliverydispatch_probe
-    samples/DeliveryDispatch/Probe/main.cpp
-    "framework-sample-deliverydispatch;framework-sample-probe"
-    zlink::framework
-    zlink::framework_locations_redis)
   add_executable(sample_cpp_framework_deliverydispatch_client
     samples/DeliveryDispatch/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_deliverydispatch_client PRIVATE
@@ -1635,13 +1629,6 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     "framework-sample-supportchat;framework-sample-support"
     zlink::framework
     zlink::framework_locations_redis)
-  add_zlink_framework_sample(
-    sample_cpp_framework_supportchat_probe
-    samples/SupportChat/Probe/main.cpp
-    "framework-sample-supportchat;framework-sample-probe"
-    zlink::framework
-    zlink::framework_locations_redis
-    zlink::http_client)
   add_executable(sample_cpp_framework_supportchat_client
     samples/SupportChat/Client/main.cpp)
   target_link_libraries(sample_cpp_framework_supportchat_client PRIVATE
@@ -1671,7 +1658,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     180)
   add_zlink_framework_sample_runner(
     DeliveryDispatch
-    "framework-sample-deliverydispatch;framework-sample-api;framework-sample-courier;framework-sample-dispatch;framework-sample-probe;framework-sample-registry;framework-sample-session;framework-sample-tracking"
+    "framework-sample-deliverydispatch;framework-sample-api;framework-sample-courier;framework-sample-dispatch;framework-sample-registry;framework-sample-session;framework-sample-tracking"
     420)
   add_zlink_framework_sample_runner(
     GameQuest
@@ -1683,7 +1670,7 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES)
     300)
   add_zlink_framework_sample_runner(
     SupportChat
-    "framework-sample-supportchat;framework-sample-api;framework-sample-probe;framework-sample-session;framework-sample-support"
+    "framework-sample-supportchat;framework-sample-api;framework-sample-session;framework-sample-support"
     240)
 endif()
 

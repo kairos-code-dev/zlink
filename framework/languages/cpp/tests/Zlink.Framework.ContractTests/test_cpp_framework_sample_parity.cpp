@@ -288,6 +288,24 @@ TEST (CppFrameworkSampleParity, TicTacToeUsesFrameworkOwnedSpotLocationResolutio
          "application spot resolver";
 }
 
+TEST (CppFrameworkSampleParity, DocumentedSampleRolesDoNotBuildProbeProcesses)
+{
+    const auto cmake = read_file (cpp_language_root () / "CMakeLists.txt");
+    const auto support_runner =
+      read_file (cpp_language_root () / "samples/SupportChat/run_sample.sh");
+    const auto delivery_runner =
+      read_file (cpp_language_root () / "samples/DeliveryDispatch/run_sample.sh");
+
+    EXPECT_EQ (cmake.find ("supportchat_probe"), std::string::npos);
+    EXPECT_EQ (cmake.find ("deliverydispatch_probe"), std::string::npos);
+    EXPECT_EQ (support_runner.find ("supportchat_probe"), std::string::npos);
+    EXPECT_EQ (delivery_runner.find ("deliverydispatch_probe"), std::string::npos);
+    EXPECT_FALSE (std::filesystem::exists (
+      cpp_language_root () / "samples/SupportChat/Probe/main.cpp"));
+    EXPECT_FALSE (std::filesystem::exists (
+      cpp_language_root () / "samples/DeliveryDispatch/Probe/main.cpp"));
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeTurnTimeoutIsADomainTerminalState)
 {
     using namespace zlink::samples::tictactoe;

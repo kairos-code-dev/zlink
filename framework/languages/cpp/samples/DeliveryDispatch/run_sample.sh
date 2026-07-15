@@ -9,18 +9,6 @@ mkdir -p "$FLOW_LOG_DIR"
 rm -f "$FLOW_LOG_DIR"/*.log
 BUILD_DIR="${ZLINK_CPP_BUILD_DIR:-$CPP_ROOT/build}"
 BIN_DIR="$BUILD_DIR"
-LOCAL_READINESS_TIMEOUT_SECONDS=30
-LOCAL_READINESS_POLL_SECONDS=0.5
-LOCAL_READINESS_ATTEMPTS="$(
-  python3 - "$LOCAL_READINESS_TIMEOUT_SECONDS" "$LOCAL_READINESS_POLL_SECONDS" <<'PY'
-import math
-import sys
-
-timeout = float(sys.argv[1])
-poll = float(sys.argv[2])
-print(max(1, math.ceil(timeout / poll)))
-PY
-)"
 cmake -S "$CPP_ROOT" -B "$BUILD_DIR" -DZLINK_FRAMEWORK_CPP_BUILD_SAMPLES=ON >/dev/null
 if [[ ! -x "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" && -x "$BIN_DIR/linux-ninja-debug/sample_cpp_framework_deliverydispatch_client" ]]; then
   BIN_DIR="$BIN_DIR/linux-ninja-debug"
@@ -103,7 +91,6 @@ cmake --build "$BUILD_DIR" --target \
   sample_cpp_framework_deliverydispatch_customer_gateway \
   sample_cpp_framework_deliverydispatch_courier_session \
   sample_cpp_framework_deliverydispatch_tracking \
-  sample_cpp_framework_deliverydispatch_probe \
   sample_cpp_framework_deliverydispatch_client >/dev/null
 
 zlink_redis_start_scoped_assign REDIS_CONTAINER_NAME redis_port \
@@ -182,7 +169,6 @@ write_role_config tracking
 write_role_config customer-gateway
 write_role_config courier-session
 write_role_config dispatch
-write_role_config probe
 write_role_config delivery-courier-node-1 delivery-courier-node-1
 write_role_config delivery-courier-node-2 delivery-courier-node-2
 
@@ -211,20 +197,6 @@ wait_port() {
 }
 
 wait_port redis "$(port_of "$REDIS_ENDPOINT")"
-
-wait_framework_probe() {
-  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
-    if "$BIN_DIR/sample_cpp_framework_deliverydispatch_probe" \
-      --config="$CONFIG_DIR/probe.json" >"$LOG_DIR/probe.log" 2>&1; then
-      grep -q "topology=ready" "$LOG_DIR/probe.log"
-      return 0
-    fi
-    sleep "$LOCAL_READINESS_POLL_SECONDS"
-  done
-  echo "timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for DeliveryDispatch sample probe" >&2
-  dump_logs
-  return 1
-}
 
 start_role() {
   local name="$1"
@@ -273,7 +245,6 @@ wait_port courier-actor-node-1-spot "$(port_of "$COURIER_NODE1_ROUTER")"
 wait_port courier-actor-node-2-spot "$(port_of "$COURIER_NODE2_ROUTER")"
 wait_port dispatch "$(port_of "$DISPATCH_ROUTE")"
 wait_port dispatch-http "$API_HTTP_PORT"
-wait_framework_probe
 
 "$BIN_DIR/sample_cpp_framework_deliverydispatch_client" \
   --api-url "$API_HTTP_URL" \

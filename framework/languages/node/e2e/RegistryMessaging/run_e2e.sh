@@ -30,7 +30,6 @@ trap cleanup EXIT
 echo "log_dir=$LOG_DIR"
 
 (cd "$NODE_ROOT" && npm run build >/dev/null)
-build_package "$ROOT_DIR/Server/LocationProbe"
 build_package "$ROOT_DIR/Server/Provider"
 build_package "$ROOT_DIR/Server/Workflow"
 build_package "$ROOT_DIR/Server/Consumer"
@@ -46,7 +45,6 @@ REDIS_ENDPOINT="$(redis_container_endpoint "$REDIS_CONTAINER_ID")"
 REDIS_KEY_PREFIX="location-messaging:node:$RUN_ID"
 wait_tcp redis "tcp://$REDIS_ENDPOINT"
 
-LOCATION_PROBE_HTTP_PORT="$(pick_port)"
 PROVIDER_A_HTTP_PORT="$(pick_port)"
 PROVIDER_B_HTTP_PORT="$(pick_port)"
 WORKFLOW_HTTP_PORT="$(pick_port)"
@@ -66,7 +64,6 @@ WORKFLOW="tcp://127.0.0.1:$WORKFLOW_PORT"
 ROUTE_A="tcp://127.0.0.1:$ROUTE_A_PORT"
 ROUTE_B="tcp://127.0.0.1:$ROUTE_B_PORT"
 
-LOCATION_PROBE_MAIN="$ROOT_DIR/Server/LocationProbe/dist/Server/LocationProbe/main.js"
 PROVIDER_MAIN="$ROOT_DIR/Server/Provider/dist/Server/Provider/main.js"
 WORKFLOW_MAIN="$ROOT_DIR/Server/Workflow/dist/Server/Workflow/main.js"
 CONSUMER_MAIN="$ROOT_DIR/Server/Consumer/dist/Server/Consumer/main.js"
@@ -78,14 +75,6 @@ start_configured_server() {
   node "$ROOT_DIR/write-config.mjs" "$config" "$@"
   start_server "$name" "$main" --config "$config"
 }
-
-start_configured_server location-probe "$LOCATION_PROBE_MAIN" \
-  --rid location-probe \
-  --http-url "http://127.0.0.1:$LOCATION_PROBE_HTTP_PORT" \
-  --redis-endpoint "$REDIS_ENDPOINT" \
-  --redis-key-prefix "$REDIS_KEY_PREFIX" \
-  --log-dir "$LOG_DIR"
-wait_health "http://127.0.0.1:$LOCATION_PROBE_HTTP_PORT" location-probe
 
 start_configured_server api-a "$PROVIDER_MAIN" \
   --rid api-a \
@@ -156,7 +145,6 @@ start_configured_server location-consumer "$CONSUMER_MAIN" \
 wait_health "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" location-consumer
 
 node "$CLIENT_MAIN" \
-  --topology-url "http://127.0.0.1:$LOCATION_PROBE_HTTP_PORT" \
   --provider-a-url "http://127.0.0.1:$PROVIDER_A_HTTP_PORT" \
   --provider-b-url "http://127.0.0.1:$PROVIDER_B_HTTP_PORT" \
   --workflow-url "http://127.0.0.1:$WORKFLOW_HTTP_PORT" \
@@ -164,7 +152,6 @@ node "$CLIENT_MAIN" \
   --single-consumer-url "http://127.0.0.1:$SINGLE_CONSUMER_HTTP_PORT" \
   --backpressure-consumer-url "http://127.0.0.1:$BACKPRESSURE_CONSUMER_HTTP_PORT" \
   --location-consumer-url "http://127.0.0.1:$LOCATION_CONSUMER_HTTP_PORT" \
-  --location-probe-main "$LOCATION_PROBE_MAIN" \
   --provider-main "$PROVIDER_MAIN" \
   --consumer-main "$CONSUMER_MAIN" \
   --redis-endpoint "$REDIS_ENDPOINT" \

@@ -2,8 +2,13 @@ import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
-import { ZLINK_CHANNEL_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient } from '@zlink-systems/framework';
+import {
+  ZLINK_CHANNEL_CLIENT,
+  ZLINK_LOCATION_RUNTIME_QUERY,
+  ZLinkModule,
+  zlinkFramework
+} from '@zlink-systems/nestjs';
+import type { ZLinkChannelClient, ZLinkLocationRuntimeQuery } from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { validateConsumerOptions } from './Configuration/consumer-options';
 import type { ConsumerOptions } from './Configuration/consumer-options';
@@ -17,7 +22,11 @@ export async function startConsumerHost(): Promise<void> {
   const app = await NestFactory.createApplicationContext(ConsumerModule, { logger: false, abortOnError: false });
   const options = app.get(REGISTRY_MESSAGING_OPTIONS, { strict: false }) as ConsumerOptions;
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
-  const server = await startHttpServer(options.httpUrl, createConsumerEndpoints(channel, () => { stopping = true; }));
+  const locationQuery = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
+  const server = await startHttpServer(
+    options.httpUrl,
+    createConsumerEndpoints(channel, locationQuery, () => { stopping = true; })
+  );
 
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));

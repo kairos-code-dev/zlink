@@ -18,9 +18,8 @@ export interface DynamicConsumer {
 
 export class DynamicClusterLauncher {
   private readonly processes: DynamicProcess[] = [];
-  private locationProbe?: DynamicProcess;
+  private topologyConsumer?: DynamicConsumer;
   private constructor(
-    private readonly locationProbeMain: string,
     private readonly providerMain: string,
     private readonly consumerMain: string,
     private readonly logDir: string,
@@ -30,33 +29,13 @@ export class DynamicClusterLauncher {
 
   static async start(options: ClientOptions, scenarioName: string): Promise<DynamicClusterLauncher> {
     const launcher = new DynamicClusterLauncher(
-      options.locationProbeMain,
       options.providerMain,
       options.consumerMain,
       options.logDir,
       options.redisEndpoint,
       `${options.redisKeyPrefix}:${scenarioName}`
     );
-    try {
-      const locationProbeHttp = await pickHttpUrl();
-      const locationProbe = launcher.startServer(
-        `${scenarioName}-location-probe`,
-        options.locationProbeMain,
-        {
-          rid: `${scenarioName}-location-probe`, httpUrl: locationProbeHttp,
-          redisEndpoint: options.redisEndpoint, redisKeyPrefix: `${options.redisKeyPrefix}:${scenarioName}`,
-          logDir: options.logDir
-        },
-        locationProbeHttp,
-        undefined
-      );
-      launcher.locationProbe = locationProbe;
-      await locationProbe.waitReady();
-      return launcher;
-    } catch (error) {
-      await launcher.close();
-      throw error;
-    }
+    return launcher;
   }
 
   async startProvider(name: string, rid: string, weight = 100): Promise<DynamicProvider> {
@@ -106,7 +85,9 @@ export class DynamicClusterLauncher {
         httpUrl
       );
       await process.waitReady();
-      return { process, httpUrl };
+      const consumer = { process, httpUrl };
+      this.topologyConsumer ??= consumer;
+      return consumer;
     } catch (error) {
       if (process !== undefined) {
         await process.stop();
@@ -122,8 +103,8 @@ export class DynamicClusterLauncher {
   }
 
   async waitForProviders(endpoints: readonly string[], description = 'Providers'): Promise<void> {
-    const topology = this.locationProbe;
-    if (topology === undefined) throw new Error('Location probe is not running.');
+    const topology = this.topologyConsumer;
+    if (topology === undefined) throw new Error('Location consumer is not running.');
     const expected = [...endpoints].sort();
     for (let i = 0; i < 120; i += 1) {
       const response = await fetch(`${topology.httpUrl}/location/topology`);

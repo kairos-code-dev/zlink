@@ -1,6 +1,9 @@
 import {
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
   ZLinkFrameworkException,
-  type ZLinkChannelClient
+  type ZLinkChannelClient,
+  type ZLinkLocationRuntimeQuery
 } from '@zlink-systems/framework';
 import {
   MissingProfileMsg,
@@ -14,9 +17,30 @@ import {
 } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
 
-export function createConsumerEndpoints(channel: ZLinkChannelClient, stop: () => void): HttpRoute[] {
+export function createConsumerEndpoints(
+  channel: ZLinkChannelClient,
+  locationQuery: ZLinkLocationRuntimeQuery,
+  stop: () => void
+): HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready' }) },
+    {
+      method: 'GET',
+      path: '/location/topology',
+      handle: async () => {
+        const rows = await locationQuery.listPeerLocations({
+          autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+          meshName: 'profile',
+          role: ZLinkLocationRole.Router
+        });
+        return rows.map((row) => ({
+          channelName: row.meshName,
+          serviceRole: row.role,
+          routingId: row.nodeRid === undefined ? undefined : String(row.nodeRid),
+          endpoint: row.endpoint
+        }));
+      }
+    },
     { method: 'POST', path: '/profile/batch-request', handle: (body) => batchRequest(channel, (body as ProfileReq[]).map((request) => new ProfileReq(request.value))) },
     { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, new ProfileReq((body as ProfileReq).value), 5000) },
     { method: 'POST', path: '/profile/slow-request', handle: (body) => requestProfileFailure(channel, new ProfileReq((body as ProfileReq).value), 100) },

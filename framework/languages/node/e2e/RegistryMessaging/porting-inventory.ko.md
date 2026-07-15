@@ -53,14 +53,9 @@ public contract가 필요한 범위는 모두 현재 Node public API로 구현�
 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | scenario | done | `RM-C8` |
 | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | scenario | done | `RM-C9` |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client-options.ts` | support | done | CLI option parsing |
-| `Client/Support/DynamicClusterLauncher.cs` | `Client/Support/dynamic-cluster-launcher.ts` | support | done | dynamic location-probe/provider process lifecycle |
+| `Client/Support/DynamicClusterLauncher.cs` | `Client/Support/dynamic-cluster-launcher.ts` | support | done | dynamic consumer/provider process lifecycle |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario-assert.ts` | support | done | assertion and evidence count helper |
-| `Server/LocationProbe/RegistryMessaging.Registry.csproj` | `Server/LocationProbe/package.json`, `Server/LocationProbe/tsconfig.json` | project | done | location probe role build 설정 |
-| `Server/LocationProbe/Program.cs` | `Server/LocationProbe/main.ts` | server-entry | done | location probe role 실행 진입점 |
-| `Server/LocationProbe/RegistryHostFactory.cs` | `Server/LocationProbe/location-probe-host-factory.ts` | server-role | done | Redis location store probe와 HTTP server 구성 |
-| `Server/LocationProbe/Configuration/ServerOptions.cs` | `Server/LocationProbe/Configuration/server-options.ts` | configuration | done | location-probe CLI/env parsing |
-| `Server/LocationProbe/Endpoints/RegistryMessagingEndpoints.cs` | `Server/LocationProbe/Endpoints/location-probe-endpoints.ts` | endpoints | done | health, topology, evidence, shutdown HTTP 표면 |
-| `Server/LocationProbe/Infrastructure/EvidenceStore.cs` | `Server/LocationProbe/Infrastructure/evidence-store.ts` | infrastructure | done | location probe evidence 저장 |
+| `Server/LocationProbe/*` | 없음 | server-role | done | application 역할이 없는 probe를 제거했다. peer row는 Consumer의 public location runtime query로 읽고 연결은 provider 처리 evidence로 확인한다. |
 | `Server/Provider/RegistryMessaging.Provider.csproj` | `Server/Provider/package.json`, `Server/Provider/tsconfig.json` | project | done | provider role build 설정 |
 | `Server/Provider/Program.cs` | `Server/Provider/main.ts` | server-entry | done | provider role 실행 진입점 |
 | `Server/Provider/ProviderHostFactory.cs` | `Server/Provider/provider-host-factory.ts` | server-role | done | NestJS framework, location store, channel, route 설정 |
@@ -79,7 +74,7 @@ public contract가 필요한 범위는 모두 현재 Node public API로 구현�
 | `Server/Consumer/Program.cs` | `Server/Consumer/main.ts` | server-entry | done | consumer role 실행 진입점 |
 | `Server/Consumer/ConsumerHostFactory.cs` | `Server/Consumer/consumer-host-factory.ts` | server-role | done | client-only profile channel 설정 |
 | `Server/Consumer/Configuration/ConsumerOptions.cs` | `Server/Consumer/Configuration/consumer-options.ts`, `feature-map.ko.md` | configuration | done | provider endpoint와 Redis location store option을 구현한다. |
-| `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer-endpoints.ts` | endpoints | done | batch, timeout, missing, payload, backpressure HTTP 표면 |
+| `Server/Consumer/Endpoints/ConsumerEndpoints.cs` | `Server/Consumer/Endpoints/consumer-endpoints.ts` | endpoints | done | topology, batch, timeout, missing, payload, backpressure HTTP 표면 |
 | 없음 | `logs/.gitignore` | config | done | Node 실행 로그 디렉터리 추적용 |
 
 ## Public Contract 확인 사항

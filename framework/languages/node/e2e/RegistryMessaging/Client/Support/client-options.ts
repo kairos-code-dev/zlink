@@ -1,5 +1,4 @@
 export interface ClientOptions {
-  readonly topologyUrl: string;
   readonly providerAUrl: string;
   readonly providerBUrl: string;
   readonly workflowUrl: string;
@@ -7,7 +6,6 @@ export interface ClientOptions {
   readonly singleConsumerUrl: string;
   readonly backpressureConsumerUrl: string;
   readonly locationConsumerUrl: string;
-  readonly locationProbeMain: string;
   readonly providerMain: string;
   readonly consumerMain: string;
   readonly redisEndpoint: string;
@@ -29,7 +27,6 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     values.set(key.slice(2), args[++i]);
   }
   return {
-    topologyUrl: required(values, 'topology-url'),
     providerAUrl: required(values, 'provider-a-url'),
     providerBUrl: required(values, 'provider-b-url'),
     workflowUrl: required(values, 'workflow-url'),
@@ -37,7 +34,6 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     singleConsumerUrl: required(values, 'single-consumer-url'),
     backpressureConsumerUrl: required(values, 'backpressure-consumer-url'),
     locationConsumerUrl: required(values, 'location-consumer-url'),
-    locationProbeMain: required(values, 'location-probe-main'),
     providerMain: required(values, 'provider-main'),
     consumerMain: required(values, 'consumer-main'),
     redisEndpoint: required(values, 'redis-endpoint'),

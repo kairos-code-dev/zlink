@@ -4,12 +4,12 @@
 Node location messaging E2E 앱이다. `.NET` 기준 구현은
 `framework/languages/dotnet/e2e/RegistryMessaging` 이다.
 
-현재 포팅은 `.NET`과 같은 역할 분리를 유지한다.
+검증용 HTTP endpoint는 실제 framework 역할을 실행하는 서버에 둔다. 별도 probe 서버가 상태 값을
+만들어 내면 연결 상태와 무관하게 검증이 통과할 수 있기 때문이다.
 
-- `Server/LocationProbe`: Redis location store의 peer row를 조회하는 topology endpoint
 - `Server/Provider`: profile provider, manual client, route mesh provider
 - `Server/Workflow`: workflow channel provider
-- `Server/Consumer`: client-only profile consumer
+- `Server/Consumer`: client-only profile consumer와 public location runtime query 기반 topology endpoint
 - `Client`: scenario ID별 검증 실행
 
 실행:

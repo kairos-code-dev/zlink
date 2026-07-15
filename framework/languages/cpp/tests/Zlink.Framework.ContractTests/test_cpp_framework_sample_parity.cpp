@@ -231,6 +231,30 @@ TEST (CppFrameworkSampleParity, BingoRoomClosesAfterItsLastActorLeaves)
       << "Bingo room must request spot closure after its last actor leaves";
 }
 
+TEST (CppFrameworkSampleParity, DomainOwnsBingoJoinAndSupportChatTimeoutDecisions)
+{
+    const auto root = cpp_language_root ();
+    const auto bingo_domain = read_file (
+      root / "samples/Bingo/Server/Play/Domain/Bingo/bingo_room_game.hpp");
+    const auto bingo_spot = read_file (
+      root
+      / "samples/Bingo/Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp");
+    EXPECT_NE (bingo_domain.find ("bingo_room_join_result_t"), std::string::npos);
+    EXPECT_NE (bingo_domain.find ("game_started"), std::string::npos);
+    EXPECT_NE (bingo_spot.find ("const auto joined = _game.join"), std::string::npos);
+    EXPECT_EQ (bingo_spot.find ("state.players.size () == 2"), std::string::npos);
+
+    const auto conversation = read_file (
+      root / "samples/SupportChat/Server/Support/Domain/SupportChat/conversation.hpp");
+    const auto support = read_file (root / "samples/SupportChat/Server/Support/main.cpp");
+    EXPECT_NE (conversation.find ("advance_time"), std::string::npos);
+    EXPECT_NE (conversation.find ("_close_deadline_unix_ms"), std::string::npos);
+    EXPECT_NE (support.find ("_conversation->advance_time (now_unix_ms ())"),
+               std::string::npos);
+    EXPECT_EQ (support.find ("now >= state.idle_deadline_unix_ms"), std::string::npos);
+    EXPECT_EQ (support.find ("_close_deadline_unix_ms"), std::string::npos);
+}
+
 TEST (CppFrameworkSampleParity, TicTacToeUsesDotNetSamplePacketSurface)
 {
     using namespace zlink::samples::tictactoe;

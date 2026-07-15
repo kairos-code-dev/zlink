@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 체크리스트 43건. 완료 43건. 미완료 0건.**
+**전체 체크리스트 45건. 완료 45건. 미완료 0건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -713,5 +713,9 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
 검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
 
-- [ ] **TH-DN-01** (미구현) — connector에 `ExpectNone`·`WaitForSequence`와 `ZlinkStreamAssert`(`Ensure`/`ExpectFailureAsync`/`ExpectTimeoutAsync`)를 [03 §8.1](../stream-connector/languages/dotnet/03-stream-connector.ko.md)대로 구현한다. `Send`/`WaitFor`와 같은 builder·완료 규약을 따른다.
-- [ ] **TH-DN-02** (리팩토링) — DeliveryDispatch 시나리오의 지역 helper(`WaitForStatusSequenceAsync`·`ExpectNoPushAsync`)를 **삭제하고** 이 connector API로 교체한다. **둘을 병존시키지 마라 — 지역 helper가 하나라도 남으면 미완료다.** 지역 helper로 이미 닫은 SMP-DN-08을 표준 표면으로 대체하는 것이며, 그러면 교차 언어 SMP-X3의 "공통 게이트"가 채워진다.
+- [x] **TH-DN-01** (미구현) — connector에 `ExpectNone`·`WaitForSequence`와 `ZlinkStreamAssert`(`Ensure`/`ExpectFailureAsync`/`ExpectTimeoutAsync`)를 [03 §8.1](../stream-connector/languages/dotnet/03-stream-connector.ko.md)대로 구현한다. `Send`/`WaitFor`와 같은 builder·완료 규약을 따른다.
+  — 새 API를 참조하는 집중 테스트가 `CS1061`·`CS0103`으로 실패하는 것을 먼저 확인했다. 구현 뒤 실제 TCP로 negative와 순서 오류를 검증하는 connector 테스트 **135/135**, public contract **42/42**, packaged contract가 통과했다. 코드 커밋 `8da696b1f`.
+- [x] **TH-DN-02** (리팩토링) — DeliveryDispatch 시나리오의 지역 helper(`WaitForStatusSequenceAsync`·`ExpectNoPushAsync`)를 **삭제하고** 이 connector API로 교체한다. **둘을 병존시키지 마라 — 지역 helper가 하나라도 남으면 미완료다.** 지역 helper로 이미 닫은 SMP-DN-08을 표준 표면으로 대체하는 것이며, 그러면 교차 언어 SMP-X3의 "공통 게이트"가 채워진다.
+  — 재검증 시 `ExpectNoPushAsync`는 DeliveryDispatch의 현재 코드와 해당 파일 이력에 없었으므로 새 지역 helper를 만들지 않았다. 남아 있던 `WaitForStatusSequenceAsync`를 typed `WaitForSequence`로 삭제하고, courier-a가 수락한 배송이 courier-b로 잘못 재할당되지 않는 검증은 typed `ExpectNone`으로 직접 추가했다. `ZlinkStreamAssert.Ensure`도 필수 메시지와 함께 사용한다. sample regression **59/59**와 실제 DeliveryDispatch runner의 `deliverydispatch-runner-evidence=completed`가 통과했다. 코드 커밋 `8da696b1f`.
+
+POSD 재검토에서는 수신 callback을 따로 구독하는 방식, 시나리오가 `WaitFor`를 반복하는 방식, 기존 수신 큐와 builder가 순서와 전체 timeout을 소유하는 방식을 비교했다. 기존 수신 큐를 사용하는 방식을 선택해 queue 소비 규칙과 timeout 계산을 connector 안에 유지했다. status 전용 API와 도메인 REST 대기는 추가하지 않았고, 대상인 DeliveryDispatch에는 두 지역 helper 이름이 남지 않았다. **LOOP CLEAN**.

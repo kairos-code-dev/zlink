@@ -524,7 +524,7 @@ Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check�
 - [ ] **IMP-JV-17** (결함) — 자동 연결 역할에 대한 런타임 `connect()`가 **거부되지 않는다**
 - [ ] **IMP-JV-18** (결함) — HTTP client가 **proxy 자격증명을 대상 서버로 흘린다**
 - [ ] **IMP-JV-19** (결함) — HTTP attempt timeout이 **redirect hop마다** 적용된다
-- [ ] **IMP-JV-20** (결함) — connector send payload 한도를 **압축 전** payload에 적용한다
+- [x] **IMP-JV-20** (결함) — connector send payload 한도를 압축된 wire payload에 적용한다. 압축 전에는 한도를 넘지만 압축 후에는 한도 안인 집중 테스트의 실패를 먼저 확인했고, Java connector·Kotlin module 전체 테스트가 통과했다. 구현 커밋 `cc1ea63b1`(2026-07-15).
 
 ### 상세
 
@@ -539,7 +539,7 @@ Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check�
 | **IMP-JV-17** | [10 §5.2](../server/10-channel-topology.ko.md): 자동 연결로 확정된 역할에 런타임 수동 endpoint를 추가하려 하면 **그때 거부된다** | `RuntimeEndpointConnections.java:19-30` — 검증 후 그냥 연결한다. frozen/auto 모드가 **없다**(`.NET`은 `Freeze`, C++은 `frozen` 상태를 갖는다). ⇒ **역할마다 진실의 원천이 하나**라는 불변식이 깨진다 |
 | **IMP-JV-18** | [http 07 §7.3](../http-client/07-auth-tls-proxy.ko.md) | `RequestPerformer.java:160-162`가 `proxy-authorization`을 요청 헤더에 넣고, `JavaHttpClientFactory.java:27-30`은 `.authenticator(...)` 없이 `ProxySelector`만 준다. `.NET`(IMP-DN-12)과 **같은 결함** |
 | **IMP-JV-19** | [http 06 §6.2](../http-client/06-redirect-retry-cookie.ko.md): timeout은 **시도(attempt)당** 적용한다 | `RequestPerformer.java:176-181` — `hop()`마다 timeout을 **새로 건다.** ⇒ `timeout(3s)` + `followRedirects(5)` + `retry(2)`가 계약상 ~9초여야 하는데 **~45초**를 태울 수 있다 |
-| **IMP-JV-20** | [32 §4.7](../stream-connector/32-stream-connector.ko.md) | `ZLinkStreamConnectorPayloadCodec.java:23-35` — 압축 전 크기로 한도를 검사한다. `.NET`(IMP-DN-13)과 **같은 결함** |
+| **IMP-JV-20** | [32 §4.7](../stream-connector/32-stream-connector.ko.md) | **해결:** 압축하지 않은 호출은 원본 payload, 압축 호출은 codec이 만든 wire payload의 크기를 transport write 전에 검사한다. 압축 전 검사를 유지한 채 압축 후 검사만 더하는 안은 압축으로 한도 안에 들어오는 payload를 계속 거부하므로 선택하지 않았다. 압축 전에는 한도를 넘는 payload가 2바이트로 압축되는 집중 테스트와 Java connector·Kotlin module 전체 테스트 통과. 구현 커밋 `cc1ea63b1`(2026-07-15). |
 
 ## 라운드 3 (2026-07-14) — 근거 없는 표면 · 조용한 no-op · 경합
 

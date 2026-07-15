@@ -707,7 +707,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: MON-A1이 실제 socket event의 remote address와 routing id를 필수로 단언한다. identity 필드가 비어도 통과하던 monitoring socket gate가 실패에서 통과로 바뀌었다. 커밋 `e21abc645`.
 - [x] **E2E-ND-28** (**가짜 통과**) — `MON-A2`가 provider 추가·종료를 일으키지 않고 **기존 startup event만 기다린다**
   - 근거: client가 managed service를 추가·종료해 topology 변화를 직접 만들고 service evidence와 before/after를 대조한다. startup event 재사용으로 실패하던 monitoring topology gate가 통과한다. 커밋 `5922af9aa`.
-- [ ] **E2E-ND-29** (미구현) — `MON-A4`가 failover 절반을 실행하지 않고 topology **payload 변화도 대조하지 않는다**
+- [x] **E2E-ND-29** (미구현) — `MON-A4`가 failover 절반을 실행하지 않고 topology **payload 변화도 대조하지 않는다**
+  - 근거: MON-A4가 기존 `svc-b`를 종료하고 같은 rid·다른 channel/Spot/HTTP endpoint의 replacement role을 시작해 old `disconnected`, replacement `connected`·`connectionReady`, `TopologyChanged` payload의 endpoint 교체를 대조한 뒤 drain/restore까지 검증한다. replacement 구조가 없어 실패하던 gate와 실제 `./run_e2e.sh MON-A4`가 통과한다. 커밋 `95bc98500`.
 - [ ] **E2E-ND-30** (미구현) — Config 2·9의 P0에 **route-mesh-absent × separated-deployment** 조합이 없다
 - [x] **E2E-ND-31** (**가짜 통과**) — actor ref의 `generation > 0`을 **어느 config도 단언하지 않는다**
   - 근거: SpotService와 ToActorMessaging이 실제 응답의 actor ref에서 양수 generation을 단언한다. 합성·0 generation으로 실패하던 concrete-actor-ref gate가 통과한다. 커밋 `7598155b8`.

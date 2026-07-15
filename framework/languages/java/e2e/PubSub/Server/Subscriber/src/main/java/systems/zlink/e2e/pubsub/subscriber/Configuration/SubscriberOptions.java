@@ -2,7 +2,9 @@ package systems.zlink.e2e.pubsub.subscriber.Configuration;
 
 import java.util.HashSet;
 import java.util.Set;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 
+@ConfigurationProperties("e2e")
 public record SubscriberOptions(
     String rid,
     Set<String> topics,
@@ -11,26 +13,25 @@ public record SubscriberOptions(
     String locationKeyPrefix,
     String logDir,
     HandlerDelayOptions delay) {
-    public static SubscriberOptions fromEnv() {
-        return new SubscriberOptions(
-            Env.get("ZLINK_JAVA_E2E_SUBSCRIBER_RID", "sub-1"),
-            topicsFromEnv(),
-            Env.get("ZLINK_JAVA_E2E_HTTP_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"),
-            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"),
-            HandlerDelayOptions.fromEnv());
+    public SubscriberOptions {
+        required(rid, "rid");
+        required(httpEndpoint, "http-endpoint");
+        required(redisLocationEndpoint, "redis-location-endpoint");
+        required(locationKeyPrefix, "location-key-prefix");
+        required(logDir, "log-dir");
+        Set<String> normalized = new HashSet<>(topics == null ? Set.of() : topics);
+        normalized.removeIf(String::isBlank);
+        normalized.add("all");
+        topics = Set.copyOf(normalized);
+        delay = delay == null ? new HandlerDelayOptions(0) : delay;
+        if (delay.delayMillis() < 0) {
+            throw new IllegalArgumentException("e2e.delay.delay-millis must be non-negative");
+        }
     }
 
-    private static Set<String> topicsFromEnv() {
-        Set<String> values = new HashSet<>();
-        for (String part : Env.get("ZLINK_JAVA_E2E_TOPICS", "all").split(",")) {
-            String trimmed = part.trim();
-            if (!trimmed.isEmpty()) {
-                values.add(trimmed);
-            }
+    private static void required(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("e2e." + name + " is required");
         }
-        values.add("all");
-        return Set.copyOf(values);
     }
 }

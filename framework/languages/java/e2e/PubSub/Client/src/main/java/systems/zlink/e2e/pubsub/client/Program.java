@@ -16,7 +16,7 @@ public final class Program {
     }
 
     public static void main(String[] args) {
-        try (ScenarioContext context = ScenarioContext.fromEnv()) {
+        try (ScenarioContext context = ScenarioContext.load(args)) {
             switch (context.options().mode()) {
                 case "PS-A1" -> FanoutBasicDeliveryScenario.run(context);
                 case "PS-A2" -> TopicFilterScenario.run(context);

@@ -1,9 +1,12 @@
 package systems.zlink.e2e.pubsub.client.Support;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public final class ServerProcessLauncher {
@@ -18,26 +21,31 @@ public final class ServerProcessLauncher {
     }
 
     public ManagedProcess startSubscriber(String rid, String topics, String httpEndpoint) {
-        Map<String, String> env = Map.of(
-            "ZLINK_JAVA_E2E_SUBSCRIBER_RID", rid,
-            "ZLINK_JAVA_E2E_TOPICS", topics,
-            "ZLINK_JAVA_E2E_HTTP_ENDPOINT", httpEndpoint,
-            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
-            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
-            "ZLINK_JAVA_E2E_LOG_DIR", options.logDir());
-        ManagedProcess process = start(rid, subscriberBin(), env);
+        String config = """
+            e2e.rid=%s
+            e2e.topics=%s
+            e2e.http-endpoint=%s
+            e2e.redis-location-endpoint=%s
+            e2e.location-key-prefix=%s
+            e2e.log-dir=%s
+            e2e.delay.delay-millis=0
+            """.formatted(rid, topics, httpEndpoint, options.redisLocationEndpoint(),
+                options.locationKeyPrefix(), options.logDir());
+        ManagedProcess process = start(rid, subscriberBin(), config);
         waitHealthy(rid, httpEndpoint);
         return process;
     }
 
     public ManagedProcess startPublisher(String name) {
-        Map<String, String> env = Map.of(
-            "ZLINK_JAVA_E2E_PUBLISHER_HTTP", options.publisherHttp(),
-            "ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT", options.publisherEndpoint(),
-            "ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT", options.redisLocationEndpoint(),
-            "ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX", options.locationKeyPrefix(),
-            "ZLINK_JAVA_E2E_LOG_DIR", options.logDir());
-        ManagedProcess process = start(name, publisherBin(), env);
+        String config = """
+            e2e.http-endpoint=%s
+            e2e.publisher-endpoint=%s
+            e2e.redis-location-endpoint=%s
+            e2e.location-key-prefix=%s
+            e2e.log-dir=%s
+            """.formatted(options.publisherHttp(), options.publisherEndpoint(),
+                options.redisLocationEndpoint(), options.locationKeyPrefix(), options.logDir());
+        ManagedProcess process = start(name, publisherBin(), config);
         waitHealthy(name, options.publisherHttp());
         return process;
     }
@@ -53,16 +61,28 @@ public final class ServerProcessLauncher {
         throw new IllegalStateException("timed out waiting for " + name + " to stop at " + endpoint);
     }
 
-    private ManagedProcess start(String name, Path bin, Map<String, String> env) {
+    private ManagedProcess start(String name, Path bin, String config) {
         try {
-            ProcessBuilder builder = new ProcessBuilder(bin.toString());
-            builder.environment().putAll(env);
+            Path configPath = writeConfig(name, config);
+            ProcessBuilder builder = new ProcessBuilder(
+                bin.toString(), "--config", configPath.toString());
             builder.redirectOutput(Path.of(options.logDir(), name + ".stdout.log").toFile());
             builder.redirectError(Path.of(options.logDir(), name + ".stderr.log").toFile());
-            return new ManagedProcess(name, builder.start());
+            return new ManagedProcess(name, builder.start(), configPath);
         } catch (IOException error) {
             throw new IllegalStateException("failed to start " + name + " at " + bin, error);
         }
+    }
+
+    private Path writeConfig(String name, String contents) throws IOException {
+        Path directory = Path.of(options.configDir());
+        Files.createDirectories(directory);
+        Path path = directory.resolve(name + "-dynamic.properties");
+        Files.writeString(path, contents, StandardCharsets.UTF_8);
+        Files.setPosixFilePermissions(path, Set.of(
+            PosixFilePermission.OWNER_READ,
+            PosixFilePermission.OWNER_WRITE));
+        return path;
     }
 
     private void waitHealthy(String name, String endpoint) {
@@ -93,15 +113,18 @@ public final class ServerProcessLauncher {
     public static final class ManagedProcess implements AutoCloseable {
         private final String name;
         private final Process process;
+        private final Path configPath;
 
-        private ManagedProcess(String name, Process process) {
+        private ManagedProcess(String name, Process process, Path configPath) {
             this.name = name;
             this.process = process;
+            this.configPath = configPath;
         }
 
         @Override
         public void close() {
             if (!process.isAlive()) {
+                deleteConfig();
                 return;
             }
             process.destroy();
@@ -114,6 +137,16 @@ public final class ServerProcessLauncher {
                 Thread.currentThread().interrupt();
                 process.destroyForcibly();
                 throw new IllegalStateException("interrupted while stopping " + name, error);
+            } finally {
+                deleteConfig();
+            }
+        }
+
+        private void deleteConfig() {
+            try {
+                Files.deleteIfExists(configPath);
+            } catch (IOException error) {
+                throw new IllegalStateException("failed to delete config for " + name, error);
             }
         }
     }

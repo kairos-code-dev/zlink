@@ -1,17 +1,25 @@
 package systems.zlink.e2e.pubsub.publisher.Configuration;
 
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties("e2e")
 public record PublisherOptions(
     String httpEndpoint,
     String publisherEndpoint,
     String redisLocationEndpoint,
     String locationKeyPrefix,
     String logDir) {
-    public static PublisherOptions fromEnv() {
-        return new PublisherOptions(
-            Env.get("ZLINK_JAVA_E2E_PUBLISHER_HTTP"),
-            Env.get("ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"),
-            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
+    public PublisherOptions {
+        required(httpEndpoint, "http-endpoint");
+        required(publisherEndpoint, "publisher-endpoint");
+        required(redisLocationEndpoint, "redis-location-endpoint");
+        required(locationKeyPrefix, "location-key-prefix");
+        required(logDir, "log-dir");
+    }
+
+    private static void required(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("e2e." + name + " is required");
+        }
     }
 }

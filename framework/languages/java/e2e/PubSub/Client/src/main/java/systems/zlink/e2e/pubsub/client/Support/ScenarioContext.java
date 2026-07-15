@@ -17,8 +17,8 @@ public final class ScenarioContext implements AutoCloseable {
         this.http = http;
     }
 
-    public static ScenarioContext fromEnv() {
-        ClientOptions options = ClientOptions.fromEnv();
+    public static ScenarioContext load(String[] args) {
+        ClientOptions options = ClientOptions.load(args);
         return new ScenarioContext(options, new PubSubHttpClient());
     }
 

@@ -9,6 +9,8 @@ pids=()
 REDIS_CONTAINER=""
 run_id="$(date +%Y%m%d-%H%M%S)-$$"
 log_dir="$(pwd)/logs/${run_id}"
+config_dir="$(mktemp -d)"
+chmod 0700 "${config_dir}"
 SCENARIO="${1:-all}"
 E2E_START_ORDER="${E2E_START_ORDER:-forward}"
 echo "start_order=${E2E_START_ORDER}"
@@ -21,8 +23,8 @@ if [[ -z "${ZLINK_LIBRARY_PATH:-}" && -f "${default_core_lib}" ]]; then
 fi
 export ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR:-${HOME}/.cache/zlink/java-e2e/PubSub}"
 export ZLINK_JAVA_E2E_GRADLE_CACHE="${ZLINK_JAVA_E2E_GRADLE_CACHE:-${HOME}/.cache/zlink/java-e2e/PubSub-gradle-cache}"
-export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT=""
-export ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX:-zlink:e2e:pubsub:${run_id}}"
+redis_location_endpoint=""
+location_key_prefix="zlink:e2e:pubsub:${run_id}"
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 LOCAL_READINESS_ATTEMPTS=30
@@ -82,6 +84,7 @@ cleanup() {
   if [[ -n "${REDIS_CONTAINER}" ]]; then
     docker rm -fv "${REDIS_CONTAINER}" >/dev/null 2>&1 || true
   fi
+  rm -rf "${config_dir}"
   wait >/dev/null 2>&1 || true
   exit "${status}"
 }
@@ -168,8 +171,7 @@ start_redis_container() {
   fi
   zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
     "zlink-redis-java-e2e" "${ZLINK_REDIS_IMAGE:-redis:7.2-alpine}"
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="127.0.0.1:${redis_port}"
-  export ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT
+  redis_location_endpoint="127.0.0.1:${redis_port}"
 }
 
 gradle_run() {
@@ -190,12 +192,17 @@ subscriber_bin() {
 
 start_publisher() {
   local suffix="${1:-publisher}"
-  ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
-  ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(publisher_bin)" >"${log_dir}/${suffix}.stdout.log" 2>"${log_dir}/${suffix}.stderr.log" &
+  local config="${config_dir}/${suffix}.properties"
+  cat >"${config}" <<EOF
+e2e.http-endpoint=${PUBLISHER_HTTP}
+e2e.publisher-endpoint=${PUBLISHER_ENDPOINT}
+e2e.redis-location-endpoint=${redis_location_endpoint}
+e2e.location-key-prefix=${location_key_prefix}
+e2e.log-dir=${log_dir}
+EOF
+  chmod 0600 "${config}"
+  "$(publisher_bin)" --config "${config}" \
+    >"${log_dir}/${suffix}.stdout.log" 2>"${log_dir}/${suffix}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   wait_port publisher-fanout "${PUBLISHER_ENDPOINT}"
@@ -207,14 +214,19 @@ start_subscriber() {
   local topics="$2"
   local http="$3"
   local delay="${4:-}"
-  ZLINK_JAVA_E2E_SUBSCRIBER_RID="${rid}" \
-  ZLINK_JAVA_E2E_TOPICS="${topics}" \
-  ZLINK_JAVA_E2E_HTTP_ENDPOINT="${http}" \
-  ZLINK_JAVA_E2E_HANDLER_DELAY_MS="${delay}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(subscriber_bin)" >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
+  local config="${config_dir}/${rid}.properties"
+  cat >"${config}" <<EOF
+e2e.rid=${rid}
+e2e.topics=${topics}
+e2e.http-endpoint=${http}
+e2e.redis-location-endpoint=${redis_location_endpoint}
+e2e.location-key-prefix=${location_key_prefix}
+e2e.log-dir=${log_dir}
+e2e.delay.delay-millis=${delay:-0}
+EOF
+  chmod 0600 "${config}"
+  "$(subscriber_bin)" --config "${config}" \
+    >"${log_dir}/${rid}.stdout.log" 2>"${log_dir}/${rid}.stderr.log" &
   LAST_PID="$!"
   pids+=("${LAST_PID}")
   wait_health "${rid}" "${http}"
@@ -231,17 +243,8 @@ stop_pid() {
 run_client_mode() {
   local mode="$1"
   local suffix="$2"
-  ZLINK_JAVA_E2E_CLIENT_MODE="${mode}" \
-  ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
-  ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-  ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-  ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-  ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
-  ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
-  ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
-  ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
-  ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-    "$(client_bin)" >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
+  "$(client_bin)" --config "${client_config}" --scenario "${mode}" \
+    >"${log_dir}/client-${suffix}.stdout.log" 2>"${log_dir}/client-${suffix}.stderr.log"
   cat "${log_dir}/client-${suffix}.stdout.log"
 }
 
@@ -254,6 +257,24 @@ PUBLISHER_READY="${log_dir}/publisher-ready"
 PRELATE_CONTINUE="${log_dir}/prelate-continue"
 LATE_READY="${log_dir}/late-ready"
 LATE_CONTINUE="${log_dir}/late-continue"
+client_config="${config_dir}/client.properties"
+cat >"${client_config}" <<EOF
+publisherHttp=${PUBLISHER_HTTP}
+publisherEndpoint=${PUBLISHER_ENDPOINT}
+redisLocationEndpoint=${redis_location_endpoint}
+locationKeyPrefix=${location_key_prefix}
+sub1Http=${SUB1_HTTP}
+sub2Http=${SUB2_HTTP}
+sub3Http=${SUB3_HTTP}
+publisherReadyFile=${PUBLISHER_READY}
+prelateContinueFile=${PRELATE_CONTINUE}
+lateReadyFile=${LATE_READY}
+lateContinueFile=${LATE_CONTINUE}
+buildDir=${ZLINK_JAVA_E2E_BUILD_DIR}
+logDir=${log_dir}
+configDir=${config_dir}
+EOF
+chmod 0600 "${client_config}"
 
 start_ordered_roles() {
   local sub1_delay_ms="${1:-}"
@@ -293,21 +314,8 @@ case "${SCENARIO}" in
     ;;
   PS-A3)
     start_ordered_roles "" publisher
-    ZLINK_JAVA_E2E_CLIENT_MODE="${SCENARIO}" \
-    ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
-    ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-    ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-    ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-    ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
-    ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
-    ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
-    ZLINK_JAVA_E2E_PUBLISHER_READY_FILE="${PUBLISHER_READY}" \
-    ZLINK_JAVA_E2E_PRELATE_CONTINUE_FILE="${PRELATE_CONTINUE}" \
-    ZLINK_JAVA_E2E_LATE_READY_FILE="${LATE_READY}" \
-    ZLINK_JAVA_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
-    ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
-    ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-      "$(client_bin)" >"${log_dir}/client-PS-A3.stdout.log" 2>"${log_dir}/client-PS-A3.stderr.log" &
+    "$(client_bin)" --config "${client_config}" --scenario "${SCENARIO}" \
+      >"${log_dir}/client-PS-A3.stdout.log" 2>"${log_dir}/client-PS-A3.stderr.log" &
     CLIENT_PID="$!"
     pids+=("${CLIENT_PID}")
     wait_marker "${PUBLISHER_READY}"
@@ -361,21 +369,8 @@ esac
 
 start_ordered_roles "" publisher
 
-ZLINK_JAVA_E2E_CLIENT_MODE=default \
-ZLINK_JAVA_E2E_PUBLISHER_HTTP="${PUBLISHER_HTTP}" \
-ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT="${PUBLISHER_ENDPOINT}" \
-ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT="${ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT}" \
-ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX="${ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX}" \
-ZLINK_JAVA_E2E_SUB1_HTTP="${SUB1_HTTP}" \
-ZLINK_JAVA_E2E_SUB2_HTTP="${SUB2_HTTP}" \
-ZLINK_JAVA_E2E_SUB3_HTTP="${SUB3_HTTP}" \
-ZLINK_JAVA_E2E_PUBLISHER_READY_FILE="${PUBLISHER_READY}" \
-ZLINK_JAVA_E2E_PRELATE_CONTINUE_FILE="${PRELATE_CONTINUE}" \
-ZLINK_JAVA_E2E_LATE_READY_FILE="${LATE_READY}" \
-ZLINK_JAVA_E2E_LATE_CONTINUE_FILE="${LATE_CONTINUE}" \
-ZLINK_JAVA_E2E_BUILD_DIR="${ZLINK_JAVA_E2E_BUILD_DIR}" \
-ZLINK_JAVA_E2E_LOG_DIR="${log_dir}" \
-  "$(client_bin)" >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log" &
+"$(client_bin)" --config "${client_config}" --scenario default \
+  >"${log_dir}/client.stdout.log" 2>"${log_dir}/client.stderr.log" &
 CLIENT_PID="$!"
 pids+=("${CLIENT_PID}")
 

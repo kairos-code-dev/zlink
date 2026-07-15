@@ -1,5 +1,10 @@
 package systems.zlink.e2e.pubsub.client.Support;
 
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
+
 public record ClientOptions(
     String mode,
     String publisherHttp,
@@ -14,24 +19,36 @@ public record ClientOptions(
     String lateReadyFile,
     String lateContinueFile,
     String buildDir,
-    String logDir) {
-    public static ClientOptions fromEnv() {
+    String logDir,
+    String configDir) {
+    public static ClientOptions load(String[] args) {
+        if (args.length != 4 || !"--config".equals(args[0]) || args[1].isBlank()
+            || !"--scenario".equals(args[2]) || args[3].isBlank()) {
+            throw new IllegalArgumentException(
+                "Usage: pub-sub-client --config <path> --scenario <selector>");
+        }
+        Properties values = new Properties();
+        try (Reader reader = Files.newBufferedReader(Path.of(args[1]))) {
+            values.load(reader);
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not load PubSub client config", error);
+        }
         return new ClientOptions(
-            Env.get("ZLINK_JAVA_E2E_CLIENT_MODE", "default"),
-            Env.get("ZLINK_JAVA_E2E_PUBLISHER_HTTP"),
-            Env.get("ZLINK_JAVA_E2E_PUBLISHER_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_REDIS_LOCATION_ENDPOINT"),
-            Env.get("ZLINK_JAVA_E2E_LOCATION_KEY_PREFIX"),
-            Env.get("ZLINK_JAVA_E2E_SUB1_HTTP"),
-            Env.get("ZLINK_JAVA_E2E_SUB2_HTTP"),
-            Env.get("ZLINK_JAVA_E2E_SUB3_HTTP"),
-            Env.get("ZLINK_JAVA_E2E_PUBLISHER_READY_FILE"),
-            Env.get("ZLINK_JAVA_E2E_PRELATE_CONTINUE_FILE"),
-            Env.get("ZLINK_JAVA_E2E_LATE_READY_FILE"),
-            Env.get("ZLINK_JAVA_E2E_LATE_CONTINUE_FILE"),
-            Env.get("ZLINK_JAVA_E2E_BUILD_DIR",
-                System.getProperty("user.home") + "/.cache/zlink/java-e2e/PubSub"),
-            Env.get("ZLINK_JAVA_E2E_LOG_DIR", "logs"));
+            args[3],
+            required(values, "publisherHttp"),
+            required(values, "publisherEndpoint"),
+            required(values, "redisLocationEndpoint"),
+            required(values, "locationKeyPrefix"),
+            required(values, "sub1Http"),
+            required(values, "sub2Http"),
+            required(values, "sub3Http"),
+            required(values, "publisherReadyFile"),
+            required(values, "prelateContinueFile"),
+            required(values, "lateReadyFile"),
+            required(values, "lateContinueFile"),
+            required(values, "buildDir"),
+            required(values, "logDir"),
+            required(values, "configDir"));
     }
 
     public String subscriberHttp(String rid) {
@@ -41,5 +58,13 @@ public record ClientOptions(
             case "sub-3" -> sub3Http;
             default -> throw new IllegalArgumentException("unknown subscriber " + rid);
         };
+    }
+
+    private static String required(Properties values, String name) {
+        String value = values.getProperty(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " is required in PubSub client config");
+        }
+        return value;
     }
 }

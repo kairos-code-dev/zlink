@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.StandardEnvironment;
+import java.nio.file.Path;
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.e2e.pubsub.subscriber.Configuration.SubscriberOptions;
 import systems.zlink.e2e.pubsub.subscriber.Endpoints.OperationalEndpoints;
@@ -18,20 +21,20 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 
 @EnableZLinkFramework
+@EnableConfigurationProperties(SubscriberOptions.class)
 @SpringBootApplication(
     proxyBeanMethods = false,
     scanBasePackages = "systems.zlink.e2e.pubsub.subscriber")
 public final class SubscriberApplication {
     public AutoCloseable run(String... args) {
+        String configPath = configPath(args);
+        StandardEnvironment environment = isolatedEnvironment();
         SpringApplicationBuilder builder = new SpringApplicationBuilder(SubscriberApplication.class)
+            .environment(environment)
+            .properties("spring.config.location=" + Path.of(configPath).toAbsolutePath().toUri())
             .web(WebApplicationType.NONE);
         builder.application().setKeepAlive(true);
-        return builder.run(args)::close;
-    }
-
-    @Bean
-    SubscriberOptions subscriberOptions() {
-        return SubscriberOptions.fromEnv();
+        return builder.run()::close;
     }
 
     @Bean
@@ -85,5 +88,19 @@ public final class SubscriberApplication {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
             .setConnectionString(options.redisLocationEndpoint())
             .setKeyPrefix(options.locationKeyPrefix()));
+    }
+
+    private static String configPath(String[] args) {
+        if (args.length != 2 || !"--config".equals(args[0]) || args[1].isBlank()) {
+            throw new IllegalArgumentException("Usage: pub-sub-subscriber --config <path>");
+        }
+        return args[1];
+    }
+
+    private static StandardEnvironment isolatedEnvironment() {
+        StandardEnvironment environment = new StandardEnvironment();
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+        environment.getPropertySources().remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+        return environment;
     }
 }

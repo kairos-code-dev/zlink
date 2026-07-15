@@ -262,11 +262,11 @@
 
 ## 1. 진행 체크리스트
 
-**전체 8건. 완료 3건.**
+**전체 8건. 완료 4건.**
 
 ### 언어별 표면 차이 (기준선 대조)
 
-- [ ] **§12.3** — 근거 없는 공개 표면과 connect 상태 처리 (Java, Kotlin)
+- [x] **§12.3** — Kotlin wrapper의 계약 밖 disconnect/reconnect를 제거하고, 공유 Java connector의 동시 connect와 자동 reconnect가 하나의 진행 중 시도를 공유하도록 고쳤다. Java 전체 Gradle 테스트, Kotlin ObservabilityOps Trigger build, Java GameQuest 전체 self-check, OBS-B1 통과. 구현 커밋 `943486d05`(2026-07-15).
 - [x] **§12.14** — Kotlin compression option helper가 `maxReceivedMessages`를 그대로 보존한다. 집중 회귀 테스트와 Kotlin module 전체 테스트 통과. 구현 커밋 `f7787358d`(2026-07-15).
 - [x] **§12.19** — Java typed 호출이 raw payload를 거부하고 Kotlin request 완료 표면을 `awaitReply<T>()`로 통일했다. 집중 계약 테스트, Java connector·Kotlin module 전체 테스트, Kotlin SpotService 전체 E2E와 GameQuest·Bingo·TicTacToe 전체 self-check 통과. 구현 커밋 `c372ebbfc`(2026-07-15).
 
@@ -284,18 +284,21 @@
 
 ### §12.3 근거 없는 공개 표면과 connect 상태 처리 (Java, Kotlin)
 
-**계약 위반(Java).** 다음 두 표면은 공통 스펙에 근거가 없고 다른 언어에도 없다.
+**해결(Java, Kotlin).** Kotlin wrapper와 공유 Java connector에서 계약에 없는 수동 `disconnect()`와
+`reconnect()`를 제거했다. 재접속은 자동 reconnect가 담당하며, `Connecting`과 `Reconnecting`에서
+`connect()`를 다시 호출하면 진행 중인 future를 기다린다.
 
-- connector `disconnect()` / `reconnect()` — [32 §6](../stream-connector/32-stream-connector.ko.md)의 연결 lifecycle
-  표면은 connect / close / dispatch 셋뿐이며, 재연결은 자동 reconnect 옵션이 담당한다.
-  **Kotlin wrapper(`ZLinkKotlinStreamConnector`)도 같은 두 메서드를 그대로 위임 노출한다.**
-- **`connect()`가 진행 중인 연결 시도를 기다리지 않는다.** `Connecting`이나 `Reconnecting`
-  상태에서 다시 호출하면 기존 시도를 기다리지 않고 새 연결 시도를 시작하며, 예약된 reconnect
-  작업은 scheduler에 그대로 남는다. 계약은 진행 중인 시도의 결과를 기다리는 것이다
-  ([32 §6](../stream-connector/32-stream-connector.ko.md)).
-- `ZLinkActorPlacement(preferredNodeRid, routeMesh)` — [22 §4](../server/22-actor-model.ko.md)와
-  [31 §10.2](../server/31-session-actor-dispatch.ko.md)는 remote node를 직접 지정하는 actor 생성 표면을 두지
-  않는다고 규정한다.
+호출마다 새 시도를 만들고 중복을 사후 정리하는 안과 lifecycle이 시도 future 하나를 소유하는 안을
+비교해 후자를 선택했다. coroutine 호출자는 reconnect scheduler나 transport 시도 수를 알 필요 없이
+`connect().await()`만 사용한다. 공유 Java 표면에서는 원격 node를 직접 지정하던
+`ZLinkActorPlacement(preferredNodeRid, routeMesh)`와 ensure overload도 제거했다.
+
+구현 전 공개 메서드·placement 타입 부재 검사와 동시 connect 단일 transport 검사가 모두 실패했다.
+OBS-B1을 자동 재접속으로 바꾸는 과정에서 드러난 `ZLinkSessionContext.close()`의 아무 동작도 하지 않는
+구현도 runtime이 종료 control 전송을 소유하도록 고쳤다. 구현 뒤 Java 전체 Gradle 테스트, Kotlin
+ObservabilityOps Trigger build, Java GameQuest 전체 self-check와 실제 자동 재접속 3회를 수행하는 OBS-B1이
+통과했다. 구현 커밋
+`943486d05`(2026-07-15).
 
 ### §12.14 Kotlin option helper가 수신 한도를 되돌린다 (Kotlin)
 

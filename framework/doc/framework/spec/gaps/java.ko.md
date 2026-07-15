@@ -262,7 +262,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 2건.**
+**전체 33건. 완료 3건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -288,7 +288,7 @@
 
 - [ ] **§12.1** — STREAM connector 수신 큐 overflow (Java)
 - [ ] **§12.2** — actor join admission이 선택 사항 (Java, C++)
-- [ ] **§12.3** — 근거 없는 공개 표면과 connect 상태 처리 (Java, Kotlin)
+- [x] **§12.3** — 계약 밖 수동 disconnect/reconnect와 원격 actor placement 표면을 제거하고, 동시 connect와 자동 reconnect가 하나의 진행 중 시도를 공유하도록 고쳤다. Java 전체 Gradle 테스트, Kotlin ObservabilityOps Trigger build, Java GameQuest 전체 self-check, OBS-B1 통과. 구현 커밋 `943486d05`(2026-07-15).
 - [ ] **§12.4** — connector 호출별 packet name override (Java)
 - [ ] **§12.8** — monitoring 표면 (Java)
 - [ ] **§12.9** — spot 전송 표면에 channel 이름을 함께 받는다 (Java)
@@ -363,18 +363,24 @@ Java는 `onActorJoin`에 default 구현이 있고 그 기본값이 **거절**이
 
 ### §12.3 근거 없는 공개 표면과 connect 상태 처리 (Java, Kotlin)
 
-**계약 위반(Java).** 다음 두 표면은 공통 스펙에 근거가 없고 다른 언어에도 없다.
+**해결(Java, Kotlin).** Java connector와 Kotlin wrapper에서 계약에 없는 수동 `disconnect()`와
+`reconnect()`를 제거했다. 재접속은 자동 reconnect가 담당하며, `Disconnected` 상태의 명시적
+`connect()`도 같은 lifecycle 모듈이 처리한다. `Connecting`과 `Reconnecting`에서는 진행 중인 future를
+공유하므로 동시 호출이 두 transport를 만들거나 예약된 자동 재접속과 경쟁하지 않는다.
 
-- connector `disconnect()` / `reconnect()` — [32 §6](../stream-connector/32-stream-connector.ko.md)의 연결 lifecycle
-  표면은 connect / close / dispatch 셋뿐이며, 재연결은 자동 reconnect 옵션이 담당한다.
-  **Kotlin wrapper(`ZLinkKotlinStreamConnector`)도 같은 두 메서드를 그대로 위임 노출한다.**
-- **`connect()`가 진행 중인 연결 시도를 기다리지 않는다.** `Connecting`이나 `Reconnecting`
-  상태에서 다시 호출하면 기존 시도를 기다리지 않고 새 연결 시도를 시작하며, 예약된 reconnect
-  작업은 scheduler에 그대로 남는다. 계약은 진행 중인 시도의 결과를 기다리는 것이다
-  ([32 §6](../stream-connector/32-stream-connector.ko.md)).
-- `ZLinkActorPlacement(preferredNodeRid, routeMesh)` — [22 §4](../server/22-actor-model.ko.md)와
-  [31 §10.2](../server/31-session-actor-dispatch.ko.md)는 remote node를 직접 지정하는 actor 생성 표면을 두지
-  않는다고 규정한다.
+호출마다 새 시도를 만들고 뒤늦게 중복을 정리하는 안과 lifecycle이 시도 future 하나를 소유하는 안을
+비교해 후자를 선택했다. 연결 상태와 시도 소유권이 한 모듈에 있어 호출자가 재접속 scheduler를 알
+필요가 없다. 자동 재접속의 최대 횟수, 무제한 재시도, 재접속 중 close도 계약 테스트로 유지했다.
+
+원격 node를 직접 지정하던 `ZLinkActorPlacement(preferredNodeRid, routeMesh)`와 이를 받는 ensure overload도
+제거했다. 무시되는 호환 인자를 남기는 안은 거짓 표면이 되므로 선택하지 않았다. GameQuest의 새 session
+검증은 닫힌 connector를 재사용하지 않고 새 connector를 만들도록 바꿨다.
+
+구현 전 공개 메서드·placement 타입 부재 검사와 동시 connect 단일 transport 검사가 모두 실패했다.
+OBS-B1을 자동 재접속으로 바꾸는 과정에서는 `ZLinkSessionContext.close()`가 아무 동작도 하지 않는 문제도
+확인해, runtime이 session 종료 control 전송을 소유하도록 고쳤다. 구현 뒤 Java 전체 Gradle 테스트,
+Kotlin ObservabilityOps Trigger build, Java GameQuest 전체 self-check와 실제 자동 재접속 3회를 수행하는
+OBS-B1이 통과했다. 구현 커밋 `943486d05`(2026-07-15).
 
 ### §12.4 connector 호출별 packet name override (Java)
 

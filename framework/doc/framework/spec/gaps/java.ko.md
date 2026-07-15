@@ -794,6 +794,11 @@ Config 11 전체 실행도 각 selector를
   - 증거: `ZLinkRequestHandler<Messages.GameplayMsg,...>`가 남아 있으면 실패하는 source gate가 기존 handler를 검출했다. API는 결정적 EventId를 client에 응답하고 `GameplayMsg`를 channel/owner Spot에 one-way SEND로 전달한다. owner 결과는 API별 역방향 channel의 `QuestProcessingMsg`로 bound session registry에 전달한다. runner는 CHANNEL·SPOT_ROUTE의 SEND와 역방향 SEND를 확인하고 GameplayMsg REQUEST flow가 0건인지 단언한 뒤 전체 시나리오를 통과했다.
 - [x] **SMP-JV-20** (버그) — GameQuest scale-out gate가 두 player를 순차 실행하고 owner 분산을 확인하지 않는다
   - 증거: scale-out marker를 요구한 gate가 기존 client에서 실패했다. 두 connector의 player join 뒤 request와 push future를 모두 시작하고 `CompletableFuture.allOf`에서 합류하므로 Alice 구간 종료 뒤 Bob을 시작하지 않는다. runner는 `player-scale-a` GameplayMsg가 mission-a owner Spot, `player-scale-b`가 mission-b owner Spot에서 처리된 flow와 `gamequest-scale-out=completed`를 확인하며 전체 시나리오가 통과했다.
+- [x] **SMP-JV-22** (결함) — GameQuest inventory가 다른 언어 구현을 계약 기준으로 선언한다.
+  - 증거: inventory 첫 줄의 `기준: ...dotnet`을 금지하는 runner gate가 수정 전 실패했다. 공통 GameQuest 문서와 공통 샘플 규약을 계약 기준으로 고정하고 `.NET`은 비교 자료로만 설명하도록 바꿨다. source gate와 최초 GameQuest 시나리오가 통과했으며 재기동 자동 재연결 실패는 SMP-JV-01로 분리했다. 구현 커밋 `a6dfa1665`(2026-07-15).
+- [ ] **SMP-JV-26** (버그) — TicTacToe JSON 구현은 완료됐지만 범위 밖 release gate가 MessagePack을 요구한다(SMP-JV-05와 동일 blocker).
+- [ ] **SMP-JV-30** (절대 규칙 위반) — TicTacToe 수동 등록 구현은 완료됐지만 범위 밖 release gate가 package scan을 요구한다.
+- [x] **SMP-JV-31** (미구현) — TicTacToe connector inbound observer와 `stream-inbound` marker를 구현했고 runner의 세 역할·RESPONSE·SEND 단언이 기능 PASS까지 통과했다. 공통 cleanup 종료 결함은 SMP-JV-30의 범위 밖 runner blocker로 남긴다.
 - [x] **E2E-JV-01** (결함) — `ObservabilityOps`가 전용 Delay·Play·Session 역할 서버와 Client 시나리오를 소유하며, 인접 config의 실행 파일과 OBS selector를 더 이상 빌려 쓰지 않는다. `OBS-A1`~`OBS-C5` 단독 실행과 `all` runner 통과(2026-07-15).
 - [x] **E2E-JV-02** (결함) — Config 2 커버리지 구멍(`SM-F3` 누락), 문서에 없는 `SM-Q9`
   - 근거: 수정 전 `run_e2e.sh SM-F3`가 `not mapped to an implemented client mode`로 실패했다. `SM-F3`를 기존 route-mesh 검증에 연결한 뒤 단독 실행이 통과했다. 공통 문서에 없는 `SM-Q9`는 전체 실행 목록, selector, feature-map과 시나리오 출력에서 제거했다.
@@ -954,7 +959,7 @@ sourcing도, location-store binding도, 자동 연결도 **없다.** 있는 것�
 | **SMP-JV-19** (**버그**) | [gamequest §9](../../common/sample/event/gamequest.ko.md): **상태 = 이벤트의 fold**. `QuestProgressed`는 `Delta`를 갖는다 | **해결:** Java 내부 event-store 행에 `delta`를 기록한다. projection rebuild는 `QuestProgressedEvent`의 delta를 누적하고 reconcile은 절대 보정값을 적용하며 completion/reward event로 완료 상태를 복원한다. server assertion은 Alice의 세 progress event가 delta 합 `3`을 이루는지 검사하고, 기존 delete/rebuild client 시나리오가 fold 결과를 검증한다. 이 저장 행은 Java 샘플의 Redis와 self-check에서만 사용하며 다른 언어와 교환되는 wire는 바꾸지 않았다. |
 | **SMP-JV-20** (**버그**) | [gamequest §8](../../common/sample/event/gamequest.ko.md): scale-out은 두 player가 **다른 owner에서 동시 처리**된다 | **해결:** 별도 scale-out 구간이 api-a의 `player-scale-a`와 api-b의 `player-scale-b`를 bind한 뒤 두 gameplay request와 두 push 대기를 join 없이 시작하고 하나의 `allOf`에서 합류한다. runner는 각 GameplayMsg가 각각 mission-a와 mission-b의 서로 다른 owner Spot에서 처리됐는지 flow log로 확인한다. 서로 다른 JVM의 시각을 비교하지 않는다. |
 | **SMP-JV-21** (**버그**) | [샘플 규약](../../common/sample/README.ko.md): `Msg`는 **응답 없는 단방향**이다. request/reply는 `Req`/`Res`여야 한다. entry-spot → owner spot 내부 메시지도 **예외가 아니다** | **해결:** API는 gameplay command를 검증해 결정적 EventId를 client에 즉시 응답하고, `GameplayMsg`를 channel과 owner Spot에 모두 one-way SEND로 전달한다. owner는 처리 결과를 `QuestProcessingMsg`로 source API의 역방향 channel에 보내며, API의 player별 session registry가 현재 bound session에만 notify를 push한다. 기존 `QuestProcessingRes`와 GameplayMsg request handler는 제거했다. offline event 뒤에는 같은 공개 연결의 `GetQuestProgressReq` 한 번으로 owner 적용을 확인하므로 sleep·retry를 사용하지 않는다. |
-| **SMP-JV-22** (결함) | [샘플 규약](../../common/sample/README.ko.md): **다른 언어 구현을 복사 기준으로 삼지 않는다** | `sample-porting-inventory.ko.md:3` — **"기준: dotnet samples/GameQuest"**. 그리고 `:19` — **"남은 gap 또는 partial 항목이 없다"**. 위 11개 버그가 전부 그 "완료" 행 아래에 있다 |
+| **SMP-JV-22** (결함) | [샘플 규약](../../common/sample/README.ko.md): **다른 언어 구현을 복사 기준으로 삼지 않는다** | **해결:** inventory는 공통 GameQuest 문서와 공통 샘플 규약을 계약 기준으로 명시한다. `.NET` 구현은 언어별 차이를 찾는 비교 자료일 뿐 Java 완료 판정의 기준이 아니며, 남은 runtime 차이는 이 gap 문서에서 계속 추적한다. |
 
 **ZoneWorld는 Java/Kotlin 구현이 아직 없다** — 계획된 순서(`dotnet → java → kotlin → node → cpp`)상 정상이며 갭이 아니다.
 
@@ -1014,6 +1019,10 @@ timer도, 고객의 자기 상담원 등록도 없다. 그런데 **TicTacToe에�
   - 근거: 실제 Redis 지연 marker를 요구한 gate가 기존 앱 데코레이터에서 실패했다. 데코레이터를 제거하고 TCP proxy가 peer 목록을 읽는 Redis 응답을 1.2초 늦추도록 바꾼 뒤 marker, 지연된 store read, 동시 메시징 p99 예산을 모두 확인해 `scenario SF-E1 passed`를 얻었다. 공통 proxy 경로 회귀로 `SF-D1`과 `SF-D2`도 다시 통과했다.
 - [x] **E2E-JV-18** (**가짜 통과**) — 서로 다른 JVM의 `System.nanoTime()`을 합쳐 remote transfer 순서를 정렬한다.
   - 근거: runner에 프로세스마다 따로 측정한 timestamp 사용 금지 gate를 추가하자 기존 코드가 즉시 실패했다. timestamp 필드를 제거하고 source·target evidence의 삽입 순서를 역할별로 확인하며, target join 완료 뒤 돌아오는 `commit_ack`를 역할 사이 인과 경계로 사용하도록 바꿨다. ST-B1·ST-B4와 local join 회귀 ST-A1이 통과했다.
+- [ ] **E2E-JV-15** (**가짜 통과**) — TA-B1의 public actor error kind는 Java runtime 분류가 선행돼야 한다.
+- [x] **E2E-JV-16** (미구현) — Config 9 bind 상태 매트릭스 TA-A1~A4와 TA-B2·B3를 실제 session gateway 분리 구성에서 검증한다.
+- [ ] **E2E-JV-17** (**가짜 통과**) — transfer late backlog target evidence와 moving actor replay는 Java runtime 수정이 선행돼야 한다.
+- [ ] **E2E-JV-19** (**가짜 통과**) — OBS-A2 server dispatch error flow event는 Java runtime 발행이 선행돼야 한다.
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
@@ -1042,6 +1051,10 @@ Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **READM
 
 ## 라운드 6 — E2E 전 config 구성 축·Config 1 심층
 
+- [x] **E2E-JV-20** (미구현) — 11개 config runner가 공통 role-order 정책을 적용하고 통합 runner가 reverse와 고정 seed shuffle 축을 실행한다.
+  - 재검증 완료: `validate_start_order_contract.sh`가 11개 runner의 `zlink_e2e_order_roles` 적용, 명시적 `--start-order`, reverse와 `shuffle:20260715` 실행을 확인해 통과했다. 구현 커밋 `acfd67dfd`, 명시적 옵션 정리 `9d8298db1`(2026-07-15).
+- [x] **E2E-JV-21** (미구현) — Config 2·9가 route mesh 없음과 session/spot 분리 배치 조합을 실행한다.
+- [ ] **E2E-JV-23** (미구현) — RM-C8 MaxMessageSize는 framework 공통 계약과 Java public 설정 결정이 선행돼야 한다.
 - [x] **E2E-JV-22** (**가짜 통과**) — RM-C2·RM-C4가 실패 종류와 느린 handler의 최종 완료를 검증하지 않는다.
   - 근거: endpoint가 기존처럼 `failed`만 반환하도록 되돌린 오류 주입에서 RM-C2가 `expected public TimeoutException, got null`로 실패했다. 실제 예외를 공통 오류 변환 코드로 해석한 뒤 RM-C2와 RM-C4가 Java의 공개 timeout 표현인 `TimeoutException`을 확인한다. RM-C4는 timeout 뒤 정상 요청 두 건과 `ProfileReq`의 `value=slow` 완료 evidence까지 확인하며, 두 scenario와 공유 응답 계약을 쓰는 RM-C5가 통과했다.
 - [x] **E2E-JV-24** (미구현) — stream 응답에 포함된 actor ref의 generation을 버리고 양수인지 확인하지 않는다.
@@ -1049,7 +1062,7 @@ Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **READM
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **E2E-JV-20** (미구현) | [E2E README:499-512](../../common/e2e/README.ko.md): config runner는 서버 기동 순서를 받아야 하고, 기본 외에 **reverse 1회 + 고정 seed shuffle 1회**를 최소 실행한다 | `e2e/run_e2e_all.sh:55-59,82-85`는 모든 config를 selector `all`로 **한 번씩만** 실행하며 `E2E_START_ORDER`를 설정하지 않는다. 개별 runner 중 이 입력을 읽는 것은 `SpotService/run_e2e.sh:18-20`과 `ToActorMessaging/run_e2e.sh:15-17`뿐이고, 통합 게이트가 reverse/shuffle을 호출하는 곳은 0건이다. ⇒ 순서 축을 구현한 두 config조차 기본 게이트에서는 forward만 돌고, 나머지는 축 자체가 없다 |
+| **E2E-JV-20** (미구현) | [E2E README:499-512](../../common/e2e/README.ko.md): config runner는 서버 역할 기동 순서를 받고, 기본 외에 **reverse 1회 + 고정 seed shuffle 1회**를 최소 실행한다 | **해결:** 11개 config runner가 공통 `zlink_e2e_order_roles`로 실제 역할 시작 배열을 바꾼다. 통합 runner는 명시적 `--start-order`로 reverse와 `shuffle:20260715`을 실행하며 정적 계약 gate가 이 배선을 전수 확인한다. |
 | **E2E-JV-21** (미구현) | [E2E README:487-497,546-547](../../common/e2e/README.ko.md): Config 2·9의 P0는 **route mesh 없음 × session/spot 분리 배치** 조합을 실행한다 | **해결:** Config 2의 기존 SM-F6에서 multi-node만 RouteMesh를 끄고 gateway는 계속 등록하는 결함을 재현했다. 세 역할의 비활성 marker를 요구하는 gate가 기존 코드에서 `SM-F6 gateway still registers RouteMesh`로 실패했다. gateway도 같은 spot-only 구성 입력을 받아 RouteMesh 등록을 생략하고, runner는 gateway와 multi-node 두 개의 marker를 모두 확인한다. SM-F6의 원격 spot request/send와 actor join이 통과했고 RouteMesh 구성 회귀 SM-F3도 통과했다. Config 9는 actor owner와 session gateway 두 개를 별도 프로세스로 실행하며 RouteMesh 없이 SpotMesh와 location store만 등록한다. 실제 stream bind를 사용하는 TA-A1~A4가 이 분리 구성에서 통과했다. |
 | **E2E-JV-22** (**가짜 통과**) | [config-1 RM-C2:174-182](../../common/e2e/config-1-location-messaging.ko.md)는 미존재 rid가 **public error**로 실패해야 한다. [RM-C4:194-202](../../common/e2e/config-1-location-messaging.ko.md)는 첫 실패가 **timeout**이고 느린 handler가 결국 완료됐는지까지 본다 | **해결:** 두 endpoint는 완료 예외를 벗긴 뒤 framework 오류면 `ZLinkFrameworkErrorKind`, 그 밖의 공개 경계 오류면 예외 타입 이름을 응답한다. RM-C2와 RM-C4는 실제 `TimeoutException`을 확인한다. RM-C4는 후속 정상 reply뿐 아니라 느린 handler의 `ProfileReq` 완료 evidence도 직접 기다린다. |
 | **E2E-JV-23** (미구현) | [config-1 RM-C8:228-238](../../common/e2e/config-1-location-messaging.ko.md): `MaxMessageSize` 근접 payload는 왕복하고 **상한 초과 payload는 public error로 거부**된 뒤 정상 request가 동작해야 한다 | **재검증 중단:** Java의 정식 interface spec과 실제 `ZLinkSocketRuntimeOptions`는 `weight()`만 제공하며 `MaxMessageSize` 설정이 없다. binding에는 socket option이 있지만 framework가 만든 live channel socket에 적용할 공개 경로가 없다. E2E 앱이 payload 길이만 보고 임의로 거부하면 framework 상한을 검증하지 못하므로 구현하지 않았다. **선택지:** (1) `MaxMessageSize`를 framework 공통 계약으로 받아들일지 먼저 리뷰하고, 받아들이면 공통 spec·Java interface spec·`zlink-framework-core`까지 범위를 넓혀 공개 설정을 구현한 뒤 RM-C8을 확장한다. (2) 현재 범위를 유지하고 feature-map에 적힌 runtime gap과 이 항목을 open으로 남긴다. |

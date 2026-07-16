@@ -377,6 +377,9 @@ int main ()
                     && observability_c3.find ("state == \"created\" ||")
                          == std::string::npos,
                   "E2E-CP-63", "OBS-C3 accepts an existing row without replay proof");
+    gate.require (observability_runner.find ("policy-natural") != std::string::npos
+                    && observability_runner.find ("drain_natural") != std::string::npos,
+                  "E2E-CP-63", "OBS-C3 does not execute both drain policies");
 
     /* E2E-CP-04 — each PubSub client scenario owns its bounded evidence oracle. */
     gate.require (pubsub_client_support.find ("/evidence/wait") != std::string::npos,

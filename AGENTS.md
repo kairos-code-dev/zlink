@@ -150,6 +150,13 @@ spec에 먼저 기록한다. 정식 spec·guide·internals는 10.0.0 현재 상�
 `framework/doc/plan/v10.0/` 아래 임시 문서만 소유하고 정식 문서에서 이 임시 문서를 참조하지 않는다.
 public header·구현·contract test를 정식 spec에 맞춘 뒤 실제 구현이 확정된 시점에 internals를 갱신한다.
 
+RouteMesh 10.0.0 실행 상태의 단일 기준은
+`framework/doc/plan/v10.0/route-mesh-10.0.0-execution-ledger.ko.md`다. 에이전트는 10.0.0 작업을 시작할
+때 이 ledger에서 담당 stage·ID, 선행 조건, 정식 spec 주소와 완료 gate를 확인하고, 진행 상태와 증거도
+이 파일의 담당 행에만 갱신한다. 다른 v10.0 plan 문서의 설계 결정, inventory와 test matrix는 입력
+자료이지 별도 진행표가 아니다. 작업 지시는 ledger 경로와 담당 stage 또는 ID 범위만으로 구성할 수
+있어야 하며, 다른 plan의 checklist를 프롬프트에 다시 복사하지 않는다.
+
 이 framework 및 공개 전 RouteMesh 10.0.0 예외 밖의 core, bindings와 일반 `doc/spec/` 작업은 아래 draft 규칙을
 계속 따른다.
 

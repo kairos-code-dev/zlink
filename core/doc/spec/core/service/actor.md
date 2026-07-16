@@ -132,12 +132,14 @@ independent of ActorRef generation.
 ## 2. Construction, lookup, and destroy
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_new(
+ZLINK_EXPORT zlink_request_result_t zlink_mesh_node_actor_new(
   void *mesh_node,
   const char *actor_id,
   const zlink_msg_t *creation_parts,
   size_t creation_part_count,
-  zlink_actor_ref_t *actor_out);
+  zlink_actor_ref_t *actor_out,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
 ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_lookup(
   void *mesh_node,
   const char *actor_id,
@@ -155,9 +157,25 @@ ZLINK_EXPORT zlink_submit_result_t zlink_mesh_node_actor_destroy(
   uint32_t timeout_ms);
 ```
 
-`new` creates a local Actor generation and delivers creation payload through an
-entry-Spot control record. An absent payload uses `NULL` and count zero. An
-active generation for the same ID returns `ZLINK_CONFIG_CONFLICT`/`EEXIST`.
+`new` commits a local Actor generation and admission of the entry Spot's
+`CREATED` control record as one transaction. An absent creation payload uses
+`NULL` and count zero. An active generation for the same ID returns
+`ZLINK_REQUEST_CONFLICT`/`EEXIST`.
+
+The MeshNode message and byte budgets bound the entry Spot control mailbox. If
+the complete control record cannot be admitted with `DONTWAIT`, the call returns
+`ZLINK_REQUEST_BACKPRESSURED`/`EAGAIN`. A blocking call waits for capacity until
+`timeout_ms` and returns `ZLINK_REQUEST_TIMED_OUT`/`ETIMEDOUT` at the deadline.
+A zero timeout does not wait.
+
+Core first reserves the next generation, Actor state, and mailbox capacity, and
+publishes the generation together with the complete creation-record enqueue.
+Lookup can observe the new Actor and `actor_out` is written only after success.
+Conflict, backpressure, timeout, shutdown, or allocation failure rolls back the
+reservation, Actor state, and control record together, does not consume a
+generation, and does not write `actor_out`. A retry may therefore use the same
+next generation as the failed call. Creation parts are borrowed and read-only;
+the caller owns them on every result.
 
 Local lookup returns a caller-owned snapshot. Remote lookup and destroy return
 a terminal completion on the requester Node's infrastructure claim. Lookup

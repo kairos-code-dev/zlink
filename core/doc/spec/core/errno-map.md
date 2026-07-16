@@ -56,7 +56,7 @@ These results apply to raw socket send and request submit, MeshNode node/channel
 | `ZLINK_REQUEST_INVALID_ARGUMENT` | `EINVAL` | Asynchronous validation failure |
 | `ZLINK_REQUEST_INVALID_STATE` | `ESTALE`, `EALREADY`, `ESHUTDOWN` | Terminal token or lifecycle-state error |
 | `ZLINK_REQUEST_NOT_SUPPORTED` | `ENOTSUP` | Unsupported operation |
-| `ZLINK_REQUEST_BACKPRESSURED` | `ENOBUFS` | Atomic whole-capacity reservation failed |
+| `ZLINK_REQUEST_BACKPRESSURED` | `EAGAIN`, `ENOBUFS` | Non-blocking mailbox admission or atomic whole-capacity reservation failed |
 
 After successful request submission, exactly one terminal result is delivered in a completion record for each operation ID. Synchronous shutdown and transfer prepare also return this enum.
 

@@ -61,7 +61,7 @@ borrowed ownership을 유지한다. raw socket input ownership은 각 socket 문
 | `ZLINK_REQUEST_INVALID_ARGUMENT` | `EINVAL` | asynchronous validation 실패 |
 | `ZLINK_REQUEST_INVALID_STATE` | `ESTALE`, `EALREADY`, `ESHUTDOWN` | terminal token 또는 lifecycle state 오류 |
 | `ZLINK_REQUEST_NOT_SUPPORTED` | `ENOTSUP` | operation 미지원 |
-| `ZLINK_REQUEST_BACKPRESSURED` | `ENOBUFS` | 원자적 전체 reservation 실패 |
+| `ZLINK_REQUEST_BACKPRESSURED` | `EAGAIN`, `ENOBUFS` | non-blocking mailbox admission 또는 원자적 전체 reservation 실패 |
 
 request submit 성공 뒤에는 operation ID마다 이 terminal result를 정확히 한 번 completion record로
 전달한다. synchronous shutdown과 transfer prepare도 같은 enum을 반환한다.

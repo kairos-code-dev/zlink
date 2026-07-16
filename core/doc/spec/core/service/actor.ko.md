@@ -129,12 +129,14 @@ Actor ID의 생성 수명을 구분한다. membership epoch는 같은 Actor gene
 ## 2. 생성, 조회와 종료
 
 ```c
-ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_new(
+ZLINK_EXPORT zlink_request_result_t zlink_mesh_node_actor_new(
   void *mesh_node,
   const char *actor_id,
   const zlink_msg_t *creation_parts,
   size_t creation_part_count,
-  zlink_actor_ref_t *actor_out);
+  zlink_actor_ref_t *actor_out,
+  zlink_send_flags_t flags,
+  uint32_t timeout_ms);
 ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_lookup(
   void *mesh_node,
   const char *actor_id,
@@ -152,9 +154,20 @@ ZLINK_EXPORT zlink_submit_result_t zlink_mesh_node_actor_destroy(
   uint32_t timeout_ms);
 ```
 
-`new`는 local Actor generation을 만들고 creation payload를 entry Spot control record로 전달한다. payload가
-없으면 pointer는 `NULL`, count는 0이다. 같은 ID의 active generation이 있으면
-`ZLINK_CONFIG_CONFLICT`/`EEXIST`다.
+`new`는 local Actor generation과 entry Spot의 `CREATED` control record admission을 하나의 transaction으로
+commit한다. creation payload가 없으면 pointer는 `NULL`, count는 0이다. 같은 ID의 active generation이
+있으면 `ZLINK_REQUEST_CONFLICT`/`EEXIST`다.
+
+entry Spot control mailbox에는 MeshNode의 message·byte budget이 적용된다. `DONTWAIT`에서 complete control
+record를 수용할 수 없으면 `ZLINK_REQUEST_BACKPRESSURED`/`EAGAIN`이다. blocking 호출은 `timeout_ms`까지
+capacity를 기다리고 deadline이 지나면 `ZLINK_REQUEST_TIMED_OUT`/`ETIMEDOUT`이다. timeout 0은 기다리지
+않는다.
+
+Core는 next generation, Actor state와 mailbox capacity를 먼저 예약하고 complete creation record enqueue와
+함께 generation을 공개한다. 성공 반환 뒤에만 lookup이 새 Actor를 관측하고 `actor_out`을 채운다. conflict,
+backpressure, timeout, shutdown 또는 allocation 실패는 예약, Actor state와 control record를 전부 rollback하고
+generation을 소비하지 않으며 `actor_out`을 쓰지 않는다. 따라서 retry는 실패한 호출과 같은 next generation을
+사용할 수 있다. creation parts는 borrowed read-only이며 모든 결과에서 caller가 소유한다.
 
 local lookup은 caller-owned snapshot을 반환한다. remote lookup과 destroy는 requester Node infrastructure
 claim에 terminal completion을 반환한다. lookup completion의 `kind_data`는 `zlink_actor_location_t`다.

@@ -6,12 +6,10 @@ namespace zlink::framework::e2e::observability_ops::client::scenarios
 {
 inline void run_obs_a4_scenario (const verification_input_t &input)
 {
-    const auto publisher = flow_ids (read_lines (input, "publisherLog"), "phase=sent");
-    const auto subscriber = flow_ids (read_lines (input, "subscriberLog"), "spot_subscription");
-    std::vector<std::string> shared;
-    std::set_intersection (publisher.begin (), publisher.end (), subscriber.begin (),
-                           subscriber.end (), std::back_inserter (shared));
-    require (!shared.empty (), "OBS-A4 subscriber did not preserve publish flow");
+    const auto publisher = read_lines (input, "publisherLog");
+    const auto subscriberLogs = read_line_groups (input, "subscriberLogs");
+    require_fanout_flow (publisher, subscriberLogs,
+                         "OBS-A4 one publish flow did not reach every subscriber");
     require (has_line (read_lines (input, "timerLog"), "origin=timer"),
              "OBS-A4 timer publish has no timer origin");
 }

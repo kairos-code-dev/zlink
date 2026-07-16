@@ -7,8 +7,10 @@ namespace zlink::framework::e2e::observability_ops::client::scenarios
 inline void run_obs_a2_scenario (const verification_input_t &input)
 {
     const auto lines = read_lines (input, "sessionLog");
-    require (!flow_ids (lines, "phase=error").empty ()
-               || !flow_ids (lines, "dispatch error").empty (),
-             "OBS-A2 error line has no flow id");
+    require_shared_flow (
+      lines,
+      {"phase=received surface=stream_session kind=request label=cpp-obs-session packet=ObsUnknownReq",
+       "dispatch error surface=stream_session kind=request", "phase=error"},
+      "OBS-A2 success and dispatch error lines do not share one flow");
 }
 } // namespace zlink::framework::e2e::observability_ops::client::scenarios

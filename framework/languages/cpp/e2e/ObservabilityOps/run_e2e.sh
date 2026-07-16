@@ -308,7 +308,8 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
     >"$LOG_DIR/workflow-action.json"
   sleep "$ROUTE_SETTLE_SECONDS"
   verify_scenario OBS-A4 publisherLog "$LOG_DIR/workflow-b-flow.log" \
-    subscriberLog "$LOG_DIR/workflow-a-flow.log" timerLog "$LOG_DIR/play-a-flow.log"
+    subscriberLogs "$LOG_DIR/workflow-a-flow.log;$LOG_DIR/workflow-b-flow.log" \
+    timerLog "$LOG_DIR/play-a-flow.log"
   curl_local -fsS "$WORKFLOW_B_HTTP/evidence" >"$LOG_DIR/workflow-b.fanout.evidence.json"
   curl_local -fsS "$WORKFLOW_A_HTTP/evidence" >"$LOG_DIR/workflow-a.fanout.evidence.json"
   verify_scenario OBS-B3 publisherEvidence "$LOG_DIR/workflow-b.fanout.evidence.json" \
@@ -640,7 +641,8 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
   write_trigger_config "$CONFIG_DIR/trigger-offnode-flow.json" flow "$SPOT_RID"
   "$CLIENT" --config="$CONFIG_DIR/trigger-offnode-flow.json" \
     >"$PHASE_LOG_DIR/trigger-flow.log" 2>&1
-  verify_scenario OBS-A3 downstreamLog "$PHASE_LOG_DIR/play-b-flow.log" \
+  verify_scenario OBS-A3 upstreamLog "$PHASE_LOG_DIR/session-flow.log" \
+    downstreamLog "$PHASE_LOG_DIR/play-b-flow.log" \
     offNodeLog "$PHASE_LOG_DIR/play-a-flow.log"
   curl_local -fsS "$PLAY_A_HTTP/evidence" >"$PHASE_LOG_DIR/play-a.evidence.json"
   verify_scenario OBS-B4 offNodeEvidence "$PHASE_LOG_DIR/play-a.evidence.json"

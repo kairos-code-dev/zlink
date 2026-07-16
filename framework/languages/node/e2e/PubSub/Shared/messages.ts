@@ -23,4 +23,5 @@ export interface EvidenceWaitReq {
   readonly containsAllLineGroups?: readonly (readonly string[])[];
   readonly containsAnyLineGroups?: readonly (readonly string[])[];
   readonly timeoutMilliseconds?: number;
+  readonly afterIndex?: number;
 }

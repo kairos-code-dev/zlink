@@ -1,4 +1,4 @@
-import type { ZLinkFanoutClient } from '@zlink-systems/framework';
+import type { ZLinkDrainControl, ZLinkFanoutClient } from '@zlink-systems/framework';
 import { EventMsg, MissingEventMsg, PubSubNames } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
@@ -6,6 +6,7 @@ import type { HttpRoute } from '../Support/http-server';
 export function createPublisherEndpoints(
   fanout: ZLinkFanoutClient,
   evidence: EvidenceStore,
+  drain: ZLinkDrainControl,
   stop: () => void
 ): readonly HttpRoute[] {
   return [
@@ -13,6 +14,7 @@ export function createPublisherEndpoints(
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
     { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } },
+    { method: 'POST', path: '/admin/drain', handle: () => drain.drain(30_000) },
     {
       method: 'POST',
       path: '/publish/event',

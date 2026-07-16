@@ -8,7 +8,7 @@ import { getStatus, postStatus } from '../../../http-client';
 export class ServerProcessLauncher {
   constructor(private readonly options: ClientOptions) {}
 
-  startSubscriber(name: string, httpUrl: string, evidenceFile: string): DynamicProcess {
+  startSubscriber(name: string, httpUrl: string, evidenceFile: string, publisherEndpoint?: string): DynamicProcess {
     const config = this.writeConfig(name, {
       rid: name,
       httpUrl,
@@ -16,7 +16,8 @@ export class ServerProcessLauncher {
       redisKeyPrefix: this.options.redisKeyPrefix,
       evidenceFile: path.join(this.options.logDir, evidenceFile),
       logDir: this.options.logDir,
-      handlerDelayMs: 0
+      handlerDelayMs: 0,
+      publisherEndpoint
     });
     return this.start(
       name,

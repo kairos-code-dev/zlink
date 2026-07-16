@@ -1,56 +1,63 @@
-// PS-B2: publisher 재시작 시나리오를 검증한다.
+// PS-B2: terminal drain과 peer row 교체 뒤 기존 subscription의 첫 event 수신을 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
-import { getStatus, postJson, postStatus } from '../../../http-client';
+import { getStatus, postJsonWithin, postStatus } from '../../../http-client';
+import { ensure, eventually, isConnectionFailure } from '../Support/scenario-assert';
+import {
+  evidenceCount,
+  waitForConnection,
+  waitForDisconnection,
+  waitForEvent,
+  waitForPublisherRow
+} from '../Support/subscriber-observation';
 import { ServerProcessLauncher, type DynamicProcess } from '../Support/server-process-launcher';
-import { delay, ensure, eventually, isConnectionFailure } from '../Support/scenario-assert';
-import { publishEvent, waitForAll } from './ps-a1-fanout-basic-delivery-scenario';
+import { publishEvent } from './ps-a1-fanout-basic-delivery-scenario';
 
 export async function runPsB2(
   publisher: string,
   subscribers: readonly string[],
-  processes: ServerProcessLauncher
+  processes: ServerProcessLauncher,
+  publisherEndpoint: string
 ): Promise<DynamicProcess> {
   const runId = randomUUID().replaceAll('-', '');
   await publishEvent(publisher, PubSubNames.mainTopic, runId, 1, 'before-publisher-restart');
-  await waitForAll(subscribers, {
-    containsAll: ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`, 'seq=1'],
-    timeoutMilliseconds: 10_000
-  });
+  await Promise.all(subscribers.map((url) => waitForEvent(url, runId, 1, 'before-publisher-restart')));
+  await waitForPublisherRow(subscribers[0], true, publisherEndpoint);
+  const disconnectOffsets = await Promise.all(subscribers.map(evidenceCount));
+
+  const drain = await postJsonWithin<{ readonly kind: string; readonly reason?: string }>(
+    publisher, '/admin/drain', {}, 35_000
+  );
+  ensure(
+    drain.kind === 'drained' && drain.reason === undefined,
+    `PS-B2 expected terminal Drained, got ${drain.kind}/${drain.reason ?? ''}.`
+  );
+  await waitForPublisherRow(subscribers[0], false);
+  await Promise.all(subscribers.map((url, index) => waitForDisconnection(url, disconnectOffsets[index])));
 
   await postStatus(`${publisher}/shutdown`);
   await eventually(async () => {
     try {
-      const status = await getStatus(`${publisher}/health`);
-      return status < 200 || status >= 300;
+      return await getStatus(`${publisher}/health`) !== 200;
     } catch (error) {
       return isConnectionFailure(error);
     }
-  }, 'PS-B2 expected publisher to stop before restart.');
+  }, 'PS-B2 expected publisher process to stop.');
 
   try {
     await publishEvent(publisher, PubSubNames.mainTopic, runId, 2, 'during-publisher-down');
     throw new Error('PS-B2 expected publish attempt to fail while publisher is down.');
   } catch (error) {
-    ensure(isConnectionFailure(error), 'PS-B2 expected connection failure while publisher is down.');
+    ensure(isConnectionFailure(error), 'PS-B2 expected HTTP connection failure while publisher is down.');
   }
 
+  const connectionOffsets = await Promise.all(subscribers.map(evidenceCount));
   const restarted = processes.startPublisher();
   await restarted.waitReady();
-  await delay(500);
-  for (let i = 3; i <= 42; i += 1) {
-    await publishEvent(publisher, PubSubNames.mainTopic, runId, i, `after-publisher-restart-${i}`);
-    await delay(100);
-  }
-
-  await waitForAll(subscribers, {
-    containsAll: ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`],
-    containsAnyLineGroups: Array.from({ length: 23 }, (_, index) => {
-      const seq = index + 20;
-      return [`seq=${seq}|`, `run=${runId}`, `topic=${PubSubNames.mainTopic}`];
-    }),
-    timeoutMilliseconds: 10_000
-  });
+  await waitForPublisherRow(subscribers[0], true, publisherEndpoint);
+  await Promise.all(subscribers.map((url, index) => waitForConnection(url, connectionOffsets[index])));
+  await publishEvent(publisher, PubSubNames.mainTopic, runId, 3, 'after-publisher-restart');
+  await Promise.all(subscribers.map((url) => waitForEvent(url, runId, 3, 'after-publisher-restart')));
   console.log('scenario PS-B2 passed');
   return restarted;
 }

@@ -194,6 +194,10 @@ test('framework runtime host starts channel auto-connect loops from location pee
           subscriber: {},
           publishHandlers: [{ packetName: 'Event', handler: { async handle() {} } }]
         },
+        'local-events': {
+          routingId: 'node-a',
+          publisher: { bind: 'tcp://local-events' }
+        },
         'manual-events': {
           subscriber: { manualConnections: ['tcp://manual-events'] },
           publishHandlers: [{ packetName: 'Event', handler: { async handle() {} } }]
@@ -242,6 +246,13 @@ test('framework runtime host starts channel auto-connect loops from location pee
     assert.ok(routeDialStart > routeBind);
     assert.ok(routeProbe > routeDialStart);
     assert.ok(routeConnect > routeProbe);
+    const publisherRows = await store.listPeers({
+      autoConnectType: framework.ZLinkLocationAutoConnectType.Fanout,
+      meshName: 'local-events',
+      role: framework.ZLinkLocationRole.Pub
+    });
+    assert.equal(publisherRows.length, 1);
+    assert.equal(String(publisherRows[0].nodeRid), 'node-a');
   } finally {
     await runtime.stop();
   }

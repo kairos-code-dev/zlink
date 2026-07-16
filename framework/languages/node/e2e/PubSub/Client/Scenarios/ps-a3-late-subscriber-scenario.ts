@@ -1,38 +1,44 @@
-// PS-A3: late subscriber 시나리오를 검증한다.
+// PS-A3: ConnectionReady 전 event를 replay하지 않고 준비 뒤 첫 event를 받는지 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
-import { postJson } from '../../../http-client';
+import { getJson } from '../../../http-client';
+import { NetworkFaultProxy } from '../Support/network-fault-proxy';
+import { ensure } from '../Support/scenario-assert';
+import { evidenceCount, waitForConnection, waitForEvent } from '../Support/subscriber-observation';
 import { ServerProcessLauncher } from '../Support/server-process-launcher';
-import { delay, ensure } from '../Support/scenario-assert';
 import { publishEvent } from './ps-a1-fanout-basic-delivery-scenario';
 
 export async function runPsA3(
   publisher: string,
   lateSubscriberUrl: string,
-  processes: ServerProcessLauncher
+  processes: ServerProcessLauncher,
+  publisherEndpoint: string
 ): Promise<void> {
-  const beforeLateRun = randomUUID().replaceAll('-', '');
-  for (let i = 1; i <= 5; i += 1) {
-    await publishEvent(publisher, PubSubNames.mainTopic, beforeLateRun, i, `before-late-${i}`);
-  }
+  const beforeReadyRun = randomUUID().replaceAll('-', '');
+  await publishEvent(publisher, PubSubNames.mainTopic, beforeReadyRun, 1, 'before-ready');
 
-  const lateSubscriber = processes.startSubscriber('sub-late', lateSubscriberUrl, 'sub-late.evidence.log');
+  const fault = await NetworkFaultProxy.start(publisherEndpoint, true);
+  const subscriber = processes.startSubscriber(
+    'sub-late', lateSubscriberUrl, 'sub-late.evidence.log', fault.endpoint
+  );
   try {
-    await lateSubscriber.waitReady();
-    const afterLateRun = randomUUID().replaceAll('-', '');
-    for (let i = 1; i <= 40; i += 1) {
-      await publishEvent(publisher, PubSubNames.mainTopic, afterLateRun, i, `after-late-${i}`);
-      if (i % 5 === 0) {
-        await delay(50);
-      }
-    }
-    const evidence = await postJson<readonly string[]>(lateSubscriberUrl, '/evidence/wait', {
-      containsAll: ['event|', `run=${afterLateRun}`, `topic=${PubSubNames.mainTopic}`],
-      timeoutMilliseconds: 10_000
-    });
-    ensure(evidence.every((line) => !line.includes(`run=${beforeLateRun}`)), 'PS-A3 late subscriber replayed pre-join events.');
+    await subscriber.waitReady();
+    const connectionOffset = await evidenceCount(lateSubscriberUrl);
+    fault.unblock();
+    await waitForConnection(lateSubscriberUrl, connectionOffset);
+
+    const afterReadyRun = randomUUID().replaceAll('-', '');
+    await publishEvent(publisher, PubSubNames.mainTopic, afterReadyRun, 2, 'after-ready');
+    const evidence = await waitForEvent(lateSubscriberUrl, afterReadyRun, 2, 'after-ready');
+    const allEvidence = await getJson<readonly string[]>(lateSubscriberUrl, '/evidence');
+    ensure(
+      evidence.some((line) => line.includes(`run=${afterReadyRun}`))
+        && allEvidence.every((line) => !line.includes(`run=${beforeReadyRun}`)),
+      'PS-A3 late subscriber replayed before-ready or missed the first after-ready event.'
+    );
     console.log('scenario PS-A3 passed');
   } finally {
-    await lateSubscriber.kill();
+    await subscriber.kill();
+    await fault.close();
   }
 }

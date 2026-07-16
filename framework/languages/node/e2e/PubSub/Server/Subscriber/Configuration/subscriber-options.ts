@@ -10,6 +10,7 @@ export interface SubscriberOptions {
   readonly redisKeyPrefix: string;
   readonly evidenceFile?: string;
   readonly handlerDelayMs: number;
+  readonly publisherEndpoint?: string;
 }
 
 export function validateSubscriberOptions(value: unknown): SubscriberOptions {
@@ -23,6 +24,7 @@ export function validateSubscriberOptions(value: unknown): SubscriberOptions {
     redisEndpoint: required(values, 'redisEndpoint'),
     redisKeyPrefix: required(values, 'redisKeyPrefix'),
     evidenceFile: optional(values, 'evidenceFile'),
-    handlerDelayMs
+    handlerDelayMs,
+    publisherEndpoint: optional(values, 'publisherEndpoint')
   };
 }

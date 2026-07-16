@@ -17,10 +17,10 @@ async function main(): Promise<void> {
   const scenarios: Record<string, () => Promise<void>> = {
     'PS-A1': () => runPsA1(options.publisherUrl, subscribers),
     'PS-A2': () => runPsA2(options.publisherUrl, subscribers),
-    'PS-A3': () => runPsA3(options.publisherUrl, options.lateSubscriberUrl, processes),
-    'PS-A4': () => runPsA4(options.publisherUrl, options.lateSubscriberUrl, subscribers.slice(0, 2), processes),
+    'PS-A3': () => runPsA3(options.publisherUrl, options.lateSubscriberUrl, processes, options.publisherEndpoint),
+    'PS-A4': () => runPsA4(options.publisherUrl, options.lateSubscriberUrl, subscribers.slice(0, 2), processes, options.publisherEndpoint),
     'PS-B1': () => runPsB1(options.publisherUrl, subscribers.slice(0, 2), subscribers[subscribers.length - 1]),
-    'PS-B2': async () => { restartedPublisher = await runPsB2(options.publisherUrl, subscribers, processes); },
+    'PS-B2': async () => { restartedPublisher = await runPsB2(options.publisherUrl, subscribers, processes, options.publisherEndpoint); },
     'PS-C1': () => runPsC1(options.publisherUrl, subscribers)
   };
 

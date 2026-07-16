@@ -4,8 +4,11 @@ import {
   type ZLinkMessageFlowEvent,
   type ZLinkMessageFlowObserver,
   type ZLinkPublishContext,
-  type ZLinkPublishHandler
+  type ZLinkPublishHandler,
+  type ZLinkRuntimeEventHandler,
+  type ZLinkSocketEvent
 } from '@zlink-systems/framework';
+import { zlinkRuntimeEventHandler } from '@zlink-systems/nestjs';
 import { PubSubNames, type EventMsg } from '../../../Shared/messages';
 import { SUBSCRIBER_OPTIONS, type SubscriberOptions } from '../Configuration/subscriber-options';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
@@ -59,6 +62,20 @@ export class EvidenceDispatchErrorObserver implements ZLinkMessageFlowObserver {
       + `|packet=${flow.packetName ?? '<null>'}`
       + `|channel=${flow.channelName ?? '<null>'}`
       + `|topic=${flow.topic ?? '<null>'}`
+    );
+  }
+}
+
+@Injectable()
+@zlinkRuntimeEventHandler()
+export class SubscriberSocketEventRecorder implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  async handle(event: ZLinkSocketEvent): Promise<void> {
+    if (event.sourceName !== `${PubSubNames.channel}.subscriber`) return;
+    this.evidence.add(
+      `monitor-socket|source=${event.sourceName}|kind=${event.event}`
+      + `|remote=${event.remoteAddr}|routing=${event.routingId ?? '<null>'}`
     );
   }
 }

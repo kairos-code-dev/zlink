@@ -1,8 +1,17 @@
-import type { EvidenceWaitReq } from '../../../Shared/messages';
+import {
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
+  type ZLinkLocationRuntimeQuery
+} from '@zlink-systems/framework';
+import { PubSubNames, type EvidenceWaitReq } from '../../../Shared/messages';
 import { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 
-export function createSubscriberEndpoints(evidence: EvidenceStore, stop: () => void): readonly HttpRoute[] {
+export function createSubscriberEndpoints(
+  evidence: EvidenceStore,
+  locations: ZLinkLocationRuntimeQuery,
+  stop: () => void
+): readonly HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'subscriber', rid: evidence.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
@@ -12,12 +21,34 @@ export function createSubscriberEndpoints(evidence: EvidenceStore, stop: () => v
       handle: async (body) => {
         const request = body as EvidenceWaitReq;
         const timeout = clamp(request.timeoutMilliseconds ?? 10_000, 1, 30_000);
-        return await evidence.waitUntil((entries) => matches(entries, request), timeout);
+        return await evidence.waitUntil((entries) => matches(entries.slice(request.afterIndex ?? 0), request), timeout);
       }
     },
+    { method: 'GET', path: '/locations/peers', handle: () => publisherObservations(locations) },
     { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
+}
+
+function publisherRows(locations: ZLinkLocationRuntimeQuery) {
+  return locations.listPeerLocations({
+    autoConnectType: ZLinkLocationAutoConnectType.Fanout,
+    meshName: PubSubNames.channel,
+    role: ZLinkLocationRole.Pub
+  });
+}
+
+async function publisherObservations(locations: ZLinkLocationRuntimeQuery) {
+  return (await publisherRows(locations)).map((row) => ({
+    rid: routingIdText(row.nodeRid),
+    endpoint: row.endpoint
+  }));
+}
+
+function routingIdText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  const text = String(value);
+  return text === '[object Object]' ? '' : text;
 }
 
 function matches(entries: readonly string[], request: EvidenceWaitReq): boolean {

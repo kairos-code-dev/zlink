@@ -1,71 +1,64 @@
-// PS-A4: subscriber 재연결·재구독 시나리오를 검증한다.
+// PS-A4: 같은 subscriber process의 transport 재연결과 기존 subscription 재적용을 검증한다.
 import { randomUUID } from 'node:crypto';
 import { PubSubNames } from '../../Shared/messages';
-import { getStatus, postJson } from '../../../http-client';
+import { getJson } from '../../../http-client';
+import { NetworkFaultProxy } from '../Support/network-fault-proxy';
+import { ensure } from '../Support/scenario-assert';
+import {
+  evidenceCount,
+  waitForConnection,
+  waitForDisconnection,
+  waitForEvent
+} from '../Support/subscriber-observation';
 import { ServerProcessLauncher } from '../Support/server-process-launcher';
-import { delay, ensure, eventually, isConnectionFailure } from '../Support/scenario-assert';
-import { publishEvent, waitForAll } from './ps-a1-fanout-basic-delivery-scenario';
+import { publishEvent } from './ps-a1-fanout-basic-delivery-scenario';
 
 export async function runPsA4(
   publisher: string,
   reconnectSubscriberUrl: string,
   fastSubscribers: readonly string[],
-  processes: ServerProcessLauncher
+  processes: ServerProcessLauncher,
+  publisherEndpoint: string
 ): Promise<void> {
   const runId = randomUUID().replaceAll('-', '');
-  const subscriber = processes.startSubscriber('sub-reconnect', reconnectSubscriberUrl, 'sub-reconnect.evidence.log');
-  await subscriber.waitReady();
-  for (let i = 1; i <= 20; i += 1) {
-    await publishEvent(publisher, PubSubNames.mainTopic, runId, 1, 'before-disconnect');
-    await delay(25);
-  }
-  await waitForSubscriber(reconnectSubscriberUrl, runId);
-  await subscriber.kill();
-
-  await eventually(async () => {
-    try {
-      const status = await getStatus(`${reconnectSubscriberUrl}/health`);
-      return status < 200 || status >= 300;
-    } catch (error) {
-      return isConnectionFailure(error);
-    }
-  }, 'PS-A4 expected reconnect subscriber to leave before gap publish.');
-
-  for (let i = 2; i <= 4; i += 1) {
-    await publishEvent(publisher, PubSubNames.mainTopic, runId, i, `gap-${i}`);
-  }
-  await waitForAll(fastSubscribers, {
-    containsAllLineGroups: [
-      ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`, 'seq=2|', 'value=gap-2'],
-      ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`, 'seq=3|', 'value=gap-3'],
-      ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`, 'seq=4|', 'value=gap-4']
-    ],
-    timeoutMilliseconds: 10_000
-  });
-
-  const restarted = processes.startSubscriber('sub-reconnect', reconnectSubscriberUrl, 'sub-reconnect.evidence.log');
+  const fault = await NetworkFaultProxy.start(publisherEndpoint, true);
+  const subscriber = processes.startSubscriber(
+    'sub-reconnect', reconnectSubscriberUrl, 'sub-reconnect.evidence.log', fault.endpoint
+  );
   try {
-    await restarted.waitReady();
-    for (let i = 5; i <= 28; i += 1) {
-      await publishEvent(publisher, PubSubNames.mainTopic, runId, i, `after-reconnect-${i}`);
-      if (i % 5 === 0) {
-        await delay(50);
-      }
-    }
-    const evidence = await waitForSubscriber(reconnectSubscriberUrl, runId);
+    await subscriber.waitReady();
+    let offset = await evidenceCount(reconnectSubscriberUrl);
+    fault.unblock();
+    await waitForConnection(reconnectSubscriberUrl, offset);
+    await publishEvent(publisher, PubSubNames.mainTopic, runId, 1, 'before-disconnect');
+    await Promise.all([
+      ...fastSubscribers.map((url) => waitForEvent(url, runId, 1, 'before-disconnect')),
+      waitForEvent(reconnectSubscriberUrl, runId, 1, 'before-disconnect')
+    ]);
+
+    offset = await evidenceCount(reconnectSubscriberUrl);
+    fault.block();
+    await waitForDisconnection(reconnectSubscriberUrl, offset);
+    await publishEvent(publisher, PubSubNames.mainTopic, runId, 2, 'while-disconnected');
+    await Promise.all(fastSubscribers.map((url) => waitForEvent(url, runId, 2, 'while-disconnected')));
+
+    offset = await evidenceCount(reconnectSubscriberUrl);
+    fault.unblock();
+    await waitForConnection(reconnectSubscriberUrl, offset);
+    await publishEvent(publisher, PubSubNames.mainTopic, runId, 3, 'after-reconnect');
+    await Promise.all([
+      ...fastSubscribers.map((url) => waitForEvent(url, runId, 3, 'after-reconnect')),
+      waitForEvent(reconnectSubscriberUrl, runId, 3, 'after-reconnect')
+    ]);
+    const evidence = await getJson<readonly string[]>(reconnectSubscriberUrl, '/evidence');
     ensure(
-      evidence.every((line) => !line.includes(`run=${runId}`) || !line.includes('value=gap-')),
-      'PS-A4 reconnected subscriber replayed disconnect-gap events.'
+      !subscriber.hasExited
+        && evidence.every((line) => !line.includes(`run=${runId}`) || !line.includes('seq=2|')),
+      'PS-A4 restarted the application or replayed the disconnected event.'
     );
     console.log('scenario PS-A4 passed');
   } finally {
-    await restarted.kill();
+    await subscriber.kill();
+    await fault.close();
   }
-}
-
-async function waitForSubscriber(subscriber: string, runId: string): Promise<readonly string[]> {
-  return await postJson<readonly string[]>(subscriber, '/evidence/wait', {
-    containsAll: ['event|', `run=${runId}`, `topic=${PubSubNames.mainTopic}`],
-    timeoutMilliseconds: 10_000
-  });
 }

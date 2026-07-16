@@ -124,7 +124,7 @@ export function buildChannelAutoConnectCapabilities(
           ZLinkLocationAutoConnectType.Fanout,
           channelName,
           ZLinkLocationRole.Pub,
-          undefined,
+          channel.routingId,
           endpoint
         );
         capabilities.push({
@@ -144,7 +144,7 @@ export function buildChannelAutoConnectCapabilities(
         ZLinkLocationAutoConnectType.Fanout,
         channelName,
         ZLinkLocationRole.Sub,
-        undefined,
+        channel.routingId,
         ''
       );
       capabilities.push({

@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode, type ZLinkFanoutClient } from '@zlink-systems/framework';
-import { ZLINK_FANOUT_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLinkMessageFlowLogMode, type ZLinkDrainControl, type ZLinkFanoutClient } from '@zlink-systems/framework';
+import { ZLINK_DRAIN_CONTROL, ZLINK_FANOUT_CLIENT, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PubSubNames } from '../../Shared/messages';
 import { validatePublisherOptions, type PublisherOptions } from './Configuration/publisher-options';
@@ -36,7 +36,8 @@ export async function startPublisherHost(): Promise<void> {
           builder.addLocationStore(createRedisLocationStore(options));
           Object.assign(builder.configureLocations(), locationMessagingOptions());
           builder.addFanoutChannel(PubSubNames.channel)
-            .enablePublisher(options.publisherEndpoint);
+            .enablePublisher(options.publisherEndpoint)
+            .routingId(options.rid);
           return builder.build();
         }
       })
@@ -58,7 +59,11 @@ export async function startPublisherHost(): Promise<void> {
   const options = app.get(PUBSUB_OPTIONS, { strict: false }) as PublisherOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const fanout = app.get(ZLINK_FANOUT_CLIENT, { strict: false }) as ZLinkFanoutClient;
-  const server = await startHttpServer(options.httpUrl, createPublisherEndpoints(fanout, evidence, () => { stopping = true; }));
+  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const server = await startHttpServer(
+    options.httpUrl,
+    createPublisherEndpoints(fanout, evidence, drain, () => { stopping = true; })
+  );
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

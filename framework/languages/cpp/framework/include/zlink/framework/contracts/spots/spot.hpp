@@ -607,64 +607,49 @@ class spot_context_t
                                        std::type_index (typeid (TPayload)));
     }
 
-    template <typename TWork> auto run_worker (TWork work)
+    template <typename TWork> auto run_cpu_worker (TWork work)
     {
         using result_type = std::invoke_result_t<TWork>;
         auto scheduler = _worker_scheduler;
-        auto turn_handle = detail::capture_current_serial_turn ();
         return worker_call_t<result_type> (
-          [scheduler, turn_handle, work = std::move (work)] (
-            std::optional<std::chrono::milliseconds> timeout,
-            detail::worker_completion_mode_t completion_mode) mutable -> task_t<result_type> {
+          [scheduler, work = std::move (work)] (
+            std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
               (void) timeout;
               if (!scheduler) {
                   return task_t<result_type> (result_t<result_type>::failure (
                     framework_error_kind_t::request_failed, "worker runtime is not configured"));
               }
 
-              const auto complete_on_current_turn =
-                completion_mode == detail::worker_completion_mode_t::current_turn && turn_handle;
-              detail::task_completion_source_t<result_type> completion (
-                complete_on_current_turn ? turn_handle->resume_scheduler ()
-                                         : detail::task_scheduler_t{});
+              detail::task_completion_source_t<result_type> completion;
               auto task = completion.task ();
               auto shared_work = std::make_shared<TWork> (std::move (work));
               auto completed = std::make_shared<std::atomic_bool> (false);
               if (timeout && *timeout > std::chrono::milliseconds::zero ()) {
                   auto timeout_scheduler = scheduler;
-                  auto timeout_direct = complete_on_current_turn;
                   auto timeout_completion = completion;
                   auto timeout_completed = completed;
                   std::thread ([timeout_scheduler, timeout_completion, timeout_completed,
-                                timeout_direct, timeout = *timeout] () mutable {
+                                timeout = *timeout] () mutable {
                       std::this_thread::sleep_for (timeout);
                       if (!timeout_completed->exchange (true)) {
                           auto complete_timeout = [timeout_completion] () mutable {
                               timeout_completion.complete (result_t<result_type>::failure (
                                 framework_error_kind_t::worker_timed_out, "worker task timed out"));
                           };
-                          if (timeout_direct) {
-                              complete_timeout ();
-                          } else {
-                              timeout_scheduler->post_owner (std::move (complete_timeout));
-                          }
+                          timeout_scheduler->post_owner (std::move (complete_timeout));
                       }
                   }).detach ();
               }
               const auto scheduled =
-                scheduler->try_schedule ([scheduler, shared_work, completion, completed,
-                                          complete_on_current_turn] () mutable {
+                scheduler->try_schedule ([scheduler, shared_work, completion,
+                                          completed] () mutable {
                     auto result = detail::run_worker_body<result_type> (*shared_work);
                     if (!completed->exchange (true)) {
                         auto complete_result = [completion,
                                                 result = std::move (result)] () mutable {
                             completion.complete (std::move (result));
                         };
-                        if (complete_on_current_turn) {
-                            complete_result ();
-                        } else {
-                            scheduler->post_owner (std::move (complete_result));
-                        }
+                        scheduler->post_owner (std::move (complete_result));
                     }
                 });
               if (!scheduled) {
@@ -673,13 +658,60 @@ class spot_context_t
                       completion.complete (result_t<result_type>::failure (
                         framework_error_kind_t::worker_queue_full, "worker queue is full"));
                   };
-                  if (complete_on_current_turn) {
-                      complete_full ();
-                  } else {
-                      scheduler->post_owner (std::move (complete_full));
-                  }
+                  scheduler->post_owner (std::move (complete_full));
               }
               return task;
+          });
+    }
+
+    template <typename TWork> auto run_io_worker (TWork work)
+    {
+        using task_type = std::invoke_result_t<TWork>;
+        using result_type = detail::task_result_t<task_type>;
+        return worker_call_t<result_type> (
+          [work = std::move (work)] (
+            std::optional<std::chrono::milliseconds> timeout) mutable -> task_t<result_type> {
+              auto completion =
+                std::make_shared<detail::task_completion_source_t<result_type>> ();
+              auto result = completion->task ();
+              auto completed = std::make_shared<std::atomic_bool> (false);
+              std::shared_ptr<task_type> pending;
+              try {
+                  pending = std::make_shared<task_type> (work ());
+              }
+              catch (const framework_exception_t &error) {
+                  completion->complete (detail::result_access_t::failure<result_type> (error));
+                  return result;
+              }
+              catch (const std::exception &error) {
+                  completion->complete (result_t<result_type>::failure (
+                    framework_error_kind_t::worker_failed, error.what ()));
+                  return result;
+              }
+              catch (...) {
+                  completion->complete (result_t<result_type>::failure (
+                    framework_error_kind_t::worker_failed, "I/O worker failed"));
+                  return result;
+              }
+
+              observe_task_completion (
+                *pending,
+                [pending, completion, completed] (const result_t<result_type> &value) mutable {
+                    if (!completed->exchange (true)) {
+                        completion->complete (value);
+                    }
+                });
+              if (timeout && *timeout > std::chrono::milliseconds::zero ()) {
+                  std::thread ([completion, completed, timeout = *timeout] () mutable {
+                      std::this_thread::sleep_for (timeout);
+                      if (!completed->exchange (true)) {
+                          completion->complete (result_t<result_type>::failure (
+                            framework_error_kind_t::worker_timed_out,
+                            "I/O worker timed out"));
+                      }
+                  }).detach ();
+              }
+              return result;
           });
     }
 

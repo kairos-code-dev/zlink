@@ -93,13 +93,13 @@ handle_basic_worker_yield (zlink::framework::spot_context_t &context,
     const auto spot_rid = std::string (context.spot_rid ().value ());
     evidence.add ("worker-await-started|rid=" + evidence.node_rid + "|spot=" + spot_rid
                   + "|request=" + request_id + "|handler=spot");
-    auto call = context.run_worker ([request_id, delay_ms] {
+    auto call = context.run_cpu_worker ([request_id, delay_ms] {
         std::this_thread::sleep_for (std::chrono::milliseconds (delay_ms));
         return request_id;
     });
     evidence.add ("worker-await-released|rid=" + evidence.node_rid + "|spot=" + spot_rid
                   + "|request=" + request_id + "|handler=spot");
-    co_await call.async ();
+    co_await call.yield ();
     evidence.add ("worker-await-resumed|rid=" + evidence.node_rid + "|spot=" + spot_rid
                   + "|request=" + request_id + "|handler=spot");
     evidence.add ("worker-await-completed|rid=" + evidence.node_rid + "|spot=" + spot_rid

@@ -909,7 +909,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
             slow_started = true;
             changed.notify_all ();
         }
-        const auto value = co_await _context.run_worker ([] { return 77; }).yield ();
+        const auto value = co_await _context.run_cpu_worker ([] { return 77; }).yield ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;
@@ -980,7 +980,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
             slow_started = true;
             changed.notify_all ();
         }
-        const auto value = co_await _context.run_worker ([] { return 77; }).async ();
+        const auto value = co_await _context.run_cpu_worker ([] { return 77; }).async ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;

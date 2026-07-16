@@ -18,6 +18,16 @@ namespace zlink::framework
 namespace detail
 {
 
+template <typename TTask> struct task_result;
+
+template <typename TResult> struct task_result<task_t<TResult>>
+{
+    using type = TResult;
+};
+
+template <typename TTask>
+using task_result_t = typename task_result<std::remove_cvref_t<TTask>>::type;
+
 class worker_scheduler_t
 {
   public:
@@ -25,12 +35,6 @@ class worker_scheduler_t
 
     virtual bool try_schedule (std::function<void ()> work) = 0;
     virtual void post_owner (std::function<void ()> work) = 0;
-};
-
-enum class worker_completion_mode_t
-{
-    owner_queue = 0,
-    current_turn = 1
 };
 
 template <typename TResult, typename TWork> result_t<TResult> run_worker_body (TWork &work)
@@ -60,8 +64,8 @@ template <typename TResult, typename TWork> result_t<TResult> run_worker_body (T
 template <typename TResult> class worker_call_t
 {
   public:
-    using executor_t = std::function<task_t<TResult> (std::optional<std::chrono::milliseconds>,
-                                                      detail::worker_completion_mode_t)>;
+    using executor_t =
+      std::function<task_t<TResult> (std::optional<std::chrono::milliseconds>)>;
 
     worker_call_t () = default;
     explicit worker_call_t (executor_t executor) : _executor (std::move (executor)) {}
@@ -90,10 +94,10 @@ template <typename TResult> class worker_call_t
         }
         auto turn_plan = detail::prepare_serial_turn_await (release_turn);
         if (!turn_plan) {
-            return _executor (_timeout, detail::worker_completion_mode_t::owner_queue);
+            return _executor (_timeout);
         }
         return detail::reschedule_task (
-          _executor (_timeout, detail::worker_completion_mode_t::owner_queue),
+          _executor (_timeout),
           std::move (turn_plan->scheduler));
     }
     bool try_start ()

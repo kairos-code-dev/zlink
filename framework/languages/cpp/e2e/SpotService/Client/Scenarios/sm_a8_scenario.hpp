@@ -152,8 +152,8 @@ inline void run_sm_a8_scenario (const std::string &play_http_endpoint,
         throw std::runtime_error ("SM-A8 worker spot route did not become ready");
     }
 
-    /* The worker must still be running when the same-spot request lands
-     * (async-execution-policy §1: the spot serial line yields at the await).
+    /* The worker must still be running when the same-spot request lands.
+     * SM-A8 uses the explicit yield terminator, so the Spot turn is available.
      * The HTTP client performs a request synchronously on the calling thread,
      * so the start call gets its own thread and its own client — exactly the
      * concurrency the .NET SM-A8 reference expresses with an un-awaited task. */

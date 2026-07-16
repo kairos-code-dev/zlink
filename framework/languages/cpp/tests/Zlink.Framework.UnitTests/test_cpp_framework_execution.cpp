@@ -252,7 +252,7 @@ int main ()
     }
 
     zlink::framework::spot_context_t context;
-    auto async_call = context.run_worker ([] { return 1; });
+    auto async_call = context.run_cpu_worker ([] { return 1; });
     auto async_result = async_call.async ().result ();
     if (async_result
         || async_result.error_kind () != zlink::framework::framework_error_kind_t::request_failed) {
@@ -265,7 +265,7 @@ int main ()
         return 7;
     }
 
-    auto callback_call = context.run_worker ([] { return 2; });
+    auto callback_call = context.run_cpu_worker ([] { return 2; });
     const auto unconfigured_result = callback_call.async ().result ();
     if (unconfigured_result
         || unconfigured_result.error_kind ()
@@ -282,7 +282,7 @@ int main ()
     auto scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     auto runtime_context = context_with_scheduler (scheduler);
     auto worker_thread = std::thread::id{};
-    auto submit_call = runtime_context.run_worker ([&] {
+    auto submit_call = runtime_context.run_cpu_worker ([&] {
         worker_thread = std::this_thread::get_id ();
         return 42;
     });
@@ -302,7 +302,7 @@ int main ()
 
     auto async_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     auto async_context = context_with_scheduler (async_scheduler);
-    auto worker_call = async_context.run_worker ([] { return 7; });
+    auto worker_call = async_context.run_cpu_worker ([] { return 7; });
     auto worker_task = worker_call.async ();
     async_scheduler->run_worker_job ();
     async_scheduler->run_owner_job ();
@@ -314,7 +314,7 @@ int main ()
     auto full_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     full_scheduler->queue_full = true;
     auto full_context = context_with_scheduler (full_scheduler);
-    auto full_call = full_context.run_worker ([] { return 3; });
+    auto full_call = full_context.run_cpu_worker ([] { return 3; });
     auto full_task = full_call.async ();
     if (full_scheduler->worker_job_count () != 0 || full_scheduler->owner_job_count () != 1) {
         return 14;
@@ -329,7 +329,7 @@ int main ()
 
     auto timeout_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     auto timeout_context = context_with_scheduler (timeout_scheduler);
-    auto timeout_call = timeout_context.run_worker ([] { return 9; });
+    auto timeout_call = timeout_context.run_cpu_worker ([] { return 9; });
     auto timeout_task = timeout_call.timeout (std::chrono::milliseconds (5)).async ();
     for (int attempt = 0; attempt < 50 && timeout_scheduler->owner_job_count () == 0; ++attempt) {
         std::this_thread::sleep_for (std::chrono::milliseconds (2));
@@ -347,6 +347,43 @@ int main ()
     timeout_scheduler->run_worker_job ();
     if (timeout_scheduler->owner_job_count () != 0) {
         return 20;
+    }
+
+    std::vector<std::shared_ptr<zlink::framework::detail::task_completion_source_t<int>>>
+      io_sources;
+    std::vector<zlink::framework::task_t<int>> io_tasks;
+    for (int value = 0; value < 8; ++value) {
+        auto source =
+          std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
+        auto call = full_context.run_io_worker ([source] { return source->task (); });
+        io_tasks.push_back (call.async ());
+        io_sources.push_back (std::move (source));
+    }
+    if (full_scheduler->worker_job_count () != 0 || full_scheduler->owner_job_count () != 0) {
+        return 27;
+    }
+    for (int value = 0; value < 8; ++value) {
+        io_sources[static_cast<std::size_t> (value)]->complete (
+          zlink::framework::result_t<int>::success (value));
+    }
+    for (int value = 0; value < 8; ++value) {
+        const auto io_result = io_tasks[static_cast<std::size_t> (value)].result ();
+        if (!io_result || io_result.value () != value) {
+            return 28;
+        }
+    }
+
+    auto io_timeout_source =
+      std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
+    auto io_timeout_call = full_context.run_io_worker (
+      [io_timeout_source] { return io_timeout_source->task (); });
+    const auto io_timeout_result =
+      io_timeout_call.timeout (std::chrono::milliseconds (5)).async ().result ();
+    if (io_timeout_result
+        || io_timeout_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::worker_timed_out
+        || full_scheduler->worker_job_count () != 0) {
+        return 29;
     }
 
     zlink::framework::runtime::offload_executor_t elastic_executor (

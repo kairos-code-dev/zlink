@@ -510,7 +510,7 @@ class user_spot_t : public zlink::framework::spot_t
                        std::to_string (snapshot));
         auto worker_result =
           co_await _context
-            .run_worker ([snapshot, request] {
+            .run_cpu_worker ([snapshot, request] {
                 std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
                 return snapshot + request.delta;
             })
@@ -538,13 +538,13 @@ class user_spot_t : public zlink::framework::spot_t
         const auto spot_rid = std::string (_context.spot_rid ().value ());
         _state.record ("WorkerStarted", {}, spot_rid, request.marker);
         const auto completed = co_await _context
-                                 .run_worker ([request] {
+                                 .run_cpu_worker ([request] {
                                      std::this_thread::sleep_for (
                                        std::chrono::milliseconds (request.delay_ms));
                                      return request.marker;
                                  })
                                  .timeout (std::chrono::milliseconds (30000))
-                                 .async ();
+                                 .yield ();
         _value += 100;
         ++_sequence;
         _state.record ("WorkerCompleted", {}, spot_rid, completed);

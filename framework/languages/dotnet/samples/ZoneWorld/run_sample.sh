@@ -95,7 +95,7 @@ import socket
 sockets = []
 chosen = set()
 try:
-    while len(sockets) < 27:
+    while len(sockets) < 26:
         port = random.randint(41000, 60999)
         if port in chosen:
             continue
@@ -116,7 +116,7 @@ PY
 
 GATEWAY_ENDPOINT="ws://127.0.0.1:${PORTS[18]}"
 OPS_ENDPOINT="ws://127.0.0.1:${PORTS[15]}"
-BROWSER_PREVIEW_PORT="${PORTS[21]}"
+BROWSER_PREVIEW_PORT="${PORTS[20]}"
 
 python3 - "$CONFIG_DIR" "$REDIS_ENDPOINT" "$RUN_ID" "$LOG_DIR" "${PORTS[@]}" <<'PY'
 import json
@@ -151,11 +151,11 @@ for index in (1, 2, 3):
 # allocation completes before framework sockets are created.
 write("zone-node-replacement", "zoneNode", {
     "nodeId": "zone-node-2",
-    "spotRouterEndpoint": f"tcp://127.0.0.1:{ports[22]}",
-    "spotPubSubEndpoint": f"tcp://127.0.0.1:{ports[23]}",
-    "opsChannelEndpoint": f"tcp://127.0.0.1:{ports[24]}",
-    "actorsChannelEndpoint": f"tcp://127.0.0.1:{ports[25]}",
-    "bridgeEndpoint": f"tcp://127.0.0.1:{ports[26]}",
+    "spotRouterEndpoint": f"tcp://127.0.0.1:{ports[21]}",
+    "spotPubSubEndpoint": f"tcp://127.0.0.1:{ports[22]}",
+    "opsChannelEndpoint": f"tcp://127.0.0.1:{ports[23]}",
+    "actorsChannelEndpoint": f"tcp://127.0.0.1:{ports[24]}",
+    "bridgeEndpoint": f"tcp://127.0.0.1:{ports[25]}",
     "faultTickZone": None,
     "disableBots": False,
 })
@@ -168,7 +168,6 @@ write("ops", "ops", {
 write("gateway", "gateway", {
     "streamEndpoint": f"ws://127.0.0.1:{ports[18]}",
     "spotRouterEndpoint": f"tcp://127.0.0.1:{ports[19]}",
-    "spotPubSubEndpoint": f"tcp://127.0.0.1:{ports[20]}",
 })
 PY
 
@@ -465,6 +464,13 @@ start gateway "$GATEWAY_BIN" --config "$CONFIG_DIR/gateway.json"
 wait_for_log gateway "Application started."
 wait_for_log ops "ops channel observed. node=zone-node-1, connected=True, kind=ConnectionReady"
 wait_for_log ops "ops channel observed. node=zone-node-2, connected=True, kind=ConnectionReady"
+# topology=ready proves that each process created its local spots. Border synchronization has
+# an additional distributed readiness boundary: each remote zone must receive at least one
+# snapshot before a client can use cross-zone visibility as a deterministic assertion.
+wait_for_log zone-node-1 "border subscription ready. zone=zone-nw, from=zone-ne"
+wait_for_log zone-node-1 "border subscription ready. zone=zone-sw, from=zone-se"
+wait_for_log zone-node-2 "border subscription ready. zone=zone-ne, from=zone-nw"
+wait_for_log zone-node-2 "border subscription ready. zone=zone-se, from=zone-sw"
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == *"ZW-G2"* ]]; then
   run_client ZW-G2

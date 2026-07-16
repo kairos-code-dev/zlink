@@ -46,8 +46,7 @@ builder.Services.AddZLinkFramework(options =>
     options.AddSpotMesh(ZoneWorldNames.ZoneMesh)
         .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw0")
         .SetRoutingIdAllocationGroup("zoneworld.gateway")
-        .EnableRouter(gateway.SpotRouterEndpoint)
-        .EnablePubSub(gateway.SpotPubSubEndpoint);
+        .EnableRouter(gateway.SpotRouterEndpoint);
 
     options.AddClientServerChannel(ZoneWorldNames.ActorsChannel)
         .EnableClient();

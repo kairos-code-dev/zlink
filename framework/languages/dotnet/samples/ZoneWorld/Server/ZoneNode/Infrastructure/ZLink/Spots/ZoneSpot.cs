@@ -34,6 +34,7 @@ public sealed class ZoneSpot(
     private readonly Dictionary<string, PlayerActor> _residents = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ActorRef> _botRefs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, EnterZoneMsg> _pendingJoins = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _observedBorderSources = new(StringComparer.Ordinal);
     private IZLinkTimer? _tick;
     private IZLinkTimer? _botTick;
 
@@ -42,6 +43,23 @@ public sealed class ZoneSpot(
     public string ZoneId => _state.ZoneId;
 
     public string NodeId => maintenance.OwnNodeId;
+
+    public void Configure()
+    {
+        // Startup validation has no concrete SpotRid. Registering one representative topic
+        // lets it validate the handler type; each real spot then registers only its own
+        // incoming edge topics.
+        if (Context.SpotRid.IsEmpty)
+        {
+            Context.Handlers.AddSubscribe<ZoneBorderSubscriptionHandler>(
+                ZoneWorldNames.NorthWestToNorthEastBorder);
+            return;
+        }
+
+        foreach (var fromZoneId in World.AdjacentZones(ZoneId))
+            Context.Handlers.AddSubscribe<ZoneBorderSubscriptionHandler>(
+                ZoneWorldNames.BorderTopic(fromZoneId, ZoneId));
+    }
 
     public async ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
@@ -109,9 +127,9 @@ public sealed class ZoneSpot(
         census.Record(ZoneId, _state.PlayerCount);
 
         // A brand-new entry learns its zone from JoinWorldRes, so only a zone *change*
-        // is announced here. Announcing from the target spot covers both kinds of change
-        // with one path: the source actor instance no longer exists after a cross-node
-        // transfer, so it could not have sent this itself.
+        // is announced here. For a remote transfer the framework invokes this callback only
+        // after the handoff commits, making the notification a safe boundary for the client's
+        // next command.
         if (!enter.IsBot && enter.FromNodeId is not null)
             actor.Context.BoundSession
                 .Send(new ZoneChangedNotify(
@@ -184,8 +202,15 @@ public sealed class ZoneSpot(
             null);
     }
 
-    internal void ApplyBorderSnapshot(ZoneBorderEvent snapshot) =>
+    internal void ApplyBorderSnapshot(ZoneBorderEvent snapshot)
+    {
         _state.ApplyBorderSnapshot(snapshot.FromZoneId, snapshot.Tick, snapshot.Players);
+        if (_observedBorderSources.Add(snapshot.FromZoneId))
+            logger.LogInformation(
+                "border subscription ready. zone={ZoneId}, from={FromZoneId}",
+                ZoneId,
+                snapshot.FromZoneId);
+    }
 
     internal ValueTask TickAsync(CancellationToken cancellationToken)
     {

@@ -116,7 +116,7 @@ internal sealed class PlayerMovement(
 
         // The join succeeded. Across nodes this actor instance no longer owns the player —
         // the target node materialised a new one from the transfer state — so nothing may
-        // touch it from here. The target zone spot announces the change on arrival.
+        // touch it from here. The target zone spot announces the change after commit.
     }
 
     /// <summary>

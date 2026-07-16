@@ -249,6 +249,7 @@ public static class Scenarios
                 }
             }
         }
+        Console.WriteLine("scenario ZW-B1 checkpoint=remote-players-positioned");
 
         // Arm the cross-border observation immediately before the western player enters the
         // border band. Starting this timeout before the two setup walks would spend most of
@@ -269,8 +270,10 @@ public static class Scenarios
             await arrived;
             west.Position = step;
         }
+        Console.WriteLine("scenario ZW-B1 checkpoint=west-in-border-band");
 
         var seenFromEast = (await borderVisible).Payload;
+        Console.WriteLine("scenario ZW-B1 checkpoint=east-observed-west");
 
         var neighbour = seenFromEast.Players.First(p => p.PlayerId == westId);
         ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthWest, neighbour.ZoneId), "the neighbour is reported with its own zone");
@@ -290,6 +293,7 @@ public static class Scenarios
                 state.Players.All(p => p.PlayerId != westId),
                 "a zone that shares no edge never sees the player across the diagonal");
         }
+        Console.WriteLine("scenario ZW-B1 checkpoint=diagonal-exclusion-observed");
     }
 
     /// <summary>Long enough for a border snapshot to have arrived and expired twice over, so

@@ -51,10 +51,11 @@ internal sealed class DeliverAnnounceHandler : IZLinkSpotPacketHandler<ZoneSpot,
 }
 
 /// <summary>
-/// A border snapshot from an adjacent zone (§4.1). The closed world topology is represented
-/// by the attributed subclasses below so startup scanning owns every subscription.
+/// A border snapshot from an adjacent zone (§4.1). Each ZoneSpot registers this handler only
+/// for the two topics whose destination is that spot, so another local zone cannot consume
+/// and discard its snapshot.
 /// </summary>
-internal abstract class ZoneBorderSubscriptionHandler : IZLinkSpotSubscriptionHandler<ZoneSpot, ZoneBorderEvent>
+internal sealed class ZoneBorderSubscriptionHandler : IZLinkSpotSubscriptionHandler<ZoneSpot, ZoneBorderEvent>
 {
     public ValueTask HandleAsync(
         ZoneSpot spot,
@@ -66,30 +67,6 @@ internal abstract class ZoneBorderSubscriptionHandler : IZLinkSpotSubscriptionHa
         return ValueTask.CompletedTask;
     }
 }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.NorthWestToNorthEastBorder)]
-internal sealed class NorthWestToNorthEastBorderHandler : ZoneBorderSubscriptionHandler { }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.NorthWestToSouthWestBorder)]
-internal sealed class NorthWestToSouthWestBorderHandler : ZoneBorderSubscriptionHandler { }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.NorthEastToNorthWestBorder)]
-internal sealed class NorthEastToNorthWestBorderHandler : ZoneBorderSubscriptionHandler { }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.NorthEastToSouthEastBorder)]
-internal sealed class NorthEastToSouthEastBorderHandler : ZoneBorderSubscriptionHandler { }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.SouthWestToNorthWestBorder)]
-internal sealed class SouthWestToNorthWestBorderHandler : ZoneBorderSubscriptionHandler { }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.SouthWestToSouthEastBorder)]
-internal sealed class SouthWestToSouthEastBorderHandler : ZoneBorderSubscriptionHandler { }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.SouthEastToNorthEastBorder)]
-internal sealed class SouthEastToNorthEastBorderHandler : ZoneBorderSubscriptionHandler { }
-
-[ZLinkSpotSubscriptionHandler(ZoneWorldNames.SouthEastToSouthWestBorder)]
-internal sealed class SouthEastToSouthWestBorderHandler : ZoneBorderSubscriptionHandler { }
 
 /// <summary>
 /// Handles a reconnect after the player has already joined a zone. Rebinding the

@@ -18,8 +18,7 @@ public sealed record ZoneNodeSettings(
 
 public sealed record GatewaySettings(
     string StreamEndpoint,
-    string SpotRouterEndpoint,
-    string SpotPubSubEndpoint);
+    string SpotRouterEndpoint);
 
 public sealed record OpsSettings(
     string StreamEndpoint,

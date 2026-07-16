@@ -548,9 +548,9 @@ int main ()
     gate.require (actor_hpp.find ("task_t<void> disconnect") != std::string::npos,
                   "CPP-G0-ASYNC-002", "bound_session_t::disconnect does not return task_t<void>");
 
-    /* CPP-G0-ASYNC-003 — no public yield/callback execution-mode surface. */
-    gate.require (!tree_contains (include_root, "yield"), "CPP-G0-ASYNC-003",
-                  "public headers still expose yield-based execution surfaces");
+    /* §12.21 — yield is the explicit turn-release terminator. */
+    gate.require (tree_contains (include_root, "yield"), "§12.21",
+                  "public request, actor join, and worker calls do not expose yield");
 
     /* CPP-G0-CANCEL-001 — no framework-specific cancellation token. */
     gate.require (!tree_contains (include_root, "cancellation_token_t"), "CPP-G0-CANCEL-001",

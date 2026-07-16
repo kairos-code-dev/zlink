@@ -153,6 +153,11 @@ template <typename T> concept has_yield = requires (T value)
     value.yield ();
 };
 
+template <typename T, typename TReply> concept has_typed_yield = requires (T value)
+{
+    value.template yield<TReply> ();
+};
+
 template <typename T> concept has_packet_name = requires (T value)
 {
     value.packet_name ("packet");
@@ -164,7 +169,7 @@ template <typename T> concept has_callback_submit = requires (T value)
                     zlink::framework::task_t<void> (zlink::framework::result_t<int>)>> ());
 };
 
-static_assert (!has_yield<zlink::framework::request_call_t<int>>);
+static_assert (has_yield<zlink::framework::request_call_t<int>>);
 
 template <typename T> concept has_framework_use_discovery = requires (T value)
 {
@@ -212,7 +217,7 @@ static_assert (has_blocking_submit<zlink::framework::route_send_call_t>);
 static_assert (!has_callback_async<zlink::framework::route_send_call_t, void>);
 static_assert (!has_blocking_submit<zlink::framework::channel_request_call_t>);
 static_assert (!has_callback_async<zlink::framework::channel_request_call_t, std::uint64_t>);
-static_assert (!has_yield<zlink::framework::channel_request_call_t>);
+static_assert (has_typed_yield<zlink::framework::channel_request_call_t, std::uint64_t>);
 static_assert (has_blocking_submit<zlink::framework::actor_send_call_t>);
 static_assert (!has_callback_async<zlink::framework::actor_send_call_t, void>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::actor_send_call_t &> ()
@@ -937,7 +942,7 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::worker_ca
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::worker_call_t<int> &> ().async ()),
                  zlink::framework::task_t<int>>);
-static_assert (!has_yield<zlink::framework::worker_call_t<int>>);
+static_assert (has_yield<zlink::framework::worker_call_t<int>>);
 static_assert (!has_callback_submit<zlink::framework::worker_call_t<int>>);
 static_assert (has_leave_actor<zlink::framework::spot_context_t>);
 static_assert (
@@ -1028,7 +1033,8 @@ static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::actor_join_call_t &> ().async<std::string> ()),
     zlink::framework::task_t<zlink::framework::typed_actor_join_result_t<std::string>>>);
-static_assert (!has_yield<zlink::framework::actor_join_call_t>);
+static_assert (has_yield<zlink::framework::actor_join_call_t>);
+static_assert (has_typed_yield<zlink::framework::actor_join_call_t, std::string>);
 static_assert (
   std::is_same_v<zlink::framework::actor_join_result_t,
                  std::variant<zlink::framework::actor_join_accepted_t<zlink::framework::message_t>,

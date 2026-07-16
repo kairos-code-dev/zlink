@@ -162,6 +162,7 @@ TEST (CppFrameworkSampleParity, BingoClientChecksEveryDocumentedScenarioState)
 {
     const auto root = cpp_language_root () / "samples/Bingo";
     const auto scenario = read_file (root / "Client/bingo_client_scenario.hpp");
+    const auto messages = read_file (root / "Shared/Contracts/messages.hpp");
     const auto room = read_file (
       root
       / "Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp");
@@ -169,6 +170,12 @@ TEST (CppFrameworkSampleParity, BingoClientChecksEveryDocumentedScenarioState)
 
     EXPECT_NE (scenario.find ("client1_joined.state.players"), std::string::npos)
       << "SMP-CP-34 step 5 must validate the player records carried by the join push";
+    EXPECT_NE (messages.find ("int wins"), std::string::npos)
+      << "Bingo player state must carry the wins loaded during actor join";
+    EXPECT_NE (messages.find ("int losses"), std::string::npos)
+      << "Bingo player state must carry the losses loaded during actor join";
+    EXPECT_NE (scenario.find ("player.wins == 0 && player.losses == 0"), std::string::npos)
+      << "SMP-CP-34 step 5 must validate the loaded record values";
     EXPECT_NE (scenario.find ("client1_card.state.players"), std::string::npos)
       << "SMP-CP-34 step 7 must validate both submitted cards in the second response";
     EXPECT_NE (scenario.find ("same_bingo_room_state (client1_drawn.state, client2_drawn.state)"),

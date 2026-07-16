@@ -67,7 +67,8 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   publish하고, play 노드의 구독 spot들이 이벤트를 받는지 검증한다.
 - `SM-C5`: `play-a` spot handler가 cross-node user spot으로 request/send를 수행한 뒤 같은 spot
   handler에서 publish한 SpotMesh 이벤트가 `play-b`의 target spot subscriber evidence에 남는지
-  검증한다.
+  검증한다. 두 Spot location row를 공개 조회로 먼저 관측하고, cross-node 의미 request는 재시도 없이
+  한 번만 보내 수렴 직후 결과를 그대로 검증한다.
 - `SM-D1`: 실제 `session-a` stream gateway에 붙어 `play-a` actor로 local stream relay를 보내고,
   actor가 bound session으로 보낸 push를 client 수신과 play/session evidence로 검증한다.
 - `SM-D2`: route mesh를 등록하지 않은 `session-a` gateway와 분리된 `play-b` actor 사이에서 remote

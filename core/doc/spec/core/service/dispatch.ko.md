@@ -156,6 +156,9 @@ completion record는 `operation_kind`, `terminal_result`와 `failure_errno`를 �
 | `SPOT_CONTROL` | `zlink_actor_control_record_t` |
 | `TRANSFER_CONTROL` | `zlink_actor_transfer_control_t` |
 
+`TRANSFER_CONTROL`은 record의 Actor generation이 owner인 infrastructure domain에서만 반환한다. 이 record는
+operation completion이 아니므로 `operation_id`는 zero이며 application domain에 들어가지 않는다.
+
 ## 2. Ready handler
 
 ```c

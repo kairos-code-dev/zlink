@@ -311,6 +311,8 @@ Actor work is obtained from a ready record whose
 `owner_kind == ZLINK_MESH_OWNER_ACTOR` and received with
 `zlink_mesh_claim_recv_batch()`. Only `ACTOR_SEND`, `ACTOR_REQUEST`,
 `COMPLETION`, `SEND_READY`, and `TRANSFER_CONTROL` appear on Actor claims.
+`ACTOR_SEND` and `ACTOR_REQUEST` use the application domain; `COMPLETION`,
+`SEND_READY`, and `TRANSFER_CONTROL` use only the infrastructure domain.
 
 Only one Actor application claim may be active. The next application turn
 starts after release. Infrastructure claims independently drain request and

@@ -1449,6 +1449,21 @@ assert mesh_monitor_functions <= target['FUNC'], (
     'MeshNode monitor API lacks ZLINK_EXPORT: '
     f'{sorted(mesh_monitor_functions - target["FUNC"])}')
 
+formal_declarations = {}
+for declaration in re.findall(r'ZLINK_EXPORT\s+([^;]+);', formal_text, re.S):
+    found = re.search(r'\b(zlink_[A-Za-z0-9_]+)\s*\(', declaration)
+    if found:
+        formal_declarations[found.group(1)] = declaration
+for name in ('zlink_spot_send_to_spot', 'zlink_spot_request_to_spot'):
+    assert 'uint64_t target_spot_generation' in formal_declarations[name], (
+        f'Spot target lifecycle generation missing: {name}')
+assert formal_declarations['zlink_mesh_node_actor_new'].lstrip().startswith(
+    'zlink_request_result_t zlink_mesh_node_actor_new')
+assert 'zlink_send_flags_t flags' in formal_declarations['zlink_mesh_node_actor_new']
+assert 'uint32_t timeout_ms' in formal_declarations['zlink_mesh_node_actor_new']
+assert 'zlink_actor_transfer_prepare_result_t *result_out' in formal_declarations[
+    'zlink_mesh_node_actor_transfer_prepare']
+
 doc = pathlib.Path(
     'framework/doc/plan/v10.0/s1-core-public-api-inventory.ko.md').read_text()
 for name in (

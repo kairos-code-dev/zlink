@@ -289,7 +289,8 @@ sender 사이의 global order는 제공하지 않는다.
 
 Actor work는 `owner_kind == ZLINK_MESH_OWNER_ACTOR` ready record의 claim으로 받고
 `zlink_mesh_claim_recv_batch()`를 사용한다. `ACTOR_SEND`, `ACTOR_REQUEST`, `COMPLETION`, `SEND_READY`와
-`TRANSFER_CONTROL`만 Actor claim에서 반환한다.
+`TRANSFER_CONTROL`만 Actor claim에서 반환한다. `ACTOR_SEND`와 `ACTOR_REQUEST`는 application domain,
+`COMPLETION`, `SEND_READY`와 `TRANSFER_CONTROL`은 infrastructure domain에만 들어간다.
 
 같은 Actor application claim은 하나만 active하다. 다음 application turn은 이전 claim release 뒤 시작한다.
 Actor가 application claim을 보유한 채 request 또는 send readiness를 기다려도 infrastructure claim은

@@ -159,6 +159,10 @@ and part views. A completion record always fills `operation_kind`,
 | `SPOT_CONTROL` | `zlink_actor_control_record_t` |
 | `TRANSFER_CONTROL` | `zlink_actor_transfer_control_t` |
 
+`TRANSFER_CONTROL` appears only in the infrastructure domain owned by the Actor
+generation named by the record. It is not an operation completion, has a zero
+operation ID, and never enters the application domain.
+
 ## 2. Ready handler
 
 ```c

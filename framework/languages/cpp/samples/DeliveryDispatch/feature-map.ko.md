@@ -30,9 +30,10 @@ client scenario의 성공 marker를 검증 기준으로 삼는다.
 `CourierSession`에 bind한 뒤 `CourierGateway`와 `CourierActorNode`가 courier id별 actor node와 session
 route를 해석한다. C++ 샘플도 별도 `CustomerGateway`, `CourierSession`, `CourierGateway`,
 `CourierActorNode` 실행 파일을 두고 customer/courier stream endpoint와 courier route split을 검증한다.
-CustomerGateway는 public `session_actor_manager_t`와 `actor_gateway_t`로 customer actor ref와 stream을
-bind하고, status fanout handler가 bound session으로 `DeliveryStatusNotify`를 push한다.
-CourierSession은 public `session_actor_manager_t`와 `actor_gateway_t`로 actor ref와 stream을 bind하고,
+CustomerGateway는 public `session_actor_manager_t`로 customer actor ref를 현재 session에 바인드하고,
+framework가 stream 연결과 disconnect 정리를 관리한다. status fanout handler는 bound session으로
+`DeliveryStatusNotify`를 push한다.
+CourierSession도 public `session_actor_manager_t`로 actor ref를 현재 session에 바인드하고,
 CourierActorNode entry spot handler는 actor context의 bound session으로 `OfferDeliveryNotify`를 push한다.
 
 남는 차이는 파일 분류 수준이다. `.NET`은 CustomerGateway/CourierActorNode의 actor, directory, entry spot,

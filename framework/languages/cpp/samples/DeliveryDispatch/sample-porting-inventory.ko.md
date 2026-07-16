@@ -38,7 +38,7 @@ CMake sample target과 runner를 둔다.
 | `Server/Dispatch/Program.cs` | `Server/DispatchApi/main.cpp`; `Server/DispatchCenter/main.cpp` | server-role | done | C++는 HTTP edge와 worker를 별도 role executable로 실행한다. |
 | `Server/CustomerGateway/DeliveryDispatch.Server.CustomerGateway.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | CustomerGateway target이 대응한다. |
 | `Server/CustomerGateway/CustomerGatewayHostFactory.cs` | `Server/CustomerGateway/main.cpp` | server-role | done | customer stream bind, customer actor spot mesh, status fanout subscriber를 구성한다. |
-| `Server/CustomerGateway/CustomerSession.cs` | `Server/CustomerGateway/main.cpp` | session | done | 고객 stream session이 customer actor를 생성/바인드하고 stream을 `actor_gateway_t`에 연결한다. 알 수 없는 packet은 bound actor로 relay한다. |
+| `Server/CustomerGateway/CustomerSession.cs` | `Server/CustomerGateway/main.cpp` | session | done | 고객 stream session이 customer actor를 생성하고 `session_actor_manager_t`로 바인드한다. framework가 현재 stream 연결과 disconnect 정리를 관리하며, 알 수 없는 packet은 bound actor로 relay한다. |
 | `Server/CustomerGateway/CustomerActor.cs`; `Server/CustomerGateway/CustomerActorAccess.cs` | `Server/CustomerGateway/main.cpp` | actor | done | CustomerGateway role의 runtime actor와 actor 접근 경로가 대응한다. |
 | `Server/CustomerGateway/CustomerActorDirectory.cs` | `Server/CustomerGateway/main.cpp` | infrastructure | done | CustomerGateway가 delivery id별 customer actor lookup을 관리한다. |
 | `Server/CustomerGateway/CustomerGatewayHandlers.cs` | `Server/CustomerGateway/main.cpp`; `Server/Tracking/Handlers/tracking_handlers.hpp` | handler | done | CustomerGateway handler가 customer actor bound session으로 push한다. Tracking handler는 상태를 기록하고 actor directory에서 대상 actor ref를 찾아 one-way 상태 메시지를 보낸다. |
@@ -48,7 +48,7 @@ CMake sample target과 runner를 둔다.
 | `Server/CustomerGateway/Program.cs` | `Server/CustomerGateway/main.cpp` | server-role | done | customer gateway role 진입점이다. |
 | `Server/CourierSession/DeliveryDispatch.Server.CourierSession.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | CourierSession target이 대응한다. |
 | `Server/CourierSession/CourierSessionHostFactory.cs` | `Server/CourierSession/main.cpp` | server-role | done | courier stream endpoint와 courier actor spot mesh bridge를 별도 role로 구성한다. |
-| `Server/CourierSession/CourierSession.cs`; `Server/CourierSession/CourierSessionBinder.cs` | `Server/CourierSession/main.cpp` | session | done | courier-a/courier-b stream session을 받고 actor ref를 public `session_actor_manager_t`에 bind한 뒤 stream을 `actor_gateway_t`에 연결한다. decision packet은 bound actor로 relay한다. |
+| `Server/CourierSession/CourierSession.cs`; `Server/CourierSession/CourierSessionBinder.cs` | `Server/CourierSession/main.cpp` | session | done | courier-a/courier-b stream session을 받고 actor ref를 public `session_actor_manager_t`에 바인드한다. framework가 stream 연결과 disconnect 정리를 관리하며, decision packet은 bound actor로 relay한다. |
 | `Server/CourierSession/BindCourierSessionHandler.cs` | `Server/CourierSession/main.cpp` | handler | done | `BindCourierSessionReq`를 public stream request로 받아 CourierGateway에서 actor ref를 얻고, actor entry spot의 bind handler로 relay한다. |
 | `Server/CourierSession/Program.cs` | `Server/CourierSession/main.cpp` | server-role | done | courier session role 진입점이다. |
 | `Server/CourierGateway/DeliveryDispatch.Server.CourierGateway.csproj` | `framework/languages/cpp/CMakeLists.txt` | build | done | courier gateway target이 대응한다. |

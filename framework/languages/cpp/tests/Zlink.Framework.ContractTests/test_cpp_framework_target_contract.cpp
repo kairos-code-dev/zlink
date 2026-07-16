@@ -89,6 +89,10 @@ int main ()
       read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp");
     const auto actor_gateway_spot_bridge =
       read_file (root / "framework/src/runtime/host/actor_gateway_spot_bridge.cpp");
+    const auto execution_turn_contracts = read_file (
+      e2e_root / "AutomaticTurnDispatch/Shared/automatic_turn_dispatch_contracts.hpp");
+    const auto execution_turn_spot = read_file (
+      e2e_root / "AutomaticTurnDispatch/Server/Play/Spots/play_spot_runtime.hpp");
     const auto channel_outbound_exchange =
       read_file (root / "framework/src/runtime/channels/channel_outbound_exchange.cpp");
     const auto pubsub_client_root = e2e_root / "PubSub/Client";
@@ -686,6 +690,18 @@ int main ()
                   "run_e2e_all.sh still registers YieldDispatch");
     gate.require (runner.find ("AutomaticTurnDispatch") != std::string::npos, "CPP-G0-E2E-001",
                   "run_e2e_all.sh does not register AutomaticTurnDispatch");
+    gate.require (
+      std::filesystem::exists (
+        e2e_root / "AutomaticTurnDispatch/Client/Scenarios/td_e2_user_to_user_spot_join_scenario.hpp"),
+      "CPP-G0-E2E-001", "Config 8 TD-E2 user-to-user Spot join scenario is missing");
+    gate.require (
+      std::filesystem::exists (
+        e2e_root / "AutomaticTurnDispatch/Client/Scenarios/td_e3_opposite_spot_join_scenario.hpp"),
+      "CPP-G0-E2E-001", "Config 8 TD-E3 opposite Spot join scenario is missing");
+    gate.require (execution_turn_contracts.find ("ActorJoinSpotReq") != std::string::npos,
+                  "CPP-G0-E2E-001", "Config 8 has no user-Spot join request contract");
+    gate.require (execution_turn_spot.find ("actor_join_spot_req") != std::string::npos,
+                  "CPP-G0-E2E-001", "Config 8 user-Spot join handler is missing");
 
     /* CPP-G0-E2E-002 — Config 11 fixture exists. */
     gate.require (std::filesystem::exists (e2e_root / "ObservabilityOps"), "CPP-G0-E2E-002",

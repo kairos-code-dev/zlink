@@ -270,21 +270,21 @@ event mask의 bit `1ULL << (kind - 1)`이 해당 event를 선택한다. `events 
 ## 3. MeshNode monitor API
 
 ```c
-void *zlink_mesh_node_monitor_open(
+ZLINK_EXPORT void *zlink_mesh_node_monitor_open(
   void *mesh_node,
   const zlink_mesh_monitor_open_options_t *options);
-zlink_handler_result_t zlink_mesh_node_monitor_handler(
+ZLINK_EXPORT zlink_handler_result_t zlink_mesh_node_monitor_handler(
   void *monitor,
   zlink_mesh_monitor_handler_fn handler,
   void *userdata);
-zlink_recv_result_t zlink_mesh_node_monitor_recv(
+ZLINK_EXPORT zlink_recv_result_t zlink_mesh_node_monitor_recv(
   void *monitor,
   zlink_mesh_monitor_event_t *event_out,
   zlink_recv_flags_t flags);
-zlink_config_result_t zlink_mesh_node_monitor_status(
+ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_monitor_status(
   void *monitor,
   zlink_mesh_monitor_status_t *status_out);
-zlink_close_result_t zlink_mesh_node_monitor_close(void **monitor_p);
+ZLINK_EXPORT zlink_close_result_t zlink_mesh_node_monitor_close(void **monitor_p);
 ```
 
 monitor open은 MeshNode의 strong child reference를 유지하므로 monitor를 먼저 닫아야 MeshNode destroy가

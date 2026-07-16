@@ -4,11 +4,18 @@ import { NestFactory } from '@nestjs/core';
 import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_CLIENT,
+  ZLINK_CHANNEL_RUNTIME_OPTIONS,
+  ZLINK_DRAIN_CONTROL,
   ZLINK_ROUTE_CLIENT,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient, ZLinkRouteClient } from '@zlink-systems/framework';
+import type {
+  ZLinkChannelClient,
+  ZLinkChannelRuntimeOptions,
+  ZLinkDrainControl,
+  ZLinkRouteClient
+} from '@zlink-systems/framework';
 import { createRedisLocationStore, locationMessagingOptions } from '../../Shared/location-store';
 import { PacketNames } from '../../Shared/messages';
 import { validateServerOptions } from './Configuration/server-options';
@@ -34,7 +41,12 @@ export async function startProviderHost(): Promise<void> {
   const evidence = app.get(EvidenceStore, { strict: false });
   const channel = app.get(ZLINK_CHANNEL_CLIENT, { strict: false }) as ZLinkChannelClient;
   const route = app.get(ZLINK_ROUTE_CLIENT, { strict: false }) as ZLinkRouteClient;
-  const server = await startHttpServer(options.httpUrl, createProviderEndpoints(evidence, channel, route, () => { stopping = true; }));
+  const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
+  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const server = await startHttpServer(
+    options.httpUrl,
+    createProviderEndpoints(evidence, channel, route, runtimeOptions, drain, () => { stopping = true; })
+  );
 
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));

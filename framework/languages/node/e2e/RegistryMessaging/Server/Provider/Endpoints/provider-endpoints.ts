@@ -1,4 +1,10 @@
-import type { ZLinkChannelClient, ZLinkRouteClient } from '@zlink-systems/framework';
+import {
+  ZLinkFrameworkException,
+  type ZLinkChannelClient,
+  type ZLinkChannelRuntimeOptions,
+  type ZLinkDrainControl,
+  type ZLinkRouteClient
+} from '@zlink-systems/framework';
 import {
   ProfileMsg,
   ProfileReq,
@@ -6,7 +12,8 @@ import {
   type EvidenceWaitReq,
   type ProfileRes,
   type RouteMissingRes,
-  type ScenarioRouteRes
+  type ScenarioRouteRes,
+  type TargetedRouteReq
 } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
@@ -15,6 +22,8 @@ export function createProviderEndpoints(
   evidence: EvidenceStore,
   channel: ZLinkChannelClient,
   route: ZLinkRouteClient,
+  runtimeOptions: ZLinkChannelRuntimeOptions,
+  drain: ZLinkDrainControl,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -47,16 +56,31 @@ export function createProviderEndpoints(
       method: 'POST',
       path: '/profile/route/missing',
       handle: async (body): Promise<RouteMissingRes> => {
-        let failed = false;
         try {
           await route
             .requestToNode('profile.route', 'missing-rid', new ScenarioRouteReq((body as ScenarioRouteReq).value))
             .timeout(300)
             .submit<ScenarioRouteRes>();
-        } catch {
-          failed = true;
+          return { failed: false, errorKind: '' };
+        } catch (error) {
+          return { failed: true, errorKind: publicFailureType(error) };
         }
-        return { failed };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/profile/route/target',
+      handle: async (body): Promise<RouteMissingRes> => {
+        const request = body as TargetedRouteReq;
+        try {
+          await route
+            .requestToNode('profile.route', request.targetRid, new ScenarioRouteReq(request.value))
+            .timeout(1000)
+            .submit<ScenarioRouteRes>();
+          return { failed: false, errorKind: '' };
+        } catch (error) {
+          return { failed: true, errorKind: publicFailureType(error) };
+        }
       }
     },
     { method: 'POST', path: '/evidence/clear', handle: () => { evidence.clear(); return { status: 'cleared' }; } },
@@ -69,8 +93,23 @@ export function createProviderEndpoints(
         return evidence.waitUntil((entries) => entries.some((line) => line.includes(request.contains)), timeout);
       }
     },
+    {
+      method: 'POST', path: '/drain',
+      handle: async () => {
+        runtimeOptions.clientServerChannel('profile').configureServerSocket().weight = 0;
+        const result = await drain.drain(30_000);
+        stop();
+        return result;
+      }
+    },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
+}
+
+function publicFailureType(error: unknown): string {
+  return error instanceof ZLinkFrameworkException ? error.kind
+    : error instanceof Error ? error.name
+      : 'Error';
 }
 
 async function requestProfile(

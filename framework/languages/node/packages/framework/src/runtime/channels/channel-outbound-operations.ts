@@ -224,6 +224,12 @@ export class ZLinkChannelOutboundOperations {
   ): Promise<TReply> {
     throwIfAborted(signal);
     const router = this.sockets.routeRouter(routerChannelId);
+    if (this.sockets.routeMemberStatus(routerChannelId, targetNodeRid) === 'missing') {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+        `Route channel '${routerChannelId}' has no member '${targetNodeRid}'.`
+      );
+    }
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Request,
@@ -244,7 +250,8 @@ export class ZLinkChannelOutboundOperations {
       correlationId,
       sourceRid: targetNodeRid
     }));
-    return this.measureRequest(routerChannelId, () => this.sockets.requireSubmitter(router).submitRequest(
+    try {
+      return await this.measureRequest(routerChannelId, () => this.sockets.requireSubmitter(router).submitRequest(
       (resolve, reject) => {
         let submitted: boolean;
         try {
@@ -301,7 +308,22 @@ export class ZLinkChannelOutboundOperations {
       signal,
       timeoutMs,
       () => closeMessages(parts)
-    ));
+      ));
+    } catch (error) {
+      if (
+        this.sockets.routeMemberStatus(routerChannelId, targetNodeRid) === 'disconnected'
+        && error instanceof Error
+        && (/timed out/i.test(error.message) || error.name === 'ZLinkRouteDisconnectedError')
+      ) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RouteNotConnected,
+          `Route channel '${routerChannelId}' member '${targetNodeRid}' is not connected.`,
+          true,
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   private async measureRequest<T>(channel: string, operation: () => Promise<T>): Promise<T> {

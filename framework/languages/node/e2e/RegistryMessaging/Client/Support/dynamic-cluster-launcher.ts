@@ -4,12 +4,13 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import type { ClientOptions } from './client-options';
-import { getJson, getStatus, postStatus } from '../../../http-client';
+import { getJson, getStatus, postJsonWithin, postStatus } from '../../../http-client';
 
 export interface DynamicProvider {
   readonly process: DynamicProcess;
   readonly httpUrl: string;
   readonly channelEndpoint: string;
+  readonly routeEndpoint: string;
 }
 
 export interface DynamicConsumer {
@@ -39,9 +40,15 @@ export class DynamicClusterLauncher {
     return launcher;
   }
 
-  async startProvider(name: string, rid: string, weight = 100): Promise<DynamicProvider> {
+  async startProvider(
+    name: string,
+    rid: string,
+    weight = 100,
+    routePeers: readonly string[] = []
+  ): Promise<DynamicProvider> {
     const httpUrl = await pickHttpUrl();
     const channelEndpoint = await pickEndpoint();
+    const routeEndpoint = await pickEndpoint();
     let process: DynamicProcess | undefined;
     try {
       process = this.startServer(
@@ -49,14 +56,14 @@ export class DynamicClusterLauncher {
         this.providerMain,
         {
           rid, httpUrl, redisEndpoint: this.redisEndpoint, redisKeyPrefix: this.redisKeyPrefix,
-          channelEndpoint, routeEndpoint: await pickEndpoint(), routePeers: [], weight,
+          channelEndpoint, routeEndpoint, routePeers, weight,
           maxMessageSize: 0, evidenceFile: path.join(this.logDir, `${name}.evidence.log`), logDir: this.logDir
         },
         httpUrl,
         channelEndpoint
       );
       await process.waitReady();
-      return { process, httpUrl, channelEndpoint };
+      return { process, httpUrl, channelEndpoint, routeEndpoint };
     } catch (error) {
       if (process !== undefined) {
         await process.stop();
@@ -122,6 +129,28 @@ export class DynamicClusterLauncher {
     if (index >= 0) {
       this.processes.splice(index, 1);
     }
+  }
+
+  async drain(provider: DynamicProvider): Promise<{ readonly kind: string; readonly reason?: string }> {
+    const result = await postJsonWithin<{ readonly kind: string; readonly reason?: string }>(
+      provider.httpUrl,
+      '/drain',
+      {},
+      35_000
+    );
+    await provider.process.stop();
+    this.forget(provider.process);
+    return result;
+  }
+
+  async crash(provider: DynamicProvider): Promise<void> {
+    await provider.process.crash();
+    this.forget(provider.process);
+  }
+
+  private forget(process: DynamicProcess): void {
+    const index = this.processes.indexOf(process);
+    if (index >= 0) this.processes.splice(index, 1);
   }
 
   async close(): Promise<void> {
@@ -195,6 +224,22 @@ export class DynamicProcess {
       }
     }
     await exited.finally(() => clearTimeout(killer));
+  }
+
+  async crash(): Promise<void> {
+    if (this.process.exitCode !== null) return;
+    const exited = this.exitPromise();
+    this.process.kill('SIGKILL');
+    await exited;
+  }
+
+  async waitExited(): Promise<void> {
+    if (this.process.exitCode !== null) return;
+    await this.exitPromise();
+  }
+
+  private exitPromise(): Promise<void> {
+    return new Promise<void>((resolve) => this.process.once('exit', () => resolve()));
   }
 }
 

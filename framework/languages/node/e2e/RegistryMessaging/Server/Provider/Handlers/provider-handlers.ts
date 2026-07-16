@@ -30,6 +30,10 @@ export class ProfileRequestHandler implements ZLinkRequestHandler<ProfileReq, Pr
     if (request.value === 'slow') {
       await delay(1000);
     }
+    if (request.value.startsWith('rm-b3-transition-')) {
+      this.evidence.add(`profile-request-start|rid=${this.evidence.rid}|value=${request.value}`);
+      await delay(1000);
+    }
     this.evidence.add(`profile-request|rid=${this.evidence.rid}|value=${request.value}|packet=${context.packetName}`);
     return { value: `profile:${request.value}`, providerRid: this.evidence.rid };
   }

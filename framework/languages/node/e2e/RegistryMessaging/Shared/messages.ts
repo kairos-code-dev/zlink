@@ -70,6 +70,23 @@ export interface ScenarioRouteRes {
 
 export interface RouteMissingRes {
   readonly failed: boolean;
+  readonly errorKind: string;
+}
+
+export interface TargetedRouteReq {
+  readonly targetRid: string;
+  readonly value: string;
+}
+
+export interface RequestOutcomeRes {
+  readonly value: string;
+  readonly outcome: string;
+}
+
+export interface PeerLocationWaitReq {
+  readonly rid: string;
+  readonly present: boolean;
+  readonly timeoutMilliseconds?: number;
 }
 
 export interface RequestFailureRes {

@@ -18,6 +18,7 @@ import type {
 import { ZLinkAsyncSubmitter } from '../messaging';
 import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
 import { attachEndpointConnections } from '../../contracts/Configuration/RuntimeEndpointConnections';
+import { ZLinkRouteMemberSnapshot } from './route-member-snapshot';
 
 export class ZLinkChannelSocketRegistry {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
@@ -25,6 +26,7 @@ export class ZLinkChannelSocketRegistry {
   private readonly publishers = new Map<string, ZLinkBackendPublisherSocket>();
   private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
+  private readonly routeMembers = new ZLinkRouteMemberSnapshot();
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
   private readonly ownedMonitors = new Set<ZLinkBackendSocketMonitor>();
@@ -50,6 +52,7 @@ export class ZLinkChannelSocketRegistry {
     this.publishers.clear();
     this.subscribers.clear();
     this.routeRouters.clear();
+    this.routeMembers.clear();
     this.disposeSubmitters();
     const monitors = [...this.ownedMonitors];
     this.ownedMonitors.clear();
@@ -234,6 +237,10 @@ export class ZLinkChannelSocketRegistry {
     return submitter;
   }
 
+  routeMemberStatus(routerChannelId: string, targetNodeRid: string): 'unknown' | 'missing' | 'connected' | 'disconnected' {
+    return this.routeMembers.status(routerChannelId, targetNodeRid);
+  }
+
   monitorDisconnects(
     socket: ZLinkBackendDealerSocket | ZLinkBackendSubscriberSocket,
     handler: (endpoint: string) => void
@@ -268,11 +275,16 @@ export class ZLinkChannelSocketRegistry {
     const monitor = this.monitoringAdapter.openSocketMonitor(router);
     this.ownedMonitors.add(monitor);
     monitor.onEvent((event) => {
-      if (event.nativeEvent !== ZLinkSocketNativeEventType.Disconnected) {
+      const routingId = event.routingId === undefined ? undefined : String(event.routingId);
+      if (event.nativeEvent === ZLinkSocketNativeEventType.ConnectionReady && routingId !== undefined) {
+        this.routeMembers.observeReady(routerChannelId, routingId, event.remoteAddr);
         return;
       }
-      this.ownedMonitors.delete(monitor);
-      void monitor.dispose().catch(() => undefined);
+      if (
+        event.nativeEvent !== ZLinkSocketNativeEventType.Disconnected
+        && event.nativeEvent !== ZLinkSocketNativeEventType.Closed
+      ) return;
+      this.routeMembers.observeTermination(routerChannelId, routingId, event.remoteAddr);
       const submitter = this.submitters.get(router);
       submitter?.rejectActive(new ZLinkRouteDisconnectedError(
         `Route channel '${routerChannelId}' disconnected: ${event.nativeEvent}/${event.value}`

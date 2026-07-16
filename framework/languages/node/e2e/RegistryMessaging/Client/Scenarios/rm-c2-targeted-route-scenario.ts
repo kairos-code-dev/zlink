@@ -3,6 +3,8 @@ import type { RouteMissingRes, ScenarioRouteRes } from '../../Shared/messages';
 import { getJson, postJson } from '../../../http-client';
 import { ensure, uniqueMarker } from '../Support/scenario-assert';
 
+const REQUEST_TARGET_NOT_FOUND = 'requestTargetNotFound';
+
 export async function runRmC2(providerAUrl: string, providerBUrl: string): Promise<void> {
   const marker = uniqueMarker('rm-c2');
   const reply = await postJson<ScenarioRouteRes>(providerAUrl, '/profile/route/request', { value: marker });
@@ -18,6 +20,9 @@ export async function runRmC2(providerAUrl: string, providerBUrl: string): Promi
   );
 
   const missing = await postJson<RouteMissingRes>(providerAUrl, '/profile/route/missing', { value: 'missing' });
-  ensure(missing.failed, 'RM-C2 missing rid request should fail.');
+  ensure(
+    missing.failed && missing.errorKind === REQUEST_TARGET_NOT_FOUND,
+    `RM-C2 missing rid should report RequestTargetNotFound, got '${missing.errorKind}'.`
+  );
   console.log('scenario RM-C2 passed');
 }

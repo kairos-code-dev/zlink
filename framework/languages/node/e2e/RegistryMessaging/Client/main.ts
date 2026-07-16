@@ -5,6 +5,7 @@ import { runRmA4 } from './Scenarios/rm-a4-same-rid-failover-scenario';
 import { runRmA6 } from './Scenarios/rm-a6-multiple-channels-scenario';
 import { runRmB1 } from './Scenarios/rm-b1-scale-out-scenario';
 import { runRmB2 } from './Scenarios/rm-b2-scale-in-scenario';
+import { runRmB3 } from './Scenarios/rm-b3-provider-crash-failover-scenario';
 import { runRmC1 } from './Scenarios/rm-c1-request-send-scenario';
 import { runRmC2 } from './Scenarios/rm-c2-targeted-route-scenario';
 import { runRmC3 } from './Scenarios/rm-c3-multi-provider-distribution-scenario';
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
     'RM-A6': () => runRmA6(options.providerAUrl, options.providerBUrl, options.workflowUrl),
     'RM-B1': () => runRmB1(options),
     'RM-B2': () => runRmB2(options),
+    'RM-B3': () => runRmB3(options),
     'RM-C1': () => runRmC1(options.providerAUrl, options.providerBUrl),
     'RM-C2': () => runRmC2(options.providerAUrl, options.providerBUrl),
     'RM-C3': () => runRmC3(options.directConsumerUrl, options.providerAUrl, options.providerBUrl),
@@ -39,6 +41,7 @@ async function main(): Promise<void> {
     'RM-A6',
     'RM-B1',
     'RM-B2',
+    'RM-B3',
     'RM-C1',
     'RM-C2',
     'RM-C3',

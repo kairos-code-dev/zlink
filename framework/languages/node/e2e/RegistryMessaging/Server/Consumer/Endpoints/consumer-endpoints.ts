@@ -12,8 +12,10 @@ import {
   ProfileMsg,
   ProfileReq,
   type PayloadRes,
+  type PeerLocationWaitReq,
   type ProfileRes,
-  type RequestFailureRes
+  type RequestFailureRes,
+  type RequestOutcomeRes
 } from '../../../Shared/messages';
 import type { HttpRoute } from '../Support/http-server';
 
@@ -43,6 +45,7 @@ export function createConsumerEndpoints(
     },
     { method: 'POST', path: '/profile/batch-request', handle: (body) => batchRequest(channel, (body as ProfileReq[]).map((request) => new ProfileReq(request.value))) },
     { method: 'POST', path: '/profile/request', handle: (body) => requestProfile(channel, new ProfileReq((body as ProfileReq).value), 5000) },
+    { method: 'POST', path: '/profile/request/outcome', handle: (body) => requestProfileOutcome(channel, new ProfileReq((body as ProfileReq).value)) },
     { method: 'POST', path: '/profile/slow-request', handle: (body) => requestProfileFailure(channel, new ProfileReq((body as ProfileReq).value), 100) },
     { method: 'POST', path: '/profile/missing-request', handle: (body) => requestMissingProfile(channel, new MissingProfileReq((body as ProfileReq).value)) },
     {
@@ -59,8 +62,42 @@ export function createConsumerEndpoints(
     { method: 'POST', path: '/profile/payload-over-limit', handle: (body) => requestPayloadFailure(channel, toPayloadReq(body)) },
     { method: 'POST', path: '/profile/backpressure/reset', handle: () => ({ status: 'ready' }) },
     { method: 'POST', path: '/profile/backpressure/send', handle: (body) => submitProfileUnderPressure(channel, new ProfileMsg((body as ProfileMsg).commandId)) },
+    {
+      method: 'POST', path: '/locations/peers/wait',
+      handle: (body) => waitForPeer(locationQuery, body as PeerLocationWaitReq)
+    },
     { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
   ];
+}
+
+async function requestProfileOutcome(channel: ZLinkChannelClient, request: ProfileReq): Promise<RequestOutcomeRes> {
+  try {
+    const reply = await requestProfile(channel, request, 5000);
+    return { value: request.value, outcome: reply.providerRid };
+  } catch (error) {
+    const outcome = error instanceof Error && /timed out|timeout/i.test(error.message) ? 'Timeout'
+      : error instanceof ZLinkFrameworkException ? error.kind
+        : error instanceof Error ? error.name : 'Error';
+    return { value: request.value, outcome };
+  }
+}
+
+async function waitForPeer(
+  locationQuery: ZLinkLocationRuntimeQuery,
+  request: PeerLocationWaitReq
+): Promise<readonly object[]> {
+  const deadline = Date.now() + Math.max(1, Math.min(request.timeoutMilliseconds ?? 30_000, 60_000));
+  do {
+    const rows = await locationQuery.listPeerLocations({
+      autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+      meshName: 'profile',
+      role: ZLinkLocationRole.Router
+    });
+    const present = rows.some((row) => String(row.nodeRid) === request.rid);
+    if (present === request.present) return rows;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } while (Date.now() < deadline);
+  throw new Error(`Peer '${request.rid}' did not become present=${request.present}.`);
 }
 
 async function batchRequest(channel: ZLinkChannelClient, requests: readonly ProfileReq[]): Promise<ProfileRes[]> {

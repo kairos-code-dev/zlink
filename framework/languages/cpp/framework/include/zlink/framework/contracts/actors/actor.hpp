@@ -112,13 +112,21 @@ class actor_request_call_t
 
     template <typename TReply> task_t<TReply> async ()
     {
-        auto reply = co_await async_message ();
+        auto reply = co_await start (false);
+        co_return reply.template decode<TReply> (serializers ());
+    }
+
+    template <typename TReply> task_t<TReply> yield ()
+    {
+        auto reply = co_await start (true);
         co_return reply.template decode<TReply> (serializers ());
     }
 
     task_t<message_t> async_message ();
+    task_t<message_t> yield_message ();
 
   private:
+    task_t<message_t> start (bool release_turn);
     serializer_registry_t &serializers () const;
 
     actor_client_t *_client;
@@ -243,23 +251,40 @@ class actor_join_call_t
         return *this;
     }
 
-    task_t<actor_join_result_t> async ()
+    task_t<actor_join_result_t> async () { return start (false); }
+
+    task_t<actor_join_result_t> yield () { return start (true); }
+
+    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> async ()
+    {
+        co_return decode_join<TReply> (co_await start (false), _serializers);
+    }
+
+    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> yield ()
+    {
+        co_return decode_join<TReply> (co_await start (true), _serializers);
+    }
+
+  private:
+    task_t<actor_join_result_t> start (bool release_turn)
     {
         auto submit_fn = submitter ();
-        auto turn_handle = detail::capture_current_serial_turn ();
-        if (!submit_fn || !turn_handle || turn_handle->released () || !turn_handle->release ()) {
+        auto turn_plan = detail::prepare_serial_turn_await (release_turn);
+        if (!submit_fn || !turn_plan) {
             return task_t<actor_join_result_t> (submit ());
         }
-        // The join submit blocks until the admission reply arrives, so it must
-        // run off the Spot serial line. The line is released at the await point so
-        // independent work progresses; the continuation resumes serialized on
-        // the same line.
         auto source = std::make_shared<detail::task_completion_source_t<actor_join_result_t>> (
-          turn_handle->resume_scheduler ());
+          std::move (turn_plan->scheduler));
         auto task = source->task ();
-        std::thread ([source, submit = std::move (submit_fn)] () mutable {
+        std::thread ([source, submit = std::move (submit_fn), turn = turn_plan->turn,
+                      hold_turn = turn_plan->holds_turn] () mutable {
             try {
-                source->complete (submit ());
+                if (hold_turn) {
+                    detail::serial_turn_scope_t scope (turn);
+                    source->complete (submit ());
+                } else {
+                    source->complete (submit ());
+                }
             }
             catch (const framework_exception_t &error) {
                 source->complete (detail::result_access_t::failure<actor_join_result_t> (error));
@@ -272,69 +297,21 @@ class actor_join_call_t
         return task;
     }
 
-    /* 타입 지정 await도 무타입 경로와 같은 실행 규약을 따라야 한다(async-execution-policy §1):
-     * join submit은 admission 응답까지 블로킹하므로 Spot 직렬 줄 밖에서 돌고, 줄은 await
-     * 지점에서 풀려 형제 actor가 진행한다. 여기서 submit()을 직접 부르면 줄을 쥔 채로
-     * 기다리게 되어 같은 Spot의 다른 actor 요청이 굶는다. */
-    template <typename TReply> task_t<typed_actor_join_result_t<TReply>> async ()
-    {
-        auto submit_fn = submitter ();
-        auto turn_handle = detail::capture_current_serial_turn ();
-        auto *registry = _serializers;
-        if (!submit_fn || !turn_handle || turn_handle->released () || !turn_handle->release ()) {
-            return task_t<typed_actor_join_result_t<TReply>> (
-              decode_join<TReply> (submit (), registry));
-        }
-        auto source =
-          std::make_shared<detail::task_completion_source_t<typed_actor_join_result_t<TReply>>> (
-            turn_handle->resume_scheduler ());
-        auto task = source->task ();
-        std::thread ([source, submit = std::move (submit_fn), registry] () mutable {
-            try {
-                source->complete (decode_join<TReply> (submit (), registry));
-            }
-            catch (const framework_exception_t &error) {
-                source->complete (
-                  detail::result_access_t::failure<typed_actor_join_result_t<TReply>> (error));
-            }
-            catch (...) {
-                source->complete (result_t<typed_actor_join_result_t<TReply>>::failure (
-                  framework_error_kind_t::request_failed, "actor join spot failed"));
-            }
-        }).detach ();
-        return task;
-    }
-
-  private:
     template <typename TReply>
-    static result_t<typed_actor_join_result_t<TReply>>
-    decode_join (const result_t<actor_join_result_t> &result, serializer_registry_t *registry)
+    static typed_actor_join_result_t<TReply>
+    decode_join (const actor_join_result_t &joined, serializer_registry_t *registry)
     {
-        if (!result) {
-            const auto *error = result.error ();
-            return result_t<typed_actor_join_result_t<TReply>>::failure (
-              result.error_kind (), error != nullptr ? error->what () : "actor join spot failed");
-        }
         if (registry == nullptr) {
-            return result_t<typed_actor_join_result_t<TReply>>::failure (
-              framework_error_kind_t::request_protocol_error,
-              "actor join result has no serializer registry");
+            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                         "actor join result has no serializer registry");
         }
-        try {
-            const auto &joined = result.value ();
-            if (const auto *accepted = std::get_if<actor_join_accepted_t<message_t>> (&joined)) {
-                return result_t<typed_actor_join_result_t<TReply>>::success (
-                  typed_actor_join_result_t<TReply>{actor_join_accepted_t<TReply>{
-                    accepted->actor, accepted->reply.template decode<TReply> (*registry)}});
-            }
-            const auto &rejected = std::get<actor_join_rejected_t<message_t>> (joined);
-            return result_t<typed_actor_join_result_t<TReply>>::success (
-              typed_actor_join_result_t<TReply>{actor_join_rejected_t<TReply>{
-                rejected.reply.template decode<TReply> (*registry)}});
+        if (const auto *accepted = std::get_if<actor_join_accepted_t<message_t>> (&joined)) {
+            return actor_join_accepted_t<TReply>{
+              accepted->actor, accepted->reply.template decode<TReply> (*registry)};
         }
-        catch (const framework_exception_t &error) {
-            return detail::result_access_t::failure<typed_actor_join_result_t<TReply>> (error);
-        }
+        const auto &rejected = std::get<actor_join_rejected_t<message_t>> (joined);
+        return actor_join_rejected_t<TReply>{
+          rejected.reply.template decode<TReply> (*registry)};
     }
 
   public:
@@ -370,6 +347,7 @@ class relay_request_call_t : private detail::call_facade_t<relay_request_call_t,
 
     using base_t::async;
     using base_t::timeout;
+    using base_t::yield;
 };
 
 class bound_session_t

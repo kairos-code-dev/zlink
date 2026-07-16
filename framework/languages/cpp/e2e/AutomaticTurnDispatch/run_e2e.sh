@@ -8,7 +8,7 @@ BUILD_DIR="$FRAMEWORK_DIR/build"
 SCENARIO="${1:-all}"
 SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
 case "$SCENARIO_LOWER" in
-  all|full|atd-a[1-4]|atd-b[1-3]|atd-c[1-3]|atd-d[1-4]|atd-e[1-3]) ;;
+  all|full|atd-a[1-4]|atd-b[1-3]|atd-c[1-3]|atd-d[1-4]|atd-e[1-3]|td-e[23]) ;;
   *)
     echo "Unsupported AutomaticTurnDispatch scenario: $SCENARIO" >&2
     exit 2
@@ -453,7 +453,7 @@ start_play_role play-b "$PLAY_B_HTTP" "$PLAY_B_CONTROL" "$PLAY_B_SPOT_ROUTE" "$P
 start_session_role session-a "$SESSION_A_HTTP" "$SESSION_A_STREAM" "$PLAY_A_CONTROL" "$PLAY_B_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTE" "$SESSION_A_SPOT_ROUTER" "$SESSION_A_SPOT_PUB"
 start_session_role session-b "$SESSION_B_HTTP" "$SESSION_B_STREAM" "$PLAY_B_CONTROL" "$PLAY_A_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTE" "$SESSION_B_SPOT_ROUTER" "$SESSION_B_SPOT_PUB"
 
-if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == atd-[a-d]* || "$SCENARIO_LOWER" == "atd-e1" ]]; then
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == atd-[a-d]* || "$SCENARIO_LOWER" == "atd-e1" || "$SCENARIO_LOWER" == td-e[23] ]]; then
   CLIENT_SCENARIO="$SCENARIO_LOWER"
   if [[ "$CLIENT_SCENARIO" == "atd-d1" ]]; then
     CLIENT_SCENARIO="full"
@@ -476,6 +476,8 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LO
     grep -q "scenario ATD-D3 passed" "$LOG_DIR/client.stdout.log"
     grep -q "scenario ATD-D4 passed" "$LOG_DIR/client.stdout.log"
     grep -q "scenario ATD-E1 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario TD-E2 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario TD-E3 passed" "$LOG_DIR/client.stdout.log"
     grep -q "automatic-turn-dispatch track-a-e1 result=passed" "$LOG_DIR/client.stdout.log"
     grep -q "^hold-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
     grep -q "^await-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"

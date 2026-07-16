@@ -234,6 +234,7 @@ class spot_context_state_t
     bool try_post_serial_async (std::string name,
                                 runtime::serial_execution_queue_t::async_work_t work);
     bool run_serial_sync (std::string name, std::function<void ()> work);
+    bool owns_current_serial_turn () const;
     void drain_serial ();
     void cancel_timers () noexcept;
 

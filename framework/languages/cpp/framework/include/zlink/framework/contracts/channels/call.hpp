@@ -61,7 +61,12 @@ template <typename TReply> class request_call_t
         return *this;
     }
 
-    task_t<TReply> async ()
+    task_t<TReply> async () { return start (false); }
+
+    task_t<TReply> yield () { return start (true); }
+
+  private:
+    task_t<TReply> start (bool release_turn)
     {
         if (_immediate) {
             return task_t<TReply> (*_immediate);
@@ -71,17 +76,15 @@ template <typename TReply> class request_call_t
               result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                          "request call is not bound to a channel client"));
         }
-        auto turn_handle = detail::capture_current_serial_turn ();
-        if (!turn_handle || turn_handle->released () || !turn_handle->release ()) {
+        auto turn_plan = detail::prepare_serial_turn_await (release_turn);
+        if (!turn_plan) {
             return _submit (_packet_name, _timeout, _metadata);
         }
-        // The underlying submit blocks the calling thread until the reply
-        // arrives, so it must run OFF the released Spot serial turn — otherwise
-        // the single serial-execution thread stays parked in the blocking call
-        // and no other serial work (sibling timers, other actors) can progress
-        // while this handler awaits. Offload to a detached thread and resume the
-        // coroutine back on the serial queue when the reply lands.
-        auto source = std::make_shared<detail::task_completion_source_t<TReply>> ();
+        // The transport submit may block its calling thread. It therefore runs
+        // outside the serial executor even when async keeps the logical turn.
+        auto source =
+          std::make_shared<detail::task_completion_source_t<TReply>> (
+            std::move (turn_plan->scheduler));
         auto pending = source->task ();
         std::thread ([source, submit = _submit, packet_name = _packet_name, timeout = _timeout,
                       metadata = _metadata] () mutable {
@@ -96,10 +99,9 @@ template <typename TReply> class request_call_t
                   framework_error_kind_t::request_failed, "awaited request failed"));
             }
         }).detach ();
-        return detail::reschedule_task (std::move (pending), turn_handle->resume_scheduler ());
+        return pending;
     }
 
-  private:
     std::optional<result_t<TReply>> _immediate;
     std::string _packet_name;
     std::chrono::milliseconds _timeout{0};
@@ -139,21 +141,28 @@ class channel_request_call_t
 
     template <typename TReply> task_t<TReply> async ()
     {
+        co_return co_await start<TReply> (false);
+    }
+
+    template <typename TReply> task_t<TReply> yield ()
+    {
+        co_return co_await start<TReply> (true);
+    }
+
+  protected:
+    template <typename TReply> task_t<TReply> start (bool release_turn)
+    {
         if (!_submit) {
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                                  "request call is not bound to a channel client");
         }
         zlink::message_t reply;
-        auto turn_handle = detail::capture_current_serial_turn ();
-        if (!turn_handle || turn_handle->released () || !turn_handle->release ()) {
+        auto turn_plan = detail::prepare_serial_turn_await (release_turn);
+        if (!turn_plan) {
             reply = co_await _submit (_packet_name, _timeout, _metadata);
         } else {
-            // The channel request blocks its calling thread until the reply
-            // arrives. Run it on a detached thread instead of the released Spot
-            // serial turn so the single serial-execution thread is free to run
-            // other serial work (sibling timers, other actors) while this
-            // handler awaits.
-            auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> ();
+            auto source = std::make_shared<detail::task_completion_source_t<zlink::message_t>> (
+              std::move (turn_plan->scheduler));
             auto pending = source->task ();
             std::thread ([source, submit = blocking_submit ()] () mutable {
                 try {
@@ -167,23 +176,25 @@ class channel_request_call_t
                       framework_error_kind_t::request_failed, "awaited channel request failed"));
                 }
             }).detach ();
-            reply = co_await detail::reschedule_task (std::move (pending),
-                                                      turn_handle->resume_scheduler ());
+            reply = co_await pending;
         }
-        if (_serializers == nullptr) {
-            co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
-                                                 "channel request has no serializer registry");
-        }
-        try {
-            co_return _serializers->get<TReply> ().deserialize (
-              detail::encoded_payload_from_raw (reply));
-        }
-        catch (const framework_exception_t &error) {
-            co_return detail::result_access_t::failure<TReply> (error);
-        }
+        co_return decode<TReply> (reply);
     }
 
-  protected:
+    template <typename TReply> result_t<TReply> decode (const zlink::message_t &reply)
+    {
+        if (_serializers == nullptr) {
+            return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
+                                              "channel request has no serializer registry");
+        }
+        try {
+            return result_t<TReply>::success (_serializers->get<TReply> ().deserialize (
+              detail::encoded_payload_from_raw (reply)));
+        }
+        catch (const framework_exception_t &error) {
+            return detail::result_access_t::failure<TReply> (error);
+        }
+    }
     task_t<zlink::message_t> submit_raw ()
     {
         if (!_submit) {

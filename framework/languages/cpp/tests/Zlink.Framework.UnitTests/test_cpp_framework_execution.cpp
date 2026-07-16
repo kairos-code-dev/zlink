@@ -10,6 +10,7 @@
 #include <chrono>
 #include <exception>
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -98,10 +99,107 @@ context_with_scheduler (const std::shared_ptr<controlled_worker_scheduler_t> &sc
     return test_spot_context_t (state);
 }
 
+bool wait_until (const std::function<bool ()> &predicate)
+{
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        if (predicate ()) {
+            return true;
+        }
+        std::this_thread::sleep_for (std::chrono::milliseconds (2));
+    }
+    return false;
+}
+
+zlink::framework::task_t<void> run_request_turn_probe (
+  const std::shared_ptr<zlink::framework::detail::task_completion_source_t<int>> &reply,
+  const std::shared_ptr<std::vector<int>> &order,
+  const std::shared_ptr<std::mutex> &order_gate,
+  bool release_turn)
+{
+    {
+        std::lock_guard lock (*order_gate);
+        order->push_back (1);
+    }
+    zlink::framework::request_call_t<int> call (
+      "TurnProbe", [reply] (const auto &, auto, const auto &) { return reply->task (); });
+    const auto value = release_turn ? co_await call.yield () : co_await call.async ();
+    if (value != 7) {
+        throw std::runtime_error ("turn probe reply mismatch");
+    }
+    {
+        std::lock_guard lock (*order_gate);
+        order->push_back (3);
+    }
+    co_return;
+}
+
+bool verify_request_turn_mode (bool release_turn, const std::vector<int> &expected)
+{
+    zlink::framework::runtime::offload_executor_t executor (2);
+    zlink::framework::runtime::serial_execution_queue_t queue (executor, 4);
+    auto reply = std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
+    auto order = std::make_shared<std::vector<int>> ();
+    auto order_gate = std::make_shared<std::mutex> ();
+
+    queue.post_async ("request", [reply, order, order_gate, release_turn] (auto complete) {
+        auto task = std::make_shared<zlink::framework::task_t<void>> (
+          run_request_turn_probe (reply, order, order_gate, release_turn));
+        zlink::framework::observe_task_completion (
+          *task, [task, complete = std::move (complete)] (const auto &result) mutable {
+              complete ([task, result] {
+                  if (!result) {
+                      throw std::runtime_error ("turn probe request failed");
+                  }
+              });
+          });
+    });
+    queue.post ("sibling", [order, order_gate] {
+        std::lock_guard lock (*order_gate);
+        order->push_back (2);
+    });
+
+    if (!wait_until ([&] {
+            std::lock_guard lock (*order_gate);
+            return release_turn ? order->size () >= 2 : order->size () == 1;
+        })) {
+        return false;
+    }
+    if (!release_turn) {
+        std::lock_guard lock (*order_gate);
+        if (*order != std::vector<int>{1}) {
+            return false;
+        }
+    }
+    reply->complete (zlink::framework::result_t<int>::success (7));
+    if (!wait_until ([&] {
+            std::lock_guard lock (*order_gate);
+            return order->size () == 3;
+        })) {
+        return false;
+    }
+    queue.drain ();
+    std::lock_guard lock (*order_gate);
+    if (*order != expected) {
+        std::cerr << "turn mode=" << (release_turn ? "yield" : "async") << " order=";
+        for (const auto item : *order) {
+            std::cerr << item;
+        }
+        std::cerr << '\n';
+    }
+    return *order == expected;
+}
+
 } // namespace
 
 int main ()
 {
+    if (!verify_request_turn_mode (false, {1, 3, 2})) {
+        return 25;
+    }
+    if (!verify_request_turn_mode (true, {1, 2, 3})) {
+        return 26;
+    }
+
     zlink::framework::runtime::offload_executor_t executor (2);
 
     std::vector<int> order;

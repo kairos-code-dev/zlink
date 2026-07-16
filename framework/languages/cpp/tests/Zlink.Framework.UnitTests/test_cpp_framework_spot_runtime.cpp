@@ -909,7 +909,7 @@ struct async_probe_spot_t : public zlink::framework::spot_t
             slow_started = true;
             changed.notify_all ();
         }
-        const auto value = co_await _context.run_worker ([] { return 77; }).async ();
+        const auto value = co_await _context.run_worker ([] { return 77; }).yield ();
         {
             std::lock_guard lock (mutex);
             slow_completed = true;
@@ -3957,7 +3957,7 @@ int main ()
     }
     auto quick_future =
       std::async (std::launch::async, [&] { return invoke_async ("async.quick", 9); });
-    if (quick_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+    if (quick_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
         return 53;
     }
     if (slow_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
@@ -4037,19 +4037,9 @@ int main ()
     }
     auto request_quick_future =
       std::async (std::launch::async, [&] { return invoke_async ("async.quick", 13); });
-    if (request_quick_future.wait_for (std::chrono::milliseconds (500))
-        != std::future_status::ready) {
+    if (request_quick_future.wait_for (std::chrono::milliseconds (50))
+        == std::future_status::ready) {
         return 65;
-    }
-    const auto request_quick_result = request_quick_future.get ();
-    if (!request_quick_result
-        || spot_serializers.get<move_reply_t> ()
-               .deserialize (
-                 zlink::framework::detail::encoded_payload_from_raw (request_quick_result.value ()))
-               .value
-             != 14
-        || async_spot.quick_seen () != 1) {
-        return 66;
     }
     request_source->complete (zlink::framework::result_t<int>::success (90));
     if (request_await_future.wait_for (std::chrono::milliseconds (500))
@@ -4065,6 +4055,20 @@ int main ()
              != 94) {
         return 68;
     }
+    if (request_quick_future.wait_for (std::chrono::milliseconds (500))
+        != std::future_status::ready) {
+        return 65;
+    }
+    const auto request_quick_result = request_quick_future.get ();
+    if (!request_quick_result
+        || spot_serializers.get<move_reply_t> ()
+               .deserialize (
+                 zlink::framework::detail::encoded_payload_from_raw (request_quick_result.value ()))
+               .value
+             != 14
+        || async_spot.quick_seen () != 1) {
+        return 66;
+    }
 
     async_spot.reset_probe ();
     auto join_await_future =
@@ -4078,18 +4082,8 @@ int main ()
     }
     auto join_quick_future =
       std::async (std::launch::async, [&] { return invoke_async ("async.quick", 15); });
-    if (join_quick_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+    if (join_quick_future.wait_for (std::chrono::milliseconds (50)) == std::future_status::ready) {
         return 70;
-    }
-    const auto join_quick_result = join_quick_future.get ();
-    if (!join_quick_result
-        || spot_serializers.get<move_reply_t> ()
-               .deserialize (
-                 zlink::framework::detail::encoded_payload_from_raw (join_quick_result.value ()))
-               .value
-             != 16
-        || async_spot.quick_seen () != 1) {
-        return 71;
     }
     {
         std::lock_guard lock (async_join_mutex);
@@ -4107,6 +4101,19 @@ int main ()
                .value
              != 36) {
         return 73;
+    }
+    if (join_quick_future.wait_for (std::chrono::milliseconds (500)) != std::future_status::ready) {
+        return 70;
+    }
+    const auto join_quick_result = join_quick_future.get ();
+    if (!join_quick_result
+        || spot_serializers.get<move_reply_t> ()
+               .deserialize (
+                 zlink::framework::detail::encoded_payload_from_raw (join_quick_result.value ()))
+               .value
+             != 16
+        || async_spot.quick_seen () != 1) {
+        return 71;
     }
 
     stage_spot.on_leave_actor (actor);

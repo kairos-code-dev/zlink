@@ -11,6 +11,7 @@
 #include <zlink/framework.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <string>
@@ -57,6 +58,8 @@ class await_probe_spot_t : public zlink::framework::spot_t
             yd::actor_fast_req_t::packet_name)
           .add_actor_request<&await_probe_spot_t::actor_join_await_req> (
             yd::actor_join_await_req_t::packet_name)
+          .add_actor_request<&await_probe_spot_t::actor_join_spot_req> (
+            yd::actor_join_spot_req_t::packet_name)
           .add_actor_request<&await_probe_spot_t::actor_push_await_req> (
             yd::actor_push_await_req_t::packet_name);
     }
@@ -69,15 +72,35 @@ class await_probe_spot_t : public zlink::framework::spot_t
         const auto spot_rid = std::string (_context.spot_rid ().value ());
         _evidence.add ("actor-join-target-started|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + std::string (actor_id) + "|request="
-                       + request.request_id + "|handler=spot");
+                       + request.request_id + "|turn=" + current_turn_id () + "|handler=spot");
         std::this_thread::sleep_for (std::chrono::milliseconds (request.delay_ms));
         _evidence.add ("actor-join-target-completed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + std::string (actor_id) + "|request="
-                       + request.request_id + "|handler=spot");
+                       + request.request_id + "|turn=" + current_turn_id () + "|handler=spot");
         return zlink::framework::spot_actor_join_response_t::accept (
           yd::delay_res_t{.request_id = request.request_id,
                           .marker = request.marker,
                           .node_rid = _evidence.node_rid});
+    }
+
+    void on_leave_actor (const await_actor_t &actor)
+    {
+        if (!actor.join_request_id.empty ()) {
+            _evidence.add ("actor-join-source-left|rid=" + _evidence.node_rid + "|spot="
+                           + std::string (_context.spot_rid ().value ()) + "|actor="
+                           + actor.actor_id + "|request=" + actor.join_request_id + "|turn="
+                           + current_turn_id ());
+        }
+    }
+
+    void on_actor_joined (const await_actor_t &actor)
+    {
+        if (!actor.join_request_id.empty ()) {
+            _evidence.add ("actor-join-target-joined|rid=" + _evidence.node_rid + "|spot="
+                           + std::string (_context.spot_rid ().value ()) + "|actor="
+                           + actor.actor_id + "|request=" + actor.join_request_id + "|turn="
+                           + current_turn_id ());
+        }
     }
 
     zlink::framework::task_t<yd::automatic_turn_dispatch_res_t> hold_req (const yd::hold_req_t &request)
@@ -252,6 +275,35 @@ class await_probe_spot_t : public zlink::framework::spot_t
     }
 
     zlink::framework::task_t<yd::actor_await_res_t>
+    actor_join_spot_req (await_actor_t &actor,
+                         zlink::framework::spot_actor_request_context_t &,
+                         const yd::actor_join_spot_req_t &request)
+    {
+        actor.join_request_id = request.request_id;
+        _evidence.add ("actor-join-started|rid=" + _evidence.node_rid + "|spot="
+                       + std::string (_context.spot_rid ().value ()) + "|actor="
+                       + actor.actor_id + "|request=" + request.request_id + "|target="
+                       + request.target_spot_rid + "|turn=" + current_turn_id ());
+        const auto joined =
+          co_await actor.context
+            .join_spot (zlink::framework::spot_rid_t::from_string (request.target_spot_rid),
+                        yd::delay_req_t{.request_id = request.request_id,
+                                        .delay_ms = request.admission_delay_ms,
+                                        .marker = "join"})
+            .async<yd::delay_res_t> ();
+        const auto accepted =
+          std::holds_alternative<
+            zlink::framework::actor_join_accepted_t<yd::delay_res_t>> (joined);
+        _evidence.add ("actor-join-completed|rid=" + _evidence.node_rid + "|spot="
+                       + request.target_spot_rid + "|actor=" + actor.actor_id + "|request="
+                       + request.request_id + "|accepted=" + (accepted ? "true" : "false")
+                       + "|turn=" + current_turn_id ());
+        actor.join_request_id.clear ();
+        co_return actor_reply ("TD-E2", request.request_id, actor.actor_id,
+                               "actor-join-completed");
+    }
+
+    zlink::framework::task_t<yd::actor_await_res_t>
     actor_push_await_req (await_actor_t &actor,
                           zlink::framework::spot_actor_request_context_t &,
                           const yd::actor_push_await_req_t &request)
@@ -296,6 +348,12 @@ class await_probe_spot_t : public zlink::framework::spot_t
     }
 
   private:
+    static std::string current_turn_id ()
+    {
+        const auto turn = zlink::framework::detail::capture_current_serial_turn ();
+        return std::to_string (reinterpret_cast<std::uintptr_t> (turn.get ()));
+    }
+
     yd::actor_await_res_t
     actor_reply (std::string scenario_id,
                  std::string request_id,

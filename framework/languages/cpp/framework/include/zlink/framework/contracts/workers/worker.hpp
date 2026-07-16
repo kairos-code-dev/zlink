@@ -72,7 +72,12 @@ template <typename TResult> class worker_call_t
         return *this;
     }
 
-    task_t<TResult> async ()
+    task_t<TResult> async () { return start (false); }
+
+    task_t<TResult> yield () { return start (true); }
+
+  private:
+    task_t<TResult> start (bool release_turn)
     {
         if (!try_start ()) {
             return task_t<TResult> (
@@ -83,18 +88,14 @@ template <typename TResult> class worker_call_t
             return task_t<TResult> (result_t<TResult>::failure (
               framework_error_kind_t::request_failed, "worker runtime is not configured"));
         }
-        auto turn_handle = detail::capture_current_serial_turn ();
-        if (!turn_handle || turn_handle->released () || !turn_handle->release ()) {
+        auto turn_plan = detail::prepare_serial_turn_await (release_turn);
+        if (!turn_plan) {
             return _executor (_timeout, detail::worker_completion_mode_t::owner_queue);
         }
-        // Awaiting a worker releases the Spot serial line so independent work
-        // progresses; the continuation resumes serialized on the same line.
         return detail::reschedule_task (
           _executor (_timeout, detail::worker_completion_mode_t::owner_queue),
-          turn_handle->resume_scheduler ());
+          std::move (turn_plan->scheduler));
     }
-
-  private:
     bool try_start ()
     {
         if (_started) {

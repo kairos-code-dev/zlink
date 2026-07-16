@@ -53,6 +53,8 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
         };
     }
 
+    bool belongs_to (const void *owner) const noexcept override { return owner == &_queue; }
+
     bool complete (std::function<void ()> completion) { return finish (std::move (completion)); }
 
   private:

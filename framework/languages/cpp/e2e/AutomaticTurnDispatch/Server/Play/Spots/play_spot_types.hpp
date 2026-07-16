@@ -26,6 +26,7 @@ struct await_actor_t
     }
 
     std::string actor_id;
+    std::string join_request_id;
     zlink::framework::actor_ref_t actor_ref;
     zlink::framework::actor_context_t context;
 };

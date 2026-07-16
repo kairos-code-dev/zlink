@@ -58,8 +58,23 @@ actor_request_call_t &actor_request_call_t::timeout (std::chrono::milliseconds t
 
 task_t<message_t> actor_request_call_t::async_message ()
 {
-    return _client->request_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
-                                             std::move (_request), _timeout);
+    return start (false);
+}
+
+task_t<message_t> actor_request_call_t::yield_message ()
+{
+    return start (true);
+}
+
+task_t<message_t> actor_request_call_t::start (bool release_turn)
+{
+    auto task = _client->request_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
+                                                  std::move (_request), _timeout);
+    auto turn_plan = detail::prepare_serial_turn_await (release_turn);
+    if (!turn_plan) {
+        return task;
+    }
+    return detail::reschedule_task (std::move (task), std::move (turn_plan->scheduler));
 }
 
 serializer_registry_t &actor_request_call_t::serializers () const

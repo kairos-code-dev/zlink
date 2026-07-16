@@ -235,6 +235,14 @@ struct actor_join_await_req_t
     std::string target_node_rid;
 };
 
+struct actor_join_spot_req_t
+{
+    static constexpr const char *packet_name = "ActorJoinSpotReq";
+    std::string request_id;
+    std::string target_spot_rid;
+    int admission_delay_ms = 0;
+};
+
 struct actor_push_await_req_t
 {
     static constexpr const char *packet_name = "ActorPushYieldReq";
@@ -440,6 +448,20 @@ inline void from_json (const nlohmann::json &json, bind_await_actors_res_t &valu
 {
     value.spot_rid = json.value ("spot_rid", "");
     value.actors = json.value ("actors", std::vector<await_actor_binding_t>{});
+}
+
+inline void to_json (nlohmann::json &json, const actor_join_spot_req_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"target_spot_rid", value.target_spot_rid},
+                          {"admission_delay_ms", value.admission_delay_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, actor_join_spot_req_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.target_spot_rid = json.value ("target_spot_rid", "");
+    value.admission_delay_ms = json.value ("admission_delay_ms", 0);
 }
 
 inline void to_json (nlohmann::json &json, const hold_req_t &value)

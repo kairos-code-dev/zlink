@@ -31,6 +31,7 @@ class serial_turn_t
     virtual bool release () = 0;
     virtual bool released () const = 0;
     virtual task_scheduler_t resume_scheduler () = 0;
+    virtual bool belongs_to (const void *owner) const noexcept = 0;
 };
 
 inline thread_local std::shared_ptr<serial_turn_t> current_serial_turn_handle;
@@ -57,6 +58,39 @@ class serial_turn_scope_t
   private:
     std::shared_ptr<serial_turn_t> _previous;
 };
+
+inline task_scheduler_t held_serial_turn_scheduler (std::shared_ptr<serial_turn_t> turn)
+{
+    return [turn = std::move (turn)] (std::function<void ()> work) mutable {
+        serial_turn_scope_t scope (turn);
+        if (work) {
+            work ();
+        }
+    };
+}
+
+struct serial_turn_await_plan_t
+{
+    std::shared_ptr<serial_turn_t> turn;
+    task_scheduler_t scheduler;
+    bool holds_turn = false;
+};
+
+inline std::optional<serial_turn_await_plan_t>
+prepare_serial_turn_await (bool release_turn)
+{
+    auto turn = capture_current_serial_turn ();
+    if (!turn || turn->released ()) {
+        return std::nullopt;
+    }
+    if (release_turn) {
+        if (!turn->release ()) {
+            return std::nullopt;
+        }
+        return serial_turn_await_plan_t{turn, turn->resume_scheduler (), false};
+    }
+    return serial_turn_await_plan_t{turn, held_serial_turn_scheduler (turn), true};
+}
 
 /* Ambient dispatch-context propagation across coroutine suspension
  * (flow-correlation MFLOW-EXT-014). The runtime installs the hooks once; a

@@ -15,6 +15,8 @@
 #include "Scenarios/atd_d3_route_bridge_await_scenario.hpp"
 #include "Scenarios/atd_d4_session_relay_actor_await_scenario.hpp"
 #include "Scenarios/atd_e1_timeout_scenario.hpp"
+#include "Scenarios/td_e2_user_to_user_spot_join_scenario.hpp"
+#include "Scenarios/td_e3_opposite_spot_join_scenario.hpp"
 #include "Scenarios/shutdown_await_scenario.hpp"
 #include "Scenarios/await_actor_scenario_context.hpp"
 #include "Support/client_options.hpp"
@@ -67,7 +69,8 @@ int main (int argc, char **argv)
         auto wants = [&scenario] (const char *id) {
             return scenario == "all" || scenario == "full" || scenario == id;
         };
-        ensure (scenario == "all" || scenario == "full" || scenario.rfind ("atd-", 0) == 0,
+        ensure (scenario == "all" || scenario == "full" || scenario.rfind ("atd-", 0) == 0
+                  || scenario.rfind ("td-", 0) == 0,
                 "unknown AutomaticTurnDispatch client scenario: " + scenario);
 
         auto options = atd_client::make_connector_options (client_options);
@@ -127,6 +130,12 @@ int main (int argc, char **argv)
         }
         if (wants ("atd-b3")) {
             atd_client::run_atd_b3_actor_join_await_scenario (client, actors);
+        }
+        if (wants ("td-e2")) {
+            atd_client::run_td_e2_user_to_user_spot_join_scenario (client, actors);
+        }
+        if (wants ("td-e3")) {
+            atd_client::run_td_e3_opposite_spot_join_scenario (client, actors);
         }
         auto rebound_actors =
           client.request (yd::bind_await_actors_req_t{.spot_rid = actors.spot_rid,

@@ -892,7 +892,7 @@ bool spot_context_state_t::run_serial_sync (std::string name, std::function<void
     if (!work) {
         return true;
     }
-    if (is_current_callback_thread ()) {
+    if (is_current_callback_thread () || owns_current_serial_turn ()) {
         work ();
         return true;
     }
@@ -916,6 +916,12 @@ bool spot_context_state_t::run_serial_sync (std::string name, std::function<void
         std::rethrow_exception (error);
     }
     return true;
+}
+
+bool spot_context_state_t::owns_current_serial_turn () const
+{
+    const auto turn = detail::capture_current_serial_turn ();
+    return turn && serial_queue && turn->belongs_to (serial_queue.get ());
 }
 
 void spot_context_state_t::drain_serial ()
@@ -2527,6 +2533,8 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
         previous != _state->actor_spot_rids.end ()) {
         previous_context = find_context (previous->second);
     }
+    const auto caller_owns_source_turn =
+      previous_context && previous_context->_state->owns_current_serial_turn ();
     if (previous_context) {
         auto &previous_state = *previous_context->_state;
         if (const auto previous_admission = previous_state.actor_admissions.find (actor_type);
@@ -2546,19 +2554,25 @@ void spot_node_runtime_t::commit_accepted_actor_join_unlocked (
     if (create_entry_actor && admission.entry_spot && !_state->actor_created_keys.contains (key)
         && admission.on_create_actor) {
         auto &serializers = *target_state.channel_runtime->serializers;
-        if (!target_state.run_serial_sync ("spot-actor-create", [&] {
-                admission.on_create_actor (target_state.spot_instance.get (), actor, create_request,
-                                         serializers);
-            })) {
+        auto create_actor = [&] {
+            admission.on_create_actor (target_state.spot_instance.get (), actor, create_request,
+                                       serializers);
+        };
+        if (caller_owns_source_turn) {
+            create_actor ();
+        } else if (!target_state.run_serial_sync ("spot-actor-create", create_actor)) {
             throw framework_exception_t (framework_error_kind_t::request_rejected,
                                          "spot serial queue is full");
         }
         _state->actor_created_keys.insert (key);
     }
     if (admission.on_actor_joined) {
-        if (!target_state.run_serial_sync ("spot-actor-joined", [&] {
-                admission.on_actor_joined (target_state.spot_instance.get (), actor);
-            })) {
+        auto actor_joined = [&] {
+            admission.on_actor_joined (target_state.spot_instance.get (), actor);
+        };
+        if (caller_owns_source_turn) {
+            actor_joined ();
+        } else if (!target_state.run_serial_sync ("spot-actor-joined", actor_joined)) {
             throw framework_exception_t (framework_error_kind_t::request_rejected,
                                          "spot serial queue is full");
         }

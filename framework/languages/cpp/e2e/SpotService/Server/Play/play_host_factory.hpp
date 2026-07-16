@@ -126,9 +126,7 @@ inline int run_play_server (int argc, char **argv)
                                          config.play_b_http_endpoint}))
           .add_transient<ensure_actor_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t,
-                         zlink::framework::session_actor_manager_t,
-                         zlink::framework::route_client_t,
-                         zlink::framework::actor_gateway_t> ()
+                         zlink::framework::session_actor_manager_t> ()
           .add_transient<spot_lifecycle_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()
           .add_transient<join_spot_handler_t, scenario_state_t,

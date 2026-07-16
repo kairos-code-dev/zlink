@@ -29,6 +29,8 @@ namespace detail
 {
 class actor_gateway_state_t;
 class actor_gateway_runtime_t;
+class session_actor_binding_context_t;
+class session_actor_manager_access_t;
 class spot_node_runtime_t;
 } // namespace detail
 
@@ -78,7 +80,6 @@ struct actor_placement_t
     std::optional<std::string> route_mesh;
 };
 
-class actor_gateway_t;
 class actor_client_t;
 class route_client_t;
 
@@ -399,7 +400,6 @@ class bound_session_t
 
   private:
     friend class actor_context_t;
-    friend class actor_gateway_t;
     friend class session_actor_t;
     friend class session_actor_manager_t;
     friend class detail::actor_gateway_runtime_t;
@@ -546,7 +546,6 @@ class actor_context_t
 
   private:
     friend class spot_node_builder_t;
-    friend class actor_gateway_t;
     friend class detail::spot_node_runtime_t;
     friend class session_actor_t;
     friend class session_actor_manager_t;
@@ -586,7 +585,6 @@ class session_actor_t
 
   private:
     friend class session_actor_manager_t;
-    friend class actor_gateway_t;
     friend class detail::actor_gateway_runtime_t;
 
     explicit session_actor_t (std::shared_ptr<detail::actor_gateway_state_t> state,
@@ -649,11 +647,10 @@ class session_actor_manager_t
     }
     request_call_t<session_actor_t> bind (actor_ref_t actor_ref);
     request_call_t<session_actor_t> bind_or_get (actor_ref_t actor_ref);
-    void unbind_session (std::string actor_id) noexcept;
 
   private:
-    friend class actor_gateway_t;
     friend class detail::actor_gateway_runtime_t;
+    friend class detail::session_actor_manager_access_t;
     explicit session_actor_manager_t (std::shared_ptr<detail::actor_gateway_state_t> state);
     result_t<session_actor_t> create_erased (std::string actor_type,
                                              std::string actor_id,
@@ -662,39 +659,10 @@ class session_actor_manager_t
                                                     std::string actor_id,
                                                     std::optional<zlink::message_t> request);
     zlink::message_t serialize_request (std::type_index request_type, const void *request) const;
+    void bind_current_session (const actor_ref_t &actor_ref);
 
     std::shared_ptr<detail::actor_gateway_state_t> _state;
-};
-
-class actor_gateway_t
-{
-  public:
-    actor_gateway_t ();
-    ~actor_gateway_t ();
-
-    actor_gateway_t (actor_gateway_t &&) noexcept;
-    actor_gateway_t &operator= (actor_gateway_t &&) noexcept;
-    actor_gateway_t (const actor_gateway_t &) = default;
-    actor_gateway_t &operator= (const actor_gateway_t &) = default;
-
-    session_actor_manager_t manager () const;
-    actor_context_t actor_context (const actor_ref_t &actor_ref) const;
-    void bind_session_stream (std::string actor_id,
-                              stream_t stream,
-                              stream_codec_t codec = stream_codec_t::message_pack);
-    void bind_session_route (actor_ref_t actor_ref,
-                             route_client_t route_client,
-                             std::string route_channel_name,
-                             zlink::routing_id_t target_node_rid,
-                             stream_codec_t codec = stream_codec_t::message_pack,
-                             bool replace_existing = true);
-    void unbind_session_stream (std::string actor_id);
-
-  private:
-    friend class detail::actor_gateway_runtime_t;
-    explicit actor_gateway_t (std::shared_ptr<detail::actor_gateway_state_t> state);
-
-    std::shared_ptr<detail::actor_gateway_state_t> _state;
+    std::shared_ptr<detail::session_actor_binding_context_t> _binding_context;
 };
 
 } // namespace zlink::framework

@@ -19,14 +19,12 @@ using framework::message_t;
 class play_session_t final : public packet_stream_session_t
 {
   public:
-    using dependency_types = dependency_list_t<session_actor_manager_t,
-                                               authenticate_play_session_handler_t,
-                                               actor_gateway_t>;
+    using dependency_types =
+      dependency_list_t<session_actor_manager_t, authenticate_play_session_handler_t>;
 
     play_session_t (session_actor_manager_t &actors,
-                    authenticate_play_session_handler_t &authenticate,
-                    actor_gateway_t &gateway) :
-        _actors (actors), _authenticate (authenticate), _gateway (gateway)
+                    authenticate_play_session_handler_t &authenticate) :
+        _actors (actors), _authenticate (authenticate)
     {
     }
 
@@ -41,8 +39,6 @@ class play_session_t final : public packet_stream_session_t
             if (auto actor = _actors.find (*_bound_actor_id)) {
                 co_await actor->notify_disconnected ();
             }
-            _gateway.unbind_session_stream (*_bound_actor_id);
-            _actors.unbind_session (*_bound_actor_id);
             _bound_actor_id.reset ();
         }
         co_return;
@@ -60,7 +56,6 @@ class play_session_t final : public packet_stream_session_t
         if (_authenticate.can_handle (dispatch)) {
             auto authenticated = co_await _authenticate.handle (_actors, stream, payload);
             _bound_actor_id = std::string (authenticated.actor_id ());
-            _gateway.bind_session_stream (*_bound_actor_id, stream, stream_codec_t::json);
             co_return;
         }
 
@@ -99,7 +94,6 @@ class play_session_t final : public packet_stream_session_t
 
     session_actor_manager_t &_actors;
     authenticate_play_session_handler_t &_authenticate;
-    actor_gateway_t &_gateway;
     std::optional<std::string> _bound_actor_id;
 };
 

@@ -23,13 +23,11 @@ inline constexpr const char *conversation_id_metadata_key = "ConversationId";
 class supportchat_session_t final : public packet_stream_session_t
 {
   public:
-    using dependency_types =
-      dependency_list_t<channel_client_t, session_actor_manager_t, actor_gateway_t>;
+    using dependency_types = dependency_list_t<channel_client_t, session_actor_manager_t>;
 
     supportchat_session_t (channel_client_t &channels,
-                           session_actor_manager_t &actors,
-                           actor_gateway_t &gateway) :
-        _channels (channels), _actors (actors), _gateway (gateway)
+                           session_actor_manager_t &actors) :
+        _channels (channels), _actors (actors)
     {
     }
 
@@ -37,14 +35,10 @@ class supportchat_session_t final : public packet_stream_session_t
 
     task_t<void> on_disconnected (stream_t &) override
     {
-        if (!_identity_actor_id.empty ()) {
-            _gateway.unbind_session_stream (_identity_actor_id);
-            _actors.unbind_session (_identity_actor_id);
-        }
-        for (const auto &[_, actor_id] : _conversation_actor_ids) {
-            _gateway.unbind_session_stream (actor_id);
-            _actors.unbind_session (actor_id);
-        }
+        _identity_actor_id.clear ();
+        _identity_display_name.clear ();
+        _identity_role.clear ();
+        _conversation_actor_ids.clear ();
         co_return;
     }
 
@@ -80,7 +74,6 @@ class supportchat_session_t final : public packet_stream_session_t
             _identity_actor_id = std::string (bound.actor_id ());
             _identity_display_name = authenticated.display_name;
             _identity_role = authenticated.role;
-            _gateway.bind_session_stream (_identity_actor_id, stream, stream_codec_t::json);
             co_await bound.context ()
               .join_entry_spot (node_rid_t::from_string ("supportchat-support"), ensure)
               .async ();
@@ -144,7 +137,6 @@ class supportchat_session_t final : public packet_stream_session_t
         auto bound = co_await _actors.bind_or_get (actor_ref).async ();
         const auto conversation_actor_id = std::string (bound.actor_id ());
         _conversation_actor_ids[conversation_id] = conversation_actor_id;
-        _gateway.bind_session_stream (conversation_actor_id, stream, stream_codec_t::json);
         co_return ensured;
     }
 
@@ -174,7 +166,6 @@ class supportchat_session_t final : public packet_stream_session_t
 
     channel_client_t &_channels;
     session_actor_manager_t &_actors;
-    actor_gateway_t &_gateway;
     std::string _identity_actor_id;
     std::string _identity_display_name;
     std::string _identity_role;

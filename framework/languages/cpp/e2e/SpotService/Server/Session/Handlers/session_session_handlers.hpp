@@ -20,14 +20,12 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     using dependency_types =
       zlink::framework::dependency_list_t<scenario_state_t,
                                           zlink::framework::route_client_t,
-                                          zlink::framework::session_actor_manager_t,
-                                          zlink::framework::actor_gateway_t>;
+                                          zlink::framework::session_actor_manager_t>;
 
     stream_session_t (scenario_state_t &state,
                       zlink::framework::route_client_t &routes,
-                      zlink::framework::session_actor_manager_t &actors,
-                      zlink::framework::actor_gateway_t &gateway) :
-        _state (state), _routes (routes), _actors (actors), _gateway (gateway)
+                      zlink::framework::session_actor_manager_t &actors) :
+        _state (state), _routes (routes), _actors (actors)
     {
     }
 
@@ -47,8 +45,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                     _state.record ("StreamDisconnectNotified", actor_id);
                 }
             }
-            _gateway.unbind_session_stream (actor_id);
-            _actors.unbind_session (actor_id);
             _state.record ("StreamUnbound", actor_id);
         }
         _bound_actors.clear ();
@@ -82,8 +78,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
               _routes
                 .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                           e2e::ensure_actor_req_t{.actor_id = request.actor_id,
-                                                  .display_name = request.display_name,
-                                                  .bind_session_route = true})
+                                                  .display_name = request.display_name})
                 .async<e2e::ensure_actor_res_t> ()
                 .result ();
             if (!ensured_result) {
@@ -109,7 +104,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
                 _notify_on_disconnect.insert (actor_id);
             }
-            _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
             _state.record ("StreamAuthSessionBound", actor_id, {}, request.target_node_rid);
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
@@ -138,8 +132,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
               _routes
                 .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                           e2e::ensure_actor_req_t{.actor_id = request.actor_id,
-                                                  .display_name = request.display_name,
-                                                  .bind_session_route = true})
+                                                  .display_name = request.display_name})
                 .async<e2e::ensure_actor_res_t> ()
                 .result ();
             if (!ensured_result) {
@@ -163,7 +156,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
                 _notify_on_disconnect.insert (actor_id);
             }
-            _gateway.bind_session_stream (actor_id, stream, zlink::framework::stream_codec_t::json);
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
             if (!dispatch.can_reply ()) {
@@ -245,7 +237,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     scenario_state_t &_state;
     zlink::framework::route_client_t &_routes;
     zlink::framework::session_actor_manager_t &_actors;
-    zlink::framework::actor_gateway_t &_gateway;
     std::map<std::string, std::string> _bound_actors;
     std::map<std::string, zlink::framework::session_actor_t> _bound_session_actors;
     std::set<std::string> _notify_on_disconnect;

@@ -75,16 +75,14 @@ class actor_session_t final : public fw::packet_stream_session_t
 {
   public:
     using dependency_types =
-      fw::dependency_list_t<fw::session_actor_manager_t, fw::actor_gateway_t,
-                            fw::actor_directory_t, session_evidence_store_t,
-                            e2e::session_configuration_t>;
+      fw::dependency_list_t<fw::session_actor_manager_t, fw::actor_directory_t,
+                            session_evidence_store_t, e2e::session_configuration_t>;
 
     actor_session_t (fw::session_actor_manager_t &actors,
-                     fw::actor_gateway_t &gateway,
                      fw::actor_directory_t &directory,
                      session_evidence_store_t &evidence,
                      e2e::session_configuration_t &configuration) :
-        _actors (actors), _gateway (gateway), _directory (directory), _evidence (evidence),
+        _actors (actors), _directory (directory), _evidence (evidence),
         _gateway_rid (configuration.node_rid)
     {
     }
@@ -94,8 +92,6 @@ class actor_session_t final : public fw::packet_stream_session_t
     fw::task_t<void> on_disconnected (fw::stream_t &) override
     {
         if (!_bound_actor_id.empty ()) {
-            _gateway.unbind_session_stream (_bound_actor_id);
-            _actors.unbind_session (_bound_actor_id);
             _evidence.append ({_bind_scenario, _bound_actor_id, "disconnect", _gateway_rid});
         }
         co_return;
@@ -120,7 +116,6 @@ class actor_session_t final : public fw::packet_stream_session_t
         auto bound = co_await _actors.bind_or_get (*actor_ref).async ();
         _bound_actor_id = std::string (bound.actor_id ());
         _bind_scenario = request.scenario;
-        _gateway.bind_session_stream (_bound_actor_id, stream, fw::stream_codec_t::json);
         _evidence.append ({request.scenario, _bound_actor_id, "bind", _gateway_rid});
         stream
           .reply_packet (zlink::message_t::from_json (
@@ -130,7 +125,6 @@ class actor_session_t final : public fw::packet_stream_session_t
 
   private:
     fw::session_actor_manager_t &_actors;
-    fw::actor_gateway_t &_gateway;
     fw::actor_directory_t &_directory;
     session_evidence_store_t &_evidence;
     std::string _bound_actor_id;

@@ -50,29 +50,25 @@ class ensure_actor_handler_t
     using dependency_types =
       zlink::framework::dependency_list_t<scenario_state_t,
                                           zlink::framework::spot_node_manager_t,
-                                          zlink::framework::session_actor_manager_t,
-                                          zlink::framework::route_client_t,
-                                          zlink::framework::actor_gateway_t>;
+                                          zlink::framework::session_actor_manager_t>;
     using request_type = e2e::ensure_actor_req_t;
     using reply_type = e2e::ensure_actor_res_t;
 
     ensure_actor_handler_t (scenario_state_t &state,
                             zlink::framework::spot_node_manager_t &spots,
-                            zlink::framework::session_actor_manager_t &actors,
-                            zlink::framework::route_client_t &routes,
-                            zlink::framework::actor_gateway_t &gateway) :
-        _state (state), _spots (spots), _actors (actors), _routes (routes), _gateway (gateway)
+                            zlink::framework::session_actor_manager_t &actors) :
+        _state (state), _spots (spots), _actors (actors)
     {
     }
 
-    e2e::ensure_actor_res_t handle (const e2e::ensure_actor_req_t &request,
-                                    const zlink::framework::route_handler_context_t &context)
+    e2e::ensure_actor_res_t handle (
+      const e2e::ensure_actor_req_t &request,
+      const zlink::framework::route_handler_context_t &)
     {
         auto current = _spots.current_actor_ref (zlink::framework::actor_ref_t (
           zlink::framework::node_rid_t::from_string (_state.node_rid), e2e::actor_type,
           request.actor_id, 0));
         if (current) {
-            bind_session_route_if_requested (request, context, *current);
             _state.record ("ActorEnsured", request.actor_id, {}, request.display_name);
             return {.actor = from_actor_ref (*current)};
         }
@@ -107,32 +103,14 @@ class ensure_actor_handler_t
               zlink::framework::framework_error_kind_t::request_rejected,
               "ensure actor entry join was rejected");
         }
-        bind_session_route_if_requested (request, context, joined_accepted->actor);
         _state.record ("ActorEnsured", request.actor_id, {}, request.display_name);
         return {.actor = from_actor_ref (joined_accepted->actor)};
     }
 
   private:
-    void bind_session_route_if_requested (
-      const e2e::ensure_actor_req_t &request,
-      const zlink::framework::route_handler_context_t &context,
-      const zlink::framework::actor_ref_t &actor)
-    {
-        if (!request.bind_session_route
-            || context.source_node_rid
-                 == zlink::routing_id_t::from (std::string (_state.node_rid))) {
-            return;
-        }
-        _gateway.bind_session_route (actor, _routes, context.router_channel_id,
-                                     context.source_node_rid,
-                                     zlink::framework::stream_codec_t::message_pack);
-    }
-
     scenario_state_t &_state;
     zlink::framework::spot_node_manager_t &_spots;
     zlink::framework::session_actor_manager_t &_actors;
-    zlink::framework::route_client_t &_routes;
-    zlink::framework::actor_gateway_t &_gateway;
 };
 
 class create_spot_handler_t

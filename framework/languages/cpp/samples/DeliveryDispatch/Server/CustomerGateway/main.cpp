@@ -190,12 +190,11 @@ class customer_gateway_session_t final : public packet_stream_session_t
 {
   public:
     using dependency_types =
-      dependency_list_t<customer_session_directory_t, session_actor_manager_t, actor_gateway_t>;
+      dependency_list_t<customer_session_directory_t, session_actor_manager_t>;
 
     customer_gateway_session_t (customer_session_directory_t &sessions,
-                                session_actor_manager_t &actors,
-                                actor_gateway_t &gateway) :
-        _sessions (sessions), _actors (actors), _gateway (gateway)
+                                session_actor_manager_t &actors) :
+        _sessions (sessions), _actors (actors)
     {
     }
 
@@ -204,8 +203,6 @@ class customer_gateway_session_t final : public packet_stream_session_t
     task_t<void> on_disconnected (stream_t &) override
     {
         for (const auto &[actor_id, _] : _bound_actors) {
-            _gateway.unbind_session_stream (actor_id);
-            _actors.unbind_session (actor_id);
             _sessions.unsubscribe_customer (actor_id);
         }
         _bound_actors.clear ();
@@ -252,7 +249,6 @@ class customer_gateway_session_t final : public packet_stream_session_t
         }
         auto reply =
           co_await current->relay_request (zlink::message_t::from_json (request)).async ();
-        _gateway.bind_session_stream (actor_id, stream, stream_codec_t::json);
         _bound_actors[actor_id] = sample_names_t::customer_spot_node;
         _sessions.subscribe (actor_id, request.delivery_id, stream);
         stream.reply_packet (reply).submit ();
@@ -283,7 +279,6 @@ class customer_gateway_session_t final : public packet_stream_session_t
 
     customer_session_directory_t &_sessions;
     session_actor_manager_t &_actors;
-    actor_gateway_t &_gateway;
     std::map<std::string, std::string> _bound_actors;
 };
 

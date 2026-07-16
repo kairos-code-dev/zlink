@@ -4,6 +4,7 @@
 
 #include "runtime/diagnostics/dispatch_error_reporter.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
+#include "runtime/actors/actor_gateway_runtime.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -1286,6 +1287,8 @@ class stream_host_service_t::listener_t
         auto scope = _services->create_scope (service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
+        auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
+        detail::session_actor_manager_access_t::attach (session_actors, stream);
         auto write_mutex = std::make_shared<std::mutex> ();
         if (attach_immediate_writer) {
             _runtime.attach_transport_writer (
@@ -1336,6 +1339,8 @@ class stream_host_service_t::listener_t
                     continue;
                 }
                 liveness->record_application_inbound ();
+                detail::session_actor_manager_access_t::set_codec (session_actors,
+                                                                   frame.header.codec ());
                 trace_stream_host ("dispatch", _stream, frame.header);
                 if (auto dispatched =
                       _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
@@ -1406,6 +1411,7 @@ class stream_host_service_t::listener_t
                 }
             }
         }
+        detail::session_actor_manager_access_t::disconnect (session_actors);
         close_connection (*connection);
     }
 
@@ -1442,6 +1448,8 @@ class stream_host_service_t::listener_t
         auto scope = _services->create_scope (service_scope_kind_t::stream_session);
         auto &session = _session_factory (scope.provider ());
         auto stream = _runtime.open_session (_stream.name);
+        auto &session_actors = scope.provider ().get_required<session_actor_manager_t> ();
+        detail::session_actor_manager_access_t::attach (session_actors, stream);
         auto write_mutex = std::make_shared<std::mutex> ();
         _runtime.attach_transport_writer (
           stream,
@@ -1489,6 +1497,8 @@ class stream_host_service_t::listener_t
                     continue;
                 }
                 liveness->record_application_inbound ();
+                detail::session_actor_manager_access_t::set_codec (session_actors,
+                                                                   frame.header.codec ());
                 trace_stream_host ("dispatch", _stream, frame.header);
                 if (auto dispatched =
                       _runtime.dispatch_packet (session, stream, frame.header, frame.payload);
@@ -1537,6 +1547,7 @@ class stream_host_service_t::listener_t
                 }
             }
         }
+        detail::session_actor_manager_access_t::disconnect (session_actors);
         close_connection (*connection);
     }
 

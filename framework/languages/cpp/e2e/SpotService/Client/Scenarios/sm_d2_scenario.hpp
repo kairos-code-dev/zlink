@@ -75,7 +75,9 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
         .timeout (std::chrono::milliseconds (3000))
         .submit<stream_auth_res_t> ();
     if (!auth || auth.value ().session_node_rid != "session-a") {
-        throw std::runtime_error ("SM-D2 stream auth failed");
+        throw std::runtime_error (
+          std::string ("SM-D2 stream auth failed: ")
+          + (auth.error () ? auth.error ()->message : "unexpected session node"));
     }
 
     auto ping = remote.request (actor_ping_req_t{"remote-relay"})

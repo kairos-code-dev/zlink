@@ -1046,7 +1046,7 @@ int main ()
         || gateway.actor_disconnected ("bob")) {
         return 86;
     }
-    manager.unbind_session ("bob");
+    (void) rebound_after_disconnect.value ().notify_disconnected ().result ();
     if (gateway.actor_bound ("bob") || !gateway.actor_disconnected ("bob")) {
         return 12;
     }
@@ -1180,6 +1180,41 @@ int main ()
         || preserved_stream_headers[0].codec () != zlink::framework::stream_codec_t::json) {
         return 77;
     }
+    auto rebound_stream = stream_sink_runtime.open_session ("preserved-bound-session");
+    auto old_session_manager = stream_sink_gateway.manager ();
+    zlink::framework::detail::session_actor_manager_access_t::attach (old_session_manager,
+                                                                      stream_sink);
+    zlink::framework::detail::session_actor_manager_access_t::set_codec (
+      old_session_manager, zlink::framework::stream_codec_t::json);
+    auto old_session_actor = old_session_manager.bind (stream_sink_ref).async ().result ();
+    auto new_session_manager = stream_sink_gateway.manager ();
+    zlink::framework::detail::session_actor_manager_access_t::attach (new_session_manager,
+                                                                      rebound_stream);
+    zlink::framework::detail::session_actor_manager_access_t::set_codec (
+      new_session_manager, zlink::framework::stream_codec_t::message_pack);
+    auto new_session_actor = new_session_manager.bind (stream_sink_ref).async ().result ();
+    if (!old_session_actor || !new_session_actor) {
+        return 84;
+    }
+    zlink::framework::detail::session_actor_manager_access_t::disconnect (old_session_manager);
+    const auto rebound_push = stream_sink_gateway.dispatch_bound_session_send (
+      stream_sink_ref, "ReboundSessionNotify", zlink::message_t::from (std::string ("rebound")));
+    const auto rebound_headers = stream_sink_runtime.written_headers (rebound_stream);
+    const bool stale_session_unbind_preserves_rebind =
+      rebound_push && rebound_headers.size () == 1
+      && rebound_headers[0].packet_name () == "ReboundSessionNotify";
+    if (!stale_session_unbind_preserves_rebind) {
+        return 84;
+    }
+    zlink::framework::detail::session_actor_manager_access_t::disconnect (new_session_manager);
+    const auto disconnected_push = stream_sink_gateway.dispatch_bound_session_send (
+      stream_sink_ref, "DisconnectedSessionNotify",
+      zlink::message_t::from (std::string ("disconnected")));
+    if (disconnected_push
+        || disconnected_push.error_kind ()
+             != zlink::framework::framework_error_kind_t::actor_session_not_bound) {
+        return 84;
+    }
     zlink::framework::detail::actor_gateway_runtime_t route_sink_gateway;
     auto route_sink_ref = zlink::framework::actor_ref_t (
       zlink::framework::node_rid_t::from_string ("entry-node"), "player", "route-user", 4);
@@ -1294,8 +1329,9 @@ int main ()
     }
     auto bridge_provider = bridge_app.advanced ().services ().build_provider ();
     auto bridge_scope = bridge_provider.create_scope ();
-    auto bridge_gateway = bridge_scope.get_required<zlink::framework::actor_gateway_t> ();
-    auto bridge_actor = bridge_gateway.manager ().create ("bridge-player", "carol");
+    auto bridge_manager =
+      bridge_scope.get_required<zlink::framework::session_actor_manager_t> ();
+    auto bridge_actor = bridge_manager.create ("bridge-player", "carol");
     if (!bridge_actor) {
         return 36;
     }
@@ -1324,7 +1360,7 @@ int main ()
         return 44;
     }
     auto resolved_remote_actor =
-      bridge_gateway.manager ()
+      bridge_manager
         .bind (zlink::framework::actor_ref_t (
           zlink::framework::node_rid_t::from_string ("bridge-node"), "bridge-player", "dora", 1))
         .async ()
@@ -1365,7 +1401,7 @@ int main ()
         return 37;
     }
     auto joined_bridge_actor =
-      bridge_gateway.manager ().bind (bridge_join_accepted->actor).async ().result ();
+      bridge_manager.bind (bridge_join_accepted->actor).async ().result ();
     if (!joined_bridge_actor) {
         return 38;
     }

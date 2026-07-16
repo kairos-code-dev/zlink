@@ -1283,6 +1283,9 @@ void configure_actor_gateway_spot_bridge (
               return result_t<void>::failure (framework_error_kind_t::actor_route_not_found,
                                               "bound actor node route is empty");
           }
+          if (detail::is_local_actor_ref (actor_ref)) {
+              return result_t<void>::success ();
+          }
           for (auto &binding : bindings) {
               if (actor_ref.node_rid ().value () == binding.local_spot_node_rid) {
                   return result_t<void>::success ();

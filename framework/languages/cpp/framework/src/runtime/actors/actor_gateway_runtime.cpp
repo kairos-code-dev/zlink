@@ -593,13 +593,15 @@ task_t<void> session_actor_t::notify_disconnected ()
 }
 
 session_actor_manager_t::session_actor_manager_t () :
-    _state (std::make_shared<detail::actor_gateway_state_t> ())
+    _state (std::make_shared<detail::actor_gateway_state_t> ()),
+    _binding_context (std::make_shared<detail::session_actor_binding_context_t> ())
 {
 }
 
 session_actor_manager_t::session_actor_manager_t (
   std::shared_ptr<detail::actor_gateway_state_t> state) :
-    _state (std::move (state))
+    _state (std::move (state)),
+    _binding_context (std::make_shared<detail::session_actor_binding_context_t> ())
 {
 }
 
@@ -650,7 +652,9 @@ result_t<session_actor_t> session_actor_manager_t::create_erased (
         return result_t<session_actor_t>::failure (framework_error_kind_t::actor_already_exists,
                                                    "actor already exists");
     }
-    actor_ref_t ref (node_rid_t::from_string ("local"), std::move (actor_type), actor_id, 1);
+    actor_ref_t ref (node_rid_t::from_string (
+                       std::string (detail::local_actor_node_placeholder)),
+                     std::move (actor_type), actor_id, 1);
     detail::actor_record_t record{ref, false, false};
     record.create_payload = std::move (request);
     _state->actors_by_id.emplace (actor_id, std::move (record));
@@ -723,113 +727,140 @@ zlink::message_t session_actor_manager_t::serialize_request (std::type_index req
 
 request_call_t<session_actor_t> session_actor_manager_t::bind (actor_ref_t actor_ref)
 {
-    const std::lock_guard lock (_state->mutex);
-    if (actor_ref.empty ()) {
-        return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
-          framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
-    }
-    auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
-    if (found == _state->actors_by_id.end ()) {
-        _state->actors_by_id.emplace (std::string (actor_ref.actor_id ()),
-                                      detail::actor_record_t{actor_ref, true, false});
-    } else {
-        if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
-            return request_call_t<session_actor_t> (
-              result_t<session_actor_t>::failure (framework_error_kind_t::actor_type_mismatch,
-                                                  "actor id is already bound to another type"));
+    {
+        const std::lock_guard lock (_state->mutex);
+        if (actor_ref.empty ()) {
+            return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
+              framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
         }
-        found->second.ref = actor_ref;
-        found->second.bound = true;
-        found->second.disconnected = false;
+        auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+        if (found == _state->actors_by_id.end ()) {
+            _state->actors_by_id.emplace (std::string (actor_ref.actor_id ()),
+                                          detail::actor_record_t{actor_ref, true, false});
+        } else {
+            if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+                return request_call_t<session_actor_t> (
+                  result_t<session_actor_t>::failure (
+                    framework_error_kind_t::actor_type_mismatch,
+                    "actor id is already bound to another type"));
+            }
+            found->second.ref = actor_ref;
+            found->second.bound = true;
+            found->second.disconnected = false;
+        }
     }
-    return request_call_t<session_actor_t> (
-      result_t<session_actor_t>::success (session_actor_t (_state, actor_ref)));
+    try {
+        bind_current_session (actor_ref);
+        return request_call_t<session_actor_t> (
+          result_t<session_actor_t>::success (session_actor_t (_state, actor_ref)));
+    }
+    catch (const framework_exception_t &error) {
+        return request_call_t<session_actor_t> (
+          detail::result_access_t::failure<session_actor_t> (error));
+    }
 }
 
 request_call_t<session_actor_t> session_actor_manager_t::bind_or_get (actor_ref_t actor_ref)
 {
-    const std::lock_guard lock (_state->mutex);
-    if (actor_ref.empty ()) {
-        return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
-          framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
+    {
+        const std::lock_guard lock (_state->mutex);
+        if (actor_ref.empty ()) {
+            return request_call_t<session_actor_t> (result_t<session_actor_t>::failure (
+              framework_error_kind_t::actor_route_not_found, "actor ref is empty"));
+        }
+        auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
+        if (found == _state->actors_by_id.end ()) {
+            _state->actors_by_id.emplace (std::string (actor_ref.actor_id ()),
+                                          detail::actor_record_t{actor_ref, true, false});
+        } else {
+            if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+                return request_call_t<session_actor_t> (
+                  result_t<session_actor_t>::failure (
+                    framework_error_kind_t::actor_type_mismatch,
+                    "actor id is already bound to another type"));
+            }
+            if (found->second.ref.generation () <= actor_ref.generation ()) {
+                found->second.ref = actor_ref;
+            }
+            actor_ref = found->second.ref;
+            found->second.bound = true;
+            found->second.disconnected = false;
+        }
     }
-    auto found = _state->actors_by_id.find (std::string (actor_ref.actor_id ()));
-    if (found == _state->actors_by_id.end ()) {
-        _state->actors_by_id.emplace (std::string (actor_ref.actor_id ()),
-                                      detail::actor_record_t{actor_ref, true, false});
+    try {
+        bind_current_session (actor_ref);
         return request_call_t<session_actor_t> (
           result_t<session_actor_t>::success (session_actor_t (_state, actor_ref)));
     }
-    if (found->second.ref.actor_type () != actor_ref.actor_type ()) {
+    catch (const framework_exception_t &error) {
         return request_call_t<session_actor_t> (
-          result_t<session_actor_t>::failure (framework_error_kind_t::actor_type_mismatch,
-                                              "actor id is already bound to another type"));
-    }
-    if (found->second.ref.generation () <= actor_ref.generation ()) {
-        found->second.ref = actor_ref;
-    }
-    found->second.bound = true;
-    found->second.disconnected = false;
-    return request_call_t<session_actor_t> (
-      result_t<session_actor_t>::success (session_actor_t (_state, found->second.ref)));
-}
-
-void session_actor_manager_t::unbind_session (std::string actor_id) noexcept
-{
-    const std::lock_guard lock (_state->mutex);
-    const auto found = _state->actors_by_id.find (actor_id);
-    if (found != _state->actors_by_id.end ()) {
-        found->second.bound = false;
-        found->second.disconnected = true;
+          detail::result_access_t::failure<session_actor_t> (error));
     }
 }
 
-actor_gateway_t::actor_gateway_t () : _state (std::make_shared<detail::actor_gateway_state_t> ())
+void session_actor_manager_t::bind_current_session (const actor_ref_t &actor_ref)
 {
+    if (!_binding_context) {
+        return;
+    }
+    const auto actor_id = std::string (actor_ref.actor_id ());
+    const std::lock_guard binding_lock (_binding_context->mutex);
+    if (!_binding_context->stream) {
+        return;
+    }
+    std::uint64_t token;
+    {
+        const std::lock_guard lock (_state->mutex);
+        token = _state->next_binding_token++;
+    }
+    _binding_context->actor_tokens[actor_id] = token;
+    try {
+        detail::actor_gateway_runtime_t (_state).bind_session_stream (
+          actor_id, *_binding_context->stream, _binding_context->codec,
+          _binding_context->session_id, token);
+    }
+    catch (...) {
+        const auto current = _binding_context->actor_tokens.find (actor_id);
+        if (current != _binding_context->actor_tokens.end () && current->second == token) {
+            _binding_context->actor_tokens.erase (current);
+        }
+        throw;
+    }
 }
 
-actor_gateway_t::actor_gateway_t (std::shared_ptr<detail::actor_gateway_state_t> state) :
-    _state (std::move (state))
+void detail::session_actor_manager_access_t::attach (session_actor_manager_t &manager,
+                                                     stream_t stream)
 {
+    const std::lock_guard lock (manager._binding_context->mutex);
+    manager._binding_context->session_id = stream.session_id ();
+    manager._binding_context->stream = std::move (stream);
 }
 
-actor_gateway_t::~actor_gateway_t () = default;
-actor_gateway_t::actor_gateway_t (actor_gateway_t &&) noexcept = default;
-actor_gateway_t &actor_gateway_t::operator= (actor_gateway_t &&) noexcept = default;
-
-session_actor_manager_t actor_gateway_t::manager () const
+void detail::session_actor_manager_access_t::set_codec (session_actor_manager_t &manager,
+                                                        stream_codec_t codec)
 {
-    return session_actor_manager_t (_state);
+    const std::lock_guard lock (manager._binding_context->mutex);
+    manager._binding_context->codec = codec;
 }
 
-actor_context_t actor_gateway_t::actor_context (const actor_ref_t &actor_ref) const
+void detail::session_actor_manager_access_t::disconnect (session_actor_manager_t &manager) noexcept
 {
-    return actor_context_t (_state, actor_ref);
-}
-
-void actor_gateway_t::bind_session_stream (std::string actor_id,
-                                           stream_t stream,
-                                           stream_codec_t codec)
-{
-    detail::actor_gateway_runtime_t (_state).bind_session_stream (std::move (actor_id),
-                                                                  std::move (stream), codec);
-}
-
-void actor_gateway_t::bind_session_route (actor_ref_t actor_ref,
-                                          route_client_t route_client,
-                                          std::string route_channel_name,
-                                          zlink::routing_id_t target_node_rid,
-                                          stream_codec_t codec,
-                                          bool replace_existing)
-{
-    detail::actor_gateway_runtime_t (_state).bind_session_route (
-      std::move (actor_ref), std::move (route_client), std::move (route_channel_name),
-      std::move (target_node_rid), codec, replace_existing);
-}
-
-void actor_gateway_t::unbind_session_stream (std::string actor_id)
-{
-    detail::actor_gateway_runtime_t (_state).unbind_session_stream (std::move (actor_id));
+    if (!manager._binding_context) {
+        return;
+    }
+    std::map<std::string, std::uint64_t> bindings;
+    std::string session_id;
+    {
+        const std::lock_guard lock (manager._binding_context->mutex);
+        bindings = manager._binding_context->actor_tokens;
+        manager._binding_context->actor_tokens.clear ();
+        session_id = manager._binding_context->session_id;
+        manager._binding_context->stream.reset ();
+    }
+    for (const auto &[actor_id, token] : bindings) {
+        detail::actor_gateway_runtime_t (manager._state).unbind_session_stream (
+          actor_id, session_id, token);
+    }
 }
 
 } // namespace zlink::framework
@@ -850,11 +881,6 @@ actor_gateway_runtime_t::actor_gateway_runtime_t (std::shared_ptr<actor_gateway_
 session_actor_manager_t actor_gateway_runtime_t::manager () const
 {
     return session_actor_manager_t (_state);
-}
-
-actor_gateway_t actor_gateway_runtime_t::gateway () const
-{
-    return actor_gateway_t (_state);
 }
 
 std::vector<relayed_frame_t> actor_gateway_runtime_t::relayed_frames () const
@@ -953,7 +979,9 @@ result_t<void> actor_gateway_runtime_t::destroy_actor (const actor_ref_t &actor_
 
 void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
                                                    stream_t stream,
-                                                   stream_codec_t codec)
+                                                   stream_codec_t codec,
+                                                   std::string session_id,
+                                                   std::uint64_t binding_token)
 {
     actor_ref_t actor_ref;
     actor_gateway_state_t::bound_session_registrar_t registrar;
@@ -965,6 +993,8 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
             found->second.bound_session_stream_sink = true;
             found->second.bound_session_route.reset ();
             actor_ref = found->second.ref;
+            found->second.binding_session_id = std::move (session_id);
+            found->second.binding_token = binding_token;
         }
         _state->bound_session_sinks[actor_id] = [stream = std::move (stream),
                                                  codec] (std::string packet_name,
@@ -985,7 +1015,7 @@ void actor_gateway_runtime_t::bind_session_stream (std::string actor_id,
     if (registrar && !actor_ref.empty ()) {
         auto registered = registrar (actor_ref);
         if (!registered) {
-            unbind_session_stream (actor_id);
+            unbind_session_stream (actor_id, {}, binding_token);
             throw framework_exception_t (
               registered.error_kind (), registered.error () ? registered.error ()->what ()
                                                              : "bound session route registration failed");
@@ -1082,13 +1112,23 @@ void actor_gateway_runtime_t::record_bound_session_route (const actor_ref_t &act
       actor_bound_session_route_t{std::move (node_rid), std::move (session_rid)};
 }
 
-void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id)
+void actor_gateway_runtime_t::unbind_session_stream (std::string actor_id,
+                                                     std::string session_id,
+                                                     std::uint64_t binding_token)
 {
     const std::lock_guard lock (_state->mutex);
     auto found = _state->actors_by_id.find (actor_id);
     if (found != _state->actors_by_id.end ()) {
+        if (binding_token != 0
+            && (found->second.binding_token != binding_token
+                || (!session_id.empty ()
+                    && found->second.binding_session_id != session_id))) {
+            return;
+        }
         found->second.bound_session_stream_sink = false;
         found->second.bound_session_route.reset ();
+        found->second.binding_session_id.clear ();
+        found->second.binding_token = 0;
     }
     _state->bound_session_sinks.erase (actor_id);
 }

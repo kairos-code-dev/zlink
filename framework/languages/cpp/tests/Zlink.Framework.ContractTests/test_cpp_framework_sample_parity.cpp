@@ -1015,8 +1015,8 @@ TEST (CppFrameworkSampleParity, BingoUsesProtobufCodecSurface)
     EXPECT_NE (common_codecs.find ("protobuf_codec_extension_t::register_payload_serializer"),
                std::string::npos)
       << "Bingo framework payloads must be registered with the Protobuf codec extension";
-    EXPECT_NE (session.find ("stream_codec_t::protobuf"), std::string::npos)
-      << "Bingo bound session stream relay must use the Protobuf stream codec";
+    EXPECT_EQ (session.find ("stream_codec_t"), std::string::npos)
+      << "Bingo session code must not select the framework-owned bound stream codec";
     EXPECT_NE (client.find (".codecs ().use (zlink::framework_codecs::protobuf ())"),
                std::string::npos)
       << "Bingo client connectors must enable the Protobuf stream codec";
@@ -1130,6 +1130,11 @@ TEST (CppFrameworkSampleParity, CoroutineSampleWaitsDoNotBlockConnectorDelivery)
 TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
 {
     const auto cpp_root = cpp_language_root ();
+    const auto stream_host =
+      read_file (cpp_root / "framework/src/runtime/streams/stream_host_service.cpp");
+    EXPECT_NE (stream_host.find ("session_actor_manager_access_t::disconnect"),
+               std::string::npos)
+      << "framework stream host must detach session actor bindings on disconnect";
     struct sample_lifecycle_case_t
     {
         std::string entry_spot_path;
@@ -1200,8 +1205,8 @@ TEST (CppFrameworkSampleParity, SampleActorDestroyFlowStaysInEntrySpot)
           << sample.actor_path << " must expose disconnect cleanup state";
         EXPECT_NE (session.find ("on_disconnected"), std::string::npos)
           << sample.session_path << " must implement session disconnect cleanup";
-        EXPECT_NE (session.find ("unbind_session"), std::string::npos)
-          << sample.session_path << " must detach actor binding on disconnect";
+        EXPECT_EQ (session.find ("unbind_session"), std::string::npos)
+          << sample.session_path << " must leave binding cleanup to the framework stream host";
         EXPECT_EQ (session.find ("leave_actor"), std::string::npos)
           << sample.session_path << " must not leave rooms on disconnect";
         EXPECT_EQ (session.find ("destroy_actor"), std::string::npos)

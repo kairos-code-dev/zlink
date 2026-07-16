@@ -231,7 +231,6 @@ class gamequest_session_t final : public packet_stream_session_t
                                                game_api_store_t,
                                                sample_topology_t,
                                                session_actor_manager_t,
-                                               actor_gateway_t,
                                                spot_handle_resolver_t>;
 
     gamequest_session_t (channel_client_t &channels,
@@ -239,14 +238,12 @@ class gamequest_session_t final : public packet_stream_session_t
                          game_api_store_t &store,
                          sample_topology_t &topology,
                          session_actor_manager_t &actors,
-                         actor_gateway_t &gateway,
                          spot_handle_resolver_t &spot_handles) :
         _channels (channels),
         _routes (routes),
         _store (store),
         _topology (topology),
         _actors (actors),
-        _gateway (gateway),
         _spot_handles (spot_handles)
     {
     }
@@ -256,8 +253,6 @@ class gamequest_session_t final : public packet_stream_session_t
     task_t<void> on_disconnected (stream_t &) override
     {
         if (_player_id) {
-            _gateway.unbind_session_stream (*_player_id);
-            _actors.unbind_session (*_player_id);
             _store.unbind (*_player_id);
             _player_id.reset ();
         }
@@ -284,8 +279,6 @@ class gamequest_session_t final : public packet_stream_session_t
               .join_entry_spot (node_rid_t::from_string (_topology.selected_api_node_rid ()),
                                 request)
               .async ();
-            _gateway.bind_session_stream (std::string (bound.actor_id ()), stream,
-                                          stream_codec_t::json);
             _player_id = request.player_id;
             _store.bind (request.player_id, _topology.api_name, stream);
             auto synced = co_await sync_projection (request.player_id);
@@ -438,7 +431,6 @@ class gamequest_session_t final : public packet_stream_session_t
     game_api_store_t &_store;
     sample_topology_t &_topology;
     session_actor_manager_t &_actors;
-    actor_gateway_t &_gateway;
     spot_handle_resolver_t &_spot_handles;
     std::optional<std::string> _player_id;
 };

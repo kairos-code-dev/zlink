@@ -613,13 +613,11 @@ class transfer_session_t final : public fw::packet_stream_session_t
 {
   public:
     using dependency_types =
-      fw::dependency_list_t<fw::session_actor_manager_t, fw::actor_gateway_t,
-                            fw::actor_directory_t>;
+      fw::dependency_list_t<fw::session_actor_manager_t, fw::actor_directory_t>;
 
     transfer_session_t (fw::session_actor_manager_t &actors,
-                        fw::actor_gateway_t &gateway,
                         fw::actor_directory_t &directory) :
-        _actors (actors), _gateway (gateway), _directory (directory)
+        _actors (actors), _directory (directory)
     {
     }
 
@@ -627,10 +625,7 @@ class transfer_session_t final : public fw::packet_stream_session_t
 
     fw::task_t<void> on_disconnected (fw::stream_t &) override
     {
-        if (!_bound_actor_id.empty ()) {
-            _gateway.unbind_session_stream (_bound_actor_id);
-            _actors.unbind_session (_bound_actor_id);
-        }
+        _bound_actor_id.clear ();
         co_return;
     }
 
@@ -657,7 +652,6 @@ class transfer_session_t final : public fw::packet_stream_session_t
             }
             auto bound = co_await _actors.bind_or_get (resolved).async ();
             _bound_actor_id = std::string (bound.actor_id ());
-            _gateway.bind_session_stream (_bound_actor_id, stream, fw::stream_codec_t::json);
             g_evidence->add (request.scenario, request.actor_id, "session_bound", "stream");
             stream
               .reply_packet (zlink::message_t::from_json (e2e::bind_actor_session_res_t{
@@ -687,7 +681,6 @@ class transfer_session_t final : public fw::packet_stream_session_t
 
   private:
     fw::session_actor_manager_t &_actors;
-    fw::actor_gateway_t &_gateway;
     fw::actor_directory_t &_directory;
     std::string _bound_actor_id;
 };

@@ -21,14 +21,12 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
     using dependency_types =
       zlink::framework::dependency_list_t<zlink::framework::route_client_t,
                                           zlink::framework::session_actor_manager_t,
-                                          zlink::framework::actor_gateway_t,
                                           zlink::framework::spot_handle_resolver_t>;
 
     await_session_t (zlink::framework::route_client_t &routes,
                      zlink::framework::session_actor_manager_t &actors,
-                     zlink::framework::actor_gateway_t &gateway,
                      zlink::framework::spot_handle_resolver_t &spots) :
-        _routes (routes), _actors (actors), _gateway (gateway), _spots (spots)
+        _routes (routes), _actors (actors), _spots (spots)
     {
     }
 
@@ -39,10 +37,6 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
     {
-        for (const auto &[actor_id, _] : _bound_actors) {
-            _gateway.unbind_session_stream (actor_id);
-            _actors.unbind_session (actor_id);
-        }
         _bound_actors.clear ();
         co_return;
     }
@@ -65,8 +59,6 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
               request, packet, target_or_default (dispatch));
             for (const auto &actor : reply.actors) {
                 (void) co_await _actors.bind_or_get (to_actor_ref (actor)).async ();
-                _gateway.bind_session_stream (actor.actor_id, stream,
-                                              zlink::framework::stream_codec_t::json);
                 _bound_actors[actor.actor_id] = actor.node_rid;
             }
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
@@ -413,7 +405,6 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::route_client_t &_routes;
     zlink::framework::session_actor_manager_t &_actors;
-    zlink::framework::actor_gateway_t &_gateway;
     zlink::framework::spot_handle_resolver_t &_spots;
     std::map<std::string, std::string> _bound_actors;
 };

@@ -462,14 +462,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           },
           service_lifetime_t::scoped);
     }
-    if (!_state->services.contains (std::type_index (typeid (actor_gateway_t)))) {
-        _state->services.add_factory<actor_gateway_t> (
-          [] (service_provider_t &provider) {
-              return std::make_unique<actor_gateway_t> (
-                provider.get_required<detail::actor_gateway_runtime_t> ().gateway ());
-          },
-          service_lifetime_t::scoped);
-    }
     _state->services.add_singleton<channel_client_t> (
       std::make_unique<channel_client_t> (_state->zlink.message_bus ()));
     _state->services.add_singleton<channel_runtime_options_t> (

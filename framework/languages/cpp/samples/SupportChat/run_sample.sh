@@ -175,6 +175,7 @@ wait_port() {
     sleep 0.1
   done
   echo "timed out waiting for ${label} on ${port}" >&2
+  dump_logs
   return 1
 }
 

@@ -53,7 +53,6 @@ struct ensure_actor_req_t
     static constexpr const char *packet_name = "EnsureActor";
     std::string actor_id;
     std::string display_name;
-    bool bind_session_route = false;
 };
 
 struct ensure_actor_res_t
@@ -880,15 +879,13 @@ inline void from_json (const nlohmann::json &json, actor_ref_dto_t &value)
 inline void to_json (nlohmann::json &json, const ensure_actor_req_t &value)
 {
     json = nlohmann::json{{"actor_id", value.actor_id},
-                          {"display_name", value.display_name},
-                          {"bind_session_route", value.bind_session_route}};
+                          {"display_name", value.display_name}};
 }
 
 inline void from_json (const nlohmann::json &json, ensure_actor_req_t &value)
 {
     json.at ("actor_id").get_to (value.actor_id);
     json.at ("display_name").get_to (value.display_name);
-    value.bind_session_route = json.value ("bind_session_route", false);
 }
 
 inline void to_json (nlohmann::json &json, const ensure_actor_res_t &value)

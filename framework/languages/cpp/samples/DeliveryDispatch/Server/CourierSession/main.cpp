@@ -21,14 +21,12 @@ class courier_session_t final : public packet_stream_session_t
   public:
     using dependency_types = dependency_list_t<route_client_t,
                                                spot_handle_resolver_t,
-                                               session_actor_manager_t,
-                                               actor_gateway_t>;
+                                               session_actor_manager_t>;
 
     courier_session_t (route_client_t &routes,
                        spot_handle_resolver_t &spot_handles,
-                       session_actor_manager_t &actors,
-                       actor_gateway_t &gateway) :
-        _routes (routes), _spot_handles (spot_handles), _actors (actors), _gateway (gateway)
+                       session_actor_manager_t &actors) :
+        _routes (routes), _spot_handles (spot_handles), _actors (actors)
     {
     }
 
@@ -36,10 +34,6 @@ class courier_session_t final : public packet_stream_session_t
 
     task_t<void> on_disconnected (stream_t &) override
     {
-        for (const auto &[actor_id, _] : _bound_actors) {
-            _gateway.unbind_session_stream (actor_id);
-            _actors.unbind_session (actor_id);
-        }
         _bound_actors.clear ();
         co_return;
     }
@@ -78,7 +72,6 @@ class courier_session_t final : public packet_stream_session_t
                 .bind_or_get (actor_ref->to_actor_ref (sample_names_t::courier_actor_type))
                 .async ();
             const auto actor_id = std::string (actor.actor_id ());
-            _gateway.bind_session_stream (actor_id, stream, stream_codec_t::json);
             _bound_actors[actor_id] = std::string (actor_ref->node_rid.value ());
             /* location store 조회를 await한 뒤라 stream dispatch 문맥의 thread-local 헤더에
              * 기댈 수 없다. relay 대상 packet name을 명시하는 오버로드를 쓴다. */
@@ -130,7 +123,6 @@ class courier_session_t final : public packet_stream_session_t
     route_client_t &_routes;
     spot_handle_resolver_t &_spot_handles;
     session_actor_manager_t &_actors;
-    actor_gateway_t &_gateway;
     std::map<std::string, std::string> _bound_actors;
 };
 

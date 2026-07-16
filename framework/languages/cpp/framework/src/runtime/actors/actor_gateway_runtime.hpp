@@ -11,10 +11,18 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace zlink::framework::detail
 {
+
+inline constexpr std::string_view local_actor_node_placeholder = "local";
+
+inline bool is_local_actor_ref (const actor_ref_t &actor_ref)
+{
+    return actor_ref.node_rid ().value () == local_actor_node_placeholder;
+}
 
 void enter_stream_relay_dispatch (const stream_header_t &header);
 void exit_stream_relay_dispatch () noexcept;
@@ -35,6 +43,26 @@ struct actor_record_t
     bool bound_session_stream_sink = false;
     std::optional<zlink::message_t> create_payload;
     std::optional<actor_bound_session_route_t> bound_session_route;
+    std::string binding_session_id;
+    std::uint64_t binding_token = 0;
+};
+
+class session_actor_binding_context_t
+{
+  public:
+    std::mutex mutex;
+    std::optional<stream_t> stream;
+    std::string session_id;
+    stream_codec_t codec = stream_codec_t::message_pack;
+    std::map<std::string, std::uint64_t> actor_tokens;
+};
+
+class session_actor_manager_access_t
+{
+  public:
+    static void attach (session_actor_manager_t &manager, stream_t stream);
+    static void set_codec (session_actor_manager_t &manager, stream_codec_t codec);
+    static void disconnect (session_actor_manager_t &manager) noexcept;
 };
 
 struct relayed_frame_t
@@ -71,6 +99,7 @@ class actor_gateway_state_t
     membership_query_t membership_query;
     serializer_registry_t *serializers = nullptr;
     dispatch_options_t dispatch;
+    std::uint64_t next_binding_token = 1;
 };
 
 class actor_gateway_runtime_t
@@ -80,7 +109,6 @@ class actor_gateway_runtime_t
     explicit actor_gateway_runtime_t (std::shared_ptr<actor_gateway_state_t> state);
 
     session_actor_manager_t manager () const;
-    actor_gateway_t gateway () const;
     std::vector<relayed_frame_t> relayed_frames () const;
     std::vector<relayed_frame_t> bound_session_pushes () const;
     std::optional<actor_bound_session_route_t>
@@ -92,7 +120,9 @@ class actor_gateway_runtime_t
     result_t<void> destroy_actor (const actor_ref_t &actor_ref);
     void bind_session_stream (std::string actor_id,
                               stream_t stream,
-                              stream_codec_t codec = stream_codec_t::message_pack);
+                              stream_codec_t codec = stream_codec_t::message_pack,
+                              std::string session_id = {},
+                              std::uint64_t binding_token = 0);
     void bind_session_route (actor_ref_t actor_ref,
                              route_client_t route_client,
                              std::string route_channel_name,
@@ -107,7 +137,9 @@ class actor_gateway_runtime_t
     void record_bound_session_route (const actor_ref_t &actor_ref,
                                      zlink::routing_id_t node_rid,
                                      std::optional<zlink::routing_id_t> session_rid = std::nullopt);
-    void unbind_session_stream (std::string actor_id);
+    void unbind_session_stream (std::string actor_id,
+                                std::string session_id = {},
+                                std::uint64_t binding_token = 0);
     result_t<void> dispatch_bound_session_send (const actor_ref_t &actor_ref,
                                                 std::string packet_name,
                                                 const zlink::message_t &payload) const;

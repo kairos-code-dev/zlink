@@ -1213,3 +1213,24 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 | Connector flow 설정 | 표준 logger가 아니라 환경 변수에만 trace가 연결됨 | (A) 공통 dispatch/flow 설정에 connector를 연결, (B) 언어별 정식 logging option을 계약에 추가. runner가 비공개 환경 변수를 주입하는 안은 제외한다. |
 | PS-A4 network fault | process 재시작밖에 없어 application 재등록을 피할 수 없음 | subscriber 한 연결만 차단·복구하는 process-external proxy/netem harness를 공통 E2E 도구로 제공하거나, 제공 전까지 계약 지시대로 `blocked`를 유지한다. |
 | sample cleanup margin | runner 상한과 public drain 기본값이 모두 30초 | 공유 sample runner의 관측 상한을 drain deadline보다 크게 두거나, framework가 deadline 안에서 terminal 결과와 process 종료를 보장하도록 lifecycle을 고친다. sample별 우회는 제외한다. |
+
+### 2026-07-16 쓰기 범위 완료 감사
+
+현재 open 체크박스는 38개다. 이 중 29개는 `zlink-framework-core`, stream connector, HTTP client,
+Spring starter 또는 Redis location store 구현을 직접 고쳐야 한다. 이번 작업의 쓰기 범위인
+`samples/java/**`와 `e2e/**`에서는 닫을 수 없다.
+
+- runtime/core 소유 29개: `IMP-JV-02`, `IMP-JV-04`, `IMP-JV-07`, `IMP-JV-08`, `IMP-JV-10`,
+  `IMP-X2`~`IMP-X4`, `§12.1`, `§12.2`, `§12.8`, `§12.9`, `§12.15`, `§12.21`,
+  `IMP-JV-11`~`IMP-JV-17`, `IMP-JV-21`~`IMP-JV-23`, `IMP-JV-25`, `IMP-JV-27`~`IMP-JV-30`.
+- E2E open 8개: `E2E-JV-25`는 target 오류와 draining peer 부하 제외, `E2E-JV-26`은 Entry Spot
+  handle request, `E2E-JV-27`은 monitoring source와 process-external 단일 연결 fault harness,
+  `E2E-JV-28`은 channel down 오류 정규화와 `ConnectionReady`, `E2E-JV-29`는 monitoring source
+  registry, `E2E-JV-30`은 execution turn, `E2E-JV-31`은 transfer callback 순서,
+  `E2E-JV-32`는 connector flow 설정이 각각 선행 blocker다. 위 표의 우회 금지안과 선택지를 따른다.
+- sample open 1개: `SMP-JV-32`의 정책 소유 파일은 `framework/languages/java/samples/runner-common.sh`로,
+  허용된 `samples/java/**` 밖이다. 개별 sample runner에 더 긴 wait를 복제하지 않는다.
+
+따라서 허용 범위 안의 시나리오·샘플 변경만으로 더 닫을 수 있는 open 항목은 0개다. runtime 오류를
+임의의 E2E 성공으로 인정하거나, HTTP actor-create·sleep·재시도·sample별 cleanup 상한으로 우회하면
+공통 계약과 §0의 완료 조건을 위반한다.

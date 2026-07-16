@@ -1130,6 +1130,11 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     (`PubSub/logs/20260716-090217-3198473/`), 구현 뒤 `PS-B2`가 통과했다
     (`PubSub/logs/20260716-090305-3201235/`). 동적 역할 readiness도 30초에서 3초로 줄였다. 구현 커밋
     `6017d4680`.
+  - 부분 수정: subscriber runtime query에 PUB row 조회를 추가해 old row 제거와 같은 endpoint의 새
+    row 반영을 각각 5초 bounded gate로 기다린다. endpoint가 없던 red gate는 row 부재 대기에서
+    실패했고(`PubSub/logs/20260716-090532-3211481/`), 구현 뒤 `PS-B2`가 통과했다
+    (`PubSub/logs/20260716-090622-3214145/`). socket `ConnectionReady` 직접 단언은 E2E-JV-29의
+    monitoring source registry blocker와 함께 남는다. 구현 커밋 `499143722`.
 - [ ] **E2E-JV-28** (가짜 통과) — Config 5 restart·replacement와 Weight·graceful drain 의미가 섞여 있다.
   - 재검증: `RL-A1`은 terminal `Drained`, old row 제거, down 구간의 정확한
     `RouteNotConnected`, 새 owner generation과 `ConnectionReady`를 모두 보지 않는다. `RL-A2`는

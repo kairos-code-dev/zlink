@@ -2,7 +2,7 @@ package systems.zlink.e2e.registrymessaging.client.Support;
 
 import systems.zlink.e2e.registrymessaging.client.Scenarios.RmA1DiscoveryRequestScenario;
 import systems.zlink.e2e.registrymessaging.client.Scenarios.RmA2ManualEndpointScenario;
-import systems.zlink.e2e.registrymessaging.client.Scenarios.RmA4SameRidFailoverScenario;
+import systems.zlink.e2e.registrymessaging.client.Scenarios.RmA4SameRidReplacementScenario;
 import systems.zlink.e2e.registrymessaging.client.Scenarios.RmA6MultipleChannelsScenario;
 import systems.zlink.e2e.registrymessaging.client.Scenarios.RmB1ScaleOutScenario;
 import systems.zlink.e2e.registrymessaging.client.Scenarios.RmB2ScaleInScenario;
@@ -41,7 +41,7 @@ public final class ScenarioCatalog {
             case "scale-in" -> RmB2ScaleInScenario.run(options);
             case "RM-B1" -> RmB1ScaleOutScenario.run(options);
             case "RM-B2" -> RmB2ScaleInScenario.run(options);
-            case "RM-A4" -> RmA4SameRidFailoverScenario.run(options);
+            case "RM-A4" -> RmA4SameRidReplacementScenario.run(options);
             case "RM-C1" -> RmC1RequestSendScenario.run(http.providerA(), http.providerB());
             case "RM-C2" -> RmC2TargetedRouteScenario.run(http.providerA());
             case "RM-C3" -> RmC3MultiProviderDistributionScenario.run(http.directConsumer(), "RM-C3", "multi-", 80, false);

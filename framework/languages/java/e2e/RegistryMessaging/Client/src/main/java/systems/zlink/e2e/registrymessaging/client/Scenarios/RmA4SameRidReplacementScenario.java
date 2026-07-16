@@ -6,8 +6,8 @@ import systems.zlink.e2e.registrymessaging.client.Support.ScenarioAssert;
 import systems.zlink.e2e.registrymessaging.shared.Contracts;
 import systems.zlink.httpclient.ZLinkHttpClient;
 
-public final class RmA4SameRidFailoverScenario {
-    private RmA4SameRidFailoverScenario() {
+public final class RmA4SameRidReplacementScenario {
+    private RmA4SameRidReplacementScenario() {
     }
 
     public static void run(ClientOptions options) {
@@ -17,7 +17,7 @@ public final class RmA4SameRidFailoverScenario {
             DynamicClusterLauncher.DynamicConsumer consumer = cluster.startConsumer("consumer");
             try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
                 cluster.waitPeerEndpoint(requester, providerV1.channelEndpoint());
-                Contracts.ProfileRes first = ScenarioAssert.requestProfileEventually(requester, "failover-before");
+                Contracts.ProfileRes first = ScenarioAssert.requestProfileEventually(requester, "replacement-before");
                 ScenarioAssert.that("api-a".equals(first.providerRid()) && "api-a-v1".equals(first.instanceId()),
                     "RM-A4 initial provider mismatch");
             }
@@ -34,7 +34,7 @@ public final class RmA4SameRidFailoverScenario {
                 cluster.waitSinglePeer(requester, "api-a", providerV2.channelEndpoint());
                 for (int index = 0; index < 20; index++) {
                     Contracts.ProfileRes reply =
-                        ScenarioAssert.requestProfileEventually(requester, "failover-after-" + index);
+                        ScenarioAssert.requestProfileEventually(requester, "replacement-after-" + index);
                     ScenarioAssert.that("api-a".equals(reply.providerRid()) && "api-a-v2".equals(reply.instanceId()),
                         "RM-A4 did not switch to replacement provider");
                 }

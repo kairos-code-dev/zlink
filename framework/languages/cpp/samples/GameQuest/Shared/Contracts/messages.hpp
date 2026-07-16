@@ -161,6 +161,9 @@ struct sync_quest_progress_req_t
 {
     static constexpr const char *packet_name = "SyncQuestProgressReq";
     std::string player_id;
+    /* GameApi가 보관한 authoritative gameplay fact다. client wire에서는 생략되고,
+     * owner spot으로 전달할 때 GameApi가 채운다. */
+    int snapshot_kill_count = 0;
 };
 
 struct sync_quest_progress_res_t
@@ -247,6 +250,34 @@ struct notify_quest_progress_res_t
 {
     static constexpr const char *packet_name = "NotifyQuestProgressRes";
     bool delivered = false;
+};
+
+struct projection_admin_req_t
+{
+    static constexpr const char *packet_name = "GameQuestProjectionAdminReq";
+    std::string player_id;
+    std::string quest_id;
+    std::string operation;
+};
+
+struct projection_admin_res_t
+{
+    static constexpr const char *packet_name = "GameQuestProjectionAdminRes";
+    bool ok = false;
+    std::vector<quest_progress_t> projection;
+};
+
+struct unpublished_kill_req_t
+{
+    static constexpr const char *packet_name = "GameQuestUnpublishedKillReq";
+    std::string player_id;
+    int count = 0;
+};
+
+struct unpublished_kill_res_t
+{
+    static constexpr const char *packet_name = "GameQuestUnpublishedKillRes";
+    bool ok = false;
 };
 
 struct server_assertion_req_t
@@ -438,10 +469,14 @@ inline void from_json (const nlohmann::json &json, get_quest_progress_res_t &val
 inline void to_json (nlohmann::json &json, const sync_quest_progress_req_t &value)
 {
     json = {{"playerId", value.player_id}};
+    if (value.snapshot_kill_count > 0) {
+        json["snapshotKillCount"] = value.snapshot_kill_count;
+    }
 }
 inline void from_json (const nlohmann::json &json, sync_quest_progress_req_t &value)
 {
     json.at ("playerId").get_to (value.player_id);
+    value.snapshot_kill_count = json.value ("snapshotKillCount", 0);
 }
 inline void to_json (nlohmann::json &json, const sync_quest_progress_res_t &value)
 {
@@ -545,6 +580,44 @@ inline void to_json (nlohmann::json &json, const notify_quest_progress_res_t &va
 inline void from_json (const nlohmann::json &json, notify_quest_progress_res_t &value)
 {
     json.at ("delivered").get_to (value.delivered);
+}
+inline void to_json (nlohmann::json &json, const projection_admin_req_t &value)
+{
+    json = {{"playerId", value.player_id},
+            {"questId", value.quest_id},
+            {"operation", value.operation}};
+}
+inline void from_json (const nlohmann::json &json, projection_admin_req_t &value)
+{
+    json.at ("playerId").get_to (value.player_id);
+    json.at ("questId").get_to (value.quest_id);
+    json.at ("operation").get_to (value.operation);
+}
+inline void to_json (nlohmann::json &json, const projection_admin_res_t &value)
+{
+    json = {{"ok", value.ok}, {"projection", value.projection}};
+}
+inline void from_json (const nlohmann::json &json, projection_admin_res_t &value)
+{
+    json.at ("ok").get_to (value.ok);
+    json.at ("projection").get_to (value.projection);
+}
+inline void to_json (nlohmann::json &json, const unpublished_kill_req_t &value)
+{
+    json = {{"playerId", value.player_id}, {"count", value.count}};
+}
+inline void from_json (const nlohmann::json &json, unpublished_kill_req_t &value)
+{
+    json.at ("playerId").get_to (value.player_id);
+    json.at ("count").get_to (value.count);
+}
+inline void to_json (nlohmann::json &json, const unpublished_kill_res_t &value)
+{
+    json = {{"ok", value.ok}};
+}
+inline void from_json (const nlohmann::json &json, unpublished_kill_res_t &value)
+{
+    json.at ("ok").get_to (value.ok);
 }
 inline void to_json (nlohmann::json &json, const server_assertion_req_t &)
 {

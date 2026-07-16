@@ -72,12 +72,12 @@ class quest_event_store_t
         if (already_applied) {
             /* reward 멱등: 이미 반영한 gameplay event는 stream을 늘리지 않고 현재 projection만
              * 돌려준다. */
-            return {replay_unlocked (event.player_id), {}, false};
+            return {projection_unlocked (event.player_id), {}, false};
         }
 
         const auto rule = quest_rule_for (event);
         if (!rule) {
-            return {replay_unlocked (event.player_id), {}, false};
+            return {projection_unlocked (event.player_id), {}, false};
         }
 
         auto projection = replay_unlocked (event.player_id);
@@ -85,13 +85,21 @@ class quest_event_store_t
         const auto previous_count = current ? current->current_count : 0;
         const auto previous_status =
           current ? current->status : std::string (quest_status_t::active);
-        if (previous_status == quest_status_t::reward_granted) {
+        const auto reconciliation = event.type == "SnapshotKillCount";
+        if (!reconciliation && previous_status == quest_status_t::reward_granted) {
             return {projection, {}, false};
         }
 
-        const auto delta = rule->delta;
-        const auto next_count = std::min (previous_count + delta, rule->required_count);
-        append_unlocked (stream, stored_quest_event_t::progressed, event, *rule, delta, next_count);
+        const auto next_count = reconciliation
+                                  ? std::max (previous_count, event.count)
+                                  : std::min (previous_count + rule->delta, rule->required_count);
+        if (next_count == previous_count) {
+            return {projection_unlocked (event.player_id), {}, false};
+        }
+        append_unlocked (stream,
+                         reconciliation ? stored_quest_event_t::reconciled
+                                        : stored_quest_event_t::progressed,
+                         event, *rule, next_count - previous_count, next_count);
 
         std::string completed_quest_id;
         bool reward_granted = false;
@@ -106,14 +114,50 @@ class quest_event_store_t
         std::cerr << "gamequest mission processed player=" << event.player_id
                   << " type=" << event.type << " value=" << event.value
                   << " completed=" << completed_quest_id << "\n";
-        return {replay_unlocked (event.player_id), completed_quest_id, reward_granted};
+        auto updated = replay_unlocked (event.player_id);
+        _projections[event.player_id] = updated;
+        return {std::move (updated), completed_quest_id, reward_granted};
     }
 
-    /* projection은 언제든 event stream만으로 다시 만들 수 있다. */
-    std::vector<quest_progress_t> replay (const std::string &player_id) const
+    std::vector<quest_progress_t> projection (const std::string &player_id) const
     {
         const std::lock_guard lock (_mutex);
-        return replay_unlocked (player_id);
+        return projection_unlocked (player_id);
+    }
+
+    void delete_projection (const std::string &player_id, const std::string &quest_id)
+    {
+        const std::lock_guard lock (_mutex);
+        auto &projection = _projections[player_id];
+        projection.erase (
+          std::remove_if (projection.begin (), projection.end (), [&] (const auto &item) {
+              return item.quest_id == quest_id;
+          }),
+          projection.end ());
+    }
+
+    std::vector<quest_progress_t> rebuild_projection (const std::string &player_id)
+    {
+        const std::lock_guard lock (_mutex);
+        auto rebuilt = replay_unlocked (player_id);
+        _projections[player_id] = rebuilt;
+        return rebuilt;
+    }
+
+    void rehydrate_owner (const std::string &player_id)
+    {
+        const std::lock_guard lock (_mutex);
+        _projections[player_id] = replay_unlocked (player_id);
+        ++_rehydrate_count[player_id];
+        std::cerr << "gamequest owner rehydrated player=" << player_id
+                  << " count=" << _rehydrate_count[player_id] << "\n";
+    }
+
+    int rehydrate_count (const std::string &player_id) const
+    {
+        const std::lock_guard lock (_mutex);
+        const auto found = _rehydrate_count.find (player_id);
+        return found == _rehydrate_count.end () ? 0 : found->second;
     }
 
   private:
@@ -127,6 +171,9 @@ class quest_event_store_t
     static std::optional<quest_rule_t> quest_rule_for (const gameplay_fact_t &event)
     {
         if (event.type == "MonsterKilled" && event.value == "wolf") {
+            return quest_rule_t{quest_ids_t::first_hunt, event.count, 3};
+        }
+        if (event.type == "SnapshotKillCount") {
             return quest_rule_t{quest_ids_t::first_hunt, event.count, 3};
         }
         if (event.type == "FeatureUnlocked" && event.value == "auction") {
@@ -195,7 +242,8 @@ class quest_event_store_t
                 projection.push_back (progress);
                 found = std::prev (projection.end ());
             }
-            if (stored.type == stored_quest_event_t::progressed) {
+            if (stored.type == stored_quest_event_t::progressed
+                || stored.type == stored_quest_event_t::reconciled) {
                 found->current_count = stored.current_count;
                 found->required_count = stored.required_count;
             } else if (stored.type == stored_quest_event_t::completed) {
@@ -210,8 +258,16 @@ class quest_event_store_t
         return projection;
     }
 
+    std::vector<quest_progress_t> projection_unlocked (const std::string &player_id) const
+    {
+        const auto found = _projections.find (player_id);
+        return found == _projections.end () ? std::vector<quest_progress_t>{} : found->second;
+    }
+
     mutable std::mutex _mutex;
     std::map<std::string, std::vector<stored_quest_event_t>> _streams;
+    std::map<std::string, std::vector<quest_progress_t>> _projections;
+    std::map<std::string, int> _rehydrate_count;
 };
 
 class player_quest_spot_t : public spot_t
@@ -224,16 +280,19 @@ class player_quest_spot_t : public spot_t
 
     void configure (spot_context_t &context)
     {
+        _context = context;
         context.handlers ()
           .add_handler<&player_quest_spot_t::apply> (gameplay_msg_t::packet_name)
           .add_handler<&player_quest_spot_t::sync> (sync_quest_progress_req_t::packet_name)
-          .add_handler<&player_quest_spot_t::get> (get_quest_progress_req_t::packet_name);
+          .add_handler<&player_quest_spot_t::get> (get_quest_progress_req_t::packet_name)
+          .add_handler<&player_quest_spot_t::admin> (projection_admin_req_t::packet_name);
     }
 
     spot_create_response_t on_create (const zlink::framework::message_t &request)
     {
         auto create = request.decode<player_quest_spot_create_req_t> ();
         _player_id = create.player_id;
+        _store.rehydrate_owner (_player_id);
         std::cerr << "gamequest player quest spot ready player=" << _player_id
                   << " spot=" << _player_id << "\n";
         return spot_create_response_t::accept ();
@@ -267,18 +326,45 @@ class player_quest_spot_t : public spot_t
 
     sync_quest_progress_res_t sync (const sync_quest_progress_req_t &request)
     {
-        return {_store.replay (request.player_id)};
+        if (request.snapshot_kill_count > 0) {
+            const gameplay_msg_t snapshot{
+              request.player_id + "-snapshot-" + std::to_string (request.snapshot_kill_count),
+              request.player_id,
+              "SnapshotKillCount",
+              gameplay_payload ("kills", request.snapshot_kill_count),
+              static_cast<long long> (std::time (nullptr)) * 1000LL};
+            return {_store.apply (decode_gameplay (snapshot)).projection};
+        }
+        return {_store.projection (request.player_id)};
     }
 
     get_quest_progress_res_t get (const get_quest_progress_req_t &request)
     {
-        return {_store.replay (request.player_id)};
+        return {_store.projection (request.player_id)};
+    }
+
+    projection_admin_res_t admin (const projection_admin_req_t &request)
+    {
+        if (request.operation == "delete") {
+            _store.delete_projection (request.player_id, request.quest_id);
+            return {true, _store.projection (request.player_id)};
+        }
+        if (request.operation == "rebuild") {
+            return {true, _store.rebuild_projection (request.player_id)};
+        }
+        if (request.operation == "deactivate") {
+            const auto projection = _store.projection (request.player_id);
+            _context.close ();
+            return {true, projection};
+        }
+        return {false, _store.projection (request.player_id)};
     }
 
   private:
     quest_event_store_t &_store;
     service_provider_t _services;
     std::string _player_id;
+    spot_context_t _context;
 };
 
 class ensure_player_quest_spot_handler_t

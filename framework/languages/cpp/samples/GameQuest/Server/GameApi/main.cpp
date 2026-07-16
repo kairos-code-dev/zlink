@@ -60,7 +60,33 @@ class game_api_store_t
     void record_event (const gameplay_msg_t &event)
     {
         const std::lock_guard lock (_mutex);
+        const auto existing = std::find_if (
+          _events.begin (), _events.end (), [&] (const gameplay_msg_t &stored) {
+              return stored.player_id == event.player_id && stored.event_id == event.event_id;
+          });
+        if (existing != _events.end ()) {
+            return;
+        }
         _events.push_back (event);
+    }
+
+    void add_unpublished_kills (const std::string &player_id, int count)
+    {
+        const std::lock_guard lock (_mutex);
+        _unpublished_kills[player_id] += count;
+    }
+
+    int snapshot_kill_count (const std::string &player_id) const
+    {
+        const std::lock_guard lock (_mutex);
+        int count = 0;
+        for (const auto &event : _events) {
+            if (event.player_id == player_id && event.type == "MonsterKilled") {
+                count += gameplay_payload (event).value ("count", 0);
+            }
+        }
+        const auto unpublished = _unpublished_kills.find (player_id);
+        return count + (unpublished == _unpublished_kills.end () ? 0 : unpublished->second);
     }
 
     /* notify는 actor가 자기 bound session으로 push한다. store는 projection 기록만 맡는다. */
@@ -135,6 +161,9 @@ class game_api_store_t
             evidence.push_back ("event:" + event.player_id + ":" + event.type + ":"
                                 + event.event_id);
         }
+        for (const auto &[player, count] : _unpublished_kills) {
+            evidence.push_back ("unpublished-kills:" + player + ":" + std::to_string (count));
+        }
         return {alice_first_hunt || alice_auction || bob_herb, evidence};
     }
 
@@ -144,6 +173,7 @@ class game_api_store_t
     std::map<std::string, std::string> _session_ids;
     std::map<std::string, std::vector<quest_progress_t>> _projections;
     std::vector<gameplay_msg_t> _events;
+    std::map<std::string, int> _unpublished_kills;
 };
 
 class player_actor_t
@@ -313,6 +343,24 @@ class gamequest_session_t final : public packet_stream_session_t
               .submit ();
             co_return;
         }
+        if (packet == projection_admin_req_t::packet_name) {
+            const auto request = payload.parse_json<projection_admin_req_t> ();
+            co_await ensure_player_spot (request.player_id);
+            auto target = co_await resolve_player_spot (request.player_id);
+            auto result = co_await _routes
+                            .request_to_spot (std::move (target), request)
+                            .template async<projection_admin_res_t> ();
+            stream.reply_packet (zlink::message_t::from_json (result)).submit ();
+            co_return;
+        }
+        if (packet == unpublished_kill_req_t::packet_name) {
+            const auto request = payload.parse_json<unpublished_kill_req_t> ();
+            _store.add_unpublished_kills (request.player_id, request.count);
+            stream
+              .reply_packet (zlink::message_t::from_json (unpublished_kill_res_t{true}))
+              .submit ();
+            co_return;
+        }
         if (packet == kill_monster_req_t::packet_name) {
             const auto request = payload.parse_json<kill_monster_req_t> ();
             const auto event = event_for (request.player_id, request.idempotency_key,
@@ -393,7 +441,10 @@ class gamequest_session_t final : public packet_stream_session_t
         co_await ensure_player_spot (player_id);
         auto target = co_await resolve_player_spot (player_id);
         auto synced = co_await _routes
-                        .request_to_spot (std::move (target), sync_quest_progress_req_t{player_id})
+                        .request_to_spot (
+                          std::move (target),
+                          sync_quest_progress_req_t{player_id,
+                                                    _store.snapshot_kill_count (player_id)})
                         .template async<sync_quest_progress_res_t> ();
         co_return synced;
     }

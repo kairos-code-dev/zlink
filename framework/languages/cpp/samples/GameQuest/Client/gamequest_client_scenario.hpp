@@ -149,6 +149,47 @@ class gamequest_client_scenario_t
             ensure (herb_completed.get ().progress.status == quest_status_t::reward_granted,
                     "herb completion push mismatch");
 
+            /* projection 재생성(§14): 표시용 projection을 지운 뒤 event stream만으로 같은
+             * RewardGranted 상태를 복원한다. */
+            auto deleted = api_b.request (
+                                  projection_admin_req_t{"player-bob",
+                                                         quest_ids_t::herb_gathering,
+                                                         "delete"})
+                             .packet_name (projection_admin_req_t::packet_name)
+                             .async<projection_admin_res_t> ()
+                             .result ();
+            ensure (deleted && deleted.value ().ok,
+                    "player-bob projection delete failed");
+            auto missing_projection = api_b.request (get_quest_progress_req_t{"player-bob"})
+                                        .packet_name (get_quest_progress_req_t::packet_name)
+                                        .async<get_quest_progress_res_t> ()
+                                        .result ();
+            ensure (missing_projection
+                      && std::none_of (missing_projection.value ().active_quests.begin (),
+                                       missing_projection.value ().active_quests.end (),
+                                       [] (const quest_progress_t &progress) {
+                                           return progress.quest_id
+                                                  == quest_ids_t::herb_gathering;
+                                       }),
+                    "deleted player-bob projection is still visible");
+            auto rebuilt = api_b.request (
+                                  projection_admin_req_t{"player-bob",
+                                                         quest_ids_t::herb_gathering,
+                                                         "rebuild"})
+                             .packet_name (projection_admin_req_t::packet_name)
+                             .async<projection_admin_res_t> ()
+                             .result ();
+            ensure (rebuilt && rebuilt.value ().ok
+                      && std::any_of (rebuilt.value ().projection.begin (),
+                                      rebuilt.value ().projection.end (),
+                                      [] (const quest_progress_t &progress) {
+                                          return progress.quest_id
+                                                   == quest_ids_t::herb_gathering
+                                                 && progress.status
+                                                      == quest_status_t::reward_granted;
+                                      }),
+                    "player-bob projection rebuild did not replay the event stream");
+
             /* reward 멱등(§14): 완료된 quest에 같은 gameplay event를 다시 적용해도 진행이 더
              * 오르지 않고 상태도 그대로다. */
             auto replayed_kill =
@@ -166,6 +207,23 @@ class gamequest_client_scenario_t
                       && has_progress (after_replay.value ().active_quests,
                                        quest_ids_t::first_hunt, 3),
                     "replayed gameplay event changed the quest progress");
+
+            /* reset/reconcile(§14): owner에게 publish되지 않은 authoritative gameplay fact를
+             * GameApi에만 기록한 뒤 Sync로 QuestReconciled event를 만든다. */
+            auto unpublished = api_a.request (unpublished_kill_req_t{"player-alice", 1})
+                                 .packet_name (unpublished_kill_req_t::packet_name)
+                                 .async<unpublished_kill_res_t> ()
+                                 .result ();
+            ensure (unpublished && unpublished.value ().ok,
+                    "unpublished gameplay fact setup failed");
+            auto reconciled = api_a.request (sync_quest_progress_req_t{"player-alice"})
+                                .packet_name (sync_quest_progress_req_t::packet_name)
+                                .async<sync_quest_progress_res_t> ()
+                                .result ();
+            ensure (reconciled
+                      && has_progress (reconciled.value ().updated_quests,
+                                       quest_ids_t::first_hunt, 4),
+                    "gameplay snapshot did not reconcile the first-hunt progress");
 
             /* reconnect(§14): 다른 노드로 다시 접속하면 notify가 그 노드로 따라온다. session
              * binding이 owner spot의 notify 경로를 정하기 때문이다. */
@@ -193,6 +251,25 @@ class gamequest_client_scenario_t
                     "ruins event id mismatch");
             ensure (ruins_completed.get ().progress.status == quest_status_t::reward_granted,
                     "reconnected player did not receive the notify on the new node");
+
+            /* owner deactivate→reactivate(§14): Spot을 닫고 다시 생성했을 때 event stream
+             * replay로 앞선 진행이 복원된다. */
+            auto deactivated = alice_b.request (
+                                     projection_admin_req_t{"player-alice", "", "deactivate"})
+                                .packet_name (projection_admin_req_t::packet_name)
+                                .async<projection_admin_res_t> ()
+                                .result ();
+            ensure (deactivated && deactivated.value ().ok,
+                    "player-alice owner deactivation failed");
+            std::this_thread::sleep_for (std::chrono::milliseconds (500));
+            auto rehydrated = alice_b.request (get_quest_progress_req_t{"player-alice"})
+                                .packet_name (get_quest_progress_req_t::packet_name)
+                                .async<get_quest_progress_res_t> ()
+                                .result ();
+            ensure (rehydrated
+                      && has_progress (rehydrated.value ().active_quests,
+                                       quest_ids_t::first_hunt, 4),
+                    "owner reactivation did not rehydrate the event stream");
 
             assert_server (api_a_http_url);
             assert_server (api_b_http_url);
@@ -279,7 +356,7 @@ class gamequest_client_scenario_t
                            .build ()
                            .post ("/self-check/assert")
                            .body (server_assertion_req_t{})
-                           .fetch<server_assertion_res_t> ();
+                           .async<server_assertion_res_t> ().result ().value ().body;
         ensure (assertion.passed, "server assertion failed");
     }
 

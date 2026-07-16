@@ -32,6 +32,7 @@ public final class PublisherRestartScenario {
             String drainResult = context.processes().drainPublisher(publisher);
             ScenarioAssert.ensure("Drained".equals(drainResult),
                 "PS-B2 publisher did not reach terminal Drained: " + drainResult);
+            context.processes().waitPublisherRow(false);
         } finally {
             publisher.close();
         }
@@ -42,6 +43,7 @@ public final class PublisherRestartScenario {
             "PS-B2 expected publish to fail while publisher process is down");
 
         try (var restarted = context.processes().startPublisher("publisher-restarted")) {
+            context.processes().waitPublisherRow(true);
             for (int sequence = 3; sequence <= 42; sequence++) {
                 context.publisher().publish(
                     "all",

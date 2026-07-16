@@ -51,8 +51,9 @@ public final class SubscriberApplication {
     OperationalEndpoints operationalEndpoints(
         SubscriberOptions options,
         EvidenceStore evidence,
-        ObjectMapper json) {
-        return new OperationalEndpoints(options, evidence, json);
+        ObjectMapper json,
+        systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle lifecycle) {
+        return new OperationalEndpoints(options, evidence, json, lifecycle);
     }
 
     @Bean

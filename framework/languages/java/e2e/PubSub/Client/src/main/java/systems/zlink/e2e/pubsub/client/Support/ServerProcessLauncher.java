@@ -8,9 +8,11 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public final class ServerProcessLauncher {
     private static final Duration START_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration ROUTE_SETTLE_TIMEOUT = Duration.ofSeconds(5);
 
     private final ClientOptions options;
     private final PubSubHttpClient http;
@@ -65,6 +67,29 @@ public final class ServerProcessLauncher {
         String result = http.post(options.publisherHttp() + "/admin/drain").trim();
         publisher.close();
         return result;
+    }
+
+    public void waitPublisherRow(boolean present) {
+        long deadline = System.nanoTime() + ROUTE_SETTLE_TIMEOUT.toNanos();
+        ObjectMapper json = new ObjectMapper();
+        String[] latest = new String[0];
+        while (System.nanoTime() < deadline) {
+            try {
+                latest = json.readValue(
+                    http.get(options.sub1Http() + "/locations/publishers"),
+                    String[].class);
+                boolean found = java.util.Arrays.asList(latest).contains(options.publisherEndpoint());
+                if (found == present) {
+                    return;
+                }
+            } catch (Exception error) {
+                // The subscriber endpoint may still be converging.
+            }
+            ScenarioAssert.sleep(100);
+        }
+        throw new IllegalStateException(
+            "timed out waiting for publisher row present=" + present
+                + ": " + java.util.Arrays.toString(latest));
     }
 
     private ManagedProcess start(String name, Path bin, String config) {

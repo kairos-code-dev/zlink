@@ -11,21 +11,29 @@ import java.util.Map;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.pubsub.subscriber.Configuration.SubscriberOptions;
 import systems.zlink.e2e.pubsub.subscriber.Infrastructure.EvidenceStore;
+import systems.zlink.e2e.pubsub.shared.Contracts;
+import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
+import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
 public final class OperationalEndpoints implements SmartLifecycle {
     private final SubscriberOptions options;
     private final EvidenceStore evidence;
     private final ObjectMapper json;
+    private final ZLinkFrameworkLifecycle lifecycle;
     private HttpServer server;
     private boolean running;
 
     public OperationalEndpoints(
         SubscriberOptions options,
         EvidenceStore evidence,
-        ObjectMapper json) {
+        ObjectMapper json,
+        ZLinkFrameworkLifecycle lifecycle) {
         this.options = options;
         this.evidence = evidence;
         this.json = json;
+        this.lifecycle = lifecycle;
     }
 
     @Override
@@ -44,6 +52,23 @@ public final class OperationalEndpoints implements SmartLifecycle {
             });
             server.createContext("/evidence", exchange -> {
                 byte[] body = json.writeValueAsBytes(evidence.snapshot());
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+                exchange.close();
+            });
+            server.createContext("/locations/publishers", exchange -> {
+                var publishers = lifecycle.monitoringLocationRuntimeQuery()
+                    .listPeerLocations(new ZLinkPeerLocationFilter(
+                        ZLinkLocationAutoConnectType.FANOUT,
+                        Contracts.EVENT_CHANNEL,
+                        ZLinkLocationRole.PUB,
+                        null,
+                        null))
+                    .toCompletableFuture().join().stream()
+                    .map(peer -> peer.endpoint())
+                    .toList();
+                byte[] body = json.writeValueAsBytes(publishers);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, body.length);
                 exchange.getResponseBody().write(body);

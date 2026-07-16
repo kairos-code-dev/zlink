@@ -23,9 +23,9 @@ public HTTP client만 사용한다.
   public runtime query에서 API channel의 live provider peer row가 둘 이상 보이는지, provider
   evidence에 request가 남는지 함께 검증한다.
 - `RM-A2`: 수동 endpoint 연결로 provider에 직접 request를 보낸다.
-- `RM-A4` (부분 구현): v1 terminal `Drained`와 old row 제거를 확인하고 같은 rid의 새 endpoint로
-  교체한 뒤 연속 20개 request가 v2로 가는지 검증한다. 유효 row가 정확히 하나인지와 이전 endpoint
-  evidence delta 0은 아직 직접 단언하지 않는다.
+- `RM-A4`: v1 terminal `Drained`와 old row 제거를 확인하고 같은 rid의 새 endpoint로 교체한다.
+  runtime query에서 `api-a`의 유효 row가 정확히 하나이고 endpoint가 v2인지 확인한 뒤, 연속 20개
+  request의 instance id가 모두 v2인지 검증한다.
 - `RM-A6`: API channel과 workflow channel이 같은 location store를 공유해도 channel 이름별로
   분리되는지 검증한다.
 - `RM-B1`: provider 추가 뒤 consumer가 location store row를 보고 새 provider를 routing 대상에
@@ -57,6 +57,9 @@ public HTTP client만 사용한다.
 
 - `RM-B3`은 미구현이다. Java catalog의 `failover` 별칭은 실제로 `RM-A4` 정상 replacement를 실행하며,
   provider `SIGKILL`, lease 만료 전후의 유한 결과, 남은 provider의 지속 성공을 검증하지 않는다.
+- `RM-B2`에 slow in-flight와 drain 전파 중 target 미지정 요청 20개를 넣은 집중 gate는 여러 요청이
+  framework의 5초 request timeout으로 실패했다. draining peer가 신규 부하에서 제외되는 runtime
+  수정 전까지 전파 구간 완료 조건은 차단 상태다.
 - 동적 역할 readiness는 3초, peer convergence는 이름 있는 5초 route settle로 제한한다. 변경 뒤
   `RM-A4`와 `RM-B2` 단독 실행이 통과했다(구현 커밋 `7ee3d9141`).
 

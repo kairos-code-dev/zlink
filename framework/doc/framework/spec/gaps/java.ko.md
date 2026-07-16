@@ -1108,6 +1108,12 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     process를 종료하도록 바꿨다. endpoint가 없던 red 실행은 HTTP 404로 실패했고
     (`logs/20260716-085310-3165552/`), 구현 뒤 RM-A4·RM-B2가 통과했다. `failover` alias도 제거해
     replacement와 crash failover를 섞지 않는다. 구현 커밋 `d1adfb5dc`.
+  - 부분 수정: RM-A4는 v2 시작 뒤 `api-a`의 유효 row가 정확히 하나이고 endpoint가 v2인지 확인한다.
+    연속 20개 reply의 instance id도 모두 v2여야 한다. `RM-A4` 통과, 구현 커밋 `fe131ce3d`.
+  - 추가 blocker: RM-B2에 slow in-flight와 drain 전파 중 target 미지정 요청을 추가한 red gate는
+    outer HTTP timeout을 늘린 뒤에도 framework의 5초 request timeout으로 실패했다
+    (`logs/20260716-085813-3184786/`, `logs/20260716-085906-3187724/`). E2E sleep이나 재시도로
+    숨기지 않고 draining peer 신규 부하 제외 runtime 수정이 필요하다.
 - [ ] **E2E-JV-26** (가짜 통과) — `SM-G2`가 SpotNode scale-out과 신규 배치를 검증하지 않는다.
   - 재검증: 현재 runner는 두 play node를 먼저 시작하고 scenario는 양쪽 local manager에 서로 다른
     Spot을 직접 만든다. 기존 play-a owner 유지, play-b peer/capability와 Entry Spot handle readiness,
@@ -1152,6 +1158,7 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 | blocker | 현재 증거 | 계약을 소유한 계층의 선택지 |
 |---------|-----------|------------------------------|
 | RouteMesh target 오류 | 없는 rid가 `TimeoutException`; enum에는 `REQUEST_TARGET_NOT_FOUND`가 이미 있음 | (A) runtime이 현재 member snapshot 부재를 submit 전에 판정, (B) native route 결과에 target-not-found를 추가해 Java 오류로 매핑. E2E에서 timeout을 정답으로 유지하는 안은 계약과 충돌하므로 제외한다. |
+| Graceful scale-in 부하 제외 | RM-B2 전파 구간 요청이 framework 5초 timeout으로 실패 | (A) `Draining=true` peer를 target-free channel load balancer 후보에서 즉시 제외, (B) drain 시작 시 socket admission/weight 전파를 완료한 뒤 terminal wait로 진입. E2E에서 요청 수를 줄이거나 timeout을 늘리는 안은 계약 위반을 숨기므로 제외한다. |
 | Monitoring source registry | 언어별 spec의 capability-qualified source를 startup이 거부 | (A) runtime registry key를 `<channel>.<capability>`로 통일, (B) 등록 시 bare 이름을 정식 이름으로 확장. E2E가 bare 이름을 계속 쓰는 안은 source identity 계약을 검증하지 못한다. |
 | Execution turn | ATD-A1 실제 순서가 계약과 반대 | (A) incomplete stage 완료까지 turn을 보유, (B) 정식 terminator가 suspension 지점에서만 turn을 양도. 현재 계약에 맞는 선택을 공통 runtime에서 확정한 뒤 Java에 구현한다. |
 | Transfer callback order | target join이 source leave보다 먼저 기록 | source leave 완료를 transfer commit의 선행 gate로 만들고 target join·location publish를 뒤에 둔다. E2E timestamp 정렬이나 기대 순서 완화는 금지한다. |

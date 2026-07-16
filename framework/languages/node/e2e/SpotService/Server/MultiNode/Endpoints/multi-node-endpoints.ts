@@ -1,15 +1,27 @@
-import type { ZLinkActorClient, ZLinkActorManager, ZLinkSpotManager, ZLinkSpotOutbound, ZLinkSpotHandleResolver } from '@zlink-systems/framework';
+import {
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
+  type ZLinkActorClient,
+  type ZLinkActorManager,
+  type ZLinkLocationRuntimeQuery,
+  type ZLinkSpotManager,
+  type ZLinkSpotOutbound,
+  type ZLinkSpotHandleResolver
+} from '@zlink-systems/framework';
 import type {
   CreateSpotReq,
   CreateSpotRes,
   EvidenceWaitReq,
   MultiNodeCreateSpotReq,
   MultiNodeStateRouteReq,
+  ScaleOutReadinessReq,
+  ScaleOutReadinessRes,
+  ScaleOutActorProbeRes,
   SpotOnlyJoinRes,
   SpotOnlyMeshReq,
   SpotOnlyMeshRes
 } from '../../../Shared/messages';
-import { SpotOnlyJoinReq, SpotServiceNames } from '../../../Shared/messages';
+import { ScaleOutActorProbeReq, SpotOnlyJoinReq, SpotServiceNames, spotServicePacket } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 import { createLocalMultiNodeSpot, MultiNodeScenarioActor, requestStateViaSpotOutbound, SpotOnlyUserSpot } from '../Spots/multi-node-spots';
@@ -21,11 +33,19 @@ export function createMultiNodeEndpoints(
   spotRefs: ZLinkSpotHandleResolver,
   actors: ZLinkActorManager,
   actorClient: ZLinkActorClient,
+  locations: ZLinkLocationRuntimeQuery,
   stop: () => void
 ): HttpRoute[] {
   return [
     { method: 'GET', path: '/health', handle: () => ({ status: 'ready', role: 'multi-node', rid: evidence.rid }) },
     { method: 'GET', path: '/evidence', handle: () => evidence.snapshot() },
+    {
+      method: 'POST',
+      path: '/scale-out/readiness/wait',
+      handle: (body) => waitForScaleOutReadiness(
+        locations, spotRefs, body as ScaleOutReadinessReq
+      )
+    },
     {
       method: 'POST',
       path: '/evidence/wait',
@@ -100,6 +120,22 @@ export function createMultiNodeEndpoints(
     },
     {
       method: 'POST',
+      path: '/actor/scale-out-probe',
+      handle: async (body) => {
+        const request = body as ScaleOutActorProbeReq;
+        const actor = await actors.getOrCreate(
+          request.actorId,
+          SpotServiceNames.actorType,
+          { displayName: `scale-out-${request.actorId}` }
+        );
+        return await actorClient
+          .requestToActor(actor, spotServicePacket(ScaleOutActorProbeReq, request))
+          .timeout(10_000)
+          .submit<ScaleOutActorProbeRes>();
+      }
+    },
+    {
+      method: 'POST',
       path: '/spot/state/request',
       handle: (body) => {
         const request = body as MultiNodeStateRouteReq;
@@ -123,6 +159,36 @@ export function createMultiNodeEndpoints(
       }
     }
   ];
+}
+
+async function waitForScaleOutReadiness(
+  locations: ZLinkLocationRuntimeQuery,
+  spotRefs: ZLinkSpotHandleResolver,
+  request: ScaleOutReadinessReq
+): Promise<ScaleOutReadinessRes> {
+  const deadline = Date.now() + Math.max(1, Math.min(request.timeoutMilliseconds ?? 30_000, 30_000));
+  do {
+    const rows = await locations.listPeerLocations({
+      autoConnectType: ZLinkLocationAutoConnectType.SpotMesh,
+      meshName: SpotServiceNames.spotOnlyMesh,
+      role: ZLinkLocationRole.Spot
+    });
+    const peer = rows.find((row) => String(row.nodeRid) === request.nodeRid);
+    const capabilities = peer?.capabilities ?? [];
+    const entrySpotReady = await spotRefs.resolveSpotHandle(request.nodeRid) !== undefined;
+    if (peer !== undefined
+      && capabilities.includes(`actor:${SpotServiceNames.actorType}`)
+      && entrySpotReady) {
+      return {
+        nodeRid: request.nodeRid,
+        peerReady: true,
+        entrySpotReady: true,
+        capabilities
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } while (Date.now() < deadline);
+  throw new Error(`SpotNode '${request.nodeRid}' did not publish peer, actor capability, and Entry Spot readiness.`);
 }
 
 function extractSpotOnlyValue(evidence: readonly string[], request: SpotOnlyMeshReq): number {

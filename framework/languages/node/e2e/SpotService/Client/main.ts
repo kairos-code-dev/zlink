@@ -46,7 +46,7 @@ import { runSmF4 } from './Scenarios/sm-f4-scenario';
 import { runSmF5 } from './Scenarios/sm-f5-scenario';
 import { runSmF6 } from './Scenarios/sm-f6-scenario';
 import { runSmG1 } from './Scenarios/sm-g1-scenario';
-import { runSmG2 } from './Scenarios/sm-g2-scenario';
+import { prepareSmG2, verifySmG2 } from './Scenarios/sm-g2-scenario';
 import { runSmG3 } from './Scenarios/sm-g3-scenario';
 import { runSmG4 } from './Scenarios/sm-g4-scenario';
 import { runSmQ9 } from './Scenarios/sm-q9-scenario';
@@ -104,7 +104,8 @@ async function main(): Promise<void> {
     'SM-F5': () => runSmF5(options),
     'SM-F6': () => runSmF6(options),
     'SM-G1': () => runSmG1(options),
-    'SM-G2': () => runSmG2(options),
+    'SM-G2-PREPARE': () => prepareSmG2(options),
+    'SM-G2-VERIFY': () => verifySmG2(options),
     'SM-G3': () => runSmG3(options),
     'SM-G4': () => runSmG4(options),
     'SM-Q9': () => runSmQ9(options)

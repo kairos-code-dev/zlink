@@ -29,6 +29,29 @@ export interface CreateSpotRes {
   readonly state: string;
 }
 
+export interface ScaleOutReadinessReq {
+  readonly nodeRid: string;
+  readonly timeoutMilliseconds?: number;
+}
+
+export interface ScaleOutReadinessRes {
+  readonly nodeRid: string;
+  readonly peerReady: boolean;
+  readonly entrySpotReady: boolean;
+  readonly capabilities: readonly string[];
+}
+
+export interface ScaleOutActorProbeReq {
+  readonly actorId: string;
+  readonly marker: string;
+}
+
+export interface ScaleOutActorProbeRes {
+  readonly actorId: string;
+  readonly nodeRid: string;
+  readonly marker: string;
+}
+
 export interface CloseSpotReq {
   readonly spotRid: string;
 }
@@ -610,6 +633,7 @@ export class ChannelNotify {}
 export class CrossRoleActorPushReq {}
 export class ControlPingReq {}
 export class EnsureActorReq {}
+export class ScaleOutActorProbeReq {}
 export class MissingSpotReq {
   declare readonly operation: string;
   declare readonly delta: number;

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode, type ZLinkActorClient, type ZLinkActorManager, type ZLinkSpotManager, type ZLinkSpotOutbound, type ZLinkSpotHandleResolver } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode, type ZLinkActorClient, type ZLinkActorManager, type ZLinkLocationRuntimeQuery, type ZLinkSpotManager, type ZLinkSpotOutbound, type ZLinkSpotHandleResolver } from '@zlink-systems/framework';
 import { ZLinkRedisLocationStore } from '@zlink-systems/framework-locations-redis';
-import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
+import { ZLINK_ACTOR_CLIENT, ZLINK_ACTOR_MANAGER, ZLINK_LOCATION_RUNTIME_QUERY, ZLINK_SPOT_MANAGER, ZLINK_SPOT_OUTBOUND, ZLINK_SPOT_HANDLE_RESOLVER, ZLinkModule, zlinkFramework } from '@zlink-systems/nestjs';
 import { SpotServiceNames } from '../../Shared/messages';
 import { createSpotServiceConfigurationModule } from '../../configuration';
 import { validateMultiNodeOptions } from './Configuration/multi-node-options';
@@ -15,6 +15,7 @@ import {
   MultiNodeCreateSpotBHandler,
   MultiNodeEntrySpot,
   MultiNodeScenarioActorFactory,
+  ScaleOutActorProbeHandler,
   MultiNodeSpotOnlyJoinHandler,
   MultiNodeSpotA,
   MultiNodeSpotB,
@@ -108,6 +109,7 @@ export async function startMultiNodeHost(): Promise<void> {
       MultiNodeCreateSpotBHandler,
       MultiNodeEntrySpot,
       MultiNodeScenarioActorFactory,
+      ScaleOutActorProbeHandler,
       MultiNodeSpotOnlyJoinHandler,
       MultiNodeSpotA,
       MultiNodeSpotB,
@@ -127,8 +129,11 @@ export async function startMultiNodeHost(): Promise<void> {
   const spotRefs = app.get(ZLINK_SPOT_HANDLE_RESOLVER, { strict: false }) as ZLinkSpotHandleResolver;
   const actors = app.get(ZLINK_ACTOR_MANAGER, { strict: false }) as ZLinkActorManager;
   const actorClient = app.get(ZLINK_ACTOR_CLIENT, { strict: false }) as ZLinkActorClient;
+  const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   SpotOnlyUserSpot.configureDependencies(evidence, spotRefs);
-  const server = await startHttpServer(options.httpUrl, createMultiNodeEndpoints(evidence, spots, outbound, spotRefs, actors, actorClient, () => { stopping = true; }));
+  const server = await startHttpServer(options.httpUrl, createMultiNodeEndpoints(
+    evidence, spots, outbound, spotRefs, actors, actorClient, locations, () => { stopping = true; }
+  ));
   while (!stopping) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

@@ -11,6 +11,7 @@ import type {
   ZLinkRouteClient,
   ZLinkRouteRequestHandler,
   ZLinkSpot,
+  ZLinkSpotActorRequestHandler,
   ZLinkSpotActorRequestContext,
   ZLinkSpotContext,
   ZLinkSpotManager,
@@ -24,6 +25,8 @@ import { ZLinkPacket, ZLinkSpotActorRequest } from '@zlink-systems/framework';
 import type {
   MultiNodeCreateSpotRes,
   MultiNodeCreateSpotReq,
+  ScaleOutActorProbeReq,
+  ScaleOutActorProbeRes,
   SpotOnlyJoinReq,
   SpotOnlyJoinRes,
   SpotOnlyMeshReq,
@@ -164,6 +167,7 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
   configure(): void {
     this.context.handlers.addPacket(SpotOnlyStateReqHandler);
     this.context.handlers.addPacket(SpotOnlyStateMsgHandler);
+    this.context.handlers.addActorPacket(ScaleOutActorProbeHandler, MultiNodeScenarioActor);
   }
 
   async onInitialize(): Promise<void> {
@@ -230,6 +234,27 @@ export class SpotOnlyUserSpot implements ZLinkSpot<MultiNodeScenarioActor> {
       throw new Error('SpotOnlyUserSpot refs are not configured.');
     }
     return this.refs;
+  }
+}
+
+@Injectable()
+export class ScaleOutActorProbeHandler
+  implements ZLinkSpotActorRequestHandler<SpotOnlyUserSpot, MultiNodeScenarioActor, ScaleOutActorProbeReq, ScaleOutActorProbeRes> {
+  constructor(private readonly evidence: EvidenceStore) {}
+
+  @ZLinkSpotActorRequest('ScaleOutActorProbeReq')
+  async handle(
+    spot: SpotOnlyUserSpot,
+    actor: MultiNodeScenarioActor,
+    context: ZLinkSpotActorRequestContext,
+    request: ScaleOutActorProbeReq
+  ): Promise<ScaleOutActorProbeRes> {
+    void context;
+    this.evidence.add(
+      `scale-out-actor-probe|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
+      + `|actor=${actor.actorId}|marker=${request.marker}`
+    );
+    return { actorId: actor.actorId, nodeRid: this.evidence.rid, marker: request.marker };
   }
 }
 

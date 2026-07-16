@@ -311,7 +311,7 @@ write_config gateway \
 
 multi_a_peer=()
 multi_b_peer=()
-if [[ "$SCENARIO" != "SM-F6" ]]; then
+if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" ]]; then
   multi_a_peer=(--string peerSpotRouterEndpoint "$MULTI_B_SPOT_ROUTER")
   multi_b_peer=(--string peerSpotRouterEndpoint "$MULTI_A_SPOT_ROUTER")
 fi
@@ -319,13 +319,13 @@ write_config multi-node-a \
   --string rid multi-node-a --string httpUrl "$MULTI_A_URL" --string routeEndpoint "$MULTI_A_ROUTE" \
   --string spotRouterEndpoint "$MULTI_A_SPOT_ROUTER" --string spotPubEndpoint "$MULTI_A_SPOT_PUB" \
   "${multi_a_peer[@]}" --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
-  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" ]] && echo true || echo false)" \
+  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" ]] && echo true || echo false)" \
   --string evidenceFile "$LOG_DIR/multi-node-a.evidence.log" --string logDir "$LOG_DIR"
 write_config multi-node-b \
   --string rid multi-node-b --string httpUrl "$MULTI_B_URL" --string routeEndpoint "$MULTI_B_ROUTE" \
   --string spotRouterEndpoint "$MULTI_B_SPOT_ROUTER" --string spotPubEndpoint "$MULTI_B_SPOT_PUB" \
   "${multi_b_peer[@]}" --string redisEndpoint "$REDIS_ENDPOINT" --string redisKeyPrefix "$REDIS_KEY_PREFIX" \
-  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" ]] && echo true || echo false)" \
+  --boolean spotOnly "$([[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" ]] && echo true || echo false)" \
   --string evidenceFile "$LOG_DIR/multi-node-b.evidence.log" --string logDir "$LOG_DIR"
 
 start_named_server() {
@@ -393,7 +393,7 @@ wait_named_server() {
       ;;
     multi-node-a)
       wait_health "$MULTI_A_URL" multi-node-a "${pid_by_name[multi-node-a]:-}"
-      if [[ "$SCENARIO" != "SM-F6" ]]; then
+      if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" ]]; then
         wait_port multi-node-a-route "$MULTI_A_ROUTE"
       fi
       wait_port multi-node-a-spot-router "$MULTI_A_SPOT_ROUTER"
@@ -401,7 +401,7 @@ wait_named_server() {
       ;;
     multi-node-b)
       wait_health "$MULTI_B_URL" multi-node-b "${pid_by_name[multi-node-b]:-}"
-      if [[ "$SCENARIO" != "SM-F6" ]]; then
+      if [[ "$SCENARIO" != "SM-F6" && "$SCENARIO" != "SM-G2" ]]; then
         wait_port multi-node-b-route "$MULTI_B_ROUTE"
       fi
       wait_port multi-node-b-spot-router "$MULTI_B_SPOT_ROUTER"
@@ -433,7 +433,7 @@ wait_control_route() {
 }
 
 wait_topology_routes() {
-  if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-Q9" ]]; then
+  if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-G2" || "$SCENARIO" == "SM-Q9" ]]; then
     return 0
   fi
   wait_control_route "$SESSION_A_URL" play-a session-a-to-play-a
@@ -442,11 +442,11 @@ wait_topology_routes() {
   wait_control_route "$SESSION_B_URL" play-b session-b-to-play-b
 }
 
-if [[ "$SCENARIO" == "SM-F6" || "$SCENARIO" == "SM-Q9" ]]; then
-  SERVER_ROLES=(multi-node-a multi-node-b)
-else
-  SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b)
-fi
+case "$SCENARIO" in
+  SM-G2) SERVER_ROLES=(multi-node-a) ;;
+  SM-F6|SM-Q9) SERVER_ROLES=(multi-node-a multi-node-b) ;;
+  *) SERVER_ROLES=(play-a play-b session-a session-b gateway multi-node-a multi-node-b) ;;
+esac
 mapfile -t ORDERED_SERVER_ROLES < <(ordered_e2e_roles "$E2E_START_ORDER" "${SERVER_ROLES[@]}")
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_named_server "$role"
@@ -476,7 +476,12 @@ run_client() {
     >>"$LOG_DIR/client.stdout.log" 2>>"$LOG_DIR/client.stderr.log"
 }
 
-if [[ "$SCENARIO" == "default-batch" ]]; then
+if [[ "$SCENARIO" == "SM-G2" ]]; then
+  run_client SM-G2-PREPARE
+  start_named_server multi-node-b
+  wait_named_server multi-node-b
+  run_client SM-G2-VERIFY
+elif [[ "$SCENARIO" == "default-batch" ]]; then
   run_client SM-B2
   run_client SM-B1
   run_client SM-B3

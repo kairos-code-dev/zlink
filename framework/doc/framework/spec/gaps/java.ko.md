@@ -1152,6 +1152,16 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     handler-start 뒤 `SIGKILL`과 lease 만료를 거치는 crash replacement가 아니다. `RL-B3`은 terminal
     `Drained`와 종료 직전 완료된 reply를 보지 않는다. `RL-B4`·`RL-B5`의 실제 동작은 weight 0/100
     부하 제외이므로 문서에서 graceful drain 표현을 제거했다.
+  - 부분 수정: `RL-B3`은 `api-a`를 weight 0으로 부하 제외한 뒤 `api-b`의 slow handler 시작을
+    확인하고, 실제 runtime drain과 slow reply를 함께 진행한다. slow reply가 `api-b`에서 정상 완료된
+    뒤 shutdown 응답이 terminal `Drained`인지, old row가 제거되고 `api-a`만 후속 요청을 처리하는지
+    순서대로 검증한다. terminal 결과를 요구한 red gate는 기존 `{"status":"shutting-down"}` 응답으로
+    실패했고(`ResilienceLifecycle/logs/20260716-092601-3294400/`), 구현 뒤 `RL-B3`과 인접 weight/in-flight
+    `RL-B5`가 통과했다(`logs/20260716-092832-3306007/`, `logs/20260716-092938-3310296/`). POSD
+    재리뷰에서는 terminal 결과 polling endpoint를 추가하는 안과 실제 drain 응답을 완료 종결자로
+    유지하는 안을 비교해 후자를 선택했다. HTTP server는 concurrent admin release와 drain을 내부에서
+    처리하고 executor 수명도 server가 소유하므로 호출자에게 lifecycle 순서나 별도 polling 지식을
+    노출하지 않는다. Domain 경계 변경은 없다. 구현 커밋 `4d7b75f19`.
 - [ ] **E2E-JV-29** (가짜 통과) — `MON-A1`·`MON-A4`가 갱신된 source와 가용성 전이를 검증하지 않는다.
   - 재검증: 정식 source `monitoring.api.client`와 `monitoring.handshake.server`를 사용한 집중 실행은
     Java runtime이 "monitoring socket source is not configured"로 startup을 거부했다. 현재 `MON-A4`는

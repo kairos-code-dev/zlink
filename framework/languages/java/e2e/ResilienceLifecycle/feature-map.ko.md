@@ -48,8 +48,9 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 - `RL-B2`: provider-b가 slow request를 받은 상태에서 강제 종료되면 in-flight request가 public 실패로
   끝나고, owner lease TTL 뒤 stale topology가 제거되어 provider-a로 수렴하는지 확인한다. 이후 같은
   routing id의 provider-b를 다시 올려 topology와 신규 request가 복구되는지도 확인한다.
-- `RL-B3`: provider 정상 종료 뒤 location peer row에서 빠지고 같은 client의 후속 request가 남은
-  provider로만 가는지 확인한다.
+- `RL-B3`: provider의 slow handler가 이미 받은 request를 정상 reply한 뒤 runtime drain이 terminal
+  `Drained`로 끝나는지 확인한다. 이어서 location peer row 제거와 남은 provider의 후속 request 성공을
+  검증한다.
 - `RL-B4`: provider admin 경로가 `clientServerChannel(name).configureServerSocket().weight(0/100)`을
   호출해 transport 부하 제외와 복원을 검증한다. 이 동작을 graceful drain으로 판정하지 않는다.
 - `RL-B5`: 느린 handler가 이미 받은 request는 weight 0 변경 뒤에도 정상 reply하고, 전파 완료 뒤의
@@ -87,7 +88,5 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 - 갱신된 `RL-A2`는 slow request handler-start 뒤 `SIGKILL`, owner lease 만료, 다른 endpoint의 새
   generation을 요구한다. 현재 시나리오는 weight 0 제어와 정상 process 교체가 섞여 있어 crash
   replacement 계약을 검증하지 않는다.
-- `RL-B3`은 row 제거와 남은 provider 성공은 확인하지만 terminal `Drained`와 종료 직전 완료된
-  in-flight reply를 확인하지 않는다.
 - `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
   `Server/Consumer`의 HTTP endpoint를 호출한다.

@@ -4,10 +4,10 @@
 |----------|------|-------------------|------|
 | `PS-A1` | 구현 | `Client/Scenarios/ps-a1-fanout-basic-delivery-scenario.ts` | warm-up barrier 뒤 모든 subscriber가 공유하는 연속 sequence marker를 실제 subscriber 역할 server의 `/evidence/wait`로 확인한다. |
 | `PS-A2` | 구현 | `Client/Scenarios/ps-a2-topic-filter-scenario.ts` | accepted topic evidence와 ignored topic non-business-event marker를 실제 subscriber 역할 server evidence로 확인한다. |
-| `PS-A3` | 구현 | `Client/Scenarios/ps-a3-late-subscriber-scenario.ts` | late subscriber가 join 이후 event를 받고 join 이전 event를 replay하지 않는지 실제 subscriber 역할 server evidence로 확인한다. |
-| `PS-A4` | 구현 | `Client/Scenarios/ps-a4-subscriber-reconnect-scenario.ts` | subscriber restart 후 post-reconnect delivery와 disconnect interval non-replay, fast subscriber 지속 수신 marker를 실제 subscriber 역할 server evidence로 확인한다. |
+| `PS-A3` | 구현 | `Client/Scenarios/ps-a3-late-subscriber-scenario.ts` | 차단된 transport에서 ready 전 event를 한 번 발행하고, subscriber의 실제 `ConnectionReady` 뒤 첫 event 수신과 이전 event replay 부재를 확인한다. |
+| `PS-A4` | 구현 | `Client/Scenarios/ps-a4-subscriber-reconnect-scenario.ts` | subscriber process를 유지한 채 transport를 끊고 복구해 기존 subscription 자동 재적용, disconnect 구간 non-replay, fast subscriber 지속 수신을 확인한다. |
 | `PS-B1` | 구현 | `Client/Scenarios/ps-b1-slow-subscriber-scenario.ts` | slow subscriber delay evidence와 fast subscriber tail event marker를 실제 subscriber 역할 server evidence로 확인한다. |
-| `PS-B2` | 구현 | `Client/Scenarios/ps-b2-publisher-restart-scenario.ts` | publisher down 중 HTTP publish failure와 restart 이후 모든 subscriber의 post-restart delivery marker를 실제 subscriber 역할 server evidence로 확인한다. |
+| `PS-B2` | 구현 | `Client/Scenarios/ps-b2-publisher-restart-scenario.ts` | terminal `Drained`, 기존 publisher row 제거, 같은 rid/endpoint 재등록과 subscriber `ConnectionReady` 뒤 첫 event 전달을 확인한다. |
 | `PS-C1` | 구현 | `Client/Scenarios/ps-c1-missing-message-name-scenario.ts` | subscriber dispatch drop evidence와 이후 정상 publish delivery marker를 실제 subscriber 역할 server evidence로 확인한다. |
 
 ## 검증 경로 판정

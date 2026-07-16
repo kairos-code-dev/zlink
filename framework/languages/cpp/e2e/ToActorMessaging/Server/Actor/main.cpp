@@ -104,7 +104,8 @@ class to_actor_e2e_spot_t : public zlink::framework::entry_spot_t
         _evidence.append ({message.scenario, actor.actor_id (), "request", message.value});
         auto reply = e2e::actor_reply_t{message.scenario, actor.actor_id (),
                                         "reply:" + message.value};
-        if (message.scenario == "TA-B1-destroy" || message.scenario == "TA-A4-destroy") {
+        if (message.scenario == "TA-B1-destroy" || message.scenario == "TA-A4-destroy"
+            || message.scenario == "TA-B2-destroy") {
             co_await _context.destroy_actor (actor);
         }
         co_return reply;

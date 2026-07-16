@@ -1287,13 +1287,14 @@ int main ()
     gate.require (to_actor_runner.find ("actor-a") != std::string::npos
                     && to_actor_runner.find ("actor-b") != std::string::npos,
                   "E2E-CP-59", "Config 9 does not start two actor owner nodes");
-    gate.require (to_actor_b2.find ("capture-ref") != std::string::npos
+    gate.require (to_actor_b2.find ("capture_ref") != std::string::npos
                     && to_actor_b2.find ("actor_b") != std::string::npos
-                    && to_actor_b2.find ("request-captured") != std::string::npos,
+                    && to_actor_b2.find ("assert_captured_failure") != std::string::npos,
                   "E2E-CP-59", "TA-B2 does not replace the owner and exercise the stale ref");
-    gate.require (to_actor_b3.find ("route/disconnect") != std::string::npos
-                    && to_actor_b3.find ("route/wait-connected") != std::string::npos
-                    && to_actor_b3.find ("request-captured") != std::string::npos,
+    gate.require (to_actor_b3.find ("control_route") != std::string::npos
+                    && to_actor_b3.find ("disconnect") != std::string::npos
+                    && to_actor_b3.find ("reconnect") != std::string::npos
+                    && to_actor_b3.find ("assert_captured_failure") != std::string::npos,
                   "E2E-CP-59", "TA-B3 does not disconnect and deterministically restore a live route");
     for (const auto &[config, source] : location_option_consumers) {
         gate.require (source.find ("auto locations = framework.configure_locations ()")

@@ -893,6 +893,7 @@ class spot_node_options_builder_t
                                          "SPOT router manual peer routing id is required");
         }
         detail::require_non_blank (endpoint, "SPOT router manual endpoint is required");
+        router_connections ().connect (endpoint);
         _router_manual_rid_connections.push_back ({std::move (peer_rid), std::move (endpoint)});
         apply ();
         return *this;
@@ -1080,6 +1081,15 @@ class spot_node_options_builder_t
             if (!router_endpoint.empty ()) {
                 spot_node.enable_router (router_endpoint);
                 for (const auto &endpoint : router_manual_connections) {
+                    if (std::find_if (
+                          router_manual_rid_connections.begin (),
+                          router_manual_rid_connections.end (),
+                          [&endpoint] (const auto &connection) {
+                              return connection.second == endpoint;
+                          })
+                        != router_manual_rid_connections.end ()) {
+                        continue;
+                    }
                     spot_node.connect_router (endpoint);
                 }
                 for (const auto &connection : router_manual_rid_connections) {

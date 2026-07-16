@@ -8,17 +8,23 @@ namespace
 
 /* TA-B3: the client owns the requests, failure classification, and evidence assertions. */
 inline void run_ta_b3_scenario (zlink::http_client::client_t &actor,
-                                zlink::http_client::client_t &caller)
+                                zlink::http_client::client_t &caller,
+                                zlink::http_client::client_t &route_control)
 {
-    prepare_failure (caller, "TA-B3-prepare", "ta-b3-disconnected");
-    require_location (caller, "TA-B3-location", "ta-b3-disconnected", "present");
-    assert_failure (caller, "TA-B3-route-not-connected", "ta-b3-disconnected",
-                    "route_not_connected", false);
     ensure_ready (actor, caller, "TA-B3", "ta-b3");
-    assert_call (caller, "TA-B3-route-restored", "ta-b3", "b3-request", "reply:b3-request", false);
+    capture_ref (caller, "TA-B3-capture-ref", "ta-b3");
+    assert_captured_call (caller, "TA-B3-before-disconnect", "ta-b3", "before",
+                          "reply:before");
+    control_route (route_control, "disconnect");
+    assert_captured_failure (caller, "TA-B3-route-not-connected", "ta-b3",
+                             "route_not_connected");
+    control_route (route_control, "reconnect");
+    assert_captured_call (caller, "TA-B3-route-restored", "ta-b3", "restored",
+                          "reply:restored");
 
     const auto evidence = actor.get ("/evidence").fetch<std::vector<e2e::actor_evidence_t>> ();
     require_no_evidence (evidence, "TA-B3-route-not-connected");
+    require_evidence (evidence, "TA-B3-route-restored", "request");
 }
 
 } // namespace

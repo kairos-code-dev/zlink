@@ -930,6 +930,24 @@ int main ()
         return 32;
     }
 
+    {
+        zlink::framework::service_collection_t services;
+        zlink::framework::handler_registry_t handlers;
+        zlink::framework::serializer_registry_t serializers;
+        zlink::framework::zlink_builder_t zlink;
+        zlink::framework::monitoring_builder_t monitoring;
+        zlink::framework::zlink_framework_options_t options (
+          services, handlers, serializers, zlink, monitoring);
+        auto spot = options.add_spot_mesh ("rid-live-routes");
+        spot.enable_router ("tcp://127.0.0.1:9340")
+          .connect_router (zlink::routing_id_t::from ("rid-peer"),
+                           "tcp://127.0.0.1:9341");
+        if (spot.router_connections ().list_connections ()
+            != std::vector<std::string>{"tcp://127.0.0.1:9341"}) {
+            return 75;
+        }
+    }
+
     bool accepted_spot_route_manual_without_discovery_succeeded = true;
     try {
         zlink::framework::service_collection_t valid_services;

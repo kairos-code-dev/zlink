@@ -56,6 +56,8 @@ struct caller_configuration_t
     std::string pub_sub_endpoint;
     std::string actor_rid;
     std::string actor_spot_endpoint;
+    std::string actor_b_rid;
+    std::string actor_b_spot_endpoint;
 
     static caller_configuration_t bind (const framework::configuration_section_t &section)
     {
@@ -67,7 +69,9 @@ struct caller_configuration_t
                 .spot_endpoint = section.require ("spotEndpoint"),
                 .pub_sub_endpoint = section.require ("pubSubEndpoint"),
                 .actor_rid = section.require ("actorRid"),
-                .actor_spot_endpoint = section.require ("actorSpotEndpoint")};
+                .actor_spot_endpoint = section.require ("actorSpotEndpoint"),
+                .actor_b_rid = section.require ("actorBRid"),
+                .actor_b_spot_endpoint = section.require ("actorBSpotEndpoint")};
     }
 };
 

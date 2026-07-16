@@ -416,11 +416,27 @@ void spot_node_host_service_t::start (service_provider_t &services)
          * above). */
         if (configured.router_connections) {
             auto handle = *configured.router_connections;
+            std::map<std::string, zlink::routing_id_t> rid_by_endpoint;
+            for (const auto &[rid, endpoint] : snapshot.router_manual_rid_connections) {
+                rid_by_endpoint.emplace (endpoint, rid);
+            }
             detail::endpoint_connections_runtime_t::attach (
               handle,
-              [node = native->node] (const std::string &endpoint) { node->connect_peer (endpoint); },
-              [node = native->node] (const std::string &endpoint) {
-                  node->disconnect_peer (endpoint);
+              [node = native->node, rid_by_endpoint] (const std::string &endpoint) {
+                  const auto found = rid_by_endpoint.find (endpoint);
+                  if (found == rid_by_endpoint.end ()) {
+                      node->connect_peer (endpoint);
+                  } else {
+                      node->connect_peer_rid (found->second, endpoint);
+                  }
+              },
+              [node = native->node, rid_by_endpoint] (const std::string &endpoint) {
+                  const auto found = rid_by_endpoint.find (endpoint);
+                  if (found == rid_by_endpoint.end ()) {
+                      node->disconnect_peer (endpoint);
+                  } else {
+                      node->disconnect_peer_rid (found->second);
+                  }
               });
         }
         if (configured.pub_sub_connections) {

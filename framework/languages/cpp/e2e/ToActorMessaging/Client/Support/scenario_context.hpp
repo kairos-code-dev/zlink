@@ -26,7 +26,9 @@ namespace
 struct client_configuration_t
 {
     std::string actor_http;
+    std::string actor_b_http;
     std::string caller_http;
+    std::string route_control_http;
     std::string session_a_http;
     std::string session_a_stream;
     std::string session_b_http;
@@ -47,7 +49,9 @@ client_configuration_t parse_client_configuration (int argc, char **argv)
             return true;
         };
         if (!assign ("--actor-http=", configuration.actor_http)
+            && !assign ("--actor-b-http=", configuration.actor_b_http)
             && !assign ("--caller-http=", configuration.caller_http)
+            && !assign ("--route-control-http=", configuration.route_control_http)
             && !assign ("--session-a-http=", configuration.session_a_http)
             && !assign ("--session-a-stream=", configuration.session_a_stream)
             && !assign ("--session-b-http=", configuration.session_b_http)
@@ -56,11 +60,14 @@ client_configuration_t parse_client_configuration (int argc, char **argv)
             throw std::runtime_error ("unknown ToActorMessaging client option: " + argument);
         }
     }
-    if (configuration.actor_http.empty ()) {
-        throw std::runtime_error ("--actor-http is required");
+    if (configuration.actor_http.empty () || configuration.actor_b_http.empty ()) {
+        throw std::runtime_error ("both actor owner HTTP endpoints are required");
     }
     if (configuration.caller_http.empty ()) {
         throw std::runtime_error ("--caller-http is required");
+    }
+    if (configuration.route_control_http.empty ()) {
+        throw std::runtime_error ("--route-control-http is required");
     }
     if (configuration.session_a_http.empty () || configuration.session_a_stream.empty ()
         || configuration.session_b_http.empty () || configuration.session_b_stream.empty ()) {
@@ -282,14 +289,45 @@ void assert_failure (zlink::http_client::client_t &caller,
                                                      + " result=" + response.result);
 }
 
-void prepare_failure (zlink::http_client::client_t &caller,
-                      const std::string &scenario,
-                      const std::string &actor_id)
+void capture_ref (zlink::http_client::client_t &caller,
+                  const std::string &scenario,
+                  const std::string &actor_id)
 {
-    const auto response = call (caller, "/prepare-failure", scenario, actor_id, "prepare");
-    require (response.error_kind.empty (),
-             scenario + " prepare failed: " + response.error_kind + " " + response.result);
-    require (response.result == "prepared", scenario + " prepare returned " + response.result);
+    const auto response = call (caller, "/capture-ref", scenario, actor_id, "capture");
+    require (response.error_kind.empty () && response.result == "captured",
+             scenario + " actor ref capture failed: " + response.error_kind);
+}
+
+void assert_captured_call (zlink::http_client::client_t &caller,
+                           const std::string &scenario,
+                           const std::string &actor_id,
+                           const std::string &value,
+                           const std::string &expected)
+{
+    const auto response = call (caller, "/request-captured", scenario, actor_id, value);
+    require (response.error_kind.empty () && response.result == expected,
+             scenario + " captured request failed: " + response.error_kind
+               + " result=" + response.result + " expected=" + expected);
+}
+
+void assert_captured_failure (zlink::http_client::client_t &caller,
+                              const std::string &scenario,
+                              const std::string &actor_id,
+                              const std::string &expected_kind)
+{
+    const auto response = call (caller, "/request-captured", scenario, actor_id, "failure");
+    require (response.error_kind == expected_kind,
+             scenario + " expected " + expected_kind + " got " + response.error_kind
+               + " result=" + response.result);
+}
+
+void control_route (zlink::http_client::client_t &control, const std::string &operation)
+{
+    const auto response = control.post ("/route/" + operation)
+                            .body (nlohmann::json::object ())
+                            .fetch<nlohmann::json> ();
+    require (response.value ("status", "") == operation,
+             "route control " + operation + " failed");
 }
 
 void require_evidence (const std::vector<e2e::actor_evidence_t> &evidence,

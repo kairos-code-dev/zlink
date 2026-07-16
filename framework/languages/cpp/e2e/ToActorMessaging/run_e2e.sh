@@ -59,6 +59,7 @@ cmake --build "$BUILD_DIR" --target \
 
 LOCATION_KEY_PREFIX="zlink:e2e:toactor:$RUN_ID"
 ACTOR_RID="actor-a"
+ACTOR_B_RID="actor-b"
 CALLER_RID="caller"
 SESSION_A_RID="session-a"
 SESSION_B_RID="session-b"
@@ -69,7 +70,7 @@ import socket
 sockets = []
 ports = []
 try:
-    for _ in range(14):
+    for _ in range(17):
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         sockets.append(sock)
@@ -83,12 +84,16 @@ PY
 
 read -r actor_http caller_http actor_spot caller_spot actor_pub caller_pub \
   session_a_http session_a_stream session_a_spot session_a_pub \
-  session_b_http session_b_stream session_b_spot session_b_pub < <(reserve_ports)
+  session_b_http session_b_stream session_b_spot session_b_pub \
+  actor_b_http actor_b_spot actor_b_pub < <(reserve_ports)
 ACTOR_HTTP="http://127.0.0.1:${actor_http}"
 CALLER_HTTP="http://127.0.0.1:${caller_http}"
 ACTOR_SPOT="tcp://127.0.0.1:${actor_spot}"
 CALLER_SPOT="tcp://127.0.0.1:${caller_spot}"
 ACTOR_PUBSUB="tcp://127.0.0.1:${actor_pub}"
+ACTOR_B_HTTP="http://127.0.0.1:${actor_b_http}"
+ACTOR_B_SPOT="tcp://127.0.0.1:${actor_b_spot}"
+ACTOR_B_PUBSUB="tcp://127.0.0.1:${actor_b_pub}"
 CALLER_PUBSUB="tcp://127.0.0.1:${caller_pub}"
 SESSION_A_HTTP="http://127.0.0.1:${session_a_http}"
 SESSION_A_STREAM="tcp://127.0.0.1:${session_a_stream}"
@@ -163,8 +168,8 @@ with open(path, "w", encoding="utf-8") as file:
                        "callerSpotEndpoint": peer_spot}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
-python3 - "$CONFIG_DIR/caller.json" "$REDIS_ENDPOINT" "$LOCATION_KEY_PREFIX" "$LOG_DIR" \
-  "$CALLER_RID" "$CALLER_HTTP" "$CALLER_SPOT" "$CALLER_PUBSUB" "$ACTOR_RID" "$ACTOR_SPOT" <<'PY'
+python3 - "$CONFIG_DIR/actor-b.json" "$REDIS_ENDPOINT" "$LOCATION_KEY_PREFIX" "$LOG_DIR" \
+  "$ACTOR_B_RID" "$ACTOR_B_HTTP" "$ACTOR_B_SPOT" "$ACTOR_B_PUBSUB" "$CALLER_RID" "$CALLER_SPOT" <<'PY'
 import json
 import os
 import stat
@@ -175,8 +180,26 @@ with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"redis": {"endpoint": redis_endpoint, "keyPrefix": key_prefix},
                        "logDir": log_dir, "nodeRid": node_rid,
                        "httpEndpoint": http_endpoint, "spotEndpoint": spot_endpoint,
+                       "pubSubEndpoint": pub_sub_endpoint, "callerRid": peer_rid,
+                       "callerSpotEndpoint": peer_spot}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+python3 - "$CONFIG_DIR/caller.json" "$REDIS_ENDPOINT" "$LOCATION_KEY_PREFIX" "$LOG_DIR" \
+  "$CALLER_RID" "$CALLER_HTTP" "$CALLER_SPOT" "$CALLER_PUBSUB" \
+  "$ACTOR_RID" "$ACTOR_SPOT" "$ACTOR_B_RID" "$ACTOR_B_SPOT" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, redis_endpoint, key_prefix, log_dir, node_rid, http_endpoint, spot_endpoint, pub_sub_endpoint, peer_rid, peer_spot, peer_b_rid, peer_b_spot = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"redis": {"endpoint": redis_endpoint, "keyPrefix": key_prefix},
+                       "logDir": log_dir, "nodeRid": node_rid,
+                       "httpEndpoint": http_endpoint, "spotEndpoint": spot_endpoint,
                        "pubSubEndpoint": pub_sub_endpoint, "actorRid": peer_rid,
-                       "actorSpotEndpoint": peer_spot}}, file, indent=2)
+                       "actorSpotEndpoint": peer_spot, "actorBRid": peer_b_rid,
+                       "actorBSpotEndpoint": peer_b_spot}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 write_session_config() {
@@ -292,9 +315,14 @@ PY
 
 start_role() {
   case "$1" in
-    actor)
+    actor-a)
       "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_actor" \
         --config="$CONFIG_DIR/actor.json" >"$LOG_DIR/actor.stdout.log" 2>"$LOG_DIR/actor.stderr.log" &
+      pids+=("$!")
+      ;;
+    actor-b)
+      "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_actor" \
+        --config="$CONFIG_DIR/actor-b.json" >"$LOG_DIR/actor-b.stdout.log" 2>"$LOG_DIR/actor-b.stderr.log" &
       pids+=("$!")
       ;;
     caller)
@@ -313,7 +341,8 @@ start_role() {
 
 wait_role() {
   case "$1" in
-    actor) wait_http "$ACTOR_HTTP" ;;
+    actor-a) wait_http "$ACTOR_HTTP" ;;
+    actor-b) wait_http "$ACTOR_B_HTTP" ;;
     caller) wait_http "$CALLER_HTTP" ;;
     session-a) wait_http "$SESSION_A_HTTP" ;;
     session-b) wait_http "$SESSION_B_HTTP" ;;
@@ -321,16 +350,17 @@ wait_role() {
   esac
 }
 
-mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles actor caller session-a session-b)
+mapfile -t ORDERED_SERVER_ROLES < <(ordered_roles actor-a actor-b caller session-a session-b)
 for role in "${ORDERED_SERVER_ROLES[@]}"; do
   start_role "$role"
 done
-for role in actor caller session-a session-b; do
+for role in actor-a actor-b caller session-a session-b; do
   wait_role "$role"
 done
 
 "$BUILD_DIR/zlink_cpp_e2e_to_actor_messaging_client" \
   --actor-http="$ACTOR_HTTP" --caller-http="$CALLER_HTTP" \
+  --actor-b-http="$ACTOR_B_HTTP" --route-control-http="$CALLER_HTTP" \
   --session-a-http="$SESSION_A_HTTP" --session-a-stream="$SESSION_A_STREAM" \
   --session-b-http="$SESSION_B_HTTP" --session-b-stream="$SESSION_B_STREAM" \
   --scenario="$SCENARIO" \

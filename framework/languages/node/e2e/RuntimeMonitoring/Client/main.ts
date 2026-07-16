@@ -13,19 +13,25 @@ import type { ManagedProcess } from './Support/managed-service';
 async function main(): Promise<void> {
   const options = parseClientOptions(process.argv.slice(2));
   let serviceBProcess: ManagedProcess | undefined;
+  const replaceServiceBProcess = async (start: () => Promise<ManagedProcess>): Promise<void> => {
+    const previous = serviceBProcess;
+    const replacement = await start();
+    await previous?.stop();
+    serviceBProcess = replacement;
+  };
   const scenarios: Record<string, () => Promise<void>> = {
     'MON-A1': () => runMonA1(options),
-    'MON-A2': async () => { serviceBProcess = await runMonA2(options); },
+    'MON-A2': () => replaceServiceBProcess(() => runMonA2(options)),
     'MON-A3': () => runMonA3(options),
-    'MON-A4': async () => { serviceBProcess = await runMonA4(options); },
+    'MON-A4': () => replaceServiceBProcess(() => runMonA4(options)),
     'MON-A5': () => runMonA5(options),
     'MON-B1': () => runMonB1(options),
     'MON-B2': () => runMonB2(options),
     'MON-C1': () => runMonC1(options),
-    'MON-D1': () => runMonD1(options)
+    'MON-D1': () => replaceServiceBProcess(() => runMonD1(options))
   };
   const gaps: Record<string, string> = {};
-  const defaultScenarioIds = ['MON-A1', 'MON-A2', 'MON-A3', 'MON-A4', 'MON-A5', 'MON-B1', 'MON-B2', 'MON-C1', 'MON-D1'];
+  const defaultScenarioIds = ['MON-A1', 'MON-A2', 'MON-A3', 'MON-A5', 'MON-B1', 'MON-B2', 'MON-C1', 'MON-D1', 'MON-A4'];
 
   try {
     if (options.scenario.toLowerCase() === 'all') {

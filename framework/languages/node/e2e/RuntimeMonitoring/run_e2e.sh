@@ -16,8 +16,18 @@ SCENARIO_SETTLE_TIMEOUT_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 mkdir -p "$LOG_DIR"
 
-pick_port() {
-  node "$NODE_ROOT/e2e/port-picker.js"
+RESERVED_PORTS=()
+reserve_port() {
+  local variable_name="$1"
+  local port
+  while true; do
+    port="$(node "$NODE_ROOT/e2e/port-picker.js")"
+    if [[ ! " ${RESERVED_PORTS[*]} " =~ " $port " ]]; then
+      RESERVED_PORTS+=("$port")
+      printf -v "$variable_name" '%s' "$port"
+      return
+    fi
+  done
 }
 
 build_package() {
@@ -59,6 +69,9 @@ cleanup() {
     wait "$pid" 2>/dev/null
     status=$?
     set -e
+    if [[ ("$SCENARIO" == "MON-A4" || "$SCENARIO" == "all") && "$name" == "svc-a" && "$status" -eq 137 ]]; then
+      continue
+    fi
     if [[ "$status" -ne 0 && "$status" -ne 143 ]]; then
       background_failure=1
       echo "Background role $name exited unexpectedly with status $status." >&2
@@ -120,23 +133,23 @@ build_package "$ROOT_DIR/Server/ThrowingService"
 build_package "$ROOT_DIR/Server/Trigger"
 build_package "$ROOT_DIR/Client"
 
-SVC_HTTP_PORT="$(pick_port)"
-SVC_B_HTTP_PORT="$(pick_port)"
-SVC_B_REPLACEMENT_HTTP_PORT="$(pick_port)"
-THROW_HTTP_PORT="$(pick_port)"
-TRIGGER_HTTP_PORT="$(pick_port)"
-CHANNEL_PORT="$(pick_port)"
-CHANNEL_B_PORT="$(pick_port)"
-CHANNEL_B_REPLACEMENT_PORT="$(pick_port)"
-THROW_CHANNEL_PORT="$(pick_port)"
-SPOT_ROUTER_PORT="$(pick_port)"
-SPOT_PUB_PORT="$(pick_port)"
-SPOT_B_ROUTER_PORT="$(pick_port)"
-SPOT_B_PUB_PORT="$(pick_port)"
-SPOT_B_REPLACEMENT_ROUTER_PORT="$(pick_port)"
-SPOT_B_REPLACEMENT_PUB_PORT="$(pick_port)"
-THROW_SPOT_ROUTER_PORT="$(pick_port)"
-THROW_SPOT_PUB_PORT="$(pick_port)"
+reserve_port SVC_HTTP_PORT
+reserve_port SVC_B_HTTP_PORT
+reserve_port SVC_B_REPLACEMENT_HTTP_PORT
+reserve_port THROW_HTTP_PORT
+reserve_port TRIGGER_HTTP_PORT
+reserve_port CHANNEL_PORT
+reserve_port CHANNEL_B_PORT
+reserve_port CHANNEL_B_REPLACEMENT_PORT
+reserve_port THROW_CHANNEL_PORT
+reserve_port SPOT_ROUTER_PORT
+reserve_port SPOT_PUB_PORT
+reserve_port SPOT_B_ROUTER_PORT
+reserve_port SPOT_B_PUB_PORT
+reserve_port SPOT_B_REPLACEMENT_ROUTER_PORT
+reserve_port SPOT_B_REPLACEMENT_PUB_PORT
+reserve_port THROW_SPOT_ROUTER_PORT
+reserve_port THROW_SPOT_PUB_PORT
 
 SVC_URL="http://127.0.0.1:$SVC_HTTP_PORT"
 SVC_B_URL="http://127.0.0.1:$SVC_B_HTTP_PORT"
@@ -246,9 +259,11 @@ node "$ROOT_DIR/write-config.mjs" "$CLIENT_CONFIG" \
   --redis-endpoint "$REDIS_ENDPOINT" \
   --redis-key-prefix "$REDIS_KEY_PREFIX" \
   --service-b-channel-endpoint "$CHANNEL_B_ENDPOINT" \
+  --service-channel-endpoint "$CHANNEL_ENDPOINT" \
   --service-b-spot-router-endpoint "$SPOT_B_ROUTER_ENDPOINT" \
   --service-b-spot-pub-endpoint "$SPOT_B_PUB_ENDPOINT" \
   --service-main "$SERVICE_MAIN" \
+  --filtered-service-main "$FILTERED_SERVICE_MAIN" \
   --service-b-config "$CONFIG_DIR/svc-b.config.json" \
   --replacement-service-url "$SVC_B_REPLACEMENT_URL" \
   --replacement-service-channel-endpoint "$CHANNEL_B_REPLACEMENT_ENDPOINT" \

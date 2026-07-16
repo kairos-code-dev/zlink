@@ -6,9 +6,11 @@ export interface ClientOptions {
   readonly redisEndpoint: string;
   readonly redisKeyPrefix: string;
   readonly serviceBChannelEndpoint: string;
+  readonly serviceChannelEndpoint: string;
   readonly serviceBSpotRouterEndpoint: string;
   readonly serviceBSpotPubEndpoint: string;
   readonly serviceMain: string;
+  readonly filteredServiceMain: string;
   readonly serviceBConfig: string;
   readonly replacementServiceUrl: string;
   readonly replacementServiceChannelEndpoint: string;
@@ -27,9 +29,11 @@ export function parseClientOptions(args: readonly string[]): ClientOptions {
     redisEndpoint: required(values, 'redisEndpoint'),
     redisKeyPrefix: required(values, 'redisKeyPrefix'),
     serviceBChannelEndpoint: required(values, 'serviceBChannelEndpoint'),
+    serviceChannelEndpoint: required(values, 'serviceChannelEndpoint'),
     serviceBSpotRouterEndpoint: required(values, 'serviceBSpotRouterEndpoint'),
     serviceBSpotPubEndpoint: required(values, 'serviceBSpotPubEndpoint'),
     serviceMain: required(values, 'serviceMain'),
+    filteredServiceMain: required(values, 'filteredServiceMain'),
     serviceBConfig: required(values, 'serviceBConfig'),
     replacementServiceUrl: required(values, 'replacementServiceUrl'),
     replacementServiceChannelEndpoint: required(values, 'replacementServiceChannelEndpoint'),

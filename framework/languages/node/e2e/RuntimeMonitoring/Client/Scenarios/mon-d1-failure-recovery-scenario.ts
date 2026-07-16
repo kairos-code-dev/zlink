@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import type { EvidenceWaitReq, ProfileRes, ProfileReq } from '../../Shared/messages';
 import type { ClientOptions } from '../Support/client-options';
 import { getJson, postJson } from '../../../http-client';
-import { postBestEffort, startServiceB, waitForPortState } from '../Support/managed-service';
+import { type ManagedProcess, startServiceB, waitForPortState } from '../Support/managed-service';
 import { ensure } from '../Support/scenario-assert';
 
-export async function runMonD1(options: ClientOptions): Promise<void> {
+export async function runMonD1(options: ClientOptions): Promise<ManagedProcess> {
   const baseline = await topologyCount(options.serviceUrl);
   await postJson<object>(options.serviceBUrl, '/shutdown', {});
   await waitForPortState(options.serviceBUrl, false, 'MON-D1 expected service-b to stop.');
@@ -39,12 +39,12 @@ export async function runMonD1(options: ClientOptions): Promise<void> {
       locationEvidence.length > 0,
       'MON-D1 location topology continuity evidence missing.'
     );
-  } finally {
-    await postBestEffort(options.serviceBUrl, '/shutdown');
+    console.log('scenario MON-D1 passed');
+    return restarted;
+  } catch (error) {
     await restarted.stop();
+    throw error;
   }
-
-  console.log('scenario MON-D1 passed');
 }
 
 async function waitForTopologyContinuity(options: ClientOptions, baseline: number): Promise<string[]> {

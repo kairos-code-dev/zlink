@@ -1,10 +1,17 @@
 import fs from 'node:fs';
 import { Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { ZLinkMessageFlowLogMode, ZLinkSocketEventKind } from '@zlink-systems/framework';
-import type { ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
+import {
+  ZLinkMessageFlowLogMode,
+  ZLinkSocketEventKind,
+  type ZLinkChannelRuntimeOptions,
+  type ZLinkDrainControl,
+  type ZLinkLocationRuntimeQuery
+} from '@zlink-systems/framework';
 import {
   ZLINK_CHANNEL_RUNTIME_OPTIONS,
+  ZLINK_DRAIN_CONTROL,
+  ZLINK_LOCATION_RUNTIME_QUERY,
   ZLinkModule,
   zlinkFramework
 } from '@zlink-systems/nestjs';
@@ -34,9 +41,11 @@ export async function startServiceHost(role: ServiceRoleOptions = {}): Promise<v
   const options = app.get(MONITORING_OPTIONS, { strict: false }) as ServiceOptions;
   const evidence = app.get(EvidenceStore, { strict: false });
   const runtimeOptions = app.get(ZLINK_CHANNEL_RUNTIME_OPTIONS, { strict: false }) as ZLinkChannelRuntimeOptions;
+  const drain = app.get(ZLINK_DRAIN_CONTROL, { strict: false }) as ZLinkDrainControl;
+  const locations = app.get(ZLINK_LOCATION_RUNTIME_QUERY, { strict: false }) as ZLinkLocationRuntimeQuery;
   const server = await startHttpServer(
     options.httpUrl,
-    createServiceEndpoints(evidence, runtimeOptions, () => { stopping = true; })
+    createServiceEndpoints(evidence, runtimeOptions, drain, locations, () => { stopping = true; })
   );
 
   while (!stopping) {

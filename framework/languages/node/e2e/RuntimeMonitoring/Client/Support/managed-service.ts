@@ -5,17 +5,17 @@ import type { ClientOptions } from './client-options';
 import { postJson } from '../../../http-client';
 
 export function startServiceB(options: ClientOptions, logName: string): ManagedProcess {
-  return startService(options, options.serviceBConfig, logName);
+  return startService(options, options.filteredServiceMain, options.serviceBConfig, logName);
 }
 
 export function startReplacementService(options: ClientOptions, logName: string): ManagedProcess {
-  return startService(options, options.replacementServiceConfig, logName);
+  return startService(options, options.serviceMain, options.replacementServiceConfig, logName);
 }
 
-function startService(options: ClientOptions, config: string, logName: string): ManagedProcess {
+function startService(options: ClientOptions, main: string, config: string, logName: string): ManagedProcess {
   const stdout = fs.openSync(`${options.logDir}/${logName}.stdout.log`, 'w');
   const stderr = fs.openSync(`${options.logDir}/${logName}.stderr.log`, 'w');
-  const child = spawn(process.execPath, [options.serviceMain, '--config', config], {
+  const child = spawn(process.execPath, [main, '--config', config], {
     stdio: ['ignore', stdout, stderr]
   });
   return new ManagedProcess(child);

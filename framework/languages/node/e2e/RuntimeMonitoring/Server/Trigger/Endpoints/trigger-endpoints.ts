@@ -44,6 +44,11 @@ export function createTriggerEndpoints(
     },
     {
       method: 'POST',
+      path: '/profile/request/replacement',
+      handle: (body) => requestWithTransientHost(toProfileReq(body), options.replacementServiceChannelEndpoint)
+    },
+    {
+      method: 'POST',
       path: '/profile/request/throw',
       handle: (body) => requestWithTransientHost(toProfileReq(body), options.throwChannelEndpoint)
     },

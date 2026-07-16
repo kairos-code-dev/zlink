@@ -3,10 +3,18 @@ import { RuntimeMonitoringNames } from '../../../Shared/messages';
 import type { EvidenceStore } from '../Infrastructure/evidence-store';
 import type { HttpRoute } from '../Support/http-server';
 import type { ZLinkChannelRuntimeOptions } from '@zlink-systems/framework';
+import {
+  ZLinkLocationAutoConnectType,
+  ZLinkLocationRole,
+  type ZLinkDrainControl,
+  type ZLinkLocationRuntimeQuery
+} from '@zlink-systems/framework';
 
 export function createServiceEndpoints(
   evidence: EvidenceStore,
   runtimeOptions: ZLinkChannelRuntimeOptions,
+  drain: ZLinkDrainControl,
+  locations: ZLinkLocationRuntimeQuery,
   stop: () => void
 ): HttpRoute[] {
   return [
@@ -15,20 +23,39 @@ export function createServiceEndpoints(
     {
       method: 'POST',
       path: '/admin/drain',
-      handle: () => {
-        runtimeOptions.clientServerChannel(RuntimeMonitoringNames.channel).configureServerSocket().weight = 0;
-        evidence.add(`admin|rid=${evidence.rid}|action=drain|weight=0`);
-        return { status: 'drained', weight: 0 };
+      handle: async () => {
+        const result = await drain.drain();
+        const reason = 'reason' in result ? result.reason : '';
+        evidence.add(`admin|rid=${evidence.rid}|action=drain|kind=${result.kind}|reason=${reason}`);
+        return result;
       }
     },
     {
       method: 'POST',
-      path: '/admin/restore',
+      path: '/admin/exclude',
+      handle: () => {
+        runtimeOptions.clientServerChannel(RuntimeMonitoringNames.channel).configureServerSocket().weight = 0;
+        evidence.add(`admin|rid=${evidence.rid}|action=exclude|weight=0`);
+        return { status: 'excluded', weight: 0 };
+      }
+    },
+    {
+      method: 'POST',
+      path: '/admin/include',
       handle: () => {
         runtimeOptions.clientServerChannel(RuntimeMonitoringNames.channel).configureServerSocket().weight = 100;
-        evidence.add(`admin|rid=${evidence.rid}|action=restore|weight=100`);
-        return { status: 'restored', weight: 100 };
+        evidence.add(`admin|rid=${evidence.rid}|action=include|weight=100`);
+        return { status: 'included', weight: 100 };
       }
+    },
+    {
+      method: 'GET',
+      path: '/locations/peers',
+      handle: async () => (await locations.listPeerLocations({
+        autoConnectType: ZLinkLocationAutoConnectType.ClientServer,
+        meshName: RuntimeMonitoringNames.channel,
+        role: ZLinkLocationRole.Router
+      })).map((row) => ({ rid: String(row.nodeRid), endpoint: row.endpoint }))
     },
     {
       method: 'GET',
@@ -49,6 +76,12 @@ export function createServiceEndpoints(
             entries.some((entry) => entry.includes(expected)))), timeout);
       }
     },
-    { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } }
+    { method: 'POST', path: '/shutdown', handle: () => { stop(); return { status: 'stopping' }; } },
+    {
+      method: 'POST', path: '/crash', handle: () => {
+        setTimeout(() => process.kill(process.pid, 'SIGKILL'), 10);
+        return { status: 'crashing', signal: 'SIGKILL' };
+      }
+    }
   ];
 }

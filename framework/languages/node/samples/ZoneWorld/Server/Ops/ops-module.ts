@@ -10,11 +10,19 @@ import {
   AnnounceWorldHandler,
   NodeDiagnosticsHandler,
   ReportNodeStatusHandler,
+  ReportSpotEventHandler,
   SetMaintenanceHandler,
   WatchNodesHandler
 } from './ops-handlers';
 import { OpsSessionFactory } from './ops-session';
 import { OpsConsoleRegistry } from './ops-console-registry';
+import { MaintenanceStore } from '../Configuration/maintenance-store';
+import {
+  OPS_LOCATION_SOURCE,
+  OPS_REPORT_SOCKET_SOURCE,
+  OpsLocationEventHandler,
+  OpsSocketEventHandler
+} from './ops-runtime-events';
 
 function createOpsModule() {
   class OpsModule {}
@@ -37,20 +45,31 @@ function createOpsModule() {
         builder.addFanoutChannel(ZoneWorldNames.broadcastChannel).enablePublisher(ops.broadcastEndpoint);
         builder.addClientServerChannel(ZoneWorldNames.reportChannel)
           .enableServer(ops.reportEndpoint)
-          .addSendHandler(PacketNames.reportNodeStatusMsg, ReportNodeStatusHandler);
+          .addSendHandler(PacketNames.reportNodeStatusMsg, ReportNodeStatusHandler)
+          .addSendHandler(PacketNames.reportSpotEventMsg, ReportSpotEventHandler);
         for (const nodeId of [NodeIds.west, NodeIds.east]) {
           builder.addClientServerChannel(ZoneWorldNames.opsChannel(nodeId)).enableClient();
         }
-        return builder.build();
+        return {
+          ...builder.build(),
+          monitoring: {
+            locationRuntime: [{ sourceName: OPS_LOCATION_SOURCE, intervalMs: 100 }],
+            socket: [{ sourceName: OPS_REPORT_SOCKET_SOURCE }]
+          }
+        };
       }
     })],
     providers: [
       NodeRegistry,
+      MaintenanceStore,
+      OpsLocationEventHandler,
+      OpsSocketEventHandler,
       OpsConsoleRegistry,
       OpsSessionFactory,
       AnnounceWorldHandler,
       NodeDiagnosticsHandler,
       ReportNodeStatusHandler,
+      ReportSpotEventHandler,
       SetMaintenanceHandler,
       WatchNodesHandler
     ]

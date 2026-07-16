@@ -2,12 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { JoinForm } from '../../features/join-world/join-form';
 import { GameController } from '../../features/join-world/model';
 import { useKeyboardMovement } from '../../features/move-player/use-keyboard-movement';
-import { loadClientEndpoints } from '../../shared/config/runtime';
 import { GameHud } from '../../widgets/game-hud/game-hud';
 import { WorldCanvas } from '../../widgets/world-canvas/world-canvas';
 
-export function GamePage() {
-  const controller = useMemo(() => new GameController(loadClientEndpoints().gateway), []);
+export function GamePage({ gateway }: { gateway: string }) {
+  const controller = useMemo(() => new GameController(gateway), [gateway]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const move = useCallback((dx: number, dy: number) => controller.move(dx, dy), [controller]);

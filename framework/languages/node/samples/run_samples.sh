@@ -9,6 +9,7 @@ DEFAULT_SAMPLES=(
   SupportChat.Ts
   GameQuest.Ts
   ShoppingMall.Ts
+  ZoneWorld
 )
 
 if [[ "$#" -eq 0 ]]; then

@@ -3,12 +3,11 @@ import { AnnounceForm } from '../../features/announce-world/announce-form';
 import { DiagnosticsCard } from '../../features/node-diagnostics/diagnostics-card';
 import { nextMaintenance } from '../../features/set-maintenance/action';
 import { OpsController } from '../../features/watch-nodes/model';
-import { loadClientEndpoints } from '../../shared/config/runtime';
 import { AlertList } from '../../widgets/alert-list/alert-list';
 import { NodeTable } from '../../widgets/node-table/node-table';
 
-export function OpsPage() {
-  const controller = useMemo(() => new OpsController(loadClientEndpoints().ops), []);
+export function OpsPage({ ops }: { ops: string }) {
+  const controller = useMemo(() => new OpsController(ops), [ops]);
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   useEffect(() => () => { void controller.close(); }, [controller]);

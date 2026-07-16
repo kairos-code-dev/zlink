@@ -75,7 +75,8 @@ class NodeDiagnosticsRes {
 class WorldAnnounceEvent { constructor(readonly announcementId: string, readonly text: string) {} }
 class NodeMaintenanceChangedEvent { constructor(readonly nodeId: string, readonly enabled: boolean) {} }
 class DeliverAnnounceMsg { constructor(readonly announcementId: string, readonly text: string) {} }
-class BotTickMsg {}
+class BotTickReq {}
+class BotTickRes {}
 class EnsurePlayerActorReq { constructor(readonly playerId: string) {} }
 class EnsurePlayerActorRes { constructor(readonly playerId: string, readonly actor: ActorRefWire) {} }
 class EnterWorldReq {
@@ -141,7 +142,8 @@ const PacketNames = {
   nodeDiagnosticsReq: 'NodeDiagnosticsReq', nodeDiagnosticsRes: 'NodeDiagnosticsRes',
   worldAnnounceEvent: 'WorldAnnounceEvent',
   nodeMaintenanceChangedEvent: 'NodeMaintenanceChangedEvent', deliverAnnounceMsg: 'DeliverAnnounceMsg',
-  botTickMsg: 'BotTickMsg', ensurePlayerActorReq: 'EnsurePlayerActorReq', ensurePlayerActorRes: 'EnsurePlayerActorRes',
+  botTickReq: 'BotTickReq', botTickRes: 'BotTickRes',
+  ensurePlayerActorReq: 'EnsurePlayerActorReq', ensurePlayerActorRes: 'EnsurePlayerActorRes',
   enterWorldReq: 'EnterWorldReq', enterWorldRes: 'EnterWorldRes',
   applyNodeMaintenanceReq: 'ApplyNodeMaintenanceReq', applyNodeMaintenanceRes: 'ApplyNodeMaintenanceRes',
   getNodeDiagnosticsReq: 'GetNodeDiagnosticsReq', getNodeDiagnosticsRes: 'GetNodeDiagnosticsRes',
@@ -150,7 +152,7 @@ const PacketNames = {
 } as const;
 
 export {
-  AnnounceWorldReq, AnnounceWorldRes, ApplyNodeMaintenanceReq, ApplyNodeMaintenanceRes, BotTickMsg,
+  AnnounceWorldReq, AnnounceWorldRes, ApplyNodeMaintenanceReq, ApplyNodeMaintenanceRes, BotTickReq, BotTickRes,
   DeliverAnnounceMsg, EnsurePlayerActorReq, EnsurePlayerActorRes, EnterWorldReq, EnterWorldRes,
   EnterZoneMsg, EnterZoneRes, GetNodeDiagnosticsReq, GetNodeDiagnosticsRes, JoinWorldReq, JoinWorldRes,
   MoveMsg, MoveRejectedNotify, NodeAlertNotify, NodeDiagnosticsReq, NodeDiagnosticsRes,

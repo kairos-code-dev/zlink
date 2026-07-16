@@ -13,7 +13,8 @@ $defaultSamples = @(
     "DeliveryDispatch.Ts",
     "SupportChat.Ts",
     "GameQuest.Ts",
-    "ShoppingMall.Ts"
+    "ShoppingMall.Ts",
+    "ZoneWorld"
 )
 $selectedSamples = if ($Samples.Count -eq 0) { $defaultSamples } else { $Samples }
 

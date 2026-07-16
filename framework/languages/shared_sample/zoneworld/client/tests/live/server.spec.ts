@@ -1,12 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
-const gateway = process.env.ZONEWORLD_GATEWAY ?? 'ws://127.0.0.1:48080';
-const ops = process.env.ZONEWORLD_OPS ?? 'ws://127.0.0.1:48090';
-const query = new URLSearchParams({ gateway, ops }).toString();
-
 test('one browser socket keeps authoritative state across a node transfer', async ({ page }) => {
-  await page.goto(`/game.html?${query}`);
+  await page.goto('/game.html');
   await page.getByLabel('Player ID').fill(`browser-${Date.now()}`);
   await page.getByRole('button', { name: 'Enter world' }).click();
   await expect(page.getByText('connected', { exact: true })).toBeVisible();
@@ -27,7 +23,7 @@ test('one browser socket keeps authoritative state across a node transfer', asyn
 });
 
 test('operations page applies owner-targeted maintenance and diagnostics', async ({ page }) => {
-  await page.goto(`/ops.html?${query}`);
+  await page.goto('/ops.html');
   await page.getByRole('button', { name: 'Connect console' }).click();
   const west = page.getByTestId('node-zone-node-1');
   const east = page.getByTestId('node-zone-node-2');
@@ -52,18 +48,20 @@ test('operations page applies owner-targeted maintenance and diagnostics', async
   }
 });
 
-test('operations page receives node loss through server push', async ({ page }) => {
-  const marker = process.env.ZONEWORLD_BROWSER_LIFECYCLE_MARKER;
-  test.skip(marker === undefined, 'the language runner owns the node lifecycle');
+test('operations page receives node loss through server push', async ({ page }, testInfo) => {
+  const marker = testInfo.config.metadata.lifecycleMarker;
+  test.skip(typeof marker !== 'string', 'the language runner owns the node lifecycle');
 
-  await page.goto(`/ops.html?${query}`);
+  await page.goto('/ops.html');
   await page.getByRole('button', { name: 'Connect console' }).click();
   const east = page.getByTestId('node-zone-node-2');
   await expect(east.getByTestId('registered-state')).toHaveAttribute('data-on', 'true');
   await expect(east.getByTestId('connected-state')).toHaveAttribute('data-on', 'true');
 
-  await writeFile(marker!, 'armed\n', 'utf8');
+  await writeFile(marker as string, 'armed\n', 'utf8');
 
-  await expect(east.getByTestId('registered-state')).toHaveAttribute('data-on', 'false');
-  await expect(east.getByTestId('connected-state')).toHaveAttribute('data-on', 'false');
+  // Zone nodes use the documented 30-second owner lease. Allow its bounded expiry and one
+  // reconcile window instead of assuming Playwright's unrelated five-second assertion default.
+  await expect(east.getByTestId('registered-state')).toHaveAttribute('data-on', 'false', { timeout: 40_000 });
+  await expect(east.getByTestId('connected-state')).toHaveAttribute('data-on', 'false', { timeout: 40_000 });
 });

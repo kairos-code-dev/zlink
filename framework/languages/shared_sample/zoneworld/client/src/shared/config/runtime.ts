@@ -3,10 +3,27 @@ export interface ClientEndpoints {
   ops: string;
 }
 
-export function loadClientEndpoints(location: Location = window.location): ClientEndpoints {
-  const query = new URLSearchParams(location.search);
+export async function loadClientEndpoints(): Promise<ClientEndpoints> {
+  const response = await fetch('/config.json', { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Unable to load /config.json: HTTP ${response.status}`);
+  }
+
+  const value = await response.json() as Partial<ClientEndpoints>;
   return {
-    gateway: query.get('gateway') ?? import.meta.env.VITE_ZONEWORLD_GATEWAY ?? 'ws://127.0.0.1:48080',
-    ops: query.get('ops') ?? import.meta.env.VITE_ZONEWORLD_OPS ?? 'ws://127.0.0.1:48090',
+    gateway: requireWebSocketEndpoint(value.gateway, 'gateway'),
+    ops: requireWebSocketEndpoint(value.ops, 'ops'),
   };
+}
+
+function requireWebSocketEndpoint(value: unknown, name: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`/config.json must contain a string '${name}' endpoint.`);
+  }
+
+  const endpoint = new URL(value);
+  if (endpoint.protocol !== 'ws:' && endpoint.protocol !== 'wss:') {
+    throw new Error(`/config.json '${name}' must use ws or wss.`);
+  }
+  return endpoint.toString().replace(/\/$/, '');
 }

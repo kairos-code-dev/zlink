@@ -27,7 +27,9 @@ class PlayerSession implements ZLinkSession {
   }
 
   async onDisconnected(): Promise<void> {
-    await Promise.allSettled(this.context.actors.bound.map((actor) => actor.notifyDisconnected()));
+    await Promise.allSettled(
+      this.context.actors.bound.map((actor) => actor.notifyDisconnected(AbortSignal.timeout(3_000)))
+    );
   }
 }
 

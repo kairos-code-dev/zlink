@@ -15,9 +15,9 @@ class PlayerActor implements ZLinkActor {
     public dirY = 0
   ) {}
 
-  async push(payload: unknown): Promise<void> {
+  push(payload: unknown): void {
     if (this.isBot) return;
-    await this.context.boundSession.send(payload).submit();
+    this.context.boundSession.send(payload).submit();
   }
 }
 

@@ -1,7 +1,19 @@
 import 'reflect-metadata';
+import * as fs from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
 import { NestFactory } from '@nestjs/core';
-import { ZLINK_CHANNEL_CLIENT, ZLINK_SPOT_MANAGER } from '@zlink-systems/nestjs';
-import type { ZLinkChannelClient, ZLinkSpotManager } from '@zlink-systems/framework';
+import {
+  ZLINK_ACTOR_CLIENT,
+  ZLINK_ACTOR_MANAGER,
+  ZLINK_CHANNEL_CLIENT,
+  ZLINK_SPOT_MANAGER
+} from '@zlink-systems/nestjs';
+import type {
+  ZLinkActorClient,
+  ZLinkActorManager,
+  ZLinkChannelClient,
+  ZLinkSpotManager
+} from '@zlink-systems/framework';
 import { ZONEWORLD_CONFIG } from '../Configuration/configuration';
 import type { ZoneWorldConfiguration } from '../Configuration/configuration';
 import { reportRoutingAllocation } from '../Configuration/routing-id-report';
@@ -9,7 +21,10 @@ import { closeRuntime, waitForShutdown } from '../runtime-support';
 import { ZoneWorldNames, zonesOf } from '../../Shared/spec';
 import { createZoneNodeModule, ZONE_NODE_ALLOCATION_GROUP } from './zone-node-module';
 import { ZoneSpot } from './Infrastructure/ZLink/Spots/zone-spot';
-import { ReportNodeStatusMsg } from '../../Shared/contracts';
+import { EnterWorldReq, ReportNodeStatusMsg } from '../../Shared/contracts';
+import { MaintenanceStore } from '../Configuration/maintenance-store';
+import { NodeRuntimeState } from './Domain/node-runtime-state';
+import { botRoutes } from './Domain/bot-patrol';
 
 let statusTimer: NodeJS.Timeout | undefined;
 
@@ -24,6 +39,10 @@ async function bootstrap(): Promise<void> {
   if (node === undefined) throw new Error('ZoneNode configuration is required.');
   const zones = zonesOf(node.nodeId);
   if (zones.length > 0) {
+    const state = app.get(NodeRuntimeState);
+    const maintenance = app.get(MaintenanceStore);
+    state.restore(await maintenance.readAll());
+    console.log(`maintenance restored node=${node.nodeId} enabled=${state.ownMaintenance()}`);
     const allocation = await reportRoutingAllocation(app, node.nodeId, ZONE_NODE_ALLOCATION_GROUP, [
       ZoneWorldNames.zoneMesh,
       ZoneWorldNames.bridgeMesh,
@@ -31,6 +50,12 @@ async function bootstrap(): Promise<void> {
     ]);
     const spots = app.get<ZLinkSpotManager>(ZLINK_SPOT_MANAGER, { strict: false });
     for (const zoneId of zones) await spots.getOrCreate(ZoneSpot, zoneId);
+    if (node.disableBots !== true) {
+      await spawnBots(app, zones);
+      console.log(`bot-start=ready node=${node.nodeId}`);
+      await waitForBotStart(node.botStartSignalPath);
+    }
+    state.enableBotTicks();
     const channels = app.get<ZLinkChannelClient>(ZLINK_CHANNEL_CLIENT, { strict: false });
     const report = () => {
       try {
@@ -40,8 +65,8 @@ async function bootstrap(): Promise<void> {
             node.nodeId,
             String(allocation.memberRoutingIds.get(ZoneWorldNames.reportChannel)),
             [...zones],
-            0,
-            false
+            state.playerCount(),
+            state.ownMaintenance()
           )
         ).submit();
         console.log(`node status submitted node=${node.nodeId}`);
@@ -67,3 +92,23 @@ bootstrap().catch((error: unknown) => {
 });
 
 export {};
+
+async function waitForBotStart(signalPath: string | undefined): Promise<void> {
+  if (signalPath === undefined) return;
+  while (!fs.existsSync(signalPath)) await delay(50);
+}
+
+async function spawnBots(app: { get<T>(token: unknown, options?: { strict: boolean }): T }, zones: readonly string[]): Promise<void> {
+  const manager = app.get<ZLinkActorManager>(ZLINK_ACTOR_MANAGER, { strict: false });
+  const client = app.get<ZLinkActorClient>(ZLINK_ACTOR_CLIENT, { strict: false });
+  for (const route of botRoutes.filter((candidate) => zones.includes(candidate.zoneId))) {
+    if (await manager.find(route.playerId) !== undefined) continue;
+    const actor = await manager.getOrCreate(route.playerId, ZoneWorldNames.playerActorType);
+    const entered = await client.requestToActor(
+      actor,
+      new EnterWorldReq(route.x, route.y, true, route.dirX, route.dirY)
+    ).timeout(10_000).submit<{ error: string | null }>();
+    if (entered.error !== null) throw new Error(`Bot '${route.playerId}' could not enter the world: ${entered.error}.`);
+    console.log(`bot spawned bot=${route.playerId} zone=${route.zoneId}`);
+  }
+}

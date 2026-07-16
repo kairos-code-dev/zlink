@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/config.json', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      gateway: 'ws://127.0.0.1:48080',
+      ops: 'ws://127.0.0.1:48090',
+    }),
+  }));
+});
+
 test('game shell exposes the authoritative world controls', async ({ page }) => {
   await page.goto('/game.html');
   await expect(page.getByRole('heading', { name: 'ZoneWorld', exact: true })).toBeVisible();

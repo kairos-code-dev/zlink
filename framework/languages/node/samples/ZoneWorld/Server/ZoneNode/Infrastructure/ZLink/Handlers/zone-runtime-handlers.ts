@@ -11,11 +11,30 @@ import type {
 import { PacketNames, WorldAnnounceNotify } from '../../../../../Shared/contracts';
 import type { DeliverAnnounceMsg, ZoneBorderEvent } from '../../../../../Shared/contracts';
 import type { ZoneSpot } from '../Spots/zone-spot';
+import { Inject } from '@nestjs/common';
+import { ZONEWORLD_CONFIG } from '../../../../Configuration/configuration';
+import type { ZoneWorldConfiguration } from '../../../../Configuration/configuration';
 
 @Injectable()
 class ZoneTickHandler implements ZLinkSpotTimerHandler<ZoneSpot> {
+  private faultInjected = false;
+
+  constructor(@Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration) {}
+
   async handle(spot: ZoneSpot, _tick: ZLinkTimerTick): Promise<void> {
+    const zoneId = String(spot.context.spotRid);
+    if (this.config.zoneNode?.faultTickZone === zoneId && !this.faultInjected) {
+      this.faultInjected = true;
+      throw new Error(`injected tick failure for ${zoneId}`);
+    }
     await spot.tick();
+  }
+}
+
+@Injectable()
+class BotTickHandler implements ZLinkSpotTimerHandler<ZoneSpot> {
+  async handle(spot: ZoneSpot, _tick: ZLinkTimerTick): Promise<void> {
+    await spot.tickBots();
   }
 }
 
@@ -43,6 +62,7 @@ class DeliverAnnounceHandler implements ZLinkSpotPacketHandler<ZoneSpot, Deliver
 }
 
 export {
+  BotTickHandler,
   DeliverAnnounceHandler,
   FirstBorderSubscriptionHandler,
   SecondBorderSubscriptionHandler,

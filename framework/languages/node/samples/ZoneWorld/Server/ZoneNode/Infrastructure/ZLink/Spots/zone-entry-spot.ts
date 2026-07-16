@@ -6,13 +6,14 @@ import type {
 } from '@zlink-systems/framework';
 import { PlayerActor as PlayerActorClass } from '../Actors/player-actor';
 import type { PlayerActor } from '../Actors/player-actor';
-import { EntryJoinWorldHandler } from '../Handlers/player-handlers';
+import { EntryEnterWorldHandler, EntryJoinWorldHandler } from '../Handlers/player-handlers';
 
 class ZoneEntrySpot implements ZLinkEntrySpot<PlayerActor> {
   readonly context!: ZLinkEntrySpotContext<PlayerActor, ZoneEntrySpot>;
 
   configure(): void {
     this.context.handlers.addActorPacket(EntryJoinWorldHandler, PlayerActorClass);
+    this.context.handlers.addActorPacket(EntryEnterWorldHandler, PlayerActorClass);
   }
 
   async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {

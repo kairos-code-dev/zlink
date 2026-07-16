@@ -123,7 +123,7 @@ async function waitForExit(state) {
 
 async function reserveBrowserSafePort() {
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    const port = 41000 + Math.floor(Math.random() * 20000);
+    const port = 30000 + Math.floor(Math.random() * 10000);
     if (reservedPorts.has(port)) continue;
     if (await canBind(port)) {
       reservedPorts.add(port);

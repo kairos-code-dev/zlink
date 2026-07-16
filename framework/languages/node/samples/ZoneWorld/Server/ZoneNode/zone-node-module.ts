@@ -21,16 +21,23 @@ import {
 } from './Infrastructure/ZLink/Handlers/node-channel-handlers';
 import { PacketNames } from '../../Shared/contracts';
 import {
+  EntryEnterWorldHandler,
   EntryJoinWorldHandler,
+  PlayerBotTickHandler,
   PlayerMoveHandler,
+  PlayerMovement,
   ZoneJoinWorldHandler
 } from './Infrastructure/ZLink/Handlers/player-handlers';
 import {
+  BotTickHandler,
   FirstBorderSubscriptionHandler,
   DeliverAnnounceHandler,
   SecondBorderSubscriptionHandler,
   ZoneTickHandler
 } from './Infrastructure/ZLink/Handlers/zone-runtime-handlers';
+import { MaintenanceStore } from '../Configuration/maintenance-store';
+import { NodeRuntimeState } from './Domain/node-runtime-state';
+import { SpotRuntimeEventHandler } from './Infrastructure/ZLink/Handlers/spot-runtime-event-handler';
 
 const ZONE_NODE_ALLOCATION_GROUP = 'zoneworld.zone-node';
 
@@ -93,12 +100,17 @@ function createZoneNodeModule() {
             .enableSubscriber()
             .addPublishHandler(PacketNames.worldAnnounceEvent, WorldAnnounceSubscriber)
             .addPublishHandler(PacketNames.nodeMaintenanceChangedEvent, MaintenanceChangedSubscriber);
-          return builder.build();
+          return {
+            ...builder.build(),
+            monitoring: { spot: [{ sourceName: ZoneWorldNames.zoneMesh, intervalMs: 50 }] }
+          };
         }
       })
     ],
     providers: [
       PlayerActorFactory,
+      MaintenanceStore,
+      NodeRuntimeState,
       PlayerActorTransferAdapter,
       ZoneEntrySpot,
       ZoneSpot,
@@ -107,13 +119,18 @@ function createZoneNodeModule() {
       GetNodeDiagnosticsHandler,
       MaintenanceChangedSubscriber,
       WorldAnnounceSubscriber,
+      EntryEnterWorldHandler,
       EntryJoinWorldHandler,
+      PlayerBotTickHandler,
       PlayerMoveHandler,
+      PlayerMovement,
       ZoneJoinWorldHandler,
       FirstBorderSubscriptionHandler,
       DeliverAnnounceHandler,
       SecondBorderSubscriptionHandler,
-      ZoneTickHandler
+      ZoneTickHandler,
+      BotTickHandler,
+      SpotRuntimeEventHandler
     ]
   })(ZoneNodeModule);
   return ZoneNodeModule;

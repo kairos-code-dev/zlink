@@ -4,7 +4,9 @@ import { ZLinkPacket } from '@zlink-systems/framework';
 import {
   AnnounceWorldRes,
   ApplyNodeMaintenanceReq,
+  GetNodeDiagnosticsReq,
   NodeDiagnosticsRes,
+  NodeAlertNotify,
   NodeMaintenanceChangedEvent,
   SetMaintenanceRes,
   WatchNodesRes,
@@ -14,12 +16,14 @@ import { PacketNames } from '../../Shared/contracts';
 import { ZoneWorldErrors, ZoneWorldNames } from '../../Shared/spec';
 import { NodeRegistry } from './node-registry';
 import { OpsConsoleRegistry } from './ops-console-registry';
+import { MaintenanceStore } from '../Configuration/maintenance-store';
 import type {
   AnnounceWorldReq,
   ApplyNodeMaintenanceRes,
   GetNodeDiagnosticsRes,
   NodeDiagnosticsReq,
   ReportNodeStatusMsg,
+  ReportSpotEventMsg,
   SetMaintenanceReq
 } from '../../Shared/contracts';
 import type {
@@ -43,12 +47,27 @@ class ReportNodeStatusHandler implements ZLinkSendHandler<ReportNodeStatusMsg> {
 }
 
 @Injectable()
+class ReportSpotEventHandler implements ZLinkSendHandler<ReportSpotEventMsg> {
+  constructor(private readonly consoles: OpsConsoleRegistry) {}
+
+  async handle(message: ReportSpotEventMsg, _context: ZLinkSendContext): Promise<void> {
+    this.consoles.publishAlert(new NodeAlertNotify(
+      message.nodeId,
+      message.kind as never,
+      message.detail,
+      message.occurredAt
+    ));
+  }
+}
+
+@Injectable()
 @ZLinkPacket(PacketNames.watchNodesReq)
 class WatchNodesHandler {
-  constructor(private readonly nodes: NodeRegistry) {}
+  constructor(private readonly nodes: NodeRegistry, private readonly consoles: OpsConsoleRegistry) {}
 
   async handle(context: ZLinkSessionContext): Promise<void> {
     context.client.reply(new WatchNodesRes(this.nodes.snapshot())).submit();
+    this.consoles.replayAlerts(context);
   }
 }
 
@@ -76,7 +95,8 @@ class AnnounceWorldHandler {
 class SetMaintenanceHandler {
   constructor(
     @Inject(ZLINK_CHANNEL_CLIENT) private readonly channels: ZLinkChannelClient,
-    @Inject(ZLINK_FANOUT_CLIENT) private readonly fanout: ZLinkFanoutClient
+    @Inject(ZLINK_FANOUT_CLIENT) private readonly fanout: ZLinkFanoutClient,
+    private readonly maintenance: MaintenanceStore
   ) {}
 
   async handle(
@@ -85,6 +105,7 @@ class SetMaintenanceHandler {
     payload: ZLinkMessage
   ): Promise<void> {
     const request = payload.decode<SetMaintenanceReq>(Object as never);
+    await this.maintenance.write(request.nodeId, request.enabled);
     try {
       const applied = await this.channels
         .requestToChannel(
@@ -118,7 +139,10 @@ class NodeDiagnosticsHandler {
     const request = payload.decode<NodeDiagnosticsReq>(Object as never);
     try {
       const result = await this.channels
-        .requestToChannel(ZoneWorldNames.opsChannel(request.nodeId), request)
+        .requestToChannel(
+          ZoneWorldNames.opsChannel(request.nodeId),
+          new GetNodeDiagnosticsReq(request.nodeId)
+        )
         .timeout(3_000)
         .submit<GetNodeDiagnosticsRes>();
       context.client.reply(new NodeDiagnosticsRes(
@@ -137,6 +161,7 @@ export {
   AnnounceWorldHandler,
   NodeDiagnosticsHandler,
   ReportNodeStatusHandler,
+  ReportSpotEventHandler,
   SetMaintenanceHandler,
   WatchNodesHandler
 };

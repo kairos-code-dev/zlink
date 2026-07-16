@@ -25,15 +25,20 @@ import type {
   ZLinkSpotOutbound
 } from '@zlink-systems/framework';
 import type { NodeMaintenanceChangedEvent, WorldAnnounceEvent } from '../../../../../Shared/contracts';
+import { NodeRuntimeState } from '../../../Domain/node-runtime-state';
 
 @Injectable()
 class ApplyNodeMaintenanceHandler implements
   ZLinkRequestHandler<ApplyNodeMaintenanceReq, ApplyNodeMaintenanceRes> {
-  constructor(@Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration) {}
+  constructor(
+    @Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration,
+    private readonly state: NodeRuntimeState
+  ) {}
 
   async handle(request: ApplyNodeMaintenanceReq, _context: ZLinkRequestContext): Promise<ApplyNodeMaintenanceRes> {
     const nodeId = this.nodeId();
     if (request.nodeId !== nodeId) throw new Error(`Maintenance request targets '${request.nodeId}', not '${nodeId}'.`);
+    this.state.setMaintenance(nodeId, request.enabled);
     return { nodeId, enabled: request.enabled, zones: [...zonesOf(nodeId)] };
   }
 
@@ -46,12 +51,20 @@ class ApplyNodeMaintenanceHandler implements
 @Injectable()
 class GetNodeDiagnosticsHandler implements
   ZLinkRequestHandler<GetNodeDiagnosticsReq, GetNodeDiagnosticsRes> {
-  constructor(@Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration) {}
+  constructor(
+    @Inject(ZONEWORLD_CONFIG) private readonly config: ZoneWorldConfiguration,
+    private readonly state: NodeRuntimeState
+  ) {}
 
   async handle(request: GetNodeDiagnosticsReq, _context: ZLinkRequestContext): Promise<GetNodeDiagnosticsRes> {
     const nodeId = this.config.zoneNode?.nodeId;
     if (nodeId === undefined || request.nodeId !== nodeId) throw new Error('Diagnostics request targets another node.');
-    return { nodeId, zones: [...zonesOf(nodeId)], playerCount: 0, maintenance: false };
+    return {
+      nodeId,
+      zones: [...zonesOf(nodeId)],
+      playerCount: this.state.playerCount(),
+      maintenance: this.state.ownMaintenance()
+    };
   }
 }
 
@@ -93,7 +106,10 @@ class WorldAnnounceSubscriber implements ZLinkPublishHandler<WorldAnnounceEvent>
 
 @Injectable()
 class MaintenanceChangedSubscriber implements ZLinkPublishHandler<NodeMaintenanceChangedEvent> {
+  constructor(private readonly state: NodeRuntimeState) {}
+
   async handle(message: NodeMaintenanceChangedEvent, context: ZLinkPublishContext): Promise<void> {
+    this.state.setMaintenance(message.nodeId, message.enabled);
     console.log(`maintenance cache updated node=${message.nodeId} enabled=${message.enabled} topic=${context.topic}`);
   }
 }

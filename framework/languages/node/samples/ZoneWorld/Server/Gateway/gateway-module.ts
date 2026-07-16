@@ -5,6 +5,7 @@ import type { ZoneWorldConfiguration } from '../Configuration/configuration';
 import { createZoneWorldLocationStore, zoneWorldLocationOptions } from '../Configuration/location-store';
 import { ZoneWorldNames } from '../../Shared/spec';
 import { JoinWorldSessionHandler, PlayerSessionFactory } from './player-session';
+import { GatewaySpotEventHandler } from './gateway-runtime-events';
 
 function createGatewayModule() {
   class GatewayModule {}
@@ -23,7 +24,7 @@ function createGatewayModule() {
         builder.configureDispatch()
           .messageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
           .traceLabel('gateway');
-        return builder
+        const registration = builder
           .addClientServerChannel(ZoneWorldNames.actorsChannel)
             .enableClient()
           .addSpotMesh(ZoneWorldNames.zoneMesh)
@@ -35,9 +36,13 @@ function createGatewayModule() {
             .bind(gateway.streamEndpoint)
             .registerSession(PlayerSessionFactory)
           .build();
+        return {
+          ...registration,
+          monitoring: { spot: [{ sourceName: ZoneWorldNames.zoneMesh, intervalMs: 50 }] }
+        };
       }
     })],
-    providers: [JoinWorldSessionHandler, PlayerSessionFactory]
+    providers: [GatewaySpotEventHandler, JoinWorldSessionHandler, PlayerSessionFactory]
   })(GatewayModule);
   return GatewayModule;
 }

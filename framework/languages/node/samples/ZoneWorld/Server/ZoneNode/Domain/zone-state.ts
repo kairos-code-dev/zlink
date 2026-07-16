@@ -9,6 +9,7 @@ type BorderSnapshot = { tick: number; receivedAtTick: number; players: readonly 
 class ZoneState {
   private readonly residents = new Map<string, ResidentPlayer>();
   private readonly adjacent = new Map<string, BorderSnapshot>();
+  private readonly borderHighWater = new Map<string, number>();
   private currentTick = 0;
 
   constructor(readonly zoneId: ZoneId) {}
@@ -29,17 +30,20 @@ class ZoneState {
   nextTick(): number { return ++this.currentTick; }
 
   applyBorderSnapshot(fromZoneId: string, tick: number, players: readonly PlayerView[]): void {
-    const current = this.adjacent.get(fromZoneId);
-    if (current !== undefined && tick <= current.tick) return;
+    if (tick <= (this.borderHighWater.get(fromZoneId) ?? -1)) return;
+    this.borderHighWater.set(fromZoneId, tick);
     this.adjacent.set(fromZoneId, { tick, receivedAtTick: this.currentTick, players });
   }
 
-  expireStaleSnapshots(): void {
+  expireStaleSnapshots(): string[] {
+    const expired: string[] = [];
     for (const [zoneId, snapshot] of this.adjacent) {
       if (this.currentTick - snapshot.receivedAtTick >= ZoneWorldSpec.borderSnapshotExpiryTicks) {
         this.adjacent.delete(zoneId);
+        expired.push(zoneId);
       }
     }
+    return expired;
   }
 
   visiblePlayers(): PlayerView[] {

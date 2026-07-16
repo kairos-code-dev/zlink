@@ -17,6 +17,7 @@ type ZoneNodeSettings = {
   bridgeEndpoint: string;
   faultTickZone?: string | null;
   disableBots?: boolean;
+  botStartSignalPath?: string;
 };
 
 type GatewaySettings = {
@@ -97,6 +98,9 @@ function validateConfiguration(
   }
   const role = requireRecord(document[expectedRole], expectedRole);
   for (const key of roleKeys(expectedRole)) requireString(role, key, expectedRole);
+  if (expectedRole === 'zoneNode' && role.botStartSignalPath !== undefined) {
+    requireString(role, 'botStartSignalPath', expectedRole);
+  }
   return document as ZoneWorldConfiguration;
 }
 

@@ -171,6 +171,10 @@ int main ()
       read_file (include_root / "zlink/framework/contracts/errors/error.hpp");
     const auto runner = read_file (e2e_root / "run_e2e_all.sh");
     const auto spot_service_runner = read_file (e2e_root / "SpotService/run_e2e.sh");
+    const auto spot_service_play_host =
+      read_file (e2e_root / "SpotService/Server/Play/play_host_factory.hpp");
+    const auto spot_service_session_host =
+      read_file (e2e_root / "SpotService/Server/Session/session_host_factory.hpp");
     const auto registration_codec_runner =
       read_file (e2e_root / "RegistrationCodec/run_e2e.sh");
     const auto registration_codec_client =
@@ -969,6 +973,25 @@ int main ()
     }
     gate.require (all_scenario_list.find ("SM-Q9") == std::string::npos, "E2E-CP-05",
                   "SpotService all mode includes non-contract SM-Q9");
+
+    /* E2E-CP-14 — the separated Session/Play SM-D2 topology runs without a
+     * route mesh, so actor bind and relay use the spot plane itself. */
+    const auto sm_d2_begin = spot_service_runner.find ("if [[ \"$SCENARIO\" == \"SM-D2\"");
+    const auto sm_d2_end =
+      spot_service_runner.find ("if [[ \"$SCENARIO\" == \"SM-D3\"", sm_d2_begin);
+    const auto sm_d2_block =
+      sm_d2_begin != std::string::npos && sm_d2_end != std::string::npos
+        ? spot_service_runner.substr (sm_d2_begin, sm_d2_end - sm_d2_begin)
+        : std::string{};
+    gate.require (sm_d2_block.find ("routeMeshEnabled=false") != std::string::npos,
+                  "E2E-CP-14",
+                  "SM-D2 does not disable route mesh for its separated Session/Play roles");
+    gate.require (spot_service_play_host.find ("if (route_mesh_enabled)")
+                      != std::string::npos
+                    && spot_service_session_host.find ("if (route_mesh_enabled)")
+                         != std::string::npos,
+                  "E2E-CP-14",
+                  "SpotService Play/Session roles still register route mesh unconditionally");
 
     /* E2E-CP-18 — SM-E1 proves both missing-handler flow classifications. */
     const auto sm_e1_begin = spot_service_runner.find ("if [[ \"$SCENARIO\" == \"SM-E1\"");

@@ -25,6 +25,10 @@ fi
 build_dotnet() {
   local out_dir="$artifact_root/nuget"
   mkdir -p "$out_dir"
+  dotnet pack "$repo_root/framework/languages/dotnet/src/Systems.Zlink.Stream.Connector/Systems.Zlink.Stream.Connector.csproj" \
+    -c "$configuration" -o "$out_dir"
+  dotnet pack "$repo_root/framework/languages/dotnet/src/Zlink.Framework.Contracts/Zlink.Framework.Contracts.csproj" \
+    -c "$configuration" -o "$out_dir"
   dotnet pack "$repo_root/framework/languages/dotnet/src/Zlink.HttpClient/Zlink.HttpClient.csproj" \
     -c "$configuration" -o "$out_dir"
   echo "-- http-client .NET package output: $out_dir"

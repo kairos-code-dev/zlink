@@ -135,7 +135,7 @@ client를 수정해도 소비자 참조 버전을 올리기 전까지는 영향�
 
 | 언어 | 산출물 | 소비자 참조 버전 위치 |
 |------|--------|----------------------|
-| .NET | `nuget/Zlink.HttpClient.<ver>.nupkg` | `framework/languages/dotnet/Directory.Packages.props`의 `ZLinkHttpClientPackageVersion` |
+| .NET | `nuget/Systems.Zlink.Stream.Connector.<ver>.nupkg`, `nuget/Zlink.Framework.Contracts.<ver>.nupkg`, `nuget/Zlink.HttpClient.<ver>.nupkg` | `framework/languages/dotnet/Directory.Packages.props`의 `ZLinkHttpClientPackageVersion` |
 | Java | `maven/systems/zlink/zlink-http-client/<ver>/` | (소비자 없음 — 게시만) |
 | Node.js | `npm/zlink-systems-http-client-<ver>.tgz` | `framework/languages/node/package.json`의 `@zlink-systems/http-client` tarball 경로 |
 | C++ | 제외 | static lib + in-tree framework PUBLIC 헤더 의존이라 설치본/소스 혼합 시 ODR 위험. cpp 소비자는 소스 참조를 유지하고 `test_cpp_http_client` 계약 테스트로 게이트한다 |

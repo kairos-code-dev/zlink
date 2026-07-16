@@ -8,7 +8,7 @@ BUILD_DIR="$FRAMEWORK_DIR/build"
 SCENARIO="${1:-all}"
 SCENARIO_LOWER="$(printf '%s' "$SCENARIO" | tr '[:upper:]' '[:lower:]')"
 case "$SCENARIO_LOWER" in
-  all|full|atd-a[1-4]|atd-b[1-3]|atd-c[1-3]|atd-d[1-4]|atd-e[1-3]|td-e[23]) ;;
+  all|full|atd-a[1-4]|atd-b[1-3]|atd-c[1-3]|atd-d[1-4]|atd-e[1-3]|td-c[1-3]|td-e[23]) ;;
   *)
     echo "Unsupported AutomaticTurnDispatch scenario: $SCENARIO" >&2
     exit 2
@@ -229,6 +229,29 @@ wait_port() {
 }
 
 static_checks() {
+  if [[ ! -f "$ROOT_DIR/Server/ExternalApi/main.cpp" ]]; then
+    echo "AutomaticTurnDispatch TD-C1 requires the external-api role." >&2
+    return 1
+  fi
+  if ! rg -q 'build_server<external_api_http_client_tag_t>' \
+      "$ROOT_DIR/Server/Play/play_host_factory.hpp"; then
+    echo "AutomaticTurnDispatch Play must register the external API HTTP client by name." >&2
+    return 1
+  fi
+  if ! rg -q 'http_await_msg_t' "$ROOT_DIR/Shared/automatic_turn_dispatch_contracts.hpp" \
+      || ! rg -q 'io_worker_await_msg_t' \
+        "$ROOT_DIR/Shared/automatic_turn_dispatch_contracts.hpp"; then
+    echo "AutomaticTurnDispatch TD-C1 through TD-C3 contracts are missing." >&2
+    return 1
+  fi
+  if ! rg -q 'run_io_worker' "$ROOT_DIR/Server/Play/Handlers" -g '*.hpp'; then
+    echo "AutomaticTurnDispatch TD-C3 must exercise run_io_worker." >&2
+    return 1
+  fi
+  if ! rg -q 'http-yield-released' "$ROOT_DIR/Server/Play/Handlers" -g '*.hpp'; then
+    echo "AutomaticTurnDispatch TD-C1 deterministic evidence markers are missing." >&2
+    return 1
+  fi
   if rg -n 'MapPost\("/await|HttpClient|new HttpClient|\.Post\(' "$ROOT_DIR" -g '*.cpp' -g '*.hpp' >/tmp/zlink-automatic-turn-dispatch-static-http.$$; then
     cat /tmp/zlink-automatic-turn-dispatch-static-http.$$ >&2
     rm -f /tmp/zlink-automatic-turn-dispatch-static-http.$$

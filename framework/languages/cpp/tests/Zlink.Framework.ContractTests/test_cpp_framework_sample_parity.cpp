@@ -158,6 +158,31 @@ TEST (CppFrameworkSampleParity, BingoUsesDotNetSamplePacketSurface)
     EXPECT_EQ (second_joined.reply->decode<bingo_room_join_res_t> ().state.players.size (), 1U);
 }
 
+TEST (CppFrameworkSampleParity, BingoClientChecksEveryDocumentedScenarioState)
+{
+    const auto root = cpp_language_root () / "samples/Bingo";
+    const auto scenario = read_file (root / "Client/bingo_client_scenario.hpp");
+    const auto room = read_file (
+      root
+      / "Server/Play/Infrastructure/ZLink/Spots/BingoRoomSpot/bingo_room_spot.hpp");
+    const auto runner = read_file (root / "run_sample.sh");
+
+    EXPECT_NE (scenario.find ("client1_joined.state.players"), std::string::npos)
+      << "SMP-CP-34 step 5 must validate the player records carried by the join push";
+    EXPECT_NE (scenario.find ("client1_card.state.players"), std::string::npos)
+      << "SMP-CP-34 step 7 must validate both submitted cards in the second response";
+    EXPECT_NE (scenario.find ("same_bingo_room_state (client1_drawn.state, client2_drawn.state)"),
+               std::string::npos)
+      << "SMP-CP-34 step 8 must compare the complete draw state from both pushes";
+    EXPECT_NE (scenario.find ("same_bingo_player_list (client1_ended.state.players"),
+               std::string::npos)
+      << "SMP-CP-34 step 9 must compare the final player lists from both pushes";
+    EXPECT_NE (room.find ("observer returned to entry spot"), std::string::npos)
+      << "SMP-CP-34 step 11 must leave server evidence after the observer room leave";
+    EXPECT_NE (runner.find ("observer returned to entry spot"), std::string::npos)
+      << "SMP-CP-34 runner must require the observer leave evidence";
+}
+
 TEST (CppFrameworkSampleParity, BingoWireOmitsTransportIdentityNotification)
 {
     const auto contracts = read_file (

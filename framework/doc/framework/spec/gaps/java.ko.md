@@ -1110,6 +1110,8 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     replacement와 crash failover를 섞지 않는다. 구현 커밋 `d1adfb5dc`.
   - 부분 수정: RM-A4는 v2 시작 뒤 `api-a`의 유효 row가 정확히 하나이고 endpoint가 v2인지 확인한다.
     연속 20개 reply의 instance id도 모두 v2여야 한다. `RM-A4` 통과, 구현 커밋 `fe131ce3d`.
+  - POSD 재검토: 정상 replacement class와 evidence marker에서 `failover`라는 잘못된 도메인 용어를
+    제거해 lifecycle 의미를 한 곳에서만 표현한다. `RM-A4` 재통과, 리팩토링 커밋 `a06bc7354`.
   - 추가 blocker: RM-B2에 slow in-flight와 drain 전파 중 target 미지정 요청을 추가한 red gate는
     outer HTTP timeout을 늘린 뒤에도 framework의 5초 request timeout으로 실패했다
     (`logs/20260716-085813-3184786/`, `logs/20260716-085906-3187724/`). E2E sleep이나 재시도로

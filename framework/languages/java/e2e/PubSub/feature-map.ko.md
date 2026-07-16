@@ -19,7 +19,7 @@ publisher와 subscriber가 같은 Redis location store endpoint와 실행별 key
 | PS-A3 | 구현 | `sub-3`를 pre-late publish 뒤에 시작하고, 구독 전 이벤트가 replay되지 않으며 이후 publish만 받는지 `/evidence/wait`로 확인한다. |
 | PS-A4 | 차단 | 현재 구현은 `sub-1` 프로세스를 재시작하므로 application startup이 handler를 다시 등록한다. 공통 계약이 요구하는 동일 process의 transport 단절·복구와 기존 subscription 자동 재적용을 검증하지 않는다. subscriber 하나의 연결만 끊는 process-external network fault harness가 필요하다. |
 | PS-B1 | 구현 | `sub-1` handler 지연 중에도 `sub-2`와 `sub-3`가 최신 이벤트를 계속 받는지 `/evidence/wait`로 확인한다. |
-| PS-B2 | 부분 구현 | publisher 재시작 뒤 기존 subscriber가 새 event를 받는지는 확인한다. 정상 종료의 terminal `Drained`, old peer row 제거, 새 publisher `ConnectionReady`를 deterministic gate로 확인하지 않는다. |
+| PS-B2 | 부분 구현 | publisher의 public drain 결과가 terminal `Drained`인지 확인하고 같은 rid·endpoint로 재시작한다. 기존 subscriber가 새 event를 받는지도 확인한다. old peer row 제거와 새 publisher `ConnectionReady`는 아직 deterministic gate로 확인하지 않는다. 동적 역할 readiness는 3초다. |
 | PS-C1 | 구현 | 미등록 packet name publish가 subscriber observer evidence에 `HANDLER_MISSING`/`DROP`으로 남고 이후 정상 publish가 유지되는지 `/evidence/wait`로 확인한다. |
 
 ## Evidence wait 검증

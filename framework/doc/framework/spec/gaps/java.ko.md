@@ -1125,6 +1125,11 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     `PS-B2`는 subscriber process 유지와 새 event 수신은 확인하지만 terminal `Drained`, old row 제거,
     새 publisher `ConnectionReady`를 기다리지 않는다. `PS-B2` 전체 실행의 evidence HTTP timeout은
     단독 재실행에서 통과해 별도 flaky gate로 남는다.
+  - 부분 수정: publisher `/admin/drain`이 terminal 결과를 반환하고 PS-B2가 `Drained`를 확인한 뒤
+    process를 종료하도록 바꿨다. endpoint가 없던 red 실행은 HTTP 404로 실패했고
+    (`PubSub/logs/20260716-090217-3198473/`), 구현 뒤 `PS-B2`가 통과했다
+    (`PubSub/logs/20260716-090305-3201235/`). 동적 역할 readiness도 30초에서 3초로 줄였다. 구현 커밋
+    `6017d4680`.
 - [ ] **E2E-JV-28** (가짜 통과) — Config 5 restart·replacement와 Weight·graceful drain 의미가 섞여 있다.
   - 재검증: `RL-A1`은 terminal `Drained`, old row 제거, down 구간의 정확한
     `RouteNotConnected`, 새 owner generation과 `ConnectionReady`를 모두 보지 않는다. `RL-A2`는

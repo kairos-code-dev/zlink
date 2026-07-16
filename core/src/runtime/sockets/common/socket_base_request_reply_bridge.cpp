@@ -4,21 +4,21 @@
 
 #include "sockets/common/socket_base.hpp"
 
-std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-zlink::socket_base_t::router_spot_request_reply_state () const
+std::shared_ptr<zlink::reqrep_internal::router_request_reply_state_t>
+zlink::socket_base_t::router_request_reply_state () const
 {
-    return _request_reply_bridge.router_spot_request_reply_state;
+    return _request_reply_bridge.router_request_reply_state;
 }
 
-void zlink::socket_base_t::set_router_spot_request_reply_state (
-  const std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t> &state_)
+void zlink::socket_base_t::set_router_request_reply_state (
+  const std::shared_ptr<zlink::reqrep_internal::router_request_reply_state_t> &state_)
 {
-    _request_reply_bridge.router_spot_request_reply_state = state_;
+    _request_reply_bridge.router_request_reply_state = state_;
 }
 
-void zlink::socket_base_t::clear_router_spot_request_reply_state ()
+void zlink::socket_base_t::clear_router_request_reply_state ()
 {
-    _request_reply_bridge.router_spot_request_reply_state.reset ();
+    _request_reply_bridge.router_request_reply_state.reset ();
 }
 
 std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>

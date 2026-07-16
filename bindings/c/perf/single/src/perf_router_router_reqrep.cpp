@@ -16,20 +16,18 @@ namespace
 bool recv_ping (void *server_, zlink_routing_id_t *client_rid_out_)
 {
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (&part) != 0)
         return false;
-    const int rc = zlink_router_recv_part (server_, &source_rid, &source_spot_rid, &request_seq,
+    const int rc = zlink_router_recv_part (server_, &source_rid, &request_seq,
                                            &part, &has_more, ZLINK_RECV_FLAGS_DONTWAIT);
     if (rc != 0) {
         zlink_msg_close (&part);
         return false;
     }
-    const bool ok = source_rid && source_rid->size > 0 && source_spot_rid
-                    && source_spot_rid->size == 0 && request_seq == 0
+    const bool ok = source_rid && source_rid->size > 0 && request_seq == 0
                     && has_more == ZLINK_PART_FINAL && zlink_msg_size (&part) == 4
                     && std::memcmp (zlink_msg_data (&part), "PING", 4) == 0;
     if (ok && client_rid_out_) {
@@ -85,13 +83,12 @@ bool perform_handshake (void *server_,
     }
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (&part) != 0)
         return false;
-    if (zlink_router_recv_part (client_, &source_rid, &source_spot_rid, &request_seq, &part,
+    if (zlink_router_recv_part (client_, &source_rid, &request_seq, &part,
                                 &has_more, ZLINK_RECV_FLAGS_NONE)
         != 0) {
         zlink_msg_close (&part);
@@ -99,7 +96,7 @@ bool perform_handshake (void *server_,
     }
     const bool ok = source_rid && source_rid->size == server_rid_->size
                     && std::memcmp (source_rid->data, server_rid_->data, source_rid->size) == 0
-                    && source_spot_rid && source_spot_rid->size == 0 && request_seq == 0
+                    && request_seq == 0
                     && has_more == ZLINK_PART_FINAL && zlink_msg_size (&part) == 4
                     && std::memcmp (zlink_msg_data (&part), "PONG", 4) == 0;
     zlink_msg_close (&part);

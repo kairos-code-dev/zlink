@@ -7,7 +7,7 @@
 #include <zlink/eventing/api.h>
 #include <zlink/message/api.h>
 #include <zlink/service/actor.h>
-#include <zlink/service/spot.h>
+#include <zlink/service/mesh_node.h>
 #include <zlink/socket/api.h>
 
 #include <unity.h>
@@ -28,8 +28,8 @@ void test_grouped_contract_headers_compile ()
     TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_msg_init));
     TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_socket));
     TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_socket_monitor_open));
-    TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_spot_node_new));
-    TEST_ASSERT_EQUAL_INT (ZLINK_ACTOR_ID_MAX, 256);
+    TEST_ASSERT_NOT_NULL (reinterpret_cast<void *> (&zlink_mesh_node_new));
+    TEST_ASSERT_EQUAL_INT (255, ZLINK_ACTOR_ID_MAX);
 }
 
 int main ()

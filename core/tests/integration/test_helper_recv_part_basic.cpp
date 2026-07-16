@@ -72,7 +72,6 @@ void set_recv_timeout_ms (void *socket_, int timeout_ms_)
 
 zlink_recv_result_t recv_router_part_with_retry (void *router_,
                                                  const zlink_routing_id_t **source_node_rid_out_,
-                                                 const zlink_routing_id_t **source_spot_rid_out_,
                                                  uint64_t *request_seq_out_,
                                                  zlink_msg_t *part_out_,
                                                  zlink_part_flag_t *has_more_out_)
@@ -80,7 +79,7 @@ zlink_recv_result_t recv_router_part_with_retry (void *router_,
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (3000);
     while (std::chrono::steady_clock::now () < deadline) {
         const zlink_recv_result_t rc = zlink_router_recv_part (
-          router_, source_node_rid_out_, source_spot_rid_out_, request_seq_out_, part_out_,
+          router_, source_node_rid_out_, request_seq_out_, part_out_,
           has_more_out_, static_cast<zlink_recv_flags_t> (0));
         if (rc == ZLINK_RECV_OK)
             return rc;
@@ -204,16 +203,13 @@ void test_recv_part_reads_each_part_and_tracks_has_more ()
       zlink_send (receiver, &ping, 1, static_cast<zlink_send_flags_t> (0)));
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *primed = NULL;
     size_t primed_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (router, &source_rid, &source_spot_rid,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (router, &source_rid,
                                                   &request_seq, &primed, &primed_count,
                                                   static_cast<zlink_recv_flags_t> (0)));
     TEST_ASSERT_NOT_NULL (source_rid);
-    TEST_ASSERT_NOT_NULL (source_spot_rid);
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
     TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
     zlink_multipart_close (primed, primed_count);
 
@@ -259,12 +255,11 @@ void test_router_recv_part_metadata_view_invalidates_on_next_recv_like_call ()
     msleep (SETTLE_TIME);
 
     const zlink_routing_id_t *primed_source_rid = NULL;
-    const zlink_routing_id_t *primed_source_spot_rid = NULL;
     uint64_t primed_request_seq = 0;
     zlink_msg_t *primed_parts = NULL;
     size_t primed_part_count = 0;
     TEST_ASSERT_EQUAL_INT (
-      ZLINK_RECV_NO_DATA, zlink_router_recv (router, &primed_source_rid, &primed_source_spot_rid,
+      ZLINK_RECV_NO_DATA, zlink_router_recv (router, &primed_source_rid,
                                              &primed_request_seq, &primed_parts, &primed_part_count,
                                              static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT)));
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
@@ -273,16 +268,13 @@ void test_router_recv_part_metadata_view_invalidates_on_next_recv_like_call ()
     send_dealer_request_single (dealer1, "first", &probe1);
 
     const zlink_routing_id_t *first_source_rid = NULL;
-    const zlink_routing_id_t *first_spot_rid = NULL;
     uint64_t first_request_seq = 0;
     zlink_msg_t part;
     zlink_msg_init (&part);
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     TEST_ASSERT_SUCCESS_ERRNO (recv_router_part_with_retry (
-      router, &first_source_rid, &first_spot_rid, &first_request_seq, &part, &has_more));
+      router, &first_source_rid, &first_request_seq, &part, &has_more));
     TEST_ASSERT_NOT_NULL (first_source_rid);
-    TEST_ASSERT_NOT_NULL (first_spot_rid);
-    TEST_ASSERT_EQUAL_UINT64 (0, first_spot_rid->size);
     TEST_ASSERT_TRUE (first_request_seq != 0);
     TEST_ASSERT_EQUAL_INT (0, has_more);
     TEST_ASSERT_EQUAL_MEMORY ("D1", first_source_rid->data, 2);
@@ -303,7 +295,7 @@ void test_router_recv_part_metadata_view_invalidates_on_next_recv_like_call ()
     zlink_msg_init (&part);
     has_more = ZLINK_PART_FINAL;
     TEST_ASSERT_SUCCESS_ERRNO (recv_router_part_with_retry (
-      router, &second_source_rid, &second_spot_rid, &second_request_seq, &part, &has_more));
+      router, &second_source_rid, &second_request_seq, &part, &has_more));
     TEST_ASSERT_NOT_NULL (second_source_rid);
     TEST_ASSERT_EQUAL_MEMORY ("D2", second_source_rid->data, 2);
     TEST_ASSERT_EQUAL_INT (0, has_more);

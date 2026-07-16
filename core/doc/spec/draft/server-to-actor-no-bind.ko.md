@@ -168,8 +168,8 @@ row 없음이 `ActorRouteNotFound`이고, stale location은 `ActorLocationStale`
 `zlink_spot_node_actor_forward_bound_session_part()`는 source node/session rid를 요구한다
 (`core/include/zlink/service/spot.h:147`, `core/include/zlink/service/spot.h:150`,
 `core/include/zlink/service/spot.h:153`, `core/include/zlink/service/spot.h:154`). 정식 spec도 이 함수를
-session -> actor ingress relay로 설명한다(`core/doc/spec/core/service/spot.ko.md:1397`,
-`core/doc/spec/core/service/spot.ko.md:1400`, `core/doc/spec/core/service/spot.ko.md:1402`).
+session -> actor ingress relay로 설명한다(`core/doc/spec/core/service/03-spot.ko.md:1397`,
+`core/doc/spec/core/service/03-spot.ko.md:1400`, `core/doc/spec/core/service/03-spot.ko.md:1402`).
 
 따라서 새 public C API가 필요하다. `actor_*` 계열 이름은 actor가 주어처럼 읽히므로, 공개 함수는
 node에서 actor로 보내는 방향이 드러나는 이름을 사용한다. wire kind의 `no_bind` 이름은 protocol 구분을
@@ -257,8 +257,8 @@ kind 값과 layout이 그대로라 하위 호환이다.
 
 구현과 회귀 테스트가 끝난 뒤에는 다음 위치를 실제 header와 맞춰 갱신한다.
 
-- `core/doc/spec/core/service/spot.ko.md`: 새 C API 계약, 오류 결과, ownership 규칙.
-- `core/doc/spec/core/errno-map.ko.md`: 새 API가 반환하는 errno/result 매핑.
+- `core/doc/spec/core/service/03-spot.ko.md`: 새 C API 계약, 오류 결과, ownership 규칙.
+- `core/doc/spec/core/04-errno-map.ko.md`: 새 API가 반환하는 errno/result 매핑.
 - bindings spec과 언어별 binding 문서: 새 `ZLINK_EXPORT` 함수가 들어갈 경우 전 언어 커버리지.
 
 정식 문서에는 이 초안의 대안이나 구현 전 가정을 그대로 옮기지 않는다.

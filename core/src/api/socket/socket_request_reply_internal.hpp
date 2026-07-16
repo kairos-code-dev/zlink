@@ -66,7 +66,6 @@ struct socket_request_reply_state_t : public zlink::request_reply_runtime::seque
     std::unordered_map<pending_key_t, pending_request_t, pending_key_hash_t> pending_requests;
     std::unordered_map<uint64_t, pending_key_t> pending_request_keys_by_seq;
     std::unordered_map<uint64_t, dealer_reply_target_t> dealer_reply_targets;
-    std::set<void *> spot_channel_dispatch_observers;
     uint64_t dealer_next_reply_token;
     bool internal_dispatch_installed;
     zlink::internal_pair_queue::queue_t recv_queue;
@@ -200,10 +199,6 @@ int schedule_socket_pending_timeout (
   std::shared_ptr<zlink::request_timeout::task_t> *task_out_);
 void queue_socket_pending_timeout_completion (
   const std::shared_ptr<socket_request_reply_state_t> &state_, const pending_request_t &pending_);
-void register_spot_channel_dispatch_observer (
-  const std::shared_ptr<socket_request_reply_state_t> &state_, void *spot_);
-void unregister_spot_channel_dispatch_observer (
-  const std::shared_ptr<socket_request_reply_state_t> &state_, void *spot_);
 int ensure_recv_queue_ready (const std::shared_ptr<socket_request_reply_state_t> &state_);
 int ensure_internal_dispatch_installed (
   const std::shared_ptr<socket_request_reply_state_t> &state_);
@@ -216,7 +211,6 @@ int start_request (socket_handle_t handle_,
                    zlink_reply_handler_fn handler_,
                    void *userdata_);
 bool has_pending_request_work (const std::shared_ptr<socket_request_reply_state_t> &state_);
-int drain_spot_channel_bridge_reply_progress (socket_handle_t handle_, void *owner_handle_);
 int drain_close_request_reply_socket (socket_handle_t handle_);
 void cleanup_request_reply_socket (socket_handle_t handle_);
 }

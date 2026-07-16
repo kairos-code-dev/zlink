@@ -7,7 +7,6 @@
 
 #include <cstddef>
 
-#include "api/service/service_handle_internal.hpp"
 #include "sockets/common/socket_base.hpp"
 
 struct option_descriptor_t
@@ -33,7 +32,6 @@ struct option_target_t
     option_target_t ();
 
     option_target_kind_t kind;
-    service_handle_kind_t service_kind;
     socket_base_t *socket;
 };
 

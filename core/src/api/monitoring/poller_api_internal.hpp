@@ -26,14 +26,20 @@ enum poller_subject_kind_t
     poller_subject_fd,
     poller_subject_timer,
     poller_subject_socket_request_completion,
-    poller_subject_router_spot_request_completion,
-    poller_subject_spot_request_completion,
-    poller_subject_spot_pub,
-    poller_subject_spot_sub,
-    poller_subject_spot_routed,
-    poller_subject_spot_node_pub,
-    poller_subject_spot_node_sub
+    poller_subject_router_request_completion,
+    poller_subject_mesh_node
 };
+
+//  Validates the public recv flags word for helper receive entry points.
+static inline int validate_recv_flags (int flags_)
+{
+    if (flags_ != 0 && flags_ != ZLINK_DONTWAIT) {
+        errno = ENOTSUP;
+        return -1;
+    }
+    return 0;
+}
+
 
 struct poller_registration_t
 {
@@ -58,6 +64,9 @@ struct poller_registration_t
     zlink::request_completion::queue_state_t *completion_queue;
     std::shared_ptr<void> state_ref;
 };
+
+//  Releases per-subject references taken when a registration was added.
+void release_poller_registration (const poller_registration_t &registration_);
 
 struct poller_handle_t
 {

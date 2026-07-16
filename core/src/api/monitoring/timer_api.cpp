@@ -8,10 +8,8 @@
 #include "api/core/config_result_internal.hpp"
 #include "api/message/handler_result_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
-#include "api/service/service_api_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
-#include "services/spot/runtime/spot_handle.hpp"
-#include "services/spot/pubsub/spot_subject_access.hpp"
+#include "api/mesh/mesh_api_internal.hpp"
 
 timer_handle_t *as_timer_handle (void *timer_)
 {
@@ -69,7 +67,7 @@ void timer_handle_release_poller_ref (timer_handle_t *timer_)
 void *zlink_timer_new (void)
 {
     // Generic timers stay on the generic timer scheduler backend. They must not
-    // run on socket I/O threads, and they must not reuse the SpotNode timer
+    // run on socket I/O threads, and they must not reuse the service timer
     // scheduler path.
     std::unique_ptr<timer_handle_t> timer (
       new (std::nothrow) timer_handle_t (timer_handle_t::backend_global_scheduler));
@@ -94,35 +92,7 @@ void *zlink_timer_new (void)
 
 void *zlink_spot_timer_new (void *spot_)
 {
-    // Spot timers stay on the SpotNode-owned scheduler backend so a large
-    // number of Spot timers can be multiplexed per node without spawning a
-    // thread per timer.
-    spot_handle_t *spot = as_spot_handle (spot_);
-    if (!spot || !spot->node) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    std::shared_ptr<scheduler_state_t> scheduler = resolve_spot_scheduler (spot->node);
-    ensure_scheduler_started (scheduler);
-
-    std::unique_ptr<timer_handle_t> timer (new (std::nothrow) timer_handle_t (
-      timer_handle_t::backend_spot_node_scheduler, spot_, spot->node));
-    if (!timer) {
-        errno = ENOMEM;
-        return NULL;
-    }
-    if (!timer->signaler.valid ()) {
-        errno = EFAULT;
-        return NULL;
-    }
-
-    timer->scheduler = scheduler.get ();
-    {
-        std::lock_guard<std::mutex> lock (scheduler->mutex);
-        ++scheduler->active_timers;
-    }
-    return timer.release ();
+    return zlink::mesh::spot_timer_new (spot_);
 }
 
 zlink_close_result_t zlink_timer_destroy (void **timer_p_)

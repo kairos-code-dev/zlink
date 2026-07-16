@@ -7,7 +7,6 @@
 #include <pthread.h>
 #endif
 
-#include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
 #include "api/monitoring/timer_api_internal.hpp"
 
 timer_handle_t::timer_handle_t (backend_kind_t backend_, void *owner_spot_, void *owner_node_) :
@@ -106,9 +105,7 @@ void scheduler_fire_timer (timer_handle_t *timer_)
 {
     zlink_timer_handler_fn handler = NULL;
     void *handler_userdata = NULL;
-    void *owner_spot = NULL;
     uint64_t fire_count = 0;
-    bool notify_spot = false;
     bool reschedule = false;
     uint64_t next_deadline_ns = 0;
     scheduler_state_t *scheduler = NULL;
@@ -120,7 +117,6 @@ void scheduler_fire_timer (timer_handle_t *timer_)
             fire_count = timer_->next_fire_count++;
             handler = timer_->handler;
             handler_userdata = timer_->handler_userdata;
-            owner_spot = timer_->owner_spot;
 
             if (handler) {
                 timer_->receive_callback_active = true;
@@ -128,7 +124,6 @@ void scheduler_fire_timer (timer_handle_t *timer_)
                 timer_->fired_counts.push_back (fire_count);
                 ensure_timer_signal_locked (timer_);
                 timer_->recv_cv.notify_one ();
-                notify_spot = owner_spot != NULL;
             }
 
             if (timer_->repeat_count > 0) {
@@ -146,10 +141,6 @@ void scheduler_fire_timer (timer_handle_t *timer_)
 
     if (handler)
         handler (timer_, fire_count, handler_userdata);
-
-    if (notify_spot)
-        zlink_spot_notify_dispatch_info (owner_spot, ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE,
-                                         ZLINK_SPOT_DISPATCH_SUBJECT_TIMER, timer_);
 
     std::unique_lock<std::mutex> scheduler_lock (scheduler->mutex);
     std::unique_lock<std::mutex> timer_lock (timer_->mutex);

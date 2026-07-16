@@ -115,10 +115,6 @@ ZLINK_EXPORT size_t zlink_msg_size (const zlink_msg_t *msg_);
  */
 ZLINK_EXPORT int zlink_msg_refcnt (const zlink_msg_t *msg_, zlink_config_result_t *error_out_);
 
-/** @brief Get a string message property (e.g. metadata). */
-ZLINK_EXPORT const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
-
-
 /** @brief Close all parts in a multipart message array. */
 ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 

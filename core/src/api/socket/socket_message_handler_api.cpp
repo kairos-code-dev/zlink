@@ -4,7 +4,6 @@
 
 #include "api/monitoring/poller_api_internal.hpp"
 #include "api/core/zlink_option_internal.hpp"
-#include "api/service/service_option_surface_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
 #include "api/message/handler_result_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
@@ -97,9 +96,9 @@ zlink_send_ready_handler (void *s_, zlink_send_ready_handler_fn handler_, void *
 
     const zlink::option_target_t target = zlink::resolve_option_target (s_);
     if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::handler_result_internal::from_rc (
-          zlink_service_send_ready_handler_internal (s_, handler_, userdata_));
+        //  Raw send-ready callbacks stay a socket-only surface in 10.0.0.
+        errno = ENOTSUP;
+        return ZLINK_HANDLER_NOT_SUPPORTED;
     }
 
     if (target.kind == zlink::option_target_socket)

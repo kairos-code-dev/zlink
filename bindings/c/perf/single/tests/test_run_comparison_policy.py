@@ -158,31 +158,23 @@ class RunComparisonPolicyTests(unittest.TestCase):
 
     def test_direction_and_throughput_unit_are_one_way(self):
         self.assertEqual(RC.pattern_direction_label("PAIR"), "one-way")
-        self.assertEqual(RC.pattern_direction_label("SPOT"), "one-way")
         self.assertTrue(RC.format_throughput("PAIR", 1234.0).endswith("Kmsg/s"))
-        self.assertTrue(RC.format_throughput("SPOT", 1234.0).endswith("Kmsg/s"))
 
     def test_default_message_sizes_follow_policy_matrix(self):
         self.assertEqual(
             RC.default_msg_sizes_for_pattern("PAIR"),
             [64, 256, 1024, 65536, 131072, 262144],
         )
-        self.assertEqual(
-            RC.default_msg_sizes_for_pattern("SPOT"),
-            [64, 256, 1024, 65536, 131072, 262144],
-        )
 
     def test_default_transports_follow_policy_matrix(self):
         with EnvPatch(remove=["PERF_TRANSPORTS"]):
             pair_transports = RC.select_transports("PAIR")
-            stream_transports = RC.select_transports("SPOT")
 
         self.assertEqual(pair_transports[:5], ["tcp", "tls", "ws", "wss", "inproc"])
         if RC.IS_WINDOWS:
             self.assertNotIn("ipc", pair_transports)
         else:
             self.assertIn("ipc", pair_transports)
-        self.assertEqual(stream_transports, ["tcp", "tls", "ws", "wss"])
 
     def test_default_full_matrix_allows_explicit_default_overrides(self):
         args = type("Args", (), {"pattern": "ALL"})()
@@ -203,14 +195,14 @@ class RunComparisonPolicyTests(unittest.TestCase):
             self.assertFalse(RC.is_default_full_matrix(args, RC.DEFAULT_PATTERNS))
 
     def test_auto_hwm_detail_lines_are_rendered(self):
-        spot_tcp_line = (
-            "AUTO_HWM_DETAIL,pattern=SPOT,transport=tcp,component=publisher,"
+        pubsub_tcp_line = (
+            "AUTO_HWM_DETAIL,pattern=PUBSUB,transport=tcp,component=publisher,"
             "msg_size=65536,owner=node,socket=mesh-pub,socket_type=pub,"
-            "role=spot_data,sndhwm=16,rcvhwm=0,effective_sndbuf=-1,"
+            "role=fanout,sndhwm=16,rcvhwm=0,effective_sndbuf=-1,"
             "effective_rcvbuf=0,effective_message_bytes=4096,"
             "socket_message_slots=16"
         )
-        tls_line = spot_tcp_line.replace("transport=tcp", "transport=tls")
+        tls_line = pubsub_tcp_line.replace("transport=tcp", "transport=tls")
         pair_line = (
             "AUTO_HWM_DETAIL,pattern=PAIR,transport=tcp,component=sender,"
             "msg_size=65536,owner=socket,socket=sender,socket_type=pair,"
@@ -218,7 +210,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
             "effective_rcvbuf=0,effective_message_bytes=4096,"
             "socket_message_slots=16"
         )
-        row = RC.parse_auto_hwm_detail_line(spot_tcp_line)
+        row = RC.parse_auto_hwm_detail_line(pubsub_tcp_line)
         tls_row = RC.parse_auto_hwm_detail_line(tls_line)
         pair_row = RC.parse_auto_hwm_detail_line(pair_line)
         self.assertIsNotNone(row)
@@ -226,7 +218,7 @@ class RunComparisonPolicyTests(unittest.TestCase):
         self.assertIsNotNone(pair_row)
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            emitted = RC.emit_auto_hwm_detail_table([row, tls_row, pair_row], "SPOT")
+            emitted = RC.emit_auto_hwm_detail_table([row, tls_row, pair_row], "PUBSUB")
         output = buf.getvalue()
         self.assertTrue(emitted)
         self.assertIn("## Auto-HWM Detail", output)
@@ -319,18 +311,18 @@ class RunComparisonPolicyTests(unittest.TestCase):
                     return {
                         "returncode": 1,
                         "stdout": "",
-                        "stderr": "spot runner flake",
+                        "stderr": "runner flake",
                         "timed_out": False,
                     }
                 return {
                     "returncode": 0,
                     "stdout": "\n".join(
                         [
-                            "RESULT,current,SPOT,tcp,64,throughput,1",
-                            "RESULT,current,SPOT,tcp,64,bandwidth,2",
-                            "RESULT,current,SPOT,tcp,64,latency,3",
-                            "RESULT,current,SPOT,tcp,64,latency_p95,4",
-                            "RESULT,current,SPOT,tcp,64,latency_p99,5",
+                            "RESULT,current,PUBSUB,tcp,64,throughput,1",
+                            "RESULT,current,PUBSUB,tcp,64,bandwidth,2",
+                            "RESULT,current,PUBSUB,tcp,64,latency,3",
+                            "RESULT,current,PUBSUB,tcp,64,latency_p95,4",
+                            "RESULT,current,PUBSUB,tcp,64,latency_p99,5",
                         ]
                     ),
                     "stderr": "",
@@ -344,9 +336,9 @@ class RunComparisonPolicyTests(unittest.TestCase):
             outcome = RC.run_single_test(
                 build_dir="/tmp/build",
                 current_lib_dir="/tmp/lib",
-                binary_name="perf_spot",
+                binary_name="perf_pubsub",
                 lib_name="current",
-                pattern="SPOT",
+                pattern="PUBSUB",
                 transport="tcp",
                 size=64,
                 timeout_sec=300,
@@ -387,7 +379,6 @@ class RunComparisonPolicyTests(unittest.TestCase):
     def test_recv_mode_uses_current_targets(self):
         self.assertEqual(RC.resolve_binary_name("PAIR"), "perf_pair")
         self.assertEqual(RC.resolve_binary_name("PUBSUB"), "perf_pubsub")
-        self.assertEqual(RC.resolve_binary_name("SPOT"), "perf_spot")
 
     def test_single_runner_executes_each_size_case_separately(self):
         old_run_single_test = RC.run_single_test

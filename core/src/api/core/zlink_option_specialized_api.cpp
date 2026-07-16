@@ -3,20 +3,13 @@
 #include "utils/precompiled.hpp"
 
 #include "api/core/config_result_internal.hpp"
-#include "api/service/service_option_surface_internal.hpp"
 #include "api/core/zlink_option_internal.hpp"
-#include "services/spot/node/spot_node_access.hpp"
-#include "services/spot/pubsub/spot_subject_access.hpp"
 
 extern "C" int zlink_socket_request_reply_set_default_timeout (void *socket_,
                                                                const void *optval_,
                                                                size_t optvallen_);
 extern "C" int
 zlink_socket_request_reply_get_default_timeout (void *socket_, void *optval_, size_t *optvallen_);
-extern "C" int
-zlink_spot_request_reply_set_default_timeout (void *spot_, const void *optval_, size_t optvallen_);
-extern "C" int
-zlink_spot_request_reply_get_default_timeout (void *spot_, void *optval_, size_t *optvallen_);
 
 namespace
 {
@@ -205,44 +198,6 @@ zlink_config_result_t zlink_get_stream_option (void *handle_,
                                    ZLINK_CORE_SOCKET_STREAM, optval_, optvallen_);
 }
 
-zlink_config_result_t zlink_set_spot_option (void *handle_,
-                                             zlink_spot_option_t option_,
-                                             const void *optval_,
-                                             size_t optvallen_)
-{
-    if (option_ != ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-
-    if (!as_spot_handle (handle_)) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-
-    return zlink::config_result_internal::from_rc (
-      zlink_spot_request_reply_set_default_timeout (handle_, optval_, optvallen_));
-}
-
-zlink_config_result_t zlink_get_spot_option (void *handle_,
-                                             zlink_spot_option_t option_,
-                                             void *optval_,
-                                             size_t *optvallen_)
-{
-    if (option_ != ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-
-    if (!as_spot_handle (handle_)) {
-        errno = EINVAL;
-        return ZLINK_CONFIG_INVALID_ARGUMENT;
-    }
-
-    return zlink::config_result_internal::from_rc (
-      zlink_spot_request_reply_get_default_timeout (handle_, optval_, optvallen_));
-}
-
 zlink_config_result_t zlink_set_pub_option (void *handle_,
                                             zlink_pub_option_t option_,
                                             const void *optval_,
@@ -259,16 +214,9 @@ zlink_config_result_t zlink_set_pub_option (void *handle_,
                                      ZLINK_CORE_SOCKET_PUB,
                                      ZLINK_CORE_SOCKET_XPUB, socket_option, optval_, optvallen_));
     }
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink_service_set_pub_option (handle_, option_, socket_option, optval_, optvallen_));
-    }
-
     errno = EFAULT;
     return ZLINK_CONFIG_INVALID_HANDLE;
 }
-
 zlink_config_result_t
 zlink_get_pub_option (void *handle_, zlink_pub_option_t option_, void *optval_, size_t *optvallen_)
 {
@@ -283,12 +231,6 @@ zlink_get_pub_option (void *handle_, zlink_pub_option_t option_, void *optval_, 
                                      ZLINK_CORE_SOCKET_PUB,
                                      ZLINK_CORE_SOCKET_XPUB, socket_option, optval_, optvallen_));
     }
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink_service_get_pub_option (handle_, option_, socket_option, optval_, optvallen_));
-    }
-
     errno = EFAULT;
     return ZLINK_CONFIG_INVALID_HANDLE;
 }
@@ -309,12 +251,6 @@ zlink_config_result_t zlink_set_sub_option (void *handle_,
                                      ZLINK_CORE_SOCKET_SUB,
                                      ZLINK_CORE_SOCKET_XSUB, socket_option, optval_, optvallen_));
     }
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink_service_set_sub_option (handle_, option_, socket_option, optval_, optvallen_));
-    }
-
     errno = EFAULT;
     return ZLINK_CONFIG_INVALID_HANDLE;
 }
@@ -333,36 +269,6 @@ zlink_get_sub_option (void *handle_, zlink_sub_option_t option_, void *optval_, 
                                      ZLINK_CORE_SOCKET_SUB,
                                      ZLINK_CORE_SOCKET_XSUB, socket_option, optval_, optvallen_));
     }
-    if (target.kind == zlink::option_target_service) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink_service_get_sub_option (handle_, option_, socket_option, optval_, optvallen_));
-    }
-
     errno = EFAULT;
     return ZLINK_CONFIG_INVALID_HANDLE;
-}
-
-zlink_config_result_t zlink_set_spot_node_option (void *handle_,
-                                                  zlink_spot_node_option_t option_,
-                                                  const void *optval_,
-                                                  size_t optvallen_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (handle_);
-    if (!node)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::set_node_option (node, option_, optval_, optvallen_));
-}
-
-zlink_config_result_t zlink_get_spot_node_option (void *handle_,
-                                                  zlink_spot_node_option_t option_,
-                                                  void *optval_,
-                                                  size_t *optvallen_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (handle_);
-    if (!node)
-        return ZLINK_CONFIG_INVALID_HANDLE;
-    return zlink::config_result_internal::from_rc (
-      zlink::spot_node_access_t::get_node_option (node, option_, optval_, optvallen_));
 }

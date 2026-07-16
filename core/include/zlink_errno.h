@@ -69,6 +69,15 @@
 #ifndef ESTALE
 #define ESTALE (ZLINK_HAUSNUMERO + 19)
 #endif
+#ifndef EALREADY
+#define EALREADY (ZLINK_HAUSNUMERO + 20)
+#endif
+#ifndef EDEADLK
+#define EDEADLK (ZLINK_HAUSNUMERO + 21)
+#endif
+#ifndef ESHUTDOWN
+#define ESHUTDOWN (ZLINK_HAUSNUMERO + 22)
+#endif
 
 #define EFSM (ZLINK_HAUSNUMERO + 51)
 #define ENOCOMPATPROTO (ZLINK_HAUSNUMERO + 52)
@@ -125,7 +134,8 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_NOT_CONNECTED = 109,
     ZLINK_REQUEST_INVALID_ARGUMENT = 110,
     ZLINK_REQUEST_INVALID_STATE = 111,
-    ZLINK_REQUEST_NOT_SUPPORTED = 112
+    ZLINK_REQUEST_NOT_SUPPORTED = 112,
+    ZLINK_REQUEST_BACKPRESSURED = 113
 } zlink_request_result_t;
 
 /*  Recv / subscribe / subscription_event result (201+).                     */
@@ -137,13 +147,14 @@ typedef enum zlink_recv_result_t
     ZLINK_RECV_TERMINATED = 203,     /* ETERM     — context terminated */
     ZLINK_RECV_INVALID_HANDLE = 204, /* EFAULT    — NULL or invalid handle */
     ZLINK_RECV_NOT_SUPPORTED = 205,  /* ENOTSUP   — unsupported socket type for recv */
-    ZLINK_RECV_INTERNAL_ERROR = 206  /* internal errno that has no finer recv bucket */
+    ZLINK_RECV_INTERNAL_ERROR = 206,  /* internal errno that has no finer recv bucket */
+    ZLINK_RECV_BUFFER_TOO_SMALL = 207, /* ENOBUFS — first record or topic does not fit */
+    ZLINK_RECV_INVALID_STATE = 208     /* EINVAL/ESTALE/ESHUTDOWN — claim or revoke state */
 } zlink_recv_result_t;
 
 /*  Handler registration result (301+).                                      */
-/*  Applies to recv_handler, subscribe_handler, send_ready_handler,          */
-/*  spot_handler, router_spot_handler,                                        */
-/*  spot_dispatch_event_handler, monitor_handler.                            */
+/*  Applies to recv_handler, send_ready_handler, mesh ready handler and      */
+/*  monitor_handler.                                                          */
 typedef enum zlink_handler_result_t
 {
     ZLINK_HANDLER_OK = 0,
@@ -186,7 +197,8 @@ typedef enum zlink_connect_result_t
     ZLINK_CONNECT_INTERNAL_ERROR = 604,   /* internal errno that has no finer connect bucket */
     ZLINK_CONNECT_NOT_FOUND = 605,        /* ENOENT    — endpoint or peer routing id not found */
     ZLINK_CONNECT_CONFLICT = 606, /* EADDRINUSE — peer routing id matches more than one pipe */
-    ZLINK_CONNECT_BUSY = 607      /* EBUSY     — lifecycle owner rejects manual change */
+    ZLINK_CONNECT_BUSY = 607,     /* EBUSY     — lifecycle owner rejects manual change */
+    ZLINK_CONNECT_AUTH_FAILED = 608 /* EACCES  — trust profile or peer authentication failed */
 } zlink_connect_result_t;
 
 /*  Configuration result (701+).                                             */
@@ -200,7 +212,10 @@ typedef enum zlink_config_result_t
     ZLINK_CONFIG_NOT_SUPPORTED = 703,    /* ENOTSUP   — unsupported option */
     ZLINK_CONFIG_INTERNAL_ERROR = 704,   /* internal errno that has no finer config bucket */
     ZLINK_CONFIG_INVALID_STATE = 705,    /* EBUSY/ESHUTDOWN — lifecycle state rejects config */
-    ZLINK_CONFIG_NOT_FOUND = 706         /* ENOENT    — local lookup target not found */
+    ZLINK_CONFIG_NOT_FOUND = 706,        /* ENOENT    — local lookup target not found */
+    ZLINK_CONFIG_CONFLICT = 707,         /* EEXIST    — duplicate identity, name or binding */
+    ZLINK_CONFIG_BUFFER_TOO_SMALL = 708, /* ENOBUFS   — caller output capacity too small */
+    ZLINK_CONFIG_BUSY = 709              /* EBUSY     — concurrent use of a mutable object */
 } zlink_config_result_t;
 
 #endif

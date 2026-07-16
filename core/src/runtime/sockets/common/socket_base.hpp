@@ -49,9 +49,9 @@ namespace socket_reqrep_internal
 struct socket_request_reply_state_t;
 }
 
-namespace spot_reqrep_internal
+namespace reqrep_internal
 {
-struct router_spot_request_reply_state_t;
+struct router_request_reply_state_t;
 }
 
 namespace part_helper_internal
@@ -73,8 +73,8 @@ typedef void (*spot_sub_io_handler_fn) (const zlink_routing_id_t *source_rid_,
 
 struct socket_request_reply_bridge_t
 {
-    std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t>
-      router_spot_request_reply_state;
+    std::shared_ptr<reqrep_internal::router_request_reply_state_t>
+      router_request_reply_state;
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> request_reply_state;
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state;
 };
@@ -134,6 +134,7 @@ class socket_base_t : public own_t,
                             zlink::msg_t *msg_,
                             int flags_,
                             socket_public_send_scope_t &scope_);
+
     std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (bool force_sync_);
     int rollback ();
     int rollback_scoped (socket_public_send_scope_t &scope_);
@@ -151,9 +152,6 @@ class socket_base_t : public own_t,
                                               void *userdata_);
     int socket_msg_dispatch_stop ();
     void socket_msg_dispatch_drain_pending ();
-    int socket_set_spot_handler (zlink_subscribe_handler_fn handler_);
-    int socket_set_spot_handler_with_userdata (zlink_subscribe_handler_fn handler_,
-                                               void *userdata_);
     int socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_);
     int socket_set_send_ready_handler_ex (zlink_send_ready_handler_fn handler_, void *subject_);
     int socket_set_send_ready_handler_with_userdata (zlink_send_ready_handler_fn handler_,
@@ -279,11 +277,11 @@ class socket_base_t : public own_t,
     int get_peer_weight (uint32_t *weight_out_) const;
     uint32_t local_peer_weight () const;
     int socket_id () const;
-    std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t>
-    router_spot_request_reply_state () const;
-    void set_router_spot_request_reply_state (
-      const std::shared_ptr<spot_reqrep_internal::router_spot_request_reply_state_t> &state_);
-    void clear_router_spot_request_reply_state ();
+    std::shared_ptr<reqrep_internal::router_request_reply_state_t>
+    router_request_reply_state () const;
+    void set_router_request_reply_state (
+      const std::shared_ptr<reqrep_internal::router_request_reply_state_t> &state_);
+    void clear_router_request_reply_state ();
     std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t>
     request_reply_state () const;
     void set_request_reply_state (
@@ -392,12 +390,6 @@ class socket_base_t : public own_t,
     socket_base_t *detach_monitor_socket (bool send_monitor_stopped_event_ = true);
 
   protected:
-    static void dispatch_spot_handler_from_io (const zlink_routing_id_t *source_rid_,
-                                               const char *topic_,
-                                               size_t topic_len_,
-                                               zlink_msg_t *parts_,
-                                               size_t part_count_,
-                                               void *userdata_);
     typedef std::unique_lock<std::recursive_mutex> socket_msg_dispatch_lock_t;
     socket_msg_dispatch_lock_t lock_socket_msg_dispatch ()
     {
@@ -464,11 +456,9 @@ class socket_base_t : public own_t,
                 uint64_t values_count_,
                 uint64_t type_);
 
-    zlink_subscribe_handler_fn socket_spot_handler () const;
     zlink_send_ready_handler_fn socket_send_ready_handler () const;
     void *socket_msg_handler_subject () const;
     void *socket_msg_handler_userdata () const;
-    void *socket_spot_handler_userdata () const;
     void *socket_send_ready_handler_subject () const;
     void *socket_send_ready_handler_userdata () const;
 

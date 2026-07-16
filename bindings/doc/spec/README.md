@@ -1570,7 +1570,7 @@ surface 배치는 아래 `Actor Dispatch Policy` 절을 따른다.
 - 바인딩은 이 코드를 언어별 에러 타입의 `int code` 에 포함시킨다
   (exception 언어는 예외 객체, return-based 언어는 반환 에러 값).
 - 전체 enum 정의는
-  [errno-map.md](../../../core/doc/spec/core/errno-map.md) 를 참조한다.
+  [errno-map.md](../../../core/doc/spec/core/04-errno-map.md) 를 참조한다.
 
 #### Per-Function Error Type Hierarchy
 
@@ -1814,7 +1814,7 @@ builder의 callback submit 메서드 (`submit(callback)`).
 #### 공통
 
 - `zlink_request_result_t` 전체 정의는
-  [errno-map.md](../../../core/doc/spec/core/errno-map.md) 를 참조한다.
+  [errno-map.md](../../../core/doc/spec/core/04-errno-map.md) 를 참조한다.
 - Go / Rust 는 exception 이 없으므로 callback request 의 submit 실패도
   return-based 로 처리한다 (Go: `*SubmitError` 반환, Rust:
   `Result<_, SubmitError>` 반환).
@@ -3844,7 +3844,7 @@ zlink 에서 사용하는 코드와 의미. 바인딩은 이 코드를 언어별
 
 1. **Public result enum 코드 (0–706)** — 공개 C API 함수의 반환 enum 값.
    바인딩이 직접 마주하고 언어별 에러 타입으로 노출해야 하는 값이다.
-   전체 정의는 [core/errno-map.md](../../../core/doc/spec/core/errno-map.md) 참조.
+   전체 정의는 [core/errno-map.md](../../../core/doc/spec/core/04-errno-map.md) 참조.
 2. **Internal errno** — `zlink_errno()` 로 조회되는 내부 raw errno.
    `INTERNAL_ERROR` 같은 coarse bucket 의 상세 원인 조회용. 바인딩은 이 값을
    `internalErrno` / `internal_errno` 필드로 노출한다 (디버깅 전용).

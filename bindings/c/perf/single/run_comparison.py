@@ -33,7 +33,6 @@ DEFAULT_PATTERNS = [
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER",
     "ROUTER_ROUTER_REQREP",
-    "SPOT",
 ]
 
 PATTERN_TO_BINARY = {
@@ -44,7 +43,6 @@ PATTERN_TO_BINARY = {
     "DEALER_ROUTER_REQREP": "perf_dealer_router_reqrep",
     "ROUTER_ROUTER": "perf_router_router",
     "ROUTER_ROUTER_REQREP": "perf_router_router_reqrep",
-    "SPOT": "perf_spot",
 }
 
 SINGLE_RECV_MODE = "recv"
@@ -55,10 +53,7 @@ DEFAULT_SOCKET_TRANSPORTS = ["tcp", "tls", "ws", "wss", "inproc"]
 if not IS_WINDOWS:
     DEFAULT_SOCKET_TRANSPORTS.append("ipc")
 DEFAULT_STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-DEFAULT_SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-STREAM_TRANSPORT_PATTERNS = {
-    "SPOT",
-}
+STREAM_TRANSPORT_PATTERNS = set()
 STREAM_SIZE_PATTERNS = set()
 
 DEFAULT_RESULTS_DIR = os.path.join(PERF_DIR, "results")
@@ -579,7 +574,7 @@ def run_cmake_build(cmake_build_dir: str, targets: List[str]) -> int:
 
 def select_transports(pattern: str) -> List[str]:
     base = (
-        DEFAULT_SPOT_TRANSPORTS
+        DEFAULT_STREAM_TRANSPORTS
         if pattern in STREAM_TRANSPORT_PATTERNS
         else DEFAULT_SOCKET_TRANSPORTS
     )
@@ -1075,11 +1070,6 @@ def main() -> int:
         30,
         parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5) * 6 + 15,
     )
-    if "SPOT" in patterns:
-        default_timeout_sec = max(
-            default_timeout_sec,
-            parse_env_int("PERF_SINGLE_DURATION_SECONDS", 5) * 12 + 60,
-        )
     timeout_sec = max(
         1,
         parse_env_int(

@@ -205,20 +205,13 @@ bool recv_single_part (void *socket_,
     size_t part_count = 0;
     if (source_rid_out_) {
         const zlink_routing_id_t *peer_rid = NULL;
-        const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
-        if (zlink_router_recv (socket_, &peer_rid, &source_spot_rid, &request_seq, &parts,
+        if (zlink_router_recv (socket_, &peer_rid, &request_seq, &parts,
                                &part_count, 0)
             != 0) {
             return false;
         }
         if (request_seq != 0) {
-            if (parts)
-                zlink_multipart_close (parts, part_count);
-            errno = EPROTO;
-            return false;
-        }
-        if (source_spot_rid && source_spot_rid->size != 0) {
             if (parts)
                 zlink_multipart_close (parts, part_count);
             errno = EPROTO;

@@ -157,13 +157,6 @@ int zlink_msg_refcnt (const zlink_msg_t *msg_, zlink_config_result_t *error_out_
     return static_cast<int> (msg->refcnt_value ());
 }
 
-const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_)
-{
-    LIBZLINK_UNUSED (msg_);
-    LIBZLINK_UNUSED (property_);
-    errno = EINVAL;
-    return NULL;
-}
 
 void zlink_multipart_close (zlink_msg_t *parts_, size_t part_count_)
 {

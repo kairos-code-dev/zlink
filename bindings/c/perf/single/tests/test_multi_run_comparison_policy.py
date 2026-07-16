@@ -104,13 +104,13 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
     def test_collect_unsupported_patterns_matches_current_recv_matrix(self):
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["SPOT", "STREAM"], "recv"
+                ["PUBSUB", "STREAM"], "recv"
             ),
             [],
         )
         self.assertEqual(
             RC.collect_unsupported_patterns(
-                ["DEALER_DEALER", "PUBSUB", "SPOT", "STREAM"],
+                ["DEALER_DEALER", "PUBSUB", "STREAM"],
                 "recv",
             ),
             [],
@@ -169,7 +169,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             ):
                 os.environ.pop(key, None)
             self.assertEqual(RC.pattern_default_clients("DEALER_DEALER"), 100)
-            self.assertEqual(RC.pattern_default_clients("SPOT_SENDSEND"), 100)
+            self.assertEqual(RC.pattern_default_clients("ROUTER_ROUTER_REQREP"), 100)
             self.assertEqual(RC.pattern_default_clients("STREAM"), 10000)
             self.assertEqual(RC.pattern_default_hwm("DEALER_DEALER"), 0)
             self.assertEqual(RC.pattern_default_hwm("STREAM"), 0)
@@ -187,7 +187,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         calls = []
         try:
             RC.ALLOW_MULTI = True
-            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None, **kwargs):
@@ -210,19 +209,19 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 "current",
                 "tcp",
                 [64, 256, 1024],
-                "SPOT",
+                "PUBSUB",
             )
 
             self.assertEqual(outcome["status"], "success")
             self.assertEqual(
                 calls,
                 [
-                    ("comp_src_spot_server", "comp_src_spot_client",
-                     "current", "tcp", [64], "SPOT"),
-                    ("comp_src_spot_server", "comp_src_spot_client",
-                     "current", "tcp", [256], "SPOT"),
-                    ("comp_src_spot_server", "comp_src_spot_client",
-                     "current", "tcp", [1024], "SPOT"),
+                    ("comp_src_pubsub_server", "comp_src_pubsub_client",
+                     "current", "tcp", [64], "PUBSUB"),
+                    ("comp_src_pubsub_server", "comp_src_pubsub_client",
+                     "current", "tcp", [256], "PUBSUB"),
+                    ("comp_src_pubsub_server", "comp_src_pubsub_client",
+                     "current", "tcp", [1024], "PUBSUB"),
                 ],
             )
         finally:
@@ -293,7 +292,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
         sleeps = []
         try:
             RC.ALLOW_MULTI = True
-            os.environ["PERF_MULTI_SPOT_CLEAN_LATENCY"] = "0"
 
             def fake_split(server_name, client_name, lib_name, transport, sizes,
                            pattern_name, result_line_callback=None, **kwargs):
@@ -318,7 +316,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 "current",
                 "tcp",
                 [64, 256, 1024],
-                "SPOT",
+                "PUBSUB",
             )
 
             self.assertEqual(outcome["status"], "success")
@@ -368,7 +366,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 "current",
                 "tcp",
                 [65536],
-                "SPOT",
+                "PUBSUB",
             )
 
             self.assertEqual(outcome["status"], "fail")
@@ -419,7 +417,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             final_stats, failures = RC.collect_data(
                 "ignored",
                 "current",
-                "SPOT",
+                "PUBSUB",
                 1,
                 transports=["tcp", "tls", "ws"],
                 table_lines=[],
@@ -429,9 +427,9 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             self.assertEqual(
                 calls,
                 [
-                    ("tcp", RC.MSG_SIZES, "SPOT"),
-                    ("tls", RC.MSG_SIZES, "SPOT"),
-                    ("ws", RC.MSG_SIZES, "SPOT"),
+                    ("tcp", RC.MSG_SIZES, "PUBSUB"),
+                    ("tls", RC.MSG_SIZES, "PUBSUB"),
+                    ("ws", RC.MSG_SIZES, "PUBSUB"),
                 ],
             )
             self.assertEqual(sleeps, [0.023, 0.023])
@@ -443,7 +441,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             os.environ.clear()
             os.environ.update(old_env)
 
-    def test_multi_spot_clean_latency_table_uses_merged_result(self):
+    def test_multi_size_result_table_uses_parsed_result(self):
         old_allow_multi = RC.ALLOW_MULTI
         old_run_sizes_test = RC.run_sizes_test
         old_msg_sizes = RC.MSG_SIZES
@@ -494,7 +492,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
                 RC.collect_data(
                     "ignored",
                     "current",
-                    "SPOT",
+                    "PUBSUB",
                     1,
                     transports=["tcp"],
                     table_lines=[],
@@ -506,7 +504,7 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             self.assertEqual(start_callbacks, [("tcp", 65536)])
             self.assertEqual(result_callbacks, [("tcp", 65536)])
             self.assertIn("Testing tcp | 65536B:", output)
-            self.assertIn("1.500 ms", output)
+            self.assertIn("999.000 ms", output)
         finally:
             RC.ALLOW_MULTI = old_allow_multi
             RC.run_sizes_test = old_run_sizes_test
@@ -712,89 +710,6 @@ class MultiRunComparisonPolicyTests(unittest.TestCase):
             self.assertIn("| 4      | 4", output)
             self.assertNotIn("| 128    | 128", output)
             self.assertNotIn("Transport", output)
-        finally:
-            reset_auto_hwm_detail_state()
-
-    def test_spot_auto_hwm_detail_hides_inactive_sides_and_transport(self):
-        reset_auto_hwm_detail_state()
-        try:
-            for transport in ("tcp", "tls"):
-                RC.emit_auto_hwm_detail_line(
-                    auto_hwm_detail_line(
-                        "SPOT",
-                        transport,
-                        "server",
-                        64,
-                        source="spotnode_snapshot",
-                        owner="node",
-                        owner_id="1",
-                        socket="peer_ctrl_pub",
-                        socket_type="pub",
-                        role="control",
-                        effective_message_bytes="4096",
-                        unit_budget_bytes="65536",
-                        sndhwm="16",
-                        rcvhwm="1000",
-                    )
-                )
-                RC.emit_auto_hwm_detail_line(
-                    auto_hwm_detail_line(
-                        "SPOT",
-                        transport,
-                        "server",
-                        64,
-                        source="spotnode_snapshot",
-                        owner="node",
-                        owner_id="1",
-                        socket="peer_ctrl_sub",
-                        socket_type="sub",
-                        role="control",
-                        effective_message_bytes="4096",
-                        unit_budget_bytes="65536",
-                        sndhwm="1000",
-                        rcvhwm="16",
-                    )
-                )
-                RC.emit_auto_hwm_detail_line(
-                    auto_hwm_detail_line(
-                        "SPOT",
-                        transport,
-                        "server",
-                        64,
-                        source="spotnode_snapshot",
-                        owner="spot",
-                        owner_id="1",
-                        socket="pub",
-                        socket_type="pub",
-                        role="spot_data",
-                        effective_message_bytes="64",
-                        unit_budget_bytes="524288",
-                        observed_connections="100",
-                        selected_bucket="65-128",
-                        bucket_limited_hwm_4k="128",
-                        sndhwm="512",
-                        rcvhwm="512",
-                    )
-                )
-
-            lines = []
-            self.assertTrue(RC.emit_auto_hwm_detail_table(lines.append, "SPOT"))
-            output = "\n".join(lines)
-            self.assertIn("Auto-HWM spotnode:", output)
-            self.assertIn("Auto-HWM spot handles:", output)
-            self.assertNotIn("Auto-HWM spot:", output)
-            self.assertNotIn("Transport=", output)
-            self.assertNotIn("| Transport |", output)
-            self.assertEqual(output.count("peer_ctrl_pub"), 1)
-            self.assertEqual(output.count("peer_ctrl_sub"), 1)
-            self.assertEqual(output.count("| pub    | pub  | spot_data"), 1)
-            self.assertIn("| peer_ctrl_pub | pub  | control | ?", output)
-            self.assertIn("| peer_ctrl_sub | sub  | control | ?", output)
-            self.assertIn("| pub    | pub  | spot_data | 100", output)
-            self.assertIn("| -      | 16", output)
-            self.assertIn("ObservedConn", output)
-            self.assertIn("BucketHWM4K", output)
-            self.assertIn("| 100          | 65-128 | 128", output)
         finally:
             reset_auto_hwm_detail_state()
 

@@ -3,8 +3,6 @@
 #include "utils/precompiled.hpp"
 
 #include "api/core/config_result_internal.hpp"
-#include "api/service/service_handle_internal.hpp"
-#include "api/service/service_option_surface_internal.hpp"
 #include "api/core/zlink_option_internal.hpp"
 
 #include "core/msg.hpp"
@@ -114,13 +112,6 @@ int raw_socket_subscription_at (zlink::socket_base_t *socket_,
 
 zlink_config_result_t zlink_set_subscription (void *handle_, const char *filter_)
 {
-    const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
-    if (resolved.kind != zlink::service_handle_unknown) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink_service_set_subscription (handle_, filter_));
-    }
-
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!filter_) {
             errno = EINVAL;
@@ -143,13 +134,6 @@ zlink_config_result_t zlink_set_subscription (void *handle_, const char *filter_
 
 zlink_config_result_t zlink_unset_subscription (void *handle_, const char *filter_)
 {
-    const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
-    if (resolved.kind != zlink::service_handle_unknown) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (
-          zlink_service_unset_subscription (handle_, filter_));
-    }
-
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         if (!filter_) {
             errno = EINVAL;
@@ -173,13 +157,6 @@ zlink_config_result_t zlink_unset_subscription (void *handle_, const char *filte
 zlink_config_result_t zlink_subscription_at (
   void *handle_, size_t index_, char *filter_out_, size_t *filter_len_inout_, int *is_pattern_out_)
 {
-    const zlink::service_handle_resolution_t resolved = zlink::resolve_service_handle (handle_);
-    if (resolved.kind != zlink::service_handle_unknown) {
-        errno = 0;
-        return zlink::config_result_internal::from_rc (zlink_service_subscription_at (
-          handle_, index_, filter_out_, filter_len_inout_, is_pattern_out_));
-    }
-
     if (zlink::socket_base_t *socket = as_socket (handle_)) {
         const int type = socket_type_of (socket);
         if (type != ZLINK_CORE_SOCKET_SUB && type != ZLINK_CORE_SOCKET_XSUB) {

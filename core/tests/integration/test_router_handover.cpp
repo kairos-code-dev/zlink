@@ -125,12 +125,11 @@ void send_request_to_activate_callback_dispatch (void *client_,
       zlink_router_request (client_, &peer_rid, &request, 1, &ignore_reply, NULL, 0, 30000));
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK,
-                           zlink_router_recv (server_, &source_rid, &source_spot_rid,
+                           zlink_router_recv (server_, &source_rid,
                                               &request_seq, &parts, &part_count, 0));
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
 
@@ -144,11 +143,10 @@ void send_request_to_activate_callback_dispatch (void *client_,
     const int attempts = 1000;
     for (int i = 0; i < attempts && !reply_completed.load (); ++i) {
         const zlink_routing_id_t *ignored_source = NULL;
-        const zlink_routing_id_t *ignored_spot = NULL;
         uint64_t ignored_seq = 0;
         zlink_msg_t *ignored_parts = NULL;
         size_t ignored_count = 0;
-        if (zlink_router_recv (client_, &ignored_source, &ignored_spot, &ignored_seq,
+        if (zlink_router_recv (client_, &ignored_source, &ignored_seq,
                                &ignored_parts, &ignored_count, ZLINK_DONTWAIT)
               == ZLINK_RECV_OK)
             zlink_multipart_close (ignored_parts, ignored_count);

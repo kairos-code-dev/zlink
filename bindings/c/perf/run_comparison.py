@@ -37,7 +37,9 @@ REQUIRED_RESULT_METRICS = (
 REQUIRED_RESULT_METRIC_COUNT = len(REQUIRED_RESULT_METRICS)
 PATTERN_SEPARATOR = "==============================================================================="
 STREAM_VARIANT_PATTERNS = ("STREAM",)
-SPOT_CONTROL_PATTERNS = ("SPOT", "SPOT_REQREP", "SPOT_SENDSEND")
+# Patterns coordinated over the runner control plane. Empty until the
+# MeshNode benchmark patterns land (S4-27/28).
+CONTROL_PLANE_PATTERNS = ()
 PATTERN_ALIASES = {
     "DEALER_ROUTER": ("DEALER_ROUTER_SENDSEND",),
     "ROUTER_ROUTER": ("ROUTER_ROUTER_SENDSEND",),
@@ -55,9 +57,6 @@ PATTERN_SUFFIX = {
     "DEALER_ROUTER_REQREP": "dealer_router_reqrep",
     "ROUTER_ROUTER_REQREP": "router_router_reqrep",
     "PUBSUB": "pubsub",
-    "SPOT": "spot",
-    "SPOT_REQREP": "spot_reqrep",
-    "SPOT_SENDSEND": "spot_sendsend",
     "STREAM": "stream",
 }
 ECHO_PATTERNS = {
@@ -65,8 +64,6 @@ ECHO_PATTERNS = {
     "ROUTER_ROUTER_SENDSEND",
     "DEALER_ROUTER_REQREP",
     "ROUTER_ROUTER_REQREP",
-    "SPOT_REQREP",
-    "SPOT_SENDSEND",
     "STREAM",
 }
 SINGLE_ECHO_PATTERNS = set()
@@ -77,7 +74,6 @@ SINGLE_COMPARISONS = [
     ("perf_dealer_dealer", "DEALER_DEALER"),
     ("perf_dealer_router", "DEALER_ROUTER"),
     ("perf_router_router", "ROUTER_ROUTER"),
-    ("perf_spot", "SPOT"),
 ]
 MULTI_COMPARISONS = [
     ("comp_src_dealer_dealer_client", "DEALER_DEALER"),
@@ -86,9 +82,6 @@ MULTI_COMPARISONS = [
     ("comp_src_dealer_router_reqrep_client", "DEALER_ROUTER_REQREP"),
     ("comp_src_router_router_reqrep_client", "ROUTER_ROUTER_REQREP"),
     ("comp_src_pubsub_client", "PUBSUB"),
-    ("comp_src_spot_client", "SPOT"),
-    ("comp_src_spot_reqrep_client", "SPOT_REQREP"),
-    ("comp_src_spot_sendsend_client", "SPOT_SENDSEND"),
     ("perf_stream_client", "STREAM"),
 ]
 MULTI_PATTERN_NAMES = {pattern for _, pattern in MULTI_COMPARISONS}
@@ -99,9 +92,6 @@ SUPPORTED_MULTI_RECV_MODES = {
     "DEALER_ROUTER_REQREP": ("recv",),
     "ROUTER_ROUTER_REQREP": ("recv",),
     "PUBSUB": ("recv",),
-    "SPOT": ("recv",),
-    "SPOT_REQREP": ("recv",),
-    "SPOT_SENDSEND": ("recv",),
     "STREAM": ("recv",),
 }
 
@@ -134,7 +124,6 @@ MULTI_ENV_ALIAS_MAP = {
     "PERF_SNDBUF": "PERF_MULTI_SNDBUF",
     "PERF_RCVBUF": "PERF_MULTI_RCVBUF",
     "PERF_PUBSUB_XPUB_NODROP": "PERF_MULTI_PUBSUB_XPUB_NODROP",
-    "PERF_SPOT_XPUB_NODROP": "PERF_MULTI_SPOT_XPUB_NODROP",
 }
 
 
@@ -618,10 +607,6 @@ NON_SERVICE_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 if not IS_WINDOWS:
     NON_SERVICE_TRANSPORTS.append("ipc")
 
-# SPOT control-plane patterns are official perf targets on every network
-# transport used by the multi suite.
-SPOT_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
-
 # STREAM socket uses different transports (raw TCP/TLS/WS/WSS)
 STREAM_TRANSPORTS = ["tcp", "tls", "ws", "wss"]
 FAIL_FAST = os.environ.get("PERF_FAIL_FAST", "0") == "1"
@@ -637,11 +622,9 @@ def is_pattern(pattern_name):
 def select_transports(pattern_name):
     service_or_stream = (
         pattern_name in STREAM_VARIANT_PATTERNS
-        or pattern_name in SPOT_CONTROL_PATTERNS
+        or pattern_name in CONTROL_PLANE_PATTERNS
     )
-    if pattern_name in SPOT_CONTROL_PATTERNS:
-        base = SPOT_TRANSPORTS
-    elif service_or_stream:
+    if service_or_stream:
         base = STREAM_TRANSPORTS
     elif is_pattern(pattern_name):
         base = NON_SERVICE_TRANSPORTS
@@ -899,19 +882,6 @@ def _auto_hwm_emit_markdown_table(emit, indent, columns, rows):
         emit(f"{indent}|" + "|".join(cells) + "|")
 
 
-def _auto_hwm_pattern_is_spot(pattern_name):
-    return normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
-
-
-def _auto_hwm_spot_scope_and_socket(label):
-    raw = (label or "").strip()
-    if raw.startswith("spotnode_"):
-        return "shared", raw[len("spotnode_") :]
-    if raw.startswith("spotend_"):
-        return "per-spot", raw[len("spotend_") :]
-    return "", raw or "socket"
-
-
 def _auto_hwm_active_hwm_fields(row):
     socket_type = (row.get("socket_type") or row.get("type") or "").lower()
     role = (row.get("role") or "").lower()
@@ -932,324 +902,6 @@ def _auto_hwm_apply_active_hwm_display(row):
     if not recv_active:
         display["rcvhwm"] = "-"
     return display
-
-
-def _auto_hwm_spot_display_rows(rows, scope):
-    display_rows = []
-    for fields in rows:
-        row_scope, socket = _auto_hwm_spot_scope_and_socket(fields.get("label", ""))
-        row_scope = fields.get("scope", "") or row_scope
-        if row_scope != scope:
-            continue
-        display = dict(fields)
-        display["scope"] = row_scope
-        display["socket"] = socket
-        display["managed"] = fields.get("managed_connections", "")
-        display["active"] = fields.get("active_connections", "")
-        display_rows.append(_auto_hwm_apply_active_hwm_display(display))
-    return display_rows
-
-
-def _auto_hwm_emit_spot_socket_table(emit, title, rows):
-    if not rows:
-        return False
-    display_rows = []
-    seen = set()
-    for row in rows:
-        key = tuple(row.get(name, "") for name in (
-            "transport",
-            "socket",
-            "scope",
-            "source",
-            "role",
-            "sndhwm",
-            "rcvhwm",
-            "effective_sndbuf",
-            "effective_rcvbuf",
-        ))
-        if key in seen:
-            continue
-        seen.add(key)
-        display_rows.append(row)
-    emit(f"    {title}:")
-    _auto_hwm_emit_markdown_table(
-        emit,
-        "      ",
-        (
-            ("Socket", "socket"),
-            ("Scope", "scope"),
-            ("Source", "source"),
-            ("Role", "role"),
-            ("SNDHWM", "sndhwm"),
-            ("RCVHWM", "rcvhwm"),
-            ("SNDBUF", "effective_sndbuf"),
-            ("RCVBUF", "effective_rcvbuf"),
-        ),
-        display_rows,
-    )
-    return True
-
-
-def _auto_hwm_emit_spot_snapshot_socket_table(emit, title, rows):
-    if not rows:
-        return False
-    display_rows = []
-    seen = set()
-    for row in sorted(
-        rows,
-        key=lambda item: (
-            _auto_hwm_parse_int(item.get("msg_size", "0")),
-            _auto_hwm_parse_int(item.get("owner_id", "0")),
-            item.get("socket", ""),
-            item.get("role", ""),
-        ),
-    ):
-        display = dict(row)
-        display["managed"] = row.get("managed_connections", "")
-        display["active"] = row.get("active_connections", "")
-        display["type"] = row.get("socket_type", "")
-        display = _auto_hwm_apply_active_hwm_display(display)
-        key = tuple(display.get(name, "") for name in (
-            "msg_size",
-            "effective_message_bytes",
-            "socket",
-            "type",
-            "role",
-            "observed_connections",
-            "selected_bucket",
-            "bucket_limited_hwm_4k",
-            "sndhwm",
-            "rcvhwm",
-            "effective_sndbuf",
-            "effective_rcvbuf",
-        ))
-        if key in seen:
-            continue
-        seen.add(key)
-        display_rows.append(display)
-    if not display_rows:
-        return False
-    emit(f"    {title}:")
-    grouped_rows = {}
-    group_order = []
-    for row in display_rows:
-        group_key = (
-            row.get("msg_size", ""),
-            row.get("effective_message_bytes", ""),
-        )
-        if group_key not in grouped_rows:
-            grouped_rows[group_key] = []
-            group_order.append(group_key)
-        grouped_rows[group_key].append(row)
-
-    for index, group_key in enumerate(group_order):
-        msg_size, msg_unit = group_key
-        emit("      " f"- Size(B)={msg_size}, MsgUnit(B)={msg_unit}")
-        _auto_hwm_emit_markdown_table(
-            emit,
-            "      ",
-            (
-                ("Socket", "socket"),
-                ("Type", "type"),
-                ("Role", "role"),
-                ("ObservedConn", "observed_connections"),
-                ("Bucket", "selected_bucket"),
-                ("BucketHWM4K", "bucket_limited_hwm_4k"),
-                ("SNDHWM", "sndhwm"),
-                ("RCVHWM", "rcvhwm"),
-                ("SNDBUF", "effective_sndbuf"),
-                ("RCVBUF", "effective_rcvbuf"),
-            ),
-            grouped_rows[group_key],
-        )
-        if index + 1 < len(group_order):
-            emit("      ")
-    return True
-
-
-def _auto_hwm_emit_spot_common_table(emit, rows):
-    common_rows = []
-    seen = set()
-    for fields in rows:
-        key = tuple(
-            fields.get(name, "")
-            for name in (
-                "unit_budget_bytes",
-                "auto_buffer_bytes",
-                "manual_buffer_bytes",
-                "buffer_connections",
-                "runtime_reserve_bytes",
-                "effective_message_bytes",
-                "enabled",
-            )
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        enabled = fields.get("enabled", "")
-        policy = "auto-hwm" if enabled == "1" else "off"
-        common_rows.append(
-            {
-                "unit_budget_bytes": fields.get("unit_budget_bytes", ""),
-                "auto_buffer_bytes": fields.get("auto_buffer_bytes", ""),
-                "manual_buffer_bytes": fields.get("manual_buffer_bytes", ""),
-                "buffer_connections": fields.get("buffer_connections", ""),
-                "runtime_reserve_bytes": fields.get("runtime_reserve_bytes", ""),
-                "effective_message_bytes": fields.get("effective_message_bytes", ""),
-                "policy": policy,
-            }
-        )
-    if not common_rows:
-        return False
-    emit("    Auto-HWM common:")
-    _auto_hwm_emit_markdown_table(
-        emit,
-        "      ",
-        (
-            ("UnitBudget(B)", "unit_budget_bytes"),
-            ("AutoBuffer(B)", "auto_buffer_bytes"),
-            ("ManualBuffer(B)", "manual_buffer_bytes"),
-            ("BufferConn", "buffer_connections"),
-            ("Runtime(B)", "runtime_reserve_bytes"),
-            ("MsgUnit(B)", "effective_message_bytes"),
-            ("Policy", "policy"),
-        ),
-        common_rows,
-    )
-    return True
-
-
-def _auto_hwm_emit_spot_policy_table(emit, rows):
-    policy_rows = []
-    seen = set()
-    for fields in rows:
-        scope, _socket = _auto_hwm_spot_scope_and_socket(fields.get("label", ""))
-        scope = fields.get("scope", "") or scope
-        if not scope:
-            continue
-        row = {
-            "transport": fields.get("transport", ""),
-            "scope": scope,
-            "scope_count": fields.get("scope_count", ""),
-            "observed_connections": fields.get("observed_connections", ""),
-            "selected_bucket": fields.get("selected_bucket", ""),
-            "bucket_limited_hwm_4k": fields.get("bucket_limited_hwm_4k", ""),
-            "role": fields.get("role", ""),
-            "unit_budget_bytes": fields.get("unit_budget_bytes", ""),
-            "socket_message_slots": fields.get("socket_message_slots", ""),
-            "effective_message_bytes": fields.get("effective_message_bytes", ""),
-            "sndhwm": fields.get("sndhwm", ""),
-            "rcvhwm": fields.get("rcvhwm", ""),
-            "size_cap": fields.get("size_cap", ""),
-            "managed": fields.get("managed_connections", ""),
-            "active": fields.get("active_connections", ""),
-            "base": fields.get("base_floor_per_connection", ""),
-            "reason": fields.get("last_recalc_reason", ""),
-        }
-        row = _auto_hwm_apply_active_hwm_display(row)
-        key = tuple(row.get(name, "") for name in (
-            "scope",
-            "scope_count",
-            "observed_connections",
-            "selected_bucket",
-            "bucket_limited_hwm_4k",
-            "role",
-            "unit_budget_bytes",
-            "socket_message_slots",
-            "effective_message_bytes",
-            "sndhwm",
-            "rcvhwm",
-            "size_cap",
-            "base",
-            "reason",
-        ))
-        if key in seen:
-            continue
-        seen.add(key)
-        policy_rows.append(row)
-    if not policy_rows:
-        return False
-    emit("    Auto-HWM policy:")
-    _auto_hwm_emit_markdown_table(
-        emit,
-        "      ",
-        (
-            ("Scope", "scope"),
-            ("ScopeCount", "scope_count"),
-            ("ObservedConn", "observed_connections"),
-            ("Bucket", "selected_bucket"),
-            ("BucketHWM4K", "bucket_limited_hwm_4k"),
-            ("Role", "role"),
-            ("UnitBudget(B)", "unit_budget_bytes"),
-            ("MsgUnit(B)", "effective_message_bytes"),
-            ("MsgSlots", "socket_message_slots"),
-            ("SNDHWM", "sndhwm"),
-            ("RCVHWM", "rcvhwm"),
-            ("SizeCap", "size_cap"),
-            ("Base", "base"),
-            ("Reason", "reason"),
-        ),
-        policy_rows,
-    )
-    return True
-
-
-def _auto_hwm_emit_spot_tables(emit, rows):
-    snapshot_rows = [
-        fields
-        for fields in rows
-        if fields.get("source") == "spotnode_snapshot"
-        and fields.get("socket")
-    ]
-    if snapshot_rows:
-        node_rows = [
-            fields for fields in snapshot_rows if fields.get("owner") == "node"
-        ]
-        spot_rows = [
-            fields for fields in snapshot_rows if fields.get("owner") == "spot"
-        ]
-        emitted = False
-        emitted = (
-            _auto_hwm_emit_spot_snapshot_socket_table(
-                emit, "Auto-HWM spotnode", node_rows
-            )
-            or emitted
-        )
-        emitted = (
-            _auto_hwm_emit_spot_snapshot_socket_table(
-                emit, "Auto-HWM spot handles", spot_rows
-            )
-            or emitted
-        )
-        return emitted
-
-    spot_rows = [
-        fields
-        for fields in rows
-        if fields.get("source") != "option_fallback"
-        and _auto_hwm_spot_scope_and_socket(fields.get("label", ""))[0]
-    ]
-    if not spot_rows:
-        return False
-
-    emitted = False
-    emitted = _auto_hwm_emit_spot_common_table(emit, spot_rows) or emitted
-    emitted = (
-        _auto_hwm_emit_spot_socket_table(
-            emit, "Auto-HWM spotnode", _auto_hwm_spot_display_rows(spot_rows, "shared")
-        )
-        or emitted
-    )
-    emitted = (
-        _auto_hwm_emit_spot_socket_table(
-            emit,
-            "Auto-HWM spot handles",
-            _auto_hwm_spot_display_rows(spot_rows, "per-spot"),
-        )
-        or emitted
-    )
-    emitted = _auto_hwm_emit_spot_policy_table(emit, spot_rows) or emitted
-    return emitted
 
 
 def _auto_hwm_parse_int(value, default=0):
@@ -1312,7 +964,7 @@ def _auto_hwm_expected_match_score(fields):
     return 0 if matches == visible else 1 if matches > 0 else 2
 
 
-def _auto_hwm_select_non_spot_display_rows(rows):
+def _auto_hwm_select_display_rows(rows):
     selected = {}
     for index, fields in enumerate(rows):
         logical_key = (
@@ -1350,13 +1002,6 @@ def emit_auto_hwm_detail_table(emit, pattern_name):
     if not rows:
         return False
 
-    if _auto_hwm_pattern_is_spot(pattern):
-        if not _auto_hwm_emit_spot_tables(emit, rows):
-            return False
-        for fields in rows:
-            _AUTO_HWM_DETAIL_TABLE_SEEN.add((pattern, fields.get("_dedup_key")))
-        return True
-
     rows = [
         fields
         for fields in rows
@@ -1375,7 +1020,7 @@ def emit_auto_hwm_detail_table(emit, pattern_name):
     emit("    Auto-HWM detail:")
     display_rows = []
     seen_display_rows = set()
-    for fields in _auto_hwm_select_non_spot_display_rows(rows):
+    for fields in _auto_hwm_select_display_rows(rows):
         display = dict(fields)
         display["type"] = fields.get("socket_type", "")
         msg_size = fields.get("msg_size", "")
@@ -1669,9 +1314,6 @@ def build_bench_cmd(binary_path, args):
 
 
 def _resolve_server_timeouts(pattern_name, transport, ready_timeout_ms, shutdown_timeout_ms):
-    if pattern_name in SPOT_CONTROL_PATTERNS and transport in ("tls", "wss"):
-        ready_timeout_ms = max(ready_timeout_ms, 20000)
-        shutdown_timeout_ms = max(shutdown_timeout_ms, 10000)
     return ready_timeout_ms, shutdown_timeout_ms
 
 
@@ -1719,10 +1361,6 @@ def _prepare_case_env(
     if not connect_value:
         connect_value = str(resolve_pattern_connect_concurrency(clients_int))
     set_env_pair(env, "PERF_CONNECT_CONCURRENCY", connect_value)
-
-    if pattern_name in SPOT_CONTROL_PATTERNS:
-        spot_idle_sleep_ms = max(1, parse_env_int("PERF_SPOT_IDLE_SLEEP_MS", 1))
-        set_env_pair(env, "ZLINK_SPOT_IDLE_SLEEP_MS", spot_idle_sleep_ms)
 
     if pattern_name in STREAM_VARIANT_PATTERNS:
         stream_timeout_ms = parse_env_int("PERF_STREAM_TIMEOUT_MS", 0)
@@ -1870,7 +1508,7 @@ def run_sizes_test_stream_shared(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in CONTROL_PLANE_PATTERNS
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()
@@ -2370,9 +2008,7 @@ def run_sizes_test_split(
         size_count = max(1, len(sizes))
         has_large_payload = any(sz >= 131072 for sz in sizes)
         is_secure_transport = transport in ("tls", "wss")
-        if pattern_name in SPOT_CONTROL_PATTERNS:
-            timeout_sec = max(180, duration_seconds * size_count * 8 + 80)
-        elif pattern_name == "DEALER_DEALER":
+        if pattern_name == "DEALER_DEALER":
             # DEALER_DEALER recv sweeps can spend a long time draining and
             # shutting down after the first size finishes. Keep a larger
             # budget here so a 64 -> 256 sweep can complete without the
@@ -2432,7 +2068,7 @@ def run_sizes_test_split(
     out_queue = queue.Queue()
     reader_threads = []
     debug_transitions = os.getenv("PERF_DEBUG_TRANSITIONS") is not None
-    use_control_plane = normalize_multi_pattern_name(pattern_name) in SPOT_CONTROL_PATTERNS
+    use_control_plane = normalize_multi_pattern_name(pattern_name) in CONTROL_PLANE_PATTERNS
     control_connected = [not use_control_plane]
     pending_ready_sizes = set()
     pending_phase_active_sizes = set()
@@ -3067,7 +2703,6 @@ def run_sizes_test(
         "warnings": [],
     }
     for size_index, size in enumerate(size_list):
-        normalized_pattern = normalize_multi_pattern_name(pattern_name)
         isolated = None
         if size_start_callback is not None:
             try:
@@ -3085,34 +2720,6 @@ def run_sizes_test(
             reason = isolated.get("reason", "size_case_failed")
             merged["reason"] = f"{reason}_size_{size}"
             return merged
-
-        if (
-            normalized_pattern == "SPOT"
-            and parse_env_int("PERF_MULTI_SPOT_CLEAN_LATENCY", 1) != 0
-        ):
-            clean_latency = run_one_size_case_with_env(
-                size,
-                {
-                    "PERF_MULTI_SPOT_LATENCY_ONLY": "1",
-                    "PERF_MULTI_SPOT_CLEAN_LATENCY": "0",
-                },
-            )
-            merged["warnings"].extend(clean_latency.get("warnings", []))
-            if clean_latency.get("status") != "success":
-                merged["status"] = clean_latency.get("status", "fail")
-                merged["timed_out"] = clean_latency.get("timed_out", False)
-                merged["returncode"] = clean_latency.get("returncode", -1)
-                reason = clean_latency.get("reason", "clean_latency_failed")
-                merged["reason"] = f"{reason}_clean_latency_size_{size}"
-                return merged
-
-            clean_parsed = clean_latency.get("parsed", {}) or {}
-            active_parsed = isolated.get("parsed", {}) or {}
-            for key, value in clean_parsed.items():
-                metric = key.rsplit("|", 1)[-1]
-                if metric in ("latency", LATENCY_P95_METRIC, LATENCY_P99_METRIC):
-                    active_parsed[key] = value
-                    merged["parsed"][key] = value
 
         if size_result_callback is not None:
             try:
@@ -3424,8 +3031,6 @@ def collect_data(binary_name, lib_name, pattern_name, num_runs, transports=None,
                         return
                     key = f"{line_transport}|{line_size}|{metric_name}"
                     live_metrics[key] = value
-                    if normalize_multi_pattern_name(pattern_name) == "SPOT":
-                        return
                     maybe_emit_live_row(line_size)
 
                 live_result_callback = on_result_metric

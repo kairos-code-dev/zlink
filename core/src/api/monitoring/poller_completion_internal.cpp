@@ -4,14 +4,13 @@
 
 #include "api/monitoring/poller_completion_internal.hpp"
 
-#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 
 bool poller_subject_is_completion (poller_subject_kind_t subject_kind_)
 {
     return subject_kind_ == poller_subject_socket_request_completion
-           || subject_kind_ == poller_subject_router_spot_request_completion
-           || subject_kind_ == poller_subject_spot_request_completion;
+           || subject_kind_ == poller_subject_router_request_completion;
 }
 
 bool poller_completion_is_hidden (const poller_registration_t *registration_)
@@ -39,31 +38,18 @@ int poller_completion_drain_hidden (const poller_registration_t *registration_)
                              state, registration_->subject)
                          : 0;
         }
-        case poller_subject_router_spot_request_completion: {
+        case poller_subject_router_request_completion: {
             socket_handle_t handle = as_socket_handle (registration_->subject);
             if (!handle.socket && !registration_->state_ref)
                 return -1;
-            std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t> state =
+            std::shared_ptr<zlink::reqrep_internal::router_request_reply_state_t> state =
               registration_->state_ref
-                ? std::static_pointer_cast<
-                    zlink::spot_reqrep_internal::router_spot_request_reply_state_t> (
+                ? std::static_pointer_cast<zlink::reqrep_internal::router_request_reply_state_t> (
                     registration_->state_ref)
-                : handle.socket->router_spot_request_reply_state ();
-            return state ? zlink::spot_reqrep_internal::drain_router_reply_completions (
+                : handle.socket->router_request_reply_state ();
+            return state ? zlink::reqrep_internal::drain_router_reply_completions (
                              state, registration_->subject)
                          : 0;
-        }
-        case poller_subject_spot_request_completion: {
-            std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> state =
-              registration_->state_ref
-                ? std::static_pointer_cast<
-                    zlink::spot_reqrep_internal::spot_request_reply_state_t> (
-                    registration_->state_ref)
-                : zlink::spot_reqrep_internal::try_find_spot_state (registration_->subject);
-            if (!state)
-                return 0;
-            return zlink::spot_reqrep_internal::drain_spot_completion_progress (
-              state, registration_->subject);
         }
         default:
             return 0;

@@ -69,12 +69,11 @@ void wait_and_send_messages (sender_probe_t *probe_)
 void prime_router_recv_plane (void *router_)
 {
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
     const zlink_recv_result_t rc = zlink_router_recv (
-      router_, &source_rid, &source_spot_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
+      router_, &source_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, rc);
     TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
 }
@@ -86,15 +85,12 @@ void recv_router_until_message (void *router_,
                                 size_t *part_count_out_)
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (5);
-    const zlink_routing_id_t *source_spot_rid = NULL;
 
     while (std::chrono::steady_clock::now () < deadline) {
         const zlink_recv_result_t rc =
-          zlink_router_recv (router_, source_rid_out_, &source_spot_rid, request_seq_out_,
+          zlink_router_recv (router_, source_rid_out_, request_seq_out_,
                              parts_out_, part_count_out_, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
-            TEST_ASSERT_NOT_NULL (source_spot_rid);
-            TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
             return;
         }
         TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA, rc);

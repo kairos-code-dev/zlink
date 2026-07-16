@@ -8,7 +8,7 @@ if(POLICY CMP0048)
   cmake_policy(SET CMP0048 NEW)
 endif()
 
-project(zlink VERSION 9.0.4 LANGUAGES C CXX)
+project(zlink VERSION 10.0.0 LANGUAGES C CXX)
 
 # Internal repo targets still include the public header from core/include.
 # Define a build-only macro so in-tree code can access private build-only
@@ -875,61 +875,31 @@ set(api-socket-sources
     src/api/socket/socket_request_reply_internal.cpp
     src/api/socket/socket_request_reply_router_control.cpp
     src/api/socket/socket_request_reply_router_api.cpp
+    src/api/mesh/mesh_api.cpp
+    src/api/mesh/mesh_node_api.cpp
+    src/api/mesh/mesh_dispatch_api.cpp
+    src/api/mesh/mesh_messaging_api.cpp
+    src/api/mesh/mesh_actor_api.cpp
+    src/api/mesh/mesh_transfer_api.cpp
+    src/api/mesh/mesh_monitor_api.cpp
+    src/api/mesh/mesh_stream_session_api.cpp
+    src/runtime/services/mesh/mesh_runtime.cpp
+    src/runtime/services/mesh/mesh_wire.cpp
+    src/api/socket/socket_request_reply_router_state.cpp
+    src/runtime/services/control/service_control_runtime.cpp
     src/api/socket/socket_request_reply_api.cpp
     src/api/socket/socket_request_reply_pending_api.cpp
     src/api/socket/socket_request_reply_submit_api.cpp
     src/api/socket/socket_api.cpp)
 
 set(api-service-sources
-    src/api/service/service_api.cpp
-    src/api/service/service_handler_api.cpp
-    src/api/service/service_mode_api.cpp
-    src/api/service/service_option_api.cpp
-    src/api/service/service_poller_api.cpp)
+    )
 
 set(api-spot-sources
-    src/api/spot/core/service_spot_route_bridge_channel_reply_internal.cpp
-    src/api/spot/core/service_spot_route_bridge_codec_internal.cpp
-    src/api/spot/core/service_spot_node_api.cpp
-    src/api/spot/core/service_spot_node_publisher_api.cpp
-    src/api/spot/core/service_spot_route_bridge_api.cpp
-    src/api/spot/core/service_spot_api.cpp
-    src/api/spot/dispatch/service_spot_dispatch_context.cpp
-    src/api/spot/request_reply/service_spot_request_reply_internal.cpp
-    src/api/spot/request_reply/service_spot_routed_codec.cpp
-    src/api/spot/request_reply/service_spot_request_reply_utils.cpp
-    src/api/spot/request_reply/service_spot_request_reply_registry.cpp
-    src/api/spot/request_reply/service_spot_request_reply_lifecycle.cpp
-    src/api/spot/request_reply/service_spot_request_reply_identity_registry.cpp
-    src/api/spot/request_reply/service_spot_request_reply_pending.cpp
-    src/api/spot/request_reply/service_spot_request_reply_timeout.cpp
-    src/api/spot/request_reply/service_spot_request_reply_queue.cpp
-    src/api/spot/request_reply/service_spot_request_reply_local_reply.cpp
-    src/api/spot/request_reply/service_spot_request_reply_local_request.cpp
-    src/api/spot/request_reply/service_spot_request_reply_local_direct.cpp
-    src/api/spot/request_reply/service_spot_request_reply_channel_bridge.cpp
-    src/api/spot/request_reply/service_spot_request_reply_completion.cpp
-    src/api/spot/request_reply/service_spot_request_reply_callback_api.cpp
-    src/api/spot/request_reply/service_spot_request_reply_ingress_api.cpp
-    src/api/spot/request_reply/service_spot_request_reply_part_submit.cpp
-    src/api/spot/request_reply/service_spot_request_reply_routed_delivery.cpp
-    src/api/spot/request_reply/service_spot_request_reply_api.cpp
-    src/api/spot/request_reply/service_spot_request_reply_submit_api.cpp
-    src/api/spot/subject/service_spot_subject_option_api.cpp
-    src/api/spot/subject/service_spot_subject_subscription_api.cpp
-    src/api/spot/subject/service_spot_subject_api.cpp
-    src/api/spot/core/service_option_spot_api.cpp)
+    )
 
 set(api-actor-sources
-    src/api/actor/spot/service_spot_actor_join.cpp
-    src/api/actor/spot/service_spot_actor_join_state.cpp
-    src/api/actor/spot/service_spot_actor_lifecycle_state.cpp
-    src/api/actor/spot/service_spot_actor_no_bind.cpp
-    src/api/actor/spot/service_spot_actor_no_bind_state.cpp
-    src/api/actor/spot/service_spot_actor_registry_state.cpp
-    src/api/actor/spot/service_spot_actor_route_state.cpp
-    src/api/actor/spot/service_spot_actor_session_state.cpp
-    src/api/actor/spot/service_spot_actor_api.cpp)
+    )
 
 set(api-sources
     ${api-core-sources}
@@ -988,83 +958,16 @@ set(protocol-sources
     src/runtime/protocol/decoder_allocators.cpp)
 
 set(runtime-service-control-sources
-    src/runtime/services/control/service_control_runtime.cpp
 )
 
 set(runtime-service-common-sources
-    src/runtime/services/common/service_runtime_base.cpp)
+    )
 
 set(runtime-service-actor-sources
-    src/runtime/services/actor/gateway/service_spot_actor_gateway_protocol_internal.cpp
-    src/runtime/services/actor/lifecycle/service_spot_actor_lifecycle_context_internal.cpp
-    src/runtime/services/actor/async/service_spot_actor_async_internal.cpp
-    src/runtime/services/actor/multipart/service_spot_actor_multipart_internal.cpp
-    src/runtime/services/actor/packet/service_spot_actor_packet_internal.cpp
-    src/runtime/services/actor/result/service_spot_actor_result_internal.cpp
-    src/runtime/services/actor/validation/service_spot_actor_validation_internal.cpp)
+    )
 
 set(runtime-service-spot-sources
-    src/runtime/services/spot/data_plane/spot_data_plane.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_forwarding.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_loop.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_control.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_mesh.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_message_io.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_poller_interest.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_runtime.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_runtime_config.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_target_control.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_pending.cpp
-    src/runtime/services/spot/data_plane/spot_data_plane_protocol.cpp
-    src/runtime/services/spot/data_plane/spot_mesh_pub_hwm.cpp
-    src/runtime/services/spot/request_reply/spot_request_reply_local_dispatch.cpp
-    src/runtime/services/spot/request_reply/spot_request_reply_local_delivery.cpp
-    src/runtime/services/spot/request_reply/spot_request_reply_local_reply.cpp
-    src/runtime/services/spot/request_reply/spot_request_reply_local_request.cpp
-    src/runtime/services/spot/request_reply/spot_request_reply_local_direct.cpp
-    src/runtime/services/spot/pubsub/spot_subject_access.cpp
-    src/runtime/services/spot/pubsub/spot_subject_handler.cpp
-    src/runtime/services/spot/pubsub/spot_subject_option.cpp
-    src/runtime/services/spot/pubsub/spot_subject_poller.cpp
-    src/runtime/services/spot/pubsub/spot_subject_publish.cpp
-    src/runtime/services/spot/pubsub/spot_subject_query.cpp
-    src/runtime/services/spot/node/spot_node_access.cpp
-    src/runtime/services/spot/node/spot_node_access_spot_state.cpp
-    src/runtime/services/spot/node/spot_node.cpp
-    src/runtime/services/spot/node/spot_node_control.cpp
-    src/runtime/services/spot/node/spot_node_control_peer.cpp
-    src/runtime/services/spot/node/spot_node_control_ready.cpp
-    src/runtime/services/spot/node/spot_node_control_task.cpp
-    src/runtime/services/spot/node/spot_node_control_policy.cpp
-    src/runtime/services/spot/node/spot_node_defaults.cpp
-    src/runtime/services/spot/node/spot_node_get_or_new.cpp
-    src/runtime/services/spot/node/spot_node_handles.cpp
-    src/runtime/services/spot/node/spot_node_tuning.cpp
-    src/runtime/services/spot/node/spot_node_lifecycle.cpp
-    src/runtime/services/spot/node/spot_node_peer.cpp
-    src/runtime/services/spot/node/spot_node_pubsub_fanout.cpp
-    src/runtime/services/spot/node/spot_node_shutdown.cpp
-    src/runtime/services/spot/node/spot_node_service_attachment.cpp
-    src/runtime/services/spot/node/spot_node_service_attachment_cache.cpp
-    src/runtime/services/spot/node/spot_node_service_attachment_recv.cpp
-    src/runtime/services/spot/node/spot_node_snapshot.cpp
-    src/runtime/services/spot/node/spot_node_summary.cpp
-    src/runtime/services/spot/node/spot_node_spot_state.cpp
-    src/runtime/services/spot/node/spot_node_tls.cpp
-    src/runtime/services/spot/pubsub/spot_pub.cpp
-    src/runtime/services/spot/dispatch/spot_dispatch_context.cpp
-    src/runtime/services/spot/dispatch/spot_dispatch_worker_pool.cpp
-    src/runtime/services/spot/runtime/spot_runtime.cpp
-    src/runtime/services/spot/runtime/spot_runtime_attachment.cpp
-    src/runtime/services/spot/runtime/spot_runtime_execution.cpp
-    src/runtime/services/spot/runtime/spot_runtime_routes.cpp
-    src/runtime/services/spot/runtime/spot_runtime_shutdown.cpp
-    src/runtime/services/spot/pubsub/spot_sub_lifecycle.cpp
-    src/runtime/services/spot/pubsub/spot_sub_option.cpp
-    src/runtime/services/spot/pubsub/spot_sub_recv.cpp
-    src/runtime/services/spot/pubsub/spot_sub_subject_readiness.cpp
-    src/runtime/services/spot/pubsub/spot_sub_subject_state.cpp
-    src/runtime/services/spot/pubsub/spot_sub.cpp)
+    )
 
 set(service-sources
     ${runtime-service-control-sources}
@@ -1265,8 +1168,11 @@ set(public_contract_group_headers
     include/zlink/core/api.h
     include/zlink/eventing/api.h
     include/zlink/message/api.h
+    include/zlink/service/dispatch.h
+    include/zlink/service/mesh_node.h
     include/zlink/service/actor.h
     include/zlink/service/spot.h
+    include/zlink/service/stream_session.h
     include/zlink/socket/api.h)
 
 set(readme-docs
@@ -1458,7 +1364,7 @@ else()
     # version of the package.
     set_target_properties(
       libzlink PROPERTIES COMPILE_DEFINITIONS "DLL_EXPORT" PUBLIC_HEADER "${public_headers}" VERSION "${ZLINK_VERSION}"
-                        SOVERSION "9" OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}" PREFIX "lib")
+                        SOVERSION "10" OUTPUT_NAME "${ZLINK_OUTPUT_BASENAME}" PREFIX "lib")
     # Only the public zlink_* C API may be visible from the shared library.
     # Internal C++ and bundled third-party symbols (for example boost::asio)
     # otherwise interpose a consumer's own copies at load time, which crashes
@@ -1712,8 +1618,11 @@ foreach(readme ${readme-docs})
 endforeach()
 
 install(
-  FILES ${public_contract_subheaders}
+  FILES include/zlink/common.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zlink)
+install(
+  FILES include/zlink/service/common.h
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/zlink/service)
 
 foreach(group_header ${public_contract_group_headers})
   get_filename_component(group_header_dir "${group_header}" DIRECTORY)

@@ -168,8 +168,6 @@ struct socket_dispatch_bridge_t
         socket_msg_handler (NULL),
         socket_msg_handler_subject (NULL),
         socket_msg_handler_userdata (NULL),
-        spot_handler (NULL),
-        spot_handler_userdata (NULL),
         send_ready_handler (NULL),
         send_ready_handler_subject (NULL),
         send_ready_handler_userdata (NULL),
@@ -198,8 +196,6 @@ struct socket_dispatch_bridge_t
     std::atomic<zlink_socket_msg_handler_fn> socket_msg_handler;
     std::atomic<void *> socket_msg_handler_subject;
     std::atomic<void *> socket_msg_handler_userdata;
-    std::atomic<zlink_subscribe_handler_fn> spot_handler;
-    std::atomic<void *> spot_handler_userdata;
     std::atomic<zlink_send_ready_handler_fn> send_ready_handler;
     std::atomic<void *> send_ready_handler_subject;
     std::atomic<void *> send_ready_handler_userdata;

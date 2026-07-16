@@ -6,15 +6,17 @@
 
 Core 10.0.0 service 계층은 MeshNode가 transport 위치, service mailbox와 request correlation을 소유하고,
 Spot·Actor·STREAM session이 각자의 논리적 상태와 수신 owner를 제공하는 구조다. raw socket은 service
-객체를 알지 않으며 service는 raw frame과 peer 목록을 caller에게 노출하지 않는다.
+객체를 알지 않는다. service는 raw frame, raw pipe와 내부 peer 상태를 caller에게 노출하지 않는다.
+다만 MeshNode 문서에 정의된 public peer snapshot은 제공하며, snapshot에는 공개된 peer identity,
+membership, lifecycle과 admission 상태만 포함한다.
 
 | 문서 | 책임 |
 |---|---|
-| [MeshNode](mesh-node.ko.md) | MeshName, ChannelName membership, peer admission, node/channel messaging와 Logical Multicast submit |
-| [Dispatch](dispatch.ko.md) | application/infrastructure ready, domain별 claim, receive batch, operation과 reply |
-| [Spot](spot.ko.md) | Spot lifecycle, direct messaging, local subscription과 Logical Multicast 수신 |
-| [Actor](actor.ko.md) | ActorRef, Actor mailbox, Spot membership, lifecycle과 transfer fence |
-| [STREAM session](stream-session.ko.md) | raw STREAM과 MeshNode 연결, session–Actor binding, 양방향 전송과 barrier |
+| [MeshNode](01-mesh-node.ko.md) | MeshName, ChannelName membership, peer admission, node/channel messaging와 Logical Multicast submit |
+| [Dispatch](02-dispatch.ko.md) | application/infrastructure ready, domain별 claim, receive batch, operation과 reply |
+| [Spot](03-spot.ko.md) | Spot lifecycle, direct messaging, local subscription과 Logical Multicast 수신 |
+| [Actor](04-actor.ko.md) | ActorRef, Actor mailbox, Spot membership, lifecycle과 transfer fence |
+| [STREAM session](05-stream-session.ko.md) | raw STREAM과 MeshNode 연결, session–Actor binding, 양방향 전송과 barrier |
 
 classic PUB/SUB와 범용 STREAM은 [socket 목차](../socket/README.ko.md)의 독립 계약이다.
 

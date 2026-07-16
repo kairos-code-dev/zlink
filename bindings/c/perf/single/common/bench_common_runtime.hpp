@@ -214,11 +214,6 @@ inline int resolve_single_pubsub_ready_settle_ms ()
     return resolve_single_nonnegative_env ("PERF_SINGLE_PUBSUB_READY_SETTLE_MS", 1000);
 }
 
-inline int resolve_single_spot_ready_settle_ms ()
-{
-    return resolve_single_nonnegative_env ("PERF_SINGLE_SPOT_READY_SETTLE_MS", 1000);
-}
-
 inline uint32_t next_single_metric_run_id ()
 {
     static std::atomic<uint32_t> next_id (1);

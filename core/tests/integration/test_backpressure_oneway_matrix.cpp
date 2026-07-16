@@ -107,20 +107,6 @@ struct pubsub_case_t
     tls_test_files_t tls_files;
 };
 
-struct spot_case_t
-{
-    spot_case_t () : pub_node (NULL), sub_node (NULL), pub (NULL), sub (NULL), tls_enabled (false)
-    {
-    }
-
-    void *pub_node;
-    void *sub_node;
-    void *pub;
-    void *sub;
-    bool tls_enabled;
-    tls_test_files_t tls_files;
-};
-
 static bool is_transport_available (const char *transport_)
 {
     if (strcmp (transport_, "tcp") == 0)
@@ -134,13 +120,6 @@ static bool is_tls_transport (const char *transport_)
     return strcmp (transport_, "tls") == 0 || strcmp (transport_, "wss") == 0;
 }
 
-static bool is_spot_transport_available (const char *transport_)
-{
-    if (strcmp (transport_, "tcp") == 0)
-        return true;
-
-    return false;
-}
 
 static void configure_tls (void *server_, void *client_, const tls_test_files_t &files_)
 {
@@ -481,18 +460,11 @@ recv_one_raw_message (void *socket_, bool wants_routing_id_, zlink_routing_id_t 
     int rc = -1;
     if (wants_routing_id_) {
         const zlink_routing_id_t *peer_rid = NULL;
-        const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
-        rc = zlink_router_recv (socket_, &peer_rid, &source_spot_rid, &request_seq, &parts,
+        rc = zlink_router_recv (socket_, &peer_rid, &request_seq, &parts,
                                 &part_count, 0);
         if (rc == 0) {
             if (request_seq != 0) {
-                if (parts)
-                    zlink_multipart_close (parts, part_count);
-                errno = EPROTO;
-                return -1;
-            }
-            if (source_spot_rid && source_spot_rid->size != 0) {
                 if (parts)
                     zlink_multipart_close (parts, part_count);
                 errno = EPROTO;
@@ -647,19 +619,6 @@ static void close_pubsub_case (pubsub_case_t *pubsub_)
     pubsub_->sub = NULL;
 }
 
-static void close_spot_case (spot_case_t *spot_)
-{
-    if (spot_->sub)
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_->sub));
-    if (spot_->pub)
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot_->pub));
-    if (spot_->sub_node)
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&spot_->sub_node));
-    if (spot_->pub_node)
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&spot_->pub_node));
-    if (spot_->tls_enabled)
-        cleanup_tls_test_files (spot_->tls_files);
-}
 
 static void setup_raw_case (
   raw_pattern_t pattern_, const char *transport_, int sndhwm_, int rcvhwm_, raw_case_t *out_)
@@ -769,114 +728,9 @@ setup_pubsub_case (const char *transport_, int sndhwm_, int rcvhwm_, pubsub_case
     TEST_ASSERT_TRUE (wait_ready_count (&out_->sub_monitor, 1, kTimeoutMs));
 }
 
-static void
-bind_spot_node (void *node_, const char *transport_, char *endpoint_out_, size_t endpoint_size_)
-{
-    char bind_endpoint_buf[MAX_SOCKET_STRING];
-    snprintf (bind_endpoint_buf, sizeof (bind_endpoint_buf), "%s://127.0.0.1:0", transport_);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_set_pub_bind (node_, bind_endpoint_buf));
 
-    zlink_spot_node_status_t status;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_status (node_, &status));
-    TEST_ASSERT_TRUE_MESSAGE (status.local_endpoint[0] != '\0',
-                              "spot node bind did not publish local endpoint");
-    snprintf (endpoint_out_, endpoint_size_, "%s", status.local_endpoint);
-}
 
-static bool wait_for_spot_node_ready_state (void *node_, int role_, int timeout_ms_)
-{
-    if (!node_ || timeout_ms_ <= 0)
-        return false;
 
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink_spot_node_status_t status;
-        if (zlink_spot_node_status (node_, &status) == 0) {
-            const bool pub_ready = status.local_endpoint[0] != '\0';
-            const bool sub_ready = status.active_peer_count > 0 && status.subject_count > 0;
-            if ((role_ == ZLINK_SPOT_ROLE_PUB && pub_ready)
-                || (role_ == ZLINK_SPOT_ROLE_SUB && sub_ready))
-                return true;
-        }
-        std::this_thread::yield ();
-    }
-
-    return false;
-}
-
-static bool wait_for_spot_node_subject_ready (void *node_, int timeout_ms_)
-{
-    if (!node_ || timeout_ms_ <= 0)
-        return false;
-
-    const std::chrono::steady_clock::time_point deadline =
-      std::chrono::steady_clock::now () + std::chrono::milliseconds (timeout_ms_);
-
-    while (std::chrono::steady_clock::now () < deadline) {
-        zlink_spot_node_status_t status;
-        if (zlink_spot_node_status (node_, &status) == 0 && status.subject_count > 0
-            && (status.ready_subject_count > 0 || status.connected_peer_count > 0
-                || status.active_peer_count > 0 || status.configured_peer_count == 0)) {
-            return true;
-        }
-        std::this_thread::yield ();
-    }
-
-    return false;
-}
-
-static void setup_spot_case (const char *transport_, int sndhwm_, int rcvhwm_, spot_case_t *out_)
-{
-    LIBZLINK_UNUSED (rcvhwm_);
-    void *ctx = get_test_context ();
-
-    out_->pub_node = zlink_spot_node_new (ctx, NULL);
-    out_->sub_node = zlink_spot_node_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (out_->pub_node);
-    TEST_ASSERT_NOT_NULL (out_->sub_node);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (
-      out_->pub_node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, &sndhwm_, sizeof (sndhwm_)));
-
-    out_->pub = zlink_spot_new (out_->pub_node);
-    out_->sub = zlink_spot_new (out_->sub_node);
-    TEST_ASSERT_NOT_NULL (out_->pub);
-    TEST_ASSERT_NOT_NULL (out_->sub);
-
-    const int zero = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (out_->pub_node, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (out_->sub_node, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (out_->pub, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (out_->pub, ZLINK_OPT_SNDTIMEO, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (out_->sub, ZLINK_OPT_LINGER, &zero, sizeof (zero)));
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (out_->sub, ZLINK_OPT_RCVTIMEO, &kSpotTimeoutMs, sizeof (kSpotTimeoutMs)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (out_->sub, kTopic));
-
-    if (is_tls_transport (transport_)) {
-        out_->tls_enabled = true;
-        out_->tls_files = make_tls_test_files ();
-        TEST_ASSERT_SUCCESS_ERRNO (zlink_set_tls_server (out_->pub_node,
-                                                         out_->tls_files.server_cert.c_str (),
-                                                         out_->tls_files.server_key.c_str (), 0));
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_set_tls_client (out_->sub_node, out_->tls_files.ca_cert.c_str (), "localhost", 0));
-    }
-
-    char endpoint[MAX_SOCKET_STRING];
-    bind_spot_node (out_->pub_node, transport_, endpoint, sizeof (endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_connect_peer (out_->sub_node, endpoint));
-    TEST_ASSERT_TRUE (
-      wait_for_spot_node_ready_state (out_->pub_node, ZLINK_SPOT_ROLE_PUB, kSpotTimeoutMs));
-    TEST_ASSERT_TRUE (wait_for_spot_node_subject_ready (out_->sub_node, kSpotTimeoutMs));
-}
 
 static void assert_progress_monotonic (const std::vector<size_t> &counts_, const char *label_)
 {
@@ -892,7 +746,7 @@ static void verify_raw_progress_matrix ()
     for (size_t transport_index = 0;
          transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
         const char *transport = kTransports[transport_index];
-        if (!is_spot_transport_available (transport))
+        if (!is_transport_available (transport))
             continue;
 
         for (int pattern_value = raw_pattern_dealer_dealer;
@@ -1069,30 +923,6 @@ static void verify_pubsub_pressure_entry_and_resume ()
     }
 }
 
-static void verify_spot_forwarding_matrix ()
-{
-    for (size_t transport_index = 0;
-         transport_index < sizeof (kTransports) / sizeof (kTransports[0]); ++transport_index) {
-        const char *transport = kTransports[transport_index];
-        if (!is_spot_transport_available (transport))
-            continue;
-
-        std::vector<size_t> counts;
-        for (size_t i = 0; i < sizeof (kHwmBuckets) / sizeof (kHwmBuckets[0]); ++i) {
-            spot_case_t spot;
-            setup_spot_case (transport, kHwmBuckets[i], kLargeHwm, &spot);
-            const size_t queued =
-              measure_send_window_pubsub (spot.pub, static_cast<size_t> (kHwmBuckets[i]) + 1, NULL);
-            counts.push_back (queued);
-            drain_available_subscription_messages (spot.sub, queued);
-            close_spot_case (&spot);
-        }
-
-        char label[128];
-        snprintf (label, sizeof (label), "SPOT %s sndhwm progress", transport);
-        assert_progress_monotonic (counts, label);
-    }
-}
 } // namespace
 
 void test_single_socket_backpressure_oneway_matrix ()
@@ -1108,10 +938,6 @@ void test_multi_pubsub_backpressure_oneway_matrix ()
     verify_pubsub_pressure_entry_and_resume ();
 }
 
-void test_multi_spot_backpressure_oneway_matrix ()
-{
-    verify_spot_forwarding_matrix ();
-}
 
 static bool should_run_case (const char *name_)
 {
@@ -1128,8 +954,6 @@ int main (int, char **)
         RUN_TEST (test_single_socket_backpressure_oneway_matrix);
     if (should_run_case ("test_multi_pubsub_backpressure_oneway_matrix"))
         RUN_TEST (test_multi_pubsub_backpressure_oneway_matrix);
-    if (should_run_case ("test_multi_spot_backpressure_oneway_matrix"))
-        RUN_TEST (test_multi_spot_backpressure_oneway_matrix);
     const int status = UNITY_END ();
     fflush (NULL);
     return status;

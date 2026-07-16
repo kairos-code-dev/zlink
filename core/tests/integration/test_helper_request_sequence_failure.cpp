@@ -99,7 +99,6 @@ void set_router_id_and_connect_target (void *router_,
 void wait_for_request_from_router (void *router_, const char *expected_payload_)
 {
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
@@ -107,12 +106,10 @@ void wait_for_request_from_router (void *router_, const char *expected_payload_)
 
     while (std::chrono::steady_clock::now () < deadline) {
         const zlink_recv_result_t rc =
-          zlink_router_recv (router_, &source_rid, &source_spot_rid, &request_seq, &parts,
+          zlink_router_recv (router_, &source_rid, &request_seq, &parts,
                              &part_count, ZLINK_DONTWAIT);
         if (rc == ZLINK_RECV_OK) {
             TEST_ASSERT_NOT_NULL (source_rid);
-            TEST_ASSERT_NOT_NULL (source_spot_rid);
-            TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
             TEST_ASSERT_TRUE (request_seq != 0);
             TEST_ASSERT_EQUAL_UINT64 (1, part_count);
             TEST_ASSERT_EQUAL_UINT64 (strlen (expected_payload_), zlink_msg_size (&parts[0]));

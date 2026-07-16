@@ -4,15 +4,21 @@
 
 # Service API
 
-In the Core 10.0.0 service layer, MeshNode owns transport location, service mailboxes, and request correlation, while Spot, Actor, and STREAM session provide their logical state and receive owners. Raw sockets have no knowledge of service objects, and services do not expose raw frames or peer lists to callers.
+In the Core 10.0.0 service layer, MeshNode owns transport location, service
+mailboxes, and request correlation, while Spot, Actor, and STREAM session
+provide their logical state and receive owners. Raw sockets have no knowledge
+of service objects. Services do not expose raw frames, raw pipes, or internal
+peer state. The public peer snapshot defined by the MeshNode contract remains
+available and contains only documented peer identity, membership, lifecycle,
+and admission state.
 
 | Document | Responsibility |
 |---|---|
-| [MeshNode](mesh-node.md) | MeshName, ChannelName membership, peer admission, node/channel messaging, and Logical Multicast submit |
-| [Dispatch](dispatch.md) | Application and infrastructure readiness, per-domain claims, receive batches, operations, and replies |
-| [Spot](spot.md) | Spot lifecycle, direct messaging, local subscriptions, and Logical Multicast receive |
-| [Actor](actor.md) | ActorRef, Actor mailboxes, Spot membership, lifecycle, and transfer fences |
-| [STREAM session](stream-session.md) | Raw STREAM and MeshNode association, session-to-Actor bindings, bidirectional delivery, and barriers |
+| [MeshNode](01-mesh-node.md) | MeshName, ChannelName membership, peer admission, node/channel messaging, and Logical Multicast submit |
+| [Dispatch](02-dispatch.md) | Application and infrastructure readiness, per-domain claims, receive batches, operations, and replies |
+| [Spot](03-spot.md) | Spot lifecycle, direct messaging, local subscriptions, and Logical Multicast receive |
+| [Actor](04-actor.md) | ActorRef, Actor mailboxes, Spot membership, lifecycle, and transfer fences |
+| [STREAM session](05-stream-session.md) | Raw STREAM and MeshNode association, session-to-Actor bindings, bidirectional delivery, and barriers |
 
 Classic PUB/SUB and generic STREAM are independent contracts in the [socket index](../socket/README.md).
 

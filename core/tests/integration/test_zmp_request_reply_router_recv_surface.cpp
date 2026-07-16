@@ -36,8 +36,6 @@ struct router_recv_probe_t
     zlink_recv_result_t recv_rc;
     int recv_errno;
     bool source_rid_present;
-    bool source_spot_rid_present;
-    size_t source_spot_rid_size;
     uint64_t request_seq;
     size_t part_count;
     std::string source_rid;
@@ -49,8 +47,6 @@ struct router_recv_probe_t
         recv_rc (ZLINK_RECV_INTERNAL_ERROR),
         recv_errno (0),
         source_rid_present (false),
-        source_spot_rid_present (false),
-        source_spot_rid_size (0),
         request_seq (0),
         part_count (0),
         reply_rc (ZLINK_SUBMIT_INTERNAL_ERROR),
@@ -150,12 +146,11 @@ void assert_dealer_request_visible_through_router_recv (bool prime_recv_plane_)
 
     if (prime_recv_plane_) {
         const zlink_routing_id_t *source_rid = NULL;
-        const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
-                               zlink_router_recv (router, &source_rid, &source_spot_rid,
+                               zlink_router_recv (router, &source_rid,
                                                   &request_seq, &parts, &part_count,
                                                   ZLINK_DONTWAIT));
         TEST_ASSERT_EQUAL_INT (EAGAIN, zlink_errno ());
@@ -168,16 +163,13 @@ void assert_dealer_request_visible_through_router_recv (bool prime_recv_plane_)
     std::future<router_recv_probe_t> router_done = std::async (std::launch::async, [router] () {
         router_recv_probe_t result;
         const zlink_routing_id_t *source_rid = NULL;
-        const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
-        result.recv_rc = zlink_router_recv (router, &source_rid, &source_spot_rid, &request_seq,
+        result.recv_rc = zlink_router_recv (router, &source_rid, &request_seq,
                                             &parts, &part_count, 0);
         result.recv_errno = zlink_errno ();
         result.source_rid_present = source_rid != NULL;
-        result.source_spot_rid_present = source_spot_rid != NULL;
-        result.source_spot_rid_size = source_spot_rid ? source_spot_rid->size : 0;
         result.request_seq = request_seq;
         result.part_count = part_count;
         if (source_rid) {
@@ -211,8 +203,6 @@ void assert_dealer_request_visible_through_router_recv (bool prime_recv_plane_)
 
     TEST_ASSERT_EQUAL_INT (ZLINK_RECV_OK, router_result.recv_rc);
     TEST_ASSERT_TRUE (router_result.source_rid_present);
-    TEST_ASSERT_TRUE (router_result.source_spot_rid_present);
-    TEST_ASSERT_EQUAL_UINT64 (0, router_result.source_spot_rid_size);
     TEST_ASSERT_TRUE (router_result.request_seq != 0);
     TEST_ASSERT_EQUAL_UINT64 (1, router_result.part_count);
     TEST_ASSERT_EQUAL_STRING_LEN ("dealer-recv", router_result.source_rid.c_str (),
@@ -267,7 +257,6 @@ void test_dealer_request_is_visible_through_nonblocking_router_recv_polling ()
       zlink_dealer_request (dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
@@ -275,7 +264,7 @@ void test_dealer_request_is_visible_through_nonblocking_router_recv_polling ()
       std::chrono::steady_clock::now () + std::chrono::milliseconds (SETTLE_TIME * 20);
     while (true) {
         const zlink_recv_result_t recv_rc = zlink_router_recv (
-          router, &source_rid, &source_spot_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
+          router, &source_rid, &request_seq, &parts, &part_count, ZLINK_DONTWAIT);
         if (recv_rc == ZLINK_RECV_OK)
             break;
 
@@ -286,8 +275,6 @@ void test_dealer_request_is_visible_through_nonblocking_router_recv_polling ()
     }
 
     TEST_ASSERT_NOT_NULL (source_rid);
-    TEST_ASSERT_NOT_NULL (source_spot_rid);
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
     TEST_ASSERT_TRUE (request_seq != 0);
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
     TEST_ASSERT_EQUAL_STRING_LEN ("dealer-poll", reinterpret_cast<const char *> (source_rid->data),
@@ -340,16 +327,13 @@ void test_dealer_request_is_visible_through_first_blocking_router_recv ()
       zlink_dealer_request (dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (router, &source_rid, &source_spot_rid,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (router, &source_rid,
                                                   &request_seq, &parts, &part_count, 0));
 
     TEST_ASSERT_NOT_NULL (source_rid);
-    TEST_ASSERT_NOT_NULL (source_spot_rid);
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
     TEST_ASSERT_TRUE (request_seq != 0);
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
     TEST_ASSERT_EQUAL_STRING_LEN ("dealer-block", reinterpret_cast<const char *> (source_rid->data),
@@ -402,16 +386,13 @@ void test_dealer_request_is_visible_through_router_recv_over_tcp ()
                                                      &reply_probe, ZLINK_SEND_FLAGS_NONE, 5000));
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (router, &source_rid, &source_spot_rid,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (router, &source_rid,
                                                   &request_seq, &parts, &part_count, 0));
 
     TEST_ASSERT_NOT_NULL (source_rid);
-    TEST_ASSERT_NOT_NULL (source_spot_rid);
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
     TEST_ASSERT_TRUE (request_seq != 0);
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
     TEST_ASSERT_EQUAL_STRING_LEN (

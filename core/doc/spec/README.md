@@ -18,16 +18,16 @@ Formal specifications describe only the current 10.0.0 contract. Guides own purp
 | Document | Public contract |
 |---|---|
 | [Contract governance](core/00-public-contract-governance.md) | Consistency among specification, headers, tests, and packages |
-| [Context](core/context.md) | Context lifecycle and options |
-| [Message](core/message.md) | Message and routing-ID storage and ownership |
+| [Context](core/01-context.md) | Context lifecycle and options |
+| [Message](core/02-message.md) | Message and routing-ID storage and ownership |
 | [Socket](core/socket/README.md) | Generic socket types and send/receive behavior |
 | [Service](core/service/README.md) | MeshNode, Spot, Actor, and STREAM-session behavior |
-| [Polling](core/polling.md) | Poll items, pollers, and readiness |
-| [Monitoring](core/monitoring.md) | Socket and MeshNode monitors and snapshots |
-| [Events](core/events.md) | Public events and state-transition meaning |
-| [Errors](core/errors.md) | Result enums, errno, and the 10.0.0 version ABI |
-| [Errno map](core/errno-map.md) | Per-function result and errno mappings |
-| [Utilities](core/utilities.md) | Timers, threads, stopwatch, and atomic utilities |
+| [Polling](core/06-polling.md) | Poll items, pollers, and readiness |
+| [Monitoring](core/07-monitoring.md) | Socket and MeshNode monitors and snapshots |
+| [Events](core/05-events.md) | Public events and state-transition meaning |
+| [Errors](core/03-errors.md) | Result enums, errno, and the 10.0.0 version ABI |
+| [Errno map](core/04-errno-map.md) | Per-function result and errno mappings |
+| [Utilities](core/08-utilities.md) | Timers, threads, stopwatch, and atomic utilities |
 
 ## 3. Conformance
 

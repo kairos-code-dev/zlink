@@ -45,20 +45,6 @@ typedef enum zlink_socket_type_t
     ZLINK_SOCKET_STREAM = 0x1008
 } zlink_socket_type_t;
 
-typedef enum zlink_spot_node_mode_t
-{
-    ZLINK_SPOT_NODE_MODE_PUBSUB = 1,
-    ZLINK_SPOT_NODE_MODE_ROUTED = 2,
-    ZLINK_SPOT_NODE_MODE_ALL = 3
-} zlink_spot_node_mode_t;
-
-typedef enum zlink_spot_node_socket_owner_t
-{
-    ZLINK_SPOT_NODE_SOCKET_OWNER_ANY = 0,
-    ZLINK_SPOT_NODE_SOCKET_OWNER_NODE = 1,
-    ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT = 2
-} zlink_spot_node_socket_owner_t;
-
 typedef enum zlink_option_t
 {
     /* Queue, buffer, and message size options */
@@ -188,23 +174,6 @@ typedef enum zlink_stream_option_t
     ZLINK_STREAM_OPT_NOTIFY = 0x3501
 } zlink_stream_option_t;
 
-typedef enum zlink_spot_node_option_t
-{
-    /* 0x3608..0x360D are reserved for removed direction-based HWM and queue
-       hard-limit options. Do not reuse them for new public meanings. */
-    ZLINK_SPOT_NODE_OPT_ROUTER_HWM_PROFILE = 0x360E,
-    ZLINK_SPOT_NODE_OPT_ROUTER_HWM = 0x360F,
-    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM_PROFILE = 0x3610,
-    ZLINK_SPOT_NODE_OPT_PUBSUB_HWM = 0x3611,
-    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN = 0x3612,
-    ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX = 0x3613
-} zlink_spot_node_option_t;
-
-typedef enum zlink_spot_option_t
-{
-    ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS = 0x3701
-} zlink_spot_option_t;
-
 typedef enum zlink_disconnect_reason_t
 {
     ZLINK_DISCONNECT_REASON_UNKNOWN = 0,
@@ -228,30 +197,9 @@ typedef enum zlink_protocol_error_t
     ZLINK_PROTOCOL_ERROR_ZMP_MALFORMED_COMMAND_HELLO = 0x10000013
 } zlink_protocol_error_t;
 
-typedef enum zlink_spot_dispatch_event_t
-{
-    ZLINK_SPOT_DISPATCH_EVENT_SUBSCRIBE_READABLE = 1,
-    ZLINK_SPOT_DISPATCH_EVENT_ROUTED_READABLE = 2,
-    ZLINK_SPOT_DISPATCH_EVENT_TIMER_READABLE = 3,
-    ZLINK_SPOT_DISPATCH_EVENT_CHANNEL_REPLY_READABLE = 4,
-    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE = 5,
-    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE = 6,
-    ZLINK_SPOT_DISPATCH_EVENT_ACTOR_LIFECYCLE_READABLE = 7
-} zlink_spot_dispatch_event_t;
-
-typedef enum zlink_spot_dispatch_subject_kind_t
-{
-    ZLINK_SPOT_DISPATCH_SUBJECT_SPOT = 1,
-    ZLINK_SPOT_DISPATCH_SUBJECT_TIMER = 2,
-    ZLINK_SPOT_DISPATCH_SUBJECT_CHANNEL_DEALER = 3,
-    ZLINK_SPOT_DISPATCH_SUBJECT_ACTOR = 4
-} zlink_spot_dispatch_subject_kind_t;
-
 typedef enum zlink_monitor_source_kind_t
 {
-    ZLINK_MONITOR_SOURCE_SOCKET = 1,
-    ZLINK_MONITOR_SOURCE_SPOT_PUB = 3,
-    ZLINK_MONITOR_SOURCE_SPOT_SUB = 4
+    ZLINK_MONITOR_SOURCE_SOCKET = 1
 } zlink_monitor_source_kind_t;
 
 typedef uint32_t zlink_socket_monitor_event_mask_t;
@@ -313,91 +261,12 @@ typedef enum zlink_monitor_status_detail_flag_e
     ZLINK_MONITOR_STATUS_DETAIL_AUTO_HWM_BUFFERS = 1u << 4
 } zlink_monitor_status_detail_flag_e;
 
-typedef enum zlink_service_role_t
-{
-    ZLINK_SERVICE_ROLE_INVALID = 0,
-    ZLINK_SERVICE_ROLE_SPOT = 2,
-    ZLINK_SERVICE_ROLE_ROUTER = 3,
-    ZLINK_SERVICE_ROLE_DEALER = 4,
-    ZLINK_SERVICE_ROLE_PUB = 5,
-    ZLINK_SERVICE_ROLE_SUB = 6
-} zlink_service_role_t;
-
-typedef zlink_service_role_t zlink_channel_role_t;
-
-#define ZLINK_CHANNEL_ROLE_INVALID ZLINK_SERVICE_ROLE_INVALID
-#define ZLINK_CHANNEL_ROLE_SPOT ZLINK_SERVICE_ROLE_SPOT
-#define ZLINK_CHANNEL_ROLE_ROUTER ZLINK_SERVICE_ROLE_ROUTER
-#define ZLINK_CHANNEL_ROLE_DEALER ZLINK_SERVICE_ROLE_DEALER
-#define ZLINK_CHANNEL_ROLE_PUB ZLINK_SERVICE_ROLE_PUB
-#define ZLINK_CHANNEL_ROLE_SUB ZLINK_SERVICE_ROLE_SUB
-
-typedef enum zlink_spot_role_t
-{
-    ZLINK_SPOT_ROLE_PUB = 1,
-    ZLINK_SPOT_ROLE_SUB = 2
-} zlink_spot_role_t;
-
-typedef uint32_t zlink_service_event_detail_mask_t;
-
-typedef enum zlink_service_event_detail_flag_e
-{
-    ZLINK_SERVICE_EVENT_DETAIL_CHANNEL_NAME = 1u << 0,
-    ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT = 1u << 1,
-    ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID = 1u << 2,
-    ZLINK_SERVICE_EVENT_DETAIL_PEER_RID = 1u << 3,
-    ZLINK_SERVICE_EVENT_DETAIL_SUBJECT = 1u << 4,
-    ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_KIND = 1u << 5,
-
-    ZLINK_EVENT_DETAIL_CHANNEL_NAME = ZLINK_SERVICE_EVENT_DETAIL_CHANNEL_NAME,
-    ZLINK_EVENT_DETAIL_ENDPOINT = ZLINK_SERVICE_EVENT_DETAIL_ENDPOINT,
-    ZLINK_EVENT_DETAIL_SUBJECT_RID = ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_RID,
-    ZLINK_EVENT_DETAIL_PEER_RID = ZLINK_SERVICE_EVENT_DETAIL_PEER_RID,
-    ZLINK_EVENT_DETAIL_SUBJECT = ZLINK_SERVICE_EVENT_DETAIL_SUBJECT,
-    ZLINK_EVENT_DETAIL_SUBJECT_KIND = ZLINK_SERVICE_EVENT_DETAIL_SUBJECT_KIND
-} zlink_service_event_detail_flag_e;
-
-typedef enum zlink_service_event_subject_kind_t
-{
-    ZLINK_SERVICE_EVENT_SUBJECT_NONE = 0,
-    ZLINK_SERVICE_EVENT_SUBJECT_TOPIC = 1,
-    ZLINK_SERVICE_EVENT_SUBJECT_PATTERN = 2
-} zlink_service_event_subject_kind_t;
-
-typedef enum zlink_spot_node_state_t
-{
-    ZLINK_SPOT_NODE_STATE_IDLE = 1,
-    ZLINK_SPOT_NODE_STATE_CONNECTING = 2,
-    ZLINK_SPOT_NODE_STATE_PARTIAL_READY = 3,
-    ZLINK_SPOT_NODE_STATE_READY = 4,
-    ZLINK_SPOT_NODE_STATE_ERROR = 5
-} zlink_spot_node_state_t;
-
-typedef enum zlink_spot_peer_source_t
-{
-    ZLINK_SPOT_PEER_SOURCE_MANUAL = 1,
-    ZLINK_SPOT_PEER_SOURCE_DISCOVERY = 2,
-    ZLINK_SPOT_PEER_SOURCE_MIXED = 3
-} zlink_spot_peer_source_t;
-
-typedef enum zlink_spot_peer_kind_t
-{
-    ZLINK_SPOT_PEER_KIND_SPOT_MESH = 1,
-    ZLINK_SPOT_PEER_KIND_ROUTER_CHANNEL = 2
-} zlink_spot_peer_kind_t;
-
-typedef enum zlink_spot_peer_state_t
-{
-    ZLINK_SPOT_PEER_STATE_CONFIGURED = 1,
-    ZLINK_SPOT_PEER_STATE_CONNECTING = 2,
-    ZLINK_SPOT_PEER_STATE_CONNECTED = 3
-} zlink_spot_peer_state_t;
-
 typedef enum zlink_poller_source_kind_t
 {
     ZLINK_POLLER_SOURCE_SOCKET = 1,
     ZLINK_POLLER_SOURCE_FD = 2,
-    ZLINK_POLLER_SOURCE_TIMER = 3
+    ZLINK_POLLER_SOURCE_TIMER = 3,
+    ZLINK_POLLER_SOURCE_MESH_NODE = 4
 } zlink_poller_source_kind_t;
 
 typedef enum zlink_send_flags_t

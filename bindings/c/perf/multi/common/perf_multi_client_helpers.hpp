@@ -133,10 +133,9 @@ inline int recv_one_message (
         return -1;
 
     int rc = -1;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     if (router_surface) {
-        rc = ::zlink_router_recv_part (socket, &source_rid, &source_spot_rid, &request_seq, &part,
+        rc = ::zlink_router_recv_part (socket, &source_rid, &request_seq, &part,
                                        &has_more, static_cast<zlink_recv_flags_t> (flags));
     } else {
         rc = ::zlink_recv_part (socket, &source_rid, &part, &has_more,
@@ -151,8 +150,7 @@ inline int recv_one_message (
     }
 
     if (router_surface
-        && ((source_rid && source_rid->size == 0) || (source_spot_rid && source_spot_rid->size != 0)
-            || request_seq != 0 || has_more != ZLINK_PART_FINAL)) {
+        && ((source_rid && source_rid->size == 0) || request_seq != 0 || has_more != ZLINK_PART_FINAL)) {
         zlink_msg_close (&part);
         errno = EPROTO;
         return -1;
@@ -482,7 +480,6 @@ inline int recv_one_message_header (void *socket,
         return -1;
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
@@ -490,7 +487,7 @@ inline int recv_one_message_header (void *socket,
         return -1;
     int rc = -1;
     if (router_surface) {
-        rc = ::zlink_router_recv_part (socket, &source_rid, &source_spot_rid, &request_seq, &part,
+        rc = ::zlink_router_recv_part (socket, &source_rid, &request_seq, &part,
                                        &has_more, static_cast<zlink_recv_flags_t> (flags));
     } else {
         rc = ::zlink_recv_part (socket, &source_rid, &part, &has_more,
@@ -505,7 +502,7 @@ inline int recv_one_message_header (void *socket,
     }
 
     if (router_surface
-        && ((source_spot_rid && source_spot_rid->size != 0) || request_seq != 0
+        && (request_seq != 0
             || has_more != ZLINK_PART_FINAL)) {
         zlink_msg_close (&part);
         errno = EPROTO;

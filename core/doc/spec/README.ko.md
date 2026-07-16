@@ -21,16 +21,16 @@ internals가 소유한다. 계약 검토자는 이 목차와 공개 header를 �
 | 문서 | 공개 계약 |
 |---|---|
 | [계약 관리](core/00-public-contract-governance.ko.md) | 정식 spec, header, test와 package의 일치 절차 |
-| [Context](core/context.ko.md) | Context lifecycle과 option |
-| [Message](core/message.ko.md) | message와 routing ID의 저장소·ownership |
+| [Context](core/01-context.ko.md) | Context lifecycle과 option |
+| [Message](core/02-message.ko.md) | message와 routing ID의 저장소·ownership |
 | [Socket](core/socket/README.ko.md) | 범용 socket type과 send·receive 계약 |
 | [Service](core/service/README.ko.md) | MeshNode, Spot, Actor와 STREAM session 계약 |
-| [Polling](core/polling.ko.md) | poll item, poller와 readiness |
-| [Monitoring](core/monitoring.ko.md) | socket·MeshNode monitor와 snapshot |
-| [Events](core/events.ko.md) | 공개 event와 상태 전이 의미 |
-| [Errors](core/errors.ko.md) | result enum, errno와 10.0.0 version ABI |
-| [Errno map](core/errno-map.ko.md) | 함수별 result와 errno 대응 |
-| [Utilities](core/utilities.ko.md) | timer, thread, stopwatch와 atomic utility |
+| [Polling](core/06-polling.ko.md) | poll item, poller와 readiness |
+| [Monitoring](core/07-monitoring.ko.md) | socket·MeshNode monitor와 snapshot |
+| [Events](core/05-events.ko.md) | 공개 event와 상태 전이 의미 |
+| [Errors](core/03-errors.ko.md) | result enum, errno와 10.0.0 version ABI |
+| [Errno map](core/04-errno-map.ko.md) | 함수별 result와 errno 대응 |
+| [Utilities](core/08-utilities.ko.md) | timer, thread, stopwatch와 atomic utility |
 
 ## 3. 적합성
 

@@ -549,7 +549,6 @@ void typed_router_client_handler (const zlink_routing_id_t *source_rid_,
                                   size_t part_count_,
                                   void *)
 {
-    TEST_ASSERT_NOT_NULL (source_spot_rid_);
     TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid_->size);
     TEST_ASSERT_EQUAL_UINT64 (0, request_seq_);
     raw_client_handler (source_rid_, parts_, part_count_, NULL);
@@ -957,16 +956,14 @@ void run_dealer_router_ready_matrix (monitor_mode_t monitor_mode_, socket_mode_t
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "ping", 4, 0));
 
     const zlink_routing_id_t *source_node_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (server, &source_node_rid, &source_spot_rid,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (server, &source_node_rid,
                                                   &request_seq, &parts, &part_count, 0));
     TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
     TEST_ASSERT_EQUAL_UINT64 (static_cast<uint64_t> (routing_id_size), source_node_rid->size);
     TEST_ASSERT_EQUAL_MEMORY (routing_id, source_node_rid->data, routing_id_size);
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
     TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&parts[0]));
     TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
@@ -1037,16 +1034,14 @@ void run_router_router_ready_matrix (monitor_mode_t monitor_mode_, socket_mode_t
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (client, "ping", 4, 0));
 
     const zlink_routing_id_t *source_node_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t *parts = NULL;
     size_t part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (server, &source_node_rid, &source_spot_rid,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (server, &source_node_rid,
                                                   &request_seq, &parts, &part_count, 0));
     TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
     TEST_ASSERT_EQUAL_UINT64 (sizeof (client_id) - 1, source_node_rid->size);
     TEST_ASSERT_EQUAL_MEMORY (client_id, source_node_rid->data, source_node_rid->size);
-    TEST_ASSERT_EQUAL_UINT64 (0, source_spot_rid->size);
     TEST_ASSERT_EQUAL_UINT64 (1, part_count);
     TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&parts[0]));
     TEST_ASSERT_EQUAL_MEMORY ("ping", zlink_msg_data (&parts[0]), 4);
@@ -1058,17 +1053,14 @@ void run_router_router_ready_matrix (monitor_mode_t monitor_mode_, socket_mode_t
     TEST_ASSERT_SUCCESS_ERRNO (zlink_send (server, "pong", 4, 0));
 
     const zlink_routing_id_t *reply_source_node_rid = NULL;
-    const zlink_routing_id_t *reply_source_spot_rid = NULL;
     uint64_t reply_request_seq = 0;
     zlink_msg_t *reply_parts = NULL;
     size_t reply_part_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (client, &reply_source_node_rid,
-                                                  &reply_source_spot_rid, &reply_request_seq,
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_router_recv (client, &reply_source_node_rid, &reply_request_seq,
                                                   &reply_parts, &reply_part_count, 0));
     TEST_ASSERT_EQUAL_UINT64 (0, reply_request_seq);
     TEST_ASSERT_EQUAL_UINT64 (sizeof (server_id) - 1, reply_source_node_rid->size);
     TEST_ASSERT_EQUAL_MEMORY (server_id, reply_source_node_rid->data, reply_source_node_rid->size);
-    TEST_ASSERT_EQUAL_UINT64 (0, reply_source_spot_rid->size);
     TEST_ASSERT_EQUAL_UINT64 (1, reply_part_count);
     TEST_ASSERT_EQUAL_UINT64 (4, zlink_msg_size (&reply_parts[0]));
     TEST_ASSERT_EQUAL_MEMORY ("pong", zlink_msg_data (&reply_parts[0]), 4);

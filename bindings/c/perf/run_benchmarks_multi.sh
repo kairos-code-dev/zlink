@@ -8,7 +8,7 @@ DEFAULT_CORE_BUILD_DIR="${ROOT_DIR}/core/build"
 NORMALIZE_TIMESTAMPS_SH="${ROOT_DIR}/core/tools/normalize_build_timestamps.sh"
 MAKE_BIN="$(command -v gmake || command -v make)"
 PERF_COMPARISON_SCRIPT="${SCRIPT_DIR}/run_comparison.py"
-PATTERNS="DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM"
+PATTERNS="DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,STREAM"
 TRANSPORTS="tcp,tls,ws,wss"
 DEFAULT_MULTI_MSG_SIZES="64,256,1024,4096,65536,131072"
 MSG_SIZES="${PERF_MSG_SIZES:-${DEFAULT_MULTI_MSG_SIZES}}"
@@ -341,7 +341,7 @@ Usage: bindings/c/perf/run_benchmarks_multi.sh [options]
 
 Run only multi-socket benchmark patterns.
 Default PATTERN is:
-  DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,SPOT,SPOT_REQREP,SPOT_SENDSEND,STREAM
+  DEALER_DEALER,DEALER_ROUTER_SENDSEND,ROUTER_ROUTER_SENDSEND,DEALER_ROUTER_REQREP,ROUTER_ROUTER_REQREP,PUBSUB,STREAM
 This script invokes the shared comparison runner directly.
 By default, multi-bench uses ready -> active with a 5s duration window.
 By default, multi-bench uses transports: tcp,tls,ws,wss (can be overridden with --transports).
@@ -490,15 +490,6 @@ resolve_multi_build_targets() {
       PUBSUB)
         targets+=("comp_src_pubsub_server" "comp_src_pubsub_client")
         ;;
-      SPOT)
-        targets+=("comp_src_spot_server" "comp_src_spot_client")
-        ;;
-      SPOT_REQREP)
-        targets+=("comp_src_spot_reqrep_server" "comp_src_spot_reqrep_client")
-        ;;
-      SPOT_SENDSEND)
-        targets+=("comp_src_spot_sendsend_server" "comp_src_spot_sendsend_client")
-        ;;
       STREAM)
         targets+=("comp_src_stream_server" "perf_stream_client")
         ;;
@@ -567,7 +558,6 @@ SERVICE_CLIENTS="${PERF_MULTI_SERVICE_CLIENTS:-${PERF_SERVICE_CLIENTS:-}}"
 TIMEOUT_SECONDS="${PERF_MULTI_TIMEOUT_SECONDS:-${PERF_TIMEOUT_SECONDS:-}}"
 STREAM_MSG_SIZES="${PERF_MULTI_STREAM_MSG_SIZES:-${PERF_STREAM_MSG_SIZES:-64,256,1024,65536}}"
 PUBSUB_XPUB_NODROP="${PERF_MULTI_PUBSUB_XPUB_NODROP:-${PERF_PUBSUB_XPUB_NODROP:-}}"
-SPOT_XPUB_NODROP="${PERF_MULTI_SPOT_XPUB_NODROP:-${PERF_SPOT_XPUB_NODROP:-}}"
 RUN_COOLDOWN_MS="${PERF_MULTI_RUN_COOLDOWN_MS:-${PERF_RUN_COOLDOWN_MS:-3000}}"
 TRANSPORT_TRANSITION_MS="${PERF_MULTI_TRANSPORT_TRANSITION_MS:-${PERF_TRANSPORT_TRANSITION_MS:-3000}}"
 PATTERN_TRANSITION_MS="${PERF_MULTI_PATTERN_TRANSITION_MS:-${PERF_PATTERN_TRANSITION_MS:-3000}}"
@@ -1075,9 +1065,6 @@ if [[ -n "${STREAM_MSG_SIZES}" ]]; then
 fi
 if [[ -n "${PUBSUB_XPUB_NODROP}" ]]; then
   RUN_ENV+=(PERF_MULTI_PUBSUB_XPUB_NODROP="${PUBSUB_XPUB_NODROP}")
-fi
-if [[ -n "${SPOT_XPUB_NODROP}" ]]; then
-  RUN_ENV+=(PERF_MULTI_SPOT_XPUB_NODROP="${SPOT_XPUB_NODROP}")
 fi
 if [[ -n "${SERVER_IO_THREADS}" ]]; then
   RUN_ENV+=(PERF_MULTI_SERVER_IO_THREADS="${SERVER_IO_THREADS}")

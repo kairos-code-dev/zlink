@@ -73,8 +73,10 @@ struct scheduler_state_t
 
 scheduler_state_t &scheduler_state ()
 {
-    static scheduler_state_t state;
-    return state;
+    //  Intentionally immortal: the detached timeout thread can outlive static
+    //  destruction at process exit, so this state must never be destroyed.
+    static scheduler_state_t *state = new scheduler_state_t ();
+    return *state;
 }
 
 void run_timeout_loop ()

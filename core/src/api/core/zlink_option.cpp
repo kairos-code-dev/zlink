@@ -3,7 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/core/config_result_internal.hpp"
-#include "api/service/service_option_surface_internal.hpp"
+#include "api/mesh/mesh_api_internal.hpp"
 #include "api/core/zlink_option_internal.hpp"
 #include "utils/err.hpp"
 
@@ -74,8 +74,7 @@ int get_socket_option_checked (zlink::socket_base_t *socket_,
     return socket_->getsockopt (option_, optval_, optvallen_);
 }
 
-zlink::option_target_t::option_target_t ()
-    : kind (option_target_invalid), service_kind (service_handle_unknown), socket (NULL)
+zlink::option_target_t::option_target_t () : kind (option_target_invalid), socket (NULL)
 {
 }
 
@@ -87,10 +86,8 @@ zlink::option_target_t zlink::resolve_option_target (void *handle_)
         return target;
     }
 
-    const service_handle_resolution_t service = resolve_service_handle (handle_);
-    if (service.kind != service_handle_unknown) {
+    if (zlink::mesh::classify_handle (handle_) != zlink::mesh::handle_none) {
         target.kind = option_target_service;
-        target.service_kind = service.kind;
         return target;
     }
 
@@ -116,8 +113,8 @@ zlink_set_option (void *handle_, zlink_option_t option_, const void *optval_, si
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
     if (target.kind == zlink::option_target_service) {
         errno = 0;
-        return zlink::config_result_internal::from_rc (zlink_service_set_common_option (
-          handle_, option_, socket_option, optval_, optvallen_));
+        return zlink::config_result_internal::from_rc (
+          zlink::mesh::set_common_option (handle_, socket_option, optval_, optvallen_));
     }
 
     if (target.kind == zlink::option_target_socket) {
@@ -143,8 +140,8 @@ zlink_get_option (void *handle_, zlink_option_t option_, void *optval_, size_t *
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
     if (target.kind == zlink::option_target_service) {
         errno = 0;
-        return zlink::config_result_internal::from_rc (zlink_service_get_common_option (
-          handle_, option_, socket_option, optval_, optvallen_));
+        return zlink::config_result_internal::from_rc (
+          zlink::mesh::get_common_option (handle_, socket_option, optval_, optvallen_));
     }
 
     if (target.kind == zlink::option_target_socket) {
@@ -165,7 +162,7 @@ zlink_config_result_t zlink_set_routing_id (void *handle_, const void *data_, si
     if (target.kind == zlink::option_target_service) {
         errno = 0;
         return zlink::config_result_internal::from_rc (
-          zlink_service_set_routing_id (handle_, data_, size_));
+          zlink::mesh::set_routing_id (handle_, data_, size_));
     }
 
     if (target.kind == zlink::option_target_socket) {
@@ -191,7 +188,7 @@ zlink_config_result_t zlink_get_routing_id (void *handle_, zlink_routing_id_t *o
     const zlink::option_target_t target = zlink::resolve_option_target (handle_);
     if (target.kind == zlink::option_target_service) {
         errno = 0;
-        return zlink::config_result_internal::from_rc (zlink_service_get_routing_id (handle_, out_));
+        return zlink::config_result_internal::from_rc (zlink::mesh::get_routing_id (handle_, out_));
     }
 
     if (target.kind == zlink::option_target_socket) {
@@ -239,7 +236,7 @@ zlink_set_tls_server (void *handle_, const char *cert_, const char *key_, int re
     if (target.kind == zlink::option_target_service) {
         errno = 0;
         return zlink::config_result_internal::from_rc (
-          zlink_service_set_tls_server (handle_, cert_, key_, require_client_cert_));
+          zlink::mesh::set_tls_server (handle_, cert_, key_, require_client_cert_));
     }
 
     if (target.kind == zlink::option_target_socket) {
@@ -269,7 +266,7 @@ zlink_set_tls_client (void *handle_, const char *ca_cert_, const char *hostname_
     if (target.kind == zlink::option_target_service) {
         errno = 0;
         return zlink::config_result_internal::from_rc (
-          zlink_service_set_tls_client (handle_, ca_cert_, hostname_, trust_system_));
+          zlink::mesh::set_tls_client (handle_, ca_cert_, hostname_, trust_system_));
     }
 
     if (target.kind == zlink::option_target_socket) {

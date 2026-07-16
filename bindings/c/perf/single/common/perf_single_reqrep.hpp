@@ -316,13 +316,11 @@ inline int recv_router_request (void *router_,
         return -1;
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (payload_out_) != 0)
         return -1;
-    const int rc = zlink_router_recv_part (router_, &source_rid, &source_spot_rid,
-                                           request_seq_out_, payload_out_, &has_more,
-                                           ZLINK_RECV_FLAGS_NONE);
+    const int rc = zlink_router_recv_part (router_, &source_rid, request_seq_out_, payload_out_,
+                                           &has_more, ZLINK_RECV_FLAGS_NONE);
     if (rc != 0) {
         zlink_msg_close (payload_out_);
         const int err = zlink_errno ();
@@ -330,8 +328,7 @@ inline int recv_router_request (void *router_,
             return 0;
         return -1;
     }
-    if (!source_rid || source_rid->size == 0 || !source_spot_rid || source_spot_rid->size != 0
-        || has_more != ZLINK_PART_FINAL) {
+    if (!source_rid || source_rid->size == 0 || has_more != ZLINK_PART_FINAL) {
         zlink_msg_close (payload_out_);
         return -1;
     }

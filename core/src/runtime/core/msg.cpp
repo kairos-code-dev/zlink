@@ -26,7 +26,16 @@ const uintptr_t slice_lmsg_flag = static_cast<uintptr_t> (1);
 const size_t slice_content_pool_max =
   static_cast<size_t> (zlink::env::positive_int ("ZLINK_MSG_SLICE_CONTENT_POOL_MAX", 32768));
 
-typedef std::vector<zlink::msg_t::content_t *> slice_content_pool_t;
+//  Frees cached entries at thread exit; without this the pooled contents
+//  become unreachable when the owning thread's storage is destroyed.
+struct slice_content_pool_t : std::vector<zlink::msg_t::content_t *>
+{
+    ~slice_content_pool_t ()
+    {
+        for (size_t i = 0; i < size (); ++i)
+            std::free ((*this)[i]);
+    }
+};
 
 slice_content_pool_t &slice_content_pool ()
 {

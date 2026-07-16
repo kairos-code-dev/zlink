@@ -13,14 +13,7 @@ set(unittests
     unittest_raw_decoder
     unittest_msg_view
     unittest_ctx_runtime
-    unittest_service_runtime_base
-    unittest_spot_data_plane_protocol
-    unittest_spot_data_plane_budget
-    unittest_spot_runtime_control_state
-    unittest_spot_dispatch_seriality
     unittest_socket_runtime
-    unittest_spot_subject_access
-    unittest_spot_actor_gateway_no_bind_protocol
     unittest_typed_option
     unittest_public_contract_headers
     unittest_request_timeout_scheduler

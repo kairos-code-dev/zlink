@@ -144,61 +144,6 @@ bool read_zmp_frame (fd_t fd_,
 }
 }
 
-void test_zmp_metadata_enabled ()
-{
-    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
-    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
-
-    int enabled = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_ZMP_METADATA, &enabled, sizeof (enabled)));
-
-    char endpoint[MAX_SOCKET_STRING];
-    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
-
-    send_string_expect_success (client, "A", 0);
-
-    zlink_msg_t msg;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, server, 0));
-    const char *sock_type = zlink_msg_gets (&msg, "Socket-Type");
-    TEST_ASSERT_NOT_NULL (sock_type);
-    TEST_ASSERT_EQUAL_STRING ("PAIR", sock_type);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
-
-    test_context_socket_close (client);
-    test_context_socket_close (server);
-}
-
-void test_zmp_metadata_disabled ()
-{
-    void *server = test_context_socket (ZLINK_SOCKET_PAIR);
-    void *client = test_context_socket (ZLINK_SOCKET_PAIR);
-
-    int disabled = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_option (client, ZLINK_OPT_ZMP_METADATA, &disabled, sizeof (disabled)));
-
-    char endpoint[MAX_SOCKET_STRING];
-    bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
-
-    send_string_expect_success (client, "B", 0);
-
-    zlink_msg_t msg;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_init (&msg));
-    TEST_ASSERT_SUCCESS_ERRNO (test_recv_single_msg (&msg, server, 0));
-    errno = 0;
-    const char *sock_type = zlink_msg_gets (&msg, "Socket-Type");
-    TEST_ASSERT_NULL (sock_type);
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_msg_close (&msg));
-
-    test_context_socket_close (client);
-    test_context_socket_close (server);
-}
-
 void test_zmp_error_invalid_hello ()
 {
     void *server = test_context_socket (ZLINK_SOCKET_PAIR);
@@ -353,8 +298,6 @@ int main (void)
 
     setup_test_environment ();
 
-    RUN_TEST (test_zmp_metadata_enabled);
-    RUN_TEST (test_zmp_metadata_disabled);
     RUN_TEST (test_zmp_error_invalid_hello);
     RUN_TEST (test_zmp_heartbeat_ttl_min);
 

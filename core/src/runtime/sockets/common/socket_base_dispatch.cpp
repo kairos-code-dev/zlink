@@ -158,34 +158,6 @@ void zlink::socket_base_t::socket_msg_dispatch_drain_pending ()
         xdispatch_io ();
 }
 
-int zlink::socket_base_t::socket_set_spot_handler (zlink_subscribe_handler_fn handler_)
-{
-    return socket_set_spot_handler_with_userdata (handler_, NULL);
-}
-
-int zlink::socket_base_t::socket_set_spot_handler_with_userdata (
-  zlink_subscribe_handler_fn handler_, void *userdata_)
-{
-    socket_lifecycle_coordinator_t &lifecycle = lifecycle_coordinator ();
-    socket_public_api_scope_t admission (lifecycle);
-    if (!admission.acquired ())
-        return -1;
-    if (!handler_) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (sub_dispatch_active ()) {
-        errno = EBUSY;
-        return -1;
-    }
-
-    dispatch_runtime ().spot_handler.store (handler_, std::memory_order_release);
-    dispatch_runtime ().spot_handler_userdata.store (userdata_, std::memory_order_release);
-
-    const int rc = sub_dispatch_start (&socket_base_t::dispatch_spot_handler_from_io, this);
-    return rc;
-}
-
 int zlink::socket_base_t::socket_set_send_ready_handler (zlink_send_ready_handler_fn handler_)
 {
     return socket_set_send_ready_handler_ex (handler_, NULL);
@@ -274,11 +246,6 @@ zlink_socket_msg_handler_fn zlink::socket_base_t::socket_msg_handler () const
     return dispatch_runtime ().socket_msg_handler.load (std::memory_order_acquire);
 }
 
-zlink_subscribe_handler_fn zlink::socket_base_t::socket_spot_handler () const
-{
-    return dispatch_runtime ().spot_handler.load (std::memory_order_acquire);
-}
-
 zlink_send_ready_handler_fn zlink::socket_base_t::socket_send_ready_handler () const
 {
     zlink_send_ready_handler_fn handler = NULL;
@@ -297,11 +264,6 @@ void *zlink::socket_base_t::socket_msg_handler_subject () const
 void *zlink::socket_base_t::socket_msg_handler_userdata () const
 {
     return dispatch_runtime ().socket_msg_handler_userdata.load (std::memory_order_acquire);
-}
-
-void *zlink::socket_base_t::socket_spot_handler_userdata () const
-{
-    return dispatch_runtime ().spot_handler_userdata.load (std::memory_order_acquire);
 }
 
 void *zlink::socket_base_t::socket_send_ready_handler_subject () const
@@ -396,44 +358,6 @@ void zlink::socket_base_t::clear_last_recv_source_rid ()
 bool zlink::socket_base_t::copy_last_recv_source_rid (zlink_routing_id_t *out_) const
 {
     return endpoint_runtime ().copy_last_recv_source_rid (out_);
-}
-
-void zlink::socket_base_t::dispatch_spot_handler_from_io (const zlink_routing_id_t *source_rid_,
-                                                          const char *topic_,
-                                                          size_t topic_len_,
-                                                          zlink_msg_t *parts_,
-                                                          size_t part_count_,
-                                                          void *userdata_)
-{
-    socket_base_t *self = static_cast<socket_base_t *> (userdata_);
-    if (!self) {
-        for (size_t i = 0; i < part_count_; ++i) {
-            const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
-            errno_assert (rc == 0);
-        }
-        return;
-    }
-
-    zlink_subscribe_handler_fn handler = self->socket_spot_handler ();
-    if (!handler) {
-        for (size_t i = 0; i < part_count_; ++i) {
-            const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
-            errno_assert (rc == 0);
-        }
-        return;
-    }
-
-    socket_callback_scope_t callback_scope (self, self->lifecycle_coordinator ());
-    if (!callback_scope.acquired ()) {
-        for (size_t i = 0; i < part_count_; ++i) {
-            const int rc = reinterpret_cast<msg_t *> (&parts_[i])->close ();
-            errno_assert (rc == 0);
-        }
-        return;
-    }
-
-    handler (source_rid_, topic_, topic_len_, parts_, part_count_,
-             self->socket_spot_handler_userdata ());
 }
 
 void zlink::socket_base_t::arm_send_ready_notification ()

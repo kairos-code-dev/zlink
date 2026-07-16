@@ -486,7 +486,6 @@ inline server_recv_step_t reply_one_request (void *server,
                                              size_t *active_msg_size)
 {
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
@@ -494,7 +493,7 @@ inline server_recv_step_t reply_one_request (void *server,
         return server_recv_step_error;
 
     const int rc =
-      zlink_router_recv_part (server, &source_rid, &source_spot_rid, &request_seq, &part,
+      zlink_router_recv_part (server, &source_rid, &request_seq, &part,
                               &has_more, static_cast<zlink_recv_flags_t> (ZLINK_DONTWAIT));
     if (rc != 0) {
         const int err = zlink_errno ();
@@ -504,8 +503,7 @@ inline server_recv_step_t reply_one_request (void *server,
         return server_recv_step_error;
     }
 
-    if (!source_rid || source_rid->size == 0 || (source_spot_rid && source_spot_rid->size != 0)
-        || request_seq == 0 || has_more != ZLINK_PART_FINAL) {
+    if (!source_rid || source_rid->size == 0 || request_seq == 0 || has_more != ZLINK_PART_FINAL) {
         zlink_msg_close (&part);
         errno = EPROTO;
         return server_recv_step_error;

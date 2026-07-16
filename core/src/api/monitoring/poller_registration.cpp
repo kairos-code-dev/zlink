@@ -6,6 +6,8 @@
 
 #include "api/monitoring/poller_api_internal.hpp"
 #include "api/socket/request_completion_queue_internal.hpp"
+#include "api/monitoring/timer_api_internal.hpp"
+#include "api/monitoring/poller_completion_internal.hpp"
 
 void *poller_index_user_data (size_t index_)
 {
@@ -212,4 +214,22 @@ int poller_remove_all_registrations_for_subject (poller_handle_t *poller_, void 
         return -1;
     }
     return 0;
+}
+
+void release_poller_registration (const poller_registration_t &registration_)
+{
+    switch (registration_.subject_kind) {
+        case poller_subject_timer:
+            timer_handle_release_poller_ref (as_timer_handle (registration_.subject));
+            break;
+        case poller_subject_fd:
+            break;
+        default:
+            if (poller_subject_is_completion (registration_.subject_kind)
+                && registration_.completion_queue) {
+                zlink::request_completion::release_signal_poller_ref (
+                  registration_.completion_queue);
+            }
+            break;
+    }
 }

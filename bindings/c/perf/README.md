@@ -10,7 +10,7 @@ after rebuilding `core/build`.
 
 ```bash
 cmake --build core/build
-./bindings/c/perf/run_benchmarks_multi.sh --pattern SPOT_REQREP
+./bindings/c/perf/run_benchmarks_multi.sh --pattern ROUTER_ROUTER_REQREP
 ```
 
 Before running benchmarks, the script prints the resolved `libzlink.so` path.
@@ -28,14 +28,10 @@ handshake before the numbers are treated as comparable.
 The fixed reference surface is:
 
 - runner and benchmark process stdin/stdout tokens (`READY`, `CLIENT_READY`,
-  `CLIENT_DONE`, `START`, `PHASE_ACTIVE`, `STOP`, `RESULT`, and the SPOT
-  control tokens);
+  `CLIENT_DONE`, `START`, `PHASE_ACTIVE`, `STOP`, `RESULT`);
 - raw socket connection gates based on the same C perf `CONNECTION_READY`
   meaning, plus the C perf `CLIENT_READY` / `START` start barrier for the
   one-way raw patterns that use it;
-- SPOT-family direct control handshake (`CONNECTED` progress payload,
-  `DATA_ENDPOINT` for routed SPOT echo variants, plus `READY_COUNT` -> direct
-  `START` start barrier);
 - active window, stop/drain, timeout, fail, skip, and unsupported semantics;
 - RESULT line metric names and anchor points.
 
@@ -79,33 +75,18 @@ before each run:
 | Socket family | Message unit used by perf |
 |---------------|---------------------------|
 | raw multi perf sockets | `msg_size` |
-| SPOT node internal sockets | `msg_size` |
-| SPOT handle sockets | `msg_size` |
 
-SPOT data and control paths must use the same message unit as the test payload
-size. A visible `MsgUnit(B)=4096` row is only valid for a 4096 byte test case.
+A visible `MsgUnit(B)=4096` row is only valid for a 4096 byte test case.
 If a 64 byte or 1024 byte run prints `4096`, the run is not a valid comparison
 because the effective slot budget and socket buffers are different from the
 target message size.
 
-All single benchmarks use one context I/O thread by default. SPOT does not have
-a pattern-specific I/O thread default; pass `--io-threads` or set
-`PERF_IO_THREADS` only when intentionally running a non-baseline diagnostic.
+All single benchmarks use one context I/O thread by default. Pass
+`--io-threads` or set `PERF_IO_THREADS` only when intentionally running a
+non-baseline diagnostic.
 
-For non-SPOT patterns, the auto-HWM detail table is printed after the result
-rows. It uses the cached runtime snapshots and includes the applied HWM and
-socket buffers.
-
-SPOT output uses `zlink_spot_node_internal_sockets()` and prints only
-actual snapshot rows where `auto_hwm_visible == 1`. The default tables are
-`Auto-HWM spotnode` for node-owned sockets and `Auto-HWM spot handles` for
-per-spot handle sockets. Shared routers, mesh sockets, and peer-control sockets
-belong to the SpotNode table. A per-spot handle normally exposes only its
-handle-owned PUB/SUB data sockets, so router rows are not expected in
-`Auto-HWM spot handles`. Each row includes `Size(B)`, `MsgUnit(B)`, the internal
-socket name, the public socket type, role, HWM, and effective buffers. If a
-SpotNode mode does not create a socket group, that group is absent from the perf
-output.
+The auto-HWM detail table is printed after the result rows. It uses the cached
+runtime snapshots and includes the applied HWM and socket buffers.
 
 ## Auto-HWM Profile Sweep
 
@@ -117,7 +98,7 @@ The recommended sweep axes are:
 |------|--------|
 | profile | `low_latency`, `balanced`, `throughput` |
 | message sizes | `64`, `1024`, `4096`, `65536` bytes |
-| patterns | `DEALER_ROUTER_SENDSEND`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_SENDSEND`, `ROUTER_ROUTER_REQREP`, `PUBSUB`, `SPOT`, `SPOT_REQREP`, `SPOT_SENDSEND`, `STREAM` |
+| patterns | `DEALER_ROUTER_SENDSEND`, `DEALER_ROUTER_REQREP`, `ROUTER_ROUTER_SENDSEND`, `ROUTER_ROUTER_REQREP`, `PUBSUB`, `STREAM` |
 
 Profile guidance after the auto-HWM message-unit change:
 
@@ -134,9 +115,9 @@ benchmark context's effective message unit differs from the socket-type default.
 Use raw socket `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` only for a socket-specific
 override inside that context.
 
-## SPOT One-Way Latency
+## One-Way Latency Caveat
 
-`MULTI_SPOT` measures throughput during the active phase. For large one-way
+One-way patterns measure throughput during the active phase. For large one-way
 payloads, that phase intentionally saturates the sender and receiver queues, so
 active-phase message timestamps mostly describe queue residence time rather than
 service latency.

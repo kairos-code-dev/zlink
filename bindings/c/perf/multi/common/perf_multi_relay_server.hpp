@@ -206,12 +206,11 @@ inline bool drain_recv_and_relay (void *server,
             return true;
 
         const zlink_routing_id_t *source_rid = NULL;
-        const zlink_routing_id_t *source_spot_rid = NULL;
         uint64_t request_seq = 0;
         zlink_msg_t *parts = NULL;
         size_t part_count = 0;
         const zlink_recv_result_t rc = ::perf_zlink_router_recv_parts (
-          server, &source_rid, &source_spot_rid, &request_seq, &parts, &part_count,
+          server, &source_rid, &request_seq, &parts, &part_count,
           static_cast<zlink_recv_flags_t> (ZLINK_RECV_FLAGS_DONTWAIT));
         if (rc != ZLINK_RECV_OK) {
             const int err = zlink_errno ();
@@ -226,8 +225,7 @@ inline bool drain_recv_and_relay (void *server,
             return false;
         }
 
-        if (!source_rid || source_rid->size == 0 || (source_spot_rid && source_spot_rid->size != 0)
-            || request_seq != 0 || part_count == 0 || !parts) {
+        if (!source_rid || source_rid->size == 0 || request_seq != 0 || part_count == 0 || !parts) {
             zlink_multipart_close (parts, part_count);
             errno = EPROTO;
             return false;

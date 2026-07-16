@@ -6,7 +6,7 @@
 
 #include "api/socket/request_reply_protocol_internal.hpp"
 #include "api/socket/part_helper_internal.hpp"
-#include "api/service/service_mode_internal.hpp"
+#include "api/monitoring/poller_api_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_submit_internal.hpp"
 #include "api/message/submit_result_internal.hpp"

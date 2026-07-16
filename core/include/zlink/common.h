@@ -5,13 +5,13 @@
 
 /*  Version macros for compile-time API version detection                     */
 #ifndef ZLINK_VERSION_MAJOR
-#define ZLINK_VERSION_MAJOR 9
+#define ZLINK_VERSION_MAJOR 10
 #endif
 #ifndef ZLINK_VERSION_MINOR
 #define ZLINK_VERSION_MINOR 0
 #endif
 #ifndef ZLINK_VERSION_PATCH
-#define ZLINK_VERSION_PATCH 4
+#define ZLINK_VERSION_PATCH 0
 #endif
 
 #ifndef ZLINK_MAKE_VERSION

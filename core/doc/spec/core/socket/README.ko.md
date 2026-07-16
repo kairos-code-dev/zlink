@@ -1,23 +1,23 @@
-[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md)
+[English](README.md) | 한국어
 
-[English](README.md) | [한국어](README.ko.md)
+[스펙 목차](../../README.ko.md) · [코어 목차](../README.ko.md)
 
 # 소켓 -- 공통 명세
 
 이 문서는 모든 소켓 타입에 적용되는 공통 기반을 다룹니다.
-타입별 명세(타입 전용 옵션, 데이터 플레인 API, 동작 세부사항)는
+타입별 명세(타입 전용 옵션, data plane API, 동작 세부사항)는
 별도 파일에 있습니다.
 
 | 소켓 타입 | 명세 |
 |-----------|------|
-| PAIR | [pair.ko.md](pair.ko.md) |
-| DEALER | [dealer.ko.md](dealer.ko.md) |
-| ROUTER | [router.ko.md](router.ko.md) |
-| PUB | [pub.ko.md](pub.ko.md) |
-| SUB | [sub.ko.md](sub.ko.md) |
-| XPUB | [xpub.ko.md](xpub.ko.md) |
-| XSUB | [xsub.ko.md](xsub.ko.md) |
-| STREAM | [stream.ko.md](stream.ko.md) |
+| PAIR | [01-pair.ko.md](01-pair.ko.md) |
+| DEALER | [06-dealer.ko.md](06-dealer.ko.md) |
+| ROUTER | [07-router.ko.md](07-router.ko.md) |
+| PUB | [02-pub.ko.md](02-pub.ko.md) |
+| SUB | [03-sub.ko.md](03-sub.ko.md) |
+| XPUB | [04-xpub.ko.md](04-xpub.ko.md) |
+| XSUB | [05-xsub.ko.md](05-xsub.ko.md) |
+| STREAM | [08-stream.ko.md](08-stream.ko.md) |
 
 ## 스레드 안전성 요약
 
@@ -42,12 +42,12 @@
 
 | 소켓 타입 | 수신 표면 | 비고 |
 |-----------|-----------|------|
-| PAIR | `zlink_recv()` | recv-only |
-| DEALER | `zlink_recv()` (+ `zlink_dealer_request()` completion callback) | recv-only data plane |
-| SUB | `zlink_subscribe()` | recv-only |
-| XSUB | `zlink_subscribe()` | recv-only |
-| ROUTER | `zlink_router_recv()` (+ `zlink_router_request()` completion callback) | recv-only data plane |
-| STREAM | `zlink_recv()` / `zlink_recv_handler()` / `zlink_stream_packet_handler()` | 세 모드 중 하나 선택 (예외) |
+| PAIR | `zlink_recv_part()` | part receive 전용 |
+| DEALER | `zlink_recv_part()` (+ `zlink_dealer_request_part()` completion callback) | part receive data plane |
+| SUB | `zlink_subscribe_part()` | topic part receive 전용 |
+| XSUB | `zlink_subscribe_part()` | topic part receive 전용 |
+| ROUTER | `zlink_router_recv_part()` (+ `zlink_router_request_part()` completion callback) | part receive data plane |
+| STREAM | `zlink_recv_part()` / `zlink_recv_handler()` / `zlink_stream_packet_handler()` | 세 모드 중 하나 선택 (예외) |
 | PUB | 해당 없음 | 송신 전용 |
 | XPUB | `zlink_xpub_recv_part()` (구독 이벤트 recv-only) | 데이터 plane은 송신 |
 | monitor / timer | recv / callback 모두 지원 | 관찰/유틸 계층 |
@@ -177,7 +177,7 @@ typedef enum zlink_recv_flags_t
 } zlink_recv_flags_t;
 ```
 
-`zlink_recv`, `zlink_subscribe`, 소켓별 `zlink_*_recv` 계열, 그리고
+`zlink_recv_part`, `zlink_subscribe_part`, 소켓별 `zlink_*_recv_part` 계열, 그리고
 monitor `zlink_*_monitor_recv` 함수들이 이 플래그를 사용합니다.
 
 | 상수 | 설명 |
@@ -278,7 +278,7 @@ send, request submit, reply submit API의 공개 결과를 정규화할 때
 | `ZLINK_SUBMIT_BACKPRESSURED` | 1 | 송신 큐가 가득 참 (HWM 도달) |
 | `ZLINK_SUBMIT_NOT_CONNECTED` | 2 | 대상 경로나 peer가 아직 연결되지 않음 |
 | `ZLINK_SUBMIT_NOT_FOUND` | 3 | 대상 peer, spot, routed destination을 찾지 못함 |
-| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow 결과. 가중치 `0` 대상이 신규 outbound를 거부함; 호출자는 다른 peer를 선택하거나 대기해야 함 |
+| `ZLINK_SUBMIT_NOT_ADMITTED` | 13 | Normal control-flow 결과. target route는 식별했지만 handshake 또는 신규 outbound weight 같은 admission 정책이 submit을 거부함 |
 | `ZLINK_SUBMIT_TERMINATED` | 4 | context가 종료됨 |
 | `ZLINK_SUBMIT_INVALID_HANDLE` | 5 | 핸들이 NULL이거나 유효하지 않음 |
 | `ZLINK_SUBMIT_INVALID_ARGUMENT` | 6 | API 계약에 맞지 않는 인자 |
@@ -333,7 +333,7 @@ enum입니다. callback은 `result_`를 `zlink_request_result_t` 값으로
 | `ZLINK_REQUEST_INVALID_ARGUMENT` | 110 | request에 잘못된 인자가 담김 |
 | `ZLINK_REQUEST_INVALID_STATE` | 111 | target이 이 request를 거부하는 상태임 |
 | `ZLINK_REQUEST_NOT_SUPPORTED` | 112 | target이 지원하지 않는 작업 |
-| `ZLINK_REQUEST_BACKPRESSURED` | 113 | 원자적 reservation을 확보하지 못함 |
+| `ZLINK_REQUEST_BACKPRESSURED` | 113 | non-blocking mailbox admission 또는 원자적 전체 capacity reservation이 실패함 |
 
 ### 보안 메커니즘
 
@@ -416,18 +416,9 @@ typedef enum zlink_option_t {
 ```
 
 `zlink_set_option()` / `zlink_get_option()`과 함께 사용합니다.
-raw socket과 discovery에 적용된다. MeshNode에는 `SNDHWM`, `RCVHWM`, `SNDTIMEO`, `RCVTIMEO`만
-적용되며 다른 `zlink_option_t` 값은 `ZLINK_CONFIG_NOT_SUPPORTED`, `errno == ENOTSUP`이다.
-
-내부적으로 옵션은 세 소유권 카테고리로 분류되어 각 도메인 소유자가
-validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 옵션
-추가 시 아래 분류에 따라 소유권이 결정됩니다.
-
-| 카테고리 | 대표 옵션 | 내부 소유자 |
-|----------|-----------|-------------|
-| Core Socket | `SNDHWM`, `RCVHWM`, `AUTO_HWM_MSG_UNIT_BYTES`, `LINGER`, `SNDTIMEO`, `RCVTIMEO` | `options_core_socket` |
-| Transport/Network | `RATE`, `RECOVERY_IVL`, `SNDBUF`, `RCVBUF`, `TOS`, `PRIORITY` | `options_transport_network` |
-| Protocol/Metadata | ZMP 메타데이터 | `options_protocol_metadata` |
+raw socket과 discovery에 적용된다. MeshNode에는 `SNDHWM`, `RCVHWM`, `SNDTIMEO`, `RCVTIMEO`,
+`MAXMSGSIZE`만 적용되며 다른 `zlink_option_t` 값은 `ZLINK_CONFIG_NOT_SUPPORTED`,
+`errno == ENOTSUP`이다.
 
 ##### Transport/Buffer
 
@@ -438,8 +429,8 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 | `ZLINK_OPT_RECOVERY_IVL` | 멀티캐스트 복구 간격 (ms, `int`) |
 | `ZLINK_OPT_SNDBUF` | 커널 송신 버퍼 크기 (`int`; -1=OS 기본값 유지, 0 이상=OS에 크기 요청) |
 | `ZLINK_OPT_RCVBUF` | 커널 수신 버퍼 크기 (`int`; -1=OS 기본값 유지, 0 이상=OS에 크기 요청) |
-| `ZLINK_OPT_SNDHWM` | 송신 하이 워터 마크 (`int`; 0=무제한) |
-| `ZLINK_OPT_RCVHWM` | 수신 하이 워터 마크 (`int`; 0=무제한) |
+| `ZLINK_OPT_SNDHWM` | 송신 HWM (`int`; 0=무제한) |
+| `ZLINK_OPT_RCVHWM` | 수신 HWM (`int`; 0=무제한) |
 | `ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES` | 자동 HWM 계산에서 메시지 슬롯으로 환산할 때 쓰는 바이트 단위 (`int`; 0=소켓 타입 기본값, 음수는 `EINVAL`) |
 | `ZLINK_OPT_MAXMSGSIZE` | 최대 인바운드 메시지 크기 (`int64_t`; -1=무제한) |
 
@@ -461,8 +452,6 @@ validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 
 Submit retry는 `ENOTCONN` 또는 `EHOSTUNREACH`로 분류되는 local submit 실패만
 짧게 다시 시도합니다. `ZLINK_DONTWAIT` 호출, backpressure(`EAGAIN`), admission
 거절, 인자 오류, request submit 성공 뒤의 reply timeout은 retry 대상이 아닙니다.
-managed SPOT/service outbound 내부 경로는 기본 profile로
-`LOCAL_FAILURE`/100ms/2회를 사용합니다.
 
 ##### TCP
 
@@ -513,7 +502,7 @@ managed SPOT/service outbound 내부 경로는 기본 profile로
 |---|---|
 | `ZLINK_OPT_IMMEDIATE` | 완료된 연결에만 메시지 큐 사용 (`int`) |
 | `ZLINK_OPT_CONFLATE` | 토픽당 최신 메시지만 유지 (`int`) |
-| `ZLINK_OPT_BLOCKY` | context 종료 시 블로킹 (`int`, 레거시) |
+| `ZLINK_OPT_BLOCKY` | socket option API가 지원하지 않는 식별자. `zlink_set_option()`/`zlink_get_option()`은 `ZLINK_CONFIG_NOT_SUPPORTED`/`ENOTSUP`을 반환하며 context 종료 동작은 `ZLINK_CTX_OPT_BLOCKY`로 설정 (`int`, 0 또는 1) |
 | `ZLINK_OPT_INVERT_MATCHING` | 토픽 매칭 반전 (`int`) |
 | `ZLINK_OPT_ZMP_METADATA` | ZMP 메타데이터 첨부 (`binary`) |
 
@@ -540,13 +529,14 @@ managed SPOT/service outbound 내부 경로는 기본 profile로
 소켓을 생성합니다.
 
 ```c
-void *zlink_socket (void *context_, zlink_socket_type_t type_);
+ZLINK_EXPORT void *zlink_socket (void *context_, zlink_socket_type_t type_);
 ```
 
 지정된 context 내에서 새 소켓을 생성합니다. `type_` 매개변수는 메시징 패턴을
 선택합니다. raw socket의 수신 모델은 타입별로 고정됩니다. `PAIR`, `DEALER`,
-`SUB`, `XSUB`는 recv-only이며, `ROUTER`는 `zlink_router_recv()`로
-수신합니다. `STREAM`만이 예외 타입으로, raw recv / raw callback
+`SUB`, `XSUB`는 part receive를 사용하며, `ROUTER`는
+`zlink_router_recv_part()`로 수신합니다. `STREAM`만이 예외 타입으로,
+raw part receive / raw callback
 (`zlink_recv_handler()`) / packet callback
 (`zlink_stream_packet_handler()`) 세 모드 중 하나를 선택해 사용할 수
 있습니다. 소켓은 context가 종료되기 전에 `zlink_close()`로 닫아야 합니다.
@@ -567,17 +557,17 @@ void *zlink_socket (void *context_, zlink_socket_type_t type_);
 raw `STREAM` 소켓에 raw 수신 콜백을 부착합니다.
 
 ```c
-zlink_handler_result_t zlink_recv_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_recv_handler (
   void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
 ```
 
 raw `STREAM` 전용 direct receive callback 등록 함수입니다. 지원 대상은
 raw `STREAM` 뿐이며, 다른 subject(PAIR, DEALER 등)는 `ENOTSUP`로 실패합니다.
-attach 이후 같은 handle의 `zlink_recv()`, `zlink_stream_packet_handler()`,
+attach 이후 같은 handle의 `zlink_recv_part()`, `zlink_stream_packet_handler()`,
 data-plane `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 handle에 대한
 두 번째 attach도 `errno=EBUSY`입니다.
 
-자세한 계약은 `stream.ko.md`를 참조하세요.
+자세한 계약은 [08-stream.ko.md](08-stream.ko.md)를 참조하세요.
 
 **반환값:** 성공 시 `ZLINK_HANDLER_OK`. 실패 시에는 `zlink_handler_result_t`
 값을 반환합니다. 상세 내부 errno는 진단을 위해 `zlink_errno()`로 유지됩니다.
@@ -623,7 +613,7 @@ Core가 소유한 routing ID 보기를 반환하고 `PAIR`와 `DEALER`는 `NULL`
 소켓을 닫고 리소스를 해제합니다.
 
 ```c
-zlink_close_result_t zlink_close (void *s_);
+ZLINK_EXPORT zlink_close_result_t zlink_close (void *s_);
 ```
 
 소켓을 닫고 관련된 모든 리소스를 해제합니다. 송신 대기열에 남아 있는 메시지는
@@ -649,18 +639,20 @@ self-close는 콜백 에필로그까지 지연됩니다.
 공통 옵션을 설정합니다.
 
 ```c
-zlink_config_result_t zlink_set_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_option (void *handle_,
                       zlink_option_t option_,
                       const void *optval_,
                       size_t optvallen_);
 ```
 
 공통 옵션을 설정한다. `handle_`은 raw socket, discovery 또는 MeshNode일 수 있다. MeshNode가 지원하는
-option은 [MeshNode option 지원표](../service/mesh-node.ko.md#9-option과-handle-지원)가 정한다.
+option은 [MeshNode option 지원표](../service/01-mesh-node.ko.md#9-option과-handle-지원)가 정한다.
 `option_` 매개변수는 `zlink_option_t` enum 값입니다. `optval_`
 포인터는 값을 제공하고 `optvallen_`은 크기를 바이트 단위로 지정합니다.
 
-MeshNode option은 `start` 전에만 설정한다. raw socket과 discovery의 설정 시점은 각 option 계약을 따른다.
+MeshNode option은 `start` 전에 설정하는 것이 기본이다. 예외로 `ZLINK_OPT_MAXMSGSIZE`는 실행 중에도
+설정할 수 있으며 새로 수신하는 complete message부터 적용한다. raw socket과 discovery의 설정 시점은 각
+option 계약을 따른다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -676,7 +668,7 @@ MeshNode option은 `start` 전에만 설정한다. raw socket과 discovery의 �
 공통 옵션을 조회합니다.
 
 ```c
-zlink_config_result_t zlink_get_option (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_get_option (void *handle_,
                       zlink_option_t option_,
                       void *optval_,
                       size_t *optvallen_);
@@ -696,7 +688,7 @@ zlink_config_result_t zlink_get_option (void *handle_,
 소켓의 라우팅 아이덴티티를 설정합니다.
 
 ```c
-zlink_config_result_t zlink_set_routing_id (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
                            const void *data_,
                            size_t size_);
 ```
@@ -716,7 +708,7 @@ socket은 bind 또는 connect 전에, MeshNode는 `start` 전에 설정한다. �
 소켓의 라우팅 아이덴티티를 조회합니다.
 
 ```c
-zlink_config_result_t zlink_get_routing_id (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                            zlink_routing_id_t *out_);
 ```
 
@@ -761,7 +753,9 @@ ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (void *socket_,
 `channel_name_buf_ == NULL`이면 길이만 조회하고 성공합니다. 버퍼가 있으면
 정확히 그 길이만큼 복사하며 NUL 문자를 덧붙이지 않습니다. 출력 버퍼와 복사된
 바이트의 소유권은 호출자에게 있습니다. 버퍼가 작으면 필요한 길이는 기록하지만
-버퍼는 변경하지 않고 `ZLINK_CONFIG_INVALID_ARGUMENT`을 반환합니다. 이름이
+버퍼는 변경하지 않고 `ZLINK_CONFIG_BUFFER_TOO_SMALL`, `errno == ENOBUFS`를
+반환합니다. 부분 데이터는 기록하지 않으며 저장된 channel name도 변경하지 않으므로
+호출자는 보고된 길이의 버퍼로 같은 조회를 다시 호출할 수 있습니다. 이름이
 설정되지 않았으면 `ZLINK_CONFIG_NOT_FOUND`, 유효하지 않은 소켓이나 NULL
 `channel_name_len_out_`은 `ZLINK_CONFIG_INVALID_HANDLE`을 반환합니다.
 
@@ -772,7 +766,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (void *socket_,
 서버 측 TLS를 구성합니다.
 
 ```c
-zlink_config_result_t zlink_set_tls_server (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_tls_server (void *handle_,
                            const char *cert_,
                            const char *key_,
                            int require_client_cert_);
@@ -796,7 +790,7 @@ server TLS 설정을 적용하며 `start` 전에 호출한다. 지원하지 않�
 클라이언트 측 TLS를 구성합니다.
 
 ```c
-zlink_config_result_t zlink_set_tls_client (void *handle_,
+ZLINK_EXPORT zlink_config_result_t zlink_set_tls_client (void *handle_,
                            const char *ca_cert_,
                            const char *hostname_,
                            int trust_system_);
@@ -820,11 +814,11 @@ client TLS 설정을 적용하며 `start` 전에 호출한다. 지원하지 않�
 소켓을 주소에 바인딩합니다.
 
 ```c
-zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
 ```
 
 소켓을 로컬 엔드포인트에 바인딩합니다. 엔드포인트 문자열은
-`transport://address` 형식을 사용하며, 지원되는 트랜스포트는 다음과 같습니다:
+`transport://address` 형식을 사용하며, 지원되는 `transport`는 다음과 같습니다:
 
 - `tcp://interface:port` 또는 `tcp://*:port`
 - `inproc://name` (프로세스 내 직접 연결, in-process transport)
@@ -839,7 +833,7 @@ zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
 **반환값:** 성공 시 `ZLINK_BIND_OK`, 실패 시 `zlink_bind_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **에러:** 주소가 이미 사용 중이면 `EADDRINUSE`. 인터페이스가 존재하지 않으면
-`EADDRNOTAVAIL`. 트랜스포트가 지원되지 않으면 `EPROTONOSUPPORT`.
+`EADDRNOTAVAIL`. `transport`가 지원되지 않으면 `EPROTONOSUPPORT`.
 
 **참고:** `zlink_connect`, `zlink_unbind`
 
@@ -850,7 +844,7 @@ zlink_bind_result_t zlink_bind (void *s_, const char *addr_);
 소켓을 원격 주소에 연결합니다.
 
 ```c
-zlink_connect_result_t zlink_connect (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_connect_result_t zlink_connect (void *s_, const char *addr_);
 ```
 
 소켓을 원격 엔드포인트에 연결합니다. 엔드포인트 형식은 `zlink_bind()`와
@@ -868,7 +862,7 @@ zlink_connect_result_t zlink_connect (void *s_, const char *addr_);
 소켓의 주소 바인딩을 해제합니다.
 
 ```c
-zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
 ```
 
 이전에 설정된 바인딩을 제거합니다.
@@ -884,7 +878,7 @@ zlink_connect_result_t zlink_unbind (void *s_, const char *addr_);
 소켓의 원격 주소 연결을 해제합니다.
 
 ```c
-zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
+ZLINK_EXPORT zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
 ```
 
 이전에 설정된 연결을 제거합니다.
@@ -900,7 +894,7 @@ zlink_connect_result_t zlink_disconnect (void *s_, const char *addr_);
 소켓에 연결된 peer를 routing id로 찾아 종료합니다.
 
 ```c
-zlink_connect_result_t zlink_disconnect_rid (
+ZLINK_EXPORT zlink_connect_result_t zlink_disconnect_rid (
   void *s_,
   const zlink_routing_id_t *peer_rid_);
 ```
@@ -923,13 +917,12 @@ lifecycle 소유권 충돌은 `ZLINK_CONNECT_BUSY`입니다. `zlink_errno()`는
 
 ---
 
-
 ### zlink_send_ready_handler
 
 send-ready 콜백을 설정하거나 교체합니다.
 
 ```c
-zlink_handler_result_t zlink_send_ready_handler (
+ZLINK_EXPORT zlink_handler_result_t zlink_send_ready_handler (
   void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
 ```
 
@@ -948,7 +941,7 @@ readiness 신호 자체는 재시도 성공을 보장하지 않으며, 알림 �
 
 **반환값:** 성공 시 `ZLINK_HANDLER_OK`, 실패 시 `zlink_handler_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
-**참고:** `zlink_send`
+**참고:** `zlink_send_part`, `zlink_send_part_rid`, `zlink_publish_part`
 
 ---
 
@@ -957,7 +950,7 @@ readiness 신호 자체는 재시도 성공을 보장하지 않으며, 알림 �
 멀티파트 메시지 배열의 모든 파트를 close합니다.
 
 ```c
-void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
+ZLINK_EXPORT void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 ```
 
 각 원소에 대해 `zlink_msg_close()`를 호출하는 편의 함수입니다.
@@ -973,7 +966,7 @@ void zlink_multipart_close (zlink_msg_t *parts, size_t part_count);
 recv 모드로 소켓 모니터 핸들을 열고 반환합니다.
 
 ```c
-void *zlink_socket_monitor_open (void *s_,
+ZLINK_EXPORT void *zlink_socket_monitor_open (void *s_,
                                  const zlink_socket_monitor_open_options_t *options_);
 ```
 

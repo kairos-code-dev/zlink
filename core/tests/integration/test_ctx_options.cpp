@@ -370,54 +370,6 @@ void test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority ()
     test_context_socket_close (explicit_socket);
 }
 
-static std::vector<zlink_spot_node_socket_entry_t> read_spot_internal_socket_snapshot (void *node_)
-{
-    size_t count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_internal_sockets (node_, NULL, NULL, &count));
-    std::vector<zlink_spot_node_socket_entry_t> rows (count);
-    if (count != 0) {
-        TEST_ASSERT_SUCCESS_ERRNO (
-          zlink_spot_node_internal_sockets (node_, NULL, &rows[0], &count));
-        rows.resize (count);
-    }
-    return rows;
-}
-
-static void assert_visible_spot_msg_unit (void *node_, uint64_t expected_)
-{
-    const std::vector<zlink_spot_node_socket_entry_t> rows =
-      read_spot_internal_socket_snapshot (node_);
-    size_t visible_count = 0;
-    for (size_t i = 0; i != rows.size (); ++i) {
-        if (rows[i].auto_hwm_visible == 0)
-            continue;
-        ++visible_count;
-        TEST_ASSERT_EQUAL_UINT64 (expected_,
-                                  rows[i].monitor_status.auto_hwm_effective_message_bytes);
-    }
-    TEST_ASSERT_TRUE (visible_count > 0);
-}
-
-void test_ctx_option_auto_hwm_msg_unit_applies_to_spot_internal_sockets ()
-{
-    void *ctx = get_test_context ();
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 64));
-
-    void *node = zlink_spot_node_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (node);
-    void *spot = zlink_spot_new (node);
-    TEST_ASSERT_NOT_NULL (spot);
-
-    assert_visible_spot_msg_unit (node, 64u);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (ctx, ZLINK_CTX_OPT_AUTO_HWM_MSG_UNIT_BYTES, 256));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_auto_hwm_recalculate (ctx));
-    assert_visible_spot_msg_unit (node, 256u);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-}
-
 void test_ctx_option_auto_hwm_enabled_applies_profile ()
 {
     TEST_ASSERT_SUCCESS_ERRNO (zlink_ctx_set (get_test_context (), ZLINK_CTX_OPT_AUTO_HWM_PROFILE,
@@ -542,45 +494,6 @@ void test_socket_option_auto_hwm_stream_default_msg_unit ()
     test_context_socket_close (stream);
 }
 
-void test_auto_hwm_msg_unit_rejects_spot_service_handles ()
-{
-    void *ctx = get_test_context ();
-    TEST_ASSERT_NOT_NULL (ctx);
-
-    void *node = zlink_spot_node_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (node);
-    void *spot = zlink_spot_new (node);
-    TEST_ASSERT_NOT_NULL (spot);
-
-    const int value = 64;
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_set_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &value, sizeof (value)));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-
-    int actual = 0;
-    size_t actual_size = sizeof (actual);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_get_option (spot, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual, &actual_size));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-
-    actual = 0;
-    actual_size = sizeof (actual);
-    TEST_ASSERT_EQUAL_INT (
-      ZLINK_CONFIG_INVALID_ARGUMENT,
-      zlink_get_option (node, ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES, &actual, &actual_size));
-    TEST_ASSERT_EQUAL_INT (EINVAL, errno);
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_destroy (&spot));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-}
-
 void test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract ()
 {
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -671,11 +584,9 @@ int main (void)
     RUN_TEST (test_ctx_option_auto_hwm_msg_unit_round_trip_and_validation);
     RUN_TEST (test_ctx_option_auto_hwm_msg_unit_applies_to_socket_snapshots);
     RUN_TEST (test_ctx_option_auto_hwm_msg_unit_preserves_socket_override_priority);
-    RUN_TEST (test_ctx_option_auto_hwm_msg_unit_applies_to_spot_internal_sockets);
     RUN_TEST (test_ctx_option_auto_hwm_enabled_applies_profile);
     RUN_TEST (test_socket_option_auto_hwm_msg_unit_round_trip);
     RUN_TEST (test_socket_option_auto_hwm_stream_default_msg_unit);
-    RUN_TEST (test_auto_hwm_msg_unit_rejects_spot_service_handles);
     RUN_TEST (test_socket_option_auto_hwm_buffer_options_do_not_change_snapshot_contract);
     RUN_TEST (test_socket_option_manual_hwm_overrides_auto_hwm_recalculation);
     RUN_TEST (test_ctx_option_invalid);

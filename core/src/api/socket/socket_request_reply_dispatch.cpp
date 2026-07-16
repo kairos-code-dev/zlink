@@ -154,23 +154,6 @@ bool has_pending_request_work (const std::shared_ptr<socket_request_reply_state_
     return !state_->pending_requests.empty ();
 }
 
-int drain_spot_channel_bridge_reply_progress (socket_handle_t handle_, void *owner_handle_)
-{
-    if (!handle_.socket) {
-        errno = EFAULT;
-        return -1;
-    }
-
-    handle_.socket->socket_msg_dispatch_drain_pending ();
-    const std::shared_ptr<socket_request_reply_state_t> state = find_request_reply_state (handle_);
-    if (!state) {
-        errno = 0;
-        return 0;
-    }
-
-    return drain_reply_completions (state, owner_handle_);
-}
-
 int drain_close_request_reply_socket (socket_handle_t handle_)
 {
     if (!handle_.socket) {

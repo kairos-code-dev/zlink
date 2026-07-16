@@ -7,9 +7,7 @@
 
 #include "api/socket/request_completion_queue_internal.hpp"
 #include "api/socket/request_reply_protocol_internal.hpp"
-#include "api/service/service_api_internal.hpp"
-#include "api/spot/dispatch/service_spot_dispatch_surface_internal.hpp"
-#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "utils/routing_id.hpp"
 
@@ -79,26 +77,10 @@ int queue_reply_completion (const std::shared_ptr<socket_request_reply_state_t> 
         return -1;
     }
 
-    std::vector<void *> observers;
-    {
-        std::lock_guard<std::mutex> lock (state_->mutex);
-        observers.assign (state_->spot_channel_dispatch_observers.begin (),
-                          state_->spot_channel_dispatch_observers.end ());
-    }
-
     const int rc = zlink::request_completion::enqueue (
       &state_->completion, state_->socket->get_ctx (), "zlink.router.reqrep.completion", handler_,
       userdata_, errnum_, parts_, part_count_);
-    if (rc != 0)
-        return rc;
-
-    for (size_t i = 0; i < observers.size (); ++i) {
-        std::shared_ptr<zlink::spot_reqrep_internal::spot_request_reply_state_t> spot_state =
-          zlink::spot_reqrep_internal::try_find_spot_state (observers[i]);
-        if (spot_state)
-            (void) zlink::spot_reqrep_internal::signal_spot_completion_queue (spot_state);
-    }
-    return 0;
+    return rc;
 }
 
 int drain_reply_completions (const std::shared_ptr<socket_request_reply_state_t> &state_,
@@ -139,26 +121,6 @@ bool current_thread_is_completion_owner (
 bool in_socket_request_completion_callback (void *socket_)
 {
     return zlink::request_completion::in_request_completion_callback (socket_);
-}
-
-void register_spot_channel_dispatch_observer (
-  const std::shared_ptr<socket_request_reply_state_t> &state_, void *spot_)
-{
-    if (!state_ || !spot_)
-        return;
-
-    std::lock_guard<std::mutex> lock (state_->mutex);
-    state_->spot_channel_dispatch_observers.insert (spot_);
-}
-
-void unregister_spot_channel_dispatch_observer (
-  const std::shared_ptr<socket_request_reply_state_t> &state_, void *spot_)
-{
-    if (!state_ || !spot_)
-        return;
-
-    std::lock_guard<std::mutex> lock (state_->mutex);
-    state_->spot_channel_dispatch_observers.erase (spot_);
 }
 
 namespace

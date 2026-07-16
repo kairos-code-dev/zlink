@@ -64,15 +64,7 @@ inline int bench_max_sockets ()
     if (clients <= 0)
         return 0;
 
-    const char *pattern = resolve_multi_env_value ("PERF_MULTI_PATTERN", "PERF_PATTERN");
-    const std::string normalized = normalize_multi_pattern_name (pattern);
-
-    long required = 0;
-    if (normalized == "SPOT") {
-        required = std::max<long> (4096L, static_cast<long> (clients) * 32L + 512L);
-    } else {
-        required = static_cast<long> (clients) * 3L + 4096L;
-    }
+    const long required = static_cast<long> (clients) * 3L + 4096L;
     if (required > INT_MAX)
         return INT_MAX;
     return static_cast<int> (required);
@@ -312,17 +304,6 @@ inline std::string perf_auto_hwm_rcvbuf_display (const zlink_monitor_status_t &s
     return std::to_string (snapshot_.auto_hwm_effective_rcvbuf);
 }
 
-inline bool perf_auto_hwm_snapshot_row_less (const zlink_spot_node_socket_entry_t &lhs_,
-                                             const zlink_spot_node_socket_entry_t &rhs_)
-{
-    if (lhs_.owner_id != rhs_.owner_id)
-        return lhs_.owner_id < rhs_.owner_id;
-    const int socket_cmp = std::strcmp (lhs_.socket_name, rhs_.socket_name);
-    if (socket_cmp != 0)
-        return socket_cmp < 0;
-    return lhs_.monitor_status.auto_hwm_role < rhs_.monitor_status.auto_hwm_role;
-}
-
 inline size_t perf_auto_hwm_effective_msg_size (size_t msg_size_)
 {
     if (msg_size_ != 0)
@@ -340,144 +321,9 @@ inline size_t perf_auto_hwm_effective_msg_size (size_t msg_size_)
     return static_cast<size_t> (parsed);
 }
 
-inline void
-perf_print_auto_hwm_snapshot_table (const char *title_,
-                                    const std::vector<zlink_spot_node_socket_entry_t> &rows_,
-                                    const std::string &transport_,
-                                    size_t msg_size_)
-{
-    if (rows_.empty ())
-        return;
-
-    (void) transport_;
-    std::cout << title_ << ":" << std::endl;
-    std::cout << "  | Size(B) | MsgUnit(B) | Socket | Type | Profile | Class | Role | Cap | Slots "
-                 "| SNDHWM | RCVHWM |"
-              << std::endl;
-    std::cout << "  "
-                 "|---------|------------|--------|------|---------|-------|------|-----|-------|--"
-                 "------|--------|"
-              << std::endl;
-    for (size_t i = 0; i < rows_.size (); ++i) {
-        const zlink_monitor_status_t &snapshot = rows_[i].monitor_status;
-        std::cout << "  | " << msg_size_ << " | " << snapshot.auto_hwm_effective_message_bytes
-                  << " | " << rows_[i].socket_name << " | "
-                  << perf_socket_type_name (rows_[i].socket_type) << " | "
-                  << perf_auto_hwm_profile_name (snapshot.auto_hwm_profile) << " | "
-                  << perf_auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class) << " | "
-                  << perf_auto_hwm_role_name (snapshot.auto_hwm_role) << " | "
-                  << snapshot.auto_hwm_size_cap << " | " << snapshot.auto_hwm_socket_message_slots
-                  << " | " << perf_auto_hwm_sndhwm_display (snapshot, rows_[i].socket_type) << " | "
-                  << perf_auto_hwm_rcvhwm_display (snapshot, rows_[i].socket_type) << " |"
-                  << std::endl;
-    }
-}
-
-inline void perf_emit_spot_node_auto_hwm_detail (const zlink_spot_node_socket_entry_t &row_,
-                                                 const std::string &transport_,
-                                                 size_t msg_size_)
-{
-    const zlink_monitor_status_t &snapshot = row_.monitor_status;
-    const size_t msg_size = perf_auto_hwm_effective_msg_size (msg_size_);
-    const std::string pattern = perf_auto_hwm_env_or_default ("PERF_MULTI_PATTERN", "unknown");
-    const std::string component = perf_auto_hwm_env_or_default ("PERF_MULTI_COMPONENT", "process");
-    const char *owner = row_.owner == ZLINK_SPOT_NODE_SOCKET_OWNER_NODE ? "node" : "spot";
-    const char *scope = row_.owner == ZLINK_SPOT_NODE_SOCKET_OWNER_NODE ? "shared" : "per-spot";
-
-    std::cout << "AUTO_HWM_DETAIL" << ",pattern=" << pattern << ",transport=" << transport_
-              << ",component=" << component << ",label=" << row_.socket_name << ",owner=" << owner
-              << ",owner_id=" << row_.owner_id << ",socket=" << row_.socket_name
-              << ",socket_type=" << perf_socket_type_name (row_.socket_type)
-              << ",msg_size=" << msg_size << ",source=spotnode_snapshot"
-              << ",enabled=" << snapshot.auto_hwm_enabled
-              << ",role=" << perf_auto_hwm_role_name (snapshot.auto_hwm_role)
-              << ",role_id=" << snapshot.auto_hwm_role
-              << ",profile=" << perf_auto_hwm_profile_name (snapshot.auto_hwm_profile)
-              << ",profile_id=" << snapshot.auto_hwm_profile << ",policy_class="
-              << perf_auto_hwm_policy_class_name (snapshot.auto_hwm_policy_class)
-              << ",policy_class_id=" << snapshot.auto_hwm_policy_class
-              << ",unit_budget_bytes=" << snapshot.auto_hwm_unit_budget_bytes
-              << ",size_cap=" << snapshot.auto_hwm_size_cap << ",scope=" << scope
-              << ",observed_connections=" << snapshot.auto_hwm_connection_bucket_count
-              << ",selected_bucket="
-              << perf_auto_hwm_bucket_label (snapshot.auto_hwm_connection_bucket_index)
-              << ",bucket_limited_hwm_4k=" << snapshot.auto_hwm_connection_bucket_hwm_4k
-              << ",bucket_hysteresis_retained="
-              << snapshot.auto_hwm_connection_bucket_hysteresis_retained
-              << ",sndhwm=" << snapshot.auto_hwm_applied_sndhwm
-              << ",rcvhwm=" << snapshot.auto_hwm_applied_rcvhwm
-              << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots
-              << ",effective_message_bytes=" << snapshot.auto_hwm_effective_message_bytes
-              << ",effective_sndbuf=" << perf_auto_hwm_sndbuf_display (snapshot, row_.socket_type)
-              << ",effective_rcvbuf=" << perf_auto_hwm_rcvbuf_display (snapshot, row_.socket_type)
-              << ",last_recalc_reason="
-              << perf_auto_hwm_recalc_reason_name (snapshot.auto_hwm_last_recalc_reason)
-              << std::endl;
-}
-
 inline bool perf_auto_hwm_label_is_control_snapshot (const char *label_)
 {
     return label_ && std::strstr (label_, "control") != NULL;
-}
-
-inline bool perf_auto_hwm_include_spot_snapshot_row (const char *label_,
-                                                     const zlink_spot_node_socket_entry_t &row_)
-{
-    if (!perf_auto_hwm_label_is_control_snapshot (label_))
-        return true;
-    return std::strcmp (row_.socket_name, "peer_ctrl_pub") == 0
-           || std::strcmp (row_.socket_name, "peer_ctrl_sub") == 0;
-}
-
-inline bool perf_print_spot_node_auto_hwm_snapshot (void *node_,
-                                                    const std::string &transport_,
-                                                    size_t msg_size_,
-                                                    const char *label_ = NULL)
-{
-    static std::mutex sync;
-    static std::set<std::string> emitted;
-    const char *snapshot_scope =
-      perf_auto_hwm_label_is_control_snapshot (label_) ? "control" : "data";
-    const std::string key = std::to_string (reinterpret_cast<unsigned long long> (node_)) + "|"
-                            + transport_ + "|" + std::to_string (msg_size_) + "|" + snapshot_scope;
-    {
-        std::lock_guard<std::mutex> lock (sync);
-        if (emitted.find (key) != emitted.end ())
-            return true;
-        emitted.insert (key);
-    }
-
-    size_t count = 0;
-    if (zlink_spot_node_internal_sockets (node_, NULL, NULL, &count) != ZLINK_CONFIG_OK)
-        return false;
-    if (count == 0)
-        return true;
-
-    std::vector<zlink_spot_node_socket_entry_t> rows (count);
-    if (zlink_spot_node_internal_sockets (node_, NULL, &rows[0], &count) != ZLINK_CONFIG_OK)
-        return false;
-    rows.resize (count);
-
-    std::vector<zlink_spot_node_socket_entry_t> node_rows;
-    std::vector<zlink_spot_node_socket_entry_t> spot_rows;
-    for (size_t i = 0; i < rows.size (); ++i) {
-        if (rows[i].auto_hwm_visible == 0)
-            continue;
-        if (!perf_auto_hwm_include_spot_snapshot_row (label_, rows[i]))
-            continue;
-        perf_emit_spot_node_auto_hwm_detail (rows[i], transport_, msg_size_);
-        if (rows[i].owner == ZLINK_SPOT_NODE_SOCKET_OWNER_NODE)
-            node_rows.push_back (rows[i]);
-        else if (rows[i].owner == ZLINK_SPOT_NODE_SOCKET_OWNER_SPOT)
-            spot_rows.push_back (rows[i]);
-    }
-
-    std::sort (node_rows.begin (), node_rows.end (), &perf_auto_hwm_snapshot_row_less);
-    std::sort (spot_rows.begin (), spot_rows.end (), &perf_auto_hwm_snapshot_row_less);
-
-    perf_print_auto_hwm_snapshot_table ("Auto-HWM spotnode", node_rows, transport_, msg_size_);
-    perf_print_auto_hwm_snapshot_table ("Auto-HWM spot handles", spot_rows, transport_, msg_size_);
-    return true;
 }
 
 inline void perf_print_auto_hwm_snapshot (void *handle_,
@@ -537,11 +383,6 @@ inline void perf_print_auto_hwm_snapshot (void *handle_,
       transport_.empty () ? perf_auto_hwm_env_or_default ("PERF_MULTI_TRANSPORT", "unknown")
                           : transport_;
     const char *label = label_ && *label_ ? label_ : "socket";
-
-    if (service_handle_ && std::strncmp (label, "spotnode", 8) == 0
-        && perf_print_spot_node_auto_hwm_snapshot (handle_, transport, msg_size_, label)) {
-        return;
-    }
 
     const std::string key = pattern + "|" + transport + "|" + component + "|" + label + "|"
                             + std::to_string (msg_size_) + "|"
@@ -756,54 +597,6 @@ inline void apply_benchmark_hwm (void *socket_, int hwm_value)
         if (rcvhwm > 0)
             set_sockopt_int (socket_, ZLINK_OPT_RCVHWM, rcvhwm, "ZLINK_OPT_RCVHWM");
     }
-}
-
-inline bool set_spot_node_hwm_option (void *node_,
-                                      zlink_spot_node_option_t option_,
-                                      int value_,
-                                      const char *name_)
-{
-    if (!node_ || value_ <= 0)
-        return true;
-    const int rc = zlink_set_spot_node_option (node_, option_, &value_, sizeof (value_));
-    if (rc != 0 && bench_debug_enabled ()) {
-        std::cerr << "set_spot_node_option(" << name_
-                  << ") failed: " << zlink_strerror (zlink_errno ()) << std::endl;
-    }
-    return rc == 0;
-}
-
-inline bool
-apply_benchmark_spot_node_hwm (void *node_, int hwm_value, bool pubsub_enabled, bool routed_enabled)
-{
-    if (!node_ || !bench_manual_socket_overrides_allowed ())
-        return true;
-
-    const char *sndhwm_raw = resolve_multi_named_env_value ("PERF_SNDHWM");
-    const char *rcvhwm_raw = resolve_multi_named_env_value ("PERF_RCVHWM");
-    const bool explicit_sndhwm = sndhwm_raw && *sndhwm_raw;
-    const bool explicit_rcvhwm = rcvhwm_raw && *rcvhwm_raw;
-    if (hwm_value <= 0 && !explicit_sndhwm && !explicit_rcvhwm)
-        return true;
-
-    const int send_hwm =
-      explicit_sndhwm || hwm_value > 0 ? bench_hwm_from_env ("PERF_SNDHWM", hwm_value) : 0;
-    const int recv_hwm =
-      explicit_rcvhwm || hwm_value > 0 ? bench_hwm_from_env ("PERF_RCVHWM", hwm_value) : 0;
-    const int admission_hwm = send_hwm > 0 ? send_hwm : recv_hwm;
-
-    bool ok = true;
-    if (pubsub_enabled) {
-        ok = set_spot_node_hwm_option (node_, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM, admission_hwm,
-                                       "ZLINK_SPOT_NODE_OPT_PUBSUB_HWM")
-             && ok;
-    }
-    if (routed_enabled) {
-        ok = set_spot_node_hwm_option (node_, ZLINK_SPOT_NODE_OPT_ROUTER_HWM, admission_hwm,
-                                       "ZLINK_SPOT_NODE_OPT_ROUTER_HWM")
-             && ok;
-    }
-    return ok;
 }
 
 inline int perf_auto_hwm_msg_unit_for_size (size_t msg_size_)

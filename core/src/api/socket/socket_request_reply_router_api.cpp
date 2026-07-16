@@ -8,8 +8,8 @@
 
 #include "api/socket/part_helper_internal.hpp"
 #include "api/message/recv_result_internal.hpp"
-#include "api/service/service_mode_internal.hpp"
-#include "api/spot/request_reply/service_spot_request_reply_internal.hpp"
+#include "api/monitoring/poller_api_internal.hpp"
+#include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/socket/socket_request_reply_submit_internal.hpp"
 #include "api/socket/socket_request_reply_wait_internal.hpp"
@@ -19,8 +19,6 @@
 
 namespace reqrep = zlink::socket_reqrep_internal;
 
-extern "C" int zlink_router_enable_spot_receive (void *router_);
-
 namespace
 {
 const size_t stack_request_reply_part_capacity = 8;
@@ -28,7 +26,6 @@ const size_t stack_request_reply_part_capacity = 8;
 struct router_recv_part_metadata_tls_t
 {
     zlink_routing_id_t source_node_rid;
-    zlink_routing_id_t source_spot_rid;
 };
 
 router_recv_part_metadata_tls_t &router_recv_part_metadata_tls ()
@@ -38,21 +35,15 @@ router_recv_part_metadata_tls_t &router_recv_part_metadata_tls ()
 }
 
 void export_router_recv_part_metadata_view (const zlink_routing_id_t *source_node_rid_,
-                                            const zlink_routing_id_t *source_spot_rid_,
                                             uint64_t request_seq_,
                                             const zlink_routing_id_t **source_node_rid_out_,
-                                            const zlink_routing_id_t **source_spot_rid_out_,
                                             uint64_t *request_seq_out_)
 {
     router_recv_part_metadata_tls_t &metadata = router_recv_part_metadata_tls ();
     zlink::part_helper_internal::copy_routing_id (source_node_rid_, &metadata.source_node_rid);
-    zlink::part_helper_internal::copy_routing_id (source_spot_rid_, &metadata.source_spot_rid);
 
     if (source_node_rid_out_) {
         *source_node_rid_out_ = source_node_rid_ ? &metadata.source_node_rid : NULL;
-    }
-    if (source_spot_rid_out_) {
-        *source_spot_rid_out_ = source_spot_rid_ ? &metadata.source_spot_rid : NULL;
     }
     if (request_seq_out_)
         *request_seq_out_ = request_seq_;
@@ -84,13 +75,17 @@ recv_router_parts_with_helper (const std::shared_ptr<reqrep::socket_request_repl
 
 zlink_recv_result_t zlink_router_recv_part (void *router_,
                                             const zlink_routing_id_t **source_node_rid_out_,
-                                            const zlink_routing_id_t **source_spot_rid_out_,
                                             uint64_t *request_seq_out_,
                                             zlink_msg_t *part_out_,
                                             zlink_part_flag_t *has_more_out_,
                                             zlink_recv_flags_t flags_)
 {
-    if (!router_ || !source_node_rid_out_ || !source_spot_rid_out_ || !request_seq_out_
+    //  Raw ROUTER carries no service envelope in 10.0.0; the internal receive
+    //  plumbing still threads a spot-rid slot until it is removed with the
+    //  routed ingress code, so alias it to a local discarded view here.
+    const zlink_routing_id_t *discarded_spot_rid = NULL;
+    const zlink_routing_id_t **source_spot_rid_out_ = &discarded_spot_rid;
+    if (!router_ || !source_node_rid_out_ || !request_seq_out_
         || !part_out_ || !has_more_out_) {
         errno = EFAULT;
         return zlink::recv_result_internal::from_errno (errno);
@@ -103,16 +98,14 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
     socket_handle_t handle = as_socket_handle (router_);
     if (!handle.socket)
         return zlink::recv_result_internal::from_errno (EFAULT);
-    if (zlink_router_enable_spot_receive (router_) != 0)
-        return zlink::recv_result_internal::from_errno (errno);
 
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
       zlink::part_helper_internal::find_handle_state (router_);
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_request_reply_state (handle);
-    std::shared_ptr<zlink::spot_reqrep_internal::router_spot_request_reply_state_t>
-      router_spot_state = handle.socket->router_spot_request_reply_state ();
+    std::shared_ptr<zlink::reqrep_internal::router_request_reply_state_t>
+      router_spot_state = handle.socket->router_request_reply_state ();
     bool use_helper_queue = false;
     if (state) {
         std::lock_guard<std::mutex> lock (state->mutex);
@@ -136,7 +129,7 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
           state ? reqrep::completion_signal_socket (state) : NULL;
         zlink::socket_base_t *router_spot_signal =
           router_spot_state
-            ? zlink::spot_reqrep_internal::router_completion_signal_socket (router_spot_state)
+            ? zlink::reqrep_internal::router_completion_signal_socket (router_spot_state)
             : NULL;
 
         if (blocking && !use_helper_queue && !state && !router_spot_state) {
@@ -213,9 +206,8 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
                 return zlink::recv_result_internal::from_errno (errno);
             }
             zlink_multipart_close (parts, part_count);
-            export_router_recv_part_metadata_view (source_node_rid, source_spot_rid, request_seq,
-                                                   source_node_rid_out_, source_spot_rid_out_,
-                                                   request_seq_out_);
+            export_router_recv_part_metadata_view (source_node_rid, request_seq,
+                                                   source_node_rid_out_, request_seq_out_);
             *has_more_out_ = ZLINK_PART_FINAL;
             return ZLINK_RECV_OK;
         }
@@ -291,9 +283,8 @@ zlink_recv_result_t zlink_router_recv_part (void *router_,
                 return zlink::recv_result_internal::from_errno (errno);
             }
             zlink_multipart_close (parts, part_count);
-            export_router_recv_part_metadata_view (source_node_rid, source_spot_rid, request_seq,
-                                                   source_node_rid_out_, source_spot_rid_out_,
-                                                   request_seq_out_);
+            export_router_recv_part_metadata_view (source_node_rid, request_seq,
+                                                   source_node_rid_out_, request_seq_out_);
             *has_more_out_ = ZLINK_PART_FINAL;
             zlink::part_helper_internal::complete_recv_step (helper_state, *has_more_out_);
             return ZLINK_RECV_OK;

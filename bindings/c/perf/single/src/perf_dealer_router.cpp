@@ -97,15 +97,13 @@ int recv_router_header_flags (void *router_,
         *header_ok_out_ = false;
 
     const zlink_routing_id_t *source_rid = NULL;
-    const zlink_routing_id_t *source_spot_rid = NULL;
     uint64_t request_seq = 0;
     zlink_msg_t part;
     zlink_part_flag_t has_more = ZLINK_PART_FINAL;
     if (zlink_msg_init (&part) != 0)
         return -1;
-    const int rc =
-      zlink_router_recv_part (router_, &source_rid, &source_spot_rid, &request_seq, &part,
-                              &has_more, static_cast<zlink_recv_flags_t> (flags_));
+    const int rc = zlink_router_recv_part (router_, &source_rid, &request_seq, &part, &has_more,
+                                           static_cast<zlink_recv_flags_t> (flags_));
     if (rc != 0) {
         const int err = zlink_errno ();
         zlink_msg_close (&part);
@@ -114,8 +112,8 @@ int recv_router_header_flags (void *router_,
         return -1;
     }
 
-    if (!source_rid || source_rid->size == 0 || !source_spot_rid || source_spot_rid->size != 0
-        || request_seq != 0 || has_more != ZLINK_PART_FINAL) {
+    if (!source_rid || source_rid->size == 0 || request_seq != 0
+        || has_more != ZLINK_PART_FINAL) {
         if (bench_debug_enabled ()) {
             std::cerr << "[perf-dealer-router] invalid routed recv"
                       << " rid_size=" << static_cast<int> (source_rid ? source_rid->size : 0)

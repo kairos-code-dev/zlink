@@ -3,13 +3,8 @@
 #include "../testutil.hpp"
 #include "../testutil_unity.hpp"
 
-#include "../../src/api/service/service_api_internal.hpp"
-#include "../zlink_testing.hpp"
 #include "core/internal_defs.hpp"
 #include "core/options_owner.hpp"
-#include "../../src/runtime/services/spot/runtime/spot_handle.hpp"
-#include "../../src/runtime/services/spot/node/spot_node.hpp"
-#include "../../src/runtime/services/spot/node/spot_node_access.hpp"
 
 #include <string.h>
 #include <unity.h>
@@ -58,34 +53,6 @@ bool allocate_loopback_tcp_endpoint (char *endpoint_out_, size_t endpoint_size_)
     return false;
 }
 
-void *make_test_spot_handle (void *node_)
-{
-    zlink::spot_node_t *node = zlink::spot_node_access_t::from_handle (node_);
-    if (!node)
-        return NULL;
-
-    spot_handle_t *spot = new (std::nothrow) spot_handle_t ();
-    if (!spot)
-        return NULL;
-    spot->node = node;
-    spot->logical_state = zlink::spot_node_access_t::entry_spot_state (node);
-    if (!spot->logical_state) {
-        delete spot;
-        return NULL;
-    }
-    spot->spot_routing_id = spot->logical_state->routing_id;
-    register_spot_mode_state (spot);
-    return spot;
-}
-
-void destroy_test_spot_handle (void **spot_p_)
-{
-    if (!spot_p_ || !*spot_p_)
-        return;
-
-    zlink::destroy_registered_spot_handle_for_testing (*spot_p_);
-    *spot_p_ = NULL;
-}
 } // namespace
 
 void setUp ()
@@ -302,79 +269,6 @@ void test_typed_raw_socket_options ()
     close_ctx (ctx);
 }
 
-void test_typed_spot_node_unified_options ()
-{
-    void *ctx = new_ctx ();
-    void *node = zlink_spot_node_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (node);
-    void *spot = make_test_spot_handle (node);
-    TEST_ASSERT_NOT_NULL (spot);
-
-    int pub_hwm = 77;
-    int sub_hwm = 88;
-    size_t size = sizeof (pub_hwm);
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
-                           zlink_set_option (node, ZLINK_OPT_SNDHWM, &pub_hwm, sizeof (pub_hwm)));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
-                           zlink_set_option (node, ZLINK_OPT_RCVHWM, &sub_hwm, sizeof (sub_hwm)));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_spot_node_option (node, ZLINK_SPOT_NODE_OPT_PUBSUB_HWM,
-                                                           &sub_hwm, sizeof (sub_hwm)));
-
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (node, "npub", 4));
-
-    int nodrop = 1;
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_set_pub_option (node, ZLINK_PUB_OPT_NODROP, &nodrop, sizeof (nodrop)));
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_subscription (spot, "alpha"));
-
-    int got = 0;
-    size = sizeof (got);
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
-                           zlink_get_option (node, ZLINK_OPT_SNDHWM, &got, &size));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-
-    size = sizeof (got);
-    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_ARGUMENT,
-                           zlink_get_option (node, ZLINK_OPT_RCVHWM, &got, &size));
-    TEST_ASSERT_EQUAL_INT (EINVAL, zlink_errno ());
-
-    size = sizeof (got);
-    TEST_ASSERT_SUCCESS_ERRNO (
-      zlink_get_sub_option (spot, ZLINK_SUB_OPT_TOPICS_COUNT, &got, &size));
-    TEST_ASSERT_EQUAL_INT (1, got);
-
-    char filter[32];
-    size_t filter_len = sizeof (filter);
-    int is_pattern = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_subscription_at (spot, 0, filter, &filter_len, &is_pattern));
-    TEST_ASSERT_EQUAL_UINT (5, (unsigned int) filter_len);
-    TEST_ASSERT_EQUAL_MEMORY ("alpha", filter, 5);
-    TEST_ASSERT_EQUAL_INT (0, is_pattern);
-
-    destroy_test_spot_handle (&spot);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-    close_ctx (ctx);
-}
-
-void test_spot_node_internal_socket_snapshot_is_supported ()
-{
-    void *ctx = new_ctx ();
-    void *node = zlink_spot_node_new (ctx, NULL);
-    TEST_ASSERT_NOT_NULL (node);
-    void *spot = make_test_spot_handle (node);
-    TEST_ASSERT_NOT_NULL (spot);
-    size_t socket_count = 0;
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_internal_sockets (node, NULL, NULL, &socket_count));
-    TEST_ASSERT_GREATER_THAN_UINT (0, socket_count);
-
-    destroy_test_spot_handle (&spot);
-    TEST_ASSERT_SUCCESS_ERRNO (zlink_spot_node_destroy (&node));
-    close_ctx (ctx);
-}
-
 void test_option_owner_map_matches_domains ()
 {
     TEST_ASSERT_EQUAL_INT (zlink::options_owner_core_socket,
@@ -464,8 +358,6 @@ int main (void)
 
     UNITY_BEGIN ();
     RUN_TEST (test_typed_raw_socket_options);
-    RUN_TEST (test_typed_spot_node_unified_options);
-    RUN_TEST (test_spot_node_internal_socket_snapshot_is_supported);
     RUN_TEST (test_option_owner_map_matches_domains);
     return UNITY_END ();
 }

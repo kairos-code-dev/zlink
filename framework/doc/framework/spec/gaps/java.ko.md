@@ -1162,6 +1162,21 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     유지하는 안을 비교해 후자를 선택했다. HTTP server는 concurrent admin release와 drain을 내부에서
     처리하고 executor 수명도 server가 소유하므로 호출자에게 lifecycle 순서나 별도 polling 지식을
     노출하지 않는다. Domain 경계 변경은 없다. 구현 커밋 `4d7b75f19`.
+  - 부분 수정: `RL-A2`는 old provider의 slow handler 시작을 evidence로 확인한 뒤 실제
+    `destroyForcibly`로 종료한다. old row가 lease 만료로 조회에서 제외된 뒤에만 같은 rid·다른
+    endpoint의 replacement를 시작하고, owner generation 증가와 새 endpoint를 함께 확인한다. 이후
+    request 20개가 모두 새 provider reply와 evidence에 남는지 검증한다. `runReschedule`에
+    `killForcibly`가 없으면 실패하는 source gate가 기존 정상 종료 구현을 검출했다. 구현 뒤 `RL-A2`가
+    통과했고(`ResilienceLifecycle/logs/20260716-093641-3334382/`), peer location DTO에는 public query가
+    이미 제공하는 owner/generation만 전달한다. POSD 재리뷰에서는 scenario가 raw topology JSON을
+    반복 해석하는 안과 context가 generation 조회·bounded replacement wait를 캡슐화하는 안을 비교해
+    후자를 선택했다. process orchestration은 kill/start만 소유하고 replacement 판정은 Client
+    scenario가 소유하므로 책임이 섞이지 않으며 Domain 경계 변경은 없다. 구현 커밋 `bcc8c3d43`.
+  - 남은 blocker: `RL-A1` down window의 정확한 오류를 요구한 red gate는
+    `ROUTE_NOT_CONNECTED` 대신 정규화되지 않은 bindings `ZlinkSubmitException`을 관찰했다
+    (`ResilienceLifecycle/logs/20260716-093352-3325969/`). terminal drain·sole provider·새 generation
+    gate를 main scenario에 넣기 전에 Java request 오류 정규화를 고쳐야 한다. 임의의 RuntimeException을
+    정답으로 허용하면 공통 계약의 오류 구분을 다시 가리므로 제외한다.
 - [ ] **E2E-JV-29** (가짜 통과) — `MON-A1`·`MON-A4`가 갱신된 source와 가용성 전이를 검증하지 않는다.
   - 재검증: 정식 source `monitoring.api.client`와 `monitoring.handshake.server`를 사용한 집중 실행은
     Java runtime이 "monitoring socket source is not configured"로 startup을 거부했다. 현재 `MON-A4`는
@@ -1189,6 +1204,7 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 | blocker | 현재 증거 | 계약을 소유한 계층의 선택지 |
 |---------|-----------|------------------------------|
 | RouteMesh target 오류 | 없는 rid가 `TimeoutException`; enum에는 `REQUEST_TARGET_NOT_FOUND`가 이미 있음 | (A) runtime이 현재 member snapshot 부재를 submit 전에 판정, (B) native route 결과에 target-not-found를 추가해 Java 오류로 매핑. E2E에서 timeout을 정답으로 유지하는 안은 계약과 충돌하므로 제외한다. |
+| Channel down 오류 정규화 | RL-A1 sole-route down request의 leaf가 `ZlinkSubmitException`; 계약은 `ROUTE_NOT_CONNECTED` | (A) bindings submit 결과를 channel request adapter에서 `ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED`로 정규화, (B) 공통 runtime request completion이 native submit 오류를 같은 kind로 변환. E2E가 예외 class 이름을 직접 허용하는 안은 제외한다. |
 | Entry Spot handle request | `play-b` capability·Entry row·handle resolve 뒤 application `JoinReq`가 `NOT_FOUND`; 기존 user Spot request는 증설 전·후 성공 | (A) Entry Spot을 일반 `SpotHandle` request dispatch 대상 registry에 등록, (B) 기존 spot route dispatcher가 handle의 `ENTRY` kind를 같은 공개 request 경로로 전달하도록 보완. 별도 E2E HTTP actor-create 우회나 새 배치 API는 공통 계약과 충돌하므로 제외한다. |
 | Graceful scale-in 부하 제외 | RM-B2 전파 구간 요청이 framework 5초 timeout으로 실패 | (A) `Draining=true` peer를 target-free channel load balancer 후보에서 즉시 제외, (B) drain 시작 시 socket admission/weight 전파를 완료한 뒤 terminal wait로 진입. E2E에서 요청 수를 줄이거나 timeout을 늘리는 안은 계약 위반을 숨기므로 제외한다. |
 | Monitoring source registry | 언어별 spec의 capability-qualified source를 startup이 거부 | (A) runtime registry key를 `<channel>.<capability>`로 통일, (B) 등록 시 bare 이름을 정식 이름으로 확장. E2E가 bare 이름을 계속 쓰는 안은 source identity 계약을 검증하지 못한다. |

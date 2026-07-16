@@ -33,8 +33,9 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 - `RL-A1`: 같은 client 프로세스가 provider-b를 drain한 상태에서 provider-a 종료 구간의 public
   실패를 관찰하고, provider-a를 같은 endpoint로 재시작한 뒤 follow-up request가 다시 성공하는지
   확인한다.
-- `RL-A2`: provider-a를 같은 routing id의 다른 endpoint로 재기동하고, 같은 client 프로세스가
-  location peer row의 endpoint 갱신과 follow-up request 성공을 확인한다.
+- `RL-A2`: old provider의 slow handler 시작 뒤 process를 강제 종료하고, owner lease 만료로 old row가
+  제외된 뒤에만 같은 routing id의 다른 endpoint에서 replacement를 시작한다. 같은 client 프로세스가
+  새 owner generation·endpoint와 새 provider에만 기록된 반복 request 20개를 확인한다.
 - `RL-A3`: 동시에 여러 client 프로세스를 두 차례 띄워 server에 재접속 폭주를 만들고, 각 client의
   public request가 정상 reply를 받는지 확인한다.
 - `RL-A4`: provider-b를 public runtime drain으로 신규 request 대상에서 제외한 뒤 종료하고, 같은
@@ -85,8 +86,5 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 
 - 갱신된 `RL-A1`은 terminal `Drained`, old row 제거, down 구간의 정확한 `RouteNotConnected`, 새 owner
   generation과 `ConnectionReady`를 요구한다. 현재 시나리오는 이 완료 조건을 모두 검증하지 않는다.
-- 갱신된 `RL-A2`는 slow request handler-start 뒤 `SIGKILL`, owner lease 만료, 다른 endpoint의 새
-  generation을 요구한다. 현재 시나리오는 weight 0 제어와 정상 process 교체가 섞여 있어 crash
-  replacement 계약을 검증하지 않는다.
 - `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
   `Server/Consumer`의 HTTP endpoint를 호출한다.

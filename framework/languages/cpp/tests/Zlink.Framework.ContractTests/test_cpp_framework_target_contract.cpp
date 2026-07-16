@@ -83,6 +83,8 @@ int main ()
     const auto live_location_reader =
       read_file (root / "framework/src/runtime/locations/live_location_reader.hpp");
     const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
+    const auto monitoring_unit =
+      read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp");
     const auto actor_gateway_spot_bridge =
       read_file (root / "framework/src/runtime/host/actor_gateway_spot_bridge.cpp");
     const auto channel_outbound_exchange =
@@ -370,7 +372,8 @@ int main ()
                          != std::string::npos,
                   "E2E-CP-63", "OBS-B3 omits lease lateness or cardinality checks");
     gate.require (observability_b4.find ("trafficEvidence") != std::string::npos
-                    && observability_b4.find ("storageUpperBound") != std::string::npos,
+                    && monitoring_unit.find ("unsubscribed_metric_storage_unchanged")
+                         != std::string::npos,
                   "E2E-CP-63", "OBS-B4 does not prove traffic correctness and bounded storage");
     gate.require (observability_c3.find ("state == \"created\"") != std::string::npos
                     && observability_c3.find ("replayed") != std::string::npos

@@ -23,7 +23,7 @@ inline void run_ta_a4_scenario (zlink::http_client::client_t &actor,
     require_location (caller, "TA-A4-location-missing", "ta-a4", "missing");
     assert_failure (caller, "TA-A4-destroyed", "ta-a4", "actor_route_not_found", false);
 
-    const auto evidence = actor.get ("/evidence").fetch<std::vector<e2e::actor_evidence_t>> ();
+    const auto evidence = actor.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
     require_evidence (evidence, "TA-A4-disconnected-send", "send");
 }
 

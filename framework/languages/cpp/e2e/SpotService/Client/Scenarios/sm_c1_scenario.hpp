@@ -34,7 +34,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     auto created_raw =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = spot_rid})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!created_raw || created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 spot create failed");
@@ -52,7 +52,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
           .spot_rid = spot_rid,
           .value = "sm-c1-request",
           .source_actor_id = "sm-c1-client"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!request_raw || request_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 channel-to-spot request failed");
@@ -68,7 +68,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
       external_channel.post ("/spot/state/command")
         .body (spot_state_command_route_req_t{
           .target_node_rid = "play-a", .spot_rid = spot_rid, .marker = "sm-c1-send"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!command_raw || command_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 channel-to-spot command failed");
@@ -82,7 +82,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
     const auto publish_marker = [&] (const std::string &marker) {
         return external_channel.post ("/spot/publish")
           .body (spot_publish_route_req_t{.spot_rid = spot_rid, .marker = marker})
-          .submit_raw ()
+          .async_raw ()
           .result ();
     };
     bool mesh_ready = false;
@@ -92,7 +92,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
             throw std::runtime_error ("SM-C1 mesh readiness publish failed");
         }
         std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        const auto evidence = play_a.get ("/evidence").fetch<evidence_snapshot_t> ();
+        const auto evidence = play_a.get ("/evidence").async<evidence_snapshot_t> ().result ().value ().body;
         for (const auto &entry : evidence.entries) {
             if (entry.marker == "MeshMsgReceived" && entry.spot_rid == spot_rid
                 && entry.value == "evt-sm-c1:sm-c1-warmup") {
@@ -118,7 +118,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
       play_a.post ("/evidence/wait")
         .body (evidence_wait_req_t{
           .contains_all = {"MeshMsgReceived", spot_rid, "evt-sm-c1:sm-c1-publish"}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!publish_observed || publish_observed.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 published message was not observed by the target spot");
@@ -130,7 +130,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
                                      .spot_rid = spot_rid,
                                      .value = "sm-c1-timeout",
                                      .timeout_ms = 50})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!timeout_raw || timeout_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 slow route HTTP failed");
@@ -148,7 +148,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
           .spot_rid = spot_rid,
           .value = "sm-c1-after-timeout",
           .source_actor_id = "sm-c1-client"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!after_timeout_raw || after_timeout_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 post-timeout request failed");
@@ -164,7 +164,7 @@ inline void run_sm_c1_scenario (const std::string &play_http_endpoint,
       external_channel.post ("/spot/missing-route")
         .body (spot_missing_route_req_t{
           .target_node_rid = "play-a", .spot_rid = spot_rid, .value = "sm-c1-missing"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!missing_raw || missing_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C1 missing route HTTP failed");

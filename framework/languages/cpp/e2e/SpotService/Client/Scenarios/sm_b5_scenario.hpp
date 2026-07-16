@@ -30,7 +30,7 @@ inline void run_sm_b5_scenario (const std::string &play_http_endpoint)
                              .level = 5,
                              .tags = {"missing", "actor"}},
           .packet_name = "MissingActorPacket"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!missing) {
         throw std::runtime_error (missing.error () ? missing.error ()->what ()

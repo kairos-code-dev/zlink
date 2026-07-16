@@ -1336,8 +1336,8 @@ TEST (CppFrameworkSampleParity, TicTacToeHostsUseManualEndpointScaleOutWithActor
     EXPECT_NE (client.find ("zlink::http_client::client_t::create (options.api_http_endpoint)"),
                std::string::npos);
     EXPECT_NE (client.find (".post (\"/games\")"), std::string::npos);
-    EXPECT_NE (client.find (".fetch<create_game_http_res_t> ()"), std::string::npos);
-    EXPECT_EQ (client.find (".submit<create_game_http_res_t> ()"), std::string::npos);
+    EXPECT_NE (client.find (".async<create_game_http_res_t> ().result ().value ().body"), std::string::npos);
+    EXPECT_EQ (client.find (".async<create_game_http_res_t> ()"), std::string::npos);
     EXPECT_EQ (client.find (".json ()"), std::string::npos);
     EXPECT_EQ (client.find ("create_room (options)"), std::string::npos);
     EXPECT_EQ (client.find ("static create_game_http_res_t create_room"), std::string::npos);

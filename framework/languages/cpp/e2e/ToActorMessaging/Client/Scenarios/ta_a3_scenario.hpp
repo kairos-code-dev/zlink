@@ -27,7 +27,7 @@ inline void run_ta_a3_scenario (zlink::http_client::client_t &actor,
     push_actor (actor, "TA-A3-late-bind", "ta-a3", "LateBindNotify");
     require (pushed.get ().value == "LateBindNotify", "TA-A3 LateBindNotify mismatch");
 
-    const auto evidence = actor.get ("/evidence").fetch<std::vector<e2e::actor_evidence_t>> ();
+    const auto evidence = actor.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
     require_evidence (evidence, "TA-A3-after-bind-request", "request");
 }
 

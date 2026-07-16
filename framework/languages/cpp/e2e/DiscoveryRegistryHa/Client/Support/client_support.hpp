@@ -31,7 +31,7 @@ inline TReply post_json (const std::string &base_url,
 {
     auto client =
       zlink::http_client::client_t::create ().base_url (base_url).timeout (timeout).build ();
-    return client.post (path).body (request).template fetch<TReply> ();
+    return client.post (path).body (request).template async<TReply> ().result ().value ().body;
 }
 
 template <typename TReply>
@@ -41,7 +41,7 @@ inline TReply get_json (const std::string &base_url,
 {
     auto client =
       zlink::http_client::client_t::create ().base_url (base_url).timeout (timeout).build ();
-    return client.get (path).template fetch<TReply> ();
+    return client.get (path).template async<TReply> ().result ().value ().body;
 }
 
 inline void post_empty (const std::string &base_url, const std::string &path)
@@ -50,7 +50,7 @@ inline void post_empty (const std::string &base_url, const std::string &path)
                     .base_url (base_url)
                     .timeout (std::chrono::seconds (3))
                     .build ();
-    auto response = client.post (path).submit_raw ().result ();
+    auto response = client.post (path).async_raw ().result ();
     ensure (response && response.value ().status < 400, "HTTP POST failed: " + base_url + path);
 }
 
@@ -61,7 +61,7 @@ inline bool try_get_health (const std::string &base_url)
                     .timeout (std::chrono::milliseconds (500))
                     .build ();
     try {
-        auto response = client.get ("/health").submit_raw ().result ();
+        auto response = client.get ("/health").async_raw ().result ();
         return response && response.value ().status == 200;
     }
     catch (...) {

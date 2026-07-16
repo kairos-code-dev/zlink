@@ -111,7 +111,7 @@ inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
                     .base_url (base_url)
                     .timeout (std::chrono::milliseconds (1000))
                     .build ();
-    return client.get ("/evidence").fetch<evidence_snapshot_t> ();
+    return client.get ("/evidence").async<evidence_snapshot_t> ().result ().value ().body;
 }
 
 inline bool evidence_contains (const evidence_snapshot_t &snapshot,
@@ -149,7 +149,7 @@ inline TReply post_json (const std::string &base_url,
                     .base_url (base_url)
                     .timeout (timeout)
                     .build ();
-    return client.post (path).body (request).template fetch<TReply> ();
+    return client.post (path).body (request).template async<TReply> ().result ().value ().body;
 }
 
 inline void post_raw (const std::string &base_url,
@@ -160,7 +160,7 @@ inline void post_raw (const std::string &base_url,
                     .base_url (base_url)
                     .timeout (timeout)
                     .build ();
-    auto response = client.post (path).submit_raw ().result ();
+    auto response = client.post (path).async_raw ().result ();
     ensure (response && response.value ().status < 400, "HTTP POST failed: " + path);
 }
 

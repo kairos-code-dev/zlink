@@ -89,6 +89,7 @@
 #include <vector>
 
 struct contract_actor_t;
+struct contract_http_client_name_t;
 
 template <typename TContext>
 concept has_destroy_actor = requires (TContext & context, contract_actor_t &actor)
@@ -1049,6 +1050,12 @@ static_assert (std::is_same_v<
                decltype (std::declval<zlink::http_client::client_builder_t &> ().build_server (
                  std::declval<std::shared_ptr<zlink::http_client::execution_turn_t>> ())),
                zlink::http_client::server_client_t>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::http_client::client_builder_t &> ()
+                           .template build_server<contract_http_client_name_t> (
+                             std::declval<std::shared_ptr<
+                               zlink::http_client::execution_turn_t>> ())),
+               zlink::http_client::named_server_client_t<contract_http_client_name_t>>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::entry_spot_context_t &> ()
                                           .run_cpu_worker ([] { return 1; })),
                               zlink::framework::worker_call_t<int>>);

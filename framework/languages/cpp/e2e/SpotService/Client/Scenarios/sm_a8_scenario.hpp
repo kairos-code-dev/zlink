@@ -20,7 +20,7 @@ inline TReply post_json (zlink::http_client::client_t &api,
                          const TRequest &request,
                          const std::string &label)
 {
-    auto raw = api.post (path).body (request).submit_raw ().result ();
+    auto raw = api.post (path).body (request).async_raw ().result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what () : label + " HTTP failed");
     }
@@ -35,7 +35,7 @@ inline state_res_t post_routed_state (zlink::http_client::client_t &api,
                                       const spot_state_route_req_t &request,
                                       const std::string &label)
 {
-    auto raw = api.post ("/spot/state/request").body (request).submit_raw ().result ();
+    auto raw = api.post ("/spot/state/request").body (request).async_raw ().result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what () : label + " HTTP failed");
     }
@@ -62,7 +62,7 @@ inline TReply post_json_fresh (const std::string &base_url,
                      .base_url (base_url)
                      .timeout (std::chrono::seconds (30))
                      .build ();
-        auto raw = api.post (path).body (request).submit_raw ().result ();
+        auto raw = api.post (path).body (request).async_raw ().result ();
         if (!raw) {
             transport_error = raw.error () ? raw.error ()->what () : "transport failure";
             std::this_thread::sleep_for (std::chrono::milliseconds (200));
@@ -100,7 +100,7 @@ inline void wait_for_evidence (zlink::http_client::client_t &api,
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     while (std::chrono::steady_clock::now () < deadline) {
-        auto raw = api.get ("/evidence").submit_raw ().result ();
+        auto raw = api.get ("/evidence").async_raw ().result ();
         if (raw && raw.value ().status < 400) {
             const auto snapshot =
               nlohmann::json::parse (raw.value ().body).get<evidence_snapshot_t> ();

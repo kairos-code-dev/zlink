@@ -26,7 +26,7 @@ inline void run_mon_a1_socket_events_scenario (const client_options_t &options)
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
     auto service_entries = fetch_evidence (options.service_url);
-    auto drained = http.post ("/admin/server-weight?weight=0").submit_raw ().result ();
+    auto drained = http.post ("/admin/server-weight?weight=0").async_raw ().result ();
     ensure (drained && drained.value ().status < 400, "MON-A1 server weight admin call failed");
     wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
                            service_entries.size ());
@@ -52,7 +52,7 @@ inline void run_mon_a1_socket_events_scenario (const client_options_t &options)
     ensure (any_contains (disconnected_entries, "remote=tcp://"),
             "MON-A1 disconnected remote address missing");
     service_entries = fetch_evidence (options.service_url);
-    auto restored = http.post ("/admin/server-weight?weight=100").submit_raw ().result ();
+    auto restored = http.post ("/admin/server-weight?weight=100").async_raw ().result ();
     ensure (restored && restored.value ().status < 400, "MON-A1 server weight restore failed");
     wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
                            service_entries.size ());

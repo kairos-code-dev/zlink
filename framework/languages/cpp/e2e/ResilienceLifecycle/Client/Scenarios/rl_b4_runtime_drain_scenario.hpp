@@ -51,7 +51,7 @@ inline void wait_provider_weight_on (zlink::http_client::client_t &provider, int
 {
     auto result = provider.post ("/admin/weight/wait")
                     .body (nlohmann::json{{"expected", expected}}.dump (), "application/json")
-                    .submit_raw ()
+                    .async_raw ()
                     .result ();
     if (!result) {
         throw std::runtime_error (result.error () ? result.error ()->what ()
@@ -76,7 +76,7 @@ inline void wait_consumer_topology_weight (const client_options_t &options,
     int stable_observations = 0;
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            auto entries = consumer.get ("/topology").fetch<std::vector<topology_entry_result_t>> ();
+            auto entries = consumer.get ("/topology").async<std::vector<topology_entry_result_t>> ().result ().value ().body;
             bool matched = false;
             for (const auto &entry : entries) {
                 if (entry.routing_id == routing_id && entry.weight == expected) {
@@ -101,7 +101,7 @@ inline void wait_consumer_topology_weight (const client_options_t &options,
 inline void post_provider_admin_on (zlink::http_client::client_t &provider,
                                     const std::string &path)
 {
-    auto result = provider.post (path).submit_raw ().result ();
+    auto result = provider.post (path).async_raw ().result ();
     if (!result) {
         throw std::runtime_error (result.error () ? result.error ()->what ()
                                                   : "provider admin call failed");
@@ -138,7 +138,7 @@ inline void run_rl_b4_runtime_drain_scenario (const client_options_t &options)
             const auto marker = "rl-b4-drained-" + std::to_string (index);
             const auto reply = consumer.post ("/profile/request")
                                  .body (profile_req_t{.value = "fast", .marker = marker})
-                                 .fetch<profile_res_t> ();
+                                 .async<profile_res_t> ().result ().value ().body;
             ensure (reply.provider_rid == "api-a", "RL-B4 drained provider received request");
         }
 
@@ -162,7 +162,7 @@ inline void run_rl_b4_runtime_drain_scenario (const client_options_t &options)
         const auto first_reply =
           consumer.post ("/profile/request")
             .body (profile_req_t{.value = "fast", .marker = "rl-b4-restored-first"})
-            .fetch<profile_res_t> ();
+            .async<profile_res_t> ().result ().value ().body;
         ensure (first_reply.value == "profile:fast",
                 "RL-B4 first restored request returned an unexpected value");
         bool observed_b = first_reply.provider_rid == "api-b";
@@ -170,7 +170,7 @@ inline void run_rl_b4_runtime_drain_scenario (const client_options_t &options)
             const auto marker = "rl-b4-restored-" + std::to_string (index);
             const auto reply = consumer.post ("/profile/request")
                                  .body (profile_req_t{.value = "fast", .marker = marker})
-                                 .fetch<profile_res_t> ();
+                                 .async<profile_res_t> ().result ().value ().body;
             ensure (reply.value == "profile:fast",
                     "RL-B4 restored request returned an unexpected value");
             observed_b = reply.provider_rid == "api-b";

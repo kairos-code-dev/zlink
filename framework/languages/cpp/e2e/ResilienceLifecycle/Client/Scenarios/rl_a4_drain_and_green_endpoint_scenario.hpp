@@ -23,7 +23,7 @@ inline void wait_provider_weight (zlink::http_client::client_t &provider, int ex
 {
     provider.post ("/admin/weight/wait")
       .body (nlohmann::json{{"expected", expected}}.dump (), "application/json")
-      .submit_raw ()
+      .async_raw ()
       .result ()
       .value ();
 }
@@ -33,7 +33,7 @@ inline void wait_provider_health_down (zlink::http_client::client_t &provider,
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     while (std::chrono::steady_clock::now () < deadline) {
-        auto response = provider.get ("/health").submit_raw ().result ();
+        auto response = provider.get ("/health").async_raw ().result ();
         if (!response || response.value ().status != 200) {
             return;
         }
@@ -53,7 +53,7 @@ inline void wait_location_ready_count (zlink::http_client::client_t &topology,
                             {"timeoutMilliseconds", 30000}}
                .dump (),
              "application/json")
-      .submit<std::vector<topology_entry_result_t>> ()
+      .async<std::vector<topology_entry_result_t>> ()
       .result ()
       .value ();
 }
@@ -94,7 +94,7 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario (const client_options_t 
                             .timeout (std::chrono::milliseconds (10000))
                             .build ();
 
-    provider_b.post ("/admin/drain").submit_raw ().result ().value ();
+    provider_b.post ("/admin/drain").async_raw ().result ().value ();
     wait_provider_weight (provider_b, 0);
     touch_file (options.ready_file);
     wait_for_file (options.continue_file);
@@ -103,7 +103,7 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario (const client_options_t 
         const auto marker = "rl-a4-rolling-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request")
                              .body (profile_req_t{.value = "fast", .marker = marker})
-                             .fetch<profile_res_t> ();
+                             .async<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast",
                 "RL-A4 rolling request returned an unexpected value");
         ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b",
@@ -114,7 +114,7 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario (const client_options_t 
         const auto marker = "rl-a4-green-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request")
                              .body (profile_req_t{.value = "fast", .marker = marker})
-                             .fetch<profile_res_t> ();
+                             .async<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast",
                 "RL-A4 green request returned an unexpected value");
     }
@@ -128,7 +128,7 @@ inline void run_rl_a4_drain_and_green_endpoint_scenario (const client_options_t 
         const auto marker = "rl-a4-restored-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request")
                              .body (profile_req_t{.value = "fast", .marker = marker})
-                             .fetch<profile_res_t> ();
+                             .async<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast",
                 "RL-A4 restored request returned an unexpected value");
     }

@@ -30,7 +30,7 @@ inline void run_sm_b2_scenario (const std::string &play_http_endpoint)
                              .level = 2,
                              .tags = {"remote", "actor"}},
           .state = state_req_t{.op = "add", .amount = 2}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!flow) {
         throw std::runtime_error (flow.error () ? flow.error ()->what ()

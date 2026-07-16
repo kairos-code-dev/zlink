@@ -35,7 +35,7 @@ inline void run_sm_d2_scenario (const std::string &play_b_http_endpoint,
                           .display_name = "SM-D2 Remote",
                           .level = 2,
                           .tags = {"stream", "SM-D2"}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!joined) {
         throw std::runtime_error (joined.error () ? joined.error ()->what ()

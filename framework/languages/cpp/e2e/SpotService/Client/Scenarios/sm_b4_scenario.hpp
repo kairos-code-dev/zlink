@@ -29,7 +29,7 @@ inline void run_sm_b4_scenario (const std::string &play_http_endpoint)
                                                              .level = 4,
                                                              .tags = {"remote", "request"}},
                                           .state = state_req_t{.op = "add", .amount = 14}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!requested) {
         throw std::runtime_error (requested.error () ? requested.error ()->what ()

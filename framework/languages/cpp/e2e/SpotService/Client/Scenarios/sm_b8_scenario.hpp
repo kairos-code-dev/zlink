@@ -78,7 +78,7 @@ inline void run_sm_b8_scenario (const std::string &play_http_endpoint,
       play_a.post ("/evidence/wait")
         .body (evidence_wait_req_t{.contains_all = {"ActorDestroyed", actor_id},
                                    .timeout_milliseconds = 3000})
-        .submit<evidence_snapshot_t> ()
+        .async<evidence_snapshot_t> ()
         .result ();
     if (!evidence) {
         throw std::runtime_error (evidence.error () ? evidence.error ()->what ()

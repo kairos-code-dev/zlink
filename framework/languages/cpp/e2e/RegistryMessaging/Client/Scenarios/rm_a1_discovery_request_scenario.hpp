@@ -27,7 +27,7 @@ inline void run_rm_a1_discovery_request_scenario (const client_options_t &option
     int ready_providers = 0;
     for (int attempt = 0; attempt < 40 && ready_providers < 2; ++attempt) {
         ready_providers = 0;
-        const auto peers = location_client.get ("/locations/peers").fetch<nlohmann::json> ();
+        const auto peers = location_client.get ("/locations/peers").async<nlohmann::json> ().result ().value ().body;
         std::set<std::string> provider_rids;
         for (const auto &entry : peers) {
             if (entry.value ("mesh_name", "") == api_channel

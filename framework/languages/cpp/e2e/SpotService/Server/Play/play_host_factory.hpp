@@ -122,12 +122,20 @@ inline int run_play_server (int argc, char **argv)
                                    event.spot_rid.value_or (""),
                                    std::string ("handler_missing:") + action);
             });
+        auto http_execution_turn =
+          std::make_shared<zlink::http_client::framework_execution_turn_t> ();
+        auto play_a_http = zlink::http_client::client_t::create (config.play_a_http_endpoint)
+                             .build_server<play_a_owner_http_client_tag_t> (
+                               http_execution_turn);
+        auto play_b_http = zlink::http_client::client_t::create (config.play_b_http_endpoint)
+                             .build_server<play_b_owner_http_client_tag_t> (
+                               http_execution_turn);
         options.services ()
           .add_singleton<scenario_state_t> (std::move (state))
-          .add_singleton<play_node_http_endpoints_t> (
-            std::make_unique<play_node_http_endpoints_t> (
-              play_node_http_endpoints_t{config.play_a_http_endpoint,
-                                         config.play_b_http_endpoint}))
+          .add_singleton<play_a_owner_http_client_t> (
+            std::make_unique<play_a_owner_http_client_t> (std::move (play_a_http)))
+          .add_singleton<play_b_owner_http_client_t> (
+            std::make_unique<play_b_owner_http_client_t> (std::move (play_b_http)))
           .add_transient<ensure_actor_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t,
                          zlink::framework::session_actor_manager_t> ()
@@ -143,11 +151,13 @@ inline int run_play_server (int argc, char **argv)
                          zlink::framework::session_actor_manager_t> ()
           .add_transient<remote_actor_flow_handler_t, scenario_state_t,
                          zlink::framework::session_actor_manager_t,
-                         play_node_http_endpoints_t> ()
+                         play_a_owner_http_client_t,
+                         play_b_owner_http_client_t> ()
           .add_transient<remote_actor_request_handler_t, scenario_state_t,
                          zlink::framework::route_client_t,
                          zlink::framework::session_actor_manager_t,
-                         play_node_http_endpoints_t> ()
+                         play_a_owner_http_client_t,
+                         play_b_owner_http_client_t> ()
           .add_transient<worker_spot_handler_t, zlink::framework::session_actor_manager_t> ()
           .add_transient<create_spot_handler_t, scenario_state_t,
                          zlink::framework::spot_node_manager_t> ()

@@ -19,7 +19,7 @@ inline std::string post_validation (const std::string &trigger_url, const std::s
                   .base_url (trigger_url)
                   .timeout (std::chrono::milliseconds (5000))
                   .build ();
-    return http.post (path).fetch<std::string> ();
+    return http.post (path).async<std::string> ().result ().value ().body;
 }
 
 inline void run_mon_b2_registration_validation_scenario (const client_options_t &options)

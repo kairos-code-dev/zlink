@@ -22,7 +22,7 @@ inline void wait_c3_provider_health_down (zlink::http_client::client_t &provider
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     while (std::chrono::steady_clock::now () < deadline) {
-        auto response = provider.get ("/health").submit_raw ().result ();
+        auto response = provider.get ("/health").async_raw ().result ();
         if (!response || response.value ().status != 200) {
             return;
         }
@@ -40,7 +40,7 @@ inline void wait_c3_location_ready (zlink::http_client::client_t &topology)
                             {"timeoutMilliseconds", 30000}}
                .dump (),
              "application/json")
-      .submit<std::vector<topology_entry_result_t>> ()
+      .async<std::vector<topology_entry_result_t>> ()
       .result ()
       .value ();
 }
@@ -85,13 +85,13 @@ inline void run_rl_c3_node_pause_recovery_probe (const client_options_t &options
                         .timeout (std::chrono::milliseconds (10000))
                         .build ();
 
-    provider_b.post ("/shutdown").submit_raw ().result ().value ();
+    provider_b.post ("/shutdown").async_raw ().result ().value ();
     wait_c3_provider_health_down (provider_b);
 
     const auto during = consumer.post ("/profile/request")
                           .body (profile_req_t{.value = "fast",
                                                .marker = "rl-c3-during-down"})
-                          .fetch<profile_res_t> ();
+                          .async<profile_res_t> ().result ().value ().body;
     ensure (during.provider_rid == "api-a",
             "RL-C3 did not use surviving provider during node down");
     wait_c3_provider_evidence_prefix (options.http_a_endpoint,
@@ -105,7 +105,7 @@ inline void run_rl_c3_node_pause_recovery_probe (const client_options_t &options
         const auto marker = "rl-c3-recovered-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request")
                              .body (profile_req_t{.value = "fast", .marker = marker})
-                             .fetch<profile_res_t> ();
+                             .async<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast",
                 "RL-C3 recovered request returned an unexpected value");
     }

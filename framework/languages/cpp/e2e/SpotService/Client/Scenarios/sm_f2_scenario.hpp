@@ -28,7 +28,7 @@ inline void run_sm_f2_scenario (const std::string &play_http_endpoint,
       api.post ("/spot/state/request")
         .body (spot_state_route_req_t{.spot_rid = context.spot_rid,
                                       .state = state_req_t{.op = "add", .amount = 5}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what ()
@@ -51,7 +51,7 @@ inline void run_sm_f2_scenario (const std::string &play_http_endpoint,
         .body (spot_state_command_route_req_t{.target_node_rid = "play-a",
                                               .spot_rid = context.spot_rid,
                                               .marker = "sm-f2-command"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!command) {
         throw std::runtime_error (command.error () ? command.error ()->what ()
@@ -82,7 +82,7 @@ inline void run_sm_f2_scenario (const std::string &play_http_endpoint,
                                        .spot_rid = remote_spot,
                                        .value = "route-direct-f2",
                                        .source_actor_id = "external-client"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!raw || raw.value ().status >= 400) {
         const auto error = raw ? raw.value ().body
@@ -102,7 +102,7 @@ inline void run_sm_f2_scenario (const std::string &play_http_endpoint,
                                        .spot_rid = remote_spot,
                                        .value = "route-direct-f2:command",
                                        .source_actor_id = "external-client"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!command || command.value ().status >= 400) {
         const auto error = command ? command.value ().body

@@ -34,7 +34,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
     auto subscribed_created_raw =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = subscribed_spot_rid})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!subscribed_created_raw || subscribed_created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C4 subscribed spot create failed");
@@ -49,7 +49,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
     auto unsubscribed_created_raw =
       play_a.post ("/spot/create-alternate")
         .body (create_spot_req_t{.spot_rid = unsubscribed_spot_rid})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!unsubscribed_created_raw || unsubscribed_created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C4 unsubscribed spot create failed");
@@ -64,7 +64,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
     auto publish_raw =
       gateway.post ("/spot/publish")
         .body (spot_publish_route_req_t{.spot_rid = subscribed_spot_rid, .marker = marker})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!publish_raw || publish_raw.value ().status >= 400) {
         const auto status =
@@ -82,7 +82,7 @@ inline void run_sm_c4_scenario (const std::string &play_http_endpoint,
     auto observed_raw =
       play_a.post ("/spot/publish/wait")
         .body (spot_publish_route_req_t{.spot_rid = subscribed_spot_rid, .marker = marker})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!observed_raw || observed_raw.value ().status >= 400) {
         const auto status =

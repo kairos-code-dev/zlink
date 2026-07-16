@@ -43,7 +43,7 @@ class tictactoe_client_scenario_t
             auto room = zlink::http_client::client_t::create (options.api_http_endpoint)
                           .post ("/games")
                           .body (create_game_request)
-                          .fetch<create_game_http_res_t> ();
+                          .async<create_game_http_res_t> ().result ().value ().body;
             if (room.owner_play_endpoint.empty ()) {
                 throw std::runtime_error ("API returned an empty play endpoint.");
             }

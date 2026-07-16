@@ -20,7 +20,7 @@ inline void run_mon_a5_fixed_kinds_scenario (const client_options_t &options)
                      .build ();
     // The stopping timer belongs to a user Spot, so this scenario creates the
     // public application resource whose failure event it observes.
-    auto created = service.post ("/spot/create").submit_raw ().result ();
+    auto created = service.post ("/spot/create").async_raw ().result ();
     ensure (created && created.value ().status < 400, "MON-A5 spot create call failed");
 
     if (!options.trigger_url.empty ()) {
@@ -28,7 +28,7 @@ inline void run_mon_a5_fixed_kinds_scenario (const client_options_t &options)
                          .base_url (options.trigger_url)
                          .timeout (std::chrono::milliseconds (3000))
                          .build ();
-        auto handshake = trigger.post ("/socket/handshake-failure").submit_raw ().result ();
+        auto handshake = trigger.post ("/socket/handshake-failure").async_raw ().result ();
         ensure (handshake && handshake.value ().status < 400,
                 "MON-A5 handshake failure trigger failed");
     }

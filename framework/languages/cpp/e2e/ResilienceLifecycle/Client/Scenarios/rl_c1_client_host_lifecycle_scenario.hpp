@@ -57,14 +57,14 @@ inline void run_rl_c1_client_host_lifecycle_probe (const client_options_t &optio
         const auto marker = "rl-c1-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request/new-client")
                              .body (profile_req_t{.value = "fast", .marker = marker})
-                             .fetch<profile_res_t> ();
+                             .async<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast", "RL-C1 request failed before cleanup");
     }
 
     const auto follow_up = consumer.post ("/profile/request/new-client")
                              .body (profile_req_t{.value = "fast",
                                                   .marker = "rl-c1-after-cleanup"})
-                             .fetch<profile_res_t> ();
+                             .async<profile_res_t> ().result ().value ().body;
     ensure (follow_up.value == "profile:fast", "RL-C1 follow-up failed after cleanup");
 
     wait_provider_evidence_prefix (options, "rl-c1-");

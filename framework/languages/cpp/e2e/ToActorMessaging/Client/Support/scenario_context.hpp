@@ -174,7 +174,7 @@ void push_actor (zlink::http_client::client_t &actor,
 
 std::vector<e2e::actor_evidence_t> session_evidence (zlink::http_client::client_t &session)
 {
-    return session.get ("/evidence").fetch<std::vector<e2e::actor_evidence_t>> ();
+    return session.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
 }
 
 void wait_session_evidence (zlink::http_client::client_t &session,
@@ -220,7 +220,7 @@ e2e::actor_call_response_t call (zlink::http_client::client_t &caller,
 {
     return caller.post (endpoint)
       .body (e2e::actor_call_request_t{scenario, actor_id, value})
-      .fetch<e2e::actor_call_response_t> ();
+      .async<e2e::actor_call_response_t> ().result ().value ().body;
 }
 
 void ensure_actor (zlink::http_client::client_t &actor,
@@ -229,7 +229,7 @@ void ensure_actor (zlink::http_client::client_t &actor,
 {
     const auto response = actor.post ("/ensure")
                             .body (e2e::actor_call_request_t{scenario, actor_id, "ensure"})
-                            .fetch<e2e::actor_call_response_t> ();
+                            .async<e2e::actor_call_response_t> ().result ().value ().body;
     require (response.error_kind.empty (), scenario + " ensure failed: " + response.error_kind);
     require (response.result == "ensured", scenario + " ensure returned " + response.result);
 }
@@ -325,7 +325,7 @@ void control_route (zlink::http_client::client_t &control, const std::string &op
 {
     const auto response = control.post ("/route/" + operation)
                             .body (nlohmann::json::object ())
-                            .fetch<nlohmann::json> ();
+                            .async<nlohmann::json> ().result ().value ().body;
     require (response.value ("status", "") == operation,
              "route control " + operation + " failed");
 }

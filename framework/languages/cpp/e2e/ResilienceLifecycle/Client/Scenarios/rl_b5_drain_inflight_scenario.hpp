@@ -67,7 +67,7 @@ inline void b5_wait_provider_weight (zlink::http_client::client_t &provider, int
 {
     provider.post ("/admin/weight/wait")
       .body (nlohmann::json{{"expected", expected}}.dump (), "application/json")
-      .submit_raw ()
+      .async_raw ()
       .result ()
       .value ();
 }
@@ -102,7 +102,7 @@ inline void b5_wait_consumer_topology_weight (const client_options_t &options,
     int stable_observations = 0;
     while (std::chrono::steady_clock::now () < deadline) {
         try {
-            auto entries = consumer.get ("/topology").fetch<std::vector<topology_entry_result_t>> ();
+            auto entries = consumer.get ("/topology").async<std::vector<topology_entry_result_t>> ().result ().value ().body;
             bool matched = false;
             for (const auto &entry : entries) {
                 if (entry.routing_id == routing_id && entry.weight == expected) {
@@ -140,8 +140,8 @@ inline void run_rl_b5_drain_inflight_scenario (const client_options_t &options)
                         .build ();
 
     try {
-        provider_a.post ("/admin/restore").submit_raw ().result ().value ();
-        provider_b.post ("/admin/restore").submit_raw ().result ().value ();
+        provider_a.post ("/admin/restore").async_raw ().result ().value ();
+        provider_b.post ("/admin/restore").async_raw ().result ().value ();
         b5_wait_provider_weight (provider_a, 100);
         b5_wait_provider_weight (provider_b, 100);
 
@@ -155,7 +155,7 @@ inline void run_rl_b5_drain_inflight_scenario (const client_options_t &options)
                                  slow_marker] () mutable {
             return slow_consumer.post ("/profile/request")
               .body (profile_req_t{.value = "slow", .marker = slow_marker})
-              .fetch<profile_res_t> ();
+              .async<profile_res_t> ().result ().value ().body;
         });
 
         const auto slow_provider = wait_b5_slow_provider (options, slow_marker);
@@ -166,7 +166,7 @@ inline void run_rl_b5_drain_inflight_scenario (const client_options_t &options)
         const auto before_drain = fetch_evidence (drained_url);
 
         try {
-            drained_provider.post ("/admin/drain").submit_raw ().result ().value ();
+            drained_provider.post ("/admin/drain").async_raw ().result ().value ();
             b5_wait_provider_weight (drained_provider, 0);
             b5_wait_consumer_topology_weight (options, slow_provider, 0);
         }
@@ -179,7 +179,7 @@ inline void run_rl_b5_drain_inflight_scenario (const client_options_t &options)
                 const auto marker = "rl-b5-drained-" + std::to_string (index);
                 const auto reply = consumer.post ("/profile/request")
                                      .body (profile_req_t{.value = "fast", .marker = marker})
-                                     .fetch<profile_res_t> ();
+                                     .async<profile_res_t> ().result ().value ().body;
                 ensure (reply.provider_rid == healthy_provider,
                         "RL-B5 drain did not block new requests to drained provider");
             }
@@ -211,7 +211,7 @@ inline void run_rl_b5_drain_inflight_scenario (const client_options_t &options)
         }
 
         try {
-            drained_provider.post ("/admin/restore").submit_raw ().result ().value ();
+            drained_provider.post ("/admin/restore").async_raw ().result ().value ();
             b5_wait_provider_weight (drained_provider, 100);
             b5_wait_consumer_topology_weight (options, slow_provider, 100);
         }
@@ -224,7 +224,7 @@ inline void run_rl_b5_drain_inflight_scenario (const client_options_t &options)
                 const auto marker = "rl-b5-after-" + std::to_string (index);
                 const auto reply = consumer.post ("/profile/request")
                                      .body (profile_req_t{.value = "fast", .marker = marker})
-                                     .fetch<profile_res_t> ();
+                                     .async<profile_res_t> ().result ().value ().body;
                 ensure (reply.value == "profile:fast",
                         "RL-B5 restored request returned an unexpected value");
             }

@@ -35,7 +35,7 @@ inline void run_sm_b3_scenario (const std::string &play_http_endpoint)
             .level = 42,
             .tags = {"alpha", "beta", "gamma"},
             .attributes = {{"role", "analyst"}, {"region", "west"}}}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!complex) {
         throw std::runtime_error (complex.error () ? complex.error ()->what ()

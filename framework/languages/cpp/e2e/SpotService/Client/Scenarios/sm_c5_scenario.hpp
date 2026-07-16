@@ -19,7 +19,7 @@ inline void wait_for_sm_c5_spot_locations (zlink::http_client::client_t &locatio
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     while (std::chrono::steady_clock::now () < deadline) {
-        auto response = locations.get ("/locations/spots").submit_raw ().result ();
+        auto response = locations.get ("/locations/spots").async_raw ().result ();
         if (response && response.value ().status < 400) {
             const auto rows = nlohmann::json::parse (response.value ().body);
             bool source_ready = false;
@@ -53,12 +53,12 @@ inline void run_sm_c5_scenario (const std::string &play_http_endpoint,
     auto source =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = source_spot_rid})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     auto target =
       play_b.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = target_spot_rid})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!source || source.value ().status >= 400 || !target || target.value ().status >= 400) {
         throw std::runtime_error ("SM-C5 spot create failed");
@@ -72,7 +72,7 @@ inline void run_sm_c5_scenario (const std::string &play_http_endpoint,
                                         .target_node_rid = "play-b",
                                         .target_spot_rid = target_spot_rid,
                                         .marker = marker})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!routed || routed.value ().status >= 400) {
         throw std::runtime_error (
@@ -85,7 +85,7 @@ inline void run_sm_c5_scenario (const std::string &play_http_endpoint,
         .body (evidence_wait_req_t{.contains_all = {target_spot_rid,
                                                     "sm-c3-publish-" + std::string (marker)},
                                    .timeout_milliseconds = 10000})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!observed || observed.value ().status >= 400) {
         throw std::runtime_error ("SM-C5 cross-node SpotMesh publish evidence missing");

@@ -23,7 +23,7 @@ inline void run_mon_b1_kind_filter_scenario (const client_options_t &options)
         auto request =
           trigger.post ("/profile/request/service-b")
             .body (profile_req_t{.value = "filter", .marker = "mon-b1"})
-            .submit<profile_res_t> ()
+            .async<profile_res_t> ()
             .result ();
         ensure (request && request.value ().status < 400,
                 "MON-B1 filtered service trigger request failed");

@@ -69,7 +69,7 @@ inline join_res_t sm_d10_join_actor (const std::string &play_http_endpoint,
                           .display_name = display_name,
                           .level = 10,
                           .tags = {"stream", "SM-D10"}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!joined || joined.value ().status >= 400) {
         auto reason = std::string ("SM-D10 actor join failed");

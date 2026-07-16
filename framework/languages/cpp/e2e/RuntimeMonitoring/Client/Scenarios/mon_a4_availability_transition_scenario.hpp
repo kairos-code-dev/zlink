@@ -57,13 +57,13 @@ inline void run_mon_a4_availability_transition_scenario (const client_options_t 
                   .build ();
 
     auto service_entries = fetch_evidence (options.service_url);
-    auto drained = http.post ("/admin/server-weight?weight=0").submit_raw ().result ();
+    auto drained = http.post ("/admin/server-weight?weight=0").async_raw ().result ();
     ensure (drained && drained.value ().status < 400, "MON-A4 drain admin call failed");
     wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
                            service_entries.size ());
 
     service_entries = fetch_evidence (options.service_url);
-    auto restored = http.post ("/admin/server-weight?weight=100").submit_raw ().result ();
+    auto restored = http.post ("/admin/server-weight?weight=100").async_raw ().result ();
     ensure (restored && restored.value ().status < 400, "MON-A4 restore admin call failed");
     wait_for_new_evidence (options.service_url, "kind=PeerAdmissionChanged",
                            service_entries.size ());

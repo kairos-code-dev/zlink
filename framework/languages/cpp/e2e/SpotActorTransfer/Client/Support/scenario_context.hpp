@@ -103,7 +103,7 @@ create_spot (http::client_t &node, const std::string &spot_rid, const std::strin
 {
     return node.post ("/spots")
       .body (e2e::create_spot_req_t{spot_rid, mode})
-      .fetch<e2e::create_spot_res_t> ();
+      .async<e2e::create_spot_res_t> ().result ().value ().body;
 }
 
 e2e::actor_create_res_t create_actor (http::client_t &node,
@@ -113,32 +113,32 @@ e2e::actor_create_res_t create_actor (http::client_t &node,
 {
     return node.post ("/actors")
       .body (e2e::actor_create_req_t{actor_id, actor_type, state_version})
-      .fetch<e2e::actor_create_res_t> ();
+      .async<e2e::actor_create_res_t> ().result ().value ().body;
 }
 
 e2e::gate_release_res_t release_joined_gate (http::client_t &node, const std::string &spot_rid)
 {
-    return node.post ("/joined-gates/" + spot_rid + "/release").fetch<e2e::gate_release_res_t> ();
+    return node.post ("/joined-gates/" + spot_rid + "/release").async<e2e::gate_release_res_t> ().result ().value ().body;
 }
 
 e2e::gate_release_res_t release_transfer_gate (http::client_t &node, const std::string &actor_id)
 {
-    return node.post ("/transfer-gates/" + actor_id + "/release").fetch<e2e::gate_release_res_t> ();
+    return node.post ("/transfer-gates/" + actor_id + "/release").async<e2e::gate_release_res_t> ().result ().value ().body;
 }
 
 e2e::actor_ref_snapshot_res_t get_actor_ref (http::client_t &node, const std::string &actor_id)
 {
-    return node.get ("/actors/" + actor_id + "/ref").fetch<e2e::actor_ref_snapshot_res_t> ();
+    return node.get ("/actors/" + actor_id + "/ref").async<e2e::actor_ref_snapshot_res_t> ().result ().value ().body;
 }
 
 std::vector<e2e::actor_evidence_t> get_evidence (http::client_t &node)
 {
-    return node.get ("/evidence").fetch<std::vector<e2e::actor_evidence_t>> ();
+    return node.get ("/evidence").async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
 }
 
 void shutdown_node (http::client_t &node)
 {
-    (void) node.post ("/shutdown").fetch<nlohmann::json> ();
+    (void) node.post ("/shutdown").async<nlohmann::json> ().result ().value ().body;
 }
 
 e2e::join_target_res_t join_actor (http::client_t &node,
@@ -147,13 +147,13 @@ e2e::join_target_res_t join_actor (http::client_t &node,
 {
     return node.post ("/actors/" + actor_id + "/join")
       .body (request)
-      .fetch<e2e::join_target_res_t> ();
+      .async<e2e::join_target_res_t> ().result ().value ().body;
 }
 
 e2e::probe_res_t
 probe_actor (http::client_t &node, const std::string &actor_id, const e2e::probe_req_t &request)
 {
-    return node.post ("/actors/" + actor_id + "/probe").body (request).fetch<e2e::probe_res_t> ();
+    return node.post ("/actors/" + actor_id + "/probe").body (request).async<e2e::probe_res_t> ().result ().value ().body;
 }
 
 e2e::actor_ref_probe_res_t probe_ref (http::client_t &node,
@@ -165,7 +165,7 @@ e2e::actor_ref_probe_res_t probe_ref (http::client_t &node,
     return node.post ("/actors/" + actor_id + "/probe-ref")
       .body (e2e::actor_ref_probe_req_t{request.scenario, request.marker, actor.node_rid,
                                         actor.generation, static_cast<int> (timeout.count ())})
-      .fetch<e2e::actor_ref_probe_res_t> ();
+      .async<e2e::actor_ref_probe_res_t> ().result ().value ().body;
 }
 
 void send_ref (http::client_t &node,
@@ -176,7 +176,7 @@ void send_ref (http::client_t &node,
     (void) node.post ("/actors/" + actor_id + "/send-ref")
       .body (e2e::actor_ref_probe_req_t{packet.scenario, packet.marker, actor.node_rid,
                                         actor.generation, 5000})
-      .fetch<nlohmann::json> ();
+      .async<nlohmann::json> ().result ().value ().body;
 }
 
 e2e::bound_push_res_t
@@ -184,7 +184,7 @@ bound_push (http::client_t &node, const std::string &actor_id, const e2e::bound_
 {
     return node.post ("/actors/" + actor_id + "/bound-push")
       .body (request)
-      .fetch<e2e::bound_push_res_t> ();
+      .async<e2e::bound_push_res_t> ().result ().value ().body;
 }
 
 bool evidence_contains (const std::vector<e2e::actor_evidence_t> &evidence,
@@ -200,7 +200,7 @@ std::vector<e2e::actor_evidence_t> wait_evidence (http::client_t &node,
 {
     auto evidence = node.post ("/evidence/wait")
                       .body (e2e::evidence_wait_req_t{contains_all, 10000})
-                      .fetch<std::vector<e2e::actor_evidence_t>> ();
+                      .async<std::vector<e2e::actor_evidence_t>> ().result ().value ().body;
     for (const auto &expected : contains_all) {
         require (evidence_contains (evidence, expected),
                  "Expected evidence marker was not observed: " + expected);

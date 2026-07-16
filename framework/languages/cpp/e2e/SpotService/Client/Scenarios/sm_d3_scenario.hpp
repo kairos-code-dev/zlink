@@ -87,7 +87,7 @@ inline void run_sm_d3_scenario (const std::string &play_http_endpoint,
                           .display_name = "SM-D3 User",
                           .level = 3,
                           .tags = {"stream", "SM-D3"}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!joined || joined.value ().status >= 400) {
         throw std::runtime_error ("SM-D3 user spot join failed");

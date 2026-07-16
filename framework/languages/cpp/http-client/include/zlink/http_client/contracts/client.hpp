@@ -22,7 +22,34 @@ namespace zlink::http_client
 {
 
 class request_builder_t;
+class server_request_builder_t;
 class client_builder_t;
+class server_client_t;
+template <typename TName> class named_server_client_t;
+
+class execution_turn_t
+{
+  public:
+    virtual ~execution_turn_t () = default;
+    virtual zlink::framework::detail::task_scheduler_t prepare (bool release_turn) = 0;
+    virtual zlink::framework::detail::task_scheduler_t callback_scheduler () = 0;
+};
+
+class framework_execution_turn_t final : public execution_turn_t
+{
+  public:
+    zlink::framework::detail::task_scheduler_t prepare (bool release_turn) override
+    {
+        auto plan = zlink::framework::detail::prepare_serial_turn_await (release_turn);
+        return plan ? std::move (plan->scheduler) : zlink::framework::detail::task_scheduler_t{};
+    }
+
+    zlink::framework::detail::task_scheduler_t callback_scheduler () override
+    {
+        auto turn = zlink::framework::detail::capture_current_serial_turn ();
+        return turn ? turn->resume_scheduler () : zlink::framework::detail::task_scheduler_t{};
+    }
+};
 
 namespace detail
 {
@@ -78,6 +105,10 @@ class client_builder_t
                                   std::shared_ptr<coroutine_resume_scheduler_t> resume_scheduler);
 
     client_t build () const;
+    server_client_t build_server (std::shared_ptr<execution_turn_t> execution_turn) const;
+    template <typename TName>
+    named_server_client_t<TName>
+    build_server (std::shared_ptr<execution_turn_t> execution_turn) const;
 
     // One-shot shortcuts: build the client on demand so `build()` can be
     // omitted for single requests. The returned request owns its client
@@ -104,7 +135,7 @@ class client_builder_t
     std::optional<std::string> _proxy;
     std::optional<std::string> _proxy_authorization;
     bool _compression = false;
-    bool _coroutines = false;
+    bool _coroutines = true;
     std::shared_ptr<coroutine_execute_scheduler_t> _execute_scheduler;
     std::shared_ptr<coroutine_resume_scheduler_t> _resume_scheduler;
 };
@@ -142,7 +173,7 @@ class request_builder_t
                                        std::string content,
                                        std::string content_type);
 
-    zlink::framework::task_t<raw_http_response_t> submit_raw () const;
+    zlink::framework::task_t<raw_http_response_t> async_raw () const;
 
     // Streams the response body to `sink` chunk by chunk instead of buffering
     // it; the returned response carries status and headers with an empty body.
@@ -150,9 +181,9 @@ class request_builder_t
     zlink::framework::task_t<raw_http_response_t>
     download (std::function<void (std::string_view)> sink) const;
 
-    template <typename T> zlink::framework::task_t<http_response_t<T>> submit () const
+    template <typename T> zlink::framework::task_t<http_response_t<T>> async () const
     {
-        auto raw_task = submit_raw ();
+        auto raw_task = async_raw ();
         raw_http_response_t raw;
         try {
             raw = co_await raw_task;
@@ -183,26 +214,11 @@ class request_builder_t
         }
     }
 
-    template <typename T, typename TCallback> void submit (TCallback &&callback) const
+    template <typename T, typename TCallback> void async (TCallback &&callback) const
     {
-        auto task = submit<T> ();
+        auto task = async<T> ();
         zlink::framework::detail::observe_task_completion (task,
                                                            std::forward<TCallback> (callback));
-    }
-
-    // Blocking convenience that unwraps the result and returns the typed body
-    // directly, throwing on failure. Intended for tests and client scenarios
-    // where blocking is acceptable; runtime/handler code should use submit<T>()
-    // and co_await the task instead of blocking on the result.
-    template <typename T> T fetch () const
-    {
-        auto result = submit<T> ().result ();
-        if (!result) {
-            const auto *error = result.error ();
-            throw zlink::framework::framework_exception_t (error->kind (), error->what (),
-                                                           error->is_retriable ());
-        }
-        return std::move (result.value ().body);
     }
 
   private:
@@ -231,5 +247,169 @@ class request_builder_t
     std::vector<std::pair<std::string, std::string>> _form;
     std::vector<multipart_part_t> _multipart;
 };
+
+class server_request_builder_t : public request_builder_t
+{
+  public:
+    server_request_builder_t (client_t client,
+                              http_method_t method,
+                              std::string path,
+                              std::shared_ptr<execution_turn_t> execution_turn) :
+        request_builder_t (std::move (client), method, std::move (path)),
+        _execution_turn (std::move (execution_turn))
+    {
+    }
+
+    server_request_builder_t &header (std::string name, std::string value)
+    {
+        request_builder_t::header (std::move (name), std::move (value));
+        return *this;
+    }
+    server_request_builder_t &query (std::string name, std::string value)
+    {
+        request_builder_t::query (std::move (name), std::move (value));
+        return *this;
+    }
+    server_request_builder_t &timeout (std::chrono::milliseconds value)
+    {
+        request_builder_t::timeout (value);
+        return *this;
+    }
+    template <typename T> server_request_builder_t &body (const T &value)
+    {
+        request_builder_t::body (value);
+        return *this;
+    }
+    server_request_builder_t &body (std::string content, std::string content_type)
+    {
+        request_builder_t::body (std::move (content), std::move (content_type));
+        return *this;
+    }
+    server_request_builder_t &body_stream (body_stream_provider_t provider,
+                                           std::string content_type)
+    {
+        request_builder_t::body_stream (std::move (provider), std::move (content_type));
+        return *this;
+    }
+    server_request_builder_t &form (std::string name, std::string value)
+    {
+        request_builder_t::form (std::move (name), std::move (value));
+        return *this;
+    }
+    server_request_builder_t &multipart (std::string name, std::string value)
+    {
+        request_builder_t::multipart (std::move (name), std::move (value));
+        return *this;
+    }
+    server_request_builder_t &multipart_file (std::string name,
+                                              std::string filename,
+                                              std::string content,
+                                              std::string content_type)
+    {
+        request_builder_t::multipart_file (std::move (name), std::move (filename),
+                                           std::move (content), std::move (content_type));
+        return *this;
+    }
+
+    void submit () const
+    {
+        auto task = request_builder_t::async_raw ();
+        zlink::framework::detail::observe_task_completion (
+          task, [] (const zlink::framework::result_t<raw_http_response_t> &) {});
+    }
+
+    template <typename T> zlink::framework::task_t<http_response_t<T>> async () const
+    {
+        return schedule<T> (false);
+    }
+
+    zlink::framework::task_t<raw_http_response_t> async_raw () const
+    {
+        return schedule_raw (false);
+    }
+
+    template <typename T> zlink::framework::task_t<http_response_t<T>> yield () const
+    {
+        return schedule<T> (true);
+    }
+
+    zlink::framework::task_t<raw_http_response_t> yield_raw () const
+    {
+        return schedule_raw (true);
+    }
+
+    template <typename T, typename TCallback> void async (TCallback &&callback) const
+    {
+        auto task = request_builder_t::async<T> ();
+        auto scheduler = _execution_turn->callback_scheduler ();
+        if (scheduler) {
+            task = zlink::framework::detail::reschedule_task (std::move (task),
+                                                              std::move (scheduler));
+        }
+        zlink::framework::detail::observe_task_completion (task,
+                                                           std::forward<TCallback> (callback));
+    }
+
+  private:
+    template <typename T>
+    zlink::framework::task_t<http_response_t<T>> schedule (bool release_turn) const
+    {
+        auto task = request_builder_t::async<T> ();
+        auto scheduler = _execution_turn->prepare (release_turn);
+        if (!scheduler) {
+            return task;
+        }
+        return zlink::framework::detail::reschedule_task (std::move (task),
+                                                          std::move (scheduler));
+    }
+
+    zlink::framework::task_t<raw_http_response_t> schedule_raw (bool release_turn) const
+    {
+        auto task = request_builder_t::async_raw ();
+        auto scheduler = _execution_turn->prepare (release_turn);
+        if (!scheduler) {
+            return task;
+        }
+        return zlink::framework::detail::reschedule_task (std::move (task),
+                                                          std::move (scheduler));
+    }
+
+    std::shared_ptr<execution_turn_t> _execution_turn;
+};
+
+class server_client_t
+{
+  public:
+    server_request_builder_t get (std::string path) const;
+    server_request_builder_t post (std::string path) const;
+    server_request_builder_t put (std::string path) const;
+    server_request_builder_t delete_ (std::string path) const;
+    server_request_builder_t patch (std::string path) const;
+    server_request_builder_t head (std::string path) const;
+    server_request_builder_t options (std::string path) const;
+
+  private:
+    server_client_t (client_t client, std::shared_ptr<execution_turn_t> execution_turn) :
+        _client (std::move (client)), _execution_turn (std::move (execution_turn))
+    {
+    }
+
+    client_t _client;
+    std::shared_ptr<execution_turn_t> _execution_turn;
+    friend class client_builder_t;
+};
+
+template <typename TName> class named_server_client_t : public server_client_t
+{
+  public:
+    explicit named_server_client_t (server_client_t client) : server_client_t (std::move (client)) {}
+};
+
+template <typename TName>
+named_server_client_t<TName>
+client_builder_t::build_server (std::shared_ptr<execution_turn_t> execution_turn) const
+{
+    return named_server_client_t<TName> (build_server (std::move (execution_turn)));
+}
 
 } // namespace zlink::http_client

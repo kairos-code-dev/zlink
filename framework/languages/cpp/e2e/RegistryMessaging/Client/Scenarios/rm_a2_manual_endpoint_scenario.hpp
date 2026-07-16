@@ -41,7 +41,7 @@ inline void run_rm_a2_manual_endpoint_scenario (const client_options_t &options)
     const auto row_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     do {
         location_rids.clear ();
-        const auto rows = location_client.get ("/locations/peers").fetch<nlohmann::json> ();
+        const auto rows = location_client.get ("/locations/peers").async<nlohmann::json> ().result ().value ().body;
         for (const auto &row : rows) {
             if (row.value ("mesh_name", "") == api_channel
                 && row.value ("role", "") == "router") {

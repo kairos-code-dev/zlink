@@ -18,7 +18,7 @@ inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
 
-    auto created = http.post ("/spot/create").submit_raw ().result ();
+    auto created = http.post ("/spot/create").async_raw ().result ();
     ensure (created && created.value ().status < 400, "MON-A3 spot create call failed");
 
     const auto peer_entries = wait_evidence_contains (

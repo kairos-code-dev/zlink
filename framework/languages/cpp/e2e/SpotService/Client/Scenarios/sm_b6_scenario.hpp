@@ -37,7 +37,7 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
                           .display_name = "SM-B6 Left",
                           .level = 6,
                           .tags = {"leave", "SM-B6"}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!leave_joined) {
         throw std::runtime_error (leave_joined.error () ? leave_joined.error ()->what ()
@@ -91,7 +91,7 @@ inline void run_sm_b6_scenario (const std::string &play_http_endpoint,
                           .display_name = "SM-B6 Disconnected",
                           .level = 6,
                           .tags = {"disconnect", "SM-B6"}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!disconnect_joined) {
         throw std::runtime_error (disconnect_joined.error () ? disconnect_joined.error ()->what ()

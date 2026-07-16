@@ -343,6 +343,19 @@ client_t client_builder_t::build () const
     }
 }
 
+server_client_t
+client_builder_t::build_server (std::shared_ptr<execution_turn_t> execution_turn) const
+{
+    if (!execution_turn) {
+        throw zlink::framework::framework_exception_t (
+          zlink::framework::framework_error_kind_t::request_protocol_error,
+          "HTTP server client execution turn is required");
+    }
+    auto builder = *this;
+    builder.coroutines ();
+    return server_client_t (builder.build (), std::move (execution_turn));
+}
+
 request_builder_t client_builder_t::get (std::string path) const
 {
     return build ().get (std::move (path));
@@ -560,7 +573,7 @@ request_builder_t::dispatch_request (detail::http_request_t request) const
     return zlink::framework::task_t<raw_http_response_t> (_client._runtime->execute (request));
 }
 
-zlink::framework::task_t<raw_http_response_t> request_builder_t::submit_raw () const
+zlink::framework::task_t<raw_http_response_t> request_builder_t::async_raw () const
 {
     return dispatch_request (make_request (nullptr));
 }
@@ -574,6 +587,48 @@ request_builder_t::download (std::function<void (std::string_view)> sink) const
           "HTTP request download sink is required");
     }
     return dispatch_request (make_request (std::move (sink)));
+}
+
+server_request_builder_t server_client_t::get (std::string path) const
+{
+    return server_request_builder_t (_client, http_method_t::get, std::move (path),
+                                     _execution_turn);
+}
+
+server_request_builder_t server_client_t::post (std::string path) const
+{
+    return server_request_builder_t (_client, http_method_t::post, std::move (path),
+                                     _execution_turn);
+}
+
+server_request_builder_t server_client_t::put (std::string path) const
+{
+    return server_request_builder_t (_client, http_method_t::put, std::move (path),
+                                     _execution_turn);
+}
+
+server_request_builder_t server_client_t::delete_ (std::string path) const
+{
+    return server_request_builder_t (_client, http_method_t::delete_, std::move (path),
+                                     _execution_turn);
+}
+
+server_request_builder_t server_client_t::patch (std::string path) const
+{
+    return server_request_builder_t (_client, http_method_t::patch, std::move (path),
+                                     _execution_turn);
+}
+
+server_request_builder_t server_client_t::head (std::string path) const
+{
+    return server_request_builder_t (_client, http_method_t::head, std::move (path),
+                                     _execution_turn);
+}
+
+server_request_builder_t server_client_t::options (std::string path) const
+{
+    return server_request_builder_t (_client, http_method_t::options, std::move (path),
+                                     _execution_turn);
 }
 
 } // namespace zlink::http_client

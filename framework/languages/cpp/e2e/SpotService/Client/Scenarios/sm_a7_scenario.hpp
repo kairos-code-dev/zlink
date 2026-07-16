@@ -23,7 +23,7 @@ inline void run_sm_a7_scenario (const std::string &play_http_endpoint)
     auto raw =
       play_a.post ("/spot/type-mismatch")
         .body (type_mismatch_req_t{"sm-a7-mismatch"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what ()

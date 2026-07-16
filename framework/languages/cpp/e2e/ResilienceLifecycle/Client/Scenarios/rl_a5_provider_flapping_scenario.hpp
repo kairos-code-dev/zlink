@@ -29,7 +29,7 @@ inline void run_rl_a5_provider_flapping_probe (const client_options_t &options)
             const auto marker = "rl-a5-down-" + cycle + "-" + std::to_string (index);
             const auto reply = consumer.post ("/profile/request")
                                  .body (profile_req_t{.value = "fast", .marker = marker})
-                                 .fetch<profile_res_t> ();
+                                 .async<profile_res_t> ().result ().value ().body;
             ensure (reply.provider_rid == "api-a",
                     "RL-A5 down window did not converge to api-a");
         }
@@ -46,7 +46,7 @@ inline void run_rl_a5_provider_flapping_probe (const client_options_t &options)
             const auto marker = "rl-a5-up-" + cycle + "-" + std::to_string (index);
             const auto reply = consumer.post ("/profile/request")
                                  .body (profile_req_t{.value = "fast", .marker = marker})
-                                 .fetch<profile_res_t> ();
+                                 .async<profile_res_t> ().result ().value ().body;
             ensure (reply.value == "profile:fast",
                     "RL-A5 up-window request returned an invalid value");
         }

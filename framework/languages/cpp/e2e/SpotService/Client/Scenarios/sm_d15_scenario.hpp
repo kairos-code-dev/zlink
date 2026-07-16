@@ -56,7 +56,7 @@ inline void run_sm_d15_scenario (const std::string &play_http_endpoint,
     auto pushed =
       gateway.post ("/actor/push")
         .body (actor_push_by_actor_req_t{.actor_id = actor_id, .value = marker})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!pushed) {
         throw std::runtime_error (
@@ -80,14 +80,14 @@ inline void run_sm_d15_scenario (const std::string &play_http_endpoint,
         .body (evidence_wait_req_t{
           .contains_all = {"ActorPushedSession", actor_id, marker},
           .timeout_milliseconds = 10000})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     auto gateway_evidence =
       gateway.post ("/evidence/wait")
         .body (evidence_wait_req_t{
           .contains_all = {"ActorPushDelivered", actor_id, marker},
           .timeout_milliseconds = 10000})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!play_evidence || play_evidence.value ().status >= 400 || !gateway_evidence
         || gateway_evidence.value ().status >= 400) {

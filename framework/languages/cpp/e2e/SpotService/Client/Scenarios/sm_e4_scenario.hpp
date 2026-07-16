@@ -68,7 +68,7 @@ inline evidence_snapshot_t sm_e4_wait_for_evidence (zlink::http_client::client_t
 {
     const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
     do {
-        auto raw = play_a.get ("/evidence").submit_raw ().result ();
+        auto raw = play_a.get ("/evidence").async_raw ().result ();
         if (!raw) {
             throw std::runtime_error (raw.error () ? raw.error ()->what ()
                                                    : "SM-E4 evidence HTTP failed");
@@ -123,7 +123,7 @@ inline void run_sm_e4_scenario (const std::string &play_http_endpoint)
                                             .name = item.name,
                                             .policy = item.policy,
                                             .period_ms = 25})
-            .submit_raw ()
+            .async_raw ()
             .result ();
         if (!started) {
             throw std::runtime_error (started.error () ? started.error ()->what ()

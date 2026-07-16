@@ -24,7 +24,7 @@ inline void sm_b9_verify_admission (const std::string &owner_http_endpoint,
     auto created =
       owner.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = spot_rid})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!created || created.value ().status >= 400) {
         throw std::runtime_error ("SM-B9 spot create failed on " + node_rid);
@@ -90,7 +90,7 @@ inline void sm_b9_verify_admission (const std::string &owner_http_endpoint,
         .body (evidence_wait_req_t{.contains_all = {spot_rid, actor_id, "allowed",
                                                     rejected_actor_id, "capacity"},
                                    .timeout_milliseconds = 10000})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!evidence || evidence.value ().status >= 400) {
         throw std::runtime_error ("SM-B9 admission evidence wait failed");

@@ -13,16 +13,12 @@
 
 namespace e2e = zlink::framework::e2e::spot_service;
 
-struct play_node_http_endpoints_t
-{
-    std::string play_a;
-    std::string play_b;
-
-    const std::string &for_node (const std::string &node_rid) const
-    {
-        return node_rid == "play-b" ? play_b : play_a;
-    }
-};
+struct play_a_owner_http_client_tag_t;
+struct play_b_owner_http_client_tag_t;
+using play_a_owner_http_client_t =
+  zlink::http_client::named_server_client_t<play_a_owner_http_client_tag_t>;
+using play_b_owner_http_client_t =
+  zlink::http_client::named_server_client_t<play_b_owner_http_client_tag_t>;
 
 inline std::string public_error_kind_name (zlink::framework::framework_error_kind_t kind)
 {
@@ -375,22 +371,25 @@ class remote_actor_flow_handler_t
     using dependency_types =
       zlink::framework::dependency_list_t<scenario_state_t,
                                           zlink::framework::session_actor_manager_t,
-                                          play_node_http_endpoints_t>;
+                                          play_a_owner_http_client_t,
+                                          play_b_owner_http_client_t>;
 
     remote_actor_flow_handler_t (scenario_state_t &state,
                                  zlink::framework::session_actor_manager_t &actors,
-                                 play_node_http_endpoints_t &endpoints) :
-        _state (state), _actors (actors), _endpoints (endpoints)
+                                 play_a_owner_http_client_t &play_a,
+                                 play_b_owner_http_client_t &play_b) :
+        _state (state), _actors (actors), _play_a (play_a), _play_b (play_b)
     {
     }
 
-    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    zlink::framework::task_t<zlink::framework::http_response_t>
+    handle (const zlink::framework::http_request_t &http)
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::remote_actor_flow_req_t> ();
         const auto target_node = e2e::owner_node_rid_for_key (request.join.key);
         if (target_node != _state.node_rid) {
-            return forward_to_owner (request, target_node);
+            co_return co_await forward_to_owner (request, target_node);
         }
 
         auto actor = _actors.get_or_create (e2e::actor_type, request.join.actor_id);
@@ -449,42 +448,39 @@ class remote_actor_flow_handler_t
             .join = join_reply.value ().parse_json<e2e::join_res_t> (),
             .state = state_reply.value ().parse_json<e2e::state_res_t> ()})
             .dump ();
-        return response;
+        co_return response;
     }
 
   private:
-    zlink::framework::http_response_t
+    zlink::framework::task_t<zlink::framework::http_response_t>
     forward_to_owner (const e2e::remote_actor_flow_req_t &request,
                       const std::string &target_node)
     {
-        const auto &endpoint = _endpoints.for_node (target_node);
-        if (endpoint.empty ()) {
+        auto forwarded = co_await owner_client (target_node)
+                           .post ("/spot/remote-actor")
+                           .body (request)
+                           .yield_raw ();
+        if (forwarded.status >= 400) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::request_failed,
-              "remote actor owner HTTP endpoint is not configured");
-        }
-        auto owner = zlink::http_client::client_t::create ().base_url (endpoint).build ();
-        auto forwarded =
-          owner.post ("/spot/remote-actor").body (request).submit_raw ().result ();
-        if (!forwarded) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
-              forwarded.error () ? forwarded.error ()->what () : "remote actor HTTP forward failed");
-        }
-        if (forwarded.value ().status >= 400) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
-              "remote actor HTTP forward status " + std::to_string (forwarded.value ().status)
-                + ": " + forwarded.value ().body);
+              "remote actor HTTP forward status " + std::to_string (forwarded.status) + ": "
+                + forwarded.body);
         }
         zlink::framework::http_response_t response;
-        response.body = forwarded.value ().body;
-        return response;
+        response.body = std::move (forwarded.body);
+        co_return response;
+    }
+
+    zlink::http_client::server_client_t &owner_client (const std::string &target_node)
+    {
+        return target_node == "play-b" ? static_cast<zlink::http_client::server_client_t &> (_play_b)
+                                        : static_cast<zlink::http_client::server_client_t &> (_play_a);
     }
 
     scenario_state_t &_state;
     zlink::framework::session_actor_manager_t &_actors;
-    play_node_http_endpoints_t &_endpoints;
+    play_a_owner_http_client_t &_play_a;
+    play_b_owner_http_client_t &_play_b;
 };
 
 class remote_actor_request_handler_t
@@ -494,23 +490,26 @@ class remote_actor_request_handler_t
       zlink::framework::dependency_list_t<scenario_state_t,
                                           zlink::framework::route_client_t,
                                           zlink::framework::session_actor_manager_t,
-                                          play_node_http_endpoints_t>;
+                                          play_a_owner_http_client_t,
+                                          play_b_owner_http_client_t>;
 
     remote_actor_request_handler_t (scenario_state_t &state,
                                     zlink::framework::route_client_t &routes,
                                     zlink::framework::session_actor_manager_t &actors,
-                                    play_node_http_endpoints_t &endpoints) :
-        _state (state), _routes (routes), _actors (actors), _endpoints (endpoints)
+                                    play_a_owner_http_client_t &play_a,
+                                    play_b_owner_http_client_t &play_b) :
+        _state (state), _routes (routes), _actors (actors), _play_a (play_a), _play_b (play_b)
     {
     }
 
-    zlink::framework::http_response_t handle (const zlink::framework::http_request_t &http)
+    zlink::framework::task_t<zlink::framework::http_response_t>
+    handle (const zlink::framework::http_request_t &http)
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::remote_actor_request_req_t> ();
         const auto target_node = e2e::owner_node_rid_for_key (request.join.key);
         if (target_node != _state.node_rid) {
-            return forward_to_owner (request, target_node);
+            co_return co_await forward_to_owner (request, target_node);
         }
         auto actor = _actors.get_or_create (e2e::actor_type, request.join.actor_id);
         if (!actor) {
@@ -570,44 +569,40 @@ class remote_actor_request_handler_t
 
         zlink::framework::http_response_t response;
         response.body = nlohmann::json (state).dump ();
-        return response;
+        co_return response;
     }
 
   private:
-    zlink::framework::http_response_t
+    zlink::framework::task_t<zlink::framework::http_response_t>
     forward_to_owner (const e2e::remote_actor_request_req_t &request,
                       const std::string &target_node)
     {
-        const auto &endpoint = _endpoints.for_node (target_node);
-        if (endpoint.empty ()) {
+        auto forwarded = co_await owner_client (target_node)
+                           .post ("/spot/remote-actor-request")
+                           .body (request)
+                           .yield_raw ();
+        if (forwarded.status >= 400) {
             throw zlink::framework::framework_exception_t (
               zlink::framework::framework_error_kind_t::request_failed,
-              "remote actor request owner HTTP endpoint is not configured");
-        }
-        auto owner = zlink::http_client::client_t::create ().base_url (endpoint).build ();
-        auto forwarded =
-          owner.post ("/spot/remote-actor-request").body (request).submit_raw ().result ();
-        if (!forwarded) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
-              forwarded.error () ? forwarded.error ()->what ()
-                                  : "remote actor request HTTP forward failed");
-        }
-        if (forwarded.value ().status >= 400) {
-            throw zlink::framework::framework_exception_t (
-              zlink::framework::framework_error_kind_t::request_failed,
-              "remote actor request HTTP forward status "
-                + std::to_string (forwarded.value ().status) + ": " + forwarded.value ().body);
+              "remote actor request HTTP forward status " + std::to_string (forwarded.status)
+                + ": " + forwarded.body);
         }
         zlink::framework::http_response_t response;
-        response.body = forwarded.value ().body;
-        return response;
+        response.body = std::move (forwarded.body);
+        co_return response;
+    }
+
+    zlink::http_client::server_client_t &owner_client (const std::string &target_node)
+    {
+        return target_node == "play-b" ? static_cast<zlink::http_client::server_client_t &> (_play_b)
+                                        : static_cast<zlink::http_client::server_client_t &> (_play_a);
     }
 
     scenario_state_t &_state;
     zlink::framework::route_client_t &_routes;
     zlink::framework::session_actor_manager_t &_actors;
-    play_node_http_endpoints_t &_endpoints;
+    play_a_owner_http_client_t &_play_a;
+    play_b_owner_http_client_t &_play_b;
 };
 
 class worker_spot_handler_t

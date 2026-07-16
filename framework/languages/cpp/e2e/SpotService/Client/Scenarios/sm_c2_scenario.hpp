@@ -30,7 +30,7 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
     auto created_raw =
       play_b.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = spot_rid})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!created_raw || created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C2 spot create failed");
@@ -45,7 +45,7 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
       play_a.post ("/spot/outbound")
         .body (spot_outbound_route_req_t{
           .target_node_rid = "play-b", .spot_rid = spot_rid, .marker = "sm-c2"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!outbound_raw || outbound_raw.value ().status >= 400) {
         const auto status =
@@ -64,7 +64,7 @@ inline void run_sm_c2_scenario (const std::string &play_http_endpoint,
       play_a.post ("/spot/outbound-negative")
         .body (spot_outbound_route_req_t{
           .target_node_rid = "play-b", .spot_rid = spot_rid, .marker = "sm-c2-missing"})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!negative_raw || negative_raw.value ().status >= 400) {
         const auto status =

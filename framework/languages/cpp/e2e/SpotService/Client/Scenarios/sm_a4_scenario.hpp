@@ -26,7 +26,7 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
       api.post ("/spot/state/request")
         .body (spot_state_route_req_t{.spot_rid = context.spot_rid,
                                       .state = state_req_t{.op = "noop", .amount = 0}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what ()
@@ -69,7 +69,7 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
                           .display_name = "SM-A4",
                           .level = 4,
                           .tags = {"owner-routing"}})
-        .submit_raw ()
+        .async_raw ()
         .result ();
     if (!joined) {
         throw std::runtime_error (joined.error () ? joined.error ()->what ()
@@ -94,7 +94,7 @@ inline void run_sm_a4_scenario (const std::string &play_http_endpoint,
           play_b.post ("/spot/state/request")
             .body (spot_state_route_req_t{.key = "sm-a4-owner",
                                           .state = state_req_t{.op = "noop", .amount = 0}})
-            .submit_raw ()
+            .async_raw ()
             .result ();
         if (!raw) {
             throw std::runtime_error (raw.error () ? raw.error ()->what ()

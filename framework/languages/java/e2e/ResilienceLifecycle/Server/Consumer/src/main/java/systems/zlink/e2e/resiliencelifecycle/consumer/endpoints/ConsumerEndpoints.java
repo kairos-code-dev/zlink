@@ -76,7 +76,7 @@ public final class ConsumerEndpoints implements SmartLifecycle {
                     .join()
                     .stream()
                     .map(peer -> new Contracts.PeerLocation(
-                        peer.nodeRid().toString(), peer.endpoint()))
+                        peer.nodeRid().toString(), peer.endpoint(), peer.ownerId(), peer.generation()))
                     .toList();
                 return new Contracts.PeerSnapshot(peers);
             }));

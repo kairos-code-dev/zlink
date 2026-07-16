@@ -118,7 +118,7 @@ public final class ResilienceLifecycleSuite {
             CompletableFuture<Void> scenario = CompletableFuture.runAsync(
                 () -> RlA2ProviderEndpointRemapScenario.run(consumer));
             processes.waitSignal("a2-ready", scenario);
-            providerA.close();
+            providerA.killForcibly();
             processes.waitEndpointDown("api-a", currentHttpA);
             processes.touchSignal("a2-down");
             processes.waitSignal("a2-down-observed", scenario);

@@ -29,7 +29,11 @@ public final class Contracts {
     public record UnhandledOperation(String value, long timeoutMillis) {
     }
 
-    public record PeerLocation(String routingId, String endpoint) {
+    public record PeerLocation(
+        String routingId,
+        String endpoint,
+        String ownerId,
+        long generation) {
     }
 
     public record PeerSnapshot(List<PeerLocation> peers) {

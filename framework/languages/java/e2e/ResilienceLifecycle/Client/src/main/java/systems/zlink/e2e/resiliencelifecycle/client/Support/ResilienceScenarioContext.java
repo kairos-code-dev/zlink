@@ -144,6 +144,34 @@ public final class ResilienceScenarioContext {
             "registry topology did not report " + routingId + " at " + endpoint);
     }
 
+    public long peerGeneration(String routingId, String expectedEndpoint) {
+        return peers().stream()
+            .filter(peer -> routingId.equals(peer.routingId())
+                && expectedEndpoint.equals(peer.endpoint()))
+            .mapToLong(Contracts.PeerLocation::generation)
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "registry topology did not report " + routingId + " at " + expectedEndpoint));
+    }
+
+    public void waitForReplacementGeneration(
+        String routingId,
+        String endpoint,
+        long previousGeneration) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (System.nanoTime() < deadline) {
+            try {
+                if (peerGeneration(routingId, endpoint) > previousGeneration) {
+                    return;
+                }
+            } catch (RuntimeException ignored) {
+            }
+            sleep(200);
+        }
+        throw new IllegalStateException(
+            "registry topology did not report a new generation for " + routingId + " at " + endpoint);
+    }
+
     public void waitForProviderEvidence(String marker) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (System.nanoTime() < deadline) {

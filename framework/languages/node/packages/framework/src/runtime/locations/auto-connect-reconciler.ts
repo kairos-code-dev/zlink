@@ -44,6 +44,7 @@ export class ZLinkAutoConnectReconciler {
   private readonly options: Required<ZLinkLocationOptions>;
   private readonly monotonicNowMs: () => number;
   private readonly active = new Map<string, ZLinkAutoConnectTarget>();
+  private readonly pendingDisconnects = new Map<string, ZLinkAutoConnectTarget>();
   private readonly failedEndpoints = new Set<string>();
   private localGeneration = 0n;
   private localPublished = false;
@@ -134,6 +135,13 @@ export class ZLinkAutoConnectReconciler {
     for (const [key, target] of desired) {
       const current = this.active.get(key);
       if (current === undefined) {
+        const disconnecting = this.pendingDisconnects.get(key);
+        if (disconnecting !== undefined
+          && this.executor.isDisconnected !== undefined
+          && !this.executor.isDisconnected(disconnecting)) {
+          continue;
+        }
+        this.pendingDisconnects.delete(key);
         const connected = this.executor.connect(target);
         if (connected) {
           connectedEndpoints.push(target.endpoint);
@@ -144,10 +152,14 @@ export class ZLinkAutoConnectReconciler {
       }
 
       if (current.endpoint !== target.endpoint || current.ownerId !== target.ownerId) {
-        this.executor.disconnect(current);
-        const connected = this.executor.connect(target);
+        this.disconnectIfNeeded(current);
         disconnectedEndpoints.push(current.endpoint);
         this.active.delete(key);
+        if (this.executor.isDisconnected !== undefined) {
+          this.pendingDisconnects.set(key, current);
+          continue;
+        }
+        const connected = this.executor.connect(target);
         if (connected) {
           connectedEndpoints.push(target.endpoint);
           this.active.set(key, target);
@@ -163,9 +175,20 @@ export class ZLinkAutoConnectReconciler {
 
     for (const [key, target] of [...this.active]) {
       if (!desired.has(key)) {
-        this.executor.disconnect(target);
+        this.disconnectIfNeeded(target);
         disconnectedEndpoints.push(target.endpoint);
         this.active.delete(key);
+        if (this.executor.isDisconnected !== undefined) {
+          this.pendingDisconnects.set(key, target);
+        }
+      }
+    }
+
+    if (this.executor.isDisconnected !== undefined) {
+      for (const [key, target] of this.pendingDisconnects) {
+        if (!desired.has(key) && this.executor.isDisconnected(target)) {
+          this.pendingDisconnects.delete(key);
+        }
       }
     }
 
@@ -173,6 +196,19 @@ export class ZLinkAutoConnectReconciler {
   }
 
   async shutdown(signal?: AbortSignal): Promise<void> {
+    this.disconnectPeers();
+    await this.unpublishLocal(signal);
+  }
+
+  disconnectPeers(): void {
+    for (const target of this.active.values()) {
+      this.disconnectIfNeeded(target);
+    }
+    this.active.clear();
+    this.pendingDisconnects.clear();
+  }
+
+  async unpublishLocal(signal?: AbortSignal): Promise<void> {
     if (this.localPublished && this.localRow !== undefined) {
       await this.runtime.removePeer({
         autoConnectType: this.localRow.autoConnectType,
@@ -183,11 +219,11 @@ export class ZLinkAutoConnectReconciler {
       }, this.localGeneration, signal);
       this.localPublished = false;
     }
+  }
 
-    for (const target of this.active.values()) {
-      this.executor.disconnect(target);
-    }
-    this.active.clear();
+  private disconnectIfNeeded(target: ZLinkAutoConnectTarget): void {
+    if (this.executor.isDisconnected?.(target) === true) return;
+    this.executor.disconnect(target);
   }
 
   private async publishLocal(signal?: AbortSignal): Promise<void> {

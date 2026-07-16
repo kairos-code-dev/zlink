@@ -8,6 +8,7 @@ import {
 
 type ShutdownOptions = {
   keepAlive?: boolean;
+  signal?: AbortSignal;
 };
 
 const bingoMetricExporter: PushMetricExporter = {
@@ -42,8 +43,13 @@ function waitForShutdown(options: ShutdownOptions = {}): Promise<void> {
       if (keepAlive !== undefined) {
         clearInterval(keepAlive);
       }
+      process.removeListener('SIGINT', stop);
+      process.removeListener('SIGTERM', stop);
+      options.signal?.removeEventListener('abort', stop);
       resolve(undefined);
     };
+    if (options.signal?.aborted === true) stop();
+    else options.signal?.addEventListener('abort', stop, { once: true });
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
   });

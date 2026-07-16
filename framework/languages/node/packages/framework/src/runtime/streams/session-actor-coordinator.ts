@@ -25,6 +25,11 @@ export interface ZLinkSessionActorCoordinatorOptions {
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
   readonly nativeActorNodeProvider?: () => { readonly routingId: ActorRef['nodeRid'] } | undefined;
+  readonly confirmRemoteActorSessionBinding?: (
+    actor: ActorRef,
+    sessionRid: ActorRef['nodeRid'],
+    signal?: AbortSignal
+  ) => Promise<void>;
   readonly metrics?: ZLinkRuntimeMetrics;
 }
 
@@ -98,7 +103,15 @@ export class ZLinkSessionActorCoordinator {
     try {
       await this.bindNativeActor(context, actorRef, signal);
       replacementBound = true;
-      this.relayRemoteBoundSessionBind(context, actorRef);
+      if (this.options.confirmRemoteActorSessionBinding !== undefined) {
+        await this.options.confirmRemoteActorSessionBinding(
+          actorRef,
+          this.actorBindingRoutingId(context),
+          signal
+        );
+      } else {
+        this.relayRemoteBoundSessionBind(context, actorRef);
+      }
     } catch (error) {
       const rollbackErrors: unknown[] = [];
       if (replacementBound && !replacesSameNativeBinding) {
@@ -113,7 +126,17 @@ export class ZLinkSessionActorCoordinator {
         try {
           await this.bindNativeActor(previous.context, previousRef);
           try {
-            this.relayRemoteBoundSessionBind(previous.context, previousRef);
+            if (
+              this.options.confirmRemoteActorSessionBinding !== undefined
+              && previous.context.routingId !== undefined
+            ) {
+              await this.options.confirmRemoteActorSessionBinding(
+                previousRef,
+                this.actorBindingRoutingId(previous.context)
+              );
+            } else {
+              this.relayRemoteBoundSessionBind(previous.context, previousRef);
+            }
           } catch (relayError) {
             if (!replacesSameNativeBinding) {
               await this.unbindNativeActor(previous.context, previousRef.actorId).catch((unbindError) => {
@@ -231,13 +254,6 @@ export class ZLinkSessionActorCoordinator {
     if (!(context.stream instanceof ZLinkManagedStream)) {
       return;
     }
-    const sessionRid = context.routingId;
-    if (sessionRid === undefined) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorRouteNotFound,
-        'Actor session binding requires a stream routing id.'
-      );
-    }
     try {
       await context.stream.bindActor(actorRef, this.options.actorBindTimeoutMs ?? 2000, signal);
     } catch (error) {
@@ -246,6 +262,12 @@ export class ZLinkSessionActorCoordinator {
         { cause: error }
       );
     }
+  }
+
+  private actorBindingRoutingId(context: DefaultZLinkSessionContext): ActorRef['nodeRid'] {
+    return context.stream instanceof ZLinkManagedStream
+      ? context.stream.actorBindingRoutingId
+      : context.routingId as ActorRef['nodeRid'];
   }
 
   private async unbindNativeActor(

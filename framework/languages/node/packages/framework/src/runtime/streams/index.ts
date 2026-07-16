@@ -96,6 +96,11 @@ export interface ZLinkStreamBindingRuntimeOptions {
   readonly actorBindTimeoutMs?: number;
   readonly actorRefResolver?: (actor: ZLinkActor) => ActorRef;
   readonly nativeActorNodeProvider?: () => ZLinkBackendSpotNode | undefined;
+  readonly confirmRemoteActorSessionBinding?: (
+    actor: ActorRef,
+    sessionRid: ActorRef['nodeRid'],
+    signal?: AbortSignal
+  ) => Promise<void>;
   readonly relay?: (actor: ZLinkSessionActor, header: ZLinkStreamFrameHeader, payload: Message, signal?: AbortSignal) => Promise<boolean>;
   readonly notifyDisconnected?: (actor: ZLinkSessionActor, signal?: AbortSignal) => Promise<void>;
   readonly flowCreationEnabled?: () => boolean;

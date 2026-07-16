@@ -16,9 +16,12 @@ import {
 } from '../actors';
 import type { DefaultZLinkActorManager } from '../actors';
 import {
+  decodeRemoteActorSessionBinding,
   decodeRemoteActorPacketRelayPayload,
+  encodeRemoteActorSessionBinding,
   encodeRemoteActorPacketRelayPayload,
-  encodeRemoteActorPacketTarget
+  encodeRemoteActorPacketTarget,
+  ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET
 } from '../actors/actor-packet-relay-wire';
 import { requestRoutedJsonReply } from '../actors/actor-routed-json-request';
 import { streamMetadataMap } from '../actors/bound-session-wire';
@@ -165,7 +168,42 @@ export class ZLinkActorPacketRelay {
     let closeFrameMessages = true;
     try {
       const frameHeader = decodeStreamHeader(messageToBytes(header));
+      if (frameHeader.name === ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET) {
+        if (frameHeader.kind !== ZLinkStreamMessageKind.Send) {
+          throw new Error('Remote actor session binding requires a send frame.');
+        }
+        const { sessionNodeRid, sessionRid } = decodeRemoteActorSessionBinding(messageToBytes(body));
+        if (!routingIdsEqual(sessionNodeRid, _routeContext.sourceNodeRid)) {
+          throw new Error('Remote actor session binding source did not match the declared session node.');
+        }
+        const state = this.options.actorManager()?.getState(relay.actorId);
+        const actorRef = state?.nativeActorRef;
+        if (state === undefined || actorRef === undefined) {
+          throw new Error(`Actor '${relay.actorId}' does not have a concrete actor ref.`);
+        }
+        const node = this.requireSpotNodeRuntime().primaryNode;
+        if (node === undefined) throw new Error('SPOT primary node is not started.');
+        node.bindRemoteActorSession(
+          actorRef,
+          sessionNodeRid,
+          sessionRid
+        );
+        const target = this.options.meshRouters.remoteBoundSessionTargetForSource(sessionNodeRid)
+          ?? (relay.routerChannelId === undefined
+            ? undefined
+            : {
+                routerChannelId: relay.routerChannelId,
+                targetNodeRid: sessionNodeRid,
+                spotRid: sessionNodeRid
+              });
+        if (target === undefined) {
+          throw new Error('Remote actor session binding did not declare a return router.');
+        }
+        state.setRemoteBoundSessionTarget({ ...target, sessionNodeRid, sessionRid });
+        return { ok: true, response: { acknowledged: true } };
+      }
       if (frameHeader.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {
+        this.options.actorManager()?.getState(relay.actorId)?.setRemoteBoundSessionTarget(undefined);
         await this.notifyLocalActorDisconnectedById(relay.actorId);
         return {
           ok: true,
@@ -249,6 +287,50 @@ export class ZLinkActorPacketRelay {
       return true;
     }
     return await this.relayLocalActorPacket(actor, frameHeader, payload, signal);
+  }
+
+  async confirmRemoteSessionBinding(
+    actor: ActorRef,
+    sessionNodeRid: RoutingId,
+    sessionRid: RoutingId,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const target = this.targets.targetForActorRef(actor);
+    if (target === undefined) return;
+    const header = encodeStreamHeader({
+      kind: ZLinkStreamMessageKind.Send,
+      codec: ZLinkStreamCodec.Json,
+      flags: ZLinkStreamHeaderFlags.None,
+      name: ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET,
+      metadata: new Map()
+    });
+    const request = encodeRemoteActorPacketRelayPayload({
+      actorId: actor.actorId,
+      routerChannelId: target.routerChannelId,
+      boundSessionTargetNodeRid: String(sessionNodeRid),
+      boundSessionSpotRid: String(sessionNodeRid),
+      bindingActorRef: actor,
+      header,
+      payload: encodeRemoteActorSessionBinding({ sessionNodeRid, sessionRid })
+    });
+    const reply = await requestRoutedJsonReply<{
+      readonly ok?: boolean;
+      readonly error?: unknown;
+      readonly acknowledged?: boolean;
+      readonly response?: { readonly acknowledged?: boolean };
+    }>(
+      this.options.routeTransport,
+      { ...target, spotKind: target.spotKind ?? ZLinkSpotKind.Entry },
+      request,
+      { timeoutMs: this.options.requestTimeoutMs, signal },
+      `Remote actor session binding is not available for '${actor.actorId}'.`,
+      (parts) => JSON.parse(parts[0]?.getString('utf8') ?? '{}')
+    );
+    if (reply.ok === false || (reply.response?.acknowledged !== true && reply.acknowledged !== true)) {
+      throw new Error(
+        `Actor '${actor.actorId}' did not acknowledge its remote session binding: ${JSON.stringify(reply)}`
+      );
+    }
   }
 
   async relayRemoteActorPacket(

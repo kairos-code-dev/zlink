@@ -107,6 +107,43 @@ test('single connectPeerRid supports router-only requests between entry spots in
   }
 });
 
+test('connectPeerRid replaces an outbound route when the same rid moves to a new endpoint', async () => {
+  const endpoints = await reservePorts(3);
+  const contexts = Array.from({ length: 3 }, () => zlink.createContext());
+  const aNode = zlink.createSpotNode(contexts[0], zlink.SpotNodeMode.Routed);
+  const oldNode = zlink.createSpotNode(contexts[1], zlink.SpotNodeMode.Routed);
+  let replacementNode;
+  try {
+    const aRid = routingId('REPLACE_A');
+    const peerRid = routingId('REPLACE_B');
+    const aEntry = aNode.entrySpot();
+    const oldEntry = oldNode.entrySpot();
+    aNode.setRoutingId(aRid);
+    aEntry.setRoutingId(aRid);
+    oldNode.setRoutingId(peerRid);
+    oldEntry.setRoutingId(peerRid);
+    aNode.setRouterBind(endpoints[0]);
+    oldNode.setRouterBind(endpoints[1]);
+    aNode.connectPeerRid(peerRid, endpoints[1]);
+    await requestAndReplyCallback(aEntry, oldEntry, peerRid, peerRid, 'old-route');
+
+    oldNode.close();
+    aNode.disconnectPeerRid(peerRid);
+    await waitForPeerEndpointDisconnected(aNode, endpoints[1]);
+    replacementNode = zlink.createSpotNode(contexts[2], zlink.SpotNodeMode.Routed);
+    const replacementEntry = replacementNode.entrySpot();
+    replacementNode.setRoutingId(peerRid);
+    replacementEntry.setRoutingId(peerRid);
+    replacementNode.setRouterBind(endpoints[2]);
+    aNode.connectPeerRid(peerRid, endpoints[2]);
+    await requestAndReplyCallback(aEntry, replacementEntry, peerRid, peerRid, 'replacement-route');
+  } finally {
+    replacementNode?.close();
+    aNode.close();
+    contexts.slice().reverse().forEach((context) => context.close());
+  }
+});
+
 test('one initiator keeps reverse-first router-only requests reachable across multiple peers', async () => {
   const endpoints = await reservePorts(6);
   const contexts = Array.from({ length: 4 }, () => zlink.createContext());
@@ -366,6 +403,15 @@ async function waitForPeer(node) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error('spot peer readiness timed out');
+}
+
+async function waitForPeerEndpointDisconnected(node, endpoint) {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (!node.peers().some((peer) => peer.peerEndpoint === endpoint && peer.state === 3)) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`spot peer '${endpoint}' disconnect timed out`);
 }
 
 async function reservePorts(count) {

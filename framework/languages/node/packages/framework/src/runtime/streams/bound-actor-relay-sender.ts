@@ -14,9 +14,7 @@ import {
   ZLinkActorSessionBindingRegistry
 } from './actor-session-binding-registry';
 import { ZLinkActorSessionLifecycleCoordinator } from './actor-session-lifecycle-coordinator';
-import {
-  ZLinkManagedStream
-} from './managed-stream';
+import { ZLinkManagedStream } from './managed-stream';
 import {
   DefaultZLinkSessionActor,
   DefaultZLinkSessionContext

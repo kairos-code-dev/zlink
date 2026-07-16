@@ -21,10 +21,14 @@ async function bootstrap(): Promise<void> {
   ]);
 
   const drain = app.get<ZLinkDrainControl>(ZLINK_DRAIN_CONTROL);
+  const shutdown = new AbortController();
   const beginDrain = () => {
     console.log('bingo-drain requested');
     void drain.drain().then((result) => {
       console.log(`bingo-drain result=${result.kind}`);
+      process.removeListener('SIGUSR2', beginDrain);
+      process.removeListener('SIGBREAK', beginDrain);
+      shutdown.abort();
     }).catch((error) => {
       console.error('bingo-drain failed', error);
       process.exitCode = 1;
@@ -40,9 +44,11 @@ async function bootstrap(): Promise<void> {
   })}\n`);
 
   try {
-    await waitForShutdown({ keepAlive: true });
+    await waitForShutdown({ keepAlive: true, signal: shutdown.signal });
   } finally {
+    console.log('bingo-play runtime closing');
     await closeNestRuntime(app);
+    console.log('bingo-play runtime closed');
   }
 }
 

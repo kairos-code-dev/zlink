@@ -128,7 +128,11 @@ export function decodeRemoteActorJoinPayload(
       transferProtocol
         ? payload.boundSessionSpotRid
         : payload.boundSessionSpotRid ?? payload.sourceSpotRid ?? received.spotRid ?? undefined,
-      transferProtocol ? payload.boundSessionSpotRidHex : payload.boundSessionSpotRidHex ?? payload.sourceSpotRidHex
+      transferProtocol ? payload.boundSessionSpotRidHex : payload.boundSessionSpotRidHex ?? payload.sourceSpotRidHex,
+      payload.boundSessionNodeRid,
+      payload.boundSessionNodeRidHex,
+      payload.boundSessionRid,
+      payload.boundSessionRidHex
     ),
     request
   };
@@ -171,7 +175,11 @@ function decodeRemoteBoundSessionTarget(
   targetNodeRid: unknown,
   targetNodeRidHex: unknown,
   spotRid: unknown,
-  spotRidHex: unknown
+  spotRidHex: unknown,
+  sessionNodeRid: unknown,
+  sessionNodeRidHex: unknown,
+  sessionRid: unknown,
+  sessionRidHex: unknown
 ): ZLinkRemoteBoundSessionTarget | undefined {
   if (
     typeof routerChannelId !== 'string' ||
@@ -184,6 +192,12 @@ function decodeRemoteBoundSessionTarget(
   return {
     routerChannelId,
     targetNodeRid: decodeWireRoutingId(targetNodeRid, targetNodeRidHex),
-    spotRid: decodeWireRoutingId(String(spotRid), spotRidHex)
+    spotRid: decodeWireRoutingId(String(spotRid), spotRidHex),
+    sessionNodeRid: typeof sessionNodeRid === 'string'
+      ? decodeWireRoutingId(sessionNodeRid, sessionNodeRidHex)
+      : undefined,
+    sessionRid: typeof sessionRid === 'string'
+      ? decodeWireRoutingId(sessionRid, sessionRidHex)
+      : undefined
   };
 }

@@ -73,6 +73,7 @@ export interface ZLinkSpotBoundSessionRuntime {
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     actorRef?: ActorRef,
+    actorPacketTarget?: unknown,
     signal?: AbortSignal
   ): Promise<void>;
   receiveRoutedBoundSessionResponse(
@@ -94,7 +95,7 @@ export interface ZLinkSpotBoundSessionRuntime {
     signal?: AbortSignal
   ): Promise<void>;
   receiveRemoteBoundSessionOwnership(payload: unknown): Promise<void>;
-  rememberRemoteBoundSessionTarget(actorId: string, target: ZLinkRemoteBoundSessionTarget): void;
+  rememberRemoteBoundSessionTarget(actorId: string, target: ZLinkRemoteBoundSessionTarget | undefined): void;
   resolveRemoteBoundSessionTarget(
     sourceNodeRid: RoutingId,
     sourceSessionRid: RoutingId

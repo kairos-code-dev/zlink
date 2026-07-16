@@ -59,7 +59,12 @@ export class ZLinkBoundSessionRelay {
       updateRemoteActorPacketTarget: (actorId, value) =>
         this.actorPackets.updateRemoteActorPacketTarget(actorId, value),
       actorPacketTargetForState: (actorId, routerChannelIdHint) =>
-        this.actorPackets.actorPacketTargetForState(actorId, routerChannelIdHint)
+        this.actorPackets.actorPacketTargetForState(actorId, routerChannelIdHint),
+      reportOwnershipRefreshError: (actorId, error) =>
+        options.errorSink().reportRuntimeTaskException(
+          `bound session ownership refresh for '${actorId}'`,
+          error
+        )
     });
     this.actorJoins = new ZLinkRemoteActorJoinReceiver({
       actorManager: options.actorManager,

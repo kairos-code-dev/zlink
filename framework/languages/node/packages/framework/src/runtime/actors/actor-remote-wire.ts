@@ -36,6 +36,10 @@ export interface ZLinkRemoteActorJoinWirePayload {
   readonly boundSessionTargetNodeRidHex?: unknown;
   readonly boundSessionSpotRid?: unknown;
   readonly boundSessionSpotRidHex?: unknown;
+  readonly boundSessionNodeRid?: unknown;
+  readonly boundSessionNodeRidHex?: unknown;
+  readonly boundSessionRid?: unknown;
+  readonly boundSessionRidHex?: unknown;
   readonly request?: unknown;
   readonly handoffBacklog?: unknown;
 }
@@ -62,6 +66,10 @@ export interface ZLinkRemoteActorJoinRequest {
   readonly boundSessionTargetNodeRidHex?: string;
   readonly boundSessionSpotRid?: string;
   readonly boundSessionSpotRidHex?: string;
+  readonly boundSessionNodeRid?: string;
+  readonly boundSessionNodeRidHex?: string;
+  readonly boundSessionRid?: string;
+  readonly boundSessionRidHex?: string;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
 }
 
@@ -89,6 +97,10 @@ export interface ZLinkRemoteActorJoinRequestPayload {
   readonly boundSessionTargetNodeRidHex?: string;
   readonly boundSessionSpotRid?: string;
   readonly boundSessionSpotRidHex?: string;
+  readonly boundSessionNodeRid?: string;
+  readonly boundSessionNodeRidHex?: string;
+  readonly boundSessionRid?: string;
+  readonly boundSessionRidHex?: string;
   readonly request?: string;
   readonly handoffBacklog?: readonly ZLinkActorHandoffPacket[];
 }
@@ -151,6 +163,18 @@ export function buildRemoteActorJoinRequestPayload(
     boundSessionTargetNodeRidHex: boundSessionTarget === undefined ? undefined : encodeRoutingIdHex(boundSessionTarget.targetNodeRid),
     boundSessionSpotRid: boundSessionTarget === undefined ? undefined : String(boundSessionTarget.spotRid),
     boundSessionSpotRidHex: boundSessionTarget === undefined ? undefined : encodeRoutingIdHex(boundSessionTarget.spotRid),
+    boundSessionNodeRid: boundSessionTarget?.sessionNodeRid === undefined
+      ? undefined
+      : String(boundSessionTarget.sessionNodeRid),
+    boundSessionNodeRidHex: boundSessionTarget?.sessionNodeRid === undefined
+      ? undefined
+      : encodeRoutingIdHex(boundSessionTarget.sessionNodeRid),
+    boundSessionRid: boundSessionTarget?.sessionRid === undefined
+      ? undefined
+      : String(boundSessionTarget.sessionRid),
+    boundSessionRidHex: boundSessionTarget?.sessionRid === undefined
+      ? undefined
+      : encodeRoutingIdHex(boundSessionTarget.sessionRid),
     request: options.request === undefined ? undefined : options.request.data().toString('base64')
   };
 }

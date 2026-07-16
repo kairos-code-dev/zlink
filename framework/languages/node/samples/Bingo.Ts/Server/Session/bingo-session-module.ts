@@ -9,6 +9,7 @@ import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configur
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
+import { RoomRouterReadinessHandler } from '../Configuration/room-router-readiness-handler';
 function createBingoSessionModule() {
   class BingoSessionModule {}
   const configuration = createBingoConfigurationModule([
@@ -28,7 +29,12 @@ function createBingoSessionModule() {
         inject: [BINGO_SAMPLE_CONFIG],
         useFactory: (endpoints: BingoSampleConfig) => {
           const builder = zlinkFramework();
-          builder.options({ metrics: { meterProvider: bingoMeterProvider } });
+          builder.options({
+            metrics: { meterProvider: bingoMeterProvider },
+            monitoring: {
+              spot: [{ sourceName: SampleNames.roomSpotNode, intervalMs: 100 }]
+            }
+          });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${endpoints.logDir}/flow-session.log`)
@@ -54,7 +60,8 @@ function createBingoSessionModule() {
     ],
     providers: [
       BingoSessionFactory,
-      SessionAuthenticator
+      SessionAuthenticator,
+      RoomRouterReadinessHandler
     ]
   })(BingoSessionModule);
 

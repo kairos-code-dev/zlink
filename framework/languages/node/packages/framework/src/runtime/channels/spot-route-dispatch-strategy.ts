@@ -47,7 +47,7 @@ export interface ZLinkSpotRouteDispatchStrategyOptions {
 }
 
 export class ZLinkSpotRouteDispatchStrategy {
-  private readonly sourceSpotRouter = new ZLinkSourceSpotRouter();
+  private readonly sourceSpotRouter: ZLinkSourceSpotRouter;
   private readonly targets: ZLinkSpotRouteTargetResolver;
   private readonly spotNodeTransport: ZLinkSpotNodeRouteTransport;
   private readonly routerSocketTransport: ZLinkRouterSocketSpotRouteTransport;
@@ -55,6 +55,7 @@ export class ZLinkSpotRouteDispatchStrategy {
   private readonly bridgeTransport: ZLinkSpotRouteBridgeTransport;
 
   constructor(private readonly options: ZLinkSpotRouteDispatchStrategyOptions) {
+    this.sourceSpotRouter = new ZLinkSourceSpotRouter(options.registration.requestTimeoutMs);
     this.targets = new ZLinkSpotRouteTargetResolver(options.registration);
     this.spotNodeTransport = new ZLinkSpotNodeRouteTransport(options.registration, this.targets);
     this.routerSocketTransport = new ZLinkRouterSocketSpotRouteTransport(options.sockets);

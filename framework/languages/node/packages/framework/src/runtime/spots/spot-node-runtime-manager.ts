@@ -238,10 +238,11 @@ export class ZLinkSpotNodeRuntimeManager {
         .map((result) => result.reason));
     };
     await settle(publisherSubmitters.map(async (submitter) => submitter.dispose()));
-    await settle(autoConnectLoops.map((loop) => loop.stop(signal)));
+    await settle(autoConnectLoops.map((loop) => loop.prepareTransportShutdown()));
     await settle(ownedObjects.reverse().map((object) => object.dispose()));
     await settle(entryActivations.reverse().map((activation) => activation.dispose()));
     await settle(nodes.reverse().map((node) => node.dispose()));
+    await settle(autoConnectLoops.map((loop) => loop.finishTransportShutdown(signal)));
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, 'SPOT node runtime cleanup failed.');
   }

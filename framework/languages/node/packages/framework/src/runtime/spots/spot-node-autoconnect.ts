@@ -156,6 +156,11 @@ class ZLinkSpotNodeAutoConnectExecutor implements IZLinkAutoConnectExecutor {
     }
   }
 
+  isDisconnected(target: ZLinkAutoConnectTarget): boolean {
+    return !this.node.peers().some((peer) =>
+      peer.peerEndpoint === target.endpoint && peer.state === 3);
+  }
+
 }
 
 function isLocationChangeStampStore(value: unknown): value is ZLinkLocationChangeStampStore {

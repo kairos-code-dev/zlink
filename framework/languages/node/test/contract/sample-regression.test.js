@@ -15,6 +15,7 @@ const requiredSamples = [
   'GameQuest.Ts',
   'ShoppingMall.Ts'
 ];
+const maintainedSamples = [...requiredSamples, 'ZoneWorld'];
 const topologySamples = [
   'TicTacToe.Ts',
   'Bingo.Ts',
@@ -302,7 +303,7 @@ test('node Bingo and TicTacToe samples implement Entry Spot actor lifecycle flow
   const violations = [];
   for (const [name, content, text] of [
     ['Bingo module', files.bingoModule, '.addSpotFactory(BingoRoomSpot)'],
-    ['Bingo API match', files.bingoApiMatch, 'ZLINK_ROUTE_CLIENT'],
+    ['Bingo API match', files.bingoApiMatch, 'ZLINK_CHANNEL_CLIENT'],
     ['Bingo allocate', files.bingoAllocate, 'ZLINK_SPOT_MANAGER'],
     ['Bingo ensure actor', files.bingoEnsureActor, 'ZLINK_ACTOR_MANAGER'],
     ['Bingo actor match', files.bingoActorMatch, '.joinSpot(roomId'],
@@ -380,7 +381,7 @@ test('node samples keep only the maintained canonical variants', () => {
     .map((entry) => entry.name)
     .sort();
 
-  assert.deepEqual(entries, [...requiredSamples].sort());
+  assert.deepEqual(entries, [...maintainedSamples].sort());
   assert.equal(entries.some((entry) => /SessionGateway|Gateway|StreamingClient/.test(entry)), false);
 });
 
@@ -988,7 +989,7 @@ test('Bingo TypeScript sample builds and exposes separated TypeScript roles', ()
   assert.deepEqual(violations, []);
 });
 
-test('Bingo TypeScript sample uses route mesh peers and location store registration where supported', () => {
+test('Bingo TypeScript sample uses channel peers and location store registration where supported', () => {
   const api = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'main.ts'), 'utf8');
   const apiModule = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Api', 'bingo-api-module.ts'), 'utf8');
   const play = fs.readFileSync(path.join(samplesRoot, 'Bingo.Ts', 'Server', 'Play', 'main.ts'), 'utf8');
@@ -1002,14 +1003,14 @@ test('Bingo TypeScript sample uses route mesh peers and location store registrat
     [locationStore, 'redisKeyPrefix'],
     [apiModule, '.addLocationStore(createBingoLocationStore(config))'],
     [apiModule, 'bingoLocationOptions()'],
-    [apiModule, '.addRouteMeshChannel(SampleNames.playChannel'],
+    [apiModule, '.addClientServerChannel(SampleNames.playChannel'],
     [apiModule, '.enableClient()'],
     [apiModule, '.addClientServerChannel(SampleNames.apiChannel'],
     [apiModule, '.enableServer(config.apiEndpoint)'],
     [playModule, '.addLocationStore(createBingoLocationStore(config))'],
     [playModule, 'bingoLocationOptions()'],
-    [playModule, '.addRouteMeshChannel(SampleNames.playChannel'],
-    [playModule, '.enableRouter(config.playRouteEndpoint)'],
+    [playModule, '.addClientServerChannel(SampleNames.playChannel'],
+    [playModule, '.enableServer(config.playEndpoint)'],
     [sessionModule, '.addLocationStore(createBingoLocationStore(endpoints))'],
     [sessionModule, 'bingoLocationOptions()']
   ];
@@ -1891,6 +1892,7 @@ test('node shared sample runner isolates Redis and application ports without Doc
   assert.match(runner, /'create', '--name', name, '--tmpfs', '\/data', '-p', '127\.0\.0\.1::6379'/);
   assert.match(runner, /docker'\), \['rm', '-fv', redisContainer\]/);
   assert.match(runner, /reserveBrowserSafePort/);
+  assert.match(runner, /30000 \+ Math\.floor\(Math\.random\(\) \* 10000\)/);
   assert.match(runner, /printLogs\(\)/);
   assert.doesNotMatch(runner, /127\.0\.0\.1:\d{4,5}/);
 });
@@ -1940,7 +1942,7 @@ test('node top-level sample runners execute every maintained sample', () => {
   const powershellRunner = fs.readFileSync(path.join(samplesRoot, 'run_samples.ps1'), 'utf8');
   const missing = [];
 
-  for (const sample of requiredSamples) {
+  for (const sample of maintainedSamples) {
     if (!shellRunner.includes(sample)) {
       missing.push(`sh:${sample}`);
     }
@@ -2003,7 +2005,7 @@ test('node run_samples.sh executes every sample self-check', () => {
     encoding: 'utf8'
   });
 
-  for (const sample of requiredSamples) {
+  for (const sample of maintainedSamples) {
     assert.match(output, new RegExp(`PASS ${escapeRegExp(sample)}`));
   }
 });
@@ -2074,12 +2076,19 @@ function findUnreachableSampleTypeScriptFiles() {
     }
   }
 
-  for (const sample of requiredSamples) {
+  for (const sample of maintainedSamples) {
     // Discover each role entry point dynamically. A role may use a qualified name
     // when two instances share one directory, such as `node1-main.ts`.
     for (const file of listFiles(path.join(samplesRoot, sample))) {
       if (/(?:^|-)main\.ts$/.test(path.basename(file))) {
         add(file);
+      }
+    }
+    const runner = path.join(samplesRoot, sample, 'Runner', 'sample-runner.mjs');
+    if (fs.existsSync(runner)) {
+      const content = fs.readFileSync(runner, 'utf8');
+      for (const match of content.matchAll(/dist\/([^'"`]+)\.js/g)) {
+        add(path.join(samplesRoot, sample, `${match[1]}.ts`));
       }
     }
   }

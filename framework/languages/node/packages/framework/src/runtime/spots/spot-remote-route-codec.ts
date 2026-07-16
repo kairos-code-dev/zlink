@@ -30,6 +30,7 @@ export interface ZLinkRemoteBoundSessionSend {
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
   readonly flowId?: string;
   readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
+  readonly actorPacketTarget?: unknown;
 }
 
 export interface ZLinkRemoteBoundSessionResponse {
@@ -80,6 +81,7 @@ export interface ZLinkRemoteActorPacketRelay {
   readonly header: string;
   readonly payload: string;
   readonly actorRef?: ActorRef;
+  readonly bindingActorRef?: ActorRef;
   readonly envelope?: ReturnType<typeof decodeChannelEnvelope>;
 }
 
@@ -105,7 +107,8 @@ export function decodeRemoteBoundSessionSend(
       }),
       envelope: decoded.envelope,
       flowId: send.flowId,
-      flowOrigin: send.flowOrigin
+      flowOrigin: send.flowOrigin,
+      actorPacketTarget: send.actorPacketTarget
     };
   } catch {
     return undefined;
@@ -193,6 +196,12 @@ export function decodeRemoteActorPacketRelay(
         actorNodeRidHex: relay.actorNodeRidHex,
         actorGeneration: relay.actorGeneration
       }, relay.handoffTargetSpotRid),
+      bindingActorRef: decodeActorRef({
+        actorId: relay.actorId,
+        actorNodeRid: relay.bindingActorNodeRid,
+        actorNodeRidHex: relay.bindingActorNodeRidHex,
+        actorGeneration: relay.bindingActorGeneration
+      }),
       envelope: multipart.envelope
     };
   } catch {

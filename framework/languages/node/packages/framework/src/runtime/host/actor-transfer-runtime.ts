@@ -15,10 +15,12 @@ import {
   type ZLinkActorHandoffCoordinator,
   type ZLinkActorRoutedJoinTransport,
   type ZLinkActorTransferRegistry,
+  type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import type { ZLinkActorRuntimeState } from '../actors/actor-runtime-state';
 import { ZLinkActorRetryDelay } from '../actors/actor-retry-delay';
+import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
 import { encodeRemoteBoundSessionOwnershipPayload } from '../actors/bound-session-wire';
 import type { ZLinkLocationLifecycle } from '../locations';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
@@ -267,7 +269,17 @@ export class ZLinkActorTransferRuntime {
   }
 
   commitRoutedActor(actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot): void {
-    this.options.actorManager()?.getState(actor.actorId)?.setJoinedSpot(spotRid, spot);
+    const state = this.options.actorManager()?.getState(actor.actorId);
+    state?.setJoinedSpot(spotRid, spot);
+    const actorRef = state?.nativeActorRef;
+    const session = state?.remoteBoundSessionTarget;
+    if (actorRef !== undefined && session?.sessionNodeRid !== undefined && session.sessionRid !== undefined) {
+      this.options.primarySpotNode().bindRemoteActorSession(
+        actorRef,
+        session.sessionNodeRid,
+        session.sessionRid
+      );
+    }
   }
 
   async claimRoutedActorLocation(actor: ZLinkActor, spotRid: RoutingId, spotMeshName: string): Promise<void> {
@@ -319,7 +331,13 @@ export class ZLinkActorTransferRuntime {
       actor.actorId,
       actorRef,
       generation,
-      state.remoteBoundSessionTarget
+      state.remoteBoundSessionTarget,
+      state.spotRid === undefined || state.remoteBoundSessionTarget === undefined ? undefined : {
+        routerChannelId: state.remoteBoundSessionTarget.routerChannelId,
+        targetNodeRid: actorRef.nodeRid,
+        spotRid: state.spotRid,
+        spotKind: ZLinkSpotKind.User
+      }
     );
   }
 
@@ -408,7 +426,8 @@ export class ZLinkActorTransferRuntime {
     actorId: string,
     actorRef: ZLinkBackendActorRef,
     ownershipGeneration: bigint,
-    target: ZLinkRemoteBoundSessionTarget | undefined
+    target: ZLinkRemoteBoundSessionTarget | undefined,
+    actorPacketTarget: ZLinkRemoteActorPacketTarget | undefined
   ): Promise<void> {
     if (target === undefined) {
       return;
@@ -426,7 +445,8 @@ export class ZLinkActorTransferRuntime {
           actorNodeRid: String(actorRef.nodeRid),
           actorNodeRidHex: (actorRef.nodeRid as { toHex?: () => string }).toHex?.(),
           actorGeneration: actorRef.generation.toString(),
-          actorOwnershipGeneration: ownershipGeneration.toString()
+          actorOwnershipGeneration: ownershipGeneration.toString(),
+          actorPacketTarget: encodeRemoteActorPacketTarget(actorPacketTarget)
         }),
         { packetName: ZLINK_REMOTE_BOUND_SESSION_OWNERSHIP_PACKET }
       );

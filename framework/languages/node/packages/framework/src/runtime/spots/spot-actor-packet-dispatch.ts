@@ -55,7 +55,7 @@ interface ZLinkSpotActorPacketDispatchOptions {
     undefined;
   readonly onRemoteBoundSessionTarget?: (
     actorId: string,
-    target: ZLinkRemoteBoundSessionTarget
+    target: ZLinkRemoteBoundSessionTarget | undefined
   ) => void;
   readonly onDisconnectActor: (actor: ZLinkActor) => Promise<void>;
   readonly actorResponseSender?: (
@@ -146,6 +146,7 @@ export class ZLinkSpotActorPacketDispatch {
         );
       }
       if (header.name === ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET) {
+        this.options.onRemoteBoundSessionTarget?.(actorId, undefined);
         await this.options.onDisconnectActor(actor);
         return undefined;
       }

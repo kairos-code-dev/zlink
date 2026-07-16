@@ -83,7 +83,8 @@ interface ZLinkSpotActorPacketRuntime {
   readonly bindRemoteSession?: (
     actor: ZLinkBackendActorRef,
     sourceNodeRid: RoutingId,
-    sourceSessionRid: RoutingId
+    sourceSessionRid: RoutingId,
+    declaredTarget?: ZLinkRemoteBoundSessionTarget
   ) => void;
   readonly replyNoBind?: (
     info: ZLinkBackendActorRecvInfo,
@@ -159,6 +160,7 @@ export class ZLinkSpotActorJoinDispatch {
       routedActorTransferProvider: transfer?.runtime.materializeRoutedActor.bind(transfer.runtime),
       commitTransferredActor: actors.commitTransferredActor,
       actorPacketHandler: options.packets?.handle,
+      bindRemoteSession: options.packets?.bindRemoteSession,
       routedBoundSessionReceiver: options.boundSessionRuntime?.receiveRoutedBoundSession.bind(options.boundSessionRuntime),
       routedBoundSessionResponseReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionResponse.bind(options.boundSessionRuntime),
       routedBoundSessionErrorReceiver: options.boundSessionRuntime?.receiveRoutedBoundSessionError.bind(options.boundSessionRuntime),

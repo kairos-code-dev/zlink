@@ -58,8 +58,20 @@ test('Bingo Play channel preserves the preferred allocated owner through the Ent
 
 test('Bingo runner checks allocation evidence, start-order independence, and slot handoff', () => {
   const runner = read('samples/Bingo.Ts/Runner/sample-runner.mjs');
+  const playModule = read('samples/Bingo.Ts/Server/Play/bingo-play-module.ts');
+  const sessionModule = read('samples/Bingo.Ts/Server/Session/bingo-session-module.ts');
   assert.match(runner, /bingo routing allocation ready/);
   assert.match(runner, /WaitingForSlot/);
   assert.match(runner, /generation/);
   assert.match(runner, /replacement/);
+  assert.match(runner, /SIGUSR2/);
+  assert.match(runner, /bingo-drain result=drained/);
+  assert.match(runner, /listPeers/);
+  assert.match(runner, /bingo-room-peer ConnectionReady remote=/);
+  assert.match(runner, /play-replacement[\s\S]*sessionB\.sample\.sessionSpotEndpoint/);
+  assert.match(runner, /play-b[\s\S]*sessionA\.sample\.sessionSpotEndpoint/);
+  assert.match(runner, /play-b[\s\S]*replacement\.sample\.playSpotEndpoint/);
+  assert.match(runner, /bingo-play-router ConnectionReady clients=2/);
+  assert.match(playModule, /monitoring:[\s\S]*spot:[\s\S]*SampleNames\.roomSpotNode/);
+  assert.match(sessionModule, /monitoring:[\s\S]*spot:[\s\S]*SampleNames\.roomSpotNode/);
 });

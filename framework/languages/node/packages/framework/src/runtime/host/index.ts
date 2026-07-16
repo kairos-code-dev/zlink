@@ -193,6 +193,16 @@ export class ZLinkFrameworkRuntimeHost implements
       metrics: this.metrics,
       flowCreationEnabled: () => this.flowCreationEnabled(),
       nativeActorNodeProvider: () => this.spotNodeRuntime?.primaryNode,
+      confirmRemoteActorSessionBinding: (actor, sessionRid, signal) => {
+        if (!this.isStarted) return Promise.resolve();
+        const sessionNodeRid = this.requirePrimarySpotNode().routingId;
+        return this.boundSessionRelay.actorPackets.confirmRemoteSessionBinding(
+          actor,
+          sessionNodeRid,
+          sessionRid,
+          signal
+        );
+      },
       relay: (actor, header, payload, signal) =>
         this.boundSessionRelay.actorPackets.relayActorPacket(actor, header, payload, signal),
       notifyDisconnected: (actor, signal) =>
@@ -802,12 +812,16 @@ export class ZLinkFrameworkRuntimeHost implements
       rememberDestroyedActorRef: (actorId, actorRef) => this.destroyedActorRefs.set(actorId, actorRef),
       reportPostCommitError: (error) =>
         this.runtimeOrPreStartErrorSink.reportRuntimeTaskException('post-commit actor binding', error),
+      reportBoundSessionSendError: (error) =>
+        this.runtimeOrPreStartErrorSink.reportRuntimeTaskException('bound session one-way submit', error),
       actorHandoff: this.actorHandoff,
       actorTransferRuntime: this.actorTransferRuntime,
       actorTransferRegistry: this.actorTransferRegistry,
       shutdownSignal: () => this.state?.abortController.signal,
       metrics: this.metrics,
       admission: this.admission,
+      actorPacketTargetForState: (actorId) =>
+        this.boundSessionRelay.actorPackets.actorPacketTargetForState(actorId),
       flowCreationEnabled: () => this.flowCreationEnabled(),
       traceBoundSessionSend: (actorId, packetName) => {
         const flow = this.createDispatchErrorReporter(this.runtimeOrPreStartErrorSink).flow;

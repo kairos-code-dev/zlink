@@ -38,6 +38,14 @@ export class ZLinkRemoteActorPacketTargetStore {
       if (typeof state?.setRemoteActorPacketTarget === 'function') {
         state.setRemoteActorPacketTarget(actorPacketTarget);
       }
+      const sessionActor = this.options.streamBindingRuntime().find(actorId);
+      if (sessionActor !== undefined) {
+        this.sessionActorPacketTargets.set(sessionActor, actorPacketTarget);
+        this.sessionActorPacketTargetsByActor.set(
+          sessionActorPacketTargetKey(sessionActor),
+          actorPacketTarget
+        );
+      }
       this.sessionActorPacketTargetsByActorId.set(actorId, actorPacketTarget);
       return;
     }

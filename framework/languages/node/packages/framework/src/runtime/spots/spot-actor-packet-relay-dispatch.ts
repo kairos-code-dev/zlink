@@ -1,4 +1,4 @@
-import type { ActorRef } from '../../contracts';
+import type { ActorRef, RoutingId } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { Message as BindingMessage, Received as BindingReceived } from '@zlink-systems/zlink';
 import type {
@@ -11,9 +11,11 @@ import {
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 import {
-  encodeRemoteActorPacketTarget
+  decodeRemoteActorSessionBinding,
+  encodeRemoteActorPacketTarget,
+  ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET
 } from '../actors/actor-packet-relay-wire';
-import { decodeRoutingId as decodeWireRoutingId } from '../routing-id';
+import { decodeRoutingId as decodeWireRoutingId, routingIdsEqual } from '../routing-id';
 import type { ZLinkRemoteActorPacketRelay } from './spot-remote-route-codec';
 import {
   isReplyableRequestSeq,
@@ -21,7 +23,6 @@ import {
 } from './spot-route-replies';
 
 interface ZLinkSpotActorPacketRelayDispatchOptions {
-  readonly resolveActor: (actorId: string) => unknown;
   readonly actorPacketHandler?: (
     actorId: string,
     parts: readonly Message[],
@@ -30,6 +31,12 @@ interface ZLinkSpotActorPacketRelayDispatchOptions {
     fallbackActorRef?: ActorRef
   ) => Promise<unknown>;
   readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly bindRemoteSession?: (
+    actor: ActorRef,
+    sourceNodeRid: RoutingId,
+    sourceSessionRid: RoutingId,
+    declaredTarget?: ZLinkRemoteBoundSessionTarget
+  ) => void;
 }
 
 export class ZLinkSpotActorPacketRelayDispatch {
@@ -60,33 +67,41 @@ export class ZLinkSpotActorPacketRelayDispatch {
         };
     const header = BindingMessage.from(Buffer.from(actorPacketRelay.header, 'base64'));
     const payload = BindingMessage.from(Buffer.from(actorPacketRelay.payload, 'base64'));
-    let closeFrameMessages = true;
     try {
       const frameHeader = decodeStreamHeader(messageToBytes(header));
-      const canDeferResponse =
-        (actorPacketRelay.actorRef as (ActorRef & { handoffForwarded?: boolean }) | undefined)
-          ?.handoffForwarded !== true &&
-        this.options.resolveActor(actorPacketRelay.actorId) !== undefined;
-      if (
-        canDeferResponse &&
-        frameHeader.kind === ZLinkStreamMessageKind.Request &&
-        frameHeader.requestSeq !== undefined
-      ) {
-        const dispatch = this.options.actorPacketHandler(
-          actorPacketRelay.actorId,
-          [header, payload],
-          false,
-          remoteBoundSessionTarget,
-          actorPacketRelay.actorRef
+      if (frameHeader.name === ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET) {
+        const actorRef = actorPacketRelay.bindingActorRef;
+        const sourceNodeRid = received.routingId as RoutingId | null;
+        if (
+          frameHeader.kind !== ZLinkStreamMessageKind.Send ||
+          actorRef === undefined ||
+          sourceNodeRid === null ||
+          this.options.bindRemoteSession === undefined
+        ) {
+          throw new Error('Remote actor session binding requires a send, source route, and concrete actor ref.');
+        }
+        const binding = decodeRemoteActorSessionBinding(messageToBytes(payload));
+        const declaredSourceNodeRid = binding.sessionNodeRid;
+        if (!routingIdsEqual(sourceNodeRid, declaredSourceNodeRid)) {
+          throw new Error('Remote actor session binding source did not match the declared session node.');
+        }
+        this.options.bindRemoteSession(
+          actorRef,
+          declaredSourceNodeRid,
+          binding.sessionRid,
+          remoteBoundSessionTarget === undefined
+            ? undefined
+            : {
+                ...remoteBoundSessionTarget,
+                sessionNodeRid: declaredSourceNodeRid,
+                sessionRid: binding.sessionRid
+              }
         );
-        closeFrameMessages = false;
-        void dispatch.catch(() => undefined).finally(() => {
-          header.close();
-          payload.close();
-        });
-        const actorPacketTarget = this.actorPacketTarget(actorPacketRelay.actorId);
         if (isReplyableRequestSeq(received.requestSeq)) {
-          submitSpotRouteBridgeReply(received, actorPacketRelay.envelope, { ok: true, deferredResponse: true, actorPacketTarget });
+          submitSpotRouteBridgeReply(received, actorPacketRelay.envelope, {
+            ok: true,
+            response: { acknowledged: true }
+          });
         }
         return true;
       }
@@ -112,10 +127,8 @@ export class ZLinkSpotActorPacketRelayDispatch {
       }
       throw error;
     } finally {
-      if (closeFrameMessages) {
-        header.close();
-        payload.close();
-      }
+      header.close();
+      payload.close();
     }
   }
 

@@ -56,6 +56,8 @@ export class ZLinkActorCreationCoordinator {
         () => this.createActorAfterClaim(actorId, actorType, state, createRequest, true, signal)
       );
       if (activation.activated !== undefined) {
+        const claimed = lifecycle.actorLocationSnapshot(actorId);
+        if (claimed !== undefined) state.setLocationGeneration(claimed.generation);
         state.markLocationOwned();
         return activation.activated;
       }

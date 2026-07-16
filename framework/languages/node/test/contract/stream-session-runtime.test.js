@@ -557,6 +557,69 @@ test('stream session node runtime maps endpointless monitor disconnect to a sing
   await runtime.dispose();
 });
 
+test('stream session node runtime consumes a removed session tombstone before a late endpointless disconnect', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  let monitorHandler;
+  const runtime = new framework.ZLinkStreamSessionNodeRuntime({
+    socket,
+    monitor: { onEvent(handler) { monitorHandler = handler; } },
+    headerDecoder: (header) => ({ name: header.getString() }),
+    sessionFactory(context) {
+      return {
+        context,
+        async onDispatch(header) { events.push(['dispatch', context.sessionId, header.packetName]); },
+        async onDisconnected(ctx) { events.push(['disconnected', ctx.sessionId]); }
+      };
+    }
+  });
+
+  runtime.start();
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    value: 0,
+    localAddr: 'tcp://local',
+    remoteAddr: 'tcp://old',
+    routingId: undefined
+  });
+  socket.emitPacket('session-old', fakeHeader({ name: 'Old' }), fakeMessage('old'));
+  await new Promise((resolve) => setImmediate(resolve));
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: 'tcp://local',
+    remoteAddr: 'tcp://old',
+    routingId: undefined
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+    value: 0,
+    localAddr: 'tcp://local',
+    remoteAddr: 'tcp://fresh',
+    routingId: undefined
+  });
+  socket.emitPacket('session-fresh', fakeHeader({ name: 'Fresh' }), fakeMessage('fresh'));
+  await new Promise((resolve) => setImmediate(resolve));
+  monitorHandler({
+    nativeEvent: framework.ZLinkSocketNativeEventType.Disconnected,
+    value: 0,
+    localAddr: undefined,
+    remoteAddr: undefined,
+    routingId: undefined
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(events, [
+    ['dispatch', 'session-old', 'Old'],
+    ['disconnected', 'session-old'],
+    ['dispatch', 'session-fresh', 'Fresh']
+  ]);
+  assert.equal(runtime.findSession('session-fresh').isDisconnected, false);
+  await runtime.dispose();
+});
+
 test('stream session node runtime cancels endpointless disconnect when connection-ready follows immediately', async () => {
   const socket = new FakeStreamSocket();
   const events = [];

@@ -9,7 +9,10 @@ import {
   type ZLinkRemoteActorPacketTarget,
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
-import { encodeRemoteActorPacketRelayPayload } from '../actors/actor-packet-relay-wire';
+import {
+  encodeRemoteActorPacketRelayPayload,
+  encodeRemoteActorPacketTarget
+} from '../actors/actor-packet-relay-wire';
 import { encodeRemoteBoundSessionSendPayload } from '../actors/bound-session-wire';
 import { tryRequestRoutedJson } from '../actors/actor-routed-json-request';
 import {
@@ -34,6 +37,7 @@ export interface ZLinkNativeFallbackBoundSessionOptions {
   readonly requestTimeoutMs?: number;
   readonly actorId: string;
   readonly onSend?: (actorId: string, packetName: string) => void;
+  readonly reportError: (error: unknown) => void;
   readonly flowCreationEnabled?: () => boolean;
 }
 
@@ -106,17 +110,24 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<void> {
+  submit(): void {
     if (this.executed) {
       throw new Error('Bound session send already submitted.');
     }
     this.executed = true;
     const packetName = resolveFrameworkPacketName(this.message, this.selectedPacketName, 'Bound session');
-    if (this.options.localActorProvider?.() === true && this.sendLocal(packetName)) {
-      this.options.onSend?.(this.options.actorId, packetName);
-      return;
-    }
+    void this.execute(packetName).catch(this.options.reportError);
+  }
+
+  private async execute(packetName: string): Promise<void> {
+    const localActor = this.options.localActorProvider?.() === true;
     const remoteTarget = this.options.remoteBoundSessionTargetProvider();
+    if (localActor) {
+      if (this.sendLocal(packetName)) {
+        this.options.onSend?.(this.options.actorId, packetName);
+        return;
+      }
+    }
     if (remoteTarget !== undefined) {
       const actorRef = this.options.actorRefProvider();
       const ownershipGeneration = (actorRef as (ActorRef & { ownershipGeneration?: bigint }) | undefined)
@@ -130,6 +141,9 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         message: this.message,
         boundPacketName: packetName,
         metadata: this.selectedMetadata,
+        actorPacketTarget: encodeRemoteActorPacketTarget(
+          this.options.remoteActorPacketTargetProvider()
+        ),
         ...(currentOrCreateFlow(
           'Application',
           this.options.flowCreationEnabled?.() ?? true
@@ -141,22 +155,16 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         spotRid: remoteTarget.spotRid,
         spotKind: ZLinkSpotKind.Entry
       };
-      if (await tryRequestRoutedJson(
-        this.options.routedTransport,
-        target,
-        payload,
-        { timeoutMs: this.options.requestTimeoutMs, signal }
-      )) {
-        this.options.onSend?.(this.options.actorId, packetName);
-        return;
-      }
       await this.options.routedTransport.sendToSpot(
         target,
         payload,
-        { packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET, signal }
+        { packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET }
       );
       this.options.onSend?.(this.options.actorId, packetName);
       return;
+    }
+    if (localActor) {
+      throw new Error(`No current session binding exists for actor '${this.options.actorId}'.`);
     }
     if (this.sendLocal(packetName)) {
       this.options.onSend?.(this.options.actorId, packetName);
@@ -170,8 +178,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
         actorRef,
         this.message,
         packetName,
-        this.selectedMetadata,
-        signal
+        this.selectedMetadata
       );
       this.options.onSend?.(this.options.actorId, packetName);
       return;
@@ -180,8 +187,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       this.options.actorId,
       this.message,
       packetName,
-      this.selectedMetadata,
-      signal
+      this.selectedMetadata
     );
     this.options.onSend?.(this.options.actorId, packetName);
   }

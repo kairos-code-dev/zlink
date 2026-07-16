@@ -1,5 +1,5 @@
 import { ZLinkModule, zlinkFramework, zlinkModule } from '@zlink-systems/nestjs';
-import { ZLinkMessageFlowLogMode } from '@zlink-systems/framework';
+import { ZLinkMessageFlowLogMode, ZLinkSocketEventKind } from '@zlink-systems/framework';
 import { bingoFrameworkProtobuf } from '../../Shared/Contracts/protobuf-framework-codec';
 import { PlayerActorFactory } from './Infrastructure/ZLink/Actors/player-actor-factory';
 import { PlayerActor } from './Infrastructure/ZLink/Actors/player-actor';
@@ -26,6 +26,10 @@ import { BINGO_SAMPLE_CONFIG, createBingoConfigurationModule } from '../Configur
 import type { BingoSampleConfig } from '../Configuration/sample-config';
 import { bingoLocationOptions, createBingoLocationStore } from '../Configuration/location-store';
 import { bingoMeterProvider } from '../runtime-support';
+import {
+  PlayRouterReadinessHandler
+} from './Infrastructure/ZLink/Handlers/room-router-readiness-handler';
+import { RoomRouterReadinessHandler } from '../Configuration/room-router-readiness-handler';
 function createBingoPlayModule() {
   class BingoPlayModule {}
   const configuration = createBingoConfigurationModule([
@@ -45,7 +49,16 @@ function createBingoPlayModule() {
         inject: [BINGO_SAMPLE_CONFIG],
         useFactory: (config: BingoSampleConfig) => {
           const builder = zlinkFramework();
-          builder.options({ metrics: { meterProvider: bingoMeterProvider } });
+          builder.options({
+            metrics: { meterProvider: bingoMeterProvider },
+            monitoring: {
+              socket: [{
+                sourceName: `${SampleNames.playChannel}.server`,
+                events: [ZLinkSocketEventKind.ConnectionReady]
+              }],
+              spot: [{ sourceName: SampleNames.roomSpotNode, intervalMs: 100 }]
+            }
+          });
           builder.configureDispatch()
             .messageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
             .traceLogFile(`${config.logDir}/flow-play.log`)
@@ -97,7 +110,9 @@ function createBingoPlayModule() {
       StopObservingBingoEventsHandler,
       SubmitBingoCardHandler,
       BingoRoomTimerHandler,
-      BingoRewardAcquiredEventHandler
+      BingoRewardAcquiredEventHandler,
+      PlayRouterReadinessHandler,
+      RoomRouterReadinessHandler
     ]
   })(BingoPlayModule);
 

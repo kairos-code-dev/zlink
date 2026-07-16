@@ -270,13 +270,18 @@ export class ZLinkEntrySpotActivation {
       packets: {
         handle: (actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef) =>
           this.dispatchActorPacket(actorId, parts, returnResponse, remoteBoundSessionTarget, fallbackActorRef),
-        bindRemoteSession: (actor, sourceNodeRid, sourceSessionRid) => {
+        bindRemoteSession: (actor, sourceNodeRid, sourceSessionRid, declaredTarget) => {
           if (routingIdsEqual(sourceNodeRid, this.options.nativeNode.routingId)) {
             return;
           }
-          const target = this.options.boundSessionRuntime?.resolveRemoteBoundSessionTarget(sourceNodeRid, sourceSessionRid);
+          const target = declaredTarget
+            ?? this.options.boundSessionRuntime?.resolveRemoteBoundSessionTarget(sourceNodeRid, sourceSessionRid);
           if (target !== undefined) {
-            this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(actor.actorId, target);
+            this.options.boundSessionRuntime?.rememberRemoteBoundSessionTarget(actor.actorId, {
+              ...target,
+              sessionNodeRid: sourceNodeRid,
+              sessionRid: sourceSessionRid
+            });
           }
           this.options.nativeNode.bindRemoteActorSession(actor, sourceNodeRid, sourceSessionRid);
         },

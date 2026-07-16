@@ -9,6 +9,7 @@ import type { Message } from '../../contracts/Common/Message';
 import type { ZLinkBackendSpotNode } from '../backend';
 import type { ZLinkLocationLifecycle } from '../locations';
 import type { DefaultZLinkSpotManager } from '../spots';
+import type { ZLinkSpotActorTransferRuntime } from '../spots/spot-runtime-ports';
 import type { ZLinkActorJoinCoordinator } from './actor-runtime-contracts';
 import type { ZLinkActorRuntimeState } from './actor-runtime-state';
 import { ZLinkPostCommitActorBinder } from './post-commit-actor-binder';
@@ -22,6 +23,7 @@ export interface ZLinkLocalFirstActorJoinCoordinatorOptions {
   readonly postCommitErrorReporter?: (error: unknown) => void;
   readonly locationLifecycle?: () => ZLinkLocationLifecycle | undefined;
   readonly localSpotMeshName?: () => string | undefined;
+  readonly actorTransferRuntime?: Pick<ZLinkSpotActorTransferRuntime, 'publishRoutedActorOwnership'>;
 }
 
 export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordinator {
@@ -113,7 +115,8 @@ export class ZLinkLocalFirstActorJoinCoordinator implements ZLinkActorJoinCoordi
           spotRid
         );
       }
-      this.postCommitBinder?.bindEventually(actorRef);
+      await this.options.actorTransferRuntime?.publishRoutedActorOwnership(actor);
+      await this.postCommitBinder?.bind(actorRef);
     }
     return {
       accepted: result.accepted,

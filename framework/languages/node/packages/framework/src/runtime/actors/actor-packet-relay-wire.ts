@@ -1,10 +1,37 @@
-import type { ZLinkSessionActor } from '../../contracts';
+import type { ActorRef, RoutingId, ZLinkSessionActor } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
 import { decodeRoutingId, routingIdWireHex } from '../routing-id';
 import type { ZLinkRemoteActorPacketTarget } from './actor-runtime-state';
 
 export const ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET = '__zlink.actor.packet.relay';
 export const ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET = 'zlink.framework.actor.session_disconnected';
+export const ZLINK_REMOTE_ACTOR_SESSION_BIND_PACKET = 'framework.internal.actor-session-bind';
+
+export function encodeRemoteActorSessionBinding(input: {
+  readonly sessionNodeRid: RoutingId;
+  readonly sessionRid: RoutingId;
+}): Uint8Array {
+  return Buffer.from(JSON.stringify({
+    sessionNodeRid: String(input.sessionNodeRid),
+    sessionNodeRidHex: routingIdWireHex(input.sessionNodeRid),
+    sessionRid: String(input.sessionRid),
+    sessionRidHex: routingIdWireHex(input.sessionRid)
+  }));
+}
+
+export function decodeRemoteActorSessionBinding(payload: Uint8Array): {
+  readonly sessionNodeRid: RoutingId;
+  readonly sessionRid: RoutingId;
+} {
+  const decoded = JSON.parse(Buffer.from(payload).toString('utf8')) as Record<string, unknown>;
+  if (typeof decoded.sessionNodeRid !== 'string' || typeof decoded.sessionRid !== 'string') {
+    throw new Error('Remote actor session binding payload is invalid.');
+  }
+  return {
+    sessionNodeRid: decodeRoutingId(decoded.sessionNodeRid, decoded.sessionNodeRidHex),
+    sessionRid: decodeRoutingId(decoded.sessionRid, decoded.sessionRidHex)
+  };
+}
 
 export function encodeRemoteActorPacketRelayPayload(input: {
   readonly actorId: string;
@@ -13,6 +40,7 @@ export function encodeRemoteActorPacketRelayPayload(input: {
   readonly boundSessionSpotRid?: string;
   readonly header: Uint8Array;
   readonly payload: Uint8Array;
+  readonly bindingActorRef?: ActorRef;
 }): Record<string, unknown> {
   return {
     packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
@@ -20,6 +48,11 @@ export function encodeRemoteActorPacketRelayPayload(input: {
     routerChannelId: input.routerChannelId,
     boundSessionTargetNodeRid: input.boundSessionTargetNodeRid,
     boundSessionSpotRid: input.boundSessionSpotRid,
+    bindingActorNodeRid: input.bindingActorRef === undefined ? undefined : String(input.bindingActorRef.nodeRid),
+    bindingActorNodeRidHex: input.bindingActorRef === undefined
+      ? undefined
+      : routingIdWireHex(input.bindingActorRef.nodeRid),
+    bindingActorGeneration: input.bindingActorRef?.generation.toString(),
     header: Buffer.from(input.header).toString('base64'),
     payload: Buffer.from(input.payload).toString('base64')
   };
@@ -105,6 +138,9 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
   readonly handoffTargetSpotRid?: string;
+  readonly bindingActorNodeRid?: string;
+  readonly bindingActorNodeRidHex?: string;
+  readonly bindingActorGeneration?: string;
 } {
   if (
     typeof payload !== 'object' ||
@@ -126,7 +162,10 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     actorNodeRid: optionalString(payload, 'actorNodeRid'),
     actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
     actorGeneration: optionalString(payload, 'actorGeneration'),
-    handoffTargetSpotRid: optionalString(payload, 'handoffTargetSpotRid')
+    handoffTargetSpotRid: optionalString(payload, 'handoffTargetSpotRid'),
+    bindingActorNodeRid: optionalString(payload, 'bindingActorNodeRid'),
+    bindingActorNodeRidHex: optionalString(payload, 'bindingActorNodeRidHex'),
+    bindingActorGeneration: optionalString(payload, 'bindingActorGeneration')
   };
 }
 

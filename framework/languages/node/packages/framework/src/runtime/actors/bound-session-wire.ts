@@ -9,6 +9,7 @@ export interface ZLinkRemoteBoundSessionOwnershipPayload {
   readonly actorNodeRidHex?: string;
   readonly actorGeneration: string;
   readonly actorOwnershipGeneration: string;
+  readonly actorPacketTarget?: unknown;
 }
 
 export function encodeRemoteBoundSessionOwnershipPayload(
@@ -37,7 +38,8 @@ export function decodeRemoteBoundSessionOwnershipPayload(
     actorNodeRid: (payload as { actorNodeRid: string }).actorNodeRid,
     actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
     actorGeneration: (payload as { actorGeneration: string }).actorGeneration,
-    actorOwnershipGeneration: (payload as { actorOwnershipGeneration: string }).actorOwnershipGeneration
+    actorOwnershipGeneration: (payload as { actorOwnershipGeneration: string }).actorOwnershipGeneration,
+    actorPacketTarget: (payload as { actorPacketTarget?: unknown }).actorPacketTarget
   };
 }
 
@@ -52,6 +54,7 @@ export function encodeRemoteBoundSessionSendPayload(input: {
   readonly metadata: ReadonlyMap<string, string>;
   readonly flowId?: string;
   readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
+  readonly actorPacketTarget?: unknown;
 }): Record<string, unknown> {
   return {
     packetName: ZLINK_REMOTE_BOUND_SESSION_SEND_PACKET,
@@ -107,6 +110,7 @@ export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
   readonly metadata?: Record<string, string>;
   readonly flowId?: string;
   readonly flowOrigin?: import('../../contracts').ZLinkFlowOrigin;
+  readonly actorPacketTarget?: unknown;
 } {
   if (
     typeof payload !== 'object' ||
@@ -126,7 +130,8 @@ export function decodeRemoteBoundSessionSendPayload(payload: unknown): {
     boundPacketName: optionalString(payload, 'boundPacketName'),
     metadata: metadataRecordOf((payload as { metadata?: unknown }).metadata),
     flowId: optionalString(payload, 'flowId'),
-    flowOrigin: optionalFlowOrigin(payload)
+    flowOrigin: optionalFlowOrigin(payload),
+    actorPacketTarget: (payload as { actorPacketTarget?: unknown }).actorPacketTarget
   };
 }
 

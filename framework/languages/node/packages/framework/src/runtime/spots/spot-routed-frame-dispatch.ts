@@ -6,6 +6,7 @@ import type {
   ZLinkSpot,
   ZLinkSpotActorJoinResponse
 } from '../../contracts';
+import type { RoutingId } from '../../contracts';
 import type { ActorRef } from '../../contracts/Common/ActorRef';
 import type { Message } from '../../contracts/Common/Message';
 import { Received as BindingReceived } from '@zlink-systems/zlink';
@@ -60,6 +61,7 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     actorRef?: ActorRef,
+    actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -82,6 +84,11 @@ interface ZLinkSpotRoutedFrameDispatchOptions {
   ) => Promise<void>;
   readonly routedBoundSessionOwnershipReceiver?: (payload: unknown) => Promise<void>;
   readonly actorPacketTargetProvider?: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly bindRemoteSession?: (
+    actor: ActorRef,
+    sourceNodeRid: RoutingId,
+    sourceSessionRid: RoutingId
+  ) => void;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
@@ -106,9 +113,9 @@ export class ZLinkSpotRoutedFrameDispatch {
       dispatchErrors: options.dispatchErrors
     });
     this.actorPacketRelayDispatch = new ZLinkSpotActorPacketRelayDispatch({
-      resolveActor: options.resolveActor,
       actorPacketHandler: options.actorPacketHandler,
-      actorPacketTargetProvider: options.actorPacketTargetProvider
+      actorPacketTargetProvider: options.actorPacketTargetProvider,
+      bindRemoteSession: options.bindRemoteSession
     });
     this.routePacketDispatch = new ZLinkSpotRoutePacketDispatch({
       packetHandlers: this.packetHandlers,

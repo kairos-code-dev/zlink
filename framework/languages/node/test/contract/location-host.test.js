@@ -56,6 +56,11 @@ test('framework runtime host uses one explicit location store for every runtime 
 test('framework runtime host starts location runtime and injects lifecycle into managers', async () => {
   const store = new framework.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const calls = [];
+  const removePeer = store.removePeer.bind(store);
+  store.removePeer = async (...args) => {
+    calls.push('peer:remove');
+    return await removePeer(...args);
+  };
   const nodeRid = rid('node-a');
   const runtime = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration({
@@ -109,6 +114,7 @@ test('framework runtime host starts location runtime and injects lifecycle into 
   assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
   assert.deepEqual(calls, [
     'spot:dispose',
+    'peer:remove',
     'context:dispose'
   ]);
 });

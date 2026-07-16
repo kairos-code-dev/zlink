@@ -29,6 +29,7 @@ export interface ZLinkAutoConnectTarget {
 export interface IZLinkAutoConnectExecutor {
   connect(target: ZLinkAutoConnectTarget): boolean;
   disconnect(target: ZLinkAutoConnectTarget): void;
+  isDisconnected?(target: ZLinkAutoConnectTarget): boolean;
   onDisconnected?(handler: (endpoint: string) => void): void;
 }
 

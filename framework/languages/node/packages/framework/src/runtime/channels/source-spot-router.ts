@@ -5,8 +5,11 @@ import { createAbortError, throwIfAborted } from '../abort';
 import { ZLinkConfigurationException } from '../configuration';
 import { closeMessages, ZLinkChannelMessageKind } from './channel-envelope';
 import { decodeSpotDirectReply, encodeSpotDirectEnvelope } from './spot-direct-envelope';
+import { delay } from './route-readiness';
 
 export class ZLinkSourceSpotRouter {
+  constructor(private readonly defaultRequestTimeoutMs: number | undefined) {}
+
   async request<TReply>(
     sourceSpot: ZLinkBackendSpot,
     target: ZLinkSpotRouteTarget,
@@ -40,28 +43,31 @@ export class ZLinkSourceSpotRouter {
       const onAbort = () => fail(createAbortError());
       signal?.addEventListener('abort', onAbort, { once: true });
       try {
-        if (!sourceSpot.requestToSpot(
-          target.targetNodeRid,
-          target.spotRid,
-          parts,
-          (result, replyParts) => {
-            try {
-              if (result !== 0) {
-                fail(this.requestFailure(target.routerChannelId, result));
-                return;
+        void this.submitWhenReady(
+          (remainingMs) => sourceSpot.requestToSpot(
+            target.targetNodeRid,
+            target.spotRid,
+            parts,
+            (result, replyParts) => {
+              try {
+                if (result !== 0) {
+                  fail(this.requestFailure(target.routerChannelId, result));
+                  return;
+                }
+                complete(decodeSpotDirectReply<TReply>(replyParts as readonly Message[]));
+              } catch (error) {
+                fail(error);
+              } finally {
+                closeMessages(replyParts as readonly Message[]);
               }
-              complete(decodeSpotDirectReply<TReply>(replyParts as readonly Message[]));
-            } catch (error) {
-              fail(error);
-            } finally {
-              closeMessages(replyParts as readonly Message[]);
-            }
-          },
-          0,
-          timeoutMs
-        )) {
-          fail(this.notReady(target.routerChannelId, 'request'));
-        }
+            },
+            0,
+            remainingMs
+          ),
+          timeoutMs,
+          signal,
+          this.notReady(target.routerChannelId, 'request')
+        ).catch(fail);
       } catch (error) {
         fail(error);
       }
@@ -83,9 +89,12 @@ export class ZLinkSourceSpotRouter {
       message
     )] as readonly Message[];
     try {
-      if (!sourceSpot.sendToSpot(target.targetNodeRid, target.spotRid, parts, 0)) {
-        throw this.notReady(target.routerChannelId, 'send');
-      }
+      await this.submitWhenReady(
+        () => sourceSpot.sendToSpot(target.targetNodeRid, target.spotRid, parts, 0),
+        undefined,
+        signal,
+        this.notReady(target.routerChannelId, 'send')
+      );
     } finally {
       closeMessages(parts);
     }
@@ -118,29 +127,49 @@ export class ZLinkSourceSpotRouter {
       const onAbort = () => fail(createAbortError());
       signal?.addEventListener('abort', onAbort, { once: true });
       try {
-        if (!sourceSpot.requestToSpot(
-          target.targetNodeRid,
-          target.spotRid,
-          request,
-          (result, replyParts) => {
-            if (result !== 0) {
-              closeMessages(replyParts as readonly Message[]);
-              fail(this.requestFailure(target.routerChannelId, result));
-              return;
-            }
-            if (!complete(replyParts as readonly Message[])) {
-              closeMessages(replyParts as readonly Message[]);
-            }
-          },
-          0,
-          timeoutMs
-        )) {
-          fail(this.notReady(target.routerChannelId, 'request'));
-        }
+        void this.submitWhenReady(
+          (remainingMs) => sourceSpot.requestToSpot(
+            target.targetNodeRid,
+            target.spotRid,
+            request,
+            (result, replyParts) => {
+              if (result !== 0) {
+                closeMessages(replyParts as readonly Message[]);
+                fail(this.requestFailure(target.routerChannelId, result));
+                return;
+              }
+              if (!complete(replyParts as readonly Message[])) {
+                closeMessages(replyParts as readonly Message[]);
+              }
+            },
+            0,
+            remainingMs
+          ),
+          timeoutMs,
+          signal,
+          this.notReady(target.routerChannelId, 'request')
+        ).catch(fail);
       } catch (error) {
         fail(error);
       }
     });
+  }
+
+  private async submitWhenReady(
+    submit: (remainingMs: number) => boolean,
+    timeoutMs: number | undefined,
+    signal: AbortSignal | undefined,
+    notReadyError: ZLinkConfigurationException
+  ): Promise<void> {
+    const effectiveTimeoutMs = timeoutMs ?? this.defaultRequestTimeoutMs ?? 30_000;
+    const deadline = Date.now() + effectiveTimeoutMs;
+    for (;;) {
+      throwIfAborted(signal);
+      const remainingMs = Math.max(1, deadline - Date.now());
+      if (submit(remainingMs)) return;
+      if (Date.now() >= deadline) throw notReadyError;
+      await delay(Math.min(10, remainingMs), signal);
+    }
   }
 
   private requestFailure(routerChannelId: string, result: number): ZLinkConfigurationException {

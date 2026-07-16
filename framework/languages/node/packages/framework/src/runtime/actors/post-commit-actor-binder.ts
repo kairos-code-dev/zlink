@@ -14,13 +14,17 @@ export class ZLinkPostCommitActorBinder {
   constructor(private readonly options: ZLinkPostCommitActorBinderOptions) {}
 
   bindEventually(actorRef: ActorRef): void {
+    void this.bind(actorRef);
+  }
+
+  bind(actorRef: ActorRef): Promise<void> {
     this.desiredRefs.set(actorRef.actorId, actorRef);
-    if (this.tasks.has(actorRef.actorId)) {
-      return;
-    }
+    const existing = this.tasks.get(actorRef.actorId);
+    if (existing !== undefined) return existing;
     const task = this.run(actorRef.actorId)
       .finally(() => this.tasks.delete(actorRef.actorId));
     this.tasks.set(actorRef.actorId, task);
+    return task;
   }
 
   private async run(actorId: string): Promise<void> {

@@ -845,6 +845,39 @@ test('route raw SPOT request through SpotNode router retries until route is read
   reply[0].close();
 });
 
+test('route raw SPOT request from a user spot waits for replacement route readiness', async () => {
+  let attempts = 0;
+  const sourceSpot = {
+    requestToSpot(_targetNodeRid, _targetSpot, _request, callback) {
+      attempts += 1;
+      if (attempts === 1) return false;
+      callback(0, [zlink.Message.from(Buffer.from('replacement-ready'))]);
+      return true;
+    }
+  };
+  const manager = new framework.ZLinkChannelRuntimeManager(
+    framework.createFrameworkRegistration({ requestTimeoutMs: 1000 }),
+    fakeChannelAdapter({ dealer: fakeBackpressuredDealer() }),
+    fakeContext()
+  );
+
+  const reply = await manager.routeRequestRawFromSpotToSpot(
+    sourceSpot,
+    {
+      routerChannelId: 'room.route',
+      targetNodeRid: 'replacement-node',
+      spotRid: 'replacement-room',
+      spotKind: framework.ZLinkSpotKind.User
+    },
+    zlink.Message.from(Buffer.from('request')),
+    1000
+  );
+
+  assert.equal(attempts, 2);
+  assert.equal(reply[0].data().toString(), 'replacement-ready');
+  reply[0].close();
+});
+
 test('route raw SPOT request stops SpotNode readiness retries when aborted', async () => {
   let attempts = 0;
   const manager = new framework.ZLinkChannelRuntimeManager(

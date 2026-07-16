@@ -88,7 +88,7 @@ export class ZLinkLocalNativeActorJoin {
         toFrameworkRoutingId(result.joinedSpotRid)
       );
     }
-    this.options.postCommitBinder?.bindEventually(toFrameworkActorRef(result.actor));
+    await this.options.postCommitBinder?.bind(toFrameworkActorRef(result.actor));
     try {
       return {
         accepted: true,

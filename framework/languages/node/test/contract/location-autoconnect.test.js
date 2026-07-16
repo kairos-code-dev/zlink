@@ -174,6 +174,59 @@ test('auto-connect reconciler does not mark a target active when executor skips 
   await runtime.stop();
 });
 
+test('auto-connect reconciler waits for an old peer disconnect before reusing its route key', async () => {
+  let disconnected = false;
+  let rows = [peer(
+    'owner-old',
+    framework.ZLinkLocationAutoConnectType.SpotMesh,
+    framework.ZLinkLocationRole.Spot,
+    'node-z',
+    'tcp://old'
+  )];
+  const calls = [];
+  const reconciler = new internal.ZLinkAutoConnectReconciler({
+    local: local(
+      framework.ZLinkLocationAutoConnectType.SpotMesh,
+      framework.ZLinkLocationRole.Spot,
+      'node-a',
+      'tcp://local'
+    ),
+    runtime: {},
+    peerResolver: { async listLivePeers() { return rows; } },
+    executor: {
+      connect(target) {
+        calls.push(`connect:${target.endpoint}`);
+        return true;
+      },
+      disconnect(target) {
+        calls.push(`disconnect:${target.endpoint}`);
+      },
+      isDisconnected() {
+        return disconnected;
+      }
+    }
+  });
+
+  await reconciler.tick();
+  rows = [peer(
+    'owner-new',
+    framework.ZLinkLocationAutoConnectType.SpotMesh,
+    framework.ZLinkLocationRole.Spot,
+    'node-z',
+    'tcp://new'
+  )];
+  await reconciler.tick();
+  assert.deepEqual(calls, ['connect:tcp://old', 'disconnect:tcp://old']);
+
+  disconnected = true;
+  await reconciler.tick();
+  assert.deepEqual(calls, [
+    'connect:tcp://old',
+    'disconnect:tcp://old',
+    'connect:tcp://new'
+  ]);
+});
+
 test('auto-connect reconciler removes a disconnected endpoint until a fresh store read', async () => {
   let storeFailed = false;
   let disconnected;

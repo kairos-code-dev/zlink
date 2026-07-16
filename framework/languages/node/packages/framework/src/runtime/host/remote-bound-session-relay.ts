@@ -7,7 +7,10 @@ import {
   type ZLinkRemoteBoundSessionTarget
 } from '../actors';
 import type { DefaultZLinkActorManager } from '../actors';
-import type { ZLinkRemoteBoundSessionPort } from '../streams/stream-binding-runtime-ports';
+import type {
+  ZLinkRemoteBoundSessionPort,
+  ZLinkStreamActorLookupPort
+} from '../streams/stream-binding-runtime-ports';
 import type { DefaultZLinkBoundSession } from '../streams/session-context';
 import type { ZLinkActorResponseOptions } from '../spots/spot-actor-packet-dispatch';
 import {
@@ -20,13 +23,16 @@ import {
 } from '../actors/bound-session-wire';
 import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
 import { requestRoutedJson } from '../actors/actor-routed-json-request';
-import { decodeRoutingId as decodeWireRoutingId } from '../routing-id';
+import {
+  decodeRoutingId as decodeWireRoutingId,
+  routingIdsEqual
+} from '../routing-id';
 import type { MeshRouterResolver } from './mesh-router-resolver';
 
 export interface ZLinkRemoteBoundSessionRelayOptions {
   readonly requestTimeoutMs?: number;
   readonly routeTransport: ZLinkActorRoutedJoinTransport;
-  readonly streamBindingRuntime: () => ZLinkRemoteBoundSessionPort;
+  readonly streamBindingRuntime: () => ZLinkRemoteBoundSessionPort & ZLinkStreamActorLookupPort;
   readonly actorManager: () => DefaultZLinkActorManager | undefined;
   readonly meshRouters: MeshRouterResolver;
   readonly primarySpotNode: () => ZLinkBackendSpotNode;
@@ -37,6 +43,7 @@ export interface ZLinkRemoteBoundSessionRelayOptions {
     actorId: string,
     routerChannelIdHint?: string
   ) => ZLinkRemoteActorPacketTarget | undefined;
+  readonly reportOwnershipRefreshError?: (actorId: string, error: unknown) => void;
 }
 
 export class ZLinkRemoteBoundSessionRelay {
@@ -50,8 +57,10 @@ export class ZLinkRemoteBoundSessionRelay {
     message: unknown,
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
-    actorRef?: ActorRef
+    actorRef?: ActorRef,
+    actorPacketTarget?: unknown
   ): Promise<void> {
+    this.options.updateRemoteActorPacketTarget(actorId, actorPacketTarget);
     const ownershipGeneration = (actorRef as (ActorRef & { ownershipGeneration?: bigint }) | undefined)
       ?.ownershipGeneration;
     const currentGeneration = this.actorOwnershipGenerations.get(actorId);
@@ -60,13 +69,16 @@ export class ZLinkRemoteBoundSessionRelay {
       (ownershipGeneration === undefined || ownershipGeneration < currentGeneration)
     ) return;
     if (actorRef !== undefined) {
-      await this.options.streamBindingRuntime().refreshActor(actorRef);
+      await this.options.streamBindingRuntime().rebindActor(actorRef);
     }
     if (ownershipGeneration !== undefined) {
       this.actorOwnershipGenerations.set(actorId, ownershipGeneration);
     }
     const sent = this.options.streamBindingRuntime().sendLocalBoundSession(actorId, message, packetName, metadata);
     if (sent) {
+      return;
+    }
+    if (this.options.actorManager()?.getState(actorId)?.remoteBoundSessionTarget === undefined) {
       return;
     }
     const call = this.options.boundSessionFactory(actorId).send(message);
@@ -118,6 +130,7 @@ export class ZLinkRemoteBoundSessionRelay {
 
   async receiveRemoteBoundSessionSend(payload: unknown): Promise<{ readonly ok: boolean }> {
     const send = decodeRemoteBoundSessionSendPayload(payload);
+    this.options.updateRemoteActorPacketTarget(send.actorId, send.actorPacketTarget);
     const metadata = new Map(Object.entries(send.metadata ?? {}));
     if (this.options.streamBindingRuntime().sendLocalBoundSession(
       send.actorId,
@@ -126,6 +139,9 @@ export class ZLinkRemoteBoundSessionRelay {
       metadata
     )) {
       return { ok: true };
+    }
+    if (this.options.actorManager()?.getState(send.actorId)?.remoteBoundSessionTarget === undefined) {
+      return { ok: false };
     }
     const call = this.options.boundSessionFactory(send.actorId).send(send.message);
     if (send.boundPacketName !== undefined) {
@@ -172,11 +188,24 @@ export class ZLinkRemoteBoundSessionRelay {
       actorId: value.actorId,
       generation: BigInt(value.actorGeneration)
     } as ActorRef;
-    await this.options.streamBindingRuntime().refreshActor(actorRef);
+    this.options.updateRemoteActorPacketTarget(value.actorId, value.actorPacketTarget);
+    const current = this.options.streamBindingRuntime().find(value.actorId)?.ref;
+    if (
+      current !== undefined &&
+      current.actorId === actorRef.actorId &&
+      current.generation === actorRef.generation &&
+      routingIdsEqual(current.nodeRid, actorRef.nodeRid)
+    ) {
+      this.actorOwnershipGenerations.set(value.actorId, BigInt(value.actorOwnershipGeneration));
+      return;
+    }
     this.actorOwnershipGenerations.set(value.actorId, BigInt(value.actorOwnershipGeneration));
+    void this.options.streamBindingRuntime().refreshActor(actorRef).catch((error) => {
+      this.options.reportOwnershipRefreshError?.(value.actorId, error);
+    });
   }
 
-  rememberRemoteBoundSessionTarget(actorId: string, target: ZLinkRemoteBoundSessionTarget): void {
+  rememberRemoteBoundSessionTarget(actorId: string, target: ZLinkRemoteBoundSessionTarget | undefined): void {
     this.options.actorManager()?.getState(actorId)?.setRemoteBoundSessionTarget(target);
   }
 
@@ -219,6 +248,7 @@ export class ZLinkRemoteBoundSessionRelay {
     )) {
       return;
     }
+    const actorRef = (state?.nativeActorRef as ActorRef | undefined) ?? fallbackActorRef;
     const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {
       await this.sendRemoteBoundSessionResponse(
@@ -232,7 +262,6 @@ export class ZLinkRemoteBoundSessionRelay {
       );
       return;
     }
-    const actorRef = (state?.nativeActorRef as ActorRef | undefined) ?? fallbackActorRef;
     if (actorRef === undefined) {
       throw new Error(`Actor '${actor.actorId}' does not have a native actor ref.`);
     }
@@ -268,6 +297,9 @@ export class ZLinkRemoteBoundSessionRelay {
       return;
     }
     const state = this.options.actorManager()?.getState(actorId);
+    const actorRef = (state?.nativeActorRef as ActorRef | undefined)
+      ?? fallbackActorRef
+      ?? this.options.destroyedActorRefs.get(actorId);
     const remoteTarget = fallbackBoundSessionTarget ?? state?.remoteBoundSessionTarget;
     if (remoteTarget !== undefined) {
       await this.sendRemoteBoundSessionError(
@@ -281,9 +313,6 @@ export class ZLinkRemoteBoundSessionRelay {
       );
       return;
     }
-    const actorRef = (state?.nativeActorRef as ActorRef | undefined)
-      ?? fallbackActorRef
-      ?? this.options.destroyedActorRefs.get(actorId);
     if (actorRef === undefined) {
       throw new Error(`Actor '${actorId}' does not have a native actor ref.`);
     }

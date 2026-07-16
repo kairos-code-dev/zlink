@@ -24,6 +24,7 @@ interface ZLinkSpotRoutedBoundSessionDispatchOptions {
     packetName: string | undefined,
     metadata: ReadonlyMap<string, string>,
     actorRef?: ActorRef,
+    actorPacketTarget?: unknown,
     signal?: AbortSignal
   ) => Promise<void>;
   readonly routedBoundSessionResponseReceiver?: (
@@ -71,7 +72,8 @@ export class ZLinkSpotRoutedBoundSessionDispatch {
           boundSessionSend.message,
           boundSessionSend.packetName,
           boundSessionSend.metadata,
-          boundSessionSend.actorRef
+          boundSessionSend.actorRef,
+          boundSessionSend.actorPacketTarget
         )
       );
       if (isReplyableRequestSeq(received.requestSeq)) {

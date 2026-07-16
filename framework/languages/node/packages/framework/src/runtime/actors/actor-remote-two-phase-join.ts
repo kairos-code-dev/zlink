@@ -215,7 +215,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
           void cleanup.then(() => state.markLocationReleased());
         }
       }
-      this.options.postCommitBinder?.bindEventually(resultActor);
+      await this.options.postCommitBinder?.bind(resultActor);
     }
     return {
       accepted: reply.accepted,

@@ -22,9 +22,14 @@ export function normalizeOpaqueRoutingId(value: unknown): RoutingId {
 }
 
 export function decodeRoutingId(text: string, hex: unknown): RoutingId {
-  return typeof hex === 'string'
-    ? String(BindingRoutingId.fromHex(hex))
-    : normalizeRoutingId(text);
+  if (typeof hex !== 'string') {
+    return normalizeRoutingId(text);
+  }
+  const decoded = BindingRoutingId.fromHex(hex);
+  if (BindingRoutingId.from(text).toHex() === decoded.toHex()) {
+    return normalizeRoutingId(text);
+  }
+  return decoded as unknown as RoutingId;
 }
 
 export function routingIdWireHex(routingId: RoutingId): string | undefined {

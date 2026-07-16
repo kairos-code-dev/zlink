@@ -27,6 +27,7 @@ import type {
 import { ZLinkNativeFallbackBoundSession } from '../streams/native-fallback-bound-session';
 import type { ZLinkActorTransferRuntime } from './actor-transfer-runtime';
 import type { ZLinkRuntimeAdmissionGate } from '../admission';
+import type { ZLinkRemoteActorPacketTarget } from '../actors';
 
 export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -50,6 +51,7 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly forgetDestroyedActorRef: (actorId: string) => void;
   readonly rememberDestroyedActorRef: (actorId: string, actorRef: ActorRef) => void;
   readonly reportPostCommitError: (error: unknown) => void;
+  readonly reportBoundSessionSendError: (error: unknown) => void;
   readonly actorHandoff: ZLinkActorHandoffCoordinator;
   readonly actorTransferRuntime: ZLinkActorTransferRuntime;
   readonly actorTransferRegistry: ZLinkActorTransferRegistry;
@@ -58,6 +60,7 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
   readonly traceBoundSessionSend?: (actorId: string, packetName: string) => void;
   readonly flowCreationEnabled?: () => boolean;
   readonly admission: ZLinkRuntimeAdmissionGate;
+  readonly actorPacketTargetForState: (actorId: string) => ZLinkRemoteActorPacketTarget | undefined;
 }
 
 export class ZLinkActorRuntimeOptionsFactory {
@@ -91,6 +94,7 @@ export class ZLinkActorRuntimeOptionsFactory {
         postCommitErrorReporter: this.options.reportPostCommitError,
         locationLifecycle: this.options.locationLifecycle,
         localSpotMeshName: this.options.primarySpotMeshName,
+        actorTransferRuntime: this.options.actorTransferRuntime,
         native: new ZLinkActorNativeJoinCoordinator({
           node: this.options.primarySpotNode,
           spotRouteResolver: spotRouteResolver ?? this.options.createLocationSpotRouteResolver(),
@@ -125,10 +129,11 @@ export class ZLinkActorRuntimeOptionsFactory {
         },
         localActorProvider: () => this.options.actorManager()?.getState(actorId)?.actor !== undefined,
         remoteBoundSessionTargetProvider: () => this.options.actorManager()?.getState(actorId)?.remoteBoundSessionTarget,
-        remoteActorPacketTargetProvider: () => this.options.actorManager()?.getState(actorId)?.remoteActorPacketTarget,
+        remoteActorPacketTargetProvider: () => this.options.actorPacketTargetForState(actorId),
         requestTimeoutMs: this.options.registration.requestTimeoutMs,
         actorId,
         onSend: this.options.traceBoundSessionSend,
+        reportError: this.options.reportBoundSessionSendError,
         flowCreationEnabled: this.options.flowCreationEnabled
       }),
       actorCreatedNodeRidProvider: () => this.options.primarySpotNodeOrUndefined()?.routingId,

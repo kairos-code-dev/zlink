@@ -492,6 +492,7 @@ export class ZLinkStreamSessionNodeRuntime {
     readonly localAddr?: string;
     readonly remoteAddr?: string;
   }> = [];
+  private readonly unaddressedMonitorSessions: string[] = [];
   private readonly disconnectedEndpoints = new Set<string>();
   private pendingEndpointlessDisconnect:
     | {
@@ -534,6 +535,7 @@ export class ZLinkStreamSessionNodeRuntime {
     this.stopped = true;
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
+    this.unaddressedMonitorSessions.length = 0;
     for (const session of sessions) {
       await session.dispose();
     }
@@ -579,6 +581,7 @@ export class ZLinkStreamSessionNodeRuntime {
           if (unaddressed !== undefined) {
             this.disconnectedEndpoints.delete(endpointKey);
             unaddressed.enqueueConnected(event.localAddr, event.remoteAddr);
+            this.unaddressedMonitorSessions.push(unaddressed.stream.sessionId);
             return;
           }
           if (this.pendingConnectionMetadata.some((metadata) =>
@@ -629,6 +632,7 @@ export class ZLinkStreamSessionNodeRuntime {
     const metadata = this.pendingConnectionMetadata.shift()!;
     this.removePendingConnectionMetadata(streamMonitorEndpointKey(metadata.localAddr, metadata.remoteAddr));
     session.enqueueConnected(metadata.localAddr, metadata.remoteAddr);
+    this.unaddressedMonitorSessions.push(session.stream.sessionId);
   }
 
   private firstUnaddressedSession(): ZLinkStreamSessionRuntime | undefined {
@@ -679,6 +683,11 @@ export class ZLinkStreamSessionNodeRuntime {
   }
 
   private enqueueEndpointlessDisconnect(error: Error): void {
+    const sessionId = this.unaddressedMonitorSessions.shift();
+    if (sessionId !== undefined) {
+      this.getActiveSession(sessionId)?.enqueueDisconnected(error);
+      return;
+    }
     const sessions = this.activeSessions();
     if (sessions.length !== 1) {
       return;

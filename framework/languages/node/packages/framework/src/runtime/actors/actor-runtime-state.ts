@@ -21,6 +21,8 @@ export interface ZLinkRemoteBoundSessionTarget {
   readonly routerChannelId: string;
   readonly targetNodeRid: RoutingId;
   readonly spotRid: RoutingId;
+  readonly sessionNodeRid?: RoutingId;
+  readonly sessionRid?: RoutingId;
 }
 
 export interface ZLinkRemoteActorPacketTarget {
@@ -259,7 +261,19 @@ export class ZLinkActorRuntimeState {
   }
 
   setRemoteBoundSessionTarget(target: ZLinkRemoteBoundSessionTarget | undefined): void {
-    this.remoteBoundSessionTargetValue = target;
+    const current = this.remoteBoundSessionTargetValue;
+    this.remoteBoundSessionTargetValue = target === undefined ||
+      target.sessionNodeRid !== undefined ||
+      current?.sessionNodeRid === undefined ||
+      current.routerChannelId !== target.routerChannelId ||
+      !routingIdsEqual(current.targetNodeRid, target.targetNodeRid) ||
+      !routingIdsEqual(current.spotRid, target.spotRid)
+      ? target
+      : {
+          ...target,
+          sessionNodeRid: current.sessionNodeRid,
+          sessionRid: current.sessionRid
+        };
   }
 
   setRemoteActorPacketTarget(target: ZLinkRemoteActorPacketTarget | undefined): void {

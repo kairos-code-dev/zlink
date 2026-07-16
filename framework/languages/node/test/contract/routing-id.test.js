@@ -28,3 +28,11 @@ test('routing id storage encoding stays separate from optional wire encoding', (
   assert.equal(routingIdWireHex(binding), '706c6179');
   assert.equal(String(decodeRoutingId('ignored', '706c6179')), 'play');
 });
+
+test('routing id wire decoding preserves opaque bytes that cannot round-trip through display text', () => {
+  const decoded = decodeRoutingId('1', '00000001');
+
+  assert.equal(decoded.toHex(), '00000001');
+  assert.equal(routingIdsEqual(decoded, zlink.RoutingId.fromHex('00000001')), true);
+  assert.equal(routingIdsEqual(decoded, '1'), false);
+});

@@ -316,6 +316,7 @@ test('ZLinkActorManager claims location before activation and releases on destro
   assert.equal(row.ownerId, 'owner-a');
   assert.equal(row.nodeRid, 'node-a');
   assert.deepEqual(row.actorRef, { nodeRid: 'node-a', actorId: 'alice', generation: 7n });
+  assert.equal(managerA.getState('alice').locationGeneration, row.generation);
 
   await assert.rejects(
     () => managerB.create('alice', 'player'),
@@ -878,6 +879,9 @@ test('local actor join publishes committed location only after joined callback c
       }
     }),
     localSpotMeshName: () => 'play',
+    actorTransferRuntime: {
+      async publishRoutedActorOwnership() { events.push('ownership'); }
+    },
     async actorBinder() { events.push('bind'); }
   });
 
@@ -889,6 +893,7 @@ test('local actor join publishes committed location only after joined callback c
     'membership',
     'joined',
     'location:player:alice:play:room-1',
+    'ownership',
     'bind'
   ]);
 });
@@ -1017,7 +1022,7 @@ test('local user Spot join restores source membership when target commit fails',
   ]);
 });
 
-test('post-commit actor binding failure is retried without changing an accepted join to failure', async () => {
+test('post-commit actor binding failure delays accepted completion until the retry succeeds', async () => {
   let bindAttempts = 0;
   const reported = [];
   const coordinator = new ZLinkLocalFirstActorJoinCoordinator({
@@ -1044,11 +1049,13 @@ test('post-commit actor binding failure is retried without changing an accepted 
     setJoinedSpot() {}
   };
 
-  const result = await coordinator.joinSpot(actor, state, 'room-1', zlink.Message.from('join'));
-
-  assert.equal(result.accepted, true);
+  const pending = coordinator.joinSpot(actor, state, 'room-1', zlink.Message.from('join'));
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(bindAttempts, 1);
   await new Promise((resolve) => setTimeout(resolve, 40));
+  const result = await pending;
+
+  assert.equal(result.accepted, true);
   assert.equal(bindAttempts, 2);
   assert.deepEqual(reported, ['binding route is still connecting']);
 });
@@ -1706,7 +1713,7 @@ test('target ownership publication failure releases the claimed actor location',
   };
   const runtime = new ZLinkActorTransferRuntime({
     routeTransport: {
-      async sendToSpot() { throw new Error('ownership route unavailable'); }
+      async requestRawToSpot() { throw new Error('ownership route unavailable'); }
     },
     spotManager: () => undefined,
     actorManager: () => ({
@@ -1736,6 +1743,50 @@ test('target ownership publication failure releases the claimed actor location',
   assert.equal(released, 1);
   assert.equal(ownsLocation, false);
   assert.equal(locationGeneration, 17n);
+});
+
+test('transferred actor restores its native remote session binding before joined callbacks run', () => {
+  const actor = { actorId: 'alice' };
+  const actorRef = { nodeRid: rid('target-node'), actorId: 'alice', generation: 9n };
+  const sessionNodeRid = rid('session-node');
+  const sessionRid = rid('session-rid');
+  const binds = [];
+  const state = {
+    nativeActorRef: actorRef,
+    remoteBoundSessionTarget: {
+      routerChannelId: 'session.route',
+      targetNodeRid: sessionNodeRid,
+      spotRid: sessionNodeRid,
+      sessionNodeRid,
+      sessionRid
+    },
+    setJoinedSpot(spotRid, spot) {
+      this.spotRid = spotRid;
+      this.spot = spot;
+    }
+  };
+  const runtime = new ZLinkActorTransferRuntime({
+    routeTransport: {},
+    spotManager: () => undefined,
+    actorManager: () => ({ getState: () => state }),
+    primarySpotNode: () => ({
+      bindRemoteActorSession(boundActor, boundNodeRid, boundSessionRid) {
+        binds.push({ boundActor, boundNodeRid, boundSessionRid });
+      }
+    }),
+    async notifyEntrySpotActorLeft() {},
+    locationLifecycle: () => undefined,
+    actorHandoff: {},
+    actorTransferRegistry: {},
+    clearRemoteActorPacketTarget() {}
+  });
+
+  runtime.commitRoutedActor(actor, rid('room'), { name: 'room' });
+
+  assert.equal(binds.length, 1);
+  assert.equal(binds[0].boundActor, actorRef);
+  assert.equal(binds[0].boundNodeRid, sessionNodeRid);
+  assert.equal(binds[0].boundSessionRid, sessionRid);
 });
 
 test('native actor join rollback restores Entry location without destroying the existing actor', async () => {

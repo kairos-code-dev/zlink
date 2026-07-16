@@ -61,6 +61,11 @@ export class ZLinkAutoConnectLoop {
   }
 
   async stop(signal?: AbortSignal): Promise<void> {
+    await this.prepareTransportShutdown();
+    await this.finishTransportShutdown(signal);
+  }
+
+  async prepareTransportShutdown(): Promise<void> {
     const controller = this.controller;
     this.controller = undefined;
     if (controller !== undefined) {
@@ -72,7 +77,11 @@ export class ZLinkAutoConnectLoop {
     }
     await this.watchTask?.catch(() => undefined);
     this.watchTask = undefined;
-    await this.reconciler.shutdown(signal);
+    this.reconciler.disconnectPeers();
+  }
+
+  async finishTransportShutdown(signal?: AbortSignal): Promise<void> {
+    await this.reconciler.unpublishLocal(signal);
   }
 
   async tick(signal?: AbortSignal): Promise<void> {

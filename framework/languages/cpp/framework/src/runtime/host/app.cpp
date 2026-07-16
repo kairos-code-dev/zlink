@@ -1009,6 +1009,16 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
 
     emit_state (drain_state_t::draining);
 
+    std::map<std::string, std::size_t> natural_room_counts;
+    for (const auto &[mesh_name, policy] : state.spot_drain_policies) {
+        if (policy != spot_drain_policy_t::drain_natural) {
+            continue;
+        }
+        if (auto runtime = detail::spot_node_runtime_t::from (state.zlink, mesh_name)) {
+            natural_room_counts.emplace (mesh_name, runtime->active_user_spot_count ());
+        }
+    }
+
     /* Draining marker (graceful-drain-handoff §3.1): keep the connection,
      * leave placement. The auto-connect writer preserves this flag on every
      * registration/lease renewal republish. */
@@ -1159,6 +1169,44 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
         if (timed_out) {
             emit_state (drain_state_t::force_stopping);
             result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
+        }
+    }
+
+    /* DrainNatural keeps user spots available until the application closes
+     * them through the existing spot lifecycle API. The drain worker owns the
+     * deadline and records exactly the rooms observed when draining began. */
+    if (std::holds_alternative<drained_t> (result)) {
+        auto natural_rooms_remaining = [&state, &natural_room_counts] () {
+            std::size_t remaining = 0;
+            for (const auto &[mesh_name, _] : natural_room_counts) {
+                if (auto runtime = detail::spot_node_runtime_t::from (state.zlink, mesh_name)) {
+                    remaining += runtime->active_user_spot_count ();
+                }
+            }
+            return remaining;
+        };
+        while (natural_rooms_remaining () > 0
+               && std::chrono::steady_clock::now () < deadline_at) {
+            std::this_thread::sleep_for (std::chrono::milliseconds (50));
+        }
+        const auto remaining = natural_rooms_remaining ();
+        runtime::runtime_metrics_t drain_metrics (
+          detail::monitoring_runtime_t::from (state.monitoring).state ());
+        if (remaining > 0) {
+            emit_state (drain_state_t::force_stopping);
+            result = force_stopped_t{drain_force_reason_t::deadline_exceeded};
+            if (drain_metrics.enabled ()) {
+                drain_metrics.counter ("zlink.drain.forced", "{event}",
+                                       static_cast<double> (remaining), {{"kind", "room"}});
+            }
+        } else if (drain_metrics.enabled ()) {
+            for (const auto &[_, count] : natural_room_counts) {
+                if (count > 0) {
+                    drain_metrics.counter ("zlink.drain.rooms.drained", "{room}",
+                                           static_cast<double> (count),
+                                           {{"policy", "drain_natural"}});
+                }
+            }
         }
     }
 

@@ -635,7 +635,50 @@ fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "policy" ]]; then
   # OBS-C3 — release-and-recreate frees the owner rows so the next
-  # GetOrCreate rebuilds on another owner; rooms.drained counts per policy.
+  # GetOrCreate rebuilds on another owner; rooms.drained counts both policies.
+  relaunch_topology policy-natural
+  curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-c3-natural-room"}' >"$PHASE_LOG_DIR/create-natural.json"
+  curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-c3-natural-room","marker":"natural","value":1}' \
+    >"$PHASE_LOG_DIR/action-natural.json"
+  curl_local -fsS -X POST "$PLAY_B_HTTP/drain" -H 'Content-Type: application/json' \
+    -d '{"deadlineMs":15000}' >/dev/null
+  for _ in $(seq 1 100); do
+    curl_local -fsS "$PLAY_B_HTTP/evidence" >"$PHASE_LOG_DIR/play-b.during.json"
+    if python3 - "$PHASE_LOG_DIR/play-b.during.json" <<'PY'
+import json, sys
+states = [event["state"] for event in json.load(open(sys.argv[1], encoding="utf-8"))["drainEvents"]]
+raise SystemExit(0 if "draining" in states and "drained" not in states else 1)
+PY
+    then break; fi
+    sleep "$EVIDENCE_POLL_SECONDS"
+  done
+  curl_local -fsS -X POST "$PLAY_B_HTTP/spot/close" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-c3-natural-room"}' >"$PHASE_LOG_DIR/close-natural.json"
+  python3 - "$PHASE_LOG_DIR/close-natural.json" <<'PY'
+import json, sys
+assert json.load(open(sys.argv[1], encoding="utf-8"))["state"] == "closed"
+PY
+  for _ in $(seq 1 200); do
+    curl_local -fsS "$PLAY_B_HTTP/evidence" >"$PHASE_LOG_DIR/play-b.evidence.json" || break
+    if python3 - "$PHASE_LOG_DIR/play-b.evidence.json" <<'PY'
+import json, sys
+states = [event["state"] for event in json.load(open(sys.argv[1], encoding="utf-8"))["drainEvents"]]
+raise SystemExit(0 if "drained" in states or "force_stopping" in states else 1)
+PY
+    then break; fi
+    sleep "$EVIDENCE_POLL_SECONDS"
+  done
+  python3 - "$PHASE_LOG_DIR/play-b.evidence.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+states = [event["state"] for event in body["drainEvents"]]
+assert "drained" in states, states
+rooms = [m for m in body["metrics"] if m["name"] == "zlink.drain.rooms.drained"]
+assert rooms and all(m["tags"].get("policy") == "drain_natural" for m in rooms), rooms
+PY
+
   relaunch_topology policy
   curl_local -fsS -X POST "$WORKFLOW_B_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
@@ -673,7 +716,9 @@ body = json.load(open(sys.argv[1], encoding="utf-8"))
 assert body["state"] == "created", body
 print("OBS-C3 PASS (release-and-recreate freed the row; peer rebuilt the room)")
 PY
-  verify_scenario OBS-C3 drainedEvidence "$PHASE_LOG_DIR/workflow-b.evidence.json" \
+  verify_scenario OBS-C3 \
+    naturalEvidence "$LOG_DIR/policy-natural/play-b.evidence.json" \
+    drainedEvidence "$PHASE_LOG_DIR/workflow-b.evidence.json" \
     recreate "$PHASE_LOG_DIR/recreate.json" replayed "$PHASE_LOG_DIR/replayed.json"
 fi
 

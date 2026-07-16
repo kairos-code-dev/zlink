@@ -367,6 +367,9 @@ class spot_node_runtime_t
     void bind_location_lifecycle (runtime::location_lifecycle_t &lifecycle);
     void bind_spot_location_resolver (runtime::spot_address_resolver_t &resolver);
     void bind_drain_flag (std::shared_ptr<std::atomic_bool> flag);
+    /* User spots that must finish naturally before a drain-natural node can
+     * report Drained. Entry spots are host infrastructure and are excluded. */
+    std::size_t active_user_spot_count () const;
     /* In-flight probe for the drain worker: true while any spot callback of
      * this node is still executing (graceful-drain-handoff §4-4). */
     bool has_active_callbacks () const;

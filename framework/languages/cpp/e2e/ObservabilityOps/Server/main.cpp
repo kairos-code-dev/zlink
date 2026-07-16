@@ -611,6 +611,28 @@ class create_room_handler_t
     host_role_descriptor_t &_role;
 };
 
+class close_room_handler_t
+{
+  public:
+    using request_type = obs::create_room_req_t;
+    using reply_type = obs::create_room_res_t;
+    using dependency_types = fw::dependency_list_t<fw::spot_node_manager_t>;
+
+    explicit close_room_handler_t (fw::spot_node_manager_t &spots) : _spots (spots) {}
+
+    obs::create_room_res_t handle (const obs::create_room_req_t &request)
+    {
+        const auto closed = _spots
+                              .close_spot (fw::spot_rid_t::from_string (request.spot_rid))
+                              .result ();
+        return obs::create_room_res_t{
+          request.spot_rid, closed && closed.value () ? "closed" : "not_closed"};
+    }
+
+  private:
+    fw::spot_node_manager_t &_spots;
+};
+
 class drain_handler_t
 {
   public:
@@ -780,7 +802,8 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
           .map_post<drain_handler_t> ("/drain");
         if (role != host_role_t::session) {
             http.map_post<action_handler_t> ("/spot/action")
-              .map_post<create_room_handler_t> ("/spot/create");
+              .map_post<create_room_handler_t> ("/spot/create")
+              .map_post<close_room_handler_t> ("/spot/close");
         }
         if (role == host_role_t::play) {
             http.map_post<join_actor_handler_t> ("/actor/join")

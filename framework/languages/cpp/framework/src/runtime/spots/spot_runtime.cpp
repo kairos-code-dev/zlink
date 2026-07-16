@@ -4683,6 +4683,19 @@ std::vector<spot_context_t> spot_node_runtime_t::active_contexts () const
     return contexts;
 }
 
+std::size_t spot_node_runtime_t::active_user_spot_count () const
+{
+    std::lock_guard<std::recursive_mutex> node_lock (_state->mutex);
+    return static_cast<std::size_t> (std::count_if (
+      _state->spot_contexts_by_rid.begin (), _state->spot_contexts_by_rid.end (),
+      [&] (const auto &entry) {
+          const auto &context = entry.second;
+          return !context._state->closed && !context._state->native_spot.expired ()
+                 && (!_state->snapshot.entry_spot_name
+                     || context._state->spot_name != *_state->snapshot.entry_spot_name);
+      }));
+}
+
 std::size_t spot_node_runtime_t::drain_actor_packets (service_provider_t &services,
                                                       serializer_registry_t &serializers)
 {

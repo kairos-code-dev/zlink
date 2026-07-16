@@ -47,8 +47,18 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          if [ -z "${VERSION}" ] && [[ "${GITHUB_REF}" == refs/tags/core/v* ]]; then
+            # Tag-driven runs derive the package version (including any
+            # -rc.N suffix) from the tag itself.
+            VERSION="${GITHUB_REF_NAME#core/v}"
+          fi
           if [ -z "${VERSION}" ]; then
             VERSION=$(grep '^LIBZLINK_VERSION=' VERSION | cut -d'=' -f2)
+          fi
+          if [[ "${VERSION}" == *"-rc."* ]]; then
+            echo "channel=rc" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -74,9 +84,15 @@ jobs:
           CONAN_LOGIN_USERNAME: ${{ secrets.CONAN_LOGIN_USERNAME }}
           CONAN_PASSWORD: ${{ secrets.CONAN_PASSWORD }}
         run: |
-          if [ -z "${CONAN_REMOTE_URL}" ] || [ -z "${CONAN_LOGIN_USERNAME}" ] || [ -z "${CONAN_PASSWORD}" ]; then
-            echo "Skipping Conan upload because CONAN_REMOTE_URL, CONAN_LOGIN_USERNAME, or CONAN_PASSWORD is not configured."
+          if [ "${{ steps.ver.outputs.channel }}" = "rc" ]; then
+            # Release candidates are consumed from local Conan caches only;
+            # the immutable remote namespace stays reserved for stable.
+            echo "Skipping remote upload for release candidate ${{ steps.ver.outputs.version }}."
             exit 0
+          fi
+          if [ -z "${CONAN_REMOTE_URL}" ] || [ -z "${CONAN_LOGIN_USERNAME}" ] || [ -z "${CONAN_PASSWORD}" ]; then
+            echo "Stable release requires Conan publish credentials." >&2
+            exit 1
           fi
 
           REMOTE_NAME="${{ github.event.inputs.conan_remote }}"

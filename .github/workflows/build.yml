@@ -477,9 +477,19 @@ jobs:
           git archive --format=tar.gz --output "${TAR_NAME}" "${TAG_NAME}"
           ls -lh "${TAR_NAME}"
 
+      - name: Detect release channel
+        id: channel
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *"-rc."* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.channel.outputs.prerelease }}
           name: libzlink ${{ needs.read-versions.outputs.libzlink_version }}
           body: |
             ## libzlink Native Libraries (zlink)

@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## 10.0.0 (release candidate)
+
+RouteMesh 10.0.0 is a single breaking transition with no compatibility
+aliases, wrappers or dual runtimes. The public contract is owned by
+`core/doc/spec/` and enforced by the `contract_public_surface` gate
+(196 exported C functions, exact match).
+
+### Added
+- MeshNode service: one `MeshName` per process, one ROUTER bind endpoint,
+  immutable `ChannelName` membership with runtime weights, peer connection
+  intents with admission by MeshName/RID/lifecycle generation/trust profile.
+- Service dispatch: application/infrastructure ready domains, per-owner
+  claims, ready/receive batches with complete-multipart delivery, one-shot
+  `zlink_mesh_reply()` tokens and exactly-once operation completions.
+- Spot service: logical Spots owned by a MeshNode, direct Spot messaging
+  addressed by (node RID, Spot RID, generation), channel-scoped local
+  subscriptions (exact/prefix) and Logical Multicast with NODROP=1 default
+  and per-publish admission detail.
+- Actor service: ActorRef with generation and membership epoch, entry-Spot
+  creation transaction, join/leave with epoch CAS, direct Actor mailboxes
+  and the transfer fence API surface.
+- STREAM session service: session-Actor binding with generation CAS and
+  bidirectional complete-multipart submission.
+- MeshNode monitor: lifecycle, peer, multicast, backpressure, operation and
+  claim events with bounded-queue aggregation and an atomic status snapshot.
+
+### Removed
+- SpotNode mode surface and the service PUB/SUB network plane.
+- Route bridge API family and remote subscription protocol.
+- Part-wise service send/receive (`*_spot_part`, spot dispatch handler,
+  per-request service callbacks, reply drains) in favour of complete
+  multipart batches.
+- Core dispatch worker options, service event detail family and the
+  reserved always-failing `zlink_msg_gets()`.
+- All headerless internal exports; `libzlink.vers` now lists the formal
+  public functions explicitly.
+
+### Changed
+- Version 10.0.0, SONAME `libzlink.so.10`.
+- `zlink_router_recv_part()` no longer emits a service Spot RID output;
+  raw ROUTER carries no service envelope.
+- Raw SUB/XSUB `zlink_subscribe_part()` reports the required topic length
+  without consuming the queued message when the caller buffer is small.
+
+### Known gaps (release-candidate scope)
+- Remote peer data plane (admission handshake and cross-node routing) and
+  the Actor transfer data plane are not wired yet; without an admitted
+  peer route those paths return the contract-defined `ENOTCONN`/`ESTALE`
+  results.
+- MeshNode poller integration tracks receive-mode exclusivity but does not
+  yet surface readiness through `zlink_poller_wait()`.
+
+
 ## 5.3.0 (2026-04-20)
 
 ### Added

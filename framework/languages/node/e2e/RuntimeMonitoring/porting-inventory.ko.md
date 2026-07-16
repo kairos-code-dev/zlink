@@ -1,5 +1,12 @@
 # Node.js RuntimeMonitoring E2E 포팅 인벤토리
 
+## 10.0.0 목표 판정
+
+Config 7은 MeshNode·peer·ChannelName readiness, Spot Logical Multicast backpressure·drop, runtime health를
+공개 monitoring 표면으로 검증해야 한다. 아래 파일 대응과 기존 MON marker는 현재 구현 inventory이며,
+이 목표 축을 모두 충족하기 전까지 RuntimeMonitoring 포팅 상태는 `10.0.0 전환 대상`이다.
+
+
 기준 문서: `framework/doc/framework/common/e2e/config-7-monitoring.ko.md`
 
 기준 구현: `framework/languages/dotnet/e2e/RuntimeMonitoring`

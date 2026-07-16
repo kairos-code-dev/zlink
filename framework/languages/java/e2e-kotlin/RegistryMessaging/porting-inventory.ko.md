@@ -1,6 +1,6 @@
 # Kotlin RegistryMessaging .NET 기준 포팅 인벤토리
 
-기준 구현: `framework/languages/dotnet/e2e/RegistryMessaging`
+기준 구현: `framework/languages/dotnet/e2e/LocationMessaging`
 
 공통 문서: `framework/doc/framework/common/e2e/config-1-location-messaging.ko.md`
 

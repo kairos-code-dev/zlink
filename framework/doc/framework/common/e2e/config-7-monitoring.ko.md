@@ -4,177 +4,202 @@
 
 # Config 7 — Runtime Monitoring 배포
 
-운영 중인 배포에서 socket·location runtime·spot 이벤트를 runtime monitoring으로 관찰하는 기능을
-본다. 각 config가 쓰는 dispatch-error observer(evidence marker)와는 별개의, 독립된 monitoring
-표면이다.
+운영 중인 MeshNode의 peer·channel readiness, Logical Multicast backpressure·drop과 runtime health를
+공개 snapshot과 typed event로 관찰한다. 의미의 정본은
+[Runtime Monitoring](../../spec/server/50-runtime-monitoring.ko.md)이며, 이 문서는 새로운 monitoring
+source나 event kind를 정의하지 않는다.
 
-monitoring source는 관찰 대상을 **같은 앱(DI container)** 안에서 본다 — socket/spot source는 그
-channel/spot을 호스팅하는 앱에, location runtime source(`location-runtime`)는 location store를
-등록해 location runtime을 구동하는 앱에 register한다(`ZLinkMonitoringSourceValidator`). 즉 별도
-관찰자 프로세스가 다른 프로세스의 source를 직접 들여다보는 구조가 아니다. 각 host가 자기
-source의 이벤트를 event handler로 받아 자기 evidence에 기록한다. registry process가 없으므로
-topology와 service summary 이벤트도 각 노드의 location runtime이 자기 관점의 projection 변화로
-발행한다.
+언어별 E2E는 아래 exact interface가 정한 public runtime 표면만 사용한다.
+
+| 언어 | 정식 interface |
+|---|---|
+| C++ | [`route_mesh_runtime_t`](../../spec/server/languages/cpp/02-framework-interfaces.ko.md) |
+| .NET | [`IZLinkRouteMeshRuntime`](../../spec/server/languages/dotnet/05-route-mesh.ko.md#8-runtime-snapshot-event와-drain) |
+| Java | [`ZLinkRouteMeshRuntime`](../../spec/server/languages/java/02-handler-interfaces.ko.md#42-runtime-monitoring) |
+| Kotlin | [Java runtime 표면을 사용하는 Kotlin 계약](../../spec/server/languages/kotlin/02-handler-interfaces.ko.md#8-관측운영-표면-metrics--flow-correlation--drain) |
+| Node.js | [`ZLinkRouteMeshRuntime`](../../spec/server/languages/node/02-handler-interfaces.ko.md) |
 
 ## 1. 목적과 범위
 
-- 다룬다: socket/location-runtime/spot source의 실제 event kind 관찰, event kind 필터, 등록 검증(startup), event dispatch 실패가 runtime을 막지 않는지.
-- 여기서 다루지 않는 것: 기능 자체의 messaging 정확성(다른 config), 파일 로그(Config 5 RL-D3).
+- 다룬다: 하나의 MeshNode snapshot, peer·channel readiness 전이, Logical Multicast backpressure·drop,
+  application·infrastructure claim, location health, event sequence와 observer 격리.
+- 여기서 다루지 않는다: socket 내부 monitor event, registry·Spot별 monitoring source, 집계 metric catalog와
+  exporter(Config 11), message flow trace(Config 11), drain의 전체 state machine(Config 11).
+- snapshot은 현재 상태의 authority이고 event는 변화 알림이다. E2E는 event만 보고 최종 상태를
+  확정하지 않으며, 항상 같은 MeshNode의 최신 snapshot과 대조한다.
 
-## 2. 서버 구성 (한 번 구동)
+## 2. 서버 구성 (한 번 구동, 공유)
 
 | 역할 | 수 | 구성 |
-|------|----|------|
-| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. |
-| service 노드 | 2 (`svc-a`, `svc-b`) | channel + spot 호스트. `AddLocationStore(new ZLinkRedisLocationStore(...))`로 store를 등록하고, 자기 socket·spot·location-runtime monitoring source를 colocate해 이벤트를 evidence에 기록. `/evidence`·`/health`. |
-| trigger client | 시나리오별 | 연결·해제, provider scale, spot subject/peer 변화를 유발해 이벤트를 만든다. |
+|---|---|---|
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix를 사용한다. |
+| service MeshNode | 2 (`svc-a`, `svc-b`) | 같은 MeshName과 ChannelName에 참여한다. Spot subscription, 지연 가능한 handler, runtime snapshot·event evidence endpoint를 제공한다. |
+| trigger | 시나리오별 | public ChannelName·Logical Multicast operation과 process lifecycle 조작으로 상태 전이를 만든다. |
 
-각 host는 framework public monitoring API(`AddZLinkMonitoring(...)`)로 자기 source를 등록하고
-event handler에서 관찰 이벤트를 evidence에 기록한다.
-
-이벤트 kind는 고정 enum이다(이 config가 기대해도 되는 것만):
-
-- socket: `Connected`, `ConnectionReady`, `Disconnected`, `HandshakeFailed`, `PeerAdmissionChanged`, `Closed`
-- location-runtime: `StatusChanged`, `TopologyChanged`, `ServiceSummaryChanged`, `StoreFailure`, `StoreRecovered` (source와 payload의 기준은 registry process가 아니라 각 노드의 location runtime projection이다. 닫힌 kind 집합은 [40 §9](../../spec/server/40-location-runtime.ko.md)가 소유한다. `StoreFailure`/`StoreRecovered`의 장애 사이클 검증은 config 6이 담당하고, 이 config는 kind가 위 닫힌 집합에 속하는지를 본다.)
-- spot: `StatusChanged`, `PeersChanged`, `SubjectsChanged`, `TimerHandlerFailed`, `TimerStoppedAfterUnhandledException`
-
-actor join/leave, spot 생성·소멸 같은 lifecycle 이벤트는 monitoring kind로는 존재하지 않는다.
-spot 쪽 관찰은 `SubjectsChanged`/`PeersChanged`로 본다.
+각 service host는 자기 DI container의 RouteMesh runtime을 사용한다. 다른 process의 runtime 객체를 직접
+열거나 내부 socket monitor를 조립하지 않는다. Snapshot과 event evidence에는 sequence와 source MeshName을
+함께 기록하여 서로 다른 MeshNode의 sequence를 비교하지 않게 한다.
 
 ## 3. 실행 모델
 
-`run_e2e.sh`가 Redis(전용 key prefix)를 준비하고 service 노드를 monitoring colocated로 띄운 뒤,
-trigger client가 이벤트를 유발한다. 각 host의 evidence를 조회해 관찰 결과를 확인한다.
+`run_e2e.sh`가 Redis와 `svc-a`를 시작한 뒤 runtime observer를 열고 `svc-b`를 추가한다. 각 시나리오는
+public operation의 terminal result, typed runtime event와 후속 snapshot을 함께 확인한다. Backpressure는
+언어별 exact interface가 공개한 queue·timeout 설정과 bounded application gate로 만들며, private hook이나
+raw frame을 사용하지 않는다.
 
-로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
-폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다.
-(monitoring 관측 evidence와 별개로, 흐름 추적 파일 로그도 함께 남긴다.)
+로그는 [README](README.ko.md) §6대로 모든 process가 `log/`에 남긴다. 로그 문자열은 진단 자료이며
+snapshot field, event identifier와 operation result를 대신하지 않는다.
 
 ## 4. 시나리오
 
-### Track A — 이벤트 관찰
+### Track A — snapshot과 readiness
 
-#### MON-A1 socket 이벤트 관찰
-
-우선순위: `P0`
-
-**한마디로:** client가 붙었다 끊을 때, socket source가 그 연결·해제 이벤트를 정해진 kind와 식별 정보까지 담아 관찰하는가.
-
-- 절차: trigger client가 service의 channel에 연결했다가 끊는다. service host의 socket source가 관찰한다.
-- 검증: socket 이벤트가 evidence에 기록되며 kind가 위 socket enum에 속한다(연결 시 `Connected`/`ConnectionReady`, 해제 시 `Disconnected`/`Closed`). 각 이벤트는 source name(`<channel>.<capability>` 형식)과 payload(`RemoteAddr`, 있으면 `RoutingId`)를 포함한다.
-- 세부 동작: socket source 관찰(고정 kind·식별자).
-
-#### MON-A2 location runtime 이벤트 관찰
+#### MON-A1 일관된 MeshNode snapshot
 
 우선순위: `P0`
 
-**한마디로:** provider를 추가/종료해 peer location이 바뀌면, 살아 있는 노드의 location-runtime source가 `TopologyChanged`/`ServiceSummaryChanged`를 실제 변화 내용과 함께 관찰하는가.
+**검증 질문:** 한 번의 snapshot 호출로 MeshNode, peer, channel, multicast, claim, location과 drain 상태를
+함께 읽을 수 있는가.
 
-- 절차: service 노드(`svc-b`)를 추가/종료해 store의 peer location row를 바꾼다. 계속 살아 있는 `svc-a`의 location-runtime source가 관찰한다.
-- 검증: 노드 start/stop으로 `TopologyChanged`와 `ServiceSummaryChanged` 이벤트가 발행되고, 그 payload(location row와 connection state를 합친 topology projection/서비스 summary)가 실제 변화를 반영한다. 관측 근거는 registry snapshot이 아니라 관찰 host 자신의 location runtime projection이다. (location-runtime kind는 이 config에서 `StatusChanged`/`TopologyChanged`/`ServiceSummaryChanged` 3종 고정 — "등록/해제" 이벤트는 없다.)
-- 세부 동작: location-runtime source 관찰(projection diff 기반).
+- 절차: `svc-a`만 실행한 baseline과 `svc-b`가 ready가 된 뒤의 snapshot을 각각 읽는다.
+- 검증: snapshot은 MeshName, RID, lifecycle generation, descriptor revision, endpoint, lifecycle state,
+  descriptor source, peer·channel·multicast·claim·location·drain 값을 모두 포함한다. 두 번째 snapshot의
+  sequence가 같은 `svc-a` source의 첫 snapshot보다 크고, 반환된 첫 snapshot은 두 번째 호출 뒤에도
+  바뀌지 않는 immutable value다.
+- 세부 동작: [Runtime Monitoring §2](../../spec/server/50-runtime-monitoring.ko.md#2-snapshot)의 단일
+  snapshot과 sequence 계약.
 
-#### MON-A3 spot 이벤트 관찰
+#### MON-A2 peer admission과 ready 전이
 
 우선순위: `P0`
 
-**한마디로:** spot의 subject/peer를 바꾸면 `SubjectsChanged`/`PeersChanged`가, timer가 예외로 죽으면 `TimerHandlerFailed`가 관찰되는가.
+**검증 질문:** peer의 generation·descriptor revision과 실제 ready 상태가 분리되어 관찰되는가.
 
-- 절차: spot의 subject(구독/멤버) 또는 peer 구성을 바꾸는 트리거를 발생시킨다. spot source가 관찰한다.
-- 검증: `SubjectsChanged`/`PeersChanged` 이벤트가 evidence에 기록되어 실제 subject/peer 변화를 반영한다. spot timer가 예외로 실패하면 `TimerHandlerFailed`도 관찰된다.
-- 세부 동작: spot source 관찰(subjects/peers/timer kind).
+- 절차: observer를 연 뒤 `svc-b`를 시작해 admission과 ready를 기다리고, 정상 종료 후 같은 RID와 새
+  lifecycle generation으로 다시 시작한다.
+- 검증: `zlink.runtime.mesh_node.peer_changed` event가 sequence 순서로 기록된다. Snapshot은 peer RID,
+  lifecycle generation, descriptor revision, endpoint, admission state, ready와 last failure를 별도 field로
+  제공한다. 재시작 뒤 generation이 바뀌며 old endpoint나 old generation이 ready peer로 남지 않는다.
+- 세부 동작: peer identity와 readiness를 하나의 boolean으로 축약하지 않는다.
 
-#### MON-A4 가용성 전이 관측 (replacement / failover / weight 변경)
+#### MON-A3 ChannelName readiness와 선택 가능 상태
 
-우선순위: `P1`
+우선순위: `P0`
 
-**한마디로:** provider replacement·failover 또는 socket weight 변경으로 가용성이 바뀔 때, 그 전이가
-monitoring 이벤트(연결/해제·admission 변경)와 location-runtime `TopologyChanged`로 잡히는가.
+**검증 질문:** ready member 수와 ChannelName 선택 가능 여부가 실제 request 결과와 일치하는가.
 
-- 절차: 종료 대상이 아닌 별도 peer host에서 socket source와 location-runtime source를 먼저 구독한다.
-  (a) provider v1에 정상 종료를 요청하고 terminal `Drained`와 old row 제거를 확인한 뒤, 같은 rid·다른
-  endpoint의 v2를 시작해 replacement를 실행한다. (b) A·B가 함께 처리하는 상태에서 A를 `SIGKILL`하고
-  owner lease 만료 뒤 topology 제외와 B의 follow-up 성공을 확인한다. (c) 한 provider의 socket weight를
-  런타임에 `0`으로 바꿨다가 원래 값으로 복원한다. 종료 대상과 분리된 observer가 세 전이를 모두
-  관찰한다.
-- 검증: replacement는 이전 endpoint의 `Disconnected`와 새 endpoint의 `Connected`/`ConnectionReady`,
-  그리고 같은 rid의 endpoint 변경에 해당하는 `TopologyChanged`로 관측된다. service summary는
-  mesh/type/role별 count가 실제로 달라진 경우에만 `ServiceSummaryChanged`를 요구한다.
-  failover는 A의 연결 해제, owner lease 만료 뒤 topology 제외, B의 follow-up request 성공을 함께
-  확인한다. weight가 0으로 바뀐 peer의 가용성 변화는 연결된 peer 쪽 socket 이벤트
-  (`PeerAdmissionChanged`)로 나타난다. 종료되는 provider 자체가 남긴 event만으로 `Disconnected`를
-  판정하면 안 된다. (weight 값 자체의 세밀한 관측은 monitoring kind가 아니라
-  channel 옵션의 `Weight` read로 보완한다. 이 단계는 transport 부하 제외만 검증하며 `Draining` 마커,
-  readiness 변경, actor handoff를 포함하는 graceful drain으로 표현하지 않는다 — socket 이벤트 kind는
-  §2의 고정 enum 범위다.)
-- 세부 동작: replacement·failover·socket weight 변경을 구분한 가용성 전이 관측(고정 enum + topology).
+- 절차: `svc-b`가 ready가 된 뒤 `svc-a`와 `svc-b`의 channel snapshot을 읽고, `svc-b`의 weight를 0으로
+  변경했다가 복원한다. 각 전이 뒤 public ChannelName request를 제출한다.
+- 검증: `zlink.runtime.mesh_node.channel_changed` event, `svc-b` snapshot의 local weight와 `svc-a`
+  snapshot의 ready member count·selectable 값이 일치한다. Weight 0 전파 뒤에는 해당 membership이 새
+  select-one 대상에서 제외되고, 복원 뒤 다시 선택될 수 있다.
+- 세부 동작: channel readiness와 실제 selection 결과 대조.
 
-#### MON-A5 나머지 고정 kind 관찰 (handshake·status·timer-stopped)
+#### MON-A4 replacement·failover 중 readiness 복원
 
 우선순위: `P1`
 
-**한마디로:** A1~A4에서 안 본 나머지 고정 kind — socket `HandshakeFailed`, location-runtime/spot `StatusChanged`, spot `TimerStoppedAfterUnhandledException` — 도 실제 발생 시 관찰되는가.
+**검증 질문:** 정상 replacement와 비정상 종료가 peer·channel snapshot에서 구분되고 최신 상태로
+수렴하는가.
 
-- 절차: (a) 잘못된 연결/TLS 등으로 handshake 실패를 유발하고, (b) location runtime/spot의 status 전이를 유발하며(예: store 연결 상태 변화나 spot 상태 전이), (c) spot timer가 unhandled 예외로 중단되게 한다.
-- 검증: 각각 `HandshakeFailed`(socket) / `StatusChanged`(location-runtime·spot) / `TimerStoppedAfterUnhandledException`(spot) 이벤트가 evidence에 기록되고, kind가 §2의 고정 enum에 속한다. location-runtime `StatusChanged` payload의 기준은 registry status가 아니라 location runtime status(store health, watch/poll 상태 등)다. (`TimerHandlerFailed`가 한 번 실패를, `TimerStoppedAfterUnhandledException`이 누적 실패로 timer가 멈춘 시점을 구분해 보인다.)
-- 세부 동작: 나머지 고정 monitoring kind 관찰.
+- 절차: (a) `svc-b`를 정상 종료한 뒤 같은 RID와 새 generation으로 다시 시작한다. (b) 별도 fresh
+  topology에서 `svc-b`를 `SIGKILL`하고 owner lease 만료 뒤 다시 시작한다.
+- 검증: 두 경우 모두 peer·channel event 뒤 최신 snapshot이 ready peer와 ready member 수를 정확히
+  반영한다. 비정상 종료에서는 lease 만료 전 old descriptor를 성공적인 ready route로 사용하지 않고,
+  계속 실행 중인 `svc-a`의 follow-up request는 bounded terminal result를 얻는다.
+- 세부 동작: event는 변화 알림이고 snapshot이 최종 상태의 authority다.
 
-### Track B — 등록과 필터 검증
-
-#### MON-B1 event kind 필터
-
-우선순위: `P1`
-
-**한마디로:** 특정 kind만 받도록 필터를 걸면 그 kind만 들어오고, 빈 필터면 전체가 들어오는가.
-
-- 절차: socket source를 특정 kind만 받도록 필터를 걸어 등록하고(빈 kind 집합이면 전체), 여러 종류의 socket 이벤트를 유발한다.
-- 검증: 필터에 포함한 kind만 evidence에 기록되고 나머지는 들어오지 않는다. 빈 kind 필터는 전체 kind를 받는다.
-- 세부 동작: monitoring kind 필터.
-
-#### MON-B2 monitoring 등록 검증
+#### MON-A5 location runtime health
 
 우선순위: `P1`
 
-**한마디로:** 잘못된 monitoring 등록이 구성 시점/host 시작 시점 각각에서 정확히 명확한 오류로 걸러지는가.
+**검증 질문:** store 장애와 복구가 MeshNode snapshot과 고정 event identifier로 관찰되는가.
 
-- 절차: (a) **구성 단계** — `AddZLinkMonitoring(...)` 호출에서 잘못된 등록(중복 source, 비양수 polling interval)을 시도한다. (b) **host 시작 단계** — 미존재 socket/spot source를 가리키는 등록으로 host를 기동한다.
-- 검증: (a)는 `AddZLinkMonitoring` 구성 시점에 동기 예외로 실패한다. (b)는 host 시작 시 실패하는데, 미존재 **spot** source는 `ZLinkMonitoringSourceValidator`의 preflight에서, 미존재 **socket** source는 그보다 뒤 `ZLinkMonitoringHostedService.AttachSocketMonitors`(→ `ZLinkChannelRuntimeManager.GetMonitoringSocket`)에서 실패한다. 정상 등록만 있으면 정상 기동. (polling interval은 API가 `TimeSpan` 필수 인자라 "누락"은 컴파일 타임 — 런타임 검증 대상은 비양수만.)
-- 세부 동작: 구성 시점 vs host 시작 시점 검증 분리.
+- 절차: 정상 snapshot을 읽은 뒤 harness가 Redis를 정지하고 store failure grace 전후의 상태를 관찰한
+  다음 Redis를 재시작한다.
+- 검증: `zlink.runtime.location.store_changed` event와 snapshot의 location state, last success, last
+  failure가 실제 장애·복구와 일치한다. Store 장애만으로 이미 admitted된 peer와 local queue의 메시지를
+  즉시 중단하지 않으며, 복구 뒤 descriptor를 현재 owner token으로 재검증한다.
+- 세부 동작: [Location Runtime §7~8](../../spec/server/40-location-runtime.ko.md#7-failure와-recovery)의
+  health projection.
 
-### Track C — 실패 격리
+### Track B — Logical Multicast backpressure와 drop
 
-#### MON-C1 event dispatch 실패 격리
+#### MON-B1 `NoDrop = true` backpressure
+
+우선순위: `P0`
+
+**검증 질문:** 모든 target admission을 완료할 수 없을 때 backpressure가 drop과 다른 결과와 event로
+관찰되는가.
+
+- 절차: `svc-b`의 matching Spot application queue를 bounded gate로 막고 `NoDrop = true`인 Logical
+  Multicast를 짧은 send timeout으로 제출한다.
+- 검증: operation은 성공으로 가장하지 않고 backpressure 또는 timeout terminal result를 반환한다.
+  `zlink.runtime.mesh_node.multicast_backpressured` event가 발생하며 후속 snapshot에서 submitted,
+  backpressured, pending admission과 remote·local snapshot/admitted/dropped 수가 실제 target 결과와
+  일치한다. Dropped 수는 0이다.
+- 세부 동작: [Spot Messaging §4.1](../../spec/server/20-spot-messaging.ko.md#41-nodrop)과
+  [Runtime Monitoring §3](../../spec/server/50-runtime-monitoring.ko.md#3-event-identifiers)의 NoDrop 계약.
+
+#### MON-B2 `NoDrop = false` target drop
+
+우선순위: `P0`
+
+**검증 질문:** 막힌 target만 drop할 수 있는 정책에서 admitted와 dropped target이 분리되어 관찰되는가.
+
+- 절차: 하나의 matching target은 수락 가능하게 두고 다른 target은 bounded queue가 가득 찬 상태로 만든
+  뒤 `NoDrop = false`로 publish한다.
+- 검증: 수락 가능한 target은 payload를 한 번 처리하고 막힌 target은 처리하지 않는다.
+  `zlink.runtime.mesh_node.multicast_dropped` event와 후속 snapshot의 remote·local snapshot, admitted,
+  dropped 수가 실제 target evidence와 일치한다. Backpressure event로 바꾸어 기록하지 않는다.
+- 세부 동작: 부분 수락과 target drop의 분리.
+
+### Track C — claim progress와 observer 격리
+
+#### MON-C1 claim progress와 observer 격리
 
 우선순위: `P1`
 
-**한마디로:** event handler 하나가 예외를 던져도 framework runtime이나 messaging이 멈추지 않고(관찰은 best-effort), 그 실패가 error sink로 보고되는가.
+**검증 질문:** application callback과 느린 observer가 대기 중이어도 infrastructure claim, request
+completion과 다른 observer가 진행되는가.
 
-- 절차: 한 event handler가 예외를 던지게 하고 이벤트를 계속 유발한다.
-- 검증: event dispatch task의 실패가 framework runtime이나 messaging 경로를 종료시키지 않는다(관찰은 best-effort). 실패는 runtime error sink/debug event로 보고된다. (단, 같은 이벤트에 등록된 여러 handler를 순차 await하므로 "한 handler 실패가 같은 이벤트의 다음 handler 실행을 보장한다"고는 단언하지 않는다.)
-- 세부 동작: 관측 dispatch 실패가 runtime을 막지 않음.
+- 절차: `svc-a`의 application handler를 bounded gate에서 대기시킨 상태로 peer lifecycle 변화와 별도
+  request completion을 유발한다. 같은 MeshName에는 작은 양수 capacity의 느린 observer와 정상 observer를
+  함께 열고, peer·channel 상태를 반복 변경해 bounded queue에 압력을 준다. 느린 consumer 한 곳에서
+  application 예외도 발생시킨다.
+- 검증: snapshot은 application claim과 infrastructure claim의 active·pending 값을 구분한다.
+  `zlink.runtime.mesh_node.claim_changed` event와 request terminal result가 application gate 해제 전에도
+  진행되고 정상 observer와 messaging도 계속 동작한다. Coalescing이 발생해도 최신 snapshot sequence와
+  backpressure·drop 누계 증가분을 잃지 않는다. Sequence gap을
+  발견한 observer가 snapshot을 다시 읽으면 최신 peer·channel·multicast 상태와 일치한다.
+- 세부 동작: application·infrastructure claim 분리와
+  [Runtime Monitoring §4~5](../../spec/server/50-runtime-monitoring.ko.md#4-event-ordering과-coalescing)의
+  coalescing·observer 격리.
 
-### Track D — 장애 중 관측 연속성
+### Track D — validation과 반복 장애
 
-#### MON-D1 장애·복구 반복 중 이벤트 연속성
+#### MON-D1 public validation과 장애 반복 중 연속성
 
 우선순위: `P1`
 
-**한마디로:** provider의 비정상 종료와 재기동을 반복하는 동안에도 monitoring event가 계속 기록되고,
-그 전이가 실제 장애·복구를 반영하며 runtime 동작을 중단시키지 않는가.
+**검증 질문:** 잘못된 public 호출은 명확히 거부되고, 반복 장애 뒤에도 event와 snapshot이 최신 상태로
+복구되는가.
 
-- 절차: 종료 대상과 분리된 peer host에서 socket·location-runtime source를 구독한다. 아래 cycle을 3회
-  반복한다: provider `SIGKILL` → observer의 `Disconnected`와 owner lease 만료 뒤 topology 제거를
-  bounded wait로 확인 → 같은 rid·endpoint로 provider 재시작 → 새 owner generation row와 observer의
-  `ConnectionReady`·topology 추가를 확인. 각 cycle의 up evidence가 끝난 뒤에만 다음 crash를 실행한다.
-  socket weight 0·복원은 crash cycle과 섞지 않고 별도 구간에서 한 번 검증한다.
-- 검증: 장애 구간에도 monitoring task가 종료되지 않고 이벤트 기록이 이어지며, 세 cycle 각각의
-  down/up에 해당하는 연결·해제와 `TopologyChanged`가 관측된다. cycle correlation으로 전이를 구분하되
-  event 사이의 엄밀한 전역 순서·무손실은 단언하지 않는다. monitoring이 messaging·runtime 경로를
-  막거나 종료시키지 않는다.
-- 세부 동작: 장애·복구 반복 중 관측 연속성(best-effort).
+- 절차: (a) 등록하지 않은 MeshName의 snapshot·event stream과 0 이하 capacity를 요청한다. (b) 정상
+  observer에서는 `svc-b` 비정상 종료→lease 만료→재시작 cycle을 세 번 반복하며 각 단계의 snapshot을
+  읽는다.
+- 검증: (a)는 구성 오류 또는 호출 인자 오류로 실패한다. (b)는 cycle마다 peer·channel event가 이어지고
+  같은 source의 sequence가 단조 증가하며 최신 snapshot이 실제 ready 상태와 일치한다. Event에는 payload와
+  application metadata가 복사되지 않는다. RID와 endpoint 같은 진단 값은 metric label 검증 근거로
+  사용하지 않는다.
+- 세부 동작: startup validation, bounded event field와 반복 장애 후 resync.
 
 ## 5. 완료 기준
 
-- Track A의 `P0`(MON-A1·A2·A3)는 모두 통과한다.
-- 관찰 이벤트의 kind는 위 고정 enum에 속해야 하고, payload는 실제 발생한 변화(연결·topology·subjects)를 반영해야 한다.
-- public monitoring API만 직접 사용하고 `ensure`로 단언한다.
+- `P0`인 MON-A1·A2·A3·B1·B2를 모두 통과한다.
+- 각 판정은 public operation result, typed event와 후속 snapshot을 함께 사용한다.
+- Event identifier와 닫힌 state 값은 Runtime Monitoring 정식 계약과 byte 단위로 일치한다.
+- `NoDrop = true` backpressure와 `NoDrop = false` drop을 같은 결과·event로 합치지 않는다.
+- 한 observer의 지연·예외가 다른 observer, message dispatch와 reply를 바꾸지 않는다.
+- 언어별 exact interface에 없는 monitoring source, server-side proxy API, raw frame 또는 private helper를
+  추가하지 않는다.

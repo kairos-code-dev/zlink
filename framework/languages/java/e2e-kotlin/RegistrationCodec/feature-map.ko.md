@@ -24,9 +24,8 @@ option은 CLI argument로 받는다. 파일별 재분류 상태는 `porting-inve
 
 ## 포팅 구조 상태
 
-현재 Kotlin RegistrationCodec E2E는 `.NET` 기준 role/project 분리와 scenario/support 파일 분리를
-끝낸 구현이다. Client source에는 `EnableZLinkFramework`, `ZLinkFrameworkConfigurer`, `ZLinkClient`
-사용이 남아 있지 않고, `porting-inventory.ko.md`에는 완료 구조를 막는 `pending`/`gap` 항목이 없다.
+Kotlin RegistrationCodec E2E는 role별 Gradle project와 scenario/support 파일을 분리한다. Client는
+plain HTTP driver로 동작하고 framework 호출은 server role의 public API 경로에서 수행한다.
 
 ## 검증 결과
 

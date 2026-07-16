@@ -31,7 +31,7 @@ stream session binding이 한 업무 흐름 안에서 어떻게 이어지는지�
 ./framework/languages/dotnet/samples/run_samples.sh
 ```
 
-러너는 실행마다 전용 Redis 컨테이너를 location store로 띄우고
+러너는 실행마다 전용 Redis 컨테이너를 location store로 시작하고
 (`DELIVERYDISPATCH_REDIS_ENDPOINT`, `DELIVERYDISPATCH_REDIS_KEY_PREFIX`), 서버 역할을
 별도 프로세스로 시작한 뒤 포트와 HTTP health를 확인하고 client scenario를 실행한다.
 `run_sample.sh`와 `run_sample.ps1`은 외부 Redis endpoint를 재사용하지 않는다. 각 실행은
@@ -143,16 +143,16 @@ ZLink 역할 메시지로 구성한다.
 | 기존 웹 시스템 구성 | ZLink 샘플의 대응 | 설명 |
 |--------------------|------------------|------|
 | Delivery API + dispatch worker | `Dispatch server` | 고객 HTTP 요청을 받고, 같은 server 안의 worker가 후보 배송원을 고른 뒤 target courier actor node로 제안을 보낸다. |
-| Courier API 또는 worker | `CourierSession server` + `Courier actor node server` | CourierSession이 배송원 stream을 받고 기존 actor 위치를 먼저 찾는다. actor가 없으면 정해진 spot node에 actor 생성을 요청하고, actor가 bound session으로 제안을 push한다. |
+| Courier API 또는 worker | `CourierSession server` + `Courier actor MeshNode server` | CourierSession이 배송원 stream을 받고 기존 actor 위치를 먼저 찾는다. actor가 없으면 배치 정책이 선택한 MeshNode의 entry Spot에 actor 생성을 요청하고, actor가 bound session으로 제안을 push한다. |
 | Delivery event table | `Tracking` + `EvidenceStore` | 상태 이벤트를 기록하고 고객에게 보낼 알림을 만든다. |
 | Session map 또는 socket registry | `CustomerActor` + bound session | 고객 actor와 현재 stream session을 연결해 특정 고객에게만 status를 push한다. |
 | WebSocket/SSE server | `CustomerGateway server` | 고객 stream 연결을 받고, 기존 customer actor를 먼저 찾은 뒤 현재 session과 bind한다. 없을 때만 actor를 만든다. |
 | Actor entry point | `CustomerEntrySpot`, `CourierEntrySpot` | 고객 actor와 배송원 actor가 들어오는 입구이며, server side에서 actor를 찾는 기준점이다. |
-| Courier placement | `SampleTopology` + courier route handler | 배송원 id를 어느 SpotNode의 actor로 둘지 정한다. actor와 session binding은 framework actor/session public API가 맡는다. |
+| Courier placement | `SampleTopology` + courier route handler | 배송원 id를 어느 MeshNode의 actor로 둘지 정한다. actor와 session binding은 framework actor/session public API가 맡는다. |
 
-아래 문서에서 server는 샘플이 띄우는 실행 단위나 node를 뜻하고, 이름에 `server`를
-붙인다. module은 그 server 안에 있는 handler, worker, directory 같은 코드 책임이고,
-이름에 `module`을 붙인다.
+아래 문서에서 server는 샘플이 시작하는 실행 단위나 node를 뜻하고, 이름에 `server`를
+사용한다. module은 그 server 안에 있는 handler, worker, directory 같은 코드 책임이며,
+이름에는 `module`을 사용한다.
 
 ```mermaid
 flowchart LR
@@ -194,7 +194,7 @@ flowchart LR
 아래 표와 sequence diagram에서 설명한다. 각 요청의 시간 순서와 응답 흐름은 아래의 흐름
 설명과 sequence diagram에서 따로 설명한다.
 `CourierEntrySpot`이라는 타입이 두 개인 것이
-아니라, 같은 courier entry spot 역할을 두 SpotNode에 배치한 것이다. 샘플 검증은
+아니라, 같은 courier entry spot 역할을 두 MeshNode에 배치한 것이다. 샘플 검증은
 `courier-a` actor가 node-1에, `courier-b` actor가 node-2에 있는 상황을 의도한다.
 round-robin 배치에 우연히 맡기면 테스트가 실행 순서에 민감해지므로, `SampleTopology`가
 배송원 id별 target node를 명시적으로 정한다.
@@ -207,7 +207,7 @@ server node 1/2`는 실제 actor와 entry spot을 가진 node다. 두 역할은 
 배송원 actor를 어느 node에 둘지 정하는 책임은 샘플 topology에 있다. 선택된 node에서 actor를
 만들고 actor 메시지 진입점을 제공하는 책임은 각 spot server의
 `CourierEntrySpot module`과 `CourierActor module`에 있다. `CourierActor module`이 client로 push할 때는 직접 client
-socket을 들고 있는 것이 아니라, bind 과정에서 연결된 session route를 통해
+socket을 직접 소유하지 않고 bind 과정에서 연결된 session route를 통해
 `CourierSession server`로 보낸다.
 
 ZLink 샘플의 흐름을 같은 배송 하나 기준으로 보면 다음과 같다.
@@ -219,7 +219,7 @@ ZLink 샘플의 흐름을 같은 배송 하나 기준으로 보면 다음과 같
    기존 actor 위치를 먼저 찾는다. 기존 actor가 없을 때만 `CourierEntrySpot module` 아래 actor
    준비를 요청한다. 배송원 A와 B는 별도 channel이 아니라 서로 다른 actor다.
 4. `DispatchWorker module`은 먼저 courier id가 `courier-a`인 후보를 고르고, 기존 actor 위치를
-   찾은 뒤 target SpotNode rid로 `OfferDeliveryMsg`를 **응답 없는 one-way로** 보낸다. 배송원의 결정은 `OfferDeliveryResultMsg`로 dispatch channel에 돌아온다(공통 sample spec §7.4).
+   찾은 뒤 target MeshNode rid로 `OfferDeliveryMsg`를 **응답 없는 one-way로** 보낸다. 배송원의 결정은 `OfferDeliveryResultMsg`로 dispatch channel에 돌아온다(공통 sample spec §7.4).
 5. target node의 `CourierEntrySpot module`은 자기 아래 actor를 찾고, `CourierActor module`은
    session route로 `CourierSession server`에 제안을 push하고, 배송원 앱의 응답을 배차 결과로
    돌려준다.
@@ -278,7 +278,7 @@ sequenceDiagram
 ### Delivery offer와 client push 흐름
 
 배송 제안은 `DispatchWorker module`이 courier id의 target node에서 기존 actor 위치를 확인한 뒤
-해당 node의 `CourierEntrySpot` 소유 actor로 보내는 흐름이다. `CourierEntrySpot`은 SpotNode마다
+해당 node의 `CourierEntrySpot` 소유 actor로 보내는 흐름이다. `CourierEntrySpot`은 MeshNode마다
 하나인 actor 진입점이므로 별도의 배송원별 channel이나 배송별 방이 필요 없다.
 
 ```mermaid
@@ -356,10 +356,10 @@ spot, actor, session으로 request를 보낸 뒤 I/O 응답을 기다릴 때는 
 
 | server 또는 node | 내부 module 또는 ZLink 요소 | 설명 |
 |------------------|-----------------------------|------|
-| `Dispatch server` | ASP.NET HTTP API, tracking channel client, courier route client, `DispatchWorker` module | 고객 HTTP 요청을 받고, courier 후보 선택과 timeout 재시도를 처리한다. |
+| `Dispatch server` | ASP.NET HTTP API, tracking ChannelName client, courier Spot/Actor client, `DispatchWorker` module | 고객 HTTP 요청을 받고, courier 후보 선택과 timeout 재시도를 처리한다. |
 | `CourierSession server` | `AddStreamNode`, courier route client, `CourierSession` | 배송원 stream 연결을 받고, 기존 courier actor를 찾은 뒤 현재 session을 bind한다. |
 | `Courier actor node server 1/2` | `CourierEntrySpot`, `CourierActor` | 선택된 node에서 actor를 만들고 actor 메시지 진입점을 제공한다. |
-| `Tracking server` | `AddClientServerChannel` server, `EvidenceStore` module | 배송 상태 이벤트를 기록하고 고객 알림을 만든다. |
+| `Tracking server` | MeshNode의 tracking `ChannelName`, `EvidenceStore` module | 배송 상태 이벤트를 기록하고 고객 알림을 만든다. |
 | `CustomerGateway server` | `AddStreamNode`, `CustomerSession`, `CustomerEntrySpot`, `CustomerActor` | 고객 stream 연결을 받고, 고객 actor와 session을 bind한다. |
 | Client | HTTP client + stream connector typed wait | 샘플 검증 시나리오를 실행한다. |
 
@@ -367,9 +367,9 @@ spot, actor, session으로 request를 보낸 뒤 I/O 응답을 기다릴 때는 
 
 | 이름 | Framework 요소 | 연결 |
 |------|----------------|------|
-| `deliverydispatch.tracking` | `AddClientServerChannel` | `DispatchWorker module -> Tracking` |
-| `delivery-customers` | `AddSpotMesh` | `CustomerEntrySpot`에서 customer actor 관리 |
-| `delivery-couriers` | `AddSpotMesh` | `CourierSession/DispatchWorker -> target SpotNode rid -> CourierEntrySpot -> CourierActor` |
+| `deliverydispatch.tracking` | `ChannelName` | `DispatchWorker module -> Tracking` select-one |
+| `delivery-customers` | `ChannelName` + local Spot ownership | `CustomerEntrySpot`에서 customer actor 관리 |
+| `delivery-couriers` | `ChannelName` + local Spot ownership | `CourierSession/DispatchWorker -> target MeshNode RID -> CourierEntrySpot -> CourierActor` |
 
 `delivery-couriers`는 배송원마다 하나씩 늘어나는 channel이 아니다. 모든 배송원 actor가
 같은 mesh 안에 있고, framework actor/session binding이 어떤 session route로 client에 push할지를

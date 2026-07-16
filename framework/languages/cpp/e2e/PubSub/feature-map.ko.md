@@ -5,19 +5,23 @@
 이 문서는 Config 3 Pub/Sub 공통 시나리오 중 C++ framework E2E가 현재 검증하는 항목과,
 public API 또는 harness 제어가 더 필요한 항목을 구분한다.
 
-최신 `all` runner proof는 `logs/20260708-123833-1298240`이다. 이 실행은 Redis location store를
-공유하는 Publisher/Subscriber 역할로 PS-A1~PS-C1 전체와 publisher operational endpoint snapshot을
-통과했다.
+`logs/20260708-123833-1298240`은 Redis location store를 공유하는 현재 source의
+Publisher/Subscriber 역할로 PS-A1~PS-C1을 실행한 기록이다. 10.0.0의 manual endpoint topology를
+검증한 기록은 아니므로 아래 시나리오의 완료 증거로 사용하지 않는다.
+
+10.0.0 목표에서는 classic fanout이 location store를 사용하지 않는다. publisher는
+`enable_publisher(endpoint)`, subscriber는 `enable_subscriber(endpoint)`로 PUB/SUB 연결을 구성한다.
+현재 source와 runner는 Redis discovery를 제거하고 manual endpoint를 적용해야 한다.
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| `PS-A1` | 구현 | Publisher role server가 fanout 측정 sequence를 발행하고, 세 subscriber role server의 bounded `/evidence/wait`가 공통 sequence 수신 line을 확인한다. 로그: `logs/20260708-123833-1298240`, 출력: `scenario PS-A1 passed`, `verify basic passed`, `pubsub e2e result=passed`. |
-| `PS-A2` | 구현 | subscriber handler가 publish context의 topic을 보고 관심 topic은 accepted evidence로, 비관심 topic은 ignored evidence로 기록하는지 각 subscriber role server의 `/evidence/wait`로 확인한다. 로그: `logs/20260708-123833-1298240`, 출력: `scenario PS-A2 passed`, `verify topic passed`, `pubsub e2e result=passed`. |
-| `PS-A3` | 구현 | late subscriber가 합류 이후 발행분만 받고 합류 전 발행분은 replay되지 않는지 subscriber role server의 bounded evidence wait와 negative line check로 확인한다. 로그: `logs/20260708-123833-1298240`, 출력: `scenario PS-A3 passed`, `verify late passed`, `pubsub e2e result=passed`. |
-| `PS-A4` | 구현 | Client support가 reconnect subscriber 프로세스를 종료했다가 같은 endpoint로 다시 띄우고, 종료 중 발행분은 replay되지 않으며 재구독 이후 발행분만 다시 받는지 확인한다. 로그: `logs/20260708-123833-1298240`, 출력: `scenario PS-A4 passed`, `verify reconnect passed`, `pubsub e2e result=passed`. |
-| `PS-B1` | 구현 | 한 subscriber handler에 지연을 주입한 상태에서 다른 subscriber가 같은 발행 sequence를 계속 수신하는지 빠른 subscriber의 `/evidence/wait`로 확인한다. 로그: `logs/20260708-123833-1298240`, 출력: `scenario PS-B1 passed`, `verify slow passed`, `pubsub e2e result=passed`. |
-| `PS-B2` | 구현 | Client support가 Publisher role server를 종료했다가 다시 시작한 뒤, 재시작 이후 발행분을 기존 subscriber가 받는지 bounded evidence wait로 확인한다. 로그: `logs/20260708-123833-1298240`, 출력: `scenario PS-B2 passed`, `verify publisher-restart passed`, `pubsub e2e result=passed`. |
-| `PS-C1` | 구현 | handler 없는 message name으로 publish하면 subscriber dispatch observer에 `handlerMissing`/`drop` marker가 남고 후속 정상 publish가 오염되지 않는지 subscriber role server의 `/evidence/wait`로 확인한다. 로그: `logs/20260708-123833-1298240`, 출력: `scenario PS-C1 passed`, `verify negative passed`, `pubsub e2e result=passed`. |
+| `PS-A1` | 10.0.0 전환 대상 | manual endpoint에서 Publisher role server가 fanout 측정 sequence를 발행하고, 세 subscriber role server의 bounded `/evidence/wait`가 공통 sequence 수신 line을 확인해야 한다. |
+| `PS-A2` | 10.0.0 전환 대상 | manual endpoint에서 subscriber handler가 publish context의 topic을 보고 관심 topic은 accepted evidence로, 비관심 topic은 ignored evidence로 기록하는지 확인해야 한다. |
+| `PS-A3` | 10.0.0 전환 대상 | manual endpoint에서 late subscriber가 연결된 이후 발행분만 받고 연결 전 발행분은 replay되지 않는지 확인해야 한다. |
+| `PS-A4` | 10.0.0 전환 대상 | 같은 subscriber process를 유지한 채 transport만 단절·복구하고, 기존 subscription 자동 재적용과 단절 구간 non-replay를 확인해야 한다. 현재 process 재시작 방식은 이 계약을 검증하지 않는다. |
+| `PS-B1` | 10.0.0 전환 대상 | manual endpoint에서 한 subscriber handler에 지연을 주입해도 다른 subscriber가 같은 발행 sequence를 계속 수신하는지 확인해야 한다. |
+| `PS-B2` | 10.0.0 전환 대상 | Publisher를 같은 manual endpoint로 다시 시작한 뒤 기존 subscriber가 복구 이후 발행분을 받는지 확인해야 한다. |
+| `PS-C1` | 10.0.0 전환 대상 | manual endpoint에서 미등록 message name의 `handler_missing`/`drop` evidence와 후속 정상 publish 복구를 확인해야 한다. |
 
 ## 검증 경로 판정
 

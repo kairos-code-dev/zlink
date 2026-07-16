@@ -11,7 +11,7 @@
 > **등록 표면**이다.
 >
 > **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../11-channel-messaging.ko.md),
-> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-mesh-node.ko.md),
+> [spot-messaging](../../20-spot-messaging.ko.md), [MeshNode](../../21-mesh-node.ko.md),
 > [stream-session](../../30-stream-session.ko.md), [actor-model](../../22-actor-model.ko.md),
 > [session-actor-dispatch](../../31-session-actor-dispatch.ko.md),
 > [runtime-monitoring](../../50-runtime-monitoring.ko.md),
@@ -177,7 +177,7 @@ class service_scope_t;  // RAII. 소멸 시 scoped 인스턴스를 정리한다
 - **scope가 닫히면 그 scope의 `scoped`·`transient` 인스턴스를 함께 정리한다.**
 - **`service_scope_t`는 RAII다.** 소멸하면 닫힌다.
 
-**닫힌 provider는 되살아나지 않는다.** 이후의 resolve는 전부 실패한다.
+**닫힌 provider는 다시 사용할 수 없다.** 이후의 resolve는 전부 실패한다.
 
 ## 5. Configuration
 
@@ -230,7 +230,7 @@ class logger_factory_t;
 ## 7. HTTP hosting
 
 **framework가 내장 HTTP 서버를 제공한다.** 계약은 [60](60-http-hosting.ko.md)·[61](61-embedded-http-server.ko.md)이
-소유하고, public 타입은 [02 §16.5](02-framework-interfaces.ko.md)가 소유한다. 여기서는
+소유하고, public 타입은 [02 §15.5](02-framework-interfaces.ko.md)가 소유한다. 여기서는
 **시스템 구조에 걸리는 규칙**만 정리한다.
 
 ### 7.1 요청당 DI scope
@@ -241,7 +241,7 @@ class logger_factory_t;
 ### 7.2 Middleware 실행 순서
 
 **middleware는 `before`/`after` 쌍이다.** handler filter의 `next` delegate 방식과 다르다
-([framework API §2.6](../../../05-framework-api.ko.md)).
+([framework API §8.1](../../../05-framework-api.ko.md#81-handler-filter)).
 
 | 단계 | 순서 |
 |---|---|
@@ -249,13 +249,13 @@ class logger_factory_t;
 | route handler | — |
 | `after` | **역순으로** |
 
-**`after`는 `before`를 실행한 middleware에 대해서만 돈다.**
+**`after`는 `before`를 실행한 middleware에 대해서만 실행된다.**
 
 ## 8. Handler 등록과 filter
 
 handler 등록 표면과 filter 계약은 [02-framework-interfaces §8](02-framework-interfaces.ko.md)이
 소유한다. filter의 언어 중립 의미는
-[framework API §2.6](../../../05-framework-api.ko.md)이 소유한다.
+[framework API §8.1](../../../05-framework-api.ko.md#81-handler-filter)이 소유한다.
 
 ## 9. 기능 등록
 

@@ -95,6 +95,9 @@ Acquire 결과 집합은 `ZLinkRoutingIdSlotAcquired`, `ZLinkRoutingIdSlotGroupE
 
 Release는 group, slot, owner와 generation이 모두 일치할 때만 `Released`다. 오래된 owner token은
 `IgnoredStale`이며 현재 allocation을 바꾸지 않는다.
+Acquire request, mismatch 결과와 snapshot의 `Members`는 `MeshName`, `RoutingIdPrefix` 순서로 ordinal
+정렬한 immutable 목록이다. 같은 두 값을 가진 중복 member는 구성 오류로 거부한다. 따라서 호출자가
+member를 등록한 순서는 group identity와 비교 결과에 영향을 주지 않는다.
 
 ## 3. Redis 등록
 

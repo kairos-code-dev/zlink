@@ -7,14 +7,14 @@
 | `PS-A3` | 구현 | `Client/Scenarios/ps-a3-late-subscriber-scenario.ts` | 차단된 transport에서 ready 전 event를 한 번 발행하고, subscriber의 실제 `ConnectionReady` 뒤 첫 event 수신과 이전 event replay 부재를 확인한다. |
 | `PS-A4` | 구현 | `Client/Scenarios/ps-a4-subscriber-reconnect-scenario.ts` | subscriber process를 유지한 채 transport를 끊고 복구해 기존 subscription 자동 재적용, disconnect 구간 non-replay, fast subscriber 지속 수신을 확인한다. |
 | `PS-B1` | 구현 | `Client/Scenarios/ps-b1-slow-subscriber-scenario.ts` | slow subscriber delay evidence와 fast subscriber tail event marker를 실제 subscriber 역할 server evidence로 확인한다. |
-| `PS-B2` | 구현 | `Client/Scenarios/ps-b2-publisher-restart-scenario.ts` | terminal `Drained`, 기존 publisher row 제거, 같은 rid/endpoint 재등록과 subscriber `ConnectionReady` 뒤 첫 event 전달을 확인한다. |
+| `PS-B2` | 10.0.0 전환 대상 | `Client/Scenarios/ps-b2-publisher-restart-scenario.ts` | publisher를 같은 endpoint로 재시작한 뒤 기존 subscriber의 `ConnectionReady`와 첫 event 전달을 확인한다. source·runner 전환은 S9에서 수행한다. |
 | `PS-C1` | 구현 | `Client/Scenarios/ps-c1-missing-message-name-scenario.ts` | subscriber dispatch drop evidence와 이후 정상 publish delivery marker를 실제 subscriber 역할 server evidence로 확인한다. |
 
 ## 검증 경로 판정
 
-publisher와 모든 subscriber는 실행마다 만든 전용 Redis location store를 함께 사용한다. publisher의
-peer row는 framework lifecycle이 등록하며 subscriber는 고정 publisher endpoint를 받지 않고 이 row를
-조회해 fanout 연결을 설정한다.
+10.0.0 목표에서는 classic fanout이 location store를 사용하지 않는다. publisher는
+`enablePublisher(endpoint)`, subscriber는 `enableSubscriber(endpoint)`로 PUB/SUB 연결을 구성한다.
+현재 source와 runner의 Redis discovery 제거 및 manual endpoint 적용은 S9에서 수행한다.
 
 Pub/Sub fanout의 수신자는 client stream session이 아니라 subscriber 역할 server다. 공통 E2E README는
 이 경우 subscriber handler가 남긴 bounded `/evidence/wait` marker를 성공 기준으로 사용할 수 있다고

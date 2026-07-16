@@ -165,7 +165,7 @@ sha256sum /tmp/zlink-public-macro.names
 | FUNC | `zlink_msg_close` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | FUNC | `zlink_msg_copy` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | FUNC | `zlink_msg_data` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
-| FUNC | `zlink_msg_gets` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
+| FUNC | `zlink_msg_gets` | 제거 | 항상 실패하는 예약 API를 10.0.0 공개 계약에서 제거하고 S4에서 header와 runtime을 정리 | `core/include/zlink/message/api.h` |
 | FUNC | `zlink_msg_init` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | FUNC | `zlink_msg_init_data` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | FUNC | `zlink_msg_init_size` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
@@ -192,7 +192,7 @@ sha256sum /tmp/zlink-public-macro.names
 | FUNC | `zlink_recv_handler` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
 | FUNC | `zlink_recv_part` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
 | FUNC | `zlink_remote_actor_get_ref` | 10.0.0 정식 service API로 대체 | zlink_mesh_node_actor_lookup_remote | `core/include/zlink/service/spot.h` |
-| FUNC | `zlink_router_recv_part` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
+| FUNC | `zlink_router_recv_part` | 10.0.0 signature 변경 후 유지 | 같은 공개 identifier를 유지하고 `source_spot_rid_out_` argument 제거 | `core/include/zlink/socket/api.h` |
 | FUNC | `zlink_router_reply_part` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
 | FUNC | `zlink_router_reply_spot_part` | 10.0.0 정식 service API로 대체 | zlink_mesh_reply | `core/include/zlink/socket/api.h` |
 | FUNC | `zlink_router_request_part` | 10.0.0 계약에 유지 | 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
@@ -977,7 +977,7 @@ sha256sum /tmp/zlink-public-macro.names
 | EXPORT | `zlink_msg_close` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | EXPORT | `zlink_msg_copy` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | EXPORT | `zlink_msg_data` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
-| EXPORT | `zlink_msg_gets` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
+| EXPORT | `zlink_msg_gets` | 제거 | FUNC 분류와 동일: S4에서 header, runtime과 export를 함께 제거 | `core/include/zlink/message/api.h` |
 | EXPORT | `zlink_msg_init` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | EXPORT | `zlink_msg_init_data` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
 | EXPORT | `zlink_msg_init_size` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/message/api.h` |
@@ -1006,7 +1006,7 @@ sha256sum /tmp/zlink-public-macro.names
 | EXPORT | `zlink_remote_actor_get_ref` | 10.0.0 정식 service API로 대체 | FUNC 분류와 동일: zlink_mesh_node_actor_lookup_remote | `core/include/zlink/service/spot.h` |
 | EXPORT | `zlink_router_enable_request_reply_receive` | header 없는 internal export 정리 | public API로 승격하지 않고 export table에서 제거 | `core/build/lib/libzlink.so` |
 | EXPORT | `zlink_router_enable_spot_receive` | header 없는 internal export 정리 | public API로 승격하지 않고 export table에서 제거 | `core/build/lib/libzlink.so` |
-| EXPORT | `zlink_router_recv_part` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
+| EXPORT | `zlink_router_recv_part` | 10.0.0 signature 변경 후 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지하고 `source_spot_rid_out_` argument 제거 | `core/include/zlink/socket/api.h` |
 | EXPORT | `zlink_router_reply_part` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
 | EXPORT | `zlink_router_reply_spot_part` | 10.0.0 정식 service API로 대체 | FUNC 분류와 동일: zlink_mesh_reply | `core/include/zlink/socket/api.h` |
 | EXPORT | `zlink_router_request_part` | 10.0.0 계약에 유지 | FUNC 분류와 동일: 같은 공개 identifier를 유지 | `core/include/zlink/socket/api.h` |
@@ -1153,7 +1153,10 @@ sha256sum /tmp/zlink-public-macro.names
 
 ## 10. 중복·누락 검증
 
-다음 검증은 표의 `Kind`와 identifier를 읽어 현재 checkout에서 다시 추출한 집합과 비교한다. 성공 조건은
+다음 검증은 표의 `Kind`와 identifier를 읽어 S1 source 기준선 commit
+`b0e4af22652b60831e6ba5c4daec4fdcdaa7fce4`에서 다시 추출한 집합과 비교한다. S2·S3와 병렬로
+진행하는 Core 구현이 public header를 바꾸더라도 S1 시작 inventory의 의미가 달라지지 않게 commit을
+고정한다. 성공 조건은
 kind별 중복 0개, source 누락 0개, 문서 초과 0개, 공개 header 함수의 export 누락 0개,
 header 없는 export 30개 전부가 `header 없는 internal export 정리`로
 분류되는 것이다.
@@ -1176,7 +1179,12 @@ headers = [
     'core/include/zlink_enum.h',
     'core/include/zlink_errno.h',
 ]
-texts = {name: pathlib.Path(name).read_text() for name in headers}
+baseline = 'b0e4af22652b60831e6ba5c4daec4fdcdaa7fce4'
+texts = {
+    name: subprocess.check_output(
+        ['git', 'show', f'{baseline}:{name}'], text=True)
+    for name in headers
+}
 clean = lambda text: re.sub(r'/\*.*?\*/', ' ', text, flags=re.S)
 
 func = set()
@@ -1255,6 +1263,7 @@ documented = {kind: [] for kind in expected}
 dispositions = {kind: {} for kind in expected}
 allowed = {
     '10.0.0 계약에 유지',
+    '10.0.0 signature 변경 후 유지',
     '10.0.0 정식 service API로 대체',
     '제거',
     'header 없는 internal export 정리',
@@ -1306,7 +1315,7 @@ print('macro_names_sha256', macro_names_hash)
 PY
 ```
 
-현재 checkout 검증 결과:
+S1 source 기준선 검증 결과:
 
 ```text
 PUBLIC API INVENTORY CLEAN
@@ -1321,16 +1330,18 @@ macro_names_sha256 4dca975acc7490a1695f147253bc705e19a36fbc7f24a173f8b3cbd8fde69
 ## 11. S1 정식 spec 역방향 inventory
 
 미해결 후보는 없다. `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_spot_option_t`,
-`ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS`, `zlink_spot_actors`와 함께 다음 세 query와 그 전용 type·enum·field를
+`ZLINK_SPOT_OPT_REQUEST_TIMEOUT_MS`, `zlink_spot_actors`와 함께 다음 API와 전용 type·enum·field를
 10.0.0 공개 표면에서 제거한다.
 
+- `zlink_msg_gets`: 모든 호출이 실패하는 예약 API를 제거하고 peer 상세 정보는 monitor와 service query가
+  제공한다. 현재 header와 runtime symbol은 S4 구현 단계에서 함께 제거한다.
 - `zlink_spot_node_internal_sockets`: 내부 socket과 mailbox 배선을 공개하지 않는다.
 - `zlink_spot_node_spots`: MeshNode 전체 Spot inventory를 제공하지 않고 facade별 `zlink_spot_status()`만
   제공한다.
 - `zlink_spot_node_actors`: MeshNode 전체 Actor inventory를 제공하지 않고 exact Actor lookup과 completion
   record만 제공한다.
 
-정식 10.0.0 target은 service, monitoring, polling과 result-enum 영문/한국어 문서의 C block을 함께
+정식 10.0.0 target은 `core/doc/spec/core/`의 한국어·영문 정식 문서 25쌍에 있는 모든 C block을 함께
 역추출한다. 현재 header에 없는 target identifier도 function, type, enum type, enumerator, field와 macro로
 분리해 정렬하고 hash를 고정한다. 현재 identifier의 `service 대체` 행에 exact target identifier가 있으면
 그 identifier가 반드시 정식 C block에 있어야 한다. 새 기능이라 현재 identifier와 일대일 predecessor가 없는
@@ -1339,7 +1350,7 @@ target도 역방향 집합과 hash에 포함되므로 formal 문서에서 추가
 ```bash
 cd /home/hep7/project/kairos/zlink
 python3 - <<'PY'
-import hashlib, pathlib, re
+import hashlib, pathlib, re, subprocess
 
 headers = [
     'core/include/zlink.h', 'core/include/zlink/common.h',
@@ -1350,16 +1361,41 @@ headers = [
     'core/include/zlink_errno.h',
 ]
 formal_pairs = [
-    ('core/doc/spec/core/service/mesh-node.ko.md', 'core/doc/spec/core/service/mesh-node.md'),
-    ('core/doc/spec/core/service/spot.ko.md', 'core/doc/spec/core/service/spot.md'),
-    ('core/doc/spec/core/service/actor.ko.md', 'core/doc/spec/core/service/actor.md'),
-    ('core/doc/spec/core/service/dispatch.ko.md', 'core/doc/spec/core/service/dispatch.md'),
-    ('core/doc/spec/core/service/stream-session.ko.md', 'core/doc/spec/core/service/stream-session.md'),
-    ('core/doc/spec/core/monitoring.ko.md', 'core/doc/spec/core/monitoring.md'),
-    ('core/doc/spec/core/errors.ko.md', 'core/doc/spec/core/errors.md'),
-    ('core/doc/spec/core/polling.ko.md', 'core/doc/spec/core/polling.md'),
+    ('core/doc/spec/core/README.ko.md', 'core/doc/spec/core/README.md'),
+    ('core/doc/spec/core/00-public-contract-governance.ko.md',
+     'core/doc/spec/core/00-public-contract-governance.md'),
+    ('core/doc/spec/core/01-context.ko.md', 'core/doc/spec/core/01-context.md'),
+    ('core/doc/spec/core/02-message.ko.md', 'core/doc/spec/core/02-message.md'),
+    ('core/doc/spec/core/03-errors.ko.md', 'core/doc/spec/core/03-errors.md'),
+    ('core/doc/spec/core/04-errno-map.ko.md', 'core/doc/spec/core/04-errno-map.md'),
+    ('core/doc/spec/core/05-events.ko.md', 'core/doc/spec/core/05-events.md'),
+    ('core/doc/spec/core/06-polling.ko.md', 'core/doc/spec/core/06-polling.md'),
+    ('core/doc/spec/core/07-monitoring.ko.md', 'core/doc/spec/core/07-monitoring.md'),
+    ('core/doc/spec/core/08-utilities.ko.md', 'core/doc/spec/core/08-utilities.md'),
+    ('core/doc/spec/core/service/README.ko.md', 'core/doc/spec/core/service/README.md'),
+    ('core/doc/spec/core/service/01-mesh-node.ko.md', 'core/doc/spec/core/service/01-mesh-node.md'),
+    ('core/doc/spec/core/service/02-dispatch.ko.md', 'core/doc/spec/core/service/02-dispatch.md'),
+    ('core/doc/spec/core/service/03-spot.ko.md', 'core/doc/spec/core/service/03-spot.md'),
+    ('core/doc/spec/core/service/04-actor.ko.md', 'core/doc/spec/core/service/04-actor.md'),
+    ('core/doc/spec/core/service/05-stream-session.ko.md', 'core/doc/spec/core/service/05-stream-session.md'),
+    ('core/doc/spec/core/socket/README.ko.md', 'core/doc/spec/core/socket/README.md'),
+    ('core/doc/spec/core/socket/01-pair.ko.md', 'core/doc/spec/core/socket/01-pair.md'),
+    ('core/doc/spec/core/socket/02-pub.ko.md', 'core/doc/spec/core/socket/02-pub.md'),
+    ('core/doc/spec/core/socket/03-sub.ko.md', 'core/doc/spec/core/socket/03-sub.md'),
+    ('core/doc/spec/core/socket/04-xpub.ko.md', 'core/doc/spec/core/socket/04-xpub.md'),
+    ('core/doc/spec/core/socket/05-xsub.ko.md', 'core/doc/spec/core/socket/05-xsub.md'),
+    ('core/doc/spec/core/socket/06-dealer.ko.md', 'core/doc/spec/core/socket/06-dealer.md'),
+    ('core/doc/spec/core/socket/07-router.ko.md', 'core/doc/spec/core/socket/07-router.md'),
+    ('core/doc/spec/core/socket/08-stream.ko.md', 'core/doc/spec/core/socket/08-stream.md'),
 ]
 kinds = ('FUNC', 'TYPE', 'ENUM_TYPE', 'ENUMERATOR', 'FIELD', 'MACRO')
+
+public_function_declaration = re.compile(
+    r'(?m)^[ \t]*(?P<export>ZLINK_EXPORT[ \t]+)?'
+    r'(?P<return>(?!(?:typedef|static|inline|extern)\b)'
+    r'(?:const[ \t]+)?[A-Za-z_][A-Za-z0-9_]*'
+    r'(?:[ \t]+(?:long|[A-Za-z_][A-Za-z0-9_]*))?[ \t]*\*?[ \t]+)'
+    r'(?P<name>zlink_[A-Za-z0-9_]+)[ \t]*\(')
 
 def c_blocks(path):
     text = pathlib.Path(path).read_text()
@@ -1405,8 +1441,10 @@ def parse(text):
     return out
 
 legacy = {kind: set() for kind in kinds}
+baseline = 'b0e4af22652b60831e6ba5c4daec4fdcdaa7fce4'
 for path in headers:
-    parsed = parse(pathlib.Path(path).read_text())
+    parsed = parse(subprocess.check_output(
+        ['git', 'show', f'{baseline}:{path}'], text=True))
     for kind in kinds:
         legacy[kind].update(parsed[kind])
 
@@ -1415,6 +1453,13 @@ formal_text = ''
 for ko, en in formal_pairs:
     ko_c, en_c = c_blocks(ko), c_blocks(en)
     assert ko_c == en_c, f'C block ko/en mismatch: {ko} {en}'
+    for path, c_text in ((ko, ko_c), (en, en_c)):
+        missing_export = [
+            found.group('name') for found in public_function_declaration.finditer(c_text)
+            if found.group('export') is None
+        ]
+        assert not missing_export, (
+            f'formal public function lacks ZLINK_EXPORT: {path} {missing_export}')
     formal_text += '\n' + en_c
     parsed = parse(en_c)
     for kind in kinds:
@@ -1425,8 +1470,8 @@ expected = {
     'FUNC': (89, '43e61b7f5e17dafc08a92e6f8c9acc168be808c3938fe20beea14a1103719164'),
     'TYPE': (31, 'a2c31b1efd9230797f5ddfe7ab22425fa5ec0a41ceba109ebc091221cc373c30'),
     'ENUM_TYPE': (16, '7ff77e0d3a8882fb78e7eb29e76bd72bdaedda42c06cbc36c2037c41bcf9b14c'),
-    'ENUMERATOR': (101, '0d35709d8e48a0eb774d67422574180eb559b5171e5dfa63a7a4c4a49904d831'),
-    'FIELD': (210, '3b9bad5fdabeebf8957da6dd6ad8ca9832ab605ba87c3679ea7a00b89c7607b8'),
+    'ENUMERATOR': (100, 'cc8842f31ab57b8508754a8d2595df48037a5fcf328447524571664bcab4b134'),
+    'FIELD': (220, 'd9a271470bf9211b938bf9d0759516490e29cfea93c62c5d0e79a318e07a9e64'),
     'MACRO': (12, '79ee13a8019ea363387b3508f4b01da3b17cc372312ff44eae7b6c236e7576ef'),
 }
 for kind in kinds:
@@ -1437,8 +1482,8 @@ for kind in kinds:
 all_target = sorted((kind, name) for kind in kinds for name in target[kind])
 all_digest = hashlib.sha256(
     ''.join(f'{kind}\t{name}\n' for kind, name in all_target).encode()).hexdigest()
-assert len(all_target) == 459
-assert all_digest == 'db84244cef19970bf185d0a027fd1d3aacba1531a5f0582723c58bfc4a9bcb2e'
+assert len(all_target) == 468
+assert all_digest == '2778708021ddee185cfba2c09f065f1a0c1156231b433e0d2148cb5e0a657b98'
 
 mesh_monitor_functions = {
     'zlink_mesh_node_monitor_open', 'zlink_mesh_node_monitor_handler',
@@ -1463,12 +1508,19 @@ assert 'zlink_send_flags_t flags' in formal_declarations['zlink_mesh_node_actor_
 assert 'uint32_t timeout_ms' in formal_declarations['zlink_mesh_node_actor_new']
 assert 'zlink_actor_transfer_prepare_result_t *result_out' in formal_declarations[
     'zlink_mesh_node_actor_transfer_prepare']
+assert 'uint64_t target_spot_generation' in formal_declarations[
+    'zlink_mesh_node_actor_join_spot']
+for field in (
+    'zlink_actor_location_t.spot_generation',
+    'zlink_actor_control_record_t.previous_spot_generation',
+    'zlink_actor_control_record_t.current_spot_generation'):
+    assert field in formal['FIELD'], f'Actor Spot generation field missing: {field}'
 
 doc = pathlib.Path(
     'framework/doc/plan/v10.0/s1-core-public-api-inventory.ko.md').read_text()
 for name in (
-    'zlink_spot_node_internal_sockets', 'zlink_spot_node_spots',
-    'zlink_spot_node_actors'):
+    'zlink_msg_gets', 'zlink_spot_node_internal_sockets',
+    'zlink_spot_node_spots', 'zlink_spot_node_actors'):
     for kind in ('FUNC', 'EXPORT'):
         pattern = rf'^\| {kind} \| `{name}` \| 제거 \|'
         assert re.search(pattern, doc, re.M), f'removal not fixed: {kind} {name}'
@@ -1488,6 +1540,7 @@ formal_names = set().union(*(formal[kind] for kind in kinds))
 assert target_refs <= formal_names, f'non-formal replacement target: {sorted(target_refs - formal_names)}'
 
 print('S1 FORMAL REVERSE INVENTORY CLEAN')
+print('formal_document_pair_count', len(formal_pairs))
 print({kind: len(target[kind]) for kind in kinds})
 print('formal_target_identifier_count', len(all_target))
 print('formal_target_identifier_sha256', all_digest)
@@ -1495,12 +1548,13 @@ print('exact_replacement_target_refs', len(target_refs))
 PY
 ```
 
-현재 checkout 검증 결과:
+S1 source 기준선과 현재 정식 spec 검증 결과:
 
 ```text
 S1 FORMAL REVERSE INVENTORY CLEAN
-{'FUNC': 89, 'TYPE': 31, 'ENUM_TYPE': 16, 'ENUMERATOR': 101, 'FIELD': 210, 'MACRO': 12}
-formal_target_identifier_count 459
-formal_target_identifier_sha256 db84244cef19970bf185d0a027fd1d3aacba1531a5f0582723c58bfc4a9bcb2e
+formal_document_pair_count 25
+{'FUNC': 89, 'TYPE': 31, 'ENUM_TYPE': 16, 'ENUMERATOR': 100, 'FIELD': 220, 'MACRO': 12}
+formal_target_identifier_count 468
+formal_target_identifier_sha256 2778708021ddee185cfba2c09f065f1a0c1156231b433e0d2148cb5e0a657b98
 exact_replacement_target_refs 54
 ```

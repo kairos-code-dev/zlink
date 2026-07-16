@@ -1,5 +1,10 @@
 # Kotlin ObservabilityOps E2E
 
+Kotlin E2E lane 중 feature map만으로 역할 구성, evidence schema와 runner 입력을 설명할 수 없는 경우에만
+별도 README를 둔다. 이 README는 ObservabilityOps의 Kotlin 전용 role 구성, evidence schema와 runner
+입력·출력 형식을 설명한다. 공통 시나리오의 요구사항과 완료 판정은 Config 11 문서와 같은 디렉터리의
+feature map이 소유한다.
+
 이 디렉터리는 공통 Config 11의 OBS-A1~C5 증거를 검증한다. Kotlin trigger가
 Kotlin 공개 adapter를 사용하고, 공유 Java runtime 역할이 생성한 scenario별 JSON을
 검증기가 읽는다. 테스트를 통과시키기 위한 임의 계기나 drain 결과를 만들지 않는다.

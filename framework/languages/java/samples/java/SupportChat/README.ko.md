@@ -9,5 +9,5 @@ SupportChat은 고객과 상담원이 하나의 Session 서버 stream endpoint�
 ./run_sample.sh
 ```
 
-runner는 전용 Redis container를 띄우고 세 서버 역할을 실행한 뒤 client self-check를 수행한다.
+runner는 전용 Redis container와 세 서버 역할을 시작한 뒤 client self-check를 수행한다.
 성공하면 client marker와 server evidence marker를 모두 출력한다.

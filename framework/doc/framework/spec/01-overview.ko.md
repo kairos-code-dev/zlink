@@ -43,7 +43,7 @@ Spot Logical Multicast는 room, stage, zone처럼 위치가 바뀔 수 있는 lo
 자기 node의 subscription을 검사한다. 같은 node에서 여러 Spot이 일치하면 immutable message storage의
 reference를 공유해 각 Spot queue에 넣는다.
 
-Logical Multicast의 기본 publish 정책은 `NODROP`이다. 모든 remote pipe와 local Spot queue가 message를
+Logical Multicast의 기본 publish 정책은 `NoDrop = true`다. 모든 remote pipe와 local Spot queue가 message를
 받을 수 있을 때 한 번에 commit한다. 한 대상이라도 backpressure 상태이면 send timeout까지 기다리고,
 시간 안에 admission할 수 없으면 어느 대상에도 commit하지 않는다.
 

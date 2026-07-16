@@ -29,12 +29,12 @@ store endpoint와 실행별 key prefix를 넘긴다. client scenario는 publishe
 | `Client/Support/Evidence.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ScenarioContext.kt` | support | done | subscriber `/evidence/wait`와 snapshot helper를 client support context로 분리했다. |
 | `Client/Support/ScenarioAssert.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ScenarioContext.kt` | support | done | assertion과 wait helper를 client support context로 분리했다. |
 | `Client/Support/ServerProcessLauncher.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Support/ServerProcessLauncher.kt` | support | done | PS-A4 reconnect subscriber와 PS-B2 restarted publisher는 Client scenario/support가 직접 시작하고 종료하며, 재시작 process에도 같은 Redis location endpoint/key prefix를 전달한다. |
-| `Client/Scenarios/FanoutBasicDeliveryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/FanoutBasicDeliveryScenario.kt` | scenario | done | PS-A1 scenario entry가 support context를 호출한다. |
+| `Client/Scenarios/FanoutBasicDeliveryScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/FanoutBasicDeliveryScenario.kt` | scenario | 10.0.0 전환 대상 | 세 subscriber의 `ConnectionReady` 뒤 측정 구간을 시작하는 readiness evidence가 남아 있다. |
 | `Client/Scenarios/TopicFilterScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/TopicFilterScenario.kt` | scenario | done | PS-A2 scenario entry가 support context를 호출한다. |
 | `Client/Scenarios/LateSubscriberScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/LateSubscriberScenario.kt` | scenario | done | PS-A3 scenario entry가 support context를 호출한다. |
 | `Client/Scenarios/SubscriberReconnectScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/SubscriberReconnectScenario.kt` | scenario | done | PS-A4 scenario entry가 support context를 호출한다. |
 | `Client/Scenarios/SlowSubscriberScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/SlowSubscriberScenario.kt` | scenario | done | PS-B1 scenario entry가 support context를 호출한다. |
-| `Client/Scenarios/PublisherRestartScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/PublisherRestartScenario.kt` | scenario | done | PS-B2 scenario entry가 support context를 호출한다. |
+| `Client/Scenarios/PublisherRestartScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/PublisherRestartScenario.kt` | scenario | 10.0.0 전환 대상 | 같은 endpoint 재시작과 row 교체 뒤 새 publisher `ConnectionReady`를 직접 확인해야 한다. |
 | `Client/Scenarios/MissingMessageNameScenario.cs` | `Client/src/main/kotlin/systems/zlink/e2e/kotlin/pubsub/client/Scenarios/MissingMessageNameScenario.kt` | scenario | done | PS-C1 scenario entry가 support context를 호출한다. |
 | `Server/Registry/PubSub.Registry.csproj` | 없음 | build | not-needed | location store 전환 뒤 registry role project를 삭제했다. |
 | `Server/Registry/Program.cs` | 없음 | server-entry | not-needed | registry process를 띄우지 않으므로 별도 진입점이 없다. |
@@ -85,10 +85,10 @@ store endpoint와 실행별 key prefix를 넘긴다. client scenario는 publishe
 
 | Scenario ID | 공통 우선순위 | .NET 기준 scenario 파일 | Kotlin 목표 파일 | 상태 |
 |-------------|---------------|-------------------------|------------------|------|
-| `PS-A1` | P0 | `Client/Scenarios/FanoutBasicDeliveryScenario.cs` | `Client/.../Scenarios/FanoutBasicDeliveryScenario.kt` | done |
+| `PS-A1` | P0 | `Client/Scenarios/FanoutBasicDeliveryScenario.cs` | `Client/.../Scenarios/FanoutBasicDeliveryScenario.kt` | 10.0.0 전환 대상 |
 | `PS-A2` | P0 | `Client/Scenarios/TopicFilterScenario.cs` | `Client/.../Scenarios/TopicFilterScenario.kt` | done |
 | `PS-A3` | P0 | `Client/Scenarios/LateSubscriberScenario.cs` | `Client/.../Scenarios/LateSubscriberScenario.kt` | done |
 | `PS-A4` | P1 | `Client/Scenarios/SubscriberReconnectScenario.cs` | `Client/.../Scenarios/SubscriberReconnectScenario.kt` | done |
 | `PS-B1` | P1 | `Client/Scenarios/SlowSubscriberScenario.cs` | `Client/.../Scenarios/SlowSubscriberScenario.kt` | done |
-| `PS-B2` | P1 | `Client/Scenarios/PublisherRestartScenario.cs` | `Client/.../Scenarios/PublisherRestartScenario.kt` | done |
+| `PS-B2` | P1 | `Client/Scenarios/PublisherRestartScenario.cs` | `Client/.../Scenarios/PublisherRestartScenario.kt` | 10.0.0 전환 대상 |
 | `PS-C1` | P0 | `Client/Scenarios/MissingMessageNameScenario.cs` | `Client/.../Scenarios/MissingMessageNameScenario.kt` | done |

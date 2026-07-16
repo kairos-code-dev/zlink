@@ -40,6 +40,24 @@ shutdown의 기본 deadline은 30초다.
 terminal result는 `Drained` 또는 `ForceStopped(reason)`이다. force reason은
 `deadline_exceeded|drain_state_publish_failed|owner_cleanup_failed|teardown_failed`의 닫힌 값이다.
 
+### 2.1 MeshNode drain policy
+
+MeshNode 등록은 `ZLinkMeshNodeDrainPolicy`를 하나 설정한다. 기본값은 `DrainNatural`이며 닫힌 값은 다음
+둘이다.
+
+| 값 | 계약 |
+|---|---|
+| `DrainNatural` | 신규 Node·Spot·Actor admission과 새 transfer 배정을 닫고, 이미 수락한 turn과 transfer barrier를 진행한다. Actor handoff를 완료한 뒤 Spot은 application의 자연 종료 조건이 충족될 때까지 유지한다. |
+| `ReleaseAndRecreate` | 같은 admission seal과 Actor handoff를 수행한 뒤, Spot의 accepted queue를 비우고 Spot을 닫아 location row를 release한다. 다음 요청은 serving MeshNode에서 `GetOrCreate`로 Spot을 다시 구성한다. |
+
+정책은 Spot 하나가 아니라 MeshNode 전체에 적용한다. 따라서 Node·Channel selection 제외, Node·Spot·Actor
+admission seal, 진행 중인 Actor transfer와 STREAM barrier, owner cleanup 순서는 두 값에서 동일하다. 차이는
+accepted Spot turn이 끝난 뒤 Spot location ownership을 정리하는 방식이다.
+
+`ReleaseAndRecreate`는 외부 영속 상태에서 Spot을 다시 구성할 수 있을 때만 사용한다. Framework는 Spot의
+in-memory domain state를 복사하거나 event를 replay하지 않는다. 재구성할 수 없는 Spot에 이 값을 설정해
+발생한 업무 상태 손실을 Framework가 복구하지 않는다.
+
 ## 3. Drain 순서
 
 Drain은 다음 단계를 순서대로 수행한다.
@@ -106,8 +124,9 @@ drain이 시작한 Actor handoff와 이미 진행 중인 transfer는 같은 tran
 - deadline을 넘긴 transfer는 force stop reason과 runtime error sink에 기록한다.
 
 Framework는 Spot의 in-memory domain state를 다른 node로 자동 복사하지 않는다. Spot은 신규 join과 payload를
-seal하고 accepted turn을 마친 뒤 application이 정한 persistence·recreation 정책에 따라 close한다. Actor
-membership transaction과 Spot control claim의 순서는 [23 Spot Actor](23-spot-actor.ko.md)가 정한다.
+seal하고 accepted turn을 마친 뒤 §2.1의 MeshNode drain policy에 따라 자연 종료를 기다리거나 location row를
+release한 뒤 닫는다. Actor membership transaction과 Spot control claim의 순서는
+[23 Spot Actor](23-spot-actor.ko.md)가 정한다.
 
 ## 7. STREAM barrier
 
@@ -168,4 +187,6 @@ endpoint, session ID와 topic을 label로 사용하지 않는다.
 - `draining` target의 신규 transfer는 거부하고 이미 admission된 commit은 terminal까지 진행한다.
 - deadline 초과가 `force_stopping`과 `ForceStopped` result로 유한 완료된다.
 - 중복 `Drain` 호출과 여러 `AwaitDrained` waiter가 같은 terminal result를 관찰한다.
+- `DrainNatural`은 accepted Spot turn과 자연 종료를 기다리고, `ReleaseAndRecreate`는 queue close 뒤에만
+  Spot location row를 release한다.
 - event와 metric state, outcome, force reason이 실제 terminal result와 일치한다.

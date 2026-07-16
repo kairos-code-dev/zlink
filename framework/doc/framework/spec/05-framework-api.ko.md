@@ -10,6 +10,13 @@ generic 제약, overload와 비동기 반환 타입은 각 package의 언어별 
 MeshNode의 정확한 인터페이스는
 [.NET RouteMesh·MeshNode 인터페이스](server/languages/dotnet/05-route-mesh.ko.md)를 따른다.
 
+### 1.1 Public contract와 runtime implementation의 경계
+
+이 문서와 package별 공통 스펙은 언어에 관계없이 같아야 하는 public 동작을 소유한다. 각 언어의
+exact interface 문서는 그 동작을 해당 언어의 타입, method, 반환값과 오류 표현으로 고정한다.
+Runtime 내부 socket, queue, dispatch table과 adapter type은 public contract가 아니며 exact interface에
+노출하지 않는다. 모든 언어의 exact interface는 공통 계약을 축소하지 않고 같은 public 동작을 투영한다.
+
 ## 2. Root 등록
 
 Framework root는 process의 host lifecycle과 DI에 한 번 등록한다. Root configuration은 다음 기능을
@@ -23,6 +30,7 @@ Framework root는 process의 host lifecycle과 DI에 한 번 등록한다. Root 
 | location store | application이 만든 store instance를 명시적으로 등록한다 |
 | codec extension | typed payload serializer를 등록한다 |
 | handler와 filter | dispatch handler, filter와 metadata policy를 등록한다 |
+| worker | bounded worker scheduler의 동시성, idle timeout과 queue 상한을 설정한다 |
 
 같은 root를 process에 두 번 구성하거나 같은 MeshName을 중복 등록하면 startup에서 설정 오류가 발생한다.
 
@@ -37,15 +45,33 @@ RouteMesh 등록은 MeshName 하나를 받고 MeshNode builder를 반환한다. 
 - manual peer connection intent
 - node direct와 channel handler
 - Entry Spot, user Spot factory, Actor factory와 transfer adapter
+- Actor transfer deadline과 stale route forwarding window
 - Logical Multicast publish policy
+- MeshNode drain policy
 
 MeshName은 물리 mesh의 이름이고 ChannelName은 논리 membership이다. 같은 MeshNode에 ChannelName을 여러
 개 등록할 수 있다. `ChannelName` 호출은 별도 socket을 만들지 않는다. host가 시작된 뒤 MeshName,
 routing ID, endpoint와 membership set은 바꿀 수 없다.
 
+Actor transfer adapter를 하나라도 등록하면 transfer deadline과 forwarding window를 host start 전에 양수로
+설정해야 한다. Deadline은 prepare부터 terminal `Activated` 또는 `Aborted`까지의 상한이다. Forwarding
+window는 commit 뒤 old ActorRef로 도착한 straggler를 target으로 전달하는 기간이다. Deadline이 끝나면 commit
+전 transfer는 abort하고, commit 뒤 transfer는 target activation recovery를 계속한다. Forwarding window가
+끝난 stale route는 `ActorLocationStale`로 실패하며 Framework가 자동으로 다시 보내지 않는다.
+
 ChannelName builder는 해당 membership의 handler namespace와 weight를 소유한다. weight 범위는 0부터
 100까지이며 기본값은 100이다. 실행 중에는 channel weight와 MeshNode의 `MaxMessageSize`를 바꿀 수 있다.
 그 밖의 topology와 socket 설정은 startup 뒤 바꿀 수 없다.
+
+Framework의 `MaxMessageSize = 0`은 별도 상한을 두지 않는다는 뜻이다. Core adapter는 이 값을
+`ZLINK_OPT_MAXMSGSIZE = -1`로 변환한다. 양수는 변환하지 않고 같은 byte 상한으로 전달하며 음수 Framework
+값은 설정 오류다. 이 변환은 모든 언어 adapter에 동일하게 적용한다.
+
+MeshNode builder는 drain 정책을 하나 설정하며 기본값은 `DrainNatural`이다. 정책 타입은
+`ZLinkMeshNodeDrainPolicy`이고 닫힌 값은 `DrainNatural`, `ReleaseAndRecreate`다. 이 설정은 별도 Spot
+builder가 아니라 Node·Spot·Actor·transfer를 함께 소유하는 MeshNode 등록에 적용한다. 두 값의 종료 순서와
+Spot 상태 처리 차이는 [Graceful Drain §2.1](server/54-graceful-drain-handoff.ko.md#21-meshnode-drain-policy)이
+정한다.
 
 ## 4. Manual peer
 
@@ -86,7 +112,7 @@ Operation별 call object는 해당 기능에 유효한 설정만 제공한다.
 
 - send는 metadata와 submit 실행 방식을 제공한다.
 - request는 metadata, reply timeout, 취소와 typed reply를 제공한다.
-- Logical Multicast publish는 ChannelName, topic과 NODROP 정책을 사용한다.
+- Logical Multicast publish는 metadata, ChannelName, topic과 `NoDrop` 정책을 사용한다.
 - Spot과 Actor 호출은 resolved address의 generation을 보존한다.
 - STREAM 호출은 session identity와 packet correlation을 보존한다.
 
@@ -99,7 +125,8 @@ metadata를 자동 복사하지 않는다.
 
 ## 7. Logical Multicast option
 
-MeshNode와 Spot publish API는 `NODROP`을 설정할 수 있으며 기본값은 `true`다.
+MeshNode와 Spot publish API는 `NoDrop`을 설정할 수 있으며 기본값은 `true`다. 이 boolean은 Core
+`ZLINK_MESH_PUBLISH_OPT_NODROP`의 0 또는 1을 그대로 투영한다.
 
 | 값 | admission 계약 |
 |---|---|
@@ -107,8 +134,8 @@ MeshNode와 Spot publish API는 `NODROP`을 설정할 수 있으며 기본값은
 | `false` | 막힌 target만 제외하고 admission 가능한 target에 commit할 수 있다 |
 
 Blocking publish는 MeshNode send timeout까지 기다린다. Non-blocking publish는 즉시 backpressure 결과를
-반환한다. Publish 결과는 snapshot remote target 수, admitted remote target 수, 제외된 target 수와 local
-Spot match 수를 관찰할 수 있어야 한다.
+반환한다. Publish 결과는 remote와 local 각각에 대해 snapshot, admitted와 dropped 수를 제공한다. 여섯
+count는 Core `zlink_mesh_publish_detail_t`의 같은 이름 필드와 일대일로 대응한다.
 
 ## 8. Handler 등록과 dispatch
 
@@ -131,6 +158,19 @@ Runtime reflection을 제공하는 언어는 명시한 assembly, module 또는 p
 있다. C++는 compile-time type과 명시 builder 등록을 사용한다. 어떤 방식을 사용해도 같은 dispatch key와
 중복 검증 규칙을 적용한다.
 
+### 8.1 Handler filter
+
+Handler filter는 ChannelName의 send/request dispatch에만 적용한다. Node direct, Spot, Actor, STREAM session,
+Logical Multicast와 classic fanout dispatch에는 적용하지 않는다. Filter는 root에 등록한 순서대로 handler
+앞에서 실행되며, 각 filter는 `next`를 최대 한 번 호출할 수 있다. `next`를 호출하면 남은 filter와 handler를
+실행하고, 호출하지 않으면 해당 dispatch를 종료한다. Filter 또는 handler에서 발생한 예외는 같은 dispatch
+실패 처리 규칙을 따른다. 각 filter는 해당 dispatch의 DI scope에서 resolve하며 handler와 같은 scoped
+dependency를 사용한다. Root singleton으로 한 번 resolve해 여러 dispatch에서 공유하지 않는다.
+
+언어별 exact interface는 filter context와 `next`의 구체적인 타입, 비동기 반환 타입과 short-circuit 결과
+표현을 소유한다. 적용 범위와 실행 순서는 이 절이 소유하므로 언어별 구현이 다른 dispatch owner까지 filter를
+임의로 확장하면 안 된다.
+
 Core ready callback은 payload를 application callback 인자로 전달하지 않는다. Framework scheduler는
 ready owner의 claim을 받아 batch로 drain하고, Node, Spot과 Actor handler를 해당 application 실행 문맥에서
 호출한다. Completion, send-ready와 transfer control은 별도 infrastructure 실행 영역에서 진행한다.
@@ -144,6 +184,20 @@ Codec은 업무 객체와 payload bytes 사이의 변환만 담당한다. Packet
 선택은 Framework가 소유한다. Application metadata와 payload ownership은
 [메시지 계약](03-message-model.ko.md)을 따른다. 내부 multipart 구조는 public Framework API에 노출하지
 않는다.
+
+언어별 server root와 Stream Connector의 codec 등록 표면은 다음 exact interface가 소유한다.
+
+| 언어 | server root 등록 | Stream Connector 등록 | exact interface owner |
+|---|---|---|---|
+| `.NET` | `Codecs.Use(extension)` | `ZlinkStreamConnectorOptions.PayloadCodec` | [server](server/languages/dotnet/02-handler-interfaces.ko.md), [connector](stream-connector/languages/dotnet/03-stream-connector.ko.md) |
+| Java | `codecs().use(extension)` | connector의 `typedCodec` option | [server](server/languages/java/02-handler-interfaces.ko.md), [connector](stream-connector/languages/java/03-stream-connector.ko.md) |
+| Kotlin | `codecs().use(extension)` | connector의 `typedCodec` option | [server](server/languages/kotlin/02-handler-interfaces.ko.md), [Java/Kotlin connector](stream-connector/languages/java/03-stream-connector.ko.md) |
+| Node.js | `codecs().use(extension)` | connector의 `codec` option | [server](server/languages/node/02-handler-interfaces.ko.md), [connector](stream-connector/languages/typescript/03-stream-connector.ko.md) |
+| C++ | `codecs().use(extension)` | `connector_options_t::typed_codec` | [server](server/languages/cpp/02-framework-interfaces.ko.md), [connector](stream-connector/languages/cpp/03-stream-connector.ko.md) |
+
+두 등록 표면은 같은 typed payload 계약을 투영하지만 server extension 객체와 connector option의 구체적인
+타입까지 같아야 한다는 뜻은 아니다. JSON 기본 codec은 별도 등록 없이 사용하며, 다른 codec도 메시지마다
+등록하지 않고 root 또는 connector instance에 한 번 등록한다.
 
 ## 10. Location store
 
@@ -166,7 +220,7 @@ Classic fanout은 root에서 독립 channel로 등록한다. Publisher 역할은
 
 Fanout publish 완료는 local publisher transport가 event를 받아들였다는 뜻이다. Subscriber 수신과 handler
 완료는 확인하지 않는다. 자세한 전달 계약은
-[Channel 메시징](server/11-channel-messaging.ko.md#5-classic-fanout)이 소유한다.
+[Channel 메시징](server/11-channel-messaging.ko.md#5-classic-fanout과의-경계)이 소유한다.
 
 ## 12. Spot, Actor와 STREAM owner
 
@@ -214,6 +268,46 @@ Actor egress는 bound session FIFO를 사용한다.
 `RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 현재 mesh
 member snapshot에 target이 없는 상태다. `ActorLocationStale`은 address generation이 달라진 상태다.
 
+### 13.1 Core result 변환
+
+Framework는 target selection의 사전 조건과 Core 결과를 다음 순서로 변환한다. membership snapshot을 먼저
+확인하더라도 실제 submit 결과가 우선한다. snapshot 확인과 submit 사이에 route가 바뀌면 Core가 반환한
+runtime 결과를 사용하며 다른 target으로 다시 제출하지 않는다.
+
+| Core 결과 | Framework 관찰 결과 |
+|---|---|
+| `ZLINK_SUBMIT_OK` | send·publish는 accepted, request는 pending operation으로 전환 |
+| `ZLINK_SUBMIT_BACKPRESSURED` | backpressured submit result. blocking 호출은 send timeout 경계까지 Core가 기다린 뒤 같은 결과를 만든다 |
+| `ZLINK_SUBMIT_NOT_CONNECTED` | `RouteNotConnected` |
+| `ZLINK_SUBMIT_NOT_FOUND` | `RequestTargetNotFound`. Channel member, publish target 또는 direct logical target이 없는 경우를 포함한다 |
+| `ZLINK_SUBMIT_NOT_ADMITTED` | `RequestRejected` |
+| `ZLINK_SUBMIT_TERMINATED`, shutdown 상태의 `ZLINK_SUBMIT_INVALID_STATE` | shutdown result |
+| 그 밖의 invalid handle·argument·state, not-supported, thread, memory, sequence, internal 결과 | 언어별 local call 오류. remote error reply로 바꾸지 않는다 |
+
+request admission 뒤의 completion은 아래처럼 변환한다.
+
+| Core terminal 결과 | Framework 관찰 결과 |
+|---|---|
+| `ZLINK_REQUEST_OK` | typed reply 또는 typed framework error reply |
+| `ZLINK_REQUEST_TIMED_OUT` | request timeout |
+| `ZLINK_REQUEST_NOT_FOUND` | `RequestTargetNotFound` |
+| `ZLINK_REQUEST_NOT_CONNECTED` | `RouteNotConnected` |
+| `ZLINK_REQUEST_REJECTED` | `RequestRejected` |
+| `ZLINK_REQUEST_CONFLICT` | Spot·Actor generation이면 stale 결과, 그 밖에는 protocol conflict |
+| `ZLINK_REQUEST_BACKPRESSURED`, `ZLINK_REQUEST_BUSY` | admission·capacity 오류. 자동 재제출하지 않는다 |
+| `ZLINK_REQUEST_TERMINATED` | shutdown result |
+| protocol, invalid argument·state, not-supported와 internal 결과 | 대응하는 protocol 또는 local runtime 오류 |
+
+호출자 cancellation은 Core terminal enum과 별도의 Framework waiter 결과다. cancellation 뒤 도착한 Core
+completion은 correlation을 정리하되 두 번째 terminal 결과를 만들지 않는다.
+
+### 13.2 Dispatch 실패 action owner
+
+Dispatch 실패 observer의 reason, action과 caller 결과 대응은
+[Message Flow Tracing §4](server/52-message-flow-tracing.ko.md#4-event-fields)가 단일 owner다.
+언어별 exact interface는 그 닫힌 값을 해당 언어의 enum 또는 문자열로 투영하며 값을 추가하거나 줄이지
+않는다.
+
 ## 14. Startup validation
 
 Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증한다.
@@ -225,6 +319,7 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
 - location 기능을 사용할 때 location store 등록
 - manual peer endpoint와 expected RID 형식
 - Spot, Actor, STREAM session factory와 owner 관계
+- Actor transfer adapter를 등록했을 때 양수인 transfer deadline과 forwarding window
 - TLS certificate, key와 trust 설정의 완전성
 
 설정 오류는 lazy first call까지 미루지 않고 host startup을 실패시킨다.

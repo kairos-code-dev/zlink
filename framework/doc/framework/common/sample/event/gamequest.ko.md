@@ -2,9 +2,8 @@
 
 [Event 샘플 목록](README.ko.md)
 
-> 이 문서는 새 구현 기준이다. GameQuest는 player별 owner spot으로 gameplay event를 모아
-> quest 진행과 완료를 판정하는 ZLink framework 샘플이다. 이전 판(HTTP action + fanout + 외부
-> log)은 git 히스토리에 있다.
+> GameQuest는 player별 owner spot으로 gameplay event를 모아 quest 진행과 완료를
+> 판정하는 ZLink framework 샘플이다.
 
 ## 1. 목적과 의도
 
@@ -51,7 +50,7 @@ GameQuest는 **player owner spot이 대량 gameplay event를 어떻게 직렬 �
 
 | 축 | 요구 | 수단 |
 |------|------|------|
-| 확장성 | player 수·event rate에 수평 확장, 단일 병목 없음 | `PlayerId`별 owner spot을 노드에 분산(spot-mesh) |
+| 확장성 | player 수·event rate에 수평 확장, 단일 병목 없음 | `PlayerId`별 owner spot을 노드에 분산(MeshNode) |
 | 순서·일관성 | 같은 player event를 순서대로, 충돌 없이 | player당 single owner(직렬 처리) |
 | 게임 수준 견고성 | 진행을 잃지 않되 절대 무손실은 아님 | `QuestEventStore`로 복원되는 owner state + reset/reconcile 보정 |
 | server-authoritative | client 신뢰하지 않음 | 판정·reward 결정 전부 서버 owner spot에서 |
@@ -154,7 +153,7 @@ graph TD
 할당하고 `PlayerId`에 bind**한다. client 메시징은 session actor로 전달되고, session actor가
 authoritative gameplay 처리 후 gameplay event를 만들어 **그 player에 할당된 `PlayerQuestSpot`으로
 owner routing으로 메시징**한다. 그 spot이 조건 평가·상태 기록·notify를 전부 소유한다. notify는
-bound session을 통해 연결을 가진 `Session Server`로 돌아간다.
+bound session을 통해 연결을 소유한 `Session Server`로 전달된다.
 
 GameQuest는 `QuestEventStore`, `QuestReadModelStore`, `GameplayStateStore`, `Location Store`를
 명시적인 dependency로 둔다. framework와 owner spot이 맡는 것은 player별 직렬 실행, hot state 소유,
@@ -193,7 +192,7 @@ owner spot이 파생 event를 방출해 별도 aggregator가 cross-player 집계
 
 핵심은 이렇다. **진행 tier는 유실돼도 reset/reconcile로 흡수할 수 있으므로, owner spot 하나로
 순서만 잡으면 충분하고 기대 버전 차단이나 명시적 재개 같은 무손실 장치는 필요 없다.** 주문
-처리처럼 무손실이 필요한 도메인은 그 장치를 얹어야 하며, 그 구체적인 이유는
+처리처럼 무손실이 필요한 도메인은 해당 장치를 추가해야 하며, 구체적인 이유는
 [ShoppingMall §5](shoppingmall.ko.md)에서 다룬다.
 
 ## 6. 서버 구성
@@ -226,12 +225,12 @@ graph LR
 authoritative gameplay 처리 후 gameplay event를 만들어 **그 player에 할당된 `PlayerQuestSpot`
 (owner spot)으로 owner routing**한다. owner spot이 아직 없으면 첫 메시징에서 활성(생성)된다.
 `PlayerQuestSpot`은 조건 평가·상태 기록·notify를 소유하며, notify는 bound session을 통해 연결을
-가진 session actor로 돌아간다. session binding(`PlayerId` ↔ 연결 노드) 등록·조회는 framework의
+소유한 session actor로 전달된다. session binding(`PlayerId` ↔ 연결 노드) 등록·조회는 framework의
 location store 계약(route location)을 쓴다 — 공유 저장소 구현체(예: Redis)만 꽂으면 등록·조회·
 lifecycle은 framework가 처리한다.
 
 owner spot은 연결(session actor)과 분리돼 있어 어느 `Session Server`에 붙든 같은 `PlayerId`는
-항상 같은 owner spot으로 간다. owner spot의 호스팅은 spot-mesh에 맡기며 연결 노드와 같은 노드일
+항상 같은 owner spot으로 간다. owner spot의 호스팅은 MeshNode에 맡기며 연결 노드와 같은 노드일
 필요가 없다. 샘플은 session actor를 호스팅하는 `GameApi` 2개와 `PlayerQuestSpot`을 호스팅하는
 `QuestMission` 2개를 분리한다. 두 역할 모두 공유 location store로 자동 연결되며, 고정된 상대
 endpoint를 직접 연결하지 않는다.
@@ -240,7 +239,7 @@ endpoint를 직접 연결하지 않는다.
 |------|------|
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis). peer discovery(자동 연결)와 `PlayerId` 세션 binding row를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 | `Session Server` | WebSocket 종단, session actor 생성·entry-spot 할당·bind, authoritative gameplay 처리(event 생성), owner spot으로 메시징, notify push. |
-| `PlayerQuestSpot` (owner spot) | player당 owner. event 적용, 조건 평가, 완료/보상 결정, 상태 기록. spot-mesh에 호스팅. |
+| `PlayerQuestSpot` (owner spot) | player당 owner. event 적용, 조건 평가, 완료/보상 결정, 상태 기록. MeshNode에 호스팅. |
 
 | 저장소 | 성격 | 책임 |
 |------|------|------|
@@ -249,7 +248,7 @@ endpoint를 직접 연결하지 않는다.
 | `GameplayStateStore` | authoritative facts | kill/inventory/mission 누적 fact. `Session Server` gameplay module이 action 처리 시 기록한다(fact 기록은 웹 방식에도 동일하게 있는 비용). reset/reconcile 보정 원천. |
 | `QuestDefinition` | config | quest 조건. trigger event type으로 인덱싱. |
 
-샘플 실행은 `Session Server` 2개와 owner tier 2개를 띄워 session scale-out과 player owner
+샘플 실행은 `Session Server` 2개와 owner tier 2개를 시작해 session scale-out과 player owner
 분산을 함께 본다. 저장소는 공유 dependency로 둔다.
 
 ```mermaid
@@ -313,8 +312,8 @@ player를 가로지르는 집계뿐이다(13절).
 client가 하나의 WebSocket으로 연결하면 entry-spot이 세션 actor를 만들고 `PlayerId`↔connection↔
 노드 binding을 location store에 등록한다(등록·갱신은 framework lifecycle이 수행). action은 같은
 연결로 들어와 entry-spot을 거쳐
-owner spot으로 라우팅되고, notify는 binding을 통해 실제 연결을 가진 노드로 돌아간다. reconnect가
-다른 노드로 붙으면 binding이 갱신되고 이후 notify는 새 노드로 간다. binding이 없는 동안의
+owner Spot으로 라우팅되고, notify는 binding을 통해 실제 연결을 소유한 노드로 전달된다. reconnect가
+다른 노드에 다시 연결하면 binding이 갱신되고 이후 notify는 새 노드로 간다. binding이 없는 동안의
 notify는 drop해도 되며, client는 재접속 후 `GetQuestProgressReq` 조회로 보정한다.
 
 owner spot은 API 처리 순서에 기대지 않는다. 같은 player의 서로 다른 action이 다른 노드에서
@@ -353,7 +352,7 @@ event stream이고, `QuestReadModelStore`는 언제든 replay로 다시 만들 �
 필요 없다.
 
 - **replay·snapshot**: 활성화 시 stream을 replay해 aggregate를 복원한다. stream이 길면 주기적
-  snapshot을 두어 `snapshot + 꼬리`만 replay한다. 노드가 죽으면 owner lease 만료 후 다음 owner
+snapshot을 두어 `snapshot + 꼬리`만 replay한다. 노드가 비정상 종료되면 owner lease 만료 후 다음 owner
   routing 메시징(또는 reconcile)이 다른 노드에서 spot을 재활성(re-home)해 같은 방식으로
   복원한다. 운영자 개입은 필요 없지만 복구 전까지 짧은 공백이 있을 수 있다(§5의 "노드 장애").
 - **idempotency**: 적용한 source `EventId`를 stream에 함께 기록해, 재전달·재시도를 중복 반영하지
@@ -422,11 +421,11 @@ graph LR
 - **저빈도·치명적**(재화·경제·거래) 경로에만 쓴다. entry-spot이 event를 durable log에 append하고
   spot이 소비하므로 전달 유실이 사라지고, ingest가 replay 가능해진다.
 - 대가: §3에서 없앴던 **log·partition·consumer·offset** 인프라가 이 경로에 한해 되돌아오고,
-  action 경로에 durable write 지연과 consume lag이 붙는다. PlayerId 파티션이면 순서 보장의 주체가
+  action 경로에 durable write 지연과 consume lag이 추가된다. PlayerId 파티션이면 순서 보장의 주체가
   파티션으로 옮겨간다. 그래서 진행 tier 전체에 이걸 쓰면 손해이고, reward 경로에만 국소 적용한다.
 
 정리하면 질문의 답은 "된다. 그리고 그것이 reward tier의 durable ingest다. 단 진행 tier까지
-확장하면 owner routing으로 없앤 복잡도를 되사는 것이라, log는 유실이 치명적인 경로에만 얹는다".
+확장하면 owner routing으로 줄인 복잡도가 다시 증가하므로 log는 유실이 치명적인 경로에만 추가한다".
 샘플 기본 구현은 진행 tier와 중복 **결정** 방지를 검증하고, durable ingest log와 지급 결정 store가
 필요한 reward tier는 production 확장으로 둔다.
 
@@ -437,26 +436,26 @@ SessionServer/
   Session/
     EntrySpotSessionHandler      # WebSocket join, bind, push relay
   Gameplay/
-    Combat / Inventory / Mission / Feature / World   # authoritative 규칙, gameplay event 생성
+    Combat / Inventory / Mission / Feature / World   # authoritative rules and gameplay events
   Quest/
     Domain/
-      QuestDefinition            # 조건, trigger event type 인덱스
+      QuestDefinition            # conditions and trigger event type index
       QuestCondition
-      PlayerQuestAggregate       # (PlayerId, QuestId) event fold로 복원되는 상태
-      QuestPolicy                # 완료·보상 판정
+      PlayerQuestAggregate       # state restored by folding (PlayerId, QuestId) events
+      QuestPolicy                # completion and reward decisions
       QuestEvents                # Progressed, Completed, RewardGranted, Reconciled
     Application/
-      ApplyGameplayMsgUseCase    # gameplay msg → 평가 → domain event append → projection
+      ApplyGameplayMsgUseCase    # evaluate message, append event, update projection
       GetQuestProgressUseCase
-      ReconcileQuestUseCase      # 보정 → Reconciled event
+      ReconcileQuestUseCase      # reconciliation to Reconciled event
     Ports/
-      QuestEventStorePort        # append, replay(+snapshot)
-      QuestReadModelPort         # projection 갱신·조회
-      GameplayFactsPort          # reset/reconcile 조회
+      QuestEventStorePort        # append and replay with optional snapshot
+      QuestReadModelPort         # update and query projection
+      GameplayFactsPort          # reset and reconciliation queries
       QuestNotificationPort      # bound session push
     Infrastructure/
       Spots/
-        PlayerQuestSpot          # per-player owner actor (event-sourced aggregate)
+        PlayerQuestSpot          # per-player owner Spot and event-sourced aggregate
         Handlers/
           ApplyGameplayMsgHandler
           GetQuestProgressHandler

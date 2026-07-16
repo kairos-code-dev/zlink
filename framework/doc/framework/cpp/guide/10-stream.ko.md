@@ -78,7 +78,7 @@ stateDiagram-v2
     authenticated --> [*]: on_disconnected → unbind_session
 ```
 
-전형적인 `on_packet` 패턴은 [9장 §4](09-actor-session.ko.md#4-session-actor-바인딩)에 있다:
+전형적인 `on_packet` 패턴은 [9장 §4](09-actor-session.ko.md#4-session--actor-바인딩)에 있다:
 인증 패킷이면 인증 → actor 바인딩, 그 외에는 바인딩된 actor로
 `relay(payload)`.
 
@@ -124,19 +124,17 @@ connector의 계약과 사용법은
 [stream connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)를
 본다. 동작 예제는 [samples/TicTacToe/Client](../../../../languages/cpp/samples/TicTacToe/Client)가 기준이다.
 
-connector도 framework처럼 **custom codec**을 끼울 수 있다. connector typed 경로는
-`codec_traits<T>`를 쓰므로, DTO 타입에 대해 `codec_traits<place_order_t>`를 특수화해
-`encode`/`decode`/`codec`을 주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽
-등록(`codecs().use(extension)`)과 대칭이며, 두 표면의 전체 목록은
-[framework-api §2.2](../../spec/05-framework-api.ko.md) 표를 본다.
+connector도 framework처럼 **custom codec**을 사용할 수 있다. codec extension이 제공하는
+`typed_codec_t` 구현을 `connector_options_t::typed_codec`에 한 번 넣으면 typed send, request와
+수신이 모두 같은 codec을 사용한다. server framework 쪽 등록(`codecs().use(extension)`)과
+대칭이며, 두 표면의 전체 목록은
+[framework-api §9](../../spec/05-framework-api.ko.md#9-codec) 표를 본다.
 
 ```cpp
-template <>
-struct zlink::stream_connector::codecs::codec_traits<place_order_t> {
-    static constexpr codec_t codec = codec_t::raw;
-    static zlink::message_t encode (const place_order_t &v) { return zlink::message_t::from (avro_encode (v)); }
-    static place_order_t decode (const zlink::message_t &m) { return avro_decode<place_order_t> (m.to_string ()); }
-};
+connector_options_t options;
+options.endpoint = "tcp://game.example.com:9100";
+options.typed_codec = avro_typed_codec; // extension package가 제공한 shared_ptr<const typed_codec_t>
+auto client = connector_factory_t::create(std::move(options));
 ```
 
 ## 5. 패킷 계약
@@ -150,8 +148,9 @@ stream 패킷도 채널 메시지와 같은 typed DTO(`packet_name`)다. 서버 
 
 ## 6. 자주 막히는 곳
 
-- **세션이 안 생긴다** → stream node에 `register_session<T>()`가 없거나 `bind`를
-  안 했다. session actor가 필요하면 같은 구성 안에 stream session이 bind할 SpotNode와 route channel이 있는지 확인한다([9장 §5](09-actor-session.ko.md#5-actor-gateway)).
+- **session이 만들어지지 않는다** → stream node에 `register_session<T>()`가 없거나 `bind`를
+  설정하지 않았다. session actor가 필요하면 같은 구성 안에 stream session의 actor를 소유할 MeshNode와
+  ChannelName이 있는지 확인한다([9장 §5](09-actor-session.ko.md#5-actor-gateway)).
 - **패킷 디코딩 실패** → `packet_name`과 codec 등록을 확인한다.
 - **heartbeat·재연결·TLS 동작** → 이는 서버 session이 아니라 클라이언트
   connector의 책임이다. [connector 가이드](../../../stream-connector/cpp/guide/INDEX.ko.md)가 다룬다.

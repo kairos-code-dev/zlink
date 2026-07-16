@@ -1,98 +1,42 @@
 # Kotlin AutomaticTurnDispatch E2E feature map
 
-이 문서는 `framework/doc/framework/common/e2e/config-8-automatic-turn-dispatch.ko.md`를
-Kotlin framework E2E에서 어떤 공개 API 경로로 검증하는지 정리한다.
-현재 module runner는 `logs/20260704-041428-16476`에서 `Client`, `Server/Delay`,
-`Server/Play`, `Server/Session` binary를 실행하고, D2 전용 mode에서 `play-b`도 추가로
-실행한다. registry role은 실행하지 않고 Delay/Play/Session role이 Redis location store를 공유한다.
-이 로그에서 `ATD-A1`, `ATD-A2`, `ATD-A4`, `ATD-B1`, `ATD-B2`, `ATD-B3`, `ATD-C1`, `ATD-C2`,
-`ATD-E1`, `ATD-E2`, `ATD-D1`, `ATD-D2`, `ATD-D3` marker와 `automatic-turn-dispatch kotlin e2e result=passed`를
-확인했다. `ATD-A3`는 공통 문서 의미에 맞춰 다시 정렬했고,
-`logs/20260707-222104-3660094/client.stdout.log`에서 단독 marker를 확인했다. `ATD-B2`도
-`.NET`과 같은 `ActorAwaitReq`/`ActorFastReq`와 actor evidence 순서 검증으로 다시 맞췄고,
-`logs/20260707-222754-3681782/client.stdout.log`에서 단독 marker를 확인했다. `ATD-B3`도
-`.NET`과 같은 `ActorJoinAwaitReq`/`ActorFastReq`와 actor evidence 순서 검증으로 다시 맞췄고,
-`logs/20260707-224427-3751196/client.stdout.log`에서 단독 marker를 확인했다. `ATD-C1`과
-`ATD-C2`도 `.NET`과 같은 unique timer Spot 생성, timer command, Play evidence 순서 검증으로 다시
-맞췄고, 각각 `logs/20260707-225303-3789894/client.stdout.log`와
-`logs/20260707-225337-3792863/client.stdout.log`에서 단독 marker를 확인했다. `ATD-E1`도
-`.NET`과 같은 `AwaitTimeoutReq` reply contract, unique timeout Spot, post-timeout probe evidence
-검증으로 다시 맞췄고, `logs/20260707-230235-3830539/client.stdout.log`에서 단독 marker를 확인했다.
-`ATD-D2`와 `ATD-D3`도 remote/route-bridge topology 검증을 다시 확인했고, 각각
-`logs/20260707-231120-3878253/client-d2.stdout.log`와
-`logs/20260707-231217-3884460/client-d2.stdout.log`에서 단독 marker를 확인했다. `ATD-D1`은
-focused mode에서 A/B/C/E1 local topology scenario를 실제로 실행한 뒤 aggregate marker를 남기도록
-맞췄고, `logs/20260707-233650-3991306/client.stdout.log`에서 `ATD-A1`, `ATD-A2`, `ATD-A3`,
-`ATD-A4`, `ATD-B1`, `ATD-B2`, `ATD-B3`, `ATD-C1`, `ATD-C2`, `ATD-C3`, `ATD-D4`, `ATD-E1`, `ATD-D1`
-marker와 최종 pass marker를 확인했다. `ATD-C3`는 현재 checkout에서 새 actor/timer 교차 scenario로
-다시 구현했고, `logs/20260707-235604-4071087/client.stdout.log`에서 focused marker를 확인했다.
-`ATD-D4`도 public `boundSession().send(...)`와 stream connector `waitFor(...)` 조합으로 맞췄고,
-`logs/20260708-000440-4120944/client.stdout.log`와 위 D1 aggregate runner에서 marker를 확인했다.
+기준 문서는 [Config 8 — 실행 turn](../../../../doc/framework/common/e2e/config-8-execution-turn.ko.md)이다.
+아래 표는 정식 시나리오 ID를 한 행씩 기록한다. 현재 runner와 로그는 10.0.0 MeshNode
+topology와 `TD-*` 공개 계약을 직접 증명하지 않으므로 완료 근거로 사용하지 않는다.
 
-## 현재 runner 통과 항목
+| 시나리오 | 상태 | 검증 대상 |
+|---|---|---|
+| `TD-A1` | deferred | 공개 API와 독립 marker로 검증할 대상: 세 terminator 공개 표면과 기본 의미. |
+| `TD-A2` | deferred | 공개 API와 독립 marker로 검증할 대상: 비동기 완료 전 같은 Spot callback 차단. |
+| `TD-A3` | deferred | 공개 API와 독립 marker로 검증할 대상: 비동기 구간의 Spot 상태 불변식. |
+| `TD-A4` | deferred | 공개 API와 독립 marker로 검증할 대상: 비동기 대기가 완료 처리를 점유하지 않음. |
+| `TD-A5` | deferred | 공개 API와 독립 marker로 검증할 대상: 비동기 handler가 같은 Spot timer를 지연. |
+| `TD-B1` | deferred | 공개 API와 독립 marker로 검증할 대상: yield 중 같은 Spot의 다른 callback 진행. |
+| `TD-B2` | deferred | 공개 API와 독립 marker로 검증할 대상: yield continuation 재삽입 순서. |
+| `TD-B3` | deferred | 공개 API와 독립 marker로 검증할 대상: yield 경계의 상태 불변식 비보장. |
+| `TD-B4` | deferred | 공개 API와 독립 marker로 검증할 대상: yield 중 같은 Spot timer 진행. |
+| `TD-C1` | deferred | 공개 API와 독립 marker로 검증할 대상: HTTP client 작업의 yield 실행. |
+| `TD-C2` | deferred | 공개 API와 독립 marker로 검증할 대상: HTTP client 작업의 async 실행과 turn 유지. |
+| `TD-C3` | deferred | 공개 API와 독립 marker로 검증할 대상: I/O worker 대기 중 worker thread 비점유. |
+| `TD-C4` | deferred | 공개 API와 독립 marker로 검증할 대상: CPU worker 실행과 terminator별 turn 의미. |
+| `TD-C5` | deferred | 공개 API와 독립 marker로 검증할 대상: CPU worker에서 blocking I/O 금지. |
+| `TD-D1` | deferred | 공개 API와 독립 marker로 검증할 대상: 서로 다른 actor의 진행. |
+| `TD-D2` | deferred | 공개 API와 독립 marker로 검증할 대상: 같은 actor handler 재진입 금지. |
+| `TD-D3` | deferred | 공개 API와 독립 marker로 검증할 대상: 같은 timer handler 재진입 금지. |
+| `TD-E1` | deferred | 공개 API와 독립 marker로 검증할 대상: Entry Spot에서 user Spot으로 join하는 비동기 경계. |
+| `TD-E2` | deferred | 공개 API와 독립 marker로 검증할 대상: user Spot 사이 join의 비동기 경계. |
+| `TD-E3` | deferred | 공개 API와 독립 marker로 검증할 대상: 반대 방향 join의 동시 진행. |
+| `TD-F1` | deferred | 공개 API와 독립 marker로 검증할 대상: remote Spot에서도 같은 terminator 의미. |
+| `TD-F2` | deferred | 공개 API와 독립 marker로 검증할 대상: MeshNode routed handler의 같은 terminator 의미. |
+| `TD-F3` | deferred | 공개 API와 독립 marker로 검증할 대상: session relay actor handler의 같은 terminator 의미. |
+| `TD-F4` | deferred | 공개 API와 독립 marker로 검증할 대상: timeout 뒤 turn 해제. |
+| `TD-F5` | deferred | 공개 API와 독립 marker로 검증할 대상: cancellation과 shutdown 뒤 turn 정리. |
+| `TD-F6` | deferred | 공개 API와 독립 marker로 검증할 대상: 상호 대기 cycle의 timeout 종료. |
+| `TD-G1` | deferred | 공개 API와 독립 marker로 검증할 대상: 언어별 terminator 공개 의미 일치. |
 
-아래 항목은 현재 Kotlin runner에서 marker를 확인한 범위다. `.NET` 기준 scenario 의미, evidence
-surface, message contract가 아직 1:1로 맞지 않는 항목은 `porting-inventory.ko.md`에서 partial로
-유지한다.
+## 완료 조건
 
-- `ATD-A1`: stream connector가 session gateway를 통해 `HoldMsg`와 `ProbeMsg`를 같은 Spot에
-  보내고, Spot handler가 public `requestToChannel(...).await(...)`로 기다리는 동안 같은 Spot의
-  다음 command가 먼저 실행되지 않는지 evidence 순서로 확인한다.
-- `ATD-A2`: stream connector가 session gateway를 통해 `AwaitMsg`와 `ProbeMsg`를 같은 Spot에
-  보내고, Spot handler가 public `requestToChannel(...).await(...)`로 turn을 반납한 뒤 같은 Spot의
-  독립 command가 먼저 실행되고 continuation이 이후 재개되는지 evidence 순서로 확인한다.
-- `ATD-A3`: `AwaitMsg`가 같은 request id와 target spot rid로 await 전후 evidence를 남기고,
-  continuation marker가 같은 correlation id를 유지하는지 확인한다.
-- `ATD-A4`: stream connector가 session gateway를 통해 `WorkerAwaitMsg`와 `ProbeMsg`를 같은
-  Spot에 보내고, public `context.runWorker(...).await()`가 worker 대기 중 turn을 반납한 뒤 같은
-  Spot의 독립 command가 먼저 실행되고 continuation이 이후 재개되는지 evidence 순서로 확인한다.
-- `ATD-B1`: stream session에 bind된 actor A가 public `requestToChannel(...).await(...)`로 delay
-  service를 기다리는 동안 다른 stream session에 bind된 actor B의 fast request가 actor A continuation보다
-  먼저 완료되는지 evidence 순서로 확인한다.
-- `ATD-B2`: 같은 actor의 slow request가 public await로 대기하는 동안 같은 actor의 fast request가
-  끼어들지 못하고, 첫 요청이 완료된 뒤 다음 요청이 처리되는지 evidence 순서로 확인한다.
-- `ATD-B3`: actor handler가 public `joinSpot(...).await(...)`로 다른 Spot join을 기다리는 동안
-  다른 actor request가 먼저 진행되는지 evidence 순서로 확인한다.
-- `ATD-C1`: unique timer Spot에서 timer A handler가 delay channel await를 기다리는 동안 timer B의
-  fast tick이 먼저 진행되고, timer A continuation이 이후 완료되는지 Play evidence 순서로 확인한다.
-- `ATD-C2`: unique timer Spot에서 같은 timer의 다음 tick이 첫 await continuation과 완료 뒤 처리되는지,
-  tick id와 timer mailbox evidence로 확인한다.
-- `ATD-C3`: unique Spot에 actor A/B를 bind한 뒤 actor A await 중 같은 Spot의 fast timer tick이 먼저
-  완료되는지 확인하고, 이어서 timer await 중 actor B fast request가 먼저 완료되는지 같은 evidence로
-  확인한다.
-- `ATD-E1`: unique timeout Spot에서 `await(...)` timeout을 public reply로 관찰하고, 같은 Spot에
-  빠른 probe request를 보낸 뒤 reply까지 받는지 Play evidence 순서로 확인한다.
-- `ATD-E2`: 진행 중인 channel request의 `CompletionStage`를 취소한 뒤 같은 Spot에 빠른 probe
-  request를 보내고, reply와 node-level evidence를 함께 확인한다.
-- `ATD-D1`: focused mode가 `play-a`와 `delay-a` local topology에서 A/B/C/E1 scenario를 실제로
-  실행하고 각 scenario evidence assertion이 통과한 뒤 local topology aggregate marker를 남기는지
-  확인한다. `logs/20260707-233650-3991306/client.stdout.log`에서 aggregate marker와 최종 pass marker를
-  확인했다.
-- `ATD-D2`: focused remote topology에서 `play-a` owner Spot이 public
-  `requestToSpot(...).await(...)`로 `play-b` target Spot을 기다리는지 확인한다. owner evidence에는
-  `remote-await-*`, target evidence에는 `await-*` marker만 남고, continuation이 `play-a`로 돌아오는지
-  검증한다.
-- `ATD-D3`: focused route-bridge topology에서 stream connector packet이 Session route mesh를 거쳐
-  `play-b` target Spot으로 전달되고, target Spot의 `AwaitMsg` handler가 await 중일 때 같은 target
-  Spot의 `ProbeMsg` marker가 먼저 실행되는지 검증한다.
-- `ATD-D4`: actor handler가 public `boundSession().send(...)`로 bound connector에만 push를 보내고,
-  client가 stream connector `waitFor(...)`와 unbound connector receive count로 오배달이 없음을 확인한다.
-- `ATD-E3`: runner가 pending await marker를 확인한 뒤 자신이 시작한 `play-a`만 종료하고 같은 routing
-  id로 다시 시작한다. 기존 stream session의 recovery request가 재시작한 Play handler까지 전달되고
-  응답하는지 확인한다. `logs/20260714-021542-162748` focused runner가 통과했다.
-- `ATD-E4` 일부: runner가 HTTP trigger/client 사용, Play/Session Entry Spot join 예외 밖의 `await(...)`
-  사용, connector를 받지 않는 `Atd*.java` scenario file, scenario file의 connector 생성과 lifecycle 소유를
-  정적으로 검사한다.
-
-## 남은 gap
-
-- `.NET` 기준의 `Client`, `Shared`, `Server/Delay`, `Server/Play`, `Server/Session`
-  role project는 추가했다. registry role은 Redis location store 전환 뒤 제거했다. 현재 구현된
-  client marker 중 `ATD-A1`, `ATD-A2`, `ATD-A3`, `ATD-A4`, `ATD-B1`, `ATD-B2`, `ATD-B3`,
-  `ATD-C1`, `ATD-C2`, `ATD-C3`, `ATD-D1`, `ATD-D2`, `ATD-D3`, `ATD-D4`, `ATD-E1`, `ATD-E2`, `ATD-E3`는 scenario file로
-  분리했다.
-- `ATD-E4`는 정적 검사 일부만 추가했으며, scenario file이 connector 생성과 lifecycle을
-  소유하지 못하게 막는다. 다만 `.NET`처럼 모든 client scenario가 thin helper 없이 connector를 직접 쓰는
-  구조까지는 아직 맞추지 않았다.
-- `.NET`도 `ATD-E5` cross-language report aggregation은 부분 구현으로 남기므로 Kotlin에서도 완료로
-  표시하지 않는다.
+구현 단계에서 각 행에 대응하는 독립 `TD-* result=passed` marker와 최종
+`automatic-turn-dispatch e2e result=passed` marker를 남긴다. runner는 실제 사용한 bindings package
+이름, version과 경로를 출력하고, 제거 대상 builder, Spot 전용 router/pub/sub와 별도 중계 계층을
+사용하지 않는다는 정적 검사를 통과해야 한다.

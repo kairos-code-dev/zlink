@@ -1,58 +1,83 @@
 # ZLink Framework .NET Samples
 
-| Sample | Purpose |
-|--------|---------|
-| [TicTacToe](TicTacToe) | Tic-tac-toe sample with two API roles, two Play roles, manual endpoint mapping, Redis room routes, host/guest/observer stream clients, actor game join, move requests, milestone push, and game-state messages. Uses JSON payloads. |
-| [Bingo](Bingo) | Matching room sample with four authenticated clients, Entry Spot admission, host-start checks, timer draws, automatic marks, same-sequence winners, and bound-session push notifications. Uses Protobuf payloads. |
-| [SupportChat](SupportChat) | Multi-role support conversation sample with API, support, session, registry, probe, and client roles. |
-| [ShoppingMall](ShoppingMall) | Order workflow sample with replicated commerce API and order workflow roles. |
-| [DeliveryDispatch](DeliveryDispatch) | Delivery dispatch sample with HTTP intake, courier timeout, reassignment, tracking, ZLink fanout, and customer session push. |
-| [GameQuest](GameQuest) | Gameplay event and quest mission sample with replicated API and mission roles. |
+.NET samples demonstrate the public 10.0.0 framework contract through separate
+server-role processes and executable client scenarios. Their domain flows and
+verification rules follow the
+[common sample scenarios](../../../doc/framework/common/sample/README.ko.md).
 
-Run all samples on Linux or WSL:
+## Samples
+
+| Sample | Purpose | Peer topology |
+|---|---|---|
+| [TicTacToe](TicTacToe) | Two API roles and two Play roles demonstrate room lookup, Actor turns, and real-time game messages. | Manual MeshNode peers; Redis room route store |
+| [Bingo](Bingo) | Session admission, Entry and room Spots, Actor binding, timer draws, and bound-session notifications. | Redis location store |
+| [SupportChat](SupportChat) | API, Support, and Session roles demonstrate conversation ownership, reconnect, idle timeout, and close notifications. | Redis location store |
+| [ShoppingMall](ShoppingMall) | Commerce API and order workflow roles demonstrate event-sourced orders, projections, and fanout events. | Redis location store |
+| [DeliveryDispatch](DeliveryDispatch) | Dispatch, courier, tracking, and customer gateway roles demonstrate timeout reassignment and session push. | Redis location store |
+| [GameQuest](GameQuest) | Session and player quest owner roles demonstrate event-sourced quest progress and projections. | Redis location store |
+| [ZoneWorld](ZoneWorld) | Gateway, ZoneNode, and Ops roles demonstrate Actor transfer, zone Logical Multicast, Node direct operations, runtime events, and browser visualization. | Redis location store |
+
+TicTacToe is the only sample that configures MeshNode peers manually. Every
+other sample uses the Redis location store to resolve Spot and Actor locations
+and establish MeshNode peers.
+
+## MeshNode And Channel Names
+
+Each physical mesh has one MeshNode per process. `ChannelName(...)` adds logical
+service membership to that MeshNode and does not create another ROUTER endpoint.
+Node direct, ChannelName select-one, Spot, Actor, and Logical Multicast operations
+share the MeshNode. Classic fanout remains a separate PUB/SUB channel.
+
+```csharp
+var mesh = options.AddRouteMesh("game")
+    .Listen("tcp://0.0.0.0:7300"); // Creates this process's MeshNode endpoint.
+
+mesh.ChannelName("orders"); // Adds logical service membership without another ROUTER.
+
+options.AddFanoutChannel("events")
+    .EnablePublisher("tcp://0.0.0.0:7400"); // Classic fanout uses its own PUB endpoint.
+```
+
+## Running Samples
+
+Run all supported samples on Linux or WSL:
 
 ```bash
 ./framework/languages/dotnet/samples/run_samples.sh
 ```
 
-Run all samples on Windows PowerShell:
+Run all supported samples on Windows PowerShell:
 
 ```powershell
 .\framework\languages\dotnet\samples\run_samples.ps1
 ```
 
-Each sample root owns its executable smoke path through `run_sample.sh` and
-`run_sample.ps1`. The runner starts server roles as separate processes, waits
-for their endpoints, runs the probe or client self-check, and cleans up the
-process tree. Sample server and client projects keep their own role
-responsibility; they do not start other sample roles in-process.
+Pass sample names to run a subset in the given order.
 
-Shared sample projects contain only the message contracts that client and server
-roles both serialize. Server topology, endpoint names, packet names, and timing
-settings belong under `Server/Configuration`. Client and probe settings belong
-under their own projects.
+```bash
+./framework/languages/dotnet/samples/run_samples.sh Bingo SupportChat
+```
 
-## Execution And Configuration
+Each sample root owns `run_sample.sh` and `run_sample.ps1`. The runner creates
+role-specific configuration files, starts each role as a separate process,
+waits for readiness, runs the probe or client self-check, and then removes the
+processes and Redis container it created. Server code starts only its own role.
 
-.NET sample runners own process orchestration. They choose free local ports,
-start server roles as separate processes, wait for readiness, and then run the
-client or probe self-check. Server code reads role-local configuration and then
-passes the bound settings into `AddZLinkFramework(...)`.
+## Configuration And Contracts
 
-TicTacToe demonstrates file-backed configuration with
-`Microsoft.Extensions.Configuration`: the runner writes temporary role-specific
-settings for `api-a`, `api-b`, `play-a`, and `play-b`, and each server role reads
-its own file through `--config`. TicTacToe is the manual endpoint sample: it
-does not use the framework location store, but it does pass a Redis endpoint and
-key prefix to the room route store.
+Framework hosts bind endpoint, Redis, routing ID, timeout, and logging settings
+from role-specific configuration files and pass typed settings to
+`AddZLinkFramework(...)`. Application code does not read those values directly
+from environment variables. A standalone client accepts only the external
+endpoint and scenario options it must know through validated command-line
+arguments or its own configuration file.
 
-The multi-role samples use role-local configuration classes under
-`Server/Configuration` and environment variables supplied by the runner. The
-client and probe projects have their own configuration copies because they only
-need the endpoints they connect to.
+Shared projects contain only message contracts serialized by both client and
+server roles. Server topology and framework settings belong under
+`Server/Configuration`; client and probe settings belong to their respective
+projects.
 
-Manual server runs should prefer a config file over long endpoint argument
-lists:
+For a manual TicTacToe run, give each role its own configuration file:
 
 ```bash
 dotnet run --project TicTacToe/Server.Play -- --config ./appsettings.play-a.json
@@ -60,18 +85,3 @@ dotnet run --project TicTacToe/Server.Play -- --config ./appsettings.play-b.json
 dotnet run --project TicTacToe/Server.Api -- --config ./appsettings.api-a.json
 dotnet run --project TicTacToe/Server.Api -- --config ./appsettings.api-b.json
 ```
-
-The runner remains responsible for process orchestration. Server role code
-should only start its own role from the configured settings.
-
-## Framework Channel Names
-
-Samples use the typed Framework channel configuration names that match zlink
-Discovery auto-connect types:
-
-| API | Meaning |
-|-----|---------|
-| `AddClientServerChannel` | DEALER clients connect to ROUTER servers. |
-| `AddFanoutChannel` | SUB subscribers connect to PUB publishers. |
-| `AddRouteMesh` | ROUTER peers form a route mesh. |
-| `AddSpotMesh` | SPOT nodes form a SPOT mesh. |

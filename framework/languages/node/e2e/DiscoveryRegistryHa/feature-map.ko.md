@@ -4,15 +4,15 @@
 
 | Scenario | 상태 | Node 구현 메모 |
 |----------|------|----------------|
-| SF-A1 | 구현 | Redis location store + provider 2개 + consumer baseline. public runtime query topology와 request/evidence를 검증한다. |
+| SF-A1 | 구현 | Redis location store + provider 2개 + consumer baseline. public MeshNode runtime snapshot topology와 request/evidence를 검증한다. |
 | SF-B1 | 구현 | Redis container를 정지한 동안 fail-static으로 기존 연결 request가 유지되고 runtime status가 unhealthy/lastError를 노출하는지 검증한다. |
-| SF-C1 | 구현 | `api-b` SIGKILL 뒤 owner lease 만료만으로 stale peer row가 `/location/peers` 성공 결과에서 제외되고 후속 request가 `api-a`로만 가는지 검증한다. |
-| SF-D1 | 구현 | Redis container를 짧게 제거한 뒤 같은 endpoint에 빈 container로 재기동하고 request 전 구간 성공, runtime status recovery, peer list recovery를 검증한다. |
+| SF-C1 | 구현 | `api-b` SIGKILL 뒤 owner lease 만료만으로 stale MeshNode descriptor가 `/location/mesh-nodes` 성공 결과에서 제외되고 후속 request가 `api-a`로만 가는지 검증한다. |
+| SF-D1 | 구현 | Redis container를 짧게 제거한 뒤 같은 endpoint에 빈 container로 재기동하고 request 전 구간 성공, runtime status recovery, descriptor/runtime snapshot recovery를 검증한다. |
 | SF-D2 | 구현 | Redis 장기 중단 중 `api-b`를 SIGKILL하고 빈 store 재기동 뒤 `api-a` 재등록, `api-b` 제외, request 전 구간 성공과 `api-a` 단독 routing을 검증한다. |
-| SF-A2 | 구현 | Redis location store의 `watchEnabled=false` 상태에서 provider 추가와 정상 제거가 polling interval 안에 peer list와 request routing에 반영되는지 검증한다. |
+| SF-A2 | 구현 | Redis location store의 `watchEnabled=false` 상태에서 provider 추가와 정상 제거가 polling interval 안에 descriptor/runtime snapshot와 request routing에 반영되는지 검증한다. |
 | SF-B2 | 구현 | store 중단 뒤 `api-b`를 같은 endpoint로 재시작하고, `storeFailureGraceMs` 6000ms를 넘기는 동안 기존 `api-a` 연결의 request만 성공하며 새 `api-b` 연결과 처리 evidence가 생기지 않는지 검증한다. |
 | SF-C2 | 구현 | `api-b`가 server weight를 0으로 바꾼 뒤 `Draining=true`를 게시하고, 새 request가 `api-a`로만 배정되는지 검증한다. drain은 30초 안에 `drained`로 끝나야 하며, owner row가 즉시 제거되고 Redis 저장소까지 정리한 프로세스가 강제 종료 없이 끝나야 한다. |
-| SF-D3 | 구현 | Redis pause/unpause 사이클 동안 consumer public runtime query의 healthy → unhealthy/lastError → healthy/lastRefresh 전이를 검증한다. |
+| SF-D3 | 구현 | Redis pause/unpause 사이클 동안 consumer public MeshNode runtime snapshot의 healthy → unhealthy/lastError → healthy/lastRefresh 전이를 검증한다. |
 | SF-E1 | 구현 | Redis `CLIENT PAUSE`로 store 응답 지연을 주입하고, 같은 consumer process가 pending store read를 가진 동안 기존 channel profile request를 낮은 지연으로 계속 처리하는지 검증한다. |
 
 ## 검증

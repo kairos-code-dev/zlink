@@ -18,9 +18,9 @@
 | RL-C1 | 구현 | 다수 client host 생성/종료 후 follow-up request marker가 있다. |
 | RL-C2 | 구현 | harness SIGKILL로 row remove를 건너뛰고 owner lease 만료 뒤 topology 성공 결과 이탈, surviving provider 처리와 provider 복구를 확인한다. |
 | RL-C3 | 구현 | SIGTERM 정상 종료의 old row 제거와 같은 rid·endpoint 재시작 뒤 단일 새 generation, `ConnectionReady`, messaging 복구를 확인한다. |
-| RL-C4 | 구현 | registry outage 중 direct established socket이 유지되고, registry/provider 재시작 뒤 new discovery host가 복구되는 marker가 있다. |
+| RL-C4 | 구현 | location store outage 중 이미 설정된 socket이 유지되고, store와 provider 복구 뒤 새 location-enabled client host가 정상 route를 구성하는 marker가 있다. |
 | RL-D1 | 구현 | high fanout request burst marker가 있다. |
-| RL-D2 | 구현 | dispatch-error observer fault 뒤 messaging follow-up이 계속 동작하는 marker가 있다. |
-| RL-D3 | 구현 | dispatch-error evidence marker(reason/action/packetName)가 남는 marker가 있다. |
-| RL-D4 | 구현 | missing request handler error reply 예외와 server dispatch-error evidence marker가 있다. |
+| RL-D2 | 전환 필요 | observer fault 격리에 더해 public `IZLinkRuntimeErrorSink`가 `zlink.runtime_error`/`observer_failed`/`message_flow_observer` event를 한 번 받는지 검증해야 한다. |
+| RL-D3 | 전환 필요 | dispatch-error evidence를 `outcome=failed`, `reason=no_handler`, `action=reply_error`, `packet_name`으로 재정렬해야 한다. |
+| RL-D4 | 전환 필요 | missing request handler가 wire message kind `Error=5`와 `errorCode`·`errorMessage`를 반환하고 client에서는 정상 message가 아닌 request 예외로 끝나는지 검증해야 한다. 정상 follow-up request는 `Response=2`이며 error field가 없어야 한다. 현재 client 예외와 server dispatch-error evidence만으로는 wire 계약을 충족했다고 판정하지 않는다. |
 | RL-D5 | 구현 | request/send 혼합 burst workload marker가 있다. |

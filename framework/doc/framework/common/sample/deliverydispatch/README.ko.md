@@ -136,7 +136,7 @@ ZLink는 고객의 HTTP 요청이나 WebSocket 연결을 없애지 않는다. �
 | Session map 또는 socket registry | `CustomerActor` + bound session | 고객 actor가 현재 stream session을 기억해 특정 고객에게만 status를 push한다. |
 | WebSocket/SSE server | `CustomerGateway server` | 고객 stream 연결을 받고, 기존 customer actor를 찾은 뒤 현재 session을 bind한다. 없을 때만 actor를 만든다. |
 | Actor entry point | `CustomerEntrySpot`, `CourierEntrySpot` | actor가 들어오는 입구이며, server side에서 actor를 찾는 기준점이다. |
-| Courier placement/directory | courier placement policy + `CourierActor` | 배송원 id를 어느 SpotNode의 actor로 둘지 정하는 정책은 호출 지점에 두고, courier별 session route는 해당 courier actor가 기억한다. |
+| Courier placement/directory | courier placement policy + `CourierActor` | 배송원 id를 어느 MeshNode의 actor로 둘지 정하는 정책은 호출 지점에 두고, courier별 session route는 해당 courier actor가 기억한다. |
 
 ```mermaid
 flowchart LR
@@ -149,8 +149,8 @@ flowchart LR
     subgraph ServerSide[Server side]
         DispatchServer["Dispatch<br/>server"]
         CourierSessionServer["CourierSession<br/>server"]
-        CourierSpotServer1["Courier spot node 1<br/>server"]
-        CourierSpotServer2["Courier spot node 2<br/>server"]
+        CourierActorServer1["Courier actor MeshNode 1<br/>server"]
+        CourierActorServer2["Courier actor MeshNode 2<br/>server"]
         CustomerGatewayServer["CustomerGateway<br/>server"]
         TrackingServer["Tracking<br/>server"]
         Evidence[(Evidence log)]
@@ -161,8 +161,8 @@ flowchart LR
     CourierClientA --> CourierSessionServer
     CourierClientB --> CourierSessionServer
 
-    DispatchServer -->|DispatchWorker module targets courier actor| CourierSpotServer1
-    DispatchServer -->|DispatchWorker module targets courier actor| CourierSpotServer2
+    DispatchServer -->|DispatchWorker module targets courier actor| CourierActorServer1
+    DispatchServer -->|DispatchWorker module targets courier actor| CourierActorServer2
     DispatchServer -->|DispatchWorker module emits status| TrackingServer
 
     CourierSessionServer -->|bind session route to courier actor| CourierSpotServer1
@@ -190,10 +190,10 @@ server node 1/2`는 실제 actor와 entry spot을 가진 node다. 두 역할은 
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `DeliveryDispatch.Dispatch` | HTTP API, dispatch channel server/client, dispatch worker | `POST /deliveries`를 받고 배차 요청 접수, 배송원 제안, timeout, 재배정, 상태 event 생성을 맡는다. |
+| `DeliveryDispatch.Dispatch` | HTTP API, dispatch ChannelName handler/client, dispatch worker | `POST /deliveries`를 받고 배차 요청 접수, 배송원 제안, timeout, 재배정, 상태 event 생성을 맡는다. |
 | `DeliveryDispatch.CourierSession` | stream server, courier session | 배송원 client stream 연결을 받고, 기존 courier actor를 찾은 뒤 현재 session route를 bind한다. 없을 때만 actor 생성을 요청한다. |
-| `DeliveryDispatch.CourierSpotNode1/2` | courier entry spot, courier actor | 선택된 node에서 배송원 actor를 만들고, actor가 courier id와 현재 session route를 기억한다. |
-| `DeliveryDispatch.Tracking` | tracking channel server, evidence store | 상태 event 기록과 고객 알림 생성을 맡는다. |
+| `DeliveryDispatch.CourierMeshNode1/2` | courier entry spot, courier actor | 선택된 node에서 배송원 actor를 만들고, actor가 courier id와 현재 session route를 기억한다. |
+| `DeliveryDispatch.Tracking` | tracking ChannelName handler, evidence store | 상태 event 기록과 고객 알림 생성을 맡는다. |
 | `DeliveryDispatch.CustomerGateway` | stream server, customer entry spot, customer actor | 고객 연결을 받고, 기존 customer actor를 찾은 뒤 현재 session을 bind한다. 없을 때만 actor를 만들고 status push를 맡는다. |
 | `DeliveryDispatch.Client` | HTTP client, stream connector | 배송 생성, subscription, status notify 검증을 수행한다. |
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | 서버 endpoint peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
@@ -209,10 +209,10 @@ actor 실행 위치가 섞이지 않게 나눈다.
 | 역할 | 사용하는 요소 |
 |------|---------------|
 | `Location Store` | 공유 저장소 기반 peer discovery와 readiness 확인 |
-| `Dispatch server` | HTTP endpoint, client-server channel server/client, background dispatch worker |
+| `Dispatch server` | HTTP endpoint, ChannelName handler/client, background dispatch worker |
 | `CourierSession server` | stream node, courier session callback |
-| `Courier spot server node 1/2` | Spot mesh, courier entry spot, courier actor |
-| `Tracking server` | client-server channel server, evidence store |
+| `Courier spot server node 1/2` | MeshNode, courier entry spot, courier actor |
+| `Tracking server` | ChannelName handler, evidence store |
 | `CustomerGateway server` | stream node, customer entry spot, customer actor |
 | Client | HTTP client와 stream connector wait API |
 
@@ -220,26 +220,26 @@ actor 실행 위치가 섞이지 않게 나눈다.
 
 | 이름 | Framework 요소 | 연결 |
 |------|----------------|------|
-| `deliverydispatch.tracking` | client-server channel | `DispatchWorker module -> Tracking` |
-| `delivery-customers` | Spot mesh | `CustomerEntrySpot`에서 customer actor 관리 |
-| `delivery-couriers` | Spot mesh | `CourierSession/DispatchWorker module -> SpotHandle -> CourierEntrySpot -> CourierActor` |
+| `deliverydispatch.tracking` | ChannelName | `DispatchWorker module -> Tracking` |
+| `delivery-customers` | MeshNode | `CustomerEntrySpot`에서 customer actor 관리 |
+| `delivery-couriers` | MeshNode | `CourierSession/DispatchWorker module -> SpotHandle -> CourierEntrySpot -> CourierActor` |
 
 `delivery-couriers`는 배송원마다 하나씩 늘어나는 channel이 아니다. 모든 배송원 actor가
-같은 mesh 안에 있고, courier id가 어느 SpotNode의 actor에 들어갈지는 framework 배치가 정한다.
+같은 mesh 안에 있고, courier id가 어느 MeshNode의 actor에 들어갈지는 framework 배치가 정한다.
 courier별 session route는 별도 gateway나 registry가 아니라 해당 courier actor가 기억한다.
 
 `DispatchWorker module`은 두 단계로 offer를 보낸다. 먼저 **샘플의 배치 정책**이 courier id에서
-그 배송원을 담당하는 CourierSpotNode를 정한다(샘플이 소유한 결정이며 framework 표면이 아니다).
+그 배송원을 담당하는 CourierMeshNode를 정한다(샘플이 소유한 결정이며 framework 표면이 아니다).
 그 다음 **spot handle resolver**로 그 노드의 `CourierEntrySpot` handle을 얻어 offer를 그 handle로
-보낸다. 즉 전송 대상 인자는 **불투명한 `SpotHandle` 하나**이며, application이 route mesh channel에
+보낸다. 즉 전송 대상 인자는 **불투명한 `SpotHandle` 하나**이며, application이 MeshNode routed path에
 node rid를 찍어 보내는 표면은 이 샘플에서 쓰지 않는다
-([10 §3.1](../../../spec/server/10-channel-topology.ko.md), [24 §3](../../../spec/server/24-spot-address-messaging.ko.md)).
-`CourierEntrySpot`은 SpotNode마다 하나인 actor 진입점이며, entry spot의 route handler가 그 노드
+([10 §5](../../../spec/server/10-channel-topology.ko.md), [24 §3](../../../spec/server/24-spot-address-messaging.ko.md)).
+`CourierEntrySpot`은 MeshNode마다 하나인 actor 진입점이며, entry spot의 route handler가 그 노드
 안에서 대상 actor를 찾는다.
 
 stream client가 다시 연결될 때 두 역할의 경로가 다르다.
 
-- **courier**는 다른 노드에 있을 수 있으므로 배치 정책으로 담당 CourierSpotNode를 정하고, 그
+- **courier**는 다른 노드에 있을 수 있으므로 배치 정책으로 담당 CourierMeshNode를 정하고, 그
   노드의 entry spot `SpotHandle`로 "이 배송원 actor가 있는가"를 먼저 묻는다. 있으면 새 session만
   다시 bind하고, 없을 때만 entry spot을 통해 actor를 만든다(claim-then-activate).
 - **customer**는 CustomerGateway가 자기 노드에서 직접 소유하므로 local `actor manager`의
@@ -314,9 +314,9 @@ interface, type alias처럼 자기 언어에 맞는 표현으로 같은 필드�
 | `BindCourierRes` | CourierActor -> CourierSession server | `CourierId`, `Actor`, `SessionRoute` | 배송원 actor가 현재 session route를 기억했음을 반환한다. |
 | `FindCourierActorReq` | CourierSession server 또는 DispatchWorker module -> actor directory/discovery | `CourierId` | courier id에 연결된 기존 배송원 actor 위치가 있는지 찾는다. |
 | `FindCourierActorRes` | actor directory/discovery -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 기존 배송원 actor가 있으면 위치를 반환한다. 없으면 비어 있는 결과를 반환한다. |
-| `EnsureCourierActorReq` | CourierSession server 또는 DispatchWorker module -> target SpotNode | `CourierId` | 기존 actor가 없을 때 선택된 SpotNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |
-| `EnsureCourierActorRes` | target SpotNode -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 배송원 actor 위치를 반환한다. |
-| `OfferDeliveryMsg` | DispatchWorker module -> target SpotNode -> CourierActor | `DeliveryId`, `CourierId`, `Attempt`, `PickupAddress`, `DropoffAddress` | 특정 배송원 actor에게 배송 제안을 보낸다(**응답 없는 one-way send**). `Attempt`는 이 배송의 몇 번째 제안인지다. |
+| `EnsureCourierActorReq` | CourierSession server 또는 DispatchWorker module -> target MeshNode | `CourierId` | 기존 actor가 없을 때 선택된 MeshNode의 `CourierEntrySpot` 아래에 배송원 actor가 존재하도록 만든다. |
+| `EnsureCourierActorRes` | target MeshNode -> CourierSession server 또는 DispatchWorker module | `CourierId`, `Actor` | 배송원 actor 위치를 반환한다. |
+| `OfferDeliveryMsg` | DispatchWorker module -> target MeshNode -> CourierActor | `DeliveryId`, `CourierId`, `Attempt`, `PickupAddress`, `DropoffAddress` | 특정 배송원 actor에게 배송 제안을 보낸다(**응답 없는 one-way send**). `Attempt`는 이 배송의 몇 번째 제안인지다. |
 | `CourierDecisionMsg` | Courier client -> CourierSession server -> CourierActor | `DeliveryId`, `CourierId`, `Accepted`, `Reason` | 배송원 client가 stream session을 통해 수락 또는 거절 결정을 보낸다. actor는 현재 제안의 `Attempt`와 결합해 배차 결과를 만든다. |
 | `OfferDeliveryResultMsg` | CourierActor -> DispatchWorker module | `DeliveryId`, `CourierId`, `Attempt`, `Accepted`, `Reason` | 배송원의 결정을 배차 쪽으로 돌려준다(**응답 없는 one-way send**). `Attempt`가 현재 제안과 다르면 늦게 도착한 결정이므로 버린다. |
 
@@ -363,34 +363,25 @@ DeliveryOffer {
 }
 ```
 
-처리 루프는 이렇게 돈다.
+처리 루프는 다음 순서로 실행된다.
 
-```text
-1. AssignDeliveryMsg 수신
-     -> 선택 정책이 첫 배송원을 고른다
-     -> DeliveryOffer{Attempt=1, Deadline=now+제안 시한, Offered} 기록
-     -> Assigned 상태 event 기록
-     -> OfferDeliveryMsg(Attempt=1) send  ── 여기서 이 턴은 끝난다
-
-2. target SpotNode: OfferDeliveryMsg 수신
-     -> courier actor에게 one-way로 넘기고 즉시 리턴 (직렬 줄을 잡지 않는다)
-     -> actor: bound session으로 제안 push 하고 즉시 리턴
-
-3. 배송원이 결정 -> CourierSession -> CourierActor
-     -> actor가 OfferDeliveryResultMsg(Attempt) send
-
-4. DispatchWorker: OfferDeliveryResultMsg 수신
-     -> 기록된 Attempt와 다르면 늦게 온 결정이므로 버린다
-     -> Accepted  -> Accepted/PickedUp/Delivered 상태 event
-     -> Rejected  -> 다음 후보로 재제안(5와 같은 경로)
-
-5. 제안 시한 경과(sweeper)
-     -> DispatchWorker가 주기적으로 Deadline이 지난 Offered 기록을 훑는다
-     -> Expired로 표시하고 다음 후보에게 재제안:
-          Reassigned 상태 event 기록
-          DeliveryOffer{Attempt+1, Deadline 갱신, Offered}
-          OfferDeliveryMsg(Attempt+1) send
-     -> 후보가 더 없으면 Failed 상태 event로 종료
+```mermaid
+flowchart TD
+    A[Receive AssignDeliveryMsg] --> B[Select first courier]
+    B --> C[Store offered attempt and Assigned event]
+    C --> D[Send OfferDeliveryMsg]
+    D --> E[Target MeshNode relays to courier actor]
+    E --> F[Actor pushes offer to bound session]
+    F --> G{Courier decision arrives?}
+    G -->|Accepted| H[Store Accepted, PickedUp, Delivered events]
+    G -->|Rejected| I[Select next courier]
+    G -->|Deadline expired| J[Mark attempt Expired]
+    I --> K{Candidate remains?}
+    J --> K
+    K -->|Yes| L[Store Reassigned event and next attempt]
+    L --> D
+    K -->|No| M[Store Failed event]
+    G -->|Stale attempt| N[Discard late decision]
 ```
 
 **지켜야 할 것:**
@@ -398,11 +389,11 @@ DeliveryOffer {
 - **어느 handler도 배송원의 결정을 기다리지 않는다.** 결정 대기를 위해 스레드를 재우거나
   (`condition_variable`, `Future.get()`) task를 붙잡고 있으면 안 된다. 그러면 그 실행 줄로 오는
   다른 제안·조회가 전부 그 배송원의 반응 시간만큼 밀린다.
-- **제안 시한은 `DispatchWorker`가 소유한다.** SpotNode가 시한을 세고 "거절"을 만들어 돌려주면
+- **제안 시한은 `DispatchWorker`가 소유한다.** MeshNode가 시한을 세고 "거절"을 만들어 돌려주면
   배차 정책이 노드에 숨는다. 노드는 제안을 전달하고 결정을 돌려줄 뿐이다.
 - **`Attempt`로 늦은 결정을 막는다.** 시한이 지나 재제안한 뒤 이전 배송원의 결정이 도착할 수 있다.
   기록된 현재 `Attempt`와 다른 결정은 버린다.
-- **상태 기록이 곧 재개 지점이다.** 노드가 죽었다 살아나도 `Offered` + 지난 `Deadline` 기록만 보면
+- **상태 기록이 곧 재개 지점이다.** 노드가 비정상 종료된 뒤 재시작되어도 `Offered`와 지난 `Deadline` 기록으로
   같은 sweeper 경로로 이어서 진행된다.
 
 ## 8. 도메인 흐름
@@ -614,7 +605,7 @@ Server/CourierSession/
       Handlers/
         BindCourierSessionHandler
 
-Server/CourierSpotNode/
+Server/CourierMeshNode/
   Infrastructure/
     ZLink/
       Actors/

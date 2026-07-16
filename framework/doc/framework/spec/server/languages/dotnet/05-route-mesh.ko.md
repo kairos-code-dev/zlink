@@ -19,6 +19,7 @@ public interface IZLinkFrameworkOptions
     TimeSpan? ActorTransferForwardWindow { get; set; }
     TimeSpan DefaultSocketSendTimeout { get; set; }
     IZLinkCodecRegistryBuilder Codecs { get; }
+    IZLinkWorkerOptions Worker { get; }
 
     void AddHandlersFromAssemblyOf<TMarker>();
     void AddHandlersFromAssemblyOf(Type markerType);
@@ -27,6 +28,7 @@ public interface IZLinkFrameworkOptions
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
     void AddLocationStore(IZLinkLocationStore store);
     ZLinkLocationOptions ConfigureLocations();
+    IZLinkDispatchOptions ConfigureDispatch();
     void UseFilter<TFilter>() where TFilter : class, IZLinkHandlerFilter;
 
     IZLinkMeshNodeBuilder AddRouteMesh(string meshName);
@@ -46,6 +48,7 @@ public interface IZLinkMeshNodeBuilder
     IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(string groupName);
     IZLinkMeshNodeSocketConfig ConfigureRouterSocket();
     IZLinkSpotPublisherConfig ConfigureSpotPublisher();
+    IZLinkMeshNodeBuilder UseDrainPolicy(ZLinkMeshNodeDrainPolicy policy);
     IZLinkMeshPeerConnections PeerConnections { get; }
 
     IZLinkMeshNodeBuilder SetDefaultRequestTimeout(TimeSpan timeout);
@@ -71,6 +74,12 @@ public interface IZLinkMeshNodeBuilder
     IZLinkMeshNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
         where TActor : IZLinkActor
         where TAdapter : class, IZLinkActorTransferAdapter<TActor>;
+}
+
+public enum ZLinkMeshNodeDrainPolicy
+{
+    DrainNatural = 0,
+    ReleaseAndRecreate = 1
 }
 
 public interface IZLinkFanoutChannelBuilder
@@ -112,6 +121,10 @@ public interface IZLinkMetadataPolicyBuilder
 socket을 만들지 않고 immutable membership과 handler namespace를 추가한다. 하나 이상의 channel을
 등록해야 한다.
 
+`AddHandlersFromAssemblyOf(...)`와 `AddHandlersFromAssembly(...)`는 명시한 assembly만 handler scan 범위로
+추가한다. Scan에 사용하는 method, group과 packet attribute의 정확한 선언은
+[02 handler와 client §2](02-handler-interfaces.ko.md#2-공통-metadata와-call)가 소유한다.
+
 `EnableActorDispatch(meshName)`은 STREAM node가 session Actor dispatch에 사용할 MeshName 하나를 고정한다.
 같은 builder에서 두 번 호출하거나 등록되지 않은 MeshName을 지정하면 startup이 실패한다. Actor dispatch를
 사용하지 않는 STREAM node는 이 메서드를 호출하지 않아도 된다. Session의 `BindAsync(ActorRef)`는 이
@@ -119,8 +132,9 @@ MeshName context를 사용하므로 호출마다 mesh 이름을 받지 않는다
 
 `DefaultRequestTimeout`의 기본값은 30초, `DefaultSocketSendTimeout`의 기본값은 1초다.
 `ActorTransferTimeout`과 `ActorTransferForwardWindow`는 기본값이 `null`이며 transfer adapter를 하나라도
-등록하면 startup 전에 둘 다 양수로 설정해야 한다. Framework scheduler의 worker 수와 Core claim batch
-크기는 public 설정으로 노출하지 않는다.
+등록하면 startup 전에 둘 다 양수로 설정해야 한다. `Worker`는 bounded worker scheduler의 최소·최대 thread
+수, idle timeout과 queue 상한을 host startup 전에 설정한다. Core claim batch 크기는 public 설정으로
+노출하지 않는다.
 
 ## 3. Manual peer
 
@@ -214,6 +228,10 @@ non-blocking 호출은 즉시 backpressure 결과를 반환한다. `false`이면
 `ConfigureRouterSocket()`에서 startup 전에 설정한다. MeshNode가 지원하지 않는 raw ROUTER option을 이
 interface에 노출하지 않는다.
 
+`MaxMessageSize = 0`은 Framework가 별도 상한을 적용하지 않는 값이다. .NET adapter는 이를 Core의
+`ZLINK_OPT_MAXMSGSIZE = -1`로 변환한다. 양수는 같은 byte 상한으로 전달하며 음수는
+`ZLinkConfigurationException`으로 거부한다.
+
 ## 6. 메시징 metadata
 
 Node direct, ChannelName, Spot direct, Actor send/request와 Logical Multicast call builder는 다음 overload를 공통으로 가진다.
@@ -255,10 +273,12 @@ public enum ZLinkMeshNodeState
 
 public sealed record ZLinkMeshPeerSnapshot(
     RoutingId Rid,
-    ulong Generation,
+    ulong LifecycleGeneration,
+    ulong DescriptorRevision,
     string Endpoint,
     string AdmissionState,
     bool Ready,
+    string DrainState,
     IReadOnlyList<string> ChannelNames,
     string? LastFailure);
 
@@ -273,8 +293,12 @@ public sealed record ZLinkLogicalMulticastSnapshot(
     ulong Submitted,
     ulong Backpressured,
     ulong Dropped,
-    ulong LastRemoteTargetCount,
-    ulong LastLocalMatchCount,
+    ulong RemoteSnapshotCount,
+    ulong RemoteAdmittedCount,
+    ulong RemoteDroppedCount,
+    ulong LocalSnapshotCount,
+    ulong LocalAdmittedCount,
+    ulong LocalDroppedCount,
     ulong PendingAdmissionCount);
 
 public sealed record ZLinkMeshClaimSnapshot(
@@ -299,7 +323,8 @@ public sealed record ZLinkLocationRuntimeSnapshot(
 public sealed record ZLinkMeshNodeSnapshot(
     string MeshName,
     RoutingId Rid,
-    ulong Generation,
+    ulong LifecycleGeneration,
+    ulong DescriptorRevision,
     string Endpoint,
     ZLinkMeshNodeState State,
     ulong Sequence,
@@ -319,10 +344,17 @@ public sealed record ZLinkMeshRuntimeEvent(
     string MeshName,
     RoutingId SourceRid,
     RoutingId? PeerRid,
+    ulong? LifecycleGeneration,
+    ulong? DescriptorRevision,
     string? ChannelName,
     string? ClaimDomain,
-    ulong? TargetCount,
-    ulong? DropCount,
+    string? MessageKind,
+    ulong? RemoteSnapshotCount,
+    ulong? RemoteAdmittedCount,
+    ulong? RemoteDroppedCount,
+    ulong? LocalSnapshotCount,
+    ulong? LocalAdmittedCount,
+    ulong? LocalDroppedCount,
     string? Reason,
     ZLinkMeshNodeState? State);
 
@@ -376,17 +408,60 @@ public sealed record ZLinkMessageFlowEvent(
     string MessageKind,
     string Outcome,
     string? Reason,
+    string? Action,
     string? MeshName,
     string? ChannelName,
+    RoutingId? SourceRid,
+    RoutingId? TargetRid,
     string? PacketName,
+    string? Topic,
+    RoutingId? SpotRid,
+    string? ActorId,
     string? CorrelationId,
     string? FlowId,
     string? FlowOrigin,
+    ulong? RemoteSnapshotCount,
+    ulong? RemoteAdmittedCount,
+    ulong? RemoteDroppedCount,
+    ulong? LocalSnapshotCount,
+    ulong? LocalAdmittedCount,
+    ulong? LocalDroppedCount,
     ulong? TargetCount,
-    ulong? LocalMatchCount,
     ulong? DropCount,
     long? MessageSizeBytes,
     double? DurationSeconds);
+
+public sealed record ZLinkRuntimeErrorEvent(
+    string EventId,
+    DateTimeOffset Timestamp,
+    string Kind,
+    string Source,
+    string Reason);
+
+public interface IZLinkMessageFlowObserver
+{
+    ValueTask OnMessageFlowAsync(
+        ZLinkMessageFlowEvent flow,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkRuntimeErrorSink
+{
+    ValueTask OnRuntimeErrorAsync(
+        ZLinkRuntimeErrorEvent error,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkDispatchOptions
+{
+    IZLinkDispatchOptions SetMessageFlowObserver<TObserver>()
+        where TObserver : class, IZLinkMessageFlowObserver;
+    IZLinkDispatchOptions SetMessageFlowObserver(IZLinkMessageFlowObserver observer);
+    IZLinkDispatchOptions SetRuntimeErrorSink<TSink>()
+        where TSink : class, IZLinkRuntimeErrorSink;
+    IZLinkDispatchOptions SetRuntimeErrorSink(IZLinkRuntimeErrorSink sink);
+    IZLinkDispatchOptions MessageFlow(ZLinkMessageFlowMode mode);
+}
 
 public interface IZLinkMessageFlowRuntime
 {
@@ -398,8 +473,13 @@ public interface IZLinkMessageFlowRuntime
 ```
 
 Message flow의 기본 mode는 `ErrorsOnly`이며 실행 중 변경할 수 있다. Observer는 immutable event를 받고
-dispatch 결정에 참여하지 않는다. Metric은 `System.Diagnostics.Metrics`의 `Meter` 이름
-`Zlink.Framework`로 제공하고, 계기 이름·단위·label은
+dispatch 결정에 참여하지 않는다. `EventId == "zlink.dispatch_error"`일 때 `Outcome`은
+`"failed"`이고 `Reason`과 `Action`이 모두 존재한다. runtime error sink는 observer 실패를
+`EventId == "zlink.runtime_error"`, `Kind == "observer_failed"`, `Source == "message_flow_observer"`로
+받는다. 두 event에 exception object를 포함하지 않으며 sink 실패는 다시 sink를 호출하지
+않는다. 닫힌 문자열 값과 조건부 field 규칙은 [Message flow](../../52-message-flow-tracing.ko.md)이
+소유한다. Metric은 `System.Diagnostics.Metrics`의 `Meter` 이름
+`zlink.framework`로 제공하고, 계기 이름·단위·label은
 [Runtime metrics](../../51-runtime-metrics.ko.md)의 공통 계약을 그대로 사용한다.
 
 ## 10. 예제

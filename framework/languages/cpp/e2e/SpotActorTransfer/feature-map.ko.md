@@ -32,31 +32,6 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 | ST-F5 | `implemented` | actor-a→actor-b→actor-a의 다른 Spot으로 연속 이동하고, source 역할별 구조화 evidence로 다음 hop forwarding entry가 하나뿐인지 확인한다. `mapping_evicted` 뒤 두 old ref가 즉시 실패하는지도 검사한다. |
 | ST-F6 | `implemented` | source와 target의 구조화 evidence에서 같은 request id와 request flag가 보존되는지 비교한다. 같은 request id의 재시도는 backlog와 target handler에 한 번만 남고, 긴 timeout은 원래 caller reply로, 짧은 timeout은 일반 timeout과 late reply로 끝나는지 검사한다. |
 
-## 검증
-
-- 2026-07-15: `./run_e2e.sh ST-F1`
-  - 결과: 통과
-  - 로그: `logs/20260715-090842-2606499`
-  - 의미: 필수 handoff marker가 없으면 경고가 아니라 실행 실패가 되며, ST-F1은 두 marker를 모두 남겼다.
-- 2026-07-15: `./run_e2e.sh ST-E2`
-  - 결과: 통과
-  - 로그: `logs/20260715-090612-2594420`
-  - 의미: 성공 transfer와 새 session rebind가 없어도, 실패한 transfer 뒤 source binding 유지와 target route 비오염을 판별한다.
-- 2026-07-15: `./run_e2e.sh all`
-  - 결과: 스무 시나리오 통과
-  - 로그: `logs/20260715-115825-3241768`
-  - 의미: actor를 소유한 node가 생성과 join을 시작하는 네 역할 배치에서 일반·실패·순서·session·request handoff 절차가 모두 통과했다. actor-a→actor-b→actor-a 연속 이동도 각 시점의 소유 node에서 시작한다.
-- 2026-07-15: `./run_e2e.sh ST-F6`
-  - 결과: 통과
-  - 로그: `logs/20260715-110604-3043381`
-  - 의미: request id와 request flag가 source backlog에서 target replay까지 유지되고, 중복 dispatch 없이 reply와 timeout이 원래 caller 계약으로 끝났다.
-- 2026-07-15: admission burst 성능 비교
-  - 결과: median throughput 94,926/s에서 95,955/s, p99 2,685.49µs에서 2,419.20µs
-  - 의미: session route snapshot 리팩토링 뒤 dispatch 성능 회귀가 없었다.
-- 2026-07-15: D1~D6 구현 뒤 admission burst 재검증
-  - 결과: median throughput 91,642/s, p99 2,703.32µs
-  - 의미: 직전 95,955/s 대비 throughput 변화는 -4.5%로 10% 회귀 기준 안이다.
-
 ## 실행 범위
 
 `run_e2e.sh all`은 ST-A1부터 ST-F6까지 스무 시나리오를 모두 선택한다. source process 중단이 필요한
@@ -66,10 +41,9 @@ ST-B2, ST-C1, ST-C2는 다른 시나리오와 분리해 실행하며, 그 사이
 
 ## 설계 재검토
 
-actor 생성과 join을 별도 controller가 다른 node에 요청하는 안과 현재 actor를 소유한 node가 기존
-handoff 계약을 시작하는 안을 비교했다. 전자는 제거된 원격 생성 표면을 E2E가 다시 정의하므로 사용하지
-않는다. client는 최초 소유 node에 생성과 join을 요청하고, 연속 이동은 이동할 때마다 현재 소유 node에
-요청한다.
+Actor transfer는 현재 actor를 소유한 node가 handoff 계약을 시작한다. 별도 controller가 remote actor를
+생성하는 public API는 계약에 없다. client는 최초 소유 node에 생성과 join을 요청하고, 연속 이동은
+이동할 때마다 현재 소유 node에 요청한다.
 
 join 내부 제한 시간보다 HTTP 응답 제한 시간이 짧으면 runner 순서에 따라 정상 이동도 응답 전에 끊긴다.
 HTTP server의 응답 제한은 정상 join 요청 제한보다 길게 한 곳에서 설정했다. callback 실패를 기다리는

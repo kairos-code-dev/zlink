@@ -14,7 +14,7 @@ ZLINK_CPP_BUILD_DIR=build-redis-vcpkg ./framework/languages/cpp/samples/Shopping
 ## 구성
 
 - `Server/CommerceApi/`는 HTTP 주문 요청을 받고 workflow 역할로 주문 처리를 위임한다. API
-  프로세스도 작은 SpotMesh router를 열어 workflow owner의 order spot으로 routed request를 보낸다.
+  프로세스도 같은 MeshName의 MeshNode에 참여해 workflow owner의 order Spot으로 direct request를 보낸다.
 - `Server/OrderWorkflow/`는 order별 `OrderWorkflowSpot`을 만들고, 주문 상태 전이, 실패 처리,
   projection rebuild를 spot handler에서 실행한다.
 - `Client/`는 성공 주문, 멱등성, pending 복구, 재고 실패, 결제 실패, projection rebuild,

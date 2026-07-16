@@ -25,7 +25,7 @@
 | TD-E2 | 구현 | user Spot actor handler의 `JoinSpot(...).Async(...)`가 다른 user Spot으로 이동을 완료하는지 확인한다. |
 | TD-E3 | 구현 | 서로 반대 방향으로 시작한 두 user Spot join이 모두 timeout 없이 완료되는지 확인한다. |
 | TD-F1 | 구현 | 다른 노드의 Spot request를 기다린 continuation이 caller 노드로 돌아오는지 확인한다. |
-| TD-F2 | 구현 | route bridge로 도달한 `play-b` Spot에서도 `Yield` 의미와 marker 순서가 같은지 확인한다. |
+| TD-F2 | 구현 | MeshNode routed path로 도달한 `play-b` Spot에서도 `Yield` 의미와 marker 순서가 같은지 확인한다. |
 | TD-F3 | 구현 | session relay로 도달한 actor handler에서도 `Yield`의 mailbox 의미가 같은지 확인한다. |
 | TD-F4 | 구현 | request timeout 뒤 같은 Spot probe가 정상 실행되는지 확인한다. |
 | TD-F5 | 구현 | cancellation 뒤 같은 Spot probe가 정상 실행되며 별도 shutdown runner가 runtime 종료와 recovery를 확인한다. |

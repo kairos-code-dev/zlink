@@ -147,7 +147,7 @@ typed body의 encode/decode는 그 registry가 담당한다. raw body API는 reg
 ## 6. 오류 모델
 
 **HTTP client는 자체 예외 계층을 만들지 않는다.** framework 공용 오류 모델
-([05 §2.3](../05-framework-api.ko.md))의 error kind와 retriable 판정을 그대로 쓴다. **HTTP client
+([05 §13](../05-framework-api.ko.md#13-오류-kind))의 error kind와 retriable 판정을 그대로 쓴다. **HTTP client
 전용 error kind를 새로 만들지 않는다.**
 
 | 상황 | kind |

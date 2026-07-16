@@ -1,5 +1,12 @@
 # C++ RuntimeMonitoring .NET porting inventory
 
+## 10.0.0 목표 판정
+
+Config 7은 MeshNode·peer·ChannelName readiness, Spot Logical Multicast backpressure·drop, runtime health를
+공개 monitoring 표면으로 검증해야 한다. 아래 파일 대응과 기존 MON marker는 현재 구현 inventory이며,
+이 목표 축을 모두 충족하기 전까지 RuntimeMonitoring 포팅 상태는 `10.0.0 전환 대상`이다.
+
+
 기준 구현: `framework/languages/dotnet/e2e/RuntimeMonitoring`
 
 Config 7 C++ 구현은 `.NET` RuntimeMonitoring의 HTTP driver 구조와 scenario 의미를 유지하되,

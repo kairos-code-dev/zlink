@@ -3,7 +3,7 @@
 이 문서는 Config 2 SpotService 공통 시나리오 중 Kotlin E2E가 현재 검증하는 항목과,
 public API 또는 harness 제어가 더 필요한 항목을 구분한다. server role은 public Spring starter,
 `ZLinkSpotManager`, `ZLinkRouteClient`, `ZLinkSpotOutbound`, client/server channel builder, route mesh
-channel builder, SpotNode builder, stream connector, `ZLinkSpotPublisherClient`를 사용한다. 대부분의
+channel builder, MeshNode builder, stream connector, `ZLinkSpotPublisherClient`를 사용한다. 대부분의
 Client scenario는 HTTP endpoint와 public stream connector로 server role을 구동한다. RouteMesh의
 client-side public route/spot 전송을 검증해야 하는 scenario는 별도 client driver spot을 띄워
 `ZLinkRouteClient`와 `ZLinkSpotOutbound`를 직접 사용한다.
@@ -21,7 +21,7 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   `SM-D4`, `SM-D5`, `SM-D6`, `SM-D7`, `SM-D8`, `SM-D9`, `SM-D10`, `SM-D11`, `SM-D13`과
   `spot-service kotlin e2e focused modes=actor-session result=passed`를 확인한다.
 - `logs/20260704-045245-65740` focused runner에서는 `SM-C4`가 `gateway-publish` mode로 통과했다.
-  이 검증은 Java SpotService와 같은 수준으로 Gateway role의 public `ZLinkSpotPublisherClient.publishSpot`
+  이 검증은 Java SpotService와 같은 수준으로 Gateway role의 public `ZLinkSpotPublisherClient.publish(...)`
   호출과 gateway publish evidence를 확인한다.
 - `logs/20260704-045322-67016` full runner에서는 registry role 없이 Play/Gateway/MultiNode/Session role이
   공식 Redis location store extension을 같은 endpoint와 실행별 key prefix로 공유했고, 구현된 모든 mode와
@@ -41,8 +41,9 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   public `ZLinkSpotManager.close`로 명시 close했을 때 closing evidence가 남는지 확인한다.
 - `SM-A7`: 이미 만든 spot rid를 다른 spot 타입으로 `getOrCreate`할 때 public configuration error로
   거부되고, 기존 spot이 같은 타입으로 계속 조회되는지 확인한다.
-- `SM-A8`: public `context.runWorker`로 긴 작업을 spot 직렬 루프 밖에서 실행하는 동안 같은 spot의
-  후속 request가 막히지 않고, 완료 callback이 spot state/evidence를 안전하게 갱신하는지 확인한다.
+- `SM-A8`: public `context.runIoWorker(...).yield()`로 긴 I/O 작업을 spot 직렬 루프 밖에서 실행하는
+  동안 같은 spot의 후속 request가 막히지 않고, yield 완료 뒤 spot state/evidence를 안전하게
+  갱신하는지 확인한다.
 - `SM-B1`: stream session에서 만든 local actor가 entry spot request를 처리하고, public
   `ZLinkActorContext.joinSpot`으로 user spot에 join한 뒤 user spot actor request를 처리하는지 확인한다.
 - `SM-B2`: play-b stream session에서 만든 actor가 play-a의 `room-a` user spot에 join하고, cross-node
@@ -71,12 +72,12 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 - `SM-C1`: Client가 Play HTTP endpoint를 호출하고, Play가 public `ZLinkRouteClient`로 request, send,
   timeout, 미등록 packet negative path를 검증한다.
 - `SM-C2`: spot handler 안에서 public `ZLinkSpotOutbound.requestToChannel` /
-  `sendToChannel`로 외부 channel에 request/send를 내보내고, 같은 handler에서 SPOT mesh publish를
+  `sendToChannel`로 ChannelName에 request/send를 내보내고, 같은 handler에서 Logical Multicast를
   수행해 구독 spot의 evidence를 확인한다.
 - `SM-C3`: Client가 Play HTTP endpoint를 호출하고, source spot handler가 public
-  `ZLinkSpotOutbound.sendToSpot`으로 target user spot에 command를 보내는지 확인한다. SPOT mesh publish
+  `ZLinkSpotOutbound.sendToSpot`으로 target user Spot에 command를 보내는지 확인한다. Logical Multicast
   evidence도 함께 확인한다.
-- `SM-C4`: Gateway role이 public `ZLinkSpotPublisherClient.publishSpot`으로 SPOT mesh에 publish하고,
+- `SM-C4`: Gateway MeshNode가 public publisher client로 Logical Multicast를 제출하고,
   gateway publish 응답과 evidence를 확인한다. Java 기준 구현도 publisher role의 publish 호출을 검증하며
   Play role의 target spot 수신까지 C4 완료 조건으로 삼지 않는다.
 - `SM-D1`: public stream connector와 framework `ZLinkSessionActors.bind` / `ZLinkSessionActor.relay` /
@@ -134,7 +135,7 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   policy를 설정하고, `ZLinkTimerTick`의 delivery/skipped evidence가 남는지 확인한다.
 - `SM-F1`: 외부 consumer가 RouteMesh 경로로 target spot에 도달하는지 확인한다.
 - `SM-F2`: RouteMesh 채널명이 target spot egress의 실제 channel 기준으로 동작하는지 확인한다.
-  Play/MultiNode Kotlin route HTTP path는 `SpotRef` 인자로 `ZLinkRouteClient.requestToSpot` /
+  Play/MultiNode Kotlin route HTTP path는 `SpotHandle` 인자로 `ZLinkRouteClient.requestToSpot` /
   `sendToSpot`을 호출하도록 정리했다.
 - `SM-F3`: 같은 RouteMesh에서 일반 route-channel request/reply와 target spot request/send가 한
   channel 위에서 함께 구성되고, 일반 packet은 channel handler가 처리하는지 확인한다.
@@ -143,19 +144,18 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   공통 E2E와 `.NET` 기준 모두 public E2E 표면이 아니므로 직접 scenario로 만들지 않는다.
 - `SM-F5`: channel request → spot route request/send → channel request 순서의 전용 client scenario와
   `route-lifecycle` mode가 public `ZLinkRouteClient`와 `ZLinkSpotOutbound`를 직접 사용해 통과한다.
-  Java 공용 framework의 `ZLinkSpotOutbound`는 `SpotRef` 인자 전송과 request를 제공하고, client direct
-  outbound도 `SpotRef` 기반 호출을 사용한다. `logs/20260707-174936-2911529/client.stdout.log`에서
+  Java 공용 framework의 `ZLinkSpotOutbound`는 `SpotHandle` 인자 전송과 request를 제공하고, client direct
+  outbound도 `SpotHandle` 기반 호출을 사용한다. `logs/20260707-174936-2911529/client.stdout.log`에서
   `scenario SM-F5 passed`와 `spot-service kotlin e2e mode=route-lifecycle result=passed`를 확인했다.
-- `SM-F6`: RouteMesh를 등록하지 않은 MultiNode role 2개가 같은 SpotMesh만으로 target spot에 도달하는지
-  확인한다. source spot은 public `ZLinkSpotOutbound`의 `SpotRef` 기반 request/send로 target spot을
-  호출하고, entry spot은 public actor join 경로로 remote target spot에 actor를 붙인다.
+- `SM-F6`: 같은 MeshName의 MeshNode 두 개가 별도 channel·Spot socket 없이 target Spot에 도달하는지
+  확인한다. source spot은 public `ZLinkSpotOutbound`의 `SpotHandle` 기반 request/send로 target spot을
+  호출하고, entry Spot은 public actor join 경로로 remote target Spot에 actor를 join한다.
   `logs/20260707-221028-3618449/client-spot-only-mesh.stdout.log`에서 `scenario SM-F6 passed`와
   `spot-service kotlin e2e mode=spot-only-mesh result=passed`를 확인했다.
-- `SM-G2`: 앱이 같은 logical key에 대해 play-a 소유 spot과 play-b 소유 spot을 순서대로 만들고,
-  각 owner endpoint의 public RouteMesh 경로로 같은 key의 후속 request가 새 owner에 도달하는지
-  확인한다. `logs/20260707-183051-3064142/client.stdout.log`에서 `scenario SM-G2 passed`와
-  `spot-service kotlin e2e mode=owner-remap result=passed`를 확인했고, `play-a-evidence.json`에는
-  `owner-remap-first`, `play-b-evidence.json`에는 `owner-remap-second` evidence만 남는다.
+- `SM-G2` (부분 구현): 현재 구현은 처음부터 실행 중인 play-a와 play-b에 Spot을 순서대로 만들고
+  owner remap만 확인한다. MeshNode scale-out 뒤 기존 owner 유지, 새 peer와 Entry Spot readiness,
+  새 node의 application join을 통한 신규 actor·Spot 배치를 검증하지 못한다. 이 조건을 갖춘 runner와
+  public readiness 증거를 추가한 뒤 완료로 바꾼다.
 - `SM-G3`: public stream connector 2개가 같은 user spot에 join한 뒤, 동시에 actor request와 leave
   request를 실행하고 각 actor의 join/leave lifecycle evidence가 한 번씩 남는지 확인한다.
   Play role에 빠져 있던 `LeaveActorReq` actor request handler를 같은 public handler 등록 경로로
@@ -190,7 +190,17 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 
 ## public contract parity 또는 spec 검토 대기
 
-현재 이 구역에 남은 항목은 없다.
+- `SM-B9`: entry Spot admission의 local·remote 허용과 거부를 각각 실행하고, 거부 actor가 생성되지
+  않으며 caller가 timeout이 아닌 분류된 실패를 받는지 검증해야 한다. 기존 join 성공 시나리오는
+  거부 경계를 증명하지 않는다.
+- `SM-C5`: `play-a` Spot이 제출한 Logical Multicast를 `play-b`의 구독 Spot이 실제 수신했다는
+  evidence로 검증해야 한다. 현재 `SM-C4`의 발행 측 성공은 수신 완료 근거가 아니다.
+- `SM-C6`: 기본 `configureSpotPublisher().noDrop(true)`에서 remote peer backpressure를 만들고,
+  blocking publish의 전체 대상 원자적 admission과 timeout, non-blocking submit의 즉시 backpressure
+  결과를 검증해야 한다. 일부 대상 전달을 성공으로 처리하지 않아야 한다.
+- `SM-D15`: 별도 role의 channel request에서 actor send, bound session push와 client stream 수신까지
+  이어지는 사슬을 hop별 flow trace와 함께 검증해야 한다. 기존 session이 시작한 actor relay는 이
+  cross-role 시작 조건을 증명하지 않는다.
 
 ## .NET 추가 검증 파일
 

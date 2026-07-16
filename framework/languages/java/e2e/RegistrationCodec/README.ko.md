@@ -19,7 +19,7 @@
 timeout 420s ./run_e2e.sh
 ```
 
-`run_e2e.sh`는 Gradle `installDist`를 실행한 뒤 role별 binary를 띄운다. Client는 framework runtime으로
+`run_e2e.sh`는 Gradle `installDist`를 실행한 뒤 role별 binary를 시작한다. Client는 framework runtime으로
 뜨지 않고 `ZLinkHttpClient`로 server role을 구동한다. 실패하면 `logs/<run-id>/` 아래 stdout, stderr,
 message flow log를 출력한다.
 

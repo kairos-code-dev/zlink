@@ -53,7 +53,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 | SM-D11 | `Client/Scenarios/SmD11Scenario.cs` | `Client/Scenarios/sm-d11-scenario.ts` | done | 같은 flow에서 stream actor request와 Session HTTP channel control request를 함께 보내 두 reply 경로가 분리되는지 검증. 선택 PASS: `logs/20260629-220146-1678135`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D12 | `Client/Scenarios/SmD12Scenario.cs` | `Client/Scenarios/sm-d12-scenario.ts`, `run_e2e.sh` | done | `session-a` stream에서 actor state를 만든 뒤 `session-b` stream으로 재auth/rebind하고 `SnapshotReq`/`ActorPushReq`로 state 보존과 새 stream push를 검증. 선택 PASS: `logs/20260629-220618-1691419`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D13 | `Client/Scenarios/SmD13Scenario.cs` | `Client/Scenarios/sm-d13-scenario.ts` | done | `.NET` 기준과 같이 public heartbeat option이 켜진 stream이 여러 heartbeat interval 동안 연결 상태를 유지하는지 검증. 선택 PASS: `logs/20260629-221012-1704641`; `all` PASS: `logs/20260630-074201-3148526` |
-| SM-D14 | `Client/Scenarios/SmD14Scenario.cs` | `Client/Scenarios/sm-d14-scenario.ts`, `Server/Session/session-host-factory.ts`, `run_e2e.sh` | done | public stream node builder `setTlsServer(...)`로 self-signed TLS endpoint를 열고 strict validation failure와 skip-validation auth/request/push 성공을 검증. 선택 PASS: `logs/20260630-085904-3356699`; `all` PASS: `logs/20260630-101424-3467655` |
+| SM-D14 | `Client/Scenarios/SmD14Scenario.cs` | `Client/Scenarios/sm-d14-scenario.ts`, `Server/Session/session-host-factory.ts`, `run_e2e.sh` | 10.0.0 전환 대상 | public `setTlsServer(...)`로 `wss://` endpoint는 열지만 browser의 인증서 검증 생략 환경 변수에 의존한다. 공개 신뢰 설정으로 정상 인증서 성공과 잘못된 인증서 거부를 검증해야 한다. |
 | SM-D15 | `.NET feature-map SM-D15` | `Client/Scenarios/sm-d15-scenario.ts`, `Server/Session/`, `Server/Play/Spots/scenario-actors.ts` | done | cross-role actor request reply와 bound session push chain을 같은 actor/session evidence로 검증. 선택 PASS: `logs/20260707-195152-3345108`; `all` PASS: `logs/20260708-062031-351969` |
 | SM-E1 | `Client/Scenarios/SmE1Scenario.cs` | `Client/Scenarios/sm-e1-scenario.ts`, `Server/Play/Handlers/dispatch-error-observer.ts` | done | missing handler request/command을 public spot outbound와 message-flow observer로 연결하고 SpotRoute `handlerMissing` evidence를 검증. PASS: `logs/20260630-082045-3252646` |
 | SM-E2 | `Client/Scenarios/SmE2Scenario.cs` | `Client/Scenarios/sm-e2-scenario.ts`, `Server/Play/Handlers/timer-handlers.ts` | done | lifecycle timer tick repeats and close succeeds. PASS: `logs/20260630-074201-3148526` |
@@ -107,8 +107,8 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 - SM-D5는 stream close 후 Session `onDisconnected`와 선택 actor `entry-disconnected` evidence를 검증했고
   default `all` gate에 포함했다.
 - SM-D14는 public stream node builder `setTlsServer(...)`로 server certificate/key를 stream socket bind
-  전에 적용하고, connector client의 strict validation 실패와 skip-validation 성공 경로를 검증했다.
-  PASS: `logs/20260630-085904-3356699`; `all` PASS: `logs/20260630-101424-3467655`.
+  전에 적용한다. 현재 성공 경로는 `ZLINK_BROWSER_IGNORE_HTTPS_ERRORS`에 의존하므로 공개 connector
+  신뢰 설정과 잘못된 인증서 거부를 갖추기 전까지 10.0.0 전환 대상으로 유지한다.
 - sm-q9는 MultiNode role과 location store 기반 spot resolver 설정을 public `ZLinkSpotOutbound.requestToSpot(...)`
   경로로 검증했다. PASS: `logs/20260630-082118-3256244`.
 - SM-B7은 같은 actor의 연속 packet dispatch 순서가 `entry-created` -> `entry-joined` -> packet,

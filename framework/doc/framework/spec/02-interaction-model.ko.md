@@ -26,7 +26,11 @@
 
 Node direct는 infrastructure와 명시적 owner routing에 사용한다. target RID가 현재 mesh member가 아니면
 target-not-found 결과를 내고, member이지만 pipe가 준비되지 않았으면 send readiness 한계까지 기다린 뒤
-route-not-connected 결과를 낸다. Framework는 실패한 request를 다른 node에 자동으로 다시 보내지 않는다.
+route-not-connected 결과를 낸다. Node direct operation은 실패한 request를 다른 node에 자동으로 다시
+보내지 않는다.
+다만 Spot direct request에서 handler가 실행되지 않았음이 명확한 stale-target 응답을 받은 경우에는 같은
+논리 Spot의 route를 한 번 갱신하고 한 번 다시 제출할 수 있다. 이 제한된 예외는
+[Spot 주소 메시징 §5](server/24-spot-address-messaging.ko.md#5-stale-route)가 소유한다.
 
 Channel operation은 호출 순간의 ready member 가운데 weight가 0보다 큰 하나를 round-robin으로 고른다.
 선택과 submit 사이에 application callback을 두지 않는다. weight 0은 새 channel 선택과 Logical Multicast
@@ -40,7 +44,10 @@ runtime error sink와 monitoring으로 보고한다.
 
 `request`는 reply correlation을 만들고 terminal 결과를 정확히 한 번 전달한다. request timeout은 reply를
 기다리는 시간이다. 전송 단계의 backpressure는 send timeout이 담당한다. route 오류나 timeout으로 끝난
-request를 Framework가 자동 재전송하지 않는다.
+request를 Framework가 자동 재전송하지 않는다. Spot direct request의 안전한 stale-target refresh는
+handler 미실행을 확인할 수 있을 때 한 번만 허용하며 timeout, cancellation 또는 실행 여부가 불명확한
+실패에는 적용하지 않는다. Core result에서 공통 Framework 결과로 가는 exact mapping은
+[Framework API §13.1](05-framework-api.ko.md#131-core-result-변환)이 소유한다.
 
 같은 origin이 같은 destination pipe에 성공적으로 submit한 message는 FIFO다. 서로 다른 destination,
 origin 또는 session 사이의 전역 순서는 보장하지 않는다.
@@ -55,9 +62,9 @@ MeshNode와 local Spot match를 snapshot한다.
 - 같은 node의 일치하는 Spot queue는 immutable payload storage의 reference를 공유한다.
 - 다른 MeshNode로 relay하거나 과거 event를 replay하지 않는다.
 
-기본 `NODROP=true`는 모든 snapshot target을 하나의 admission 단위로 처리한다. blocking publish는
+기본 `NoDrop = true`는 모든 snapshot target을 하나의 admission 단위로 처리한다. blocking publish는
 send timeout까지 기다리며, timeout이면 어느 target에도 commit하지 않는다. non-blocking publish는 하나라도
-막혀 있으면 즉시 backpressure 결과를 반환한다. `NODROP=false`에서는 막힌 target만 제외하고 나머지
+막혀 있으면 즉시 backpressure 결과를 반환한다. `NoDrop = false`에서는 막힌 target만 제외하고 나머지
 target에 commit할 수 있다.
 
 publish 성공은 Spot handler의 실행 완료를 뜻하지 않는다. 모든 target queue와 pipe에 admission이

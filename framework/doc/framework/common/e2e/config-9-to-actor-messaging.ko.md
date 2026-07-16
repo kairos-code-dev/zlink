@@ -7,10 +7,10 @@
 서버 측 caller가 session을 통하지 않고 `ActorRef`로 actor에게 message를 보내거나 request를 보낼 때,
 actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본다. 이 config는 모든 framework 언어가
 같은 의미로 통과해야 하는 공통 검증이다. 구현 스위트와 API 이름은 언어별 idiom을 따르지만, 검증
-조건과 evidence marker는 네 언어에서 같은 의미로 유지한다.
+조건과 evidence marker는 다섯 언어에서 같은 의미로 유지한다.
 
 이 문서는 e2e 시나리오 정의만 둔다. actor client의 공개 계약은
-[actor model 6.1절](../../spec/server/22-actor-model.ko.md)을 기준으로 하며 여기서 다시 정의하지 않는다.
+[Actor 모델 §5](../../spec/server/22-actor-model.ko.md#5-메시징)을 기준으로 하며 여기서 다시 정의하지 않는다.
 언어별 구현은 public API만 사용하고, 내부 helper나 raw frame 조작으로 이 config를 통과시키면 안 된다.
 
 ## 1. 목적과 범위
@@ -23,9 +23,9 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
 - 계약 근거: send-to-actor/request-to-actor는 `ActorRef`를 받고, send 완료는 actor owner의 로컬
   mailbox 인계 성공을 뜻한다. 실패 분류는 `ActorRouteNotFound`, `ActorLocationStale`,
   `RouteNotConnected`를 참조한다.
-- protocol 근거: no-bind 전달은 session binding을 만들거나 갱신하지 않고, request reply는 bound
-  session이 아니라 caller에게 돌아와야 한다. actor mailbox 인계와 request reply correlation은
-  core의 server-to-actor no-bind 경로를 따른다.
+- 계약 근거: Actor direct 메시징은 session binding을 만들거나 바꾸지 않으며, request reply는 bound
+  session이 아니라 caller에게 돌아간다. Actor queue 인계와 request completion은
+  [Actor 모델 §5](../../spec/server/22-actor-model.ko.md#5-메시징)의 공개 계약을 따른다.
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
@@ -54,7 +54,7 @@ session bind와 push 검증은 client stream connector가 받은 payload와 acto
 ## 3. 실행 모델
 
 `run_e2e.sh`가 Redis(전용 key prefix) 준비 → actor 노드 → session gateway → 외부 caller 서버 순으로
-띄운 뒤 client 시나리오를 순차 실행한다. 각 시나리오는 필요한 actor를 만들고, 필요한 경우 stream
+시작한 뒤 client 시나리오를 순차 실행한다. 각 시나리오는 필요한 actor를 만들고, 필요한 경우 stream
 connector로 session을 bind한 뒤, caller 서버 endpoint를 호출해 to-actor send/request를 발생시킨다.
 
 로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
@@ -70,7 +70,7 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 
 우선순위: `P0`
 
-**한마디로:** 이미 session에 bind된 actor에게 외부 caller 서버가 to-actor send/request를 보내도, actor는 처리하고 기존 bound session은 바뀌지 않는가.
+**검증 질문:** 이미 session에 bind된 actor에게 외부 caller 서버가 to-actor send/request를 보내도, actor는 처리하고 기존 bound session은 바뀌지 않는가.
 
 - 절차: consumer가 `session-a`에 stream connector로 연결하고 actor `actor-bound`를 bind한다. actor가 자기 bound session으로 `BeforeNotify`를 push해 원래 client가 받는지 확인한다. 그 뒤 외부 caller 서버 endpoint를 호출해 해당 `ActorRef`로 send와 request를 각각 보낸다. 마지막으로 actor가 다시 `AfterNotify`를 bound session으로 push한다.
 - 검증: send는 actor handler evidence에 기록되고 request는 caller 서버가 handler reply를 받는다. `BeforeNotify`와 `AfterNotify`는 모두 처음 bind한 client connector로만 도착한다. no-bind 전달 전후 actor의 bound-session snapshot은 같은 session을 가리킨다. caller 서버가 session으로 새 bind를 만들거나 기존 bind를 갱신한 evidence가 없어야 한다.
@@ -80,7 +80,7 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 
 우선순위: `P0`
 
-**한마디로:** bound session이 없는 actor에게도 외부 caller 서버가 actor mailbox로 메시지를 넘기고 request reply를 받을 수 있는가.
+**검증 질문:** bound session이 없는 actor에게도 외부 caller 서버가 actor mailbox로 메시지를 넘기고 request reply를 받을 수 있는가.
 
 - 절차: actor `actor-unbound`를 만들되 stream session bind는 만들지 않는다. 외부 caller 서버 endpoint를 호출해 생성 결과의 `ActorRef`로 send와 request를 각각 보낸다.
 - 검증: actor handler가 send를 처리했다는 evidence를 남긴다. request reply는 caller 서버로 돌아온다. actor의 bound-session snapshot은 비어 있는 상태로 유지된다. session gateway나 client connector에는 해당 actor의 push 또는 bind 갱신 marker가 생기지 않는다.
@@ -90,7 +90,7 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 
 우선순위: `P0`
 
-**한마디로:** bind되지 않은 actor가 no-bind send/request를 받은 뒤 나중에 session bind를 만들어도, 두 경로가 서로 오염되지 않는가.
+**검증 질문:** bind되지 않은 actor가 no-bind send/request를 받은 뒤 나중에 session bind를 만들어도, 두 경로가 서로 오염되지 않는가.
 
 - 절차: `actor-late-bind`를 bind 없이 만든다. 외부 caller 서버에서 send와 request를 보낸다. 이후 consumer가 `session-b`에 stream connector로 연결하고 같은 actor를 bind한다. bind 뒤 caller 서버에서 다시 send와 request를 보내고, actor가 자기 bound session으로 `LateBindNotify`를 push한다.
 - 검증: bind 전 send/request와 bind 후 send/request가 모두 actor handler evidence와 caller 서버 reply로 확인된다. bind 전에는 bound-session snapshot이 비어 있고, bind 후에는 새 session을 가리킨다. `LateBindNotify`는 새로 bind한 client connector로 도착한다. no-bind 호출이 bind 생성을 대신했다는 marker가 없어야 한다.
@@ -100,10 +100,16 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 
 우선순위: `P0`
 
-**한마디로:** actor의 session이 끊겨도 actor가 살아 있으면 to-actor 전달은 계속 성공하고, actor가 사라진 뒤에는 actor 부재 실패로 분류되는가.
+**검증 질문:** actor의 session 연결이 해제되어도 actor가 유지되면 to-actor 전달은 계속 성공하고,
+actor 제거 후에는 actor 부재 실패로 분류되는가.
 
-- 절차: consumer가 actor `actor-disconnected`를 bind한 뒤 stream connection을 정상 unbind 또는 disconnect한다. actor lifecycle 정책상 actor는 살아 있게 둔다. 외부 caller 서버가 보관한 `ActorRef`로 send와 request를 보낸다. 그 뒤 actor를 명시적으로 destroy하거나 actor owner에서 제거한 뒤 같은 ref로 request를 다시 보낸다.
-- 검증: disconnect 뒤 actor가 살아 있는 동안 send/request는 actor handler evidence와 caller 서버 reply로 성공한다. bound-session snapshot은 비어 있거나 끊긴 session을 더 이상 유효 대상으로 쓰지 않는 상태로 관측된다. actor destroy 뒤 같은 ref 호출은 `ActorRouteNotFound`로 분류된다. destroy 뒤에는 handler evidence가 새로 생기지 않는다.
+- 절차: consumer가 actor `actor-disconnected`를 bind한 뒤 stream connection을 정상 unbind 또는
+  disconnect한다. actor lifecycle 정책에 따라 actor는 유지한다. 외부 caller 서버가 보관한
+  `ActorRef`로 send와 request를 보낸다. 그 뒤 actor를 명시적으로 destroy하거나 actor owner에서
+  제거한 뒤 같은 ref로 request를 다시 보낸다.
+- 검증: disconnect 뒤 actor가 유지되는 동안 send/request는 actor handler evidence와 caller 서버
+  reply로 성공한다. bound-session snapshot은 비어 있거나 해제된 session을 유효 대상으로 사용하지
+  않는 상태로 관측된다. actor destroy 뒤 같은 ref 호출은 `ActorRouteNotFound`로 분류된다.
 - 세부 동작: session 생명주기와 actor 생명주기 분리 + actor 부재 실패 분류.
 
 ### Track B — 실패 분류
@@ -112,7 +118,7 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 
 우선순위: `P0`
 
-**한마디로:** live actor와 일치하지 않는 `ActorRef`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `ActorRouteNotFound`로 실패하는가.
+**검증 질문:** 현재 actor와 일치하지 않는 `ActorRef`로 호출하면 actor가 자동 생성되거나 메시지가 보관되지 않고 `ActorRouteNotFound`로 실패하는가.
 
 - 절차: 알려진 actor node/type/id 형식을 사용하되 live actor와 일치하지 않는 ref로 외부 caller 서버가 request와 send를 시도한다.
 - 검증: request는 caller 서버에서 `ActorRouteNotFound`로 실패한다. reply가 없는 send의 submit은 로컬 전송 접수까지만 나타내며 원격 actor의 존재 여부를 확인하는 수단으로 사용하지 않는다. send 뒤 actor 노드에는 해당 actor id의 handler evidence가 없고 actor location row도 새로 만들어지지 않는다. auto-create나 메시지 파킹이 없어야 하며, 호출자가 actor 부재를 확인해야 하는 흐름은 request를 사용한다.
@@ -122,7 +128,7 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 
 우선순위: `P0`
 
-**한마디로:** 이전 generation의 actor ref를 쓰면 `ActorLocationStale`로 분류되는가.
+**검증 질문:** 이전 generation의 actor ref를 쓰면 `ActorLocationStale`로 분류되는가.
 
 - 절차: actor를 만들고 caller 서버가 정상 `ActorRef`를 얻는다. 이후 actor owner를 교체하거나 generation을 바꾸어 이전 ref가 stale이 되게 한 뒤 그 ref로 호출한다.
 - 검증: stale 호출은 `ActorLocationStale`로 분류된다. 이전 owner와 새 owner의 evidence를 비교해 어느 쪽에서도 잘못된 generation의 handler가 실행되지 않았음을 확인한다. caller가 resolver에서 새 live ref를 다시 얻어 호출한 경우는 별도 성공 경로로 기록한다.
@@ -132,7 +138,7 @@ caller 서버의 request id, actor 노드의 mailbox marker, session gateway의 
 
 우선순위: `P0`
 
-**한마디로:** 대상 actor node rid는 알려졌지만 routed plane으로 보낼 수 없으면 `RouteNotConnected`로 분류되고 재시도 가능한 실패로 남는가.
+**검증 질문:** 대상 actor node rid는 알려졌지만 routed plane으로 보낼 수 없으면 `RouteNotConnected`로 분류되고 재시도 가능한 실패로 남는가.
 
 - 절차: actor의 `ActorRef`를 얻은 뒤 caller 서버에서 actor owner node로 가는 route 연결을 끊는다. 외부 caller 서버가 해당 ref로 request를 보낸다. 연결 복구 뒤 같은 ref로 다시 request를 보낸다.
 - 검증: 단절 구간의 실패는 `RouteNotConnected`로 분류되고, actor handler evidence는 남지 않는다. 복구 뒤 follow-up request는 같은 actor handler에서 처리되고 reply가 caller 서버로 돌아온다. 이 시나리오는 actor row 없음이나 stale location으로 판정하면 안 된다.

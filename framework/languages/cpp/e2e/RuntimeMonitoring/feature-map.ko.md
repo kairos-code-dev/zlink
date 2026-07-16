@@ -2,54 +2,27 @@
 
 기준 문서: `framework/doc/framework/common/e2e/config-7-monitoring.ko.md`
 
-이 디렉터리는 Config 7 RuntimeMonitoring 검증을 C++ framework public API로 실행한다.
-현재 구현은 Redis location store를 공유하는 service, filtered service, throwing service, trigger,
-client role로 구성된다. 별도 registry role은 없다. client role은 `.NET` baseline처럼 HTTP만
-호출하고, framework channel request와 monitoring validation은 trigger/service role 내부 endpoint가
-담당한다.
+## 10.0.0 목표 판정
 
-| 시나리오 | 상태 | 근거 |
-|----------|------|------|
-| `MON-A1` | 구현 | trigger role이 service A로 transient profile request를 보내고, service role이 native socket monitor에서 발행되는 `Connected`, `ConnectionReady`, `Disconnected` event와 remote address evidence를 수집한다. |
-| `MON-A2` | 구현 | runner가 svc-a 다음 svc-b를 시작해 peer location row를 실제로 바꾼다. svc-a의 `location-runtime` source가 낸 `TopologyChanged` payload에 `svc-b` node rid가 포함되고 `ServiceSummaryChanged`가 함께 발생하는지 확인한다. 이후 500ms 안정 구간에는 같은 snapshot event가 다시 발행되지 않아야 한다. |
-| `MON-A3` | 구현 | service role이 Redis location store로 발견한 SPOT mesh peer를 연결하고, native peer snapshot 변화의 `PeersChanged`, `/spot/create` 뒤 `SubjectsChanged`, failing timer의 `TimerHandlerFailed` event를 evidence로 수집한다. |
-| `MON-A4` | 구현 | runner가 `svc-a`를 강제 종료하고 같은 RID를 다른 channel endpoint로 재시작한다. 지속 discovery client가 이전 endpoint의 `Disconnected`와 새 endpoint의 `Connected`·`ConnectionReady`를 순서대로 수집하고, location payload의 ready RID·endpoint 교체도 확인한다. 이어서 drain/restore 각각이 새 `PeerAdmissionChanged`를 발생시키는지 검증한다. |
-| `MON-A5` | 구현 | trigger role이 invalid handshake를 service channel에 보내고, service role이 `HandshakeFailed` 또는 대응 socket transition을 수집한다. location runtime `StatusChanged`, spot `StatusChanged`, 실제 failing timer의 `TimerStoppedAfterUnhandledException` evidence도 함께 검증한다. |
-| `MON-B1` | 구현 | filtered service role이 socket event kind filter를 `ConnectionReady`에 적용하고, 해당 event만 evidence에 남는지 검증한다. |
-| `MON-B2` | 구현 | trigger role의 validation endpoint가 C++ public builder의 중복 socket source, 비양수 location interval, missing spot/socket source framework 적용 검증을 실행하고 client가 결과를 단언한다. |
-| `MON-C1` | 구현 | throwing service mode가 monitoring handler 예외를 발생시키고, runtime이 `monitoring-event-dispatch` stderr marker를 남기며 trigger role의 후속 messaging request가 계속 성공하는지 검증한다. |
-| `MON-D1` | 구현 | runner가 filtered service를 두 번 강제 종료하고 같은 endpoint로 재시작한다. 지속 observer가 각 cycle의 location route down/up payload를 순서대로 수집하며, 마지막 재시작 뒤 request가 성공하는지 검증한다. |
+Config 7은 C++ framework public `route_mesh_runtime_t`의 snapshot과 typed event를 기준으로 판정한다.
+기존 native socket, location source와 Spot source 증거는 관련 canonical scenario의 부분 증거며,
+trigger-only marker나 message-flow trace로 빈 runtime field를 대신하지 않는다.
 
-## 유지 기준
+| 시나리오 | 상태 | 현재 증거 | 남은 gap |
+|---|---|---|---|
+| MON-A1 | 10.0.0 전환 대상 | `location-runtime` source가 MeshNode descriptor 변경과 service summary를 기록한다. | 하나의 snapshot에 MeshNode·peer·channel·multicast·claim·location·drain이 함께 있는지와 sequence·불변성을 검증한다. |
+| MON-A2 | 10.0.0 전환 대상 | Service가 native `Connected`·`ConnectionReady`·`Disconnected`와 location topology의 peer RID를 수집한다. | `peer_changed` event와 snapshot의 generation·descriptor revision·admission·ready·last failure를 재시작 전후로 대조한다. |
+| MON-A3 | 10.0.0 전환 대상 | Drain·restore에서 admission 변경 marker를 수집한다. | Weight 0·100 전파, channel event, ready member 수·selectable과 실제 ChannelName request 선택 결과를 같이 단언한다. |
+| MON-A4 | 10.0.0 전환 대상 | 같은 RID의 다른 endpoint 재시작과 두 번의 강제 종료·재시작에서 endpoint 교체, route down/up, 후속 request를 확인한다. | 정상 replacement와 fresh topology의 `SIGKILL`·lease 만료를 나누고 각 event 뒤 generation·ready peer·ready member를 최신 snapshot과 대조한다. |
+| MON-A5 | 10.0.0 전환 대상 | Location runtime `StatusChanged`와 Redis-backed topology 경로가 있다. | Redis 정지·failure grace·복구에서 `location.store_changed`, location state·last success·last failure와 current owner token 재검증을 단언한다. |
+| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = true`의 막힌 target에 대해 backpressure·timeout result, backpressured event, dropped=0인 target count snapshot을 비교한다. |
+| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = false`의 수락·drop target 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
+| MON-C1 | 10.0.0 전환 대상 | Monitoring handler 예외를 error sink에 남긴 뒤 후속 request가 성공한다. | Application gate·느린 observer·정상 observer를 함께 실행해 claim progress, request completion, coalescing·sequence gap과 snapshot resync를 단언한다. |
+| MON-D1 | 10.0.0 전환 대상 | 중복 socket source, 비양수 location interval, 없는 Spot·socket source 구성 검증과 두 번의 비정상 재시작 증거가 있다. | 등록하지 않은 MeshName·0 이하 capacity 오류를 검증하고 비정상 종료·lease 만료·재시작 3회의 sequence·snapshot·event field 제한을 확인한다. |
 
-- `run_e2e.sh`는 Redis-capable C++ build 디렉터리(`build-redis-vcpkg`)를 기본값으로 사용한다.
-- Redis container는 loopback port로만 publish하고, scenario별 key prefix를 사용한다.
-- service role은 SPOT mesh에 router endpoint와 pub/sub endpoint를 모두 공개한다. location store의
-  SPOT peer row는 router endpoint를 기준으로 발견되고 pub endpoint는 metadata로 함께 전파된다.
-- `run_e2e.sh`는 MON-A1/MON-B1/MON-D1에서 실제 message dispatch가 발생한 service와 trigger role의
-  message-flow trace 파일을 필수 증거로 확인한다.
-- 현재 MON-A1~MON-D1에는 public monitoring API gap이 없다. 이후 새 항목에서 public monitoring API로
-  수집할 수 없는 항목이 나오면 trigger-only marker로 메우지 않고 별도 gap으로 기록한다.
+## 실행 경계
 
-## 검증
-
-- 2026-07-15:
-  - `framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh all`
-  - 결과: 통과
-  - 로그: `logs/20260715-064803-2026580`
-  - 의미: MON-A4의 같은 RID endpoint 교체와 socket·location 전이, MON-D1의 두 crash/restart
-    cycle별 down/up 전이를 포함해 전체 scenario가 같은 gate에서 통과했다.
-- 2026-07-08:
-  - `timeout 560s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
-  - 결과: 통과
-  - 로그: `logs/20260708-133413-118111`
-  - 의미: Redis location store 기반 RuntimeMonitoring role들이 MON-A1, MON-A2, MON-A3, MON-A4,
-    MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을 같은 gate에서 검증한다. 출력은
-    `runtime-monitoring client result=passed`, `scenario MON-D1 passed`,
-    `runtime-monitoring e2e result=passed`를 포함한다.
-- 2026-07-03:
-  - `framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
-  - 결과: 통과
-  - 로그: `logs/20260703-214231-52862`
-  - 의미: Redis location store 기반 RuntimeMonitoring role들이 MON-A1, MON-A2, MON-A3, MON-A4,
-    MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을 같은 gate에서 검증한다.
+- `run_e2e.sh`는 Redis-capable C++ build 디렉터리를 사용하고 scenario별 key prefix를 나눈다.
+- Service는 MeshNode ROUTER endpoint 하나를 공개하며 Spot Logical Multicast도 같은 MeshNode 연결을
+  사용한다.
+- 전환 대상 행은 목표 topology와 public runtime 증거가 구현된 뒤에만 완료로 바꾼다.

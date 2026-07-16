@@ -1,33 +1,25 @@
 # Kotlin RuntimeMonitoring E2E feature map
 
-이 문서는 Config 7 Runtime Monitoring 공통 시나리오 중 Kotlin E2E가 현재 검증하는 항목과,
-public API 또는 harness 제어가 더 필요한 항목을 구분한다. 각 host는 자기 source를 public
-`ZLinkMonitoringOptionsCustomizer`로 등록하고, public `ZLinkRuntimeEventHandler`에서 evidence를
-기록한다.
+기준 문서: `framework/doc/framework/common/e2e/config-7-monitoring.ko.md`
 
-현재 `MON-A1`, `MON-A2`, `MON-A3`, `MON-A4`, `MON-A5`, `MON-B1`, `MON-B2`, `MON-C1`, `MON-D1` client scenario는
-`Client/src/main/kotlin/.../client/scenarios/` 아래 Kotlin 파일로 분리되어 있고,
-Client는 framework runtime에 참여하지 않는 plain JVM HTTP/evidence driver다. framework request가 필요한
-흐름은 Trigger HTTP endpoint가 public framework client 또는 transient framework lifecycle로 수행한다.
-`logs/20260704-043031-38623` full runner에서 `Client` module binary로 통과했다. Service,
-FilteredService, ThrowingService, Trigger role은 각각 `Server/Service`,
-`Server/FilteredService`, `Server/ThrowingService`, `Server/Trigger` module binary로 실행한다.
-registry role은 Redis location store 전환 뒤 제거했다.
-`MON-A4`는 Service admin endpoint가 public runtime socket weight를 0으로 바꾸고, Trigger socket
-monitoring evidence의 `PEER_ADMISSION_CHANGED`, Service admin evidence, location `TOPOLOGY_CHANGED`
-evidence를 함께 확인한다.
-`MON-B2` client scenario는 Trigger HTTP endpoint를 호출해 중복 socket source, 비양수 polling interval,
-미존재 socket source, 미존재 spot source 등록 실패를 확인한다. message/evidence contract는 `Shared`
-Gradle module로 분리했다.
+## 10.0.0 목표 판정
 
-## 구현됨
+Kotlin E2E는 Java `ZLinkRouteMeshRuntime` public 타입을 그대로 사용한다. Client는 framework
+runtime에 참여하지 않는 JVM HTTP·evidence driver이고, framework operation은 Trigger와
+Service role이 수행한다. 기존 socket·location·Spot source marker는 canonical 목표의 부분
+증거로만 사용한다.
 
-- `MON-A1`: Client가 Trigger의 disconnect request endpoint를 호출하고, Trigger가 transient public framework client로 Service에 request를 보낸 뒤 service host의 `monitoring.api` socket source에서 `CONNECTED` 또는 `CONNECTION_READY`를 관찰한다.
-- `MON-A2`: service host의 `ops-locations` source에서 `STATUS_CHANGED`, `TOPOLOGY_CHANGED`, `SERVICE_SUMMARY_CHANGED`를 관찰한다.
-- `MON-A3`: service host의 `monitoring.spot.mesh` source에서 `STATUS_CHANGED`, `PEERS_CHANGED`, `SUBJECTS_CHANGED`를 관찰하고, failing timer가 `TIMER_HANDLER_FAILED`를 발행해도 channel messaging이 멈추지 않는지 확인한다.
-- `MON-A4`: service host의 public runtime socket weight를 0으로 바꿨다가 복구하고, trigger host의 client socket source에서 `PEER_ADMISSION_CHANGED`를 관찰한다. Service admin evidence와 location topology evidence도 함께 확인한다.
-- `MON-A5`: handshake 전용 public channel에 잘못된 TCP 연결을 보내 socket 전이를 관찰하고, location/spot `STATUS_CHANGED`와 stop-on-unhandled timer의 `TIMER_STOPPED_AFTER_UNHANDLED_EXCEPTION`을 함께 확인한다. 현재 Java/Kotlin native backend는 raw malformed 연결을 `HANDSHAKE_FAILED`가 아니라 연결/해제 marker로 보고한다.
-- `MON-B1`: Client가 Trigger의 service-b request endpoint를 호출하고, filtered service host의 socket source를 `CONNECTION_READY` kind로 필터링하며, evidence에 필터에 포함한 kind만 기록되는지 확인한다.
-- `MON-B2`: client가 Trigger HTTP endpoint를 호출해 monitoring 등록 검증을 실행한다. 중복 socket source와 비양수 polling interval은 구성 시점에 실패하고, 미존재 socket/spot source는 host 시작 시점에 명확한 오류로 실패하는지 확인한다.
-- `MON-C1`: Client가 Trigger의 throwing-service request endpoint를 호출한다. throwing service host의 monitoring event handler가 예외를 던져도 dispatcher가 예외를 격리하고, 그 뒤 channel messaging이 계속 성공하는지 확인한다.
-- `MON-D1`: service-b 역할의 FilteredService를 HTTP endpoint로 종료하고 같은 binary와 endpoint로 재시작한 뒤, Trigger가 service-b endpoint만 가진 transient framework client로 request를 보내 restarted service가 응답하는지 확인한다. location `TOPOLOGY_CHANGED` evidence와 restarted service socket evidence도 함께 확인한다.
+| 시나리오 | 상태 | 현재 증거 | 남은 gap |
+|---|---|---|---|
+| MON-A1 | 10.0.0 전환 대상 | `ops-locations` source에 topology·service summary 변경이 기록된다. | Java runtime snapshot 하나의 MeshNode·peer·channel·multicast·claim·location·drain field, sequence와 불변성을 Kotlin scenario에서 검증한다. |
+| MON-A2 | 10.0.0 전환 대상 | Bare socket source의 연결 marker가 있지만 capability source identity를 사용한 집중 실행은 startup에서 실패한다. | Public peer event·snapshot의 RID, generation, descriptor revision, endpoint, admission, ready, last failure를 재시작 전후로 대조한다. |
+| MON-A3 | 10.0.0 전환 대상 | Service weight를 0·100으로 변경하고 Trigger의 admission marker와 location topology 변경을 관측한다. | Channel event, local weight, ready member 수·selectable과 실제 ChannelName request 선택 결과를 각 전이 뒤 비교한다. |
+| MON-A4 | 10.0.0 전환 대상 | Service admin 종료 뒤 같은 binary·endpoint로 재시작하고 request·topology down/up을 확인한다. | 정상 replacement와 fresh topology의 `SIGKILL`·lease 만료를 나누고 generation·endpoint·ready member가 최신 snapshot으로 수렴하는지 검증한다. |
+| MON-A5 | 10.0.0 전환 대상 | Location runtime `STATUS_CHANGED`와 Redis-backed topology 경로가 있다. | Redis 정지·failure grace·복구에서 store event, location state·last success·last failure와 current owner token 재검증을 단언한다. |
+| MON-B1 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = true` target queue backpressure, terminal result, backpressured event와 dropped=0인 snapshot count를 비교한다. |
+| MON-B2 | 10.0.0 전환 대상 | 해당 Logical Multicast 증거가 없다. | `NoDrop = false`의 수락·drop target 처리 결과, dropped event와 remote·local snapshot/admitted/dropped 수를 비교한다. |
+| MON-C1 | 10.0.0 전환 대상 | Monitoring handler 예외를 dispatcher가 격리한 뒤 channel messaging이 계속된다. | Application gate, 느린 observer와 정상 observer를 함께 열어 claim progress·request completion·coalescing·sequence gap 후 snapshot resync를 단언한다. |
+| MON-D1 | 10.0.0 전환 대상 | 중복 socket source, 비양수 polling interval, 없는 socket·Spot source 구성 실패와 한 번의 service down/up 경로가 있다. | 등록하지 않은 MeshName·0 이하 observer capacity 오류와 비정상 종료·lease 만료·재시작 3회의 sequence·snapshot·event field 제한을 검증한다. |
+
+Java runtime의 socket source registry가 capability source 이름을 받아들이는 경계와 canonical scenario
+topology를 구현한 뒤 Kotlin runner를 전체 재실행한다.

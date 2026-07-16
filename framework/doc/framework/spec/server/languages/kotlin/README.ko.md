@@ -6,8 +6,13 @@ public contract를 소유한다. 그대로 사용하는 Java 타입과 메서드
 
 Kotlin suspending handler와 adapter 시그니처는
 [handler-interfaces](02-handler-interfaces.ko.md)를 기준으로 한다. Java API를 기다리는
-extension, Stream Connector coroutine wrapper와 `Flow` 표면도 이 디렉토리의 정식
-계약에 포함한다. Kotlin source와 contract test는 이 계약을 따라야 한다.
+server extension도 이 디렉토리의 정식 계약에 포함한다. Kotlin source와 contract test는 이 계약을
+따라야 한다. Client Stream Connector의 coroutine wrapper와 `Flow` 표면은 별도
+[Java/Kotlin Stream Connector 계약](../../../stream-connector/languages/java/03-stream-connector.ko.md)이
+소유한다.
+
+공식 Redis location extension의 Kotlin 호출 경계와 Java type 재사용 규칙은
+[Location Store·Redis](03-location-store.ko.md)가 고정한다.
 
 ## 취소 인자
 

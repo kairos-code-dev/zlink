@@ -3,12 +3,21 @@
 이 문서는 `zlink-framework-kotlin`이 추가하는 suspending handler와 lifecycle adapter의
 정식 시그니처를 고정한다. 사용법은 Kotlin guide에서 설명하며, Kotlin 구현과 contract
 test는 이 문서의 시그니처를 따라야 한다.
-본문 선언은 정식 목표 계약이고, §7.3은 현재 Kotlin adapter와의 차이를 기록하는
-비규범 구현 ledger다.
+본문 선언은 ZLink Framework 10.0.0의 정식 공개 계약이다.
 
 Java interface를 그대로 사용하는 표면은
 [Java interface 계약](../java/02-handler-interfaces.ko.md)을 따른다. 아래 Kotlin 타입의
 package는 `systems.zlink.framework.kotlin`이다.
+
+Framework 실패는 Java의 `ZLinkFrameworkErrorKind`와 `ZLinkFrameworkException`을 그대로 사용한다. Kotlin은
+같은 의미의 enum이나 exception을 다시 선언하지 않는다. 숫자 값과 기본 재시도 의미는
+[Java Framework 오류](../java/02-handler-interfaces.ko.md#41-framework-오류)와
+[공통 Framework API §13](../../../05-framework-api.ko.md#13-오류-kind)을 따른다.
+Request 대기가 timeout, coroutine cancellation 또는 host shutdown으로 끝난 경우도 Java의
+`ZLinkRequestFailureException`과 `ZLinkRequestFailureReason`을 그대로 사용한다. Kotlin coroutine adapter는
+세 원인을 각각 `TIMEOUT`, `CANCELLED`, `SHUTDOWN`으로 보존하며 `REQUEST_FAILED`로 합치지 않는다.
+Actor와 bound session 사이 metadata 전달 정책도 Java의 방향별
+`allowSessionToActor(key)`와 `allowActorToSession(key)` 표면을 그대로 사용한다.
 
 ## 1. Channel과 Spot handler
 
@@ -57,12 +66,10 @@ Spot actor callback은 `suspend` 함수로 완료를 표현하며 별도 cancell
 
 ```kotlin
 interface ZLinkSuspendingEntrySpotActorSendHandler<
-    TEntrySpot : ZLinkEntrySpot<*>,
     TActor : ZLinkActor,
     TMessage,
 > {
     suspend fun handle(
-        entrySpot: TEntrySpot,
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
@@ -70,13 +77,11 @@ interface ZLinkSuspendingEntrySpotActorSendHandler<
 }
 
 interface ZLinkSuspendingEntrySpotActorRequestHandler<
-    TEntrySpot : ZLinkEntrySpot<*>,
     TActor : ZLinkActor,
     TRequest,
     TReply,
 > {
     suspend fun handle(
-        entrySpot: TEntrySpot,
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
         request: TRequest,
@@ -84,12 +89,10 @@ interface ZLinkSuspendingEntrySpotActorRequestHandler<
 }
 
 interface ZLinkSuspendingSpotActorSendHandler<
-    TSpot : ZLinkSpot<*>,
     TActor : ZLinkActor,
     TMessage,
 > {
     suspend fun handle(
-        spot: TSpot,
         actor: TActor,
         context: ZLinkSpotActorSendContext,
         message: TMessage,
@@ -97,19 +100,20 @@ interface ZLinkSuspendingSpotActorSendHandler<
 }
 
 interface ZLinkSuspendingSpotActorRequestHandler<
-    TSpot : ZLinkSpot<*>,
     TActor : ZLinkActor,
     TRequest,
     TReply,
 > {
     suspend fun handle(
-        spot: TSpot,
         actor: TActor,
         context: ZLinkSpotActorRequestContext,
         request: TRequest,
     ): TReply
 }
 ```
+
+Actor payload handler는 mutable owner로 Actor 하나만 받는다. 현재 Spot membership은 Actor context의
+읽기 전용 snapshot으로 확인하며 Spot 소유 상태 변경은 `SpotHandle` direct call로 제출한다.
 
 ## 3. Session packet handler
 
@@ -132,19 +136,12 @@ interface ZLinkSuspendingTypedSessionPacketHandler<
 
 아래 `protected` suspending member도 사용자가 구현하는 subclass 계약이므로 정식
 시그니처에 포함한다.
-Java base interface를 구현하는 `final override`는 `CompletionStage`를 반환하고 내부에서
-`CoroutineScope.future { ... }` 또는 동등한 non-blocking bridge로 `suspend` member를
-실행한다. `runBlocking`으로 반환형을 맞추지 않는다.
+Base class는 Java interface가 요구하는 `CompletionStage` callback을 final로 구현하고 대응하는
+`suspend` member를 비차단 방식으로 실행한다. Application subclass에는 아래 public·protected member만
+노출하며 blocking adapter를 요구하지 않는다.
 
 ```kotlin
 abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
-    final override fun create(
-        actorId: String,
-        context: ZLinkActorContext,
-    ): CompletionStage<ZLinkActor> = frameworkCoroutineBridge {
-        createActor(actorId, context)
-    }
-
     protected abstract suspend fun createActor(
         actorId: String,
         context: ZLinkActorContext,
@@ -153,17 +150,6 @@ abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
 
 abstract class ZLinkSuspendingActorTransferAdapter<TActor : ZLinkActor> :
     ZLinkActorTransferAdapter<TActor> {
-    final override fun transferOut(actor: TActor): CompletionStage<ZLinkMessage> =
-        frameworkCoroutineBridge { transferOutSuspending(actor) }
-
-    final override fun transferIn(
-        actorId: String,
-        context: ZLinkActorContext,
-        state: ZLinkMessage,
-    ): CompletionStage<TActor> = frameworkCoroutineBridge {
-        transferInSuspending(actorId, context, state)
-    }
-
     protected abstract suspend fun transferOutSuspending(actor: TActor): ZLinkMessage
 
     protected abstract suspend fun transferInSuspending(
@@ -180,99 +166,46 @@ abstract class ZLinkSuspendingActorTransferAdapter<TActor : ZLinkActor> :
 abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
     abstract override fun context(): ZLinkSpotContext
 
-    final override fun onCreate(
-        request: ZLinkMessage,
-    ): CompletionStage<ZLinkSpotCreateResponse> =
-        frameworkCoroutineBridge { onCreateSuspending(request) }
-    final override fun onInitialize(): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onInitializeSuspending() }
-    final override fun onClosing(): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onClosingSuspending() }
-
-    final override fun onActorJoin(
-        actorId: String,
-        request: ZLinkMessage,
-    ): CompletionStage<ZLinkSpotActorJoinResponse> = frameworkCoroutineBridge {
-        onActorJoinSuspending(actorId, request)
-    }
-
-    final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onJoinedActorSuspending(actor) }
-
-    final override fun onLeaveActor(actor: TActor): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onLeaveActorSuspending(actor) }
-
-    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onDisconnectActorSuspending(actor) }
-
     // 기본 구현이 있다(accept). 필요할 때만 재정의한다.
     protected open suspend fun onCreateSuspending(
         request: ZLinkMessage,
     ): ZLinkSpotCreateResponse
 
-    protected open suspend fun onInitializeSuspending() = Unit
-    protected open suspend fun onClosingSuspending() = Unit
+    protected open suspend fun onInitializeSuspending()
+    protected open suspend fun onClosingSuspending()
 
     protected abstract suspend fun onActorJoinSuspending(
-        actorId: String,
+        actor: ZLinkActorJoinRequest,
         request: ZLinkMessage,
     ): ZLinkSpotActorJoinResponse
 
-    protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
+    protected abstract suspend fun onJoinedActorSuspending(actor: ZLinkActorMembership)
 
-    protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
-    protected open suspend fun onDisconnectActorSuspending(actor: TActor) = Unit
+    protected abstract suspend fun onLeaveActorSuspending(actor: ZLinkActorMembership)
+    protected open suspend fun onDisconnectActorSuspending(actor: ZLinkActorMembership)
 }
 
 abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     ZLinkEntrySpot<TActor> {
     abstract override fun context(): ZLinkEntrySpotContext
 
-    final override fun onInitialize(): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onInitializeSuspending() }
-    final override fun onClosing(): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onClosingSuspending() }
-
-    final override fun onCreateActor(
-        actor: TActor,
-        createRequest: ZLinkMessage,
-    ): CompletionStage<Void> = frameworkVoidCoroutineBridge {
-        onCreateActorSuspending(actor, createRequest)
-    }
-
-    final override fun onActorJoin(
-        actorId: String,
-        request: ZLinkMessage,
-    ): CompletionStage<ZLinkSpotActorJoinResponse> = frameworkCoroutineBridge {
-        onActorJoinSuspending(actorId, request)
-    }
-
-    final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onJoinedActorSuspending(actor) }
-
-    final override fun onLeaveActor(actor: TActor): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onLeaveActorSuspending(actor) }
-
-    final override fun onDisconnectActor(actor: TActor): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onDisconnectActorSuspending(actor) }
-
-    protected open suspend fun onInitializeSuspending() = Unit
-    protected open suspend fun onClosingSuspending() = Unit
+    protected open suspend fun onInitializeSuspending()
+    protected open suspend fun onClosingSuspending()
 
     protected abstract suspend fun onCreateActorSuspending(
-        actor: TActor,
+        actor: ZLinkActorMembership,
         createRequest: ZLinkMessage,
     )
 
     protected abstract suspend fun onActorJoinSuspending(
-        actorId: String,
+        actor: ZLinkActorJoinRequest,
         request: ZLinkMessage,
     ): ZLinkSpotActorJoinResponse
 
-    protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
+    protected abstract suspend fun onJoinedActorSuspending(actor: ZLinkActorMembership)
 
-    protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
-    protected open suspend fun onDisconnectActorSuspending(actor: TActor) = Unit
+    protected abstract suspend fun onLeaveActorSuspending(actor: ZLinkActorMembership)
+    protected open suspend fun onDisconnectActorSuspending(actor: ZLinkActorMembership)
 }
 ```
 
@@ -282,35 +215,23 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
 abstract class ZLinkSuspendingSession : ZLinkSession {
     abstract override fun context(): ZLinkSessionContext
 
-    final override fun onConnected(): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onConnectedSuspending() }
-    final override fun onDisconnected(): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onDisconnectedSuspending() }
-    final override fun onError(error: ZLinkStreamError): CompletionStage<Void> =
-        frameworkVoidCoroutineBridge { onErrorSuspending(error) }
-    final override fun onDispatch(
-        dispatch: ZLinkSessionDispatchContext,
-        payload: ZLinkMessage,
-    ): CompletionStage<Void> = frameworkVoidCoroutineBridge {
-        onDispatchSuspending(dispatch, payload)
-    }
-
-    protected open suspend fun onConnectedSuspending() = Unit
-    protected open suspend fun onDisconnectedSuspending() = Unit
-    protected open suspend fun onErrorSuspending(error: ZLinkStreamError) = Unit
+    protected open suspend fun onConnectedSuspending()
+    protected open suspend fun onDisconnectedSuspending()
+    protected open suspend fun onErrorSuspending(error: ZLinkStreamError)
     protected open suspend fun onDispatchSuspending(
         dispatch: ZLinkSessionDispatchContext,
         payload: ZLinkMessage,
-    ) = Unit
+    )
 }
 ```
 
-`frameworkCoroutineBridge`와 Unit 결과를 `CompletionStage<Void>`로 바꾸는
-`frameworkVoidCoroutineBridge`는 framework 내부 구현이며 public API가 아니다. 위 본문은
-각 Java callback이 대응하는 suspending member를 비차단 방식으로 호출한다는 계약을
-명확히 보이기 위해 함께 적었다.
+위 선언은 application subclass가 구현하거나 재정의할 public·protected member만 고정한다. 상속한 Java
+callback은 base class가 final로 구현하며 대응하는 suspending member를 비차단 방식으로 호출한다. Coroutine을
+`CompletionStage`로 연결하는 함수와 실행 body는 framework 내부 구현이며 public contract에 포함하지 않는다.
+`open` lifecycle member의 기본 구현은 아무 작업도 하지 않고 완료하며, Spot create의 기본 구현은 요청을
+승인한다.
 
-## 7. 전체 Kotlin public surface와 구현 차이
+## 7. 전체 Kotlin public surface
 
 Kotlin은 Java interface를 다시 복사하지 않는다. Java public contract를 그대로 사용할
 수 있는 기능은 Java 문서를 따르고, coroutine에서 사용성이 달라지는 부분만 Kotlin
@@ -339,162 +260,15 @@ ZLinkSuspendingActorTransferAdapter
 ZLinkSuspendingSpot
 ZLinkSuspendingEntrySpot
 ZLinkSuspendingSession
-ZLinkCoroutineSuspendHandlerInvoker
-ZLinkKotlinLifecycleCall
-ZLinkKotlinSendCall
-ZLinkKotlinStreamConnector
-ZLinkStreamTypedWaitCall
-ZLinkSuspendingLocationStore
 ```
 
-§1~§6은 suspending handler와 lifecycle 타입의 전체 member를 고정한다. 나머지 public
-타입의 목표 선언은 다음과 같다.
+§1~§6은 suspending handler와 lifecycle 타입의 전체 member를 고정한다. Coroutine을 Java callback에
+연결하는 invoker는 framework 내부 타입이며 public inventory에 포함하지 않는다. Dispatcher와 외부 scope는
+§7.2의 `useCoroutineHandlers(...)` extension으로만 설정한다.
 
-```kotlin
-class ZLinkCoroutineSuspendHandlerInvoker : ZLinkSuspendInvocationAdapter {
-    constructor(dispatcher: CoroutineDispatcher = Dispatchers.Default)
-    constructor(
-        scope: CoroutineScope,
-        dispatcher: CoroutineDispatcher = Dispatchers.Default,
-    )
-
-    override fun supports(method: Method): Boolean
-    override fun invoke(
-        handler: Any,
-        method: Method,
-        logicalArguments: Array<Any>,
-    ): CompletionStage<Any>
-}
-
-class ZLinkKotlinStreamConnector(
-    internal val inner: ZLinkStreamConnector,
-) {
-    val isConnected: Boolean
-    val state: ZLinkStreamConnectionState
-    val options: ZLinkStreamConnectorOptions
-    val pendingDispatchCount: Int
-    fun receivedCount(name: String): Int
-    fun observeInbound(observer: ZLinkStreamInboundObserver): AutoCloseable
-    fun on(
-        name: String,
-        handler: ZLinkStreamMessageHandler<ZLinkStreamEncodedPayload>,
-    ): AutoCloseable
-    inline fun <reified TPayload> on(
-        handler: ZLinkStreamMessageHandler<TPayload>,
-    ): AutoCloseable
-    fun onErrorReceived(handler: ZLinkStreamErrorHandler): AutoCloseable
-    fun onDisconnected(handler: ZLinkStreamDisconnectedHandler): AutoCloseable
-    fun onConnectionStateChanged(
-        handler: ZLinkStreamConnectionStateHandler,
-    ): AutoCloseable
-    fun connect(): ZLinkKotlinLifecycleCall
-    fun close(): ZLinkKotlinLifecycleCall
-    fun dispatch(): ZLinkKotlinLifecycleCall
-    fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall
-    fun send(payload: Any): ZLinkKotlinSendCall
-    fun request(payload: ZLinkStreamEncodedPayload): ZLinkStreamRequestCall
-    fun request(payload: Any): ZLinkTypedStreamRequestCall
-    inline fun <reified TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload>
-    inline fun <reified TPayload> waitFor(
-        name: String,
-    ): ZLinkStreamTypedWaitCall<TPayload>
-    fun messages(
-        packetName: String,
-    ): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
-    fun errors(): Flow<ZLinkStreamError>
-}
-
-class ZLinkKotlinLifecycleCall {
-    suspend fun await()
-}
-
-class ZLinkKotlinSendCall {
-    fun submit()
-}
-
-class ZLinkStreamTypedWaitCall<TPayload> {
-    fun timeout(timeout: Duration): ZLinkStreamTypedWaitCall<TPayload>
-    fun where(
-        predicate: (ZLinkStreamMessage<TPayload>) -> Boolean,
-    ): ZLinkStreamTypedWaitCall<TPayload>
-    suspend fun await(): ZLinkStreamMessage<TPayload>
-}
-```
-
-`ZLinkKotlinLifecycleCall.await()`은 coroutine을 중단한 뒤 Java stage 완료로 재개한다.
-`ZLinkKotlinSendCall.submit()`은 one-way 전송 완료 객체를 만들지 않는다.
-raw send의 packet identity는 `ZLinkStreamEncodedPayload`에 이미 포함되어 있고 typed
-send의 identity는 payload type descriptor가 정하므로 Kotlin call wrapper도 이름
-override를 제공하지 않는다.
-
-```kotlin
-abstract class ZLinkSuspendingLocationStore : ZLinkLocationStore {
-    protected abstract suspend fun updatePeer(
-        peer: ZLinkPeerLocation,
-        intent: ZLinkLocationWriteIntent,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun removePeer(
-        key: ZLinkPeerLocationKey,
-        owner: ZLinkLocationOwnerToken,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun listPeerLocations(
-        filter: ZLinkPeerLocationFilter,
-    ): List<ZLinkPeerLocation>
-    protected abstract suspend fun updateSpot(
-        spot: ZLinkSpotLocation,
-        intent: ZLinkLocationWriteIntent,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun removeSpot(
-        key: ZLinkSpotLocationKey,
-        owner: ZLinkLocationOwnerToken,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun resolveSpot(
-        key: ZLinkSpotLocationKey,
-    ): ZLinkSpotLocation?
-    protected abstract suspend fun listSpotLocations(
-        filter: ZLinkSpotLocationFilter,
-        page: ZLinkPageRequest,
-    ): ZLinkLocationPage<ZLinkSpotLocation>
-    protected abstract suspend fun updateActor(
-        actor: ZLinkActorLocation,
-        intent: ZLinkLocationWriteIntent,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun removeActor(
-        key: ZLinkActorLocationKey,
-        owner: ZLinkLocationOwnerToken,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun resolveActor(
-        key: ZLinkActorLocationKey,
-    ): ZLinkActorLocation?
-    protected abstract suspend fun listActorLocations(
-        filter: ZLinkActorLocationFilter,
-        page: ZLinkPageRequest,
-    ): ZLinkLocationPage<ZLinkActorLocation>
-    protected abstract suspend fun updateRoute(
-        route: ZLinkRouteLocation,
-        intent: ZLinkLocationWriteIntent,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun removeRoute(
-        key: ZLinkRouteLocationKey,
-        owner: ZLinkLocationOwnerToken,
-    ): ZLinkLocationWriteResult
-    protected abstract suspend fun resolveRoute(
-        key: ZLinkRouteLocationKey,
-    ): ZLinkRouteLocation?
-    protected abstract suspend fun listRouteLocations(
-        filter: ZLinkRouteLocationFilter,
-        page: ZLinkPageRequest,
-    ): ZLinkLocationPage<ZLinkRouteLocation>
-    protected abstract suspend fun renewOwnerLease(
-        ownerId: String,
-        nodeRid: RoutingId,
-        leaseTtl: Duration,
-    ): ZLinkOwnerLeaseRenewal
-    protected abstract suspend fun removeOwnerLease(ownerId: String): Boolean
-    protected abstract suspend fun removeAllByOwner(ownerId: String): Long
-    protected abstract suspend fun listOwnerLeases(): ZLinkOwnerLeaseSnapshot
-}
-```
+Client Stream Connector의 Kotlin wrapper, lifecycle call과 `Flow` extension은
+[Java/Kotlin Stream Connector 계약](../../../stream-connector/languages/java/03-stream-connector.ko.md)이
+소유한다. Server package의 Kotlin surface에서는 해당 타입을 재선언하지 않는다.
 
 ### 7.2 Kotlin 전용 extension
 
@@ -508,14 +282,13 @@ package 구조가 아니라 이 기능 그룹을 기준으로 contract test에�
 | actor directory | `findActor`, `ensureActor`, `snapshot`, `actorRef`, `awaitJoin` |
 | channel send/publish | `ZLinkClient.send`, `ZLinkRouteClient.send`, `publishToTopic` |
 | coroutine 구성 | `useCoroutineHandlers` |
-| location store | `updatePeer`, `removePeer`, `listPeerLocations`, `updateSpot`, `removeSpot`, `resolveSpot`, `listSpotLocations`, `updateActor`, `removeActor`, `resolveActor`, `listActorLocations`, `updateRoute`, `removeRoute`, `resolveRoute`, `listRouteLocations` |
-| owner lease와 resolver | `renewOwnerLease`, `removeOwnerLease`, `removeAllByOwner`, `awaitOwnerLeases`, `listLivePeers`, `resolveSpotHandle`, `resolveActorSpotHandle`, `isPeerReady` |
+| location store | Java `ZLinkLocationStore`와 공식 Redis 구현을 그대로 사용한다 |
+| owner lease와 resolver | Java `ZLinkOwnerLeaseStore`와 resolver를 그대로 사용한다 |
 | location query와 Flow | `status`, `listTopology`, `listServiceSummaries`, `locationPages`, `spots`, `actors`, `routes`, `topology`, `changes`, `Publisher.asFlow` |
-| stream connector | `kotlin`, compression 설정 extension, request `await`, `messages`, `errors` |
 | message와 dispatch | `messageOf`, `onMessageFlow` |
 
 전체 public function 이름 inventory는 다음과 같다. 이름 목록만으로 overload를
-축약하지 않으며, 바로 뒤의 목표 시그니처가 receiver, parameter와 반환형을 고정한다.
+축약하지 않으며, 바로 뒤의 정식 시그니처가 receiver, parameter와 반환형을 고정한다.
 
 ```text
 actorRef
@@ -527,42 +300,23 @@ awaitJoin
 awaitReply
 bindOrGetActor
 changes
-configureStreamCompression
 configureDispatch
+configureStreamCompression
 create
 decode
 ensureActor
-errors
 findActor
 getOrCreate
-isPeerReady
-kotlin
-listActorLocations
 listLivePeers
-awaitOwnerLeases
-listPeerLocations
-listRouteLocations
 listServiceSummaries
-listSpotLocations
 listTopology
 locationPages
 messageOf
-messages
 onMessageFlow
 publishToTopic
 request
-removeActor
-removeAllByOwner
-removeOwnerLease
-removePeer
-removeRoute
-removeSpot
-renewOwnerLease
 requestToActorAwait
-resolveActor
 resolveActorSpotHandle
-resolveRoute
-resolveSpot
 resolveSpotHandle
 routes
 send
@@ -570,16 +324,7 @@ snapshot
 spots
 status
 topology
-updateActor
-updatePeer
-updateRoute
-updateSpot
 useCoroutineHandlers
-waitFor
-withDefaultStreamCompression
-withLz4StreamCompression
-withStreamCompression
-withoutStreamCompression
 ```
 
 아래 코드 블록은 top-level extension의 정식 시그니처 표기다. 함수 body는 framework
@@ -605,21 +350,25 @@ suspend fun <TReply> ZLinkActorRequestCall.yieldReply(
 ): TReply
 inline suspend fun <reified TReply> ZLinkActorRequestCall.yieldReply(): TReply
 suspend fun <TReply> ZLinkActorClient.requestToActorAwait(
+    meshName: String,
     actorRef: ActorRef,
     request: Any,
     replyType: Class<TReply>,
 ): TReply
 inline suspend fun <reified TReply> ZLinkActorClient.requestToActorAwait(
+    meshName: String,
     actorRef: ActorRef,
     request: Any,
 ): TReply
-suspend fun ZLinkActorDirectory.findActor(actorId: String): ActorRef?
+suspend fun ZLinkActorDirectory.findActor(meshName: String, actorId: String): ActorRef?
 suspend fun ZLinkActorDirectory.ensureActor(
+    meshName: String,
     actorId: String,
     createRequest: ZLinkMessage,
     placement: ZLinkActorPlacement = ZLinkActorPlacement.any(),
 ): ActorRef
 suspend fun ZLinkActorDirectory.ensureActor(
+    meshName: String,
     actorId: String,
     createRequest: Any,
 ): ActorRef
@@ -645,48 +394,59 @@ suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T
 ```
 
 ```kotlin
-fun ZLinkClient.send(channelName: String, message: Message)
-inline suspend fun <reified TReply> ZLinkClient.request(
+fun ZLinkClient.send(
+    meshName: String,
     channelName: String,
     message: Message,
-): TReply
+): ZLinkSendCall
+fun ZLinkClient.request(
+    meshName: String,
+    channelName: String,
+    message: Message,
+): ZLinkRequestCall
 fun ZLinkFanoutClient.publishToTopic(
     channelName: String,
     topic: String,
     message: Message,
-)
+): ZLinkPublishCall
 fun ZLinkRouteClient.send(
-    channelName: String,
+    meshName: String,
     target: RoutingId,
     message: Message,
-)
-inline suspend fun <reified TReply> ZLinkRouteClient.request(
-    channelName: String,
+): ZLinkSendCall
+fun ZLinkRouteClient.request(
+    meshName: String,
     target: RoutingId,
     message: Message,
-): TReply
+): ZLinkRequestCall
 fun ZLinkRouteClient.send(
     target: SpotHandle,
     message: Message,
-)
-inline suspend fun <reified TReply> ZLinkRouteClient.request(
+): ZLinkSendCall
+fun ZLinkRouteClient.request(
     target: SpotHandle,
     message: Message,
-): TReply
+): ZLinkRequestCall
 ```
 
 ```kotlin
-inline suspend fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(): ZLinkSpotCreateResult
 inline suspend fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
+    meshName: String,
+): ZLinkSpotCreateResult
+inline suspend fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
+    meshName: String,
     request: ZLinkMessage,
 ): ZLinkSpotCreateResult
 inline suspend fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
+    meshName: String,
     spotRid: RoutingId,
 ): ZLinkSpotCreateResult
 inline suspend fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
+    meshName: String,
     spotRid: RoutingId,
 ): ZLinkSpotCreateResult
 inline suspend fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
+    meshName: String,
     spotRid: RoutingId,
     request: ZLinkMessage,
 ): ZLinkSpotCreateResult
@@ -705,86 +465,26 @@ inline fun ZLinkFrameworkOptions.configureDispatch(
 fun ZLinkDispatchOptions.onMessageFlow(
     observer: (ZLinkMessageFlowEvent) -> Unit,
 ): ZLinkDispatchOptions
+fun ZLinkDispatchOptions.onRuntimeError(
+    sink: (ZLinkRuntimeErrorEvent) -> Unit,
+): ZLinkDispatchOptions
 public fun messageOf(value: Any): ZLinkMessage
 public inline fun <reified T> ZLinkMessage.decode(): T
 inline fun <reified THandler : Any> ZLinkSpotHandlerRegistry.addHandler()
 ```
 
 ```kotlin
-suspend fun ZLinkPeerLocationStore.updatePeer(
-    peer: ZLinkPeerLocation,
-    intent: ZLinkLocationWriteIntent,
-): ZLinkLocationWriteResult
-suspend fun ZLinkPeerLocationStore.removePeer(
-    key: ZLinkPeerLocationKey,
-    owner: ZLinkLocationOwnerToken,
-): ZLinkLocationWriteResult
-suspend fun ZLinkPeerLocationStore.listPeerLocations(
-    filter: ZLinkPeerLocationFilter,
-): List<ZLinkPeerLocation>
-suspend fun ZLinkSpotLocationStore.updateSpot(
-    spot: ZLinkSpotLocation,
-    intent: ZLinkLocationWriteIntent,
-): ZLinkLocationWriteResult
-suspend fun ZLinkSpotLocationStore.removeSpot(
-    key: ZLinkSpotLocationKey,
-    owner: ZLinkLocationOwnerToken,
-): ZLinkLocationWriteResult
-suspend fun ZLinkSpotLocationStore.resolveSpot(
-    key: ZLinkSpotLocationKey,
-): ZLinkSpotLocation?
-suspend fun ZLinkSpotLocationStore.listSpotLocations(
-    filter: ZLinkSpotLocationFilter,
-    page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
-): ZLinkLocationPage<ZLinkSpotLocation>
-suspend fun ZLinkActorLocationStore.updateActor(
-    actor: ZLinkActorLocation,
-    intent: ZLinkLocationWriteIntent,
-): ZLinkLocationWriteResult
-suspend fun ZLinkActorLocationStore.removeActor(
-    key: ZLinkActorLocationKey,
-    owner: ZLinkLocationOwnerToken,
-): ZLinkLocationWriteResult
-suspend fun ZLinkActorLocationStore.resolveActor(
-    key: ZLinkActorLocationKey,
-): ZLinkActorLocation?
-suspend fun ZLinkActorLocationStore.listActorLocations(
-    filter: ZLinkActorLocationFilter,
-    page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
-): ZLinkLocationPage<ZLinkActorLocation>
-suspend fun ZLinkRouteLocationStore.updateRoute(
-    route: ZLinkRouteLocation,
-    intent: ZLinkLocationWriteIntent,
-): ZLinkLocationWriteResult
-suspend fun ZLinkRouteLocationStore.removeRoute(
-    key: ZLinkRouteLocationKey,
-    owner: ZLinkLocationOwnerToken,
-): ZLinkLocationWriteResult
-suspend fun ZLinkRouteLocationStore.resolveRoute(
-    key: ZLinkRouteLocationKey,
-): ZLinkRouteLocation?
-suspend fun ZLinkRouteLocationStore.listRouteLocations(
-    filter: ZLinkRouteLocationFilter,
-    page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
-): ZLinkLocationPage<ZLinkRouteLocation>
-```
-
-```kotlin
-suspend fun ZLinkLocationStore.renewOwnerLease(
-    ownerId: String,
-    nodeRid: RoutingId,
-    leaseTtl: Duration,
-): ZLinkOwnerLeaseRenewal
-suspend fun ZLinkLocationStore.removeOwnerLease(ownerId: String): Boolean
-suspend fun ZLinkLocationStore.removeAllByOwner(ownerId: String): Long
-suspend fun ZLinkLocationStore.awaitOwnerLeases(): ZLinkOwnerLeaseSnapshot
 suspend fun ZLinkPeerLocationResolver.listLivePeers(
     filter: ZLinkPeerLocationFilter,
 ): List<ZLinkPeerLocation>
 suspend fun SpotHandleResolver.resolveSpotHandle(
+    meshName: String,
     spotRid: RoutingId,
 ): SpotHandle?
-suspend fun ActorSpotHandleResolver.resolveActorSpotHandle(actorId: String): SpotHandle?
+suspend fun ActorSpotHandleResolver.resolveActorSpotHandle(
+    meshName: String,
+    actorId: String,
+): SpotHandle?
 suspend fun ZLinkLocationRuntimeQuery.status(): ZLinkLocationRuntimeStatus
 suspend fun ZLinkLocationRuntimeQuery.listPeerLocations(
     filter: ZLinkPeerLocationFilter,
@@ -837,66 +537,84 @@ fun ZLinkLocationWatchStore.changes(
 fun <T> Publisher<T>.asFlow(): Flow<T>
 ```
 
+### 7.3 RouteMesh Kotlin DSL
+
+Java의 `ZLinkFrameworkOptions`, `ZLinkMeshNodeBuilder`, `ZLinkMeshChannelBuilder`와
+`ZLinkMeshPeerConnections`가 실제 builder 계약을 소유한다. Kotlin module은 그 계약을 바꾸지 않고
+다음 DSL projection만 추가한다.
+
+Actor transfer adapter를 등록하는 Kotlin application은 상속한 Java root option의
+`setActorTransferTimeout(Duration)`과 `setActorTransferForwardWindow(Duration)`를 사용한다. Kotlin 전용
+중복 설정 함수는 제공하지 않는다. Adapter가 하나라도 있으면 host 시작 전에 두 값을 모두 양수로
+설정해야 한다.
+
 ```kotlin
-fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector
-fun ZLinkStreamConnectorOptions.withDefaultStreamCompression(): ZLinkStreamConnectorOptions
-fun ZLinkStreamConnectorOptions.withLz4StreamCompression(): ZLinkStreamConnectorOptions
-fun ZLinkStreamConnectorOptions.withStreamCompression(
-    codec: ZLinkStreamCompressionCodec,
-): ZLinkStreamConnectorOptions
-fun ZLinkStreamConnectorOptions.withoutStreamCompression(): ZLinkStreamConnectorOptions
-suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
-inline suspend fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply
-inline suspend fun <reified TReply> ZLinkTypedStreamRequestCall.awaitReply(): TReply
-inline suspend fun <reified TPayload> ZLinkStreamWaitCall.await(): ZLinkStreamMessage<TPayload>
-inline fun <reified TPayload> ZLinkStreamConnector.waitFor(): ZLinkStreamTypedWaitCall<TPayload>
-fun ZLinkStreamConnector.messages(
-    packetName: String,
-): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
-fun ZLinkStreamConnector.errors(): Flow<ZLinkStreamError>
+fun ZLinkFrameworkOptions.routeMesh(
+    meshName: String,
+    configure: ZLinkMeshNodeBuilder.() -> Unit,
+): ZLinkMeshNodeBuilder
+
+fun ZLinkMeshNodeBuilder.channelName(
+    channelName: String,
+    configure: ZLinkMeshChannelBuilder.() -> Unit = {},
+): ZLinkMeshChannelBuilder
+
+fun ZLinkMeshPeerConnections.connect(
+    expectedRoutingId: RoutingId,
+    endpoint: String,
+)
+
+fun ZLinkSpotPublisherConfig.noDrop(enabled: Boolean): ZLinkSpotPublisherConfig
 ```
 
-### 7.3 목표 interface와 현재 구현
+```kotlin
+options.routeMesh("game") {
+    listen("tcp://0.0.0.0:7300") // 이 MeshNode가 공유하는 ROUTER endpoint다.
+    setRoutingId(RoutingId.from("game-1")) // 같은 MeshName에서 사용하는 identity다.
+    channelName("orders") // 별도 socket 없이 논리 membership을 추가한다.
+    peerConnections().connect(
+        RoutingId.from("game-2"),
+        "tcp://10.0.0.2:7300",
+    )
+    configureSpotPublisher().noDrop(true) // Logical Multicast의 기본 정책을 명시한다.
+}
+```
 
-| 대상 symbol | 목표 Kotlin 계약 | 현재 public 선언/adapter | 판정과 구현 작업 |
-|-------------|--------------------|--------------------------|------------------|
-| `ZLinkSuspendingRequestHandler`, `ZLinkSuspendingSendHandler`, `ZLinkSuspendingPublishHandler`, 두 route handler | `suspend fun handle` 완료를 Java stage로 전달 | coroutine completion을 `CompletionStage`로 반환하는 adapter 사용 | 일치 — Kotlin unit test가 incomplete stage와 예외 완료를 검증한다. |
-| 네 Spot actor suspending handler와 네 Spot packet/request/subscription/timer handler | `suspend fun handle`, 별도 token 없음 | token 없이 coroutine completion을 stage로 반환 | 일치 — handler 등록과 dispatch test가 suspending 완료를 검증한다. |
-| `ZLinkSuspendingActorFactory.create` | `suspend` 완료를 Java `CompletionStage<TActor>`로 전달 | coroutine completion을 `CompletionStage<ZLinkActor>`로 반환 | 일치 |
-| `ZLinkSuspendingSpot`, `ZLinkSuspendingEntrySpot` lifecycle | `suspend`, 별도 token 없음 | lifecycle override가 token 없이 `CompletionStage`를 반환 | 일치 |
-| `ZLinkSuspendingActorTransferAdapter.transferOut/transferIn` | `suspend`, 별도 token 없음 | transfer coroutine completion을 stage로 전달 | 일치 |
-| `CompletionStage<T>.await()`와 내부 `awaitFrameworkStage` | coroutine을 중단하고 stage callback으로 재개 | `suspendCancellableCoroutine` callback bridge 사용 | 일치 — waiter 취소가 framework stage를 취소하지 않고 완료 오류를 unwrap하는 integration test가 통과한다. |
-| `ZLinkSuspendingTypedSessionPacketHandler.handle` | typed payload를 직접 받고 suspend 완료 | typed registry가 suspending handler를 직접 호출하고 stage 완료를 기다림 | 일치 |
-| `ZLinkKotlinLifecycleCall.await`, stream request/wait `await` | `kotlinx-coroutines-jdk8` 방식의 non-blocking stage 대기 | connector wrapper는 `kotlinx.coroutines.future.await` 사용 | 일치 — Java core의 stage가 실제 비동기 완료를 나타내는지 contract test로 고정한다. |
-| `ZLinkKotlinSendCall.submit` | one-way, 완료 객체 없음 | `inner.submit()` 결과를 반환하지 않음 | 일치 |
-| actor one-way completion extension | 목표 public 계약에 없음 | `awaitSend`와 `sendToActorAwait`를 제거하고 Java one-way `submit()`을 직접 사용 | 일치 |
-| `ZLinkFanoutClient.publishToTopic` | 일반 `fun`, one-way 완료 객체 없음 | 일반 함수가 내부 `submit()`만 호출 | 일치 |
-| request/join/worker yield extension | **`yield` 표면을 제공한다** — turn을 반납하고 완료 시 실행 줄 큐에 재삽입해 재개한다 | yield extension 없음. 일반 `await`가 자동으로 turn을 반납한다 | **미충족** — [구현 차이 §12.21](../../../90-implementation-gap.ko.md) |
-| Spot messaging target | `SpotHandle` extension과 handle resolver | `resolveSpotHandle`과 `resolveActorSpotHandle`이 nullable handle을 반환 | 일치 |
-| 이 절의 top-level extension 선언 | receiver, overload, parameter, default와 반환형을 위 시그니처로 고정 | type·function 이름과 overload 수를 검사하고, 각 public method의 JVM descriptor snapshot을 검증함 | 일치 — Kotlin 이름과 JVM에서 충돌을 피하려고 바꾼 이름까지 contract test가 고정한다. |
+Suspending handler는 완료를 Java `CompletionStage`로 전달하고 별도 cancellation token을 받지 않는다.
+MeshNode one-way call은 `trySubmit()` 또는 suspending `submit()`으로 admission 결과를 제공한다.
+Request, join과 worker call의 coroutine 대기는 해당 `await()` 또는 `yield()` extension이 실행 문맥
+반납과 재개를 소유한다.
 
 ## 8. 관측·운영 표면 (metrics · flow correlation · drain)
 
-메트릭·flow correlation·drain의 계약은 Java 공개 계약([Spring Boot Monitoring](../java/01-system-structure.ko.md)
-§8~§10)을 그대로 따르고, 여기서 Java 타입을 복사해 다시 정의하지 않는다. Kotlin은 같은 Java runtime
-위에 **관용 델타만** 추가한다.
+메트릭·flow correlation·drain의 사용 의미는 Java 공개 계약([Spring Boot Monitoring](../java/01-system-structure.ko.md)
+§8~§10)을 그대로 따른다. 정확한 runtime/result interface는
+[Java handler interface §4.2](../java/02-handler-interfaces.ko.md#42-runtime-monitoring)를 따르며,
+여기서 Java 타입을 복사해 다시 정의하지 않는다. Kotlin은 같은 Java runtime 위에 **관용 델타만** 추가한다.
+
+따라서 Kotlin application도 Java의 `ZLinkMeshNodeSnapshot`, `ZLinkLogicalMulticastSnapshot`,
+`ZLinkMeshRuntimeEvent`, `ZLinkRouteMeshRuntime`과 `ZLinkMeshDrainResult`를 그대로 사용한다. Multicast
+snapshot과 runtime/message-flow event의 `remoteSnapshotCount`, `remoteAdmittedCount`,
+`remoteDroppedCount`, `localSnapshotCount`, `localAdmittedCount`, `localDroppedCount`도 같은 이름과 의미를
+유지한다. `lifecycleGeneration`과 `descriptorRevision`은 해당 runtime event에 필요한 경우에만 존재한다.
 
 | 대상 | Java 표면(정본) | Kotlin 델타 |
 |------|------------------|-------------|
 | 메트릭 | Micrometer `MeterRegistry` 자동 바인딩(무설정) | 없음 — Spring Boot Kotlin 앱도 동일 |
 | flow id | 기존 message-flow 설정에 따라 자동 생성·전파 | 별도 DSL 없음. Java event의 `flowId`와 `flowOrigin`을 그대로 사용 |
-| SPOT drain 정책 | `useDrainPolicy(ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE)` | 동일(builder DSL) |
-| drain 명시 제어 | `ZLinkDrainControl` { `drain(Duration)`, `awaitDrained()`, `isReady()` } | 별도 extension 없음 — Java 메서드가 반환하는 `CompletionStage<ZLinkDrainResult>`를 기존 `CompletionStage.await()`(§7.2)로 대기: `drainControl.drain(deadline).await()` |
-| drain 상태 관측 | `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` | `onDrain { event -> ... }` 람다 옵저버(에르고노믹스) |
+| runtime error sink | Java `ZLinkRuntimeErrorSink`/`ZLinkRuntimeErrorEvent` | `onRuntimeError { ... }` 람다 adapter. `observer_failed`/`message_flow_observer`를 그대로 사용 |
+| MeshNode drain 정책 | `useDrainPolicy(ZLinkMeshNodeDrainPolicy.RELEASE_AND_RECREATE)` | 동일(builder DSL) |
+| drain 명시 제어 | `ZLinkRouteMeshRuntime` { `drain(meshName, deadline)`, `awaitDrained(meshName)`, `isReady(meshName)` } | 별도 extension 없음 — Java 메서드가 반환하는 `CompletionStage<ZLinkMeshDrainResult>`를 기존 `CompletionStage.await()`(§7.2)로 대기: `routeMeshRuntime.drain(meshName, deadline).await()` |
+| drain 상태 관측 | `ZLinkRouteMeshRuntime.observe(meshName, capacity)`의 `ZLinkMeshRuntimeEvent` | 별도 람다 adapter 없이 Java `Flow.Publisher` 표면을 그대로 사용 |
 
 Java `drain`이 멤버이므로 Kotlin은 이름이 겹치는 `drain` extension을 두지 않고 기존 `CompletionStage.await()`
 확장을 재사용한다(표면 축소, §7.2 취소 규칙 — 별도 `CancellationToken` 없음).
-`ZLinkFlowOrigin`·`ZLinkSpotDrainPolicy`·`ZLinkDrainEvent`·`ZLinkDrainResult` 타입은 Java 타입을
-그대로 사용한다.
+`ZLinkFlowOrigin`·`ZLinkMeshNodeDrainPolicy`·`ZLinkDrainForceReason`·`ZLinkMeshDrainResult`와
+`ZLinkRouteMeshRuntime` 타입은 Java 타입을 그대로 사용한다.
 
 drain stage를 기다리는 coroutine이 취소되면 그 coroutine의 continuation과 callback registration만
-정리한다. 공유 `CompletionStage<ZLinkDrainResult>`에 `cancel`을 전파하지 않으며 이미 시작한 drain은
+정리한다. 공유 `CompletionStage<ZLinkMeshDrainResult>`에 `cancel`을 전파하지 않으며 이미 시작한 drain은
 계속 실행된다. 이 규칙은 일반 request stage의 취소 전파와 구분해 contract test로 고정한다.
 
-> §7.1 타입 목록·§7.2 함수 inventory는 이 §8의 `onDrain` 람다와 위 `.await()` 재사용을 포함한 것으로
-> 읽는다(새 `drain` extension은 추가하지 않으므로 inventory 증가 없음).
+> §7.1 타입 목록·§7.2 함수 inventory는 이 §8의 `.await()` 재사용을 포함한 것으로 읽는다. 새 drain
+> extension이나 runtime event adapter를 추가하지 않으므로 inventory는 늘어나지 않는다.

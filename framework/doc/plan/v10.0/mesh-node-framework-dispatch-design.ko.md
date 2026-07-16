@@ -35,12 +35,12 @@ C API 및 runtime이다.
 
 | 구현 영역 | 정식 계약 주소 |
 |---|---|
-| MeshNode identity·lifecycle·peer·ChannelName·Logical Multicast | [Core MeshNode](../../../../core/doc/spec/core/service/mesh-node.ko.md) |
-| ready·claim·batch·owner dispatch | [Core Dispatch](../../../../core/doc/spec/core/service/dispatch.ko.md) |
-| Spot direct·subscription·timer | [Core Spot](../../../../core/doc/spec/core/service/spot.ko.md) |
-| Actor mailbox·membership·transfer | [Core Actor](../../../../core/doc/spec/core/service/actor.ko.md) |
-| STREAM binding·barrier | [Core STREAM session](../../../../core/doc/spec/core/service/stream-session.ko.md) |
-| multipart ownership·metadata·오류·polling·monitoring | [Core message](../../../../core/doc/spec/core/message.ko.md), [errno](../../../../core/doc/spec/core/errno-map.ko.md), [polling](../../../../core/doc/spec/core/polling.ko.md), [monitoring](../../../../core/doc/spec/core/monitoring.ko.md) |
+| MeshNode identity·lifecycle·peer·ChannelName·Logical Multicast | [Core MeshNode](../../../../core/doc/spec/core/service/01-mesh-node.ko.md) |
+| ready·claim·batch·owner dispatch | [Core Dispatch](../../../../core/doc/spec/core/service/02-dispatch.ko.md) |
+| Spot direct·subscription·timer | [Core Spot](../../../../core/doc/spec/core/service/03-spot.ko.md) |
+| Actor mailbox·membership·transfer | [Core Actor](../../../../core/doc/spec/core/service/04-actor.ko.md) |
+| STREAM binding·barrier | [Core STREAM session](../../../../core/doc/spec/core/service/05-stream-session.ko.md) |
+| multipart ownership·metadata·오류·polling·monitoring | [Core message](../../../../core/doc/spec/core/02-message.ko.md), [errno](../../../../core/doc/spec/core/04-errno-map.ko.md), [polling](../../../../core/doc/spec/core/06-polling.ko.md), [monitoring](../../../../core/doc/spec/core/07-monitoring.ko.md) |
 | Framework topology·메시징·location·관측 | [Framework 공통 스펙](../../framework/spec/README.ko.md), [MeshNode](../../framework/spec/server/21-mesh-node.ko.md), [Location Runtime](../../framework/spec/server/40-location-runtime.ko.md), [Runtime monitoring](../../framework/spec/server/50-runtime-monitoring.ko.md) |
 | `.NET` 공개 시그니처 | [.NET exact interface 목차](../../framework/spec/server/languages/dotnet/README.ko.md) |
 
@@ -1005,7 +1005,7 @@ framework가 socket별 receive loop, bridge frame 판별, per-part recv, callbac
 | FD-24 | 관리형 framework의 Spot timer는 platform timer를 사용한다(`D-22`). |
 | FD-25 | completion·send-ready는 전용 infrastructure pump에서 먼저 drain한다(`D-24`). |
 | FD-26 | ready batch가 scheduler에 인수되지 않은 claim을 reset에서 자동 반환한다(`D-24`). |
-| FD-27 | Node direct·ChannelName·Spot direct send/request에 application metadata를 제공한다(`D-23`). |
+| FD-27 | Node direct·ChannelName·Spot direct send/request와 Logical Multicast에 application metadata를 제공한다(`D-23`). |
 
 ### 16.2 확정한 상세 정책
 
@@ -1170,7 +1170,7 @@ framework가 socket별 receive loop, bridge frame 판별, per-part recv, callbac
 
 ### 17.8 S/S application metadata
 
-- Node direct, ChannelName과 Spot direct send/request metadata가 수신 handler의 immutable snapshot에 보존된다.
+- Node direct, ChannelName, Spot direct send/request와 Logical Multicast metadata가 수신 handler의 immutable snapshot에 보존된다.
 - metadata가 없으면 application metadata frame을 만들지 않고 payload multipart 경계를 유지한다.
 - 여러 key를 하나의 compact frame으로 전달하고 key 수에 비례한 multipart part를 만들지 않는다.
 - application metadata가 RID, `ChannelName`, operation ID와 request sequence를 덮어쓸 수 없다.
@@ -1236,10 +1236,17 @@ framework가 socket별 receive loop, bridge frame 판별, per-part recv, callbac
     두 리뷰어의 Core 리뷰를 통과한다.
 11. 배포한 Core를 bindings batch API에 적용하고 각 언어 package E2E smoke를 실행한다.
 12. `.NET` framework pump를 구현하고 sample·E2E와 성능 gate를 통과시킨다.
-13. Codex agent와 Claude Fable이 정확성, POSD·DDD, dead code와 성능 증거를 반복 리뷰한다.
+13. Codex agent와 Claude Sonnet이 I1 정식 spec 대비 누락·오구현·동작 불일치, I2 POSD·DDD 관점의
+    의미 있는 리팩터링 잔여, I3 불필요·죽은 code·file·호환 잔재를 독립 축으로 반복 리뷰한다. 각
+    축에 finding·evidence·clean 판정을 남기며 어느 축을 수정해도 두 리뷰어가 세 축 전체를 다시
+    검토한다.
 
 각 단계에서 10.0.0 정식 계약 밖의 adapter를 추가하지 않는다. 정식 owner와 같은 책임을 중복해서
 유지하는 service code는 죽은 코드로 판정해 제거한다.
+
+이 구현 리뷰는 S3 문서 리뷰와 별개다. S3의 `DOC REVIEW CLEAN`은 위 세 구현 축을 대신하지 않는다.
+두 리뷰어의 I1·I2·I3가 모두 clean이고 같은 revision에 `CORE REVIEW CLEAN`이 있어야 Core 구현 리뷰를
+통과한다.
 
 ## 20. 관련 실행 문서 반영 항목
 

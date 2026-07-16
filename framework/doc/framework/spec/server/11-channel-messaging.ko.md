@@ -38,7 +38,7 @@ ChannelName select-one은 다음 기준을 하나의 원자적 operation으로 �
 2. weight가 0인 member와 drain 중인 member를 새 선택에서 제외한다.
 3. positive weight round-robin으로 한 member를 고르고 즉시 submit한다.
 
-Framework는 선택한 RID를 호출자에게 반환한 뒤 별도 Node direct send를 요구하지 않는다. request를 보낸
+Framework는 선택한 RID를 중간 결과로 호출자에게 반환하지 않고 같은 operation에서 submit한다. request를 보낸
 뒤 연결 종료나 timeout이 발생해도 다른 member에 자동 재전송하지 않는다. 이미 실행된 request를 중복
 실행할 수 있기 때문이다.
 
@@ -82,7 +82,8 @@ Spot의 channel-scoped Logical Multicast는
 - host가 신규 submit을 받지 않는 상태가 되면 새 호출은 해당 언어의 종료 오류로 실패한다.
 
 오류 이름과 언어별 표현은 언어별 공개 인터페이스 문서가 정한다. graceful drain의 전체 순서는
-[54 Graceful Drain](54-graceful-drain-handoff.ko.md)이 소유한다.
+[54 Graceful Drain](54-graceful-drain-handoff.ko.md)이 소유한다. Core submit·terminal 결과의 공통 변환은
+[Framework API §13.1](../05-framework-api.ko.md#131-core-result-변환)을 따른다.
 
 ## 7. Metadata와 관측
 

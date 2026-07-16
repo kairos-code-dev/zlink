@@ -16,7 +16,7 @@
 | RL-B1 | 구현 | slow request를 100ms timeout으로 끝낸 뒤 follow-up request, 늦은 server completion evidence, later request를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-B2 | 구현 | public evidence로 slow request가 `api-b`에서 시작된 것을 확인한 뒤 provider crash를 유발하고, in-flight public failure, surviving provider follow-up, `api-b` 복구 traffic을 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-B3 | 구현 | provider B 정상 종료 뒤 topology 이탈, 후속 request의 `api-a` 수렴, provider B 복구 readiness와 topology 재등록을 검증했다. 로그: `logs/20260703-211853-78546` |
-| RL-B4 | 구현 | public `ZLinkChannelRuntimeOptions`로 `/admin/drain`과 `/admin/restore`를 연결하고, drain 중 새 request가 `api-a`로 수렴한 뒤 restore 후 `api-b` evidence가 복구되는 marker를 검증했다. 로그: `logs/20260703-211853-78546` |
+| RL-B4 | 10.0.0 전환 대상 | public `ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName).weight`로 신규 select-one 제외·복원을 검증한다. source·runner 적용은 S9에서 수행한다. |
 | RL-B5 | 구현 | public runtime drain 중 새 request는 drained provider로 가지 않고, drain 전에 시작된 slow request는 completion evidence와 reply를 모두 보존하는지 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-B6 | 구현 | provider B에 gray fault를 주입하고, no-retry request에서 public failure와 `api-a` healthy success를 함께 관찰한 뒤 fault 해제 후 follow-up request와 evidence marker를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-C1 | 구현 | short-lived client host request를 반복한 뒤 follow-up request와 provider evidence marker를 검증했다. 로그: `logs/20260703-211853-78546` |
@@ -24,9 +24,9 @@
 | RL-C3 | 구현 | provider B shutdown으로 단절을 모사하고, down 중 `api-a` 처리와 provider B 재시작 뒤 restored traffic/evidence를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-C4 | 구현 | Redis location store outage 중 기존 channel request가 계속 성공하는지 확인하고, store 복구 뒤 topology 재조회와 follow-up evidence를 검증했다. 로그: `logs/20260703-211853-78546` |
 | RL-D1 | 구현 | Redis location row로 연결한 subscriber 8개에 fanout event 120개를 발행하고, 각 subscriber가 같은 순서를 누락·중복 없이 수신하는지 검증했다. 로그: `logs/20260715-075646-2279409` |
-| RL-D2 | 구현 | dispatch-error observer fault를 주입하고 missing request 실패, dispatch-error evidence, observer 예외 이후 follow-up request 성공을 검증했다. 로그: `logs/20260703-211853-78546` |
-| RL-D3 | 구현 | missing request handler 실패 뒤 provider dispatch-error evidence에 `packet=MissingProfileReq` marker가 남는지 검증했다. 로그: `logs/20260703-211853-78546` |
-| RL-D4 | 구현 | 실제 provider/consumer 왕복에서 decoded `errorCode`/`errorMessage`, handler-missing reply-error evidence와 성공 follow-up을 검증했다. runtime wire gate는 `Error=5`, camelCase error key, `status` 부재와 error key가 없는 `Response=2`를 직접 검증한다. 로그: `logs/20260715-080129-2299877` |
+| RL-D2 | 전환 필요 | observer fault 격리에 더해 public `ZLinkRuntimeErrorSink`가 `zlink.runtime_error`/`observer_failed`/`message_flow_observer` event를 한 번 받는지 검증해야 한다. |
+| RL-D3 | 전환 필요 | provider dispatch-error evidence를 `outcome=failed`, `reason=no_handler`, `action=reply_error`, `packet_name`으로 재정렬해야 한다. |
+| RL-D4 | 전환 필요 | raw wire gate는 있지만 server observer evidence의 이전 handler-missing/reply-error 표현을 공통 `no_handler`/`reply_error`로 전환해야 한다. |
 | RL-D5 | 구현 | 8개 client가 request/send를 120초 동안 지속하고, 25,748쌍 전부 성공·tail send evidence·short-lived client 정리 후 follow-up을 확인했다. 전반/후반 p95는 모두 25ms였다. 로그: `logs/20260715-082358-2399471` |
 
 검증:

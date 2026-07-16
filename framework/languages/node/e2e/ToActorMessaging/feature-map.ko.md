@@ -10,9 +10,9 @@
 | TA-A4 | implemented | `runTaA4()`가 stream bind를 닫은 뒤 actor row가 유지되어 no-bind send/request가 성공하는지 확인한다. | `run_e2e.sh TA-A4` 또는 전체 실행에서 `scenario TA-A4 passed`를 출력한다. |
 | TA-B1 | implemented | `runTaB1()`이 없는 actor에 대해 send/request 모두 `actorRouteNotFound`를 검증한다. | `run_e2e.sh TA-B1` 또는 전체 실행에서 `scenario TA-B1 passed`를 출력한다. |
 | TA-B2 | implemented | 실제 actor를 destroy한 뒤 같은 id로 다시 만들어 generation을 바꾼다. 이전 ref의 send/request가 handler에 도달하지 않고 request는 `actorLocationStale`로 실패하며, 새 live ref의 request는 성공한다. | `run_e2e.sh TA-B2` 또는 전체 실행에서 `scenario TA-B2 passed`를 출력한다. |
-| TA-B3 | implemented | runner가 실제 owner peer row를 제거해 route를 끊고 다시 게시한다. 같은 actor ref로 단절 중 `routeNotConnected`와 handler evidence 부재를 확인하고, 복구 뒤 request 성공을 확인한다. | `run_e2e.sh TA-B3` 또는 전체 실행에서 `scenario TA-B3 passed`를 출력한다. |
+| TA-B3 | implemented | runner가 실제 owner MeshNode descriptor를 제거해 route를 끊고 다시 게시한다. 같은 actor ref로 단절 중 `routeNotConnected`와 handler evidence 부재를 확인하고, 복구 뒤 request 성공을 확인한다. | `run_e2e.sh TA-B3` 또는 전체 실행에서 `scenario TA-B3 passed`를 출력한다. |
 
-`run_e2e.sh`는 Redis, actor owner 서버, session stream 서버, caller 서버, client runner를 모두 띄운다.
+`run_e2e.sh`는 Redis, actor owner 서버, session stream 서버, caller 서버, client runner를 모두 시작한다.
 서버 역할은 `E2E_START_ORDER=reverse`와 고정 seed `shuffle:20260715`로도 시작할 수 있으며, 두
 변형의 `TA-A1` runner가 통과했다.
 인자를 주지 않으면 전체 scenario를 실행하고, `TA-B2`처럼 공통 ID를 첫 인자로 주면 해당 scenario만

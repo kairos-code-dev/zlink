@@ -12,7 +12,7 @@
 | `Server/Tracking` | 배송 상태 event를 기록하고 고객 actor로 알림을 보낸다. |
 | `Server/CustomerGateway` | 고객 stream session, customer actor, entry spot을 제공한다. |
 | `Server/CourierSession` | 배송원 stream session을 받고 courier actor와 session을 bind한다. |
-| `Server/CourierSpotNode` | node 1/2에서 courier actor와 entry spot을 실행한다. |
+| `Server/CourierSpotNode` | node 1/2의 MeshNode에서 courier actor와 Entry Spot을 실행한다. 디렉터리 이름은 현재 source 위치를 그대로 적는다. |
 | `Server/Dispatch` | HTTP API와 dispatch worker를 실행한다. |
 | `Client` | HTTP 요청, stream subscription, offer decision, marker 검증을 수행한다. |
 

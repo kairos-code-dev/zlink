@@ -1,11 +1,11 @@
 # Node Location Messaging E2E porting inventory
 
-기준 구현: `framework/languages/dotnet/e2e/RegistryMessaging`
+기준 구현: `framework/languages/dotnet/e2e/LocationMessaging`
 
 공통 기준 문서: `framework/doc/framework/common/e2e/config-1-location-messaging.ko.md`
 
-이 문서는 `.NET` Config 1 파일과 공통 scenario ID를 Node 파일로 매핑한다. 구현된 범위는 `done`,
-public contract가 필요한 범위는 모두 현재 Node public API로 구현했다.
+이 문서는 `.NET` Config 1 파일과 공통 scenario ID를 Node 파일로 매핑한다. 현재 runner가 검증하는
+범위는 `done`, 10.0.0 목표 계약에 맞춘 검증이 더 필요한 범위는 `10.0.0 전환 대상`으로 기록한다.
 
 ## Scenario ID 매핑
 
@@ -25,7 +25,7 @@ public contract가 필요한 범위는 모두 현재 Node public API로 구현�
 | `RM-C5` | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm-c5-missing-packet-scenario.ts` | done | missing request/send dispatch error |
 | `RM-C7` | `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | done | build-time provider weight 75/25 분산 검증 |
 | `RM-C8` | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | done | payload length/hash 왕복과 server socket max 초과 실패, 이후 정상 request 회복을 검증 |
-| `RM-C9` | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | done | one-way send pressure 제출과 recovery 검증 |
+| `RM-C9` | `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | 10.0.0 전환 대상 | 현재 one-way send pressure 제출과 recovery를 검증한다. `trySubmit()`과 `submit()`의 admission 결과 대조는 남아 있다. |
 
 ## 파일 매핑
 
@@ -50,9 +50,9 @@ public contract가 필요한 범위는 모두 현재 Node public API로 구현�
 | `Client/Scenarios/RmC3MultiProviderDistributionScenario.cs` | `Client/Scenarios/rm-c3-multi-provider-distribution-scenario.ts` | scenario | done | `RM-C3` |
 | `Client/Scenarios/RmC4TimeoutIsolationScenario.cs` | `Client/Scenarios/rm-c4-timeout-isolation-scenario.ts` | scenario | done | `RM-C4` |
 | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm-c5-missing-packet-scenario.ts` | scenario | done | `RM-C5` |
-| `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | scenario | done | `RM-C7`, public `configureServerSocket().weight` 사용 |
+| `Client/Scenarios/RmC7WeightedProviderScenario.cs` | `Client/Scenarios/rm-c7-weighted-provider-scenario.ts` | scenario | done | `RM-C7`, public `addRouteMesh(...).channelName(...).setWeight(...)` 사용 |
 | `Client/Scenarios/RmC8PayloadRoundTripScenario.cs` | `Client/Scenarios/rm-c8-payload-round-trip-scenario.ts` | scenario | done | `RM-C8` |
-| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | scenario | done | `RM-C9` |
+| `Client/Scenarios/RmC9BackpressureScenario.cs` | `Client/Scenarios/rm-c9-backpressure-scenario.ts` | scenario | 10.0.0 전환 대상 | 현재 pressure/recovery 경로는 구현되어 있으나 10.0.0 admission 결과 검증은 남아 있다. |
 | `Client/Support/ClientOptions.cs` | `Client/Support/client-options.ts` | support | done | CLI option parsing |
 | `Client/Support/DynamicClusterLauncher.cs` | `Client/Support/dynamic-cluster-launcher.ts` | support | done | dynamic consumer/provider process lifecycle |
 | `Client/Support/ScenarioAssert.cs` | `Client/Support/scenario-assert.ts` | support | done | assertion and evidence count helper |
@@ -80,11 +80,11 @@ public contract가 필요한 범위는 모두 현재 Node public API로 구현�
 
 ## Public Contract 확인 사항
 
-- `RM-C7`은 `.NET`에서 `ConfigureServerSocket().Weight`를 사용한다. Node는 같은 의미의
-  `configureServerSocket().weight`를 public builder에 추가해 build-time provider weight를 설정한다.
-- `RM-C9`는 one-way send pressure 뒤 recovery를 검증한다. send submit은 public 완료 객체나
-  bounded-failure oracle을 노출하지 않으므로, 직접적인 HWM 오류 결과 검증은 binding/runtime 내부
-  테스트 범위로 둔다.
+- `RM-C7`은 `.NET`에서 `ChannelName(...).SetWeight(...)`를 사용한다. Node는 같은 의미의
+  `addRouteMesh(...).channelName(...).setWeight(...)`로 build-time provider weight를 설정한다.
+- `RM-C9`의 10.0.0 Node exact interface는 one-way call에 non-blocking `trySubmit()`과 blocking
+  `submit()`을 제공한다. 현재 pressure/recovery 증거는 보존하되 두 operation의 public admission
+  결과를 직접 대조해야 한다.
 - `.NET` README에는 `RM-A6`이 빠져 있지만 `.NET feature-map`, `Client/Program.cs`, 공통 문서에는
   존재하므로 Node 포팅 대상에 포함한다.
 
@@ -92,4 +92,4 @@ public contract가 필요한 범위는 모두 현재 Node public API로 구현�
 
 | Scenario | 판정 | 다음 작업 |
 |----------|------|-----------|
-| `RM-C9` | 구현 | public one-way send 제출과 recovery를 검증한다. |
+| `RM-C9` | 10.0.0 전환 대상 | `trySubmit()`의 즉시 결과와 `submit()`의 bounded admission 결과를 대조한다. |

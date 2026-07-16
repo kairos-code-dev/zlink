@@ -9,9 +9,9 @@
 
 | 종류 | 선언 | 패턴 |
 |------|------|------|
-| client/server | `add_client_server_channel(name)` | request-reply, 단방향 send — ROUTER 서버에 DEALER 클라이언트 (DEALER=client, ROUTER=server) |
+| RouteMesh ChannelName | `add_route_mesh(mesh).channel_name(channel)` | 같은 물리 mesh의 논리 membership으로 request-reply와 단방향 send |
+| Node direct | `route_client_t::request_to_node(mesh, rid, request)` | 같은 RouteMesh의 특정 MeshNode RID로 전달 |
 | fanout | `add_fanout_channel(name)` | publisher → 다수 subscriber (topic) |
-| route mesh | `add_route_mesh(name)` | router ↔ router — routing id 로 주소 라우팅 (SPOT node 구성: [8장](08-spot.ko.md)) |
 
 ## 2. 서버 쪽: 핸들러 그룹과 채널
 
@@ -29,8 +29,10 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
       zlink::framework_codecs::messagepack<create_game_req_t,
                                            create_game_res_t> ());
 
-    options.add_client_server_channel ("tictactoe.play")
-      .enable_server ("tcp://0.0.0.0:5561")
+    auto mesh = options.add_route_mesh ("tictactoe.application")
+      .listen ("tcp://0.0.0.0:5561")             // MeshNode의 ROUTER endpoint
+      .set_routing_id (zlink::routing_id_t::from ("play-node-1"));
+    mesh.channel_name ("tictactoe.play")          // 같은 socket의 논리 membership
       .use_handler_group ("play");
 
     options.handlers ()
@@ -69,8 +71,9 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
   options.codecs ().use (avro_codec_extension_t{schema});
   ```
 
-  다른 언어의 등록 표면은 [framework-api §2.2](../../spec/05-framework-api.ko.md) 표를
-  본다. client connector 쪽은 `codec_traits<T>` 특수화로 같은 커스텀 codec을 끼운다.
+  다른 언어의 등록 표면은 [framework-api §9](../../spec/05-framework-api.ko.md#9-codec) 표를
+  본다. client connector 쪽은 extension이 제공하는 `typed_codec_t` 구현을 connector options에
+  한 번 넣어 같은 커스텀 codec을 사용한다.
 - 같은 그룹을 여러 채널이 공유할 수 있고, 한 채널에 그룹 하나를 연결한다.
 
 위 선언이 만들어 내는 것:
@@ -78,10 +81,10 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
 ```mermaid
 flowchart LR
     subgraph ApiProc["Api 서버 프로세스"]
-        AC["channel client<br/>tictactoe.play"]:::channel
+        AC["MeshNode<br/>ChannelName: tictactoe.play"]:::channel
     end
     subgraph PlayProc["Play 서버 프로세스"]
-        PS["channel server<br/>bind tcp://0.0.0.0:5561"]:::channel
+        PS["MeshNode<br/>bind tcp://0.0.0.0:5561"]:::channel
         subgraph HG["handler group: play"]
             H1["create_game_handler_t"]
             H2["ensure_player_actor_handler_t"]
@@ -93,20 +96,21 @@ flowchart LR
     classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
 ```
 
-채널 이름(`tictactoe.play`)이 양쪽을 잇는 키다. 서버는 endpoint에 bind하고
-그룹의 핸들러로 dispatch하며, 클라이언트는 같은 이름으로 연결해 typed 요청을
-보낸다.
+MeshName(`tictactoe.application`)은 물리 mesh를 식별하고 ChannelName(`tictactoe.play`)은 그 mesh 안의
+논리 membership을 식별한다. 각 MeshNode는 ROUTER endpoint 하나를 열며, 같은 ChannelName에 등록한
+handler group으로 typed 요청을 dispatch한다.
 
-## 3. 클라이언트 쪽: channel_client_t
+## 3. 호출하는 MeshNode: channel_client_t
 
-요청을 보내는 프로세스는 채널을 client로 연결하고, `channel_client_t`를
-주입받아 호출한다.
+요청을 보내는 프로세스도 같은 MeshName의 MeshNode를 등록한다. 수동 연결은 상대 endpoint를
+`peer_connections()`에 넣고, 자동 연결은 location store에서 같은 MeshName의 descriptor를 찾는다.
 
 ```cpp
-options.add_client_server_channel ("tictactoe.play")
-  .enable_client ("tcp://10.30.1.15:5561");   // endpoint 직접 지정
-// 또는 registry discovery로 endpoint를 찾게 한다 (11장)
-options.add_client_server_channel ("tictactoe.play").enable_client ();
+auto mesh = options.add_route_mesh ("tictactoe.application")
+  .listen ("tcp://0.0.0.0:5562")
+  .set_routing_id (zlink::routing_id_t::from ("api-node-1"));
+mesh.channel_name ("tictactoe.play");
+mesh.peer_connections ().connect ("tcp://10.30.1.15:5561"); // 수동 peer
 ```
 
 `channel_client_t`는 DI 서비스다 — 핸들러의 `dependency_types`로 받는다.
@@ -168,8 +172,8 @@ request 한 번의 전체 흐름 — 디코딩/인코딩과 핸들러 호출은 
 ```mermaid
 sequenceDiagram
     participant App as Api: 핸들러 코드
-    participant CC as channel client
-    participant PS as Play: channel server
+    participant CC as Api MeshNode
+    participant PS as Play MeshNode
     participant H as handler group "play"
 
     App->>CC: co_await request(...).async<create_game_res_t>()
@@ -235,45 +239,47 @@ context, 변경할 수 없는 raw message payload가 들어 있다. 처리를 �
 filter도 framework가 직접 `new`로 만들지 않는다. `options.use_filter<TFilter>()`로
 등록하면 같은 DI 컨테이너에서 resolve되며, 등록한 순서대로 handler 호출 앞단을 감싼다.
 
-## 5. client/server: 같은 서비스 여러 대에 연결
+## 5. 같은 ChannelName을 제공하는 MeshNode 여러 개
 
-처리량을 늘리고 싶을 때 같은 client/server channel 이름으로 서버 인스턴스를 여러 개
-띄운다. 클라이언트는 같은 channel에서 여러 server endpoint를 직접 지정하거나 discovery로
-찾는다. 호출 코드는 channel 이름만 쓰고, endpoint 목록은 framework 설정에 둔다.
+처리량을 늘리려면 같은 MeshName과 ChannelName membership을 가진 MeshNode를 여러 process에 등록한다.
+호출하는 MeshNode는 여러 peer endpoint를 직접 지정하거나 location store discovery로 찾는다. 호출 코드는
+ChannelName만 사용하고 endpoint 목록은 framework 설정에 둔다.
 
 ```cpp
-// 이미지 처리 서버 A
-options.add_client_server_channel ("image.resize")
-    .enable_server ("tcp://0.0.0.0:5600")
-    .use_handler_group ("resize");
+// 이미지 처리 MeshNode A
+auto mesh = options.add_route_mesh ("image.application")
+  .listen ("tcp://0.0.0.0:5600")
+  .set_routing_id (zlink::routing_id_t::from ("image-node-a"));
+mesh.channel_name ("image.resize").use_handler_group ("resize");
 
-// 이미지 처리 서버 B — 동일 채널, 다른 프로세스
-options.add_client_server_channel ("image.resize")
-    .enable_server ("tcp://0.0.0.0:5601")
-    .use_handler_group ("resize");
+// 이미지 처리 MeshNode B — 동일 MeshName과 ChannelName, 다른 process
+auto mesh = options.add_route_mesh ("image.application")
+  .listen ("tcp://0.0.0.0:5601")
+  .set_routing_id (zlink::routing_id_t::from ("image-node-b"));
+mesh.channel_name ("image.resize").use_handler_group ("resize");
 ```
 
 ```cpp
-// 클라이언트: 같은 채널에서 두 서버 endpoint를 모두 등록
-options.add_client_server_channel ("image.resize")
-    .enable_client ("tcp://10.30.1.10:5600")
-    .enable_client ("tcp://10.30.1.10:5601");
-
-// 또는 discovery로 자동 발견 — 서버가 추가될 때 클라이언트 재시작 불필요
-options.add_client_server_channel ("image.resize")
-    .enable_client ();   // 인자 없는 enable_client = registry discovery로 자동 연결
+// 호출하는 MeshNode: 두 peer endpoint를 수동 등록
+auto mesh = options.add_route_mesh ("image.application")
+  .listen ("tcp://0.0.0.0:5599")
+  .set_routing_id (zlink::routing_id_t::from ("image-api"));
+mesh.channel_name ("image.resize");
+mesh.peer_connections ().connect ("tcp://10.30.1.10:5600");
+mesh.peer_connections ().connect ("tcp://10.30.1.10:5601");
 ```
 
-server role은 `enable_server(endpoint)`로 ROUTER endpoint를 열고 handler group을 실행한다.
-client role은 `enable_client(...)`로 DEALER 연결을 만든다. 같은 프로세스가 두 역할을 모두
-가질 수 있지만, 각 역할의 socket과 책임은 분리된다.
+각 MeshNode는 `listen(endpoint)`로 ROUTER endpoint 하나를 열고 같은 socket으로 송수신한다. Handler
+group을 연결한 ChannelName은 요청을 처리하고, 연결하지 않은 membership은 다른 MeshNode의 handler를
+호출하는 데 사용할 수 있다. Location store를 등록하면 manual peer 목록 대신 같은 MeshName의 descriptor를
+기준으로 peer를 자동 조정한다.
 
 ```mermaid
 flowchart LR
-    C["client<br/>DEALER"]:::channel
-    S1["image server A<br/>ROUTER 5600"]:::channel
-    S2["image server B<br/>ROUTER 5601"]:::channel
-    S3["image server C<br/>ROUTER 5602<br/>(discovered later)"]:::channel
+    C["calling MeshNode<br/>ROUTER 5599"]:::channel
+    S1["image MeshNode A<br/>ROUTER 5600"]:::channel
+    S2["image MeshNode B<br/>ROUTER 5601"]:::channel
+    S3["image MeshNode C<br/>ROUTER 5602<br/>(discovered later)"]:::channel
 
     C == "요청 1" ==> S1
     C == "요청 2" ==> S2
@@ -287,7 +293,8 @@ request handler는
 `request_type`/`reply_type`/`topic_name` + `handle()`을 두고, send handler는
 `message_type` + `handle()`을 둔다.
 
-> **route mesh와 차이**: client/server channel은 일반 service endpoint 호출에 적합하다. 특정 엔티티(주문 ID, 사용자 ID 등)가 항상 같은 서버로 가야 한다면 route mesh([§7](#7-route-mesh-고급))를 쓴다.
+ChannelName 호출은 해당 membership의 후보 가운데 한 MeshNode를 선택한다. 특정 MeshNode RID로 보내야 하면
+Node direct 호출([§7](#7-node-direct-호출))을 사용한다.
 
 ## 6. fanout: publish/subscribe
 
@@ -313,8 +320,8 @@ options.handlers ()
 
 `publisher_t`는 `auto pub = app.advanced().zlink().publisher();`의
 `zlink_builder_t::publisher()`에서 얻는다. SPOT 코드에서 fanout으로 발행하려면
-SpotMesh의 pub/sub 역할을 켜고 `spot_context_t::publish(topic, event)`를
-사용한다([8장 §6](08-spot.ko.md)).
+owner MeshNode의 Spot publish 설정을 사용하고 `spot_context_t::publish(topic, event)`를
+호출한다([8장 §6](08-spot.ko.md)).
 
 ```mermaid
 flowchart LR
@@ -334,25 +341,21 @@ publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**�
 인코딩 결과를 **구독 중인 각 구독자 연결로 한 번씩 전달**할 뿐, 구독자마다 다시
 직렬화하지 않는다.
 
-## 7. route mesh (고급)
+## 7. Node direct 호출
 
-route mesh 는 **router ↔ router** 연결로, `routing_id` 를 지정해 **특정 주소로
-라우팅**한다. 한 노드가
-**server 와 client 를 둘 다** 한다 — `enable_server(endpoint)` 로 bind 해서 받고(제공),
-`enable_client(endpoint)` 로 다른 router 에 연결한다(소비). 둘은 같은 ROUTER socket을
-공유한다. SPOT 노드가 이 route mesh 로 구성되므로, SPOT 라우팅 백본이 필요할 때 쓴다.
-TicTacToe Play 서버 선언:
+RouteMesh는 MeshName 하나로 식별하는 물리 mesh이며, 각 MeshNode는 고유한 `routing_id_t`를 갖는다.
+ChannelName의 후보 선택을 사용하지 않고 특정 MeshNode로 전달해야 할 때 `route_client_t`의 Node direct
+호출을 사용한다. Node, Channel, Spot과 Actor 메시지는 별도 bridge 없이 같은 MeshNode ROUTER를 사용한다.
 
 ```cpp
-options.add_route_mesh ("tictactoe.router")
-  .enable_server (topology.play_router_endpoint)   // 이 ROUTER bind(제공)
-  .set_routing_id (topology.play_rid);             // 이 router 의 주소
+auto mesh = options.add_route_mesh ("tictactoe.application")
+  .listen (topology.play_router_endpoint)          // MeshNode ROUTER endpoint
+  .set_routing_id (topology.play_rid);
+mesh.channel_name ("tictactoe.play");              // 논리 membership
 ```
 
-route mesh 로 직접 호출할 때는 `route_client_t`를 주입받고, 호출마다 route channel
-이름과 대상 `routing_id_t`를 지정한다. `route_client_t`는 특정 channel 하나에 묶인
-client 가 아니므로, route mesh channel 이 여러 개 있어도 호출 인자의 channel 이름으로
-어느 경로를 쓸지 분명하게 정한다.
+`route_client_t`는 호출마다 MeshName과 대상 RID를 받는다. 특정 ChannelName의 후보로 요청하려면
+`request_to_channel(mesh_name, channel_name, request)`를 사용한다.
 
 ```cpp
 class match_handler_t
@@ -369,7 +372,7 @@ class match_handler_t
     {
         auto target = zlink::routing_id_t::from ("play-node-1");
         co_return co_await _routes
-          .request ("tictactoe.router", target, request)
+          .request_to_node ("tictactoe.application", target, request)
           .async<allocate_room_res_t> ();
     }
 
@@ -378,10 +381,9 @@ class match_handler_t
 };
 ```
 
-같은 route channel 로 반복 호출하면 application 코드에서 작은 wrapper 를 만들어 DI 에
-등록해도 된다. 이 wrapper 는 framework API 가 아니라 application 이 정한 이름이다. 그래서
-업무 코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel 로
-나가는지만 한 곳에 둔다.
+같은 MeshName으로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 DI에 등록할 수 있다. 이
+wrapper는 framework API가 아니라 application이 정한 이름이다. 업무 코드는 MeshName 문자열을 반복하지
+않고 wrapper 안에서 물리 mesh 선택을 한 곳에 둔다.
 
 ```cpp
 class play_routes_t
@@ -393,11 +395,11 @@ class play_routes_t
     explicit play_routes_t (zlink::framework::route_client_t &routes) :
         _routes (routes) {}
 
-    zlink::framework::route_request_call_t
+    zlink::framework::channel_request_call_t
     request (zlink::routing_id_t target, allocate_room_req_t request)
     {
-        return _routes.request ("tictactoe.router", std::move (target),
-                                std::move (request));
+        return _routes.request_to_node ("tictactoe.application", std::move (target),
+                                        std::move (request));
     }
 
   private:
@@ -408,8 +410,7 @@ options.services ()
   .add_singleton<play_routes_t, zlink::framework::route_client_t> ();
 ```
 
-같은 프로세스에 RouteMesh와 SpotMesh가 있으면 framework가 시작 시점에 두 runtime을
-자동으로 연결한다. 그래서 외부 코드가 route client로 Spot `routing_id_t`를 대상으로
-호출할 때 별도 egress/accept 설정을 맞출 필요가 없다.
+Spot과 Actor는 별도 mesh runtime을 만들지 않고 owner MeshNode에 등록한다. 외부 호출자는 resolved
+`spot_handle_t` 또는 `actor_ref_t`를 사용하며 Spot RID와 MeshNode RID를 직접 조립하지 않는다.
 
 [다음: SPOT →](08-spot.ko.md)

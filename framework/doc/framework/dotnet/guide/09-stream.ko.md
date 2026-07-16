@@ -27,7 +27,7 @@ STREAM은 두 부분으로 나뉜다.
 
 ### 등록
 
-stream node 하나에 session 하나를 붙인다.
+stream node 하나에 session 하나를 등록한다.
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
@@ -153,7 +153,7 @@ connector의 JSON codec은 기본값이다. MessagePack이나 Protobuf가 필요
 extension을 등록하고, 같은 extension 인스턴스를 connector typed payload codec으로도 사용한다.
 custom codec도 같은 방식으로 `IZLinkCodecExtension`과 stream payload codec 구현을 함께 제공한다.
 server framework 쪽 등록(`Codecs.Use(...)`)과 대칭이며, 두 표면의 전체 목록은
-[framework-api §2.2](../../spec/05-framework-api.ko.md) 표를 본다.
+[framework-api §9](../../spec/05-framework-api.ko.md#9-codec) 표를 본다.
 
 ### 연결과 dispatch
 
@@ -196,7 +196,7 @@ while (running)
   콜백 work item만 큐에 넣고 다음 읽기로 넘어간다. `Immediate` 모드는 수신 루프가
   콜백 실행을 그 자리에서 기다리므로 느린 콜백이 다음 읽기를 늦춘다.
 
-### 한 번만 기다리기 — `WaitFor<T>()` / `ReceivedCount`
+### 한 번 기다리거나 부재 확인하기 — `WaitFor<T>()` / `ExpectNone<T>()`
 
 `On<T>(...)`는 들어오는 packet마다 계속 불리는 **상시 핸들러**다. 반면 특정 push가 *한 번* 오기를
 기다렸다가 그 값을 받고 싶을 때는 `WaitFor<T>()`를 쓴다. request/response가 아니라, server가 먼저
@@ -210,18 +210,18 @@ var notify = await connector.WaitFor<ActorPushNotify>()
     .Async(cancellationToken);
 ```
 
-`ReceivedCount("PacketName")`는 그 이름으로 **지금 received store에 남아 있는** packet 수를
-돌려준다(누적 합계가 아니라, `WaitFor`로 가져가면 줄어들고 store 한도를 넘으면 오래된 것부터
-빠진다). "이 client는 그 push를 받지 *않았어야* 한다(== 0)" 같은 검증/진단에 쓴다.
+오면 안 되는 push는 `ExpectNone<T>()`에 관찰 시간을 지정해 확인한다. 단순히 현재 저장소의 개수를
+읽으면 검사 직후 push가 도착할 수 있으므로 부재를 증명하지 못한다.
 
 ```csharp
-// 예: 이 session 으로는 push가 오지 않았음을 확인
-ScenarioAssert.That(connector.ReceivedCount("ActorPushNotify") == 0, "push가 오면 안 된다");
+await connector.ExpectNone<ActorPushNotify>()
+    .Within(TimeSpan.FromMilliseconds(250)) // 이 관찰 구간에는 해당 push가 없어야 한다.
+    .Async(cancellationToken);
 ```
 
-> `WaitFor`/`ReceivedCount`는 connector가 보유한 **bounded received store** 위에서 동작한다.
-> 크기는 `ZlinkStreamConnectorOptions.MaxReceivedMessages`(기본 1024)로 정하고, 한도를 넘으면 오래된
-> 것부터 버린다. payload 크기 한도(`MaxReceivePayloadSize`)와는 별개 설정이다.
+> `WaitFor`/`ExpectNone`은 connector가 보유한 **bounded received store** 위에서 동작한다.
+> 크기는 `ZlinkStreamConnectorOptions.MaxReceivedMessages`(기본 1024)로 정하고, 한도가 가득 차면 새로
+> 도착한 message를 거부한다. payload 크기 한도(`MaxReceivePayloadSize`)와는 별개 설정이다.
 
 ### send / request
 
@@ -250,9 +250,9 @@ await connector
 
 ### metadata로 라우팅 — 어느 spot/actor/node로 보낼지 지정
 
-STREAM client는 서버의 session으로 메시지를 보낸다. session은 메시지에 붙은 문자열
+STREAM client는 서버의 session으로 메시지를 보낸다. session은 메시지에 포함된 문자열
 **metadata** 를 읽고, 그 메시지를 어느 **spot·actor·node** 로 전달할지 정한다. client는
-`.Metadata(key, value)`로 metadata를 붙이고, 같은 호출에 여러 번 체이닝할 수 있다.
+`.Metadata(key, value)`로 metadata를 설정하고, 같은 호출에 여러 번 체이닝할 수 있다.
 
 ```csharp
 // 특정 spot(room)으로 보내기 — key 이름은 애플리케이션이 정한 상수
@@ -329,7 +329,7 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 
 - client의 `Async(...)` 종결자는 실패 시 `ZlinkStreamException`(`ZlinkStreamError`)을
   던지고, `Submit(callback)` 요청 API는 `ZlinkStreamResult` 실패를 callback에 넘긴다.
-  `request_seq`가 붙은 remote error는 그 pending request의 실패로 전달된다.
+  `request_seq`를 포함한 remote error는 그 pending request의 실패로 전달된다.
   `request_seq` 없는 remote error와 사용자 callback 오류는 `ErrorReceived` 이벤트로
   알린다. error code 의미는 같다.
 - 주요 코드: `Disconnected`, `RequestTimeout`, `ConnectTimeout`, `FrameTooLarge`,

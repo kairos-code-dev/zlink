@@ -22,6 +22,9 @@ DTO를 encode/decode한다.
 Cocos Creator web, Godot Web)이다. Node.js process는 connector의 제품 실행 환경이 아니다.
 
 **웹(브라우저·WASM)으로 빌드하는 모든 엔진이 언어와 무관하게 이 connector를 사용한다.**
+Unity WebGL은 npm package root의 browser bundle과 jslib·C# 호출 경계를 제공하는
+`com.zlink.stream-connector.webgl` UPM source adapter를 사용한다. 이 adapter는 별도 wire runtime을
+제공하지 않는다.
 
 ## 2. 진입점(entrypoint)
 
@@ -32,7 +35,7 @@ Node 조건부 export는 제공하지 않는다.
 **계약:**
 
 - package root의 번들 그래프에는 **`net`·`tls`·`Buffer` 같은 Node 전용 모듈이 포함되지
-  않는다.** 검증 범위는 §8의 문서가 소유한다.
+  않는다.** 검증 범위는 §7의 문서가 소유한다.
 - 공통 wire 계층(`@zlink-systems/stream-wire`)은 두 런타임에서 **같은 코드**로 동작한다.
   브라우저 ESM과 server CommonJS 산출물은 같은 source와 wire 상수를 사용하며 `Uint8Array` byte
   fixture가 일치해야 한다.
@@ -123,6 +126,22 @@ interface ZlinkStreamWaitCall<TPayload = ZlinkStreamEncodedPayload> {
 }
 ```
 
+Metric provider는 connector option으로 주입한다.
+
+```ts
+interface ZlinkStreamMeterProvider {
+  getMeter(name: string): {
+    createCounter(name: string, options?: { readonly unit?: string }): {
+      add(value: number, attributes?: Readonly<Record<string, string | number | boolean>>): void;
+    };
+  };
+}
+
+interface ZlinkStreamConnectorOptions {
+  readonly meterProvider?: ZlinkStreamMeterProvider;
+}
+```
+
 connector 생성은 `zlinkStreamConnectorFactory.create(options)`를 사용한다.
 
 - **취소는 optional `AbortSignal`로 전달한다.** 다른 언어의 cancellation token 모양을 복제하지
@@ -133,7 +152,7 @@ connector 생성은 `zlinkStreamConnectorFactory.create(options)`를 사용한�
   `send`의 `submit()`은 응답을 기다리지 않는다.
 - inbound handler가 시작한 관련 outbound에는 `flowFrom(message)`를 호출한다. 이 메서드는 message의
   `flowId`와 `flowOrigin`을 한 쌍으로 복사한다. 호출하지 않은 outbound는 `origin=application`인 새
-  flow를 시작한다. 자세한 비동기 문맥 경계는 [flow correlation §4.4](../../../server/53-flow-correlation.ko.md)를
+  flow를 시작한다. 자세한 비동기 문맥 경계는 [flow correlation §6](../../../server/53-flow-correlation.ko.md#6-async-context)를
   따른다.
 
 option의 기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이 소유한다. TypeScript는 이를
@@ -189,7 +208,7 @@ observer callback 실패는 `ZlinkStreamErrorCode.ObserverFailed`로 보고한�
 
 ## 6. 세션 종료 사유 (close reason)
 
-사유의 값 집합과 의미는 [공통 스펙 §6.2](../../32-stream-connector.ko.md)가 소유한다. 이 문서는
+사유의 값 집합과 의미는 [공통 스펙 §6.3](../../32-stream-connector.ko.md#63-종료-사유)가 소유한다. 이 문서는
 TypeScript 표면만 고정한다.
 
 `ZlinkStreamCloseReason`은 닫힌 union이다.
@@ -204,19 +223,18 @@ type ZlinkStreamCloseReason =
 `onDisconnected(...)` handler는 인자로 사유를 받지 않으므로, handler 안에서 `closeReason`을
 읽는다. 아직 끊긴 적이 없으면 `undefined`다.
 
-## 7. 구현 상태
+### 6.1 Metric
 
-§1~§4의 browser-only transport와 명시적 flow 전달 계약을 구현했다. package root는 플랫폼의
-네이티브 `WebSocket`만 사용하며 공용 protocol과 connector runtime에는 Node 전용 module을 import하지
-않는다. npm tarball, 실제 Chromium의 WS/WSS 실행과 비동기 flow 격리 결과는 구현 계획의 G3·G4
-로그에서 함께 검증한다.
+TypeScript connector는 [공통 스펙 §6.2](../../32-stream-connector.ko.md#62-connector-reconnect-계기)의
+`zlink.stream.reconnects`와 닫힌 attribute를 `meterProvider`에 게시한다. Provider를 생략하면
+OpenTelemetry API의 global meter provider를 사용한다. Application과 E2E는 OpenTelemetry public reader로
+counter를 읽는다. Provider 또는 exporter failure는 send, request와 연결 상태를 바꾸지 않는다.
 
-## 8. 검증
+## 7. 검증
 
-공통 동작의 검증 범위는 [공통 Stream Connector 스펙](../../32-stream-connector.ko.md)이,
-TypeScript 구현에서 실행하는 검증 묶음은
-[회귀 검증 matrix](../../../../node/internals/regression-test-matrix.ko.md)가 소유한다.
-이 문서는 공개 TypeScript 시그니처와 브라우저 실행 환경을 고정한다.
+공통 동작의 검증 범위는 [공통 Stream Connector 스펙 §12](../../32-stream-connector.ko.md#12-회귀-테스트)가
+소유한다. TypeScript 표면은 해당 항목을 browser의 WS/WSS 환경에서 같은 의미로 검증해야 한다. 이 문서는
+공개 TypeScript 시그니처와 브라우저 실행 환경을 고정한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

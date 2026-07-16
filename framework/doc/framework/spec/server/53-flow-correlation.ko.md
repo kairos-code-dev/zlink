@@ -38,6 +38,9 @@ application은 형식을 해석하거나 새 값을 조립하지 않는다.
 허용하지 않는 `flow_id`, 빈 correlation ID, `flow_id`와 `flow_origin` 중 하나만 존재하는 message는
 protocol error다.
 
+Framework message envelope에서 이 오류를 발견하면 `RequestProtocolError`로 완료한다. STREAM
+frame에서 발견하면 connector 종료 사유 `ProtocolError`로 연결을 종료한다.
+
 ## 4. Flow 생성
 
 Framework-managed inbound에 valid flow ID가 있으면 새 값을 만들지 않고 그대로 사용한다. flow ID가 없는

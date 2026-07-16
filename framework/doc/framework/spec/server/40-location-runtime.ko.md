@@ -26,7 +26,8 @@ MeshNode descriptor는 RouteMesh peer admission과 연결 계획에 필요한 �
 |---|---|
 | MeshName | 물리 RouteMesh와 RID namespace를 구분하는 immutable 이름 |
 | RID | 같은 MeshName에서 MeshNode를 식별하는 identity |
-| Generation | 같은 RID로 시작한 lifecycle을 구분하는 단조 증가 값 |
+| Lifecycle generation | 같은 RID로 시작한 lifecycle을 구분하는 단조 증가 값 |
+| Descriptor revision | 같은 lifecycle 안의 mutable descriptor snapshot을 구분하는 단조 증가 값 |
 | Endpoint | peer가 연결할 ROUTER endpoint |
 | ChannelName set | descriptor 게시 전에 고정하는 하나 이상의 immutable membership |
 | Channel weight set | ChannelName별 현재 select-one weight |
@@ -36,6 +37,11 @@ MeshNode descriptor는 RouteMesh peer admission과 연결 계획에 필요한 �
 
 descriptor 하나가 MeshNode의 endpoint와 전체 ChannelName membership을 함께 나타낸다. ChannelName마다
 별도 endpoint, descriptor 또는 membership record를 만들지 않는다.
+
+ChannelName set은 lifecycle 동안 immutable이지만 weight와 drain state는 바뀔 수 있다. 이 두 필드가
+바뀌면 descriptor revision을 증가시키고 row와 change stamp를 같은 store operation으로 갱신한다. reader는
+RID와 lifecycle generation이 같은 descriptor 가운데 가장 큰 revision만 적용한다. 더 낮은 revision은
+현재 ready index를 되돌리지 않는다.
 
 ### 2.2 Spot location row
 
@@ -61,6 +67,7 @@ Actor location row는 논리 Actor의 현재 owner와 Spot membership을 나타�
 | MeshName, Actor ID, Actor type | 논리 Actor identity |
 | Owner RID, Owner generation | Actor queue를 소유한 MeshNode identity |
 | Actor generation | Actor lifecycle과 transfer fencing 값 |
+| Membership epoch | 같은 Actor generation 안에서 Spot membership 변경을 구분하는 CAS 값 |
 | Spot RID와 Spot kind | 현재 Spot membership |
 | Owner lease | owner runtime의 유효성 |
 
@@ -75,6 +82,18 @@ clock을 authority로 사용하지 않는다.
 
 같은 logical key의 새 generation은 store가 원자적으로 발급한다. 오래된 owner token의 renew·release는
 현재 record를 바꾸지 않는다.
+
+Location runtime은 heartbeat interval, owner lease TTL, store polling interval, store failure grace,
+routing ID fencing margin과 owner lease renew timeout을 양수로 설정한다. Routing ID 자동 할당을 사용하면
+다음 관계를 만족해야 한다. 이 관계를 만족하지 않으면 host는 socket bind 전에 설정 오류로 종료한다.
+
+```text
+heartbeat interval + owner lease renew timeout
+    < owner lease TTL - routing ID fencing margin
+```
+
+언어별 exact interface는 같은 여섯 값을 해당 언어의 duration 타입과 이름으로 투영한다. 기본값과 공개
+signature는 언어별 문서가 소유하지만 위 유효성 관계를 바꾸지 않는다.
 
 ## 3. Redis 등록 조건
 
@@ -147,7 +166,7 @@ resolver는 다음 결과만 제공한다.
 | Spot | 유효한 owner와 Spot generation을 가진 SpotHandle |
 | Actor | 유효한 ActorRef 또는 현재 Spot을 가리키는 handle |
 
-owner lease가 만료되었거나 owner descriptor generation과 맞지 않는 location row는 성공 결과에서
+owner lease가 만료되었거나 owner descriptor의 lifecycle generation과 맞지 않는 location row는 성공 결과에서
 제외한다. 물리 record cleanup 시점은 resolve 의미를 바꾸지 않는다.
 
 ## 7. Failure와 recovery
@@ -168,7 +187,7 @@ event에서 관찰한다. 별도의 peer 조회 service를 추가하지 않는�
 다음 조건을 검증한다.
 
 - MeshNode descriptor와 Spot·Actor location row가 서로 다른 key와 수명을 가진다.
-- descriptor가 MeshName, RID, generation과 immutable ChannelName set을 함께 제공한다.
+- descriptor가 MeshName, RID, lifecycle generation, descriptor revision과 immutable ChannelName set을 함께 제공한다.
 - automatic discovery와 distributed Spot·Actor 기능은 Redis 미등록 시 startup에서 실패한다.
 - manual peer만 사용하는 MeshNode는 Redis 없이 handshake descriptor로 admission한다.
 - manual peer와 Redis discovery가 같은 RID를 발견하면 peer intent 하나로 합쳐 같은 admission을 사용한다.

@@ -1,0 +1,33 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 588517,
+  "num_turns": 94,
+  "model": "claude-sonnet-5",
+  "session_id": "f043de9f-4bdd-4870-bbd1-95504266846e",
+  "uuid": "a32defb9-f1d8-460d-8409-d779d920045a",
+  "start_hash": "a47810550e250538d9fcb2c6a6f530927b4a0112b58d33881f4ae1a03805b3ac",
+  "end_hash": "a47810550e250538d9fcb2c6a6f530927b4a0112b58d33881f4ae1a03805b3ac",
+  "repository_edits": "none",
+  "scope_file_count": 52,
+  "result": {
+    "clean": false,
+    "findings": [
+      {
+        "severity": "minor",
+        "evidence": ["core/doc/spec/core/02-message.md:384", "core/doc/spec/core/02-message.ko.md:378"],
+        "problem": "The formal Message specification links directly to an internals protocol document, contrary to formal navigation governance.",
+        "repair": "Remove the internals links and retain formal public-contract owner links."
+      },
+      {
+        "severity": "minor",
+        "evidence": ["core/doc/spec/core/socket/README.md:794", "core/doc/spec/core/socket/README.ko.md:777", "core/doc/spec/core/socket/README.md:821", "core/doc/spec/core/socket/README.ko.md:801"],
+        "problem": "TLS server and client See also link targets differ between English and Korean.",
+        "repair": "Use the same link target set in both languages."
+      }
+    ],
+    "iteration_3_regression": "F3-01 through F3-08 remain fixed",
+    "final_result": "not clean"
+  }
+}

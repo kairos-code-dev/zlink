@@ -25,7 +25,8 @@
 | SM-C2 | 구현 | spot to channel messaging marker가 있다. |
 | SM-C3 | 구현 | spot-to-spot request/send/publish와 missing target negative marker가 있다. |
 | SM-C4 | 구현 | spot publisher client marker가 있다. |
-| SM-C5 | 구현 | play-a spot이 publish한 SpotMesh event를 play-b 구독 spot의 수신 evidence로 확인한다. |
+| SM-C5 | 전환 필요 | play-a Spot의 Logical Multicast가 play-b 구독 Spot에 도달하는 evidence를 확인한다. 현재 성공 기록은 이전 topology의 증거이며 10.0.0 MeshNode 구현 뒤 다시 실행한다. |
+| SM-C6 | 전환 필요 | 기본 `ConfigureSpotPublisher().NoDrop=true`에서 remote peer backpressure를 만들고, blocking publish의 전체 대상 원자적 admission과 timeout, non-blocking submit의 즉시 backpressure 결과를 검증해야 한다. 일부 대상 전달을 성공으로 처리하지 않아야 하며 현재 runner에는 이 증거가 없다. |
 | SM-D1 | 구현 | local actor session bind/relay marker가 있다. |
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
 | SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |
@@ -46,12 +47,12 @@
 | SM-E3 | 구현 | idle timer가 spot close를 수행하고 closed spot request가 실패하는 marker가 있다. |
 | SM-E4 | 구현 | timer overrun policy marker가 있다. |
 | SM-F1 | 구현 | client/server channel to target spot marker가 있다. |
-| SM-F2 | 구현 | route mesh channel to target spot marker가 있다. |
+| SM-F2 | 전환 필요 | 두 MeshNode를 사용해 remote `SpotHandle` request/send가 target owner Spot에 도달하는 marker로 다시 검증한다. |
 | SM-F3 | 구현 | client/server egress와 route-mesh egress를 같은 spot에 혼재해 처리한 marker가 있다. |
 | SM-F4 | 구현 | missing target spot route request 실패 marker가 있다. malformed relay packet 주입은 public E2E 표면이 아니므로 직접 scenario로 만들지 않는다. |
 | SM-F5 | 구현 | target user Spot을 public manager로 닫은 뒤 해당 Spot 경로만 실패하고 같은 route channel의 일반 request는 계속 성공하는 marker가 있다. |
-| SM-F6 | 구현 | `sm-f6` runner가 MultiNode 두 role을 RouteMesh channel 없이 같은 SpotMesh에 등록하고, source spot의 public outbound request/send와 source actor의 `JoinSpot(...)`이 remote target spot에 도달하는 evidence를 확인한다. |
+| SM-F6 | 전환 필요 | `sm-f6` runner에서 같은 MeshName의 두 MeshNode만 사용해 remote `SpotHandle` request/send와 source Actor의 public join이 target owner Spot에 도달하는지 검증한다. 별도 Spot 전용 ROUTER나 PUB/SUB socket을 구성하지 않는다. |
 | SM-G1 | 구현 | client가 play-a crash endpoint로 프로세스를 kill한 뒤 play-a bound actor request 실패, play-b 격리 유지, play-b 재bind 복구를 확인한다. |
-| SM-G2 | 구현 | 앱이 같은 logical key의 owner spot RoutingId를 play-a에서 play-b로 remap하고, remap 전후 evidence가 새 owner에만 남는지 확인한다. |
+| SM-G2 | 전환 필요 | node B를 추가한 뒤 기존 Spot·actor의 owner가 node A에 유지되는지 확인하고, node B의 capability와 Entry Spot readiness를 기다린 다음 신규 Spot·actor만 node B에 명시적으로 배치해야 한다. 자동 remap이나 기존 owner 이동을 완료 근거로 사용하지 않는다. |
 | SM-G3 | 구현 | 같은 user spot에 여러 stream session이 동시에 join/request/leave를 수행하고 actor별 join/leave lifecycle evidence가 1회씩 남는지 확인한다. |
 | SM-G4 | 구현 | 다수 bound session에 동시에 push를 보내 각 session이 자기 actor push만 받는지 확인한다. |

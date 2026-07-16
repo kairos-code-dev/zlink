@@ -95,6 +95,12 @@ Actor 종료는 신규 payload admission을 닫고 session binding과 location o
 session의 연결 종료만으로 Actor를 자동 종료하거나 Spot에서 자동 leave하지 않는다. lifecycle 종료의
 정확한 허용 상태와 transaction은 [23 Spot Actor](23-spot-actor.ko.md)가 소유한다.
 
+Actor destroy는 Entry Spot context에서만 요청할 수 있다. Actor가 user Spot에 있으면 먼저 leave 또는
+Entry Spot join을 완료해 Entry Spot으로 이동해야 한다. Destroy는 membership 이동이 아니므로 성공 과정에서
+`OnLeaveActor`를 다시 호출하지 않는다. 신규 payload admission을 닫고 진행 중인 lifecycle 작업을 정리한
+뒤 session binding, location ownership, Actor reference와 Framework registry를 제거한다. 이미 제거된 같은
+Actor instance에 대한 중복 destroy는 성공으로 끝나며 lifecycle callback을 다시 만들지 않는다.
+
 ## 7. Session binding
 
 session binding은 Actor와 현재 STREAM session 사이의 runtime 관계다. binding token은 재연결과 늦게

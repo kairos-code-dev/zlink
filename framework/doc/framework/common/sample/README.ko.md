@@ -9,14 +9,13 @@
 실행 가능한 업무 흐름으로 보여 준다. 언어별 sample은 한 언어 구현을 기준으로
 복사하지 않고 이 공통 시나리오와 해당 언어 spec을 함께 따른다.
 
-정본 6종(Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall,
-GameQuest)은 이 디렉터리의 각 시나리오 문서를 기준으로 삼고, 모든 framework 언어
-(dotnet/java/kotlin/node/cpp)가 동일하게 코드로 구현한다. 언어별 framework를
-구현할 때 같은 역할 분리, 같은 request/response/notify 이름, 같은 상태 필드, 같은
-smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사용자가 샘플을 읽었을 때
-같은 framework 기능을 같은 순서로 확인할 수 있어야 한다.
+Bingo, TicTacToe, SupportChat, DeliveryDispatch, ShoppingMall과 GameQuest는 다섯 framework 언어
+(.NET, Java, Kotlin, Node.js, C++)가 공통으로 제공한다. ZoneWorld는 .NET과 Node.js가 제공하며
+TypeScript 브라우저 client를 공유한다. 지원 언어는 같은 역할 분리, request/response/notify 이름,
+상태 필드와 smoke 검증 순서를 따른다. 언어별 API 표현은 달라도 같은 framework 기능을 같은 순서로
+확인할 수 있어야 한다.
 
-언어별 guide는 정본 6종의 목적, 서버 구성, 메시지 계약, 상태 전이, 검증 순서를 다시
+언어별 guide는 공통 sample의 목적, 서버 구성, 메시지 계약, 상태 전이, 검증 순서를 다시
 정의하지 않는다. 이런 내용을 언어별로 복사하면 공통 문서와 서로 다른 구현 기준이 생길 수
 있기 때문이다. 언어별 DTO 표현을 따로 적어야 하는지는
 [언어별 표현 기준](languages/README.ko.md)에 따라 판단한다. 실제 표현 차이가 없으면 언어별
@@ -29,20 +28,14 @@ smoke 검증 순서를 따라야 한다. 언어별 API 모양은 달라도 사�
 | [Bingo](bingo/README.ko.md) | session gateway, actor binding, Entry Spot, room Spot, timer, bound push를 한 흐름으로 보여 준다. | `Session`, `Api`, `Play` 분리 | location store 기반 자동 연결 | **자동 등록** | Protobuf |
 | [TicTacToe](tictactoe/README.ko.md) | 2개 API와 2개 Play로 수동 endpoint scale-out, Redis 기반 room route 조회, 실시간 게임 흐름을 보여 준다. | `Api` 2개, `Play` 2개, 별도 `Session` 서버 없이 `Play`가 stream session을 함께 소유 | **수동 endpoint 연결** | **수동 등록** — annotation/attribute로 선언한 handler를 구성 코드에서 직접 등록한다(자동 스캔 없음) | JSON |
 | [SupportChat](supportchat/README.ko.md) | 고객과 상담원이 같은 conversation Spot에서 대화하고, reconnect, idle timer, close, bound push를 확인한다. | `Session`, `Api`, `Support` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
-| [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierSpotNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierMeshNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
-| [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 spot-mesh로 분산 | location store 기반 자동 연결 | **자동 등록** | JSON |
-| [ZoneWorld](zoneworld/README.ko.md) **설계 초안** | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 MeshNode로 분산 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [ZoneWorld](zoneworld/README.ko.md) | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 
-> ZoneWorld의 browser connector 선행 조건은 충족됐다. 명시적 flow 전달 계약과 실제 Chromium의
-> `ws`·`wss`, request/reply, push, reconnect 검증이 완료됐다. 이 문서는 설계 초안이며 ZoneWorld
-> 구현 자체는 별도 sample 작업으로 진행한다.
->
-> **ZoneWorld는 다른 샘플과 두 가지가 다르다.** (1) **브라우저 UI**를 제공해 zone 이동과
-> 노드 관제를 눈으로 확인한다. (2) server는 언어별로 구현하되 **client는 TypeScript 하나만**
-> 구현해 모든 언어 server에 연결한다(wire가 언어 중립이므로). 또한 기존 6종이 다루지 않는
-> 축(channel fanout · runtime event · actor cross-node transfer · bound session 없는 actor ·
-> 브라우저 client)의 커버리지 공백을 채운다.
+> ZoneWorld는 브라우저 UI로 zone 이동과 노드 관제를 확인한다. .NET과 Node.js server는 wire 계약이
+> 같은 TypeScript client 하나를 공유한다. 실제 Chromium에서 `ws`·`wss`, request/reply, push,
+> reconnect와 명시적 flow 전달을 검증한다.
 
 ## 메시지 이름 원칙
 
@@ -55,10 +48,10 @@ handler 계약이 달라지기 때문이다. 언어별 샘플과 e2e는 아래 �
 | request/reply | `Req` / `Res` | `Request(...)`, `RequestToChannel(...)`, route request, stream request, HTTP request처럼 응답을 기다리는 호출 |
 | send | `Msg` | `Send(...)`처럼 응답 없이 전달하는 단방향 메시지 |
 | client push | `Notify` | server가 stream/session으로 client에 밀어 주고 client가 기다려 받는 알림 |
-| publish (pub/sub · fanout) | `Event` | `Publish(...)`, `PublishSpot(...)`처럼 **발행자가 수신자를 모르는** fan-out 메시지. Spot pub/sub과 channel fanout이 여기에 해당한다 |
+| publish (pub/sub · fanout) | `Event` | Spot context의 `Publish(...)`나 classic fanout publish처럼 **발행자가 수신자를 모르는** 메시지. Logical Multicast와 channel fanout이 여기에 해당한다 |
 
 request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Created`처럼 보여도 `Req`와
-`Res` 쌍으로 이름 붙인다. 예를 들어 상태 변경을 요청하고 ack를 기다리는 흐름은
+`Res` 쌍으로 명명한다. 예를 들어 상태 변경을 요청하고 ack를 기다리는 흐름은
 `DeliveryStatusChangedReq`와 `DeliveryStatusChangedRes`가 맞다. 반대로 server가 고객 client에
 상태 변경을 밀어 주는 흐름은 `DeliveryStatusNotify`처럼 `Notify`를 사용한다.
 
@@ -82,7 +75,7 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 
 반대로 entry-spot에서 owner spot으로 실제 `SendToSpot`/`RequestToSpot`으로 전달되는
 내부 메시지는 예외가 아니다. 이런 메시지는 호출 방식에 맞춰 `Msg`(one-way send) 또는
-`Req`/`Res`(request/reply)로 이름 붙인다.
+`Req`/`Res`(request/reply)로 명명한다.
 
 ## Spot 실행 turn과 terminator 샘플 기준
 
@@ -106,7 +99,7 @@ request로 호출하는 메시지는 업무 이름이 `Changed`, `Accepted`, `Cr
 | 샘플 | 지점 | terminator |
 |------|------|-----------|
 | [Bingo](bingo/README.ko.md) §7.1 | room Spot의 actor join/leave가 Api 서버에서 player 전적을 조회·기록한다 | **`yield`** |
-| [Bingo](bingo/README.ko.md) §7.1 | card 제출, draw 진행, winner 판정 | `async` |
+| [Bingo](bingo/README.ko.md) §7.1 | Entry Spot이 API 서버 응답으로 배정할 room을 결정한다 | `async` |
 | [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | courier entry spot의 claim-then-activate probe가 **다른 노드** entry spot에 묻는다 | **`yield`** |
 | [DeliveryDispatch](deliverydispatch/README.ko.md) §6.1 | 자기 entry spot이 소유한 actor 표를 읽고 만들고 등록한다 | `async` |
 | TicTacToe | game join이 게임 상태 흐름으로 바로 이어진다 | `async` |
@@ -134,15 +127,15 @@ store와 수동 endpoint 기반 scale-out 흐름을 보여 준다.
   연결 순서나 route warmup을 직접 관리하지 않게 하기 위해서다.
 - **절대 규칙: TicTacToe만 수동 연결을 사용할 수 있다.** TicTacToe를 제외한 모든 샘플은
   어떤 이유로도 수동 연결을 추가하거나 유지하면 안 된다. 빌드·실행 성공, 일시적인 자동 연결
-  실패, 디버깅 편의, 언어별 구현 차이는 예외 사유가 아니다. 그 밖의 샘플은 channel client에 상대
+  실패, 디버깅 편의, 언어별 구현 차이는 예외 사유가 아니다. 그 밖의 샘플은 ChannelName client에 상대
   endpoint를 직접 넘기거나, Spot router/pub-sub peer를 직접 연결하거나, 서버 간 호출을
-  고정 HTTP endpoint로 우회하면 안 된다. 즉 `EnableClient(endpoint)`, `ConnectRouter(...)`,
-  `ConnectPeerPub(...)`, 서버 코드의 peer 대상 `ZLinkHttpClient.Create(...)`를 사용하지 않는다.
+  고정 HTTP endpoint로 우회하면 안 된다. 즉 application code가 manual peer 연결, Spot 전용
+  router/pub-sub peer 연결 또는 서버 코드의 peer 대상 `ZLinkHttpClient.Create(...)`를 사용하지 않는다.
   자동 연결이 실패하면 샘플에 수동 연결을 추가하지 말고 location store 등록·조회·연결
   lifecycle이 끊긴 framework 구현을 수정한다. 이 금지는 언어별 sample 전체에 적용하며,
   위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다.
 - **자동 등록이 기본이다.** framework가 handler를 스캔하고 등록할 수 있는 언어에서는 별도 등록
-  호출 없이 handler를 자동 등록한다([05 §3.3](../../spec/05-framework-api.ko.md)). 샘플마다 handler
+  호출 없이 handler를 자동 등록한다([05 §8](../../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)). 샘플마다 handler
   목록을 반복해서 적으면 public 사용 예시가 장황해지고, handler 추가 누락을 client 시나리오가
   늦게 발견하게 된다.
 - **절대 규칙: TicTacToe만 수동 등록을 사용한다.** TicTacToe는 수동 연결과 수동 등록을 함께
@@ -166,7 +159,7 @@ SupportChat 같은 서로 다른 샘플이 같은 helper 파일을 공유하지 
 
 로그 출력은 새 logging 체계를 만들지 않고 각 샘플이 이미 쓰는 logger를 따른다.
 파일 로그를 이미 직접 쓰는 샘플은 그 파일 logger에 기록하고, 실행 스크립트가
-stdout/stderr를 `logs/*.log`로 저장하는 샘플은 기존 console logger에 기록하면 된다.
+stdout/stderr를 `logs/*.log`로 저장하는 샘플은 그 샘플의 console logger에 기록하면 된다.
 로그 한 줄에는 적어도 `surface`, `messageKind`, `reason`, `action`, `packetName`,
 `correlationId` 값을 포함한다. channel 경로에서는 `channelName`, Spot 경로에서는
 `spotRid`, actor 경로에서는 `actorId`처럼 surface에 맞는 식별자를 함께 남긴다. 운영자가
@@ -196,10 +189,9 @@ option으로 받되 시작할 때 한 번 검증한다.
 Endpoint, Redis, routing id, timeout과 로그 경로를 환경 변수나 JVM system property로 전달하지
 않으며, server와 client 애플리케이션 코드에서 직접 사용할 수 있는 환경 변수는 0개다.
 
-현재 구현이 이 기준과 다르면 기존 환경 변수 interface를 호환 경로로 유지하지 않는다. 해당
-sample은 configuration migration gap으로 기록해야 한다. Framework host는 설정 파일과 typed
-binding으로 전환하고, standalone client는 검증된 CLI 입력 또는 필요한 경우 typed 설정 파일로
-전환해야 한다.
+환경 변수 interface를 호환 경로로 함께 제공하지 않는다. Framework host는 설정 파일과 typed
+binding을 사용하고, standalone client는 검증된 CLI 입력 또는 필요한 경우 typed 설정 파일을
+사용한다.
 
 ## 샘플 실행 스크립트와 Redis 격리 기준
 
@@ -224,7 +216,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 - 각 언어는 sample runner들이 공유하는 Redis helper를 둔다. helper는 실행별 Redis container
   시작과 그 실행이 만든 container id 정리를 공통 함수로 제공하고, 개별 sample script가 Docker
   명령을 직접 조합하지 않게 한다.
-- Redis가 필요한 sample은 runner가 실행마다 전용 Docker Redis container를 직접 띄운다.
+- Redis가 필요한 sample은 runner가 실행마다 전용 Docker Redis container를 직접 시작한다.
   이미 떠 있는 Redis container나 host Redis endpoint를 재사용하면 안 된다. Redis key prefix가
   달라도 cleanup, 장애 주입, latency injection, sample 간 데이터 정리 시점이 섞이면 테스트
   간섭이 발생할 수 있기 때문이다. 샘플 애플리케이션 코드가 Docker를 호출하거나 Redis container
@@ -239,8 +231,8 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 - sample Redis 데이터는 실행 중에만 필요하므로 Docker volume을 만들지 않는다. Redis 이미지가
   선언한 `/data` volume은 `--tmpfs /data`로 덮어쓰고, container 정리에는 `docker rm -fv`를
   사용한다. 이렇게 해야 반복 실행 후 anonymous volume이 남지 않는다.
-- 개별 `run_sample.*`가 Redis를 띄울 때는 container 이름에 언어와 sample 실행 범위를
-  드러내는 prefix를 붙인다. 예를 들어 Java sample은 `zlink-redis-java-sample...`,
+- 개별 `run_sample.*`가 Redis를 시작할 때는 container 이름에 언어와 sample 실행 범위를
+  드러내는 prefix를 추가한다. 예를 들어 Java sample은 `zlink-redis-java-sample...`,
   Kotlin sample은 `zlink-redis-kotlin-sample...`처럼 같은 언어·sample 범위를 한눈에
   알 수 있어야 한다.
 - 개별 `run_sample.*`와 통합 sample runner는 시작 시 같은 prefix의 다른 container를 지우지
@@ -269,7 +261,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   응답하지 않는 문제와 Redis가 아직 준비되지 않은 문제를 같은 sleep으로 숨기지 않는다.
 - Redis helper가 실패하면 개별 runner도 즉시 실패해야 한다. shell runner에서는
   `read ... < <(redis_start_function)`처럼 process substitution 결과를 읽는 방식으로 container id를
-  받지 않는다. 이 방식은 helper가 실패해도 `read` 자체는 성공할 수 있어 Redis 없이 서버를 띄우는
+  받지 않는다. 이 방식은 helper가 실패해도 `read` 자체는 성공할 수 있어 Redis 없이 서버를 시작하는
   잘못된 실행으로 이어진다. helper는 `zlink_redis_start_scoped_assign`처럼 호출부 변수에 값을
   대입하는 함수로 제공하고, 함수 실패가 그대로 runner 실패가 되게 한다.
 - 통합 sample runner는 bind 실패를 포함한 개별 sample 실패를 재시도하지 않는다. 실행별 port를
@@ -292,7 +284,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   directed request를 처리하거나, event를 publish하거나, timer를 실행하거나, pub/sub event에
   반응할 수 있다.
 - 실시간 상태를 소유하는 서버는 `Domain`, `Application`, `Infrastructure` 책임을 나누어 구현한다.
-  아래 이름은 권장 구조이며, 디렉토리 이름은 언어 관용과 기존 샘플 구조에 맞게 바꿀 수 있다.
+  아래 이름은 권장 구조이며, 디렉터리 이름은 언어 관용에 맞게 바꿀 수 있다.
   다만 같은 책임 분리와 의존 방향은 유지해야 한다.
   - `Domain`은 순수 도메인 규칙, 상태 전이, 결과 판정, 도메인 event 생성을 맡는다.
     framework 타입, socket, stream, handler, logger, DI container에 의존하지 않는다.
@@ -338,22 +330,23 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   schema가 분명한 Protobuf payload를 맡고, TicTacToe와 나머지 샘플은 읽고 비교하기 쉬운
   JSON payload를 기본으로 둔다. Bingo의 Protobuf 사용도 업무 API 차이가 아니라 dependency와
   framework codec extension 등록 차이로만 드러나야 한다.
-- 식별자는 도메인 의미가 드러나게 이름 붙인다. 예를 들어 TicTacToe에서 client가 받는
-  값은 임의의 core routing id hex 문자열이 아니라 명시적인 `RoomId`이며, room Spot
-  routing id는 각 언어의 routing id 생성 API로 `RoomId` 문자열에서 만든다.
-- 모든 샘플의 routing id는 샘플 애플리케이션이 명시적으로 정한 문자열에서 만든다.
-  node, Spot, room, conversation, workflow instance처럼 메시지나 로그에 드러나는 식별자는
-  `play-node-1`, `bingo-room-...`, `supportchat-conversation-...`처럼 사람이 읽을 수 있는
-  샘플 ID를 그대로 사용한다. framework가 자동 배정한 Spot routing id나 core routing id의
-  hex 표현을 샘플 계약으로 노출하지 않는다. 따라서 샘플 코드는 hex로 직렬화한 값을
-  다시 `FromHex`/`fromHex`로 복원하는 흐름을 쓰지 않고, 각 언어의 일반 routing id 생성
-  API(`RoutingId.From(...)`, `RoutingId.from(...)`, 문자열 routing id 등)로 샘플 ID를
-  routing id로 만든다.
+- 도메인 식별자는 그 의미가 드러나게 명명한다. 예를 들어 TicTacToe에서 client가 받는
+  값은 임의의 core routing id hex 문자열이 아니라 명시적인 `RoomId`다. room이나
+  conversation처럼 도메인 식별자가 곧 Spot 주소인 경우에는 각 언어의 일반 routing id 생성
+  API(`RoutingId.From(...)`, `RoutingId.from(...)`, 문자열 routing id 등)로 사람이 읽을 수 있는
+  도메인 식별자에서 Spot routing id를 만든다. core routing id를 hex로 직렬화한 뒤 다시
+  `FromHex`/`fromHex`로 복원해서 도메인 식별자로 사용하는 흐름은 허용하지 않는다.
+- MeshNode의 transport RID는 도메인 식별자와 구분되는 infrastructure identity다. Bingo와
+  ZoneWorld처럼 routing id allocation을 검증하는 샘플은 location store가 RID를 자동 할당하며,
+  애플리케이션이 고정 RID를 설정하지 않는다. 자동 할당된 RID는 public allocation 결과나 runtime
+  관측 결과로 확인하고, node direct 대상이나 `ActorRef`의 node 위치처럼 infrastructure identity가
+  필요한 계약에는 그대로 전달할 수 있다. 이 값은 `RoomId`, `ConversationId`, `OrderId` 같은
+  도메인 식별자를 대신하지 않으며 client에 도메인 식별자로 노출하지 않는다.
 
 ## Client self-check 기준
 
-Bingo와 TicTacToe는 `.NET` 샘플의 client 검증 흐름을 기준으로 삼는다. 샘플 client는
-성공 로그를 출력하는 데서 끝나면 안 된다. request로 보낸 값이 response와 push payload에
+Bingo와 TicTacToe client는 아래의 공통 검증 흐름을 따른다. 샘플 client는 성공 로그를 출력하는
+데서 끝나면 안 된다. request로 보낸 값이 response와 push payload에
 같은 의미로 돌아오는지 직접 확인해야 한다.
 
 언어별 client는 아래 항목을 반드시 검증한다.
@@ -370,9 +363,8 @@ Bingo와 TicTacToe는 `.NET` 샘플의 client 검증 흐름을 기준으로 삼�
   turn, draw sequence, winner, player list 같은 의미 값을 확인한다.
 - deterministic sample은 마지막 winner와 최종 state를 고정값으로 확인한다.
 
-push message 대기는 sample-local polling 함수가 아니라 stream connector의 public
-interface를 사용한다. 예를 들어 `.NET` 샘플의 `WaitFor<TPayload>().Where(...).Async(...)`
-처럼 connector 객체가 제공하는 wait API를 직접 호출한다. codec별 JSON, MessagePack,
+push message 대기는 sample-local polling 함수가 아니라 stream connector 객체가 제공하는 public
+wait API를 직접 호출한다. codec별 JSON, MessagePack,
 Protobuf wrapper나 샘플 전용 함수 뒤에 대기 흐름을 숨기면 안 된다. sample은 connector가
 반환한 message 객체의 public interface로 payload를 읽고 바로 검증한다. notification
 수집용 inbox나 로그 queue는 결과 출력과 추가 검증을 위해 둘 수 있지만, push 도착을

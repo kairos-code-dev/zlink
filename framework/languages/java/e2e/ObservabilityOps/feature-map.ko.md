@@ -5,8 +5,8 @@ framework 프로세스가 남긴 증거만 읽으며, 런타임 증거를 임의
 
 | ID | verifier가 확인하는 증거 | 현재 실행 상태 |
 |----|--------------------------|----------------|
-| OBS-A1 | connector outbound부터 STREAM, relay, Spot dispatch까지 같은 flow와 순서 | PASS |
-| OBS-A2 | received와 server dispatch error 라인의 같은 flow | partial — runtime error flow event 부재(E2E-JV-19) |
+| OBS-A1 | connector outbound부터 STREAM, relay, Spot dispatch까지 같은 flow와 순서 | 10.0.0 전환 대상 — connector outbound flow가 public 설정으로 기록되지 않음(E2E-JV-32) |
+| OBS-A2 | server dispatch error 라인과 원래 request의 같은 flow | PASS |
 | OBS-A3 | tracing Off 노드의 기록 억제와 하류의 같은 flow | PASS |
 | OBS-A4 | fanout 분기와 timer 발원 flow | PASS |
 | OBS-B1 | STREAM active/opened/closed/reconnect와 닫힌 종료 사유 | PASS |
@@ -19,7 +19,6 @@ framework 프로세스가 남긴 증거만 읽으며, 런타임 증거를 임의
 | OBS-C4 | force stopping, session-closing, server_drain, forced 계기 | PASS |
 | OBS-C5 | serving target 롤아웃과 zero-target deadline 결과 | PASS |
 
-각 PASS는 실제 Java 역할을 기동한 strict runner와 scenario별 verifier 성공을 뜻한다. OBS-A2는
-client가 missing-handler 오류를 받아도 server flow log에 같은 flow의 error event가 없어 strict
-runner가 실패하므로 완료로 판정하지 않는다. C5의 serving과
+각 PASS는 실제 Java 역할을 기동한 strict runner와 scenario별 verifier 성공을 뜻한다. OBS-A1은
+비공개 환경 변수로 connector trace를 켜지 않고도 같은 flow를 확인할 수 있어야 완료된다. C5의 serving과
 zero-target 분기는 같은 프로세스를 임의로 재사용하지 않고 각각 새 토폴로지에서 검증한다.

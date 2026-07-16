@@ -4,7 +4,7 @@
 
 # Config 10 — Spot actor join/transfer 배포
 
-actor가 Entry Spot과 user Spot 사이를 이동하거나, 다른 SpotNode의 user Spot으로 transfer될 때
+actor가 Entry Spot과 user Spot 사이를 이동하거나, 다른 MeshNode의 user Spot으로 transfer될 때
 [Spot Actor Join / Transfer 공통 스펙](../../spec/server/23-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
 검증한다. 이 config는 단순 Spot request 성공 여부가 아니라 admission, leave, transfer, joined,
 location commit, bound session route, failure cleanup이 같은 순서와 의미로 관찰되는지 본다.
@@ -15,7 +15,7 @@ location commit, bound session route, failure cleanup이 같은 순서와 의미
 테스트 전용 adapter로 이 config를 통과시키면 안 된다.
 
 이 config의 actor 이동은 공개 transfer 계약을 호출해 처리 주체를 명시적으로 바꾸는 동작이다.
-SpotNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 동작은 계약하지 않는다. SpotNode
+MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 동작은 계약하지 않는다. MeshNode
 증설과 신규 배치는 Config 2 SM-G2에서 검증하고, 운영자가 node를 drain해 기존 actor를 다른 node로
 인계하는 동작은 Config 11의 drain handoff 시나리오에서 검증한다.
 
@@ -62,7 +62,7 @@ application 상태를 바꾸거나 `run_e2e.sh`가 역할 process를 중단하�
 ## 3. 실행 모델
 
 `run_e2e.sh`가 Redis(전용 key prefix) 준비 → actor 노드 → session gateway → transfer controller
-순으로 띄운 뒤 client 시나리오를 순차 실행한다. 각 시나리오는 독립 actor id와 spot id를 사용해야
+순으로 시작한 뒤 client 시나리오를 순차 실행한다. 각 시나리오는 독립 actor id와 spot id를 사용해야
 한다. 시나리오가 process 중단이나 route 차단을 사용하면 follow-up 검증 뒤 반드시 원래 topology를
 복구하거나 다음 시나리오가 새 prefix를 쓰게 한다.
 
@@ -79,45 +79,44 @@ session snapshot을 함께 남긴다.
 
 우선순위: `P0`
 
-**한마디로:** 같은 node에서 actor가 Entry Spot에서 user Spot으로 join할 때 admission, leave, joined,
-location commit, success reply가 정해진 순서로 관찰되는가.
+**검증 질문:** 같은 node에서 actor가 Entry Spot에서 user Spot으로 join할 때 admission, leave, location
+commit, joined, success reply가 정해진 순서로 관찰되는가.
 
 - 절차: consumer가 transfer controller endpoint를 호출해 `actor-local-ok`를 만들고 같은 node의 user
-  Spot으로 `JoinSpot`을 실행한다. controller는 join reply를 받은 뒤 actor packet을 target user Spot으로
-  보낸다.
-- 검증: evidence order는 `admission -> leave -> joined -> location_committed -> success_reply`다.
+  Spot으로 `JoinSpot`을 실행한다. controller는 join reply를 받은 뒤 같은 ActorRef로 actor packet을 보내
+  committed target membership에서 처리되는지 확인한다.
+- 검증: evidence order는 `admission -> leave -> location_committed -> joined -> success_reply`다.
   `OnActorJoin` evidence에는 actor id와 request만 있고 actor instance snapshot이나 route metadata가 없어야 한다.
-  success reply 이전에 location row가 committed target user Spot으로 공개되면 실패다. join 이후 packet은
-  target user Spot handler에서만 처리된다.
+  success reply 전에 location row가 committed target user Spot을 가리켜야 한다. join 이후 packet은 target
+  Actor handler에서만 처리되고 Spot lifecycle callback을 경유하지 않는다.
 - 세부 동작: 같은 node join 완료 조건과 actor instance 미노출 admission.
 
 #### ST-A2 local join reject side effect 없음
 
 우선순위: `P0`
 
-**한마디로:** target admission이 reject하면 source membership, source location, handler dispatch가
+**검증 질문:** target admission이 reject하면 source membership, source location, handler dispatch가
 그대로 유지되는가.
 
 - 절차: `actor-local-reject`를 Entry Spot에 만든 뒤 target user Spot이 reject하도록 request를 보낸다.
-  이후 같은 actor에게 Entry Spot actor packet과 target user Spot actor packet을 각각 시도한다.
+  이후 같은 ActorRef로 actor packet을 보낸다.
 - 검증: source `OnLeaveActor`, target `OnJoinedActor`, target location commit evidence가 없어야 한다.
-  actor location은 source Entry Spot을 유지한다. Entry Spot actor packet은 처리되고 target user Spot
-  actor packet은 성공한 join처럼 처리되지 않는다.
+  actor location은 source Entry Spot을 유지한다. Actor packet은 source membership의 Actor handler에서
+  처리되고 target membership이 생긴 것처럼 처리되지 않는다.
 - 세부 동작: reject 시 side effect 없음.
 
 #### ST-A3 target joined 전 packet dispatch 차단
 
 우선순위: `P0`
 
-**한마디로:** target `OnJoinedActor`가 지연되는 동안 actor packet이 source와 target 양쪽에서 동시에
+**검증 질문:** target `OnJoinedActor`가 지연되는 동안 actor packet이 source와 target 양쪽에서 동시에
 처리되지 않는가.
 
 - 절차: target `OnJoinedActor`가 bounded latch를 기다리도록 설정한 뒤 local join을 시작한다. join이
-  moving 상태에 들어간 동안 source와 target으로 actor packet을 보낸다. latch를 해제한 뒤 follow-up
-  packet을 보낸다.
-- 검증: moving 구간에는 source와 target user Spot handler가 같은 actor packet을 동시에 처리한 evidence가
-  없어야 한다. target `OnJoinedActor` 완료 전 target handler 성공 evidence도 없어야 한다. latch 해제
-  뒤 follow-up packet은 target user Spot에서 처리된다.
+  moving 상태에 들어간 동안 같은 actor로 packet을 보낸다. latch를 해제한 뒤 follow-up packet을 보낸다.
+- 검증: moving 구간에는 source와 target Actor handler가 같은 actor packet을 동시에 처리한 evidence가
+  없어야 한다. target `OnJoinedActor` 완료 전 target Actor handler 성공 evidence도 없어야 한다. latch 해제
+  뒤 follow-up packet은 target Actor handler에서 처리된다.
 - 세부 동작: moving 중 dispatch 차단.
 
 ### Track B — remote transfer 정상 경로
@@ -126,23 +125,24 @@ location commit, success reply가 정해진 순서로 관찰되는가.
 
 우선순위: `P0`
 
-**한마디로:** actor가 `actor-a`에서 `actor-b`의 user Spot으로 이동할 때 transfer state가 복원되고
+**검증 질문:** actor가 `actor-a`에서 `actor-b`의 user Spot으로 이동할 때 transfer state가 복원되고
 callback 순서가 공통 스펙과 일치하는가.
 
 - 절차: `actor-remote-ok`를 `actor-a`에 만들고 mutable state를 설정한다. controller가 `actor-b`의
   user Spot으로 join을 실행한다. source transfer adapter는 state version을 `ZLinkMessage`로 만들고 target
   transfer adapter는 target actor로 복원한다.
 - 검증: evidence order는 `admission -> transfer_out -> leave -> commit_request -> transfer_in ->
-  joined -> location_committed -> commit_ack -> success_reply`다. target `OnJoinedActor`가 받은 actor는
-  source state version을 가진다. source와 target actor id는 같고 generation 또는 owner snapshot은 target
-  owner로 바뀐다.
+  location_committed -> joined -> commit_ack -> success_reply`다. target `OnJoinedActor`에는 immutable
+  membership snapshot만 전달되며, callback이 mutable Actor instance를 받거나 보관하면 실패다. join 완료
+  뒤 snapshot의 ActorRef로 state 조회 request를 보내 source state version이 복원되었는지 확인한다. source와
+  target actor id는 같고 generation 또는 owner snapshot은 target owner로 바뀐다.
 - 세부 동작: remote admission/commit 분리 + transfer state 복원.
 
 #### ST-B2 source cleanup 실패는 성공을 되돌리지 않음
 
 우선순위: `P0`
 
-**한마디로:** target commit ack 뒤 source cleanup이 끝나기 전에 source가 사라져도 join 성공과
+**검증 질문:** target commit ack 뒤 source cleanup이 끝나기 전에 source가 사라져도 join 성공과
 target ownership이 유지되는가.
 
 - 절차: remote transfer 정상 경로를 실행하되 source node가 `commit_ack`를 받은 뒤 `source_cleanup`
@@ -150,7 +150,7 @@ target ownership이 유지되는가.
   확인한 뒤 `run_e2e.sh`가 `actor-a` process에 `SIGKILL`을 보낸다. 정상 종료나 drain으로
   `source_cleanup`이 완료되는 경로를 이 시나리오에 섞지 않는다. 이후 target actor에게 packet을 보내고,
   가능한 언어는 cleanup retry evidence를 bounded wait로 확인한다.
-- 검증: caller는 target commit ack 이후 success reply를 받는다. target actor packet은 target user Spot에서
+- 검증: caller는 target commit ack 이후 success reply를 받는다. target actor packet은 target Actor handler에서
   처리된다. source cleanup 미완료나 source process 종료는 join 실패로 rollback되지 않는다. stale source
   release 재시도가 target generation을 지우면 실패다.
 - 세부 동작: source cleanup의 사후 멱등 정리.
@@ -159,12 +159,12 @@ target ownership이 유지되는가.
 
 우선순위: `P0`
 
-**한마디로:** remote transfer 대상 actor type에 transfer adapter가 없어도 framework 기본 빈 state transfer로 성공하는가.
+**검증 질문:** remote transfer 대상 actor type에 transfer adapter가 없어도 framework 기본 빈 state transfer로 성공하는가.
 
 - 절차: `actor-no-adapter` type에는 actor factory만 등록하고 transfer adapter는 등록하지 않는다. 같은 node
   join이 아니라 반드시 다른 node user Spot으로 remote transfer를 시도한다.
 - 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty_default -> leave ->
-  commit_request -> transfer_in_empty_default -> joined -> location_committed -> commit_ack -> success_reply`다.
+  commit_request -> transfer_in_empty_default -> location_committed -> joined -> commit_ack -> success_reply`다.
   source `OnLeaveActor`, target `OnJoinedActor`, target location commit이 모두 정상 순서로 관찰된다.
 - 세부 동작: transfer adapter 미등록 기본 빈 state transfer.
 
@@ -172,14 +172,14 @@ target ownership이 유지되는가.
 
 우선순위: `P0`
 
-**한마디로:** custom transfer adapter가 빈 `ZLinkMessage`를 반환해도 target actor가 만들어지고
+**검증 질문:** custom transfer adapter가 빈 `ZLinkMessage`를 반환해도 target actor가 만들어지고
 domain state를 별도로 읽어 올 수 있는가.
 
 - 절차: `actor-empty-state` type에는 custom transfer adapter를 등록한다. source `TransferOut`은 빈
   `ZLinkMessage`를 반환한다. target `TransferIn`은 actor id와 public actor 생성 경로로 target actor를
   만든다. target `OnJoinedActor`는 actor id로 별도 저장소에서 domain state를 읽고 marker를 남긴다.
 - 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty -> leave ->
-  commit_request -> transfer_in_empty -> joined -> domain_state_loaded -> location_committed -> commit_ack
+  commit_request -> transfer_in_empty -> location_committed -> joined -> domain_state_loaded -> commit_ack
   -> success_reply`다. adapter 미등록 기본 빈 state transfer와 같은 성공 의미지만, custom adapter
   경로가 빈 state를 반환해도 정상이라는 점을 별도로 확인한다.
 - 세부 동작: custom adapter 빈 state transfer.
@@ -190,7 +190,7 @@ domain state를 별도로 읽어 올 수 있는가.
 
 우선순위: `P0`
 
-**한마디로:** target admission accept 뒤 source node가 commit 전에 비정상 종료되면 transfer가 완료되지 않고
+**검증 질문:** target admission accept 뒤 source node가 commit 전에 비정상 종료되면 transfer가 완료되지 않고
 target pending admission만 정리되는가.
 
 - 절차: remote transfer를 시작하고 target `OnActorJoin` accept evidence와 source node의 `before_commit_gate`
@@ -209,7 +209,7 @@ target pending admission만 정리되는가.
 
 우선순위: `P0`
 
-**한마디로:** target `OnJoinedActor`와 commit ack가 끝난 뒤 source node가 비정상 종료되어도 target ownership이
+**검증 질문:** target `OnJoinedActor`와 commit ack가 끝난 뒤 source node가 비정상 종료되어도 target ownership이
 유지되는가.
 
 - 절차: remote transfer 정상 경로에서 target `OnJoinedActor`와 commit ack evidence를 확인한 직후
@@ -224,14 +224,15 @@ target pending admission만 정리되는가.
 
 우선순위: `P1`
 
-**한마디로:** transfer 단계별 application 실패가 공통 스펙의 결과로 분류되는가.
+**검증 질문:** transfer 단계별 application 실패가 공통 스펙의 결과로 분류되는가.
 
 - 절차: 같은 actor type으로 `TransferOut`, source `OnLeaveActor`, `TransferIn`, target `OnJoinedActor`가
   각각 실패하도록 네 개의 독립 시나리오를 실행한다.
 - 검증: `TransferOut` 실패는 source leave 없이 source membership을 유지한다. `OnLeaveActor` 실패는
   target joined 없이 실패한다. `TransferIn` 실패는 target membership을 만들지 않고 실패하며 source는
-  reconcile 대상 evidence를 남긴다. `OnJoinedActor` 실패는 caller success가 없어야 하고, target membership은
-  rollback되거나 actor packet dispatch가 차단된 reconcile 상태로 격리된다.
+  reconcile 대상 evidence를 남긴다. `OnJoinedActor` 실패는 commit 뒤 실패이므로 caller success가 없어야
+  하지만 target membership을 source로 rollback하면 안 된다. Target Actor packet dispatch를 차단한 recoverable
+  reconciliation 상태에서 target activation을 계속한다.
 - 세부 동작: 실패 지점별 join 결과.
 
 ### Track D — location/routing/dispatch
@@ -240,22 +241,22 @@ target pending admission만 정리되는가.
 
 우선순위: `P0`
 
-**한마디로:** target `OnJoinedActor` 완료 전 public actor location이 committed target location으로
-보이지 않는가.
+**검증 질문:** location commit 뒤 target `OnJoinedActor`가 완료되기 전에는 committed row와 아직 준비되지
+않은 target Actor route가 구분되는가.
 
 - 절차: local join과 remote transfer 각각에서 target `OnJoinedActor`를 지연시킨다. 지연 중 location query
   endpoint와 actor packet route를 반복하지 않고 bounded evidence wait로 한 번씩 관찰한다. 이후 latch를
   해제하고 다시 관찰한다.
-- 검증: 지연 중 resolver와 actor packet routing은 target user Spot join 성공으로 해석하지 않는다. pending
-  row를 쓰는 구현이라면 pending 상태가 evidence에 표시되어야 한다. `OnJoinedActor` 완료 뒤에는 committed
-  target location으로 관찰된다.
-- 세부 동작: pending/committed location 구분.
+- 검증: 지연 중 location row는 committed target owner와 새 membership epoch를 가리키지만 target Actor
+  route는 ready가 아니며 packet handler를 실행하지 않는다. `OnJoinedActor` 완료와 target activation 뒤에만
+  새 owner route가 ready로 공개되고 packet이 처리된다.
+- 세부 동작: durable location commit과 target route activation 구분.
 
 #### ST-D2 stale source release generation fencing
 
 우선순위: `P1`
 
-**한마디로:** source cleanup이나 stale owner release가 target owner generation을 지우지 않는가.
+**검증 질문:** source cleanup이나 stale owner release가 target owner generation을 지우지 않는가.
 
 - 절차: remote transfer 성공 뒤 source cleanup retry가 늦게 실행되도록 지연한다. 그 사이 target actor에게
   packet을 보내고 target location generation snapshot을 기록한다. 이후 지연된 source cleanup을 실행한다.
@@ -269,7 +270,7 @@ target pending admission만 정리되는가.
 
 우선순위: `P0`
 
-**한마디로:** session에 bind된 actor가 remote transfer된 뒤 actor push가 target actor에서 기존 client로
+**검증 질문:** session에 bind된 actor가 remote transfer된 뒤 actor push가 target actor에서 기존 client로
 이어지는가.
 
 - 절차: consumer가 `session-a`에 연결해 `actor-bound-transfer`를 bind한다. transfer 전 actor가
@@ -283,14 +284,14 @@ target pending admission만 정리되는가.
 
 우선순위: `P0`
 
-**한마디로:** remote transfer가 commit 전에 실패하면 기존 bound session binding이 성공한 transfer처럼
+**검증 질문:** remote transfer가 commit 전에 실패하면 기존 bound session binding이 성공한 transfer처럼
 바뀌지 않는가.
 
 - 절차: consumer가 actor를 bind한 뒤 remote transfer를 시작하고 target admission accept 뒤 source down
-  before commit 또는 transfer adapter 실패를 주입한다. 이후 source가 살아 있는 경우 기존 actor가
+  before commit 또는 transfer adapter 실패를 주입한다. 이후 source가 계속 실행 중인 경우 기존 actor가
   `AfterFailedTransferNotify`를 push하게 한다.
-- 검증: 실패한 transfer는 target bound session route를 만들지 않는다. source actor가 살아 있으면 기존
-  client connector가 follow-up notify를 받는다. source가 죽은 경우에는 client reconnect/recreate 흐름으로
+- 검증: 실패한 transfer는 target bound session route를 만들지 않는다. source actor가 유지되면 기존
+  client connector가 follow-up notify를 받는다. source가 비정상 종료된 경우에는 client reconnect/recreate 흐름으로
   분류되고, target actor push 성공으로 보이면 실패다.
 - 세부 동작: 실패한 transfer의 bound session 비오염.
 
@@ -303,14 +304,15 @@ target pending admission만 정리되는가.
 
 우선순위: `P0`
 
-**한마디로:** actor가 moving 상태인 동안 도착한 actor packet이 유실 없이 target에서 도착 순서대로
-처리되는가(§10.2-1,2).
+**검증 질문:** actor가 moving 상태인 동안 도착한 actor packet이 유실 없이 target에서 도착 순서대로
+처리되는가([Spot Actor §10.2](../../spec/server/23-spot-actor.ko.md#102-ordering)의 1·2항).
 
 - 절차: `actor-inflight-order`를 `actor-a`에 만들고 `actor-b`의 user Spot으로 remote transfer를
   시작한다. target `OnJoinedActor`를 bounded latch로 지연시켜 moving 구간을 연다. 그 사이 controller가
   이 actor로 향하는 actor packet `P1 -> P2 -> P3`를 순서대로 보낸다. latch를 해제한 뒤 처리 순서를 관찰한다.
 - 검증: 세 packet 모두 유실 없이 **target actor handler에서 `P1 -> P2 -> P3` 순서로** 처리된다.
-  moving 구간에 source Spot handler가 이 packet들을 처리한 evidence가 없어야 한다(§3.4). source는
+  moving 구간에 source Actor handler가 이 packet들을 처리한 evidence가 없어야 한다
+  ([Spot Actor §10.1](../../spec/server/23-spot-actor.ko.md#101-moving-상태의-admission)). source는
   `handoff_backlog` marker에 arrival index를 순서대로 남기고, target은 `backlog_enqueued`로 같은 순서를 남긴다.
 - 세부 동작: moving 중 packet 보존과 정렬 handoff.
 
@@ -318,22 +320,23 @@ target pending admission만 정리되는가.
 
 우선순위: `P0`
 
-**한마디로:** 이동 완료 직후 새 location으로 온 direct packet이 handoff backlog보다 먼저 처리되지
-않는가(§10.2-3).
+**검증 질문:** 이동 완료 직후 새 location으로 온 direct packet이 handoff backlog보다 먼저 처리되지
+않는가([Spot Actor §10.2](../../spec/server/23-spot-actor.ko.md#102-ordering)의 3항).
 
 - 절차: `actor-inflight-overtake`를 remote transfer한다. moving 구간에 source로 backlog packet
-  `B1 -> B2`를 넣는다. transfer commit과 location publish가 끝난 직후, controller가 새 location으로
+  `B1 -> B2`를 넣는다. Target route가 ready로 공개된 직후, controller가 새 location으로
   re-resolve해 direct packet `D1`을 보낸다.
 - 검증: target 처리 순서는 `B1 -> B2 -> D1`이다. `D1`이 `B1`/`B2`보다 먼저 처리되면 실패다. evidence
-  order에서 `backlog_enqueued`가 `location_committed`보다 먼저 나와야 한다(backlog가 publish 전에 queue에
-  적재됨). 이 순서가 뒤집히면 실패다.
-- 세부 동작: publish 전 replay로 direct 추월 차단.
+  order는 `location_committed -> backlog_enqueued -> target_activated -> route_published`여야 한다. Durable
+  commit 뒤 backlog를 queue에 넣고, 그 뒤에 새 owner route를 ready로 공개해야 direct packet이 추월하지 않는다.
+- 세부 동작: route 공개 전 backlog enqueue로 direct 추월 차단.
 
 #### ST-F3 bound session cross-move order
 
 우선순위: `P0`
 
-**한마디로:** 한 bound session이 이동을 가로질러 보낸 packet이 보낸 순서대로 actor에 도달하는가(§10.2-4).
+**검증 질문:** 한 bound session이 이동을 가로질러 보낸 packet이 보낸 순서대로 actor에 도달하는가
+([Spot Actor §10.2](../../spec/server/23-spot-actor.ko.md#102-ordering)의 4항).
 
 - 절차: consumer가 `session-a`에 연결해 `actor-bound-order`를 bind한다. client가 연속 packet
   `S1 -> S2 -> S3 -> S4`를 보내는 도중에 controller가 `actor-b`로 remote transfer를 실행해, 일부는
@@ -347,8 +350,9 @@ target pending admission만 정리되는가.
 
 우선순위: `P1`
 
-**한마디로:** location 공개 뒤 stale ref로 온 straggler가 window(기본 5초) 안에서는 target으로
-forward되고, window 초과분은 fail-fast로 분류되는가(§10.2-6, §10.4).
+**검증 질문:** location 공개 뒤 stale ref로 온 straggler가 window(기본 5초) 안에서는 target으로
+forward되고, window 초과분은 fail-fast로 분류되는가
+([Spot Actor §10.4](../../spec/server/23-spot-actor.ko.md#104-straggler-forwarding)).
 
 - 절차: `actor-straggler`를 remote transfer해 완료(location published)까지 간다. old generation ref를
   캡처한 by-id caller가 (a) window 안에 packet `G1`을, (b) window 경과 후 packet `G2`를 같은 old ref로
@@ -362,7 +366,8 @@ forward되고, window 초과분은 fail-fast로 분류되는가(§10.2-6, §10.4
 
 우선순위: `P1`
 
-**한마디로:** window 후 forwarding mapping이 축출되어 누수가 없고, window 안 재이동은 entry를 갱신하는가(§10.4).
+**검증 질문:** window 후 forwarding mapping이 축출되어 누수가 없고, window 안 재이동은 entry를 갱신하는가
+([Spot Actor §10.4](../../spec/server/23-spot-actor.ko.md#104-straggler-forwarding)).
 
 - 절차: 두 부분으로 실행한다. (a) `actor-map-evict`를 remote transfer한 뒤 window 경과를 bounded wait로
   두고 `mapping_evicted` marker를 관찰한다. (b) `actor-map-chain`을 window 안에 `actor-a -> actor-b ->
@@ -379,8 +384,10 @@ forward되고, window 초과분은 fail-fast로 분류되는가(§10.2-6, §10.4
 
 우선순위: `P1`
 
-**한마디로:** 이동 중 도착한 **request**(reply 대기)가 이동 후 target에서 처리되어 reply가 원래
-caller로 correlate되고, timeout은 caller 기존 경로로 동작하는가(§10.5). ST-F1~F3은 Send만 쓰므로
+**검증 질문:** 이동 중 도착한 **request**(reply 대기)가 이동 후 target에서 처리되어 reply가 원래
+caller로 correlate되고, timeout은 caller 기존 경로로 동작하는가
+([Spot Actor §10.1](../../spec/server/23-spot-actor.ko.md#101-moving-상태의-admission),
+[Flow Correlation §7](../../spec/server/53-flow-correlation.ko.md#7-reply와-failure)). ST-F1~F3은 Send만 쓰므로
 request의 reply correlation·timeout 경로는 이 시나리오가 검증한다.
 
 - 절차: 두 부분으로 실행한다. (a) **reply correlation** — `actor-inflight-req`를 remote transfer한다.

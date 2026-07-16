@@ -128,7 +128,7 @@ options.codecs().use(codecs -> {
 ```
 
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다. 다른
-언어의 등록 표면은 [framework-api §2.2](../../spec/05-framework-api.ko.md) 표를 본다.
+언어의 등록 표면은 [framework-api §9](../../spec/05-framework-api.ko.md#9-codec) 표를 본다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

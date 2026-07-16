@@ -1,0 +1,21 @@
+START HASH files=177 file-list=9f072f1af2b73fde7c08143da66cb651bae33074bfc915a45d18431ccf345f25 aggregate=6c495cd54c4e69f84c5a809badb65d177cbd177d5ad9b3809db12f14d2138498 per-file=PASS
+
+[1차소스][high] framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md:40 — request·actor request·actor join call에 `Yield` terminator가 없다 — 공통 비동기 계약 `04-async-execution-policy.ko.md:14-24`는 request와 join의 `Yield` 의미를 고정하지만 이 문서에는 worker `Yield`만 있고 해당 세 interface는 `Async`만 선언한다 — 세 call interface에 정확한 반환형·취소 인자를 포함한 `Yield` 시그니처를 추가한다.
+
+[1차소스][high] framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md:813 — 일반 `request_call_t`의 정식 시그니처와 같은 문서의 의미 설명이 충돌한다 — 시그니처는 `async()`만 제공하지만 `:1547-1549`는 request의 `yield()`가 owner turn을 반납한다고 규정하며 actor request와 join에는 실제 `yield()` 선언이 있다 — 일반 request call에도 `yield()`를 선언해 공통 Async/Yield 계약과 일치시킨다.
+
+[1차소스][high] framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md:1094 — 반환형 `channel_request_call_t`가 exact interface 문서 어디에도 선언되지 않는다 — route client의 네 request 계열이 이 타입을 반환하지만 문서가 정의하는 일반 request call은 `request_call_t<TReply>`뿐이다 — 하나의 정식 타입 이름으로 통일하고 timeout·metadata·Async·Yield를 포함한 완전한 선언을 제공한다.
+
+[1차소스][high] framework/doc/framework/spec/stream-connector/languages/cpp/03-stream-connector.ko.md:36 — C++ connector가 종료 사유를 관찰할 공개 표면을 제공하지 않는다 — 공통 계약 `32-stream-connector.ko.md:367-383`은 닫힌 종료 사유와 `ServerDrain` 기반 재접속 판단을 요구하고 Java·.NET·TypeScript exact interface는 이를 노출하지만 C++ 문서에는 상태·connect·close·dispatch만 있다 — 닫힌 `close_reason_t`와 disconnect callback 또는 읽기 전용 종료 사유 접근자를 정식 시그니처로 정의한다.
+
+[1차소스][high] framework/languages/java/e2e/SpotService/feature-map.ko.md:142 — 존재하지 않는 public `SpotRefResolver`·`ZLinkSpotOutbound` 경로를 구현 근거로 제시한다 — Java exact interface `02-handler-interfaces.ko.md:1607-1621`은 불투명한 `SpotHandle`과 `SpotHandleResolver`를 고정하고 공통 Config 1 `:115`는 `SpotRef`를 framework 내부 주소 snapshot이라고 명시한다 — 근거와 시나리오 설명을 `SpotHandleResolver`·`SpotHandle` 기반 표면으로 고친다.
+
+[1차소스][high] framework/languages/java/e2e-kotlin/SpotService/feature-map.ko.md:138 — Kotlin feature map이 내부 `SpotRef`를 public request/send 인자로 반복해서 선언한다 — `:138-152`의 SM-F2·F5·F6 설명이 exact Java/Kotlin 공개 계약의 불투명한 `SpotHandle` 경로와 정면으로 충돌한다 — 세 시나리오의 public API 이름과 근거를 `SpotHandle` resolver 및 handle 기반 request/send로 교체한다.
+
+[1차소스][medium] framework/languages/cpp/e2e/SpotService/feature-map.ko.md:110 — 공통 Config 2에 없는 `SM-F6`를 정식 시나리오 ID처럼 사용한다 — 공통 문서 `config-2-spot-service.ko.md:540-570`의 Track F는 SM-F1~F5에서 끝나며 E2E README `:263-264`는 feature-map ID를 config 문서와 맞추도록 요구하지만 C++·Java·Kotlin·Node map만 SM-F6를 추가했다 — 공통 Config 2에 검증 절차와 완료 조건을 갖춘 SM-F6를 정의해 다섯 언어를 맞추거나 언어별 보조 검증으로 명확히 재분류한다.
+
+[1차소스][medium] framework/doc/framework/spec/server/languages/java/03-location-store.ko.md:61 — Java의 exact 타입이 unsigned 64-bit 계약을 보존하는 표현 규칙을 정의하지 않는다 — 공통 Redis 계약 `41-location-store-redis.ko.md:69,129`은 generation과 transfer 정수 전체를 unsigned 64-bit 10진 값으로 고정하지만 Java record들은 이를 설명 없이 signed `long`으로 노출한다 — raw-bit 해석·unsigned 비교·10진 변환 규칙을 명시하거나 전체 값 영역을 표현하는 value type을 사용한다.
+
+[원칙][low] framework/doc/framework/common/sample/event/shoppingmall.ko.md:154 — 프로세스·노드·부하를 의인화한 구어체가 반복된다 — `죽었다 재시도`, `헤비 유저`, `두드리는 부하`, `부하를 흩뿌린다`, `영생`, `죽었을 때`는 문서 원칙 `documentation-principles.ko.md:240-264`의 중립적 전문 서술 규칙을 위반한다 — `프로세스 비정상 종료 후 재시도`, `고부하 사용자`, `OrderId별 부하 분산`, `장기 유지 owner`, `비정상 종료 후 복구`처럼 기술적 상태를 직접 서술한다.
+
+END HASH files=177 file-list=9f072f1af2b73fde7c08143da66cb651bae33074bfc915a45d18431ccf345f25 aggregate=6c495cd54c4e69f84c5a809badb65d177cbd177d5ad9b3809db12f14d2138498 per-file=PASS

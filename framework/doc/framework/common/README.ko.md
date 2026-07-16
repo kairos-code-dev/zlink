@@ -13,9 +13,9 @@
 
 ## 1. 목적
 
-이 묶음은 zlink의 `.NET`, `Java`, `Node.js`, `Python`, `Go`, `Rust`, `C++` 바인딩
-위에 `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `net/http` / `Gin`,
-`Axum`, C++ zlink framework host 사용자를 위한 `ZLink Framework` 방향을 정리한다.
+이 묶음은 zlink의 `.NET`, `Java`, `Kotlin`, `Node.js`, `C++` 바인딩 위에
+`ASP.NET Core`, `Spring Boot`, `NestJS`, C++ zlink framework host를 사용하는 개발자를 위한
+`ZLink Framework` 방향을 정리한다.
 제품 개요와 핵심 가치는 [01-overview.ko.md](../spec/01-overview.ko.md)를 참고한다.
 
 ## 1.1 버전 기준
@@ -43,7 +43,7 @@
 | 2 | [02-interaction-model.ko.md](../spec/02-interaction-model.ko.md) | 사용자에게 보이는 request-response, command, publish-subscribe, stream 모델의 의미를 정의한다. |
 | 3 | [03-message-model.ko.md](../spec/03-message-model.ko.md) | 서버 간 multipart `header + payload` 메시지 구조, STREAM 단일 packet 경계, header 필드, payload codec 방향과 codec extension 정책을 다룬다. |
 | 4 | [10-channel-topology.ko.md](../spec/server/10-channel-topology.ko.md) | channel grouping, Discovery, 수동 연결, 상호작용 모델과 내부 transport 매핑을 다룬다. |
-| 5 | [05-framework-api.ko.md](../spec/05-framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `FastAPI`, `C++` standalone host 기준의 API 표면 방향을 다룬다. |
+| 5 | [05-framework-api.ko.md](../spec/05-framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `C++` standalone host 기준의 API 표면 방향을 다룬다. |
 | 6 | [비동기 실행과 coroutine 정책](../spec/04-async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
 | 7 | [22-actor-model.ko.md](../spec/server/22-actor-model.ko.md) | actor 라이프사이클, session bind, user Spot join, outbound actor 호출과 등록 표면을 정의한다. |
 | 8 | [Spot Actor Join / Transfer](../spec/server/23-spot-actor.ko.md) | actor가 Entry Spot과 user Spot 사이를 이동할 때의 admission, commit, callback 순서와 장애 처리를 정의한다. |
@@ -99,9 +99,8 @@
 
 ## 5. 언어별 상세 문서 작성 규칙
 
-이 공통 묶음은 `.NET` 하나만 위한 문서가 아니다. 이후 `Java`, `Node.js`,
-`Python`, `C++` 상세 문서도 이 묶음을 기준으로 같은 수준으로 작성할 수 있어야
-한다.
+이 공통 묶음은 `.NET` 하나만 위한 문서가 아니다. `Java`, `Kotlin`, `Node.js`,
+`C++` 상세 문서도 이 묶음을 기준으로 같은 수준으로 작성할 수 있어야 한다.
 
 그래서 언어별 디렉토리는 아래 규칙을 따른다.
 
@@ -150,11 +149,9 @@ framework 문서의 public 이름 규칙은
 
 문서에서 우선 따라야 할 언어별 케이싱은 아래와 같다.
 
-- Python: 모든 public API는 `snake_case`
 - Java: 메서드는 `camelCase`, 클래스와 annotation은 `PascalCase`
 - C#: public API 전체를 `PascalCase`
-- Go: exported 이름은 `PascalCase`
-- Rust: 메서드는 `snake_case`, 타입은 `PascalCase`
+- Kotlin: 메서드는 `camelCase`, 클래스와 annotation은 `PascalCase`
 - C++: 메서드는 `snake_case`, 타입은 `_t` 접미사
 - Node/TypeScript: 메서드는 `camelCase`, 클래스는 `PascalCase`
 
@@ -181,7 +178,7 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 | 문서 종류 | 역할 |
 |----------|------|
 | `README.ko.md` | 그 언어 묶음의 진입점. 문서 구조, 역할 분담, 핵심 방향을 정리한다. |
-| 인터페이스 기준 문서 | 공용 interface / context / configuration surface / attribute 또는 decorator를 한 곳에 모은다. 공용 계약과 내부 runtime 구현의 분리 기준은 [05-framework-api.ko.md §2.5](../spec/05-framework-api.ko.md#25-public-contract와-runtime-구현의-분리-기준)를 따른다. |
+| 인터페이스 기준 문서 | 공용 interface / context / configuration surface / attribute 또는 decorator를 한 곳에 모은다. 공용 계약과 내부 runtime 구현의 분리 기준은 [05-framework-api.ko.md §1.1](../spec/05-framework-api.ko.md#11-public-contract와-runtime-implementation의-경계)을 따른다. |
 | channel messaging 주제 문서 | channel 등록, handler 모델, outbound client, dispatch 흐름을 설명한다. |
 | channel messaging 샘플 문서 | 등록부터 handler, client 호출까지 한 번에 보이는 샘플을 둔다. |
 | `SPOT` 주제 문서 | 해당 언어에서 `SPOT`을 지원하면 lifecycle, publish/subscribe, channel attach를 설명한다. |
@@ -204,10 +201,8 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 |------|-----------|
 | `.NET` | `ASP.NET Core` |
 | `Java` | `Spring Boot` |
+| `Kotlin` | `Spring Boot` |
 | `Node.js` | `NestJS` |
-| `Python` | `FastAPI` |
-| `Go` | `net/http`, 필요하면 `Gin` |
-| `Rust` | `Axum` |
 | `C++` | zlink framework host |
 
 `C++`는 다른 언어처럼 기존 웹 프레임워크 위 adapter로 보기보다,

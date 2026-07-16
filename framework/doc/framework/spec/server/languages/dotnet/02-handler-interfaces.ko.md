@@ -42,6 +42,8 @@ public interface IZLinkRequestCall : IZLinkMetadataCall<IZLinkRequestCall>
     IZLinkRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
+    ValueTask<TReply> Yield<TReply>(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkPublishCall : IZLinkMetadataCall<IZLinkPublishCall>
@@ -74,6 +76,22 @@ public readonly record struct ZLinkLogicalMulticastDetail(
 public readonly record struct ZLinkPublishResult(
     ZLinkSubmitStatus Status,
     ZLinkLogicalMulticastDetail Detail);
+
+public interface IZLinkWorkerCall<TResult>
+{
+    IZLinkWorkerCall<TResult> Timeout(TimeSpan timeout);
+    void Submit(CancellationToken cancellationToken = default);
+    ValueTask<TResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<TResult> Yield(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkWorkerOptions
+{
+    int MinThreads { get; set; }
+    int MaxThreads { get; set; }
+    TimeSpan IdleTimeout { get; set; }
+    int MaxQueueLength { get; set; }
+}
 ```
 
 `TrySubmit()`은 기다리지 않고 admission 결과를 반환한다. `SubmitAsync()`는 MeshNode send timeout까지
@@ -81,6 +99,49 @@ admission을 기다리며 원격 handler 완료를 기다리지 않는다. `IZLi
 시그니처와 1024-byte 상한은
 [05 RouteMesh·MeshNode §6](05-route-mesh.ko.md#6-메시징-metadata)이 소유한다. 같은 key를 여러 번 설정하면
 마지막 값이 전송된다. Reply는 request metadata를 자동 복사하지 않는다.
+
+Worker call의 `Submit`, `Async`와 `Yield`는
+[비동기 실행 정책 §1.2](../../../04-async-execution-policy.ko.md#12-worker-offload)의 완료 의미를 따른다.
+Worker option은 host가 시작되기 전에만 설정할 수 있다.
+
+Assembly scan에서 사용하는 최소 attribute 표면은 다음과 같다.
+
+```csharp
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
+public sealed class ZLinkHandlerGroupAttribute(string groupName) : Attribute
+{
+    public string GroupName { get; } = groupName;
+}
+
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class ZLinkRequestAttribute : Attribute
+{
+    public string? PacketName { get; init; }
+}
+
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class ZLinkSendAttribute : Attribute
+{
+    public string? PacketName { get; init; }
+}
+
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class ZLinkPublishAttribute : Attribute
+{
+    public string? PacketName { get; init; }
+}
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public sealed class ZLinkPacketAttribute(string packetName) : Attribute
+{
+    public string PacketName { get; } = packetName;
+}
+```
+
+Root에 등록한 assembly에서 method attribute를 찾으며, `ZLinkHandlerGroupAttribute`는 해당 handler가
+참여하는 handler group을 지정한다. Method의 `PacketName`을 생략하면 message type의
+`ZLinkPacketAttribute`를 확인하고, 그것도 없으면 type 이름을 사용한다. Packet name은 등록할 때 한 번
+결정되며 codec 선택으로 바뀌지 않는다.
 
 ## 3. Node direct와 ChannelName
 
@@ -279,7 +340,7 @@ public interface IZLinkSpotOutbound
         TRequest request);
 }
 
-public interface IZLinkSpotContext
+public interface IZLinkSpotCommonContext
 {
     string MeshName { get; }
     RoutingId SpotRid { get; }
@@ -292,6 +353,14 @@ public interface IZLinkSpotContext
         ZLinkTimerOptions? options = null,
         CancellationToken cancellationToken = default)
         where THandler : class;
+    IZLinkWorkerCall<TResult> RunCpuWorker<TResult>(
+        Func<CancellationToken, TResult> work);
+    IZLinkWorkerCall<TResult> RunIoWorker<TResult>(
+        Func<CancellationToken, ValueTask<TResult>> work);
+}
+
+public interface IZLinkSpotContext : IZLinkSpotCommonContext
+{
     ValueTask<bool> CloseAsync(
         CancellationToken cancellationToken = default);
 }
@@ -354,13 +423,8 @@ public interface IZLinkEntrySpotOptions
     RoutingId RoutingId { get; set; }
 }
 
-public interface IZLinkEntrySpotContext
+public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
 {
-    string MeshName { get; }
-    RoutingId SpotRid { get; }
-    RoutingId NodeRid { get; }
-    IZLinkSpotHandlerRegistry Handlers { get; }
-    IZLinkSpotOutbound Outbound { get; }
     ValueTask DestroyActorAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
@@ -449,9 +513,31 @@ public interface IZLinkSpotClient
     IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request);
 }
 
+public readonly record struct ZLinkSpotInfo(RoutingId SpotRid);
+
 public interface IZLinkSpotManager
 {
+    ValueTask<SpotHandle> CreateAsync(
+        string meshName,
+        string spotType,
+        CancellationToken cancellationToken = default);
     ValueTask<SpotHandle> CreateAsync<TCreation>(
+        string meshName,
+        string spotType,
+        TCreation creation,
+        CancellationToken cancellationToken = default);
+    ValueTask<SpotHandle> CreateAsync<TCreation>(
+        string meshName,
+        string spotType,
+        RoutingId spotRid,
+        TCreation creation,
+        CancellationToken cancellationToken = default);
+    ValueTask<SpotHandle> GetOrCreateAsync(
+        string meshName,
+        string spotType,
+        RoutingId spotRid,
+        CancellationToken cancellationToken = default);
+    ValueTask<SpotHandle> GetOrCreateAsync<TCreation>(
         string meshName,
         string spotType,
         RoutingId spotRid,
@@ -460,6 +546,9 @@ public interface IZLinkSpotManager
     ValueTask<SpotHandle> ResolveAsync(
         string meshName,
         RoutingId spotRid,
+        CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
+        string meshName,
         CancellationToken cancellationToken = default);
     ValueTask DestroyAsync(
         SpotHandle spot,
@@ -584,6 +673,8 @@ public interface IZLinkActorRequestCall : IZLinkMetadataCall<IZLinkActorRequestC
     IZLinkActorRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
+    ValueTask<TReply> Yield<TReply>(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorJoinCall
@@ -591,6 +682,10 @@ public interface IZLinkActorJoinCall
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
     ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorJoinResult> Yield(
+        CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
         CancellationToken cancellationToken = default);
 }
 
@@ -754,7 +849,6 @@ public interface IZLinkSessionSendCall
 }
 
 public interface IZLinkSessionReplyCall
-    : IZLinkMetadataCall<IZLinkSessionReplyCall>
 {
     IZLinkSessionReplyCall Compress();
     ZLinkSubmitResult TrySubmit();
@@ -812,7 +906,36 @@ public sealed class ZLinkSessionDispatchContext
 같은 session의 packet과 lifecycle callback은 직렬로 실행한다. Handshake와 node 범위 오류는 runtime
 monitoring으로 보고하며 `OnErrorAsync(...)`에 전달하지 않는다.
 
-## 8. Framework 오류
+## 8. Monitoring과 Framework 오류
+
+Monitoring source는 framework root와 같은 DI container에 등록한다. 공개 source 종류와 등록 표면은
+다음과 같다. `ZLinkSocketEventKind`는 이 여섯 값으로 닫혀 있으며 native backend의 내부 event를 별도
+public kind로 추가하지 않는다.
+
+```csharp
+public interface IZLinkMonitoringOptions
+{
+    void AddSocketEvents(
+        string sourceName,
+        params ZLinkSocketEventKind[] events);
+    void AddSpotEvents(string sourceName, TimeSpan interval);
+    void AddLocationRuntimeEvents(string sourceName, TimeSpan interval);
+    void AddLocationPeerEvents(string sourceName);
+    void AddLocationSpotEvents(string sourceName);
+    void AddLocationActorEvents(string sourceName);
+    void AddLocationRouteEvents(string sourceName);
+}
+
+public enum ZLinkSocketEventKind
+{
+    Connected = 0,
+    ConnectionReady = 1,
+    Disconnected = 2,
+    HandshakeFailed = 3,
+    PeerAdmissionChanged = 4,
+    Closed = 5
+}
+```
 
 Request와 lifecycle operation의 framework 실패는 다음 exception으로 전달한다. One-way submit은 §2의
 `ZLinkSubmitResult`를 반환하며 잘못된 public 인자는 .NET 표준 `ArgumentException` 계열로 거부한다.
@@ -851,6 +974,22 @@ public sealed class ZLinkException : Exception
     public int? NativeCode { get; }
 }
 
+public enum ZLinkRequestFailureReason
+{
+    Timeout = 1,
+    Cancelled = 2,
+    Shutdown = 3
+}
+
+public sealed class ZLinkRequestFailureException : Exception
+{
+    public ZLinkRequestFailureException(
+        ZLinkRequestFailureReason reason,
+        string message,
+        Exception? innerException = null);
+    public ZLinkRequestFailureReason Reason { get; }
+}
+
 public sealed class ZLinkConfigurationException : Exception
 {
 }
@@ -858,6 +997,9 @@ public sealed class ZLinkConfigurationException : Exception
 
 `Kind`의 숫자 값과 기본 재시도 의미는 [공통 Framework API](../../../05-framework-api.ko.md#13-오류-kind)와
 같다. `NativeCode`는 진단용이며 업무 분기 기준으로 사용하지 않는다.
+Admission 뒤 request 대기가 reply 없이 끝나면 `ZLinkRequestFailureException.Reason`으로 timeout,
+호출자 cancellation과 host shutdown을 구분한다. 세 원인을 `RequestFailed`로 합치지 않으며 remote
+framework error는 계속 `ZLinkException`으로 전달한다.
 
 ## 9. Typed JSON 기본 경로
 

@@ -6,14 +6,14 @@
 
 ## 구성
 
-- `Shared`: client와 server가 함께 쓰는 메시지, HTTP helper, 환경 변수 helper를 둔다.
+- `Shared`: client와 server가 함께 쓰는 메시지, HTTP 요청과 대기 helper를 둔다.
 - `Server/Provider`: channel provider와 provider evidence endpoint를 제공한다.
-- `Server/Consumer`: location store 자동 연결로 request를 보내고, public location runtime query를
+- `Server/Consumer`: location store 자동 연결로 request를 보내고, public MeshNode runtime snapshot을
   HTTP endpoint로 노출한다.
 - `Client`: scenario 이름을 받아 검증을 실행한다.
 
-`Server/Registry`, `Server/Embedded`, `Server/Probe`는 제거된 public registry 계약에 의존하던
-old DR role이라 소스에서 제거했다.
+Runner는 실행별 role 설정 파일을 만들어 server에 전달한다. Client의 scenario selector는 시작할 때
+검증하는 CLI 입력으로 전달한다.
 
 ## 실행
 
@@ -36,7 +36,7 @@ stdout, stderr, flow log를 출력한다.
 
 ## 현재 검증 범위
 
-- 구현: `SF-A1`, `SF-A2`, `SF-B1`, `SF-B2`, `SF-C1`, `SF-C2`, `SF-D1`, `SF-D2`, `SF-D3`, `SF-E1`, `all`
-- 남음: 없음
+시나리오별 완료 여부는 `feature-map.ko.md`가 소유한다. `SF-B2`는 grace 초과 뒤 재시작한 provider의
+신규 outbound 연결 억제 단언이 남아 있어 부분 구현이며, runner 성공만으로 완료 처리하지 않는다.
 
 Config 6 범위는 public HTTP harness, runtime query, 실제 messaging 결과를 함께 사용해 검증한다.

@@ -1,0 +1,45 @@
+Reviewer: Codex agent /root/codex_core_review_r4
+Start hash: a47810550e250538d9fcb2c6a6f530927b4a0112b58d33881f4ae1a03805b3ac
+End hash: a47810550e250538d9fcb2c6a6f530927b4a0112b58d33881f4ae1a03805b3ac
+Scope diff hash at start and end: b4bfbaa77d0025ac0d498a4337ab7faab1d0714ac099805adecb014f9e742953
+Repository edits: none
+Scope: all 52 files
+
+HIGH socket/README.md:299 vs 03-errors.md:63
+The same zlink_request_result_t ABI omits BACKPRESSURED=113 in the socket
+common contract but includes it in errors and Actor operations.
+
+HIGH service/01-mesh-node.md:246 vs 03-errors.md:150
+MeshName admission mismatch is classified as both AUTH_FAILED and CONFLICT.
+
+HIGH socket/README.md:421 vs service/01-mesh-node.md:438,462
+MeshNode MAXMSGSIZE option support is defined in opposite ways.
+
+HIGH socket/README.md:761, socket/03-sub.md:174, socket/05-xsub.md:168
+Caller output capacity failures conflict with the canonical
+CONFIG_BUFFER_TOO_SMALL and ENOBUFS mapping.
+
+HIGH service/04-actor.md:344,368,404
+Actor transfer does not specify movement of frozen mailbox parts and pending
+session traffic, target high-water acknowledgement, or peer-loss rollback.
+
+HIGH socket/01-pair.md:24, socket/02-pub.md:114,
+socket/06-dealer.md:132
+Part-based multipart submit does not define sequence and staging state after a
+middle or final submit failure.
+
+MEDIUM service/02-dispatch.md:249,268
+A claim owns one domain but the caller repeats the same domain on receive.
+
+MEDIUM service/README.md:7 vs service/01-mesh-node.md:497
+The service overview says peer lists are hidden while a public peer snapshot
+query is defined.
+
+MEDIUM service/01-mesh-node.md:418
+The formal contract exposes retained-block reuse and re-encoding strategy that
+the caller cannot observe.
+
+MEDIUM 02-message.md:331
+zlink_msg_gets is a shallow public API that always returns NULL and EINVAL.
+
+Result: not clean.

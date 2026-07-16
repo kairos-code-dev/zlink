@@ -78,7 +78,7 @@ SupportChat은 공유 location store 기반 자동 연결을 사용한다.
 
 | 연결 | 연결 방식 | 이유 |
 |------|-----------|------|
-| Session -> API channel | location store 기반 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 들고 있지 않게 한다. |
+| Session -> API channel | location store 기반 자동 연결 | Session 서버가 인증 요청을 처리할 때 API 서버 주소를 직접 보관하지 않게 한다. |
 | Support -> API channel | location store 기반 자동 연결 | Support actor가 상담 시작 orchestration을 API 서버에 요청한다. |
 | API -> Support channel | location store 기반 자동 연결 | API 서버가 conversation 생성(allocation) 요청을 Support 서버로 보낸다. |
 | Session -> Support session relay | location store 기반 actor locator | Session 서버가 Support 서버 actor의 위치를 직접 관리하지 않게 한다. |
@@ -102,15 +102,15 @@ SupportChat은 client 요청을 세 서버가 나눠 처리하는 session gatewa
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `SupportChat.Api` | `Api` channel server | Session 서버의 token 검증과 Support actor의 상담 시작 orchestration 요청을 처리한다. |
-| `SupportChat.Api` | `Support` channel client | Support 서버에 conversation 생성(allocation)을 요청한다. |
+| `SupportChat.Api` | `Api` ChannelName handler | Session 서버의 token 검증과 Support actor의 상담 시작 orchestration 요청을 처리한다. |
+| `SupportChat.Api` | `Support` ChannelName client | Support 서버에 conversation 생성(allocation)을 요청한다. |
 | `SupportChat.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
-| `SupportChat.Session` | session Spot node | session relay와 bound session push 수신을 담당한다. |
+| `SupportChat.Session` | session gateway MeshNode | session relay와 bound session push 수신을 담당한다. |
 | `SupportChat.Support` | actor runtime | customer actor와 상담원 actor(roster·conversation)를 만들어 해당 Spot에 join시킨다. |
 | `SupportChat.Support` | session relay endpoint | Session 서버의 `EnsureSupportUserActorReq`를 받아 actor를 만들거나 기존 actor를 반환한다. |
 | `SupportChat.Support` | `SupportEntrySpot` | actor가 conversation에 들어가기 전 admission 지점을 맡는다. |
 | `SupportChat.Support` | `ConversationSpot` | 참여자, 메시지 순서, typing 상태, idle timer, close 상태를 소유한다. |
-| `SupportChat.Support` | `Support` channel server | API 서버의 conversation 생성 요청과 Session 서버의 상담원 conversation actor 준비 요청을 받는다. |
+| `SupportChat.Support` | `Support` ChannelName handler | API 서버의 conversation 생성 요청과 Session 서버의 상담원 conversation actor 준비 요청을 받는다. |
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Support peer discovery(자동 연결)와 actor/session 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 
 ## 6. Support 서버 디렉토리 구조
@@ -202,7 +202,7 @@ location store, timer, logger 같은 외부 세부 사항을 adapter 밖으로 �
 | `ConversationPolicy` | conversation당 1:1 참여자 제한, text 길이, idle timeout, close grace timeout, close 가능 조건을 정의한다. |
 | `ConversationEvent` | participant joined, assigned, message appended, typing changed, idle, closed 같은 domain event를 표현한다. |
 
-Domain은 ZLink actor, Spot, session, stream connector, channel client, location store endpoint,
+Domain은 ZLink actor, Spot, session, stream connector, ChannelName client, location store endpoint,
 timer handle, logger, DI container를 알면 안 된다. 예를 들어 `Conversation.SendMessage`
 같은 method는 `BoundSession.Send(...)`를 직접 호출하지 않고 `ConversationEvent`를 반환한다.
 adapter가 이 event를 `ChatMessageNotify` 같은 push message로 바꾼다.
@@ -273,7 +273,8 @@ SupportChat은 typed handler와 domain event publisher를 함께 사용한다.
 
 **SupportChat은 자동 등록 샘플이다.** 위 handler들은 typed 계약과 선언형 metadata로 선언하고,
 서버는 스캔으로 자동 등록한다. 구성 코드에 handler 목록을 다시 나열하지 않는다. **C++만 예외**로
-runtime 스캔이 없어 compile-time 명시 등록을 쓴다([05 §3.3](../../../spec/05-framework-api.ko.md)).
+runtime 스캔이 없어 compile-time 명시 등록을 쓴다
+([05 §8](../../../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)).
 수동 등록을 시연하는 샘플은 TicTacToe 하나뿐이다([샘플 규약](../README.ko.md)).
 
 notification은 handler 안에서 직접 여러 client에게 보내지 않고 domain event publisher 경로로
@@ -606,8 +607,10 @@ actor를 골라 relay한다(상담원은 conversation actor, 고객은 신원 ac
 | `Closed` | `SendChatMessageReq`, `CloseConversationReq` 수신 | 오류 response |
 | `Closed` | `SetTypingReq` 수신 | 무시 (one-way send, 응답 없음) |
 
-idle timeout은 샘플 실행 시간을 줄이기 위해 기본 3초, close grace timeout은 기본 2초로
-둔다. 언어별 샘플이 설정값을 바꾸더라도 smoke test에서는 같은 의미를 검증해야 한다.
+idle timeout 3초와 close grace timeout 2초는 운영 환경의 domain 기본값이 아니라 샘플 시나리오를
+빠르게 진행하기 위한 domain policy 예시 값이다. 이 두 값은 smoke test의 대기 상한이 아니며, smoke
+test는 둘을 합친 시간보다 긴 별도 상한을 둔다. 언어별 샘플이 더 짧은 policy 값을 쓰더라도 위 상태
+전이의 의미는 같아야 한다.
 
 잘못된 요청은 정상 response payload 대신 오류 response를 반환한다.
 아래 경우는 반드시 오류로 검증한다.
@@ -738,7 +741,7 @@ conversation은 `Active`가 되고 customer에게 `ParticipantJoinedNotify`가 �
 상담원은 그 conversation actor를 통해, customer는 자기 신원 actor를 통해(§9.1) 메시지를
 주고받는다.
 
-이 문서의 시퀀스·시나리오에서 conversation packet에 붙인 `(convId, …)`·`(conv-1, …)`
+이 문서의 시퀀스·시나리오에서 conversation packet에 포함한 `(convId, …)`·`(conv-1, …)`
 표기 중 `convId`/`conv-*`는 payload 필드가 아니라 metadata `ConversationId`를 뜻한다(§9.2).
 괄호 안의 나머지 값만 payload다.
 
@@ -800,7 +803,7 @@ sequenceDiagram
 - **접수·검증 ack**: `Closed` 대화, 비참여자, 길이 초과 같은 잘못된 전송을 오류 response로 즉시 거부한다. 상담 도메인에서는 닫힌 대화로 보낸 메시지가 조용히 사라지지 않고 "안 갔다"가 바로 보이는 것이 고객 오해를 막는 데 특히 중요하다.
 
 다만 request/response는 서버가 **접수·순번·검증**했다는 확인일 뿐, 상대방이 실제로 받거나
-읽었다는 보장은 아니다. 상대 수신 여부(읽음 확인)는 §9에서 범위 밖으로 둔다.
+읽었다는 보장은 아니다. 상대 수신 여부(읽음 확인)는 §9.2에서 범위 밖으로 둔다.
 
 반대로 `SetTypingReq`는 one-way send다. typing은 순간 상태라 유실돼도 무해하고 별도 ack가
 필요 없어, 보낸 사람은 응답을 받지 않고 상대방만 `TypingChangedNotify`를 받는다. 이렇게
@@ -1096,7 +1099,7 @@ session gateway 구조가 흐려진다.
 
 아래 항목은 언어별 샘플 구현과 smoke test로 확인해야 하는 기준이다.
 
-- runner는 실행할 때마다 SupportChat 전용 Docker Redis 컨테이너를 직접 띄우고, 그 컨테이너에서 얻은
+- runner는 실행할 때마다 SupportChat 전용 Docker Redis 컨테이너를 직접 시작하고, 그 컨테이너에서 얻은
   endpoint와 실행별 key prefix를 Session, API, Support 서버에 전달한다. 외부 Redis endpoint 재사용
   mode는 제공하지 않는다.
 - runner가 사용하는 Redis container 이름, host port, key prefix, log directory는 실행별로 고유해야

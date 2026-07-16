@@ -4,21 +4,21 @@
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|
-| RM-A1 | done | Redis location store의 live peer row와 두 provider가 실제로 처리한 request evidence를 함께 검증한다. |
+| RM-A1 | done | Redis location store의 MeshNode descriptor와 두 provider가 실제로 처리한 request evidence를 함께 검증한다. |
 | RM-A2 | done | 수동 endpoint request를 검증한다. |
 | RM-A4 | done | 같은 rid provider 교체를 검증한다. |
 | RM-A6 | done | profile/workflow channel 독립성을 검증한다. |
 | RM-B1 | done | provider scale-out 후 양쪽 provider 처리 evidence를 검증한다. |
-| RM-B2 | done | provider 정상 drain의 terminal `drained`, peer row 즉시 제거, 전환 구간의 전 요청 성공과 이후 남은 provider 전용 처리를 검증한다. |
+| RM-B2 | done | provider 정상 drain의 terminal `drained`, MeshNode descriptor 즉시 제거, 전환 구간의 전 요청 성공과 이후 남은 provider 전용 처리를 검증한다. |
 | RM-B3 | done | provider handler-start 뒤 `SIGKILL`, crash 전파 구간의 bounded public 결과, owner lease 만료 뒤 남은 provider 20/20 성공, known/missing target 오류 종류를 검증한다. |
 | RM-C1 | done | request/send happy path를 검증한다. |
 | RM-C2 | done | route mesh target rid 정확성과 missing rid의 `RequestTargetNotFound`를 검증한다. known disconnected target의 `RouteNotConnected`는 RM-B3에서 함께 검증한다. |
 | RM-C3 | done | 수동 multi-endpoint 분산을 검증한다. |
 | RM-C4 | done | timeout 뒤 후속 request 비오염을 검증한다. |
 | RM-C5 | done | 미등록 packet request/send와 dispatch error evidence를 검증한다. |
-| RM-C7 | done | public `configureServerSocket().weight`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
+| RM-C7 | done | public `addRouteMesh(meshName).channelName(channelName).setWeight(...)`로 build-time provider weight 75/25를 설정하고 high-weight provider가 더 많이 처리하는지 검증한다. |
 | RM-C8 | done | payload length/hash 왕복을 검증하고, server socket `maxMessageSize`를 넘는 payload가 실패한 뒤 정상 request가 다시 성공하는지 확인한다. |
-| RM-C9 | done | 느린 provider에 다량 one-way send를 제출하고, public bounded-failure oracle 없이 backlog 해소 뒤 후속 request와 evidence가 회복되는지 검증한다. |
+| RM-C9 | 10.0.0 전환 대상 | 현재 runner는 다량 one-way send 제출과 backlog 해소 뒤 후속 request 회복만 검증한다. non-blocking `trySubmit()`의 즉시 backpressure 결과와 blocking `submit()`의 bounded admission 결과를 직접 대조해야 한다. |
 
 검증:
 
@@ -39,5 +39,5 @@
 
 후속 계약 판정:
 
-- `RM-C9`: public one-way send 제출과 recovery를 검증한다. send submit은 완료 객체나 bounded-failure
-  oracle을 노출하지 않으므로, 직접적인 HWM 오류 결과 검증은 binding/runtime 내부 테스트 범위로 둔다.
+- `RM-C9`: 기존 one-way send 제출과 recovery 증거는 보존하되, `trySubmit()`과 `submit()`의
+  public admission 결과를 대조한 후에만 10.0.0 완료로 바꾼다.

@@ -9,11 +9,11 @@
 
 > 이 문서는 C++ HTTP hosting이 제공해야 하는 정식 계약이다.
 
-## 1. 기준 동작
+## 1. 요청 처리 계약
 
-기준은 C++ TicTacToe sample의 HTTP 시작 흐름이다. HTTP에서 게임 시작 정보를 받은
-뒤 stream connector로 이어진다. C++ sample은
-`CreateGameHttpReq/Res`와 game 용어를 사용한다.
+C++ HTTP hosting은 route 등록, JSON binding, DI handler 실행과 HTTP response 생성을 하나의 request
+처리 흐름으로 제공한다. 아래 흐름은 public hosting 계약을 설명하기 위한 예이며 특정 sample을 계약의
+근거로 사용하지 않는다.
 
 ```text
 HTTP client
@@ -56,9 +56,8 @@ C++ framework는 이 흐름을 아래 의미로 맞춘다.
 - handler 또는 zlink request 실패는 error kind에 따라 HTTP status로 매핑한다.
 - app shutdown은 HTTP accept loop와 진행 중 request dispatch를 닫는다.
 
-HTTP hosting은 framework core 기능이다. 다만 목표는 MVC/view 중심 Web framework가 아니라
-ASP.NET Core Minimal API처럼 route handler, DI, JSON binding, middleware/filter,
-configuration, logging, zlink messaging을 한 application host 안에서 연결하는 것이다.
+HTTP hosting은 framework server package가 제공하는 JSON API 기능이다. MVC/view, static file,
+template engine과 ORM은 이 계약의 지원 범위가 아니다.
 
 ## 2. Public API
 
@@ -68,11 +67,12 @@ configuration, logging, zlink messaging을 한 application host 안에서 연결
 auto app = zlink::framework::app_t::create();
 
 app.add_zlink_framework([&](auto &options) {
-    options.add_client_server_channel(sample_names_t::api_channel)
-      .enable_server(topology.api_channel_endpoint)
+    auto mesh = options.add_route_mesh(sample_names_t::application_mesh)
+      .listen(topology.api_channel_endpoint)
+      .set_routing_id(topology.application_rid);
+    mesh.channel_name(sample_names_t::api_channel)
       .use_handler_group("api");
-    options.add_client_server_channel(sample_names_t::play_channel)
-      .enable_client();
+    mesh.channel_name(sample_names_t::play_channel);
 
     options.http()
       .listen(topology.api_http_endpoint)
@@ -91,7 +91,7 @@ app.add_zlink_framework([&](auto &options) {
 
 HTTP handler는 channel handler와 같은 방식으로 DTO와 DI 의존성을 선언한다. 다만 HTTP는
 transport metadata, raw body, 직접 response 제어가 필요하므로 여러 handler shape를 모두
-지원한다. 아래 shape 전체가 HTTP hosting 완료 범위다.
+지원한다. 아래 shape 전체가 HTTP hosting 공개 계약이다.
 
 ```cpp
 struct create_game_http_req_t {
@@ -193,7 +193,7 @@ typed route에서 여러 overload가 있으면 반환 타입보다 인자 shape�
 typed route와 raw route shape를 한 handler에 동시에 제공하면 route mode가 모호하므로 static
 assertion 또는 startup validation으로 실패시킨다.
 
-Handler shape 판별은 아래 순서로 구현한다.
+Handler shape는 아래 순서로 판별한다.
 
 1. `request_type` alias가 있으면 typed route 후보로 본다.
 2. `request_type` alias가 없고 `handle(const http_request_t&)`가 있으면 raw route로 본다.
@@ -492,8 +492,8 @@ framework error kind는 HTTP status로 매핑한다.
 | `payload_decode_failed` | `400 Bad Request` | client body가 DTO로 변환되지 않았다 |
 | `request_target_not_found` | `404 Not Found` | 대상 route, channel, service를 찾지 못했다 |
 | `request_protocol_error` | `400 Bad Request` | request 의미가 framework 계약과 맞지 않는다 |
-| `timeout` | `504 Gateway Timeout` | HTTP hosting 뒤의 zlink request가 시간 안에 끝나지 않았다 |
-| `shutdown` | `503 Service Unavailable` | host가 종료 중이다 |
+| `framework_exception_t::code() == std::errc::timed_out` | `504 Gateway Timeout` | HTTP hosting 뒤의 zlink request가 시간 안에 끝나지 않았다 |
+| `framework_exception_t::code()`가 shutdown 경계를 나타내고 host가 종료 중임 | `503 Service Unavailable` | host가 종료 중이다 |
 | `request_failed` | `500 Internal Server Error` | 내부 handler 또는 runtime 실패다 |
 
 HTTP server runtime이 body size limit을 초과한 request를 감지하면 `413 Payload Too Large`로
@@ -509,16 +509,13 @@ error kind가 명확하지 않은 예외는 `500 Internal Server Error`로 닫�
 HTTP server는 `hosted_service_t`로 실행한다.
 
 - `app.run(...)`이 service provider를 만든 뒤 HTTP hosted service를 시작한다.
-- HTTP accept loop는 background worker에서 동작한다.
-- request dispatch는 framework handler coroutine executor 또는 HTTP runtime worker에서
-  실행하되, public API에는 executor 타입을 노출하지 않는다.
 - `app.stop()` 또는 signal shutdown이 들어오면 acceptor를 닫고 새 request를 받지 않는다.
 - 진행 중 request는 graceful shutdown timeout 안에서 완료되도록 기다린다.
 - shutdown 중 새 zlink submit을 무기한 만들지 않는다.
 
-HTTP hosted service는 zlink channel runtime보다 뒤에 시작해야 한다. 그래야 `/games` 같은
-HTTP request가 들어왔을 때 handler가 주입받은 channel client를 바로 사용할 수 있다.
-정지는 반대로 HTTP server를 먼저 닫고 zlink runtime을 drain한다.
+HTTP endpoint는 handler가 주입받는 framework client가 ready 상태가 된 뒤에만 ready로 전환한다.
+종료 시에는 새 HTTP request를 먼저 거부하고 진행 중 handler가 messaging drain 기한 안에서 완료될
+기회를 제공한다.
 
 ## 7.1 Middleware
 
@@ -539,29 +536,18 @@ middleware는 DI를 사용할 수 있다. public API에 `boost::beast` request/r
 않고 framework의 `http_context_t` 같은 추상 타입을 사용한다. `http_context_t`는 request id,
 method, path, header 조회, response status 설정, short-circuit JSON response 설정을 제공한다.
 
-## 8. Runtime 구현 경계
+## 8. 설치 header 경계
 
-public contract는 아래 위치에 둔다.
-
-```text
-framework/include/zlink/framework/contracts/http/http.hpp
-framework/include/zlink/framework.hpp
-```
-
-runtime 구현은 아래 위치에 둔다.
+HTTP hosting의 public contract는 다음 설치 header에서 제공한다.
 
 ```text
-framework/src/runtime/http/http_host_service.hpp
-framework/src/runtime/http/http_listener.cpp
+zlink/framework/contracts/http/http.hpp
+zlink/framework.hpp
 ```
 
-`Boost.Beast`, `Boost.Asio`, OpenSSL/SSL context 타입은 runtime 구현 파일에서만 사용한다.
-public header에는 `boost::beast`, `boost::asio`, TCP socket, acceptor, request parser,
-SSL stream, SSL context 타입이 나타나면 안 된다.
-
-HTTP runtime은 zlink core CAPI timer나 dispatch pump를 직접 사용하지 않는다. HTTP는
-framework host가 소유한 별도 ingress이고, zlink messaging으로 들어가는 지점에서
-`request_client_t` 또는 `channel_client_t`를 사용한다.
+Public header에는 Boost.Beast, Boost.Asio, OpenSSL/SSL context, TCP socket, acceptor와 request
+parser 타입을 노출하지 않는다. Application과 extension은 이 구현 dependency를 include하지 않고
+framework의 `http_request_t`, `http_response_t`와 `http_context_t`만 사용한다.
 
 ## 9. C++ HTTP hosting 표면
 
@@ -579,50 +565,21 @@ framework host가 소유한 별도 ingress이고, zlink messaging으로 들어�
 | middleware/filter | `options.http().use<TMiddleware>()`와 `http_context_t` |
 | 실행 중단 | host shutdown/drain 정책. public handler signature에는 기본 취소 인자를 노출하지 않음 |
 | typed reply | handler가 `reply_type` DTO 반환 |
-| JSON HTTP client | `zlink::http_client`가 JSON request와 typed response를 처리 |
 
-## 10. TicTacToe Sample 반영 상태
+## 10. 공개 계약 결정
 
-C++ TicTacToe sample은 HTTP에서 게임을 시작하고 stream connector로 연결하는 흐름을
-반영한다.
-
-현재 sample에서 확인할 수 있는 반영 내용은 아래와 같다.
-
-- `sample_topology_t`에 `api_http_endpoint`를 추가한다.
-- `Server/Api` role은 zlink API channel server와 HTTP endpoint를 함께 구성한다.
-- `CreateGameHttpReq`, `CreateGameHttpRes` DTO를 C++ shared contracts에 둔다.
-- `create_game_http_handler_t`는 HTTP request를 받아 play 채널로 게임 룸을 만들고
-  `room_id`, `game_name`, `owner_play_endpoint`, `play_endpoints`, `play_nodes`,
-  `required_level`을 반환한다.
-- client는 `zlink::http_client`로 먼저 `POST /games`를 호출해 `room_id`,
-  `game_name`, `owner_play_endpoint`, `play_endpoints`, `play_nodes`, `required_level`을 받는다.
-- `api_http_endpoint`가 `https://`이면 client는 `zlink::http_client`의 TLS verification
-  option을 명시해 같은 흐름을 검증한다.
-- 이후 stream connector는 HTTP 응답의 `owner_play_endpoint`로 owner connector를 연결하고,
-  `play_endpoints`에서 observer endpoint를 고른다.
-- client smoke/e2e log는 HTTP request, API handler request, stream connector request가
-  모두 발생했는지 확인한다.
-
-Bingo sample은 HTTP entry를 사용하지 않으며 session stream 중심 검증을 유지한다.
-
-## 11. 구현 요구 사항
-
-아래 항목은 구현이 따라야 하는 요구 사항이다.
-
-| 항목 | 결정 |
+| 항목 | 계약 |
 |------|------|
-| HTTP를 core framework에 둘지 extension에 둘지 | core framework에 둔다. application host가 messaging과 HTTP lifecycle을 함께 관리해야 하기 때문이다. |
-| 구현 라이브러리 | `Boost.Beast`를 runtime private dependency로 사용한다 |
-| public API에 Beast/Asio 노출 여부 | 노출하지 않는다 |
-| HTTPS/TLS 지원 | core HTTP hosting에서 지원한다. public API는 certificate/private key 설정만 노출하고 SSL 구현 타입은 숨긴다 |
-| sample HTTP client HTTPS | `zlink::http_client`가 지원한다. test certificate trust는 client option으로 명시한다 |
-| route matching | exact path와 `{name}` path parameter를 지원한다 |
-| method 지원 | `GET`, `POST`, `PUT`, `DELETE`를 같은 builder 패턴으로 지원한다 |
-| cancellation token | C++ public handler signature에는 별도 cancel token을 넣지 않는다. shutdown/drain과 timeout 정책으로 처리한다 |
-| response customization | typed DTO는 `200 OK` 기본이다. status/header 직접 제어는 `http_response_t` 반환 handler로 지원한다 |
-| embedded server hardening | [Embedded HTTP Server](61-embedded-http-server.ko.md)의 hardening 기준을 따른다 |
+| package 위치 | HTTP hosting은 framework server package가 제공한다. |
+| 구현 dependency 노출 | public header와 signature에 Beast, Asio와 SSL 구현 타입을 노출하지 않는다. |
+| HTTPS/TLS | certificate와 private key 설정을 public option으로 제공한다. |
+| route matching | exact path와 `{name}` path parameter를 지원한다. |
+| method | `GET`, `POST`, `PUT`, `DELETE`를 같은 builder 규칙으로 지원한다. |
+| cancellation | handler signature에 별도 cancellation token을 추가하지 않고 request timeout과 host drain 계약을 적용한다. |
+| response customization | typed DTO의 기본 status는 `200 OK`다. status와 header 직접 제어는 `http_response_t` 반환 handler가 제공한다. |
+| server hardening | [Embedded HTTP Server](61-embedded-http-server.ko.md)의 limit, timeout과 shutdown 계약을 따른다. |
 
-## 12. 회귀 테스트
+## 11. 회귀 테스트
 
 최소 테스트는 아래 축으로 둔다.
 
@@ -633,17 +590,7 @@ Bingo sample은 HTTP entry를 사용하지 않으며 session stream 중심 검�
 - scheme별 listen: `http://`, `https://`
 - HTTPS TLS option: certificate/private key 누락은 startup validation 실패
 - HTTPS loopback: test certificate로 JSON request/response 성공
-- HTTP client contract: `#include <zlink/http_client.hpp>`가 framework runtime header를
-  끌어오지 않는다
-- HTTP client JSON: `zlink::http_client`가 typed DTO request를 JSON으로 보내고 reply DTO를
-  `message_t::parse_json<T>()` 흐름으로 읽는다
-- HTTP client HTTPS: test certificate trust 설정이 있으면 `https://` JSON request/response가
-  성공한다
-- HTTP client TLS failure: 신뢰하지 않은 certificate와 hostname mismatch는 명시적인
-  client error로 실패한다
-- HTTP client timeout/status mapping: timeout, `400`, `404`, `500` 응답이 client result/error
-  kind로 고정된다
-- HTTP handler e2e: `zlink::http_client`로 `GET`, `POST`, `PUT`, `DELETE` route를 호출해
+- HTTP handler e2e: loopback client로 `GET`, `POST`, `PUT`, `DELETE` route를 호출해
   DTO binding, DI handler 실행, JSON response, status mapping을 검증한다
 - handler shape matrix: DTO, DTO+context, DTO+request, response 반환, raw request의 sync/async
   shape를 모두 호출한다
@@ -662,8 +609,7 @@ Bingo sample은 HTTP entry를 사용하지 않으며 session stream 중심 검�
 - server validation: unsupported content type은 `400`, body limit 초과는 `413`
 - embedded server lifecycle: keep-alive, request timeout, graceful shutdown drain, connection
   metrics는 [Embedded HTTP Server](61-embedded-http-server.ko.md) 회귀 테스트로 검증한다
-- lifecycle: `app.stop()`이 HTTP accept loop를 닫고 worker thread를 join한다
-- TicTacToe sample e2e: client가 `POST /games` 뒤 stream connector로 게임을 진행한다
+- lifecycle: `app.stop()`이 새 request 수락을 중단하고 진행 중 request를 drain한 뒤 완료된다
 
 Handler shape regression matrix:
 

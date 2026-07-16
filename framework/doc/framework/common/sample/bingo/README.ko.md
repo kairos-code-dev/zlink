@@ -16,7 +16,7 @@ Bingo 샘플은 client가 하나의 Session 서버 stream 연결만 유지해도
 연결과 actor binding을 맡고, Play 서버는 player actor와 room Spot을 소유한다.
 API 서버는 인증과 매칭 요청을 처리하며, 서버 간 endpoint 발견은 공유 location store가
 맡는다. 샘플은 `api-a`, `api-b`, `play-a`, `play-b`, `session-a`, `session-b`를 실행해
-gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out이 함께
+gateway 구조에서도 scale-out, remote Spot join, Logical Multicast event fan-out이 함께
 동작하는지 보여 준다.
 
 이 샘플에서 확인해야 하는 핵심은 아래와 같다.
@@ -36,7 +36,7 @@ gateway 구조에서도 scale-out, remote Spot join, Spot pub/sub event fan-out�
 - room Spot은 제출된 카드, 번호 추첨, mark, 승리 판정을 소유한다.
 - 두 player client의 card가 모두 제출되면 room Spot이 server timer로 번호를 뽑고,
   Play 서버는 번호와 state를 bound session으로 Notify한다.
-- 승자가 나오고 결과 처리 중 희귀 보상이 지급되면 owner `BingoRoom`은 Spot pub/sub
+- 승자가 나오고 결과 처리 중 희귀 보상이 지급되면 owner `BingoRoom`은 Logical Multicast
   topic으로 `BingoRewardAcquiredEvent`를 publish하고, 다른 Play 서버의 `BingoRoom`은
   event를 받아 observer client로 push한다.
 - 공유 location store를 사용해 서버 간 endpoint를 자동으로 발견하고 연결한다.
@@ -79,7 +79,7 @@ graph LR
     APIA -->|Play channel| PA
     APIB -->|Play channel| PB
     PA <-->|Remote Spot join| PB
-    PA <-->|Spot pub/sub| PB
+    PA <-->|Logical Multicast| PB
     PA -->|match state| REDIS
     PB -->|match state| REDIS
     PA -->|Bound session Notify| SA
@@ -101,26 +101,27 @@ client-facing stream endpoint를 열지 않는다. Session 서버는 인증과 s
 전달되고, actor와 room Spot이 domain state를 처리한다.
 
 다이어그램은 room owner가 `Play A`인 경우의 예시다. 실제 실행에서는 어떤 프로세스가
-`Play A` 역할을 맡는지 달라질 수 있지만, 첫 player actor가 있는 Play SpotNode가 room
+`Play A` 역할을 맡는지 달라질 수 있지만, 첫 player actor가 있는 Play MeshNode가 room
 owner가 되어야 한다. client self-check는 특정 서버 이름이 아니라 응답에 담긴 actor node
-rid와 room owner node rid를 비교해 cross-node join과 pub/sub 수신을 검증한다.
+rid와 room owner node rid를 비교해 cross-node join과 Logical Multicast 수신을 검증한다.
 각 Session은 자기 할당 slot `N`을 읽고 `playN`을 actor 생성 preferred node로 선택한다. 어느
 경우에도 process 이름이나 endpoint를 직접 선택하지 않고 location store 위의 node rid를 선택한다.
 
 ## 3. 자동 연결 방식
 
-Bingo는 공유 location store 기반 자동 연결을 사용한다. 각 서버는 자신이 제공하는
-channel, stream, Spot node endpoint를 location store에 등록하고, 다른 서버는 service
-이름으로 상대 endpoint를 찾는다. 등록·조회·자동 연결 lifecycle은 framework가 처리한다.
+Bingo는 공유 location store 기반 자동 연결을 사용한다. 각 서버는 MeshName, RID, ChannelName set과
+MeshNode endpoint를 descriptor로 게시하고, STREAM endpoint는 해당 stream node 계약으로 게시한다.
+다른 서버는 같은 MeshName의 descriptor를 확인해 peer를 연결하며 application은 기능별 endpoint를
+관리하지 않는다.
 
 | 연결 | 연결 방식 | 이유 |
 |------|-----------|------|
-| Session -> API channel | location store 기반 자동 연결 | Session 서버가 API 서버 주소를 직접 들고 있지 않게 한다. |
-| API -> Play channel | location store 기반 자동 연결 | matching API가 현재 Play 서버 endpoint를 location store에서 찾는다. |
-| Play -> API channel | location store 기반 자동 연결 | room Spot이 actor join/leave에서 player 전적을 조회·기록한다(§7.1). |
+| Session -> API ChannelName | RouteMesh peer + select-one | Session 서버가 API 서버 주소를 직접 보관하지 않게 한다. |
+| API -> Play ChannelName | RouteMesh peer + select-one | matching API가 ready Play member 하나를 선택한다. |
+| Play -> API ChannelName | RouteMesh peer + select-one | room Spot이 actor join/leave에서 player 전적을 조회·기록한다(§7.1). |
 | Session -> Play session relay | location store 기반 actor locator | Session 서버가 Play 서버 actor의 위치를 직접 관리하지 않게 한다. |
 | Play actor -> remote room Spot | location store 기반 Spot resolver | actor가 다른 Play 서버의 room Spot에 join할 수 있게 한다. |
-| Play Spot pub/sub -> Play Spot pub/sub | location store 기반 자동 연결 | reward event를 다른 Play 서버의 `BingoRoom`으로 fan-out한다. |
+| Play Logical Multicast | 같은 RouteMesh의 routed multicast | reward event를 target channel의 각 node에 한 번 전달하고 local `BingoRoom` subscription으로 fan-out한다. |
 | Play -> Session bound push | location store 기반 session route | Play 서버가 현재 client session 위치를 framework route로 찾는다. |
 | Play -> Redis match queue | Redis endpoint 설정 | 여러 Play 서버가 waiting room state를 공유한다. |
 
@@ -128,14 +129,13 @@ channel, stream, Spot node endpoint를 location store에 등록하고, 다른 �
 변경을 application 코드 밖으로 밀어내는 흐름을 보여 주기 위해서다. 수동 endpoint
 연결은 TicTacToe 샘플이 맡는다.
 
-Spot pub/sub mesh에서 실제 transport 연결 방향은 `SUB -> peer PUB`이다. 다만 두 Play
-SpotNode는 모두 publish와 subscribe를 할 수 있으므로 `PlayA.SUB -> PlayB.PUB`와
-`PlayB.SUB -> PlayA.PUB`가 모두 성립해야 한다. 언어별 샘플은 이 연결을 수동 endpoint
-코드로 만들지 말고 framework의 public Spot pub/sub 설정과 location store 기반 자동
-연결에 맡긴다.
+Logical Multicast는 별도 PUB/SUB connection을 만들지 않는다. origin MeshNode는 target ChannelName의
+ready remote node마다 같은 ROUTER mesh로 routed message를 한 번 제출하고, 수신 MeshNode는 topic과
+일치하는 local `BingoRoom` subscription에 message ref를 공유한다. 언어별 sample은 peer별 반복 전송이나
+topic과 일치하는 local Spot subscription에 message ref를 공유하는 동작을 application code에서 구현하지 않는다.
 
 Bingo는 Redis를 두 가지 다른 용도로 쓴다. 하나는 framework의 location store 구현체로,
-peer discovery·actor route·session route·Spot pub/sub peer 발견을 담당한다. 다른 하나는
+peer discovery·actor route·session route를 담당한다. Logical Multicast도 같은 RouteMesh peer set을 사용한다. 다른 하나는
 §3.1의 match queue로, matching 중인 waiting room의 짧은 상태만 저장한다. 두 용도는
 같은 Redis 인스턴스를 공유할 수 있지만 책임은 다르다 — room Spot owner 조회 같은
 위치 정보는 location store가, waiting room state 공유는 match queue가 맡는다.
@@ -159,7 +159,7 @@ bingo:match:{Mode} {
 ```
 
 첫 player가 matching을 요청하면 allocator는 Redis에 waiting room이 있는지 확인한다.
-없으면 요청 actor가 있는 Play SpotNode를 preferred owner로 사용해 그 Play 서버에 room
+없으면 요청 actor가 있는 Play MeshNode를 preferred owner로 사용해 그 Play 서버에 room
 Spot을 만들고 Redis에 waiting room record를 atomic하게 저장한다. 두 번째 player가 matching을
 요청하면 allocator는 같은 record에 actor id를 reserve하고 같은 `RoomId`와
 `OwnerPlayNodeRid`를 반환한다. actor가 어느 Play 서버에 있든 room join은 `RoomId`에서 만든
@@ -176,7 +176,7 @@ fallback으로 성공시키면 안 된다.
 샘플 애플리케이션은 Docker를 직접 호출하지 않는다. Docker container 준비는 runner의
 책임이다.
 
-- `run_sample`은 실행마다 pinned Redis image로 전용 container를 띄우고 ready 상태를 확인한 뒤
+- `run_sample`은 실행마다 pinned Redis image로 전용 container를 시작하고 ready 상태를 확인한 뒤
   Play 프로세스에 전달한다. 이미 떠 있는 Redis나 host Redis endpoint를 재사용하지 않는다.
 - runner가 만든 Redis container는 실행마다 고유한 이름을 사용하고, Docker가 배정한
   loopback port를 Play 프로세스에 전달한다. 다른 테스트가 쓰는 Redis container나 호스트
@@ -191,17 +191,17 @@ fallback으로 성공시키면 안 된다.
 ### 3.3 서버 routing id 자동 할당
 
 API, Play와 Session runtime은 location store에서 역할별 slot을 받는다. 역할마다 allocation group을
-분리하므로 각 역할은 독립적으로 1번부터 번호를 사용한다. Play runtime만 Play client-server channel과
-room Spot mesh를 같은 group에 넣어 번호를 공유한다.
+분리하므로 각 역할은 독립적으로 1번부터 번호를 사용한다. Play runtime만 Play ChannelName과
+room Spot을 소유하는 MeshNode를 같은 group에 넣어 번호를 공유한다.
 
 | 역할 | allocation group | slot count | prefix와 결과 | group member |
 |------|------------------|-----------:|----------------|--------------|
 | API | `bingo.api` | 2 | `api1`, `api2` | API channel |
-| Play | `bingo.play` | 2 | `play1`, `play2` | Play channel, room Spot mesh |
-| Session | `bingo.session` | 2 | `session1`, `session2` | room Spot mesh |
+| Play | `bingo.play` | 2 | `play1`, `play2` | MeshNode의 Play·room ChannelName membership |
+| Session | `bingo.session` | 2 | `session1`, `session2` | session MeshNode의 room ChannelName membership |
 
-Play entry spot RID는 room SpotNode에 할당된 `play1` 또는 `play2`를 그대로 사용한다. Play와 Session은
-같은 room Spot mesh 이름을 사용하지만 allocation group과 prefix가 다르다. 두 역할 모두 allocated
+Play entry spot RID는 room MeshNode에 할당된 `play1` 또는 `play2`를 그대로 사용한다. Play와 Session은
+같은 MeshName과 room ChannelName을 사용하지만 allocation group과 prefix가 다르다. 두 역할 모두 allocated
 identity를 사용하므로 같은 channel에 fixed RID와 allocated RID를 섞지 않으며, 생성되는 RID도
 서로 충돌하지 않는다.
 
@@ -209,48 +209,43 @@ identity를 사용하므로 같은 channel에 fixed RID와 allocated RID를 섞�
 계약으로 구성한다. 언어별 sample helper로 자동 할당을 흉내 내면 안 된다.
 
 ```csharp
-// API runtime
-options.AddClientServerChannel(SampleNames.ApiChannel)
+// API runtime: 한 MeshNode에 API membership을 등록한다.
+var apiMesh = options.AddRouteMesh(SampleNames.Mesh)
     // 동일한 API 설정의 두 runtime이 api1과 api2를 나눠 사용한다.
     .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
     .SetRoutingIdAllocationGroup("bingo.api")
-    .EnableServer(node.ChannelEndpoint)
-    .AddHandlerGroup("api");
+    .Listen(node.MeshEndpoint);
+
+apiMesh.ChannelName(SampleNames.ApiChannel);
 
 // Play runtime
 const string playAllocationGroup = "bingo.play";
 
-options.AddClientServerChannel(SampleNames.PlayChannel)
-    // Play channel과 room SpotNode가 사용할 번호를 함께 할당받는다.
+var playMesh = options.AddRouteMesh(SampleNames.Mesh)
+    // Play channel과 room MeshNode가 사용할 번호를 함께 할당받는다.
     .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
     .SetRoutingIdAllocationGroup(playAllocationGroup)
-    .EnableServer(node.PlayChannelEndpoint)
-    .EnableClient()
-    .AddHandlerGroup("play");
-
-options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
-    // 같은 group이므로 Play channel과 동일한 play1 또는 play2를 사용한다.
-    .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
-    .SetRoutingIdAllocationGroup(playAllocationGroup)
-    .EnableRouter(node.SpotRouterEndpoint)
-    .EnablePubSub(node.SpotPubEndpoint)
+    .Listen(node.MeshEndpoint)
     .AddEntrySpot<BingoEntrySpot>()
     .AddSpotFactory<BingoRoom>();
 
+playMesh.ChannelName(SampleNames.PlayChannel);
+playMesh.ChannelName(SampleNames.RoomChannel); // room Logical Multicast membership
+
 // Session runtime
-options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
-    // Session SpotNode는 Play pool과 분리된 session1 또는 session2를 사용한다.
+var sessionMesh = options.AddRouteMesh(SampleNames.Mesh)
+    // Session MeshNode는 Play pool과 분리된 session1 또는 session2를 사용한다.
     .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "session")
     .SetRoutingIdAllocationGroup("bingo.session")
-    .EnableRouter(session.RouterEndpoint)
-    .EnablePubSub(session.PubEndpoint);
+    .Listen(session.MeshEndpoint);
+
+sessionMesh.ChannelName(SampleNames.RoomChannel);
 ```
 
 API, Play와 Session 구성에서는 `SetRoutingId(...)`를 사용하지 않으며 Play에서도
 `SetEntrySpotRoutingId(...)`를 사용하지 않는다. `SampleApiNode`, `SamplePlayNode`와
 `SampleSessionNode`는 고정 RID field를 두지 않고 endpoint만 유지한다. Session의 preferred Play RID는
-자기 할당 slot에서 계산한다. 기존 `1101..1104`, `2201`, `2202`, `3301`, `3302` RID 상수는
-topology와 runner configuration에 남기지 않는다.
+자기 할당 slot에서 계산한다. Topology와 runner configuration은 역할별 할당 RID만 사용한다.
 
 location store와 match queue가 같은 Redis instance를 사용하더라도 책임은 합치지 않는다. 공식
 Redis location store가 slot lease와 generation을 원자적으로 관리하고, `RedisBingoMatchQueue`는
@@ -302,16 +297,16 @@ runtime은 기존 reconcile 경로로 새 endpoint에 연결한다. 이 기능�
 
 | 프로세스 | 구성 요소 | 책임 |
 |----------|-----------|------|
-| `Bingo.Api` | `Api` channel server | access token 인증과 matching API 요청을 처리한다. |
+| `Bingo.Api` | `Api` ChannelName handler | access token 인증과 matching API 요청을 처리한다. |
 | `Bingo.Api` | player record store(프로세스 메모리) | player 전적 조회(`GetPlayerRecordReq`)와 경기 결과 기록(`ReportBingoResultReq`)을 소유한다. room Spot은 이 값을 계산하지 않고 join/leave에서 `yield`로 물어본다(§7.1). |
-| `Bingo.Api` | `Play` channel client | Play 서버에 room 배정을 요청한다. |
+| `Bingo.Api` | `Play` ChannelName client | Play 서버에 room 배정을 요청한다. |
 | `Bingo.Session` | stream server | client 연결, 인증 packet, actor binding, actor relay를 처리한다. |
-| `Bingo.Session` | session Spot node | session relay와 bound session push 수신을 담당한다. |
+| `Bingo.Session` | session gateway MeshNode | session relay와 bound session push 수신을 담당한다. |
 | `Bingo.Play` | actor runtime | player actor를 만들고 Entry Spot에 join시킨다. |
 | `Bingo.Play` | `BingoEntrySpot` | actor가 특정 room에 들어가기 전의 admission 지점을 맡는다. |
 | `Bingo.Play` | `BingoRoom` room Spot | game room에서는 room 참가자, 제출된 카드, draw deck, 승리 판정, player Notify 생성을 소유한다. observer용 local room에서는 reward topic 수신과 observer push 전달만 맡는다. |
-| `Bingo.Play` | `Play` channel server | API 서버의 room 배정 요청을 받는다. |
-| `Bingo.Play` | `Api` channel client | room Spot의 join/leave callback이 전적을 조회·기록한다. 이 왕복은 `yield`로 기다린다(§7.1). |
+| `Bingo.Play` | `Play` ChannelName handler | API 서버의 room 배정 요청을 받는다. |
+| `Bingo.Play` | `Api` ChannelName client | room Spot의 join/leave callback이 전적을 조회·기록한다. 이 왕복은 `yield`로 기다린다(§7.1). |
 | `Bingo.Play` | Redis match queue adapter | 여러 Play 서버가 같은 waiting room state를 공유하게 한다. |
 | `Location Store` | framework location store 계약의 공유 저장소 구현체(예: Redis) | Session·API·Play peer discovery(자동 연결)와 actor/session/Spot 위치 조회를 담으며, 등록·조회·lifecycle 정책은 framework가 소유. |
 
@@ -412,7 +407,7 @@ package와 class 이름으로, TypeScript는 module과 file 이름으로, C++은
 | `Server/Session/*` | stream gateway adapter | client stream, 인증, actor binding, bound session relay를 처리한다. |
 | `Server/Play/Domain/Bingo/*` | domain model | card, draw deck, room status, winner 판정 같은 게임 규칙을 framework 타입 없이 표현한다. |
 | `Server/Play/Application/RoomAllocation/*` | application use case | match queue 계약, waiting room 재사용 결정, room allocation 결과 생성을 조율한다. |
-| `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Spot pub/sub publish/subscribe를 application/domain 호출로 변환한다. |
+| `Server/Play/Infrastructure/ZLink/*` | ZLink adapter | channel, actor, Spot callback, bound session push, Logical Multicast publish/subscribe를 application/domain 호출로 변환한다. |
 | `Server/Play/Infrastructure/Redis/*` | external adapter | Redis를 사용해 mode별 waiting room record와 actor reservation을 atomic하게 저장한다. |
 
 의존 방향은 `Infrastructure -> Application -> Domain`이다. Domain은 ZLink framework, location store,
@@ -423,7 +418,7 @@ adapter에 둔다. 이 규칙 덕분에 다른 언어로 옮겨도 gateway 구�
 
 알림 전송을 위해 별도 notification Spot이나 별도 notification publisher 계층을 만들지 않는다.
 player에게 가는 게임 진행 알림은 `PlayerActor`가 자기 bound session으로 보내고, 서버 간 보상
-fan-out은 `BingoRoom`이 Spot pub/sub topic으로 publish/subscribe한다. Spot pub/sub event
+fan-out은 `BingoRoom`이 Logical Multicast topic으로 publish/subscribe한다. Logical Multicast event
 수신도 `Spots/BingoRoomSpot/BingoRoom` 안에서 처리한다.
 
 ## 6. 언어별 구현 기준
@@ -446,19 +441,19 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 - Bingo의 payload codec은 Protobuf다. stream, channel, actor, room Spot payload는 같은
   schema와 같은 packet 이름을 사용하고, JSON이나 MessagePack으로 바꾸지 않는다.
 - client self-check는 별도 테스트 프로젝트가 아니라 샘플 client 실행 흐름 안에 둔다.
-  샘플 실행은 API 2개, Session 2개, Play 2개 server를 띄우고 client가 Session
+  샘플 실행은 API 2개, Session 2개, Play 2개 server를 시작하고 client가 Session
   stream에 접속해 `bingo=completed`와 server evidence에 해당하는 성공 결과를 만들 수 있어야
   한다.
-- runner는 서버 프로세스를 띄운 뒤 필요한 TCP endpoint가 열린 것을 확인하고 곧바로
+- runner는 서버 프로세스를 시작한 뒤 필요한 TCP endpoint가 열린 것을 확인하고 곧바로
   client self-check를 시작한다. 고정 sleep을 준비 상태 확인으로 사용하지 않는다. 별도 readiness 프로젝트나 게임 시나리오
-  안의 pub/sub 확인 message를 사용하지 않는다.
+  안의 Logical Multicast 확인 message를 사용하지 않는다.
 - 샘플 실행에는 match queue Redis가 필요하다. 애플리케이션 코드는 Redis endpoint만 설정으로
   받고, Docker container 생성이나 종료를 직접 맡지 않는다. `run_sample`은 실행마다 Docker로
   전용 Redis container를 준비하고, 샘플 종료 시 자신이 만든 container만 정리한다.
 - Redis client dependency는 match queue adapter 안에만 둔다. handler, actor, Spot, Domain
   코드가 Redis client 타입을 직접 참조하면 안 된다.
 - match queue Redis는 waiting room matching state 공유에만 사용한다. Spot owner lookup,
-  actor route, session route, Spot pub/sub peer discovery를 match queue Redis로 우회하면
+  actor route, session route, Logical Multicast peer discovery를 match queue Redis로 우회하면
   Bingo 샘플의 location store 자동 연결 목적이 흐려진다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 location
   store 기반 **spot handle resolver** 계약을 사용해야 한다. resolver가 돌려주는 값은 불투명한
@@ -466,7 +461,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   ([24 §2](../../../spec/server/24-spot-address-messaging.ko.md)). 샘플을 통과시키기
   위해 framework의 internal runtime 객체나 sample-local route helper로 remote join 경로를
   우회하면 안 된다.
-- Spot pub/sub 흐름은 각 언어 framework의 public Spot pub/sub API를 사용해야 한다.
+- Logical Multicast 흐름은 각 언어 framework의 public Logical Multicast API를 사용해야 한다.
   `BingoRoom`은 public publish API로 reward event를 발행하고, 같은 `BingoRoom` 타입이
   public subscribe 등록 API로 reward topic을 구독한다. reward event를 받기 위해
   `BingoNotificationSpot` 같은 별도 Spot 타입을 만들면 안 된다.
@@ -492,7 +487,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 - Application은 room allocation use case를 조율한다. framework callback을 직접 받거나
   transport 세부 구현을 다루지 않는다.
 - Infrastructure는 location store 자동 연결, channel, stream session, actor, Spot, timer,
-  bound session push, reward Spot pub/sub publish, codec 연결을 맡는다. handler나 Spot
+  bound session push, reward Logical Multicast publish, codec 연결을 맡는다. handler나 Spot
   adapter가 card 판정, draw order, winner 판정을 직접 구현하면 안 된다.
 
 이 기준은 샘플의 모양을 통일하려는 목적만이 아니다. 같은 시나리오를 여러 언어에서
@@ -551,9 +546,9 @@ Server/Play/
 | `Application/RoomAllocation/BingoMatchQueue` | room allocation use case가 필요로 하는 waiting room reservation 계약을 정의한다. |
 | `Application/RoomAllocation/BingoRoomAllocator` | matching 요청을 받아 match queue reservation과 room allocation 결과 생성을 조율한다. |
 | `Infrastructure/Redis/RedisBingoMatchQueue` | mode별 waiting room record와 actor reservation을 Redis에 atomic하게 저장한다. |
-| `Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward pub/sub publish/subscribe를 맡는다. |
+| `Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom` | ZLink Spot lifecycle, actor join callback, draw 진행, domain 호출, player actor push, reward Logical Multicast publish/subscribe를 맡는다. |
 | `Infrastructure/ZLink/Spots/BingoRoomSpot/BingoRoom` | observer용 local room 인스턴스에서 reward topic subscribe callback을 받고 observer actor에게 push를 전달한다. |
-| `Infrastructure/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 actor의 public method만 호출하고 stream frame을 직접 만들지 않는다. |
+| `Infrastructure/ZLink/Actors/PlayerActor` | player별 bound session push를 감싼다. room Spot은 immutable `ActorRef`로 typed actor message를 보내며 mutable actor instance나 stream frame을 직접 다루지 않는다. |
 | `Infrastructure/ZLink/Handlers/*` | channel request를 받아 application adapter로 연결한다. |
 | `Infrastructure/ZLink/Spots/EntrySpot/Handlers/*` | Entry Spot actor request를 받아 matching과 room join을 연결한다. |
 | `Infrastructure/ZLink/Spots/BingoRoomSpot/Handlers/*` | room Spot actor request와 timer/event callback을 받아 domain operation을 호출한다. |
@@ -570,7 +565,7 @@ publish가 모두 그 줄에서 순서대로 실행된다. 그래서 handler 안
 멈춘다.**
 
 `BingoRoom`의 player join/leave callback에는 **room의 공유 상태와 아무 관련 없는 대기**가 있다 —
-player의 **전적(record)은 Api 서버가 소유한다.** room은 그것을 계산하지도, 들고 있지도 않는다.
+player의 **전적(record)은 Api 서버가 소유한다.** room은 전적을 계산하거나 보관하지 않는다.
 
 | 지점 | 호출 | terminator | 왜 |
 |------|------|-----------|-----|
@@ -580,7 +575,7 @@ player의 **전적(record)은 Api 서버가 소유한다.** room은 그것을 �
 
 **card 제출·draw 진행·winner 판정은 terminator 대상이 아니다.** 그건 room이 소유한 domain
 객체의 동기 호출이라 기다릴 것이 없다. terminator는 **완료를 기다리는 framework 호출**(request,
-actor join, worker, HTTP client)에만 붙는다([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
+actor join, worker, HTTP client)에만 적용된다([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
 
 **`observer`는 전적을 조회하지 않는다.** observer actor는 `BingoRoomJoinReq.ObserveOnly = true`로
 관전 전용 local room에 join하며, player membership·card·draw·winner 판정에 참여하지 않는다(§14).
@@ -634,7 +629,7 @@ handler 목록을 다시 나열하지 않는다.
 
 언어별 표현은 `.NET` attribute, Java/Kotlin annotation, Node decorator다. **C++은 예외**로,
 runtime 스캔이 없으므로 compile-time 타입과 명시 builder 호출로 같은 handler 집합을 등록한다
-([05 §3.3](../../../spec/05-framework-api.ko.md)). 등록 방식이 달라도 handler 역할과 메시지 이름은
+([05 §8](../../../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)). 등록 방식이 달라도 handler 역할과 메시지 이름은
 같다.
 
 수동 연결 + 수동 등록을 보여 주는 것은 **TicTacToe** 하나뿐이다([샘플 규약](../README.ko.md)).
@@ -693,8 +688,8 @@ Bingo client는 아래 순서로 scenario를 실행하고 각 단계의 값을 �
    number sequence, winners, player list, center free-cell mark를 확인한다.
 10. observer client는 connector wait API로 `BingoRewardAnnouncedNotify`를 기다리고,
    `RoomId`, `ActorId`, `DrawSeq`, `ItemId`, `ItemName`, `Rarity`,
-   `ReceivingSpotNodeRid`를 확인한다.
-   `ReceivingSpotNodeRid`는 `ObserveBingoEventsRes.ObserverNodeRid`와 같고,
+   `ReceivingMeshNodeRid`를 확인한다.
+   `ReceivingMeshNodeRid`는 `ObserveBingoEventsRes.ObserverNodeRid`와 같고,
    `MatchBingoRes.RoomOwnerNodeRid`와 달라야 한다.
 11. observer client는 `StopObservingBingoEventsReq(RoomId)`를 보내 observer actor가
    observer용 local `BingoRoom`에서 나와 Entry Spot으로 돌아왔는지 확인한다. 이 흐름은
@@ -714,14 +709,14 @@ client가 위 값을 확인하지 않으면 공통 sample 기준을 만족하지
 
 | ID | 검증 | 성공 기준 |
 |----|------|-----------|
-| `BINGO-RID-1` | 역할별 group과 번호 공유 | API는 `apiN`, Session은 `sessionN`을 사용하고, 각 Play runtime의 Play channel과 room SpotNode는 같은 `playN`을 사용한다 |
-| `BINGO-RID-2` | 고정 RID 제거 | topology와 설정에 기존 `1101..1104`, `2201`, `2202`, `3301`, `3302`가 없고 builder가 `SetRoutingId(...)`·`SetEntrySpotRoutingId(...)`를 호출하지 않는다 |
+| `BINGO-RID-1` | 역할별 group과 번호 공유 | API는 `apiN`, Session은 `sessionN`을 사용하고, 각 Play runtime의 Play channel과 room MeshNode는 같은 `playN`을 사용한다 |
+| `BINGO-RID-2` | 역할별 자동 RID 사용 | topology와 설정이 할당된 `apiN`·`playN`·`sessionN`만 사용하고 builder가 고정 RID 설정을 호출하지 않는다 |
 | `BINGO-RID-3` | 시작 순서 독립 | 각 역할의 process 시작 순서를 바꿔도 `sessionN`의 actor는 `playN`에 생성되고 두 actor의 node RID가 다르며 기존 remote join 검증이 통과한다 |
-| `BINGO-RID-4` | match queue 정합성 | `OwnerPlayNodeRid`, room owner 응답과 실제 room SpotNode RID가 동일한 할당 RID다 |
+| `BINGO-RID-4` | match queue 정합성 | `OwnerPlayNodeRid`, room owner 응답과 실제 room MeshNode RID가 동일한 할당 RID다 |
 | `BINGO-RID-5` | slot handoff | replacement는 기존 owner 종료 전 `WaitingForSlot`이고, release 또는 lease 만료 뒤 빈 slot과 증가한 generation을 받는다 |
 
 기존 client 검증의 `ActorNodeRid`, `RoomOwnerNodeRid`, `ObserverNodeRid` 비교는 그대로 유지한다. 단순히
-`play1`, `play2` 문자열이 출력됐다는 로그만으로 remote join과 pub/sub 검증을 대체하지 않는다.
+`play1`, `play2` 문자열이 출력됐다는 로그만으로 remote join과 Logical Multicast 검증을 대체하지 않는다.
 
 ## 11. 메시지 계약
 
@@ -928,11 +923,11 @@ BingoRewardAnnouncedNotify {
   ItemId: string
   ItemName: string
   Rarity: string
-  ReceivingSpotNodeRid: string
+  ReceivingMeshNodeRid: string
 }
 ```
 
-Spot pub/sub으로 전달하는 event:
+Logical Multicast으로 전달하는 event:
 
 ```text
 BingoRewardAcquiredEvent {
@@ -1007,7 +1002,7 @@ Session 서버는 자기 역할에 대응하는 preferred Play node rid를 `Ensu
 
 **이 preferred node rid는 샘플이 정의한 application payload 필드이지 framework 표면이 아니다.**
 framework에는 remote node를 직접 지정하는 actor 생성 API가 없다
-([22 §4](../../../spec/server/22-actor-model.ko.md), [31 §10.2](../../../spec/server/31-session-actor-dispatch.ko.md)) —
+([22 §6](../../../spec/server/22-actor-model.ko.md), [31 §10](../../../spec/server/31-session-actor-dispatch.ko.md)) —
 배치 결정은 framework runtime이 owner lease·capability·`Draining` 마커로 수행한다. 샘플은 그 위에서
 **application 수준 요청 라우팅**으로 선호 노드를 표현한다: 요청을 그 노드로 보내고, 그 노드가
 자기 local actor runtime에 actor를 만든다. 샘플을 통과시키려고 framework에 노드 지정 생성
@@ -1103,15 +1098,16 @@ room Spot owner 위치 조회와 remote `JoinSpot` route는 match queue Redis가
 location store 기반 resolver가 처리해야 한다.
 
 `BingoGameStartedNotify` 전달 책임은 join 상태에 따라 나눈다. owner `BingoRoom`은 이미
-room 안에 있던 player에게 room event로 start notify를 보낸다. 방금 remote `JoinSpot`으로
+room 안에 있던 player에게 typed actor message로 start notify를 보낸다. 방금 remote `JoinSpot`으로
 이동한 actor는 대상 room의 `OnJoinedActorAsync`가 호출된 시점에 join lifecycle을 완료한
-상태이므로, 이 callback에서 actor의 public bound session API로 start notify를 보낸다.
-source entry handler는 `JoinSpot`이 끝난 뒤 이전 actor 객체를 다시 사용하지 않는다. remote
-join으로 actor의 실행 위치가 달라질 수 있기 때문이다. 이 분리는 runner의 endpoint 준비 상태
-확인과 별개의 책임 경계이며, 각 언어 샘플도 같은 구조를 따라야 한다.
+상태이므로, 이 callback이 받은 immutable membership snapshot의 `ActorRef`로 같은 typed actor message를
+보낸다. `PlayerActor`는 자기 Actor turn에서 public bound session API를 호출한다. room Spot과 source entry
+handler는 mutable actor instance를 보관하거나 join 완료 뒤 다시 사용하지 않는다. remote join으로 actor의
+실행 위치가 달라질 수 있기 때문이다. 이 분리는 runner의 endpoint 준비 상태 확인과 별개의 책임 경계이며,
+각 언어 샘플도 같은 구조를 따라야 한다.
 
 observer용 `BingoRoom`은 같은 Spot 타입이지만 게임 참가 room이 아니다. routing id는
-관찰 대상 `RoomId`와 현재 Play SpotNode rid에서 만든 local observer room id를 사용한다.
+관찰 대상 `RoomId`와 현재 Play MeshNode rid에서 만든 local observer room id를 사용한다.
 예를 들어 `observe:{RoomId}:{LocalNodeRid}`처럼 owner game room의 routing id와 충돌하지
 않아야 한다. 이 Spot은 `BingoRoomJoinReq.ObserveOnly = true`로 join한 observer actor만 보관하고,
 `PlayerJoinedNotify`, card 제출, draw timer, winner 판정에는 참여하지 않는다. 따라서
@@ -1173,8 +1169,8 @@ card가 어떻게 mark되는지, 승자가 누구인지는 서버 timer가 보�
 
 `BingoRewardAcquiredEvent`는 game state를 바꾸는 경로가 아니다. 승자 판정과 player push는
 owner `BingoRoom`이 먼저 결정한다. owner room은 두 player에게 `BingoGameEndedNotify`를
-보낸 뒤, 승자에게 지급된 희귀 보상 정보를 reward event로 Spot pub/sub에 publish한다.
-Spot pub/sub은 이미 결정된 보상 이벤트를 다른 Play 서버의 observer용 local `BingoRoom`에
+보낸 뒤, 승자에게 지급된 희귀 보상 정보를 reward event로 Logical Multicast에 publish한다.
+Logical Multicast은 이미 결정된 보상 이벤트를 다른 Play 서버의 observer용 local `BingoRoom`에
 알리고, observer client push를 검증하기 위해 사용한다.
 observer용 `BingoRoom`은 event를 받으면 자기 observer actor에게
 `BingoRewardAnnouncedNotify`를 보내고, observer actor는 자기 bound session으로 client에
@@ -1268,10 +1264,10 @@ evidence를 남겨야 한다.
 - Session 2개, API 2개, Play 2개가 별도 실행 모드 또는 별도 프로세스로 구분되어 있다.
 - Session, API, Play 서버는 공유 location store로 서로를 자동 발견한다.
 - Redis match queue를 사용해 두 Play 서버가 waiting room state를 공유한다.
-- match queue Redis는 matching state 공유에만 사용하고, Spot owner lookup과 pub/sub peer
+- match queue Redis는 matching state 공유에만 사용하고, Spot owner lookup과 Logical Multicast peer
   discovery를 대신하지 않는다.
 - 두 player client와 observer client가 서로 다른 actor로 인증된다.
-- player-1 actor와 player-2 actor는 서로 다른 Play SpotNode에 생성된다.
+- player-1 actor와 player-2 actor는 서로 다른 Play MeshNode에 생성된다.
 - Session 서버가 인증된 stream session을 Play 서버 actor에 bind한다.
 - 첫 `MatchBingoReq`는 room을 만들고 waiting state를 반환한다.
 - observer client는 `ObserveBingoEventsReq(RoomId)`를 보내 owner가 아닌 Play 서버의
@@ -1287,13 +1283,13 @@ evidence를 남겨야 한다.
 - `BingoNumberDrawnNotify`와 `BingoGameEndedNotify`가 bound session을 통해 두 player
   client에 전달된다.
 - owner `BingoRoom`은 승자에게 지급된 희귀 보상 정보를 담은 `BingoRewardAcquiredEvent`를
-  Spot pub/sub topic으로 publish한다.
+  Logical Multicast topic으로 publish한다.
 - owner가 아닌 Play 서버의 `BingoRoom`은 `BingoRewardAcquiredEvent`를 수신하고 observer client에
   `BingoRewardAnnouncedNotify`를 push한다.
 - reward event 수신을 위해 `BingoNotificationSpot` 같은 별도 Spot 타입을 만들지 않는다.
 - `BingoRewardAnnouncedNotify.ItemId`, `ItemName`, `Rarity`는 owner가 publish한 보상 정보와
   같아야 한다.
-- `BingoRewardAnnouncedNotify.ReceivingSpotNodeRid`는
+- `BingoRewardAnnouncedNotify.ReceivingMeshNodeRid`는
   `ObserveBingoEventsRes.ObserverNodeRid`와 같고 `MatchBingoRes.RoomOwnerNodeRid`와 달라야 한다.
 - observer client는 `StopObservingBingoEventsReq`를 보내 observer actor가 observer용
   local `BingoRoom`에서 leave되고 Entry Spot으로 돌아온 것을 확인한다.
@@ -1360,7 +1356,7 @@ listener.Start(); // runner는 "zlink metric" 로그에서 실제 값을 확인
 Prometheus나 OpenTelemetry exporter가 필요한 애플리케이션은 같은 `ZLinkMeters.Framework` meter를
 자기 metrics pipeline에 추가한다. exporter 선택과 metrics HTTP endpoint는 앱의 운영 정책이다.
 관찰 포인트: `zlink.stream.connections.active`(=CCU, `Session`),
-`zlink.spot.queue.depth`(`kind=user`, `Play`), player가 다른 `Play`로 옮겨질 때 `zlink.actor.transfers`.
+`zlink.spot.queue.depth`(`spot_kind=user`, `Play`), player가 다른 `Play`로 옮겨질 때 `zlink.actor.transfers`.
 
 ### 17.3 Graceful Drain
 
@@ -1368,8 +1364,9 @@ Prometheus나 OpenTelemetry exporter가 필요한 애플리케이션은 같은 `
 
 ```csharp
 // Play 노드 (.NET) — 짧은 매치룸은 자연 종료 정책
-options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
-    .UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural)
+options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
+    // MeshNode의 Node·Spot·Actor·transfer 종료 순서를 자연 종료 정책으로 묶는다.
+    .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)
     .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
     .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType);
 ```
@@ -1382,10 +1379,11 @@ options.AddSpotMesh(SampleNames.RoomSpotDiscovery)
 
 ### 17.4 언어별 표면
 
-같은 세 기능의 언어별 정식 표면은 각 언어 monitoring 문서를 본다:
-[.NET](../../../spec/server/languages/dotnet/01-system-structure.ko.md) §10~12 ·
-[Java](../../../spec/server/languages/java/01-system-structure.ko.md) §8~10 ·
-[Node](../../../spec/server/languages/node/01-system-structure.ko.md) §10~12 ·
-[C++](../../../spec/server/languages/cpp/02-framework-interfaces.ko.md) §8~10 ·
-[Kotlin](../../../spec/server/languages/kotlin/02-handler-interfaces.ko.md) §8. 배포 조건에서의 e2e 검증은
+같은 세 기능의 언어별 정식 표면은 각 언어 exact interface 문서를 본다:
+[.NET RouteMesh](../../../spec/server/languages/dotnet/05-route-mesh.ko.md) ·
+[Java system](../../../spec/server/languages/java/01-system-structure.ko.md) ·
+[Java handler](../../../spec/server/languages/java/02-handler-interfaces.ko.md) ·
+[Node](../../../spec/server/languages/node/02-handler-interfaces.ko.md) ·
+[C++](../../../spec/server/languages/cpp/02-framework-interfaces.ko.md) ·
+[Kotlin](../../../spec/server/languages/kotlin/02-handler-interfaces.ko.md). 배포 조건에서의 e2e 검증은
 [Config 11 — 관측·운영 배포](../../e2e/config-11-observability-ops.ko.md)가 다룬다.

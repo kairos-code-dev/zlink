@@ -101,7 +101,8 @@ public sealed class ZLinkLocationStoreException : Exception
 public sealed record ZLinkMeshNodeDescriptor(
     string MeshName,
     RoutingId Rid,
-    ulong Generation,
+    ulong LifecycleGeneration,
+    ulong DescriptorRevision,
     string Endpoint,
     IReadOnlyDictionary<string, int> ChannelWeights,
     bool Draining,
@@ -316,6 +317,9 @@ public interface IZLinkActorTransferStore
         CancellationToken cancellationToken = default);
 }
 ```
+
+`Guid TransferId`는 Redis 경계에서 UUID 128-bit의 소문자 `8-4-4-4-12` 문자열로 변환한다. 읽을 때도 이
+형식만 받아 같은 `Guid` 값으로 복원하며 다른 문자열 표현을 store record로 허용하지 않는다.
 
 Prepare는 현재 Actor owner·generation·membership epoch와 active transfer 부재를 하나의 원자 operation에서
 확인한다. Commit은 Actor location을 target owner와 정확히 다음 membership epoch로 바꾸고 record를

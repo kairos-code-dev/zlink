@@ -3,7 +3,7 @@
 이 config는 공통 E2E Config 1과 `.NET` `RegistryMessaging` 구현을 기준으로 Java framework의
 location store 기반 messaging 흐름을 검증한다.
 
-Java 실행은 provider, workflow, consumer, client를 별도 Gradle application과 별도 process로 띄운다.
+Java 실행은 provider, workflow, consumer, client를 별도 Gradle application과 별도 process로 시작한다.
 각 scenario는 Redis location store extension을 공유하고 실행마다 key prefix를 분리한다.
 client는 framework를 직접 호출하지 않고, `.NET` 기준처럼 역할 server의 HTTP endpoint를 호출한다.
 Consumer role은 location store 자동 연결, direct, single-provider, backpressure 모드로 나뉘어

@@ -13,11 +13,11 @@
   "csharp_fixture_sha256": {
     "framework/doc/framework/spec/server/languages/dotnet/01-system-structure.ko.md": {
       "block_count": 2,
-      "sha256": "7967800e20bad23ad8b0587c3c5fa11e0e523a1ebf943dbf7dcd4696b6a91a42"
+      "sha256": "bae9568693603292573820b15213165fed7e88dd10011b72906c6b8b0463e321"
     },
     "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md": {
-      "block_count": 13,
-      "sha256": "65613007d676e918f8d539a86f8838ea1e1994e96275ef69bc96f9a961f2a517"
+      "block_count": 15,
+      "sha256": "40987bcda83da85066f25ed4065f69305b1501149e1f405e2b8e9a4677a05a83"
     },
     "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md": {
       "block_count": 2,
@@ -25,11 +25,11 @@
     },
     "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md": {
       "block_count": 8,
-      "sha256": "084e0f92c3228761e3071de91686be3896fca1e91c2737235f0f042bc14d13cf"
+      "sha256": "c826faa394991da1decf4aa2588e0367fa599f62957ea30cb3cc6aa34a82d3ff"
     },
     "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md": {
       "block_count": 9,
-      "sha256": "a3aa258e5e845ef024c17c128f5f9442e79b759ac85491ef86978066f18c94d3"
+      "sha256": "c47f23de176576662d0baab67d27dd548302262071156c69f42f9d2fa8223efd"
     }
   },
   "allowed_declaration_counts": {
@@ -69,6 +69,7 @@
     "IZLinkEntrySpotOptions",
     "IZLinkFanoutChannelBuilder",
     "IZLinkFanoutHandler",
+    "IZLinkDispatchOptions",
     "IZLinkFrameworkOptions",
     "IZLinkHandlerContext",
     "IZLinkHandlerFilter",
@@ -82,7 +83,9 @@
     "IZLinkMeshNodeSocketConfig",
     "IZLinkMeshPeerConnections",
     "IZLinkMessageCodec",
+    "IZLinkMessageFlowObserver",
     "IZLinkMessageFlowRuntime",
+    "IZLinkMonitoringOptions",
     "IZLinkMetadataCall",
     "IZLinkMetadataPolicyBuilder",
     "IZLinkOwnerLeaseStore",
@@ -95,6 +98,7 @@
     "IZLinkRouteRequestHandler",
     "IZLinkRouteSendHandler",
     "IZLinkRoutingIdSlotAllocationStore",
+    "IZLinkRuntimeErrorSink",
     "IZLinkSendCall",
     "IZLinkSendHandler",
     "IZLinkSession",
@@ -109,6 +113,7 @@
     "IZLinkSpot",
     "IZLinkSpotActorLifecycle",
     "IZLinkSpotClient",
+    "IZLinkSpotCommonContext",
     "IZLinkSpotContext",
     "IZLinkSpotHandlerRegistry",
     "IZLinkSpotLocationStore",
@@ -122,6 +127,8 @@
     "IZLinkSpotTimerHandler",
     "IZLinkStreamNodeBuilder",
     "IZLinkTimer",
+    "IZLinkWorkerCall",
+    "IZLinkWorkerOptions",
     "Rejected",
     "SpotHandle",
     "ZLinkActorJoinRequest",
@@ -141,6 +148,7 @@
     "ZLinkErrorKind",
     "ZLinkException",
     "ZLinkHandlerFilterNext",
+    "ZLinkHandlerGroupAttribute",
     "ZLinkHandlerInvocation",
     "ZLinkLocationChangeScopeKind",
     "ZLinkLocationChangeStampScope",
@@ -157,6 +165,7 @@
     "ZLinkMeshClaimSnapshot",
     "ZLinkMeshDrainResult",
     "ZLinkMeshDrainSnapshot",
+    "ZLinkMeshNodeDrainPolicy",
     "ZLinkMeshNodeDescriptor",
     "ZLinkMeshNodeDescriptorKey",
     "ZLinkMeshNodeSnapshot",
@@ -171,10 +180,16 @@
     "ZLinkOwnerLease",
     "ZLinkOwnerLeaseRenewal",
     "ZLinkOwnerLeaseSnapshot",
+    "ZLinkPacketAttribute",
+    "ZLinkPublishAttribute",
     "ZLinkPublishResult",
     "ZLinkRedisLocationOptions",
     "ZLinkRedisLocationStore",
+    "ZLinkRequestAttribute",
     "ZLinkRequestContext",
+    "ZLinkRequestFailureException",
+    "ZLinkRequestFailureReason",
+    "ZLinkRuntimeErrorEvent",
     "ZLinkRouteRequestContext",
     "ZLinkRouteSendContext",
     "ZLinkRoutingIdSlotAcquireRequest",
@@ -187,13 +202,16 @@
     "ZLinkRoutingIdSlotGroupExhausted",
     "ZLinkRoutingIdSlotIdentityModeConflict",
     "ZLinkRoutingIdSlotReleaseResult",
+    "ZLinkSendAttribute",
     "ZLinkSendContext",
     "ZLinkSessionDispatchContext",
     "ZLinkSpotActorJoinResult",
     "ZLinkSpotCreateResponse",
+    "ZLinkSpotInfo",
     "ZLinkSpotKind",
     "ZLinkSpotLocation",
     "ZLinkSpotLocationKey",
+    "ZLinkSocketEventKind",
     "ZLinkStreamDiagnostic",
     "ZLinkStreamError",
     "ZLinkStreamSessionError",
@@ -221,7 +239,9 @@
     "SendToSpot",
     "RequestToSpot",
     "CreateAsync",
+    "GetOrCreateAsync",
     "ResolveAsync",
+    "ListAsync",
     "DestroyAsync",
     "SendToActor",
     "RequestToActor",
@@ -257,7 +277,11 @@
     "DrainAsync",
     "AwaitDrainedAsync",
     "Metadata",
-    "UseFilter"
+    "UseFilter",
+    "UseDrainPolicy",
+    "ConfigureDispatch",
+    "SetMessageFlowObserver",
+    "SetRuntimeErrorSink"
   ],
   "forbidden_surface": [
     "AddClientServerChannel",

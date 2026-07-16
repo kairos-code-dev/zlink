@@ -30,7 +30,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\run_sample.ps1
   자동 연결한다. quest event stream, read model, gameplay fact도 같은 실행의 Redis에 저장한다.
   session binding은 framework actor/session lifecycle이 location store를 통해 관리하며, 샘플이
   별도 binding schema를 만들지 않는다.
-- shell/PowerShell runner는 실행마다 전용 Redis Docker 컨테이너를 직접 띄운다. 외부 Redis endpoint
+- shell/PowerShell runner는 실행마다 전용 Redis Docker 컨테이너를 직접 시작한다. 외부 Redis endpoint
   재사용 mode는 제공하지 않는다. container 이름, host port, Redis key prefix, log directory는
   sample 이름과 실행 id를 포함해 매 실행마다 달라지며 역할별 임시 config 파일에 기록한다.
 - `Server/Configuration/`은 역할별 endpoint, channel, packet 설정을 모은다.

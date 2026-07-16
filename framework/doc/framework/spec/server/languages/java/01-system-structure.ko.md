@@ -10,7 +10,7 @@
 > DI, lifecycle, 그리고 각 기능(channel · SPOT · STREAM · monitoring · registry)의 **등록 표면**이다.
 >
 > **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../11-channel-messaging.ko.md),
-> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-mesh-node.ko.md),
+> [spot-messaging](../../20-spot-messaging.ko.md), [MeshNode](../../21-mesh-node.ko.md),
 > [stream-session](../../30-stream-session.ko.md), [actor-model](../../22-actor-model.ko.md),
 > [session-actor-dispatch](../../31-session-actor-dispatch.ko.md),
 > [runtime-monitoring](../../50-runtime-monitoring.ko.md),
@@ -45,7 +45,7 @@
 - **host adapter(starter)와 core를 나눈다.** core는 Spring Boot에 의존하지 않는다.
 - **Kotlin 표면은 별도 모듈이다.** core는 Kotlin에 의존하지 않는다.
 
-## 2. 배포 계획
+## 2. 배포 계약
 
 | 모듈 | 배포 채널 | 소비자 |
 |---|---|---|
@@ -58,21 +58,16 @@
 **Java/Kotlin connector의 대상은 JVM 애플리케이션 하나뿐이다.** 게임 엔진과 브라우저는 담당하지
 않으므로 엔진별 갈래가 없다([stream-connector 공통 스펙 §2](../../../stream-connector/32-stream-connector.ko.md)).
 
-**미결정:** connector의 Maven 좌표 확정.
-
 ## Channel
 
-### 계약 기준
+### Channel 계약 기준
 
-SPOT route를 받는 channel은 local `ROUTER` receive loop 안에서 core
-`SpotRouteBridge` handoff를 함께 사용한다. 일반 channel packet은 기존 channel
-dispatcher가 처리하고, SPOT relay packet만 bridge가 소비한다. outbound `DEALER`나
-route mesh `ROUTER` socket은 channel runtime 소유이며, `SpotNode`에 직접 attach하지
-않는다.
+Node direct, ChannelName, Spot과 Actor 메시지는 같은 MeshNode `ROUTER`를 사용한다.
+ChannelName은 논리 membership과 handler namespace이며 별도 socket을 만들지 않는다.
 
-### 1. 목표
+### 1. 지원 기능
 
-`Spring Boot` 애플리케이션 안에서 아래 경험을 제공하는 것이 목표다.
+`Spring Boot` 애플리케이션에서 다음 기능을 제공한다.
 
 - channel 이름 기준 direct call
 - bean으로 주입되는 공용 outbound client
@@ -92,21 +87,18 @@ public class ZLinkConfig implements ZLinkFrameworkConfigurer {
     public void configure(ZLinkFrameworkOptions framework) {
         framework.addHandlersFromPackageOf(ZLinkConfig.class);
 
-        framework.addClientServerChannel("api")
-            .enableServer("tcp://0.0.0.0:7100")
-            .addHandlerGroup("api");
-
-        framework.addClientServerChannel("profile")
-            .enableClient();
-
-        framework.addClientServerChannel("account")
-            .enableClient();
+        ZLinkMeshNodeBuilder mesh = framework.addRouteMesh("application")
+            .listen("tcp://0.0.0.0:7100")
+            .setRoutingId(RoutingId.from("app-1"));
+        mesh.channelName("api").addHandlerGroup("api");
+        mesh.channelName("profile");
+        mesh.channelName("account");
 
         framework.addFanoutChannel("profile-events")
             .enablePublisher("tcp://0.0.0.0:7200")
             .enableSubscriber();
 
-        framework.useInMemoryLocationStores();
+        framework.addLocationStore(redisLocationStore());
     }
 }
 ```
@@ -114,8 +106,9 @@ public class ZLinkConfig implements ZLinkFrameworkConfigurer {
 수동 연결은 아래처럼 둔다.
 
 ```java
-framework.addClientServerChannel("profile")
-    .enableClient("tcp://10.0.10.15:7101");
+framework.addRouteMesh("application")
+    .peerConnections()
+    .connect("tcp://10.0.10.15:7101");
 ```
 
 앱 전체에서는 역할별로 방식을 나눠 쓸 수 있다.
@@ -169,7 +162,7 @@ public final class UserHandlers {
 
 등록된 request handler 가 없거나 request payload decode, handler 실행 중 예외, invalid request frame 이
 발생하면 server runtime 은 error reply 를 반환한다. 같은 사건은 Error 로그, counter,
-`outcome=ERROR` 메시지 흐름 이벤트로도 남긴다.
+`event_id=zlink.dispatch_error`, `outcome=failed`, `action=reply_error` 메시지 흐름 이벤트로도 남긴다.
 
 send 또는 publish 에서 handler 를 찾지 못하면 reply 를 만들지 않고 drop 한다. send 는 Warning 로그와
 counter, publish 는 Debug 로그 또는 counter 와 message-flow event 를 남긴다. observer 가 없더라도
@@ -185,80 +178,78 @@ local handler 없이 client만 쓰는 앱도 가능해야 한다.
 public class OutboundOnlyConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        framework.addClientServerChannel("profile")
-            .enableClient();
-        framework.useInMemoryLocationStores();
+        ZLinkMeshNodeBuilder mesh = framework.addRouteMesh("application")
+            .listen("tcp://0.0.0.0:7100")
+            .setRoutingId(RoutingId.from("client-1"));
+        mesh.channelName("profile");
+        framework.addLocationStore(redisLocationStore());
     }
 }
 ```
 
-이 경우 local `ROUTER(server)`는 열지 않고 outbound `DEALER(client)`만 만든다.
+이 경우에도 MeshNode는 하나의 ROUTER endpoint와 RID를 가진다. Local handler 등록은 생략할 수 있다.
 
 ### 6. Route mesh
 
-Java framework도 `.NET`과 같이 channel을 세 종류로 나눈다.
+Java framework는 RouteMesh membership과 classic fanout을 구분한다.
 
 | Builder | 용도 |
 |---------|------|
-| `addClientServerChannel(...)` | 일반 server/client request-send |
+| `addRouteMesh(...).channelName(...)` | ChannelName select-one request/send |
 | `addFanoutChannel(...)` | pub/sub fanout |
-| `addRouteMeshChannel(...)` | target node `RoutingId` 또는 spot handle을 대상으로 하는 routed channel |
+| `addRouteMesh(...)`의 node client | target node `RoutingId` direct request/send |
 
 route mesh는 session actor relay를 대체하지 않는다. application이 특정 node로
 route send/request를 보내야 할 때 쓴다. 같은 runtime 안의 local managed actor
 binding은 framework 내부 dispatch를 사용하고, remote actor binding은 stream node의
 
 ```java
-RouteMeshChannelBuilder route = framework.addRouteMeshChannel("play-route")
-    .enableClient();
-route.setRoutingId(RoutingId.from("play-node"));
+ZLinkMeshNodeBuilder mesh = framework.addRouteMesh("play")
+    .listen("tcp://0.0.0.0:7100")
+    .setRoutingId(RoutingId.from("play-node"));
+mesh.channelName("play-api");
+mesh.peerConnections().connect(
+    RoutingId.from("play-peer"),
+    "tcp://10.0.10.15:7100");
 ```
 
-route mesh는 server 역할과 client 역할을 따로 선언한다. 들어오는 route handler나
-SPOT route ingress를 받아야 하는 runtime은 `enableServer(endpoint)`로 local ROUTER
-endpoint를 연다. 다른 node로만 request/send를 보내는 runtime은 bind endpoint 없이
-`enableClient()`를 선언하고 Discovery로 peer를 찾거나, `enableClient(endpoint)`로
-수동 peer에 연결한다.
+MeshNode는 `listen(endpoint)`로 local ROUTER endpoint를 열고 같은 socket으로 inbound와
+outbound traffic을 처리한다. 자동 peer는 Redis descriptor로 찾고 수동 peer는
+`peerConnections()`에 endpoint 또는 expected RID와 endpoint를 등록한다.
 
-Location store 기반 Spot remote ref 기본 구현을 쓰려면 route mesh channel이 필요하다.
-spot mesh 이름과 route mesh channel 이름이 다르면 `configureLocations()`에서
-spot router channel 매핑을 명시해야 한다.
+분산 Spot·Actor 주소를 사용하면 owner MeshName과 함께 Redis location store를 등록한다.
 
 ## SPOT
 
-### 계약 기준
+### SPOT 계약 기준
 
-외부 route channel에서 특정 Spot으로 들어오는 send/request는 framework가 core
-`SpotRouteBridge`를 내부에서 사용해 자동으로 연결한다. Java framework runtime은
-`bindings/java`의 public `createRouteBridge()` / `SpotRouteBridge` 표면으로
-같은 프로세스의 RouteMesh channel socket을 bridge에 연결한다. channel socket은
-channel runtime이 계속 소유하며, bridge는 SPOT relay packet만 분류한다. local
-`SpotNode` topic plane으로 외부 publish가 필요하면 raw `PUB` attach가 아니라 public
-publisher handle을 사용한다.
+Spot direct와 Logical Multicast는 owner MeshNode ROUTER를 사용한다. Logical Multicast는
+remote MeshNode마다 한 번 route하고 수신 MeshNode가 node-local subscription만 검사한다.
+classic fanout 이외에는 PUB/SUB socket을 만들지 않는다.
 
 > 이 문서는 [SPOT 메시징 공통 스펙](../../20-spot-messaging.ko.md)의 **투영**이다. SPOT의 개념
 > 위치, outbound 세 축, publish·subscribe 모델, dispatch 실패 정책, route ingress 규칙,
 > startup validation은 공통 스펙이 소유한다. 이 문서는 **언어 표면**만 고정한다.
 
-### 1. 방향
+### 1. SPOT 방향
 
 `SPOT`은 별도 raw runtime으로 노출하기보다, `Spring Boot` bean lifecycle 안에서
 등록하고 관리하는 편을 기본으로 본다.
 
 - root location store 등록과 역할별 discovery 활성화
-- spot node 설정 등록과, 그에 따른 `ZLinkSpotManager`/`ZLinkSpotOutbound` 등 capability bean 조건부 노출
-- current channel publish/subscribe와 route bridge channel socket 경로
-- local spot 인스턴스가 없는 외부 노드용 publisher client 경로
+- MeshNode 설정 등록과, 그에 따른 `ZLinkSpotManager`/`ZLinkSpotOutbound` 등 capability bean 조건부 노출
+- ChannelName 기준 Logical Multicast와 Node·Channel client 경로
+- local Spot 인스턴스가 없는 node의 publisher client 경로
 - Entry Spot과 user Spot factory
-- 같은 프로세스의 RouteMesh channel과 SpotNode 자동 연결
+- 같은 MeshNode의 Node·Channel·Spot·Actor route 공유
 - 필요할 때만 spot-to-spot routed 호출 허용
 
-현재 공통 정책 기준으로는 아래를 같이 지켜야 한다.
+공통 정책 기준으로 아래를 함께 지킨다.
 
-- `SpotNode`는 channel 이름을 직접 소유하지 않고, attach된 discovery view가 active
+- MeshNode는 하나 이상의 immutable ChannelName membership을 소유하고 active
   channel 범위를 정한다.
-- 역할은 `router`, `pub/sub`, route bridge channel socket, attach된 spot
-  publisher client로 나눠서 설명한다.
+- MeshNode ROUTER가 Node·Channel·Spot·Actor traffic을 함께 처리하고 Logical Multicast
+  publisher client도 같은 MeshName context를 사용한다.
 - spot factory는 Spot type 기준으로 등록하고, 같은 Spot type 재등록은 덮어쓰지 않고
   예외로 본다.
 - spot 생성은 Spot type 기준으로 설명하고, 운영 코드는 `spotRid`로 생성된 Spot을
@@ -277,10 +268,11 @@ publisher handle을 사용한다.
 public class SpotConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        framework.useInMemoryLocationStores();
-        ZLinkSpotNodeBuilder node = framework.addSpotMesh("game.stage");
-        node.enableRouter("tcp://0.0.0.0:9000");
-        node.enablePubSub("tcp://0.0.0.0:9001");
+        framework.addLocationStore(redisLocationStore());
+        ZLinkMeshNodeBuilder node = framework.addRouteMesh("game")
+            .listen("tcp://0.0.0.0:9000")
+            .setRoutingId(RoutingId.from("game-1"));
+        node.channelName("game.stage");
         node.configureEntrySpot()
             .setRoutingId(RoutingId.from("play.entry"));
         node.addEntrySpot(GameEntrySpot.class);
@@ -294,13 +286,13 @@ public class SpotConfig implements ZLinkFrameworkConfigurer {
 - `ZLinkSpotManager`
 - `ZLinkEntrySpot`
 - `ZLinkSpotActor*Handler`
-- current channel publish/subscribe
-- route bridge channel socket을 통한 다른 channel send/request
-- local spot 인스턴스가 없는 외부 노드용 `ZLinkSpotPublisherClient`
+- ChannelName과 topic을 받는 Logical Multicast
+- MeshNode client를 통한 Node direct와 ChannelName send/request
+- local Spot 인스턴스가 없는 node의 `ZLinkSpotPublisherClient`
 - 필요할 때만 `spot-to-spot` routed send/request
 
-즉 high-level `SPOT` 표면은 `rid` 직접 지정보다 current channel publish와
-cross-channel client를 먼저 설명하는 편이 맞다. 다만 실제 운영 코드가 Spot type으로
+즉 high-level `SPOT` 표면은 `rid` 직접 지정보다 ChannelName publish와
+channel client를 먼저 설명한다. 실제 운영 코드가 Spot type으로
 생성하고 `spotRid`로 다시 조회해야 하므로, `ZLinkSpotManager`도 public surface에
 함께 둬야 한다.
 
@@ -319,7 +311,7 @@ context.outbound()
 
 ### 5. Entry Spot과 user Spot
 
-actor를 지원하려면 SpotNode에는 Entry Spot과 user Spot factory가 함께 있어야 한다.
+actor를 지원하려면 MeshNode에는 Entry Spot과 user Spot factory가 함께 있어야 한다.
 Entry Spot은 actor 생성 직후의 기본 위치이며, 인증이나 target user Spot 선택 같은
 입구 로직을 맡는다. user Spot은 room, stage, zone 같은 도메인 상태를 보관한다.
 
@@ -353,11 +345,12 @@ local actor call 처럼 reply frame 이 없는 경로는 `CompletionStage` 를 f
 
 SPOT route send, subscription, actor send 는 reply 를 만들 수 없으므로 실패한 메시지를 drop 한다.
 route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 로그 또는 counter 와
-`outcome=ERROR` 메시지 흐름 이벤트를 남긴다. observer 실패는 dispatch loop 나 shutdown 을 깨지 않는다.
+`event_id=zlink.dispatch_error`, `outcome=failed`, `action=drop` 메시지 흐름 이벤트를 남긴다.
+observer 실패는 dispatch loop 나 shutdown 을 깨지 않는다.
 
 ## STREAM
 
-### 1. 방향
+### 1. STREAM 방향
 
 `STREAM`은 일반 request handler와 다른 전용 session 모델로 설명한다. 정식 계약은
 공통 stream header를 사용하는 session 하나다.
@@ -371,7 +364,7 @@ route send 와 actor send 는 Warning 로그와 counter, subscription 은 Debug 
 
 recv loop를 application 표면에 직접 노출하지 않는 편을 기본으로 본다.
 
-### 2. 등록
+### 2. STREAM 등록
 
 ```java
 @Configuration
@@ -379,9 +372,11 @@ public class StreamConfig {
     @Bean
     ZLinkFrameworkConfigurer streamOptions() {
         return options -> {
-            options.useInMemoryLocationStores();
-            ZLinkSpotNodeBuilder node = options.addSpotMesh("game.stage");
-            node.enableRouter("tcp://0.0.0.0:9001");
+            options.addLocationStore(redisLocationStore());
+            ZLinkMeshNodeBuilder node = options.addRouteMesh("game")
+                .listen("tcp://0.0.0.0:9001")
+                .setRoutingId(RoutingId.from("game-1"));
+            node.channelName("game.stage");
             node.addEntrySpot(GameEntrySpot.class);
             node.addSpotFactory(GameRoomSpot.class);
 
@@ -455,7 +450,7 @@ public final class GameStreamSession implements ZLinkSession {
     public void onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
-        actors.getOrCreate("player-42", "player")
+        actors.getOrCreate("game", "player-42", "player")
             .thenCompose(actor -> context.actors().bind(actor))
             .thenCompose(bound -> bound.relay(payload))
             .toCompletableFuture()
@@ -478,7 +473,7 @@ context.client()
 local managed actor instance를 bind해서 같은 runtime 안에서 actor로 relay하는 경우
 stream node는 session relay 없이 동작한다. session gateway처럼 remote
 `ActorRef`를 bind하거나 actor 위치를 core SessionRelay가 해석해야 하는 경우에는
-같은 프로세스의 router-capable SpotNode가 session relay 입구가 되며, 별도 attach 없이
+같은 process의 owner MeshNode가 session relay 입구가 되며, 별도 attach 없이
 framework가 자동으로 연결한다.
 
 ```java
@@ -487,36 +482,20 @@ stream.bind("tcp://0.0.0.0:7201");
 stream.registerSession(GameStreamSession.class);
 ```
 
-이 설정은 session relay용 route mesh channel을 만든다는 뜻이 아니다. application
-Spot route egress가 필요하면 별도 route channel을 등록한다. local managed actor
-binding은 framework 내부 dispatch를 사용하고, remote actor binding은 SessionRelay
-경로로 보낸다.
+`EnableActorDispatch(meshName)`에 대응하는 설정은 session relay가 사용할 기존 MeshName을
+명시한다. 별도 transport나 논리 channel을 만들지 않는다. Local managed actor binding은
+framework 내부 dispatch를 사용하고, remote actor binding은 같은 MeshNode route를 사용한다.
 
 ### 5. Client Connector
 
-client 측 STREAM connector는 Spring server session과 별도 모듈이다. Java 포팅은
-`.NET`의 `Systems.Zlink.Stream.Connector` 역할을 아래 표면으로 제공한다.
-
-```java
-// transport(TCP/TLS/WS/WSS)는 endpoint URI scheme(`ws://`/`wss://`/`tls://`/`tcp://`)으로 선택된다.
-ZLinkStreamConnector connector = ZLinkStreamConnectorFactory.create(
-    ZLinkStreamConnectorOptions.createDefault(URI.create("ws://127.0.0.1:7201")));
-
-connector.on("MatchFound", (message) -> {
-    return CompletableFuture.completedFuture(null);
-});
-
-connector.connect().submit()
-    .thenCompose(ignored -> connector.send(encodedPayload).submit());
-```
-
-connector는 heartbeat, reconnect, manual dispatch, request timeout, compression,
-packet name resolver를 option으로 받는다. Kotlin 표면은 이 Java connector 위에
-`suspend`와 `Flow` extension을 얹는다.
+Client 측 STREAM connector는 Spring server session과 별도 모듈이다. Java와 Kotlin의 정확한
+client connector 선언, lifecycle과 coroutine·`Flow` 투영은
+[Stream Connector 계약](../../../stream-connector/languages/java/03-stream-connector.ko.md)이 소유한다.
+이 server package 계약에서는 client connector 타입을 재선언하지 않는다.
 
 ## Actor session
 
-### 1. 방향
+### 1. Actor session 방향
 
 Actor는 stateful application object다. 일반 handler처럼 메시지마다 새 객체로
 처리하지 않고, actor id로 식별되는 같은 인스턴스가 여러 메시지를 받는다.
@@ -532,7 +511,7 @@ session binding은 client relay 경로일 뿐이다. actor가 실제로 어느 S
 Entry Spot/user Spot 위치 축이 결정한다. session close가 actor를 자동으로 user Spot
 밖으로 이동시키지 않는다.
 
-### 2. 등록
+### 2. Actor session 등록
 
 ```java
 @Configuration
@@ -540,9 +519,11 @@ Entry Spot/user Spot 위치 축이 결정한다. session close가 actor를 자�
 public class ActorConfig implements ZLinkFrameworkConfigurer {
     @Override
     public void configure(ZLinkFrameworkOptions framework) {
-        framework.useInMemoryLocationStores();
-        ZLinkSpotNodeBuilder node = framework.addSpotMesh("game.stage");
-        node.enableRouter("tcp://0.0.0.0:9001");
+        framework.addLocationStore(redisLocationStore());
+        ZLinkMeshNodeBuilder node = framework.addRouteMesh("game")
+            .listen("tcp://0.0.0.0:9001")
+            .setRoutingId(RoutingId.from("game-1"));
+        node.channelName("game.stage");
         node.addEntrySpot(GameEntrySpot.class);
         node.addSpotFactory(GameRoomSpot.class);
         node.addActorFactory("player", PlayerActorFactory.class);
@@ -557,8 +538,8 @@ public class ActorConfig implements ZLinkFrameworkConfigurer {
 local managed actor instance를 `bind(ZLinkActor)`로 bind하는 경우 stream node는
 `.NET` direct stream과 같이 session relay 없이 actor packet을 framework 내부
 dispatch 경로로 전달한다. remote `ActorRef`를 bind하거나 별도 session gateway
-stream node가 해당 SpotNode의 SessionRelay에 연결되어야 한다. Java framework는 이
-의미를 route mesh channel packet으로 대신 구현하지 않는다.
+stream node가 해당 MeshNode의 session relay에 연결되어야 한다. Java framework는 이
+의미를 별도 channel transport로 대신 구현하지 않는다.
 
 ### 3. Actor 계약
 
@@ -577,14 +558,19 @@ public interface ZLinkActorFactory {
 }
 
 public interface ZLinkActorManager {
-    CompletionStage<ActorRef> create(String actorId, String actorType);
+    CompletionStage<ActorRef> create(String meshName, String actorId, String actorType);
     CompletionStage<ActorRef> create(
+        String meshName,
         String actorId,
         String actorType,
         ZLinkMessage createRequest);
-    CompletionStage<Optional<ActorRef>> find(String actorId);
-    CompletionStage<ActorRef> getOrCreate(String actorId, String actorType);
+    CompletionStage<Optional<ActorRef>> find(String meshName, String actorId);
     CompletionStage<ActorRef> getOrCreate(
+        String meshName,
+        String actorId,
+        String actorType);
+    CompletionStage<ActorRef> getOrCreate(
+        String meshName,
         String actorId,
         String actorType,
         ZLinkMessage createRequest);
@@ -594,8 +580,8 @@ public interface ZLinkActorManager {
 `actorType`은 application이 정하는 짧은 문자열 키다. 같은 actor id를 다른
 actorType으로 다시 쓰면 설정 또는 런타임 오류로 실패해야 한다.
 manager 는 actor 객체를 직접 반환하지 않고 `ActorRef`를 반환한다. Spot 밖
-public handler는 이 ref로 actor join/admission을 직접 수행하지 않는다. actor 초기
-상태는 create request와 Entry Spot의 create callback에서 설정한다.
+public handler는 이 ref로 actor join/admission을 직접 수행하지 않는다. Actor 초기 상태는 create request와
+Actor factory에서 설정하고, Entry Spot의 control callback에는 immutable membership snapshot만 전달한다.
 
 ### 4. Session Binding
 
@@ -637,46 +623,13 @@ application session은 이 context의 `actors()`로 actor binding을 만들고, 
 client reply 또는 push를 보낸다. sample 안에서 별도 session context나 bound session
 stand-in을 만들어 이 경로를 대체하지 않는다.
 
-```java
-public interface ZLinkActorContext {
-    Optional<RoutingId> spotRid();
-    ZLinkBoundSession boundSession();
-
-    ZLinkActorJoinCall joinSpot(RoutingId spotRid, Object request);
-    ZLinkActorJoinCall joinEntrySpot(RoutingId spotNodeRid, Object request);
-}
-
-public interface ZLinkActorJoinCall {
-    ZLinkActorJoinCall timeout(Duration timeout);
-    CompletionStage<ZLinkActorJoinResult<Void>> submit();
-    <TReply> CompletionStage<ZLinkActorJoinResult<TReply>> submit(
-        Class<TReply> replyType);
-}
-
-public sealed interface ZLinkActorJoinResult<TReply>
-    permits ZLinkActorJoinResult.Accepted, ZLinkActorJoinResult.Rejected {
-    TReply reply();
-
-    record Accepted<TReply>(ActorRef actor, TReply reply)
-        implements ZLinkActorJoinResult<TReply> {
-    }
-
-    record Rejected<TReply>(TReply reply)
-        implements ZLinkActorJoinResult<TReply> {
-    }
-}
-
-public interface ZLinkBoundSession {
-    <TMessage> ZLinkBoundSessionSendCall send(TMessage message);
-    CompletionStage<Void> disconnect();
-}
-```
-
-`submit(...)`은 `CompletionStage`를 반환하는 유일한 완료 terminator다. framework는
+`ZLinkActorContext`, `ZLinkActorJoinCall`, `ZLinkActorJoinResult`와 `ZLinkBoundSession`의 정확한
+선언은 [Java interface catalog §3](02-handler-interfaces.ko.md#3-handler)가 단독으로 소유한다.
+Join call은 `submit(...)`과 `yield(...)`를 제공한다. Framework는
 보호 중인 actor/Spot 상태의 직렬성을 유지하면서 join에 필요한 독립 실행을 진행한다.
 
 `joinSpot(...)`은 actor가 Entry Spot 이후 실제 user Spot으로 들어가는 요청이다. 호출은
-`CompletionStage`로 완료되며 framework는 backend `SpotNode.joinActor(...)` 결과를
+`CompletionStage`로 완료되며 framework는 MeshNode actor join 결과를
 받은 뒤 actor context의 `spotRid()` 상태를 갱신한다. nullable Spot 식별자가 join
 상태의 단일 기준이다. Kotlin에서는 같은
 Java `CompletionStage`를 `suspend` wrapper로 감싸서 사용한다.
@@ -691,7 +644,8 @@ request에 대한 응답은 actor request handler의 반환값과 원래 request
 actor context의 bound session을 비운다. 이 호출은 server가 session을 닫는 의미이므로
 Spot actor disconnected callback을 대신 실행하지 않는다.
 
-actor가 join한 Spot 상태가 필요하면 Spot handler가 받은 `spot` 인자를 사용한다.
+actor가 참여한 Spot 상태가 필요하면 Actor context의 membership snapshot을 확인한다. Spot 소유 상태를
+바꿔야 하면 `SpotHandle`을 대상으로 명시적인 send/request를 제출한다.
 
 session actor의 `notifyDisconnected()`는 backend actor binding을 해제한 뒤,
 그 binding이 actor context의 현재 bound session과 일치할 때만 disconnected lifecycle을
@@ -703,29 +657,24 @@ relay API에 그대로 넘긴다.
 
 ### 6. Handler
 
-Entry Spot actor handler와 user Spot actor handler는 분리한다. Entry Spot은 인증,
-초기 actor 생성, target Spot 선택 같은 입구 로직을 맡고, user Spot은 실제 room,
-stage, zone 안의 domain packet을 처리한다.
+Actor payload handler는 Actor queue에서 실행하며 mutable Actor 하나만 소유한다. Entry Spot과 user Spot은
+membership control callback을 제공하지만 Actor payload handler에 mutable Spot instance를 전달하지 않는다.
 
 ```java
 public interface ZLinkEntrySpotActorRequestHandler<
-    TEntrySpot extends ZLinkEntrySpot,
     TActor extends ZLinkActor,
     TRequest,
     TReply> {
     CompletionStage<TReply> handle(
-        TEntrySpot entrySpot,
         TActor actor,
         ZLinkSpotActorRequestContext context,
         TRequest request);
 }
 
 public interface ZLinkSpotActorSendHandler<
-    TSpot extends ZLinkSpot,
     TActor extends ZLinkActor,
     TMessage> {
     CompletionStage<Void> handle(
-        TSpot spot,
         TActor actor,
         ZLinkSpotActorSendContext context,
         TMessage message);
@@ -735,23 +684,22 @@ public interface ZLinkSpotActorSendHandler<
 ### 7. Runtime 규칙
 
 - actor 생성은 `ZLinkActorManager`를 통해 명시적으로 수행한다.
-- actor packet handler는 actor class가 아니라 Entry Spot 또는 user Spot registry에
-  등록한다.
+- actor packet handler는 Actor context의 registry에 등록한다.
 - session callback에서 받은 payload는 framework `ZLinkMessage`다. session은 이 값을
   decode 하거나 relay API에 그대로 넘긴다.
 - client close는 session binding cleanup만 수행한다. actor disconnect callback이
   필요하면 application이 `notifyDisconnected()`를 호출한다.
 - remote actor로 relay할 때 Java framework는 backend stream의 bound actor send를
   사용한다.
-- route mesh channel은 application Spot route egress용이다. session actor relay
-  설정으로 해석하지 않는다.
+- Node direct, ChannelName과 Spot route는 같은 MeshNode ROUTER를 사용한다. Session actor relay는
+  명시한 MeshName을 사용하며 별도 연결망을 만들지 않는다.
 
 ### 8. Kotlin 사용 표면
 
-Kotlin은 Java contract 위에 coroutine extension을 얹는다.
+Kotlin은 Java contract에 coroutine extension을 추가한다.
 
 ```kotlin
-val actor = actorManager.getOrCreate("player-42", "player").await()
+val actor = actorManager.getOrCreate("game", "player-42", "player").await()
 session.context.actors.bind(actor).await()
 
 actor.context.boundSession.send(PlayerJoined(...)).submit()
@@ -762,7 +710,7 @@ Kotlin DSL은 등록 코드를 짧게 만들 뿐이고, actor lifecycle 의미�
 
 ## Monitoring
 
-### 1. 방향
+### 1. Monitoring 방향
 
 운영 이벤트는 일반 request/send handler와 다르다. 이 문서는 아래를 기본으로 본다.
 
@@ -803,7 +751,7 @@ configurer가 없으면 monitoring runner를 만들지 않는다.
 | Source | 등록 메서드 | source name 기준 |
 |--------|-------------|------------------|
 | socket | `addSocketEvents(...)` | channel 역할 logical name |
-| spot | `addSpotEvents(...)` | SpotNode name |
+| mesh | `addMeshNodeEvents(...)` | MeshName |
 
 socket과 spot source 이름은 startup 시점에 실제 runtime source와 대조한다. 이름이
 맞지 않으면 startup validation 오류다. registry source 이름은 embedded registry에서
@@ -875,7 +823,7 @@ runtime을 멈춘다. 일시적인 registry query 실패나 spot snapshot 실패
 
 ### 6. 검증 기준
 
-- socket/SpotNode monitoring source 이름이 runtime source name과 맞지 않으면
+- socket/MeshNode monitoring source 이름이 runtime source name과 맞지 않으면
   startup validation 오류다. registry source는 embedded registry 존재 여부로 매핑되어
   event label로 쓰인다.
 - registry/spot polling interval이 `0` 이하이면 startup validation 오류다.
@@ -894,10 +842,11 @@ Java 표면만 적는다. dispatch 제어가 아니라 관측이며, observer �
 
 | 공통 개념 | Java 타입 / 멤버 |
 |-----------|------------------|
-| 로그 모드 | `ZLinkMessageFlowLogMode` { `OFF`, `ERRORS_ONLY`(기본), `KEY_TRANSITIONS`, `VERBOSE`, `DIAGNOSTIC` } |
-| outcome | `ZLinkMessageFlowOutcome` { `RECEIVED`, `DISPATCHED`, `REPLIED`, `DROPPED`, `SENT`, `REPLY_RECEIVED`, `ERROR` } |
-| event | `ZLinkMessageFlowEvent`(record): `outcome()`, `surface()`, `messageKind()`, `packetName()`, `channelName()`, `topic()`, `correlationId()`, `sourceRid()`, `spotRid()`, `actorId()`, `messageSize()`, `errorReason()`, `errorAction()`, `exception()` |
+| 로그 모드 | `ZLinkMessageFlowLogMode` { `OFF`, `ERRORS_ONLY`(기본), `KEY_TRANSITIONS`, `VERBOSE` } |
+| outcome | `ZLinkMessageFlowEvent.outcome()`의 닫힌 문자열 `succeeded`, `failed`, `backpressured`, `dropped`, `cancelled`, `shutdown` |
+| flow·dispatch event | `ZLinkMessageFlowEvent` — 공통 §4 field를 같은 이름으로 투영. dispatch error는 `outcome=failed`와 `reason`·`action`을 함께 제공 |
 | observer | `ZLinkMessageFlowObserver.onMessageFlow(ZLinkMessageFlowEvent)` → `CompletionStage<Void>` |
+| runtime error sink | `ZLinkRuntimeErrorSink.onRuntimeError(ZLinkRuntimeErrorEvent)` → `CompletionStage<Void>` |
 | 진단 옵션(read-only) | `configureDispatch().diagnostics()` → `ZLinkDiagnosticsOptions` { `messageFlow()`, `effectiveMessageFlow()`, `sampleRate()`, `includeMessageSizes()`, `logFile()`, `label()` } |
 | 런타임 토글 | `ZLinkMessageFlowControl.setMessageFlowMode(...)` / `messageFlowMode()` (Spring `ZLinkFrameworkLifecycle` 빈이 구현·위임) |
 
@@ -924,7 +873,9 @@ ZLinkFrameworkConfigurer dispatchTracing() {
   없으면 표준 에러스트림 폴백. 출력은 key=value 구조화(JUL/파일) + `label=`로 콜렉터 ingest 가능.
 - observer는 `setMessageFlowObserver(MyObserver.class)` 또는 인스턴스/람다로 등록한다(단일 메서드
   인터페이스라 람다 호환). 콜렉터/OTel 어댑터는 앱 레이어 책임이다(공통 스펙 §6).
-- `OFF`일 때는 이벤트를 생성조차 하지 않아(호출부 가드 + lazy) 운영 성능에 영향이 없다.
+- runtime error sink는 `setRuntimeErrorSink(MySink.class)` 또는 인스턴스/람다로 등록한다.
+  Observer 실패는 `observer_failed`/`message_flow_observer` event로 sink에 전달되며 exception object는 노출하지 않는다.
+- `OFF`는 기본 로그 출력만 끄며 명시적으로 등록한 observer·runtime error sink event를 끄지 않는다.
 
 #### 7.3 런타임 토글
 
@@ -934,13 +885,6 @@ ZLinkFrameworkConfigurer dispatchTracing() {
 ```java
 flowControl.setMessageFlowMode(ZLinkMessageFlowLogMode.KEY_TRANSITIONS);  // off→on
 ```
-
-#### 7.4 샘플
-
-Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
-`traceLogFile(.../flow-<role>.log)` + `traceLabel(role)`로 분리 파일 로깅을 시연한다
-(`BINGO_LOG_DIR` override). Kotlin은 같은 Java 런타임을 공유하며 `configureDispatch { }` DSL과
-`onMessageFlow { }` 람다 옵저버(에르고노믹스)를 추가로 제공한다.
 
 ### 8. 런타임 메트릭 (runtime metrics)
 
@@ -977,7 +921,7 @@ Java/Kotlin Bingo 3노드는 각자 `messageFlow(KEY_TRANSITIONS)` +
 | 공통 개념 | Java |
 |-----------|------|
 | 생성 gate | 기존 message-flow mode가 `OFF`가 아니면 create-if-absent 자동 생성 |
-| event 필드(추가) | `String ZLinkMessageFlowEvent.flowId()`, `ZLinkFlowOrigin flowOrigin()` — 오류 이벤트에도 동일 |
+| event 필드(추가) | `Optional<String> ZLinkMessageFlowEvent.flowId()`, `Optional<String> flowOrigin()` — 둘은 함께 있거나 함께 없음 |
 
 ```java
 ZLinkFrameworkConfigurer dispatchTracing() {
@@ -992,7 +936,7 @@ ZLinkFrameworkConfigurer dispatchTracing() {
 ### 10. Graceful Drain & Handoff
 
 공통 의미는 [공통 스펙 — Graceful Drain & Handoff](../../54-graceful-drain-handoff.ko.md)가 소유한다.
-lifecycle 제어 표면(관측 아님)의 Java 투영이다.
+이 절은 drain 등록, 명시적 제어와 상태 관측의 Java 사용법을 설명한다.
 
 > **설계 원칙(복잡도 하향): 공통 케이스는 무설정.** framework가 Spring `SmartLifecycle`로 graceful
 > shutdown에 자동 참여해 drain한다. 앱은 코드를 쓰지 않는다.
@@ -1001,57 +945,42 @@ lifecycle 제어 표면(관측 아님)의 Java 투영이다.
 
 ```java
 public enum ZLinkFlowOrigin { INBOUND, TIMER, APPLICATION, LIFECYCLE }
-public enum ZLinkSpotDrainPolicy { DRAIN_NATURAL, RELEASE_AND_RECREATE }
+public enum ZLinkMeshNodeDrainPolicy { DRAIN_NATURAL, RELEASE_AND_RECREATE }
 public enum ZLinkDrainForceReason {
     DEADLINE_EXCEEDED, DRAINING_STATE_PUBLISH_FAILED, OWNER_CLEANUP_FAILED, TEARDOWN_FAILED
 }
-public sealed interface ZLinkDrainResult permits Drained, ForceStopped {}
-public record Drained() implements ZLinkDrainResult {}
-public record ForceStopped(ZLinkDrainForceReason reason) implements ZLinkDrainResult {}
-public interface ZLinkDrainControl {
-    CompletionStage<ZLinkDrainResult> drain();
-    CompletionStage<ZLinkDrainResult> drain(Duration deadline);
-    CompletionStage<ZLinkDrainResult> awaitDrained();
-    boolean isReady();
-}
 ```
+
+MeshName별 drain 제어와 terminal result의 정확한 interface는
+[Java handler interface §4.2](02-handler-interfaces.ko.md#42-runtime-monitoring)의
+`ZLinkRouteMeshRuntime`과 `ZLinkMeshDrainResult`가 소유한다.
 
 | 공통 개념 | Java |
 |-----------|------|
 | 자동 drain(기본) | framework `SmartLifecycle` 빈이 shutdown에서 drain — 앱 코드 0 |
-| SPOT drain 정책 | spot mesh 등록의 `useDrainPolicy(ZLinkSpotDrainPolicy.{DRAIN_NATURAL(기본)/RELEASE_AND_RECREATE})` |
-| terminal result | sealed `ZLinkDrainResult` permits `Drained`, `ForceStopped(ZLinkDrainForceReason reason)`; reason은 `DEADLINE_EXCEEDED`, `DRAINING_STATE_PUBLISH_FAILED`, `OWNER_CLEANUP_FAILED`, `TEARDOWN_FAILED` |
-| 명시 제어(선택) | `ZLinkDrainControl` { `drain(Duration deadline)`/`drain()`(30초)/`awaitDrained()` → `CompletionStage<ZLinkDrainResult>`, `boolean isReady()` } (빈) |
-| readiness probe | starter가 `ZLinkDrainReadinessContributor`를 자동 등록해 Actuator readiness group에 반영(무설정). 또는 `ZLinkDrainControl.isReady()` 직접 조회 |
-| 상태 관측 | 기존 `ZLinkRuntimeEventHandler<ZLinkDrainEvent>` 재사용. `ZLinkDrainEvent.state()` { `SERVING`/`DRAINING`/`DRAINED`/`FORCE_STOPPING` }, `sourceName()` = 고정값 `"drain"` |
+| MeshNode drain 정책 | MeshNode 등록의 `useDrainPolicy(ZLinkMeshNodeDrainPolicy.{DRAIN_NATURAL(기본)/RELEASE_AND_RECREATE})` |
+| terminal result | sealed `ZLinkMeshDrainResult` permits `ZLinkMeshDrained`, `ZLinkMeshForceStopped(ZLinkDrainForceReason reason)`; reason은 `DEADLINE_EXCEEDED`, `DRAINING_STATE_PUBLISH_FAILED`, `OWNER_CLEANUP_FAILED`, `TEARDOWN_FAILED` |
+| 명시 제어(선택) | `ZLinkRouteMeshRuntime.drain(meshName, deadline)`과 `awaitDrained(meshName)`이 같은 `CompletionStage<ZLinkMeshDrainResult>`를 반환한다. deadline을 생략한 자동 drain은 30초를 사용한다. |
+| readiness probe | starter가 `ZLinkDrainReadinessContributor`를 자동 등록해 Actuator readiness group에 반영(무설정). 또는 `ZLinkRouteMeshRuntime.isReady(meshName)`을 직접 조회한다. |
+| 상태 관측 | `ZLinkRouteMeshRuntime.observe(meshName, capacity)`가 `zlink.runtime.mesh_node.drain_changed` identifier와 `ZLinkMeshNodeState`를 가진 `ZLinkMeshRuntimeEvent`를 게시한다. |
 
 ```java
-options.addSpotMesh("orders")
-    .useDrainPolicy(ZLinkSpotDrainPolicy.RELEASE_AND_RECREATE);
+options.addRouteMesh("orders-mesh")
+    .channelName("orders")
+    .useDrainPolicy(ZLinkMeshNodeDrainPolicy.RELEASE_AND_RECREATE);
 ```
 
-- 비동기 반환에 `Async` 접미사를 쓰지 않는 이 코드베이스 관례(`transferOut`, `onMessageFlow`)에 맞춰
-  `drain`으로 둔다.
-- drain 상태 관측은 monitoring의 `ZLinkRuntimeEventHandler<T>`를 그대로 쓴다(같은 개념 → 같은
-  메커니즘). **drain 이벤트는 source 등록이 필요 없다** — 저빈도 lifecycle 이벤트라 handler 빈 존재만으로
-  monitoring configurer 유무와 무관하게 수신한다(공통 §9, 조용한 무관측 없음). Kotlin은
-  `drainControl.drain(deadline).await()`와 `onDrain { }` 람다를 제공한다(§8).
-
-## Registry
-
-> **제거된 기능이다.** core의 Discovery/Registry 표면이 사라지면서 `ZLinkEmbeddedRegistryOptions`와
-> `systems.zlink.framework.registry` 패키지도 제거됐다. **공개 계약이 아니다.**
->
-> 위치 해석은 [location runtime](../../40-location-runtime.ko.md)과 location store extension을
-> 사용한다. contract test가 sample에서 Registry 역할 사용을 금지한다
-> (`SampleReleaseGateContractTest`: "Java Bingo roles must use the Redis location store extension
-> instead of a Registry role").
+- 비동기 반환에 `Async` 접미사를 쓰지 않는 이 코드베이스 관례에 맞춰 `drain`으로 둔다.
+- Spring `SmartLifecycle`은 shutdown에서 등록된 MeshNode를 각각 drain한다. 애플리케이션이 특정
+  MeshName의 drain을 시작하거나 기다릴 때만 `ZLinkRouteMeshRuntime`을 사용한다.
+- drain 상태 관측은 별도 source나 event handler를 등록하지 않고 mesh별 `observe(...)` publisher를
+  사용한다. Kotlin도 같은 runtime과 result를 사용하고 `CompletionStage.await()`로 기다린다(§8).
 
 ## Stage wrapper
 
 ### 1. 기본 생각
 
-playhouse `Stage` 같은 상위 객체는 `SPOT` 자체를 대체하는 것이 아니라, `SPOT` 위에 얹는
+playhouse `Stage` 같은 상위 객체는 `SPOT` 자체를 대체하는 것이 아니라, `SPOT`을 사용하는
 도메인 모델로 보는 편이 맞다. Java에서는 사용자가 만든 그 도메인 객체가
 `ZLinkSpot<TActor>` 를 구현한다(별도 framework `Stage` 타입은 없다).
 

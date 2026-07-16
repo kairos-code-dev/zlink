@@ -8,7 +8,7 @@
 - `Shared`: 기존 Java SpotService 구현의 공통 contract, spot, actor, handler, evidence, timer, stream support 타입.
 - `Server/Gateway`: HTTP scenario endpoint와 framework gateway process. Client가 요청한 scenario mode를
   public framework 경로로 실행한다.
-- `Server/Play`: play node process. spot mesh, route mesh, ingress channel, stream endpoint를 호스팅한다.
+- `Server/Play`: play MeshNode process. 하나의 ROUTER에서 ChannelName·Spot·Actor를 제공하고 STREAM endpoint는 별도 stream node가 호스팅한다.
 - `Server/MultiNode`: `.NET` 기준 source role에 맞춘 multi-node role project. 현재 Java 구현은 shared
   play configuration을 사용하고, 고급 multi-node scenario는 feature-map gap으로 남긴다.
 - `Server/Session`: `.NET` 기준 source role에 맞춘 session role project. 현재 Java 구현은 shared play

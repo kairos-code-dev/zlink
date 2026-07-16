@@ -10,7 +10,7 @@
 > 모듈 부트스트랩, DI, lifecycle, 그리고 각 기능의 **등록 표면**이다.
 >
 > **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../11-channel-messaging.ko.md),
-> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-mesh-node.ko.md),
+> [spot-messaging](../../20-spot-messaging.ko.md), [MeshNode](../../21-mesh-node.ko.md),
 > [stream-session](../../30-stream-session.ko.md), [actor-model](../../22-actor-model.ko.md),
 > [session-actor-dispatch](../../31-session-actor-dispatch.ko.md),
 > [runtime-monitoring](../../50-runtime-monitoring.ko.md),
@@ -47,7 +47,7 @@
   브라우저에서 **같은 코드**로 동작한다.
 - **host adapter(`nestjs`)와 core를 나눈다.** core는 NestJS에 의존하지 않는다.
 
-## 2. 배포 계획
+## 2. 배포 계약
 
 | package | 배포 채널 | 소비자 |
 |---|---|---|
@@ -81,9 +81,9 @@ subpath는 제공하지 않는다. 정확한 계약은
 | 객체 | 등록 | framework가 resolve하는 시점 |
 |---|---|---|
 | channel/fanout/route handler | `providers` + handler 등록 표면 | channel이 그 handler group을 dispatch할 때 |
-| Entry Spot, user Spot | `providers` + `addEntrySpot(...)` / `addSpotFactory(...)` | SpotNode·SpotManager가 spot을 활성화할 때 |
+| Entry Spot, user Spot | `providers` + `addEntrySpot(...)` / `addSpotFactory(...)` | MeshNode·SpotManager가 Spot을 활성화할 때 |
 | Spot packet·subscribe·actor·timer handler | handler decorator + `zlinkDiscoverProviders(...)` | 그 Spot 실행 문맥에서 처리할 때 |
-| actor factory | `providers` + SpotNode `actorFactory(...)` | ActorManager가 actor를 생성할 때 |
+| actor factory | `providers` + MeshNode `actorFactory(...)` | ActorManager가 actor를 생성할 때 |
 | stream session(또는 factory) | `providers` + `streams` 설정 | stream 연결을 session으로 활성화할 때 |
 
 ### 4.1 Provider token
@@ -109,9 +109,9 @@ subpath는 제공하지 않는다. 정확한 계약은
 
 | token | 필요한 역할 |
 |---|---|
-| `ZLINK_SPOT_MANAGER` · `ZLINK_SPOT_OUTBOUND` | spot mesh 등록 |
+| `ZLINK_SPOT_MANAGER` · `ZLINK_SPOT_OUTBOUND` | MeshNode의 Spot 등록 |
 | `ZLINK_SPOT_PUBLISHER_CLIENT` | spot publisher 역할 |
-| `ZLINK_ACTOR_CLIENT` | Spot node와 location store가 모두 등록됨 |
+| `ZLINK_ACTOR_CLIENT` | MeshNode와 location store가 모두 등록됨 |
 | `ZLINK_ACTOR_MANAGER` | actor manager가 활성화됨 |
 | `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` | location store가 하나 이상 등록됨 |
 | `ZLINK_LOCATION_RUNTIME_QUERY` | location store가 하나 이상 등록됨 |
@@ -149,7 +149,7 @@ provider가 모두 resolvable해야 하기 때문이다.**
 lifecycle 참여자는 **framework → monitoring** 순서다.
 
 1. backend channel adapter로 context를 생성한다.
-2. Spot node를 시작하고 route mesh router를 bind한다.
+2. MeshNode를 시작하고 RouteMesh ROUTER를 bind한다.
 3. location runtime과 자동 연결을 준비한다.
 4. channel receive loop와 stream node를 시작한다.
 5. monitoring source를 준비된 runtime에 attach한다.
@@ -176,14 +176,16 @@ dispose한 뒤 예외를 다시 던진다.** 반쯤 열린 socket이나 매달�
 backend 어댑터 포트는
 [backend-dependency-policy](../../../../node/internals/backend-dependency-policy.ko.md)가 소유한다.
 
-## 6. Channel 등록
+## 6. RouteMesh 등록
 
 `zlinkFramework()` fluent builder로 선언한다.
 
 | 역할 | 의미 | bind |
 |---|---|---|
-| `enableServer(...)` | 이 channel로 들어오는 request/send를 local handler가 받는다 | **필요** |
-| `enableClient(...)` | 이 channel 쪽으로 request/send를 내보낸다 | 불필요 |
+| `addRouteMesh(...)` | 물리 MeshName과 MeshNode를 등록한다 | **필요** |
+| `listen(...)` | MeshNode가 공유하는 ROUTER endpoint를 연다 | **필요** |
+| `channelName(...)` | 논리 membership과 handler namespace를 추가한다 | 불필요 |
+| `peerConnections()` | endpoint 또는 expected RID가 있는 manual peer intent를 추가한다 | 불필요 |
 | `enablePublisher(...)` | 이 channel로 event를 publish한다 | **필요** |
 | `enableSubscriber(...)` | 이 channel의 event를 받는다 | 불필요 |
 
@@ -191,33 +193,34 @@ backend 어댑터 포트는
 [channel-topology §5](../../10-channel-topology.ko.md)와
 [channel-messaging](../../11-channel-messaging.ko.md)이 소유한다.
 
-## 7. SPOT 등록
+## 7. Spot·Actor 등록
 
-**`addSpotMesh(channelName)` 한 번이 SPOT channel 이름과 그 channel을 소유하는 `SpotNode` 하나를
-함께 등록한다.** discovery는 등록된 location store를 사용한다.
+Spot·Actor factory는 owner MeshNode에 등록한다. Spot direct와 Logical Multicast는 Node·Channel
+메시징과 같은 ROUTER를 사용한다. Discovery는 등록된 Redis location store를 사용한다.
 
 | builder | 켜는 것 |
 |---|---|
-| `enableRouter(endpoint, routingId?)` | spot router 역할 |
-| `enablePubSub(endpoint, routingId?)` | spot pub/sub 역할 |
-| `configureEntrySpot({ routingId })` | native Entry Spot facade 설정 |
+| `addRouteMesh(meshName).listen(endpoint)` | owner MeshNode와 ROUTER endpoint |
+| `channelName(name)` | Logical Multicast 범위와 handler namespace |
+| `configureSpotPublisher()` | 기본값이 `true`인 `noDrop` 정책 |
+| `configureEntrySpot({ routingId })` | Entry Spot facade 설정 |
 | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
 | `addSpotFactory(TSpot)` | 이 노드가 만들 수 있는 spot 타입 |
-| `addClientServerChannel(...).enableClient(...)` | SPOT handler의 channel send/request가 공유하는 client |
+| MeshNode channel client | Spot handler의 ChannelName send/request가 공유하는 client |
 
-중복 등록, route bridge와 타입 규칙은
-[spot-node](../../21-mesh-node.ko.md)와 [spot-messaging](../../20-spot-messaging.ko.md)이 소유한다.
+중복 등록과 타입 규칙은
+[MeshNode](../../21-mesh-node.ko.md)와 [spot-messaging](../../20-spot-messaging.ko.md)이 소유한다.
 
 ### 7.1 Entry Spot routing id의 적용 순서
 
-**Entry Spot routing id는 native SpotNode가 bind되기 전에 적용해야 한다.** core가 bind 이후 변경을
-잠근다([spot-node §2.1](../../21-mesh-node.ko.md)).
+**Entry Spot routing id는 MeshNode가 시작되기 전에 적용해야 한다.** startup 이후 변경은
+잠근다([MeshNode §2](../../21-mesh-node.ko.md)).
 
 1. backend 어댑터가 native Entry Spot facade를 얻는다.
 2. `routingId`가 설정되어 있으면 facade에 적용한다.
-3. SpotNode를 bind한다.
-4. discovery, route channel, publisher를 붙인다.
-5. Entry Spot activation과 dispatch pump를 붙인다.
+3. MeshNode ROUTER를 bind한다.
+4. discovery, MeshNode route client와 publisher를 구성한다.
+5. Entry Spot activation과 dispatch pump를 시작한다.
 
 **native facade 호출은 backend 어댑터 내부에서만 일어난다. public surface에 바인딩 객체를 노출하지
 않는다.**
@@ -240,7 +243,7 @@ raw stream의 `write(...)`, `close(...)` 시그니처는
 
 | 표면 | 역할 |
 |---|---|
-| STREAM session relay | **router 역할을 켠 SpotNode를 relay ingress로 자동 사용한다**(별도 지정 없음) |
+| STREAM session relay | `EnableActorDispatch(meshName)`에 대응하는 MeshName을 명시한다 |
 | spot handle resolver | spot rid를 user Spot routing id로 푼다. actor가 node 경계를 넘을 수 있으면 등록한다 |
 
 ## 10. Monitoring · Location 등록
@@ -252,7 +255,7 @@ raw stream의 `write(...)`, `close(...)` 시그니처는
 |---|---|
 | socket source | 이름이 `<channel>.<capability>` 형식이고 **그 channel 역할이 등록되어 있어야 한다** |
 | location source | **polling 주기를 반드시 명시한다.** location runtime이 등록되어 있어야 한다 |
-| spot source | **등록된 `SpotNode` 이름**을 가리켜야 한다 |
+| mesh source | **등록된 MeshName**을 가리켜야 한다 |
 | location store | **물리 저장소 인스턴스 하나**를 등록 루트에서 **한 번만** 둔다. 메모리 store와 함께 등록하면 설정 오류다 |
 
 **임의 source 자동 발견은 지원하지 않는다.**

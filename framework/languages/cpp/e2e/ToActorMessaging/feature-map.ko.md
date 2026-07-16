@@ -19,9 +19,9 @@ Redis location store와 connector client를 실행하고 `to-actor-messaging e2e
 | TA-A4 unbind/disconnect 후 | implemented | connector disconnect evidence 뒤 같은 actor 호출이 성공하고, 명시적 destroy 뒤 같은 id request가 `actor_route_not_found`인지 확인한다. |
 | TA-B1 row 없음 | implemented | `TA-B1-missing*`가 request의 `actor_route_not_found`와 send 뒤 역할 서버 evidence 부재를 검증한다. |
 | TA-B2 stale location | implemented | actor-a에서 만든 ref를 저장하고 actor를 제거한 뒤 같은 id를 actor-b에서 다시 만든다. 저장한 이전 ref는 `actor_location_stale`, 다시 찾은 ref는 actor-b 성공 evidence를 남기는지 확인한다. |
-| TA-B3 route not connected | implemented | caller의 공개 `router_connections()` handle로 두 actor endpoint를 제거해 저장한 ref 요청이 `route_not_connected`인지 확인하고, 같은 endpoint를 다시 연결한 뒤 같은 ref 요청과 actor-a evidence가 성공하는지 확인한다. |
+| TA-B3 route not connected | 전환 필요 | 현재 source는 정식 C++ interface에 없는 `router_connections()`를 사용한다. `mesh.peer_connections()`의 public `disconnect(endpoint)`와 `connect(endpoint)`로 두 actor endpoint를 제거·복구하고, 저장한 ref의 `route_not_connected`, 복구 뒤 같은 ref와 actor-a evidence를 다시 검증해야 한다. |
 
 `run_e2e.sh`는 Redis를 준비한 뒤 actor owner 두 개, caller, session gateway 두 개를 시작하고 모든 health를
 기다린 다음 client runner를 실행한다. `E2E_START_ORDER=reverse`에서도 같은 순서 독립성을 검증한다.
-현재 C++ runner는 전용 Docker Redis를 직접 띄우며, 사용자 환경에서 넘긴 외부 Redis endpoint를
+현재 C++ runner는 전용 Docker Redis를 직접 시작하며, 사용자 환경에서 전달한 외부 Redis endpoint를
 공유 Redis로 재사용하지 않는다.

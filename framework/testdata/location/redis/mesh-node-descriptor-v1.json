@@ -1,0 +1,22 @@
+{
+  "notice": "All official Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/spec/server/41-location-store-redis.ko.md.",
+  "format": "mesh-node-descriptor-v1",
+  "hashFields": [
+    "owner",
+    "gen",
+    "json",
+    "updatedAtMs",
+    "mesh"
+  ],
+  "row": {
+    "kind": "mesh",
+    "key": "4:game12:67616d652d61",
+    "hash": {
+      "owner": "mesh-owner-a",
+      "gen": "5",
+      "json": "{\"MeshName\":\"game\",\"Rid\":\"67616d652d61\",\"LifecycleGeneration\":7,\"DescriptorRevision\":3,\"Endpoint\":\"tcp://10.0.0.1:7300\",\"ChannelWeights\":{\"orders\":100,\"world\":50},\"Draining\":false,\"SecurityIdentity\":\"cluster-a\",\"OwnerId\":\"mesh-owner-a\",\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\"}",
+      "updatedAtMs": "1721001600000",
+      "mesh": "game"
+    }
+  }
+}

@@ -31,10 +31,10 @@ Spot의 control claim에서 실행되며 같은 Spot의 일반 packet·timer tur
 Join은 다음 순서로 완료된다.
 
 1. source가 target Spot과 expected Actor generation을 확인한다.
-2. target `OnActorJoin`이 creation payload와 Actor context를 검증해 accept 또는 reject를 반환한다.
+2. target `OnActorJoin`이 join admission payload와 immutable Actor identity snapshot을 검증해 accept 또는 reject를 반환한다.
 3. accept이면 source `OnLeaveActor`가 현재 membership을 정리한다.
 4. location authority가 membership epoch를 증가시키는 CAS를 commit한다.
-5. target membership을 공개하고 `OnJoinedActor`를 실행한다.
+5. target membership을 공개하고 immutable membership snapshot으로 `OnJoinedActor`를 실행한다.
 6. source operation을 새 ActorRef location snapshot으로 완료한다.
 
 `OnActorJoin` reject 또는 CAS 실패에서는 target membership을 공개하지 않는다. Join reply의 성공이
@@ -48,15 +48,17 @@ Actor handler가 같은 MeshNode의 다른 user Spot으로 이동을 요청하�
 `OnJoinedActor`는 각각 해당 Spot의 control claim으로 제출하며 관찰 순서는 §3과 같다. Actor의
 infrastructure claim은 이 control operation의 completion을 Actor turn과 독립적으로 진행한다.
 
-Spot control callback은 mutable Actor object나 다른 Spot의 실행 줄을 보유하지 않는다. 서로 반대 방향인
-두 join이 동시에 시작되어도 control claim 사이의 순환 대기가 생기지 않아야 하며 local join 전체를
+Spot control callback에는 ActorRef, Actor type과 membership epoch를 담은 immutable membership snapshot을
+전달한다. callback은 mutable Actor object나 다른 Spot의 실행 흐름을 보유하지 않는다. Actor의 업무 상태를
+읽거나 바꿔야 하면 snapshot의 ActorRef로 Actor send/request를 제출해 Actor turn에서 처리한다. 서로 반대
+방향인 두 join이 동시에 시작되어도 control claim 사이의 순환 대기가 생기지 않아야 하며 local join 전체를
 MeshNode 전역 lock으로 직렬화하지 않는다.
 
 ## 5. 다른 MeshNode로 transfer
 
 다른 MeshNode의 Spot으로 이동할 때 location authority는 transfer identity, source·target participant,
-expected Actor generation과 membership epoch로 한 operation을 식별한다. Framework는 Core가 발급한 opaque
-participant token과 정확히 다음 membership epoch로 source·target fence를 적용한다. Location store는 Core
+expected Actor generation과 membership epoch로 한 operation을 식별한다. Framework는 Core가 발급한 sealed
+transfer token과 정확히 다음 membership epoch로 source·target fence를 적용한다. Location store는 Core
 token을 저장하지 않고 다음 durable 상태를 원자적으로 기록한다.
 
 | 상태 | 의미 |
@@ -96,3 +98,40 @@ Actor의 infrastructure queue에서 진행되며 Spot lifecycle callback으로 �
 - message sequence가 transfer 전후에 중복되거나 역전되지 않는다.
 - Actor payload가 Spot callback을 거치지 않고 Actor queue에서 처리된다.
 - Redis capability가 없는 location store로 분산 transfer를 시작하면 startup이 실패한다.
+
+## 9. Bound session route handoff
+
+Bound session이 있는 Actor를 다른 MeshNode로 transfer하면 session identity와 client connection은 유지한다.
+Commit 전 실패는 source binding을 유지하고 target binding을 만들지 않는다. Commit 뒤에는 target Actor가
+session relay authority를 얻은 뒤에만 application packet과 push를 처리한다. Source binding 정리는 target
+activation을 막지 않으며 같은 session의 packet 순서를 바꾸지 않는다.
+
+## 10. In-flight packet handoff
+
+### 10.1 Moving 상태의 admission
+
+Prepare가 source Actor admission을 닫은 뒤 도착한 packet은 source application handler에서 실행하지 않는다.
+Source infrastructure queue는 packet과 arrival sequence를 transfer backlog로 보존한다. Commit 전 abort하면
+backlog를 source Actor queue 앞에 되돌리고, commit하면 target에 전달한다.
+
+### 10.2 Ordering
+
+Transfer는 다음 순서를 보장한다.
+
+1. Moving 구간에 수락한 packet을 유실하거나 중복하지 않는다.
+2. Source backlog의 arrival sequence를 target에서도 유지한다.
+3. Backlog를 target Actor queue에 넣기 전에 새 owner route를 ready로 공개하지 않는다.
+4. 같은 bound session에서 transfer 전후에 보낸 packet은 session FIFO 순서를 유지한다.
+
+### 10.3 Commit과 activation
+
+Target reserve, durable location commit, backlog enqueue, target activation과 route publication 순서를 지킨다.
+Commit 뒤에는 source로 rollback하지 않는다. Target activation을 복구하고 동일 transfer ID의 backlog replay를
+idempotent하게 처리한다.
+
+### 10.4 Straggler forwarding
+
+Commit 뒤 old ActorRef로 도착한 packet은 설정된 forwarding window 안에서 target으로 한 번 전달한다.
+Forwarding entry는 Actor generation과 membership epoch를 함께 검증하며 재이동하면 최신 target으로 갱신한다.
+Window가 끝나면 entry를 제거하고 stale packet을 `ActorLocationStale`로 실패시킨다. Framework는 실패한
+packet을 저장하거나 새 location으로 자동 재전송하지 않는다.

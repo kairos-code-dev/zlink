@@ -1,0 +1,34 @@
+start_hash=f55b2bffe92f9576d5f330c62696a44c0ab277d0ff5a7421fbadf460852b9306
+end_hash=f55b2bffe92f9576d5f330c62696a44c0ab277d0ff5a7421fbadf460852b9306
+
+[1차소스][high] framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md:380 — mesh_node_socket_config_t가 선언되지 않았다.
+[1차소스][high] framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md:512 — ZLinkMeshNodeSocketConfig가 선언되지 않았다.
+[1차소스][high] framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md:381 — configure_spot_publisher()가 설정을 보존할 수 없는 값 타입을 반환한다.
+[1차소스][high] framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md:505 — Java/Kotlin에 Actor transfer forwarding window 설정이 없다.
+[1차소스][high] framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md:18 — ActorTransferTimeout이 .NET에만 있고 공통 계약과 다른 언어 투영이 없다.
+[1차소스][high] framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md:990 — handler_coroutine_workers(n)가 선언되지 않았다.
+[1차소스][high] framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md:2279 — result_t 반환과 async framework_exception_t 계약 경계가 모순된다.
+[원칙][medium] framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md:977 — public spec에 Boost.Asio executor 구현 상세가 들어 있다.
+[원칙][medium] framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md:143 — exact public 선언이 내부 frameworkCoroutineBridge에 의존한다.
+[원칙][high] framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md:1000 — server package exact 문서가 client STREAM connector 계약을 중복 소유한다.
+[원칙][high] framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md:367 — Kotlin server exact 문서가 client connector 계약을 중복 선언한다.
+[1차소스][high] framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md:14 — 정식 HTTP hosting 계약의 기준을 TicTacToe sample로 선언했다.
+[원칙][medium] framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md:595 — server HTTP hosting spec이 client package 계약과 오류 mapping을 소유한다.
+[1차소스][high] framework/doc/framework/common/sample/README.ko.md:347 — 공통 sample 문서가 .NET 구현을 복사 기준으로 지정한다.
+[1차소스][medium] framework/doc/framework/common/e2e/README.ko.md:129 — 공통 E2E 역할 분리를 .NET 구현에서 복사하도록 요구한다.
+[1차소스][high] framework/languages/cpp/samples/DeliveryDispatch/README.ko.md:4 — C++ sample 구조와 호출 순서를 .NET sample 기준으로 선언한다.
+[1차소스][high] framework/languages/cpp/samples/DeliveryDispatch/feature-map.ko.md:3 — feature map이 .NET 구현과 marker를 완료 판정 기준으로 삼는다.
+[원칙][high] framework/doc/framework/common/sample/tictactoe/implementation-prompt.ko.md:3 — 공개 sample 문서 집합에 작업자용 구현·git 프롬프트가 있다.
+[원칙][medium] framework/languages/java/samples/java/DeliveryDispatch/README.ko.md:15 — 공개 README에 S9 migration 계획이 섞였다.
+[원칙][medium] framework/doc/framework/common/e2e/README.ko.md:641 — 공통 E2E 계약에 날짜별 언어 구현 진행 상태가 있다.
+[원칙][low] framework/doc/framework/common/e2e/README.ko.md:648 — Config 1 접두사를 과거 registry messaging 구조와 대비한다.
+[원칙][medium] framework/languages/cpp/e2e/SpotService/feature-map.ko.md:10 — 날짜별 실행 이력과 절대 build 경로를 누적했다.
+[원칙][medium] framework/languages/cpp/e2e/SpotActorTransfer/feature-map.ko.md:37 — 날짜별 실행·성능 기록을 누적했다.
+[원칙][medium] framework/languages/cpp/e2e/RuntimeMonitoring/feature-map.ko.md:37 — 여러 날짜의 gate 실행 이력을 누적했다.
+[원칙][medium] framework/languages/cpp/e2e/DiscoveryRegistryHa/feature-map.ko.md:28 — 회귀·리팩터링·성능 이력을 누적했다.
+[원칙][low] framework/doc/framework/common/e2e/config-8-execution-turn.ko.md:348 — “정직하게 실패”라는 자기평가 표현을 사용한다.
+[원칙][low] framework/doc/framework/common/sample/deliverydispatch/README.ko.md:368 — 흐름 ASCII 블록 내부에 한국어를 쓰고 흐름도를 Mermaid로 표현하지 않았다.
+[원칙][low] framework/doc/framework/common/sample/event/gamequest.ko.md:435 — 계층 ASCII 다이어그램 내부에 한국어가 있다.
+[원칙][low] framework/doc/framework/common/sample/zoneworld/README.ko.md:496 — 디렉터리 ASCII 다이어그램 내부에 한국어 책임 설명이 있다.
+
+Finding이 있으므로 DOC REVIEW CLEAN이 아니다.

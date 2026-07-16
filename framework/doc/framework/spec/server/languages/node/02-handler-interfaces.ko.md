@@ -6,13 +6,14 @@
 
 ## 1. 목적과 계약 소유권
 
-이 문서는 `@zlink-systems/framework`와 `@zlink-systems/nestjs` package root가 내보내는 공개
-TypeScript declaration 전체를 고정한다. 현재 분모는 framework 268개와 NestJS 66개, 합계 334개 export다.
+이 문서는 ZLink Framework 10.0.0의 `@zlink-systems/framework`와 `@zlink-systems/nestjs`
+package root가 내보내는 공개 TypeScript declaration 전체를 고정한다.
+대상 독자는 두 server package의 API를 구현하거나 package declaration parity를 검토하는 개발자다.
+HTTP client와 Stream Connector package는 이 문서의 범위가 아니다.
 
 기능의 의미와 동작 규칙은 [공통 스펙](../../../README.ko.md)이 소유하고, 사용법과 예제는
 [Node.js guide](../../../../node/guide/01-overview.ko.md)가 소유한다. Stream Connector의 공개 계약은
-[별도 문서](../../../stream-connector/languages/typescript/03-stream-connector.ko.md)가 소유한다. 현재 구현과 목표 계약의 차이는
-[구현 차이 문서](../../../90-implementation-gap.ko.md)에만 기록한다.
+[별도 문서](../../../stream-connector/languages/typescript/03-stream-connector.ko.md)가 소유한다.
 
 아래 declaration은 배포 package와 이름 집합이 양방향으로 같아야 하며, 각 이름의 overload, generic,
 상속, member, parameter와 반환형도 같아야 한다. 공통 동작 설명, 사용 예제와 실제 테스트 이름은 이
@@ -46,6 +47,7 @@ export declare function selectDefaultSerializer(registry?: ZLinkSerializerRegist
 export declare function selectSerializer(value: unknown, registry?: ZLinkSerializerRegistryLike | ReadonlyMap<string, ZLinkMessageSerializer>, context?: ZLinkSerializerSelectionContext): ZLinkMessageSerializer | undefined;
 
 export interface SpotHandle {
+    readonly meshName: string;
     readonly spotRid: RoutingId;
     readonly [spotHandleBrand]: never;
 }
@@ -67,20 +69,23 @@ export interface ZLinkActor {
 }
 
 export interface ZLinkActorClient {
-    sendToActor(actor: ActorRef, message: unknown): ZLinkActorSendCall;
-    requestToActor(actor: ActorRef, request: unknown): ZLinkActorRequestCall;
+    sendToActor(meshName: string, actor: ActorRef, message: unknown): ZLinkActorSendCall;
+    requestToActor(meshName: string, actor: ActorRef, request: unknown): ZLinkActorRequestCall;
 }
 
 export interface ZLinkActorContext {
+    readonly meshName: string;
     readonly spotRid?: RoutingId;
+    readonly handlers: ZLinkActorHandlerRegistry;
     readonly boundSession: ZLinkBoundSession;
     joinSpot(spotRid: RoutingId, request: unknown): ZLinkActorJoinSpotCall;
     joinEntrySpot(nodeRid: RoutingId, request: unknown): ZLinkActorJoinEntrySpotCall;
+    leaveSpot(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkActorDirectory {
-    find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
-    ensure(actorId: string, createRequest: unknown, placement?: ZLinkActorPlacement, signal?: AbortSignal): Promise<ActorRef>;
+    find(meshName: string, actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
+    ensure(meshName: string, actorId: string, createRequest: unknown, placement?: ZLinkActorPlacement, signal?: AbortSignal): Promise<ActorRef>;
 }
 
 export interface ZLinkActorFactory {
@@ -89,7 +94,6 @@ export interface ZLinkActorFactory {
 
 export interface ZLinkActorHandlerRegistry {
     addHandler<THandler>(handlerType: Type<THandler>): this;
-    addActorPacket<THandler, TActor extends ZLinkActor>(handlerType: Type<THandler>, actorType: Type<TActor>): this;
 }
 
 export interface ZLinkActorJoinCall<TSelf> {
@@ -117,19 +121,6 @@ export interface ZLinkActorJoinSpotCall extends ZLinkActorJoinCall<ZLinkActorJoi
 ### 2.3 @zlink-systems/framework: ZLinkActorLocation - ZLinkActorSpotHandleResolver
 
 ```ts
-export interface ZLinkActorLocation {
-    readonly actorId: string;
-    readonly actorType?: string;
-    readonly actorRef?: ActorRef;
-    readonly nodeRid: RoutingId;
-    readonly locationKind: ZLinkSpotKind;
-    readonly spotMeshName: string;
-    readonly spotRid?: RoutingId;
-    readonly ownerId: string;
-    readonly generation: bigint;
-    readonly updatedAt: Date;
-}
-
 export interface ZLinkActorLocationFilter {
     readonly actorType?: string;
     readonly nodeRid?: RoutingId;
@@ -137,24 +128,12 @@ export interface ZLinkActorLocationFilter {
     readonly locationKind?: ZLinkSpotKind;
 }
 
-export interface ZLinkActorLocationKey {
-
-    readonly actorId: string;
-}
-
-export interface ZLinkActorLocationStore {
-    updateActor(actor: ZLinkActorLocation, intent: ZLinkLocationWriteIntent, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    removeActor(key: ZLinkActorLocationKey, owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    resolveActor(key: ZLinkActorLocationKey, signal?: AbortSignal): Promise<ZLinkActorLocation | undefined>;
-    listActors(filter: ZLinkActorLocationFilter, page?: ZLinkPageRequest, signal?: AbortSignal): Promise<ZLinkLocationPage<ZLinkActorLocation>>;
-}
-
 export interface ZLinkActorManager {
-    create(actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
-    create(actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
-    find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
-    getOrCreate(actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
-    getOrCreate(actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
+    create(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
+    create(meshName: string, actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
+    find(meshName: string, actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
+    getOrCreate(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
+    getOrCreate(meshName: string, actorId: string, actorType: string, createRequest: unknown, signal?: AbortSignal): Promise<ActorRef>;
 }
 
 export interface ZLinkActorPlacement {
@@ -181,11 +160,12 @@ export interface ZLinkActorRequestCall {
 
 export interface ZLinkActorSendCall {
     metadata(key: string, value: string): this;
-    submit(): void;
+    trySubmit(): ZLinkSubmitResult;
+    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
 }
 
 export interface ZLinkActorSpotHandleResolver {
-    resolveActorSpotHandle(actorId: string, signal?: AbortSignal): Promise<SpotHandle | undefined>;
+    resolveActorSpotHandle(meshName: string, actorId: string, signal?: AbortSignal): Promise<SpotHandle | undefined>;
 }
 ```
 
@@ -194,7 +174,7 @@ export interface ZLinkActorSpotHandleResolver {
 ```ts
 export interface ZLinkActorTransferAdapter<TActor extends ZLinkActor> {
     transferOut(actor: TActor): Promise<ZLinkMessage>;
-    transferIn(actorId: string, state: ZLinkMessage): Promise<TActor>;
+    transferIn(actorId: string, context: ZLinkActorContext, state: ZLinkMessage): Promise<TActor>;
 }
 
 export interface ZLinkAutoConnectDesiredSetChange {
@@ -215,34 +195,60 @@ export interface ZLinkBoundSessionSendCall {
 }
 
 export interface ZLinkChannelClient {
-    sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-    requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+    sendToChannel(meshName: string, channelName: string, message: unknown): ZLinkSendCall;
+    requestToChannel(meshName: string, channelName: string, request: unknown): ZLinkRequestCall;
 }
 
-export interface ZLinkChannelRuntimeOptions {
-    clientServerChannel(channelName: string): ZLinkClientServerChannelRuntimeOptions;
-    routeMeshChannel(channelName: string): ZLinkRouteMeshChannelRuntimeOptions;
+export interface ZLinkMeshPeerConnection {
+    readonly endpoint: string;
+    readonly expectedRoutingId?: RoutingId;
 }
 
-export interface ZLinkClientServerChannelBuilder {
-    enableServer(endpoint: string): this;
-    routingId(routingId: string): this;
+export interface ZLinkMeshPeerConnections {
+    connect(endpoint: string): void;
+    connect(expectedRoutingId: RoutingId, endpoint: string): void;
+    disconnect(endpoint: string): void;
+    listConnections(): readonly ZLinkMeshPeerConnection[];
+}
+
+export interface ZLinkMeshChannelBuilder {
+    setWeight(weight: number): this;
+    addSendHandler<TMessage>(handlerType: Type<ZLinkSendHandler<TMessage>>): this;
+    addRequestHandler<TRequest, TReply>(handlerType: Type<ZLinkRequestHandler<TRequest, TReply>>): this;
+}
+
+export interface ZLinkMeshNodeSocketConfig {
+    maxMessageSize: number;
+    sendHighWaterMark: number;
+    receiveHighWaterMark: number;
+    receiveTimeoutMs?: number;
+    sendTimeoutMs?: number;
+}
+
+export interface ZLinkSpotPublisherConfig {
+    noDrop: boolean;
+}
+
+export interface ZLinkMeshNodeBuilder {
+    channelName(channelName: string): ZLinkMeshChannelBuilder;
+    listen(endpoint: string): this;
+    routingId(routingId: RoutingId): this;
     useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
     setRoutingIdAllocationGroup(groupName: string): this;
-    configureServerSocket(): ZLinkSocketConfig;
-    configureClientSocket(): ZLinkSocketConfig;
-    enableClient(): this;
-    enableClient(endpoint: string): this;
-    clientConnections(): ZLinkEndpointConnections;
+    configureRouterSocket(): ZLinkMeshNodeSocketConfig;
+    configureSpotPublisher(): ZLinkSpotPublisherConfig;
+    peerConnections(): ZLinkMeshPeerConnections;
     setDefaultRequestTimeout(timeoutMs: number): this;
-}
-
-export interface ZLinkClientServerChannelOptions {
-    readonly requestTimeoutMs?: number;
-}
-
-export interface ZLinkClientServerChannelRuntimeOptions {
-    configureServerSocket(): ZLinkSocketConfig;
+    addRouteSendHandler<TMessage>(handlerType: Type<ZLinkRouteSendHandler<TMessage>>): this;
+    addRouteRequestHandler<TRequest, TReply>(handlerType: Type<ZLinkRouteRequestHandler<TRequest, TReply>>): this;
+    configureEntrySpot(options: ZLinkEntrySpotOptions): this;
+    addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+    addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+    actorFactory(actorType: string, factoryType: Type): this;
+    addActorTransferAdapter<TActor extends ZLinkActor>(
+        actorType: string,
+        adapterType: Type<ZLinkActorTransferAdapter<TActor>>): this;
+    useDrainPolicy(policy: ZLinkMeshNodeDrainPolicy): this;
 }
 
 export interface ZLinkCodecExtension {
@@ -268,11 +274,20 @@ export interface ZLinkDecoratorMetadata {
     readonly packetName?: string;
     readonly groupName?: string;
     readonly methodName?: string;
-    readonly spotNodeName?: string;
+    readonly meshName?: string;
     readonly topic?: string;
 }
 
-export declare const zlinkDefaultLocationOptions: Required<ZLinkLocationOptions>;
+export interface ZLinkLocationOptionValues {
+    readonly heartbeatIntervalMs: number;
+    readonly ownerLeaseTtlMs: number;
+    readonly pollingIntervalMs: number;
+    readonly storeFailureGraceMs: number;
+    readonly routingIdFencingMarginMs: number;
+    readonly ownerLeaseRenewTimeoutMs: number;
+}
+
+export declare const zlinkDefaultLocationOptions: Readonly<ZLinkLocationOptionValues>;
 
 export interface ZLinkDiagnosticsOptions {
     messageFlow: ZLinkMessageFlowLogMode;
@@ -284,57 +299,17 @@ export interface ZLinkDiagnosticsOptions {
     label?: string;
 }
 
-export declare enum ZLinkDispatchErrorAction {
-    ReplyError = "replyError",
-    FailCaller = "failCaller",
-    Drop = "drop"
-}
-
-export declare enum ZLinkDispatchErrorReason {
-    HandlerMissing = "handlerMissing",
-    PayloadDecodeFailed = "payloadDecodeFailed",
-    HandlerException = "handlerException",
-    InvalidFrame = "invalidFrame",
-    ReplyPathMissing = "replyPathMissing",
-    UnexpectedReply = "unexpectedReply"
-}
-
-export declare enum ZLinkDispatchErrorSurface {
-    Channel = "channel",
-    RouteMeshChannel = "routeMeshChannel",
-    SpotRoute = "spotRoute",
-    SpotSubscription = "spotSubscription",
-    SpotActor = "spotActor",
-    StreamSession = "streamSession"
-}
-
-export interface ZLinkDispatchFailure {
-    readonly surface: ZLinkDispatchErrorSurface;
-    readonly messageKind: ZLinkDispatchMessageKind;
-    readonly reason: ZLinkDispatchErrorReason;
-    readonly action: ZLinkDispatchErrorAction;
-    readonly packetName?: string;
-    readonly channelName?: string;
-    readonly topic?: string;
-    readonly spotRid?: string;
-    readonly actorId?: string;
-    readonly sourceRid?: string;
-    readonly correlationId?: string;
-    readonly flowId?: string;
-    readonly flowOrigin?: import('../Eventing/Contracts').ZLinkFlowOrigin;
-    readonly errorType?: string;
-    readonly errorMessage?: string;
-}
-
-export declare enum ZLinkDispatchMessageKind {
-    Request = "request",
-    Send = "send",
-    Publish = "publish",
-    Response = "response",
-    Error = "error",
-    ActorRequest = "actorRequest",
-    ActorSend = "actorSend"
-}
+export type ZLinkMessageSurface =
+    | "node" | "channel" | "spot" | "logical_multicast"
+    | "actor" | "stream" | "classic_fanout" | "actor_transfer";
+export type ZLinkMessageKind =
+    | "send" | "request" | "response" | "error" | "publish" | "control";
+export type ZLinkMessageFlowOutcome =
+    | "succeeded" | "failed" | "backpressured" | "dropped" | "cancelled" | "shutdown";
+export type ZLinkDispatchErrorReason =
+    | "no_handler" | "decode_error" | "handler_exception" | "invalid_frame"
+    | "reply_path_missing" | "unexpected_reply" | "backpressure" | "stale_target" | "shutdown";
+export type ZLinkDispatchErrorAction = "reply_error" | "fail_caller" | "drop";
 
 export interface ZLinkDispatchOptions {
     readonly unhandled: ZLinkUnhandledDispatchOptions;
@@ -343,6 +318,7 @@ export interface ZLinkDispatchOptions {
 
 export interface ZLinkDispatchOptionsBuilder {
     setMessageFlowObserver(observerType: Type<ZLinkMessageFlowObserver>): this;
+    setRuntimeErrorSink(sinkType: Type<ZLinkRuntimeErrorSink>): this;
 
     messageFlow(mode: ZLinkMessageFlowLogMode): this;
     traceSampleRate(rate: number): this;
@@ -398,24 +374,24 @@ export interface ZLinkEndpointConnections {
     listConnections(): readonly string[];
 }
 
-export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle<TActor> {
+export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle {
     readonly context: ZLinkEntrySpotContext<TActor>;
     configure?(): void;
     onInitialize?(): Promise<void>;
     onClosing?(): Promise<void>;
-    onCreateActor?(actor: TActor, createRequest: ZLinkMessage): Promise<void>;
+    onCreateActor?(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void>;
 }
 
-export interface ZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor extends ZLinkActor, TRequest, TReply> {
-    handle(entrySpot: TEntrySpot, actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
+export interface ZLinkEntrySpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
+    handle(actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
 }
 
-export interface ZLinkEntrySpotActorSendHandler<TEntrySpot, TActor extends ZLinkActor, TMessage> {
-    handle(entrySpot: TEntrySpot, actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
+export interface ZLinkEntrySpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
+    handle(actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
 }
 
 export interface ZLinkEntrySpotContext<TActor extends ZLinkActor = ZLinkActor, TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>> extends ZLinkSpotCommonContext<TActor, TEntrySpot> {
-    destroyActor(actor: TActor, signal?: AbortSignal): Promise<void>;
+    destroyActor(actor: ActorRef, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkEntrySpotOptions {
@@ -469,8 +445,16 @@ export declare enum ZLinkFrameworkErrorKind {
 
 export declare class ZLinkFrameworkException extends Error {
     readonly kind: ZLinkFrameworkErrorKind;
+    readonly code: number;
     constructor(kind: ZLinkFrameworkErrorKind, message: string, isRetriable?: boolean, cause?: unknown);
     readonly isRetriable: boolean;
+}
+
+export type ZLinkRequestFailureReason = 'timeout' | 'cancelled' | 'shutdown';
+
+export declare class ZLinkRequestFailureError extends Error {
+    readonly reason: ZLinkRequestFailureReason;
+    constructor(reason: ZLinkRequestFailureReason, message: string, cause?: unknown);
 }
 
 export interface ZLinkFrameworkOptions {
@@ -478,18 +462,13 @@ export interface ZLinkFrameworkOptions {
 
     configureWorker(options: ZLinkWorkerOptions): this;
     configureDispatch(): ZLinkDispatchOptionsBuilder;
-    useInMemoryLocationStores(): this;
     addLocationStore(store: ZLinkLocationStore): this;
-    addActorTransferAdapter<TActor extends ZLinkActor>(actorType: Type<TActor>, adapterType: Type<ZLinkActorTransferAdapter<TActor>>): this;
-
+    setActorTransferTimeout(timeoutMs: number): this;
     setActorTransferForwardWindow(timeoutMs: number): this;
     configureLocations(): ZLinkLocationOptions;
     configureStreamCompression(): ZLinkStreamCompressionBuilder;
-    addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
-    addSpotMesh(channelName: string): ZLinkSpotMeshBuilder;
-    addClientServerChannel(name: string): ZLinkClientServerChannelBuilder;
+    addRouteMesh(meshName: string): ZLinkMeshNodeBuilder;
     addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
-    addRouteMeshChannel(name: string): ZLinkRouteMeshChannelBuilder;
     addStreamNode(name: string): ZLinkStreamNodeBuilder;
 }
 
@@ -498,6 +477,7 @@ export interface ZLinkHandlerContext {
     readonly packetName?: string;
     readonly contentType?: string;
     readonly connectionAborted?: AbortSignal;
+    readonly metadata: ZLinkMessageMetadata;
 }
 
 export type ZLinkHandlerDelegate = () => Promise<unknown>;
@@ -531,10 +511,7 @@ export declare enum ZLinkLocationActorEventKind {
 export declare enum ZLinkLocationAutoConnectType {
     Invalid = 0,
     RouteMesh = 1,
-    ClientServer = 2,
-    DealerMesh = 3,
-    Fanout = 4,
-    SpotMesh = 5
+    Fanout = 2
 }
 ```
 
@@ -603,7 +580,7 @@ export interface ZLinkAllocatedRoutingIdProvider {
 export declare const ZLINK_ALLOCATED_ROUTING_ID_PROVIDER: unique symbol;
 
 export interface ZLinkRoutingIdSlotAllocationMember {
-    readonly channelName: string;
+    readonly meshName: string;
     readonly routingIdPrefix: string;
 }
 
@@ -648,21 +625,6 @@ export interface ZLinkRoutingIdSlotAllocationStore {
     acquireRoutingIdSlot(request: ZLinkRoutingIdSlotAcquireRequest, signal?: AbortSignal): Promise<ZLinkRoutingIdSlotAcquireResult>;
     releaseRoutingIdSlot(groupName: string, slot: number, owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<ZLinkRoutingIdSlotReleaseResult>;
     listRoutingIdSlots(groupName: string, signal?: AbortSignal): Promise<ZLinkRoutingIdSlotAllocationSnapshot>;
-}
-
-export interface ZLinkLocationOptions {
-    readonly heartbeatIntervalMs?: number;
-    readonly ownerLeaseTtlMs?: number;
-    readonly pollingIntervalMs?: number;
-    readonly listPageSize?: number;
-    readonly storeFailureGraceMs?: number;
-    readonly routingIdFencingMarginMs?: number;
-    readonly ownerLeaseRenewTimeoutMs?: number;
-}
-
-export interface ZLinkLocationOwnerToken {
-    readonly ownerId: string;
-    readonly generation: bigint;
 }
 
 export interface ZLinkLocationPage<T> {
@@ -796,13 +758,9 @@ export declare enum ZLinkLocationSpotEventKind {
 }
 ```
 
-### 2.10 @zlink-systems/framework: ZLinkLocationStore - ZLinkMessageFlowEvent
+### 2.10 @zlink-systems/framework: ZLinkLocationTopologyEntry - ZLinkMessageFlowEvent
 
 ```ts
-export interface ZLinkLocationStore extends ZLinkPeerLocationStore, ZLinkSpotLocationStore, ZLinkActorLocationStore, ZLinkRouteLocationStore, ZLinkOwnerLeaseStore {
-    removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<number>;
-}
-
 export interface ZLinkLocationTopologyEntry {
     readonly kind: ZLinkLocationKind;
     readonly meshName?: string;
@@ -845,24 +803,6 @@ export interface ZLinkLocationWatchStore {
     watch(filter: ZLinkLocationWatchFilter, signal?: AbortSignal): AsyncIterable<ZLinkLocationChanged>;
 }
 
-export declare enum ZLinkLocationWriteIntent {
-    NewClaim = 1,
-    Renew = 2,
-    Takeover = 3
-}
-
-export interface ZLinkLocationWriteResult {
-    readonly status: ZLinkLocationWriteStatus;
-    readonly generation: bigint;
-    readonly updatedAt: Date;
-}
-
-export declare enum ZLinkLocationWriteStatus {
-    Stored = "stored",
-    IgnoredStale = "ignoredStale",
-    RejectedConflict = "rejectedConflict"
-}
-
 export declare class ZLinkMessage<TValue = unknown> {
     private readonly value;
     private readonly encoded;
@@ -881,26 +821,47 @@ export interface ZLinkMessageFlowControl {
 }
 
 export interface ZLinkMessageFlowEvent {
+    readonly eventId: "zlink.message_flow" | "zlink.dispatch_error";
+    readonly timestamp: Date;
+    readonly phase?: ZLinkMessageFlowPhase;
     readonly outcome: ZLinkMessageFlowOutcome;
-    readonly surface: ZLinkDispatchErrorSurface;
-    readonly messageKind: ZLinkDispatchMessageKind;
+    readonly surface: ZLinkMessageSurface;
+    readonly messageKind: ZLinkMessageKind;
+    readonly reason?: ZLinkDispatchErrorReason;
+    readonly action?: ZLinkDispatchErrorAction;
     readonly packetName?: string;
+    readonly meshName?: string;
     readonly channelName?: string;
     readonly topic?: string;
     readonly correlationId?: string;
-    readonly sourceRid?: string;
-    readonly peerRid?: string;
-    readonly socketRole?: string;
-    readonly effectiveMode: ZLinkMessageFlowLogMode;
-    readonly flowId: string;
-    readonly flowOrigin: import('../Eventing/Contracts').ZLinkFlowOrigin;
-    readonly spotRid?: string;
+    readonly sourceRid?: RoutingId;
+    readonly targetRid?: RoutingId;
+    readonly flowId?: string;
+    readonly flowOrigin?: import('../Eventing/Contracts').ZLinkFlowOrigin;
+    readonly spotRid?: RoutingId;
     readonly actorId?: string;
-    readonly messageSize?: number;
-    readonly errorReason?: ZLinkDispatchErrorReason;
-    readonly errorAction?: ZLinkDispatchErrorAction;
-    readonly errorType?: string;
-    readonly errorMessage?: string;
+    readonly messageSizeBytes?: number;
+    readonly durationSeconds?: number;
+    readonly remoteSnapshotCount?: bigint;
+    readonly remoteAdmittedCount?: bigint;
+    readonly remoteDroppedCount?: bigint;
+    readonly localSnapshotCount?: bigint;
+    readonly localAdmittedCount?: bigint;
+    readonly localDroppedCount?: bigint;
+    readonly targetCount?: bigint;
+    readonly dropCount?: bigint;
+}
+
+export interface ZLinkRuntimeErrorEvent {
+    readonly eventId: "zlink.runtime_error";
+    readonly timestamp: Date;
+    readonly kind: "observer_failed";
+    readonly source: "message_flow_observer";
+    readonly reason: string;
+}
+
+export interface ZLinkRuntimeErrorSink {
+    onRuntimeError(error: ZLinkRuntimeErrorEvent): Promise<void> | void;
 }
 ```
 
@@ -911,22 +872,23 @@ export declare enum ZLinkMessageFlowLogMode {
     Off = "off",
     ErrorsOnly = "errorsOnly",
     KeyTransitions = "keyTransitions",
-    Verbose = "verbose",
-    Diagnostic = "diagnostic"
+    Verbose = "verbose"
 }
 
 export interface ZLinkMessageFlowObserver {
     onMessageFlow(flow: ZLinkMessageFlowEvent): Promise<void> | void;
 }
 
-export declare enum ZLinkMessageFlowOutcome {
+export declare enum ZLinkMessageFlowPhase {
     Received = "received",
+    Admitted = "admitted",
     Dispatched = "dispatched",
+    Completed = "completed",
     Replied = "replied",
-    Dropped = "dropped",
     Sent = "sent",
-    ReplyReceived = "replyReceived",
-    Error = "error"
+    ReplyReceived = "reply_received",
+    Backpressured = "backpressured",
+    Dropped = "dropped"
 }
 
 export declare function zlinkMessageMetadata(values: ReadonlyMap<string, string> | Readonly<Record<string, string>>): ZLinkMessageMetadata;
@@ -939,7 +901,8 @@ export interface ZLinkMessageMetadata {
 export declare const ZLinkMessageMetadataEmpty: ZLinkMessageMetadata;
 
 export interface ZLinkMessageMetadataPolicy {
-    canForward(key: string): boolean;
+    canForwardSessionToActor(key: string): boolean;
+    canForwardActorToSession(key: string): boolean;
 }
 
 export interface ZLinkMessageSerializer {
@@ -949,7 +912,8 @@ export interface ZLinkMessageSerializer {
 }
 
 export interface ZLinkMetadataPolicyBuilder {
-    forward(enabled?: boolean): this;
+    allowSessionToActor(key: string): this;
+    allowActorToSession(key: string): this;
 }
 
 export interface ZLinkMeter {
@@ -1007,33 +971,10 @@ export interface ZLinkOutboundRouteConfig {
     endpoint: string;
 }
 
-export interface ZLinkOwnerLease {
-    readonly ownerId: string;
-    readonly nodeRid: RoutingId;
-    readonly leaseExpiresAt: Date;
-    readonly updatedAt: Date;
-}
-
-export interface ZLinkOwnerLeaseRenewal {
-    readonly leaseExpiresAt: Date;
-    readonly storeNow: Date;
-}
-
 export interface ZLinkOwnerLeaseRenewalRequest {
     readonly ownerId: string;
     readonly nodeRid: RoutingId;
     readonly leaseTtlMs: number;
-}
-
-export interface ZLinkOwnerLeaseSnapshot {
-    readonly leases: readonly ZLinkOwnerLease[];
-    readonly storeNow: Date;
-}
-
-export interface ZLinkOwnerLeaseStore {
-    renewOwnerLease(ownerId: string, nodeRid: RoutingId, leaseTtlMs: number, signal?: AbortSignal): Promise<ZLinkOwnerLeaseRenewal>;
-    removeOwnerLease(ownerId: string, signal?: AbortSignal): Promise<boolean>;
-    listOwnerLeases(signal?: AbortSignal): Promise<ZLinkOwnerLeaseSnapshot>;
 }
 
 export declare function ZLinkPacket(packetName: string): ClassDecorator;
@@ -1083,12 +1024,6 @@ export interface ZLinkPeerLocationResolver {
     listLivePeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
 }
 
-export interface ZLinkPeerLocationStore {
-    updatePeer(peer: ZLinkPeerLocation, intent: ZLinkLocationWriteIntent, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    removePeer(key: ZLinkPeerLocationKey, owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    listPeers(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]>;
-}
-
 export interface ZLinkPollingMonitoringRegistration {
     readonly sourceName: string;
     readonly intervalMs: number;
@@ -1102,7 +1037,24 @@ export interface ZLinkProviderResolver {
 export declare function ZLinkPublish(packetName?: string): MethodDecorator;
 
 export interface ZLinkPublishCall {
-    submit(): void;
+    metadata(key: string, value: string): this;
+    metadata(metadata: ZLinkMessageMetadata): this;
+    trySubmit(): ZLinkPublishResult;
+    submit(signal?: AbortSignal): Promise<ZLinkPublishResult>;
+}
+
+export interface ZLinkLogicalMulticastDetail {
+    readonly snapshotRemoteNodeCount: bigint;
+    readonly admittedRemoteNodeCount: bigint;
+    readonly droppedRemoteNodeCount: bigint;
+    readonly snapshotLocalSpotCount: bigint;
+    readonly admittedLocalSpotCount: bigint;
+    readonly droppedLocalSpotCount: bigint;
+}
+
+export interface ZLinkPublishResult {
+    readonly status: ZLinkSubmitStatus;
+    readonly detail: ZLinkLogicalMulticastDetail;
 }
 
 export interface ZLinkPublishContext extends ZLinkHandlerContext {
@@ -1115,12 +1067,14 @@ export interface ZLinkPublishHandler<TMessage> {
 }
 ```
 
-### 2.14 @zlink-systems/framework: ZLinkRequest - ZLinkRouteMeshChannelBuilder
+### 2.14 @zlink-systems/framework: ZLinkRequest - ZLinkRouteMeshRuntimeOptions
 
 ```ts
 export declare function ZLinkRequest(packetName?: string): MethodDecorator;
 
 export interface ZLinkRequestCall {
+    metadata(key: string, value: string): this;
+    metadata(metadata: ZLinkMessageMetadata): this;
     timeout(timeoutMs: number): this;
     submit<TReply>(signal?: AbortSignal): Promise<TReply>;
     yield<TReply>(signal?: AbortSignal): Promise<TReply>;
@@ -1134,8 +1088,10 @@ export interface ZLinkRequestHandler<TRequest, TResponse> {
 }
 
 export interface ZLinkRouteClient {
-    sendToNode(routerChannelId: string, targetNodeRid: RoutingId, message: unknown): ZLinkSendCall;
-    requestToNode(routerChannelId: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
+    sendToNode(meshName: string, targetNodeRid: RoutingId, message: unknown): ZLinkSendCall;
+    requestToNode(meshName: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
+    sendToChannel(meshName: string, channelName: string, message: unknown): ZLinkSendCall;
+    requestToChannel(meshName: string, channelName: string, request: unknown): ZLinkRequestCall;
     sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
     requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
 }
@@ -1174,33 +1130,26 @@ export interface ZLinkRouteLocationKey {
     readonly routeKey: string;
 }
 
-export interface ZLinkRouteLocationStore {
-    updateRoute(route: ZLinkRouteLocation, intent: ZLinkLocationWriteIntent, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    removeRoute(key: ZLinkRouteLocationKey, owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    resolveRoute(key: ZLinkRouteLocationKey, signal?: AbortSignal): Promise<ZLinkRouteLocation | undefined>;
-    listRoutes(filter: ZLinkRouteLocationFilter, page?: ZLinkPageRequest, signal?: AbortSignal): Promise<ZLinkLocationPage<ZLinkRouteLocation>>;
+export interface ZLinkRouteMeshRuntimeOptions {
+    meshNode(meshName: string): ZLinkMeshNodeRuntimeOptions;
+    channel(meshName: string, channelName: string): ZLinkMeshChannelRuntimeOptions;
 }
 
-export interface ZLinkRouteMeshChannelBuilder {
-    enableServer(endpoint: string): this;
-    routingId(routingId: string): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
-    enableClient(): this;
-    enableClient(endpoint: string): this;
-    clientConnections(): ZLinkEndpointConnections;
-    configureSocket(): ZLinkSocketConfig;
-    setDefaultRequestTimeout(timeoutMs: number): this;
+export interface ZLinkMeshNodeRuntimeOptions {
+    maxMessageSize: number;
+}
+
+export interface ZLinkMeshChannelRuntimeOptions {
+    weight: number;
 }
 ```
 
-### 2.15 @zlink-systems/framework: ZLinkRouteMeshChannelRuntimeOptions - ZLinkSendHandler
+`maxMessageSize = 0`은 framework 상한 없음이다. Adapter는 이를 Core의
+`ZLINK_OPT_MAXMSGSIZE = -1`로 변환하고 음수는 startup 설정 오류로 거부한다.
+
+### 2.15 @zlink-systems/framework: ZLinkRouteRequestContext - ZLinkSendHandler
 
 ```ts
-export interface ZLinkRouteMeshChannelRuntimeOptions {
-    configureSocket(): ZLinkSocketConfig;
-}
-
 export interface ZLinkRouteRequestContext extends ZLinkRouteSendContext {
 }
 
@@ -1234,7 +1183,23 @@ export interface ZLinkRuntimeEventPublisher {
 export declare function ZLinkSend(packetName?: string): MethodDecorator;
 
 export interface ZLinkSendCall {
-    submit(): void;
+    metadata(key: string, value: string): this;
+    metadata(metadata: ZLinkMessageMetadata): this;
+    trySubmit(): ZLinkSubmitResult;
+    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+}
+
+export declare enum ZLinkSubmitStatus {
+    Submitted = "submitted",
+    Backpressured = "backpressured",
+    TimedOut = "timedOut",
+    TargetNotFound = "targetNotFound",
+    RouteNotConnected = "routeNotConnected",
+    Shutdown = "shutdown"
+}
+
+export interface ZLinkSubmitResult {
+    readonly status: ZLinkSubmitStatus;
 }
 
 export interface ZLinkSendContext extends ZLinkHandlerContext {
@@ -1315,7 +1280,6 @@ export interface ZLinkSessionPacketHandler<TSessionContext, TMessage = ZLinkMess
 }
 
 export interface ZLinkSessionReplyCall {
-    metadata(key: string, value: string): this;
     compress(enabled?: boolean): this;
     submit(): void;
 }
@@ -1360,8 +1324,7 @@ export declare enum ZLinkSocketEventKind {
     Disconnected = "disconnected",
     HandshakeFailed = "handshakeFailed",
     PeerAdmissionChanged = "peerAdmissionChanged",
-    Closed = "closed",
-    Internal = "internal"
+    Closed = "closed"
 }
 
 export interface ZLinkSocketMonitoringRegistration {
@@ -1388,7 +1351,7 @@ export declare enum ZLinkSocketNativeEventType {
     PeerAdmissionChanged = 32768
 }
 
-export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle<TActor> {
+export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle {
     readonly context: ZLinkSpotContext<TActor>;
     configure?(): void;
     onCreate?(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse>;
@@ -1404,20 +1367,31 @@ export interface ZLinkSpotAcceptRejectResponse {
 export interface ZLinkSpotActorJoinResponse extends ZLinkSpotAcceptRejectResponse {
 }
 
-export interface ZLinkSpotActorLifecycle<TActor extends ZLinkActor = ZLinkActor> {
-    onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
-    onJoinedActor(actor: TActor): Promise<void>;
-    onLeaveActor(actor: TActor): Promise<void>;
-    onDisconnectActor?(actor: TActor): Promise<void>;
+export interface ZLinkSpotActorLifecycle {
+    onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+    onJoinedActor(actor: ZLinkActorMembership): Promise<void>;
+    onLeaveActor(actor: ZLinkActorMembership): Promise<void>;
+    onDisconnectActor(actor: ZLinkActorMembership): Promise<void>;
+}
+
+export interface ZLinkActorMembership {
+    readonly actor: ActorRef;
+    readonly actorType: string;
+    readonly membershipEpoch: bigint;
+}
+
+export interface ZLinkActorJoinRequest {
+    readonly actor: ActorRef;
+    readonly actorType: string;
+    readonly expectedMembershipEpoch: bigint;
 }
 
 export interface ZLinkSpotActorReplyOptions {
-    metadata(key: string, value: string): this;
     compress(enabled?: boolean): this;
 }
 ```
 
-### 2.18 @zlink-systems/framework: ZLinkSpotActorRequest - ZLinkSpotDrainPolicy
+### 2.18 @zlink-systems/framework: ZLinkSpotActorRequest - ZLinkMeshNodeDrainPolicy
 
 ```ts
 export declare function ZLinkSpotActorRequest(packetName?: string): MethodDecorator;
@@ -1426,8 +1400,8 @@ export interface ZLinkSpotActorRequestContext extends ZLinkSpotActorSendContext 
     readonly reply: ZLinkSpotActorReplyOptions;
 }
 
-export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, TRequest, TReply> {
-    handle(spot: TSpot, actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
+export interface ZLinkSpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
+    handle(actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
 }
 
 export declare function ZLinkSpotActorSend(packetName?: string): MethodDecorator;
@@ -1436,11 +1410,12 @@ export interface ZLinkSpotActorSendContext extends ZLinkHandlerContext {
     readonly metadata: ZLinkMessageMetadata;
 }
 
-export interface ZLinkSpotActorSendHandler<TSpot, TActor extends ZLinkActor, TMessage> {
-    handle(spot: TSpot, actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
+export interface ZLinkSpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
+    handle(actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
 }
 
 export interface ZLinkSpotCommonContext<TActor extends ZLinkActor = ZLinkActor, TSpot = ZLinkSpot<TActor>> {
+    readonly meshName: string;
     readonly spotRid: RoutingId;
     readonly nodeRid: RoutingId;
     readonly routingId: RoutingId;
@@ -1453,7 +1428,6 @@ export interface ZLinkSpotCommonContext<TActor extends ZLinkActor = ZLinkActor, 
 }
 
 export interface ZLinkSpotContext<TActor extends ZLinkActor = ZLinkActor, TSpot extends ZLinkSpot<TActor> = ZLinkSpot<TActor>> extends ZLinkSpotCommonContext<TActor, TSpot> {
-    leaveActor(actor: TActor, signal?: AbortSignal): Promise<void>;
     close(signal?: AbortSignal): Promise<boolean>;
 }
 
@@ -1472,7 +1446,7 @@ export declare enum ZLinkSpotCreateState {
     Rejected = "rejected"
 }
 
-export type ZLinkSpotDrainPolicy = 'DrainNatural' | 'ReleaseAndRecreate';
+export type ZLinkMeshNodeDrainPolicy = 'DrainNatural' | 'ReleaseAndRecreate';
 ```
 
 ### 2.19 @zlink-systems/framework: ZLinkSpotEvent - ZLinkSpotLocationStore
@@ -1480,13 +1454,10 @@ export type ZLinkSpotDrainPolicy = 'DrainNatural' | 'ReleaseAndRecreate';
 ```ts
 export type ZLinkSpotEvent = (ZLinkRuntimeEvent & {
     readonly event: ZLinkSpotEventKind.StatusChanged;
-    readonly status: ZLinkSpotNodeStatus;
+    readonly status: ZLinkMeshNodeSnapshot;
 }) | (ZLinkRuntimeEvent & {
     readonly event: ZLinkSpotEventKind.PeersChanged;
-    readonly peers: readonly ZLinkSpotNodePeerEntry[];
-}) | (ZLinkRuntimeEvent & {
-    readonly event: ZLinkSpotEventKind.SubjectsChanged;
-    readonly subjects: readonly ZLinkSpotNodeSubjectEntry[];
+    readonly peers: readonly ZLinkMeshPeerSnapshot[];
 }) | (ZLinkRuntimeEvent & {
     readonly event: ZLinkSpotEventKind.TimerHandlerFailed | ZLinkSpotEventKind.TimerStoppedAfterUnhandledException;
     readonly timerDiagnostic: ZLinkSpotTimerDiagnostic;
@@ -1495,16 +1466,15 @@ export type ZLinkSpotEvent = (ZLinkRuntimeEvent & {
 export declare enum ZLinkSpotEventKind {
     StatusChanged = "statusChanged",
     PeersChanged = "peersChanged",
-    SubjectsChanged = "subjectsChanged",
     TimerHandlerFailed = "timerHandlerFailed",
     TimerStoppedAfterUnhandledException = "timerStoppedAfterUnhandledException"
 }
 
 export interface ZLinkSpotHandleResolver {
-    resolveSpotHandle(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotHandle | undefined>;
+    resolveSpotHandle(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<SpotHandle | undefined>;
 }
 
-export interface ZLinkSpotHandlerRegistry extends ZLinkActorHandlerRegistry {
+export interface ZLinkSpotHandlerRegistry {
     addPacket<THandler>(handlerType: Type<THandler>): this;
     addSubscribe<THandler>(handlerType: Type<THandler>, topic: string): this;
 }
@@ -1523,18 +1493,6 @@ export declare function zlinkSpotKindFromWire(value: number): ZLinkSpotKind;
 
 export declare function zlinkSpotKindToWire(kind: ZLinkSpotKind): number;
 
-export interface ZLinkSpotLocation {
-    readonly meshName: string;
-    readonly spotRid: RoutingId;
-    readonly spotType?: string;
-    readonly nodeRid: RoutingId;
-    readonly spotKind: ZLinkSpotKind;
-    readonly routeEndpoint?: string;
-    readonly ownerId: string;
-    readonly generation: bigint;
-    readonly updatedAt: Date;
-}
-
 export interface ZLinkSpotLocationFilter {
     readonly meshName?: string;
     readonly spotType?: string;
@@ -1542,103 +1500,144 @@ export interface ZLinkSpotLocationFilter {
     readonly spotKind?: ZLinkSpotKind;
 }
 
-export interface ZLinkSpotLocationKey {
-    readonly meshName: string;
-    readonly spotRid: RoutingId;
-}
-
-export interface ZLinkSpotLocationStore {
-    updateSpot(spot: ZLinkSpotLocation, intent: ZLinkLocationWriteIntent, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    removeSpot(key: ZLinkSpotLocationKey, owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<ZLinkLocationWriteResult>;
-    resolveSpot(key: ZLinkSpotLocationKey, signal?: AbortSignal): Promise<ZLinkSpotLocation | undefined>;
-    listSpots(filter: ZLinkSpotLocationFilter, page?: ZLinkPageRequest, signal?: AbortSignal): Promise<ZLinkLocationPage<ZLinkSpotLocation>>;
-}
 ```
 
 ### 2.20 @zlink-systems/framework: ZLinkSpotManager - ZLinkSpotPeerSource
 
 ```ts
 export interface ZLinkSpotManager {
-    create<TSpot extends ZLinkSpot>(spotType: Type<TSpot>, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
-    create<TSpot extends ZLinkSpot>(spotType: Type<TSpot>, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
-    create<TSpot extends ZLinkSpot, TRequest>(spotType: Type<TSpot>, request: TRequest, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
-    getOrCreate<TSpot extends ZLinkSpot>(spotType: Type<TSpot>, spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
-    getOrCreate<TSpot extends ZLinkSpot>(spotType: Type<TSpot>, spotRid: RoutingId, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
-    getOrCreate<TSpot extends ZLinkSpot, TRequest>(spotType: Type<TSpot>, spotRid: RoutingId, request: TRequest, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
-    find(spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
-    list(signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
-    close(spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
+    create<TSpot extends ZLinkSpot>(meshName: string, spotType: Type<TSpot>, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    create<TSpot extends ZLinkSpot>(meshName: string, spotType: Type<TSpot>, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    create<TSpot extends ZLinkSpot, TRequest>(meshName: string, spotType: Type<TSpot>, request: TRequest, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    getOrCreate<TSpot extends ZLinkSpot>(meshName: string, spotType: Type<TSpot>, spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    getOrCreate<TSpot extends ZLinkSpot>(meshName: string, spotType: Type<TSpot>, spotRid: RoutingId, request: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    getOrCreate<TSpot extends ZLinkSpot, TRequest>(meshName: string, spotType: Type<TSpot>, spotRid: RoutingId, request: TRequest, signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    find(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<ZLinkSpotInfo | null>;
+    list(meshName: string, signal?: AbortSignal): Promise<readonly ZLinkSpotInfo[]>;
+    close(meshName: string, spotRid: RoutingId, signal?: AbortSignal): Promise<boolean>;
 }
 
-export interface ZLinkSpotMeshBuilder extends ZLinkSpotNodeBuilder {
+export interface ZLinkMeshPeerSnapshot {
+    readonly rid: RoutingId;
+    readonly lifecycleGeneration: bigint;
+    readonly descriptorRevision: bigint;
+    readonly endpoint: string;
+    readonly admissionState: string;
+    readonly ready: boolean;
+    readonly drainState: string;
+    readonly channelNames: readonly string[];
+    readonly lastFailure?: string;
 }
 
-export interface ZLinkSpotMeshNodeBuilder extends ZLinkSpotNodeBuilder {
+export declare enum ZLinkMeshNodeState {
+    Starting = 1,
+    Serving = 2,
+    Draining = 3,
+    Drained = 4,
+    ForceStopping = 5,
+    Stopped = 6,
+    Faulted = 7
 }
 
-export interface ZLinkSpotNodeBuilder {
-    routingId(routingId: RoutingId): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
-    enableRouter(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
-    connectRouter(endpoint: string): this;
-    connectRouter(peerRid: RoutingId, endpoint: string): this;
-    enablePubSub(endpoint: string, routingId?: RoutingId, connect?: string | readonly string[]): this;
-    connectPeerPub(endpoint: string): this;
-    configureEntrySpot(options: ZLinkEntrySpotOptions): this;
-    addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
-    addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
-    actorFactory(actorType: string, factoryType: Type): this;
-    useDrainPolicy(policy: ZLinkSpotDrainPolicy): this;
-}
-
-export interface ZLinkSpotNodePeerEntry {
+export interface ZLinkMeshChannelSnapshot {
     readonly channelName: string;
-    readonly localEndpoint: string;
-    readonly peerEndpoint: string;
-    readonly source: ZLinkSpotPeerSource;
-    readonly kind: ZLinkSpotPeerKind;
-    readonly state: ZLinkSpotPeerState;
-    readonly weight: number;
-    readonly connectedSinceMs: bigint;
-    readonly lastChangedMs: bigint;
+    readonly localWeight: number;
+    readonly readyMemberCount: bigint;
+    readonly selectable: boolean;
 }
 
-export declare enum ZLinkSpotNodeState {
-    Idle = 1,
-    Connecting = 2,
-    PartialReady = 3,
-    Ready = 4,
-    Error = 5
+export interface ZLinkLogicalMulticastSnapshot {
+    readonly noDrop: boolean;
+    readonly submitted: bigint;
+    readonly backpressured: bigint;
+    readonly dropped: bigint;
+    readonly remoteSnapshotCount: bigint;
+    readonly remoteAdmittedCount: bigint;
+    readonly remoteDroppedCount: bigint;
+    readonly localSnapshotCount: bigint;
+    readonly localAdmittedCount: bigint;
+    readonly localDroppedCount: bigint;
+    readonly pendingAdmissionCount: bigint;
 }
 
-export interface ZLinkSpotNodeStatus {
-    readonly channelName: string;
-    readonly localEndpoint: string;
-    readonly nodeRoutingId?: RoutingId;
-    readonly state: ZLinkSpotNodeState;
-    readonly configuredPeerCount: number;
-    readonly activePeerCount: number;
-    readonly connectedPeerCount: number;
-    readonly subjectCount: number;
-    readonly readySubjectCount: number;
-    readonly lastError: number;
-    readonly lastChangedMs: bigint;
+export interface ZLinkMeshClaimSnapshot {
+    readonly applicationActive: boolean;
+    readonly pendingApplicationWork: bigint;
+    readonly infrastructureActive: boolean;
+    readonly pendingInfrastructureWork: bigint;
 }
 
-export interface ZLinkSpotNodeSubjectEntry {
-    readonly role: ZLinkSpotRole;
-    readonly subject: string;
-    readonly subjectKind: ZLinkSubjectKind;
-    readonly readyPeerCount: number;
-    readonly activePeerCount: number;
-    readonly lastChangedMs: bigint;
+export interface ZLinkLocationRuntimeSnapshot {
+    readonly state: string;
+    readonly lastSuccessAt?: Date;
+    readonly lastFailureAt?: Date;
+}
+
+export interface ZLinkMeshDrainSnapshot {
+    readonly state: ZLinkMeshNodeState;
+    readonly deadline?: Date;
+    readonly workSealed: boolean;
+    readonly pendingRequestCount: bigint;
+    readonly pendingTransferCount: bigint;
+    readonly pendingStreamBarrierCount: bigint;
+}
+
+export interface ZLinkMeshNodeSnapshot {
+    readonly meshName: string;
+    readonly rid: RoutingId;
+    readonly lifecycleGeneration: bigint;
+    readonly descriptorRevision: bigint;
+    readonly endpoint: string;
+    readonly state: ZLinkMeshNodeState;
+    readonly sequence: bigint;
+    readonly observedAt: Date;
+    readonly descriptorSources: readonly string[];
+    readonly peers: readonly ZLinkMeshPeerSnapshot[];
+    readonly channels: readonly ZLinkMeshChannelSnapshot[];
+    readonly multicast: ZLinkLogicalMulticastSnapshot;
+    readonly claims: ZLinkMeshClaimSnapshot;
+    readonly location: ZLinkLocationRuntimeSnapshot;
+    readonly drain: ZLinkMeshDrainSnapshot;
+}
+
+export interface ZLinkMeshRuntimeEvent {
+    readonly identifier: string;
+    readonly sequence: bigint;
+    readonly timestamp: Date;
+    readonly meshName: string;
+    readonly sourceRid: RoutingId;
+    readonly peerRid?: RoutingId;
+    readonly lifecycleGeneration?: bigint;
+    readonly descriptorRevision?: bigint;
+    readonly channelName?: string;
+    readonly claimDomain?: string;
+    readonly messageKind?: string;
+    readonly remoteSnapshotCount?: bigint;
+    readonly remoteAdmittedCount?: bigint;
+    readonly remoteDroppedCount?: bigint;
+    readonly localSnapshotCount?: bigint;
+    readonly localAdmittedCount?: bigint;
+    readonly localDroppedCount?: bigint;
+    readonly reason?: string;
+    readonly state?: ZLinkMeshNodeState;
+}
+
+export type ZLinkMeshDrainResult =
+    | { readonly kind: "drained" }
+    | { readonly kind: "forceStopped"; readonly reason: string };
+
+export interface ZLinkRouteMeshRuntime {
+    snapshot(meshName: string): ZLinkMeshNodeSnapshot;
+    observe(meshName: string, capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkMeshRuntimeEvent>;
+    isReady(meshName: string): boolean;
+    drain(meshName: string, deadlineMs?: number, signal?: AbortSignal): Promise<ZLinkMeshDrainResult>;
+    awaitDrained(meshName: string, signal?: AbortSignal): Promise<ZLinkMeshDrainResult>;
 }
 
 export interface ZLinkSpotOutbound {
     sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
     requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
-    publish(topic: string, event: unknown): ZLinkPublishCall;
+    publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
     requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
 }
@@ -1648,8 +1647,7 @@ export interface ZLinkSpotPacketHandler<TSpot, TMessage> {
 }
 
 export declare enum ZLinkSpotPeerKind {
-    SpotMesh = 1,
-    RouterChannel = 2
+    RouteMesh = 1
 }
 
 export declare enum ZLinkSpotPeerSource {
@@ -1669,11 +1667,7 @@ export declare enum ZLinkSpotPeerState {
 }
 
 export interface ZLinkSpotPublisherClient {
-    publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
-}
-
-export interface ZLinkSpotPublisherConfig {
-    topic: string;
+    publish(meshName: string, channelName: string, topic: string, event: unknown): ZLinkPublishCall;
 }
 
 export declare function ZLinkSpotRequest(packetName?: string): MethodDecorator;
@@ -1682,16 +1676,7 @@ export interface ZLinkSpotRequestHandler<TSpot, TRequest, TReply> {
     handle(spot: TSpot, request: TRequest, context: ZLinkHandlerContext): Promise<TReply>;
 }
 
-export declare enum ZLinkSpotRole {
-    Pub = 1,
-    Sub = 2
-}
-
-export interface ZLinkSpotSubscriberConfig {
-    topic: string;
-}
-
-export declare function ZLinkSpotSubscription(spotNodeName: string, topic: string): MethodDecorator;
+export declare function ZLinkSpotSubscription(channelName: string, topic: string): MethodDecorator;
 
 export interface ZLinkSpotSubscriptionHandler<TSpot, TEvent> {
     handle(spot: TSpot, event: TEvent, context: ZLinkPublishContext): Promise<void>;
@@ -1763,14 +1748,7 @@ export declare function ZLinkStreamPacket(): MethodDecorator;
 export declare function ZLinkStreamRaw(): MethodDecorator;
 
 export declare enum ZLinkStreamSessionError {
-    TransportError = "transportError",
-    HandshakeFailed = "handshakeFailed"
-}
-
-export declare enum ZLinkSubjectKind {
-    None = 0,
-    Topic = 1,
-    Pattern = 2
+    TransportError = "transportError"
 }
 
 export interface ZLinkTimer {
@@ -1823,10 +1801,22 @@ export interface ZLinkUnhandledDispatchOptions {
 
 export interface ZLinkWorkerCall<T> {
     timeoutMs(durationMs: number): ZLinkWorkerCall<T>;
-    submit(signal?: AbortSignal): Promise<T>;
+    submit(signal?: AbortSignal): void;
+    async(signal?: AbortSignal): Promise<T>;
     yield(signal?: AbortSignal): Promise<T>;
 }
+
+export interface ZLinkWorkerOptions {
+    readonly minThreads: number;
+    readonly maxThreads: number;
+    readonly idleTimeoutMs: number;
+    readonly maxQueueLength: number;
+}
 ```
+
+Request와 join의 result-bearing `submit()`은 공통 `Async` 의미이며 terminal reply 또는 결과까지 현재
+owner turn을 유지한다. Worker call은 결과를 기다리지 않는 `submit()`, 결과까지 현재 turn을 유지하는
+`async()`, 현재 turn을 반납하는 `yield()`를 별도로 제공한다.
 
 ### 2.24 @zlink-systems/nestjs: createZLinkDynamicModule - ZLINK_LOCATION_RUNTIME_QUERY
 
@@ -1923,19 +1913,6 @@ export declare class ZLinkMonitoringModule {
     static forRoot(): DynamicModule;
 }
 
-export interface ZLinkNestClientServerChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
-    enableServer(bind: string | undefined): this;
-    routingId(routingId: string | undefined): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
-    configureServerSocket(): ZLinkSocketConfig;
-    configureClientSocket(): ZLinkSocketConfig;
-    enableClient(endpoint?: string | readonly string[]): this;
-    addRequestHandler(packetName: string, handlerType: Type): this;
-    addSendHandler(packetName: string, handlerType: Type): this;
-    addHandlerGroup(groupName: string): this;
-}
-
 export interface ZLinkNestCodecRegistryBuilder extends ZLinkNestFrameworkOptionsBuilder {
     use(extension: ZLinkCodecExtension): this;
 }
@@ -1978,22 +1955,26 @@ export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptions
     addHandlerGroup(groupName: string): this;
 }
 
-export type ZLinkNestFrameworkAdditionalOptions = Omit<ZLinkFrameworkRegistrationOptions, 'channels' | 'routeChannels' | 'streamNodes' | 'spotNodes' | 'codecs'>;
+export interface ZLinkNestFrameworkAdditionalOptions {
+    readonly requestTimeoutMs?: number;
+    readonly filters?: readonly Type<ZLinkHandlerFilter>[];
+    readonly worker?: ZLinkWorkerOptions;
+    readonly dispatch?: ZLinkDispatchOptions;
+    readonly monitoring?: ZLinkMonitoringOptions;
+    readonly metrics?: ZLinkMetricsOptions;
+}
 
 export interface ZLinkNestFrameworkOptionsBuilder {
     options(options: ZLinkNestFrameworkAdditionalOptions): this;
     codecs(): ZLinkNestCodecRegistryBuilder;
     configureDispatch(): ZLinkDispatchOptionsBuilder;
-    useInMemoryLocationStores(): this;
     addLocationStore(store: ZLinkLocationStore): this;
-    addActorTransferAdapter<TActor extends ZLinkActor>(actorType: Type<TActor>, adapterType: Type<ZLinkActorTransferAdapter<TActor>>): this;
+    setActorTransferTimeout(timeoutMs: number): this;
     setActorTransferForwardWindow(timeoutMs: number): this;
     configureStreamCompression(): ZLinkStreamCompressionBuilder;
     configureLocations(): ZLinkLocationOptions;
-    addClientServerChannel(name: string): ZLinkNestClientServerChannelBuilder;
+    addRouteMesh(name: string): ZLinkNestMeshNodeBuilder;
     addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
-    addRouteMeshChannel(name: string): ZLinkNestRouterMeshBuilder;
-    addSpotMesh(name: string): ZLinkNestSpotNodeBuilder;
     addStreamNode(name: string): ZLinkNestStreamNodeBuilder;
     build(): ZLinkModuleOptions;
 }
@@ -2022,17 +2003,32 @@ export type ZLinkNestProviderDiscoveryRoot = string | {
 };
 ```
 
-### 2.28 @zlink-systems/nestjs: ZLinkNestRouterMeshBuilder - zlinkRuntimeEventHandler
+### 2.28 @zlink-systems/nestjs: ZLinkNestMeshNodeBuilder - zlinkRuntimeEventHandler
 
 ```ts
-export interface ZLinkNestRouterMeshBuilder extends ZLinkNestFrameworkOptionsBuilder {
-    enableRouter(endpoint: string | undefined): this;
-    enableClient(): this;
+export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
+    channelName(name: string): ZLinkNestMeshChannelBuilder;
+    listen(endpoint: string): this;
     routingId(routingId: string | undefined): this;
     useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
     setRoutingIdAllocationGroup(groupName: string): this;
-    configureSocket(): ZLinkSocketConfig;
-    connect(endpoint: string | readonly string[] | undefined): this;
+    configureRouterSocket(): ZLinkMeshNodeSocketConfig;
+    configureSpotPublisher(): ZLinkSpotPublisherConfig;
+    peerConnections(): ZLinkMeshPeerConnections;
+    addSendHandler(packetName: string, handlerType: Type): this;
+    addRequestHandler(packetName: string, handlerType: Type): this;
+    configureEntrySpot(options: ZLinkEntrySpotOptions): this;
+    addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+    addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
+    actorFactory(actorType: string, factoryType: Type): this;
+    addActorTransferAdapter<TActor extends ZLinkActor>(
+        actorType: string,
+        adapterType: Type<ZLinkActorTransferAdapter<TActor>>): this;
+    useDrainPolicy(policy: ZLinkMeshNodeDrainPolicy): this;
+}
+
+export interface ZLinkNestMeshChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {
+    setWeight(weight: number): this;
     addSendHandler(packetName: string, handlerType: Type): this;
     addRequestHandler(packetName: string, handlerType: Type): this;
     addHandlerGroup(groupName: string): this;
@@ -2050,22 +2046,6 @@ export interface ZLinkNestSpotActorSendHandlerOptions<TSpot extends ZLinkSpot, T
     readonly actor: ZLinkNestTypeResolver<TActor>;
     readonly packetName: string;
     readonly methodName?: string;
-}
-
-export interface ZLinkNestSpotNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
-    routingId(routingId: string | undefined): this;
-    useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
-    setRoutingIdAllocationGroup(groupName: string): this;
-    enableRouter(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
-    connectRouter(endpoint: string): this;
-    connectRouter(peerRid: string, endpoint: string): this;
-    enablePubSub(bind: string | undefined, routingId?: string, connect?: string | readonly string[]): this;
-    connectPeerPub(endpoint: string): this;
-    configureEntrySpot(options: ZLinkEntrySpotOptions): this;
-    addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
-    addSpotFactory<TSpot extends ZLinkSpot>(spotType: Type<TSpot>): this;
-    actorFactory(actorType: string, factoryType: Type): this;
-    useDrainPolicy(policy: import('@zlink-systems/framework').ZLinkSpotDrainPolicy): this;
 }
 
 export interface ZLinkNestSpotPacketHandlerOptions<TSpot extends ZLinkSpot> {

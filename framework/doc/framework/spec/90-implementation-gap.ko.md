@@ -67,8 +67,8 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | 00 | [공개 계약 관리](00-public-contract-governance.ko.md) | — | — | — | — | — |
 | 01 | [개요](01-overview.ko.md) | — | — | — | — | — |
 | 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | O | O | O |
-| 03 | [메시지 모델](03-message-model.ko.md) | O | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) |
-| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | **X** [§12.21](#1221-yield-terminator-부재-전-언어) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) | **X** [§12.21](#1221-yield-terminator-부재-전-언어) |
+| 03 | [메시지 모델](03-message-model.ko.md) | O | **X** §12.20 | **X** §12.20 | **X** §12.20 | **X** §12.20 |
+| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | **X** §12.21 | **X** §12.21 | **X** §12.21 | **X** §12.21 |
 | 05 | [framework API](05-framework-api.ko.md) | O | O | O | O | O |
 
 ### 2.2 Channel (1x)
@@ -76,43 +76,43 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 10 | [channel topology](server/10-channel-topology.ko.md) | O | O | O | O | O |
-| 12 | [HTTP client](http-client/12-http-client.ko.md) | O | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **X** [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) |
-| 11 | [channel 메시징](server/11-channel-messaging.ko.md) | O | O | O | **△** startup validation [§4.13](#413-startup-validation-누락-해소) | O |
+| 12 | [HTTP client](http-client/12-http-client.ko.md) | O | **X** §12.22 | **X** §12.22 | **X** §12.22 | **X** §12.22 |
+| 11 | [channel 메시징](server/11-channel-messaging.ko.md) | O | O | O | **△** startup validation §4.13 | O |
 
 ### 2.3 SPOT · Actor (2x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 20 | [SPOT 메시징](server/20-spot-messaging.ko.md) | O | O | O | **△** startup validation [§4.13](#413-startup-validation-누락-해소) | O |
+| 20 | [SPOT 메시징](server/20-spot-messaging.ko.md) | O | O | O | **△** startup validation §4.13 | O |
 | 21 | [MeshNode](server/21-mesh-node.ko.md) | O | O | O | O | O |
-| 22 | [Actor 모델](server/22-actor-model.ko.md) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) |
-| 23 | [Spot Actor Join/Transfer](server/23-spot-actor.ko.md) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) |
-| 24 | [Spot 주소 메시징](server/24-spot-address-messaging.ko.md) | O | **X** [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **X** [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **X** [§12.5](#125-spot-메시징-표면-누락-node) | O |
+| 22 | [Actor 모델](server/22-actor-model.ko.md) | O | **X** §12.2 | **X** §12.2 | O | **X** §12.2 |
+| 23 | [Spot Actor Join/Transfer](server/23-spot-actor.ko.md) | O | **X** §12.2 | **X** §12.2 | O | **X** §12.2 |
+| 24 | [Spot 주소 메시징](server/24-spot-address-messaging.ko.md) | O | **X** §12.9 | **X** §12.9 | **X** §12.5 | O |
 | 25 | [Stage Wrapper](server/25-stage-wrapper-on-spot.ko.md) | O | O | O | O | O |
 
 ### 2.4 STREAM (3x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 30 | [STREAM 서버 세션](server/30-stream-session.ko.md) | O | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) |
-| 31 | [Session Actor Dispatch](server/31-session-actor-dispatch.ko.md) | O | O | O | **X** [§12.6](#126-session-handler-registry-키-node) | O |
-| 32 | [Stream Connector](stream-connector/32-stream-connector.ko.md) | O | **X** [§12.1](#121-stream-connector-수신-큐-overflow-java) [§12.3](#123-근거-없는-공개-표면과-connect-상태-처리-java-kotlin) [§12.4](#124-connector-호출별-packet-name-override-java) [§12.10](#1210-connector-transport-enum-부재-java) [§12.12](#1212-connector-dispatch-mode-이름-java) [§12.13](#1213-connector-inbound-observer-option-부재-java) [§12.15](#1215-예외-정규화-부재-java) [§12.16](#1216-metadata-총-크기-한도-미검사-java) [§12.17](#1217-correlated-error-처리-java) [§12.19](#1219-typed-표면-경계-java-kotlin) [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** Java 표면 상속 + [§12.14](#1214-kotlin-option-helper가-수신-한도를-되돌린다-kotlin) [§12.19](#1219-typed-표면-경계-java-kotlin) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **X** [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) |
+| 30 | [STREAM 서버 세션](server/30-stream-session.ko.md) | O | **X** §12.20 | **X** §12.20 | **X** §12.20 | **X** §12.20 |
+| 31 | [Session Actor Dispatch](server/31-session-actor-dispatch.ko.md) | O | O | O | **X** §12.6 | O |
+| 32 | [Stream Connector](stream-connector/32-stream-connector.ko.md) | **X** §12.25 | **X** §12.1 §12.3 §12.4 §12.10 §12.12 §12.13 §12.15 §12.16 §12.17 §12.19 §12.20 §12.25 | **X** Java 표면 상속 + §12.14 §12.19 §12.25 | **X** §12.20 | **X** §12.20 §12.25 |
 
 ### 2.5 Location (4x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 40 | [location runtime](server/40-location-runtime.ko.md) | O | O | O | **X** [§12.11](#1211-location-event-kind-이름-node) | O |
+| 40 | [location runtime](server/40-location-runtime.ko.md) | O | O | O | **X** §12.11 | O |
 | 41 | [Redis location store](server/41-location-store-redis.ko.md) | O | O | O | O | O |
 
 ### 2.6 관측 · 운영 (5x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 50 | [런타임 모니터링](server/50-runtime-monitoring.ko.md) | O | **△** [§12.8](#128-monitoring-표면-java) | **△** [§12.8](#128-monitoring-표면-java) | **X** [§12.11](#1211-location-event-kind-이름-node) | O |
+| 50 | [런타임 모니터링](server/50-runtime-monitoring.ko.md) | O | **△** §12.8 | **△** §12.8 | **X** §12.11 | O |
 | 51 | [런타임 메트릭](server/51-runtime-metrics.ko.md) | O | O | O | O | O |
 | 52 | [메시지 흐름 추적](server/52-message-flow-tracing.ko.md) | O | O | O | O | O |
-| 53 | [흐름 상관관계](server/53-flow-correlation.ko.md) | O | **X** [§12.18](#1218-flow_id-미전파-java) | **X** [§12.18](#1218-flow_id-미전파-java) | O | O |
+| 53 | [흐름 상관관계](server/53-flow-correlation.ko.md) | O | **X** §12.18 | **X** §12.18 | O | O |
 | 54 | [Graceful Drain](server/54-graceful-drain-handoff.ko.md) | O | O | O | O | O |
 
 ### 2.7 열려 있는 gap 요약
@@ -121,32 +121,33 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 
 | gap | 언어 | 내용 |
 |---|---|---|
-| [§4.10](#410-stream-connector-browser-only-package와-검증) | **TypeScript** | **해소.** browser-only package, 명시적 flow, 실제 Chromium과 package consumer gate가 모두 통과했다. |
-| [§4.13](#413-startup-validation-누락-해소) | **Node** | **해소.** channel과 SPOT의 잘못된 구성을 socket 생성 전 startup validation에서 거부한다. |
-| [§10.9](#109-handler-filter의-적용-범위) | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
-| [§12.1](#121-stream-connector-수신-큐-overflow-java) | **Java** | **독립 unread-history가 없다.** overflow가 가장 오래된 메시지를 버리고(기준선은 새 메시지), 기본 상한이 무제한이며, drop 오류가 없고, handler 없는 메시지가 폐기되며, `waitFor`가 기존 메시지를 못 받고, `receivedCount` 의미가 다르며, `AUTO`에서 한도가 적용되지 않는다 |
-| [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **Java, C++** | `onActorJoin` admission이 **선택 사항**이라, 구현을 빠뜨리면 컴파일은 통과하고 **모든 join이 조용히 거절**된다 |
-| [§12.3](#123-근거-없는-공개-표면과-connect-상태-처리-java-kotlin) | **Java, Kotlin** | connector `disconnect()`/`reconnect()`(Kotlin wrapper도 동일)와 `ZLinkActorPlacement`는 **근거 없는 표면**이다. 또 `connect()`가 진행 중인 연결 시도를 기다리지 않는다 |
-| [§12.4](#124-connector-호출별-packet-name-override-java) | **Java** | 호출별 `packetName(...)` override가 없다([32 §5](stream-connector/32-stream-connector.ko.md)) |
-| [§12.5](#125-spot-메시징-표면-누락-node) | **Node** | route client에 `sendToSpot`/`requestToSpot`가 없고, spot 전송의 **stale 갱신·1회 재전송이 미구현**이다 |
-| [§12.6](#126-session-handler-registry-키-node) | **Node** | session handler registry가 **handler 클래스 이름**을 packet 키로 써서 wire packet name과 맞지 않는다 |
-| [§12.8](#128-monitoring-표면-java) | **Java** | runtime event 모델이 sealed 계층이 아니라 flat record + kind enum이고, `ZLinkMonitoringOptions`에 location 계열 source 등록 4개가 없으며, event handler가 `void`를 반환한다 |
-| [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **Java** | `sendToSpot`/`requestToSpot`이 spot handle과 **channel 이름을 함께** 받는다. handle이 전송 mesh를 소유해야 한다 |
-| [§12.10](#1210-connector-transport-enum-부재-java) | **Java** | connector가 지원 transport를 나타내는 공개 enum을 노출하지 않는다 |
-| [§12.11](#1211-location-event-kind-이름-node) | **Node** | location runtime event kind가 `StoreUnavailable`이다. 닫힌 집합의 이름은 `StoreFailure`다 |
-| [§12.12](#1212-connector-dispatch-mode-이름-java) | **Java** | dispatch mode enum이 `AUTO`/`MANUAL`이다(계약은 `Manual`/`Immediate`). 또 `MANUAL`에서도 state·disconnected callback이 queue를 우회하고, message callback의 완료를 기다리지 않는다 |
-| [§12.13](#1213-connector-inbound-observer-option-부재-java) | **Java** | connector options에 inbound observer 큐·preview 한도 2개가 없다 |
-| [§12.14](#1214-kotlin-option-helper가-수신-한도를-되돌린다-kotlin) | **Kotlin** | compression option helper가 options를 복사하며 `maxReceivedMessages`를 무제한으로 되돌린다 |
-| [§12.15](#1215-예외-정규화-부재-java) | **Java** | 비동기 실패를 오류 코드를 담은 공통 예외로 정규화하지 않는다 |
-| [§12.16](#1216-metadata-총-크기-한도-미검사-java) | **Java** | metadata 블록의 총합 1024바이트 한도를 검사하지 않는다 |
-| [§12.17](#1217-correlated-error-처리-java) | **Java** | request sequence가 붙은 `Error`를 그 request로 매핑하면서도 **stream-level error callback으로 먼저 이중 발행**하고, error payload JSON을 파싱하지 않는다 |
-| [§12.18](#1218-flow_id-미전파-java) | **Java** | inbound callback에서 시작한 send/request가 inbound의 `flow_id`를 잇지 않는다 |
-| [§12.19](#1219-typed-표면-경계-java-kotlin) | **Java, Kotlin** | `send(Object)`가 raw payload를 받고, Kotlin에 목표 계약에 없는 `await<T>()` overload가 있다 |
-| [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **Java/Kotlin, Node, C++** | `Response`·`Error` header에 packet name을 싣는다. 계약은 그 필드를 **두지 않는 것**이다 |
-| [§12.21](#1221-yield-terminator-부재-전-언어) | **Java/Kotlin, Node, C++** | `yield` terminator가 없고 `async`가 **자동으로 turn을 반납**한다. 계약은 `async`가 turn을 유지하고 `yield`만 반납하는 것이다 |
-| [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **Node, C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다. Java/Kotlin은 서버 client와 execution turn 주입을 구현하고 blocking 표면을 제거했다 |
-| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **Node, C++** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다. Java/Kotlin은 `runCpuWorker`·`runIoWorker`와 두 terminator를 구현했다 |
-| [§13](#13-샘플-연결등록-축-준수-현황) | **Java, Kotlin** | TicTacToe가 **수동 등록** 대신 package 스캔을 쓴다. 규약상 TicTacToe만 수동 연결 + 수동 등록이다(Node가 참조 구현) |
+| §4.10 | **TypeScript** | **해소.** browser-only package, 명시적 flow, 실제 Chromium과 package consumer gate가 모두 통과했다. |
+| §4.13 | **Node** | **해소.** channel과 SPOT의 잘못된 구성을 socket 생성 전 startup validation에서 거부한다. |
+| §10.9 | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
+| §12.1 | **Java** | **독립 unread-history가 없다.** overflow가 가장 오래된 메시지를 버리고(기준선은 새 메시지), 기본 상한이 무제한이며, drop 오류가 없고, handler 없는 메시지가 폐기되며, `waitFor`가 기존 메시지를 못 받고, `AUTO`에서 한도가 적용되지 않는다 |
+| §12.2 | **Java, C++** | `onActorJoin` admission이 **선택 사항**이라, 구현을 빠뜨리면 컴파일은 통과하고 **모든 join이 조용히 거절**된다 |
+| §12.3 | **Java, Kotlin** | connector `disconnect()`/`reconnect()`(Kotlin wrapper도 동일)와 `ZLinkActorPlacement`는 **근거 없는 표면**이다. 또 `connect()`가 진행 중인 연결 시도를 기다리지 않는다 |
+| §12.4 | **Java** | 호출별 `packetName(...)` override가 없다([32 §5](stream-connector/32-stream-connector.ko.md)) |
+| §12.5 | **Node** | route client에 `sendToSpot`/`requestToSpot`가 없고, spot 전송의 **stale 갱신·1회 재전송이 미구현**이다 |
+| §12.6 | **Node** | session handler registry가 **handler 클래스 이름**을 packet 키로 써서 wire packet name과 맞지 않는다 |
+| §12.8 | **Java** | runtime event 모델이 sealed 계층이 아니라 flat record + kind enum이고, `ZLinkMonitoringOptions`에 location 계열 source 등록 4개가 없으며, event handler가 `void`를 반환한다 |
+| §12.9 | **Java** | `sendToSpot`/`requestToSpot`이 spot handle과 **channel 이름을 함께** 받는다. handle이 전송 mesh를 소유해야 한다 |
+| §12.10 | **Java** | connector가 지원 transport를 나타내는 공개 enum을 노출하지 않는다 |
+| §12.11 | **Node** | location runtime event kind가 `StoreUnavailable`이다. 닫힌 집합의 이름은 `StoreFailure`다 |
+| §12.12 | **Java** | dispatch mode enum이 `AUTO`/`MANUAL`이다(계약은 `Manual`/`Immediate`). 또 `MANUAL`에서도 state·disconnected callback이 queue를 우회하고, message callback의 완료를 기다리지 않는다 |
+| §12.13 | **Java** | connector options에 inbound observer 큐·preview 한도 2개가 없다 |
+| §12.14 | **Kotlin** | compression option helper가 options를 복사하며 `maxReceivedMessages`를 무제한으로 되돌린다 |
+| §12.15 | **Java** | 비동기 실패를 오류 코드를 담은 공통 예외로 정규화하지 않는다 |
+| §12.16 | **Java** | metadata 블록의 총합 1024바이트 한도를 검사하지 않는다 |
+| §12.17 | **Java** | request sequence를 포함한 `Error`를 그 request로 매핑하면서도 **stream-level error callback으로 먼저 이중 발행**하고, error payload JSON을 파싱하지 않는다 |
+| §12.18 | **Java** | inbound callback에서 시작한 send/request가 inbound의 `flow_id`를 잇지 않는다 |
+| §12.19 | **Java, Kotlin** | `send(Object)`가 raw payload를 받고, Kotlin에 목표 계약에 없는 `await<T>()` overload가 있다 |
+| §12.20 | **Java/Kotlin, Node, C++** | `Response`·`Error` header에 packet name을 싣는다. 계약은 그 필드를 **두지 않는 것**이다 |
+| §12.21 | **Java/Kotlin, Node, C++** | `yield` terminator가 없고 `async`가 **자동으로 turn을 반납**한다. 계약은 `async`가 turn을 유지하고 `yield`만 반납하는 것이다 |
+| §12.22 | **Node, C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다. Java/Kotlin은 서버 client와 execution turn 주입을 구현하고 blocking 표면을 제거했다 |
+| §12.23 | **Node, C++** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다. Java/Kotlin은 `runCpuWorker`·`runIoWorker`와 두 terminator를 구현했다 |
+| §12.25 | **`.NET`, Java/Kotlin, C++** | `.NET`·Java/Kotlin은 계약에 없는 receive-count API가 남아 있다. C++는 operation별 codec 선택과 connector codec registry가 남아 있고 connector-level typed codec option이 없다 |
+| §13 | **Java, Kotlin** | TicTacToe가 **수동 등록** 대신 package 스캔을 쓴다. 규약상 TicTacToe만 수동 연결 + 수동 등록이다(Node가 참조 구현) |
 
 **connector wire 계약(§10.1~§10.7b)은 3개 구현 모두 해소했다**(§10).
 
@@ -235,7 +236,8 @@ framework가 signal handler를 설치하지 않으며 애플리케이션이 소�
 
 **해소.** C++ `dispatch_error_action_t`는 `reply_error`, `drop`, **`fail_caller`** 세 값을 모두
 제공한다. `.NET`과 Node.js는 §10.7과 §4.11에서 해소했다. 세 언어 모두
-[framework API §2.4.3](05-framework-api.ko.md)의 action 집합을 충족한다.
+[Message Flow Tracing §4](server/52-message-flow-tracing.ko.md#4-event-fields)의 action 집합을
+충족한다.
 
 ### 10.8 dispatch 실패의 로그 수준
 
@@ -249,7 +251,7 @@ send에서 `Warning`, publish에서 `Debug`로 기록한다. 별도 로그 파�
 
 ### 10.9 handler filter의 적용 범위
 
-**정보(설계 결정).** [framework API §2.6](05-framework-api.ko.md)이 규정하듯 filter는 **channel
+**정보(설계 결정).** [framework API §8.1](05-framework-api.ko.md#81-handler-filter)이 규정하듯 filter는 **channel
 dispatch 경로에만** 적용한다. `.NET`에서 SPOT handler·STREAM session handler·route-mesh handler는
 filter 파이프라인을 거치지 않고 handler invocation engine을 직접 호출한다.
 
@@ -282,11 +284,11 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 
 | 갭 | 종류 | 무엇이 다른가 |
 |---|---|---|
-| [§12.20](#1220-응답에-packet-name을-싣는다-전-언어) | **결함** | reply를 sequence 단독으로 맞춰야 하는데 packet name을 함께 싣고 비교한다 |
-| [§12.21](#1221-yield-terminator-부재-전-언어) | **결함 + 미구현** | `async`가 **자동으로 turn을 반납한다**(결함). `yield` 표면이 없다(미구현) |
-| [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어) | **결함 + 미구현** | terminator 이름이 계약과 다르고 blocking 표면이 public이다(결함). turn seam·DI 서버 표면이 없다(미구현) |
-| [§12.23](#1223-worker-축-분리와-yield-부재-전-언어) | **미구현** | CPU/I/O worker 분리와 worker의 `yield`가 없다 |
-| [§12.24](#1224-actor-join의-orchestration이-뒤집혀-있다-전-언어) | **일부 충족** | `.NET`·Java·Kotlin은 caller turn orchestration과 반대 방향 동시 join을 구현했다. Node·C++은 아직 확인과 구현이 필요하다 |
+| §12.20 | **결함** | reply를 sequence 단독으로 맞춰야 하는데 packet name을 함께 싣고 비교한다 |
+| §12.21 | **결함 + 미구현** | `async`가 **자동으로 turn을 반납한다**(결함). `yield` 표면이 없다(미구현) |
+| §12.22 | **결함 + 미구현** | terminator 이름이 계약과 다르고 blocking 표면이 public이다(결함). turn seam·DI 서버 표면이 없다(미구현) |
+| §12.23 | **미구현** | CPU/I/O worker 분리와 worker의 `yield`가 없다 |
+| §12.24 | **일부 충족** | `.NET`·Java·Kotlin은 caller turn orchestration과 반대 방향 동시 join을 구현했다. Node·C++은 아직 확인과 구현이 필요하다 |
 
 나머지 §12.1~§12.19는 언어별 표면 차이이며, 각 항목이 미구현인지 결함인지를 본문에 적었다.
 
@@ -465,8 +467,9 @@ E2E는 이미 정본을 따른다 — [config-2 SM-A8](../common/e2e/config-2-sp
 **충족(`.NET`, Java, Kotlin), 미충족(Node, C++).** 기존 구현은 **join이 target 줄을 잡은 채
 source 줄을 기다리는** 반대 방향 orchestration을 사용했다.
 
-admission과 commit이 **target Spot의 줄**에서 돌고, source cleanup(`OnLeaveActor`)을 **source Spot의
-큐에 post**한다. 즉 **한 join이 두 실행 줄을 걸치면서, 잡은 줄과 기다리는 줄이 반대**다.
+admission과 commit은 **target Spot의 실행 줄**에서 진행되고, source cleanup(`OnLeaveActor`)은 **source
+Spot의 큐에 post**된다. 즉 **한 join이 두 실행 줄에 걸쳐 수행되며, 점유한 실행 줄과 대기하는 실행 줄이
+서로 반대**다.
 
 **수정 전 `.NET` 기준선에서 확인한 결함:**
 
@@ -481,8 +484,8 @@ admission과 commit이 **target Spot의 줄**에서 돌고, source cleanup(`OnLe
 **그 결과 두 가지 우회가 코드에 박혀 있다.**
 
 1. **ATD가 이 구현을 떠받치고 있다.** `JoinSpot(...).Async()`가 **source turn을 자동 반납**하므로
-   source 큐가 비고 commit의 post가 실행된다([§12.21](#1221-yield-terminator-부재-전-언어)).
-   **ATD를 그냥 걷어내면 user Spot → user Spot join이 즉시 막힌다.** ATD는 지연 최적화가 아니라
+   source 큐가 비고 commit의 post가 실행된다(§12.21).
+   **ATD를 제거하면 user Spot → user Spot join이 즉시 중단된다.** ATD는 지연 최적화가 아니라
    **join 구현의 필수 부품**이었다.
 2. **노드 전역 세마포어.** 같은 spot 쌍에서 반대 방향 join 두 개가 동시에 일어나면 서로의 큐를
    기다려 영원히 멈춘다(그 spot들의 timer와 이후 모든 join까지 함께). 그래서 구현은 **local join을
@@ -515,6 +518,24 @@ Java와 Kotlin은 공유 Java runtime에서 native admission을 일반 target di
 caller turn에 반환하고, source leave와 target commit을 그 turn에서 순서대로 완료한다. Java와 Kotlin
 Config 8의 `TD-E2`와 `TD-E3`가 모두 통과했다. 구현 커밋 `175d60d13`(2026-07-16).
 
+### 12.25 Stream Connector의 근거 없는 count·operation codec 표면
+
+**미충족(`.NET`, Java/Kotlin, C++).** [Stream Connector §5.4](stream-connector/32-stream-connector.ko.md)는
+typed payload codec 하나를 connector 생성 option으로 받고 모든 typed operation이 함께 사용하도록
+고정한다. [§10.2](stream-connector/32-stream-connector.ko.md)는 push 관측 표면을 `waitFor`,
+`expectNone`, `waitForSequence`로 한정한다.
+
+- `.NET`의 `IZlinkStreamConnector.ReceivedCount(string)`와 Java의
+  `ZLinkStreamConnector.receivedCount(String)`, Kotlin wrapper의 `receivedCount(String)`는 target
+  exact interface에 없는 공개 member다. 부재 검증은 count snapshot이 아니라 `ExpectNone` 계열의
+  명시적인 관찰 구간으로 수행해야 한다.
+- C++의 `connector_t::codecs()`와 send/request builder의 `codec(codec_t)`는 codec 결정을 connector
+  밖의 operation과 registry 호출로 분산한다. 이 세 member와 `codec_registry_t`를 제거하고
+  `connector_options_t::typed_codec` 하나로 정렬해야 한다.
+
+구현 제거와 package API snapshot 갱신은 S8·S9에서 각 언어 source, contract test와 실제 package를
+함께 바꾼다. 정식 exact interface는 제거 뒤 목표 표면만 기술한다.
+
 ## 13. 샘플 연결·등록 축 준수 현황
 
 [샘플 규약](../common/sample/README.ko.md)은 두 축을 고정한다.
@@ -525,7 +546,8 @@ Config 8의 `TD-E2`와 `TD-E3`가 모두 통과했다. 구현 커밋 `175d60d13`
   TicTacToe의 목적이다.
 - **나머지 정본 샘플**은 전부 location store 자동 연결 + **자동 등록**(스캔)을 사용한다.
 - **C++ 샘플은 예외**다. runtime reflection scanner가 없으므로 모든 샘플이 compile-time 명시
-  등록을 쓴다([05 §3.3](05-framework-api.ko.md)). C++은 이 표의 위반 대상이 아니다.
+  등록을 쓴다([C++ exact interface §8](server/languages/cpp/02-framework-interfaces.ko.md#8-handler-registry)).
+  C++은 이 표의 위반 대상이 아니다.
 
 **판정 기준은 "스캔을 쓰는가"다.** handler에 annotation을 붙였는지가 아니라, 등록이 스캔으로
 일어나는지 명시 호출로 일어나는지가 기준이다.
@@ -553,35 +575,6 @@ Config 8의 `TD-E2`와 `TD-E3`가 모두 통과했다. 구현 커밋 `175d60d13`
 - **Java/Kotlin TicTacToe** — `addHandlersFromPackageOf(...)`로 package를 스캔한다. annotation
   선언은 그대로 두되 스캔 호출을 빼고 handler를 직접 등록해야 한다.
 
-### 13.2 연결 축 현황 (2026-07-14 실측 — **이전 기록을 정정한다**)
-
-> **이전에 이 절은 "연결 축은 규약과 일치한다"고 적고 있었다. 거짓이었다.**
-> 그때는 `.NET`만 보고 판정했다. **네 언어를 실제로 세어 보니 Java와 Kotlin이 규약을 어긴다.**
-> 판정을 기준선 하나로 내리면 안 된다는 것을 이 항목이 다시 보여 준다.
-
-[샘플 규약](../common/sample/README.ko.md)의 **절대 규칙**: TicTacToe만 수동 연결을 쓸 수 있다.
-나머지 정본 샘플은 `ConnectRouter(...)`·`ConnectPeerPub(...)`·`EnableClient(endpoint)`를
-**쓰지 않는다.** *"위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다."*
-
-**TicTacToe를 뺀 정본 샘플의 수동 연결 호출 지점:**
-
-| 언어 | `connectRouter`/`connectPeerPub` | 판정 |
-|------|----------------------------------|------|
-| `.NET` | **0** | 준수 |
-| Node | **0** | 준수 |
-| **Java** | **29** | **위반** — Bingo · SupportChat · DeliveryDispatch · ShoppingMall · GameQuest |
-| **Kotlin** | **다수** | **위반** — Java를 대부분 미러링 |
-| C++ | 미측정 | — |
-
-인자 없는 `.enableClient()` overload가 **같은 파일 안에서 이미 쓰이고 있다.** 즉 피할 수 있는
-호출들이다. 상세는 [gaps/java](gaps/java.ko.md) · [gaps/kotlin](gaps/kotlin.ko.md).
-
-**ZoneWorld도 어긋나 있다.** 자동 연결 샘플인데 `dotnet` 구현이 zone 노드
-사이의 spot router·pub/sub·bridge를 수동 dial한다. [10 §5](server/10-channel-topology.ko.md)의 규칙상 수동
-endpoint가 하나라도 있으면 그 역할은 수동으로 확정되어 자동 연결 reconcile이 돌지 않으므로, 그
-수동 배선이 오히려 자동 연결을 무력화한다. 수동 dial을 걷어내야 한다
-([ZoneWorld README](../common/sample/zoneworld/README.ko.md) §4).
-
 ### 13.3 샘플 계약 갭 — 발견 기록과 현재 상태
 
 C++ 샘플 감사에서 시작해 `.NET` 기준선에서도 확인한 항목이다. 아래 현황은 발견 당시 설명을
@@ -592,11 +585,10 @@ C++ 샘플 감사에서 시작해 `.NET` 기준선에서도 확인한 항목이�
 | **SMP-X1** (미구현) | [bingo README:452-507,833-847](../common/sample/bingo/README.ko.md): room Spot의 actor join이 Api 서버에서 **`GetPlayerRecordReq/Res`**로 전적을 조회하고, leave가 **`ReportBingoResultReq/Res`**로 기록한다. 둘 다 **`yield`** 터미네이터를 쓴다([공통 샘플 §Spot 실행 turn](../common/sample/README.ko.md)). `BingoPlayerState`에 **`Wins`·`Losses`** 필드가 있다 | `.NET`은 Api store·조회/보고 handler와 room lifecycle의 `Yield` 호출, client 전적 검증을 구현해 해소했다. C++ 등 다른 언어는 각 gap 문서에서 추적한다. |
 | **SMP-X2** (결함) | [공통 샘플 §Client self-check:353](../common/sample/README.ko.md): **"인증 요청에 사용한 token 또는 actor id가 인증 응답의 actor id와 일치한다"**는 모든 샘플 client의 **첫 번째 필수 검증**이다. [gamequest:596](../common/sample/event/gamequest.ko.md)도 join의 "bind 검증"을 요구한다 | `JoinSessionRes`에 `PlayerId`를 추가하고 `.NET` client가 Alice와 Bob의 요청값을 각각 대조한다. actor routing 정보는 client에 노출하지 않는다. C++ 등 다른 언어는 같은 계약 반영이 필요하다. |
 | **SMP-X3** (결함) | [deliverydispatch:681-685](../common/sample/deliverydispatch/README.ko.md): 배송 상태가 `Assigned → Accepted → PickedUp → Delivered` **순서대로 도착**한다 | `.NET` client는 connector의 `WaitForSequence<DeliveryStatusNotify>()`로 성공·재배정 순서를 직접 검증한다. 서버가 계산한 bool에 순서 판정을 위임하지 않는다. C++은 별도 추적한다. |
-
 | **SMP-X4** (결함) | [deliverydispatch §메시지 계약:306-320](../common/sample/deliverydispatch/README.ko.md)이 wire 메시지를 고정한다. | courier client→session→actor의 `CourierDecisionMsg`와 actor→dispatch의 `OfferDeliveryResultMsg`를 서로 다른 책임의 one-way message로 문서화했다. `.NET`의 계약 밖 `ServerAssertionReq/Res` wire는 제거됐다. |
 | **SMP-X5** (결함) | [gamequest §11.2:503-509](../common/sample/event/gamequest.ko.md): entry→owner hop은 **flat one-way `GameplayMsg`** = `{EventId, PlayerId, Type, Payload: bytes, OccurredAtUnixMs}` | `.NET`은 flat `GameplayMsg`를 channel one-way send로 전달하고 versioned projection을 유지해 해소했다. C++ 등 다른 언어는 각 gap 문서에서 추적한다. |
 
-**작업 순서:** 각 언어는 [§12.21](#1221-yield-terminator-부재-전-언어)의 `yield` terminator를 먼저
+**작업 순서:** 각 언어는 §12.21의 `yield` terminator를 먼저
 구현한 뒤 SMP-X1을 채운다. `.NET`은 이 순서로 완료했다. 순서를 뒤집으면 `yield` 없이 `async`로
 흉내 내게 되어 **샘플이 보여 주려던 대비 자체가 사라진다.**
 
@@ -613,35 +605,10 @@ C++ 샘플 감사에서 시작해 `.NET` 기준선에서도 확인한 항목이�
 | **D3. `DeliveryStatusChangedReq.CustomerId`** (SMP-X4 일부) | **계약에 `CustomerId`를 추가**한다(문서 수정 완료, deliverydispatch:326). 이 필드가 없어서 C++이 `"customer-1"`을 하드코딩한 버그(SMP-CP-55)가 났다 | 모든 언어: `DeliveryStatusChangedReq`에 `CustomerId` 추가, Tracking이 그걸로 고객 actor를 찾게 한다. 하드코딩 제거 |
 | **D4. GameQuest wire** (SMP-X5) | **전부 문서(gamequest.ko.md)대로.** `QuestProgress.Version: int64` **유지**, 필드 이름 **`LastSourceEventId`**, `GameplayMsg`는 **one-way** | `.NET`: `Version` 추가, `LastEventId`→`LastSourceEventId`, `ApplyGameplayEventReq`(request)→one-way `GameplayMsg`. C++: envelope wrapper를 문서의 flat `GameplayMsg`로. 계약에 없는 request 7종·event 이름 drift 정리 |
 | **D5. 원격 actor 생성·join** (E2E-DN-03 / Config 10) | **새 public API를 만들지 않는다.** 원격 노드에서 actor를 생성·join하는 기능은 **의도적으로 제거됐다** — 모호한 소유권 상황을 막으려고 **actor 생성·join 책임을 그 actor를 소유하는 노드에 고정**했다. transfer는 기존 drain/handoff 계약([54](server/54-graceful-drain-handoff.ko.md))으로만 표현한다 | 각 언어: Config 10에서 "분리된 transfer controller가 원격 actor를 spawn"하는 형태를 **만들지 않는다.** e2e 기대치를 "노드가 자기 actor를 소유·생성한다"에 맞춘다. private API·raw frame 우회 금지 |
-| **D6. 바인딩 옵션** (IMP-DN-14/16 등) | **바인딩 라이브러리에 빠진 공개 옵션 API를 추가**한다(제거 아님). framework가 노출한 옵션을 바인딩이 무시하면 **거짓 계약**(설정했는데 no-op)이라 없느니만 못하다. **스펙 근거가 없는 옵션만** framework에서 제거 | [§13.5 바인딩 갱신 절차](#135-바인딩-옵션-추가-절차-각-언어-공통)를 따른다 |
 
-**D1~D4는 wire 계약이라 [§0.8](../gaps/cpp.ko.md#08-이-문서의-경계--네가-혼자-결정하면-안-되는-것)의 1단계였지만,
+**D1~D4는 wire 계약이라 C++ gap 문서 §0.8의 1단계였지만,
 이제 결정이 내려졌으므로 각 언어의 2단계(구현) 작업이다.** 각 언어 gap 문서의 해당 행에서 이 결정을
 참조해 닫는다.
-
-### 13.5 바인딩 옵션 추가 절차 (각 언어 공통)
-
-**framework가 공개한 옵션을 바인딩이 노출하지 않아 앱이 설정하지 못하는 갭**(예: `.NET`의
-IMP-DN-14 `HandshakeInterval`, IMP-DN-16 SpotNode publisher linger·subscriber receive timeout)은
-아래 순서로 닫는다. framework 코드에서 우회하지 않는다.
-
-```
-1. bindings/<lang>/ 의 공개 표면에 빠진 옵션 API를 추가한다.
-   — 스펙에 근거가 있는 옵션만. 근거 없는 옵션은 추가하지 말고 framework 계약에서 제거한다.
-   — getter만 있고 실제로 안 먹는 "거짓 계약"을 만들지 않는다. 설정하면 실제로 동작해야 한다.
-2. bindings/<lang> 패키지 버전을 올린다(patch/minor).
-3. 로컬 패키지 저장소에 배포한다.
-   — dotnet: 로컬 NuGet feed에 nupkg push
-   — node:   npm pack → 로컬 tarball, 또는 로컬 registry
-   — java/kotlin: mavenLocal() 에 publishToMavenLocal
-   — cpp:   ODR 특성상 헤더/타깃 참조 갱신(별도 패키지 배포 없음)
-4. framework/languages/<lang> 의 바인딩 참조를 새 버전으로 올린다.
-5. 그 옵션을 실제로 설정하고 동작이 바뀌는지 확인하는 테스트를 추가한다
-   — 설정 전/후로 소켓·spot 동작이 달라지는 것을 관측한다. getter 값만 확인하지 않는다.
-6. 갭 문서 해당 행을 [x]로 닫고 버전·커밋을 근거로 남긴다.
-```
-
-이 절차는 이전에 http-client를 5언어에 통일할 때 쓴 것과 같은 방식이다(로컬 배포 → 소비자 상향).
 
 ## 14. 문서 소유권 중복 (스펙 트리 정리 후 잔여)
 
@@ -706,32 +673,33 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
   spot close가 `.NET`·Java·Node에서 **check-then-act**이고(IMP-X12), C++은 같은 계약을 **락 두 개가
   서로 안 맞아서** 깬다(IMP-CP-34). **B1을 유일하게 제대로 하는 게 C++이고, B2를 유일하게 틀리는
   것도 C++이다.**
-- **조용한 no-op.** 받아서 **검증까지 해 놓고 버리는 옵션.** 앱은 "먹혔다"는 확인을 받는다.
+- **관찰할 수 없는 no-op.** 값을 받아 **검증한 뒤 적용하지 않는 option**이다. application은 설정이
+  적용됐다는 결과를 받는다.
   `.NET`은 `Linger`를 수락해 놓고 소켓엔 **0을 강제**하고(IMP-DN-14), Java의
   `addForwardedMetadataKey`·C++의 `unhandled_dispatch_options_t`·Node의 `minThreads`가 모두
-  같은 병이다.
+  같은 결함이다.
 
 ### 15.3 교차 언어 — 같은 결함이 여러 구현에 있다
 
 | ID | 결함 | 어디 |
 |----|------|------|
 | **IMP-X1** | **pending actor row(`ActorRef` 비어 있음)를 resolve 성공으로 반환한다.** [40 §2.3](server/40-location-runtime.ko.md)은 miss로 취급하라고 요구한다 | Java · C++ |
-| **IMP-X2** | **location event source가 없다.** [40 §9](server/40-location-runtime.ko.md)의 `location-peer/spot/actor/route`와 `StoreFailure`/`StoreRecovered` | Java · C++ · Node |
+| **IMP-X2** | **location store 상태 event source가 없다.** [50 §3](server/50-runtime-monitoring.ko.md#3-event-identifiers)의 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 게시하지 않는다 | Java · C++ · Node |
 | **IMP-X3** | **startup validation이 [20 §8](server/20-spot-messaging.ko.md)·[30 §7.2](server/30-stream-session.ko.md)의 설정 오류를 통과시킨다.** "모든 설정 오류는 host 시작 전에 실패한다"가 계약 | Java · Node · C++ (`.NET`은 해소) |
 | **IMP-X4** | **location store read에 5초 취소 상한이 없다.** [54 §3.4](server/54-graceful-drain-handoff.ko.md)가 framework 내부 정책으로 고정 | Java (`.NET`은 해소) |
 | **IMP-X5** | **message-flow 관측자가 로그 모드에 묶여 침묵한다.** [52 §3](server/52-message-flow-tracing.ko.md)은 "관측자는 모드와 무관하게, `off`여도 발화한다"고 요구한다. ⇒ OTel로 흘리려고 관측자를 달고 로그를 끄면 **아무것도 안 온다** | Java · Node · C++ (`.NET`만 올바름) |
 | **IMP-X6** | **`origin=lifecycle`을 생성하지 않는다.** [53 §4.2](server/53-flow-correlation.ko.md). ⇒ drain이 유발한 트래픽을 application 트래픽과 **구분할 수 없다** | Java · Node · C++ |
-| **IMP-X7** | **connector send payload 한도를 압축 *전* payload에 적용한다.** [32 §4.7](stream-connector/32-stream-connector.ko.md)은 "압축을 쓰면 압축된 payload 기준"이라고 못 박는다. ⇒ browser는 받고 나머지는 거부한다 — **압축이 존재하는 이유가 막힌다** | Java · C++ (`.NET`·TypeScript는 해소) |
-| **IMP-X8** | **수동 endpoint가 그 역할의 자동 연결 reconcile을 끄지 않는다.** [10 §5.2](server/10-channel-topology.ko.md). ⇒ 수동으로 지정한 서버 말고 **store에 있는 다른 peer들까지 물고 라운드로빈**한다 | Java · Node |
+| **IMP-X7** | **connector send payload 한도를 압축 *전* payload에 적용한다.** [32 §4.7](stream-connector/32-stream-connector.ko.md)은 압축을 사용하면 압축된 payload를 기준으로 삼도록 정한다. 따라서 browser는 허용하지만 다른 connector는 거부해 압축 전송 계약이 달라진다 | Java · C++ (`.NET`·TypeScript는 해소) |
+| **IMP-X8** | **수동 endpoint가 그 역할의 자동 연결 reconcile을 끄지 않는다.** [10 §5.2](server/10-channel-topology.ko.md). 따라서 수동 지정 이외의 store peer까지 연결하고 round-robin 대상으로 사용한다 | Java · Node |
 | **IMP-X9** | **HTTP client가 proxy 자격증명을 대상 서버로 흘리고, CONNECT는 인증 없이 나간다.** [http 07 §7.3](http-client/07-auth-tls-proxy.ko.md) | Java (`.NET`·C++·Node는 해소) |
 | **IMP-X10** | **SPOT timer 등록 검증이 startup이 아니라 spot 활성화 시점이다.** [25 §4.1](server/25-stage-wrapper-on-spot.ko.md). ⇒ `period=0`이 healthy로 기동하고 **모든 방 생성이 실패**한다 | Node (`.NET`은 해소) |
 | **IMP-X11** | **`fanout.received`가 등록되지 않은 topic까지 메트릭 라벨로 단다.** [51 §5](server/51-runtime-metrics.ko.md)는 라벨을 등록 시점의 닫힌 집합으로 제한한다. ⇒ **수집기 카디널리티가 무한히 늘어난다** | Node (`.NET`·C++은 해소) |
-| **IMP-X12** | **actor가 든 spot을 닫을 수 있다 — check-then-act 경합.** [21 §close](server/21-mesh-node.ko.md)는 "actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다". ⇒ `OnLeaveActor`가 안 돌고 actor의 location row가 **해제된 spot을 가리킨다** | Java · Node (`.NET`·C++은 해소) |
-| **IMP-X13** | **서버가 `correlation_id`를 `request_seq`로 날조한다.** [52 §9](server/52-message-flow-tracing.ko.md)는 "client가 생성하고 server는 echo만 한다. **서버는 ingress에서 생성하지 않는다**". `request_seq`는 연결마다 도는 카운터라 **모든 세션의 로그가 `corr=1,2,3…`으로 뭉갠다** | Java · Node (`.NET`·C++은 해소) |
+| **IMP-X12** | **actor가 존재하는 Spot을 닫을 수 있다 — check-then-act 경합.** [21 §close](server/21-mesh-node.ko.md)는 "actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다". 따라서 `OnLeaveActor`가 실행되지 않고 actor의 location row가 **해제된 Spot을 가리킨다** | Java · Node (`.NET`·C++은 해소) |
+| **IMP-X13** | **서버가 `correlation_id`에 `request_seq`를 사용한다.** [52 §9](server/52-message-flow-tracing.ko.md)는 "client가 생성하고 server는 echo만 한다. **서버는 ingress에서 생성하지 않는다**". `request_seq`는 연결별 counter이므로 서로 다른 session의 로그가 같은 `corr=1,2,3…` 값을 사용한다 | Java · Node (`.NET`·C++은 해소) |
 | **IMP-X14** | **`listPageSize`(기본 1000)를 읽는 곳이 없다.** 내부 기본값이 1000이 아니라 **무한**이라 모든 목록 조회가 **O(N) 전체 읽기**다 | Java · Node · C++ (`.NET`은 1000을 하드코딩 — IMP-DN-06) |
 | **IMP-X15** | **`storeFailureGrace`(30초)를 읽는 곳이 없다.** [40 §6.1](server/40-location-runtime.ko.md)의 **fail-static 유예 정책 자체가 없다.** Java e2e의 `SF-B2 GraceExceeded`가 **존재하지 않는 정책을 검증하고 있다** | Java · Node · C++ |
-| **IMP-X16** | **`includeNativeDiagnostics`를 읽는 곳이 없다.** 형제 옵션들은 전부 살아 있다 | Java · Node · C++ |
-| **IMP-X17** | **첫 `GetOrCreate` 호출자의 취소가 같은 spot을 기다리는 다른 호출자 전부를 실패시킨다.** ⇒ 부하 상황에서 **성질 급한 클라이언트 하나가 그 방에 몰린 모두를 날린다** | Node (`.NET`은 해소) |
+| **IMP-X16** | **`includeNativeDiagnostics`를 읽는 곳이 없다.** 다른 관련 option은 모두 적용된다 | Java · Node · C++ |
+| **IMP-X17** | **첫 `GetOrCreate` 호출자의 취소가 같은 Spot을 기다리는 다른 호출자 전부를 실패시킨다.** 따라서 한 client의 빠른 취소가 같은 Spot을 기다리는 모든 호출을 실패시킨다 | Node (`.NET`은 해소) |
 | **IMP-X18** | **Redis fixture의 "네 확장이 바이트 단위로 일치한다"는 주장이 거짓이다.** C++ actor row는 다섯 번째 hash 필드 `mesh`를 쓰고, 빈 컬렉션 표현과 Java의 zero timestamp가 fixture와 다르다. **fixture 테스트가 row JSON만 검사해서 아무도 못 잡는다** | Java · Node · C++ (`.NET`은 canonical fixture 전체 key/value를 검증) |
 
 ### 15.4 라운드 4가 무너뜨린 것 — **"통과했다"는 기록은 통과의 증거가 아니다**
@@ -747,7 +715,7 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 **실패할 수 없는 검증이 있다.** Node의 probe 서버는 클라이언트가 단언할 `serviceRole`·`state`를
 **리터럴로 만들어 낸다** — `serviceRole === Router && state === Ready`는 영원히 참이다.
 
-**약한 게이트가 진짜 버그를 가린다.** C++ Bingo는 **두 번째 player에게 게임 시작 notify를 안 보낸다**
+**약한 gate가 실제 버그를 가린다.** C++ Bingo는 **두 번째 player에게 게임 시작 notify를 보내지 않는다**
 (제외 필터에 그 player를 넣는다). 클라이언트 검증이 "**두** player가 기다린다"를 제대로 단언하지
 않아 아무도 몰랐다.
 
@@ -761,7 +729,7 @@ C++ 감사가 더 깊이 팠더니 이게 나왔다. **버그와 그것을 놓�
 | 갭 | 그것을 검증해야 할 e2e/게이트 | 왜 못 잡나 |
 |---|---|---|
 | **C++ Bingo가 2번째 player에게 start notify를 안 보낸다** | Bingo 클라이언트 게이트 | 게이트가 **client1에만** start 대기를 건다. client2는 아예 안 기다리고, `status == Running`도 안 본다. `.NET`은 양쪽에 걸고 둘 다 단언한다 |
-| **IMP-CP-06** (store 장애 유예 없음) | e2e Config 6 | 장애를 `docker pause`로만 만든다(문서는 stop/restart 요구). ⇒ **IMP-CP-06의 발동 조건이 아예 안 생긴다** |
+| **IMP-CP-06** (store 장애 유예 없음) | e2e Config 6 | 장애를 `docker pause`로만 만든다(문서는 stop/restart 요구). 따라서 **IMP-CP-06의 발생 조건이 만들어지지 않는다** |
 | **IMP-CP-35** (runtime에 lease join 없음) | e2e Config 6 | stale row 제외를 **Redis 확장이 대신 해 준다.** ⇒ framework가 lease를 join하든 말든 **초록이다** |
 | **IMP-CP-13** (모니터링이 diff 없이 매 tick 발행) | e2e `MON-A2` | **그 결함 덕분에** 통과한다 |
 | **IMP-CP-18** (폴백 로그가 `phase=` 대신 `outcome=`) | e2e `OBS-A2` | C++ 전용 토큰을 **오히려 못박는다** |
@@ -780,7 +748,7 @@ join의 reply를 성공 응답으로 되돌려 주면 안 된다. **그 규칙�
 | 언어 | 타입 모양 | 분기 없이 reply 접근이 컴파일되나 | 샘플 |
 |------|-----------|-----------------------------------|------|
 | **`.NET`** | `abstract record`가 **`Reply`를 노출하지 않는다.** `Accepted`/`Rejected`만 갖는다 | **아니오** — 패턴 매칭이 강제된다 | 안전 |
-| Java | `sealed interface`가 **`TReply reply()`를 선언한다** | **예** — `result.reply()`가 그냥 컴파일된다 | 샘플은 `instanceof`로 분기한다(**잠재 위험**) |
+| Java | `sealed interface`가 **`TReply reply()`를 선언한다** | **예** — `result.reply()`가 분기 없이 컴파일된다 | 샘플은 `instanceof`로 분기한다(**잠재 위험**) |
 | Kotlin | Java 타입을 공유한다 | 예 | 샘플은 `as?`로 분기한다 |
 | Node | union의 **양쪽 갈래에 `reply`가 있다** | **예** — TS가 공통 속성 접근을 허용한다 | 미확인 |
 | **C++** | `accepted_t`·`rejected_t` **양쪽 struct에 `.reply`가 있다** | **예** — 제네릭 람다가 양쪽에 컴파일된다 | **버그** |
@@ -832,20 +800,3 @@ invalid frame은 `Warning`, publish는 `Debug`, application handler 예외는 `E
 각 문서는 세 묶음을 담는다 — **구현 감사에서 발굴한 것**(IMP-*), **교차 언어 결함**(IMP-X*),
 **언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20~§12.24)은 이 문서가 소유하고 각 언어
 체크리스트가 참조한다.
-
-## 17. routing id 자동 할당 구현 상태
-
-[channel topology](server/10-channel-topology.ko.md), [MeshNode](server/21-mesh-node.ko.md),
-[location runtime](server/40-location-runtime.ko.md)과 [Redis extension](server/41-location-store-redis.ko.md)이
-자동 routing id 할당의 목표 계약을 소유한다.
-
-| 언어 | builder·runtime | in-memory store | Redis store | 상태 |
-|------|-----------------|-----------------|-------------|------|
-| `.NET` | 구현 | 구현 | 구현 | 정식 API snapshot과 회귀 검증 대상 |
-| Java/Kotlin | 미구현 | 미구현 | 미구현 | public contract와 구현 필요 |
-| Node.js | 미구현 | 미구현 | 미구현 | public contract와 구현 필요 |
-| C++ | 미구현 | 미구현 | 미구현 | public contract와 구현 필요 |
-
-다른 언어의 미구현을 이유로 공통 계약을 축소하지 않는다. 반대로 이 표는 `.NET` 구현만으로 다른
-언어가 완료됐다고 판정하지 않는다. 각 언어는 정식 interface 문서, store contract test와 lifecycle
-검증을 함께 추가해야 완료다.

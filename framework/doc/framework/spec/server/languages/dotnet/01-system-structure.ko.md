@@ -34,6 +34,13 @@ public static class ZLinkFrameworkServiceCollectionExtensions
         this IServiceCollection services,
         Action<IZLinkFrameworkOptions> configure);
 }
+
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddZLinkMonitoring(
+        this IServiceCollection services,
+        Action<IZLinkMonitoringOptions> configure);
+}
 ```
 
 한 `IServiceCollection`에 framework root를 한 번 등록한다. `IZLinkFrameworkOptions`의 정확한 멤버는

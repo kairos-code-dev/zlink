@@ -32,6 +32,8 @@ codec, compression, reconnect, dispatch queue처럼 client 실행에 필요한 �
 
 ## 2. 모듈
 
+Java connector의 Maven 좌표는 `systems.zlink:zlink-stream-connector`다.
+
 | 모듈 | 역할 |
 |------|------|
 | `zlink-stream-connector` | TCP/TLS/WS/WSS transport, frame codec, send/request, dispatch |
@@ -51,7 +53,6 @@ public interface ZLinkStreamConnector {
     ZLinkStreamConnectionState state();
     ZLinkStreamConnectorOptions options();
     int pendingDispatchCount();
-    int receivedCount(String name);
 
     // lifecycle 표면은 셋뿐이다. 수동 재연결은 connect()의 상태 전이이고,
     // 자동 재연결은 options가 담당한다(공통 스펙 32 §6).
@@ -99,7 +100,7 @@ Java는 event를 `on...` registration으로 노출한다. .NET의 event와 의�
 등록 해제는 반환된 `AutoCloseable`로 한다.
 
 **세션 종료 사유 (close reason).** 값 집합과 의미는
-[공통 스펙 §6.2](../../32-stream-connector.ko.md)가 소유한다. Java는 이를 닫힌 enum
+[공통 스펙 §6.3](../../32-stream-connector.ko.md#63-종료-사유)가 소유한다. Java는 이를 닫힌 enum
 `ZLinkStreamCloseReason`(`CLIENT_CLOSE`, `IDLE_TIMEOUT`, `HEARTBEAT_TIMEOUT`, `SERVER_DRAIN`,
 `PROTOCOL_ERROR`, `TRANSPORT_ERROR`)으로 표현하고, **`ZLinkStreamDisconnectedHandler`가 받는
 disconnect 이벤트의 `ZLinkStreamCloseReason closeReason()`으로 노출한다.**
@@ -181,10 +182,24 @@ public record ZLinkStreamEncodedPayload(
     ZLinkStreamCodec codec) {
 }
 
+public enum ZLinkFlowOrigin {
+    INBOUND,
+    TIMER,
+    APPLICATION,
+    LIFECYCLE
+}
+
+public interface ZLinkStreamFlow {
+    String flowId();
+    ZLinkFlowOrigin flowOrigin();
+}
+
 public record ZLinkStreamMessage<TPayload>(
     String packetName,
     TPayload payload,
-    Map<String, String> metadata) {
+    Map<String, String> metadata,
+    String flowId,
+    ZLinkFlowOrigin flowOrigin) implements ZLinkStreamFlow {
 }
 ```
 
@@ -205,6 +220,7 @@ public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(Map<String, String> metadata);
     ZLinkStreamSendCall compress();
+    ZLinkStreamSendCall flowFrom(ZLinkStreamFlow flow);
     void submit();
 }
 
@@ -214,6 +230,7 @@ public interface ZLinkStreamRequestCall {
     ZLinkStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkStreamRequestCall timeout(Duration timeout);
     ZLinkStreamRequestCall compress();
+    ZLinkStreamRequestCall flowFrom(ZLinkStreamFlow flow);
     CompletionStage<ZLinkStreamEncodedPayload> submit();
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }
@@ -223,6 +240,7 @@ public interface ZLinkTypedStreamSendCall {
     ZLinkTypedStreamSendCall metadata(String key, String value);
     ZLinkTypedStreamSendCall metadata(Map<String, String> metadata);
     ZLinkTypedStreamSendCall compress();
+    ZLinkTypedStreamSendCall flowFrom(ZLinkStreamFlow flow);
     void submit();
 }
 
@@ -232,6 +250,7 @@ public interface ZLinkTypedStreamRequestCall {
     ZLinkTypedStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkTypedStreamRequestCall timeout(Duration timeout);
     ZLinkTypedStreamRequestCall compress();
+    ZLinkTypedStreamRequestCall flowFrom(ZLinkStreamFlow flow);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }
 
@@ -251,7 +270,19 @@ public interface ZLinkStreamWaitCall {
 request timeout이 끝나면 pending request를 제거하고 반환한 `CompletionStage`를 timeout
 실패로 완료한다. 제거된 request의 response가 늦게 도착해도 그 stage를 다시 완료하지 않는다.
 
-### 7.1 테스트 대기·단언 표면
+### 7.1 Flow correlation
+
+Connector가 시작한 outbound operation은 UUIDv7 `flow_id`를 한 번 생성한다. Inbound handler에서
+관련 outbound를 시작할 때는 받은 `ZLinkStreamMessage`를 `flowFrom(...)`에 넘겨 `flowId`와
+`flowOrigin`을 한 쌍으로 전파한다. 명시적으로 전달하지 않은 outbound는 `APPLICATION`이 origin인
+새 flow를 시작한다.
+
+`CompletionStage`가 별도 executor로 전환되어도 connector instance의 mutable 상태나 thread ID로 current
+flow를 추정하지 않는다. wire 형식과 비동기 문맥 경계는
+[Stream Connector §4.2](../../32-stream-connector.ko.md#42-header)와
+[Flow Correlation §6](../../../server/53-flow-correlation.ko.md#6-async-context)이 소유한다.
+
+### 7.2 테스트 대기·단언 표면
 
 계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. Java 표면은 다음과 같다.
 
@@ -300,11 +331,11 @@ typed 표면은 registry가 encode/decode할 수 있는 업무 객체 payload를
 동작한다. `String`, `byte[]`, `Message` 같은 raw payload는 connector 하위 경로나
 명시적 raw 사용에서만 다룬다.
 
-Kotlin extension은 Java typed payload 표면 위에 얇게 얹는다.
+Kotlin extension은 Java typed payload 표면에 coroutine 호출 형태만 추가한다.
 
 ```kotlin
 // request 응답은 ZLinkStreamRequestCall 의 reified typed awaitReply 로 받는다(codec 가 JSON 등 처리).
-// 이름은 §13의 목표 선언과 같다 -- 비-reified `await()`와 overload로 겹치지 않게 분리한다.
+// 이름은 §12의 목표 선언과 같다 -- 비-reified `await()`와 overload로 겹치지 않게 분리한다.
 inline suspend fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply
 
 // 구독은 connector 의 waitFor<T>() 또는 messages(packetName) Flow 로 한다.
@@ -396,6 +427,14 @@ try (AutoCloseable log = connector.observeInbound(observation -> {
     connector.connect().submit(); // 연결 완료는 반환된 CompletionStage로 관찰한다.
 }
 ```
+
+### 12.1 Metric
+
+Java connector는 [공통 스펙 §6.2](../../32-stream-connector.ko.md#62-connector-reconnect-계기)의
+`zlink.stream.reconnects`와 닫힌 tag를 Micrometer global registry에 게시한다. Application과 E2E는 public
+`MeterRegistry`를 `Metrics.addRegistry(...)`로 등록하고 같은 registry에서 counter를 읽는다. Kotlin
+wrapper도 Java connector와 같은 registry를 사용한다. Registry 또는 listener failure는 send, request와
+연결 상태를 바꾸지 않는다.
 
 ## 13. Kotlin 표면
 

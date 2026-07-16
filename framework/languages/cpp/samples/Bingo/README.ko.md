@@ -9,8 +9,8 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 
 - sample topology와 endpoint 이름
 - 공유 location store 기반 자동 연결
-- API channel server/client 구성
-- play channel server 구성
+- API ChannelName handler/client 구성
+- Play ChannelName handler 구성
 - session stream endpoint 구성
 - authenticate player/session handler
 - ensure player actor handler
@@ -25,11 +25,11 @@ API 위에서 보여 준다. client는 Session stream 하나에 연결하고, Pl
 - publish/subscribe 구성과 일반 event publish
 - callback submit
 - coroutine submit
-- user Spot 생성과 room spot node 구성
+- user Spot 생성과 room owner MeshNode 구성
 - `on_create_actor`, room join, room leave callback 흐름
 - room user Spot의 `leave_actor` 호출과 Entry Spot 복귀
 - Entry Spot의 `destroy_actor` 호출
-- destroy는 `on_leave_actor`를 호출하지 않는다
+- lifecycle self-check는 `destroy_actor` 전후의 Entry Spot leave callback count가 같은지 검증한다
 - SPOT timer 등록
 - monitoring source 등록
 - offload handler option
@@ -51,8 +51,9 @@ Protobuf codec extension으로 등록된 typed message를 사용한다. 서버 �
 script 실행 결과는 full client/server self-check 결과와 actor lifecycle sample gate 결과를
 표준 출력으로 보여 준다. actor lifecycle sample gate는 sample source가
 Entry Spot에서만 `destroy_actor`를 호출하는지 확인하고, runtime test로 `leave_actor` 후
-Entry Spot destroy와 destroy가 `on_leave_actor`를 호출하지 않는다라는 callback isolation을
-검증한다. 같은 gate는 destroy 뒤 actor lookup에서 사라지는지와 같은 actor id 재생성이
+Entry Spot destroy를 검증한다. `test_cpp_framework_spot_runtime`은 destroy 직전과 직후의 Entry Spot
+leave callback count가 같은지 단언해 추가 `on_leave_actor`가 없음을 확인한다. 같은 gate는 destroy 뒤
+actor lookup에서 사라지는지와 같은 actor id 재생성이
 가능한지도 확인한다. runner는 API, Play, Session 서버를 별도 process로 계속
 실행한 뒤 public client 실행 파일로 authenticate, match, card submit, server draw, winner
 판단 흐름을 검증한다.
@@ -65,8 +66,7 @@ Entry Spot destroy와 destroy가 `on_leave_actor`를 호출하지 않는다라�
 `sample.host.keepRunning` 값을 `true`로 둔다.
 
 Client 실행 파일은 framework app을 만들지 않는다. Client는 stream connector만 사용하며,
-필요하면 `--stream-endpoint` 또는 `ZLINK_CPP_CLIENT_STREAM_ENDPOINT`로 접속 endpoint를
-받는다.
+접속 endpoint는 검증된 `--stream-endpoint` CLI option으로 받는다.
 
 Linux 또는 WSL에서는 아래 script 를 실행한다.
 
@@ -81,10 +81,10 @@ Windows PowerShell에서는 아래 script 를 실행한다.
 ```
 
 script 는 CTest sample parity와 actor lifecycle runtime gate를 먼저 실행한다. 그 다음
-API, Play, Session 서버 실행 파일을 계속 실행 모드로 띄우고 public client
+API, Play, Session 서버 실행 파일을 계속 실행 모드로 시작하고 public client
 실행 파일로 full client/server self-check 를 수행한다.
 
-script 는 전용 Redis Docker container를 Docker가 배정한 loopback port로 띄우고 self-check 가
+script 는 전용 Redis Docker container를 Docker가 배정한 loopback port로 시작하고 self-check 가
 끝나면 정상/실패와 관계없이 그 container를 정리한다. 따라서 room 할당 상태는 격리되어 개발자의
 로컬 Redis를 건드리지 않는다. script 는 실행마다 고유한 `BINGO_REDIS_KEY_PREFIX`도 전달하므로
 같은 Redis를 쓰는 다른 테스트의 match queue key와 섞이지 않는다.

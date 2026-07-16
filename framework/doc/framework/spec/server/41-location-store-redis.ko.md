@@ -30,7 +30,7 @@ options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
 | 설정 | 의미 |
 |------|------|
 | connection string / configuration | Redis 연결 정보. 언어별 Redis client의 관용 표현을 그대로 받는다 |
-| key prefix | 이 배포의 모든 key 앞에 붙는 격리 접두사. 배포(또는 테스트 실행)별로 달라야 한다 |
+| key prefix | 이 배포의 모든 key 앞에 추가하는 격리 접두사. 배포 또는 테스트 실행마다 달라야 한다 |
 
 Redis extension 인스턴스는 MeshNode descriptor, Spot location, Actor location, owner lease, Actor transfer
 authority와 routing ID slot allocation을 함께 제공한다. Change stamp도 같은 인스턴스가 제공한다.
@@ -61,21 +61,50 @@ prefix `P`, kind ∈ {`mesh`, `spot`, `actor`, `route`} 기준. row key는 key �
 MeshNode descriptor row key는 `MeshName + RID`를 length-prefix로 연결한 값이다. Endpoint는 descriptor 값에
 포함하며 identity key로 사용하지 않는다. 재기동한 같은 RID는 generation으로 구분한다.
 
-Redis row 형식의 byte-for-byte fixture 정본은
-`framework/testdata/location/redis/actor-location-v2.json`이다. 모든 공식 Redis extension은 이
-fixture와 같은 key 문자열, hash field, row JSON을 만들어야 한다. fixture의 hash field는
-`owner`, `gen`, `json`, `updatedAtMs`이고, row JSON은 PascalCase public field 이름을 유지한다.
-`RoutingId` 값은 소문자 hex 문자열로 저장하고, route `Value`는 base64 문자열로 저장한다.
+MeshNode descriptor HASH는 다음 field를 정확히 사용한다.
+
+| field | 값 |
+|---|---|
+| `owner` | descriptor를 claim한 store owner ID |
+| `gen` | store owner token generation의 unsigned 64-bit 10진 ASCII |
+| `json` | 아래 canonical descriptor JSON |
+| `updatedAtMs` | Redis `TIME`으로 얻은 unsigned 64-bit millisecond 10진 ASCII |
+| `mesh` | MeshName UTF-8 문자열 |
+
+descriptor JSON은 `ZLinkMeshNodeDescriptor` target의 PascalCase field 이름을 유지하고 UTF-8, 공백 없음,
+아래 field 순서로 인코딩한다. `ChannelWeights`의 property는 ChannelName의 UTF-8 byte 순으로 정렬하며
+같은 이름은 허용하지 않는다. RID는 소문자 hex, generation과 revision은 선행 0 없는 JSON 정수, weight는
+0..100 정수다. 문자열은 non-ASCII 문자를 UTF-8로 그대로 기록하고 JSON이 요구하는 큰따옴표, 역슬래시와
+U+0000..U+001F만 escape한다. control 문자의 Unicode escape는 `\\u00xx` 형식을 사용하며 hex는 소문자를
+사용한다.
+
+```json
+{"MeshName":"game","Rid":"67616d652d61","LifecycleGeneration":7,"DescriptorRevision":3,"Endpoint":"tcp://10.0.0.1:7300","ChannelWeights":{"orders":100,"world":50},"Draining":false,"SecurityIdentity":"cluster-a","OwnerId":"mesh-owner-a","UpdatedAt":"2024-07-15T00:00:00+00:00"}
+```
+
+descriptor HASH와 JSON의 byte-for-byte fixture는
+[`mesh-node-descriptor-v1.json`](../../../../testdata/location/redis/mesh-node-descriptor-v1.json)이다.
+
+`descriptorRevision`은 lifecycle마다 1부터 시작한다. `gen`은 store claim의 fencing 값이며 lifecycle
+generation이나 descriptor revision과 다른 값이다. weight 또는 drain state 변경은 row의 `gen`을 바꾸지
+않고 revision, `json`, `updatedAtMs`와 `P:stamp:mesh:{mesh}`를 Lua script 한 번으로 갱신한다. script는 현재
+lifecycle generation과 기존 revision을 확인하고 더 큰 revision만 저장한다.
+
+Actor location row의 byte-for-byte fixture는
+[`actor-location-v2.json`](../../../../testdata/location/redis/actor-location-v2.json)이다. 모든 공식 Redis
+extension은 같은 key 문자열, hash field와 row JSON을 만들어야 한다. hash의 `owner`는 public
+`OwnerId`, `gen`은 store owner token generation, `mesh`는 MeshName이다. row JSON은
+`ZLinkActorLocation` target의 PascalCase field 이름을 유지한다.
 
 actor row와 key 형식은 다음 규칙으로 고정한다.
 
-- actor row key는 **actor id 단독**이다. actor id 전역 unique 계약에 따라 `ActorType`은 key
-  구성에 포함하지 않으며, row의 nullable 진단 필드로만 둔다.
+- actor row key는 **MeshName과 actor id**를 순서대로 length-prefix encode한다. `ActorType`은 key
+  구성에 포함하지 않으며 row field로만 둔다.
 - row `json`의 actor ref는 문자열 포맷이 아니라 **typed 객체 `{ nodeRid, actorId, generation }`**
   로 직렬화한다. 이 객체의 field 이름은 camelCase이고, `nodeRid`는 routing id hex 문자열이다.
   actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
-- actor row에는 중복 `SpotKind` 필드를 두지 않는다. actor가 존재하는 spot 종류는
-  `LocationKind` 단독으로 표현한다.
+- row field는 `MeshName`, `ActorId`, `ActorType`, `ActorRef`, `OwnerNodeRid`, `OwnerNodeGeneration`,
+  `SpotRid`, `SpotKind`, `MembershipEpoch`, `OwnerId`, `UpdatedAt` 순서로 encode한다.
 - 모든 공식 extension은 이 row와 key 형식을 동일하게 사용한다.
 
 ## 3. 원자성 — write는 전부 Lua script
@@ -97,6 +126,32 @@ renew/remove와 Actor transfer 상태 전이)은 **Lua script 한 번**으로 �
 Actor transfer는 Actor 하나마다 active transfer 하나만 허용한다. 각 operation은 다음 원자 전이를
 사용한다.
 
+transfer HASH는 다음 field를 정확히 사용한다. 모든 정수는 unsigned 64-bit 10진 ASCII이고 RID는 소문자
+hex다. transfer ID의 값 영역은 UUID 128-bit이며 Redis key와 value에서는 소문자 8-4-4-4-12 형식의
+UTF-8 문자열로 encoding한다. C++의 16-byte 값은 UUID network byte order로 이 문자열과 상호 변환한다.
+`source`와 `target`은 canonical ActorRef JSON이며 `participants`는 RID hex를 UTF-8 byte 순으로 정렬한
+공백 없는 JSON 배열이다.
+
+| field | 값 |
+|---|---|
+| `state` | `Prepared`, `Committed`, `Activated`, `Aborted` 중 하나 |
+| `source`, `target` | `{nodeRid, actorId, generation}` canonical ActorRef JSON |
+| `expectedActorGeneration`, `expectedMembershipEpoch` | prepare가 검증한 Actor fence |
+| `participants` | 아래 canonical participant-set JSON |
+| `recoveryOwnerId`, `recoveryLeaseExpiresAtMs` | public RecoveryOwnerId와 Redis 시각 기준 만료 |
+| `updatedAtMs` | 마지막 전이의 Redis 시각 |
+
+```json
+["67616d652d61","67616d652d62"]
+```
+
+`P:transfer-by-actor:{meshName}:{actorId}`의 값은 위 canonical UUID 문자열이다. prepare는 이 index와 transfer HASH를
+같이 만들고, activate 또는 abort는 terminal HASH를 보존한 채 active index만 조건부로 지운다. 모든 공식
+extension은 위 descriptor와 participant fixture를 byte-for-byte 동일하게 encode하고 decode해야 한다.
+
+transfer HASH, participant set과 active index의 byte-for-byte fixture는
+[`actor-transfer-v1.json`](../../../../testdata/location/redis/actor-transfer-v1.json)이다.
+
 | 전이 | Redis 원자 조건과 결과 |
 |---|---|
 | prepare | Actor row의 source owner, Actor generation과 membership epoch가 expected 값과 일치하고 active transfer가 없을 때 `Prepared` record와 actor index를 함께 만든다 |
@@ -105,9 +160,9 @@ Actor transfer는 Actor 하나마다 active transfer 하나만 허용한다. 각
 | abort | `Prepared` transfer만 `Aborted`로 바꾸며 Actor row의 source owner와 membership epoch를 유지한다 |
 | takeover | recovery lease가 만료된 transfer의 participant set과 현재 Actor row를 확인한 뒤 successor lease owner를 한 번에 바꾼다 |
 
-Redis record는 분산 권한 결정과 복구 상태를 소유한다. Core prepare가 발급하는 opaque sealed token은
+Redis record는 분산 권한 결정과 복구 상태를 소유한다. Core prepare가 발급하는 sealed transfer token은
 같은 process의 Core handle에만 유효하므로 Redis에 저장하지 않는다. Successor는 Redis authority를
-takeover한 뒤 자신의 Core runtime에서 prepare를 다시 수행해 새 sealed token을 얻는다. Application이
+takeover한 뒤 자신의 Core runtime에서 prepare를 다시 수행해 새 sealed transfer token을 얻는다. Application이
 만든 임의의 token이나 외부 token 검증 callback은 Redis extension과 Core의 공개 계약에 포함하지 않는다.
 
 **지원 topology는 standalone Redis다.** cluster에 배포하려면 모든 key가 한 slot에 모이도록

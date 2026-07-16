@@ -21,8 +21,10 @@
 구현과 목표 계약의 차이는 implementation gap으로 기록하고 Core 구현, public header와 contract test를
 정식 spec에 맞춘다.
 
-전체 실행 순서, Codex agent와 Claude Fable 모델의 반복 검토 방법과 단계별 완료 증거는
+전체 실행 순서, Codex agent와 Claude Sonnet 모델의 반복 검토 방법과 단계별 완료 증거는
 [`RouteMesh 10.0.0 실행 진행표`](./route-mesh-10.0.0-execution-ledger.ko.md)를 따른다. 이 문서는 설계
+결정과 검증 기준만 소유하며 현재 stage 상태나 완료 여부를 별도로 기록하지 않는다. 작업자는 진행
+상태를 실행 진행표의 담당 행에만 갱신한다.
 근거와 목표 계약을 설명하고, 실행 진행표는 실제 완료 상태와 검증 증거를 관리한다.
 
 MeshNode·Spot·Actor service runtime의 dispatch, mailbox, batch, claim, Actor transfer와 timer backend는
@@ -56,7 +58,7 @@ MeshNode·Spot·Actor service runtime의 dispatch, mailbox, batch, claim, Actor 
 | 현재 ROUTER targeted send | [`router_send_path.cpp`](../../../../core/src/runtime/sockets/router/router_send_path.cpp) |
 | 현재 Spot의 node-local topic dispatch | [`spot_node_pubsub_fanout.cpp`](../../../../core/src/runtime/services/spot/node/spot_node_pubsub_fanout.cpp) |
 | 현재 native PUB topic fan-out | [`xpub.cpp`](../../../../core/src/runtime/sockets/pubsub/xpub.cpp) |
-| POSD·DDD 검토 기준 | [`software-design-principles.ko.md`](../../../../doc/principal/software-design-principles.ko.md) |
+| POSD·DDD 검토 기준 | [`software-design-principles.md`](../../../../doc/principal/software-design-principles.md) |
 | bindings local package 정책 | [`scripts/local-package/README.ko.md`](../../../../scripts/local-package/README.ko.md) |
 | Core native release | [`.github/workflows/build.yml`](../../../../.github/workflows/build.yml) |
 | Core Conan release | [`.github/workflows/core-conan-release.yml`](../../../../.github/workflows/core-conan-release.yml) |
@@ -79,11 +81,14 @@ snapshot과 bindings wrapper까지 같은 작업에서 삭제한다.
 2. Core 10.0.0 계약을 `core/doc/spec/core/`의 정식 owner 문서에 작성하고 현재 checkout과의 차이는
    이 디렉토리의 임시 실행 추적 문서에 기록한다.
 3. framework 공통·언어별 정식 spec을 갱신하고 E2E·sample 영향을 검토한다.
-4. Codex agent와 Claude Fable 모델이 문서를 독립 검토하고 둘 다 clean 판정을 낼 때까지 수정과
-   재리뷰를 반복한다.
+4. Codex agent와 Claude Sonnet 모델이 같은 frozen scope를 독립 검토한다. 어느 한쪽 결과로 수정이
+   발생하면 두 리뷰를 모두 다시 실행하며, 둘 다 clean 판정을 낼 때까지 이 과정을 반복한다.
 5. Core의 MeshNode 기능과 공개 C API를 구현하고 제거 대상 code와 file을 정리한 뒤 public header와
    test를 정식 spec에 맞춘다. 구현과 구조 test가 확정된 뒤 Core internals를 갱신한다.
-6. 두 리뷰어가 Core의 누락·오류, POSD·DDD 리팩터링 요소와 dead code·file을 반복 검토한다.
+6. 두 리뷰어가 Core 구현을 세 독립 축으로 반복 검토한다. I1은 정식 spec 대비 누락·오구현·동작
+   불일치, I2는 POSD·DDD 관점의 의미 있는 리팩터링 잔여, I3는 불필요·죽은 code·file·호환 잔재를
+   판정한다. 각 축에 finding·evidence·clean 판정을 남기고 어느 축을 수정해도 두 리뷰어가 세 축
+   전체를 다시 검토한다.
 7. 두 Core 리뷰가 clean이면 리뷰에 포함된 `10.0.0` version·ABI·release metadata를 변경하지 않고
    GitHub Actions로 순번 RC native artifact를 prerelease에 배포한다. stable tag와 Conan remote package는
    만들지 않는다.
@@ -1031,7 +1036,7 @@ application metadata를 전달할 수 있도록 call builder와 handler context�
 | `IZLinkSpotHandlerRegistry.AddSubscribe(topic)` | SpotNode의 단일 channel에 SPOT subscription 등록 | `AddSubscribe(channelName, topic)`으로 node-local subscription namespace를 명시 |
 | `IZLinkSpotOutbound.SendToChannel(...)` | 별도 channel client 경로 사용 | 현재 RouteMesh에서 `selectOne(channelName)` 뒤 같은 ROUTER 사용 |
 | `IZLinkSpotOutbound.RequestToChannel(...)` | 별도 channel client 경로 사용 | 현재 RouteMesh에서 MeshNode 하나를 선택해 같은 ROUTER 사용 |
-| channel·route·Spot direct call metadata | C++ 일부 call에는 metadata가 있으나 `.NET` channel·route·Spot direct call에는 없음 | 모든 언어의 Node direct·ChannelName·Spot direct send/request가 같은 application metadata snapshot 계약 제공 |
+| channel·route·Spot direct call과 Logical Multicast metadata | C++ 일부 call에는 metadata가 있으나 `.NET` channel·route·Spot direct call에는 없음 | 모든 언어의 Node direct·ChannelName·Spot direct send/request와 Logical Multicast가 같은 application metadata snapshot 계약 제공 |
 | SPOT handle call | owner node routed 경로 사용 | 위치 투명성을 유지하고 공통 send/request call metadata를 제공 |
 | actor handle call | owner node routed 경로와 actor 전용 call·reply option 사용 | 기존 actor metadata와 reply option 계약 유지 |
 | fanout publish/handler | native PUB/SUB | 변경 없음 |
@@ -1127,7 +1132,7 @@ MeshNode의 channel index에서 target set을 직접 선택하므로 다른 targ
 acknowledgement protocol은 추가하지 않는다. client call은 local queue와 target pipe에 대한 Core
 Logical Multicast submit 결과를 그대로 반환한다.
 
-Node direct, ChannelName과 Spot direct send/request의 application metadata는 하나의 compact metadata frame으로
+Node direct, ChannelName, Spot direct send/request와 Logical Multicast의 application metadata는 하나의 compact metadata frame으로
 인코딩한다. key마다 multipart part를 만들지 않으며 metadata가 없으면 frame도 생략한다. Core routing
 metadata와 application metadata는 서로 다른 namespace와 record field를 사용한다. handler context에는
 immutable `ZLinkMessageMetadata`만 제공하고 source RID, operation ID와 raw request sequence는 기존 typed
@@ -1450,45 +1455,51 @@ protocol 변환 proxy는 제공하지 않는다.
 |---|---|---|
 | **S0** | Core 정식 spec 범위와 결정 검증 | 정식 owner 문서와 implementation gap 경로, 모든 결정의 exact 계약 고정 |
 | **S1** | Core 10.0.0 정식 spec 작성 | exact C API, 제거 목록, error·ownership·polling·monitoring 목표 계약 확정 |
-| **S2** | framework 정식 spec 변경 | 공통 및 모든 언어별 계약, E2E·sample 영향 목록, implementation gap 확정 |
-| **S3** | 문서 독립 리뷰 반복 | Codex agent와 Claude Fable 모델이 모두 `DOC REVIEW CLEAN` 판정 |
+| **S2** | framework 정식 spec 변경 | framework 공통·server spec, .NET·C++·Java·Kotlin·Node exact public interface, 공통·언어별 E2E 문서, 공통·언어별 sample 문서와 public 예제, implementation gap 확정 |
+| **S3** | 문서 독립 리뷰 반복 | S1 Core 문서와 S2 전체 범위를 Codex agent와 Claude Sonnet 모델이 독립 검토하고 모두 `DOC REVIEW CLEAN` 판정 |
 | **S4** | Core 구현·제거 정리와 정식 spec 일치 | Core 기능·회귀·성능·삭제 no-hit와 header-spec parity 통과 뒤 실제 구현을 반영한 internals 및 10.0.0 release metadata 검증 통과 |
-| **S5** | Core 구현 독립 리뷰와 리팩터링 반복 | 두 리뷰어가 모두 `CORE REVIEW CLEAN` 판정 |
+| **S5** | Core 구현 독립 리뷰와 리팩터링 반복 | 두 리뷰어의 I1·I2·I3가 모두 clean이고 모두 `CORE REVIEW CLEAN` 판정 |
 | **S6** | Core 10.0.0 RC GitHub Actions build·pre-release | 리뷰된 source의 RC native artifact와 local Conan package 검증 완료. stable 외부 공개 없음 |
-| **S7** | bindings 적용·리뷰·local E2E smoke | 두 리뷰어 clean, 모든 언어 local package smoke 완료 |
-| **S8** | `.NET framework`, sample과 E2E 적용·리뷰 | 두 리뷰어가 모두 `DOTNET REVIEW CLEAN` 판정 |
+| **S7** | bindings 적용·리뷰·local E2E smoke | 두 리뷰어의 I1·I2·I3가 모두 clean이고 `BINDINGS REVIEW CLEAN`, 모든 언어 local package smoke 완료 |
+| **S8** | `.NET framework`, sample과 E2E 적용·리뷰 | 두 리뷰어의 I1·I2·I3가 모두 clean이고 모두 `DOTNET REVIEW CLEAN` 판정 |
 | **S9** | C++, Java/Kotlin과 Node.js framework 병렬 적용 | 세 언어 lane의 구현·sample·E2E 완료 |
-| **S10** | 세 언어 lane 독립 리뷰 반복 | lane마다 두 리뷰어가 모두 언어별 clean 판정 |
-| **S11** | Core stable·bindings 외부 배포, 전체 최종 검토와 종료 | stable package smoke, 전체 검증, stale no-hit와 두 리뷰어의 `FINAL REVIEW CLEAN` 판정 |
+| **S10** | 세 언어 lane 독립 리뷰 반복 | lane마다 두 리뷰어의 I1·I2·I3가 모두 clean이고 언어별 clean 판정 |
+| **S11** | Core stable·bindings 외부 배포, 전체 최종 검토와 종료 | stable package smoke, 전체 검증과 두 리뷰어의 I1·I2·I3 clean 및 `FINAL REVIEW CLEAN` 판정 |
+
+S3은 spec과 관련 문서의 완전성·일관성·구현 가능성을 확인하는 문서 리뷰다. S5·S7·S8·S10·S11의
+구현 리뷰와 서로 대체할 수 없다. 구현 리뷰의 I1·I2·I3는 각각 finding 또는 `없음`, 실제 증거와
+`CLEAN`/`NOT CLEAN`을 기록한다. POSD·DDD 한 줄로 I1이나 I3를 대체하지 않는다. 어느 축을 수정해도
+Codex agent와 Claude Sonnet이 같은 새 revision에서 세 축 전체를 다시 검토하며, 두 리뷰어의 세 축과
+stage exact clean 문구가 모두 clean이어야 다음 stage로 진행한다.
 
 아래 항목은 stage에서 수행할 기능별 작업 범위다. 아래 소제목의 번호를 실행 순서로 사용하지 않는다.
 실행 순서와 완료 상태는 위 stage 표와 별도 실행 진행표만을 기준으로 한다.
 
 ### 작업 묶음 A — 결정과 public contract 고정
 
-- [ ] 문서를 작성하거나 개정하기 전에
+- 문서를 작성하거나 개정하기 전에
   [`기술문서 작성 원칙`](../../../../doc/principal/documentation/documentation-principles.ko.md)을 읽고
   대상 독자, 답할 질문, 원본 문서와 current-state 또는 blueprint 성격을 문서 첫머리에 기록한다.
-- [ ] §21의 모든 결정 항목을 Core와 framework 정식 spec의 exact 계약으로 옮기고 상충 여부를 검증한다.
-- [ ] 별도 Core API 검토 문서의 모든 공개 함수, type과 enum에 유지, 이름 변경, 제거 또는 신규 대체
+- §21의 모든 결정 항목을 Core와 framework 정식 spec의 exact 계약으로 옮기고 상충 여부를 검증한다.
+- 별도 Core API 검토 문서의 모든 공개 함수, type과 enum에 유지, 이름 변경, 제거 또는 신규 대체
   판정을 기록한다.
-- [ ] MeshNode ready callback, Node·Spot·Actor claim/batch와 option·poller handle 표를 포함한 Core 10.0.0
+- MeshNode ready callback, Node·Spot·Actor claim/batch와 option·poller handle 표를 포함한 Core 10.0.0
   목표 계약을 `core/doc/spec/core/`의 정식 owner 문서에 작성한다.
-- [ ] Core 현재 checkout 공개 계약과 10.0.0 목표 계약의 차이를 implementation gap 문서에 기록한다.
-- [ ] Core 정식 spec이 검토된 뒤 선택한 구조를 framework 공통 spec과 `.NET` 정식 interface에
+- Core 현재 checkout 공개 계약과 10.0.0 목표 계약의 차이를 implementation gap 문서에 기록한다.
+- Core 정식 spec이 검토된 뒤 선택한 구조를 framework 공통 spec과 `.NET` 정식 interface에
   반영한다.
-- [ ] interaction model에서 classic fanout과 Spot Logical Multicast의 의미를 분리한다.
-- [ ] channel topology를 `MeshName`, immutable `ChannelName` set과 MeshNode 중심으로 갱신한다.
-- [ ] MeshNode, SPOT messaging, location runtime, drain과 monitoring 계약을 갱신한다.
-- [ ] Redis extension을 분산 location runtime의 production 기본 구현으로 고정하고 명시적 등록,
+- interaction model에서 classic fanout과 Spot Logical Multicast의 의미를 분리한다.
+- channel topology를 `MeshName`, immutable `ChannelName` set과 MeshNode 중심으로 갱신한다.
+- MeshNode, SPOT messaging, location runtime, drain과 monitoring 계약을 갱신한다.
+- Redis extension을 분산 location runtime의 production 기본 구현으로 고정하고 명시적 등록,
   location store 미등록 시 startup failure, 사용자 store capability와 test-only in-memory 경계를 공통 및 언어별 spec에
   반영한다.
-- [ ] Actor transfer authority의 participant-set CAS, transfer token, lease, prepared/commit/abort 복구와
+- Actor transfer authority의 participant-set CAS, transfer token, lease, prepared/commit/abort 복구와
   store capability validation을 framework 정식 spec에 고정한다.
-- [ ] framework 구현 전 차이를 공통 및 언어별 implementation gap 문서에 기록한다.
-- [ ] 공통 E2E와 sample의 영향 범위, 수정 대상 scenario와 runner를 목록으로 고정한다.
-- [ ] 10.0.0 삭제 목록, wire version과 RouteMesh 단위 배포 절차를 고정한다.
-- [ ] 현재 topology의 기능, 성능과 resource baseline을 기록한다.
+- framework 구현 전 차이를 공통 및 언어별 implementation gap 문서에 기록한다.
+- 공통 E2E와 sample의 영향 범위, 수정 대상 scenario와 runner를 목록으로 고정한다.
+- 10.0.0 삭제 목록, wire version과 RouteMesh 단위 배포 절차를 고정한다.
+- 현재 topology의 기능, 성능과 resource baseline을 기록한다.
 
 완료 gate:
 
@@ -1502,40 +1513,40 @@ protocol 변환 proxy는 제공하지 않는다.
 
 이 단계는 framework registration을 바꾸지 않고 Core 동작과 C API를 완성한다.
 
-- [ ] direct ROUTER full mesh의 node identity와 pairwise connection lifecycle을 검증한다.
-- [ ] ROUTER 하나가 다수 peer RID를 관리하는 lookup, HWM와 monitor 계약을 고정한다.
-- [ ] peer descriptor의 `MeshName` admission과 immutable `ChannelName` set index를 구현한다.
-- [ ] manual endpoint와 discovery endpoint가 같은 admission handshake를 사용하고 예상 RID pin,
+- direct ROUTER full mesh의 node identity와 pairwise connection lifecycle을 검증한다.
+- ROUTER 하나가 다수 peer RID를 관리하는 lookup, HWM와 monitor 계약을 고정한다.
+- peer descriptor의 `MeshName` admission과 immutable `ChannelName` set index를 구현한다.
+- manual endpoint와 discovery endpoint가 같은 admission handshake를 사용하고 예상 RID pin,
   duplicate source 병합, connect·disconnect와 draining state 전이를 검증한다.
-- [ ] node/channel send·request와 target-channel publish C API 안에서 `selectNode`, `selectOne`과
+- node/channel send·request와 target-channel publish C API 안에서 `selectNode`, `selectOne`과
   `selectMany` 의미를 원자적으로 구현하고 RID-only 공개 select API를 만들지 않는다.
-- [ ] Node·Spot·Actor mailbox, domain-masked ready callback, claim/batch, request completion과 poller mode guard를
+- Node·Spot·Actor mailbox, domain-masked ready callback, claim/batch, request completion과 poller mode guard를
   구현한다.
-- [ ] 공통 ready callback이 wakeup만 수행하고 Node·Spot·Actor application claim과 infrastructure claim이
+- 공통 ready callback이 wakeup만 수행하고 Node·Spot·Actor application claim과 infrastructure claim이
   중복 없이 올바른 mailbox만 drain하는지 검증한다.
-- [ ] multicast envelope, local dispatch, ready-peer multi-target submit과 no-relay guard를 구현한다.
-- [ ] immutable message의 참조 횟수로 local Spot queue와 remote node submit이 payload를 공유하게 한다.
-- [ ] `ZLINK_PUB_OPT_NODROP` 기본값 `1`, 부분 전달 없는 backpressure, `NODROP=0` drop을 구현한다.
-- [ ] exact/prefix local subscription match를 remote subscription state에서 분리한다.
-- [ ] bootstrap descriptor를 location 또는 ROUTER control 경로로 옮긴다.
-- [ ] `mesh_pub`, `mesh_xsub`, PUB/SUB endpoint, remote subscription protocol과 전용 상태를 제거한다.
-- [ ] route bridge, raw ROUTER–Spot helper, old mode와 제거 API의 implementation을 삭제한다.
-- [ ] Core dispatch worker pool과 worker 수 option, remote subject query를 제거하고 direct C consumer도
+- multicast envelope, local dispatch, ready-peer multi-target submit과 no-relay guard를 구현한다.
+- immutable message의 참조 횟수로 local Spot queue와 remote node submit이 payload를 공유하게 한다.
+- `ZLINK_PUB_OPT_NODROP` 기본값 `1`, 부분 전달 없는 backpressure, `NODROP=0` drop을 구현한다.
+- exact/prefix local subscription match를 remote subscription state에서 분리한다.
+- bootstrap descriptor를 location 또는 ROUTER control 경로로 옮긴다.
+- `mesh_pub`, `mesh_xsub`, PUB/SUB endpoint, remote subscription protocol과 전용 상태를 제거한다.
+- route bridge, raw ROUTER–Spot helper, old mode와 제거 API의 implementation을 삭제한다.
+- Core dispatch worker pool과 worker 수 option, remote subject query를 제거하고 direct C consumer도
   callback 또는 poller와 claim·batch를 사용하게 한다.
-- [ ] Spot service의 channel·Spot send/request/reply·publish `*_part`, Spot recv/subscribe part API,
+- Spot service의 channel·Spot send/request/reply·publish `*_part`, Spot recv/subscribe part API,
   Actor recv·Actor–STREAM part API와 Actor join/lifecycle 전용 receive·reply API를 complete multipart
   submit·Spot control batch·one-shot reply token으로 대체하고 source·symbol·bindings no-hit를 검증한다.
-- [ ] Core는 framework store를 구현하지 않고 전달받은 Actor transfer ID·epoch·prepared/commit token의
+- Core는 framework store를 구현하지 않고 전달받은 Actor transfer ID·epoch·prepared/commit token의
   검증, mailbox/session fence와 deterministic fake coordinator contract test만 구현한다.
-- [ ] 제거 API의 header 선언, export, test, sample, 현재 계약·guide·internals, generated snapshot과 build
+- 제거 API의 header 선언, export, test, sample, 현재 계약·guide·internals, generated snapshot과 build
   target을 삭제한다. v10 plan·review record는 no-hit 범위에서 제외한다.
-- [ ] duplicate RID, endpoint replacement, peer loss, reconnect와 HWM test를 추가한다.
-- [ ] 1천·1만 peer의 connection, multicast memory, lookup와 reconnect benchmark를 실행한다.
-- [ ] `VERSION`, public header version, CMake project/SOVERSION, Conan metadata와 release note를
+- duplicate RID, endpoint replacement, peer loss, reconnect와 HWM test를 추가한다.
+- 1천·1만 peer의 connection, multicast memory, lookup와 reconnect benchmark를 실행한다.
+- `VERSION`, public header version, CMake project/SOVERSION, Conan metadata와 release note를
   10.0.0 목표 상태로 갱신해 Core 리뷰 범위에 포함한다.
-- [ ] 구현된 public header, result와 contract test를 Core 정식 spec에 대조해 implementation gap을 닫고
+- 구현된 public header, result와 contract test를 Core 정식 spec에 대조해 implementation gap을 닫고
   한국어·영문·service index를 함께 검증한다.
-- [ ] 기능·구조·stress·sanitizer·성능·package 검증이 모두 통과한 뒤에만 Core internals를 갱신한다.
+- 기능·구조·stress·sanitizer·성능·package 검증이 모두 통과한 뒤에만 Core internals를 갱신한다.
   실제 socket, queue, thread, lock과 lifecycle 구조를 반영하고 source·구조 test·다이어그램을 다시
   대조한다. 계획의 예상 구조나 아직 구현되지 않은 목표는 internals에 기록하지 않는다.
 
@@ -1557,45 +1568,49 @@ Red gate:
 - v10 plan·review record의 삭제 추적을 제외한 symbol, source, target, test와 현재
   계약·guide·internals에 대해 범위를 정한 no-hit 검사가 통과한다.
 
-### 작업 묶음 C — Core POSD·DDD 리팩터링과 재검증
+### 작업 묶음 C — Core 구현 3축 리뷰, 리팩터링과 정리 재검증
 
 S4의 기능 및 제거 gate가 통과한 뒤 Core를 다시 검토한다. 이 단계에서는 새 기능을 우회해서
 테스트만 통과시키지 않고 책임 경계를 정리한다.
 
-- [ ] 패스스루 method, transport 지식 중복, 시간 순서로만 나뉜 class, 얕은 adapter, 거대한 class와
+- 패스스루 method, transport 지식 중복, 시간 순서로만 나뉜 class, 얕은 adapter, 거대한 class와
   같은 POSD 위험 신호를 먼저 목록으로 만든다.
-- [ ] 각 위험 신호를 깊은 모듈, 정보 은닉, 복잡성을 아래로 이동, 오류를 정의로 제거하는 원칙과
+- 각 위험 신호를 깊은 모듈, 정보 은닉, 복잡성을 아래로 이동, 오류를 정의로 제거하는 원칙과
   연결한다.
-- [ ] 비자명한 구조마다 두 가지 이상의 설계를 비교하고 public C API가 더 단순한 안을 선택한다.
-- [ ] MeshNode lifecycle, peer membership·selection, destination dispatch, message ownership,
+- 비자명한 구조마다 두 가지 이상의 설계를 비교하고 public C API가 더 단순한 안을 선택한다.
+- MeshNode lifecycle, peer membership·selection, destination dispatch, message ownership,
   Spot·actor·session association, transport adapter와 observation의 경계를 검토한다.
-- [ ] `MeshNodeCreated`, `PeerReady`, `NodeMessageAccepted`, `SpotMessageAccepted`,
+- `MeshNodeCreated`, `PeerReady`, `NodeMessageAccepted`, `SpotMessageAccepted`,
   `MulticastSubmitted`, `MessageBackpressured`, `RequestTimedOut`, `ReplyCompleted`와 lifecycle event가
   도메인 상태 변화를 정확히 표현하는지 검토한다.
-- [ ] transport frame이나 queue가 domain object 및 framework callback 계약으로 누출되지 않게 한다.
-- [ ] 리팩터링 뒤 contract, integration, stress, sanitizer, symbol, package와 benchmark를 모두 반복한다.
-- [ ] 제거된 bridge와 API를 이름만 바꾼 adapter가 다시 생기지 않았는지 재검사한다.
+- transport frame이나 queue가 domain object 및 framework callback 계약으로 누출되지 않게 한다.
+- 리팩터링 뒤 contract, integration, stress, sanitizer, symbol, package와 benchmark를 모두 반복한다.
+- 제거된 bridge와 API를 이름만 바꾼 adapter가 다시 생기지 않았는지 재검사한다.
 
 완료 gate:
 
 - POSD 위험 신호 목록, 비교한 안, 선택 이유와 수정 후 재점검 결과가 남아 있다.
 - DDD event와 경계가 Core 내부 책임에 맞고 framework의 typed handler 책임을 침범하지 않는다.
 - S4의 기능, 삭제 no-hit와 성능 gate가 리팩터링 뒤에도 통과한다.
+- 두 리뷰어의 I1에 정식 spec 대비 누락·오구현·동작 불일치 finding·evidence·clean 판정이 있다.
+- 두 리뷰어의 I2에 POSD·DDD 관점의 의미 있는 리팩터링 잔여 finding·evidence·clean 판정이 있다.
+- 두 리뷰어의 I3에 불필요·죽은 code·file·호환 잔재 finding·evidence·clean 판정이 있다.
+- 어느 축 수정 뒤에도 두 리뷰어가 Core 전체의 I1·I2·I3를 재검토하고 모두 `CORE REVIEW CLEAN`이다.
 
 ### 작업 묶음 D — Core 10.0.0 RC GitHub Actions pre-release
 
-- [ ] `.github/workflows/build.yml`이 `core/v10.0.0-rc.N`에는 `prerelease: true`, stable tag에는
+- `.github/workflows/build.yml`이 `core/v10.0.0-rc.N`에는 `prerelease: true`, stable tag에는
   `prerelease: false`를 적용하도록 분기한다.
-- [ ] `.github/workflows/core-conan-release.yml`은 RC tag에서 remote upload를 실행하지 않고 stable tag에서
+- `.github/workflows/core-conan-release.yml`은 RC tag에서 remote upload를 실행하지 않고 stable tag에서
   publish credential이 없으면 성공으로 처리하지 않도록 변경한다.
-- [ ] S5에서 리뷰한 `VERSION`, public header version, CMake project/SOVERSION, Conan metadata와 release
+- S5에서 리뷰한 `VERSION`, public header version, CMake project/SOVERSION, Conan metadata와 release
   문서가 tag 시점까지 바뀌지 않았는지 검증한다.
-- [ ] `core/build`를 새로 만들고 build, test, install, exported symbol, SONAME와 package contents를
+- `core/build`를 새로 만들고 build, test, install, exported symbol, SONAME와 package contents를
   검증한다.
-- [ ] `bindings/c/perf`가 출력한 실제 `core/build/lib/libzlink.so`로 performance gate를 실행한다.
-- [ ] 순번 `core/v10.0.0-rc.N` tag를 만들고 push하며 stable tag는 만들지 않는다.
-- [ ] `.github/workflows/build.yml` RC run을 끝까지 감시하고 GitHub prerelease asset을 게시한다.
-- [ ] 각 platform archive, checksum, source package와 local Conan create/consumer를 직접 확인한다.
+- `bindings/c/perf`가 출력한 실제 `core/build/lib/libzlink.so`로 performance gate를 실행한다.
+- 순번 `core/v10.0.0-rc.N` tag를 만들고 push하며 stable tag는 만들지 않는다.
+- `.github/workflows/build.yml` RC run을 끝까지 감시하고 GitHub prerelease asset을 게시한다.
+- 각 platform archive, checksum, source package와 local Conan create/consumer를 직접 확인한다.
 
 완료 gate:
 
@@ -1606,24 +1621,24 @@ S4의 기능 및 제거 gate가 통과한 뒤 Core를 다시 검토한다. 이 �
 
 ### 작업 묶음 E — bindings 10.0.0 적용, 리뷰와 local package E2E smoke
 
-- [ ] local-package native script가 prerelease tag와 runtime version을 분리하도록 수정하고,
+- local-package native script가 prerelease tag와 runtime version을 분리하도록 수정하고,
   `core/v10.0.0-rc.N` fixture에서 asset tag는 보존하면서 C/header version은 `10.0.0`으로 기록되는지 검증한다.
-- [ ] malformed RC tag, version macro의 `-rc.N` 잔존, source SHA·checksum 불일치가 fixture test에서 실패하게 한다.
-- [ ] `scripts/local-package/native/update-zlink-libs.sh core/v10.0.0-rc.N --expect-version 10.0.0`으로 각
+- malformed RC tag, version macro의 `-rc.N` 잔존, source SHA·checksum 불일치가 fixture test에서 실패하게 한다.
+- `scripts/local-package/native/update-zlink-libs.sh core/v10.0.0-rc.N --expect-version 10.0.0`으로 각
   bindings의 native artifact를 갱신한다.
-- [ ] C, C++, .NET, Java, Node.js, Python, Go와 Rust bindings에서 MeshNode 공개 API를 구현한다.
-- [ ] SpotNode mode, PUB bind, PUB/SUB routing ID, route bridge wrapper와 이전 이름을 모두 제거한다.
-- [ ] source API snapshot, generated binding, package API snapshot과 native payload를 갱신한다.
-- [ ] 각 언어에서 contract test와 실제 package consumer test를 실행한다.
-- [ ] 각 언어의 실제 package를 설치한 두 개 이상의 process로 RouteMesh를 만들고 direct RID,
+- C, C++, .NET, Java, Node.js, Python, Go와 Rust bindings에서 MeshNode 공개 API를 구현한다.
+- SpotNode mode, PUB bind, PUB/SUB routing ID, route bridge wrapper와 이전 이름을 모두 제거한다.
+- source API snapshot, generated binding, package API snapshot과 native payload를 갱신한다.
+- 각 언어에서 contract test와 실제 package consumer test를 실행한다.
+- 각 언어의 실제 package를 설치한 두 개 이상의 process로 RouteMesh를 만들고 direct RID,
   channel round-robin, Spot Logical Multicast, `NODROP`, callback 분리와 shutdown을 E2E smoke로 검증한다.
-- [ ] smoke는 source project reference가 아니라 local package와 Core 10.0.0 native artifact를 사용한다.
-- [ ] 제거된 API compile-fail 또는 source no-hit를 각 bindings의 red/cleanup gate로 둔다.
-- [ ] `scripts/local-package/publish-all-wsl.sh core/v10.0.0-rc.N --expect-version 10.0.0`으로 framework 적용 전
+- smoke는 source project reference가 아니라 local package와 Core 10.0.0 native artifact를 사용한다.
+- 제거된 API compile-fail 또는 source no-hit를 각 bindings의 red/cleanup gate로 둔다.
+- `scripts/local-package/publish-all-wsl.sh core/v10.0.0-rc.N --expect-version 10.0.0`으로 framework 적용 전
   local package 묶음을 검증한다.
-- [ ] `.github/workflows/bindings-release.yml`이 Core RC와 final stable의 동일 source SHA/checksum을 필수 검증 입력으로 사용하고
+- `.github/workflows/bindings-release.yml`이 Core RC와 final stable의 동일 source SHA/checksum을 필수 검증 입력으로 사용하고
   `.NET` native 입력을 `bindings/dotnet/native/<rid>/`로 통일하도록 변경한다.
-- [ ] workflow의 `all` target으로 외부 배포 없는 전체 검증을 수행한다. 언어별 tag와 registry 공개는
+- workflow의 `all` target으로 외부 배포 없는 전체 검증을 수행한다. 언어별 tag와 registry 공개는
   S10의 모든 framework lane이 clean일 때까지 수행하지 않는다.
 
 완료 gate:
@@ -1632,32 +1647,36 @@ S4의 기능 및 제거 gate가 통과한 뒤 Core를 다시 검토한다. 이 �
 - 모든 언어의 local package E2E smoke가 통과한다.
 - 외부 배포 전에 immutable 10.0.0 artifact에 영향을 줄 Core·bindings 계약 finding이 남아 있지 않다.
 - package에 폐기 대상 symbol, wrapper, native library나 문서가 남아 있지 않다.
+- 두 리뷰어가 bindings의 I1 계약 구현 일치, I2 POSD·DDD 리팩터링, I3 정리 완결성을 각각
+  finding·evidence·clean으로 판정했다.
+- 어느 축 수정 뒤에도 두 리뷰어가 bindings 전체의 세 축을 재검토하고 모두
+  `BINDINGS REVIEW CLEAN`이다.
 
 ### 작업 묶음 F — `.NET framework` RouteMesh 구현
 
 이 단계부터 framework를 변경한다. `.NET`을 기준 구현으로 사용하며 §12.4의 10.0.0 계약 interface를 먼저
 적용한다.
 
-- [ ] `AddRouteMesh(meshName).ChannelName(channelName)`과 MeshNode-owned handler·Spot·actor
+- `AddRouteMesh(meshName).ChannelName(channelName)`과 MeshNode-owned handler·Spot·actor
   registration을 구현한다.
-- [ ] `.NET` 중앙 package version에서 bindings 10.0.0을 참조한다.
-- [ ] location row를 MeshNode descriptor와 SPOT/actor location row로 분리한다.
-- [ ] descriptor lease, generation, endpoint replacement와 pairwise connection planner를 구현한다.
-- [ ] `IZLinkMeshPeerConnections` manual mode를 구현하고 endpoint 또는 예상 RID와 endpoint만으로 연결한 뒤 remote
+- `.NET` 중앙 package version에서 bindings 10.0.0을 참조한다.
+- location row를 MeshNode descriptor와 SPOT/actor location row로 분리한다.
+- descriptor lease, generation, endpoint replacement와 pairwise connection planner를 구현한다.
+- `IZLinkMeshPeerConnections` manual mode를 구현하고 endpoint 또는 예상 RID와 endpoint만으로 연결한 뒤 remote
   descriptor를 admission handshake에서 얻는다.
-- [ ] Redis extension의 명시적 등록을 production 기본 경로로 만들고 자동 discovery·분산 Spot/Actor 주소
+- Redis extension의 명시적 등록을 production 기본 경로로 만들고 자동 discovery·분산 Spot/Actor 주소
   조회를 store 없이 구성하면 startup에서 실패하게 한다. production `UseInMemoryLocationStores()`는
   제거하고 in-memory contract fixture는 testing 지원으로 이동한다.
-- [ ] Redis transfer authority record, participant-set CAS·lease·crash recovery를 구현하고 capability가 없는
+- Redis transfer authority record, participant-set CAS·lease·crash recovery를 구현하고 capability가 없는
   store에서 distributed Actor transfer startup을 거부한다.
-- [ ] channel call, direct RID call, Spot과 actor call을 MeshNode ROUTER에 연결한다.
-- [ ] MeshNode ready callback을 bounded pump에 연결하고 Node·Spot·Actor claim 및 completion infrastructure
+- channel call, direct RID call, Spot과 actor call을 MeshNode ROUTER에 연결한다.
+- MeshNode ready callback을 bounded pump에 연결하고 Node·Spot·Actor claim 및 completion infrastructure
   claim을 각각의 framework scheduler 경계에 연결한다.
-- [ ] Spot publish와 local subscription을 Core Logical Multicast에 연결한다.
-- [ ] `ConfigureSpotPublisher().NoDrop` 기본값 `true`와 명시적 `false`를 검증한다.
-- [ ] classic fanout과 STREAM runtime의 독립성을 유지한다.
-- [ ] startup, readiness, drain, monitoring과 mesh-scoped DI client를 갱신한다.
-- [ ] store 장애, transfer participant crash recovery, unsupported-store startup failure, scale-out/in,
+- Spot publish와 local subscription을 Core Logical Multicast에 연결한다.
+- `ConfigureSpotPublisher().NoDrop` 기본값 `true`와 명시적 `false`를 검증한다.
+- classic fanout과 STREAM runtime의 독립성을 유지한다.
+- startup, readiness, drain, monitoring과 mesh-scoped DI client를 갱신한다.
+- store 장애, transfer participant crash recovery, unsupported-store startup failure, scale-out/in,
   same-RID replacement와 weight 0 selection을 검증한다.
 
 완료 gate:
@@ -1668,18 +1687,18 @@ S4의 기능 및 제거 gate가 통과한 뒤 Core를 다시 검토한다. 이 �
 
 ### 작업 묶음 G — `.NET` 제거 정리, package와 E2E
 
-- [ ] `AddClientServerChannel`, `AddRouteMeshChannel`, `AddSpotMesh`와 해당 builder/runtime을 제거한다.
-- [ ] endpoint overload, SpotNode PUB/SUB capability, route bridge와 이전 registration의 test를 제거한다.
-- [ ] 제거한 Spot service `*_part` wrapper와 partial-message state가 `.NET` source, mock, generated API와
+- `AddClientServerChannel`, `AddRouteMeshChannel`, `AddSpotMesh`와 해당 builder/runtime을 제거한다.
+- endpoint overload, SpotNode PUB/SUB capability, route bridge와 이전 registration의 test를 제거한다.
+- 제거한 Spot service `*_part` wrapper와 partial-message state가 `.NET` source, mock, generated API와
   package에 남지 않았는지 확인한다.
-- [ ] 외부 Spot publisher가 process-local MeshNode에 target channel을 전달하고 Core direct select-many
+- 외부 Spot publisher가 process-local MeshNode에 target channel을 전달하고 Core direct select-many
   결과를 받도록 구현한다.
-- [ ] source 및 package API snapshot을 갱신하고 이전 이름 no-hit를 확인한다.
-- [ ] 실제 bindings 10.0.0 package를 사용하는 framework consumer test를 통과시킨다.
-- [ ] LocationMessaging, SpotService, PubSub, ResilienceLifecycle, SpotActorTransfer와 RuntimeMonitoring E2E를
+- source 및 package API snapshot을 갱신하고 이전 이름 no-hit를 확인한다.
+- 실제 bindings 10.0.0 package를 사용하는 framework consumer test를 통과시킨다.
+- LocationMessaging, SpotService, PubSub, ResilienceLifecycle, SpotActorTransfer와 RuntimeMonitoring E2E를
   새 topology에서 실행한다.
-- [ ] request/reply와 multicast burst의 혼합 traffic p99를 baseline과 비교한다.
-- [ ] `.NET` runtime을 POSD·DDD 기준으로 재검토하고 얕은 wrapper와 책임 중복을 제거한다.
+- request/reply와 multicast burst의 혼합 traffic p99를 baseline과 비교한다.
+- `.NET` runtime을 POSD·DDD 기준으로 재검토하고 얕은 wrapper와 책임 중복을 제거한다.
 
 완료 gate:
 
@@ -1687,6 +1706,10 @@ S4의 기능 및 제거 gate가 통과한 뒤 Core를 다시 검토한다. 이 �
 - application message와 handler invocation 의미가 정식 10.0.0 call signature와 일치한다.
 - source와 package 어디에도 제거한 registration, wrapper와 runtime이 남아 있지 않다.
 - classic fanout의 public 동작과 E2E가 바뀌지 않는다.
+- 두 리뷰어가 `.NET`의 I1 계약 구현 일치, I2 POSD·DDD 리팩터링, I3 정리 완결성을 각각
+  finding·evidence·clean으로 판정했다.
+- 어느 축 수정 뒤에도 두 리뷰어가 `.NET` 전체의 세 축을 재검토하고 모두
+  `DOTNET REVIEW CLEAN`이다.
 
 ### 작업 묶음 H — 다른 framework 언어 적용
 
@@ -1695,17 +1718,22 @@ version 지점에서 검증된 bindings 10.0.0 local package를 참조한다.
 
 각 언어에서 다음 작업을 반복한다.
 
-- [ ] 정식 public interface와 실제 builder를 맞춘다.
-- [ ] RouteMesh/MeshNode registration, channel select-one과 SPOT/actor routed path를 구현한다.
-- [ ] v10 plan·review record의 삭제 추적을 제외하고 제거한 topology API, runtime, test와 현재
+- 정식 public interface와 실제 builder를 맞춘다.
+- RouteMesh/MeshNode registration, channel select-one과 SPOT/actor routed path를 구현한다.
+- v10 plan·review record의 삭제 추적을 제외하고 제거한 topology API, runtime, test와 현재
   계약·guide·internals를 남기지 않는다.
-- [ ] bindings public API만 사용하고 reflection, raw frame과 private helper를 사용하지 않는다.
-- [ ] contract, package consumer, E2E와 sample runner를 통과시킨다.
-- [ ] implementation gap checkbox와 한 줄 evidence를 함께 갱신한다.
-- [ ] POSD·DDD 재검토에서 언어별 우회 interface가 없는지 확인한다.
+- bindings public API만 사용하고 reflection, raw frame과 private helper를 사용하지 않는다.
+- contract, package consumer, E2E와 sample runner를 통과시킨다.
+- implementation gap checkbox와 한 줄 evidence를 함께 갱신한다.
+- POSD·DDD 재검토에서 언어별 우회 interface가 없는지 확인한다.
 
 한 lane의 완료 상태를 다른 lane에 복사하지 않는다. 각 lane은 자기 contract, package, sample과 E2E
 증거를 독립적으로 제출하고 S10의 두 리뷰어 clean 판정을 받아야 한다.
+
+S10의 각 lane은 I1 정식 interface 대비 누락·오구현·동작 불일치, I2 POSD·DDD 관점의 의미 있는
+리팩터링 잔여, I3 불필요·죽은 code·file·test·호환 잔재를 독립 판정한다. 각 리뷰어와 각 축에
+finding 또는 `없음`, evidence와 clean 판정이 있어야 한다. 어느 축을 수정해도 해당 lane의 Codex
+agent와 Claude Sonnet이 세 축 전체를 다시 검토하고 언어별 exact clean 문구를 남겨야 한다.
 
 ### 작업 묶음 I — sample, guide와 최종 배포 검증
 
@@ -1713,23 +1741,23 @@ guide와 internals 본문은 관련 구현, sample과 E2E가 확정된 뒤 갱�
 검증 기준만 식별한다. 특히 internals는 계획의 예상 구조를 옮겨 적지 않고 실제 소켓 배선, queue,
 thread, lock과 lifecycle을 source 및 구조 test에 대조해 설명한다.
 
-- [ ] 변경한 문서마다 기술문서 작성 원칙의 원칙 준수와 1차 소스 부합을 독립적으로 review하고,
+- 변경한 문서마다 기술문서 작성 원칙의 원칙 준수와 1차 소스 부합을 독립적으로 review하고,
   finding을 직접 검증한 뒤 한 문서 단위로 수정·render 확인·commit한다.
-- [ ] 마지막 Core RC와 같은 commit에 `core/v10.0.0` stable tag를 붙이고 native GitHub Release와 Conan
+- 마지막 Core RC와 같은 commit에 `core/v10.0.0` stable tag를 붙이고 native GitHub Release와 Conan
   remote package를 검증한 뒤 stable artifact로 bindings local package와 framework E2E를 다시 실행한다.
-- [ ] `.NET` guide를 새 public contract와 구현에 맞춰 먼저 갱신한다.
-- [ ] overview는 물리 배선은 framework가 관리하고 논리 topology는 기능으로 선택한다는 설명을
+- `.NET` guide를 새 public contract와 구현에 맞춰 먼저 갱신한다.
+- overview는 물리 배선은 framework가 관리하고 논리 topology는 기능으로 선택한다는 설명을
   중심으로 다시 구성한다.
-- [ ] guide에서 내부 socket 설명을 제거하고 internals로 옮긴다.
-- [ ] internals에 RouteMesh, MeshNode, Spot Logical Multicast, classic fanout과 STREAM 경계를 설명한다.
-- [ ] 운영 guide에 membership 크기, TLS, firewall, resource와 RouteMesh 단위 배포를 설명한다.
-- [ ] 공통 sample과 다른 언어 guide를 `.NET` 기준으로 전환한다.
-- [ ] C++, .NET, Java, Node.js, Python과 Rust는 각 registry 또는 GitHub Release 채널에, Go는 module
+- guide에서 내부 socket 설명을 제거하고 internals로 옮긴다.
+- internals에 RouteMesh, MeshNode, Spot Logical Multicast, classic fanout과 STREAM 경계를 설명한다.
+- 운영 guide에 membership 크기, TLS, firewall, resource와 RouteMesh 단위 배포를 설명한다.
+- 공통 sample과 다른 언어 guide를 `.NET` 기준으로 전환한다.
+- C++, .NET, Java, Node.js, Python과 Rust는 각 registry 또는 GitHub Release 채널에, Go는 module
   tag와 GitHub Release에 10.0.0을 배포하고 C ABI는 Core release artifact로 검증한다.
-- [ ] 언어별 배포 package를 빈 workspace에 다시 설치해 bindings E2E smoke를 실행한다.
-- [ ] repository, source package와 배포 package에서 제거 이름의 scoped no-hit를 실행한다.
-- [ ] 모든 link, section anchor, release note와 실제 package version을 검증한다.
-- [ ] 코드 예제 compile/smoke, 필수 구성 누락, 원본·번역 동기와 실제 render를 검사하는 자동 gate를
+- 언어별 배포 package를 빈 workspace에 다시 설치해 bindings E2E smoke를 실행한다.
+- repository, source package와 배포 package에서 제거 이름의 scoped no-hit를 실행한다.
+- 모든 link, section anchor, release note와 실제 package version을 검증한다.
+- 코드 예제 compile/smoke, 필수 구성 누락, 원본·번역 동기와 실제 render를 검사하는 자동 gate를
   실행하고 결과를 진행표에 기록한다.
 
 ## 17. 검증 계획
@@ -1784,7 +1812,7 @@ thread, lock과 lifecycle을 source 및 구조 test에 대조해 설명한다.
 | RM-I21 | exported symbol과 runtime source에 제거한 SpotNode mode, PUB/SUB plane과 route bridge가 없음 |
 | RM-I22 | Spot channel request completion이 infrastructure claim과 Core operation ID로 정확히 한 번 완료되고 old reply-readable·channel-dealer event와 drain API가 없음 |
 | RM-I22A | Spot service의 제거한 send/request/reply/publish/recv/subscribe `*_part` symbol과 partial-message state가 없고 complete API·batch만 사용됨 |
-| RM-I23 | Node direct·ChannelName·Spot direct 각각의 send/request metadata가 submit snapshot과 immutable handler view를 보존함 |
+| RM-I23 | Node direct·ChannelName·Spot direct send/request와 Logical Multicast metadata가 submit snapshot과 immutable handler view를 보존함 |
 | RM-I24 | 빈 key, malformed wire duplicate, count·length 불일치, trailing bytes, invalid UTF-8과 1024-byte 초과가 handler admission 전에 같은 오류로 실패함 |
 | RM-I25 | explicit direct metadata는 target handler에 도달하고 ambient metadata는 새 call에 자동 승계되지 않으며 STREAM relay는 deny-by-default allowlist를 적용함 |
 | RM-I26 | request metadata가 S/S reply에 복사되지 않고 reply token이 one-shot·generation·shutdown 오류를 지킴 |
@@ -1836,7 +1864,7 @@ thread, lock과 lifecycle을 source 및 구조 test에 대조해 설명한다.
 | RM-B06 | Node·Spot·Actor batch가 같은 message를 중복 반환하지 않고 ready callback은 payload를 전달하지 않음 |
 | RM-B07 | peer reconnect, drain과 shutdown 뒤 process와 native handle이 정상 종료됨 |
 | RM-B08 | 제거된 폐기 대상 API를 사용하는 compile fixture가 실패하고 package symbol no-hit가 통과함 |
-| RM-B09 | node·channel·Spot direct send/request metadata의 snapshot, malformed frame, 1024-byte 경계, relay allowlist와 reply 비자동복사가 package E2E에서 일치함 |
+| RM-B09 | node·channel·Spot direct send/request와 Logical Multicast metadata의 snapshot, malformed frame, 1024-byte 경계, relay allowlist와 reply 비자동복사가 package E2E에서 일치함 |
 
 C, C++, .NET, Java, Node.js, Python, Go와 Rust 가운데 해당 언어 package가 제공하는 표준 test runner와
 process model을 사용한다. 언어 제약으로 scenario 표현이 달라져도 관찰 가능한 결과를 줄이지 않는다.
@@ -2018,7 +2046,7 @@ envelope, local dispatch queue와 pairwise initiator의 상세 알고리즘은 �
 | **D-20** | 확정 | version과 제거 정책 | Core와 bindings를 10.0.0으로 고정하고 제거 API의 선언, 구현, test, 현재 계약·guide·internals와 wrapper를 한 번에 삭제한다. v10 plan과 review record는 유지한다 | S1~S11 |
 | **D-21** | 확정 | 구현과 배포 순서 | Core 정식 spec, framework spec·E2E·sample 영향 검토, 문서 review loop, Core 구현·internals 갱신·review loop, Core RC pre-release, bindings local package, `.NET`, 세 언어 병렬 적용·review loop, 같은 commit의 Core stable과 bindings 외부 배포, 최종 검토 순서로 진행한다 | S0~S11 |
 | **D-22** | 확정 | Spot timer backend | .NET·Java·Node는 platform timer, C/C++는 C API timer를 사용하고 모두 Spot keyed scheduler의 generation·cancel 계약을 따른다 | S1·S2·S4·S8~S10 |
-| **D-23** | 확정 | S/S application metadata | Node direct·ChannelName·Spot direct send/request에 CS와 같은 call snapshot과 immutable handler metadata를 제공하고 routing metadata와 분리한다. actor 전용 metadata·reply option은 유지한다. 일반 request metadata는 reply에 자동 복사하지 않으며 10.0.0은 Node·Channel·Spot direct reply metadata를 제공하지 않는다 | S1·S2·S4·S7~S10 |
+| **D-23** | 확정 | S/S application metadata | Node direct·ChannelName·Spot direct send/request와 Logical Multicast에 CS와 같은 call snapshot과 immutable handler metadata를 제공하고 routing metadata와 분리한다. actor 전용 metadata·reply option은 유지한다. 일반 request metadata는 reply에 자동 복사하지 않으며 10.0.0은 Node·Channel·Spot direct reply metadata를 제공하지 않는다 | S1·S2·S4·S7~S10 |
 | **D-24** | 확정 | ready와 claim 수명 | infrastructure/application domain을 독립 통지·rearm하고 claim은 MeshNode destroy 뒤에도 독립 thread-safe release가 가능한 control block을 가진다 | S1·S4·S7·S8 |
 | **D-25** | 확정 | Actor transfer fence | peer, source-local sender와 bound STREAM session ingress를 activation release까지 fence하고 sender·session FIFO를 보존한다 | S1·S2·S4·S8~S10 |
 | **D-26** | 확정 | Actor transfer authority store | participant-set CAS, transfer token, lease와 prepared/commit/abort 복구를 별도 authority record로 관리하고 capability가 없는 store에서는 distributed transfer startup을 거부한다 | S2·S4·S8~S10 |
@@ -2046,51 +2074,42 @@ STREAM의 명시적 `MeshName` 선택과 Core handle 지원표가 문서 사이�
 
 다음 조건을 모두 충족해야 이 계획을 완료로 판정한다.
 
-- [ ] D-01~D-27이 reviewed Core와 framework 정식 spec의 exact 계약에 모두 반영되어 있다.
-- [ ] MeshNode 참여 Core 함수, type, enum type, enumerator와 public macro 전수 목록이 Core 10.0.0 정식 spec 및 공개 헤더와 일치한다.
-- [ ] Node·Spot·Actor claim/batch와 completion infrastructure claim 경계가 contract test로 증명된다.
-- [ ] 공통 spec과 모든 언어별 public interface가 같은 목표 계약을 가진다.
-- [ ] channel, SPOT과 actor routed messaging이 MeshNode의 ROUTER를 공유한다.
-- [ ] Spot Logical Multicast는 ROUTER full mesh를 사용하고 classic fanout은 native PUB/SUB를 유지한다.
-- [ ] MeshNode internal network socket이 ROUTER 하나뿐임을 core 구조 test가 증명한다.
-- [ ] `.NET` 현재 checkout/10.0.0 계약 interface 전환이 source 및 package snapshot과 일치한다.
-- [ ] fanout-only 및 stream-only process가 RouteMesh 없이 동작한다.
-- [ ] application message와 handler invocation 의미가 10.0.0 call·context 계약과 일치한다.
-- [ ] core channel index가 directory, live readiness, weight와 drain 결과를 일관되게 반영한다.
-- [ ] manual peer와 Redis discovery peer가 같은 admission·messaging 계약을 사용하고, 분산 Spot·Actor
+- D-01~D-27이 reviewed Core와 framework 정식 spec의 exact 계약에 모두 반영되어 있다.
+- MeshNode 참여 Core 함수, type, enum type, enumerator와 public macro 전수 목록이 Core 10.0.0 정식 spec 및 공개 헤더와 일치한다.
+- Node·Spot·Actor claim/batch와 completion infrastructure claim 경계가 contract test로 증명된다.
+- 공통 spec과 모든 언어별 public interface가 같은 목표 계약을 가진다.
+- channel, SPOT과 actor routed messaging이 MeshNode의 ROUTER를 공유한다.
+- Spot Logical Multicast는 ROUTER full mesh를 사용하고 classic fanout은 native PUB/SUB를 유지한다.
+- MeshNode internal network socket이 ROUTER 하나뿐임을 core 구조 test가 증명한다.
+- `.NET` 현재 checkout/10.0.0 계약 interface 전환이 source 및 package snapshot과 일치한다.
+- fanout-only 및 stream-only process가 RouteMesh 없이 동작한다.
+- application message와 handler invocation 의미가 10.0.0 call·context 계약과 일치한다.
+- core channel index가 directory, live readiness, weight와 drain 결과를 일관되게 반영한다.
+- manual peer와 Redis discovery peer가 같은 admission·messaging 계약을 사용하고, 분산 Spot·Actor
   location 기능을 store 없이 등록한 구성의 startup failure 및 production in-memory fallback 부재가 검증된다.
-- [ ] 서로 다른 RouteMesh의 RID, channel index, socket과 장애 상태가 섞이지 않는다.
-- [ ] Core 10.0.0 GitHub Release와 Conan package가 검증되어 있다.
-- [ ] C, C++, .NET, Java, Node.js, Python, Go와 Rust bindings 10.0.0의 local package 및 배포 package
+- 서로 다른 RouteMesh의 RID, channel index, socket과 장애 상태가 섞이지 않는다.
+- Core 10.0.0 GitHub Release와 Conan package가 검증되어 있다.
+- C, C++, .NET, Java, Node.js, Python, Go와 Rust bindings 10.0.0의 local package 및 배포 package
   E2E smoke가 모두 통과한다.
-- [ ] `.NET`, Java, Kotlin, Node.js와 C++ framework contract/package/E2E가 통과한다.
-- [ ] 1천·1만 node benchmark와 mixed-traffic p99 결과가 기록되어 있다.
-- [ ] guide, internals, 운영 문서와 sample이 실제 구현과 일치한다.
-- [ ] 폐기 대상 alias, forwarding wrapper, route bridge, SpotNode PUB/SUB plane과 stale topology 문서에 대한
+- `.NET`, Java, Kotlin, Node.js와 C++ framework contract/package/E2E가 통과한다.
+- 1천·1만 node benchmark와 mixed-traffic p99 결과가 기록되어 있다.
+- guide, internals, 운영 문서와 sample이 실제 구현과 일치한다.
+- 폐기 대상 alias, forwarding wrapper, route bridge, SpotNode PUB/SUB plane과 stale topology 문서에 대한
   scoped no-hit 검사가 source 및 배포 package에서 통과한다.
-- [ ] Core와 framework의 POSD·DDD 재검토에서 socket, membership와 selection policy 지식의 중복
+- Core와 framework의 POSD·DDD 재검토에서 socket, membership와 selection policy 지식의 중복
   소유가 없고 event 및 책임 경계가 기록되어 있다.
-- [ ] Codex agent와 Claude Fable 모델의 문서, Core, bindings, `.NET`, C++, Java/Kotlin, Node.js와
+- S5, S7, S8, S10의 각 lane과 S11에서 두 리뷰어가 I1 계약 구현 일치, I2 POSD·DDD 리팩터링,
+  I3 정리 완결성을 각각 finding·evidence·clean으로 판정했다.
+- Codex agent와 Claude Sonnet 모델의 문서, Core, bindings, `.NET`, C++, Java/Kotlin, Node.js와
   전체 최종 review loop가 각각 clean 판정으로 종료되었다.
-- [ ] 단계별 review manifest, finding ledger, 검증 결과와 완료 증거가 별도 실행 진행표에 연결되어 있다.
+- 각 구현 review loop에서 어느 한쪽의 어느 축 finding으로 수정한 경우 두 리뷰어가 I1·I2·I3
+  전체를 다시 검토했고, 세 축 판정과 두 exact clean 문구가 같은 frozen revision을 가리킨다.
+- S11 최종 리뷰의 I1에는 전체 spec 대비 누락·오구현·동작 불일치가, I2에는 의미 있는 POSD·DDD
+  리팩터링 잔여가, I3에는 불필요·죽은 code·file·호환 잔재가 없다는 독립 evidence와 clean 판정이 있다.
+- 단계별 review manifest, finding ledger, 검증 결과와 완료 증거가 별도 실행 진행표에 연결되어 있다.
 
-## 23. 진행 상태
+## 23. 실행 상태 참조
 
-| 단계 | 상태 | 근거 |
-|---|---|---|
-| 논의 정리 | 완료 | RouteMesh·MeshNode, 복수 ChannelName membership, Logical Multicast와 별도 classic fanout을 확정 |
-| 계획 작성 | 검토 중 | 네 개 v10.0 계획 문서의 Codex agent·Claude Fable 반복 리뷰 진행 중 |
-| 현재 checkout/10.0.0 계약 정리 | 검토 중 | §12 요약과 별도 Core API 전수 검토 문서를 작성했으며 exact C 계약 판정 필요 |
-| D-01~D-27 결정 | 완료 | manual connection, Redis production 기본 store, ordering, security, STREAM mesh 선택, Core ABI·지원 범위를 포함해 모두 확정 |
-| S0 Core 정식 spec 범위와 결정 | 완료 | `s0-scope-baseline.ko.md`에 결정, 정식 owner 문서, framework 영향 범위, review manifest와 현재 checkout 기준선 기록 |
-| S1 Core 10.0.0 정식 spec | 진행 중 | governance, implementation gap과 service dispatch 한영 정식 spec 작성; MeshNode·Spot·연관 owner 문서 남음 |
-| S2 framework spec·영향 검토 | 미착수 | 공통·언어별 계약과 E2E·sample inventory 미작성 |
-| S3 문서 review loop | 미착수 | S1·S2 선행 필요 |
-| S4 Core 구현·삭제 | 미착수 | ROUTER multicast와 PUB/XSUB·bridge 제거 미구현 |
-| S5 Core review loop | 미착수 | S4 선행 필요 |
-| S6 Core 10.0.0 RC pre-release | 미착수 | Core 구현·리뷰·검증 선행 필요 |
-| S7 bindings 10.0.0 local package | 미착수 | Core RC pre-release 선행 필요 |
-| S8 `.NET` framework | 미착수 | S7 bindings local package와 review clean 선행 필요 |
-| S9 세 언어 병렬 구현 | 미착수 | `.NET` clean 기준 구현 선행 필요 |
-| S10 세 언어 병렬 review | 미착수 | S9 선행 필요 |
-| S11 Core stable·bindings 외부 배포·전체 최종 검토 | 미착수 | 모든 framework lane clean과 package 검증 선행 필요 |
+현재 stage, 항목별 상태, open finding과 완료 증거는
+[`RouteMesh 10.0.0 실행 진행표`](./route-mesh-10.0.0-execution-ledger.ko.md)에서만 확인하고 갱신한다.
+이 blueprint에는 실행 상태 snapshot을 복제하지 않는다.

@@ -2,13 +2,10 @@
 
 [스펙 목차](../README.ko.md) | [이전: Stage Wrapper On SPOT](25-stage-wrapper-on-spot.ko.md) | [다음: Session Actor Dispatch](31-session-actor-dispatch.ko.md)
 
-> 이 문서는 **서버 쪽 STREAM 세션 계약의 언어 중립 정본**이다. 세션 표면의 모양, dispatch 모델,
-> 등록 규칙, codec 계층 분리, 오류 경계를 소유한다.
->
-> client 쪽 계약은 [Stream Connector 공통 스펙](../stream-connector/32-stream-connector.ko.md)이 소유한다. 두 문서는
-> **같은 wire 계약**을 공유한다.
->
-> 언어별 타입과 시그니처는 `languages/<lang>/`의 STREAM 문서가 고정한다.
+이 문서는 ZLink Framework 10.0.0의 서버 쪽 STREAM session 공개 계약을 정의한다. 대상 독자는 서버 session
+표면, dispatch, 등록, codec과 오류 경계를 구현하는 framework 개발자다. Client 쪽 계약은
+[Stream Connector 공통 스펙](../stream-connector/32-stream-connector.ko.md)이 소유하며 두 문서는 같은 wire
+계약을 공유한다. 언어별 타입과 시그니처는 `languages/<lang>/`의 STREAM 문서가 고정한다.
 
 ## 1. 목적
 
@@ -44,8 +41,8 @@ application에 넘기지 않는다.
 
 **session callback은 transport callback을 직접 실행하지 않는다.** framework가 관리하는 queue를
 거쳐 dispatch한다. 그래야 dispatch·DI·logging을 일관되게 묶을 수 있다. **handler filter
-파이프라인은 channel dispatch 전용이며 STREAM session dispatch에는 적용하지 않는다**
-([framework API §2.6](../05-framework-api.ko.md)).
+파이프라인은 Node·Channel dispatch 전용이며 STREAM session dispatch에는 적용하지 않는다**
+([Framework API §8](../05-framework-api.ko.md#8-handler-등록과-dispatch)).
 
 - session callback이 받는 것은 **dispatch context**(packet name, metadata, request 정보 등)와
   **payload**다.
@@ -102,8 +99,8 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 **session 오류 callback은 monitor에서 관찰 가능한 transport 오류를 session 단위로 다시 올려주는
 축으로만 제한한다.**
 
-세션이 닫힐 때의 종료 사유는 [Stream Connector §6.2](../stream-connector/32-stream-connector.ko.md)의 닫힌 집합과
-정합하며, 계기는 [runtime-metrics §4.1](51-runtime-metrics.ko.md)이 소유한다.
+세션이 닫힐 때의 종료 사유는 [Stream Connector §6.3](../stream-connector/32-stream-connector.ko.md#63-종료-사유)의 닫힌 집합과
+정합하며, 계기는 [runtime-metrics §4](51-runtime-metrics.ko.md#4-object와-stream-계기)가 소유한다.
 
 ## 7. 등록 모델
 
@@ -146,7 +143,7 @@ session이 받은 packet을 actor로 넘기는 계약은
 **session callback은 spot 상태를 직접 만지지 않는다.** actor dispatch나 spot 호출을 제출하는
 데까지만 책임진다([stage-wrapper-on-spot §3](25-stage-wrapper-on-spot.ko.md)).
 
-## 9. 회귀 테스트
+## 9. 검증 요구
 
 | 항목 | 검증 |
 |---|---|

@@ -20,6 +20,7 @@ MeshNode 하나는 다음 identity를 가진다.
 | Endpoint | peer가 연결할 ROUTER endpoint 하나 |
 | ChannelName set | 하나 이상의 immutable 논리 membership |
 | Lifecycle generation | 같은 RID로 다시 시작한 MeshNode를 구분하는 단조 증가 값 |
+| Descriptor revision | 같은 lifecycle 안에서 channel weight snapshot 변경을 구분하는 단조 증가 값 |
 
 같은 process에는 같은 MeshName의 MeshNode를 하나만 등록할 수 있다. 서로 다른 MeshName의 MeshNode는
 여러 개 등록할 수 있으며 mesh 사이의 자동 relay는 없다. `ChannelName`은 별도 socket이나 endpoint를
@@ -41,10 +42,15 @@ endpoint를 application이 모두 제공한다. 두 mode는 연결 방법만 다
 
 ## 4. Peer admission
 
-연결된 peer는 MeshName, RID, lifecycle generation, immutable ChannelName set, channel별 weight와 security
+연결된 peer는 MeshName, RID, lifecycle generation, descriptor revision, immutable ChannelName set, channel별 weight와 security
 identity를 handshake에서 교환한다. MeshName 또는 trust profile이 다르거나 같은 generation의 RID가
 중복되면 admission하지 않는다. 더 높은 generation은 해당 RID의 이전 pipe를 drain한 뒤 선택 대상에
 포함한다.
+
+Channel weight를 실행 중 바꾸면 lifecycle generation은 유지하고 descriptor revision만 증가시킨다.
+MeshNode는 같은 revision의 descriptor를 location store와 admitted peer에 게시한다. peer는 더 큰 revision의
+전체 weight snapshot만 적용하며 중간 revision을 받지 못해도 다음 snapshot으로 수렴한다. weight 변경은
+connection 재생성이나 application message replay를 일으키지 않는다.
 
 양쪽에서 동시에 연결을 시도해도 같은 RID와 lifecycle generation의 peer는 ready 연결 하나로 수렴한다.
 Application은 내부 initiator 선택이나 중복 pipe를 관찰하거나 설정하지 않는다.
@@ -57,7 +63,7 @@ Application은 내부 initiator 선택이나 중복 pipe를 관찰하거나 설�
 | Channel | `(MeshName, ChannelName)`의 ready member 하나를 positive weight round-robin으로 선택 |
 | Logical Multicast | target ChannelName의 ready member 전체와 조건부 local Spot subscription에 전달 |
 | Spot direct | location runtime이 확인한 owner MeshNode와 Spot RID로 전송 |
-| Actor direct | ActorRef의 owner route와 generation을 검증해 Actor mailbox로 전송 |
+| Actor direct | ActorRef의 owner route와 generation을 검증해 Actor application queue로 전송. Core에서는 이 queue 저장소를 Actor mailbox라고 부른다 |
 
 선택과 submit은 한 operation이다. 선택한 RID 목록을 application에 반환한 뒤 별도 send를 요구하지 않는다.
 Node·Channel·Spot·Actor의 send/request는 같은 MeshNode ROUTER를 사용한다. classic fanout은 별도

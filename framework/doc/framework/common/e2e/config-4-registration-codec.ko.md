@@ -34,12 +34,13 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 나오는가".
 
 연결 전제: 이 config는 위치 resolve를 다루지 않으므로 client는 server endpoint에 직접
-연결한다(수동 연결). 공유 location store 등록이 필요 없고, 언어별로 단일 process smoke 실행이
-필요한 경우에만 `UseInMemoryLocationStores()`를 사용할 수 있다.
+연결한다(수동 연결). 공유 location store는 등록하지 않는다. 단일 process smoke에서 위치 조회를
+추가로 검증할 때만 process-local `IZLinkLocationStore` 구현체를 `AddLocationStore(instance)`로
+등록한다.
 
 ## 3. 실행 모델
 
-`run_e2e.sh`가 server를 띄우고, client 시나리오가 variant별 packet/DTO로 messaging을 실행해 결과가
+`run_e2e.sh`가 server를 시작하고, client 시나리오가 variant별 packet/DTO로 messaging을 실행해 결과가
 같은지와 content-type을 확인한다.
 
 로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
@@ -53,7 +54,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**한마디로:** 자동 스캔만으로 등록된 handler가, 수동 등록 없이도 request·send를 제대로 처리하는가.
+**검증 질문:** 자동 스캔만으로 등록된 handler가, 수동 등록 없이도 request·send를 제대로 처리하는가.
 
 - 절차: 자동 스캔으로 등록된 handler(packet `EchoAuto`)로 request와 send를 보낸다.
 - 검증: 수동 등록 없이도 request reply와 send evidence가 정상이다.
@@ -63,7 +64,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**한마디로:** attribute로 표시한 handler가, 자동/수동 등록과 똑같은 결과를 내는가.
+**검증 질문:** attribute로 표시한 handler가, 자동/수동 등록과 똑같은 결과를 내는가.
 
 - 절차: `[ZLinkHandlerGroup]` + `[ZLinkRequest]`/`[ZLinkSend]`로 표시한 handler(packet `EchoAttr`)로 request와 send를 보낸다.
 - 검증: attribute 기반 등록이 동작하고 자동/수동과 같은 reply·evidence 의미. (annotation/decorator는 .NET이 아닌 다른 언어 표면 — 언어별 mapping은 공통 spec에서 다룬다.)
@@ -73,7 +74,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**한마디로:** 코드로 직접 등록한 handler가 자동/attribute 경로와 똑같은 결과를 내는가(대조군).
+**검증 질문:** 코드로 직접 등록한 handler가 자동/attribute 경로와 똑같은 결과를 내는가(대조군).
 
 - 절차: 코드로 명시 등록한 handler(packet `EchoManual`)로 request와 send를 보낸다.
 - 검증: 자동/attribute 경로와 동일한 reply·evidence.
@@ -83,7 +84,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P1`
 
-**한마디로:** 요청마다 scoped 의존성은 새로 생기고 singleton은 그대로이며, 공개 DI 표면이 제공하는 수명 정리 증거가 일관적인가.
+**검증 질문:** 요청마다 scoped 의존성은 새로 생기고 singleton은 그대로이며, 공개 DI 표면이 제공하는 수명 정리 증거가 일관적인가.
 
 - 절차: scoped/singleton 의존성을 가진 handler로 연속 request를 보낸다. handler는 주입된 의존성의 instance id와 `IDisposable`/`IAsyncDisposable` dispose 횟수를 evidence에 남긴다.
 - 검증: dispatch마다 새 scope 또는 그 언어의 같은 의미를 가진 request context가 생기므로 scoped 의존성 instance id가 요청마다 달라지고, singleton은 같다. DI 컨테이너가 공개 API로 dispatch scope dispose를 보장하면 scoped 의존성의 dispose 카운터가 요청 수와 일치해야 한다.
@@ -94,7 +95,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P1`
 
-**한마디로:** 여러 filter를 등록한 순서대로 before/after가 호출되는가.
+**검증 질문:** 여러 filter를 등록한 순서대로 before/after가 호출되는가.
 
 - 절차: 여러 `IZLinkHandlerFilter`를 `UseFilter<TFilter>()`로 등록한 channel로 request를 보낸다.
 - 검증: 등록 순서대로 filter before/after가 호출되고, evidence에 호출 순서가 남는다. (interceptor 개념은 지원이 확인된 언어에서만 별도 항목으로 둔다.)
@@ -104,7 +105,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**한마디로:** 잘못된 등록은 런타임까지 가지 않고 시작 단계에서 명확한 오류로 막혀, 기동 자체가 실패하는가.
+**검증 질문:** 잘못된 등록은 런타임까지 가지 않고 시작 단계에서 명확한 오류로 막혀, 기동 자체가 실패하는가.
 
 - 절차: 잘못된 registration(같은 channel에 같은 kind+packet 중복, 잘못된 handler group, 미지원 channel kind 조합)을 가진 server를 기동한다.
 - 검증: 런타임이 아니라 **시작 단계**에서 명확한 registration 검증 오류로 기동이 실패한다. 정상 등록만 있으면 정상 기동. (handler의 미해결 DI 의존성은 startup이 아니라 dispatch 시점 실패이므로 별도 — 필요 시 명시적 DI validation 설정으로 분리.)
@@ -116,7 +117,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**한마디로:** JSON DTO가 정확히 왕복하고, reply content-type이 `application/json`인가.
+**검증 질문:** JSON DTO가 정확히 왕복하고, reply content-type이 `application/json`인가.
 
 - 절차: JSON DTO(POCO)로 request와 send를 보낸다.
 - 검증: 정확히 직렬화·역직렬화되어 같은 reply·evidence가 나오고, reply `context.ContentType`이 `application/json`이다.
@@ -126,7 +127,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**한마디로:** Protobuf DTO가 JSON fallback이 아니라 실제 Protobuf로 왕복하는가(content-type `application/x-protobuf` 확인).
+**검증 질문:** Protobuf DTO가 JSON fallback이 아니라 실제 Protobuf로 왕복하는가(content-type `application/x-protobuf` 확인).
 
 - 절차: Protobuf `IMessage` 타입 DTO로 request와 send를 보낸다.
 - 검증: 같은 메시지가 동일 의미로 왕복하고, `context.ContentType`이 `application/x-protobuf`다(JSON fallback이 아님).
@@ -136,7 +137,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P1`
 
-**한마디로:** MessagePack DTO가 실제 MessagePack으로 왕복하는가(content-type `application/x-msgpack` 확인).
+**검증 질문:** MessagePack DTO가 실제 MessagePack으로 왕복하는가(content-type `application/x-msgpack` 확인).
 
 - 절차: `[MessagePackObject]` 타입 DTO로 request와 send를 보낸다.
 - 검증: 같은 메시지가 동일 의미로 왕복하고, `context.ContentType`이 `application/x-msgpack`다.
@@ -146,7 +147,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**한마디로:** 세 codec을 한 host에 같이 등록해 두고 타입이 다른 메시지를 섞어 보내면, 각자 맞는 codec으로 골라져 서로 간섭 없이 왕복하는가.
+**검증 질문:** 세 codec을 한 host에 같이 등록해 두고 타입이 다른 메시지를 섞어 보내면, 각자 맞는 codec으로 골라져 서로 간섭 없이 왕복하는가.
 
 - 절차: 한 host의 전역 codec registry에 JSON·Protobuf·MessagePack을 함께 등록하고, payload 타입이 다른 메시지(POCO / `IMessage` / `[MessagePackObject]`)를 같은 server로 보낸다.
 - 검증: 각 메시지가 payload 타입/content-type에 맞는 codec으로 처리되어 서로 간섭 없이 정확히 왕복한다(content-type별 분기). 미지원 타입은 JSON fallback이라는 정해진 규칙을 따른다.
@@ -156,7 +157,7 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P1`
 
-**한마디로:** 서로 codec 등록이 다른 두 서비스가 통신할 때(보낸 쪽 content-type을 받는 쪽이 모를 때), 정해진 규칙(fallback 또는 정해진 error)대로 처리되고 정상 codec 트래픽은 멀쩡한가.
+**검증 질문:** 서로 codec 등록이 다른 두 서비스가 통신할 때(보낸 쪽 content-type을 받는 쪽이 모를 때), 정해진 규칙(fallback 또는 정해진 error)대로 처리되고 정상 codec 트래픽은 멀쩡한가.
 
 - 절차: server는 JSON만 등록하고, client는 MessagePack(또는 Protobuf) 전용 DTO로 같은 server에 request를 보낸다(=받는 쪽이 그 content-type codec을 안 가진 상황).
 - 검증: 받는 쪽이 정해진 규칙대로 처리한다 — 매칭 codec이 없으면 JSON fallback 또는 정해진 public decode error로 끝나며, 어느 쪽이든 결과가 관측으로 고정된다. 같은 server의 정상 JSON 트래픽은 영향받지 않는다.

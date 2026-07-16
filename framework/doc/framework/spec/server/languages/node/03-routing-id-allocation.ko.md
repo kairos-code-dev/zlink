@@ -1,12 +1,11 @@
 # Node.js routing id 자동 할당 공개 계약
 
-이 문서는 [공통 location runtime 계약](../../40-location-runtime.ko.md#12-routing-id-slot-allocation)을
+이 문서는 [Redis location store의 routing ID slot 계약](../../41-location-store-redis.ko.md#8-routing-id-slot-원자성)을
 Node.js에서 표현하는 정확한 public interface를 고정한다.
 
 ## 1. builder
 
-client/server channel, fanout channel, route mesh channel과 SpotNode builder는 다음 메서드를 제공한다.
-반환형은 호출한 builder 자신이다.
+MeshNode와 classic fanout builder는 다음 메서드를 제공한다. 반환형은 호출한 builder 자신이다.
 
 ```ts
 routingId(routingId: string): this;
@@ -20,8 +19,7 @@ setRoutingIdAllocationGroup(groupName: string): this;
 기본 group 이름은 유지한다. group 설정은 자동 할당 설정 전후 어느 쪽에도 둘 수 있다. 고정 routing
 id와 자동 할당을 함께 설정하면 runtime 시작 전에 `ZLinkConfigurationException`으로 실패한다.
 
-NestJS의 `ZLinkNestClientServerChannelBuilder`, `ZLinkNestFanoutChannelBuilder`,
-`ZLinkNestRouterMeshBuilder`, `ZLinkNestSpotNodeBuilder`도 같은 네 메서드를 제공한다. NestJS builder의
+NestJS의 `ZLinkNestMeshNodeBuilder`와 `ZLinkNestFanoutChannelBuilder`도 같은 네 메서드를 제공한다. NestJS builder의
 기존 선택 설정 관례에 따라 고정 routing id 인자는 `string | undefined`를 받는다.
 
 ## 2. allocation store capability
@@ -52,12 +50,12 @@ acquire 결과는 `kind`가 `acquired`, `groupExhausted`, `groupConfigurationMis
 시각과 같은 원자 연산에서 읽은 store 시각을 포함한다. release 결과는 `released` 또는
 `ignoredStale`다.
 
-정확한 값 형태는 다음과 같다. member 목록은 `channelName` 오름차순으로 정규화한다. 이름은 channel과
-SpotNode를 같은 저장소 계약으로 다루기 위해 `channelName`을 사용한다.
+정확한 값 형태는 다음과 같다. member 목록은 `meshName` 오름차순으로 정규화한다. 각 member의 등록
+이름은 MeshNode builder에 넘긴 MeshName이며 `meshName` 필드에 넣는다.
 
 ```ts
 export interface ZLinkRoutingIdSlotAllocationMember {
-  readonly channelName: string;
+  readonly meshName: string;
   readonly routingIdPrefix: string;
 }
 

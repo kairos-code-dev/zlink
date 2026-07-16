@@ -167,7 +167,7 @@ connector도 framework처럼 **custom codec**을 끼울 수 있다. `ZLinkStream
 `typedCodec`에 `ZLinkStreamCodec`(`encode(packetName, value)`/`decode(payload, type)`) 구현을
 주면 Avro·Thrift 같은 포맷을 쓴다. server framework 쪽 등록(`codecs().use(extension)`)과
 대칭이며, 두 표면의 전체 목록은
-[framework-api §2.2](../../spec/05-framework-api.ko.md) 표를 본다.
+[framework-api §9](../../spec/05-framework-api.ko.md#9-codec) 표를 본다.
 
 payload codec과 compression codec은 서로 다른 설정이다. payload codec은 DTO와 bytes 사이를
 바꾸고, compression codec은 이미 만들어진 bytes를 전송 전에 압축하거나 수신 후 복원한다.

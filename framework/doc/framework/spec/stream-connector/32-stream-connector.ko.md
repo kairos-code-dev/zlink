@@ -6,6 +6,7 @@
 > wire 계약, packet 모델, 연결 생명주기, 오류 의미, 배포 산출물을 소유한다.
 >
 > 언어별 public 타입과 시그니처는 [`languages/<lang>/`](README.ko.md)가 고정한다 —
+> [cpp](languages/cpp/03-stream-connector.ko.md) ·
 > [dotnet](languages/dotnet/03-stream-connector.ko.md) ·
 > [java](languages/java/03-stream-connector.ko.md) ·
 > [typescript](languages/typescript/README.ko.md). 이 문서는
@@ -114,7 +115,7 @@ STREAM frame의 앞쪽 2바이트는 `header_size`다.
   ([03 message model](../03-message-model.ko.md)의 "reply 상관관계").
 - metadata는 `u16 meta_len + metadata bytes`, correlation id는 `u8 len + bytes`로 이어진다.
 - flow 필드는 **36바이트 `flow_id`와 1바이트 `flow_origin`이 항상 함께** 존재하거나 함께 없다.
-  의미는 [메시지 흐름 상관관계 §3.2](../server/53-flow-correlation.ko.md)가 소유한다.
+  의미는 [메시지 흐름 상관관계 §3](../server/53-flow-correlation.ko.md#3-형식)이 소유한다.
 - **모든 multi-byte 정수는 network byte order**다.
 
 application code는 이 header를 직접 만들거나 수정하지 않는다. connector runtime이 소유한다.
@@ -129,7 +130,8 @@ application code는 이 header를 직접 만들거나 수정하지 않는다. co
 | has correlation id | `0x08` | correlation id 필드가 있다 |
 | has flow id | `0x10` | `flow_id`·`flow_origin` 필드가 있다 |
 
-`Control` packet에는 `has flow id`를 세우지 않는다([flow-correlation §3.2](../server/53-flow-correlation.ko.md)).
+`Control` packet에는 `has flow id`를 세우지 않는다
+([flow-correlation §3](../server/53-flow-correlation.ko.md#3-형식)).
 
 ### 4.4 metadata
 
@@ -165,6 +167,7 @@ metadata는 trace id·locale·tenant id처럼 **작은 값만** 싣는다.
 
 - 알 수 없는 `kind`·`codec`·flag bit
 - `has request seq`·`has metadata` flag와 실제 필드 존재 여부의 불일치
+- `Response` 또는 `Error`의 `name_len`이 `0`이 아닌 경우
 
 ### 4.6 control frame
 
@@ -186,7 +189,8 @@ control frame은 `Raw` codec, request sequence 없음, metadata 없음, flow fla
 | `session-closing` | **비어 있지 않다** — 아래 참조 |
 
 `session-closing`은 서버가 세션을 닫기 직전에 보내는 control packet이며, client는 이를 읽어
-`closeReason`을 확정한다([graceful-drain-handoff §7.1](../server/54-graceful-drain-handoff.ko.md)).
+`closeReason`을 확정한다
+([graceful-drain-handoff §7](../server/54-graceful-drain-handoff.ko.md#7-stream-barrier)).
 
 ```text
 +------------+-------------------+----------------+--------------------+
@@ -260,9 +264,8 @@ response에만** 들어간다.
 
 - **pending request 매칭은 `request_seq`가 정본이다.** `Response`와 `Error`에는 **packet name
   필드가 아예 없으므로**(`name_len = 0`) 이름으로 대조할 수도 없다. 어떤 응답인지는 sequence가
-  이미 정한다(§31 "request sequence 보존"과 같은 규칙).
-- **`Response`·`Error`에 이름이 실려 오더라도 그것을 대조 조건으로 쓰지 않는다.** 구형 peer와의
-  호환을 위해 decoder는 이름이 있는 응답도 받아들이되 **무시한다.**
+  이미 정한다. STREAM session에서 Actor request를 relay할 때도 같은 terminal reply 원칙을 사용한다
+  ([Session Actor Dispatch §5](../server/31-session-actor-dispatch.ko.md#5-request-reply)).
 - **request timeout·close·disconnect가 발생하면 pending request는 모두 실패로 완료하고 map에서
   제거한다.** 재연결 후 자동 재전송하지 않는다(§6).
 
@@ -287,11 +290,16 @@ header의 codec은 `JSON`이다.
 | MessagePack | 2 |
 | Protobuf | 3 |
 
-**JSON이 기본 codec이다.** MessagePack·Protobuf는 선택 package가 제공한다. TypeScript package
-root는 browser-safe `ZlinkStreamPayloadCodec`을 내보내며 connector를 만들 때 `codec` option으로
-주입한다. Node framework serializer 등록은 같은 package의 `./framework` subpath를 사용한다. 두
-진입점은 `stream-wire`가 소유하는 같은 codec 번호를 사용하지만 browser module graph가 server
-framework runtime을 참조하지 않아야 한다.
+**JSON이 기본 codec이다.** 모든 언어의 connector는 typed payload codec 하나를 connector 생성
+option으로 받으며 typed send, request와 수신에 함께 사용한다. MessagePack·Protobuf는 선택 package가
+이 codec 구현을 제공한다. 메시지 타입마다 codec을 등록하거나 send/request operation마다 codec을
+바꾸는 public API는 제공하지 않는다. Raw encoded payload는 외부 protocol 연동을 위해 payload가
+지정한 codec 번호를 그대로 사용할 수 있다.
+
+TypeScript package root는 browser-safe `ZlinkStreamPayloadCodec`을 내보내며 connector를 만들 때
+`codec` option으로 주입한다. Node framework serializer 등록은 같은 package의 `./framework` subpath를
+사용한다. 두 진입점은 `stream-wire`가 소유하는 같은 codec 번호를 사용하지만 browser module graph가
+server framework runtime을 참조하지 않아야 한다.
 
 ## 6. 연결 생명주기
 
@@ -347,10 +355,27 @@ framework runtime을 참조하지 않아야 한다.
 | 수신 메시지 큐 | message 1024개(§10.1) |
 | TLS 인증서 검증 | 켜짐 — 검증 생략 option의 기본값은 꺼짐이며 테스트의 자체 서명 인증서에만 사용한다 |
 
-### 6.2 종료 사유
+### 6.2 Connector reconnect 계기
+
+Connector는 자동·수동 reconnect 시도 결과를 다음 metric으로 기록한다. 이 계기는 client connector가
+소유하며 server session runtime은 reconnect 여부를 추측하거나 대신 기록하지 않는다.
+
+| 계기 | 종류 | 단위 | Label | 의미 |
+|---|---|---|---|---|
+| `zlink.stream.reconnects` | counter | `{reconnect}` | `transport`, `outcome`, `reason` | Connector reconnect 시도 결과 누계 |
+
+`outcome`은 `connected|failed|cancelled|shutdown`, `reason`은
+`transport_closed|connect_failed|tls_failed|timeout|requested`의 닫힌 값이다. `transport`는 §3.1의
+`tcp|tls|ws|wss` 중 하나다. Session ID와 remote endpoint는 label에 포함하지 않는다. 언어별 connector는
+같은 이름과 닫힌 label을 언어별 exact interface가 정한
+public metric provider 또는 sink에 게시한다. E2E와 application은 그 provider나 sink의 public reader를
+사용하며 server-side proxy API를 만들지 않는다. Reader, sink 또는 exporter failure는 send, request와
+연결 상태를 바꾸지 않는다.
+
+### 6.3 종료 사유
 
 연결이 끊기면 connector는 **종료 사유**를 노출한다. 값 집합은 서버 측 `close_reason`
-([runtime-metrics §4.1](../server/51-runtime-metrics.ko.md))과 정합하는 **닫힌 집합**이며, wire 인코딩은
+([runtime-metrics §4](../server/51-runtime-metrics.ko.md#4-object와-stream-계기))과 정합하는 **닫힌 집합**이며, wire 인코딩은
 §4.6의 `session-closing` control packet이 소유한다.
 
 | 사유 | 의미 |
@@ -363,7 +388,7 @@ framework runtime을 참조하지 않아야 한다.
 | `TransportError` | transport 수준 실패로 끊겼다 |
 
 `ServerDrain`을 받은 client는 이 값을 보고 **재접속과 백오프를 결정한다**
-([Graceful Drain & Handoff §7.1](../server/54-graceful-drain-handoff.ko.md)). **서버가 대체 endpoint를
+([Graceful Drain & Handoff §7](../server/54-graceful-drain-handoff.ko.md#7-stream-barrier)). **서버가 대체 endpoint를
 지정하는 기능은 이 계약에 포함하지 않는다.**
 
 언어별 문서는 이 사유를 표현하는 **타입 이름과 노출 방식**(속성인지 이벤트 인자인지)만
@@ -485,11 +510,6 @@ connector 상태와 무관한 범용 단언. connector가 테스트 진입점을
 | `expectFailure(action, errorKind?)` | `action`을 **실행해** 실패하는지 확인하고 그 오류를 돌려준다. **입력은 미리 만든 task가 아니라 실행할 action(람다)이다** — task를 밖에서 만들면 언제 실행되는지 모호하다. `errorKind`를 주면 **그 종류로 실패했는지까지** 검증한다(주지 않으면 "실패했다"만). 실패 분류가 필요한 시나리오는 반드시 `errorKind`를 준다 |
 | `expectTimeout(action)` | `action`이 timeout으로 실패하는지 확인한다. timeout이 아닌 다른 오류는 **재전파한다** |
 
-**이 표면들은 [§0.8](../gaps/cpp.ko.md)의 계약 결정이 끝난 항목이다.** 각 언어는 이 계약대로
-connector에 구현하고, 샘플·e2e 시나리오의 손수 재구현을 **삭제하고 이 API로 교체한다.**
-교체하면 `expectNone`·`waitForSequence` 부재로 생긴 갭(각 언어 gap 문서의 해당 항목)이
-함께 닫힌다.
-
 ## 11. 배포 산출물
 
 각 대상이 어떤 산출물로 배포되는지도 이 스펙이 소유한다. 배포 형식이 그 환경의 제약을
@@ -503,11 +523,11 @@ connector에 구현하고, 샘플·e2e 시나리오의 손수 재구현을 **삭
 | Godot(C++) | `zlink-godot-stream-connector` | source GDExtension |
 | Cocos/Axmol | `zlink-axmol-connector` | source package |
 | `.NET`(데스크톱·서버) | `Systems.Zlink.Stream.Connector` | NuGet |
-| **Unity(네이티브)** | 위 `.NET` 패키지를 **그대로 사용**(전용 패키지 없음) | NuGet 또는 UPM(미결) |
+| **Unity(네이티브)** | 위 `.NET` 패키지를 **그대로 사용**(전용 패키지 없음) | NuGet |
 | **Godot C#** | 위 `.NET` 패키지를 **그대로 사용** | NuGet |
-| Java | `zlink-stream-connector` | Maven |
+| Java | `systems.zlink:zlink-stream-connector` | Maven |
 | **브라우저 계열**(웹·Cocos web·Unity WebGL·Godot Web) | `@zlink-systems/stream-connector` package root | npm |
-| **Unity WebGL 어댑터** | 위 npm + **jslib interop 어댑터** | npm + UPM(미결) |
+| **Unity WebGL 어댑터** | `@zlink-systems/stream-connector`의 browser bundle과 jslib·C# interop source | `com.zlink.stream-connector.webgl` UPM source package |
 | (공통) wire 계층 | `@zlink-systems/stream-wire` | npm |
 
 **배포 원칙:**
@@ -519,24 +539,11 @@ connector에 구현하고, 샘플·e2e 시나리오의 손수 재구현을 **삭
 - **Unity(네이티브)와 Godot C#은 별도 패키지를 두지 않는다.** `.NET` connector를 그대로
   사용한다.
 
-**미결정:**
+Unity WebGL UPM package는 새 wire runtime을 만들지 않는다. npm package root의 browser bundle을
+포함하고 Unity가 요구하는 jslib·C# 호출 경계만 source로 제공한다. 따라서 browser와 Unity WebGL은
+같은 TypeScript connector protocol과 codec을 사용한다.
 
-| # | 항목 |
-|---|---|
-| 1 | Unity 배포 채널 — NuGet 직접 소비 vs UPM 패키지 제공 |
-| 2 | Unity WebGL 어댑터(jslib + C# 바인딩)의 산출물 위치와 배포 형태 |
-| 3 | Java connector의 Maven 좌표 확정 |
-
-## 12. 구현 차이
-
-현재 구현과 이 스펙의 차이는 [구현 차이](../90-implementation-gap.ko.md)에 기록한다.
-
-TypeScript connector package root는 플랫폼의 네이티브 `WebSocket`을 사용하며 `tcp://`와
-`tls://`를 구성 오류로 즉시 거부한다. Node 전용 구현과 `/browser` subpath는 제공하지 않는다.
-구현 근거와 검증 범위는
-[TypeScript Stream Connector 공개 계약 §7](languages/typescript/03-stream-connector.ko.md)에 기록한다.
-
-## 13. 회귀 테스트
+## 12. 회귀 테스트
 
 이 스펙이 요구하는 검증 항목이다. 언어별 테스트 이름은 달라도 의미는 같아야 한다.
 
@@ -550,7 +557,7 @@ TypeScript connector package root는 플랫폼의 네이티브 `WebSocket`을 �
 | pending request 정리 | timeout·close·disconnect에서 pending이 모두 실패하고 제거된다(§5.2) |
 | payload 한도 | 송신 한도가 **transport write 전에** 적용된다(§4.7) |
 | metadata | 한도·중복·빈 key 검증(§4.4) |
-| packet name | 기본 이름과 override, `$zlink.` prefix 금지(§4.6) |
+| packet name | UTF-8 길이 제한(§4.2), `$zlink.` prefix 예약(§4.6), 언어별 exact interface의 기본 이름·override 규칙 |
 | codec | connector option 주입, codec 번호 공유와 browser/server dependency 분리(§5.4) |
 | compression | 방향별 동작(§8) |
 | error handling | 오류 의미(§9) |

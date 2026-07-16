@@ -62,16 +62,16 @@ record, 영향 범위와 red gate를 함께 수정한다.
 이번 작업은 service 계약 전체를 10.0.0으로 고정한다. `AGENTS.md`의 RouteMesh 10.0.0
 예외에 따라 공개 계약을 다음 정식 spec에 먼저 기록한다.
 
-- `core/doc/spec/core/service/mesh-node.ko.md`와 영문 문서
-- `core/doc/spec/core/service/dispatch.ko.md`와 영문 문서
-- `core/doc/spec/core/service/spot.ko.md`와 영문 문서
-- `core/doc/spec/core/service/actor.ko.md`와 영문 문서
-- `core/doc/spec/core/service/stream-session.ko.md`와 영문 문서
-- `core/doc/spec/core/socket/router.ko.md`와 영문 문서
-- `core/doc/spec/core/socket/stream.ko.md`와 영문 문서
-- `core/doc/spec/core/polling.ko.md`와 영문 문서
-- `core/doc/spec/core/monitoring.ko.md`와 영문 문서
-- `core/doc/spec/core/errno-map.ko.md`, `errors.ko.md`와 영문 문서
+- `core/doc/spec/core/service/01-mesh-node.ko.md`와 영문 문서
+- `core/doc/spec/core/service/02-dispatch.ko.md`와 영문 문서
+- `core/doc/spec/core/service/03-spot.ko.md`와 영문 문서
+- `core/doc/spec/core/service/04-actor.ko.md`와 영문 문서
+- `core/doc/spec/core/service/05-stream-session.ko.md`와 영문 문서
+- `core/doc/spec/core/socket/07-router.ko.md`와 영문 문서
+- `core/doc/spec/core/socket/08-stream.ko.md`와 영문 문서
+- `core/doc/spec/core/06-polling.ko.md`와 영문 문서
+- `core/doc/spec/core/07-monitoring.ko.md`와 영문 문서
+- `core/doc/spec/core/04-errno-map.ko.md`, `03-errors.ko.md`와 영문 문서
 - `core/doc/spec/core/00-public-contract-governance.ko.md`와 영문 문서
 
 각 정식 문서는 Core 10.0.0의 현재 공개 계약만 설명한다. 현재 checkout 구현과의 차이는 정식 문서가 아닌
@@ -79,16 +79,16 @@ record, 영향 범위와 red gate를 함께 수정한다.
 
 | 계약 책임 | 정식 owner 문서 |
 |---|---|
-| MeshNode lifecycle, identity, membership와 peer admission | `core/doc/spec/core/service/mesh-node.ko.md`와 영문 문서, service index |
-| ready callback, claim, batch, operation ID와 reply token | `core/doc/spec/core/service/dispatch.ko.md`와 영문 문서 |
-| Spot lifecycle, Logical Multicast와 local subscription | `core/doc/spec/core/service/spot.ko.md`와 영문 문서 |
-| Actor mailbox, ActorRef와 transfer | `core/doc/spec/core/service/actor.ko.md`와 영문 문서 |
-| Actor와 STREAM session 결합 | `core/doc/spec/core/service/stream-session.ko.md`와 영문 문서 |
-| generic STREAM 비변경 경계 | `core/doc/spec/core/socket/stream.ko.md`와 영문 문서 |
-| ROUTER 공유와 raw ROUTER 비변경 경계 | `core/doc/spec/core/socket/router.ko.md`와 영문 문서 |
-| poller에서 MeshNode handle을 사용하는 의미 | `core/doc/spec/core/polling.ko.md`와 영문 문서 |
-| status, source와 monitor event | `core/doc/spec/core/monitoring.ko.md`와 영문 문서 |
-| 신규 result와 errno | `core/doc/spec/core/errno-map.ko.md`, `errors.ko.md`와 영문 문서 |
+| MeshNode lifecycle, identity, membership와 peer admission | `core/doc/spec/core/service/01-mesh-node.ko.md`와 영문 문서, service index |
+| ready callback, claim, batch, operation ID와 reply token | `core/doc/spec/core/service/02-dispatch.ko.md`와 영문 문서 |
+| Spot lifecycle, Logical Multicast와 local subscription | `core/doc/spec/core/service/03-spot.ko.md`와 영문 문서 |
+| Actor mailbox, ActorRef와 transfer | `core/doc/spec/core/service/04-actor.ko.md`와 영문 문서 |
+| Actor와 STREAM session 결합 | `core/doc/spec/core/service/05-stream-session.ko.md`와 영문 문서 |
+| generic STREAM 비변경 경계 | `core/doc/spec/core/socket/08-stream.ko.md`와 영문 문서 |
+| ROUTER 공유와 raw ROUTER 비변경 경계 | `core/doc/spec/core/socket/07-router.ko.md`와 영문 문서 |
+| poller에서 MeshNode handle을 사용하는 의미 | `core/doc/spec/core/06-polling.ko.md`와 영문 문서 |
+| status, source와 monitor event | `core/doc/spec/core/07-monitoring.ko.md`와 영문 문서 |
+| 신규 result와 errno | `core/doc/spec/core/04-errno-map.ko.md`, `03-errors.ko.md`와 영문 문서 |
 | version과 ABI | service index와 `errors` |
 | 공개 계약 governance | `core/doc/spec/core/00-public-contract-governance.ko.md`와 영문 문서 |
 | 현재 checkout 구현 차이 | 임시 `s1-core-implementation-tracking.ko.md` |
@@ -147,9 +147,9 @@ symbol appendix에서 internal export로 따로 분류하고 10.0.0 export 정�
 | 범위 | 추출 기준 |
 |---|---|
 | 공통 E2E | `framework/doc/framework/common/e2e/`의 README와 config 문서 전부 |
-| 언어별 E2E | `.NET`, C++, Java, Kotlin, Node.js의 config별 source, feature map과 `run_e2e*.sh` |
+| 언어별 E2E | `.NET`, C++, Java, Kotlin, Node.js의 config별 문서, public 예제 source, feature map과 `run_e2e*.sh` |
 | 공통 sample | `framework/doc/framework/common/sample/`의 README와 sample 문서 전부 |
-| 언어별 sample | 다섯 framework 언어의 source, README와 `run_sample*`/`run_samples*` |
+| 언어별 sample | 다섯 framework 언어의 문서, public 예제 source, README와 `run_sample*`/`run_samples*` |
 | package consumer | bindings와 framework의 clean consumer, API snapshot과 native payload 검사 |
 | 증거 형식 | 파일, scenario ID, 변경/삭제/신규/비영향 분류, 필요한 public API, runner 변경과 검증 명령 |
 
@@ -179,13 +179,18 @@ symbol appendix에서 internal export로 따로 분류하고 10.0.0 export 정�
 
 ## 7. Review manifest와 종료 문구
 
-S3 review는 [`log/templates/manifest.ko.md`](./log/templates/manifest.ko.md)를 복사해 iteration별 입력을
-고정한다. R1과 R2는 같은 file hash와 diff를 읽고 서로의 첫 결과를 보지 않는다.
+S3 review는 [`log/templates/manifest.ko.md`](./log/templates/manifest.ko.md)를 복사하고 `Review kind`를
+`문서 리뷰`로 선택해 iteration별 입력을 고정한다. R1과 R2는 같은 file hash와 diff를 읽고 서로의 첫
+결과를 보지 않는다. S3의 `DOC REVIEW CLEAN`은 S5·S7·S8·S10·S11 구현 리뷰의 I1 계약 구현 일치,
+I2 POSD·DDD 리팩터링, I3 정리 완결성 판정을 대신하지 않는다.
 
 | 리뷰어 | 종료 문구 |
 |---|---|
 | Codex agent | `DOC REVIEW CLEAN` |
-| Claude Fable | `DOC REVIEW CLEAN` |
+| Claude Sonnet | `DOC REVIEW CLEAN` |
+
+모든 리뷰는 두 리뷰어가 같은 frozen scope를 독립 검토한다. 어느 한쪽 결과로 수정이 발생하면 새
+revision에서 두 리뷰를 모두 다시 실행하며, 두 결과가 모두 exact clean 문구로 끝나야 gate를 통과한다.
 
 결과에 provider/model, invocation ID, 시작·종료 시각, exit status, 대상 SHA-256과 raw output checksum이
 없으면 clean 판정을 인정하지 않는다.
@@ -256,10 +261,11 @@ MeshNode full-mesh, mixed request/multicast와 memory 기준은 구현 단계에
 
 ## 9. S0 완료 판정
 
-- [x] Core 정식 spec 경로와 구현 일치 지도를 고정했다.
-- [x] D, MN-D와 FD 결정에 미결정 상태가 없다.
-- [x] framework spec, E2E, sample와 package inventory 범위를 고정했다.
-- [x] 삭제 symbol과 금지 구현 검색 목록을 고정했다.
-- [x] review manifest 형식과 clean 문구를 고정했다.
-- [x] 현재 checkout API·ABI·test·대표 성능 기준선을 기록했다.
-- [x] 모든 후속 문서가 따라야 하는 기술문서 작성·검증 원칙을 연결했다.
+- Core 정식 spec 경로와 구현 일치 지도를 고정했다.
+- D, MN-D와 FD 결정에 미결정 상태가 없다.
+- framework spec, E2E, sample와 package inventory 범위를 고정했다.
+- 삭제 symbol과 금지 구현 검색 목록을 고정했다.
+- review manifest 형식과 clean 문구를 고정했다.
+- 어느 한쪽 review 결과로 수정하면 Codex와 Claude Sonnet 리뷰를 모두 다시 실행하는 공통 gate를 고정했다.
+- 현재 checkout API·ABI·test·대표 성능 기준선을 기록했다.
+- 모든 후속 문서가 따라야 하는 기술문서 작성·검증 원칙을 연결했다.

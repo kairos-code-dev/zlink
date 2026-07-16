@@ -5,12 +5,15 @@
 
 ## 역할
 
-- `Shared`: 공통 request, reply, evidence 타입과 환경 변수 helper.
+- `Shared`: 공통 request, reply와 evidence 타입.
 - `Server/Service`: channel, spot, socket/spot/location runtime monitoring source, evidence endpoint.
 - `Server/FilteredService`: socket kind filter를 가진 별도 service role.
 - `Server/ThrowingService`: monitoring handler failure를 격리하는 별도 service role.
 - `Server/Trigger`: framework client와 HTTP scenario endpoint를 가진 trigger/validation process.
 - `Client`: HTTP driver process. framework runtime으로 뜨지 않고 `Server/Trigger`의 scenario endpoint를 호출한다.
+
+Runner는 실행별 role 설정 파일을 만들어 server에 전달한다. Client가 실행할 scenario는 시작할 때
+검증하는 CLI 입력으로 전달한다.
 
 ## 실행
 

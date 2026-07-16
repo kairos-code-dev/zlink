@@ -20,7 +20,7 @@ public HTTP client만 사용한다.
 ## 구현됨
 
 - `RM-A1`: Redis location store 자동 연결로 provider를 resolve하고 request를 보낸다. consumer의
-  public runtime query에서 API channel의 live provider peer row가 둘 이상 보이는지, provider
+  public MeshNode runtime snapshot에서 API channel의 provider MeshNode descriptor가 둘 이상 보이는지, provider
   evidence에 request가 남는지 함께 검증한다.
 - `RM-A2`: 수동 endpoint 연결로 provider에 직접 request를 보낸다.
 - `RM-A4`: v1 terminal `Drained`와 old row 제거를 확인하고 같은 rid의 새 endpoint로 교체한다.
@@ -49,9 +49,9 @@ public HTTP client만 사용한다.
 
 ## Backpressure 범위
 
-- `RM-C9`: Java는 느린 handler에 다량 one-way send를 동시에 제출하고, public bounded-failure
-  oracle 없이 후속 request와 evidence가 회복되는지 검증한다. 직접적인 HWM 오류 결과 검증은
-  binding/runtime 내부 테스트 범위로 둔다.
+- `RM-C9`(전환 필요): 현재 실행은 다량 one-way send 제출과 후속 request 회복을
+  검증한다. non-blocking submit의 즉시 backpressure 결과와 blocking submit의 bounded
+  admission 결과를 public send call에서 직접 대조해야 완료된다.
 
 ## 갱신된 계약의 남은 항목
 
@@ -60,8 +60,8 @@ public HTTP client만 사용한다.
 - `RM-B2`에 slow in-flight와 drain 전파 중 target 미지정 요청 20개를 넣은 집중 gate는 여러 요청이
   framework의 5초 request timeout으로 실패했다. draining peer가 신규 부하에서 제외되는 runtime
   수정 전까지 전파 구간 완료 조건은 차단 상태다.
-- 동적 역할 readiness는 3초, peer convergence는 이름 있는 5초 route settle로 제한한다. 변경 뒤
-  `RM-A4`와 `RM-B2` 단독 실행이 통과했다(구현 커밋 `7ee3d9141`).
+- 동적 역할 readiness는 3초, peer convergence는 이름 있는 5초 route settle로 제한한다. 이 상한 안에
+  준비되지 않는 역할이나 peer를 대기 시간 확대로 완료 처리하지 않는다.
 
 ## 검증
 

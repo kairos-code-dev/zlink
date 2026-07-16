@@ -20,7 +20,7 @@ Directory layout:
   record handlers.
 - `Server/Play/` contains player actors, Entry Spot admission, room spots,
   Redis-backed room matching, submitted cards, server-driven draws, automatic
-  marks, winner detection, rare reward fan-out over Spot pub/sub, and
+  marks, winner detection, rare reward Logical Multicast to subscribed Spots, and
   session-bound push.
 - `Server/Session/` contains the stream Session server and actor relay handlers.
 - Servers register themselves in a shared location store (the per-run Redis

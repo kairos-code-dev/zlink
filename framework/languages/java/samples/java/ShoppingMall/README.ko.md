@@ -14,7 +14,7 @@ scale-out 경로를 self-check로 검증한다.
 | `Server/Configuration` | role들이 공유하는 이름, endpoint, Redis location store 설정을 제공한다. |
 | `Server/Shared` | 주문 domain event, projection fold, Redis-backed store를 제공한다. |
 | `Server/CommerceApi` | HTTP 주문 API와 self-check endpoint를 열고 workflow channel로 요청을 보낸다. |
-| `Server/OrderWorkflow` | workflow channel server와 spot mesh를 실행하고 주문 상태 전이를 처리한다. |
+| `Server/OrderWorkflow` | MeshNode의 workflow ChannelName과 order Spot을 실행하고 주문 상태 전이를 처리한다. |
 
 ## 실행
 

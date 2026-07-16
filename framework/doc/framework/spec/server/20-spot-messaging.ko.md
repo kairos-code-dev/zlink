@@ -66,6 +66,10 @@ Logical Multicast의 `NoDrop` 기본값은 `true`다.
 publish 수락은 subscriber handler 실행이나 업무 처리를 확인하는 acknowledgement가 아니다. 기본 정책은
 전달 대상마다 queue 수락까지 보장하며, durable 저장·재생·exactly-once 전달을 뜻하지 않는다.
 
+publish 결과는 remote target과 local Spot match 각각의 snapshot, admitted와 dropped 수를 제공한다.
+`NoDrop = true` 성공에서는 두 dropped 수가 모두 0이다. `NoDrop = false` 성공에서는 local과 remote의
+부분 수락을 각각 구분할 수 있어야 한다.
+
 설정의 정확한 이름과 표현은 언어별 공개 인터페이스 문서가 정한다. `.NET`의 정확한 표면은
 [RouteMesh·MeshNode 인터페이스](languages/dotnet/05-route-mesh.ko.md)를 따른다.
 
@@ -75,12 +79,17 @@ Spot subscription은 ChannelName과 topic으로 범위를 고정하고 packet na
 등록한 Spot이 해당 ChannelName 범위에 속하지 않으면 startup 오류다. 같은 Spot에서 같은 ChannelName,
 topic, message kind와 packet name을 중복 등록하면 startup 오류다.
 
+Spot control claim은 Actor membership과 lifecycle control에 따라 Spot 소유 상태를 바꾸는 작업이다.
+이 claim은 target Spot turn에서 다른 Spot-owned callback과 직렬화되며 Actor 업무 payload를 포함하지 않는다.
+control 작업의 닫힌 범위와 Actor control claim과의 순서는
+[22 Actor 모델 §4](22-actor-model.ko.md#4-spot-control-claim)가 정한다.
+
 Spot application queue에는 다음 Spot 소유 작업이 들어간다.
 
 - Spot direct payload
 - Logical Multicast에서 일치한 payload
 - Spot timer callback
-- Actor join·leave와 lifecycle control callback
+- Actor join·leave와 lifecycle control callback (Spot control claim)
 
 같은 Spot의 application callback은 하나의 Spot turn에서 순서대로 실행한다. Actor 업무 payload는 이
 queue나 Spot callback에 넣지 않고 Actor queue로 직접 제출한다. Actor가 Spot 상태를 바꾸려면 명시적인

@@ -24,10 +24,11 @@ runtime에 의존하지 않는다.**
 - [package snapshot](../../../../../../languages/dotnet/contract/packages/Systems.Zlink.Stream.Connector.package.txt)
 
 이 문서는 snapshot의 member를 반복해 나열하지 않고 **표면의 구조와 `.NET` 고유 의미**를 고정한다.
-검증 절차는 [handler-interfaces §17](../../../server/languages/dotnet/02-handler-interfaces.ko.md)이 소유한다.
+검증 절차는 [이 문서 §15](#15-회귀-테스트)가 소유한다.
 
-**담당 대상은 네이티브 빌드다**(데스크톱·서버, Unity, Godot C#). **웹(브라우저·WASM) 빌드는
-담당하지 않는다**([공통 스펙 §2](../../32-stream-connector.ko.md)).
+**담당 대상은 네이티브 빌드다**(데스크톱·서버, Unity, Godot C#). Unity 네이티브 빌드는 별도
+package 없이 같은 `Systems.Zlink.Stream.Connector` NuGet package를 사용한다. **웹(브라우저·WASM)
+빌드는 담당하지 않는다**([공통 스펙 §2](../../32-stream-connector.ko.md)).
 
 ## 2. 진입점
 
@@ -60,7 +61,6 @@ public interface IZlinkStreamConnector : IAsyncDisposable
     IZlinkStreamExpectNoneCall ExpectNone(string name);
     IZlinkStreamSequenceCall WaitForSequence(string name);
     IDisposable              On(string name, Func<ZlinkStreamMessage<ZlinkStreamEncodedPayload>, CancellationToken, ValueTask> handler);
-    int                      ReceivedCount(string name);
 
     IDisposable ObserveInbound(Func<ZlinkStreamInboundObservation, CancellationToken, ValueTask> observer);
 
@@ -72,7 +72,7 @@ public interface IZlinkStreamConnector : IAsyncDisposable
 
 - **event handler는 등록 순서대로 호출된다.** handler 실패는 connector runtime을 종료하지 않고
   `UserCallbackFailed` 오류로 보고한다.
-- `PendingDispatchCount`와 `ReceivedCount(name)`는 **진단과 scenario assertion용**이다.
+- `PendingDispatchCount`는 **dispatch pump 상태를 진단하기 위한 값**이다.
   **application flow control에 사용하지 않는다.**
 
 ## 4. Call builder
@@ -255,7 +255,7 @@ scheme → transport 매핑은 [공통 스펙 §3.1](../../32-stream-connector.k
 
 ## 11. 종료 사유
 
-값 집합과 의미는 [공통 스펙 §6.2](../../32-stream-connector.ko.md)가 소유한다. `.NET`은
+값 집합과 의미는 [공통 스펙 §6.3](../../32-stream-connector.ko.md#63-종료-사유)가 소유한다. `.NET`은
 `ZlinkStreamCloseReason` enum으로 표현하고 **`Disconnected` event의 인자
 `ZlinkStreamDisconnected.CloseReason`으로 노출한다.**
 
@@ -277,9 +277,10 @@ wire 표현은 [공통 스펙 §4.2](../../32-stream-connector.ko.md)와
 
 ## 13. Metric
 
-connector metric은 [runtime metric 공통 계약](../../../server/51-runtime-metrics.ko.md)의 STREAM catalog와 닫힌
-label을 따른다. connector는 **reconnect 시도 횟수, handshake 시간과 실패 횟수, inbound/outbound wire
-byte 수**를 기록한다. **metric listener 실패는 send/request 결과나 연결 상태를 바꾸지 않는다.**
+connector metric은 [Stream Connector 공통 계약 §6.2](../../32-stream-connector.ko.md#62-connector-reconnect-계기)의
+이름과 닫힌 label을 따른다. `.NET` connector는 `System.Diagnostics.Metrics` provider에
+`zlink.stream.reconnects`를 게시하며 application과 E2E는 `MeterListener`로 읽는다. **metric listener 실패는
+send/request 결과나 연결 상태를 바꾸지 않는다.**
 
 ## 14. Options와 검증
 
@@ -287,12 +288,14 @@ byte 수**를 기록한다. **metric listener 실패는 send/request 결과나 �
 `ZlinkStreamConnectorOptions`(+ `ZlinkStreamHeartbeatOptions`, `ZlinkStreamReconnectOptions`)의
 property로 표현한다.
 
+공통 계약의 `MaxInboundObserverPayloadPreviewBytes`는 payload preview 길이를 byte 단위로 제한하며 기본값은
+0이다. `.NET`은 이 공통 option을 같은 이름의 property로 투영한다.
+
 **`.NET`에만 있는 option:**
 
 | option | 기본값 | 의미 |
 |---|---|---|
 | `MaxPendingDispatchCallbacks` | 1024 | dispatch 대기 callback 한도(§7) |
-| `MaxInboundObserverPayloadPreviewBytes` | 0 | observation의 payload preview 길이 |
 
 **검증 계약:**
 
@@ -331,8 +334,8 @@ property로 표현한다.
 | `StreamConnectorTests.OutboundFrameCreatesFlowOnceAndCodecRemainsDeterministic` | outbound flow를 한 번 생성하고 header codec 결과를 고정한다. |
 | `StreamConnectorTests.HeaderProtocolEnforcesControlPacketContract` | control packet의 codec·flag·payload 계약을 고정한다. |
 
-G1과 G7에서는 `scripts/verify_packaged_contract.sh`로 source assembly, API snapshot, 실제 NuGet
-package와 clean consumer가 모두 같은 계약인지 검증한다.
+Release 검증은 `scripts/verify_packaged_contract.sh`로 source assembly, API snapshot, 실제 NuGet
+package와 clean consumer가 모두 같은 공개 계약인지 확인한다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

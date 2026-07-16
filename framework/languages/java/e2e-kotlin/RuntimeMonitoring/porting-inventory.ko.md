@@ -1,5 +1,12 @@
 # Kotlin RuntimeMonitoring .NET 포팅 inventory
 
+## 10.0.0 목표 판정
+
+Config 7은 MeshNode·peer·ChannelName readiness, Spot Logical Multicast backpressure·drop, runtime health를
+공개 monitoring 표면으로 검증해야 한다. 아래 파일 대응과 기존 MON marker는 현재 구현 inventory이며,
+이 목표 축을 모두 충족하기 전까지 RuntimeMonitoring 포팅 상태는 `10.0.0 전환 대상`이다.
+
+
 기준 구현은 `framework/languages/dotnet/e2e/RuntimeMonitoring`이다. 기존 Kotlin `Monitoring`
 구현은 `RuntimeMonitoring`으로 이름을 맞춰 옮겼고, 현재 통과하는 monitoring scenario는 보존했다.
 `MON-A1`, `MON-A2`, `MON-A3`, `MON-A4`, `MON-A5`, `MON-B1`, `MON-C1`, `MON-D1` client 흐름은
@@ -23,7 +30,7 @@ client scenario에서 호출한다.
 | `MON-A1` | `Client/Scenarios/MonA1SocketEventsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA1SocketEventsScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerHttpServer.kt` | done | `logs/20260704-043031-38623`에서 marker를 확인했다. Client는 Trigger disconnect request endpoint를 호출한다. |
 | `MON-A2` | `Client/Scenarios/MonA2RegistryEventsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA2RegistryEventsScenario.kt` | done | `logs/20260704-043031-38623`에서 service host의 `ops-locations` source marker를 확인했다. |
 | `MON-A3` | `Client/Scenarios/MonA3SpotEventsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA3SpotEventsScenario.kt`, `Server/Service/src/main/kotlin/.../service/MonitoringSpot.kt` | done | client scenario와 service spot handler를 Kotlin 파일로 분리했고 `logs/20260704-043031-38623`에서 marker를 확인했다. |
-| `MON-A4` | `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA4AvailabilityTransitionScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerApplication.kt`, `Server/Service/src/main/kotlin/.../service/EvidenceHttpServer.kt` | done | `logs/20260704-043031-38623`에서 `scenario MON-A4 passed` marker를 확인했다. drain 중 Trigger `PEER_ADMISSION_CHANGED`, Service admin evidence, location `TOPOLOGY_CHANGED` evidence를 함께 확인한다. |
+| `MON-A4` | `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA4AvailabilityTransitionScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerApplication.kt`, `Server/Service/src/main/kotlin/.../service/EvidenceHttpServer.kt` | 10.0.0 전환 대상 | 현재 marker는 weight 0/복원과 `PEER_ADMISSION_CHANGED`, location `TOPOLOGY_CHANGED`를 확인한다. 별도 observer의 replacement·`SIGKILL` failover 검증은 남아 있다. |
 | `MON-A5` | `Client/Scenarios/MonA5FixedKindsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA5FixedKindsScenario.kt` | done | malformed connection과 fixed kind marker를 `logs/20260704-043031-38623`에서 확인했다. |
 | `MON-B1` | `Client/Scenarios/MonB1KindFilterScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonB1KindFilterScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerHttpServer.kt`, `Server/FilteredService/src/main/kotlin/.../filteredservice/FilteredServiceApplication.kt` | done | client scenario가 Trigger service-b endpoint와 FilteredService evidence를 확인하고 `logs/20260704-043031-38623`에서 marker를 확인했다. |
 | `MON-B2` | `Client/Scenarios/MonB2RegistrationValidationScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonB2RegistrationValidationScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerHttpServer.kt`, `Server/Trigger/src/main/kotlin/.../trigger/MonitoringValidationApplication.kt` | done | client scenario가 Trigger HTTP endpoint로 duplicate source, 비양수 interval, missing socket source, missing spot source 검증을 호출하고 `logs/20260704-043031-38623`에서 marker를 확인했다. |
@@ -46,7 +53,7 @@ client scenario에서 호출한다.
 | `Client/Scenarios/MonA1SocketEventsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA1SocketEventsScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerHttpServer.kt` | scenario | done | `MON-A1` marker는 `logs/20260704-043031-38623`에서 확인했다. |
 | `Client/Scenarios/MonA2RegistryEventsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA2RegistryEventsScenario.kt` | scenario | done | `MON-A2` marker는 `logs/20260704-043031-38623`에서 확인했다. |
 | `Client/Scenarios/MonA3SpotEventsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA3SpotEventsScenario.kt` | scenario | done | `MON-A3` marker는 `logs/20260704-043031-38623`에서 확인했다. |
-| `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA4AvailabilityTransitionScenario.kt` | scenario | done | `MON-A4` marker는 `logs/20260704-043031-38623`에서 확인했다. |
+| `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA4AvailabilityTransitionScenario.kt` | scenario | 10.0.0 전환 대상 | 현재 weight 변경 marker는 확인했으나 replacement·failover 전이 검증은 남아 있다. |
 | `Client/Scenarios/MonA5FixedKindsScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonA5FixedKindsScenario.kt` | scenario | done | `MON-A5` marker는 `logs/20260704-043031-38623`에서 확인했다. |
 | `Client/Scenarios/MonB1KindFilterScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonB1KindFilterScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerHttpServer.kt`, `Server/FilteredService/src/main/kotlin/.../filteredservice/FilteredServiceApplication.kt` | scenario | done | `MON-B1` marker는 `logs/20260704-043031-38623`에서 확인했다. |
 | `Client/Scenarios/MonB2RegistrationValidationScenario.cs` | `Client/src/main/kotlin/.../client/scenarios/MonB2RegistrationValidationScenario.kt`, `Server/Trigger/src/main/kotlin/.../trigger/TriggerHttpServer.kt`, `Server/Trigger/src/main/kotlin/.../trigger/MonitoringValidationApplication.kt` | scenario | done | client scenario가 Trigger HTTP endpoint를 호출해 duplicate source, 비양수 interval, missing socket source, missing spot source validation을 확인한다. |

@@ -17,12 +17,13 @@ runtime 상태 변화는 [50 Runtime monitoring](50-runtime-monitoring.ko.md), �
 
 ## 2. Event identifiers와 phase
 
-공통 event identifier는 아래 두 문자열로 고정한다.
+공통 event identifier는 아래 세 문자열로 고정한다.
 
 | Identifier | 의미 |
 |---|---|
 | `zlink.message_flow` | message의 정상·backpressure·drop phase |
 | `zlink.dispatch_error` | decode, handler, reply route와 protocol dispatch failure |
+| `zlink.runtime_error` | observer callback 실패를 messaging 경로와 분리해 보고하는 runtime error |
 
 `zlink.message_flow`의 phase는 아래 닫힌 값이다.
 
@@ -67,13 +68,16 @@ remote target 수를 count 필드로 기록한다.
 | `message_kind` | 필수 | §3의 kind |
 | `outcome` | 필수 | `succeeded`, `failed`, `backpressured`, `dropped`, `cancelled`, `shutdown` |
 | `reason` | 조건부 | failure·backpressure·drop reason |
+| `action` | dispatch error에서 필수 | 실패를 reply, caller completion 또는 drop으로 마무리한 방법 |
 | `mesh_name`, `channel_name` | 조건부 | MeshNode와 ChannelName scope |
 | `source_rid`, `target_rid` | 조건부 | routed hop의 source와 target |
 | `packet_name` | 조건부 | typed dispatch key |
 | `topic`, `spot_rid`, `actor_id` | 조건부 | 해당 surface의 논리 target |
 | `correlation_id` | 조건부 | request와 terminal reply의 operation key |
 | `flow_id`, `flow_origin` | 조건부 pair | causal flow와 최초 origin |
-| `target_count`, `local_match_count`, `drop_count` | 조건부 | multicast·fanout의 집계 count |
+| `remote_snapshot_count`, `remote_admitted_count`, `remote_dropped_count` | 조건부 | Logical Multicast remote target의 snapshot·admission·drop count |
+| `local_snapshot_count`, `local_admitted_count`, `local_dropped_count` | 조건부 | Logical Multicast local Spot의 snapshot·admission·drop count |
+| `target_count`, `drop_count` | 조건부 | classic fanout 등 다른 fan-out 표면의 집계 count |
 | `message_size_bytes` | verbose에서만 | payload를 포함한 관찰 대상 message 크기 |
 | `duration_seconds` | terminal event에서 선택 | operation 또는 handler 경과 시간 |
 
@@ -81,10 +85,30 @@ remote target 수를 count 필드로 기록한다.
 socket handle, raw frame와 exception object는 trace event에 포함하지 않는다. error diagnostic은 bounded
 문자열이며 secret과 payload를 복사하지 않는다.
 
-`zlink.dispatch_error`의 `reason`은 아래 닫힌 값이다.
+`zlink.dispatch_error`의 `outcome`은 `failed`로 고정한다. `reason`은 아래 닫힌 값이다.
 
 `no_handler`, `decode_error`, `handler_exception`, `invalid_frame`, `reply_path_missing`,
 `unexpected_reply`, `backpressure`, `stale_target`, `shutdown`.
+
+`zlink.dispatch_error`의 `action`은 `reply_error`, `fail_caller`, `drop`의 닫힌 값이다.
+reply path가 있는 request 실패는 `reply_error`, reply frame을 만들지 않는 local call의
+terminal 실패는 `fail_caller`, one-way operation은 `drop`을 사용한다.
+
+### 4.1 Runtime error event
+
+`zlink.runtime_error`는 message-flow observer 실패를 다시 같은 observer에 전달하지 않고
+별도 runtime error sink에 전달한다. 필드와 닫힌 값은 아래와 같다.
+
+| Field | 값·의미 |
+|---|---|
+| `event_id` | `zlink.runtime_error` |
+| `timestamp` | 실패를 관찰한 시각 |
+| `kind` | `observer_failed` |
+| `source` | `message_flow_observer` |
+| `reason` | exception type과 bounded message를 결합한 문자열. payload·metadata·stack trace를 포함하지 않음 |
+
+Runtime error event에 exception object, native handle, callback 참조를 넣지 않는다. 이 event는
+observer 실패를 관찰하는 계약이며 application handler 실패나 dispatch error를 대체하지 않는다.
 
 ## 5. Log mode
 
@@ -106,7 +130,8 @@ Framework 기본 structured logger가 있으면 해당 logger로 출력한다. l
 fallback text를 제공할 때 prefix는 `zlink flow:`이고 key는 다음 문자열을 사용한다.
 
 `event`, `phase`, `surface`, `kind`, `mesh`, `channel`, `source_rid`, `target_rid`, `packet`, `topic`,
-`spot`, `actor`, `corr`, `flow`, `origin`, `outcome`, `reason`, `targets`, `local_matches`, `drops`, `size`.
+`spot`, `actor`, `corr`, `flow`, `origin`, `outcome`, `reason`, `remote_snapshot`, `remote_admitted`,
+`remote_dropped`, `local_snapshot`, `local_admitted`, `local_dropped`, `targets`, `drops`, `size`.
 
 ## 6. Observer
 
@@ -119,6 +144,12 @@ selection, reply와 drop 결정을 바꿀 수 없다.
 - observer exception과 rejected completion은 runtime error sink에 기록하고 다음 event 처리를 계속한다.
 - terminal drain event는 message flow observer가 아니라 runtime monitoring event가 소유한다.
 - observer가 없으면 trace event object를 만들기 위한 payload-independent allocation을 피한다.
+
+Runtime error sink는 immutable `zlink.runtime_error` snapshot을 받는 별도 public callback이다. Framework는
+message-flow observer를 실행하는 queue와 runtime error sink를 실행하는 경로를 분리한다.
+sink callback 실패는 bounded fallback logger에만 기록하고 다시 runtime error event를 만들지 않는다.
+언어별 exact interface는 message-flow observer와 runtime error sink를 모두 startup dispatch 설정에서
+한 번 등록할 수 있어야 한다.
 
 ## 7. Sampling
 
@@ -146,10 +177,13 @@ surface별 terminal event가 하나만 있어야 한다.
 
 ## 9. 검증 요구
 
-- event identifier, phase, surface, message kind와 field key가 모든 언어에서 같다.
+- event identifier, phase, surface, message kind, outcome, dispatch reason·action과 field key가 모든
+  언어에서 같다.
 - `NoDrop = true` publish는 backpressured event, `NoDrop = false` target loss는 dropped event로 구분된다.
 - Actor payload trace가 Spot dispatch phase로 기록되지 않는다.
 - observer·logger failure가 message dispatch와 reply를 바꾸지 않는다.
+- observer failure는 `observer_failed`/`message_flow_observer` runtime error event 하나로 보고되고
+  sink 실패는 재귀 event를 만들지 않는다.
 - flow sampling이 Logical Multicast branch 전체에 일관되게 적용된다.
 - payload와 application metadata value가 event나 fallback log에 나타나지 않는다.
 - 각 request surface가 terminal event를 정확히 한 번 기록한다.

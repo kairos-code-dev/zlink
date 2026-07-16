@@ -6,7 +6,7 @@
 | RC-A2 | 구현 | Node decorator 기반 request/send marker를 검증한다. .NET method attribute와 언어별 표면은 다르다. |
 | RC-A3 | 구현 | builder 명시 등록 request/send marker를 검증한다. |
 | RC-A4 | 구현 | handler dispatch가 Nest context별 `resolve()`를 사용해 singleton id는 유지되고 scoped id는 request마다 달라지는지 검증한다. Node/Nest public `ModuleRef`는 dispatch 뒤 context dispose API를 제공하지 않으므로 dispose counter를 완료 조건에 넣지 않는다. 내부 wrapper 저장소 삭제나 테스트 전용 adapter를 쓰지 않는다. 최신 확인 로그: `logs/20260702-065333-61321` |
-| RC-A5 | 구현 | public `filters` registration option으로 filter before/after 순서를 검증한다. |
+| RC-A5 | 구현 | `ZLinkHandlerFilter`를 구현한 두 Nest provider type을 public `filters` registration option에 등록하고 filter before/after 순서를 검증한다. |
 | RC-A6 | 구현 | duplicate registration startup failure를 검증한다. |
 | RC-B1 | 구현 | JSON codec content-type과 evidence를 검증한다. |
 | RC-B2 | 구현 | Main role의 전역 codec registry에서 공통 content-type `application/x-protobuf`와 request/send/reply evidence를 검증한다. |

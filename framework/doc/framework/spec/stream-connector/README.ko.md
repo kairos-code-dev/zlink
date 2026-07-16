@@ -17,6 +17,7 @@
 
 | 언어 | 문서 |
 |------|------|
+| C++ | [03 Stream Connector](languages/cpp/03-stream-connector.ko.md) — 일반 C++·Unreal·Godot·Cocos/Axmol 포함 |
 | `.NET` | [03 Stream Connector](languages/dotnet/03-stream-connector.ko.md) — Unity·Godot 포함 |
 | Java | [03 Stream Connector](languages/java/03-stream-connector.ko.md) |
 | TypeScript | [languages/typescript](languages/typescript/README.ko.md) — browser connector |

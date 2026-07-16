@@ -469,7 +469,7 @@ corpus를 사용해 Core result와 언어별 투영을 함께 검증한다.
 | service receive | Node·Spot·Actor `*_recv_batch` 후보 | claim kind, versioned routing metadata, 별도 application metadata view, complete multipart와 batch lifetime |
 | ready dispatch | domain-masked ready handler, ready batch와 independent claim acquire/release 후보 | wakeup-only callback, infrastructure/application 독립 진행, fairness, single consumer와 close 규칙 |
 | Logical Multicast | target `ChannelName`을 받는 `zlink_mesh_node_publisher_*` | 조건부 local dispatch, target snapshot, NODROP와 no-relay |
-| Spot Logical Multicast | target `ChannelName`과 complete multipart를 받는 `zlink_spot_publish`, source `ChannelName`을 반환하는 Spot subscription batch | local match, target snapshot, complete message ownership과 batch metadata |
+| Spot Logical Multicast | target `ChannelName`, 선택적 application metadata frame과 complete multipart를 받는 `zlink_spot_publish`, source `ChannelName`을 반환하는 Spot subscription batch | local match, target snapshot, complete message ownership과 batch metadata |
 | Spot subscription registry | `zlink_spot_set_subscription`, `zlink_spot_unset_subscription` 후보 | `(ChannelName, topic filter)` 등록·해제, 중복·start/close·동시 publish 가시성. public inventory query는 제공하지 않음 |
 | Actor send·request·reply | complete multipart를 받는 `zlink_mesh_node_*_to_actor`와 one-shot reply token 후보 | ActorRef generation, operation ID·completion, 기존 actor application metadata와 reply option의 wire 의미 |
 | Actor–STREAM 전달 | complete multipart를 받는 `zlink_mesh_node_actor_send_bound_session`, `zlink_stream_send_bound_actor` 후보 | session·ActorRef binding generation, message 원자성, backpressure와 borrowed input ownership |
@@ -711,12 +711,12 @@ RC artifact 동기화, 언어별 local package, E2E smoke, 외부 배포와 fram
 
 ### 13.1 API inventory gate
 
-- [ ] `core/include/zlink.h`가 포함하는 공개 헤더에서 `spot_node`, route bridge와 node handle 지원 API를
+- `core/include/zlink.h`가 포함하는 공개 헤더에서 `spot_node`, route bridge와 node handle 지원 API를
   다시 추출해 이 문서의 각 행과 일치시킨다.
-- [ ] 모든 현재 checkout symbol에 유지, 이름 변경, 제거 또는 신규 대체 중 하나의 판정이 있다.
-- [ ] 모든 공개 type, enum type, enumerator와 public macro에도 같은 판정이 있다.
-- [ ] generic option·handler·poller의 handle 지원표가 구현 분기와 contract test에 반영되어 있다.
-- [ ] v10 plan·review record의 삭제 추적만 제외하고 제거 symbol, type,
+- 모든 현재 checkout symbol에 유지, 이름 변경, 제거 또는 신규 대체 중 하나의 판정이 있다.
+- 모든 공개 type, enum type, enumerator와 public macro에도 같은 판정이 있다.
+- generic option·handler·poller의 handle 지원표가 구현 분기와 contract test에 반영되어 있다.
+- v10 plan·review record의 삭제 추적만 제외하고 제거 symbol, type,
   구현과 test가 없으며 현재 계약·guide·internals와 package에도 노출되지 않는다.
 
 ### 13.2 dispatch contract test
@@ -733,7 +733,7 @@ RC artifact 동기화, 언어별 local package, E2E smoke, 외부 배포와 fram
 | MN-C08 | ready callback mode와 `POLLIN` receive-poller mode의 금지 조합은 `EBUSY`로 실패하고 `POLLOUT` 등록은 성공함 |
 | MN-C09 | application claim 중 completion·send-ready infrastructure claim이 교착 없이 drain됨 |
 | MN-C10 | callback, claim, batch와 다른 thread close가 공개 lifecycle 계약을 따름 |
-| MN-C11 | Node direct·ChannelName·Spot direct send/request의 optional application metadata frame이 payload와 분리되어 batch lifetime 동안 보존됨 |
+| MN-C11 | Node direct·ChannelName·Spot direct send/request와 Logical Multicast의 optional application metadata frame이 payload와 분리되어 batch lifetime 동안 보존됨 |
 | MN-C12 | application metadata frame byte 상한 초과와 malformed version이 payload admission 전에 실패함 |
 | MN-C13 | application admission이 포화된 동안에도 별도 infrastructure pump가 completion과 SEND_READY를 drain함 |
 | MN-C14 | MeshNode destroy 뒤 managed finalizer thread의 claim release가 use-after-free 없이 control block을 정리함 |
@@ -747,22 +747,22 @@ RC artifact 동기화, 언어별 local package, E2E smoke, 외부 배포와 fram
 
 ### 13.3 actor와 STREAM regression
 
-- [ ] actor 생성, lookup, destroy, Spot 참여·이탈과 lifecycle request가 MeshNode owner에서 동작한다.
-- [ ] local·remote actor send/request/reply가 같은 ActorRef와 generation 계약을 유지한다.
-- [ ] STREAM session bind/unbind, actor-bound send와 close가 owner MeshNode route를 사용한다.
-- [ ] actor와 Spot inventory query가 이름 변경 뒤에도 같은 범위와 ownership을 반환한다.
-- [ ] framework는 actor/STREAM 기능을 위해 raw frame이나 internal binding API를 사용하지 않는다.
+- actor 생성, lookup, destroy, Spot 참여·이탈과 lifecycle request가 MeshNode owner에서 동작한다.
+- local·remote actor send/request/reply가 같은 ActorRef와 generation 계약을 유지한다.
+- STREAM session bind/unbind, actor-bound send와 close가 owner MeshNode route를 사용한다.
+- actor와 Spot inventory query가 이름 변경 뒤에도 같은 범위와 ownership을 반환한다.
+- framework는 actor/STREAM 기능을 위해 raw frame이나 internal binding API를 사용하지 않는다.
 
 ### 13.4 bindings package E2E smoke
 
-- [ ] 각 언어의 local package가 Core 10.0.0 native artifact를 포함한다.
-- [ ] 두 process가 같은 RouteMesh에서 RID direct send/request를 왕복한다.
-- [ ] 같은 `ChannelName`의 여러 node에 대한 round-robin 결과가 분산된다.
-- [ ] Logical Multicast가 remote node마다 한 번 전달되고 node-local subscription만 검사한다.
-- [ ] `NODROP=1` backpressure와 `NODROP=0` drop을 bindings 공개 결과로 구분한다.
-- [ ] Node·Spot·Actor batch가 같은 message를 중복 반환하지 않고 callback은 payload를 전달하지 않는다.
-- [ ] reconnect, drain과 shutdown 뒤 native handle과 process가 정상 종료된다.
-- [ ] S11에서 언어별 실제 배포 채널의 package를 새 workspace에 설치한 뒤 같은 smoke를 다시 통과한다.
+- 각 언어의 local package가 Core 10.0.0 native artifact를 포함한다.
+- 두 process가 같은 RouteMesh에서 RID direct send/request를 왕복한다.
+- 같은 `ChannelName`의 여러 node에 대한 round-robin 결과가 분산된다.
+- Logical Multicast가 remote node마다 한 번 전달되고 node-local subscription만 검사한다.
+- `NODROP=1` backpressure와 `NODROP=0` drop을 bindings 공개 결과로 구분한다.
+- Node·Spot·Actor batch가 같은 message를 중복 반환하지 않고 callback은 payload를 전달하지 않는다.
+- reconnect, drain과 shutdown 뒤 native handle과 process가 정상 종료된다.
+- S11에서 언어별 실제 배포 채널의 package를 새 workspace에 설치한 뒤 같은 smoke를 다시 통과한다.
 
 ## 14. 구현 전 결정 사항
 
@@ -778,12 +778,12 @@ RC artifact 동기화, 언어별 local package, E2E smoke, 외부 배포와 fram
 | **MN-D08** | 확정 | exact C symbol과 ABI | 신규 service 표면은 `zlink_mesh_node_*` 이름, 크기와 version field가 있는 status·batch record, opaque value reply token을 사용한다. exact signature와 구조체 크기는 Core 10.0.0 정식 spec에 먼저 고정한다 |
 | **MN-D09** | 확정 | 공개 표면 단일화 | 10.0.0 정식 이름과 runtime만 제공하며 alias, deprecated wrapper와 dual mode를 두지 않음 |
 | **MN-D10** | 확정 | 전체 실행 순서 | Core와 framework 정식 spec 및 문서 review loop 뒤 Core 구현·implementation gap 해소·internals 갱신·review loop를 끝낸다. S6는 `core/v10.0.0-rc.N`을 배포하고 bindings·framework를 검증한 뒤 S11에서 같은 commit을 `core/v10.0.0` stable과 bindings로 공개 |
-| **MN-D11** | 확정 | 독립 리뷰 | Codex agent와 Claude Fable 모델이 같은 revision을 독립 검토하고 둘 다 clean 판정을 낼 때까지 수정·검증·재리뷰 반복 |
+| **MN-D11** | 확정 | 독립 구현 리뷰 | Codex agent와 Claude Sonnet 모델이 같은 revision에서 I1 계약 구현 일치, I2 POSD·DDD 리팩터링, I3 정리 완결성을 각각 finding·evidence·clean으로 판정한다. 어느 축 수정 뒤에도 두 리뷰어가 세 축 전체를 재검토하고 모두 `CORE REVIEW CLEAN`일 때까지 반복 |
 | **MN-D12** | 확정 | multicast target channel | publisher가 target `ChannelName`을 받고 호출 MeshNode가 Core channel index에서 직접 select-many 수행 |
 | **MN-D13** | 확정 | multicast atomicity | `NODROP=1`은 조건부 local queue와 모든 remote pipe를 하나의 직렬화된 admission/commit으로 처리 |
 | **MN-D14** | 확정 | Spot channel reply completion | channel request reply를 owner-independent infrastructure completion claim과 Core operation ID로 통합 |
 | **MN-D15** | 확정 | raw socket channel metadata | 모든 raw socket에 적용되는 set/get symbol과 bindings wrapper를 유지하고 MeshNode membership과 분리 |
-| **MN-D16** | 확정 | S/S application metadata | Node direct·ChannelName·Spot direct send/request가 선택적 metadata frame을 받고 Core canonical decoder가 frame 전체의 형식·상한·수명을 검증한다 |
+| **MN-D16** | 확정 | S/S application metadata | Node direct·ChannelName·Spot direct send/request와 Logical Multicast가 선택적 metadata frame을 받고 Core canonical decoder가 frame 전체의 형식·상한·수명을 검증한다 |
 | **MN-D17** | 확정 | 공개 선택 표면 | `selectNode`, `selectOne`, `selectMany`는 send·request·publish 내부 의미로만 사용한다. RID 또는 RID 배열만 반환하는 공개 C API는 두지 않는다 |
 | **MN-D18** | 확정 | metadata 검증 owner | Core가 version, count, length, trailing bytes, UTF-8, duplicate key와 1024-byte 상한을 모두 검증하고 잘못된 complete message를 mailbox admission 전에 거부한다 |
 | **MN-D19** | 확정 | MeshNode lifecycle | `new → configure → start → draining → stopped → destroy`를 명시적 공개 C API와 상태로 제공한다. shutdown은 deadline을 받고 terminal result를 반환한다 |

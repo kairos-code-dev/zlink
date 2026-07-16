@@ -23,7 +23,7 @@ host 단위 정책이며 업무 handler나 개별 send/request 호출에 반복�
 |---|---|---|
 | Send | 대상 handler에 한 번 전달하는 one-way 메시지 | submit 결과만 반환하며 원격 handler 완료를 기다리지 않는다 |
 | Request | 대상 handler가 reply 또는 오류를 반환하는 메시지 | reply, 오류, timeout 또는 cancellation로 한 번 완료된다 |
-| Logical Multicast | target ChannelName의 각 MeshNode에서 조건에 맞는 Spot에 발행하는 메시지 | NODROP 정책에 따른 submit 결과를 반환한다 |
+| Logical Multicast | target ChannelName의 각 MeshNode에서 조건에 맞는 Spot에 발행하는 메시지 | `NoDrop` 정책에 따른 submit 결과를 반환한다 |
 | Classic fanout publish | 독립 fanout channel의 subscriber에 발행하는 메시지 | fanout socket의 전달 정책을 따른다 |
 | STREAM send/request | 연결된 session에 보내는 one-way 메시지 또는 reply를 요구하는 메시지 | session sequence와 lifecycle 계약을 따른다 |
 
@@ -58,7 +58,8 @@ Metadata의 내부 frame 배치와 encoding은 공개 계약이 아니다. Frame
 | Logical Multicast | 같은 publish snapshot을 각 matching Spot handler에 전달한다 |
 | Actor | Actor handler context에 전달하며 Spot callback을 거치지 않는다 |
 | STREAM session | session send/request context에 전달한다 |
-| Actor와 bound session 사이 relay | root metadata policy가 허용한 key만 전달한다 |
+| bound session에서 Actor로 relay | root metadata policy의 session-to-actor allowlist가 허용한 key만 전달한다 |
+| Actor에서 bound session으로 relay | root metadata policy의 actor-to-session allowlist가 허용한 key만 전달한다 |
 
 Framework가 새 request를 만드는 경우에는 원본 metadata를 자동 복사하지 않는다. 호출자가 현재 handler의
 metadata를 명시적으로 넘긴 경우에만 새 outbound snapshot에 포함한다. 자동 전파가 필요한 trace 정보는
@@ -71,5 +72,5 @@ submit 호출이 반환되기 전까지 outbound builder와 payload는 호출자
 transport buffer, native message pointer 또는 multipart part의 lifetime을 관리하게 하지 않는다.
 
 payload 최대 크기는 대상 transport의 `MaxMessageSize`를 따른다. 전체 message가 제한을 넘으면 일부 part를
-전달하지 않고 submit 또는 receive 전체가 실패한다. Logical Multicast의 NODROP 원자성은
+전달하지 않고 submit 또는 receive 전체가 실패한다. Logical Multicast의 `NoDrop` 원자성은
 [Spot 메시징](server/20-spot-messaging.ko.md)이 정의한다.

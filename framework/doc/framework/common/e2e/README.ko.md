@@ -5,7 +5,7 @@
 # Framework Scenario E2E 테스트
 
 이 문서는 ZLink Framework의 언어별 구현이 **실제 배포와 똑같이 생긴 서버 위에서도 제대로
-도는지**를 확인하는 e2e 테스트를 정리한 것이다.
+실행되는지**를 확인하는 e2e 테스트를 정리한 것이다.
 
 E2E는 공통 spec에 정의된 계약을 검증하고 구현 누락을 찾는 기준이다. E2E 시나리오나
 다른 언어 구현만을 근거로 새 public API를 추가하지 않는다. 시나리오 수행에 새 API가
@@ -16,14 +16,14 @@ E2E는 공통 spec에 정의된 계약을 검증하고 구현 누락을 찾는 �
 - contract 테스트는 API 하나하나의 약속을 in-process로 빠르게 못 박는다.
 - 샘플은 사용자가 그대로 따라 할 수 있는 정상 흐름을 보여 준다.
 - e2e는 거기서 한발 더 나아간다. 실제 공유 location store를 두고, 위치를 실제로 resolve하고,
-  provider를 여러 개 두고, 프로세스 경계까지 진짜로 나눈 상태 — 즉 **배포 현장과 같은
-  조건**에서 기능이 의도대로 도는지를 본다.
+  provider를 여러 개 두고, 프로세스 경계까지 실제로 나눈 상태 — 즉 **배포 현장과 같은
+조건**에서 기능이 의도대로 동작하는지를 확인한다.
 
 ## 1. 분류 원칙 — config 중심
 
-e2e는 기능을 평면으로 죽 나열하지 않는다. **실제 배포처럼 생긴 서버 구성(config)을 하나의
+e2e는 기능을 평면적으로 나열하지 않는다. **실제 배포와 같은 서버 구성(config)을 하나의
 단위로** 두고, 그 위에서 세부 동작을 실 사용자처럼 검증한다. 각 config는 sample 프로젝트처럼
-독립 실행 앱이고, 서버 구성을 한 번 띄운 뒤 여러 client 시나리오를 그 위에서 돌린다.
+독립 실행 앱이고, 서버 구성을 한 번 시작한 뒤 여러 client 시나리오를 차례로 실행한다.
 
 ### 선정 기준
 
@@ -88,8 +88,8 @@ channel request, route request, stream request, HTTP request에 모두 적용한
 
 업무 이름이 event처럼 보이더라도 호출 방식이 request/reply이면 `Req`/`Res`가 맞다. 예를 들어
 상태 변경을 요청하고 처리 결과를 기다리는 e2e payload는 `StatusChangedReq`와 `StatusChangedRes`
-처럼 이름 붙인다. 반대로 client가 server push로 받는 상태 변경 알림은 `StatusNotify`처럼
-이름 붙인다.
+처럼 명명한다. 반대로 client가 server push로 받는 상태 변경 알림은 `StatusNotify`처럼
+명명한다.
 
 ### 수명·배치 시나리오 용어
 
@@ -110,7 +110,7 @@ channel request, route request, stream request, HTTP request에 모두 적용한
 - **recovery**는 restart, replacement, 재join, replay처럼 실패 뒤 서비스를 정상 상태로 되돌리는
   절차 전체를 뜻한다.
 
-SpotNode를 추가해도 기존 Spot 또는 actor의 owner는 자동으로 바뀌지 않는다. 새 node는 공개 배치
+MeshNode를 추가해도 기존 Spot 또는 actor의 owner는 자동으로 바뀌지 않는다. 새 node는 공개 배치
 입력과 정책에 따라 이후 새로 만드는 Spot 또는 actor의 배치 후보가 될 수 있다. 기존 owner를
 바꾸려면 명시적 actor transfer나 drain handoff처럼 별도 계약에 따른 동작이 있어야 한다. 따라서
 scale-out 시나리오는 기존 owner 유지와 신규 배치를 검증하고, actor 이동 시나리오는 상태·mailbox·
@@ -123,25 +123,22 @@ bound session 인계 계약을 별도로 검증한다.
 이름과 파일 확장자는 달라도 역할 분리, 시나리오 파일 분리, 파일 분류, evidence/wait 방식은 같은
 의미를 유지한다.
 
-신규 e2e를 만들거나 기존 e2e를 크게 수정할 때는 아래 구조를 기준으로 정렬한다. 현재 `.NET` e2e는
-이 구조로 정리해 가는 기준 구현이며, 아직 일부 오래된 config에는 role 루트에 option, endpoint,
-handler, evidence 파일이 남아 있을 수 있다. 그런 config를 다른 언어로 옮기거나 손볼 때는 현재
-파일 위치를 그대로 복사하지 말고, 같은 역할의 코드를 아래 분류에 맞춰 배치한다.
+E2E app은 아래 구조를 사용한다. 다른 언어로 시나리오를 옮길 때도 파일 위치를 그대로 복사하지 않고,
+같은 역할의 코드를 아래 책임에 맞춰 배치한다.
 
-다른 언어를 작성할 때는 먼저 대응하는 `.NET` config의 역할 구성과 시나리오 흐름을 확인하고,
-같은 역할을 같은 의미의 위치에 둔다. 예를 들어 `.NET`에서 `Server/Provider`,
-`Server/Workflow`가 별도 실행 프로젝트라면 다른 언어도 provider와 workflow를 하나의 서버
-프로젝트 안에서 옵션만 바꿔 구동하지 않는다. `.NET`에서 `Client/Scenarios`와 `Client/Support`로
-나눈 흐름도 같은 의미로 유지한다.
+언어별 구현은 이 문서와 각 config 문서가 정의한 역할 경계를 따른다. 예를 들어 provider와
+workflow가 서로 다른 배포 역할이면 언어와 관계없이 별도 실행 프로젝트로 구성하고, 하나의 서버를
+옵션만 바꿔 두 역할로 사용하지 않는다. client의 시나리오 코드와 공용 실행 지원 코드도 서로 다른
+책임으로 분리한다.
 
-예(`.NET`):
+예:
 
 ```text
 framework/languages/<lang>/e2e/<Config>/
 |-- Shared/
 |-- Server/
 |   |-- <Role>/
-|   |   |-- Program.cs
+|   |   |-- Program.*
 |   |   |-- <Role>HostFactory.*
 |   |   |-- <Config>.<Role>.<project>
 |   |   |-- Configuration/
@@ -162,14 +159,14 @@ framework/languages/<lang>/e2e/<Config>/
 `framework/doc/framework/common/e2e/config-*.ko.md` 문서가 기준이다.
 
 실행 방식은 sample smoke와 비슷하다. test framework가 같은 프로세스 안에서 host를 직접 만드는
-게 아니라, `run_e2e.*`가 서버 프로세스를 순서대로 띄우고 포트 readiness를 확인한 뒤 client
-시나리오를 실행한다. scale·failover 같은 시나리오는 같은 스크립트가 프로세스를 추가로 띄우거나
+게 아니라, `run_e2e.*`가 서버 프로세스를 순서대로 시작하고 포트 readiness를 확인한 뒤 client
+시나리오를 실행한다. scale·failover 같은 시나리오는 같은 스크립트가 프로세스를 추가로 시작하거나
 종료한다.
 
 역할 server endpoint 사용 방식은 `PubSub`와 `RegistrationCodec`의 client 흐름을 참고할 수 있다.
 client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 직접 호출하고, server endpoint
 안에서 framework 기능을 실행한다. 다만 오래된 config의 파일 위치가 이 절의 폴더 분류와 다르면,
-그 위치까지 그대로 따라 하지 않는다. 별도 driver server를 띄운 뒤 client가 그 driver에 "전체
+그 위치까지 그대로 따라 하지 않는다. 별도 driver server를 시작한 뒤 client가 그 driver에 "전체
 시나리오 실행"을 맡기는 구조는 이 문서의 표준 구조가 아니다.
 
 ### 2.1 로컬 E2E 대기 기준
@@ -182,7 +179,7 @@ client는 publisher/subscriber/main 같은 실제 역할 server의 endpoint를 �
 
 | 항목 | 기본값 | 의미 |
 |------|--------|------|
-| local readiness timeout | 3초 | 새로 띄운 로컬 process의 port, health, readiness가 준비될 때까지 기다리는 최대 시간 |
+| local readiness timeout | 3초 | 새로 시작한 로컬 process의 port, health, readiness가 준비될 때까지 기다리는 최대 시간 |
 | local readiness poll interval | 0.1초 | readiness를 다시 확인하는 간격 |
 | route settle | 5초 | location row 등록, route 연결, peer 연결처럼 서버가 시작된 뒤 라우팅이 보이기까지 기다리는 시간 |
 | scenario settle | 3초 | 시나리오 사이에 이전 작업의 비동기 evidence와 정리 작업이 끝나도록 기다리는 시간 |
@@ -194,7 +191,7 @@ drain 같은 원인을 먼저 찾아 수정한다. 긴 대기는 버그를 늦�
 않는다.
 
 client scenario process timeout, 전체 child group timeout, shutdown/recovery처럼 시나리오 자체가 긴
-작업을 검증하는 timeout은 위 readiness/settle 기준과 분리해서 이름을 붙인다. 이런 timeout은 테스트
+작업을 검증하는 timeout은 위 readiness/settle 기준과 구분해 별도로 명명한다. 이런 timeout은 테스트
 프로세스의 상한이나 검증 대상 동작의 일부이지, 로컬 process가 준비되기를 기다리는 readiness 값이
 아니다.
 bounded evidence wait처럼 서버가 시나리오 event를 기다리는 요청도 같은 원칙을 따른다. 단순 evidence
@@ -221,7 +218,7 @@ snapshot 요청은 3초 HTTP 기준을 쓰지만, event가 나올 때까지 기�
 `<language>`는 `dotnet`, `java`, `node`, `cpp`처럼 언어 runner를 구분하는 짧은 이름을 쓴다.
 `<selector>`는 `all`, 단일 시나리오 ID, 또는 언어별 runner가 허용하는 쉼표 구분 시나리오 목록이다.
 C++처럼 같은 config를 여러 start order로 반복하는 runner는 config 시작·완료 라인에
-`start_order=<variant>`를 함께 붙인다.
+`start_order=<variant>`를 함께 기록한다.
 
 실패하면 같은 위치에 `FAIL (<seconds>s, attempt <n>)`를 출력한다. bind 충돌처럼 재시도 대상인
 실패는 재시도 안내를 한 줄 출력한 뒤 같은 config를 다시 실행한다. Redis 시작 로그, log directory,
@@ -242,8 +239,8 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 
 ### 2.2 언어별 포팅 단위
 
-다른 언어에 e2e를 추가할 때는 config 하나를 작은 테스트 파일 묶음으로 보지 말고, `.NET`과 같은
-독립 실행 배포 묶음으로 옮긴다. 한 config를 포팅할 때 필요한 기본 산출물은 아래와 같다.
+다른 언어에 e2e를 추가할 때는 config 하나를 작은 테스트 파일 묶음으로 보지 말고 독립 실행 배포
+묶음으로 구현한다. 한 config를 구현할 때 필요한 기본 산출물은 아래와 같다.
 
 - `Shared/`: server와 client가 함께 쓰는 request/reply/event/evidence DTO만 둔다.
 - `Server/<Role>/`: provider, consumer, publisher, subscriber, play, session처럼 실제
@@ -305,21 +302,21 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 - `Program.cs`는 실행 진입점만 둔다. host 구성, DI 등록, framework 설정은 `*HostFactory.cs`에 둔다.
 - `AddZLinkFramework` 설정과 location store 등록은 `*HostFactory.cs`에서 바로 보이게 작성한다.
   등록 표면은 **통합 계약 인스턴스 하나를 받는 `AddLocationStore(instance)` 뿐이다** — extension
-  전용 등록 함수는 없다([40 §8](../../spec/server/40-location-runtime.ko.md)).
+  전용 등록 함수는 없다([05 §10](../../spec/05-framework-api.ko.md#10-location-store)).
   얇은 wrapper/extension 메서드 뒤에 framework 설정을 숨기지 않는다.
 - `Server/Driver`, `Server/TestRunner`, `Server/ScenarioRunner` 같은 별도 실행 프로젝트는 만들지
   않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트
   진행을 위해 프로세스 시작·종료가 필요하면 `run_e2e.*`와 client support 코드에서 다루고,
   framework 기능 호출은 실제 역할 server endpoint 안에 둔다.
 - e2e 서버는 작은 실행 예시이지만, 다른 언어가 같은 방식으로 따라가기 쉽도록 파일 성격별 폴더를
-  유지한다. `.NET` e2e와 같은 의미로 `Configuration/`, `Endpoints/`, `Handlers/`, `Infrastructure/`
+  유지한다. `Configuration/`, `Endpoints/`, `Handlers/`, `Infrastructure/`
   같은 폴더를 둔다. 지금은 파일이 하나뿐이어도 그 역할이 분명하면 같은 폴더에 둔다. 이렇게 해야
   언어별 구현을 비교할 때 "옵션 파싱", "HTTP 표면", "framework handler", "evidence 저장" 위치를
   바로 찾을 수 있다.
 - 같은 성격의 파일을 프로젝트 루트와 하위 폴더에 섞어 두지 않는다. 예를 들어 일부 endpoint는
   `Program.*`에 두고 일부 endpoint는 `Endpoints/`에 두는 식의 혼합 구조는 피한다.
-- `Program.cs`에 endpoint, handler, framework 설정을 길게 넣지 않는다. 현재 `.NET` e2e처럼
-  `Program.cs`는 `RoleHostFactory.Create(args).Run()` 수준의 진입점으로 유지하고, 실제 host 구성은
+- `Program.*`에 endpoint, handler, framework 설정을 길게 넣지 않는다. 실행 진입점은
+  `RoleHostFactory.Create(args).Run()`에 해당하는 수준으로 유지하고, 실제 host 구성은
   `*HostFactory.*`로 분리한다.
 - 공통 서버 library/shared 프로젝트는 기본으로 만들지 않는다. 중복이 조금 생기더라도 각 서버
   프로젝트가 자기 구성을 직접 드러내는 쪽을 우선한다. 정말 여러 config 또는 여러 역할에서 같은
@@ -372,10 +369,9 @@ Scenario selector, process restart와 장애 주입 명령은 E2E 실행 제어 
 Scenario selector는 standalone client에 전달한다. Process restart와 장애 주입은 runner option이나
 client support process manager 명령으로 처리하며 framework host의 CLI로 전달하지 않는다.
 
-현재 구현이 이 기준과 다르면 기존 환경 변수 interface를 예외로 유지하지 않는다. 해당 config의
-feature-map에 configuration migration gap을 기록해야 한다. Framework host는 설정 파일과 typed
-binding으로 전환하고, standalone client는 검증된 CLI 입력 또는 필요한 경우 typed 설정 파일로
-전환해야 한다.
+환경 변수 interface를 예외 경로로 함께 제공하지 않는다. Framework host는 설정 파일과 typed
+binding을 사용하고, standalone client는 검증된 CLI 입력 또는 필요한 경우 typed 설정 파일을
+사용한다. 이 계약을 충족하지 못한 lane은 feature-map에 configuration gap으로 기록한다.
 
 ### 2.7 `run_e2e.*` 실행 계약
 
@@ -411,7 +407,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   support process manager가 담당한다. framework request/send/publish 자체는 실제 역할 server endpoint
   내부에서만 수행한다.
 - Redis location store가 필요한 config의 개별 `run_e2e.*`는 실행마다 전용 Docker Redis
-  container를 새로 띄운다. 이미 떠 있는 Redis container나 host Redis endpoint를 재사용하면
+  container를 새로 시작한다. 이미 떠 있는 Redis container나 host Redis endpoint를 재사용하면
   안 된다. Redis key prefix가 달라도 장애 주입, pause/stop/restart, flush, cleanup, latency
   injection이 다른 실행에 영향을 줄 수 있기 때문이다. 실행 종료 시에는 자신이 만든 container
   id만 정리한다. 개별 script가 같은 prefix의 다른 Redis container를 지우면 안 된다.
@@ -425,7 +421,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 - E2E Redis 데이터는 실행 중에만 필요하므로 Docker volume을 만들지 않는다. Redis 이미지가
   선언한 `/data` volume은 `--tmpfs /data`로 덮어쓰고, container 정리에는 `docker rm -fv`를
   사용한다. 이렇게 해야 반복 실행 후 anonymous volume이 남지 않는다.
-- Redis container 이름에는 언어와 e2e 실행 범위를 드러내는 prefix를 붙인다. 예를 들어 Java e2e는
+- Redis container 이름에는 언어와 e2e 실행 범위를 드러내는 prefix를 추가한다. 예를 들어 Java e2e는
   `zlink-redis-java-e2e...`, Kotlin e2e는 `zlink-redis-kotlin-e2e...`처럼 잡는다. 다른 언어도
   같은 규칙으로 `<language>-e2e` 범위를 이름에서 확인할 수 있어야 한다.
 - 통합 e2e runner는 다른 실행의 Redis를 정리하지 않고 config별 개별 `run_e2e.*`를 순차 호출한다.
@@ -450,7 +446,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   확인한다. Redis 시작이 늦은 경우와 Docker CLI가 응답하지 않는 경우를 같은 sleep으로 처리하지 않는다.
 - Redis helper가 실패하면 개별 runner도 즉시 실패해야 한다. shell runner에서는
   `read ... < <(redis_start_function)`처럼 process substitution 결과를 읽는 방식으로 container id를
-  받지 않는다. 이 방식은 helper가 실패해도 `read` 자체는 성공할 수 있어 Redis 없이 서버를 띄우는
+  받지 않는다. 이 방식은 helper가 실패해도 `read` 자체는 성공할 수 있어 Redis 없이 서버를 시작하는
   잘못된 실행으로 이어진다. helper는 `zlink_redis_start_scoped_assign`처럼 호출부 변수에 값을
   대입하는 함수로 제공하고, 함수 실패가 그대로 runner 실패가 되게 한다.
 - 통합 e2e runner는 transient bind 실패(`Address already in use`, `EADDRINUSE`,
@@ -490,28 +486,28 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
 
 | Config | 서버 구성 | 다루는 것 |
 |--------|-----------|-----------|
-| [Config 1 — Location messaging](config-1-location-messaging.ko.md) | location store(Redis) + api 노드 2 + client-server/route channel | location store 자동/수동 연결, rid resolve, peer location row 검증, provider scale-out/in·replacement·failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
-| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | location store + entry/user spot + actor + session | spot↔channel·spot↔spot messaging, actor join 기본 smoke, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), channel↔spot route bridge, SpotNode scale-out의 신규 배치와 기존 owner 유지, stateful crash 격리·재join/replay 복구·경합. actor join/transfer의 callback 순서, admission/commit 분리, location commit 시점은 Config 10에서 검증한다. |
-| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | location store + publisher + subscriber 3 | fanout, topic filter, 현재 연결에만 전달·replay 없음, late subscriber, subscriber 격리, publish negative, 기존 subscription을 유지하는 재연결·publisher 재시작 |
+| [Config 1 — Location messaging](config-1-location-messaging.ko.md) | location store(Redis) + MeshNode api 노드 2 | location store 자동/수동 연결, RID resolve, MeshNode descriptor와 runtime snapshot, ChannelName provider scale-out/in·replacement·failover, weighted·round-robin, request·send·timeout·decode·미등록, 메시지 크기·backpressure |
+| [Config 2 — Spot 서비스](config-2-spot-service.ko.md) | location store + entry/user spot + actor + session | ChannelName↔Spot·Spot↔Spot messaging, Logical Multicast, actor join 기본 smoke, session bind/relay(local/remote/다중)·재접속 이전성, owner routing, timer·idle close, stream(heartbeat/TLS), MeshNode scale-out의 신규 배치와 기존 owner 유지, stateful crash 격리·재join/replay 복구·경합. actor join/transfer의 callback 순서, admission/commit 분리, location commit 시점은 Config 10에서 검증한다. |
+| [Config 3 — Pub/Sub 이벤트](config-3-pubsub.ko.md) | classic fanout publisher + subscriber 3 | manual PUB/SUB endpoint, fanout, topic filter, 현재 연결에만 전달·replay 없음, late subscriber, subscriber 격리, publish negative, 기존 subscription을 유지하는 재연결·publisher 재시작 |
 | [Config 4 — 등록·codec 변주](config-4-registration-codec.ko.md) | 단순 channel 구성 2 | 자동/선언/수동 등록, startup 검증, DI lifecycle, ordering, json/protobuf/msgpack codec, codec 격리, peer 간 codec 불일치 |
-| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | provider restart·replacement·failover, reconnect, cancellation, in-flight crash, shutdown, socket weight 부하 제외·복원, graceful drain rollout, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환 |
-| [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, owner lease 만료 stale row 제외, 복구 순서(재등록 → heartbeat 유예 → diff), polling fallback, runtime status 관측 |
+| [Config 5 — Resilience/lifecycle](config-5-resilience-lifecycle.ko.md) | 다중 노드 + location store | provider restart·replacement·failover, reconnect, cancellation, in-flight crash, shutdown, ChannelName weight 부하 제외·복원, graceful drain rollout, gray failure, 노드 단절 복구, flapping, 혼합 soak, wire 호환 |
+| [Config 6 — Store 장애·복구](config-6-store-failure-recovery.ko.md) | location store(Redis) + provider 2 + consumer | store 장애 중 fail-static(기존 연결 유지), store failure grace, owner lease 만료 stale descriptor 제외, 복구 순서(재등록 → heartbeat 유예 → diff), polling fallback, MeshNode runtime 관측 |
 | [Config 7 — Monitoring](config-7-monitoring.ko.md) | location store + service 2 | socket/location-runtime/spot 이벤트 runtime 관찰, 가용성 전이(replacement/failover/socket weight 변경)·장애 중 관측, 다중 source 격리 |
 | [Config 8 — 실행 turn과 terminator](config-8-execution-turn.ko.md) | location store + play 노드 2 + delay service 2 + **external API 1** + session gateway 2 | `submit`/`async`/`yield` 세 terminator의 실행 줄 의미, async의 turn 유지와 상태 불변식, yield의 turn 반납과 순차 재개, CPU/IO worker 분리, HTTP client yield, actor·timer mailbox 격리, join orchestration, timeout·cancellation·shutdown, 언어별 동일 의미 |
 | [Config 9 — To-actor messaging](config-9-to-actor-messaging.ko.md) | location store + actor 노드 2 + session gateway 2 + 외부 caller 서버 | bind 상태별 to-actor send/request, bound-session 비오염, mailbox 인계와 handler reply, actor 부재·stale location·route 미연결 실패 분류, 언어별 동일 의미 |
-| [Config 10 — Spot actor join/transfer](config-10-spot-actor-transfer.ko.md) | location store + actor 노드 2 + session gateway 2 + transfer controller | 명시적 local join·remote actor transfer, admission/commit 분리, transfer state 복원, location commit 시점, moving 중 dispatch 차단, source cleanup, failure/recovery, bound session 이전. node 추가만으로 owner가 바뀌는 동작은 검증하지 않는다. |
+| [Config 10 — Spot actor join/transfer](config-10-spot-actor-transfer.ko.md) | location store + actor 노드 2 + session gateway 2 + transfer controller | 명시적 local join·remote actor transfer, admission/commit 분리, transfer state 복원, location commit 시점, moving 중 dispatch 차단, source backlog handoff·순서·중복 억제·짧은 forwarding window, source cleanup, failure/recovery, bound session 이전. node 추가만으로 owner가 바뀌는 동작은 검증하지 않는다. |
 | [Config 11 — 관측·운영 배포](config-11-observability-ops.ko.md) | location store + Session + Play 2 + OrderWorkflow 2 | flow correlation 로그(STREAM→actor→spot 관통, error 라인, create-if-absent·off 전파, fan-out/timer origin), 런타임 메트릭(CCU·SPOT 큐·actor 이동·fanout·lease 계기, 카디널리티 규약, 비활성 최소 비용), graceful drain(typed Draining field·연결 유지, actor 핸드오프, SPOT 정책 drain-natural/release-and-recreate, 강제 종료 통지, 동시 drain 폴백) |
 
 ## 3.1 구성 축 — config를 관통하는 변형
 
-같은 시나리오라도 서버 구성의 특정 조합에서만 드러나는 결함이 있다. 2026-07 샘플의
-route mesh 소거 작업에서 4개 언어 framework의 결함 다수가 발굴됐는데, 전부 "기능 자체는
+같은 시나리오라도 서버 구성의 특정 조합에서만 드러나는 결함이 있다. 이전 topology를 단일
+MeshNode로 합치는 검증에서 여러 언어 framework의 결함이 발견됐는데, 전부 "기능 자체는
 e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로였다. 이를 막기 위해 config의
 핵심 시나리오는 아래 축의 변형으로도 검증한다.
 
 | 축 | 변형 | 주로 걸리는 config | 실제 발굴 사례 |
 |----|------|--------------------|----------------|
-| 채널 구성 | **route mesh 없이** location 발견만으로 구성 | Config 2, 9 | 원격 actor join relay가 route mesh 채널 등록을 전제하던 구현(cpp spot bridge, java channel runtime) |
+| MeshNode 구성 | 하나의 RouteMesh와 location descriptor만으로 ChannelName·Spot·Actor를 함께 구성 | Config 2, 9 | 원격 actor join이 별도 channel 또는 Spot transport를 전제하던 구현 |
 | 배치 | 세션과 spot을 **다른 프로세스로 분리** (colocated 변형과 쌍) | Config 2, 9 | colocated에서는 로컬 join이라 원격 relay 경로가 실행조차 안 됨 |
 | rid 방향 | 요청자가 auto-connect **non-initiator**가 되도록 rid 사전순을 뒤집은 변형 | Config 1, 2, 9 | non-initiator의 spot 응답 correlate 누락(recv pump) — rid를 뒤집어야만 재현 |
 | peer 수 | 한 발신자가 **2개 이상 노드로 연속 요청** | Config 1, 2 | 두 번째 peer의 응답 drain 누락 |
@@ -528,7 +524,7 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
 
 - config 러너는 서버 역할 기동 순서를 인자(예: `E2E_START_ORDER=reverse|shuffle:<seed>`)로
   받는다. 기본은 정방향(의존 순서), 축 변형은 **역방향 전체 1회 + 고정 seed shuffle 1회**를
-  최소로 돌린다. seed를 기록해 실패 조합을 재현 가능하게 한다.
+최소 범위로 실행한다. seed를 기록해 실패 조합을 재현 가능하게 한다.
 - 어떤 순서로 떠도 **결과는 같아야 한다**: 각 역할이 자기 의존(store, peer)이 늦게 떠도
   발견·연결이 수렴하고, 수렴 직후 첫 요청이 재시도 없이 성공한다. 순서에 따라 되고
   안 되고가 갈리면 그 자체가 결함이다.
@@ -546,7 +542,7 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
   관측 가능한 실패(오류 응답 또는 로그 marker)를 남겨야 한다. 무응답 timeout으로만
   나타나는 유형은 진단 비용이 가장 크다.
 - **소유 일관성**: 상태를 만드는 요청(start)과 이후 요청(continue)이 다른 노드로 가는
-  조합을 명시적으로 돌려, 소유권 위반이 fail-fast로 분류되는지와 owner 일관 라우팅이
+조합을 명시적으로 실행해, 소유권 위반이 fail-fast로 분류되는지와 owner 일관 라우팅이
   이를 예방하는지 본다. 소유가 해시 기반이면 실패가 간헐이므로 반복 횟수를 늘린다
   (3연속 통과로는 부족했던 사례 있음).
 - **수렴 직후 첫 요청**: location 발견·dial 수렴 직후 settle 지연 없이 즉시 첫 요청을
@@ -574,18 +570,19 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
 ## 5. 공통 실행 원칙
 
 - 테스트는 독립된 임시 작업 디렉토리와 로그 디렉토리를 쓴다.
-- 서버 프로세스는 config가 선언한 역할대로 띄운다. 공유 location store가 필요한 config는
-  실행 전에 store(Redis 등)를 준비하거나 별도 프로세스로 띄우고, 실행 후 자신이 만든 store
+- 서버 프로세스는 config가 선언한 역할대로 시작한다. 공유 location store가 필요한 config는
+  실행 전에 store(Redis 등)를 준비하거나 별도 프로세스로 시작하고, 실행 후 자신이 만든 store
   process 또는 container를 정리한다.
-  multi-process config의 공유 저장소는 공식 Redis extension을 기본으로 하고, 단일 process
-  smoke는 in-memory store(`UseInMemoryLocationStores()`)를 쓸 수 있다.
+  multi-process config의 공유 저장소는 공식 Redis extension을 기본으로 한다. 단일 process
+  smoke에서 위치 조회가 필요하면 process-local `IZLinkLocationStore` 구현체를
+  `AddLocationStore(instance)`로 등록할 수 있다.
 - port, routing id, Redis key prefix, 저장소 경로는 실행마다 격리한다. Docker Redis를 쓰는
   runner는 언어·e2e 범위 prefix로 container를 만들고 자신이 만든 container id만 정리한다.
   통합 runner도 같은 prefix의 다른 실행 container를 제거하지 않는다.
 - 서버 준비 여부는 sleep만으로 판단하지 않고, 포트 readiness 또는 readiness marker로 확인한다.
 - 성공 기준은 client 반환값, client stream connector가 받은 push, server evidence endpoint, 로그
-  marker를 조합한다. location store를 쓰는 config는 `IZLinkLocationRuntimeQuery`로 조회한
-  location row(peer/spot/actor)도 성공 기준에 넣는다.
+  marker를 조합한다. location store를 쓰는 config는 store의 MeshNode descriptor, Spot·Actor resolve
+  결과와 MeshNode runtime snapshot도 성공 기준에 넣는다.
 - 실패하면 각 프로세스의 stdout/stderr, framework 로그, client 마지막 요청 정보를 남긴다.
 - 실패 시 먼저 원인 레이어를 분리한다. `core-capi`, `bindings`, `framework`, `sample`, 테스트 실행
   스크립트 중 어디인지 evidence로 판정하고, 고친 레이어에 회귀 테스트를 둔다. framework 테스트를
@@ -638,17 +635,16 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
   evidence로 남긴다. 원인 레이어 분리(`core-capi`/`bindings`/`framework`/`sample`/테스트 실행
   스크립트)도 `corr=` 흐름으로 먼저 좁힌다.
 
-### 6.4 언어별 적용 시점
+### 6.4 언어별 적용 기준
 
-message flow tracing은 언어별로 들어오는 중이다(2026-06-22 기준 C++·`.NET` 완료, Java/Kotlin/Node
-미착수). 트레이싱이 아직 없는 언어에서도 **파일 로깅(§6.1)은 필수**이며, 트레이싱(§6.2)은 해당
-언어 지원이 들어오는 대로 적용한다.
+파일 로깅(§6.1)은 모든 언어에서 필수다. message flow tracing을 지원하는 언어는 §6.2의 증거도
+남겨야 한다. 아직 tracing 계약을 구현하지 않은 언어는 feature map에 해당 증거의 누락과 적용
+조건을 기록하며, 다른 로그를 tracing 증거로 대신하지 않는다.
 
 ## 7. 시나리오 ID 규칙
 
 ID는 `config 접두사 - 트랙 - 번호`를 쓴다. 예: `RM-A1`(Location messaging, Track A, 1번).
-Config 1의 접두사 `RM`은 시나리오 ID 연속성을 위해 유지한다(과거 registry messaging 시절의
-글자이지만, 지금은 location messaging config를 가리킨다).
+Config 1은 `RM` 접두사를 사용한다.
 
 | 접두사 | config |
 |--------|--------|
@@ -661,6 +657,8 @@ Config 1의 접두사 `RM`은 시나리오 ID 연속성을 위해 유지한다(�
 | `MON` | Monitoring |
 | `TD` | 실행 turn과 terminator |
 | `TA` | To-actor messaging |
+| `ST` | Spot·Actor transfer |
+| `OBS` | Observability와 운영 제어 |
 
 테스트 이름은 언어 관례에 맞게 바꿔도 되지만, 리포트에는 config id와 시나리오 id가 드러나야 한다.
 

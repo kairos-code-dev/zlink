@@ -44,9 +44,13 @@
 
 1. 공통 기능과 사용자가 관찰하는 결과를 공통 스펙에 기록한다.
 2. 영향을 받는 각 언어 스펙에 정확한 public interface를 기록한다.
-3. Core 또는 bindings 계약이 필요하면 해당 package의 정식 스펙과 헤더를 함께 맞춘다.
-4. contract test, 공통 E2E와 sample이 공개 표면만 사용하는지 검증한다.
-5. 배포 package의 실제 export와 문서의 시그니처를 대조한다.
+3. 현재 checkout과 목표 계약의 차이를 임시 전환 inventory에 기록한다. 정식 스펙은 이 inventory를
+   참조하거나 구현 진행 상태를 설명하지 않는다.
+4. Core 또는 bindings 계약이 필요하면 해당 package의 정식 스펙을 먼저 맞추고 public header와 구현을
+   그 계약에 맞춘다.
+5. contract test, 공통 E2E와 sample이 공개 표면만 사용하는지 검증한다.
+6. 배포 package의 실제 export와 문서의 시그니처를 대조한다.
+7. 독립 리뷰에서 계약, 구현, test와 package 사이의 차이가 없음을 확인한 뒤 변경을 승인한다.
 
 공통 E2E와 다른 언어 코드는 계약 해석을 검증하는 자료다. 그 자체만으로 public interface를 만들지는
 않는다. public interface는 반드시 정식 스펙에 근거해야 한다.

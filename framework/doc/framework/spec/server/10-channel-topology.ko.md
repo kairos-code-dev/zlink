@@ -40,13 +40,19 @@ ready 상태로 유지한다. 중복 연결을 정리하는 내부 선택 규칙
 바꾸지 않는다. Peer handshake는 다음 descriptor를
 검증한다.
 
-- MeshName, RID와 lifecycle generation
+- MeshName, RID, lifecycle generation과 descriptor revision
 - immutable ChannelName set과 channel별 weight
 - endpoint와 security identity
 - protocol version과 필수 capability
 
 MeshName 또는 trust profile이 다르거나 같은 generation의 RID가 중복되면 admission하지 않는다. 더 높은
 generation은 해당 RID의 이전 pipe를 drain한 뒤 ready member가 된다.
+
+lifecycle generation은 같은 RID의 재시작만 구분한다. descriptor revision은 같은 lifecycle 안의 mutable
+weight snapshot을 구분하며 1 이상에서 단조 증가한다. weight를 바꾸면 owner는 revision을 증가시키고
+Redis descriptor와 admitted peer control에 같은 snapshot을 게시한다. peer는 같은 lifecycle generation의
+더 큰 revision만 적용하고 channel ready index를 원자적으로 교체한다. update가 유실되어도 다음 Redis
+polling 또는 handshake가 최신 revision으로 수렴한다. weight 변경만으로 connection을 다시 만들지 않는다.
 
 ## 4. Peer를 찾는 방법
 
@@ -76,7 +82,7 @@ weight와 최대 수신 메시지 크기다.
 
 `MaxMessageSize`는 byte 단위다. 양수는 수신하는 전체 transport message의 상한이며 `0`은 Framework가
 별도 상한을 적용하지 않는다는 뜻이다. 음수는 설정 오류다. 실행 중 값을 바꾸면 MeshNode의 ROUTER에 즉시
-적용한다.
+적용한다. Core adapter는 Framework 값 `0`을 Core의 무제한 값 `-1`로 변환하고 양수는 그대로 전달한다.
 
 상한을 넘긴 message는 일부 payload를 handler에 전달하지 않는다. Request header도 완성되지 않아 reply를
 만들 수 없는 경우 호출자는 request timeout으로 완료된다. 이 실패는 같은 RouteMesh의 이후 정상 크기

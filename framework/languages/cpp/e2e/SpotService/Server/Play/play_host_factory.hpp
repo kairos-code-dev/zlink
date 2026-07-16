@@ -51,6 +51,7 @@ struct play_options_t
     std::string play_b_http_endpoint;
     std::string redis_endpoint;
     std::string redis_key_prefix;
+    bool route_mesh_enabled;
 
     static play_options_t bind (const zlink::framework::configuration_section_t &section)
     {
@@ -68,7 +69,9 @@ struct play_options_t
                 .play_a_http_endpoint = section.require ("playHttpEndpoints.playA"),
                 .play_b_http_endpoint = section.require ("playHttpEndpoints.playB"),
                 .redis_endpoint = section.require ("redis.endpoint"),
-                .redis_key_prefix = section.require ("redis.keyPrefix")};
+                .redis_key_prefix = section.require ("redis.keyPrefix"),
+                .route_mesh_enabled =
+                  section.get ("routeMeshEnabled").value_or ("true") == "true"};
     }
 };
 
@@ -88,6 +91,7 @@ inline int run_play_server (int argc, char **argv)
     const auto &http_endpoint = config.http_endpoint;
     const auto &redis_endpoint = config.redis_endpoint;
     const auto &redis_key_prefix = config.redis_key_prefix;
+    const auto route_mesh_enabled = config.route_mesh_enabled;
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")
@@ -208,19 +212,21 @@ inline int run_play_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        options.add_route_mesh (e2e::route_channel)
-          .enable_server (route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_client ()
-          .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,
-                               e2e::ensure_actor_res_t> (
-            "EnsureActor", &ensure_actor_handler_t::handle)
-          .add_request_handler<channel_echo_handler_t, e2e::channel_echo_req_t,
-                               e2e::channel_echo_res_t> (
-            "ChannelEchoReq", &channel_echo_handler_t::route_handle)
-          .add_request_handler<spot_lifecycle_handler_t, e2e::lifecycle_req_t,
-                               e2e::lifecycle_res_t> (
-            "LifecycleReq", &spot_lifecycle_handler_t::handle);
+        if (route_mesh_enabled) {
+            options.add_route_mesh (e2e::route_channel)
+              .enable_server (route_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (node_rid))
+              .enable_client ()
+              .add_request_handler<ensure_actor_handler_t, e2e::ensure_actor_req_t,
+                                   e2e::ensure_actor_res_t> (
+                "EnsureActor", &ensure_actor_handler_t::handle)
+              .add_request_handler<channel_echo_handler_t, e2e::channel_echo_req_t,
+                                   e2e::channel_echo_res_t> (
+                "ChannelEchoReq", &channel_echo_handler_t::route_handle)
+              .add_request_handler<spot_lifecycle_handler_t, e2e::lifecycle_req_t,
+                                   e2e::lifecycle_res_t> (
+                "LifecycleReq", &spot_lifecycle_handler_t::handle);
+        }
         if (!api_endpoint.empty () || !api_peer_endpoint.empty ()) {
             auto api = options.add_client_server_channel (e2e::api_channel);
             if (!api_endpoint.empty ()) {

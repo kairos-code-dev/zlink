@@ -175,6 +175,8 @@ int main ()
       read_file (e2e_root / "SpotService/Server/Play/play_host_factory.hpp");
     const auto spot_service_session_host =
       read_file (e2e_root / "SpotService/Server/Session/session_host_factory.hpp");
+    const auto spot_service_session_handlers = read_file (
+      e2e_root / "SpotService/Server/Session/Handlers/session_session_handlers.hpp");
     const auto registration_codec_runner =
       read_file (e2e_root / "RegistrationCodec/run_e2e.sh");
     const auto registration_codec_client =
@@ -992,6 +994,34 @@ int main ()
                          != std::string::npos,
                   "E2E-CP-14",
                   "SpotService Play/Session roles still register route mesh unconditionally");
+    const auto stream_auth_begin =
+      spot_service_session_handlers.find ("dispatch.packet_name () == \"StreamAuthReq\"");
+    const auto stream_auth_end = spot_service_session_handlers.find (
+      "dispatch.packet_name () == \"StreamEnsureAuthReq\"", stream_auth_begin);
+    const auto stream_auth_block =
+      stream_auth_begin != std::string::npos && stream_auth_end != std::string::npos
+        ? spot_service_session_handlers.substr (stream_auth_begin,
+                                                stream_auth_end - stream_auth_begin)
+        : std::string{};
+    gate.require (stream_auth_block.find ("bind_or_get (to_actor_ref (request.actor))")
+                      != std::string::npos
+                    && stream_auth_block.find ("request_to_node") == std::string::npos,
+                  "E2E-CP-14",
+                  "SM-D2 stream auth recreates the actor through route mesh instead of binding its snapshot");
+    const auto bound_session_begin =
+      actor_gateway_spot_bridge.find ("actor_gateway.on_bound_session");
+    const auto bound_session_end =
+      actor_gateway_spot_bridge.find ("actor_gateway.on_relay", bound_session_begin);
+    const auto bound_session_block =
+      bound_session_begin != std::string::npos && bound_session_end != std::string::npos
+        ? actor_gateway_spot_bridge.substr (bound_session_begin,
+                                            bound_session_end - bound_session_begin)
+        : std::string{};
+    gate.require (bound_session_block.find ("register_bound_session_route_through_mesh")
+                      != std::string::npos
+                    && bound_session_block.find ("request_to_node") == std::string::npos,
+                  "E2E-CP-14",
+                  "remote bound-session registration still depends on route mesh");
 
     /* E2E-CP-18 — SM-E1 proves both missing-handler flow classifications. */
     const auto sm_e1_begin = spot_service_runner.find ("if [[ \"$SCENARIO\" == \"SM-E1\"");

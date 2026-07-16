@@ -74,22 +74,8 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                   zlink::framework::framework_error_kind_t::request_protocol_error,
                   "stream auth target or actor ref is invalid");
             }
-            auto ensured_result =
-              _routes
-                .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
-                          e2e::ensure_actor_req_t{.actor_id = request.actor_id,
-                                                  .display_name = request.display_name})
-                .async<e2e::ensure_actor_res_t> ()
-                .result ();
-            if (!ensured_result) {
-                throw zlink::framework::framework_exception_t (
-                  ensured_result.error_kind (),
-                  ensured_result.error () ? ensured_result.error ()->what ()
-                                         : "stream auth ensure actor failed");
-            }
-            const auto ensured = ensured_result.value ();
             _state.record ("StreamAuthEnsured", request.actor_id, {}, request.target_node_rid);
-            auto bound_result = _actors.bind_or_get (to_actor_ref (ensured.actor)).async ().result ();
+            auto bound_result = _actors.bind_or_get (to_actor_ref (request.actor)).async ().result ();
             if (!bound_result) {
                 throw zlink::framework::framework_exception_t (
                   bound_result.error_kind (),
@@ -115,7 +101,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
               stream
                 .reply_packet (
                   zlink::message_t::from_json (
-                    e2e::stream_auth_res_t{ensured.actor, _state.node_rid}))
+                    e2e::stream_auth_res_t{request.actor, _state.node_rid}))
                 .submit ();
             _state.record ("StreamAuthReplied", actor_id, {}, request.target_node_rid);
             co_return;

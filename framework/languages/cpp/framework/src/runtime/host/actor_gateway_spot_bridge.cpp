@@ -808,6 +808,12 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         }
         return relayed;
     };
+    const auto send_remote_to_actor_node = [&] {
+        const auto node_entry =
+          spot_rid_t::from_string (std::string (actor_ref.node_rid ().value ()));
+        return send_remote (spot_route_t{actor_ref.node_rid (), node_entry, std::string{}},
+                            node_entry, actor_ref);
+    };
 
     if (const auto forwarding = runtime.actor_forwarding_target (actor_ref)) {
         runtime.emit_actor_transfer_marker (
@@ -877,8 +883,7 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
         }
         if (!actor_ref.node_rid ().empty ()
             && actor_ref.node_rid ().value () != runtime.node_rid ().value ()) {
-            return send_remote (spot_route_t{actor_ref.node_rid (), spot_rid_t{}, std::string{}},
-                                spot_rid_t{}, actor_ref);
+            return send_remote_to_actor_node ();
         }
         return local;
     }
@@ -888,8 +893,7 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
     if (!route || route->node_rid.empty ()) {
         if (!actor_ref.node_rid ().empty ()
             && actor_ref.node_rid ().value () != runtime.node_rid ().value ()) {
-            return send_remote (spot_route_t{actor_ref.node_rid (), spot_rid_t{}, std::string{}},
-                                spot_rid_t{}, actor_ref);
+            return send_remote_to_actor_node ();
         }
         return local;
     }
@@ -1290,28 +1294,8 @@ void configure_actor_gateway_spot_bridge (
               if (actor_ref.node_rid ().value () == binding.local_spot_node_rid) {
                   return result_t<void>::success ();
               }
-              if (!binding.accepts_route_channels) {
-                  return register_bound_session_route_through_mesh (
-                    binding.runtime, actor_ref, binding.local_spot_node_rid, serializers);
-              }
-              auto reply =
-                binding.route_client
-                  .request_to_node (
-                    *binding.route_channel_name,
-                    zlink::routing_id_t::from (std::string (actor_ref.node_rid ().value ())),
-                    actor_bound_session_bind_route_request_t{
-                      .actor_node_rid = std::string (actor_ref.node_rid ().value ()),
-                      .actor_type = std::string (actor_ref.actor_type ()),
-                      .actor_id = std::string (actor_ref.actor_id ()),
-                      .actor_generation = actor_ref.generation (),
-                      .session_node_rid = binding.local_spot_node_rid})
-                  .template async<actor_bound_session_route_reply_t> ()
-                  .result ();
-              if (!reply) {
-                  return detail::propagate_failure<void> (
-                    reply, "bound session route registration failed");
-              }
-              return result_t<void>::success ();
+              return register_bound_session_route_through_mesh (
+                binding.runtime, actor_ref, binding.local_spot_node_rid, serializers);
           }
           return result_t<void>::failure (framework_error_kind_t::spot_route_not_found,
                                           "bound session route channel is not configured");

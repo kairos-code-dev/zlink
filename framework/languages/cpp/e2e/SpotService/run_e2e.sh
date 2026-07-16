@@ -744,6 +744,11 @@ do_start_play() {
   local pubsub="$4"
   local http="$5"
   local api_server="${6:-}"
+  local route_mesh_enabled="${7:-true}"
+  if [[ "$api_server" == routeMeshEnabled=* ]]; then
+    route_mesh_enabled="${api_server#routeMeshEnabled=}"
+    api_server=""
+  fi
   local peer_pubsub="$PUB_B,$PUB_CLIENT"
   if [[ "$rid" == "play-b" ]]; then
     peer_pubsub="$PUB_A"
@@ -753,10 +758,10 @@ do_start_play() {
   local config_path="$CONFIG_DIR/$rid.json"
   python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$peer_pubsub" "$API_CLIENT" \
     "$api_server" "$PUBLISHER_CLIENT" "$http" "$HTTP_A" "$HTTP_B" \
-    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+    "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" "$route_mesh_enabled" <<'PY'
 import json, os, stat, sys
 (path, rid, route, spot, pubsub, peer_pubsub, api_peer, api, publisher, http, play_a_http,
- play_b_http, redis_endpoint, redis_key_prefix, log_dir) = sys.argv[1:]
+ play_b_http, redis_endpoint, redis_key_prefix, log_dir, route_mesh_enabled) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
         "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
@@ -764,6 +769,7 @@ with open(path, "w", encoding="utf-8") as file:
         "apiPeerEndpoint": api_peer, "apiEndpoint": api,
         "publisherEndpoint": publisher, "httpEndpoint": http,
         "playHttpEndpoints": {"playA": play_a_http, "playB": play_b_http},
+        "routeMeshEnabled": route_mesh_enabled,
         "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
         "logDir": log_dir}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
@@ -790,6 +796,11 @@ do_start_session() {
   local tls_stream="${7:-}"
   local tls_cert="${8:-}"
   local tls_key="${9:-}"
+  local route_mesh_enabled="${10:-true}"
+  if [[ "$tls_stream" == routeMeshEnabled=* ]]; then
+    route_mesh_enabled="${tls_stream#routeMeshEnabled=}"
+    tls_stream=""
+  fi
   if [[ "$stream" == "__none__" ]]; then
     stream=""
   fi
@@ -797,15 +808,16 @@ do_start_session() {
   local config_path="$CONFIG_DIR/$rid.json"
   python3 - "$config_path" "$rid" "$route" "$spot" "$pubsub" "$stream" \
     "$tls_stream" "$tls_cert" "$tls_key" "$http" "$REDIS_ENDPOINT" \
-    "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+    "$REDIS_KEY_PREFIX" "$LOG_DIR" "$route_mesh_enabled" <<'PY'
 import json, os, stat, sys
 (path, rid, route, spot, pubsub, stream, tls_stream, tls_cert, tls_key, http,
- redis_endpoint, redis_key_prefix, log_dir) = sys.argv[1:]
+ redis_endpoint, redis_key_prefix, log_dir, route_mesh_enabled) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"nodeRid": rid, "routeEndpoint": route,
         "spotRouterEndpoint": spot, "pubsubEndpoint": pubsub,
         "streamEndpoint": stream, "tls": {"streamEndpoint": tls_stream,
         "certPath": tls_cert, "keyPath": tls_key}, "httpEndpoint": http,
+        "routeMeshEnabled": route_mesh_enabled,
         "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
         "logDir": log_dir}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
@@ -2644,12 +2656,12 @@ fi
 
 if [[ "$SCENARIO" == "SM-D2" || "$SCENARIO" == "sm-d2" ]]; then
   ensure_location_store
-  start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A"
-  start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B"
-  start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" "$STREAM_A" "$HTTP_SESSION_A"
-  settle_scenario
+  routeMeshEnabled=false
+  start_play play-a "$ROUTE_A" "$SPOT_A" "$PUB_A" "$HTTP_A" "routeMeshEnabled=$routeMeshEnabled"
+  start_play play-b "$ROUTE_B" "$SPOT_B" "$PUB_B" "$HTTP_B" "routeMeshEnabled=$routeMeshEnabled"
+  start_session session-a "$ROUTE_SESSION_A" "$SPOT_SESSION_A" "$PUB_SESSION_A" \
+    "$STREAM_A" "$HTTP_SESSION_A" "routeMeshEnabled=$routeMeshEnabled"
   ensure_servers_started_and_ready
-  wait_control_ping sm-d11-session-a-play-a "$HTTP_SESSION_A" play-a "sm-d11-session-a-ready"
   run_client_from_options \
     routeEndpoint="$ROUTE_CLIENT" \
     routeAEndpoint="$ROUTE_A" \

@@ -27,6 +27,7 @@ struct session_options_t
     std::string tls_stream_endpoint;
     std::string tls_cert_path;
     std::string tls_key_path;
+    bool route_mesh_enabled;
 
     static session_options_t bind (const zlink::framework::configuration_section_t &section)
     {
@@ -41,7 +42,9 @@ struct session_options_t
                 .stream_endpoint = section.get ("streamEndpoint").value_or (""),
                 .tls_stream_endpoint = section.get ("tls.streamEndpoint").value_or (""),
                 .tls_cert_path = section.get ("tls.certPath").value_or (""),
-                .tls_key_path = section.get ("tls.keyPath").value_or ("")};
+                .tls_key_path = section.get ("tls.keyPath").value_or (""),
+                .route_mesh_enabled =
+                  section.get ("routeMeshEnabled").value_or ("true") == "true"};
     }
 };
 
@@ -62,6 +65,7 @@ inline int run_session_server (int argc, char **argv)
     const auto &tls_stream_endpoint = config.tls_stream_endpoint;
     const auto &tls_cert_path = config.tls_cert_path;
     const auto &tls_key_path = config.tls_key_path;
+    const auto route_mesh_enabled = config.route_mesh_enabled;
 
     app.logging ()
       .use_file (log_dir + "/" + node_rid + ".log")
@@ -76,10 +80,12 @@ inline int run_session_server (int argc, char **argv)
         configure_codecs (options.codecs ());
         add_redis_location_store (options, redis_endpoint, redis_key_prefix);
 
-        options.add_route_mesh (e2e::route_channel)
-          .enable_server (route_endpoint)
-          .set_routing_id (zlink::routing_id_t::from (node_rid))
-          .enable_client ();
+        if (route_mesh_enabled) {
+            options.add_route_mesh (e2e::route_channel)
+              .enable_server (route_endpoint)
+              .set_routing_id (zlink::routing_id_t::from (node_rid))
+              .enable_client ();
+        }
         options.add_spot_mesh (e2e::spot_mesh)
           .set_routing_id (zlink::routing_id_t::from (node_rid))
           .enable_router (spot_router_endpoint)

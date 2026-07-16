@@ -255,6 +255,8 @@ int main ()
       e2e_root / "RegistryMessaging/Server/Provider/Endpoints/provider_endpoints.hpp");
     const auto registry_workflow_endpoints = read_file (
       e2e_root / "RegistryMessaging/Server/Workflow/Endpoints/workflow_endpoints.hpp");
+    const auto registry_consumer_endpoints = read_file (
+      e2e_root / "RegistryMessaging/Server/Consumer/Endpoints/consumer_endpoints.hpp");
     const auto registry_runner = read_file (e2e_root / "RegistryMessaging/run_e2e.sh");
     const auto resilience_b4 = read_file (
       e2e_root
@@ -1037,10 +1039,15 @@ int main ()
 
     /* E2E-CP-21 — readiness and the first semantic request are distinct:
      * no scenario retries the request until it happens to succeed. */
+    const auto sm_c5_cross_request =
+      spot_service_c5.find ("/spot/to-spot/request-cross");
     gate.require (spot_service_route_handlers.find ("request_with_retry")
                       == std::string::npos
-                    && spot_service_c5.find ("while (std::chrono::steady_clock::now ()")
-                         == std::string::npos,
+                    && sm_c5_cross_request != std::string::npos
+                    && spot_service_c5.find ("/spot/to-spot/request-cross",
+                                             sm_c5_cross_request + 1)
+                         == std::string::npos
+                    && spot_service_c5.find ("/locations/spots") != std::string::npos,
                   "E2E-CP-21",
                   "SM-C5 still retries its first cross-node SPOT request");
     gate.require (registry_provider_endpoints.find ("request_profile_with_retry")
@@ -1049,7 +1056,13 @@ int main ()
                          == std::string::npos
                     && registry_workflow_endpoints.find ("request_workflow_with_retry")
                          == std::string::npos
+                    && registry_consumer_endpoints.find ("_with_retry")
+                         == std::string::npos
                     && registry_runner.find ("sleep \"$ROUTE_SETTLE_SECONDS\"")
+                         == std::string::npos
+                    && registry_runner.find ("ROUTE_SETTLE_SECONDS=")
+                         == std::string::npos
+                    && registry_runner.find ("wait_consumer_profile_ready")
                          == std::string::npos,
                   "E2E-CP-21",
                   "RegistryMessaging still hides first-request convergence with retry or settle sleep");

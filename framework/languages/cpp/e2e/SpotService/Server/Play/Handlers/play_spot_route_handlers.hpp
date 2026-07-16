@@ -859,7 +859,17 @@ class spot_to_spot_route_handler_t
     {
         const auto request =
           nlohmann::json::parse (http.body).get<e2e::spot_to_spot_route_req_t> ();
-        auto reply = request_with_retry (request);
+        const auto source = try_resolve_spot_handle (_handles, request.source_spot_rid);
+        if (!source) {
+            throw zlink::framework::framework_exception_t (
+              zlink::framework::framework_error_kind_t::spot_route_not_found,
+              "SpotToSpotDirectReq source spot was not resolved");
+        }
+        auto reply =
+          _routes.request_to_spot (*source, e2e::spot_to_spot_direct_req_t{request})
+            .timeout (std::chrono::milliseconds (2000))
+            .async<e2e::spot_to_spot_route_res_t> ()
+            .result ();
         if (!reply) {
             throw zlink::framework::framework_exception_t (
               reply.error_kind (),
@@ -872,31 +882,6 @@ class spot_to_spot_route_handler_t
     }
 
   private:
-    zlink::framework::result_t<e2e::spot_to_spot_route_res_t>
-    request_with_retry (const e2e::spot_to_spot_route_req_t &request)
-    {
-        auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (10);
-        zlink::framework::result_t<e2e::spot_to_spot_route_res_t> last =
-          zlink::framework::detail::boundary_failure<e2e::spot_to_spot_route_res_t> (zlink::framework::detail::boundary_error_t::timed_out, "SpotToSpotDirectReq timed out");
-        while (std::chrono::steady_clock::now () < deadline) {
-            const auto source = try_resolve_spot_handle (_handles, request.source_spot_rid);
-            if (!source) {
-                std::this_thread::sleep_for (std::chrono::milliseconds (100));
-                continue;
-            }
-            auto reply = _routes.request_to_spot (*source, e2e::spot_to_spot_direct_req_t{request})
-                           .timeout (std::chrono::milliseconds (2000))
-                           .async<e2e::spot_to_spot_route_res_t> ()
-                           .result ();
-            if (reply) {
-                return reply;
-            }
-            last = std::move (reply);
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        }
-        return last;
-    }
-
     zlink::framework::route_client_t &_routes;
     zlink::framework::spot_handle_resolver_t &_handles;
 };

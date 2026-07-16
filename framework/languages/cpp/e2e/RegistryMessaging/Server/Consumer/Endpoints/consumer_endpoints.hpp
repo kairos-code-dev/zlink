@@ -13,9 +13,9 @@
 namespace zlink::framework::e2e::registry_messaging::consumer
 {
 
-inline profile_res_t request_profile_with_retry (zlink::framework::channel_client_t &channels,
-                                                   const profile_req_t &request,
-                                                   std::chrono::milliseconds timeout)
+inline profile_res_t request_profile (zlink::framework::channel_client_t &channels,
+                                      const profile_req_t &request,
+                                      std::chrono::milliseconds timeout)
 {
     auto call = channels.request (api_channel, request)
                   .timeout (timeout)
@@ -28,8 +28,8 @@ inline profile_res_t request_profile_with_retry (zlink::framework::channel_clien
                                              : "profile request failed");
 }
 
-inline payload_res_t request_payload_with_retry (zlink::framework::channel_client_t &channels,
-                                                   const payload_req_t &request)
+inline payload_res_t request_payload (zlink::framework::channel_client_t &channels,
+                                      const payload_req_t &request)
 {
     auto call = channels.request (api_channel, request)
                   .timeout (std::chrono::milliseconds (3000))
@@ -60,7 +60,7 @@ class batch_request_handler_t
         replies.reserve (requests.size ());
         for (const auto &request : requests) {
             replies.push_back (
-              request_profile_with_retry (_channels, request, std::chrono::milliseconds (3000)));
+              request_profile (_channels, request, std::chrono::milliseconds (3000)));
         }
         return replies;
     }
@@ -83,7 +83,7 @@ class profile_request_handler_t
 
     profile_res_t handle (const profile_req_t &request)
     {
-        return request_profile_with_retry (_channels, request, std::chrono::milliseconds (3000));
+        return request_profile (_channels, request, std::chrono::milliseconds (3000));
     }
 
   private:
@@ -184,7 +184,7 @@ class payload_request_handler_t
 
     payload_res_t handle (const payload_req_t &request)
     {
-        return request_payload_with_retry (_channels, request);
+        return request_payload (_channels, request);
     }
 
   private:

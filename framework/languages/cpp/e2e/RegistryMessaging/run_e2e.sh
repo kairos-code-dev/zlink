@@ -25,7 +25,6 @@ done
 LOCAL_READINESS_TIMEOUT_SECONDS=3
 LOCAL_READINESS_POLL_SECONDS=0.1
 PROCESS_SHUTDOWN_TIMEOUT_SECONDS=15
-ROUTE_SETTLE_SECONDS=5
 SCENARIO_SETTLE_SECONDS=3
 HTTP_PROBE_TIMEOUT_SECONDS=3
 REDIS_READINESS_TIMEOUT_SECONDS=30
@@ -394,30 +393,6 @@ wait_marker() {
   return 1
 }
 
-wait_consumer_profile_ready() {
-  local name="$1"
-  local consumer_url="$2"
-  local marker="$3"
-  local output="$LOG_DIR/${name}.ready.log"
-  local body
-  body="{\"value\":\"$marker\"}"
-  for _ in $(seq 1 "$LOCAL_READINESS_ATTEMPTS"); do
-    if curl -fsS \
-      -H 'Content-Type: application/json' \
-      --max-time 2 \
-      -d "$body" \
-      "$consumer_url/profile/request" >"$output" 2>&1; then
-      if grep -Fq "profile:$marker" "$output"; then
-        return 0
-      fi
-    fi
-    sleep "$LOCAL_READINESS_POLL_SECONDS"
-  done
-  echo "Timed out waiting ${LOCAL_READINESS_TIMEOUT_SECONDS}s for $name channel readiness through $consumer_url" >&2
-  cat "$output" >&2 || true
-  return 1
-}
-
 run_client() {
   local scenario="$1"
   local suffix="$2"
@@ -509,7 +484,6 @@ fi
 
 if [[ "$SCENARIO" == "RM-A1" || "$SCENARIO" == "rm-a1" ]]; then
   start_standard_provider_pair
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-a1 rm-a1
   cat "$LOG_DIR/client-rm-a1.stdout.log"
   exit 0
@@ -550,7 +524,6 @@ if [[ "$SCENARIO" == "RM-A6" || "$SCENARIO" == "rm-a6" ]]; then
   API_B_PID="$LAST_PID"
   start_workflow_provider workflow-a "$WORKFLOW_A"
   WORKFLOW_A_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-a6 rm-a6
   cat "$LOG_DIR/client-rm-a6.stdout.log"
   exit 0
@@ -568,7 +541,6 @@ if [[ "$SCENARIO" == "RM-B1" || "$SCENARIO" == "rm-b1" ]]; then
   wait_marker "$READY"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   touch "$CONTINUE"
   wait "$B1_CLIENT_PID"
   cat "$LOG_DIR/client-rm-b1.stdout.log"
@@ -604,7 +576,6 @@ if [[ "$SCENARIO" == "RM-C1" || "$SCENARIO" == "rm-c1" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c1 rm-c1
   cat "$LOG_DIR/client-rm-c1.stdout.log"
   exit 0
@@ -615,7 +586,6 @@ if [[ "$SCENARIO" == "RM-C2" || "$SCENARIO" == "rm-c2" ]]; then
   API_A_PID="$LAST_PID"
   start_provider api-b "$API_B" "$ROUTE_B" "$HTTP_B"
   API_B_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c2 rm-c2
   cat "$LOG_DIR/client-rm-c2.stdout.log"
   exit 0
@@ -628,7 +598,6 @@ if [[ "$SCENARIO" == "RM-C3" || "$SCENARIO" == "rm-c3" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer direct-consumer "$HTTP_DIRECT_CONSUMER" "$API_A,$API_B" ""
   DIRECT_CONSUMER_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c3 rm-c3
   cat "$LOG_DIR/client-rm-c3.stdout.log"
   exit 0
@@ -641,7 +610,6 @@ if [[ "$SCENARIO" == "RM-C4" || "$SCENARIO" == "rm-c4" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
   STORE_CONSUMER_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c4 rm-c4
   cat "$LOG_DIR/client-rm-c4.stdout.log"
   exit 0
@@ -654,7 +622,6 @@ if [[ "$SCENARIO" == "RM-C5" || "$SCENARIO" == "rm-c5" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer store-consumer "$HTTP_STORE_CONSUMER" "" "$REDIS_ENDPOINT"
   STORE_CONSUMER_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c5 rm-c5
   cat "$LOG_DIR/client-rm-c5.stdout.log"
   exit 0
@@ -667,7 +634,6 @@ if [[ "$SCENARIO" == "RM-C7" || "$SCENARIO" == "rm-c7" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer weighted-consumer "$HTTP_SINGLE_CONSUMER" "" "$REDIS_ENDPOINT"
   WEIGHTED_CONSUMER_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c7 rm-c7
   cat "$LOG_DIR/client-rm-c7.stdout.log"
   exit 0
@@ -680,7 +646,6 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   API_B_PID="$LAST_PID"
   start_consumer single-consumer "$HTTP_SINGLE_CONSUMER" "$API_A" ""
   SINGLE_CONSUMER_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c8 rm-c8
   cat "$LOG_DIR/client-rm-c8.stdout.log"
   stop_pid "$SINGLE_CONSUMER_PID"
@@ -692,7 +657,6 @@ if [[ "$SCENARIO" == "RM-C8" || "$SCENARIO" == "rm-c8" ]]; then
   start_consumer single-consumer-max "$HTTP_STORE_CONSUMER" "$API_A2" "" \
     clientMaxMessageSize=2097152
   SINGLE_CONSUMER_PID="$LAST_PID"
-  wait_consumer_profile_ready single-consumer-max "$HTTP_STORE_CONSUMER" "rm-c8-max-ready"
   run_client rm-c8-max rm-c8-max singleConsumerUrl="$HTTP_STORE_CONSUMER"
   cat "$LOG_DIR/client-rm-c8-max.stdout.log"
   exit 0
@@ -703,7 +667,6 @@ if [[ "$SCENARIO" == "RM-C9" || "$SCENARIO" == "rm-c9" ]]; then
   API_A_PID="$LAST_PID"
   start_consumer backpressure-consumer "$HTTP_BACKPRESSURE_CONSUMER" "$API_A" ""
   BACKPRESSURE_CONSUMER_PID="$LAST_PID"
-  sleep "$ROUTE_SETTLE_SECONDS"
   run_client rm-c9 rm-c9
   cat "$LOG_DIR/client-rm-c9.stdout.log"
   exit 0

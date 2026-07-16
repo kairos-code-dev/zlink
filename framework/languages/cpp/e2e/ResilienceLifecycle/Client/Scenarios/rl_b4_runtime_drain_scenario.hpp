@@ -159,31 +159,24 @@ inline void run_rl_b4_runtime_drain_scenario (const client_options_t &options)
         wait_consumer_topology_weight (options, "api-b", 100);
 
         phase = "restored traffic";
-        const auto restore_deadline =
-          std::chrono::steady_clock::now () + std::chrono::seconds (30);
-        for (int index = 0; std::chrono::steady_clock::now () < restore_deadline; ++index) {
+        const auto first_reply =
+          consumer.post ("/profile/request")
+            .body (profile_req_t{.value = "fast", .marker = "rl-b4-restored-first"})
+            .fetch<profile_res_t> ();
+        ensure (first_reply.value == "profile:fast",
+                "RL-B4 first restored request returned an unexpected value");
+        bool observed_b = first_reply.provider_rid == "api-b";
+        for (int index = 0; index < 20 && !observed_b; ++index) {
             const auto marker = "rl-b4-restored-" + std::to_string (index);
-            try {
-                const auto reply = consumer.post ("/profile/request")
-                                     .body (profile_req_t{.value = "fast", .marker = marker})
-                                     .fetch<profile_res_t> ();
-                ensure (reply.value == "profile:fast",
-                        "RL-B4 restored request returned an unexpected value");
-                if (reply.provider_rid == "api-b") {
-                    std::cout << "scenario RL-B4 passed\n";
-                    return;
-                }
-                const auto evidence = fetch_evidence (options.http_b_endpoint);
-                if (count_evidence_prefix (evidence, "ProfileReq", "rl-b4-restored-") > 0) {
-                    std::cout << "scenario RL-B4 passed\n";
-                    return;
-                }
-            }
-            catch (const std::exception &) {
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (100));
+            const auto reply = consumer.post ("/profile/request")
+                                 .body (profile_req_t{.value = "fast", .marker = marker})
+                                 .fetch<profile_res_t> ();
+            ensure (reply.value == "profile:fast",
+                    "RL-B4 restored request returned an unexpected value");
+            observed_b = reply.provider_rid == "api-b";
         }
-        throw std::runtime_error ("RL-B4 did not route restored traffic to api-b");
+        ensure (observed_b, "RL-B4 did not route restored traffic to api-b");
+        std::cout << "scenario RL-B4 passed\n";
     }
     catch (const std::exception &error) {
         throw std::runtime_error (std::string ("RL-B4 failed during ") + phase + ": "

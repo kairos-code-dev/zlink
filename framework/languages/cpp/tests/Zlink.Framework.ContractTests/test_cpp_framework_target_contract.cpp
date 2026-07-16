@@ -85,6 +85,8 @@ int main ()
     const auto app_runtime = read_file (root / "framework/src/runtime/host/app.cpp");
     const auto monitoring_unit =
       read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_monitoring.cpp");
+    const auto actor_gateway_unit =
+      read_file (root / "tests/Zlink.Framework.UnitTests/test_cpp_framework_actor_gateway.cpp");
     const auto actor_gateway_spot_bridge =
       read_file (root / "framework/src/runtime/host/actor_gateway_spot_bridge.cpp");
     const auto channel_outbound_exchange =
@@ -245,6 +247,21 @@ int main ()
       std::filesystem::exists (e2e_root / "SpotActorTransfer/feature-map.ko.md"),
       "E2E-CP-13",
       "Config 10 SpotActorTransfer is missing feature-map.ko.md");
+
+    /* IMP-CP-02/39/40 — the session-scoped manager owns stream binding and
+     * token-checked disconnect cleanup; application code never sees the
+     * internal gateway or route coordinates. */
+    gate.require (actor_hpp.find ("class actor_gateway_t") == std::string::npos
+                    && app_runtime.find ("typeid (actor_gateway_t)") == std::string::npos,
+                  "IMP-CP-39", "actor_gateway_t is still a public injectable type");
+    gate.require (!tree_contains (root / "samples", "actor_gateway_t")
+                    && !tree_contains (e2e_root, "actor_gateway_t")
+                    && !tree_contains (root / "samples", ".bind_session_route (")
+                    && !tree_contains (e2e_root, ".bind_session_route ("),
+                  "IMP-CP-40", "application code still binds session transport routes");
+    gate.require (actor_gateway_unit.find ("stale_session_unbind_preserves_rebind")
+                    != std::string::npos,
+                  "IMP-CP-02", "late disconnect has no binding-token regression gate");
 
     /* D5 / E2E-CP-56 — actor creation and join begin on the node that owns the
      * actor. Config 10 must not recreate the removed remote-controller API. */

@@ -76,6 +76,19 @@ public final class DynamicClusterLauncher implements AutoCloseable {
             "peer endpoint " + endpoint);
     }
 
+    public void waitSinglePeer(ZLinkHttpClient consumer, String nodeRid, String endpoint) {
+        waitPeers(
+            consumer,
+            peers -> java.util.Arrays.stream(peers)
+                .filter(peer -> nodeRid.equals(peer.get("nodeRid")))
+                .filter(peer -> endpoint.equals(peer.get("endpoint")))
+                .count() == 1
+                && java.util.Arrays.stream(peers)
+                    .filter(peer -> nodeRid.equals(peer.get("nodeRid")))
+                    .count() == 1,
+            "single peer " + nodeRid + " at " + endpoint);
+    }
+
     public void waitPeerEndpointAbsent(ZLinkHttpClient consumer, String endpoint) {
         waitPeers(
             consumer,

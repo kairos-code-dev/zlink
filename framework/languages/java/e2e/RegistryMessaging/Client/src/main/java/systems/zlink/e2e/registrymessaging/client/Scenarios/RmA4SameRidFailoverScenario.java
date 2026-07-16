@@ -31,7 +31,7 @@ public final class RmA4SameRidFailoverScenario {
             DynamicClusterLauncher.DynamicProvider providerV2 =
                 cluster.startProvider("api-a-v2", "api-a", "api-a-v2", "");
             try (ZLinkHttpClient requester = ZLinkHttpClient.create(consumer.httpUrl()).build()) {
-                cluster.waitPeerEndpoint(requester, providerV2.channelEndpoint());
+                cluster.waitSinglePeer(requester, "api-a", providerV2.channelEndpoint());
                 for (int index = 0; index < 20; index++) {
                     Contracts.ProfileRes reply =
                         ScenarioAssert.requestProfileEventually(requester, "failover-after-" + index);

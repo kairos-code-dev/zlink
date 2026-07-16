@@ -304,8 +304,22 @@ int main ()
     }
     auto unsubscribed_state =
       std::make_shared<zlink::framework::detail::monitoring_runtime_state_t> ();
-    if (zlink::framework::runtime::runtime_metrics_t (unsubscribed_state).enabled ()) {
+    zlink::framework::runtime::runtime_metrics_t unsubscribed_metrics (unsubscribed_state);
+    if (unsubscribed_metrics.enabled ()) {
         return 26;
+    }
+    const auto handlers_before = unsubscribed_state->handlers.size ();
+    const auto gates_before = unsubscribed_state->spot_snapshot_gates.size ();
+    for (int index = 0; index < 10000; ++index) {
+        unsubscribed_metrics.counter ("zlink.reader_free.probe", "{probe}", 1,
+                                      {{"kind", "bounded"}});
+    }
+    const bool unsubscribed_metric_storage_unchanged =
+      unsubscribed_state->handlers.size () == handlers_before
+      && unsubscribed_state->spot_snapshot_gates.size () == gates_before
+      && !unsubscribed_state->runtime_metrics_enabled;
+    if (!unsubscribed_metric_storage_unchanged) {
+        return 30;
     }
 
     /* runtime-metrics §4.5: the location runtime emits the peers observable

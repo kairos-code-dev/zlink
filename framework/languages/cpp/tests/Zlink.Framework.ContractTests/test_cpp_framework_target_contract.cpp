@@ -366,7 +366,7 @@ int main ()
                   "E2E-CP-63", "OBS-B2 does not assert transfer metrics");
     gate.require (observability_b3.find ("owner_lease.renew.lateness")
                       != std::string::npos
-                    && observability_b3.find ("forbidden_metric_labels")
+                    && observability_b3.find ("require_bounded_metric_labels")
                          != std::string::npos,
                   "E2E-CP-63", "OBS-B3 omits lease lateness or cardinality checks");
     gate.require (observability_b4.find ("trafficEvidence") != std::string::npos

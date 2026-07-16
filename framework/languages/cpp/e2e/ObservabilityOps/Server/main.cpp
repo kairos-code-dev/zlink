@@ -15,8 +15,11 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -145,6 +148,54 @@ struct host_role_descriptor_t
 
 class room_spot_t;
 
+class workflow_event_store_t
+{
+  public:
+    workflow_event_store_t (std::filesystem::path directory, std::string writer_id) :
+        _directory (std::move (directory)), _writer_id (std::move (writer_id))
+    {
+        std::filesystem::create_directories (_directory);
+    }
+
+    std::optional<int> replay (const std::string &spot_rid) const
+    {
+        std::ifstream input (path_for (spot_rid));
+        int event_value = 0;
+        int applied = 0;
+        bool found = false;
+        while (input >> event_value) {
+            applied += event_value;
+            found = true;
+        }
+        return found ? std::optional<int> (applied) : std::nullopt;
+    }
+
+    void append (const std::string &spot_rid, int event_value) const
+    {
+        std::ofstream output (path_for (spot_rid), std::ios::app);
+        if (!(output << event_value << '\n')) {
+            throw std::runtime_error ("workflow event append failed for " + _writer_id);
+        }
+    }
+
+  private:
+    std::filesystem::path path_for (const std::string &spot_rid) const
+    {
+        std::string encoded;
+        static constexpr char digits[] = "0123456789abcdef";
+        encoded.reserve (spot_rid.size () * 2);
+        for (const auto value : spot_rid) {
+            const auto byte = static_cast<unsigned char> (value);
+            encoded.push_back (digits[byte >> 4]);
+            encoded.push_back (digits[byte & 0x0f]);
+        }
+        return _directory / (encoded + ".state");
+    }
+
+    std::filesystem::path _directory;
+    std::string _writer_id;
+};
+
 /* OBS-A4(b): timer-originated callbacks start a fresh flow (origin=timer);
  * the tick publishes so the fresh flow shows up as a `sent` line. */
 struct room_timer_handler_t
@@ -155,7 +206,11 @@ struct room_timer_handler_t
 class room_spot_t : public fw::spot_t
 {
   public:
-    explicit room_spot_t (bool timer_enabled) : _timer_enabled (timer_enabled) {}
+    room_spot_t (bool timer_enabled,
+                 std::shared_ptr<workflow_event_store_t> event_store = {}) :
+        _event_store (std::move (event_store)), _timer_enabled (timer_enabled)
+    {
+    }
 
     void configure (fw::spot_context_t &context)
     {
@@ -167,6 +222,11 @@ class room_spot_t : public fw::spot_t
 
     void on_initialize ()
     {
+        if (_event_store) {
+            _applied = _event_store
+                         ->replay (std::string (_context.spot_rid ().value ()))
+                         .value_or (0);
+        }
         if (_timer_enabled) {
             _timer = _context.add_timer<room_timer_handler_t> ("obs-tick",
                                                                std::chrono::milliseconds (200));
@@ -175,6 +235,9 @@ class room_spot_t : public fw::spot_t
 
     obs::obs_action_res_t apply_action (const obs::obs_action_req_t &request)
     {
+        if (_event_store) {
+            _event_store->append (request.spot_rid, request.value);
+        }
         _applied += request.value;
         /* OBS-A4(a)/B3: one action fans out to every mesh subscriber under
          * the same flow. */
@@ -199,6 +262,7 @@ class room_spot_t : public fw::spot_t
   private:
     fw::spot_context_t _context;
     fw::timer_t _timer;
+    std::shared_ptr<workflow_event_store_t> _event_store;
     int _applied = 0;
     int _projections_seen = 0;
     bool _timer_enabled;
@@ -611,6 +675,13 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
     app.monitoring ().on<fw::drain_event_t> (
       [evidence] (const fw::drain_event_t &event) { evidence->record_drain (event); });
 
+    const auto workflow_events = role == host_role_t::order_workflow
+                                   ? std::make_shared<workflow_event_store_t> (
+                                       std::filesystem::path (options.log_dir)
+                                         / "workflow-events",
+                                       options.node_rid)
+                                   : std::shared_ptr<workflow_event_store_t>{};
+
     app.add_zlink_framework ([&] (fw::zlink_framework_options_t &framework) {
         framework.services ().add_singleton<server_options_t> (
           std::make_unique<server_options_t> (options));
@@ -691,8 +762,8 @@ int zlink::framework::e2e::observability_ops::server::run_host (host_role_t role
                   .accept_route_mesh (route_channel)
                   .add_spot<room_spot_t> (
                     spot_type,
-                    [timer_enabled = options.room_timer_enabled] {
-                        return std::make_shared<room_spot_t> (timer_enabled);
+                    [timer_enabled = options.room_timer_enabled, workflow_events] {
+                        return std::make_shared<room_spot_t> (timer_enabled, workflow_events);
                     });
             }
         }

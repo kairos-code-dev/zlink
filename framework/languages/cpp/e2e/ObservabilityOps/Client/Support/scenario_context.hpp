@@ -206,6 +206,32 @@ inline std::vector<nlohmann::json> metrics_named (const nlohmann::json &body,
     return result;
 }
 
+inline double metric_total (const nlohmann::json &body, const std::string &name)
+{
+    double total = 0;
+    for (const auto &metric : metrics_named (body, name)) {
+        total += metric.at ("value").get<double> ();
+    }
+    return total;
+}
+
+inline const std::set<std::string> &forbidden_metric_labels ()
+{
+    static const std::set<std::string> labels{
+      "correlation_id", "flow_id", "actor_id", "spot_rid"};
+    return labels;
+}
+
+inline void require_bounded_metric_labels (const nlohmann::json &body,
+                                           const std::string &message)
+{
+    for (const auto &metric : body.at ("metrics")) {
+        for (const auto &label : forbidden_metric_labels ()) {
+            require (!metric.at ("tags").contains (label), message);
+        }
+    }
+}
+
 inline bool has_drain_state (const nlohmann::json &body, const std::string &state)
 {
     return std::any_of (body.at ("drainEvents").begin (), body.at ("drainEvents").end (),

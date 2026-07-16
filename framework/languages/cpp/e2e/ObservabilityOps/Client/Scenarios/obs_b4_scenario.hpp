@@ -6,7 +6,12 @@ namespace zlink::framework::e2e::observability_ops::client::scenarios
 {
 inline void run_obs_b4_scenario (const verification_input_t &input)
 {
-    require (read_json (input, "offNodeEvidence").at ("metrics").empty (),
+    const auto metrics = read_json (input, "offNodeEvidence").at ("metrics");
+    constexpr std::size_t storageUpperBound = 0;
+    require (metrics.size () <= storageUpperBound,
              "OBS-B4 reader-less node accumulated metric samples");
+    const auto trafficEvidence = read_lines (input, "trafficEvidence");
+    require (has_line (trafficEvidence, "scenario flow trigger passed"),
+             "OBS-B4 messaging did not complete with metrics disabled");
 }
 } // namespace zlink::framework::e2e::observability_ops::client::scenarios

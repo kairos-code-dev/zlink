@@ -15,6 +15,9 @@ inline void run_obs_c3_scenario (const verification_input_t &input)
                  "OBS-C3 reported the wrong Spot drain policy");
     }
     const auto state = read_json (input, "recreate").value ("state", "");
-    require (state == "created" || state == "existing", "OBS-C3 peer did not recreate the room");
+    require (state == "created", "OBS-C3 peer reused the released owner row");
+    const auto replayed = read_json (input, "replayed");
+    require (replayed.value ("value", -1) == 7,
+             "OBS-C3 recreated workflow did not replay persisted state");
 }
 } // namespace zlink::framework::e2e::observability_ops::client::scenarios

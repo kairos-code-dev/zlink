@@ -251,6 +251,10 @@ fi
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "metrics" ]]; then
   # OBS-B subset — spot.created/spot.count with kind label and
   # channel.request.duration samples appear in the evidence collector.
+  write_trigger_config "$CONFIG_DIR/trigger-metrics.json" flow "$SPOT_RID"
+  "$CLIENT" --config="$CONFIG_DIR/trigger-metrics.json" >"$LOG_DIR/trigger-metrics.log" 2>&1
+  write_trigger_config "$CONFIG_DIR/trigger-metrics-error.json" error "$SPOT_RID"
+  "$CLIENT" --config="$CONFIG_DIR/trigger-metrics-error.json" >"$LOG_DIR/trigger-metrics-error.log" 2>&1
   curl_local -fsS "$PLAY_B_HTTP/evidence" >"$LOG_DIR/play-b.metrics.evidence.json"
   curl_local -fsS "$PLAY_A_HTTP/evidence" >"$LOG_DIR/play-a.metrics.evidence.json"
   curl_local -fsS "$SESSION_HTTP/evidence" >"$LOG_DIR/session.metrics.evidence.json"
@@ -289,7 +293,6 @@ for sample in play_a + play_b + session:
 print("OBS-B(subset) PASS (spot/queue/channel/stream instruments, closed labels)")
 PY
   verify_scenario OBS-B1 sessionEvidence "$LOG_DIR/session.metrics.evidence.json"
-  verify_scenario OBS-B2 playEvidence "$LOG_DIR/play-b.metrics.evidence.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
@@ -303,6 +306,8 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
   curl_local -fsS -X POST "$WORKFLOW_B_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$LOG_DIR/create-workflow.json"
   sleep "$ROUTE_SETTLE_SECONDS"
+  curl_local -fsS "$WORKFLOW_B_HTTP/evidence" >"$LOG_DIR/workflow-b.fanout.before.json"
+  curl_local -fsS "$WORKFLOW_A_HTTP/evidence" >"$LOG_DIR/workflow-a.fanout.before.json"
   curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/action" -H 'Content-Type: application/json' \
     -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"obs-a4\",\"value\":7}" \
     >"$LOG_DIR/workflow-action.json"
@@ -310,9 +315,25 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "fanout" ]]; then
   verify_scenario OBS-A4 publisherLog "$LOG_DIR/workflow-b-flow.log" \
     subscriberLogs "$LOG_DIR/workflow-a-flow.log;$LOG_DIR/workflow-b-flow.log" \
     timerLog "$LOG_DIR/play-a-flow.log"
-  curl_local -fsS "$WORKFLOW_B_HTTP/evidence" >"$LOG_DIR/workflow-b.fanout.evidence.json"
-  curl_local -fsS "$WORKFLOW_A_HTTP/evidence" >"$LOG_DIR/workflow-a.fanout.evidence.json"
-  verify_scenario OBS-B3 publisherEvidence "$LOG_DIR/workflow-b.fanout.evidence.json" \
+  docker exec "$REDIS_CONTAINER" redis-cli CLIENT PAUSE 11000 ALL >/dev/null
+  docker exec "$REDIS_CONTAINER" redis-cli PING >/dev/null
+  for _ in $(seq 1 100); do
+    curl_local -fsS "$WORKFLOW_B_HTTP/evidence" >"$LOG_DIR/workflow-b.fanout.evidence.json"
+    curl_local -fsS "$WORKFLOW_A_HTTP/evidence" >"$LOG_DIR/workflow-a.fanout.evidence.json"
+    if python3 - "$LOG_DIR/workflow-b.fanout.evidence.json" <<'PY'
+import json, sys
+body = json.load(open(sys.argv[1], encoding="utf-8"))
+late = [m["value"] for m in body["metrics"]
+        if m["name"] == "zlink.location.owner_lease.renew.lateness"]
+raise SystemExit(0 if late and max(late) >= 0.5 else 1)
+PY
+    then break; fi
+    sleep "$EVIDENCE_POLL_SECONDS"
+  done
+  verify_scenario OBS-B3 \
+    beforePublisherEvidence "$LOG_DIR/workflow-b.fanout.before.json" \
+    beforeSubscriberEvidence "$LOG_DIR/workflow-a.fanout.before.json" \
+    publisherEvidence "$LOG_DIR/workflow-b.fanout.evidence.json" \
     subscriberEvidence "$LOG_DIR/workflow-a.fanout.evidence.json"
 fi
 
@@ -478,10 +499,18 @@ PY
   done
 }
 
-if [[ "$SCENARIO" == "all" || "$SCENARIO" == "handoff" ]]; then
+if [[ "$SCENARIO" == "all" || "$SCENARIO" == "handoff" || "$SCENARIO" == "metrics" ]]; then
   # OBS-C2 + OBS-C5(a) — drain moves the joined actor to the serving peer,
   # the transfer instruments fire, and the rolling drain ends Drained.
   relaunch_topology handoff
+  curl_local -fsS -X POST "$PLAY_B_HTTP/spot/create" -H 'Content-Type: application/json' \
+    -d '{"spotRid":"obs-b2-room"}' >"$PHASE_LOG_DIR/create-room.json"
+  for index in $(seq 1 8); do
+    curl_local -fsS -X POST "$PLAY_A_HTTP/spot/action" -H 'Content-Type: application/json' \
+      -d "{\"spotRid\":\"obs-b2-room\",\"marker\":\"obs-b2-$index\",\"value\":1}" \
+      >"$PHASE_LOG_DIR/room-action-$index.json"
+  done
+  curl_local -fsS "$PLAY_B_HTTP/evidence" >"$PHASE_LOG_DIR/queue.evidence.json"
   curl_local -fsS -X POST "$PLAY_A_HTTP/actor/join" -H 'Content-Type: application/json' \
     -d '{"actorId":"obs-actor-1"}' >"$PHASE_LOG_DIR/join.json"
   python3 - "$PHASE_LOG_DIR/join.json" <<'PY'
@@ -536,6 +565,8 @@ print("OBS-C2 continuity PASS (post-move ping served by play-b)")
 PY
   verify_scenario OBS-C2 sourceEvidence "$PHASE_LOG_DIR/play-a.evidence.json" \
     postMovePing "$PHASE_LOG_DIR/ping-after.json"
+  verify_scenario OBS-B2 queueEvidence "$PHASE_LOG_DIR/queue.evidence.json" \
+    transferEvidence "$PHASE_LOG_DIR/play-a.evidence.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "force" ]]; then
@@ -609,6 +640,9 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "policy" ]]; then
   curl_local -fsS -X POST "$WORKFLOW_B_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$PHASE_LOG_DIR/create.json"
   sleep "$SCENARIO_SETTLE_SECONDS"
+  curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/action" -H 'Content-Type: application/json' \
+    -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"before-release\",\"value\":7}" \
+    >"$PHASE_LOG_DIR/before-release.json"
   drain_and_wait_terminal "$WORKFLOW_B_HTTP" 15000 "$PHASE_LOG_DIR/workflow-b.evidence.json"
   python3 - "$PHASE_LOG_DIR/workflow-b.evidence.json" <<'PY'
 import json, sys
@@ -620,14 +654,27 @@ assert rooms and all(m["tags"].get("policy") == "release_and_recreate" for m in 
 PY
   curl_local -fsS -X POST "$WORKFLOW_A_HTTP/spot/create" -H 'Content-Type: application/json' \
     -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\"}" >"$PHASE_LOG_DIR/recreate.json"
+  replay_status=000
+  for _ in $(seq 1 100); do
+    replay_status=$(curl_local -sS -o "$PHASE_LOG_DIR/replayed.json" -w '%{http_code}' \
+      -X POST "$WORKFLOW_B_HTTP/spot/action" -H 'Content-Type: application/json' \
+      -d "{\"spotRid\":\"$WORKFLOW_SPOT_RID\",\"marker\":\"replayed\",\"value\":0}" \
+      || true)
+    [[ "$replay_status" == "200" ]] && break
+    sleep "$EVIDENCE_POLL_SECONDS"
+  done
+  [[ "$replay_status" == "200" ]] || {
+    echo "OBS-C3 recreated route did not become ready: HTTP $replay_status" >&2
+    exit 1
+  }
   python3 - "$PHASE_LOG_DIR/recreate.json" <<'PY'
 import json, sys
 body = json.load(open(sys.argv[1], encoding="utf-8"))
-assert body["state"] in ("created", "existing"), body
+assert body["state"] == "created", body
 print("OBS-C3 PASS (release-and-recreate freed the row; peer rebuilt the room)")
 PY
   verify_scenario OBS-C3 drainedEvidence "$PHASE_LOG_DIR/workflow-b.evidence.json" \
-    recreate "$PHASE_LOG_DIR/recreate.json"
+    recreate "$PHASE_LOG_DIR/recreate.json" replayed "$PHASE_LOG_DIR/replayed.json"
 fi
 
 if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
@@ -645,13 +692,13 @@ if [[ "$SCENARIO" == "all" || "$SCENARIO" == "offnode" ]]; then
     downstreamLog "$PHASE_LOG_DIR/play-b-flow.log" \
     offNodeLog "$PHASE_LOG_DIR/play-a-flow.log"
   curl_local -fsS "$PLAY_A_HTTP/evidence" >"$PHASE_LOG_DIR/play-a.evidence.json"
-  verify_scenario OBS-B4 offNodeEvidence "$PHASE_LOG_DIR/play-a.evidence.json"
+  verify_scenario OBS-B4 offNodeEvidence "$PHASE_LOG_DIR/play-a.evidence.json" \
+    trafficEvidence "$PHASE_LOG_DIR/trigger-flow.log"
 fi
 
 cat <<'EOF'
-DEFERRED (외부 인프라 주입/스펙 표면 확정 대기, see feature-map.ko.md):
+DEFERRED (공개 계약의 남은 차이, see feature-map.ko.md):
   OBS-B1 connector reconnects 계기(공개 표면 spec 확정 대기 — 서버측 connections 계기는 검증됨),
-  OBS-B3 lease 지연 주입(redis 측 지연 주입 인프라 필요 — fanout 계기는 검증됨),
   OBS-C2 bound-session push 연속성 세부(단언은 post-move ping 연속성으로 대체)
 EOF
 echo "ObservabilityOps scenario=$SCENARIO PASS"

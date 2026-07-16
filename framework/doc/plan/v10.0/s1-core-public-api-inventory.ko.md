@@ -1422,11 +1422,11 @@ for ko, en in formal_pairs:
 
 target = {kind: formal[kind] - legacy[kind] for kind in kinds}
 expected = {
-    'FUNC': (84, '5c7e00dec12264f03b43847a1f78feeb18569a68833bcb6a6572b7913b8e830f'),
-    'TYPE': (30, '3f313c08469842df4b653866c978cae274a9d704743db6a4a42000c38d470098'),
+    'FUNC': (89, '43e61b7f5e17dafc08a92e6f8c9acc168be808c3938fe20beea14a1103719164'),
+    'TYPE': (31, 'a2c31b1efd9230797f5ddfe7ab22425fa5ec0a41ceba109ebc091221cc373c30'),
     'ENUM_TYPE': (16, '7ff77e0d3a8882fb78e7eb29e76bd72bdaedda42c06cbc36c2037c41bcf9b14c'),
     'ENUMERATOR': (101, '0d35709d8e48a0eb774d67422574180eb559b5171e5dfa63a7a4c4a49904d831'),
-    'FIELD': (202, 'de23924216822f8053a71765d54022ac7480cd423cdc58490f01f0658f6dcc02'),
+    'FIELD': (210, '3b9bad5fdabeebf8957da6dd6ad8ca9832ab605ba87c3679ea7a00b89c7607b8'),
     'MACRO': (12, '79ee13a8019ea363387b3508f4b01da3b17cc372312ff44eae7b6c236e7576ef'),
 }
 for kind in kinds:
@@ -1437,8 +1437,17 @@ for kind in kinds:
 all_target = sorted((kind, name) for kind in kinds for name in target[kind])
 all_digest = hashlib.sha256(
     ''.join(f'{kind}\t{name}\n' for kind, name in all_target).encode()).hexdigest()
-assert len(all_target) == 445
-assert all_digest == '96c27d2d094dbce1f35082762c76a27e05370b474860924dab8bcd37a02c56aa'
+assert len(all_target) == 459
+assert all_digest == 'db84244cef19970bf185d0a027fd1d3aacba1531a5f0582723c58bfc4a9bcb2e'
+
+mesh_monitor_functions = {
+    'zlink_mesh_node_monitor_open', 'zlink_mesh_node_monitor_handler',
+    'zlink_mesh_node_monitor_recv', 'zlink_mesh_node_monitor_status',
+    'zlink_mesh_node_monitor_close',
+}
+assert mesh_monitor_functions <= target['FUNC'], (
+    'MeshNode monitor API lacks ZLINK_EXPORT: '
+    f'{sorted(mesh_monitor_functions - target["FUNC"])}')
 
 doc = pathlib.Path(
     'framework/doc/plan/v10.0/s1-core-public-api-inventory.ko.md').read_text()
@@ -1475,8 +1484,8 @@ PY
 
 ```text
 S1 FORMAL REVERSE INVENTORY CLEAN
-{'FUNC': 84, 'TYPE': 30, 'ENUM_TYPE': 16, 'ENUMERATOR': 101, 'FIELD': 202, 'MACRO': 12}
-formal_target_identifier_count 445
-formal_target_identifier_sha256 96c27d2d094dbce1f35082762c76a27e05370b474860924dab8bcd37a02c56aa
+{'FUNC': 89, 'TYPE': 31, 'ENUM_TYPE': 16, 'ENUMERATOR': 101, 'FIELD': 210, 'MACRO': 12}
+formal_target_identifier_count 459
+formal_target_identifier_sha256 db84244cef19970bf185d0a027fd1d3aacba1531a5f0582723c58bfc4a9bcb2e
 exact_replacement_target_refs 54
 ```

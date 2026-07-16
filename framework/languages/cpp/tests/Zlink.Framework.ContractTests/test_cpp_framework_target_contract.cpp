@@ -330,10 +330,10 @@ int main ()
                     != std::string::npos,
                   "E2E-CP-11",
                   "OBS-B1 reconnect gap is still reported as implemented");
-    gate.require (observability_feature_map.find ("| OBS-B3 | `deferred` |")
+    gate.require (observability_feature_map.find ("| OBS-B3 | `implemented` |")
                     != std::string::npos,
                   "E2E-CP-11",
-                  "OBS-B3 lease-latency gap is still reported as implemented");
+                  "OBS-B3 completed lease-latency evidence is not reported as implemented");
     gate.require (observability_feature_map.find ("| OBS-C2 | `deferred` |")
                     != std::string::npos,
                   "E2E-CP-11",

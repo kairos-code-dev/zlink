@@ -144,7 +144,13 @@ interface도 `framework/doc/framework/spec/<package>/languages/<lang>/`에 먼�
 표에 기록하고, 이후 구현과 contract test를 spec에 맞춘다. 구현이 없다는 이유로
 공통 기능을 현재 언어들의 최소 공통분모로 축소하지 않는다.
 
-이 framework 예외 밖의 core, bindings와 일반 `doc/spec/` 작업은 아래 draft 규칙을
+아직 공개 전인 RouteMesh 10.0.0 작업에서는 구현 전에 Core 10.0.0 계약을 `core/doc/spec/core/`의 정식
+spec에 먼저 기록한다. 정식 spec·guide·internals는 10.0.0 현재 상태만 설명하며 이전 version, AS-IS,
+제거 이력, 구현 진행표와 설계 대안을 포함하지 않는다. 구현 차이, 전환 inventory와 review 기록은
+`framework/doc/plan/v10.0/` 아래 임시 문서만 소유하고 정식 문서에서 이 임시 문서를 참조하지 않는다.
+public header·구현·contract test를 정식 spec에 맞춘 뒤 실제 구현이 확정된 시점에 internals를 갱신한다.
+
+이 framework 및 공개 전 RouteMesh 10.0.0 예외 밖의 core, bindings와 일반 `doc/spec/` 작업은 아래 draft 규칙을
 계속 따른다.
 
 - 아직 구현되지 않은 API 계약이나 동작은 기존 정식 spec 문서에 바로 넣지 않는다.

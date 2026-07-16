@@ -26,7 +26,7 @@ classic PUB/SUB와 범용 STREAM은 [socket 목차](../socket/README.ko.md)의 �
 | 분류 | 구조체와 사용 위치 |
 |---|---|
 | caller가 초기화하는 input | `zlink_mesh_node_options_t`, `zlink_mesh_peer_connection_options_t`, `zlink_actor_transfer_prepare_t`, `zlink_mesh_monitor_open_options_t` |
-| caller가 초기화하는 output | `zlink_mesh_publish_detail_t`, `zlink_mesh_node_status_t`, `zlink_mesh_peer_entry_t`, `zlink_spot_status_t`, local lookup의 `zlink_actor_location_t`, `zlink_mesh_receive_requirements_t`, `zlink_stream_session_binding_t`, `zlink_stream_session_status_t`, monitor recv의 `zlink_mesh_monitor_event_t`, `zlink_mesh_monitor_status_t` |
+| caller가 초기화하는 output | `zlink_mesh_publish_detail_t`, `zlink_mesh_node_status_t`, `zlink_mesh_peer_entry_t`, `zlink_spot_status_t`, local lookup의 `zlink_actor_location_t`, `zlink_actor_transfer_prepare_result_t`, `zlink_mesh_receive_requirements_t`, `zlink_stream_session_binding_t`, `zlink_stream_session_status_t`, monitor recv의 `zlink_mesh_monitor_event_t`, `zlink_mesh_monitor_status_t` |
 | Core가 소유하는 read-only view | ready batch의 `zlink_mesh_ready_record_t`, receive batch의 `zlink_mesh_receive_record_t`, `kind_data`의 `zlink_mesh_send_ready_data_t`, `zlink_actor_control_record_t`, `zlink_actor_join_completion_t`, `zlink_actor_transfer_control_t`, completion `kind_data`의 `zlink_actor_location_t`, monitor callback의 `zlink_mesh_monitor_event_t` |
 
 caller-init input과 output은 호출 전에 `struct_size = sizeof(해당 타입)`, `version = 1`로 설정한다. 배열 output은

@@ -25,7 +25,7 @@ size, version, and error contract used by the individual owner specifications.
 | Class | Structures and use sites |
 |---|---|
 | Caller-initialized input | `zlink_mesh_node_options_t`, `zlink_mesh_peer_connection_options_t`, `zlink_actor_transfer_prepare_t`, `zlink_mesh_monitor_open_options_t` |
-| Caller-initialized output | `zlink_mesh_publish_detail_t`, `zlink_mesh_node_status_t`, `zlink_mesh_peer_entry_t`, `zlink_spot_status_t`, `zlink_actor_location_t` for local lookup, `zlink_mesh_receive_requirements_t`, `zlink_stream_session_binding_t`, `zlink_stream_session_status_t`, `zlink_mesh_monitor_event_t` for monitor receive, `zlink_mesh_monitor_status_t` |
+| Caller-initialized output | `zlink_mesh_publish_detail_t`, `zlink_mesh_node_status_t`, `zlink_mesh_peer_entry_t`, `zlink_spot_status_t`, `zlink_actor_location_t` for local lookup, `zlink_actor_transfer_prepare_result_t`, `zlink_mesh_receive_requirements_t`, `zlink_stream_session_binding_t`, `zlink_stream_session_status_t`, `zlink_mesh_monitor_event_t` for monitor receive, `zlink_mesh_monitor_status_t` |
 | Core-owned read-only view | `zlink_mesh_ready_record_t` in a ready batch, `zlink_mesh_receive_record_t` in a receive batch, `zlink_mesh_send_ready_data_t`, `zlink_actor_control_record_t`, `zlink_actor_join_completion_t`, and `zlink_actor_transfer_control_t` in `kind_data`, `zlink_actor_location_t` in completion `kind_data`, and `zlink_mesh_monitor_event_t` in a monitor callback |
 
 Before a call, the caller sets every caller-initialized input and output to

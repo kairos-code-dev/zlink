@@ -314,7 +314,7 @@ should_run() {
   [[ "${SCENARIO}" == "${target}" || "${SCENARIO}" == "all" ]]
 }
 
-if [[ "${SCENARIO}" != "all" && "${SCENARIO}" != "SF-A1" && "${SCENARIO}" != "SF-A2" && "${SCENARIO}" != "SF-B1" && "${SCENARIO}" != "SF-B2" && "${SCENARIO}" != "SF-C1" && "${SCENARIO}" != "SF-C2" && "${SCENARIO}" != "SF-D1" && "${SCENARIO}" != "SF-D2" && "${SCENARIO}" != "SF-D3" ]]; then
+if [[ "${SCENARIO}" != "all" && "${SCENARIO}" != "SF-A1" && "${SCENARIO}" != "SF-A2" && "${SCENARIO}" != "SF-B1" && "${SCENARIO}" != "SF-B2" && "${SCENARIO}" != "SF-C1" && "${SCENARIO}" != "SF-C2" && "${SCENARIO}" != "SF-D1" && "${SCENARIO}" != "SF-D2" && "${SCENARIO}" != "SF-D3" && "${SCENARIO}" != "SF-E1" ]]; then
   echo "unknown scenario ${SCENARIO}" >&2
   exit 1
 fi
@@ -505,8 +505,22 @@ stop_all
 stop_redis_container
 fi
 
+if should_run SF-E1; then
+ZLINK_KOTLIN_E2E_LOCATION_KEY_PREFIX="zlink:e2e:kotlin-store-failure:${run_id}:sf-e1"
+start_redis_container
+read -r AH BH CH A B <<<"$(reserve_ports 5)"
+API_A="$(tcp "${A}")"; API_B="$(tcp "${B}")"; CONSUMER_HTTP="$(http "${CH}")"
+start_provider api-a "${API_A}" api-a "$(http "${AH}")"
+start_provider api-b "${API_B}" api-b "$(http "${BH}")"
+start_consumer "consumer-SF-E1" "${CONSUMER_HTTP}" delay
+sleep 2
+run_client SF-E1 "${CONSUMER_HTTP}" "api-a,api-b"
+stop_all
+stop_redis_container
+fi
+
 if [[ "${SCENARIO}" == "all" ]]; then
-  for scenario in SF-A1 SF-A2 SF-B1 SF-B2 SF-C1 SF-C2 SF-D1 SF-D2 SF-D3; do
+  for scenario in SF-A1 SF-A2 SF-B1 SF-B2 SF-C1 SF-C2 SF-D1 SF-D2 SF-D3 SF-E1; do
     grep -Rq "scenario ${scenario} " "${log_dir}"/client-*.stdout.log
   done
 else

@@ -8,6 +8,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.CompletableFuture
 import systems.zlink.e2e.kotlin.discoveryregistryha.ClientOptions
 import systems.zlink.e2e.kotlin.discoveryregistryha.Contracts
 
@@ -153,6 +154,34 @@ class ClientScenarioContext(
         println("scenario ${options.scenario()} passed providers=$providers")
     }
 
+    fun runStoreFailureStoreDelayNonBlocking() {
+        waitForLivePeerRows()
+        val baselineP99 = percentileMillis(measureRequests("sf-e1-baseline", 10), 0.99)
+        val storeDelayMilliseconds = 1_000
+        setStoreDelay(storeDelayMilliseconds)
+        try {
+            val delayedStoreRead = CompletableFuture.supplyAsync(::measureStoreRead)
+            sleep(150)
+            val concurrentP99 = percentileMillis(measureRequests("sf-e1-concurrent", 12), 0.99)
+            val delayedStoreReadMilliseconds = delayedStoreRead.join()
+            val budget = maxOf(baselineP99 * 8, 750)
+
+            ScenarioAssert.that(
+                delayedStoreReadMilliseconds >= (storeDelayMilliseconds * 0.75).toLong(),
+                "SF-E1 delayed store read finished too quickly: $delayedStoreReadMilliseconds ms",
+            )
+            ScenarioAssert.that(
+                concurrentP99 <= budget,
+                "SF-E1 unrelated request p99 grew too much during store delay. " +
+                    "baseline=$baselineP99 ms concurrent=$concurrentP99 ms budget=$budget ms",
+            )
+            val providers = requestUntilAnyProvider()
+            println("scenario SF-E1 passed providers=$providers")
+        } finally {
+            setStoreDelay(0)
+        }
+    }
+
     private fun requestUntilAnyProvider(): Set<String> {
         requireConsumerEndpoint()
         for (index in 0 until 60) {
@@ -252,6 +281,35 @@ class ClientScenarioContext(
         val path = if (waitForRoute) "/profile/request/wait" else "/profile/request"
         val responseBody = post("$endpoint$path", body)
         return json.readValue(responseBody, Contracts.WorkRes::class.java)
+    }
+
+    private fun measureStoreRead(): Long {
+        val started = Instant.now()
+        get("${requireConsumerEndpoint()}/locations/peers")
+        return Duration.between(started, Instant.now()).toMillis()
+    }
+
+    private fun measureRequests(markerPrefix: String, count: Int): List<Long> =
+        (0 until count).map { index ->
+            val started = Instant.now()
+            val value = "$markerPrefix-msg-$index"
+            val reply = postWorkRequest(value)
+            ScenarioAssert.that(reply.value == "work:$value", "SF-E1 reply payload mismatch")
+            ScenarioAssert.that(options.expectedRids().contains(reply.providerRid), "SF-E1 unexpected provider ${reply.providerRid}")
+            Duration.between(started, Instant.now()).toMillis()
+        }
+
+    private fun setStoreDelay(delayMilliseconds: Int) {
+        post(
+            "${requireConsumerEndpoint()}/admin/store-delay",
+            json.writeValueAsString(Contracts.StoreDelayReq(delayMilliseconds)),
+        )
+    }
+
+    private fun percentileMillis(values: List<Long>, percentile: Double): Long {
+        val sorted = values.sorted()
+        val index = kotlin.math.ceil(percentile * sorted.size).toInt() - 1
+        return sorted[index.coerceIn(0, sorted.lastIndex)]
     }
 
     private fun waitForLivePeerRows() {
@@ -375,7 +433,7 @@ class ClientScenarioContext(
         try {
             val response = http.send(
                 HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(2))
+                    .timeout(Duration.ofSeconds(3))
                     .GET()
                     .build(),
                 HttpResponse.BodyHandlers.ofString(),

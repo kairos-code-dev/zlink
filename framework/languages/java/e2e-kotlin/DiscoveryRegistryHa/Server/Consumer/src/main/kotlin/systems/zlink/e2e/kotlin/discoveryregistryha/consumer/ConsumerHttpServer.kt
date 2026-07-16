@@ -10,6 +10,8 @@ import java.time.Duration
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
 import java.util.concurrent.CompletionStage
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.springframework.context.SmartLifecycle
 import systems.zlink.e2e.kotlin.discoveryregistryha.Contracts
@@ -25,13 +27,17 @@ class ConsumerHttpServer(
     private val lifecycle: ZLinkFrameworkLifecycle,
     private val json: ObjectMapper,
     private val options: ConsumerOptions,
+    private val delayState: LocationStoreDelayState,
 ) : SmartLifecycle {
     private var server: HttpServer? = null
+    private var executor: ExecutorService? = null
     private var running = false
 
     override fun start() {
         val uri = URI.create(options.httpEndpoint)
         val httpServer = HttpServer.create(InetSocketAddress(uri.host, uri.port), 0)
+        val requestExecutor = Executors.newFixedThreadPool(8)
+        httpServer.executor = requestExecutor
         httpServer.createContext("/health") { exchange ->
             write(exchange, """{"status":"ready","rid":"${options.rid}"}""")
         }
@@ -47,18 +53,30 @@ class ConsumerHttpServer(
         httpServer.createContext("/locations/peers") { exchange ->
             writeResult(exchange, peers())
         }
+        httpServer.createContext("/admin/store-delay") { exchange ->
+            try {
+                val request = json.readValue(exchange.requestBody, Contracts.StoreDelayReq::class.java)
+                delayState.setDelay(Duration.ofMillis(request.delayMilliseconds.toLong()))
+                write(exchange, json.writeValueAsString(mapOf("delayMilliseconds" to delayState.delayMilliseconds())))
+            } catch (error: Exception) {
+                writeError(exchange, error)
+            }
+        }
         httpServer.createContext("/shutdown") { exchange ->
             write(exchange, """{"status":"stopping"}""")
             Thread { stop() }.start()
         }
         httpServer.start()
         server = httpServer
+        executor = requestExecutor
         running = true
     }
 
     override fun stop() {
         server?.stop(0)
         server = null
+        executor?.shutdownNow()
+        executor = null
         running = false
     }
 

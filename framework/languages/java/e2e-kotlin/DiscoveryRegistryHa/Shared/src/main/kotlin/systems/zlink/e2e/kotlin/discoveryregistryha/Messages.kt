@@ -14,4 +14,7 @@ class Contracts private constructor() {
         val value: String,
         val providerRid: String,
     )
+
+    @JvmRecord
+    data class StoreDelayReq(val delayMilliseconds: Int)
 }

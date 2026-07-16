@@ -57,14 +57,24 @@ class ConsumerApplication {
         }
 
     @Bean
-    fun locationStore(consumerOptions: ConsumerOptions): ZLinkLocationStore {
+    fun locationStoreDelayState(): LocationStoreDelayState = LocationStoreDelayState()
+
+    @Bean
+    fun locationStore(
+        consumerOptions: ConsumerOptions,
+        delayState: LocationStoreDelayState,
+    ): ZLinkLocationStore {
         val redisStore = ZLinkRedisLocationStore(
             ZLinkRedisLocationOptions()
                 .setConnectionString(consumerOptions.redisLocationEndpoint)
                 .setKeyPrefix(consumerOptions.locationKeyPrefix)
                 .setCommandTimeout(Duration.ofMillis(consumerOptions.redisCommandTimeoutMillis)),
         )
-        return if (consumerOptions.storeMode == "polling") PollingOnlyLocationStore(redisStore) else redisStore
+        return when (consumerOptions.storeMode) {
+            "polling" -> PollingOnlyLocationStore(redisStore)
+            "delay" -> DelayableLocationStore(redisStore, delayState)
+            else -> redisStore
+        }
     }
 
     @Bean
@@ -73,6 +83,7 @@ class ConsumerApplication {
         lifecycle: ZLinkFrameworkLifecycle,
         json: ObjectMapper,
         consumerOptions: ConsumerOptions,
+        delayState: LocationStoreDelayState,
     ): ConsumerHttpServer =
-        ConsumerHttpServer(client, lifecycle, json, consumerOptions)
+        ConsumerHttpServer(client, lifecycle, json, consumerOptions, delayState)
 }

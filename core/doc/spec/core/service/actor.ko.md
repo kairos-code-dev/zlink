@@ -97,6 +97,17 @@ typedef struct zlink_actor_transfer_prepare_t {
   uint64_t reserve_byte_count;
 } zlink_actor_transfer_prepare_t;
 
+typedef struct zlink_actor_transfer_prepare_result_t {
+  uint32_t struct_size;
+  uint32_t version;
+  zlink_actor_transfer_role_t role;
+  zlink_actor_transfer_id_t transfer_id;
+  zlink_actor_ref_t actor;
+  uint64_t final_sequence;
+  uint64_t reserve_message_count;
+  uint64_t reserve_byte_count;
+} zlink_actor_transfer_prepare_result_t;
+
 typedef struct zlink_actor_transfer_control_t {
   uint32_t struct_size;
   uint32_t version;
@@ -283,7 +294,8 @@ ZLINK_EXPORT zlink_request_result_t zlink_mesh_node_actor_transfer_prepare(
   void *mesh_node,
   const zlink_actor_transfer_prepare_t *prepare,
   uint32_t timeout_ms,
-  zlink_actor_transfer_token_t *token_out);
+  zlink_actor_transfer_token_t *token_out,
+  zlink_actor_transfer_prepare_result_t *result_out);
 ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_transfer_commit(
   const zlink_actor_transfer_token_t *token,
   uint64_t new_membership_epoch);
@@ -293,14 +305,37 @@ ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_transfer_abort(
   const zlink_actor_transfer_token_t *token);
 ```
 
+`prepare`와 `result_out`의 role별 계약은 다음과 같다. caller는 공통 versioned 구조체 규칙에 따라
+`result_out`을 초기화한다.
+
+| Role | `prepare` input | `result_out` |
+|---|---|---|
+| source | identity, expected epoch와 target node RID를 설정하고 sequence·reserve field는 0 | Core가 계산한 `final_sequence`, frozen backlog의 message·byte reserve count |
+| target | authority record에서 읽은 source result 세 값을 그대로 설정하고 source node RID를 지정 | Core가 검증하고 예약한 같은 세 값 |
+
 source prepare는 새 application claim을 막고 active claim, responder token과 Actor-originated operation이
 끝날 때까지 infrastructure progress를 유지한다. peer sender와 bound STREAM session은 old-epoch FIFO 뒤
-fence marker를 기록하고 새 traffic을 bounded pending queue에 둔다. 모든 marker 뒤의 sequence가
-`final_sequence`다.
+fence marker를 기록하고 새 traffic을 bounded pending queue에 둔다. Core는 모든 participant marker와 local
+mailbox high-water를 하나의 `final_sequence`로 봉인하고 frozen backlog의 message·byte 수를 계산한 뒤에만
+source prepare를 성공시킨다.
 
-target prepare는 frozen backlog와 sealed participant high-water 전체에 대해 message·byte capacity를
-원자적으로 예약한다. 부족하면 `ZLINK_REQUEST_BACKPRESSURED`, `errno == ENOBUFS`이며 token을 만들지
-않는다.
+framework는 성공한 source `result_out`의 transfer ID, ActorRef, expected epoch, `final_sequence`와 두 reserve
+count를 durable authority prepared record에 함께 기록한다. target prepare를 호출할 때 이 세 계산 값을
+변경하지 않고 `prepare`에 복사한다. target Core는 authority를 직접 조회하지 않지만 token identity와 함께
+값을 봉인하고 frozen backlog와 sealed participant high-water 전체에 대해 capacity를 원자적으로 예약한다.
+부족하면 `ZLINK_REQUEST_BACKPRESSURED`, `errno == ENOBUFS`이며 token과 partial result를 만들지 않는다.
+
+prepare는 operation ID를 만들지 않는 synchronous lifecycle request다. source에서는 fence와 result 계산,
+target에서는 capacity reservation이 commit된 뒤에만 `ZLINK_REQUEST_OK`를 반환하며 token과 `result_out`을
+같은 반환 전에 모두 채운다. 실패하면 `token_out`은 zero value이고 caller가 초기화한 `result_out` payload를
+부분적으로 쓰지 않는다.
+
+각 local transfer state transition은 해당 Actor generation이 owner인 infrastructure claim에
+`TRANSFER_CONTROL` record를 넣는다. source prepare 성공은 `FENCED`, target prepare 성공은 `PREPARING`,
+target commit은 non-terminal `COMMITTED`, target activate는 terminal `ACTIVATED`, source commit은 terminal
+`COMMITTED`, abort는 terminal `ABORTED` record를 해당 API가 성공을 반환하기 전에 enqueue한다.
+이 record의 `operation_id`는 zero이며 별도 `COMPLETION` record를 만들지 않는다. application claim에는
+transfer control을 전달하지 않는다.
 
 token은 Core가 생성한 64-byte sealed value다. transfer ID, role, Actor generation, expected membership
 epoch, MeshNode lifecycle generation과 reservation을 포함하며 caller가 만들거나 수정할 수 없다.

@@ -99,6 +99,17 @@ typedef struct zlink_actor_transfer_prepare_t {
   uint64_t reserve_byte_count;
 } zlink_actor_transfer_prepare_t;
 
+typedef struct zlink_actor_transfer_prepare_result_t {
+  uint32_t struct_size;
+  uint32_t version;
+  zlink_actor_transfer_role_t role;
+  zlink_actor_transfer_id_t transfer_id;
+  zlink_actor_ref_t actor;
+  uint64_t final_sequence;
+  uint64_t reserve_message_count;
+  uint64_t reserve_byte_count;
+} zlink_actor_transfer_prepare_result_t;
+
 typedef struct zlink_actor_transfer_control_t {
   uint32_t struct_size;
   uint32_t version;
@@ -300,7 +311,8 @@ ZLINK_EXPORT zlink_request_result_t zlink_mesh_node_actor_transfer_prepare(
   void *mesh_node,
   const zlink_actor_transfer_prepare_t *prepare,
   uint32_t timeout_ms,
-  zlink_actor_transfer_token_t *token_out);
+  zlink_actor_transfer_token_t *token_out,
+  zlink_actor_transfer_prepare_result_t *result_out);
 ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_transfer_commit(
   const zlink_actor_transfer_token_t *token,
   uint64_t new_membership_epoch);
@@ -310,15 +322,45 @@ ZLINK_EXPORT zlink_config_result_t zlink_mesh_node_actor_transfer_abort(
   const zlink_actor_transfer_token_t *token);
 ```
 
+The role-specific contracts for `prepare` and `result_out` are as follows. The
+caller initializes `result_out` under the common versioned-structure contract.
+
+| Role | `prepare` input | `result_out` |
+|---|---|---|
+| Source | Set identity, expected epoch, and target node RID; set sequence and reserve fields to zero | Core-computed `final_sequence` and message and byte reserve counts for the frozen backlog |
+| Target | Copy the three source-result values from the authority record unchanged and set the source node RID | The same three values after Core validates and reserves them |
+
 Source prepare blocks new application claims while continuing infrastructure
 progress until the active claim, responder tokens, and Actor-originated
 operations finish. Peer senders and bound STREAM sessions append a fence marker
-after old-epoch FIFO and hold new traffic in bounded pending queues. The
-sequence after all markers is `final_sequence`.
+after old-epoch FIFO and hold new traffic in bounded pending queues. Core seals
+all participant markers and the local mailbox high-water into one
+`final_sequence` and computes the frozen backlog's message and byte counts
+before source prepare can succeed.
 
-Target prepare atomically reserves message and byte capacity for the frozen
-backlog and sealed participant high-water values. Insufficient capacity returns
-`ZLINK_REQUEST_BACKPRESSURED` with `errno == ENOBUFS` and creates no token.
+The framework stores the transfer ID, ActorRef, expected epoch,
+`final_sequence`, and both reserve counts from a successful source `result_out`
+in the durable authority prepared record. It copies the three computed values
+unchanged into `prepare` for target prepare. Target Core does not query the
+authority, but seals those values with the token identity and atomically
+reserves capacity for the frozen backlog and all sealed participant high-water
+values. Insufficient capacity returns `ZLINK_REQUEST_BACKPRESSURED` with
+`errno == ENOBUFS` and creates neither a token nor a partial result.
+
+Prepare is a synchronous lifecycle request with no operation ID. It returns
+`ZLINK_REQUEST_OK` only after fence and result computation commits at the source
+or capacity reservation commits at the target, and fills both the token and
+`result_out` before that return. On failure, `token_out` is zero and Core does
+not partially write the caller-initialized result payload.
+
+Each local transfer-state transition enqueues a `TRANSFER_CONTROL` record on
+the infrastructure claim owned by that Actor generation. Source prepare emits
+`FENCED`; target prepare emits `PREPARING`; target commit emits non-terminal
+`COMMITTED`; target activate emits terminal `ACTIVATED`; source commit emits
+terminal `COMMITTED`; and abort emits terminal `ABORTED`. Each API enqueues its
+record before returning success. The record has a zero operation ID, no separate
+`COMPLETION` record is created, and transfer control never enters an application
+claim.
 
 A token is a 64-byte sealed value created by Core. It binds the transfer ID,
 role, Actor generation, expected membership epoch, MeshNode lifecycle

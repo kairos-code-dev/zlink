@@ -61,11 +61,12 @@ mkdir -p "$LOG_DIR"
 mkdir -p "$CONFIG_DIR"
 echo "log_dir=$LOG_DIR"
 
-read -r DELAY_A_HTTP DELAY_A_ENDPOINT DELAY_B_HTTP DELAY_B_ENDPOINT \
-  PLAY_A_HTTP PLAY_A_CONTROL PLAY_A_SPOT_ROUTE PLAY_A_SPOT_ROUTER PLAY_A_SPOT_PUB \
-  PLAY_B_HTTP PLAY_B_CONTROL PLAY_B_SPOT_ROUTE PLAY_B_SPOT_ROUTER PLAY_B_SPOT_PUB \
-  SESSION_A_HTTP SESSION_A_STREAM SESSION_A_SPOT_ROUTER SESSION_A_SPOT_PUB \
-  SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB <<<"$(python3 - <<'PY'
+allocate_role_endpoints() {
+  read -r DELAY_A_HTTP DELAY_A_ENDPOINT DELAY_B_HTTP DELAY_B_ENDPOINT \
+    PLAY_A_HTTP PLAY_A_CONTROL PLAY_A_SPOT_ROUTE PLAY_A_SPOT_ROUTER PLAY_A_SPOT_PUB \
+    PLAY_B_HTTP PLAY_B_CONTROL PLAY_B_SPOT_ROUTE PLAY_B_SPOT_ROUTER PLAY_B_SPOT_PUB \
+    SESSION_A_HTTP SESSION_A_STREAM SESSION_A_SPOT_ROUTER SESSION_A_SPOT_PUB \
+    SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
@@ -102,6 +103,7 @@ for sock in sockets:
     sock.close()
 PY
 )"
+}
 
 # 샘플 러너와 build 디렉터리를 공유한다. 여기서 BUILD_SAMPLES를 끄면 그 cache가 남아
 # ctest에서 sample smoke 테스트가 통째로 사라진다(게이트가 실행 순서에 의존하게 된다).
@@ -276,6 +278,9 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
   "zlink-redis-cpp-e2e-yielddispatch" "redis:7-alpine"
 REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 wait_port redis "$REDIS_ENDPOINT"
+# Redis uses a dynamically assigned host port. Allocate application endpoints only after
+# that port is fixed so the runner cannot hand the same port to a framework role.
+allocate_role_endpoints
 
 wait_file_contains() {
   local file="$1"

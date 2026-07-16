@@ -10,7 +10,8 @@ public final class PublisherRestartScenario {
     }
 
     public static void run(ScenarioContext context) {
-        try (var publisher = context.processes().startPublisher("publisher-baseline")) {
+        var publisher = context.processes().startPublisher("publisher-baseline");
+        try {
             ScenarioAssert.sleep(500);
             for (int sequence = 1; sequence <= 80; sequence++) {
                 context.publisher().publish(
@@ -28,6 +29,11 @@ public final class PublisherRestartScenario {
             if (common.isEmpty()) {
                 throw new IllegalStateException("PS-B2 subscribers did not receive baseline publisher events");
             }
+            String drainResult = context.processes().drainPublisher(publisher);
+            ScenarioAssert.ensure("Drained".equals(drainResult),
+                "PS-B2 publisher did not reach terminal Drained: " + drainResult);
+        } finally {
+            publisher.close();
         }
 
         context.processes().waitStopped("publisher", context.options().publisherHttp());

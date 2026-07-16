@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 public final class ServerProcessLauncher {
-    private static final Duration START_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration START_TIMEOUT = Duration.ofSeconds(3);
 
     private final ClientOptions options;
     private final PubSubHttpClient http;
@@ -59,6 +59,12 @@ public final class ServerProcessLauncher {
             ScenarioAssert.sleep(100);
         }
         throw new IllegalStateException("timed out waiting for " + name + " to stop at " + endpoint);
+    }
+
+    public String drainPublisher(ManagedProcess publisher) {
+        String result = http.post(options.publisherHttp() + "/admin/drain").trim();
+        publisher.close();
+        return result;
     }
 
     private ManagedProcess start(String name, Path bin, String config) {

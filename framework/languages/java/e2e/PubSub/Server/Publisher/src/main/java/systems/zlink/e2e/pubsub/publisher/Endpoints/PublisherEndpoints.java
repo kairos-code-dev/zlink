@@ -9,17 +9,21 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.time.Duration;
 import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.pubsub.publisher.Configuration.PublisherOptions;
 import systems.zlink.e2e.pubsub.publisher.Infrastructure.EvidenceStore;
 import systems.zlink.e2e.pubsub.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkFanoutClient;
+import systems.zlink.framework.monitoring.Drained;
+import systems.zlink.framework.monitoring.ZLinkDrainControl;
 
 public final class PublisherEndpoints implements SmartLifecycle {
     private final PublisherOptions options;
     private final ZLinkFanoutClient fanout;
     private final EvidenceStore evidence;
     private final ObjectMapper json;
+    private final ZLinkDrainControl drain;
     private HttpServer server;
     private boolean running;
 
@@ -27,11 +31,13 @@ public final class PublisherEndpoints implements SmartLifecycle {
         PublisherOptions options,
         ZLinkFanoutClient fanout,
         EvidenceStore evidence,
-        ObjectMapper json) {
+        ObjectMapper json,
+        ZLinkDrainControl drain) {
         this.options = options;
         this.fanout = fanout;
         this.evidence = evidence;
         this.json = json;
+        this.drain = drain;
     }
 
     @Override
@@ -45,6 +51,10 @@ public final class PublisherEndpoints implements SmartLifecycle {
                 publish(exchange, Contracts.EVENT_PACKET));
             server.createContext("/publish/missing", exchange ->
                 publish(exchange, Contracts.MISSING_PACKET));
+            server.createContext("/admin/drain", exchange -> {
+                var result = drain.drain(Duration.ofSeconds(30)).toCompletableFuture().join();
+                writeText(exchange, 200, result instanceof Drained ? "Drained\n" : "ForceStopped\n");
+            });
             server.start();
             running = true;
         } catch (Exception error) {

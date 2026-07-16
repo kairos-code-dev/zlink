@@ -117,6 +117,26 @@ template <typename TContext> concept has_split_workers = requires (TContext & co
     });
 };
 
+template <typename TRequest> concept has_http_async = requires (TRequest &request)
+{
+    request.template async<int> ();
+};
+
+template <typename TRequest> concept has_http_yield = requires (TRequest &request)
+{
+    request.template yield<int> ();
+};
+
+template <typename TRequest> concept has_http_submit = requires (TRequest &request)
+{
+    request.submit ();
+};
+
+template <typename TRequest> concept has_http_fetch = requires (TRequest &request)
+{
+    request.template fetch<int> ();
+};
+
 template <typename T> concept has_actor_location_spot_kind_member = requires (T value)
 {
     value.spot_kind;
@@ -1018,6 +1038,17 @@ static_assert (!has_destroy_actor<zlink::framework::spot_context_t>);
 static_assert (has_destroy_actor<zlink::framework::entry_spot_context_t>);
 static_assert (!has_run_worker<zlink::framework::entry_spot_context_t>);
 static_assert (has_split_workers<zlink::framework::entry_spot_context_t>);
+static_assert (has_http_async<zlink::http_client::request_builder_t>);
+static_assert (!has_http_yield<zlink::http_client::request_builder_t>);
+static_assert (!has_http_submit<zlink::http_client::request_builder_t>);
+static_assert (!has_http_fetch<zlink::http_client::request_builder_t>);
+static_assert (has_http_async<zlink::http_client::server_request_builder_t>);
+static_assert (has_http_yield<zlink::http_client::server_request_builder_t>);
+static_assert (has_http_submit<zlink::http_client::server_request_builder_t>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::http_client::client_builder_t &> ().build_server (
+                 std::declval<std::shared_ptr<zlink::http_client::execution_turn_t>> ())),
+               zlink::http_client::server_client_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::entry_spot_context_t &> ()
                                           .run_cpu_worker ([] { return 1; })),
                               zlink::framework::worker_call_t<int>>);

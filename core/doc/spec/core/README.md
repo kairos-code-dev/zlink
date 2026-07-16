@@ -1,155 +1,46 @@
-[English](README.md) | [한국어](README.ko.md)
+[한국어](README.ko.md) | English
 
-[Spec Index](../README.md)
+[Specification index](../README.md)
 
-# zlink Core Specification
+# ZLink Core 10.0.0 specification
 
-This specification defines the public core C ABI of the zlink library.
-A conforming implementation MUST provide every function, type, and constant
-described in this section with the specified semantics. The public ABI surface
-is defined by `core/include/zlink.h` and the domain headers under
-`core/include/zlink/`.
+This index links the Core 10.0.0 public C ABI contract exposed by `zlink.h`. Formal API documents describe only public contracts; they do not describe source directories, socket wiring, or queue structure.
 
-`core/include/zlink.h` remains the aggregate compatibility header. New code may
-include domain headers directly when it wants to inspect or depend on one API
-area. The domain headers are still public ABI headers, not internal helper
-headers.
+## 1. Common contracts
 
-## Public ABI Header Layout
+| Document | Content |
+|---|---|
+| [Public-contract governance](00-public-contract-governance.md) | Consistency among specification, headers, tests, and packages |
+| [Context](context.md) | Context creation, shutdown, and configuration |
+| [Message](message.md) | Message lifecycle, routing IDs, and ownership |
+| [Errors](errors.md) | Public result enums, errno, and version |
+| [Errno map](errno-map.md) | Result and errno mappings by API family |
+| [Events](events.md) | Common event types and readiness meaning |
+| [Polling](polling.md) | Poll items, pollers, and source support |
+| [Monitoring](monitoring.md) | Socket and MeshNode monitors and status snapshots |
+| [Utilities](utilities.md) | Timers, threads, stopwatch, and atomic helpers |
 
-| Header | Public ABI Area |
-|--------|-----------------|
-| `core/include/zlink.h` | Aggregate public header; includes every domain header |
-| `core/include/zlink/common.h` | Version macros, shared includes, export macro, enum/error includes |
-| `core/include/zlink/core/api.h` | Errno/string/version helpers, context lifecycle, proxy, capability, atomics, stopwatch, sleep, and thread utilities |
-| `core/include/zlink/message/api.h` | Message storage, routing id, zero-copy free callback, message lifecycle, and multipart close |
-| `core/include/zlink/service/actor.h` | Actor value types and actor result structures |
-| `core/include/zlink/socket/api.h` | Socket creation, options, TLS, bind/connect, send/recv part substrate, request/reply, pub/sub, stream, dispatch event handler, and socket callback types |
-| `core/include/zlink/eventing/api.h` | Socket monitors, monitor snapshots, poll/poller, and timers |
-| `core/include/zlink/service/spot.h` | SPOT handle, SPOT node, actor operations, route bridge, and publisher handle |
-| `core/include/zlink/service/common.h` | Shared service-layer query types |
-| `core/include/zlink_enum.h` | Public enum domains |
-| `core/include/zlink_errno.h` | Public errno domain |
+## 2. Socket contracts
 
-`core/src/` is the runtime implementation. Headers under `core/src/` are
-internal implementation contracts and are not public ABI, even when they are
-included by several core translation units.
+| Document | Content |
+|---|---|
+| [Socket index](socket/README.md) | Common lifecycle, options, send, and receive |
+| [PAIR](socket/pair.md) | One-to-one connection |
+| [PUB](socket/pub.md) | Classic fanout publisher |
+| [SUB](socket/sub.md) | Classic fanout subscriber |
+| [XPUB](socket/xpub.md) | Subscription-aware publisher |
+| [XSUB](socket/xsub.md) | Upstream subscription socket |
+| [DEALER](socket/dealer.md) | Asynchronous request source |
+| [ROUTER](socket/router.md) | Raw routing-ID router |
+| [STREAM](socket/stream.md) | Raw TCP or WebSocket session socket |
 
-## Spec Documents
+## 3. Service contracts
 
-| Document | Description |
-|----------|-------------|
-| [errors.md](errors.md) | Error codes, error strings, and version query |
-| [errno-map.md](errno-map.md) | Errno matrix for send, request, and reply functions |
-| [context.md](context.md) | Context creation, termination, and option tuning |
-| [message.md](message.md) | Message lifecycle, data access, ownership, and properties |
-| [socket/](socket/README.md) | Socket specifications (common + per-type) |
-| [monitoring.md](monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
-| [events.md](events.md) | Canonical event catalog and readiness semantics |
-| [service/README.md](service/README.md) | Shared service-layer concepts and document split |
-| [service/spot.md](service/spot.md) | SPOT topic-based PUB/SUB, route bridge, and routed messaging |
-| [polling.md](polling.md) | Proxy helpers and capability query |
-| [utilities.md](utilities.md) | Timers, threads, stopwatch, and atomics |
-
-## Types
-
-| Type | Defined in | Description |
-|------|-----------|-------------|
-| [`zlink_msg_t`](message.md) | message.md | Opaque message container (64-byte, stack-allocatable) |
-| [`zlink_routing_id_t`](message.md) | message.md | Peer routing identity (1-byte size + 255-byte data) |
-| `zlink_socket_msg_handler_fn` | [socket/](socket/README.md) | Raw `STREAM` raw receive callback |
-| [`zlink_monitor_event_t`](monitoring.md) | monitoring.md | Monitor event structure (event, value, addresses) |
-| [`zlink_monitor_status_t`](monitoring.md) | monitoring.md | Monitor snapshot (state and queue depth) |
-| [`zlink_fd_t`](polling.md) | polling.md | Platform-dependent file descriptor type |
-
-## Callback Types
-
-| Type | Defined in | Description |
-|------|-----------|-------------|
-| [`zlink_socket_msg_handler_fn`](socket/README.md) | socket/ | Raw receive callback type for raw `STREAM` |
-| [`zlink_stream_packet_handler_fn`](socket/README.md) | socket/ | Packet receive callback type for raw `STREAM` |
-| [`zlink_reply_handler_fn`](socket/README.md) | socket/ | Asynchronous request-reply completion callback |
-| [`zlink_spot_dispatch_event_handler_fn`](service/spot.md) | service/spot.md | SPOT dispatch event callback |
-| [`zlink_monitor_handler_fn`](monitoring.md) | monitoring.md | Socket monitor event callback |
-| [`zlink_send_ready_handler_fn`](socket/README.md) | socket/ | Send-ready transition callback |
-| [`zlink_free_fn`](message.md) | message.md | Deallocation callback for zero-copy messages |
-| [`zlink_timer_handler_fn`](utilities.md) | utilities.md | Timer expiry callback |
-| [`zlink_thread_fn`](utilities.md) | utilities.md | Thread entry-point function |
-
-## Internal Architecture
-
-The public C ABI is defined in `core/include/` and serves as the external core
-contract used by bindings. The internal implementation follows POSD
-(Philosophy of Software Design) principles and is organized into the following
-layers:
-
-```text
-Public Contract  ->  API Facade  ->  Runtime Implementation
- (include/)             (api/)            (runtime/)
-```
-
-| Layer | Source Location | Role |
-|-------|-----------------|------|
-| Public Contract | `core/include/` | Public C ABI contract seen by bindings and users |
-| API Facade | `core/src/api/` | Implementation of exported C ABI functions. Validate inputs, convert public results, call runtime |
-| Runtime Implementation | `core/src/runtime/` | Internal socket, service, engine, transport, protocol, and utility implementation |
-
-`core/src/api/` is the implementation facade for the public C ABI functions
-declared under `core/include/`. It validates external inputs, converts results
-to public result types, and delegates the actual behavior to
-`core/src/runtime/`. `core/src/api/` is not a public header location and is not
-installed.
-
-The `core/src/api/` structure is fixed by category so it matches the public
-contract header domains:
-
-```text
-core/src/api/
-|-- actor/
-|-- core/
-|-- discovery/
-|-- message/
-|-- monitoring/
-|-- registry/
-|-- service/
-|-- socket/
-`-- spot/
-```
-
-The `core/src/runtime/` structure is fixed by category:
-
-```text
-core/src/runtime/
-|-- core/
-|-- engine/
-|-- protocol/
-|-- services/
-|   |-- actor/
-|   |-- common/
-|   |-- control/
-|   |-- discovery/
-|   |-- registry/
-|   `-- spot/
-|-- sockets/
-|   |-- common/
-|   |-- dealer/
-|   |-- internal/
-|   |-- pair/
-|   |-- proxy/
-|   |-- pubsub/
-|   |-- router/
-|   `-- stream/
-|-- transports/
-`-- utils/
-```
-
-Option dispatch is split into three categories, each handled by its own
-domain owner for validation/apply: core_socket, transport_network,
-protocol_metadata.
-
-For internal architecture details, see the
-[POSD Module Structure](../../internals/posd-module-structure.md) document.
-
----
-
-For conceptual guides and tutorials, see the [User Guide](../../guide/01-overview.md).
+| Document | Content |
+|---|---|
+| [Service index](service/README.md) | Shared service boundaries and document map |
+| [MeshNode](service/mesh-node.md) | RouteMesh membership, peers, and node/channel messaging |
+| [Dispatch](service/dispatch.md) | Readiness, claims, receive batches, and reply tokens |
+| [Spot](service/spot.md) | Direct Spot messaging and Logical Multicast |
+| [Actor](service/actor.md) | ActorRef, mailboxes, Spot membership, and transfer |
+| [STREAM session](service/stream-session.md) | Session-to-Actor bindings and transfer barriers |

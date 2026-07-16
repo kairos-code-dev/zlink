@@ -6,9 +6,8 @@
 
 > 주의:
 > 이 문서는 메시지 생성과 multipart 처리를 다룹니다.
-> request-reply 와 SPOT 직접 전달은 ZMP 프로토콜 레벨에서 정의되며,
-> 상세 내용은 `doc/plan/spot-refactor` 아래의 프로토콜 문서를 참조합니다.
-> 공개 메시지 API는 메시지 레벨의 request-reply 상태를 노출하지 않습니다.
+> request-reply와 service routing은 각 socket·service 정식 문서가 정의합니다.
+> 공개 메시지 API는 request-reply 또는 service routing 상태를 노출하지 않습니다.
 
 메시지 API는 zlink 메시지의 생성, 데이터 접근, 소유권, multipart 관리를 위한 함수를 제공합니다(송신/수신은 socket API 범위).
 메시지는 소켓 간 데이터 교환의 기본 단위이며, 임의의 바이너리 payload를
@@ -23,8 +22,7 @@
 | zero-copy | 데이터를 복사하지 않고 포인터/참조만 전달하여 전송하는 기법 |
 | reference count (refcount) | 같은 데이터 버퍼를 공유하는 메시지 핸들의 수. 0이 되면 버퍼를 해제한다 |
 | routing_id | Router 소켓이 peer를 식별하는 데 사용하는 고유 바이트 열 (최대 255바이트) |
-| ZMP | zlink Message Protocol. zlink 전용 와이어(유선) 프로토콜 |
-| control part | request-reply, SPOT routed 같은 상위 프로토콜이 payload 앞에 붙이는 내부 part |
+| control part | 상위 프로토콜이 payload 앞에 붙이는 내부 part |
 
 ## 타입
 
@@ -70,9 +68,8 @@ typedef void (zlink_free_fn) (void *data_, void *hint_);
 
 ### 문자열 메타데이터 속성 (예약)
 
-아래 키들은 장래 `zlink_msg_gets()`가 노출할 수 있도록 예약된 식별자입니다.
-**현재 `zlink_msg_gets()` 구현은 스텁 상태**로 모든 호출이 `NULL` +
-`errno=EINVAL`을 반환하므로 응용 코드에서 이 함수에 의존하면 안 됩니다.
+아래 키들은 `zlink_msg_gets()`용으로 예약된 식별자입니다.
+10.0.0에서 `zlink_msg_gets()`는 모든 호출에 `NULL`과 `errno=EINVAL`을 반환합니다.
 peer 상세 정보가 필요하면 socket monitor 이벤트 payload나 service snapshot/query
 API를 사용하세요.
 
@@ -330,12 +327,12 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 ```
 
 메시지별 문자열 메타데이터 조회를 위해 예약된 심볼입니다(`"Socket-Type"`,
-`"Identity"`, `"Peer-Address"` 등). **현재 구현은 스텁**으로, 모든 호출이
-`NULL`을 반환하며 `errno`에 `EINVAL`을 설정합니다. 응용 코드에서 이 함수에
+`"Identity"`, `"Peer-Address"` 등). 10.0.0에서는 모든 호출이 `NULL`을 반환하며
+`errno`에 `EINVAL`을 설정합니다. 응용 코드에서 이 함수에
 의존하면 안 됩니다. peer 상세 정보는 socket monitor 이벤트 payload와 service
 snapshot/query API를 통해 제공합니다.
 
-**반환값:** `NULL` (현재 메타데이터를 노출하지 않습니다).
+**반환값:** `NULL`.
 
 **스레드 안전성:** 스레드 안전하지 않습니다.
 

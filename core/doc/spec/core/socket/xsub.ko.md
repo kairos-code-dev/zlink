@@ -21,7 +21,7 @@ subscribe/unsubscribe 및 토픽 수신 API를 지원하며, 구독 메시지가
 
 ### zlink_set_sub_option
 
-SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 설정합니다.
+SUB/XSUB 소켓 전용 옵션을 설정합니다.
 
 ```c
 zlink_config_result_t zlink_set_sub_option (void *handle_,
@@ -30,9 +30,8 @@ zlink_config_result_t zlink_set_sub_option (void *handle_,
                            size_t optvallen_);
 ```
 
-SUB/XSUB 소켓 옵션을 설정합니다. spot-sub과 spotnode-sub 핸들에도
-적용됩니다. 모든 소켓 타입에 공유되는 공통 옵션은 `zlink_set_option()`을
-사용하세요.
+SUB/XSUB 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 공통 옵션은
+`zlink_set_option()`을 사용합니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -42,7 +41,7 @@ SUB/XSUB 소켓 옵션을 설정합니다. spot-sub과 spotnode-sub 핸들에도
 
 ### zlink_get_sub_option
 
-SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 조회합니다.
+SUB/XSUB 소켓 전용 옵션을 조회합니다.
 
 ```c
 zlink_config_result_t zlink_get_sub_option (void *handle_,
@@ -130,7 +129,7 @@ raw SUB/XSUB는 recv-only 타입입니다. poller의 `ZLINK_POLLIN`과 함께 �
 서버 루프에서 readable을 관찰한 뒤 이 함수로 토픽 메시지를 가져오는 방식을
 기본 경로로 합니다.
 
-적용 대상: raw SUB, raw XSUB, `spot`, `spot_node`.
+적용 대상: raw SUB, raw XSUB.
 
 **반환값:** 성공 시 `ZLINK_RECV_OK`, 실패 시 `zlink_recv_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -156,8 +155,8 @@ zlink_config_result_t zlink_subscription_at (void *handle_,
 
 `index_` (0-기반)에 해당하는 구독 필터 문자열을 반환합니다. 진입 시
 `*filter_len_inout_`는 버퍼 크기이며, 반환 시 실제 길이로 설정됩니다.
-`*is_pattern_out_`는 필터가 패턴 구독인지 보고하며, 모든 구독이 byte-prefix
-필터이므로 현재 구현은 항상 `0`을 반환합니다.
+`*is_pattern_out_`는 필터가 패턴 구독인지 보고하며, 모든 raw 구독이 byte-prefix
+필터이므로 10.0.0에서는 항상 `0`을 반환합니다.
 
 적용 타입: raw SUB, raw XSUB.
 

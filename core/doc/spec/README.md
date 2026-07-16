@@ -1,74 +1,34 @@
-[English](README.md) | [한국어](README.ko.md)
+[한국어](README.ko.md) | English
 
-# zlink Library Specification
+# ZLink 10.0.0 public specification
 
-This specification defines the public surface of the zlink library. A
-conforming implementation MUST provide every function, type, and constant
-described herein with the specified semantics.
+This directory defines the ZLink 10.0.0 public API contract. Its audience is Core and bindings implementers and public-contract reviewers. Formal documents linked from this index are authoritative for function signatures, returns, errors, ownership, and thread safety.
 
-## Specification Structure
+## 1. Document structure
 
-| Section | Path | Description |
-|---------|------|-------------|
-| **Core Specification** | [core/](core/README.md) | C library specification (`zlink.h`) |
-| **Bindings Specification** | [bindings/](../../../bindings/doc/spec/README.md) | Language binding contracts and per-language API specs |
+| Area | Document | Description |
+|---|---|---|
+| Core C ABI | [Core specification](core/README.md) | C functions, types, enums, and runtime behavior |
+| Bindings | [Bindings specification](../../../bindings/doc/spec/README.md) | Language-specific public projections of the Core contract |
 
-## Core Specification (core/)
+Formal specifications describe only the current 10.0.0 contract. Guides own purpose and examples, while internals own actual internal structure after implementation is complete. Contract reviewers navigate from this index and the public header.
 
-The core specification defines the C library interface. An implementation
-that satisfies every requirement in this section produces a conforming
-zlink C library.
+## 2. Main Core documents
 
-| Document | Description |
-|----------|-------------|
-| [errors.md](core/errors.md) | Error codes, error strings, and version query |
-| [errno-map.md](core/errno-map.md) | Errno matrix for send, request, and reply functions |
-| [context.md](core/context.md) | Context creation, termination, and option tuning |
-| [message.md](core/message.md) | Message lifecycle, data access, ownership, and properties |
-| [socket/](core/socket/README.md) | Socket specifications (common + per-type) |
-| [monitoring.md](core/monitoring.md) | Socket monitors, monitor snapshots, and peer inspection |
-| [events.md](core/events.md) | Canonical event catalog and readiness semantics |
-| [service/README.md](core/service/README.md) | Shared service-layer concepts and document split |
-| [spot.md](core/service/spot.md) | SPOT topic-based PUB/SUB, route bridge, and routed messaging |
-| [polling.md](core/polling.md) | Proxy helpers and capability query |
-| [utilities.md](core/utilities.md) | Timers, threads, stopwatch, and atomics |
+| Document | Public contract |
+|---|---|
+| [Contract governance](core/00-public-contract-governance.md) | Consistency among specification, headers, tests, and packages |
+| [Context](core/context.md) | Context lifecycle and options |
+| [Message](core/message.md) | Message and routing-ID storage and ownership |
+| [Socket](core/socket/README.md) | Generic socket types and send/receive behavior |
+| [Service](core/service/README.md) | MeshNode, Spot, Actor, and STREAM-session behavior |
+| [Polling](core/polling.md) | Poll items, pollers, and readiness |
+| [Monitoring](core/monitoring.md) | Socket and MeshNode monitors and snapshots |
+| [Events](core/events.md) | Public events and state-transition meaning |
+| [Errors](core/errors.md) | Result enums, errno, and the 10.0.0 version ABI |
+| [Errno map](core/errno-map.md) | Per-function result and errno mappings |
+| [Utilities](core/utilities.md) | Timers, threads, stopwatch, and atomic utilities |
 
-## Bindings Specification (bindings/)
+## 3. Conformance
 
-The bindings specification defines how the core C contract is projected
-into each target language. An implementation that satisfies the cross-language
-policy and the per-language spec produces a conforming zlink binding.
-When designing a binding library, follow the
-[POSD design principles](../../../doc/principal/software-design-principles.md). This
-keeps each language API from exposing internal implementation details, reduces
-the concepts a caller must learn, and preserves deep modules with low change
-propagation.
-
-| Document | Description |
-|----------|-------------|
-| [policy](../../../bindings/doc/spec/README.md) | Cross-language binding contract (POSD, capability matrix, naming, domain objects) |
-| [C](../../../bindings/doc/spec/c/README.md) | C binding specification |
-| [C++](../../../bindings/doc/spec/cpp/README.md) | C++ binding specification |
-| [Java](../../../bindings/doc/spec/java/README.md) | Java binding specification |
-| [.NET](../../../bindings/doc/spec/dotnet/README.md) | .NET binding specification |
-| [Node.js](../../../bindings/doc/spec/node/README.md) | Node.js binding specification |
-| [Python](../../../bindings/doc/spec/python/README.md) | Python binding specification |
-| [Go](../../../bindings/doc/spec/go/README.md) | Go binding specification |
-| [Rust](../../../bindings/doc/spec/rust/README.md) | Rust binding specification |
-
-## Conformance
-
-A conforming implementation:
-
-1. **MUST** implement every function, type, and constant in the core specification
-   with the documented signatures and semantics.
-2. **MUST** satisfy the guarantees and constraints stated for each API.
-3. **MUST NOT** expose internal implementation details through the public surface.
-4. Language bindings **MUST** follow the cross-language policy and their
-   respective per-language specification.
-
-## Terminology
-
-- **MUST** / **MUST NOT**: Absolute requirements.
-- **SHOULD** / **SHOULD NOT**: Strong recommendations; deviation requires justification.
-- **MAY**: Optional behavior.
+A conforming implementation provides every function, type, constant, and behavior in the formal documents. A mismatch among public headers, exported symbols, contract tests, bindings, installed packages, and the formal specification is nonconforming. Internal implementation details are not exposed as public contracts, and a language-specific API cannot reduce the shared contract.

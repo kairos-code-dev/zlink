@@ -1,568 +1,151 @@
-[English](polling.md) | [한국어](polling.ko.md)
+[한국어](polling.ko.md) | English
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Specification index](../README.md) · [Core index](README.md) · [Dispatch](service/dispatch.md) · [errno map](errno-map.md)
 
-# Polling, Proxy & Capability
+# Poll and poller
 
-Functions and types for I/O multiplexing across sockets, file descriptors, and
-timers, plus message-forwarding proxies and runtime capability queries.
+This document defines the ZLink Core 10.0.0 public readiness contract. Its audience is developers of the C API and bindings that wait for raw sockets, timers, and MeshNodes in one event loop. It answers: “What do `POLLIN`, `POLLOUT`, single-consumer receive mode, and lifetime mean for each source?”
 
-## Types
-
-### zlink_fd_t
-
-Platform-dependent file-descriptor type.
+## 1. Public types
 
 ```c
 #if defined _WIN32
-#if defined _WIN64
-typedef unsigned __int64 zlink_fd_t;
-#else
-typedef unsigned int zlink_fd_t;
-#endif
+typedef uintptr_t zlink_fd_t;
 #else
 typedef int zlink_fd_t;
 #endif
-```
 
-### Poller Event Masks
+typedef short zlink_poller_event_mask_t;
 
-The public header exports `typedef short zlink_poller_event_mask_t;` as a
-convenience alias for the `short` bitmask used in poller APIs for `events`,
-`revents`, and event-mask parameters.
-
-### zlink_poller_source_kind_t
-
-Identifies the kind of source that produced a poller event.
-
-```c
-typedef enum zlink_poller_source_kind_t
-{
-    ZLINK_POLLER_SOURCE_SOCKET = 1,
-    ZLINK_POLLER_SOURCE_FD     = 2,
-    ZLINK_POLLER_SOURCE_TIMER  = 3
-} zlink_poller_source_kind_t;
-```
-
-| Value | Meaning |
-|-------|---------|
-| `ZLINK_POLLER_SOURCE_SOCKET` | Event originated from a zlink socket |
-| `ZLINK_POLLER_SOURCE_FD` | Event originated from a native file descriptor |
-| `ZLINK_POLLER_SOURCE_TIMER` | Event originated from a timer |
-
-### zlink_pollitem_t
-
-Descriptor used with the `zlink_poll` function.
-
-```c
-typedef struct zlink_pollitem_t
-{
-    void *socket;
-    zlink_fd_t fd;
-    short events;
-    short revents;
-} zlink_pollitem_t;
-```
-
-| Field | Description |
-|-------|-------------|
-| `socket` | Zlink socket handle, or `NULL` to poll a raw fd |
-| `fd` | Native file descriptor (used when `socket` is `NULL`) |
-| `events` | Requested event mask (`ZLINK_POLLIN`, `ZLINK_POLLOUT`, etc.) |
-| `revents` | Returned event mask filled by `zlink_poll` |
-
-### zlink_poller_event_t
-
-Event structure returned by the poller API.
-
-```c
-typedef struct zlink_poller_event_t
-{
-    zlink_poller_source_kind_t source_kind;
-    void *socket;
-    zlink_fd_t fd;
-    void *timer;
-    void *user_data;
-    short events;
-} zlink_poller_event_t;
-```
-
-| Field | Description |
-|-------|-------------|
-| `source_kind` | Which kind of source triggered the event |
-| `socket` | Zlink socket handle (valid when `source_kind` is `ZLINK_POLLER_SOURCE_SOCKET`) |
-| `fd` | Native file descriptor (valid when `source_kind` is `ZLINK_POLLER_SOURCE_FD`) |
-| `timer` | Timer handle (valid when `source_kind` is `ZLINK_POLLER_SOURCE_TIMER`) |
-| `user_data` | Opaque pointer supplied when the source was registered |
-| `events` | Bitmask of events that occurred |
-
-The current public poller does not expose a Spot-specific result shape. In
-other words, `zlink_poller_event_t` alone cannot carry owner `Spot`, dispatch
-event kind, and drain subject together. For unified SPOT subscribe / routed /
-channel-reply / timer readiness, the current public contract still uses
-`zlink_spot_dispatch_event_handler()`.
-
-## Constants
-
-```c
-typedef enum zlink_poller_event_flag_e
-{
-    ZLINK_POLLIN         = 1,
-    ZLINK_POLLOUT        = 2,
-    ZLINK_POLLERR        = 4,
-    ZLINK_POLLPRI        = 8,
-    ZLINK_POLLITEMS_DFLT = 16,
-    ZLINK_POLLCOMPLETION = 32
+typedef enum zlink_poller_event_flag_e {
+  ZLINK_POLLIN         = 1,
+  ZLINK_POLLOUT        = 2,
+  ZLINK_POLLERR        = 4,
+  ZLINK_POLLPRI        = 8,
+  ZLINK_POLLITEMS_DFLT = 16,
+  ZLINK_POLLCOMPLETION = 32
 } zlink_poller_event_flag_e;
 
 #define ZLINK_HAVE_POLLER 1
+
+typedef enum zlink_poller_source_kind_t {
+  ZLINK_POLLER_SOURCE_SOCKET    = 1,
+  ZLINK_POLLER_SOURCE_FD        = 2,
+  ZLINK_POLLER_SOURCE_TIMER     = 3,
+  ZLINK_POLLER_SOURCE_MESH_NODE = 4
+} zlink_poller_source_kind_t;
+
+typedef struct zlink_pollitem_t {
+  void *socket;
+  zlink_fd_t fd;
+  short events;
+  short revents;
+} zlink_pollitem_t;
+
+typedef struct zlink_poller_event_t {
+  zlink_poller_source_kind_t source_kind;
+  void *socket;
+  zlink_fd_t fd;
+  void *timer;
+  void *user_data;
+  short events;
+} zlink_poller_event_t;
 ```
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ZLINK_POLLIN` | 1 | Data is available for reading |
-| `ZLINK_POLLOUT` | 2 | Send recovery readiness. Signals that the handle has left backpressure and a send retry is worth attempting. This is not a bare "transport writable" signal, and does not guarantee the retry will succeed. Shares the same readiness axis as `zlink_send_ready_handler()`. After `ZLINK_SUBMIT_BACKPRESSURED`, observing this event means the caller can retry, but the retry itself may still fail with `ZLINK_SUBMIT_BACKPRESSURED`. |
-| `ZLINK_POLLERR` | 4 | An error occurred on the descriptor |
-| `ZLINK_POLLPRI` | 8 | Urgent / priority data available |
-| `ZLINK_POLLITEMS_DFLT` | 16 | Default poll-item array size |
-| `ZLINK_POLLCOMPLETION` | 32 | Request/reply completion readiness. Must be registered on its own (combining it with any other event flag returns `ZLINK_CONFIG_INVALID_ARGUMENT`, with internal errno `EINVAL`), and only on request-capable sockets (`ZLINK_SOCKET_DEALER`/`ZLINK_SOCKET_ROUTER`). |
-| `ZLINK_HAVE_POLLER` | 1 | Library was compiled with poller support |
+A MeshNode source is returned in the `socket` field. Only an `FD` source has a valid `fd`, and only a `TIMER` source has a valid `timer`. `user_data` is the borrowed pointer supplied at registration.
 
-## Functions -- Array Poll
-
-### zlink_poll
-
-Poll a set of sockets and/or file descriptors for I/O readiness.
+## 2. One-shot poll
 
 ```c
-int zlink_poll (zlink_pollitem_t *items_, int nitems_, long timeout_, zlink_config_result_t *error_out_);
+int zlink_poll(
+  zlink_pollitem_t *items,
+  int item_count,
+  long timeout_ms,
+  zlink_config_result_t *error_out);
 ```
 
-Waits for events on the descriptors listed in `items_`. Each entry specifies
-the events of interest in its `events` field; on return, the `revents` field
-of each entry indicates which events occurred. Writes the configuration result
-into `*error_out_` on failure; returns the count as the primary return on
-success.
+The return value is the number of ready items, zero on timeout, and -1 on failure. Failure sets both `error_out` and errno. A timeout of -1 waits indefinitely; zero returns immediately. Every item’s `revents` is cleared before evaluation and is only a snapshot after return.
 
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `items_` | Array of poll items to monitor |
-| `nitems_` | Number of entries in the array |
-| `timeout_` | Maximum wait time in milliseconds; `0` for immediate return, `-1` for indefinite blocking |
-| `error_out_` | Receives a `zlink_config_result_t` on failure |
-
-**Returns:** The number of items with events signalled, `0` on timeout, or
-`-1` on failure with the `zlink_config_result_t` written through `*error_out_`.
-`zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Errors:**
-- `ETERM` -- the context was terminated.
-- `EFAULT` -- the `items_` pointer is invalid.
-- `EINTR` -- the call was interrupted by a signal.
-
-**Thread safety:** Each poll item's socket must not be used by another thread
-during the call.
-
-**See also:** `zlink_poller_wait`
-
----
-
-## Functions -- Poller API
-
-The poller is an object-based API that complements `zlink_poll`. It supports
-sockets, native file descriptors, and timers in a single event loop.
-
-### zlink_poller_new
-
-Create a new poller instance.
+## 3. Reusable poller
 
 ```c
-void *zlink_poller_new (void);
+void *zlink_poller_new(void);
+zlink_close_result_t zlink_poller_destroy(void **poller_p);
+int zlink_poller_size(void *poller, zlink_config_result_t *error_out);
+zlink_config_result_t zlink_poller_add(
+  void *poller,
+  void *source,
+  void *user_data,
+  short events);
+zlink_config_result_t zlink_poller_modify(
+  void *poller,
+  void *source,
+  short events);
+zlink_config_result_t zlink_poller_remove(void *poller, void *source);
+zlink_config_result_t zlink_poller_add_fd(
+  void *poller,
+  zlink_fd_t fd,
+  void *user_data,
+  short events);
+zlink_config_result_t zlink_poller_modify_fd(
+  void *poller,
+  zlink_fd_t fd,
+  short events);
+zlink_config_result_t zlink_poller_remove_fd(void *poller, zlink_fd_t fd);
+zlink_config_result_t zlink_poller_add_timer(
+  void *poller,
+  void *timer,
+  void *user_data);
+zlink_config_result_t zlink_poller_remove_timer(
+  void *poller,
+  void *timer);
+int zlink_poller_wait(
+  void *poller,
+  zlink_poller_event_t *events,
+  int event_capacity,
+  long timeout_ms,
+  zlink_config_result_t *error_out);
 ```
 
-Allocates and returns an opaque poller handle. Destroy with
-`zlink_poller_destroy` when no longer needed.
+Adding the same source twice returns `ZLINK_CONFIG_CONFLICT` with `EEXIST`. Modifying or removing a missing source returns `ZLINK_CONFIG_NOT_FOUND` with `ENOENT`. A poller borrows source handles, so a source is removed before it is destroyed. A registered source that closes produces `POLLERR` once and remains registered until removal.
 
-**Returns:** Poller handle on success, or `NULL` on failure (errno is set).
+The caller serializes add, modify, remove, and wait on one poller. Different pollers can be used concurrently. The event array returned by wait is caller-owned and contains no pointer to Core storage.
 
-**Thread safety:** Safe to call from any thread.
+## 4. Readiness by source
 
-**See also:** `zlink_poller_destroy`
+| Source | `POLLIN` | `POLLOUT` | Additional rule |
+|---|---|---|---|
+| raw socket | A complete record can be received | A submit retry is worthwhile | Per-socket receive mode applies |
+| timer | A fire count can be received | Unsupported | Drain with `zlink_timer_recv()` |
+| FD | Platform-readable | Platform-writable | Platform poll semantics |
+| MeshNode | Ready index is non-empty | Retry of a backpressured service submit is worthwhile | Acquire claims with `zlink_mesh_node_drain_ready()` |
 
----
+`ZLINK_POLLITEMS_DFLT` is the recommended initial item count for internal and
+application stack buffers; it is not a readiness bit. `ZLINK_HAVE_POLLER == 1`
+means this public poller API is present in the build.
 
-### zlink_poller_destroy
+`ZLINK_POLLCOMPLETION` is valid only when adding a raw DEALER or ROUTER with
+`zlink_poller_add()`. Register it alone, without OR-ing another bit. A request
+completion signal is not a public receive record. When `zlink_poller_wait()`
+observes the signal, it progresses the internal completion queue and dispatches
+registered reply callbacks on the thread executing that wait call. If only a
+completion signal was processed, no public event is produced and wait may
+return `0`; the caller can inspect state changed by the callback and continue.
+The `recv_part` families do not drain this completion. Using
+`ZLINK_POLLCOMPLETION` on another source, in a `zlink_poll()` item, or in
+`zlink_poller_modify()` returns `ZLINK_CONFIG_INVALID_ARGUMENT` with
+`errno == EINVAL`.
 
-Destroy a poller and release its resources.
+MeshNode `POLLIN` means that at least one application or infrastructure domain is readable. A poll event itself contains no payload, owner, or per-domain claim. The consumer drains a ready batch and takes a domain-specific claim from each record.
 
-```c
-zlink_close_result_t zlink_poller_destroy (void **poller_p_);
-```
+MeshNode `POLLOUT` is independent of ready-handler or `POLLIN` use. Readiness does not guarantee success of the next submit.
 
-Frees the poller handle. The pointer at `*poller_p_` is set to `NULL` after
-destruction.
+## 5. MeshNode receive-mode exclusion
 
-**Returns:** `ZLINK_CLOSE_OK` on success; otherwise a `zlink_close_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+A MeshNode ready handler and a `POLLIN` poller are single consumers of the same ready index. Registering one mode after the other returns `ZLINK_CONFIG_BUSY` or `ZLINK_HANDLER_BUSY` with `errno == EBUSY`. A ready handler can be registered after removing `POLLIN`, and a poller can be registered after removing the handler.
 
-**Thread safety:** Must not be called while another thread is using the same
-poller.
+Holding an application claim does not suppress the same owner’s independent infrastructure-ready record. The poller consumer can drain infrastructure claims first or separately, so request completion and send-ready progress do not depend on the end of an application turn.
 
-**See also:** `zlink_poller_new`
+## 6. Errors and close
 
----
-
-### zlink_poller_size
-
-Return the number of sources registered with the poller.
-
-```c
-int zlink_poller_size (void *poller_, zlink_config_result_t *error_out_);
-```
-
-Writes the configuration result into `*error_out_` on failure; returns the
-count as the primary return on success.
-
-**Returns:** The current count of registered sockets, file descriptors, and
-timers, or `-1` on failure with the `zlink_config_result_t` written through
-`*error_out_`. `zlink_errno()` retains the detailed internal errno for
-diagnostics.
-
-**Thread safety:** Must not be called concurrently with add/remove operations
-on the same poller.
-
----
-
-### zlink_poller_add
-
-Register a zlink socket with the poller.
-
-```c
-zlink_config_result_t zlink_poller_add (void *poller_, void *socket_, void *user_data_, short events_);
-```
-
-Adds `socket_` to the poller and monitors it for the events specified in
-`events_`. The `user_data_` pointer is stored and returned in
-`zlink_poller_event_t` when an event fires.
-The library does not interpret `user_data_`; callers may use it as their own
-dispatch key, such as an integer slot.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `poller_` | Poller handle |
-| `socket_` | Zlink socket to monitor |
-| `user_data_` | Opaque pointer returned with events |
-| `events_` | Event mask (`ZLINK_POLLIN`, `ZLINK_POLLOUT`, etc.) |
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_modify`, `zlink_poller_remove`
-
----
-
-### zlink_poller_modify
-
-Change the monitored events for a registered socket.
-
-```c
-zlink_config_result_t zlink_poller_modify (void *poller_, void *socket_, short events_);
-```
-
-Updates the event mask for `socket_` that was previously added with
-`zlink_poller_add`.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_add`
-
----
-
-### zlink_poller_remove
-
-Remove a zlink socket from the poller.
-
-```c
-zlink_config_result_t zlink_poller_remove (void *poller_, void *socket_);
-```
-
-Unregisters the socket. It will no longer produce events.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_add`
-
----
-
-### zlink_poller_add_fd
-
-Register a native file descriptor with the poller.
-
-```c
-zlink_config_result_t zlink_poller_add_fd (void *poller_, zlink_fd_t fd_, void *user_data_, short events_);
-```
-
-Adds the file descriptor `fd_` and monitors it for the specified events.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `poller_` | Poller handle |
-| `fd_` | Native file descriptor |
-| `user_data_` | Opaque pointer returned with events |
-| `events_` | Event mask |
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_modify_fd`, `zlink_poller_remove_fd`
-
----
-
-### zlink_poller_add_timer
-
-Register a timer with the poller.
-
-```c
-zlink_config_result_t zlink_poller_add_timer (void *poller_, void *timer_, void *user_data_);
-```
-
-Adds the timer handle `timer_` to the poller. When the timer fires, the poller
-returns an event with `source_kind` set to `ZLINK_POLLER_SOURCE_TIMER`.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `poller_` | Poller handle |
-| `timer_` | Timer handle (from `zlink_timer_new` or `zlink_spot_timer_new`) |
-| `user_data_` | Opaque pointer returned with events |
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_remove_timer`
-
----
-
-### zlink_poller_modify_fd
-
-Change the monitored events for a registered file descriptor.
-
-```c
-zlink_config_result_t zlink_poller_modify_fd (void *poller_, zlink_fd_t fd_, short events_);
-```
-
-Updates the event mask for `fd_` that was previously added with
-`zlink_poller_add_fd`.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_add_fd`
-
----
-
-### zlink_poller_remove_fd
-
-Remove a file descriptor from the poller.
-
-```c
-zlink_config_result_t zlink_poller_remove_fd (void *poller_, zlink_fd_t fd_);
-```
-
-Unregisters the file descriptor. It will no longer produce events.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_add_fd`
-
----
-
-### zlink_poller_remove_timer
-
-Remove a timer from the poller.
-
-```c
-zlink_config_result_t zlink_poller_remove_timer (void *poller_, void *timer_);
-```
-
-Unregisters the timer. It will no longer produce poller events.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
-**See also:** `zlink_poller_add_timer`
-
----
-
-### zlink_poller_wait
-
-Wait for one or more events in a single call.
-
-```c
-int zlink_poller_wait (void *poller_,
-                       zlink_poller_event_t *events_,
-                       int n_events_,
-                       long timeout_,
-                       zlink_config_result_t *error_out_);
-```
-
-Blocks until at least one registered source has an event ready, then fills
-`events_` with up to `n_events_` events. To wait for one event, pass an array
-with one element and `n_events_ == 1`. Writes the configuration result into
-`*error_out_` on failure; returns the count as the primary return on success.
-
-On success, the returned value `n` is the number of events actually written
-starting at `events_[0]`. It cannot exceed `n_events_`. Callers must read only
-`events_[0:n]`; entries after that range are not guaranteed to contain valid
-results. The poller writes only ready events at the front of the caller-owned
-buffer and does not return the total number of registered sources or a separate
-total-ready count. Each event's `user_data` field is the value supplied at
-registration, so callers can dispatch by that key instead of comparing socket
-or timer handles.
-
-`n_events_` must be at least 1, and `events_` must point to a valid array.
-An empty array is not treated as a successful timeout; it is an invalid
-argument error.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `poller_` | Poller handle |
-| `events_` | Array of event structures to fill |
-| `n_events_` | Maximum number of events to return |
-| `timeout_` | Maximum wait in milliseconds; `0` for immediate, `-1` for indefinite |
-| `error_out_` | Receives `ZLINK_CONFIG_OK` on success or timeout, or a `zlink_config_result_t` on failure |
-
-**Returns:** The number of events stored in `events_`, `0` on timeout, or `-1`
-on failure with the `zlink_config_result_t` written through `*error_out_`.
-`zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Errors:**
-- `ZLINK_CONFIG_INVALID_HANDLE` -- `poller_` is not valid.
-- `ZLINK_CONFIG_INVALID_ARGUMENT` -- `events_` is not valid or `n_events_`
-  is less than 1.
-
-**Thread safety:** Must not be called concurrently with other operations on
-the same poller.
-
----
-
-## Functions -- Proxy
-
-### zlink_proxy
-
-Start a built-in proxy between a frontend and a backend socket.
-
-```c
-zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);
-```
-
-Connects a frontend socket to a backend socket, forwarding messages in both
-directions. If `capture_` is not `NULL`, all messages are also sent to the
-capture socket for logging or inspection. This call blocks forever (until the
-context is terminated) and does not return under normal operation.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `frontend_` | Socket facing clients |
-| `backend_` | Socket facing workers / services |
-| `capture_` | Optional socket for message capture, or `NULL` |
-
-**Returns:** A `zlink_config_result_t` value when the proxy terminates;
-`zlink_errno()` is set to `ETERM` on normal context-termination shutdown.
-
-**Errors:**
-- `ETERM` -- the context was terminated.
-
-**Thread safety:** The three socket handles must not be used by other threads
-while the proxy is running.
-
-**See also:** `zlink_proxy_steerable`
-
----
-
-### zlink_proxy_steerable
-
-Start a steerable proxy with an additional control socket.
-
-```c
-zlink_config_result_t zlink_proxy_steerable (void *frontend_,
-                                             void *backend_,
-                                             void *capture_,
-                                             void *control_);
-```
-
-Behaves like `zlink_proxy` but accepts commands on `control_`. Send the string
-`PAUSE` to suspend message forwarding, `RESUME` to continue, `TERMINATE`
-to shut down the proxy and return, or `STATISTICS` to receive eight `uint64_t`
-counter parts — front/back × recv/send × count/bytes, in the order
-`(frn, frb, fsn, fsb, brn, brb, bsn, bsb)`. If `control_` is `NULL`, this
-function behaves identically to `zlink_proxy`.
-
-**Parameters:**
-
-| Name | Description |
-|------|-------------|
-| `frontend_` | Socket facing clients |
-| `backend_` | Socket facing workers / services |
-| `capture_` | Optional socket for message capture, or `NULL` |
-| `control_` | Control socket (PAIR type), or `NULL` |
-
-**Returns:** `ZLINK_CONFIG_OK` when terminated cleanly via the control
-socket; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains
-the detailed internal errno for diagnostics.
-
-**Thread safety:** The four socket handles must not be used by other threads
-while the proxy is running. The control socket may be written to from any
-thread.
-
-**See also:** `zlink_proxy`
-
----
-
-## Functions -- Capability
-
-### zlink_has
-
-Check whether the library supports a given capability.
-
-```c
-bool zlink_has (const char *capability_);
-```
-
-Queries the library for compile-time or run-time support of a named feature.
-Common capability strings include `"ipc"`, `"tls"`, `"ws"`, and `"wss"`.
-
-**Returns:** `true` if the capability is supported, `false` otherwise.
-
-**Thread safety:** Safe to call from any thread at any time.
-
-**See also:** `zlink_version`
+An invalid event bit returns `ZLINK_CONFIG_INVALID_ARGUMENT` with `EINVAL`; an event unsupported by the source returns `ZLINK_CONFIG_NOT_SUPPORTED` with `ENOTSUP`. Destroy while wait is active returns `ZLINK_CLOSE_BUSY` with `EBUSY`. The [errno map](errno-map.md) defines all result and errno mappings.

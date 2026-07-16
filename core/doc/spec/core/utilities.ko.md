@@ -336,6 +336,66 @@ unsigned long zlink_stopwatch_stop(void *watch_);
 
 ## 기타
 
+### zlink_has
+
+현재 library build가 capability를 제공하는지 확인합니다.
+
+```c
+ZLINK_EXPORT bool zlink_has (const char *capability_);
+```
+
+`capability_`는 NUL로 끝나는 non-NULL 문자열이며 함수는 이 문자열을 보관하지 않습니다. `"tcp"`는 항상
+`true`입니다. `"ipc"`, `"tls"`, `"ws"`, `"wss"`, `"pgm"`, `"epgm"`은 해당 기능을 포함해 build한
+경우에만 `true`입니다. 다른 문자열은 `false`입니다.
+
+**스레드 안전성:** 전역 상태를 바꾸지 않으며 모든 스레드에서 호출할 수 있습니다.
+
+---
+
+### zlink_proxy
+
+두 raw socket 사이에서 멀티파트 메시지를 양방향 전달합니다.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);
+```
+
+`frontend_`와 `backend_`는 필수 raw socket handle입니다. `capture_`는 NULL일 수 있으며, non-NULL이면
+전달한 각 메시지의 사본을 받는 raw socket handle입니다. 함수는 실행 중인 proxy loop가 끝날 때까지
+호출 스레드를 block합니다.
+
+세 handle은 모두 borrowed입니다. 함수는 handle을 닫거나 소유하지 않습니다. 메시지 frame은 proxy가
+수신해 상대 socket으로 전달하며 application에 frame pointer를 반환하지 않습니다.
+
+**반환값:** proxy가 정상적으로 끝나면 `ZLINK_CONFIG_OK`, 그렇지 않으면 `zlink_config_result_t` 오류.
+필수 handle이 NULL이거나 raw socket이 아니면 `ZLINK_CONFIG_INVALID_HANDLE`입니다.
+
+---
+
+### zlink_proxy_steerable
+
+control socket으로 실행 상태를 제어할 수 있는 양방향 proxy를 실행합니다.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_proxy_steerable (void *frontend_,
+                                                          void *backend_,
+                                                          void *capture_,
+                                                          void *control_);
+```
+
+`frontend_`와 `backend_`는 필수입니다. `capture_`와 `control_`은 각각 NULL일 수 있습니다. Non-NULL
+`control_`은 `PAUSE`, `RESUME`, `TERMINATE`, `STATISTICS` command를 받습니다. 함수는 `TERMINATE`,
+context 종료 또는 오류로 proxy loop가 끝날 때까지 호출 스레드를 block합니다.
+
+모든 handle은 borrowed이며 함수가 닫거나 소유하지 않습니다. `STATISTICS` reply의 message ownership은
+control socket의 일반 raw send/recv 계약을 따릅니다.
+
+**반환값:** proxy가 정상적으로 끝나면 `ZLINK_CONFIG_OK`, 그렇지 않으면 `zlink_config_result_t` 오류.
+필수 handle이 NULL이거나 non-NULL 선택 handle이 raw socket이 아니면
+`ZLINK_CONFIG_INVALID_HANDLE`입니다.
+
+---
+
 ### zlink_sleep
 
 지정된 초 동안 일시 중지(sleep)합니다.

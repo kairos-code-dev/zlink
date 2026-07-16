@@ -27,9 +27,8 @@ zlink_config_result_t zlink_set_sub_option (void *handle_,
                            size_t optvallen_);
 ```
 
-Configures a SUB/XSUB socket option. Also applies to spot-sub and
-spotnode-sub handles. Use `zlink_set_option()` for common options shared
-across all socket types.
+Configures a SUB/XSUB socket option. Use `zlink_set_option()` for common
+options shared across all socket types.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -128,7 +127,7 @@ Raw SUB/XSUB are recv-only types: the intended pattern is to observe
 `ZLINK_POLLIN` from a poller and then pull topic messages with this
 function.
 
-Applicable types: raw SUB, raw XSUB, `spot`, `spot_node`.
+Applicable types: raw SUB, raw XSUB.
 
 **Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -155,8 +154,8 @@ zlink_config_result_t zlink_subscription_at (void *handle_,
 Returns the subscription filter string at `index_` (0-based). On entry,
 `*filter_len_inout_` is the buffer size; on return it is set to the actual
 length. `*is_pattern_out_` reports whether the filter is a pattern
-subscription; the current implementation always reports `0` because all
-subscriptions are byte-prefix filters.
+subscription. All raw subscriptions in 10.0.0 are byte-prefix filters, so it
+always reports `0`.
 
 Applicable types: raw SUB, raw XSUB.
 

@@ -413,6 +413,73 @@ the same handle.
 
 ## Miscellaneous
 
+### zlink_has
+
+Check whether the current library build provides a capability.
+
+```c
+ZLINK_EXPORT bool zlink_has (const char *capability_);
+```
+
+`capability_` is a non-NULL, NUL-terminated string that the function does not
+retain. `"tcp"` always returns `true`. `"ipc"`, `"tls"`, `"ws"`, `"wss"`,
+`"pgm"`, and `"epgm"` return `true` only when that capability is present in
+the build. Any other string returns `false`.
+
+**Thread safety:** Does not mutate global state and may be called from any
+thread.
+
+---
+
+### zlink_proxy
+
+Forward multipart messages bidirectionally between two raw sockets.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_proxy (void *frontend_, void *backend_, void *capture_);
+```
+
+`frontend_` and `backend_` are required raw socket handles. `capture_` may be
+NULL; when non-NULL, it is a raw socket that receives a copy of every forwarded
+message. The call blocks its calling thread until the proxy loop ends.
+
+All three handles are borrowed. The function neither closes nor takes ownership
+of them. The proxy receives message frames and forwards them to the opposite
+socket without returning frame pointers to the application.
+
+**Returns:** `ZLINK_CONFIG_OK` when the proxy ends normally; otherwise a
+`zlink_config_result_t` error. A NULL required handle or a handle that is not a
+raw socket returns `ZLINK_CONFIG_INVALID_HANDLE`.
+
+---
+
+### zlink_proxy_steerable
+
+Run a bidirectional proxy whose state can be controlled through a control
+socket.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_proxy_steerable (void *frontend_,
+                                                          void *backend_,
+                                                          void *capture_,
+                                                          void *control_);
+```
+
+`frontend_` and `backend_` are required. `capture_` and `control_` may each be
+NULL. A non-NULL `control_` accepts `PAUSE`, `RESUME`, `TERMINATE`, and
+`STATISTICS` commands. The call blocks until `TERMINATE`, context termination,
+or an error ends the proxy loop.
+
+Every handle is borrowed; the function neither closes nor owns it. Ownership of
+the `STATISTICS` reply follows the control socket's ordinary raw send/receive
+contract.
+
+**Returns:** `ZLINK_CONFIG_OK` when the proxy ends normally; otherwise a
+`zlink_config_result_t` error. A NULL required handle or a non-NULL optional
+handle that is not a raw socket returns `ZLINK_CONFIG_INVALID_HANDLE`.
+
+---
+
 ### zlink_sleep
 
 Sleep for the given number of seconds.

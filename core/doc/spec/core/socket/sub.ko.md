@@ -27,7 +27,7 @@ SUB는 context auto HWM 정책에서 `recv_ingress` policy class로 분류됩니
 
 ### zlink_set_sub_option
 
-SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 설정합니다.
+SUB/XSUB 소켓 전용 옵션을 설정합니다.
 
 ```c
 zlink_config_result_t zlink_set_sub_option (void *handle_,
@@ -36,9 +36,8 @@ zlink_config_result_t zlink_set_sub_option (void *handle_,
                            size_t optvallen_);
 ```
 
-SUB/XSUB 소켓 옵션을 설정합니다. spot-sub과 spotnode-sub 핸들에도
-적용됩니다. 모든 소켓 타입에 공유되는 공통 옵션은 `zlink_set_option()`을
-사용하세요.
+SUB/XSUB 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 공통 옵션은
+`zlink_set_option()`을 사용합니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -48,7 +47,7 @@ SUB/XSUB 소켓 옵션을 설정합니다. spot-sub과 spotnode-sub 핸들에도
 
 ### zlink_get_sub_option
 
-SUB/XSUB 소켓, spot-sub, spotnode-sub 전용 옵션을 조회합니다.
+SUB/XSUB 소켓 전용 옵션을 조회합니다.
 
 ```c
 zlink_config_result_t zlink_get_sub_option (void *handle_,
@@ -136,7 +135,7 @@ raw SUB/XSUB는 recv-only 타입입니다. poller의 `ZLINK_POLLIN`과 함께 �
 서버 루프에서 readable을 관찰한 뒤 이 함수로 토픽 메시지를 가져오는 방식을
 기본 경로로 합니다.
 
-적용 대상: raw SUB, raw XSUB, `spot`, `spot_node`.
+적용 대상: raw SUB, raw XSUB.
 
 **반환값:** 성공 시 `ZLINK_RECV_OK`, 실패 시 `zlink_recv_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -145,6 +144,44 @@ raw SUB/XSUB는 recv-only 타입입니다. poller의 `ZLINK_POLLIN`과 함께 �
 subscribe recv를 지원하지 않으면 `ENOTSUP`.
 
 **참고:** `zlink_set_subscription`
+
+---
+
+### zlink_subscribe_part
+
+raw `SUB` 또는 `XSUB` 소켓에서 토픽 메시지의 payload 파트 하나를
+수신합니다.
+
+```c
+ZLINK_EXPORT zlink_recv_result_t zlink_subscribe_part (void *sub_,
+                                                       const zlink_routing_id_t **source_rid_out_,
+                                                       char *topic_id_buf_,
+                                                       size_t topic_id_capacity_,
+                                                       size_t *topic_id_len_out_,
+                                                       zlink_msg_t *part_out_,
+                                                       zlink_part_flag_t *has_more_out_,
+                                                       zlink_recv_flags_t flags_);
+```
+
+`topic_id_len_out_`, 초기화된 `part_out_`, `has_more_out_`은 필수입니다.
+`source_rid_out_`은 선택 사항이며 raw `SUB`와 `XSUB`에서는 항상 `NULL`을
+받습니다. 성공하면 토픽 바이트를 호출자 버퍼에 복사하고 payload 파트의
+소유권을 호출자에게 이전합니다. 토픽 바이트는 binary-safe이며 NUL 문자를
+덧붙이지 않습니다. 호출자는 받은 파트를 `zlink_msg_close(part_out_)`로
+정확히 한 번 닫아야 합니다.
+
+`topic_id_capacity_ == 0`이면 `topic_id_buf_`는 NULL이어도 되며, 필요한 토픽
+길이와 payload 파트를 정상적으로 반환합니다. 용량이 0보다 큰데 버퍼가
+NULL이면 `errno`는 `EFAULT`, 버퍼가 작으면 `errno`는 `EMSGSIZE`입니다. 이 두
+오류는 payload 파트를 이미 수신한 뒤 발생하므로 `topic_id_len_out_`,
+`part_out_`, `has_more_out_`은 유효하고 파트 소유권도 호출자에게 이전됩니다.
+작은 버퍼는 변경하지 않습니다. payload를 받기 전에 발생한 다른 실패에서는
+파트 소유권이 이전되지 않습니다.
+
+한 멀티파트 메시지의 첫 payload 파트부터 마지막 파트까지 같은 스레드에서 이
+함수로 계속 수신해야 합니다. `*has_more_out_`은 다음 payload 파트가 있으면
+`ZLINK_PART_MORE`, 마지막이면 `ZLINK_PART_FINAL`입니다. 적용 타입은 raw
+`SUB`, raw `XSUB`입니다.
 
 ---
 
@@ -162,8 +199,8 @@ zlink_config_result_t zlink_subscription_at (void *handle_,
 
 `index_` (0-기반)에 해당하는 구독 필터 문자열을 반환합니다. 진입 시
 `*filter_len_inout_`는 버퍼 크기이며, 반환 시 실제 길이로 설정됩니다.
-`*is_pattern_out_`는 필터가 패턴 구독인지 보고하며, 모든 구독이 byte-prefix
-필터이므로 현재 구현은 항상 `0`을 반환합니다.
+`*is_pattern_out_`는 필터가 패턴 구독인지 보고하며, 모든 raw 구독이 byte-prefix
+필터이므로 10.0.0에서는 항상 `0`을 반환합니다.
 
 적용 타입: raw SUB, raw XSUB.
 

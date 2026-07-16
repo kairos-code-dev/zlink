@@ -32,7 +32,7 @@
 
 ### zlink_set_pub_option
 
-PUB/XPUB 소켓, spot-pub, spotnode-pub 전용 옵션을 설정합니다.
+PUB/XPUB 소켓 전용 옵션을 설정합니다.
 
 ```c
 zlink_config_result_t zlink_set_pub_option (void *handle_,
@@ -41,9 +41,8 @@ zlink_config_result_t zlink_set_pub_option (void *handle_,
                            size_t optvallen_);
 ```
 
-PUB/XPUB 소켓 옵션을 설정합니다. spot-pub과 spotnode-pub 서비스 핸들에서는
-`ZLINK_PUB_OPT_NODROP`만 받습니다. 모든 소켓 타입에 공유되는 공통 옵션은
-`zlink_set_option()`을 사용하세요.
+PUB/XPUB 소켓 옵션을 설정합니다. 모든 소켓 타입에 공유되는 공통 옵션은
+`zlink_set_option()`을 사용합니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -62,9 +61,7 @@ zlink_config_result_t zlink_get_pub_option (void *handle_,
                            size_t *optvallen_);
 ```
 
-PUB/XPUB 소켓 옵션의 현재 값을 가져옵니다. spot-pub과 spotnode-pub 서비스
-핸들에서는 `ZLINK_PUB_OPT_NODROP`과 `ZLINK_PUB_OPT_TOPICS_COUNT`만 읽을 수
-있습니다.
+PUB/XPUB 소켓 옵션의 현재 값을 가져옵니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -94,9 +91,8 @@ zlink_submit_result_t zlink_publish (void *subject_,
 `zlink_submit_result_t` 값을 반환합니다. 상세 내부 errno는 진단을 위해
 `zlink_errno()`로 유지됩니다.
 
-**에러:** `subject_`가 NULL이면 `EFAULT`. `spot` subject에서 `topic_id_`가
-NULL이거나 비어 있으면 `EINVAL`. subject 타입이 publish를 지원하지 않으면
-(non-PUB/XPUB raw 소켓, `spot_node`) `ENOTSUP`.
+**에러:** `subject_`가 NULL이면 `EFAULT`. subject가 raw PUB/XPUB 소켓이
+아니면 `ENOTSUP`.
 
 **참고:** `zlink_publish`, `zlink_set_subscription`, `zlink_subscribe`
 
@@ -178,8 +174,8 @@ zlink_handler_result_t zlink_send_ready_handler (
 가능 전환부터 반영됩니다. 동일 핸들의 send-ready 콜백 내에서 재진입 호출하면
 `errno=EDEADLK`로 실패합니다.
 
-지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, `spot_node`입니다. send-ready는 수신 모드와 독립적입니다.
+지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`입니다.
+send-ready는 수신 모드와 독립적입니다.
 이 콜백과 `ZLINK_POLLOUT`은 같은 send-recovery readiness 축을 가리킵니다.
 readiness 신호는 송신을 다시 시도할 가치가 있다는 뜻이며, 재시도가 반드시
 성공한다는 보장은 아닙니다. 지원하지 않는 subject는 `ENOTSUP`를 반환합니다.

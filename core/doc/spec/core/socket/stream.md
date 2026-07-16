@@ -1,393 +1,126 @@
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md)
+[한국어](stream.ko.md) | English
+
+[Specification index](../../README.md) · [Core index](../README.md) · [Socket overview](README.md) · [STREAM session service](../service/stream-session.md) · [errno map](../errno-map.md)
 
 # Socket — STREAM
 
-Raw TCP/WS communication with peer routing-id addressing. STREAM is
-bind-only; it does NOT support `zlink_connect`.
+This document defines the generic raw STREAM public contract for ZLink Core 10.0.0. Its audience is developers of the C API and bindings that send and receive bytes or fixed-framing packets over routed TCP or WebSocket connections. It answers: “What are the STREAM receive modes, message-ownership rules, and session routing-ID semantics?”
 
-## Receive Model
+## 1. Scope
 
-STREAM is the only socket type that exposes three receive models. Exactly
-one of the three may be active on a given handle.
+STREAM is a bind-only raw socket that assigns a routing ID to every accepted client connection. It does not support `zlink_connect()`. An application addresses a client by routing ID when sending and reads the source routing ID from received records.
 
-- raw recv: `zlink_recv()` pulls transport fragments directly.
-- raw callback: `zlink_recv_handler()` delivers raw fragments through a
-  callback.
-- packet callback: `zlink_stream_packet_handler()` delivers packets
-  assembled from the fixed framing convention as header/body pairs.
+STREAM has no knowledge of MeshNode, Spot, ActorRef, or Actor mailboxes. The separate [STREAM session service](../service/stream-session.md) owns session-to-Actor bindings and Actor-transfer barriers. Raw STREAM has no Actor-binding or part-oriented relay API.
 
-A second attempt to activate a different mode on the same handle fails
-with `EBUSY`. Mode transitions are one-way only, and the three models are
-mutually exclusive.
-
-## Automatic HWM defaults
-
-STREAM is classified as the `stream` policy class by the context automatic HWM
-policy. The active auto-HWM profile selects the unit budget and message-size
-cap; the default profile is `balanced`, and context auto-HWM is enabled by
-default. If an application disables context auto-HWM, STREAM keeps the normal
-HWM default `1000`. `SNDBUF` / `RCVBUF` default to `-1`; STREAM and auto-HWM
-profiles do not change these values automatically.
-
-## Stream Options (`zlink_stream_option_t`)
-
-Used with `zlink_set_stream_option()` / `zlink_get_stream_option()`.
-
-| Constant | Description |
-|---|---|
-| `ZLINK_STREAM_OPT_NOTIFY` | Enable STREAM connect/disconnect notifications (`int`; 0 or 1) |
-
-## Functions
-
-### zlink_set_stream_option
-
-Set a stream-specific option.
+## 2. Creation, bind, and options
 
 ```c
-zlink_config_result_t zlink_set_stream_option (void *handle_,
-                              zlink_stream_option_t option_,
-                              const void *optval_,
-                              size_t optvallen_);
-```
+void *zlink_socket(void *ctx, zlink_socket_type_t type);
+zlink_bind_result_t zlink_bind(void *socket, const char *endpoint);
+zlink_close_result_t zlink_close(void *socket);
 
-Configures a STREAM socket option. Use `zlink_set_option()` for common
-options shared across all socket types.
+typedef enum zlink_stream_option_t {
+  ZLINK_STREAM_OPT_NOTIFY = 0x3501
+} zlink_stream_option_t;
 
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**See also:** `zlink_get_stream_option`, `zlink_set_option`
-
----
-
-### zlink_get_stream_option
-
-Get a stream-specific option.
-
-```c
-zlink_config_result_t zlink_get_stream_option (void *handle_,
-                              zlink_stream_option_t option_,
-                              void *optval_,
-                              size_t *optvallen_);
-```
-
-Retrieves the current value of a STREAM socket option.
-
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**See also:** `zlink_set_stream_option`
-
----
-
-### zlink_send_rid
-
-Send a multipart message to a specific peer by routing id.
-
-```c
-zlink_submit_result_t zlink_send_rid (void *s_,
-                    const zlink_routing_id_t *target_rid_,
-                    zlink_msg_t *parts_,
-                    size_t part_count_,
-                    zlink_send_flags_t flags_);
-```
-
-Sends a multipart message to the peer identified by `target_rid_`. On
-success, ownership of every part is transferred to the library. On failure,
-ownership remains with the caller.
-
-Applicable handle types: ROUTER (directed reply), STREAM (peer-addressed
-send).
-
-**Returns:** `ZLINK_SUBMIT_OK` on success. On failure, returns a
-`zlink_submit_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
-
-**Errors:** `INVALID_HANDLE` if `s_` is NULL. `BACKPRESSURED` if the operation would block
-and `ZLINK_DONTWAIT` was set. `NOT_CONNECTED` if the target peer is not
-connected (ROUTER with `ROUTER_MANDATORY`). `TERMINATED` if the context was
-terminated. See [errno-map.md](../errno-map.md) for the full result matrix.
-
-**See also:** `zlink_send_rid`, `zlink_send`, `zlink_recv`
-
----
-
-### Non-blocking routed send
-
-Non-blocking routed send using the routed send API.
-
-```c
-zlink_submit_result_t zlink_send_rid (void *s_,
-                    const zlink_routing_id_t *target_rid_,
-                    zlink_msg_t *parts_,
-                    size_t part_count_,
-                    zlink_send_flags_t flags_);
-```
-
-Use `zlink_send_rid(..., ZLINK_DONTWAIT)` for non-blocking routed send.
-Non-blocking send returns `ZLINK_SUBMIT_BACKPRESSURED` when the operation
-would block, `ZLINK_SUBMIT_NOT_CONNECTED` when the peer is not reachable.
-See [errno-map.md](../errno-map.md) for the full result matrix. On success,
-ownership of all parts is transferred to the library. On failure,
-ownership remains with the caller.
-
-**Returns:** `ZLINK_SUBMIT_OK` on success, or a `zlink_submit_result_t` value indicating the failure reason. See [errno-map.md](../errno-map.md).
-
-**See also:** `zlink_send_rid`
-
----
-
-### zlink_recv
-
-Receive a multipart message from a socket.
-
-```c
-zlink_recv_result_t zlink_recv (void *s_,
-                 zlink_routing_id_t *source_rid_out_,
-                 zlink_msg_t **parts_out_,
-                 size_t *part_count_out_,
-                 zlink_recv_flags_t flags_);
-```
-
-Receives a complete multipart message from socket `s_`. On success,
-`*parts_out_` points to a library-allocated array of `*part_count_out_`
-message parts, and `*source_rid_out_` is set to the routing id of the
-sender (where applicable). Ownership of the parts array and each part is
-transferred to the caller, who must close every part (or call
-`zlink_multipart_close()`) and free the array. Only usable when the STREAM
-handle is in raw recv mode. If raw callback mode
-(`zlink_recv_handler()` attached) or packet callback mode
-(`zlink_stream_packet_handler()` attached) is active, this call fails with
-`errno=EBUSY`. Pass `ZLINK_DONTWAIT` to return immediately when no message
-is available.
-
-**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
-set, or if `ZLINK_OPT_RCVTIMEO` expired. `EBUSY` if a raw or packet
-callback is attached. `ETERM` if the context was terminated.
-
-**See also:** `zlink_send`, `zlink_recv_handler`,
-`zlink_stream_packet_handler`, `zlink_multipart_close`
-
----
-
-### STREAM session Actor list
-
-The session Actor list is a per-session mapping that associates STREAM client
-session routing ids with Actor refs. The current Actor bindings for a session
-can be read with `zlink_stream_bound_actors()`. One session may be bound to
-multiple Actors; one Actor may be bound to at most one STREAM session at a time.
-
-```c
+zlink_config_result_t zlink_set_stream_option(
   void *stream,
-  void *node);
-
-zlink_submit_result_t zlink_stream_bind_actor(
+  zlink_stream_option_t option,
+  const void *value,
+  size_t value_size);
+zlink_config_result_t zlink_get_stream_option(
   void *stream,
-  const zlink_routing_id_t *session_rid,
-  const zlink_actor_ref_t *actor,
-  zlink_reply_handler_fn handler,
-  void *userdata,
-  uint32_t timeout_ms);
-
-zlink_submit_result_t zlink_stream_unbind_actor(
-  void *stream,
-  const zlink_routing_id_t *session_rid,
-  const char *actor_id,
-  zlink_reply_handler_fn handler,
-  void *userdata,
-  uint32_t timeout_ms);
-
-zlink_submit_result_t zlink_stream_send_bound_actor_part(
-  void *stream,
-  const zlink_routing_id_t *session_rid,
-  const char *actor_id,
-  zlink_msg_t *part,
-  zlink_send_flags_t flags,
-  zlink_part_flag_t part_flag);
-
-zlink_config_result_t zlink_stream_bound_actors(
-  void *stream,
-  const zlink_routing_id_t *session_rid,
-  zlink_actor_ref_t *entries,
-  size_t *count);
+  zlink_stream_option_t option,
+  void *value,
+  size_t *value_size_inout);
 ```
 
-- `stream` is the raw STREAM socket that owns the session routing id.
-  session owner `SpotNode` used for ActorGateway relay. Calling it again with
-  the same stream/node pair succeeds; calling it with a different node fails.
-- Raw and connector STREAM handles must be attached before Actor bind. A
-  SpotNode-owned internal stream may infer the owner structurally.
-- `session_rid` is the STREAM client session routing id.
-- Multiple distinct actor ids may be bound to the same session.
-- Binding the same actor id again on the same session replaces only that actor
-  id entry with the new Actor ref.
-- Binding the same Actor ref again on the same session does not create a
-  duplicate entry and succeeds.
-- Binding an Actor that is already bound to a different session fails with
-  `ZLINK_REQUEST_BUSY`.
-- Binding with an unchecked ref (`generation == 0`) attaches the current Actor
-  with that actor id on the target node. The session Actor list stores a
-  concrete generation ref.
-- A checked ref whose generation differs from the target Actor fails with a
-  conflict or invalid-state result.
-- Bind stores a logical Actor binding. It does not choose the session owner from
-  the Actor ref's `node_rid`, and it does not require the caller to pass a route
-  mesh channel or remote address snapshot.
-- Unbind is idempotent: it succeeds even when the actor id is not in the list.
-- Unbinding one actor id from a session that has multiple bound Actors leaves
-  the other entries intact.
-- When the remote Actor owner node is unreachable, explicit unbind fails with
-  `ZLINK_REQUEST_NOT_CONNECTED` and leaves the existing actor id entry in
-  place.
-- After the Actor owner provider terminates, explicit unbind may succeed by
-  removing the session Actor list entry without waiting for a detach
-  confirmation.
-- After a bind or unbind timeout failure, the session Actor list and Actor
-  bound session ref are left in the pre-call state.
-- Unbind and session disconnect cleanup do not remove the active route.
+Create the socket with `zlink_socket(ctx, ZLINK_SOCKET_STREAM)`. `ZLINK_STREAM_OPT_NOTIFY` is an `int` with value 0 or 1 and is set before bind. A value of 1 exposes client connect and disconnect notifications as zero-length data records. The source routing ID identifies the affected client.
 
-`zlink_stream_send_bound_actor_part()` relays a STREAM session message part
-into the Actor unread state identified by the `actor_id` selector.
+Common `SNDHWM`, `RCVHWM`, `SNDTIMEO`, `RCVTIMEO`, `LINGER`, TLS, and buffer options use `zlink_set_option()` and `zlink_get_option()`. STREAM belongs to the context auto-HWM `stream` policy class. It uses the generic HWM default of 1000 when that policy is disabled.
 
-- When the `actor_id` is not in the session Actor list,
-  `ZLINK_SUBMIT_NOT_FOUND` is returned.
-- When `actor_id` is invalid or NULL, `ZLINK_SUBMIT_INVALID_ARGUMENT` is
-  returned.
-- On success, `part` ownership transfers to the library. Ownership stays with
-  the caller on failure.
-- After a `ZLINK_PART_MORE` succeeds, the next part for the same session must
-  use the same `actor_id`. Using a different actor id returns
-  `ZLINK_SUBMIT_INVALID_STATE`.
-- When a final part submit fails, parts that already succeeded remain owned by
-  the library. The caller may retry the final part with the same actor id.
-- When the target Actor has already been removed on the remote node, the target
-  node discards the message. The completed send result on the sender side is
-  not changed.
-- When the target Actor owner node is unreachable,
-  `ZLINK_SUBMIT_NOT_CONNECTED` is returned.
-- Internal resource exhaustion or HWM overflow on the relay path returns
-  `ZLINK_SUBMIT_BACKPRESSURED`.
-- The `flags` parameter is currently reserved and ignored; the relay path
-  submits non-blocking internally.
+## 3. Receive modes
 
-`zlink_stream_bound_actors()` reads the current Actor bindings for a session.
-`session_rid` selects the session; pass `entries = NULL` to query the required
-`*count` first, then provide a caller-allocated array.
+One STREAM handle uses exactly one of these modes:
 
----
+1. raw receive: `zlink_recv()` returns complete transport records;
+2. raw callback: `zlink_recv_handler()` delivers records to a callback;
+3. packet callback: `zlink_stream_packet_handler()` assembles and delivers fixed-framing packets.
 
-### zlink_recv_handler
+The first receive or handler registration fixes the mode. Using another receive mode or registering a second handler returns `ZLINK_RECV_BUSY` or `ZLINK_HANDLER_BUSY` with `errno == EBUSY`. Data-plane `POLLIN` counts as raw receive mode. A send-ready handler and `POLLOUT` are independent of receive mode.
 
-Attach a raw receive callback to a raw `STREAM` socket.
+## 4. Routed send and raw receive
 
 ```c
-zlink_handler_result_t zlink_recv_handler (
-  void *s_, zlink_socket_msg_handler_fn handler_, void *userdata_);
+zlink_submit_result_t zlink_send_rid(
+  void *stream,
+  const zlink_routing_id_t *target_rid,
+  zlink_msg_t *parts,
+  size_t part_count,
+  zlink_send_flags_t flags);
+
+zlink_recv_result_t zlink_recv(
+  void *stream,
+  zlink_routing_id_t *source_rid_out,
+  zlink_msg_t **parts_out,
+  size_t *part_count_out,
+  zlink_recv_flags_t flags);
 ```
 
-Attach a raw message receive handler. Supported subjects: raw `STREAM`
-only. Unsupported subjects (PAIR, DEALER, etc.) fail with `ENOTSUP`.
-After attach, `zlink_recv()`, `zlink_stream_packet_handler()`, and
-data-plane poller `ZLINK_POLLIN` on the same handle fail with
-`errno=EBUSY`. A second attach on the same handle also fails with
-`errno=EBUSY`.
+`zlink_send_rid()` submits one complete multipart message to the target client. On success ownership of every input part moves to Core; on failure it remains with the caller. A missing connection returns `ZLINK_SUBMIT_NOT_CONNECTED`; an HWM limit or `DONTWAIT` backpressure returns `ZLINK_SUBMIT_BACKPRESSURED`.
 
-**Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
-`zlink_handler_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
+`zlink_recv()` returns a source routing ID and one complete multipart message. On success ownership of the Core-allocated part array and every `zlink_msg_t` moves to the caller. The caller releases all of them with `zlink_multipart_close()`. No data under `DONTWAIT`, or an expired receive timeout, returns `ZLINK_RECV_NO_DATA`.
 
-**See also:** `zlink_recv`, `zlink_stream_packet_handler`
-
----
-
-### zlink_stream_packet_handler
-
-Attach a packet-level receive callback to a raw `STREAM` socket.
+## 5. Raw callback
 
 ```c
-typedef void (*zlink_stream_packet_handler_fn) (
-  void *stream_,
-  const zlink_routing_id_t *source_rid_,
-  zlink_msg_t *header_,
-  zlink_msg_t *body_,
-  void *userdata_);
-
-zlink_handler_result_t zlink_stream_packet_handler (
-  void *stream_,
-  zlink_stream_packet_handler_fn handler_,
-  void *userdata_);
+zlink_handler_result_t zlink_recv_handler(
+  void *stream,
+  zlink_socket_msg_handler_fn handler,
+  void *userdata);
 ```
 
-This function applies only to raw `STREAM`. Other socket types fail with
-`ENOTSUP`.
+Raw callback is supported only by STREAM. The source routing ID is a borrowed view valid only for the callback. Message-part ownership moves to the handler under the callback contract, and the handler consumes or closes each part exactly once. Replacing the same handler or closing the socket from inside the callback returns `EDEADLK`.
 
-Once attached, the implementation accumulates incoming bytes per
-connection and invokes the callback once for each complete packet. The
-framing convention is fixed and parsed in this order:
-
-1. `header_size`: 2-byte big-endian `uint16_t`
-2. `body_size`: 4-byte big-endian `uint32_t`
-3. header payload (`header_size` bytes)
-4. body payload (`body_size` bytes)
-
-Packets with `header_size == 0` or `body_size == 0` are allowed, as are
-packets with both sizes zero. In every case `header_` and `body_` are
-delivered as valid length-zero `zlink_msg_t` objects, never `NULL`.
-
-Ownership rules:
-
-- `source_rid_` is a borrowed view pointing to the routing id of the
-  sending client connection. It is valid only for the duration of the
-  callback; callers that need to retain it must copy the value.
-- Ownership of `header_` and `body_` is transferred to the callback. The
-  callback must close or otherwise consume each `zlink_msg_t` exactly
-  once.
-
-If raw callback mode (`zlink_recv_handler()`) is already attached to the
-same handle, this call fails with `EBUSY`. Conversely, once packet
-callback mode is active, `zlink_recv()`, `zlink_recv_handler()`, and
-data-plane `ZLINK_POLLIN` on the same handle all fail with `EBUSY`. A
-second `zlink_stream_packet_handler()` attach on the same handle also
-fails with `EBUSY`.
-
-If a malformed packet is detected during assembly (premature connection
-close, declared length exceeding implementation limits, internal assembly
-failure, etc.), the connection is treated as an invalid stream in packet
-mode and is closed as the default policy. Partial packets are never
-delivered to the callback. Malformed events are observable through the
-socket monitor surface.
-
-**Returns:** `ZLINK_HANDLER_OK` on success. On failure, returns a
-`zlink_handler_result_t` value. Detailed internal errno remains available
-through `zlink_errno()` for diagnostics.
-
-**Errors:** `INVALID_ARGUMENT` if the handler is NULL. `NOT_SUPPORTED` if
-the handle is not raw `STREAM`. `BUSY` if another receive mode is already
-active.
-
-**See also:** `zlink_recv`, `zlink_recv_handler`
-
----
-
-### zlink_send_ready_handler
-
-Install or replace the send-ready callback.
+## 6. Packet callback and framing
 
 ```c
-zlink_handler_result_t zlink_send_ready_handler (
-  void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
+typedef void (*zlink_stream_packet_handler_fn)(
+  void *stream,
+  const zlink_routing_id_t *source_rid,
+  zlink_msg_t *header,
+  zlink_msg_t *body,
+  void *userdata);
+
+zlink_handler_result_t zlink_stream_packet_handler(
+  void *stream,
+  zlink_stream_packet_handler_fn handler,
+  void *userdata);
 ```
 
-The handler is replace-only. Passing NULL is invalid. A successful replace is
-visible from the next writable transition. If called reentrantly from the
-same handle's send-ready callback, the call fails with `errno=EDEADLK`.
+Packet mode assembles this frame in order on every client byte stream:
 
-Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, and `spot_node`. Send-ready is independent from receive mode. This
-callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
-readiness signal means it is worth retrying send, not that the retry is
-guaranteed to succeed. Unsupported subjects return `ENOTSUP`.
+```text
++----------------+----------------+----------------+---------------+
+| header_size:u16| body_size:u32  | header bytes   | body bytes    |
++----------------+----------------+----------------+---------------+
+| big endian     | big endian     | exact length   | exact length  |
++----------------+----------------+----------------+---------------+
+```
 
-**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+Either payload size can be zero. The callback still receives a valid zero-length message rather than `NULL`. The source routing ID is a borrowed view valid only for the callback, while ownership of header and body moves to the callback.
 
-**See also:** `zlink_send`
+No partial packet is delivered when a declared length exceeds an implementation limit or a connection ends with an incomplete packet. The affected client connection closes and a protocol failure is recorded on the socket monitor.
+
+## 7. Send readiness and thread safety
+
+```c
+zlink_handler_result_t zlink_send_ready_handler(
+  void *stream,
+  zlink_send_ready_handler_fn handler,
+  void *userdata);
+```
+
+Send readiness means that retrying a previously backpressured submit is worthwhile; it does not guarantee success of the next submit. A handler can be replaced but not removed with `NULL`. Registration from inside the same handler returns `ZLINK_HANDLER_DEADLOCK` with `errno == EDEADLK`.
+
+The application serializes socket configuration and close. Submits to different client routing IDs are thread-safe. The same multipart object cannot be used concurrently. The [errno map](../errno-map.md) defines the exact mapping between result enums and errno values.

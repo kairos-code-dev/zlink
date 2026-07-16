@@ -33,9 +33,8 @@ zlink_config_result_t zlink_set_sub_option (void *handle_,
                            size_t optvallen_);
 ```
 
-Configures a SUB/XSUB socket option. Also applies to spot-sub and
-spotnode-sub handles. Use `zlink_set_option()` for common options shared
-across all socket types.
+Configures a SUB/XSUB socket option. Use `zlink_set_option()` for common
+options shared across all socket types.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -134,7 +133,7 @@ Raw SUB/XSUB are recv-only types: the intended pattern is to observe
 `ZLINK_POLLIN` from a poller and then pull topic messages with this
 function.
 
-Applicable types: raw SUB, raw XSUB, `spot`, `spot_node`.
+Applicable types: raw SUB, raw XSUB.
 
 **Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -143,6 +142,45 @@ was set and no message is available. `EMSGSIZE` if the topic buffer is
 too small. `ENOTSUP` if the subject type does not support subscribe recv.
 
 **See also:** `zlink_set_subscription`
+
+---
+
+### zlink_subscribe_part
+
+Receive one payload part of a topic-bearing message from a raw `SUB` or
+`XSUB` socket.
+
+```c
+ZLINK_EXPORT zlink_recv_result_t zlink_subscribe_part (void *sub_,
+                                                       const zlink_routing_id_t **source_rid_out_,
+                                                       char *topic_id_buf_,
+                                                       size_t topic_id_capacity_,
+                                                       size_t *topic_id_len_out_,
+                                                       zlink_msg_t *part_out_,
+                                                       zlink_part_flag_t *has_more_out_,
+                                                       zlink_recv_flags_t flags_);
+```
+
+`topic_id_len_out_`, an initialized `part_out_`, and `has_more_out_` are
+required. `source_rid_out_` is optional and always receives `NULL` for raw
+`SUB` and `XSUB`. On success, the function copies binary-safe topic bytes into
+the caller's buffer without appending a NUL byte and transfers ownership of
+the payload part to the caller. The caller must close the received part
+exactly once with `zlink_msg_close(part_out_)`.
+
+When `topic_id_capacity_ == 0`, `topic_id_buf_` may be NULL; the function
+successfully returns the required topic length and the payload part. If the
+capacity is greater than zero but the buffer is NULL, `errno` is `EFAULT`. If
+the buffer is too small, `errno` is `EMSGSIZE`. These two errors occur after
+the payload part has been received, so `topic_id_len_out_`, `part_out_`, and
+`has_more_out_` are valid and ownership of the part transfers to the caller.
+A short buffer remains unchanged. Other failures that occur before receiving
+a payload do not transfer ownership of a part.
+
+Receive every payload part from the first through the last part of one
+multipart message with this function on the same thread. `*has_more_out_` is
+`ZLINK_PART_MORE` when another payload part follows and `ZLINK_PART_FINAL` for
+the last part. Applicable types are raw `SUB` and raw `XSUB`.
 
 ---
 
@@ -161,8 +199,8 @@ zlink_config_result_t zlink_subscription_at (void *handle_,
 Returns the subscription filter string at `index_` (0-based). On entry,
 `*filter_len_inout_` is the buffer size; on return it is set to the actual
 length. `*is_pattern_out_` reports whether the filter is a pattern
-subscription; the current implementation always reports `0` because all
-subscriptions are byte-prefix filters.
+subscription. All raw subscriptions in 10.0.0 are byte-prefix filters, so it
+always reports `0`.
 
 Applicable types: raw SUB, raw XSUB.
 

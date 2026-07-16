@@ -103,8 +103,8 @@ The handler is replace-only. Passing NULL is invalid. A successful replace is
 visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
-Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, and `spot_node`. Send-ready is independent from receive mode. This
+Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, and
+`STREAM`. Send-ready is independent from receive mode. This
 callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
 readiness signal means it is worth retrying send, not that the retry is
 guaranteed to succeed. Unsupported subjects return `ENOTSUP`.

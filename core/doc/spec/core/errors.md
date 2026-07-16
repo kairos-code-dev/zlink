@@ -1,152 +1,183 @@
-[English](errors.md) | [한국어](errors.ko.md)
+[한국어](errors.ko.md) | English
 
-[Spec Index](../README.md) · [Core Index](README.md)
+[Specification index](../README.md) · [Core index](README.md) · [errno map](errno-map.md)
 
-# Error Handling & Version
+# Errors, result enums, and version
 
-Functions for retrieving error information and querying the library version at
-runtime. Error codes follow the POSIX `errno` convention; zlink extends the
-set with its own codes based on `ZLINK_HAUSNUMERO`.
+This document defines the error ABI and version contract for ZLink Core 10.0.0. Its audience is developers of the C API and bindings. It answers: “How do typed public results map to thread-local errno, and how is version 10.0.0 identified?”
 
-The public extended errno definitions live in `core/include/zlink_errno.h`.
-`core/include/zlink.h` includes that header and re-exports the same public
-error surface. The per-function public result enums (`zlink_submit_result_t`,
-`zlink_close_result_t`, and the rest) are declared in the same header; their
-semantics are specified in [errno-map.md](errno-map.md).
+## 1. General rules
 
-## Error Code Constants
-
-zlink uses a high base value to avoid collisions with system-defined `errno`
-codes:
+Public functions return their primary control flow through a `zlink_*_result_t` and record a more detailed cause in `zlink_errno()` for the same thread. Callers branch on the result enum and use errno for logging and finer diagnosis. Success is always numeric zero, and errno is unspecified after success.
 
 ```c
 #define ZLINK_HAUSNUMERO 156384712
-```
 
-### POSIX codes provided on Windows
+#define EFSM            (ZLINK_HAUSNUMERO + 51)
+#define ENOCOMPATPROTO  (ZLINK_HAUSNUMERO + 52)
+#define ETERM           (ZLINK_HAUSNUMERO + 53)
+#define EMTHREAD        (ZLINK_HAUSNUMERO + 54)
 
-On platforms that do not natively define certain POSIX error codes (notably
-Windows), zlink defines them relative to `ZLINK_HAUSNUMERO`. On POSIX systems
-the standard values are used directly.
-
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `ENOTSUP` | ZLINK_HAUSNUMERO + 1 | Operation not supported |
-| `EPROTONOSUPPORT` | ZLINK_HAUSNUMERO + 2 | Protocol not supported |
-| `ENOBUFS` | ZLINK_HAUSNUMERO + 3 | No buffer space available |
-| `ENETDOWN` | ZLINK_HAUSNUMERO + 4 | Network is down |
-| `EADDRINUSE` | ZLINK_HAUSNUMERO + 5 | Address already in use |
-| `EADDRNOTAVAIL` | ZLINK_HAUSNUMERO + 6 | Address not available |
-| `ECONNREFUSED` | ZLINK_HAUSNUMERO + 7 | Connection refused |
-| `EINPROGRESS` | ZLINK_HAUSNUMERO + 8 | Operation in progress |
-| `ENOTSOCK` | ZLINK_HAUSNUMERO + 9 | Not a socket |
-| `EMSGSIZE` | ZLINK_HAUSNUMERO + 10 | Message too long |
-| `EAFNOSUPPORT` | ZLINK_HAUSNUMERO + 11 | Address family not supported |
-| `ENETUNREACH` | ZLINK_HAUSNUMERO + 12 | Network unreachable |
-| `ECONNABORTED` | ZLINK_HAUSNUMERO + 13 | Connection aborted |
-| `ECONNRESET` | ZLINK_HAUSNUMERO + 14 | Connection reset |
-| `ENOTCONN` | ZLINK_HAUSNUMERO + 15 | Not connected |
-| `ETIMEDOUT` | ZLINK_HAUSNUMERO + 16 | Connection timed out |
-| `EHOSTUNREACH` | ZLINK_HAUSNUMERO + 17 | Host unreachable |
-| `ENETRESET` | ZLINK_HAUSNUMERO + 18 | Network reset |
-| `ESTALE` | ZLINK_HAUSNUMERO + 19 | Stale reference (e.g. stale file handle, stale actor ref) |
-
-### zlink-specific error codes
-
-These codes are always defined and never overlap with POSIX values:
-
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `EFSM` | ZLINK_HAUSNUMERO + 51 | Operation cannot be accomplished in current state (finite-state-machine error) |
-| `ENOCOMPATPROTO` | ZLINK_HAUSNUMERO + 52 | No compatible protocol |
-| `ETERM` | ZLINK_HAUSNUMERO + 53 | Context was terminated |
-| `EMTHREAD` | ZLINK_HAUSNUMERO + 54 | No thread available |
-
-## Version Macros
-
-Compile-time version detection is available through the following macros
-defined in `<zlink.h>`:
-
-```c
-#define ZLINK_VERSION_MAJOR 7
-#define ZLINK_VERSION_MINOR 1
-#define ZLINK_VERSION_PATCH 0
-
-#define ZLINK_MAKE_VERSION(major, minor, patch) \
-    ((major) * 10000 + (minor) * 100 + (patch))
-
-#define ZLINK_VERSION \
-    ZLINK_MAKE_VERSION(ZLINK_VERSION_MAJOR, ZLINK_VERSION_MINOR, ZLINK_VERSION_PATCH)
-```
-
-Use `ZLINK_VERSION` and `ZLINK_MAKE_VERSION` for compile-time version guards:
-
-```c
-#if ZLINK_VERSION >= ZLINK_MAKE_VERSION(6, 0, 0)
-    /* use features introduced in 6.0.0 */
+#ifndef ESTALE
+#define ESTALE          (ZLINK_HAUSNUMERO + 19)
+#endif
+#ifndef EALREADY
+#define EALREADY        (ZLINK_HAUSNUMERO + 20)
+#endif
+#ifndef EDEADLK
+#define EDEADLK         (ZLINK_HAUSNUMERO + 21)
+#endif
+#ifndef ESHUTDOWN
+#define ESHUTDOWN       (ZLINK_HAUSNUMERO + 22)
 #endif
 ```
 
-## Functions
+POSIX errno values missing on a platform use public values based on `ZLINK_HAUSNUMERO`. `ESTALE`, `EALREADY`, `EDEADLK`, and `ESHUTDOWN` are available on every supported platform for service lifecycle and opaque-token errors. The [errno map](errno-map.md) owns the exact per-function mappings.
 
-### zlink_errno
-
-Return the errno value for the calling thread.
+## 2. Submit result
 
 ```c
+typedef enum zlink_submit_result_t {
+  ZLINK_SUBMIT_OK               = 0,
+  ZLINK_SUBMIT_BACKPRESSURED    = 1,
+  ZLINK_SUBMIT_NOT_CONNECTED    = 2,
+  ZLINK_SUBMIT_NOT_FOUND        = 3,
+  ZLINK_SUBMIT_TERMINATED       = 4,
+  ZLINK_SUBMIT_INVALID_HANDLE   = 5,
+  ZLINK_SUBMIT_INVALID_ARGUMENT = 6,
+  ZLINK_SUBMIT_NOT_SUPPORTED    = 7,
+  ZLINK_SUBMIT_INVALID_STATE    = 8,
+  ZLINK_SUBMIT_THREAD_VIOLATION = 9,
+  ZLINK_SUBMIT_OUT_OF_MEMORY    = 10,
+  ZLINK_SUBMIT_SEQ_EXHAUSTED    = 11,
+  ZLINK_SUBMIT_INTERNAL_ERROR   = 12,
+  ZLINK_SUBMIT_NOT_ADMITTED     = 13
+} zlink_submit_result_t;
+```
+
+`BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND`, and `NOT_ADMITTED` are normal runtime control flow. The submit owner document separately defines input-message ownership; callers do not infer it from the result value alone.
+
+## 3. Request completion result
+
+```c
+typedef enum zlink_request_result_t {
+  ZLINK_REQUEST_OK               = 0,
+  ZLINK_REQUEST_TIMED_OUT        = 101,
+  ZLINK_REQUEST_NOT_FOUND        = 102,
+  ZLINK_REQUEST_TERMINATED       = 103,
+  ZLINK_REQUEST_PROTOCOL_ERROR   = 104,
+  ZLINK_REQUEST_INTERNAL_ERROR   = 105,
+  ZLINK_REQUEST_REJECTED         = 106,
+  ZLINK_REQUEST_CONFLICT         = 107,
+  ZLINK_REQUEST_BUSY             = 108,
+  ZLINK_REQUEST_NOT_CONNECTED    = 109,
+  ZLINK_REQUEST_INVALID_ARGUMENT = 110,
+  ZLINK_REQUEST_INVALID_STATE    = 111,
+  ZLINK_REQUEST_NOT_SUPPORTED    = 112,
+  ZLINK_REQUEST_BACKPRESSURED    = 113
+} zlink_request_result_t;
+```
+
+This enum is used by both synchronous lifecycle requests and terminal completions of asynchronous operations. Timeout is represented by `ZLINK_REQUEST_TIMED_OUT`. `BACKPRESSURED` means that a request requiring whole-capacity reservation, such as transfer, failed before admission.
+
+## 4. Receive and handler results
+
+```c
+typedef enum zlink_recv_result_t {
+  ZLINK_RECV_OK               = 0,
+  ZLINK_RECV_NO_DATA          = 201,
+  ZLINK_RECV_BUSY             = 202,
+  ZLINK_RECV_TERMINATED       = 203,
+  ZLINK_RECV_INVALID_HANDLE   = 204,
+  ZLINK_RECV_NOT_SUPPORTED    = 205,
+  ZLINK_RECV_INTERNAL_ERROR   = 206,
+  ZLINK_RECV_BUFFER_TOO_SMALL = 207,
+  ZLINK_RECV_INVALID_STATE    = 208
+} zlink_recv_result_t;
+
+typedef enum zlink_handler_result_t {
+  ZLINK_HANDLER_OK               = 0,
+  ZLINK_HANDLER_INVALID_ARGUMENT = 301,
+  ZLINK_HANDLER_BUSY             = 302,
+  ZLINK_HANDLER_NOT_SUPPORTED    = 303,
+  ZLINK_HANDLER_DEADLOCK         = 304,
+  ZLINK_HANDLER_INVALID_HANDLE   = 305,
+  ZLINK_HANDLER_INTERNAL_ERROR   = 306
+} zlink_handler_result_t;
+```
+
+`BUFFER_TOO_SMALL` means that a caller-provided batch cannot hold the first complete message. `INVALID_STATE` covers stale or revoked claims and domain mismatch. Unregistering or replacing a handler from the same callback returns `DEADLOCK`.
+
+## 5. Close, bind, and connect results
+
+```c
+typedef enum zlink_close_result_t {
+  ZLINK_CLOSE_OK             = 0,
+  ZLINK_CLOSE_BUSY           = 401,
+  ZLINK_CLOSE_SHUTDOWN       = 402,
+  ZLINK_CLOSE_INVALID_HANDLE = 403,
+  ZLINK_CLOSE_INTERNAL_ERROR = 404
+} zlink_close_result_t;
+
+typedef enum zlink_bind_result_t {
+  ZLINK_BIND_OK               = 0,
+  ZLINK_BIND_INVALID_ARGUMENT = 501,
+  ZLINK_BIND_ADDR_IN_USE      = 502,
+  ZLINK_BIND_NOT_SUPPORTED    = 503,
+  ZLINK_BIND_INVALID_HANDLE   = 504,
+  ZLINK_BIND_INTERNAL_ERROR   = 505
+} zlink_bind_result_t;
+
+typedef enum zlink_connect_result_t {
+  ZLINK_CONNECT_OK               = 0,
+  ZLINK_CONNECT_INVALID_ARGUMENT = 601,
+  ZLINK_CONNECT_NOT_SUPPORTED    = 602,
+  ZLINK_CONNECT_INVALID_HANDLE   = 603,
+  ZLINK_CONNECT_INTERNAL_ERROR   = 604,
+  ZLINK_CONNECT_NOT_FOUND        = 605,
+  ZLINK_CONNECT_CONFLICT         = 606,
+  ZLINK_CONNECT_BUSY             = 607,
+  ZLINK_CONNECT_AUTH_FAILED      = 608
+} zlink_connect_result_t;
+```
+
+A MeshNode admission mismatch in MeshName, expected RID, or generation is `CONFLICT`. A trust-profile or peer-authentication mismatch is `AUTH_FAILED`.
+
+## 6. Configuration result
+
+```c
+typedef enum zlink_config_result_t {
+  ZLINK_CONFIG_OK               = 0,
+  ZLINK_CONFIG_INVALID_HANDLE   = 701,
+  ZLINK_CONFIG_INVALID_ARGUMENT = 702,
+  ZLINK_CONFIG_NOT_SUPPORTED    = 703,
+  ZLINK_CONFIG_INTERNAL_ERROR   = 704,
+  ZLINK_CONFIG_INVALID_STATE    = 705,
+  ZLINK_CONFIG_NOT_FOUND        = 706,
+  ZLINK_CONFIG_CONFLICT         = 707,
+  ZLINK_CONFIG_BUFFER_TOO_SMALL = 708,
+  ZLINK_CONFIG_BUSY             = 709
+} zlink_config_result_t;
+```
+
+`CONFLICT` covers duplicate names, duplicate bindings, and process-local identity collisions. `BUFFER_TOO_SMALL` means that query or retain output capacity is insufficient and no partial caller-owned output was written. `BUSY` means that the same mutable batch or configuration object was used concurrently.
+
+## 7. Version
+
+```c
+#define ZLINK_VERSION_MAJOR 10
+#define ZLINK_VERSION_MINOR 0
+#define ZLINK_VERSION_PATCH 0
+
+#define ZLINK_MAKE_VERSION(major, minor, patch) \
+  ((major) * 10000 + (minor) * 100 + (patch))
+
+#define ZLINK_VERSION \
+  ZLINK_MAKE_VERSION(ZLINK_VERSION_MAJOR, ZLINK_VERSION_MINOR, ZLINK_VERSION_PATCH)
+
 int zlink_errno(void);
+const char *zlink_strerror(int errnum);
+void zlink_version(int *major, int *minor, int *patch);
 ```
 
-Each thread maintains its own error number. After a zlink function indicates
-failure (the contract varies per function: `-1`, `NULL`, or a `zlink_*_result_t`
-failure value), call `zlink_errno()` to obtain the specific error code. The value is either a standard POSIX errno or one of
-the `ZLINK_HAUSNUMERO`-based extended codes listed above.
-
-**Returns:** The current thread-local errno value.
-
-**Thread safety:** Safe to call from any thread. Each thread has an independent
-error number.
-
-**See also:** `zlink_strerror`
-
----
-
-### zlink_strerror
-
-Return a human-readable string describing the given error number.
-
-```c
-const char *zlink_strerror(int errnum_);
-```
-
-Translates both standard POSIX error codes and zlink-specific codes (such as
-`EFSM`, `ETERM`, etc.) into descriptive English strings. The returned pointer
-refers to static storage and must not be modified or freed.
-
-**Returns:** A pointer to a static, null-terminated string.
-
-**Thread safety:** Safe to call from any thread. The returned string is
-statically allocated.
-
-**See also:** `zlink_errno`
-
----
-
-### zlink_version
-
-Query the runtime library version.
-
-```c
-void zlink_version(int *major_, int *minor_, int *patch_);
-```
-
-Writes the major, minor, and patch components of the linked library version
-into the provided output pointers. This allows applications to verify at
-runtime that the loaded library is compatible with the headers used at compile
-time.
-
-**Returns:** None (output is written through the pointer parameters).
-
-**Thread safety:** Safe to call from any thread at any time.
-
-**See also:** `ZLINK_VERSION_MAJOR`, `ZLINK_VERSION_MINOR`, `ZLINK_VERSION_PATCH`, `ZLINK_MAKE_VERSION`
+Core 10.0.0 uses SOVERSION 10. The pointer returned by `zlink_strerror()` refers to library-owned static storage and must not be freed or modified. All three functions are thread-safe, and `zlink_errno()` returns only the calling thread’s value.

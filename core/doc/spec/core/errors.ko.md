@@ -1,150 +1,200 @@
-[English](errors.md) | [한국어](errors.ko.md)
+[English](errors.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [errno map](errno-map.ko.md)
 
-# 에러 처리 & 버전
+# 오류, 결과 enum과 버전
 
-에러 정보를 조회하고 런타임에 라이브러리 버전을 확인하는 함수입니다.
-에러 코드는 POSIX `errno` 규칙을 따르며, zlink는 `ZLINK_HAUSNUMERO`를 기반으로
-자체 코드를 추가 정의합니다.
+이 문서는 ZLink Core 10.0.0의 오류 ABI와 version 계약을 정의한다. 대상 독자는 C API와
+bindings 개발자다. 이 문서는 “공개 함수의 typed result와 thread-local errno가 어떤 값으로 대응하며
+10.0.0을 어떻게 판별하는가?”에 답한다.
 
-공개 확장 errno 정의는 `core/include/zlink_errno.h`에 있습니다.
-`core/include/zlink.h`는 이 헤더를 포함해서 같은 공개 오류 표면을 다시
-노출합니다. 함수별 공개 결과 enum(`zlink_submit_result_t`,
-`zlink_close_result_t` 등)도 같은 헤더에 선언되며, 그 의미는
-[errno-map.ko.md](errno-map.ko.md)에서 다룹니다.
+## 1. 기본 규칙
 
-## 에러 코드 상수
-
-zlink는 시스템 정의 `errno` 코드와의 충돌을 방지하기 위해 높은 기본값을
-사용합니다:
+공개 함수는 주된 제어 흐름을 `zlink_*_result_t`로 반환하고 같은 thread의 `zlink_errno()`에 세부 원인을
+기록한다. caller는 result enum으로 분기하고 errno는 log와 더 세밀한 진단에 사용한다. 성공은 항상 숫자
+0이며 성공 뒤 errno 값은 지정하지 않는다.
 
 ```c
 #define ZLINK_HAUSNUMERO 156384712
-```
 
-### Windows에서 제공되는 POSIX 코드
+#define EFSM            (ZLINK_HAUSNUMERO + 51)
+#define ENOCOMPATPROTO  (ZLINK_HAUSNUMERO + 52)
+#define ETERM           (ZLINK_HAUSNUMERO + 53)
+#define EMTHREAD        (ZLINK_HAUSNUMERO + 54)
 
-특정 POSIX 에러 코드를 기본적으로 정의하지 않는 플랫폼(특히 Windows)에서는
-zlink가 `ZLINK_HAUSNUMERO`를 기준으로 해당 코드를 정의합니다. POSIX 시스템에서는
-표준 값이 직접 사용됩니다.
-
-| 상수 | 값 | 의미 |
-|------|-----|------|
-| `ENOTSUP` | ZLINK_HAUSNUMERO + 1 | 지원하지 않는 작업 |
-| `EPROTONOSUPPORT` | ZLINK_HAUSNUMERO + 2 | 지원하지 않는 프로토콜 |
-| `ENOBUFS` | ZLINK_HAUSNUMERO + 3 | 사용 가능한 버퍼 공간 없음 |
-| `ENETDOWN` | ZLINK_HAUSNUMERO + 4 | 네트워크 다운 |
-| `EADDRINUSE` | ZLINK_HAUSNUMERO + 5 | 주소가 이미 사용 중 |
-| `EADDRNOTAVAIL` | ZLINK_HAUSNUMERO + 6 | 주소를 사용할 수 없음 |
-| `ECONNREFUSED` | ZLINK_HAUSNUMERO + 7 | 연결 거부됨 |
-| `EINPROGRESS` | ZLINK_HAUSNUMERO + 8 | 작업 진행 중 |
-| `ENOTSOCK` | ZLINK_HAUSNUMERO + 9 | 소켓이 아님 |
-| `EMSGSIZE` | ZLINK_HAUSNUMERO + 10 | 메시지가 너무 김 |
-| `EAFNOSUPPORT` | ZLINK_HAUSNUMERO + 11 | 지원하지 않는 주소 체계 |
-| `ENETUNREACH` | ZLINK_HAUSNUMERO + 12 | 네트워크에 도달할 수 없음 |
-| `ECONNABORTED` | ZLINK_HAUSNUMERO + 13 | 연결 중단됨 |
-| `ECONNRESET` | ZLINK_HAUSNUMERO + 14 | 연결 재설정됨 |
-| `ENOTCONN` | ZLINK_HAUSNUMERO + 15 | 연결되지 않음 |
-| `ETIMEDOUT` | ZLINK_HAUSNUMERO + 16 | 연결 시간 초과 |
-| `EHOSTUNREACH` | ZLINK_HAUSNUMERO + 17 | 호스트에 도달할 수 없음 |
-| `ENETRESET` | ZLINK_HAUSNUMERO + 18 | 네트워크 재설정 |
-| `ESTALE` | ZLINK_HAUSNUMERO + 19 | 오래된 참조 (예: 만료된 파일 핸들, 만료된 actor ref) |
-
-### zlink 전용 에러 코드
-
-이 코드들은 항상 정의되며 POSIX 값과 절대 겹치지 않습니다:
-
-| 상수 | 값 | 의미 |
-|------|-----|------|
-| `EFSM` | ZLINK_HAUSNUMERO + 51 | 현재 상태에서 작업 불가 (FSM 에러) |
-| `ENOCOMPATPROTO` | ZLINK_HAUSNUMERO + 52 | 호환되는 프로토콜 없음 |
-| `ETERM` | ZLINK_HAUSNUMERO + 53 | Context 종료됨 |
-| `EMTHREAD` | ZLINK_HAUSNUMERO + 54 | 사용 가능한 스레드 없음 |
-
-## 버전 매크로
-
-`<zlink.h>`에 정의된 다음 매크로를 통해 컴파일 시점 버전 감지가 가능합니다:
-
-```c
-#define ZLINK_VERSION_MAJOR 7
-#define ZLINK_VERSION_MINOR 1
-#define ZLINK_VERSION_PATCH 0
-
-#define ZLINK_MAKE_VERSION(major, minor, patch) \
-    ((major) * 10000 + (minor) * 100 + (patch))
-
-#define ZLINK_VERSION \
-    ZLINK_MAKE_VERSION(ZLINK_VERSION_MAJOR, ZLINK_VERSION_MINOR, ZLINK_VERSION_PATCH)
-```
-
-컴파일 시점 버전 가드에 `ZLINK_VERSION`과 `ZLINK_MAKE_VERSION`을 사용합니다:
-
-```c
-#if ZLINK_VERSION >= ZLINK_MAKE_VERSION(6, 0, 0)
-    /* use features introduced in 6.0.0 */
+#ifndef ESTALE
+#define ESTALE          (ZLINK_HAUSNUMERO + 19)
+#endif
+#ifndef EALREADY
+#define EALREADY        (ZLINK_HAUSNUMERO + 20)
+#endif
+#ifndef EDEADLK
+#define EDEADLK         (ZLINK_HAUSNUMERO + 21)
+#endif
+#ifndef ESHUTDOWN
+#define ESHUTDOWN       (ZLINK_HAUSNUMERO + 22)
 #endif
 ```
 
-## 함수
+platform에 없는 POSIX errno는 `ZLINK_HAUSNUMERO` 기반 공개 값으로 정의한다. service lifecycle과 opaque
+token에 사용하는 `ESTALE`, `EALREADY`, `EDEADLK`와 `ESHUTDOWN`은 모든 지원 platform에서 위 값을
+사용할 수 있다. 정확한 함수별 대응은 [errno map](errno-map.ko.md)이 소유한다.
 
-### zlink_errno
-
-호출 스레드의 errno 값을 반환합니다.
+## 2. Submit result
 
 ```c
+typedef enum zlink_submit_result_t {
+  ZLINK_SUBMIT_OK               = 0,
+  ZLINK_SUBMIT_BACKPRESSURED    = 1,
+  ZLINK_SUBMIT_NOT_CONNECTED    = 2,
+  ZLINK_SUBMIT_NOT_FOUND        = 3,
+  ZLINK_SUBMIT_TERMINATED       = 4,
+  ZLINK_SUBMIT_INVALID_HANDLE   = 5,
+  ZLINK_SUBMIT_INVALID_ARGUMENT = 6,
+  ZLINK_SUBMIT_NOT_SUPPORTED    = 7,
+  ZLINK_SUBMIT_INVALID_STATE    = 8,
+  ZLINK_SUBMIT_THREAD_VIOLATION = 9,
+  ZLINK_SUBMIT_OUT_OF_MEMORY    = 10,
+  ZLINK_SUBMIT_SEQ_EXHAUSTED    = 11,
+  ZLINK_SUBMIT_INTERNAL_ERROR   = 12,
+  ZLINK_SUBMIT_NOT_ADMITTED     = 13
+} zlink_submit_result_t;
+```
+
+`BACKPRESSURED`, `NOT_CONNECTED`, `NOT_FOUND`와 `NOT_ADMITTED`는 정상적인 runtime 제어 흐름이다. 입력
+message ownership은 submit owner 문서가 따로 정하며 result 값만으로 추측하지 않는다.
+
+## 3. Request completion result
+
+```c
+typedef enum zlink_request_result_t {
+  ZLINK_REQUEST_OK               = 0,
+  ZLINK_REQUEST_TIMED_OUT        = 101,
+  ZLINK_REQUEST_NOT_FOUND        = 102,
+  ZLINK_REQUEST_TERMINATED       = 103,
+  ZLINK_REQUEST_PROTOCOL_ERROR   = 104,
+  ZLINK_REQUEST_INTERNAL_ERROR   = 105,
+  ZLINK_REQUEST_REJECTED         = 106,
+  ZLINK_REQUEST_CONFLICT         = 107,
+  ZLINK_REQUEST_BUSY             = 108,
+  ZLINK_REQUEST_NOT_CONNECTED    = 109,
+  ZLINK_REQUEST_INVALID_ARGUMENT = 110,
+  ZLINK_REQUEST_INVALID_STATE    = 111,
+  ZLINK_REQUEST_NOT_SUPPORTED    = 112,
+  ZLINK_REQUEST_BACKPRESSURED    = 113
+} zlink_request_result_t;
+```
+
+이 enum은 synchronous lifecycle request의 반환과 asynchronous operation의 terminal completion에 모두
+사용한다. timeout 결과는 `ZLINK_REQUEST_TIMED_OUT`으로 표현한다.
+`BACKPRESSURED`는 transfer와 같이 전체 capacity reservation이 필요한 request가 admission 전에 실패했음을
+뜻한다.
+
+## 4. Receive와 handler result
+
+```c
+typedef enum zlink_recv_result_t {
+  ZLINK_RECV_OK               = 0,
+  ZLINK_RECV_NO_DATA          = 201,
+  ZLINK_RECV_BUSY             = 202,
+  ZLINK_RECV_TERMINATED       = 203,
+  ZLINK_RECV_INVALID_HANDLE   = 204,
+  ZLINK_RECV_NOT_SUPPORTED    = 205,
+  ZLINK_RECV_INTERNAL_ERROR   = 206,
+  ZLINK_RECV_BUFFER_TOO_SMALL = 207,
+  ZLINK_RECV_INVALID_STATE    = 208
+} zlink_recv_result_t;
+
+typedef enum zlink_handler_result_t {
+  ZLINK_HANDLER_OK               = 0,
+  ZLINK_HANDLER_INVALID_ARGUMENT = 301,
+  ZLINK_HANDLER_BUSY             = 302,
+  ZLINK_HANDLER_NOT_SUPPORTED    = 303,
+  ZLINK_HANDLER_DEADLOCK         = 304,
+  ZLINK_HANDLER_INVALID_HANDLE   = 305,
+  ZLINK_HANDLER_INTERNAL_ERROR   = 306
+} zlink_handler_result_t;
+```
+
+`BUFFER_TOO_SMALL`은 caller가 제공한 batch가 첫 complete message를 담지 못한 경우다. `INVALID_STATE`는
+stale 또는 revoked claim과 domain 불일치에 사용한다. handler unregister나 replace를 같은 callback에서
+호출하면 `DEADLOCK`이다.
+
+## 5. Close, bind와 connect result
+
+```c
+typedef enum zlink_close_result_t {
+  ZLINK_CLOSE_OK             = 0,
+  ZLINK_CLOSE_BUSY           = 401,
+  ZLINK_CLOSE_SHUTDOWN       = 402,
+  ZLINK_CLOSE_INVALID_HANDLE = 403,
+  ZLINK_CLOSE_INTERNAL_ERROR = 404
+} zlink_close_result_t;
+
+typedef enum zlink_bind_result_t {
+  ZLINK_BIND_OK               = 0,
+  ZLINK_BIND_INVALID_ARGUMENT = 501,
+  ZLINK_BIND_ADDR_IN_USE      = 502,
+  ZLINK_BIND_NOT_SUPPORTED    = 503,
+  ZLINK_BIND_INVALID_HANDLE   = 504,
+  ZLINK_BIND_INTERNAL_ERROR   = 505
+} zlink_bind_result_t;
+
+typedef enum zlink_connect_result_t {
+  ZLINK_CONNECT_OK               = 0,
+  ZLINK_CONNECT_INVALID_ARGUMENT = 601,
+  ZLINK_CONNECT_NOT_SUPPORTED    = 602,
+  ZLINK_CONNECT_INVALID_HANDLE   = 603,
+  ZLINK_CONNECT_INTERNAL_ERROR   = 604,
+  ZLINK_CONNECT_NOT_FOUND        = 605,
+  ZLINK_CONNECT_CONFLICT         = 606,
+  ZLINK_CONNECT_BUSY             = 607,
+  ZLINK_CONNECT_AUTH_FAILED      = 608
+} zlink_connect_result_t;
+```
+
+MeshNode admission의 MeshName, expected RID 또는 generation 불일치는 `CONFLICT`, trust profile과 peer
+authentication 불일치는 `AUTH_FAILED`다.
+
+## 6. Configuration result
+
+```c
+typedef enum zlink_config_result_t {
+  ZLINK_CONFIG_OK               = 0,
+  ZLINK_CONFIG_INVALID_HANDLE   = 701,
+  ZLINK_CONFIG_INVALID_ARGUMENT = 702,
+  ZLINK_CONFIG_NOT_SUPPORTED    = 703,
+  ZLINK_CONFIG_INTERNAL_ERROR   = 704,
+  ZLINK_CONFIG_INVALID_STATE    = 705,
+  ZLINK_CONFIG_NOT_FOUND        = 706,
+  ZLINK_CONFIG_CONFLICT         = 707,
+  ZLINK_CONFIG_BUFFER_TOO_SMALL = 708,
+  ZLINK_CONFIG_BUSY             = 709
+} zlink_config_result_t;
+```
+
+`CONFLICT`는 중복 이름, 중복 binding과 process-local identity 충돌이다. `BUFFER_TOO_SMALL`은 query 또는
+retain output capacity가 작으며 caller-owned output을 일부 기록하지 않았음을 뜻한다. `BUSY`는 같은 mutable
+batch나 configuration object를 동시에 사용한 경우다.
+
+## 7. Version
+
+```c
+#define ZLINK_VERSION_MAJOR 10
+#define ZLINK_VERSION_MINOR 0
+#define ZLINK_VERSION_PATCH 0
+
+#define ZLINK_MAKE_VERSION(major, minor, patch) \
+  ((major) * 10000 + (minor) * 100 + (patch))
+
+#define ZLINK_VERSION \
+  ZLINK_MAKE_VERSION(ZLINK_VERSION_MAJOR, ZLINK_VERSION_MINOR, ZLINK_VERSION_PATCH)
+
 int zlink_errno(void);
+const char *zlink_strerror(int errnum);
+void zlink_version(int *major, int *minor, int *patch);
 ```
 
-각 스레드는 자체 에러 번호를 유지합니다. zlink 함수가 실패를 나타낸 뒤(함수마다
-`-1`, `NULL`, 또는 `zlink_*_result_t` 실패 값 등 반환 계약이 다름)
-`zlink_errno()`를 호출하여 구체적인 에러 코드를 얻습니다. 값은 표준 POSIX errno이거나 위에 나열된 `ZLINK_HAUSNUMERO` 기반
-확장 코드 중 하나입니다.
-
-**반환값:** 현재 스레드 로컬 errno 값.
-
-**스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다. 각 스레드는
-독립적인 에러 번호를 가집니다.
-
-**참고:** `zlink_strerror`
-
----
-
-### zlink_strerror
-
-주어진 에러 번호를 설명하는 사람이 읽을 수 있는 문자열을 반환합니다.
-
-```c
-const char *zlink_strerror(int errnum_);
-```
-
-표준 POSIX 에러 코드와 zlink 전용 코드(`EFSM`, `ETERM` 등)를 설명 문자열로
-변환합니다. 반환된 포인터는 정적 저장소를 가리키며 수정하거나 해제해서는
-안 됩니다.
-
-**반환값:** 정적 저장소에 있는 null 종료 문자열의 포인터.
-
-**스레드 안전성:** 모든 스레드에서 안전하게 호출할 수 있습니다. 반환된 문자열은
-정적으로 할당됩니다.
-
-**참고:** `zlink_errno`
-
----
-
-### zlink_version
-
-런타임 라이브러리 버전을 조회합니다.
-
-```c
-void zlink_version(int *major_, int *minor_, int *patch_);
-```
-
-링크된 라이브러리 버전의 major, minor, patch 구성 요소를 제공된 출력 포인터에
-기록합니다. 이를 통해 애플리케이션은 런타임에 로드된 라이브러리가 컴파일 시
-사용된 헤더와 호환되는지 확인할 수 있습니다.
-
-**반환값:** 없음 (출력은 포인터 매개변수를 통해 기록됩니다).
-
-**스레드 안전성:** 언제든지 모든 스레드에서 안전하게 호출할 수 있습니다.
-
-**참고:** `ZLINK_VERSION_MAJOR`, `ZLINK_VERSION_MINOR`, `ZLINK_VERSION_PATCH`, `ZLINK_MAKE_VERSION`
+Core 10.0.0은 SOVERSION 10을 사용한다. `zlink_strerror()`가 반환한
+pointer는 library-owned static storage이며 해제하거나 수정하지 않는다. 세 함수는 thread-safe이고
+`zlink_errno()`는 호출 thread의 값만 반환한다.

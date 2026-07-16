@@ -56,7 +56,7 @@ typedef enum zlink_auto_hwm_profile_t
 | `ZLINK_THREAD_AFFINITY_CPU_ADD` | 7 | Add a CPU to the I/O thread affinity set |
 | `ZLINK_THREAD_AFFINITY_CPU_REMOVE` | 8 | Remove a CPU from the I/O thread affinity set |
 | `ZLINK_THREAD_NAME_PREFIX` | 9 | Prefix for I/O thread names |
-| `ZLINK_CTX_OPT_BLOCKY` | 10 | Legacy option for blocking behavior on context termination (`int`; default 1) |
+| `ZLINK_CTX_OPT_BLOCKY` | 10 | Controls blocking behavior on context termination (`int`; default 1) |
 | `ZLINK_CTX_OPT_AUTO_HWM_ENABLE` | 12 | Whether automatic HWM policy is enabled (`0` = disabled, `1` = enabled) |
 | `ZLINK_CTX_OPT_AUTO_HWM_RECALC_DEBOUNCE_MS` | 14 | Minimum debounce window in milliseconds before connection churn triggers another automatic HWM recalculation (`>= 0`) |
 | `ZLINK_CTX_OPT_AUTO_HWM_PROFILE` | 17 | Automatic HWM profile (`ZLINK_AUTO_HWM_PROFILE_*`). Invalid values fail with `EINVAL`. |

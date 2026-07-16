@@ -1,258 +1,193 @@
-[Spec Index](../../README.md) · [Core Index](../README.md) · [Socket Common](README.md)
+[한국어](dealer.ko.md) | English
+
+[Specification index](../../README.md) · [Core index](../README.md) · [Socket overview](README.md) · [errno map](../errno-map.md)
 
 # Socket — DEALER
 
-Asynchronous request socket with fair-queuing recv and round-robin send.
-DEALER is the request side in request-reply patterns.
+DEALER is an asynchronous raw socket that fair-queues inbound messages and
+sends to connected peers using round-robin or weight-aware selection. The same
+socket can process ordinary raw messages and request/reply records.
 
-## Dealer Options (`zlink_dealer_option_t`)
+## 1. Public types
 
-Used with `zlink_set_dealer_option()` and `zlink_get_dealer_option()`.
-
-| Constant | Description |
-|---|---|
-| `ZLINK_DEALER_OPT_PROBE` | Send an empty message on connect to establish identity at the ROUTER peer (`int`; 0 or 1) |
-| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | Default request timeout in milliseconds for `zlink_dealer_request()` (`int`) |
-| `ZLINK_DEALER_OPT_WEIGHT` | Local peer weight advertised to connected peers (`int`; `0..100`, default `100`) |
-
-## Weight-aware outbound selection
-
-DEALER excludes any connected peer whose advertised weight is `0` from its
-candidate set. Positive weights stay eligible for outbound, and unequal
-positive weights change the send ratio.
-
-- When every known peer has the same positive weight, DEALER keeps the
-  existing round-robin behavior.
-- When peers have different positive weights, DEALER uses a weighted
-  schedule. A peer with weight `100` is selected twice as often as a peer
-  with weight `50`.
-- When some peers are `0`, DEALER keeps distributing only across the
-  remaining positive-weight peers.
-- When every known peer is `0`, `zlink_send()` and
-  `zlink_dealer_request()` fail with `ZLINK_SUBMIT_NOT_ADMITTED`. The
-  underlying connections are still alive; a peer that returns to a positive
-  weight becomes a candidate again automatically.
-- Peer weight is propagated as a best-effort runtime signal.
-  Under races the same refusal may surface first as
-  `ZLINK_SUBMIT_NOT_CONNECTED`.
-- Weight changes on connected peers are observable through the socket
-  monitor event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`. The peer is identified by
-  `routing_id`, and `value` carries the new weight.
-
-## Automatic HWM defaults
-
-DEALER is classified as the `peer_queue` policy class by the context automatic
-HWM policy. The active auto-HWM profile selects the unit budget and
-message-size cap; the default profile is `balanced`. Manual `SNDHWM` and
-`RCVHWM` settings override the automatic values. `SNDBUF` / `RCVBUF` default to
-`-1`, and auto-HWM profiles do not change these values automatically.
-
-## SPOT channel socket ownership
-
-A client/server channel `DEALER` may be used as a SPOT channel socket for
-`zlink_spot_send_channel_part()` / `zlink_spot_request_channel_part()`. The
-caller or channel runtime continues to own that socket; SPOT machinery does not
-close it, and the socket lifecycle is independent of the `Spot`.
-
-The SPOT route bridge endpoint itself is a `ROUTER` channel
-(`zlink_spot_route_bridge_attach_router_channel()`), not a `DEALER`; its
-ownership and handoff rules are described in
-[`service/spot.md`](../service/spot.md).
-
-## Functions
-
-### zlink_set_dealer_option
-
-Set a dealer-specific option.
+The following numbers are public ABI values.
 
 ```c
-zlink_config_result_t zlink_set_dealer_option (void *handle_,
-                              zlink_dealer_option_t option_,
-                              const void *optval_,
-                              size_t optvallen_);
+typedef enum zlink_dealer_option_t {
+  ZLINK_DEALER_OPT_PROBE              = 0x3201,
+  ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS = 0x3202,
+  ZLINK_DEALER_OPT_WEIGHT             = 0x3203
+} zlink_dealer_option_t;
+
+typedef enum zlink_dealer_message_type_t {
+  ZLINK_DEALER_MESSAGE_RAW         = 0,
+  ZLINK_DEALER_MESSAGE_REQUEST     = 1,
+  ZLINK_DEALER_MESSAGE_REPLY       = 2,
+  ZLINK_DEALER_MESSAGE_ERROR_REPLY = 3
+} zlink_dealer_message_type_t;
+
+typedef enum zlink_part_flag_t {
+  ZLINK_PART_FINAL = 0,
+  ZLINK_PART_MORE  = 1
+} zlink_part_flag_t;
+
+typedef void (*zlink_reply_handler_fn)(
+  zlink_request_result_t result_,
+  zlink_msg_t *parts_,
+  size_t part_count_,
+  void *userdata_);
 ```
 
-Configures a DEALER socket option. Use `zlink_set_option()` for common
-options shared across all socket types.
+`ZLINK_PART_MORE` means that another part follows in the same multipart
+record. `ZLINK_PART_FINAL` means that the current part is the last part of the
+record. Receive APIs use the same two values for `has_more_out_`.
 
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**See also:** `zlink_set_option`
-
----
-
-### zlink_get_dealer_option
-
-Read a dealer-specific option.
+## 2. DEALER options
 
 ```c
-zlink_config_result_t zlink_get_dealer_option (void *handle_,
-                              zlink_dealer_option_t option_,
-                              void *optval_,
-                              size_t *optvallen_);
+zlink_config_result_t zlink_set_dealer_option(
+  void *handle_,
+  zlink_dealer_option_t option_,
+  const void *optval_,
+  size_t optvallen_);
+
+zlink_config_result_t zlink_get_dealer_option(
+  void *handle_,
+  zlink_dealer_option_t option_,
+  void *optval_,
+  size_t *optvallen_);
 ```
 
-Reads a DEALER socket option into `optval_`. `optvallen_` is the input
-capacity and is updated with the number of bytes written. Use
-`zlink_get_option()` for common options shared across all socket types.
+| Constant | Value format | Meaning |
+|---|---|---|
+| `ZLINK_DEALER_OPT_PROBE` | `int`, `0` or `1` | Sends an empty raw message when a connection is established so the peer can observe the connection and routing ID; the default is `0` |
+| `ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` | Nonnegative `int`, milliseconds | Selects the default timeout used by a request API when `timeout_ms_ == 0`; the default is `5000` |
+| `ZLINK_DEALER_OPT_WEIGHT` | `int`, `0..100` | Advertises this DEALER's weight to connected peers; the default is `100` |
 
-**Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
+For `zlink_get_dealer_option()`, `*optvallen_` is the input capacity of
+`optval_`. On success it is updated to the number of bytes written. HWM,
+reconnect, heartbeat, and timeout options that are not DEALER-specific use
+`zlink_set_option()` and `zlink_get_option()`.
 
-**See also:** `zlink_get_option`
+Outbound peers with equal positive weights are selected in round-robin order.
+Unequal positive weights affect the selection ratio, while a peer with weight
+`0` is excluded. If every known peer has weight `0`, a submit may fail with
+`ZLINK_SUBMIT_NOT_ADMITTED`.
 
----
+## 3. Message record classification
 
-### zlink_send
+`zlink_dealer_recv_part()` returns a record kind and request sequence together
+with each payload part.
 
-Send a multipart message on a socket.
+| `message_type_out_` value | `request_seq_out_` | Meaning |
+|---|---:|---|
+| `ZLINK_DEALER_MESSAGE_RAW` (`0`) | `0` | An ordinary raw multipart message without a request/reply envelope |
+| `ZLINK_DEALER_MESSAGE_REQUEST` (`1`) | Nonzero | A request received by this DEALER; the returned value is a reply token for `zlink_dealer_reply_part()` |
+| `ZLINK_DEALER_MESSAGE_REPLY` (`2`) | Nonzero | A successful reply record |
+| `ZLINK_DEALER_MESSAGE_ERROR_REPLY` (`3`) | Nonzero | A failed reply record |
+
+Every part of one multipart record returns the same message type and request
+sequence. Replies and terminal failures for work started through a request API
+are delivered through the `zlink_reply_handler_fn` completion. The following
+API sends an ordinary raw message and does not create a request sequence.
 
 ```c
-zlink_submit_result_t zlink_send (void *s_,
-                zlink_msg_t *parts_,
-                size_t part_count_,
-                zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_send_part(
+  void *s_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_);
 ```
 
-Sends a multipart message consisting of `part_count_` parts from the
-`parts_` array on socket `s_`. On success, ownership of every part in the
-array is transferred to the library and the caller must not access them
-afterwards. On failure, ownership remains with the caller. The `flags_`
-parameter may be 0 or `ZLINK_DONTWAIT`.
+## 4. Part sequences and ownership
 
-**Returns:** `ZLINK_SUBMIT_OK` on success, or a `zlink_submit_result_t` value indicating the failure reason. See [errno-map.md](../errno-map.md).
+`*_part` send calls form one multipart sequence from `ZLINK_PART_MORE` through
+`ZLINK_PART_FINAL`. While a sequence is open, another send-helper family cannot
+be interleaved on the same handle.
 
-**Errors:** `BACKPRESSURED` if the operation would block and `ZLINK_DONTWAIT` was set.
-`NOT_ADMITTED` when every known peer has weight `0`.
-`TERMINATED` if the context was terminated. See [errno-map.md](../errno-map.md) for the full result matrix.
+When `part_` points to a valid initialized message, a send API consumes its
+message content on both success and failure. The caller therefore cannot read
+the pre-submit payload or submit the same content again after the call,
+regardless of its result. Payload needed for a retry must be retained in a
+separate message before the call.
 
-**See also:** `zlink_send`, `zlink_recv`
+`part_out_` passed to a receive API must be an initialized `zlink_msg_t`. On
+success, ownership of the received part moves to the caller, which closes it
+exactly once with `zlink_msg_close()`. No received-part ownership moves on
+failure.
 
----
-
-### Non-blocking send
-
-Non-blocking send using the same `zlink_send` entry point with
-`ZLINK_DONTWAIT`.
+## 5. Raw request submit
 
 ```c
-zlink_submit_result_t zlink_send (void *s_,
-                zlink_msg_t *parts_,
-                size_t part_count_,
-                zlink_send_flags_t flags_);
+zlink_submit_result_t zlink_dealer_request_part(
+  void *dealer_,
+  zlink_msg_t *part_,
+  zlink_send_flags_t flags_,
+  zlink_part_flag_t part_flag_,
+  uint32_t timeout_ms_,
+  zlink_reply_handler_fn handler_,
+  void *userdata_);
 ```
 
-Use `zlink_send(..., ZLINK_DONTWAIT)` for non-blocking send. Non-blocking
-send returns `ZLINK_SUBMIT_BACKPRESSURED` when the operation would block,
-`ZLINK_SUBMIT_NOT_CONNECTED` when the peer is not reachable, and
-`ZLINK_SUBMIT_NOT_ADMITTED` when every known peer has weight `0`. See
-[errno-map.md](../errno-map.md) for the full result matrix.
+This submits one asynchronous request payload one part at a time. For an
+intermediate part, pass `ZLINK_PART_MORE`, `timeout_ms_ == 0`, `handler_ ==
+NULL`, and `userdata_ == NULL`. The last part uses `ZLINK_PART_FINAL` and a
+non-null `handler_`. A final call with `timeout_ms_ == 0` uses the
+`ZLINK_DEALER_OPT_REQUEST_TIMEOUT_MS` default. `flags_` is
+`ZLINK_SEND_FLAGS_NONE` or `ZLINK_SEND_FLAGS_DONTWAIT`.
 
-**See also:** `zlink_send`
+If the final submit returns `ZLINK_SUBMIT_OK`, exactly one completion is
+delivered to `handler_`. A failed submit does not invoke the handler. Ownership
+of callback `parts_` and every message moves to the callback, which releases
+them exactly once. On timeout and other terminal outcomes,
+`zlink_request_result_t` identifies the result.
 
----
-
-### zlink_dealer_request
-
-Send an asynchronous request and register a reply handler.
+## 6. Raw record receive
 
 ```c
-zlink_submit_result_t zlink_dealer_request (void *dealer_,
-                          zlink_msg_t *parts_,
-                          size_t part_count_,
-                          zlink_reply_handler_fn handler_,
-                          void *userdata_,
-                          zlink_send_flags_t flags_,
-                          uint32_t timeout_ms_);
+zlink_recv_result_t zlink_dealer_recv_part(
+  void *dealer_,
+  uint8_t *message_type_out_,
+  uint64_t *request_seq_out_,
+  zlink_msg_t *part_out_,
+  zlink_part_flag_t *has_more_out_,
+  zlink_recv_flags_t flags_);
 ```
 
-Sends a multipart request on the DEALER socket and registers `handler_`
-to be invoked when the reply arrives or the timeout expires. On success,
-ownership of all parts is transferred to the library.
+This returns one part from a complete record. Every output pointer is required.
+The C type of `message_type_out_` is `uint8_t`; its value is one of the numbers
+defined by `zlink_dealer_message_type_t`. `flags_` is
+`ZLINK_RECV_FLAGS_NONE` or `ZLINK_RECV_FLAGS_DONTWAIT`. A non-blocking call with
+no available record returns `ZLINK_RECV_NO_DATA` with `EAGAIN`.
 
-**Returns:** `ZLINK_SUBMIT_OK` when the request submit is accepted. On
-failure, returns a `zlink_submit_result_t` value. Reply completion is
-delivered separately through `zlink_reply_handler_fn`.
+When `has_more_out_ == ZLINK_PART_MORE`, the next call receives the next part
+of the same record. `ZLINK_PART_FINAL` completes that record's receive
+sequence.
 
-**See also:** `zlink_send`, `zlink_reply_handler_fn`
-
----
-
-### zlink_dealer_reply_part
-
-Send one reply part for a DEALER request received through
-`zlink_dealer_recv_part()`.
+## 7. Raw reply submit
 
 ```c
-zlink_submit_result_t zlink_dealer_reply_part (void *dealer_,
-                              uint64_t request_seq_,
-                              zlink_msg_t *part_,
-                              zlink_part_flag_t part_flag_);
+zlink_submit_result_t zlink_dealer_reply_part(
+  void *dealer_,
+  uint64_t request_seq_,
+  zlink_msg_t *part_,
+  zlink_part_flag_t part_flag_);
 ```
 
-`request_seq_` must be the non-zero sequence returned by
-`zlink_dealer_recv_part()`. On success, ownership of `part_` is transferred to
-the library. On failure, ownership remains with the caller except for invalid
-argument paths that consume invalid send parts consistently with the other
-`*_part` helper APIs.
+This sends a reply part for a `ZLINK_DEALER_MESSAGE_REQUEST` record.
+`request_seq_` must be the nonzero reply token returned for that request by
+`zlink_dealer_recv_part()` on the same socket. A multipart reply uses the same
+token for every part. A successful `ZLINK_PART_FINAL` completes the reply for
+that token, which cannot then be reused.
 
-**Returns:** `ZLINK_SUBMIT_OK` on success, or a `zlink_submit_result_t` value indicating the failure reason. See [errno-map.md](../errno-map.md).
+## 8. Results and readiness
 
-**See also:** `zlink_dealer_recv_part`, `zlink_dealer_request_part`
+Submit APIs return `zlink_submit_result_t`, receive APIs return
+`zlink_recv_result_t`, and option APIs return `zlink_config_result_t`. The
+[errno map](../errno-map.md) defines the mapping between each result and
+`zlink_errno()`.
 
----
-
-### zlink_recv
-
-Receive a multipart message from a socket.
-
-```c
-zlink_recv_result_t zlink_recv (void *s_,
-                 zlink_routing_id_t *source_rid_out_,
-                 zlink_msg_t **parts_out_,
-                 size_t *part_count_out_,
-                 zlink_recv_flags_t flags_);
-```
-
-Receives a complete multipart message from socket `s_`. On success,
-`*parts_out_` points to a library-allocated array of `*part_count_out_`
-message parts, and `*source_rid_out_` is set to the routing id of the
-sender (where applicable). Ownership of the parts array and each part is
-transferred to the caller, who must close every part (or call
-`zlink_multipart_close()`) and free the array. DEALER's data-plane receive
-surface is recv-only, apart from the `zlink_dealer_request()` completion
-callback. The intended pattern is to observe `ZLINK_POLLIN` from a poller
-and pull data with this function. Pass `ZLINK_DONTWAIT` to return
-immediately when no message is available.
-
-**Returns:** `ZLINK_RECV_OK` on success; otherwise a `zlink_recv_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**Errors:** `EAGAIN` if the operation would block and `ZLINK_DONTWAIT` was
-set, or if `ZLINK_OPT_RCVTIMEO` expired. `ETERM` if the context was
-terminated.
-
-**See also:** `zlink_send`, `zlink_multipart_close`
-
----
-
-### zlink_send_ready_handler
-
-Install or replace the send-ready callback.
-
-```c
-zlink_handler_result_t zlink_send_ready_handler (
-  void *s_, zlink_send_ready_handler_fn handler_, void *userdata_);
-```
-
-The handler is replace-only. Passing NULL is invalid. A successful replace is
-visible from the next writable transition. If called reentrantly from the
-same handle's send-ready callback, the call fails with `errno=EDEADLK`.
-
-Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, and `spot_node`. Send-ready is independent from receive mode. This
-callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
-readiness signal means it is worth retrying send, not that the retry is
-guaranteed to succeed. Unsupported subjects return `ENOTSUP`.
-
-**Returns:** `ZLINK_HANDLER_OK` on success; otherwise a `zlink_handler_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
-
-**See also:** `zlink_send`
+DEALER `ZLINK_POLLIN` means that a raw or request/reply record can be received.
+`ZLINK_POLLOUT` and `zlink_send_ready_handler()` indicate that retrying a
+backpressured submit is worthwhile; they do not guarantee that the next submit
+will succeed.

@@ -1,67 +1,68 @@
-[English](events.md) | [한국어](events.ko.md)
+[English](events.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [Monitoring](monitoring.ko.md) · [Polling](polling.ko.md) · [Dispatch](service/dispatch.ko.md)
 
-# 이벤트 카탈로그
+# Event와 readiness 카탈로그
 
-이 문서는 raw socket monitor 이벤트의 정본 카탈로그입니다.
+이 문서는 ZLink Core 10.0.0의 공개 event family와 readiness 의미를 정리한다. 대상 독자는 monitor,
+poller와 service dispatch를 bindings에 투영하는 개발자다. 각 event의 구조체와 API 계약은 연결된 owner
+문서가 소유하며 이 문서는 family 간 경계를 정의한다.
 
-사용 기준:
-- [monitoring.ko.md](monitoring.ko.md): monitor API와 peer query API
-- 이 문서: 이벤트 의미, payload 필드, 권장 gate
+## 1. Event family
 
-## 의미 수준
+| Family | Source | 전달 API | 의미 |
+|---|---|---|---|
+| socket monitor | raw socket monitor handle | handler 또는 recv | bind, connect, handshake, disconnect, protocol과 close |
+| MeshNode monitor | MeshNode monitor handle | handler 또는 recv | lifecycle, peer, multicast, backpressure, operation과 claim 상태 |
+| poller readiness | socket, FD, timer, MeshNode | `zlink_poll`, poller wait | 지금 drain 또는 submit retry를 수행할 가치가 있음 |
+| service ready | MeshNode ready index | ready handler 또는 `POLLIN` 뒤 ready batch | application/infrastructure owner claim을 가져올 수 있음 |
+| timer fire | timer handle | handler 또는 timer recv | 누적 fire count가 있음 |
 
-- `CONNECTION_READY`: raw socket 전용 저비용 ready edge
-  - raw socket: send/recv ready edge
+monitor event는 관측 기록이고 readiness는 현재 work 존재 가능성을 알리는 level-triggered 상태다. readiness
+하나가 application message 하나와 일대일로 대응한다고 가정하지 않는다.
 
-권장 perf gate:
-- raw socket perf: `ZLINK_EVENT_CONNECTION_READY`를 예상 client 수만큼 수집한다
-- SPOT perf: 별도 readiness 스트림을 사용하지 않고 명시적인 `READY/START`
-  barrier protocol을 사용한다
-- delivery-ready 또는 aggregate-ready monitor event를 perf gate로 사용하지 않음
+## 2. Raw socket lifecycle
 
-## Raw Socket Monitor 이벤트
+raw socket monitor는 endpoint bind/listen, outgoing connect, accept, handshake success/failure, disconnect,
+protocol error와 close를 기록한다. disconnect reason은 transport error, handshake failure, Context 종료와
+unknown으로 구분한다. raw event는 MeshName, ChannelName 또는 service owner를 포함하지 않는다.
 
-| 상수 | 의미 |
-|---|---|
-| `ZLINK_EVENT_CONNECTED` | outbound 연결 수립 |
-| `ZLINK_EVENT_CONNECT_DELAYED` | 동기 connect 실패 후 재시도 예약 |
-| `ZLINK_EVENT_CONNECT_RETRIED` | 비동기 재시도 진행 중 |
-| `ZLINK_EVENT_LISTENING` | bind/listen 활성 |
-| `ZLINK_EVENT_BIND_FAILED` | bind 실패 |
-| `ZLINK_EVENT_ACCEPTED` | inbound 연결 수락 |
-| `ZLINK_EVENT_ACCEPT_FAILED` | accept 실패 |
-| `ZLINK_EVENT_CLOSED` | 정상 close |
-| `ZLINK_EVENT_CLOSE_FAILED` | close 실패 |
-| `ZLINK_EVENT_DISCONNECTED` | 세션 연결 해제 |
-| `ZLINK_EVENT_MONITOR_STOPPED` | socket monitor 종료 |
-| `ZLINK_EVENT_HANDSHAKE_FAILED_NO_DETAIL` | 상세 정보 없는 handshake 실패 |
-| `ZLINK_EVENT_CONNECTION_READY` | transport handshake 이후 ready edge / first usable send path |
-| `ZLINK_EVENT_HANDSHAKE_FAILED_PROTOCOL` | protocol handshake 오류 |
-| `ZLINK_EVENT_HANDSHAKE_FAILED_AUTH` | auth handshake 오류 |
-| `ZLINK_EVENT_PEER_WEIGHT_CHANGED` | 연결된 raw peer의 가중치가 바뀜. `routing_id`가 그 peer를 식별하고, `value`에 새 `0..100` 가중치가 들어간다. `ZLINK_SOCKET_MONITOR_EVENT_PEER_WEIGHT_CHANGED`의 별칭이다. |
+## 3. MeshNode lifecycle과 peer
 
-disconnect reason:
-- `ZLINK_DISCONNECT_REASON_UNKNOWN`
-- `ZLINK_DISCONNECT_REASON_HANDSHAKE_FAILED`
-- `ZLINK_DISCONNECT_REASON_TRANSPORT_ERROR`
-- `ZLINK_DISCONNECT_REASON_CTX_TERM`
+MeshNode monitor는 다음 상태 전이를 기록한다.
 
-## 예시
-
-raw perf gate:
-
-```c
-if (event->event == ZLINK_EVENT_CONNECTION_READY) {
-    ++ready_clients;
-}
+```text
+CREATED -> STARTED -> PARTIAL_READY <-> READY -> DRAINING -> STOPPED
+                         |               |
+                         +---- ERROR <---+
 ```
 
-SPOT perf gate:
+peer event는 RID와 lifecycle generation을 함께 사용한다. endpoint 문자열만으로 peer identity를 정하지
+않는다. admission 거절은 MeshName, expected RID, generation과 trust failure를 result·errno로 구분한다.
 
-```c
-/* client가 control topic으로 READY 송신 */
-/* server가 READY == expected_clients를 기다림 */
-/* server가 START broadcast */
-```
+## 4. Logical Multicast와 backpressure
+
+Logical Multicast event는 publish 하나의 snapshot, admitted와 dropped target aggregate를 기록한다. local
+Spot match 수와 remote target 수를 구분하며 topic과 payload는 monitor에 포함하지 않는다. 기본 NODROP
+성공은 dropped target이 0이다.
+
+backpressure event는 submit이 queue 또는 reservation capacity 때문에 진행되지 않았음을 뜻한다. send-ready와
+`POLLOUT`은 이후 retry할 가치가 생겼다는 뜻이며 다음 submit의 성공을 보장하지 않는다.
+
+## 5. Service ready와 claim
+
+MeshNode ready callback은 readable domain mask만 통지하고 payload를 전달하지 않는다. ready batch의 각
+record는 application 또는 infrastructure domain 하나와 claim 하나를 소유한다. 같은 owner의 두 domain은
+서로 다른 ready record이므로 application turn과 completion 진행을 분리할 수 있다.
+
+claim release 뒤 mailbox에 work가 남으면 Core가 ready index를 다시 설정한다. callback 또는 poller가
+ready를 관측한 직후 다른 consumer가 drain할 수 없으므로, single-consumer receive mode를 지키면 lost
+wakeup 없이 level-triggered 의미가 유지된다.
+
+## 6. Ordering과 overflow
+
+같은 source queue에서는 Core가 event를 commit한 순서를 보존한다. 서로 다른 peer I/O thread, raw socket과
+MeshNode monitor 사이의 전역 wall-clock order는 제공하지 않는다.
+
+monitor queue overflow는 status counter에 반영하고 lifecycle·peer·protocol event를 우선 보존한다. service
+ready index는 payload를 drop하지 않으며 consumer가 claim을 release할 때 남은 work를 다시 통지한다.

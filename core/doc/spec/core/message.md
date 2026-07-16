@@ -6,14 +6,25 @@
 
 > Note:
 > This document covers message creation and multipart handling.
-> Request-reply and SPOT direct delivery are defined at the ZMP
-> protocol level; see the protocol documents under `doc/plan/spot-refactor`.
-> The public message API does not expose message-level request-reply state.
+> Request-reply and service routing are defined by their formal socket and
+> service specifications. The public message API exposes neither request-reply
+> nor service-routing state.
 
 The Message API provides functions for creating, sending, and managing zlink
 messages. Messages are the fundamental unit of data exchange between sockets
 and can carry arbitrary binary payloads, support zero-copy semantics, and
 form multipart sequences.
+
+### Terms
+
+| Term | Meaning |
+|---|---|
+| payload | User-data bytes carried by a message |
+| multipart | Multiple frames transmitted as one logical message |
+| zero-copy | Transfer by pointer or retained storage instead of payload copy |
+| reference count | Number of message handles sharing one storage block |
+| routing ID | Byte string used by a ROUTER socket to identify a peer |
+| control part | Internal frame prepended by a higher-level protocol |
 
 ## Types
 
@@ -49,13 +60,19 @@ data buffer is no longer needed.
 
 ## Constants
 
+### Metadata macros
+
+| Constant | Value | Meaning |
+|---|---:|---|
+| `ZLINK_MSG_METADATA_KEY_USER_MIN` | `0x0100` | Lowest user-defined metadata key |
+| `ZLINK_MSG_METADATA_VALUE_MAX` | `65535` | Maximum metadata value size in bytes |
+
 ### String Metadata Properties (reserved)
 
-The following string metadata keys are reserved for possible future
-`zlink_msg_gets()` exposure. **The current `zlink_msg_gets()` implementation is
-a stub** that returns `NULL` with `errno = EINVAL` for every call, so do not
-rely on it in application code; peer details are exposed through socket monitor
-event payloads and service snapshot/query APIs.
+The following string metadata keys are reserved for `zlink_msg_gets()`. In
+10.0.0, `zlink_msg_gets()` returns `NULL` with `errno = EINVAL` for every call.
+Peer details are exposed through socket-monitor event payloads and service
+snapshot/query APIs.
 
 | Key (reserved) | Description |
 |---|---|
@@ -317,12 +334,12 @@ const char *zlink_msg_gets (const zlink_msg_t *msg_, const char *property_);
 ```
 
 Symbol reserved for message-level string metadata lookup (for example
-`"Socket-Type"`, `"Identity"`, `"Peer-Address"`). The current
-implementation is a stub: every call returns `NULL` with `errno = EINVAL`.
+`"Socket-Type"`, `"Identity"`, `"Peer-Address"`). In 10.0.0 every call
+returns `NULL` with `errno = EINVAL`.
 Do not rely on this function in application code; peer details are exposed
 through socket monitor event payloads and service snapshot/query APIs.
 
-**Returns:** `NULL` (the function does not expose metadata at this time).
+**Returns:** `NULL`.
 
 **Thread safety:** Not thread-safe.
 

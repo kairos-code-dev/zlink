@@ -208,6 +208,34 @@ routing id가 들어왔을 때의 정책을 정합니다. 값은 `int`로 설정
 있습니다. STREAM은 서버가 연결별 4바이트 routing id를 직접 만들기 때문에
 이 옵션의 영향을 받지 않습니다.
 
+### 송신 재시도 모드
+
+```c
+typedef enum zlink_submit_retry_mode_t
+{
+    ZLINK_SUBMIT_RETRY_OFF = 0,
+    ZLINK_SUBMIT_RETRY_LOCAL_FAILURE = 1
+} zlink_submit_retry_mode_t;
+```
+
+`ZLINK_SUBMIT_RETRY_OFF`는 자동 재시도를 하지 않습니다.
+`ZLINK_SUBMIT_RETRY_LOCAL_FAILURE`는 송신을 peer queue에 넘기기 전에 발생한
+로컬 실패만 재시도할 수 있음을 나타냅니다. 이 모드는 peer 전달이나 처리
+완료를 보장하지 않습니다.
+
+### 메시지 파트 플래그
+
+```c
+typedef enum zlink_part_flag_t
+{
+    ZLINK_PART_FINAL = 0,
+    ZLINK_PART_MORE = 1
+} zlink_part_flag_t;
+```
+
+`ZLINK_PART_MORE`는 같은 멀티파트 메시지에 다음 파트가 있음을 나타내고,
+`ZLINK_PART_FINAL`은 현재 파트가 마지막임을 나타냅니다.
+
 ### 송신 결과
 
 ```c
@@ -270,18 +298,19 @@ typedef enum zlink_request_result_t
     ZLINK_REQUEST_OK = 0,
 
     /* Completion failure visible to the requester. */
-    ZLINK_REQUEST_TIMED_OUT = 101,
-    ZLINK_REQUEST_NOT_FOUND = 102,
-    ZLINK_REQUEST_TERMINATED = 103,
-    ZLINK_REQUEST_PROTOCOL_ERROR = 104,
-    ZLINK_REQUEST_INTERNAL_ERROR = 105,
-    ZLINK_REQUEST_REJECTED = 106,
-    ZLINK_REQUEST_CONFLICT = 107,
-    ZLINK_REQUEST_BUSY = 108,
-    ZLINK_REQUEST_NOT_CONNECTED = 109,
+    ZLINK_REQUEST_TIMED_OUT       = 101,
+    ZLINK_REQUEST_NOT_FOUND       = 102,
+    ZLINK_REQUEST_TERMINATED      = 103,
+    ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
+    ZLINK_REQUEST_INTERNAL_ERROR  = 105,
+    ZLINK_REQUEST_REJECTED        = 106,
+    ZLINK_REQUEST_CONFLICT        = 107,
+    ZLINK_REQUEST_BUSY            = 108,
+    ZLINK_REQUEST_NOT_CONNECTED   = 109,
     ZLINK_REQUEST_INVALID_ARGUMENT = 110,
-    ZLINK_REQUEST_INVALID_STATE = 111,
-    ZLINK_REQUEST_NOT_SUPPORTED = 112
+    ZLINK_REQUEST_INVALID_STATE   = 111,
+    ZLINK_REQUEST_NOT_SUPPORTED   = 112,
+    ZLINK_REQUEST_BACKPRESSURED   = 113
 } zlink_request_result_t;
 ```
 
@@ -294,7 +323,7 @@ enum입니다. callback은 `result_`를 `zlink_request_result_t` 값으로
 | `ZLINK_REQUEST_OK` | 0 | reply payload를 정상 수신함 |
 | `ZLINK_REQUEST_TIMED_OUT` | 101 | 설정된 시간 안에 reply가 도착하지 않음 |
 | `ZLINK_REQUEST_NOT_FOUND` | 102 | 대상이 없어 error reply로 완료됨 |
-| `ZLINK_REQUEST_TERMINATED` | 103 | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
+| `ZLINK_REQUEST_TERMINATED` | 103 | terminal reply 전에 Context 또는 service owner lifecycle이 종료됨 (`ETERM` 또는 `ESHUTDOWN`) |
 | `ZLINK_REQUEST_PROTOCOL_ERROR` | 104 | reply envelope 또는 error reply payload가 잘못됨 |
 | `ZLINK_REQUEST_INTERNAL_ERROR` | 105 | 더 세분화된 public bucket 없이 request completion이 실패함 |
 | `ZLINK_REQUEST_REJECTED` | 106 | target이 request를 명시적으로 거부함 (예: actor join 거부) |
@@ -304,6 +333,7 @@ enum입니다. callback은 `result_`를 `zlink_request_result_t` 값으로
 | `ZLINK_REQUEST_INVALID_ARGUMENT` | 110 | request에 잘못된 인자가 담김 |
 | `ZLINK_REQUEST_INVALID_STATE` | 111 | target이 이 request를 거부하는 상태임 |
 | `ZLINK_REQUEST_NOT_SUPPORTED` | 112 | target이 지원하지 않는 작업 |
+| `ZLINK_REQUEST_BACKPRESSURED` | 113 | 원자적 reservation을 확보하지 못함 |
 
 ### 보안 메커니즘
 
@@ -320,14 +350,74 @@ enum입니다. callback은 `result_`를 `zlink_request_result_t` 값으로
 `zlink_set_pub_option()`, `zlink_set_sub_option()`,
 `zlink_set_stream_option()` 등 전용 함수로 설정합니다.
 ROUTING_ID는 `zlink_set_routing_id()` / `zlink_get_routing_id()` 전용
-함수를, TLS는 `zlink_set_tls_server()` / `zlink_set_tls_client()` 전용
-함수를, SUBSCRIBE/UNSUBSCRIBE는 `zlink_set_subscription()` /
+함수를 사용한다. TLS server/client role의 표준 설정은 `zlink_set_tls_server()` /
+`zlink_set_tls_client()`를 사용하고, `ZLINK_OPT_TLS_*`는 지원하는 raw network socket의 개별 TLS 값을
+설정하거나 조회할 때만 사용한다. SUBSCRIBE/UNSUBSCRIBE는 `zlink_set_subscription()` /
 `zlink_unset_subscription()` 전용 함수를 사용합니다.
 
 #### 공통 옵션 (`zlink_option_t`)
 
+```c
+typedef enum zlink_option_t {
+  ZLINK_OPT_AFFINITY                  = 0x3001,
+  ZLINK_OPT_RATE                      = 0x3003,
+  ZLINK_OPT_RECOVERY_IVL              = 0x3004,
+  ZLINK_OPT_SNDBUF                    = 0x3005,
+  ZLINK_OPT_RCVBUF                    = 0x3006,
+  ZLINK_OPT_FD                        = 0x3007,
+  ZLINK_OPT_EVENTS                    = 0x3008,
+  ZLINK_OPT_TYPE                      = 0x3009,
+  ZLINK_OPT_LINGER                    = 0x300A,
+  ZLINK_OPT_RECONNECT_IVL             = 0x300B,
+  ZLINK_OPT_BACKLOG                   = 0x300C,
+  ZLINK_OPT_RECONNECT_IVL_MAX         = 0x300D,
+  ZLINK_OPT_MAXMSGSIZE                = 0x300E,
+  ZLINK_OPT_SNDHWM                    = 0x300F,
+  ZLINK_OPT_RCVHWM                    = 0x3010,
+  ZLINK_OPT_MULTICAST_HOPS            = 0x3011,
+  ZLINK_OPT_RCVTIMEO                  = 0x3012,
+  ZLINK_OPT_SNDTIMEO                  = 0x3013,
+  ZLINK_OPT_LAST_ENDPOINT             = 0x3014,
+  ZLINK_OPT_TCP_KEEPALIVE             = 0x3015,
+  ZLINK_OPT_TCP_KEEPALIVE_CNT         = 0x3016,
+  ZLINK_OPT_TCP_KEEPALIVE_IDLE        = 0x3017,
+  ZLINK_OPT_TCP_KEEPALIVE_INTVL       = 0x3018,
+  ZLINK_OPT_IMMEDIATE                 = 0x3019,
+  ZLINK_OPT_IPV6                      = 0x301A,
+  ZLINK_OPT_CONFLATE                  = 0x301B,
+  ZLINK_OPT_TOS                       = 0x301C,
+  ZLINK_OPT_HANDSHAKE_IVL             = 0x301D,
+  ZLINK_OPT_BLOCKY                    = 0x301E,
+  ZLINK_OPT_INVERT_MATCHING           = 0x3020,
+  ZLINK_OPT_HEARTBEAT_IVL             = 0x3021,
+  ZLINK_OPT_HEARTBEAT_TTL             = 0x3022,
+  ZLINK_OPT_HEARTBEAT_TIMEOUT         = 0x3023,
+  ZLINK_OPT_CONNECT_TIMEOUT           = 0x3024,
+  ZLINK_OPT_TCP_MAXRT                 = 0x3025,
+  ZLINK_OPT_MULTICAST_MAXTPDU         = 0x3026,
+  ZLINK_OPT_BINDTODEVICE              = 0x3027,
+  ZLINK_OPT_TLS_CERT                   = 0x3028,
+  ZLINK_OPT_TLS_KEY                    = 0x3029,
+  ZLINK_OPT_TLS_CA                     = 0x302A,
+  ZLINK_OPT_TLS_VERIFY                 = 0x302B,
+  ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT    = 0x302C,
+  ZLINK_OPT_TLS_HOSTNAME               = 0x302D,
+  ZLINK_OPT_TLS_TRUST_SYSTEM           = 0x302E,
+  ZLINK_OPT_TLS_PASSWORD               = 0x302F,
+  ZLINK_OPT_ZMP_METADATA               = 0x3030,
+  ZLINK_OPT_TCP_NODELAY                = 0x3031,
+  ZLINK_OPT_ROUTE_VALUE_MAX_SIZE       = 0x3032,
+  ZLINK_OPT_RID_DUPLICATE_POLICY       = 0x3033,
+  ZLINK_OPT_AUTO_HWM_MSG_UNIT_BYTES    = 0x3034,
+  ZLINK_OPT_SUBMIT_RETRY_MODE          = 0x3037,
+  ZLINK_OPT_SUBMIT_RETRY_TIMEOUT       = 0x3038,
+  ZLINK_OPT_SUBMIT_RETRY_ATTEMPTS      = 0x3039
+} zlink_option_t;
+```
+
 `zlink_set_option()` / `zlink_get_option()`과 함께 사용합니다.
-모든 소켓 타입과 discovery(fan-out)에 적용됩니다.
+raw socket과 discovery에 적용된다. MeshNode에는 `SNDHWM`, `RCVHWM`, `SNDTIMEO`, `RCVTIMEO`만
+적용되며 다른 `zlink_option_t` 값은 `ZLINK_CONFIG_NOT_SUPPORTED`, `errno == ENOTSUP`이다.
 
 내부적으로 옵션은 세 소유권 카테고리로 분류되어 각 도메인 소유자가
 validation/apply를 담당합니다. 공개 API surface는 동일하지만, 새 옵션
@@ -496,6 +586,38 @@ data-plane `ZLINK_POLLIN`은 `errno=EBUSY`로 실패합니다. 동일 handle에 
 
 ---
 
+### zlink_recv_part
+
+raw 소켓에서 메시지 파트 하나를 수신합니다.
+
+```c
+ZLINK_EXPORT zlink_recv_result_t zlink_recv_part (void *s_,
+                                                  const zlink_routing_id_t **source_rid_out_,
+                                                  zlink_msg_t *part_out_,
+                                                  zlink_part_flag_t *has_more_out_,
+                                                  zlink_recv_flags_t flags_);
+```
+
+지원 타입은 raw `PAIR`, `DEALER`, `STREAM`입니다. raw `PUB`, `XPUB`,
+`SUB`, `XSUB`, `ROUTER`에는 사용할 수 없으며
+`ZLINK_RECV_NOT_SUPPORTED`를 반환하고 `errno`를 `ENOTSUP`로 설정합니다.
+`part_out_`은 초기화된 메시지여야 하고 `part_out_`과 `has_more_out_`은
+필수입니다.
+
+성공하면 수신한 파트의 소유권이 호출자에게 이전되므로 호출자는
+`zlink_msg_close(part_out_)`를 정확히 한 번 호출해야 합니다. 실패하면 파트
+소유권은 이전되지 않습니다. `source_rid_out_`은 선택 사항입니다. `STREAM`은
+Core가 소유한 routing ID 보기를 반환하고 `PAIR`와 `DEALER`는 `NULL`을
+반환합니다. 이 보기는 다음 raw 수신 호출 뒤에도 유지해야 한다면 호출자가
+복사해야 합니다. `*has_more_out_`은 다음 파트가 있으면 `ZLINK_PART_MORE`,
+마지막 파트이면 `ZLINK_PART_FINAL`입니다.
+
+한 멀티파트 메시지의 첫 파트부터 마지막 파트까지 같은 스레드에서 이 함수로
+계속 수신해야 합니다. `ZLINK_RECV_FLAGS_DONTWAIT`를 사용하고 수신할 파트가
+없으면 `ZLINK_RECV_NO_DATA`를 반환하고 `errno`를 `EAGAIN`으로 설정합니다.
+
+---
+
 ### zlink_close
 
 소켓을 닫고 리소스를 해제합니다.
@@ -533,11 +655,12 @@ zlink_config_result_t zlink_set_option (void *handle_,
                       size_t optvallen_);
 ```
 
-공통 옵션을 설정합니다. 모든 소켓 타입과 discovery(fan-out)에서
-사용합니다. `option_` 매개변수는 `zlink_option_t` enum 값입니다. `optval_`
+공통 옵션을 설정한다. `handle_`은 raw socket, discovery 또는 MeshNode일 수 있다. MeshNode가 지원하는
+option은 [MeshNode option 지원표](../service/mesh-node.ko.md#9-option과-handle-지원)가 정한다.
+`option_` 매개변수는 `zlink_option_t` enum 값입니다. `optval_`
 포인터는 값을 제공하고 `optvallen_`은 크기를 바이트 단위로 지정합니다.
 
-일부 옵션은 소켓을 바인딩하거나 연결하기 전에 설정해야 합니다.
+MeshNode option은 `start` 전에만 설정한다. raw socket과 discovery의 설정 시점은 각 option 계약을 따른다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -559,7 +682,8 @@ zlink_config_result_t zlink_get_option (void *handle_,
                       size_t *optvallen_);
 ```
 
-공통 옵션의 현재 값을 가져옵니다.
+공통 옵션의 현재 값을 가져온다. `handle_`은 raw socket, discovery 또는 MeshNode일 수 있으며 MeshNode의
+지원 범위는 setter와 같다. getter는 MeshNode의 모든 유효한 lifecycle state에서 호출할 수 있다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -577,8 +701,9 @@ zlink_config_result_t zlink_set_routing_id (void *handle_,
                            size_t size_);
 ```
 
-ROUTER 주소 지정을 위한 소켓 아이덴티티를 설정합니다. 최대 255바이트.
-바인딩 또는 연결하기 전에 설정해야 합니다.
+raw socket 또는 MeshNode의 routing ID를 설정한다. 길이는 1..255 bytes이며 값은 binary-safe하다. raw
+socket은 bind 또는 connect 전에, MeshNode는 `start` 전에 설정한다. 다른 handle 종류는
+`ZLINK_CONFIG_NOT_SUPPORTED`, `errno == ENOTSUP`이다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -595,11 +720,50 @@ zlink_config_result_t zlink_get_routing_id (void *handle_,
                            zlink_routing_id_t *out_);
 ```
 
-소켓에 설정된 라우팅 아이덴티티를 가져옵니다.
+raw socket 또는 MeshNode에 설정된 routing ID를 caller-owned `zlink_routing_id_t`에 복사한다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
 **참고:** `zlink_set_routing_id`
+
+---
+
+### zlink_socket_set_channel_name
+
+raw 소켓에 channel name 메타데이터를 설정합니다.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_socket_set_channel_name (void *socket_,
+                                                                  const char *channel_name_);
+```
+
+`channel_name_`은 길이 1..255바이트의 NUL 종료 문자열이어야 합니다. 함수는
+문자열을 소켓 내부 저장소에 복사하므로 호출자는 반환 후 입력 문자열을
+유지할 필요가 없습니다. 유효하지 않은 이름은
+`ZLINK_CONFIG_INVALID_ARGUMENT`, channel name이 잠긴 뒤의 변경은
+`ZLINK_CONFIG_INVALID_STATE`, 유효하지 않은 소켓은
+`ZLINK_CONFIG_INVALID_HANDLE`을 반환합니다.
+
+---
+
+### zlink_socket_get_channel_name
+
+raw 소켓의 channel name 메타데이터를 조회합니다.
+
+```c
+ZLINK_EXPORT zlink_config_result_t zlink_socket_get_channel_name (void *socket_,
+                                                                  char *channel_name_buf_,
+                                                                  size_t channel_name_capacity_,
+                                                                  size_t *channel_name_len_out_);
+```
+
+`channel_name_len_out_`은 필수이며 필요한 바이트 길이를 받습니다.
+`channel_name_buf_ == NULL`이면 길이만 조회하고 성공합니다. 버퍼가 있으면
+정확히 그 길이만큼 복사하며 NUL 문자를 덧붙이지 않습니다. 출력 버퍼와 복사된
+바이트의 소유권은 호출자에게 있습니다. 버퍼가 작으면 필요한 길이는 기록하지만
+버퍼는 변경하지 않고 `ZLINK_CONFIG_INVALID_ARGUMENT`을 반환합니다. 이름이
+설정되지 않았으면 `ZLINK_CONFIG_NOT_FOUND`, 유효하지 않은 소켓이나 NULL
+`channel_name_len_out_`은 `ZLINK_CONFIG_INVALID_HANDLE`을 반환합니다.
 
 ---
 
@@ -617,9 +781,9 @@ zlink_config_result_t zlink_set_tls_server (void *handle_,
 서버 소켓에 TLS 인증서, 개인 키를 설정하고, 클라이언트 인증서 요구 여부를
 지정합니다.
 
-service handle의 경우 TLS 지원 범위는 surface마다 다릅니다. SPOT은
-`SpotNode` handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child
-pub/sub handle은 `ENOTSUP`로 실패합니다.
+이 함수는 raw server socket과 MeshNode에 적용된다. MeshNode에서는 bind endpoint가 수락하는 peer에
+server TLS 설정을 적용하며 `start` 전에 호출한다. 지원하지 않는 raw socket type과 다른 handle은
+`ZLINK_CONFIG_NOT_SUPPORTED`, `errno == ENOTSUP`이다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -641,9 +805,9 @@ zlink_config_result_t zlink_set_tls_client (void *handle_,
 클라이언트 소켓에 CA 인증서, 호스트명(SNI 및 인증서 검증용), 시스템 CA
 저장소 신뢰 여부를 설정합니다.
 
-service handle의 경우 TLS 지원 범위는 surface마다 다릅니다. SPOT은
-`SpotNode` handle에서만 TLS를 지원합니다. unified `Spot`과 SPOT child
-pub/sub handle은 `ENOTSUP`로 실패합니다.
+이 함수는 raw client socket과 MeshNode에 적용된다. MeshNode에서는 모든 outbound peer connection에
+client TLS 설정을 적용하며 `start` 전에 호출한다. 지원하지 않는 raw socket type과 다른 handle은
+`ZLINK_CONFIG_NOT_SUPPORTED`, `errno == ENOTSUP`이다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -773,8 +937,8 @@ zlink_handler_result_t zlink_send_ready_handler (
 가능 전환부터 반영됩니다. 동일 핸들의 send-ready 콜백 내에서 재진입 호출하면
 `errno=EDEADLK`로 실패합니다.
 
-지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, `spot_node`입니다. send-ready는 수신 모드와 독립적입니다.
+지원 대상은 raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`입니다.
+send-ready는 수신 모드와 독립적입니다.
 
 이 콜백과 `ZLINK_POLLOUT`은 같은 send-recovery readiness 축을 가리킵니다.
 `BACKPRESSURED` 결과를 본 호출자가 재시도할 가치가 있는 시점을 알립니다.

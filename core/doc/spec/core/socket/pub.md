@@ -46,9 +46,8 @@ zlink_config_result_t zlink_set_pub_option (void *handle_,
                            size_t optvallen_);
 ```
 
-Configures a PUB/XPUB socket option. For spot-pub and spotnode-pub service
-handles, only `ZLINK_PUB_OPT_NODROP` is accepted. Use `zlink_set_option()` for
-common options shared across all socket types.
+Configures a PUB/XPUB socket option. Use `zlink_set_option()` for common
+options shared across all socket types.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -67,9 +66,7 @@ zlink_config_result_t zlink_get_pub_option (void *handle_,
                            size_t *optvallen_);
 ```
 
-Retrieves the current value of a PUB/XPUB socket option. For spot-pub and
-spotnode-pub service handles, only `ZLINK_PUB_OPT_NODROP` and
-`ZLINK_PUB_OPT_TOPICS_COUNT` are readable.
+Retrieves the current value of a PUB/XPUB socket option.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 
@@ -100,11 +97,38 @@ of all parts is transferred to the library.
 `zlink_submit_result_t` value. Detailed internal errno remains available
 through `zlink_errno()` for diagnostics.
 
-**Errors:** `EFAULT` if `subject_` is NULL. `EINVAL` if `topic_id_` is NULL or
-empty for a `spot` subject. `ENOTSUP` if the subject type does not support
-publish (non-PUB/XPUB raw sockets, and `spot_node`).
+**Errors:** `EFAULT` if `subject_` is NULL. `ENOTSUP` if the subject is not a
+raw PUB/XPUB socket.
 
 **See also:** `zlink_publish`, `zlink_set_subscription`, `zlink_subscribe`
+
+---
+
+### zlink_publish_part
+
+Publish one message part from a raw `PUB` or `XPUB` socket.
+
+```c
+ZLINK_EXPORT zlink_submit_result_t zlink_publish_part (void *subject_,
+                                                       const char *topic_id_,
+                                                       zlink_msg_t *part_,
+                                                       zlink_send_flags_t flags_,
+                                                       zlink_part_flag_t part_flag_);
+```
+
+When `topic_id_ == NULL`, the first message frame carries the topic according
+to the wire-prefix convention. When it is non-NULL, Core prepends a topic
+frame. A multipart message started with `ZLINK_PART_MORE` must continue with
+this function on the same thread through `ZLINK_PART_FINAL`. Do not call a
+different send helper or change the topic or flags within that sequence.
+
+This function consumes the content of `part_` on both success and failure.
+Regardless of the result, the caller must make a separate copy before the call
+if the same content may need to be sent again, and must initialize a consumed
+`zlink_msg_t` before reusing it.
+
+Applicable types are raw `PUB` and raw `XPUB`. Other raw socket types return
+`ZLINK_SUBMIT_NOT_SUPPORTED` and set `errno` to `ENOTSUP`.
 
 ---
 
@@ -147,8 +171,8 @@ The handler is replace-only. Passing NULL is invalid. A successful replace is
 visible from the next writable transition. If called reentrantly from the
 same handle's send-ready callback, the call fails with `errno=EDEADLK`.
 
-Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, `STREAM`,
-`spot`, and `spot_node`. Send-ready is independent from receive mode. This
+Supported subjects: raw `PAIR`, `PUB`, `XPUB`, `DEALER`, `ROUTER`, and
+`STREAM`. Send-ready is independent from receive mode. This
 callback and `ZLINK_POLLOUT` expose the same send-recovery readiness axis: a
 readiness signal means it is worth retrying send, not that the retry is
 guaranteed to succeed. Unsupported subjects return `ENOTSUP`.

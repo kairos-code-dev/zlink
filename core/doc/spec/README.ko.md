@@ -1,69 +1,39 @@
-[English](README.md) | [한국어](README.ko.md)
+[English](README.md) | 한국어
 
-# zlink 라이브러리 스펙
+# ZLink 10.0.0 공개 스펙
 
-이 스펙은 zlink 라이브러리의 공개 인터페이스를 정의한다.
-적합한 구현체는 이 문서에 기술된 모든 함수, 타입, 상수를
-명시된 의미론대로 제공해야 한다(MUST).
+이 디렉터리는 ZLink 10.0.0의 공개 API 계약을 정의한다. 대상 독자는 Core와 bindings 구현자, 공개 API
+계약 검토자다. 함수 signature, 반환값, error, ownership과 thread safety는 이 목차에 연결된 정식 문서를
+기준으로 판단한다.
 
-## 스펙 구조
+## 1. 문서 구조
 
-| 섹션 | 경로 | 설명 |
-|------|------|------|
-| **코어 스펙** | [core/](core/README.ko.md) | C 라이브러리 스펙 (`zlink.h`) |
-| **바인딩 스펙** | [bindings/](../../../bindings/doc/spec/README.ko.md) | 언어별 바인딩 계약 및 API 스펙 |
+| 영역 | 문서 | 설명 |
+|---|---|---|
+| Core C ABI | [Core 스펙](core/README.ko.md) | C 함수, 타입, enum과 runtime 동작 계약 |
+| Bindings | [Bindings 스펙](../../../bindings/doc/spec/README.ko.md) | Core 계약의 언어별 공개 API 투영 |
 
-## 코어 스펙 (core/)
+정식 spec은 현재 10.0.0 계약만 설명한다. 사용 목적과 예제는 guide가, 실제 내부 구조는 구현 완료 후
+internals가 소유한다. 계약 검토자는 이 목차와 공개 header를 기준으로 탐색한다.
 
-코어 스펙은 C 라이브러리 인터페이스를 정의한다.
-이 섹션의 모든 요구사항을 충족하는 구현체는 적합한 zlink C 라이브러리를 구성한다.
+## 2. Core 주요 문서
 
-| 문서 | 설명 |
-|------|------|
-| [errors.ko.md](core/errors.ko.md) | 에러 코드, 에러 문자열, 버전 조회 |
-| [errno-map.ko.md](core/errno-map.ko.md) | send, request, reply 함수별 errno 매트릭스 |
-| [context.ko.md](core/context.ko.md) | Context 생성, 종료, 옵션 설정 |
-| [message.ko.md](core/message.ko.md) | 메시지 생명주기, 데이터 접근, ownership, 속성 |
-| [socket/](core/socket/README.ko.md) | 소켓 스펙 (공통 + 타입별) |
-| [monitoring.ko.md](core/monitoring.ko.md) | 소켓 모니터, monitor snapshot, 피어 검사 |
-| [events.ko.md](core/events.ko.md) | canonical 이벤트 카탈로그와 readiness 의미 |
-| [service/README.ko.md](core/service/README.ko.md) | 서비스 계층 공통 개념과 문서 책임 분리 |
-| [spot.ko.md](core/service/spot.ko.md) | SPOT 토픽 기반 PUB/SUB, route bridge, routed 메시징 |
-| [polling.ko.md](core/polling.ko.md) | 프록시 헬퍼 및 기능 조회 |
-| [utilities.ko.md](core/utilities.ko.md) | 타이머, 스레드, 스톱워치, 아토믹 |
+| 문서 | 공개 계약 |
+|---|---|
+| [계약 관리](core/00-public-contract-governance.ko.md) | 정식 spec, header, test와 package의 일치 절차 |
+| [Context](core/context.ko.md) | Context lifecycle과 option |
+| [Message](core/message.ko.md) | message와 routing ID의 저장소·ownership |
+| [Socket](core/socket/README.ko.md) | 범용 socket type과 send·receive 계약 |
+| [Service](core/service/README.ko.md) | MeshNode, Spot, Actor와 STREAM session 계약 |
+| [Polling](core/polling.ko.md) | poll item, poller와 readiness |
+| [Monitoring](core/monitoring.ko.md) | socket·MeshNode monitor와 snapshot |
+| [Events](core/events.ko.md) | 공개 event와 상태 전이 의미 |
+| [Errors](core/errors.ko.md) | result enum, errno와 10.0.0 version ABI |
+| [Errno map](core/errno-map.ko.md) | 함수별 result와 errno 대응 |
+| [Utilities](core/utilities.ko.md) | timer, thread, stopwatch와 atomic utility |
 
-## 바인딩 스펙 (bindings/)
+## 3. 적합성
 
-바인딩 스펙은 코어 C 계약이 각 대상 언어로 어떻게 투영되는지 정의한다.
-cross-language 정책과 언어별 스펙을 충족하는 구현체는 적합한 zlink 바인딩을 구성한다.
-바인딩 라이브러리를 설계할 때는
-[POSD 설계 원칙](../../../doc/principal/software-design-principles.ko.md)을 따른다.
-이는 언어별 API가 내부 구현 세부사항을 드러내지 않고, 호출자가 알아야 할
-개념을 줄이며, 깊은 모듈과 낮은 변경 파급을 유지하도록 하기 위한 기준이다.
-
-| 문서 | 설명 |
-|------|------|
-| [정책](../../../bindings/doc/spec/README.ko.md) | Cross-language 바인딩 계약 (POSD, 역할 matrix, naming, domain object) |
-| [C](../../../bindings/doc/spec/c/README.ko.md) | C 바인딩 스펙 |
-| [C++](../../../bindings/doc/spec/cpp/README.ko.md) | C++ 바인딩 스펙 |
-| [Java](../../../bindings/doc/spec/java/README.ko.md) | Java 바인딩 스펙 |
-| [.NET](../../../bindings/doc/spec/dotnet/README.ko.md) | .NET 바인딩 스펙 |
-| [Node.js](../../../bindings/doc/spec/node/README.ko.md) | Node.js 바인딩 스펙 |
-| [Python](../../../bindings/doc/spec/python/README.ko.md) | Python 바인딩 스펙 |
-| [Go](../../../bindings/doc/spec/go/README.ko.md) | Go 바인딩 스펙 |
-| [Rust](../../../bindings/doc/spec/rust/README.ko.md) | Rust 바인딩 스펙 |
-
-## 적합성 (Conformance)
-
-적합한 구현체는:
-
-1. 코어 스펙의 모든 함수, 타입, 상수를 문서화된 시그니처와 의미론으로 구현해야 한다 (**MUST**).
-2. 각 API에 명시된 보장(guarantee)과 제약(constraint)을 충족해야 한다 (**MUST**).
-3. 내부 구현 세부사항을 공개 인터페이스에 노출하면 안 된다 (**MUST NOT**).
-4. 언어 바인딩은 cross-language 정책과 해당 언어별 스펙을 따라야 한다 (**MUST**).
-
-## 용어
-
-- **MUST** / **MUST NOT**: 절대 요구사항.
-- **SHOULD** / **SHOULD NOT**: 강한 권고; 이탈 시 사유가 필요.
-- **MAY**: 선택적 동작.
+적합한 구현은 모든 정식 문서의 함수, 타입, 상수와 동작을 제공해야 한다. 공개 header, exported symbol,
+contract test, bindings와 설치 package가 정식 spec과 다르면 적합하지 않다. 내부 구현 세부를 공개
+계약으로 노출하거나 언어별 API가 공통 계약을 축소해서도 안 된다.

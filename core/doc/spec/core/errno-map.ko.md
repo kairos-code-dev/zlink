@@ -1,622 +1,142 @@
-[English](errno-map.md) | [한국어](errno-map.ko.md)
+[English](errno-map.md) | 한국어
 
-[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md)
+[스펙 목차](../README.ko.md) · [코어 목차](README.ko.md) · [오류와 result enum](errors.ko.md)
 
-# 함수별 결과 Enum
+# Result와 errno 대응
 
-이 문서는 결과 enum을 반환하는 공개 C API의 정규화 기준을 정의한다.
-이 함수들은 API 전체에서 숫자 범위가 겹치지 않는 결과 enum을 반환하므로,
-하나의 `int` 코드만으로도 항상 의미를 식별할 수 있다.
+이 문서는 ZLink Core 10.0.0 공개 API의 result enum과 thread-local errno 대응을 정의한다. 대상 독자는
+C API와 bindings에서 오류를 안정적으로 분류하는 개발자다. result는 제어 흐름의 기준이고 errno는 같은
+실패를 더 세밀하게 설명한다.
 
-일부 poller 보조 함수는 plain `int`와 별도 `error_out_`
-출력으로 동작한다. 이 함수들은 아래 결과 enum 분류표의 대상이 아니다.
+## 1. 공통 우선순위
 
-내부 구현 경로는 계속 상세 `errno`를 사용하고, exported API 경계에서
-그 값을 여기 정의한 공개 결과 enum으로 정규화한다.
+한 호출에서 여러 실패 조건이 겹치면 다음 순서로 하나를 반환한다.
 
-## zlink_errno — 내부 에러 상세
+1. `NULL`, 잘못된 길이, enum 값과 malformed metadata 같은 argument 오류
+2. handle 종류와 lifecycle state 오류
+3. target, generation, binding과 connection 조회 오류
+4. admission, capacity와 backpressure 오류
+5. transport와 내부 runtime 오류
 
-`zlink_errno()`는 호출 스레드의 raw 내부 `errno` 값을 반환한다.
-주로 result enum이 coarse bucket으로 정규화될 때 유용하다. 예를 들어
-`INTERNAL_ERROR`처럼 여러 internal `errno`가 같은 public bucket으로
-정규화될 때 원래 내부 사유를 확인할 수 있다.
+성공한 함수의 errno는 정의하지 않는다. 아래 표에 여러 errno가 있으면 함수 owner 문서가 그 조건을
+구분한다.
 
-```c
-zlink_submit_result_t rc = zlink_send(s, parts, count, 0);
-if (rc == ZLINK_SUBMIT_INTERNAL_ERROR) {
-    int detail = zlink_errno();          /* 예: EPROTO, ENOMEM */
-    const char *msg = zlink_strerror(detail);
-    log("internal error: %s", msg);
-}
-```
+## 2. Submit result
 
-- 일반적인 정규화 결과에서는 `zlink_errno()` 호출이 **필요 없다**.
-  다만 coarse bucket으로 접힌 구현 상세가 필요할 때는 추가로 확인할 수 있다.
-- `zlink_errno()`는 thread-local last-error 저장소 (GetLastError 패턴)다.
-  가장 최근 실패만 보존된다.
-
----
-
-## zlink_submit_result_t
-
-send, request submit, reply submit 함수에 적용된다.
-
-```c
-typedef enum zlink_submit_result_t
-{
-    /* Submit succeeded. */
-    ZLINK_SUBMIT_OK = 0,
-
-    /* Normal control-flow result. */
-    ZLINK_SUBMIT_BACKPRESSURED    = 1,
-    ZLINK_SUBMIT_NOT_CONNECTED    = 2,
-    ZLINK_SUBMIT_NOT_FOUND        = 3,
-    ZLINK_SUBMIT_NOT_ADMITTED     = 13,
-
-    /* Runtime / lifecycle failure. */
-    ZLINK_SUBMIT_TERMINATED       = 4,
-
-    /* Caller contract violation. */
-    ZLINK_SUBMIT_INVALID_HANDLE   = 5,
-    ZLINK_SUBMIT_INVALID_ARGUMENT = 6,
-    ZLINK_SUBMIT_NOT_SUPPORTED    = 7,
-    ZLINK_SUBMIT_INVALID_STATE    = 8,
-    ZLINK_SUBMIT_THREAD_VIOLATION = 9,
-
-    /* Internal failure. */
-    ZLINK_SUBMIT_OUT_OF_MEMORY    = 10,
-    ZLINK_SUBMIT_SEQ_EXHAUSTED    = 11,
-    ZLINK_SUBMIT_INTERNAL_ERROR   = 12
-} zlink_submit_result_t;
-```
-
-### Submit Result 분류
-
-#### 정상 제어 흐름 결과
-
-호출자가 직접 처리할 수 있는 정상 결과다.
-
-| Result | 내부 errno | 의미 |
+| Result | errno | 의미 |
 |---|---|---|
-| `OK` | -- | submit 성공 |
-| `BACKPRESSURED` | `EAGAIN` | send 큐가 가득 찼거나(HWM, 고수위 표시) 아직 쓰기 준비가 안 됨 |
-| `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | 대상 peer 또는 경로가 연결되지 않음 |
-| `NOT_FOUND` | `ENOENT` | 대상 peer, spot, routed destination을 찾지 못함 |
-| `NOT_ADMITTED` | `ECONNREFUSED` 계열 | local peer가 알고 있는 remote의 가중치가 `0`이라 새 outbound가 거부됨. 연결이 끊긴 것이 아니라 가중치 기반 거절이며, peer가 다시 양수 가중치로 돌아오면 자동으로 풀린다. 상태 전파는 최선 노력이라 경합 상황에서는 같은 실패가 `NOT_CONNECTED` 또는 `NOT_FOUND`로 먼저 관찰될 수 있다. |
+| `ZLINK_SUBMIT_OK` | - | 함수가 정한 ownership 전이가 완료됨 |
+| `ZLINK_SUBMIT_BACKPRESSURED` | `EAGAIN`, `ETIMEDOUT`, `ENOBUFS` | queue 또는 reservation capacity 부족 |
+| `ZLINK_SUBMIT_NOT_CONNECTED` | `ENOTCONN` | target pipe 또는 session 연결 없음 |
+| `ZLINK_SUBMIT_NOT_FOUND` | `ENOENT` | channel member, Spot, Actor 또는 binding 없음 |
+| `ZLINK_SUBMIT_NOT_ADMITTED` | `EACCES` | peer 또는 destination이 admission을 통과하지 않음 |
+| `ZLINK_SUBMIT_TERMINATED` | `ETERM`, `ESHUTDOWN` | Context 또는 service lifecycle 종료 |
+| `ZLINK_SUBMIT_INVALID_HANDLE` | `EFAULT` | handle이 `NULL`이거나 종류가 다름 |
+| `ZLINK_SUBMIT_INVALID_ARGUMENT` | `EINVAL`, `EMSGSIZE` | 잘못된 pointer, count, name, metadata 또는 flags |
+| `ZLINK_SUBMIT_NOT_SUPPORTED` | `ENOTSUP` | handle에서 지원하지 않는 operation |
+| `ZLINK_SUBMIT_INVALID_STATE` | `EBUSY`, `ESTALE`, `EALREADY`, `ESHUTDOWN` | lifecycle, generation, token 또는 binding state 오류 |
+| `ZLINK_SUBMIT_THREAD_VIOLATION` | `EDEADLK`, `EPERM` | 금지한 callback 재진입 또는 thread 사용 |
+| `ZLINK_SUBMIT_OUT_OF_MEMORY` | `ENOMEM` | 필요한 storage 확보 실패 |
+| `ZLINK_SUBMIT_SEQ_EXHAUSTED` | `EOVERFLOW` | operation sequence 공간 소진 |
+| `ZLINK_SUBMIT_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 내부 실패 |
 
-#### 런타임 / 수명주기 실패
+이 결과는 raw socket send/request submit, MeshNode node·channel·publisher, Spot direct·channel·publish,
+Actor messaging과 STREAM session operation에 적용한다. service complete multipart input은 성공과 실패 모두
+borrowed ownership을 유지한다. raw socket input ownership은 각 socket 문서가 정한다.
 
-| Result | 내부 errno | 의미 |
+## 3. Request completion result
+
+| Result | errno | 의미 |
 |---|---|---|
-| `TERMINATED` | `ETERM` | context가 종료됨 |
+| `ZLINK_REQUEST_OK` | - | terminal success |
+| `ZLINK_REQUEST_TIMED_OUT` | `ETIMEDOUT` | operation 또는 shutdown deadline 만료 |
+| `ZLINK_REQUEST_NOT_FOUND` | `ENOENT` | terminal target 부재 |
+| `ZLINK_REQUEST_TERMINATED` | `ETERM`, `ESHUTDOWN` | owner lifecycle 종료 |
+| `ZLINK_REQUEST_PROTOCOL_ERROR` | `EPROTO`, `ENOCOMPATPROTO` | malformed 또는 호환되지 않는 reply |
+| `ZLINK_REQUEST_INTERNAL_ERROR` | 보존된 errno | 다른 terminal 분류가 없는 내부 실패 |
+| `ZLINK_REQUEST_REJECTED` | `EACCES`, `ECANCELED` | application 또는 admission 거절 |
+| `ZLINK_REQUEST_CONFLICT` | `EEXIST`, `ESTALE` | compare-and-set 또는 generation 충돌 |
+| `ZLINK_REQUEST_BUSY` | `EBUSY` | active claim, binding 또는 lifecycle operation 존재 |
+| `ZLINK_REQUEST_NOT_CONNECTED` | `ENOTCONN` | terminal route 단절 |
+| `ZLINK_REQUEST_INVALID_ARGUMENT` | `EINVAL` | asynchronous validation 실패 |
+| `ZLINK_REQUEST_INVALID_STATE` | `ESTALE`, `EALREADY`, `ESHUTDOWN` | terminal token 또는 lifecycle state 오류 |
+| `ZLINK_REQUEST_NOT_SUPPORTED` | `ENOTSUP` | operation 미지원 |
+| `ZLINK_REQUEST_BACKPRESSURED` | `ENOBUFS` | 원자적 전체 reservation 실패 |
 
-#### 호출자 계약 위반
+request submit 성공 뒤에는 operation ID마다 이 terminal result를 정확히 한 번 completion record로
+전달한다. synchronous shutdown과 transfer prepare도 같은 enum을 반환한다.
 
-호출자 쪽 버그를 나타낸다.
+## 4. Receive result
 
-| Result | 내부 errno | 의미 |
+| Result | errno | 의미 |
 |---|---|---|
-| `INVALID_HANDLE` | `EFAULT` | NULL 핸들 또는 잘못된 포인터 |
-| `INVALID_ARGUMENT` | `EINVAL` | 소켓 타입 불일치, NULL 핸들러, `request_seq` 0, 잘못된 routing ID |
-| `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 작업 또는 잘못된 flags |
-| `INVALID_STATE` | `EFSM`, 일부 non-request submit 경로의 `EBUSY` | 소켓 또는 핸들이 잘못된 상태에 있음 |
-| `THREAD_VIOLATION` | `EMTHREAD` | 허용된 스레드 모델을 위반함 |
+| `ZLINK_RECV_OK` | - | complete record 하나 이상 수신 |
+| `ZLINK_RECV_NO_DATA` | `EAGAIN`, `ETIMEDOUT` | nonblocking 또는 receive timeout에 data 없음 |
+| `ZLINK_RECV_BUSY` | `EBUSY` | 다른 receive mode 또는 같은 mutable batch 사용 중 |
+| `ZLINK_RECV_TERMINATED` | `ETERM` | Context 종료 |
+| `ZLINK_RECV_INVALID_HANDLE` | `EFAULT` | handle 또는 batch가 유효하지 않음 |
+| `ZLINK_RECV_NOT_SUPPORTED` | `ENOTSUP` | handle이 해당 receive를 지원하지 않음 |
+| `ZLINK_RECV_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 내부 실패 |
+| `ZLINK_RECV_BUFFER_TOO_SMALL` | `ENOBUFS` | 첫 complete record를 batch에 넣을 수 없음 |
+| `ZLINK_RECV_INVALID_STATE` | `EINVAL`, `ESTALE`, `ESHUTDOWN` | claim domain, generation 또는 revoke state 오류 |
 
-#### 내부 실패
+`BUFFER_TOO_SMALL`에서는 batch가 비어 있고 required output이 필요한 message·part·byte capacity를 제공한다.
 
-| Result | 내부 errno | 의미 |
+## 5. Handler와 close result
+
+| Result | errno | 의미 |
 |---|---|---|
-| `OUT_OF_MEMORY` | `ENOMEM` | 메모리 할당 실패 |
-| `SEQ_EXHAUSTED` | `EBUSY` | request submit 경로에서 pending request sequence 번호 공간이 모두 소진됨 |
-| `INTERNAL_ERROR` | `EPROTO` 및 그 외 내부 submit 실패 | 내부 send/request/reply submit 오류 |
+| `ZLINK_HANDLER_INVALID_ARGUMENT` | `EINVAL` | handler 또는 mask가 잘못됨 |
+| `ZLINK_HANDLER_BUSY` | `EBUSY` | 배타적인 receive model이 이미 등록됨 |
+| `ZLINK_HANDLER_NOT_SUPPORTED` | `ENOTSUP` | handle에서 handler를 지원하지 않음 |
+| `ZLINK_HANDLER_DEADLOCK` | `EDEADLK` | 같은 callback 안의 금지한 등록·해제 |
+| `ZLINK_HANDLER_INVALID_HANDLE` | `EFAULT` | handle이 유효하지 않음 |
+| `ZLINK_HANDLER_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 내부 실패 |
+| `ZLINK_CLOSE_BUSY` | `EBUSY` | active child handle, callback 또는 API가 존재함 |
+| `ZLINK_CLOSE_SHUTDOWN` | `ESHUTDOWN` | 이미 종료된 handle |
+| `ZLINK_CLOSE_INVALID_HANDLE` | `EFAULT`, `ESTALE` | pointer 또는 opaque value가 유효하지 않음 |
+| `ZLINK_CLOSE_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 내부 실패 |
 
-### 적용 대상 함수
+## 6. Bind와 connect result
 
-| 분류 | 함수 |
-|---|---|
-| Send | `zlink_send`, `zlink_send_rid`, `zlink_publish` |
-| Socket request | `zlink_dealer_request`, `zlink_router_request` |
-| Socket reply | `zlink_router_reply` |
-| SPOT request | `zlink_spot_request_channel`, `zlink_spot_request_spot`, `zlink_router_request_spot` |
-| SPOT send | `zlink_spot_send_channel`, `zlink_spot_send_spot`, `zlink_spot_publish`, `zlink_router_send_spot` |
-| SPOT reply | `zlink_spot_reply_spot`, `zlink_spot_reply_router`, `zlink_router_reply_spot` |
-| Actor join/reply submit | `zlink_spot_node_actor_join_spot`, `zlink_spot_actor_join_reply` |
-| STREAM to Actor relay | `zlink_stream_send_bound_actor_part` |
-| Actor to bound session send | `zlink_spot_node_actor_send_bound_session_msg` |
-
----
-
-## zlink_request_result_t
-
-`zlink_reply_handler_fn`으로 전달되는 request completion에 적용된다.
-이 enum은 submit 결과와 별개로, 성공적으로 submit된 후의 요청 결과를 나타낸다.
-
-```c
-typedef enum zlink_request_result_t
-{
-    ZLINK_REQUEST_OK              = 0,
-    ZLINK_REQUEST_TIMED_OUT       = 101,
-    ZLINK_REQUEST_NOT_FOUND       = 102,
-    ZLINK_REQUEST_TERMINATED      = 103,
-    ZLINK_REQUEST_PROTOCOL_ERROR  = 104,
-    ZLINK_REQUEST_INTERNAL_ERROR  = 105,
-    ZLINK_REQUEST_REJECTED        = 106,
-    ZLINK_REQUEST_CONFLICT        = 107,
-    ZLINK_REQUEST_BUSY            = 108,
-    ZLINK_REQUEST_NOT_CONNECTED   = 109,
-    ZLINK_REQUEST_INVALID_ARGUMENT = 110,
-    ZLINK_REQUEST_INVALID_STATE   = 111,
-    ZLINK_REQUEST_NOT_SUPPORTED   = 112
-} zlink_request_result_t;
-```
-
-### Request Completion 분류
-
-| Result | callback errno | 의미 |
+| Result | errno | 의미 |
 |---|---|---|
-| `OK` | `0` | reply payload를 정상 수신함 |
-| `TIMED_OUT` | `ETIMEDOUT` | `timeout_ms` 안에 reply가 도착하지 않음 |
-| `NOT_FOUND` | `ENOENT` | 대상이 없어 error reply로 요청이 완료됨 |
-| `TERMINATED` | `ETERM` | request 경로가 명시적인 종료 completion을 방출하기 전까지는 예약값 |
-| `PROTOCOL_ERROR` | `EPROTO` | reply envelope 또는 error reply payload가 잘못됨 |
-| `INTERNAL_ERROR` | 그 외 내부 completion 실패 | 더 세분화된 public bucket 없이 request completion이 실패함 |
-| `REJECTED` | `EACCES`, `ECONNREFUSED` | target이 admission 또는 join request를 명시적으로 거부함 |
-| `CONFLICT` | `ESTALE` | checked ref generation 불일치, 중복 생성 등 caller가 다시 조회해야 하는 충돌 |
-| `BUSY` | `EBUSY` | Actor가 join 또는 bind 상태라 destroy나 bind 변경을 완료할 수 없음 |
-| `NOT_CONNECTED` | `ENOTCONN`, `EHOSTUNREACH` | target node 또는 Actor owner route에 도달할 수 없음 |
-| `INVALID_ARGUMENT` | `EINVAL`, `EFAULT` | NULL 인자, 잘못된 Actor id, 잘못된 routing id 등 호출 인자 오류 |
-| `INVALID_STATE` | `EFSM` | handle의 현재 상태가 해당 request와 맞지 않음 |
-| `NOT_SUPPORTED` | `ENOTSUP`, `EOPNOTSUPP` | 현재 handle 또는 mode에서 지원하지 않는 request |
+| `ZLINK_BIND_INVALID_ARGUMENT` | `EINVAL` | endpoint가 잘못됨 |
+| `ZLINK_BIND_ADDR_IN_USE` | `EADDRINUSE` | endpoint가 이미 사용 중 |
+| `ZLINK_BIND_NOT_SUPPORTED` | `ENOTSUP`, `EPROTONOSUPPORT` | transport 미지원 |
+| `ZLINK_BIND_INVALID_HANDLE` | `EFAULT` | handle이 유효하지 않음 |
+| `ZLINK_BIND_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 bind 실패 |
+| `ZLINK_CONNECT_INVALID_ARGUMENT` | `EINVAL` | endpoint 또는 expected RID가 잘못됨 |
+| `ZLINK_CONNECT_NOT_SUPPORTED` | `ENOTSUP`, `EPROTONOSUPPORT` | transport 또는 operation 미지원 |
+| `ZLINK_CONNECT_INVALID_HANDLE` | `EFAULT` | handle이 유효하지 않음 |
+| `ZLINK_CONNECT_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 connect 실패 |
+| `ZLINK_CONNECT_NOT_FOUND` | `ENOENT` | intent 또는 peer가 없음 |
+| `ZLINK_CONNECT_CONFLICT` | `EEXIST`, `ESTALE`, `EADDRINUSE` | MeshName, RID 또는 generation 충돌 |
+| `ZLINK_CONNECT_BUSY` | `EBUSY`, `ESHUTDOWN` | lifecycle이 변경을 허용하지 않음 |
+| `ZLINK_CONNECT_AUTH_FAILED` | `EACCES` | trust profile 또는 peer 인증 실패 |
 
-### 적용 대상 함수
+## 7. Configuration result
 
-`zlink_reply_handler_fn`의 첫 번째 인자는 request completion 결과다.
-`zlink_spot_node_actor_join_spot()`과 `zlink_spot_node_actor_join_entry_spot()`의
-completion도 이 enum을 사용한다. Actor 생성/종료/bind/unbind/ref 기반 leave는
-호출 시 `zlink_submit_result_t`를 직접 반환하고, request 결과는
-completion(reply handler)으로 이 enum을 전달한다. 동기 호출로 이 enum을 직접
-반환하는 API는 `zlink_spot_node_actor_close_bound_session`이다.
-
-| 분류 | 함수 |
-|---|---|
-| Routed/channel request completion | `zlink_dealer_request`, `zlink_router_request`, `zlink_spot_request_channel`, `zlink_spot_request_spot`, `zlink_spot_request_router`, `zlink_router_request_spot` |
-| Actor join completion (전용 typedef) | `zlink_spot_node_actor_join_spot` (`zlink_actor_join_spot_handler_fn`) |
-| Actor Entry Spot join completion (전용 typedef) | `zlink_spot_node_actor_join_entry_spot` (`zlink_actor_join_entry_spot_handler_fn`) |
-| Actor lookup completion (전용 typedef) | `zlink_remote_actor_get_ref` (`zlink_actor_lookup_handler_fn`) |
-| Actor lifecycle request | `zlink_spot_node_actor_destroy`, `zlink_spot_node_actor_close_bound_session` |
-| Ref 기반 Actor leave | `zlink_spot_node_actor_leave_spot` |
-| STREAM Actor mapping request | `zlink_stream_bind_actor`, `zlink_stream_unbind_actor` |
-
----
-
-## zlink_recv_result_t
-
-router/SPOT recv, monitor recv, timer recv를 포함한 recv 계열 함수에
-적용된다.
-
-```c
-typedef enum zlink_recv_result_t
-{
-    ZLINK_RECV_OK                 = 0,
-    ZLINK_RECV_NO_DATA            = 201,  /* EAGAIN    */
-    ZLINK_RECV_BUSY               = 202,  /* EBUSY     */
-    ZLINK_RECV_TERMINATED         = 203,  /* ETERM     */
-    ZLINK_RECV_INVALID_HANDLE     = 204,  /* EFAULT    */
-    ZLINK_RECV_NOT_SUPPORTED      = 205,  /* ENOTSUP   */
-    ZLINK_RECV_INTERNAL_ERROR     = 206   /* internal errno */
-} zlink_recv_result_t;
-```
-
-### Recv Result 분류
-
-| Result | 내부 errno | 의미 |
+| Result | errno | 의미 |
 |---|---|---|
-| `OK` | -- | 데이터를 정상 수신함 |
-| `NO_DATA` | `EAGAIN` | 비차단 수신에 데이터가 없거나, API별로 더 이상 반환할 데이터가 없음 (예: 정지된 timer에 남은 fire event가 없음) |
-| `BUSY` | `EBUSY` | 핸들러가 이미 등록되어 있음 |
-| `TERMINATED` | `ETERM` | context가 종료됨 |
-| `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `NOT_SUPPORTED` | `ENOTSUP` | recv를 지원하지 않는 소켓 타입 |
-| `INTERNAL_ERROR` | 그 외 내부 recv 실패 | 더 세분화된 public bucket 없이 recv가 실패함 |
+| `ZLINK_CONFIG_INVALID_HANDLE` | `EFAULT` | handle 또는 output pointer가 유효하지 않음 |
+| `ZLINK_CONFIG_INVALID_ARGUMENT` | `EINVAL`, `EMSGSIZE` | option, size, name 또는 value가 잘못됨 |
+| `ZLINK_CONFIG_NOT_SUPPORTED` | `ENOTSUP` | handle과 option 조합 미지원 |
+| `ZLINK_CONFIG_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 내부 실패 |
+| `ZLINK_CONFIG_INVALID_STATE` | `EINVAL`, `EBUSY`, `ESTALE`, `EALREADY`, `ESHUTDOWN` | lifecycle phase, generation 또는 terminal state가 변경을 거부함 |
+| `ZLINK_CONFIG_NOT_FOUND` | `ENOENT` | local query target 없음 |
+| `ZLINK_CONFIG_CONFLICT` | `EEXIST` | 중복 identity, name 또는 binding |
+| `ZLINK_CONFIG_BUFFER_TOO_SMALL` | `ENOBUFS` | caller output capacity 부족, partial output 없음 |
+| `ZLINK_CONFIG_BUSY` | `EBUSY` | 같은 mutable object를 동시에 사용함 |
 
-### 적용 대상 함수
+## 8. Service 함수 family
 
-| 분류 | 함수 |
-|---|---|
-| Router recv | `zlink_router_recv` |
-| SPOT recv | `zlink_spot_recv` |
-| Actor recv | `zlink_spot_node_actor_recv_part`, `zlink_spot_actor_join_recv` |
-| Recv | `zlink_recv` |
-| Subscribe | `zlink_subscribe` |
-| Subscription event | `zlink_xpub_recv_part` |
-| Socket monitor recv | `zlink_socket_monitor_recv` |
-| Timer recv | `zlink_timer_recv` |
-
----
-
-## zlink_handler_result_t
-
-모든 핸들러 등록 함수에 적용된다: recv handler, subscribe handler,
-send-ready handler, router handler, spot handler, spot dispatch-event
-handler, monitor handler, timer handler.
-
-```c
-typedef enum zlink_handler_result_t
-{
-    ZLINK_HANDLER_OK              = 0,
-    ZLINK_HANDLER_INVALID_ARGUMENT = 301, /* EINVAL    */
-    ZLINK_HANDLER_BUSY            = 302,  /* EBUSY     */
-    ZLINK_HANDLER_NOT_SUPPORTED   = 303,  /* ENOTSUP   */
-    ZLINK_HANDLER_DEADLOCK        = 304,  /* EDEADLK   */
-    ZLINK_HANDLER_INVALID_HANDLE  = 305,  /* EFAULT    */
-    ZLINK_HANDLER_INTERNAL_ERROR  = 306   /* internal errno */
-} zlink_handler_result_t;
-```
-
-### Handler Result 분류
-
-| Result | 내부 errno | 의미 |
+| Family | Submit·request owner | Receive·configuration owner |
 |---|---|---|
-| `OK` | -- | 핸들러 등록 성공 |
-| `INVALID_ARGUMENT` | `EINVAL` | NULL 핸들러 |
-| `BUSY` | `EBUSY` | 핸들러가 이미 등록되어 있음 |
-| `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 subject |
-| `DEADLOCK` | `EDEADLK` | 재진입 호출 (send-ready handler 전용) |
-| `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `INTERNAL_ERROR` | 그 외 내부 handler 실패 | 더 세분화된 public bucket 없이 handler 등록이 실패함 |
-
-### 적용 대상 함수
-
-| 분류 | 함수 |
-|---|---|
-| Recv handler (STREAM only) | `zlink_recv_handler` |
-| Stream packet handler | `zlink_stream_packet_handler` |
-| Send-ready handler | `zlink_send_ready_handler` |
-| Spot dispatch-event handler | `zlink_spot_dispatch_event_handler` |
-| Socket monitor handler | `zlink_socket_monitor_handler` |
-| Timer handler | `zlink_timer_handler` |
-
----
-
-## zlink_close_result_t
-
-close와 destroy 함수에 적용된다.
-
-```c
-typedef enum zlink_close_result_t
-{
-    ZLINK_CLOSE_OK                = 0,
-    ZLINK_CLOSE_BUSY              = 401,  /* EBUSY     */
-    ZLINK_CLOSE_SHUTDOWN          = 402,  /* ESHUTDOWN */
-    ZLINK_CLOSE_INVALID_HANDLE    = 403,  /* EFAULT    */
-    ZLINK_CLOSE_INTERNAL_ERROR    = 404   /* internal errno */
-} zlink_close_result_t;
-```
-
-### Close Result 분류
-
-| Result | 내부 errno | 의미 |
-|---|---|---|
-| `OK` | -- | close/destroy 성공 |
-| `BUSY` | `EBUSY` | 진행 중인 콜백 또는 API 호출이 있음 |
-| `SHUTDOWN` | `ESHUTDOWN` | 이미 닫혀 있음 |
-| `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `INTERNAL_ERROR` | 그 외 내부 close 실패 | 더 세분화된 public bucket 없이 close가 실패함 |
-
-### 적용 대상 함수
-
-| 분류 | 함수 |
-|---|---|
-| Context close | `zlink_ctx_term`, `zlink_ctx_shutdown` |
-| Socket close | `zlink_close` |
-| Monitor close | `zlink_monitor_close` |
-| Utility destroy | `zlink_poller_destroy`, `zlink_timer_destroy` |
-
----
-
-## zlink_bind_result_t
-
-bind 함수에 적용된다.
-
-```c
-typedef enum zlink_bind_result_t
-{
-    ZLINK_BIND_OK                 = 0,
-    ZLINK_BIND_INVALID_ARGUMENT   = 501,  /* EINVAL    */
-    ZLINK_BIND_ADDR_IN_USE        = 502,  /* EADDRINUSE */
-    ZLINK_BIND_NOT_SUPPORTED      = 503,  /* ENOTSUP   */
-    ZLINK_BIND_INVALID_HANDLE     = 504,  /* EFAULT    */
-    ZLINK_BIND_INTERNAL_ERROR     = 505   /* internal errno */
-} zlink_bind_result_t;
-```
-
-### Bind Result 분류
-
-| Result | 내부 errno | 의미 |
-|---|---|---|
-| `OK` | -- | bind 성공 |
-| `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
-| `ADDR_IN_USE` | `EADDRINUSE` | 주소가 이미 바인딩되어 있음 |
-| `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 transport |
-| `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `INTERNAL_ERROR` | 그 외 내부 bind 실패 | 더 세분화된 public bucket 없이 bind가 실패함 |
-
-### 적용 대상 함수
-
-| 분류 | 함수 |
-|---|---|
-
----
-
-## zlink_connect_result_t
-
-connect, disconnect, unbind 함수에 적용된다.
-
-```c
-typedef enum zlink_connect_result_t
-{
-    ZLINK_CONNECT_OK              = 0,
-    ZLINK_CONNECT_INVALID_ARGUMENT = 601, /* EINVAL    */
-    ZLINK_CONNECT_NOT_SUPPORTED   = 602,  /* ENOTSUP   */
-    ZLINK_CONNECT_INVALID_HANDLE  = 603,  /* EFAULT    */
-    ZLINK_CONNECT_INTERNAL_ERROR  = 604,  /* internal errno */
-    ZLINK_CONNECT_NOT_FOUND       = 605,  /* ENOENT    */
-    ZLINK_CONNECT_CONFLICT        = 606,  /* EADDRINUSE */
-    ZLINK_CONNECT_BUSY            = 607   /* EBUSY     */
-} zlink_connect_result_t;
-```
-
-### Connect Result 분류
-
-| Result | 내부 errno | 의미 |
-|---|---|---|
-| `OK` | -- | connect/disconnect/unbind 성공 |
-| `INVALID_ARGUMENT` | `EINVAL` | 잘못된 endpoint |
-| `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 transport |
-| `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `NOT_FOUND` | `ENOENT` | endpoint 또는 peer routing id를 찾지 못함 |
-| `CONFLICT` | `EADDRINUSE` | 같은 peer routing id가 둘 이상이라 대상을 확정할 수 없음 |
-| `BUSY` | `EBUSY` | Discovery attached socket처럼 lifecycle owner가 수동 변경을 거부함 |
-| `INTERNAL_ERROR` | 그 외 내부 connect 실패 | 더 세분화된 public bucket 없이 connect/disconnect/unbind가 실패함 |
-
-### 적용 대상 함수
-
-| 분류 | 함수 |
-|---|---|
-| Disconnect | `zlink_disconnect`, `zlink_disconnect_rid`, `zlink_spot_node_disconnect_peer`, `zlink_spot_node_disconnect_peer_rid` |
-| Unbind | `zlink_unbind` |
-
----
-
-## zlink_config_result_t
-
-set/get option, 설정, snapshot, message, poller 변경, proxy 함수에 적용된다.
-
-```c
-typedef enum zlink_config_result_t
-{
-    ZLINK_CONFIG_OK               = 0,
-    ZLINK_CONFIG_INVALID_HANDLE   = 701,  /* EFAULT    */
-    ZLINK_CONFIG_INVALID_ARGUMENT = 702,  /* EINVAL    */
-    ZLINK_CONFIG_NOT_SUPPORTED    = 703,  /* ENOTSUP   */
-    ZLINK_CONFIG_INTERNAL_ERROR   = 704,  /* internal errno */
-    ZLINK_CONFIG_INVALID_STATE    = 705,  /* EBUSY/ESHUTDOWN — lifecycle state rejects config */
-    ZLINK_CONFIG_NOT_FOUND        = 706   /* ENOENT    — local lookup target not found */
-} zlink_config_result_t;
-```
-
-### Config Result 분류
-
-| Result | 내부 errno | 의미 |
-|---|---|---|
-| `OK` | -- | 설정 성공 |
-| `INVALID_HANDLE` | `EFAULT` | NULL 또는 잘못된 핸들 |
-| `INVALID_ARGUMENT` | `EINVAL` | 잘못된 option, output pointer, parameter shape |
-| `NOT_SUPPORTED` | `ENOTSUP` | 지원하지 않는 옵션 |
-| `INTERNAL_ERROR` | 그 외 내부 config 실패 | 더 세분화된 public bucket 없이 설정이 실패함 |
-| `INVALID_STATE` | `EBUSY`, `ESHUTDOWN` | 핸들의 lifecycle 상태가 해당 config 호출을 거부함 (예: 이미 시작됨, 이미 닫힘) |
-| `NOT_FOUND` | `ENOENT` | 로컬 조회 대상(예: Spot rid, actor id)을 찾지 못함 |
-
-`ENOTSUP`와 함께 `ZLINK_CONFIG_NOT_SUPPORTED`를 반환한다. stream이 이미 다른
-ActorGateway owner에 attach되어 있으면 `EBUSY`와 함께
-`ZLINK_CONFIG_INVALID_STATE`를 반환한다.
-
-`zlink_spot_route_bridge_*`와 `zlink_spot_node_publisher_*`는 plain `int` 또는
-handle 반환 API다. 성공은 `0` 또는 non-NULL handle이다. 실패하면 `-1` 또는
-`NULL`을 반환하고 `errno`를 설정한다. 잘못된 handle은 `EFAULT`, 잘못된 인자는
-`EINVAL`, socket 종류 불일치는 `ENOTSUP`, 중복 channel attach는 `EBUSY`, 없는
-channel이나 target route는 `ENOENT` 또는 `ENOTCONN`, malformed relay packet은
-`EPROTO`를 사용한다.
-
-### Actor/Spot route 조회 오류
-
-없으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환한다. Actor route row가
-없거나, row value 크기가 `sizeof(zlink_actor_route_t)`가 아니거나, key와 value의
-Actor id가 다르거나, current Spot rid/kind가 유효하지 않으면
-`ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환한다.
-
-`spot_rid`가 비어 있으면 `ZLINK_CONFIG_INVALID_ARGUMENT`와 `EINVAL`을 반환한다.
-Spot owner topology row가 없거나 owner node rid가 비어 있거나 `spot_kind`가
-Entry/User가 아니면 `ZLINK_CONFIG_NOT_FOUND`와 `ENOENT`를 반환한다.
-
-조회가 성공한 뒤 `zlink_router_send_spot()` 또는 `zlink_spot_request_spot()` 전송이
-실패하는 경우는 route 조회 오류가 아니다. 이 경우에는 기존 routed send/request
-경로의 not-connected, not-found, timeout, backpressure 의미를 따른다.
-
-socket `ZLINK_OPT_SNDTIMEO`와 `ZLINK_OPT_RCVTIMEO`의 기본값은 `1000`ms다. 따라서
-명시적으로 `-1`을 설정하지 않은 send/recv 경로는 무한 대기하지 않고 timeout에 따른
-기존 오류 의미를 낼 수 있다.
-
-### 적용 대상 함수
-
-| 분류 | 함수 |
-|---|---|
-| Context | `zlink_ctx_set`, `zlink_ctx_set_data`, `zlink_ctx_auto_hwm_recalculate` |
-| Message lifecycle | `zlink_msg_init`, `zlink_msg_init_size`, `zlink_msg_init_data`, `zlink_msg_close`, `zlink_msg_move`, `zlink_msg_copy`, `zlink_msg_adopt` |
-| Socket option | `zlink_set_option`, `zlink_get_option`, `zlink_set_routing_id`, `zlink_get_routing_id`, `zlink_set_tls_server`, `zlink_set_tls_client`, `zlink_set_router_option`, `zlink_get_router_option`, `zlink_set_dealer_option`, `zlink_get_dealer_option`, `zlink_set_stream_option`, `zlink_get_stream_option`, `zlink_set_spot_option`, `zlink_get_spot_option`, `zlink_set_pub_option`, `zlink_get_pub_option`, `zlink_set_sub_option`, `zlink_get_sub_option`, `zlink_set_spot_node_option`, `zlink_get_spot_node_option`, `zlink_socket_set_channel_name`, `zlink_socket_get_channel_name` |
-| Subscription | `zlink_set_subscription`, `zlink_unset_subscription`, `zlink_subscription_at` |
-| SPOT route bridge/publisher | `zlink_spot_route_bridge_new`, `zlink_spot_route_bridge_attach_router_channel`, `zlink_spot_route_bridge_send`, `zlink_spot_route_bridge_request`, `zlink_spot_route_bridge_handle_router_received`, `zlink_spot_route_bridge_drain`, `zlink_spot_route_bridge_close`, `zlink_spot_node_publisher_new`, `zlink_spot_node_publisher_publish`, `zlink_spot_node_publisher_close` |
-| SpotNode lifecycle/조회 | `zlink_spot_node_entry_spot`, `zlink_spot_node_spot_lookup`, `zlink_spot_node_spot_get_or_new`, `zlink_spot_node_actor_new`, `zlink_spot_node_actor_new_with_request`, `zlink_spot_node_actor_lookup`, `zlink_spot_node_actor_bind_remote_session`, `zlink_spot_node_set_router_bind`, `zlink_spot_node_set_pub_bind` |
-| Poller config | `zlink_poller_add`, `zlink_poller_modify`, `zlink_poller_remove`, `zlink_poller_add_fd`, `zlink_poller_add_timer`, `zlink_poller_modify_fd`, `zlink_poller_remove_fd`, `zlink_poller_remove_timer` |
-| Proxy | `zlink_proxy`, `zlink_proxy_steerable` |
-| Timer config | `zlink_timer_start`, `zlink_timer_stop` |
-
-`zlink_poll`, `zlink_poller_size`, `zlink_poller_wait`는 plain `int` 반환 +
-`error_out_` 출력 형태이며,
-`zlink_config_result_t`를 직접 반환하는 함수는 아니다.
-
----
-
-## Submit 매트릭스
-
-`Y` = submit 경로가 이 정규화 결과를 낼 수 있음.
-`--` = submit 경로가 이 정규화 결과를 내지 않음.
-
-### Send 함수
-
-| Result | `zlink_send` | `zlink_send_rid` | `zlink_publish` |
-|---|---|---|---|
-| `OK` | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | -- | Y | -- |
-| `NOT_FOUND` | -- | -- | -- |
-| `NOT_ADMITTED` | Y | Y | -- |
-| `TERMINATED` | Y | Y | Y |
-| `INVALID_HANDLE` | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | Y | Y | Y |
-| `THREAD_VIOLATION` | Y | Y | Y |
-| `OUT_OF_MEMORY` | -- | -- | -- |
-| `SEQ_EXHAUSTED` | -- | -- | -- |
-| `INTERNAL_ERROR` | -- | -- | -- |
-
-`zlink_send`의 `NOT_ADMITTED`는 DEALER가 알고 있는 ROUTER의 가중치가 모두
-`0`일 때 발생한다. `zlink_send_rid`의 `NOT_ADMITTED`는 ROUTER가
-가중치 `0`인 target RID로 보내려 할 때 발생한다.
-
-### Socket request 함수
-
-| Result | `zlink_dealer_request` | `zlink_router_request` |
-|---|---|---|
-| `OK` | Y | Y |
-| `BACKPRESSURED` | Y | Y |
-| `NOT_CONNECTED` | -- | -- |
-| `NOT_FOUND` | -- | -- |
-| `NOT_ADMITTED` | Y | Y |
-| `TERMINATED` | Y | Y |
-| `INVALID_HANDLE` | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y |
-| `NOT_SUPPORTED` | Y | Y |
-| `INVALID_STATE` | Y | Y |
-| `THREAD_VIOLATION` | Y | Y |
-| `OUT_OF_MEMORY` | Y | Y |
-| `SEQ_EXHAUSTED` | Y | Y |
-| `INTERNAL_ERROR` | Y | Y |
-
-`zlink_dealer_request`는 알고 있는 ROUTER의 가중치가 모두 `0`일 때
-`NOT_ADMITTED`로 실패한다. `zlink_router_request`는 target RID의 가중치가
-`0`일 때 `NOT_ADMITTED`로 실패한다.
-
-### Socket reply 함수
-
-| Result | `zlink_router_reply` |
-|---|---|
-| `OK` | Y |
-| `BACKPRESSURED` | Y |
-| `NOT_CONNECTED` | -- |
-| `NOT_FOUND` | -- |
-| `NOT_ADMITTED` | -- |
-| `TERMINATED` | Y |
-| `INVALID_HANDLE` | Y |
-| `INVALID_ARGUMENT` | Y |
-| `NOT_SUPPORTED` | Y |
-| `INVALID_STATE` | Y |
-| `THREAD_VIOLATION` | Y |
-| `OUT_OF_MEMORY` | -- |
-| `SEQ_EXHAUSTED` | -- |
-| `INTERNAL_ERROR` | Y |
-
-reply는 이미 들어온 request에 대한 응답이라 admission 판정을 새로 적용하지
-않는다. 따라서 `zlink_router_reply`는 `NOT_ADMITTED`를 내지 않는다.
-
-### SPOT request 함수
-
-| Result | `zlink_spot_request_channel` | `zlink_spot_request_spot` | `zlink_router_request_spot` |
-|---|---|---|---|
-| `OK` | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | Y | Y | Y |
-| `NOT_FOUND` | Y | Y | Y |
-| `NOT_ADMITTED` | Y | Y | Y |
-| `TERMINATED` | -- | Y | -- |
-| `INVALID_HANDLE` | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | -- | -- | Y |
-| `THREAD_VIOLATION` | -- | -- | Y |
-| `OUT_OF_MEMORY` | Y | Y | Y |
-| `SEQ_EXHAUSTED` | Y | Y | Y |
-| `INTERNAL_ERROR` | Y | Y | Y |
-
-대상 SpotNode 또는 ROUTER의 가중치가 `0`이면 SPOT request 계열은
-`NOT_ADMITTED`로 실패한다. `zlink_spot_request_channel`은 attach된 channel
-경로의 가중치가 `0`이거나 호출 가능한 dealer 경로가 없을 때 같은 계열 오류를 낼 수
-있다.
-
-### SPOT send 함수
-
-| Result | `zlink_spot_send_channel` | `zlink_spot_send_spot` | `zlink_spot_publish` | `zlink_router_send_spot` |
-|---|---|---|---|---|
-| `OK` | Y | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y | Y |
-| `NOT_CONNECTED` | Y | Y | Y | Y |
-| `NOT_FOUND` | Y | Y | Y | Y |
-| `NOT_ADMITTED` | Y | Y | -- | Y |
-| `TERMINATED` | -- | Y | Y | -- |
-| `INVALID_HANDLE` | Y | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y | Y |
-| `INVALID_STATE` | -- | -- | -- | Y |
-| `THREAD_VIOLATION` | -- | -- | -- | Y |
-| `OUT_OF_MEMORY` | -- | -- | -- | -- |
-| `SEQ_EXHAUSTED` | -- | -- | -- | -- |
-| `INTERNAL_ERROR` | Y | Y | Y | Y |
-
-`zlink_spot_publish`는 fan-out 의미를 가지므로 단일 peer 가중치만으로
-거절하지 않는다. 다른 routed/direct send 함수는 대상 SpotNode 또는
-ROUTER의 가중치가 `0`이면 `NOT_ADMITTED`를 낸다.
-
-### SPOT reply 함수
-
-| Result | `zlink_spot_reply_spot` | `zlink_spot_reply_router` | `zlink_router_reply_spot` |
-|---|---|---|---|
-| `OK` | Y | Y | Y |
-| `BACKPRESSURED` | Y | Y | Y |
-| `NOT_CONNECTED` | Y | Y | Y |
-| `NOT_FOUND` | Y | Y | Y |
-| `NOT_ADMITTED` | -- | -- | -- |
-| `TERMINATED` | -- | -- | -- |
-| `INVALID_HANDLE` | Y | Y | Y |
-| `INVALID_ARGUMENT` | Y | Y | Y |
-| `NOT_SUPPORTED` | Y | Y | Y |
-| `INVALID_STATE` | -- | -- | Y |
-| `THREAD_VIOLATION` | -- | -- | Y |
-| `OUT_OF_MEMORY` | -- | -- | -- |
-| `SEQ_EXHAUSTED` | -- | -- | -- |
-| `INTERNAL_ERROR` | Y | Y | Y |
-
-reply는 이미 진행 중인 request에 대한 응답이라 admission 판정을 다시
-적용하지 않는다. 따라서 SPOT reply 함수도 `NOT_ADMITTED`를 내지 않는다.
-
----
-
-## 전체 함수 목록 (결과 enum별)
-
-| Result enum | 함수 |
-|---|---|
-| `zlink_submit_result_t` | `zlink_send_part`, `zlink_send_part_rid`, `zlink_publish_part`, `zlink_dealer_request_part`, `zlink_dealer_reply_part`, `zlink_router_request_part`, `zlink_router_reply_part`, `zlink_spot_request_channel_part`, `zlink_spot_request_spot_part`, `zlink_spot_request_router_part`, `zlink_router_request_spot_part`, `zlink_spot_send_channel_part`, `zlink_spot_send_spot_part`, `zlink_spot_publish_part`, `zlink_router_send_spot_part`, `zlink_spot_reply_spot_part`, `zlink_spot_reply_router_part`, `zlink_router_reply_spot_part`, `zlink_spot_node_actor_join_spot`, `zlink_spot_node_actor_join_entry_spot`, `zlink_spot_node_actor_leave_spot`, `zlink_spot_node_actor_destroy`, `zlink_spot_actor_join_reply`, `zlink_stream_bind_actor`, `zlink_stream_unbind_actor`, `zlink_stream_send_bound_actor_part`, `zlink_remote_actor_get_ref`, `zlink_spot_node_actor_send_bound_session_msg`, `zlink_spot_node_actor_forward_bound_session_part` |
-| `zlink_request_result_t` | `zlink_reply_handler_fn` (completion callback), `zlink_actor_join_spot_handler_fn` (completion callback), `zlink_actor_join_entry_spot_handler_fn` (completion callback), `zlink_actor_lookup_handler_fn` (completion callback), `zlink_spot_node_actor_close_bound_session` |
-| `zlink_recv_result_t` | `zlink_router_recv_part`, `zlink_dealer_recv_part`, `zlink_spot_recv_part`, `zlink_recv_part`, `zlink_subscribe_part`, `zlink_xpub_recv_part`, `zlink_spot_subscribe_part`, `zlink_spot_recv_subscription_event`, `zlink_spot_recv_actor_lifecycle`, `zlink_spot_recv_actor_lifecycle_with_request`, `zlink_socket_monitor_recv`, `zlink_timer_recv`, `zlink_spot_node_actor_recv_part`, `zlink_spot_actor_join_recv` |
-| `zlink_handler_result_t` | `zlink_recv_handler` (raw STREAM only), `zlink_stream_packet_handler`, `zlink_send_ready_handler`, `zlink_spot_dispatch_event_handler`, `zlink_socket_monitor_handler`, `zlink_timer_handler` |
-| `zlink_config_result_t` | `zlink_ctx_set`, `zlink_ctx_auto_hwm_recalculate`, 메시지 lifecycle 함수(`zlink_msg_init` 계열 + `zlink_msg_adopt`), socket 옵션/routing/subscription 설정 함수 전체, attach 함수 전체, SpotNode lifecycle/lookup/bind 함수 전체, registry/discovery 설정 함수 전체, snapshot/query 함수 전체, poller 변경 함수 전체, `zlink_proxy`, `zlink_proxy_steerable`, `zlink_timer_start`, `zlink_timer_stop`, `zlink_monitor_status` |
+| MeshNode | `zlink_mesh_node_send_*`, `request_*`, `publisher_publish` | lifecycle, peer, status와 publisher option |
+| Dispatch | `zlink_mesh_reply` | ready·receive batch, claim과 handler |
+| Spot | `zlink_spot_send_*`, `request_*`, `publish` | Spot lifecycle, subscription, timer와 publish option |
+| Actor | Actor create·join·leave·message·transfer | Actor lookup, claim과 control record |
+| STREAM session | bind·unbind·send·request·close | service lifecycle, binding query와 status |
+
+각 함수의 exact argument, ownership과 lifecycle 조건은 위 family의 정식 service 문서가 소유한다.

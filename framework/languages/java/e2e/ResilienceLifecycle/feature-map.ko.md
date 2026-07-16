@@ -85,6 +85,10 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 ## 남은 항목
 
 - 갱신된 `RL-A1`은 terminal `Drained`, old row 제거, down 구간의 정확한 `RouteNotConnected`, 새 owner
-  generation과 `ConnectionReady`를 요구한다. 현재 시나리오는 이 완료 조건을 모두 검증하지 않는다.
+  generation과 `ConnectionReady`를 요구한다. 정확한 오류를 요구한 red gate에서 Java request 경로는
+  `RouteNotConnected` 대신 정규화되지 않은 bindings `ZlinkSubmitException`을 반환했다
+  (`logs/20260716-093352-3325969/`). E2E가 임의의 RuntimeException을 성공으로 인정하지 않도록 runtime
+  오류 정규화를 먼저 고쳐야 하며, `ConnectionReady`는 RuntimeMonitoring feature-map의 source registry
+  blocker와 같은 선행 문제를 공유한다.
 - `.NET Client/Scenarios/*.cs`에 대응하는 Java Client scenario 파일은 존재한다. 구현된 scenario는
   `Server/Consumer`의 HTTP endpoint를 호출한다.

@@ -66,13 +66,14 @@ allocate_role_endpoints() {
     PLAY_A_HTTP PLAY_A_CONTROL PLAY_A_SPOT_ROUTE PLAY_A_SPOT_ROUTER PLAY_A_SPOT_PUB \
     PLAY_B_HTTP PLAY_B_CONTROL PLAY_B_SPOT_ROUTE PLAY_B_SPOT_ROUTER PLAY_B_SPOT_PUB \
     SESSION_A_HTTP SESSION_A_STREAM SESSION_A_SPOT_ROUTER SESSION_A_SPOT_PUB \
-    SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB <<<"$(python3 - <<'PY'
+    SESSION_B_HTTP SESSION_B_STREAM SESSION_B_SPOT_ROUTER SESSION_B_SPOT_PUB \
+    EXTERNAL_API_HTTP <<<"$(python3 - <<'PY'
 import socket
 
 sockets = []
 ports = []
 host = "127.0.0.1"
-for _ in range(22):
+for _ in range(23):
     sock = socket.socket()
     sock.bind((host, 0))
     sockets.append(sock)
@@ -98,7 +99,8 @@ print(f"tcp://{host}:{ports[17]}", end=" ")
 print(f"http://{host}:{ports[18]}", end=" ")
 print(f"tcp://{host}:{ports[19]}", end=" ")
 print(f"tcp://{host}:{ports[20]}", end=" ")
-print(f"tcp://{host}:{ports[21]}")
+print(f"tcp://{host}:{ports[21]}", end=" ")
+print(f"http://{host}:{ports[22]}")
 for sock in sockets:
     sock.close()
 PY
@@ -110,11 +112,13 @@ PY
 cmake -S "$FRAMEWORK_DIR" -B "$BUILD_DIR" >/dev/null
 cmake --build "$BUILD_DIR" --target \
   zlink_cpp_e2e_automatic_turn_dispatch_delay \
+  zlink_cpp_e2e_automatic_turn_dispatch_external_api \
   zlink_cpp_e2e_automatic_turn_dispatch_play \
   zlink_cpp_e2e_automatic_turn_dispatch_session \
   zlink_cpp_e2e_automatic_turn_dispatch_client >/dev/null
 
 DELAY="$BUILD_DIR/zlink_cpp_e2e_automatic_turn_dispatch_delay"
+EXTERNAL_API="$BUILD_DIR/zlink_cpp_e2e_automatic_turn_dispatch_external_api"
 PLAY="$BUILD_DIR/zlink_cpp_e2e_automatic_turn_dispatch_play"
 SESSION="$BUILD_DIR/zlink_cpp_e2e_automatic_turn_dispatch_session"
 CLIENT="$BUILD_DIR/zlink_cpp_e2e_automatic_turn_dispatch_client"
@@ -374,6 +378,25 @@ PY
   wait_port "$name-delay" "$delay_endpoint"
 }
 
+start_external_api_role() {
+  local config_path="$CONFIG_DIR/external-api.json"
+  python3 - "$config_path" "$EXTERNAL_API_HTTP" <<'PY'
+import json
+import os
+import stat
+import sys
+
+path, http_endpoint = sys.argv[1:]
+with open(path, "w", encoding="utf-8") as file:
+    json.dump({"e2e": {"httpEndpoint": http_endpoint}}, file, indent=2)
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+PY
+  launch_process "$LOG_DIR/external-api.stdout.log" \
+    "$LOG_DIR/external-api.stderr.log" "$EXTERNAL_API" --config="$config_path"
+  PIDS+=("$!")
+  wait_port external-api "$EXTERNAL_API_HTTP"
+}
+
 start_play_role() {
   local name="$1"
   local http_endpoint="$2"
@@ -382,23 +405,27 @@ start_play_role() {
   local spot_router_endpoint="$5"
   local spot_pub_endpoint="$6"
   local delay_endpoint="$7"
+  local external_api_base_url="$8"
   local config_path="$CONFIG_DIR/$name.json"
   python3 - "$config_path" "$name" "$http_endpoint" "$control_endpoint" \
     "$spot_route_endpoint" "$spot_router_endpoint" "$spot_pub_endpoint" \
-    "$delay_endpoint" "$REDIS_ENDPOINT" "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
+    "$delay_endpoint" "$external_api_base_url" "$REDIS_ENDPOINT" \
+    "$REDIS_KEY_PREFIX" "$LOG_DIR" <<'PY'
 import json
 import os
 import stat
 import sys
 
 (path, name, http_endpoint, control_endpoint, spot_route_endpoint,
- spot_router_endpoint, spot_pub_endpoint, delay_endpoint, redis_endpoint,
+ spot_router_endpoint, spot_pub_endpoint, delay_endpoint, external_api_base_url,
+ redis_endpoint,
  redis_key_prefix, log_dir) = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as file:
     json.dump({"e2e": {"nodeRid": name, "httpEndpoint": http_endpoint,
         "controlEndpoint": control_endpoint, "spotRouteEndpoint": spot_route_endpoint,
         "spotRouterEndpoint": spot_router_endpoint, "spotPubEndpoint": spot_pub_endpoint,
         "delayEndpoint": delay_endpoint,
+        "externalApiBaseUrl": external_api_base_url,
         "redis": {"endpoint": redis_endpoint, "keyPrefix": redis_key_prefix},
         "logDir": log_dir}}, file, indent=2)
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
@@ -473,15 +500,16 @@ os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 }
 
+start_external_api_role
 start_delay_role delay-a "$DELAY_A_HTTP" "$DELAY_A_ENDPOINT"
 start_delay_role delay-b "$DELAY_B_HTTP" "$DELAY_B_ENDPOINT"
-start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
+start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT" "$EXTERNAL_API_HTTP"
 PLAY_A_PID="${PIDS[-1]}"
-start_play_role play-b "$PLAY_B_HTTP" "$PLAY_B_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" "$DELAY_B_ENDPOINT"
+start_play_role play-b "$PLAY_B_HTTP" "$PLAY_B_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTER" "$PLAY_B_SPOT_PUB" "$DELAY_B_ENDPOINT" "$EXTERNAL_API_HTTP"
 start_session_role session-a "$SESSION_A_HTTP" "$SESSION_A_STREAM" "$PLAY_A_CONTROL" "$PLAY_B_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_B_SPOT_ROUTE" "$SESSION_A_SPOT_ROUTER" "$SESSION_A_SPOT_PUB"
 start_session_role session-b "$SESSION_B_HTTP" "$SESSION_B_STREAM" "$PLAY_B_CONTROL" "$PLAY_A_CONTROL" "$PLAY_B_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTE" "$SESSION_B_SPOT_ROUTER" "$SESSION_B_SPOT_PUB"
 
-if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == atd-[a-d]* || "$SCENARIO_LOWER" == "atd-e1" || "$SCENARIO_LOWER" == td-e[23] ]]; then
+if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LOWER" == atd-[a-d]* || "$SCENARIO_LOWER" == "atd-e1" || "$SCENARIO_LOWER" == td-c[1-3] || "$SCENARIO_LOWER" == td-e[23] ]]; then
   CLIENT_SCENARIO="$SCENARIO_LOWER"
   if [[ "$CLIENT_SCENARIO" == "atd-d1" ]]; then
     CLIENT_SCENARIO="full"
@@ -506,6 +534,9 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LO
     grep -q "scenario ATD-E1 passed" "$LOG_DIR/client.stdout.log"
     grep -q "scenario TD-E2 passed" "$LOG_DIR/client.stdout.log"
     grep -q "scenario TD-E3 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario TD-C1 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario TD-C2 passed" "$LOG_DIR/client.stdout.log"
+    grep -q "scenario TD-C3 passed" "$LOG_DIR/client.stdout.log"
     grep -q "automatic-turn-dispatch track-a-e1 result=passed" "$LOG_DIR/client.stdout.log"
     grep -q "^hold-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
     grep -q "^await-completed|rid=play-a" "$LOG_DIR/play-a.evidence.log"
@@ -542,7 +573,7 @@ if [[ "$SCENARIO_LOWER" == "all" || "$SCENARIO_LOWER" == "full" || "$SCENARIO_LO
   terminate_gracefully play-a "$PLAY_A_PID"
   wait "$SHUTDOWN_CLIENT_PID"
 
-  start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT"
+  start_play_role play-a "$PLAY_A_HTTP" "$PLAY_A_CONTROL" "$PLAY_A_SPOT_ROUTE" "$PLAY_A_SPOT_ROUTER" "$PLAY_A_SPOT_PUB" "$DELAY_A_ENDPOINT" "$EXTERNAL_API_HTTP"
   PLAY_A_PID="${PIDS[-1]}"
   sleep "$SCENARIO_SETTLE_SECONDS"
 

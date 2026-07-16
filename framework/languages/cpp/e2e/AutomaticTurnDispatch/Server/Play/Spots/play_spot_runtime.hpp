@@ -3,6 +3,7 @@
 
 #include "play_spot_types.hpp"
 #include "../Handlers/play_basic_spot_handlers.hpp"
+#include "../Handlers/play_execution_turn_handlers.hpp"
 #include "../Handlers/play_failure_spot_handlers.hpp"
 #include "../Handlers/play_remote_spot_handlers.hpp"
 #include "../Handlers/play_timer_spot_handlers.hpp"
@@ -26,7 +27,10 @@ namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
 class await_probe_spot_t : public zlink::framework::spot_t
 {
   public:
-    explicit await_probe_spot_t (evidence_store_t &evidence) : _evidence (evidence) {}
+    await_probe_spot_t (evidence_store_t &evidence, external_api_http_client_t external_api) :
+        _evidence (evidence), _external_api (std::move (external_api))
+    {
+    }
 
     void configure (zlink::framework::spot_context_t &context)
     {
@@ -40,6 +44,10 @@ class await_probe_spot_t : public zlink::framework::spot_t
             yd::worker_await_req_t::packet_name)
           .add_handler<&await_probe_spot_t::worker_await_command> (
             yd::worker_await_msg_t::packet_name)
+          .add_handler<&await_probe_spot_t::http_await_command> (
+            yd::http_await_msg_t::packet_name)
+          .add_handler<&await_probe_spot_t::io_worker_await_command> (
+            yd::io_worker_await_msg_t::packet_name)
           .add_handler<&await_probe_spot_t::await_timeout_req> (
             yd::await_timeout_req_t::packet_name)
           .add_handler<&await_probe_spot_t::await_timeout_command> (
@@ -143,6 +151,17 @@ class await_probe_spot_t : public zlink::framework::spot_t
     {
         co_await handle_basic_worker_yield (_context, _evidence, request.request_id,
                                             request.delay_ms);
+    }
+
+    zlink::framework::task_t<void> http_await_command (const yd::http_await_msg_t &request)
+    {
+        co_await handle_http_await (_context, _evidence, _external_api, request);
+    }
+
+    zlink::framework::task_t<void>
+    io_worker_await_command (const yd::io_worker_await_msg_t &request)
+    {
+        co_await handle_io_worker_await (_context, _evidence, _external_api, request);
     }
 
     zlink::framework::task_t<yd::await_timeout_res_t>
@@ -370,6 +389,7 @@ class await_probe_spot_t : public zlink::framework::spot_t
 
     evidence_store_t &_evidence;
     zlink::framework::spot_context_t _context;
+    external_api_http_client_t _external_api;
     std::mutex _timer_mutex;
     std::map<std::string, await_timer_state_t> _timers;
 };

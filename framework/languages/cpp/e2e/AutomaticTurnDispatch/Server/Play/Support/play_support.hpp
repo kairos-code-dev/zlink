@@ -24,6 +24,7 @@ struct play_options_t
     std::string redis_key_prefix;
     std::string control_endpoint;
     std::string delay_endpoint;
+    std::string external_api_base_url;
     std::string spot_route_endpoint;
     std::string spot_router_endpoint;
     std::string spot_pub_endpoint;
@@ -37,6 +38,7 @@ struct play_options_t
                 .redis_key_prefix = section.require ("redis.keyPrefix"),
                 .control_endpoint = section.require ("controlEndpoint"),
                 .delay_endpoint = section.require ("delayEndpoint"),
+                .external_api_base_url = section.require ("externalApiBaseUrl"),
                 .spot_route_endpoint = section.require ("spotRouteEndpoint"),
                 .spot_router_endpoint = section.require ("spotRouterEndpoint"),
                 .spot_pub_endpoint = section.require ("spotPubEndpoint")};

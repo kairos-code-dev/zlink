@@ -1243,10 +1243,18 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_E2E)
   target_include_directories(zlink_cpp_e2e_automatic_turn_dispatch_delay PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 
+  add_executable(zlink_cpp_e2e_automatic_turn_dispatch_external_api
+    e2e/AutomaticTurnDispatch/Server/ExternalApi/main.cpp)
+  target_link_libraries(zlink_cpp_e2e_automatic_turn_dispatch_external_api PRIVATE
+    zlink::framework)
+  zlink_framework_cpp_add_boost_headers(
+    zlink_cpp_e2e_automatic_turn_dispatch_external_api)
+
   add_executable(zlink_cpp_e2e_automatic_turn_dispatch_play
     e2e/AutomaticTurnDispatch/Server/Play/main.cpp)
   target_link_libraries(zlink_cpp_e2e_automatic_turn_dispatch_play PRIVATE
-    zlink::framework_locations_redis)
+    zlink::framework_locations_redis
+    zlink::http_client)
   target_include_directories(zlink_cpp_e2e_automatic_turn_dispatch_play PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
 

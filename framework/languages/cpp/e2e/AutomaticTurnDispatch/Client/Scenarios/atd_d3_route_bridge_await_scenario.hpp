@@ -26,7 +26,7 @@ std::string run_atd_d3_route_bridge_await_scenario (TConnector &connector)
     ensure (spot.value ().spot_rid == spot_rid, "ATD-D3 ensure spot reply mismatch");
 
     connector.send (await_msg_t{.request_id = request_id,
-                                .delay_ms = 500,
+                                .delay_ms = 1500,
                                 .correlation_id = "route-bridge"})
         .packet_name (await_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)
@@ -42,6 +42,9 @@ std::string run_atd_d3_route_bridge_await_scenario (TConnector &connector)
         .timeout (std::chrono::milliseconds (30000))
         .template submit<await_evidence_res_t> ();
     ensure (static_cast<bool> (released), "ATD-D3 await-released wait failed");
+    ensure (contains_request_marker (released.value ().evidence, request_id,
+                                     "await-released"),
+            "ATD-D3 await-released marker was not observed");
 
     connector.send (probe_msg_t{.request_id = request_id, .marker = "route-bridge-probe"})
         .packet_name (probe_msg_t::packet_name)

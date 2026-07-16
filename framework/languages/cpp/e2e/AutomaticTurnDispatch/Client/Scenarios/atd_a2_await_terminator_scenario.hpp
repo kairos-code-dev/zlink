@@ -19,12 +19,11 @@ std::string run_atd_a2_await_terminator_scenario (TConnector &connector,
 {
     const auto request_id = unique_id ("ATD-A2");
     connector.send (await_msg_t{.request_id = request_id,
-                                .delay_ms = 350,
+                                .delay_ms = 1500,
                                 .correlation_id = "corr-a2"})
       .packet_name (await_msg_t::packet_name)
       .metadata (spot_rid_metadata, spot_rid)
       .submit ();
-    std::this_thread::sleep_for (std::chrono::milliseconds (75));
     auto released =
       observer.request (
                 await_evidence_wait_req_t{.request_id = request_id,
@@ -35,6 +34,9 @@ std::string run_atd_a2_await_terminator_scenario (TConnector &connector,
         .timeout (std::chrono::milliseconds (30000))
         .template submit<await_evidence_res_t> ();
     ensure (static_cast<bool> (released), "ATD-A2 await-released wait failed");
+    ensure (contains_request_marker (released.value ().evidence, request_id,
+                                     "await-released"),
+            "ATD-A2 await-released marker was not observed");
     observer.send (probe_msg_t{.request_id = request_id, .marker = "await-probe"})
         .packet_name (probe_msg_t::packet_name)
         .metadata (spot_rid_metadata, spot_rid)

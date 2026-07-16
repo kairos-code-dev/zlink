@@ -160,6 +160,28 @@ struct worker_await_msg_t
     int delay_ms = 0;
 };
 
+struct http_await_msg_t
+{
+    static constexpr const char *packet_name = "HttpAwaitMsg";
+    std::string request_id;
+    int delay_ms = 0;
+    std::string terminator;
+};
+
+struct io_worker_await_msg_t
+{
+    static constexpr const char *packet_name = "IoWorkerAwaitMsg";
+    std::string request_id;
+    std::string operation_id;
+    int delay_ms = 0;
+};
+
+struct external_delay_res_t
+{
+    std::string request_id;
+    std::string marker;
+};
+
 struct await_timeout_req_t
 {
     static constexpr const char *packet_name = "YieldTimeoutReq";
@@ -534,6 +556,45 @@ inline void from_json (const nlohmann::json &json, worker_await_msg_t &value)
 {
     value.request_id = json.value ("request_id", "");
     value.delay_ms = json.value ("delay_ms", 0);
+}
+
+inline void to_json (nlohmann::json &json, const http_await_msg_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"delay_ms", value.delay_ms},
+                          {"terminator", value.terminator}};
+}
+
+inline void from_json (const nlohmann::json &json, http_await_msg_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+    value.terminator = json.value ("terminator", "");
+}
+
+inline void to_json (nlohmann::json &json, const io_worker_await_msg_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id},
+                          {"operation_id", value.operation_id},
+                          {"delay_ms", value.delay_ms}};
+}
+
+inline void from_json (const nlohmann::json &json, io_worker_await_msg_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.operation_id = json.value ("operation_id", "");
+    value.delay_ms = json.value ("delay_ms", 0);
+}
+
+inline void to_json (nlohmann::json &json, const external_delay_res_t &value)
+{
+    json = nlohmann::json{{"request_id", value.request_id}, {"marker", value.marker}};
+}
+
+inline void from_json (const nlohmann::json &json, external_delay_res_t &value)
+{
+    value.request_id = json.value ("request_id", "");
+    value.marker = json.value ("marker", "");
 }
 
 inline void to_json (nlohmann::json &json, const await_timeout_req_t &value)

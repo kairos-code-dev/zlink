@@ -11,6 +11,7 @@
 #include "../Shared/location_store.hpp"
 
 #include <zlink/framework.hpp>
+#include <zlink/http_client.hpp>
 
 #include <memory>
 
@@ -21,6 +22,12 @@ namespace yd = zlink::framework::e2e::automatic_turn_dispatch;
 inline void configure_play_host (zlink::framework::app_t &app,
                                  const play_options_t &play_options)
 {
+    auto http_client_builder =
+      zlink::http_client::client_t::create (play_options.external_api_base_url);
+    http_client_builder.timeout (std::chrono::seconds (5));
+    auto external_api =
+      http_client_builder.build_server<external_api_http_client_tag_t> (
+        std::make_shared<zlink::http_client::framework_execution_turn_t> ());
     app.logging ()
       .use_file (play_options.log_dir + "/" + play_options.node_rid + ".log")
       .set_min_level (zlink::framework::log_level_t::debug);
@@ -77,8 +84,9 @@ inline void configure_play_host (zlink::framework::app_t &app,
           .add_entry_spot<await_entry_spot_t> (
             [evidence_ptr] { return std::make_shared<await_entry_spot_t> (*evidence_ptr); })
           .add_spot<await_probe_spot_t> (
-            yd::probe_spot_name,
-            [evidence_ptr] { return std::make_shared<await_probe_spot_t> (*evidence_ptr); })
+            yd::probe_spot_name, [evidence_ptr, external_api] {
+                return std::make_shared<await_probe_spot_t> (*evidence_ptr, external_api);
+            })
           .add_actor_factory<await_actor_factory_t> (yd::actor_type);
         options.http ().listen (play_options.http_endpoint).map_health ("/health");
     });

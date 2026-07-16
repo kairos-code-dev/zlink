@@ -17,6 +17,9 @@
 #include "Scenarios/atd_e1_timeout_scenario.hpp"
 #include "Scenarios/td_e2_user_to_user_spot_join_scenario.hpp"
 #include "Scenarios/td_e3_opposite_spot_join_scenario.hpp"
+#include "Scenarios/td_c1_http_yield_interleave_scenario.hpp"
+#include "Scenarios/td_c2_http_async_exclusion_scenario.hpp"
+#include "Scenarios/td_c3_io_worker_capacity_scenario.hpp"
 #include "Scenarios/shutdown_await_scenario.hpp"
 #include "Scenarios/await_actor_scenario_context.hpp"
 #include "Support/client_options.hpp"
@@ -163,6 +166,18 @@ int main (int argc, char **argv)
         }
         if (wants ("atd-c3")) {
             atd_client::run_atd_c3_actor_timer_isolation_scenario (client, actors);
+        }
+        if (wants ("td-c1")) {
+            atd_client::run_td_c1_http_yield_interleave_scenario (
+              client, observer, timer_spot_rid);
+        }
+        if (wants ("td-c2")) {
+            atd_client::run_td_c2_http_async_exclusion_scenario (
+              client, observer, timer_spot_rid);
+        }
+        if (wants ("td-c3")) {
+            atd_client::run_td_c3_io_worker_capacity_scenario (
+              client, observer, timer_spot_rid);
         }
 
         if (wants ("atd-d2")) {

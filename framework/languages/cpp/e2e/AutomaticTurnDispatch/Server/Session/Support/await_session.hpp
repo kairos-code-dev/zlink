@@ -160,6 +160,16 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
                                 payload.parse_json<yd::worker_await_msg_t> (), packet);
             co_return;
         }
+        if (packet == yd::http_await_msg_t::packet_name) {
+            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+                                payload.parse_json<yd::http_await_msg_t> (), packet);
+            co_return;
+        }
+        if (packet == yd::io_worker_await_msg_t::packet_name) {
+            co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
+                                payload.parse_json<yd::io_worker_await_msg_t> (), packet);
+            co_return;
+        }
         if (packet == yd::await_timeout_msg_t::packet_name) {
             co_await send_spot (target_or_default (dispatch), spot_rid (dispatch),
                                 payload.parse_json<yd::await_timeout_msg_t> (), packet);

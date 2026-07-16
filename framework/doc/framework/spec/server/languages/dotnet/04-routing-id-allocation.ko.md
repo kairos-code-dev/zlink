@@ -1,24 +1,21 @@
-# .NET routing id 자동 할당 공개 계약
+# .NET routing ID 자동 할당 공개 계약
 
-이 문서는 [공통 location runtime 계약](../../40-location-runtime.ko.md#12-routing-id-slot-allocation)을
-`.NET`에서 표현하는 정확한 public interface를 고정한다.
+[.NET 계약 목차](README.ko.md) · [RouteMesh·MeshNode](05-route-mesh.ko.md) ·
+[Location Store·Redis](06-location-store.ko.md) ·
+[Redis slot 원자성](../../41-location-store-redis.ko.md#8-routing-id-slot-원자성)
 
-## 1. builder
+## 1. 범위
 
-client/server channel, fanout channel, route mesh channel과 SpotNode builder는 각각 다음 세 메서드를
-제공한다. 반환형은 호출한 builder interface 자신이다.
+이 문서는 MeshNode routing ID slot allocation의 정확한 .NET store, 결과와 readiness provider
+시그니처를 고정한다. MeshNode builder의 allocation 메서드는
+[05 RouteMesh·MeshNode §2](05-route-mesh.ko.md#2-등록-인터페이스)가 소유하며 이 문서에서 재선언하지
+않는다.
 
-```csharp
-Builder UseAllocatedRoutingId(int slotCount);
-Builder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
-Builder SetRoutingIdAllocationGroup(string groupName);
-```
+한 allocation group은 같은 slot 번호를 공유할 MeshNode member와 각 routing ID prefix를 묶는다. 같은
+process가 서로 다른 MeshName의 MeshNode를 여러 개 등록하면 한 group에서 같은 slot을 각 member의 RID에
+적용할 수 있다.
 
-첫 번째 overload는 등록 이름을 prefix로 사용한다. 두 번째 overload는 생성할 routing id의 prefix만
-바꾸며 기본 group 이름은 바꾸지 않는다. group 설정 호출은 자동 할당 호출 전후 어느 쪽에도 둘 수
-있다. 고정 routing id 설정과 함께 사용하면 startup 전에 `ZLinkConfigurationException`이 발생한다.
-
-## 2. allocation store capability
+## 2. Store capability
 
 ```csharp
 public interface IZLinkRoutingIdSlotAllocationStore
@@ -45,14 +42,18 @@ public sealed record ZLinkRoutingIdSlotAcquireRequest(
     string OwnerId,
     TimeSpan LeaseTtl);
 
+public sealed record ZLinkRoutingIdSlotAllocationMember(
+    string MeshName,
+    string RoutingIdPrefix);
+
 public abstract record ZLinkRoutingIdSlotAcquireResult
 {
-    // 결과 집합은 framework package 안에서만 확장할 수 있다.
-    private protected ZLinkRoutingIdSlotAcquireResult();
+    private protected ZLinkRoutingIdSlotAcquireResult() { }
 }
 
 public sealed record ZLinkRoutingIdSlotAcquired(
-    ZLinkRoutingIdSlotAllocation Allocation) : ZLinkRoutingIdSlotAcquireResult;
+    ZLinkRoutingIdSlotAllocation Allocation)
+    : ZLinkRoutingIdSlotAcquireResult;
 
 public sealed record ZLinkRoutingIdSlotGroupExhausted
     : ZLinkRoutingIdSlotAcquireResult;
@@ -61,7 +62,8 @@ public sealed record ZLinkRoutingIdSlotGroupConfigurationMismatch(
     IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> ExpectedMembers,
     int ExpectedSlotCount,
     IReadOnlyList<ZLinkRoutingIdSlotAllocationMember> ActualMembers,
-    int ActualSlotCount) : ZLinkRoutingIdSlotAcquireResult;
+    int ActualSlotCount)
+    : ZLinkRoutingIdSlotAcquireResult;
 
 public sealed record ZLinkRoutingIdSlotIdentityModeConflict
     : ZLinkRoutingIdSlotAcquireResult;
@@ -84,18 +86,26 @@ public sealed record ZLinkRoutingIdSlotAllocationSnapshot(
     int SlotCount,
     IReadOnlyList<ZLinkRoutingIdSlotAllocation> Allocations,
     DateTimeOffset StoreNow);
-
-public sealed record ZLinkRoutingIdSlotAllocationMember(
-    string ChannelName,
-    string RoutingIdPrefix);
 ```
 
-`ZLinkRoutingIdSlotAcquireResult`의 닫힌 결과 집합은 `ZLinkRoutingIdSlotAcquired`,
-`ZLinkRoutingIdSlotGroupExhausted`, `ZLinkRoutingIdSlotGroupConfigurationMismatch`,
-`ZLinkRoutingIdSlotIdentityModeConflict`다. 성공 결과는 slot, owner token, lease 만료 시각과 같은 원자
-연산에서 읽은 store 시각을 담는다. release 결과는 `Released` 또는 `IgnoredStale`다.
+Acquire 결과 집합은 `ZLinkRoutingIdSlotAcquired`, `ZLinkRoutingIdSlotGroupExhausted`,
+`ZLinkRoutingIdSlotGroupConfigurationMismatch`와 `ZLinkRoutingIdSlotIdentityModeConflict`로 닫혀 있다.
+같은 owner의 재호출은 같은 slot과 generation을 반환한다. 서로 다른 owner가 같은 유효 slot을 동시에
+받을 수 없다.
 
-## 3. 준비된 결과 조회
+Release는 group, slot, owner와 generation이 모두 일치할 때만 `Released`다. 오래된 owner token은
+`IgnoredStale`이며 현재 allocation을 바꾸지 않는다.
+
+## 3. Redis 등록
+
+자동 할당은 별도 store registration을 제공하지 않는다. Root에 등록한 같은 `IZLinkLocationStore`
+instance가 `IZLinkRoutingIdSlotAllocationStore`도 구현해야 한다. 공식 Redis location store가 production
+capability를 제공한다.
+
+자동 할당이 설정되어 있는데 등록한 location store가 이 interface를 구현하지 않으면 host startup이
+`ZLinkConfigurationException`으로 실패한다.
+
+## 4. 준비된 결과 조회
 
 ```csharp
 public interface IZLinkAllocatedRoutingIdProvider
@@ -108,24 +118,25 @@ public interface IZLinkAllocatedRoutingIdProvider
 public sealed record ZLinkAllocatedRoutingId(
     string GroupName,
     int Slot,
-    IReadOnlyDictionary<string, RoutingId> MemberRoutingIds);
+    IReadOnlyDictionary<string, RoutingId> MeshNodeRoutingIds);
 ```
 
-결과는 group 이름, slot과 member 이름별 `RoutingId`를 제공한다. provider는 모든 socket bind와
-location row 게시가 끝나 readiness에 도달한 뒤에만 완료된다. 등록되지 않은 group 이름은
-`ZLinkConfigurationException`으로 실패한다.
+Dictionary key는 MeshName이다. Provider는 group의 모든 MeshNode에 routing ID가 적용되고 bind, MeshNode
+descriptor 게시와 readiness가 완료된 뒤 결과를 반환한다. 등록되지 않은 group은 `ZLinkConfigurationException`으로
+실패한다.
 
-## 4. location option
+## 5. Startup 순서
 
-`ZLinkLocationOptions`는 기존 `HeartbeatInterval`, `OwnerLeaseTtl`과 함께
-`RoutingIdFencingMargin`, `OwnerLeaseRenewTimeout`을 제공한다. 기본값은 각각 10초, 30초, 5초,
-3초이며 공통 계약의 시간 관계를 만족해야 한다.
+1. 모든 allocation group과 lease option을 검증한다.
+2. group 이름 순서로 slot과 owner lease를 확보한다.
+3. 확정한 RID를 각 MeshNode에 적용한다.
+4. MeshNode socket을 만들고 bind한다.
+5. MeshNode descriptor를 게시한 뒤 readiness provider를 완료한다.
 
-## 회귀 테스트
+어느 group이 소진되면 확보한 다른 group의 slot을 release하고 bind를 시작하지 않는다. Fixed routing ID와
+automatic allocation을 같은 MeshNode에 설정하면 startup이 실패한다.
 
-| 테스트 | 확인 기준 |
-|--------|-----------|
-| `NodesAndServicesTests.AddZLinkFramework_RegistersOneAllocatedRoutingIdCapabilityForAllBuilders` | 네 builder와 같은 store capability 등록 |
-| `NodesAndServicesTests.HostStartup_AllocatesRoutingIdBeforeBindingAndPublishesReadyResult` | bind 전 할당과 readiness 이후 결과 조회 |
-| `InMemoryLocationStoreTests.RoutingIdSlots_AssignLowestRecycleAndFenceStaleRelease` | 최소 slot, 재사용과 generation guard |
-| `RedisLocationStoreTests.RoutingIdSlotAllocation_IsAtomicIdempotentAndFenced` | Redis 원자 할당, 멱등성과 stale release 차단 |
+Lease option의 정확한 시그니처와 검증 관계는
+[Location Store·Redis §2](06-location-store.ko.md#2-root-등록과-option)가 소유한다. Lease renew를 안전
+기한까지 확인하지 못하면 host는 관련 MeshNode의 종료를 요청한다. 실행 중에 새 slot을 임의로 선택하지
+않는다.

@@ -1,140 +1,83 @@
-<!-- framework-adapter-nav:start -->
-[스펙 목차](README.ko.md) | [이전: Framework 공개 계약 관리](00-public-contract-governance.ko.md) | [다음: ZLink Framework Interaction Model](02-interaction-model.ko.md)
-<!-- framework-adapter-nav:end -->
+# ZLink Framework 개요
 
-
-[문서 묶음](../common/README.ko.md) | [상호작용 모델](02-interaction-model.ko.md) | [메시지 모델](03-message-model.ko.md) | [channel topology](server/10-channel-topology.ko.md) | [framework API](05-framework-api.ko.md) | [공통 sample](../common/sample/README.ko.md) | [공통 E2E](../common/e2e/README.ko.md) | [.NET](../dotnet/README.ko.md) | [Java](../java/README.ko.md) | [Node.js](../node/README.ko.md) | [C++](../cpp/README.ko.md)
-
-# ZLink Framework Overview
+[스펙 목차](README.ko.md) · [이전: 공개 계약 관리](00-public-contract-governance.ko.md) ·
+[다음: 상호작용 모델](02-interaction-model.ko.md)
 
 ## 1. 한 줄 정의
 
-`ZLink Framework`는 zlink 바인딩 위에 올라가서, 기존 애플리케이션 프레임워크에서
-**gateway나 전용 로드밸런서 없이도** `channel name` 기준의 직접 channel 호출,
-pub/sub, `SPOT`, `STREAM`, location store 기반 자동 연결을 사용할 수 있게 하는 상위
-계층이다.
+ZLink Framework 10.0.0은 typed message handler, RouteMesh, Spot, Actor, STREAM session, classic fanout과
+location runtime을 application host의 lifecycle과 DI에 연결하는 상위 계층이다.
 
-## 2. 무엇을 제공하는가
+## 2. RouteMesh와 MeshNode
 
-`ZLink Framework`는 아래 기능을 하나의 방향으로 묶는다.
+`RouteMesh`는 같은 `MeshName`을 공유하는 MeshNode의 물리 연결 범위다. MeshNode 하나는 routing ID 하나와
+ROUTER endpoint 하나를 가지며, 하나 이상의 immutable `ChannelName`에 참여한다.
 
-- server-to-server send/request
-- channel messaging integration
-- pub/sub integration
-- spot integration
-- stream integration
-- channel별 location store 기반 자동 연결([location runtime](server/40-location-runtime.ko.md))
-- runtime monitoring
-- location runtime query (원시 row, runtime이 합성한 topology 보기, status 운영 조회)
-- framework-friendly handler / client / event API
+`MeshName`과 `ChannelName`은 역할이 다르다.
 
-raw socket과 low-level 연결 배선을 프레임워크 사용자가 직접 다루지 않고도
-기존 HTTP나 gRPC를 쓰던 감각에 가까운 개발 모델을 제공하는 것이 목표다.
-다만 내부에서 무엇을 쓰는지는 숨기더라도 framework가 실제로 통합할 transport
-축 자체는 명확해야 한다.
+| 이름 | 의미 |
+|---|---|
+| MeshName | 서로 메시징할 수 있는 물리 mesh와 RID namespace |
+| ChannelName | 같은 mesh 안에서 select-one과 Logical Multicast 대상을 묶는 논리 membership |
 
-현재 이 문서는 아래 네 축을 직접 통합 대상으로 본다.
+한 process는 서로 다른 MeshName의 MeshNode를 여러 개 가질 수 있다. 각 mesh는 독립적이며 자동 relay를
+제공하지 않는다. ChannelName을 추가해도 socket이나 endpoint가 추가되지 않는다.
 
-1. channel messaging
-   `DEALER(client) -> ROUTER(server)`
-2. `SPOT`
-3. `PUB/SUB`
-4. `STREAM`
+## 3. 메시지 대상
 
-그 위에 사용자 경험은 아래처럼 다시 올린다.
+MeshNode 위의 메시징은 대상 선택 방식으로 구분한다.
 
-- 서버 간 `send`
-- 서버 간 `request`
-- pub/sub
-- `SPOT` named instance 생성/조회와 현재 channel 안의 publish/subscribe
-- route bridge channel socket을 통한 cross-channel send/request
-- local spot 인스턴스가 없는 외부 노드용 SPOT channel publish client
-- stream session
-- socket/location runtime/spot runtime event
+- node direct는 같은 MeshName의 RID 하나를 지정한다.
+- channel send/request는 `(MeshName, ChannelName)`의 ready member 하나를 positive weight
+  round-robin으로 선택한다.
+- Spot Logical Multicast는 ChannelName의 remote MeshNode와 node-local Spot subscription을 대상으로 한다.
+- Spot direct와 Actor direct는 address와 generation을 검증한 owner mailbox로 전달한다.
 
-transport 축은 사용자에게 그대로 노출하지 않더라도, 내부 wire 경계는 언어별
-adapter가 공통으로 지켜야 한다.
+선택과 submit은 하나의 operation이다. application은 peer 목록이나 선택된 RID를 받아 별도 send를
+반복하지 않는다.
 
-- 서버 간 framework message (`DEALER/ROUTER`, routed channel, `SPOT` channel,
-  internal actor dispatch, internal session proxy)는 multipart `header + payload`를
-  사용한다.
-- `STREAM`은 하나의 stream packet을 기본 단위로 사용한다. stream header와 payload는 그
-  packet 안의 frame으로 다룬다.
+## 4. Logical Multicast와 classic fanout
 
-이 구분은 성능과 소유권을 위한 기본 정책이다. 서버 간 body를 header와 함께 단일
-직렬화 envelope로 묶으면 body를 다시 복사하거나 재인코딩하게 되고 route나 dispatch가
-header만 읽는 장점도 잃는다.
+Spot Logical Multicast는 room, stage, zone처럼 위치가 바뀔 수 있는 logical Spot에 event를 전달한다.
+송신 MeshNode는 target channel의 remote MeshNode마다 routed message를 한 번 보내고, 수신 MeshNode가
+자기 node의 subscription을 검사한다. 같은 node에서 여러 Spot이 일치하면 immutable message storage의
+reference를 공유해 각 Spot queue에 넣는다.
 
-## 3. 핵심 차별점
+Logical Multicast의 기본 publish 정책은 `NODROP`이다. 모든 remote pipe와 local Spot queue가 message를
+받을 수 있을 때 한 번에 commit한다. 한 대상이라도 backpressure 상태이면 send timeout까지 기다리고,
+시간 안에 admission할 수 없으면 어느 대상에도 commit하지 않는다.
 
-일반적인 웹 서버 환경에서는 위치투명성과 provider 선택을 위해 아래 중 하나를
-두는 경우가 많다.
+classic fanout은 연결되어 있고 subscription 준비가 끝난 subscriber에게 event를 보내는 독립 PUB/SUB
+기능이다. MeshNode나 Spot이 필요하지 않은 host도 사용할 수 있으며 저장과 replay를 보장하지 않는다.
 
-- API gateway
-- 전용 load balancer
-- service proxy
+## 5. 실행 owner
 
-`ZLink Framework`는 이와 다른 방향을 기본으로 본다.
+Framework는 메시지를 실제 상태를 소유하는 실행 단위로 전달한다.
 
-- 호출자는 gateway 주소 대신 `channel name`을 기준으로 요청한다.
-- framework runtime이 channel마다 별도 outbound socket을 만든다.
-- location store 기반 자동 연결이 그 channel view 안의 provider 위치를 숨긴다.
-- framework는 그 channel 안의 `rid` 집합과 연결 상태를 기준으로 요청을 보낸다.
-- 요청은 중간 gateway 없이 provider로 직접 간다.
+| owner | 책임 |
+|---|---|
+| Node | RID direct와 ChannelName handler, node에서 시작한 completion |
+| Spot | Spot direct, Logical Multicast subscription, timer와 Spot 상태 |
+| Actor | Actor direct message, Actor lifecycle과 Actor별 mailbox |
+| STREAM session | 연결 lifecycle, packet dispatch와 Actor binding ingress |
 
-"위치투명성을 얻으려면 반드시 gateway를 거쳐야 한다"는 전제를 두지 않는다.
+Spot과 Actor message를 Node handler에서 다시 분배하도록 application에 요구하지 않는다. Core ready event는
+작업 가능 상태만 알리고, Framework가 owner별 claim을 drain해 등록된 handler 실행 문맥으로 연결한다.
 
-## 4. 무엇을 대체할 수 있는가
+## 6. 연결 관리
 
-### 4.1 잘 대체하는 것
+자동 discovery는 location store의 descriptor와 lease로 같은 MeshName의 peer를 찾는다. 분산 discovery,
+Spot·Actor location 또는 Actor transfer를 사용하는 host는 공식 Redis location store instance를
+명시적으로 등록한다.
 
-- 내부 서비스 간 위치투명 호출
-- channel 이름 기반 provider 선택
-- 일부 내부 gateway 또는 내부 load balancing 계층
-- request-response와 event fan-out을 함께 쓰는 내부 통신
+manual peer는 endpoint 또는 expected RID와 endpoint를 application이 제공하는 연결 intent다. manual peer도
+자동 discovery peer와 같은 MeshName, RID, ChannelName, generation과 security admission을 통과한다.
+manual이라는 이유로 message path나 handler 의미가 달라지지 않는다.
 
-### 4.2 바로 대체하지 않는 것
+## 7. Framework가 숨기는 것
 
-- 외부 공개 API용 edge gateway
-- 인증/인가 중앙 정책
-- rate limiting, quota, WAF
-- public API versioning
-- edge cache, billing, audit
+Framework는 transport 주소 선택, peer reconnect, multipart framing, packet codec, reply correlation과
+backpressure queue를 내부에서 관리한다. application handler는 typed payload와 context를 사용하며 raw
+socket 배선을 구성하지 않는다.
 
-`ZLink Framework`는 곧바로 edge API gateway 제품이 아니라
-**내부 서비스 통신 기반**에 더 가깝다.
-
-## 5. 그 위에 무엇을 만들 수 있는가
-
-이 계층 위에는 필요에 따라 별도의 고성능 API gateway를 만들 수 있다.
-
-즉 관계는 아래처럼 보는 편이 정확하다.
-
-1. `ZLink`
-   기반 messaging/runtime library
-2. `ZLink Framework`
-   framework integration layer
-3. optional gateway products
-   필요하면 그 위에 올리는 ingress 또는 edge 계층
-
-## 6. 현재 우선 범위
-
-현재 스펙이 우선 다루는 상호작용 모델은 아래와 같다.
-
-- request-response
-- command
-- publish-subscribe
-- stream
-
-현재 방향에서는 `STREAM`도 네 가지 직접 통합 축 중 하나다. 다만 `send/request`처럼 모든
-프레임워크의 기본 업무 API로 똑같이 보이게 하기보다, 연결 수명과 packet 처리
-성격을 드러내는 별도 handler 모델로 설명하는 편을 기본으로 본다.
-
-## 7. 다음 문서
-
-전체 문서 목록과 읽는 순서는 [README.ko.md](../common/README.ko.md)를 참고한다.
-
----
-<!-- framework-adapter-nav:bottom:start -->
-[스펙 목차](README.ko.md) | [이전: Framework 공개 계약 관리](00-public-contract-governance.ko.md) | [다음: ZLink Framework Interaction Model](02-interaction-model.ko.md)
-<!-- framework-adapter-nav:bottom:end -->
+외부 edge gateway의 인증, quota, WAF, public API versioning과 billing은 이 framework의 계약 범위가 아니다.

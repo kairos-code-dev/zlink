@@ -10,7 +10,7 @@
 > 모듈 부트스트랩, DI, lifecycle, 그리고 각 기능의 **등록 표면**이다.
 >
 > **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../11-channel-messaging.ko.md),
-> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-spot-node.ko.md),
+> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-mesh-node.ko.md),
 > [stream-session](../../30-stream-session.ko.md), [actor-model](../../22-actor-model.ko.md),
 > [session-actor-dispatch](../../31-session-actor-dispatch.ko.md),
 > [runtime-monitoring](../../50-runtime-monitoring.ko.md),
@@ -206,12 +206,12 @@ backend 어댑터 포트는
 | `addClientServerChannel(...).enableClient(...)` | SPOT handler의 channel send/request가 공유하는 client |
 
 중복 등록, route bridge와 타입 규칙은
-[spot-node](../../21-spot-node.ko.md)와 [spot-messaging](../../20-spot-messaging.ko.md)이 소유한다.
+[spot-node](../../21-mesh-node.ko.md)와 [spot-messaging](../../20-spot-messaging.ko.md)이 소유한다.
 
 ### 7.1 Entry Spot routing id의 적용 순서
 
 **Entry Spot routing id는 native SpotNode가 bind되기 전에 적용해야 한다.** core가 bind 이후 변경을
-잠근다([spot-node §2.1](../../21-spot-node.ko.md)).
+잠근다([spot-node §2.1](../../21-mesh-node.ko.md)).
 
 1. backend 어댑터가 native Entry Spot facade를 얻는다.
 2. `routingId`가 설정되어 있으면 facade에 적용한다.

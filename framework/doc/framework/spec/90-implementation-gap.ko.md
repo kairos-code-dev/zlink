@@ -84,7 +84,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
 | 20 | [SPOT 메시징](server/20-spot-messaging.ko.md) | O | O | O | **△** startup validation [§4.13](#413-startup-validation-누락-해소) | O |
-| 21 | [SpotNode](server/21-spot-node.ko.md) | O | O | O | O | O |
+| 21 | [MeshNode](server/21-mesh-node.ko.md) | O | O | O | O | O |
 | 22 | [Actor 모델](server/22-actor-model.ko.md) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) |
 | 23 | [Spot Actor Join/Transfer](server/23-spot-actor.ko.md) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) | O | **X** [§12.2](#122-actor-join-admission이-선택-사항-java-c) |
 | 24 | [Spot 주소 메시징](server/24-spot-address-messaging.ko.md) | O | **X** [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **X** [§12.9](#129-spot-전송-표면에-channel-이름을-함께-받는다-java) | **X** [§12.5](#125-spot-메시징-표면-누락-node) | O |
@@ -726,7 +726,7 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | **IMP-X9** | **HTTP client가 proxy 자격증명을 대상 서버로 흘리고, CONNECT는 인증 없이 나간다.** [http 07 §7.3](http-client/07-auth-tls-proxy.ko.md) | Java (`.NET`·C++·Node는 해소) |
 | **IMP-X10** | **SPOT timer 등록 검증이 startup이 아니라 spot 활성화 시점이다.** [25 §4.1](server/25-stage-wrapper-on-spot.ko.md). ⇒ `period=0`이 healthy로 기동하고 **모든 방 생성이 실패**한다 | Node (`.NET`은 해소) |
 | **IMP-X11** | **`fanout.received`가 등록되지 않은 topic까지 메트릭 라벨로 단다.** [51 §5](server/51-runtime-metrics.ko.md)는 라벨을 등록 시점의 닫힌 집합으로 제한한다. ⇒ **수집기 카디널리티가 무한히 늘어난다** | Node (`.NET`·C++은 해소) |
-| **IMP-X12** | **actor가 든 spot을 닫을 수 있다 — check-then-act 경합.** [21 §close](server/21-spot-node.ko.md)는 "actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다". ⇒ `OnLeaveActor`가 안 돌고 actor의 location row가 **해제된 spot을 가리킨다** | Java · Node (`.NET`·C++은 해소) |
+| **IMP-X12** | **actor가 든 spot을 닫을 수 있다 — check-then-act 경합.** [21 §close](server/21-mesh-node.ko.md)는 "actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다". ⇒ `OnLeaveActor`가 안 돌고 actor의 location row가 **해제된 spot을 가리킨다** | Java · Node (`.NET`·C++은 해소) |
 | **IMP-X13** | **서버가 `correlation_id`를 `request_seq`로 날조한다.** [52 §9](server/52-message-flow-tracing.ko.md)는 "client가 생성하고 server는 echo만 한다. **서버는 ingress에서 생성하지 않는다**". `request_seq`는 연결마다 도는 카운터라 **모든 세션의 로그가 `corr=1,2,3…`으로 뭉갠다** | Java · Node (`.NET`·C++은 해소) |
 | **IMP-X14** | **`listPageSize`(기본 1000)를 읽는 곳이 없다.** 내부 기본값이 1000이 아니라 **무한**이라 모든 목록 조회가 **O(N) 전체 읽기**다 | Java · Node · C++ (`.NET`은 1000을 하드코딩 — IMP-DN-06) |
 | **IMP-X15** | **`storeFailureGrace`(30초)를 읽는 곳이 없다.** [40 §6.1](server/40-location-runtime.ko.md)의 **fail-static 유예 정책 자체가 없다.** Java e2e의 `SF-B2 GraceExceeded`가 **존재하지 않는 정책을 검증하고 있다** | Java · Node · C++ |
@@ -835,7 +835,7 @@ invalid frame은 `Warning`, publish는 `Debug`, application handler 예외는 `E
 
 ## 17. routing id 자동 할당 구현 상태
 
-[channel topology](server/10-channel-topology.ko.md), [SpotNode](server/21-spot-node.ko.md),
+[channel topology](server/10-channel-topology.ko.md), [MeshNode](server/21-mesh-node.ko.md),
 [location runtime](server/40-location-runtime.ko.md)과 [Redis extension](server/41-location-store-redis.ko.md)이
 자동 routing id 할당의 목표 계약을 소유한다.
 

@@ -256,7 +256,7 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   `./run_samples.sh java/Bingo kotlin/SupportChat`처럼 쓴다. 통합 runner는 sample 내부 절차를
   재구현하지 않고 선택한 개별 `run_sample.*`만 호출한다.
 - 통합 sample runner는 sample별 내부 동작을 다시 구현하지 않는다. 선택한 개별 `run_sample.*`를
-  호출하고, retry 여부와 최종 결과만 관리한다. Redis endpoint 생성,
+  한 번 호출하고 최종 결과만 관리한다. Redis endpoint 생성,
   readiness, 로그 위치, self-check 세부 절차는 개별 script와 공통 helper가 맡는다.
 - Redis host port는 고정값을 쓰지 않고 Docker가 비어 있는 loopback port를 배정하게 한다.
   runner는 배정된 port를 inspect로 읽어 애플리케이션 설정에 전달한다. Redis key prefix도
@@ -272,9 +272,8 @@ Redis endpoint를 공유하거나 fallback으로 사용하면 안 된다. key pr
   받지 않는다. 이 방식은 helper가 실패해도 `read` 자체는 성공할 수 있어 Redis 없이 서버를 띄우는
   잘못된 실행으로 이어진다. helper는 `zlink_redis_start_scoped_assign`처럼 호출부 변수에 값을
   대입하는 함수로 제공하고, 함수 실패가 그대로 runner 실패가 되게 한다.
-- 통합 sample runner는 transient bind 실패(`Address already in use`, `EADDRINUSE`,
-  `already bound`, `errno=98`)만 제한적으로 retry할 수 있다. readiness timeout, sample self-check assertion 실패나
-  framework semantic failure는 retry로 가리지 않고 바로 실패로 남긴다.
+- 통합 sample runner는 bind 실패를 포함한 개별 sample 실패를 재시도하지 않는다. 실행별 port를
+  미리 확보했는데도 bind가 실패했다면 같은 실행을 반복해 숨기지 않고 즉시 실패해야 원인을 확인할 수 있다.
 - 실패 시 runner는 `log_dir=...` 또는 sample별 로그 위치를 출력하고, 각 프로세스의
   stdout/stderr와 framework log를 `logs/*.log`에 남긴다.
 

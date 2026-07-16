@@ -5,19 +5,21 @@
 
 # Location Store — 공식 Redis Extension
 
-이 문서는 framework가 공식 제공하는 **Redis location store extension**의 언어 중립 공통
-스펙이다. store/lease/generation의 계약 의미는 [location runtime](40-location-runtime.ko.md)이
-소유하고, 이 문서는 그 계약을 Redis 위에서 어떻게 만족시키는지(key 구조, 원자성, 변경 감지,
-오류 변환, Redis 연결 수명)를 정의한다.
+이 문서는 ZLink Framework 10.0.0이 공식 제공하는 **Redis location store extension**의 언어 중립
+공개 계약이다. 이 문서는 “Redis extension이 MeshNode discovery, Spot·Actor location과 Actor transfer
+authority를 어떤 원자성으로 제공하는가?”라는 질문에 답한다. Store, lease와 generation의 의미는
+[location runtime](40-location-runtime.ko.md)이 소유하고, 이 문서는 Redis key, 원자 operation, 변경 감지,
+오류 변환과 연결 수명을 정의한다.
 
-> Redis extension은 **공식 제공이지만 framework 본체 dependency가 아니다.** 별도 package
-> (`Zlink.Framework.Locations.Redis` 상당)로 배포되고, 사용자는 인스턴스를 만들어
-> `AddLocationStore(instance)`로 등록한다. 전용 등록 함수는 없다.
+Redis extension은 production 분산 구성이 사용하는 공식 기본 구현이지만 framework 본체 dependency는
+아니다. 별도 package로 배포하며 application이 인스턴스와 연결 설정을 명시적으로 등록한다. 자동
+discovery, remote Spot·Actor location 또는 분산 Actor transfer를 구성하고 Redis extension을 등록하지
+않으면 host startup이 실패한다. Process-local in-memory 구현은 한 process의 contract test에서만 사용한다.
 
 ## 1. 등록과 설정
 
-아래 코드는 등록 의미를 보여 주는 비규범 `.NET` 투영 예시다. 정확한 이름과 타입은
-언어별 스펙에서 고정한다.
+아래 코드는 .NET의 등록 지점을 보여 준다. 정확한 .NET interface는
+[.NET Location Store·Redis](languages/dotnet/06-location-store.ko.md)가 소유한다.
 
 ```csharp
 options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -30,15 +32,15 @@ options.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
 | connection string / configuration | Redis 연결 정보. 언어별 Redis client의 관용 표현을 그대로 받는다 |
 | key prefix | 이 배포의 모든 key 앞에 붙는 격리 접두사. 배포(또는 테스트 실행)별로 달라야 한다 |
 
-Redis extension 인스턴스는 store 5종 통합 계약과 optional **change stamp** 계약을 구현한다.
-같은 인스턴스가 optional **routing id slot allocation** 계약도 구현한다.
-watch(변경 이벤트 stream)는 구현하지 않는다. 이 extension은 polling과 change stamp로 변경을 감지한다.
+Redis extension 인스턴스는 MeshNode descriptor, Spot location, Actor location, owner lease, Actor transfer
+authority와 routing ID slot allocation을 함께 제공한다. Change stamp도 같은 인스턴스가 제공한다.
+Watch 형태의 변경 event stream은 공개 계약이 아니다. 이 extension은 polling과 change stamp로 변경을 감지한다.
 polling은 주기적으로 store를 다시 읽는 방식이고, change stamp는 row가 바뀔 때 증가하는 번호다. 계약상
 polling만으로도 올바른 연결 상태에 도달해야 하므로 Redis extension이 watch를 제공하지 않아도 충분하다.
 
 ## 2. Key schema
 
-prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key 필드들을
+prefix `P`, kind ∈ {`mesh`, `spot`, `actor`, `route`} 기준. row key는 key 필드들을
 `길이:값` 형태로 이어 붙인 문자열이다. 이렇게 길이를 함께 저장하면 값 안에 구분자가 들어 있어도
 어디까지가 한 필드인지 알 수 있다. `RoutingId`는 hex로 인코딩한다. 임의 바이트 rid와 구분자 충돌을
 피해야 하므로 row key에 raw rid 문자열을 쓰지 않는다.
@@ -52,13 +54,15 @@ prefix `P`, kind ∈ {`peer`, `spot`, `actor`, `route`} 기준. row key는 key �
 | `P:lease:{ownerId}` | STRING | `nodeRidHex\|updatedAtMs`, Redis `PX` TTL로 만료 |
 | `P:leases` | SET | lease를 가진 적 있는 owner id 목록 |
 | `P:stamp:{kind}[:{mesh}]` | STRING | scope별 change stamp counter |
+| `P:transfer:{meshName}:{actorId}:{transferId}` | HASH | participant set, source·target identity, expected Actor generation·membership epoch, state와 recovery lease |
+| `P:transfer-by-actor:{meshName}:{actorId}` | STRING | Actor마다 동시에 하나만 허용하는 active transfer ID |
 | `P:ridalloc:{groupName}` | HASH | 정렬된 member·prefix JSON, slot count, identity mode, slot owner·generation과 owner별 slot index |
 
-row key 예 (peer): `AutoConnectType 공통 문자열 + MeshName + Role 공통 문자열 +
-identity(NodeRid hex, 없으면 endpoint)`를 length-prefix로 연결한 값.
+MeshNode descriptor row key는 `MeshName + RID`를 length-prefix로 연결한 값이다. Endpoint는 descriptor 값에
+포함하며 identity key로 사용하지 않는다. 재기동한 같은 RID는 generation으로 구분한다.
 
 Redis row 형식의 byte-for-byte fixture 정본은
-`framework/testdata/location/redis/actor-location-v2.json`이다. 네 언어 Redis extension은 이
+`framework/testdata/location/redis/actor-location-v2.json`이다. 모든 공식 Redis extension은 이
 fixture와 같은 key 문자열, hash field, row JSON을 만들어야 한다. fixture의 hash field는
 `owner`, `gen`, `json`, `updatedAtMs`이고, row JSON은 PascalCase public field 이름을 유지한다.
 `RoutingId` 값은 소문자 hex 문자열로 저장하고, route `Value`는 base64 문자열로 저장한다.
@@ -72,12 +76,12 @@ actor row와 key 형식은 다음 규칙으로 고정한다.
   actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
 - actor row에는 중복 `SpotKind` 필드를 두지 않는다. actor가 존재하는 spot 종류는
   `LocationKind` 단독으로 표현한다.
-- 네 언어 extension은 이 row와 key 형식을 동일하게 사용한다.
+- 모든 공식 extension은 이 row와 key 형식을 동일하게 사용한다.
 
 ## 3. 원자성 — write는 전부 Lua script
 
 모든 write 결정(NewClaim/Renew/Takeover 판정, generation 발급, owner-guard remove, lease
-renew/remove)은 **Lua script 한 번**으로 원자 실행한다. script는:
+renew/remove와 Actor transfer 상태 전이)은 **Lua script 한 번**으로 원자 실행한다. script는:
 
 - 판정과 갱신을 한 atomic step에서 수행한다 — NewClaim의 "현재 row 없음 또는 row owner의
   lease 만료" 확인과 새 generation 발급이 분리되지 않는다.
@@ -87,6 +91,24 @@ renew/remove)은 **Lua script 한 번**으로 원자 실행한다. script는:
   `ZLinkLocationWriteResult`로 변환한다.
 - old-owner index 같은 파생 key는 row의 현재 owner를 알아야 계산되므로 ARGV로 prefix를 받아
   script 내부에서 조립한다.
+
+### 3.1 Actor transfer authority
+
+Actor transfer는 Actor 하나마다 active transfer 하나만 허용한다. 각 operation은 다음 원자 전이를
+사용한다.
+
+| 전이 | Redis 원자 조건과 결과 |
+|---|---|
+| prepare | Actor row의 source owner, Actor generation과 membership epoch가 expected 값과 일치하고 active transfer가 없을 때 `Prepared` record와 actor index를 함께 만든다 |
+| commit | 같은 transfer가 `Prepared`이고 recovery lease owner가 일치할 때 Actor row를 target owner와 `expected epoch + 1`로 바꾸고 transfer를 `Committed`로 변경한다 |
+| activate | `Committed` transfer만 `Activated`로 바꾸고 actor index를 정리할 수 있는 terminal 상태로 만든다 |
+| abort | `Prepared` transfer만 `Aborted`로 바꾸며 Actor row의 source owner와 membership epoch를 유지한다 |
+| takeover | recovery lease가 만료된 transfer의 participant set과 현재 Actor row를 확인한 뒤 successor lease owner를 한 번에 바꾼다 |
+
+Redis record는 분산 권한 결정과 복구 상태를 소유한다. Core prepare가 발급하는 opaque sealed token은
+같은 process의 Core handle에만 유효하므로 Redis에 저장하지 않는다. Successor는 Redis authority를
+takeover한 뒤 자신의 Core runtime에서 prepare를 다시 수행해 새 sealed token을 얻는다. Application이
+만든 임의의 token이나 외부 token 검증 callback은 Redis extension과 Core의 공개 계약에 포함하지 않는다.
 
 **지원 topology는 standalone Redis다.** cluster에 배포하려면 모든 key가 한 slot에 모이도록
 key prefix를 hash-tag(`{...}`)로 구성해야 한다(공식 지원 범위 밖의 운영 선택).
@@ -124,8 +146,9 @@ polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목�
 
 - 배포별 key prefix 격리가 필수다. E2E와 테스트는 실행마다 전용 prefix(또는 disposable Redis
   instance)를 사용하고, 실행 후 prefix 하위 key를 정리하거나 인스턴스를 버린다.
-- store 계약 회귀는 언어 공통 store contract 테스트(같은 시나리오를 in-memory 구현과 Redis
-  구현에 함께 실행)로 검증한다. Redis 자체의 HA/복제(sentinel, cluster)는 이 extension의 검증
+- store 계약 회귀는 Redis extension contract test로 검증한다. Process-local 동작만 필요한 공통 row
+  test는 test-only in-memory 구현에도 실행할 수 있지만, 분산 lease·transfer authority 검증을 in-memory
+  결과로 대신하지 않는다. Redis 자체의 HA/복제(sentinel, cluster)는 이 extension의 검증
   범위가 아니다.
 
 ## 8. routing id slot 원자성

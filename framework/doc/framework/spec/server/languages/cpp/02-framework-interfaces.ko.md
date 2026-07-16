@@ -2474,7 +2474,7 @@ enum  class spot_accept_reject_result_t;  // admission 결과
 class  spot_node_manager_t;               // 생성·조회·종료
 ```
 
-**lifecycle callback의 호출 순서는 [spot-node §3.2](../../21-spot-node.ko.md)가 소유한다** —
+**lifecycle callback의 호출 순서는 [spot-node §3.2](../../21-mesh-node.ko.md)가 소유한다** —
 handler 구성 → 생성 callback → **수락된 경우에만** 초기화 → 종료는 한 번.
 
 ### 16.14 Actor 표면

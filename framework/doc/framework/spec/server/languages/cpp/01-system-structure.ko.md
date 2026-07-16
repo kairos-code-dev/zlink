@@ -11,7 +11,7 @@
 > **등록 표면**이다.
 >
 > **기능의 의미와 동작 규칙은 공통 스펙이 소유한다** — [channel-messaging](../../11-channel-messaging.ko.md),
-> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-spot-node.ko.md),
+> [spot-messaging](../../20-spot-messaging.ko.md), [spot-node](../../21-mesh-node.ko.md),
 > [stream-session](../../30-stream-session.ko.md), [actor-model](../../22-actor-model.ko.md),
 > [session-actor-dispatch](../../31-session-actor-dispatch.ko.md),
 > [runtime-monitoring](../../50-runtime-monitoring.ko.md),

@@ -108,6 +108,15 @@ template <typename TContext> concept has_run_worker = requires (TContext & conte
     context.run_worker ([] { return 1; });
 };
 
+template <typename TContext> concept has_split_workers = requires (TContext & context)
+{
+    context.run_cpu_worker ([] { return 1; });
+    context.run_io_worker ([] {
+        return zlink::framework::task_t<int> (
+          zlink::framework::result_t<int>::success (1));
+    });
+};
+
 template <typename T> concept has_actor_location_spot_kind_member = requires (T value)
 {
     value.spot_kind;
@@ -937,9 +946,16 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().manager ()),
                  zlink::framework::spot_node_manager_t>);
-static_assert (has_run_worker<zlink::framework::spot_context_t>);
+static_assert (!has_run_worker<zlink::framework::spot_context_t>);
+static_assert (has_split_workers<zlink::framework::spot_context_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ()
-                                          .run_worker ([] { return 1; })),
+                                          .run_cpu_worker ([] { return 1; })),
+                              zlink::framework::worker_call_t<int>>);
+static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ()
+                                          .run_io_worker ([] {
+                                              return zlink::framework::task_t<int> (
+                                                zlink::framework::result_t<int>::success (1));
+                                          })),
                               zlink::framework::worker_call_t<int>>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::worker_call_t<int> &> ()
                                           .timeout (std::chrono::milliseconds (1))),
@@ -1000,9 +1016,10 @@ static_assert (
                  zlink::framework::spot_create_result_t>);
 static_assert (!has_destroy_actor<zlink::framework::spot_context_t>);
 static_assert (has_destroy_actor<zlink::framework::entry_spot_context_t>);
-static_assert (has_run_worker<zlink::framework::entry_spot_context_t>);
+static_assert (!has_run_worker<zlink::framework::entry_spot_context_t>);
+static_assert (has_split_workers<zlink::framework::entry_spot_context_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::entry_spot_context_t &> ()
-                                          .run_worker ([] { return 1; })),
+                                          .run_cpu_worker ([] { return 1; })),
                               zlink::framework::worker_call_t<int>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::entry_spot_context_t &> ().destroy_actor (

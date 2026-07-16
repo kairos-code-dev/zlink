@@ -243,9 +243,10 @@ handshake observes MeshName, actual RID, ChannelName set, weights, generation,
 and security identity. Manual and discovery endpoints use the same handshake
 and message path.
 
-Admission validates MeshName, RID, lifecycle generation, and
-`options.trust_profile`. A
-MeshName or security mismatch returns `ZLINK_CONNECT_AUTH_FAILED` with
+Admission validates MeshName, RID, lifecycle generation, and the trust profile
+set in `zlink_mesh_node_options_t.trust_profile` when the local MeshNode is
+created. Peer connection options do not own a trust profile. A MeshName or
+security mismatch returns `ZLINK_CONNECT_AUTH_FAILED` with
 `errno == EACCES`; an expected-RID mismatch returns `ZLINK_CONNECT_CONFLICT`
 with `errno == ESTALE`. A duplicate RID/generation in one mesh is rejected. A
 higher generation drains and replaces the previous generation.

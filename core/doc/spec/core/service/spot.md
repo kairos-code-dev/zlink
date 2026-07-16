@@ -132,6 +132,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_to_spot(
   void *spot,
   const zlink_routing_id_t *target_node_rid,
   const zlink_routing_id_t *target_spot_rid,
+  uint64_t target_spot_generation,
   const zlink_mesh_metadata_view_t *metadata,
   const zlink_msg_t *parts,
   size_t part_count,
@@ -141,6 +142,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_to_spot(
   void *spot,
   const zlink_routing_id_t *target_node_rid,
   const zlink_routing_id_t *target_spot_rid,
+  uint64_t target_spot_generation,
   const zlink_mesh_metadata_view_t *metadata,
   const zlink_msg_t *parts,
   size_t part_count,
@@ -150,14 +152,30 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_to_spot(
 ```
 
 Core uses the admitted pipe for the target node RID, and the receiving node
-validates target Spot generation. Core does not query a framework location
-store. A framework resolves a location-transparent address and passes both RIDs
-through one public API call.
+validates the explicit `target_spot_generation`. Core does not query a framework
+location store. A framework's location-transparent SpotHandle preserves the
+node RID, Spot RID, and lifecycle generation and passes all three in one public
+API call. Generation zero returns `ZLINK_SUBMIT_INVALID_ARGUMENT` with
+`errno == EINVAL`; it is not a shortcut for the current generation.
+
+The address section of a direct Spot service envelope has the following exact
+order. RID bytes follow their `size`, and generations are unsigned 64-bit
+big-endian values. Local delivery validates the same logical fields without
+re-encoding them.
+
+```text
+address_version:u8 (=1) |
+source_spot_rid_size:u8 | source_spot_rid:bytes |
+source_spot_generation:u64be |
+target_spot_rid_size:u8 | target_spot_rid:bytes |
+target_spot_generation:u64be
+```
 
 A missing target node fails submission with `ZLINK_SUBMIT_NOT_CONNECTED` and
 `errno == ENOTCONN`. After a request is admitted, a missing target Spot sets
 the completion's `terminal_result` to `ZLINK_REQUEST_NOT_FOUND` and
-`failure_errno` to `ENOENT`. A stale target Spot generation sets them to
+`failure_errno` to `ENOENT`. When the envelope's target generation differs from
+the current lifecycle generation for the same RID, the completion fields are
 `ZLINK_REQUEST_CONFLICT` and `ESTALE`, respectively. A one-way send adds no
 remote application acknowledgment, so the caller is not guaranteed to observe
 a missing remote Spot after successful submission; the 10.0.0 event ABI also

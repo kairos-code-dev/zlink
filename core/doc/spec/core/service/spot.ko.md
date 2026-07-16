@@ -125,6 +125,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_send_to_spot(
   void *spot,
   const zlink_routing_id_t *target_node_rid,
   const zlink_routing_id_t *target_spot_rid,
+  uint64_t target_spot_generation,
   const zlink_mesh_metadata_view_t *metadata,
   const zlink_msg_t *parts,
   size_t part_count,
@@ -134,6 +135,7 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_to_spot(
   void *spot,
   const zlink_routing_id_t *target_node_rid,
   const zlink_routing_id_t *target_spot_rid,
+  uint64_t target_spot_generation,
   const zlink_mesh_metadata_view_t *metadata,
   const zlink_msg_t *parts,
   size_t part_count,
@@ -142,13 +144,27 @@ ZLINK_EXPORT zlink_submit_result_t zlink_spot_request_to_spot(
   uint32_t timeout_ms);
 ```
 
-Core는 target node RID의 admitted pipe를 사용하고 수신 node가 target Spot generation을 확인한다. Core는
-framework location store를 조회하지 않는다. framework는 위치 투명한 address를 resolve한 뒤 두 RID를
-한 번의 public API 호출에 전달한다.
+Core는 target node RID의 admitted pipe를 사용하고 수신 node가 explicit `target_spot_generation`을 확인한다.
+Core는 framework location store를 조회하지 않는다. framework의 위치 투명 SpotHandle은 node RID, Spot RID와
+lifecycle generation을 함께 보존하고 세 값을 한 번의 public API 호출에 전달한다. generation 0은
+`ZLINK_SUBMIT_INVALID_ARGUMENT`, `errno == EINVAL`이며 현재 generation을 뜻하는 shortcut으로 사용하지 않는다.
+
+Spot direct service envelope의 address section은 다음 순서로 인코딩한다. RID bytes는 `size`만큼 이어지고
+generation은 unsigned 64-bit big-endian이다. local delivery도 같은 logical field를 검증하지만 재인코딩하지
+않는다.
+
+```text
+address_version:u8 (=1) |
+source_spot_rid_size:u8 | source_spot_rid:bytes |
+source_spot_generation:u64be |
+target_spot_rid_size:u8 | target_spot_rid:bytes |
+target_spot_generation:u64be
+```
 
 target node가 없으면 submit이 `ZLINK_SUBMIT_NOT_CONNECTED`, `errno == ENOTCONN`으로 실패한다. request를
 admission한 뒤 target Spot이 없으면 completion의 `terminal_result`는 `ZLINK_REQUEST_NOT_FOUND`,
-`failure_errno`는 `ENOENT`다. target Spot generation이 stale이면 각각 `ZLINK_REQUEST_CONFLICT`, `ESTALE`다.
+`failure_errno`는 `ENOENT`다. envelope의 target generation이 같은 RID의 현재 lifecycle generation과 다르면
+각각 `ZLINK_REQUEST_CONFLICT`, `ESTALE`다.
 one-way send는 remote application acknowledgement를 추가하지 않으므로 submit 성공 뒤 remote Spot 부재를
 호출자에게 보고한다고 보장하지 않으며, 이를 위한 monitor event도 10.0.0 event ABI에서 보장하지 않는다.
 

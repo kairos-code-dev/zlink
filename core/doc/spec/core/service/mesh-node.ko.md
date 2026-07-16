@@ -227,8 +227,10 @@ caller는 endpoint와 선택적인 expected RID만 제공한다. MeshName, 실�
 generation과 security identity는 admission handshake가 관측한다. manual과 discovery endpoint는 같은
 handshake와 message path를 사용한다.
 
-admission은 MeshName, RID, lifecycle generation과 `options.trust_profile`을 검증한다. MeshName 또는 security
-불일치는 `ZLINK_CONNECT_AUTH_FAILED`, `errno == EACCES`, expected RID 불일치는
+admission은 MeshName, RID, lifecycle generation과 local MeshNode 생성 시
+`zlink_mesh_node_options_t.trust_profile`에 설정한 trust profile을 검증한다. peer connection options는
+trust profile을 소유하지 않는다. MeshName 또는 security 불일치는 `ZLINK_CONNECT_AUTH_FAILED`,
+`errno == EACCES`, expected RID 불일치는
 `ZLINK_CONNECT_CONFLICT`, `errno == ESTALE`다. 같은 MeshName 안의 중복 RID/generation은 새 connection을
 거부한다. 더 높은 generation은 이전 generation을 draining한 뒤 교체한다.
 

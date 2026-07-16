@@ -247,6 +247,18 @@ int main ()
       e2e_root / "SpotService/Client/Scenarios/sm_f5_scenario.hpp");
     const auto spot_service_f4 = read_file (
       e2e_root / "SpotService/Client/Scenarios/sm_f4_scenario.hpp");
+    const auto spot_service_c5 = read_file (
+      e2e_root / "SpotService/Client/Scenarios/sm_c5_scenario.hpp");
+    const auto spot_service_route_handlers = read_file (
+      e2e_root / "SpotService/Server/Play/Handlers/play_spot_route_handlers.hpp");
+    const auto registry_provider_endpoints = read_file (
+      e2e_root / "RegistryMessaging/Server/Provider/Endpoints/provider_endpoints.hpp");
+    const auto registry_workflow_endpoints = read_file (
+      e2e_root / "RegistryMessaging/Server/Workflow/Endpoints/workflow_endpoints.hpp");
+    const auto registry_runner = read_file (e2e_root / "RegistryMessaging/run_e2e.sh");
+    const auto resilience_b4 = read_file (
+      e2e_root
+      / "ResilienceLifecycle/Client/Scenarios/rl_b4_runtime_drain_scenario.hpp");
 
     /* E2E-CP-13 — every common E2E configuration has an implementation map. */
     gate.require (
@@ -1022,6 +1034,30 @@ int main ()
                     && bound_session_block.find ("request_to_node") == std::string::npos,
                   "E2E-CP-14",
                   "remote bound-session registration still depends on route mesh");
+
+    /* E2E-CP-21 — readiness and the first semantic request are distinct:
+     * no scenario retries the request until it happens to succeed. */
+    gate.require (spot_service_route_handlers.find ("request_with_retry")
+                      == std::string::npos
+                    && spot_service_c5.find ("while (std::chrono::steady_clock::now ()")
+                         == std::string::npos,
+                  "E2E-CP-21",
+                  "SM-C5 still retries its first cross-node SPOT request");
+    gate.require (registry_provider_endpoints.find ("request_profile_with_retry")
+                      == std::string::npos
+                    && registry_provider_endpoints.find ("request_route_with_retry")
+                         == std::string::npos
+                    && registry_workflow_endpoints.find ("request_workflow_with_retry")
+                         == std::string::npos
+                    && registry_runner.find ("sleep \"$ROUTE_SETTLE_SECONDS\"")
+                         == std::string::npos,
+                  "E2E-CP-21",
+                  "RegistryMessaging still hides first-request convergence with retry or settle sleep");
+    gate.require (resilience_b4.find ("restore_deadline") == std::string::npos
+                    && resilience_b4.find ("rl-b4-restored-first")
+                         != std::string::npos,
+                  "E2E-CP-21",
+                  "RL-B4 still hides its first restored request in a retry loop");
 
     /* E2E-CP-18 — SM-E1 proves both missing-handler flow classifications. */
     const auto sm_e1_begin = spot_service_runner.find ("if [[ \"$SCENARIO\" == \"SM-E1\"");

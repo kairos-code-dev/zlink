@@ -206,6 +206,22 @@ int main ()
        read_file (e2e_root / "SpotService/Server/Shared/Support/location_store.hpp")}};
     const auto observability_feature_map =
       read_file (e2e_root / "ObservabilityOps/feature-map.ko.md");
+    const auto observability_a1 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_a1_scenario.hpp");
+    const auto observability_a2 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_a2_scenario.hpp");
+    const auto observability_a3 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_a3_scenario.hpp");
+    const auto observability_a4 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_a4_scenario.hpp");
+    const auto observability_b2 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_b2_scenario.hpp");
+    const auto observability_b3 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_b3_scenario.hpp");
+    const auto observability_b4 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_b4_scenario.hpp");
+    const auto observability_c3 = read_file (
+      e2e_root / "ObservabilityOps/Client/Scenarios/obs_c3_scenario.hpp");
     const auto resilience_client =
       read_file (e2e_root / "ResilienceLifecycle/Client/main.cpp");
     const auto resilience_feature_map =
@@ -327,6 +343,40 @@ int main ()
     gate.require (observability_runner.find ("PENDING") == std::string::npos,
                   "E2E-CP-11",
                   "runner contradicts the feature-map with a PENDING status");
+
+    /* E2E-CP-62 — flow checks prove identity and hop/fanout relationships,
+     * not merely that each log contains some flow id. */
+    gate.require (observability_a1.find ("require_flow_sequence") != std::string::npos,
+                  "E2E-CP-62", "OBS-A1 does not require the ordered flow hop sequence");
+    gate.require (observability_a2.find ("require_shared_flow") != std::string::npos,
+                  "E2E-CP-62", "OBS-A2 does not bind success and error to one flow");
+    gate.require (observability_a3.find ("require_same_flow") != std::string::npos,
+                  "E2E-CP-62", "OBS-A3 does not prove create-if-absent across the off node");
+    gate.require (observability_a4.find ("require_fanout_flow") != std::string::npos
+                    && observability_a4.find ("subscriberLogs") != std::string::npos,
+                  "E2E-CP-62", "OBS-A4 does not prove one flow reaches every subscriber");
+
+    /* E2E-CP-63 — metric and recreate checks use the contract's exact
+     * counters, labels, bounded storage, and replay outcome. */
+    gate.require (observability_b2.find ("zlink.actor.transfers") != std::string::npos
+                    && observability_b2.find ("zlink.actor.transfer.duration")
+                         != std::string::npos
+                    && observability_b2.find ("pending_requests.count")
+                         != std::string::npos,
+                  "E2E-CP-63", "OBS-B2 does not assert transfer metrics");
+    gate.require (observability_b3.find ("owner_lease.renew.lateness")
+                      != std::string::npos
+                    && observability_b3.find ("forbidden_metric_labels")
+                         != std::string::npos,
+                  "E2E-CP-63", "OBS-B3 omits lease lateness or cardinality checks");
+    gate.require (observability_b4.find ("trafficEvidence") != std::string::npos
+                    && observability_b4.find ("storageUpperBound") != std::string::npos,
+                  "E2E-CP-63", "OBS-B4 does not prove traffic correctness and bounded storage");
+    gate.require (observability_c3.find ("state == \"created\"") != std::string::npos
+                    && observability_c3.find ("replayed") != std::string::npos
+                    && observability_c3.find ("state == \"created\" ||")
+                         == std::string::npos,
+                  "E2E-CP-63", "OBS-C3 accepts an existing row without replay proof");
 
     /* E2E-CP-04 — each PubSub client scenario owns its bounded evidence oracle. */
     gate.require (pubsub_client_support.find ("/evidence/wait") != std::string::npos,

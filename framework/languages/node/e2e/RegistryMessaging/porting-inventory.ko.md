@@ -16,9 +16,10 @@ public contract가 필요한 범위는 모두 현재 Node public API로 구현�
 | `RM-A4` | `Client/Scenarios/RmA4SameRidFailoverScenario.cs` | `Client/Scenarios/rm-a4-same-rid-failover-scenario.ts` | done | dynamic provider 교체 |
 | `RM-A6` | `Client/Scenarios/RmA6MultipleChannelsScenario.cs` | `Client/Scenarios/rm-a6-multiple-channels-scenario.ts` | done | profile/workflow channel 독립성 |
 | `RM-B1` | `Client/Scenarios/RmB1ScaleOutScenario.cs` | `Client/Scenarios/rm-b1-scale-out-scenario.ts` | done | traffic 중 provider 추가 |
-| `RM-B2` | `Client/Scenarios/RmB2ScaleInScenario.cs` | `Client/Scenarios/rm-b2-scale-in-scenario.ts` | done | provider 정상 종료 후 stale 회피 |
+| `RM-B2` | `Client/Scenarios/RmB2ScaleInScenario.cs` | `Client/Scenarios/rm-b2-scale-in-scenario.ts` | done | terminal Drained, peer row 즉시 제거, 전환 요청 성공 |
+| `RM-B3` | `Client/Scenarios/RmB3ProviderCrashFailoverScenario.cs` | `Client/Scenarios/rm-b3-provider-crash-failover-scenario.ts` | done | SIGKILL, lease 만료, 남은 provider failover, targeted 오류 종류 |
 | `RM-C1` | `Client/Scenarios/RmC1RequestSendScenario.cs` | `Client/Scenarios/rm-c1-request-send-scenario.ts` | done | request/send happy path |
-| `RM-C2` | `Client/Scenarios/RmC2TargetedRouteScenario.cs` | `Client/Scenarios/rm-c2-targeted-route-scenario.ts` | done | route mesh target rid와 missing rid |
+| `RM-C2` | `Client/Scenarios/RmC2TargetedRouteScenario.cs` | `Client/Scenarios/rm-c2-targeted-route-scenario.ts` | done | target 정확성과 `RequestTargetNotFound`; known disconnected는 RM-B3에서 `RouteNotConnected` 검증 |
 | `RM-C3` | `Client/Scenarios/RmC3MultiProviderDistributionScenario.cs` | `Client/Scenarios/rm-c3-multi-provider-distribution-scenario.ts` | done | 수동 multi-endpoint 분산 |
 | `RM-C4` | `Client/Scenarios/RmC4TimeoutIsolationScenario.cs` | `Client/Scenarios/rm-c4-timeout-isolation-scenario.ts` | done | timeout 뒤 late reply 비오염 |
 | `RM-C5` | `Client/Scenarios/RmC5MissingPacketScenario.cs` | `Client/Scenarios/rm-c5-missing-packet-scenario.ts` | done | missing request/send dispatch error |

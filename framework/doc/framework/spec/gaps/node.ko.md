@@ -882,6 +882,17 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 > 시나리오 51개)와 config-11을 C++ 수준 깊이로 보지 못했다. **SpotService가 가장 크고 거의 확실히
 > 더 있다.**
 
+## 공통 E2E lifecycle·readiness 갱신 (2026-07-16)
+
+- [x] **E2E-ND-38** (결함) — `RM-B2`가 정상 종료의 terminal `Drained`·peer row 즉시 제거·전환 구간 전 요청 성공을 검증하지 않고 timeout을 허용하며, provider crash와 lease 만료 failover를 검증하는 `RM-B3`가 없다.
+  - 근거: 정상 drain과 `SIGKILL`을 cluster lifecycle에서 분리하고, RM-B2가 weight 제외 뒤 terminal `drained`와 runtime peer row 제거 및 전 요청 성공을, 새 RM-B3가 handler-start 뒤 crash·전파 구간의 bounded 결과·lease 만료 뒤 20/20 성공을 검증한다. 기존 RM-B2는 전환 요청 timeout으로 실패했고 RM-B3는 목록에 없었지만, 최종 실제 runner가 각각 `log/20260716-102802-3465779`, `log/20260716-102825-3468701`에서 통과했다. stop/drain/crash 시간 지식을 cluster helper에 모으고 route member의 과거 membership과 현재 연결 상태를 전용 snapshot 모듈에 감춰 병렬 Map 정보 누출을 제거했다. 커밋 `4fd0a0f7b`.
+- [x] **E2E-ND-39** (결함) — `RM-C2`가 missing target의 실패 boolean만 보고 `RequestTargetNotFound`·`RouteNotConnected`·reply timeout을 구분하지 않는다.
+  - 근거: RouteMesh monitor의 `ConnectionReady`와 `Disconnected`/`Closed`로 member snapshot과 현재 연결 상태를 분리하고, 없는 target은 `requestTargetNotFound`, 알려졌지만 연결되지 않은 target은 readiness 한계 뒤 `routeNotConnected`, handler reply deadline은 timeout으로 유지했다. 집중 snapshot 계약 테스트 2/2와 실제 RM-C2·RM-B3 오류 종류 gate가 `log/20260716-102852-3471852`, `log/20260716-102825-3468701`에서 통과했다. 커밋 `4fd0a0f7b`.
+- [ ] **E2E-ND-40** (결함) — `PS-A3`가 subscriber `ConnectionReady` 대신 HTTP health와 반복 publish에 의존하고, `PS-A4`는 transport fault 대신 subscriber process를 재시작하며, `PS-B2`는 terminal `Drained`·old row 제거·재연결 readiness 없이 고정 sleep과 반복 publish로 복구를 판정한다.
+- [ ] **E2E-ND-41** (결함) — `SM-G2`가 두 SpotNode를 모두 미리 시작한 뒤 각 node HTTP API로 Spot을 하나씩 만들 뿐, 실제 node 추가·기존 owner 유지·새 Entry Spot/capability readiness를 검증하지 않는다.
+- [ ] **E2E-ND-42** (결함) — `MON-A4`가 정상 replacement와 socket weight 변경만 실행하고 provider `SIGKILL`·owner lease 만료·남은 provider follow-up을 별도 failover 단계로 검증하지 않으며 weight 변경을 drain으로 표현한다.
+- [ ] **SMP-ND-24** (결함) — Bingo replacement가 terminal `Drained`·old peer row 제거·새 room router `ConnectionReady`를 기다리지 않아 실제 두 번째 `MatchBingoReq`가 router-not-ready로 실패한다.
+
 ## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
 
 **계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측

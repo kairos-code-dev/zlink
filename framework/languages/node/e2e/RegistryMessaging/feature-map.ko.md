@@ -9,9 +9,10 @@
 | RM-A4 | done | 같은 rid provider 교체를 검증한다. |
 | RM-A6 | done | profile/workflow channel 독립성을 검증한다. |
 | RM-B1 | done | provider scale-out 후 양쪽 provider 처리 evidence를 검증한다. |
-| RM-B2 | done | provider scale-in 후 남은 provider만 처리하는지 검증한다. |
+| RM-B2 | done | provider 정상 drain의 terminal `drained`, peer row 즉시 제거, 전환 구간의 전 요청 성공과 이후 남은 provider 전용 처리를 검증한다. |
+| RM-B3 | done | provider handler-start 뒤 `SIGKILL`, crash 전파 구간의 bounded public 결과, owner lease 만료 뒤 남은 provider 20/20 성공, known/missing target 오류 종류를 검증한다. |
 | RM-C1 | done | request/send happy path를 검증한다. |
-| RM-C2 | done | route mesh target rid와 missing rid 실패를 검증한다. |
+| RM-C2 | done | route mesh target rid 정확성과 missing rid의 `RequestTargetNotFound`를 검증한다. known disconnected target의 `RouteNotConnected`는 RM-B3에서 함께 검증한다. |
 | RM-C3 | done | 수동 multi-endpoint 분산을 검증한다. |
 | RM-C4 | done | timeout 뒤 후속 request 비오염을 검증한다. |
 | RM-C5 | done | 미등록 packet request/send와 dispatch error evidence를 검증한다. |
@@ -32,6 +33,9 @@
 - `timeout 420s framework/languages/node/e2e/RegistryMessaging/run_e2e.sh RM-C9`
   - 결과: `scenario RM-C9 passed`, `registry-messaging e2e result=passed`
   - 로그: `logs/20260701-040650-15231`
+- `./run_e2e.sh RM-B2`, `./run_e2e.sh RM-B3`, `./run_e2e.sh RM-C2`
+  - 결과: 세 실행 모두 scenario와 registry-messaging result가 passed
+  - 로그: `log/20260716-102802-3465779`, `log/20260716-102825-3468701`, `log/20260716-102852-3471852`
 
 후속 계약 판정:
 

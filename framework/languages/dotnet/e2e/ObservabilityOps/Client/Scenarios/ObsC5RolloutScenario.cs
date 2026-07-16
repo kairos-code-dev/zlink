@@ -44,16 +44,29 @@ internal static class ObsC5RolloutScenario
         var actorId = $"obs-c5-zero-target-{Guid.NewGuid():N}";
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
-        await Task.WhenAll(
-            context.PlayA.Post("/drain?deadlineMs=10000").AsyncRaw().AsTask(),
-            context.PlayB.Post("/drain?deadlineMs=10000").AsyncRaw().AsTask());
-        var draining = await WaitBothDrainingAsync(context);
+        await context.PlayB.Post("/operation-gate/arm")
+            .Query("maximumWaitMs", "30000").AsyncRaw();
+        var blockedOperation = context.PlayB.Post("/operation/start")
+            .Body(new PlayBoundedOperationReq("obs-c5-block-play-b"))
+            .Timeout(TimeSpan.FromSeconds(35))
+            .Async<PlayBoundedOperationRes>().AsTask();
+        await context.PlayB.Post("/operation-gate/wait-started")
+            .Query("timeoutMs", "5000").AsyncRaw();
+
+        await context.PlayB.Post("/drain?deadlineMs=30000").AsyncRaw();
+        await WaitPeerDrainingAsync(context, "play-b", TimeSpan.FromSeconds(8));
+        await context.PlayA.Post("/drain?deadlineMs=10000").AsyncRaw();
+        var draining = await WaitPeerDrainingAsync(context, "play-a", TimeSpan.FromSeconds(8));
         ZlinkStreamAssert.Ensure(draining.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == "play-a"),
             "OBS-C5 zero-target drain moved the actor to a draining peer.");
         var source = await ScenarioContext.WaitForDrainAsync(
             context.PlayA, TimeSpan.FromSeconds(15));
         ZlinkStreamAssert.Ensure(source.Result == "ForceStopped" && source.Reason == "DeadlineExceeded",
             $"OBS-C5 zero-target source returned {source.Result}/{source.Reason}.");
+        await context.PlayB.Post("/operation-gate/release").AsyncRaw();
+        var released = await blockedOperation;
+        ZlinkStreamAssert.Ensure(released.Body.NodeRid == "play-b",
+            "OBS-C5 play-b bounded handler did not complete after gate release.");
         var metrics = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body.Metrics;
         ZlinkStreamAssert.Ensure(metrics.Any(sample => sample.Name == "zlink.drain.forced"
                                                       && sample.Tags.GetValueOrDefault("kind") == "actor"
@@ -61,18 +74,20 @@ internal static class ObsC5RolloutScenario
             "OBS-C5 zero-target forced actor metric was not recorded.");
     }
 
-    private static async Task<EvidenceSnapshot> WaitBothDrainingAsync(ScenarioContext context)
+    private static async Task<EvidenceSnapshot> WaitPeerDrainingAsync(
+        ScenarioContext context,
+        string nodeRid,
+        TimeSpan timeout)
     {
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(8);
+        var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
             var snapshot = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body;
-            if (snapshot.PeerRows.Any(row => row.NodeRid == "play-a" && row.Draining)
-                && snapshot.PeerRows.Any(row => row.NodeRid == "play-b" && row.Draining))
+            if (snapshot.PeerRows.Any(row => row.NodeRid == nodeRid && row.Draining))
                 return snapshot;
             await Task.Delay(100);
         }
-        throw new TimeoutException("OBS-C5 simultaneous draining markers did not converge.");
+        throw new TimeoutException($"OBS-C5 draining marker for '{nodeRid}' did not converge.");
     }
 
     private static async Task WaitActorAsync(

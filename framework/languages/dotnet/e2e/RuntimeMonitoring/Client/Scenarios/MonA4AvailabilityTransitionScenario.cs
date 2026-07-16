@@ -16,7 +16,7 @@ internal static class MonA4AvailabilityTransitionScenario
 
         await VerifySameRidEndpointFailoverAsync(options, serviceA);
 
-        await serviceB.Post("/admin/drain").AsyncRaw();
+        await serviceB.Post("/admin/weight/exclude").AsyncRaw();
         var drainedB = await WaitForEvidenceAsync(
             serviceA,
             ["source=monitor.profile.client", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint, "value=0"]);
@@ -28,8 +28,8 @@ internal static class MonA4AvailabilityTransitionScenario
         ZlinkStreamAssert.Ensure(before.ProviderRid == "svc-a", "MON-A4 initial request did not use svc-a.");
 
         var failoverBaseline = (await serviceA.Get("/evidence").Async<string[]>()).Body.Length;
-        await serviceB.Post("/admin/restore").AsyncRaw();
-        await serviceA.Post("/admin/drain").AsyncRaw();
+        await serviceB.Post("/admin/weight/include").AsyncRaw();
+        await serviceA.Post("/admin/weight/exclude").AsyncRaw();
         var failedOverEvidence = await WaitForEvidenceAsync(
             serviceA,
             ["source=monitor.profile.client", "kind=PeerAdmissionChanged", options.ServiceBChannelEndpoint,
@@ -46,7 +46,7 @@ internal static class MonA4AvailabilityTransitionScenario
             "MON-A4 request did not fail over to svc-b. evidence=" + string.Join(";", failedOverEvidence));
 
         var restoreBaseline = (await serviceA.Get("/evidence").Async<string[]>()).Body.Length;
-        await serviceA.Post("/admin/restore").AsyncRaw();
+        await serviceA.Post("/admin/weight/include").AsyncRaw();
         var restored = await WaitForEvidenceAsync(
             serviceA,
             ["source=monitor.profile.client", "kind=PeerAdmissionChanged", options.ServiceChannelEndpoint, "value=100"],
@@ -73,14 +73,21 @@ internal static class MonA4AvailabilityTransitionScenario
             "MON-A4 first failover endpoint did not produce a connection transition.");
 
         var removeBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
-        await first.DisposeAsync();
+        var drain = await first.DrainAsync();
+        ZlinkStreamAssert.Ensure(
+            drain.Result == "Drained",
+            $"MON-A4 replacement source returned {drain.Result}/{drain.Reason}.");
         var firstRemoved = await WaitForEvidenceAsync(
             observer,
-            ["kind=TopologyChanged", $"removed={failoverRid}", "kind=ServiceSummaryChanged",
-                "source=monitor.profile.client", first.ChannelEndpoint],
+            ["kind=TopologyChanged", $"removed={failoverRid}", "kind=ServiceSummaryChanged"],
+            removeBaseline);
+        await first.DisposeAsync();
+        var disconnected = await WaitForEvidenceAsync(
+            observer,
+            ["source=monitor.profile.client", "kind=Disconnected", first.ChannelEndpoint],
             removeBaseline);
         ZlinkStreamAssert.Ensure(
-            HasSocketTransition(firstRemoved, first.ChannelEndpoint, "Disconnected", "Closed"),
+            HasSocketTransition(disconnected, first.ChannelEndpoint, "Disconnected", "Closed"),
             "MON-A4 old failover endpoint did not produce a disconnect transition.");
 
         var replaceBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;

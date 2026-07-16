@@ -111,15 +111,6 @@ internal static class SessionHostFactory
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
         });
-        app.MapPost("/crash", () =>
-        {
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                Thread.Sleep(50);
-                Process.GetCurrentProcess().Kill(false);
-            });
-            return Results.Accepted();
-        });
         return app;
     }
 

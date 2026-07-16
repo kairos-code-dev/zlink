@@ -26,14 +26,17 @@ internal static class SubscriberHostFactory
             ConfigureFlow(framework.ConfigureDispatch(), options.LogDir, options.Rid);
             // The subscriber dials the publisher rows it discovers in the
             // location store; no endpoint is configured here.
-            framework.AddFanoutChannel(PubSubNames.Channel)
-                .EnableSubscriber()
-                .AddPublishHandler<EventMsgHandler, EventMsg>("EventMsg");
+            var fanout = framework.AddFanoutChannel(PubSubNames.Channel);
+            var subscriber = string.IsNullOrWhiteSpace(options.PublisherEndpoint)
+                ? fanout.EnableSubscriber()
+                : fanout.EnableSubscriber(options.PublisherEndpoint);
+            subscriber.AddPublishHandler<EventMsgHandler, EventMsg>("EventMsg");
         });
         builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
             PubSubNames.SubscriberSocketSource,
             ZLinkSocketEventKind.Connected,
             ZLinkSocketEventKind.ConnectionReady,
+            ZLinkSocketEventKind.HandshakeFailed,
             ZLinkSocketEventKind.Disconnected));
         var app = builder.Build();
         app.MapOperationalEndpoints("subscriber", options.Rid);

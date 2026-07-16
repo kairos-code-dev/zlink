@@ -10,4 +10,6 @@ namespace Zlink.Framework.Runtime.Locations;
 internal interface IZLinkAutoConnectTopologyQuery
 {
     bool? IsKnownRouteMeshPeer(string meshName, RoutingId nodeRid);
+
+    bool WasKnownManualRouteMeshPeer(string meshName, RoutingId nodeRid);
 }

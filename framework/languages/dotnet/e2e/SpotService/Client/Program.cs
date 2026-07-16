@@ -73,8 +73,8 @@ await (options.OperationGroup switch
     "sm-f5" => SmF5ClosedSpotRouteIsolationScenario.RunAsync(playA, gateway),
     "sm-f6" => SmF6RemoteSpotOutboundScenario.RunAsync(multiA, multiB),
     "sm-g1" => SmG1BoundActorCrashRecoveryScenario.RunAsync(
-        options.PlayAUrl, gateway, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
-    "sm-g2" => SmG2OwnerSpotRemapScenario.RunAsync(playA, playB),
+        playA, gateway, options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
+    "sm-g2" => SmG2OwnerSpotRemapScenario.RunAsync(playA, playB, gateway),
     "sm-g3" => SmG3ConcurrentSessionActorLifecycleScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-g4" => SmG4ConcurrentBoundSessionPushScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-b1-b2-b3-b5" => RunB1B2B3B5Async(playA, playB, options.SessionAStreamEndpoint),

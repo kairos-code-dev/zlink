@@ -1,61 +1,59 @@
-// Verifies SM-G2 Owner Spot Remap behavior.
-using SpotService.Client.Support;
+// Verifies SM-G2 SpotNode scale-out and explicit placement behavior.
 using SpotService.Shared;
+using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 namespace SpotService.Client.Scenarios;
 
-// Verifies app-driven owner remap across play-a and play-b role servers.
 internal static class SmG2OwnerSpotRemapScenario
 {
-    public static async Task RunAsync(ZLinkHttpClient playA, ZLinkHttpClient playB)
+    public static async Task RunAsync(
+        ZLinkHttpClient playA,
+        ZLinkHttpClient playB,
+        ZLinkHttpClient gateway)
     {
-        var key = $"key-sm-g2-{Guid.NewGuid():N}";
-        var firstOwnerSpotRid = $"spot-{key}-a";
-        var secondOwnerSpotRid = $"spot-{key}-b";
-        var firstCreated = (await playA.Post("/spot/create")
-            .Body(new CreateSpotReq(firstOwnerSpotRid))
-            .Async<CreateSpotRes>()).Body;
-        var firstReply = (await playA.Post("/spot/state/request")
-            .Body(new SpotStateRouteReq(firstOwnerSpotRid, "add", 1))
+        var suffix = Guid.NewGuid().ToString("N");
+        var existingSpotRid = $"spot-sm-g2-existing-{suffix}";
+        var existingActorId = $"actor-sm-g2-existing-{suffix}";
+        var newActorId = $"actor-sm-g2-new-{suffix}";
+        var newSpotRid = $"spot-sm-g2-new-{suffix}";
+
+        var existingSpot = (await playA.Post("/spot/create")
+            .Body(new CreateSpotReq(existingSpotRid)).Async<CreateSpotRes>()).Body;
+        await gateway.Post("/node/wait-ready")
+            .Body(new NodeReadinessWaitReq("play-a"))
+            .Async<NodeReadinessWaitRes>();
+        var existingActor = (await gateway.Post("/entry/join")
+            .Body(new EntryJoinRouteReq("play-a",
+                new JoinReq("before-scale-out", existingActorId, "existing", 1, [])))
+            .Async<JoinRes>()).Body;
+        ZlinkStreamAssert.Ensure(existingSpot.NodeRid == "play-a" && existingActor.NodeRid == "play-a",
+            "SM-G2 baseline owner was not placed on play-a.");
+
+        Console.WriteLine("spot-service sm-g2 scale-out-ready");
+        var readiness = (await gateway.Post("/node/wait-ready")
+            .Body(new NodeReadinessWaitReq("play-b"))
+            .Async<NodeReadinessWaitRes>()).Body;
+        ZlinkStreamAssert.Ensure(readiness.PeerReady && readiness.EntrySpotReady,
+            "SM-G2 play-b peer and Entry Spot readiness did not converge.");
+
+        var existingFollowUp = (await playA.Post("/spot/state/request")
+            .Body(new SpotStateRouteReq(existingSpotRid, "add", 1))
             .Async<StateRes>()).Body;
-        var firstExpectedEvidence = new[] { $"spot-state-request|rid=play-a|spot={firstOwnerSpotRid}|value=1" };
-        var firstEvidence = (await playA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(firstExpectedEvidence))
-            .Async<string[]>()).Body;
-        ZlinkStreamAssert.Ensure(
-            firstExpectedEvidence.All(expected =>
-                firstEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
-            "SM-G2 play-a evidence did not include the first owner request.");
+        var newActor = (await gateway.Post("/entry/join")
+            .Body(new EntryJoinRouteReq("play-b",
+                new JoinReq("after-scale-out", newActorId, "new", 1, [])))
+            .Async<JoinRes>()).Body;
+        var newSpot = (await playB.Post("/spot/create")
+            .Body(new CreateSpotReq(newSpotRid)).Async<CreateSpotRes>()).Body;
 
-        var secondCreated = (await playB.Post("/spot/create")
-            .Body(new CreateSpotReq(secondOwnerSpotRid))
-            .Async<CreateSpotRes>()).Body;
-        var secondReply = (await playB.Post("/spot/state/request")
-            .Body(new SpotStateRouteReq(secondOwnerSpotRid, "add", 1))
-            .Async<StateRes>()).Body;
-        var secondExpectedEvidence = new[] { $"spot-state-request|rid=play-b|spot={secondOwnerSpotRid}|value=1" };
-        var secondEvidence = (await playB.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(secondExpectedEvidence))
-            .Async<string[]>()).Body;
-        ZlinkStreamAssert.Ensure(
-            secondExpectedEvidence.All(expected =>
-                secondEvidence.Any(line => line.Contains(expected, StringComparison.Ordinal))),
-            "SM-G2 play-b evidence did not include the remapped owner request.");
-
-        ZlinkStreamAssert.Ensure(firstCreated.NodeRid == "play-a", "SM-G2 first owner was not created on play-a.");
-        ZlinkStreamAssert.Ensure(secondCreated.NodeRid == "play-b", "SM-G2 remapped owner was not created on play-b.");
-        ZlinkStreamAssert.Ensure(firstReply.NodeRid == "play-a", "SM-G2 first owner request reached the wrong node.");
-        ZlinkStreamAssert.Ensure(secondReply.NodeRid == "play-b", "SM-G2 remapped owner request reached the wrong node.");
-        ZlinkStreamAssert.Ensure(
-            !firstEvidence.Any(line =>
-                line.Contains($"spot-state-request|rid=play-a|spot={secondOwnerSpotRid}", StringComparison.Ordinal)),
-            "SM-G2 remapped owner leaked to play-a.");
-        ZlinkStreamAssert.Ensure(
-            !secondEvidence.Any(line =>
-                line.Contains($"spot-state-request|rid=play-b|spot={firstOwnerSpotRid}", StringComparison.Ordinal)),
-            "SM-G2 first owner leaked to play-b.");
-
+        ZlinkStreamAssert.Ensure(existingFollowUp.NodeRid == "play-a",
+            "SM-G2 scale-out changed the existing Spot owner.");
+        ZlinkStreamAssert.Ensure(newActor.NodeRid == "play-b",
+            "SM-G2 application JoinReq did not create the actor on play-b.");
+        ZlinkStreamAssert.Ensure(newSpot.NodeRid == "play-b",
+            "SM-G2 play-b local SpotManager did not create the new Spot locally.");
         Console.WriteLine("operation SpotService.sm-g2 passed");
     }
+
 }

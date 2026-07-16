@@ -91,6 +91,24 @@ internal static class ConsumerEndpoints
             var reply = await RequestProfileAsync(channel, request, TimeSpan.FromSeconds(5));
             return Results.Ok(reply);
         });
+        app.MapPost("/profile/request/outcome", async (
+            ProfileReq request,
+            IZLinkChannelClient channel) =>
+        {
+            try
+            {
+                var reply = await RequestProfileAsync(channel, request, TimeSpan.FromSeconds(5));
+                return Results.Ok(new RequestOutcomeRes(request.Value, reply.ProviderRid));
+            }
+            catch (ZLinkFrameworkException error)
+            {
+                return Results.Ok(new RequestOutcomeRes(request.Value, error.Kind.ToString()));
+            }
+            catch (TimeoutException)
+            {
+                return Results.Ok(new RequestOutcomeRes(request.Value, "Timeout"));
+            }
+        });
         app.MapPost("/profile/slow-request", async (
             ProfileReq request,
             IZLinkChannelClient channel) =>

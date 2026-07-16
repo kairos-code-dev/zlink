@@ -221,7 +221,7 @@ E2E class allowlist는 존재하지 않는다.
 | DRAIN-016 | PROVEN — `LocationRuntimeTests.Drain_Cleanup_Removes_Every_Owner_Row_And_The_Owner_Lease`; `DrainCoordinatorTests.Forced_Drain_Cleans_Owner_Before_Stopping_The_Location_Runtime` |
 | DRAIN-017 | PROVEN — `DrainCoordinatorTests.Framework_Drain_Sends_ServerDrain_Before_Orderly_Stream_Close`; `DrainCoordinatorTests.Deadline_Expiry_Force_Stops_With_The_Frozen_Reason`; `E2E:OBS-C4` |
 | DRAIN-018 | PROVEN — `StreamWireInteropTests.SessionClosingServerDrainPayload_DecodesInConnector`; `E2E:OBS-C4` |
-| DRAIN-019 | PROVEN — `DrainCoordinatorTests.Drain_Executor_Quiesces_Serving_Channels_After_Marker_Propagation_And_Before_Sealing`; `DrainCoordinatorTests.Host_Stop_Uses_The_Same_Thirty_Second_Default_Deadline`; `E2E:RM-B2` |
+| DRAIN-019 | PROVEN — `DrainCoordinatorTests.Drain_Executor_Publishes_Marker_And_Serving_Weight_Before_Propagation_And_Sealing`; `DrainCoordinatorTests.Drain_Executor_Waits_For_Weight_Propagation_Before_Sealing_Admission`; `DrainCoordinatorTests.Host_Stop_Uses_The_Same_Thirty_Second_Default_Deadline`; `E2E:RM-B2` |
 | DRAIN-020 | PROVEN — `DrainCoordinatorTests.Marker_Store_Failure_Retries_Until_Deadline_And_Skips_Later_Phases`; `DrainCoordinatorTests.Executor_Reported_Marker_Publish_Failure_Is_The_Exact_ForceStopped_Reason` |
 
 ### 5.1 형식 ID 밖에서 발견된 미검증 규범
@@ -237,7 +237,7 @@ E2E class allowlist는 존재하지 않는다.
 | DN-G0-METRIC-002 | `runtime-metrics` §6 | 특정 backend/SDK와 별도 public provider API 비의존 | PROVEN — `ContractSurfaceCoverage.Redis_Extension_Remains_A_Separate_Package_Without_A_Backend_Specific_Registration_API`와 public API snapshot |
 | DN-G0-REDIS-001 | `location-store-redis` §1~§3 | 별도 package/전용 등록 부재, 모든 write의 단일 Lua 결정, topology/hash-tag 정책 | PROVEN — `ContractSurfaceCoverage.Redis_Extension_Remains_A_Separate_Package_Without_A_Backend_Specific_Registration_API`; `RedisLocationStoreTests.Every_Write_Operation_Has_One_Atomic_Lua_Script`; `RedisLocationStoreTests.Hash_Tagged_Prefix_Keeps_Every_Derived_Key_In_The_Same_Cluster_Slot` |
 | DN-G0-REDIS-002 | `location-store-redis` §5~§7 | 실제 stamp 유실 수렴, host connection dispose, 실행별 prefix 정리 | PROVEN — `RedisLocationStoreTests.Deleted_Change_Stamp_Falls_Back_To_The_Intact_Full_Row_Snapshot`, `NodesAndServicesTests.AddLocationStore_Instance_Is_Disposed_Exactly_Once_By_The_Host_Provider`, `RedisLocationStoreTests.Dedicated_Run_Prefix_Cleanup_Removes_Every_Derived_Key` |
-| DN-G0-DRAIN-001 | `graceful-drain-handoff` §3~§5 | 모든 placement 제외, fixed propagation bound, 7단계 순서, surface별 거부와 redirect 부재 | PROVEN — `AutoConnectReconcilerTests.Draining_Marker_Is_Monotonic_Across_Subsequent_Renewal`; `DrainCoordinatorTests.Drain_Executor_Quiesces_Serving_Channels_After_Marker_Propagation_And_Before_Sealing`; `DrainCoordinatorTests.Draining_Gate_Rejects_Each_New_Public_Admission_With_The_Frozen_Error`; `DrainCoordinatorTests.Drain_Is_Idempotent_And_First_Deadline_Is_Fixed`; `ContractSurfaceCoverage.Frozen_public_surface_excludes_replaced_contracts`; `E2E:OBS-C1`; `E2E:RM-B2` |
+| DN-G0-DRAIN-001 | `graceful-drain-handoff` §3~§5 | 모든 placement 제외, fixed propagation bound, 7단계 순서, surface별 거부와 redirect 부재 | PROVEN — `AutoConnectReconcilerTests.Draining_Marker_Is_Monotonic_Across_Subsequent_Renewal`; `DrainCoordinatorTests.Drain_Executor_Publishes_Marker_And_Serving_Weight_Before_Propagation_And_Sealing`; `DrainCoordinatorTests.Drain_Executor_Waits_For_Weight_Propagation_Before_Sealing_Admission`; `DrainCoordinatorTests.Draining_Gate_Rejects_Each_New_Public_Admission_With_The_Frozen_Error`; `DrainCoordinatorTests.Drain_Is_Idempotent_And_First_Deadline_Is_Fixed`; `ContractSurfaceCoverage.Frozen_public_surface_excludes_replaced_contracts`; `E2E:OBS-C1`; `E2E:RM-B2` |
 | DN-G0-DRAIN-002 | `graceful-drain-handoff` §5~§9 | queue drain 전 row release 금지, adapter 미등록 actor, host 30초/종료 순서, drain event 무등록 | PROVEN — `DrainCoordinatorTests.ReleaseAndRecreate_Waits_For_Spot_Queue_Close_Before_Row_Release`; `ActorHandoffTests.Unregistered_Transfer_Adapter_Uses_The_Frozen_Empty_State`; `DrainCoordinatorTests.Host_Stop_Uses_The_Same_Thirty_Second_Default_Deadline`; `DrainCoordinatorTests.Default_Drain_Uses_Thirty_Seconds_Without_Event_Registration`; `DrainCoordinatorTests.Framework_Drain_Sends_ServerDrain_Before_Orderly_Stream_Close` |
 | DN-G0-SPOTNODE-001 | `dotnet/spot-node` §9~§31 | Entry Spot 설정 독립성, Entry RID-before-bind와 전체 적용 순서 | PROVEN — `EntrySpotActorDispatchTests.EntrySpot_Configuration_Is_Independent_And_RoutingId_Is_Applied_Before_Bind` |
 | DN-G0-SPOTNODE-002 | `dotnet/spot-node` §41~§55 | actor의 Entry RID, handle 내부 owner/kind 보존과 유효한 location row 기준 | PROVEN — `EntrySpotActorDispatchTests.Actor_Creation_Observes_The_Configured_EntrySpot_RoutingId`; `LocationResolverTests.Actor_Handle_Internal_Snapshot_Preserves_Entry_Owner_And_Kind`; plan `DN-057` |
@@ -271,9 +271,9 @@ E2E class allowlist는 존재하지 않는다.
 6614f5efd549442f95ac4f67f8ff1e10bba9c7061ee63a7608ffd91f43fea4bd 04-async-execution-policy.ko.md
 62c3faddd1199643a5425baa777c4204cb906fd9c9fc04fa6b69711c2942f51e server/10-channel-topology.ko.md
 077319afac1aec1aba884853cd172443f5e2563d664b00b0a9e2468a252a196c server/53-flow-correlation.ko.md
-06f3d56438301a80afd983475e58c65d3b0e678a32b832c5f13813bf937ffcb6 05-framework-api.ko.md
+a3afac766d2fb773cc4d38ff2fbbb93adab66fb97e5434d386fdc76bffcc7c33 05-framework-api.ko.md
 822ada32199d71d2c4505c561fc4f2f4db6f9c50d49eb2469b202d87dd2bc97f server/54-graceful-drain-handoff.ko.md
-67cbdcfac7b140380b96eccec08795d146599db75c05b51a722340d0bfbd110d 90-implementation-gap.ko.md
+70ecffe957d2a9858d300326b1bf37f60b9cbea3d482a139cebaad99e7cdf1b6 90-implementation-gap.ko.md
 df441c4de567865658b0b79ded6c840d020ccf60865f58e7990a248e9fa361a0 02-interaction-model.ko.md
 ce511f3396de7853d8e746f973aacdf1d28b3654560726135ef608697b990e11 server/40-location-runtime.ko.md
 76320eb54586db883dd436c481ff3427b8df7e9d2948f0c95ad9e9dcb6b4e02f server/41-location-store-redis.ko.md
@@ -284,7 +284,7 @@ a165665cbb47ef2b69744cfa7614d40c35274154af47439693f811080934f914 03-message-mode
 d34e9b26860a2ee285b340c5234bb27fc4c82438bbdf375e697f1350a0c1ef1f server/51-runtime-metrics.ko.md
 d30ea2acfbee45009ee2e0d000f2b37009ccf9f5f134c8ad29dd2035e3b8ab99 server/50-runtime-monitoring.ko.md
 a780a2e75f7e18f3efa27d8fc783555d47b2e4c012e6f9ff4a66b2d49058ded7 server/31-session-actor-dispatch.ko.md
-ae0c25c9f67cb397da861e82d8aaf1311472dfe5e28212a88f1e0aa32ec20998 server/23-spot-actor.ko.md
+8ee73c8ed8de67eff7c376839417c5dff04f73dd0af52a18c2f492c5591c07f0 server/23-spot-actor.ko.md
 45576c26b8061e0a1965d219d539080a4917c6c06572b5d63bccddfb2f1bbe4d server/24-spot-address-messaging.ko.md
 d9546cf37a3f9f34e863ac4a63eda2e2af6f1985269279579fa5b53632978108 server/20-spot-messaging.ko.md
 ab578a47597159198b5ed4f37ef96d1fd0b94190a0b0014fbb29061e139572ef server/21-spot-node.ko.md
@@ -296,6 +296,6 @@ ac71dd740a0129d49b4192628aae42ba70444acad2e431ff1300122613b2bc5b stream-connecto
 78399b1cb5969c20cc5d65fdf95f6adcfdd3114da9e368d894c9fdc73fbd92b5 server/languages/dotnet/02-handler-interfaces.ko.md
 6133d322633c12a16b98f68ebec4417d31b5f4a327379908b4a7fea9df563fca server/languages/dotnet/01-system-structure.ko.md
 54f7a53bc1ff7cc97ada0a41d28f50678e43d68c3ad46e0beef43466dd8ccf5c server/25-stage-wrapper-on-spot.ko.md
-7a1a32c29bc2cfc642ce465f71e5f405741a2a8c23b95d0426b132947fdd0202 server/11-channel-messaging.ko.md
+2572d7c8a4e9bd3ae5ebd917e0d69c0429e18bdaa3567fd7a5531452d76e40e1 server/11-channel-messaging.ko.md
 2e8d5b168a7a1dce897c0372c16ff2a4f594d2972a24648abeffd211c3cef738 http-client/languages/dotnet/dotnet-http-client.ko.md
 ```

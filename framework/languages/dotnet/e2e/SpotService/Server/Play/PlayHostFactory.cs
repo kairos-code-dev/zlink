@@ -33,6 +33,7 @@ internal static class PlayHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton(new EvidenceStore(options.Rid, options.EvidenceFile));
         builder.Services.AddSingleton(new NodeOptions(options.Rid));
+        builder.Services.AddSingleton<ApplicationJoinCoordinator>();
 
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -77,8 +78,9 @@ internal static class PlayHostFactory
                     .AddHandlerGroup("client");
 
             var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
+                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
+                .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
                 .EnablePubSub(Require(options.SpotPubEndpoint, "SpotPubEndpoint"))
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)

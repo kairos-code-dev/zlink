@@ -196,7 +196,14 @@ internal sealed partial class ZLinkSpotActivation
     {
         try
         {
-            await JoinActorToSpotCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+            // Materialize membership during prepare, but do not expose the join to application
+            // code until the distributed handoff has committed. A joined callback may push a
+            // client notification, and that notification must not overtake source cutover.
+            await JoinActorToSpotCoreAsync(
+                    actor,
+                    notifyJoined: false,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
 
         }
         catch
@@ -205,6 +212,22 @@ internal sealed partial class ZLinkSpotActivation
             actorState.LeaveSpotIfCurrent(this);
             throw;
         }
+    }
+
+    internal ValueTask CompleteTransferredActorJoinAsync(
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        var actor = actorState.Actor
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? NotifyJoinedActorCoreAsync(actor, cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) => activation.NotifyJoinedActorCoreAsync(state, ct),
+                actor,
+                cancellationToken);
     }
 
     internal async ValueTask ReplayTransferredActorHandoffAsync(
@@ -282,7 +305,11 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await JoinActorToSpotCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+        await JoinActorToSpotCoreAsync(
+                actor,
+                notifyJoined: true,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
         if (_runtime.LocationLifecycle is { } locations)
             await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
                     actor.ActorId,
@@ -341,7 +368,11 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await JoinActorToSpotCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+        await JoinActorToSpotCoreAsync(
+                actor,
+                notifyJoined: true,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
 
         if (_runtime.LocationLifecycle is { } locations)
         {
@@ -358,6 +389,7 @@ internal sealed partial class ZLinkSpotActivation
 
     private async ValueTask JoinActorToSpotCoreAsync(
         IZLinkActor actor,
+        bool notifyJoined,
         CancellationToken cancellationToken)
     {
         _actorsLeavingForEntrySpot.Remove(actor.ActorId);
@@ -370,6 +402,14 @@ internal sealed partial class ZLinkSpotActivation
             await _runtime.NotifyEntrySpotActorLeftAsync(actor, NodeRid, cancellationToken)
                 .ConfigureAwait(false);
 
+        if (notifyJoined)
+            await NotifyJoinedActorCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask NotifyJoinedActorCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveJoined(actor.GetType(), out var descriptor)
             && descriptor is not null)

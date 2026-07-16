@@ -76,7 +76,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 (uint)route.SocketConfig.Weight,
                 route.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect
                     ? new RouteChannelExecutor(runtime)
-                    : NullExecutor.Instance);
+                    : NullExecutor.Instance,
+                retainRemovedMembers: route.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual);
         }
 
         foreach (var (name, channel) in registration.Channels)
@@ -319,7 +320,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         uint weight,
         IZLinkAutoConnectExecutor executor,
         IReadOnlyDictionary<string, string>? metadata = null,
-        IReadOnlyList<string>? capabilities = null)
+        IReadOnlyList<string>? capabilities = null,
+        bool retainRemovedMembers = false)
     {
         // A capability with neither identity nor endpoint cannot be keyed
         // or advertised. When it also never dials (advertise-only server
@@ -337,7 +339,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 OwnerId: string.Empty, Generation: 0, UpdatedAt: default)
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
-            local, row, _runtime, _peers, executor, _options, _time, _events);
+            local, row, _runtime, _peers, executor, _options, _time, _events,
+            retainRemovedMembers);
         reconciler.RegisterPeerMetric();
         _reconcilers.Add(reconciler);
         _localReconcilers[(type, meshName, role)] = reconciler;
@@ -353,6 +356,10 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             ? reconciler.KnowsPeer(nodeRid)
             : null;
     }
+
+    public bool WasKnownManualRouteMeshPeer(string meshName, RoutingId nodeRid) =>
+        _routeMeshReconcilers.TryGetValue(meshName, out var reconciler)
+        && reconciler.HasRetainedPeer(nodeRid);
 
     internal void SetLocalWeight(
         ZLinkLocationAutoConnectType type,

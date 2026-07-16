@@ -10,8 +10,12 @@ public static class ObservabilityNames
 
 public sealed record AuthenticateReq(string ActorId);
 public sealed record AuthenticateRes(string ActorId, string NodeRid, ulong Generation);
+public sealed record SessionBoundedOperationReq(string Marker);
+public sealed record SessionBoundedOperationRes(string Marker);
 public sealed record EnsurePlayerReq(string ActorId);
 public sealed record EnsurePlayerRes(string ActorId, string NodeRid, ulong Generation);
+public sealed record PlayBoundedOperationReq(string Marker);
+public sealed record PlayBoundedOperationRes(string Marker, string NodeRid);
 public sealed record CreateRoomReq(string RoomRid, string Mode = "normal");
 public sealed record CreateRoomRes(string RoomRid, string NodeRid);
 public sealed record JoinRoomReq(string RoomRid);

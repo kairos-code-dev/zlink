@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ResilienceLifecycle.Shared;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 
 namespace ResilienceLifecycle.Server.Provider;
 
@@ -36,15 +37,6 @@ internal static class ProviderEndpoints
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
         });
-        app.MapPost("/admin/crash", () =>
-        {
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(50);
-                Environment.FailFast("resilience lifecycle e2e crash");
-            });
-            return Results.Ok(new { status = "crashing" });
-        });
         app.MapPost("/admin/fault/{mode}", (
             string mode,
             [FromServices] FaultState fault,
@@ -54,21 +46,33 @@ internal static class ProviderEndpoints
             evidence.Add($"admin|rid={evidence.Rid}|action=fault|mode={mode}");
             return Results.Ok(new { status = "fault", mode });
         });
-        app.MapPost("/admin/drain", (
+        app.MapPost("/admin/weight/exclude", (
             [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
             runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel).ConfigureServerSocket().Weight = 0;
-            evidence.Add($"admin|rid={evidence.Rid}|action=drain|weight=0");
-            return Results.Ok(new { status = "drained", weight = 0 });
+            evidence.Add($"admin|rid={evidence.Rid}|action=weight-exclude|weight=0");
+            return Results.Ok(new { status = "excluded", weight = 0 });
         });
-        app.MapPost("/admin/restore", (
+        app.MapPost("/admin/weight/include", (
             [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
             runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel).ConfigureServerSocket().Weight = 100;
-            evidence.Add($"admin|rid={evidence.Rid}|action=restore|weight=100");
-            return Results.Ok(new { status = "restored", weight = 100 });
+            evidence.Add($"admin|rid={evidence.Rid}|action=weight-include|weight=100");
+            return Results.Ok(new { status = "included", weight = 100 });
+        });
+        app.MapPost("/admin/graceful-drain", async (
+            [FromServices] IZLinkDrainControl drain,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            return Results.Ok(result switch
+            {
+                Drained => new DrainResultRes(nameof(Drained)),
+                ForceStopped forced => new DrainResultRes(nameof(ForceStopped), forced.Reason.ToString()),
+                _ => throw new InvalidOperationException($"Unknown drain result '{result.GetType().Name}'.")
+            });
         });
         app.MapGet("/admin/weight", ([FromServices] IZLinkChannelRuntimeOptions runtimeOptions) =>
         {

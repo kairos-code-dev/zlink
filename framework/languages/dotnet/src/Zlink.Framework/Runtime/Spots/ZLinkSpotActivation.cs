@@ -129,6 +129,9 @@ internal sealed partial class ZLinkSpotActivation :
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        return JoinActorToSpotCoreAsync(actor, cancellationToken);
+        return JoinActorToSpotCoreAsync(
+            actor,
+            notifyJoined: true,
+            cancellationToken: cancellationToken);
     }
 }

@@ -244,6 +244,28 @@ public sealed class AutoConnectReconcilerTests
         fixture.PeerResolver.Fail = true;
         await fixture.Reconciler.TickAsync();
         Assert.True(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+
+        // A successful snapshot replaces fail-static history. Once the row is
+        // removed, the rid is an unknown request target rather than a known but
+        // disconnected route.
+        fixture.PeerResolver.Fail = false;
+        await fixture.RemovePeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+        Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+    }
+
+    [Fact]
+    public async Task Manual_Mesh_Retains_Observed_Target_After_Row_Removal()
+    {
+        var fixture = await FixtureAsync(retainRemovedMembers: true);
+        await fixture.PublishPeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+        await fixture.RemovePeerAsync("r1", "tcp://r:1");
+        await fixture.Reconciler.TickAsync();
+
+        Assert.False(fixture.Reconciler.KnowsPeer(RoutingId.From("r1")));
+        Assert.True(fixture.Reconciler.HasRetainedPeer(RoutingId.From("r1")));
+        Assert.False(fixture.Reconciler.HasRetainedPeer(RoutingId.From("ghost")));
     }
 
     [Fact]
@@ -499,7 +521,9 @@ public sealed class AutoConnectReconcilerTests
         string mesh = "play") =>
         new(type, mesh, RoutingId.From(rid), role, endpoint, 100, false, 0, null, null, "peer-owner", 1, default);
 
-    private static async Task<ReconcilerFixture> FixtureAsync(Action<ZLinkLocationOptions>? configure = null)
+    private static async Task<ReconcilerFixture> FixtureAsync(
+        Action<ZLinkLocationOptions>? configure = null,
+        bool retainRemovedMembers = false)
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
@@ -521,7 +545,8 @@ public sealed class AutoConnectReconcilerTests
             local.AutoConnectType, local.MeshName, local.NodeRid, local.Role, local.Endpoint,
             100, false, 0, null, null, "ignored", 0, default);
         var reconciler = new ZLinkAutoConnectReconciler(
-            local, localRow, runtime, failable, executor, options, time);
+            local, localRow, runtime, failable, executor, options, time,
+            retainRemovedMembers: retainRemovedMembers);
         return new ReconcilerFixture(store, runtime, failable, executor, reconciler, time);
     }
 

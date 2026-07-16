@@ -1,11 +1,11 @@
-// Verifies RL-B4 Runtime Drain behavior.
+// Verifies RL-B4 socket weight exclusion and restoration.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
-// RL-B4 verifies runtime drain and later restore for the provider path.
+// RL-B4 verifies transport load exclusion without starting graceful drain.
 internal static class RlB4RuntimeDrainScenario
 {
     public static async Task RunAsync(
@@ -13,7 +13,7 @@ internal static class RlB4RuntimeDrainScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/admin/drain").AsyncRaw();
+        await providerB.Post("/admin/weight/exclude").AsyncRaw();
         await WaitForWeightAsync(providerB, 0);
         await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
             consumer, "api-b", "rl-b4-propagation", "RL-B4");
@@ -22,10 +22,10 @@ internal static class RlB4RuntimeDrainScenario
             .Async<TopologyEntryRes[]>()).Body;
         ZlinkStreamAssert.Ensure(
             retainedRows.Length >= 1,
-            "RL-B4 runtime drain removed api-b's peer row instead of retaining it.");
+            "RL-B4 weight exclusion removed api-b's peer row instead of retaining it.");
         ZlinkStreamAssert.Ensure(
             retainedRows.All(row => row.Weight == 0),
-            "RL-B4 runtime drain did not publish api-b's zero weight.");
+            "RL-B4 weight exclusion did not publish api-b's zero weight.");
         var beforeDrain = (await providerB.Get("/evidence").Async<string[]>()).Body;
 
         for (var i = 0; i < 20; i++)
@@ -40,13 +40,13 @@ internal static class RlB4RuntimeDrainScenario
         var afterDrain = (await providerB.Get("/evidence").Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
             CountNew(afterDrain, beforeDrain, "profile-request|rid=api-b|marker=rl-b4-drained-") == 0,
-            "RL-B4 api-b evidence changed after drain.");
+            "RL-B4 api-b evidence changed after weight exclusion.");
 
         await providerA.Post("/evidence/wait")
             .Body(new EvidenceWaitReq(["profile-request|rid=api-a|marker=rl-b4-drained-"], []))
             .Async<string[]>();
 
-        await providerB.Post("/admin/restore").AsyncRaw();
+        await providerB.Post("/admin/weight/include").AsyncRaw();
         await WaitForWeightAsync(providerB, 100);
 
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(

@@ -35,9 +35,7 @@ internal static class ObsB3FanoutAndLeaseMetricsScenario
         {
             await redis.GetDatabase().ExecuteAsync("CLIENT", "PAUSE", 11000, "ALL");
         }
-        // Redis applies the pause after acknowledging CLIENT PAUSE. Waiting outside
-        // the service keeps the delay injection external to the framework process.
-        await Task.Delay(TimeSpan.FromSeconds(12));
+        await WaitForLeaseLatenessAsync(context);
 
         var afterA = await EvidenceAsync(context.WorkflowA);
         var afterB = await EvidenceAsync(context.WorkflowB);
@@ -67,4 +65,20 @@ internal static class ObsB3FanoutAndLeaseMetricsScenario
 
     private static async Task<EvidenceSnapshot> EvidenceAsync(Zlink.HttpClient.ZLinkHttpClient client) =>
         (await client.Get("/evidence").Async<EvidenceSnapshot>()).Body;
+
+    private static async Task WaitForLeaseLatenessAsync(ScenarioContext context)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var evidence = (await EvidenceAsync(context.WorkflowA)).Metrics
+                .Concat((await EvidenceAsync(context.WorkflowB)).Metrics);
+            if (evidence.Any(sample => sample.Name == "zlink.location.owner_lease.renew.lateness"
+                                       && sample.Max >= 0.5m)) return;
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+        }
+
+        throw new TimeoutException("OBS-B3 lease renewal lateness evidence did not arrive.");
+    }
 }

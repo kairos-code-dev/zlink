@@ -191,6 +191,109 @@ internal static class GatewayHostFactory
                 $"Actor route '{request.ActorId}' remained visible.",
                 statusCode: StatusCodes.Status504GatewayTimeout);
         });
+        app.MapPost("/actor/capture-ref", async (
+            ActorRefSnapshotReq request,
+            IZLinkActorDirectory actors,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = await actors.FindAsync(request.ActorId, cancellationToken)
+                        ?? throw new ZLinkFrameworkException(
+                            ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                            $"Actor route '{request.ActorId}' was not found.");
+            return Results.Ok(new ActorRefSnapshotRes(
+                actor.ActorId, actor.NodeRid.ToString(), actor.Generation));
+        });
+        app.MapPost("/actor/request-ref", async (
+            ActorRefRequestReq request,
+            IZLinkActorClient actors,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var actor = new ActorRef(
+                    RoutingId.From(request.Actor.NodeRid),
+                    request.Actor.ActorId,
+                    request.Actor.Generation);
+                var call = request.DelayMilliseconds > 0
+                    ? actors.RequestToActor(actor,
+                        new SlowActorPingReq(request.Value, request.DelayMilliseconds))
+                    : actors.RequestToActor(actor, new ActorPingReq(request.Value));
+                var reply = await call
+                    .Timeout(TimeSpan.FromMilliseconds(
+                        Math.Clamp(request.TimeoutMilliseconds, 1, 30000)))
+                    .Async<ActorPingRes>(cancellationToken);
+                return Results.Ok(new ActorRefRequestRes(true, string.Empty, reply));
+            }
+            catch (ZLinkFrameworkException error)
+            {
+                return Results.Ok(new ActorRefRequestRes(false, error.Kind.ToString(), null));
+            }
+            catch (TimeoutException)
+            {
+                return Results.Ok(new ActorRefRequestRes(false, "Timeout", null));
+            }
+        });
+        app.MapPost("/node/wait-ready", async (
+            NodeReadinessWaitReq request,
+            IZLinkLocationRuntimeQuery locations,
+            IZLinkSpotHandleResolver handles,
+            IZLinkRouteClient routes,
+            CancellationToken cancellationToken) =>
+        {
+            var deadline = DateTimeOffset.UtcNow
+                           + TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var peers = await locations.ListPeerLocationsAsync(
+                    new ZLinkPeerLocationFilter(), cancellationToken);
+                var peerReady = peers.Any(row => string.Equals(
+                    row.NodeRid?.ToString(), request.NodeRid, StringComparison.Ordinal));
+                var entry = await handles.ResolveSpotHandleAsync(
+                    RoutingId.From(request.NodeRid), cancellationToken);
+                if (peerReady && entry is not null)
+                    try
+                    {
+                        var marker = $"ready-{Guid.NewGuid():N}";
+                        var reply = await routes.RequestToSpot(entry, new EntryReadinessReq(marker))
+                            .Timeout(TimeSpan.FromSeconds(1))
+                            .Async<EntryReadinessRes>(cancellationToken);
+                        if (reply.NodeRid == request.NodeRid && reply.Marker == marker)
+                            return Results.Ok(new NodeReadinessWaitRes(request.NodeRid, true, true));
+                    }
+                    catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        // The location row can precede the router connection.
+                    }
+                await Task.Delay(100, cancellationToken);
+            }
+            return Results.Problem(
+                $"Node '{request.NodeRid}' peer and Entry Spot readiness did not converge.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
+        app.MapPost("/entry/join", async (
+            EntryJoinRouteReq request,
+            IZLinkRouteClient routes,
+            IZLinkSpotHandleResolver handles,
+            IZLinkActorDirectory actors,
+            CancellationToken cancellationToken) =>
+        {
+            var entry = await handles.ResolveSpotHandleAsync(
+                            RoutingId.From(request.NodeRid), cancellationToken)
+                        ?? throw new InvalidOperationException(
+                            $"Entry Spot for node '{request.NodeRid}' is not ready.");
+            var joined = await routes.RequestToSpot(entry, request.Join)
+                .Async<JoinRes>(cancellationToken);
+            var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var actor = await actors.FindAsync(request.Join.ActorId, cancellationToken);
+                if (actor is not null) return Results.Ok(joined);
+                await Task.Delay(100, cancellationToken);
+            }
+            return Results.Problem(
+                $"Actor '{request.Join.ActorId}' did not become ready after Entry Spot JoinReq.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
         app.MapPost("/shutdown", (IHostApplicationLifetime lifetime) =>
         {
             lifetime.StopApplication();

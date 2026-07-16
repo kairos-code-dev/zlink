@@ -20,18 +20,18 @@ internal static class StA3MovingDispatchBlockedScenario
             $"transfer|{actorId}|leave|13",
             $"ST-A3|{actorId}|joined_wait|{spotRid}"
         ]);
-        SpotActorTransferScenarioContext.RequireNoContains(
-            waitingEvidence,
-            $"ST-A3|{actorId}|packet_handler|during-joined-wait",
+        ZlinkStreamAssert.Ensure(
+            !waitingEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-A3|{actorId}|packet_handler|during-joined-wait", StringComparison.Ordinal)),
             "ST-A3 packet should not run before OnJoinedActorAsync is released.");
 
         var blockedProbe = context.ProbeAsync(context.NodeA, actorId, new ProbeReq("ST-A3", "during-joined-wait"));
         var submittedEvidence = await context.WaitEvidenceAsync(context.NodeA, [
             $"ST-A3|{actorId}|probe_submitted|during-joined-wait"
         ]);
-        SpotActorTransferScenarioContext.RequireNoContains(
-            submittedEvidence,
-            $"ST-A3|{actorId}|packet_handler|during-joined-wait",
+        ZlinkStreamAssert.Ensure(
+            !submittedEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-A3|{actorId}|packet_handler|during-joined-wait", StringComparison.Ordinal)),
             "ST-A3 actor packet completed while OnJoinedActorAsync was still blocked.");
 
         var release = await context.ReleaseJoinedGateAsync(context.NodeA, spotRid);

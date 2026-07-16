@@ -1,122 +1,126 @@
-// Verifies RL-A4 Drain And Green Endpoint behavior.
+// Verifies RL-A4 rolling replacement with a ready green target before old-target drain.
+using System.Collections.Concurrent;
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
-// RL-A4 verifies drain followed by replacement with a green provider endpoint.
+// RL-A4 verifies a serving green target before each old provider drains.
 internal static class RlA4DrainAndGreenEndpointScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient consumer,
         ZLinkHttpClient registry,
         ResilienceProcessManager processes,
+        ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/admin/drain").AsyncRaw();
-        await WaitForWeightAsync(providerB, 0);
-
+        var connectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
         var green = await processes.StartProviderBGreenAsync();
-        using var greenProvider = ZLinkHttpClient.Create(green.Url)
-            .Timeout(TimeSpan.FromMinutes(5))
-            .Build();
+        using var greenProvider = ZLinkHttpClient.Create(green.Url).Timeout(TimeSpan.FromMinutes(5)).Build();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-green", "Ready", 1))
+            .Async<TopologyEntryRes[]>();
+        await consumer.Post("/connections/wait")
+            .Body(new ConnectionWaitReq(
+                ["kind=ConnectionReady", $"remote={green.Endpoint}"], connectionCount))
+            .Async<string[]>();
+        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
+            consumer, greenProvider, "rl-a4-green-ready", "RL-A4 green readiness");
 
-        for (var i = 0; i < 12; i++)
+        var replies = new ConcurrentQueue<ProfileRes>();
+        var failures = new ConcurrentQueue<Exception>();
+        using var trafficStop = new CancellationTokenSource();
+        var traffic = DriveTrafficAsync(consumer, replies, failures, trafficStop.Token);
+
+        await DrainAndStopAsync(providerB, registry, "api-b", processes.WaitInitialProviderBExitedAsync);
+        await AssertServingAsync(registry, "api-green");
+        await DrainAndStopAsync(providerA, registry, "api-a", processes.WaitInitialProviderAExitedAsync);
+        await AssertServingAsync(registry, "api-green");
+
+        trafficStop.Cancel();
+        await traffic;
+        ZlinkStreamAssert.Ensure(failures.IsEmpty,
+            $"RL-A4 continuous traffic failed: {failures.FirstOrDefault()?.Message}");
+        ZlinkStreamAssert.Ensure(replies.Count >= 10, "RL-A4 did not observe enough fixed-interval traffic.");
+
+        for (var index = 0; index < 20; index++)
         {
-            var marker = $"rl-a4-rolling-{i}";
             var reply = (await consumer.Post("/profile/request")
-                .Body(new ProfileReq("fast", marker))
+                .Body(new ProfileReq("fast", $"rl-a4-final-{index}"))
                 .Async<ProfileRes>()).Body;
-            ZlinkStreamAssert.Ensure(reply.Value == "profile:fast", "RL-A4 rolling request returned an unexpected value.");
-            ZlinkStreamAssert.Ensure(reply.ProviderRid is "api-a" or "api-b",
-                "RL-A4 rolling request used an unexpected provider.");
+            ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-green",
+                "RL-A4 final traffic was handled by an old provider.");
         }
-
-        if (!await processes.TryStopProviderBAsync())
-        {
-            await providerB.Post("/shutdown").AsyncRaw();
-            for (var attempt = 0; attempt < 100; attempt++)
-            {
-                try
-                {
-                    var health = await providerB.Get("/health").AsyncRaw();
-                    if (health.Status != 200) break;
-                }
-                catch
-                {
-                    break;
-                }
-
-                await Task.Delay(100);
-            }
-        }
-
-        await registry.Post("/topology/wait")
-            .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .Async<TopologyEntryRes[]>();
-        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
-            consumer, greenProvider, "rl-a4-green", "RL-A4");
-
-        await greenProvider.Post("/shutdown").AsyncRaw();
-        await WaitUntilUnavailableAsync(greenProvider);
-        await registry.Post("/topology/wait")
-            .Body(new TopologyWaitReq("api-b", "Ready", 0))
-            .Async<TopologyEntryRes[]>();
-
-        var restored = await processes.StartProviderBAsync();
-        using var restoredProviderB = ZLinkHttpClient.Create(restored.Url)
-            .Timeout(TimeSpan.FromMinutes(5))
-            .Build();
-
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            try
-            {
-                var health = await restoredProviderB.Get("/health").AsyncRaw();
-                if (health.Status == 200) break;
-            }
-            catch
-            {
-                // The scenario keeps polling until the original provider accepts HTTP traffic.
-            }
-
-            await Task.Delay(100);
-        }
-
-        await registry.Post("/topology/wait")
-            .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .Async<TopologyEntryRes[]>();
-        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
-            consumer, restoredProviderB, "rl-a4-restored", "RL-A4");
+        await greenProvider.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(["profile-request|rid=api-green|marker=rl-a4-final-19"], []))
+            .Async<string[]>();
 
         Console.WriteLine("scenario RL-A4 passed");
     }
 
-    private static async Task WaitForWeightAsync(ZLinkHttpClient provider, int expected)
+    private static async Task DrainAndStopAsync(
+        ZLinkHttpClient provider,
+        ZLinkHttpClient registry,
+        string rid,
+        Func<Task> waitExited)
     {
-        await provider.Post("/admin/weight/wait")
-            .Body(new WeightWaitReq(expected))
-            .AsyncRaw();
+        var drainTask = provider.Post("/admin/graceful-drain").Async<DrainResultRes>().AsTask();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq(rid, "Ready", 1, ExpectedDraining: true))
+            .Async<TopologyEntryRes[]>();
+        var result = (await drainTask).Body;
+        ZlinkStreamAssert.Ensure(result.Result == "Drained",
+            $"RL-A4 {rid} did not reach terminal Drained: {result.Result}/{result.Reason}.");
+        await provider.Post("/shutdown").AsyncRaw();
+        await waitExited();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq(rid, "Ready", 0))
+            .Async<TopologyEntryRes[]>();
     }
 
-    private static async Task WaitUntilUnavailableAsync(ZLinkHttpClient http)
+    private static async Task AssertServingAsync(ZLinkHttpClient registry, string rid)
     {
-        for (var attempt = 0; attempt < 100; attempt++)
+        var rows = (await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq(rid, "Ready", 1, ExpectedDraining: false))
+            .Async<TopologyEntryRes[]>()).Body;
+        ZlinkStreamAssert.Ensure(rows.Length == 1, "RL-A4 lost its serving green target.");
+    }
+
+    private static async Task DriveTrafficAsync(
+        ZLinkHttpClient consumer,
+        ConcurrentQueue<ProfileRes> replies,
+        ConcurrentQueue<Exception> failures,
+        CancellationToken cancellationToken)
+    {
+        var index = 0;
+        while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                var health = await http.Get("/health").AsyncRaw();
-                if (health.Status != 200) return;
+                var reply = (await consumer.Post("/profile/request")
+                    .Body(new ProfileReq("fast", $"rl-a4-continuous-{index++}"))
+                    .Async<ProfileRes>(cancellationToken)).Body;
+                replies.Enqueue(reply);
             }
-            catch
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                return;
+                break;
+            }
+            catch (Exception error)
+            {
+                failures.Enqueue(error);
             }
 
-            await Task.Delay(100);
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
-
-        ZlinkStreamAssert.Ensure(false, "RL-A4 provider did not stop.");
     }
 }

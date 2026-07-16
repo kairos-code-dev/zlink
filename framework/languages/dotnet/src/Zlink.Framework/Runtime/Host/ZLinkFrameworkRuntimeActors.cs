@@ -257,6 +257,11 @@ internal sealed partial class ZLinkFrameworkRuntime
                     cancellationToken)
                 .ConfigureAwait(false);
             actorState.Handoff.Complete(request.HandoffId);
+            await CompleteTransferredActorTargetAsync(
+                    target,
+                    actorState,
+                    cancellationToken)
+                .ConfigureAwait(false);
             _actorHandoffAdmissions.RecordCompletion(request, spotRid);
             _actorHandoffAdmissions.Complete(request.HandoffId);
             ZLinkFrameworkDebugLog.SpotDiscovery(
@@ -464,7 +469,24 @@ internal sealed partial class ZLinkFrameworkRuntime
                 .ConfigureAwait(false);
             return;
         }
+    }
 
+    private async ValueTask CompleteTransferredActorTargetAsync(
+        ActorHandoffTarget target,
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        if (target.UserSpot is { } userSpot)
+        {
+            await userSpot.CompleteTransferredActorJoinAsync(actorState, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var actor = actorState.Actor
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                        $"Actor '{actorState.ActorId}' has no transferred instance at commit.");
         await NotifyEntrySpotActorJoinedAsync(
                 actor,
                 target.NodeRid,

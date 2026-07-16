@@ -15,24 +15,34 @@ internal static class RlC2TopologyRecoveryScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/admin/crash").AsyncRaw();
+        await processes.KillProviderBAsync();
         await WaitUntilAsync(async () => !await IsHealthyAsync(providerB), "RL-C2 expected api-b crash.");
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
+        await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
+            consumer,
+            "api-b",
+            "rl-c2-converge",
+            "RL-C2");
 
         for (var i = 0; i < 8; i++)
         {
-            var reply = (await consumer.Post("/profile/request/new-client")
+            var reply = (await consumer.Post("/profile/request")
                 .Body(new ProfileReq("fast", $"rl-c2-after-crash-{i}"))
                 .Async<ProfileRes>()).Body;
             ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a", "RL-C2 request used stale crashed api-b.");
         }
 
-        await processes.StartProviderBAsync();
+        var connectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
+        var restarted = await processes.StartProviderBAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .Async<TopologyEntryRes[]>();
+        await consumer.Post("/connections/wait")
+            .Body(new ConnectionWaitReq(
+                ["kind=ConnectionReady", $"remote={restarted.Endpoint}"], connectionCount))
+            .Async<string[]>();
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
             consumer,
             providerB,

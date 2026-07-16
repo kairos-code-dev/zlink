@@ -9,6 +9,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
 {
     private readonly List<ManagedProcess> _processes = [];
     private ManagedProcess? _providerB;
+    private bool _initialProviderBActive = true;
 
     public async ValueTask DisposeAsync()
     {
@@ -52,6 +53,36 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         return true;
     }
 
+    public async Task StopProviderBWithSigtermAsync()
+    {
+        if (_providerB is { } managed)
+        {
+            _providerB = null;
+            await managed.SendSigtermAsync();
+            _processes.Remove(managed);
+            return;
+        }
+
+        if (!_initialProviderBActive) return;
+        _initialProviderBActive = false;
+        await SignalAndWaitAsync(options.ProviderBProcessId, "TERM");
+    }
+
+    public async Task KillProviderBAsync()
+    {
+        if (_providerB is { } managed)
+        {
+            _providerB = null;
+            await managed.KillAsync();
+            _processes.Remove(managed);
+            return;
+        }
+
+        if (!_initialProviderBActive) return;
+        _initialProviderBActive = false;
+        await SignalAndWaitAsync(options.ProviderBProcessId, "KILL");
+    }
+
     public async Task WaitProviderBExitedAsync()
     {
         if (_providerB is not { } process) return;
@@ -89,6 +120,33 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
         }
     }
 
+    private static async Task SignalAndWaitAsync(int processId, string signal)
+    {
+        Process target;
+        try
+        {
+            target = Process.GetProcessById(processId);
+        }
+        catch (ArgumentException)
+        {
+            return;
+        }
+
+        using (target)
+        using (var signalProcess = Process.Start(new ProcessStartInfo("kill")
+               {
+                   ArgumentList = { $"-{signal}", "--", $"-{processId}" },
+                   UseShellExecute = false
+               }) ?? throw new InvalidOperationException($"Failed to send SIG{signal} to provider B."))
+        {
+            await signalProcess.WaitForExitAsync();
+            if (signalProcess.ExitCode != 0)
+                throw new InvalidOperationException($"Sending SIG{signal} to provider B failed.");
+
+            await target.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        }
+    }
+
     public async Task<ProviderStartResult> StartProviderBRemapAsync()
     {
         var process = StartProvider(
@@ -105,7 +163,7 @@ internal sealed class ResilienceProcessManager(ClientOptions options) : IAsyncDi
     {
         var process = StartProvider(
             "api-b-green",
-            "api-b",
+            "api-green",
             options.ProviderBGreenUrl,
             options.ProviderBGreenEndpoint,
             Path.Combine(options.LogDir, "api-b-green.evidence.log"));
@@ -305,6 +363,31 @@ internal sealed class ManagedProcess(Process process, string healthUrl)
             await process.WaitForExitAsync();
         }
 
+        process.Dispose();
+    }
+
+    public async Task SendSigtermAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        using var signalProcess = Process.Start(new ProcessStartInfo("kill")
+        {
+            ArgumentList = { "-TERM", process.Id.ToString() },
+            UseShellExecute = false
+        }) ?? throw new InvalidOperationException("Failed to send SIGTERM to provider process.");
+        await signalProcess.WaitForExitAsync();
+        if (signalProcess.ExitCode != 0)
+            throw new InvalidOperationException("Sending SIGTERM to provider process failed.");
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+        process.Dispose();
+    }
+
+    public async Task KillAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (!process.HasExited) process.Kill(true);
+        await process.WaitForExitAsync();
         process.Dispose();
     }
 }

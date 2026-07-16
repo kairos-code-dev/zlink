@@ -28,6 +28,9 @@ internal static class StA1LocalAcceptScenario
             $"ST-A1|{actorId}|success_reply|{spotRid}",
             $"ST-A1|{actorId}|packet_handler|after-joined"
         ]);
-        SpotActorTransferScenarioContext.RequireContains(evidence, $"ST-A1|{actorId}|packet_handler|after-joined", "ST-A1 packet evidence missing.");
+        ZlinkStreamAssert.Ensure(
+            evidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-A1|{actorId}|packet_handler|after-joined", StringComparison.Ordinal)),
+            "ST-A1 packet evidence missing.");
     }
 }

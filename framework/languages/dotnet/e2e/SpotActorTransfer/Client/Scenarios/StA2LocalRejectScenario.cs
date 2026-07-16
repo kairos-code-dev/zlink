@@ -20,6 +20,9 @@ internal static class StA2LocalRejectScenario
         var evidence = await context.WaitEvidenceAsync(context.NodeA, [
             $"ST-A2|{actorId}|admission|spot={spotRid}"
         ]);
-        SpotActorTransferScenarioContext.RequireNoContains(evidence, $"transfer|{actorId}|joined|{spotRid}", "ST-A2 joined side effect should not exist.");
+        ZlinkStreamAssert.Ensure(
+            !evidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|joined|{spotRid}", StringComparison.Ordinal)),
+            "ST-A2 joined side effect should not exist.");
     }
 }

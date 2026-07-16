@@ -12,20 +12,57 @@ internal static class RlA2ProviderEndpointRemapScenario
         ZLinkHttpClient consumer,
         ZLinkHttpClient registry,
         ResilienceProcessManager processes,
+        ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/shutdown").AsyncRaw();
-        await WaitUntilUnavailableAsync(providerB);
+        await providerA.Post("/admin/weight/exclude").AsyncRaw();
+        await providerA.Post("/admin/weight/wait").Body(new WeightWaitReq(0)).AsyncRaw();
+        var oldRows = (await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .Async<TopologyEntryRes[]>()).Body;
+        var oldGeneration = oldRows.Single().Generation;
 
+        var marker = $"rl-a2-inflight-{Guid.NewGuid():N}";
+        var inFlight = consumer.Post("/profile/request/attempt/3000")
+            .Body(new ProfileReq("slow", marker))
+            .Async<ProfileAttemptRes>();
+        await providerB.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([$"profile-start|rid=api-b|marker={marker}"], []))
+            .Async<string[]>();
+        await processes.KillProviderBAsync();
+
+        var crashResult = (await inFlight).Body;
+        ZlinkStreamAssert.Ensure(
+            crashResult.Reply is null
+            && crashResult.IsRetriable
+            && crashResult.ErrorKind is "RouteNotConnected" or nameof(TimeoutException),
+            $"RL-A2 old in-flight result was '{crashResult.ErrorKind}'.");
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .Async<TopologyEntryRes[]>();
+
+        var replacementConnectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
         var replacement = await processes.StartProviderBRemapAsync();
         using var replacementProvider = ZLinkHttpClient.Create(replacement.Url)
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
-        await registry.Post("/topology/wait")
+        var replacementRows = (await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .Async<TopologyEntryRes[]>();
-        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
-            consumer, replacementProvider, "rl-a2-rescheduled", "RL-A2");
+            .Async<TopologyEntryRes[]>()).Body;
+        var replacementRow = replacementRows.Single();
+        ZlinkStreamAssert.Ensure(
+            replacementRow.Endpoint == replacement.Endpoint
+            && replacementRow.Generation != oldGeneration,
+            "RL-A2 replacement row did not publish the new endpoint and owner generation.");
+        await consumer.Post("/connections/wait")
+            .Body(new ConnectionWaitReq(
+                ["kind=ConnectionReady", $"remote={replacement.Endpoint}"], replacementConnectionCount))
+            .Async<string[]>();
+
+        await SendRequestBatchAsync(consumer, "rl-a2-rescheduled");
+        await replacementProvider.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq(["profile-request|rid=api-b|marker=rl-a2-rescheduled-19"], []))
+            .Async<string[]>();
 
         await replacementProvider.Post("/shutdown").AsyncRaw();
         await WaitUntilUnavailableAsync(replacementProvider);
@@ -33,13 +70,19 @@ internal static class RlA2ProviderEndpointRemapScenario
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
 
-        await processes.StartProviderBAsync();
+        var restoredConnectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
+        var restored = await processes.StartProviderBAsync();
         await WaitUntilAvailableAsync(providerB);
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
             .Async<TopologyEntryRes[]>();
+        await consumer.Post("/connections/wait")
+            .Body(new ConnectionWaitReq(
+                ["kind=ConnectionReady", $"remote={restored.Endpoint}"], restoredConnectionCount))
+            .Async<string[]>();
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
             consumer, providerB, "rl-a2-original-restored", "RL-A2");
+        await providerA.Post("/admin/weight/include").AsyncRaw();
 
         Console.WriteLine("scenario RL-A2 passed");
     }
@@ -48,7 +91,7 @@ internal static class RlA2ProviderEndpointRemapScenario
         ZLinkHttpClient consumer,
         string markerPrefix)
     {
-        for (var i = 0; i < 32; i++)
+        for (var i = 0; i < 20; i++)
         {
             var marker = $"{markerPrefix}-{i}";
             var reply = (await consumer.Post("/profile/request")

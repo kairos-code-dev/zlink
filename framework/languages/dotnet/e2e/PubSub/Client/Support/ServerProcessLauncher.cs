@@ -5,12 +5,19 @@ namespace PubSub.Client.Support;
 
 internal sealed class ServerProcessLauncher(ClientOptions options)
 {
-    public Process StartSubscriber(string name, string httpUrl, string evidenceFile)
+    public string PublisherEndpoint => options.PublisherEndpoint;
+
+    public Process StartSubscriber(
+        string name,
+        string httpUrl,
+        string evidenceFile,
+        string? publisherEndpoint = null)
     {
         var startInfo = CreateServerStartInfo(options.SubscriberProject, name,
             new DynamicSubscriberOptions(
                 name, httpUrl, options.LogDir, options.RedisEndpoint,
-                options.RedisKeyPrefix, 0, Path.Combine(options.LogDir, evidenceFile)));
+                options.RedisKeyPrefix, 0, Path.Combine(options.LogDir, evidenceFile),
+                publisherEndpoint));
 
         return Start(name, startInfo);
     }
@@ -61,7 +68,8 @@ internal sealed class ServerProcessLauncher(ClientOptions options)
 
 internal sealed record DynamicSubscriberOptions(
     string Rid, string HttpUrl, string LogDir, string RedisEndpoint,
-    string RedisKeyPrefix, int HandlerDelayMs, string EvidenceFile);
+    string RedisKeyPrefix, int HandlerDelayMs, string EvidenceFile,
+    string? PublisherEndpoint = null);
 
 internal sealed record DynamicPublisherOptions(
     string Rid, string HttpUrl, string LogDir, string RedisEndpoint,

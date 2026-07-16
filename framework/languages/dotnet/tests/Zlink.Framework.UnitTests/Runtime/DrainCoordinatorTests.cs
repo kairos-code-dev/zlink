@@ -26,7 +26,7 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
-    public async Task Drain_Executor_Quiesces_Serving_Channels_After_Marker_Propagation_And_Before_Sealing()
+    public async Task Drain_Executor_Publishes_Marker_And_Serving_Weight_Before_Propagation_And_Sealing()
     {
         var probe = new DrainExecutionProbe();
         var executor = new ZLinkFrameworkDrainExecutor(
@@ -77,6 +77,26 @@ public sealed class DrainCoordinatorTests
         Assert.True(
             probe.Events.IndexOf("quiesce-serving-channels")
             < probe.Events.IndexOf("seal-admission"));
+    }
+
+    [Fact]
+    public async Task Drain_Executor_Waits_For_Weight_Propagation_Before_Sealing_Admission()
+    {
+        var probe = new DrainExecutionProbe();
+        var executor = new ZLinkFrameworkDrainExecutor(
+            probe.Operations,
+            new ZLinkLocationOptions
+            {
+                // 50ms = -5.050s polling + 5s store bound + 100ms jitter.
+                PollingInterval = TimeSpan.FromMilliseconds(-5_050)
+            });
+
+        var drain = executor.ExecuteAsync(TimeSpan.FromSeconds(1), CancellationToken.None).AsTask();
+        await probe.ServingChannelsQuiesced.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.DoesNotContain("seal-admission", probe.Events);
+        Assert.Null(await drain);
+        Assert.Contains("seal-admission", probe.Events);
     }
 
     [Fact]

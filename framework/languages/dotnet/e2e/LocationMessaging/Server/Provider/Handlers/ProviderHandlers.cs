@@ -18,8 +18,7 @@ internal sealed class ProfileRequestHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         if (request.Value == "slow") await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        if (request.Value.StartsWith("rm-b2-transition-", StringComparison.Ordinal)
-            || request.Value.StartsWith("rm-b3-transition-", StringComparison.Ordinal))
+        if (request.Value.StartsWith("rm-b3-transition-", StringComparison.Ordinal))
         {
             evidence.Add($"profile-request-start|rid={evidence.Rid}|value={request.Value}");
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);

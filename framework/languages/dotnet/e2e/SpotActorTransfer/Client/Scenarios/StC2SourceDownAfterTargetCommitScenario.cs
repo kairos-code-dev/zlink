@@ -34,7 +34,7 @@ internal static class StC2SourceDownAfterTargetCommitScenario
         var beforeShutdown = await context.GetActorRefAsync(context.NodeB, actorId);
         ZlinkStreamAssert.Ensure(beforeShutdown.NodeRid == "actor-b", $"ST-C2 target ref expected actor-b, got {beforeShutdown.NodeRid}.");
 
-        await context.ShutdownAndWaitUnavailableAsync(context.NodeA, context.Options.NodeAUrl);
+        await context.CrashNodeAAndWaitUnavailableAsync();
 
         var afterShutdown = await context.GetActorRefAsync(context.NodeB, actorId);
         ZlinkStreamAssert.Ensure(afterShutdown.NodeRid == "actor-b", $"ST-C2 target ref changed after source shutdown: {afterShutdown.NodeRid}.");

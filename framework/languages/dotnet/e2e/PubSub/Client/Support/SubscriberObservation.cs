@@ -14,19 +14,21 @@ internal static class SubscriberObservation
         ZLinkHttpClient subscriber,
         int afterIndex = 0)
     {
-        await StateObservation.WaitUntilAsync(
-            async () =>
+        _ = await subscriber.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([], [], TimeoutMilliseconds: 15000)
             {
-                var entries = (await subscriber.Get("/evidence").Async<string[]>()).Body;
-                return entries.Skip(afterIndex).Any(line =>
-                    line.Contains("socket|", StringComparison.Ordinal)
-                    && line.Contains(
+                AfterIndex = afterIndex,
+                ContainsAllLineGroups =
+                [
+                    [
+                        "socket|",
                         $"source={PubSubNames.SubscriberSocketSource}",
-                        StringComparison.Ordinal)
-                    && (line.Contains("event=Connected", StringComparison.Ordinal)
-                        || line.Contains("event=ConnectionReady", StringComparison.Ordinal)));
-            },
-            "Subscriber socket did not become ready within the local readiness bound.");
+                        "event=ConnectionReady"
+                    ]
+                ]
+            })
+            .Timeout(TimeSpan.FromSeconds(16))
+            .Async<string[]>();
     }
 
     public static async Task WaitForSocketEventAsync(

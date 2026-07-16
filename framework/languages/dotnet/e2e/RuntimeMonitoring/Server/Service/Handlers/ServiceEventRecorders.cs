@@ -78,7 +78,8 @@ internal sealed class LocationTopologyTransitionTracker
         IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry> topology)
     {
         var current = topology
-            .Where(entry => entry.NodeRid is not null)
+            .Where(entry => entry.NodeRid is not null
+                            && entry.State == Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState.Ready)
             .Select(entry => entry.NodeRid!.Value.ToString())
             .Where(static nodeRid => !nodeRid.StartsWith("hex:", StringComparison.Ordinal))
             .ToHashSet(StringComparer.Ordinal);

@@ -11,23 +11,14 @@ internal static class PsA1FanoutBasicDeliveryScenario
     public static async Task RunAsync(ZLinkHttpClient publisher, IReadOnlyList<ZLinkHttpClient> subscribers)
     {
         var runId = Guid.NewGuid().ToString("N");
-        var warmupStart = 1;
-
-        // There is no public "subscribe ready" event, so the first observed delivery is the barrier.
-        for (var i = warmupStart; i < warmupStart + 20; i++)
-            await publisher.Post("/publish/event")
-                .Query("topic", PubSubNames.MainTopic)
-                .Query("runId", runId)
-                .Query("sequence", i.ToString())
-                .Query("value", $"warmup-{i}")
-                .AsyncRaw();
-
-        // Wait until every subscriber has proven that it is attached to the fanout stream.
-        await WaitForAllSubscribersAsync(
-            subscribers,
-            new EvidenceWaitReq(
-                ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}"],
-                []));
+        await publisher.Post("/publish/event")
+            .Query("topic", PubSubNames.MainTopic)
+            .Query("runId", $"activate-{runId}")
+            .Query("sequence", "0")
+            .Query("value", "activate-publisher")
+            .AsyncRaw();
+        await Task.WhenAll(subscribers.Select(subscriber =>
+            SubscriberObservation.WaitForConnectionAsync(subscriber)));
 
         var measureStart = 100;
         var measureCount = 12;

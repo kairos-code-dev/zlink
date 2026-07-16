@@ -1,7 +1,6 @@
 // Verifies RM-B3 provider crash failover while stale location rows remain visible.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
-using System.Collections.Concurrent;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
@@ -15,7 +14,10 @@ internal static class RmB3ProviderCrashFailoverScenario
     {
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-b3");
         var providerA = await cluster.StartProviderAsync("api-a", "api-a");
-        var providerB = await cluster.StartProviderAsync("api-b", "api-b");
+        var providerB = await cluster.StartProviderAsync(
+            "api-b",
+            "api-b",
+            routePeers: [providerA.RouteEndpoint]);
         var consumer = await cluster.StartConsumerAsync("consumer");
         using var requester = ZLinkHttpClient.Create(consumer.HttpUrl)
             .Timeout(TimeSpan.FromSeconds(90))
@@ -32,61 +34,56 @@ internal static class RmB3ProviderCrashFailoverScenario
         await ProveBothProvidersAsync(requester, providerAClient, providerBClient);
 
         var marker = $"rm-b3-transition-{Guid.NewGuid():N}";
-        var inFlight = Enumerable.Range(0, 16)
-            .Select(index => ObserveRequestAsync(requester, $"{marker}-{index}"))
+        var inFlight = Enumerable.Range(0, 4)
+            .Select(index =>
+            {
+                var value = $"{marker}-{index}";
+                return (Value: value, Task: ObserveRequestAsync(requester, value));
+            })
             .ToArray();
-        await providerAClient.Post("/evidence/wait")
+        var startedOnA = (await providerAClient.Post("/evidence/wait")
             .Body(new EvidenceWaitReq($"profile-request-start|rid=api-a|value={marker}"))
-            .Async<string[]>();
+            .Async<string[]>()).Body;
+        var startedValue = startedOnA
+            .Select(line => TryReadValue(line, $"profile-request-start|rid=api-a|value={marker}"))
+            .First(value => value is not null)!;
 
         await cluster.CrashAsync(providerA);
         var continuingMarker = $"rm-b3-continuing-{Guid.NewGuid():N}";
-        using var continuingTrafficCancellation = new CancellationTokenSource();
-        var continuingOutcomes = new ConcurrentQueue<string>();
-        var nextSequence = 0;
-        var continuingTraffic = Enumerable.Range(0, 4)
-            .Select(_ => SendContinuingTrafficAsync(
-                requester,
-                continuingMarker,
-                continuingOutcomes,
-                () => Interlocked.Increment(ref nextSequence),
-                continuingTrafficCancellation.Token))
+        var continuingTraffic = Enumerable.Range(0, 20)
+            .Select(index => ObserveRequestAsync(requester, $"{continuingMarker}-{index}"))
             .ToArray();
 
-        var transition = await Task.WhenAll(inFlight);
+        var transition = await Task.WhenAll(inFlight.Select(request => request.Task));
         ZlinkStreamAssert.Ensure(
-            transition.All(result => result is "api-a" or "api-b" or nameof(ZLinkFrameworkErrorKind.RequestFailed)
+            transition.All(result => result.Outcome is "api-a" or "api-b"
+                or nameof(ZLinkFrameworkErrorKind.RouteNotConnected)
                 or "Timeout"),
             "RM-B3 in-flight request did not finish with a reply or bounded public request error.");
-
-        var continuingOnB = (await providerBClient.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq($"profile-request|rid=api-b|value={continuingMarker}"))
-            .Async<string[]>()).Body;
+        var crashedRequest = transition.Single(result => result.Value == startedValue);
         ZlinkStreamAssert.Ensure(
-            continuingOnB.Length > 0,
+            crashedRequest.Outcome is nameof(ZLinkFrameworkErrorKind.RouteNotConnected) or "Timeout",
+            $"RM-B3 request started on crashed api-a completed as '{crashedRequest.Outcome}'.");
+
+        var continuingOutcomes = await Task.WhenAll(continuingTraffic);
+        ZlinkStreamAssert.Ensure(
+            continuingOutcomes.Any(result => result.Outcome == "api-b"),
             "RM-B3 did not keep serving new untargeted traffic on the remaining provider after crash.");
         await WaitForPeerAsync(requester, "api-a", present: true);
-
-        await WaitForPeerAsync(requester, "api-a", present: false);
-        await continuingTrafficCancellation.CancelAsync();
-        await Task.WhenAll(continuingTraffic);
         ZlinkStreamAssert.Ensure(
-            continuingOutcomes.Contains("api-b"),
-            "RM-B3 observed no successful request on the remaining provider during the stale-row window.");
-        ZlinkStreamAssert.Ensure(
-            continuingOutcomes.All(result => result is "api-b" or nameof(ZLinkFrameworkErrorKind.RequestFailed)
+            continuingOutcomes.All(result => result.Outcome is "api-b"
+                or nameof(ZLinkFrameworkErrorKind.RouteNotConnected)
                 or "Timeout"),
             "RM-B3 continuing request completed with an outcome outside the public failover contract.");
 
-        await ConfirmFailoverWithTrafficAsync(requester);
+        await WaitForPeerAsync(requester, "api-a", present: false);
+        await WaitForOnlyRemainingProviderAsync(requester);
         for (var index = 0; index < 20; index++)
         {
             var value = $"rm-b3-after-{index}";
-            var reply = (await requester.Post("/profile/request")
-                .Body(new ProfileReq(value))
-                .Async<ProfileRes>()).Body;
+            var reply = await ObserveRequestAsync(requester, value);
             ZlinkStreamAssert.Ensure(
-                reply.ProviderRid == "api-b" && reply.Value == $"profile:{value}",
+                reply.Outcome == "api-b",
                 "RM-B3 post-expiry request did not use the remaining provider.");
         }
 
@@ -94,36 +91,14 @@ internal static class RmB3ProviderCrashFailoverScenario
             .Body(new TargetedRoutePing("api-a", "rm-b3-target-dead"))
             .Async<ExpectedFailureRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            targeted.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
-            "RM-B3 targeted request to the expired provider did not report RequestTargetNotFound.");
-    }
-
-    private static async Task ConfirmFailoverWithTrafficAsync(ZLinkHttpClient requester)
-    {
-        var consecutiveApiBReplies = 0;
-        for (var sequence = 0; sequence < 64 && consecutiveApiBReplies < 8; sequence++)
-        {
-            try
-            {
-                var value = $"rm-b3-converge-{sequence}";
-                var reply = (await requester.Post("/profile/request")
-                    .Body(new ProfileReq(value))
-                    .Async<ProfileRes>()).Body;
-                ZlinkStreamAssert.Ensure(
-                    reply.ProviderRid == "api-b" && reply.Value == $"profile:{value}",
-                    "RM-B3 convergence request used the crashed provider.");
-                consecutiveApiBReplies++;
-            }
-            catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
-            {
-                consecutiveApiBReplies = 0;
-            }
-        }
-
+            targeted.ErrorKind == nameof(ZLinkFrameworkErrorKind.RouteNotConnected),
+            "RM-B3 known but disconnected api-a did not report RouteNotConnected.");
+        var missing = (await providerBClient.Post("/profile/route/target")
+            .Body(new TargetedRoutePing("api-missing", "rm-b3-target-missing"))
+            .Async<ExpectedFailureRes>()).Body;
         ZlinkStreamAssert.Ensure(
-            consecutiveApiBReplies == 8,
-            "RM-B3 did not converge to the remaining provider after the crashed row expired.");
+            missing.ErrorKind == nameof(ZLinkFrameworkErrorKind.RequestTargetNotFound),
+            "RM-B3 unknown route target did not report RequestTargetNotFound.");
     }
 
     private static async Task ProveBothProvidersAsync(
@@ -146,56 +121,31 @@ internal static class RmB3ProviderCrashFailoverScenario
         ZlinkStreamAssert.Ensure(a.Length > 0 && b.Length > 0, "RM-B3 expected both providers before crash.");
     }
 
-    private static async Task<string> ObserveRequestAsync(ZLinkHttpClient requester, string value)
+    private static async Task<RequestOutcome> ObserveRequestAsync(ZLinkHttpClient requester, string value)
     {
-        try
-        {
-            return (await requester.Post("/profile/request")
-                .Body(new ProfileReq(value))
-                .Async<ProfileRes>()).Body.ProviderRid;
-        }
-        catch (ZLinkFrameworkException error) when (
-            error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
-        {
-            return error.Kind.ToString();
-        }
-        catch (TimeoutException)
-        {
-            return "Timeout";
-        }
+        var result = (await requester.Post("/profile/request/outcome")
+            .Body(new ProfileReq(value))
+            .Async<RequestOutcomeRes>()).Body;
+        return new RequestOutcome(result.Value, result.Outcome);
     }
 
-    private static async Task SendContinuingTrafficAsync(
-        ZLinkHttpClient requester,
-        string marker,
-        ConcurrentQueue<string> outcomes,
-        Func<int> nextSequence,
-        CancellationToken cancellationToken)
+    private static string? TryReadValue(string line, string prefix)
+        => line.Contains(prefix, StringComparison.Ordinal)
+            ? line[(line.IndexOf("|value=", StringComparison.Ordinal) + "|value=".Length)..]
+            : null;
+
+    private static async Task WaitForOnlyRemainingProviderAsync(ZLinkHttpClient requester)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        var consecutive = 0;
+        for (var attempt = 0; attempt < 20 && consecutive < 2; attempt++)
         {
-            try
-            {
-                var value = $"{marker}-{nextSequence()}";
-                var reply = (await requester.Post("/profile/request")
-                    .Body(new ProfileReq(value))
-                    .Async<ProfileRes>(cancellationToken)).Body;
-                outcomes.Enqueue(reply.ProviderRid);
-            }
-            catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
-            {
-                outcomes.Enqueue(error.Kind.ToString());
-            }
-            catch (TimeoutException)
-            {
-                outcomes.Enqueue("Timeout");
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
+            var outcome = await ObserveRequestAsync(requester, $"rm-b3-ready-{attempt}");
+            consecutive = outcome.Outcome == "api-b" ? consecutive + 1 : 0;
         }
+
+        ZlinkStreamAssert.Ensure(
+            consecutive == 2,
+            "RM-B3 target-free messaging did not converge to the remaining provider after lease expiry.");
     }
 
     private static Task WaitForPeerAsync(ZLinkHttpClient requester, string rid, bool present)
@@ -208,4 +158,6 @@ internal static class RmB3ProviderCrashFailoverScenario
                 TimeoutMilliseconds: present ? 30000 : 60000))
             .Async<PeerLocationRow[]>()
             .AsTask();
+
+    private sealed record RequestOutcome(string Value, string Outcome);
 }

@@ -1,11 +1,11 @@
-// Verifies RL-B5 Drain Inflight behavior.
+// Verifies RL-B5 in-flight completion across a socket weight change.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
-// RL-B5 verifies in-flight work can finish while drain is active.
+// RL-B5 verifies a weight-only change does not interrupt accepted work.
 internal static class RlB5DrainInflightScenario
 {
     public static async Task RunAsync(
@@ -13,8 +13,8 @@ internal static class RlB5DrainInflightScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerA.Post("/admin/restore").AsyncRaw();
-        await providerB.Post("/admin/restore").AsyncRaw();
+        await providerA.Post("/admin/weight/include").AsyncRaw();
+        await providerB.Post("/admin/weight/include").AsyncRaw();
         await WaitForWeightAsync(providerA, 100);
         await WaitForWeightAsync(providerB, 100);
 
@@ -26,7 +26,7 @@ internal static class RlB5DrainInflightScenario
         var slowProvider = await WaitForSlowStartAsync(providerA, providerB, slowMarker);
         var drainedProvider = slowProvider == "api-a" ? providerA : providerB;
         var healthyProvider = slowProvider == "api-a" ? "api-b" : "api-a";
-        await drainedProvider.Post("/admin/drain").AsyncRaw();
+        await drainedProvider.Post("/admin/weight/exclude").AsyncRaw();
         await WaitForWeightAsync(drainedProvider, 0);
         await ProviderTrafficProbe.WaitUntilProviderExcludedAsync(
             consumer, slowProvider, "rl-b5-propagation", "RL-B5");
@@ -38,7 +38,7 @@ internal static class RlB5DrainInflightScenario
                 consumer,
                 new ProfileReq("fast", $"rl-b5-drained-{i}"));
             ZlinkStreamAssert.Ensure(reply.ProviderRid == healthyProvider,
-                "RL-B5 drain did not block new requests to the drained provider.");
+                "RL-B5 weight exclusion did not block new requests to the excluded provider.");
         }
 
         var slowReply = (await slowTask).Body;
@@ -49,13 +49,13 @@ internal static class RlB5DrainInflightScenario
         var afterDrain = (await drainedProvider.Get("/evidence").Async<string[]>()).Body;
         ZlinkStreamAssert.Ensure(
             CountNew(afterDrain, beforeDrain, $"profile-request|rid={slowProvider}|marker=rl-b5-drained-") == 0,
-            "RL-B5 drained provider accepted new requests after drain.");
+            "RL-B5 excluded provider accepted new requests after weight propagation.");
         ZlinkStreamAssert.Ensure(
             afterDrain.Any(line =>
                 line.Contains($"profile-request|rid={slowProvider}|marker={slowMarker}", StringComparison.Ordinal)),
             "RL-B5 in-flight completion evidence missing.");
 
-        await drainedProvider.Post("/admin/restore").AsyncRaw();
+        await drainedProvider.Post("/admin/weight/include").AsyncRaw();
         await WaitForWeightAsync(drainedProvider, 100);
 
         for (var i = 0; i < 40; i++)

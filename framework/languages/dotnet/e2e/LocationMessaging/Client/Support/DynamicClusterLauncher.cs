@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using LocationMessaging.Shared;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 using Zlink.Framework.E2E.Configuration;
@@ -49,22 +50,36 @@ internal sealed class DynamicClusterLauncher(
         return Task.FromResult(launcher);
     }
 
-    public async Task<DynamicProvider> StartProviderAsync(string name, string rid, int weight = 100)
+    public async Task<DynamicProvider> StartProviderAsync(
+        string name,
+        string rid,
+        int weight = 100,
+        IReadOnlyList<string>? routePeers = null)
     {
         var processName = $"{scenarioName}-{name}";
         var httpUrl = PickHttpUrl();
         var channelEndpoint = PickEndpoint();
+        var routeEndpoint = PickEndpoint();
         var process = StartServer(
             processName,
             providerProject,
             new DynamicProviderOptions(
-                "provider", httpUrl, logDir, rid, weight, 2_097_152,
-                Path.Combine(logDir, $"{processName}.evidence.log"),
-                RedisEndpoint, RedisKeyPrefix, channelEndpoint, PickEndpoint()),
+                Role: "provider",
+                HttpUrl: httpUrl,
+                LogDir: logDir,
+                Rid: rid,
+                Weight: weight,
+                MaxMessageSize: 2_097_152,
+                EvidenceFile: Path.Combine(logDir, $"{processName}.evidence.log"),
+                RedisEndpoint: RedisEndpoint,
+                RedisKeyPrefix: RedisKeyPrefix,
+                ChannelEndpoint: channelEndpoint,
+                RouteEndpoint: routeEndpoint,
+                RoutePeers: routePeers ?? []),
             httpUrl,
             channelEndpoint);
         await process.WaitReadyAsync();
-        return new DynamicProvider(process, httpUrl, process.RequireChannelEndpoint());
+        return new DynamicProvider(process, httpUrl, process.RequireChannelEndpoint(), routeEndpoint);
     }
 
     public async Task<DynamicConsumer> StartConsumerAsync(string name)
@@ -82,10 +97,12 @@ internal sealed class DynamicClusterLauncher(
         return new DynamicConsumer(process, httpUrl);
     }
 
-    public async Task StopAsync(DynamicProvider provider)
+    public async Task<DrainResultRes> StopAsync(DynamicProvider provider)
     {
+        var result = await provider.Process.DrainAsync();
         await provider.Process.StopAsync();
         _processes.Remove(provider.Process);
+        return result;
     }
 
     public async Task CrashAsync(DynamicProvider provider)
@@ -165,7 +182,8 @@ internal sealed record DynamicProviderOptions(
     string RedisEndpoint,
     string RedisKeyPrefix,
     string ChannelEndpoint,
-    string RouteEndpoint);
+    string RouteEndpoint,
+    IReadOnlyList<string>? RoutePeers = null);
 
 internal sealed record DynamicConsumerOptions(
     string HttpUrl,
@@ -174,7 +192,11 @@ internal sealed record DynamicConsumerOptions(
     string RedisEndpoint,
     string RedisKeyPrefix);
 
-internal sealed record DynamicProvider(DynamicProcess Process, string HttpUrl, string ChannelEndpoint);
+internal sealed record DynamicProvider(
+    DynamicProcess Process,
+    string HttpUrl,
+    string ChannelEndpoint,
+    string RouteEndpoint);
 
 internal sealed record DynamicConsumer(DynamicProcess Process, string HttpUrl);
 
@@ -252,6 +274,14 @@ internal sealed class DynamicProcess(Process process, string httpUrl, string? ch
         }
 
         process.Dispose();
+    }
+
+    public async Task<DrainResultRes> DrainAsync()
+    {
+        using var client = ZLinkHttpClient.Create(HttpUrl)
+            .Timeout(TimeSpan.FromSeconds(35))
+            .Build();
+        return (await client.Post("/admin/drain").Async<DrainResultRes>()).Body;
     }
 
     public async Task CrashAsync()

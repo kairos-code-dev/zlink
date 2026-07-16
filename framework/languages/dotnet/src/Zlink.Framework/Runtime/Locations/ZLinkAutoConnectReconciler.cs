@@ -36,6 +36,8 @@ internal sealed class ZLinkAutoConnectReconciler
     private readonly Dictionary<string, ZLinkAutoConnectTarget> _active = new(StringComparer.Ordinal);
     private Dictionary<string, ZLinkAutoConnectTarget> _lastDesired = new(StringComparer.Ordinal);
     private volatile HashSet<string>? _meshMemberRids;
+    private volatile HashSet<string> _retainedMemberRids = new(StringComparer.Ordinal);
+    private readonly bool _retainRemovedMembers;
     private long _localGeneration;
     private bool _localPublished;
     private bool _storeFailed;
@@ -59,7 +61,8 @@ internal sealed class ZLinkAutoConnectReconciler
         IZLinkAutoConnectExecutor executor,
         ZLinkLocationOptions options,
         TimeProvider? timeProvider = null,
-        ZLinkLocationEventEmitter? events = null)
+        ZLinkLocationEventEmitter? events = null,
+        bool retainRemovedMembers = false)
     {
         _local = local;
         _localRow = localRow;
@@ -69,6 +72,7 @@ internal sealed class ZLinkAutoConnectReconciler
         _options = options;
         _events = events ?? ZLinkLocationEventEmitter.Disabled;
         _time = timeProvider ?? TimeProvider.System;
+        _retainRemovedMembers = retainRemovedMembers;
     }
 
     internal IReadOnlyCollection<ZLinkAutoConnectTarget> ActiveTargets => _active.Values;
@@ -84,6 +88,9 @@ internal sealed class ZLinkAutoConnectReconciler
 
         return members.Contains(nodeRid.ToHex());
     }
+
+    internal bool HasRetainedPeer(RoutingId nodeRid) =>
+        _retainRemovedMembers && _retainedMemberRids.Contains(nodeRid.ToHex());
 
     /// <summary>True while the last tick could not read the store. The loop
     /// must not let a change stamp skip ticks in this state.</summary>
@@ -255,6 +262,12 @@ internal sealed class ZLinkAutoConnectReconciler
         }
 
         _meshMemberRids = members;
+        if (_retainRemovedMembers)
+        {
+            var retained = new HashSet<string>(_retainedMemberRids, StringComparer.Ordinal);
+            retained.UnionWith(members);
+            _retainedMemberRids = retained;
+        }
 
         var connected = new List<string>();
         var disconnected = new List<string>();

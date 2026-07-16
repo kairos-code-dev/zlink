@@ -15,26 +15,13 @@ internal static class RlA5ProviderFlappingScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        for (var cycle = 0; cycle < 3; cycle++)
-        {
-            if (!await processes.TryStopProviderBAsync())
-            {
-                await providerB.Post("/shutdown").AsyncRaw();
-                for (var attempt = 0; attempt < 100; attempt++)
-                {
-                    try
-                    {
-                        var health = await providerB.Get("/health").AsyncRaw();
-                        if (health.Status != 200) break;
-                    }
-                    catch
-                    {
-                        break;
-                    }
+        var previousGeneration = (await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .Async<TopologyEntryRes[]>()).Body.Single().Generation;
 
-                    await Task.Delay(100);
-                }
-            }
+        for (var cycle = 0; cycle < 5; cycle++)
+        {
+            await processes.StopProviderBWithSigtermAsync();
 
             await registry.Post("/topology/wait")
                 .Body(new TopologyWaitReq("api-b", "Ready", 0))
@@ -45,16 +32,20 @@ internal static class RlA5ProviderFlappingScenario
                 $"rl-a5-converge-{cycle}",
                 "RL-A5");
 
-            var downMarker = $"rl-a5-down-{cycle}";
-            var downReply = (await consumer.Post("/profile/request")
-                .Body(new ProfileReq("fast", downMarker))
-                .Async<ProfileRes>()).Body;
-            ZlinkStreamAssert.Ensure(downReply.ProviderRid == "api-a",
-                "RL-A5 first request after observed convergence did not use api-a.");
+            for (var i = 0; i < 10; i++)
+            {
+                var downMarker = $"rl-a5-down-{cycle}-{i}";
+                var downReply = (await consumer.Post("/profile/request")
+                    .Body(new ProfileReq("fast", downMarker))
+                    .Async<ProfileRes>()).Body;
+                ZlinkStreamAssert.Ensure(downReply.ProviderRid == "api-a",
+                    "RL-A5 request during the down window did not use api-a.");
+            }
             await providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq([$"marker={downMarker}"], []))
+                .Body(new EvidenceWaitReq([$"marker=rl-a5-down-{cycle}-9"], []))
                 .Async<string[]>();
 
+            var connectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
             var restarted = await processes.StartProviderBAsync();
             using var restartedProviderB = ZLinkHttpClient.Create(restarted.Url)
                 .Timeout(TimeSpan.FromMinutes(5))
@@ -74,15 +65,28 @@ internal static class RlA5ProviderFlappingScenario
                 await Task.Delay(100);
             }
 
-            await registry.Post("/topology/wait")
+            var rows = (await registry.Post("/topology/wait")
                 .Body(new TopologyWaitReq("api-b", "Ready", 1))
-                .Async<TopologyEntryRes[]>();
-            await ProviderTrafficProbe.DriveUntilProviderServesAsync(
-                consumer,
-                restartedProviderB,
-                $"rl-a5-up-{cycle}",
-                "RL-A5",
-                $"profile-request|rid=api-b|marker=rl-a5-up-{cycle}-");
+                .Async<TopologyEntryRes[]>()).Body;
+            ZlinkStreamAssert.Ensure(
+                rows.Length == 1 && rows[0].Generation != previousGeneration,
+                "RL-A5 did not converge to exactly one new api-b owner generation.");
+            previousGeneration = rows[0].Generation;
+            await consumer.Post("/connections/wait")
+                .Body(new ConnectionWaitReq(
+                    ["kind=ConnectionReady", $"remote={restarted.Endpoint}"], connectionCount))
+                .Async<string[]>();
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < 20 && seen.Count < 2; i++)
+            {
+                var reply = (await consumer.Post("/profile/request")
+                    .Body(new ProfileReq("fast", $"rl-a5-up-{cycle}-{i}"))
+                    .Async<ProfileRes>()).Body;
+                seen.Add(reply.ProviderRid);
+            }
+            ZlinkStreamAssert.Ensure(seen.SetEquals(["api-a", "api-b"]),
+                "RL-A5 did not restore both providers within 20 requests.");
         }
 
         Console.WriteLine("scenario RL-A5 passed");

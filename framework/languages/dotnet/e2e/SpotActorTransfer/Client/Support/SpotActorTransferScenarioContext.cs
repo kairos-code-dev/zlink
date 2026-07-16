@@ -1,4 +1,5 @@
 using Zlink.Framework.E2E.Configuration;
+using System.Diagnostics;
 using SpotActorTransfer.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Errors;
@@ -123,6 +124,19 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
     public async Task ShutdownAndWaitUnavailableAsync(ZLinkHttpClient client, string url)
     {
         await ShutdownAsync(client);
+        await WaitUnavailableAsync(url, "shutdown");
+    }
+
+    public async Task CrashNodeAAndWaitUnavailableAsync()
+    {
+        using var process = Process.GetProcessById(Options.NodeAPid);
+        process.Kill(entireProcessTree: true);
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        await WaitUnavailableAsync(Options.NodeAUrl, "SIGKILL");
+    }
+
+    private static async Task WaitUnavailableAsync(string url, string operation)
+    {
         using var probe = ZLinkHttpClient.Create(url)
             .Timeout(TimeSpan.FromMilliseconds(250))
             .Build();
@@ -133,13 +147,13 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
             {
                 await probe.Get("/health").AsyncRaw();
             }
-            catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed
-                && HasConnectionFailure(error))
+            catch (Exception error) when (error is HttpRequestException or IOException)
             {
                 return;
             }
-            catch (Exception error) when (error is HttpRequestException or IOException)
+            catch (ZLinkFrameworkException error) when (
+                error.Kind == ZLinkFrameworkErrorKind.RequestFailed
+                && HasConnectionFailure(error))
             {
                 return;
             }
@@ -147,13 +161,11 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                 error is TaskCanceledException or TimeoutException
                 || error is ZLinkFrameworkException { Kind: ZLinkFrameworkErrorKind.RequestFailed })
             {
-                // A slow health probe does not prove that the process exited. Keep observing
-                // until a connection failure is reported or the outer deadline expires.
+                // A slow probe does not prove process exit; keep observing.
             }
             await Task.Delay(50);
         }
-
-        throw new TimeoutException($"Source node at '{url}' remained reachable after shutdown.");
+        throw new TimeoutException($"Source node at '{url}' remained reachable after {operation}.");
     }
 
     private static bool HasConnectionFailure(Exception error)
@@ -262,7 +274,9 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
                 .Async<IReadOnlyList<ActorEvidence>>()).Body
             ?? throw new InvalidOperationException("Evidence response was null.");
         foreach (var expected in containsAll)
-            RequireContains(evidence, expected, $"Expected evidence marker was not observed: {expected}");
+            ZlinkStreamAssert.Ensure(
+                evidence.Any(item => EvidenceText(item).Contains(expected, StringComparison.Ordinal)),
+                $"Expected evidence marker was not observed: {expected}");
         return evidence;
     }
 
@@ -306,17 +320,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
         return (actorId, oldRef);
     }
 
-    public static void RequireContains(IEnumerable<ActorEvidence> evidence, string expected, string message)
-    {
-        ZlinkStreamAssert.Ensure(evidence.Any(item => EvidenceText(item).Contains(expected, StringComparison.Ordinal)), message);
-    }
-
-    public static void RequireNoContains(IEnumerable<ActorEvidence> evidence, string expected, string message)
-    {
-        ZlinkStreamAssert.Ensure(!evidence.Any(item => EvidenceText(item).Contains(expected, StringComparison.Ordinal)), message);
-    }
-
-    private static string EvidenceText(ActorEvidence evidence) =>
+    public static string EvidenceText(ActorEvidence evidence) =>
         $"{evidence.Scenario}|{evidence.ActorId}|{evidence.Kind}|{evidence.Value}|{evidence.NodeRid}";
 
     private static ZLinkHttpClient CreateClient(string url) =>
@@ -325,6 +329,7 @@ internal sealed class SpotActorTransferScenarioContext : IDisposable
 
 internal sealed record ClientOptions(
     string NodeAUrl,
+    int NodeAPid,
     string NodeBUrl,
     string NodeCUrl,
     string NodeAStreamEndpoint,

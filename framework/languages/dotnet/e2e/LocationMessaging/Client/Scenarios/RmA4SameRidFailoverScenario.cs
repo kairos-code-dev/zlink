@@ -15,9 +15,15 @@ internal static class RmA4SameRidFailoverScenario
     {
         await using var cluster = await DynamicClusterLauncher.StartAsync(options, "rm-a4");
         var providerV1 = await cluster.StartProviderAsync("api-a-v1", "api-a");
+        var consumer = await cluster.StartConsumerAsync("consumer");
         using var providerV1Client = ZLinkHttpClient.Create(providerV1.HttpUrl)
             .Timeout(TimeSpan.FromMinutes(5))
             .Build();
+        using var observer = ZLinkHttpClient.Create(consumer.HttpUrl)
+            .Timeout(TimeSpan.FromSeconds(40))
+            .Build();
+
+        await WaitForPeerAsync(observer, "api-a", present: true, providerV1.ChannelEndpoint);
 
         var first = (await providerV1Client.Post("/profile/request")
             .Body(new ProfileReq("rm-a4-v1"))
@@ -28,7 +34,11 @@ internal static class RmA4SameRidFailoverScenario
 
         await WaitForEvidenceAsync(providerV1Client, "value=rm-a4-v1");
 
-        await cluster.StopAsync(providerV1);
+        var drained = await cluster.StopAsync(providerV1);
+        ZlinkStreamAssert.Ensure(
+            drained is { Result: "Drained", Reason: null },
+            $"RM-A4 v1 did not reach terminal Drained: {drained.Result}/{drained.Reason}.");
+        await WaitForPeerAsync(observer, "api-a", present: false);
 
         var providerV2 = await cluster.StartProviderAsync("api-a-v2", "api-a");
         using var providerV2Client = ZLinkHttpClient.Create(providerV2.HttpUrl)
@@ -78,6 +88,21 @@ internal static class RmA4SameRidFailoverScenario
                 Endpoint: expectedEndpoint))
             .Async<PeerLocationRow[]>();
     }
+
+    private static Task WaitForPeerAsync(
+        ZLinkHttpClient client,
+        string rid,
+        bool present,
+        string? endpoint = null) =>
+        client.Post("/locations/peers/wait")
+            .Body(new PeerLocationWaitReq(
+                "profile",
+                "Router",
+                rid,
+                present,
+                Endpoint: endpoint))
+            .Async<PeerLocationRow[]>()
+            .AsTask();
 
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient client)
     {

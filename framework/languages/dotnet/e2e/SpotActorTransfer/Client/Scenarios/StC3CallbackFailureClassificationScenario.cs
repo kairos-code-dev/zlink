@@ -28,9 +28,15 @@ internal static class StC3CallbackFailureClassificationScenario
             $"ST-C3|{actorId}|transfer_out_failed|71",
             $"ST-C3|{actorId}|join_failed|"
         ]);
-        SpotActorTransferScenarioContext.RequireNoContains(sourceEvidence, $"transfer|{actorId}|leave|71", "ST-C3 transfer-out failure should not leave source.");
+        ZlinkStreamAssert.Ensure(
+            !sourceEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|leave|71", StringComparison.Ordinal)),
+            "ST-C3 transfer-out failure should not leave source.");
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|joined|{spotRid}", "ST-C3 transfer-out failure should not join target.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|joined|{spotRid}", StringComparison.Ordinal)),
+            "ST-C3 transfer-out failure should not join target.");
     }
 
     private static async Task RunSourceLeaveFailureAsync(SpotActorTransferScenarioContext context)
@@ -48,8 +54,14 @@ internal static class StC3CallbackFailureClassificationScenario
             $"ST-C3|{actorId}|join_failed|"
         ]);
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|transfer_in|72", "ST-C3 source leave failure should not transfer in target.");
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|joined|{spotRid}", "ST-C3 source leave failure should not join target.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|transfer_in|72", StringComparison.Ordinal)),
+            "ST-C3 source leave failure should not transfer in target.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|joined|{spotRid}", StringComparison.Ordinal)),
+            "ST-C3 source leave failure should not join target.");
     }
 
     private static async Task RunTransferInFailureAsync(SpotActorTransferScenarioContext context)
@@ -70,7 +82,10 @@ internal static class StC3CallbackFailureClassificationScenario
             $"ST-C3|{actorId}|join_failed|"
         ]);
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|joined|{spotRid}", "ST-C3 transfer-in failure should not join target.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|joined|{spotRid}", StringComparison.Ordinal)),
+            "ST-C3 transfer-in failure should not join target.");
     }
 
     private static async Task RunJoinedFailureAsync(SpotActorTransferScenarioContext context)
@@ -91,6 +106,9 @@ internal static class StC3CallbackFailureClassificationScenario
             $"ST-C3|{actorId}|join_failed|"
         ]);
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"ST-C3|{actorId}|packet_handler|after-joined-failure", "ST-C3 joined failure should not dispatch as joined.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-C3|{actorId}|packet_handler|after-joined-failure", StringComparison.Ordinal)),
+            "ST-C3 joined failure should not dispatch as joined.");
     }
 }

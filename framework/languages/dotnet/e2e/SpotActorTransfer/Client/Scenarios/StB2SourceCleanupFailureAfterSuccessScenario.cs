@@ -25,7 +25,7 @@ internal static class StB2SourceCleanupFailureAfterSuccessScenario
         var beforeShutdown = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B2", "before-source-cleanup-loss"));
         ZlinkStreamAssert.Ensure(beforeShutdown.NodeRid == "actor-b", $"ST-B2 probe expected actor-b, got {beforeShutdown.NodeRid}.");
 
-        await context.ShutdownAndWaitUnavailableAsync(context.NodeA, context.Options.NodeAUrl);
+        await context.CrashNodeAAndWaitUnavailableAsync();
 
         var afterShutdown = await context.ProbeAsync(context.NodeB, actorId, new ProbeReq("ST-B2", "after-source-cleanup-loss"));
         ZlinkStreamAssert.Ensure(afterShutdown.NodeRid == "actor-b", $"ST-B2 target ownership was lost after source shutdown: {afterShutdown.NodeRid}.");

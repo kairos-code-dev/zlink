@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using Zlink.Framework.E2E.Configuration;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
+using RuntimeMonitoring.Shared;
 
 namespace RuntimeMonitoring.Client.Support;
 
@@ -20,6 +21,12 @@ internal sealed class EphemeralService : IAsyncDisposable
 
     public string Url { get; }
     public string ChannelEndpoint { get; }
+
+    public async Task<DrainResultRes> DrainAsync()
+    {
+        using var http = ZLinkHttpClient.Create(Url).Timeout(TimeSpan.FromSeconds(35)).Build();
+        return (await http.Post("/admin/graceful-drain").Async<DrainResultRes>()).Body;
+    }
 
     public static async Task<EphemeralService> StartAsync(ClientOptions options, string rid)
     {

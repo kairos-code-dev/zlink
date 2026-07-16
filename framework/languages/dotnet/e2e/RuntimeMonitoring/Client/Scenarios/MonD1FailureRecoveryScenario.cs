@@ -15,65 +15,61 @@ internal static class MonD1FailureRecoveryScenario
         using var observer = ZLinkHttpClient.Create(options.ServiceUrl)
             .Timeout(TimeSpan.FromSeconds(35))
             .Build();
-        using var serviceB = ZLinkHttpClient.Create(options.ServiceBUrl)
-            .Timeout(TimeSpan.FromSeconds(20))
-            .Build();
-        var baseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
-
-        await serviceB.Post("/shutdown").Async<object>();
         var serviceBUri = new Uri(options.ServiceBUrl);
-        await WaitForPortStateAsync(
-            serviceBUri.Host,
-            serviceBUri.Port,
-            false,
-            "MON-D1 expected service-b to stop.");
-        await WaitForProcessExitAsync(
-            options.ServiceBProcessId,
-            "MON-D1 expected the original service-b process to complete framework shutdown.");
-        var removed = (await observer.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(
-                ["kind=TopologyChanged", "removed=svc-b", "kind=ServiceSummaryChanged",
-                    "source=monitor.profile.client", options.ServiceBChannelEndpoint],
-                [["kind=Disconnected", "kind=Closed"]],
-                TimeoutMilliseconds: 30000,
-                AfterIndex: baseline))
-            .Async<string[]>()).Body;
-        ZlinkStreamAssert.Ensure(removed.Any(line => line.Contains("removed=svc-b", StringComparison.Ordinal)),
-            "MON-D1 did not observe svc-b leaving the topology.");
-        var afterRemoved = baseline + removed.Length;
-
-        using var restartedService = StartServiceB(options);
+        var serviceBChannelUri = new Uri(options.ServiceBChannelEndpoint);
+        Process current = Process.GetProcessById(options.ServiceBProcessId);
         try
         {
-            await WaitForPortStateAsync(
-                serviceBUri.Host,
-                serviceBUri.Port,
-                true,
-                "MON-D1 expected service-b to restart.");
+            for (var cycle = 1; cycle <= 3; cycle++)
+            {
+                var downBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+                current.Kill(entireProcessTree: true);
+                await current.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                current.Dispose();
+                await WaitForPortStateAsync(
+                    serviceBUri.Host, serviceBUri.Port, false,
+                    $"MON-D1 cycle {cycle} expected service-b HTTP port to close after SIGKILL.");
+                var removed = (await observer.Post("/evidence/wait")
+                    .Body(new EvidenceWaitReq(
+                        ["kind=TopologyChanged", "removed=svc-b", "kind=ServiceSummaryChanged",
+                            "source=monitor.profile.client", options.ServiceBChannelEndpoint],
+                        [["kind=Disconnected", "kind=Closed"]],
+                        TimeoutMilliseconds: 30000,
+                        AfterIndex: downBaseline))
+                    .Timeout(TimeSpan.FromSeconds(35))
+                    .Async<string[]>()).Body;
+                ZlinkStreamAssert.Ensure(
+                    removed.Any(line => line.Contains("removed=svc-b", StringComparison.Ordinal)),
+                    $"MON-D1 cycle {cycle} did not observe svc-b leaving after lease expiry.");
 
-            var serviceBChannelUri = new Uri(options.ServiceBChannelEndpoint);
-            await WaitForPortStateAsync(
-                serviceBChannelUri.Host,
-                serviceBChannelUri.Port,
-                true,
-                "MON-D1 expected service-b channel endpoint to restart.");
+                var upBaseline = (await observer.Get("/evidence").Async<string[]>()).Body.Length;
+                current = StartServiceB(options, cycle);
+                await WaitForPortStateAsync(
+                    serviceBUri.Host, serviceBUri.Port, true,
+                    $"MON-D1 cycle {cycle} expected service-b to restart.");
+                await WaitForPortStateAsync(
+                    serviceBChannelUri.Host, serviceBChannelUri.Port, true,
+                    $"MON-D1 cycle {cycle} expected service-b channel endpoint to restart.");
+                var added = (await observer.Post("/evidence/wait")
+                    .Body(new EvidenceWaitReq(
+                        ["kind=TopologyChanged", "added=svc-b", "kind=ServiceSummaryChanged",
+                            "source=monitor.profile.client", options.ServiceBChannelEndpoint],
+                        [["kind=Connected", "kind=ConnectionReady"]],
+                        TimeoutMilliseconds: 30000,
+                        AfterIndex: upBaseline))
+                    .Timeout(TimeSpan.FromSeconds(35))
+                    .Async<string[]>()).Body;
+                ZlinkStreamAssert.Ensure(
+                    added.Any(line => line.Contains("added=svc-b", StringComparison.Ordinal)),
+                    $"MON-D1 cycle {cycle} did not observe svc-b returning with a new owner generation.");
+            }
 
-            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
+            // Keep the weight transition outside the crash cycles.
+            await observer.Post("/admin/weight/exclude").AsyncRaw();
+            using var activeServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
                 .Timeout(TimeSpan.FromSeconds(35))
                 .Build();
-            var added = (await observer.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(
-                    ["kind=TopologyChanged", "added=svc-b", "kind=ServiceSummaryChanged",
-                        "source=monitor.profile.client", options.ServiceBChannelEndpoint],
-                    [["kind=Connected", "kind=ConnectionReady"]],
-                    TimeoutMilliseconds: 30000,
-                    AfterIndex: afterRemoved))
-                .Async<string[]>()).Body;
-            ZlinkStreamAssert.Ensure(added.Any(line => line.Contains("added=svc-b", StringComparison.Ordinal)),
-                "MON-D1 did not observe svc-b returning to the topology.");
-
-            await observer.Post("/admin/drain").AsyncRaw();
-            var reply = (await restartedServiceB.Post("/profile/request")
+            var reply = (await activeServiceB.Post("/profile/request")
                 .Body(new ProfileReq("restart", "mon-d1-request"))
                 .Async<ProfileRes>()).Body;
             ZlinkStreamAssert.Ensure(
@@ -82,7 +78,7 @@ internal static class MonD1FailureRecoveryScenario
                 && reply.Value == "profile:restart",
                 "MON-D1 restarted service did not handle request.");
 
-            var serviceBEvidence = (await restartedServiceB.Post("/evidence/wait")
+            var serviceBEvidence = (await activeServiceB.Post("/evidence/wait")
                 .Body(new EvidenceWaitReq(
                     ["profile-request|rid=svc-b|marker=mon-d1-request|value=restart"],
                     []))
@@ -96,26 +92,27 @@ internal static class MonD1FailureRecoveryScenario
         }
         finally
         {
-            await PostBestEffortAsync(observer, "/admin/restore");
-            using var restartedServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
+            await PostBestEffortAsync(observer, "/admin/weight/include");
+            using var activeServiceB = ZLinkHttpClient.Create(options.ServiceBUrl)
                 .Timeout(TimeSpan.FromSeconds(20))
                 .Build();
-            await PostBestEffortAsync(restartedServiceB, "/shutdown");
+            await PostBestEffortAsync(activeServiceB, "/shutdown");
             try
             {
-                await restartedService.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                await current.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
             }
             catch (TimeoutException)
             {
-                if (!restartedService.HasExited) restartedService.Kill(true);
-                await restartedService.WaitForExitAsync();
+                if (!current.HasExited) current.Kill(true);
+                await current.WaitForExitAsync();
             }
+            current.Dispose();
         }
 
         Console.WriteLine("scenario MON-D1 passed");
     }
 
-    private static Process StartServiceB(ClientOptions options)
+    private static Process StartServiceB(ClientOptions options, int cycle)
     {
         var stdout = Path.Combine(options.LogDir, "svc-b-restart.stdout.log");
         var stderr = Path.Combine(options.LogDir, "svc-b-restart.stderr.log");
@@ -133,13 +130,13 @@ internal static class MonD1FailureRecoveryScenario
         startInfo.ArgumentList.Add("--config");
         startInfo.ArgumentList.Add(E2eConfiguration.Write(
             options.ConfigDir,
-            "svc-b-restart",
+            $"svc-b-restart-{cycle}",
             new RestartServiceOptions(
                 "service",
                 options.ServiceBUrl,
                 options.LogDir,
                 "svc-b",
-                Path.Combine(options.LogDir, "svc-b-restart.evidence.log"),
+                Path.Combine(options.LogDir, $"svc-b-restart-{cycle}.evidence.log"),
                 options.RedisEndpoint,
                 options.RedisKeyPrefix,
                 options.ServiceBChannelEndpoint,
@@ -163,6 +160,9 @@ internal static class MonD1FailureRecoveryScenario
         {
         }
         catch (TaskCanceledException)
+        {
+        }
+        catch (Zlink.Framework.Contracts.Errors.ZLinkFrameworkException)
         {
         }
     }

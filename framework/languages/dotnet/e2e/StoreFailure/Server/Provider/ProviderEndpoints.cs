@@ -78,15 +78,6 @@ internal static class ProviderEndpoints
             lifetime.StopApplication();
             return Results.Ok(new { status = "stopping" });
         });
-        app.MapPost("/admin/crash", () =>
-        {
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(50);
-                Environment.FailFast("resilience lifecycle e2e crash");
-            });
-            return Results.Ok(new { status = "crashing" });
-        });
         app.MapPost("/admin/fault/{mode}", (
             string mode,
             [FromServices] FaultState fault,
@@ -95,28 +86,6 @@ internal static class ProviderEndpoints
             fault.Mode = mode;
             evidence.Add($"admin|rid={evidence.Rid}|action=fault|mode={mode}");
             return Results.Ok(new { status = "fault", mode });
-        });
-        app.MapPost("/admin/drain", (
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
-            [FromServices] EvidenceStore evidence) =>
-        {
-            runtimeOptions.ClientServerChannel(StoreFailureNames.Channel).ConfigureServerSocket().Weight = 0;
-            evidence.Add($"admin|rid={evidence.Rid}|action=drain|weight=0");
-            return Results.Ok(new { status = "drained", weight = 0 });
-        });
-        app.MapPost("/admin/restore", (
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
-            [FromServices] EvidenceStore evidence) =>
-        {
-            runtimeOptions.ClientServerChannel(StoreFailureNames.Channel).ConfigureServerSocket().Weight = 100;
-            evidence.Add($"admin|rid={evidence.Rid}|action=restore|weight=100");
-            return Results.Ok(new { status = "restored", weight = 100 });
-        });
-        app.MapGet("/admin/weight", ([FromServices] IZLinkChannelRuntimeOptions runtimeOptions) =>
-        {
-            var weight = runtimeOptions.ClientServerChannel(StoreFailureNames.Channel).ConfigureServerSocket()
-                .Weight;
-            return Results.Ok(new { weight });
         });
         app.MapPost("/admin/weight/wait", async (
             WeightWaitReq request,

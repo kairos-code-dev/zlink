@@ -1,4 +1,6 @@
 using PubSub.Shared;
+using Systems.Zlink;
+using Zlink.Framework.Contracts.Locations;
 
 namespace PubSub.Server.Subscriber;
 
@@ -8,6 +10,43 @@ public static class OperationalEndpoints
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ready", role, rid }));
         app.MapGet("/evidence", (EvidenceStore evidence) => Results.Ok(evidence.Snapshot()));
+        app.MapGet("/locations/peers", async (
+            string mesh,
+            IZLinkLocationRuntimeQuery query,
+            CancellationToken cancellationToken) =>
+        {
+            var rows = await query.ListPeerLocationsAsync(
+                new ZLinkPeerLocationFilter(MeshName: mesh, Role: ZLinkLocationRole.Pub),
+                cancellationToken);
+            return Results.Ok(rows.Select(row =>
+                new PeerLocationRowRes(row.NodeRid?.ToString() ?? string.Empty, row.Endpoint)).ToArray());
+        });
+        app.MapPost("/locations/peers/wait", async (
+            PeerLocationWaitReq request,
+            IZLinkLocationRuntimeQuery query,
+            CancellationToken cancellationToken) =>
+        {
+            var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
+            var deadline = DateTimeOffset.UtcNow + timeout;
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                var matches = (await query.ListPeerLocationsAsync(
+                        new ZLinkPeerLocationFilter(
+                            MeshName: request.MeshName,
+                            Role: ZLinkLocationRole.Pub,
+                            NodeRid: RoutingId.From(request.NodeRid)),
+                        cancellationToken))
+                    .Where(row => request.Endpoint is null || row.Endpoint == request.Endpoint)
+                    .ToArray();
+                if (request.Present ? matches.Length == 1 : matches.Length == 0)
+                    return Results.Ok(new { reached = true });
+                await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+            }
+
+            return Results.Problem(
+                $"Peer row did not reach requested state for rid={request.NodeRid}.",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        });
         app.MapPost("/evidence/wait", async (
             EvidenceWaitReq request,
             EvidenceStore evidence,

@@ -1,9 +1,11 @@
 using Systems.Zlink.Stream.Connector.Runtime;
+using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.Runtime.Actors;
 
 internal sealed class ZLinkActorClient(
-    ZLinkFrameworkRuntime runtime) : IZLinkActorClient
+    ZLinkFrameworkRuntime runtime,
+    ZLinkStoreLocationResolvers? locations = null) : IZLinkActorClient
 {
     public IZLinkActorSendCall SendToActor<TMessage>(
         ActorRef actor,
@@ -70,6 +72,7 @@ internal sealed class ZLinkActorClient(
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
             runtime.Flow.CaptureEnabled);
+        await ValidateActorLocationAsync(actor, cancellationToken).ConfigureAwait(false);
         var nodeRuntime = await GetActorSpotNodeAsync(cancellationToken).ConfigureAwait(false);
         EnsureRouteAvailable(nodeRuntime, actor);
         var node = nodeRuntime.Node;
@@ -86,6 +89,25 @@ internal sealed class ZLinkActorClient(
                 timeout,
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private async ValueTask ValidateActorLocationAsync(
+        ActorRef actor,
+        CancellationToken cancellationToken)
+    {
+        if (locations is null) return;
+        var row = await locations.ResolveActorRowAsync(
+                new ZLinkActorLocationKey(actor.ActorId), cancellationToken)
+            .ConfigureAwait(false);
+        if (row?.ActorRef is not { } current)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor route '{actor.ActorId}' was not found.");
+        if (current.NodeRid != actor.NodeRid || current.Generation != actor.Generation)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Actor ref for '{actor.ActorId}' does not match the current location generation.",
+                true);
     }
 
     private void TraceSent(

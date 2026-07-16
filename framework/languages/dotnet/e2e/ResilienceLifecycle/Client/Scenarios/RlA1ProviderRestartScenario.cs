@@ -15,82 +15,63 @@ internal static class RlA1ProviderRestartScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/shutdown").AsyncRaw();
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            try
-            {
-                var health = await providerB.Get("/health").AsyncRaw();
-                if (health.Status != 200) break;
-            }
-            catch
-            {
-                break;
-            }
+        // RL-A1 deliberately has one serving provider. api-a remains alive only
+        // as harness infrastructure and is excluded from transport selection.
+        await providerA.Post("/admin/weight/exclude").AsyncRaw();
+        await providerA.Post("/admin/weight/wait").Body(new WeightWaitReq(0)).AsyncRaw();
 
-            await Task.Delay(100);
-        }
+        var oldRows = (await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .Async<TopologyEntryRes[]>()).Body;
+        var oldGeneration = oldRows.Single().Generation;
 
-        await processes.WaitInitialProviderBExitedAsync();
+        var acceptedMarker = $"rl-a1-accepted-{Guid.NewGuid():N}";
+        var accepted = consumer.Post("/profile/request")
+            .Body(new ProfileReq("slow", acceptedMarker))
+            .Async<ProfileRes>();
+        await providerB.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([$"profile-start|rid=api-b|marker={acceptedMarker}"], []))
+            .Async<string[]>();
+        await processes.StopProviderBWithSigtermAsync();
+        var acceptedReply = (await accepted).Body;
+        ZlinkStreamAssert.Ensure(
+            acceptedReply.ProviderRid == "api-b" && acceptedReply.Marker == acceptedMarker,
+            "RL-A1 accepted request did not complete inside graceful shutdown.");
+
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
 
-        var survivingReplies = 0;
-        var downWindowFailures = 0;
-        for (var i = 0; i < 12; i++)
-        {
-            var marker = $"rl-a1-down-{i}";
-            var attempt = (await consumer.Post("/profile/request/attempt/1000")
-                .Body(new ProfileReq("fast", marker))
-                .Async<ProfileAttemptRes>()).Body;
-            if (attempt.Reply is { } reply)
-            {
-                ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-a",
-                    "RL-A1 request during api-b restart used the stopped provider.");
-                survivingReplies++;
-                continue;
-            }
+        var down = (await consumer.Post("/profile/request/attempt/1000")
+            .Body(new ProfileReq("fast", "rl-a1-down"))
+            .Async<ProfileAttemptRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            down is { Reply: null, ErrorKind: "RouteNotConnected", IsRetriable: true },
+            $"RL-A1 down-window result was '{down.ErrorKind}', expected RouteNotConnected.");
 
-            ZlinkStreamAssert.Ensure(
-                attempt.IsRetriable
-                && attempt.ErrorKind is nameof(TimeoutException)
-                    or "RouteNotConnected"
-                    or "RequestTargetNotFound"
-                    or "RequestFailed",
-                $"RL-A1 returned unexpected down-window error '{attempt.ErrorKind}'.");
-            downWindowFailures++;
-        }
-        ZlinkStreamAssert.Ensure(survivingReplies > 0,
-            "RL-A1 did not route any down-window request to the surviving provider.");
-        ZlinkStreamAssert.Ensure(survivingReplies + downWindowFailures == 12,
-            "RL-A1 did not classify every down-window request result.");
-
-        await providerA.Post("/evidence/wait")
-            .Body(new EvidenceWaitReq(["marker=rl-a1-down-"], []))
+        var connectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
+        var restarted = await processes.StartProviderBAsync();
+        var newRows = (await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .Async<TopologyEntryRes[]>()).Body;
+        var newRow = newRows.Single();
+        ZlinkStreamAssert.Ensure(
+            newRow.Endpoint == restarted.Endpoint && newRow.Generation != oldGeneration,
+            "RL-A1 restart did not publish the same endpoint with a new owner generation.");
+        await consumer.Post("/connections/wait")
+            .Body(new ConnectionWaitReq(
+                ["kind=ConnectionReady", $"remote={restarted.Endpoint}"], connectionCount))
             .Async<string[]>();
 
-        await processes.StartProviderBAsync();
-        await registry.Post("/topology/wait")
-            .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .Async<TopologyEntryRes[]>();
-        for (var attempt = 0; attempt < 100; attempt++)
+        for (var i = 0; i < 20; i++)
         {
-            try
-            {
-                var health = await providerB.Get("/health").AsyncRaw();
-                if (health.Status == 200) break;
-            }
-            catch
-            {
-                // The scenario keeps polling until the restarted provider accepts HTTP traffic.
-            }
-
-            await Task.Delay(100);
+            var reply = (await consumer.Post("/profile/request")
+                .Body(new ProfileReq("fast", $"rl-a1-restored-{i}"))
+                .Async<ProfileRes>()).Body;
+            ZlinkStreamAssert.Ensure(reply.ProviderRid == "api-b", "RL-A1 follow-up used an unexpected provider.");
         }
 
-        await ProviderTrafficProbe.DriveUntilProviderServesAsync(
-            consumer, providerB, "rl-a1-restored", "RL-A1");
+        await providerA.Post("/admin/weight/include").AsyncRaw();
 
         Console.WriteLine("scenario RL-A1 passed");
     }

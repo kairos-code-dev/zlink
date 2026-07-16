@@ -1,9 +1,49 @@
 using System.Collections.Concurrent;
+using SpotService.Shared;
+using Systems.Zlink;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.E2E.Configuration;
 
 namespace SpotService.Server.Play;
 
-using Zlink.Framework.E2E.Configuration;
+internal sealed class ApplicationJoinCoordinator(
+    IZLinkActorManager actors,
+    EvidenceStore evidence)
+{
+    private readonly ConcurrentDictionary<string, Task> _operations = new(StringComparer.Ordinal);
+
+    public void Start(JoinReq request)
+    {
+        _operations.GetOrAdd(request.ActorId, _ => RunAsync(request));
+    }
+
+    private async Task RunAsync(JoinReq request)
+    {
+        try
+        {
+            Task<ActorRef> operation;
+            using (ExecutionContext.SuppressFlow())
+                operation = Task.Run(async () => await actors.GetOrCreateAsync(
+                    request.ActorId,
+                    SpotServiceNames.ActorType,
+                    new Spots.ScenarioActorCreateReq(request.DisplayName)));
+            var actor = await operation;
+            evidence.Add(
+                $"application-join-completed|actor={actor.ActorId}|node={actor.NodeRid}"
+                + $"|generation={actor.Generation}");
+        }
+        catch (Exception error)
+        {
+            evidence.Add(
+                $"application-join-failed|actor={request.ActorId}|error={error.GetType().Name}");
+        }
+        finally
+        {
+            _operations.TryRemove(request.ActorId, out _);
+        }
+    }
+}
 
 internal sealed class EvidenceDispatchErrorObserver(EvidenceStore evidence)
     : IZLinkMessageFlowObserver

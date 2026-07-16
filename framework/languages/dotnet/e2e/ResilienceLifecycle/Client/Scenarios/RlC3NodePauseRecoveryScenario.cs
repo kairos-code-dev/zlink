@@ -1,11 +1,11 @@
-// Verifies RL-C3 Node Pause Recovery behavior.
+// Verifies RL-C3 normal process stop and topology recovery.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
 using Zlink.HttpClient;
 
 namespace ResilienceLifecycle.Client.Scenarios;
 
-// RL-C3 verifies node pause/recovery behavior through provider restart.
+// RL-C3 verifies normal SIGTERM restart with a new owner generation.
 internal static class RlC3NodePauseRecoveryScenario
 {
     public static async Task RunAsync(
@@ -15,9 +15,12 @@ internal static class RlC3NodePauseRecoveryScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerB.Post("/shutdown").AsyncRaw();
-        await WaitUntilAsync(async () => !await IsHealthyAsync(providerB),
-            "RL-C3 expected api-b simulated node pause/down.");
+        var oldRows = (await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .Async<TopologyEntryRes[]>()).Body;
+        var oldGeneration = oldRows.Single().Generation;
+
+        await processes.StopProviderBWithSigtermAsync();
         await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 0))
             .Async<TopologyEntryRes[]>();
@@ -32,10 +35,18 @@ internal static class RlC3NodePauseRecoveryScenario
             .Async<ProfileRes>()).Body;
         ZlinkStreamAssert.Ensure(during.ProviderRid == "api-a", "RL-C3 did not use surviving provider during node down.");
 
-        await processes.StartProviderBAsync();
-        await registry.Post("/topology/wait")
+        var connectionCount = (await consumer.Get("/connections").Async<string[]>()).Body.Length;
+        var restarted = await processes.StartProviderBAsync();
+        var recoveredRows = (await registry.Post("/topology/wait")
             .Body(new TopologyWaitReq("api-b", "Ready", 1))
-            .Async<TopologyEntryRes[]>();
+            .Async<TopologyEntryRes[]>()).Body;
+        ZlinkStreamAssert.Ensure(
+            recoveredRows.Length == 1 && recoveredRows[0].Generation != oldGeneration,
+            "RL-C3 did not converge to exactly one new owner generation.");
+        await consumer.Post("/connections/wait")
+            .Body(new ConnectionWaitReq(
+                ["kind=ConnectionReady", $"remote={restarted.Endpoint}"], connectionCount))
+            .Async<string[]>();
         await ProviderTrafficProbe.DriveUntilProviderServesAsync(
             consumer,
             providerB,
@@ -76,27 +87,4 @@ internal static class RlC3NodePauseRecoveryScenario
         Console.WriteLine("scenario RL-C3 passed");
     }
 
-    private static async Task<bool> IsHealthyAsync(ZLinkHttpClient provider)
-    {
-        try
-        {
-            return (await provider.Get("/health").AsyncRaw()).Status == 200;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static async Task WaitUntilAsync(Func<Task<bool>> condition, string message)
-    {
-        for (var attempt = 0; attempt < 120; attempt++)
-        {
-            if (await condition()) return;
-
-            await Task.Delay(250);
-        }
-
-        throw new InvalidOperationException(message);
-    }
 }

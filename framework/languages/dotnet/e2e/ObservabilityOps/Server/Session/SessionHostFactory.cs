@@ -28,6 +28,7 @@ internal static class SessionHostFactory
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<MetricEvidenceCollector>();
         builder.Services.AddSingleton<DrainOperation>();
+        builder.Services.AddSingleton<BoundedOperationGate>();
         builder.Services.AddZLinkFramework(framework =>
         {
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -69,6 +70,7 @@ internal static class SessionHostFactory
                 TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
                 cancellationToken)));
         app.MapDrainOperations();
+        app.MapBoundedOperationGate();
         return app;
     }
 }

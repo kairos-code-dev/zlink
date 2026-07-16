@@ -10,36 +10,50 @@ internal static class RlA3ReconnectStormScenario
 {
     public static async Task RunAsync(
         ZLinkHttpClient consumer,
+        ZLinkHttpClient registry,
+        ResilienceProcessManager processes,
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        foreach (var index in Enumerable.Range(0, 24))
-        {
-            var marker = $"rl-a3-{index}";
-            var reply = (await consumer.Post("/profile/request/new-client")
-                .Body(new ProfileReq("fast", marker))
-                .Async<ProfileRes>()).Body;
-            ZlinkStreamAssert.Ensure(
-                reply.Value == "profile:fast" && reply.ProviderRid is "api-a" or "api-b",
-                "RL-A3 storm request returned an unexpected reply.");
-        }
+        await providerA.Post("/admin/weight/exclude").AsyncRaw();
+        await providerA.Post("/admin/weight/wait").Body(new WeightWaitReq(0)).AsyncRaw();
 
-        {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            var waitA = providerA.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-a3-"], []))
-                .Async<string[]>(timeout.Token).AsTask();
-            var waitB = providerB.Post("/evidence/wait")
-                .Body(new EvidenceWaitReq(["marker=rl-a3-"], []))
-                .Async<string[]>(timeout.Token).AsTask();
-            var completed = await Task.WhenAny(waitA, waitB);
-            var evidence = (await completed).Body;
-            timeout.Cancel();
-            ZlinkStreamAssert.Ensure(
-                evidence.Any(line => line.Contains("marker=rl-a3-", StringComparison.Ordinal)),
-                "RL-A3 did not record expected provider evidence.");
-        }
+        var baseline = (await consumer.Post("/storm/start")
+            .Body(new ProfileReq("fast", "rl-a3-before"))
+            .Async<ProfileRes[]>()).Body;
+        EnsureBatch(baseline, "rl-a3-before", "RL-A3 baseline");
+
+        await processes.StopProviderBWithSigtermAsync();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 0))
+            .Async<TopologyEntryRes[]>();
+
+        var connectionCount = (await consumer.Get("/storm/connections/count").Async<int>()).Body;
+        await processes.StartProviderBAsync();
+        await registry.Post("/topology/wait")
+            .Body(new TopologyWaitReq("api-b", "Ready", 1))
+            .Async<TopologyEntryRes[]>();
+        await consumer.Post("/storm/wait-ready")
+            .Body(new ConnectionWaitReq([], connectionCount))
+            .Async<string[]>();
+
+        var recovered = (await consumer.Post("/storm/request-all")
+            .Body(new ProfileReq("fast", "rl-a3-after"))
+            .Async<ProfileRes[]>()).Body;
+        EnsureBatch(recovered, "rl-a3-after", "RL-A3 recovered");
+
+        await providerA.Post("/admin/weight/include").AsyncRaw();
 
         Console.WriteLine("scenario RL-A3 passed");
+    }
+
+    private static void EnsureBatch(ProfileRes[] replies, string markerPrefix, string scenario)
+    {
+        ZlinkStreamAssert.Ensure(replies.Length == 100, $"{scenario} did not return 100 replies.");
+        ZlinkStreamAssert.Ensure(
+            replies.Select(reply => reply.Marker).Distinct(StringComparer.Ordinal).Count() == 100
+            && replies.All(reply => reply.ProviderRid == "api-b"
+                                    && reply.Marker.StartsWith(markerPrefix, StringComparison.Ordinal)),
+            $"{scenario} contained a duplicate or unexpected reply.");
     }
 }

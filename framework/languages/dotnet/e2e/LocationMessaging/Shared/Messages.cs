@@ -65,3 +65,7 @@ public sealed record ScenarioRoutePong(
     string SourceRid);
 
 public sealed record ExpectedFailureRes(string ErrorKind);
+
+public sealed record DrainResultRes(string Result, string? Reason = null);
+
+public sealed record RequestOutcomeRes(string Value, string Outcome);

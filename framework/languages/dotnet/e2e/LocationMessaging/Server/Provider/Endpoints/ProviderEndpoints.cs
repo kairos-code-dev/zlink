@@ -3,6 +3,7 @@ using LocationMessaging.Server.Provider.Infrastructure;
 using LocationMessaging.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
 
@@ -154,7 +155,7 @@ internal static class ProviderEndpoints
             }
             catch (ZLinkFrameworkException error) when (
                 error.Kind is ZLinkFrameworkErrorKind.RequestTargetNotFound
-                    or ZLinkFrameworkErrorKind.RequestFailed)
+                    or ZLinkFrameworkErrorKind.RouteNotConnected)
             {
                 return Results.Ok(new ExpectedFailureRes(error.Kind.ToString()));
             }
@@ -162,6 +163,18 @@ internal static class ProviderEndpoints
             {
                 return Results.Ok(new ExpectedFailureRes("Timeout"));
             }
+        });
+        app.MapPost("/admin/drain", async (
+            IZLinkDrainControl drain,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            return Results.Ok(result switch
+            {
+                Drained => new DrainResultRes(nameof(Drained)),
+                ForceStopped forced => new DrainResultRes(nameof(ForceStopped), forced.Reason.ToString()),
+                _ => throw new InvalidOperationException($"Unknown drain result '{result.GetType().Name}'.")
+            });
         });
         app.MapPost("/evidence/clear", (EvidenceStore evidence) =>
         {

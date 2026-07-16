@@ -136,17 +136,12 @@ public sealed partial class RegressionTests
                     source,
                     StringComparison.Ordinal);
                 Assert.DoesNotContain("|value=1", source, StringComparison.Ordinal);
-                Assert.Contains("first single request", source, StringComparison.Ordinal);
-                Assert.Contains("profile-request-start", source, StringComparison.Ordinal);
-                Assert.Contains("Task.WhenAll(transitionTasks)", source, StringComparison.Ordinal);
-                Assert.Contains("RunTransitionTrafficAsync", source, StringComparison.Ordinal);
-                Assert.Contains("while (!gate.IsStopped)", source, StringComparison.Ordinal);
-                Assert.Contains("ZLinkFrameworkErrorKind.RequestFailed", source, StringComparison.Ordinal);
-                Assert.Contains("WaitForPeerWeightAsync(requester, \"api-b\", 0)", source,
+                Assert.Contains("Result: \"Drained\"", source, StringComparison.Ordinal);
+                Assert.Contains("WaitForPeerRowGoneAsync(requester, \"api-b\")", source,
                     StringComparison.Ordinal);
-                Assert.Contains("ConfirmWeightPropagationWithTrafficAsync", source, StringComparison.Ordinal);
-                Assert.Contains("consecutiveApiAReplies == 16", source, StringComparison.Ordinal);
-                Assert.Contains("reply.ProviderRid == \"api-a\"", source, StringComparison.Ordinal);
+                Assert.Contains("firstAfter.ProviderRid == \"api-a\"", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("ConfirmWeightPropagationWithTrafficAsync", source,
+                    StringComparison.Ordinal);
             }
         }
 
@@ -223,7 +218,7 @@ public sealed partial class RegressionTests
         var scenarios = Path.Combine(ResolveE2eRoot(), "ResilienceLifecycle", "Client", "Scenarios");
         var restart = File.ReadAllText(Path.Combine(scenarios, "RlA1ProviderRestartScenario.cs"));
         Assert.Contains("/profile/request/attempt/1000", restart, StringComparison.Ordinal);
-        Assert.Contains("attempt.ErrorKind", restart, StringComparison.Ordinal);
+        Assert.Contains("down.ErrorKind", restart, StringComparison.Ordinal);
 
         foreach (var name in new[]
                  {
@@ -470,7 +465,7 @@ public sealed partial class RegressionTests
 
         Assert.Contains("AllowCleanupAttemptAsync", b2, StringComparison.Ordinal);
         Assert.Contains("source_cleanup_attempt", b2, StringComparison.Ordinal);
-        Assert.Contains("ShutdownAndWaitUnavailableAsync", b2, StringComparison.Ordinal);
+        Assert.Contains("CrashNodeAAndWaitUnavailableAsync", b2, StringComparison.Ordinal);
         Assert.DoesNotContain("ReleaseCleanupGateAsync", b2, StringComparison.Ordinal);
 
         Assert.Contains("before-stale-cleanup-release", d2, StringComparison.Ordinal);

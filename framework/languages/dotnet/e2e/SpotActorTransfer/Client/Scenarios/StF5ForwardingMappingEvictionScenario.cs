@@ -42,7 +42,9 @@ internal static class StF5ForwardingMappingEvictionScenario
         ZlinkStreamAssert.Ensure(!staleB.Succeeded && staleB.ErrorKind == "ActorLocationStale",
             $"ST-F5 expected node-b mapping eviction, got '{staleB.ErrorKind}'.");
         var evidence = await context.GetEvidenceAsync(context.NodeB);
-        SpotActorTransferScenarioContext.RequireNoContains(evidence, $"ST-F5|{actorId}|packet_handler|after-eviction",
+        ZlinkStreamAssert.Ensure(
+            !evidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-F5|{actorId}|packet_handler|after-eviction", StringComparison.Ordinal)),
             "ST-F5 evicted packet reached the target handler.");
         await context.SendRefAsync(context.NodeB, actorId, returnedRef, new HandoffPacket("ST-F5", "returned-to-b"));
         await context.WaitEvidenceAsync(context.NodeB, [$"ST-F5|{actorId}|handoff_packet|returned-to-b"]);

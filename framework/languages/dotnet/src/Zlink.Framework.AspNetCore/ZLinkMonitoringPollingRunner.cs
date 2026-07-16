@@ -38,9 +38,12 @@ internal sealed class ZLinkMonitoringPollingRunner(
             {
                 snapshot = frameworkRuntime.GetSpotMonitoringSnapshot(source.SourceName);
             }
-            catch (InvalidOperationException ex)
+            catch (InvalidOperationException)
             {
-                throw new ZLinkConfigurationException(ex.Message);
+                // Source configuration is validated before this loop starts.
+                // A later failure means the runtime generation ended between
+                // polls because of drain or host shutdown.
+                return;
             }
 
             var timestamp = DateTimeOffset.UtcNow;

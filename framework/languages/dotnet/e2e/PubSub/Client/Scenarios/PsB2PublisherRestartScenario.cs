@@ -27,10 +27,34 @@ internal static class PsB2PublisherRestartScenario
         await WaitForSubscribersAsync(subscribers, new EvidenceWaitReq(
             ["event|", $"run={runId}", $"topic={PubSubNames.MainTopic}", "seq=1"],
             []));
+        var baselineRows = (await subscribers[0].Get("/locations/peers")
+            .Query("mesh", PubSubNames.Channel)
+            .Async<PeerLocationRowRes[]>()).Body
+            .Where(row => row.Endpoint == processes.PublisherEndpoint)
+            .ToArray();
+        ZlinkStreamAssert.Ensure(
+            baselineRows.Length == 1 && baselineRows[0].NodeRid.Length > 0,
+            "PS-B2 expected exactly one live publisher row before drain.");
+        var publisherNodeRid = baselineRows[0].NodeRid;
         var evidenceOffsets = await Task.WhenAll(
             subscribers.Select(SubscriberObservation.EvidenceCountAsync));
 
-        // Stop the publisher and wait for the graceful runtime drain separately from local readiness.
+        // A normal replacement must reach terminal Drained and remove the old
+        // owner row without waiting for lease expiry.
+        var drain = (await publisher.Post("/admin/drain")
+            .Timeout(TimeSpan.FromSeconds(35))
+            .Async<DrainResultRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            drain.Result == nameof(Zlink.Framework.Contracts.Configuration.Drained),
+            $"PS-B2 expected terminal Drained, got {drain.Result}:{drain.Reason}.");
+        await subscribers[0].Post("/locations/peers/wait")
+            .Body(new PeerLocationWaitReq(
+                PubSubNames.Channel,
+                publisherNodeRid,
+                Present: false))
+            .Timeout(TimeSpan.FromSeconds(31))
+            .AsyncRaw();
+
         await publisher.Post("/shutdown").AsyncRaw();
         await StateObservation.WaitUntilAsync(
             async () =>
@@ -78,6 +102,14 @@ internal static class PsB2PublisherRestartScenario
                 }
             },
             "PS-B2 expected restarted publisher to become healthy.");
+        await subscribers[0].Post("/locations/peers/wait")
+            .Body(new PeerLocationWaitReq(
+                PubSubNames.Channel,
+                publisherNodeRid,
+                Present: true,
+                Endpoint: processes.PublisherEndpoint))
+            .Timeout(TimeSpan.FromSeconds(31))
+            .AsyncRaw();
         await Task.WhenAll(subscribers.Select((subscriber, index) =>
             SubscriberObservation.WaitForConnectionAsync(subscriber, evidenceOffsets[index])));
 

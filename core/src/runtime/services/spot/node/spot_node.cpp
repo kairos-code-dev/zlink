@@ -60,6 +60,9 @@ spot_node_t::spot_node_t (ctx_t *ctx_, zlink_spot_node_mode_t mode_) :
     _send_ready_signal_armed (false)
 {
     generate_random_uuid_routing_id (&_node_routing_id);
+    uint64_t actor_generation_seed = 0;
+    memcpy (&actor_generation_seed, _node_routing_id.data, sizeof (actor_generation_seed));
+    _actor_state.next_generation = actor_generation_seed == 0 ? 1 : actor_generation_seed;
     memset (&_pub_routing_id, 0, sizeof (_pub_routing_id));
     memset (&_sub_routing_id, 0, sizeof (_sub_routing_id));
 

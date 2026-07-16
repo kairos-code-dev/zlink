@@ -30,6 +30,24 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _topologyQuery?.IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
     }
 
+    private void EnsureKnownRouteMeshPeer(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        string targetDescription)
+    {
+        if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) != false) return;
+
+        if (Registration.RouteChannels.TryGetValue(routerChannelId, out var registration)
+            && registration.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual
+            && _topologyQuery?.WasKnownManualRouteMeshPeer(routerChannelId, targetNodeRid) == true)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RouteNotConnected,
+                $"Route channel '{routerChannelId}' is not connected to node '{targetNodeRid}' for {targetDescription}.",
+                isRetriable: true);
+
+        throw CreateUnknownRouteTargetException(routerChannelId, targetNodeRid, targetDescription);
+    }
+
     internal ValueTask SubmitRouteSendAsync<TMessage>(
         string routerChannelId,
         RoutingId targetNodeRid,
@@ -42,12 +60,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         // traffic goes through the address-based spot outbound instead
         // (spot-address messaging contract §6).
         var routeChannel = GetRouteChannel(routerChannelId);
-        var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
-        if (known == false)
-            throw CreateUnknownRouteTargetException(
-                routerChannelId,
-                targetNodeRid,
-                $"packet '{packetName}'");
+        EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"packet '{packetName}'");
 
         return routeChannel.SubmitSendAsync(
             targetNodeRid,
@@ -65,12 +78,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken)
     {
         using var operation = EnterOperation(countAsRequest: true);
-        var known = IsKnownRouteMeshPeer(routerChannelId, targetNodeRid);
-        if (known == false)
-            throw CreateUnknownRouteTargetException(
-                routerChannelId,
-                targetNodeRid,
-                $"packet '{packetName}'");
+        EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"packet '{packetName}'");
 
         return await GetRouteChannel(routerChannelId).RequestAsync<TRequest, TReply>(
                 targetNodeRid,
@@ -91,11 +99,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         using var operation = EnterOperation();
         try
         {
-            if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
-                throw CreateUnknownRouteTargetException(
-                    routerChannelId,
-                    targetNodeRid,
-                    $"SPOT '{targetSpotRid}'");
+            EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotRid}'");
 
             var accepted = _spotRouteRouter.SendAsync(
                 routerChannelId,
@@ -151,11 +155,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             var timedOut = false;
             try
             {
-                if (IsKnownRouteMeshPeer(routerChannelId, targetNodeRid) == false)
-                    throw CreateUnknownRouteTargetException(
-                        routerChannelId,
-                        targetNodeRid,
-                        $"SPOT '{targetSpotRid}'");
+                EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotRid}'");
 
                 return await _spotRouteRouter.RequestAsync(
                         routerChannelId,

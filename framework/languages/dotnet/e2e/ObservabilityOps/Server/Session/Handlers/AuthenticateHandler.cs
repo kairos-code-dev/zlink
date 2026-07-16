@@ -1,4 +1,5 @@
 using ObservabilityOps.Server.Session.Support;
+using ObservabilityOps.Server.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
@@ -26,5 +27,20 @@ internal sealed class AuthenticateHandler(
         await context.Actors.BindOrGetAsync(new ActorRef(RoutingId.From(ensured.NodeRid),
             ensured.ActorId, ensured.Generation), cancellationToken);
         context.Client.Reply(new AuthenticateRes(ensured.ActorId, ensured.NodeRid, ensured.Generation)).Submit();
+    }
+}
+
+internal sealed class SessionBoundedOperationHandler(BoundedOperationGate gate)
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, SessionBoundedOperationReq>
+{
+    public async ValueTask HandleAsync(
+        IZLinkSessionContext context,
+        ZLinkSessionDispatchContext dispatch,
+        SessionBoundedOperationReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = context;
+        await gate.EnterAsync(cancellationToken);
+        context.Client.Reply(new SessionBoundedOperationRes(request.Marker)).Submit();
     }
 }

@@ -23,15 +23,17 @@ internal static class StC1SourceDownBeforeCommitScenario
             $"ST-C1|{actorId}|before_commit_gate|62"
         ]);
 
-        await context.ShutdownAsync(context.NodeA);
+        await context.CrashNodeAAndWaitUnavailableAsync();
         JoinResponse? response = null;
         try
         {
             response = await joinTask.WaitAsync(TimeSpan.FromSeconds(3));
         }
-        catch (Exception ex) when (ex is TimeoutException or HttpRequestException)
+        catch (Exception ex) when (
+            ex is TimeoutException or HttpRequestException or TaskCanceledException
+            || ex is Zlink.Framework.Contracts.Errors.ZLinkFrameworkException)
         {
-            // Source shutdown may abort the HTTP request before the app endpoint can return a failure body.
+            // SIGKILL may abort the HTTP request before the app endpoint can return a failure body.
         }
         if (response is not null)
             ZlinkStreamAssert.Ensure(!response.Accepted,
@@ -42,8 +44,17 @@ internal static class StC1SourceDownBeforeCommitScenario
         // aborted or expired; a fixed observation delay cannot prove that state transition.
         await context.DrainAsync(context.NodeB);
         var targetEvidence = await context.GetEvidenceAsync(context.NodeB);
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|transfer_in|62", "ST-C1 target should not transfer in without commit.");
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"transfer|{actorId}|joined|{spotRid}", "ST-C1 target should not join without commit.");
-        SpotActorTransferScenarioContext.RequireNoContains(targetEvidence, $"ST-C1|{actorId}|packet_handler|", "ST-C1 target should not dispatch actor packets without commit.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|transfer_in|62", StringComparison.Ordinal)),
+            "ST-C1 target should not transfer in without commit.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"transfer|{actorId}|joined|{spotRid}", StringComparison.Ordinal)),
+            "ST-C1 target should not join without commit.");
+        ZlinkStreamAssert.Ensure(
+            !targetEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-C1|{actorId}|packet_handler|", StringComparison.Ordinal)),
+            "ST-C1 target should not dispatch actor packets without commit.");
     }
 }

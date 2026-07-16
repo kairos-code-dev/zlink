@@ -1,104 +1,157 @@
-// Verifies SM-G1 Bound Actor Crash Recovery behavior.
-using SpotService.Client.Support;
+// Verifies SM-G1 crash isolation and both explicit application recovery paths.
 using SpotService.Shared;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.HttpClient;
 
 namespace SpotService.Client.Scenarios;
 
-// Verifies recovery after the play-a process crashes.
 internal static class SmG1BoundActorCrashRecoveryScenario
 {
     public static async Task RunAsync(
-        string playAUrl,
+        ZLinkHttpClient playAHttp,
         ZLinkHttpClient gateway,
         string sessionAStreamEndpoint,
         string sessionBStreamEndpoint)
     {
-        await using var playA = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        const string crashedActorId = "actor-sm-g1-crash";
+        const string survivorActorId = "actor-sm-g1-survivor";
+        await using var ownerSession = await ConnectAsync(sessionAStreamEndpoint);
+        await using var survivorSession = await ConnectAsync(sessionBStreamEndpoint);
+        await ownerSession.Request(new AuthReq(crashedActorId, "snapshot-v1", "play-a"))
+            .PacketName("AuthReq").Async<AuthRes>();
+        await survivorSession.Request(new AuthReq(survivorActorId, "survivor", "play-b"))
+            .PacketName("AuthReq").Async<AuthRes>();
+
+        var oldRef = await CaptureRefAsync(gateway, crashedActorId);
+        var inFlight = gateway.Post("/actor/request-ref")
+            .Body(new ActorRefRequestReq(oldRef, "in-flight-1", 10000, 3000))
+            .Async<ActorRefRequestRes>().AsTask();
+        await playAHttp.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([
+                $"actor-slow-ping-started|rid=play-a|actor={crashedActorId}|value=in-flight-1"
+            ])).AsyncRaw();
+        Console.WriteLine("spot-service sm-g1 crash-1-ready");
+
+        var inFlightOutcome = (await inFlight).Body;
+        EnsureInFlightFailure(inFlightOutcome, "first crash");
+        await WaitMissingAsync(gateway, crashedActorId);
+        await ZlinkStreamAssert.ExpectFailureAsync(async cancellationToken =>
         {
-            Endpoint = new Uri(sessionAStreamEndpoint),
-            RequestTimeout = TimeSpan.FromSeconds(30),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
-        });
-        await using var playB = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(sessionBStreamEndpoint),
-            RequestTimeout = TimeSpan.FromSeconds(30),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
-        });
-        await playA.Connect.Async();
-        await playB.Connect.Async();
-        await playA.Request(new AuthReq("actor-sm-g1-crash", "crash-owner", "play-a"))
-            .PacketName("AuthReq")
-            .Async<AuthRes>();
-        await playB.Request(new AuthReq("actor-sm-g1-survivor", "survivor", "play-b"))
-            .PacketName("AuthReq")
-            .Async<AuthRes>();
-
-        var beforeCrash = await playA.Request(new ActorPingReq("before-crash"))
-            .PacketName("ActorPingReq")
-            .Async<ActorPingRes>();
-        ZlinkStreamAssert.Ensure(beforeCrash.NodeRid == "play-a", "SM-G1 play-a actor setup mismatch.");
-        var beforeSurvivor = await playB.Request(new ActorPingReq("before-crash"))
-            .PacketName("ActorPingReq")
-            .Async<ActorPingRes>();
-        ZlinkStreamAssert.Ensure(beforeSurvivor.NodeRid == "play-b", "SM-G1 play-b actor setup mismatch.");
-
-        using var http = ZLinkHttpClient.Create(playAUrl)
-            .Timeout(TimeSpan.FromSeconds(5))
-            .Build();
-        var response = await http.Post("/crash").AsyncRaw();
-        ZlinkStreamAssert.Ensure(
-            response.Status >= 200 && response.Status < 300,
-            $"SM-G1 crash endpoint returned HTTP {response.Status}.");
-        await gateway.Post("/actor/wait-missing")
-            .Body(new ActorMissingWaitReq("actor-sm-g1-crash"))
-            .AsyncRaw();
-
-        await ZlinkStreamAssert.ExpectFailureAsync(
-            async cancellationToken => _ = await playA.Request(new ActorPingReq("after-crash"))
+            _ = await ownerSession.Request(new ActorPingReq("crashed-session"))
                 .PacketName("ActorPingReq")
-                .Timeout(TimeSpan.FromSeconds(1))
-                .Async<ActorPingRes>(cancellationToken),
-            nameof(ZlinkStreamErrorCode.RemoteError));
-
-        var survivor = await playB.Request(new ActorPingReq("after-crash"))
-            .PacketName("ActorPingReq")
-            .Async<ActorPingRes>();
-        ZlinkStreamAssert.Ensure(survivor.ActorId == "actor-sm-g1-survivor", "SM-G1 survivor actor mismatch.");
-        ZlinkStreamAssert.Ensure(survivor.NodeRid == "play-b", "SM-G1 survivor node mismatch.");
-
-        await using var recovered = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
-        {
-            Endpoint = new Uri(sessionBStreamEndpoint),
-            RequestTimeout = TimeSpan.FromSeconds(30),
-            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
+                .Async<ActorPingRes>(cancellationToken);
         });
-        await recovered.Connect.Async();
-        // The crashed node's owner lease must expire before the claim can
-        // be taken over; retry within the configured lease window.
-        var reclaimDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
-        while (true)
-        {
-            try
-            {
-                await recovered.Request(new AuthReq("actor-sm-g1-crash", "recovered-on-play-b", "play-b"))
-                    .PacketName("AuthReq")
-                    .Async<AuthRes>();
-                break;
-            }
-            catch (ZlinkStreamException) when (DateTimeOffset.UtcNow < reclaimDeadline)
-            {
-                await Task.Delay(500);
-            }
-        }
-        var rebound = await recovered.Request(new ActorPingReq("rebound"))
-            .PacketName("ActorPingReq")
-            .Async<ActorPingRes>();
-        ZlinkStreamAssert.Ensure(rebound.ActorId == "actor-sm-g1-crash", "SM-G1 rebound actor mismatch.");
-        ZlinkStreamAssert.Ensure(rebound.NodeRid == "play-b", "SM-G1 rebound node mismatch.");
+        await EnsureErrorAsync(gateway, oldRef, "before-restart", "ActorRouteNotFound");
+        await EnsureSurvivorAsync(survivorSession, survivorActorId, "after-first-crash");
 
+        Console.WriteLine("spot-service sm-g1 restart-1-ready");
+        await gateway.Post("/node/wait-ready")
+            .Body(new NodeReadinessWaitReq("play-a", 15000)).Async<NodeReadinessWaitRes>();
+        await gateway.Post("/entry/join")
+            .Body(new EntryJoinRouteReq("play-a",
+                new JoinReq("replay-snapshot-v1", crashedActorId, "snapshot-v1", 1, ["replayed"])))
+            .Async<JoinRes>();
+        var restartedRef = await CaptureRefAsync(gateway, crashedActorId);
+        ZlinkStreamAssert.Ensure(restartedRef.Generation != oldRef.Generation,
+            "SM-G1 same-rid restart reused the previous actor generation.");
+        await EnsureErrorAsync(gateway, oldRef, "stale-after-restart", "ActorLocationStale");
+        await EnsureSuccessAsync(gateway, restartedRef, "restart-follow-up", "play-a");
+        await ownerSession.Request(new AuthReq(crashedActorId, "snapshot-v1", "play-a"))
+            .PacketName("AuthReq").Async<AuthRes>();
+
+        var secondInFlight = gateway.Post("/actor/request-ref")
+            .Body(new ActorRefRequestReq(restartedRef, "in-flight-2", 10000, 3000))
+            .Async<ActorRefRequestRes>().AsTask();
+        await playAHttp.Post("/evidence/wait")
+            .Body(new EvidenceWaitReq([
+                $"actor-slow-ping-started|rid=play-a|actor={crashedActorId}|value=in-flight-2"
+            ])).AsyncRaw();
+        Console.WriteLine("spot-service sm-g1 crash-2-ready");
+        EnsureInFlightFailure((await secondInFlight).Body, "second crash");
+        await WaitMissingAsync(gateway, crashedActorId);
+        await EnsureErrorAsync(gateway, restartedRef, "before-play-b-recovery", "ActorRouteNotFound");
+
+        await gateway.Post("/node/wait-ready")
+            .Body(new NodeReadinessWaitReq("play-b", 15000)).Async<NodeReadinessWaitRes>();
+        await gateway.Post("/entry/join")
+            .Body(new EntryJoinRouteReq("play-b",
+                new JoinReq("replay-snapshot-v1", crashedActorId, "snapshot-v1", 1, ["replayed"])))
+            .Async<JoinRes>();
+        var recoveredRef = await CaptureRefAsync(gateway, crashedActorId);
+        ZlinkStreamAssert.Ensure(recoveredRef.NodeRid == "play-b",
+            "SM-G1 application recovery did not place the actor on play-b.");
+        await EnsureErrorAsync(gateway, restartedRef, "stale-after-remap", "ActorLocationStale");
+        await EnsureSuccessAsync(gateway, recoveredRef, "play-b-follow-up", "play-b");
+        await using var rebound = await ConnectAsync(sessionBStreamEndpoint);
+        await rebound.Request(new AuthReq(crashedActorId, "snapshot-v1", "play-b"))
+            .PacketName("AuthReq").Async<AuthRes>();
+        var reboundReply = await rebound.Request(new ActorPingReq("rebound"))
+            .PacketName("ActorPingReq").Async<ActorPingRes>();
+        ZlinkStreamAssert.Ensure(reboundReply.NodeRid == "play-b",
+            "SM-G1 explicit rebind did not restore messaging on play-b.");
+        await EnsureSurvivorAsync(survivorSession, survivorActorId, "after-second-crash");
         Console.WriteLine("operation SpotService.sm-g1 passed");
     }
+
+    private static async Task<IZlinkStreamConnector> ConnectAsync(string endpoint)
+    {
+        var connector = ZlinkStreamConnectorFactory.Create(new ZlinkStreamConnectorOptions
+        {
+            Endpoint = new Uri(endpoint),
+            RequestTimeout = TimeSpan.FromSeconds(10),
+            Heartbeat = new ZlinkStreamHeartbeatOptions { Enabled = false }
+        });
+        await connector.Connect.Async();
+        return connector;
+    }
+
+    private static async Task<ActorRefSnapshotRes> CaptureRefAsync(
+        ZLinkHttpClient gateway, string actorId) =>
+        (await gateway.Post("/actor/capture-ref")
+            .Body(new ActorRefSnapshotReq(actorId)).Async<ActorRefSnapshotRes>()).Body;
+
+    private static async Task WaitMissingAsync(ZLinkHttpClient gateway, string actorId) =>
+        await gateway.Post("/actor/wait-missing")
+            .Body(new ActorMissingWaitReq(actorId, 15000)).AsyncRaw();
+
+    private static async Task EnsureErrorAsync(
+        ZLinkHttpClient gateway,
+        ActorRefSnapshotRes actor,
+        string value,
+        string expected)
+    {
+        var outcome = (await gateway.Post("/actor/request-ref")
+            .Body(new ActorRefRequestReq(actor, value))
+            .Async<ActorRefRequestRes>()).Body;
+        ZlinkStreamAssert.Ensure(!outcome.Succeeded && outcome.ErrorKind == expected,
+            $"SM-G1 expected {expected}, got success={outcome.Succeeded} kind={outcome.ErrorKind}.");
+    }
+
+    private static async Task EnsureSuccessAsync(
+        ZLinkHttpClient gateway,
+        ActorRefSnapshotRes actor,
+        string value,
+        string nodeRid)
+    {
+        var outcome = (await gateway.Post("/actor/request-ref")
+            .Body(new ActorRefRequestReq(actor, value))
+            .Async<ActorRefRequestRes>()).Body;
+        ZlinkStreamAssert.Ensure(outcome.Succeeded && outcome.Reply?.NodeRid == nodeRid,
+            $"SM-G1 live ActorRef follow-up failed: {outcome.ErrorKind}.");
+    }
+
+    private static void EnsureInFlightFailure(ActorRefRequestRes outcome, string phase) =>
+        ZlinkStreamAssert.Ensure(!outcome.Succeeded
+                                 && outcome.ErrorKind is "RouteNotConnected" or "Timeout",
+            $"SM-G1 {phase} in-flight outcome was {outcome.ErrorKind}.");
+
+    private static async Task EnsureSurvivorAsync(
+        IZlinkStreamConnector connector, string actorId, string marker)
+    {
+        var reply = await connector.Request(new ActorPingReq(marker))
+            .PacketName("ActorPingReq").Async<ActorPingRes>();
+        ZlinkStreamAssert.Ensure(reply.ActorId == actorId && reply.NodeRid == "play-b",
+            "SM-G1 survivor actor/session was affected by play-a crash.");
+    }
+
 }

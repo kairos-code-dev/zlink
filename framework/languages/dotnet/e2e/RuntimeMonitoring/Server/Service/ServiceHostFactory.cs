@@ -7,6 +7,7 @@ using RuntimeMonitoring.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Eventing;
 using Zlink.Framework.Contracts.Spots;
@@ -127,7 +128,7 @@ internal static class ServiceHostFactory
             var closed = await spots.CloseAsync(RoutingId.From("monitor-subject"), cancellationToken);
             return Results.Ok(new { status = closed ? "closed" : "not-found" });
         });
-        app.MapPost("/admin/drain", (
+        app.MapPost("/admin/weight/exclude", (
             [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
@@ -135,13 +136,25 @@ internal static class ServiceHostFactory
             evidence.Add($"admin|rid={evidence.Rid}|action=drain|weight=0");
             return Results.Ok(new { status = "drained", weight = 0 });
         });
-        app.MapPost("/admin/restore", (
+        app.MapPost("/admin/weight/include", (
             [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
             runtimeOptions.ClientServerChannel(RuntimeMonitoringNames.Channel).ConfigureServerSocket().Weight = 100;
             evidence.Add($"admin|rid={evidence.Rid}|action=restore|weight=100");
             return Results.Ok(new { status = "restored", weight = 100 });
+        });
+        app.MapPost("/admin/graceful-drain", async (
+            [FromServices] IZLinkDrainControl drain,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await drain.DrainAsync(TimeSpan.FromSeconds(30), cancellationToken);
+            return Results.Ok(result switch
+            {
+                Drained => new DrainResultRes(nameof(Drained)),
+                ForceStopped forced => new DrainResultRes(nameof(ForceStopped), forced.Reason.ToString()),
+                _ => throw new InvalidOperationException($"Unknown drain result '{result.GetType().Name}'.")
+            });
         });
         return app;
     }

@@ -259,7 +259,9 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(locations.Options);
         if (locations.StoreInstance is { } store)
         {
-            services.AddSingleton<IHostedService>(_ => new ZLinkLocationStoreInstanceOwner(store));
+            services.AddSingleton(new ZLinkLocationStoreInstanceOwner(store));
+            services.AddSingleton<IHostedService>(static provider =>
+                provider.GetRequiredService<ZLinkLocationStoreInstanceOwner>());
             services.AddSingleton(store);
             services.AddSingleton<IZLinkPeerLocationStore>(store);
             services.AddSingleton<IZLinkSpotLocationStore>(store);
@@ -387,14 +389,21 @@ internal static class ZLinkFrameworkServiceRegistrar
             provider.GetRequiredService<ZLinkStoreLocationResolvers>()));
         services.AddSingleton<IZLinkActorLocationLifecycle>(
             static provider => provider.GetRequiredService<ZLinkLocationLifecycle>().ActorOwnership);
-        services.AddSingleton(static provider => new ZLinkLocationAutoConnectHost(
-            provider.GetRequiredService<ZLinkLocationRuntime>(),
-            provider.GetRequiredService<IZLinkPeerLocationResolver>(),
-            provider.GetRequiredService<ZLinkLocationOptions>(),
-            provider.GetService<IZLinkLocationChangeStampStore>(),
-            provider.GetService<IZLinkLocationWatchStore>(),
-            events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
-            leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>()));
+        services.AddSingleton(static provider =>
+        {
+            // The externally supplied store is owned by a hosted service. Resolve
+            // that owner before auto-connect so provider disposal always finalizes
+            // loops (including their row cleanup) before it disposes the store.
+            _ = provider.GetService<ZLinkLocationStoreInstanceOwner>();
+            return new ZLinkLocationAutoConnectHost(
+                provider.GetRequiredService<ZLinkLocationRuntime>(),
+                provider.GetRequiredService<IZLinkPeerLocationResolver>(),
+                provider.GetRequiredService<ZLinkLocationOptions>(),
+                provider.GetService<IZLinkLocationChangeStampStore>(),
+                provider.GetService<IZLinkLocationWatchStore>(),
+                events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
+                leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>());
+        });
         services.AddSingleton<IZLinkAutoConnectTopologyQuery>(static provider =>
             provider.GetRequiredService<ZLinkLocationAutoConnectHost>());
         return services;

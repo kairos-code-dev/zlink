@@ -30,6 +30,12 @@ internal static class ObsC4ForcedSessionDrainScenario
             });
         await connector.Request(new AuthenticateReq($"obs-c4-{Guid.NewGuid():N}"))
             .Async<AuthenticateRes>();
+        await context.Session.Post("/operation-gate/arm")
+            .Query("maximumWaitMs", "10000").AsyncRaw();
+        var blockedOperation = connector.Request(new SessionBoundedOperationReq("obs-c4-blocked"))
+            .Async<SessionBoundedOperationRes>().AsTask();
+        await context.Session.Post("/operation-gate/wait-started")
+            .Query("timeoutMs", "5000").AsyncRaw();
         await context.Session.Post("/drain?deadlineMs=100").AsyncRaw();
         await closingObserved.Task.WaitAsync(TimeSpan.FromSeconds(10));
         var reason = await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -39,6 +45,15 @@ internal static class ObsC4ForcedSessionDrainScenario
             context.Session, TimeSpan.FromSeconds(10));
         ZlinkStreamAssert.Ensure(result.Result == "ForceStopped" && result.Reason == "DeadlineExceeded",
             $"OBS-C4 short deadline returned {result.Result}/{result.Reason}.");
+        await context.Session.Post("/operation-gate/release").AsyncRaw();
+        try
+        {
+            await blockedOperation.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception)
+        {
+            // Forced session cleanup is allowed to terminate the blocked request.
+        }
         var metrics = (await context.Session.Get("/evidence").Async<EvidenceSnapshot>()).Body.Metrics;
         ZlinkStreamAssert.Ensure(metrics.Any(sample => sample.Name == "zlink.drain.forced"
                                                       && sample.Tags.GetValueOrDefault("kind") == "session"

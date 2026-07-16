@@ -22,9 +22,12 @@ using var providerB = ZLinkHttpClient.Create(options.ProviderBUrl)
 var scenarios = new (string Name, Func<Task> Run)[]
 {
     ("RL-A1", () => RlA1ProviderRestartScenario.RunAsync(consumer, registry, processes, providerA, providerB)),
-    ("RL-A2", () => RlA2ProviderEndpointRemapScenario.RunAsync(consumer, registry, processes, providerB)),
-    ("RL-A3", () => RlA3ReconnectStormScenario.RunAsync(consumer, providerA, providerB)),
-    ("RL-A4", () => RlA4DrainAndGreenEndpointScenario.RunAsync(consumer, registry, processes, providerB)),
+    ("RL-A2", () => RlA2ProviderEndpointRemapScenario.RunAsync(
+        consumer, registry, processes, providerA, providerB)),
+    ("RL-A3", () => RlA3ReconnectStormScenario.RunAsync(
+        consumer, registry, processes, providerA, providerB)),
+    ("RL-A4", () => RlA4DrainAndGreenEndpointScenario.RunAsync(
+        consumer, registry, processes, providerA, providerB)),
     ("RL-A5", () => RlA5ProviderFlappingScenario.RunAsync(consumer, registry, processes, providerA, providerB)),
     ("RL-B1", () => RlB1CancellationCleanupScenario.RunAsync(consumer, providerA, providerB)),
     ("RL-B2", () => RlB2CrashDuringInflightScenario.RunAsync(consumer, registry, processes, providerA, providerB)),

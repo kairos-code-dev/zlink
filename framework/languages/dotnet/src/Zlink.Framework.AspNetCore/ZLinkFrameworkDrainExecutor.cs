@@ -42,6 +42,13 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
         if (!await PublishDrainingMarkerAsync(deadlineToken).ConfigureAwait(false))
             return ZLinkDrainForceReason.DrainingStatePublishFailed;
 
+        // Draining excludes actor placement, while channel weight excludes new
+        // client-server load. Publish both before the single propagation bound;
+        // sealing admission earlier would strand requests selected from a stale
+        // peer row until their request deadline.
+        if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
+            return ZLinkDrainForceReason.DrainingStatePublishFailed;
+
         var propagationDelay = CalculatePropagationDelay(_locationOptions);
         if (_operations.HasAutoConnect)
             _logger?.LogInformation(
@@ -54,8 +61,6 @@ internal sealed class ZLinkFrameworkDrainExecutor : IZLinkDrainExecutor
             ? Task.CompletedTask
             : Task.Delay(propagationDelay, deadlineToken);
         await propagation.ConfigureAwait(false);
-        if (!await PublishServingWeightAsync(deadlineToken).ConfigureAwait(false))
-            return ZLinkDrainForceReason.DrainingStatePublishFailed;
         _operations.SealRequestAdmissions();
         _operations.BeginSpotDrain();
         await _operations.WaitForAcceptedActorHandoffs(deadlineToken).ConfigureAwait(false);

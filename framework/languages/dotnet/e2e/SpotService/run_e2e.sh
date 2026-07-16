@@ -76,9 +76,9 @@ case "$SCENARIO_SET" in
     NEED_SESSION_B=1
     NEED_TLS_STREAM=1
     ;;
-  sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4|sm-a5)
+  sm-e1-f4|sm-e2-e3|sm-a7-a8-c4|sm-e4|sm-a5|sm-g2)
     NEED_SESSION_NODES=0
-    NEED_PLAY_B=0
+    if [[ "$SCENARIO_SET" != "sm-g2" ]]; then NEED_PLAY_B=0; fi
     ;;
   sm-d14)
     NEED_PLAY_B=0
@@ -710,7 +710,7 @@ fi
 
 if [[ "$SCENARIO_SET" != "sm-q9" && "$SCENARIO_SET" != "sm-f6" ]]; then
   SERVER_ROLES+=(play-a)
-  if [[ "$NEED_PLAY_B" == "1" ]]; then
+  if [[ "$NEED_PLAY_B" == "1" && "$SCENARIO_SET" != "sm-g2" ]]; then
     SERVER_ROLES+=(play-b)
   fi
 fi
@@ -733,7 +733,7 @@ done
 
 if [[ "$SCENARIO_SET" != "sm-q9" && "$NEED_SESSION_NODES" == "1" ]]; then
   wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a
-  if [[ "$NEED_PLAY_B" == "1" ]]; then
+    if [[ "$NEED_PLAY_B" == "1" && "$SCENARIO_SET" != "sm-g2" ]]; then
     wait_control_route "$SESSION_A_HTTP" play-b session-a-play-b
   fi
   if [[ "$NEED_SESSION_B" == "1" ]]; then
@@ -754,6 +754,40 @@ wait_for_log_after() {
   return 1
 }
 
+crash_play_a() {
+  local wrapper_pid child_pid
+  wrapper_pid="$(pid_for_role play-a)"
+  child_pid="$(pgrep -P "$wrapper_pid" -n || true)"
+  if [[ -z "$child_pid" ]]; then
+    echo "play-a dotnet child was not found under wrapper pid=$wrapper_pid" >&2
+    return 1
+  fi
+  kill -KILL "$child_pid"
+  for _ in $(seq 1 "$PROCESS_SHUTDOWN_ATTEMPTS"); do
+    kill -0 "$wrapper_pid" 2>/dev/null || break
+    sleep "$LOCAL_READINESS_POLL_SECONDS"
+  done
+  assert_expected_server_exit play-a 137 "SIGKILL"
+}
+
+restart_play_a() {
+  local index new_pid last_index
+  for index in "${!ORDERED_SERVER_ROLES[@]}"; do
+    if [[ "${ORDERED_SERVER_ROLES[$index]}" == "play-a" ]]; then
+      rm -f "$LOG_DIR/play-a.exit.log"
+      start_named_server play-a
+      last_index=$((${#PIDS[@]} - 1))
+      new_pid="${PIDS[$last_index]}"
+      PIDS[$index]="$new_pid"
+      unset "PIDS[$last_index]"
+      wait_named_server play-a
+      return 0
+    fi
+  done
+  echo "play-a role index was not found for restart" >&2
+  return 1
+}
+
 run_client() {
   local operation_group="$1"
   assert_servers_alive "client ${operation_group}"
@@ -771,7 +805,47 @@ run_client() {
     --session-a-tls-stream-endpoint "$SESSION_A_TLS_STREAM" \
     --session-b-stream-endpoint "$SESSION_B_STREAM" \
     --operation-group "$operation_group"
-  if [[ "$operation_group" == *"d13"* ]]; then
+  if [[ "$operation_group" == "sm-g1" ]]; then
+    local first_line client_pid client_status next_line
+    first_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
+    timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
+      2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
+      | tee -a "$LOG_DIR/client.stdout.log" &
+    client_pid=$!
+    wait_for_log_after client.stdout "spot-service sm-g1 crash-1-ready" "$first_line" 300
+    crash_play_a
+    next_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
+    wait_for_log_after client.stdout "spot-service sm-g1 restart-1-ready" "$first_line" 300
+    restart_play_a
+    wait_control_route "$SESSION_A_HTTP" play-a session-a-play-a-restarted
+    wait_for_log_after client.stdout "spot-service sm-g1 crash-2-ready" "$next_line" 300
+    crash_play_a
+    set +e
+    wait "$client_pid"
+    client_status=$?
+    set -e
+    [[ "$client_status" -eq 0 ]] || return "$client_status"
+  elif [[ "$operation_group" == "sm-g2" ]]; then
+    local first_line client_pid client_status
+    first_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
+    timeout "${CLIENT_PROCESS_TIMEOUT_SECONDS}s" dotnet "$CLIENT_DLL" --config "$config" \
+      2> >(tee -a "$LOG_DIR/client.stderr.log" >&2) \
+      | tee -a "$LOG_DIR/client.stdout.log" &
+    client_pid=$!
+    if ! wait_for_log_after client.stdout "spot-service sm-g2 scale-out-ready" "$first_line" 200; then
+      wait "$client_pid" || true
+      return 1
+    fi
+    SERVER_ROLES+=(play-b)
+    ORDERED_SERVER_ROLES+=(play-b)
+    start_named_server play-b
+    wait_named_server play-b
+    set +e
+    wait "$client_pid"
+    client_status=$?
+    set -e
+    [[ "$client_status" -eq 0 ]] || return "$client_status"
+  elif [[ "$operation_group" == *"d13"* ]]; then
     local first_line evidence_first_line client_pid session_pid session_pgid client_status
     first_line=$(($(wc -l <"$LOG_DIR/client.stdout.log") + 1))
     evidence_first_line=$(($(wc -l <"$LOG_DIR/play-a.evidence.log") + 1))
@@ -805,7 +879,7 @@ run_client() {
       | tee -a "$LOG_DIR/client.stdout.log"
   fi
   if [[ "$operation_group" == "sm-g1" ]]; then
-    assert_expected_server_exit play-a 137 "client ${operation_group} completion"
+    : # Both expected SIGKILL exits are asserted at their deterministic gates.
   else
     assert_servers_alive "client ${operation_group} completion"
   fi

@@ -138,6 +138,7 @@ run_client() {
   python3 "$ROOT_DIR/../write_role_config.py" "$config" -- \
     --config-dir "$CONFIG_DIR" \
     --node-a-url "$NODE_A_URL" \
+    --node-a-pid "$NODE_A_PID" \
     --node-b-url "$NODE_B_URL" \
     --node-c-url "$NODE_C_URL" \
     --node-a-stream-endpoint "$SESSION_A_STREAM" \

@@ -39,4 +39,4 @@ foreach (var name in selected)
     Console.WriteLine($"operation SpotActorTransfer.{name} passed");
 }
 
-Console.WriteLine("spot-actor-transfer e2e partial result=passed");
+Console.WriteLine("spot-actor-transfer e2e result=passed");

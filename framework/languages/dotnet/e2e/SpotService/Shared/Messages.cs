@@ -28,6 +28,16 @@ public sealed record JoinReq(string Key, string ActorId, string DisplayName, int
 
 public sealed record JoinRes(string SpotRid, string NodeRid, string ActorId);
 
+public sealed record EntryJoinRouteReq(string NodeRid, JoinReq Join);
+
+public sealed record NodeReadinessWaitReq(string NodeRid, int TimeoutMilliseconds = 10000);
+
+public sealed record NodeReadinessWaitRes(string NodeRid, bool PeerReady, bool EntrySpotReady);
+
+public sealed record EntryReadinessReq(string Marker);
+
+public sealed record EntryReadinessRes(string NodeRid, string Marker);
+
 public sealed record EnsureActorReq(string ActorId, string DisplayName, string NodeRid);
 
 public sealed record EnsureActorRes(string ActorId, string NodeRid, ulong Generation);
@@ -126,6 +136,21 @@ public sealed record ActorPushByActorReq(string ActorId, string Value);
 public sealed record ActorMissingWaitReq(string ActorId, int TimeoutMilliseconds = 10000);
 
 public sealed record ActorPushByActorRes(string ActorId, string Value, bool Delivered, string ErrorKind);
+
+public sealed record ActorRefSnapshotReq(string ActorId);
+
+public sealed record ActorRefSnapshotRes(string ActorId, string NodeRid, ulong Generation);
+
+public sealed record ActorRefRequestReq(
+    ActorRefSnapshotRes Actor,
+    string Value,
+    int DelayMilliseconds = 0,
+    int TimeoutMilliseconds = 3000);
+
+public sealed record ActorRefRequestRes(
+    bool Succeeded,
+    string ErrorKind,
+    ActorPingRes? Reply);
 
 public sealed record ComplexActorReq(
     string DisplayName,

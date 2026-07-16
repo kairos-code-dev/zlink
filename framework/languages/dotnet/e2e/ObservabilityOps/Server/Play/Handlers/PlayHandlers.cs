@@ -1,6 +1,7 @@
 using ObservabilityOps.Server.Play.Infrastructure;
 using ObservabilityOps.Server.Play.Spots;
 using ObservabilityOps.Server.Play.Support;
+using ObservabilityOps.Server.Support;
 using ObservabilityOps.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
@@ -19,6 +20,19 @@ internal sealed class EnsurePlayerHandler(IZLinkActorManager actors)
         var actor = await actors.GetOrCreateAsync(request.ActorId, ObservabilityNames.PlayerActorType,
             request, cancellationToken);
         return new EnsurePlayerRes(actor.ActorId, actor.NodeRid.ToString(), actor.Generation);
+    }
+}
+
+internal sealed class PlayBoundedOperationHandler(BoundedOperationGate gate)
+    : IZLinkSpotRequestHandler<PlayEntrySpot, PlayBoundedOperationReq, PlayBoundedOperationRes>
+{
+    public async ValueTask<PlayBoundedOperationRes> HandleAsync(
+        PlayEntrySpot spot,
+        PlayBoundedOperationReq request,
+        CancellationToken cancellationToken)
+    {
+        await gate.EnterAsync(cancellationToken);
+        return new PlayBoundedOperationRes(request.Marker, spot.Context.NodeRid.ToString());
     }
 }
 

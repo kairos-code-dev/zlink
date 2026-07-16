@@ -1,7 +1,6 @@
 // Verifies RL-B2 Crash During Inflight behavior.
 using ResilienceLifecycle.Client.Support;
 using ResilienceLifecycle.Shared;
-using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace ResilienceLifecycle.Client.Scenarios;
@@ -16,49 +15,29 @@ internal static class RlB2CrashDuringInflightScenario
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB)
     {
-        await providerA.Post("/admin/drain").AsyncRaw();
+        await providerA.Post("/admin/weight/exclude").AsyncRaw();
         await providerA.Post("/admin/weight/wait")
             .Body(new WeightWaitReq(0))
             .AsyncRaw();
 
         var marker = $"rl-b2-slow-{Guid.NewGuid():N}";
-        var inFlight = consumer.Post("/profile/request")
+        var inFlight = consumer.Post("/profile/request/attempt/3000")
             .Body(new ProfileReq("slow", marker))
-            .Async<ProfileRes>();
+            .Async<ProfileAttemptRes>();
 
         await providerB.Post("/evidence/wait")
             .Body(new EvidenceWaitReq([$"profile-start|rid=api-b|marker={marker}"], []))
             .Async<string[]>();
 
-        await providerB.Post("/admin/crash").AsyncRaw();
-        await processes.WaitProviderBExitedAsync();
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            try
-            {
-                var health = await providerB.Get("/health").AsyncRaw();
-                if (health.Status != 200) break;
-            }
-            catch
-            {
-                break;
-            }
+        await processes.KillProviderBAsync();
+        var crashResult = (await inFlight).Body;
+        ZlinkStreamAssert.Ensure(
+            crashResult.Reply is null
+            && crashResult.IsRetriable
+            && crashResult.ErrorKind is "RouteNotConnected" or nameof(TimeoutException),
+            $"RL-B2 crash result was '{crashResult.ErrorKind}', expected RouteNotConnected or timeout.");
 
-            await Task.Delay(100);
-        }
-
-        try
-        {
-            await inFlight;
-            throw new InvalidOperationException(
-                "RL-B2 in-flight request unexpectedly completed after provider crash.");
-        }
-        catch (ZLinkFrameworkException error) when (
-            error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
-        {
-        }
-
-        await providerA.Post("/admin/restore").AsyncRaw();
+        await providerA.Post("/admin/weight/include").AsyncRaw();
         await providerA.Post("/admin/weight/wait")
             .Body(new WeightWaitReq(100))
             .AsyncRaw();

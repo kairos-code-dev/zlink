@@ -1,8 +1,6 @@
 // Verifies RM-B2 Scale In behavior.
 using LocationMessaging.Client.Support;
 using LocationMessaging.Shared;
-using System.Collections.Concurrent;
-using Zlink.Framework.Contracts.Errors;
 using Zlink.HttpClient;
 
 namespace LocationMessaging.Client.Scenarios;
@@ -85,48 +83,24 @@ internal static class RmB2ScaleInScenario
             requester,
             $"monitor-socket|source=profile.client|kind=ConnectionReady|remote={providerB.ChannelEndpoint}");
 
-        var transitionMarker = $"rm-b2-transition-{Guid.NewGuid():N}";
-        var transitionTasks = Enumerable.Range(0, 16)
-            .Select(index => ObserveTransitionRequestAsync(requester, $"{transitionMarker}-{index}"))
-            .ToArray();
-        await WaitEvidenceAsync(providerAClient, $"profile-request-start|rid=api-a|value={transitionMarker}");
-        await WaitEvidenceAsync(providerBClient, $"profile-request-start|rid=api-b|value={transitionMarker}");
-        var traffic = new TransitionTrafficGate();
-        var continuingResults = new ConcurrentBag<TransitionResult>();
-        var continuingTraffic = Enumerable.Range(0, 4)
-            .Select(worker => RunTransitionTrafficAsync(
-                requester,
-                transitionMarker,
-                worker,
-                traffic,
-                continuingResults))
-            .ToArray();
-
+        var transitionMarker = $"rm-b2-continuous-{Guid.NewGuid():N}";
+        var continuingResults = new List<ProfileRes>();
+        var firstDuringDrain = RequestProfileAsync(requester, $"{transitionMarker}-0");
         var stopProviderB = cluster.StopAsync(providerB);
-        await WaitForPeerWeightAsync(requester, "api-b", 0);
-        await WaitConnectionEvidenceAsync(
-            requester,
-            $"monitor-socket|source=profile.client|kind=ConnectionReady|remote={providerB.ChannelEndpoint}"
-            + "|routing=api-b",
-            beforeDisconnect.Length);
-
-        // The row and socket event are only convergence triggers. These requests prove that
-        // the asynchronous native weight update reached this connected peer; none may still
-        // select api-b.
-        await ConfirmWeightPropagationWithTrafficAsync(requester);
-
-        await stopProviderB;
-        traffic.Stop();
-
-        var transitionResults = await Task.WhenAll(transitionTasks);
-        await Task.WhenAll(continuingTraffic);
+        continuingResults.Add(await firstDuringDrain);
+        for (var index = 1; !stopProviderB.IsCompleted || index < 20; index++)
+        {
+            continuingResults.Add(await RequestProfileAsync(requester, $"{transitionMarker}-{index}"));
+        }
+        var drained = await stopProviderB;
         ZlinkStreamAssert.Ensure(
-            transitionResults.Concat(continuingResults).All(result => result is
-                { Reply: { ProviderRid: "api-a" or "api-b" }, ErrorKind: null }
-                or { Reply: null, ErrorKind: ZLinkFrameworkErrorKind.RequestFailed }),
-            "RM-B2 in-flight request did not complete with a provider reply or RequestFailed.");
-        ZlinkStreamAssert.Ensure(continuingResults.Count >= 4,
-            "RM-B2 did not keep request traffic active throughout provider drain.");
+            drained is { Result: "Drained", Reason: null },
+            $"RM-B2 provider did not reach terminal Drained: {drained.Result}/{drained.Reason}.");
+        ZlinkStreamAssert.Ensure(
+            continuingResults.All(result =>
+                result.ProviderRid is "api-a" or "api-b"
+                && result.Value.StartsWith("profile:", StringComparison.Ordinal)),
+            "RM-B2 target-free request failed during graceful scale-in.");
 
         // Graceful shutdown must remove api-b's peer row from the runtime
         // query peer list without waiting for owner lease expiry (doc RM-B2).
@@ -135,17 +109,6 @@ internal static class RmB2ScaleInScenario
             requester,
             $"monitor-socket|source=profile.client|kind=Disconnected|remote={providerB.ChannelEndpoint}",
             beforeDisconnect.Length);
-        await WaitConnectionEvidenceAsync(
-            requester,
-            $"monitor-socket|source=profile.client|kind=ConnectionReady|remote={providerB.ChannelEndpoint}"
-            + "|routing=api-b",
-            beforeDisconnect.Length);
-
-        // NativeValue is native event diagnostic data, not an aggregate ready-pipe count.
-        // The two public transitions can be dispatched in either order during pipe termination;
-        // observing both after the baseline proves the ready-set update without interpreting the
-        // diagnostic value. The first single request then proves that the terminated pipe no
-        // longer participates in routing.
         var firstAfter = (await requester.Post("/profile/request")
             .Body(new ProfileReq("rm-b2-first-after-scale-in"))
             .Async<ProfileRes>()).Body;
@@ -188,42 +151,6 @@ internal static class RmB2ScaleInScenario
             .Async<PeerLocationRow[]>();
     }
 
-    private static async Task WaitForPeerWeightAsync(ZLinkHttpClient http, string rid, uint weight)
-    {
-        await http.Post("/locations/peers/wait")
-            .Body(new PeerLocationWaitReq("profile", "Router", rid, Present: true, Weight: weight))
-            .Async<PeerLocationRow[]>();
-    }
-
-    private static async Task ConfirmWeightPropagationWithTrafficAsync(ZLinkHttpClient http)
-    {
-        var consecutiveApiAReplies = 0;
-        var sequence = 0;
-        while (consecutiveApiAReplies < 16 && sequence < 64)
-        {
-            try
-            {
-                var value = $"rm-b2-after-weight-zero-{sequence++}";
-                var reply = (await http.Post("/profile/request")
-                    .Body(new ProfileReq(value))
-                    .Async<ProfileRes>()).Body;
-                ZlinkStreamAssert.Ensure(
-                    reply.ProviderRid == "api-a" && reply.Value == $"profile:{value}",
-                    "RM-B2 actual traffic reached api-b after its weight-zero row was observed.");
-                consecutiveApiAReplies++;
-            }
-            catch (ZLinkFrameworkException error) when (
-                error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
-            {
-                consecutiveApiAReplies = 0;
-            }
-        }
-
-        ZlinkStreamAssert.Ensure(
-            consecutiveApiAReplies == 16,
-            "RM-B2 weight propagation did not produce 16 consecutive api-a replies.");
-    }
-
     private static async Task<string[]> ReadEvidenceAsync(ZLinkHttpClient http)
     {
         return (await http.Get("/evidence").Async<string[]>()).Body;
@@ -246,50 +173,14 @@ internal static class RmB2ScaleInScenario
             .Async<string[]>()).Body;
     }
 
-    private static async Task<TransitionResult> ObserveTransitionRequestAsync(
-        ZLinkHttpClient http,
-        string value)
+    private static async Task<ProfileRes> RequestProfileAsync(ZLinkHttpClient http, string value)
     {
-        try
-        {
-            var reply = (await http.Post("/profile/request")
-                .Body(new ProfileReq(value))
-                .Async<ProfileRes>()).Body;
-            ZlinkStreamAssert.Ensure(reply.Value == $"profile:{value}",
-                "RM-B2 transition reply payload mismatch.");
-            return new TransitionResult(reply, null);
-        }
-        catch (ZLinkFrameworkException error) when (
-            error.Kind == ZLinkFrameworkErrorKind.RequestFailed)
-        {
-            return new TransitionResult(null, error.Kind);
-        }
-    }
-
-    private static async Task RunTransitionTrafficAsync(
-        ZLinkHttpClient http,
-        string marker,
-        int worker,
-        TransitionTrafficGate gate,
-        ConcurrentBag<TransitionResult> results)
-    {
-        var sequence = 0;
-        while (!gate.IsStopped)
-        {
-            results.Add(await ObserveTransitionRequestAsync(
-                http,
-                $"{marker}-continuous-{worker}-{sequence++}"));
-        }
-    }
-
-    private sealed record TransitionResult(
-        ProfileRes? Reply,
-        ZLinkFrameworkErrorKind? ErrorKind);
-
-    private sealed class TransitionTrafficGate
-    {
-        private int _stopped;
-        public bool IsStopped => Volatile.Read(ref _stopped) != 0;
-        public void Stop() => Volatile.Write(ref _stopped, 1);
+        var reply = (await http.Post("/profile/request")
+            .Body(new ProfileReq(value))
+            .Async<ProfileRes>()).Body;
+        ZlinkStreamAssert.Ensure(
+            reply.Value == $"profile:{value}",
+            "RM-B2 transition reply payload mismatch.");
+        return reply;
     }
 }

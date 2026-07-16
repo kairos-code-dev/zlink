@@ -37,6 +37,41 @@ internal sealed class EnsureActorHandler(
     }
 }
 
+[ZLinkSpotRequestHandler("JoinReq")]
+internal sealed class EntryJoinHandler(
+    ApplicationJoinCoordinator joins,
+    NodeOptions node,
+    EvidenceStore evidence)
+    : IZLinkSpotRequestHandler<ScenarioEntrySpot, JoinReq, JoinRes>
+{
+    public ValueTask<JoinRes> HandleAsync(
+        ScenarioEntrySpot spot,
+        JoinReq request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        joins.Start(request);
+        evidence.Add($"application-join-started|rid={node.Rid}|actor={request.ActorId}|key={request.Key}");
+        return ValueTask.FromResult(new JoinRes(
+            spot.Context.SpotRid.ToString(), node.Rid, request.ActorId));
+    }
+}
+
+[ZLinkSpotRequestHandler("EntryReadinessReq")]
+internal sealed class EntryReadinessHandler(NodeOptions node)
+    : IZLinkSpotRequestHandler<ScenarioEntrySpot, EntryReadinessReq, EntryReadinessRes>
+{
+    public ValueTask<EntryReadinessRes> HandleAsync(
+        ScenarioEntrySpot spot,
+        EntryReadinessReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = spot;
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(new EntryReadinessRes(node.Rid, request.Marker));
+    }
+}
+
 [ZLinkHandlerGroup("play")]
 internal sealed class ControlPingHandler(NodeOptions node, EvidenceStore evidence)
     : IZLinkRouteRequestHandler<ControlPingReq, ControlPingRes>

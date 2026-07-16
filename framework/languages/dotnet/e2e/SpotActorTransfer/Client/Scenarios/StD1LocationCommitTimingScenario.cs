@@ -26,9 +26,9 @@ internal static class StD1LocationCommitTimingScenario
             $"ST-D1|{actorId}|admission|spot={spotRid}",
             $"ST-D1|{actorId}|joined_wait|{spotRid}"
         ]);
-        SpotActorTransferScenarioContext.RequireNoContains(
-            waitingEvidence,
-            $"ST-D1|{actorId}|success_reply|{spotRid}",
+        ZlinkStreamAssert.Ensure(
+            !waitingEvidence.Any(item => SpotActorTransferScenarioContext.EvidenceText(item)
+                .Contains($"ST-D1|{actorId}|success_reply|{spotRid}", StringComparison.Ordinal)),
             "ST-D1 local join returned success before OnJoinedActorAsync completed.");
         var during = await context.GetActorRefAsync(context.NodeA, actorId);
         ZlinkStreamAssert.Ensure(

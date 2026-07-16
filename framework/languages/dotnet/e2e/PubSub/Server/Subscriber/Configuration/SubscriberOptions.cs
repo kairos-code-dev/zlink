@@ -9,7 +9,8 @@ internal sealed record SubscriberOptions(
     string RedisEndpoint,
     string RedisKeyPrefix,
     int HandlerDelayMs = 0,
-    string? EvidenceFile = null)
+    string? EvidenceFile = null,
+    string? PublisherEndpoint = null)
 {
     public static SubscriberOptions Parse(string[] args)
         => E2eConfiguration.Load<SubscriberOptions>(args);

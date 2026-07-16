@@ -31,7 +31,8 @@ try
             lateSubscriber,
             subscribers,
             processLauncher,
-            options.LateSubscriberUrl),
+            options.LateSubscriberUrl,
+            options.PublisherEndpoint),
         ["PS-B1"] = () => PsB1SlowSubscriberScenario.RunAsync(publisher, subscribers.Take(2).ToArray(), subscribers[^1]),
         ["PS-B2"] = async () => restartedPublisher = await PsB2PublisherRestartScenario.RunAsync(
             publisher,

@@ -10,6 +10,7 @@ using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Locations.Redis;
 
@@ -29,6 +30,7 @@ internal static class PlayHostFactory
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<EvidenceStore>();
         builder.Services.AddSingleton<DrainOperation>();
+        builder.Services.AddSingleton<BoundedOperationGate>();
         if (options.MetricsEnabled) builder.Services.AddSingleton<MetricEvidenceCollector>();
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -90,6 +92,19 @@ internal static class PlayHostFactory
                 TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000)),
                 cancellationToken)));
         app.MapDrainOperations();
+        app.MapBoundedOperationGate();
+        app.MapPost("/operation/start", async (
+            PlayBoundedOperationReq request,
+            IZLinkRouteClient routes,
+            IZLinkSpotHandleResolver spots,
+            CancellationToken cancellationToken) =>
+        {
+            var entry = await spots.ResolveSpotHandleAsync(RoutingId.From(options.Rid), cancellationToken)
+                        ?? throw new InvalidOperationException("The local Play entry spot was not found.");
+            var response = await routes.RequestToSpot(entry, request)
+                .Async<PlayBoundedOperationRes>(cancellationToken);
+            return Results.Ok(response);
+        });
         return app;
 
         async Task<IResult> CreateEvidenceAsync(

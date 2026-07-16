@@ -27,12 +27,20 @@ public sealed record WeightWaitReq(
     int Expected,
     int TimeoutMilliseconds = 10000);
 
+public sealed record DrainResultRes(string Result, string? Reason = null);
+
+public sealed record ConnectionWaitReq(
+    string[] ContainsAll,
+    int AfterCount,
+    int TimeoutMilliseconds = 30000);
+
 public sealed record TopologyWaitReq(
     string RoutingId,
     string State,
     int ExpectedCount,
     int TimeoutMilliseconds = 30000,
-    uint? ExpectedWeight = null);
+    uint? ExpectedWeight = null,
+    bool? ExpectedDraining = null);
 
 public sealed record RegistryHealthWaitReq(
     bool ExpectedHealthy,

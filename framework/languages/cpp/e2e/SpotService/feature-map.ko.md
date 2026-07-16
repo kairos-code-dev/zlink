@@ -7,6 +7,9 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
 
 ## 최신 검증
 
+- 2026-07-16 `SM-D2`를 route mesh 없이 실행한 forward·reverse·`shuffle:20260709` 기동 순서가 모두 통과했다.
+  - 로그: `logs/20260716-111123-3627029`, `logs/20260716-111548-3634712`, `logs/20260716-111550-3635089`
+  - 분리된 Session·Play 역할에서 전체 actor snapshot bind, 원격 actor request, bound-session push, unbound client negative를 검증했다.
 - 2026-07-07 `CMAKE_BUILD_PARALLEL_LEVEL=1 nice -n 10 cmake --build framework/languages/cpp/build-redis-vcpkg --target zlink_cpp_e2e_spot_service_client zlink_cpp_e2e_spot_service_play zlink_cpp_e2e_spot_service_gateway zlink_cpp_e2e_spot_service_multinode zlink_cpp_e2e_spot_service_session -- -j1` 통과.
   - `SM-B9`, `SM-C5`, `SM-D15`, `SM-F6` 구현을 포함한 SpotService 관련 C++ target build 검증이다.
 - 2026-07-07 `E2E_START_ORDER=reverse ZLINK_CPP_E2E_BUILD_DIR=/home/hep7/project/kairos/zlink/framework/languages/cpp/build-redis-vcpkg ZLINK_CPP_E2E_SKIP_BUILD=1 CMAKE_BUILD_PARALLEL_LEVEL=1 nice -n 10 timeout 240s framework/languages/cpp/e2e/SpotService/run_e2e.sh SM-F6` 통과.
@@ -67,8 +70,8 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   검증한다.
 - `SM-D1`: 실제 `session-a` stream gateway에 붙어 `play-a` actor로 local stream relay를 보내고,
   actor가 bound session으로 보낸 push를 client 수신과 play/session evidence로 검증한다.
-- `SM-D2`: `session-a` gateway에 붙은 상태에서 preferred가 아닌 `play-b` actor로 remote stream
-  relay를 보내고, remote actor push가 session gateway route를 거쳐 돌아오는지 검증한다.
+- `SM-D2`: route mesh를 등록하지 않은 `session-a` gateway와 분리된 `play-b` actor 사이에서 remote
+  stream relay를 보내고, actor push가 SpotMesh의 bound-session 경로를 거쳐 반환되는지 검증한다.
 - `SM-D3`: entry spot actor와 user spot actor를 각각 실제 stream session에 bind하고,
   public stream connector request/push로 entry/user spot 경로의 relay와 bound-session push를
   검증한다.

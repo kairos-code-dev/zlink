@@ -228,11 +228,14 @@ take ownership of a freshly received native message efficiently. Unlike
 message — calling `zlink_msg_adopt` on an already-initialized `dest_`
 produces undefined behaviour.
 
-On success, `dest_` owns the original content of `src_` and `src_`
-becomes an empty initialized message. The caller does not need to close `src_`
-separately for the adopted content — `zlink_msg_adopt` resets `src_` to an
-empty initialized state internally, so the original content now belongs to
-`dest_`. (Closing the now-empty `src_` is harmless but unnecessary.)
+On success, `dest_` becomes an initialized message that owns the original
+content of `src_`, and `src_` becomes an empty initialized message that owns no
+payload. Each message object must be closed exactly once before the end of its
+lifetime. Closing the empty `src_` does not affect the adopted payload; its
+storage must not be discarded or initialized again without that close. To reuse
+the source storage after a successful adopt, close it and then initialize it
+again. On failure, `src_` retains the original payload and `dest_` remains
+uninitialized.
 
 **Returns:** `ZLINK_CONFIG_OK` on success; otherwise a `zlink_config_result_t` value. `zlink_errno()` retains the detailed internal errno for diagnostics.
 

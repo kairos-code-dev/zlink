@@ -224,10 +224,13 @@ zlink_config_result_t zlink_msg_adopt (zlink_msg_t *dest_, zlink_msg_t *src_);
 달리 `dest_`는 현재 초기화된 메시지를 소유하지 않아야 합니다 — 이미 초기화된
 `dest_`에 `zlink_msg_adopt`를 호출하면 정의되지 않은 동작이 발생합니다.
 
-성공 시 `dest_`는 `src_`의 원래 내용을 소유하고, `src_`는 빈 초기화 상태의
-메시지가 됩니다. `zlink_msg_adopt`가 내부적으로 `src_`를 빈 초기화 상태로
-재설정하므로, 인수한 내용을 위해 `src_`를 별도로 close할 필요는 없습니다.
-(이미 비워진 `src_`를 close해도 무해하지만 불필요합니다.)
+성공 시 `dest_`는 초기화된 메시지가 되어 `src_`의 원래 내용을 소유하고,
+`src_`는 payload를 소유하지 않는 빈 초기화 상태가 됩니다. 두 메시지 객체는
+각각의 수명이 끝나기 전에 정확히 한 번 `zlink_msg_close()`해야 합니다. 빈
+`src_`를 close해도 인수한 payload에는 영향을 주지 않으며, close하지 않은 채
+storage를 폐기하거나 다시 init하면 안 됩니다. 성공한 adopt 뒤 `src_` storage를
+재사용하려면 먼저 close한 다음 다시 init합니다. 실패하면 `src_`가 원래
+payload를 계속 소유하고 `dest_`는 초기화되지 않은 상태로 유지됩니다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 

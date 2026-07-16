@@ -10,6 +10,8 @@ import org.springframework.context.SmartLifecycle;
 import systems.zlink.e2e.resiliencelifecycle.provider.infrastructure.ScenarioState;
 import systems.zlink.e2e.resiliencelifecycle.shared.Contracts;
 import systems.zlink.framework.channels.ZLinkChannelRuntimeOptions;
+import systems.zlink.framework.monitoring.Drained;
+import systems.zlink.framework.monitoring.ZLinkDrainControl;
 
 public final class EvidenceHttpServer implements SmartLifecycle {
     private final ScenarioState state;
@@ -17,7 +19,9 @@ public final class EvidenceHttpServer implements SmartLifecycle {
     private final String endpoint;
     private final ZLinkChannelRuntimeOptions runtimeOptions;
     private final ConfigurableApplicationContext applicationContext;
+    private final ZLinkDrainControl drain;
     private HttpServer server;
+    private java.util.concurrent.ExecutorService executor;
     private boolean running;
 
     public EvidenceHttpServer(
@@ -25,12 +29,14 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         ObjectMapper json,
         String endpoint,
         ZLinkChannelRuntimeOptions runtimeOptions,
-        ConfigurableApplicationContext applicationContext) {
+        ConfigurableApplicationContext applicationContext,
+        ZLinkDrainControl drain) {
         this.state = state;
         this.json = json;
         this.endpoint = endpoint;
         this.runtimeOptions = runtimeOptions;
         this.applicationContext = applicationContext;
+        this.drain = drain;
     }
 
     @Override
@@ -41,6 +47,8 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         try {
             URI uri = URI.create(endpoint);
             server = HttpServer.create(new InetSocketAddress(uri.getHost(), uri.getPort()), 0);
+            executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+            server.setExecutor(executor);
             server.createContext("/health", exchange -> write(exchange, 200, "ok\n"));
             server.createContext("/evidence", exchange -> {
                 byte[] body = json.writeValueAsBytes(state.snapshot());
@@ -65,7 +73,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
             server.createContext("/admin/fault/none", exchange -> setObserverThrows(exchange, false));
             server.createContext("/admin/shutdown", exchange -> {
                 state.record("AdminShutdown", state.providerRid());
-                write(exchange, 200, "{\"status\":\"shutting-down\"}\n");
+                var result = drain.drain(java.time.Duration.ofSeconds(30))
+                    .toCompletableFuture().join();
+                String terminal = result instanceof Drained ? "Drained" : "ForceStopped";
+                write(exchange, 200, "{\"result\":\"" + terminal + "\"}\n");
                 Thread shutdown = new Thread(applicationContext::close, "java-rl-admin-shutdown");
                 shutdown.setDaemon(false);
                 shutdown.start();
@@ -120,6 +131,10 @@ public final class EvidenceHttpServer implements SmartLifecycle {
         if (server != null) {
             server.stop(0);
             server = null;
+        }
+        if (executor != null) {
+            executor.shutdownNow();
+            executor = null;
         }
         running = false;
     }

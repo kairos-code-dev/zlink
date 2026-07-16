@@ -417,6 +417,25 @@ public final class ResilienceScenarioContext {
             "POST " + url + " returned " + response.status());
     }
 
+    public CompletionStage<JsonNode> postJsonAsync(String url) {
+        HttpTarget target = HttpTarget.from(url);
+        return ZLinkHttpClient.create(target.baseUrl())
+            .timeout(Duration.ofSeconds(35))
+            .post(target.path())
+            .submitRaw()
+            .thenApply(response -> parseJsonResponse(url, response));
+    }
+
+    private JsonNode parseJsonResponse(String url, RawHttpResponse response) {
+        ensure(response.status() >= 200 && response.status() < 300,
+            "POST " + url + " returned " + response.status());
+        try {
+            return json.readTree(response.body());
+        } catch (IOException error) {
+            throw new IllegalStateException("failed to parse POST response from " + url, error);
+        }
+    }
+
     public static void sleep(long millis) {
         try {
             Thread.sleep(millis);

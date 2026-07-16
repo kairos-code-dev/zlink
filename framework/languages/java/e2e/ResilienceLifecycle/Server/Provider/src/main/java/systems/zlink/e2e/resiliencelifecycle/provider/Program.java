@@ -62,13 +62,15 @@ public final class Program {
         ObjectMapper json,
         ZLinkChannelRuntimeOptions runtimeOptions,
         ConfigurableApplicationContext applicationContext,
+        systems.zlink.framework.monitoring.ZLinkDrainControl drain,
         ProviderOptions options) {
         return new EvidenceHttpServer(
             state,
             json,
             options.httpEndpoint(),
             runtimeOptions,
-            applicationContext);
+            applicationContext,
+            drain);
     }
 
     @Bean

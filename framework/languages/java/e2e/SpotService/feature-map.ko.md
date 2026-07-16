@@ -160,14 +160,19 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
 
 ## public contract parity 또는 spec 검토 대기
 
-현재 이 구역에 남은 항목은 없다. 다른 언어 구현만 근거인 기능은 Java public API로 바로 추가하지
-않고, 별도 draft/spec 검토 대상으로 분리한다.
+`SM-G2` 진단에서 public location query가 `play-b`의 `actor:scenario` capability와 Entry Spot row를
+반환하고 해당 rid의 `SpotHandle` resolve도 성공했지만, 그 handle로 보낸 application `JoinReq`는
+Java runtime의 `NOT_FOUND`로 끝났다(`logs/20260716-092129-3281815/`). Entry Spot을 별도 HTTP actor
+생성 endpoint로 우회하지 않고 일반 Spot handle request와 같은 공개 경로에서 dispatch할 수 있도록
+runtime을 보완해야 한다. 다른 언어 구현만 근거인 기능은 Java public API로 바로 추가하지 않고,
+별도 draft/spec 검토 대상으로 분리한다.
 
 ## Java public contract 기반 E2E 미구현
 
 `SM-G2`는 runner가 play-a의 기존 owner를 먼저 만든 뒤 play-b를 추가로 시작하고, Client가 public
 readiness를 확인한 다음 신규 actor와 Spot을 play-b에 배치하도록 orchestration을 분리해야 한다.
-node 추가만으로 기존 owner가 이동하거나 자동 재분배된다고 단언하면 안 된다.
+node 추가만으로 기존 owner가 이동하거나 자동 재분배된다고 단언하면 안 된다. 이 orchestration의
+red gate는 `logs/20260716-091218-3232864/`에서 기존 구현의 선기동 의존을 확인했다.
 
 ## E2E/harness 대기
 

@@ -1121,6 +1121,15 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
     Spot을 직접 만든다. 기존 play-a owner 유지, play-b peer/capability와 Entry Spot handle readiness,
     application `JoinReq` actor 생성 순서가 없다. node 추가만으로 owner가 바뀐다는 기존
     `owner-remap` 표현도 갱신 계약과 반대다.
+  - 추가 blocker: runner가 `play-a`의 기존 Spot 생성·요청 완료 뒤 `play-b`를 시작하도록 만든 red
+    gate에서 기존 구현은 `play-b` HTTP 연결 실패로 끝났다
+    (`SpotService/logs/20260716-091218-3232864/`). public location query에서 `play-b`의
+    `actor:scenario` capability와 Entry Spot row를 확인하고 그 rid의 `SpotHandle` resolve까지 성공한
+    진단 구현에서도, 준비된 handle로 application `JoinReq`를 한 번 보내면 Java runtime이
+    `ZlinkRequestException(NOT_FOUND)`를 반환했다
+    (`SpotService/logs/20260716-092129-3281815/`). 기존 `play-a` owner의 증설 전·후 요청은 모두
+    성공했으므로 owner 유지와 Entry request 실패가 분리된다. 다른 노드의 actor manager를 HTTP로
+    직접 호출하거나 request를 재시도하는 우회 없이 Entry Spot handle request runtime을 고쳐야 한다.
 - [ ] **E2E-JV-27** (가짜 통과) — PubSub reconnect와 publisher restart의 lifecycle gate가 다르다.
   - 재검증: `PS-A4`는 subscriber process를 종료·재시작해 application startup이 handler를 다시
     등록하므로 같은 process의 transport reconnect와 기존 subscription 재적용을 검증하지 않는다.
@@ -1170,6 +1179,7 @@ SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connecto
 | blocker | 현재 증거 | 계약을 소유한 계층의 선택지 |
 |---------|-----------|------------------------------|
 | RouteMesh target 오류 | 없는 rid가 `TimeoutException`; enum에는 `REQUEST_TARGET_NOT_FOUND`가 이미 있음 | (A) runtime이 현재 member snapshot 부재를 submit 전에 판정, (B) native route 결과에 target-not-found를 추가해 Java 오류로 매핑. E2E에서 timeout을 정답으로 유지하는 안은 계약과 충돌하므로 제외한다. |
+| Entry Spot handle request | `play-b` capability·Entry row·handle resolve 뒤 application `JoinReq`가 `NOT_FOUND`; 기존 user Spot request는 증설 전·후 성공 | (A) Entry Spot을 일반 `SpotHandle` request dispatch 대상 registry에 등록, (B) 기존 spot route dispatcher가 handle의 `ENTRY` kind를 같은 공개 request 경로로 전달하도록 보완. 별도 E2E HTTP actor-create 우회나 새 배치 API는 공통 계약과 충돌하므로 제외한다. |
 | Graceful scale-in 부하 제외 | RM-B2 전파 구간 요청이 framework 5초 timeout으로 실패 | (A) `Draining=true` peer를 target-free channel load balancer 후보에서 즉시 제외, (B) drain 시작 시 socket admission/weight 전파를 완료한 뒤 terminal wait로 진입. E2E에서 요청 수를 줄이거나 timeout을 늘리는 안은 계약 위반을 숨기므로 제외한다. |
 | Monitoring source registry | 언어별 spec의 capability-qualified source를 startup이 거부 | (A) runtime registry key를 `<channel>.<capability>`로 통일, (B) 등록 시 bare 이름을 정식 이름으로 확장. E2E가 bare 이름을 계속 쓰는 안은 source identity 계약을 검증하지 못한다. |
 | Execution turn | ATD-A1 실제 순서가 계약과 반대 | (A) incomplete stage 완료까지 turn을 보유, (B) 정식 terminator가 suspension 지점에서만 turn을 양도. 현재 계약에 맞는 선택을 공통 runtime에서 확정한 뒤 Java에 구현한다. |

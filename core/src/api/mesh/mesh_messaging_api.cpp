@@ -144,6 +144,25 @@ int check_submit_state_locked (mesh_node_t *node_)
 //  Builds and admits one locally-delivered record. Handles request
 //  bookkeeping (operation + one-shot reply route) when operation_kind_ is a
 //  request kind.
+//  Submit observability: one MESSAGE_SUBMITTED per successful application
+//  submit and one BACKPRESSURED per admission rejection under pressure. The
+//  monitor queue aggregates both kinds under overflow.
+void emit_submit_event (mesh_node_t *node_,
+                        zlink_mesh_monitor_event_kind_t kind_,
+                        zlink_mesh_owner_kind_t owner_kind_,
+                        const std::string &channel_,
+                        int32_t error_)
+{
+    zlink_mesh_monitor_event_t event;
+    memset (&event, 0, sizeof (event));
+    event.kind = kind_;
+    event.owner_kind = owner_kind_;
+    if (!channel_.empty ())
+        snprintf (event.channel_name, sizeof (event.channel_name), "%s", channel_.c_str ());
+    event.failure_errno = error_;
+    emit_monitor_event (node_, event);
+}
+
 zlink_submit_result_t submit_local_record (mesh_node_t *node_,
                                            const owner_id_t &destination_,
                                            const owner_id_t &requester_,
@@ -206,11 +225,13 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
       blocking ? static_cast<uint32_t> (node_->sndtimeo_ms < 0 ? 0 : node_->sndtimeo_ms) : 0;
     if (admit_record (node_, destination_, domain_application, record, blocking, admit_timeout)
         != 0) {
+        const int reason = errno;
         if (is_request) {
             std::lock_guard<std::mutex> lock (node_->mutex);
             node_->operations.erase (op_id.low);
             node_->reply_routes.erase (reply_serial);
         }
+        errno = reason;
         return submit_errno_result ();
     }
 
@@ -228,6 +249,9 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
         if (node_->monitor)
             node_->monitor->counters.submitted_messages += 1;
     }
+    emit_submit_event (node_, ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED,
+                       static_cast<zlink_mesh_owner_kind_t> (destination_.kind), channel_name_,
+                       0);
     return ZLINK_SUBMIT_OK;
 }
 
@@ -252,9 +276,18 @@ zlink_submit_result_t submit_remote (mesh_node_t *node_,
         const zlink_submit_result_t rc = wire_submit_data (
           node_, peer_rid_, type, 0, channel_, metadata_, parts_, part_count_, flags_);
         if (rc == ZLINK_SUBMIT_OK) {
-            std::lock_guard<std::mutex> lock (node_->mutex);
-            if (node_->monitor)
-                node_->monitor->counters.submitted_messages += 1;
+            {
+                std::lock_guard<std::mutex> lock (node_->mutex);
+                if (node_->monitor)
+                    node_->monitor->counters.submitted_messages += 1;
+            }
+            emit_submit_event (node_, ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED,
+                               ZLINK_MESH_OWNER_NODE, channel_, 0);
+        } else if (errno == EAGAIN || errno == ETIMEDOUT) {
+            const int reason = errno;
+            emit_submit_event (node_, ZLINK_MESH_MONITOR_BACKPRESSURED, ZLINK_MESH_OWNER_NODE,
+                               channel_, reason);
+            errno = reason;
         }
         return rc;
     }
@@ -265,8 +298,15 @@ zlink_submit_result_t submit_remote (mesh_node_t *node_,
     const zlink_submit_result_t rc = wire_submit_data (
       node_, peer_rid_, type, op_id.low, channel_, metadata_, parts_, part_count_, flags_);
     if (rc != ZLINK_SUBMIT_OK) {
-        std::lock_guard<std::mutex> lock (node_->mutex);
-        node_->operations.erase (op_id.low);
+        const int reason = errno;
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            node_->operations.erase (op_id.low);
+        }
+        if (reason == EAGAIN || reason == ETIMEDOUT)
+            emit_submit_event (node_, ZLINK_MESH_MONITOR_BACKPRESSURED, ZLINK_MESH_OWNER_NODE,
+                               channel_, reason);
+        errno = reason;
         return rc;
     }
     if (schedule_operation_timeout (node_, op_id.low, timeout_ms_) != 0)
@@ -277,6 +317,8 @@ zlink_submit_result_t submit_remote (mesh_node_t *node_,
         if (node_->monitor)
             node_->monitor->counters.submitted_messages += 1;
     }
+    emit_submit_event (node_, ZLINK_MESH_MONITOR_MESSAGE_SUBMITTED, ZLINK_MESH_OWNER_NODE,
+                       channel_, 0);
     return ZLINK_SUBMIT_OK;
 }
 

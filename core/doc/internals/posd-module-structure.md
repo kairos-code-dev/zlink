@@ -36,13 +36,12 @@ flowchart TB
     end
 
     subgraph SAL ["Service Access Layer"]
-        spot_node_access["spot_node_access_t"]
-        spot_subject_access["spot_subject_access"]
+        mesh_c_internal["api/mesh seam (mesh_c_internal · mesh_api_internal)"]
     end
 
     subgraph SvcRT ["Service Runtime"]
         direction LR
-        spot_rt["SPOT: node · pub · sub · data_plane · handle · runtime"]
+        mesh_rt["Mesh: mesh_runtime · mesh_wire"]
         common_rt["Common: runtime_base · api_guard · monitor · bridge"]
     end
 
@@ -104,8 +103,8 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 
 | Access Seam | Location | Role |
 |-------------|----------|------|
-| `spot_node_access_t` | `services/spot/spot_node_access.hpp` | SpotNode lifecycle, bind, peer connect, internal attachment coordination |
-| `spot_subject_access` (free function) | `services/spot/spot_subject_access.hpp` | Publish, subscribe, option, handler, monitor, type casting |
+| `api/mesh/mesh_c_internal.hpp` | `api/mesh/` | Public handle validation, versioned struct checks, entry into the mesh runtime |
+| `api/mesh/mesh_api_internal.hpp` | `api/mesh/` | Seam through which cross-cutting concerns (options, poller, timers) enter mesh |
 
 `service_public_api_guard_t` is the common admission/close guard for all services. It tracks public-API entry and the close/busy state, and provides destroy lifecycle gates (`EBUSY`/`ESHUTDOWN`). Callback-mode tracking lives separately in `service_mode_state_t`.
 
@@ -113,35 +112,24 @@ Service-local seam provided by each service. Prevents the API layer from knowing
 
 Concrete implementation of each service. Common infrastructure is in `services/common/`.
 
-**SPOT** (`services/spot/`):
+**Mesh** (`services/mesh/`, `api/mesh/`):
 
 | Module | Role |
 |--------|------|
-| `spot_node.cpp/hpp` | SpotNode orchestration |
-| `spot_handle.hpp` | Public handle struct (tag validation, pub/sub refs, pending defaults) |
-| `spot_pub.cpp/hpp` | Publish path |
-| `spot_sub.cpp/hpp` | Subscribe path |
-| `spot_sub_option.cpp` | Sub-side option handling |
-| `spot_sub_recv.cpp` | Sub-side recv handling |
-| `spot_data_plane.cpp` | Data plane core |
-| `spot_data_plane_forwarding.cpp` | Ingress/egress message forwarding |
-| `spot_data_plane_pending.cpp` | Pending message copy, reference accounting, and retry queues under backpressure |
-| `spot_data_plane_protocol.cpp` | Control messages, subscription updates, bootstrap |
-| `spot_data_plane_internal.hpp` | Data plane internal state and protocol definitions |
-| `spot_node_state.hpp` | Extracted SpotNode state bundles for TLS, endpoint, handle, and service attachment |
-| `spot_subject_access.cpp/hpp` | Subject-level API seam (publish, recv, option, handler) |
-| `spot_runtime.cpp/hpp` | Runtime lifecycle |
+| `mesh_runtime.cpp/hpp` | Object model: mesh_node_t, owner mailboxes, ready index, claims, budgets, monitor queue, handle registry |
+| `mesh_wire.cpp/hpp` | Node-owned ROUTER wire: ingress thread, envelope codec, admission, transfer data plane |
+| `api/mesh/mesh_node_api.cpp` | Lifecycle, membership, peer, option and status C API |
+| `api/mesh/mesh_messaging_api.cpp` | Node/channel/Spot direct messaging and Logical Multicast |
+| `api/mesh/mesh_dispatch_api.cpp` | Ready handler, drain, batches, claims, reply tokens |
+| `api/mesh/mesh_actor_api.cpp` | Actor creation, lookup, join, messaging |
+| `api/mesh/mesh_transfer_api.cpp` | Transfer prepare/commit/activate/abort and the fence |
+| `api/mesh/mesh_monitor_api.cpp` | MeshNode monitor |
+| `api/mesh/mesh_stream_session_api.cpp` | STREAM session service |
 
-Recent refactors moved the large internal state structs out of `spot_node_t`
-and into `spot_node_state.hpp`. `spot_node_t` still coordinates lifecycle and
-control flow, but TLS, service-attachment, and summary ownership now lives in
-explicit state bundles instead of one monolithic header body.
-
-The data-plane forwarding path follows the same split. `spot_data_plane_forwarding.cpp`
-owns the delivery order between ingress, mesh, and local fanout. `spot_data_plane_pending.cpp`
-owns pending-queue memory admission, copied message parts, per-target reference
-accounting, and retry queue cleanup. This keeps slow-peer backpressure handling
-separate from the high-level forwarding sequence.
+Deep-module boundary: the public API layer owns only signature validation and
+result mapping; every state transition delegates into `mesh_runtime`/`mesh_wire`
+functions. The raw socket layer knows nothing about mesh (its only extension is
+`routed_target_writable()` for the NODROP atomic reserve).
 
 
 ### 3.4 Socket Semantic/Runtime (`core/src/runtime/sockets/`)

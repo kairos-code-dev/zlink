@@ -647,6 +647,15 @@ void test_peer_mesh_name_mismatch_is_conflict ()
           if (!ctx)
               return 11;
           void *node = new_started_node (ctx, "mesh-other", "node-b");
+
+          zlink_mesh_monitor_open_options_t monitor_options;
+          memset (&monitor_options, 0, sizeof (monitor_options));
+          monitor_options.struct_size = sizeof (monitor_options);
+          monitor_options.version = 1;
+          void *monitor = zlink_mesh_node_monitor_open (node, &monitor_options);
+          if (!monitor)
+              return 18;
+
           if (submit_peer_intent (node, endpoint) == 0)
               return 12;
 
@@ -664,6 +673,34 @@ void test_peer_mesh_name_mismatch_is_conflict ()
               || status.state != ZLINK_MESH_NODE_PARTIAL_READY)
               return 15;
 
+          //  The rejected side reports PEER_REJECTED with the admission
+          //  conflict result and errno.
+          int rejected_seen = 0;
+          for (int waited = 0; waited < poll_deadline_ms && !rejected_seen;
+               waited += poll_step_ms) {
+              zlink_mesh_monitor_event_t event;
+              memset (&event, 0, sizeof (event));
+              event.struct_size = sizeof (event);
+              event.version = 1;
+              const zlink_recv_result_t rc =
+                zlink_mesh_node_monitor_recv (monitor, &event, ZLINK_RECV_FLAGS_DONTWAIT);
+              if (rc != ZLINK_RECV_OK) {
+                  msleep (poll_step_ms);
+                  continue;
+              }
+              if (event.kind == ZLINK_MESH_MONITOR_PEER_REJECTED) {
+                  if (event.failure_errno != EEXIST)
+                      return 19;
+                  if (event.result_code != ZLINK_CONNECT_CONFLICT)
+                      return 20;
+                  rejected_seen = 1;
+              }
+          }
+          if (!rejected_seen)
+              return 21;
+
+          if (zlink_mesh_node_monitor_close (&monitor) != ZLINK_CLOSE_OK)
+              return 22;
           zlink_mesh_node_shutdown (node, 1000);
           if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK)
               return 16;
@@ -1084,6 +1121,23 @@ void test_remote_multicast_publish ()
                   result = 0;
               zlink_mesh_claim_release (&claim);
               break;
+          }
+
+          //  Duplicate guard: one publish delivers exactly once. No second
+          //  multicast record may surface after the first turn.
+          if (result == 0) {
+              for (int waited = 0; waited < 400; waited += poll_step_ms) {
+                  uint32_t residue = 0;
+                  const zlink_recv_result_t rc =
+                    zlink_mesh_node_drain_ready (node, ZLINK_MESH_READY_APPLICATION, ready,
+                                                 &residue, ZLINK_RECV_FLAGS_DONTWAIT);
+                  if (rc == ZLINK_RECV_OK && zlink_mesh_ready_batch_count (ready) > 0) {
+                      result = 28;
+                      break;
+                  }
+                  zlink_mesh_ready_batch_reset (ready);
+                  msleep (poll_step_ms);
+              }
           }
 
           zlink_mesh_ready_batch_destroy (&ready);

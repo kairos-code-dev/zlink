@@ -154,7 +154,7 @@ Every handle type follows the same three-category model:
 |---|---|---|---|
 | Socket (PAIR/DEALER/ROUTER/...) | `zlink_send` | bind, connect, disconnect, set_option, subscribe, monitor_open | `zlink_close` |
 | SPOT | `zlink_publish` | subscribe, unsubscribe, set_pub_option, set_sub_option | `zlink_spot_destroy` |
-| SPOT Node | *(no sending; data plane uses `Spot`)* | bind, connect_peer, disconnect_peer, subscribe, unsubscribe | `zlink_spot_node_destroy` |
+| MeshNode | send/request/publish (thread-safe) | set_bind, connect_peer, disconnect_peer, set_channel_weight | `zlink_mesh_node_destroy` |
 
 ## 4. Closing Handles Safely
 

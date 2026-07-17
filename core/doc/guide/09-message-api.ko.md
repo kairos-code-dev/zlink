@@ -104,7 +104,6 @@ zlink message는 `zlink_msg_t` struct로 표현되며, 64 byte 고정 크기다.
 | `zlink_msg_data` | data buffer pointer 반환 (쓰기 가능) | 변화 없음 |
 | `zlink_msg_size` | data size(byte) 반환 | 변화 없음 |
 | `zlink_msg_refcnt` | storage reference count 반환 | 변화 없음 |
-| `zlink_msg_gets` | (현재 stub: property를 보지 않고 항상 `NULL`/`EINVAL`. public 사용 경로로 의존 금지) | 변화 없음 |
 
 ### 3.3 Move vs Copy
 
@@ -277,16 +276,7 @@ zlink_msg_close(&copy);  /* Actual memory freed when last reference is released 
 
 > 참고: `core/tests/integration/test_msg_flags.cpp` — `test_shared_refcounted()`
 
-### 4.4 Metadata Property — zlink_msg_gets
-
-Message에 붙은 metadata property를 string으로 반환한다.
-해당 property가 없으면 `NULL`을 반환한다.
-
-```c
-zlink_send_rid(router, &target_rid, parts, part_count, 0);
-```
-
-### 4.5 Send
+### 4.4 Send
 
 ```c
 /* Multipart send: pass an array of msg parts */

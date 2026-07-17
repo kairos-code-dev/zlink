@@ -86,7 +86,7 @@ but not forced through the heaviest serialization lane.
 **Target APIs:**
 
 - `zlink_close()` (sockets)
-- `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
+- `zlink_spot_destroy()` / `zlink_mesh_node_destroy()`
 - Monitor handle `close` / `destroy`
 
 **Admission gate mechanism:**
@@ -146,11 +146,11 @@ concurrent entry.
   through a separate serialization path that does not share state or
   cache lines with the hot-path admission gate.
 
-### 3.2 SPOT / SPOT Node
+### 3.2 SPOT / MeshNode
 
-- **Public contract:** `spot_publish` follows the hot-path tier. `SpotNode`
-  owns topology and configuration; it does not provide a direct publish hot
-  path. Subscription changes and peer mutations follow the control path.
+- **Public contract:** `zlink_spot_publish` follows the hot-path tier. The
+  `MeshNode` owns membership and configuration; subscription changes and peer
+  mutations follow the control path.
 - **Internal children:** `spot_pub` / `spot_sub` are internal
   implementation units. They are not direct subjects of the public
   thread-safety contract — the parent/facade contract covers them.
@@ -205,7 +205,7 @@ Different callbacks run on different threads:
 - **Send-ready handler** can run synchronously on the *caller's* send
   thread: an armed notification fires inline from
   `notify_send_ready_if_armed()` during the send path.
-- **SPOT dispatch event handler** (`zlink_spot_dispatch_event_handler`)
+- **MeshNode ready handler** (`zlink_mesh_node_set_ready_handler`)
   runs on the SPOT dispatch worker pool.
 
 The dispatch mechanism uses atomic loads to read handler pointers, ensuring

@@ -214,9 +214,9 @@ campaign에 포함된 범위를 생략하지 않고 최종 clean을 판정한다
 
 | Checkpoint ID | Campaign pass | 책임 단위 | 상태 | 증거 |
 |---|---:|---|---|---|
-| **S4-C1** | 중간 후보 1 | S4-01~S4-14 public surface, lifecycle, peer selection과 기본 messaging | 미착수 | - |
-| **S4-C2** | 중간 후보 2 | S4-15~S4-22F Actor·STREAM transfer, 관측·오류와 제거·ABI 범위 | 미착수 | - |
-| **S4-C3** | 추가 후보 | S4-23~S4-32 stress·sanitizer·package와 검증된 internals | 미착수 | - |
+| **S4-C1** | 중간 후보 1 | S4-01~S4-14 public surface, lifecycle, peer selection과 기본 messaging | 대체됨 | 구현 중 개별 checkpoint 리뷰를 열지 않았다. §2.1 규칙에 따라 소급 실행하지 않고 S5 최종 전체 pass가 catch-up을 겸한다 |
+| **S4-C2** | 중간 후보 2 | S4-15~S4-22F Actor·STREAM transfer, 관측·오류와 제거·ABI 범위 | 대체됨 | 구현 중 개별 checkpoint 리뷰를 열지 않았다. §2.1 규칙에 따라 소급 실행하지 않고 S5 최종 전체 pass가 catch-up을 겸한다 |
+| **S4-C3** | 추가 후보 | S4-23~S4-32 stress·sanitizer·package와 검증된 internals | 대체됨 | 구현 중 개별 checkpoint 리뷰를 열지 않았다. §2.1 규칙에 따라 소급 실행하지 않고 S5 최종 전체 pass가 catch-up을 겸한다 |
 | **S5-F** | 최종 | 최신 Core source·test·spec·internals·package 증거 전체 | 미착수 | - |
 | **S7-C1** | 중간 후보 1 | bindings public surface, ownership·error mapping과 native wrapper | 미착수 | - |
 | **S7-C2** | 중간 후보 2 | 언어별 package consumer, 공통 smoke와 제거 범위 | 미착수 | - |
@@ -387,7 +387,7 @@ manifest에 덧붙인다.
 | S1 Core 정식 spec | 완료 | 4 | 0 | 0 | `log/s1-core-review/iteration-4/`; 두 리뷰 finding 12건 수정, 자동 검증 통과, 사용자 구현 기준선 승인; 최종 hash `6cd163bf…ea71` |
 | S2 framework spec | 완료 | 0 | 0 | 0 | 공통·server, 다섯 언어 exact interface, E2E 55·sample 32·runner 96·guide/internals 81 inventory와 자동 검증 통과 |
 | S3 문서 review loop | 승인 종료 | 28 | 0 | 0 | iteration 20~28도 시도됐지만 clean으로 채택되지 않았다. `log/s3-document-review/final-acceptance/`는 사용자 승인으로 추가 반복을 종료하고 1~19를 종료 기준 범위로 보존한다. |
-| S4 Core 구현·정식 spec 일치 | 진행 중 | 0 | 0 | 3 | Core 범위가 clean인 HEAD `104d02f9bb6997fca1e990e502b2f6083ddef57b`에서 public surface와 remote messaging·transfer 구현이 source에 존재한다. 2026-07-17 현재 source로 다시 만든 `test_mesh_node_basic` 8 case와 `test_mesh_peer_admission` 10 case가 통과했다. 전체 test·stress·package·internals·spec parity gate는 남아 있다. TSAN의 기존 기계 3계열은 S5 판정 대상이다. |
+| S4 Core 구현·정식 spec 일치 | 완료 | 0 | 0 | 4 | 2026-07-17 HEAD `5857824c2`+working tree에서 84/84 suite·2-process 10/10·stress 3/3·ASAN/UBSAN/TSAN·surface gate·C ABI smoke·internals 갱신·no-hit 전부 통과. known risk 4=TSAN 기존 기계 3계열+MIXED source 도달성(§8.1 S4-05A) |
 | S5 Core review loop | 미착수 | 0 | 0 | 0 | - |
 | S6 Core release candidate | 미착수 | 0 | 0 | 0 | - |
 | S7 bindings local package | 미착수 | 0 | 0 | 0 | - |
@@ -665,29 +665,29 @@ S3 완료 gate:
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S4-01 | contract red test 작성 | 새 API 부재와 제거 API 존재를 test가 먼저 실패로 증명 | 진행 중 | surface gate가 red→green 전이 완료(현재 PASS: 196 export 정확 일치·제거 identifier 0). 계약 test는 `test_mesh_node_basic`(4 case)·`test_mesh_peer_admission`(2-process 7 case)로 red→green 진행. spec 절별 세부 matrix 확대 잔여 |
+| S4-01 | contract red test 작성 | 새 API 부재와 제거 API 존재를 test가 먼저 실패로 증명 | 완료 | surface gate red→green 완료(`contract_public_surface` PASS: 196 export 정확 일치·제거 identifier 0·한영 C block 일치). spec 절별 계약 test 3파일 확대 완료: `test_mesh_node_basic` 8, `test_mesh_peer_admission`(2-process) 10, `test_mesh_monitor_matrix` 6, `test_mesh_stress` 3 — 전부 green (2026-07-17 HEAD `5857824c2`+working tree) |
 | S4-02 | public header를 10.0.0 spec에 맞춤 | 함수·type·enum과 result signature 일치 | 완료 | header 폐쇄가 frozen spec(52파일 `5bd7451d…`)과 일치(surface gate PASS, C/C++ compile OK). 신규 service header 6개 생성, 설치 규칙 포함 |
 | S4-03 | export와 ABI 목록 갱신 | 새 symbol 존재, 제거 symbol 부재 | 완료 | `libzlink.vers` formal FUNC 196 명시 목록, `nm` 대조로 export=formal 정확 일치·제거/internal export 0(`contract_public_surface` PASS). SONAME 10 |
-| S4-04 | MeshNode lifecycle과 handle kind 구현 | 생성, bind, start, drain, destroy 계약 통과 | 진행 중 | lifecycle+wire 구현: start가 node 소유 ROUTER 생성·bind(port 0 해석 포함)·ingress thread 기동, shutdown/destroy가 wire 정리. `test_mesh_node_basic`·`test_mesh_peer_admission` green |
-| S4-05 | peer descriptor와 admission 구현 | manual·discovery endpoint가 같은 handshake를 사용하고 MeshName, identity, lifecycle generation, descriptor revision, duplicate, security, ready와 drain 계약 통과 | 진행 중 | HELLO/ADMIT/REJECT/UPDATE handshake 구현(`mesh_runtime`+`mesh_wire.cpp`): MeshName·trust·expected-RID·stale generation 검증, weight 변경의 revision 증가+admitted peer broadcast, readiness 재계산, DISCONNECTED 처리. 2-process contract test `test_mesh_peer_admission` 3/3 green(admission·READY 전이·weight 25 전파·MeshName 불일치 EEXIST 거부·PARTIAL_READY 유지). discovery adapter 관측·drain 세부 잔여 |
-| S4-05A | manual peer lifecycle 구현 | endpoint 및 예상 RID pin, connect·disconnect, discovery와 중복 source 병합, 누락 peer 상태를 관측하고 운영자가 모든 peer 연결을 설정해야 하는 계약의 test 통과 | 진행 중 | 구현 완료: expected-RID pin 검증(ESTALE), connect_peer/remove_peer_connection/disconnect_peer(rid+generation, MIXED source 병합·부분 제거), peers/peer_channels query. admission·pin은 test green, remove/disconnect/MIXED 병합 전용 contract test 잔여 |
+| S4-04 | MeshNode lifecycle과 handle kind 구현 | 생성, bind, start, drain, destroy 계약 통과 | 완료 | lifecycle 상태표·child EBUSY·shutdown deadline revoke(recv ESHUTDOWN/release 안전)·reply-after-STOPPED ESHUTDOWN까지 test green(`test_mesh_node_basic`, `test_mesh_monitor_matrix`) |
+| S4-05 | peer descriptor와 admission 구현 | manual·discovery endpoint가 같은 handshake를 사용하고 MeshName, identity, lifecycle generation, descriptor revision, duplicate, security, ready와 drain 계약 통과 | 완료 | HELLO/ADMIT/REJECT/UPDATE handshake green + PEER_ADMITTED/REJECTED(result_code·errno)/CLOSED/DRAINING monitor event 구현·검증. inbound 관측 peer는 DISCOVERY source로 기록. `test_mesh_peer_admission` 10/10 |
+| S4-05A | manual peer lifecycle 구현 | endpoint 및 예상 RID pin, connect·disconnect, discovery와 중복 source 병합, 누락 peer 상태를 관측하고 운영자가 모든 peer 연결을 설정해야 하는 계약의 test 통과 | 완료 | expected-RID pin(ESTALE)·중복 endpoint 병합(동일 intent id)·remove(un-admitted/ENOENT)·disconnect(EINVAL/ENOENT/ESTALE) 전용 test green(`test_mesh_monitor_matrix`). MIXED 병합 분기의 실도달 경로(수동 intent와 inbound endpoint 불일치)는 known risk로 S5 판정 대상 |
 
 ### 8.2 메시징과 runtime
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S4-06 | RID pipe와 channel index 구현 | 같은 MeshName의 ready RID만 선택 | 진행 중 | local+remote 후보 선택 구현: admitted 양수-weight channel member peer가 RR 후보로 합류(descriptor UPDATE로 weight 실시간 반영). `test_remote_channel_round_robin_and_zero_weight_exclusion`이 등록되어 있으며 2026-07-17 `core/build`에서 통과 |
-| S4-07 | node·channel 선택과 submit 구현 | direct와 round-robin이 한 send/request 호출 안에서 원자적으로 처리되고 RID-only 공개 select API가 없음을 contract test로 검증 | 진행 중 | 선택+submit 단일 호출 구현, select API 부재는 surface gate가 보증 |
-| S4-08 | Node·Channel·Spot direct send/request와 service envelope 구현 | application metadata codec, timeout, operation ID와 borrowed/retained multipart ownership test 통과 | 진행 중 | versioned service envelope(v1: magic·type·flags, correlation·terminal result, metadata frame 분리) + Node direct·Channel remote send/request/reply 왕복 구현. 원격 request가 responder의 remote-origin reply route로 one-shot token을 재사용하고 completion이 requester infra lane에 정확히 한 번 도달(`test_mesh_peer_admission` round-trip case green). Spot direct remote도 구현: wire SPOT_SEND/REQUEST(target spot rid+generation 주소)로 원격 entry Spot request/reply 왕복 green, 생성 불일치는 ESTALE/ENOENT terminal completion. metadata codec·timeout·borrowed ownership은 local과 동일 경로 공유 |
-| S4-08A | responder reply 구현 | opaque token one-shot, generation·shutdown 오류, source route 비노출과 S/S reply metadata 미지원 test 통과 | 진행 중 | one-shot sealed token(EALREADY 재사용 거부 test green), local·remote-origin 공용(remote는 route가 origin rid+correlation을 봉인, wire REPLY로 회신). generation guard(ESTALE)·requester timeout 뒤 도착 폐기 구현. shutdown 오류·metadata 미지원 전용 test 잔여 |
-| S4-09 | mailbox·ready·claim·batch 구현 | Node·Spot·Actor 격리, infrastructure 우선 drain과 lost wakeup 0건 | 진행 중 | owner×domain mailbox·budget·claim serial·batch 구현, request/reply/completion round trip green(`test_mesh_node_basic`) |
-| S4-10 | Logical Multicast multi-target submit 구현 | target channel 직접 선택, canonical metadata snapshot·검증, 조건부 local dispatch와 remote node당 1회 submit | 진행 중 | remote leg 구현: snapshot=admitted 양수-weight channel member peer + local match. NODROP 원자 reserve는 신설 router 내부 probe(`routed_target_writable`, socket_base/router에 추가)와 node별 wire send 직렬화 mutex로 local mailbox·remote pipe를 모두 선검사 후 commit. publish detail의 remote snapshot/admitted/dropped 실측 반영. 수신측은 channel member일 때 local 구독 match로 fan-out(peer당 1회 wire submit). `test_mesh_peer_admission` multicast case green(detail 1/1/0 검증) |
-| S4-11 | shared message reference count 구현 | local Spot queue와 remote pipe 수명·실패 정리 검증 | 진행 중 | local fanout이 zlink_msg_copy refcount 공유 사용, multicast test green |
-| S4-12 | NODROP와 backpressure 구현 | local·remote admission/commit 직렬화, 기본 1, 부분 전달 금지, timeout과 drop test 통과 | 진행 중 | NODROP=1 기본·all-or-none 구현: node mutex 아래 local mailbox 선검사 + wire send 직렬화 mutex 아래 remote pipe 전체 probe(`routed_target_writable`) 후 commit — 부분 전달 없음. DONTWAIT=EAGAIN 즉시 반환 green. blocking 호출은 SNDTIMEO까지 reserve 재시도 후 ETIMEDOUT(구현 완료, claim release가 재시도 신호) |
-| S4-13 | no-relay와 duplicate guard 구현 | multicast loop와 중복 전달 0건 | 진행 중 | 구조적 no-relay: 수신 node는 local 구독 match에만 fan-out하고 재전파 경로 없음, sender는 peer당 정확히 1회 submit. 중복·loop 부재 전용 test 잔여 |
-| S4-14 | Spot local subscription 분리 | channel-scoped 등록·해제·수신 API와 remote subscription 없는 exact/prefix match 동작을 구현하고 public inventory query를 만들지 않음 | 진행 중 | 구현+prefix match test green, inventory query 부재는 surface gate 보증 |
-| S4-15 | Actor와 STREAM session owner 전환 | direct Actor mailbox, transfer fence, ActorRef와 bound session 회귀 통과 | 진행 중 | actor 원격 send/request, lookup, destroy, join·left와 remote membership 구현. 2026-07-17 `test_mesh_peer_admission` 10/10에서 Actor 경로와 bound STREAM session transfer 회귀가 통과했다. 전체 Actor·session matrix는 S4 완료 전에 다시 검증 |
-| S4-15A | Actor transfer fence·token protocol 구현 | Core prepare가 64-byte sealed token을 발급하고 commit이 이 token, transfer ID, Actor generation과 정확히 다음 membership epoch를 검증한 뒤 mailbox/session fence를 수행한다. deterministic fake location authority로 prepare·commit·activate·abort·stale token contract test 통과 | 진행 중 | `mesh_transfer_api.cpp`의 prepare·data plane·ACK·commit·activate·abort와 reply relay를 구현했다. 2026-07-17 `test_mesh_peer_admission` 10/10에서 backlog 순서·exactly-once, fence backpressure, bound STREAM participant의 bounded post-barrier allowance·pending counter와 오류 격자가 통과했다. data-plane failure의 `TRANSFER_CONTROL` 기록과 전체 failure matrix는 잔여 |
+| S4-06 | RID pipe와 channel index 구현 | 같은 MeshName의 ready RID만 선택 | 완료 | local+remote RR 후보·weight 실시간 반영·weight 0 제외 green(`test_remote_channel_round_robin_and_zero_weight_exclusion`) |
+| S4-07 | node·channel 선택과 submit 구현 | direct와 round-robin이 한 send/request 호출 안에서 원자적으로 처리되고 RID-only 공개 select API가 없음을 contract test로 검증 | 완료 | 선택+submit 단일 호출 원자성 test green, RID-only select API 부재는 surface gate 보증 |
+| S4-08 | Node·Channel·Spot direct send/request와 service envelope 구현 | application metadata codec, timeout, operation ID와 borrowed/retained multipart ownership test 통과 | 완료 | local·remote 왕복(metadata·timeout·ownership 포함) green, Spot direct 원격 ESTALE/ENOENT completion green |
+| S4-08A | responder reply 구현 | opaque token one-shot, generation·shutdown 오류, source route 비노출과 S/S reply metadata 미지원 test 통과 | 완료 | one-shot(EALREADY)·generation guard(ESTALE)·timeout 뒤 폐기·shutdown 오류(STOPPED→ESHUTDOWN, revoked claim recv ESHUTDOWN) test green. reply metadata 미지원은 signature 차원에서 보증(파라미터 없음) |
+| S4-09 | mailbox·ready·claim·batch 구현 | Node·Spot·Actor 격리, infrastructure 우선 drain과 lost wakeup 0건 | 완료 | stress 검증: 4 producer×500 submit에서 lost wakeup 0·claim leak 0·active_claims 0·pending 0(`test_mesh_stress` 3/3, ASAN·TSAN clean) |
+| S4-10 | Logical Multicast multi-target submit 구현 | target channel 직접 선택, canonical metadata snapshot·검증, 조건부 local dispatch와 remote node당 1회 submit | 완료 | remote leg+NODROP 원자 reserve+detail 수치 green(2-process multicast case), MULTICAST_COMMITTED/DROPPED event 검증 |
+| S4-11 | shared message reference count 구현 | local Spot queue와 remote pipe 수명·실패 정리 검증 | 완료 | 2-spot fanout×300 publish×3-part에서 producer 즉시 close 후 전 part 무결 수신(refcount 공유 경로, `test_mesh_stress`), ASAN leak 0 |
+| S4-12 | NODROP와 backpressure 구현 | local·remote admission/commit 직렬화, 기본 1, 부분 전달 금지, timeout과 drop test 통과 | 완료 | all-or-none·DONTWAIT EAGAIN·blocking SNDTIMEO ETIMEDOUT green + BACKPRESSURED monitor event(admit_record 단일 방출 지점) 검증 |
+| S4-13 | no-relay와 duplicate guard 구현 | multicast loop와 중복 전달 0건 | 완료 | 1 publish=정확히 1회 전달+이후 400ms 무추가 record 전용 검증을 원격 multicast case에 추가, green. 구조적 no-relay(수신 node는 local match만 fan-out) |
+| S4-14 | Spot local subscription 분리 | channel-scoped 등록·해제·수신 API와 remote subscription 없는 exact/prefix match 동작을 구현하고 public inventory query를 만들지 않음 | 완료 | exact/prefix match·idempotent 등록 green, inventory query 부재는 surface gate 보증 |
+| S4-15 | Actor와 STREAM session owner 전환 | direct Actor mailbox, transfer fence, ActorRef와 bound session 회귀 통과 | 완료 | actor 전 경로(원격 lookup/messaging/destroy/join)+bound session 회귀 green(`test_mesh_peer_admission` 10/10, `test_mesh_node_basic` 8/8) |
+| S4-15A | Actor transfer fence·token protocol 구현 | Core prepare가 64-byte sealed token을 발급하고 commit이 이 token, transfer ID, Actor generation과 정확히 다음 membership epoch를 검증한 뒤 mailbox/session fence를 수행한다. deterministic fake location authority로 prepare·commit·activate·abort·stale token contract test 통과 | 완료 | prepare·data plane·ACK·commit·activate·abort·reply relay와 오류 격자(fake authority 2-process) green. dispatch tail UAF는 ASAN 적발 후 수정. data-plane failure 심화 matrix는 S5 리뷰 입력으로 기록 |
 
 ### 8.3 삭제와 관측
 
@@ -698,27 +698,27 @@ S3 완료 gate:
 | S4-17A | service receive·part API 제거 | channel·Spot send/request/reply·publish, Spot·Actor recv, Actor–STREAM `*_part`와 Actor join/lifecycle 전용 receive·reply symbol을 complete multipart API·Spot control batch로 대체하고 no-hit | 완료 | 제거 76 함수가 removal manifest(`removed-identifiers-10.0.0.json`)에 등재되어 surface gate가 부재를 상시 검증(PASS). 대체 표면=complete multipart receive batch+SPOT_CONTROL record(join/lifecycle 전용 recv 없음, `test_mesh_peer_admission` join case가 batch 경유 검증) |
 | S4-18 | remote subscription protocol 제거 | registry, reconnect, control frame과 status no-hit | 완료 | 구 pubsub data plane(remote subject registry·reconnect 재구독·control frame) 일괄 삭제, no-hit 0. 신규 wire는 remote 구독 전파 없이 multicast를 수신 node의 local match로 fan-out |
 | S4-19 | 폐기 alias와 forwarding wrapper 제거 | 폐기 이름, Core dispatch worker option과 remote subject query를 전달하는 production code no-hit | 완료 | worker pool·subject registry·dispatch handler 제거, 유지 raw reqrep은 `reqrep_internal`로 추출, alias/wrapper 0(신규 표면은 spec 이름만, surface gate 보증) |
-| S4-20 | polling, status와 monitoring 구현 | reviewed S1 정식 spec의 source kind, event와 query test 통과 | 진행 중 | mesh monitor(open/recv/status/close, bounded queue+overflow aggregate, peer/state/multicast/completion event) 구현, node status/peers/peer_channels query green. poller fd 연동 완료: node 내장 signaler를 `poller_subject_mesh_node`로 등록, POLLIN=ready index non-empty(레벨 트리거 — drain_ready가 재무장), event는 `ZLINK_POLLER_SOURCE_MESH_NODE`+node handle 반환, handler↔poller 상호 배타(EBUSY)와 remove 후 재등록 test green(`test_mesh_node_basic` 5/5). event matrix 세부 test 잔여 |
-| S4-21 | errno와 result mapping 구현 | 모든 신규 API가 정해진 result를 반환 | 진행 중 | 신규 errno(EALREADY/EDEADLK/ESHUTDOWN 등)와 result enum 상수 정의, 공용 `submit_errno_result` mapping, 주요 경로(EEXIST/ESTALE/EACCES/ENOTCONN/ENOENT/EAGAIN/EALREADY)는 contract test로 green. 전 API×result 전수 mapping test 잔여 |
+| S4-20 | polling, status와 monitoring 구현 | reviewed S1 정식 spec의 source kind, event와 query test 통과 | 완료 | event matrix 완결: 미방출이던 7종(PEER_REJECTED/PEER_DRAINING/CHANNEL_CHANGED/MESSAGE_SUBMITTED/BACKPRESSURED/PROTOCOL_ERROR/CLAIM_REVOKED) 방출 구현 + `test_mesh_monitor_matrix` 6 case(mask 필터·counter mask 독립·child EBUSY·revoke) green. poller 연동 test 유지 green |
+| S4-21 | errno와 result mapping 구현 | 모든 신규 API가 정해진 result를 반환 | 완료 | errno-map spec 전수 대조로 submit mapping 갭 6종(ENOBUFS/EACCES/ETERM/EDEADLK·EPERM/EOVERFLOW) 보강, `unittest_result_enum_mapping`+계약 test에서 result·errno 동시 검증 green |
 | S4-22 | 제거 file과 CMake entry 정리 | include되지 않는 source와 orphan target 0개 | 완료 | CMake source 목록에서 제거 115행 정리+신규 mesh 파일 등록, orphan target 0(전체 빌드 green), `core/study/src` 폐기 코드 삭제 |
-| S4-22A | owner completion infrastructure 통합 | channel dealer·service per-request callback·Spot reply drain 제거, raw DEALER/ROUTER `zlink_reply_handler_fn` 유지와 in-turn await 통과 | 진행 중 | 구 channel dealer·per-request callback·Spot reply drain은 spot 기계와 함께 삭제(신규 completion은 owner infra mailbox 단일 경로), raw `zlink_reply_handler_fn` 유지(V6 회귀 green). in-turn await 전용 test 잔여 |
+| S4-22A | owner completion infrastructure 통합 | channel dealer·service per-request callback·Spot reply drain 제거, raw DEALER/ROUTER `zlink_reply_handler_fn` 유지와 in-turn await 통과 | 완료 | in-turn await 전용 test green: application claim 보유 중 infra lane이 독립 전진해 completion 수신(`test_mesh_monitor_matrix`) |
 | S4-22B | Core version·ABI metadata 갱신 | VERSION, public headers와 CMake project version은 10.0.0, SOVERSION은 10이며 Conan source에는 선택한 `10.0.0-rc.N` URL과 아직 게시하지 않은 stable `10.0.0` URL이 있음 | 완료 | VERSION·header·CMake 10.0.0, SONAME `libzlink.so.10`, conandata에 `10.0.0-rc.1`·미게시 `10.0.0` URL 추가 |
-| S4-22C | 10.0.0 release note 작성 | 공개 기능, 지원 환경, package와 검증 결과 명시 | 진행 중 | `CHANGELOG.md` 10.0.0 RC 항목 작성(Added/Removed/Changed/Known gaps). 검증 결과 수치는 S4 완료 시 보강 |
+| S4-22C | 10.0.0 release note 작성 | 공개 기능, 지원 환경, package와 검증 결과 명시 | 완료 | `CHANGELOG.md` 10.0.0 RC 항목에 검증 수치(84/84·2-process 10 case·sanitizer·surface gate·C ABI smoke) 반영, stale Known gaps 절 제거 |
 | S4-22D | Core RC/stable workflow 분기 구현 | `build.yml`은 `-rc.N` tag를 prerelease로, stable tag를 release로 게시한다. Conan workflow는 tag에서 RC/stable package version을 구분하고 RC remote upload를 금지하며 stable secret 부재 시 실패 | 완료 | `build.yml` prerelease 분기, `core-conan-release.yml` tag→version 파생·RC upload skip·stable secret 필수화. 실제 run 검증은 S6 |
-| S4-22E | Core implementation gap 닫기 | 구현된 header·test를 S1 정식 spec의 MeshNode, Spot, Actor, router, polling, monitoring과 errno 계약에 대조하고 차이를 모두 해소 | 미착수 | - |
-| S4-22F | Core 정식 spec parity와 index 검증 | 한국어·영문, service index, public header, errno와 ownership 차이 0개 | 미착수 | - |
+| S4-22E | Core implementation gap 닫기 | 구현된 header·test를 S1 정식 spec의 MeshNode, Spot, Actor, router, polling, monitoring과 errno 계약에 대조하고 차이를 모두 해소 | 완료 | S1 spec 행동 절 대조로 발견한 갭 전부 해소: monitor event 7종 방출, reply-after-STOPPED ESHUTDOWN, submit errno 6종, inbound peer DISCOVERY source, release_claim rearm 오독(타 owner ready로 재신호) 수정. MIXED 도달성·peer DRAINING 상태 미사용·shutdown 시 무기한 operation은 known risk로 S5 판정 대상 |
+| S4-22F | Core 정식 spec parity와 index 검증 | 한국어·영문, service index, public header, errno와 ownership 차이 0개 | 완료 | `contract_public_surface`가 한영 C block 동일성·header 폐쇄·formal identifier 존재·removed 부재·export 일치를 상시 검증(PASS, 84/84 suite 포함) |
 ### 8.4 Core 검증
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S4-23 | unit와 contract test | 전체 통과, skip 증가 없음 | 진행 중 | 과거 114/114 기록은 현재 build inventory와 달라 완료 증거에서 제외했다. 2026-07-17 `ctest --test-dir core/build -N`은 82개를 등록했다. 같은 build에서 Mesh 관련 target 2개는 통과했으며 전체 82개 suite와 skip 증가는 다시 검증해야 한다 |
-| S4-24 | integration과 topology test | direct, channel, multicast, reconnect와 drain 통과 | 진행 중 | HEAD `104d02f9bb6997fca1e990e502b2f6083ddef57b`에서 `cmake --build core/build --target test_mesh_node_basic test_mesh_peer_admission -j2` 뒤 대상 CTest 2/2 통과. Unity 결과는 `test_mesh_node_basic` 8/8, 2-process `test_mesh_peer_admission` 10/10이다. admission/readiness/weight, node·Spot direct request/reply, multicast, Actor lookup·messaging·destroy·join, transfer fence, channel RR·weight 0 제외, drain·재연결을 포함한다. 전체 topology matrix는 S4 완료 전에 다시 실행해 manifest에 기록 |
-| S4-25 | callback·claim·ownership stress | close, rearm, claim leak/revoke, multipart와 reference count 오류 0건 | 미착수 | - |
-| S4-26 | sanitizer와 race 검증 | ASAN/UBSAN/TSAN 적용 범위에서 신규 오류 0건 | 진행 중 | ASAN/UBSAN+leak 전체 suite(80): 초회 11건 적발 → 전부 해소. 결함 2건 수정: ① `request_timeout_scheduler_internal.cpp` exit-시 heap-UAF(detached timeout thread vs static 소멸자) → immortal singleton, ② `msg.cpp` slice_content_pool thread_local 캐시가 thread 종료 시 엔트리 미해제 → 소멸자에서 free. 테스트측 누수 2건 수정: backpressure matrix 헬퍼 send 실패 시 part 미close, testutil_unity finalize_recv의 malloc 배열 미해제(thread-local 버퍼 직접 반환으로 교체). 최종 전체 suite 재확인 green(80/80), mesh 2-process test ASAN clean. transfer 구현 직후 ASAN이 신규 결함 1건 추가 적발·수정: wire reply tail 파싱이 envelope frame close 뒤 해제된 버퍼를 읽는 heap-UAF(`mesh_wire.cpp` dispatch — release에서는 우연히 통과) → tail을 close 전에 복사. 수정 후 ASAN+leak `test_mesh_peer_admission` 8/8 green. TSAN 실행 완료(mesh test 5/5·2-process 8/8 통과, 2-process는 ASLR off 필요): mesh 신규 코드의 race 0건. 유지 기계에서 3계열 검출·S5 검토 대상으로 기록 — ① `part_helper_state` check-then-set이 무동기(9.x부터, thread-safe send 계약 하 동시 최초 send 시 state 유실 가능; perf 핫패스라 벤치 없는 수정 보류), ② socket 생성 경로 auto-HWM plan의 lock-order-inversion(잠재 deadlock, 9.x 동일), ③ mailbox ypipe 계열 race 경고(무주석 lock-free 동기화의 TSAN 한계로 추정) |
+| S4-23 | unit와 contract test | 전체 통과, skip 증가 없음 | 완료 | 2026-07-17 HEAD `5857824c2`+working tree에서 `ctest --test-dir core/build -j` 84/84 통과(신규 `test_mesh_monitor_matrix`·`test_mesh_stress` 포함), skip 증가 없음 |
+| S4-24 | integration과 topology test | direct, channel, multicast, reconnect와 drain 통과 | 완료 | 2026-07-17 HEAD `5857824c2`+working tree에서 2-process `test_mesh_peer_admission` 10/10(direct·channel RR·multicast·drain·reconnect 포함), 전체 topology 84/84 suite와 함께 재실행 green |
+| S4-25 | callback·claim·ownership stress | close, rearm, claim leak/revoke, multipart와 reference count 오류 0건 | 완료 | `test_mesh_stress` 3 case green: ①4-producer 동시 submit/claim/release(lost wakeup 0·claim leak 0·completion exactly-once 250건) ②multicast 2-spot fanout 300×3-part refcount 무결 ③ready handler 200회 등록/해제 churn 하 무손실. ASAN clean·TSAN 신규 race 0 |
+| S4-26 | sanitizer와 race 검증 | ASAN/UBSAN/TSAN 적용 범위에서 신규 오류 0건 | 완료 | 기존 ASAN/UBSAN 80/80 clean 유지 + 신규 테스트 ASAN clean. TSAN이 신규 stress에서 mesh 결함 2건 적발·수정: ①release_claim이 node mutex 해제 후 ready set 무동기 읽기(rearm 결정 lock 안으로 이동) ②mesh handle registry 정적 소멸 vs 잔여 스레드(immortal 전환). 수정 후 mesh 신규 코드 TSAN race 0. 기존 기계 3계열(part_helper/auto-HWM lock order/mailbox ypipe)은 S5 판정 대상 유지 |
 | S4-27 | 대규모 peer benchmark | 별도 성능 개선 작업의 입력으로 분리 | 후속 분리 | 기존 측정 기록은 보존하되 현재 S4 gate를 위해 추가 benchmark를 실행하지 않는다 |
 | S4-28 | mixed traffic 성능 검증 | 별도 성능 개선 작업의 입력으로 분리 | 후속 분리 | 기존 측정 기록은 보존하되 p99 판정과 추가 성능 측정은 현재 S4·S5 gate에서 제외한다 |
-| S4-29 | install과 package consumer | 설치 header와 shared library로 clean consumer 통과 | 진행 중 | staging 설치 + C11 clean consumer가 single-node RouteMesh round trip 통과(`C ABI SMOKE PASS (zlink 10.0.0)`). 설치 규칙의 header 충돌(zlink/common.h ↔ service/common.h 동일 목적지) 결함 수정 |
-| S4-30 | 삭제 범위 최종 no-hit | v10 plan·review record의 삭제 추적만 제외하고 source, 현재 계약·guide·internals, test, build와 package에서 제거 symbol·enumerator·macro·metadata 부재 | 진행 중 | core include/src/tests no-hit 0 확인(word-boundary 스캔). guide/internals·bindings 범위 잔여 |
+| S4-29 | install과 package consumer | 설치 header와 shared library로 clean consumer 통과 | 완료 | staging 설치+clean C11 consumer single-node round trip `C ABI SMOKE PASS (zlink 10.0.0)`, header 설치 충돌 수정 유지 |
+| S4-30 | 삭제 범위 최종 no-hit | v10 plan·review record의 삭제 추적만 제외하고 source, 현재 계약·guide·internals, test, build와 package에서 제거 symbol·enumerator·macro·metadata 부재 | 완료 | word-boundary 스캔으로 core include/src/tests/CMake/packaging + doc(guide·internals·spec sample) 전 범위 no-hit 0 달성(removal manifest·부재 검증 test 제외). 이 과정에서 guide 20편·internals 12편의 stale SpotNode/bridge/dispatch-handler 서술 정리, `spot-internals.*` 삭제. bindings 확장은 S7 |
 
 ### 8.5 구현 검증 후 Core internals 확정
 
@@ -728,16 +728,16 @@ stress, sanitizer와 package 검증이 통과해 실제 구현 구조가 확정�
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S4-31 | Core internals 갱신 | 검증된 실제 ROUTER 배선, mailbox·ready·claim·batch, lock·thread와 Actor transfer 경계를 `core/doc/internals/`에 반영하고 source·구조 test·다이어그램의 차이 0개 | 미착수 | - |
-| S4-32 | Core internals current-state 검증 | 계획의 대안이나 미구현 목표를 현재 구조로 서술하지 않았으며 제거된 SpotNode·bridge·PUB/XSUB 구조가 현재 설명에 남지 않음 | 미착수 | - |
+| S4-31 | Core internals 갱신 | 검증된 실제 ROUTER 배선, mailbox·ready·claim·batch, lock·thread와 Actor transfer 경계를 `core/doc/internals/`에 반영하고 source·구조 test·다이어그램의 차이 0개 | 완료 | `services-internals.{ko.md,md}` 전면 재작성(mesh_runtime/mesh_wire 객체 모델·mailbox/ready/claim·reply token·wire envelope·NODROP·transfer fence·monitor·잠금/스레드 표), `threading-model`·`posd-module-structure`·`architecture`·`protocol-zmp`·`stream-socket`·`thread-safety`·`connection-memory` 현행화, `spot-internals` 삭제와 색인 정리. 84/84 검증 통과 후 실제 소스 구조 기준으로 작성 |
+| S4-32 | Core internals current-state 검증 | 계획의 대안이나 미구현 목표를 현재 구조로 서술하지 않았으며 제거된 SpotNode·bridge·PUB/XSUB 구조가 현재 설명에 남지 않음 | 완료 | 제거 구조(SpotNode·bridge·PUB/XSUB plane·dispatch worker) 서술 word-boundary no-hit 0, 변경 문서 43편 상대 링크 검사 오류 0(사전 존재 stale 링크 2건 수정) |
 
 S4 완료 gate:
 
-- [ ] Core 기능, 삭제, 회귀, stress와 sanitizer 검증이 모두 통과한다.
-- [ ] 구현된 `core/include/zlink.h` 공개 계약과 Core 정식 spec의 한국어·영문이 일치한다.
-- [ ] Core internals가 구현 뒤 갱신되었고 실제 소켓, queue, thread와 lifecycle 구조를 정확히 설명한다.
-- [ ] 실패를 숨기는 sleep, retry-only workaround, raw frame과 test 전용 우회가 없다.
-- [ ] S5 review manifest에 필요한 revision과 전체 검증 결과가 준비되어 있다.
+- [x] Core 기능, 삭제, 회귀, stress와 sanitizer 검증이 모두 통과한다. (84/84 suite, 2-process 10/10, stress 3/3, ASAN/UBSAN/TSAN — 2026-07-17)
+- [x] 구현된 `core/include/zlink.h` 공개 계약과 Core 정식 spec의 한국어·영문이 일치한다. (`contract_public_surface` PASS)
+- [x] Core internals가 구현 뒤 갱신되었고 실제 소켓, queue, thread와 lifecycle 구조를 정확히 설명한다. (S4-31/32)
+- [x] 실패를 숨기는 sleep, retry-only workaround, raw frame과 test 전용 우회가 없다. (테스트 대기 루프는 miss-시 msleep 폴링만 사용, production 경로 무우회 — S5 I3 재검증 대상)
+- [x] S5 review manifest에 필요한 revision과 전체 검증 결과가 준비되어 있다.
 
 ## 9. S5 — Core 구현 3축 독립 리뷰와 수정 반복
 

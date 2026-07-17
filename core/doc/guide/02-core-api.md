@@ -270,7 +270,7 @@ There are two fundamental receive models in zlink:
 Most socket types support only one of these models. SPOT and STREAM are
 exceptions:
 
-- **SPOT** uses `zlink_spot_dispatch_event_handler()` as its unified readiness handler. Routed receive, subscribe events, channel replies, timers, Actor join, Actor readable, and Actor lifecycle events are drained through explicit receive APIs after the readiness event.
+- **MeshNode/Spot/Actor** use `zlink_mesh_node_set_ready_handler()` (or poller registration) as the unified readiness signal. Records are drained through ready/claim/receive batches after the wakeup.
 - **STREAM** accepts one of three receive modes (`zlink_recv()`, raw callback, or
   packet callback) and locks once one is activated.
 
@@ -281,7 +281,7 @@ Each socket type uses a dedicated registration function:
 | STREAM (raw) | `zlink_recv_handler(socket, fn, userdata)` | `void fn(const zlink_routing_id_t *rid, zlink_msg_t *parts, size_t count, void *userdata)` |
 | STREAM (packet) | `zlink_stream_packet_handler(socket, fn, userdata)` | `void fn(void *stream, const zlink_routing_id_t *source_rid, zlink_msg_t *header, zlink_msg_t *body, void *userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` reply is delivered through a separate completion callback |
-| SPOT (dispatch readable events) | `zlink_spot_dispatch_event_handler(spot, fn, userdata)` — unified readable-event callback for topic/routed/channel-reply/timer/actor-lifecycle | `void fn(void *spot, const zlink_spot_dispatch_info_t *info, void *userdata)` |
+| MeshNode (ready wakeup) | `zlink_mesh_node_set_ready_handler(node, fn, userdata)` — wakeup-only readiness callback; records are drained with claim receive batches | `zlink_mesh_ready_domain_mask_t fn(void *node, zlink_mesh_ready_domain_mask_t mask, void *userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv-driven; drained after a `SUBSCRIBE_READABLE` dispatch event |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv-driven; drained after a `ROUTED_READABLE` dispatch event |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` or `zlink_subscribe()` | N/A |
@@ -298,7 +298,7 @@ zlink's public C API uses **function-specific typed result enums**. Each
 function returns a `zlink_<category>_result_t` enum where `0` is the
 `OK` value and non-zero values identify specific failure modes. The
 canonical enum values are defined in
-[core/errno-map.md](../spec/core/errno-map.md).
+[core/errno-map.md](../spec/core/04-errno-map.md).
 
 The 8 result enum categories:
 
@@ -371,7 +371,7 @@ zlink_timer_destroy(&timer);
 
 ### 6.2 SPOT Timer
 
-SPOT timers use the SpotNode-local shared scheduler instead of the global one.
+Spot timers use the same scheduling machinery as plain timers but are bound to the owning Spot's generation: once the Spot is destroyed or moved, ticks stop.
 
 ```c
 void *spot_timer = zlink_spot_timer_new(spot);
@@ -396,7 +396,7 @@ zlink_poller_remove_timer(poller, timer);
 | `repeat_count=N` | Fires exactly N times then stops |
 | recv vs callback | Conflicts return `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` (same as sockets) |
 | General timer | Uses global shared scheduler |
-| SPOT timer | Uses SpotNode-local shared scheduler |
+| SPOT timer | Bound to the Spot generation — no ticks after it ends |
 
 ## 7. DEALER/ROUTER Example
 

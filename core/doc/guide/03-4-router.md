@@ -439,31 +439,20 @@ as `ZLINK_EVENT_PEER_WEIGHT_CHANGED`; see
 [monitoring guide](06-monitoring.md#peer-weight-changes) for the
 event shape.
 
-## 8. Sending From ROUTER To SPOT
+## 8. The boundary between ROUTER and the service layer
 
-A ROUTER socket can be used not only for regular DEALER/ROUTER peers but also
-as ingress into the SPOT routed plane. In that case, the target `SpotNode` must
-be connected as a peer of that router channel. The target node accepts this
-relationship; the router channel does not implicitly pull in every SpotNode.
+In 10.0.0 the raw ROUTER carries only the generic socket contract. The 9.x
+route bridge (registering an external router channel as ingress into the SPOT
+routed plane) was removed.
 
-The user-facing rule is simple.
+- A MeshNode talks to its mesh peers exclusively over its own ROUTER, and
+  there is no public API that registers a raw ROUTER socket as a service-plane
+  ingress.
+- External processes reach mesh services through the framework client APIs or
+  through STREAM sessions ([Actor guide](07-4-actor.md) §4).
 
-- A client/server channel's server `ROUTER` can send to a target `Spot`.
-- A route mesh channel's `ROUTER` can send to a target `Spot`.
-- PUB/SUB fanout channels and DEALER mesh channels are not SPOT routed-send
-  anchors.
-
-When using the framework, register the RouteMesh and SpotMesh in the same
-process; the runtime wires that receive relationship automatically. When using
-the raw core API directly, create a route bridge and attach the router channel
-socket to the bridge. `SpotNode` no longer owns external router channel peers
-directly as public usage.
-
-> For the full contract, see
-> [Peer weight](../spec/core/socket/router.md#peer-weight),
-> [Peer outbound from ROUTER](../spec/core/socket/router.md#peer-outbound-from-router),
-> and [Sending from ROUTER to SPOT](../spec/core/socket/router.md#sending-from-router-to-spot)
-> in the ROUTER spec.
+> For the full contract, see the ROUTER spec
+> [07-router.md](../spec/core/socket/07-router.md).
 
 ---
 [← DEALER](03-3-dealer.md) | [STREAM →](03-5-stream.md)

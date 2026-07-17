@@ -156,12 +156,8 @@ zlink_recv_result_t zlink_recv (
   replies through the `zlink_dealer_request()` completion callback.
 - **ROUTER**: `zlink_recv()` on a ROUTER handle fails with
   `ZLINK_RECV_NOT_SUPPORTED`. ROUTER uses a single unified typed surface —
-  `zlink_router_recv()` — that returns `source_node_rid`,
-  `source_spot_rid`, and `request_seq`. This one surface carries plain
-  ROUTER traffic and SPOT-originated routed traffic. In the opposite direction,
-  a router-capable channel's ROUTER can send to SPOT only after the target
-  `SpotNode` is connected as that router channel's peer. Request replies are
-  delivered through a separate completion callback. See
+  `zlink_router_recv()` — that returns `source_node_rid` and `request_seq`.
+  Request replies are delivered through a separate completion callback. See
   [03-4-router.md](03-4-router.md).
 - **SUB / XSUB**: use `zlink_subscribe()`. They are recv-only; no direct
   topic callback surface is provided.
@@ -169,10 +165,10 @@ zlink_recv_result_t zlink_recv (
   `zlink_recv()` (raw recv), `zlink_recv_handler()` (raw callback), or
   `zlink_stream_packet_handler()` (packet callback). A second attempt to
   activate a different mode on the same handle fails with `EBUSY`.
-- **SPOT**: uses `zlink_spot_dispatch_event_handler()` for unified readiness. Subscribe, routed, channel reply, timer, Actor join, Actor readable, and Actor lifecycle events are pulled with the corresponding drain API after the readiness signal.
+- **MeshNode/Spot/Actor**: use the ready handler or the poller for unified readiness, then read records through ready/claim/receive batches ([07-3 SPOT](07-3-spot.md) §5).
 - **monitor / timer**: both recv and callback models are supported.
 
-In short, data-plane receive defaults to `recv + poller`. Callback-based receive is kept only for exception types whose usage pattern justifies it: `STREAM` and monitor/timer. SPOT uses `zlink_spot_dispatch_event_handler()` only as a readiness signal; payload is still pulled by receive APIs. Request
+In short, data-plane receive defaults to `recv + poller`. Callback-based receive is kept only for exception types whose usage pattern justifies it: `STREAM` and monitor/timer. The MeshNode ready handler is only a wakeup signal; payload is still pulled by receive APIs. Request
 completion callbacks live on a separate axis (async operation completion), not
 on the data-plane receive axis.
 

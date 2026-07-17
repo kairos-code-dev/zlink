@@ -359,9 +359,11 @@ The current public C API does not expose a separate service-event
 handle. For service-layer checks, read snapshots or query results and
 compare them over time.
 
-- Spot node state: `zlink_spot_node_status()`,
-  `zlink_spot_node_peers()`,
-  `zlink_spot_node_subjects()`
+- MeshNode state: `zlink_mesh_node_status()`,
+  `zlink_mesh_node_peers()`,
+  `zlink_mesh_node_peer_channels()`
+- MeshNode event stream: the `zlink_mesh_node_monitor_open()` family
+  (see [monitoring spec §2–5](../spec/core/07-monitoring.md))
 
 ## 9. Multi-Socket Monitoring
 

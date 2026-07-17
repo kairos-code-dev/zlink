@@ -264,7 +264,7 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 
 대부분의 소켓 타입은 두 방식 중 하나만 지원한다. SPOT과 STREAM은 예외다.
 
-- **SPOT**: `zlink_spot_dispatch_event_handler()`를 통합 readiness handler로 사용한다. routed receive, subscribe event, channel reply, timer, Actor join, Actor readable, Actor lifecycle event는 readiness 뒤 명시적 receive API로 drain한다.
+- **MeshNode/Spot/Actor**: `zlink_mesh_node_set_ready_handler()`(또는 poller 등록)를 통합 readiness 신호로 사용한다. record는 wakeup 뒤 ready/claim/receive batch로 drain한다.
 - **STREAM**: `zlink_recv()`, raw 콜백, packet 콜백 세 가지 수신 모드 중
   하나를 선택하면 이후 모드 변경이 불가하다.
 
@@ -278,7 +278,7 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 | STREAM (raw) | `zlink_recv_handler()` | `fn(rid, parts, count, userdata)` |
 | STREAM (packet) | `zlink_stream_packet_handler()` | `fn(stream, source_rid, header, body, userdata)` |
 | ROUTER (routed) | recv-only — `zlink_router_recv()` | N/A. `zlink_router_request()` 의 reply 는 별도 완료 콜백으로 전달 |
-| SPOT (dispatch readable 이벤트) | `zlink_spot_dispatch_event_handler()` — topic/routed/channel reply/timer/actor lifecycle를 모두 한 콜백으로 수신 | `fn(spot, const zlink_spot_dispatch_info_t *info, userdata)` |
+| MeshNode (ready wakeup) | `zlink_mesh_node_set_ready_handler()` — wakeup 전용 readiness 콜백. record는 claim receive batch로 drain | `zlink_mesh_ready_domain_mask_t fn(node, mask, userdata)` |
 | SPOT (service-aware subscribe recv) | `zlink_spot_subscribe(spot, ..., service_name_out, topic_id_out, ...)` | N/A — recv 기반; `SUBSCRIBE_READABLE` 이벤트 후 drain |
 | SPOT (service-aware routed recv) | `zlink_spot_recv(spot, ...)` | N/A — recv 기반; `ROUTED_READABLE` 이벤트 후 drain |
 | PAIR / DEALER / SUB / XSUB | recv-only — `zlink_recv()` 또는 `zlink_subscribe()` | N/A |
@@ -291,7 +291,7 @@ zlink의 수신 모델은 두 가지 기본 방식으로 나뉜다.
 zlink 공개 C API 는 **함수별 typed result enum** 을 사용한다. 각 함수는
 `zlink_<category>_result_t` 를 반환하며 `0` 은 항상 `OK` 이고 non-zero 값이
 구체 실패 모드를 식별한다. 전체 enum 정의는
-[core/errno-map.md](../spec/core/errno-map.ko.md) 를 참조한다.
+[core/errno-map.md](../spec/core/04-errno-map.ko.md) 를 참조한다.
 
 8 개 result enum 카테고리:
 
@@ -363,7 +363,7 @@ zlink_timer_destroy(&timer);
 
 ### 6.2 SPOT Timer
 
-SPOT 타이머는 프로세스 전역 스케줄러 대신 SpotNode 전용 공유 스케줄러를 사용한다. 같은 SpotNode 안의 타이머들이 단일 스케줄러를 공유하므로 스케줄링 오버헤드가 줄어든다.
+Spot 타이머는 일반 타이머와 같은 스케줄링 기계를 쓰되 해당 Spot의 generation에 묶인다. Spot이 파괴되거나 이동해 generation이 끝나면 tick이 더 이상 전달되지 않는다.
 
 ```c
 void *spot_timer = zlink_spot_timer_new(spot);
@@ -389,7 +389,7 @@ zlink_poller_remove_timer(poller, timer);
 | recv vs callback | 충돌 시 `ZLINK_RECV_BUSY` / `ZLINK_HANDLER_BUSY` 반환 (socket 과 동일) |
 | 소비 모델 배타 | 한 timer는 recv/callback/poller 중 하나만 — 콜백이 활성이면 poller 등록은 `BUSY`로 거부 |
 | 일반 timer | 프로세스 전역 공유 스케줄러 사용 |
-| SPOT timer | SpotNode 전용 공유 스케줄러 사용 |
+| SPOT timer | Spot generation에 묶임 — generation 종료 후 tick 미전달 |
 
 ## 7. DEALER/ROUTER 예제
 

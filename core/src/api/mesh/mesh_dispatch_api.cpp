@@ -128,13 +128,12 @@ zlink_close_result_t release_claim_body (const claim_body_t &body_)
     mailbox.claimed = false;
     mailbox.claim_serial = 0;
     forget_claim_key (body_.serial);
-    if (!mailbox.records.empty ())
-        node->ready.insert (std::make_pair (owner, static_cast<int> (body_.domain)));
+    const bool rearm = !mailbox.records.empty ();
     node->cv.notify_all ();
     lock.unlock ();
     //  Re-arm through the public signalling path so a registered handler
-    //  learns about the remaining work.
-    if (!node->ready.empty ())
+    //  learns about the remaining work in this owner's mailbox.
+    if (rearm)
         signal_ready (node, owner, body_.domain);
     return ZLINK_CLOSE_OK;
 }
@@ -779,6 +778,12 @@ zlink_submit_result_t zlink_mesh_reply (const zlink_mesh_reply_token_t *token_,
     uint64_t remote_correlation = 0;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
+        //  A stopped node has no usable source route left; drains in progress
+        //  still accept replies so held claims can finish their turn.
+        if (node->state == ZLINK_MESH_NODE_STOPPED) {
+            errno = ESHUTDOWN;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
         std::unordered_map<uint64_t, reply_route_t>::iterator it = node->reply_routes.find (serial);
         if (it == node->reply_routes.end ()) {
             errno = ESTALE;

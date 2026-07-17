@@ -31,7 +31,7 @@ external raw client  <---- RAW byte stream (no framing) ---->  STREAM(server)
 > STREAM is not directly compatible with zlink internal sockets (PAIR/PUB/SUB/DEALER/ROUTER).
 
 > **Bridging client sessions to Actors.** A STREAM server can also act as the
-> front door for SpotNode Actors: each client session can be bound to an Actor so
+> front door for mesh Actors: each client session can be bound to an Actor so
 > that session traffic is relayed to and from it. That pattern starts by attaching
 > the [Actor guide](07-4-actor.md) for the full session-to-Actor flow.
 

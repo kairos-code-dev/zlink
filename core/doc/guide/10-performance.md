@@ -578,25 +578,22 @@ Example: a ROUTER server holding 10,000 long-lived connections should budget
 about 330 MB of process RSS (residual basis) and reserve ~660 MB when burst
 peaks are considered. At 50,000 connections that becomes ~1.7 GB / ~3.3 GB.
 
-### Count SpotNode mesh peers at 2–3×
+### Count MeshNode mesh peers at one connection each
 
-A SpotNode uses several TCP connections per peer. ALL mode uses 3 links
-(~79 KB + 3 fds per peer); PUBSUB mode uses 2 links (~46 KB + 2 fds per
-peer). If a deployment only needs pub/sub, simply selecting PUBSUB mode cuts
-per-peer memory and fd usage substantially. Double the numbers again for a
-bidirectional full mesh.
+A MeshNode uses exactly one TCP connection (one fd) per peer on its owned
+ROUTER. Control (admission, descriptors) and data (direct, channel,
+multicast) share that connection, so the mesh fd/memory budget is linear in
+the peer count.
 
 ### Large-connection checklist
 
 - [ ] Size process memory on the residual value and container limits on the
       peak value
-- [ ] Run SpotNode in the narrowest mode that covers the deployment
-      (PUBSUB/ROUTED)
-- [ ] fd budget: set `RLIMIT_NOFILE` from connection count × (2–3 per peer
-      for SpotNode) plus headroom. `ZLINK_MAX_SOCKETS` limits **socket
-      handles** (default 4095), not connections — raise it only on the side
-      that creates many sockets (e.g. a client with one socket per
-      connection, or a process hosting many SpotNodes)
+- [ ] fd budget: set `RLIMIT_NOFILE` from the connection count (one per
+      peer for a MeshNode) plus headroom. `ZLINK_MAX_SOCKETS` limits
+      **socket handles** (default 4095), not connections — raise it only on
+      the side that creates many sockets (e.g. a client with one socket per
+      connection)
 - [ ] With very many low-bandwidth connections, cap per-socket kernel
       buffers via `ZLINK_OPT_RCVBUF/SNDBUF` (e.g. 32 KB) to prevent
       autotuning growth (the ceiling is the kernel `tcp_rmem/tcp_wmem`

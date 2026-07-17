@@ -572,22 +572,20 @@ void on_pong(const zlink_routing_id_t *source_rid,
 (잔류 기준)로 잡고, 버스트 피크까지 고려하면 ~660 MB를 확보한다.
 50,000연결이면 각각 ~1.7 GB / ~3.3 GB다.
 
-### SpotNode mesh는 peer당 2~3배로 계산한다
+### MeshNode mesh는 peer당 연결 1개로 계산한다
 
-SpotNode는 peer 하나에 TCP 연결을 여러 개 사용한다. ALL 모드는 3연결
-(peer당 ~79 KB + fd 3개), PUBSUB 모드는 2연결(peer당 ~46 KB + fd 2개)이다.
-pub/sub만 쓰는 배치는 PUBSUB 모드를 선택하는 것만으로 peer당 메모리와
-fd가 크게 줄어든다. 양방향 full mesh는 다시 두 배로 계산한다.
+MeshNode는 peer 하나당 자기 소유 ROUTER의 TCP 연결 1개(fd 1개)만 사용한다.
+제어(admission·descriptor)와 데이터(direct·channel·multicast)가 같은 연결을
+공유하므로, mesh의 fd·메모리 예산은 peer 수에 선형이다.
 
 ### 대량 연결 체크리스트
 
 - [ ] 잔류 기준으로 프로세스 메모리를, 순간 최대 기준으로 컨테이너
       리밋을 산정
-- [ ] SpotNode는 필요한 기능만 켠 모드(PUBSUB/ROUTED) 사용
-- [ ] fd 예산: `RLIMIT_NOFILE`은 연결 수 × (SpotNode면 peer당 2~3) +
+- [ ] fd 예산: `RLIMIT_NOFILE`은 연결 수(MeshNode는 peer당 1) +
       여유분으로 설정. `ZLINK_MAX_SOCKETS`는 연결 수가 아니라 **소켓 핸들
       수** 제한(기본 4095)이므로, 소켓을 많이 만드는 쪽(예: 연결당 소켓
-      1개를 만드는 클라이언트, SpotNode를 많이 만드는 프로세스)에서만
+      1개를 만드는 클라이언트)에서만
       올린다
 - [ ] 연결이 아주 많고 연결당 대역이 낮으면 `ZLINK_OPT_RCVBUF/SNDBUF`로
       소켓당 커널 버퍼 상한(예: 32 KB)을 걸어 autotuning 과대 성장

@@ -13,12 +13,25 @@
 
 namespace
 {
-std::mutex g_registry_mutex;
-std::map<std::string, zlink::mesh::mesh_node_t *> g_nodes_by_name;
-std::set<void *> g_live_nodes;
-std::set<void *> g_live_facades;
-std::set<void *> g_live_publishers;
-std::set<void *> g_live_monitors;
+//  Handle registry. Intentionally immortal (leaked on exit): detached
+//  runtime threads may still validate handles while static destructors run,
+//  so the storage must outlive them (same pattern as the request timeout
+//  scheduler singleton).
+struct handle_registry_t
+{
+    std::mutex mutex;
+    std::map<std::string, zlink::mesh::mesh_node_t *> nodes_by_name;
+    std::set<void *> live_nodes;
+    std::set<void *> live_facades;
+    std::set<void *> live_publishers;
+    std::set<void *> live_monitors;
+};
+
+handle_registry_t &registry ()
+{
+    static handle_registry_t *instance = new handle_registry_t ();
+    return *instance;
+}
 
 bool valid_utf8 (const unsigned char *data_, size_t size_)
 {
@@ -326,30 +339,30 @@ uint64_t mesh_node_t::effective_byte_budget () const
 
 mesh_node_t *find_node_by_name (const std::string &name_)
 {
-    std::lock_guard<std::mutex> lock (g_registry_mutex);
-    std::map<std::string, mesh_node_t *>::iterator it = g_nodes_by_name.find (name_);
-    return it != g_nodes_by_name.end () ? it->second : NULL;
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    std::map<std::string, mesh_node_t *>::iterator it = registry ().nodes_by_name.find (name_);
+    return it != registry ().nodes_by_name.end () ? it->second : NULL;
 }
 
 int register_node (mesh_node_t *node_)
 {
-    std::lock_guard<std::mutex> lock (g_registry_mutex);
-    if (g_nodes_by_name.count (node_->mesh_name)) {
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    if (registry ().nodes_by_name.count (node_->mesh_name)) {
         errno = EEXIST;
         return -1;
     }
-    g_nodes_by_name[node_->mesh_name] = node_;
-    g_live_nodes.insert (node_);
+    registry ().nodes_by_name[node_->mesh_name] = node_;
+    registry ().live_nodes.insert (node_);
     return 0;
 }
 
 void unregister_node (mesh_node_t *node_)
 {
-    std::lock_guard<std::mutex> lock (g_registry_mutex);
-    std::map<std::string, mesh_node_t *>::iterator it = g_nodes_by_name.find (node_->mesh_name);
-    if (it != g_nodes_by_name.end () && it->second == node_)
-        g_nodes_by_name.erase (it);
-    g_live_nodes.erase (node_);
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    std::map<std::string, mesh_node_t *>::iterator it = registry ().nodes_by_name.find (node_->mesh_name);
+    if (it != registry ().nodes_by_name.end () && it->second == node_)
+        registry ().nodes_by_name.erase (it);
+    registry ().live_nodes.erase (node_);
 }
 
 mesh_node_t *as_mesh_node (void *handle_)
@@ -357,8 +370,8 @@ mesh_node_t *as_mesh_node (void *handle_)
     if (!handle_)
         return NULL;
     {
-        std::lock_guard<std::mutex> lock (g_registry_mutex);
-        if (!g_live_nodes.count (handle_))
+        std::lock_guard<std::mutex> lock (registry ().mutex);
+        if (!registry ().live_nodes.count (handle_))
             return NULL;
     }
     mesh_node_t *node = static_cast<mesh_node_t *> (handle_);
@@ -370,8 +383,8 @@ spot_facade_t *as_spot_facade (void *handle_)
     if (!handle_)
         return NULL;
     {
-        std::lock_guard<std::mutex> lock (g_registry_mutex);
-        if (!g_live_facades.count (handle_))
+        std::lock_guard<std::mutex> lock (registry ().mutex);
+        if (!registry ().live_facades.count (handle_))
             return NULL;
     }
     spot_facade_t *facade = static_cast<spot_facade_t *> (handle_);
@@ -383,8 +396,8 @@ publisher_t *as_publisher (void *handle_)
     if (!handle_)
         return NULL;
     {
-        std::lock_guard<std::mutex> lock (g_registry_mutex);
-        if (!g_live_publishers.count (handle_))
+        std::lock_guard<std::mutex> lock (registry ().mutex);
+        if (!registry ().live_publishers.count (handle_))
             return NULL;
     }
     publisher_t *pub = static_cast<publisher_t *> (handle_);
@@ -396,8 +409,8 @@ monitor_state_t *as_monitor (void *handle_)
     if (!handle_)
         return NULL;
     {
-        std::lock_guard<std::mutex> lock (g_registry_mutex);
-        if (!g_live_monitors.count (handle_))
+        std::lock_guard<std::mutex> lock (registry ().mutex);
+        if (!registry ().live_monitors.count (handle_))
             return NULL;
     }
     monitor_state_t *monitor = static_cast<monitor_state_t *> (handle_);
@@ -406,29 +419,29 @@ monitor_state_t *as_monitor (void *handle_)
 
 void track_facade (spot_facade_t *facade_, bool live_)
 {
-    std::lock_guard<std::mutex> lock (g_registry_mutex);
+    std::lock_guard<std::mutex> lock (registry ().mutex);
     if (live_)
-        g_live_facades.insert (facade_);
+        registry ().live_facades.insert (facade_);
     else
-        g_live_facades.erase (facade_);
+        registry ().live_facades.erase (facade_);
 }
 
 void track_publisher (publisher_t *pub_, bool live_)
 {
-    std::lock_guard<std::mutex> lock (g_registry_mutex);
+    std::lock_guard<std::mutex> lock (registry ().mutex);
     if (live_)
-        g_live_publishers.insert (pub_);
+        registry ().live_publishers.insert (pub_);
     else
-        g_live_publishers.erase (pub_);
+        registry ().live_publishers.erase (pub_);
 }
 
 void track_monitor (monitor_state_t *monitor_, bool live_)
 {
-    std::lock_guard<std::mutex> lock (g_registry_mutex);
+    std::lock_guard<std::mutex> lock (registry ().mutex);
     if (live_)
-        g_live_monitors.insert (monitor_);
+        registry ().live_monitors.insert (monitor_);
     else
-        g_live_monitors.erase (monitor_);
+        registry ().live_monitors.erase (monitor_);
 }
 
 ready_batch_t *as_ready_batch (void *handle_)
@@ -549,6 +562,28 @@ void signal_ready (mesh_node_t *node_, const owner_id_t &owner_, domain_t domain
     notify_consumer_locked (node_, lock);
 }
 
+//  Emits the BACKPRESSURED observation for a rejected admission after the
+//  node mutex is released; keeps errno for the caller.
+int admit_backpressured (mesh_node_t *node_,
+                         const owner_id_t &owner_,
+                         const queued_record_t *record_,
+                         std::unique_lock<std::mutex> &lock_,
+                         int errno_)
+{
+    zlink_mesh_monitor_event_t event;
+    memset (&event, 0, sizeof (event));
+    event.kind = ZLINK_MESH_MONITOR_BACKPRESSURED;
+    event.owner_kind = static_cast<zlink_mesh_owner_kind_t> (owner_.kind);
+    if (record_ && !record_->channel_name.empty ())
+        snprintf (event.channel_name, sizeof (event.channel_name), "%s",
+                  record_->channel_name.c_str ());
+    event.failure_errno = errno_;
+    lock_.unlock ();
+    emit_monitor_event (node_, event);
+    errno = errno_;
+    return -1;
+}
+
 int admit_record (mesh_node_t *node_,
                   const owner_id_t &owner_,
                   domain_t domain_,
@@ -566,10 +601,8 @@ int admit_record (mesh_node_t *node_,
 
     //  Transfer fence: the frozen application lane accepts no new records
     //  until commit or abort resolves the fence.
-    if (domain_ == domain_application && it->second.fenced_transfer_serial != 0) {
-        errno = EAGAIN;
-        return -1;
-    }
+    if (domain_ == domain_application && it->second.fenced_transfer_serial != 0)
+        return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN);
 
     const uint64_t message_budget = node_->effective_message_budget ();
     const uint64_t byte_budget = node_->effective_byte_budget ();
@@ -584,15 +617,11 @@ int admit_record (mesh_node_t *node_,
     while (budgeted
            && (mailbox.pending_messages + 1 > message_budget
                || mailbox.pending_bytes + record_->byte_size > byte_budget)) {
-        if (!blocking_ || timeout_ms_ == 0) {
-            errno = EAGAIN;
-            return -1;
-        }
+        if (!blocking_ || timeout_ms_ == 0)
+            return admit_backpressured (node_, owner_, record_.get (), lock, EAGAIN);
         const uint64_t now = now_ms ();
-        if (deadline != 0 && now >= deadline) {
-            errno = ETIMEDOUT;
-            return -1;
-        }
+        if (deadline != 0 && now >= deadline)
+            return admit_backpressured (node_, owner_, record_.get (), lock, ETIMEDOUT);
         node_->cv.wait_for (lock, std::chrono::milliseconds (
                                     deadline != 0 ? deadline - now : 50));
         if (node_->state == ZLINK_MESH_NODE_DRAINING || node_->state == ZLINK_MESH_NODE_STOPPED) {
@@ -689,14 +718,18 @@ zlink_submit_result_t submit_errno_result ()
 {
     switch (errno) {
         case EAGAIN:
-            return ZLINK_SUBMIT_BACKPRESSURED;
         case ETIMEDOUT:
+        case ENOBUFS:
             return ZLINK_SUBMIT_BACKPRESSURED;
         case ENOTCONN:
         case EHOSTUNREACH:
             return ZLINK_SUBMIT_NOT_CONNECTED;
         case ENOENT:
             return ZLINK_SUBMIT_NOT_FOUND;
+        case EACCES:
+            return ZLINK_SUBMIT_NOT_ADMITTED;
+        case ETERM:
+            return ZLINK_SUBMIT_TERMINATED;
         case EINVAL:
         case EMSGSIZE:
             return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -705,8 +738,13 @@ zlink_submit_result_t submit_errno_result ()
         case ESTALE:
         case EALREADY:
             return ZLINK_SUBMIT_INVALID_STATE;
+        case EDEADLK:
+        case EPERM:
+            return ZLINK_SUBMIT_THREAD_VIOLATION;
         case ENOMEM:
             return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        case EOVERFLOW:
+            return ZLINK_SUBMIT_SEQ_EXHAUSTED;
         case EFAULT:
             return ZLINK_SUBMIT_INVALID_HANDLE;
         case ENOTSUP:

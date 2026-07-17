@@ -111,8 +111,8 @@ lifecycle.
 
 | Service | Role |
 |---------|------|
-| **SPOT** | Location-transparent topic pub/sub + routed communication mesh. `SpotNode` owns the transports; `Spot` facades provide the data plane |
-| **Actor** | Session-based addressing unit inside SPOT. Funnels STREAM session messages into a `Spot` dispatch context. `SpotNode` manages the Actor table; `Entry Spot` handles initial dispatch |
+| **SPOT** | Dynamic state units on the MeshNode: channel subscriptions, Logical Multicast and direct messaging. The `MeshNode` owns the transport; `Spot` facades provide the data plane |
+| **Actor** | Session-based addressing unit joined to a Spot. The `MeshNode` manages the Actor registry; the `Entry Spot` handles initial dispatch |
 
 See the [Service Layer Overview](07-0-services.md), [SPOT Guide](07-3-spot.md),
 and [SPOT Actor Guide](07-4-actor.md) for details.

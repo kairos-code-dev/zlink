@@ -228,32 +228,19 @@ pipe를 찾고 종료 요청을 넣는다. 4바이트가 아닌 rid는 잘못된
 
 ## 9. Session Actor relay (session relay)
 
-STREAM socket은 client session 메시지를 SpotNode Actor로 relay할 수 있다. 각 client
-연결의 `source_rid`가 STREAM session이 되고, `zlink_stream_bind_actor()`로 Actor 하나
-이상에 bind될 수 있다. bind를 실행하려면 그 전에 STREAM handle이 자신의 session을
-소유하는 SpotNode를 알고 있어야 한다. 이것이 session relay다.
-
-```c
-                                                        void *node);
-```
-
-STREAM handle이 session owner SpotNode를 얻는 경로는 두 가지다.
-
-  routed-capable `node`가 소유하도록 기록한다. raw STREAM socket과 connector 기반
-  stream은 library가 handle에서 SpotNode로 이어지는 구조적 연결이 없으므로 이 경로가 필수다.
-  attach는 one-way이고 sticky하다. 다른 node로 다시 붙이려 하면 거부하고(`EBUSY` /
-  `ZLINK_CONFIG_INVALID_STATE`), 같은 stream/node 쌍이면 멱등으로 받아들이며, stream close
-  또는 node destroy 때만 해제된다. routed가 아닌 node는 `ENOTSUP` /
-  `ZLINK_CONFIG_NOT_SUPPORTED`로 거부된다.
-- **구조적 추론.** STREAM socket 자체가 SpotNode 소유 socket(node 내부 socket)이면
-  owner를 socket registry에서 복원하므로 명시적 attach가 필요 없다.
+STREAM socket은 client session 메시지를 mesh Actor로 relay할 수 있다. 각 client
+연결의 `source_rid`가 STREAM session이 된다. 10.0.0에서 socket과 MeshNode의
+연결은 STREAM session service가 명시적으로 소유한다:
+`zlink_stream_session_service_new(stream_socket, node)`가 socket과 node에
+1:1:1로 붙고, 다른 node에 이미 붙은 socket은 `EEXIST`로 거부된다.
 
 STREAM socket은 relay 상태를 직접 보관하지 않는다. owner 매핑, session-to-Actor binding,
-relay 경로는 모두 SpotNode Actor runtime에 있다. companion session API는
-`zlink_stream_bind_actor()` / `zlink_stream_unbind_actor()`(session binding 관리),
-`zlink_stream_send_bound_actor_part()`(bound Actor로 multipart relay),
-`zlink_stream_bound_actors()`(session binding 열거)다. 배선과 local/remote relay 경로,
-cleanup 규칙은 [spot-internals.ko.md](spot-internals.ko.md) 12절("STREAM session과 Actor
-binding")에 정리되어 있다. STREAM 계층에서 중요한 것은 `source_rid`별 byte pipe가 relay가
-타는 transport라는 점, 그리고 session disconnect가 bound Actor의 joined Spot은 바꾸지 않고 그
-session의 binding만 제거한다는 점뿐이다.
+relay 경로는 모두 MeshNode의 STREAM session service에 있다. companion API는
+`zlink_stream_session_service_new()`로 socket과 node에 1:1:1로 붙는 service handle과
+`zlink_stream_session_bind_actor()` / `zlink_stream_session_unbind_actor()`(binding CAS),
+`zlink_stream_session_send_to_actor()` / `zlink_stream_session_request_to_actor()`(relay),
+`zlink_stream_session_bindings()`(열거)다. 배선과 relay 경로, cleanup 규칙은
+[서비스 계층 내부 설계 §10](services-internals.ko.md)에 정리되어 있다. STREAM 계층에서
+중요한 것은 `source_rid`별 byte pipe가 relay가 타는 transport라는 점, 그리고 session
+disconnect가 bound Actor의 joined Spot은 바꾸지 않고 그 session의 binding만 제거한다는
+점뿐이다.

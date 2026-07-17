@@ -1221,20 +1221,9 @@ core/
 |   |   |   +-- monitor_decode.hpp       # Monitor event decoding
 |   |   |   +-- service_runtime_base.hpp # Service lifecycle kernel
 |   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
-|   |   +-- spot/                    # SPOT service (POSD modular split)
-|   |       +-- spot_node.cpp/hpp    # Network control (PUB/SUB mesh)
-|   |       +-- spot_node_access.cpp/hpp  # SpotNode API seam
-|   |       +-- spot_handle.hpp      # Public handle struct
-|   |       +-- spot_pub.cpp/hpp     # Publish handle (thread-safe)
-|   |       +-- spot_sub.cpp/hpp     # Subscribe/receive handle
-|   |       +-- spot_sub_option.cpp  # Sub-side option handling
-|   |       +-- spot_sub_recv.cpp    # Sub-side recv handling
-|   |       +-- spot_subject_access.cpp/hpp # Subject API seam
-|   |       +-- spot_data_plane.cpp/hpp  # Data plane core
-|   |       +-- spot_data_plane_forwarding.cpp # Ingress/egress forwarding
-|   |       +-- spot_data_plane_protocol.cpp   # Control messages, subscription updates
-|   |       +-- spot_data_plane_internal.hpp   # Data plane internal state
-|   |       +-- spot_runtime.cpp/hpp # SPOT runtime lifecycle
+|   |   +-- mesh/                    # 10.0.0 mesh service runtime
+|   |       +-- mesh_runtime.cpp/hpp # Object model: mailboxes, ready index, claims, budgets, monitor
+|   |       +-- mesh_wire.cpp/hpp    # Node-owned ROUTER wire: ingress thread, admission, envelope
 |   |
 |   +-- utils/                       # Utilities
 |       +-- ypipe.hpp                # Lock-free pipe

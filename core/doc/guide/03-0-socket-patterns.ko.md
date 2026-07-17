@@ -152,23 +152,19 @@ zlink_recv_result_t zlink_recv (
   `zlink_dealer_request()`의 완료 콜백으로 reply를 받는다.
 - **ROUTER**: ROUTER 핸들에 `zlink_recv()`를 호출하면
   `ZLINK_RECV_NOT_SUPPORTED`로 실패한다. ROUTER는 통합된 단일 typed
-  표면 — `zlink_router_recv()` — 을 사용하며, `source_node_rid`,
-  `source_spot_rid`, `request_seq`를 함께 반환한다. 이 하나의 표면이 일반
-  ROUTER 트래픽과 SPOT에서 시작된 routed 트래픽을 모두 전달한다.
-  반대로 router 역할이 있는 channel의 ROUTER에서 SPOT으로 보내려면
-  target `SpotNode`가 그 router channel의 peer로 연결되어 있어야 한다.
-  request의 reply는 별도 완료 콜백으로 받는다. 자세한 내용은
-  [03-4-router.ko.md](03-4-router.ko.md).
+  표면 — `zlink_router_recv()` — 을 사용하며, `source_node_rid`와
+  `request_seq`를 함께 반환한다. request의 reply는 별도 완료 콜백으로
+  받는다. 자세한 내용은 [03-4-router.ko.md](03-4-router.ko.md).
 - **SUB / XSUB**: `zlink_subscribe()`로 수신한다. recv-only이며, 직접
   토픽 콜백 표면은 제공하지 않는다.
 - **STREAM**: 예외 타입이다. `zlink_recv()` (raw recv),
   `zlink_recv_handler()` (raw 콜백), `zlink_stream_packet_handler()`
   (packet 콜백) 세 모델 중 하나를 고른다. 한 핸들에서 두 번째 모델로
   전환하려 하면 `EBUSY`로 실패한다.
-- **SPOT**: `zlink_spot_dispatch_event_handler()`로 readiness를 통합 수신한다. subscribe, routed, channel reply, timer, Actor join, Actor readable, Actor lifecycle event는 readiness 뒤 각 drain API로 읽는다.
+- **MeshNode/Spot/Actor**: ready handler 또는 poller로 readiness를 통합 수신하고, ready/claim/receive batch로 record를 읽는다([07-3 SPOT](07-3-spot.ko.md) §5).
 - **monitor / 타이머**: recv와 콜백 두 방식을 모두 지원한다.
 
-data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. SPOT은 `zlink_spot_dispatch_event_handler()`를 readiness 신호로만 사용하고 payload는 receive API로 읽는다. request completion
+data-plane 수신은 `recv + poller`가 기본이며, 콜백은 `STREAM`, monitor/timer처럼 사용 패턴이 분명한 예외 타입에만 쓴다. MeshNode ready handler는 wakeup 신호일 뿐이고 payload는 receive API로 읽는다. request completion
 콜백은 data-plane 수신이 아니라 비동기 작업 완료 통지임에 유의한다.
 
 ## 9. 용어 정리

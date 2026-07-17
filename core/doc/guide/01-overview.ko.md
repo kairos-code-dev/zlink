@@ -111,8 +111,8 @@ zlink는 [libzmq](https://github.com/zeromq/libzmq) v4.3.5 기반의 현대적 �
 
 | 서비스 | 역할 |
 |--------|------|
-| **SPOT** | 위치 투명(location-transparent, 상대 주소를 몰라도 통신 가능) 토픽 pub/sub + routed mesh 통신. `SpotNode`가 transport를 소유하고 `Spot` facade가 data plane을 제공 |
-| **Actor** | SPOT 안에서 STREAM 세션 메시지를 라우팅 대상으로 묶는 세션 기반 주소 지정 단위. `SpotNode`가 Actor 테이블을 관리하고 `Entry Spot`에서 메시지를 전달한다 |
+| **SPOT** | MeshNode 위의 동적 상태 단위. channel 구독과 Logical Multicast, direct 메시징을 제공하며 `MeshNode`가 transport를 소유하고 `Spot` facade가 data plane을 제공 |
+| **Actor** | Spot에 join하는 세션 기반 주소 지정 단위. `MeshNode`가 Actor registry를 관리하고 `Entry Spot`에서 초기 메시지를 전달한다 |
 
 자세한 내용은 [서비스 계층 개요](07-0-services.ko.md), [SPOT 가이드](07-3-spot.ko.md),
 [SPOT Actor 가이드](07-4-actor.ko.md)를 본다.

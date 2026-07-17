@@ -6,301 +6,147 @@
 
 # SPOT Actor Guide
 
-This guide covers Actor creation, Spot join/leave, teardown, and session binding.
-For SPOT basic setup and dispatch handler registration see the [SPOT guide](07-3-spot.md).
-For exact API contracts see the [SPOT spec](../spec/core/service/spot.md).
+This document explains Actor creation, Spot join/leave, messaging,
+termination, STREAM session binding and the transfer flow. For MeshNode setup
+and the claim consumption flow see the [SPOT guide](07-3-spot.md). The exact
+function contracts are owned by the
+[Actor spec](../spec/core/service/04-actor.md) and the
+[STREAM session spec](../spec/core/service/05-stream-session.md).
 
-## 1. Distributing session messages with Actors
+> For **what an Actor is and when** to use one (session-to-processing
+> binding, reconnect continuity, difference from a plain Spot), start with
+> [Services overview §mental model](07-0-services.md#12-mental-model--which-layer-to-use-when).
 
-Actors let you route messages from a STREAM client session to a specific
-processing unit and distinguish the drain target in the Spot dispatch callback.
-One session can be bound to multiple Actors; one Actor is bound to at most one
-session at a time.
+## 1. Creating Actors and the entry Spot
 
-An Actor belongs to the `Entry Spot` immediately after creation. The `Entry Spot`
-is the default Spot that every `SpotNode` always maintains. Registering a dispatch
-handler on the `Entry Spot` lets the application receive initial Actor messages,
-perform authentication, or select a target Spot.
-
-Obtain an Entry Spot facade as follows:
-
-```c
-void *entry = NULL;
-zlink_spot_node_entry_spot(node, &entry);
-zlink_spot_dispatch_event_handler(entry, my_dispatch_handler, userdata);
-```
-
-Close the facade with `zlink_spot_destroy(&entry)` when done. The Entry Spot itself
-is owned by the `SpotNode` and is not destroyed when the facade is closed.
-
-The minimal flow is:
-
-1. Create an Actor on the `SpotNode`.
-2. Identify the STREAM client session routing id.
-3. Attach the STREAM socket to the session owner `SpotNode` with
-4. Bind session and Actor with `zlink_stream_bind_actor()`.
-5. Inside the STREAM packet handler or app logic, select an Actor id and call
-   `zlink_stream_send_bound_actor_part()`.
-6. When `ACTOR_READABLE` arrives in the dispatch callback, copy the `subject`
-   Actor ref and drain it with `zlink_spot_node_actor_recv_part()`.
+An Actor is an addressable unit identified by `zlink_actor_ref_t` (actor id +
+generation). It owns no socket and no in-process endpoint, and is always
+joined to some Spot. Right after creation it belongs to the node's entry
+Spot.
 
 ```c
-zlink_actor_ref_t ref;
-zlink_spot_node_actor_new(node, "player-42", &ref);
-
-
-/* async submit; bind completion fires through the reply handler */
-zlink_stream_bind_actor(stream, &session_rid, &ref,
-                        my_bind_handler, userdata, 2000);
-
-zlink_msg_t part;
-zlink_msg_init_size(&part, 5);
-memcpy(zlink_msg_data(&part), "hello", 5);
-zlink_stream_send_bound_actor_part(
-  stream,
-  &session_rid,
-  "player-42",
-  &part,
-  0,
-  ZLINK_PART_FINAL);
+zlink_actor_ref_t player;
+zlink_request_result_t rc = zlink_mesh_node_actor_new(
+  node, "player-9421", NULL, 0, &player, 0, 2000);
+/* Re-creating the same id is ZLINK_REQUEST_CONFLICT (EEXIST). */
 ```
 
-When the Actor has readable parts the dispatch callback identifies the drain
-target:
+- Creation leaves a CREATED record on the entry Spot's `SPOT_CONTROL` lane.
+  The entry Spot's claim consumer performs initial authentication and routing
+  from that record.
+- Location lookup is `zlink_mesh_node_actor_lookup()` locally (`ENOENT`) and
+  `zlink_mesh_node_actor_lookup_remote()` against a specific remote node (the
+  location returns in the completion). There is no mesh-wide search API —
+  distributed location is the framework location layer's responsibility.
+
+## 2. Actor messaging
 
 ```c
-case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_READABLE: {
-    const zlink_actor_ref_t *subject_ref =
-      (const zlink_actor_ref_t *) info_->subject;
-    zlink_actor_ref_t actor = *subject_ref;
-    for (;;) {
-        zlink_actor_recv_info_t recv_info;
-        zlink_msg_t part;
-        zlink_part_flag_t more = ZLINK_PART_FINAL;
-        zlink_recv_result_t rc = zlink_spot_node_actor_recv_part(
-          node,
-          &actor,
-          &recv_info,
-          &part,
-          &more,
-          ZLINK_DONTWAIT);
+/* node → actor */
+zlink_mesh_node_send_to_actor(node, &player, NULL, &part, 1, 0);
+zlink_mesh_node_request_to_actor(node, &player, NULL, &part, 1, &op, 0, 3000);
 
-        if (rc == ZLINK_RECV_NO_DATA)
-            break;
-        if (rc != ZLINK_RECV_OK)
-            break;
-
-        /* process part */
-        zlink_msg_close(&part);
-    }
-    break;
-}
+/* actor → actor (calls that name their source) */
+zlink_actor_request_to_actor(node, &player, &dealer, NULL, &part, 1, &op, 0, 3000);
 ```
 
-Actor location belongs to the SPOT/Actor lifecycle. Creating an Actor places
-it on the Entry Spot, a successful join moves it to the joined user Spot, and
-a successful explicit leave moves it back to the Entry Spot. STREAM session
-bind and unbind do not change the Actor location.
+- Messages enqueue directly into the Actor mailbox and surface as
+  `ACTOR_SEND`/`ACTOR_REQUEST` records on that Actor owner's application
+  claim. FIFO is preserved per owner.
+- A stale-generation ref fails with `ESTALE`; a missing Actor completes with
+  `ENOENT`.
+- Request completions return on the caller's (Node or source Actor) owner
+  infrastructure lane.
 
-To look up an existing Actor by id on the local node:
+## 3. Spot join / leave
 
 ```c
-zlink_actor_ref_t ref;
-zlink_config_result_t rc = zlink_spot_node_actor_lookup(node, "player-42", &ref);
-if (rc == ZLINK_CONFIG_OK) {
-    /* actor exists — use ref */
-} else if (rc == ZLINK_CONFIG_NOT_FOUND) {
-    /* no actor with that id */
-}
+/* Ask to join a room on another node (travels the wire when remote). */
+zlink_mesh_node_actor_join_spot(node, &player, &room_node_rid, &room_spot_rid,
+                                room_spot_generation, NULL, 0, &op, 3000);
 ```
 
-To obtain a checked ref for an Actor that lives on a remote node, use the
-async `zlink_remote_actor_get_ref()` lookup. The call does not block; the
-completion handler delivers the lookup outcome. On success
-`result->actor` holds the checked ref; otherwise the completion fails with a
-not-found-, not-connected-, or timeout-class result.
+Join is an admission procedure:
+
+1. The request arrives as a JOIN record on the target Spot's `SPOT_CONTROL`
+   lane.
+2. The target consumer decides with
+   `zlink_actor_join_reply(&record->reply_token, ZLINK_ACTOR_JOIN_ACCEPTED,
+   ...)`. That token is join-only: passing it to `zlink_mesh_reply()` is
+   `EINVAL`.
+3. Only ACCEPTED commits membership (epoch+1). The requester receives the
+   result and the new epoch in the completion.
+
+`zlink_mesh_node_actor_leave_spot()` performs the entry-Spot return with an
+expected-epoch CAS, and `zlink_mesh_node_actor_join_entry_spot()` sends the
+Actor to a chosen node's entry Spot. `zlink_mesh_node_actor_destroy()` drains
+the mailbox and ends with a terminal completion.
+
+## 4. STREAM session binding
+
+External byte sessions (game clients and similar) arrive over a raw STREAM
+socket. The session-to-Actor association is owned by the STREAM session
+service.
 
 ```c
-static void on_lookup(
-    const zlink_actor_lookup_result_t *result, void *userdata)
-{
-    if (result->result == ZLINK_REQUEST_OK) {
-        zlink_actor_ref_t ref = result->actor;  /* copy inside callback */
-        /* use ref for join, bind, destroy, etc. */
-    }
-}
+void *svc = zlink_stream_session_service_new(stream_socket, node);
+zlink_stream_session_service_start(svc);
 
-zlink_remote_actor_get_ref(
-    node,                /* SpotNode submitting the lookup */
-    &target_node_rid,
-    "player-42",
-    on_lookup,
-    NULL,                /* userdata */
-    3000);               /* timeout_ms */
+/* Session routing id ↔ Actor binding (generation CAS, idempotent). */
+zlink_mesh_operation_id_t bind_op;
+zlink_stream_session_bind_actor(svc, &session_rid, &player, &bind_op, 2000);
+
+/* Relay session bytes to the Actor. */
+zlink_stream_session_send_to_actor(svc, &session_rid, &player, NULL, &part, 1, 0);
+
+/* Answer back to the bound session from the Actor side. */
+zlink_mesh_node_actor_send_bound_session(node, &player, &part, 1, 0);
 ```
 
-The remote Actor create API and admission handler have been removed. To place
-an Actor that must originate on a remote node, the application creates it on
-that SpotNode directly via `zlink_spot_node_actor_new()` — either using the
-remote node's local handle inside the same process, or by sending an
-application-level RPC that asks the remote node to perform the creation.
-Afterwards, `zlink_spot_node_actor_join_spot()` can move the Actor to a
-specific user Spot, and the final ref returned by the join completion is used
-for any subsequent work.
+- One session may bind several Actors; the binding CAS validates generations.
+- A session disconnect removes only that session's bindings and never changes
+  an Actor's joined Spot — bind the reconnected session to the same Actor and
+  the entity continues (reconnect continuity).
+- `zlink_mesh_node_actor_close_bound_session()` closes the session bound to
+  an Actor.
 
-## 2. Spot join
+## 5. Actor transfer (moving)
 
-To move an Actor into a user Spot, send a join request with
-`zlink_spot_node_actor_join_spot()`. The target Spot receives an
-`ACTOR_JOIN_READABLE` dispatch event, reads the request payload with
-`zlink_spot_actor_join_recv()`, and sends an accept or reject reply with
-`zlink_spot_actor_join_reply()`. Join completion is delivered through the
-dedicated `zlink_actor_join_spot_handler_fn` and carries the final Actor ref and
-joined Spot rid.
+The data plane for moving an Actor to another node is owned by Core; the
+decision to move and the distributed locking (lease, participant CAS) are
+owned by the framework transfer authority.
 
-```c
-static void on_join(
-    const zlink_actor_join_result_t *result,
-    zlink_msg_t *parts, size_t part_count, void *userdata)
-{
-    if (result->result == ZLINK_REQUEST_OK) {
-        /* success: result->actor is the final Actor ref
-           (target node ref for remote join) */
-        zlink_actor_ref_t final_ref = result->actor;
-        /* use final_ref for follow-up Actor calls or location moves */
-    }
-    zlink_multipart_close(parts, part_count);
-}
-
-zlink_spot_node_actor_join_spot(
-  node, &actor_ref,
-  &dest_node_rid, &dest_spot_rid,
-  &payload_msg, 1,    /* join state payload parts */
-  on_join,            /* zlink_actor_join_spot_handler_fn completion */
-  userdata,
-  0, 3000);           /* flags, timeout_ms */
-
-/* inside target Spot dispatch callback */
-case ZLINK_SPOT_DISPATCH_EVENT_ACTOR_JOIN_READABLE: {
-    zlink_actor_join_info_t info;
-    zlink_msg_t *parts = NULL;
-    size_t part_count = 0;
-    while (zlink_spot_actor_join_recv(spot_, &info, &parts, &part_count,
-                                      ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
-        /* info.flags & ZLINK_ACTOR_JOIN_INFO_REMOTE means remote join */
-        int join_result = 0; /* 0 = accept; non-zero = reject code */
-        zlink_spot_actor_join_reply(spot_, &info, join_result, NULL, 0);
-        zlink_multipart_close(parts, part_count);
-    }
-    break;
-}
+```
+source node                                target node
+  prepare  ──token──▶ (framework decides and coordinates)
+  │ fence: new app messages EAGAIN           prepare (placeholder, staged)
+  │ frozen mailbox resend ──TRANSFER_DATA──▶ staged accumulation (ACK)
+  commit(token, epoch+1)                     activate: staged→mailbox, unfence
+  actors entry removed (residual infra stays drainable)
 ```
 
-A new join, leave, or destroy while a join is pending fails with a busy-class
-result. **An Actor can join a user Spot without a bound STREAM session.** Actor
-location transitions and session attach are independent state transitions.
-`dest_spot_rid` must be a user Spot on the target node; Entry Spot is not a
-valid target. Idempotent join on the same Spot completes successfully without
-going through admission. `timeout_ms` is the operation timeout; whether the
-submit stage returns immediately on failure is controlled by `ZLINK_DONTWAIT`
-in flags.
+- `zlink_mesh_node_actor_transfer_prepare()` issues the 64-byte sealed token
+  and fences that Actor's application lane (submits `EAGAIN`, claims `EBUSY`).
+- `..._transfer_commit()` validates the token, transfer ID, generation and
+  exactly-next epoch. A stale token is `ESTALE`; a duplicate commit is
+  `EALREADY`.
+- `..._transfer_activate()` moves staged records into the mailbox on the
+  target and lifts the fence. `..._transfer_abort()` restores state from any
+  phase.
+- Replies to requests caught mid-transfer are relayed by Core back to the
+  original requester.
 
-> If the target user Spot has no dispatch handler installed, the join is not
-> auto-accepted. With `timeout_ms > 0` it stays pending until timeout; with
-> `timeout_ms == 0` it stays pending until a handler is installed or the
-> Spot/SpotNode terminates.
+## 6. Common mistakes
 
-### Spot lifecycle events
-
-To observe Actor location changes (creation, join, leave, destroy) on a Spot, install `zlink_spot_dispatch_event_handler()` before the Actor transition can occur. When it reports `ACTOR_LIFECYCLE_READABLE`, drain events with `zlink_spot_recv_actor_lifecycle()`.
-
-```c
-zlink_spot_actor_lifecycle_event_t event;
-while (zlink_spot_recv_actor_lifecycle(spot, &event, ZLINK_DONTWAIT) == ZLINK_RECV_OK) {
-    if (event.kind == ZLINK_SPOT_ACTOR_LIFECYCLE_JOINED) {
-        /* event.info.current_actor entered this Spot */
-    }
-}
-```
-
-Lifecycle events are observation-only. For deciding join completion, the application uses the join completion handler and the final Actor ref it returns.
-
-## 3. Spot leave
-
-`leave` is an async submit API that moves an Actor from its current Spot back
-to the same node's Entry Spot. If the Actor is already in the Entry Spot, the
-call is idempotent success and no lifecycle events fire. After a successful
-leave, Actor messages surface through the Entry Spot dispatch event.
-
-```c
-static void on_leave(
-    zlink_request_result_t result,
-    zlink_msg_t *parts, size_t part_count, void *userdata)
-{
-    /* No completion payload; the result code decides success/failure. */
-}
-
-zlink_spot_node_actor_leave_spot(
-  node, &actor_ref,
-  &current_spot_rid,  /* Actor's current Spot rid */
-  on_leave,
-  userdata,
-  2000);
-```
-
-`current_spot_rid` is an optimistic check to prevent stale leaves. If the
-caller's view of the current Spot differs from the actual current Spot, the call
-fails with an invalid-state-class result. Leave fails as busy-class while a join
-is pending; leave does not cancel a pending join. A leave that actually moves
-the Actor from a user Spot to the Entry Spot updates the active route to the
-Entry Spot location.
-
-## 4. Actor teardown
-
-Actor destroy succeeds only while the Actor is in the Entry Spot. If the
-Actor is in a user Spot, call `leave` first to return it to Entry. Destroy is
-also an async submit API.
-
-```c
-static void on_destroy(
-    zlink_request_result_t result,
-    zlink_msg_t *parts, size_t part_count, void *userdata) { /* ... */ }
-
-/* leave first, then submit destroy inside the leave completion */
-zlink_spot_node_actor_destroy(node, &ref, on_destroy, userdata, 2000);
-```
-
-On successful destroy, the Entry Spot Actor slot is removed; if the active
-route currently points at the same Actor ref, the route is also removed.
-Session attach state is independent of Actor location, so explicit
-`zlink_stream_unbind_actor()` is required if the session attach must be torn
-down separately. Use `zlink_spot_node_actor_close_bound_session()` to also
-close the client connection. When a STREAM session closes or disconnects, its
-Actor bindings are cleared automatically, but this does **not** move the Actor
-to the Entry Spot or change its joined Spot. To enumerate a session's bound
-Actors, call `zlink_stream_bound_actors()`.
-
-To push a message to the STREAM client from the Actor side (without a recv
-triggering it), use `zlink_spot_node_actor_send_bound_session_msg()`. This
-sends directly on the bound STREAM session. The Actor must have an active bound
-session; otherwise the call fails.
-
-```c
-zlink_msg_t msg;
-zlink_msg_init_size(&msg, 5);
-memcpy(zlink_msg_data(&msg), "push!", 5);
-zlink_spot_node_actor_send_bound_session_msg(node, &ref, &msg, 0);
-```
-
-## 5. Actor C samples
-
-C samples showing three Actor patterns:
-
-| Pattern | File |
-|---------|------|
-| Per-room Actor dispatch | `bindings/c/samples/actor_room_server_sample.c` |
-| Gateway session relay to remote Actor | `bindings/c/samples/actor_gateway_relay_sample.c` |
-| Single-user queue serialization | `bindings/c/samples/actor_single_player_queue_sample.c` |
+- **Stand up the entry Spot consumer first.** If nobody claims CREATED/JOIN
+  records, creation and join flows end in completion timeouts.
+- **Never mix join tokens with generic tokens.** A JOIN record's token is for
+  `zlink_actor_join_reply()` only.
+- **Store refs with their generation.** Re-creating an Actor changes the
+  generation, and calls with a stale ref end with `ESTALE`.
+- **Use transfer through the framework.** The Core transfer API is the
+  low-level fence protocol coordinated by the framework authority;
+  applications rarely call it directly.
 
 ---
 <!-- zlink-nav:bottom:start -->

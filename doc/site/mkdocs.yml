@@ -153,7 +153,6 @@ nav:
     - Design Decisions: internals/design-decisions.md
     - POSD Module Structure: internals/posd-module-structure.md
     - Services Internals: internals/services-internals.md
-    - SPOT Internals: internals/spot-internals.md
     - Stream Socket: internals/stream-socket.md
     - Socket Options: internals/socket-option-defaults.md
     - I/O Thread: internals/io-thread.md

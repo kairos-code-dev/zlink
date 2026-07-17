@@ -2,543 +2,207 @@
 
 # 서비스 계층 내부 설계
 
-## 1. 개요
+이 문서는 core 유지보수자가 10.0.0 서비스 계층(MeshNode·Spot·Actor·STREAM
+session)의 실제 내부 구조를 빠르게 파악하도록 돕는 내부 문서다. 공개 계약은
+[`doc/spec/core/service/`](../spec/core/service/README.ko.md)의 정식 spec이
+소유하며, 이 문서는 그 계약을 구현한 현재 소스 구조만 설명한다.
 
-zlink 서비스 계층은 현재 SPOT과 SPOT 위의 Actor 내부 구현을 다룬다. Discovery와 Registry는 core 런타임에 속하지 않는다.
+## 1. 소스 배치와 책임 경계
 
-SPOT에서 transport 보안 소유권은 의도적으로 좁게 유지한다.
-`SpotNode`가 mesh/control 소켓의 TLS/WSS 연결 설정을 책임지고, unified `Spot`은
-빌려 쓰는 data plane facade로만 남는다. 이 facade는 node
-수명주기를 소유하지 않으며, 그 자체가 TLS 설정 진입점도 아니다.
+| 위치 | 책임 |
+|---|---|
+| `src/runtime/services/mesh/mesh_runtime.{hpp,cpp}` | 객체 모델과 프로세스-로컬 상태 기계. `mesh_node_t`, owner mailbox, ready index, claim, budget, monitor queue, handle registry |
+| `src/runtime/services/mesh/mesh_wire.{hpp,cpp}` | 원격 wire. node 소유 raw ROUTER, ingress 스레드, envelope codec, HELLO admission, 원격 메시징·transfer data plane |
+| `src/api/mesh/mesh_node_api.cpp` | lifecycle, membership, peer intent, option, status·query C API |
+| `src/api/mesh/mesh_messaging_api.cpp` | node/channel/Spot direct send·request, Logical Multicast publish |
+| `src/api/mesh/mesh_dispatch_api.cpp` | ready handler, drain, ready/receive batch, claim, reply token |
+| `src/api/mesh/mesh_actor_api.cpp` | Actor 생성·조회·파괴·join·메시징 |
+| `src/api/mesh/mesh_transfer_api.cpp` | Actor transfer prepare/commit/activate/abort와 fence |
+| `src/api/mesh/mesh_monitor_api.cpp` | MeshNode monitor open/handler/recv/status/close |
+| `src/api/mesh/mesh_stream_session_api.cpp` | STREAM session service와 Actor binding |
+| `src/api/mesh/mesh_api.cpp` | poller·timer 등 세로 관심사가 mesh로 들어오는 seam |
 
-## 2. SPOT 내부 구현
+계층 규칙: `api/mesh/*`는 공개 signature 검증과 결과 매핑을 소유하고, 상태
+변경은 전부 `mesh_runtime`/`mesh_wire`의 함수로 내려보낸다. raw socket 계층
+(`runtime/sockets/`)은 mesh를 모른다. mesh가 raw ROUTER에 요구하는 유일한
+확장은 비소비 기록 조사인 `routed_target_writable()`(NODROP 원자 reserve용)
+하나다.
 
-### 5.1 구조
-- `spot_node_t` -- 네트워크 제어
-  - PUB/SUB 소켓 소유, mesh 관리, worker 스레드
-- `spot_pub_t` -- 발행 핸들
-  - spot_node_t의 publish 위임, tag 기반 유효성 검증
-- `spot_sub_t` -- 구독/수신 핸들
-  - 내부 큐, 패턴 매칭, 조건변수 기반 blocking recv
+## 2. 객체 모델
 
-### 5.2 동시성 모델
-- 발행: 호출자 스레드에서 직접 수행, `_publish_sync` 뮤텍스(mutex)로 직렬화 (스레드 안전)
-- 수신: worker 스레드가 SUB 소켓에서 수신, spot_sub_t 내부 큐로 분배
-- 잠금 순서: `_sync` → `_publish_sync` (데드락 방지)
-- 비동기 큐 없이 직접 발행 (publish 경로에 메시지 버퍼링 없음)
-
-### 5.3 구독 집계
-- refcount 기반 SUB 필터 관리
-- 동일 토픽의 중복 구독 시 refcount 증가
-- spot_sub_t별 구독 셋 관리 (정확한 토픽 + 패턴 별도)
-
-### 5.4 전달 정책
-- 로컬 publish (spot_pub):
-  로컬 spot_sub 분배 + PUB으로 내보내기 (원격 전파)
-- 원격 수신 (SUB):
-  로컬 spot_sub 분배만 (재발행 없음, 루프 방지)
-
-### 5.4.1 SpotNode HWM 경계
-- unified `Spot` handle HWM과 SpotNode admission HWM은 서로 다른 계층이다.
-- 등록된 `Spot` handle은 공통 `SNDHWM`/`RCVHWM` 옵션을 받아 pub/sub pending option으로 저장한다.
-- `SpotNode` HWM은 relay나 delivery queue 예산이 아니라 admission(입력 허가) 예산이다.
-  HWM(High Water Mark)은 큐가 이 값을 넘으면 새 메시지 수락을 제한하는 상한이다.
-  - pubsub admission은 local publish 입력을 제어한다.
-  - router admission은 local routed 입력을 제어한다.
-- SpotNode admission 기본 profile은 balanced다. 두 admission 채널은 양수 숫자
-  override가 없으면 `16`에서 시작한다.
-- admission 숫자 옵션에 `0`을 설정하면 override를 지우고 선택된 profile 값으로
-  돌아간다.
-- relay와 delivery 소켓은 HWM `0`을 사용한다 — delivery target을 큐 한계로 끊지 않는다.
-- `peer_ctrl`는 control-plane 소켓이므로 SpotNode admission HWM 묶음에
-  포함하지 않는다.
-
-### 5.5 Raw 소켓 정책
-- `spot_pub_t`: raw PUB socket 노출하지 않음
-  (thread-safety 우회 방지)
-- `spot_sub_t`: raw SUB socket 노출하지 않음;
-  callback/recv API로만 소비
-
-## 6. SPOT 내부 아키텍처
-
-SPOT/SpotNode 내부 아키텍처의 상세 내용 — 컴포넌트 다이어그램, 11개 내부
-소켓 (타입/endpoint/HWM), 토픽 및 routed 메시지 흐름 시퀀스, control plane,
-data plane polling — 은 별도 문서를 참고: **[SPOT 내부 구조](spot-internals.ko.md)**.
-
-### 6.1 컴포넌트 다이어그램
-
-```mermaid
-flowchart TB
-    subgraph PublicAPI["Public C API"]
-        spot_handle["spot_handle_t<br/>(unified facade)"]
-        spot_node_api["spot_node API"]
-    end
-
-    subgraph AccessLayer["Access Layer"]
-        subject_access["spot_subject_access"]
-        node_access["spot_node_access"]
-    end
-
-    subgraph ControlPlane["Control Plane"]
-        spot_node["spot_node_t<br/>peer state, lifecycle,<br/>handle management"]
-        control_task["control_task (10ms)<br/>구독 replay,<br/>ready refresh"]
-    end
-
-    subgraph Runtime["Runtime"]
-        spot_runtime["spot_runtime_t<br/>socket attachments,<br/>batch/HWM config"]
-    end
-
-    subgraph DataPlane["Data Plane (별도 스레드)"]
-        dp_loop["spot_data_plane_loop<br/>main polling loop"]
-        dp_forwarding["forwarding<br/>batching, encoding"]
-        dp_protocol["protocol<br/>control msgs, bootstrap"]
-    end
-
-    subgraph InprocSockets["Inproc Socket Network"]
-        ingress-sub["ingress-sub (SUB)"]
-        local-pub["local-pub (XPUB)"]
-        mesh_pub["mesh_pub (PUB)"]
-        mesh_xsub["mesh_xsub (XSUB)"]
-        internal-router["internal-router (ROUTER)"]
-        internal-router["internal-router (ROUTER)"]
-        ctrl_pair["ctrl (PAIR)"]
-    end
-
-    spot_handle --> subject_access
-    spot_node_api --> node_access
-    subject_access --> spot_node
-    node_access --> spot_node
-    spot_node --> control_task
-    spot_node --> spot_runtime
-    spot_runtime --> dp_loop
-    dp_loop --> dp_forwarding
-    dp_loop --> dp_protocol
-    dp_loop --> ingress-sub
-    dp_loop --> local-pub
-    dp_loop --> mesh_pub
-    dp_loop --> mesh_xsub
-    dp_loop --> internal-router
-    dp_loop --> internal-router
-    dp_loop --> ctrl_pair
+```
+zlink_ctx
+ └─ mesh_node_t (프로세스당 MeshName 하나, immortal handle registry로 검증)
+     ├─ 소유: raw ROUTER socket 1개 (bind 1개, 모든 peer pipe)
+     ├─ ingress 스레드 1개 (recv + socket monitor drain)
+     ├─ peers: vector<peer_state_t>            — intent와 admitted peer 단일 표
+     ├─ channels: map<ChannelName, weight>     — start 후 이름 불변, weight 가변
+     ├─ owners: map<owner_id_t, owner_state_t> — Node·Spot·Actor mailbox
+     │    └─ domains[2]: application / infrastructure mailbox
+     ├─ ready: set<(owner, domain)>            — 레벨 트리거 ready index
+     ├─ reply_routes: map<serial, reply_route_t> — one-shot reply 봉인 저장소
+     ├─ operations: map<op_low, pending_operation_t>
+     ├─ transfers: map<serial, transfer_state_t>
+     ├─ spots / actors: 논리 registry (facade는 얇은 핸들)
+     └─ monitor: monitor_state_t 1개 (bounded queue + counter)
 ```
 
-### 6.2 Inproc 소켓 토폴로지
-
-모든 inproc 경로: `inproc://zlink.spot.{node_id}.{purpose}`
-
-| Endpoint | 소켓 타입 | 방향 | 용도 |
-|----------|----------|------|------|
-| `.pub-in` | SUB | local pub → data plane | 토픽 publish 수신 |
-| `.sub-out` | XPUB | data plane → local sub | 토픽 subscribe 배포 |
-| `.internal-router` | ROUTER | local sender → data plane | Routed 메시지 수신 |
-| `.internal-router` | ROUTER | data plane → local receiver | Routed 메시지 전달 |
-| `.ctrl` | PAIR | control plane ↔ data plane | 내부 명령 |
-
-### 6.3 토픽 메시지 내부 흐름
-
-```mermaid
-sequenceDiagram
-    participant Pub as spot_pub_t
-    participant Ingress as ingress-sub (SUB)
-    participant DP as Data Plane Loop
-    participant MeshPub as mesh_pub (PUB)
-    participant Fanout as local-pub (XPUB)
-    participant Sub as spot_sub_t
-
-    Pub->>Ingress: publish(topic, parts) via inproc
-    Ingress->>DP: poll readable → 메시지 수신
-    DP->>Fanout: 로컬 fanout (즉시)
-    Fanout->>Sub: 매칭되는 구독자에게 전달
-    DP->>MeshPub: 즉시 송신
-    Note over MeshPub: → tcp mesh를 통해 원격 peer로
-```
-
-### 6.4 Routed 메시지 내부 흐름
-
-```mermaid
-sequenceDiagram
-    participant Sender as spot_send_router()
-    participant RouteIn as internal-router (ROUTER)
-    participant DP as Data Plane Loop
-    participant NodeRouter as internal-router (ROUTER)
-    participant Receiver as spot_recv / spot_handler
-
-    Sender->>RouteIn: SPOT routed envelope (8 parts) 전송
-    RouteIn->>DP: poll readable → routed 메시지 수신
-    DP->>DP: SPOT envelope 파싱 → 대상 식별
-    alt 대상이 로컬
-        DP->>NodeRouter: inproc으로 포워딩
-        NodeRouter->>Receiver: spot_handler 또는 recv 큐로 전달
-    else 대상이 원격
-        DP->>DP: peer ROUTER-ROUTER transport로 포워딩
-        Note over DP: 원격 data plane이 로컬 전달 수행
-    end
-```
-
-### 6.5 SPOT Request-Reply Dispatch
-
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant API as spot_request_router()
-    participant State as spot_request_reply_state
-    participant Sched as Timeout Scheduler
-    participant DP as Data Plane
-    participant Remote as Remote Spot
-
-    App->>API: request(dest_node, dest_spot, payload, timeout)
-    API->>API: SPOT envelope (8) + RR envelope (4) 생성
-    API->>State: pending[key] 등록
-    API->>Sched: schedule(deadline, on_timeout)
-    API->>DP: [12 control parts] + [payload] 전송
-    DP->>Remote: 대상으로 포워딩
-
-    Remote->>DP: reply [12 control parts] + [reply payload]
-    DP->>API: internal dispatch
-    API->>State: pending[key] 조회
-    API->>Sched: timeout 취소
-    API->>State: pending[key] 삭제
-    API->>App: reply_handler(0, reply_parts)
-```
-
-### 6.6 SPOT routed request-reply 조합
-
-SPOT request-reply는 topic fanout 경로와 별도 상태를 가진다. 구현은 local
-runtime에서 다음 세 단계를 거친다.
-
-1. SPOT routed envelope 8개 part decode
-2. 남은 payload 앞의 request-reply envelope 4개 part decode
-3. request면 local handler dispatch, reply면 pending map completion
-
-의미를 나눠 보면 다음과 같다.
-
-- SPOT routed envelope: source/destination node, spot, router 주소
-- request-reply envelope: `message_type`, `request_seq`
-- payload: application body
-
-### 6.7 pending 구조
-
-socket request-reply와 SPOT request-reply는 각자 다른 pending key를 쓴다.
-
-```cpp
-struct pending_key_t {
-    std::string peer_rid;
-    uint64_t request_seq;
-};
-
-struct pending_spot_key_t {
-    uint8_t source_class;
-    std::string source_rid;
-    std::string source_spot_rid;
-    uint64_t request_seq;
-};
-```
-
-정리:
-
-- `DEALER`는 `request_seq`만으로 reply를 찾는다.
-- `ROUTER`는 `source_node_rid + request_seq` 조합으로 reply를 찾는다.
-  SPOT에서 시작된 routed 트래픽에서는 `source_spot_rid`가 함께 실려서
-  통합된 router handler가 일반 호출자와 SPOT 발원 호출자를 구분한다.
-- `spot -> spot`은 source class와 source 주소까지 함께 본다.
-- `router -> spot`은 local router state에서 `request_seq`로 관리한다.
-
-이렇게 나누는 이유는 같은 `request_seq`가 다른 상대 주소에서 동시에 보일 수
-있기 때문이다.
-
-### 6.8 timeout 과 완료
-
-각 request를 시작할 때 pending entry를 넣고 timeout thread를 함께 건다.
-
-- per-call timeout이 있으면 그 값을 사용
-- 없으면 socket 기본 timeout 사용
-- 둘 다 없으면 `5000ms`
-
-timeout이 먼저 오면 pending entry를 지우고 `ETIMEDOUT`로 callback한다.
-reply가 먼저 오면 pending entry를 지우고, timeout thread는 나중에 깨어나도
-아무 일도 하지 않는다.
-
-추가 reply 처리 규칙:
-
-- 첫 reply로 이미 완료된 key는 pending map에서 제거된다.
-- 이후 같은 key로 reply가 와도 조용히 drop한다.
-- `error reply`는 payload 첫 part의 4바이트 errno를 읽어 실패 completion으로
-  바꾼다.
-
-## 7. Request-Reply Dispatch 아키텍처
-
-### 7.1 소켓 수준 Dispatch 컴포넌트
-
-```mermaid
-flowchart TB
-    subgraph PublicAPI["Public API"]
-        dealer_req["zlink_dealer_request()"]
-        router_req["zlink_router_request()"]
-        router_reply["zlink_router_reply()"]
-        router_recv["zlink_router_recv()"]
-    end
-
-    subgraph State["Per-Socket State"]
-        rr_state["socket_request_reply_state_t<br/>pending_sequences,<br/>pending_requests map"]
-    end
-
-    subgraph Dispatch["Internal Dispatch"]
-        msg_dispatch["socket_request_reply_dispatch()<br/>socket msg handler로 설치"]
-        envelope_parse["parse_envelope()<br/>protocol_id, message_type,<br/>request_seq 추출"]
-    end
-
-    subgraph Queue["Internal Pair Queue"]
-        tx["tx (PAIR sender)"]
-        rx["rx (PAIR receiver)"]
-    end
-
-    subgraph Scheduler["Timeout Scheduler"]
-        timeout_thread["global timeout thread"]
-        timeout_schedule["deadline multimap"]
-    end
-
-    dealer_req --> rr_state
-    router_req --> rr_state
-    rr_state --> msg_dispatch
-    msg_dispatch --> envelope_parse
-
-    envelope_parse -->|request| tx
-    tx -.->|inproc PAIR| rx
-    router_recv --> rx
-
-    envelope_parse -->|reply| rr_state
-    rr_state -->|pending 매칭| timeout_schedule
-    rr_state -->|invoke| dealer_req
-
-    router_req --> timeout_schedule
-    dealer_req --> timeout_schedule
-```
-
-### 7.2 Dispatch 시퀀스 (Reply 완료)
-
-```mermaid
-sequenceDiagram
-    participant Net as Network
-    participant Socket as ROUTER/DEALER Socket
-    participant Dispatch as request_reply_dispatch
-
-    Net->>Socket: 수신 메시지
-    Socket->>Dispatch: msg_handler callback
-    Dispatch->>Dispatch: parse_envelope()
-    alt message_type = reply
-        Dispatch->>Dispatch: pending[source_node_rid + seq] 조회
-        Dispatch->>Dispatch: timeout task 취소
-        Dispatch->>Dispatch: reply_handler(errno, parts, userdata) 호출
-    else message_type = error_reply
-        Dispatch->>Dispatch: 첫 payload part에서 errno decode
-        Dispatch->>Dispatch: reply_handler(errno, NULL, userdata) 호출
-    end
-```
-
-### 7.3 Dispatch 시퀀스 (Router Recv 경로)
-
-```mermaid
-sequenceDiagram
-    participant Net as Network
-    participant Socket as ROUTER Socket
-    participant Dispatch as request_reply_dispatch
-    participant Queue as Internal Pair Queue
-    participant App as zlink_router_recv()
-
-    Net->>Socket: 수신 routed 메시지
-    Socket->>Dispatch: msg_handler callback
-    Dispatch->>Dispatch: parse_envelope() → request 또는 plain routed
-    Dispatch->>Queue: enqueue [source_node_rid, source_spot_rid, request_seq, payload]
-    Note over Queue: internal PAIR socket (inproc) 경유
-
-    App->>Queue: internal PAIR에서 recv
-    Queue->>App: [source_node_rid, source_spot_rid, request_seq, payload]
-    App->>App: caller에게 반환
-```
-
-## 8. Timer 및 Scheduler 아키텍처
-
-### 8.1 컴포넌트 다이어그램
-
-```mermaid
-flowchart TB
-    subgraph PublicAPI["Public Timer API"]
-        timer_new["zlink_timer_new()"]
-        spot_timer["zlink_spot_timer_new(spot)"]
-        timer_start["zlink_timer_start()"]
-        timer_recv["zlink_timer_recv()"]
-        timer_handler["zlink_timer_handler()"]
-    end
-
-    subgraph TimerHandle["timer_handle_t"]
-        state["interval_ns, repeat_count,<br/>running, stop_requested"]
-        fired["fired_counts deque"]
-        signaler["signaler_t (eventfd)"]
-        handler_fn["handler callback"]
-    end
-
-    subgraph GlobalSched["Global Shared Scheduler"]
-        g_thread["worker thread"]
-        g_schedule["deadline multimap"]
-        g_cv["condition variable"]
-    end
-
-    subgraph SpotSched["SpotNode-Local Schedulers"]
-        s_thread["worker thread (per node)"]
-        s_schedule["deadline multimap"]
-    end
-
-    subgraph Poller["Poller 통합"]
-        poller["zlink_poller_wait()"]
-        fd_reg["FD registration"]
-    end
-
-    timer_new --> GlobalSched
-    spot_timer --> SpotSched
-    timer_start --> TimerHandle
-    TimerHandle --> GlobalSched
-    TimerHandle --> SpotSched
-
-    g_thread -->|fire| handler_fn
-    g_thread -->|fire, handler 없음| fired
-    fired --> signaler
-    signaler --> fd_reg
-    fd_reg --> poller
-
-    timer_recv --> fired
-    timer_handler --> handler_fn
-```
-
-### 8.2 Timer Fire 시퀀스
-
-```mermaid
-sequenceDiagram
-    participant Sched as Scheduler Thread
-    participant Timer as timer_handle_t
-    participant App as Application
-
-    Sched->>Sched: cv.wait_for(next deadline)
-    Sched->>Timer: scheduler_fire_timer()
-
-    alt Callback 모드 (handler 설정)
-        Timer->>App: handler(timer, fire_count, userdata)
-    else Recv/Poller 모드 (handler 없음)
-        Timer->>Timer: fire_count를 deque에 push
-        Timer->>Timer: signaler.send() (eventfd)
-        Note over Timer: poller를 깨우거나 recv unblock
-    end
-
-    Sched->>Sched: repeat_count 확인
-    alt repeat_count > 0이고 미소진
-        Sched->>Sched: deadline + interval로 재스케줄
-    else repeat_count 소진
-        Sched->>Timer: stopped 표시
-    end
-```
-
-### 8.3 Request Timeout Scheduler
-
-Request timeout scheduler는 timer scheduler와 **별도**이다.
-Request-reply timeout 전용 스케줄러이다.
-
-```mermaid
-flowchart LR
-    subgraph TimeoutSched["Global Timeout Scheduler"]
-        thread["single worker thread"]
-        schedule["deadline multimap<br/>(deadline → task)"]
-        cv["condition variable"]
-    end
-
-    subgraph Task["timeout_task_t"]
-        deadline["deadline_ns"]
-        handler["on_timeout callback"]
-        state_t["registered, canceled,<br/>firing, completed"]
-    end
-
-    start_request -->|schedule| TimeoutSched
-    TimeoutSched -->|fires| Task
-    Task -->|callback| remove_pending
-    cancel_timeout -->|cancel| Task
-```
-
-- 모든 request timeout을 위한 단일 global thread
-- 다수의 단기 timeout에 효율적
-- 취소 지원 및 fire/cancel 경합 해소
-
-## 9. Internal Pair Queue 메커니즘
-
-Internal pair queue는 I/O 스레드의 internal dispatch와 application 스레드의
-user recv 호출 사이를 중계한다.
-
-```mermaid
-flowchart LR
-    subgraph IOThread["I/O Thread"]
-        dispatch["request_reply_dispatch()"]
-    end
-
-    subgraph PairQueue["Internal Pair Queue"]
-        tx["tx (PAIR)"]
-        inproc["inproc://zlink.{type}.reqrep.recv-{ptr}"]
-        rx["rx (PAIR)"]
-    end
-
-    subgraph AppThread["Application Thread"]
-        recv["zlink_router_recv()"]
-    end
-
-    dispatch -->|frame 전송| tx
-    tx ---|inproc PAIR| rx
-    rx -->|frame 수신| recv
-```
-
-구조:
-
-```cpp
-struct internal_pair_queue_t {
-    socket_base_t *rx;     // 수신 (application thread)
-    socket_base_t *tx;     // 송신 (dispatch thread)
-    std::string endpoint;  // 고유 inproc endpoint
-};
-```
-
-Queue 생성 (`ensure()`):
-1. 고유 inproc endpoint 생성
-2. PAIR 소켓 2개 생성: rx (bind), tx (connect)
-3. 양방향 handshake (0x11 → 0x22 → back)
-4. linger = 0 설정 (clean shutdown)
-
-ROUTER recv queue frame 인코딩 (routed 표면 통합 — 이 큐는 일반 ROUTER
-트래픽과 SPOT에서 시작된 routed 트래픽을 같은 framing으로 전달한다):
-- Frame 1: `source_node_rid` 바이트
-- Frame 2: `source_spot_rid` 바이트 (일반 ROUTER 트래픽이면 길이 0)
-- Frame 3: `request_seq` (8바이트 Big Endian; fire-and-forget이면 `0`)
-- Frame 4+: Payload parts
-
-## 10. 가중치 전파
-
-raw ROUTER와 DEALER 소켓은 typed option API로 자기 피어 가중치를 바꿀 수
-있다. SpotNode와 Spot에는 별도 로컬 weight 설정 옵션이 없다. 내부 구현은 raw
-소켓의 변경을 연결된 피어에게 **최선 노력(best-effort) 런타임 신호**로 알리고,
-피어는 자신의 가중치 캐시를 갱신해서 outbound 후보 선택에 반영한다.
-
-기본 동작 약속:
-
-- 가중치 변경은 즉시 로컬 캐시에 반영된다. 같은 노드에서 동작하는 다른
-  outbound 경로(예: 로컬 spot 또는 router send)는 그 즉시 새 값을
-  본다.
-- peer 쪽 전파는 SpotNode peer control 경로(`peer_ctrl_pub`/
-  `peer_ctrl_sub`)와 raw socket 쪽 전용 weight 신호 경로로
-  이루어진다. 이 신호는 누락 가능성을 가정한 best-effort runtime
-  control 신호이며, 강한 동기 모델을 보장하지는 않는다.
-- 재연결할 때는 가중치가 다시 동기화된다. 새 세션이 ready
-  되면 현재 가중치를 한 번 더 advertise해서 stale cache로 인한
-  잘못된 후보 선택을 줄인다.
-- peer 쪽 가중치 cache가 `0`을 보면 outbound 후보에서 그 peer를
-  제외하고, 후보가 모두 `0`이면 submit을
-  `ZLINK_SUBMIT_NOT_ADMITTED`로 정규화해 반환한다. 상태 캐시 전파보다
-  연결 변화가 먼저 관찰되는 경합 상황에서는 같은 거절이
-  `ZLINK_SUBMIT_NOT_CONNECTED` 또는 `ZLINK_SUBMIT_NOT_FOUND`로 먼저 보일
-  수 있다.
-- raw socket 쪽 변경은 socket monitor의
-  `ZLINK_EVENT_PEER_WEIGHT_CHANGED`로 외부에 노출된다. 내부 구현은 peer
-  식별자(`routing_id`)와 새 가중치를 같은 이벤트 payload에 함께 싣는다.
+- 핸들 유효성은 전역 immortal registry(`registry ()`)가 판정한다. 정적 소멸
+  순서 문제를 피하기 위해 registry 저장소는 의도적으로 누수시킨다(요청
+  timeout scheduler와 같은 패턴).
+- `owner_id_t`는 (kind, key, generation)이다. Spot·Actor generation이 다르면
+  다른 mailbox다. 낡은 generation으로의 접근은 mailbox 부재로 끝난다.
+- `Spot` facade와 publisher, monitor, STREAM session service는 모두 node의
+  strong child reference로 계산되어, 닫히기 전에는 `zlink_mesh_node_destroy`가
+  `EBUSY`로 거부한다.
+
+## 3. Mailbox, ready index와 claim
+
+메시지 admission의 단일 관문은 `admit_record()`다.
+
+- application domain은 message/byte budget의 제약을 받고, 초과 시 비차단
+  호출은 `EAGAIN`, 차단 호출은 deadline까지 조건변수 대기 뒤 `ETIMEDOUT`이다.
+  거부는 같은 함수 안에서 `BACKPRESSURED` monitor event를 방출한다.
+- infrastructure domain(completion·transfer control·SEND_READY)은 outstanding
+  operation 집합이 상한이므로 budget을 적용하지 않고 항상 전진한다.
+- transfer fence가 걸린 owner의 application admission은 commit/abort까지
+  `EAGAIN`이다.
+
+ready index는 (owner, domain) 집합이며 레벨 트리거다. `drain_ready`가 ready
+entry를 batch claim으로 옮기고, `claim_recv_batch`가 mailbox record를 receive
+batch로 이동시키면서 budget을 되돌린다. claim release는 mailbox에 record가
+남아 있을 때만 `signal_ready`로 재무장한다(락 해제 뒤 공개 신호 경로 사용).
+
+claim 신원은 (node generation, owner, domain, serial)이고, serial→owner 역해석
+표는 전역 side table(`g_claim_keys`)이 가진다. 이 표 덕분에 node가 파괴된 뒤의
+release도 안전하게 무해한 no-op이 된다.
+
+wakeup 경로는 셋이고 서로 배타 규칙이 있다.
+
+1. blocking `drain_ready` — node 조건변수.
+2. ready handler — `notify_consumer_locked`가 등록된 handler를 깨우는
+   wakeup-only 콜백. handler 재진입은 `EDEADLK`.
+3. poller 연동 — node 내장 `signaler_t`를 `poller_subject_mesh_node`로 등록.
+   POLLIN은 "ready index 비어 있지 않음"의 레벨 신호로, drain이 신호 바이트를
+   소비한 뒤 남은 work가 있으면 재무장한다. handler와 poller 등록은 상호
+   배타(`EBUSY`)다.
+
+## 4. Reply token과 completion
+
+request 등록은 `reply_routes[serial]`에 one-shot route를 만들고 32-byte sealed
+token으로 serial만 밖에 내보낸다. 소비 시점 규칙:
+
+- 성공한 reply가 route를 소비한다. 두 번째 reply는 `EALREADY`.
+- requester가 먼저 timeout되면 reply는 token을 소비하고 조용히 폐기된다
+  (두 번째 completion을 만들지 않는다).
+- node가 STOPPED면 reply는 `ESHUTDOWN`이다. DRAINING 동안은 허용된다 —
+  잡고 있는 claim turn이 끝까지 응답할 수 있어야 하기 때문이다.
+- Actor join token은 kind가 봉인되어 있어 generic reply에 넣으면 `EINVAL`이며
+  소비되지 않는다.
+
+completion은 언제나 requester owner의 infrastructure mailbox로 들어간다.
+timeout completion은 전역 timeout scheduler(immortal singleton, 전용 스레드)가
+deadline에 `complete_operation`을 호출해 만든다.
+
+## 5. Wire: ROUTER, ingress 스레드와 envelope
+
+- node의 raw ROUTER는 thread-safe이므로 송신은 앱 스레드에서 직접 수행하고,
+  수신은 전용 ingress 스레드 하나가 담당한다.
+- ingress 스레드는 socket monitor도 함께 drain한다. `CONNECTION_READY`(rid,
+  remote_addr 포함)로 outbound intent를 매칭해 HELLO를 보낸다. peer 단절은
+  `handle_peer_down`으로 상태 전이와 `PEER_CLOSED` event를 만든다.
+- envelope v1: `'Z' 'M' | ver | type | flags`. request/reply 계열은 correlation
+  u64, reply는 terminal result·errno, channel 계열은 channel 이름을 뒤에
+  싣는다. application metadata는 별도 frame(flag 0x01)이고 수신 시
+  `validate_metadata`가 통과해야만 mailbox admission으로 넘어간다. 실패는
+  전체 메시지를 버리고 `PROTOCOL_ERROR` event를 남긴다.
+- wire type: HELLO/ADMIT/REJECT/UPDATE(제어), node/channel send·request와
+  REPLY, SPOT_SEND=21·SPOT_REQUEST=22(target spot rid+generation),
+  MULTICAST=23(channel·topic·source spot rid), ACTOR 계열 24~29
+  (SEND/REQUEST/LOOKUP/DESTROY/JOIN/LEFT), TRANSFER 계열 30~33
+  (READY/DATA/ACK/REPLY_RELAY).
+- admission 검증(`validate_admission_locked`)은 MeshName(`EEXIST`),
+  trust profile(`EACCES`), expected RID·stale generation(`ESTALE`)을 본다.
+  거부는 REJECT frame과 `PEER_REJECTED` event(양쪽 모두)로 관측된다. 더 높은
+  lifecycle generation은 기존 admitted entry를 즉시 교체하며, 이 교체가
+  `PEER_DRAINING` event의 방출 지점이다. inbound로 관측된(로컬 intent 없는)
+  peer는 source가 `DISCOVERY`이고, 같은 endpoint에 수동 intent가 겹치면
+  `MIXED`로 병합된다.
+- 원격 request는 requester가 correlation=op.low로 operation을 등록하고,
+  responder가 remote-origin reply route(원 rid + 원 correlation 봉인)를 만들어
+  `zlink_mesh_reply`가 wire REPLY로 회신한다. requester ingress가 pending
+  operation을 completion으로 마감한다.
+
+## 6. Logical Multicast와 NODROP
+
+publish는 한 호출 안에서 snapshot→검사→commit을 마친다.
+
+1. node mutex 아래에서 local 구독 match와 admitted 양수-weight channel member
+   peer snapshot을 뜬다.
+2. NODROP(기본 1)이면 node별 `wire_send_mutex`로 발신을 직렬화한 채 local
+   mailbox budget과 모든 remote pipe의 `routed_target_writable()`을 선검사한다.
+   하나라도 불가면 아무것도 commit하지 않는다(전부-또는-전무). 비차단은
+   `EAGAIN`, 차단은 SNDTIMEO까지 reserve를 재시도한 뒤 `ETIMEDOUT`이다.
+3. commit은 local fanout(`zlink_msg_copy` refcount 공유)과 peer당 정확히 1회의
+   wire submit이다. 수신 node는 자기 local 구독 match에만 fan-out하고 재전파
+   경로가 없다(구조적 no-relay).
+
+publish detail과 `MULTICAST_COMMITTED`/`MULTICAST_DROPPED` event가 snapshot·
+admitted·dropped 수치를 그대로 보고한다.
+
+## 7. Actor와 transfer fence
+
+Actor 상태는 owner mailbox와 같은 표에 산다. join의 membership commit은
+소스 쪽 wire reply 처리(`actor_apply_remote_join_reply`) 한 곳이며 epoch+1,
+`spot_node_rid` 기록, 이전 remote spot으로의 ACTOR_LEFT 통지가 여기서 함께
+일어난다.
+
+transfer는 `transfer_state_t`(serial, role, phase, frozen snapshot, staged map,
+ack high-water)로 추적한다. 핵심 결정:
+
+- 토큰 64B = node ptr + serial + magic (reply token과 같은 봉인 패턴).
+- fence 집행 지점은 세 곳: `admit_record`(application `EAGAIN`),
+  `take_claim`(`EBUSY`), `drain_ready`(fenced app lane 스킵).
+- data plane은 ACK당 1 record의 stop-and-wait이다. source가 frozen mailbox
+  snapshot을 순서대로 재전송하고 target이 staged map에 쌓았다가 activate에서
+  app mailbox로 옮긴다.
+- 전송 중 도착한 ACTOR_REQUEST의 reply는 target에서 재봉인된 route가
+  REPLY_RELAY로 source를 경유해 원 requester에 닿는다. source commit 이후에는
+  route가 제거된다.
+- source commit은 actors entry를 지우되 owners entry는 남겨 잔여 infra record를
+  drain할 수 있게 한다.
+
+## 8. Monitor
+
+monitor는 node당 하나(bounded queue). `emit_monitor_event`는 mask를 적용해
+queue에 넣고, 넘치면 MESSAGE_SUBMITTED·BACKPRESSURED 같은 고빈도 event를
+aggregate하며 peer state·protocol error·lifecycle event를 우선 보존한다.
+counter는 event 소비와 무관하게 누적되고 status 조회는 원자 snapshot이다.
+handler와 recv는 같은 queue의 single consumer이며 handler 등록 중 재진입
+해제는 `EDEADLK`다. `CLAIM_REVOKED`는 shutdown deadline 초과 시 revoke 루프가
+락을 놓은 뒤 방출한다.
+
+## 9. 잠금 규칙과 스레드 목록
+
+| 스레드 | 소유자 | 역할 |
+|---|---|---|
+| 앱 스레드 | 호출자 | 모든 공개 API, wire 송신(직접 send) |
+| ingress 스레드 | node당 1 | ROUTER recv, socket monitor drain, 원격 record admission, completion 마감 |
+| timeout scheduler | 프로세스 1 (immortal) | operation deadline 도래 시 timeout completion |
+
+- 기본 잠금은 `node->mutex` 하나다. monitor는 자체 mutex를 가지며
+  `emit_monitor_event`는 node mutex를 잡지 않은 상태에서 불러야 한다
+  (내부에서 node mutex→monitor mutex 순서로 짧게 잡는다).
+- `wire_send_mutex`는 NODROP 원자 reserve 동안 node의 wire 발신 전체를
+  직렬화한다. node mutex와 함께 잡을 때는 언제나 node mutex가 바깥이다.
+- `admit_record`는 스스로 node mutex를 잡는다 — 호출자는 node mutex를 잡은 채
+  부르면 안 된다(transfer 코드의 emit 전 unlock이 그 예).
+
+## 10. STREAM session 경계
+
+STREAM session service는 raw STREAM socket과 1:1:1(service:socket:node)로
+붙고, Actor binding CAS(generation)와 session→Actor 전달만 소유한다. 세부는
+[`stream-socket.ko.md`](stream-socket.ko.md)와 정식 spec
+[`05-stream-session.ko.md`](../spec/core/service/05-stream-session.ko.md)를
+본다. Actor 이동 barrier의 bounded post-barrier allowance는 transfer 상태의
+participant 항목이 집행한다.

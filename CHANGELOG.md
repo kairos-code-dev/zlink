@@ -50,13 +50,23 @@ aliases, wrappers or dual runtimes. The public contract is owned by
 - Raw SUB/XSUB `zlink_subscribe_part()` reports the required topic length
   without consuming the queued message when the caller buffer is small.
 
-### Known gaps (release-candidate scope)
-- Remote peer data plane (admission handshake and cross-node routing) and
-  the Actor transfer data plane are not wired yet; without an admitted
-  peer route those paths return the contract-defined `ENOTCONN`/`ESTALE`
-  results.
-- MeshNode poller integration tracks receive-mode exclusivity but does not
-  yet surface readiness through `zlink_poller_wait()`.
+### Verification (release-candidate scope)
+- Full core suite green: 84/84 CTest targets, including the two-process
+  remote matrix (`test_mesh_peer_admission`, 10 cases: admission/readiness,
+  MeshName-mismatch rejection with monitor evidence, remote request/reply,
+  Spot direct, multicast with duplicate guard, Actor lookup/messaging/join,
+  transfer fence, channel round-robin with zero-weight exclusion,
+  drain/reconnect), the monitor event matrix
+  (`test_mesh_monitor_matrix`, 6 cases) and dispatch stress
+  (`test_mesh_stress`, 3 cases).
+- Sanitizers: ASAN/UBSAN+leak clean on the mesh suite; TSAN reports zero
+  races in new mesh code (three pre-existing 9.x machinery findings are
+  tracked for review).
+- `contract_public_surface` gate: 196 exported functions exactly match the
+  formal spec, zero removed identifiers present, Korean/English spec C
+  blocks identical.
+- Clean C11 consumer smoke against the installed headers and shared
+  library passes a single-node round trip (`C ABI SMOKE PASS`).
 
 
 ## 5.3.0 (2026-04-20)

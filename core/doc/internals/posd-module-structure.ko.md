@@ -34,13 +34,12 @@ flowchart TB
     end
 
     subgraph SAL ["Service Access Layer"]
-        spot_node_access["spot_node_access_t"]
-        spot_subject_access["spot_subject_access"]
+        mesh_c_internal["api/mesh seam (mesh_c_internal · mesh_api_internal)"]
     end
 
     subgraph SvcRT ["Service Runtime"]
         direction LR
-        spot_rt["SPOT: node · pub · sub · data_plane · handle · runtime"]
+        mesh_rt["Mesh: mesh_runtime · mesh_wire"]
         common_rt["Common: runtime_base · api_guard · monitor · bridge"]
     end
 
@@ -111,8 +110,8 @@ API facade 의 규칙:
 
 | Access Seam | 위치 | 역할 |
 |-------------|------|------|
-| `spot_node_access_t` | `services/spot/` | SpotNode lifecycle, bind, internal attachment coordination |
-| `spot_subject_access` (free function) | `services/spot/` | publish, subscribe, option, handler, monitor, type casting |
+| `api/mesh/mesh_c_internal.hpp` | `api/mesh/` | 공개 handle 검증·versioned 구조체 검사와 mesh runtime 진입 |
+| `api/mesh/mesh_api_internal.hpp` | `api/mesh/` | option·poller·timer 등 세로 관심사가 mesh로 들어오는 seam |
 
 `service_public_api_guard_t` 는 모든 서비스에 공통되는 입장 허용/close 가드다.
 public API 진입과 close/busy 상태를 추적하고, destroy 시 `EBUSY`/`ESHUTDOWN`
@@ -122,33 +121,23 @@ lifecycle 게이트를 제공한다. 콜백 모드 추적은 별도의 `service_
 
 각 서비스의 concrete 구현. 공통 기반은 `services/common/`에 있다.
 
-**SPOT** (`services/spot/`):
+**Mesh** (`services/mesh/`, `api/mesh/`):
 
 | 모듈 | 역할 |
 |------|------|
-| `spot_node.cpp/hpp` | SpotNode orchestration |
-| `spot_handle.hpp` | 공개 spot handle 구조체 (tag validation, pub/sub 참조) |
-| `spot_pub.cpp/hpp` | publish 경로 |
-| `spot_sub.cpp/hpp` | subscribe 경로 |
-| `spot_sub_option.cpp` | sub 측 option 처리 |
-| `spot_sub_recv.cpp` | sub 측 recv 처리 |
-| `spot_data_plane.cpp` | data plane 코어 |
-| `spot_data_plane_forwarding.cpp` | ingress/egress 메시지 포워딩 |
-| `spot_data_plane_pending.cpp` | backpressure 시 보류된 메시지의 복사, 참조 카운트, 재전송 큐 관리 |
-| `spot_data_plane_protocol.cpp` | 제어 메시지, 구독 업데이트 |
-| `spot_data_plane_internal.hpp` | data plane 내부 state/protocol 정의 |
-| `spot_node_state.hpp` | SpotNode 내부 상태 묶음 분리: TLS, endpoint, handle, service attachment |
-| `spot_subject_access.cpp/hpp` | subject-level API seam |
-| `spot_runtime.cpp/hpp` | runtime lifecycle |
+| `mesh_runtime.cpp/hpp` | 객체 모델: mesh_node_t, owner mailbox, ready index, claim, budget, monitor queue, handle registry |
+| `mesh_wire.cpp/hpp` | node 소유 ROUTER wire: ingress 스레드, envelope codec, admission, transfer data plane |
+| `api/mesh/mesh_node_api.cpp` | lifecycle·membership·peer·option·status C API |
+| `api/mesh/mesh_messaging_api.cpp` | node/channel/Spot direct 메시징과 Logical Multicast |
+| `api/mesh/mesh_dispatch_api.cpp` | ready handler·drain·batch·claim·reply token |
+| `api/mesh/mesh_actor_api.cpp` | Actor 생성·조회·join·메시징 |
+| `api/mesh/mesh_transfer_api.cpp` | transfer prepare/commit/activate/abort와 fence |
+| `api/mesh/mesh_monitor_api.cpp` | MeshNode monitor |
+| `api/mesh/mesh_stream_session_api.cpp` | STREAM session service |
 
-`spot_node_t`는 큰 내부 상태 구조체를 헤더에 직접 품지 않고,
-`spot_node_state.hpp`가 제공하는 상태 묶음을 조합해서 쓴다. 그래서 TLS, service attachment, summary 소유권이 또렷하게 분리된다.
-
-data plane의 메시지 전달 흐름도 같은 기준으로 나뉜다.
-`spot_data_plane_forwarding.cpp`는 ingress, mesh, local fanout 사이의 전달
-순서를 맡고, 보류 큐의 메모리 제한 검사와 메시지 복사, target별 참조
-해제는 `spot_data_plane_pending.cpp`가 맡는다. 이렇게 나누면 느린 peer 때문에
-생긴 backpressure 처리와 실제 포워딩 순서를 따로 검토할 수 있다.
+깊은 모듈 경계: 공개 API 계층은 signature 검증과 결과 매핑만 소유하고, 상태
+전이는 전부 `mesh_runtime`/`mesh_wire` 함수로 내려간다. raw socket 계층은
+mesh를 모른다(유일한 확장은 NODROP 원자 reserve용 `routed_target_writable()`).
 
 
 ### 3.4 Socket Semantic/Runtime (`core/src/runtime/sockets/`)

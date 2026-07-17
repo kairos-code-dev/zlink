@@ -724,29 +724,18 @@ ROUTER 를 새 작업 대상으로 선택하지 않는다는 점이다.
 [모니터링 가이드](06-monitoring.ko.md)의 "피어 가중치 변화 감지"
 섹션을 참고.
 
-## 8. ROUTER에서 SPOT으로 보내는 경우
+## 8. ROUTER와 서비스 계층의 경계
 
-ROUTER socket은 일반 DEALER/ROUTER peer뿐 아니라 SPOT routed plane의 ingress로도
-쓸 수 있다. 이 경우 target `SpotNode`가 그 router channel의 peer로 연결되어
-있어야 한다. 연결은 `SpotNode` 쪽에서 수락한다. 즉 router channel이 모든
-SpotNode를 자동으로 끌어오는 것이 아니라, SpotNode가 특정 router channel의
-SPOT route를 받겠다고 선언해야 한다.
+10.0.0에서 raw ROUTER는 범용 소켓 계약만 가진다. 9.x의 route bridge(외부
+router channel을 SPOT routed plane의 ingress로 등록하는 기계)는 제거되었다.
 
-사용자가 알아야 할 판단 기준은 단순하다.
-
-- client/server channel의 server `ROUTER`에서 특정 `Spot`으로 보낼 수 있다.
-- route mesh channel의 `ROUTER`에서 특정 `Spot`으로 보낼 수 있다.
-- PUB/SUB fanout channel과 DEALER mesh channel은 SPOT routed send의 anchor가 아니다.
-
-framework를 사용할 때는 같은 프로세스에 RouteMesh와 SpotMesh를 함께 등록하면 이
-수신 관계를 런타임이 자동으로 연결한다. raw core API를 직접 사용할 때는 route
-bridge를 만들고 router channel socket을 bridge에 등록한다. `SpotNode`가 외부
-router channel peer를 직접 소유하는 방식은 더 이상 공개 사용법이 아니다.
+- MeshNode는 자기 소유 ROUTER 하나로 mesh peer와만 통신하며, raw ROUTER
+  socket을 서비스 평면의 ingress로 등록하는 공개 API는 없다.
+- 외부 프로세스가 mesh 서비스에 닿는 경로는 framework client API 또는 STREAM
+  session([07-4 Actor 가이드](07-4-actor.ko.md) §4)이다.
 
 > 상세 규약은 ROUTER spec
-> [router.ko.md](../spec/core/socket/router.ko.md)의 "피어 가중치",
-> "ROUTER에서 시작하는 직접 송신과 피어 가중치", "ROUTER에서 SPOT으로 보내기"
-> 섹션을 참고.
+> [07-router.ko.md](../spec/core/socket/07-router.ko.md)를 참고.
 
 ---
 [← DEALER](03-3-dealer.ko.md) | [STREAM →](03-5-stream.ko.md)

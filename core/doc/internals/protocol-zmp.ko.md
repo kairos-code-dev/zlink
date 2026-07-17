@@ -2,7 +2,7 @@
 
 # ZMP v1.0 프로토콜 상세
 
-> 이 문서는 ZMP 와이어 프로토콜과 request-reply / SPOT 직접 전달 envelope의
+> 이 문서는 ZMP 와이어 프로토콜과 request-reply envelope의
 > 내부 구조를 설명한다.
 
 ### 용어
@@ -13,12 +13,11 @@
 | frame | 와이어 위에서 전송되는 하나의 데이터 단위 |
 | control part | application payload 앞에 오는 내부 제어 파트 |
 | request-reply envelope | request type, `request_seq`(요청 고유 번호)를 담는 control part 묶음 |
-| SPOT routed envelope | source/destination SPOT 주소를 담는 control part 묶음 |
 | routing_id | transport peer를 식별하는 바이트 열 |
 
 ## 1. 기본 방향
 
-request-reply 와 SPOT 직접 전달은 `zlink_msg_t` 내부 필드가 아니라 ZMP
+request-reply 는 `zlink_msg_t` 내부 필드가 아니라 ZMP
 multipart control part 로 표현한다. 즉 다음 방식은 이 프로토콜의 모델이 아니다.
 
 - message-level request marking
@@ -26,7 +25,7 @@ multipart control part 로 표현한다. 즉 다음 방식은 이 프로토콜�
 - recv 후 내부 필드를 복원하는 방식
 
 ordinary `zlink_send()` / `zlink_recv()` 는 payload part 만 다룬다.
-request-reply 와 SPOT routed 는 전용 공개 API 가 control part 를 앞에
+request-reply 는 전용 공개 API 가 control part 를 앞에
 붙여 보내고 전용 decode 경로가 이를 해석한다.
 
 ## 2. 공통 프레임 헤더
@@ -59,7 +58,7 @@ request-reply 와 SPOT routed 는 전용 공개 API 가 control part 를 앞에
 | 3 | SUBSCRIBE | `0x08` | 구독 요청 |
 | 4 | CANCEL | `0x10` | 구독 취소 |
 
-request-reply 와 SPOT routed envelope 의 part 들은 ZMP `CONTROL` 프레임이 아니라
+request-reply envelope 의 part 들은 ZMP `CONTROL` 프레임이 아니라
 application payload 앞에 붙는 일반 multipart 데이터 frame(`MORE` 플래그)으로
 전송된다. ZMP `CONTROL` 비트는 HELLO/READY/heartbeat 같은 프로토콜 control
 frame에만 쓰이며, decoder는 `CONTROL` 과 `MORE` 를 함께 켠 frame을 거부한다.
@@ -118,132 +117,18 @@ sequenceDiagram
     D->>D: envelope 생성 [0x01, 0x01, 0x01, seq=N]
     D->>R: [envelope 4 parts] + [payload]
     R->>R: envelope 파싱 → (source_node_rid, request_seq=N, payload)
-    R->>R: router_handler 로 dispatch (일반 ROUTER 이면 source_spot_rid = NULL)
+    R->>R: router_handler 로 dispatch
     R->>R: reply envelope 생성 [0x01, 0x01, 0x02, seq=N]
     R->>D: [routing_id] + [envelope 4 parts] + [reply payload]
     D->>D: pending[seq=N] 매칭 → reply_handler 호출
 ```
 
-## 4. SPOT routed envelope
+## 4. 제거된 SPOT routed envelope
 
-SPOT 직접 전달은 payload 앞에 8개 control part 를 붙인다.
-
-```text
-[spot protocol id]
-[spot version]
-[source class]
-[source node rid]
-[source endpoint rid]
-[destination class]
-[destination node rid]
-[destination endpoint rid]
-[payload part 0]
-...
-```
-
-필드 값:
-
-- protocol id: `0x02`
-- version: `0x01`
-- class:
-  - `0x01` = spot
-  - `0x02` = router
-
-주소 해석:
-
-- `source class = spot`
-  - `source node rid` = 보내는 SpotNode
-  - `source endpoint rid` = 보내는 Spot
-- `source class = router`
-  - `source node rid` = empty
-  - `source endpoint rid` = 보내는 ROUTER peer
-- `destination class = spot`
-  - `destination node rid` = 받는 SpotNode
-  - `destination endpoint rid` = 받는 Spot
-- `destination class = router`
-  - `destination node rid` = empty
-  - `destination endpoint rid` = 받는 ROUTER peer
-
-빈 값도 part 를 생략하지 않고 길이 0 part 로 보낸다.
-
-### SPOT Routed 메시지 흐름
-
-```mermaid
-sequenceDiagram
-    participant SA as Spot A (Node 1)
-    participant DP1 as Data Plane (Node 1)
-    participant DP2 as Data Plane (Node 2)
-    participant SB as Spot B (Node 2)
-
-    SA->>DP1: spot_send_router(peer_rid, payload)
-    DP1->>DP1: SPOT envelope 생성 [0x02, 0x01, src, ..., dst, ...]
-    DP1->>DP2: [transport routing_id] + [8 control parts] + [payload]
-    DP2->>DP2: SPOT envelope 파싱 → 로컬 Spot B 식별
-    DP2->>SB: spot_handler 또는 spot_recv 큐로 전달
-```
-
-## 5. SPOT routed + request-reply 조합
-
-SPOT request-reply 는 envelope 두 겹을 순서대로 붙인다.
-
-```text
-[router transport envelope if needed]
-[spot routed envelope: 8 parts]
-[request-reply envelope: 4 parts]
-[payload]
-```
-
-이 순서는 구현 코드와 공개 문서에서 모두 같아야 한다.
-
-의미:
-
-- 바깥 8개 part 가 목적지와 source 주소를 정한다.
-- 그 다음 4개 part 가 request/reply 종류와 `request_seq` 를 정한다.
-- payload 는 마지막부터 시작한다.
-
-### SPOT Request-Reply 시퀀스
-
-```mermaid
-sequenceDiagram
-    participant SA as Spot A
-    participant DP1 as Data Plane 1
-    participant DP2 as Data Plane 2
-    participant SB as Spot B
-
-    SA->>DP1: spot_request_router(peer_rid, payload, timeout)
-    DP1->>DP1: SPOT envelope (8) + RR envelope (4) 생성
-    DP1->>DP1: pending[key] 등록 + timeout 스케줄링
-    DP1->>DP2: [12 control parts] + [payload]
-    DP2->>DP2: SPOT envelope 파싱 → RR envelope 파싱
-    DP2->>SB: spot_handler(source_rid, spot_rid, request_seq, payload)
-    SB->>DP2: spot_reply_spot(source_rid, spot_rid, request_seq, reply)
-    DP2->>DP2: SPOT envelope (8) + RR reply envelope (4) 생성
-    DP2->>DP1: [12 control parts] + [reply payload]
-    DP1->>DP1: pending[key] 매칭 → timeout 취소
-    DP1->>SA: reply_handler(0, reply_parts)
-```
-
-### Timeout 시퀀스
-
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant API as API Layer
-    participant Sched as Timeout Scheduler
-
-    App->>API: spot_request_router(..., timeout_ms, handler)
-    API->>Sched: schedule(deadline, on_timeout)
-    API->>API: pending[key] 등록
-
-    alt Reply 가 timeout 전에 도착
-        API->>Sched: cancel(task)
-        API->>App: reply_handler(0, parts)
-    else Timeout 이 먼저 발생
-        Sched->>API: on_timeout(key)
-        API->>API: pending[key] 삭제
-        API->>App: reply_handler(ETIMEDOUT, NULL)
-    end
-```
+9.x의 SPOT routed envelope(protocol id `0x02`, spot/router class 주소 8 part)은
+10.0.0에서 SPOT routed plane과 함께 제거되었다. MeshNode 사이의 service
+메시지는 ZMP가 아니라 mesh wire envelope(`'Z' 'M'` magic)을 사용하며, 그
+구조는 [서비스 계층 내부 설계 §5](services-internals.ko.md)가 설명한다.
 
 ## 6. encode / decode 흐름
 
@@ -263,31 +148,12 @@ sequenceDiagram
 3. request 면 request handler 로 넘긴다.
 4. reply 면 pending map 에서 `request_seq` 또는 `source_node_rid + request_seq` 로 찾는다.
 
-### 6.2 SPOT request-reply
-
-송신:
-
-1. source/destination class 와 rid 를 정한다.
-2. SPOT routed 8개 control part 를 만든다.
-3. request-reply 4개 control part 를 바로 뒤에 붙인다.
-4. payload part 를 뒤에 붙인다.
-
-수신:
-
-1. 먼저 8개 SPOT routed control part 를 읽는다.
-2. 남은 part 앞 4개를 request-reply envelope 로 읽는다.
-3. destination 이 local `Spot` 인지, local `ROUTER` 인지 정한다.
-4. request 면 해당 handler 로 넘기고 reply 면 pending map 에서 완료한다.
-
 ## 7. pending 과 완료 규칙
 
 pending(응답 대기 항목) 소유권은 상위 API 계층에 있다. 현재 구현은 다음처럼 동작한다.
 
 - `DEALER` pending key: `request_seq`
-- `ROUTER` pending key: `source_node_rid + request_seq` (일반 ROUTER 또는 SPOT 에서 시작된 routed)
-- `spot -> spot` pending key:
-  `source_class + source address + request_seq`
-- `router -> spot` pending key: `request_seq`
+- `ROUTER` pending key: `source_node_rid + request_seq`
 
 완료 규칙:
 
@@ -298,13 +164,12 @@ pending(응답 대기 항목) 소유권은 상위 API 계층에 있다. 현재 �
 
 ## 8. transport routing_id 와의 관계
 
-transport `routing_id` 와 request-reply / SPOT 주소는 같은 값이 아니다.
+transport `routing_id` 와 request-reply 주소는 같은 값이 아니다.
 
 - transport `routing_id`: 현재 연결된 peer 주소
 - `request_seq`: request 와 reply 를 묶는 식별자
-- SPOT node rid / spot rid: application-level destination
 
-특히 `ROUTER` 와 SPOT 조합에서는 둘을 섞으면 reply 주소를 잘못 계산하게 된다.
+둘을 섞으면 reply 주소를 잘못 계산하게 된다.
 문서와 구현 모두 이를 다른 계층으로 설명해야 한다.
 
 ## 9. 유효성 검사
@@ -315,7 +180,6 @@ decode 쪽은 최소한 아래를 검사한다.
 - protocol id 와 version 이 맞는지
 - `request_seq != 0` 인지
 - message type 이 알려진 값인지
-- SPOT destination class 와 rid 조합이 맞는지
 
-이 검사에 실패한 메시지는 request-reply 또는 SPOT routed 메시지로 취급하지
+이 검사에 실패한 메시지는 request-reply 메시지로 취급하지
 않는다. pending completion 도 일으키지 않는다.

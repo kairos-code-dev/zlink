@@ -233,16 +233,30 @@ zlink_mesh_node_set_channel_weight (void *mesh_node_, const char *channel_name_,
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
 
-    std::lock_guard<std::mutex> lock (node->mutex);
-    std::map<std::string, uint32_t>::iterator it = node->channels.find (name);
-    if (it == node->channels.end ()) {
-        errno = ENOENT;
-        return ZLINK_CONFIG_NOT_FOUND;
+    bool changed = false;
+    uint64_t revision = 0;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::map<std::string, uint32_t>::iterator it = node->channels.find (name);
+        if (it == node->channels.end ()) {
+            errno = ENOENT;
+            return ZLINK_CONFIG_NOT_FOUND;
+        }
+        if (it->second != weight_) {
+            it->second = weight_;
+            node->descriptor_revision += 1;
+            revision = node->descriptor_revision;
+            wire_broadcast_update_locked (node);
+            changed = true;
+        }
     }
-    if (it->second != weight_) {
-        it->second = weight_;
-        node->descriptor_revision += 1;
-        wire_broadcast_update_locked (node);
+    if (changed) {
+        zlink_mesh_monitor_event_t event;
+        memset (&event, 0, sizeof (event));
+        event.kind = ZLINK_MESH_MONITOR_CHANNEL_CHANGED;
+        event.mesh_descriptor_revision = revision;
+        snprintf (event.channel_name, sizeof (event.channel_name), "%s", name.c_str ());
+        emit_monitor_event (node, event);
     }
     return ZLINK_CONFIG_OK;
 }
@@ -336,13 +350,27 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
 
     if (!drained) {
         //  Revoke outstanding claims: release stays safe, recv fails.
+        std::vector<zlink_mesh_monitor_event_t> revoked_events;
         for (std::map<owner_id_t, owner_state_t>::iterator it = node->owners.begin ();
              it != node->owners.end (); ++it) {
             for (int d = 0; d < 2; ++d) {
-                if (it->second.domains[d].claimed)
+                if (it->second.domains[d].claimed) {
                     it->second.domains[d].revoked = true;
+                    zlink_mesh_monitor_event_t event;
+                    memset (&event, 0, sizeof (event));
+                    event.kind = ZLINK_MESH_MONITOR_CLAIM_REVOKED;
+                    event.mesh_lifecycle_generation = node->lifecycle_generation;
+                    event.owner_kind =
+                      static_cast<zlink_mesh_owner_kind_t> (it->second.id.kind);
+                    event.spot_rid = it->second.spot_rid;
+                    event.actor = it->second.actor;
+                    revoked_events.push_back (event);
+                }
             }
         }
+        lock.unlock ();
+        for (size_t i = 0; i < revoked_events.size (); ++i)
+            emit_monitor_event (node, revoked_events[i]);
         errno = ETIMEDOUT;
         return ZLINK_REQUEST_TIMED_OUT;
     }
@@ -534,20 +562,32 @@ zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
         return ZLINK_CONNECT_INVALID_ARGUMENT;
     }
     const rid_bytes_t rid = rid_bytes (*peer_rid_);
-    std::lock_guard<std::mutex> lock (node->mutex);
-    for (size_t i = 0; i < node->peers.size (); ++i) {
-        peer_state_t &peer = node->peers[i];
-        if (peer.state != ZLINK_MESH_PEER_ADMITTED && peer.state != ZLINK_MESH_PEER_DRAINING)
-            continue;
-        if (peer.rid != rid)
-            continue;
-        if (peer.lifecycle_generation != lifecycle_generation_) {
-            errno = ESTALE;
-            return ZLINK_CONNECT_CONFLICT;
+    bool closed = false;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        for (size_t i = 0; i < node->peers.size () && !closed; ++i) {
+            peer_state_t &peer = node->peers[i];
+            if (peer.state != ZLINK_MESH_PEER_ADMITTED && peer.state != ZLINK_MESH_PEER_DRAINING)
+                continue;
+            if (peer.rid != rid)
+                continue;
+            if (peer.lifecycle_generation != lifecycle_generation_) {
+                errno = ESTALE;
+                return ZLINK_CONNECT_CONFLICT;
+            }
+            peer.state = ZLINK_MESH_PEER_CLOSED;
+            peer.last_changed_ms = now_ms ();
+            recompute_readiness_locked (node);
+            closed = true;
         }
-        peer.state = ZLINK_MESH_PEER_CLOSED;
-        peer.last_changed_ms = now_ms ();
-        recompute_readiness_locked (node);
+    }
+    if (closed) {
+        zlink_mesh_monitor_event_t event;
+        memset (&event, 0, sizeof (event));
+        event.kind = ZLINK_MESH_MONITOR_PEER_CLOSED;
+        event.peer_rid = *peer_rid_;
+        event.peer_lifecycle_generation = lifecycle_generation_;
+        emit_monitor_event (node, event);
         return ZLINK_CONNECT_OK;
     }
     errno = ENOENT;

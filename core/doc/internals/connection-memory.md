@@ -112,12 +112,13 @@ release until the residual input has drained.
 ## 3. How auto-HWM relates to memory
 
 auto-HWM is a cap, not a preallocation. It does not affect idle memory; it
-only limits how many messages a pipe may queue under load. On SPOT mesh
-internal sockets, growing connection counts shrink the per-pipe budget
-through buckets (BALANCED: 256 → … → 16) to bend the total-exposure slope,
-with hysteresis on bucket transitions (a margin band that prevents rapid
-back-and-forth switching). Regular sockets keep the plain profile value. For
-the full policy see [SPOT internals §6](spot-internals.md) and
+only limits how many messages a pipe may queue under load. On the
+MeshNode-owned ROUTER socket, growing connection counts shrink the per-pipe
+budget through buckets (BALANCED: 256 → … → 16) to bend the total-exposure
+slope, with hysteresis on bucket transitions (a margin band that prevents
+rapid back-and-forth switching). Regular sockets keep the plain profile
+value. For the full policy see
+[Service Layer Internal Design](services-internals.md) and
 [socket option defaults](socket-option-defaults.md).
 
 Two known limits remain as follow-up design items: enforcement is

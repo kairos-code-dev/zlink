@@ -242,38 +242,21 @@ termination. Any rid that is not 4 bytes fails as an invalid argument.
 
 ## 9. Session Actor Relay (session relay)
 
-A STREAM socket can relay client session messages to and from SpotNode Actors.
-Each client connection's `source_rid` becomes a STREAM session that may be bound
-to one or more Actors with `zlink_stream_bind_actor()`. Before any bind can run,
-the STREAM handle must know which SpotNode owns its sessions -- this is the
-session relayment.
+A STREAM socket can relay client session messages to and from mesh Actors.
+Each client connection's `source_rid` becomes a STREAM session. In 10.0.0 the
+association between the socket and a MeshNode is owned explicitly by the
+STREAM session service: `zlink_stream_session_service_new(stream_socket,
+node)` attaches 1:1:1 to the socket and node, and a socket already attached to
+another node is rejected with `EEXIST`.
 
-```c
-                                                        void *node);
-```
-
-There are two ways a STREAM handle acquires a session owner SpotNode:
-
-  the stream as owned by a routed-capable `node`. This is required for raw STREAM
-  sockets and for connector-backed streams, because the library has no structural
-  link from such a handle to a SpotNode. The attach is one-way and sticky: it
-  rejects re-attaching to a different node (`EBUSY` /
-  `ZLINK_CONFIG_INVALID_STATE`), accepts the same stream/node pair idempotently,
-  and is released only on stream close or node destroy. A non-routed node is
-  rejected with `ENOTSUP` / `ZLINK_CONFIG_NOT_SUPPORTED`.
-- **Structural inference.** When the STREAM socket is itself owned by a SpotNode
-  (a node-internal socket), the owner is recovered from the socket registry and
-  no explicit attach is needed.
-
-The STREAM socket holds none of the relay state itself. The owner mapping, the
-session-to-Actor bindings, and the relay paths all live in the SpotNode Actor
-runtime. The companion session APIs are `zlink_stream_bind_actor()` /
-`zlink_stream_unbind_actor()` (manage a session's bindings),
-`zlink_stream_send_bound_actor_part()` (relay a multipart message to a bound
-Actor), and `zlink_stream_bound_actors()` (enumerate a session's bindings). The
-wiring, the local vs remote relay paths, and the cleanup rules are documented in
-[spot-internals.md](spot-internals.md) section 12 ("STREAM session and Actor
-binding"). What matters at the STREAM layer is only that the
-byte pipe per `source_rid` is the transport the relay rides on, and that a
-session disconnect removes that session's bindings without changing any bound
-Actor's joined Spot.
+The STREAM socket holds none of the relay state itself. The companion APIs are `zlink_stream_session_service_new()` (a
+service handle attached 1:1:1 to the socket and node),
+`zlink_stream_session_bind_actor()` / `zlink_stream_session_unbind_actor()`
+(the binding CAS), `zlink_stream_session_send_to_actor()` /
+`zlink_stream_session_request_to_actor()` (the relay) and
+`zlink_stream_session_bindings()` (enumeration). The wiring, relay paths and
+cleanup rules are documented in
+[Service Layer Internal Design §10](services-internals.md). What matters at
+the STREAM layer is only that the byte pipe per `source_rid` is the transport
+the relay rides on, and that a session disconnect removes that session's
+bindings without changing any bound Actor's joined Spot.

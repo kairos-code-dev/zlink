@@ -80,7 +80,7 @@ enqueue된 메시지는 teardown 전에 소진됩니다 (drain-then-close).
 **대상 API:**
 
 - `zlink_close()` (소켓)
-- `zlink_spot_destroy()` / `zlink_spot_node_destroy()`
+- `zlink_spot_destroy()` / `zlink_mesh_node_destroy()`
 - Monitor 핸들 `close` / `destroy`
 
 **입장 허용 게이트(Admission gate) 메커니즘:**
@@ -139,9 +139,9 @@ send queue에 발행합니다 — 단일 스레드 send에 쓰는 것과 같은
 
 ### 3.2 SPOT / SPOT Node
 
-- **공개 계약:** `spot_publish`는 hot-path 계층을 따릅니다. `SpotNode`는
-  topology와 설정을 소유하며 직접 publish hot path를 제공하지 않습니다.
-  구독 변경과 peer mutation은 control path를 따릅니다.
+- **공개 계약:** `zlink_spot_publish`는 hot-path 계층을 따릅니다. `MeshNode`는
+  membership과 설정을 소유하며, 구독 변경과 peer mutation은 control path를
+  따릅니다.
 - **Internal child:** `spot_pub` / `spot_sub`는 내부 구현 단위입니다.
   공개 thread-safety 계약의 직접 대상이 아닙니다 — parent/facade
   계약이 이들을 포함합니다. Child ordering과 open/destroy
@@ -195,7 +195,7 @@ Monitor는 control-plane 중심 subject입니다.
 - **Send-ready 핸들러**는 *호출자의* send 스레드에서 동기적으로 실행될 수
   있다. arm 된 알림이 send 경로의 `notify_send_ready_if_armed()` 에서 inline
   으로 발화한다.
-- **SPOT dispatch 이벤트 핸들러**(`zlink_spot_dispatch_event_handler`)는
+- **MeshNode ready handler**(`zlink_mesh_node_set_ready_handler`)는
   SPOT dispatch worker pool 에서 실행된다.
 
 dispatch 메커니즘은 원자적 load 로 핸들러 포인터를 읽으며,

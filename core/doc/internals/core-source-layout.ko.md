@@ -154,7 +154,7 @@ subject 관리는 `spot/pubsub`, 전체 runtime 소유권과 shutdown 흐름은
 
 ```cpp
 #include "api/socket/socket_api_internal.hpp"
-#include "services/spot/node/spot_node.hpp"
+#include "services/mesh/mesh_runtime.hpp"
 #include "sockets/common/socket_base.hpp"
 ```
 

@@ -92,6 +92,8 @@ set(tests
   ${INTEGRATION_TEST_ROOT}/test_multi_socket_contract_regressions
   ${INTEGRATION_TEST_ROOT}/test_mesh_node_basic
   ${INTEGRATION_TEST_ROOT}/test_mesh_peer_admission
+  ${INTEGRATION_TEST_ROOT}/test_mesh_monitor_matrix
+  ${INTEGRATION_TEST_ROOT}/test_mesh_stress
   ${INTEGRATION_TEST_ROOT}/test_backpressure_matrix
   ${INTEGRATION_TEST_ROOT}/test_backpressure_oneway_matrix
   ${INTEGRATION_TEST_ROOT}/test_public_inproc_multipart_send

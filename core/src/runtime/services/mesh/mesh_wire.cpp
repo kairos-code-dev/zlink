@@ -440,6 +440,8 @@ void emit_peer_event (mesh_node_t *node_,
         memcpy (event.peer_rid.data, rid_.data (), rid_.size ());
     }
     event.failure_errno = error_;
+    if (kind_ == ZLINK_MESH_MONITOR_PEER_REJECTED)
+        event.result_code = error_ == EACCES ? ZLINK_CONNECT_AUTH_FAILED : ZLINK_CONNECT_CONFLICT;
     emit_monitor_event (node_, event);
 }
 
@@ -501,6 +503,9 @@ void handle_hello_or_admit (mesh_node_t *node_,
     bool send_admit = false;
     bool send_reject = false;
     int reject_errno = 0;
+    bool admit_rejected = false;
+    int admit_reject_errno = 0;
+    bool generation_drained = false;
     zlink_routing_id_t target = rid_value (source_rid_);
 
     {
@@ -542,16 +547,26 @@ void handle_hello_or_admit (mesh_node_t *node_,
                 intent->last_error = reason;
                 intent->last_changed_ms = now_ms ();
                 recompute_readiness_locked (node_);
+                admit_rejected = true;
+                admit_reject_errno = reason;
             }
         } else {
             peer_state_t *peer = intent;
             if (!peer)
                 peer = find_peer_by_rid_locked (node_, source_rid_);
+            //  A higher lifecycle generation replaces the previous admitted
+            //  lifetime: the old generation drains out of new snapshots.
+            if (peer && peer->state == ZLINK_MESH_PEER_ADMITTED
+                && descriptor_.lifecycle_generation > peer->lifecycle_generation)
+                generation_drained = true;
             if (!peer) {
-                //  Inbound admitted peer without a local intent.
+                //  Inbound admitted peer without a local intent: the wire
+                //  observed it rather than the operator configuring it, so
+                //  its source is DISCOVERY (a later manual intent for the
+                //  same endpoint merges into MIXED).
                 peer_state_t fresh;
                 fresh.intent_id = node_->next_intent_id++;
-                fresh.source = ZLINK_MESH_PEER_MANUAL;
+                fresh.source = ZLINK_MESH_PEER_DISCOVERY;
                 fresh.inbound = true;
                 node_->peers.push_back (fresh);
                 peer = &node_->peers.back ();
@@ -566,6 +581,8 @@ void handle_hello_or_admit (mesh_node_t *node_,
         }
     }
 
+    if (generation_drained)
+        emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_DRAINING, source_rid_, 0);
     if (send_admit) {
         std::vector<unsigned char> frame = make_envelope (wire_admit, 0);
         {
@@ -578,6 +595,9 @@ void handle_hello_or_admit (mesh_node_t *node_,
         std::vector<unsigned char> frame = make_envelope (wire_reject, 0);
         put_u32 (frame, static_cast<uint32_t> (reject_errno));
         send_control (node_, target, frame);
+        emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_REJECTED, source_rid_, reject_errno);
+    } else if (admit_rejected) {
+        emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_REJECTED, source_rid_, admit_reject_errno);
     } else if (!is_hello_) {
         emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_ADMITTED, source_rid_, 0);
     }
@@ -585,24 +605,28 @@ void handle_hello_or_admit (mesh_node_t *node_,
 
 void handle_reject (mesh_node_t *node_, const rid_bytes_t &source_rid_, uint32_t reason_)
 {
-    std::lock_guard<std::mutex> lock (node_->mutex);
-    //  The rejecting side answered our HELLO; the matching intent is either
-    //  keyed by rid (expected) or the connecting intent awaiting its rid.
-    peer_state_t *intent = find_peer_by_rid_locked (node_, source_rid_);
-    if (!intent || intent->state != ZLINK_MESH_PEER_CONNECTING) {
-        intent = NULL;
-        for (size_t i = 0; i < node_->peers.size () && !intent; ++i) {
-            if (node_->peers[i].state == ZLINK_MESH_PEER_CONNECTING)
-                intent = &node_->peers[i];
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        //  The rejecting side answered our HELLO; the matching intent is either
+        //  keyed by rid (expected) or the connecting intent awaiting its rid.
+        peer_state_t *intent = find_peer_by_rid_locked (node_, source_rid_);
+        if (!intent || intent->state != ZLINK_MESH_PEER_CONNECTING) {
+            intent = NULL;
+            for (size_t i = 0; i < node_->peers.size () && !intent; ++i) {
+                if (node_->peers[i].state == ZLINK_MESH_PEER_CONNECTING)
+                    intent = &node_->peers[i];
+            }
         }
+        if (!intent)
+            return;
+        intent->rid = source_rid_;
+        intent->state = ZLINK_MESH_PEER_ERROR;
+        intent->last_error = static_cast<int32_t> (reason_);
+        intent->last_changed_ms = now_ms ();
+        recompute_readiness_locked (node_);
     }
-    if (!intent)
-        return;
-    intent->rid = source_rid_;
-    intent->state = ZLINK_MESH_PEER_ERROR;
-    intent->last_error = static_cast<int32_t> (reason_);
-    intent->last_changed_ms = now_ms ();
-    recompute_readiness_locked (node_);
+    emit_peer_event (node_, ZLINK_MESH_MONITOR_PEER_REJECTED, source_rid_,
+                     static_cast<int32_t> (reason_));
 }
 
 void handle_update (mesh_node_t *node_,
@@ -1294,6 +1318,7 @@ void dispatch_wire_message (mesh_node_t *node_,
     if (reader.u8 () != wire_magic_0 || reader.u8 () != wire_magic_1
         || reader.u8 () != wire_version) {
         close_frames (frames_);
+        emit_peer_event (node_, ZLINK_MESH_MONITOR_PROTOCOL_ERROR, source_rid_, EPROTO);
         return;
     }
     const unsigned char type = reader.u8 ();
@@ -1505,6 +1530,7 @@ void dispatch_wire_message (mesh_node_t *node_,
         //  mailbox admission.
         if (validate_metadata (data, size) != 0) {
             close_frames (frames_);
+            emit_peer_event (node_, ZLINK_MESH_MONITOR_PROTOCOL_ERROR, source_rid_, EPROTO);
             return;
         }
         metadata.assign (data, data + size);

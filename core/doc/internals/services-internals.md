@@ -2,528 +2,221 @@
 
 # Service Layer Internal Design
 
-## 1. Overview
+This document helps core maintainers navigate the actual internal structure of
+the 10.0.0 service layer (MeshNode, Spot, Actor and STREAM session). The
+public contract is owned by the formal specs under
+[`doc/spec/core/service/`](../spec/core/service/README.md); this document only
+describes the current source structure that implements that contract.
 
-The zlink service layer now covers SPOT and Actor-on-SPOT internals. Discovery and Registry are not part of the core runtime.
+## 1. Source layout and responsibility boundaries
 
-For SPOT, transport-security ownership is intentionally narrow: the
-`SpotNode` owns TLS/WSS wiring for mesh/control sockets, while unified
-`Spot` remains a borrowed data-plane facade only. The facade never owns
-node lifecycle and is not itself a TLS configuration surface.
+| Location | Responsibility |
+|---|---|
+| `src/runtime/services/mesh/mesh_runtime.{hpp,cpp}` | Object model and process-local state machine: `mesh_node_t`, owner mailboxes, ready index, claims, budgets, monitor queue, handle registry |
+| `src/runtime/services/mesh/mesh_wire.{hpp,cpp}` | Remote wire: node-owned raw ROUTER, ingress thread, envelope codec, HELLO admission, remote messaging and the transfer data plane |
+| `src/api/mesh/mesh_node_api.cpp` | Lifecycle, membership, peer intents, options, status and query C API |
+| `src/api/mesh/mesh_messaging_api.cpp` | Node/channel/Spot direct send and request, Logical Multicast publish |
+| `src/api/mesh/mesh_dispatch_api.cpp` | Ready handler, drain, ready/receive batches, claims, reply tokens |
+| `src/api/mesh/mesh_actor_api.cpp` | Actor creation, lookup, destroy, join and messaging |
+| `src/api/mesh/mesh_transfer_api.cpp` | Actor transfer prepare/commit/activate/abort and the fence |
+| `src/api/mesh/mesh_monitor_api.cpp` | MeshNode monitor open/handler/recv/status/close |
+| `src/api/mesh/mesh_stream_session_api.cpp` | STREAM session service and Actor bindings |
+| `src/api/mesh/mesh_api.cpp` | The seam through which cross-cutting concerns (poller, timer) enter mesh |
 
-## 2. SPOT Internal Implementation
+Layering rule: `api/mesh/*` owns public signature validation and result
+mapping, and delegates every state change into `mesh_runtime`/`mesh_wire`
+functions. The raw socket layer (`runtime/sockets/`) knows nothing about mesh.
+The only extension mesh asks of the raw ROUTER is the non-consuming write
+probe `routed_target_writable()` used by the NODROP atomic reserve.
 
-### 5.1 Structure
-- `spot_node_t` -- Network control (owns PUB/SUB sockets, mesh management, worker thread)
-- `spot_pub_t` -- Publish handle (delegates to spot_node_t's publish, tag-based validity check)
-- `spot_sub_t` -- Subscribe/receive handle (internal queue, pattern matching, condition variable-based blocking recv)
+## 2. Object model
 
-### 5.2 Concurrency Model
-- Publishing: Performed directly on the caller's thread, serialized by `_publish_sync` mutex (thread-safe)
-- Receiving: Worker thread receives from SUB socket → distributes to spot_sub_t internal queues
-- Lock ordering: `_sync` → `_publish_sync` (deadlock prevention)
-- Direct publishing without async queue (no message buffering on the publish path)
-
-### 5.3 Subscription Aggregation
-- Refcount-based SUB filter management
-- Duplicate subscriptions to the same topic increment the refcount
-- Per-spot_sub_t subscription set management (separate for exact topics and patterns)
-
-### 5.4 Delivery Policy
-- Local publish (spot_pub) → local spot_sub distribution + PUB output (remote propagation)
-- Remote receive (SUB) → local spot_sub distribution only (no re-publishing, loop prevention)
-
-### 5.4.1 SpotNode HWM Boundaries
-- Unified `Spot` handle HWM and SpotNode admission HWM are different layers.
-- A registered `Spot` handle accepts common `SNDHWM`/`RCVHWM` options and stores them as pub/sub pending options.
-- `SpotNode` HWM is an admission budget, not a relay or delivery queue budget:
-  - pubsub admission controls local publish input.
-  - router admission controls local routed input.
-- The default SpotNode admission profile is balanced. Both admission channels
-  start at `16` unless a positive numeric override is set.
-- Setting an admission numeric option to `0` clears the override and returns to
-  the selected profile.
-- Relay and delivery sockets use HWM `0` — delivery targets are not disconnected
-  due to queue growth.
-- `peer_ctrl` is a control-plane socket and is not grouped into the SpotNode
-  admission HWM family.
-
-### 5.5 Raw Socket Policy
-- `spot_pub_t`: Does not expose raw PUB socket (prevents thread-safety bypass)
-- `spot_sub_t`: Does not expose raw SUB socket; consumption is via callback/recv API only
-
-## 6. SPOT Internal Architecture
-
-For detailed SPOT/SpotNode internal architecture including component
-diagrams, all 11 internal sockets with types/endpoints/HWM, topic and
-routed message flow sequences, control plane, and data plane polling,
-see the dedicated document: **[SPOT Internals](spot-internals.md)**.
-
-### 6.1 Component Diagram
-
-```mermaid
-flowchart TB
-    subgraph PublicAPI["Public C API"]
-        spot_handle["spot_handle_t<br/>(unified facade)"]
-        spot_node_api["spot_node API"]
-    end
-
-    subgraph AccessLayer["Access Layer"]
-        subject_access["spot_subject_access"]
-        node_access["spot_node_access"]
-    end
-
-    subgraph ControlPlane["Control Plane"]
-        spot_node["spot_node_t<br/>peer state, lifecycle,<br/>handle management"]
-        control_task["control_task (10ms)<br/>subscription replay,<br/>ready refresh"]
-    end
-
-    subgraph Runtime["Runtime"]
-        spot_runtime["spot_runtime_t<br/>socket attachments,<br/>batch/HWM config"]
-    end
-
-    subgraph DataPlane["Data Plane (separate thread)"]
-        dp_loop["spot_data_plane_loop<br/>main polling loop"]
-        dp_forwarding["forwarding<br/>batching, encoding"]
-        dp_protocol["protocol<br/>control msgs, bootstrap"]
-    end
-
-    subgraph InprocSockets["Inproc Socket Network"]
-        ingress-sub["ingress-sub (SUB)"]
-        local-pub["local-pub (XPUB)"]
-        mesh_pub["mesh_pub (PUB)"]
-        mesh_xsub["mesh_xsub (XSUB)"]
-        internal-router["internal-router (ROUTER)"]
-        internal-router["internal-router (ROUTER)"]
-        ctrl_pair["ctrl (PAIR)"]
-    end
-
-    spot_handle --> subject_access
-    spot_node_api --> node_access
-    subject_access --> spot_node
-    node_access --> spot_node
-    spot_node --> control_task
-    spot_node --> spot_runtime
-    spot_runtime --> dp_loop
-    dp_loop --> dp_forwarding
-    dp_loop --> dp_protocol
-    dp_loop --> ingress-sub
-    dp_loop --> local-pub
-    dp_loop --> mesh_pub
-    dp_loop --> mesh_xsub
-    dp_loop --> internal-router
-    dp_loop --> internal-router
-    dp_loop --> ctrl_pair
+```
+zlink_ctx
+ └─ mesh_node_t (one MeshName per process, validated by the immortal registry)
+     ├─ owns: one raw ROUTER socket (one bind, all peer pipes)
+     ├─ one ingress thread (recv + socket monitor drain)
+     ├─ peers: vector<peer_state_t>            — single table of intents and admitted peers
+     ├─ channels: map<ChannelName, weight>     — names frozen after start, weight mutable
+     ├─ owners: map<owner_id_t, owner_state_t> — Node, Spot and Actor mailboxes
+     │    └─ domains[2]: application / infrastructure mailbox
+     ├─ ready: set<(owner, domain)>            — level-triggered ready index
+     ├─ reply_routes: map<serial, reply_route_t> — one-shot reply seal store
+     ├─ operations: map<op_low, pending_operation_t>
+     ├─ transfers: map<serial, transfer_state_t>
+     ├─ spots / actors: logical registries (facades are thin handles)
+     └─ monitor: one monitor_state_t (bounded queue + counters)
 ```
 
-### 6.2 Inproc Socket Topology
-
-All inproc paths: `inproc://zlink.spot.{node_id}.{purpose}`
-
-| Endpoint | Socket Type | Direction | Purpose |
-|----------|------------|-----------|---------|
-| `.pub-in` | SUB | local pubs → data plane | Topic publish ingress |
-| `.sub-out` | XPUB | data plane → local subs | Topic subscribe fanout |
-| `.internal-router` | ROUTER | local senders → data plane | Routed message ingress |
-| `.internal-router` | ROUTER | data plane → local receivers | Routed message delivery |
-| `.ctrl` | PAIR | control plane ↔ data plane | Internal commands |
-
-### 6.3 Topic Message Internal Flow
-
-```mermaid
-sequenceDiagram
-    participant Pub as spot_pub_t
-    participant Ingress as ingress-sub (SUB)
-    participant DP as Data Plane Loop
-    participant MeshPub as mesh_pub (PUB)
-    participant Fanout as local-pub (XPUB)
-    participant Sub as spot_sub_t
-
-    Pub->>Ingress: publish(topic, parts) via inproc
-    Ingress->>DP: poll readable → receive message
-    DP->>Fanout: local fanout (immediate)
-    Fanout->>Sub: deliver to matching subscribers
-    DP->>MeshPub: send immediately
-    Note over MeshPub: → remote peers via tcp mesh
-```
-
-### 6.4 Routed Message Internal Flow
-
-```mermaid
-sequenceDiagram
-    participant Sender as spot_send_router()
-    participant RouteIn as internal-router (ROUTER)
-    participant DP as Data Plane Loop
-    participant NodeRouter as internal-router (ROUTER)
-    participant Receiver as spot_recv / spot_handler
-
-    Sender->>RouteIn: send with SPOT routed envelope (8 parts)
-    RouteIn->>DP: poll readable → receive routed message
-    DP->>DP: parse SPOT envelope → resolve destination
-    alt Destination is local
-        DP->>NodeRouter: forward via inproc
-        NodeRouter->>Receiver: deliver to spot_handler or recv queue
-    else Destination is remote
-        DP->>DP: forward via peer ROUTER-ROUTER transport
-        Note over DP: remote data plane delivers locally
-    end
-```
-
-### 6.5 SPOT Request-Reply Dispatch
-
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant API as spot_request_router()
-    participant State as spot_request_reply_state
-    participant Sched as Timeout Scheduler
-    participant DP as Data Plane
-    participant Remote as Remote Spot
-
-    App->>API: request(dest_node, dest_spot, payload, timeout)
-    API->>API: build SPOT envelope (8) + RR envelope (4)
-    API->>State: register pending[key]
-    API->>Sched: schedule(deadline, on_timeout)
-    API->>DP: send [12 control parts] + [payload]
-    DP->>Remote: forward to destination
-
-    Remote->>DP: reply [12 control parts] + [reply payload]
-    DP->>API: internal dispatch
-    API->>State: lookup pending[key]
-    API->>Sched: cancel timeout
-    API->>State: remove pending[key]
-    API->>App: reply_handler(0, reply_parts)
-```
-
-### 6.6 SPOT Routed Request-Reply Combination
-
-SPOT request-reply has separate state from the topic fanout path.
-The implementation decodes in three stages:
-
-1. Decode SPOT routed envelope (8 control parts)
-2. Decode request-reply envelope (4 control parts) from remaining payload
-3. If request → dispatch to local handler; if reply → complete pending map
-
-Structure:
-
-- SPOT routed envelope: source/destination node, spot, router addresses
-- request-reply envelope: `message_type`, `request_seq`
-- payload: application body
-
-### 6.7 Pending Structures
-
-Socket request-reply and SPOT request-reply use different pending keys:
-
-```cpp
-struct pending_key_t {          // Socket level
-    std::string peer_rid;
-    uint64_t request_seq;
-};
-
-struct pending_spot_key_t {     // SPOT level
-    uint8_t source_class;
-    std::string source_rid;
-    std::string source_spot_rid;
-    uint64_t request_seq;
-};
-```
-
-| API | Pending Key | Reason |
-|-----|------------|--------|
-| DEALER | `request_seq` only | Single peer, seq is unique |
-| ROUTER | `source_node_rid + request_seq` | Multiple peers may reuse seq. For SPOT-originated routed traffic, `source_spot_rid` is also carried through the dispatch path so the unified router handler can distinguish plain vs. SPOT-routed callers |
-| spot → spot | `source_class + source_address + request_seq` | Multiple sources |
-| router → spot | `request_seq` | Local router state |
-
-### 6.8 Timeout and Completion
-
-Each request registers a pending entry with a timeout task:
-
-- Per-call timeout is used if provided
-- Otherwise socket/spot default timeout applies
-- If both are 0, implementation default `5000ms` applies
-
-Completion rules:
-
-- Timeout fires first → remove pending, callback with `ETIMEDOUT`
-- Reply arrives first → remove pending, cancel timeout (no-op if already fired)
-- Extra replies to a completed key are silently dropped
-- `error_reply` reads 4-byte errno from first payload part → failure completion
-
-## 7. Request-Reply Dispatch Architecture
-
-### 7.1 Socket-Level Dispatch Component Diagram
-
-```mermaid
-flowchart TB
-    subgraph PublicAPI["Public API"]
-        dealer_req["zlink_dealer_request()"]
-        router_req["zlink_router_request()"]
-        router_reply["zlink_router_reply()"]
-        router_recv["zlink_router_recv()"]
-    end
-
-    subgraph State["Per-Socket State"]
-        rr_state["socket_request_reply_state_t<br/>pending_sequences,<br/>pending_requests map"]
-    end
-
-    subgraph Dispatch["Internal Dispatch"]
-        msg_dispatch["socket_request_reply_dispatch()<br/>installed as socket msg handler"]
-        envelope_parse["parse_envelope()<br/>extract protocol_id, message_type,<br/>request_seq"]
-    end
-
-    subgraph Queue["Internal Pair Queue"]
-        tx["tx (PAIR sender)"]
-        rx["rx (PAIR receiver)"]
-    end
-
-    subgraph Scheduler["Timeout Scheduler"]
-        timeout_thread["global timeout thread"]
-        timeout_schedule["deadline multimap"]
-    end
-
-    dealer_req --> rr_state
-    router_req --> rr_state
-    rr_state --> msg_dispatch
-    msg_dispatch --> envelope_parse
-
-    envelope_parse -->|request| tx
-    tx -.->|inproc PAIR| rx
-    router_recv --> rx
-
-    envelope_parse -->|reply| rr_state
-    rr_state -->|match pending| timeout_schedule
-    rr_state -->|invoke| dealer_req
-
-    router_req --> timeout_schedule
-    dealer_req --> timeout_schedule
-```
-
-### 7.2 Dispatch Sequence (Reply Completion)
-
-```mermaid
-sequenceDiagram
-    participant Net as Network
-    participant Socket as ROUTER/DEALER Socket
-    participant Dispatch as request_reply_dispatch
-
-    Net->>Socket: incoming message
-    Socket->>Dispatch: msg_handler callback
-    Dispatch->>Dispatch: parse_envelope()
-    alt message_type = reply
-        Dispatch->>Dispatch: lookup pending[source_node_rid + seq]
-        Dispatch->>Dispatch: cancel timeout task
-        Dispatch->>Dispatch: invoke reply_handler(errno, parts, userdata)
-    else message_type = error_reply
-        Dispatch->>Dispatch: decode errno from first payload part
-        Dispatch->>Dispatch: invoke reply_handler(errno, NULL, userdata)
-    end
-```
-
-### 7.3 Dispatch Sequence (Router Recv Path)
-
-```mermaid
-sequenceDiagram
-    participant Net as Network
-    participant Socket as ROUTER Socket
-    participant Dispatch as request_reply_dispatch
-    participant Queue as Internal Pair Queue
-    participant App as zlink_router_recv()
-
-    Net->>Socket: incoming routed message
-    Socket->>Dispatch: msg_handler callback
-    Dispatch->>Dispatch: parse_envelope() → request (or plain routed)
-    Dispatch->>Queue: enqueue [source_node_rid, source_spot_rid, request_seq, payload]
-    Note over Queue: via internal PAIR socket (inproc)
-
-    App->>Queue: recv from internal PAIR
-    Queue->>App: [source_node_rid, source_spot_rid, request_seq, payload]
-    App->>App: return to caller
-```
-
-## 8. Timer and Scheduler Architecture
-
-### 8.1 Component Diagram
-
-```mermaid
-flowchart TB
-    subgraph PublicAPI["Public Timer API"]
-        timer_new["zlink_timer_new()"]
-        spot_timer["zlink_spot_timer_new(spot)"]
-        timer_start["zlink_timer_start()"]
-        timer_recv["zlink_timer_recv()"]
-        timer_handler["zlink_timer_handler()"]
-    end
-
-    subgraph TimerHandle["timer_handle_t"]
-        state["interval_ns, repeat_count,<br/>running, stop_requested"]
-        fired["fired_counts deque"]
-        signaler["signaler_t (eventfd)"]
-        handler_fn["handler callback"]
-    end
-
-    subgraph GlobalSched["Global Shared Scheduler"]
-        g_thread["worker thread"]
-        g_schedule["deadline multimap"]
-        g_cv["condition variable"]
-    end
-
-    subgraph SpotSched["SpotNode-Local Schedulers"]
-        s_thread["worker thread (per node)"]
-        s_schedule["deadline multimap"]
-    end
-
-    subgraph Poller["Poller Integration"]
-        poller["zlink_poller_wait()"]
-        fd_reg["FD registration"]
-    end
-
-    timer_new --> GlobalSched
-    spot_timer --> SpotSched
-    timer_start --> TimerHandle
-    TimerHandle --> GlobalSched
-    TimerHandle --> SpotSched
-
-    g_thread -->|fire| handler_fn
-    g_thread -->|fire, no handler| fired
-    fired --> signaler
-    signaler --> fd_reg
-    fd_reg --> poller
-
-    timer_recv --> fired
-    timer_handler --> handler_fn
-```
-
-### 8.2 Timer Fire Sequence
-
-```mermaid
-sequenceDiagram
-    participant Sched as Scheduler Thread
-    participant Timer as timer_handle_t
-    participant App as Application
-
-    Sched->>Sched: cv.wait_for(next deadline)
-    Sched->>Timer: scheduler_fire_timer()
-
-    alt Callback mode (handler set)
-        Timer->>App: handler(timer, fire_count, userdata)
-    else Recv/Poller mode (no handler)
-        Timer->>Timer: push fire_count to deque
-        Timer->>Timer: signaler.send() (eventfd)
-        Note over Timer: wakes poller or unblocks recv
-    end
-
-    Sched->>Sched: check repeat_count
-    alt repeat_count > 0 and not exhausted
-        Sched->>Sched: reschedule at deadline + interval
-    else repeat_count exhausted
-        Sched->>Timer: mark stopped
-    end
-```
-
-### 8.3 Request Timeout Scheduler
-
-The request timeout scheduler is **separate** from the timer scheduler.
-It is dedicated to request-reply timeout management.
-
-```mermaid
-flowchart LR
-    subgraph TimeoutSched["Global Timeout Scheduler"]
-        thread["single worker thread"]
-        schedule["deadline multimap<br/>(deadline → task)"]
-        cv["condition variable"]
-    end
-
-    subgraph Task["timeout_task_t"]
-        deadline["deadline_ns"]
-        handler["on_timeout callback"]
-        state["registered, canceled,<br/>firing, completed"]
-    end
-
-    start_request -->|schedule| TimeoutSched
-    TimeoutSched -->|fires| Task
-    Task -->|callback| remove_pending
-    cancel_timeout -->|cancel| Task
-```
-
-- Single global thread for all request timeouts
-- Efficient for many short-lived timeouts
-- Task has cancel support with fire/cancel race resolution
-
-## 9. Internal Pair Queue Mechanism
-
-The internal pair queue bridges the gap between internal dispatch
-(on the I/O thread) and user recv calls (on the application thread).
-
-```mermaid
-flowchart LR
-    subgraph IOThread["I/O Thread"]
-        dispatch["request_reply_dispatch()"]
-    end
-
-    subgraph PairQueue["Internal Pair Queue"]
-        tx["tx (PAIR)"]
-        inproc["inproc://zlink.{type}.reqrep.recv-{ptr}"]
-        rx["rx (PAIR)"]
-    end
-
-    subgraph AppThread["Application Thread"]
-        recv["zlink_router_recv()"]
-    end
-
-    dispatch -->|send frames| tx
-    tx ---|inproc PAIR| rx
-    rx -->|recv frames| recv
-```
-
-Structure:
-
-```cpp
-struct internal_pair_queue_t {
-    socket_base_t *rx;     // receive side (application thread)
-    socket_base_t *tx;     // send side (dispatch thread)
-    std::string endpoint;  // unique inproc endpoint
-};
-```
-
-Queue creation (`ensure()`):
-1. Generate unique inproc endpoint
-2. Create two PAIR sockets: rx (bind), tx (connect)
-3. Bidirectional handshake (0x11 → 0x22 → back)
-4. Set linger = 0 for clean shutdown
-
-Frame encoding for ROUTER recv queue (unified routed surface — the
-queue carries both plain ROUTER traffic and SPOT-originated routed
-traffic through the same framing):
-- Frame 1: `source_node_rid` bytes
-- Frame 2: `source_spot_rid` bytes (zero length for plain ROUTER traffic)
-- Frame 3: `request_seq` (8 bytes Big Endian; `0` for fire-and-forget)
-- Frame 4+: Payload parts
-
-## 10. Weight propagation
-
-Raw ROUTER and DEALER sockets drive local peer weight through their typed
-option APIs. SpotNode and Spot do not expose a separate local weight setting.
-Internally each raw subject advertises the change to its connected peers as a
-**best-effort runtime signal**, and each peer updates its weight cache so
-outbound candidate selection reflects the new value.
-
-Baseline behavior:
-
-- A local weight change is applied to the local cache immediately. Other local
-  outbound paths on the same node (e.g. local spot or router send) see the
-  new value right away.
-- Peer-side propagation flows through the dedicated raw socket weight signal
-  path. The signal is a best-effort runtime control message; no strong
-  synchronous model is provided.
-- After reconnect the weight resyncs. When a new session becomes
-  ready the subject re-advertises its current weight once so a
-  stale cache does not cause incorrect candidate selection.
-- When a peer's cache shows weight `0`, the peer drops that target from
-  outbound candidate selection. If every candidate is `0`, the
-  submit path normalizes to `ZLINK_SUBMIT_NOT_ADMITTED`. Under races where
-  connection state changes are observed before the weight cache update,
-  the same refusal may surface first as `ZLINK_SUBMIT_NOT_CONNECTED` or
-  `ZLINK_SUBMIT_NOT_FOUND`.
-- Raw socket changes are exposed to the application via the socket monitor
-  event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.
+- Handle validity is decided by a global immortal registry (`registry ()`).
+  Its storage is intentionally leaked to avoid static destruction ordering
+  problems (the same pattern as the request timeout scheduler).
+- `owner_id_t` is (kind, key, generation). A different Spot/Actor generation is
+  a different mailbox; access through a stale generation ends as a missing
+  mailbox.
+- Spot facades, publishers, the monitor and STREAM session services all count
+  as strong child references of the node: `zlink_mesh_node_destroy` refuses
+  with `EBUSY` until they are closed.
+
+## 3. Mailboxes, the ready index and claims
+
+The single admission gate for messages is `admit_record()`.
+
+- The application domain is bounded by the message/byte budgets; on overflow a
+  non-blocking call fails with `EAGAIN` and a blocking call waits on the
+  condition variable until the deadline and fails with `ETIMEDOUT`. The
+  rejection emits the `BACKPRESSURED` monitor event from the same function.
+- The infrastructure domain (completions, transfer control, SEND_READY) is
+  bounded by the outstanding-operation set, so no budget applies and it always
+  makes progress.
+- While a transfer fence holds an owner, application admission fails with
+  `EAGAIN` until commit or abort resolves it.
+
+The ready index is a set of (owner, domain) pairs and is level-triggered.
+`drain_ready` moves ready entries into batch claims; `claim_recv_batch` moves
+mailbox records into the receive batch and returns budget as it does so. A
+claim release re-arms through `signal_ready` only when records remain in the
+mailbox (the decision is taken under the lock, the signal is sent after
+releasing it).
+
+A claim's identity is (node generation, owner, domain, serial); the
+serial-to-owner reverse map lives in a global side table (`g_claim_keys`).
+That table is what makes releasing a claim after node destruction a safe
+no-op.
+
+There are three wakeup paths with mutual-exclusion rules:
+
+1. Blocking `drain_ready` — the node condition variable.
+2. The ready handler — `notify_consumer_locked` invokes the registered
+   wakeup-only callback; re-entrant deregistration is `EDEADLK`.
+3. Poller integration — the node's built-in `signaler_t` registers as
+   `poller_subject_mesh_node`. POLLIN is the level signal for "ready index is
+   non-empty": drain consumes the signal byte and re-arms while claimable work
+   remains. Handler and poller registration are mutually exclusive (`EBUSY`).
+
+## 4. Reply tokens and completions
+
+Registering a request creates a one-shot route in `reply_routes[serial]` and
+exposes only the serial through a 32-byte sealed token. Consumption rules:
+
+- A successful reply consumes the route; a second reply is `EALREADY`.
+- If the requester timed out first, the reply consumes the token and is
+  silently discarded (no second completion is produced).
+- With the node STOPPED, replies fail with `ESHUTDOWN`. They stay legal during
+  DRAINING — a held claim turn must be able to answer to the end.
+- An Actor join token has its kind sealed in: passing it to the generic reply
+  is `EINVAL` and does not consume it.
+
+Completions always land in the requester owner's infrastructure mailbox.
+Timeout completions are produced by the global timeout scheduler (an immortal
+singleton with its own thread) calling `complete_operation` at the deadline.
+
+## 5. Wire: ROUTER, the ingress thread and the envelope
+
+- The node's raw ROUTER is thread-safe, so sends happen directly on
+  application threads while one dedicated ingress thread owns receive.
+- The ingress thread also drains the socket monitor. `CONNECTION_READY`
+  (carrying rid and remote_addr) matches outbound intents and triggers the
+  HELLO. Peer loss flows through `handle_peer_down` into a state transition
+  plus the `PEER_CLOSED` event.
+- Envelope v1: `'Z' 'M' | ver | type | flags`. Request/reply kinds append a
+  correlation u64; replies append the terminal result and errno; channel kinds
+  append the channel name. Application metadata travels in a separate frame
+  (flag 0x01) and must pass `validate_metadata` before any mailbox admission;
+  a failure drops the complete message and emits `PROTOCOL_ERROR`.
+- Wire types: HELLO/ADMIT/REJECT/UPDATE (control), node/channel send/request
+  and REPLY, SPOT_SEND=21 and SPOT_REQUEST=22 (addressed by target spot rid +
+  generation), MULTICAST=23 (channel, topic, source spot rid), the ACTOR
+  family 24–29 (SEND/REQUEST/LOOKUP/DESTROY/JOIN/LEFT) and the TRANSFER family
+  30–33 (READY/DATA/ACK/REPLY_RELAY).
+- Admission validation (`validate_admission_locked`) checks MeshName
+  (`EEXIST`), trust profile (`EACCES`) and expected RID / stale generation
+  (`ESTALE`). Rejections are observable through the REJECT frame and the
+  `PEER_REJECTED` event on both sides. A higher lifecycle generation replaces
+  the previously admitted entry immediately; that replacement is where the
+  `PEER_DRAINING` event is emitted. A peer observed inbound (with no local
+  intent) has source `DISCOVERY`; a later manual intent for the same endpoint
+  merges into `MIXED`.
+- A remote request registers the operation with correlation = op.low; the
+  responder creates a remote-origin reply route (sealing the origin rid and
+  correlation) so that `zlink_mesh_reply` answers over the wire with a REPLY,
+  and the requester's ingress closes the pending operation with a completion.
+
+## 6. Logical Multicast and NODROP
+
+Publish completes snapshot → check → commit within one call.
+
+1. Under the node mutex, take the local subscription matches and the snapshot
+   of admitted positive-weight channel-member peers.
+2. With NODROP (default 1), serialize the node's outbound wire under
+   `wire_send_mutex` and pre-check the local mailbox budgets plus
+   `routed_target_writable()` on every remote pipe. If any target cannot
+   accept, nothing commits (all-or-none). Non-blocking fails with `EAGAIN`;
+   blocking retries the reserve until SNDTIMEO and fails with `ETIMEDOUT`.
+3. Commit is the local fanout (shared `zlink_msg_copy` refcounts) plus exactly
+   one wire submit per peer. A receiving node fans out only to its own local
+   subscription matches and has no re-propagation path (structural no-relay).
+
+The publish detail and the `MULTICAST_COMMITTED`/`MULTICAST_DROPPED` events
+report the snapshot/admitted/dropped counts verbatim.
+
+## 7. Actors and the transfer fence
+
+Actor state lives in the same owner table as its mailboxes. The single
+membership commit point for join is the source-side wire reply handling
+(`actor_apply_remote_join_reply`): epoch+1, recording `spot_node_rid` and the
+ACTOR_LEFT notification to the previous remote spot all happen there.
+
+Transfers are tracked by `transfer_state_t` (serial, role, phase, frozen
+snapshot, staged map, ack high-water). Key decisions:
+
+- The 64-byte token = node ptr + serial + magic (the same sealing pattern as
+  reply tokens).
+- The fence is enforced at three points: `admit_record` (application
+  `EAGAIN`), `take_claim` (`EBUSY`) and `drain_ready` (skips the fenced app
+  lane).
+- The data plane is stop-and-wait with one record per ACK. The source resends
+  its frozen mailbox snapshot in order; the target accumulates into the staged
+  map and moves it into the app mailbox at activate.
+- Replies for ACTOR_REQUESTs caught mid-transfer travel through a resealed
+  route on the target via REPLY_RELAY back through the source to the original
+  requester. After the source commits, that route is removed.
+- Source commit erases the actors entry but keeps the owners entry so
+  remaining infra records stay drainable.
+
+## 8. Monitor
+
+One monitor per node (bounded queue). `emit_monitor_event` applies the mask
+and enqueues; on overflow it aggregates high-frequency kinds
+(MESSAGE_SUBMITTED, BACKPRESSURED) while preferring to keep peer state,
+protocol error and lifecycle events. Counters accumulate independently of
+event consumption and the status query is an atomic snapshot. Handler and recv
+are the single consumer of the same queue; re-entrant deregistration inside
+the handler is `EDEADLK`. `CLAIM_REVOKED` is emitted by the shutdown revoke
+loop after it drops the node lock.
+
+## 9. Locking rules and thread inventory
+
+| Thread | Owner | Role |
+|---|---|---|
+| Application threads | caller | all public APIs, direct wire sends |
+| Ingress thread | 1 per node | ROUTER recv, socket monitor drain, remote record admission, completion delivery |
+| Timeout scheduler | 1 per process (immortal) | timeout completions at operation deadlines |
+
+- The primary lock is the single `node->mutex`. The monitor has its own mutex;
+  `emit_monitor_event` must be called without the node mutex held (internally
+  it briefly takes node mutex, then monitor mutex, in that order).
+- `wire_send_mutex` serializes all of a node's outbound wire during a NODROP
+  atomic reserve. When held together with the node mutex, the node mutex is
+  always the outer lock.
+- `admit_record` takes the node mutex itself — callers must not hold it when
+  calling (the unlock-before-emit in the transfer code is one example).
+
+## 10. STREAM session boundary
+
+A STREAM session service attaches 1:1:1 (service : raw STREAM socket : node)
+and owns only the Actor binding CAS (generation) and session-to-Actor
+delivery. See [`stream-socket.md`](stream-socket.md) and the formal spec
+[`05-stream-session.md`](../spec/core/service/05-stream-session.md). The
+bounded post-barrier allowance of the Actor move barrier is enforced by the
+participant entry of the transfer state.

@@ -102,12 +102,12 @@ decoder 버퍼(STREAM 소켓이 backpressure 상태일 때는 pending 버퍼 풀
 ## 3. auto-HWM과 메모리의 관계
 
 auto-HWM은 선할당이 아니라 상한(cap)이다. idle 메모리에는 영향이 없고,
-부하 시 pipe에 쌓일 수 있는 메시지 수만 제한한다. SPOT mesh 내부
-소켓에서는 연결 수가 늘면 bucket이 pipe당 예산을 줄여(BALANCED 기준
-256 → … → 16) 총 노출의 기울기를 꺾고, bucket 전환에는
+부하 시 pipe에 쌓일 수 있는 메시지 수만 제한한다. MeshNode가 소유한
+ROUTER 소켓에서는 연결 수가 늘면 bucket이 pipe당 예산을 줄여(BALANCED
+기준 256 → … → 16) 총 노출의 기울기를 꺾고, bucket 전환에는
 hysteresis(전환 기준에 여유 구간을 두어 잦은 왕복을 막는 방식)가 있다.
 일반 소켓의 HWM은 profile 기준값을 그대로 쓴다. 자세한 정책은
-[SPOT 내부 구조 §6](spot-internals.ko.md)과
+[서비스 계층 내부 설계](services-internals.ko.md)와
 [소켓 옵션 기본값](socket-option-defaults.ko.md)을 본다.
 
 집행이 메시지 개수 기준이라 message unit(4 KiB)보다 큰 메시지에서는

@@ -13,7 +13,7 @@ zlink는 OpenSSL로 `tls://`와 `wss://` transport를 네이티브 지원한다.
 
 SPOT 서비스에서 TLS/WSS 설정은 노드 소유자(node owner)의 책임이다.
 `zlink_set_tls_server()` / `zlink_set_tls_client()`는 bind/connect 전에
-`SpotNode` 핸들에 적용한다. 통합 `spot` 및 SPOT 하위 pub/sub
+`MeshNode` 핸들에 적용한다. `Spot` facade 및 하위 pub/sub
 핸들에는 TLS 설정을 적용할 수 없으며, 적용을 시도하면 `ZLINK_CONFIG_NOT_SUPPORTED`를 반환한다.
 
 ## 2. TLS 서버 설정
@@ -92,7 +92,7 @@ zlink_set_tls_server(socket, cert_path, key_path, require_client_cert);
 |----------|------|------|
 | `cert_path` | string | 인증서 파일 경로 (PEM 형식) |
 | `key_path` | string | 개인키 파일 경로 (PEM 형식) |
-| `require_client_cert` | int | 클라이언트 인증서 요구(mTLS) 여부 (0 = 아니오, 1 = 예). raw socket TLS 경로에 적용되며, SpotNode TLS 경로는 이 인자를 사용하지 않는다 |
+| `require_client_cert` | int | 클라이언트 인증서 요구(mTLS) 여부 (0 = 아니오, 1 = 예). raw socket TLS 경로에 적용되며, MeshNode TLS 경로는 이 인자를 사용하지 않는다 |
 
 ```c
 /* PEM format file paths */

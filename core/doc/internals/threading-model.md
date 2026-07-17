@@ -16,8 +16,8 @@ scheduled. The public API safety contract lives in
 | Application thread | Calls `zlink_send()`, `zlink_recv()`, `bind()`, `connect()`, etc. | User-defined |
 | I/O thread | Runs a Boost.Asio `io_context`; performs async network I/O, frame encoding/decoding, and socket event dispatch | Configurable (default: 4) |
 | Reaper thread | Deferred destruction of terminated sockets and sessions | 1 (global) |
-| SpotNode data-plane thread | Exclusively owns `mesh-pub`, `fanout`, `routed-router` sockets; drains ingress queues; handles local fanout and peer mesh forwarding | 1 per SpotNode |
-| Dispatch worker thread | Executes Spot dispatch callbacks; per-Spot serialization and coalescing | N per SpotNode (default: `min(2, cpu_count)` – `max(1, cpu_count)`) |
+| MeshNode ingress thread | Receives on the node-owned ROUTER, drains the socket monitor, admits remote records and delivers completions | 1 per MeshNode |
+| Timeout scheduler thread | Produces timeout completions at request/operation deadlines | 1 (global, immortal) |
 
 Set the I/O thread count at context creation time:
 
@@ -49,17 +49,13 @@ flowchart TB
     subgraph REAPER["Reaper Thread (1)"]
         R1["Deferred socket/session cleanup"]
     end
-    subgraph SPOT_DATA["SpotNode Data-plane Thread (1 per SpotNode)"]
-        DP["mesh-pub / fanout / routed-router sockets\ningress queue drain · local fanout · peer mesh forwarding"]
-    end
-    subgraph SPOT_WORKERS["Dispatch Worker Threads (N per SpotNode)"]
-        W1["Execute Spot dispatch callbacks"]
+    subgraph MESH_INGRESS["MeshNode Ingress Thread (1 per MeshNode)"]
+        MI["node-owned ROUTER recv · monitor drain\nremote record admission · completion delivery"]
     end
     APP -- "YPipe (lock-free)" --> IO
     IO -- "command_t (close/stop)" --> REAPER
-    APP -- "publish_ingress_queue\nrouted_send_queue\n(signaler-based wakeup)" --> SPOT_DATA
-    SPOT_DATA -- "post_dispatch_event()\n(ready queue)" --> SPOT_WORKERS
-    SPOT_WORKERS -. "may call zlink_spot_* API" .-> APP
+    APP -- "direct sends (thread-safe ROUTER)" --> MESH_INGRESS
+    MESH_INGRESS -- "admit_record → owner mailbox\n(ready index · cv/handler/poller wakeup)" --> APP
 ```
 
 ---
@@ -210,86 +206,24 @@ process_reaped()       → --sockets; finish when terminating && sockets == 0
 
 ---
 
-## 6. SpotNode Data-plane Thread and Dispatch Worker Pool
+## 6. MeshNode Ingress Thread
 
-### 6.1 Data-plane thread
+Each `mesh_node_t` runs one OS thread executing the wire ingress loop. The
+node-owned raw ROUTER is thread-safe, so **sends happen directly on
+application threads**; the ingress thread is responsible only for:
 
-Each `spot_node_t` runs one dedicated OS thread (`spot_runtime_t::data_plane_thread`)
-executing `spot_data_plane_loop_t::run_until_shutdown()`. This thread exclusively
-owns key resources such as the following (also includes `ctrl`/`data_ctrl_back`,
-`pub_ingress_sub`, etc.):
+- ROUTER recv: envelope parsing, admission validation, admitting records into
+  owner mailboxes
+- socket monitor drain: matching outbound intents on `CONNECTION_READY` and
+  sending the HELLO, handling peer loss
+- delivering completions for remote requests (`complete_operation`)
 
-- `mesh-pub`, `fanout`, `routed-router`, `mesh-xsub`, `peer_ctrl_pub`,
-  `peer_ctrl_sub` sockets
-- drain of `publish_ingress_queue`, `routed_send_queue`,
-  `external_router_ingress_queue`
-- local fanout delivery, remote mesh publish, inbound/outbound routed forwarding
+This thread never executes application dispatch callbacks — the ready handler
+is wakeup-only, and record consumption happens on consumer threads through
+claims. Timeout completions are produced by the global timeout scheduler
+thread (an immortal singleton) at each deadline. See
+[Service Layer Internal Design](services-internals.md) for the object model.
 
-Public threads do not access these sockets directly. Violating this boundary
-mixes socket ownership, poller interest registration, and shutdown ordering into
-the public call path.
-
-```
-Invariants:
-  Public threads must not send/recv on mesh-pub, fanout, or routed-router directly.
-  The data-plane thread must not invoke application dispatch callbacks directly.
-```
-
-The data-plane thread loop uses a poller combined with signaler FDs from all
-three queues. Any empty→non-empty queue transition wakes the thread immediately.
-The idle tick is 100 ms.
-
-Queue drain priority order:
-
-| Order | Queue | Description |
-|-------|-------|-------------|
-| 1 | `external_router_ingress_queue` | Routing frames received from peers |
-| 2 | `publish_ingress_queue` | Topic publishes submitted by the application |
-| 3 | `routed_send_queue` | Routed sends submitted by the application |
-| 4 | flush `mesh-pub` pending | Forward publishes to remote peers |
-| 5 | flush `fanout` pending | Deliver to local subscribers |
-| 6 | flush staged messages | Transmit remaining staged frames |
-
-Batch limits are per-stage, not a single global cap: publish ingress drains up
-to 2048 messages or 16 MiB per iteration, while mesh forwarding uses 16384
-messages or 16 MiB. POLLOUT (send-ready) is serviced before POLLIN within an
-iteration.
-
-### 6.2 Dispatch Worker Pool
-
-`spot_runtime_t::dispatch_workers` (`spot_dispatch_worker_pool_t`) executes
-application dispatch callbacks. The data-plane thread never calls callbacks
-directly. Instead, when a target Spot state becomes ready, it calls
-`post_dispatch_event(void* spot_)` on the pool. The pool deduplicates using a
-`_queued` set: the same Spot pointer is never enqueued twice.
-
-Per-Spot serialization: at most one worker runs a given Spot at a time. After a
-callback returns, if `_dirty` shows unread events for that Spot, it is
-re-enqueued into `_ready`.
-
-Worker count defaults:
-
-```text
-cpu_count = max(1, hardware_concurrency)
-default_min = min(2, cpu_count)
-default_max = max(1, cpu_count)
-idle_timeout = 1000 ms (internal constant)
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | `min(2, cpu_count)` | Always-maintained worker count |
-| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | `max(1, cpu_count)` | Burst ceiling |
-
-Why the data-plane thread does not call callbacks directly:
-
-1. Application callbacks may call SPOT send/recv APIs — reentrance into
-   data-plane locks or socket ownership.
-2. Slow callbacks stall `mesh-pub` and `routed-router` flushes.
-3. `ZLINK_POLLOUT` and send-ready callbacks are in the dispatch axis — mixing
-   them with the forwarding loop corrupts readiness/forwarding ordering.
-
----
 
 ## 7. NUMA and CPU Pinning
 
@@ -380,12 +314,11 @@ calling it.
 | Deferred cleanup | Reaper thread (one global) |
 | Concurrent sends | Safe via admission gate |
 | Concurrent close + send | Safe; close returns `BUSY` until hot-path callers exit |
-| Callback thread | Per callback: socket message → I/O thread; monitor → service-control thread; send-ready → caller's send thread; SPOT dispatch → dispatch worker |
-| SpotNode data-plane thread | 1 per SpotNode; exclusively owns mesh-pub/fanout/routed-router |
-| Application→data-plane path | publish_ingress_queue / routed_send_queue (signaler-based wakeup) |
-| Dispatch worker thread | N per SpotNode; per-Spot serialization and coalescing; default min(2,cpu)–max(1,cpu) |
-| Dispatch worker idle timeout | 1000 ms (internal constant) |
-| Spot dispatch callback thread | Dispatch worker thread (not the data-plane thread) |
+| Callback thread | Per callback: socket message → I/O thread; monitor → service-control thread; send-ready → caller's send thread; MeshNode ready handler → wakeup-only (notify path) |
+| MeshNode ingress thread | 1 per MeshNode; ROUTER recv, monitor drain, remote admission |
+| MeshNode send path | Direct sends from application threads (thread-safe ROUTER) |
+| Timeout scheduler | 1 global (immortal); operation deadline completions |
+| Service record consumption | Consumer threads via drain/claim/receive batches (callbacks are wakeup-only) |
 
 ---
 [← Architecture](architecture.md) | [Thread-Safety →](thread-safety.md)

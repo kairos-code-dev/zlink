@@ -460,7 +460,7 @@ Request-reply uses dedicated typed API surfaces:
   -- see [DEALER Guide](03-3-dealer.md), [ROUTER Guide](03-4-router.md)
 - **SPOT routed request-reply**: `zlink_spot_reply_spot()`,
   `zlink_spot_reply_router()`,
-  `zlink_spot_dispatch_event_handler()`, `zlink_spot_recv_part()`
+  the MeshNode ready handler and claim receive batches
   -- see [SPOT Guide](07-3-spot.md)
 - **SPOT channel request-reply**: `zlink_spot_request_channel()`,
   `zlink_spot_send_channel()` -- see [SPOT Guide](07-3-spot.md)

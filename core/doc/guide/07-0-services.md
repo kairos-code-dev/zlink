@@ -12,165 +12,169 @@ Without the service layer, applications would need to manually manage socket
 connections, route messages to state owners, and handle service lifecycle. The
 service layer absorbs those tasks where the current public C API exposes them.
 
-The current public core service contract is SPOT and Actor on top of SPOT.
-Discovery and Registry are not part of the core public C API or internal
-runtime.
+The 10.0.0 public core service contract is the **MeshNode** and, on top of it,
+**Spot**, **Actor** and the **STREAM session**. Discovery (the location store)
+and Registry are not part of the core public C API or the internal runtime —
+that responsibility belongs to the framework layer.
+
+### 1.1 Why messaging and a service layer live in one library
+
+zlink merges two problems that are usually solved separately into **one
+stack**:
+
+- **Server-to-server messaging** — socket patterns (request/reply, fan-out,
+  routing). Usually solved with an RPC framework + service mesh + external
+  discovery.
+- **Real-time state servers** — dynamically created and destroyed state units
+  such as game rooms, chat rooms, zones or per-symbol order books. Usually
+  solved with a hand-built room server + session location store + fan-out
+  broker.
+
+The service layer absorbs the second world as a library. That is why raw
+sockets (messaging) and MeshNode/Spot/Actor (real-time state) live in the same
+library.
+
+### 1.2 Mental model — which layer to use when
+
+| Layer | What it does | Question it answers | Typical use |
+|----|-------------|---------------|-------------|
+| **Raw sockets** (PAIR/PUB·SUB/DEALER·ROUTER/STREAM) | Point-to-point messaging with known addresses | "Where do I send this" | Microservice RPC, event bus, external clients |
+| **MeshNode** | Mesh membership + node/channel routing + Logical Multicast | "Who do I reach and how" | Server pools, per-channel round-robin, mesh propagation |
+| **Spot** | Dynamic state units + **claim-based serial processing** | "How do I touch state safely" | Game rooms/zones, chat rooms, order books |
+| **Actor** | Session-to-processing-unit binding + **location transparency and mobility** | "Whose message is this, and does it survive reconnects" | Players, sessions, conversations |
+
+Key distinctions:
+
+- **The application still owns its state.** zlink is not a data store. What a
+  Spot provides is not storage but an execution model that funnels every
+  message touching that state into **one owner mailbox processed serially per
+  claim** — instead of protecting room state with locks, the concurrency
+  problem disappears.
+- **Actors are not an alternative to raw sockets; they are one level above
+  Spots.** Actor messages flow over the MeshNode routing plane
+  ([07-4](07-4-actor.md)). An Actor decides "which session/entity a message
+  arriving at that Spot belongs to" and keeps it the same entity no matter
+  which server the session is attached to.
+- **Classic PUB/SUB vs Logical Multicast**: raw PUB/SUB has static topics and
+  requires knowing the publisher's address. Logical Multicast lets mesh
+  membership define the target set and fits small per-subject fan-out where
+  rooms appear at runtime (e.g. chat rooms).
+
+> If a monolith or a single process is enough, do not introduce the service
+> layer first. It is a tool that reduces the connection/routing/serial-state
+> complexity that appears once you must split into multiple processes or
+> servers.
 
 ## 2. Architecture
 
 ```mermaid
 flowchart TB
     subgraph app["Application"]
-        A1["SPOT (pub/sub · Actor)"]
+        A1["MeshNode · Spot · Actor · STREAM session · Socket Family"]
     end
 
-    subgraph facade["Public API Facade"]
-        F1["service_api · service_*_api<br/>validate + delegate → service-local access seam"]
+    subgraph facade["Public C API"]
+        F1["api/mesh/*_api.cpp<br/>signature validation + result mapping"]
     end
 
-    subgraph access["Service Access Layer"]
-        AC1["spot_node_access · spot_subject_access<br/>service_public_api_guard (admission/close guard)"]
-    end
-
-    subgraph runtime["Service Runtime"]
-        RT1["SPOT: node · data_plane (forwarding · protocol) · pub · sub · actor"]
+    subgraph runtime["Mesh Runtime"]
+        RT1["mesh_runtime: owner mailboxes · ready index · claims · budgets · monitor"]
+        RT2["mesh_wire: node-owned ROUTER · ingress thread · admission · envelope"]
     end
 
     subgraph core["zlink Core"]
         C1["8 socket types + 6 transports"]
     end
 
-    app --> facade --> access --> runtime --> core
+    app --> facade --> runtime --> core
 ```
 
-- **Public API Facade** is the C API entry point that validates handles and delegates to service-local access seams. It does not know concrete service details.
-- **Service Access Layer** is the service-local seam provided by each service. `*_access.hpp` defines the contract between the API layer and service runtime.
-- **Service Runtime** is the concrete implementation of each service. SPOT is modularized into node/data_plane(forwarding/protocol)/pub/sub.
-- **SPOT** provides the public service runtime: topic pub/sub, routed channel
-  messaging, and Actor dispatch.
+- The **public C API** is the entry point: it validates handles and versioned
+  structs, then delegates into the mesh runtime.
+- The **mesh runtime** splits into the process-local state machine
+  (`mesh_runtime`) and the remote wire (`mesh_wire`). See
+  [Service Layer Internal Design](../internals/services-internals.md) for the
+  internals.
+- The raw socket layer knows nothing about mesh. A MeshNode talks to all of
+  its peers over its single owned ROUTER.
 
-## Service Terminology
+## 3. Service components
 
-| Service | Name Origin | One-Line Description |
-|---------|-------------|---------------------|
-| **SPOT** | Location (spot) transparent pub/sub | Object-level, location-transparent, topic-based publish/subscribe mesh |
-| **Actor** | SPOT session routing target | Session-based addressing unit inside SPOT that funnels STREAM session messages into a Spot dispatch context |
+| Component | Meaning | One-liner |
+|--------|-----------|-----------|
+| **MeshNode** | Mesh participant node | One MeshName, one ROUTER bind, unique per process. Owns peer admission, node/channel send·request, Logical Multicast publish, dispatch (ready/claim/batch) and the monitor |
+| **Spot** | Dynamic state unit | A logical unit inside the MeshNode: channel subscriptions (exact/prefix), direct send/request, publish, timers. Lock-free serial processing through its owner mailbox |
+| **Actor** | Session-to-processing binding | An addressable unit joined to a Spot (`zlink_actor_ref_t`), with location-transparent messaging and Core-fenced transfer |
+| **STREAM session** | External byte session | A service attached 1:1 to a raw STREAM socket owns session↔Actor bindings and the relay |
 
-## 3. Service Components
+- MeshNode lifecycle and messaging: `zlink_mesh_node_*`
+  ([formal spec](../spec/core/service/01-mesh-node.md))
+- Dispatch (ready handler, drain, claim, receive batch, reply):
+  the `zlink_mesh_*` dispatch family
+  ([formal spec](../spec/core/service/02-dispatch.md))
+- Spot: `zlink_spot_*`, `zlink_mesh_node_spot_*`
+  ([formal spec](../spec/core/service/03-spot.md), [guide](07-3-spot.md))
+- Actor: `zlink_mesh_node_actor_*`, `zlink_actor_*`
+  ([formal spec](../spec/core/service/04-actor.md), [guide](07-4-actor.md))
+- STREAM session: `zlink_stream_session_*`
+  ([formal spec](../spec/core/service/05-stream-session.md))
+- **Thread-safe** — multiple threads may call operational APIs on one
+  MeshNode/Spot handle concurrently. The re-entrancy restrictions are defined
+  by the [thread safety section of the formal spec](../spec/core/service/01-mesh-node.md).
 
-### 3.1 SPOT -- Channel-Based Routed + PUB/SUB Hub
+## 4. Graceful maintenance (weights)
 
-A `SpotNode` is the core runtime of the SPOT topology. It attaches one SPOT
-channel runtime to topic pub/sub and routed messaging. Channel send/request
-uses a route bridge that borrows sockets owned by the channel runtime. External
-publishing into the local topic plane uses a publisher handle created from the
-node. A single public `Spot` facade sits on top of the node and drives channel
-send/request, peer routed communication, and publish/subscribe.
+When a node must come down temporarily in production, prefer a graceful drain
+over cutting connections.
 
-- SPOT mesh: use explicit `SpotNode` bind/connect peer APIs in the current
-  public C contract.
-- Channel send/request: `zlink_spot_route_bridge_*` borrows a channel-owned
-  `DEALER` or `ROUTER` socket.
-- External publish ingress: `zlink_spot_node_publisher_*` publishes into the
-  local SPOT topic plane.
-- Data plane:
-  `zlink_spot_send_channel()` / `zlink_spot_request_channel()` /
-  `zlink_spot_publish()` / `zlink_spot_subscribe()` /
-  `zlink_spot_recv_subscription_event()`.
-- Readable notifications share one callback surface:
-  `zlink_spot_dispatch_event_handler()`.
-- Monitoring uses snapshot/query APIs.
-- **Thread-safe** -- a single `spot` / `spot_node` handle admits concurrent
-  operational API calls from multiple threads.
+- **MeshNode**: setting a channel weight to `0` removes the node from that
+  channel's new round-robin and multicast remote targets. Already-admitted
+  messages and RID-direct sends are unaffected. The weight change bumps the
+  descriptor revision, which propagates automatically to admitted peers. Then
+  `zlink_mesh_node_shutdown(node, deadline)` stops new application admissions
+  and waits for active claims and infrastructure work until the deadline.
+- **Raw ROUTER/worker peers**: setting the socket weight option to `0` makes
+  peers exclude the node from new outbound candidates (the retained raw
+  contract).
 
-- **Actor**: Session-based routing target inside SPOT. Funnels STREAM session
-  messages into a `Spot` dispatch context. `SpotNode` owns the Actor table;
-  newly created Actors start in the `Entry Spot`. Actors move to user Spots
-  via `zlink_spot_node_actor_join_spot()` and return to `Entry Spot` only on an
-  explicit `zlink_spot_node_actor_leave_spot()`; STREAM session bind/unbind is
-  independent and does not change the joined Spot. Actors own no socket or inproc endpoint; they are
-  identified by `zlink_actor_ref_t`.
-
-See the [SPOT Guide](07-3-spot.md) and [SPOT Actor Guide](07-4-actor.md) for details.
-
-## 4. Service Access Layer Pattern
-
-All services follow a common access layer pattern:
-
-```mermaid
-flowchart LR
-    A["C API<br/>(service APIs)"] --> B["service_api.cpp<br/>(validate + delegate)"]
-    B --> C["*_access.hpp<br/>(service-local seam)"]
-    C --> D["Service Runtime<br/>(concrete implementation)"]
-```
-
-| Service | Access Seam | Role |
-|---------|-------------|------|
-| SPOT Node | `spot_node_access_t` | lifecycle, bind, peer connect |
-| SPOT Subject | `spot_subject_access_t` | publish, subscribe, option, handler, monitor |
-
-Each access seam integrates with `service_public_api_guard_t` to provide
-callback mode tracking and lifecycle gates (destroy returning `EBUSY`/`ESHUTDOWN`).
-
-This structure ensures the API layer does not know concrete service
-implementations, and adding a new service only requires changes to
-`api/service_*_api.cpp`, the corresponding `*_access` file, and the
-service implementation files.
-
-## 4.1 Graceful Maintenance (weight)
-
-When you need to take a SPOT Node or raw ROUTER offline for maintenance,
-prefer a graceful drain over an abrupt disconnect. For raw ROUTER or worker
-auto-connect peers, setting the socket weight to `0` lets in-flight work finish
-while peers automatically stop selecting that raw peer for new outbound work.
-SpotNode and Spot do not provide a separate weight setting.
-
-Recommended sequence:
-
-1. Set the raw ROUTER or DEALER weight option to `0`.
-2. Allow connected peers a moment to update their weight caches. You can
-   observe this via the socket monitor event `ZLINK_EVENT_PEER_WEIGHT_CHANGED`.
-3. Wait long enough for in-flight replies to drain. In production this
-   wait is typically driven by your request SLA.
-4. Restart or replace the peer, then rejoin the service with a positive
-   raw socket weight, usually `100`.
+Recommended procedure:
 
 ```c
-int drain_weight = 0;
-zlink_set_router_option(
-    orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
-    &drain_weight, sizeof(drain_weight));
+/* 1) Leave the selection pool: weight 0 on every served channel. */
+zlink_mesh_node_set_channel_weight(node, "orders-exec", 0);
 
-/* 2) Wait for in-flight requests to complete (for example, SLA + small
-      margin) while peers re-route new work to other orders-exec nodes. */
+/* 2) Wait for in-flight requests to complete (e.g. SLA + margin)
+      while peers re-route new work to other orders-exec nodes. */
 sleep_seconds(60);
 
-/* 3) Restart or replace this node ... */
+/* 3) Stop admissions and drain claims, then restart or replace. */
+zlink_mesh_node_shutdown(node, 30000);
+zlink_mesh_node_destroy(&node);
 
-/* 4) Rejoin the service */
-int serve_weight = 100;
-zlink_set_router_option(
-    orders_exec_router, ZLINK_ROUTER_OPT_WEIGHT,
-    &serve_weight, sizeof(serve_weight));
+/* 4) Rejoin: a fresh node advertises positive weight again. */
 ```
 
-A node with weight `0` keeps serving recv/send/reply/handler traffic
-normally. Weight is a peer-side advisory ("do not pick me for
-new work"), not a local halt. Peer submits that see weight `0` are
-rejected with `ZLINK_SUBMIT_NOT_ADMITTED`. The connection itself
-stays alive, so the node automatically becomes a candidate again once it
-returns to a positive weight.
+With weight `0` the local node keeps processing recv/claim/reply as usual.
+Weight is a signal that peers should stop selecting the node for new work; it
+does not force local activity to stop.
 
-## 5. Relationships Between Services
+## 5. Relationships between services
 
 ```mermaid
 flowchart TB
-    S1["SPOT<br/>(PUB + SUB)"]
-    S1 -- "Actor table / Entry Spot" --> A1["Actor<br/>(routing target)"]
+    N1["MeshNode<br/>(membership · routing · multicast)"]
+    N1 -- "owner mailbox / subscriptions" --> S1["Spot<br/>(dynamic state unit)"]
+    S1 -- "join / entry Spot" --> A1["Actor<br/>(addressable unit)"]
+    N1 -- "binding CAS / relay" --> T1["STREAM session<br/>(external byte session)"]
+    T1 -- "session → Actor" --> A1
 ```
 
-- **SPOT** propagates topic messages using the PUB/SUB pattern and provides routed communication.
-- **Actor** is a session-based routing target inside SPOT. It funnels STREAM session messages into a `Spot` dispatch context. Actor is not a separate service — it is an addressing unit managed by `SpotNode`.
+- The **MeshNode** is the single lifecycle and transport owner. Spot facades,
+  Actors, publishers, the monitor and STREAM session services are all child
+  references of the node: the node cannot be destroyed until they are closed.
+- A **Spot** is a logical unit inside the node, and an **Actor** is an
+  addressable unit joined to a Spot. Actors own no sockets and no in-process
+  endpoints.
 
 ---
 <!-- zlink-nav:bottom:start -->

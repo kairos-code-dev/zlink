@@ -93,7 +93,6 @@ language-specific rules.
 | [socket-option-defaults.md](../core/doc/internals/socket-option-defaults.md) | Effective socket option defaults from code |
 | [threading-model.md](../core/doc/internals/threading-model.md) | Threading and concurrency model |
 | [services-internals.md](../core/doc/internals/services-internals.md) | Service layer internal design (overview) |
-| [spot-internals.md](../core/doc/internals/spot-internals.md) | SPOT/SpotNode internal socket wiring and data flow |
 | [design-decisions.md](../core/doc/internals/design-decisions.md) | Design decision records |
 
 ## Build and Development (building/)

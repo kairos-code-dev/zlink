@@ -11,7 +11,7 @@ English | [한국어](05-tls-security.ko.md)
 zlink natively supports `tls://` and `wss://` transports through OpenSSL. Encrypted communication can be configured directly without an external proxy.
 
 For SPOT services, TLS/WSS configuration is node-owned. Apply
-`zlink_set_tls_server()` / `zlink_set_tls_client()` to the `SpotNode`
+`zlink_set_tls_server()` / `zlink_set_tls_client()` to the `MeshNode`
 handle before bind/connect. Unified `spot` and SPOT child pub/sub handles
 are not TLS configuration surfaces and return `ZLINK_CONFIG_NOT_SUPPORTED`.
 

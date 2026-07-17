@@ -42,9 +42,9 @@ zlink 가이드 전반에서 쓰는 용어를 모았다. 개념의 정식 정의
 - **SPOT** — 동적으로 생성·소멸되는 논리 단위(room·stage·zone 등)로 메시지를
   라우팅하는 추상 단위. 한 단위로 들어온 메시지를 **단일 실행 큐로 직렬 처리**한다.
   ([07-3 SPOT](07-3-spot.ko.md))
-- **SpotNode** — 하나 이상의 Spot 인스턴스를 호스팅하는 컨테이너 노드.
-  ([07-3 SPOT](07-3-spot.ko.md))
-- **Entry Spot** — SpotNode가 항상 갖는 기본 Spot. Actor가 처음 속하는 잘 알려진
+- **MeshNode** — MeshName 하나로 mesh에 참여하는 노드. Spot·Actor의 수명과
+  transport를 소유한다. ([07-3 SPOT](07-3-spot.ko.md))
+- **Entry Spot** — MeshNode가 항상 갖는 기본 Spot. Actor가 처음 속하는 잘 알려진
   지점. ([07-4 Actor](07-4-actor.ko.md))
 - **Actor** — Spot에 합류해 메시지를 받는 상태 보유 엔티티. 세션 위치와 무관하게
   같은 엔티티로 이어진다(재접속 이전성). ([07-4 Actor](07-4-actor.ko.md))

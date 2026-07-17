@@ -355,9 +355,11 @@ void on_monitor(const zlink_monitor_event_t *ev, void *userdata)
 현재 공개 C API에는 별도 서비스 이벤트 핸들이 없다. 서비스 계층
 상태는 스냅샷 또는 조회 결과를 읽고 시간에 따라 비교해서 확인한다.
 
-- Spot node state: `zlink_spot_node_status()`,
-  `zlink_spot_node_peers()`,
-  `zlink_spot_node_subjects()`
+- MeshNode 상태: `zlink_mesh_node_status()`,
+  `zlink_mesh_node_peers()`,
+  `zlink_mesh_node_peer_channels()`
+- MeshNode 이벤트 스트림: `zlink_mesh_node_monitor_open()` 계열
+  ([monitoring spec §2~5](../spec/core/07-monitoring.ko.md) 참고)
 
 ## 9. 다중 소켓 모니터링
 

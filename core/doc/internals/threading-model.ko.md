@@ -15,8 +15,8 @@
 | Application thread | `zlink_send()`, `zlink_recv()`, `bind()`, `connect()` 등 호출 | 사용자 정의 |
 | I/O thread | Boost.Asio `io_context` 실행. 비동기 네트워크 I/O, 프레임 인코딩/디코딩, socket 이벤트 dispatch | 설정 가능 (기본: 4) |
 | Reaper thread | 종료된 socket과 session의 지연 소멸 | 1 (전역) |
-| SpotNode data-plane thread | `mesh-pub`, `fanout`, `routed-router` 소켓 독점 소유; ingress 큐 drain; 로컬 fanout·peer mesh 전달 | SpotNode당 1개 |
-| Dispatch worker thread | Spot dispatch 콜백 실행; Spot별 직렬화·coalescing | SpotNode당 N개 (기본: `min(2, cpu_count)` ~ `max(1, cpu_count)`) |
+| MeshNode ingress thread | node 소유 ROUTER recv, socket monitor drain, 원격 record admission, completion 마감 | MeshNode당 1개 |
+| Timeout scheduler thread | request/operation deadline 도래 시 timeout completion 생성 | 1 (전역, immortal) |
 
 I/O thread 수는 context 생성 시 설정한다:
 
@@ -47,17 +47,13 @@ flowchart TB
     subgraph REAPER["Reaper Thread (1)"]
         R1["지연 socket/session 소멸"]
     end
-    subgraph SPOT_DATA["SpotNode Data-plane Thread (SpotNode당 1개)"]
-        DP["mesh-pub / fanout / routed-router 소켓\ningress 큐 drain · 로컬 fanout · peer mesh 전달"]
-    end
-    subgraph SPOT_WORKERS["Dispatch Worker Threads (SpotNode당 N개)"]
-        W1["Spot dispatch 콜백 실행"]
+    subgraph MESH_INGRESS["MeshNode Ingress Thread (MeshNode당 1개)"]
+        MI["node 소유 ROUTER recv · monitor drain\n원격 record admission · completion 마감"]
     end
     APP -- "YPipe (lock-free)" --> IO
     IO -- "command_t (close/stop)" --> REAPER
-    APP -- "publish_ingress_queue\nrouted_send_queue\n(signaler 기반 wakeup)" --> SPOT_DATA
-    SPOT_DATA -- "post_dispatch_event()\n(ready queue)" --> SPOT_WORKERS
-    SPOT_WORKERS -. "zlink_spot_* API 호출 가능" .-> APP
+    APP -- "직접 send (thread-safe ROUTER)" --> MESH_INGRESS
+    MESH_INGRESS -- "admit_record → owner mailbox\n(ready index · cv/handler/poller wakeup)" --> APP
 ```
 
 ---
@@ -197,79 +193,23 @@ process_reaped()       → --sockets; terminating && sockets == 0 이면 종료
 
 ---
 
-## 6. SpotNode data-plane thread와 Dispatch Worker Pool
+## 6. MeshNode ingress thread
 
-### 6.1 Data-plane thread
+`mesh_node_t`마다 하나의 OS 스레드가 wire ingress 루프를 실행한다. node 소유
+raw ROUTER는 thread-safe이므로 **송신은 앱 스레드에서 직접** 일어나고, 이
+스레드는 다음만 담당한다.
 
-`spot_node_t`마다 하나의 OS 스레드(`spot_runtime_t::data_plane_thread`)가
-`spot_data_plane_loop_t::run_until_shutdown()`을 실행한다. 이 스레드는 다음 같은
-주요 자원을 독점으로 소유한다(이 밖에 `ctrl`/`data_ctrl_back`, `pub_ingress_sub` 등도 포함):
+- ROUTER recv: envelope 파싱, admission 검증, record를 owner mailbox에 admit
+- socket monitor drain: `CONNECTION_READY`로 outbound intent를 매칭해 HELLO
+  발송, peer 단절 처리
+- 원격 request의 completion 마감(`complete_operation`)
 
-- `mesh-pub`, `fanout`, `routed-router`, `mesh-xsub`, `peer_ctrl_pub`, `peer_ctrl_sub` 소켓
-- `publish_ingress_queue`, `routed_send_queue`, `external_router_ingress_queue` drain
-- 로컬 fanout 전달, 원격 mesh publish, inbound/outbound 라우팅 전달
+application dispatch 콜백을 이 스레드가 직접 실행하지 않는다 — ready handler는
+wakeup 전용이고, record 소비는 소비자 스레드가 claim으로 수행한다.
+timeout completion은 전역 timeout scheduler 스레드(immortal singleton)가
+deadline에 만든다. 자세한 객체 구조는
+[서비스 계층 내부 설계](services-internals.ko.md)를 본다.
 
-public 스레드는 이 소켓들에 직접 접근하지 않는다. 이 경계를 위반하면 소켓 소유권,
-poller 관심 등록, shutdown 순서가 public call path에 뒤섞인다.
-
-```
-불변 조건:
-  public 스레드는 mesh-pub, fanout, routed-router에 직접 send/recv 금지.
-  data-plane 스레드는 application dispatch 콜백을 직접 호출하지 않는다.
-```
-
-data-plane 스레드 루프는 세 큐의 signaler FD를 포함한 poller와 함께 돈다.
-큐가 비어 있다가 메시지가 들어오면 곧바로 스레드가 깨어난다. 유휴 tick은 100 ms다.
-
-큐 drain 우선순위:
-
-| 순서 | 큐 | 설명 |
-|------|----|------|
-| 1 | `external_router_ingress_queue` | 피어로부터 들어온 라우팅 프레임 처리 |
-| 2 | `publish_ingress_queue` | application에서 제출한 topic publish 처리 |
-| 3 | `routed_send_queue` | application에서 제출한 routed send 처리 |
-| 4 | flush `mesh-pub` pending | 원격 피어로 publish 전달 |
-| 5 | flush `fanout` pending | 로컬 구독자로 fanout 전달 |
-| 6 | flush staged messages | 잔여 staged 프레임 전송 |
-
-배치 한도는 단일 전역 상한이 아니라 단계별이다. publish ingress는 반복당 2048
-메시지 또는 16 MiB까지 drain하고, mesh 전달은 16384 메시지 또는 16 MiB를 쓴다.
-한 반복 안에서 POLLOUT(send-ready)을 POLLIN보다 먼저 처리한다.
-
-### 6.2 Dispatch Worker Pool
-
-`spot_runtime_t::dispatch_workers`(`spot_dispatch_worker_pool_t`)가 application
-dispatch 콜백을 실행한다. data-plane 스레드는 콜백을 직접 호출하지 않는다. 대신
-대상 Spot 상태가 준비되면 풀의 `post_dispatch_event(void* spot_)`를 호출한다.
-풀은 `_queued` 집합으로 coalescing한다. 동일한 Spot 포인터는 두 번 이상 enqueue되지
-않는다.
-
-Spot별 직렬화: 한 번에 하나의 worker만 주어진 Spot을 처리한다. 콜백이 반환된 뒤
-해당 Spot에 미읽은 이벤트가 `_dirty`에 있으면 `_ready`에 다시 enqueue한다.
-
-Worker 수 기본값:
-
-```text
-cpu_count = max(1, hardware_concurrency)
-default_min = min(2, cpu_count)
-default_max = max(1, cpu_count)
-idle_timeout = 1000 ms (내부 상수)
-```
-
-| 옵션 | 기본값 | 의미 |
-|------|--------|------|
-| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MIN` | `min(2, cpu_count)` | 항상 유지되는 worker 수 |
-| `ZLINK_SPOT_NODE_OPT_DISPATCH_WORKERS_MAX` | `max(1, cpu_count)` | 버스트 상한 |
-
-data-plane 스레드가 콜백을 직접 호출하지 않는 이유는 다음과 같다:
-
-1. application 콜백이 SPOT send/recv API를 호출하면 data-plane 잠금이나
-   소켓 소유권에 재진입할 수 있다.
-2. 느린 콜백이 `mesh-pub`, `routed-router` flush를 지연시킨다.
-3. `ZLINK_POLLOUT`과 send-ready 콜백은 dispatch 축에 있어서, 전달 루프와 뒤섞이면
-   readiness/전달 순서가 깨진다.
-
----
 
 ## 7. NUMA 및 CPU 핀닝
 
@@ -357,12 +297,11 @@ thread와 같은 thread에서 호출하거나, 호출 전에 모든 소켓을 �
 | 지연 소멸 | Reaper 스레드 (전역 1개) |
 | 동시 send | 입장 허용 게이트로 안전 |
 | 동시 close + send | 안전. close는 hot-path 호출자가 빠져나올 때까지 `BUSY` 반환 |
-| 콜백 실행 스레드 | 콜백별: socket message → I/O 스레드; monitor → service-control 스레드; send-ready → 호출자의 send 스레드; SPOT dispatch → dispatch worker |
-| SpotNode data-plane thread | SpotNode당 1개; mesh-pub/fanout/routed-router 독점 소유 |
-| Application→data-plane 경로 | publish_ingress_queue / routed_send_queue (signaler 기반 wakeup) |
-| Dispatch worker thread | SpotNode당 N개; Spot별 직렬화·coalescing; 기본 min(2,cpu)~max(1,cpu) |
-| Dispatch worker idle timeout | 1000 ms (내부 상수) |
-| Spot dispatch 콜백 실행 스레드 | Dispatch worker 스레드 (data-plane 스레드 아님) |
+| 콜백 실행 스레드 | 콜백별: socket message → I/O 스레드; monitor → service-control 스레드; send-ready → 호출자의 send 스레드; MeshNode ready handler → wakeup 전용(notify 경로) |
+| MeshNode ingress thread | MeshNode당 1개; ROUTER recv·monitor drain·원격 admission 전담 |
+| MeshNode 송신 경로 | 앱 스레드 직접 send (thread-safe ROUTER) |
+| Timeout scheduler | 전역 1개 (immortal); operation deadline completion |
+| 서비스 record 소비 스레드 | 소비자 스레드가 drain/claim/receive batch로 수행 (콜백은 wakeup 전용) |
 
 ---
 [← 아키텍처](architecture.ko.md) | [Thread-Safety →](thread-safety.ko.md)

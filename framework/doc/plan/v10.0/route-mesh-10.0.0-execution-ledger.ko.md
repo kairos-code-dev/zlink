@@ -61,7 +61,7 @@ S3에서 정식 스펙이 승인된 뒤 구현 계약은 정식 스펙만 소유
 | S4-16~S4-22A 제거·polling·관측·오류 | [Core public contract governance](../../../../core/doc/spec/core/00-public-contract-governance.ko.md), [polling](../../../../core/doc/spec/core/06-polling.ko.md), [monitoring](../../../../core/doc/spec/core/07-monitoring.ko.md), [errno](../../../../core/doc/spec/core/04-errno-map.ko.md), [raw socket](../../../../core/doc/spec/core/socket/README.ko.md) |
 | S4-22B~S6 release와 ABI | [Core errors·version](../../../../core/doc/spec/core/03-errors.ko.md), [Core public contract governance](../../../../core/doc/spec/core/00-public-contract-governance.ko.md) |
 | S7 bindings | 위 Core 정식 계약 전체와 [Core service 목차](../../../../core/doc/spec/core/service/README.ko.md) |
-| S8 `.NET` framework | [Framework 공통 계약](../../framework/spec/README.ko.md), [server 계약](../../framework/spec/server/21-mesh-node.ko.md), [.NET exact interface](../../framework/spec/server/languages/dotnet/README.ko.md) |
+| S8 `.NET` lane | [Framework 공통 계약](../../framework/spec/README.ko.md), [server 계약](../../framework/spec/server/21-mesh-node.ko.md), [.NET exact interface](../../framework/spec/server/languages/dotnet/README.ko.md) |
 | S8 location·transfer | [Location Runtime](../../framework/spec/server/40-location-runtime.ko.md), [Redis extension](../../framework/spec/server/41-location-store-redis.ko.md), [.NET Location Store](../../framework/spec/server/languages/dotnet/06-location-store.ko.md) |
 | S8 monitoring·drain | [Runtime monitoring](../../framework/spec/server/50-runtime-monitoring.ko.md), [message flow](../../framework/spec/server/52-message-flow-tracing.ko.md), [graceful drain](../../framework/spec/server/54-graceful-drain-handoff.ko.md), [.NET RouteMesh runtime](../../framework/spec/server/languages/dotnet/05-route-mesh.ko.md) |
 | S9 C++ | 공통 framework 계약과 S2·S3에서 리뷰한 `framework/doc/framework/spec/server/languages/cpp/` exact interface |
@@ -69,8 +69,11 @@ S3에서 정식 스펙이 승인된 뒤 구현 계약은 정식 스펙만 소유
 | S9 Node.js | 공통 framework 계약과 S2·S3에서 리뷰한 `framework/doc/framework/spec/server/languages/node/` exact interface |
 
 S2에서 다섯 언어의 exact interface를 공통 10.0.0 계약의 언어별 표현으로 정식 문서에 고정하고,
-S3에서 공통·server 계약 및 E2E·sample 범위와 함께 독립 리뷰한다. S9의 각 lane은 이 reviewed exact
-interface와 실제 source·package 사이의 차이를 red gate로 만들고 구현한다.
+S3에서 공통·server 계약 및 E2E·sample 범위와 함께 독립 리뷰한다. S8과 S9은 하나의 다섯 언어 병렬
+구현 그룹이다. `.NET`, C++, Java, Kotlin과 Node.js는 reviewed exact interface와 실제 source·package
+사이의 차이를 각자 red gate로 만들고 동시에 구현한다. Java와 Kotlin은 source와 build 환경을 공유하므로
+하나의 JVM lane에서 두 언어를 함께 진행하며, 전체 실행 단위는 `.NET`, C++, JVM, Node.js의 네 lane이다.
+어느 언어 구현도 다른 언어의 계약 출처나 선행 조건이 아니다.
 Plan 고유 항목인 삭제 no-hit, test 명령, package provenance와 review 증거는 이 진행표가 계속 소유한다.
 
 ### 0.2 에이전트 작업 지시 계약
@@ -141,15 +144,24 @@ queue, retry, peer admission과 lifecycle 복잡성은 책임을 소유한 깊�
 | **S5** | Core 구현 3축 독립 리뷰와 수정 반복 | 리뷰 2개만 병렬 | 두 리뷰어의 I1 계약 일치·I2 POSD/DDD·I3 정리 완결성이 모두 clean이고 `CORE REVIEW CLEAN` |
 | **S6** | Core 10.0.0 release-candidate GitHub Actions build와 pre-release 배포 | workflow 병렬 허용 | RC native artifact와 local Conan 검증 완료. stable tag·remote publish 없음 |
 | **S7** | bindings 적용, 3축 독립 리뷰와 local package E2E smoke | 언어별 제한적 병렬 | 모든 bindings local package 검증과 두 리뷰어의 I1·I2·I3 clean 및 `BINDINGS REVIEW CLEAN` |
-| **S8** | `.NET framework`, sample과 E2E 적용 및 3축 리뷰 | 리뷰 2개만 병렬 | 두 리뷰어의 I1·I2·I3가 모두 clean이고 `DOTNET REVIEW CLEAN` |
-| **S9** | C++, Java/Kotlin, Node.js framework 적용 | 세 lane 병렬 | 세 lane 구현과 검증 완료 |
-| **S10** | 세 언어 lane별 3축 독립 리뷰와 수정 반복 | 세 lane 병렬 | lane마다 두 리뷰어의 I1·I2·I3와 언어별 clean 문구가 모두 clean |
+| **S8** | 다섯 언어 병렬 그룹의 `.NET framework`, sample·E2E 적용과 3축 리뷰 | S9의 세 lane과 동시 실행 | 두 리뷰어의 I1·I2·I3가 모두 clean이고 `DOTNET REVIEW CLEAN` |
+| **S9** | 같은 병렬 그룹의 C++, Java/Kotlin, Node.js framework 적용 | S8과 세 lane 동시 실행 | 세 lane 구현과 검증 완료 |
+| **S10** | S9의 세 구현 lane별 3축 독립 리뷰와 수정 반복 | 세 lane 병렬 | lane마다 두 리뷰어의 I1·I2·I3와 언어별 clean 문구가 모두 clean |
 | **S11** | 전체 3축 최종 검토, Core stable·bindings 외부 배포와 종료 | 최종 리뷰 2개만 병렬 | 두 리뷰어의 I1·I2·I3 clean과 `FINAL REVIEW CLEAN` 뒤 stable package 배포·smoke 완료 |
 
 S3, S5, S7, S8, S10과 S11의 review gate를 생략하거나 다음 stage에서 대신 처리하지 않는다. S2·S3와
 병렬로 시작한 S4 변경은 S3를 대신하지 않으며 S3 finding이 반영된 정식 계약에 다시 맞춰야 한다.
 S3이 `승인 종료`이면 S3 gate를 통과한 terminal 상태로 보고 downstream stage를 진행한다. 정식 계약이
 바뀌지 않는 한 `DOC REVIEW CLEAN`을 만들기 위해 S3를 다시 열지 않는다.
+
+S8과 S9은 stage 번호가 달라도 같은 실행 순서에 속한다. S7 gate가 끝나면 `.NET`, C++, Java/Kotlin,
+Node.js lane을 동시에 시작한다. S9 lane은 S8 구현 또는 `DOTNET REVIEW CLEAN`을 기다리지 않으며,
+S8도 S9 결과를 선행 조건으로 사용하지 않는다. 각 lane은 공통 spec과 자기 언어의 exact interface를
+계약 기준으로 사용하고, 다른 언어 구현은 관찰 가능한 동작과 검증 방법을 비교하는 참고 증거로만
+사용한다. 다른 언어에만 있는 public API나 내부 구조를 복제하지 않는다.
+다섯 언어는 같은 관찰 가능한 공개 동작을 제공하되, 구현은 각 언어의 기존 framework 구조, 타입 체계,
+비동기 처리, 오류 전달, resource 수명과 package 작성 규칙을 따른다. 언어 특성을 이유로 공개 동작을
+줄이거나 내부 정책을 호출자에게 전달하지 않는다.
 
 ## 2. 독립 리뷰 운영 규칙
 
@@ -166,9 +178,10 @@ R1과 해당 review 유형의 R2는 서로의 finding을 보기 전에 첫 검�
 않는다.
 
 리뷰 횟수는 구현 stage와 그 구현을 승인하는 review stage를 합친 **review campaign** 단위로 센다.
-Core campaign은 S4+S5, C++·JVM·Node campaign은 각 S9 lane+대응 S10 lane이다. S3, S7, S8과 S11은
-각 stage가 하나의 campaign이다. reviewer invocation이 시간 제한 때문에 여러 session으로 나뉘어도 같은
-snapshot과 같은 배정 범위를 이어서 검토하면 한 pass다.
+Core campaign은 S4+S5, `.NET` campaign은 S8, C++·JVM·Node campaign은 각 S9 lane+대응 S10 lane이다.
+S8과 S9이 동시에 진행되어도 campaign과 finding ledger는 lane별로 분리한다. S3, S7과 S11은 각 stage가
+하나의 campaign이다. reviewer invocation이 시간 제한 때문에 여러 session으로 나뉘어도 같은 snapshot과
+같은 배정 범위를 이어서 검토하면 한 pass다.
 
 각 구현 campaign은 책임 단위가 닫힌 시점의 중간 checkpoint 리뷰와 stage 끝의 전체 최종 리뷰를
 수행한다. 수정·재리뷰는 campaign마다 기본적으로 최대 4회까지 수행한다. 4회는 의무 횟수가 아니므로
@@ -330,14 +343,20 @@ coordinator가 정리한 finding ledger는 reviewer 원본을 대신하지 않�
 
 ### 2.4 finding 처리
 
+모든 리뷰어는 각 finding마다 이슈, 근거, 영향, 수정 범위와 검증 방향을 제시한다. 수정 방법을 함께
+제안할 수 있지만, 그 제안은 확정된 해결책이 아니며 coordinator와 구현 담당자가 정식 계약과 기존
+책임 경계를 확인한 뒤 채택 여부를 결정한다.
+
 | 필드 | 기록 내용 |
 |---|---|
 | Finding ID | stage, reviewer와 순번을 포함한 고유 ID |
 | Severity | blocker, high, medium, low |
+| 이슈 | 실제로 잘못되었거나 누락된 동작·계약·책임 경계 |
 | 근거 | 실제 `file:line`, symbol, package entry 또는 실행 결과 |
+| 영향 | 영향을 받는 호출자, runtime, package, 검증 또는 release gate |
 | 위반 계약 | 해당 Core/framework spec 절 또는 완료 gate |
 | 수정 범위 | code, test, spec, sample, package 또는 workflow |
-| 검증 | finding을 재현하는 red gate와 수정 후 green 결과 |
+| 검증 방향 | finding을 재현할 red gate와 수정 후 확인할 green 결과 |
 | 상태 | open, fixing, resolved, rejected |
 | 종료 근거 | 수정 commit과 재리뷰 iteration |
 
@@ -396,8 +415,8 @@ manifest에 덧붙인다.
 | S5 Core review loop | 미착수 | 0 | 0 | 0 | - |
 | S6 Core release candidate | 미착수 | 0 | 0 | 0 | - |
 | S7 bindings local package | 미착수 | 0 | 0 | 0 | - |
-| S8 `.NET framework` | 미착수 | 0 | 0 | 0 | - |
-| S9 병렬 framework | 미착수 | 0 | 0 | 0 | - |
+| S8 `.NET` 병렬 lane | 미착수 | 0 | 0 | 0 | - |
+| S9 C++·JVM·Node.js 병렬 lane | 미착수 | 0 | 0 | 0 | - |
 | S10 병렬 review loop | 미착수 | 0 | 0 | 0 | - |
 | S11 Core stable·bindings 외부 배포·최종 검토 | 미착수 | 0 | 0 | 0 | - |
 
@@ -869,7 +888,12 @@ S7 완료 gate:
 - [ ] Codex agent와 R2 결과가 모두 `BINDINGS REVIEW CLEAN`이다.
 - [ ] 외부 immutable 10.0.0 package는 아직 공개하지 않았다.
 
-## 12. S8 — `.NET framework`, sample과 E2E 적용 및 리뷰
+## 12. S8 — 다섯 언어 병렬 그룹의 `.NET` lane
+
+S8은 S9의 C++·JVM·Node.js lane과 동시에 시작한다. `.NET` 구현은 다른 언어의 선행 기준 구현이
+아니며, 공통 framework spec과 `.NET` exact interface를 계약 기준으로 사용한다. 다른 lane과 비교가
+필요하면 관찰 가능한 동작, sample·E2E scenario와 검증 방법만 참고하고 내부 구조나 `.NET` 전용 public
+API를 다른 언어의 구현 기준으로 사용하지 않는다.
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
@@ -913,20 +937,26 @@ S8 완료 gate:
 - [ ] 어느 축 수정 뒤에도 두 리뷰어가 `.NET` 전체 scope의 I1·I2·I3를 모두 다시 검토했다.
 - [ ] 두 리뷰어 결과가 모두 `DOTNET REVIEW CLEAN`이다.
 
-## 13. S9 — C++, Java/Kotlin과 Node.js 병렬 적용
+## 13. S9 — S8과 동시에 진행하는 C++, Java/Kotlin과 Node.js lane
 
 ### 13.1 병렬 작업 격리
 
+S8의 `.NET`과 S9의 C++·Java·Kotlin·Node.js는 S7 gate 뒤 동시에 구현한다. 다섯 언어를 네 실행 lane으로
+나누며 Java와 Kotlin은 공유 JVM lane에서 함께 진행한다. 각 lane은 다른 언어의 구현 완료나 clean 판정을
+기다리지 않는다. 한 lane에서 공통 계약 문제가 발견된 경우에만 해당 finding의 직접 영향 범위를
+coordinator가 판정하고, 필요한 lane을 멈춘 뒤 S2·S3을 다시 연다.
+
 | 원칙 | 적용 방법 |
 |---|---|
-| file ownership | C++, JVM, Node lane은 자기 언어 source·test·sample·언어별 문서만 수정 |
+| file ownership | `.NET`, C++, JVM, Node.js lane은 자기 언어 source·test·sample·언어별 문서만 수정 |
 | 공통 문서 | common spec과 main plan은 coordinator만 수정하고, 이 진행표는 각 lane이 배정받은 ID 행만 수정 |
 | 진행 기록 | 각 lane이 자기 ID 행의 상태와 증거를 이 진행표에 직접 기록한다. 상세 log를 별도로 남겨도 현재 상태는 이 진행표에만 기록 |
 | build output | 각 lane은 독립 build directory와 package cache를 사용 |
+| `.NET` 제한 | 중앙 package version과 NuGet cache를 다른 lane의 package 기준으로 변경하지 않음 |
 | JVM 제한 | bindings/java와 framework/languages/java build를 동시에 실행하지 않고 Gradle `--no-parallel` 사용 |
 | Node 제한 | stale `dist`를 제거하고 build 완료 뒤 test를 순차 실행 |
 | C++ 제한 | 전용 CMake build directory에서 package consumer와 CTest 실행 |
-| merge | lane별 검증 commit을 따로 만들고 공통 tree에 한 lane씩 병합·재검증 |
+| merge | 네 lane의 검증 commit을 따로 만들고 공통 tree에 한 lane씩 병합·재검증 |
 
 ### 13.2 C++ lane
 
@@ -975,11 +1005,12 @@ S9 완료 gate:
 
 - [ ] 세 lane이 자기 file scope만 수정했다.
 - [ ] 각 lane의 sample, E2E, package consumer와 stale no-hit가 통과한다.
+- [ ] 세 lane이 S8의 구현 결과나 clean 판정을 계약 근거 또는 선행 조건으로 사용하지 않았다.
 - [ ] 공통 spec 변경이 필요해진 경우 구현을 멈추고 S2·S3 계약 review를 다시 연다.
 
-## 14. S10 — 언어별 병렬 독립 리뷰 반복
+## 14. S10 — S9의 세 구현 lane별 병렬 독립 리뷰 반복
 
-세 언어 lane의 리뷰는 서로 병렬 실행할 수 있다. 각 lane 안에서는 Codex agent와 R2 리뷰를
+S9의 세 구현 lane 리뷰는 서로 병렬 실행할 수 있다. 각 lane 안에서는 Codex agent와 R2 리뷰를
 같은 revision으로 병렬 실행한다. reviewer는 다른 lane을 수정하지 않는다.
 
 | ID | Lane | Codex 결과 | R2 결과 | open finding | 상태 | 증거 |
@@ -991,7 +1022,7 @@ S9 완료 gate:
 각 lane은 다음 검토를 반복한다.
 
 - 정식 언어 interface와 구현·package snapshot 일치
-- Core/.NET 기준과 관찰 가능한 기능 parity
+- 공통 framework spec, 언어별 exact interface와 Core 공개 계약이 요구하는 관찰 가능한 동작 일치
 - sample과 E2E inventory 누락
 - internal/private API, raw frame, codec 우회와 언어 전용 임시 public API
 - POSD 위험 신호와 DDD 책임 중복
@@ -1090,7 +1121,8 @@ S11 완료 gate:
 - S6 RC 뒤 Core ABI나 동작을 바꾸면 stable tag를 만들지 않고 새 commit으로 S5, 새 `rc.N+1`로 S6,
   S7과 모든 framework stage를 다시 통과한다.
 - bindings 공개 계약이나 native payload를 바꾸면 S7 review와 local package smoke를 다시 통과한다.
-- `.NET` 구현에서 공통 계약 gap이 발견되면 S2·S3을 다시 열고 S8 완료를 취소한다.
+- S8 또는 S9의 어느 언어 구현에서든 공통 계약 gap이 발견되면 S2·S3을 다시 열고, 직접 영향을 받는
+  lane의 완료 판정을 취소한다.
 - 병렬 lane에서 공통 문제를 발견하면 한 lane의 helper로 우회하지 않고 coordinator가 계약 stage를
   재개방한다.
 - reviewer 또는 GitHub Actions·registry를 사용할 수 없으면 관련 stage를 `차단`으로 기록한다.

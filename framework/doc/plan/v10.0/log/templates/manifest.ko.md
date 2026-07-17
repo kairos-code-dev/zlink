@@ -7,13 +7,22 @@
 | Stage | `<S3, S5, S7, S8, S10-C, S10-J, S10-N 또는 S11>` |
 | Review kind | `<문서 리뷰 또는 구현 리뷰>` |
 | Iteration | `<N>` |
+| Review campaign | `<S3, S4+S5, S7, S8, S9-C+S10-C, S9-J+S10-J, S9-N+S10-N 또는 S11>` |
+| Campaign pass | `<P1, P2, P3 또는 P4>` |
+| Checkpoint ID | `<ledger의 checkpoint ID>` |
+| Pass scope | `<책임 단위, delta·직접 영향 범위 또는 최종 전체 scope>` |
 | Base commit | `<commit SHA>` |
+| Acceptance candidate SHA | `<마지막 전체 pass가 아니면 해당 없음>` |
 | Working tree diff | `<path 또는 명령>` |
 | Scope file hashes | `<sha256sum 결과>` |
+| Previous checkpoint | `<이전 session ID와 결과 경로 또는 없음>` |
+| Remaining scope | `<미검토 파일·축·명령 또는 없음>` |
+| Snapshot delta | `<직전 pass 이후 변경 파일과 직접 영향 범위>` |
 | Reviewer | `<Codex agent, Claude Sonnet 문서 리뷰 또는 Claude Fable 코드 리뷰>` |
 | Provider/model | `<provider와 실제 model identifier/version>` |
 | Invocation/session ID | `<ID>` |
 | Fable fallback | `<사용하지 않음 또는 Fable invocation과 차단 근거>` |
+| Reviewer result path | `<codex-review.ko.md 또는 실제 R2 결과 파일>` |
 | Started at | `<ISO-8601>` |
 | Finished at | `<ISO-8601>` |
 | Exit status | `<status>` |
@@ -21,12 +30,26 @@
 한 iteration에는 Codex agent용 manifest·raw output과 해당 review 유형의 R2 manifest·raw output을
 각각 보존한다. S3 문서 리뷰의 R2는 Claude Sonnet이다. Claude Fable은 문서 리뷰에 사용하지 않으며,
 S5·S7·S8·S10·S11에서 source·test·build·package 코드와 구현 결과를 검토할 때만 R2로 호출한다.
-구현 리뷰에서는 Fable을 먼저 호출한다. Fable이 제공되지 않거나 quota·capacity, 인증·도구 차단 또는 정상 종료 실패로
-리뷰를 완료할 수 없을 때만 같은 manifest로 Claude Sonnet을 호출한다. fallback을 사용하면 Fable
-invocation과 차단 근거, Sonnet session을 모두 기록한다. 두 리뷰는 같은 frozen scope를 독립 검토한다.
-어느 한쪽 결과로 문서, 코드, 테스트, 설정 또는 검증 증거가 수정되면 새 revision을 고정하고 두 리뷰를
-모두 다시 실행한다. 구현 리뷰에서 어느 축이 수정되면 두 리뷰어가 I1·I2·I3 전체를 다시 검토한다. 두
-결과가 모두 이 stage의 exact clean 문구로 끝나야 review gate를 통과한다.
+구현 리뷰에서는 Fable을 먼저 호출한다. Fable이 제공되지 않거나 quota·capacity, 인증·도구 차단,
+90분 강제 종료 시간 초과 또는 정상 종료 실패로 리뷰를 완료할 수 없을 때만 같은 manifest로 Claude
+Sonnet을 호출한다. fallback을 사용하면 Fable
+invocation과 차단 근거, Sonnet session을 모두 기록한다. Fable의 `PARTIAL` 결과는 Sonnet의 배정 범위를
+줄이지 않는다. Sonnet fallback은 이 pass에서 R2에 배정된 범위를 처음부터 독립 검토한다. 같은 모델의
+다음 session만 같은 snapshot의 `Remaining scope`부터 이어갈 수 있다.
+
+두 리뷰는 같은 frozen scope를 독립 검토한다. 중간 pass에서 material finding 수정이 발생하면 새
+revision을 고정하고 두 reviewer가 delta와 직접 영향 범위를 다시 검토하며 I1·I2·I3를 모두 판정한다.
+오탈자·링크 표기처럼 계약과 실행 결과를 바꾸지 않는 수정은 `editorial note`로 분리하고 전체 pass를
+다시 실행하지 않는다. 마지막 pass는 두 reviewer가 최신 acceptance candidate의 전체 campaign scope를
+처음부터 검토한다. final clean 뒤 candidate의 의미나 실행 결과가 바뀌면 clean은 무효이며 새 candidate에서
+마지막 전체 pass를 다시 수행한다. 두 결과가 모두 이 stage의 exact clean 문구로 끝나야 gate를 통과한다.
+
+review 파일 이름은 실제 reviewer와 결과 상태를 반영한다.
+
+- S3 Sonnet: `claude-sonnet-review.ko.md`
+- 구현 리뷰 Fable: `claude-fable-review.ko.md`
+- Fable 실패·partial: `claude-fable-review.ko.md`
+- 구현 리뷰 Sonnet fallback: `claude-sonnet-fallback-review.ko.md`
 
 ## 2. Required input
 
@@ -86,6 +109,11 @@ invocation과 차단 근거, Sonnet session을 모두 기록한다. 두 리뷰�
 ```text
 <link, heading, signature parity, stale symbol, duplicate와 formatting 명령>
 ```
+
+장시간 build·test는 review process 안에서 기다리지 않고 별도 verification job으로 실행한다. manifest에는
+명령, 시작·종료 시각, exit status와 결과 경로를 기록한다. review session은 해당 결과를 읽고 계약·source와
+대조한다. review session이 `PARTIAL`이면 검토한 파일·축·명령과 남은 범위를 반드시 채우며 clean 문구를
+출력하지 않는다.
 
 ## 5. Output contract
 

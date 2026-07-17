@@ -841,25 +841,11 @@ retry_reserve:
             return ZLINK_SUBMIT_BACKPRESSURED;
         }
 
-        //  Remote leg before the local commit: a NODROP remote failure must
-        //  leave the local mailboxes untouched. The wire reserve commits
-        //  nothing on backpressure, so a blocking publish may retry the whole
-        //  reserve within SNDTIMEO.
-        const zlink_submit_result_t remote_rc = wire_publish_remote_locked (
-          node_, remote_targets, channel, topic,
-          source_spot_rid_ ? *source_spot_rid_ : rid_bytes_t (), nodrop_, metadata_, parts_,
-          part_count_, &admitted_remote, &dropped_remote, &unreachable_remote);
-        if (nodrop_ && remote_rc != ZLINK_SUBMIT_OK) {
-            if (blocking && reserve_deadline != 0 && now_ms () < reserve_deadline) {
-                node_->cv.wait_for (lock, std::chrono::milliseconds (
-                                            std::min<uint64_t> (10, reserve_deadline - now_ms ())));
-                lock.unlock ();
-                goto retry_reserve;
-            }
-            errno = (flags_ & ZLINK_SEND_FLAGS_DONTWAIT) ? EAGAIN : ETIMEDOUT;
-            return ZLINK_SUBMIT_BACKPRESSURED;
-        }
-
+        //  Every fallible preparation happens before any commit: the local
+        //  records are fully built here so that after the remote leg only
+        //  infallible moves remain (all-or-none across both legs).
+        std::vector<std::unique_ptr<queued_record_t>> prepared;
+        prepared.reserve (accepting.size ());
         for (size_t t = 0; t < accepting.size (); ++t) {
             std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
             if (!record.get ()) {
@@ -880,7 +866,30 @@ retry_reserve:
             }
             if (copy_borrowed_parts (parts_, part_count_, record.get ()) != 0)
                 return ZLINK_SUBMIT_INTERNAL_ERROR;
+            prepared.push_back (std::move (record));
+        }
 
+        //  Remote leg before the local commit: a NODROP remote failure must
+        //  leave the local mailboxes untouched. The wire reserve commits
+        //  nothing on backpressure, so a blocking publish may retry the whole
+        //  reserve within SNDTIMEO.
+        const zlink_submit_result_t remote_rc = wire_publish_remote_locked (
+          node_, remote_targets, channel, topic,
+          source_spot_rid_ ? *source_spot_rid_ : rid_bytes_t (), nodrop_, metadata_, parts_,
+          part_count_, &admitted_remote, &dropped_remote, &unreachable_remote);
+        if (nodrop_ && remote_rc != ZLINK_SUBMIT_OK) {
+            if (blocking && reserve_deadline != 0 && now_ms () < reserve_deadline) {
+                node_->cv.wait_for (lock, std::chrono::milliseconds (
+                                            std::min<uint64_t> (10, reserve_deadline - now_ms ())));
+                lock.unlock ();
+                goto retry_reserve;
+            }
+            errno = (flags_ & ZLINK_SEND_FLAGS_DONTWAIT) ? EAGAIN : ETIMEDOUT;
+            return ZLINK_SUBMIT_BACKPRESSURED;
+        }
+
+        for (size_t t = 0; t < accepting.size (); ++t) {
+            std::unique_ptr<queued_record_t> record = std::move (prepared[t]);
             accepting[t]->pending_messages += 1;
             accepting[t]->pending_bytes += record->byte_size;
             accepting[t]->records.push_back (std::move (record));

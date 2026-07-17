@@ -682,6 +682,25 @@ zlink_submit_result_t zlink_stream_session_bind_actor (void *service_,
         errno = EBUSY;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
+    if (!idempotent) {
+        //  The actor was validated before the binding locks were taken; an
+        //  actor destroy may have finished its removal pass in between.
+        //  Re-validate and undo a stale insert so no session ever addresses
+        //  a destroyed generation.
+        bool stale = false;
+        {
+            std::lock_guard<std::mutex> lock (node->mutex);
+            const std::string id (actor_->actor_id);
+            std::map<std::string, actor_state_t>::iterator it = node->actors.find (id);
+            stale = it == node->actors.end () || it->second.generation != actor_->generation
+                    || it->second.draining;
+        }
+        if (stale) {
+            session_bindings_remove_actor (node, *actor_);
+            errno = ESTALE;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
+    }
 
     const zlink_mesh_operation_id_t op_id =
       register_operation (node, ZLINK_MESH_OPERATION_STREAM_BIND, node_owner (), timeout_ms_);

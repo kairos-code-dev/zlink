@@ -677,10 +677,12 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
             bool session_control_pending = false;
             if (!held && !completions_pending) {
                 //  Bound session control drains without the node mutex; the
-                //  session services use their own locks.
+                //  session services use their own locks. Every iterator into
+                //  node state is invalid after this window.
                 lock.unlock ();
                 session_control_pending = session_bindings_pending (node, *actor_);
                 lock.lock ();
+                owner_it = node->owners.find (drain_owner);
             }
             if (!held && !completions_pending && !session_control_pending)
                 break;

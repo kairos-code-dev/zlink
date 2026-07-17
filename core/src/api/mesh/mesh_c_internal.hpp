@@ -35,7 +35,6 @@ template <typename T> void init_versioned (T *value_)
 //  Name checks: 1..max bytes UTF-8 without NUL, from a NUL-terminated input.
 int check_name (const char *name_, size_t max_, std::string *out_);
 
-//  UTF-8 validity for public names and topics.
 
 //  Node owner id constant.
 owner_id_t node_owner ();

@@ -1,0 +1,117 @@
+S5 Core review — R2 (Claude Fable), iteration 3 raw output
+Commit: 25617130eeeb1dc464aec6eca1a8378888aee42a
+Window: 2026-07-17 21:15 ~ 22:05 +0900
+
+== Commands executed ==
+1) Scope hash (start & end, identical):
+   files=$(git ls-files core/include core/src core/tests core/packaging \
+     core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md | sort -u)
+   printf '%s\n' "$files" | wc -l                      -> 631
+   printf '%s\n' "$files" | xargs sha256sum | sha256sum
+   -> 1ca3763f80f568890e2e3e888b4b1dd93e2d15dab9deb9125c12b316fa1f6598  (manifest match)
+
+2) cmake --build core/build -j20 && ctest --test-dir core/build -j20
+   -> 100% tests passed, 0 tests failed out of 85 (125.67s)
+
+3) ASAN: cmake --build core/build-asan --target test_mesh_{lifecycle_contracts,node_basic,monitor_matrix,peer_admission,stress}
+   run all 5: lifecycle 8/8 OK, node_basic 8/8 OK, monitor_matrix 6/6 OK,
+   peer_admission 11/11 OK, stress 3/3 OK. ASAN errors: 0.
+
+4) TSAN: cmake --build core/build-tsan --target test_mesh_lifecycle_contracts
+   setarch -R ./core/build-tsan/bin/test_mesh_lifecycle_contracts
+   -> 8/8 OK. 10 warnings total:
+      - 9x lock-order-inversion: all frames prepare_auto_hwm_socket_plan /
+        refresh_auto_hwm_policy / ctx_t::create_socket / socket_base_t::monitor
+        (existing auto-HWM family)
+      - 1x data race: mailbox_t::recv (command mailbox ypipe family)
+   -> mesh-originated new races: 0. (it-2 observed 8+2; per-run variance, same families)
+
+5) N1 repro harness re-run (scratchpad timer_destroy_race.c, recompiled against
+   core/build/lib/libzlink.so, 5s watchdog, 3 runs):
+   -> "destroy returned 0 — no deadlock" x3, exit=0 each. Deadlock gone.
+
+6) git diff a01b537f8..25617130e  (30 files, +983/-66): reviewed in full.
+
+7) Removed-identifier scan:
+   grep -rn "owner_spot\|zlink_timer_cleanup_spot\|valid_utf8_public" core/src core/include core/tests core/doc/spec core/doc/internals
+   -> only legitimate owner_kind enum `owner_spot` hits; removed identifiers: 0.
+
+8) Symbol surface: nm -D --defined-only core/build/lib/libzlink.so
+   -> 196 zlink_* exports; zlink_timer_new_for_spot_node / zlink_timer_release_spot_node_scheduler NOT exported (internal C++ linkage).
+
+9) Workflow gate syntax probe: reproduced the `if ! python3 - "$VERSION" <<'EOF' ... EOF then` heredoc-in-if pattern locally -> SYNTAX_OK; conandata.yml parsed with PyYAML (10.0.0 entry present, sha256 deferred per README/S6-05).
+
+10) git ls-files core/packaging | grep pycache -> none (untracked); .gitignore contains __pycache__/.
+
+== Files reviewed (primary) ==
+core/src/api/monitoring/timer_api.cpp (full)
+core/src/api/monitoring/timer_scheduler_backend.cpp (full)
+core/src/api/monitoring/timer_api_internal.hpp
+core/src/api/mesh/mesh_api.cpp (spot timer registry §220-420, poller seam)
+core/src/api/mesh/mesh_api_internal.hpp
+core/src/api/mesh/mesh_actor_api.cpp (destroy path §140-180, §620-751)
+core/src/api/mesh/mesh_node_api.cpp (shutdown/destroy §340-462)
+core/src/api/mesh/mesh_monitor_api.cpp (close §140-170)
+core/src/api/mesh/mesh_messaging_api.cpp (publish_common §700-925)
+core/src/api/mesh/mesh_stream_session_api.cpp (for_each_actor_binding §288-320, destroy drain helpers §1165-1372, service destroy §460-500)
+core/src/api/mesh/mesh_stream_session_internal.hpp
+core/src/api/mesh/mesh_c_internal.hpp
+core/src/runtime/services/mesh/mesh_runtime.{hpp,cpp} (emit_monitor_event §700-765, maybe_end §670-699, node ctor)
+core/src/runtime/services/mesh/mesh_wire.{hpp,cpp} (wire_publish_remote_locked §280-360)
+core/src/runtime/services/mesh/mesh_wire_ingress.cpp (handle_actor_destroy §449-462, handle_actor_left §496-552)
+core/tests/integration/test_mesh_lifecycle_contracts.cpp (new case §466-556)
+.github/workflows/core-conan-release.yml
+core/packaging/conan/{README.md,.gitignore,conandata.yml}
+core/doc/internals/services-internals.{ko.md,md} (vs implementation)
+core/doc/spec/core/08-utilities.md (timer destroy contract)
+core/doc/spec/core/07-monitoring.md (monitor close contract)
+core/doc/spec/core/service/01-mesh-node.md
+
+== Adversarial checks performed ==
+- Lock-order graph after delta: node->reg (enter_turn), timer->reg & timer->node
+  (tick_allowed under fire's timer lock), scheduler->timer (existing). No reverse
+  edges found (no node->timer, node->scheduler, reg->node nesting). No cycle.
+- timer destroy vs in-flight fire: busy_refs increment covered by scheduler lock
+  held during deregistration; destroy waits without any lock held; delete
+  happens after fire's last timer access (verified destructor ordering).
+- per-node scheduler lifetime: shared_ptr held by map + worker thread; timer raw
+  pointer accesses all happen-before timer_count decrement, which gates node
+  destroy (EBUSY live_timers) -> release ordering safe; stale-generation
+  registration unreachable (facade_count pins generation; entry spots never end;
+  shutdown does not erase node->spots).
+- monitor pin: no early return between pin and release; close waits on node cv
+  which the emitter's decrement notifies; cross-thread close during handler
+  returns BUSY (spec silent -> editorial E6).
+- unreachable accounting: unreachable <= remote_targets.size() == snapshot (no
+  underflow); reset on retry; all-unreachable returns OK with snapshot 0;
+  monitor dropped counter excludes unreachable.
+- actor destroy drain: found owner_it invalidation across the new unlock window
+  (N5, medium): remote handle_actor_destroy -> actor_destroy_local erases owner
+  without draining check; deadline branch then compares/derefs freed map node.
+- handle_actor_left maybe_end: decrement/admit/maybe_end interleavings safe
+  (maybe_end judges current state; recreation implies facade ref).
+- session binding helpers: registry->service lock order, callers hold no node
+  mutex (verified at both call sites); erase-by-descending-index correct.
+
+== Findings ==
+N5 (Medium, I1): owner_it UAF across destroy-drain unlock window
+  (mesh_actor_api.cpp:681-683 window, :688-695 stale use, eraser
+  actor_destroy_local:171 via mesh_wire_ingress.cpp:454).
+N6 (Low, I3): dead comment left after valid_utf8_public removal
+  (mesh_c_internal.hpp:38).
+
+== Resolution verdicts (iteration-2 ledger, 11 items) ==
+All 11 resolved (F-I1-01re, F-I1-03re, N1 [proven by harness 3/3],
+N-I1-01/N3, N-I1-02, N2, N-I2-01, N-I3-01, N-I3-02, N-I3-03, N4).
+F-I1-03re fix introduced regression N5; N4 fix left residue N6.
+
+== Known risks ==
+TSAN: 10 warnings, all existing 2 families (auto-HWM lock-order x9,
+command-mailbox ypipe x1) — accepted, tracked. ctx_term linger — existing raw
+socket trait, accepted, tracked.
+
+== Axis verdicts ==
+I1: NOT CLEAN (N5 medium)
+I2: CLEAN
+I3: NOT CLEAN (N6 low)
+Overall: NOT CLEAN (no blocker/high)

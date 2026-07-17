@@ -875,11 +875,12 @@ retry_reserve:
         //  remote commit. Placeholder slots and speculative ready entries are
         //  only ever visible while this mutex is held: every exit path below
         //  either fills or rolls them back before the lock is released.
-        std::vector<size_t> slot_base (accepting.size ());
+        std::vector<size_t> slot_base;
         std::vector<std::pair<owner_id_t, int>> ready_added;
         size_t slots_taken = 0;
         bool prealloc_failed = false;
         try {
+            slot_base.resize (accepting.size ());
             ready_added.reserve (accepting.size ());
             for (size_t t = 0; t < accepting.size (); ++t) {
                 slot_base[t] = accepting[t]->records.size ();

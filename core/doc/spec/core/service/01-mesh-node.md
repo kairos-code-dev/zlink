@@ -511,7 +511,9 @@ supported returns `ZLINK_CONFIG_NOT_SUPPORTED` with `errno == ENOTSUP`.
 
 Logical Multicast and classic PUB both report backpressure to the caller when
 `NODROP=1`. Logical Multicast additionally guarantees atomic reserve and commit
-for its entire snapshot; the raw PUB contract defines subscriber-level
+for its entire snapshot — this atomicity is the §7 capacity-admission
+guarantee, and a peer departing between the reserve and the commit follows the
+§7 unreachable rule. The raw PUB contract defines subscriber-level
 delivery. They use separate option enums. Spot and Mesh-publisher handles
 default to 1.
 

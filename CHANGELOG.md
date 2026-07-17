@@ -54,16 +54,19 @@ aliases, wrappers or dual runtimes. The public contract is owned by
   without consuming the queued message when the caller buffer is small.
 
 ### Verification (release-candidate scope)
-- Full core suite green: 84/84 CTest targets, including the two-process
-  remote matrix (`test_mesh_peer_admission`, 10 cases: admission/readiness,
+- Full core suite green: 85/85 CTest targets, including the two-process
+  remote matrix (`test_mesh_peer_admission`, 12 cases: admission/readiness,
   MeshName-mismatch rejection with monitor evidence, remote request/reply,
-  Spot direct, multicast with duplicate guard, Actor lookup/messaging/join,
+  Spot direct, multicast with duplicate guard, NODROP unreachable-target
+  accounting via send-fault injection, Actor lookup/messaging/join,
   transfer fence, channel round-robin with zero-weight exclusion,
-  drain/reconnect), the monitor event matrix
-  (`test_mesh_monitor_matrix`, 6 cases) and dispatch stress
-  (`test_mesh_stress`, 3 cases).
+  MIXED intent merge, drain/reconnect), the monitor event matrix
+  (`test_mesh_monitor_matrix`, 6 cases), dispatch stress
+  (`test_mesh_stress`, 3 cases) and lifecycle contracts
+  (`test_mesh_lifecycle_contracts`, 9 cases including the bind/destroy
+  race hammer).
 - Sanitizers: ASAN/UBSAN+leak clean on the mesh suite; TSAN reports zero
-  races in new mesh code (three pre-existing 9.x machinery findings are
+  races in new mesh code (four pre-existing 9.x machinery observations are
   tracked for review).
 - `contract_public_surface` gate: 196 exported functions exactly match the
   formal spec, zero removed identifiers present, Korean/English spec C

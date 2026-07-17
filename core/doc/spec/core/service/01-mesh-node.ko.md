@@ -465,8 +465,10 @@ message budget과 byte budget은 동시에 적용하며 먼저 도달한 한도�
 | `ZLINK_MESH_PUBLISH_OPT_NODROP` | 지원하지 않음 | 지원하지 않음 | 지원 | 지원 |
 
 Logical Multicast와 classic PUB은 모두 `NODROP=1`일 때 backpressure를 호출자에게 반환한다. Logical
-Multicast는 snapshot 전체의 원자적 reserve/commit까지 보장하며 classic PUB의 subscriber별 전달 범위는
-raw PUB 계약을 따른다. 두 기능은 별도 option enum을 사용한다. Spot과 Mesh publisher의 기본값은 1이다.
+Multicast는 snapshot 전체의 원자적 reserve/commit까지 보장한다 — 이 원자성은 §7의 capacity admission
+보장이며, reserve와 commit 사이의 peer 이탈은 §7의 unreachable 규칙을 따른다. classic PUB의
+subscriber별 전달 범위는 raw PUB 계약을 따른다. 두 기능은 별도 option enum을 사용한다. Spot과 Mesh
+publisher의 기본값은 1이다.
 
 MeshNode 열의 공통 option은 `zlink_set_option()`과 `zlink_get_option()`을 사용한다. `SNDHWM`과 `RCVHWM`은
 물리 ROUTER pipe queue에, `SNDTIMEO`는 blocking submit에, `RCVTIMEO`는 blocking ready drain에 적용된다.

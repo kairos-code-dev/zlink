@@ -600,12 +600,14 @@ int connect_raw_stream_client (const char *endpoint_)
 }
 #endif
 
-//  Two concurrent binds race an actor destroy. Whatever the interleaving,
-//  the destroyed generation must never survive in a binding, and once the
-//  destroy has returned every later bind of that generation must fail:
-//  the post-insert re-validation covers the inserting call and idempotent
-//  observers alike, so no call reports success against a destroyed
-//  generation whose binding is about to disappear.
+//  Two concurrent binds race an actor destroy. Externally observable
+//  contract, asserted per round: every bind returns a result from the legal
+//  set, once destroy has returned every later bind of that generation
+//  fails, and no binding of the destroyed generation survives. The
+//  success-then-rollback interleaving itself has no external observation
+//  point; it is closed by design (both success shapes re-validate under
+//  the node mutex and staleness is monotone) and this hammer guards the
+//  observable half of that contract.
 void test_stream_session_bind_destroy_race_leaves_no_binding ()
 {
 #if defined(ZLINK_HAVE_WINDOWS)
@@ -656,19 +658,38 @@ void test_stream_session_bind_destroy_race_leaves_no_binding ()
         TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
                                zlink_mesh_node_actor_new (node, actor_id, NULL, 0, &actor,
                                                           ZLINK_SEND_FLAGS_NONE, 1000));
+        std::atomic<int> rc_a (-1);
+        std::atomic<int> rc_b (-1);
         std::thread binder_a ([&] () {
             zlink_mesh_operation_id_t op;
-            (void) zlink_stream_session_bind_actor (service, &session_rid, &actor, &op, 200);
+            rc_a.store (static_cast<int> (
+              zlink_stream_session_bind_actor (service, &session_rid, &actor, &op, 200)));
         });
         std::thread binder_b ([&] () {
             zlink_mesh_operation_id_t op;
-            (void) zlink_stream_session_bind_actor (service, &session_rid, &actor, &op, 200);
+            rc_b.store (static_cast<int> (
+              zlink_stream_session_bind_actor (service, &session_rid, &actor, &op, 200)));
         });
         zlink_mesh_operation_id_t destroy_op;
         TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                                zlink_mesh_node_actor_destroy (node, &actor, &destroy_op, 200));
         binder_a.join ();
         binder_b.join ();
+
+        //  A racing bind may only end in a result from the legal set: OK
+        //  (validated while the generation was live), a staleness/conflict
+        //  failure, not-found after the destroy, or a fence backpressure.
+        const int legal[] = {static_cast<int> (ZLINK_SUBMIT_OK),
+                             static_cast<int> (ZLINK_SUBMIT_INVALID_STATE),
+                             static_cast<int> (ZLINK_SUBMIT_NOT_FOUND),
+                             static_cast<int> (ZLINK_SUBMIT_BACKPRESSURED)};
+        for (int probe = 0; probe < 2; ++probe) {
+            const int rc = probe == 0 ? rc_a.load () : rc_b.load ();
+            bool allowed = false;
+            for (size_t l = 0; l < sizeof (legal) / sizeof (legal[0]); ++l)
+                allowed = allowed || rc == legal[l];
+            TEST_ASSERT_TRUE_MESSAGE (allowed, "racing bind returned an illegal result");
+        }
 
         //  Staleness is monotone: after destroy returned, binds must fail.
         zlink_mesh_operation_id_t late_op;

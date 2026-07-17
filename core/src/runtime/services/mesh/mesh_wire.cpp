@@ -480,7 +480,8 @@ zlink_submit_result_t wire_submit_join_reply (mesh_node_t *node_,
                                               const rid_bytes_t &spot_rid_,
                                               uint64_t spot_generation_,
                                               const zlink_msg_t *parts_,
-                                              size_t part_count_)
+                                              size_t part_count_,
+                                              zlink_send_flags_t flags_)
 {
     if (!node_->router_socket) {
         errno = ENOTCONN;
@@ -497,8 +498,10 @@ zlink_submit_result_t wire_submit_join_reply (mesh_node_t *node_,
     put_rid (envelope, spot_rid_);
     put_u64 (envelope, spot_generation_);
     const zlink_routing_id_t target = rid_value (peer_rid_);
-    return send_data_message (node_, target, envelope, NULL, parts_, part_count_,
-                              ZLINK_SEND_FLAGS_NONE);
+    //  The public join-reply contract owns the flags: DONTWAIT surfaces
+    //  EAGAIN and a blocking call waits for SNDTIMEO before ETIMEDOUT, both
+    //  leaving the reply token retryable (04-actor §3).
+    return send_data_message (node_, target, envelope, NULL, parts_, part_count_, flags_);
 }
 
 zlink_submit_result_t wire_submit_lookup_reply (mesh_node_t *node_,

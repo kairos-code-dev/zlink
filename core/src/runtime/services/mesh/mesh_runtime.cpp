@@ -78,6 +78,25 @@ uint64_t now_ms ()
     return clock.now_ms ();
 }
 
+uint64_t allocate_lifecycle_generation ()
+{
+    //  The spec orders lifecycles of the same RID by generation, including
+    //  across process restarts, so the allocator anchors on wall-clock
+    //  milliseconds and only bumps past it to keep same-process allocations
+    //  strictly increasing. A constant seed (the previous behaviour) made
+    //  every restart generation 1 and disabled stale-lifecycle replacement.
+    static std::atomic<uint64_t> last_generation (0);
+    uint64_t previous = last_generation.load (std::memory_order_relaxed);
+    for (;;) {
+        uint64_t candidate = now_ms ();
+        if (candidate <= previous)
+            candidate = previous + 1;
+        if (last_generation.compare_exchange_weak (previous, candidate,
+                                                   std::memory_order_relaxed))
+            return candidate;
+    }
+}
+
 //  Strict UTF-8 scalar validation (RFC 3629): rejects overlong encodings,
 //  UTF-16 surrogates and code points above U+10FFFF. Every public string
 //  contract (names, topics, filters, metadata text) shares this one check.
@@ -322,7 +341,7 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     tag (0x4d4e4f44),
     ctx (ctx_),
     state (ZLINK_MESH_NODE_CREATED),
-    lifecycle_generation (1),
+    lifecycle_generation (allocate_lifecycle_generation ()),
     descriptor_revision (0),
     last_error (0),
     last_changed_ms (now_ms ()),
@@ -1045,6 +1064,11 @@ int complete_pending_operation_with_commit (
     size_t record_bytes = 0;
     int32_t observed_terminal_result = terminal_result_;
     int32_t observed_failure_errno = failure_errno_;
+    //  Cancelled outside the node mutex: cancel() waits for a firing timeout
+    //  handler, and that handler takes the node mutex to look the operation
+    //  up. The scheduler recognizes a self-cancel from its own handler.
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
+    bool owner_missing = false;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
@@ -1061,52 +1085,59 @@ int complete_pending_operation_with_commit (
         std::map<owner_id_t, owner_state_t>::iterator owner_it =
           node_->owners.find (op_it->second.requester);
         if (owner_it == node_->owners.end ()) {
+            timeout_task = op_it->second.timeout_task;
             node_->operations.erase (op_it);
-            return 0;
-        }
-        queued_record_t &record = *reservation->records.front ();
-        if (!reservation->prepared) {
-            record.kind = ZLINK_MESH_RECORD_COMPLETION;
-            record.operation_id = op_.id;
-            record.operation_kind = op_.kind;
-            record.terminal_result = terminal_result_;
-            record.failure_errno = failure_errno_;
-            if (kind_data_)
-                record.kind_data.swap (*kind_data_);
-            if (reply_parts_)
-                record.parts.swap (*reply_parts_);
-            for (size_t i = 0; i < record.parts.size (); ++i)
-                record.byte_size += zlink_msg_size (&record.parts[i]);
-            reservation->prepared = true;
-        }
-        record_bytes = record.byte_size;
-        observed_terminal_result = record.terminal_result;
-        observed_failure_errno = record.failure_errno;
-        mailbox_t &mailbox = owner_it->second.domains[domain_infrastructure];
-        bool ready_inserted = false;
-        try {
+            owner_missing = true;
+        } else {
+            queued_record_t &record = *reservation->records.front ();
+            if (!reservation->prepared) {
+                record.kind = ZLINK_MESH_RECORD_COMPLETION;
+                record.operation_id = op_.id;
+                record.operation_kind = op_.kind;
+                record.terminal_result = terminal_result_;
+                record.failure_errno = failure_errno_;
+                if (kind_data_)
+                    record.kind_data.swap (*kind_data_);
+                if (reply_parts_)
+                    record.parts.swap (*reply_parts_);
+                for (size_t i = 0; i < record.parts.size (); ++i)
+                    record.byte_size += zlink_msg_size (&record.parts[i]);
+                reservation->prepared = true;
+            }
+            record_bytes = record.byte_size;
+            observed_terminal_result = record.terminal_result;
+            observed_failure_errno = record.failure_errno;
+            mailbox_t &mailbox = owner_it->second.domains[domain_infrastructure];
+            bool ready_inserted = false;
+            try {
 #ifdef ZLINK_BUILD_TESTS
-            test_maybe_throw_alloc ();
+                test_maybe_throw_alloc ();
 #endif
-            ready_inserted = node_->ready.insert (ready_key).second;
+                ready_inserted = node_->ready.insert (ready_key).second;
+            }
+            catch (const std::bad_alloc &) {
+                if (ready_inserted)
+                    node_->ready.erase (ready_key);
+                errno = ENOMEM;
+                return -1;
+            }
+            if (commit_locked_
+                && !commit_locked_ (node_, commit_userdata_)) {
+                if (ready_inserted)
+                    node_->ready.erase (ready_key);
+                return 0;
+            }
+            mailbox.records.splice (mailbox.records.end (), reservation->records);
+            mailbox.pending_messages += 1;
+            mailbox.pending_bytes += record_bytes;
+            timeout_task = op_it->second.timeout_task;
+            node_->operations.erase (op_it);
         }
-        catch (const std::bad_alloc &) {
-            if (ready_inserted)
-                node_->ready.erase (ready_key);
-            errno = ENOMEM;
-            return -1;
-        }
-        if (commit_locked_
-            && !commit_locked_ (node_, commit_userdata_)) {
-            if (ready_inserted)
-                node_->ready.erase (ready_key);
-            return 0;
-        }
-        mailbox.records.splice (mailbox.records.end (), reservation->records);
-        mailbox.pending_messages += 1;
-        mailbox.pending_bytes += record_bytes;
-        node_->operations.erase (op_it);
     }
+    if (timeout_task)
+        zlink::request_timeout::cancel (timeout_task);
+    if (owner_missing)
+        return 0;
     signal_ready (node_, ready_owner, domain_infrastructure);
     observe_operation_completed (
       node_, op_.id, observed_terminal_result, observed_failure_errno);
@@ -1190,6 +1221,9 @@ int commit_prepared_pending_operation (
     const std::shared_ptr<completion_reservation_t> reservation =
       completion_->operation.completion;
     size_t record_bytes = 0;
+    //  Cancelled outside the node mutex for the same reason as
+    //  complete_pending_operation_with_commit.
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
@@ -1227,9 +1261,12 @@ int commit_prepared_pending_operation (
           mailbox.records.end (), reservation->records);
         mailbox.pending_messages += 1;
         mailbox.pending_bytes += record_bytes;
+        timeout_task = op_it->second.timeout_task;
         node_->operations.erase (op_it);
         completion_->active = false;
     }
+    if (timeout_task)
+        zlink::request_timeout::cancel (timeout_task);
     signal_ready (
       node_, completion_->ready_owner, domain_infrastructure);
     observe_operation_completed (

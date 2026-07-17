@@ -5,6 +5,7 @@
 
 #include <zlink.h>
 
+#include "api/socket/request_timeout_scheduler_internal.hpp"
 #include "core/signaler.hpp"
 
 #include <atomic>
@@ -200,6 +201,10 @@ struct pending_operation_t
     //  Completion is delivered to this owner's infrastructure mailbox.
     owner_id_t requester;
     std::shared_ptr<completion_reservation_t> completion;
+    //  The operation owns its timeout task: terminal completion and node
+    //  destroy cancel it, so a committed timer can never outlive the
+    //  operation and fire against a recycled node/serial (ABA).
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
     //  Remote actor join: the source-side commit on the wire reply needs the
     //  joining actor's identity.
     zlink_actor_ref_t join_actor;
@@ -660,7 +665,7 @@ class operation_timeout_guard_t
 {
   public:
     operation_timeout_guard_t (mesh_node_t *node_,
-                               uint64_t operation_low_,
+                               const zlink_mesh_operation_id_t &operation_id_,
                                uint32_t timeout_ms_);
     ~operation_timeout_guard_t ();
     bool valid () const;
@@ -687,6 +692,10 @@ receive_batch_t *as_receive_batch (void *handle_);
 //  --- core operations used by the C surface ------------------------------------
 
 uint64_t now_ms ();
+
+//  Wall-clock anchored, process-wide strictly increasing lifecycle
+//  generation. Orders restarted lifecycles of the same RID (01-mesh-node §4).
+uint64_t allocate_lifecycle_generation ();
 
 //  Validates a canonical application metadata frame. Returns 0 or -1/EINVAL.
 int validate_metadata (const uint8_t *data_, size_t size_);

@@ -28,7 +28,8 @@ int attach_socket_monitor_handler_state (void *monitor_,
     if (!handle.socket)
         return -1;
 
-    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    monitor_state_pin_t pin (handle.socket);
+    monitor_handler_state_t *state = pin.get ();
     if (!state) {
         errno = EINVAL;
         return -1;

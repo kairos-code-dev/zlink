@@ -50,6 +50,10 @@ struct task_t
     bool canceled;
     bool firing;
     bool completed;
+    //  Lets cancel() detect a self-cancel from inside the firing handler
+    //  (an operation completing itself on timeout) and skip the wait that
+    //  would otherwise deadlock on its own completion.
+    std::thread::id firing_thread;
     uint64_t deadline_ns;
     handler_fn handler;
     cleanup_fn cleanup;
@@ -129,6 +133,7 @@ void run_timeout_loop ()
             std::lock_guard<std::mutex> lock (task->mutex);
             if (!task->canceled && !task->completed) {
                 task->firing = true;
+                task->firing_thread = std::this_thread::get_id ();
                 handler = task->handler;
                 userdata = task->userdata;
                 task->userdata = NULL;
@@ -148,16 +153,6 @@ void run_timeout_loop ()
     }
 }
 
-void ensure_started ()
-{
-    scheduler_state_t &state = scheduler_state ();
-    std::lock_guard<std::mutex> lock (state.mutex);
-    if (state.started)
-        return;
-    state.thread = std::thread (run_timeout_loop);
-    state.thread.detach ();
-    state.started = true;
-}
 }
 
 std::shared_ptr<task_t>
@@ -165,8 +160,6 @@ schedule (uint32_t timeout_ms_, handler_fn handler_, void *userdata_, cleanup_fn
 {
     if (timeout_ms_ == 0 || !handler_)
         return std::shared_ptr<task_t> ();
-
-    ensure_started ();
 
     std::shared_ptr<task_t> task (new task_t ());
     task->handler = handler_;
@@ -182,8 +175,20 @@ schedule (uint32_t timeout_ms_, handler_fn handler_, void *userdata_, cleanup_fn
         // deadline. Notifying on every request reintroduces cross-thread wake
         // churn in high-rate request/reply workloads.
         const bool should_notify = state.next_wake_ns == 0 || task->deadline_ns < state.next_wake_ns;
+        //  The liveness check must share this critical section with the
+        //  insert: the scheduler thread commits its idle exit under the same
+        //  lock, so checking `started` in a separate lock hold can strand the
+        //  new task with no consumer. Starting the thread before the insert
+        //  keeps the map clean if thread creation throws; the fresh thread
+        //  observes the task once this lock is released.
+        const bool starting = !state.started;
+        if (starting) {
+            state.thread = std::thread (run_timeout_loop);
+            state.thread.detach ();
+            state.started = true;
+        }
         task->schedule_it = state.schedule.insert (std::make_pair (task->deadline_ns, task));
-        if (should_notify)
+        if (!starting && should_notify)
             state.cv.notify_all ();
     }
     return task;
@@ -211,7 +216,7 @@ void cancel (const std::shared_ptr<task_t> &task_)
 
     std::unique_lock<std::mutex> lock (task_->mutex);
     task_->canceled = true;
-    while (task_->firing)
+    while (task_->firing && task_->firing_thread != std::this_thread::get_id ())
         task_->cv.wait (lock);
     task_->completed = true;
 }

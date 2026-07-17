@@ -4,8 +4,10 @@
 
 #include "api/monitoring/monitor_api_internal.hpp"
 
+#include <condition_variable>
 #include <cstdlib>
 #include <map>
+#include <mutex>
 #include <stdio.h>
 
 #include "api/core/close_result_internal.hpp"
@@ -34,7 +36,10 @@ void monitor_debug_logf (const char *fmt_, ...)
 
 struct monitor_handler_registry_t
 {
-    zlink::mutex_t sync;
+    //  std::mutex + condition_variable: the delete paths wait here until
+    //  every reader pin drains, which zlink::mutex_t cannot express.
+    std::mutex sync;
+    std::condition_variable drained;
     std::map<zlink::socket_base_t *, monitor_handler_state_t *> handlers;
 };
 
@@ -78,17 +83,26 @@ void stop_monitor_handler_worker (monitor_handler_state_t *state_)
     }
 }
 
-void erase_monitor_handler_state (zlink::socket_base_t *socket_, monitor_handler_state_t *state_)
+//  Removes the registry entry and blocks until every reader pin on state_
+//  has been released. After this returns the caller owns the storage and may
+//  delete it without racing zlink_monitor_status/recv-model readers.
+void erase_monitor_handler_state_and_wait (zlink::socket_base_t *socket_,
+                                           monitor_handler_state_t *state_)
 {
-    if (!socket_ || !state_)
+    if (!state_)
         return;
 
     monitor_handler_registry_t &registry = monitor_handler_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
-    std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
-      registry.handlers.find (socket_);
-    if (it != registry.handlers.end () && it->second == state_)
-        registry.handlers.erase (it);
+    std::unique_lock<std::mutex> lock (registry.sync);
+    if (socket_) {
+        std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
+          registry.handlers.find (socket_);
+        if (it != registry.handlers.end () && it->second == state_)
+            registry.handlers.erase (it);
+    }
+    state_->unregistered = true;
+    while (state_->registry_pins > 0)
+        registry.drained.wait (lock);
 }
 
 void finalize_monitor_handler_self_close (monitor_handler_state_t *state_)
@@ -108,7 +122,7 @@ void finalize_monitor_handler_self_close (monitor_handler_state_t *state_)
     } else {
         clear_raw_monitor_snapshot_subjects (socket);
     }
-    erase_monitor_handler_state (socket, state_);
+    erase_monitor_handler_state_and_wait (socket, state_);
     state_->socket = NULL;
     state_->dispatch_task_id = 0;
     if (runtime && dispatch_task_id != 0)
@@ -177,7 +191,8 @@ int require_monitor_recv_model (void *monitor_)
     if (!handle.socket)
         return -1;
 
-    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    monitor_state_pin_t pin (handle.socket);
+    monitor_handler_state_t *state = pin.get ();
     if (!state) {
         errno = EINVAL;
         return -1;
@@ -190,13 +205,36 @@ int require_monitor_recv_model (void *monitor_)
     return 0;
 }
 
-monitor_handler_state_t *find_monitor_handler_state (zlink::socket_base_t *socket_)
+monitor_handler_state_t *pin_monitor_handler_state (zlink::socket_base_t *socket_)
 {
     monitor_handler_registry_t &registry = monitor_handler_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
+    std::lock_guard<std::mutex> lock (registry.sync);
     std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
       registry.handlers.find (socket_);
-    return it != registry.handlers.end () ? it->second : NULL;
+    if (it == registry.handlers.end () || !it->second || it->second->unregistered)
+        return NULL;
+    it->second->registry_pins += 1;
+    return it->second;
+}
+
+void unpin_monitor_handler_state (monitor_handler_state_t *state_)
+{
+    if (!state_)
+        return;
+    monitor_handler_registry_t &registry = monitor_handler_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    state_->registry_pins -= 1;
+    if (state_->registry_pins == 0 && state_->unregistered)
+        registry.drained.notify_all ();
+}
+
+//  Membership probe without a pin: safe because it never dereferences the
+//  mapped state.
+static bool monitor_state_registered (zlink::socket_base_t *socket_)
+{
+    monitor_handler_registry_t &registry = monitor_handler_registry ();
+    std::lock_guard<std::mutex> lock (registry.sync);
+    return registry.handlers.find (socket_) != registry.handlers.end ();
 }
 
 zlink::socket_base_t *raw_monitor_snapshot_subject (monitor_handler_state_t *state_)
@@ -219,7 +257,7 @@ void clear_raw_monitor_snapshot_subjects (zlink::socket_base_t *source_)
         return;
 
     monitor_handler_registry_t &registry = monitor_handler_registry ();
-    zlink::scoped_lock_t lock (registry.sync);
+    std::lock_guard<std::mutex> lock (registry.sync);
     for (std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
            registry.handlers.begin ();
          it != registry.handlers.end (); ++it) {
@@ -245,13 +283,19 @@ void unregister_monitor_handlers (zlink::socket_base_t *socket_)
     monitor_handler_registry_t &registry = monitor_handler_registry ();
     monitor_handler_state_t *state = NULL;
     {
-        zlink::scoped_lock_t lock (registry.sync);
+        //  Find + erase are one critical section so exactly one closer wins
+        //  the delete; the winner then waits for reader pins to drain before
+        //  the storage goes away.
+        std::unique_lock<std::mutex> lock (registry.sync);
         std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
           registry.handlers.find (socket_);
         if (it == registry.handlers.end ())
             return;
         state = it->second;
         registry.handlers.erase (it);
+        state->unregistered = true;
+        while (state->registry_pins > 0)
+            registry.drained.wait (lock);
     }
 
     stop_monitor_handler_state (state);
@@ -271,7 +315,7 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
     monitor_handler_registry_t &registry = monitor_handler_registry ();
     monitor_handler_state_t *state = NULL;
     {
-        zlink::scoped_lock_t lock (registry.sync);
+        std::lock_guard<std::mutex> lock (registry.sync);
         std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
           registry.handlers.find (socket_);
         if (it == registry.handlers.end ()) {
@@ -318,44 +362,57 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
     zlink::socket_base_t *socket = handle.socket;
     const int linger = 0;
     (void) socket->setsockopt (ZLINK_INTERNAL_OPT_LINGER, &linger, sizeof (linger));
-    monitor_handler_state_t *monitor_state = find_monitor_handler_state (socket);
-    zlink::socket_base_t *raw_monitor_source = raw_monitor_snapshot_subject (monitor_state);
+    //  The pin keeps the state alive while this close inspects and detaches
+    //  it. It is released before any path that unregisters (and then waits
+    //  for pins) runs, so self-deadlock is impossible.
+    zlink::socket_base_t *raw_monitor_source = NULL;
     zlink::socket_base_t *raw_source_monitor_socket = NULL;
-    if (raw_monitor_source && raw_monitor_source != socket) {
-        if (monitor_state)
-            monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
-        raw_source_monitor_socket = raw_monitor_source->detach_monitor_socket (false);
-    }
-    monitor_debug_logf ("monitor_sid=%d raw_source_sid=%d source_monitor_sid=%d\n",
-                        socket ? socket->socket_id () : -1,
-                        raw_monitor_source ? raw_monitor_source->socket_id () : -1,
-                        raw_source_monitor_socket ? raw_source_monitor_socket->socket_id () : -1);
-    const bool had_dispatch_monitor =
-      monitor_state && monitor_state->socket_handler.load (std::memory_order_acquire);
-    const bool no_dispatch_monitor =
-      monitor_state && !monitor_state->socket_handler.load (std::memory_order_acquire);
-    bool stop_socket_before_close = no_dispatch_monitor;
+    bool stop_socket_before_close = false;
     bool async_close_via_callback = false;
-    if (monitor_state) {
-        zlink::scoped_lock_t dispatch_lock (monitor_state->dispatch_sync);
-        if (had_dispatch_monitor) {
-            monitor_state->socket_handler.store (NULL, std::memory_order_release);
-            if (zlink::current_monitor_handler_state () != monitor_state) {
+    bool self_dispatch_close = false;
+    {
+        monitor_state_pin_t monitor_pin (socket);
+        monitor_handler_state_t *monitor_state = monitor_pin.get ();
+        raw_monitor_source = raw_monitor_snapshot_subject (monitor_state);
+        if (raw_monitor_source && raw_monitor_source != socket) {
+            if (monitor_state)
+                monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
+            raw_source_monitor_socket = raw_monitor_source->detach_monitor_socket (false);
+        }
+        monitor_debug_logf ("monitor_sid=%d raw_source_sid=%d source_monitor_sid=%d\n",
+                            socket ? socket->socket_id () : -1,
+                            raw_monitor_source ? raw_monitor_source->socket_id () : -1,
+                            raw_source_monitor_socket ? raw_source_monitor_socket->socket_id ()
+                                                      : -1);
+        const bool had_dispatch_monitor =
+          monitor_state && monitor_state->socket_handler.load (std::memory_order_acquire);
+        const bool no_dispatch_monitor =
+          monitor_state && !monitor_state->socket_handler.load (std::memory_order_acquire);
+        stop_socket_before_close = no_dispatch_monitor;
+        if (monitor_state) {
+            zlink::scoped_lock_t dispatch_lock (monitor_state->dispatch_sync);
+            if (had_dispatch_monitor) {
+                monitor_state->socket_handler.store (NULL, std::memory_order_release);
+                if (zlink::current_monitor_handler_state () != monitor_state) {
+                    monitor_state->close_requested.store (true, std::memory_order_release);
+                    monitor_state->stop.store (true, std::memory_order_release);
+                    stop_socket_before_close = true;
+                    async_close_via_callback = true;
+                }
+            }
+            if (!async_close_via_callback
+                && zlink::current_monitor_handler_state () != monitor_state
+                && monitor_state->callback_depth.load (std::memory_order_acquire) > 0) {
                 monitor_state->close_requested.store (true, std::memory_order_release);
                 monitor_state->stop.store (true, std::memory_order_release);
                 stop_socket_before_close = true;
                 async_close_via_callback = true;
             }
         }
-        if (!async_close_via_callback && zlink::current_monitor_handler_state () != monitor_state
-            && monitor_state->callback_depth.load (std::memory_order_acquire) > 0) {
-            monitor_state->close_requested.store (true, std::memory_order_release);
-            monitor_state->stop.store (true, std::memory_order_release);
-            stop_socket_before_close = true;
-            async_close_via_callback = true;
-        }
+        self_dispatch_close =
+          monitor_state && zlink::current_monitor_handler_state () == monitor_state;
     }
-    if (monitor_state && zlink::current_monitor_handler_state () == monitor_state) {
+    if (self_dispatch_close) {
         const zlink_close_result_t rc = zlink_close (monitor);
         if (raw_source_monitor_socket)
             (void) zlink::socket_close_ops_t::request_close (raw_source_monitor_socket, 0);
@@ -368,7 +425,7 @@ zlink_close_result_t zlink_monitor_close (void **monitor_p_)
             socket->stop ();
         zlink::part_helper_internal::cleanup_handle (monitor);
         const uint64_t deadline_ms = zlink::clock_t ().now_ms () + 250;
-        while (find_monitor_handler_state (socket) != NULL
+        while (monitor_state_registered (socket)
                && zlink::clock_t ().now_ms () < deadline_ms) {
             zlink::sleep_ms (1);
         }

@@ -144,7 +144,10 @@ zlink_config_result_t zlink_monitor_status (void *monitor_, zlink_monitor_status
     if (!handle.socket)
         return ZLINK_CONFIG_INVALID_HANDLE;
 
-    monitor_handler_state_t *state = find_monitor_handler_state (handle.socket);
+    //  The pin keeps the registry state alive for the whole snapshot call:
+    //  a concurrent monitor close waits for it before deleting the state.
+    monitor_state_pin_t pin (handle.socket);
+    monitor_handler_state_t *state = pin.get ();
     if (!state) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;

@@ -154,7 +154,8 @@ zlink_submit_result_t wire_submit_join_reply (mesh_node_t *node_,
                                               const rid_bytes_t &spot_rid_,
                                               uint64_t spot_generation_,
                                               const zlink_msg_t *parts_,
-                                              size_t part_count_);
+                                              size_t part_count_,
+                                              zlink_send_flags_t flags_);
 
 //  Sends a lookup verdict with the actor location fields.
 zlink_submit_result_t wire_submit_lookup_reply (mesh_node_t *node_,

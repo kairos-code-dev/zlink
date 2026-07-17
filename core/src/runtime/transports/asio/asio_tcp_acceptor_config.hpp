@@ -7,6 +7,7 @@
 #include "utils/config.hpp"
 
 #include <boost/asio/detail/socket_option.hpp>
+#include <boost/asio/error.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
 #include <cerrno>
@@ -19,6 +20,18 @@
 
 namespace zlink
 {
+//  Preserve the transport's real failure cause: EADDRINUSE is reserved for an
+//  actual address collision, every other acceptor failure keeps its own errno
+//  so the public bind result can classify it per the errno map.
+inline int acceptor_error_to_errno (const boost::system::error_code &ec_)
+{
+    if (ec_ == boost::asio::error::address_in_use)
+        return EADDRINUSE;
+    if (ec_.category () == boost::system::system_category () && ec_.value () != 0)
+        return ec_.value ();
+    return EINVAL;
+}
+
 template <typename acceptor_t, typename trace_fn_t>
 inline int configure_asio_tcp_acceptor (acceptor_t &acceptor_,
                                         const boost::asio::ip::tcp &protocol_,
@@ -33,7 +46,7 @@ inline int configure_asio_tcp_acceptor (acceptor_t &acceptor_,
     acceptor_.open (protocol_, ec);
     if (ec) {
         trace_fn_ ("open acceptor", ec, true);
-        errno = EADDRINUSE;
+        errno = acceptor_error_to_errno (ec);
         return -1;
     }
 
@@ -46,7 +59,7 @@ inline int configure_asio_tcp_acceptor (acceptor_t &acceptor_,
     if (ec) {
         trace_fn_ ("set reuse_address", ec, true);
         acceptor_.close ();
-        errno = EADDRINUSE;
+        errno = acceptor_error_to_errno (ec);
         return -1;
     }
 
@@ -76,7 +89,7 @@ inline int configure_asio_tcp_acceptor (acceptor_t &acceptor_,
     if (ec) {
         trace_fn_ ("bind", ec, true);
         acceptor_.close ();
-        errno = EADDRINUSE;
+        errno = acceptor_error_to_errno (ec);
         return -1;
     }
 
@@ -84,7 +97,7 @@ inline int configure_asio_tcp_acceptor (acceptor_t &acceptor_,
     if (ec) {
         trace_fn_ ("listen", ec, true);
         acceptor_.close ();
-        errno = EADDRINUSE;
+        errno = acceptor_error_to_errno (ec);
         return -1;
     }
 

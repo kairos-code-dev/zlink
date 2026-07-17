@@ -21,6 +21,10 @@ namespace
 struct operation_timeout_ctx_t
 {
     mesh_node_t *node;
+    //  Full operation identity: `high` carries the node lifecycle generation,
+    //  so a timer that outlives its node can never match an operation of a
+    //  recycled node address or serial.
+    uint64_t operation_high;
     uint64_t operation_low;
     std::shared_ptr<struct operation_timeout_gate_t> gate;
 };
@@ -65,6 +69,8 @@ void on_operation_timeout (void *userdata_)
           node->operations.find (ctx->operation_low);
         if (it == node->operations.end ())
             return;
+        if (it->second.id.high != ctx->operation_high)
+            return;
         op = it->second;
     }
     (void) complete_pending_operation (node, op, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT, NULL,
@@ -75,9 +81,15 @@ struct operation_timeout_guard_state_t
 {
     std::shared_ptr<operation_timeout_gate_t> gate;
     std::shared_ptr<zlink::request_timeout::task_t> task;
+    mesh_node_t *node;
+    uint64_t operation_high;
+    uint64_t operation_low;
     bool committed;
 
-    operation_timeout_guard_state_t () : committed (false) {}
+    operation_timeout_guard_state_t () :
+        node (NULL), operation_high (0), operation_low (0), committed (false)
+    {
+    }
 };
 
 }
@@ -86,9 +98,10 @@ namespace zlink
 {
 namespace mesh
 {
-operation_timeout_guard_t::operation_timeout_guard_t (mesh_node_t *node_,
-                                                      uint64_t operation_low_,
-                                                      uint32_t timeout_ms_) :
+operation_timeout_guard_t::operation_timeout_guard_t (
+  mesh_node_t *node_,
+  const zlink_mesh_operation_id_t &operation_id_,
+  uint32_t timeout_ms_) :
     _state (NULL),
     _valid (true)
 {
@@ -118,8 +131,12 @@ operation_timeout_guard_t::operation_timeout_guard_t (mesh_node_t *node_,
     try {
         state->gate = std::make_shared<operation_timeout_gate_t> ();
         ctx->node = node_;
-        ctx->operation_low = operation_low_;
+        ctx->operation_high = operation_id_.high;
+        ctx->operation_low = operation_id_.low;
         ctx->gate = state->gate;
+        state->node = node_;
+        state->operation_high = operation_id_.high;
+        state->operation_low = operation_id_.low;
         state->task = zlink::request_timeout::schedule (
           timeout_ms_, &on_operation_timeout, ctx.get (),
           &zlink::request_reply_runtime::destroy_timeout_callback_ctx<operation_timeout_ctx_t>);
@@ -165,6 +182,17 @@ void operation_timeout_guard_t::commit ()
       static_cast<operation_timeout_guard_state_t *> (_state);
     if (!state || state->committed)
         return;
+    //  Hand the task to the pending operation before the gate opens: from
+    //  that point terminal completion and node destroy own its cancellation,
+    //  so a committed timer cannot outlive the operation it may fire on.
+    {
+        std::lock_guard<std::mutex> lock (state->node->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator it =
+          state->node->operations.find (state->operation_low);
+        if (it != state->node->operations.end ()
+            && it->second.id.high == state->operation_high)
+            it->second.timeout_task = state->task;
+    }
     {
         std::lock_guard<std::mutex> lock (state->gate->mutex);
         state->gate->state = operation_timeout_gate_t::committed;

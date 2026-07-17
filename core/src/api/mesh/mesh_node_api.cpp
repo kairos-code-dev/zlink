@@ -106,7 +106,7 @@ operation_submission_t::operation_submission_t (
         return;
     _operation_id = register_operation (_node, kind_, requester_);
     _timeout = new (std::nothrow)
-      operation_timeout_guard_t (_node, _operation_id.low, timeout_ms_);
+      operation_timeout_guard_t (_node, _operation_id, timeout_ms_);
     if (!_timeout || !_timeout->valid ()) {
         std::lock_guard<std::mutex> lock (_node->mutex);
         _node->operations.erase (_operation_id.low);
@@ -573,6 +573,8 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
     if (!node)
         return ZLINK_CLOSE_INVALID_HANDLE;
 
+    std::vector<std::shared_ptr<zlink::request_timeout::task_t>>
+      orphaned_timeout_tasks;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         //  A shutdown in flight still owns this node past its drain wait
@@ -612,9 +614,20 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
                     it->second.domains[d].revoked = true;
             }
         }
+        for (std::unordered_map<uint64_t, pending_operation_t>::iterator it =
+               node->operations.begin ();
+             it != node->operations.end (); ++it) {
+            if (it->second.timeout_task)
+                orphaned_timeout_tasks.push_back (it->second.timeout_task);
+        }
         node->operations.clear ();
         node->cv.notify_all ();
     }
+
+    //  Cancel outside the node mutex: a firing timeout handler may be waiting
+    //  on that mutex, and cancel() waits for the handler to finish.
+    for (size_t i = 0; i < orphaned_timeout_tasks.size (); ++i)
+        zlink::request_timeout::cancel (orphaned_timeout_tasks[i]);
 
     //  Close the public entry door before tearing anything down, then wait
     //  for any pinned shutdown (validated but not yet returned) to leave

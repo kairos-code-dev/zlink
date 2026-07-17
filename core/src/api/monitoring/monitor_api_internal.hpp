@@ -23,7 +23,9 @@ struct monitor_handler_state_t
         stop (false),
         callback_depth (0),
         close_requested (false),
-        dispatch_task_id (0)
+        dispatch_task_id (0),
+        registry_pins (0),
+        unregistered (false)
     {
     }
 
@@ -37,6 +39,11 @@ struct monitor_handler_state_t
     std::atomic<bool> close_requested;
     zlink::mutex_t dispatch_sync;
     uint64_t dispatch_task_id;
+    //  Guarded by the registry mutex: readers pin the state through the
+    //  registry, and the unregister/delete path waits until every pin is
+    //  released before the storage goes away.
+    uint32_t registry_pins;
+    bool unregistered;
 };
 
 namespace zlink
@@ -58,7 +65,40 @@ monitor_handler_state_t *current_monitor_handler_state ();
 void *current_monitor_dispatch_handle ();
 }
 
-monitor_handler_state_t *find_monitor_handler_state (zlink::socket_base_t *socket_);
+//  Registry readers hold a pin for the whole time they dereference the
+//  returned state; a concurrent close waits for the pins to drain before it
+//  deletes the storage. Never call a state-deleting path while pinned.
+monitor_handler_state_t *pin_monitor_handler_state (zlink::socket_base_t *socket_);
+void unpin_monitor_handler_state (monitor_handler_state_t *state_);
+
+//  RAII wrapper for the pin contract above.
+class monitor_state_pin_t
+{
+  public:
+    explicit monitor_state_pin_t (zlink::socket_base_t *socket_) :
+        _state (pin_monitor_handler_state (socket_))
+    {
+    }
+    ~monitor_state_pin_t ()
+    {
+        if (_state)
+            unpin_monitor_handler_state (_state);
+    }
+    monitor_handler_state_t *get () const { return _state; }
+    void release ()
+    {
+        if (_state) {
+            unpin_monitor_handler_state (_state);
+            _state = NULL;
+        }
+    }
+
+  private:
+    monitor_handler_state_t *_state;
+    monitor_state_pin_t (const monitor_state_pin_t &);
+    monitor_state_pin_t &operator= (const monitor_state_pin_t &);
+};
+
 zlink::socket_base_t *raw_monitor_snapshot_subject (monitor_handler_state_t *state_);
 void clear_raw_monitor_snapshot_subjects (zlink::socket_base_t *source_);
 void unregister_monitor_handlers (zlink::socket_base_t *socket_);
@@ -70,9 +110,6 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
                                void *socket_handler_userdata_);
 
 int socket_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
-int spot_pub_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
-int spot_sub_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
-int spot_internal_receiver_monitor_snapshot_provider (void *subject_, zlink_monitor_status_t *out_);
 
 int recv_socket_monitor_event_unchecked (void *monitor_socket_,
                                          zlink_monitor_event_t *event_,

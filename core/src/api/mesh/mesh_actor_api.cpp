@@ -1280,7 +1280,6 @@ zlink_submit_result_t zlink_actor_join_reply (const zlink_mesh_reply_token_t *to
                                               size_t part_count_,
                                               zlink_send_flags_t flags_)
 try {
-    LIBZLINK_UNUSED (flags_);
     if (join_result_ != ZLINK_ACTOR_JOIN_ACCEPTED && join_result_ != ZLINK_ACTOR_JOIN_REJECTED) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -1485,7 +1484,7 @@ try {
         const zlink_submit_result_t rc =
           wire_submit_join_reply (node, remote_origin, remote_correlation, join_result_,
                                   remote_joined_spot, remote_joined_generation, parts_,
-                                  part_count_);
+                                  part_count_, flags_);
         std::lock_guard<std::mutex> lock (node->mutex);
         std::unordered_map<uint64_t, reply_route_t>::iterator it =
           node->reply_routes.find (serial);

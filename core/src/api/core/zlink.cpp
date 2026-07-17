@@ -128,30 +128,37 @@ zlink_close_result_t zlink_close (void *s_)
         errno = EBUSY;
         return ZLINK_CLOSE_BUSY;
     }
-    monitor_handler_state_t *monitor_state = find_monitor_handler_state (handle.socket);
-    zlink::socket_base_t *raw_monitor_source = raw_monitor_snapshot_subject (monitor_state);
-    if (monitor_state) {
-        if (zlink::current_monitor_handler_state () == monitor_state) {
-            monitor_state->close_requested.store (true, std::memory_order_release);
-            return ZLINK_CLOSE_OK;
-        }
+    //  The pin keeps the state alive while this close inspects it. It must be
+    //  released before unregister_monitor_handlers: the unregister path waits
+    //  for reader pins to drain before deleting the state.
+    zlink::socket_base_t *raw_monitor_source = NULL;
+    {
+        monitor_state_pin_t monitor_pin (handle.socket);
+        monitor_handler_state_t *monitor_state = monitor_pin.get ();
+        raw_monitor_source = raw_monitor_snapshot_subject (monitor_state);
+        if (monitor_state) {
+            if (zlink::current_monitor_handler_state () == monitor_state) {
+                monitor_state->close_requested.store (true, std::memory_order_release);
+                return ZLINK_CLOSE_OK;
+            }
 
-        const bool monitor_dispatch_detached =
-          !monitor_state->socket_handler.load (std::memory_order_acquire);
-        if (monitor_state->close_requested.load (std::memory_order_acquire)
-            || monitor_state->callback_depth.load (std::memory_order_acquire) > 0) {
-            if (!monitor_dispatch_detached) {
-                errno = EBUSY;
-                return ZLINK_CLOSE_BUSY;
+            const bool monitor_dispatch_detached =
+              !monitor_state->socket_handler.load (std::memory_order_acquire);
+            if (monitor_state->close_requested.load (std::memory_order_acquire)
+                || monitor_state->callback_depth.load (std::memory_order_acquire) > 0) {
+                if (!monitor_dispatch_detached) {
+                    errno = EBUSY;
+                    return ZLINK_CLOSE_BUSY;
+                }
             }
         }
-    }
 
-    if (raw_monitor_source && raw_monitor_source != handle.socket) {
-        monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
-        (void) raw_monitor_source->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
-    } else {
-        clear_raw_monitor_snapshot_subjects (handle.socket);
+        if (raw_monitor_source && raw_monitor_source != handle.socket) {
+            monitor_state->snapshot_subject.store (NULL, std::memory_order_release);
+            (void) raw_monitor_source->monitor (NULL, 0, 3, ZLINK_CORE_SOCKET_PAIR);
+        } else {
+            clear_raw_monitor_snapshot_subjects (handle.socket);
+        }
     }
 
     unregister_monitor_handlers (handle.socket);

@@ -64,6 +64,26 @@ void test_request_result_maps_to_canonical_errno ()
                            zlink::request_result_internal::to_errno (ZLINK_REQUEST_INVALID_STATE));
     TEST_ASSERT_EQUAL_INT (ENOTSUP,
                            zlink::request_result_internal::to_errno (ZLINK_REQUEST_NOT_SUPPORTED));
+    TEST_ASSERT_EQUAL_INT (
+      EAGAIN, zlink::request_result_internal::to_errno (ZLINK_REQUEST_BACKPRESSURED));
+}
+
+void test_request_errno_contract_matrix ()
+{
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_REJECTED,
+                           zlink::request_result_internal::from_errno (ECANCELED));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_CONFLICT,
+                           zlink::request_result_internal::from_errno (EEXIST));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_PROTOCOL_ERROR,
+                           zlink::request_result_internal::from_errno (ENOCOMPATPROTO));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_TERMINATED,
+                           zlink::request_result_internal::from_errno (ESHUTDOWN));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_INVALID_STATE,
+                           zlink::request_result_internal::from_errno (EALREADY));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_BACKPRESSURED,
+                           zlink::request_result_internal::from_errno (EAGAIN));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_BACKPRESSURED,
+                           zlink::request_result_internal::from_errno (ENOBUFS));
 }
 
 void test_config_unknown_errno_maps_to_internal_error ()
@@ -74,6 +94,24 @@ void test_config_unknown_errno_maps_to_internal_error ()
                            zlink::config_result_internal::from_errno (EBUSY));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_NOT_FOUND,
                            zlink::config_result_internal::from_errno (ENOENT));
+}
+
+void test_config_errno_contract_matrix ()
+{
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE,
+                           zlink::config_result_internal::from_errno (ESTALE));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE,
+                           zlink::config_result_internal::from_errno (EALREADY));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE,
+                           zlink::config_result_internal::from_errno (ENOTCONN));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE,
+                           zlink::config_result_internal::from_errno (ETIMEDOUT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_INVALID_STATE,
+                           zlink::config_result_internal::from_errno (EPROTO));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_CONFLICT,
+                           zlink::config_result_internal::from_errno (EEXIST));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_BUFFER_TOO_SMALL,
+                           zlink::config_result_internal::from_errno (ENOBUFS));
 }
 
 void test_handler_unknown_errno_maps_to_internal_error ()
@@ -90,6 +128,10 @@ void test_connect_bind_close_unknown_errno_map_to_internal_error ()
                            zlink::bind_result_internal::from_errno (EADDRNOTAVAIL));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_INTERNAL_ERROR,
                            zlink::close_result_internal::from_errno (EINTR));
+    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_NOT_SUPPORTED,
+                           zlink::bind_result_internal::from_errno (EPROTONOSUPPORT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_INVALID_HANDLE,
+                           zlink::close_result_internal::from_errno (ESTALE));
 }
 
 void test_connect_result_maps_peer_disconnect_errnos ()
@@ -99,6 +141,14 @@ void test_connect_result_maps_peer_disconnect_errnos ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_CONFLICT,
                            zlink::connect_result_internal::from_errno (EADDRINUSE));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_BUSY, zlink::connect_result_internal::from_errno (EBUSY));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_CONFLICT,
+                           zlink::connect_result_internal::from_errno (EEXIST));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_CONFLICT,
+                           zlink::connect_result_internal::from_errno (ESTALE));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_BUSY,
+                           zlink::connect_result_internal::from_errno (ESHUTDOWN));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_AUTH_FAILED,
+                           zlink::connect_result_internal::from_errno (EACCES));
 }
 
 void test_submit_unknown_errno_is_normalized ()
@@ -109,16 +159,56 @@ void test_submit_unknown_errno_is_normalized ()
                            zlink::submit_result_internal::from_errno (ENOMEM));
 }
 
+void test_submit_errno_contract_matrix ()
+{
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED,
+                           zlink::submit_result_internal::from_errno (ETIMEDOUT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED,
+                           zlink::submit_result_internal::from_errno (ENOBUFS));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_NOT_ADMITTED,
+                           zlink::submit_result_internal::from_errno (EACCES));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_INVALID_ARGUMENT,
+                           zlink::submit_result_internal::from_errno (EMSGSIZE));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_INVALID_STATE,
+                           zlink::submit_result_internal::from_errno (ESTALE));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_INVALID_STATE,
+                           zlink::submit_result_internal::from_errno (EALREADY));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_THREAD_VIOLATION,
+                           zlink::submit_result_internal::from_errno (EDEADLK));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_THREAD_VIOLATION,
+                           zlink::submit_result_internal::from_errno (EPERM));
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_SEQ_EXHAUSTED,
+                           zlink::submit_result_internal::from_request_submit_errno (EOVERFLOW));
+}
+
+void test_recv_errno_contract_matrix ()
+{
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_NO_DATA,
+                           zlink::recv_result_internal::from_errno (ETIMEDOUT));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_BUFFER_TOO_SMALL,
+                           zlink::recv_result_internal::from_errno (ENOBUFS));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_INVALID_STATE,
+                           zlink::recv_result_internal::from_errno (EINVAL));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_INVALID_STATE,
+                           zlink::recv_result_internal::from_errno (ESTALE));
+    TEST_ASSERT_EQUAL_INT (ZLINK_RECV_INVALID_STATE,
+                           zlink::recv_result_internal::from_errno (ESHUTDOWN));
+}
+
 int main (int argc, char *argv[])
 {
     UNITY_BEGIN ();
     RUN_TEST (test_recv_unknown_errno_maps_to_internal_error);
     RUN_TEST (test_request_unknown_errno_maps_to_internal_error);
     RUN_TEST (test_request_result_maps_to_canonical_errno);
+    RUN_TEST (test_request_errno_contract_matrix);
     RUN_TEST (test_config_unknown_errno_maps_to_internal_error);
+    RUN_TEST (test_config_errno_contract_matrix);
     RUN_TEST (test_handler_unknown_errno_maps_to_internal_error);
     RUN_TEST (test_connect_bind_close_unknown_errno_map_to_internal_error);
     RUN_TEST (test_connect_result_maps_peer_disconnect_errnos);
     RUN_TEST (test_submit_unknown_errno_is_normalized);
+    RUN_TEST (test_submit_errno_contract_matrix);
+    RUN_TEST (test_recv_errno_contract_matrix);
     return UNITY_END ();
 }

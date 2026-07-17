@@ -198,8 +198,8 @@ inline domain classify_domain (int err_)
 /* Submit control-flow maps to retry/backpressure style public results. */
 inline bool is_submit_control_flow (int err_)
 {
-    return err_ == EAGAIN || err_ == ENOTCONN || err_ == EHOSTUNREACH || err_ == ECONNREFUSED
-           || err_ == ENOENT || err_ == EINTR
+    return err_ == EAGAIN || err_ == ETIMEDOUT || err_ == ENOBUFS || err_ == ENOTCONN
+           || err_ == EHOSTUNREACH || err_ == ECONNREFUSED || err_ == EACCES || err_ == ENOENT
 #if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
            || err_ == EWOULDBLOCK
 #endif
@@ -215,14 +215,16 @@ inline bool is_submit_runtime_failure (int err_)
 /* Contract failure covers invalid handles, invalid arguments, and bad state. */
 inline bool is_submit_contract_failure (int err_)
 {
-    return err_ == EFAULT || err_ == EINVAL || err_ == ENOTSUP || err_ == EOPNOTSUPP || err_ == EFSM
-           || err_ == EMTHREAD;
+    return err_ == EFAULT || err_ == EINVAL || err_ == EMSGSIZE || err_ == ENOTSUP
+           || err_ == EOPNOTSUPP || err_ == EFSM || err_ == EBUSY || err_ == ESTALE
+           || err_ == EALREADY || err_ == EDEADLK || err_ == EPERM || err_ == EMTHREAD
+           || err_ == EOVERFLOW;
 }
 
 /* Internal submit failure covers allocation or internal protocol preparation. */
 inline bool is_submit_internal_failure (int err_)
 {
-    return err_ == ENOMEM || err_ == ENOBUFS || err_ == EPROTO;
+    return err_ == ENOMEM || err_ == EPROTO;
 }
 
 /* Would-block means the caller may retry according to the active policy. */

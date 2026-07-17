@@ -18,6 +18,7 @@ inline zlink_recv_result_t from_errno (int err_)
         case 0:
             return ZLINK_RECV_OK;
         case EAGAIN:
+        case ETIMEDOUT:
             return ZLINK_RECV_NO_DATA;
         case EBUSY:
             return ZLINK_RECV_BUSY;
@@ -25,6 +26,12 @@ inline zlink_recv_result_t from_errno (int err_)
             return ZLINK_RECV_TERMINATED;
         case EFAULT:
             return ZLINK_RECV_INVALID_HANDLE;
+        case ENOBUFS:
+            return ZLINK_RECV_BUFFER_TOO_SMALL;
+        case EINVAL:
+        case ESTALE:
+        case ESHUTDOWN:
+            return ZLINK_RECV_INVALID_STATE;
         default:
             return ZLINK_RECV_INTERNAL_ERROR;
     }

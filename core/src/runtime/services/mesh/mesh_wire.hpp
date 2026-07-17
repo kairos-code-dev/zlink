@@ -36,7 +36,9 @@ enum wire_type_t
     wire_transfer_ready = 30,
     wire_transfer_data = 31,
     wire_transfer_ack = 32,
-    wire_reply_relay = 33
+    wire_reply_relay = 33,
+    wire_transfer_seal = 34,
+    wire_transfer_complete = 35
 };
 
 //  Creates, configures and binds the node's ROUTER socket, resolves the
@@ -172,20 +174,38 @@ zlink_submit_result_t wire_submit_transfer_ready (mesh_node_t *node_,
                                                   const zlink_actor_ref_t &actor_,
                                                   uint64_t expected_epoch_,
                                                   uint64_t final_sequence_,
-                                                  uint8_t role_);
+                                                  uint8_t role_,
+                                                  uint64_t offered_messages_,
+                                                  uint64_t offered_bytes_,
+                                                  const std::vector<transfer_participant_descriptor_t>
+                                                    &participants_);
 zlink_submit_result_t wire_submit_transfer_data (mesh_node_t *node_,
                                                  const rid_bytes_t &peer_rid_,
                                                  const zlink_actor_transfer_id_t &transfer_id_,
+                                                 uint64_t participant_id_,
                                                  uint64_t sequence_,
                                                  const queued_record_t &record_,
                                                  uint64_t relay_serial_);
 zlink_submit_result_t wire_submit_transfer_ack (mesh_node_t *node_,
                                                 const rid_bytes_t &peer_rid_,
                                                 const zlink_actor_transfer_id_t &transfer_id_,
+                                                uint64_t participant_id_,
                                                 uint64_t high_water_);
+zlink_submit_result_t wire_submit_transfer_seal (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  const zlink_actor_transfer_id_t &transfer_id_,
+  bool response_,
+  const std::vector<transfer_participant_terminal_t> &terminals_);
+zlink_submit_result_t wire_submit_transfer_complete (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  const zlink_actor_transfer_id_t &transfer_id_);
 zlink_submit_result_t wire_submit_reply_relay (mesh_node_t *node_,
                                                const rid_bytes_t &peer_rid_,
                                                uint64_t relay_serial_,
+                                               int32_t terminal_result_,
+                                               int32_t failure_errno_,
                                                const zlink_msg_t *parts_,
                                                size_t part_count_);
 

@@ -41,18 +41,27 @@ void zlink::socket_base_t::clear_request_reply_state ()
 std::shared_ptr<zlink::part_helper_internal::handle_state_t>
 zlink::socket_base_t::part_helper_state () const
 {
-    return _request_reply_bridge.part_helper_state;
+    return std::atomic_load_explicit (&_request_reply_bridge.part_helper_state,
+                                      std::memory_order_acquire);
 }
 
-void zlink::socket_base_t::set_part_helper_state (
+std::shared_ptr<zlink::part_helper_internal::handle_state_t>
+zlink::socket_base_t::set_part_helper_state (
   const std::shared_ptr<zlink::part_helper_internal::handle_state_t> &state_)
 {
-    _request_reply_bridge.part_helper_state = state_;
+    std::shared_ptr<part_helper_internal::handle_state_t> expected;
+    if (std::atomic_compare_exchange_strong_explicit (
+          &_request_reply_bridge.part_helper_state, &expected, state_, std::memory_order_acq_rel,
+          std::memory_order_acquire))
+        return state_;
+    return expected;
 }
 
 void zlink::socket_base_t::clear_part_helper_state ()
 {
-    _request_reply_bridge.part_helper_state.reset ();
+    std::atomic_store_explicit (
+      &_request_reply_bridge.part_helper_state,
+      std::shared_ptr<part_helper_internal::handle_state_t> (), std::memory_order_release);
 }
 
 int zlink::socket_base_t::set_channel_name_metadata (const char *channel_name_)

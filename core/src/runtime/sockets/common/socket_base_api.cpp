@@ -373,5 +373,5 @@ int zlink::socket_base_t::socket_id () const
 
 bool zlink::socket_base_t::is_ctx_terminated () const
 {
-    return _ctx_terminated;
+    return _ctx_terminated.load (std::memory_order_acquire);
 }

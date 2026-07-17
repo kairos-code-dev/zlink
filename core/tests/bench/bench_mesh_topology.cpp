@@ -158,9 +158,17 @@ int run_peer (int index_, int endpoint_fd_)
                 memset (&requirements, 0, sizeof (requirements));
                 if (zlink_mesh_claim_recv_batch (&claim, batch, &requirements,
                                                  ZLINK_RECV_FLAGS_NONE)
-                      == ZLINK_RECV_OK
-                    && zlink_mesh_receive_batch_count (batch) > 0)
-                    got = true;
+                    == ZLINK_RECV_OK) {
+                    const size_t received_count = zlink_mesh_receive_batch_count (batch);
+                    const zlink_mesh_receive_record_t *received =
+                      zlink_mesh_receive_batch_data (batch);
+                    for (size_t r = 0; r < received_count; ++r) {
+                        if (received[r].kind == ZLINK_MESH_RECORD_SPOT_MULTICAST) {
+                            got = true;
+                            break;
+                        }
+                    }
+                }
                 zlink_mesh_claim_release (&claim);
                 zlink_mesh_receive_batch_reset (batch);
             }

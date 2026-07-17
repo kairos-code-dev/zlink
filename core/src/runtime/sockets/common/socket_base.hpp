@@ -288,7 +288,7 @@ class socket_base_t : public own_t,
       const std::shared_ptr<socket_reqrep_internal::socket_request_reply_state_t> &state_);
     void clear_request_reply_state ();
     std::shared_ptr<part_helper_internal::handle_state_t> part_helper_state () const;
-    void
+    std::shared_ptr<part_helper_internal::handle_state_t>
     set_part_helper_state (const std::shared_ptr<part_helper_internal::handle_state_t> &state_);
     void clear_part_helper_state ();
     int set_channel_name_metadata (const char *channel_name_);
@@ -495,7 +495,7 @@ class socket_base_t : public own_t,
     uint32_t _tag;
 
     //  If true, associated context was already terminated.
-    bool _ctx_terminated;
+    std::atomic<bool> _ctx_terminated;
 
     //  Parse URI string.
     static int parse_uri (const char *uri_, std::string &scheme_, std::string &path_);

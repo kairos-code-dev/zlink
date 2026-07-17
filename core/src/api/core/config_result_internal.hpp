@@ -24,9 +24,18 @@ inline zlink_config_result_t from_errno (int err_)
             return ZLINK_CONFIG_INVALID_ARGUMENT;
         case EBUSY:
         case ESHUTDOWN:
+        case ESTALE:
+        case EALREADY:
+        case ENOTCONN:
+        case ETIMEDOUT:
+        case EPROTO:
             return ZLINK_CONFIG_INVALID_STATE;
         case ENOENT:
             return ZLINK_CONFIG_NOT_FOUND;
+        case EEXIST:
+            return ZLINK_CONFIG_CONFLICT;
+        case ENOBUFS:
+            return ZLINK_CONFIG_BUFFER_TOO_SMALL;
         default:
             return ZLINK_CONFIG_INTERNAL_ERROR;
     }

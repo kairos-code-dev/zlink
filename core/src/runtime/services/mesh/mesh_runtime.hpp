@@ -269,9 +269,56 @@ struct actor_state_t
 
 //  --- actor transfer ---------------------------------------------------------
 
+struct transfer_participant_descriptor_t
+{
+    transfer_participant_descriptor_t () :
+        participant_id (0),
+        binding_generation (0),
+        allowance_messages (0),
+        allowance_bytes (0)
+    {
+    }
+
+    uint64_t participant_id;
+    uint64_t binding_generation;
+    uint64_t allowance_messages;
+    uint64_t allowance_bytes;
+};
+
+struct transfer_participant_terminal_t
+{
+    transfer_participant_terminal_t () : participant_id (0), high_water (0) {}
+
+    uint64_t participant_id;
+    uint64_t high_water;
+};
+
+struct transfer_participant_state_t
+{
+    transfer_participant_state_t () :
+        binding_generation (0),
+        allowance_messages (0),
+        allowance_bytes (0),
+        terminal_high_water (0),
+        acked_high_water (0),
+        staged_bytes (0),
+        terminal_sealed (false)
+    {
+    }
+
+    uint64_t binding_generation;
+    uint64_t allowance_messages;
+    uint64_t allowance_bytes;
+    uint64_t terminal_high_water;
+    uint64_t acked_high_water;
+    uint64_t staged_bytes;
+    bool terminal_sealed;
+    std::map<uint64_t, std::unique_ptr<queued_record_t>> staged;
+};
+
 //  One in-flight transfer on this node, keyed by the sealed token serial.
 //  The source keeps the authoritative frozen snapshot until its commit; the
-//  target stages records by sequence until activate publishes them.
+//  target stages the mailbox and each private participant independently.
 struct transfer_state_t
 {
     transfer_state_t ();
@@ -290,11 +337,19 @@ struct transfer_state_t
     uint64_t reserve_bytes;
     uint64_t deadline_ms; //  target: sealed prepare deadline (0 = none)
     bool ready_exchanged;
+    int32_t data_plane_result;
+    int32_t data_plane_errno;
     //  source: frozen mailbox in original FIFO order (1-based sequences)
     std::vector<std::unique_ptr<queued_record_t>> snapshot;
     uint64_t acked_high_water;
     //  target: staged records by sequence until activate
     std::map<uint64_t, std::unique_ptr<queued_record_t>> staged;
+    std::map<uint64_t, transfer_participant_state_t> participants;
+    uint64_t offered_participant_messages;
+    uint64_t offered_participant_bytes;
+    bool seal_requested;
+    bool source_complete;
+    bool complete_sent;
 };
 
 //  --- monitor ----------------------------------------------------------------
@@ -371,7 +426,8 @@ struct reply_route_t
     enum kind_t
     {
         kind_generic = 1,
-        kind_actor_join = 2
+        kind_actor_join = 2,
+        kind_transfer_relay = 3
     };
 
     reply_route_t () :

@@ -54,7 +54,9 @@ namespace mesh
 {
 uint64_t now_ms ()
 {
-    static clock_t clock;
+    //  clock_t caches its last TSC sample and is intentionally mutable. Mesh
+    //  control and ingress threads therefore need independent cache state.
+    static thread_local clock_t clock;
     return clock.now_ms ();
 }
 
@@ -188,7 +190,14 @@ transfer_state_t::transfer_state_t () :
     reserve_bytes (0),
     deadline_ms (0),
     ready_exchanged (false),
-    acked_high_water (0)
+    data_plane_result (ZLINK_REQUEST_OK),
+    data_plane_errno (0),
+    acked_high_water (0),
+    offered_participant_messages (0),
+    offered_participant_bytes (0),
+    seal_requested (false),
+    source_complete (false),
+    complete_sent (false)
 {
     memset (&transfer_id, 0, sizeof (transfer_id));
     memset (&actor, 0, sizeof (actor));

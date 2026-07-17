@@ -43,8 +43,7 @@ create_socket_owned_handle_state (void *handle_)
         return std::shared_ptr<zlink::part_helper_internal::handle_state_t> ();
     }
 
-    socket->set_part_helper_state (state);
-    return state;
+    return socket->set_part_helper_state (state);
 }
 
 }

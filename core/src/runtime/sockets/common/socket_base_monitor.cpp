@@ -493,6 +493,7 @@ zlink::socket_base_t *
 zlink::socket_base_t::detach_monitor_socket (bool send_monitor_stopped_event_)
 {
     monitor_runtime_t &monitor = monitor_runtime ();
+    scoped_lock_t lock (monitor.sync);
     if (monitor.socket) {
         monitor.events_atomic.store (0, std::memory_order_release);
         socket_base_t *monitor_socket = static_cast<socket_base_t *> (monitor.socket);

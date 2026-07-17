@@ -40,8 +40,11 @@ struct monitor_handler_registry_t
 
 monitor_handler_registry_t &monitor_handler_registry ()
 {
-    static monitor_handler_registry_t registry;
-    return registry;
+    //  Monitor callbacks may still be unwinding when a process exits after a
+    //  fatal test or application error. Keep the registry valid through
+    //  static teardown; normal monitor close still removes every entry.
+    static monitor_handler_registry_t *registry = new monitor_handler_registry_t ();
+    return *registry;
 }
 
 void stop_monitor_handler_state (monitor_handler_state_t *state_)

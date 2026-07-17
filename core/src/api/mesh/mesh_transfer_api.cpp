@@ -123,6 +123,42 @@ bool peer_admitted_locked (mesh_node_t *node_, const rid_bytes_t &rid_)
     return false;
 }
 
+bool same_routing_id (const zlink_routing_id_t &left_, const zlink_routing_id_t &right_)
+{
+    return left_.size == right_.size
+           && (left_.size == 0 || memcmp (left_.data, right_.data, left_.size) == 0);
+}
+
+bool same_record (const queued_record_t &left_, const queued_record_t &right_)
+{
+    if (left_.kind != right_.kind || left_.source_node_rid != right_.source_node_rid
+        || left_.source_spot_rid != right_.source_spot_rid
+        || strncmp (left_.source_actor.actor_id, right_.source_actor.actor_id,
+                    sizeof (left_.source_actor.actor_id))
+             != 0
+        || left_.source_actor.generation != right_.source_actor.generation
+        || !same_routing_id (left_.source_actor.node_rid, right_.source_actor.node_rid)
+        || left_.channel_name != right_.channel_name || left_.topic != right_.topic
+        || left_.has_metadata != right_.has_metadata
+        || left_.application_metadata != right_.application_metadata
+        || left_.operation_id.high != right_.operation_id.high
+        || left_.operation_id.low != right_.operation_id.low
+        || left_.operation_kind != right_.operation_kind || left_.kind_data != right_.kind_data
+        || left_.terminal_result != right_.terminal_result
+        || left_.failure_errno != right_.failure_errno || left_.parts.size () != right_.parts.size ())
+        return false;
+    for (size_t i = 0; i < left_.parts.size (); ++i) {
+        const size_t left_size = zlink_msg_size (&left_.parts[i]);
+        if (left_size != zlink_msg_size (&right_.parts[i])
+            || (left_size != 0
+                && memcmp (zlink_msg_data (const_cast<zlink_msg_t *> (&left_.parts[i])),
+                           zlink_msg_data (const_cast<zlink_msg_t *> (&right_.parts[i])), left_size)
+                     != 0))
+            return false;
+    }
+    return true;
+}
+
 //  Sends the frozen snapshot range (acked_high_water, final_sequence] to the
 //  target. Caller holds no locks; sequences are 1-based snapshot indices.
 void send_snapshot_from (mesh_node_t *node_, uint64_t serial_)
@@ -159,12 +195,88 @@ void send_snapshot_from (mesh_node_t *node_, uint64_t serial_)
                     relay_serial = reply_serial;
             }
         }
-        if (wire_submit_transfer_data (node_, peer, transfer_id, sequence, *record, relay_serial)
-            != ZLINK_SUBMIT_OK)
+        if (wire_submit_transfer_data (node_, peer, transfer_id, 0, sequence, *record,
+                                       relay_serial)
+            != ZLINK_SUBMIT_OK) {
+            const int failure_errno = errno;
+            int32_t result = ZLINK_REQUEST_INTERNAL_ERROR;
+            if (failure_errno == ENOTCONN)
+                result = ZLINK_REQUEST_NOT_CONNECTED;
+            else if (failure_errno == EAGAIN)
+                result = ZLINK_REQUEST_BACKPRESSURED;
+            transfer_control_view_t view;
+            bool first_failure = false;
+            {
+                std::lock_guard<std::mutex> lock (node_->mutex);
+                transfer_state_t *transfer = find_transfer_locked (node_, serial_);
+                if (!transfer)
+                    return;
+                first_failure = transfer->data_plane_errno == 0;
+                transfer->data_plane_result = result;
+                transfer->data_plane_errno = failure_errno;
+                view = control_view (*transfer);
+            }
+            if (first_failure)
+                emit_transfer_control (node_, view, ZLINK_ACTOR_TRANSFER_FENCED, result,
+                                       failure_errno);
             return; //  Retried on the next ACK or ready exchange.
+        }
         //  Optimistically continue; the ACK moves acked_high_water. To keep
         //  the loop bounded we send one record per ACK round-trip.
         return;
+    }
+}
+
+bool source_complete_locked (const transfer_state_t &transfer_)
+{
+    if (transfer_.role != ZLINK_ACTOR_TRANSFER_SOURCE || !transfer_.seal_requested
+        || transfer_.acked_high_water < transfer_.final_sequence)
+        return false;
+    for (std::map<uint64_t, transfer_participant_state_t>::const_iterator it =
+           transfer_.participants.begin ();
+         it != transfer_.participants.end (); ++it) {
+        if (!it->second.terminal_sealed
+            || it->second.acked_high_water < it->second.terminal_high_water)
+            return false;
+    }
+    return true;
+}
+
+bool target_complete_locked (const transfer_state_t &transfer_)
+{
+    if (transfer_.role != ZLINK_ACTOR_TRANSFER_TARGET || !transfer_.source_complete
+        || transfer_.acked_high_water < transfer_.final_sequence)
+        return false;
+    for (std::map<uint64_t, transfer_participant_state_t>::const_iterator it =
+           transfer_.participants.begin ();
+         it != transfer_.participants.end (); ++it) {
+        if (!it->second.terminal_sealed
+            || it->second.acked_high_water < it->second.terminal_high_water)
+            return false;
+    }
+    return true;
+}
+
+void send_complete_if_ready (mesh_node_t *node_, uint64_t serial_)
+{
+    zlink_actor_transfer_id_t transfer_id;
+    rid_bytes_t peer;
+    bool send = false;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        transfer_state_t *transfer = find_transfer_locked (node_, serial_);
+        if (transfer && source_complete_locked (*transfer) && !transfer->complete_sent) {
+            transfer->complete_sent = true;
+            transfer_id = transfer->transfer_id;
+            peer = transfer->peer_node_rid;
+            send = true;
+        }
+    }
+    if (send && wire_submit_transfer_complete (node_, peer, transfer_id) != ZLINK_SUBMIT_OK) {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        transfer_state_t *transfer = find_transfer_locked (node_, serial_);
+        if (transfer)
+            transfer->complete_sent = false;
     }
 }
 } // namespace
@@ -179,50 +291,114 @@ void transfer_handle_ready (mesh_node_t *node_,
                             const zlink_actor_ref_t &actor_,
                             uint64_t expected_epoch_,
                             uint64_t final_sequence_,
-                            uint8_t role_)
+                            uint8_t role_,
+                            uint64_t offered_messages_,
+                            uint64_t offered_bytes_,
+                            const std::vector<transfer_participant_descriptor_t>
+                              &participants_)
 {
-    LIBZLINK_UNUSED (actor_);
-    LIBZLINK_UNUSED (expected_epoch_);
-    LIBZLINK_UNUSED (final_sequence_);
     uint64_t serial = 0;
-    bool confirm = false;
+    zlink_actor_ref_t actor;
+    rid_bytes_t peer;
+    uint64_t expected = 0;
+    uint64_t final_sequence = 0;
+    bool source_confirm = false;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         transfer_state_t *transfer = find_transfer_by_id_locked (node_, transfer_id_);
-        if (!transfer || transfer->peer_node_rid != source_rid_)
+        if (!transfer || transfer->peer_node_rid != source_rid_
+            || transfer->expected_epoch != expected_epoch_
+            || transfer->final_sequence != final_sequence_
+            || transfer->actor.generation != actor_.generation
+            || strncmp (transfer->actor.actor_id, actor_.actor_id,
+                        sizeof (transfer->actor.actor_id))
+                 != 0)
             return;
-        transfer->ready_exchanged = true;
         serial = transfer->serial;
-        //  The target initiates; the source confirms and starts the data
-        //  plane. role_ names the sender's role.
-        confirm = transfer->role == ZLINK_ACTOR_TRANSFER_SOURCE
-                  && role_ == ZLINK_ACTOR_TRANSFER_TARGET;
-        node_->cv.notify_all ();
+        source_confirm = transfer->role == ZLINK_ACTOR_TRANSFER_SOURCE
+                         && role_ == ZLINK_ACTOR_TRANSFER_TARGET;
+        if (!source_confirm
+            && !(transfer->role == ZLINK_ACTOR_TRANSFER_TARGET
+                 && role_ == ZLINK_ACTOR_TRANSFER_SOURCE))
+            return;
+        actor = transfer->actor;
+        peer = transfer->peer_node_rid;
+        expected = transfer->expected_epoch;
+        final_sequence = transfer->final_sequence;
     }
-    if (confirm) {
-        zlink_actor_ref_t actor;
-        uint64_t expected = 0;
-        uint64_t final_sequence = 0;
-        rid_bytes_t peer;
+
+    if (source_confirm) {
+        std::vector<transfer_participant_descriptor_t> negotiated;
+        stream_sessions_negotiate_actor (node_, actor, serial, transfer_id_, peer,
+                                         offered_messages_, offered_bytes_, &negotiated);
         {
             std::lock_guard<std::mutex> lock (node_->mutex);
             transfer_state_t *transfer = find_transfer_locked (node_, serial);
-            if (!transfer)
+            if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_SOURCE)
                 return;
-            actor = transfer->actor;
-            expected = transfer->expected_epoch;
-            final_sequence = transfer->final_sequence;
-            peer = transfer->peer_node_rid;
+            transfer->participants.clear ();
+            for (size_t i = 0; i < negotiated.size (); ++i) {
+                transfer_participant_state_t &participant =
+                  transfer->participants[negotiated[i].participant_id];
+                participant.binding_generation = negotiated[i].binding_generation;
+                participant.allowance_messages = negotiated[i].allowance_messages;
+                participant.allowance_bytes = negotiated[i].allowance_bytes;
+            }
+            transfer->ready_exchanged = true;
+            node_->cv.notify_all ();
         }
         wire_submit_transfer_ready (node_, peer, transfer_id_, actor, expected, final_sequence,
-                                    ZLINK_ACTOR_TRANSFER_SOURCE);
+                                    ZLINK_ACTOR_TRANSFER_SOURCE, 0, 0, negotiated);
         send_snapshot_from (node_, serial);
+        return;
+    }
+
+    bool invalid_allowance = false;
+    uint64_t total_messages = 0;
+    uint64_t total_bytes = 0;
+    std::set<uint64_t> participant_ids;
+    for (size_t i = 0; i < participants_.size (); ++i) {
+        if (participants_[i].participant_id == 0 || participants_[i].binding_generation == 0
+            || participants_[i].allowance_messages == 0
+            || participants_[i].allowance_bytes == 0
+            || !participant_ids.insert (participants_[i].participant_id).second
+            || participants_[i].allowance_messages > UINT64_MAX - total_messages
+            || participants_[i].allowance_bytes > UINT64_MAX - total_bytes) {
+            invalid_allowance = true;
+            break;
+        }
+        total_messages += participants_[i].allowance_messages;
+        total_bytes += participants_[i].allowance_bytes;
+    }
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        transfer_state_t *transfer = find_transfer_locked (node_, serial);
+        if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_TARGET)
+            return;
+        if (invalid_allowance || total_messages > transfer->offered_participant_messages
+            || total_bytes > transfer->offered_participant_bytes) {
+            transfer->data_plane_result = invalid_allowance ? ZLINK_REQUEST_PROTOCOL_ERROR
+                                                            : ZLINK_REQUEST_BACKPRESSURED;
+            transfer->data_plane_errno = invalid_allowance ? EPROTO : ENOBUFS;
+        } else {
+            transfer->participants.clear ();
+            for (size_t i = 0; i < participants_.size (); ++i) {
+                transfer_participant_state_t &participant =
+                  transfer->participants[participants_[i].participant_id];
+                participant.binding_generation = participants_[i].binding_generation;
+                participant.allowance_messages = participants_[i].allowance_messages;
+                participant.allowance_bytes = participants_[i].allowance_bytes;
+            }
+        }
+        transfer->ready_exchanged = true;
+        node_->cv.notify_all ();
     }
 }
 
 void transfer_handle_data (mesh_node_t *node_,
                            const rid_bytes_t &source_rid_,
                            const zlink_actor_transfer_id_t &transfer_id_,
+                           uint64_t participant_id_,
                            uint64_t sequence_,
                            uint64_t relay_serial_,
                            std::unique_ptr<queued_record_t> *record_)
@@ -231,6 +407,9 @@ void transfer_handle_data (mesh_node_t *node_,
     rid_bytes_t peer;
     uint64_t ack = 0;
     bool send_ack = false;
+    bool protocol_failure = false;
+    transfer_control_view_t failure_view;
+    memset (&failure_view, 0, sizeof (failure_view));
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         transfer_state_t *transfer = find_transfer_by_id_locked (node_, transfer_id_);
@@ -239,18 +418,55 @@ void transfer_handle_data (mesh_node_t *node_,
             || (transfer->phase != ZLINK_ACTOR_TRANSFER_PREPARING
                 && transfer->phase != ZLINK_ACTOR_TRANSFER_COMMITTED))
             return;
-        if (sequence_ == 0 || sequence_ > transfer->final_sequence)
-            return;
+        std::map<uint64_t, std::unique_ptr<queued_record_t>> *staged_records = NULL;
+        transfer_participant_state_t *participant = NULL;
+        uint64_t sequence_limit = transfer->final_sequence;
+        if (participant_id_ == 0) {
+            staged_records = &transfer->staged;
+        } else {
+            std::map<uint64_t, transfer_participant_state_t>::iterator participant_it =
+              transfer->participants.find (participant_id_);
+            if (participant_it != transfer->participants.end ()) {
+                participant = &participant_it->second;
+                staged_records = &participant->staged;
+                sequence_limit = participant->allowance_messages;
+            }
+        }
+        if (!staged_records || sequence_ == 0 || sequence_ > sequence_limit) {
+            transfer->data_plane_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+            transfer->data_plane_errno = EPROTO;
+            failure_view = control_view (*transfer);
+            protocol_failure = true;
+        }
         //  Same-key retransmissions stage once; a different payload for the
         //  same key is a protocol failure surfaced as a control record.
         std::map<uint64_t, std::unique_ptr<queued_record_t>>::iterator staged =
-          transfer->staged.find (sequence_);
-        if (staged == transfer->staged.end ()) {
+          staged_records ? staged_records->find (sequence_)
+                         : std::map<uint64_t, std::unique_ptr<queued_record_t>>::iterator ();
+        if (!protocol_failure && staged != staged_records->end ()
+            && !same_record (*staged->second, **record_)) {
+            transfer->data_plane_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+            transfer->data_plane_errno = EPROTO;
+            failure_view = control_view (*transfer);
+            protocol_failure = true;
+        }
+        if (!protocol_failure && staged == staged_records->end ()) {
+            if (participant
+                && (*record_)->byte_size > participant->allowance_bytes
+                                             - participant->staged_bytes) {
+                transfer->data_plane_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+                transfer->data_plane_errno = EPROTO;
+                failure_view = control_view (*transfer);
+                protocol_failure = true;
+            }
+        }
+        if (!protocol_failure && staged == staged_records->end ()) {
             //  Reseal the reply route against this node so the transferred
             //  request replies through the source relay.
             if (relay_serial_ != 0) {
                 const uint64_t reply_serial = node_->next_reply_serial++;
                 reply_route_t route;
+                route.kind = reply_route_t::kind_transfer_relay;
                 route.requester = node_owner ();
                 route.requester_node_generation = node_->lifecycle_generation;
                 route.operation_kind = (*record_)->operation_kind;
@@ -262,45 +478,194 @@ void transfer_handle_data (mesh_node_t *node_,
                 (*record_)->has_reply_token = true;
                 seal_reply_token (node_, reply_serial, &(*record_)->reply_token);
             }
-            transfer->staged[sequence_] = std::move (*record_);
+            if (participant)
+                participant->staged_bytes += (*record_)->byte_size;
+            (*staged_records)[sequence_] = std::move (*record_);
         }
         //  Contiguous staged high-water.
-        uint64_t high = 0;
-        while (transfer->staged.count (high + 1))
-            ++high;
-        transfer->acked_high_water = high;
-        ack = high;
-        peer = transfer->peer_node_rid;
-        send_ack = true;
+        if (!protocol_failure) {
+            uint64_t high = 0;
+            while (staged_records->count (high + 1))
+                ++high;
+            if (participant)
+                participant->acked_high_water = high;
+            else
+                transfer->acked_high_water = high;
+            ack = high;
+            peer = transfer->peer_node_rid;
+            send_ack = true;
+        }
         node_->cv.notify_all ();
     }
-    if (send_ack)
-        wire_submit_transfer_ack (node_, peer, transfer_id, ack);
+    if (protocol_failure)
+        emit_transfer_control (node_, failure_view, ZLINK_ACTOR_TRANSFER_PREPARING,
+                               ZLINK_REQUEST_PROTOCOL_ERROR, EPROTO);
+    if (send_ack
+        && wire_submit_transfer_ack (node_, peer, transfer_id, participant_id_, ack)
+             != ZLINK_SUBMIT_OK) {
+        const int failure_errno = errno;
+        transfer_control_view_t view;
+        bool emit = false;
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            transfer_state_t *transfer = find_transfer_by_id_locked (node_, transfer_id_);
+            if (transfer && transfer->data_plane_errno == 0) {
+                transfer->data_plane_result =
+                  failure_errno == ENOTCONN ? ZLINK_REQUEST_NOT_CONNECTED
+                                            : ZLINK_REQUEST_INTERNAL_ERROR;
+                transfer->data_plane_errno = failure_errno;
+                view = control_view (*transfer);
+                emit = true;
+            }
+        }
+        if (emit)
+            emit_transfer_control (node_, view, ZLINK_ACTOR_TRANSFER_PREPARING,
+                                   failure_errno == ENOTCONN ? ZLINK_REQUEST_NOT_CONNECTED
+                                                             : ZLINK_REQUEST_INTERNAL_ERROR,
+                                   failure_errno);
+    }
 }
 
 void transfer_handle_ack (mesh_node_t *node_,
                           const rid_bytes_t &source_rid_,
                           const zlink_actor_transfer_id_t &transfer_id_,
+                          uint64_t participant_id_,
                           uint64_t high_water_)
 {
     uint64_t serial = 0;
+    zlink_actor_ref_t actor;
+    bool participant_ack = false;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         transfer_state_t *transfer = find_transfer_by_id_locked (node_, transfer_id_);
         if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_SOURCE
             || transfer->peer_node_rid != source_rid_)
             return;
-        if (high_water_ > transfer->acked_high_water)
-            transfer->acked_high_water = high_water_;
+        if (participant_id_ == 0) {
+            if (high_water_ > transfer->final_sequence) {
+                transfer->data_plane_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+                transfer->data_plane_errno = EPROTO;
+                return;
+            }
+            if (high_water_ > transfer->acked_high_water)
+                transfer->acked_high_water = high_water_;
+        } else {
+            std::map<uint64_t, transfer_participant_state_t>::iterator participant =
+              transfer->participants.find (participant_id_);
+            if (participant == transfer->participants.end ()
+                || high_water_ > participant->second.allowance_messages) {
+                transfer->data_plane_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+                transfer->data_plane_errno = EPROTO;
+                return;
+            }
+            if (high_water_ > participant->second.acked_high_water)
+                participant->second.acked_high_water = high_water_;
+            participant_ack = true;
+            actor = transfer->actor;
+        }
         serial = transfer->serial;
         node_->cv.notify_all ();
     }
-    send_snapshot_from (node_, serial);
+    if (participant_ack)
+        stream_sessions_ack_actor (node_, actor, serial, participant_id_, high_water_);
+    else
+        send_snapshot_from (node_, serial);
+    send_complete_if_ready (node_, serial);
+}
+
+void transfer_handle_seal (
+  mesh_node_t *node_,
+  const rid_bytes_t &source_rid_,
+  const zlink_actor_transfer_id_t &transfer_id_,
+  bool response_,
+  const std::vector<transfer_participant_terminal_t> &terminals_)
+{
+    uint64_t serial = 0;
+    zlink_actor_ref_t actor;
+    rid_bytes_t peer;
+    if (!response_) {
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            transfer_state_t *transfer = find_transfer_by_id_locked (node_, transfer_id_);
+            if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_SOURCE
+                || transfer->peer_node_rid != source_rid_)
+                return;
+            serial = transfer->serial;
+            actor = transfer->actor;
+            peer = transfer->peer_node_rid;
+        }
+        std::vector<transfer_participant_terminal_t> sealed;
+        stream_sessions_seal_actor (node_, actor, serial, &sealed);
+        {
+            std::lock_guard<std::mutex> lock (node_->mutex);
+            transfer_state_t *transfer = find_transfer_locked (node_, serial);
+            if (!transfer)
+                return;
+            transfer->seal_requested = true;
+            for (size_t i = 0; i < sealed.size (); ++i) {
+                std::map<uint64_t, transfer_participant_state_t>::iterator participant =
+                  transfer->participants.find (sealed[i].participant_id);
+                if (participant == transfer->participants.end ()
+                    || sealed[i].high_water > participant->second.allowance_messages) {
+                    transfer->data_plane_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+                    transfer->data_plane_errno = EPROTO;
+                    return;
+                }
+                participant->second.terminal_high_water = sealed[i].high_water;
+                participant->second.terminal_sealed = true;
+            }
+        }
+        (void) wire_submit_transfer_seal (node_, peer, transfer_id_, true, sealed);
+        send_complete_if_ready (node_, serial);
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        transfer_state_t *transfer = find_transfer_by_id_locked (node_, transfer_id_);
+        if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_TARGET
+            || transfer->peer_node_rid != source_rid_)
+            return;
+        std::set<uint64_t> seen;
+        bool invalid = terminals_.size () != transfer->participants.size ();
+        for (size_t i = 0; !invalid && i < terminals_.size (); ++i) {
+            std::map<uint64_t, transfer_participant_state_t>::iterator participant =
+              transfer->participants.find (terminals_[i].participant_id);
+            if (participant == transfer->participants.end ()
+                || !seen.insert (terminals_[i].participant_id).second
+                || terminals_[i].high_water > participant->second.allowance_messages) {
+                invalid = true;
+                break;
+            }
+            participant->second.terminal_high_water = terminals_[i].high_water;
+            participant->second.terminal_sealed = true;
+        }
+        if (invalid) {
+            transfer->data_plane_result = ZLINK_REQUEST_PROTOCOL_ERROR;
+            transfer->data_plane_errno = EPROTO;
+        }
+        node_->cv.notify_all ();
+    }
+}
+
+void transfer_handle_complete (mesh_node_t *node_,
+                               const rid_bytes_t &source_rid_,
+                               const zlink_actor_transfer_id_t &transfer_id_)
+{
+    std::lock_guard<std::mutex> lock (node_->mutex);
+    transfer_state_t *transfer = find_transfer_by_id_locked (node_, transfer_id_);
+    if (!transfer || transfer->role != ZLINK_ACTOR_TRANSFER_TARGET
+        || transfer->peer_node_rid != source_rid_)
+        return;
+    transfer->source_complete = true;
+    node_->cv.notify_all ();
 }
 
 void transfer_handle_reply_relay (mesh_node_t *node_,
                                   const rid_bytes_t &source_rid_,
                                   uint64_t relay_serial_,
+                                  int32_t terminal_result_,
+                                  int32_t failure_errno_,
                                   std::vector<zlink_msg_t> *parts_)
 {
     {
@@ -308,7 +673,8 @@ void transfer_handle_reply_relay (mesh_node_t *node_,
         if (!peer_admitted_locked (node_, source_rid_))
             return;
     }
-    (void) deliver_reply_via_route (node_, relay_serial_, parts_);
+    (void) deliver_reply_via_route (node_, relay_serial_, terminal_result_, failure_errno_,
+                                    parts_);
 }
 }
 }
@@ -351,6 +717,8 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
     const uint64_t deadline = timeout_ms_ > 0 ? now_ms () + timeout_ms_ : 0;
 
     uint64_t serial = 0;
+    uint64_t offered_participant_messages = 0;
+    uint64_t offered_participant_bytes = 0;
     if (prepare_->role == ZLINK_ACTOR_TRANSFER_SOURCE) {
         std::unique_lock<std::mutex> lock (node->mutex);
         if (node->state == ZLINK_MESH_NODE_DRAINING || node->state == ZLINK_MESH_NODE_STOPPED) {
@@ -435,6 +803,7 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
 
         const transfer_control_view_t view = control_view (transfer);
         lock.unlock ();
+        stream_sessions_fence_actor (node, view.actor, serial);
         emit_transfer_control (node, view, ZLINK_ACTOR_TRANSFER_FENCED, ZLINK_REQUEST_OK, 0);
         return ZLINK_REQUEST_OK;
     }
@@ -482,6 +851,12 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
         transfer.reserve_messages = prepare_->reserve_message_count;
         transfer.reserve_bytes = prepare_->reserve_byte_count;
         transfer.deadline_ms = deadline;
+        transfer.offered_participant_messages = std::min<uint64_t> (
+          64, node->effective_message_budget () - prepare_->reserve_message_count);
+        transfer.offered_participant_bytes = std::min<uint64_t> (
+          1024 * 1024, node->effective_byte_budget () - prepare_->reserve_byte_count);
+        offered_participant_messages = transfer.offered_participant_messages;
+        offered_participant_bytes = transfer.offered_participant_bytes;
         node->active_transfer_by_actor[actor_id] = serial;
 
         //  Placeholder actor: owns the staged mailbox and the transfer
@@ -498,9 +873,12 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
 
     //  Readiness exchange outside the lock: target announces, source
     //  confirms and starts sending the snapshot.
-    wire_submit_transfer_ready (node, peer, prepare_->transfer_id, prepare_->actor,
-                                prepare_->expected_membership_epoch, prepare_->final_sequence,
-                                ZLINK_ACTOR_TRANSFER_TARGET);
+    const std::vector<transfer_participant_descriptor_t> no_participants;
+    wire_submit_transfer_ready (
+      node, peer, prepare_->transfer_id, prepare_->actor,
+      prepare_->expected_membership_epoch, prepare_->final_sequence,
+      ZLINK_ACTOR_TRANSFER_TARGET, offered_participant_messages,
+      offered_participant_bytes, no_participants);
     {
         std::unique_lock<std::mutex> lock (node->mutex);
         transfer_state_t *transfer = find_transfer_locked (node, serial);
@@ -521,6 +899,17 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
         if (!transfer) {
             errno = ESTALE;
             return ZLINK_REQUEST_INVALID_STATE;
+        }
+        if (transfer->data_plane_errno != 0) {
+            const int failure_errno = transfer->data_plane_errno;
+            const int32_t result = transfer->data_plane_result;
+            node->active_transfer_by_actor.erase (actor_id);
+            node->owners.erase (actor_owner (actor_id, prepare_->actor.generation));
+            node->actors.erase (actor_id);
+            node->transfers.erase (serial);
+            errno = failure_errno;
+            return result == ZLINK_REQUEST_BACKPRESSURED ? ZLINK_REQUEST_BACKPRESSURED
+                                                         : ZLINK_REQUEST_PROTOCOL_ERROR;
         }
 
         init_versioned (result_out_);
@@ -554,6 +943,9 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
     }
 
     bool source_commit = false;
+    zlink_actor_ref_t session_actor;
+    memset (&session_actor, 0, sizeof (session_actor));
+    rid_bytes_t session_target_node;
     transfer_control_view_t control_copy;
     memset (&control_copy, 0, sizeof (control_copy));
     {
@@ -586,14 +978,60 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
                 errno = EALREADY;
                 return ZLINK_CONFIG_INVALID_STATE;
             }
-            //  All frozen records must be staged contiguously first; the
-            //  data plane keeps running, so wait inside the sealed deadline.
-            while (transfer->acked_high_water < transfer->final_sequence) {
+            if (!transfer->seal_requested) {
+                transfer->seal_requested = true;
+                const rid_bytes_t seal_peer = transfer->peer_node_rid;
+                const zlink_actor_transfer_id_t seal_id = transfer->transfer_id;
+                lock.unlock ();
+                const std::vector<transfer_participant_terminal_t> no_terminals;
+                const zlink_submit_result_t seal_result = wire_submit_transfer_seal (
+                  node, seal_peer, seal_id, false, no_terminals);
+                const int seal_errno = errno;
+                lock.lock ();
+                transfer = find_transfer_locked (node, serial);
+                if (!transfer) {
+                    errno = ESTALE;
+                    return ZLINK_CONFIG_INVALID_STATE;
+                }
+                if (seal_result != ZLINK_SUBMIT_OK) {
+                    transfer->seal_requested = false;
+                    transfer->data_plane_result =
+                      seal_errno == ENOTCONN ? ZLINK_REQUEST_NOT_CONNECTED
+                                             : ZLINK_REQUEST_INTERNAL_ERROR;
+                    transfer->data_plane_errno = seal_errno;
+                }
+            }
+            //  Frozen mailbox and all STREAM participants must reach their
+            //  contiguous terminal high-water, and the source must observe
+            //  every ACK before target commit can publish the reservation.
+            while (!target_complete_locked (*transfer)) {
+                if (transfer->data_plane_errno != 0) {
+                    const int failure_errno = transfer->data_plane_errno;
+                    const int32_t result = transfer->data_plane_result;
+                    const transfer_control_view_t view = control_view (*transfer);
+                    lock.unlock ();
+                    emit_transfer_control (node, view, ZLINK_ACTOR_TRANSFER_PREPARING, result,
+                                           failure_errno);
+                    errno = failure_errno;
+                    return ZLINK_CONFIG_INVALID_STATE;
+                }
                 if (!peer_admitted_locked (node, transfer->peer_node_rid)) {
+                    transfer->data_plane_result = ZLINK_REQUEST_NOT_CONNECTED;
+                    transfer->data_plane_errno = ENOTCONN;
+                    const transfer_control_view_t view = control_view (*transfer);
+                    lock.unlock ();
+                    emit_transfer_control (node, view, ZLINK_ACTOR_TRANSFER_PREPARING,
+                                           ZLINK_REQUEST_NOT_CONNECTED, ENOTCONN);
                     errno = ENOTCONN;
                     return ZLINK_CONFIG_INVALID_STATE;
                 }
                 if (transfer->deadline_ms != 0 && now_ms () >= transfer->deadline_ms) {
+                    transfer->data_plane_result = ZLINK_REQUEST_TIMED_OUT;
+                    transfer->data_plane_errno = ETIMEDOUT;
+                    const transfer_control_view_t view = control_view (*transfer);
+                    lock.unlock ();
+                    emit_transfer_control (node, view, ZLINK_ACTOR_TRANSFER_PREPARING,
+                                           ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT);
                     errno = ETIMEDOUT;
                     return ZLINK_CONFIG_INVALID_STATE;
                 }
@@ -619,6 +1057,8 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
             //  Source commit: the framework confirmed target activation.
             //  Remove the old route/admission and release the snapshot.
             source_commit = true;
+            session_actor = transfer->actor;
+            session_target_node = transfer->peer_node_rid;
             transfer->committed_epoch = new_membership_epoch_;
             transfer->phase = ZLINK_ACTOR_TRANSFER_COMMITTED;
             transfer->snapshot.clear ();
@@ -640,9 +1080,11 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
             control_copy = control_view (*transfer);
         }
     }
+    if (source_commit)
+        stream_sessions_commit_actor (node, session_actor, serial, session_target_node,
+                                      new_membership_epoch_);
     emit_transfer_control (node, control_copy, ZLINK_ACTOR_TRANSFER_COMMITTED, ZLINK_REQUEST_OK,
                            0);
-    LIBZLINK_UNUSED (source_commit);
     return ZLINK_CONFIG_OK;
 }
 
@@ -699,6 +1141,18 @@ zlink_mesh_node_actor_transfer_activate (const zlink_actor_transfer_token_t *tok
                 mailbox.records.push_back (std::move (staged->second));
             }
             transfer->staged.clear ();
+            for (std::map<uint64_t, transfer_participant_state_t>::iterator participant =
+                   transfer->participants.begin ();
+                 participant != transfer->participants.end (); ++participant) {
+                for (std::map<uint64_t, std::unique_ptr<queued_record_t>>::iterator staged =
+                       participant->second.staged.begin ();
+                     staged != participant->second.staged.end (); ++staged) {
+                    mailbox.pending_messages += 1;
+                    mailbox.pending_bytes += staged->second->byte_size;
+                    mailbox.records.push_back (std::move (staged->second));
+                }
+                participant->second.staged.clear ();
+            }
             if (!mailbox.records.empty ()) {
                 node->ready.insert (
                   std::make_pair (ready_owner, static_cast<int> (domain_application)));
@@ -734,6 +1188,9 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
     memset (&control_copy, 0, sizeof (control_copy));
     owner_id_t ready_owner;
     bool publish_ready = false;
+    bool source_abort = false;
+    zlink_actor_ref_t session_actor;
+    memset (&session_actor, 0, sizeof (session_actor));
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         transfer_state_t *transfer = find_transfer_locked (node, serial);
@@ -752,6 +1209,8 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
 
         const std::string id (transfer->actor.actor_id);
         if (transfer->role == ZLINK_ACTOR_TRANSFER_SOURCE) {
+            source_abort = true;
+            session_actor = transfer->actor;
             //  Restore: the frozen snapshot returns to the mailbox in order
             //  and the fence lifts.
             const owner_id_t owner = actor_owner (id, transfer->actor.generation);
@@ -778,6 +1237,10 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
         } else {
             //  Target abort discards staged copies and the placeholder.
             transfer->staged.clear ();
+            for (std::map<uint64_t, transfer_participant_state_t>::iterator participant =
+                   transfer->participants.begin ();
+                 participant != transfer->participants.end (); ++participant)
+                participant->second.staged.clear ();
             std::map<std::string, actor_state_t>::iterator actor_it = node->actors.find (id);
             if (actor_it != node->actors.end ()
                 && actor_it->second.generation == transfer->actor.generation
@@ -789,6 +1252,8 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
         node->cv.notify_all ();
         control_copy = control_view (*transfer);
     }
+    if (source_abort)
+        stream_sessions_abort_actor (node, session_actor, serial);
     if (publish_ready)
         signal_ready (node, ready_owner, domain_application);
     emit_transfer_control (node, control_copy, ZLINK_ACTOR_TRANSFER_ABORTED, ZLINK_REQUEST_OK, 0);

@@ -36,6 +36,7 @@ struct iovec
 #include "api/mesh/mesh_api_internal.hpp"
 #include "api/socket/socket_request_reply_router_state_internal.hpp"
 #include "api/socket/socket_api_internal.hpp"
+#include "api/mesh/mesh_stream_session_internal.hpp"
 #include "api/socket/socket_request_reply_internal.hpp"
 #include "api/core/close_result_internal.hpp"
 #include "api/core/config_result_internal.hpp"
@@ -110,6 +111,10 @@ zlink_close_result_t zlink_close (void *s_)
     socket_handle_t handle = as_socket_handle (s_);
     if (!handle.socket)
         return ZLINK_CLOSE_INVALID_HANDLE;
+    if (zlink::mesh::stream_session_owns_socket (s_)) {
+        errno = EBUSY;
+        return ZLINK_CLOSE_BUSY;
+    }
 
     std::shared_ptr<zlink::socket_reqrep_internal::socket_request_reply_state_t>
       request_reply_state = zlink::socket_reqrep_internal::find_request_reply_state (handle);

@@ -699,7 +699,11 @@ namespace mesh
 //  Relay delivery for transferred requests: consumes the route serial and
 //  forwards the reply parts to the original requester (local completion or
 //  another wire hop). Takes ownership of parts_ on success.
-int deliver_reply_via_route (mesh_node_t *node_, uint64_t serial_, std::vector<zlink_msg_t> *parts_)
+int deliver_reply_via_route (mesh_node_t *node_,
+                             uint64_t serial_,
+                             int32_t terminal_result_,
+                             int32_t failure_errno_,
+                             std::vector<zlink_msg_t> *parts_)
 {
     pending_operation_t op;
     bool remote = false;
@@ -736,12 +740,12 @@ int deliver_reply_via_route (mesh_node_t *node_, uint64_t serial_, std::vector<z
     }
     if (remote) {
         const zlink_submit_result_t rc = wire_submit_reply (
-          node_, remote_origin, remote_correlation, ZLINK_REQUEST_OK, 0,
+          node_, remote_origin, remote_correlation, terminal_result_, failure_errno_,
           parts_->empty () ? NULL : &(*parts_)[0], parts_->size ());
         return rc == ZLINK_SUBMIT_OK ? 0 : -1;
     }
     if (deliver_local)
-        complete_operation (node_, op, ZLINK_REQUEST_OK, 0, NULL,
+        complete_operation (node_, op, terminal_result_, failure_errno_, NULL,
                             parts_->empty () ? NULL : parts_);
     return 0;
 }
@@ -770,6 +774,7 @@ zlink_submit_result_t zlink_mesh_reply (const zlink_mesh_reply_token_t *token_,
 
     pending_operation_t op;
     bool remote = false;
+    bool transfer_relay = false;
     rid_bytes_t remote_origin;
     uint64_t remote_correlation = 0;
     {
@@ -780,7 +785,8 @@ zlink_submit_result_t zlink_mesh_reply (const zlink_mesh_reply_token_t *token_,
             return ZLINK_SUBMIT_INVALID_STATE;
         }
         reply_route_t &route = it->second;
-        if (route.kind != reply_route_t::kind_generic) {
+        if (route.kind != reply_route_t::kind_generic
+            && route.kind != reply_route_t::kind_transfer_relay) {
             errno = EINVAL;
             return ZLINK_SUBMIT_INVALID_ARGUMENT;
         }
@@ -799,6 +805,7 @@ zlink_submit_result_t zlink_mesh_reply (const zlink_mesh_reply_token_t *token_,
             remote = true;
             remote_origin = route.origin_rid;
             remote_correlation = route.origin_correlation;
+            transfer_relay = route.kind == reply_route_t::kind_transfer_relay;
         } else {
             std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
               node->operations.find (route.operation_id.low);
@@ -815,9 +822,13 @@ zlink_submit_result_t zlink_mesh_reply (const zlink_mesh_reply_token_t *token_,
         }
     }
 
-    if (remote)
+    if (remote) {
+        if (transfer_relay)
+            return wire_submit_reply_relay (node, remote_origin, remote_correlation,
+                                            ZLINK_REQUEST_OK, 0, parts_, part_count_);
         return wire_submit_reply (node, remote_origin, remote_correlation, ZLINK_REQUEST_OK, 0,
                                   parts_, part_count_);
+    }
 
     //  Borrowed input: reference the payload without consuming caller parts.
     std::vector<zlink_msg_t> reply_parts (part_count_);

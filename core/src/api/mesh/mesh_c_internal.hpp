@@ -97,25 +97,79 @@ void transfer_handle_ready (mesh_node_t *node_,
                             const zlink_actor_ref_t &actor_,
                             uint64_t expected_epoch_,
                             uint64_t final_sequence_,
-                            uint8_t role_);
+                            uint8_t role_,
+                            uint64_t offered_messages_,
+                            uint64_t offered_bytes_,
+                            const std::vector<transfer_participant_descriptor_t>
+                              &participants_);
 void transfer_handle_data (mesh_node_t *node_,
                            const rid_bytes_t &source_rid_,
                            const zlink_actor_transfer_id_t &transfer_id_,
+                           uint64_t participant_id_,
                            uint64_t sequence_,
                            uint64_t relay_serial_,
                            std::unique_ptr<queued_record_t> *record_);
 void transfer_handle_ack (mesh_node_t *node_,
                           const rid_bytes_t &source_rid_,
                           const zlink_actor_transfer_id_t &transfer_id_,
+                          uint64_t participant_id_,
                           uint64_t high_water_);
+void transfer_handle_seal (
+  mesh_node_t *node_,
+  const rid_bytes_t &source_rid_,
+  const zlink_actor_transfer_id_t &transfer_id_,
+  bool response_,
+  const std::vector<transfer_participant_terminal_t> &terminals_);
+void transfer_handle_complete (mesh_node_t *node_,
+                               const rid_bytes_t &source_rid_,
+                               const zlink_actor_transfer_id_t &transfer_id_);
 void transfer_handle_reply_relay (mesh_node_t *node_,
                                   const rid_bytes_t &source_rid_,
                                   uint64_t relay_serial_,
+                                  int32_t terminal_result_,
+                                  int32_t failure_errno_,
                                   std::vector<zlink_msg_t> *parts_);
+
+//  STREAM session transfer hooks. The session service owns binding barriers;
+//  the Actor transfer lifecycle only announces authority transitions.
+void stream_sessions_fence_actor (mesh_node_t *node_,
+                                  const zlink_actor_ref_t &actor_,
+                                  uint64_t transfer_serial_);
+void stream_sessions_negotiate_actor (
+  mesh_node_t *node_,
+  const zlink_actor_ref_t &actor_,
+  uint64_t transfer_serial_,
+  const zlink_actor_transfer_id_t &transfer_id_,
+  const rid_bytes_t &target_node_rid_,
+  uint64_t offered_messages_,
+  uint64_t offered_bytes_,
+  std::vector<transfer_participant_descriptor_t> *participants_out_);
+void stream_sessions_ack_actor (mesh_node_t *node_,
+                                const zlink_actor_ref_t &actor_,
+                                uint64_t transfer_serial_,
+                                uint64_t participant_id_,
+                                uint64_t high_water_);
+void stream_sessions_seal_actor (
+  mesh_node_t *node_,
+  const zlink_actor_ref_t &actor_,
+  uint64_t transfer_serial_,
+  std::vector<transfer_participant_terminal_t> *terminals_out_);
+void stream_sessions_commit_actor (mesh_node_t *node_,
+                                   const zlink_actor_ref_t &actor_,
+                                   uint64_t transfer_serial_,
+                                   const rid_bytes_t &target_node_rid_,
+                                   uint64_t membership_epoch_);
+void stream_sessions_abort_actor (mesh_node_t *node_,
+                                  const zlink_actor_ref_t &actor_,
+                                  uint64_t transfer_serial_);
 
 //  Delivers reply parts through an unconsumed local reply route serial (the
 //  relay path for transferred requests; defined in mesh_dispatch_api.cpp).
-int deliver_reply_via_route (mesh_node_t *node_, uint64_t serial_, std::vector<zlink_msg_t> *parts_);
+int deliver_reply_via_route (mesh_node_t *node_,
+                             uint64_t serial_,
+                             int32_t terminal_result_,
+                             int32_t failure_errno_,
+                             std::vector<zlink_msg_t> *parts_);
 
 //  Builds a new operation id and registers the pending operation.
 zlink_mesh_operation_id_t register_operation (mesh_node_t *node_,

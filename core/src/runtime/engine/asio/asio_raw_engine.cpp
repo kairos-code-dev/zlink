@@ -99,7 +99,10 @@ void zlink::asio_raw_engine_t::plug_internal ()
     }
 
     complete_handshake ();
-    if (session ())
+    //  STREAM assigns its four-byte session routing id when the socket-side
+    //  pipe is attached. Clearing the peer id from the I/O thread races that
+    //  assignment on the peer pipe and has no protocol meaning for STREAM.
+    if (session () && _options.type != ZLINK_CORE_SOCKET_STREAM)
         session ()->set_peer_routing_id (NULL, 0);
     if (_options.type != ZLINK_CORE_SOCKET_STREAM)
         socket ()->event_connection_ready_changed (_endpoint_uri_pair, NULL, 0);

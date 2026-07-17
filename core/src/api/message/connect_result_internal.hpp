@@ -24,9 +24,14 @@ inline zlink_connect_result_t from_errno (int err_)
         case ENOENT:
             return ZLINK_CONNECT_NOT_FOUND;
         case EADDRINUSE:
+        case EEXIST:
+        case ESTALE:
             return ZLINK_CONNECT_CONFLICT;
         case EBUSY:
+        case ESHUTDOWN:
             return ZLINK_CONNECT_BUSY;
+        case EACCES:
+            return ZLINK_CONNECT_AUTH_FAILED;
         default:
             return ZLINK_CONNECT_INTERNAL_ERROR;
     }

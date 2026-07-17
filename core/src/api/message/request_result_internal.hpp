@@ -36,6 +36,8 @@ inline int to_errno (zlink_request_result_t result_)
             return EFSM;
         case ZLINK_REQUEST_NOT_SUPPORTED:
             return ENOTSUP;
+        case ZLINK_REQUEST_BACKPRESSURED:
+            return EAGAIN;
         case ZLINK_REQUEST_INTERNAL_ERROR:
         default:
             return EIO;
@@ -50,8 +52,10 @@ inline zlink_request_result_t from_errno (int err_)
     switch (err_) {
         case EACCES:
         case ECONNREFUSED:
+        case ECANCELED:
             return ZLINK_REQUEST_REJECTED;
         case ESTALE:
+        case EEXIST:
             return ZLINK_REQUEST_CONFLICT;
         case EBUSY:
             return ZLINK_REQUEST_BUSY;
@@ -62,7 +66,15 @@ inline zlink_request_result_t from_errno (int err_)
         case EFAULT:
             return ZLINK_REQUEST_INVALID_ARGUMENT;
         case EFSM:
+        case EALREADY:
             return ZLINK_REQUEST_INVALID_STATE;
+        case EAGAIN:
+        case ENOBUFS:
+            return ZLINK_REQUEST_BACKPRESSURED;
+        case ESHUTDOWN:
+            return ZLINK_REQUEST_TERMINATED;
+        case ENOCOMPATPROTO:
+            return ZLINK_REQUEST_PROTOCOL_ERROR;
         default:
             break;
     }

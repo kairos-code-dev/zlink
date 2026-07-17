@@ -138,7 +138,9 @@ zlink::stream_t::stream_t (class ctx_t *parent_, uint32_t tid_, int sid_) :
     _dispatch_msg_handler (NULL),
     _dispatch_msg_handler_userdata (NULL),
     _dispatch_packet_handler (NULL),
-    _dispatch_packet_handler_userdata (NULL)
+    _dispatch_packet_handler_userdata (NULL),
+    _session_observer (NULL),
+    _session_observer_userdata (NULL)
 {
     options.type = ZLINK_CORE_SOCKET_STREAM;
     options.backlog = 65536;
@@ -165,6 +167,52 @@ zlink::stream_t::route_shard_t &zlink::stream_t::route_shard_for (uint32_t routi
     return _route_shards[routing_id_ % route_shard_count];
 }
 
+void zlink::stream_t::peer_routing_ids (std::vector<zlink_routing_id_t> *out_)
+{
+    out_->clear ();
+    for (size_t i = 0; i < route_shard_count; ++i) {
+        scoped_fast_lock_t shard_lock (_route_shards[i].sync);
+        for (route_shard_t::routes_t::const_iterator route = _route_shards[i].routes.begin ();
+             route != _route_shards[i].routes.end (); ++route) {
+            zlink_routing_id_t rid;
+            memset (&rid, 0, sizeof (rid));
+            rid.size = sizeof (uint32_t);
+            put_uint32 (rid.data, route->first);
+            out_->push_back (rid);
+        }
+    }
+}
+
+void zlink::stream_t::set_session_observer (session_observer_fn observer_, void *userdata_)
+{
+    std::lock_guard<std::mutex> lock (_session_observer_mutex);
+    _session_observer = observer_;
+    _session_observer_userdata = userdata_;
+}
+
+void zlink::stream_t::clear_session_observer (void *userdata_)
+{
+    std::lock_guard<std::mutex> lock (_session_observer_mutex);
+    if (_session_observer_userdata == userdata_) {
+        _session_observer = NULL;
+        _session_observer_userdata = NULL;
+    }
+}
+
+void zlink::stream_t::notify_session_observer (uint32_t routing_id_, bool connected_)
+{
+    if (routing_id_ == 0)
+        return;
+    std::lock_guard<std::mutex> lock (_session_observer_mutex);
+    if (!_session_observer)
+        return;
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    rid.size = sizeof (uint32_t);
+    put_uint32 (rid.data, routing_id_);
+    _session_observer (_session_observer_userdata, &rid, connected_);
+}
+
 void zlink::stream_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool locally_initiated_)
 {
     LIBZLINK_UNUSED (subscribe_to_all_);
@@ -173,6 +221,7 @@ void zlink::stream_t::xattach_pipe (pipe_t *pipe_, bool subscribe_to_all_, bool 
     identify_peer (pipe_, locally_initiated_);
     _fq.attach (pipe_);
     maybe_emit_connect_event (pipe_);
+    notify_session_observer (pipe_->get_server_socket_routing_id (), true);
 }
 
 void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
@@ -195,6 +244,7 @@ void zlink::stream_t::xpipe_terminated (pipe_t *pipe_)
     }
     erase_out_pipe (pipe_);
     _fq.pipe_terminated (pipe_);
+    notify_session_observer (server_routing_id, false);
 }
 
 int zlink::stream_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
@@ -206,6 +256,7 @@ int zlink::stream_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
 
     const uint32_t routing_id = get_uint32 (peer_rid_->data);
     route_shard_t &shard = route_shard_for (routing_id);
+    bool terminated = false;
     {
         scoped_fast_lock_t shard_lock (shard.sync);
         route_shard_t::routes_t::iterator it = shard.routes.find (routing_id);
@@ -215,8 +266,12 @@ int zlink::stream_t::xterm_peer_rid (const zlink_routing_id_t *peer_rid_)
             // only after those frames, which enables protocol-level closing
             // notifications without a timing workaround.
             it->second->terminate (true);
-            return 0;
+            terminated = true;
         }
+    }
+    if (terminated) {
+        notify_session_observer (routing_id, false);
+        return 0;
     }
 
     return terminate_out_pipe_by_routing_id (peer_rid_);

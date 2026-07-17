@@ -1407,8 +1407,14 @@ void dispatch_wire_message (mesh_node_t *node_,
     zlink_actor_transfer_id_t transfer_id;
     memset (&transfer_id, 0, sizeof (transfer_id));
     uint64_t transfer_sequence = 0;
+    uint64_t transfer_participant_id = 0;
     uint64_t transfer_final_sequence = 0;
     uint8_t transfer_role = 0;
+    uint64_t transfer_offered_messages = 0;
+    uint64_t transfer_offered_bytes = 0;
+    bool transfer_seal_response = false;
+    std::vector<transfer_participant_descriptor_t> transfer_participants;
+    std::vector<transfer_participant_terminal_t> transfer_terminals;
     uint64_t relay_serial = 0;
     std::unique_ptr<queued_record_t> transfer_record;
     if (type == wire_transfer_ready) {
@@ -1417,9 +1423,22 @@ void dispatch_wire_message (mesh_node_t *node_,
         left_prev_epoch = reader.u64 (); //  expected epoch slot
         transfer_final_sequence = reader.u64 ();
         transfer_role = reader.u8 ();
+        transfer_offered_messages = reader.u64 ();
+        transfer_offered_bytes = reader.u64 ();
+        const uint32_t participant_count = reader.u32 ();
+        transfer_participants.reserve (participant_count);
+        for (uint32_t i = 0; i < participant_count; ++i) {
+            transfer_participant_descriptor_t participant;
+            participant.participant_id = reader.u64 ();
+            participant.binding_generation = reader.u64 ();
+            participant.allowance_messages = reader.u64 ();
+            participant.allowance_bytes = reader.u64 ();
+            transfer_participants.push_back (participant);
+        }
     }
     if (type == wire_transfer_data) {
         transfer_id = read_transfer_id (reader);
+        transfer_participant_id = reader.u64 ();
         transfer_sequence = reader.u64 ();
         transfer_record.reset (new (std::nothrow) queued_record_t ());
         if (!transfer_record.get () || !read_record_header (reader, transfer_record.get (),
@@ -1430,10 +1449,28 @@ void dispatch_wire_message (mesh_node_t *node_,
     }
     if (type == wire_transfer_ack) {
         transfer_id = read_transfer_id (reader);
+        transfer_participant_id = reader.u64 ();
         transfer_sequence = reader.u64 ();
     }
-    if (type == wire_reply_relay)
+    if (type == wire_transfer_seal) {
+        transfer_id = read_transfer_id (reader);
+        transfer_seal_response = reader.u8 () != 0;
+        const uint32_t terminal_count = reader.u32 ();
+        transfer_terminals.reserve (terminal_count);
+        for (uint32_t i = 0; i < terminal_count; ++i) {
+            transfer_participant_terminal_t terminal;
+            terminal.participant_id = reader.u64 ();
+            terminal.high_water = reader.u64 ();
+            transfer_terminals.push_back (terminal);
+        }
+    }
+    if (type == wire_transfer_complete)
+        transfer_id = read_transfer_id (reader);
+    if (type == wire_reply_relay) {
         relay_serial = reader.u64 ();
+        terminal_result = static_cast<int32_t> (reader.u32 ());
+        failure_errno = static_cast<int32_t> (reader.u32 ());
+    }
     if (reader.failed
         || (type != wire_node_send && type != wire_node_request && type != wire_channel_send
             && type != wire_channel_request && type != wire_reply && type != wire_spot_send
@@ -1441,7 +1478,8 @@ void dispatch_wire_message (mesh_node_t *node_,
             && type != wire_actor_request && type != wire_actor_lookup
             && type != wire_actor_destroy && type != wire_actor_join && type != wire_actor_left
             && type != wire_transfer_ready && type != wire_transfer_data
-            && type != wire_transfer_ack && type != wire_reply_relay)) {
+            && type != wire_transfer_ack && type != wire_reply_relay
+            && type != wire_transfer_seal && type != wire_transfer_complete)) {
         close_frames (frames_);
         return;
     }
@@ -1516,24 +1554,39 @@ void dispatch_wire_message (mesh_node_t *node_,
     if (type == wire_transfer_ready) {
         close_frames (&parts);
         transfer_handle_ready (node_, source_rid_, transfer_id, target_actor, left_prev_epoch,
-                               transfer_final_sequence, transfer_role);
+                               transfer_final_sequence, transfer_role,
+                               transfer_offered_messages, transfer_offered_bytes,
+                               transfer_participants);
         return;
     }
     if (type == wire_transfer_data) {
         transfer_record->parts = std::move (parts);
         for (size_t i = 0; i < transfer_record->parts.size (); ++i)
             transfer_record->byte_size += zlink_msg_size (&transfer_record->parts[i]);
-        transfer_handle_data (node_, source_rid_, transfer_id, transfer_sequence, relay_serial,
-                              &transfer_record);
+        transfer_handle_data (node_, source_rid_, transfer_id, transfer_participant_id,
+                              transfer_sequence, relay_serial, &transfer_record);
         return;
     }
     if (type == wire_transfer_ack) {
         close_frames (&parts);
-        transfer_handle_ack (node_, source_rid_, transfer_id, transfer_sequence);
+        transfer_handle_ack (node_, source_rid_, transfer_id, transfer_participant_id,
+                             transfer_sequence);
+        return;
+    }
+    if (type == wire_transfer_seal) {
+        close_frames (&parts);
+        transfer_handle_seal (node_, source_rid_, transfer_id, transfer_seal_response,
+                              transfer_terminals);
+        return;
+    }
+    if (type == wire_transfer_complete) {
+        close_frames (&parts);
+        transfer_handle_complete (node_, source_rid_, transfer_id);
         return;
     }
     if (type == wire_reply_relay) {
-        transfer_handle_reply_relay (node_, source_rid_, relay_serial, &parts);
+        transfer_handle_reply_relay (node_, source_rid_, relay_serial, terminal_result,
+                                     failure_errno, &parts);
         for (size_t i = 0; i < parts.size (); ++i)
             zlink_msg_close (&parts[i]);
         return;
@@ -1657,7 +1710,7 @@ int wire_start (mesh_node_t *node_)
         (void) zlink_set_option (router, ZLINK_OPT_SNDTIMEO, &node_->sndtimeo_ms,
                                  sizeof (node_->sndtimeo_ms));
     }
-    if (zlink_bind (router, node_->bind_endpoint.c_str ()) != ZLINK_CONNECT_OK) {
+    if (zlink_bind (router, node_->bind_endpoint.c_str ()) != ZLINK_BIND_OK) {
         const int saved_errno = errno;
         zlink_close (router);
         errno = saved_errno;
@@ -1841,11 +1894,8 @@ zlink_submit_result_t wire_publish_remote_locked (mesh_node_t *node_,
           nodrop_ ? ZLINK_SEND_FLAGS_NONE : ZLINK_SEND_FLAGS_DONTWAIT);
         if (rc == ZLINK_SUBMIT_OK)
             *admitted_out_ += 1;
-        else {
-            fprintf (stderr, "[mesh] multicast send failure target=%.*s rc=%d errno=%d\n",
-                     (int) target.size, (const char *) target.data, (int) rc, errno);
+        else
             *dropped_out_ += 1;
-        }
     }
     if (nodrop_ && *dropped_out_ > 0) {
         errno = EAGAIN;
@@ -2025,7 +2075,11 @@ zlink_submit_result_t wire_submit_transfer_ready (mesh_node_t *node_,
                                                   const zlink_actor_ref_t &actor_,
                                                   uint64_t expected_epoch_,
                                                   uint64_t final_sequence_,
-                                                  uint8_t role_)
+                                                  uint8_t role_,
+                                                  uint64_t offered_messages_,
+                                                  uint64_t offered_bytes_,
+                                                  const std::vector<transfer_participant_descriptor_t>
+                                                    &participants_)
 {
     if (!node_->router_socket) {
         errno = ENOTCONN;
@@ -2037,6 +2091,15 @@ zlink_submit_result_t wire_submit_transfer_ready (mesh_node_t *node_,
     put_u64 (envelope, expected_epoch_);
     put_u64 (envelope, final_sequence_);
     put_u8 (envelope, role_);
+    put_u64 (envelope, offered_messages_);
+    put_u64 (envelope, offered_bytes_);
+    put_u32 (envelope, static_cast<uint32_t> (participants_.size ()));
+    for (size_t i = 0; i < participants_.size (); ++i) {
+        put_u64 (envelope, participants_[i].participant_id);
+        put_u64 (envelope, participants_[i].binding_generation);
+        put_u64 (envelope, participants_[i].allowance_messages);
+        put_u64 (envelope, participants_[i].allowance_bytes);
+    }
     const zlink_routing_id_t target = rid_value (peer_rid_);
     return send_data_message (node_, target, envelope, NULL, NULL, 0, ZLINK_SEND_FLAGS_NONE);
 }
@@ -2044,6 +2107,7 @@ zlink_submit_result_t wire_submit_transfer_ready (mesh_node_t *node_,
 zlink_submit_result_t wire_submit_transfer_data (mesh_node_t *node_,
                                                  const rid_bytes_t &peer_rid_,
                                                  const zlink_actor_transfer_id_t &transfer_id_,
+                                                 uint64_t participant_id_,
                                                  uint64_t sequence_,
                                                  const queued_record_t &record_,
                                                  uint64_t relay_serial_)
@@ -2054,6 +2118,7 @@ zlink_submit_result_t wire_submit_transfer_data (mesh_node_t *node_,
     }
     std::vector<unsigned char> envelope = make_envelope (wire_transfer_data, 0);
     put_transfer_id (envelope, transfer_id_);
+    put_u64 (envelope, participant_id_);
     put_u64 (envelope, sequence_);
     put_record_header (envelope, record_, relay_serial_);
     const zlink_routing_id_t target = rid_value (peer_rid_);
@@ -2065,6 +2130,7 @@ zlink_submit_result_t wire_submit_transfer_data (mesh_node_t *node_,
 zlink_submit_result_t wire_submit_transfer_ack (mesh_node_t *node_,
                                                 const rid_bytes_t &peer_rid_,
                                                 const zlink_actor_transfer_id_t &transfer_id_,
+                                                uint64_t participant_id_,
                                                 uint64_t high_water_)
 {
     if (!node_->router_socket) {
@@ -2073,7 +2139,46 @@ zlink_submit_result_t wire_submit_transfer_ack (mesh_node_t *node_,
     }
     std::vector<unsigned char> envelope = make_envelope (wire_transfer_ack, 0);
     put_transfer_id (envelope, transfer_id_);
+    put_u64 (envelope, participant_id_);
     put_u64 (envelope, high_water_);
+    const zlink_routing_id_t target = rid_value (peer_rid_);
+    return send_data_message (node_, target, envelope, NULL, NULL, 0, ZLINK_SEND_FLAGS_NONE);
+}
+
+zlink_submit_result_t wire_submit_transfer_seal (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  const zlink_actor_transfer_id_t &transfer_id_,
+  bool response_,
+  const std::vector<transfer_participant_terminal_t> &terminals_)
+{
+    if (!node_->router_socket) {
+        errno = ENOTCONN;
+        return ZLINK_SUBMIT_NOT_CONNECTED;
+    }
+    std::vector<unsigned char> envelope = make_envelope (wire_transfer_seal, 0);
+    put_transfer_id (envelope, transfer_id_);
+    put_u8 (envelope, response_ ? 1 : 0);
+    put_u32 (envelope, static_cast<uint32_t> (terminals_.size ()));
+    for (size_t i = 0; i < terminals_.size (); ++i) {
+        put_u64 (envelope, terminals_[i].participant_id);
+        put_u64 (envelope, terminals_[i].high_water);
+    }
+    const zlink_routing_id_t target = rid_value (peer_rid_);
+    return send_data_message (node_, target, envelope, NULL, NULL, 0, ZLINK_SEND_FLAGS_NONE);
+}
+
+zlink_submit_result_t wire_submit_transfer_complete (
+  mesh_node_t *node_,
+  const rid_bytes_t &peer_rid_,
+  const zlink_actor_transfer_id_t &transfer_id_)
+{
+    if (!node_->router_socket) {
+        errno = ENOTCONN;
+        return ZLINK_SUBMIT_NOT_CONNECTED;
+    }
+    std::vector<unsigned char> envelope = make_envelope (wire_transfer_complete, 0);
+    put_transfer_id (envelope, transfer_id_);
     const zlink_routing_id_t target = rid_value (peer_rid_);
     return send_data_message (node_, target, envelope, NULL, NULL, 0, ZLINK_SEND_FLAGS_NONE);
 }
@@ -2081,6 +2186,8 @@ zlink_submit_result_t wire_submit_transfer_ack (mesh_node_t *node_,
 zlink_submit_result_t wire_submit_reply_relay (mesh_node_t *node_,
                                                const rid_bytes_t &peer_rid_,
                                                uint64_t relay_serial_,
+                                               int32_t terminal_result_,
+                                               int32_t failure_errno_,
                                                const zlink_msg_t *parts_,
                                                size_t part_count_)
 {
@@ -2090,6 +2197,8 @@ zlink_submit_result_t wire_submit_reply_relay (mesh_node_t *node_,
     }
     std::vector<unsigned char> envelope = make_envelope (wire_reply_relay, 0);
     put_u64 (envelope, relay_serial_);
+    put_u32 (envelope, static_cast<uint32_t> (terminal_result_));
+    put_u32 (envelope, static_cast<uint32_t> (failure_errno_));
     const zlink_routing_id_t target = rid_value (peer_rid_);
     return send_data_message (node_, target, envelope, NULL, parts_, part_count_,
                               ZLINK_SEND_FLAGS_NONE);

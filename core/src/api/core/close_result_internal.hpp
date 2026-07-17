@@ -21,6 +21,7 @@ inline zlink_close_result_t from_errno (int err_)
             return ZLINK_CLOSE_SHUTDOWN;
 #endif
         case EFAULT:
+        case ESTALE:
             return ZLINK_CLOSE_INVALID_HANDLE;
         default:
             return ZLINK_CLOSE_INTERNAL_ERROR;

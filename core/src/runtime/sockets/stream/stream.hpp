@@ -22,6 +22,10 @@ class pipe_t;
 class stream_t ZLINK_FINAL : public routing_socket_base_t
 {
   public:
+    typedef void (*session_observer_fn) (void *userdata_,
+                                         const zlink_routing_id_t *peer_rid_,
+                                         bool connected_);
+
     enum dispatch_mode_t
     {
         dispatch_mode_none = 0,
@@ -63,6 +67,12 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     int stream_dispatch_send_current_msg_from_io (zlink::msg_t *msg_, int flags_) ZLINK_OVERRIDE;
     std::recursive_mutex *api_sync_mutex () ZLINK_OVERRIDE;
 
+    //  Internal session-service observation. These methods expose only live
+    //  transport membership inside Core; they are not public socket APIs.
+    void peer_routing_ids (std::vector<zlink_routing_id_t> *out_);
+    void set_session_observer (session_observer_fn observer_, void *userdata_);
+    void clear_session_observer (void *userdata_);
+
   private:
     enum
     {
@@ -81,6 +91,7 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     void identify_peer (pipe_t *pipe_, bool locally_initiated_);
     uint32_t ensure_dispatch_routing_id (pipe_t *pipe_);
     void maybe_emit_connect_event (pipe_t *pipe_, uint32_t routing_id_value_ = 0);
+    void notify_session_observer (uint32_t routing_id_, bool connected_);
     int xstream_dispatch_msg (zlink::msg_t *msg_, zlink::pipe_t *pipe_) ZLINK_OVERRIDE;
     int stream_dispatch_packet_msg_from_io (const zlink_routing_id_t *rid_,
                                             zlink::msg_t *msg_,
@@ -114,6 +125,9 @@ class stream_t ZLINK_FINAL : public routing_socket_base_t
     std::atomic<zlink_stream_packet_handler_fn> _dispatch_packet_handler;
     std::atomic<void *> _dispatch_packet_handler_userdata;
     mutable std::recursive_mutex _api_mutex;
+    std::mutex _session_observer_mutex;
+    session_observer_fn _session_observer;
+    void *_session_observer_userdata;
 
     ZLINK_NON_COPYABLE_NOR_MOVABLE (stream_t)
 };

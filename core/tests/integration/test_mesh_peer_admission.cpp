@@ -10,6 +10,9 @@
 #include <string.h>
 
 #if !defined _WIN32
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -25,6 +28,37 @@ const char mesh_name[] = "mesh-admission";
 const char channel_name[] = "orders";
 const int poll_deadline_ms = 15000;
 const int poll_step_ms = 20;
+
+int connect_raw_stream_client (const char *endpoint_)
+{
+    char protocol[8] = {0};
+    char host[64] = {0};
+    int port = 0;
+    if (sscanf (endpoint_, "%7[^:]://%63[^:]:%d", protocol, host, &port) != 3
+        || strcmp (protocol, "tcp") != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    const int fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0)
+        return -1;
+    struct sockaddr_in address;
+    memset (&address, 0, sizeof (address));
+    address.sin_family = AF_INET;
+    address.sin_port = htons (static_cast<uint16_t> (port));
+    if (inet_pton (AF_INET, host, &address.sin_addr) != 1
+        || connect (fd, reinterpret_cast<const struct sockaddr *> (&address), sizeof (address))
+             != 0) {
+        close (fd);
+        return -1;
+    }
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    TEST_ASSERT_EQUAL_INT (
+      0, setsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof (timeout)));
+    return fd;
+}
 
 void *new_started_node (void *ctx_, const char *mesh_name_, const char *rid_)
 {
@@ -146,6 +180,73 @@ void make_payload (zlink_msg_t *msg_, const char *text_)
 {
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_msg_init_size (msg_, strlen (text_)));
     memcpy (zlink_msg_data (msg_), text_, strlen (text_));
+}
+
+int receive_exact_node_records (void *node_, size_t expected_count_, int wait_ms_)
+{
+    void *ready = zlink_mesh_ready_batch_new (8);
+    void *batch = zlink_mesh_receive_batch_new (16, 32, 64 * 1024);
+    if (!ready || !batch)
+        return -1;
+    size_t total = 0;
+    for (int waited = 0; waited < wait_ms_; waited += poll_step_ms) {
+        uint32_t residue = 0;
+        const zlink_recv_result_t ready_rc = zlink_mesh_node_drain_ready (
+          node_, ZLINK_MESH_READY_APPLICATION, ready, &residue, ZLINK_RECV_FLAGS_DONTWAIT);
+        if (ready_rc == ZLINK_RECV_NO_DATA) {
+            if (total == expected_count_ && expected_count_ != 0)
+                break;
+            msleep (poll_step_ms);
+            continue;
+        }
+        if (ready_rc != ZLINK_RECV_OK) {
+            total = static_cast<size_t> (-1);
+            break;
+        }
+        const zlink_mesh_ready_record_t *records = zlink_mesh_ready_batch_data (ready);
+        const size_t ready_count = zlink_mesh_ready_batch_count (ready);
+        bool claimed = false;
+        zlink_mesh_claim_t claim;
+        for (size_t i = 0; i < ready_count; ++i) {
+            if (records[i].owner_kind != ZLINK_MESH_OWNER_NODE)
+                continue;
+            if (zlink_mesh_ready_batch_take_claim (ready, i, &claim) != ZLINK_CONFIG_OK) {
+                total = static_cast<size_t> (-1);
+                break;
+            }
+            claimed = true;
+            break;
+        }
+        zlink_mesh_ready_batch_reset (ready);
+        if (!claimed)
+            continue;
+        zlink_mesh_receive_requirements_t requirements;
+        memset (&requirements, 0, sizeof (requirements));
+        requirements.struct_size = sizeof (requirements);
+        requirements.version = 1;
+        if (zlink_mesh_claim_recv_batch (&claim, batch, &requirements, ZLINK_RECV_FLAGS_NONE)
+            != ZLINK_RECV_OK) {
+            zlink_mesh_claim_release (&claim);
+            total = static_cast<size_t> (-1);
+            break;
+        }
+        total += zlink_mesh_receive_batch_count (batch);
+        zlink_mesh_claim_release (&claim);
+        zlink_mesh_receive_batch_reset (batch);
+        if (total > expected_count_)
+            break;
+    }
+    zlink_mesh_ready_batch_destroy (&ready);
+    zlink_mesh_receive_batch_destroy (&batch);
+    return total == expected_count_ ? 0 : -1;
+}
+
+void write_result_line (int fd_, int value_)
+{
+    char text[32];
+    const int size = snprintf (text, sizeof (text), "%d\n", value_);
+    if (size > 0 && write (fd_, text, static_cast<size_t> (size)) != size)
+        std::_Exit (98);
 }
 
 //  Drains one ready record for the wanted owner kind and domain, takes its
@@ -1296,6 +1397,14 @@ void test_remote_actor_transfer_fence ()
                 != ZLINK_REQUEST_OK) { rc = 15; break; }
             if (result.final_sequence != final_sequence) { rc = 16; break; }
 
+            //  Target readiness gives the source STREAM participant a
+            //  private bounded allowance. Let the source admit one message,
+            //  then start commit so the terminal high-water is sealed.
+            if (write (back_pipe[1], "R\n", 2) != 2) { rc = 32; break; }
+            char commit_line[8];
+            read_endpoint (authority_pipe[0], commit_line, sizeof (commit_line));
+            if (strcmp (commit_line, "C") != 0) { rc = 33; break; }
+
             //  activate before commit is rejected.
             if (zlink_mesh_node_actor_transfer_activate (&token) != ZLINK_CONFIG_INVALID_STATE
                 || errno != EINVAL) { rc = 17; break; }
@@ -1326,7 +1435,7 @@ void test_remote_actor_transfer_fence ()
                 || zlink_mesh_claim_recv_batch (&claim, batch, &requirements,
                                                 ZLINK_RECV_FLAGS_NONE)
                      != ZLINK_RECV_OK) { rc = 24; break; }
-            if (zlink_mesh_receive_batch_count (batch) != 2) { rc = 25; break; }
+            if (zlink_mesh_receive_batch_count (batch) != 4) { rc = 25; break; }
             const zlink_mesh_receive_record_t *records = zlink_mesh_receive_batch_data (batch);
             const zlink_msg_t *parts = zlink_mesh_receive_batch_parts (batch);
             if (records[0].kind != ZLINK_MESH_RECORD_ACTOR_SEND
@@ -1338,6 +1447,32 @@ void test_remote_actor_transfer_fence ()
             if (records[1].kind != ZLINK_MESH_RECORD_ACTOR_SEND
                 || zlink_msg_size (&parts[records[1].part_offset]) != strlen ("t-2")) {
                 rc = 27; break; }
+            if (records[2].kind != ZLINK_MESH_RECORD_ACTOR_SEND
+                || zlink_msg_size (&parts[records[2].part_offset])
+                     != strlen ("session-post-fence")
+                || memcmp (zlink_msg_data (const_cast<zlink_msg_t *> (
+                             &parts[records[2].part_offset])),
+                           "session-post-fence", strlen ("session-post-fence"))
+                     != 0) {
+                rc = 34; break;
+            }
+            if (records[3].kind != ZLINK_MESH_RECORD_ACTOR_REQUEST
+                || zlink_msg_size (&parts[records[3].part_offset])
+                     != strlen ("session-request")) {
+                rc = 35; break;
+            }
+            zlink_msg_t session_reply;
+            if (zlink_msg_init_size (&session_reply, strlen ("session-reply")) != 0) {
+                rc = 36; break;
+            }
+            memcpy (zlink_msg_data (&session_reply), "session-reply",
+                    strlen ("session-reply"));
+            if (zlink_mesh_reply (&records[3].reply_token, &session_reply, 1,
+                                  ZLINK_SEND_FLAGS_NONE)
+                != ZLINK_SUBMIT_OK) {
+                zlink_msg_close (&session_reply);
+                rc = 37; break;
+            }
             zlink_mesh_claim_release (&claim);
             zlink_mesh_receive_batch_destroy (&batch);
 
@@ -1371,12 +1506,55 @@ void test_remote_actor_transfer_fence ()
     void *ctx = zlink_ctx_new ();
     TEST_ASSERT_NOT_NULL (ctx);
     void *node = new_started_node (ctx, mesh_name, "node-a");
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    const int notify = 1;
+    const int recv_timeout_ms = 5000;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_set_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &notify, sizeof (notify)));
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_set_option (stream, ZLINK_OPT_RCVTIMEO, &recv_timeout_ms,
+                        sizeof (recv_timeout_ms)));
+    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_OK, zlink_bind (stream, "tcp://127.0.0.1:0"));
+    char stream_endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+    size_t stream_endpoint_size = sizeof (stream_endpoint);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_get_option (stream, ZLINK_OPT_LAST_ENDPOINT, stream_endpoint,
+                        &stream_endpoint_size));
+    stream_endpoint[sizeof (stream_endpoint) - 1] = '\0';
+    void *session_service = zlink_stream_session_service_new (node, stream);
+    TEST_ASSERT_NOT_NULL (session_service);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_stream_session_service_start (session_service));
+    const int stream_client_fd = connect_raw_stream_client (stream_endpoint);
+    TEST_ASSERT_TRUE (stream_client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (1, send (stream_client_fd, "!", 1, 0));
+
+    zlink_msg_t connect_part;
+    TEST_ASSERT_EQUAL_INT (0, zlink_msg_init (&connect_part));
+    const zlink_routing_id_t *source_session_rid = NULL;
+    zlink_part_flag_t has_more = ZLINK_PART_MORE;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_recv_part (stream, &source_session_rid, &connect_part, &has_more,
+                       ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_NOT_NULL (source_session_rid);
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
+    zlink_routing_id_t session_rid = *source_session_rid;
+    zlink_msg_close (&connect_part);
 
     zlink_actor_ref_t actor;
     memset (&actor, 0, sizeof (actor));
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
                            zlink_mesh_node_actor_new (node, "worker-t", NULL, 0, &actor,
                                                       ZLINK_SEND_FLAGS_NONE, 1000));
+    zlink_mesh_operation_id_t bind_operation;
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_stream_session_bind_actor (session_service, &session_rid, &actor,
+                                                            &bind_operation, 1000));
     //  backlog: two pending messages become the frozen snapshot.
     for (int i = 1; i <= 2; ++i) {
         char text[8];
@@ -1425,6 +1603,15 @@ void test_remote_actor_transfer_fence ()
         zlink_msg_close (&part);
         TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, rc);
     }
+    {
+        zlink_msg_t part;
+        make_payload (&part, "session-post-fence");
+        const zlink_submit_result_t rc = zlink_stream_session_send_to_actor (
+          session_service, &session_rid, &actor, NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+        zlink_msg_close (&part);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, rc);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    }
 
     //  authority record to the target.
     char line[128];
@@ -1436,11 +1623,77 @@ void test_remote_actor_transfer_fence ()
     TEST_ASSERT_EQUAL_INT ((int) strlen (line), (int) write (authority_pipe[1], line,
                                                              strlen (line)));
 
-    //  wait for the target activation signal, then source-commit.
+    //  Target readiness installs a private allowance for the bound STREAM
+    //  participant. The accepted message remains pending until transfer and
+    //  is visible in the service status counters.
     char ack[8];
     read_endpoint (back_pipe[0], ack, sizeof (ack));
+    TEST_ASSERT_EQUAL_STRING ("R", ack);
+    {
+        zlink_msg_t oversized;
+        TEST_ASSERT_EQUAL_INT (0, zlink_msg_init_size (&oversized, 1024 * 1024 + 1));
+        const zlink_submit_result_t oversized_result =
+          zlink_stream_session_send_to_actor (session_service, &session_rid, &actor, NULL,
+                                              &oversized, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+        zlink_msg_close (&oversized);
+        TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_BACKPRESSURED, oversized_result);
+        TEST_ASSERT_EQUAL_INT (EAGAIN, errno);
+    }
+    zlink_submit_result_t participant_submit = ZLINK_SUBMIT_INTERNAL_ERROR;
+    {
+        zlink_msg_t part;
+        make_payload (&part, "session-post-fence");
+        participant_submit = zlink_stream_session_send_to_actor (
+          session_service, &session_rid, &actor, NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+        zlink_msg_close (&part);
+    }
+    zlink_mesh_operation_id_t participant_request_operation;
+    memset (&participant_request_operation, 0, sizeof (participant_request_operation));
+    zlink_submit_result_t participant_request = ZLINK_SUBMIT_INTERNAL_ERROR;
+    {
+        zlink_msg_t part;
+        make_payload (&part, "session-request");
+        participant_request = zlink_stream_session_request_to_actor (
+          session_service, &session_rid, &actor, NULL, &part, 1,
+          &participant_request_operation, ZLINK_SEND_FLAGS_DONTWAIT, 10000);
+        zlink_msg_close (&part);
+    }
+    zlink_stream_session_status_t session_status;
+    memset (&session_status, 0, sizeof (session_status));
+    session_status.struct_size = sizeof (session_status);
+    session_status.version = ZLINK_STREAM_SESSION_ABI_VERSION;
+    const zlink_config_result_t status_result =
+      zlink_stream_session_service_status (session_service, &session_status);
+    TEST_ASSERT_EQUAL_INT (2, (int) write (authority_pipe[1], "C\n", 2));
+
+    //  Wait for the target activation signal, then source-commit.
+    read_endpoint (back_pipe[0], ack, sizeof (ack));
     TEST_ASSERT_EQUAL_STRING ("A", ack);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, participant_submit);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, participant_request);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, status_result);
+    TEST_ASSERT_EQUAL_UINT64 (2, session_status.pending_message_count);
+    TEST_ASSERT_EQUAL_UINT64 (strlen ("session-post-fence") + strlen ("session-request"),
+                              session_status.pending_byte_count);
+    TEST_ASSERT_EQUAL_INT (
+      0, wait_node_completion_payload (node, participant_request_operation, "session-reply"));
     TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_actor_transfer_commit (&token, 2));
+    {
+        zlink_stream_session_binding_t binding;
+        memset (&binding, 0, sizeof (binding));
+        binding.struct_size = sizeof (binding);
+        binding.version = ZLINK_STREAM_SESSION_ABI_VERSION;
+        size_t binding_count = 1;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_stream_session_bindings (session_service, &session_rid, &binding,
+                                         &binding_count));
+        TEST_ASSERT_EQUAL_UINT64 (1, binding_count);
+        TEST_ASSERT_EQUAL_UINT64 (2, binding.membership_epoch);
+        TEST_ASSERT_EQUAL_UINT8 (entry.routing_id.size, binding.actor.node_rid.size);
+        TEST_ASSERT_EQUAL_MEMORY (entry.routing_id.data, binding.actor.node_rid.data,
+                                  entry.routing_id.size);
+    }
     //  the old route is gone: local lookup no longer resolves the actor.
     {
         zlink_actor_location_t location;
@@ -1476,6 +1729,12 @@ void test_remote_actor_transfer_fence ()
     TEST_ASSERT_TRUE_MESSAGE (WIFEXITED (status) && WEXITSTATUS (status) == 0,
                               "transfer child reported failure");
 
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
+                           zlink_stream_session_service_shutdown (session_service, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK,
+                           zlink_stream_session_service_destroy (&session_service));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_close (stream));
+    close (stream_client_fd);
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 2000));
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
     TEST_ASSERT_EQUAL_INT (0, zlink_ctx_term (ctx));
@@ -1483,6 +1742,196 @@ void test_remote_actor_transfer_fence ()
 //  Drain and reconnect: an inbound peer's exit does not gate A's readiness,
 //  and a restarted peer with the same RID is admitted again and can complete
 //  a fresh round trip.
+void test_remote_channel_round_robin_and_zero_weight_exclusion ()
+{
+    int child_to_parent[2][2];
+    int parent_to_child[2][2];
+    for (size_t i = 0; i < 2; ++i) {
+        TEST_ASSERT_EQUAL_INT (0, pipe (child_to_parent[i]));
+        TEST_ASSERT_EQUAL_INT (0, pipe (parent_to_child[i]));
+    }
+
+    fflush (NULL);
+    pid_t children[2] = {-1, -1};
+    for (size_t child_index = 0; child_index < 2; ++child_index) {
+        children[child_index] = fork ();
+        TEST_ASSERT_TRUE (children[child_index] >= 0);
+        if (children[child_index] != 0)
+            continue;
+
+        for (size_t i = 0; i < 2; ++i) {
+            close (child_to_parent[i][0]);
+            close (parent_to_child[i][1]);
+            if (i != child_index) {
+                close (child_to_parent[i][1]);
+                close (parent_to_child[i][0]);
+            }
+        }
+        setup_test_environment (60);
+        void *ctx = zlink_ctx_new ();
+        if (!ctx)
+            std::_Exit (10);
+        const char *rid = child_index == 0 ? "rr-target-a" : "rr-target-b";
+        void *node = new_started_node (ctx, "mesh-round-robin", rid);
+        publish_endpoint (node, child_to_parent[child_index][1]);
+
+        int phase = 0;
+        int result = 0;
+        for (;;) {
+            char command = 0;
+            if (read (parent_to_child[child_index][0], &command, 1) != 1) {
+                result = 11;
+                break;
+            }
+            if (command == 'Q')
+                break;
+            if (command == 'Z') {
+                if (child_index != 0
+                    || zlink_mesh_node_set_channel_weight (node, channel_name, 0)
+                         != ZLINK_CONFIG_OK) {
+                    result = 12;
+                    break;
+                }
+                write_result_line (child_to_parent[child_index][1], 0);
+                continue;
+            }
+            if (command != 'D') {
+                result = 13;
+                break;
+            }
+            const size_t expected = phase == 0 ? 3 : (child_index == 0 ? 0 : 4);
+            const int wait_ms = expected == 0 ? 500 : poll_deadline_ms;
+            const int drain_result = receive_exact_node_records (node, expected, wait_ms);
+            write_result_line (child_to_parent[child_index][1], drain_result);
+            if (drain_result != 0) {
+                result = 14 + phase;
+                break;
+            }
+            ++phase;
+        }
+
+        zlink_mesh_node_shutdown (node, 1000);
+        if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK && result == 0)
+            result = 20;
+        if (zlink_ctx_term (ctx) != 0 && result == 0)
+            result = 21;
+        close (child_to_parent[child_index][1]);
+        close (parent_to_child[child_index][0]);
+        fflush (NULL);
+        std::_Exit (result);
+    }
+
+    for (size_t i = 0; i < 2; ++i) {
+        close (child_to_parent[i][1]);
+        close (parent_to_child[i][0]);
+    }
+    char endpoints[2][ZLINK_MESH_ENDPOINT_MAX + 1];
+    for (size_t i = 0; i < 2; ++i)
+        read_endpoint (child_to_parent[i][0], endpoints[i], sizeof (endpoints[i]));
+
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *source = new_started_node (ctx, "mesh-round-robin", "rr-source");
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_mesh_node_set_channel_weight (source, channel_name, 0));
+    for (size_t i = 0; i < 2; ++i)
+        TEST_ASSERT_NOT_EQUAL (0, submit_peer_intent (source, endpoints[i]));
+
+    bool both_admitted = false;
+    for (int waited = 0; waited < poll_deadline_ms && !both_admitted; waited += poll_step_ms) {
+        zlink_mesh_node_status_t status;
+        node_status (source, &status);
+        both_admitted = status.state == ZLINK_MESH_NODE_READY && status.admitted_peer_count == 2;
+        if (!both_admitted)
+            msleep (poll_step_ms);
+    }
+    TEST_ASSERT_TRUE_MESSAGE (both_admitted, "both round-robin targets must be admitted");
+
+    for (int i = 0; i < 6; ++i) {
+        zlink_msg_t part;
+        make_payload (&part, "rr");
+        TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                               zlink_mesh_node_send_to_channel (
+                                 source, channel_name, NULL, &part, 1, ZLINK_SEND_FLAGS_NONE));
+        zlink_msg_close (&part);
+    }
+    for (size_t i = 0; i < 2; ++i)
+        TEST_ASSERT_EQUAL_INT (1, (int) write (parent_to_child[i][1], "D", 1));
+    for (size_t i = 0; i < 2; ++i) {
+        char result_text[32];
+        read_endpoint (child_to_parent[i][0], result_text, sizeof (result_text));
+        TEST_ASSERT_EQUAL_INT (0, atoi (result_text));
+    }
+
+    TEST_ASSERT_EQUAL_INT (1, (int) write (parent_to_child[0][1], "Z", 1));
+    char result_text[32];
+    read_endpoint (child_to_parent[0][0], result_text, sizeof (result_text));
+    TEST_ASSERT_EQUAL_INT (0, atoi (result_text));
+
+    bool zero_observed = false;
+    for (int waited = 0; waited < poll_deadline_ms && !zero_observed; waited += poll_step_ms) {
+        zlink_mesh_peer_entry_t entries[4];
+        memset (entries, 0, sizeof (entries));
+        for (size_t i = 0; i < 4; ++i) {
+            entries[i].struct_size = sizeof (entries[i]);
+            entries[i].version = 1;
+        }
+        size_t count = 4;
+        if (zlink_mesh_node_peers (source, entries, &count) == ZLINK_CONFIG_OK) {
+            for (size_t i = 0; i < count; ++i) {
+                if (entries[i].routing_id.size != strlen ("rr-target-a")
+                    || memcmp (entries[i].routing_id.data, "rr-target-a",
+                               entries[i].routing_id.size)
+                         != 0)
+                    continue;
+                char names[4][ZLINK_CHANNEL_NAME_MAX + 1];
+                uint32_t weights[4];
+                size_t channel_count = 4;
+                if (zlink_mesh_node_peer_channels (source, &entries[i].routing_id,
+                                                   entries[i].lifecycle_generation, names,
+                                                   weights, &channel_count)
+                      == ZLINK_CONFIG_OK
+                    && channel_count == 1 && strcmp (names[0], channel_name) == 0
+                    && weights[0] == 0)
+                    zero_observed = true;
+            }
+        }
+        if (!zero_observed)
+            msleep (poll_step_ms);
+    }
+    TEST_ASSERT_TRUE_MESSAGE (zero_observed, "weight zero must update the selection index");
+
+    for (int i = 0; i < 4; ++i) {
+        zlink_msg_t part;
+        make_payload (&part, "only-b");
+        TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                               zlink_mesh_node_send_to_channel (
+                                 source, channel_name, NULL, &part, 1, ZLINK_SEND_FLAGS_NONE));
+        zlink_msg_close (&part);
+    }
+    for (size_t i = 0; i < 2; ++i)
+        TEST_ASSERT_EQUAL_INT (1, (int) write (parent_to_child[i][1], "D", 1));
+    for (size_t i = 0; i < 2; ++i) {
+        read_endpoint (child_to_parent[i][0], result_text, sizeof (result_text));
+        TEST_ASSERT_EQUAL_INT (0, atoi (result_text));
+    }
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (source, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&source));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+    for (size_t i = 0; i < 2; ++i) {
+        TEST_ASSERT_EQUAL_INT (1, (int) write (parent_to_child[i][1], "Q", 1));
+        close (parent_to_child[i][1]);
+        close (child_to_parent[i][0]);
+    }
+    for (size_t i = 0; i < 2; ++i) {
+        int child_status = 0;
+        TEST_ASSERT_EQUAL_INT (children[i], waitpid (children[i], &child_status, 0));
+        TEST_ASSERT_TRUE_MESSAGE (WIFEXITED (child_status) && WEXITSTATUS (child_status) == 0,
+                                  "round-robin target process reported failure");
+    }
+}
+
 void test_peer_drain_and_reconnect ()
 {
     //  Both children fork before the parent's node exists (the per-process
@@ -1663,6 +2112,7 @@ int main ()
     RUN_TEST (test_remote_actor_lookup_messaging_destroy);
     RUN_TEST (test_remote_actor_join_entry_spot);
     RUN_TEST (test_remote_actor_transfer_fence);
+    RUN_TEST (test_remote_channel_round_robin_and_zero_weight_exclusion);
     RUN_TEST (test_peer_drain_and_reconnect);
 #endif
     return UNITY_END ();

@@ -33,32 +33,6 @@ handle_registry_t &registry ()
     return *instance;
 }
 
-bool valid_utf8 (const unsigned char *data_, size_t size_)
-{
-    size_t i = 0;
-    while (i < size_) {
-        const unsigned char c = data_[i];
-        size_t extra;
-        if (c < 0x80)
-            extra = 0;
-        else if ((c & 0xE0) == 0xC0 && c >= 0xC2)
-            extra = 1;
-        else if ((c & 0xF0) == 0xE0)
-            extra = 2;
-        else if ((c & 0xF8) == 0xF0 && c <= 0xF4)
-            extra = 3;
-        else
-            return false;
-        if (i + extra + 1 > size_)
-            return false;
-        for (size_t j = 1; j <= extra; ++j) {
-            if ((data_[i + j] & 0xC0) != 0x80)
-                return false;
-        }
-        i += extra + 1;
-    }
-    return true;
-}
 }
 
 namespace zlink
@@ -71,6 +45,57 @@ uint64_t now_ms ()
     //  control and ingress threads therefore need independent cache state.
     static thread_local clock_t clock;
     return clock.now_ms ();
+}
+
+//  Strict UTF-8 scalar validation (RFC 3629): rejects overlong encodings,
+//  UTF-16 surrogates and code points above U+10FFFF. Every public string
+//  contract (names, topics, filters, metadata text) shares this one check.
+bool valid_utf8 (const unsigned char *data_, size_t size_)
+{
+    size_t i = 0;
+    while (i < size_) {
+        const unsigned char c = data_[i];
+        if (c < 0x80) {
+            i += 1;
+            continue;
+        }
+        size_t extra;
+        unsigned char first_min = 0x80;
+        unsigned char first_max = 0xBF;
+        if (c >= 0xC2 && c <= 0xDF)
+            extra = 1;
+        else if (c == 0xE0) {
+            extra = 2;
+            first_min = 0xA0;
+        } else if (c >= 0xE1 && c <= 0xEC)
+            extra = 2;
+        else if (c == 0xED) {
+            extra = 2;
+            first_max = 0x9F;
+        } else if (c >= 0xEE && c <= 0xEF)
+            extra = 2;
+        else if (c == 0xF0) {
+            extra = 3;
+            first_min = 0x90;
+        } else if (c >= 0xF1 && c <= 0xF3)
+            extra = 3;
+        else if (c == 0xF4) {
+            extra = 3;
+            first_max = 0x8F;
+        } else
+            return false;
+        if (i + extra + 1 > size_)
+            return false;
+        const unsigned char b1 = data_[i + 1];
+        if (b1 < first_min || b1 > first_max)
+            return false;
+        for (size_t j = 2; j <= extra; ++j) {
+            if ((data_[i + j] & 0xC0) != 0x80)
+                return false;
+        }
+        i += extra + 1;
+    }
+    return true;
 }
 
 rid_bytes_t rid_bytes (const zlink_routing_id_t &rid_)
@@ -150,7 +175,8 @@ mailbox_t::mailbox_t () :
 {
 }
 
-owner_state_t::owner_state_t () : draining (false), fenced_transfer_serial (0)
+owner_state_t::owner_state_t () :
+    draining (false), fenced_transfer_serial (0), timer_turn_active (false)
 {
     memset (&actor, 0, sizeof (actor));
     memset (&spot_rid, 0, sizeof (spot_rid));
@@ -222,7 +248,7 @@ monitor_state_t::monitor_state_t () :
     mask (0),
     handler (NULL),
     handler_userdata (NULL),
-    handler_active (false),
+    handler_active (0),
     closed (false)
 {
     memset (&counters, 0, sizeof (counters));
@@ -277,7 +303,6 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     sndtimeo_ms (1000),
     rcvtimeo_ms (1000),
     next_intent_id (1),
-    next_claim_serial (1),
     ready_handler (NULL),
     ready_handler_userdata (NULL),
     ready_handler_depth (0),
@@ -285,6 +310,7 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     pollin_signaled (false),
     next_operation_serial (1),
     next_reply_serial (1),
+    shutdown_active (false),
     next_spot_generation (1),
     next_actor_generation (1),
     next_transfer_serial (1),
@@ -643,6 +669,34 @@ int admit_record (mesh_node_t *node_,
     return 0;
 }
 
+void maybe_end_spot_locked (mesh_node_t *node_, const std::string &spot_key_)
+{
+    std::map<std::string, spot_state_t>::iterator it = node_->spots.find (spot_key_);
+    if (it == node_->spots.end ())
+        return;
+    spot_state_t &spot = it->second;
+    //  The entry Spot is referenced by the node for its whole lifetime.
+    if (spot.kind == ZLINK_SPOT_KIND_ENTRY)
+        return;
+    if (spot.facade_count > 0 || spot.timer_count > 0 || spot.active_actor_count > 0)
+        return;
+    owner_id_t owner;
+    owner.kind = owner_spot;
+    owner.key = spot_key_;
+    owner.generation = spot.generation;
+    std::map<owner_id_t, owner_state_t>::iterator owner_it = node_->owners.find (owner);
+    if (owner_it != node_->owners.end ()) {
+        if (owner_it->second.domains[0].claimed || owner_it->second.domains[1].claimed
+            || owner_it->second.timer_turn_active
+            || owner_it->second.fenced_transfer_serial != 0)
+            return;
+        node_->owners.erase (owner_it);
+    }
+    node_->ready.erase (std::make_pair (owner, static_cast<int> (domain_application)));
+    node_->ready.erase (std::make_pair (owner, static_cast<int> (domain_infrastructure)));
+    node_->spots.erase (it);
+}
+
 void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_)
 {
     monitor_state_t *monitor;
@@ -690,8 +744,17 @@ void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_)
             monitor->cv.notify_all ();
         }
     }
-    if (handler)
+    if (handler) {
+        {
+            std::lock_guard<std::mutex> lock (monitor->mutex);
+            monitor->handler_active += 1;
+        }
         handler (&event_, userdata);
+        {
+            std::lock_guard<std::mutex> lock (monitor->mutex);
+            monitor->handler_active -= 1;
+        }
+    }
 }
 
 void recompute_readiness_locked (mesh_node_t *node_)

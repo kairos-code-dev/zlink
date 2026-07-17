@@ -133,6 +133,10 @@ zlink_close_result_t zlink_timer_destroy (void **timer_p_)
     }
     scheduler->cv.notify_all ();
 
+    //  A Spot-owned timer releases its reference on the owning Spot
+    //  generation; a plain timer is a no-op here.
+    zlink::mesh::spot_timer_closed (timer);
+
     delete timer;
     *timer_p_ = NULL;
     return ZLINK_CLOSE_OK;

@@ -219,6 +219,30 @@ int zlink::mesh::set_tls_client (void *handle_,
     return 0;
 }
 
+namespace
+{
+//  Spot-owned timer registry. Immortal (leaked): the generic timer machinery
+//  may resolve entries from its scheduler thread while static destructors
+//  run. Entries map a timer handle to the Spot generation that owns it.
+struct spot_timer_registry_t
+{
+    struct entry_t
+    {
+        zlink::mesh::mesh_node_t *node;
+        std::string spot_key;
+        uint64_t generation;
+    };
+    std::mutex mutex;
+    std::map<void *, entry_t> timers;
+};
+
+spot_timer_registry_t &spot_timers ()
+{
+    static spot_timer_registry_t *instance = new spot_timer_registry_t ();
+    return *instance;
+}
+}
+
 void *zlink::mesh::spot_timer_new (void *spot_)
 {
     spot_facade_t *facade = as_spot_facade (spot_);
@@ -226,17 +250,139 @@ void *zlink::mesh::spot_timer_new (void *spot_)
         errno = EFAULT;
         return NULL;
     }
-    //  The Spot-owned timer inherits the generic timer machinery; generation
-    //  scoping ties tick delivery to the facade's Spot generation.
+    //  The Spot-owned timer inherits the generic timer machinery; the
+    //  registry ties tick delivery and lifetime to the facade's Spot
+    //  generation.
     void *timer = zlink_timer_new ();
     if (!timer)
         return NULL;
-    std::lock_guard<std::mutex> lock (facade->node->mutex);
-    const std::string key (facade->spot_rid.begin (), facade->spot_rid.end ());
-    std::map<std::string, spot_state_t>::iterator it = facade->node->spots.find (key);
-    if (it != facade->node->spots.end () && it->second.generation == facade->generation)
-        it->second.timer_count += 1;
+    {
+        std::lock_guard<std::mutex> lock (facade->node->mutex);
+        const std::string key (facade->spot_rid.begin (), facade->spot_rid.end ());
+        std::map<std::string, spot_state_t>::iterator it = facade->node->spots.find (key);
+        if (it != facade->node->spots.end () && it->second.generation == facade->generation)
+            it->second.timer_count += 1;
+    }
+    spot_timer_registry_t &reg = spot_timers ();
+    std::lock_guard<std::mutex> reg_lock (reg.mutex);
+    spot_timer_registry_t::entry_t entry;
+    entry.node = facade->node;
+    entry.spot_key.assign (facade->spot_rid.begin (), facade->spot_rid.end ());
+    entry.generation = facade->generation;
+    reg.timers[timer] = entry;
     return timer;
+}
+
+bool zlink::mesh::spot_timer_enter_turn (void *timer_)
+{
+    spot_timer_registry_t::entry_t entry;
+    {
+        spot_timer_registry_t &reg = spot_timers ();
+        std::lock_guard<std::mutex> reg_lock (reg.mutex);
+        std::map<void *, spot_timer_registry_t::entry_t>::iterator it =
+          reg.timers.find (timer_);
+        if (it == reg.timers.end ())
+            return true; //  not Spot-owned: plain timer contract
+        entry = it->second;
+    }
+    mesh_node_t *node = as_mesh_node (entry.node);
+    if (!node)
+        return false;
+    std::unique_lock<std::mutex> lock (node->mutex);
+    while (true) {
+        if (node->state == ZLINK_MESH_NODE_DRAINING || node->state == ZLINK_MESH_NODE_STOPPED)
+            return false;
+        std::map<std::string, spot_state_t>::iterator spot_it = node->spots.find (entry.spot_key);
+        if (spot_it == node->spots.end () || spot_it->second.generation != entry.generation)
+            return false; //  the owning generation ended: skip the tick
+        owner_id_t owner;
+        owner.kind = owner_spot;
+        owner.key = entry.spot_key;
+        owner.generation = entry.generation;
+        std::map<owner_id_t, owner_state_t>::iterator owner_it = node->owners.find (owner);
+        if (owner_it == node->owners.end ())
+            return false;
+        //  The timer handler and the application claim handler of the same
+        //  Spot generation never run concurrently.
+        if (!owner_it->second.domains[domain_application].claimed) {
+            owner_it->second.timer_turn_active = true;
+            return true;
+        }
+        node->cv.wait (lock);
+    }
+}
+
+void zlink::mesh::spot_timer_leave_turn (void *timer_)
+{
+    spot_timer_registry_t::entry_t entry;
+    {
+        spot_timer_registry_t &reg = spot_timers ();
+        std::lock_guard<std::mutex> reg_lock (reg.mutex);
+        std::map<void *, spot_timer_registry_t::entry_t>::iterator it =
+          reg.timers.find (timer_);
+        if (it == reg.timers.end ())
+            return;
+        entry = it->second;
+    }
+    mesh_node_t *node = as_mesh_node (entry.node);
+    if (!node)
+        return;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        owner_id_t owner;
+        owner.kind = owner_spot;
+        owner.key = entry.spot_key;
+        owner.generation = entry.generation;
+        std::map<owner_id_t, owner_state_t>::iterator owner_it = node->owners.find (owner);
+        if (owner_it != node->owners.end ())
+            owner_it->second.timer_turn_active = false;
+        node->cv.notify_all ();
+    }
+}
+
+bool zlink::mesh::spot_timer_tick_allowed (void *timer_)
+{
+    spot_timer_registry_t::entry_t entry;
+    {
+        spot_timer_registry_t &reg = spot_timers ();
+        std::lock_guard<std::mutex> reg_lock (reg.mutex);
+        std::map<void *, spot_timer_registry_t::entry_t>::iterator it =
+          reg.timers.find (timer_);
+        if (it == reg.timers.end ())
+            return true;
+        entry = it->second;
+    }
+    mesh_node_t *node = as_mesh_node (entry.node);
+    if (!node)
+        return false;
+    std::lock_guard<std::mutex> lock (node->mutex);
+    std::map<std::string, spot_state_t>::iterator it = node->spots.find (entry.spot_key);
+    return it != node->spots.end () && it->second.generation == entry.generation;
+}
+
+void zlink::mesh::spot_timer_closed (void *timer_)
+{
+    spot_timer_registry_t::entry_t entry;
+    {
+        spot_timer_registry_t &reg = spot_timers ();
+        std::lock_guard<std::mutex> reg_lock (reg.mutex);
+        std::map<void *, spot_timer_registry_t::entry_t>::iterator it =
+          reg.timers.find (timer_);
+        if (it == reg.timers.end ())
+            return;
+        entry = it->second;
+        reg.timers.erase (it);
+    }
+    mesh_node_t *node = as_mesh_node (entry.node);
+    if (!node)
+        return;
+    std::lock_guard<std::mutex> lock (node->mutex);
+    std::map<std::string, spot_state_t>::iterator it = node->spots.find (entry.spot_key);
+    if (it != node->spots.end () && it->second.generation == entry.generation
+        && it->second.timer_count > 0) {
+        it->second.timer_count -= 1;
+        maybe_end_spot_locked (node, entry.spot_key);
+    }
 }
 
 int zlink::mesh::poller_add (void *poller_, void *handle_, void *user_data_, short events_)

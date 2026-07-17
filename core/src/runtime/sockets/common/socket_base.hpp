@@ -134,6 +134,11 @@ class socket_base_t : public own_t,
                             zlink::msg_t *msg_,
                             int flags_,
                             socket_public_send_scope_t &scope_);
+    //  Non-consuming capacity probe: true when a complete multipart message
+    //  to target_rid_ would currently be admitted without blocking. Used by
+    //  the mesh NODROP reserve to check every remote pipe before committing
+    //  any of them.
+    bool routed_target_writable (const zlink_routing_id_t *target_rid_);
 
     std::unique_ptr<socket_public_send_scope_t> begin_public_send_scope (bool force_sync_);
     int rollback ();
@@ -325,6 +330,7 @@ class socket_base_t : public own_t,
     virtual bool xhas_out ();
     virtual int xsend (zlink::msg_t *msg_);
     virtual int xsend_routed (const zlink_routing_id_t *target_rid_, zlink::msg_t *msg_);
+    virtual bool xrouted_target_writable (const zlink_routing_id_t *target_rid_);
     virtual bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_, int err_) const;
     virtual int xrollback ();
 
@@ -610,6 +616,7 @@ class routing_socket_base_t : public socket_base_t
     void mark_out_pipe_inactive (out_pipe_t *out_pipe_);
     void update_out_pipe_weight (out_pipe_t *out_pipe_, uint32_t weight_);
     bool has_writable_weighted_out_pipes () const;
+    bool xrouted_target_writable (const zlink_routing_id_t *target_rid_) ZLINK_OVERRIDE;
     bool xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_,
                                 int err_) const ZLINK_OVERRIDE;
     template <typename Func> bool any_of_out_pipes (Func func_)

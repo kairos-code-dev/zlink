@@ -404,8 +404,7 @@ zlink_submit_result_t node_channel_submit (void *mesh_node_,
     }
 
     const zlink_mesh_record_kind_t kind = operation_id_out_
-                                            ? (source_spot_rid_ ? ZLINK_MESH_RECORD_CHANNEL_REQUEST
-                                                                : ZLINK_MESH_RECORD_CHANNEL_REQUEST)
+                                            ? ZLINK_MESH_RECORD_CHANNEL_REQUEST
                                             : ZLINK_MESH_RECORD_CHANNEL_SEND;
     return submit_local_record (node, node_owner (), requester, kind, source_spot, channel,
                                 metadata_, parts_, part_count_, operation_id_out_, operation_kind_,
@@ -743,7 +742,7 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
     std::string topic;
     if (check_name (topic_, ZLINK_MESH_TOPIC_MAX, &topic) != 0)
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    if (!valid_utf8_public (topic))
+    if (!valid_utf8 (reinterpret_cast<const unsigned char *> (topic.data ()), topic.size ()))
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     if (check_submit_input (metadata_, parts_, part_count_) != 0)
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -841,14 +840,20 @@ retry_reserve:
         }
 
         //  Remote leg before the local commit: a NODROP remote failure must
-        //  leave the local mailboxes untouched.
+        //  leave the local mailboxes untouched. The wire reserve commits
+        //  nothing on backpressure, so a blocking publish may retry the whole
+        //  reserve within SNDTIMEO.
         const zlink_submit_result_t remote_rc = wire_publish_remote_locked (
           node_, remote_targets, channel, topic,
           source_spot_rid_ ? *source_spot_rid_ : rid_bytes_t (), nodrop_, metadata_, parts_,
           part_count_, &admitted_remote, &dropped_remote);
         if (nodrop_ && remote_rc != ZLINK_SUBMIT_OK) {
-            //  Remote NODROP failure is terminal for this call: retrying
-            //  would re-send to targets that already accepted the message.
+            if (blocking && reserve_deadline != 0 && now_ms () < reserve_deadline) {
+                node_->cv.wait_for (lock, std::chrono::milliseconds (
+                                            std::min<uint64_t> (10, reserve_deadline - now_ms ())));
+                lock.unlock ();
+                goto retry_reserve;
+            }
             errno = (flags_ & ZLINK_SEND_FLAGS_DONTWAIT) ? EAGAIN : ETIMEDOUT;
             return ZLINK_SUBMIT_BACKPRESSURED;
         }
@@ -936,34 +941,6 @@ int schedule_operation_timeout (mesh_node_t *node_, uint64_t operation_low_, uin
       &task);
 }
 
-bool valid_utf8_public (const std::string &text_)
-{
-    //  Reuses the metadata validator's UTF-8 rule through a minimal frame.
-    if (text_.empty ())
-        return false;
-    for (size_t i = 0; i < text_.size ();) {
-        const unsigned char c = static_cast<unsigned char> (text_[i]);
-        size_t extra;
-        if (c < 0x80)
-            extra = 0;
-        else if ((c & 0xE0) == 0xC0 && c >= 0xC2)
-            extra = 1;
-        else if ((c & 0xF0) == 0xE0)
-            extra = 2;
-        else if ((c & 0xF8) == 0xF0 && c <= 0xF4)
-            extra = 3;
-        else
-            return false;
-        if (i + extra + 1 > text_.size ())
-            return false;
-        for (size_t j = 1; j <= extra; ++j) {
-            if ((static_cast<unsigned char> (text_[i + j]) & 0xC0) != 0x80)
-                return false;
-        }
-        i += extra + 1;
-    }
-    return true;
-}
 }
 }
 
@@ -1044,7 +1021,9 @@ zlink_config_result_t subscription_common (void *spot_,
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }
-    if (!filter.empty () && !valid_utf8_public (filter)) {
+    if (!filter.empty ()
+        && !valid_utf8 (reinterpret_cast<const unsigned char *> (filter.data ()),
+                        filter.size ())) {
         errno = EINVAL;
         return ZLINK_CONFIG_INVALID_ARGUMENT;
     }

@@ -1070,8 +1070,10 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
                 std::map<std::string, spot_state_t>::iterator spot_it =
                   node->spots.find (spot_key);
                 if (it->second.spot_node_rid.empty () && spot_it != node->spots.end ()
-                    && spot_it->second.active_actor_count > 0)
+                    && spot_it->second.active_actor_count > 0) {
                     spot_it->second.active_actor_count -= 1;
+                    maybe_end_spot_locked (node, spot_key);
+                }
                 node->actors.erase (it);
             }
             //  The owner mailbox stays for the framework to drain the

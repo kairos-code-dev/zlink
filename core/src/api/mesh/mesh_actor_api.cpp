@@ -49,6 +49,18 @@ actor_state_t *find_actor_locked (mesh_node_t *node_, const zlink_actor_ref_t *a
         *err_ = ENOTCONN;
         return NULL;
     }
+    //  A destroy-draining actor admits no new work. A transfer fence keeps
+    //  the actor resolvable so admission can report its contract EAGAIN.
+    if (it->second.draining) {
+        std::map<owner_id_t, owner_state_t>::const_iterator owner_it =
+          node_->owners.find (actor_owner (id, it->second.generation));
+        const bool fenced = owner_it != node_->owners.end ()
+                            && owner_it->second.fenced_transfer_serial != 0;
+        if (!fenced) {
+            *err_ = ESHUTDOWN;
+            return NULL;
+        }
+    }
     return &it->second;
 }
 
@@ -151,8 +163,10 @@ int actor_destroy_local (mesh_node_t *node_, const zlink_actor_ref_t *actor_)
         const std::string spot_key (it->second.spot_rid.begin (), it->second.spot_rid.end ());
         std::map<std::string, spot_state_t>::iterator spot_it = node_->spots.find (spot_key);
         if (it->second.spot_node_rid.empty () && spot_it != node_->spots.end ()
-            && spot_it->second.active_actor_count > 0)
+            && spot_it->second.active_actor_count > 0) {
             spot_it->second.active_actor_count -= 1;
+            maybe_end_spot_locked (node_, spot_key);
+        }
         node_->owners.erase (actor_owner (id, it->second.generation));
         node_->actors.erase (it);
     }
@@ -320,8 +334,10 @@ void actor_apply_remote_join_reply (mesh_node_t *node_,
                     std::map<std::string, spot_state_t>::iterator prev_it =
                       node_->spots.find (prev_key);
                     if (prev_it != node_->spots.end ()
-                        && prev_it->second.active_actor_count > 0)
+                        && prev_it->second.active_actor_count > 0) {
                         prev_it->second.active_actor_count -= 1;
+                        maybe_end_spot_locked (node_, prev_key);
+                    }
                 } else {
                     left_notify_node = actor.spot_node_rid;
                     left_actor = op_.join_actor;
@@ -628,8 +644,54 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
       register_operation (node, ZLINK_MESH_OPERATION_ACTOR_DESTROY, node_owner (), timeout_ms_);
     *operation_id_out_ = op_id;
 
-    //  Local destroy: emit DESTROYED to the owning Spot's control lane, drop
-    //  the mailboxes, and complete the operation.
+    //  Local destroy: with new admission closed by the draining mark, wait
+    //  until the actor's active claims release and its outstanding request
+    //  completions deliver, up to the deadline. Past the deadline the claims
+    //  are revoked (release stays safe) and the removal proceeds.
+    {
+        std::unique_lock<std::mutex> lock (node->mutex);
+        const std::string drain_id (actor_->actor_id);
+        const owner_id_t drain_owner = actor_owner (drain_id, actor_->generation);
+        const uint64_t deadline = timeout_ms_ > 0 ? now_ms () + timeout_ms_ : now_ms ();
+        while (true) {
+            std::map<std::string, actor_state_t>::iterator actor_it =
+              node->actors.find (drain_id);
+            if (actor_it == node->actors.end ()
+                || actor_it->second.generation != actor_->generation)
+                break;
+            bool held = false;
+            std::map<owner_id_t, owner_state_t>::iterator owner_it =
+              node->owners.find (drain_owner);
+            if (owner_it != node->owners.end ()
+                && (owner_it->second.domains[0].claimed || owner_it->second.domains[1].claimed))
+                held = true;
+            bool completions_pending = false;
+            for (std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
+                   node->operations.begin ();
+                 op_it != node->operations.end () && !completions_pending; ++op_it) {
+                if (op_it->second.requester == drain_owner
+                    && op_it->second.id.low != op_id.low)
+                    completions_pending = true;
+            }
+            if (!held && !completions_pending)
+                break;
+            const uint64_t now = now_ms ();
+            if (timeout_ms_ == 0 || now >= deadline) {
+                if (owner_it != node->owners.end ()) {
+                    for (int d = 0; d < 2; ++d) {
+                        if (owner_it->second.domains[d].claimed)
+                            owner_it->second.domains[d].revoked = true;
+                    }
+                }
+                break;
+            }
+            node->cv.wait_for (lock, std::chrono::milliseconds (deadline - now));
+        }
+        lock.unlock ();
+    }
+
+    //  Emit DESTROYED to the owning Spot's control lane, drop the mailboxes,
+    //  and complete the operation.
     {
         std::unique_lock<std::mutex> lock (node->mutex);
         const std::string id (actor_->actor_id);
@@ -637,8 +699,10 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
         if (it != node->actors.end () && it->second.generation == actor_->generation) {
             const std::string spot_key (it->second.spot_rid.begin (), it->second.spot_rid.end ());
             std::map<std::string, spot_state_t>::iterator spot_it = node->spots.find (spot_key);
-            if (spot_it != node->spots.end () && spot_it->second.active_actor_count > 0)
+            if (spot_it != node->spots.end () && spot_it->second.active_actor_count > 0) {
                 spot_it->second.active_actor_count -= 1;
+                maybe_end_spot_locked (node, spot_key);
+            }
             node->owners.erase (actor_owner (id, it->second.generation));
             actor_state_t after = it->second;
             node->actors.erase (it);
@@ -952,8 +1016,10 @@ zlink_submit_result_t zlink_mesh_node_actor_leave_spot (void *mesh_node_,
         }
         const std::string prev_key (actor->spot_rid.begin (), actor->spot_rid.end ());
         std::map<std::string, spot_state_t>::iterator prev_it = node->spots.find (prev_key);
-        if (prev_it != node->spots.end () && prev_it->second.active_actor_count > 0)
+        if (prev_it != node->spots.end () && prev_it->second.active_actor_count > 0) {
             prev_it->second.active_actor_count -= 1;
+            maybe_end_spot_locked (node, prev_key);
+        }
         actor->spot_rid = entry_it->second.rid;
         actor->spot_generation = entry_it->second.generation;
         actor->membership_epoch += 1;
@@ -1072,8 +1138,10 @@ zlink_submit_result_t zlink_actor_join_reply (const zlink_mesh_reply_token_t *to
             //  The accepted reply is the single membership commit point.
             const std::string prev_key (actor.spot_rid.begin (), actor.spot_rid.end ());
             std::map<std::string, spot_state_t>::iterator prev_it = node->spots.find (prev_key);
-            if (prev_it != node->spots.end () && prev_it->second.active_actor_count > 0)
+            if (prev_it != node->spots.end () && prev_it->second.active_actor_count > 0) {
                 prev_it->second.active_actor_count -= 1;
+                maybe_end_spot_locked (node, prev_key);
+            }
             actor.spot_rid = route.join_target_spot_rid;
             actor.spot_generation = route.join_target_spot_generation;
             actor.membership_epoch += 1;

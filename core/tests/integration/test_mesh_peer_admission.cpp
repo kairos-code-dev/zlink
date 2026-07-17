@@ -1986,6 +1986,86 @@ void test_remote_channel_round_robin_and_zero_weight_exclusion ()
     }
 }
 
+//  An inbound-observed peer records the endpoint it advertises, so a later
+//  manual intent for the same endpoint merges into one MIXED-source entry;
+//  removing the manual source keeps the connection under DISCOVERY.
+void test_inbound_peer_merges_manual_intent_to_mixed ()
+{
+    run_two_process_case (
+      //  parent: node A only accepts the inbound connection, then adds a
+      //  manual intent for the child's advertised endpoint.
+      [] (int endpoint_fd) {
+          void *ctx = zlink_ctx_new ();
+          TEST_ASSERT_NOT_NULL (ctx);
+          void *node = new_started_node (ctx, mesh_name, "node-a");
+          publish_endpoint (node, endpoint_fd);
+
+          TEST_ASSERT_TRUE_MESSAGE (wait_admitted_count (node, 1),
+                                    "node A did not admit the inbound peer");
+
+          zlink_mesh_peer_entry_t entry;
+          TEST_ASSERT_TRUE (wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &entry));
+          TEST_ASSERT_EQUAL_INT (ZLINK_MESH_PEER_DISCOVERY, entry.source);
+          TEST_ASSERT_TRUE_MESSAGE (entry.endpoint[0] != '\0',
+                                    "inbound peer lost its advertised endpoint");
+
+          //  The manual intent for the same endpoint merges into MIXED.
+          zlink_mesh_peer_connection_options_t options;
+          memset (&options, 0, sizeof (options));
+          options.struct_size = sizeof (options);
+          options.version = 1;
+          options.endpoint = entry.endpoint;
+          options.endpoint_size = strlen (entry.endpoint);
+          uint64_t intent_id = 0;
+          TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK,
+                                 zlink_mesh_node_connect_peer (node, &options, &intent_id));
+          TEST_ASSERT_EQUAL_UINT64 (entry.connection_intent_id, intent_id);
+
+          zlink_mesh_peer_entry_t merged;
+          TEST_ASSERT_TRUE (wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &merged));
+          TEST_ASSERT_EQUAL_INT (ZLINK_MESH_PEER_MIXED, merged.source);
+
+          //  Removing the manual source keeps the discovery-observed side.
+          TEST_ASSERT_EQUAL_INT (ZLINK_CONNECT_OK,
+                                 zlink_mesh_node_remove_peer_connection (node, intent_id));
+          zlink_mesh_peer_entry_t after;
+          TEST_ASSERT_TRUE (wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &after));
+          TEST_ASSERT_EQUAL_INT (ZLINK_MESH_PEER_DISCOVERY, after.source);
+
+          //  Outlive the child's teardown before closing this side.
+          msleep (1500);
+          TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 2000));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+          TEST_ASSERT_EQUAL_INT (0, zlink_ctx_term (ctx));
+      },
+      //  child: node B connects manually and stays admitted briefly.
+      [] (int endpoint_fd) -> int {
+          char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+          read_endpoint (endpoint_fd, endpoint, sizeof (endpoint));
+          if (endpoint[0] == '\0')
+              return 10;
+          void *ctx = zlink_ctx_new ();
+          if (!ctx)
+              return 11;
+          void *node = new_started_node (ctx, mesh_name, "node-b");
+          if (submit_peer_intent (node, endpoint) == 0)
+              return 12;
+          zlink_mesh_peer_entry_t entry;
+          if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &entry))
+              return 13;
+          //  Stay admitted long enough for the parent's merge assertions,
+          //  then leave first so context teardown never lingers on a peer
+          //  that already closed its socket.
+          msleep (800);
+          zlink_mesh_node_shutdown (node, 1000);
+          if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK)
+              return 14;
+          if (zlink_ctx_term (ctx) != 0)
+              return 15;
+          return 0;
+      });
+}
+
 void test_peer_drain_and_reconnect ()
 {
     //  Both children fork before the parent's node exists (the per-process
@@ -2167,6 +2247,7 @@ int main ()
     RUN_TEST (test_remote_actor_join_entry_spot);
     RUN_TEST (test_remote_actor_transfer_fence);
     RUN_TEST (test_remote_channel_round_robin_and_zero_weight_exclusion);
+    RUN_TEST (test_inbound_peer_merges_manual_intent_to_mixed);
     RUN_TEST (test_peer_drain_and_reconnect);
 #endif
     return UNITY_END ();

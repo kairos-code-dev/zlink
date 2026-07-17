@@ -790,6 +790,12 @@ zlink_config_result_t zlink_stream_session_bindings (void *service_,
         errno = ENOBUFS;
         return ZLINK_CONFIG_BUFFER_TOO_SMALL;
     }
+    //  Validate every output element before writing any: an invalid element
+    //  must not leave partially written output behind.
+    for (size_t i = 0; i < count; ++i) {
+        if (check_versioned (&entries_[i]) != 0)
+            return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
     for (size_t i = 0; i < count; ++i) {
         zlink_stream_session_binding_t out;
         init_versioned (&out);

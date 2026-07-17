@@ -213,6 +213,18 @@ bool zlink::routing_socket_base_t::has_writable_weighted_out_pipes () const
     return _writable_weighted_out_pipes != 0;
 }
 
+bool zlink::routing_socket_base_t::xrouted_target_writable (const zlink_routing_id_t *target_rid_)
+{
+    if (!target_rid_ || target_rid_->size == 0)
+        return false;
+    const blob_t routing_id (target_rid_->data, target_rid_->size);
+    const out_pipe_t *const outpipe = lookup_out_pipe (routing_id);
+    //  check_write admits the first frame; once a multipart message begins,
+    //  its remaining frames are always accepted, so one slot equals one
+    //  complete message.
+    return outpipe && outpipe->pipe && outpipe->active && outpipe->pipe->check_write ();
+}
+
 bool zlink::routing_socket_base_t::xsubmit_retry_allowed (const zlink_routing_id_t *target_rid_,
                                                           int err_) const
 {

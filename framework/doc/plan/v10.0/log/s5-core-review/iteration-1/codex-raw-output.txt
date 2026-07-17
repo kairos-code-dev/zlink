@@ -1,0 +1,113 @@
+S5 Core 구현 독립 리뷰 R1 원본 출력
+
+결론: CORE REVIEW NOT CLEAN
+finding: blocker 0, high 4, medium 5, low 0, 합계 9
+축 판정: I1 NOT CLEAN / I2 NOT CLEAN / I3 CLEAN
+
+실행 식별
+- model: Codex (GPT-5)
+- session: 019f6fac-97bb-7762-a29c-71024b1c131e
+- companion session: 8915b088-9549-43cd-a49f-97c1f066b53c
+- 시작: 2026-07-17T19:43:55+09:00
+- 종료 snapshot: 2026-07-17T19:56:05+09:00
+- acceptance HEAD: 8206fd44dcd4cdd32e0364d0095631edb7b5118e (시작/종료 일치)
+- 시작 scope: 625 files, 281c02e49e016ce567cef652628f512d97495ca4af3b7eacc035361bf964e683 (manifest 일치)
+- 종료 scope: 625 files, 281c02e49e016ce567cef652628f512d97495ca4af3b7eacc035361bf964e683 (manifest 및 시작값 일치)
+- tracked working tree: 시작/종료 clean
+- untracked: 시작 시 manifest.ko.md 1개. 종료 snapshot에는 manifest, 이 리뷰의 허용 결과 2개, 다른 독립 리뷰어의 claude-fable 결과 2개가 존재했다. 이 리뷰는 다른 리뷰 결과를 읽지 않았다.
+
+검토 방법
+- manifest를 첫 파일로 읽었다.
+- core/doc/spec/core 아래 추적 Markdown 52개를 모두 열어 heading, API, 오류, 수명, 동시성 계약을 추출했다.
+- 특히 service/01~05, service/README, 03-errors, 04-errno-map, 06-polling, 07-monitoring을 본문 단위로 대조했다.
+- 공개 header, mesh runtime/API, integration/contract test, CMake/Conan, services internals를 실제 파일에서 확인했다.
+- 제거 identifier의 word-boundary scoped scan과 0-byte file scan을 수행했다.
+
+I1 finding
+
+F-I1-01 HIGH — Logical Multicast NODROP가 remote target 전체에 원자적이지 않다.
+- spec: core/doc/spec/core/service/01-mesh-node.ko.md:380-387
+- source: core/src/runtime/services/mesh/mesh_wire.cpp:1911-1929, core/src/api/mesh/mesh_messaging_api.cpp:843-853
+- evidence: remote target을 순차 send하고, 중간 실패 전에 성공한 target은 되돌리지 않은 채 BACKPRESSURED를 반환한다. 주석도 이미 전달된 target을 retry하지 않는다고 명시한다. all-or-none 계약과 반대다.
+- fix: 모든 remote pipe에 대해 실제 capacity reservation을 먼저 획득한 뒤 일괄 commit하거나, 동등한 2-phase wire protocol을 구현한다. 2개 이상 remote target 중 하나만 backpressure인 test에서 모든 target의 zero delivery를 검증한다.
+
+F-I1-02 HIGH — Spot logical lifecycle과 Spot timer generation/serialization이 구현되지 않았다.
+- spec: core/doc/spec/core/service/03-spot.ko.md:53-54,86-89,262-274
+- source: core/src/api/mesh/mesh_api.cpp:222-239, core/src/api/mesh/mesh_node_api.cpp:85-101,969-992, core/src/api/mesh/mesh_node_api.cpp:398-410
+- evidence: spot_timer_new은 generic timer를 만들고 timer_count만 증가시킨다. destroy hook, generation gate, application claim과의 상호배제 경로가 없다. timer_count 감소와 spots.erase 호출도 scoped no-hit다. 마지막 facade가 사라져도 logical Spot/owner가 남고, generic timer destroy 뒤에도 node destroy는 live_timers 때문에 영구 EBUSY가 될 수 있다.
+- fix: Spot-aware timer ownership/release hook과 generation gate를 lifecycle coordinator에 넣고, timer handler와 application turn을 같은 serialization domain에서 실행한다. 마지막 참조 해제 시 Spot/owner를 제거하고 같은 RID 재생성 시 generation을 증가시킨다.
+
+F-I1-03 HIGH — local Actor destroy가 deadline drain 없이 즉시 storage를 제거하고 OK completion을 만든다.
+- spec: core/doc/spec/core/service/04-actor.ko.md:181-182
+- source: core/src/api/mesh/mesh_actor_api.cpp:609-668
+- evidence: draining=true 직후 owner와 actor를 erase하고 operation을 즉시 OK로 complete한다. timeout_ms를 drain 대기에 사용하지 않으며 active application claim, request completion, bound session control을 확인하지 않는다.
+- fix: Actor lifecycle coordinator가 새 admission을 닫고 세 drain 조건을 deadline까지 기다리게 한다. held claim, pending request completion, bound session control 각각의 성공/timeout test를 추가한다.
+
+F-I1-04 HIGH — shutdown deadline에서 timeout_ms==0 operation이 terminal completion 없이 남는다.
+- spec: core/doc/spec/core/service/01-mesh-node.ko.md:166-174,306-308
+- source: core/src/api/mesh/mesh_node_api.cpp:308-383, core/src/api/mesh/mesh_node_api.cpp:64-78, core/src/api/mesh/mesh_messaging_api.cpp:925-936
+- evidence: timeout 0 operation은 timeout task를 만들지 않는다. shutdown은 operations가 남으면 deadline에 claim만 revoke하고 TIMED_OUT을 반환하며 operation을 종료하지 않는다. node는 DRAINING에 남고 재호출은 EDEADLK다. 따라서 shutdown terminal 경로가 없고 destroy 전까지 무기한 잔류할 수 있다.
+- fix: shutdown deadline에서 outstanding operation을 원자적으로 detach하여 exactly-once ESHUTDOWN completion으로 만들고 reply route를 정리한다. timeout 0 request를 미응답 상태로 둔 shutdown test를 추가한다.
+
+F-I1-05 MEDIUM — inbound-first peer와 manual endpoint의 MIXED 병합이 도달하지 않는다.
+- spec: core/doc/spec/core/service/01-mesh-node.ko.md:229-251
+- source: core/src/runtime/services/mesh/mesh_wire.cpp:498-577, core/src/api/mesh/mesh_node_api.cpp:475-484
+- evidence: inbound HELLO로 만든 DISCOVERY peer에는 endpoint를 기록하지 않는다. manual connect는 endpoint 문자열의 정확한 일치로만 MIXED로 바꾼다. 따라서 manifest가 지적한 inbound endpoint 공백과 manual endpoint 불일치 경로는 별도 intent를 만든다.
+- fix: inbound connection의 관측 remote endpoint를 peer identity에 안정적으로 기록하고, source ownership을 하나의 intent에 병합한다. inbound admission 후 같은 endpoint의 manual intent를 추가/제거하는 실제 transport test를 만든다.
+
+F-I1-06 MEDIUM — higher-generation peer 교체가 DRAINING 상태를 만들지 않는다.
+- spec: core/doc/spec/core/service/01-mesh-node.ko.md:246-254,100-120
+- source: core/src/runtime/services/mesh/mesh_wire.cpp:557-585, core/src/api/mesh/mesh_node_api.cpp:730-742
+- evidence: 이전 peer를 DRAINING으로 설정하지 않고 같은 entry의 generation/descriptor/state를 즉시 ADMITTED로 덮은 뒤 event만 방출한다. status의 draining_peer_count가 세는 상태는 이 경로에서 생성되지 않는다.
+- fix: old generation을 DRAINING entry로 유지하여 새 snapshot에서 제외하고 committed work/pipe 종료 뒤 close한다. 새 generation은 별도 ADMITTED lifetime으로 활성화한다.
+
+F-I1-07 MEDIUM — versioned array output의 선검증/no-partial-output 계약을 위반한다.
+- spec: core/doc/spec/core/service/README.ko.md:23-37
+- source: core/src/api/mesh/mesh_node_api.cpp:759-805, core/src/api/mesh/mesh_stream_session_api.cpp:763-803
+- evidence: peers는 element를 검증하고 즉시 써서 뒤 element가 invalid면 앞 element가 이미 바뀐다. stream_session_bindings는 element의 struct_size/version을 전혀 검사하지 않고 덮어쓴다.
+- fix: capacity의 필요한 모든 element를 먼저 검증한 후 두 번째 pass에서만 출력한다. 첫/중간/마지막 invalid element에 대해 output byte 불변 test를 추가한다.
+
+F-I1-08 MEDIUM — 공개 문자열 UTF-8 검증이 누락되거나 strict scalar validation이 아니다.
+- spec: core/doc/spec/core/service/01-mesh-node.ko.md:138-140,389-390
+- source: core/src/api/mesh/mesh_node_api.cpp:22-35,136-166,442-467, core/src/runtime/services/mesh/mesh_runtime.cpp:36-60, core/src/api/mesh/mesh_messaging_api.cpp:939-965
+- evidence: MeshName/trust profile/endpoint는 길이와 NUL만 검사한다. topic용 validator도 continuation byte 형태만 검사하여 overlong 3-byte, surrogate, U+10FFFF 초과를 허용한다.
+- fix: 하나의 strict UTF-8 scalar validator를 이름/trust/endpoint/topic/filter/metadata에 재사용하고 경계 및 invalid sequence contract test를 추가한다.
+
+I1 verdict: NOT CLEAN (HIGH 4, MEDIUM 4)
+
+I2 finding
+
+F-I2-01 MEDIUM — mesh_wire가 codec, peer lifecycle, service dispatch, transfer를 한 모듈에 결합한다.
+- design rule: doc/principal/software-design-principles.md:59-65,960-969,978-986
+- source: core/src/runtime/services/mesh/mesh_wire.cpp:1-2255, core/src/runtime/services/mesh/mesh_wire.hpp:15-220; current responsibility declaration: core/doc/internals/services-internals.ko.md:12-29,107-130
+- evidence: 하나의 translation unit이 envelope codec, socket lifecycle, HELLO admission/peer transition, Node/Spot/Actor ingress, multicast, actor operation, transfer protocol을 함께 소유한다. NODROP reservation 주석과 실제 send 구현의 모순, DRAINING event와 상태 전이의 분리가 이 지식 결합에서 이미 observable defect로 나타났다.
+- alternatives: (A) ingress/egress 시간 순서로 파일만 나누는 방법은 domain 지식을 양쪽에 반복시킨다. (B) codec, peer admission state machine, service ingress router, transport send/receive를 각자 한 결정을 소유하는 깊은 모듈로 분리한다. B를 선택해야 한다. public API는 바꾸지 않고 wire transport interface를 좁힌다.
+
+I2 verdict: NOT CLEAN (MEDIUM 1)
+
+I3 finding
+
+없음.
+- contract public surface 직접 실행: PUBLIC SURFACE CONTRACT: PASS, functions=196 exports match, removed identifiers absent.
+- manifest 제거 pattern의 scoped word-boundary scan: no hit.
+- 검토 source/header/test/package 범위 0-byte file scan: no hit.
+
+I3 verdict: CLEAN
+
+known risk 개별 판정
+1-a part_helper_state check-then-set: 정적 반박. socket-owned shared_ptr는 core/src/runtime/sockets/common/socket_base_request_reply_bridge.cpp:41-64에서 atomic load/CAS/store를 사용한다. finding 없음.
+1-b auto-HWM lock-order warning: 동적 판정 불완전. core/src/runtime/core/ctx_auto_hwm_recalc.cpp:80-116의 slot_sync -> socket monitor sync 순서를 확인했으나 반대 순서의 확정 경로는 찾지 못했다. sandbox가 mesh start TCP bind를 705로 막아 TSAN 재현은 실패했다. 추정 finding은 만들지 않았다.
+1-c mailbox ypipe warning: 동적 판정 불완전. 현재 mailbox 경로의 mutex 보호를 정적으로 확인했으나 위와 같은 환경 제한으로 TSAN 재현하지 못했다. finding 없음.
+2 MIXED 실도달: 확인, F-I1-05.
+3 DRAINING 전이 부재: 확인, F-I1-06.
+4 shutdown 뒤 무기한 operation: 확인, F-I1-04.
+
+실행 검증
+- cmake --build core/build -j: compile/link 성공. post-build local package sync가 scope 밖 bindings를 갱신하는 부수 효과를 냈고, 시작 snapshot의 HEAD 내용으로 즉시 복원했다. 종료 tracked tree clean과 scope hash 일치로 복원을 확인했다.
+- ctest --test-dir core/build -j: 32/84 pass, 52 fail. 대표 mesh test는 start가 expected 0 / actual 705로 즉시 실패했다. managed sandbox의 TCP bind 제한 때문에 live network test 결과로 구현 pass/fail을 판정하지 않았다.
+- ASAN 4 mesh binaries: 모두 동일한 start 705로 본문 미실행. LSAN은 ptrace 환경 fatal도 보고했다.
+- TSAN 4 mesh binaries with setarch -R: 모두 start 705로 본문 미실행, race warning 없음은 유효한 clean 증거로 취급하지 않았다.
+- contract_public_surface: PASS, functions=196.
+- C ABI smoke: 이 세션에서 staging을 변경하지 않기 위해 재실행하지 않았으며 manifest의 기존 PASS만 참고했다. 독립 성공 증거로 계산하지 않았다.
+
+최종: blocker 0 / high 4 / medium 5 / low 0. I1 NOT CLEAN, I2 NOT CLEAN, I3 CLEAN. CORE REVIEW NOT CLEAN.

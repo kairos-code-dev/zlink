@@ -40,6 +40,20 @@ int set_tls_client (void *handle_, const char *ca_cert_, const char *hostname_, 
 //  generation. Returns NULL with errno set on failure.
 void *spot_timer_new (void *spot_);
 
+//  Spot timer lifecycle seam, called by the generic timer machinery. All
+//  three are safe no-ops for timers that are not Spot-owned.
+//  enter_turn returns false when the tick must be skipped (the owning Spot
+//  generation ended or the node stopped); on true the caller runs the
+//  handler and then calls leave_turn. While the turn is held, the Spot's
+//  application claim cannot be taken (handler mutual exclusion).
+bool spot_timer_enter_turn (void *timer_);
+void spot_timer_leave_turn (void *timer_);
+//  Queue-delivery gate (recv/poller consumption): false once the owning Spot
+//  generation ended, so stale ticks are never delivered.
+bool spot_timer_tick_allowed (void *timer_);
+//  Releases the timer's reference on its Spot generation at destroy.
+void spot_timer_closed (void *timer_);
+
 //  Poller integration for MeshNode readiness sources.
 int poller_add (void *poller_, void *handle_, void *user_data_, short events_);
 int poller_modify (void *poller_, void *handle_, short events_);

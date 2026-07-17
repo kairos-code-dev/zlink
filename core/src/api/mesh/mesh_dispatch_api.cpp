@@ -73,21 +73,42 @@ int unseal_reply_token (const zlink_mesh_reply_token_t *token_,
 namespace
 {
 //  Claims carry the owner key inline in a side table indexed by serial so the
-//  32-byte public claim stays opaque while owner keys can exceed it.
-std::mutex g_claim_key_mutex;
-std::map<uint64_t, owner_id_t> g_claim_keys;
+//  32-byte public claim stays opaque while owner keys can exceed it. Serials
+//  are allocated from one process-wide counter so the table cannot collide
+//  across MeshNodes, and the storage is immortal so a release racing static
+//  destruction stays a safe no-op.
+struct claim_key_table_t
+{
+    std::mutex mutex;
+    std::map<uint64_t, owner_id_t> keys;
+    std::atomic<uint64_t> next_serial;
+    claim_key_table_t () : next_serial (1) {}
+};
+
+claim_key_table_t &claim_keys ()
+{
+    static claim_key_table_t *instance = new claim_key_table_t ();
+    return *instance;
+}
+
+uint64_t next_claim_serial ()
+{
+    return claim_keys ().next_serial.fetch_add (1);
+}
 
 void remember_claim_key (uint64_t serial_, const owner_id_t &owner_)
 {
-    std::lock_guard<std::mutex> lock (g_claim_key_mutex);
-    g_claim_keys[serial_] = owner_;
+    claim_key_table_t &table = claim_keys ();
+    std::lock_guard<std::mutex> lock (table.mutex);
+    table.keys[serial_] = owner_;
 }
 
 int recall_claim_key (uint64_t serial_, owner_id_t *owner_out_)
 {
-    std::lock_guard<std::mutex> lock (g_claim_key_mutex);
-    std::map<uint64_t, owner_id_t>::iterator it = g_claim_keys.find (serial_);
-    if (it == g_claim_keys.end ()) {
+    claim_key_table_t &table = claim_keys ();
+    std::lock_guard<std::mutex> lock (table.mutex);
+    std::map<uint64_t, owner_id_t>::iterator it = table.keys.find (serial_);
+    if (it == table.keys.end ()) {
         errno = ESTALE;
         return -1;
     }
@@ -97,8 +118,9 @@ int recall_claim_key (uint64_t serial_, owner_id_t *owner_out_)
 
 void forget_claim_key (uint64_t serial_)
 {
-    std::lock_guard<std::mutex> lock (g_claim_key_mutex);
-    g_claim_keys.erase (serial_);
+    claim_key_table_t &table = claim_keys ();
+    std::lock_guard<std::mutex> lock (table.mutex);
+    table.keys.erase (serial_);
 }
 
 //  Releases one claim body against its (possibly destroyed) node.
@@ -129,6 +151,8 @@ zlink_close_result_t release_claim_body (const claim_body_t &body_)
     mailbox.claim_serial = 0;
     forget_claim_key (body_.serial);
     const bool rearm = !mailbox.records.empty ();
+    if (owner.kind == owner_spot && !rearm)
+        maybe_end_spot_locked (node, owner.key);
     node->cv.notify_all ();
     lock.unlock ();
     //  Re-arm through the public signalling path so a registered handler
@@ -319,9 +343,15 @@ zlink_recv_result_t zlink_mesh_node_drain_ready (void *mesh_node_,
                 node->ready.erase (it++);
                 continue;
             }
+            //  A running Spot timer handler owns this generation's turn; the
+            //  ready entry stays armed for after the handler returns.
+            if (domain == domain_application && owner_it->second.timer_turn_active) {
+                ++it;
+                continue;
+            }
 
             mailbox.claimed = true;
-            mailbox.claim_serial = node->next_claim_serial++;
+            mailbox.claim_serial = next_claim_serial ();
 
             zlink_mesh_ready_record_t record;
             memset (&record, 0, sizeof (record));

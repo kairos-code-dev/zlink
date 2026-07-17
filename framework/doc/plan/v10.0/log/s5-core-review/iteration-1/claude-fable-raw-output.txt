@@ -1,0 +1,42 @@
+S5 Core review — R2 Claude Fable (general-purpose agent) — raw output
+commit 8206fd44dcd4cdd32e0364d0095631edb7b5118e
+start 2026-07-17 19:43:07 +0900 / end 2026-07-17 19:49:32 +0900
+
+=== 실행한 명령 ===
+- git rev-parse HEAD; git status --short  (clean; only review log dir untracked at start)
+- scope hash: git ls-files core/include core/src core/tests core/packaging core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md | sort -u | xargs sha256sum | sha256sum
+    -> 281c02e49e016ce567cef652628f512d97495ca4af3b7eacc035361bf964e683 / 625 files (matches manifest §2). Re-run at end: identical.
+- removed-identifier no-hit scan (manifest §5), scoped, excluding removal manifest + absence tests
+    -> in-scope code hits = 0. Hits only in core/tools/, core/study/, core/tools/perf/ (out of review scope, historical refactor logs) + one assert_text_absent absence test.
+- cmake --build core/build -j$(nproc) && ctest --test-dir core/build -j$(nproc)
+    -> 100% tests passed, 0 failed out of 84 (124.20s). Matches manifest baseline.
+- python3 core/tests/contract/check_public_surface.py  (needs args; gate runs via ctest unittest_public_contract_headers, built+passed)
+- grep verifications: PEER_DRAINING / PEER_MIXED / NODE_DRAINING set-sites; next_claim_serial; g_claim_keys; handler_active; node_owner.
+
+=== 검토한 파일 ===
+specs: core/doc/spec/core/service/{01-mesh-node,02-dispatch,03-spot,04-actor,05-stream-session}.ko.md,
+       core/doc/spec/core/{03-errors,04-errno-map,06-polling,07-monitoring}.ko.md
+headers: core/include/zlink/service/{mesh_node,dispatch,actor}.h (spot/stream_session/common cross-checked via spec tables)
+runtime: core/src/runtime/services/mesh/mesh_runtime.{hpp,cpp} (full)
+api: core/src/api/mesh/mesh_dispatch_api.cpp (full), mesh_messaging_api.cpp (1-540),
+     mesh_node_api.cpp (300-580, 700-780), mesh_monitor_api.cpp (full)
+tests: test_mesh_node_basic/stress/monitor_matrix/peer_admission (node/claim counts, fork usage)
+docs: core/doc/internals/services-internals.ko.md (claim identity §3), CHANGELOG.md 10.0.0
+build side-effect: bindings/* modified by sync-local-core-libs.sh during build (out of core scope; core scope hash unchanged).
+
+=== 세 축 요약 ===
+I1 계약 구현 일치: NOT CLEAN.
+  F1 (High) g_claim_keys process-global keyed by serial only; next_claim_serial per-node from 1 -> cross-node claim-key collision in multi-node-per-process (spec §1 supported). release/recv recall wrong owner -> permanent mailbox lock / ESTALE. dispatch spec §3/§6. mesh_dispatch_api.cpp:77-102,108,130,341,536; mesh_runtime.hpp:510/.cpp:280. Latent: no test holds claims on 2 in-process nodes concurrently (peer test is two-process fork; others single-node).
+  F2 (Medium) MeshNode monitor same-callback handler unregister does not return HANDLER_DEADLOCK; handler_active never set true -> guard dead. monitoring spec §3. mesh_monitor_api.cpp:60,151.
+I2 POSD/DDD: CLEAN. mesh_node_t deep module, api/mesh thin forwarding; boundaries consistent; header comments explain why.
+I3 정리 완결성: NOT CLEAN (low). F3 no-op ternary mesh_messaging_api.cpp:406-409; dead handler_active guard (F2); vestigial peer DRAINING branch/field/count. removed-identifier scan clean; no orphan targets/aliases.
+
+=== known risk 판정 ===
+1 TSAN 3-family: not re-run this pass; new mesh code no new race; 84/84 green; accepted (tracked).
+2 PEER_MIXED reachability: merge only when existing source==DISCOVERY and endpoint string matches; effectively unreachable in-process now; accepted (latent, low).
+3 peer DRAINING unused: confirmed no assignment sets peer.state=DRAINING; draining_peer_count always 0; disconnect DRAINING branch dead; spec doesn't require observable dwell; accepted; recorded as I3 vestigial.
+4 unbounded op termination after shutdown deadline: resolved via claim revoke -> recv ESHUTDOWN; destroy clears operations without materializing per-op ESHUTDOWN completion but frees node storage same call -> observably equivalent; accepted (low/editorial).
+
+=== verdict ===
+Findings: 3 (High 1, Medium 1, Low 1). I1 NOT CLEAN, I2 CLEAN, I3 NOT CLEAN.
+High finding present -> NOT CLEAN.

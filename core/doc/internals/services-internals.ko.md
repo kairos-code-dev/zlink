@@ -12,7 +12,7 @@ session)의 실제 내부 구조를 빠르게 파악하도록 돕는 내부 문�
 | 위치 | 책임 |
 |---|---|
 | `src/runtime/services/mesh/mesh_runtime.{hpp,cpp}` | 객체 모델과 프로세스-로컬 상태 기계. `mesh_node_t`, owner mailbox, ready index, claim, budget, monitor queue, handle registry |
-| `src/runtime/services/mesh/mesh_wire.{hpp,cpp}` | 원격 wire. node 소유 raw ROUTER, ingress 스레드, envelope codec, HELLO admission, 원격 메시징·transfer data plane |
+| `src/runtime/services/mesh/mesh_wire*.{hpp,cpp}` | 원격 wire 4모듈 — `mesh_wire_codec`(wire 포맷 결정), `mesh_wire_admission`(peer admission 상태 기계), `mesh_wire_ingress`(수신 프레임의 서비스 라우팅과 ingress 스레드), `mesh_wire`(transport 수명과 발신 submit). 공유 선언은 `mesh_wire_internal.hpp` |
 | `src/api/mesh/mesh_node_api.cpp` | lifecycle, membership, peer intent, option, status·query C API |
 | `src/api/mesh/mesh_messaging_api.cpp` | node/channel/Spot direct send·request, Logical Multicast publish |
 | `src/api/mesh/mesh_dispatch_api.cpp` | ready handler, drain, ready/receive batch, claim, reply token |
@@ -73,8 +73,9 @@ entry를 batch claim으로 옮기고, `claim_recv_batch`가 mailbox record를 re
 batch로 이동시키면서 budget을 되돌린다. claim release는 mailbox에 record가
 남아 있을 때만 `signal_ready`로 재무장한다(락 해제 뒤 공개 신호 경로 사용).
 
-claim 신원은 (node generation, owner, domain, serial)이고, serial→owner 역해석
-표는 전역 side table(`g_claim_keys`)이 가진다. 이 표 덕분에 node가 파괴된 뒤의
+claim 신원은 (node generation, owner, domain, serial)이고, serial은 **프로세스
+전역 원자 카운터**에서 발급되어 여러 MeshNode 사이에서도 충돌하지 않는다.
+serial→owner 역해석 표는 immortal side table이 가지며, node가 파괴된 뒤의
 release도 안전하게 무해한 no-op이 된다.
 
 wakeup 경로는 셋이고 서로 배타 규칙이 있다.
@@ -102,7 +103,11 @@ token으로 serial만 밖에 내보낸다. 소비 시점 규칙:
 
 completion은 언제나 requester owner의 infrastructure mailbox로 들어간다.
 timeout completion은 전역 timeout scheduler(immortal singleton, 전용 스레드)가
-deadline에 `complete_operation`을 호출해 만든다.
+deadline에 `complete_operation`을 호출해 만든다. shutdown이 deadline을 넘기면
+남은 operation(무기한 포함)을 detach해 정확히 한 번의
+`REQUEST_TERMINATED`/`ESHUTDOWN` completion으로 마감한다. shutdown 재진입은
+`shutdown_active` 플래그로만 `EDEADLK`이고, TIMED_OUT 뒤의 순차 재호출은
+합법이다.
 
 ## 5. Wire: ROUTER, ingress 스레드와 envelope
 
@@ -124,10 +129,13 @@ deadline에 `complete_operation`을 호출해 만든다.
 - admission 검증(`validate_admission_locked`)은 MeshName(`EEXIST`),
   trust profile(`EACCES`), expected RID·stale generation(`ESTALE`)을 본다.
   거부는 REJECT frame과 `PEER_REJECTED` event(양쪽 모두)로 관측된다. 더 높은
-  lifecycle generation은 기존 admitted entry를 즉시 교체하며, 이 교체가
-  `PEER_DRAINING` event의 방출 지점이다. inbound로 관측된(로컬 intent 없는)
-  peer는 source가 `DISCOVERY`이고, 같은 endpoint에 수동 intent가 겹치면
-  `MIXED`로 병합된다.
+  lifecycle generation은 새 entry로 별도 수명을 시작하고 이전 admitted entry를
+  `DRAINING`으로 남긴다(새 snapshot 제외, transport 종료나 명시적 disconnect로
+  close, `PEER_DRAINING` event 방출). descriptor는 자기 bind endpoint를
+  advertised endpoint로 싣고, inbound로 관측된(로컬 intent 없는) peer는 source
+  `DISCOVERY`에 그 endpoint를 기록한다 — 같은 endpoint의 수동 intent는 하나의
+  entry로 병합되어 `MIXED`가 되고, 한 source 제거는 남은 source로 연결을
+  유지한다.
 - 원격 request는 requester가 correlation=op.low로 operation을 등록하고,
   responder가 remote-origin reply route(원 rid + 원 correlation 봉인)를 만들어
   `zlink_mesh_reply`가 wire REPLY로 회신한다. requester ingress가 pending

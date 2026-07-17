@@ -885,6 +885,9 @@ set(api-socket-sources
     src/api/mesh/mesh_stream_session_api.cpp
     src/runtime/services/mesh/mesh_runtime.cpp
     src/runtime/services/mesh/mesh_wire.cpp
+    src/runtime/services/mesh/mesh_wire_admission.cpp
+    src/runtime/services/mesh/mesh_wire_codec.cpp
+    src/runtime/services/mesh/mesh_wire_ingress.cpp
     src/api/socket/socket_request_reply_router_state.cpp
     src/runtime/services/control/service_control_runtime.cpp
     src/api/socket/socket_request_reply_api.cpp

@@ -13,7 +13,7 @@ describes the current source structure that implements that contract.
 | Location | Responsibility |
 |---|---|
 | `src/runtime/services/mesh/mesh_runtime.{hpp,cpp}` | Object model and process-local state machine: `mesh_node_t`, owner mailboxes, ready index, claims, budgets, monitor queue, handle registry |
-| `src/runtime/services/mesh/mesh_wire.{hpp,cpp}` | Remote wire: node-owned raw ROUTER, ingress thread, envelope codec, HELLO admission, remote messaging and the transfer data plane |
+| `src/runtime/services/mesh/mesh_wire*.{hpp,cpp}` | Remote wire in four modules — `mesh_wire_codec` (the wire format decision), `mesh_wire_admission` (the peer admission state machine), `mesh_wire_ingress` (routing received frames into the services plus the ingress thread) and `mesh_wire` (transport lifecycle and outbound submits). Shared declarations live in `mesh_wire_internal.hpp` |
 | `src/api/mesh/mesh_node_api.cpp` | Lifecycle, membership, peer intents, options, status and query C API |
 | `src/api/mesh/mesh_messaging_api.cpp` | Node/channel/Spot direct send and request, Logical Multicast publish |
 | `src/api/mesh/mesh_dispatch_api.cpp` | Ready handler, drain, ready/receive batches, claims, reply tokens |
@@ -79,10 +79,10 @@ claim release re-arms through `signal_ready` only when records remain in the
 mailbox (the decision is taken under the lock, the signal is sent after
 releasing it).
 
-A claim's identity is (node generation, owner, domain, serial); the
-serial-to-owner reverse map lives in a global side table (`g_claim_keys`).
-That table is what makes releasing a claim after node destruction a safe
-no-op.
+A claim's identity is (node generation, owner, domain, serial); serials come
+from **one process-wide atomic counter**, so they never collide across
+MeshNodes. The serial-to-owner reverse map lives in an immortal side table,
+which is what makes releasing a claim after node destruction a safe no-op.
 
 There are three wakeup paths with mutual-exclusion rules:
 
@@ -110,6 +110,10 @@ exposes only the serial through a 32-byte sealed token. Consumption rules:
 Completions always land in the requester owner's infrastructure mailbox.
 Timeout completions are produced by the global timeout scheduler (an immortal
 singleton with its own thread) calling `complete_operation` at the deadline.
+When a shutdown outlives its deadline it detaches every remaining operation
+(including timeout-less ones) into exactly one `REQUEST_TERMINATED`/`ESHUTDOWN`
+completion. Shutdown re-entry is `EDEADLK` only through the `shutdown_active`
+flag; a sequential call after TIMED_OUT is legal.
 
 ## 5. Wire: ROUTER, the ingress thread and the envelope
 
@@ -132,11 +136,14 @@ singleton with its own thread) calling `complete_operation` at the deadline.
 - Admission validation (`validate_admission_locked`) checks MeshName
   (`EEXIST`), trust profile (`EACCES`) and expected RID / stale generation
   (`ESTALE`). Rejections are observable through the REJECT frame and the
-  `PEER_REJECTED` event on both sides. A higher lifecycle generation replaces
-  the previously admitted entry immediately; that replacement is where the
-  `PEER_DRAINING` event is emitted. A peer observed inbound (with no local
-  intent) has source `DISCOVERY`; a later manual intent for the same endpoint
-  merges into `MIXED`.
+  `PEER_REJECTED` event on both sides. A higher lifecycle generation starts a
+  separate lifetime in a fresh entry and leaves the previous admitted entry
+  `DRAINING` (excluded from new snapshots, closed with the transport or an
+  explicit disconnect, `PEER_DRAINING` emitted). The descriptor advertises
+  the node's bind endpoint, and an inbound-observed peer records it under
+  source `DISCOVERY` — a manual intent for the same endpoint merges into one
+  `MIXED` entry, and removing one source keeps the connection under the
+  other.
 - A remote request registers the operation with correlation = op.low; the
   responder creates a remote-origin reply route (sealing the origin rid and
   correlation) so that `zlink_mesh_reply` answers over the wire with a REPLY,

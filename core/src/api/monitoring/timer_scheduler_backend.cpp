@@ -8,6 +8,7 @@
 #endif
 
 #include "api/monitoring/timer_api_internal.hpp"
+#include "api/mesh/mesh_api_internal.hpp"
 
 timer_handle_t::timer_handle_t (backend_kind_t backend_, void *owner_spot_, void *owner_node_) :
     tag (0x74696d72),
@@ -120,7 +121,7 @@ void scheduler_fire_timer (timer_handle_t *timer_)
 
             if (handler) {
                 timer_->receive_callback_active = true;
-            } else {
+            } else if (zlink::mesh::spot_timer_tick_allowed (timer_)) {
                 timer_->fired_counts.push_back (fire_count);
                 ensure_timer_signal_locked (timer_);
                 timer_->recv_cv.notify_one ();
@@ -139,8 +140,15 @@ void scheduler_fire_timer (timer_handle_t *timer_)
         }
     }
 
-    if (handler)
-        handler (timer_, fire_count, handler_userdata);
+    if (handler) {
+        //  A Spot-owned timer's handler is mutually exclusive with the owning
+        //  Spot's application claim handler and is skipped entirely once the
+        //  owning generation ended.
+        if (zlink::mesh::spot_timer_enter_turn (timer_)) {
+            handler (timer_, fire_count, handler_userdata);
+            zlink::mesh::spot_timer_leave_turn (timer_);
+        }
+    }
 
     std::unique_lock<std::mutex> scheduler_lock (scheduler->mutex);
     std::unique_lock<std::mutex> timer_lock (timer_->mutex);

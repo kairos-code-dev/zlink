@@ -26,7 +26,8 @@ int check_name (const char *name_, size_t max_, std::string *out_)
         return -1;
     }
     const size_t len = strlen (name_);
-    if (len == 0 || len > max_) {
+    if (len == 0 || len > max_
+        || !valid_utf8 (reinterpret_cast<const unsigned char *> (name_), len)) {
         errno = EINVAL;
         return -1;
     }
@@ -314,19 +315,22 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
     }
 
     std::unique_lock<std::mutex> lock (node->mutex);
-    if (node->state == ZLINK_MESH_NODE_DRAINING) {
+    //  Re-entry (a concurrent shutdown/destroy on this handle) deadlocks; a
+    //  sequential shutdown after a TIMED_OUT drain is legal and waits again.
+    if (node->shutdown_active) {
         errno = EDEADLK;
         return ZLINK_REQUEST_INVALID_STATE;
     }
     if (node->state == ZLINK_MESH_NODE_STOPPED)
         return ZLINK_REQUEST_OK;
 
-    node->state = ZLINK_MESH_NODE_DRAINING;
-    node->last_changed_ms = now_ms ();
-    node->cv.notify_all ();
+    node->shutdown_active = true;
+    if (node->state != ZLINK_MESH_NODE_DRAINING) {
+        node->state = ZLINK_MESH_NODE_DRAINING;
+        node->last_changed_ms = now_ms ();
+        node->cv.notify_all ();
+    }
 
-    //  Fail outstanding operations that cannot complete once new admission
-    //  has stopped: they terminate with ESHUTDOWN at the deadline.
     const uint64_t deadline = timeout_ms_ > 0 ? now_ms () + timeout_ms_ : now_ms ();
 
     bool drained = false;
@@ -368,13 +372,29 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
                 }
             }
         }
+        //  Detach every outstanding operation into its exactly-once ESHUTDOWN
+        //  terminal completion: operations without a timeout must not outlive
+        //  the shutdown deadline. A late reply still consumes its token and is
+        //  discarded (the same rule as a requester timeout).
+        std::vector<pending_operation_t> detached;
+        detached.reserve (node->operations.size ());
+        for (std::unordered_map<uint64_t, pending_operation_t>::iterator it =
+               node->operations.begin ();
+             it != node->operations.end (); ++it)
+            detached.push_back (it->second);
+        node->operations.clear ();
+        node->shutdown_active = false;
         lock.unlock ();
         for (size_t i = 0; i < revoked_events.size (); ++i)
             emit_monitor_event (node, revoked_events[i]);
+        for (size_t i = 0; i < detached.size (); ++i)
+            complete_operation (node, detached[i], ZLINK_REQUEST_TERMINATED, ESHUTDOWN, NULL,
+                                NULL);
         errno = ETIMEDOUT;
         return ZLINK_REQUEST_TIMED_OUT;
     }
 
+    node->shutdown_active = false;
     node->state = ZLINK_MESH_NODE_STOPPED;
     node->last_changed_ms = now_ms ();
     lock.unlock ();
@@ -784,9 +804,13 @@ zlink_mesh_node_peers (void *mesh_node_, zlink_mesh_peer_entry_t *entries_, size
         errno = ENOBUFS;
         return ZLINK_CONFIG_BUFFER_TOO_SMALL;
     }
+    //  Validate every output element before writing any: an invalid element
+    //  must not leave partially written output behind.
     for (size_t i = 0; i < live.size (); ++i) {
         if (check_versioned (&entries_[i]) != 0)
             return ZLINK_CONFIG_INVALID_ARGUMENT;
+    }
+    for (size_t i = 0; i < live.size (); ++i) {
         zlink_mesh_peer_entry_t out;
         init_versioned (&out);
         out.connection_intent_id = live[i]->intent_id;
@@ -983,8 +1007,10 @@ zlink_close_result_t zlink_spot_destroy (void **spot_p_)
         const std::string key (facade->spot_rid.begin (), facade->spot_rid.end ());
         std::map<std::string, spot_state_t>::iterator it = node->spots.find (key);
         if (it != node->spots.end () && it->second.generation == facade->generation
-            && it->second.facade_count > 0)
+            && it->second.facade_count > 0) {
             it->second.facade_count -= 1;
+            maybe_end_spot_locked (node, key);
+        }
     }
     track_facade (facade, false);
     delete facade;

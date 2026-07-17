@@ -48,6 +48,14 @@ rid_bytes_t rid_bytes (const zlink_routing_id_t &rid_);
 zlink_routing_id_t rid_value (const rid_bytes_t &bytes_);
 bool rid_equal (const zlink_routing_id_t &a_, const zlink_routing_id_t &b_);
 
+//  Strict UTF-8 scalar validation shared by every public string contract.
+bool valid_utf8 (const unsigned char *data_, size_t size_);
+
+//  Ends a logical user Spot once nothing references it any more (no facade,
+//  timer, Actor membership or active claim). Entry Spots stay node-owned.
+//  Caller holds the node mutex.
+void maybe_end_spot_locked (mesh_node_t *node_, const std::string &spot_key_);
+
 //  --- owner mailboxes and the ready index ----------------------------------
 
 enum owner_kind_t
@@ -148,6 +156,9 @@ struct owner_state_t
     //  Transfer fence: while nonzero the application domain accepts no new
     //  records or claims (submits return EAGAIN).
     uint64_t fenced_transfer_serial;
+    //  True while a Spot timer handler for this owner's generation runs; the
+    //  application claim and the timer handler are mutually exclusive.
+    bool timer_turn_active;
 };
 
 //  --- claims ---------------------------------------------------------------
@@ -367,7 +378,9 @@ struct monitor_state_t
     std::deque<zlink_mesh_monitor_event_t> events;
     zlink_mesh_monitor_handler_fn handler;
     void *handler_userdata;
-    bool handler_active;
+    //  Number of threads currently inside the registered handler; nonzero
+    //  rejects re-entrant deregistration/close with EDEADLK.
+    int handler_active;
     bool closed;
     zlink_mesh_monitor_status_t counters;
 };
@@ -507,7 +520,6 @@ struct mesh_node_t
 
     //  owners & dispatch
     std::map<owner_id_t, owner_state_t> owners;
-    uint64_t next_claim_serial;
     //  Level-triggered readable set; guarded by mutex, signalled via cv and
     //  the registered ready handler / poller notification.
     std::set<std::pair<owner_id_t, int>> ready;
@@ -526,6 +538,10 @@ struct mesh_node_t
     std::unordered_map<uint64_t, pending_operation_t> operations; //  key: op.low
     uint64_t next_reply_serial;
     std::unordered_map<uint64_t, reply_route_t> reply_routes;
+    //  True while one shutdown call is inside its drain wait; a concurrent
+    //  shutdown/destroy on the same handle is re-entry (EDEADLK). A
+    //  sequential shutdown after a TIMED_OUT drain is legal and waits again.
+    bool shutdown_active;
 
     //  spots & actors
     std::map<std::string, spot_state_t> spots;   //  key: rid bytes as string

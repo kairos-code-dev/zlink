@@ -1,11 +1,28 @@
 {
   "notice": "All official Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/spec/server/41-location-store-redis.ko.md.",
   "format": "actor-transfer-v1",
-  "key": "P:transfer:game:actor-1:01234567-89ab-cdef-0123-456789abcdef",
+  "key": "P:transfer:4:game7:actor-1:01234567-89ab-cdef-0123-456789abcdef",
   "activeIndex": {
-    "key": "P:transfer-by-actor:game:actor-1",
+    "key": "P:transfer-by-actor:4:game7:actor-1",
     "value": "01234567-89ab-cdef-0123-456789abcdef"
   },
+  "keyBoundaryCases": [
+    {
+      "meshName": "a:b",
+      "actorId": "c",
+      "actorRowKey": "3:a:b1:c"
+    },
+    {
+      "meshName": "a",
+      "actorId": "b:c",
+      "actorRowKey": "1:a3:b:c"
+    },
+    {
+      "meshName": "게임",
+      "actorId": "배우",
+      "actorRowKey": "6:게임6:배우"
+    }
+  ],
   "hashFields": [
     "state",
     "source",

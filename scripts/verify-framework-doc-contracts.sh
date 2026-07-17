@@ -41,7 +41,7 @@ const declarationNames = (language, source) => {
     while ((match = pattern.exec(source)) !== null) names.push(match[1]);
   };
   if (language === 'dotnet') {
-    add(/public\s+(?:(?:sealed|abstract|readonly)\s+)*(?:class|interface|enum|record(?:\s+struct)?)\s+([A-Za-z_]\w*)/g);
+    add(/public\s+(?:(?:sealed|abstract|readonly)\s+)*(?:class|struct|interface|enum|record(?:\s+struct)?)\s+([A-Za-z_]\w*)/g);
     add(/public\s+delegate\s+[^;(]*?\s+([A-Za-z_]\w*)\s*\(/g);
   } else if (language === 'cpp') {
     add(/\b(?:class|struct|enum\s+class|enum)\s+([A-Za-z_]\w*)/g);
@@ -119,6 +119,84 @@ for (const language of languages) {
     failures.push(`public declaration inventory differs: ${language}`);
   }
   declarationCount += counts.size;
+}
+
+// RouteMesh location/transfer fixtures are part of the cross-language public
+// contract. Hash-lock them and validate the boundary cases that explain the
+// wire format so coordinated edits cannot reintroduce delimiter collisions.
+for (const [relative, expected] of Object.entries(inventory.redis_fixtures || {})) {
+  const source = read(relative);
+  if (source !== undefined && digest(source) !== expected) {
+    failures.push(`Redis contract fixture changed without inventory review: ${relative}`);
+  }
+}
+const meshDescriptorFixtureText = read('framework/testdata/location/redis/mesh-node-descriptor-v1.json');
+const actorLocationFixtureText = read('framework/testdata/location/redis/actor-location-v2.json');
+const actorTransferFixtureText = read('framework/testdata/location/redis/actor-transfer-v1.json');
+if (meshDescriptorFixtureText !== undefined
+    && actorLocationFixtureText !== undefined
+    && actorTransferFixtureText !== undefined) {
+  try {
+    const meshDescriptorFixture = JSON.parse(meshDescriptorFixtureText);
+    const actorLocationFixture = JSON.parse(actorLocationFixtureText);
+    const actorTransferFixture = JSON.parse(actorTransferFixtureText);
+    const meshDescriptorJson = JSON.parse(meshDescriptorFixture.row?.hash?.json || '{}');
+    const actorLocationJson = JSON.parse(actorLocationFixture.row?.hash?.json || '{}');
+    const descriptorHashFields = ['owner', 'gen', 'json', 'updatedAtMs', 'mesh'];
+    const descriptorJsonFields = [
+      'MeshName', 'Rid', 'LifecycleGeneration', 'DescriptorRevision', 'Endpoint',
+      'ChannelWeights', 'Draining', 'SecurityIdentity', 'OwnerId', 'UpdatedAt'
+    ];
+    const descriptorRowKey =
+      `${Buffer.byteLength(meshDescriptorJson.MeshName || '', 'utf8')}:${meshDescriptorJson.MeshName || ''}`
+      + `${Buffer.byteLength(meshDescriptorJson.Rid || '', 'utf8')}:${meshDescriptorJson.Rid || ''}`;
+    if (meshDescriptorFixture.format !== 'mesh-node-descriptor-v1'
+        || JSON.stringify(meshDescriptorFixture.hashFields) !== JSON.stringify(descriptorHashFields)
+        || meshDescriptorFixture.row?.kind !== 'mesh'
+        || meshDescriptorFixture.row?.key !== descriptorRowKey
+        || JSON.stringify(Object.keys(meshDescriptorFixture.row?.hash || {}))
+          !== JSON.stringify(descriptorHashFields)
+        || JSON.stringify(Object.keys(meshDescriptorJson)) !== JSON.stringify(descriptorJsonFields)
+        || meshDescriptorFixture.row?.hash?.json !== JSON.stringify(meshDescriptorJson)
+        || JSON.stringify(Object.keys(meshDescriptorJson.ChannelWeights || {}))
+          !== JSON.stringify(['orders', 'world'])
+        || meshDescriptorJson.MeshName !== 'game'
+        || meshDescriptorJson.Rid !== '67616d652d61'
+        || meshDescriptorJson.LifecycleGeneration !== 7
+        || meshDescriptorJson.DescriptorRevision !== 3
+        || meshDescriptorJson.OwnerId !== meshDescriptorFixture.row?.hash?.owner
+        || meshDescriptorFixture.row?.hash?.mesh !== meshDescriptorJson.MeshName) {
+      failures.push('MeshNode descriptor fixture must preserve the canonical key, hash fields and JSON field order');
+    }
+    if (actorLocationFixture.row?.key !== '4:game7:actor-1'
+        || actorLocationJson.SpotGeneration !== 3) {
+      failures.push('Actor location fixture must preserve the length-prefixed key and SpotGeneration');
+    }
+
+    const actorRowKey = (meshName, actorId) =>
+      `${Buffer.byteLength(meshName, 'utf8')}:${meshName}${Buffer.byteLength(actorId, 'utf8')}:${actorId}`;
+    const canonicalActorRowKey = actorRowKey('game', 'actor-1');
+    const transferId = '01234567-89ab-cdef-0123-456789abcdef';
+    if (actorTransferFixture.key !== `P:transfer:${canonicalActorRowKey}:${transferId}`
+        || actorTransferFixture.activeIndex?.key !== `P:transfer-by-actor:${canonicalActorRowKey}`) {
+      failures.push('Actor transfer fixture must reuse the canonical actor row key');
+    }
+    const boundaryKeys = new Set();
+    for (const boundary of actorTransferFixture.keyBoundaryCases || []) {
+      const expected = actorRowKey(boundary.meshName, boundary.actorId);
+      if (boundary.actorRowKey !== expected) {
+        failures.push(`Actor transfer fixture uses a non-canonical boundary key: ${boundary.meshName}`);
+      }
+      boundaryKeys.add(boundary.actorRowKey);
+    }
+    if ((actorTransferFixture.keyBoundaryCases || []).length < 3 || boundaryKeys.size < 3) {
+      failures.push('Actor transfer fixture must distinguish delimiter and non-ASCII boundary cases');
+    }
+  } catch (error) {
+    failures.push(`Redis contract fixture is invalid JSON: ${error.message}`);
+  }
+} else if (!inventory.redis_fixtures) {
+  failures.push('unified inventory must hash-lock Redis location and transfer fixtures');
 }
 
 const connectorLanguages = ['dotnet', 'cpp', 'java', 'typescript'];
@@ -217,6 +295,69 @@ if (kotlinContract !== undefined && !kotlinContract.includes('Java 공개 계약
 if (kotlinRuntime !== undefined
     && !(kotlinRuntime.includes('Java 공개 계약') && kotlinRuntime.includes('Java 타입을 복사해 다시 정의하지 않는다'))) {
   failures.push('Kotlin runtime monitoring surface must explicitly reuse Java types');
+}
+
+// S3-F13-A closes six cross-document semantics. Keep the formal owner text,
+// E2E projection and terminal vocabulary aligned instead of accepting a
+// required word that appears in an unrelated section.
+const f13aOwners = [
+  {
+    document: 'framework/doc/framework/spec/server/23-spot-actor.ko.md',
+    required: ['CAS 성공 뒤 source `OnLeaveActor`', 'CAS 실패에서는 source `OnLeaveActor`를 실행하지 않고']
+  },
+  {
+    document: 'framework/doc/framework/spec/server/40-location-runtime.ko.md',
+    required: ['Spot RID, Spot generation과 Spot kind']
+  },
+  {
+    document: 'framework/doc/framework/spec/server/41-location-store-redis.ko.md',
+    required: ['`P:transfer:{actorRowKey}:{transferId}`', '`P:transfer-by-actor:{actorRowKey}`',
+      'MeshName과 Actor ID를 UTF-8 byte 길이로 encode']
+  },
+  {
+    document: 'framework/doc/framework/spec/server/30-stream-session.ko.md',
+    required: ['registry instance는 공유하지 않는다', 'server root별 registry', 'host별 registry',
+      'connector instance별 typed codec option']
+  },
+  {
+    document: 'framework/doc/framework/spec/server/51-runtime-metrics.ko.md',
+    required: ['transfer 시작부터 activation 또는 실패 terminal까지',
+      '`activated|aborted|timed_out|shutdown`'],
+    forbidden: ['`committed|aborted|timed_out|shutdown`']
+  },
+  {
+    document: 'framework/doc/framework/spec/05-framework-api.ko.md',
+    required: ['non-JSON content-type과 일치하는 codec이 registry에 없으면',
+      '`PayloadDecodeFailed`로 완료한다', 'payload를 JSON으로 다시 해석하지 않고']
+  },
+  {
+    document: 'framework/doc/framework/common/e2e/config-4-registration-codec.ko.md',
+    required: ['명시된 non-JSON content-type에 맞는 codec이 없으면 JSON으로 해석하지 않고',
+      '`PayloadDecodeFailed`로 terminal 완료한다']
+  },
+  {
+    document: 'framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md',
+    required: ['`admission -> location_committed -> leave -> joined -> success_reply`',
+      '`admission -> transfer_out -> commit_request -> transfer_in ->\n  location_committed -> leave -> joined -> commit_ack -> success_reply`'],
+    forbidden: ['`admission -> leave -> location_committed',
+      '`admission -> transfer_out -> leave -> commit_request']
+  }
+];
+for (const owner of f13aOwners) {
+  const source = read(owner.document);
+  if (source === undefined) continue;
+  for (const fragment of owner.required) {
+    if (!source.includes(fragment)) failures.push(`S3-F13-A owner fragment is absent: ${owner.document}: ${fragment}`);
+  }
+  for (const fragment of owner.forbidden || []) {
+    if (source.includes(fragment)) failures.push(`S3-F13-A stale fragment remains: ${owner.document}: ${fragment}`);
+  }
+}
+const joinOwner = read('framework/doc/framework/spec/server/23-spot-actor.ko.md');
+if (joinOwner !== undefined
+    && joinOwner.indexOf('membership epoch를 증가시키는 CAS를 commit한다')
+      > joinOwner.indexOf('CAS 성공 뒤 source `OnLeaveActor`')) {
+  failures.push('S3-F13-A join owner must commit the location CAS before source leave');
 }
 
 // Message flow, dispatch failure and observer-failure reporting have one
@@ -456,11 +597,14 @@ const stripCode = text => {
   }).join('\n');
 };
 
-const anchorFor = heading => heading.toLowerCase()
-  .replace(/`/g, '')
-  .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+const anchorFor = heading => heading.normalize('NFC').toLowerCase()
+  .replace(/<\/?[^>]*>/g, '')
+  .replace(/`+/g, '')
+  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  .replace(/\*\*/g, '')
+  .replace(/[^\p{L}\p{N}_\- ]/gu, '')
   .trim()
-  .replace(/\s+/g, '-');
+  .replace(/ /g, '-');
 
 const anchorCache = new Map();
 const anchorsFor = relative => {
@@ -471,8 +615,9 @@ const anchorsFor = relative => {
     for (const line of stripCode(source).split(/\r?\n/)) {
       const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
       if (!heading) continue;
-      const anchor = anchorFor(heading[2]);
-      if (anchors.has(anchor)) failures.push(`duplicate heading anchor ${anchor}: ${relative}`);
+      const baseAnchor = anchorFor(heading[2]);
+      let anchor = baseAnchor;
+      for (let suffix = 1; anchors.has(anchor); suffix += 1) anchor = `${baseAnchor}_${suffix}`;
       anchors.add(anchor);
     }
   }
@@ -609,7 +754,7 @@ for (const relative of dotnetInventory.documents) {
 const dotnetCombined = [...dotnetDocs.values()].join('\n');
 const declaredCounts = new Map();
 for (const pattern of [
-  /public\s+(?:(?:sealed|abstract|readonly)\s+)*(?:class|interface|enum|record(?:\s+struct)?)\s+([A-Za-z_][A-Za-z0-9_]*)/g,
+  /public\s+(?:(?:sealed|abstract|readonly)\s+)*(?:class|struct|interface|enum|record(?:\s+struct)?)\s+([A-Za-z_][A-Za-z0-9_]*)/g,
   /public\s+delegate\s+[A-Za-z_][A-Za-z0-9_<>,.?\[\]\s]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/g
 ]) {
   let match;

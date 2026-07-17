@@ -8,28 +8,28 @@
       "dotnet": {
         "document": "framework/doc/framework/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md",
         "code_tags": ["csharp"],
-        "code_fixture": {"block_count": 6, "sha256": "eb9caa0244cd605a48a71cd4bf2419651b054acb9fe001cf3b460786f9c03e60"},
+        "code_fixture": {"block_count": 5, "sha256": "2a8368c655731beb184b2748684dfb97cc170a02dfc037a30de80a872ff8422e"},
         "required_fragments": ["WaitFor", "ExpectNone", "WaitForSequence", "IZlinkStreamPayloadCodec"],
         "forbidden_fragments": ["ReceivedCount("]
       },
       "cpp": {
         "document": "framework/doc/framework/spec/stream-connector/languages/cpp/03-stream-connector.ko.md",
         "code_tags": ["cpp"],
-        "code_fixture": {"block_count": 11, "sha256": "a4c70183217c642bcd1a81a91c308b0862794e27fab963cdf79fa7f7b9453bc0"},
+        "code_fixture": {"block_count": 10, "sha256": "68a38351bca942dd06d8e83254ff553501613673bb1e411764b5c54f37106117"},
         "required_fragments": ["wait_for", "expect_none", "wait_for_sequence", "typed_codec"],
         "forbidden_fragments": ["codec_registry_t", "send_call_t& codec(", "request_call_t& codec("]
       },
       "java": {
         "document": "framework/doc/framework/spec/stream-connector/languages/java/03-stream-connector.ko.md",
         "code_tags": ["java"],
-        "code_fixture": {"block_count": 11, "sha256": "b4a1abb1bcb3e4a408c83b8b50fbccfbd66fb061da7ef5fe07aee7d25207a7e8"},
+        "code_fixture": {"block_count": 10, "sha256": "b8fe3213a98aedca6f848762c3ee4f27ded16a8153c60792a3413d4c0e5b7c8f"},
         "required_fragments": ["waitFor", "expectNone", "waitForSequence", "typedCodec"],
         "forbidden_fragments": ["receivedCount("]
       },
       "typescript": {
         "document": "framework/doc/framework/spec/stream-connector/languages/typescript/03-stream-connector.ko.md",
         "code_tags": ["ts", "typescript"],
-        "code_fixture": {"block_count": 5, "sha256": "26a9c2186c1f5c718b493c6899aa7fb9f333db7544279cf6018f56b72273d985"},
+        "code_fixture": {"block_count": 4, "sha256": "2c4239c28578fbd273ee73c657bb9de51c5da428c23363f8538b0d41fac66b94"},
         "required_fragments": ["waitFor", "expectNone", "waitForSequence", "codec` option"],
         "forbidden_fragments": ["receivedCount("]
       }
@@ -44,15 +44,15 @@
         "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md",
         "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md"
       ],
-      "required_fragments": ["AddRouteMesh", "ChannelName", "IZLinkMeshPeerConnections", "ExpectedRoutingId", "IZLinkPublishCall", "TrySubmit", "SubmitAsync", "IZLinkWorkerCall", "IZLinkWorkerOptions", "ZLinkHandlerGroupAttribute", "ZLinkLogicalMulticastDetail", "NoDrop", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "SourceRid", "TargetRid", "Topic", "SpotRid", "ActorId", "RemoteSnapshotCount", "RemoteAdmittedCount", "RemoteDroppedCount", "LocalSnapshotCount", "LocalAdmittedCount", "LocalDroppedCount", "LifecycleGeneration", "DescriptorRevision", "MaxMessageSize", "ZLinkRedisLocationStore", "IZLinkActorTransferStore", "GetOrCreateAsync", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "UseDrainPolicy", "IZLinkMessageFlowObserver", "IZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "SetRuntimeErrorSink", "string? Action"],
+      "required_fragments": ["AddRouteMesh", "ChannelName", "EnableActorDispatch", "IZLinkMeshPeerConnections", "ExpectedRoutingId", "IZLinkPublishCall", "TrySubmit", "SubmitAsync", "IZLinkWorkerCall", "IZLinkWorkerOptions", "ZLinkHandlerGroupAttribute", "ZLinkLogicalMulticastDetail", "NoDrop", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "SourceRid", "TargetRid", "Topic", "SpotRid", "SpotGeneration", "ActorId", "RemoteSnapshotCount", "RemoteAdmittedCount", "RemoteDroppedCount", "LocalSnapshotCount", "LocalAdmittedCount", "LocalDroppedCount", "LifecycleGeneration", "DescriptorRevision", "MaxMessageSize", "ZLinkRedisLocationStore", "IZLinkActorTransferStore", "GetOrCreateAsync", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "UseDrainPolicy", "IZLinkMessageFlowObserver", "IZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "SetRuntimeErrorSink", "string? Action"],
       "code_fixtures": {
         "framework/doc/framework/spec/server/languages/dotnet/01-system-structure.ko.md": {"block_count": 2, "sha256": "bae9568693603292573820b15213165fed7e88dd10011b72906c6b8b0463e321"},
-        "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md": {"block_count": 15, "sha256": "40987bcda83da85066f25ed4065f69305b1501149e1f405e2b8e9a4677a05a83"},
+        "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md": {"block_count": 15, "sha256": "cce32b9115c6ec967d4d7ea6f2feb2fdf8335703851380e1f2164c37cbafdaef"},
         "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md": {"block_count": 2, "sha256": "47bf700eb4c1aa5f35ef6474d28629c29ad27159ecf73ceb300b83b7cd506643"},
-        "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md": {"block_count": 8, "sha256": "c826faa394991da1decf4aa2588e0367fa599f62957ea30cb3cc6aa34a82d3ff"},
-        "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md": {"block_count": 9, "sha256": "c47f23de176576662d0baab67d27dd548302262071156c69f42f9d2fa8223efd"}
+        "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md": {"block_count": 8, "sha256": "fadb883006fe24c250a64b299372cae0fb760f21ae758a02b8fc0fcfdb0aa45c"},
+        "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md": {"block_count": 9, "sha256": "437e405605c7e34f2a1c4e78523ced45777f3b299f6f3c12b54734217bdbcf1b"}
       },
-      "declaration_fixture": {"count": 182, "sha256": "984b858bc5f1a4077c28469c48ddf1ce636d6281d2db9ac95859c3505524aaec"}
+      "declaration_fixture": {"count": 183, "sha256": "0f1b40ce421b07c1536aa87969f2802044d16eb06e1bb7be387e9ad2050a89e0"}
     },
     "cpp": {
       "documents": [
@@ -63,15 +63,15 @@
         "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md",
         "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md"
       ],
-      "required_fragments": ["add_route_mesh", "channel_name", "mesh_node_builder_t", "mesh_peer_connections_t", "expected_routing_id", "configure_spot_publisher", "no_drop", "publish_call_t", "logical_multicast_detail_t", "try_submit", "channel_request_call_t", "allocated_routing_id_provider_t", "mesh_node_socket_config_t", "routing_id_slot_group_exhausted_t", "routing_id_slot_group_configuration_mismatch_t", "mesh_node_snapshot_t", "mesh_runtime_event_t", "remote_snapshot_count", "remote_admitted_count", "remote_dropped_count", "local_snapshot_count", "local_admitted_count", "local_dropped_count", "lifecycle_generation", "descriptor_revision", "max_message_size", "redis_location_store_t", "actor_transfer_store_t", "spot_handle_t", "resolve_spot_handle", "actor_membership_t", "mesh_node_drain_policy_t", "use_drain_policy", "message_flow_observer_t", "runtime_error_sink_t", "runtime_error_event_t", "set_runtime_error_sink", "std::optional<std::string> action"],
+      "required_fragments": ["add_route_mesh", "channel_name", "mesh_node_builder_t", "mesh_peer_connections_t", "expected_routing_id", "configure_spot_publisher", "no_drop", "publish_call_t", "logical_multicast_detail_t", "try_submit", "channel_request_call_t", "run_cpu_worker", "run_io_worker", "std::stop_token", "add_stream_node", "enable_actor_dispatch", "service_lifetime_t lifetime", "allocated_routing_id_provider_t", "mesh_node_socket_config_t", "routing_id_slot_group_exhausted_t", "routing_id_slot_group_configuration_mismatch_t", "mesh_node_snapshot_t", "mesh_runtime_event_t", "remote_snapshot_count", "remote_admitted_count", "remote_dropped_count", "local_snapshot_count", "local_admitted_count", "local_dropped_count", "lifecycle_generation", "descriptor_revision", "max_message_size", "redis_location_store_t", "actor_transfer_store_t", "spot_generation", "spot_handle_t", "resolve_spot_handle", "actor_membership_t", "mesh_node_drain_policy_t", "use_drain_policy", "message_flow_observer_t", "runtime_error_sink_t", "runtime_error_event_t", "set_runtime_error_sink", "std::optional<std::string> action"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/cpp/01-system-structure.ko.md": {"block_count": 7, "sha256": "55bb29cd75961e0c48189b722ee0a6b350e34ae41baaa6b2d856248d2b9f34cf"},
-        "framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md": {"block_count": 50, "sha256": "ad2be2d2f32f57011971992015063a8d82f769f62da8c9ed79e2e0690dddfea4"},
-        "framework/doc/framework/spec/server/languages/cpp/03-location-store.ko.md": {"block_count": 4, "sha256": "b1f8ea12d54fb77e2234c6179558c394fe67211b4a15b6fe0b24fa7eea83e394"},
-        "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md": {"block_count": 7, "sha256": "28984e2cd5d230fadc87e92cfcb69418f3ff2ad245229fbf679adc0418c344e3"},
-        "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md": {"block_count": 3, "sha256": "935cb5c0c5bc16d265ffda913d7e1dd10af1ca9602d550b4d7f82a683491fee5"}
+        "framework/doc/framework/spec/server/languages/cpp/01-system-structure.ko.md": {"block_count": 7, "sha256": "bebc6006ac0bdd6101cc1a66e938bedf290e621e198f7c4caee3686d59936822"},
+        "framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md": {"block_count": 50, "sha256": "bea1020d57be96e740da2f0a21f354f6ad90d2c12d7d97f265a1a769930291d1"},
+        "framework/doc/framework/spec/server/languages/cpp/03-location-store.ko.md": {"block_count": 4, "sha256": "3d88d978d63f5d91964ba5f0e30aea0b999890b158cb1b457858162d2ea124f9"},
+        "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md": {"block_count": 7, "sha256": "139e8f1a7bfd2d79fefdc43b4e6230b74cf08e2fc409d0437ae04fa8e0d2d891"},
+        "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md": {"block_count": 3, "sha256": "f832768595a91ec8c9c8c3826721321b29971bddb37d0ea2bdffea856bb971ba"}
       },
-      "declaration_fixture": {"count": 292, "sha256": "2e4d92832f1dafd8b6bebc042b2247bf256eb380b1d781952f7a5331c155f00d"}
+      "declaration_fixture": {"count": 292, "sha256": "fba40e7f5c9bb66c659f1a0907ea718421e5fe4e1c59b10186fc3b3f48a6feda"}
     },
     "java": {
       "documents": [
@@ -81,14 +81,14 @@
         "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md",
         "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md"
       ],
-      "required_fragments": ["addRouteMesh", "channelName", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "noDrop", "actorTransferTimeout", "actorTransferForwardWindow", "ZLinkFrameworkErrorKind", "ZLinkRoutingIdSlotAllocationStore", "ZLinkRouteMeshRuntimeOptions", "ZLinkMeshNodeRuntimeOptions", "ZLinkPublishResult", "ZLinkLogicalMulticastDetail", "trySubmit", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "maxMessageSize", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "String meshName()", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "Optional<String> action"],
+      "required_fragments": ["addRouteMesh", "channelName", "enableActorDispatch", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "noDrop", "actorTransferTimeout", "actorTransferForwardWindow", "ZLinkFrameworkErrorKind", "ZLinkRoutingIdSlotAllocationStore", "ZLinkRouteMeshRuntimeOptions", "ZLinkMeshNodeRuntimeOptions", "ZLinkPublishResult", "ZLinkLogicalMulticastDetail", "trySubmit", "ZLinkWorkerTask", "ZLinkIoWorkerTask", "ZLinkWorkerCancellation", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "maxMessageSize", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "spotGeneration", "String meshName()", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "Optional<String> action"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/java/01-system-structure.ko.md": {"block_count": 25, "sha256": "e40431c604496262970654e5b76e79f0c660b2d587c6fdaf3ab990ca56cc9ae2"},
-        "framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md": {"block_count": 23, "sha256": "e01230b3e64ae59ebcfb442ba2f8e3dd96fa5456ee85b2ea65b8de5ca484b0c1"},
-        "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md": {"block_count": 4, "sha256": "4296f410fa484a76befd5c940040668a4dcd46b143aefe39042cf01e617233a5"},
+        "framework/doc/framework/spec/server/languages/java/01-system-structure.ko.md": {"block_count": 25, "sha256": "5f68d8478c9f9c17f8cef15b9505044fdf8e8dcb0d7fd4fd49572026346bc27a"},
+        "framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md": {"block_count": 23, "sha256": "818af2058255aef0fe3ba4bb9ee6f3d47711403e97517639b49c61bec6660864"},
+        "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md": {"block_count": 4, "sha256": "379b097ef014713781a0ca92b5621568f59f0330c358859715a90274f75b5837"},
         "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md": {"block_count": 2, "sha256": "1121a14a895eee304cc39a7034b223a82d5c5c2320311749079409079c9cedf3"}
       },
-      "declaration_fixture": {"count": 231, "sha256": "66e26e88e63eb5340a569c64744ea404344197110dfdc47240a057b9fc27df6f"}
+      "declaration_fixture": {"count": 235, "sha256": "daf100e1e9ab1ea691f961cbe5df34ce19eb77a3c3a01c940ed8723a2cdd429e"}
     },
     "kotlin": {
       "documents": [
@@ -96,9 +96,9 @@
         "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md",
         "framework/doc/framework/spec/server/languages/kotlin/03-location-store.ko.md"
       ],
-      "required_fragments": ["ZLinkFrameworkOptions.routeMesh", "ZLinkMeshNodeBuilder.channelName", "ZLinkMeshPeerConnections.connect", "ZLinkSpotPublisherConfig.noDrop", "ZLinkFrameworkErrorKind", "setActorTransferTimeout", "setActorTransferForwardWindow", "trySubmit()", "yield()", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "meshName: String", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "onRuntimeError"],
+      "required_fragments": ["ZLinkFrameworkOptions.routeMesh", "ZLinkMeshNodeBuilder.channelName", "enableActorDispatch", "ZLinkMeshPeerConnections.connect", "ZLinkSpotPublisherConfig.noDrop", "ZLinkFrameworkErrorKind", "setActorTransferTimeout", "setActorTransferForwardWindow", "trySubmit()", "yield()", "ZLinkMeshNodeSnapshot", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "spotGeneration", "meshName: String", "ZLinkActorMembership", "ZLinkMeshNodeDrainPolicy", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "onRuntimeError"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md": {"block_count": 13, "sha256": "e6e1bd8dc73d25c7fff2f9ee4a3467dc490c5e4fc88369ab5c09fe52bd58ad9d"},
+        "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md": {"block_count": 13, "sha256": "6feee1594fd55d8b5b8b29aa256ffdf014bd8834d52e49f0e0467543721394e7"},
         "framework/doc/framework/spec/server/languages/kotlin/03-location-store.ko.md": {"block_count": 1, "sha256": "a0c53cce3f1a101f963936462f0ab3d077f367d894c0e346fe97d1c6574f1d32"}
       },
       "declaration_fixture": {"count": 84, "sha256": "00a49d354af23910f5596654d182f6f7464ceb2a34484223747ad7885623c6c7"}
@@ -111,14 +111,19 @@
         "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md",
         "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md"
       ],
-      "required_fragments": ["addRouteMesh", "channelName", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "noDrop", "setActorTransferTimeout", "setActorTransferForwardWindow", "ZLinkPublishResult", "trySubmit", "snapshotRemoteNodeCount", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "ZLinkNestMeshNodeBuilder", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "readonly meshName", "ZLinkActorMembership", "readonly code: number", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "ZLinkDispatchErrorAction"],
+      "required_fragments": ["addRouteMesh", "channelName", "enableActorDispatch", "ZLinkMeshNodeBuilder", "ZLinkMeshPeerConnections", "expectedRoutingId", "ZLinkMeshNodeSocketConfig", "ZLinkSpotPublisherConfig", "noDrop", "setActorTransferTimeout", "setActorTransferForwardWindow", "ZLinkPublishResult", "trySubmit", "snapshotRemoteNodeCount", "ZLinkMeshRuntimeEvent", "remoteSnapshotCount", "remoteAdmittedCount", "remoteDroppedCount", "localSnapshotCount", "localAdmittedCount", "localDroppedCount", "lifecycleGeneration", "descriptorRevision", "ZLinkNestMeshNodeBuilder", "ZLinkRedisLocationStore", "ZLinkActorTransferStore", "spotGeneration", "readonly meshName", "ZLinkActorMembership", "readonly code: number", "ZLinkMeshNodeDrainPolicy", "useDrainPolicy", "ZLinkMessageFlowObserver", "ZLinkRuntimeErrorSink", "ZLinkRuntimeErrorEvent", "setRuntimeErrorSink", "ZLinkDispatchErrorAction"],
       "code_fixtures": {
-        "framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md": {"block_count": 30, "sha256": "c0b0549c8a3559b6d334d5dc7893c096fc1413b92c286ac1808784c8a56b7eed"},
+        "framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md": {"block_count": 30, "sha256": "49c450dbe1b9ad2cd0c0cefbb45d46f28dd8f5cf6df7ff393ec8b60662d8f442"},
         "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md": {"block_count": 5, "sha256": "f352d64b08654bacad9d1bec978be1d106392a5af1519a99b947cde9d7615409"},
-        "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md": {"block_count": 4, "sha256": "84164664de70d0ac96b2c3d54371010d1292eea20ec605477375d2af3c0707fc"}
+        "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md": {"block_count": 4, "sha256": "0b4c578b4968e7231d116ee9961715d28114d914baa6cc7b3c9dfd33d4fb8eb4"}
       },
       "declaration_fixture": {"count": 373, "sha256": "0cbd3fa594b28c1c9b5b1ff954ef7f9c9687bd2e8f0ad63c084a89c6e1229d9a"}
     }
+  },
+  "redis_fixtures": {
+    "framework/testdata/location/redis/mesh-node-descriptor-v1.json": "72f41eeae43c395c680cc3e2ca25d557c251c775a246daa5268e20a3dd4ef2e8",
+    "framework/testdata/location/redis/actor-location-v2.json": "402318ca53d9cf7abb7d1119b66e9de0669f1bf2818284eb3f70683b3af90c95",
+    "framework/testdata/location/redis/actor-transfer-v1.json": "6ca7306829d33af17ebefffe3d4f29edf1ae8201b7cb9cae4e90739520b047ea"
   },
   "forbidden_surface": [
     "AddClientServerChannel", "addClientServerChannel", "add_client_server_channel",

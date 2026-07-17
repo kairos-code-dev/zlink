@@ -91,7 +91,9 @@ Spot application queue에는 다음 Spot 소유 작업이 들어간다.
 - Spot timer callback
 - Actor join·leave와 lifecycle control callback (Spot control claim)
 
-같은 Spot의 application callback은 하나의 Spot turn에서 순서대로 실행한다. Actor 업무 payload는 이
+같은 Spot의 application callback은 하나의 Spot turn에서 순서대로 실행한다. 다만 callback이 `Yield`로
+turn을 반납하면 같은 Spot의 다음 application record가 먼저 실행될 수 있으며, 완료 continuation은 새
+turn에서 재개한다([Async 실행 정책 §1.1](../04-async-execution-policy.ko.md#11-submit-async와-yield)). Actor 업무 payload는 이
 queue나 Spot callback에 넣지 않고 Actor queue로 직접 제출한다. Actor가 Spot 상태를 바꾸려면 명시적인
 Spot 호출을 제출해야 한다. Actor payload와 membership 제어의 경계는
 [22 Actor 모델](22-actor-model.ko.md)이 소유한다.

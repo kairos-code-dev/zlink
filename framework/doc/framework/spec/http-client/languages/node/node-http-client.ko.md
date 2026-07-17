@@ -70,8 +70,9 @@ core의 기본 의존성은 아니다(단방향 의존).
 `ZLinkFrameworkErrorKind`(camelCase: `requestProtocolError`/`requestFailed`/
 `payloadDecodeFailed`) + `isRetriable`.
 
-- 편차: timeout은 `requestFailed`(`isRetriable=true`)로 보고한다(framework
-  enum에 timeout kind 없음 — 공통 spec [R2](../../10-revision-candidates.ko.md) 검토 대상).
+- timeout은 `requestFailed`(`isRetriable=true`)로 보고하고, 예외의 `cause`는 `Error`이며 `name`을
+  정확히 `TimeoutError`로 고정한다. 호출자는 retriable transport 실패와 timeout을 이 이름으로
+  구분한다. framework enum에는 timeout kind를 추가하지 않는다.
 
 ## 7. 회귀 테스트 / 등록
 

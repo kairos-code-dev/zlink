@@ -11,7 +11,7 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-A3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: joined callback 완료 전 packet dispatch 차단. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-B1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: remote transfer 성공과 state 복원. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-B2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: commit 뒤 source cleanup. Track A~E 로그: `log/20260710-152609-2661347`. |
-| `ST-B3` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: adapter 미등록 실패. Track A~E 로그: `log/20260710-152609-2661347`. |
+| `ST-B3` | 전환 필요 | 현재 runner는 transfer adapter가 없는 actor의 기본 빈 state transfer 성공과 target 기본 state를 확인한다. 그러나 `joined -> location_committed`를 성공 순서로 단언해, 공통 시나리오의 `location_committed -> joined` 순서와 다르다. 이 순서를 정렬하기 전에는 기존 Track A~E 로그를 완료 증거로 사용하지 않는다. |
 | `ST-B4` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: custom empty state transfer. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-C1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: commit 전 source 종료. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-C2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: commit 뒤 source 종료. Track A~E 로그: `log/20260710-152609-2661347`. |

@@ -340,13 +340,11 @@ sequenceDiagram
 Entry spot으로 들어오는 메시지는 framework codec을 거쳐 직렬화되며, handler는
 기본적으로 serial turn 안에서 실행된다. 따라서 entry spot handler에서 다른 channel,
 spot, actor, session으로 request를 보낸 뒤 I/O 응답을 기다릴 때는 `.Async(...)`를
-호출한다. framework는 응답을 기다리는 동안 현재 serial turn을 자동으로 반납하고,
-완료 뒤 같은 실행 문맥에서 handler를 계속 실행한다. 따라서 다른 actor 생성이나 join
-메시지도 대기 중에 처리될 수 있다.
+호출한다. 이 호출은 완료 continuation이 끝날 때까지 현재 serial turn을 유지하므로,
+같은 entry spot의 다음 application 메시지는 먼저 실행되지 않는다. 다른 메시지를 처리할 수 있도록
+turn을 반납해야 하는 흐름은 `.Yield(...)`를 사용하며, 재개한 뒤 mutable state를 다시 확인한다.
 
-`await` 전후로 같은 mutable state를 그대로 이어서 판단하면 안 된다. 대기 중에 다른
-메시지가 먼저 처리될 수 있으므로, 완료 뒤에는 필요한 상태를 다시 확인하거나 대기 전에
-상태 변경을 확정하지 않는 방식으로 작성한다. 이 샘플에서 entry spot은
+이 샘플에서 entry spot은
 배송 상태 저장소가 아니라 actor 위치와 session route처럼 push할 수 있는 연결을
 관리하는 입구로만 사용한다.
 

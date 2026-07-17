@@ -105,13 +105,13 @@ var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
 
 - HTTP client는 **execution scheduler 주입점**을 공개 계약으로 둔다. scheduler는 completion을
   어디서 재개할지 정한다.
-- **framework가 DI 등록 시 spot turn을 아는 scheduler를 꽂는다.** 그때 `yield`가 살아난다.
+- **framework는 DI 등록 시 Spot turn scheduler를 주입한다.** 이 scheduler가 있는
+  server client에서만 `yield`를 제공한다.
 - scheduler가 없는 단독 사용(CLI·client 시나리오)에서는 **`yield`를 노출하지 않는다.** `async`와
   callback만 쓴다.
 
-C++ HTTP client에 **같은 형태의 API 표면이 이미 있다**(`coroutines(resume_scheduler)` /
-`framework_resume_scheduler_t`). 다만 framework 런타임이 아직 그것을 주입하지 않으므로 표면만
-있고 통합은 검증되지 않았다.
+C++ HTTP client는 같은 scheduler seam을 `coroutines(resume_scheduler)`와
+`framework_resume_scheduler_t`로 표현한다.
 
 ### 3.3 blocking terminator를 두지 않는다
 
@@ -139,7 +139,7 @@ handler 안에서 client를 만들지 않는다 — 연결 pool과 turn seam을 
 ## 5. Codec
 
 **HTTP client는 framework와 codec extension을 공유하지만 registry 인스턴스는 따로 가진다**
-([11 §6](../server/11-channel-messaging.ko.md)). 같은 codec extension 객체를 양쪽에 각각 등록할 수 있으나,
+([Stream Session §5](../server/30-stream-session.ko.md#5-codec-계층-분리)). 같은 codec extension 객체를 양쪽에 각각 등록할 수 있으나,
 **등록은 host마다 따로 해야 한다.**
 
 typed body의 encode/decode는 그 registry가 담당한다. raw body API는 registry를 거치지 않는다.
@@ -155,7 +155,7 @@ typed body의 encode/decode는 그 registry가 담당한다. raw body API는 reg
 | 구성·사용 오류(builder 검증 실패, path 형식, body 소스 중복) | `RequestProtocolError` |
 | 전송 실패, typed 제출의 status ≥ 400, redirect 한도 초과, body 크기 초과 | `RequestFailed` |
 | typed body decode 실패, 압축 해제 실패 | `PayloadDecodeFailed` |
-| 시도당 timeout 초과 | 언어별 timeout 경계 표현(§05의 오류 kind가 아니라 boundary 상태다) |
+| 시도당 timeout 초과 | 전용 timeout kind는 두지 않는다. `.NET`·Java·Kotlin·Node는 `RequestFailed`와 timeout 원인 또는 retriable 표식을 함께 전달하고, C++은 `timed_out` 상태를 반환한다 |
 
 세부 매핑은 [09 오류 모델](09-error-model.ko.md)이 소유한다.
 

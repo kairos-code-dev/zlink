@@ -134,7 +134,10 @@ public:
     template <typename T, typename... TDependencies>
     requires (sizeof...(TDependencies) > 0) service_collection_t &add_transient ();
 
-    template <typename T, typename TFactory> service_collection_t &add_factory (TFactory factory);
+    template <typename T, typename TFactory>
+    service_collection_t &add_factory (
+      TFactory factory,
+      service_lifetime_t lifetime = service_lifetime_t::transient);
     template <typename T> service_collection_t &add_framework_dependency ();
 };
 ```

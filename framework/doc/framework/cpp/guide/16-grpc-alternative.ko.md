@@ -3,9 +3,9 @@
 # 16. ZLink을 어디에 쓰나 — 내부 서비스 통신과 실시간 상태 서버 패턴
 
 > ZLink은 단순 RPC 라이브러리가 아니라, C++ 백엔드에서 **논리 channel, 연결 수명,
-> 동적 상태 노드(SPOT), pub/sub, discovery를 한 framework 안에서 묶어 주는 서버 간·
-> 실시간 메시징 계층**이다. 특히 "서비스가 어디 떠 있는지", "client가 어디 붙어
-> 있는지", "room/zone/symbol 같은 상태 단위를 어떻게 직렬 처리할지"가 **반복 문제로
+> 동적 상태 node(SPOT), fanout, location 기반 peer 관리를 한 framework 안에서 묶어 주는 서버 간·
+> 실시간 메시징 계층**이다. 특히 서비스 위치, client 연결 위치,
+> room/zone/symbol 같은 상태 단위의 직렬 처리가 **반복 문제로
 > 나올 때** 효과가 크다.
 >
 > 이 챕터는 그 도입 판단을 돕는 문서다. 사용법 정식은 7~12 챕터가 다룬다.
@@ -19,47 +19,41 @@
 
 | 상황 | ZLink이 좋은 이유 | 쓰는 기능 |
 |------|--------------------|-----------|
-| 내부 서비스끼리 자주 호출 | host/port/stub 대신 **channel name**으로 호출 | channel + Registry |
+| 내부 서비스끼리 자주 호출 | host/port/stub 대신 MeshName과 ChannelName으로 호출 | RouteMesh + location store |
 | 이벤트를 실시간으로 여러 서비스에 뿌림 | 별도 broker 없이 **transport fan-out** | fanout pub/sub |
 | 게임 room·채팅 room·ride zone 같은 동적 상태 단위 | **단일 실행 큐**로 lock 없는 직렬 상태 처리 | SPOT |
 | 모바일·게임 client와 장기 연결 | 연결 수명·framing·재접속 흐름을 framework가 소유 | STREAM |
-| 연결 서버와 로직 서버를 분리 | actor id 기준 binding으로 **재접속 이전성** | session ↔ actor gateway |
+| 연결 서버와 로직 서버를 분리 | Actor ID 기준 binding으로 재접속 뒤 session relay 복원 | MeshNode-owned session ↔ Actor relay |
 | **서로 다른 언어로 구현된 서비스끼리 호출** | 언어 중립 wire protocol + codec 위 같은 channel 계약으로 **상호 호출** | cross-language binding |
 | 초저지연 HFT·durable queue·외부 공개 API | **ZLink 주 영역 아님** | gRPC/REST/Kafka/FIX 유지 |
 
 ## 2. 무엇을 덜 고민하게 되나 — 개발 모델
 
-ZLink의 체감 장점은 "인프라 박스가 빠진다"보다 **"개발자가 덜 고민한다"**에 있다.
-응용은 도메인 단위(channel/spot/session)만 다루고, 나머지는 framework가 가져간다.
+ZLink는 application이 도메인 단위(channel/spot/session)에 집중하도록 연결·라우팅 책임을
+Framework 경계 안에 둔다.
 
 - **channel name만 알고 호출한다** — 대상 host/port/stub를 모른다.
-- **service location과 peer 분배**는 Registry/Discovery가 맡는다.
+- **service location과 peer 갱신**은 location store descriptor가 맡는다.
 - **request correlation과 reply 대기**는 framework가 맡는다.
 - **client 연결 수명과 packet framing**은 STREAM이 맡는다.
 - **room/zone/symbol 상태 직렬성**은 SPOT 실행 큐가 맡는다.
-- **재접속 후 actor/session binding**은 framework가 이어 준다.
+- **재접속 후 actor/session binding**은 framework가 복원한다.
 
-> ZLink은 이 문제들을 **없애는 게 아니라 호출자 밖으로 밀어낸다.** 위치·연결·
-> correlation·dispatch 직렬성을 framework가 가져가므로, 응용 코드가 transport
-> 배선이 아니라 **업무 흐름처럼** 보인다.
+> 위치·연결·correlation·dispatch 직렬성은 Framework가 관리한다. Application은 이
+> 정보를 직접 구성하지 않고 업무 메시지 흐름을 작성한다.
 
 ### 2.1 여러 언어가 한 channel 위에서 (cross-language)
 
-ZLink은 C++ 전용이 아니다. 호출 계약이 **언어 중립 wire protocol(ZMP) +
-codec(protobuf/json/messagepack) + 논리 channel/packet 이름**이라, 서로 다른 언어로
-구현된 서비스가 **같은 channel 위에서 상호 호출**한다. 예를 들어 게임 시스템에서
-**room 서버는 C++, API·매치메이킹 서버는 .NET 또는 Java**로 두고 같은 channel/spot
-계약으로 메시징할 수 있다.
+ZLink은 C++ 전용이 아니다. `.NET`, C++, Java, Kotlin과 Node.js의 exact public interface는
+공통 Framework 계약을 각 언어의 타입과 명명 규칙으로 표현한다. 서로 다른 언어로 구현한
+서비스도 같은 packet 이름과 payload schema를 사용해 상호 호출할 수 있다. 예를 들어 게임
+시스템에서 room 서버는 C++, API·매치메이킹 서버는 .NET 또는 Java로 구성할 수 있다.
 
 - 언어 간 계약 = **packet 이름 + codec으로 인코딩된 DTO**(교차 언어는 protobuf 권장).
   gRPC처럼 service-stub 코드 생성이나 HTTP/2를 강제하지 않는다 — payload 스키마만
   공유하면 된다.
-- 각 언어 binding은 같은 core(C ABI, ZMP) 위에 handler/SPOT/STREAM 표면을 올린다.
-  그래서 handler 작성 언어가 달라도 wire 상으로는 같은 channel·packet이다.
-
-> **구현 상태(정직하게).** `.NET`이 reference 구현이고, **C++/Java/Node가 1차로
-> 개발 중**, **Python/Go/Rust가 뒤따른다.** cross-language는 ZLink의 **설계 목표이자
-> 진행 중인 로드맵**이다.
+- 다섯 언어의 공개 표면은 같은 공통 계약을 따르며, 언어별 exact interface가 정확한
+  시그니처를 정한다.
 
 ## 3. 이런 문제가 반복되면 ZLink 후보
 
@@ -68,7 +62,7 @@ codec(protobuf/json/messagepack) + 논리 channel/packet 이름**이라, 서로 
 - 서비스마다 RPC stub·channel factory·deadline·discovery 설정이 반복된다.
 - L4 로드밸런서로 부하가 고르게 안 퍼져 mesh를 고민한다.
 - 게임 room·채팅 room·ride zone처럼 상태 단위를 lock으로 보호하고 있다.
-- 재접속 때 client가 어느 서버에 붙어 있었는지 별도 저장소로 따로 관리한다.
+- 재접속 때 client의 이전 연결 서버를 별도 저장소로 관리한다.
 - 실시간 이벤트 fan-out 때문에 broker를 쓰는데, 실제로는 replay가 필요 없다.
 - 외부 client 연결·내부 서비스 호출·room 상태 처리가 서로 다른 framework로 흩어져 있다.
 
@@ -92,9 +86,9 @@ codec(protobuf/json/messagepack) + 논리 channel/packet 이름**이라, 서로 
 
 §1의 "내부 서비스끼리 자주 호출"이 왜 ZLink 후보인지, gRPC 스택과 비교해 근거를 본다.
 
-### 5.1 gRPC는 혼자 끝나지 않는다
+### 5.1 gRPC 운영에 함께 필요한 구성
 
-gRPC 자체는 빠르고 좋다. 문제는 이런 류의 서비스를 **"프로덕션급"**으로 만들려면
+gRPC는 HTTP/2 multiplexing과 Protocol Buffers 기반 호출을 제공한다. 이런 류의 서비스를 **"프로덕션급"**으로 만들려면
 공식 베스트프랙티스가 곧바로 추가 인프라를 요구한다는 점이다.
 
 - **channel/stub 재사용 강제.** 호출마다 channel을 만들면 지연이 크게 늘어 channel
@@ -103,10 +97,10 @@ gRPC 자체는 빠르고 좋다. 문제는 이런 류의 서비스를 **"프로�
 - **기본 로드밸런서(L4)로는 gRPC 부하가 고르게 안 흩어진다.**
   - **L4 로드밸런서**는 4계층(TCP)에서 **연결(connection) 단위**로 트래픽을 나눈다.
   - gRPC는 **HTTP/2** 위에서 **연결 하나를 오래 열어 둔 채** 여러 요청을 겹쳐 보낸다
-    (multiplex). 그래서 L4 눈에는 **연결이 1개뿐**이라 그 연결이 붙은 **서버 한 대로
-    요청이 쏠린다**.
+    (multiplex). L4는 **연결 하나만 관측**하므로 해당 연결의 **대상 서버 한 대로
+    요청이 집중된다**.
   - 고르게 나누려면 **요청(request) 하나하나를 보고 분배**(L7)해야 한다. 그래서 보통
-    client-side LB, headless service, 또는 Envoy/Istio sidecar를 추가로 끌어온다.
+    client-side LB, headless service, 또는 Envoy/Istio sidecar를 추가한다.
   ([Kubernetes 블로그](https://kubernetes.io/blog/2018/11/07/grpc-load-balancing-on-kubernetes-without-tears/))
 - **그 밖에** service discovery(Consul/xDS), retry·hedging, `.proto` 파이프라인, mTLS,
   그리고 **이벤트 fan-out은 또 별도 broker**(Kafka/NATS)로 간다.
@@ -117,7 +111,7 @@ L7 분배 장치가 없으면 요청이 서버 한 대에 쏠린다.
 ```mermaid
 flowchart LR
   C["client"] -->|"연결 1개에 요청들 multiplex"| L4["L4 LB: 연결 단위로 분배"]
-  L4 -->|"그 연결이 붙은 한 대로 전부"| A["server A: 과부하"]
+  L4 -->|"연결 대상 서버로 전송"| A["server A: 과부하"]
   L4 -.->|"요청 안 감"| B["server B: 유휴"]
   L4 -.->|"요청 안 감"| D["server C: 유휴"]
 ```
@@ -130,8 +124,8 @@ flowchart LR
   L7 -->|"req"| D2["server C"]
 ```
 
-ZLink는 client/server channel에서 여러 server endpoint를 같은 channel 이름에 연결할 수 있다
-([7장 §5](07-channel-messaging.ko.md#5-clientserver-같은-서비스-여러-대에-연결)).
+ZLink는 같은 MeshName과 ChannelName membership을 제공하는 MeshNode를 여러 개 둘 수 있다
+([7장 §5](07-channel-messaging.ko.md#5-같은-channelname을-제공하는-meshnode-여러-개)).
 
 ### 5.2 배치 구조 비교
 
@@ -153,25 +147,25 @@ ZLink는 client/server channel에서 여러 server endpoint를 같은 channel �
 ```
 
 ```text
-[ZLink] ZLink Framework + Registry
+[ZLink] ZLink Framework + location store
 
   +------------------+          +------------------+
   | order-service    |          | payment-service  |
   | app              | channel  | app              |
   | ZLink Framework  +--------->| ZLink Framework  |
-  | channel client   | name     | channel server   |
+  | MeshNode client  | name     | MeshNode member  |
   +--------+---------+          +---------+--------+
            |                              |
            +-------------+----------------+
                          |
                 +--------v---------+
-                | Registry         |
-                | discovery view   |
+                | Redis location   |
+                | descriptor store |
                 +------------------+
 ```
 
-Envoy sidecar와 mesh control plane(discovery·L7 LB·mTLS) 자리가 framework와 Registry
-한 겹으로 들어온다. broker와 WS edge는 요구가 단순한 실시간 전파·연결 수용이면
+Envoy sidecar와 mesh control plane의 일부 책임을 framework와 location store가
+흡수한다. Broker와 WS edge는 요구가 단순한 실시간 전파·연결 수용이면
 fanout channel·STREAM으로 흡수할 수 있고, 영속 큐·replay나 HTTP edge 정책이 필요하면
 그대로 둔다.
 
@@ -179,10 +173,10 @@ fanout channel·STREAM으로 흡수할 수 있고, 영속 큐·replay나 HTTP ed
 
 | gRPC 베스트프랙티스/필요 인프라 | ZLink(cpp)에서 | 비고 |
 |----------------------------------|------------|------|
-| "stub/channel을 재사용하라" | `channel_client_t`가 DI 주입, socket 수명은 framework | 호출마다 만들 일 없음 |
+| "stub/channel을 재사용하라" | `request_client_t`가 DI 주입, socket 수명은 framework | 호출마다 만들 일 없음 |
 | RPC deadline | `request(...).timeout(...).async<TReply>()` | reply 대기 시간 |
-| L7 로드밸런싱(Envoy/Istio) | client/server channel + discovery 모드 `enable_client()`가 peer 연결 | sidecar 불필요([7 §5](07-channel-messaging.ko.md#5-clientserver-같은-서비스-여러-대에-연결)) |
-| service discovery(Consul/xDS) | `use_discovery().add_registry_endpoint(...)` + Registry | [11장](11-registry.ko.md) |
+| L7 로드밸런싱(Envoy/Istio) | ChannelName select-one + location store 또는 manual peer | sidecar 불필요([7 §5](07-channel-messaging.ko.md#5-같은-channelname을-제공하는-meshnode-여러-개)) |
+| service discovery(Consul/xDS) | Redis location store descriptor + revision 기반 peer 갱신 | [11장](11-registry.ko.md) |
 | interceptor | handler filter(`invoke(...)`) | [7 §4](07-channel-messaging.ko.md#4-filter--공통-처리) |
 | 이벤트 broker(Kafka/NATS) | fanout channel pub/sub | 실시간 fan-out 한정. 영속/replay는 broker 유지 |
 | 통합 관측(mesh telemetry) | runtime monitoring 이벤트 | [12장](12-monitoring.ko.md) |

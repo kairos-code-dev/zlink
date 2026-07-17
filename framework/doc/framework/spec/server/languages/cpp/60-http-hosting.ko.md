@@ -29,7 +29,7 @@ DI handler
     create_game_http_req_t request)
       |
       v
-channel_client_t.request(play_channel, ...).async<create_game_res_t>()
+request_client_t.request(mesh_name, play_channel, ...).async<create_game_res_t>()
       |
       v
 HTTP JSON response
@@ -48,7 +48,7 @@ C++ framework는 이 흐름을 아래 의미로 맞춘다.
 - HTTP endpoint는 `http://`와 `https://`를 모두 지원한다.
 - request body는 JSON DTO로 변환한다.
 - route handler는 DI에서 resolve한다.
-- handler는 `request_client_t` 또는 `channel_client_t`를 주입받아 zlink channel에 요청한다.
+- handler는 `request_client_t`를 주입받아 zlink channel에 요청한다.
 - handler 반환 DTO는 JSON response body가 된다.
 - 정상 응답은 기본 `200 OK`다.
 - payload decode 실패는 `400 Bad Request`다.
@@ -115,11 +115,11 @@ public:
     using reply_type = create_game_http_res_t;
     using dependency_types =
       zlink::framework::dependency_list_t<
-        zlink::framework::channel_client_t,
+        zlink::framework::request_client_t,
         zlink::framework::logger_t<create_game_http_handler_t>>;
 
     explicit create_game_http_handler_t(
-      zlink::framework::channel_client_t &client,
+      zlink::framework::request_client_t &client,
       zlink::framework::logger_t<create_game_http_handler_t> &logger);
 
     task_t<create_game_http_res_t> handle(const create_game_http_req_t &request);
@@ -134,7 +134,9 @@ task_t<create_game_http_res_t>
 create_game_http_handler_t::handle(const create_game_http_req_t &request)
 {
     auto room = co_await _client
-      .request (sample_names_t::play_channel, create_game_req_t{request.game_name})
+      .request (sample_names_t::application_mesh,
+                sample_names_t::play_channel,
+                create_game_req_t{request.game_name})
       .async<create_game_res_t> ();
     co_return create_game_http_res_t {room.room_id,
                                       room.game_name,

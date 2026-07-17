@@ -6,7 +6,7 @@
 구현에서 확인된 차이를 기록한다. 차이를 해결할 때 정식 스펙을 현재 코드에 맞춰
 축소하지 않고, 구현과 contract test를 정식 스펙에 맞춘다.
 
-검토 기준일은 2026-07-14이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
+검토 기준일은 2026-07-17이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
 
 ## 이 문서와 언어별 갭 문서의 관계
 
@@ -14,7 +14,7 @@
 
 | | 소유하는 것 |
 |---|---|
-| **이 문서** | 판정 기준 · **전 언어가 함께 닫는 계약 갭**(§12.20~§12.24) · **교차 언어 결함**(`IMP-X*`) · 샘플 축 · 문서 소유권 · 감사 라운드 요약 |
+| **이 문서** | 판정 기준 · **전 언어가 함께 닫는 계약 갭**(§12.20 이후) · **교차 언어 결함**(`IMP-X*`) · 샘플 축 · 문서 소유권 · 감사 라운드 요약 |
 | **[gaps/&lt;lang&gt;](gaps/)** | 그 언어의 **작업 체크리스트** — 모든 항목의 file:line과 고칠 것. 교차 언어 결함도 **그 언어에서 무엇을 고치는지**로 다시 적혀 있다 |
 
 **언어 하나를 고치는 사람은 `gaps/<lang>` 하나만 보면 된다.** 계약의 근거가 궁금할 때만 이리 온다.
@@ -67,52 +67,52 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | 00 | [공개 계약 관리](00-public-contract-governance.ko.md) | — | — | — | — | — |
 | 01 | [개요](01-overview.ko.md) | — | — | — | — | — |
 | 02 | [상호작용 모델](02-interaction-model.ko.md) | O | O | O | O | O |
-| 03 | [메시지 모델](03-message-model.ko.md) | O | **X** §12.20 | **X** §12.20 | **X** §12.20 | **X** §12.20 |
-| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | **X** §12.21 | **X** §12.21 | **X** §12.21 | **X** §12.21 |
-| 05 | [framework API](05-framework-api.ko.md) | O | O | O | O | O |
+| 03 | [메시지 모델](03-message-model.ko.md) | O | O | O | O | O |
+| 04 | [비동기 실행 정책](04-async-execution-policy.ko.md) | O | **X** §12.23 | **X** §12.23 | O | **X** §12.23 |
+| 05 | [framework API](05-framework-api.ko.md) | **X** §12.32 §12.33 | **X** §12.26 §12.32 §12.33 | **X** §12.26 §12.32 §12.33 | **X** §12.32 §12.33 | **X** §12.32 §12.33 |
 
 ### 2.2 Channel (1x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 10 | [channel topology](server/10-channel-topology.ko.md) | O | O | O | O | O |
-| 12 | [HTTP client](http-client/12-http-client.ko.md) | O | **X** §12.22 | **X** §12.22 | **X** §12.22 | **X** §12.22 |
-| 11 | [channel 메시징](server/11-channel-messaging.ko.md) | O | O | O | **△** startup validation §4.13 | O |
+| 10 | [channel topology](server/10-channel-topology.ko.md) | **X** §12.33 | **X** §12.33 | **X** §12.33 | **X** §12.33 | **X** §12.33 |
+| 12 | [HTTP client](http-client/12-http-client.ko.md) | O | O | O | O | **X** §12.22 |
+| 11 | [channel 메시징](server/11-channel-messaging.ko.md) | O | O | O | O | O |
 
 ### 2.3 SPOT · Actor (2x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 20 | [SPOT 메시징](server/20-spot-messaging.ko.md) | O | O | O | **△** startup validation §4.13 | O |
-| 21 | [MeshNode](server/21-mesh-node.ko.md) | O | O | O | O | O |
-| 22 | [Actor 모델](server/22-actor-model.ko.md) | O | **X** §12.2 | **X** §12.2 | O | **X** §12.2 |
-| 23 | [Spot Actor Join/Transfer](server/23-spot-actor.ko.md) | O | **X** §12.2 | **X** §12.2 | O | **X** §12.2 |
-| 24 | [Spot 주소 메시징](server/24-spot-address-messaging.ko.md) | O | **X** §12.9 | **X** §12.9 | **X** §12.5 | O |
+| 20 | [SPOT 메시징](server/20-spot-messaging.ko.md) | O | O | O | O | O |
+| 21 | [MeshNode](server/21-mesh-node.ko.md) | **X** §12.33 | **X** §12.33 | **X** §12.33 | **X** §12.33 | **X** §12.33 |
+| 22 | [Actor 모델](server/22-actor-model.ko.md) | **X** §12.34 | **X** §12.2 | **X** §12.2 | O | **X** §12.2 §12.34 |
+| 23 | [Spot Actor Join/Transfer](server/23-spot-actor.ko.md) | **X** §12.24 §12.29 | **X** §12.2 §12.24 §12.29 | **X** §12.2 §12.24 §12.29 | **X** §12.24 §12.29 | **X** §12.2 §12.24 §12.29 |
+| 24 | [Spot 주소 메시징](server/24-spot-address-messaging.ko.md) | O | **X** §12.9 | **X** §12.9 | O | **X** [IMP-CP-03](gaps/cpp.ko.md#구현-감사에서-발굴-2026-07-14-스펙코드-직접-대조) |
 | 25 | [Stage Wrapper](server/25-stage-wrapper-on-spot.ko.md) | O | O | O | O | O |
 
 ### 2.4 STREAM (3x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 30 | [STREAM 서버 세션](server/30-stream-session.ko.md) | O | **X** §12.20 | **X** §12.20 | **X** §12.20 | **X** §12.20 |
-| 31 | [Session Actor Dispatch](server/31-session-actor-dispatch.ko.md) | O | O | O | **X** §12.6 | O |
-| 32 | [Stream Connector](stream-connector/32-stream-connector.ko.md) | **X** §12.25 | **X** §12.1 §12.3 §12.4 §12.10 §12.12 §12.13 §12.15 §12.16 §12.17 §12.19 §12.20 §12.25 | **X** Java 표면 상속 + §12.14 §12.19 §12.25 | **X** §12.20 | **X** §12.20 §12.25 |
+| 30 | [STREAM 서버 세션](server/30-stream-session.ko.md) | O | O | O | O | **X** §12.30 |
+| 31 | [Session Actor Dispatch](server/31-session-actor-dispatch.ko.md) | **X** §12.28 | **X** §12.28 | **X** §12.28 | **X** §12.28 | **X** §12.28 |
+| 32 | [Stream Connector](stream-connector/32-stream-connector.ko.md) | **X** §12.25 | **X** §12.1 §12.15 §12.25 | **X** Java 표면 상속 + §12.25 | O | **X** §12.25 |
 
 ### 2.5 Location (4x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 40 | [location runtime](server/40-location-runtime.ko.md) | O | O | O | **X** §12.11 | O |
-| 41 | [Redis location store](server/41-location-store-redis.ko.md) | O | O | O | O | O |
+| 40 | [location runtime](server/40-location-runtime.ko.md) | **X** §12.27 | **X** §12.27 | **X** §12.27 | **X** §12.27 | **X** §12.27 |
+| 41 | [Redis location store](server/41-location-store-redis.ko.md) | **X** §12.27 §12.29 | **X** §12.27 §12.29 | **X** §12.27 §12.29 | **X** §12.27 §12.29 | **X** §12.27 §12.29 |
 
 ### 2.6 관측 · 운영 (5x)
 
 | # | 스펙 | `.NET` | Java | Kotlin | Node | C++ |
 |---|------|:---:|:---:|:---:|:---:|:---:|
-| 50 | [런타임 모니터링](server/50-runtime-monitoring.ko.md) | O | **△** §12.8 | **△** §12.8 | **X** §12.11 | O |
-| 51 | [런타임 메트릭](server/51-runtime-metrics.ko.md) | O | O | O | O | O |
+| 50 | [런타임 모니터링](server/50-runtime-monitoring.ko.md) | O | **△** §12.8 | **△** §12.8 | O | O |
+| 51 | [런타임 메트릭](server/51-runtime-metrics.ko.md) | **X** §12.31 | **X** §12.31 | **X** §12.31 | **X** §12.31 | **X** §12.31 |
 | 52 | [메시지 흐름 추적](server/52-message-flow-tracing.ko.md) | O | O | O | O | O |
-| 53 | [흐름 상관관계](server/53-flow-correlation.ko.md) | O | **X** §12.18 | **X** §12.18 | O | O |
+| 53 | [흐름 상관관계](server/53-flow-correlation.ko.md) | O | O | O | O | O |
 | 54 | [Graceful Drain](server/54-graceful-drain-handoff.ko.md) | O | O | O | O | O |
 
 ### 2.7 열려 있는 gap 요약
@@ -121,35 +121,28 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 
 | gap | 언어 | 내용 |
 |---|---|---|
-| §4.10 | **TypeScript** | **해소.** browser-only package, 명시적 flow, 실제 Chromium과 package consumer gate가 모두 통과했다. |
-| §4.13 | **Node** | **해소.** channel과 SPOT의 잘못된 구성을 socket 생성 전 startup validation에서 거부한다. |
-| §10.9 | (계약 범위) | filter는 **channel dispatch 경로에만** 적용한다. SPOT·STREAM·route-mesh는 우회한다. **결함이 아니라 현재 계약이다** |
 | §12.1 | **Java** | **독립 unread-history가 없다.** overflow가 가장 오래된 메시지를 버리고(기준선은 새 메시지), 기본 상한이 무제한이며, drop 오류가 없고, handler 없는 메시지가 폐기되며, `waitFor`가 기존 메시지를 못 받고, `AUTO`에서 한도가 적용되지 않는다 |
 | §12.2 | **Java, C++** | `onActorJoin` admission이 **선택 사항**이라, 구현을 빠뜨리면 컴파일은 통과하고 **모든 join이 조용히 거절**된다 |
-| §12.3 | **Java, Kotlin** | connector `disconnect()`/`reconnect()`(Kotlin wrapper도 동일)와 `ZLinkActorPlacement`는 **근거 없는 표면**이다. 또 `connect()`가 진행 중인 연결 시도를 기다리지 않는다 |
-| §12.4 | **Java** | 호출별 `packetName(...)` override가 없다([32 §5](stream-connector/32-stream-connector.ko.md)) |
-| §12.5 | **Node** | route client에 `sendToSpot`/`requestToSpot`가 없고, spot 전송의 **stale 갱신·1회 재전송이 미구현**이다 |
-| §12.6 | **Node** | session handler registry가 **handler 클래스 이름**을 packet 키로 써서 wire packet name과 맞지 않는다 |
 | §12.8 | **Java** | runtime event 모델이 sealed 계층이 아니라 flat record + kind enum이고, `ZLinkMonitoringOptions`에 location 계열 source 등록 4개가 없으며, event handler가 `void`를 반환한다 |
 | §12.9 | **Java** | `sendToSpot`/`requestToSpot`이 spot handle과 **channel 이름을 함께** 받는다. handle이 전송 mesh를 소유해야 한다 |
-| §12.10 | **Java** | connector가 지원 transport를 나타내는 공개 enum을 노출하지 않는다 |
-| §12.11 | **Node** | location runtime event kind가 `StoreUnavailable`이다. 닫힌 집합의 이름은 `StoreFailure`다 |
-| §12.12 | **Java** | dispatch mode enum이 `AUTO`/`MANUAL`이다(계약은 `Manual`/`Immediate`). 또 `MANUAL`에서도 state·disconnected callback이 queue를 우회하고, message callback의 완료를 기다리지 않는다 |
-| §12.13 | **Java** | connector options에 inbound observer 큐·preview 한도 2개가 없다 |
-| §12.14 | **Kotlin** | compression option helper가 options를 복사하며 `maxReceivedMessages`를 무제한으로 되돌린다 |
 | §12.15 | **Java** | 비동기 실패를 오류 코드를 담은 공통 예외로 정규화하지 않는다 |
-| §12.16 | **Java** | metadata 블록의 총합 1024바이트 한도를 검사하지 않는다 |
-| §12.17 | **Java** | request sequence를 포함한 `Error`를 그 request로 매핑하면서도 **stream-level error callback으로 먼저 이중 발행**하고, error payload JSON을 파싱하지 않는다 |
-| §12.18 | **Java** | inbound callback에서 시작한 send/request가 inbound의 `flow_id`를 잇지 않는다 |
-| §12.19 | **Java, Kotlin** | `send(Object)`가 raw payload를 받고, Kotlin에 목표 계약에 없는 `await<T>()` overload가 있다 |
-| §12.20 | **Java/Kotlin, Node, C++** | `Response`·`Error` header에 packet name을 싣는다. 계약은 그 필드를 **두지 않는 것**이다 |
-| §12.21 | **Java/Kotlin, Node, C++** | `yield` terminator가 없고 `async`가 **자동으로 turn을 반납**한다. 계약은 `async`가 turn을 유지하고 `yield`만 반납하는 것이다 |
-| §12.22 | **Node, C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다. Java/Kotlin은 서버 client와 execution turn 주입을 구현하고 blocking 표면을 제거했다 |
-| §12.23 | **Node, C++** | worker가 CPU/IO로 나뉘어 있지 않고, 비동기 델리게이트 오버로드와 `yield` terminator가 없다. Java/Kotlin은 `runCpuWorker`·`runIoWorker`와 두 terminator를 구현했다 |
-| §12.25 | **`.NET`, Java/Kotlin, C++** | `.NET`·Java/Kotlin은 계약에 없는 receive-count API가 남아 있다. C++는 operation별 codec 선택과 connector codec registry가 남아 있고 connector-level typed codec option이 없다 |
+| §12.22 | **C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다 |
+| §12.23 | **C++, Java/Kotlin** | 두 worker와 terminator는 구현했지만 callback에 cancellation 신호를 전달하지 않는다 |
+| §12.24 | **전 언어** | accepted join의 location CAS보다 source leave를 먼저 실행하거나, target membership·`OnJoinedActor` 뒤에 location을 기록한다. CAS 실패에서 source membership을 보존하는 정식 commit 순서를 충족하지 않는다 |
+| §12.25 | **`.NET`, Java/Kotlin, C++** | `.NET`·Java/Kotlin은 계약에 없는 receive-count API가 남아 있다. `.NET`은 handler-bound send가 공통 수신 큐 admission을 우회한다. C++는 operation별 codec 선택과 connector codec registry가 남아 있고 connector-level typed codec option이 없다 |
+| §12.26 | **Java, Kotlin** | exact interface의 `ZLinkRouteMeshRuntimeOptions`가 없고 E2E도 기존 ChannelName 전용 runtime options를 사용한다 |
+| §12.27 | **전 언어** | `ActorLocation`이 현재 Spot lifecycle generation을 보존하지 않아 같은 Spot RID 재사용 뒤 stale membership을 구분할 수 없다 |
+| §12.28 | **전 언어** | Actor dispatch를 사용하는 STREAM node가 target MeshName 하나를 명시하는 public 설정과 startup 검증을 제공하지 않는다 |
+| §12.29 | **전 언어** | durable Actor transfer store와 Redis participant·active-index·recovery-lease 원자 전이가 없어 process 장애 뒤 transfer를 복구할 수 없다 |
+| §12.30 | **C++** | STREAM TLS server 설정이 client 인증서 요구 여부를 받지 않아 공통 mTLS admission을 구성할 수 없다 |
+| §12.31 | **전 언어** | Actor transfer counter와 duration이 `mesh_name`, 닫힌 `outcome` label과 실패 terminal을 기록하지 않는다 |
+| §12.32 | **전 언어** | 수신 envelope의 알 수 없는 non-JSON content-type을 거부하지 않고 JSON·기본 serializer로 해석하거나 raw payload로 전달한다 |
+| §12.33 | **전 언어** | exact interface의 MeshName 중심 `AddRouteMesh`·`addRouteMesh`·`add_route_mesh`와 MeshNode builder가 source·package·sample·E2E에 적용되지 않았고 기존 분리 builder와 production in-memory location helper가 남아 있다 |
+| §12.34 | **`.NET`, C++** | 공통 ActorRef는 `NodeRid`·`ActorId`·`Generation` 세 값만 보존하지만 `.NET` binding에는 계약 밖 `IsUnchecked`가 있고 C++은 `actor_type`을 추가로 보존해 snapshot 복원 호출자에게 전달을 요구한다 |
 | §13 | **Java, Kotlin** | TicTacToe가 **수동 등록** 대신 package 스캔을 쓴다. 규약상 TicTacToe만 수동 연결 + 수동 등록이다(Node가 참조 구현) |
 
-**connector wire 계약(§10.1~§10.7b)은 3개 구현 모두 해소했다**(§10).
+connector wire의 frame·header·metadata 계약은 세 native 구현에서 해소했다(§10). 수신 message queue
+admission은 Java와 이를 공유하는 Kotlin이 §12.1을 아직 충족하지 않는다.
 
 ## 3~6. 언어별 기준선 대조 기록 → 언어별 문서로 옮겼다
 
@@ -284,11 +277,15 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 
 | 갭 | 종류 | 무엇이 다른가 |
 |---|---|---|
-| §12.20 | **결함** | reply를 sequence 단독으로 맞춰야 하는데 packet name을 함께 싣고 비교한다 |
-| §12.21 | **결함 + 미구현** | `async`가 **자동으로 turn을 반납한다**(결함). `yield` 표면이 없다(미구현) |
-| §12.22 | **결함 + 미구현** | terminator 이름이 계약과 다르고 blocking 표면이 public이다(결함). turn seam·DI 서버 표면이 없다(미구현) |
-| §12.23 | **미구현** | CPU/I/O worker 분리와 worker의 `yield`가 없다 |
-| §12.24 | **일부 충족** | `.NET`·Java·Kotlin은 caller turn orchestration과 반대 방향 동시 join을 구현했다. Node·C++은 아직 확인과 구현이 필요하다 |
+| §12.20 | **해소** | 모든 언어가 reply packet name을 제거하고 sequence로만 correlation한다 |
+| §12.21 | **해소** | 모든 언어에서 기본 `async`는 turn을 유지하고 명시적 `yield`만 turn을 반납한다 |
+| §12.22 | **C++ 결함 + 미구현** | terminator 이름이 계약과 다르고 blocking 표면이 public이다(결함). turn seam·DI 서버 표면이 없다(미구현) |
+| §12.23 | **C++·Java/Kotlin 미구현** | CPU/I/O worker와 terminator는 구현됐지만 worker callback cancellation 인자가 없다 |
+| §12.24 | **전 언어 결함** | accepted join에서 location CAS보다 source leave를 먼저 실행하거나 target membership을 먼저 공개한다 |
+| §12.27 | **전 언어 미구현** | Actor location record와 Redis codec에 Spot generation이 없다 |
+| §12.32 | **전 언어 결함** | 수신 wire content-type과 등록 codec의 일치를 확인하지 않아 알 수 없는 non-JSON payload가 handler까지 도달할 수 있다 |
+| §12.33 | **전 언어 미구현** | 10.0.0 exact RouteMesh·MeshNode 등록 표면과 기존 builder 제거가 source·package·sample·E2E에 적용되지 않았다 |
+| §12.34 | **`.NET`·C++ 결함** | ActorRef의 공통 세 필드 밖 공개 상태가 남아 있고 C++ snapshot 복원이 Actor type 인자를 요구한다 |
 
 나머지 §12.1~§12.19는 언어별 표면 차이이며, 각 항목이 미구현인지 결함인지를 본문에 적었다.
 
@@ -304,41 +301,20 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 | [Node](gaps/node.ko.md) | §12.5 · §12.6 · §12.11 |
 | [C++](gaps/cpp.ko.md) | §12.2 |
 
-**아래 §12.20~§12.24는 전 언어 공통 계약 갭이라 여기 남긴다.**
+§12.20과 §12.21은 모든 언어에서 해소됐다. §12.23은 C++·Java/Kotlin, §12.24는 모든 언어에 남아
+있다. 이후 공통 갭은 §2.7과 아래 상세 절을 기준으로 판단한다.
 
-### 12.20 응답에 packet name을 싣는다 (전 언어)
+### 12.20 응답 packet name — 해소
 
-**미충족(`.NET`, Java, Node, C++).** [03 message model](03-message-model.ko.md)의 "reply
-상관관계"와 [11 §3](server/11-channel-messaging.ko.md)·[30 §3.1](server/30-stream-session.ko.md)·
-[32 §4](stream-connector/32-stream-connector.ko.md)는 **`Response`와 `Error` header에 packet name을 두지 않는다**고
-규정한다.
+`.NET`, Java/Kotlin, Node와 C++ 모두 `Response`·`Error` header에서 packet name을 제거했다. Pending
+request는 request sequence로만 맞추고 진단 이름은 원 요청에서 가져온다. C++의
+`stream_write_call_t::packet_name(...)`도 공개 표면에서 제거했다. 각 언어 gap 문서의 §12.20 회귀
+근거가 이 상태를 고정한다.
 
-**왜 두지 않는가.** 응답은 handler를 고르지 않고(dispatch key 문맥은 `Request`·`Command`·`Publish`
-셋뿐이다), 어느 요청의 응답인지는 request sequence가 이미 정한다. 따라서 그 필드는 **아무도 읽지
-않는 잉여**다. 실제로 지금 4개 구현이 서로 다른 값을 채워 넣고 있어 진단만 어긋난다.
+### 12.21 C++ yield terminator 부재
 
-| 구현 | 현재 응답에 넣는 이름 |
-|------|----------------------|
-| `.NET` | 요청의 packet name을 echo |
-| Node | 요청의 packet name을 echo |
-| C++ | 요청의 이름이 기본값이고, application이 **override할 수 있는 public 표면**까지 노출 |
-| Java | **reply payload 타입의 이름**(`FooReq` 요청에 `FooRes`가 나간다) |
-
-**고쳐야 할 것:**
-
-- 응답 인코딩에서 packet name을 뺀다. STREAM wire는 `name_len = 0`으로 보낸다.
-- C++의 reply 이름 override 표면(`stream_write_call_t::packet_name(...)`)을 제거한다.
-- decoder는 구형 peer가 보낸 이름 있는 응답도 받아들이되 **무시한다**(대조 조건으로 쓰지 않는다).
-- 응답의 진단·로깅에는 pending request 항목이 들고 있는 **원본 request의 이름**을 쓴다.
-
-**대조 금지는 이미 지켜지고 있다.** 2026-07-14 전수 조사에서 5개 구현(.NET·Java·Node·C++·core)
-모두 pending request를 **sequence 단독**으로 매칭하며 packet name을 대조하는 코드가 없음을
-확인했다. 필드를 빼면 그 성질이 구조적으로 보장된다. 회귀 테스트로 고정한다.
-
-### 12.21 yield terminator 부재 (전 언어)
-
-**미충족(`.NET`, Java, Kotlin, Node, C++).** [04 §1.1](04-async-execution-policy.ko.md)은 request·
-actor join·worker에 **세 terminator**를 요구한다.
+**해소.** [04 §1.1](04-async-execution-policy.ko.md)은 request·actor join·worker에 세 terminator를 요구한다.
+다섯 언어 모두 기본 async의 turn 유지와 명시적 yield의 turn 반납을 구현했다.
 
 | terminator | 실행 줄 |
 |---|---|
@@ -346,67 +322,21 @@ actor join·worker에 **세 terminator**를 요구한다.
 | **`async`**(기본) | **turn을 유지한다.** 대기 중 같은 Spot의 다른 callback은 시작하지 않는다 |
 | **`yield`**(opt-in) | turn을 반납한다. 완료된 continuation은 큐에 다시 들어가 순서대로 재개된다 |
 
-**현재 구현은 terminator가 둘뿐이고, `async`가 자동으로 turn을 반납한다**(자동 turn dispatch).
-`yield` 전용 타입은 5개 구현 모두에서 제거됐다.
+C++도 `call.hpp`와 `worker.hpp`에서 `async()`를 turn 유지로, `yield()`를 turn 반납으로 시작하고
+`task.hpp`의 serial turn scheduler가 두 의미를 구분한다. C++ HTTP client 차이는 §12.22, worker
+cancellation 차이는 §12.23이 각각 소유한다.
 
-**HTTP client에는 terminator 계약 자체가 없다.** `SubmitAsync<T>(ct)` 같은 평범한 awaitable
-하나뿐이라 framework terminator가 아니며, spot handler에서 외부 API를 부르면 **그 시간만큼 room
-전체와 timer가 멈춘다.** `yield`가 가장 필요한 자리인데 표면이 없다.
+### 12.22 C++ HTTP client가 framework 계약 밖에 있다
 
-**왜 되돌려야 하는가.**
-
-- SPOT 직렬 dispatch의 가치는 처리량이 아니라 **추론 보장**이다. "handler = 하나의 turn"이 room
-  로직을 lock 없이 쓸 수 있게 하는 근거다. 자동 turn dispatch는 **코드 모양은 순차로 유지한 채
-  그 보장만 없앤다** — 순차처럼 보이고, 대부분 순차로 동작하고, 부하가 걸릴 때만 드물게 깨진다.
-  가장 찾기 어려운 부류의 결함이다.
-- 실제로 이 스펙 문서군의 02·20·22·25가 자동 turn dispatch 도입 이후에도 **"같은 spot의 두
-  handler는 동시에 실행되지 않으니 lock이 필요 없다"**를 계속 적고 있었다. 스펙을 쓴 쪽조차
-  불변식이 깨진 것을 알아채지 못했다.
-- **deadlock 회피는 근거가 아니다.** channel reply와 routed 메시지는 spot dispatch 루프가 꺼내며,
-  그 루프는 실행 줄과 별개 축이다. turn을 유지한 채 기다려도 응답은 정상 도착한다. 요청이 자기
-  Spot으로 되돌아오는 사이클만 request timeout으로 끝나는데, 그것은 application 설계 오류이며
-  timeout이 올바른 결과다.
-- head-of-line 지연은 실재하지만 **`yield`가 이미 그 해법**이다. opt-in으로 충분한 것을 default로
-  만들면서 직렬 처리의 이점을 상쇄할 이유가 없다.
-
-**고쳐야 할 것:**
-
-- `async` terminator가 **turn을 유지**하도록 되돌린다. 대기 중 같은 Spot의 다음 callback을 시작하지
-  않는다.
-- request·actor join·worker·**HTTP client 호출**에 **`yield` terminator를 다시 제공**한다. turn을
-  반납하고, 완료된 continuation을 실행 줄의 큐에 재삽입해 순서대로 재개한다.
-- **HTTP client를 framework terminator 축에 올린다.** spot 실행 문맥에서 부르는 HTTP 호출은
-  `submit` / `async` / `yield`를 갖는다.
-- actor·timer mailbox의 재진입 차단은 그대로 둔다(`yield` 양보를 가로질러서도 유효해야 한다).
-- C++ `yield` 구현의 과거 결함(blocking submit이 직렬 스레드에서 동기 실행돼 형제 timer를 굶김)은
-  detached offload로 이미 해결했다. 그 방식을 유지한다.
-
-**E2E:** `config-8`을 세 terminator 계약으로 다시 썼다([config-8 실행 turn과 terminator](../common/e2e/config-8-execution-turn.ko.md)). TD-A3(async 불변식)·TD-B1(yield 인터리브)·TD-E2(user→user join)·TD-C3(I/O worker)가 이 갭의 검증 축이다.
-
-**샘플:** 두 공통 샘플이 `yield`를 쓰도록 규정돼 있으므로 이 갭이 풀리기 전에는 그 흐름을 구현할 수
-없다.
-
-| 샘플 | 지점 | terminator |
-|------|------|-----------|
-| [Bingo](../common/sample/bingo/README.ko.md) §7.1 | room Spot의 actor join/leave가 Api 서버에서 player 전적을 조회·기록한다 | `yield` |
-
-[DeliveryDispatch §6.1](../common/sample/deliverydispatch/README.ko.md)은 entry spot의 terminator
-선택 **규칙**을 소유한다(이 샘플의 entry spot 대기는 전부 자기 상태 판단이라 `async`다).
-
-### 12.22 HTTP client가 framework 계약 밖에 있다 (전 언어)
-
-**Java/Kotlin 충족, Node/C++ 미충족.** [12 HTTP client](http-client/12-http-client.ko.md)는 HTTP client를
-STREAM connector와 같은 **framework 동반 client**로 규정하고 terminator·turn seam·서버 등록
-표면을 고정한다. Java/Kotlin은 standalone과 서버 client를 분리하고 서버 표면에 네 완료 방식,
-Spring execution turn bean, Kotlin의 `await`·`yieldAwait`를 구현했다. Java의 blocking `fetch`도
-제거했다(구현 커밋 `6a62b031d`, `49c40c2fe`). Node/C++에는 이 통합이 남아 있다.
+**C++ 미충족.** [12 HTTP client](http-client/12-http-client.ko.md)는 HTTP client를 framework 동반
+client로 규정하고 terminator·turn seam·서버 등록 표면을 고정한다. `.NET`, Java/Kotlin과 Node는 이
+통합을 구현하고 각 언어 gap의 §12.22를 닫았다.
 
 | 항목 | 계약 | 현재 |
 |------|------|------|
-| terminator | `submit` / `async` / `yield` / callback | Node/C++는 완료 방식 전체를 제공하지 않는다 |
-| Spot turn 인지 | `yield`가 turn을 반납한다 | Node/C++는 framework 실행 turn과 연결되지 않는다 |
-| 서버 표면 | DI 주입 client(`submit`/`async`/`yield`/callback) | Node/C++에는 서버 등록 표면이 없다 |
-| terminator 이름(`.NET`) | `Async(...)` | `SubmitAsync<T>` — [04 §2](04-async-execution-policy.ko.md)가 **이름을 찍어 금지**한 형태이며, `Submit`은 one-way 전용 동사다 |
+| terminator | `submit` / `async` / `yield` / callback | C++는 완료 방식 전체를 제공하지 않는다 |
+| Spot turn 인지 | `yield`가 turn을 반납한다 | C++는 framework 실행 turn과 연결되지 않는다 |
+| 서버 표면 | DI 주입 client(`submit`/`async`/`yield`/callback) | C++에는 서버 등록 표면이 없다 |
 | blocking 표면 | 두지 않는다 | C++ `fetch<T>()`가 남아 있다 |
 
 그 결과 **spot handler에서 외부 API를 호출하면 실행 줄이 그대로 막힌다.** actor 입·퇴장 시 외부
@@ -415,8 +345,7 @@ Spring execution turn bean, Kotlin의 `await`·`yieldAwait`를 구현했다. Jav
 
 **고쳐야 할 것:**
 
-- 세 terminator(`submit`/`async`/`yield`)와 callback 완료 경로를 제공한다. `.NET`은 `SubmitAsync` →
-  `Async`로 정정한다.
+- 세 terminator(`submit`/`async`/`yield`)와 callback 완료 경로를 제공한다.
 - **turn seam**(execution scheduler 주입점)을 공개 계약으로 둔다. framework가 DI 등록 시 spot
   turn을 아는 scheduler를 꽂는다. C++ HTTP client에 **같은 형태의 API 표면이 이미 있다**
   (`framework_resume_scheduler_t`) — 다만 framework 런타임이 아직 그것을 주입하지 않으므로 표면만
@@ -426,97 +355,53 @@ Spring execution turn bean, Kotlin의 `await`·`yieldAwait`를 구현했다. Jav
 - blocking 언래핑 terminator를 public 표면에서 제거한다.
 - **바이너리 의존은 framework → HTTP client 한 방향을 유지한다.**
 
-### 12.23 worker 축 분리와 yield 부재 (전 언어)
+### 12.23 C++·Java/Kotlin worker cancellation 부재
 
-**Java/Kotlin 충족, Node/C++ 미충족.** [04 §1.2](04-async-execution-policy.ko.md)는 worker를
-**CPU worker**와 **I/O worker**로 나누고, 둘 다 `async`·`yield` terminator를 갖도록 규정한다.
-
-Java/Kotlin은 CPU 동기 작업과 I/O 비동기 작업을 분리했다. I/O 작업은 bounded CPU pool에 넣지 않고
-반환된 `CompletionStage`를 그대로 추적하며, 두 호출은 turn 유지 `submit`과 turn 반납 `yield`를
-제공한다. 집중 테스트는 I/O 대기 중 CPU pool thread와 queue가 모두 0인지 확인한다(구현 커밋
-`146afe0a5`). Node/C++에는 아직 worker 하나만 있고 **동기 델리게이트만 받는다.**
-
-그래서 외부 I/O를 worker로 감싸면 **worker 스레드 안에서 blocking으로 기다려야 한다.** in-flight
-호출 하나마다 bounded pool의 스레드 하나가 잠기고, 외부 서비스가 느려지면 pool이 고갈되어
-`WorkerQueueFull`이 터진다.
+**C++와 Java/Kotlin 미충족.** [04 §1.2](04-async-execution-policy.ko.md)는 worker를 CPU worker와
+I/O worker로 나누고, 둘 다 `async`·`yield` terminator와 cancellation 신호를 갖도록 규정한다.
+두 구현 모두 worker 분리와 terminator는 제공한다. C++ callback은 `std::stop_token`을 받지 않고,
+Java/Kotlin의 `ZLinkWorkerTask.run()`과 `ZLinkIoWorkerTask.run()`도 cancellation 인자를 받지 않아 timeout,
+caller cancellation과 shutdown을 실행 중인 작업에 전달할 수 없다. `.NET`과 Node만 세 요구를 모두
+충족한다.
 
 **고쳐야 할 것:**
 
-- worker를 **CPU worker**(동기 델리게이트)와 **I/O worker**(비동기 델리게이트)로 나눈다. 이름이
-  실행 의미를 드러내야 한다.
-- I/O worker는 **스레드를 점유하지 않는다.** 실행 줄을 다루는 경계일 뿐이며 I/O는 그대로 비동기로
-  흐른다.
-- 두 worker 모두 `async`(turn 유지)와 `yield`(turn 반납) terminator를 갖는다.
-
-**함께 움직여야 하는 문서 표면.** 아래 문서들은 **현재 출하된 public 표면**(`RunWorker` 하나)을
-미러하며, 일부는 회귀 테스트가 코드와 대조한다. 그래서 구현 전에 먼저 고치면 안 된다 — **구현과
-같은 커밋에서 함께 바꾼다.**
-
-| 문서 | 현재 표기 |
-|------|-----------|
-| `languages/<lang>/02` 인터페이스 카탈로그 | `RunWorker<TResult>(Func<CancellationToken, TResult>)` |
-| 언어별 guide(예: `dotnet/guide/06-spot`, `13-interface-catalog`) | `RunWorker(...)` |
-| `perf/README.ko.md` | `RunWorker`/`runWorker`/`run_worker` |
-| `internals/regression-test-matrix.ko.md` | `WorkerPoolTests.RunWorker_Async_*` |
+- 각 언어의 worker callback에 표준 cancellation 표현을 전달하고, 늦은 완료가 이미 확정된 terminal
+  결과를 바꾸지 않는 contract test를 둔다.
 
 E2E는 이미 정본을 따른다 — [config-2 SM-A8](../common/e2e/config-2-spot-service.ko.md)과
 [config-8 TD-C3~C5](../common/e2e/config-8-execution-turn.ko.md)가 `RunCpuWorker`/`RunIoWorker`를 쓴다.
 
-### 12.24 actor join의 orchestration이 뒤집혀 있다 (전 언어)
+### 12.24 전 언어 actor join commit 순서
 
-**충족(`.NET`, Java, Kotlin), 미충족(Node, C++).** 기존 구현은 **join이 target 줄을 잡은 채
-source 줄을 기다리는** 반대 방향 orchestration을 사용했다.
+**전 언어 미충족.** [23 §3](server/23-spot-actor.ko.md#3-join-commit)은 admission accept 뒤 location
+authority가 expected Actor generation과 membership epoch를 비교해 CAS를 먼저 commit하도록 고정한다.
+CAS가 성공한 뒤에만 source `OnLeaveActor`, target membership 공개와 `OnJoinedActor`를 차례로 실행한다.
+CAS 실패에서는 source membership을 그대로 유지해야 한다.
 
-admission과 commit은 **target Spot의 실행 줄**에서 진행되고, source cleanup(`OnLeaveActor`)은 **source
-Spot의 큐에 post**된다. 즉 **한 join이 두 실행 줄에 걸쳐 수행되며, 점유한 실행 줄과 대기하는 실행 줄이
-서로 반대**다.
+현재 구현은 모두 이 commit point를 다른 순서로 둔다.
 
-**수정 전 `.NET` 기준선에서 확인한 결함:**
+- `.NET`은 `ZLinkFrameworkActorFacade.cs:56-71`에서 admission accept 뒤 source
+  `NotifyActorLeftAfterManagedJoinSpotAsync`를 먼저 완료하고 target commit을 호출한다.
+- Java/Kotlin은 `ZLinkActorSpotAdmission.java:245-257`에서 source leave, target membership,
+  `OnJoinedActor`, durable location commit 순으로 실행한다.
+- Node는 `local-first-actor-join-coordinator.ts:69-116`에서 target admission·membership 처리와 source
+  leave를 마친 뒤 `notifyActorJoinedSpot`으로 location을 기록한다.
+- C++는 `spot_runtime.hpp:805-867`에서 `commit_actor_left`를 먼저 실행하고 target callback과 route를
+  공개한다. location authority CAS를 이 순서의 commit point로 사용하지 않는다.
 
-| 사실 | 위치 |
-|------|------|
-| local `JoinSpot` → target activation의 `JoinActorAsync` | `Runtime/Host/ZLinkFrameworkActorFacade.cs:46-76` |
-| target의 `ExecuteSerializedAsync` 안에서 admission → commit | `Runtime/Spots/ZLinkSpotActivationActors.cs:47-93` |
-| commit이 source의 `NotifyActorLeftAfterManagedJoinSpotAsync`를 **기다린다** | `Runtime/Actors/ZLinkActorSessionSpotMembership.cs:13-27` |
-| 그 대기가 **source 큐에 작업을 post**한다 | `Runtime/Spots/ZLinkSpotActivationActors.cs:298-311`, `379-397` |
-| **노드 전역** local join 세마포어 | `Runtime/Host/ZLinkFrameworkActorFacade.cs:27-38`, `63-81` |
+**고쳐야 할 것 — location authority가 commit 순서를 소유한다:**
 
-**그 결과 두 가지 우회가 코드에 박혀 있다.**
+1. caller turn에서 target admission을 요청하고 expected Actor generation·membership epoch를 보존한다.
+2. accepted reply를 받은 location authority가 target owner와 Spot membership을 CAS commit한다.
+3. CAS가 성공한 뒤 source `OnLeaveActor`를 실행한다. CAS가 실패하면 source callback과 membership을
+   바꾸지 않는다.
+4. target membership을 공개하고 `OnJoinedActor`를 실행한다. callback 실패는 commit 이후 복구 절차로
+   처리하며 source로 rollback하지 않는다.
+5. 서로 다른 Spot 쌍은 노드 전역 세마포어 없이 병행할 수 있어야 한다.
 
-1. **ATD가 이 구현을 떠받치고 있다.** `JoinSpot(...).Async()`가 **source turn을 자동 반납**하므로
-   source 큐가 비고 commit의 post가 실행된다(§12.21).
-   **ATD를 제거하면 user Spot → user Spot join이 즉시 중단된다.** ATD는 지연 최적화가 아니라
-   **join 구현의 필수 부품**이었다.
-2. **노드 전역 세마포어.** 같은 spot 쌍에서 반대 방향 join 두 개가 동시에 일어나면 서로의 큐를
-   기다려 영원히 멈춘다(그 spot들의 timer와 이후 모든 join까지 함께). 그래서 구현은 **local join을
-   노드 전체에서 한 번에 하나만** 처리하도록 직렬화했다. **방 입장이 프로세스 전역에서
-   직렬화된다** — 사이클을 없앤 게 아니라 사이클이 생길 기회를 없앤 것이며, 그 자체로 확장성
-   결함이다.
-
-**범위:** Entry Spot actor packet은 actor mailbox로 직렬화되고 turn을 잡지 않으므로
-([04 §1.1](04-async-execution-policy.ko.md)의 Entry Spot actor packet 절) **입장(Entry → user Spot)
-경로는 영향이 없다.** 막히는 것은 **user Spot → user Spot join**과 user Spot handler의 `leaveActor`다.
-
-**고쳐야 할 것 — orchestration을 caller 줄에서 돌린다:**
-
-1. caller(source Spot 줄, turn 유지)에서 target에 **admission**을 요청하고 기다린다. target은 다른
-   줄이므로 안전하다.
-2. **source `OnLeaveActor`를 그 turn 안에서 inline 실행한다.** 이미 source 줄 위에 있으므로 post가
-   필요 없다.
-3. target membership **commit**과 `OnJoinedActor`도 caller turn에서 순서대로 실행한다. target의 일반
-   packet·timer 실행 줄을 보유한 채 source 큐를 기다리는 경로를 만들지 않는다.
-4. 결과를 caller에게 반환한다.
-
-[23 §3.3~§4.1](server/23-spot-actor.ko.md)이 고정한 순서(source `OnLeaveActor` → target membership
-commit → target `OnJoinedActor`)를 **그대로 지킨다.** source 큐로 되돌아가는 경로가 사라지므로
-사이클이 소멸하고, **노드 전역 join 세마포어도 제거할 수 있다.**
-
-**E2E:** [config-8 TD-E2](../common/e2e/config-8-execution-turn.ko.md)(user→user join)와
-TD-E3(반대 방향 동시 join)이 이 갭의 검증 축이다.
-
-Java와 Kotlin은 공유 Java runtime에서 native admission을 일반 target dispatch queue 밖에서 받아
-caller turn에 반환하고, source leave와 target commit을 그 turn에서 순서대로 완료한다. Java와 Kotlin
-Config 8의 `TD-E2`와 `TD-E3`가 모두 통과했다. 구현 커밋 `175d60d13`(2026-07-16).
+**E2E:** [config-8 TD-E2](../common/e2e/config-8-execution-turn.ko.md)(user→user join)의 commit marker
+순서와 TD-E3(반대 방향 동시 join)이 이 갭의 검증 축이다.
 
 ### 12.25 Stream Connector의 근거 없는 count·operation codec 표면
 
@@ -529,12 +414,193 @@ typed payload codec 하나를 connector 생성 option으로 받고 모든 typed 
   `ZLinkStreamConnector.receivedCount(String)`, Kotlin wrapper의 `receivedCount(String)`는 target
   exact interface에 없는 공개 member다. 부재 검증은 count snapshot이 아니라 `ExpectNone` 계열의
   명시적인 관찰 구간으로 수행해야 한다.
+- `.NET` `ZlinkStreamReceiveDispatcher.cs:74-96`은 handler가 하나라도 있으면
+  `ZlinkStreamReceivedMessages.Record`를 호출하지 않고 callback을 바로 실행한다. handler-bound send도
+  §10.1의 bounded queue admission을 먼저 거쳐야 하며, 인수 뒤 unread 기록에 남기지 않아야 한다.
 - C++의 `connector_t::codecs()`와 send/request builder의 `codec(codec_t)`는 codec 결정을 connector
   밖의 operation과 registry 호출로 분산한다. 이 세 member와 `codec_registry_t`를 제거하고
   `connector_options_t::typed_codec` 하나로 정렬해야 한다.
 
 구현 제거와 package API snapshot 갱신은 S8·S9에서 각 언어 source, contract test와 실제 package를
 함께 바꾼다. 정식 exact interface는 제거 뒤 목표 표면만 기술한다.
+
+### 12.26 Java/Kotlin route-mesh runtime options 미구현
+
+Java 10.0.0 exact interface는 MeshName과 ChannelName을 함께 받는
+`ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName)`과 MeshNode·ChannelName runtime options를
+공개 계약으로 고정한다. 현재 Java runtime은 ChannelName만 받는
+`ZLinkChannelRuntimeOptions.clientServerChannel(channelName)`과
+`ZLinkClientServerChannelRuntimeOptions`를 제공한다. Kotlin은 Java runtime을 그대로 사용하므로 같은
+차이가 적용된다.
+
+Java와 Kotlin의 Config 5 RL-B4는 기존 표면으로 weight 0/100의 부하 제외 의미를 검증한다. exact
+interface를 구현한 뒤 두 E2E를 새 표면으로 전환하고 MeshName이 다른 같은 ChannelName을 독립적으로
+설정하는 contract test를 추가해야 한다.
+
+### 12.27 전 언어 Actor location의 Spot generation 미구현
+
+[Location Runtime §3](server/40-location-runtime.ko.md)과 다섯 언어 exact interface는 Actor location에
+현재 Spot의 lifecycle generation을 보존한다. 같은 Spot RID가 종료 뒤 다시 사용되면 이 값으로 이전
+membership과 새 membership을 구분한다.
+
+현재 `.NET`, C++, Java/Kotlin과 Node의 public `ActorLocation` record에는 이 필드가 없다. 공식 Redis
+codec도 값을 저장하거나 복원할 수 없으므로 같은 RID의 재생성 뒤 stale actor row가 현재 위치처럼
+해석될 수 있다.
+
+각 언어는 record, in-memory·Redis codec, location lifecycle과 stale 판정을 함께 갱신하고 다음을
+contract test로 고정해야 한다.
+
+- Actor가 Spot에 join할 때 현재 Spot generation을 location row에 기록한다.
+- resolve와 transfer admission은 row의 Spot generation과 현재 Spot owner를 함께 검증한다.
+- Redis round-trip이 unsigned 64-bit generation을 손실 없이 보존한다.
+- 같은 Spot RID를 더 큰 generation으로 다시 만든 뒤 이전 actor row를 stale로 거부한다.
+
+### 12.28 전 언어 STREAM Actor dispatch MeshName 설정 미구현
+
+[Session Actor Dispatch §2·§9](server/31-session-actor-dispatch.ko.md)는 Actor dispatch를 사용하는 STREAM
+node가 target MeshName 하나를 등록 시점에 명시하도록 고정한다. endpoint, 첫 번째 MeshNode나 ActorRef에서
+이 값을 추론하지 않는다. 같은 process에 MeshNode가 여러 개 있어도 session resolve·bind·dispatch가
+선택한 mesh 밖으로 넘어가지 않게 하는 public 경계다.
+
+현재 다섯 언어 모두 이 계약을 충족하지 않는다.
+
+- `.NET`의 `IZLinkStreamNodeBuilder`와 `ZLinkStreamNodeBuilder`에는 `EnableActorDispatch`가 없고
+  `ZLinkStreamRuntimeManager.cs:14-35`도 STREAM registration에 MeshName을 전달하지 않는다.
+- Java의 `ZLinkStreamNodeBuilder`에는 `enableActorDispatch`가 없으며
+  `ZLinkStreamRuntime.java:187-204`는 등록된 Spot node 가운데 첫 항목을 session relay로 선택한다.
+- Kotlin은 Java builder와 runtime을 재사용하므로 같은 차이가 적용된다.
+- Node의 `ZLinkStreamNodeBuilder`와 `DefaultStreamNodeBuilder`에는 `enableActorDispatch`가 없고 stream
+  registration도 MeshName을 보존하지 않는다.
+- C++의 `stream_node_options_builder_t`에는 `enable_actor_dispatch`가 없고 stream registration이 relay용
+  MeshName을 저장하지 않는다.
+
+각 언어는 exact interface에 고정한 이름으로 설정을 추가하고 다음을 contract test로 검증해야 한다.
+
+- Actor dispatch를 사용하지 않는 STREAM-only host는 MeshNode 없이 시작한다.
+- Actor dispatch를 사용하는 STREAM node는 비어 있지 않은 MeshName 하나를 요구한다.
+- 같은 이름의 local MeshNode가 없거나 같은 builder에서 두 번 설정하면 startup 설정 오류다.
+- 두 STREAM node가 서로 다른 MeshName을 선택하면 resolve·bind·dispatch state를 공유하지 않는다.
+- 다른 MeshName의 ActorRef는 bind 또는 dispatch 전에 target 오류로 거부한다.
+
+### 12.29 전 언어 durable Actor transfer store 미구현
+
+[Spot Actor §6](server/23-spot-actor.ko.md#6-failure와-recovery)과
+[Redis Location Store §3.1](server/41-location-store-redis.ko.md#31-actor-transfer-authority)는 transfer
+participant, source·target identity, expected Actor generation·membership epoch, state와 recovery lease를
+durable store에 기록하도록 고정한다. Actor마다 active transfer 하나만 허용하고 prepare·commit·abort·takeover를
+Actor row와 원자적으로 전이해야 process 종료 뒤 successor가 복구할 수 있다.
+
+다섯 언어 exact interface는 각각 `IZLinkActorTransferStore`, `actor_transfer_store_t`,
+`ZLinkActorTransferStore`를 목표 계약으로 선언한다. 그러나 현재 source에는 이 interface나 구현이 없고,
+공식 Redis extension도 location row와 lease만 저장한다. runtime의 pending transfer map과 in-memory handoff
+상태는 process가 종료되면 사라지므로 recovery lease takeover를 수행할 수 없다.
+
+각 언어는 store-neutral interface와 공식 Redis 구현을 함께 제공하고 다음을 contract test로 고정해야 한다.
+
+- actor row key는 MeshName과 Actor ID를 UTF-8 byte 길이로 encode하며 delimiter 충돌이 없다.
+- `prepare`는 expected generation·epoch와 active transfer 부재를 한 번에 검사한다.
+- `commit`은 recovery lease owner가 일치할 때 actor row와 transfer state를 한 transaction에서 바꾼다.
+- `abort`는 commit 전 상태만 source로 되돌리고 active index를 조건부 제거한다.
+- `takeover`는 만료된 recovery lease와 participant set을 확인해 successor를 한 번만 정한다.
+- 같은 actor의 동시 transfer, 늦은 source cleanup과 commit 이후 callback 실패가 committed target을 지우지 않는다.
+
+### 12.30 C++ STREAM TLS client 인증서 요구 설정 미구현
+
+[STREAM Server §7.1](server/30-stream-session.ko.md#71-tls)은 server certificate와 key를 설정할 때 client
+인증서 요구 여부도 선택하도록 고정한다. 기본값은 `false`다. C++ exact interface는
+`set_tls_server(certificate_path, key_path, require_client_certificate = false)`를 목표 시그니처로 둔다.
+
+현재 C++ `stream_node_options_builder_t::set_tls_server`는 certificate와 key 두 인자만 받고 Core의
+`ZLINK_OPT_TLS_REQUIRE_CLIENT_CERT`를 설정하지 않는다. low-level `stream_builder_t`에도 계약 밖
+`set_tls_server(certificate, key)`가 남아 있다. Exact interface에서 low-level builder는 `bind`와
+`register_session`만 제공한다. `.NET`, Java와 Node는 같은 client 인증서 요구 선택을 이미 제공한다.
+
+C++ node options builder, registration snapshot과 stream runtime에 bool을 보존하고 low-level builder의
+TLS 공개 메서드는 제거한다. false에서 일반 TLS client가 연결되며 true에서 인증서 없는 client가 session
+생성 전에 거부되는 실제 TLS contract test를 추가해야 한다.
+
+### 12.31 전 언어 Actor transfer metric outcome 미구현
+
+[Runtime Metrics §4](server/51-runtime-metrics.ko.md#4-object와-stream-계기)는
+`zlink.actor.transfers`와 `zlink.actor.transfer.duration`에 `mesh_name`과 닫힌
+`outcome=activated|aborted|timed_out|shutdown`을 기록하도록 고정한다. Duration은 transfer 시작부터
+activation 또는 실패 terminal까지의 시간이며 location commit만으로 성공을 기록하지 않는다.
+
+현재 구현은 성공 경로의 label 없는 값만 기록한다.
+
+- `.NET` `ZLinkRuntimeMetrics.cs:157-167`은 pending count를 시작할 때 기록하고 완료 시 counter와
+  histogram에 tag를 전달하지 않는다.
+- Java `ZLinkActorRuntime.java:629-633`은 두 계기를 `Map.of()` 빈 label로 기록한다.
+- Kotlin은 Java runtime을 공유한다.
+- Node `actor-transfer-runtime.ts:146-157`은 commit callback에서 label 없이 count와 duration을 기록한다.
+- C++ `spot_runtime.cpp:3126-3128`은 label 없이 counter와 histogram을 기록한다.
+
+각 언어는 transfer operation이 MeshName, 시작 시각과 terminal outcome을 한 context로 소유하게 하고,
+activation·abort·timeout·shutdown의 각 terminal에서 정확히 한 번 기록해야 한다. 실패 뒤 성공으로 다시
+세거나 local join을 transfer로 세지 않는 contract test와 Config 11 OBS-B2를 label까지 검증하도록 갱신한다.
+
+### 12.32 전 언어 수신 content-type 검증 결함
+
+[Framework API §9](05-framework-api.ko.md#9-codec)은 송신 업무 타입에 맞는 extension이 없으면
+JSON을 선택하지만, 수신 envelope가 명시한 non-JSON content-type과 일치하는 codec이 없으면 JSON으로
+다시 해석하지 않고 `PayloadDecodeFailed`로 완료하도록 고정한다. 송신 기본값은 수신 wire 선언을
+무시하는 허가가 아니다.
+
+현재 구현은 모두 이 경계를 지키지 않는다.
+
+- `.NET` `ZLinkEnvelopeCodec.cs:254-278`은 content-type에 맞는 serializer가 없으면 그대로
+  `JsonSerializer.Deserialize`를 호출한다.
+- Java/Kotlin `ZLinkChannelMessageDispatcher.java:304-307`은 envelope content-type을 읽지 않고
+  packet name과 payload만 분리하며, `ZLinkChannelHandlerInvoker.java:137-203`은 handler 타입으로 고른
+  serializer를 사용한다.
+- Node `channel-envelope.ts:221-231`은 등록 serializer와 JSON·binary가 아닌 content-type의 payload를
+  오류로 끝내지 않고 `Buffer`로 반환한다.
+- C++ `envelope_codec.cpp:187-195`은 body를 raw message로 반환하고 handler registry가 content-type과
+  무관하게 handler 타입 serializer를 선택한다.
+
+각 언어는 envelope decode 경계에서 content-type을 codec registry와 먼저 대조해야 한다. JSON 또는
+등록된 codec만 허용하고, 알 수 없는 non-JSON 값은 handler를 호출하지 않은 채 `PayloadDecodeFailed`로
+종료해야 한다. Config 4 RC-B5는 정확한 error kind, 정상 JSON 트래픽의 지속과 handler 미호출을 함께
+검증해야 한다.
+
+### 12.33 전 언어 RouteMesh·MeshNode 통합 표면 적용 미구현
+
+[Framework API §3](05-framework-api.ko.md#3-routemesh-등록)과 다섯 언어 exact interface는 물리
+MeshName 하나를 `AddRouteMesh`·`addRouteMesh`·`add_route_mesh`로 등록하고 반환된 MeshNode builder가
+ChannelName, handler group, node client, manual peer, Spot과 Actor 구성을 소유하도록 고정한다. Production
+구성은 공식 location store를 사용하며 in-memory store 선택 helper를 공개 표면에 두지 않는다.
+
+현재 source는 10.0.0 목표 표면으로 전환되지 않았다.
+
+- `.NET` `IZLinkFrameworkOptions`는 `AddClientServerChannel`, `AddRouteMeshChannel`,
+  `UseInMemoryLocationStores`, `AddSpotMesh`를 별도 builder로 제공하고 `AddRouteMesh`가 없다.
+- Java/Kotlin `ZLinkFrameworkOptions`는 `addClientServerChannel`, `addRouteMeshChannel`, `addSpotMesh`,
+  `useInMemoryLocationStores`를 유지하고 `addRouteMesh`가 없다.
+- Node `ZLinkFrameworkOptions`는 `addSpotMesh`, `addClientServerChannel`, `addRouteMeshChannel`을 유지하고
+  `addRouteMesh`가 없다.
+- C++ `framework_options_t::add_route_mesh(channel_name)`은 `route_mesh_channel_builder_t`를 반환하며
+  target의 `mesh_node_builder_t add_route_mesh(mesh_name)`과 다르다. 기존 client-server channel과 SpotMesh
+  등록도 분리돼 있다.
+
+S8은 다섯 언어 source와 package public declaration을 exact interface로 바꾸고 old builder와 production
+in-memory location helper를 제거한다. S9는 guide·sample·E2E를 통합 MeshNode 표면으로 옮긴다. 실행 상태와
+gate 증거는 execution ledger만 소유하며, 이 절과 언어별 문서는 현재 구현 차이와 적용 범위만 추적한다.
+
+### 12.34 `.NET`·C++ ActorRef 필드 집합 불일치
+
+[상호작용 모델 §7](02-interaction-model.ko.md#7-spot과-actor)과
+[Actor 모델 §2](server/22-actor-model.ko.md#2-identity와-상태-축)는 `ActorRef`를 owner node의 `NodeRid`,
+논리 `ActorId`, 현재 `Generation` 세 값으로 고정한다. endpoint, 내부 frame, location row와 Actor type은
+참조에 포함하지 않는다. `ActorRefSnapshot`도 같은 세 값만 보존하고 별도 인자 없이 참조로 복원한다.
+
+Java/Kotlin과 Node source는 이 필드 집합을 따른다. `.NET` binding의 값 타입도 세 값을 보존하지만
+계약 밖 `IsUnchecked` 공개 property를 추가로 노출한다. C++ `actor_ref_t`는 `actor_type` 필드와 accessor를
+추가로 노출하고, `actor_ref_snapshot_t::to_actor_ref(actor_type)` 호출자가 snapshot에 없는 type을 다시
+주입해야 한다.
+
+S7은 `.NET`의 `IsUnchecked`를 공개 표면에서 제거한다. C++은 `actor_ref_t`의 `actor_type`과 accessor를
+제거하고 snapshot 복원을 인자 없는 `to_actor_ref()`로 바꾼다. Actor handler 선택에 필요한 Actor type은
+Actor manager와 runtime registry가 소유하며 application의 참조 복원 호출자에게 전달하지 않는다.
 
 ## 13. 샘플 연결·등록 축 준수 현황
 
@@ -622,7 +688,6 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 |------|------|------------------|
 | client connector 표면이 **서버 언어 카탈로그**에도 들어 있다 | `server/languages/dotnet/02-handler-interfaces.ko.md`, `server/languages/java/02-handler-interfaces.ko.md` | **connector 언어 문서**([stream-connector/languages/](stream-connector/README.ko.md)). 서버 카탈로그에서 뺀다 |
 | Kotlin **connector coroutine·`Flow` 표면**이 서버 폴더에 있다 | `server/languages/kotlin/02-handler-interfaces.ko.md` | `stream-connector/languages/kotlin/`을 새로 만들어 옮긴다 |
-| **C++ connector 계약 문서가 없다** | [32 §2](stream-connector/32-stream-connector.ko.md)는 C++ 타깃을 규정하는데 `stream-connector/languages/cpp/`가 없다 | connector 언어 문서를 만든다 |
 | connector **wire header 필드**를 서버 관측 문서가 함께 정의한다 | `server/52-message-flow-tracing.ko.md`, `server/53-flow-correlation.ko.md` | **[32](stream-connector/32-stream-connector.ko.md)가 wire를 소유**한다. 52/53은 추적 **의미**만 갖고 wire는 32를 참조한다 |
 | `session-closing` **인코딩과 client 디코딩**을 서버 drain 문서가 함께 정의한다 | `server/54-graceful-drain-handoff.ko.md` | **32가 wire와 connector 동작을 소유**한다. 54는 **언제·왜 보내는가**만 갖는다 |
 | connector **메트릭**(`zlink.stream.reconnects`)을 서버 메트릭 문서가 정의한다 | `server/51-runtime-metrics.ko.md` | connector가 emit하는 신호는 **32**로 옮긴다. 51은 서버가 emit하는 것만 갖는다 |
@@ -663,7 +728,7 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | C++ | 40 | **104** | **144** | [gaps/cpp](gaps/cpp.ko.md) |
 
 **기준선에서 18건이 나온 것이 이 감사의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
-언어를 맞추는 방식으로는 이 18건이 **영원히 안 보인다.**
+언어를 맞추는 방식으로는 이 18건을 **검출할 수 없다.**
 
 **C++이 가장 많다.** 레퍼런스 구현인데 그렇다.
 
@@ -683,24 +748,24 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 
 | ID | 결함 | 어디 |
 |----|------|------|
-| **IMP-X1** | **pending actor row(`ActorRef` 비어 있음)를 resolve 성공으로 반환한다.** [40 §2.3](server/40-location-runtime.ko.md)은 miss로 취급하라고 요구한다 | Java · C++ |
-| **IMP-X2** | **location store 상태 event source가 없다.** [50 §3](server/50-runtime-monitoring.ko.md#3-event-identifiers)의 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 게시하지 않는다 | Java · C++ · Node |
-| **IMP-X3** | **startup validation이 [20 §8](server/20-spot-messaging.ko.md)·[30 §7.2](server/30-stream-session.ko.md)의 설정 오류를 통과시킨다.** "모든 설정 오류는 host 시작 전에 실패한다"가 계약 | Java · Node · C++ (`.NET`은 해소) |
-| **IMP-X4** | **location store read에 5초 취소 상한이 없다.** [54 §3.4](server/54-graceful-drain-handoff.ko.md)가 framework 내부 정책으로 고정 | Java (`.NET`은 해소) |
+| **IMP-X1** | **해소.** pending actor row(`ActorRef` 비어 있음)는 [40 §2.3](server/40-location-runtime.ko.md)에 따라 모든 언어에서 resolve miss로 처리한다 | 해당 없음 |
+| **IMP-X2** | **location store 상태 event source가 없다.** [50 §3](server/50-runtime-monitoring.ko.md#3-event-identifiers)의 `zlink.runtime.location.store_changed`와 `not_configured`, `ready`, `degraded`, `stopped` 상태를 게시하지 않는다 | Java · C++ |
+| **IMP-X3** | **해소.** [20 §8](server/20-spot-messaging.ko.md)·[30 §7.2](server/30-stream-session.ko.md)의 설정 오류는 모든 언어에서 host 시작 전에 거부한다 | 해당 없음 |
+| **IMP-X4** | **해소(감사 근거 오류).** 정식 spec은 location store read별 5초 상한을 고정하지 않는다. Drain은 [54 §3](server/54-graceful-drain-handoff.ko.md)의 전체 deadline, location runtime은 [40 §2.4](server/40-location-runtime.ko.md)의 owner lease renew timeout을 사용한다 | 해당 없음 |
 | **IMP-X5** | **message-flow 관측자가 로그 모드에 묶여 침묵한다.** [52 §3](server/52-message-flow-tracing.ko.md)은 "관측자는 모드와 무관하게, `off`여도 발화한다"고 요구한다. ⇒ OTel로 흘리려고 관측자를 달고 로그를 끄면 **아무것도 안 온다** | Java · Node · C++ (`.NET`만 올바름) |
 | **IMP-X6** | **`origin=lifecycle`을 생성하지 않는다.** [53 §4.2](server/53-flow-correlation.ko.md). ⇒ drain이 유발한 트래픽을 application 트래픽과 **구분할 수 없다** | Java · Node · C++ |
-| **IMP-X7** | **connector send payload 한도를 압축 *전* payload에 적용한다.** [32 §4.7](stream-connector/32-stream-connector.ko.md)은 압축을 사용하면 압축된 payload를 기준으로 삼도록 정한다. 따라서 browser는 허용하지만 다른 connector는 거부해 압축 전송 계약이 달라진다 | Java · C++ (`.NET`·TypeScript는 해소) |
-| **IMP-X8** | **수동 endpoint가 그 역할의 자동 연결 reconcile을 끄지 않는다.** [10 §5.2](server/10-channel-topology.ko.md). 따라서 수동 지정 이외의 store peer까지 연결하고 round-robin 대상으로 사용한다 | Java · Node |
-| **IMP-X9** | **HTTP client가 proxy 자격증명을 대상 서버로 흘리고, CONNECT는 인증 없이 나간다.** [http 07 §7.3](http-client/07-auth-tls-proxy.ko.md) | Java (`.NET`·C++·Node는 해소) |
-| **IMP-X10** | **SPOT timer 등록 검증이 startup이 아니라 spot 활성화 시점이다.** [25 §4.1](server/25-stage-wrapper-on-spot.ko.md). ⇒ `period=0`이 healthy로 기동하고 **모든 방 생성이 실패**한다 | Node (`.NET`은 해소) |
-| **IMP-X11** | **`fanout.received`가 등록되지 않은 topic까지 메트릭 라벨로 단다.** [51 §5](server/51-runtime-metrics.ko.md)는 라벨을 등록 시점의 닫힌 집합으로 제한한다. ⇒ **수집기 카디널리티가 무한히 늘어난다** | Node (`.NET`·C++은 해소) |
-| **IMP-X12** | **actor가 존재하는 Spot을 닫을 수 있다 — check-then-act 경합.** [21 §close](server/21-mesh-node.ko.md)는 "actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다". 따라서 `OnLeaveActor`가 실행되지 않고 actor의 location row가 **해제된 Spot을 가리킨다** | Java · Node (`.NET`·C++은 해소) |
-| **IMP-X13** | **서버가 `correlation_id`에 `request_seq`를 사용한다.** [52 §9](server/52-message-flow-tracing.ko.md)는 "client가 생성하고 server는 echo만 한다. **서버는 ingress에서 생성하지 않는다**". `request_seq`는 연결별 counter이므로 서로 다른 session의 로그가 같은 `corr=1,2,3…` 값을 사용한다 | Java · Node (`.NET`·C++은 해소) |
-| **IMP-X14** | **`listPageSize`(기본 1000)를 읽는 곳이 없다.** 내부 기본값이 1000이 아니라 **무한**이라 모든 목록 조회가 **O(N) 전체 읽기**다 | Java · Node · C++ (`.NET`은 1000을 하드코딩 — IMP-DN-06) |
-| **IMP-X15** | **`storeFailureGrace`(30초)를 읽는 곳이 없다.** [40 §6.1](server/40-location-runtime.ko.md)의 **fail-static 유예 정책 자체가 없다.** Java e2e의 `SF-B2 GraceExceeded`가 **존재하지 않는 정책을 검증하고 있다** | Java · Node · C++ |
-| **IMP-X16** | **`includeNativeDiagnostics`를 읽는 곳이 없다.** 다른 관련 option은 모두 적용된다 | Java · Node · C++ |
-| **IMP-X17** | **첫 `GetOrCreate` 호출자의 취소가 같은 Spot을 기다리는 다른 호출자 전부를 실패시킨다.** 따라서 한 client의 빠른 취소가 같은 Spot을 기다리는 모든 호출을 실패시킨다 | Node (`.NET`은 해소) |
-| **IMP-X18** | **Redis fixture의 "네 확장이 바이트 단위로 일치한다"는 주장이 거짓이다.** C++ actor row는 다섯 번째 hash 필드 `mesh`를 쓰고, 빈 컬렉션 표현과 Java의 zero timestamp가 fixture와 다르다. **fixture 테스트가 row JSON만 검사해서 아무도 못 잡는다** | Java · Node · C++ (`.NET`은 canonical fixture 전체 key/value를 검증) |
+| **IMP-X7** | **해소.** 압축을 사용하면 모든 connector가 [32 §4.7](stream-connector/32-stream-connector.ko.md)에 따라 압축된 wire payload 크기에 send 한도를 적용한다 | 해당 없음 |
+| **IMP-X8** | **수동 endpoint가 그 역할의 자동 연결 reconcile을 끄지 않는다.** [10 §5.2](server/10-channel-topology.ko.md). 따라서 수동 지정 이외의 store peer까지 연결하고 round-robin 대상으로 사용한다 | Java |
+| **IMP-X9** | **해소.** proxy 자격증명은 대상 서버 요청에 전달하지 않고 필요한 proxy handshake에만 사용한다 | 해당 없음 |
+| **IMP-X10** | **해소.** SPOT timer 등록 오류는 모든 언어에서 [25 §4.1](server/25-stage-wrapper-on-spot.ko.md)에 따라 startup에 거부한다 | 해당 없음 |
+| **IMP-X11** | **해소.** `fanout.received`의 topic label은 모든 언어에서 등록 시점의 닫힌 집합으로 제한한다 | 해당 없음 |
+| **IMP-X12** | **actor가 존재하는 Spot을 닫을 수 있다 — check-then-act 경합.** [21 §close](server/21-mesh-node.ko.md)는 "actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다". 따라서 `OnLeaveActor`가 실행되지 않고 actor의 location row가 **해제된 Spot을 가리킨다** | Java |
+| **IMP-X13** | **해소.** server는 ingress에서 `correlation_id`를 만들지 않고 client가 보낸 값을 그대로 전달한다 | 해당 없음 |
+| **IMP-X14** | **`listPageSize`(기본 1000)를 읽는 곳이 없다.** 내부 기본값이 1000이 아니라 **무한**이라 모든 목록 조회가 **O(N) 전체 읽기**다 | C++ |
+| **IMP-X15** | **해소.** 모든 언어가 [40 §2.4](server/40-location-runtime.ko.md)의 `storeFailureGrace` fail-static 유예를 적용한다 | 해당 없음 |
+| **IMP-X16** | **`includeNativeDiagnostics`를 읽는 곳이 없다.** 다른 관련 option은 모두 적용된다 | Java |
+| **IMP-X17** | **해소.** 첫 `GetOrCreate` 호출자의 취소는 같은 Spot을 기다리는 다른 호출자의 공유 생성을 취소하지 않는다 | 해당 없음 |
+| **IMP-X18** | **해소.** 다섯 언어의 Redis fixture 시험이 정본 fixture의 전체 key와 byte 값을 비교한다 | 해당 없음 |
 
 ### 15.4 라운드 4가 무너뜨린 것 — **"통과했다"는 기록은 통과의 증거가 아니다**
 
@@ -713,7 +778,7 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | 각 언어 `feature-map.ko.md`의 **"구현 100%"** | C++ `ObservabilityOps` map은 **자기 runner가 PENDING이라 찍는 행**을 "구현"으로 적는다. `ToActorMessaging` map은 대역인 TA-A1~A4를 `implemented`로 적는다 |
 
 **실패할 수 없는 검증이 있다.** Node의 probe 서버는 클라이언트가 단언할 `serviceRole`·`state`를
-**리터럴로 만들어 낸다** — `serviceRole === Router && state === Ready`는 영원히 참이다.
+**리터럴로 만들어 낸다** — `serviceRole === Router && state === Ready`는 항상 참이다.
 
 **약한 gate가 실제 버그를 가린다.** C++ Bingo는 **두 번째 player에게 게임 시작 notify를 보내지 않는다**
 (제외 필터에 그 player를 넣는다). 클라이언트 검증이 "**두** player가 기다린다"를 제대로 단언하지
@@ -791,12 +856,12 @@ invalid frame은 `Warning`, publish는 `Debug`, application handler 예외는 `E
 
 | 언어 | 문서 | 항목 수 |
 |------|------|---------|
-| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 62 (완료 62, 미완료 0) |
-| Java | [gaps/java](gaps/java.ko.md) | 56 |
-| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) | Java 공유 + 고유 3 |
-| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) | 43 |
-| C++ | [gaps/cpp](gaps/cpp.ko.md) | 47 |
+| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 70 (완료 61, 미완료 9) |
+| Java | [gaps/java](gaps/java.ko.md) | 40 (완료 17, 미완료 23) |
+| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) | 15 (완료 6, 미완료 9) |
+| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) | 29 (완료 19, 미완료 10) |
+| C++ | [gaps/cpp](gaps/cpp.ko.md) | 28 (완료 12, 미완료 16) |
 
 각 문서는 세 묶음을 담는다 — **구현 감사에서 발굴한 것**(IMP-*), **교차 언어 결함**(IMP-X*),
-**언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20~§12.24)은 이 문서가 소유하고 각 언어
+**언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20 이후)은 이 문서가 소유하고 각 언어
 체크리스트가 참조한다.

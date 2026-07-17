@@ -30,18 +30,19 @@ actor는 factory로 만든다. factory는 `actorType` 짧은 문자열로 등록
 ```java
 @Override
 public void configure(ZLinkFrameworkOptions framework) {
-    ZLinkSpotMeshBuilder node = framework.addSpotMesh("play");
+    ZLinkMeshNodeBuilder node = framework.addRouteMesh("play");
     node.addActorFactory("player", PlayerActorFactory.class);
-    // Entry Spot / user Spot 등록도 같은 SpotNode 쪽에서 (§3)
+    // Entry Spot과 user Spot도 같은 MeshNode에 등록한다(§3).
 }
 
 @Component
 public final class PlayerActorFactory implements ZLinkActorFactory {
     @Override
-    public ZLinkActor create(
+    public CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context) {
-        return new PlayerActor(actorId, context);
+        // 생성 결과는 비동기 factory 계약에 맞춰 CompletionStage로 반환한다.
+        return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
     }
 }
 ```
@@ -52,23 +53,21 @@ handler에서 받은 spot context로 호출한다.
 
 | `ZLinkActorContext` 멤버 | 용도 |
 |--------------------------|------|
-| `spotRid()`, `isJoined()` | 현재 Spot join 상태 조회 |
+| `spotRid()` | 현재 Spot join 상태 조회. 값이 있으면 user Spot에 참여한 상태다 |
 | `boundSession()` | 자기 client로 push (§4) |
 | `joinSpot(spotRid, request)` | user Spot으로 join. `.submit(...)`로 종결 |
 | `joinEntrySpot(spotNodeRid, request)` | target SpotNode의 Entry Spot으로 이동. 빈 요청은 `ZLinkMessage.empty()` 또는 빈 DTO로 넘긴다 |
 | `ZLinkEntrySpotContext.destroyActor(actor)` | Entry Spot에 있는 actor를 종료 |
 
-`joinSpot(...).submit(replyType)`는 actor join 요청을 제출하고, join reply를
-`replyType`으로 역직렬화한 뒤 `CompletionStage`로 반환한다. 성공하면 actor context의
-`spotRid()`, `isJoined()`, `getSpot(Class)`가 join된 user Spot을 가리킨다. 테스트·클라이언트
-시나리오에서는 `await(replyType)` blocking helper도 쓸 수 있다.
+`joinSpot(...).submit(replyType)`는 actor join 요청을 제출하고 승인 또는 거절 결과를
+`CompletionStage<ZLinkActorJoinResult<TReply>>`로 반환한다. 승인 결과의 `Accepted.reply()`와 거절
+결과의 `Rejected.rejection()`은 분기한 뒤에만 읽을 수 있다. `Accepted`에는 갱신된 actor ref도 함께
+들어 있다. 현재 참여 상태는 `spotRid()`의 값 유무로 확인한다.
 
-> **join이 성공하면 그 `actor` 객체를 더 접근하지 않는다.** join이 끝나면 actor는 이 Spot을 떠났고,
-> **대상 Spot이 다른 노드면 이 노드의 actor 인스턴스는 retire**된다(접근하면 stale). 호출한 handler는
-> join reply 결과만 쓰고 반환한다. join 직후의 client push 같은 후처리는 actor가 실제로 사는 **대상
-> user Spot**(이동 후 그 Spot의 joined 콜백/handler)에서 한다. `onLeaveActor`는 source Spot에 actor가
-> 떠났음을 알리는 membership 콜백이며, remote 이동에서는 이 콜백이 끝난 source actor instance를 더
-> 사용하지 않는다.
+같은 MeshNode 안의 user Spot으로 참여하면 기존 actor context의 `spotRid()`가 갱신되며 actor 인스턴스는
+유지된다. 다른 MeshNode로 이동한 경우에는 source 인스턴스가 retire되므로, 호출한 handler는 이동 결과만
+처리하고 반환해야 한다. 이동 직후의 client push 같은 후처리는 target user Spot의 joined callback이나
+handler에서 수행한다. `onLeaveActor`는 source Spot의 membership 해제를 알리는 callback이다.
 
 remote 이동에서 함께 옮길 domain state가 있으면 actor type마다 `ZLinkActorTransferAdapter<TActor>`를
 하나 등록한다. source adapter는 state를 `ZLinkMessage`로 만들고, target adapter는 framework가 준비한
@@ -79,24 +78,25 @@ state와 등록된 actor factory를 사용한다.
 public final class PlayerTransferAdapter
     implements ZLinkActorTransferAdapter<PlayerActor> {
     @Override
-    public ZLinkMessage transferOut(PlayerActor actor, CancellationToken cancellationToken) {
-        return ZLinkMessage.of(actor.snapshot()); // 이동할 domain state만 담는다.
+    public CompletionStage<ZLinkMessage> transferOut(PlayerActor actor) {
+        return CompletableFuture.completedFuture(
+            ZLinkMessage.of(actor.snapshot())); // 이동할 domain state만 담는다.
     }
 
     @Override
-    public PlayerActor transferIn(
+    public CompletionStage<PlayerActor> transferIn(
         String actorId,
         ZLinkActorContext context,
-        ZLinkMessage state,
-        CancellationToken cancellationToken) {
-        return new PlayerActor(
-            actorId,
-            context,
-            state.decode(PlayerSnapshot.class)); // target actor를 framework context로 복원한다.
+        ZLinkMessage state) {
+        return CompletableFuture.completedFuture(
+            new PlayerActor(
+                actorId,
+                context,
+                state.decode(PlayerSnapshot.class))); // target actor를 framework context로 복원한다.
     }
 }
 
-var node = options.addSpotMesh("game");
+var node = options.addRouteMesh("game");
 node.addActorFactory("player", PlayerActorFactory.class);
 node.addActorTransferAdapter("player", PlayerTransferAdapter.class);
 ```
@@ -168,7 +168,10 @@ CPU worker thread를 사용하지 않는다. 두 작업 모두 Spot 상태를 �
 큐로 복귀한 지점에서 상태를 다시 확인한다.
 
 ```java
-return context.runCpuWorker(() -> ScoreCalculator.calculate(snapshot))
+return context.runCpuWorker(cancellation -> {
+        cancellation.throwIfCancellationRequested(); // timeout·종료 뒤 새 계산을 시작하지 않는다.
+        return ScoreCalculator.calculate(snapshot);
+    })
     .submit()
     .thenAccept(result -> currentScore = result); // 완료까지 현재 turn을 유지한다.
 ```
@@ -228,28 +231,32 @@ public final class TicTacToeSession implements ZLinkSession {
         return context;
     }
 
-    @Override public void onConnected() {}
-    @Override public void onDisconnected() {}
-    @Override public void onError(ZLinkStreamError error) {}
+    @Override public CompletionStage<Void> onConnected() {
+        return CompletableFuture.completedFuture(null);
+    }
+    @Override public CompletionStage<Void> onDisconnected() {
+        return CompletableFuture.completedFuture(null);
+    }
+    @Override public CompletionStage<Void> onError(ZLinkStreamError error) {
+        return CompletableFuture.completedFuture(null);
+    }
 
     @Override
-    public void onDispatch(
+    public CompletionStage<Void> onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         if ("auth".equals(dispatch.packetName())) {
             AuthReq req = payload.decode(AuthReq.class);
-            actors.getOrCreate(req.actorId(), "player")
+            return actors.getOrCreate("game", req.actorId(), "player")
                 .thenCompose(actor -> context.actors().bind(actor))
-                .thenCompose(bound -> context.client().reply(new AuthRep(true)).submit())
-                .toCompletableFuture()
-                .join();
-            return;
+                .thenApply(bound -> {
+                    context.client().reply(new AuthRep(true)).submit();
+                    return null;
+                });
         }
-        context.actors().bound().stream().findFirst()
-            .map(actor -> actor.relay(payload))
-            .orElseThrow(() -> new IllegalStateException("no actor bound to this packet"))
-            .toCompletableFuture()
-            .join();
+        ZLinkSessionActor actor = context.actors().bound().stream().findFirst()
+            .orElseThrow(() -> new IllegalStateException("no actor bound to this packet"));
+        return actor.relay(dispatch, payload);
     }
 }
 ```
@@ -273,15 +280,12 @@ client로 보내야 하면 먼저 그 actor에게 메시지를 보낸 뒤, 해�
 
 ## 5. 등록 골격
 
-session relay는 application route mesh channel로 흐르지 않는다. 같은 runtime 안에서
-만든 local managed actor instance를 bind하는 direct stream 역할은 framework 내부 dispatch
-경로를 쓴다. remote actor ref를 bind해야 하는 session gateway 역할에서는, STREAM의 actor-gateway
-입구가 **같은 프로세스의 (router가 켜진) local SpotNode로 자동 연결**되고(별도 호출 없음),
-`bind(...)`가 remote actor locator를 core SessionRelay 경로에 bind한다.
+session relay를 사용하려면 Session 서버의 stream node에 actor dispatch 대상 MeshName을 설정한다.
+Play 서버는 같은 MeshName의 MeshNode에 actor factory, Entry Spot과 user Spot factory를 등록한다.
 
-- **Session 서버**: `addSpotMesh`로 session-node(router)를 두면 `addStreamNode(...)`의 gateway가
-  그 노드로 자동 연결된다.
-- **Play 서버**: `addActorFactory(...)` + `addSpotMesh`로 play-node에
+- **Session 서버**: `addRouteMesh(meshName)`으로 MeshNode를 등록하고,
+  `addStreamNode(streamNodeName).enableActorDispatch(meshName)`으로 session의 actor dispatch를 켠다.
+- **Play 서버**: `addRouteMesh(meshName)`이 반환한 builder에 `addActorFactory(...)`,
   `addEntrySpot(...)`, `addSpotFactory(...)`를 등록한다.
 
 전체 등록 시그니처는
@@ -294,15 +298,14 @@ session relay는 application route mesh channel로 흐르지 않는다. 같은 r
   유지하고 binding token만 갱신한다.
 - session disconnect는 bound actor 전체에 자동 전파되지 않는다. 필요한 actor에게만
   `ZLinkSessionActor.notifyDisconnected()`를 호출한다.
-- actor 위치 조회용 public resolver는 없다. actor<->session binding은 framework
-  내부 상태다. Spot owner 조회만 `useRegistrySpotRemoteRefs(...)` 또는 custom
-  `addSpotRemoteRefResolver(...)`로 public이다.
+- actor와 session의 binding 상태를 위치 조회 API로 노출하지 않는다. Spot owner를 조회할 때는
+  주입받은 `SpotHandleResolver` 또는 `ActorSpotHandleResolver`로 `SpotHandle`을 얻는다.
 
 ## 7. 더 보기
 
-- SPOT 기반: [06-spot](05-spot.ko.md)
-- STREAM session 작성: [08-stream](07-stream.ko.md)
-- actor 런타임 오류 관찰: [10-monitoring](09-monitoring.ko.md)
+- SPOT 기반: [05-spot](05-spot.ko.md)
+- STREAM session 작성: [07-stream](07-stream.ko.md)
+- actor 런타임 오류 관찰: [09-monitoring](09-monitoring.ko.md)
 - 전체 계약: [spring-boot-actor-session](../../spec/server/languages/java/01-system-structure.ko.md)
 
 ---

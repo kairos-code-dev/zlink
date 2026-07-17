@@ -17,9 +17,10 @@ MeshNode route와 admission은 [21 MeshNode](21-mesh-node.ko.md), Spot membershi
 
 ## 2. Identity와 상태 축
 
-Actor는 MeshName 안에서 논리 Actor ID와 Actor type으로 식별되는 stateful object다. ActorRef는 논리
-identity와 현재 owner route를 안전하게 사용할 수 있는 불투명한 handle이다. endpoint, 내부 route frame과
-location row는 application에 노출하지 않는다.
+Actor는 MeshName 안에서 논리 Actor ID와 Actor type으로 식별되는 stateful object다. `ActorRef`는 owner
+node의 `NodeRid`, 논리 `ActorId`, 현재 `Generation` 세 값으로 구성하는 immutable value다. endpoint,
+내부 route frame, location row와 Actor type은 `ActorRef`에 넣지 않는다. Framework가 wire DTO를 제공하는
+언어에서는 `ActorRefSnapshot`도 같은 세 값을 보존하며 별도 인자 없이 `ActorRef`로 복원한다.
 
 Actor의 상태는 다음 두 축을 독립적으로 관리한다.
 
@@ -37,7 +38,8 @@ user Spot membership은 bound session을 요구하지 않는다. session bind와
 모든 Actor 업무 payload는 target Actor의 application queue에 직접 제출한다. Actor가 Entry Spot 또는
 user Spot에 있거나 remote MeshNode에 있더라도 이 규칙은 같다.
 
-- 같은 Actor에 수락된 payload는 Actor turn에서 순서대로 처리한다.
+- 같은 Actor에 수락된 payload는 Actor turn에서 순서대로 처리한다. `Yield`로 turn을 반납하면 다음 payload가
+  먼저 실행될 수 있고 완료 continuation은 새 turn에서 재개한다([Async 실행 정책 §1.1](../04-async-execution-policy.ko.md#11-submit-async와-yield)).
 - 서로 다른 Actor는 하나의 Spot queue 때문에 서로 기다리지 않는다.
 - Actor send/request, STREAM session relay와 Actor 간 호출은 같은 Actor queue로 합류한다.
 - Actor payload를 Spot application queue에 넣거나 Spot callback으로 변환하지 않는다.

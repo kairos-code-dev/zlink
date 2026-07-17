@@ -2,7 +2,7 @@
 
 기준 문서: `framework/doc/framework/common/e2e/config-5-resilience-lifecycle.ko.md`
 
-현재 상태: Node.js `ResilienceLifecycle` config는 공통 문서의 현재 scenario를 모두 구현했다. 이 문서는 `.NET`
+현재 상태: Node.js `ResilienceLifecycle` config는 공통 scenario의 기존 구현과 10.0.0 전환 대상을 함께 추적한다. 이 문서는 `.NET`
 `framework/languages/dotnet/e2e/ResilienceLifecycle/feature-map.ko.md`와 공통 문서의 scenario ID를 기준으로
 포팅 범위를 고정한다. 내부 helper나 raw-frame 우회로 gap을 완료 표시하지 않는다.
 
@@ -39,5 +39,5 @@
   - 최신 전체 순서 재검증은 RL-A1에서 별도 topology probe가 `api-b` 제거를 확인한 직후 consumer의
     두 번째 request가 제거 중인 endpoint로 전달되어 실패했다: `logs/20260715-082315-2395393`.
     RL-D5에는 도달하지 않았으며, consumer 자체 peer 수렴을 확인하지 않는 RL-A1 검증 race는 별도로 추적한다.
-- 남은 scenario: 없음
+- 남은 scenario: RL-B4, RL-D2, RL-D3, RL-D4. RL-A1의 consumer peer 수렴 race도 재검증해야 한다.
 - 미착수 scenario: 없음

@@ -91,7 +91,9 @@
 ## 4. 문서 작성 원칙
 
 - 새 공통 동작이 필요하면 먼저 공통 spec에 계약 근거가 있는지 확인한다.
-- 아직 구현되지 않은 설계는 정식 spec에 넣지 않고 별도 draft에서 검토한다.
+- framework의 목표 public contract는 구현보다 먼저 정식 spec과 언어별 exact
+  interface에 고정한다. 현재 구현과의 차이는 `90-implementation-gap.ko.md`에서만
+  추적한다.
 - 구현이 끝난 업무 흐름은 `sample/`에, 구현 검증 요구사항은 `e2e/`에 반영한다.
 
 이 문서 묶음은 "API를 먼저 적고 나중에 용도를 붙이는" 방식이 아니라,
@@ -160,8 +162,8 @@ framework adapter 문서도 `sendWithRoutingId`, `request_callback`,
 action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 
 - `Send`, `Request`, `Publish`
-- `SendTo`, `RequestTo`
-- `SendChannel`, `RequestChannel`
+- `SendToNode`, `RequestToNode`
+- `SendToChannel`, `RequestToChannel`
 - `Connect`, `Bind`, `Close`
 - `CreateAsync`, `GetAsync`, `ListAsync`
 
@@ -181,17 +183,17 @@ action 이름을 유지해야 한다. 예를 들면 아래처럼 맞춘다.
 | 인터페이스 기준 문서 | 공용 interface / context / configuration surface / attribute 또는 decorator를 한 곳에 모은다. 공용 계약과 내부 runtime 구현의 분리 기준은 [05-framework-api.ko.md §1.1](../spec/05-framework-api.ko.md#11-public-contract와-runtime-implementation의-경계)을 따른다. |
 | channel messaging 주제 문서 | channel 등록, handler 모델, outbound client, dispatch 흐름을 설명한다. |
 | channel messaging 샘플 문서 | 등록부터 handler, client 호출까지 한 번에 보이는 샘플을 둔다. |
-| `SPOT` 주제 문서 | 해당 언어에서 `SPOT`을 지원하면 lifecycle, publish/subscribe, channel attach를 설명한다. |
+| `SPOT` 주제 문서 | 해당 언어에서 `SPOT`을 지원하면 lifecycle, publish/subscribe, RouteMesh 등록을 설명한다. |
 | `SPOT` 샘플 문서 | room/stage/zone 같은 실제 흐름을 코드로 보여 준다. |
 | Actor / Entry Spot 주제 문서 | actor factory, Entry Spot registry, user Spot registry, actor packet handler, join/leave lifecycle handler를 설명한다. |
 | Actor / Entry Spot 샘플 문서 | Entry Spot에서 인증 또는 target Spot 선택을 처리하고, user Spot에서 domain packet을 처리하는 흐름을 한 예시 안에 보여 준다. |
-| `STREAM` 주제 문서 | framework Header 기반 packet session과 open item을 분리해서 설명한다. |
+| `STREAM` 주제 문서 | framework Header 기반 packet session과 공개 계약을 설명한다. |
 | `STREAM` 샘플 문서 | 등록과 handler 코드를 한 번에 보여 준다. |
 | Monitoring 주제 문서 | socket/discovery/registry/spot runtime event와 등록 모델을 설명한다. |
 | Registry 주제 문서 | embedded/standalone, query surface, topology 조회를 설명한다. |
 
-언어 특성상 어떤 축이 아직 미구현이면, 문서를 조용히 빼지 말고
-"현재 범위 밖" 또는 "open items"로 명시해야 한다.
+언어 특성상 어떤 축이 아직 미구현이어도 목표 계약을 정식 spec에서 빼지 않는다.
+현재 구현과의 차이와 후속 계획은 `90-implementation-gap.ko.md`에서만 추적한다.
 
 ### 5.3.1 대표 프레임워크 기준
 
@@ -230,20 +232,18 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 - `STREAM`을 지원하면 session callback이 transport callback에서 직접 실행되지
   않고 비동기 실행 단위로 넘어가는지, 같은 session callback 직렬성이 보장되는지
   설명하는가
-- actor/session 모델을 지원하면 actor가 `Spot`에 attach된 뒤
-  `OnDispatch` 계열 callback이 해당 `Spot` 실행 문맥에서 실행되는지 설명하는가
+- actor/session 모델을 지원하면 actor가 `Spot`에 attach된 뒤 actor callback이
+  해당 Actor의 직렬 실행 문맥에서 실행되는지 설명하는가
 - actor/session 모델을 지원하면 Entry Spot public 표면을 별도 섹션으로 설명하는가
 - Entry Spot에서 actor packet handler를 등록하는 API와 예시가 있는가
 - user Spot에서 actor packet handler를 등록하는 API와 예시가 있는가
 - Entry Spot과 user Spot의 actor packet handler 인자 차이를 설명하는가
-- actor join/leave lifecycle handler를 `AddActorJoined` / `AddActorLeft`에 해당하는
-  registry 등록 표면으로 설명하는가
-- actor join/leave lifecycle을 `OnJoinedActor` / `OnLeaveActor` 같은 Spot method
-  override로만 설명하지 않는가
+- actor join/leave lifecycle을 `OnJoinedActor` / `OnLeaveActor`에 해당하는 Spot
+  member callback으로 설명하는가
 - Entry Spot registry와 user Spot registry가 서로 다른 namespace라서 같은 actor
   type과 packet 이름을 다르게 매핑할 수 있음을 설명하는가
-- 같은 registry 안에서 actor packet, joined lifecycle, left lifecycle 중복 등록이
-  startup validation 오류임을 설명하는가
+- 같은 registry 안에서 동일 actor type과 packet name의 actor packet handler를
+  중복 등록하면 startup validation 오류임을 설명하는가
 - actor/session 모델의 회귀 테스트는 join 직후 packet, spot 이동 직후 packet,
   stale session packet을 구분해서 검증하는가
 - stream session 회귀 테스트는 callback task dispatch, 같은 session callback
@@ -257,16 +257,17 @@ zlink framework host가 lifecycle과 dispatch loop를 직접 소유하는 방식
 이 체크리스트를 만족하지 않으면, 공통 개념이 언어 표면으로 충분히 내려오지
 않은 것으로 본다.
 
-### 5.5 언어별 open item 처리 규칙
+### 5.5 언어별 목표 계약과 구현 차이 처리 규칙
 
-언어별 문서에서 아직 구현하지 않은 API 계약은 정식 spec에 완료된 내용처럼 넣지
-않는다. 구현 전 설계는 별도 draft로 분리하고, 현재 공개 계약이 아니라는 점을
-첫머리에 명시한 뒤 리뷰한다. core 공개 계약까지 바뀌는 설계는 루트
-`doc/spec/draft/`의 작성 규칙을 따른다.
+framework의 목표 public contract는 아직 구현되지 않았더라도 공통 spec과 언어별
+exact interface에 먼저 고정한다. 구현이 없다는 이유로 현재 언어들의 최소 공통분모로
+계약을 축소하지 않는다. 현재 구현과 목표 계약의 차이, 누락 사유와 후속 계획은
+`90-implementation-gap.ko.md`에서만 추적한다.
 
-구현과 검증이 끝나면 현재 코드, 공개 API, 오류 계약과 맞춰 책임 spec에 반영하고
-임시 draft를 삭제한다. 구현 근거가 없는 아이디어는 open-item 문서로 계속 보존하지
-않는다.
+공통 spec이나 guide에 근거가 없는 새 public API 후보는 정식 계약에 바로 추가하지
+않고 별도 draft에서 검토한다. 계약으로 승인하면 정식 spec과 모든 언어 exact
+interface를 먼저 갱신한 뒤 구현과 contract test를 맞춘다. core 공개 계약까지 바뀌는
+설계는 루트 `doc/spec/draft/`의 작성 규칙을 따른다.
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

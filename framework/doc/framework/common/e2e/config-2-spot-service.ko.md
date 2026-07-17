@@ -51,7 +51,7 @@ handler 동작(공유):
 - user spot은 명시적 `CloseAsync`로만 닫힌다(joined actor가 남아 있으면 거부). close 시
   `OnClosingAsync` callback이 실행된다.
 - 미등록 spot route/actor packet은 dispatch error로 처리되고 message-flow error evidence
-  (`Surface`=`SpotRoute`/`SpotActor`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)에 남는다.
+  (`surface`=`spot_route`/`spot_actor`, `reason`=`no_handler`, `action`=`reply_error`/`drop`)에 남는다.
 
 ## 3. 실행 모델
 
@@ -204,7 +204,7 @@ actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 
 **검증 질문:** handler 없는 actor packet을 보내면 error로 명확히 실패하고, 그 이유가 observer에 남는가.
 
 - 절차: handler 없는 actor packet 이름으로 request를 보낸다.
-- 검증: error reply로 끝나고 message-flow error evidence(`Surface`=`SpotActor`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)가 남는다.
+- 검증: error reply로 끝나고 message-flow error evidence(`surface`=`spot_actor`, `reason`=`no_handler`, `action`=`reply_error`)가 남는다.
 - 세부 동작: actor negative path + 관측(enum 필드).
 
 #### SM-B6 actor leave vs disconnect callback
@@ -263,7 +263,7 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 - send: one-way send → reply 없이 spot evidence에 command 기록.
 - publish: channel이 publish → 구독한 spot이 수신(미구독 spot은 미수신).
 - timeout: 느린 spot handler에 짧은 timeout → client timeout 예외, 이후 같은 연결의 정상 messaging 비오염.
-- 미등록: handler 없는 spot packet → request는 error reply, send는 drop. message-flow error evidence(`Surface`=`SpotRoute`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`)가 남는다.
+- 미등록: handler 없는 spot packet → request는 error reply, send는 drop. message-flow error evidence(`surface`=`spot_route`, `reason`=`no_handler`, `action`=`reply_error`/`drop`)가 남는다.
 - 세부 동작: 외부 channel에서 spot으로 들어오는 방향 전체 verb + negative.
 
 #### SM-C2 spot → channel messaging
@@ -497,7 +497,7 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
 **검증 질문:** handler 없는 spot route packet은 error로 실패하고, 그 이유가 observer에 남는가.
 
 - 절차: handler 없는 spot route packet으로 request를 보낸다.
-- 검증: error reply + message-flow error evidence(`Surface`=`SpotRoute`, `Reason`=`HandlerMissing`, `Action`=`ReplyError`/`Drop`).
+- 검증: error reply + message-flow error evidence(`surface`=`spot_route`, `reason`=`no_handler`, `action`=`reply_error`).
 - 세부 동작: spot route negative path(enum 필드).
 
 #### SM-E2 spot timer

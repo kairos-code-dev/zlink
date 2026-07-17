@@ -143,7 +143,7 @@ public class RegistryConfig {
 }
 ```
 
-배포 모델(embedded/standalone)과 topology 조회는 [09-registry](08-registry.ko.md)에서
+배포 모델(embedded/standalone)과 topology 조회는 [08-registry](08-registry.ko.md)에서
 다룬다. 수동 연결만으로 Registry 없이 구성하는 방법은
 [04-channel-messaging](04-channel-messaging.ko.md)에서 확인한다.
 

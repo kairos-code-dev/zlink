@@ -11,7 +11,7 @@ Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin clie
 | `ST-A3` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: joined callback 완료 전 packet dispatch 차단. |
 | `ST-B1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: remote transfer 성공과 state 복원. |
 | `ST-B2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: commit 뒤 source cleanup. |
-| `ST-B3` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: adapter 미등록 실패. |
+| `ST-B3` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: adapter 미등록 상태에서도 framework 기본 빈 state transfer 성공. |
 | `ST-B4` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: custom empty state transfer. |
 | `ST-C1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: commit 전 source 종료. |
 | `ST-C2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: commit 뒤 source 종료. |

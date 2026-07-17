@@ -92,6 +92,7 @@ export interface ZLinkActorLocation {
     readonly ownerNodeRid: RoutingId;
     readonly ownerNodeGeneration: bigint;
     readonly spotRid: RoutingId;
+    readonly spotGeneration: bigint;
     readonly spotKind: ZLinkSpotKind;
     readonly membershipEpoch: bigint;
     readonly ownerId: string;
@@ -215,3 +216,12 @@ export declare class ZLinkRedisLocationStore implements
 
 위 타입은 `@zlink-systems/framework-locations-redis`가 export한다. `url`과 비어 있지 않은 `keyPrefix`는
 필수다. Store가 Redis client를 소유하며 `close()`가 시작된 뒤 새 operation은 closed-store 오류로 실패한다.
+
+## 5. 목표 계약 적용 추적
+
+정식 계약은 위 시그니처다. Source와 package 적용이 남은 항목은 gap 문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-ND-33 / §12.27](../../../gaps/node.ko.md) | `ZLinkActorLocation`과 Redis row codec에 `spotGeneration`이 없다. |
+| [IMP-ND-35 / §12.29](../../../gaps/node.ko.md) | `ZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |

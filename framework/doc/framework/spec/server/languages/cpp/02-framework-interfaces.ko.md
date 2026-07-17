@@ -68,13 +68,13 @@ zlink/framework/contracts/workers/*.hpp
 ```
 
 `zlink/framework/runtime.hpp` 같은 public header는 제공하지 않는다. public API에는 `app_t`,
-`channel_client_t`, `spot_context_t`처럼 사용자가 이해하는 계약 이름만 노출한다.
+`request_client_t`, `spot_context_t`처럼 사용자가 이해하는 계약 이름만 노출한다.
 
 `bindings/cpp`보다 framework 쪽의 분리를 더 강하게 잡는다. binding은 zlink core의
 native 개념을 C++로 안전하게 감싸는 계층이지만, framework는 application contract를
 제공하는 계층이다. 그래서 framework contract header가 binding public 타입을 내부
 substrate로 참조할 수는 있어도, native socket owner, CAPI dispatch callback, raw recv
-순서, frame codec 구현을 public contract로 끌어올리면 안 된다.
+순서, frame codec 구현을 public contract로 노출하면 안 된다.
 
 public header에 template 구현이 필요한 경우에는 `contracts/detail/*`만 사용한다.
 이 detail 영역은 type trait, concept check, facade forwarding을 위한 곳이며,
@@ -302,9 +302,10 @@ public:
     template <typename T, typename... TDependencies>
     service_collection_t &add_transient();
 
-    template <typename T>
+    template <typename T, typename TFactory>
     service_collection_t &add_factory(
-      std::function<std::unique_ptr<T>(service_provider_t &)> factory);
+      TFactory factory,
+      service_lifetime_t lifetime = service_lifetime_t::transient);
 };
 
 } // namespace zlink::framework
@@ -571,12 +572,17 @@ public:
 class stream_node_options_builder_t {
 public:
     stream_node_options_builder_t &bind(std::string endpoint);
+    stream_node_options_builder_t &set_tls_server(
+      std::string certificate_path,
+      std::string key_path,
+      bool require_client_certificate = false);
+    stream_node_options_builder_t &enable_actor_dispatch(
+      std::string mesh_name);
 
     template<typename TSession>
     stream_node_options_builder_t &register_session();
 
     stream_node_options_builder_t &register_session(std::string session_name);
-      std::string mesh_name);
 };
 
 } // namespace zlink::framework
@@ -709,12 +715,10 @@ public:
 class actor_ref_t {
 public:
     actor_ref_t(node_rid_t node_rid,
-      std::string actor_type,
       std::string actor_id,
       std::uint64_t generation = 1);
 
     node_rid_t node_rid() const;
-    std::string_view actor_type() const;
     std::string_view actor_id() const;
     std::uint64_t generation() const;
     bool empty() const;
@@ -728,7 +732,7 @@ struct actor_join_accepted_t {
 
 template <typename TReply>
 struct actor_join_rejected_t {
-    TReply reply;
+    TReply rejection;
 };
 
 template <typename TReply>
@@ -845,7 +849,6 @@ public:
 class stream_write_call_t {
 public:
     stream_write_call_t &metadata(std::string key, std::string value);
-    stream_write_call_t &packet_name(std::string packet_name);
     stream_write_call_t &compress();
     void submit();
 };
@@ -952,8 +955,16 @@ struct publish_context_t : handler_context_t {
 
 using handler_next_t = std::function<task_t<zlink::message_t>()>;
 
+class group_builder_t {
+public:
+    template <typename THandler>
+    group_builder_t &add();
+};
+
 class handler_registry_t {
 public:
+    group_builder_t group(std::string group_name);
+
     template <typename TOwner, typename TEvent>
     handler_registry_t &on_event(
       std::string channel_name,
@@ -1279,13 +1290,11 @@ public:
     spot_handler_registry_t handlers();
 
     template <typename TCommand>
-    send_call_t send_to(node_rid_t node_rid,
-      spot_rid_t spot_rid,
-      TCommand command);
+    send_call_t send_to_spot(const spot_handle_t &target, TCommand command);
 
     template <typename TReply, typename TRequest>
-    request_call_t<TReply> request_to(node_rid_t node_rid,
-      spot_rid_t spot_rid,
+    request_call_t<TReply> request_to_spot(
+      const spot_handle_t &target,
       TRequest request);
 
     template <typename TEvent>
@@ -1299,8 +1308,13 @@ public:
       std::chrono::milliseconds period,
       timer_options_t options = {});
 
-    template <typename TResult, typename TWork>
-    worker_call_t<TResult> run_worker(TWork work);
+    template <typename TResult>
+    worker_call_t<TResult> run_cpu_worker(
+      std::function<TResult(std::stop_token)> work);
+
+    template <typename TResult>
+    worker_call_t<TResult> run_io_worker(
+      std::function<task_t<TResult>(std::stop_token)> work);
 };
 
 class spot_context_t : public spot_common_context_t {
@@ -1565,13 +1579,15 @@ raw payload 처리는 framework 내부 invoker가 맡으며 application public a
 일반 channel `request_call_t`와 `send_call_t`는 metadata와 timeout을 submit 전에 모으고,
 submit 시점에 framework envelope 정책으로 넘긴다. typed packet name은 registration
 descriptor가 결정한다. Request와 join의 `async()`는 terminal reply 또는 결과까지 현재 owner turn을
-유지하고 `yield()`는 현재 turn을 반납한다. Worker call은 결과를 기다리지 않는 `submit()`도 함께
-제공한다. 장기 작업 중단 표면이 필요하면 C++ 표준 중단 관례를 사용하는 별도 정식 시그니처를 먼저
-정의해야 한다.
+유지하고 `yield()`는 현재 turn을 반납한다. Worker call은 결과를 기다리지 않는
+`submit()`도 함께 제공한다. CPU worker는 동기 함수, I/O worker는
+`task_t<TResult>`를 반환하는 함수이며 둘 다 `std::stop_token`을 받는다. Timeout,
+caller cancellation 또는 shutdown이 확정되면 Framework가 stop을 요청한다. 작업이
+stop 요청 뒤 완료되어도 이미 확정된 terminal 결과는 바뀌지 않는다.
 
 ```cpp
 auto reply = co_await client
-  .request("profile", query)
+  .request("services", "profile", query)
   .async<profile_reply_t>();
 
 use_profile(reply);
@@ -1732,9 +1748,13 @@ mesh.add_entry_spot<session_entry_spot_t>();
 
 options.add_stream_node(sample_names_t::stream_name)
   .bind(topology.stream_endpoint)
+  .enable_actor_dispatch(sample_names_t::application_mesh)
   .register_session<client_session_t>()
 ```
 
+`enable_actor_dispatch(mesh_name)`은 session Actor dispatch에 사용할 local MeshNode를
+MeshName으로 선택한다. Actor dispatch를 사용하지 않는 STREAM node는 호출하지 않는다.
+같은 builder에서 두 번 호출하거나 등록되지 않은 MeshName을 지정하면 startup이 실패한다.
 `register_session<TSession>()`은 `.NET`의 `RegisterSession<TSession>()`에 맞춘 typed session
 등록 표면이다. `TSession`은 `packet_stream_session_t`를 상속해야 하며, framework service
 collection에 stream-session scope 서비스로 등록된다. `TSession::session_name`이 있으면 그 값을
@@ -1843,6 +1863,7 @@ public:
     metadata_policy_builder_t &metadata();
     dispatch_options_t &configure_dispatch();
     worker_options_t &configure_worker();
+    stream_node_options_builder_t add_stream_node(std::string stream_name);
 
     template <typename TFilter>
     zlink_framework_options_t &use_filter();
@@ -1878,10 +1899,10 @@ public:
     using request_type = create_game_http_req_t;
     using reply_type = create_game_http_res_t;
     using dependency_types =
-      dependency_list_t<channel_client_t, logger_t<create_game_http_handler_t>>;
+      dependency_list_t<request_client_t, logger_t<create_game_http_handler_t>>;
 
     explicit create_game_http_handler_t(
-      channel_client_t &client,
+      request_client_t &client,
       logger_t<create_game_http_handler_t> &logger);
 
     task_t<create_game_http_res_t> handle(const create_game_http_req_t &request);
@@ -1973,7 +1994,9 @@ application sample과 guide 예제는 짧은 alias를 기본으로 한다.
 task_t<match_bingo_api_res_t> handle(const match_bingo_api_req_t &request)
 {
     allocate_bingo_room_res_t allocated = co_await _client
-      .request(sample_names_t::play_channel, allocate_bingo_room_req_t { request.mode })
+      .request(sample_names_t::application_mesh,
+               sample_names_t::play_channel,
+               allocate_bingo_room_req_t { request.mode })
       .async<allocate_bingo_room_res_t>();
 
     co_return match_bingo_api_res_t { allocated.room_id };
@@ -2551,7 +2574,7 @@ struct actor_ref_snapshot_t
     std::uint64_t generation = 0;
 
     static actor_ref_snapshot_t from (const actor_ref_t &);
-    actor_ref_t   to_actor_ref (std::string actor_type) const;
+    actor_ref_t   to_actor_ref () const;
 };
 
 struct actor_join_reply_t;                // join 결과
@@ -2793,6 +2816,19 @@ enum class location_change_type_t { upserted = 1, removed = 2, expired = 3 };
 정식 public type 카탈로그에 없는 runtime state, snapshot, access와 implementation type은 설치되는
 header에 선언하거나 노출하지 않는다. Application이 구현 세부 이름을 include하거나 forward
 declaration으로 참조해야 하는 구성을 공개 계약으로 인정하지 않는다.
+
+### 15.25 목표 계약 적용 추적
+
+정식 계약은 이 문서의 시그니처다. Worker의 source와 package 적용이 남은 항목은
+[§12.23](../../../gaps/cpp.ko.md)이 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| §12.23 | CPU/I/O worker와 `yield`는 구현됐지만 callback의 `std::stop_token` 전달이 없다. |
+| [IMP-CP-42 / §12.28](../../../gaps/cpp.ko.md) | `enable_actor_dispatch(mesh_name)`과 MeshName별 startup 검증이 없다. |
+| [IMP-CP-44 / §12.30](../../../gaps/cpp.ko.md) | Node options의 `set_tls_server(..., require_client_certificate)`와 Core TLS option 연결이 없고 low-level builder에 계약 밖 TLS 메서드가 남아 있다. |
+| [IMP-CP-47 / §12.33](../../../gaps/cpp.ko.md) | `add_route_mesh(mesh_name)`이 MeshNode builder를 반환하는 통합 표면이 source·package에 적용되지 않았다. |
+| [IMP-CP-48 / §12.34](../../../gaps/cpp.ko.md) | `actor_ref_t`에 계약 밖 `actor_type`이 남아 있고 snapshot 복원 호출자가 이 값을 다시 전달해야 한다. |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

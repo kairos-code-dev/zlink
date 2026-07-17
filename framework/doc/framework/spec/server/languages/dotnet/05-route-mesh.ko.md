@@ -105,7 +105,7 @@ public interface IZLinkStreamNodeBuilder
 
 public interface IZLinkCodecRegistryBuilder
 {
-    void Add<TCodec>() where TCodec : class, IZLinkMessageCodec;
+    void Use(IZLinkCodecExtension extension);
 }
 
 public interface IZLinkMetadataPolicyBuilder
@@ -135,6 +135,15 @@ MeshName context를 사용하므로 호출마다 mesh 이름을 받지 않는다
 등록하면 startup 전에 둘 다 양수로 설정해야 한다. `Worker`는 bounded worker scheduler의 최소·최대 thread
 수, idle timeout과 queue 상한을 host startup 전에 설정한다. Core claim batch 크기는 public 설정으로
 노출하지 않는다.
+
+### 2.1 목표 계약 적용 추적
+
+정식 계약은 위 시그니처다. Source와 package 적용이 남은 항목은 gap 문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-DN-25 / §12.28](../../../gaps/dotnet.ko.md) | `IZLinkStreamNodeBuilder.EnableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [IMP-DN-30 / §12.33](../../../gaps/dotnet.ko.md) | `AddRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |
 
 ## 3. Manual peer
 

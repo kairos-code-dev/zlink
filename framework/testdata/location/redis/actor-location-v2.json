@@ -14,7 +14,7 @@
     "hash": {
       "owner": "actor-owner-a",
       "gen": "5",
-      "json": "{\"MeshName\":\"game\",\"ActorId\":\"actor-1\",\"ActorType\":\"player\",\"ActorRef\":{\"nodeRid\":\"67616d652d61\",\"actorId\":\"actor-1\",\"generation\":11},\"OwnerNodeRid\":\"67616d652d61\",\"OwnerNodeGeneration\":7,\"SpotRid\":\"73706f742d31\",\"SpotKind\":2,\"MembershipEpoch\":4,\"OwnerId\":\"actor-owner-a\",\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\"}",
+      "json": "{\"MeshName\":\"game\",\"ActorId\":\"actor-1\",\"ActorType\":\"player\",\"ActorRef\":{\"nodeRid\":\"67616d652d61\",\"actorId\":\"actor-1\",\"generation\":11},\"OwnerNodeRid\":\"67616d652d61\",\"OwnerNodeGeneration\":7,\"SpotRid\":\"73706f742d31\",\"SpotGeneration\":3,\"SpotKind\":2,\"MembershipEpoch\":4,\"OwnerId\":\"actor-owner-a\",\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\"}",
       "updatedAtMs": "1721001600000",
       "mesh": "game"
     }

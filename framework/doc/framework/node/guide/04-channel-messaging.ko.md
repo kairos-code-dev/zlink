@@ -14,7 +14,7 @@ class GetProfileReq {
 }
 
 await client
-  .requestToChannel('profile', new GetProfileReq('u1'))
+  .requestToChannel('services', 'profile', new GetProfileReq('u1'))
   .submit();
 ```
 
@@ -34,7 +34,7 @@ class WarmProfileCmd {
 }
 
 await client
-  .sendToChannel('profile', new WarmProfileCmd('u1'))
+  .sendToChannel('services', 'profile', new WarmProfileCmd('u1'))
   .submit();
 ```
 
@@ -49,7 +49,7 @@ class ProfileChangedEvent {
 }
 
 await fanout
-  .publish('profile.changed', new ProfileChangedEvent('u1'))
+  .publish('profile-events', 'profile.changed', new ProfileChangedEvent('u1'))
   .submit();
 ```
 
@@ -63,7 +63,7 @@ class WarmProfilePayload {
   constructor(readonly userId: string) {}
 }
 
-client.sendToChannel('profile', new WarmProfilePayload('u1')).submit();
+client.sendToChannel('services', 'profile', new WarmProfilePayload('u1')).submit();
 ```
 
 ## 4. handler 노출
@@ -83,32 +83,32 @@ builder 에서 사용할 packet 만 명시한다. TicTacToe.Ts 샘플은 이 방
 노출되는 handler 를 구성 코드에서 바로 확인할 수 있게 한다.
 
 ```ts
-zlinkFramework()
-  .addClientServerChannel('play')
-    .enableServer(playEndpoint)
-    .addRequestHandler('CreateGame', CreateGameHandler)
-    .addSendHandler('PlayerLeft', PlayerLeftHandler)
-  .addFanoutChannel('events')
-    .enableSubscriber(eventsEndpoint)
-    .addPublishHandler('RoomChanged', RoomChangedHandler)
-  .addRouteMesh('route')
-    .enableRouter(routeEndpoint)
-    .addSendHandler('ActorLeft', ActorLeftRouteHandler)
-    .addRequestHandler('ActorLookup', ActorLookupRouteHandler);
+const framework = zlinkFramework();
+const mesh = framework.addRouteMesh('game')
+  .listen(playEndpoint)
+  .routingId(playNodeRid);
+
+mesh.channelName('play')
+  .addRequestHandler(CreateGameHandler)
+  .addSendHandler(PlayerLeftHandler);
+mesh.addRouteSendHandler(ActorLeftRouteHandler);
+mesh.addRouteRequestHandler(ActorLookupRouteHandler);
+
+framework.addFanoutChannel('events')
+  .enableSubscriber(eventsEndpoint);
 ```
 
 ## 5. Route mesh 호출
 
-route mesh 는 target node `RoutingId` 를 application 이 직접 알고 있을 때만 쓴다.
-`ZLinkRouteClient` 는 특정 channel 하나에 묶인 client 가 아니며, 호출할 때 route
-channel 이름과 target `RoutingId` 를 함께 받는다. route mesh channel 이 여러 개 있어도
-호출 인자의 channel 이름으로 어느 경로를 쓸지 분명하게 정한다.
+RID direct 호출은 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
+`ZLinkRouteClient`는 특정 MeshNode 하나에 묶인 client가 아니며, 호출할 때 MeshName과
+target `RoutingId`를 함께 받는다.
 
 ```ts
 const target = 'play-node-1';
 
 const allocated = await routeClient
-  .request('play.route', target, new AllocateRoom('alice'))
+  .requestToNode('game', target, new AllocateRoom('alice'))
   .submit();
 ```
 
@@ -122,7 +122,7 @@ class PlayRoutes {
   constructor(private readonly routes: ZLinkRouteClient) {}
 
   request(request: AllocateRoom, targetNodeRid: RoutingId): ZLinkRequestCall {
-    return this.routes.request('play.route', targetNodeRid, request);
+    return this.routes.requestToNode('game', targetNodeRid, request);
   }
 }
 ```
@@ -166,7 +166,9 @@ class PlaceOrderRequest {
   constructor(readonly sku: string, readonly qty: number) {}
 }
 
-await client.requestToChannel('orders', new PlaceOrderRequest('A-1', 3)).submit();
+await client
+  .requestToChannel('services', 'orders', new PlaceOrderRequest('A-1', 3))
+  .submit();
 ```
 
 framework당 custom serializer는 하나만 둔다(둘 이상이면 모호성 구성 오류). 다른 언어의

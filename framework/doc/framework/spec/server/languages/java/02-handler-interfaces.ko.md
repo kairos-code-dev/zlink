@@ -1,5 +1,5 @@
 <!-- framework-adapter-nav:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](01-system-structure.ko.md) | [다음: Spring Boot SPOT](01-system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Java 시스템 구조](01-system-structure.ko.md) | [다음: Java Location Store](03-location-store.ko.md)
 <!-- framework-adapter-nav:end -->
 
 [Java spec 목차](README.ko.md)
@@ -344,6 +344,20 @@ public interface ZLinkSessionClient {
     <TMessage> ZLinkSessionReplyCall reply(TMessage message);
 }
 
+public record ActorRef(
+    RoutingId nodeRid,
+    String actorId,
+    long generation) {
+}
+
+public record ActorRefSnapshot(
+    RoutingId nodeRid,
+    String actorId,
+    long generation) {
+    public static ActorRefSnapshot from(ActorRef actorRef);
+    public ActorRef toActorRef();
+}
+
 public interface ZLinkSessionActors {
     List<ZLinkSessionActor> bound();
 
@@ -443,14 +457,11 @@ public interface ZLinkActorJoinCall {
 
 public sealed interface ZLinkActorJoinResult<TReply>
     permits ZLinkActorJoinResult.Accepted, ZLinkActorJoinResult.Rejected {
-
-    TReply reply();
-
     record Accepted<TReply>(ActorRef actor, TReply reply)
         implements ZLinkActorJoinResult<TReply> {
     }
 
-    record Rejected<TReply>(TReply reply)
+    record Rejected<TReply>(TReply rejection)
         implements ZLinkActorJoinResult<TReply> {
     }
 }
@@ -570,6 +581,7 @@ public interface ZLinkEntrySpotOptions {
 
 public interface ZLinkStreamNodeBuilder {
     ZLinkStreamNodeBuilder bind(String endpoint);
+    ZLinkStreamNodeBuilder enableActorDispatch(String meshName);
     ZLinkStreamNodeBuilder setTlsServer(String certificatePath, String keyPath);
     ZLinkStreamNodeBuilder setTlsServer(
         String certificatePath,
@@ -1431,20 +1443,22 @@ public @interface ZLinkStreamPacket {
 }
 ```
 
-SPOT actor lifecycle callback은 actor만 받는다. join admission callback은
-framework 공통 `ZLinkMessage` request를 받고 `ZLinkSpotActorJoinResponse`를 반환한다.
+SPOT actor lifecycle callback은 actor 참조와 membership epoch를 담은 `ZLinkActorMembership`을 받는다.
+join admission callback은 framework 공통 `ZLinkMessage` request를 받고
+`ZLinkSpotActorJoinResponse`를 반환한다.
 accepted가 `true`일 때만 actor 위치가 target Spot으로 commit되고
 `onJoinedActor`가 호출된다. accepted가 `false`이면 actor 위치는 바뀌지 않고
 post-join callback도 실행되지 않는다. Entry Spot도 같은 admission callback을 갖고,
 user Spot에서 Entry Spot으로 돌아오는 명시적 join 요청을 여기서 accept/reject한다.
-disconnected callback은 actor만 받는다. session actor의 현재 binding이 끊어졌거나
+disconnected callback도 같은 membership을 받는다. session actor의 현재 binding이 끊어졌거나
 application이 actor disconnected 알림을 명시적으로 보낼 때 실행되며, actor가 들어오거나
 나간 Spot 변경 결과를 만들지 않기 때문이다.
 
 ```java
 public final class MatchSpot implements ZLinkSpot<MatchActor> {
     @Override
-    public CompletionStage<Void> onDisconnectActor(MatchActor actor) {
+    public CompletionStage<Void> onDisconnectActor(ZLinkActorMembership membership) {
+        ActorRef actor = membership.actor(); // 연결 해제된 actor의 안정적인 identity를 사용한다.
         // session binding cleanup or domain notification
         return CompletableFuture.completedFuture(null);
     }
@@ -1805,7 +1819,17 @@ public interface ZLinkSpotActorSendHandler<
 
 @FunctionalInterface
 public interface ZLinkWorkerTask<T> {
-    T run() throws Exception;
+    T run(ZLinkWorkerCancellation cancellation) throws Exception;
+}
+
+@FunctionalInterface
+public interface ZLinkIoWorkerTask<T> {
+    CompletionStage<T> run(ZLinkWorkerCancellation cancellation) throws Exception;
+}
+
+public interface ZLinkWorkerCancellation {
+    boolean isCancellationRequested();
+    void throwIfCancellationRequested();
 }
 
 public interface ZLinkWorkerOptions {
@@ -1815,6 +1839,12 @@ public interface ZLinkWorkerOptions {
     ZLinkWorkerOptions maxQueueLength(int maxQueueLength);
 }
 ```
+
+CPU worker는 동기 `ZLinkWorkerTask<T>`, I/O worker는 비동기
+`ZLinkIoWorkerTask<T>`를 받는다. Framework는 timeout, caller cancellation 또는
+shutdown이 확정되면 같은 `ZLinkWorkerCancellation`에 cancellation을 알린다. 작업은
+`isCancellationRequested()`를 확인하거나 `throwIfCancellationRequested()`를 호출해
+협력적으로 종료한다. 늦게 끝난 작업은 이미 확정된 terminal 결과를 바꾸지 않는다.
 
 handler 등록과 stream packet 이름을 고정하는 public annotation도 계약에 포함한다.
 
@@ -1862,12 +1892,22 @@ contract로 고정하지 않는다.
 관측·운영 public inventory에는 `ZLinkFlowOrigin`, `ZLinkMeshNodeDrainPolicy`,
 `ZLinkDrainForceReason`, `ZLinkMeshDrainResult`, `ZLinkMeshDrained`, `ZLinkMeshForceStopped`와
 `ZLinkRouteMeshRuntime`의 member를 포함한다. 정확한 member와 반환형은 이 문서 §4.2가 고정하고,
-[Spring Boot Monitoring §10](01-system-structure.ko.md#10-graceful-drain-handoff)은 자동 drain과
+[Spring Boot Monitoring §10](01-system-structure.ko.md#10-graceful-drain--handoff)은 자동 drain과
 Spring readiness 연결을 설명한다. Client connector의 상태 handler와
 `ZLinkStreamCloseReason`, disconnect event는
 [Stream Connector](../../../stream-connector/languages/java/03-stream-connector.ko.md)가 별도로 소유한다.
 
+### 8.2 목표 계약 적용 추적
+
+정식 계약은 이 문서의 시그니처다. Source와 package 적용이 남은 항목은 gap 문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-JV-35 / §12.23](../../../gaps/java.ko.md) | `ZLinkWorkerTask.run()`과 `ZLinkIoWorkerTask.run()`이 `ZLinkWorkerCancellation`을 받지 않는다. |
+| [IMP-JV-37 / §12.28](../../../gaps/java.ko.md) | `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [IMP-JV-41 / §12.33](../../../gaps/java.ko.md) | `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |
+
 ---
 <!-- framework-adapter-nav:bottom:start -->
-[문서 목록](../../../../../README.ko.md) | [이전: Spring Boot Channel Messaging](01-system-structure.ko.md) | [다음: Spring Boot SPOT](01-system-structure.ko.md)
+[문서 목록](../../../../../README.ko.md) | [이전: Java 시스템 구조](01-system-structure.ko.md) | [다음: Java Location Store](03-location-store.ko.md)
 <!-- framework-adapter-nav:bottom:end -->

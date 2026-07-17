@@ -124,9 +124,106 @@ interface ZlinkStreamWaitCall<TPayload = ZlinkStreamEncodedPayload> {
   timeout(timeoutMs: number): ZlinkStreamWaitCall<TPayload>;
   submit(signal?: AbortSignal): Promise<ZlinkStreamMessage<TPayload>>;
 }
+
+interface ZlinkStreamExpectNoneCall<TPayload = ZlinkStreamEncodedPayload> {
+  within(windowMs: number): ZlinkStreamExpectNoneCall<TPayload>;
+  run(signal?: AbortSignal): Promise<void>;
+}
+
+interface ZlinkStreamSequenceCall<TPayload = ZlinkStreamEncodedPayload> {
+  expect(predicate: (payload: TPayload) => boolean): ZlinkStreamSequenceCall<TPayload>;
+  timeout(timeoutMs: number): ZlinkStreamSequenceCall<TPayload>;
+  run(signal?: AbortSignal): Promise<readonly TPayload[]>;
+}
+
+interface Disposable { dispose(): void; }
+
+interface ZlinkStreamMetadata {
+  readonly count: number;
+  readonly values: ReadonlyMap<string, string>;
+  get(key: string): string | undefined;
+  with(key: string, value: string): ZlinkStreamMetadata;
+  withMany(values: Iterable<readonly [string, string]>): ZlinkStreamMetadata;
+}
+
+interface ZlinkStreamEncodedPayload {
+  readonly codec: ZlinkStreamCodec;
+  readonly payload: Uint8Array;
+  readonly messageType?: Function;
+}
+
+interface ZlinkStreamMessage<TPayload = unknown> extends ZlinkStreamFlow {
+  readonly name: string;
+  readonly metadata: ZlinkStreamMetadata;
+  readonly payload: TPayload;
+}
+
+interface ZlinkStreamError {
+  readonly code: ZlinkStreamErrorCode;
+  readonly message: string;
+  readonly cause?: unknown;
+}
+
+interface ZlinkStreamResult { readonly isSuccess: boolean; readonly error?: ZlinkStreamError; }
+interface ZlinkStreamResultOf<T> extends ZlinkStreamResult { readonly value?: T; }
+
+interface ZlinkStreamConnectionStateChanged {
+  readonly previous: ZlinkStreamConnectionState;
+  readonly current: ZlinkStreamConnectionState;
+  readonly error?: ZlinkStreamError;
+}
+
+interface ZlinkStreamInboundObservation {
+  readonly kind: ZlinkStreamMessageKind;
+  readonly name: string;
+  readonly codec: ZlinkStreamCodec;
+  readonly requestSeq?: bigint;
+  readonly flowId?: string;
+  readonly flowOrigin?: ZlinkFlowOrigin;
+  readonly metadata: ZlinkStreamMetadata;
+  readonly payloadLength: number;
+  readonly isCompressed: boolean;
+  readonly receivedAt: Date;
+  readonly payloadPreview: Uint8Array;
+}
+
+enum ZlinkStreamCodec { Raw = 0, Json = 1, MessagePack = 2, Protobuf = 3 }
+enum ZlinkStreamTransport { WebSocket = 'webSocket', WebSocketSecure = 'webSocketSecure' }
+enum ZlinkStreamCompression { None = 'none', Lz4 = 'lz4' }
+enum ZlinkStreamDispatchMode { Manual = 'manual', Immediate = 'immediate' }
+enum ZlinkStreamMessageKind { Send = 1, Request = 2, Response = 3, Error = 4, Control = 5 }
+enum ZlinkStreamHeaderFlags {
+  None = 0, HasRequestSeq = 0x01, HasMetadata = 0x02,
+  PayloadCompressed = 0x04, HasCorrelationId = 0x08, HasFlowId = 0x10
+}
+enum ZlinkStreamConnectionState {
+  Created = 'created', Connecting = 'connecting', Connected = 'connected',
+  Reconnecting = 'reconnecting', Disconnected = 'disconnected', Closed = 'closed'
+}
+enum ZlinkStreamErrorCode {
+  Disconnected = 'disconnected', ConfigurationError = 'configurationError',
+  ValidationFailed = 'validationFailed', RequestTimeout = 'requestTimeout',
+  ConnectTimeout = 'connectTimeout', FrameDecodeFailed = 'frameDecodeFailed',
+  FrameTooLarge = 'frameTooLarge', SendFailed = 'sendFailed',
+  CompressionFailed = 'compressionFailed', DecompressionFailed = 'decompressionFailed',
+  TlsValidationFailed = 'tlsValidationFailed',
+  UserCallbackFailed = 'userCallbackFailed', ObserverFailed = 'observerFailed',
+  ObserverDropped = 'observerDropped', ReceivedMessageDropped = 'receivedMessageDropped',
+  RemoteError = 'remoteError'
+}
+
+type ZlinkFlowOrigin = 'Inbound' | 'Timer' | 'Application' | 'Lifecycle';
+type ZlinkStreamCloseReason =
+  | 'ClientClose' | 'IdleTimeout' | 'HeartbeatTimeout'
+  | 'ServerDrain' | 'ProtocolError' | 'TransportError';
+
+class ZlinkStreamException extends Error {
+  constructor(readonly error: ZlinkStreamError);
+}
 ```
 
-Metric provider는 connector option으로 주입한다.
+Connector options와 transport·codec 확장점도 package root의 public 표면이다. 사용자가 지정하는
+optional 값과 connector가 기본값을 채워 노출하는 required 값은 서로 다른 interface로 고정한다.
 
 ```ts
 interface ZlinkStreamMeterProvider {
@@ -134,10 +231,85 @@ interface ZlinkStreamMeterProvider {
     createCounter(name: string, options?: { readonly unit?: string }): {
       add(value: number, attributes?: Readonly<Record<string, string | number | boolean>>): void;
     };
+    createHistogram(name: string, options?: { readonly unit?: string }): {
+      record(value: number, attributes?: Readonly<Record<string, string | number | boolean>>): void;
+    };
   };
 }
 
 interface ZlinkStreamConnectorOptions {
+  readonly endpoint: string;
+  readonly codec?: ZlinkStreamPayloadCodec;
+  readonly transport?: ZlinkStreamTransport;
+  readonly transportFactory?: ZlinkStreamTransportFactory;
+  readonly connectTimeoutMs?: number;
+  readonly requestTimeoutMs?: number;
+  readonly waitTimeoutMs?: number;
+  readonly heartbeat?: ZlinkStreamHeartbeatOptions;
+  readonly reconnect?: ZlinkStreamReconnectOptions;
+  readonly maxSendPayloadSize?: number;
+  readonly maxReceivePayloadSize?: number;
+  readonly maxReceivedMessages?: number;
+  readonly maxInboundObserverNotifications?: number;
+  readonly maxInboundObserverPayloadPreviewBytes?: number;
+  readonly dispatchMode?: ZlinkStreamDispatchMode;
+  readonly compression?: ZlinkStreamCompression;
+  readonly compressionCodec?: ZlinkStreamCompressionCodec;
+  readonly nameResolver?: ZlinkStreamPacketNameResolver;
+  readonly meterProvider?: ZlinkStreamMeterProvider;
+}
+
+interface ZlinkStreamHeartbeatOptions {
+  readonly enabled?: boolean;
+  readonly intervalMs?: number;
+  readonly timeoutMs?: number;
+}
+
+interface ZlinkStreamReconnectOptions {
+  readonly enabled?: boolean;
+  readonly initialDelayMs?: number;
+  readonly maxDelayMs?: number;
+  readonly backoffFactor?: number;
+  readonly maxAttempts?: number;
+}
+
+interface ZlinkStreamPacketNameResolver { resolve(payloadType: Function): string; }
+interface ZlinkStreamPayloadCodec {
+  encode(payload: unknown, messageType?: Function): ZlinkStreamEncodedPayload;
+  decode<T = unknown>(payload: ZlinkStreamEncodedPayload, messageType?: Function): T;
+}
+interface ZlinkStreamCompressionCodec {
+  compress(payload: Uint8Array): Uint8Array;
+  decompress(payload: Uint8Array, maxDecompressedSize: number): Uint8Array;
+}
+interface ZlinkStreamConnection {
+  write(frame: Uint8Array, signal?: AbortSignal): Promise<void>;
+  read?(signal?: AbortSignal): Promise<Uint8Array | undefined>;
+  close(signal?: AbortSignal): Promise<void>;
+}
+interface ZlinkStreamTransportFactory {
+  connect(options: RequiredZlinkStreamConnectorOptions, signal?: AbortSignal): Promise<ZlinkStreamConnection>;
+}
+
+interface RequiredZlinkStreamConnectorOptions {
+  readonly endpoint: string;
+  readonly transport: ZlinkStreamTransport;
+  readonly connectTimeoutMs: number;
+  readonly requestTimeoutMs: number;
+  readonly waitTimeoutMs: number;
+  readonly heartbeat: Required<ZlinkStreamHeartbeatOptions>;
+  readonly reconnect: Required<ZlinkStreamReconnectOptions>;
+  readonly maxSendPayloadSize: number;
+  readonly maxReceivePayloadSize: number;
+  readonly maxReceivedMessages: number;
+  readonly maxInboundObserverNotifications: number;
+  readonly maxInboundObserverPayloadPreviewBytes: number;
+  readonly dispatchMode: ZlinkStreamDispatchMode;
+  readonly compression: ZlinkStreamCompression;
+  readonly compressionCodec?: ZlinkStreamCompressionCodec;
+  readonly nameResolver: ZlinkStreamPacketNameResolver;
+  readonly transportFactory: ZlinkStreamTransportFactory;
+  readonly codec?: ZlinkStreamPayloadCodec;
   readonly meterProvider?: ZlinkStreamMeterProvider;
 }
 ```
@@ -159,7 +331,7 @@ option의 기본값은 [공통 스펙 §6.1](../../32-stream-connector.ko.md)이
 `ZlinkStreamConnectorOptions`의 필드로 표현하며, 해석된 전체 값을 `RequiredZlinkStreamConnectorOptions`로
 노출한다.
 
-### 4.1 테스트 대기·단언 표면
+### 4.1 테스트 대기 표면
 
 계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. TypeScript 표면은 다음과 같다.
 
@@ -173,18 +345,9 @@ waitForSequence<T>(name: string): ZlinkStreamSequenceCall<T>; // .expect(p).expe
 
 - `await expectNone<T>(name).within(ms).run(signal)` — window 안에 도착하면 **throw**. `waitFor`의 대칭.
 - `await waitForSequence<T>(name).expect(p1).expect(p2)….timeout(ms).run(signal)` — 같은 이름 push가 **술어 순서대로** 도착하는지 확인하고 payload 배열을 돌려준다. "N개 도착"이 아니라 **"순서대로 도착"** 을 검증한다.
-- **status 전용 표면을 두지 않는다.** status는 payload 필드이므로 `waitFor<T>(name).where(p => p.status === …)`로 표현한다.
+- **status 전용 표면을 두지 않는다.** status는 payload 필드이므로
+  `waitFor<T>(name).where(message => message.payload.status === …)`로 표현한다.
 
-**범용 단언 — `zlinkStreamAssert`**(전송 API와 섞지 않는 별도 유틸).
-
-```ts
-ensure(condition: boolean, message: string): void;                     // message 필수
-expectFailure(action: (signal?: AbortSignal) => Promise<void>, errorKind?: string): Promise<ZlinkStreamError>;
-expectTimeout(action: (signal?: AbortSignal) => Promise<void>): Promise<void>;
-```
-
-- `expectFailure`의 입력은 **미리 만든 Promise가 아니라 실행할 action**이다. `errorKind`를 주면 그 종류로 실패했는지까지 검증한다(생략하면 "실패했다"만).
-- `expectTimeout`은 timeout이 아닌 오류를 **재전파**한다.
 - **도메인 REST 폴링은 이 표면이 아니다.** 그건 HTTP client의 일이다.
 
 ## 5. Inbound Observer와 수신 큐

@@ -208,8 +208,9 @@
 
 ### 0.7 선행 관계 (뒤집으면 깨진다)
 
-- **join orchestration**(§12.24) → **`yield` terminator**(§12.21) → **샘플의 `yield` 사용처**(SMP-X1)
-  — 뒤집으면 `yield` 없이 `async`로 흉내 내게 되어 **샘플이 보여 주려던 대비 자체가 사라진다.**
+- **join orchestration**(§12.24) → **샘플의 `yield` 사용처**(SMP-X1)
+  — `yield` terminator(§12.21)는 이미 구현됐다. 남은 join commit 순서를 먼저 바로잡아야 샘플이
+  source membership 보존과 명시적 turn 반납을 함께 검증할 수 있다.
 - **framework의 owner-lease join** → **store의 lease script·페이징** — store부터 고치면 아무도 안 쓴다.
 - **wire 계약(묶음 H)은 한 언어만 고치면 오히려 깨진다.** 결정은 §0.8의 2단계 프로토콜을 따른다.
 - 어떤 갭이 다른 갭 **덕분에** 가려져 있는 경우가 있다(`MON-A2` ← monitoring 결함). **그런 쌍은 함께 연다.**
@@ -262,7 +263,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 8건. 완료 4건.**
+**전체 15건. 완료 6건.**
 
 ### 언어별 표면 차이 (기준선 대조)
 
@@ -273,15 +274,37 @@
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
 - [x] **§12.20** (결함) — Kotlin이 공유하는 Java connector에서 응답 header의 `name_len`을 0으로 고정하고, pending request의 원래 이름으로 완료 payload를 구성한다. Java·Node 상호운용과 Kotlin module 전체 테스트 통과(2026-07-15).
-- [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
+- [x] **§12.21** — 공유 Java runtime의 request·actor join·worker에서 기본 async는 turn을 유지하고 명시적 yield만 turn을 반납한다. Kotlin coroutine adapter는 두 완료 의미를 보존하며 Java core·Kotlin module과 Config 8 회귀 검사가 통과했다.
 - [x] **§12.22** — 공유 Java 서버 HTTP client의 네 완료 방식과 Spring execution turn bean을 사용하고 coroutine용 turn 유지 `await`와 turn 반납 `yieldAwait`를 제공한다. Java/Kotlin HTTP client와 Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
-- [x] **§12.23** — 공유 Java 런타임의 `runCpuWorker`와 비동기 `runIoWorker`를 사용하며 두 표면의 `submit`·`yield`를 coroutine에서 기다릴 수 있다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
-- [x] **§12.24** — 공유 Java runtime이 같은 node local join을 caller turn에서 orchestrate하고 source
-  `OnLeaveActor`와 target commit·`OnJoinedActor`를 순서대로 완료한다. Kotlin Config 8의 user Spot
-  A→B `TD-E2`와 A→B·B→A 동시 `TD-E3`, core·Kotlin 전체 테스트가 통과했다. 구현 커밋
-  `175d60d13`(2026-07-16).
+- [ ] **IMP-KT-34 / §12.23** — 공유 Java runtime의 CPU/I/O worker와 `submit`·`yield`는
+  구현했지만 callback이 `ZLinkWorkerCancellation`을 받지 않는다. coroutine cancellation을 실행 중인
+  worker에 협력적 신호로 전달해야 한다.
+- [ ] **§12.24** — 공유 Java runtime의 caller-turn orchestration은 구현됐지만 source leave와 target
+  callback 뒤에 durable location을 commit한다. Java 구현과 함께 location CAS를 먼저 수행하고, CAS
+  실패에서는 source membership을 유지하도록 순서를 바꿔야 한다.
+- [ ] **§12.26** — 공유 Java runtime에 10.0.0 exact `ZLinkRouteMeshRuntimeOptions`가 없으며 Kotlin
+  ResilienceLifecycle RL-B4도 기존 `ZLinkChannelRuntimeOptions`를 사용한다. Java 구현과 함께 새 표면으로
+  전환해야 한다.
+- [ ] **IMP-KT-35 / §12.27** — 공유 Java `ZLinkActorLocation`과 Redis codec에
+  `spotGeneration`이 없다. Kotlin exact property와 같은 Spot RID 재사용의 stale 판정을 Java 구현과
+  함께 추가해야 한다.
+- [ ] **IMP-KT-36 / §12.28** — 공유 Java `ZLinkStreamNodeBuilder`에
+  `enableActorDispatch(meshName)`이 없고 runtime이 첫 Spot node를 암묵 선택한다. Java 구현과 함께 명시적
+  MeshName 설정과 startup·bind·dispatch 격리를 추가해야 한다.
+- [ ] **IMP-KT-37 / §12.29** — 공유 Java exact `ZLinkActorTransferStore`와 공식 Redis
+  prepare·commit·abort·takeover 구현이 없다. Java 구현과 함께 durable participant set, active transfer
+  index와 recovery lease 원자 전이를 추가해야 한다.
+- [ ] **IMP-KT-38 / §12.31** — 공유 Java runtime이 Actor transfer counter와 duration을 빈 label로
+  성공 경로에서만 기록한다. Java 구현과 함께 `mesh_name`과 닫힌 terminal outcome을 기록해야 한다.
+- [ ] **IMP-KT-39 / §12.32** — 공유 Java runtime이 수신 envelope content-type을 보존하지 않고
+  handler 타입 serializer로 decode한다. Java 구현과 함께 알 수 없는 non-JSON 값을 handler 호출 전에
+  `PayloadDecodeFailed`로 종료해야 한다.
+- [ ] **IMP-KT-40 / §12.33** — 공유 Java source·package가 exact `addRouteMesh(meshName)`과
+  `ZLinkMeshNodeBuilder` 중심 구성으로 전환되지 않았다. 기존 분리 builder와 production in-memory
+  location helper를 제거하고 Kotlin DSL·sample·E2E를 통합 MeshNode 표면으로 옮겨야 한다.
 
-본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
+본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21은 해소됐고 §12.24가 남았다.**
+accepted join은 location CAS를 먼저 commit해야 하며, CAS 실패에서는 source membership을 보존해야 한다.
 
 ## 2. 언어별 표면 차이 상세
 
@@ -443,7 +466,7 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **SMP-KT-01** (**절대 규칙 위반**) | [샘플 규약:133-143](../../common/sample/README.ko.md): 서버 간 연결은 공유 location store 기반 자동 연결로 구성한다. **절대 규칙: TicTacToe만 수동 연결을 사용할 수 있다.** "즉 `EnableClient(endpoint)`, `ConnectRouter(...)`, `ConnectPeerPub(...)` ... 를 사용하지 않는다", "위반이 하나라도 있으면 해당 샘플 변경은 완료된 것으로 판단하지 않는다" | TicTacToe 밖 샘플의 수동 연결이 `src` 기준 **12곳**이다 — `enableClient(endpoint)` 3곳(`Bingo/Server/Api/.../ApiServerApplication.kt:42-43`, `GameQuest/Server/GameApi/.../Program.kt:99`)과 `connectRouter`/`connectPeerPub` 9곳(`Bingo/Server/Session/.../SessionServerApplication.kt:49`, `Bingo/Server/Play/.../PlayServerApplication.kt:70`, `DeliveryDispatch/Server/CourierSession/.../CourierSessionApplication.kt:39,43`, `.../Dispatch/.../DispatchServerApplication.kt:53,57`, `.../CourierGateway/.../CourierGatewayApplication.kt:41,45`, `.../CourierSpotNode/.../CourierSpotNodeApplication.kt:41`). 같은 언어의 SupportChat·ShoppingMall은 인자 없는 `enableClient()`만 쓰므로 **가능하다는 것을 스스로 증명한다.** ⇒ location store 등록·조회·연결 lifecycle이 끊겨도 이 샘플들은 초록으로 뜬다 |
-| **SMP-KT-02** (결함) | [shoppingmall:219](../../common/sample/event/shoppingmall.ko.md): "saga 오케스트레이터 / 단계 소비자"는 **사라지고** owner spot이 이벤트 접기로 다음 단계를 판정해 직접 진행한다. [:555-566](../../common/sample/event/shoppingmall.ko.md): `StartOrderWorkflowReq` handler는 `Created`까지만 돌리고 같은 흐름 안에서 **`ContinueOrderWorkflowReq` 호출을 기다리지 않고 예약**한다 — crash 뒤 재개와 **같은 메커니즘**이다 | `Server/OrderWorkflow/.../handlers/StartOrderWorkflowHandler.kt:22` — framework 재개 호출 대신 `continuations.enqueue(request.orderId)`로 프로세스 메모리 큐에 넣는다(`WorkflowContinuationQueue.kt:11-16`, 맨 `LinkedBlockingQueue`). `WorkflowSagaWorker.kt:13-27,37-53`이 daemon Thread 하나(`"shoppingmall-workflow-saga-worker"`)로 그 큐를 빼서 `workflow.continueWorkflow(orderId)`를 **직접** 호출한다. ⇒ 문서가 사라진다고 한 **saga worker가 이름까지 그대로 살아 있다.** 큐가 비내구·프로세스 로컬이라 노드가 죽으면 대기 중이던 continuation이 사라지고, 재개가 framework 메시지 경로를 타지 않으므로 owner 라우팅·순서 실행 보장도 받지 못한다 |
+| **SMP-KT-02** (결함) | [shoppingmall:219](../../common/sample/event/shoppingmall.ko.md): "saga 오케스트레이터 / 단계 소비자"는 **사라지고** owner spot이 이벤트 접기로 다음 단계를 판정해 직접 진행한다. [:555-566](../../common/sample/event/shoppingmall.ko.md): `StartOrderWorkflowReq` handler는 `Created`까지만 돌리고 같은 흐름 안에서 **`ContinueOrderWorkflowReq` 호출을 기다리지 않고 예약**한다 — crash 뒤 재개와 **같은 메커니즘**이다 | `Server/OrderWorkflow/.../handlers/StartOrderWorkflowHandler.kt:22` — framework 재개 호출 대신 `continuations.enqueue(request.orderId)`로 프로세스 메모리 큐에 넣는다(`WorkflowContinuationQueue.kt:11-16`, 맨 `LinkedBlockingQueue`). `WorkflowSagaWorker.kt:13-27,37-53`이 daemon Thread 하나(`"shoppingmall-workflow-saga-worker"`)로 그 큐를 빼서 `workflow.continueWorkflow(orderId)`를 **직접** 호출한다. ⇒ 문서가 제거 대상으로 정한 **saga worker가 같은 이름으로 존재한다.** 큐가 비내구·프로세스 로컬이라 노드가 종료되면 대기 중이던 continuation이 사라지고, 재개가 framework 메시지 경로를 타지 않으므로 owner 라우팅·순서 실행 보장도 받지 못한다 |
 | **SMP-KT-03** (미구현) | [shoppingmall:18,266,305](../../common/sample/event/shoppingmall.ko.md): 클라이언트는 `CommerceApi`에 **HTTP로** 주문 시작·상태 조회를 요청하고, 클라이언트가 마주하는 창구는 `CommerceApi` 하나뿐이다. [:450-452,559-561](../../common/sample/event/shoppingmall.ko.md): `ContinueOrderWorkflowReq`는 owner spot이 **자기 자신에게 예약하는 내부 재개 명령**이다 | `Server/CommerceApi/.../CommerceApiApplication.kt:67` — `.web(WebApplicationType.NONE)`. HTTP endpoint가 0개다(`@RestController`·`@PostMapping` grep 0건). 클라이언트가 대신 **자기가 framework 호스트**가 되어(`Client/.../ClientApplication.kt:18-19,29-35`) `requestToChannel(commerceApiChannel(...), ...)`로 채널 요청을 보내고, `Client/.../ShoppingMallClientScenario.kt:133-141`에서 내부 재개 명령 `ContinueOrderWorkflowReq`를 **클라이언트가 직접** 보낸다. `.NET`은 같은 자리에 `MapPost`/`MapGet` HTTP edge를 둔다(`dotnet/samples/ShoppingMall/Server/CommerceApi/Program.cs`). ⇒ "HTTP 진입 + 내부 메시지 은닉"이라는 이 샘플의 구도가 통째로 뒤집혔다 |
 | **SMP-KT-04** (미구현) | [gamequest:13,19,124-127](../../common/sample/event/gamequest.ko.md): player별 quest 판정은 **`PlayerQuestSpot`**이 맡고 `PlayerId` 기준 owner로 event를 직렬 처리한다. [shoppingmall:350](../../common/sample/event/shoppingmall.ko.md): 어느 `CommerceApi`로 들어와도 owner 라우팅이 항상 같은 **`OrderWorkflowSpot`**으로 보낸다 | 두 샘플 소스 전체에 `spot` 문자열이 **0건**이다(`samples/kotlin/{GameQuest,ShoppingMall}/**/src`). GameQuest는 `Server/QuestMission/.../Program.kt:79-81`에서 평범한 client-server channel(`questOwnerChannelFor(instanceName)`) + `quest-owner` handler group으로 끝나고, ShoppingMall은 `Server/OrderWorkflow/.../OrderWorkflowApplication.kt:43-45`가 `workflowChannel(instanceId)` server 하나다. owner 선택도 framework spot 배치가 아니라 앱이 한다 — `Server/CommerceApi/.../OrderWorkflowRouter.kt:38-39`의 `topology.workflowInstanceForOrder(orderId)`. ⇒ 이 두 샘플의 존재 이유인 **owner spot의 직렬 실행·이동·location 조회를 한 번도 실행하지 않는다** |
 | **SMP-KT-05** (결함) | [kotlin guide 02:30-33](../../kotlin/guide/02-getting-started.ko.md): `useCoroutineHandlers(...)`는 suspend handler를 실행할 coroutine dispatcher/scope를 지정하는 설정이다. [kotlin guide 03 §6:53-55](../../kotlin/guide/03-concepts.ko.md): **"handler 안에서 blocking 호출(`Thread.sleep`, blocking JDBC, `CompletableFuture.join` 등)을 직접 쓰지 않는다."** 불가피하면 `withContext(Dispatchers.IO)`로 옮긴다 | **해결:** DeliveryDispatch의 handler host 6개와 ShoppingMall의 CommerceApi·OrderWorkflow가 `useCoroutineHandlers(Dispatchers.Default)`를 직접 설정한다. ShoppingMall의 channel 재시도와 client 상태 poll은 `LockSupport.parkNanos` 대신 suspending `delay`를 사용한다. 동기식 `CommerceStore`의 파일 lock 획득은 coroutine handler가 아닌 임계 구역이라 이 변경에 섞지 않았다. POSD 재리뷰에서는 fallback 의존을 설명만 하는 안과 각 host가 실행 정책을 명시하는 안을 비교해 후자를 선택했고, 별도 pass-through 설정 helper 없이 정책이 필요한 구성 지점에 둔다. DDD 모델과 wire 계약은 바뀌지 않았다. 검증 중 삭제된 `CommerceApiInstanceOptions` 참조와 `--instance` runner가 typed config 계약과 어긋난 기존 결함도 발견해 중앙 `SampleTopology`와 역할별 config 파일로 통합했다. 두 runner는 설정·blocking 경로 회귀 gate를 거쳐 전체 client/server 실행을 통과했다. |
@@ -458,16 +481,13 @@ DeliveryDispatch의 actor relay(Java는 건너뛴다).
 | **E2E-KT-03** (결함) | [config-2](../../common/e2e/config-2-spot-service.ko.md): Track A~G 시나리오 **51개**. [config-4 RC-A6:103-110](../../common/e2e/config-4-registration-codec.ko.md)(**P0**): duplicate kind+packet·잘못된 handler group·미지원 channel kind 조합을 **각각** startup에서 거부하는지 본다. [E2E README §2.5:310,330-332](../../common/e2e/README.ko.md): 시나리오 ID 하나 = client scenario 파일 하나. [§2.8:437-446](../../common/e2e/README.ko.md): feature-map은 skip 목록이 아니라 근거를 남기는 표다 | (a) `SpotService/Client/.../scenarios/`에 47개 파일이 있으나 51개 중 **`SM-B2`·`SM-B4`·`SM-B9`·`SM-C5`·`SM-D2`·`SM-D15` 6개가 없고**, 문서에 ID가 없는 `SmQ9Scenario.kt`·`SmRemoteActorSessionScenario.kt` 2개가 대신 들어 있다. (b) `RC-A6`에는 client 시나리오 파일이 **아예 없다** — `RegistrationCodec/run_e2e.sh:151-166`이 invalid 서버를 띄워 종료 코드가 0이 아닌지 본 뒤 로그를 `grep -Eq "duplicate\|Duplicate\|registration\|packet"`으로 훑고 `echo "scenario RC-A6 passed"`를 찍는다. 세 축 중 duplicate 하나만 만들고, 저 grep은 "packet"이나 "registration"이 든 **어떤 기동 실패 메시지든** 통과시킨다. 그런데 `RegistrationCodec/feature-map.ko.md:18`은 상태를 `구현 완료`로 적는다. (체크리스트 한 줄이 두 config를 붙여 놨다 — **누락 6개는 Config 2**, **`RC-A6`은 Config 4**다. Java·`.NET`은 둘 다 `InvalidRegistrationScenario`라는 client scenario 파일로 이걸 검증한다) |
 | **E2E-KT-04** (결함) | [E2E README §2.5:310,328-332](../../common/e2e/README.ko.md): 시나리오는 `Client/Scenarios/` 아래에 scenario별 파일로 분리하고, "여러 시나리오를 하나의 `AllScenario`, `ScenarioSet`, `DriverScenario` 파일로 묶어 driver에 위임하지 않는다". [:312-313](../../common/e2e/README.ko.md): support 코드에는 option parsing·assertion·process lifecycle 같은 보조 코드만 둔다 | `DiscoveryRegistryHa/Client/`에 `Scenarios/` 디렉토리가 없다. `ClientScenario.kt:12-31`(32줄)이 `when`으로 15개 selector(`SF-A1`~`SF-E1`과 `-RECOVERED`/`-HEALTHY` 변형)를 분기하고, 시나리오 본문 전부가 `client/Support/ClientScenarioContext.kt`(**477줄**) 한 클래스의 메서드다(`:21,28,41,51,64,75,85,91,98,107,126,134,149`). 규약이 이름을 짚어 금지한 `AllScenario` 형태이며, 하필 보조 코드만 두라는 `Support/` 안에 있다. 같은 언어의 `RegistryMessaging`은 `Client/Scenarios/`에 ID별 파일을 두므로 **config마다 client 형태가 갈린다** |
 
-## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+## connector push 관측과 범용 단언 책임
 
-**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
-표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
-공개 API로 제공한다.
+현재 계약에서 connector public API가 제공하는 test 표면은 push 부재와 순서를 관측하는
+`expectNone`·`waitForSequence`뿐이다. 조건·실패 종류·시간 초과를 검사하는 범용 단언은 connector
+제품 API가 아니라 각 sample·E2E의 `Client/Support`가 소유한다. 아래 TH-KT-01·02는 이전 목표를
+구현하고 지역 관측 helper를 제거한 이력이며, 범용 단언의 현재 배치가 완료됐다는 뜻은 아니다.
 
-**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
-SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
-언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
-검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
-
-- [x] **TH-KT-01** (미구현) — [java doc §13](../stream-connector/languages/java/03-stream-connector.ko.md)에 먼저 고정한 시그니처대로 `expectNone`·`waitForSequence`의 suspend `await()` wrapper와 `ZLinkKotlinStreamAssert`를 구현했다. 관측과 오류 분류는 Java connector에 남겨 정책 중복을 만들지 않았다. coroutine 관용 진입점과 suspend action 실행을 재검토했고 `KotlinConnectorWrapperTest`와 Kotlin module 전체 테스트가 통과했다. 구현 커밋 `22484d93e`(2026-07-15).
+- [x] **TH-KT-01** (과거 구현) — `expectNone`·`waitForSequence`의 suspend `await()` wrapper를 구현하고, 당시 목표였던 `ZLinkKotlinStreamAssert`도 함께 구현했다. 관측 wrapper는 현재 계약에도 남지만 범용 단언은 제품 API의 현재 목표가 아니다. 구현 커밋 `22484d93e`(2026-07-15).
 - [x] **TH-KT-02** (리팩토링) — DeliveryDispatch의 지역 `StatusWaits`·독립 `waitFor` 목록·잔여 `waitStatuses` wrapper를 삭제하고 Kotlin `waitForSequence`를 직접 사용한다. `.NET` TH-DN-02와 같은 결정으로 성공 배송이 다른 courier에게 전달되지 않는지도 coroutine 시작 시 등록한 `expectNone`으로 검증하고, 단언에는 필수 메시지가 있는 `ZLinkKotlinStreamAssert`를 사용한다. SupportChat의 수동 failure·timeout·negative push helper도 coroutine assert와 `expectNone`으로 교체했다. Bingo·TicTacToe·SpotService·AutomaticTurnDispatch의 AUTO dispatch negative 단언 역시 동작 전에 등록하는 `expectNone(...).within(...)`을 유지한다. Kotlin module 전체 테스트, DeliveryDispatch·SupportChat·Bingo·TicTacToe 전체 self-check, SpotService `SM-D6`, AutomaticTurnDispatch `ATD-D4`, runner 재도입 방지 검사가 통과했다. 구현 커밋 `22484d93e`, 추가 재검토 커밋 `9b5a8527e`, 최종 지역 helper 제거 커밋 `bdce6f188`(2026-07-15).
+- [ ] **TH-KT-03** (계약 전환) — `ZLinkKotlinStreamAssert`를 connector Kotlin 제품 export에서 제거하고, 이를 사용하는 sample·E2E의 범용 단언을 각 `Client/Support`로 옮긴다. `expectNone`·`waitForSequence`와 coroutine wrapper는 connector에 유지한다.

@@ -12,7 +12,7 @@
 ## 2. Request/reply
 
 ```java
-client.requestToChannel("profile", new GetProfileRequest(accountId))
+client.requestToChannel("application", "profile", new GetProfileRequest(accountId))
     .submit(GetProfileReply.class);
 ```
 
@@ -35,11 +35,10 @@ public final class GetProfileHandler
 }
 ```
 
-> **등록은 자동이 기본, 수동도 된다.** handler에 annotation(`@ZLinkRequest` 등)을 달고
-> `addHandlersFromPackageOf(...)` package scan으로 **자동** 등록하는 것이 기본이고 편하다.
-> 어떤 handler가 붙는지 명시적으로 통제하려면 channel builder에 `addRequestHandler(...)` /
-> `addSendHandler(...)` / `addPublishHandler(...)`로 **수동** 등록한다. SPOT handler는 Spot/
-> EntrySpot의 `configure()` context에서 등록한다([06-spot](05-spot.ko.md)).
+> **등록은 자동이 기본, 수동도 된다.** handler annotation과 package scan으로 자동 등록하는 방식이
+> 기본이다. 등록 대상을 명시적으로 통제해야 하면 channel builder에서 요청·송신·구독 handler를 수동으로
+> 등록한다. 정확한 호출 이름은 [공개 interface 문서](../../spec/server/languages/java/02-handler-interfaces.ko.md)를 따른다. SPOT handler는 Spot/
+> EntrySpot의 `configure()` context에서 등록한다([05-spot](05-spot.ko.md)).
 
 ## 3. Fanout
 
@@ -54,22 +53,22 @@ fanout은 reply를 기대하지 않는 event 전파다.
 
 route mesh는 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
 `ZLinkRouteClient`는 특정 channel 하나에 묶인 client가 아니며, 호출할 때 route
-channel 이름과 target `RoutingId`를 함께 받는다. route mesh channel이 여러 개 있어도
-호출 인자의 channel 이름으로 어느 경로를 쓸지 분명하게 정한다.
+MeshName과 target `RoutingId`를 함께 받는다. MeshName이 여러 개 있어도 호출 인자로
+어느 mesh를 사용할지 분명하게 정한다.
 
 ```java
 RoutingId target = RoutingId.from("play-node-1");
 
 AllocateRoomReply reply = routeClient
-    .requestTo("play.route", target, new AllocateRoomRequest("alice"))
+    .requestToNode("play", target, new AllocateRoomRequest("alice"))
     .submit(AllocateRoomReply.class)
     .toCompletableFuture()
     .join();
 ```
 
-같은 route channel로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 Spring bean으로
+같은 MeshName으로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 Spring bean으로
 등록해도 된다. 이 wrapper는 framework API가 아니라 application이 정한 이름이다. 그래서 업무
-코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel로 나가는지만
+코드는 매번 MeshName을 반복하지 않고, wrapper 내부에서 어떤 mesh를 사용하는지만
 한 곳에 둔다.
 
 ```java
@@ -87,7 +86,8 @@ public final class DefaultPlayRoutes implements PlayRoutes {
 
     @Override
     public ZLinkRequestCall request(RoutingId targetNodeRid, AllocateRoomRequest request) {
-        return routes.requestTo("play.route", targetNodeRid, request);
+        // "play"는 route channel이 아니라 target node가 참여한 MeshName이다.
+        return routes.requestToNode("play", targetNodeRid, request);
     }
 }
 ```

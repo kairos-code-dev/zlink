@@ -17,12 +17,6 @@
 #include <zlink/stream_connector/contracts/connector.hpp>
 ```
 
-범용 단언 유틸은 connector 전송 계약과 분리된 header로 가져온다.
-
-```cpp
-#include <zlink/stream_connector/contracts/zlink_stream_assert.hpp>
-```
-
 connector는 factory가 값 객체로 만든다. 생성 시 options를 복사하며 구현 세부 타입을 공개하지 않는다.
 
 ```cpp
@@ -110,10 +104,9 @@ extension은 `typed_codec_t` 구현을 제공하며 connector를 만들 때 opti
 타입마다 codec을 등록하거나 send/request operation마다 codec을 고르는 public API는 제공하지 않는다.
 Raw encoded payload는 외부 protocol 연동을 위해 payload에 이미 기록된 codec 번호를 그대로 사용한다.
 
-## 4. 테스트 대기·단언 인터페이스
+## 4. 테스트 대기 인터페이스
 
-동작 계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. C++는 push 관측과 범용
-단언을 다음 두 이름 공간으로 나누며 서로 섞지 않는다.
+동작 계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다.
 
 ### 4.1 push 관측 — connector 메서드
 
@@ -156,33 +149,32 @@ status 전용 메서드는 두지 않는다. status는 payload 필드이므로 �
 `wait_for<T>().where(...)`, 순서 관측은 `wait_for_sequence<T>().expect(...)`로 표현한다.
 도메인 REST polling은 HTTP client의 책임이며 connector 인터페이스에 포함하지 않는다.
 
-### 4.2 범용 단언 — `zlink::stream_connector::assertions`
+## 5. 결과와 오류
 
-범용 단언은 connector 메서드가 아니라 별도 이름 공간의 함수다.
+`error_code_t`는 다음 닫힌 값 집합이다. 각 값의 의미와 operation·연결에 미치는 영향은
+[공통 오류 표](../../32-stream-connector.ko.md#9-오류-의미)와 일대일로 대응한다.
 
 ```cpp
-namespace zlink::stream_connector::assertions
+enum class error_code_t
 {
-void ensure(bool condition, std::string_view message);
-
-template <typename TAction>
-error_t expect_failure(
-  TAction&& action,
-  std::optional<error_code_t> expected_kind = std::nullopt);
-
-template <typename TAction>
-error_t expect_timeout(TAction&& action);
-}
+    disconnected,
+    configuration_error,
+    validation_failed,
+    request_timeout,
+    connect_timeout,
+    frame_decode_failed,
+    frame_too_large,
+    send_failed,
+    compression_failed,
+    tls_validation_failed,
+    decompression_failed,
+    user_callback_failed,
+    observer_failed,
+    observer_dropped,
+    received_message_dropped,
+    remote_error
+};
 ```
-
-- `ensure`의 `message`는 필수다. 빈 문자열이면 `std::invalid_argument`, 거짓 조건이면 message를
-  포함한 `std::runtime_error`를 던진다.
-- `expect_failure`는 미리 실행한 결과가 아니라 실행할 action을 받는다. action을 한 번 실행해 실패를
-  확인하고 `error_t`를 반환한다. `expected_kind`가 있으면 `error_code_t`까지 같아야 한다.
-- `expect_timeout`은 `request_timeout`과 `connect_timeout`만 받아들인다. 다른 실패는
-  `assertions::failure_t`로 다시 던져 호출자가 원래 `error_t`를 확인할 수 있게 한다.
-
-## 5. 결과와 오류
 
 실패할 수 있는 동기 작업은 `result_t<T>` 또는 `result_t<void>`를 반환한다. 성공 여부는 명시적 bool
 변환으로 확인하고, 실패 시 `error()`와 `error_code()`로 `error_t`를 읽는다. callback 방식도 같은

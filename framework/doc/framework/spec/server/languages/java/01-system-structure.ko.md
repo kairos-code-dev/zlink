@@ -111,18 +111,12 @@ framework.addRouteMesh("application")
     .connect("tcp://10.0.10.15:7101");
 ```
 
-앱 전체에서는 역할별로 방식을 나눠 쓸 수 있다.
-예를 들어 `profile.client`는 discovery, `account.client`는 manual로 둘 수 있다.
+RouteMesh의 수동 연결은 MeshNode peer intent다. 같은 MeshName 아래의 모든 ChannelName은
+`peerConnections()`에 등록한 ROUTER peer 연결 하나를 공유한다. discovery와 manual 방식을 함께
+사용할 수 있지만, channel이나 capability마다 별도 연결 집합을 만들지 않는다.
 
-중요한 점은 수동 연결이 `channel` 전체 설정이 아니라 `channel + capability`
-설정이라는 점이다. 예를 들어 같은 `profile` channel이라도 `profile.client`와
-`profile.subscriber`는 다른 연결 집합이다.
-
-여기서 client manual 연결은 remote `RoutingId`를 따로 받지 않는다. channel client는
-하부 `DEALER(client)`가 connect된 peer 집합으로 요청을 보내는 모델이므로,
-startup과 런타임 제어 모두 endpoint 집합만 관리하면 된다.
-
-manual 역할은 startup 시점에 endpoint 집합을 등록한다.
+manual peer는 remote `RoutingId`를 따로 받지 않는다. startup과 런타임 제어는 MeshNode가 연결할
+endpoint 집합을 관리하고, 각 channel은 그 MeshNode의 연결을 통해 메시지를 전달한다.
 
 일반 `PUB/SUB` event publish는 `ZLinkFanoutClient` 같은 별도 surface로 설명한다.
 이 표면도 `channel name + topic` 기준으로 동작한다.
@@ -299,14 +293,16 @@ channel client를 먼저 설명한다. 실제 운영 코드가 Spot type으로
 ### 4. Spot-to-spot
 
 spot-to-spot routed 호출은 남긴다. 다만 일반 channel messaging과 섞지 않고,
-advanced surface로 설명한다. 현재 SPOT 문맥의 `context.outbound()`(`ZLinkSpotOutbound`)
-가 target SPOT `RoutingId` 하나만 받아 routed request 를 보낸다. target node 와 route
-channel 해소는 `SpotRemoteRefResolver` 가 맡는다.
+advanced surface로 설명한다. `SpotHandleResolver`가 MeshName과 target Spot `RoutingId`로
+`SpotHandle`을 해소하고, 현재 Spot 문맥의 `context.outbound()`(`ZLinkSpotOutbound`)가
+그 handle을 대상으로 routed request를 보낸다.
 
 ```java
-context.outbound()
-    .requestToSpot(targetSpotRid, request)
-    .submit(StageReply.class);
+spotHandleResolver.resolveSpotHandle(context.meshName(), targetSpotRid)
+    .thenCompose(handle -> context.outbound()
+        // 해소된 handle 하나가 target node와 Spot을 함께 식별한다.
+        .requestToSpot(handle.orElseThrow(), request)
+        .submit(StageReply.class));
 ```
 
 ### 5. Entry Spot과 user Spot
@@ -443,18 +439,27 @@ public final class GameStreamSession implements ZLinkSession {
     }
 
     @Override
-    public void onConnected() {
+    public CompletionStage<Void> onConnected() {
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public void onDispatch(
+    public CompletionStage<Void> onDisconnected() {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletionStage<Void> onError(ZLinkStreamError error) {
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletionStage<Void> onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
-        actors.getOrCreate("game", "player-42", "player")
+        return actors.getOrCreate("game", "player-42", "player")
             .thenCompose(actor -> context.actors().bind(actor))
-            .thenCompose(bound -> bound.relay(payload))
-            .toCompletableFuture()
-            .join();
+            .thenCompose(bound -> bound.relay(dispatch, payload));
     }
 }
 ```
@@ -479,6 +484,7 @@ framework가 자동으로 연결한다.
 ```java
 ZLinkStreamNodeBuilder stream = options.addStreamNode("gateway");
 stream.bind("tcp://0.0.0.0:7201");
+stream.enableActorDispatch("game"); // session Actor dispatch가 사용할 MeshName을 고정한다.
 stream.registerSession(GameStreamSession.class);
 ```
 
@@ -552,7 +558,7 @@ public interface ZLinkActor {
 }
 
 public interface ZLinkActorFactory {
-    ZLinkActor create(
+    CompletionStage<ZLinkActor> create(
         String actorId,
         ZLinkActorContext context);
 }
@@ -651,9 +657,9 @@ session actor의 `notifyDisconnected()`는 backend actor binding을 해제한 �
 그 binding이 actor context의 현재 bound session과 일치할 때만 disconnected lifecycle을
 실행한다. 오래된 session binding에서 disconnect 알림이 늦게 도착해도 현재 bound
 session과 disconnected lifecycle callback을 건드리지 않는다.
-`relay(payload)`는 session이 받은 actor packet을 bound actor route로
-전달한다. `payload`는 framework `ZLinkMessage`이며, session은 이 값을 decode 하거나
-relay API에 그대로 넘긴다.
+`relay(dispatch, payload)`는 session이 받은 actor packet의 dispatch 정보와 payload를 bound actor
+route로 전달한다. `payload`는 framework `ZLinkMessage`이며, session은 이 값을 decode 하거나 relay
+API에 그대로 넘긴다.
 
 ### 6. Handler
 
@@ -751,13 +757,12 @@ configurer가 없으면 monitoring runner를 만들지 않는다.
 | Source | 등록 메서드 | source name 기준 |
 |--------|-------------|------------------|
 | socket | `addSocketEvents(...)` | channel 역할 logical name |
-| mesh | `addMeshNodeEvents(...)` | MeshName |
+| spot | `addSpotEvents(...)` | MeshName |
+| location runtime | `addLocationRuntimeEvents(...)` | location store logical name |
+| location peer·spot·actor·route | `addLocationPeerEvents(...)` 등 | location store logical name |
 
-socket과 spot source 이름은 startup 시점에 실제 runtime source와 대조한다. 이름이
-맞지 않으면 startup validation 오류다. registry source 이름은 embedded registry에서
-발생한 event의 label로 쓰이며, registry monitoring을 쓰려면 embedded registry가 같은
-application 안에 있어야 한다. registry와 spot polling interval은 `Duration.ZERO`보다
-커야 한다.
+socket과 spot source 이름은 startup 시점에 실제 runtime source와 대조한다. 이름이 맞지 않으면
+startup validation 오류다. snapshot을 주기적으로 읽는 source의 interval은 `Duration.ZERO`보다 커야 한다.
 
 ### 3. Handler 예시
 
@@ -767,14 +772,18 @@ public final class ProfileSocketMonitor
     implements ZLinkRuntimeEventHandler<ZLinkSocketEvent> {
 
     @Override
-    public void handle(ZLinkSocketEvent event) {
+    public CompletionStage<Void> handle(ZLinkSocketEvent event) {
+        return CompletableFuture.completedFuture(null);
     }
 }
 
 @Component
-public final class RegistryMonitor
+public final class LocationRuntimeMonitor
+    implements ZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent> {
 
     @Override
+    public CompletionStage<Void> handle(ZLinkLocationRuntimeEvent event) {
+        return CompletableFuture.completedFuture(null);
     }
 }
 ```
@@ -782,7 +791,7 @@ public final class RegistryMonitor
 source 이름은 logical name을 쓰는 편이 자연스럽다.
 
 - socket: `profile.server`, `profile.client`
-- registry: `registry`, `ops-registry`
+- location runtime: `location`, `ops-location`
 - spot: `stage-node`
 
 Spring adapter는 typed event handler를 호출한다. public 계약은

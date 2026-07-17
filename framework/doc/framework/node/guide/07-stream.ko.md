@@ -68,7 +68,7 @@ service 만 등록한다. stream socket, frame codec, session token alias 같은
 stream session 이 player actor 를 사용해야 하면 actor 생성과 보관은 framework actor
 manager 에 맡긴다. session 안에서 `Map<string, Actor>` 같은 저장소를 만들고 모든
 연결을 순회해 push 를 flush 하면 framework 의 actor/session 경계를 다시 application
-으로 끌어올리는 구조가 된다.
+으로 전달하는 구조가 된다.
 
 ## 2. connector
 
@@ -90,14 +90,31 @@ JSON은 connector core의 기본 codec이다. 기본 예시는
 구조적 payload를 보내면 connector가 packet 이름을 자동으로 얻을 수 없을 수 있으므로,
 그 경우에만 `.packetName(...)` 또는 `messageType` 인자를 명시한다.
 
-MessagePack이나 Protobuf가 필요하면 connector 전용 패키지가 아니라 framework codec extension
-package를 참조한다. 단, 현재 Node server STREAM runtime은 dispatch/send/reply 경로에서 JSON
-frame을 만든다. MessagePack/Protobuf codec 공유는 connector 측 표면에 적용되며, server stream
-codec 적용은 추후 범위다.
+MessagePack이나 Protobuf가 필요하면 server에서는 codec package의 `/framework` export를 사용한다.
+root builder의 codec registry에 extension을 한 번 등록하면 extension이 serializer와 STREAM codec을
+함께 등록한다. 이후 server의 dispatch/send/reply는 등록한 STREAM codec을 사용하고, 등록한 codec이
+없을 때 JSON을 기본값으로 사용한다.
+
+```ts
+import { zlinkMessagePackCodec } from '@zlink-systems/framework-codec-msgpack/framework';
+// Protobuf는 @zlink-systems/framework-codec-protobuf/framework의 zlinkProtobufCodec()을 등록한다.
+
+const framework = zlinkFramework();
+framework.codecs()
+  .use(zlinkMessagePackCodec()); // serializer와 server STREAM codec을 함께 등록한다.
+framework.addStreamNode('game.stream')
+  .bind('ws://127.0.0.1:9000')
+  .registerSession(GameSession);
+
+ZLinkModule.forRoot(framework.build());
+```
+
+두 기본 extension의 `register(...)`는 codec registrar의 `addStreamCodec(...)`을 호출한다. custom
+extension도 같은 등록 표면을 사용하므로 application이 server의 frame 작성 경로를 직접 바꾸지 않는다.
 
 connector도 framework처럼 **custom codec**을 끼울 수 있다. 사용자 codec은 framework
 extension과 `ZlinkStreamPayloadCodec`(`encode`/`decode` 구현)을 함께 제공한다. server
-framework 쪽 등록(`codecs.use(...)`)과 대칭이며, 두 표면의 전체 목록은
+framework 쪽 등록(`codecs().use(...)`)과 대칭이며, 두 표면의 전체 목록은
 [framework-api §9](../../spec/05-framework-api.ko.md#9-codec) 표를 본다.
 
 ```ts

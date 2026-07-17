@@ -208,8 +208,9 @@
 
 ### 0.7 선행 관계 (뒤집으면 깨진다)
 
-- **join orchestration**(§12.24) → **`yield` terminator**(§12.21) → **샘플의 `yield` 사용처**(SMP-X1)
-  — 뒤집으면 `yield` 없이 `async`로 흉내 내게 되어 **샘플이 보여 주려던 대비 자체가 사라진다.**
+- **join orchestration**(§12.24) → **샘플의 `yield` 사용처**(SMP-X1)
+  — `yield` terminator(§12.21)는 이미 구현됐다. 남은 join commit 순서를 먼저 바로잡아야 샘플이
+  source membership 보존과 명시적 turn 반납을 함께 검증할 수 있다.
 - **framework의 owner-lease join** → **store의 lease script·페이징** — store부터 고치면 아무도 안 쓴다.
 - **wire 계약(묶음 H)은 한 언어만 고치면 오히려 깨진다.** 결정은 §0.8의 2단계 프로토콜을 따른다.
 - 어떤 갭이 다른 갭 **덕분에** 가려져 있는 경우가 있다(`MON-A2` ← monitoring 결함). **그런 쌍은 함께 연다.**
@@ -262,7 +263,33 @@
 
 ## 1. 진행 체크리스트
 
-**전체 20건. 완료 20건.**
+**전체 29건. 완료 19건.**
+
+- [ ] **IMP-TS-03** (미구현) — TypeScript exact interface의 `TlsValidationFailed` 오류 코드가 package root의 `ZlinkStreamErrorCode`에 없다. 브라우저 WSS 인증서 검증 실패를 공통 §9의 닫힌 오류 의미로 투영하고 public declaration과 browser contract test를 맞춘다.
+
+- [ ] **IMP-ND-33 / §12.27** (미구현) — `ZLinkActorLocation`과 Redis row codec에
+  `spotGeneration`이 없다. 같은 Spot RID 재사용 뒤 이전 membership을 stale로 거부하도록 record,
+  lifecycle, in-memory·Redis round-trip과 stale 판정을 함께 구현해야 한다.
+- [ ] **IMP-ND-34 / §12.28** (미구현) — `ZLinkStreamNodeBuilder`와
+  `DefaultStreamNodeBuilder`에 `enableActorDispatch(meshName)`이 없고 stream registration도 MeshName을
+  보존하지 않는다. startup 검증과 mesh별 session Actor dispatch 격리를 함께 구현해야 한다.
+- [ ] **IMP-ND-35 / §12.29** (미구현) — exact `ZLinkActorTransferStore`와 공식 Redis
+  prepare·commit·abort·takeover 구현이 없다. process-local pending transfer를 durable participant set,
+  active transfer index와 recovery lease 원자 전이로 연결해야 한다.
+- [ ] **IMP-ND-36 / §12.31** (결함) — Actor transfer counter와 duration을 label 없이 commit callback에서만
+  기록한다. `mesh_name`과 닫힌 terminal outcome을 activation·실패마다 정확히 한 번 기록해야 한다.
+- [ ] **IMP-ND-37 / §12.32** (결함) — channel envelope decoder가 등록 serializer와 JSON·binary가 아닌
+  content-type을 오류로 끝내지 않고 `Buffer`로 handler에 전달한다. handler 호출 전에
+  `PayloadDecodeFailed`로 종료해야 한다.
+- [ ] **IMP-ND-38 / §12.33** (미구현) — exact `addRouteMesh(meshName)`과
+  `ZLinkMeshNodeBuilder` 중심 구성이 source·package에 적용되지 않았다. 기존 `addSpotMesh`,
+  `addClientServerChannel`, `addRouteMeshChannel`을 제거하고 sample·E2E를 통합 MeshNode 표면으로 옮겨야 한다.
+- [ ] **IMP-ND-39** (결함) — exact `ZLinkStreamSessionError`는 `Internal`과 `TransportError` 두 값을
+  요구하지만 source enum에는 `Internal`이 없고 계약 밖 `HandshakeFailed`가 남아 있다. public declaration,
+  stream session 오류 변환과 package contract test를 정식 두 값에 맞춘다.
+- [ ] **IMP-ND-40** (결함) — HTTP timeout을 일반 transport 실패처럼
+  `requestFailed(isRetriable=true)`로만 만들고 안정적인 원인 이름을 보장하지 않는다. timeout cause의
+  `name`을 `TimeoutError`로 고정하고 connection failure와 프로그램적으로 구분하는 contract test를 추가한다.
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -276,7 +303,7 @@
   - 근거: managed stream에 heartbeat·liveness 판정을 구현하고 session runtime이 같은 정책을 사용하게 했다. timeout을 검출하지 못하던 `stream-session-runtime` 게이트가 통과한다. 커밋 `a76571fd6`.
 - [x] **IMP-ND-05** (결함) — 54 §3.3-4
   - 근거: drain 완료가 location owner 정리 완료까지 기다리도록 lifecycle 책임을 연결했다. 조기 완료를 잡는 `drain-control`·`location-runtime` 게이트가 통과한다. 커밋 `0535310bb`.
-- [x] **IMP-ND-06** (결함) — 54 §3.4
+- [x] **IMP-ND-06** (결함) — 54 §3·§8
   - 근거: drain marker 기록 실패를 host 내부에서 재시도해 호출자에게 순서·재시도 정책을 노출하지 않았다. 일시 실패 뒤 marker가 빠지던 `drain-control` 게이트가 통과한다. 커밋 `9feb195b2`.
 - [x] **IMP-ND-07** (결함) — 05 §8.1·22 §2
   - 근거: handler filter scope를 dispatch scope와 함께 만들고 Nest adapter의 중복 scope 판단을 분리했다. request-scoped filter가 다른 context를 보던 channel/Nest 게이트가 통과한다. 커밋 `ab29fd6b5`.
@@ -313,10 +340,21 @@
   - 근거: HTTP client에 server용 async·yield·callback terminator와 execution scheduler seam을 연결하고 Nest 명명 DI 등록을 제공하되 standalone client 표면과 분리했다. async/yield turn 동작과 DI 연결이 없으면 실패하는 HTTP client·Nest 게이트가 통과한다. 커밋 `a7f40be66`.
 - [x] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
   - 근거: 동기 작업은 bounded worker-thread CPU 경계로, 비동기 작업은 thread를 점유하지 않는 I/O 경계로 분리하고 둘 모두 async·yield를 제공한다. 실행 종류·queue 포화·turn 유지와 반납을 검증하는 worker 게이트가 통과한다. 커밋 `64ec401c0`.
-- [x] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
-  - 근거: target commit 전에 caller turn에서 source leave를 준비하고 실패 시 복구한 뒤 성공 시에만 source를 정리하도록 join 순서를 바로잡았다. 이어 prepare·restore·commit의 시간적 상태를 `LocalActorSourceTransfer`에 모아 호출부의 mutable 분기를 제거했다. actor-manager·spot-manager 회귀 게이트와 전체 Node runtime gate가 통과한다. 코드 커밋 `0abc8afac`, POSD 리팩토링 커밋 `285df6af1`.
+- [ ] **§12.24** (결함) — caller-turn source transfer는 구현했지만
+  `local-first-actor-join-coordinator.ts:69-116`이 target admission·membership과 source leave를 마친 뒤
+  location을 기록한다. location CAS를 먼저 commit하고 CAS 실패에서 source membership을 유지하도록
+  순서를 바꿔야 한다.
+- [ ] **§12.27** (미구현) — Actor location의 Spot generation이 없다(`IMP-ND-33`).
+- [ ] **§12.28** (미구현) — STREAM Actor dispatch MeshName 설정과 격리가 없다(`IMP-ND-34`).
+- [ ] **§12.29** (미구현) — durable Actor transfer store와 crash recovery가 없다(`IMP-ND-35`).
+- [ ] **§12.31** (결함) — Actor transfer metric의 MeshName·terminal outcome이 없다(`IMP-ND-36`).
+- [ ] **§12.32** (결함) — 알 수 없는 수신 non-JSON content-type을 raw `Buffer`로 전달한다
+  (`IMP-ND-37`).
+- [ ] **§12.33** (미구현) — RouteMesh·MeshNode 통합 등록 표면과 old builder 제거가 적용되지 않았다
+  (`IMP-ND-38`).
 
-본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
+본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21은 해소됐고 §12.24가 남았다.**
+accepted join은 location CAS를 먼저 commit해야 하며, CAS 실패에서는 source membership을 보존해야 한다.
 
 ## 2. 구현 감사 상세
 
@@ -325,9 +363,9 @@
 | **IMP-ND-01** | 결함 | [54 §4·§5](../server/54-graceful-drain-handoff.ko.md): 순서는 marker → 신규 수용 차단 → **handoff** → in-flight 대기 → owner 정리. 기존 세션은 actor handoff를 거친다 | `runtime/host/index.ts:485-487` — `notifyServerDrain()`이 **handoff 앞에** 있다. 모든 세션을 먼저 끊는다. ⇒ SIGTERM 한 번에 **모든 클라이언트가 먼저 끊기고**, bound actor는 세션을 잃은 뒤에야 handoff된다. DRAIN-003·DRAIN-013이 통과할 수 없다 |
 | **IMP-ND-02** | 미구현 | [54 §3.1·§4-2](../server/54-graceful-drain-handoff.ko.md): drain 중 신규 수용을 거부한다(`RequestRejected`/`ActorCreateRejected`) | **admission gate가 없다.** `ready` 플래그를 읽는 곳이 `isReady()` 하나뿐이고, spot create·actor create·신규 STREAM 연결·draining 노드로의 join 어디에도 검사가 없다. `RequestRejected`는 **런타임 코드에서 한 번도 생성되지 않는다** |
 | **IMP-ND-03** | 결함 | [03 §5.3](../03-message-model.ko.md): `Error`는 **비어 있지 않은 `error-code`**를 갖고, 실패를 `RequestFailed`로 뭉개지 않는다 | `runtime/channels/channel-envelope.ts:134-150` — 오류 reply 인코더가 `message: string`만 받아 **kind를 버리고** `errorCode:'ZLinkRouteHandlerError'`를 **하드코딩**한다. 디코더(:157-159)는 `errorCode`를 **읽지도 않고** `ZLinkConfigurationException`을 던진다. ⇒ 호출자에게 `kind`도 `isRetriable`도 없다. **오류 분류가 wire에서 통째로 소실**된다 |
-| **IMP-ND-04** | 미구현 | [54 §7.1](../server/54-graceful-drain-handoff.ko.md): 서버는 1초 ping / 5초 pong timeout / 30초 idle timeout | **liveness 루프가 없다.** ping도 pong 추적도 idle 타이머도 없다. `protocol.ts:82-97`은 reason 바이트를 **`4`(server_drain)로 하드코딩**한다. ⇒ 전원이 뽑힌 클라이언트(half-open TCP)를 **영원히 감지 못 한다.** 세션·bound actor·binding·location row가 전부 남는다 |
-| **IMP-ND-05** | 결함 | [54 §3.3-4](../server/54-graceful-drain-handoff.ko.md): row/lease 정리가 **성공한 뒤에만** `Drained`로 전이한다 | `runtime/locations/runtime.ts:156-173` — 정리 실패를 **삼킨다.** 그래서 Redis가 죽어 있어도 drain이 `Drained`를 반환한다. `OwnerCleanupFailed`는 **생성되는 곳이 없다.** ⇒ 죽은 노드의 lease와 row가 TTL까지 남아 peer들이 계속 dial한다 |
-| **IMP-ND-06** | 결함 | [54 §3.4](../server/54-graceful-drain-handoff.ko.md): 마커 게시는 **deadline까지 재시도**한다 | `runtime/host/index.ts:476-484` — **한 번만** 게시하고 실패하면 즉시 force-stop. 전파 대기도 없다. ⇒ SIGTERM 순간의 일시적 store 오류 하나가 **모든 방과 actor를 강제 종료**시킨다 |
+| **IMP-ND-04** | 미구현 | [54 §7.1](../server/54-graceful-drain-handoff.ko.md): 서버는 1초 ping / 5초 pong timeout / 30초 idle timeout | **liveness 루프가 없다.** ping도 pong 추적도 idle 타이머도 없다. `protocol.ts:82-97`은 reason 바이트를 **`4`(server_drain)로 하드코딩**한다. ⇒ 전원이 차단된 클라이언트(half-open TCP)를 **감지하지 못한다.** 세션·bound actor·binding·location row가 전부 남는다 |
+| **IMP-ND-05** | 결함 | [54 §3.3-4](../server/54-graceful-drain-handoff.ko.md): row/lease 정리가 **성공한 뒤에만** `Drained`로 전이한다 | `runtime/locations/runtime.ts:156-173` — 정리 실패를 **무시한다.** 그래서 Redis를 사용할 수 없어도 drain이 `Drained`를 반환한다. `OwnerCleanupFailed`는 **생성되는 곳이 없다.** ⇒ 종료한 노드의 lease와 row가 TTL까지 남아 peer들이 계속 dial한다 |
+| **IMP-ND-06** | 결함 | [54 §3·§8](../server/54-graceful-drain-handoff.ko.md): 마커 게시는 **deadline까지 재시도**한다 | `runtime/host/index.ts:476-484` — **한 번만** 게시하고 실패하면 즉시 force-stop. 전파 대기도 없다. ⇒ SIGTERM 순간의 일시적 store 오류 하나가 **모든 방과 actor를 강제 종료**시킨다 |
 | **IMP-ND-07** | 결함 | [05 §8.1](../05-framework-api.ko.md#81-handler-filter)·[22 §2](../server/22-actor-model.ko.md): **filter는 그 dispatch의 DI scope에서 resolve한다. handler와 같은 scope다** | `runtime/channels/channel-dispatch-services.ts:67-81` — filter를 **싱글턴으로 한 번** resolve해 프로세스 수명 내내 재사용한다. handler는 dispatch마다 새 scope다. ⇒ request-scoped filter가 **resolve되지 않고**, 필드에 상태를 두는 filter는 동시 dispatch 간에 **조용히 공유**된다 |
 | **IMP-ND-08** | 미구현 | [22 §6·§6.1](../server/22-actor-model.ko.md): 호출자는 resolver나 actor manager로 **remote `ActorRef`**를 얻는다 | `runtime/actors/index.ts:114-121` — `find()`가 **로컬 in-process map만** 본다. `ensure()`는 placement 인자를 무시하고 로컬 생성으로 간다. ⇒ **다른 노드의 actor에 메시지를 보낼 public 경로가 Node에 없다** |
 | **IMP-ND-09** | 미구현 | [51](../server/51-runtime-metrics.ko.md)·[52 §5](../server/52-message-flow-tracing.ko.md#5-log-mode): trace가 off여도 **metric/counter는 남는다** | `zlink.channel.messages.dropped` 등 **7개 계기가 아예 없다.** ⇒ trace를 끄면 drop이 **완전히 보이지 않는다** |
@@ -388,6 +426,8 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 - [x] **IMP-TS-02** (결함) — **TypeScript connector**: handler 없는 수신 메시지를 **버려서** `waitFor`가 이미 도착한 메시지를 못 받는다
   - 근거: handler 없는 메시지를 이름별 unread queue에 유지하고 handler가 등록되면 전달 가능한 항목만 drain하도록 수신 책임을 한 모듈에 가뒀다. 메시지가 먼저 도착한 뒤 등록한 `waitFor`가 timeout으로 실패하던 connector JSON 게이트가 통과한다. 커밋 `4eebaa1d3`.
 
+- [ ] **IMP-TS-03** (미구현) — TypeScript exact interface의 `TlsValidationFailed` 오류 코드가 package root의 `ZlinkStreamErrorCode`에 없다. 브라우저 WSS 인증서 검증 실패를 공통 §9의 닫힌 오류 의미로 투영하고 public declaration과 browser contract test를 맞춘다.
+
 ### 상세
 
 | ID | 계약 | 구현이 하는 일 |
@@ -397,7 +437,7 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 | **IMP-ND-13** | [50 §3.2](../server/50-runtime-monitoring.ko.md): **한 handler가 예외를 던져도 다음 handler를 계속 실행한다.** monitoring loop를 깨지 않는다 | `runtime/diagnostics/index.ts:63-71` — `catch { console.error(...); return; }`. 게다가 handler를 **타입 구분 없이 한 리스트**에 등록해 모든 이벤트를 모든 handler에 보낸다. ⇒ 예상 못 한 이벤트 타입에 **처음 터지는 handler 하나가 그 뒤 전부를 영구히 굶긴다** |
 | **IMP-ND-14** | [53 §5](../server/53-flow-correlation.ko.md): **flow 단위 일관 샘플링** — `flow_id` 해시로 결정해 한 흐름은 전부 남거나 전부 빠진다 | `message-flow.ts:172-183` — `sampleCounter % stride`. ⇒ `sample_rate=0.1`이면 한 흐름의 **10%만 무작위로** 남아 **어떤 흐름도 끝까지 추적되지 않는다.** `53 §5`가 막으려던 바로 그 실패다 |
 | **IMP-ND-15** | [51 §4.2](../server/51-runtime-metrics.ko.md): `kind` 라벨은 `entry`/`user`로 나뉜다 | `spot-activation-registry.ts:104-105,132-133` — `{kind:'user'}` **하드코딩**. Entry Spot emit 지점이 없다. ⇒ `spot.count{kind="entry"}`가 **존재하지 않아** Entry Spot 큐 적체(매치메이킹 병목 신호)를 볼 수 없다 |
-| **IMP-ND-16** | [11 §4](../server/11-channel-messaging.ko.md): server에 request/send handler 없음, subscriber에 publish handler 없음은 **설정 오류**. **모든 설정 오류는 host 시작 전에 실패한다** | `RegistrationValidators.ts:205-216` — **반대 방향만** 검사한다(handler ⇒ capability). 그리고 `channel-runtime-lifecycle.ts:174-181`이 handler 0개면 `continue`해서 **ROUTER를 아예 만들지도 bind하지도 않는다.** ⇒ handler를 다른 이름으로 묶는 오타 하나에 host가 **healthy로 기동하고 `:5001`에 아무것도 안 붙는다.** 로그도 metric도 없다. **갭 문서 §4.13이 이 행을 해소했다고 적고 있는데, 아니다** |
+| **IMP-ND-16** | [11 §4](../server/11-channel-messaging.ko.md): server에 request/send handler 없음, subscriber에 publish handler 없음은 **설정 오류**. **모든 설정 오류는 host 시작 전에 실패한다** | `RegistrationValidators.ts:205-216` — **반대 방향만** 검사한다(handler ⇒ capability). 그리고 `channel-runtime-lifecycle.ts:174-181`이 handler 0개면 `continue`해서 **ROUTER를 아예 만들지도 bind하지도 않는다.** ⇒ handler를 다른 이름으로 묶는 오타 하나에 host가 **healthy로 기동하지만 `:5001` endpoint가 설정되지 않는다.** 로그도 metric도 없다. **갭 문서 §4.13이 이 행을 해소했다고 적고 있는데, 아니다** |
 | **IMP-ND-17** | [10 §4](../server/10-channel-topology.ko.md): channel 종류는 **배타적**이다. 같은 이름을 두 번 등록하는 것도 **설정 오류** | `RegistrationBuilders.ts:154-162,192-195` — `channels[name] ??= {}`. 두 번 등록하면 **병합**되고, client/server + fanout을 같은 이름에 걸면 **네 역할이 다 켜진 채** 검증을 통과한다. `addSpotMesh`는 중복을 거부하므로 **패턴은 이미 알고 있었다** |
 | **IMP-ND-18** | [10 §5.2](../server/10-channel-topology.ko.md) | `channel-autoconnect.ts:95-165` — 수동 endpoint가 있어도 reconcile 루프를 만든다. SPOT 역할은 이 규칙을 **지키므로**(`spot-node-autoconnect.ts:109-150`) **두 표면이 서로 어긋난다.** Java(IMP-JV-16)와 같은 결함 |
 | **IMP-ND-19** | [25 §4.1](../server/25-stage-wrapper-on-spot.ko.md) | `spot-timer.ts:299-320` — 검증이 활성화 시점의 `add()`에만 있다. ⇒ `periodMs: 0`이 healthy로 기동하고 **모든 방 생성이 실패**한다 |
@@ -448,10 +488,10 @@ location runtime event kind의 닫힌 집합은 `StatusChanged`, `TopologyChange
 | **IMP-ND-25** | — | 쓰는 곳 3, 읽는 곳 0. **갭 문서 §4.1이 이 행을 닫힌 것으로 적고 있는데, 아니다** |
 | **IMP-ND-26** | [21 §close](../server/21-mesh-node.ko.md) | `spot-activation-registry.ts:118-121`이 `canClose()`를 확인하고 close를 등록하는데, **close 본문은 spot의 직렬 큐에 post**된다(`spot-activation.ts:244-255`). 그 줄에 **이미 큐잉된 join이 먼저 실행**되어 `joinedActors.size === 1`이 되고, 뒤이어 도는 close 작업은 **`canClose()`를 다시 확인하지 않는다.** ⇒ timer·native spot·location row를 **무조건 정리한다** |
 | **IMP-ND-27** | [22 §destroy](../server/22-actor-model.ko.md): 같은 actor instance에 대한 **중복 destroy는 성공으로 끝난다** — 파괴가 **끝난 뒤** 성공이지, 그 전이 아니다 | `runtime/actors/index.ts:255-258` — `beginDestroy()`가 `undefined`를 반환하면(=이미 destroying) **즉시 성공으로 resolve**한다. ⇒ A가 native destroy를 await하는 동안 B가 destroy를 부르면 **B는 곧바로 성공**을 받는다. B의 호출자가 "없어졌구나" 하고 같은 id로 `createActor`를 하면 **같은 state 객체를 돌려받고**, 뒤늦게 끝난 A가 `states.delete()`를 실행해 **방금 만든 actor의 상태를 지운다.** 게다가 `releaseActor`가 던지면 `resetDestroying()`만 하고 `nativeActorRef`는 **남겨 두어** 재시도가 이미 파괴된 native ref로 또 부른다 → **destroy가 영영 성공할 수 없고** location row가 lease 만료까지 샌다. `.NET`은 두 번째 호출자가 **공유 teardown에 합류해 실제 완료를 기다린다** |
-| **IMP-ND-28** | [21](../server/21-mesh-node.ko.md)·[54 §6](../server/54-graceful-drain-handoff.ko.md) | `spot-activation-registry.ts:183-207` — 소유자의 `create` 클로저가 **첫 호출자의 `signal`**을 캡처하고, 대기자들은 `pending.ready`의 거부를 물려받는다. `.NET` IMP-DN-18과 **같은 경합** |
+| **IMP-ND-28** | [21](../server/21-mesh-node.ko.md)·[54 §6](../server/54-graceful-drain-handoff.ko.md) | `spot-activation-registry.ts:183-207` — 소유자의 `create` 클로저가 **첫 호출자의 `signal`**을 캡처하고, 대기자들은 `pending.ready`에서 동일한 거부 결과를 받는다. `.NET` IMP-DN-18과 **같은 경합** |
 | **IMP-ND-29** | [52 §9](../server/52-message-flow-tracing.ko.md) | `stream-session-runtime.ts:200,236,281` — `?? decodedHeader.requestSeq?.toString()` |
 | **IMP-ND-30** | [40 §3·§8.2](../server/40-location-runtime.ko.md) | `contracts/Locations/Options.ts:5,13` — 읽는 곳 0. `framework-locations-redis/src/store.ts:369-373`이 `pageSize <= 0`이면 `SMEMBERS`로 **전체**를 읽는다 |
-| **IMP-ND-31** | [40 §6.1](../server/40-location-runtime.ko.md) | `contracts/Locations/Options.ts:6,14` — **어느 패키지에도** 읽는 곳이 없다 |
+| **IMP-ND-31** | [40 §2.4](../server/40-location-runtime.ko.md) | `contracts/Locations/Options.ts:6,14` — **어느 패키지에도** 읽는 곳이 없다 |
 | **IMP-ND-32** | [10 §6](../server/10-channel-topology.ko.md)·[21 §6](../server/21-mesh-node.ko.md)·[40 §12](../server/40-location-runtime.ko.md)·[41 §8](../server/41-location-store-redis.ko.md) | channel·SpotNode builder에 allocation group/slot count/prefix 표면이 없고, in-memory·Redis store에 원자적 slot acquire/renew/release capability가 없다. startup 전 할당·bind 전 routing id 적용·fencing·결과 provider도 모두 미구현이다 |
 
 ## 교차 언어 결함 — 이 언어에서 무엇을 고치나
@@ -699,14 +739,14 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: 8개 config-local `fetch` wrapper와 browser용 복제 client factory를 제거하고, E2E 공통 URL·3초 timeout 정책 아래 Node와 browser가 같은 `@zlink-systems/http-client` 공개 표면을 사용하게 했다. 수정 전 raw `fetch`·지역 wrapper를 검출한 채택 게이트가 실패했지만 이후 raw 경로 0건, HTTP·채택 계약 테스트 38/38, 관련 client build 9개와 `TA-A1`·`ST-A1`·`SM-B2`·`SM-G1`·`RM-A1`·`RM-B1`·`SF-A1`·`PS-A1`·`PS-A4`·`PS-B2`·`RC-A1`·`RL-A1`·`MON-A1`이 통과했다. URL 결합·browser proxy·transport 선택을 각각 한 모듈에 가두어 시나리오의 transport 지식과 복제 정책을 없앴다. 커밋 `f29d47f66`.
 - [x] **E2E-ND-08** (결함) — 시나리오 파일 **138개 중 0개**에 머리말 주석이 없다
   - 근거: 모든 기존 scenario 파일 첫머리에 검증 의도를 적고 common 문서 heading과 대응시키는 단일 header gate를 추가해 설명 지식의 중복 drift를 막았다. 139개 누락으로 실패하던 gate가 139개 전부를 확인하며 통과했다. 커밋 `5bf207ab5`.
-- [x] **E2E-ND-09** (결함) — 낡은 디렉토리 이름과 죽은 `dist/`
+- [x] **E2E-ND-09** (결함) — 낡은 디렉토리 이름과 사용되지 않는 `dist/`
   - 근거: Git에 추적되지 않는 로컬 `dist/`, 현재 정본과 일치하는 `RegistryMessaging`·`AutomaticTurnDispatch` 이름, §2.2가 이름 일치까지 요구하지 않는 `DiscoveryRegistryHa`는 갭에서 제외했다. 실제 계약을 어긴 10개 runner의 `logs/`를 실행별 `log/`로 통일하고, 각 config에 흩어진 ignore 정책은 E2E 루트로 모았다. 10개 runner에서 실패하던 log-directory 게이트가 통과하고 실제 `TA-A1`도 새 경로에서 통과했다. 커밋 `faede5ca0`.
 - [x] **E2E-ND-10** (결함) — `START_ORDER` 축이 config 2개에만 있다
   - 근거: Config 1·2·9 runner가 forward/reverse/fixed-seed shuffle을 같은 인자로 받고 기본 전체 sweep이 변형을 실제 실행한다. 누락 config·미실행 축으로 실패하던 start-order gate가 통과한다. 커밋 `8e34f6bb2`.
 - [x] **E2E-ND-11** (결함) — SpotService `all`이 **문서에 없는 `SM-Q9`를 기본 게이트에 넣는다**
   - 근거: 문서 밖 보조 시나리오 `SM-Q9`를 기본 `all` 목록에서 분리해 정식 scenario suite가 계약 목록만 소유하게 했다. 기본 목록에 Q9가 있으면 실패하는 gate가 통과한다. 커밋 `6d2f74ab5`.
 - [x] **E2E-ND-18** (결함) — `RM-B2`가 scale-in 동안 트래픽을 끊고 **남은 provider를 직접 호출한다**
-  - 근거: 살아 있는 consumer 경로에서 scale-in 전후 연속 트래픽을 보내고 provider 선택은 앱 topology가 담당하게 했다. 직접 호출·트래픽 공백을 잡는 scale-in gate가 통과한다. 커밋 `fac1af0c6`.
+  - 근거: 실행 중인 consumer 경로에서 scale-in 전후 연속 트래픽을 보내고 provider 선택은 앱 topology가 담당하게 했다. 직접 호출·트래픽 공백을 잡는 scale-in gate가 통과한다. 커밋 `fac1af0c6`.
 - [x] **E2E-ND-19** (결함) — Config 1 negative가 **public error kind를 전혀 분류하지 않는다**
   - 근거: missing packet·잘못된 payload를 public framework error kind로 분류하고 channel pipeline의 변환을 공통 경계로 모았다. kind 단언이 없으면 실패하는 public-errors gate와 channel client gate가 통과한다. 커밋 `36f437217`.
 - [x] **E2E-ND-20** (미구현) — `RC-A6`가 세 startup-invalid 축 중 **duplicate 하나만** 검증한다
@@ -717,7 +757,7 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: missing handler 응답의 wire kind `Error=5`와 code/message를 모두 단언하고 envelope encoding을 공통 구현에서 고쳤다. 필드 하나라도 없으면 실패하는 track-D gate가 통과한다. 커밋 `fab02f2df`.
 - [x] **E2E-ND-23** (결함) — `RL-D5`가 수 분 soak가 아니라 **단발 Promise burst**다
   - 근거: mixed workload를 지속 시간 동안 pace하고 동적으로 바뀌는 provider evidence를 관측하도록 soak driver를 분리했다. 단발 burst·고정 provider로 실패하던 track-D gate와 RL-D5 실행이 통과한다. 커밋 `6dbf73bf9`, `c272ce908`, `9ea78fecb`.
-- [x] **E2E-ND-24** (**가짜 통과**) — `SF-B2`가 신규 outbound connect를 만들지 않아 **죽은 `storeFailureGrace`를 잡지 못한다**
+- [x] **E2E-ND-24** (**가짜 통과**) — `SF-B2`가 신규 outbound connect를 만들지 않아 **적용되지 않는 `storeFailureGrace`를 검출하지 못한다**
   - 근거: store 장애 중 새 peer를 게시해 신규 outbound connect가 grace 정책으로 차단되는 실제 조건을 만들었다. 새 dial을 시도하지 않던 gate가 실패한 뒤 SF-B2와 contract gate가 통과했다. 커밋 `16b06351a`.
 - [x] **E2E-ND-25** (결함) — `SF-D1`·`SF-D2`가 store stop/restart 대신 **pause/unpause**만 한다
   - 근거: `SF-D2` client의 4초 대기가 3초 scenario marker budget을 넘겨 runner가 먼저 모든 프로세스를 정리하던 회귀를 확인했다. 외부 Redis의 장기 장애 시간을 runner가 소유하도록 옮기고 client는 지속 request와 복구 결과만 검증하게 했다. 이 충돌을 고정한 계약 게이트가 실패에서 통과로 바뀌고 실제 `SF-D1`·`SF-D2`가 빈 Redis stop/restart 전 구간을 통과했다. 커밋 `0a9c1f084`, `09adaedb0`.
@@ -747,19 +787,19 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **E2E-ND-01** | [e2e §2·§2.2·§2.4·§2.5](../../common/e2e/README.ko.md): 역할 서버 + 시나리오 ID당 클라이언트 파일 하나. **test-runner로 대체하지 않는다**. §5: e2e는 in-process contract test가 **아니다** | `e2e/ObservabilityOps/`에 **`run_e2e.sh`와 `feature-map.ko.md` 둘뿐이다.** `Server/`도 `Client/`도 `Shared/`도 없다. runner는 **폐기된 config-8(ATD)을 재실행**해 로그를 grep하고, **in-process contract test**를 돌린 뒤, 이렇게 통과시킨다 — `for scenario in OBS-A1 … ; do echo "$scenario … PASS"; done`. **`echo`가 검증이다.** 그리고 feature-map은 13개를 전부 "구현"으로 적는다. **[gaps §4.7]이 "OBS-A1~C5 evidence와 함께 통과했다"고 기록하고 있는데 — 거짓이다** |
-| **E2E-ND-02** | [config-1 RM-A1(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): live-owner peer row와 **두 provider로의 연결 상태**를 확인한다 | `RegistryMessaging/Server/LocationProbe/Endpoints/location-probe-endpoints.ts:24-28` — 모든 row를 `serviceRole: Router`, `state: Ready` **리터럴로** 매핑한다. 클라이언트는 `serviceRole === Router && state === Ready`를 단언한다. ⇒ **절대 실패할 수 없는 단언이다.** 살아 있는 검증은 `rows >= 2` 하나뿐. `ResilienceLifecycle/Server/TopologyProbe`도 `state: Ready`를 하드코딩한다. 게다가 이 probe 서버들은 **application 역할이 없어** §2.4가 금지하는 형태다 |
+| **E2E-ND-02** | [config-1 RM-A1(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): live-owner peer row와 **두 provider로의 연결 상태**를 확인한다 | `RegistryMessaging/Server/LocationProbe/Endpoints/location-probe-endpoints.ts:24-28` — 모든 row를 `serviceRole: Router`, `state: Ready` **리터럴로** 매핑한다. 클라이언트는 `serviceRole === Router && state === Ready`를 단언한다. ⇒ **절대 실패할 수 없는 단언이다.** 실제 입력을 검사하는 조건은 `rows >= 2` 하나뿐이다. `ResilienceLifecycle/Server/TopologyProbe`도 `state: Ready`를 하드코딩한다. 게다가 이 probe 서버들은 **application 역할이 없어** §2.4가 금지하는 형태다 |
 | **E2E-ND-11** | [e2e README §2.7:371-375](../../common/e2e/README.ko.md): 기본 실행은 **해당 config가 정의한 구현 시나리오**를 순차 실행한다. [config-2 §5:654-658](../../common/e2e/config-2-spot-service.ko.md): Track A~G가 계약 범위다 | `SpotService/Client/main.ts:110,112`가 문서에 없는 `SM-Q9`를 등록하고, `run_e2e.sh:158-166`이 `all`의 child group으로 **항상 실행**한다. `config-2` 문서 전체에 `SM-Q9`는 0건이다 |
 | **E2E-ND-18** | [config-1 RM-B2:151-159](../../common/e2e/config-1-location-messaging.ko.md): 지속 request 중 B를 정상 종료하고, in-flight가 reply/public error로 끝나며 consumer가 A로 수렴해야 한다 | `RegistryMessaging/Client/Scenarios/rm-b2-scale-in-scenario.ts:16-21,34-48` — scale-in 전후 요청을 consumer가 아니라 **provider A HTTP endpoint에 직접** 보낸다. B 종료 뒤 1초 sleep 동안 요청은 0개다. 따라서 stale endpoint 반복 timeout과 pending 정리를 관측할 수 없다 |
-| **E2E-ND-19** | [config-1 RM-C5:204-212](../../common/e2e/config-1-location-messaging.ko.md): request error reply와 observer `HandlerMissing`/`ReplyError`, send의 `HandlerMissing`/`Drop`을 구분한다. [RM-C8:230-238](../../common/e2e/config-1-location-messaging.ko.md): 한도 초과를 정해진 public error로 분류한다 | `RegistryMessaging/Client/Scenarios/rm-c5-missing-packet-scenario.ts:6-14`은 `failed` bool과 packet-name 포함만 보고 reason/action을 검사하지 않는다. `rm-c8-payload-round-trip-scenario.ts:23-27`도 oversized 결과의 `failed === true`만 본다. timeout·decode 오류·앱이 만든 bool도 모두 같은 성공이다 |
+| **E2E-ND-19** | [config-1 RM-C5:204-212](../../common/e2e/config-1-location-messaging.ko.md): request error reply와 observer `no_handler`/`reply_error`, send의 `no_handler`/`drop`을 구분한다. [RM-C8:230-238](../../common/e2e/config-1-location-messaging.ko.md): 한도 초과를 정해진 public error로 분류한다 | `RegistryMessaging/Client/Scenarios/rm-c5-missing-packet-scenario.ts:6-14`은 `failed` bool과 packet-name 포함만 보고 reason/action을 검사하지 않는다. `rm-c8-payload-round-trip-scenario.ts:23-27`도 oversized 결과의 `failed === true`만 본다. timeout·decode 오류·앱이 만든 bool도 모두 같은 성공이다 |
 | **E2E-ND-20** | [config-4 RC-A6:103-111](../../common/e2e/config-4-registration-codec.ko.md): duplicate kind+packet, 잘못된 handler group, 미지원 channel kind 조합을 각각 startup에서 거부한다 | `RegistrationCodec/Client/Scenarios/InvalidRegistrationScenario.ts:5-13`과 `feature-map.ko.md:10`은 **duplicate registration 하나만** 만들고 검사한 뒤 RC-A6 전체를 `구현`으로 표시한다 |
 | **E2E-ND-21** | [config-5 RL-D1:214-222](../../common/e2e/config-5-resilience-lifecycle.ko.md): 많은 subscriber/consumer에 높은 **fanout** 부하를 주고 누락·붕괴를 본다 | `ResilienceLifecycle/Client/Scenarios/rl-d1-high-fanout-scenario.ts:7-17`은 한 consumer HTTP endpoint에 channel request 120개를 병렬 전송할 뿐 publish/subscriber/fanout이 0건이다. evidence도 `:20-26`에서 두 provider 중 하나의 marker 하나만 요구한다 |
 | **E2E-ND-22** | [config-5 RL-D4:244-252](../../common/e2e/config-5-resilience-lifecycle.ko.md): wire `message-kind=Error(5)`와 camelCase `errorCode`/`errorMessage`를 확인하고 성공 `Response(2)`와 구분한다 | `ResilienceLifecycle/Client/Scenarios/rl-d4-missing-request-handler-scenario.ts:7-19`은 앱 DTO의 `failed` bool과 server marker의 packet name만 본다. raw/error header·message kind·error code/message 검사가 모두 없다 |
 | **E2E-ND-23** | [config-5 RL-D5:254-262](../../common/e2e/config-5-resilience-lifecycle.ko.md): 동시 N client가 request/send를 **수 분간 지속**하고 latency drift와 종료 후 pending/정리를 관측한다 | `ResilienceLifecycle/Client/Scenarios/rl-d5-mixed-burst-scenario.ts:7-32`은 request 60개와 send 60개를 한 번 `Promise.all`하고 marker 하나씩만 기다린다. 지속 시간·latency·drift·pending·resource 검사가 없다 |
 | **E2E-ND-24** | [config-6 SF-B2:109-117](../../common/e2e/config-6-store-failure-recovery.ko.md): grace 초과 중 기존 연결은 유지하되, **장애 중 재시작한 provider 같은 새 outbound connect는 중단**돼야 한다 | `DiscoveryRegistryHa/run_e2e.sh:214-219`은 topology를 전부 띄운 뒤 Redis만 제거한다. `Client/Scenarios/SfB2StoreFailureGraceScenario.ts:12-24`도 이미 연결된 A/B로 request를 반복할 뿐 새 provider를 시작하지 않는다. 따라서 `IMP-ND-31`처럼 `storeFailureGrace`를 아예 읽지 않아도 결과가 같다 |
-| **E2E-ND-25** | [config-6 SF-D1:150-158](../../common/e2e/config-6-store-failure-recovery.ko.md)·[SF-D2:160-168](../../common/e2e/config-6-store-failure-recovery.ko.md): store를 정지했다 **재기동**하고 재등록→heartbeat 유예→빠진 target disconnect 순서를 검증한다 | 닫힘. runner가 Redis stop/restart와 4초 장기 장애 시간을 소유하고, client는 장애 중 지속 request와 복구 뒤 살아 있는 provider 유지 및 빠진 target 제거를 검증한다. 실제 `SF-D1`·`SF-D2`가 모두 통과했다 |
+| **E2E-ND-25** | [config-6 SF-D1:150-158](../../common/e2e/config-6-store-failure-recovery.ko.md)·[SF-D2:160-168](../../common/e2e/config-6-store-failure-recovery.ko.md): store를 정지했다 **재기동**하고 재등록→heartbeat 유예→빠진 target disconnect 순서를 검증한다 | 닫힘. runner가 Redis stop/restart와 4초 장기 장애 시간을 소유하고, client는 장애 중 지속 request와 복구 뒤 사용 가능한 provider 유지 및 빠진 target 제거를 검증한다. 실제 `SF-D1`·`SF-D2`가 모두 통과했다 |
 | **E2E-ND-26** | [config-6 SF-C2:131-146](../../common/e2e/config-6-store-failure-recovery.ko.md): `Draining=true` 게시, 신규 배정 제외, 30초 deadline 안 정상 종료, terminal 직후 row 제거를 crash/lease 만료와 구분한다 | `DiscoveryRegistryHa/run_e2e.sh:229-233`은 `/shutdown` 호출 직후 client를 실행하고, `Client/Scenarios/SfC2GracefulShutdownScenario.ts:11-23`은 row 부재와 A reply만 본다. draining row·신규 배정·process exit/deadline·강제 종료 여부를 한 번도 읽지 않는다 |
 | **E2E-ND-27** | [config-7 MON-A1:57-65](../../common/e2e/config-7-monitoring.ko.md): 연결/해제 kind뿐 아니라 source name과 payload `RemoteAddr`, 있으면 `RoutingId`까지 확인한다 | `RuntimeMonitoring/Client/Scenarios/mon-a1-socket-events-scenario.ts:12-29`은 source와 connected/disconnected kind만 찾는다. `RemoteAddr`와 `RoutingId` 문자열은 시나리오 전체에 0건이다 |
-| **E2E-ND-28** | [config-7 MON-A2:67-75](../../common/e2e/config-7-monitoring.ko.md): `svc-b`를 **추가/종료**해 peer row를 바꾸고, 살아 있는 `svc-a`의 projection payload가 실제 diff를 반영하는지 본다 | `RuntimeMonitoring/Client/Scenarios/mon-a2-location-runtime-events-scenario.ts:6-26`은 상태 변경 동작 없이 기존 evidence에서 `TopologyChanged`/`ServiceSummaryChanged`와 count nonzero를 기다린다. startup 때 event 하나만 있어도 통과하며 add/stop diff·before/after payload가 없다 |
+| **E2E-ND-28** | [config-7 MON-A2:67-75](../../common/e2e/config-7-monitoring.ko.md): `svc-b`를 **추가/종료**해 peer row를 바꾸고, 실행 중인 `svc-a`의 projection payload가 실제 diff를 반영하는지 본다 | `RuntimeMonitoring/Client/Scenarios/mon-a2-location-runtime-events-scenario.ts:6-26`은 상태 변경 동작 없이 기존 evidence에서 `TopologyChanged`/`ServiceSummaryChanged`와 count nonzero를 기다린다. startup 때 event 하나만 있어도 통과하며 add/stop diff·before/after payload가 없다 |
 | **E2E-ND-29** | [config-7 MON-A4:87-95](../../common/e2e/config-7-monitoring.ko.md): (a) 같은 rid·다른 endpoint failover와 (b) drain/restore를 모두 일으키고 socket/location projection 전이를 확인한다 | `RuntimeMonitoring/Client/Scenarios/mon-a4-availability-transition-scenario.ts:7-44`은 drain/restore만 실행한다. failover는 0건이고, topology 단언도 `TopologyChanged` line 수가 `>= 2`인지 볼 뿐 각 line의 peer endpoint/상태가 전후 동작과 일치하는지 비교하지 않는다 |
 | **E2E-ND-30** | [e2e README §3.1:487-497,546-547](../../common/e2e/README.ko.md): Config 2·9 P0은 **route mesh 없음 × session/spot 분리 배치**를 우선 적용한다 | **갭 아님.** Config 2의 `SM-F6`은 multi-node 역할을 별도 프로세스로 실행하고 `--spot-only true`로 SpotMesh만 등록한다. Config 9도 Actor·Session·Caller 역할을 별도 프로세스로 실행하고 각 역할이 SpotMesh만 등록한다. 현재 runner에서 `SM-F6`와 `TA-A1`을 각각 재실행해 통과를 확인했다 |
 | **E2E-ND-31** | [e2e README §3.1:514-519](../../common/e2e/README.ko.md): 응답 actor ref는 node rid가 비어 있지 않고 **generation > 0**인 concrete snapshot이어야 한다 | Node E2E client의 generation 비교는 값 보존 또는 존재만 본다. 대표적으로 `SpotService/Client/Scenarios/sm-d15-scenario.ts:30-55`는 `generation !== undefined`, `ToActorMessaging/Client/main.ts:143-160`은 bind reply와 입력의 동등성만 확인한다. `generation > 0` 단언은 전체 `e2e/*/Client`에 0건이라 양쪽이 0이어도 통과한다 |
@@ -776,7 +816,7 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | **SMP-ND-02** (결함) | [31 §10.2:482-488](../server/31-session-actor-dispatch.ko.md): **session context는 packet handler registry를 갖는다.** session은 `Configure()` 안에서 handler를 등록하고(같은 packet name 중복 등록은 startup 오류), dispatch callback이 그 registry의 `TryHandle`로 위임한다. [§22:1049](../server/31-session-actor-dispatch.ko.md)는 **`packet name switch`를 명시적 anti-pattern**으로 올려 두고 "실행 문맥별 handler registry와 message type metadata로 분리한다"고 못박는다 | framework는 registry를 **이미 갖고 있다** — `contracts/Streams/IZLinkSession.ts:31`의 `context.handlers`, `contracts/Streams/IZLinkSessionPacketHandler.ts:8-11`의 `addHandler`/`tryHandle`. **그런데 session 클래스 6개 전부가 이걸 쓰지 않고 `onDispatch`에서 packet name을 손으로 분기한다** — `Bingo.Ts/.../bingo-session.ts:24-47`, `SupportChat.Ts/.../supportchat-session.ts:43-56,153-156`, `DeliveryDispatch.Ts/Server/Session/customer-session.ts:33-35`, `.../CourierSession/courier-session.ts:30-40`, `GameQuest.Ts/.../game-api-session.ts:34-35,87-93`, `TicTacToe.Ts/.../play-session.ts:55,145-146`. 샘플 트리에서 `context.handlers`를 부르는 곳은 **Spot 4줄뿐**이다(`play-entry-spot.ts:52-53`, `tictactoe-game-spot.ts:44-45`) — **같은 트리 안에서 Spot은 registry, session은 switch**로 갈린다. ⇒ 중복 등록 검출도 등록 창 강제도 없고, packet을 늘릴 때마다 `if` 사슬이 자란다(§12.6의 registry **키** 결함과 별개다 — 샘플은 registry에 **도달조차 하지 않는다**). *체크리스트의 "6개 샘플 전부"는 부정확하다 — session 서버가 있는 샘플은 **5개**(ShoppingMall엔 session이 없다)이고 session 클래스가 6개다. 결론은 같다: **session이 있는 샘플은 하나도 registry를 쓰지 않는다*** |
 | **SMP-ND-03** (결함) | [deliverydispatch:231-236](../../common/sample/deliverydispatch/README.ko.md): DispatchWorker는 배치 정책으로 담당 노드를 정한 뒤 **spot handle resolver**로 그 노드의 `CourierEntrySpot` handle을 얻어 offer를 보낸다. "전송 대상 인자는 **불투명한 `SpotHandle` 하나**이며, application이 **route mesh channel에 node rid를 찍어 보내는 표면은 이 샘플에서 쓰지 않는다**"(`:250`도 같은 말) | `Server/DispatchCenter/dispatch-worker.ts:80-84` — `this.routes.sendToNode(SampleNames.courierActorNodeRouteChannel, courierActorNodeRid(courierId), offerDelivery(...))`. **문서가 이름 붙여 배제한 바로 그 표면이다**: route mesh channel + 샘플이 문자열로 만든 node rid(`Shared/Configuration/sample-names.ts:20-22`). actor 존재 확인도 같다(`:128-135`의 `requestToNode`). `SpotHandle`을 얻는 resolver 호출은 **샘플 전체에 0건**이고, `sample-names.ts:3-4`는 같은 이름 `delivery-couriers`를 route channel과 spot mesh **양쪽에 걸어 둔 채** route 쪽만 쓴다. ⇒ 배치 정책이 정한 노드로 **주소를 직접 찍어 보내므로**, courier actor가 다른 노드로 옮겨가면 offer는 **빈 노드로 간다.** `SpotHandle`이 존재하는 이유가 정확히 그것이다 |
 | **SMP-ND-04** (결함) | [tictactoe:20-21,33,129](../../common/sample/tictactoe/README.ko.md): Redis 기반 위치 저장소를 **framework의 public spot remote address resolver 계약 뒤에 숨긴다.** actor가 `JoinSpot(roomId)`를 쓰면 **Redis-backed resolver가** owner SpotNode route를 돌려주고, remote join은 거기서 얻은 `SpotHandle`로 간다. [`:263-266`](../../common/sample/tictactoe/README.ko.md): "framework의 internal runtime 객체나 **sample-local route helper로 remote join 경로를 우회하면 안 된다**" | `Server/Configuration/redis-room-route-store.ts:9-57,87-89` — 샘플이 **자체 `redis` client**로 `<prefix>tictactoe:rooms:<roomId>` 해시에 `RouteChannelId`·`OwnerNodeRid`·`SpotRid`·`SpotKind`를 쓴다. framework spot location row의 **평행 복제 스키마**다. 그런데 **이 스키마를 읽는 resolver가 없다.** 유일한 소비자가 `tictactoe-game-room-provisioner.ts:27-39`인데, `save()` 직후 `load()`로 **방금 자기가 쓴 값을 도로 읽어** 같은지 비교하고 `room-route=verified`를 찍는다 — **실패할 수 없는 단언**이고 이 marker를 읽는 게이트도 없다(트리 grep이 출력 지점 1건뿐). 진짜 remote join은 `play-entry-spot.ts:68`의 `actor.context.joinSpot(roomId, request)`가 framework location store로 처리한다. ⇒ 문서가 요구한 resolver 계약은 **한 번도 타지 않으면서**, 아무도 안 읽는 Redis 스키마를 하나 더 들고 다닌다 |
-| **SMP-ND-05** (결함) | [tictactoe:537,544](../../common/sample/tictactoe/README.ko.md)·[§13:814-816](../../common/sample/tictactoe/README.ko.md)·[`:1013`](../../common/sample/tictactoe/README.ko.md): 첫 actor join에는 self-join notify를 보내지 않는다. **host도 guest도 자기 join notify를 받지 않아야 하며 client가 그것을 확인한다** | `Client/tictactoe-client-scenario.ts:101-106,122-127`이 `expectNoMessage(...)`로 확인하는데, 그 helper(`:225-243`)는 `waitFor(...).timeout(25)`가 **timeout으로 죽으면 성공**으로 친다. **부재 증명의 창이 25ms**다. 게다가 stream connector는 handler가 등록되기 **전에** 도착한 메시지를 drain 루프에서 **버린다**(`stream-connector/src/Runtime/ZlinkStreamReceivedMessages.ts:38-44,58-64` — IMP-TS-02). `expectNoMessage`는 join reply를 `await`한 **뒤에야** waiter를 등록하므로, reply와 함께 도착했을 self-notify는 **이미 버려진 상태**다. ⇒ 서버가 self-notify를 보내도 이 검사는 **구조적으로 거의 항상 통과한다** — 25ms 창은 그 위에 얹힌 두 번째 안전망일 뿐이다 |
+| **SMP-ND-05** (결함) | [tictactoe:537,544](../../common/sample/tictactoe/README.ko.md)·[§13:814-816](../../common/sample/tictactoe/README.ko.md)·[`:1013`](../../common/sample/tictactoe/README.ko.md): 첫 actor join에는 self-join notify를 보내지 않는다. **host도 guest도 자기 join notify를 받지 않아야 하며 client가 그것을 확인한다** | `Client/tictactoe-client-scenario.ts:101-106,122-127`이 `expectNoMessage(...)`로 확인하는데, 그 helper(`:225-243`)는 `waitFor(...).timeout(25)`가 **timeout으로 끝나면 성공**으로 처리한다. **부재 증명의 창이 25ms**다. 게다가 stream connector는 handler가 등록되기 **전에** 도착한 메시지를 drain 루프에서 **버린다**(`stream-connector/src/Runtime/ZlinkStreamReceivedMessages.ts:38-44,58-64` — IMP-TS-02). `expectNoMessage`는 join reply를 `await`한 **뒤에야** waiter를 등록하므로, reply와 함께 도착했을 self-notify는 **이미 버려진 상태**다. ⇒ 서버가 self-notify를 보내도 이 검사는 **구조적으로 거의 항상 통과한다** — 25ms 창은 그 위에 추가된 두 번째 안전망일 뿐이다 |
 
 ### 하네스 규약 위반 — 구조 · 대기 · 설정
 
@@ -789,7 +829,7 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | **E2E-ND-07** (결함) | [§2.5:314-316](../../common/e2e/README.ko.md): "client는 server app endpoint를 **언어별 HTTP client wrapper**로 호출한다." Node의 그 wrapper는 [http-client 12 §1](../http-client/12-http-client.ko.md)이 계약을 소유하는 `@zlink-systems/http-client`다 | 닫힘. Node와 browser E2E는 공통 URL·timeout support를 거쳐 `@zlink-systems/http-client`를 실행하며, config-local wrapper와 browser 복제 factory 및 Client source의 raw `fetch`는 0건이다 |
 | **E2E-ND-08** (결함) | [§2.5:311](../../common/e2e/README.ko.md)·[§2.9:450-451](../../common/e2e/README.ko.md): "각 scenario 파일 **첫머리**에 해당 시나리오가 무엇을 검증하는지 설명한다. 독자가 파일을 열었을 때 '이 시나리오가 왜 필요한가'를 바로 알 수 있어야 한다" | `e2e/*/Client/Scenarios/*.ts` **138개 중 머리말 주석이 있는 파일은 0개다.** 전부 `import`로 시작한다(예: `SpotService/Client/Scenarios/sm-d15-scenario.ts:1`). ⇒ 시나리오 ID가 **무엇을 단언해야 하는지**가 파일 안에 없어 config 문서를 열어야만 알 수 있다. **E2E-ND-12~17·E2E-ND-19~35의 "실패할 수 없는 단언"이 리뷰를 통과한 이유가 여기 있다** — 의도가 코드 옆에 적혀 있지 않으면 코드가 그 의도를 만족하는지 대조할 기준이 없다 |
 | **E2E-ND-09** (결함) | [§2.2:218-238](../../common/e2e/README.ko.md): config는 `.NET`과 같은 **독립 실행 배포 묶음**으로 옮기고 역할마다 `Server/<Role>/` 하나를 둔다. [§6.1:577-582](../../common/e2e/README.ko.md): 로그는 실행별 **`log/` 폴더**에 남기고 VCS에서 제외한다 | 닫힘. 소스 없이 남은 `dist/`는 Git에 추적되지 않는 로컬 빌드 산출물이다. `RegistryMessaging`·`AutomaticTurnDispatch`는 현재 정본 이름과 일치하고, §2.2는 `DiscoveryRegistryHa`처럼 언어별 config 디렉터리 이름까지 같아야 한다고 정하지 않으므로 이름 주장은 제외했다. 실제 위반이던 10개 runner의 `logs/`를 `log/`로 통일하고 상위 `.gitignore` 한 곳이 로그 제외 정책을 소유하게 했다 |
-| **E2E-ND-10** (결함) | [§3.1:493](../../common/e2e/README.ko.md): **기동 순서 축** — 서버 역할의 기동 순서를 뒤바꾼 변형을 **Config 1·2·9**에 적용한다. [`:504-506`](../../common/e2e/README.ko.md): "config 러너는 서버 역할 기동 순서를 인자(예: `E2E_START_ORDER=reverse\|shuffle:<seed>`)로 받는다… 축 변형은 **역방향 전체 1회 + 고정 seed shuffle 1회**를 최소로 돌린다" | 축을 구현한 runner는 `SpotService`(Config 2)와 `ToActorMessaging`(Config 9) **둘뿐이다**(`SpotService/run_e2e.sh:12,103-126`, `ToActorMessaging/run_e2e.sh:10,101,171`). **Config 1(`RegistryMessaging`)엔 없다** — §3.1이 rid 방향·peer 수 축과 함께 Config 1을 지목한 바로 그 자리다. 그리고 그 둘조차 기본값이 `forward`인데, `run_e2e_all.sh:83`은 `./run_e2e.sh "${scenario}"`만 부른다 — **reverse도 shuffle도 기본 스윕에서 한 번도 돌지 않는다.** 인자 이름도 갈렸다(`E2E_START_ORDER` 환경변수 vs 위치 인자 `$2`). ⇒ §3.1이 "**순서가 고정된 러너에서는 영원히 재현되지 않는다**"고 적은 결함군이, 축을 "구현한" 두 config에서도 **실행되지 않는다** |
+| **E2E-ND-10** (결함) | [§3.1:493](../../common/e2e/README.ko.md): **기동 순서 축** — 서버 역할의 기동 순서를 뒤바꾼 변형을 **Config 1·2·9**에 적용한다. [`:504-506`](../../common/e2e/README.ko.md): "config 러너는 서버 역할 기동 순서를 인자(예: `E2E_START_ORDER=reverse\|shuffle:<seed>`)로 받는다… 축 변형은 **역방향 전체 1회 + 고정 seed shuffle 1회**를 최소로 실행한다" | 축을 구현한 runner는 `SpotService`(Config 2)와 `ToActorMessaging`(Config 9) **둘뿐이다**(`SpotService/run_e2e.sh:12,103-126`, `ToActorMessaging/run_e2e.sh:10,101,171`). **Config 1(`RegistryMessaging`)엔 없다** — §3.1이 rid 방향·peer 수 축과 함께 Config 1을 지목한 바로 그 자리다. 그리고 그 둘조차 기본값이 `forward`인데, `run_e2e_all.sh:83`은 `./run_e2e.sh "${scenario}"`만 부른다 — **reverse도 shuffle도 기본 스윕에서 한 번도 실행하지 않는다.** 인자 이름도 갈렸다(`E2E_START_ORDER` 환경변수 vs 위치 인자 `$2`). ⇒ §3.1이 "**순서가 고정된 러너에서는 재현되지 않는다**"고 적은 결함군이, 축을 "구현한" 두 config에서도 **실행되지 않는다** |
 
 ## 라운드 5 — 샘플 · e2e 심층
 
@@ -841,7 +881,7 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
   - 근거: TA-B1이 형식은 유효하지만 stale한 `ActorRef`를 실제 actor client에 전달하고 public route error를 분류한다. local undefined 검사로 우회하면 실패하는 ToActor gate가 통과한다. 커밋 `e82d138b5`.
 - [x] **E2E-ND-16** (**가짜 통과**) — ST-F1·F3 순서 단언이 kind만 비교한다
   - 근거: transfer evidence가 `P1→P2→P3` value 순서와 source cleanup marker를 모두 단언하고 runtime이 cleanup 증거를 낸다. 순열·marker 누락으로 실패하던 transfer-order gate와 ST-F1·F3가 통과한다. 커밋 `c05fd501c`.
-- [x] **E2E-ND-17** (**가짜 통과**) — RM-A4가 살아 있는 consumer의 handover를 검증하지 않는다
+- [x] **E2E-ND-17** (**가짜 통과**) — RM-A4가 기존 consumer를 유지한 handover를 검증하지 않는다
   - 근거: 기존 consumer를 유지한 채 같은 rid의 replacement를 띄우고 같은 app endpoint에서 v1→v2 handover와 v1 부재를 대조한다. replacement 직접 호출로는 통과하지 않는 failover gate와 RM-A4가 통과한다. 커밋 `a69409cbc`.
 
 ### 진짜 버그
@@ -849,8 +889,8 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
 | **SMP-ND-06** (**버그**) | [supportchat §11](../../common/sample/supportchat/README.ko.md): `OpenConversationRes.State`는 8필드 `ConversationState`다 | `support-entry-handlers.ts:58-67` — **채널 응답에서 `conversationId`만 가져오고 나머지를 손으로 지어낸다**: `status: WaitingForAgent`(하드코딩), `subject`는 **요청자가 보낸 값을 에코**, `lastMessageSeq: 0`. 도메인이 낸 진짜 status는 **버린다** — 그 시점엔 이미 **상담원이 배정돼 `Active`**인데. ⇒ 상담원이 붙었는데 고객은 **"대기 중"이라고 듣는다.** 그리고 클라이언트 단언 **5개가 하드코딩된 리터럴을 검사한다 — 실패할 수 없다** |
-| **SMP-ND-07** (**버그**) | [25 §8](../server/25-stage-wrapper-on-spot.ko.md): spot 종료 뒤 추가 callback을 만들지 않는다 | SupportChat이 대화마다 **50ms 타이머**를 걸고 `context.close()`를 **한 번도 부르지 않는다**(grep 0건). 대화가 `Closed`가 돼도 타이머는 **초당 20회 영원히 돈다.** ⇒ 대화 1,000건을 처리한 서버가 **초당 2만 번 헛돌고** 죽은 Spot 1,000개를 프로세스 수명 내내 붙든다. TicTacToe도 같다(1초 주기) |
-| **SMP-ND-08** (**버그**) | [supportchat §13](../../common/sample/supportchat/README.ko.md): `WaitingForClose → Active`로 가는 **유일한 입력은 새 `SendChatMessageReq`**다 | `conversation.ts:74-81` — **상담원이 재접속해 re-join하면** 상태 가드 없이 `Active`로 되돌리고 **close 기한을 지운다.** ⇒ 대화가 idle로 넘어가 양쪽이 알림을 받은 뒤 상담원 스트림이 끊겼다 붙으면, 방이 **조용히 되살아나고 `ConversationClosedNotify`가 영영 안 온다.** 고객은 "곧 종료됩니다"에 **영원히 갇힌다** |
+| **SMP-ND-07** (**버그**) | [25 §8](../server/25-stage-wrapper-on-spot.ko.md): spot 종료 뒤 추가 callback을 만들지 않는다 | SupportChat이 대화마다 **50ms 타이머**를 걸고 `context.close()`를 **한 번도 부르지 않는다**(grep 0건). 대화가 `Closed`가 돼도 타이머는 **초당 20회 계속 실행된다.** ⇒ 대화 1,000건을 처리한 서버가 **초당 2만 번 불필요한 callback을 실행하고** 종료되지 않은 Spot 1,000개를 프로세스 수명 내내 유지한다. TicTacToe도 같다(1초 주기) |
+| **SMP-ND-08** (**버그**) | [supportchat §13](../../common/sample/supportchat/README.ko.md): `WaitingForClose → Active`로 가는 **유일한 입력은 새 `SendChatMessageReq`**다 | `conversation.ts:74-81` — **상담원이 재접속해 re-join하면** 상태 가드 없이 `Active`로 되돌리고 **close 기한을 지운다.** ⇒ 대화가 idle로 전이해 양쪽에 알림을 보낸 뒤 상담원 스트림을 다시 연결하면 방이 **근거 없이 `Active`로 돌아가고 `ConversationClosedNotify`가 전달되지 않는다.** 고객 상태는 "곧 종료됩니다"에서 전이하지 않는다 |
 | **SMP-ND-09** (**버그**) | [tictactoe §9](../../common/sample/tictactoe/README.ko.md): 승리는 **라인 완성**이다. timeout은 승리 조건이 아니다 | `tictactoe-match.ts:99-103` — turn timeout 시 **상대를 승자로 만들고**, `lastMoveActorId`를 **수를 두지 않은 쪽**으로, `lastMoveCell`을 `null`로 세팅한다. 게다가 `publishWinMilestone`은 `status === Won`일 때만 도는데 **`TurnTimedOut`은 거기 도달할 수 없다.** ⇒ 99승인 host가 **timeout으로 100승을 채우면 milestone이 영영 발행되지 않고**, 두 클라이언트는 **수를 두지도 않은 player가 `null` 칸에 뒀다**고 렌더한다 |
 | **SMP-ND-10** (**버그**) | [tictactoe §7](../../common/sample/tictactoe/README.ko.md): `PlayActorObserveMilestoneHandler`를 `EntrySpot/Handlers/`에 둔다 | **그 파일이 없다.** 대신 `play-session-factory.ts:30`이 **`new PlayEntrySpot(...)`** — framework lifecycle 밖에서 만든 Spot이라 `context`가 **영영 할당되지 않는다.** 세션이 **packet-name switch**로 그 고아 객체의 메서드를 부른다. ⇒ `observeMilestone`에 `this.context.*`를 **한 줄만 추가해도** 모든 `ObserveMilestoneReq`가 **TypeError로 죽는다** |
 | **SMP-ND-11** (결함) | [공통 샘플 §공통 작성 원칙:313-325](../../common/sample/README.ko.md): 모든 wire payload는 **이름 있는 계약**으로 두고, 호출 지점의 inline object literal과 흩어진 packet-name 문자열을 금지한다 | 세 샘플이 호출 지점에서 응답 객체를 직접 만든다 — `SupportChat/.../supportchat-session.ts:95-100`, `DeliveryDispatch/.../customer-session.ts:62`, `GameQuest/.../game-api-session.ts:46`. packet 이름도 `SupportChat/.../conversation-actor-handlers.ts:28`과 `TicTacToe/.../play-actor-{join-game,leave-game,place-mark}-handler.ts:19-20`에 문자열로 흩어져 있다. 타입 검사는 일부 `satisfies`에만 걸리고 **wire 이름과 payload 계약을 한 선언에서 고정하지 못한다** |
@@ -858,7 +898,6 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | **SMP-ND-13** (미구현) | [bingo lifecycle gate:1116-1131](../../common/sample/bingo/README.ko.md)·[tictactoe lifecycle gate:945-957](../../common/sample/tictactoe/README.ko.md): room leave·Entry Spot destroy·추가 lifecycle callback 부재를 **server-side evidence로 검증**한다 | 공용 runner의 Bingo 경로(`run-sample.mjs:107-146`)와 TicTacToe 경로(`:177-231`)는 서버를 띄우고 browser client만 실행한다. `destroyActor`·room `onLeaveActor`·추가 callback 부재를 읽는 단언이 0건이다. actor destroy 연결을 끊어도 client가 `LeaveGameReq`를 submit한 직후 성공 종료하므로 release gate는 계속 초록이다 |
 | **SMP-ND-14** (결함) | [shoppingmall scale-out:981-982](../../common/sample/event/shoppingmall.ko.md): 주문 A/B를 서로 다른 owner에서 **동시에 처리**하고 어느 API에서도 같은 조회 모델을 확인한다 | `shoppingmall-client-scenario.ts:124-129`이 A 시작 응답을 **await한 뒤** B 시작을 보낸다. `Promise.all`은 이미 시작이 끝난 두 주문의 상태 조회에만 쓴다(`:130-133`). owner 직렬화나 전역 락으로 두 주문을 순차 처리해도 통과한다 |
 | **SMP-ND-15** (결함) | [gamequest scale-out:604-608](../../common/sample/event/gamequest.ko.md): 2노드에서 PlayerA/B가 **서로 다른 owner**에서 동시에 처리되는지 확인한다 | `gamequest-client-scenario.ts:73-90`은 두 stream request를 동시에 보내지만 owner identity를 읽거나 비교하지 않은 채 `gamequest-concurrent-owners=completed`를 출력한다. 최종 server assertion도 reward/source event와 marker 존재만 검사하고 owner 상이성은 보지 않는다(`quest-progress-store.ts:195-203`). 두 player가 같은 owner에 배치돼도 통과한다 |
-| **SMP-ND-16** (결함) | [deliverydispatch 메시지 계약:324-328](../../common/sample/deliverydispatch/README.ko.md): `DeliveryStatusChangedReq`는 `DeliveryId`·`Status`·`CourierId`·`OccurredAt` 네 필드다. 고객 식별자는 다음 hop의 `DeliveryStatusUpdatedMsg`에만 있다 | `Shared/Contracts/messages.ts:127-134`가 `DeliveryStatusChangedReq`에 **`customerId`를 추가**하고, Tracking handler가 그 비계약 필드로 actor를 resolve한다(`tracking-handlers.ts:24-37`). 같은 packet을 계약대로 쓰는 peer는 고객 actor를 찾을 수 없고, Node가 보낸 payload에는 문서에 없는 필드가 실린다 |
 | **SMP-ND-17** (미구현) | [tictactoe 내부 join 계약:664-675](../../common/sample/tictactoe/README.ko.md): room Spot join reply는 별도 `TicTacToeGameJoinRes { State }`다 | `Shared/Contracts/messages.ts:118-125`에는 client-facing `JoinGameRes`와 `TicTacToeGameJoinReq`만 있고 **`TicTacToeGameJoinRes`가 없다**. room Spot도 내부 join reply를 `JoinGameRes`로 반환한다(`tictactoe-game-spot.ts:182-203`). `.NET`은 정식 타입으로 encode/decode하므로(`dotnet/samples/TicTacToe/Shared/Contracts/Messages.cs:60`) packet 계약을 이름으로 맞추는 교차 언어 흐름이 갈라진다 |
 | **SMP-ND-18** (**wire 파손**) | [tictactoe `GameState`:713-726](../../common/sample/tictactoe/README.ko.md): `NextTurn`은 non-null `string`이고 terminal nullable 필드 집합에 포함되지 않는다 | `Shared/Contracts/messages.ts:170-180`은 `nextTurn: string | null`, `tictactoe-match.ts:47-51,130-143`은 terminal state에서 실제로 `null`을 wire에 싣는다. `.NET`·C++ 계약 타입은 non-null string(`dotnet/.../Messages.cs:104`, `cpp/.../messages.hpp:146`)이라 terminal state의 표현이 Node에서만 갈라진다 |
 | **SMP-ND-19** (**wire 파손**) | [shoppingmall 메시지 계약:735-763,794-797](../../common/sample/event/shoppingmall.ko.md): 주문·결제의 `Amount`와 조회 상태의 `Amount`는 **decimal**이다 | `Shared/Contracts/messages.ts:26-36,65-75`가 둘 다 JavaScript `number`로 선언한다. `number`는 이진 부동소수라 decimal 금액을 보존하지 못하며, 큰 값이나 소수 금액은 `.NET decimal` peer가 보낸 값을 decode→encode하는 순간 달라질 수 있다 |
@@ -873,7 +912,7 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 | **E2E-ND-14** (**미구현**) | [config-3 §2](../../common/e2e/config-3-pubsub.ko.md): **모든 노드에 Redis location store**를 두고 peer row를 framework가 관리한다 | `publisher-host-factory.ts:35`·`subscriber-host-factory.ts:48` — **`useInMemoryLocationStores()`**다. subscriber는 `--publisher-endpoint`로 **하드와이어**돼 있고 `run_e2e.sh`에 **"redis"가 0건**이다. ⇒ 이 config의 존재 이유인 **store 기반 fanout이 한 번도 실행되지 않는다.** feature-map에 기록 없음 |
 | **E2E-ND-15** (**가짜 통과**) | [config-9 TA-B1(**P0**)](../../common/e2e/config-9-to-actor-messaging.ko.md): **형식은 맞지만 stale한 ref**를 넘긴다 | 클라이언트가 `actor`를 **아예 안 넘기고**, caller의 `requireActorRef`가 `request.actor === undefined`에 **자기가 예외를 던진다** — `sendToActor`에 **도달하지 않는다.** ⇒ framework의 actor-route 분류를 **통째로 지워도 통과한다** |
 | **E2E-ND-16** (**가짜 통과**) | [config-10 ST-F1·ST-F3(**둘 다 P0**)](../../common/e2e/config-10-spot-actor-transfer.ko.md): `P1 → P2 → P3` 순서를 단언한다 | `assertOrder`가 **`entry.kind`만 비교하고 `entry.value`를 안 읽는다.** ST-F1은 `['packet_handler','packet_handler','packet_handler']` — **같은 kind 셋**이라 **어떤 순열이든 통과한다.** `P1/P2/P3`는 `value`에 있다. ⇒ **"3개가 도착했다"로 퇴화한다.** 필수 marker `source_cleanup`은 **트리 전체에 0건** |
-| **E2E-ND-17** (**가짜 통과**) | [config-1 RM-A4(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): consumer **재시작 없이** peer handover를 확인한다 | 교체 후 요청을 **replacement 프로세스 자신의 HTTP**로 보낸다. p1을 resolve했던 클라이언트가 **하나도 살아남지 않아** handover 경로가 **구조적으로 관측 불가능**하다. `v1Count === 0` 단언도 죽은 프로세스의 연결 실패를 삼키고 `[]`를 반환해 **항상 참**이다 |
+| **E2E-ND-17** (**가짜 통과**) | [config-1 RM-A4(**P0**)](../../common/e2e/config-1-location-messaging.ko.md): consumer **재시작 없이** peer handover를 확인한다 | 교체 후 요청을 **replacement 프로세스 자신의 HTTP**로 보낸다. p1을 resolve했던 클라이언트가 **모두 종료되어** handover 경로가 **구조적으로 관측 불가능**하다. `v1Count === 0` 단언도 종료한 프로세스의 연결 실패를 무시하고 `[]`를 반환해 **항상 참**이다 |
 
 - [x] **E2E-ND-37** (미구현) — Config 8의 정식 `TD-A1`~`TD-G1` 27개가 없고 폐기된 `ATD-*` 앱이 기본 스윕에 남아 있다.
   - 근거: 정식 제목과 ID를 정확히 대조하는 header 게이트가 기존 16개 `ATD-*`와 누락된 27개 `TD-*` 때문에 실패하는 것을 확인한 뒤, 두 play·두 delay·외부 HTTP API·두 session을 한 번 배포해 27개 실행 turn 시나리오와 shutdown/recovery를 실제 connector 경로로 검증하도록 교체했다. 연속 one-way 전송의 HWM race는 handler `started` evidence로 수신을 확인해 제거했고, 설정 파일 중복 읽기는 하나의 typed Configuration 경계로 모았다. 27/27과 shutdown/recovery가 `log/20260715-212417-1096885`에서 통과하고 header·설정 정책 게이트와 하위 프로젝트 build도 통과했다. POSD 재검토에서는 시나리오 실행을 `ExecutionTurnScenarioSuite`에 가두고 언어 구현 트리의 중복 `feature-map`·`porting-inventory`를 제거했다. 커밋 `16c1f1b7d`.
@@ -897,21 +936,18 @@ router에 manual peer가 있으면 router auto reconcile만 수행하지 않고,
 - [x] **SMP-ND-24** (결함) — Bingo replacement가 terminal `Drained`·old peer row 제거·새 room router `ConnectionReady`를 기다리지 않아 실제 두 번째 `MatchBingoReq`가 router-not-ready로 실패한다.
   - 근거: replacement를 먼저 `WaitingForSlot`에 두고 기존 slot 2에 `SIGUSR2` drain을 요청한 뒤 terminal `Drained`, old peer row 제거, 새 generation 할당과 room router `ConnectionReady`를 순서대로 기다리도록 runner를 바꿨다. 집중 bound-session gate는 수정 전 routed reply를 기다리다 timeout으로 실패했고 one-way send 계약으로 고친 뒤 통과했으며, 전체 Node build와 allocation gate 5/5, 실제 두 번째 `MatchBingoReq`·게임 완료를 포함한 runner가 `PASS Bingo.Ts`로 통과했다. 전송의 완료 의미를 request/ack에서 분리해 actor transfer commit의 순환 대기를 없애고, drain·row·readiness 관측 책임을 각 runtime과 runner helper에 모았다. 코드 커밋 `542c2878f`.
 
-## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+## connector push 관측과 범용 단언 책임
 
-**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
-표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
-공개 API로 제공한다.
+현재 계약에서 connector public API가 제공하는 test 표면은 push 부재와 순서를 관측하는
+`expectNone`·`waitForSequence`뿐이다. 조건·실패 종류·시간 초과를 검사하는 범용 단언은 connector
+제품 API가 아니라 각 sample·E2E의 `Client/Support`가 소유한다. 아래 TH-ND-01·02는 이전 목표를
+구현하고 지역 관측 helper를 제거한 이력이며, 범용 단언의 현재 배치가 완료됐다는 뜻은 아니다.
 
-**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
-SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
-언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
-검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
-
-- [x] **TH-ND-01** (미구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`와 `zlinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §4.1](../stream-connector/languages/typescript/03-stream-connector.ko.md)대로 구현한다.
+- [x] **TH-ND-01** (과거 구현) — connector(TypeScript)에 `expectNone`·`waitForSequence`를 구현하고, 당시 목표였던 `zlinkStreamAssert`도 함께 구현했다. 관측 builder는 현재 계약에도 남지만 범용 단언은 제품 API의 현재 목표가 아니다.
   - 근거: 수신 큐를 사용하는 부재·순서 builder와 별도 단언 이름 공간을 추가하고, 대기 중 handler 등록이 같은 메시지를 중복 소비하던 큐 순회도 snapshot으로 고쳤다. API가 없어 실패하던 집중 계약 테스트는 2/2, TypeScript·browser build와 실제 Chromium 게이트는 1/1 통과했다. 커밋 `5606142a5`.
 - [x] **TH-ND-02** (리팩토링) — 샘플·e2e 시나리오의 지역 helper를 connector API로 **교체**한다. negative 검증은 typed-callback 카운팅(SMP-ND-05로 이미 닫음) 대신 `expectNone`의 명시적 window로 표준화한다.
   - 근거: 6개 browser sample의 지역 단언·실패·부재 helper와 8개 E2E client의 복제 `ensure`를 `zlinkStreamAssert`와 connector 관측 builder로 교체했다. 추가 재검토에서 남아 있던 TicTacToe의 손수 만든 negative helper와 DeliveryDispatch의 병렬 `waitFor`+도착 배열 순서 검사를 각각 `expectNone(...).within(250)`과 `waitForSequence(...).expect(...)`로 제거했다. 이 누락을 잡도록 넓힌 채택 계약 테스트가 실패에서 2/2 통과로 바뀌고 Node 전체 build와 두 sample runner가 모두 통과했다. 실행 환경 차이는 package export가 흡수하고 호출 표면은 늘리지 않았다. 커밋 `faa625693`, `fcb5c84fe`, `cb2b8a515`.
+- [ ] **TH-ND-03** (계약 전환) — `zlinkStreamAssert`를 connector 제품 export에서 제거하고, 이를 사용하는 sample·E2E의 범용 단언을 각 `Client/Support`로 옮긴다. `expectNone`·`waitForSequence`와 그 수신 큐·timeout 정책은 connector에 유지한다.
 
 ## Sample/E2E 설정 정책
 

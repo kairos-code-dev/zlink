@@ -85,6 +85,11 @@ Spot은 MeshNode가 소유하는 logical mailbox다. Spot direct message, Logica
 lifecycle callback은 같은 Spot의 application turn에서 직렬로 처리한다. Node callback이 Spot queue를
 대신 읽지 않는다.
 
+`ActorRef`는 owner node의 `NodeRid`, 논리 `ActorId`, 현재 `Generation` 세 값으로 구성하는 immutable
+value다. endpoint, 내부 frame, location row와 Actor type은 `ActorRef`에 넣지 않는다. Framework가
+wire DTO를 제공하는 언어에서는 `ActorRefSnapshot`도 같은 세 값을 보존하며 별도 인자 없이
+`ActorRef`로 복원한다.
+
 Actor message는 ActorRef의 generation과 route epoch를 검증한 뒤 Actor mailbox에 직접 들어간다. Actor
 payload는 Spot message queue를 경유하지 않는다. Actor handler는 Actor application turn에서만 실행한다.
 Spot 소유 상태를 읽거나 바꿔야 하면 명시적인 Spot send/request를 제출하고 해당 Spot turn에서 처리한다.

@@ -208,8 +208,9 @@
 
 ### 0.7 선행 관계 (뒤집으면 깨진다)
 
-- **join orchestration**(§12.24) → **`yield` terminator**(§12.21) → **샘플의 `yield` 사용처**(SMP-X1)
-  — 뒤집으면 `yield` 없이 `async`로 흉내 내게 되어 **샘플이 보여 주려던 대비 자체가 사라진다.**
+- **join orchestration**(§12.24) → **샘플의 `yield` 사용처**(SMP-X1)
+  — `yield` terminator(§12.21)는 이미 구현됐다. 남은 join commit 순서를 먼저 바로잡아야 샘플이
+  source membership 보존과 명시적 turn 반납을 함께 검증할 수 있다.
 - **framework의 owner-lease join** → **store의 lease script·페이징** — store부터 고치면 아무도 안 쓴다.
 - **wire 계약(묶음 H)은 한 언어만 고치면 오히려 깨진다.** 결정은 §0.8의 2단계 프로토콜을 따른다.
 - 어떤 갭이 다른 갭 **덕분에** 가려져 있는 경우가 있다(`MON-A2` ← monitoring 결함). **그런 쌍은 함께 연다.**
@@ -262,7 +263,7 @@
 
 ## 1. 진행 체크리스트
 
-**전체 33건. 완료 17건.**
+**전체 40건. 완료 17건.**
 
 ### 구현 감사에서 발굴 (2026-07-14, 스펙↔코드 직접 대조)
 
@@ -270,19 +271,44 @@
 - [ ] **IMP-JV-02** (결함) — 24 §3·§5
 - [x] **IMP-JV-03** (결함) — `drain(...)`과 `awaitDrained()`가 공유 완료 상태의 독립 waiter를 반환하도록 고쳤다. 한 호출자가 waiter에 timeout을 적용해도 런타임의 drain 상태는 완료되지 않는 집중 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `3db218ee0`(2026-07-15).
 - [ ] **IMP-JV-04** (결함) — 24 §4.1·05 §13
+- [ ] **IMP-JV-35 / §12.23** (미구현) — `ZLinkWorkerTask.run()`과
+  `ZLinkIoWorkerTask.run()`이 cancellation 인자를 받지 않아 timeout, caller cancellation과 shutdown을
+  실행 중인 작업에 전달할 수 없다.
+- [ ] **IMP-JV-36 / §12.27** (미구현) — `ZLinkActorLocation`과 Redis codec에
+  `spotGeneration`이 없다. 같은 Spot RID 재사용 뒤 이전 membership을 stale로 구분하도록 record,
+  lifecycle, in-memory·Redis round-trip과 stale 판정을 함께 구현해야 한다.
+- [ ] **IMP-JV-37 / §12.28** (미구현) — `ZLinkStreamNodeBuilder`에
+  `enableActorDispatch(meshName)`이 없고 `ZLinkStreamRuntime`은 등록된 Spot node의 첫 항목을 session relay로
+  선택한다. 명시한 MeshName과 local MeshNode를 startup에서 검증하도록 바꿔야 한다.
+- [ ] **IMP-JV-38 / §12.29** (미구현) — exact `ZLinkActorTransferStore`와 공식 Redis
+  prepare·commit·abort·takeover 구현이 없다. process-local pending transfer를 durable participant set,
+  active transfer index와 recovery lease 원자 전이로 연결해야 한다.
+- [ ] **IMP-JV-39 / §12.31** (결함) — Actor transfer counter와 duration을 빈 label로 성공 경로에서만
+  기록한다. `mesh_name`과 닫힌 terminal outcome을 activation·실패마다 정확히 한 번 기록해야 한다.
+- [ ] **IMP-JV-40 / §12.32** (결함) — channel dispatch가 수신 envelope content-type을 보존하지 않고
+  handler 타입으로 고른 serializer를 사용한다. 알 수 없는 non-JSON 값은 handler 호출 전에
+  `PayloadDecodeFailed`로 종료해야 한다.
+- [ ] **IMP-JV-41 / §12.33** (미구현) — exact `addRouteMesh(meshName)`과
+  `ZLinkMeshNodeBuilder` 중심 구성이 source·package에 적용되지 않았다. 기존 `addClientServerChannel`,
+  `addRouteMeshChannel`, `addSpotMesh`, `useInMemoryLocationStores`를 제거하고 sample·E2E를 통합 MeshNode
+  표면으로 옮겨야 한다.
 - [x] **IMP-JV-05** (결함) — SpotNode가 router/pub-sub 중 하나도 갖지 않는 구성과, 활성화한 capability에 bind endpoint가 없는 구성을 시작 전에 거부한다. 세 집중 실패 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `d7a62647e`(2026-07-15).
 - [x] **IMP-JV-06** (결함) — 값을 버리던 `metadata(k,v)`를 channel send·request·publish 공개 표면과 모든 구현에서 제거했다. 공개 표면 집중 테스트와 core 전체 테스트가 통과했다. 구현 커밋 `3db218ee0`(2026-07-15).
 - [ ] **IMP-JV-07** (미구현) — 54 §9
 - [ ] **IMP-JV-08** (미구현) — 40 §9
 - [x] **IMP-JV-09** (결함) — live owner의 row라도 `actorRef`가 없는 pending 상태는 resolve miss로 반환하도록 고쳤다. pending 집중 실패 테스트, core와 Kotlin module 전체 테스트가 통과했다. 구현 커밋 `0af3e6ec6`(2026-07-15).
-- [ ] **IMP-JV-10** (미구현) — 54 §3.4
+- [x] **IMP-JV-10** (감사 근거 오류 해소) — 정식 spec은 location store read별 5초 취소 상한을
+  고정하지 않는다. Drain 전체 deadline과 owner lease renew timeout 계약을 별도 read timeout으로
+  잘못 해석한 항목이므로 구현 gap에서 제외한다.
 
 ### 교차 언어 결함 (여러 구현에 같은 문제)
 
 - [x] **IMP-X1** — Java/Kotlin 공유 resolver가 pending actor row(`ActorRef` 비어 있음)를 resolve miss로 반환한다. 구현 커밋 `0af3e6ec6`(2026-07-15).
 - [ ] **IMP-X2** — location event source(`location-peer/spot/actor/route`, `StoreFailure`/`StoreRecovered`)가 없다
-- [ ] **IMP-X3** — startup validation이 스펙의 설정 오류를 통과시킨다
-- [ ] **IMP-X4** — location store read에 5초 취소 상한이 없다
+- [x] **IMP-X3** — IMP-JV-05에서 SpotNode capability와 bind endpoint 오류를 host 시작 전에
+  거부하도록 고쳤고 집중 실패 테스트와 core 전체 테스트가 통과했다.
+- [x] **IMP-X4** — 감사 근거 오류를 해소했다. 정식 spec은 location store read별 5초 상한을
+  선언하지 않으며 drain 전체 deadline과 owner lease renew timeout을 별도로 고정한다.
 
 ### 언어별 표면 차이 (기준선 대조)
 
@@ -304,15 +330,26 @@
 ### 전 언어 공통 계약 갭 (모든 언어가 함께 닫는다)
 
 - [x] **§12.20** (결함) — 응답 header의 `name_len`을 0으로 고정하고, pending request가 보관한 원래 이름을 완료 payload에 사용한다. 구형 peer가 보낸 응답 이름은 decode 후 매칭에 사용하지 않는다. `ZLinkStreamWireProtocolTest`, `JavaNodeStreamInteropTest`, connector 전체 테스트 통과(2026-07-15).
-- [ ] **§12.21** (결함+미구현) — `yield` terminator 부재 + `async`가 자동으로 turn을 반납
+- [x] **§12.21** — Java/Kotlin worker·request call에 turn 유지 `submit`과 turn 반납 `yield`를 분리했다. 기본 `submit` turn 유지와 명시적 `yield` 재진입 unit test, Bingo 전적 조회·결과 기록 runner가 통과했다. 구현 커밋 `4ecebee81`, `4c925aa84`.
 - [x] **§12.22** — standalone과 서버 전용 HTTP client를 분리하고 서버 표면에 `submit`·`async`·`yield`·callback, `buildServer`와 Spring execution turn bean을 구현했다. blocking `fetch`는 제거했다. HTTP client·Kotlin·Spring starter 테스트가 통과했다. 구현 커밋 `6a62b031d`, `49c40c2fe`.
-- [x] **§12.23** — `runCpuWorker`와 비동기 `runIoWorker`를 분리하고 두 표면에 turn 유지 `submit`과 turn 반납 `yield`를 제공한다. I/O 집중 테스트에서 CPU pool thread·queue 사용량이 0임을 확인했고 core·Kotlin 테스트가 통과했다. 구현 커밋 `146afe0a5`.
-- [x] **§12.24** — 같은 node local join의 native admission을 일반 target dispatch queue와 분리하고,
-  caller turn에서 source `OnLeaveActor`와 target commit·`OnJoinedActor`를 순서대로 완료하도록 고쳤다.
-  Java Config 8의 user Spot A→B `TD-E2`와 A→B·B→A 동시 `TD-E3`, core·Kotlin 전체 테스트가
-  통과했다. 구현 커밋 `175d60d13`(2026-07-16).
+- [ ] **§12.23** — CPU/I/O worker 분리와 `submit`·`yield`는 구현했지만 두 worker callback에
+  `ZLinkWorkerCancellation`을 전달하지 않는다. 기존 완료 증거는 축 분리만 닫으며 cancellation 계약은
+  `IMP-JV-35`로 남긴다.
+- [ ] **§12.24** — 같은 node local join의 caller-turn orchestration은 구현했지만
+  `ZLinkActorSpotAdmission.java:245-257`이 source leave, target membership, `OnJoinedActor`, durable
+  location commit 순으로 실행한다. 정식 계약대로 location CAS를 먼저 commit하고, CAS 실패에서는 source
+  membership을 유지하도록 순서를 바꿔야 한다.
+- [ ] **§12.27** — Actor location의 Spot generation이 없다(`IMP-JV-36`).
+- [ ] **§12.28** — STREAM Actor dispatch MeshName 설정과 격리가 없다(`IMP-JV-37`).
+- [ ] **§12.29** — durable Actor transfer store와 crash recovery가 없다(`IMP-JV-38`).
+- [ ] **§12.31** — Actor transfer metric의 MeshName·terminal outcome이 없다(`IMP-JV-39`).
+- [ ] **§12.32** (결함) — 수신 non-JSON content-type과 등록 codec의 일치를 검증하지 않는다
+  (`IMP-JV-40`).
+- [ ] **§12.33** (미구현) — RouteMesh·MeshNode 통합 등록 표면과 old builder 제거가 적용되지 않았다
+  (`IMP-JV-41`).
 
-본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
+본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21은 해소됐고 §12.24가 남았다.**
+accepted join은 location CAS를 먼저 commit해야 하며, CAS 실패에서는 source membership을 보존해야 한다.
 
 ## 2. 구현 감사 상세
 
@@ -327,7 +364,7 @@
 | **IMP-JV-07** | 미구현 | [54 §9](../server/54-graceful-drain-handoff.ko.md): `zlink.drain.state`(gauge), `zlink.drain.duration`(`outcome`), `zlink.drain.forced`(`kind`는 `actor\|spot\|request\|session`으로 **고정**) | 앞의 둘이 **없다.** `zlink.drain.forced`는 `kind=runtime`(닫힌 집합 밖)을 **한 번만** 올린다(`ZLinkFrameworkRuntime.java:652-653`) |
 | **IMP-JV-08** | 미구현 | [40 §9](../server/40-location-runtime.ko.md) | location event source 5개 중 **4개가 없다**(IMP-X2) |
 | **IMP-JV-09** | 결함 | [40 §2.3](../server/40-location-runtime.ko.md) | **해결:** owner lease와 generation 검사를 통과한 row도 `actorRef`가 없으면 resolve miss로 반환한다. pending 집중 테스트, core와 Kotlin 전체 테스트 통과. 구현 커밋 `0af3e6ec6`(2026-07-15). |
-| **IMP-JV-10** | 미구현 | [54 §3.4](../server/54-graceful-drain-handoff.ko.md) | store read 5초 상한 없음(IMP-X4) |
+| **IMP-JV-10** | 감사 근거 오류 해소 | [54 §3](../server/54-graceful-drain-handoff.ko.md)·[40 §2.4](../server/40-location-runtime.ko.md) | 정식 계약은 drain 전체 deadline과 owner lease renew timeout을 고정하며 store read별 5초 상한은 선언하지 않는다 |
 
 ## 3. 언어별 표면 차이 상세
 
@@ -564,6 +601,7 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 - [x] **IMP-JV-31** (결함) — stream received·replied trace가 header의 `correlation_id`만 사용하고, 없을 때 `request_seq`로 대체하지 않도록 고쳤다. 집중 테스트의 실패를 먼저 확인했고 Java framework core 전체 테스트가 통과했다. 구현 커밋 `b4729c52e`(2026-07-15).
 - [x] **IMP-JV-32** (결함) — spot·actor·route의 암시적 첫 page에 `listPageSize`를 적용하고, 복합 topology가 kind와 store continuation을 함께 보존하는 opaque cursor로 page를 이어가도록 고쳤다. 설정값 2 집중 계약 테스트와 core unit test가 통과했다. 구현 커밋 `29a20cf8f`, `dca342242`(2026-07-15).
 - [x] **IMP-JV-33** — auto-connect executor가 실제 connect 성공 여부를 반환하고, store 장애 중에는 마지막 desired set의 미연결 target만 `storeFailureGrace` 안에서 재시도하도록 고쳤다. 기존 ready 연결은 유지하고 grace가 지나면 신규 재시도를 중단한다. 집중 red 테스트와 Java framework core 전체 테스트가 통과했다. 구현 커밋 `f3abd4bc8`(2026-07-15).
+- [ ] **IMP-JV-34** (미구현) — 10.0.0 exact interface의 route-mesh runtime options가 없고 기존 ChannelName 전용 runtime options만 제공한다
 
 ### 상세
 
@@ -575,13 +613,14 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 | **IMP-JV-24** | [54 §6](../server/54-graceful-drain-handoff.ko.md): 기본 deadline은 **모든 언어에서 30초**다. **인자 없는 overload와 host 자동 drain이 같은 값을 쓴다** | **해결:** Spring `stop()`과 callback 기반 `stop(Runnable)`이 공유하는 deadline을 30초로 맞췄다. 경로마다 상수를 따로 두는 안 대신 두 종료 경로가 하나의 값을 계속 공유하게 했다. 25초에서 실패하는 집중 테스트와 Spring Boot starter 전체 테스트 통과. 구현 커밋 `a0e2bb977`(2026-07-15). |
 | **IMP-JV-25** | 스펙이 선언한 metadata 전달 정책 | `ZLinkMetadataPolicyRegistration.java:10,17,20` — `forwardedApplicationKeys`의 **소비자가 트리 전체에 없다**(getter round-trip 유닛테스트뿐). `configureMetadata().addForwardedMetadataKey("tenant")`가 **아무것도 전달하지 않는다.** 기록된 `metadata(k,v)` no-op(IMP-JV-06)과 **같은 병**이 설정 축에서 반복된다 |
 | **IMP-JV-26** | [32 §9](../stream-connector/32-stream-connector.ko.md): 사용자 callback 실패는 `UserCallbackFailed`. **error handler에 예외 조항이 없다** | **해결:** 동기 throw와 비동기 실패를 모두 로그에 남기고, 실패한 handler 자신을 제외한 다른 error handler에 `USER_CALLBACK_FAILED`로 전달한다. 같은 handler에 다시 보내는 안은 재귀 실패를 만들므로 제외했고, failure 통지를 처리하는 handler의 실패는 다시 재발행하지 않아 handler 간 순환도 막았다. 두 error handler 집중 테스트와 Java connector·Kotlin module 전체 테스트 통과. 구현 커밋 `cba4d186c`(2026-07-15). |
-| **IMP-JV-27** | — | `ZLinkDispatchOptionsRegistration.java:160,179,219`가 전부. 형제 옵션(`includeMessageSizes`·`sampleRate`·`logFile`)은 살아 있는데 이것만 죽었다 |
+| **IMP-JV-27** | — | `ZLinkDispatchOptionsRegistration.java:160,179,219`가 전부. 관련 옵션(`includeMessageSizes`·`sampleRate`·`logFile`)은 사용되지만 이 옵션만 적용 경로가 없다 |
 | **IMP-JV-28** | [00 §5](../00-public-contract-governance.ko.md): transport 주소는 framework 내부다 | `spots/ZLinkStoreSpotHandleResolver.java:10-11,34`가 **사용자 대면 `framework.spots` 패키지에서 public**이고 `runtime.internal.spots.SpotTransportAddress`를 반환한다. **코드베이스 자신이 그 타입을 `runtime/internal/` 아래 둔다** |
 | **IMP-JV-29** | [00 §3](../00-public-contract-governance.ko.md): 스펙 근거 없이 public API를 만들지 않는다 | connector의 `ZLinkStreamJson`·`ZLinkStreamCompressionCodecs` — 스펙 트리 grep **0건**(형제 connector 타입은 전부 항목이 있다). `ZLinkStreamJson`은 고정된 `send`/`request`/`on` 표면을 **중복하는 두 번째 static facade**다 |
 | **IMP-JV-30** | [21 §close](../server/21-mesh-node.ko.md) | `ZLinkSpotLifecycle.java:134-142` — `hasActorsInSpot()`이 **락 없이** actor registry를 순회하고, `joinedSpotRid`를 **쓰는** commit은 spot dispatch 줄에서 돈다. `.NET` IMP-DN-17과 **같은 경합** |
 | **IMP-JV-31** | [52 §9](../server/52-message-flow-tracing.ko.md) | **해결:** received와 replied trace가 공유하는 내부 helper는 header의 `correlation_id`만 반환하고 없으면 `null`을 유지한다. 두 trace 경로에서 각각 fallback을 지우는 안보다 규칙을 한 곳에 두어 다시 갈라지지 않게 했다. `request_seq=7`이고 corr이 없는 header가 trace corr도 비워 두는 집중 테스트와 Java framework core 전체 테스트 통과. 구현 커밋 `b4729c52e`(2026-07-15). |
 | **IMP-JV-32** | [40 §3·§8.2](../server/40-location-runtime.ko.md): 목록 조회는 `list page size`(기본 **1000**)를 따른다 | **해결:** page size 0인 암시적 첫 page를 `options.listPageSize()`로 바꾸고, `kind=null` topology는 현재 kind와 해당 store continuation을 Base64로 감싼 내부 cursor를 사용한다. 모든 kind를 먼저 읽어 메모리에서 자르는 안 대신 필요한 page 크기만 순차 조회하므로 설정값이 실제 store 비용을 제한한다. 설정값 2에서 세 spot을 2개·1개 두 page로 읽는 집중 계약 테스트와 core unit test 통과. 구현 커밋 `29a20cf8f`, `dca342242`(2026-07-15). |
-| **IMP-JV-33** | [40 §6.1·§8.2](../server/40-location-runtime.ko.md): store 장애 유예 30초 | **해결:** executor가 connect 성공 여부를 반환하고 reconciler는 성공한 target만 active로 기록한다. store 읽기가 실패하면 마지막 desired set의 미연결 target을 설정된 grace 안에서만 재시도하며, 기존 ready target은 끊지 않는다. transport 예외 처리와 desired/active 상태 판단을 한 계층에 섞는 안 대신 executor가 결과를 보고하고 reconciler가 정책을 소유하는 .NET 구조를 적용했다. 집중 테스트와 core 전체 테스트 통과. 구현 커밋 `f3abd4bc8`(2026-07-15). |
+| **IMP-JV-33** | [40 §2.4·§8.2](../server/40-location-runtime.ko.md): store 장애 유예 30초 | **해결:** executor가 connect 성공 여부를 반환하고 reconciler는 성공한 target만 active로 기록한다. store 읽기가 실패하면 마지막 desired set의 미연결 target을 설정된 grace 안에서만 재시도하며, 기존 ready target은 끊지 않는다. transport 예외 처리와 desired/active 상태 판단을 한 계층에 섞는 안 대신 executor가 결과를 보고하고 reconciler가 정책을 소유하는 .NET 구조를 적용했다. 집중 테스트와 core 전체 테스트 통과. 구현 커밋 `f3abd4bc8`(2026-07-15). |
+| **IMP-JV-34** | [Java exact §2.14](../server/languages/java/02-handler-interfaces.ko.md): `ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName)`과 MeshNode·ChannelName runtime options를 제공한다 | 현재 public source는 `ZLinkChannelRuntimeOptions.clientServerChannel(channelName)`과 `ZLinkClientServerChannelRuntimeOptions`만 제공한다. Java·Kotlin ResilienceLifecycle의 RL-B4도 이 기존 표면을 사용한다. exact interface를 구현하고 두 E2E를 새 표면으로 전환해야 한다. |
 
 ## 교차 언어 결함 — 이 언어에서 무엇을 고치나
 
@@ -593,7 +632,7 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 | **IMP-X1** | pending actor row를 resolve 성공으로 반환 | IMP-JV-09 |
 | **IMP-X2** | location event source 4종 결측 | IMP-JV-08 |
 | **IMP-X3** | startup validation이 설정 오류를 통과 | IMP-JV-05 |
-| **IMP-X4** | location store read에 5초 상한 없음 | **이 언어 전용 ID 없음** — `runtime/locations/`(`ZLinkStoreLocationResolvers`·`ZLinkLiveLocationRows`·`ZLinkOwnerLeaseTracker`·`ZLinkAutoConnectLoop`)가 store를 **무제한**으로 호출한다. 5초 취소 상한을 적용한다 |
+| **IMP-X4** | 감사 근거 오류 | IMP-JV-10에서 해소. 정식 spec에 store read별 5초 상한이 없다 |
 | **IMP-X5** | message-flow 관측자가 로그 모드에 묶여 침묵 | **이 언어 전용 ID 없음** — `ZLinkMessageFlowTracer.java:65-78`의 `enabled()`가 **로그 모드만** 읽고, 샘플 게이트까지 통과해야 :89의 관측자 dispatch에 닿는다. [52 §3](../server/52-message-flow-tracing.ko.md)은 "관측자는 모드와 무관하게 발화한다"이다. `.NET`(`ZLinkMessageFlowTracer.cs:44`)처럼 `ShouldLog(outcome) || ObserverEnabled`로 고친다 |
 | **IMP-X6** | `origin=lifecycle`을 생성하지 않는다 | **이 언어 전용 ID 없음** — `ZLinkMessageFlowTracer.java:119-123`의 `originFor()`가 `RECEIVED`가 아닌 모든 것을 `APPLICATION`으로 매핑한다. enum은 wire 디코더(`ZLinkStreamHeaderCodec.java:243`)에만 있다. drain·startup·shutdown이 새 flow를 `lifecycle`로 시작해야 한다 |
 | **IMP-X7** | connector send payload 한도를 압축 전에 적용 | IMP-JV-20 |
@@ -617,11 +656,10 @@ application API**다. 이 사실이 아래 여러 항목의 근본이다.
 Java request, send, publish, Spot, actor와 session handler는 `CompletionStage<T>` 또는
 `CompletionStage<Void>`를 반환한다.
 
-> **turn 의미는 갭이다.** 현재 구현의 automatic turn은 handler가 stage를 **반환할 때까지**만 다음
-> handler의 시작을 막고, 반환된 incomplete stage의 **완료는 기다리지 않는다.** 정본 계약은
-> `async`가 **완료까지 turn을 유지**하는 것이다([04 §1.1](../04-async-execution-policy.ko.md)).
-> 아래 근거는 **폐기된 계약 기준의 기록**이며, 현재 갭은
-> [§12.21](#1221-yield-terminator-부재-전-언어)이 소유한다.
+> **이 절은 과거 기록이다.** 당시 automatic turn은 handler가 stage를 반환할 때까지만 다음 handler의
+> 시작을 막고 incomplete stage의 완료는 기다리지 않았다. 현재 구현은 정본의 `async` turn 유지와
+> `yield` turn 반납을 제공해
+> [§12.21](../90-implementation-gap.ko.md#1221-c-yield-terminator-부재)을 해소했다.
 
 확인 근거(구 계약 기준):
 
@@ -673,7 +711,7 @@ ZLinkActorJoinCall
 ZLinkActorLocationStore
 ZLinkActorRequestCall
 ZLinkActorSendCall
-ZLinkChannelRuntimeOptions
+ZLinkRouteMeshRuntimeOptions
 ZLinkClientServerChannelRuntimeOptions
 ZLinkCodecRegistrar
 ZLinkLocationChangeStampStore
@@ -767,7 +805,7 @@ Config 11 전체 실행도 각 selector를
   - 근거: 집중 release contract test와 TicTacToe self-check가 typed JSON 기준으로 통과했다. 구현 커밋 `52415a953`.
 - [x] **SMP-JV-06** — Java/Kotlin Bingo publish wire와 handler가 `BingoRewardAcquiredEvent`를 사용한다.
   - 근거: 두 proto·handler·inventory에서 `BingoWinnerMsg`를 제거했고 Java/Kotlin Bingo runner가 통과했다. 구현 커밋 `333a27032`.
-- [x] **SMP-JV-07** (결함) — DeliveryDispatch에 **문서에 없는 죽은 `CourierGateway` 프로세스**가 있고, Java가 **actor relay를 건너뛴다**
+- [x] **SMP-JV-07** (결함) — DeliveryDispatch에 **문서에 없는 미사용 `CourierGateway` 프로세스**가 있고, Java가 **actor relay를 건너뛴다**
   - 증거: 기존 설정은 dead `CourierGateway` 금지 gate에서 실패했고, 이를 제거한 뒤에도 기존 직접 응답 구현은 `courier-bind-relayed=courier-a` gate에서 실패했다. `CourierSession`이 actor 위치와 session route를 채워 기존 actor handler로 relay하도록 수정하고 등록되지 않은 `customer-route` handler를 제거한 뒤 `./run_sample.sh`의 client/server self-check와 courier-a/b actor relay gate가 모두 통과했다.
 - [x] **SMP-JV-08** (결함) — Bingo·DeliveryDispatch가 여전히 **환경변수·JVM system property**를 읽는다
   - 증거: 수정 전 애플리케이션 코드의 `System.getProperty`·`System.getenv` 14곳을 금지하는 runner gate가 실패했다. 두 샘플은 runner가 만든 properties 파일을 각 프로세스의 `--config` 인자로 받고, `SampleTopology`가 시작 시 한 번 읽는다. Bash runner의 전체 client/server self-check, Bingo PowerShell runner, 애플리케이션 코드 0건 gate가 모두 통과했다.
@@ -815,7 +853,7 @@ Config 11 전체 실행도 각 selector를
 - [x] **E2E-JV-06** (결함) — StoreFailure·RuntimeMonitoring·ResilienceLifecycle·SpotService의 시나리오를 Client가 소유한다
   - 근거: SpotService의 51개 정식 ID를 Client scenario 파일에 연결하고 단계와 단언을 옮겼다.
     server에는 framework primitive operation만 남았으며 `/scenario`·`runMode` 금지 gate와 전체 실행이 통과했다.
-- [x] ~~**E2E-JV-07** (결함) — **`SF-B2`가 `SF-B1`과 구별되는 것을 아무것도 단언하지 않고**, 죽은 옵션으로 시간을 잰다~~
+- [x] ~~**E2E-JV-07** (결함) — **`SF-B2`가 `SF-B1`과 구별되는 것을 아무것도 단언하지 않고**, 적용되지 않는 옵션으로 시간을 잰다~~
   - 재검증 취소: .NET 정본 SF-B2는 store 장애 중에도 이미 준비된 transport의 요청 성공을 요구하며, grace 이후 provider 재시작을 금지하는 시나리오가 아니다. Java SF-B2도 같은 계약을 검증한다. 죽어 있던 `storeFailureGrace` 구현은 `IMP-JV-33`에서 별도로 고쳤다.
 - [x] **E2E-JV-08** (결함) — `feature-map` 누락, `YieldDispatch`에 **`run_e2e.sh`가 없어** 실행 불가
   - 근거: 없는 `SpotActorTransfer/feature-map.ko.md`를 요구한 파일 gate가 실패했다. 새 feature-map은 공통 Config 10, Java runner와 같은 20개 ID를 가지며, E2E-JV-17·18의 알려진 증거 결함은 부분 구현으로 남겼다. `YieldDispatch`는 Git 추적 파일이 0건이므로 이 항목의 구현 대상이 아님을 다시 확인했다.
@@ -839,7 +877,7 @@ Config 11 전체 실행도 각 selector를
 | **SMP-JV-07** (결함) | [deliverydispatch §5:191-199](../../common/sample/deliverydispatch/README.ko.md)의 프로세스 표는 `Dispatch`·`CourierSession`·`CourierSpotNode1/2`·`Tracking`·`CustomerGateway`·`Client`뿐이다. `:243-245`는 *"courier별 session route는 **별도 gateway나 registry가 아니라** 해당 courier actor가 기억한다"* | **해결:** 문서에 없고 요청 송신자도 없던 `Server/CourierGateway`를 project와 runner에서 제거했다. `CourierSession`은 actor를 찾거나 만든 뒤 현재 actor 위치와 session route를 `BindCourierSessionReq`에 채워 `BindCourierSessionActorHandler`로 relay하며, actor의 `BindCourierSessionRes`가 원래 client 요청에 응답한다. 등록되지 않은 `customer-route` handler도 제거해 status push는 기존 `Tracking` → `sendToActor` 경로 하나만 사용한다. runner는 금지된 role/handler 잔존과 courier-a/b actor relay 표식을 검사한다. 공유 `BindCourierReq`·`BindCourierRes` wire 타입은 다른 언어 호환성을 깨지 않도록 유지했다. |
 | **SMP-JV-08** (결함) | [공통 샘플:196-197](../../common/sample/README.ko.md): "Endpoint, Redis, routing id, timeout과 로그 경로를 환경 변수나 JVM system property로 전달하지 않으며, server와 client 애플리케이션 코드에서 **직접 사용할 수 있는 환경 변수는 0개다**" | **해결:** live 재검증에서 확인한 Bingo 6곳과 DeliveryDispatch 8곳의 `System.getProperty`·`System.getenv`를 제거했다. runner가 실행별 endpoint, Redis, routing id와 로그 경로를 properties 파일에 기록하고, 각 role과 client는 `--config`로 파일 경로 하나만 받아 `SampleTopology`에서 읽는다. system property를 helper 뒤에 숨기는 대안은 금지된 설정 통로를 유지하므로 사용하지 않았다. Bash runner 두 개와 Bingo PowerShell runner가 실제 프로세스 구성으로 통과하며, runner의 정적 gate가 애플리케이션 코드의 직접 호출 0건을 계속 확인한다. |
 | **SMP-JV-09** (**실패할 수 없는 단언**) | [공통 샘플 §Client self-check 기준:358](../../common/sample/README.ko.md): "**자기 자신에게 보내면 안 되는 join notify는 받지 않았음을 확인한다**" | **해결:** Bingo와 TicTacToe는 AUTO mode에서 갱신되지 않는 `receivedCount(...)`를 사용하지 않는다. 각 connector에 typed `PlayerJoinedNotify` callback을 등록해 자기 actor id 알림을 실제 계수하고 전체 시나리오 뒤 0인지 단언한다. Bingo는 두 card가 9칸인 제출 응답과 draw별 `DrawSeq`·`Number`·전체 state 동일성도 확인한다. DeliveryDispatch는 도착 대기에 public `waitFor`를 계속 사용하고, 별도 typed callback으로 상태 알림을 기록해 success와 reassignment의 실제 순서를 정확히 비교한다. |
-| **SMP-JV-10** (**버그**) | [shoppingmall §8:433](../../common/sample/event/shoppingmall.ko.md): "`GetOrderStateReq`는 `OrderReadModelStore` 조회 모델만 읽는다. **조회가 주문을 진행시키거나 이벤트를 기록하면 안 된다.**" `:425`는 "`CommerceApi`는 … **조회 모델 재생성을 직접 호출하지 않는다**" | `CommerceApiService.java:56-62` — projection이 없으면 `rebuildProjection(orderId)`으로 **owner workflow spot에 `RebuildOrderProjectionReq`를 보낸다**(`:68-74`). 그 끝은 `RedisCommerceStore.java:293-300`의 `saveProjection(rebuilt)` — **쓰기다.** ⇒ 단순 `GET /orders/{id}` 폴링(`Program.java:119-121`)이 owner spot의 turn을 소비하고 store에 write를 낸다. 덤으로 client self-check의 "projection 삭제 → rebuild" 게이트(`Client/Program.java:96,102`)도 **다음 폴링이 알아서 되살려 주므로** 아무것도 증명하지 못한다 |
+| **SMP-JV-10** (**버그**) | [shoppingmall §8:433](../../common/sample/event/shoppingmall.ko.md): "`GetOrderStateReq`는 `OrderReadModelStore` 조회 모델만 읽는다. **조회가 주문을 진행시키거나 이벤트를 기록하면 안 된다.**" `:425`는 "`CommerceApi`는 … **조회 모델 재생성을 직접 호출하지 않는다**" | `CommerceApiService.java:56-62` — projection이 없으면 `rebuildProjection(orderId)`으로 **owner workflow spot에 `RebuildOrderProjectionReq`를 보낸다**(`:68-74`). 그 끝은 `RedisCommerceStore.java:293-300`의 `saveProjection(rebuilt)` — **쓰기다.** ⇒ 단순 `GET /orders/{id}` 폴링(`Program.java:119-121`)이 owner spot의 turn을 소비하고 store에 write를 낸다. 덤으로 client self-check의 "projection 삭제 → rebuild" 게이트(`Client/Program.java:96,102`)도 **다음 폴링이 projection을 자동으로 재생성하므로** 아무것도 증명하지 못한다 |
 
 ### E2E 상세
 
@@ -939,11 +977,11 @@ Config 11 전체 실행도 각 selector를
 
 ## 라운드 5 (2026-07-14) — GameQuest 심층
 
-**얕은 패스는 "owner Spot이 없다"까지만 봤다. 깊이 파니 샘플 전체가 전제를 구현하지 않았다.**
+**초기 점검은 "owner Spot이 없다"는 사실까지만 확인했다. 심층 조사 결과 샘플 전체가 전제를 구현하지 않았다.**
 
 Java와 Kotlin GameQuest는 **같은 코드베이스의 두 문법**이다. Spot도, spot-mesh도, event
 sourcing도, location-store binding도, 자동 연결도 **없다.** 있는 것은 프로세스 전역 `HashMap` 위에
-얹은 2-shard request/reply 서비스와, **쓰기만 하고 읽지 않는** Redis 감사 로그다.
+구성한 2-shard request/reply 서비스와, **쓰기만 하고 읽지 않는** Redis 감사 로그다.
 
 **그리고 self-check의 가장 중요한 게이트 5개가 구조적으로 실패할 수 없다.**
 
@@ -1075,19 +1113,16 @@ Java의 `ResilienceLifecycle` Consumer와 `RuntimeMonitoring` Trigger는 **READM
 | **E2E-JV-23** (해결) | RM-C8은 상한 초과 public timeout과 이후 회복을 검증한다. | builder가 bind 전에 실제 `MAXMSGSIZE`를 설정하며 Java/Kotlin RM-C8이 모두 통과한다. |
 | **E2E-JV-24** (미구현) | [E2E README:514-519](../../common/e2e/README.ko.md): 표면을 넘은 actor ref는 node rid가 비어 있지 않고 **`generation > 0`**인지 어서션한다 | **해결:** `ActorAuthRes`가 `bound.ref().generation()`을 함께 전달한다. local·remote stream 경계에서 수신한 generation이 양수인지 직접 확인하므로 필드 누락이나 기본값 0으로의 퇴행을 잡는다. |
 
-## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+## connector push 관측과 범용 단언 책임
 
-**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
-표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
-공개 API로 제공한다.
+현재 계약에서 connector public API가 제공하는 test 표면은 push 부재와 순서를 관측하는
+`expectNone`·`waitForSequence`뿐이다. 조건·실패 종류·시간 초과를 검사하는 범용 단언은 connector
+제품 API가 아니라 각 sample·E2E의 `Client/Support`가 소유한다. 아래 TH-JV-01·02는 이전 목표를
+구현하고 지역 관측 helper를 제거한 이력이며, 범용 단언의 현재 배치가 완료됐다는 뜻은 아니다.
 
-**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
-SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
-언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
-검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
-
-- [x] **TH-JV-01** (미구현) — connector에 `expectNone`·`waitForSequence`와 `ZLinkStreamAssert`(`ensure`/`expectFailure`/`expectTimeout`)를 [03 §7.1](../stream-connector/languages/java/03-stream-connector.ko.md)대로 구현했다. 관측·순서·오류 분류를 connector 내부에 모으고, timeout·동시 callback·payload 소유권을 한 모듈에서 처리한다. `String`과 `Class<?>` 진입점, action 실행, 오류 종류 확인, timeout 외 오류 재전파를 재검토했고 `ZLinkStreamTestHelperTest`와 connector 전체 테스트가 통과했다. 구현 커밋 `22484d93e`(2026-07-15).
+- [x] **TH-JV-01** (과거 구현) — connector에 `expectNone`·`waitForSequence`를 구현하고, 당시 목표였던 `ZLinkStreamAssert`도 함께 구현했다. 관측 builder는 현재 계약에도 남지만 범용 단언은 제품 API의 현재 목표가 아니다. 구현 커밋 `22484d93e`(2026-07-15).
 - [x] **TH-JV-02** (리팩토링) — DeliveryDispatch의 지역 `assertStatusOrder`·독립 `waitFor` 목록·잔여 `waitStatuses` wrapper를 삭제하고 connector `waitForSequence`를 직접 사용한다. `.NET` TH-DN-02와 같은 결정으로 성공 배송이 다른 courier에게 전달되지 않는지도 `expectNone`으로 검증하고, 단언에는 필수 메시지가 있는 `ZLinkStreamAssert`를 사용한다. SupportChat의 수동 failure·timeout·negative push helper도 `ZLinkStreamAssert`와 `expectNone`으로 교체했다. SpotService의 AUTO dispatch negative 단언도 동작 전에 등록하는 `expectNone(...).within(...)`을 유지한다. connector 전체 테스트, Java DeliveryDispatch·SupportChat 전체 self-check, SpotService `SM-D6`, runner 재도입 방지 검사가 통과했다. 구현 커밋 `22484d93e`, 추가 재검토 커밋 `9b5a8527e`, 최종 지역 helper 제거 커밋 `bdce6f188`(2026-07-15).
+- [ ] **TH-JV-03** (계약 전환) — `ZLinkStreamAssert`를 connector 제품 export에서 제거하고, 이를 사용하는 sample·E2E의 범용 단언을 각 `Client/Support`로 옮긴다. `expectNone`·`waitForSequence`와 그 수신 큐·timeout 정책은 connector에 유지한다.
 
 ## 라운드 7 (2026-07-16) — 갱신된 공통 E2E 의미 재검증
 

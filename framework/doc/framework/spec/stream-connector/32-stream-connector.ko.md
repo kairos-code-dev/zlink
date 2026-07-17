@@ -221,8 +221,11 @@ metadata 한도와 달리 **option으로 조절한다.**
 | 송신 | 64KB | **transport write 전에** validation error(§9)로 실패한다 |
 | 수신 | 64KB | `FrameTooLarge`(§9) |
 
-**한도는 length prefix와 encoded header를 뺀 payload 바이트에만 적용한다.** 압축을 쓰면 압축된
-payload 기준이다. 64KB보다 큰 payload가 필요한 애플리케이션은 이 값을 명시적으로 키운다.
+**한도는 length prefix와 encoded header를 뺀 payload 바이트에만 적용한다.** 압축 frame을 수신하면
+wire의 압축된 payload와 압축 해제 결과를 각각 같은 수신 한도와 비교한다. 어느 쪽이든 넘으면
+application handler나 request completion으로 전달하지 않는다. 송신 한도는 실제 transport에 쓰는
+payload를 기준으로 하므로 압축을 요청한 송신은 압축 결과를 검사한다. 64KB보다 큰 payload가 필요한
+애플리케이션은 이 값을 명시적으로 키운다.
 
 ## 5. Packet 모델
 
@@ -404,6 +407,11 @@ public metric provider 또는 sink에 게시한다. E2E와 application은 그 pr
 **기본값이 `Manual`인 이유는 게임 엔진 제약이다**(§2.2). 엔진 객체는 main thread 밖에서 다룰
 수 없으므로, main thread에서 pump해야 안전하다.
 
+`waitFor`·`expectNone`·`waitForSequence` 계열은 등록된 callback이 아니다. 이 표면은 두 dispatch
+mode 모두에서 수신 메시지 큐의 아직 소비하지 않은 packet을 직접 관측하고 소비하므로 `Manual`에서도
+별도의 dispatch pump가 필요하지 않다. `dispatch`는 등록된 push handler, error·disconnect handler와
+request callback만 실행한다.
+
 ## 8. 압축
 
 - 지원 알고리즘은 **없음(None)과 Lz4**이며, **기본값은 Lz4**다.
@@ -427,7 +435,7 @@ public metric provider 또는 sink에 게시한다. E2E와 application은 그 pr
 | `ValidationFailed` | 전송 전 검증 실패(metadata 한도 초과, 송신 payload 한도 초과 등) |
 | `RequestTimeout` | reply 대기 시간 초과 |
 | `ConnectTimeout` | 연결 시간 초과 |
-| `FrameDecodeFailed` | frame·header decode 실패(§4.5) |
+| `FrameDecodeFailed` | frame·header decode 실패(§4.5), 또는 구조가 올바른 Error frame의 JSON payload가 §5.3을 충족하지 않음 |
 | `FrameTooLarge` | payload가 수신 한도를 초과 |
 | `SendFailed` | 전송 실패 |
 | `CompressionFailed` / `DecompressionFailed` | 압축·해제 실패 |
@@ -435,7 +443,24 @@ public metric provider 또는 sink에 게시한다. E2E와 application은 그 pr
 | `ReceivedMessageDropped` | 수신 메시지 큐 overflow(§10.1) |
 | `UserCallbackFailed` | 사용자 callback이 실패 |
 | `ObserverFailed` / `ObserverDropped` | inbound observer callback 실패 / 큐 overflow |
-| `RemoteError` | 서버가 error kind로 응답했고 request id가 없거나 부합하지 않음 |
+| `RemoteError` | 서버가 §5.3을 충족하는 Error payload로 응답함. `request_seq`가 pending request와 맞으면 그 request를 실패시키고, 없거나 맞지 않으면 error 이벤트로 전달함 |
+
+오류가 현재 operation과 연결에 미치는 영향은 다음과 같다. 언어별 문서는 오류 이름의 표현만 소유하며
+terminal 여부, 종료 사유와 reconnect 조건을 바꾸지 않는다.
+
+| 오류 | 현재 operation | 연결 | 종료 사유 | 자동 reconnect |
+|---|---|---|---|---|
+| `ConfigurationError`, `ValidationFailed` | 호출 실패 | 유지하거나 연결 시도 전 상태 유지 | 없음 | 안 함 |
+| `RequestTimeout` | 해당 request만 실패 | 유지 | 없음 | 안 함 |
+| `ConnectTimeout`, `TlsValidationFailed` | connect 실패 | `Disconnected` | `TransportError` | reconnect option의 시도 정책을 적용 |
+| `Disconnected`, `SendFailed` | 진행 중인 operation 실패 | transport가 끊겼으면 `Disconnected` | `TransportError` | reconnect option이 켜져 있으면 적용 |
+| `FrameDecodeFailed` — frame·header | 해당 frame을 전달하지 않고 pending request를 실패시킴 | 종료 | `TransportError` | reconnect option이 켜져 있으면 적용 |
+| `FrameDecodeFailed` — Error JSON payload | 맞는 `request_seq`가 있으면 그 request만 실패시키고, 없거나 맞지 않으면 error 이벤트로 전달 | 유지 | 없음 | 안 함 |
+| `FrameTooLarge` | 해당 frame을 전달하지 않고 pending request를 실패시킴 | 종료 | `TransportError` | reconnect option이 켜져 있으면 적용 |
+| `CompressionFailed` | 해당 송신 operation만 실패 | 유지 | 없음 | 안 함 |
+| `DecompressionFailed` | 해당 수신 packet 또는 pending request만 실패 | 유지 | 없음 | 안 함 |
+| `ReceivedMessageDropped` | 새로 도착한 send만 폐기 | 유지 | 없음 | 안 함 |
+| `UserCallbackFailed`, `ObserverFailed`, `ObserverDropped`, `RemoteError` | 오류 event 또는 관련 callback/request로 전달 | 유지 | 없음 | 안 함 |
 
 **전달 방식은 표면에 따라 다르되 의미는 같다.**
 
@@ -470,22 +495,20 @@ public metric provider 또는 sink에 게시한다. E2E와 application은 그 pr
   연결 유지에 필요하기 때문이다.
 - 이 큐는 inbound observer notification 큐와 **별도**다(§10).
 
-### 10.2 테스트 대기·단언 표면
+### 10.2 테스트 대기 표면
 
-connector는 **테스트에서 쓰는 대기·단언 표면**을 공개 API로 제공한다. 지금까지 각 샘플·e2e
-시나리오가 이걸 매번 손으로 재구현했고, 그 결과 (a) 언어마다 시그니처·의미가 갈리고,
-(b) 없는 언어에서는 검증이 아예 빠지거나 약해졌다(예: `expectNone` 부재로 "self-push 안 옴"을
-25ms 창으로만 확인, 상태 순서 미검증). connector가 제공하면 **다섯 언어가 같은 사용성**을
-갖고, 이 부재로 생긴 갭이 구조적으로 사라진다.
-
-**두 표면으로 나눈다. 이름 공간을 섞지 않는다.**
+connector는 **테스트에서 push를 관측하는 대기 표면**을 공개 API로 제공한다. 다섯 언어는 같은 timeout,
+소비 순서와 부정 관측 의미를 제공해야 한다. 조건 확인, 예상 오류와 timeout 검증처럼 connector 상태와
+무관한 범용 단언은 connector 공개 계약이 아니다. E2E는 언어별 `Client/Support`에서 그 보조 코드를
+소유한다.
 
 #### 10.2.1 push 관측 표면 — `waitFor` 계열
 
 수신 메시지 큐(§10.1)를 관측해야만 판정할 수 있는 것. connector 인스턴스의 메서드다.
 
-**셋 다 인자는 `name` 하나이고, 나머지는 builder 체이닝으로 좁힌다**(언어별 완료 종결자는
-`.Async`/`.submit`/`.run` — 각 언어 doc이 소유).
+세 표면 모두 packet 이름을 호출자가 명시하거나 payload type에서 결정한다. 정확한 인자와 overload,
+완료 종결자(`.Async`/`.submit`/`.run`)는 각 언어 문서가 소유하며, 나머지 조건은 builder 체이닝으로
+좁힌다.
 
 | 표면 | 계약 | 실패 |
 |------|------|------|
@@ -498,17 +521,6 @@ connector는 **테스트에서 쓰는 대기·단언 표면**을 공개 API로 �
   알면 안 된다.
 - **도메인 REST 폴링(`/orders/{id}` 등)은 이 표면이 아니다.** 그건 HTTP client의 일이며 connector
   계약에 넣지 않는다.
-
-#### 10.2.2 단언 표면 — `assert` 유틸
-
-connector 상태와 무관한 범용 단언. connector가 테스트 진입점을 겸하므로 **별도 이름 공간**
-(`assert` 또는 언어별 동등물)으로 제공하되, **전송 API와 섞지 않는다.**
-
-| 표면 | 계약 |
-|------|------|
-| `ensure(condition, message)` | 조건이 거짓이면 `message`와 함께 오류를 던진다. **`message`는 필수다** — 실패 원인을 남기지 않는 단언은 디버깅 비용만 만든다 |
-| `expectFailure(action, errorKind?)` | `action`을 **실행해** 실패하는지 확인하고 그 오류를 돌려준다. **입력은 미리 만든 task가 아니라 실행할 action(람다)이다** — task를 밖에서 만들면 언제 실행되는지 모호하다. `errorKind`를 주면 **그 종류로 실패했는지까지** 검증한다(주지 않으면 "실패했다"만). 실패 분류가 필요한 시나리오는 반드시 `errorKind`를 준다 |
-| `expectTimeout(action)` | `action`이 timeout으로 실패하는지 확인한다. timeout이 아닌 다른 오류는 **재전파한다** |
 
 ## 11. 배포 산출물
 
@@ -555,7 +567,7 @@ Unity WebGL UPM package는 새 wire runtime을 만들지 않는다. npm package 
 | typed request/reply | correlation과 매칭 규칙이 §5.2를 따른다 |
 | error 응답 | `Error` payload가 §5.3의 JSON object이고, `request_seq` 유무에 따라 pending 실패 / stream 오류로 갈린다 |
 | pending request 정리 | timeout·close·disconnect에서 pending이 모두 실패하고 제거된다(§5.2) |
-| payload 한도 | 송신 한도가 **transport write 전에** 적용된다(§4.7) |
+| payload 한도 | 송신 한도가 **transport write 전에** 적용되고, 수신은 wire payload와 압축 해제 결과를 각각 검사한다(§4.7) |
 | metadata | 한도·중복·빈 key 검증(§4.4) |
 | packet name | UTF-8 길이 제한(§4.2), `$zlink.` prefix 예약(§4.6), 언어별 exact interface의 기본 이름·override 규칙 |
 | codec | connector option 주입, codec 번호 공유와 browser/server dependency 분리(§5.4) |

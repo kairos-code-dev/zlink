@@ -576,10 +576,21 @@ Actor direct message는 MeshName context와 ActorRef의 owner route·generation�
 Actor 자신의 registry에 등록하며 Actor payload를 Node 또는 Spot handler가 다시 분류하지 않는다.
 
 ```csharp
-public sealed class ActorRef
+public readonly struct ActorRef
 {
+    public ActorRef(RoutingId nodeRid, string actorId, ulong generation);
+    public RoutingId NodeRid { get; }
     public string ActorId { get; }
     public ulong Generation { get; }
+}
+
+public sealed record ActorRefSnapshot(
+    RoutingId NodeRid,
+    string ActorId,
+    ulong Generation)
+{
+    public static ActorRefSnapshot From(ActorRef actorRef);
+    public ActorRef ToActorRef();
 }
 
 public interface IZLinkActor
@@ -755,6 +766,14 @@ public interface IZLinkActorRequestHandler<TActor, in TRequest, TReply>
 
 `SpotRid == null`은 Entry Spot 단계이고 값이 있으면 해당 user Spot에 참여한 상태다. 같은 상태를 나타내는
 별도 boolean은 제공하지 않는다. `BoundSession`은 현재 binding이 없으면 `null`이다.
+
+### 5.1 목표 계약 적용 추적
+
+정식 계약은 위 시그니처다. Source와 package 적용이 남은 항목은 gap 문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-DN-31 / §12.34](../../../gaps/dotnet.ko.md) | binding의 `ActorRef`에 계약 밖 `IsUnchecked` 공개 property가 남아 있다. |
 
 ## 6. Bound STREAM session
 

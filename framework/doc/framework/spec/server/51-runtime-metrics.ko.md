@@ -84,12 +84,12 @@ Logical Multicast의 `targets`는 remote node 수만 기록한다. local matchin
 | `zlink.actor.queue.depth` | observable | `{item}` | `mesh_name` | Actor application queue의 pending payload 수 |
 | `zlink.actor.queue.wait.duration` | histogram | `s` | `mesh_name` | Actor payload admission부터 turn 시작까지의 시간 |
 | `zlink.actor.transfers` | counter | `{transfer}` | `mesh_name`, `outcome` | Actor transfer 결과 누계 |
-| `zlink.actor.transfer.duration` | histogram | `s` | `mesh_name`, `outcome` | transfer 시작부터 terminal completion까지의 시간 |
+| `zlink.actor.transfer.duration` | histogram | `s` | `mesh_name`, `outcome` | transfer 시작부터 activation 또는 실패 terminal까지의 시간 |
 | `zlink.stream.connections.active` | updown | `{connection}` | `transport` | 현재 STREAM session 수 |
 | `zlink.stream.connections.opened` | counter | `{connection}` | `transport` | STREAM session open 누계 |
 | `zlink.stream.connections.closed` | counter | `{connection}` | `transport`, `close_reason` | STREAM session close 누계 |
 
-`spot_kind`는 `entry|user`, transfer `outcome`은 `committed|aborted|timed_out|shutdown`, `transport`는
+`spot_kind`는 `entry|user`, transfer `outcome`은 `activated|aborted|timed_out|shutdown`, `transport`는
 등록 시점에 정해지는 닫힌 값이다. `close_reason`은
 `client_close|idle_timeout|heartbeat_timeout|server_drain|protocol_error|transport_error`다.
 

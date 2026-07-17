@@ -208,8 +208,9 @@
 
 ### 0.7 선행 관계 (뒤집으면 깨진다)
 
-- **join orchestration**(§12.24) → **`yield` terminator**(§12.21) → **샘플의 `yield` 사용처**(SMP-X1)
-  — 뒤집으면 `yield` 없이 `async`로 흉내 내게 되어 **샘플이 보여 주려던 대비 자체가 사라진다.**
+- **join orchestration**(§12.24) → **샘플의 `yield` 사용처**(SMP-X1)
+  — `yield` terminator(§12.21)는 이미 구현됐다. 남은 join commit 순서를 먼저 바로잡아야 샘플이
+  source membership 보존과 명시적 turn 반납을 함께 검증할 수 있다.
 - **framework의 owner-lease join** → **store의 lease script·페이징** — store부터 고치면 아무도 안 쓴다.
 - **wire 계약(묶음 H)은 한 언어만 고치면 오히려 깨진다.** 결정은 §0.8의 2단계 프로토콜을 따른다.
 - 어떤 갭이 다른 갭 **덕분에** 가려져 있는 경우가 있다(`MON-A2` ← monitoring 결함). **그런 쌍은 함께 연다.**
@@ -262,7 +263,32 @@
 
 ## 1. 진행 체크리스트
 
-**전체 체크리스트 62건. 완료 62건. 미완료 0건.**
+**전체 체크리스트 70건. 완료 61건. 미완료 9건.**
+
+- [ ] **IMP-DN-24 / §12.27** (미구현) — `ZLinkActorLocation`과 Redis codec에 현재
+  `SpotGeneration`이 없다. 같은 Spot RID가 다시 사용된 뒤 이전 actor membership을 stale로 구분할 수
+  있도록 record, lifecycle, in-memory·Redis round-trip과 stale 판정을 함께 구현해야 한다.
+- [ ] **IMP-DN-25 / §12.28** (미구현) — `IZLinkStreamNodeBuilder`에
+  `EnableActorDispatch(meshName)`이 없고 STREAM registration도 MeshName을 보존하지 않는다. 선택한 local
+  MeshNode와 다른 mesh의 ActorRef를 startup·bind·dispatch 경계에서 거부해야 한다.
+- [ ] **IMP-DN-26 / §12.29** (미구현) — exact `IZLinkActorTransferStore`와 공식 Redis
+  prepare·commit·abort·takeover 구현이 없다. process-local handoff 상태를 durable participant set, active
+  transfer index와 recovery lease 원자 전이로 교체해야 한다.
+- [ ] **IMP-DN-27 / §12.31** (결함) — Actor transfer counter와 duration을 label 없이 성공 경로에서만
+  기록한다. `mesh_name`과 닫힌 terminal outcome을 activation·실패마다 정확히 한 번 기록해야 한다.
+- [ ] **IMP-DN-28 / §12.32** (결함) — `ZLinkEnvelopeCodec.DecodeBody`가 수신 content-type에 맞는
+  serializer가 없어도 JSON으로 다시 해석한다. 알 수 없는 non-JSON 값은 handler 호출 전에
+  `PayloadDecodeFailed`로 종료해야 한다.
+- [ ] **IMP-DN-29 / §12.25** (결함) — STREAM connector가 handler 등록 이름의 send를 bounded 수신
+  메시지 큐에 admission하지 않고 callback으로 바로 전달한다. handler-bound send도 공통 queue 상한과
+  `ReceivedMessageDropped` 정책을 거친 뒤 handler가 인수하면 unread 기록에서 제거해야 한다.
+- [ ] **IMP-DN-30 / §12.33** (미구현) — exact `AddRouteMesh(meshName)`과
+  `IZLinkMeshNodeBuilder` 중심 구성이 source·package에 적용되지 않았다. 기존 `AddClientServerChannel`,
+  `AddRouteMeshChannel`, `AddSpotMesh`, `UseInMemoryLocationStores`를 제거하고 sample·E2E를 통합 MeshNode
+  표면으로 옮겨야 한다.
+- [ ] **IMP-DN-31 / §12.34** (결함) — binding `ActorRef`는 정식 세 필드 외에 계약 밖
+  `IsUnchecked` 공개 property를 노출한다. generation 0 우회 의미를 public contract로 만들지 말고
+  property를 제거한 뒤 package API snapshot과 참조 생성 회귀를 갱신해야 한다.
 
 ### 2026-07-15 독립 재검토에서 추가로 닫은 항목
 
@@ -318,7 +344,7 @@
   시나리오는 고유 marker traffic으로 연속 surviving-provider 수렴을 먼저 증명하고, 그 직후 첫 요청을
   한 번만 보낸다. RL-A1·A5·B2·B3·C3 독립 실행과 ResilienceLifecycle 전체 20개가 통과한다.
 - [x] **E2E-DN-29** (검증 시간 예산 결함) — StoreFailure SF-D2가 약 3초인 disconnect 수렴 창 안에서
-  각 probe에 같은 3초 timeout을 사용해, 죽은 transport가 한 번 선택되면 첫 probe 하나가 전체 판정
+  각 probe에 같은 3초 timeout을 사용해, 사용할 수 없는 transport가 한 번 선택되면 첫 probe 하나가 전체 판정
   시간을 소진한다
   — probe timeout을 location polling interval로 제한해 여러 routing 관측이 하나의 수렴 창 안에서
   끝나도록 했다. 수렴을 확인한 뒤의 여덟 요청은 재시도 없이 각각 한 번만 보내며, 회귀 검사와 실제
@@ -375,10 +401,21 @@
   — framework 계약 타입과 DI 구성을 HTTP client 구현에 연결하고 proxy·timeout·오류 표면을 같은 계약으로 검증한다. HTTP client 전체 56건이 통과했다.
 - [x] **§12.23** (미구현) — worker 축 분리와 `yield` 부재
   — CPU worker는 bounded pool, I/O worker는 비차단 async 경계로 분리하고 둘 모두 `Async`·`Yield`를 제공한다. queue 포화와 turn 유지·반납 테스트가 통과했다.
-- [x] **§12.24** (결함) — actor join의 orchestration이 뒤집혀 있다
-  — join call이 owner·lease·handoff orchestration을 내부에서 소유하고 호출자는 대상과 요청만 지정한다. SpotActorTransfer 전체 시나리오와 ZoneWorld 이동 시나리오가 통과했다.
+- [ ] **§12.24** (결함) — caller-turn orchestration은 구현했지만
+  `ZLinkFrameworkActorFacade.cs:56-71`이 accepted admission 뒤 location CAS보다 source
+  `OnLeaveActor`를 먼저 실행한다. CAS 실패에서 source membership을 보존하도록 location commit을 먼저
+  수행하고, 그 뒤 source leave와 target membership·`OnJoinedActor`를 순서대로 실행해야 한다.
+- [ ] **§12.25** (결함) — handler-bound STREAM send가 공통 bounded queue를 우회한다
+  (`IMP-DN-29`). 계약 밖 `ReceivedCount` 제거와 함께 닫는다.
+- [ ] **§12.32** (결함) — 수신 non-JSON content-type의 codec 부재를 JSON fallback으로 처리한다
+  (`IMP-DN-28`).
+- [ ] **§12.33** (미구현) — RouteMesh·MeshNode 통합 등록 표면과 old builder 제거가 적용되지 않았다
+  (`IMP-DN-30`).
+- [ ] **§12.34** (결함) — ActorRef에 계약 밖 `IsUnchecked` 공개 property가 남아 있다
+  (`IMP-DN-31`).
 
-본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21과 §12.24는 한 묶음이다** — join orchestration을 먼저 바로잡지 않고 자동 turn dispatch만 걷어내면 user Spot → user Spot join이 즉시 막힌다.
+본문은 [갭 인덱스](../90-implementation-gap.ko.md)가 소유한다. **§12.21은 해소됐고 §12.24가 남았다.**
+accepted join은 location CAS를 먼저 commit해야 하며, CAS 실패에서는 source membership을 보존해야 한다.
 
 ## 2. 구현 감사 상세
 
@@ -460,7 +497,7 @@
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **IMP-DN-14** | `IZLinkSocketConfig`의 각 항목은 소켓에 적용된다 | 적용 경로(`ZLinkChannelBundleFactory.cs:167-176`)가 다루는 건 `MaxMessageSize`·`SendHighWaterMark`·`ReceiveHighWaterMark` **셋뿐**이다. `Linger`·`TcpNoDelay`·`IPv6`·`Immediate`·`ConnectTimeout`·`HandshakeInterval`·`SendBufferSize`·`ReceiveBufferSize`·`ReceiveTimeout`은 **읽는 곳이 없다.** 더 나쁜 건 `ZLinkDotNetBackendAdapters.cs:23,31,39,47,75`가 DEALER/ROUTER/PUB/SUB에 **`Linger = TimeSpan.Zero`를 하드코딩**한다는 것이다. ⇒ `Linger = 1s`를 설정하면 **수락되고 getter로 1초로 읽히는데** 소켓은 Linger 0으로 돈다. 종료 시 큐에 남은 메시지가 **전부 버려진다** — 그 설정이 막으려던 바로 그 일이 |
+| **IMP-DN-14** | `IZLinkSocketConfig`의 각 항목은 소켓에 적용된다 | 적용 경로(`ZLinkChannelBundleFactory.cs:167-176`)가 다루는 건 `MaxMessageSize`·`SendHighWaterMark`·`ReceiveHighWaterMark` **셋뿐**이다. `Linger`·`TcpNoDelay`·`IPv6`·`Immediate`·`ConnectTimeout`·`HandshakeInterval`·`SendBufferSize`·`ReceiveBufferSize`·`ReceiveTimeout`은 **읽는 곳이 없다.** 더 나쁜 건 `ZLinkDotNetBackendAdapters.cs:23,31,39,47,75`가 DEALER/ROUTER/PUB/SUB에 **`Linger = TimeSpan.Zero`를 하드코딩**한다는 것이다. ⇒ `Linger = 1s`를 설정하면 **수락되고 getter로 1초로 읽히지만** 실제 소켓 적용값은 Linger 0이다. 종료 시 큐에 남은 메시지가 **전부 버려진다** — 그 설정이 막으려던 바로 그 일이 |
 | **IMP-DN-15** | `RequireKnownPeer`/`AllowPeerHandover`/`EnablePeerProbe` 등은 route 동작을 정한다 | 재검증 결과 상수 정책이 있는 `ZLinkRouteChannelInitializer`·`ZLinkRouteConnectionSet`은 별도 route-mesh 경로였다. 실제 결함은 client-server bundle이 `ConfigureServerRouting()`과 `ConfigureClientRouting()` 결과를 읽지 않는 점이었다. bundle factory가 server ROUTER와 client DEALER 생성 시 각 routing option을 적용한다 |
 | **IMP-DN-16** | `ConfigurePubSubPublisher()` 등으로 SpotNode 소켓을 설정한다 | framework config를 읽는 곳은 여전히 **0개**다. 현재 binding의 공개 `ISpotNode`는 router/pub-sub HWM과 publisher no-drop·send timeout은 제공하지만 publisher linger와 subscriber receive timeout·linger는 제공하지 않는다. framework의 `IZLinkBackendSpotNode`는 공개된 일부 option도 연결하지 않는다. ⇒ `SendHighWaterMark = 100_000; NoDrop = true`를 설정해도 오류 없이 수락된 뒤 적용되지 않으며, 나머지 option은 binding 공개 표면만으로 적용할 수도 없다 |
 | **IMP-DN-17** | [21 §close](../server/21-mesh-node.ko.md): **actor가 남아 있는 user Spot은 종료하지 않고 실패를 반환한다** | catalog의 actor 수 선확인을 제거했다. activation이 join commit과 같은 직렬 실행 줄에서 actor 수를 확인하고 종료를 예약하므로, 먼저 제출된 join이 commit된 뒤 close 판정이 실행되면 `false`를 반환하고 Spot과 location을 유지한다 |
@@ -474,7 +511,7 @@
 | 교차 결함 | 무엇이 깨지나 | 이 언어의 작업 |
 |---|---|---|
 | **IMP-X3** | startup validation이 스펙의 설정 오류를 통과시킨다 | IMP-DN-02 · IMP-DN-07 · IMP-DN-10 |
-| **IMP-X4** | location store read에 5초 취소 상한이 없다 | **이 언어 전용 ID 없음** — `Runtime/Locations/`에 `StoreReadTimeout` 개념 자체가 없다. [54 §3.4](../server/54-graceful-drain-handoff.ko.md)가 요구하는 5초 상한을 store read 경계마다 적용한다 |
+| **IMP-X4** | 감사 근거 오류 | **이 언어 전용 작업 없음.** 정식 spec은 store read별 5초 상한을 선언하지 않으며 drain 전체 deadline과 owner lease renew timeout을 별도로 고정한다 |
 | **IMP-X7** | connector send payload 한도를 압축 *전* payload에 적용 | IMP-DN-13 |
 | **IMP-X9** | HTTP client가 proxy 자격증명을 대상 서버로 흘린다 | IMP-DN-12 |
 | **IMP-X10** | SPOT timer 등록 검증이 startup이 아니다 | IMP-DN-10 |
@@ -536,10 +573,10 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 > 갭이 닫힌 것으로 기록했다. **그 계약은 폐기됐다.** 현재 정본은 세 terminator
 > (`submit`/`async`/`yield`)이며([04 §1.1](../04-async-execution-policy.ko.md)), `SMP-DN-01`을
 > 닫으면서 request·actor join·기존 worker에 이 구분과 실행 turn 동작을 구현했다. 따라서
-> [§12.21](#1221-yield-terminator-부재-전-언어)의 `.NET` 구현 차이는 해소됐다. 이 기록 뒤에
-> [§12.20](#1220-응답에-packet-name을-싣는다-전-언어),
-> [§12.22](#1222-http-client가-framework-계약-밖에-있다-전-언어),
-> [§12.23](#1223-worker-축-분리와-yield-부재-전-언어)의 CPU·I/O worker 축 분리도 구현하고
+> [§12.21](../90-implementation-gap.ko.md#1221-c-yield-terminator-부재)의 `.NET` 구현 차이는 해소됐다. 이 기록 뒤에
+> [§12.20](../90-implementation-gap.ko.md#1220-응답-packet-name--해소),
+> [§12.22](../90-implementation-gap.ko.md#1222-c-http-client가-framework-계약-밖에-있다),
+> [§12.23](../90-implementation-gap.ko.md#1223-cjavakotlin-worker-cancellation-부재)의 CPU·I/O worker 축 분리도 구현하고
 > contract/unit/E2E로 검증했다.
 
 ## 라운드 4 (2026-07-14) — 샘플 · E2E
@@ -684,9 +721,9 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 
 | ID | 계약 | 구현이 하는 일 |
 |----|------|----------------|
-| **SMP-DN-09** (**버그**) | [zoneworld §2.4·§2.5](../../common/sample/zoneworld/README.ko.md): border snapshot은 **`Tick`이 보관 중인 값보다 작거나 같으면 무시**한다. zone spot 생성 시 **`Tick = 0`**이다 | `ZoneState.cs:19` — `_adjacentHighWater`를 별도로 들고, `ExpireStaleSnapshots`(`:60-68`)가 **`_adjacent`만 지우고 `_adjacentHighWater`는 영영 안 지운다.** ⇒ zone-node-2를 재시작하면 그 spot의 `Tick`이 **0부터 다시 시작**하는데, 살아남은 zone-node-1의 high-water는 **≈400**이다. 재시작된 노드가 보내는 `Tick=1,2,3…`이 전부 `tick <= newest`에 걸려 **영구히 버려진다. 그 순간부터 border sync가 죽는다.** 만료된 뒤엔 "보관 중인 값"이 없으므로 새 `Tick=1`은 **받아들여야** 한다. **runner가 실제로 zone-node-2를 재시작하는데**(ZW-B4·C2·C3·E5), **이걸 잡을 ZW-B1이 첫 재시작 앞에서 돌아** 스위트는 초록으로 남는다 |
+| **SMP-DN-09** (**버그**) | [zoneworld §2.4·§2.5](../../common/sample/zoneworld/README.ko.md): border snapshot은 **`Tick`이 보관 중인 값보다 작거나 같으면 무시**한다. zone spot 생성 시 **`Tick = 0`**이다 | `ZoneState.cs:19` — `_adjacentHighWater`를 별도로 들고, `ExpireStaleSnapshots`(`:60-68`)가 **`_adjacent`만 지우고 `_adjacentHighWater`는 제거하지 않는다.** ⇒ zone-node-2를 재시작하면 그 spot의 `Tick`이 **0부터 다시 시작**하는데, 계속 실행된 zone-node-1의 high-water는 **≈400**이다. 재시작된 노드가 보내는 `Tick=1,2,3…`이 전부 `tick <= newest`에 걸려 **계속 폐기되며 border sync가 중단된다.** 만료된 뒤엔 "보관 중인 값"이 없으므로 새 `Tick=1`은 **받아들여야** 한다. **runner가 실제로 zone-node-2를 재시작하지만**(ZW-B4·C2·C3·E5), **이걸 검출할 ZW-B1이 첫 재시작 전에 실행되어** 스위트는 초록으로 남는다 |
 | **SMP-DN-10** (**가짜 통과**) | [zoneworld §8.1·§11 ZW-C1](../../common/sample/zoneworld/README.ko.md): `Registered`는 **location event**에서, `Connected`는 **socket event**에서 온다. 문서가 위험을 직접 적어 뒀다 — *"각각 다른 출처에서 오므로, 하나만 보면 다른 하나의 배선이 죽어 있어도 통과한다"* | `NodeRegistry.cs:29-36` — 1초마다 오는 **report 메시지가 `Registered = true`를 찍는다.** ⇒ **두 플래그가 같은 배선(report channel)에서 나온다.** `LocationEventHandler`를 **통째로 지워도 ZW-C1이 통과한다.** 문서가 경고한 바로 그 실패다 |
-| **SMP-DN-11** (결함) | [zoneworld §2.4](../../common/sample/zoneworld/README.ko.md): 같은 `PlayerId` 재입장 시 **좌표와 zone은 유지된다** | `ZoneEntrySpot.cs:70-74` — `JoinWorldReq` handler가 **무조건 고정 스폰(25,25)으로 재입장**시킨다. 게다가 그 handler는 **entry spot에 있을 때만** dispatch되므로, zone spot에 살아 있는 actor에겐 `JoinWorldReq` handler가 **아예 없다.** 시나리오는 매번 GUID 접미사를 붙여서 **같은 `PlayerId`로 재입장하는 경우가 한 번도 없다** |
+| **SMP-DN-11** (결함) | [zoneworld §2.4](../../common/sample/zoneworld/README.ko.md): 같은 `PlayerId` 재입장 시 **좌표와 zone은 유지된다** | `ZoneEntrySpot.cs:70-74` — `JoinWorldReq` handler가 **무조건 고정 스폰(25,25)으로 재입장**시킨다. 게다가 그 handler는 **entry spot에 있을 때만** dispatch되므로, zone spot에 유지되는 actor에는 `JoinWorldReq` handler가 **아예 없다.** 시나리오는 매번 GUID 접미사를 붙여서 **같은 `PlayerId`로 재입장하는 경우가 한 번도 없다** |
 
 ### 규약 위반
 
@@ -694,7 +731,7 @@ Bingo 공개 예제, Config 1~11의 공통 E2E 181개로 검증했다.
 |----|------|----------------|
 | **SMP-DN-12** (**절대 규칙 위반**) | [샘플 규약](../../common/sample/README.ko.md): **TicTacToe만** 수동 연결을 쓸 수 있다 | `ZoneNode/Program.cs:88-91,107` — `ConnectRouter`·`ConnectPeerPub`·`EnableClient(endpoint)`. peer endpoint가 `ZoneWorldSettings.cs`에 박혀 있고 **주석이 후속 에이전트에게 지우지 말라고 지시한다.** [갭 인덱스 §13.2] 참조 |
 | **SMP-DN-13** (결함) | [샘플 규약](../../common/sample/README.ko.md): 앱 코드가 쓸 수 있는 **환경변수는 0개** | `ZoneWorldSettings.cs:20-35`에서 **21개**를 읽는다. 그중 둘은 설정이 아니라 **동작 스위치**다 — `ZONEWORLD_FAULT_TICK_ZONE`을 **모든 zone spot의 100ms tick마다 환경에서 다시 읽어** 예외를 던지고, `ZONEWORLD_DISABLE_BOTS`도 마찬가지다. **다른 5개 샘플은 최근 커밋에서 전부 config 파일로 옮겼다** |
-| **SMP-DN-14** (결함) | [샘플 규약](../../common/sample/README.ko.md): 실행마다 **전용 Docker Redis**를 만든다. **host Redis 공유 금지, key prefix만 다르게 하는 것도 안 된다** | `run_sample.sh:12-13,43-44` — **host Redis 6379**를 쓰고 key prefix로만 격리한다. 게다가 시작할 때 `pkill -f "bin/Debug/net8.0/ZoneWorld.Server"`를 해서 **동시에 도는 다른 실행을 죽인다** |
+| **SMP-DN-14** (결함) | [샘플 규약](../../common/sample/README.ko.md): 실행마다 **전용 Docker Redis**를 만든다. **host Redis 공유 금지, key prefix만 다르게 하는 것도 안 된다** | `run_sample.sh:12-13,43-44` — **host Redis 6379**를 쓰고 key prefix로만 격리한다. 게다가 시작할 때 `pkill -f "bin/Debug/net8.0/ZoneWorld.Server"`를 해서 **동시에 실행 중인 다른 프로세스까지 종료한다** |
 
 **깨끗한 축(확인함):** actor cross-node transfer(상태 유실 없음, 좌표·zone 교차검증), bot이 bound
 session 없이 도는 것, fanout topic에 동적 id 없음, 발행자가 노드 목록을 모름, border band·인접·병합
@@ -775,21 +812,18 @@ session 없이 도는 것, fanout topic에 동적 id 없음, 발행자가 노드
 
 최종 재리뷰에서 의미 있는 POSD/DDD 위험 신호와 미완료 계약 갭은 남지 않았다. **LOOP CLEAN**.
 
-## connector 공통 test helper 표면 ([32 §10.2](../stream-connector/32-stream-connector.ko.md))
+## connector push 관측과 범용 단언 책임
 
-**계약이 확정됐다**(spec §10.2 + connector 언어별 문서 03 §…). connector가 push 관측
-표면(`expectNone`·`waitForSequence`)과 범용 단언 유틸(`ensure`·`expectFailure`·`expectTimeout`)을
-공개 API로 제공한다.
+현재 계약에서 connector public API가 제공하는 test 표면은 push 부재와 순서를 관측하는
+`ExpectNone`·`WaitForSequence`뿐이다. 조건·실패 종류·시간 초과를 검사하는 범용 단언은 connector
+제품 API가 아니라 각 sample·E2E의 `Client/Support`가 소유한다. 아래 TH-DN-01·02는 이전 목표를
+구현하고 지역 관측 helper를 제거한 이력이며, 범용 단언의 현재 배치가 완료됐다는 뜻은 아니다.
 
-**이 검증들은 각 언어가 이미 지역 helper로 손수 구현해 관련 갭을 닫아 둔 상태다**(그래서 아래 참조
-SMP 항목들이 이미 `[x]`다). 이 작업은 **그 지역 helper를 connector의 공통 표면으로 끌어올려** 다섯
-언어가 같은 API를 쓰게 하고, 앞으로 시나리오가 다시 손수 재구현하지 않게 한다. 교차 언어 순서
-검증 항목 [SMP-X3](../90-implementation-gap.ko.md)의 "공통 게이트"가 바로 이 `waitForSequence`다.
-
-- [x] **TH-DN-01** (미구현) — connector에 `ExpectNone`·`WaitForSequence`와 `ZlinkStreamAssert`(`Ensure`/`ExpectFailureAsync`/`ExpectTimeoutAsync`)를 [03 §8.1](../stream-connector/languages/dotnet/03-stream-connector.ko.md)대로 구현한다. `Send`/`WaitFor`와 같은 builder·완료 규약을 따른다.
+- [x] **TH-DN-01** (과거 구현) — connector에 `ExpectNone`·`WaitForSequence`를 구현하고, 당시 목표였던 `ZlinkStreamAssert`도 함께 구현했다. 관측 builder는 현재 계약에도 남지만 범용 단언은 제품 API의 현재 목표가 아니다.
   — 새 API를 참조하는 집중 테스트가 `CS1061`·`CS0103`으로 실패하는 것을 먼저 확인했다. 구현 뒤 실제 TCP로 negative와 순서 오류를 검증하는 connector 테스트 **135/135**, public contract **42/42**, packaged contract가 통과했다. 코드 커밋 `8da696b1f`.
 - [x] **TH-DN-02** (리팩토링) — DeliveryDispatch 시나리오의 지역 helper(`WaitForStatusSequenceAsync`·`ExpectNoPushAsync`)를 **삭제하고** 이 connector API로 교체한다. **둘을 병존시키지 마라 — 지역 helper가 하나라도 남으면 미완료다.** 지역 helper로 이미 닫은 SMP-DN-08을 표준 표면으로 대체하는 것이며, 그러면 교차 언어 SMP-X3의 "공통 게이트"가 채워진다.
   — 재검증 시 `ExpectNoPushAsync`는 DeliveryDispatch의 현재 코드와 해당 파일 이력에 없었으므로 새 지역 helper를 만들지 않았다. 남아 있던 `WaitForStatusSequenceAsync`를 typed `WaitForSequence`로 삭제하고, courier-a가 수락한 배송이 courier-b로 잘못 재할당되지 않는 검증은 typed `ExpectNone`으로 직접 추가했다. `ZlinkStreamAssert.Ensure`도 필수 메시지와 함께 사용한다. sample regression **59/59**와 실제 DeliveryDispatch runner의 `deliverydispatch-runner-evidence=completed`가 통과했다. 코드 커밋 `8da696b1f`.
+- [ ] **TH-DN-03** (계약 전환) — `ZlinkStreamAssert`를 connector 제품 export에서 제거하고, 이를 사용하는 sample·E2E의 범용 단언을 각 `Client/Support`로 옮긴다. `ExpectNone`·`WaitForSequence`와 그 수신 큐·timeout 정책은 connector에 유지한다.
 
 POSD 재검토에서는 수신 callback을 따로 구독하는 방식, 시나리오가 `WaitFor`를 반복하는 방식, 기존 수신 큐와 builder가 순서와 전체 timeout을 소유하는 방식을 비교했다. 기존 수신 큐를 사용하는 방식을 선택해 queue 소비 규칙과 timeout 계산을 connector 안에 유지했다. status 전용 API와 도메인 REST 대기는 추가하지 않았고, 대상인 DeliveryDispatch에는 두 지역 helper 이름이 남지 않았다. **LOOP CLEAN**.
 
@@ -846,5 +880,5 @@ Domain 디렉토리에서 framework·Redis·HTTP 의존도 다시 검색했으�
 
 독립 재리뷰는 RM-B3 stale-row 구간, Bingo allocation, Spot subscription retry, actor ref 재결합,
 first-success evidence, typed 설정, connector helper 이관과 ledger를 다시 확인했고
-**NO HIGH/MEDIUM NET-NEW ISSUES**로 판정했다. 현재 확인된 미완료 .NET spec gap은 없다.
-**LOOP CLEAN**.
+당시 범위에서는 **NO HIGH/MEDIUM NET-NEW ISSUES**로 판정했다. 이 문장은 해당 재리뷰 시점의 기록이며,
+현재 미완료 항목은 §1의 진행 체크리스트가 소유한다.

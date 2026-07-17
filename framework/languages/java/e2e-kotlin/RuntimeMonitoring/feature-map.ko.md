@@ -4,7 +4,7 @@
 
 ## 10.0.0 목표 판정
 
-Kotlin E2E는 Java `ZLinkRouteMeshRuntime` public 타입을 그대로 사용한다. Client는 framework
+Kotlin E2E는 Java framework의 `ZLinkChannelRuntimeOptions`와 공개 handler·location 타입을 그대로 사용한다. Client는 framework
 runtime에 참여하지 않는 JVM HTTP·evidence driver이고, framework operation은 Trigger와
 Service role이 수행한다. 기존 socket·location·Spot source marker는 canonical 목표의 부분
 증거로만 사용한다.

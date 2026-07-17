@@ -11,13 +11,13 @@
 
 ## 2. Request/reply
 
-호출 쪽은 `requestToChannel(channel, request)` builder에 `submit(TReply::class.java).await()`를
-이어 reply를 받는다. 업무 객체는 등록된 codec으로 직렬화된다. (payload가 이미 `Message`면
-`request<TReply>(channel, message)` suspend 확장도 쓸 수 있다.)
+호출 쪽은 `requestToChannel(meshName, channelName, request)` builder에
+`submit(TReply::class.java).await()`를 이어 reply를 받는다. 업무 객체는 framework의 typed JSON
+serializer로 직렬화된다. `request(meshName, channelName, message)` suspend 확장도 같은 의미다.
 
 ```kotlin
 val reply: GetProfileReply = client
-    .requestToChannel("profile", GetProfileRequest(accountId))
+    .requestToChannel("application", "profile", GetProfileRequest(accountId))
     .submit(GetProfileReply::class.java)
     .await()
 ```
@@ -31,7 +31,7 @@ timeout이나 metadata가 필요하면 builder를 직접 쓴다.
 ```kotlin
 import kotlinx.coroutines.future.await
 
-val reply = client.requestToChannel("profile", GetProfileRequest(accountId))
+val reply = client.requestToChannel("application", "profile", GetProfileRequest(accountId))
     .timeout(Duration.ofSeconds(5))
     .submit(GetProfileReply::class.java)
     .await()
@@ -49,16 +49,13 @@ class GetProfileHandler : ZLinkSuspendingRequestHandler<GetProfileRequest, GetPr
 }
 ```
 
-> **등록은 자동이 기본, 수동도 된다.** handler에 `@ZLinkHandlerGroup`(또는 메서드에
-> `@ZLinkRequest`/`@ZLinkSend`/`@ZLinkPublish`)을 달고 `addHandlersFromPackageOf(...)`
-> package scan으로 **자동** 등록하는 것이 기본이고 편하다. 어떤 handler가 붙는지
-> 명시적으로 통제하려면 channel builder에 `addRequestHandler(...)` / `addSendHandler(...)` /
-> `addPublishHandler(...)`로 **수동** 등록한다. SPOT handler는 Spot/EntrySpot의
+> **등록은 자동이 기본, 수동도 된다.** handler annotation과 package scan으로 자동 등록하는 방식이
+> 기본이다. 등록 대상을 명시적으로 통제해야 하면 channel builder에서 요청·송신·구독 handler를 수동으로
+> 등록한다. 정확한 호출 이름은 [공개 interface 문서](../../spec/server/languages/kotlin/02-handler-interfaces.ko.md)를 따른다. SPOT handler는 Spot/EntrySpot의
 > `configure()` context에서 등록한다([05-spot](05-spot.ko.md)).
 
-> 메서드 스타일도 된다. `@ZLinkHandlerGroup("play") class CreateGameHandler { @ZLinkRequest
-> suspend fun create(request: CreateGameReq): CreateGameRes { ... } }`처럼 한 클래스에 여러
-> packet handler를 둘 수 있다.
+> 메서드 스타일도 지원하므로 한 클래스에 여러 packet handler를 둘 수 있다. annotation과 메서드
+> signature는 공개 interface 문서의 예제를 따른다.
 
 ## 3. Fanout
 
@@ -84,24 +81,22 @@ one-way send는 `client.sendToChannel("audit", AuditEvent(...)).submit()` 또는
 ## 4. Route mesh
 
 route mesh는 target node `RoutingId`를 application이 직접 알고 있을 때만 쓴다.
-`ZLinkRouteClient`의 `requestTo(channel, target, request).submit(TReply::class.java).await()` /
-`sendTo(channel, target, message).submit()`으로 호출한다. `ZLinkRouteClient`는 특정
-channel 하나에 묶인 client가 아니며, 호출할 때 route channel 이름과 target `RoutingId`를
-함께 받는다. route mesh channel이 여러 개 있어도 호출 인자의 channel 이름으로 어느 경로를
-쓸지 분명하게 정한다.
+`ZLinkRouteClient`의 `request(meshName, target, request).submit(TReply::class.java).await()` 또는
+`send(meshName, target, message).submit()`으로 호출한다. `ZLinkRouteClient`는 특정 mesh 하나에
+묶인 client가 아니며, 호출할 때 MeshName과 target `RoutingId`를 함께 받는다.
 
 ```kotlin
 val target = RoutingId.from("play-node-1")
 
 val reply: AllocateRoomReply = routeClient
-    .requestTo("play.route", target, AllocateRoomRequest("alice"))
+    .request("play", target, AllocateRoomRequest("alice"))
     .submit(AllocateRoomReply::class.java)
     .await()
 ```
 
-같은 route channel로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 Spring bean으로
+같은 MeshName으로 반복 호출하면 application 코드에서 작은 wrapper를 만들어 Spring bean으로
 등록해도 된다. 이 wrapper는 framework API가 아니라 application이 정한 이름이다. 그래서 업무
-코드는 매번 channel 문자열을 반복하지 않고, wrapper 내부에서 어떤 route channel로 나가는지만
+코드는 매번 MeshName을 반복하지 않고, wrapper 내부에서 어떤 mesh를 사용하는지만
 한 곳에 둔다.
 
 ```kotlin
@@ -116,7 +111,7 @@ class DefaultPlayRoutes(
     override fun request(
         targetNodeRid: RoutingId,
         request: AllocateRoomRequest,
-    ): ZLinkRequestCall = routes.requestTo("play.route", targetNodeRid, request)
+    ): ZLinkRequestCall = routes.request("play", targetNodeRid, request) // "play"는 MeshName이다.
 }
 ```
 

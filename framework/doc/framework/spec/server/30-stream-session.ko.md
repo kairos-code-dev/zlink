@@ -41,7 +41,7 @@ application에 넘기지 않는다.
 
 **session callback은 transport callback을 직접 실행하지 않는다.** framework가 관리하는 queue를
 거쳐 dispatch한다. 그래야 dispatch·DI·logging을 일관되게 묶을 수 있다. **handler filter
-파이프라인은 Node·Channel dispatch 전용이며 STREAM session dispatch에는 적용하지 않는다**
+파이프라인은 ChannelName dispatch 전용이며 Node direct·Spot·Actor·STREAM session dispatch에는 적용하지 않는다**
 ([Framework API §8](../05-framework-api.ko.md#8-handler-등록과-dispatch)).
 
 - session callback이 받는 것은 **dispatch context**(packet name, metadata, request 정보 등)와
@@ -65,7 +65,7 @@ client는 그 sequence만으로 pending request를 찾는다.
 
 ## 4. recv loop를 기본 표면에서 빼는 이유
 
-recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 표면으로 그대로 끌어올리면
+recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 공개 표면에 그대로 노출하면
 문제가 생긴다.
 
 - framework가 dispatch·DI·logging을 일관되게 묶기 어려워진다.
@@ -84,8 +84,10 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 - **transport core나 framework 기본 runtime에 특정 codec 구현을 직접 섞지 않는다.**
 - **session handler는 codec별 helper를 직접 호출하지 않는다.** JSON·Protobuf·MessagePack·custom
   codec을 바꿔도 업무 코드는 같은 decode 표면을 쓴다.
-- codec registry는 framework, HTTP client, stream connector가 **공유한다**
-  ([Stream Connector §5.4](../stream-connector/32-stream-connector.ko.md)).
+- server framework, HTTP client host와 stream connector는 codec 번호, content-type과 typed payload 선택
+  계약을 공유하지만 registry instance는 공유하지 않는다. Server는 server root별 registry, HTTP client는
+  host별 registry([HTTP Client §5](../http-client/12-http-client.ko.md#5-codec)), connector는
+  connector instance별 typed codec option([Stream Connector §5.4](../stream-connector/32-stream-connector.ko.md#54-codec))을 소유한다.
 
 ## 6. 오류 경계
 
@@ -117,6 +119,8 @@ recv 방식은 low-level binding에서는 의미가 있다. 하지만 framework 
 ### 7.1 TLS
 
 stream node는 **TLS를 켤 수 있다.** 켜면 **인증서 경로와 키 경로를 함께 지정해야 한다.**
+client 인증서를 요구할지는 같은 server TLS 설정에서 선택한다. 기본값은 요구하지 않는 것이며,
+요구하도록 설정하면 client certificate 검증에 실패한 연결은 session을 만들기 전에 거부한다.
 client 쪽 transport 선택은 endpoint scheme이 결정한다([Stream Connector §3](../stream-connector/32-stream-connector.ko.md)).
 
 ### 7.2 Startup validation
@@ -132,6 +136,7 @@ client 쪽 transport 선택은 endpoint scheme이 결정한다([Stream Connector
 | **한 node에 session을 둘 이상 등록** | 설정 오류 |
 | **TLS를 켰는데 인증서 경로가 비어 있음** | 설정 오류 |
 | **TLS를 켰는데 키 경로가 비어 있음** | 설정 오류 |
+| **client 인증서 요구를 TLS server 설정 없이 사용** | 설정 오류 |
 
 등록 시점에 **이 node가 header 기반 packet 경로라는 사실이 분명히 드러나야 한다.**
 

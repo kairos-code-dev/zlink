@@ -32,14 +32,17 @@ Join은 다음 순서로 완료된다.
 
 1. source가 target Spot과 expected Actor generation을 확인한다.
 2. target `OnActorJoin`이 join admission payload와 immutable Actor identity snapshot을 검증해 accept 또는 reject를 반환한다.
-3. accept이면 source `OnLeaveActor`가 현재 membership을 정리한다.
-4. location authority가 membership epoch를 증가시키는 CAS를 commit한다.
+3. accept reply를 처리하는 location authority가 membership epoch를 증가시키는 CAS를 commit한다.
+4. CAS 성공 뒤 source `OnLeaveActor`가 이전 membership을 정리한다.
 5. target membership을 공개하고 immutable membership snapshot으로 `OnJoinedActor`를 실행한다.
 6. source operation을 새 ActorRef location snapshot으로 완료한다.
 
-`OnActorJoin` reject 또는 CAS 실패에서는 target membership을 공개하지 않는다. Join reply의 성공이
-membership epoch를 증가시키는 유일한 commit point다. Stale generation 또는 epoch는 stale-location 결과로
-완료하며 Framework가 현재 owner를 추측해 적용하지 않는다.
+`OnActorJoin` reject 또는 CAS 실패에서는 source `OnLeaveActor`를 실행하지 않고 target membership도
+공개하지 않는다. Accepted join reply를 처리하는 CAS가 membership epoch를 증가시키는 유일한 commit
+point다. Stale
+generation 또는 epoch는 stale-location 결과로 완료하며 Framework가 현재 owner를 추측해 적용하지
+않는다. CAS 뒤 callback이 실패하면 이미 commit한 location을 source로 되돌리지 않고 §6의 commit 이후
+복구 절차를 따른다.
 
 ## 4. 같은 MeshNode의 join
 

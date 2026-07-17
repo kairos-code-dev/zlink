@@ -333,6 +333,8 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 - 각 scenario 파일 첫머리에 해당 시나리오가 무엇을 검증하는지 설명한다.
 - client support 코드는 option parsing, assertion, process lifecycle처럼 시나리오 흐름을 보조하는
   것만 둔다. framework 호출을 감추는 helper를 만들어 client가 server app을 우회하게 하지 않는다.
+- 조건 확인, 예상 오류와 timeout 검증 같은 범용 assertion helper는 `Client/Support`가 소유한다.
+  connector package의 production public API에 같은 helper를 추가하지 않는다.
 - client는 server app endpoint를 언어별 HTTP client wrapper로 호출한다. server evidence endpoint와
   log marker는 검증에 사용할 수 있지만, framework 내부 상태나 private/test-only API를 직접 읽지
   않는다.
@@ -519,7 +521,7 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
 
 ### 기동 순서 축의 절차
 
-기동 순서 결함은 순서가 고정된 러너에서는 영원히 재현되지 않으므로, 러너가 순서를
+기동 순서 결함은 순서가 고정된 러너에서는 재현되지 않으므로, 러너가 순서를
 바꿔 돌 수 있어야 한다.
 
 - config 러너는 서버 역할 기동 순서를 인자(예: `E2E_START_ORDER=reverse|shuffle:<seed>`)로

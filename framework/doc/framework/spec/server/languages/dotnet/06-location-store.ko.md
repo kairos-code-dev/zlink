@@ -137,6 +137,7 @@ public sealed record ZLinkActorLocation(
     RoutingId OwnerNodeRid,
     ulong OwnerNodeGeneration,
     RoutingId SpotRid,
+    ulong SpotGeneration,
     ZLinkSpotKind SpotKind,
     ulong MembershipEpoch,
     string OwnerId,
@@ -405,3 +406,12 @@ services.AddZLinkFramework(options =>
         .SetRoutingId(nodeRid); // 자동 discovery와 분산 Spot·Actor가 같은 store를 사용한다.
 });
 ```
+
+## 10. 목표 계약 적용 추적
+
+정식 계약은 위 시그니처다. Source와 package 적용이 남은 항목은 gap 문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-DN-24 / §12.27](../../../gaps/dotnet.ko.md) | `ZLinkActorLocation`과 Redis codec에 `SpotGeneration`이 없다. |
+| [IMP-DN-26 / §12.29](../../../gaps/dotnet.ko.md) | `IZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |

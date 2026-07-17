@@ -33,7 +33,7 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
 - `SM-B4`: `play-b`에 있는 actor로 후속 request를 보내 cross-node actor routing과 reply를
   검증한다.
 - `SM-B5`: handler 없는 actor packet request가 client-visible error로 끝나고
-  `HandlerMissing` dispatch error marker가 play 노드 로그에 남는지 검증한다.
+  `no_handler` dispatch error marker가 play 노드 로그에 남는지 검증한다.
 - `SM-B6`: 명시적 leave는 actor leave reply와 evidence로 검증하고, 비정상 disconnect 통지는
   `SM-D5` stream disconnect 시나리오에서 선택한 actor에만 callback이 실행되는지 함께 검증한다.
 - `SM-B7`: HTTP evidence snapshot에서 `ActorCreated`, entry spot packet handler, user spot join,

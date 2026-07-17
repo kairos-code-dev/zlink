@@ -107,7 +107,7 @@ public 기준은 typed handler(`ZLinkRuntimeEventHandler<TEvent>`)다.
 - **이벤트가 안 온다** -> `ZLinkMonitoringOptionsCustomizer`는 source 등록만 한다. 해당
   source가 framework/registry 등록으로 실제로 떠 있는지 확인한다.
 - **discovery 상태를 받고 싶다** -> discovery는 runtime event가 아니다. Registry
-  snapshot/query로 조회한다([09-registry](08-registry.ko.md)).
+  snapshot/query로 조회한다([08-registry](08-registry.ko.md)).
 - **등록되지 않은 메시지를 알고 싶다** -> `configureDispatch()` 에
   `ZLinkMessageFlowObserver` 를 등록하고 `outcome() == ERROR` event 를 본다. request 실패는 error reply 로 돌아가고,
   send/publish/subscription/actor send 실패는 drop 되지만 로그, counter, message-flow event 로 남는다.
@@ -143,8 +143,8 @@ ZLinkFrameworkConfigurer dispatchTracing() {
 
 ## 6. 더 보기
 
-- topology 스냅샷 조회: [09-registry](08-registry.ko.md)
-- timer 정책: [06-spot](05-spot.ko.md)
+- topology 스냅샷 조회: [08-registry](08-registry.ko.md)
+- timer 정책: [05-spot](05-spot.ko.md)
 - 정식 계약: [spring-boot-monitoring](../../spec/server/languages/java/01-system-structure.ko.md)
 
 ---

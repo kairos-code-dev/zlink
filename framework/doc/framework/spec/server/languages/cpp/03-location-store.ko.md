@@ -99,6 +99,7 @@ struct actor_location_t {
     zlink::routing_id_t owner_node_rid;
     std::uint64_t owner_node_generation;
     zlink::routing_id_t spot_rid;
+    std::uint64_t spot_generation;
     spot_kind_t spot_kind;
     std::uint64_t membership_epoch;
     std::string owner_id;
@@ -351,3 +352,12 @@ group, slot과 owner token이 모두 일치할 때만 `released`이며 stale tok
 
 `connection_string`과 비어 있지 않은 `key_prefix`는 필수다. Store가 Redis connection을 소유하며 소멸이
 시작된 뒤 새 operation은 closed-store 오류로 완료된다.
+
+## 5. 목표 계약 적용 추적
+
+정식 계약은 위 시그니처다. Source와 package 적용이 남은 항목은 gap 문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-CP-41 / §12.27](../../../gaps/cpp.ko.md) | `actor_location_t`과 Redis codec에 `spot_generation`이 없다. |
+| [IMP-CP-43 / §12.29](../../../gaps/cpp.ko.md) | `actor_transfer_store_t`와 Redis prepare·commit·abort·takeover 구현이 없다. |

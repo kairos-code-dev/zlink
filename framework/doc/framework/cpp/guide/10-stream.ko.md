@@ -18,6 +18,7 @@ Game client --(stream connector)--> stream node --> session --> actor/spot
 ```cpp
 options.add_stream_node ("tictactoe.stream")
   .bind (topology.stream_endpoint)            // 예: tcp://0.0.0.0:5581
+  .enable_actor_dispatch ("game")             // session Actor를 소유한 MeshName
   .register_session<play_session_t> ()
 ```
 
@@ -26,11 +27,13 @@ options.add_stream_node ("tictactoe.stream")
 | 옵션 레벨 빌더 | 의미 |
 |----------------|------|
 | `bind(endpoint)` | 클라이언트 접속을 받을 endpoint |
+| `set_tls_server(certificate,key[,require_client_certificate])` | TLS server 인증서와 키 설정 |
+| `enable_actor_dispatch(mesh_name)` | session Actor dispatch에 사용할 local MeshNode 선택 |
 | `register_session<T>()` | 연결당 생성될 session 타입 |
 
 저수준 `stream_builder_t`는 같은 stream node를 구성하지만 session 타입을 직접
 등록하지 않고 `register_session(session_name)`으로 이미 등록된 session 이름을
-연결한다. 저수준 표면은 `bind(endpoint)`, `register_session(session_name)`,
+연결한다. 저수준 표면은 `bind(endpoint)`와 `register_session(session_name)`만 제공한다.
 
 ## 3. session 작성
 
@@ -75,7 +78,7 @@ stateDiagram-v2
     connected --> authenticated: authenticate 패킷
     authenticated --> authenticated: on_packet → relay (9장)
     connected --> [*]: on_disconnected
-    authenticated --> [*]: on_disconnected → unbind_session
+    authenticated --> [*]: on_disconnected → binding cleanup
 ```
 
 전형적인 `on_packet` 패턴은 [9장 §4](09-actor-session.ko.md#4-session--actor-바인딩)에 있다:

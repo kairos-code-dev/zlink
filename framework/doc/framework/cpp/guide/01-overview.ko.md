@@ -10,16 +10,16 @@
 
 ## 1. 이 프레임워크가 하는 일
 
-`ZLink Framework for C++`는 zlink C++ 바인딩 위에 올라가, 별도 gateway나 전용
-로드밸런서 없이 논리 채널 이름 기준의 서버 간 호출, pub/sub, SPOT, STREAM을
-C++ 애플리케이션의 DI, handler, hosted service 모델 안에서 쓰게 해 주는 상위 계층이다.
+`ZLink Framework for C++`는 별도 L7 gateway나 전용 로드밸런서 없이 논리 채널 이름
+기준의 서버 간 호출, pub/sub, SPOT, STREAM을 C++ application의 DI, handler,
+hosted service 모델 안에서 제공한다.
 
 핵심은 raw socket과 low-level discovery를 직접 다루지 않는다는 것이다. 개발자는
 handler, client, filter를 작성하고, 연결·발견·라우팅·재연결·correlation은 framework가
 처리한다.
 
-> **ZLink는 다국어 framework다.** 호출 계약이 언어 중립 wire protocol(ZMP), codec,
-> 논리 channel/packet으로 닫혀 있어서 서로 다른 언어로 구현된 서비스가 같은 channel
+> **ZLink는 다국어 framework다.** 호출 계약이 공통 payload schema, codec과 논리
+> channel/packet으로 닫혀 있어서 서로 다른 언어로 구현된 서비스가 같은 channel
 > 위에서 상호 호출한다. 예를 들어 room 서버는 C++로, API 서버는 .NET이나 Java로
 > 구현할 수 있다.
 
@@ -48,7 +48,7 @@ handler, client, filter를 작성하고, 연결·발견·라우팅·재연결·c
 | 동시 요청의 상태 보호 | SPOT의 직렬 실행으로 락 없이 상태 관리 |
 | 서비스 생성·의존성 관리 | DI 컨테이너 — `dependency_types` 선언만으로 생성자 주입 |
 | 외부 HTTP API 서버 별도 운영 | HTTP hosting 내장 — 같은 프로세스에 endpoint 선언 |
-| 서버 주소 관리·연결 해석 | Registry / discovery로 endpoint 자동 연결 |
+| 서버 주소 관리·연결 해석 | Redis location store descriptor로 peer set 갱신 |
 | 설정·로그·모니터링 | 내장 config·logging·health·metrics |
 
 ### 어떤 문제를 푸는가
@@ -61,15 +61,15 @@ C++ 서버가 서로 통신할 때 흔히 드는 비용은 다음과 같다.
 - 로깅·검증·권한 확인 같은 공통 처리가 HTTP middleware와 handler 코드 사이에 흩어진다.
 - 게임 room, stage 같은 동적 단위를 다루려면 라우팅과 session 관리를 또 따로 짠다.
 
-ZLink Framework는 이 모든 호출의 단위를 **논리 채널 이름 하나**로 좁힌다. 응용은
-"`order` 채널로 요청을 보낸다"만 알면 되고, 그 채널이 어디에 몇 개 떠 있는지는
-discovery가 숨긴다.
+ZLink Framework는 서버 간 호출을 MeshName과 ChannelName으로 식별한다. Application은
+논리 이름으로 요청하고 location store 또는 manual peer 구성이 실제 MeshNode 목록을
+관리한다.
 
 ### 기존 방식 대비
 
-같은 서버 간 요청/응답을 붙일 때 raw 바인딩으로는 discovery 구성, DEALER socket 생성,
-endpoint 연결, 재연결 관리, correlation id 매칭, 직렬화, 수신 루프를 직접 작성해야 한다.
-Framework를 쓰면 handler 하나와 channel 등록으로 좁아진다.
+서버 간 요청/응답을 직접 구성하면 peer 관리, 재연결, correlation, 직렬화와 수신
+dispatch를 application이 소유해야 한다. Framework를 쓰면 MeshNode와 handler 등록으로
+이 책임을 모을 수 있다.
 
 ```cpp
 class get_price_handler_t
@@ -86,9 +86,10 @@ class get_price_handler_t
 };
 
 app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
-    options.add_client_server_channel ("price")
-      .enable_server ("tcp://0.0.0.0:7301")
-      .use_handler_group ("price");
+    auto mesh = options.add_route_mesh ("services")
+      .listen ("tcp://0.0.0.0:7301")
+      .set_routing_id (zlink::routing_id_t::from ("price-1"));
+    mesh.channel_name ("price").use_handler_group ("price");
 
     options.handlers ()
       .group ("price")
@@ -98,22 +99,13 @@ app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &optio
 
 ### 아키텍처
 
-```text
-+-----------------------------------------------------------+
-|  C++ app (DI, hosted service, handler)                    |
-+-----------------------------------------------------------+
-|  ZLink Framework for C++ (adapter surface)                |
-|   - channel messaging  - SPOT/actor  - STREAM session     |
-|   - registry/monitoring integration                       |
-+-----------------------------------------------------------+
-|  zlink C++ binding (Dealer, Router, Spot, Registry, ...)  |
-+-----------------------------------------------------------+
-|  zlink core (C API) - transport, ZMP, I/O threads         |
-+-----------------------------------------------------------+
-```
+| 사용자 관점 계층 | 공개 역할 |
+|------------------|----------|
+| C++ application | DI 서비스, hosted service와 handler를 작성한다 |
+| ZLink Framework | RouteMesh·ChannelName 메시징, SPOT·Actor, STREAM session과 운영 설정을 제공한다 |
 
-Framework는 새 transport나 새 socket 의미를 만들지 않는다. 기존 바인딩 기능을
-DI, handler, hosted service, configuration 모델로 감싸 노출한다.
+Application은 공개 Framework 표면만 사용한다. 연결과 메시지 처리의 내부 구조는
+[C++ runtime architecture](../internals/runtime-architecture.ko.md)가 설명한다.
 
 ## 2. 개념 요약
 
@@ -135,13 +127,13 @@ options.services ()
 // 핸들러가 필요한 것을 선언하면 컨테이너가 생성자에 주입
 class open_conversation_handler_t {
     using dependency_types =
-        dependency_list_t<sample_topology_t, channel_client_t, logger_t<open_conversation_handler_t>>;
-    open_conversation_handler_t (sample_topology_t &t, channel_client_t &c,
+        dependency_list_t<sample_topology_t, request_client_t, logger_t<open_conversation_handler_t>>;
+    open_conversation_handler_t (sample_topology_t &t, request_client_t &c,
                                  logger_t<open_conversation_handler_t> &l);
 };
 ```
 
-수명은 singleton / scoped / transient 세 가지다. `channel_client_t`, `logger_t<T>` 같은
+수명은 singleton / scoped / transient 세 가지다. `request_client_t`, `logger_t<T>` 같은
 프레임워크 서비스도 같은 방식으로 받는다.
 
 [4장 →](04-di-container.ko.md)
@@ -180,7 +172,7 @@ options.http ()
 ```
 
 HTTP 핸들러는 채널 핸들러와 동일한 `request_type`/`reply_type`/`handle()` 계약을
-쓴다. 핸들러 안에서 `channel_client_t`로 도메인 서버에 요청을 위임하는 것이
+쓴다. 핸들러 안에서 `request_client_t`로 도메인 서버에 요청을 위임하는 것이
 일반적인 패턴이다. DI를 통해 topology, logger 등을 생성자에서 받는다.
 
 [6장 →](06-http-hosting.ko.md)
@@ -196,46 +188,33 @@ HTTP 핸들러는 채널 핸들러와 동일한 `request_type`/`reply_type`/`han
 SPOT·actor는 실시간 상태가 필요할 때 선택적으로 추가하는 기능이다.
 
 ```cpp
-// "inventory.service" 채널 하나와 핸들러 두 개 — SPOT/actor 없음
-options.add_client_server_channel ("inventory.service")
-    .enable_server ("tcp://0.0.0.0:5580")
-    .use_handler_group ("inventory");
+// "inventory.service" ChannelName과 핸들러 두 개 — SPOT/Actor 등록은 필요 없다.
+auto mesh = options.add_route_mesh ("inventory")
+  .listen ("tcp://0.0.0.0:5580")
+  .set_routing_id (zlink::routing_id_t::from ("inventory-1"));
+mesh.channel_name ("inventory.service").use_handler_group ("inventory");
 // check_stock_handler_t, reserve_item_handler_t 가 DB를 조회하고 응답
 ```
 
-채널 패턴은 세 가지다.
+메시징 표면은 세 가지다.
 
-- **client/server** — 1:1 request-reply 또는 단방향 send.
-- **fanout (pub/sub)** — publisher가 보내면 모든 subscriber에게 전달.
+- **ChannelName select-one** — 같은 membership의 ready positive-weight MeshNode 하나로
+  request 또는 send.
+- **Node direct** — 특정 MeshNode RID로 request 또는 send.
+- **classic fanout** — publisher가 보내면 subscriber에게 전달.
   상태 변화를 여러 서버에 알리는 데 쓴다.
-- **route mesh** — routing ID로 특정 서버에 고정 라우팅. 주문 ID → 주문 담당
-  서버처럼 엔티티 친화성(affinity)이 필요한 패턴.
 
 채널 핸들러의 공통 처리는 handler filter로 묶는다. HTTP middleware는 HTTP route에만
 적용되므로, ZLink handler 앞뒤의 로깅·검증·권한 확인·메트릭 기록은 filter로 분리한다.
 
 [7장 →](07-channel-messaging.ko.md)
 
-### zlink core 와 기본 socket 패턴
+### Runtime 경계
 
-위 채널 패턴들은 zlink core 의 socket 위에서 돈다. framework 는 직접 socket을 열지 않고,
-zlink core(C API)가 제공하는 socket 패턴을 C++ 바인딩이 타입으로 노출하며, framework 가
-channel·spot 으로 감싼다. 그래서 가이드 곳곳에 `DEALER`·`ROUTER`·`PUB/SUB` 이름이 보인다.
-
-| framework 구성 | 하부 socket | 쓰임 |
-|----------------|-----------|------|
-| client-server channel | `DEALER → ROUTER` | 1:1 request/response·단방향 send |
-| fanout channel | `PUB → SUB` | 이벤트 fan-out (여러 구독자) |
-| mesh channel | `DEALER`/`ROUTER` peer mesh | 로드밸런싱·엔티티 라우팅 |
-| STREAM session | `STREAM` | 외부 client(raw TCP/WS) 연동 |
-
-각 socket의 메시징 패턴·라우팅 전략·호환성 매트릭스·코드 예제는 zlink core 가이드가
-자세히 다룬다:
-[socket 패턴 개요](../../../../../core/doc/guide/03-0-socket-patterns.ko.md) ·
-[DEALER](../../../../../core/doc/guide/03-3-dealer.ko.md) ·
-[ROUTER](../../../../../core/doc/guide/03-4-router.ko.md) ·
-[PUB/SUB](../../../../../core/doc/guide/03-2-pubsub.ko.md) ·
-[STREAM](../../../../../core/doc/guide/03-5-stream.ko.md)
+Application은 MeshName, ChannelName, RID와 typed payload만 다룬다. 연결 생성, peer
+admission, correlation과 frame 처리는 framework 내부 책임이며 guide의 사용법에 transport
+배선을 노출하지 않는다. 내부 구조가 필요하면
+[C++ runtime architecture](../internals/runtime-architecture.ko.md)를 본다.
 
 ### 통합 축 한눈에
 
@@ -246,17 +225,16 @@ flowchart LR
   FW --> PS[PUB / SUB<br/>event fan-out]
   FW --> SP[SPOT<br/>room·stage·zone·actor]
   FW --> ST[STREAM<br/>외부 client connector]
-  CM & PS & SP & ST --> ZB[zlink C++ 바인딩]
 ```
 
 | 축 | 사용자에게 보이는 것 | 가이드 챕터 |
 |----|----------------------|-------------|
-| channel messaging | handler type, `channel_client_t`, handler filter | [7장](07-channel-messaging.ko.md) |
-| PUB/SUB | `publisher_t`, fanout channel, topic handler | [7장](07-channel-messaging.ko.md) |
+| channel messaging | handler type, `request_client_t`, handler filter | [7장](07-channel-messaging.ko.md) |
+| classic fanout | `publisher_t`, fanout channel, topic handler | [7장](07-channel-messaging.ko.md) |
 | SPOT | `spot_t`, `entry_spot_t`, timer, route context | [8장](08-spot.ko.md) |
-| actor / session | actor factory, actor gateway, session relay | [9장](09-actor-session.ko.md) |
+| actor / session | MeshNode-owned actor factory와 session relay | [9장](09-actor-session.ko.md) |
 | STREAM | stream node, packet stream session, connector | [10장](10-stream.ko.md) |
-| 인프라 | Registry topology, runtime monitoring | [11장](11-registry.ko.md), [12장](12-monitoring.ko.md) |
+| 인프라 | location topology, runtime monitoring | [11장](11-registry.ko.md), [12장](12-monitoring.ko.md) |
 
 ### SPOT — 상태 단위를 락 없이 관리
 
@@ -315,11 +293,12 @@ stream node가 접속을 받고, 연결마다 session 인스턴스를 생성한�
 
 [10장 →](10-stream.ko.md)
 
-### Registry / Discovery — 주소 자동 연결
+### Location store — 주소 자동 연결
 
 서버가 여러 인스턴스로 확장될 때 어느 주소로 연결할지를 코드에 하드코딩하지
-않는다. Registry 서버가 등록된 서버 목록을 관리하고, 클라이언트 역할의 서버가
-`use_discovery()`로 현재 살아 있는 서버를 동적으로 찾는다.
+않는다. MeshNode가 Redis location store에 descriptor를 기록하고, 같은 MeshName의
+node가 revision을 읽어 peer set을 갱신한다. 고정 topology는
+`peer_connections().connect(...)`로 직접 등록할 수 있다.
 
 [11장 →](11-registry.ko.md)
 
@@ -333,24 +312,24 @@ flowchart LR
     Client["클라이언트 앱"]
     subgraph Api["진입 서버 (예: Api)"]
         HTTP["HTTP hosting<br/>POST /games"]:::infra
-        ApiC["채널 client"]:::channel
+        ApiC["RouteMesh client"]:::channel
     end
     subgraph Core["도메인 서버 (예: Play)"]
-        CoreS["채널 server"]:::channel
-        SpotN["SPOT node<br/>(entry + room spots)"]:::spot
+        CoreS["MeshNode<br/>ChannelName handlers"]:::channel
+        SpotN["Entry Spot + room Spots"]:::spot
         StreamN["stream node"]:::stream
-        ActorG["actor gateway"]:::actor
+        Actors["Actors"]:::actor
     end
-    Registry["Registry<br/>(discovery)"]:::infra
+    Store["Redis location store"]:::infra
 
     Client -- "① HTTP 요청 (6장)" --> HTTP
     HTTP --> ApiC
     ApiC -- "② 채널 request (7장)" --> CoreS
     CoreS --> SpotN
     Client -- "③ stream 실시간 접속 (10장)" --> StreamN
-    StreamN -- "relay (9장)" --> ActorG --> SpotN
-    ApiC -.->|"주소 해석 (11장)"| Registry
-    CoreS -.->|등록| Registry
+    StreamN -- "session relay (9장)" --> Actors --> SpotN
+    ApiC -.->|"descriptor 조회 (11장)"| Store
+    CoreS -.->|"descriptor 기록"| Store
 
     classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
     classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
@@ -361,9 +340,9 @@ flowchart LR
 
 - **진입 서버** — HTTP로 외부 요청을 받아 도메인 서버에 위임. 게임이면 Api 서버,
   채팅이면 ApiServer, 쇼핑이면 CommerceApi 등 도메인에 따라 이름이 달라진다.
-- **도메인 서버** — 채널 서버 + SPOT(상태 단위) + actor gateway + stream node.
+- **도메인 서버** — MeshNode + SPOT(상태 단위) + Actor + stream node.
   게임 룸, 지원 대화, 주문 단위를 SPOT이 담당한다.
-- **Registry 서버** — 서버 주소를 관리. 점선 = discovery로 해석되는 연결.
+- **Redis location store** — MeshNode descriptor와 revision을 관리한다.
 - **클라이언트 앱** — HTTP로 요청 생성, stream으로 실시간 상태 수신.
 
 ## 4. 산출물
@@ -384,7 +363,6 @@ HTTP **요청을 보내는** 쪽은 별도 산출물 `zlink::http_client`다 —
 
 - C++ framework public 타입과 함수는 `zlink::framework` 네임스페이스에 둔다.
 - C++ framework facade header는 `#include <zlink/framework.hpp>`다.
-- 하부 zlink core C API는 `zlink_*` snake_case다.
 - CMake target은 `zlink::framework`다.
 - client 측 HTTP 요청은 framework가 아니라 별도 `zlink::http_client` 산출물이 맡는다.
 
@@ -399,8 +377,8 @@ HTTP **요청을 보내는** 쪽은 별도 산출물 `zlink::http_client`다 —
 - **대상:** 서버 간 메시징이 필요한 C++ 백엔드, 실시간 game/stage 서버,
   외부 client(STREAM)를 받는 gateway 서버, 클러스터 topology를 운영에서
   확인해야 하는 팀.
-- **비목표:** 새 transport나 새 socket 의미를 만드는 것이 아니다. 기존 C++
-  바인딩의 socket, Spot, Registry 기능을 framework 친화적으로 감싼다.
+- **비목표:** 새 transport 의미를 만드는 것이 아니다. 기존 C++ 바인딩 위에서
+  RouteMesh, Spot, Actor와 STREAM의 application 계약을 제공한다.
 
 Framework는 handler를 자동으로 모든 channel에 열지 않는다. handler 등록은 handler를
 **찾는** 단계이고, 실제 노출은 channel이 어떤 handler group을 쓰는지에 따라 정해진다.
@@ -417,7 +395,7 @@ Framework는 handler를 자동으로 모든 channel에 열지 않는다. handler
 7. [8장](08-spot.ko.md) — SPOT과 timer
 8. [9장](09-actor-session.ko.md) — actor/session relay
 9. [10장](10-stream.ko.md) — 외부 client STREAM
-10. [11장](11-registry.ko.md) — Registry와 topology 조회
+10. [11장](11-registry.ko.md) — location store와 topology 조회
 11. [12장](12-monitoring.ko.md) — runtime 이벤트와 metrics
 12. [13장](13-interface-catalog.ko.md) — 주요 public 표면
 13. [14장](14-samples-map.ko.md) — 샘플별 실행 흐름

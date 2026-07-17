@@ -173,15 +173,16 @@ codec 표면은 `IZlinkStreamPayloadCodec`과 `IZlinkStreamCompressionCodec`이�
 `WaitFor(...)`가 사용할 unread 수신 기록은 `MaxReceivedMessages`로 제한한다. **이 제한은 response와
 heartbeat 같은 control frame의 처리를 막지 않는다.**
 
-`On(...)` handler가 등록된 이름의 message는 handler snapshot으로 전달하며 unread 기록에 넣지 않는다.
-따라서 production handler의 처리량은 `MaxReceivedMessages`에 제한되지 않는다. handler가 없는 이름의
-message만 unread 기록에 남고 `WaitFor(...)`가 하나씩 소비한다. inbound observer는 이 선택과 별도의
-관찰 경로이므로 두 경우 모두 frame snapshot을 받는다.
+`On(...)` handler가 등록된 이름의 message도 공통 수신 메시지 큐의 admission을 거친다. dispatch가
+handler snapshot을 인수하면 unread 기록에는 남기지 않는다. handler가 없는 이름의 message는 unread
+기록에 남고 `WaitFor(...)`가 하나씩 소비한다. 따라서 `MaxReceivedMessages`는 dispatch 전 대기와 unread
+기록을 함께 제한한다. inbound observer는 이 선택과 별도의 관찰 경로이므로 두 경우 모두 frame
+snapshot을 받는다.
 
 **큐가 가득 차면 새로 도착한 message를 거부하고 `ReceivedMessageDropped`를 보고한다**
 ([공통 스펙 §10.1](../../32-stream-connector.ko.md)).
 
-### 8.1 테스트 대기·단언 표면
+### 8.1 테스트 대기 표면
 
 계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. `.NET` 표면은 다음과 같다.
 
@@ -220,16 +221,6 @@ public sealed class ZlinkStreamTypedSequenceBuilder<TPayload>
 - `WaitForSequence(name).Expect(p1).Expect(p2)…Timeout(t).Async(ct)` — 같은 이름 push가 **술어 순서대로** 도착하는지 확인하고 payload 목록을 돌려준다. "N개 도착"이 아니라 **"순서대로 도착"** 을 검증한다.
 - **status 전용 표면을 두지 않는다.** status는 payload 필드이므로 `WaitFor<T>(name).Where(p => p.Status == …)`로 표현한다. connector가 어느 필드가 status인지 알지 않는다.
 
-**범용 단언 — `ZlinkStreamAssert`**(전송 API와 섞지 않는 별도 이름 공간).
-
-```csharp
-static void      Ensure(bool condition, string message);          // message 필수
-static ValueTask<ZlinkStreamError> ExpectFailureAsync(Func<CancellationToken, ValueTask> action, string? errorKind = null);
-static ValueTask ExpectTimeoutAsync(Func<CancellationToken, ValueTask> action);
-```
-
-- `ExpectFailureAsync`의 입력은 **미리 만든 Task가 아니라 실행할 action**이다. `errorKind`를 주면 그 종류로 실패했는지까지 검증한다(주지 않으면 "실패했다"만). 실패 분류가 필요한 시나리오는 반드시 준다.
-- `ExpectTimeoutAsync`는 timeout이 아닌 오류를 **재전파**한다.
 - **도메인 REST 폴링(`GET /deliveries/{id}` 등)은 이 표면이 아니다.** 그건 `ZLinkHttpClient`의 일이다.
 
 ## 9. Inbound observer
@@ -262,9 +253,9 @@ scheme → transport 매핑은 [공통 스펙 §3.1](../../32-stream-connector.k
 **`session-closing` frame의 wire 값은 1~6이고 `.NET` enum의 내부 ordinal은 0~5다.** codec이 둘을
 명시적으로 변환하므로 **enum을 정수로 cast해 wire 값으로 사용하지 않는다.**
 
-**수신 payload가 한도를 넘으면** application handler나 request completion으로 전달하지 않고
-`FrameTooLarge` 오류로 연결을 종료한다. disconnect 사유는 `TransportError`이며, reconnect가
-켜져 있으면 같은 endpoint로 재연결을 시도한다.
+수신 한도 위반의 terminal 여부, 종료 사유와 reconnect 조건은
+[공통 스펙 §9](../../32-stream-connector.ko.md#9-오류-의미)이 소유한다. `.NET`은 그 오류를
+`ZlinkStreamErrorCode.FrameTooLarge`, 종료 사유를 `ZlinkStreamCloseReason.TransportError`로 표현한다.
 
 ## 12. Flow
 

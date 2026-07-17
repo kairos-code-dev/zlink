@@ -2,10 +2,10 @@
 
 # 3. 핵심 개념
 
-ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
-**channel · spot · actor · stream · registry/discovery**. 나머지 챕터는 전부 이
-다섯의 변주다. 낯선 단어가 나오면 먼저 §0 용어 표에서 한 줄로 잡고, §1~§5 에서
-다섯 개념을 차례로 본다. §6 은 이들을 받치는 실행·구성 모델(app 수명주기, DI,
+ZLink framework 는 **여섯 가지 핵심 개념**으로 선다:
+**RouteMesh · ChannelName · Spot · Actor · STREAM · location store**. 나머지 챕터는 전부 이
+여섯 개념의 조합이다. 낯선 단어가 나오면 먼저 §0 용어 표에서 한 줄로 잡고, §1~§5 에서
+각 개념을 차례로 본다. §6 은 이들을 받치는 실행·구성 모델(app 수명주기, DI,
 핸들러·실행 모델)이다.
 
 ## 0. 용어 빠르게 잡기
@@ -17,9 +17,9 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 | 용어 | 한 줄 풀이 |
 |------|-----------|
 | **channel(채널)** | 서버 간 호출을 묶는 논리 이름. `host:port` 대신 `"orders"` 같은 이름으로 부른다 |
-| **역할(capability)** | 한 channel 이 맡는 일 — server로 받기, client로 보내기, publisher, subscriber |
+| **ChannelName membership** | MeshNode가 제공하는 논리 메시지 처리 범위 |
 | **handler(핸들러)** | 들어온 메시지를 처리하는 클래스나 SPOT 메서드 |
-| **client** | 다른 서비스로 호출을 보내는 주입 객체(예: `channel_client_t`) |
+| **client** | 다른 서비스로 호출을 보내는 주입 객체(예: `request_client_t`) |
 | **request / send / publish** | 각각 응답 받는 호출 / 응답 없는 단방향 통지 / 여러 구독자에게 발행 |
 | **packet name(패킷 이름)** | 같은 channel 안에서 어느 메시지 종류인지 구분하는 키 |
 | **codec** | payload를 바이트로 직렬화·역직렬화하는 방식 |
@@ -28,8 +28,8 @@ ZLink framework 는 **다섯 가지 핵심 개념**으로 선다:
 | **Entry Spot** | actor가 생성 직후 머무는 기본 실행 위치 |
 | **STREAM(스트림)** | 외부 client와의 연결 지향 양방향 채널 |
 | **session(세션)** | STREAM 연결 하나에 대응하는 서버 측 객체 |
-| **Registry** | 어떤 서비스가 어디 떠 있는지 모으는 중앙 디렉터리 서버 |
-| **Discovery** | client가 Registry를 보고 연결 대상을 자동으로 찾는 것 |
+| **location store** | MeshNode·Spot·Actor 위치와 revision을 저장하는 공유 저장소 |
+| **peer intent** | location descriptor 또는 manual 설정으로 유지하는 MeshNode 연결 의도 |
 | **RoutingId** | 노드·SPOT의 논리 주소 |
 | **correlation(상관)** | 요청과 응답을 짝지어 주는 식별 정보. framework가 자동 처리 |
 | **deadline / timeout** | 응답을 얼마나 기다릴지의 상한 시간 |
@@ -51,62 +51,26 @@ runtime이 타입 이름만 보고 serializer를 찾아야 한다. 이 경우에
 typed request/send/publish API를 사용하고, raw frame이나 `message_t` 우회로 payload 변환을
 직접 맡지 않는다.
 
-## 1. channel — 서버 간 연결
+## 1. RouteMesh와 ChannelName — 서버 간 연결
 
-channel 은 **서버↔서버 연결을 묶는 논리 이름**이다. 주소(`host:port`)가 아니라
-`"orders"` 같은 이름으로 부르고, 실제 위치는 registry/discovery(§5)가 푼다. 배포
-값(주소·topology)은 handler 가 아니라 **channel 등록**이 소유한다. 그래서 handler 의
-`topic_name` 은 메시지 종류만 나타내고 channel 이름은 갖지 않는다.
+RouteMesh는 MeshName으로 식별하는 물리 node 집합이고 ChannelName은 그 안의 논리
+membership이다. Application은 `request_client_t`에 MeshName과 ChannelName을 주며,
+framework는 ready positive-weight member 하나를 선택한다. 특정 MeshNode가 대상이면
+`route_client_t`에 target RID를 준다.
 
-**channel 종류(kind)** — 서버 간 연결 방식이 다르다:
+| 목적 | 등록과 호출 |
+|------|-------------|
+| ChannelName select-one | `add_route_mesh(mesh)` + `channel_name(channel)`, `request(mesh, channel, ...)` |
+| Node direct | 같은 MeshNode 등록, `request_to_node(mesh, target_rid, ...)` |
+| Logical Multicast | Spot context의 `publish(channel, topic, event)` |
+| classic fanout | 독립 `add_fanout_channel(name)` |
 
-| 종류 | 등록 | 연결 패턴 |
-|------|------|-----------|
-| client-server | `add_client_server_channel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 붙는다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
-| fanout | `add_fanout_channel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| route mesh | `add_route_mesh` | router ↔ router — routing id 로 특정 주소에 라우팅 (SPOT node 가 이 route mesh 로 구성된다: [8장](08-spot.ko.md)) |
-
-**소켓 구조 한눈에** — 어떤 소켓이 어떻게 붙는지가 네 종류의 차이다.
-
-- **client-server** — ROUTER 서버 **하나**에 DEALER 클라이언트 **여럿**이 붙는 비대칭 구조.
-
-```mermaid
-graph LR
-    C1["client A<br/>DEALER"] --> S["server<br/>ROUTER"]
-    C2["client B<br/>DEALER"] --> S
-    C3["client C<br/>DEALER"] --> S
-```
-
-- **fanout** — PUB 하나가 발행하면 같은 메시지가 SUB 여럿에 동시에 퍼진다.
-
-```mermaid
-graph LR
-    P["publisher<br/>PUB"] --> S1["subscriber A<br/>SUB"]
-    P --> S2["subscriber B<br/>SUB"]
-    P --> S3["subscriber C<br/>SUB"]
-```
-
-- **route mesh** — ROUTER 끼리 붙어, **routing id 로 지정한 주소에만** 보낸다(분산 아님). SPOT node 가 이 구조로 구성된다.
-
-```mermaid
-graph LR
-    R["router<br/>ROUTER"] -->|"routing id = A"| A["node A<br/>ROUTER"]
-    R -->|"routing id = B"| B["node B<br/>ROUTER"]
-```
-
-**역할(capability)** — 한 channel 에서 이 앱이 맡는 일:
-
-| 역할 | 의미 | 비고 |
-|------|------|------|
-| `enable_server(endpoint)` | 이 channel의 request/send를 local handler가 받는다 | bind endpoint 필수 |
-| `enable_client()` / `enable_client(endpoint)` | 이 channel로 request/send를 내보낸다 | Discovery 또는 manual endpoint |
-| `enable_publisher(endpoint)` | 이 channel로 이벤트를 publish한다 | bind endpoint 필수 |
-| `enable_subscriber()` / `enable_subscriber(endpoint)` | 이 channel의 이벤트를 구독한다 | Discovery 또는 manual endpoint |
-
-한 channel 이 여러 역할을 가질 수 있다. server/publisher 는 외부가 접근할 endpoint 가
-필요하므로 endpoint 를 받는 overload 를, client/subscriber 는 Discovery 나 수동
-endpoint 중 하나로 연결 대상을 얻는다. request/send/pub-sub 사용법과 handler
-노출 전체는 [7장 채널 메시징](07-channel-messaging.ko.md)이 다룬다.
+MeshNode의 수신 endpoint와 RID는 `listen(...)`, `set_routing_id(...)`로 정한다. Manual
+peer는 `peer_connections().connect(...)`, 자동 peer는 location store가 소유한다.
+ChannelName과 handler group은 서로 다르다. Group은 코드의 handler 묶음이고
+ChannelName은 MeshName 안의 배포 membership이다. 사용법은
+[7장 채널 메시징](07-channel-messaging.ko.md)이 다룬다. Transport 배선은 guide의 공개
+사용법이 아니라 [runtime architecture](../internals/runtime-architecture.ko.md)가 다룬다.
 
 > **주의:** channel 이름과 handler **group 이름**은 서로 다르다. group 은 코드 안
 > 논리 묶음(`"api"`)이고, channel 은 배포 식별자(`"tictactoe.api"`)다. 같은 group 을
@@ -114,11 +78,9 @@ endpoint 중 하나로 연결 대상을 얻는다. request/send/pub-sub 사용�
 
 ## 2. spot — 상태 단위
 
-spot 은 room/zone/stage 처럼 **동적으로 생겼다 사라지는 상태 노드**다. spot 에
-들어오는 actor 패킷·join/leave 는 **한 줄로 직렬 실행**되므로, spot 이 소유한 도메인
-상태에 lock 없이 접근한다. 게임 룸·매치처럼 가변 상태를 두기 좋은 자리다.
-(단 timer tick 은 room·entry 모두 이 직렬 경계 밖이라 공유 상태 접근 시 자체 동기화가
-필요하다 — [8장 §5](08-spot.ko.md).)
+Spot은 room/zone/stage처럼 동적으로 생성하는 상태 owner다. 같은 Spot의 packet,
+lifecycle과 timer callback은 Spot application queue에서 직렬 실행된다. Actor payload는
+Spot registry가 아니라 각 Actor의 handler registry에 등록하며 Actor queue에서 실행된다.
 
 한 SPOT 에 들어오는 모든 일은 **단일 큐**를 통과해 한 줄로 처리된다 — 그래서 상태에
 lock 이 없다.
@@ -127,7 +89,7 @@ lock 이 없다.
 graph LR
     M1["packet"] --> Q["단일 큐<br/>직렬 실행"]
     M2["timer"] --> Q
-    M3["actor 콜백"] --> Q
+    M3["Actor lifecycle"] --> Q
     Q --> ST["SPOT 상태<br/>(lock 불필요)"]
 ```
 
@@ -153,46 +115,34 @@ graph LR
 ## 4. stream — 외부 client 연결
 
 stream 은 모바일·게임 같은 **외부 client 와의 연결 지향 양방향 채널**이다. 서버
-간 channel(§1)과 달리 연결 수명·재연결·heartbeat 를 framework 가 관리하고, 연결
-하나가 서버 측 **session** 객체에 대응한다.
+간 channel(§1)과 달리 연결 하나가 서버 측 **session** 객체에 대응한다. 서버 Framework는
+연결 수명과 packet dispatch를 관리하고, 재연결·heartbeat는 client connector가 관리한다.
 
 ```mermaid
 graph LR
-    C["모바일·게임<br/>client"] <-->|"연결 (heartbeat·재연결 관리)"| SV["STREAM 서버"]
+    C["모바일·게임<br/>client connector"] <-->|"STREAM 연결"| SV["STREAM 서버"]
     SV --- SE["session<br/>(연결 1개 = 객체 1개)"]
 ```
 
 상세는 [10장 Stream](10-stream.ko.md).
 
-## 5. registry / discovery — 주소 자동 연결
+## 5. Location store와 manual peer
 
-앱 코드는 **channel 이름만** 안다. 실제 peer 주소(`host:port`)는 **Registry +
-Discovery** 가 해결한다.
-
-- **Registry** — 어느 노드가 어떤 channel 을 어디(endpoint)서 제공하는지 모아 두는
-  디렉터리 서버. server/publisher 역할이 startup 에 자기 endpoint 를 등록·heartbeat.
-- **Discovery** — `options.use_discovery().add_registry_endpoint(...)` 를 켠
-  client/subscriber 가 Registry 의 해당 channel view 를 구독해 provider endpoint 를
-  받아 **자동 연결**하고, provider 집합이 바뀌면 **자동 재연결**한다(앱 재시작 불필요).
+Production 자동 연결은 Redis location store의 MeshNode descriptor를 사용한다. 각
+MeshNode가 MeshName, RID, endpoint와 ChannelName membership을 기록하면 같은 MeshName의
+다른 node가 revision을 읽어 peer intent를 갱신한다.
 
 ```mermaid
 graph LR
-    SV["server<br/>(provider)"] -->|"endpoint 등록·heartbeat"| REG["Registry"]
-    CL["client"] -->|"channel view 구독"| REG
-    REG -.->|"provider endpoint 전달"| CL
-    CL -.->|"자동 연결 / 재연결"| SV
+    A["MeshNode A"] -->|"descriptor upsert"| S["Redis location store"]
+    B["MeshNode B"] -->|"revision 조회"| S
+    S -.->|"peer descriptor"| B
+    B -->|"peer admission"| A
 ```
 
-주소 해결 → 자동 연결 sequence 는 [2장 §7](02-getting-started.ko.md)이 그림으로
-보여 주고, 운영·배포는 [11장 Registry](11-registry.ko.md)가 다룬다. Registry 없이
-endpoint 를 직접 지정하는 **수동 연결**도 가능하다(endpoint overload 반복 호출).
-
-| 전역 Discovery | 역할 manual endpoint | 결과 |
-|:---:|:---:|---|
-| O | X | Discovery 자동 연결 |
-| O | O | manual endpoint 우선 |
-| X | O | manual endpoint |
-| X | X | startup validation 오류 |
+고정된 개발 topology에서는 `mesh.peer_connections().connect(endpoint)`로 manual peer를
+등록할 수 있다. 자동 descriptor와 manual intent는 같은 MeshName·RID·security admission
+검증을 거친다. 자세한 등록과 운영은 [11장 location store](11-registry.ko.md)가 다룬다.
 
 ## 6. 보조 — 실행·구성 모델
 
@@ -206,19 +156,19 @@ endpoint 를 직접 지정하는 **수동 연결**도 가능하다(endpoint over
   `topic_name` 멤버가 계약이고, `dependency_types` + 생성자 주입으로 의존성을 받는다.
   수명은 **transient**(요청마다 새로), 실행은 **동시**(worker 풀). 그래서 가변
   도메인 상태를 핸들러 멤버에 두지 않는다.
-- **SPOT 핸들러** — 독립 클래스가 아니라 **spot 클래스 자체의 메서드**다. `spot_t` /
-  `entry_spot_t` 를 상속하고 `configure()` 에서 `add_actor_packet<&T::method>()` 로
-  등록한다. 같은 SPOT 안에서는 **전체 직렬 실행**이라 상태에 lock 이 필요 없다.
+- **Spot 핸들러** — `spot_t` 또는 `entry_spot_t`를 상속하고 `configure()`에서
+  `add_handler<&T::method>()`나 `add_subscribe<&T::method>()`로 등록한다. Actor payload는
+  Actor의 `actor_context_t::handlers()`에 등록한다.
 
 | | 노드 핸들러 (채널·HTTP) | entry spot | room spot |
 |---|---|---|---|
 | 기반 | 독립 클래스 | `entry_spot_t` 상속 | `spot_t` 상속 |
 | 수명 | transient (요청마다) | 노드와 동일 (영속) | 상태 단위와 동일 (영속) |
-| 실행 | 동시 (worker 풀) | **전체 직렬** — 단일 큐 | **전체 직렬** — 단일 큐 |
-| 공유 상태 | 핸들러에 두지 않음 | 큐 안에서 안전 | 락 없이 안전 |
+| 실행 | 동시 (worker pool) | lifecycle은 Entry Spot queue, Actor payload는 각 Actor queue | Spot application queue에서 직렬 |
+| 공유 상태 | 핸들러에 두지 않음 | Entry lifecycle 상태와 Actor별 상태의 owner를 구분 | 같은 Spot turn에서 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |
-| 계약 | `request_type`/`reply_type`/`topic_name` | `configure()` + `add_actor_packet` | `configure()` + `add_actor_packet` |
-| DI | `dependency_types` + 생성자 주입 | channel `enable_client(...)` 로 채널 연결 | channel `enable_client(...)` 로 채널 연결 |
+| 계약 | `request_type`/`reply_type`/`topic_name` | lifecycle member + Actor handler registry | `configure()` + Spot handler registry + lifecycle member |
+| outbound | DI의 `request_client_t` / `route_client_t` | owner MeshNode context | owner MeshNode context |
 
 **실행 모델 비교** — 같은 3개 요청이 두 핸들러에서 어떻게 도는가:
 
@@ -265,7 +215,8 @@ zlink::framework::task_t<create_game_http_res_t>
 handle (const create_game_http_req_t &request)
 {
     auto room = co_await _client
-                  .request ("tictactoe.play", create_game_req_t{request.game_name})
+                  .request ("tictactoe.application", "tictactoe.play",
+                            create_game_req_t{request.game_name})
                   .async<create_game_res_t> ();
     co_return create_game_http_res_t{room.room_id,
                                      room.game_name,
@@ -276,8 +227,9 @@ handle (const create_game_http_req_t &request)
 }
 ```
 
-채널·HTTP 핸들러는 **worker 풀**(기본 = CPU 코어 수,
-`options.handler_coroutine_workers(n)`)에서 실행된다. 핸들러가 `co_await` 에 도달하면
+채널·HTTP 핸들러는 **worker 풀**에서 실행된다. `options.configure_worker()`가 반환하는
+설정의 `min_threads`, `max_threads`, `idle_timeout`, `max_queue_length`로 worker 풀을
+구성한다. 핸들러가 `co_await` 에 도달하면
 코루틴만 멈추고(suspend) 실행 스레드는 다른 큐 항목을 처리한다. 같은 Spot 큐는 그
 handler 완료 전까지 다음 callback 을 시작하지 않는다.
 

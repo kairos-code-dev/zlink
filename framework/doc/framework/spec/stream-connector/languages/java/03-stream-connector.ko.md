@@ -107,8 +107,9 @@ disconnect 이벤트의 `ZLinkStreamCloseReason closeReason()`으로 노출한�
 `waitFor(...)`는 특정 packet name의 server push를 한 번 기다리는 call builder를 반환한다.
 필요한 message만 고를 때는 builder의 `where(...)`를 사용한다. timeout이 지나면 반환된
 `CompletionStage`가 timeout 실패로 끝난다. 별도 timeout을 지정하지 않으면 connector
-options의 `waitTimeout()` 값을 사용한다. `MANUAL` dispatch mode에서는 caller가
-`dispatch().submit()`을 호출해야 wait handler가 실행된다.
+options의 `waitTimeout()` 값을 사용한다. `waitFor(...)`는 두 dispatch mode 모두에서 아직 소비하지
+않은 수신 packet을 직접 소비하므로 `MANUAL`에서도 `dispatch().submit()`이 필요하지 않다.
+`dispatch().submit()`은 등록된 push handler, error·disconnect handler와 request callback을 실행한다.
 
 Java API에서 `submit(...)`은 비동기 작업을 시작한다. **one-way send의 `submit()`은 완료 객체를
 반환하지 않고**(`void`), request·wait·lifecycle의 `submit()`만 `CompletionStage`를 반환한다
@@ -220,7 +221,6 @@ public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(Map<String, String> metadata);
     ZLinkStreamSendCall compress();
-    ZLinkStreamSendCall flowFrom(ZLinkStreamFlow flow);
     void submit();
 }
 
@@ -230,7 +230,6 @@ public interface ZLinkStreamRequestCall {
     ZLinkStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkStreamRequestCall timeout(Duration timeout);
     ZLinkStreamRequestCall compress();
-    ZLinkStreamRequestCall flowFrom(ZLinkStreamFlow flow);
     CompletionStage<ZLinkStreamEncodedPayload> submit();
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }
@@ -240,7 +239,6 @@ public interface ZLinkTypedStreamSendCall {
     ZLinkTypedStreamSendCall metadata(String key, String value);
     ZLinkTypedStreamSendCall metadata(Map<String, String> metadata);
     ZLinkTypedStreamSendCall compress();
-    ZLinkTypedStreamSendCall flowFrom(ZLinkStreamFlow flow);
     void submit();
 }
 
@@ -250,7 +248,6 @@ public interface ZLinkTypedStreamRequestCall {
     ZLinkTypedStreamRequestCall metadata(Map<String, String> metadata);
     ZLinkTypedStreamRequestCall timeout(Duration timeout);
     ZLinkTypedStreamRequestCall compress();
-    ZLinkTypedStreamRequestCall flowFrom(ZLinkStreamFlow flow);
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 }
 
@@ -272,17 +269,18 @@ request timeout이 끝나면 pending request를 제거하고 반환한 `Completi
 
 ### 7.1 Flow correlation
 
-Connector가 시작한 outbound operation은 UUIDv7 `flow_id`를 한 번 생성한다. Inbound handler에서
-관련 outbound를 시작할 때는 받은 `ZLinkStreamMessage`를 `flowFrom(...)`에 넘겨 `flowId`와
-`flowOrigin`을 한 쌍으로 전파한다. 명시적으로 전달하지 않은 outbound는 `APPLICATION`이 origin인
-새 flow를 시작한다.
+Connector가 시작한 outbound operation은 UUIDv7 `flow_id`를 한 번 생성한다. Inbound handler의 실행
+범위에는 connector runtime이 현재 flow context를 설정한다. 그 handler에서 시작한 관련 outbound는
+별도 public 인자 없이 같은 `flowId`와 `flowOrigin`을 재사용하고, handler의 terminal completion에서
+이전 context를 복원한다. 관련 없는 다음 callback과 Framework가 관리하지 않는 별도 executor에는 flow를
+전파하지 않으며, 그곳에서 시작한 outbound는 `APPLICATION`이 origin인 새 flow를 시작한다.
 
-`CompletionStage`가 별도 executor로 전환되어도 connector instance의 mutable 상태나 thread ID로 current
-flow를 추정하지 않는다. wire 형식과 비동기 문맥 경계는
+Connector instance의 mutable 필드나 thread ID로 current flow를 추정하지 않는다. wire 형식과 비동기
+문맥 경계는
 [Stream Connector §4.2](../../32-stream-connector.ko.md#42-header)와
 [Flow Correlation §6](../../../server/53-flow-correlation.ko.md#6-async-context)이 소유한다.
 
-### 7.2 테스트 대기·단언 표면
+### 7.2 테스트 대기 표면
 
 계약은 [공통 스펙 §10.2](../../32-stream-connector.ko.md)가 소유한다. Java 표면은 다음과 같다.
 
@@ -298,16 +296,6 @@ ZLinkStreamSequenceCall   waitForSequence(String name);  // .expect(p).expect(p)
 - `waitForSequence(name).expect(p1).expect(p2)….timeout(t).submit()` — 같은 이름 push가 **술어 순서대로** 도착하는지 확인하고 payload 목록을 돌려준다. "N개 도착"이 아니라 **"순서대로 도착"** 을 검증한다.
 - **status 전용 표면을 두지 않는다.** status는 payload 필드이므로 `waitFor(T.class).where(p -> p.status() == …)`로 표현한다.
 
-**범용 단언 — `ZLinkStreamAssert`**(전송 API와 섞지 않는 별도 유틸).
-
-```java
-static void ensure(boolean condition, String message);                       // message 필수
-static ZLinkStreamError expectFailure(ThrowingRunnable action, String errorKind); // errorKind null 허용
-static void expectTimeout(ThrowingRunnable action);
-```
-
-- `expectFailure`의 입력은 **미리 만든 future가 아니라 실행할 action**이다. `errorKind`를 주면 그 종류로 실패했는지까지 검증한다(null이면 "실패했다"만). 실패 분류가 필요한 시나리오는 반드시 준다.
-- `expectTimeout`은 timeout이 아닌 오류를 **재전파**한다.
 - **도메인 REST 폴링은 이 표면이 아니다.** 그건 `ZLinkHttpClient`의 일이다.
 
 ## 8. Typed payload codec
@@ -446,6 +434,13 @@ Kotlin module은 Java connector 위의 thin wrapper다. lifecycle과 request처�
 ```kotlin
 fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector
 
+fun ZLinkStreamConnectorOptions.withDefaultStreamCompression(): ZLinkStreamConnectorOptions
+fun ZLinkStreamConnectorOptions.withLz4StreamCompression(): ZLinkStreamConnectorOptions
+fun ZLinkStreamConnectorOptions.withStreamCompression(
+    codec: ZLinkStreamCompressionCodec,
+): ZLinkStreamConnectorOptions
+fun ZLinkStreamConnectorOptions.withoutStreamCompression(): ZLinkStreamConnectorOptions
+
 class ZLinkKotlinStreamConnector {
     fun connect(): ZLinkKotlinLifecycleCall
     fun close(): ZLinkKotlinLifecycleCall
@@ -491,8 +486,6 @@ class ZLinkStreamTypedSequenceCall<TPayload> {
     suspend fun await(): List<ZLinkStreamMessage<TPayload>>   // 술어 순서대로 도착
 }
 
-// 범용 단언(ZLinkStreamAssert)은 suspend 래핑 없이 그대로 쓴다. expectFailure는
-// suspend action을 받는 ZLinkKotlinStreamAssert.expectFailure(errorKind?) { … } 형태를 함께 제공한다.
 ```
 
 Kotlin wrapper는 Java connector와 다른 상태 전이나 buffering 정책을 만들면 안 된다. options를

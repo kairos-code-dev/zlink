@@ -173,7 +173,7 @@ class create_game_http_handler_t {
     using reply_type = create_game_http_res_t;
     using dependency_types =
       zlink::framework::dependency_list_t<
-        zlink::framework::channel_client_t,
+        zlink::framework::request_client_t,
         zlink::framework::logger_t<create_game_http_handler_t>>;
 
     task_t<create_game_http_res_t> handle (const create_game_http_req_t &request);

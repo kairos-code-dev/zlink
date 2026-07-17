@@ -142,7 +142,7 @@ dispatch에서 drop되고 observer marker가 남는다.
 - 절차: subscriber에 handler가 없는 **packet name**으로 발행한다. Classic fanout handler namespace는
   packet name으로 구분한다
   ([Framework API §11](../../spec/05-framework-api.ko.md#11-classic-fanout)).
-- 검증: 해당 publish는 subscriber dispatch에서 drop되고, **subscriber** observer evidence에 reason `handlerMissing`/action `drop` marker가 남는다. publisher의 `Publish(...).Async()`는 transport submit만 하므로 publisher 측엔 dispatch marker가 없다. 다른 정상 message 전달은 영향 없음.
+- 검증: 해당 publish는 subscriber dispatch에서 drop되고, **subscriber** observer evidence에 reason `no_handler`/action `drop` marker가 남는다. publisher의 `Publish(...).Async()`는 transport submit만 하므로 publisher 측엔 dispatch marker가 없다. 다른 정상 message 전달은 영향 없음.
 - 세부 동작: publish negative path(message name 기준) + subscriber 관측.
 
 ## 5. 완료 기준

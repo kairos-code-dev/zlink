@@ -2,264 +2,191 @@
 
 # 8. SPOT
 
-## 현재 구현 기준
-
-외부 channel에서 특정 Spot으로 send/request를 보낼 때는 framework가 core
-`spot_route_bridge_t`를 내부에서 사용한다. 같은 프로세스에 RouteMesh와 SpotMesh가
-있으면 framework가 자동으로 bridge를 붙인다. 사용자는 raw `DEALER`, `ROUTER`, `PUB`
-socket을 `SpotNode`에 attach하지 않는다. Spot에서 외부 pub/sub channel로 publish할
-때는 일반 channel publisher client를 주입해서 사용한다.
+SPOT은 RouteMesh의 MeshNode가 소유하는 상태 실행 단위다. Node·ChannelName·Spot·Actor
+메시지는 같은 MeshNode에 속하므로 별도 Spot 전용 mesh나 bridge를 구성하지 않는다.
+Application은 MeshName, ChannelName과 `RoutingId`를 사용하고 transport 배선은 framework에
+맡긴다.
 
 ## 1. SPOT이 하는 일
 
-SPOT은 room·stage·zone처럼 **"장소" 하나의 상태와 참가자를 묶는 실행 단위**다.
-게임 룸 하나가 spot 인스턴스 하나다. actor([9장](09-actor-session.ko.md))가
-spot에 입장(join)하고, spot 안에서 패킷을 처리하고, 토픽으로 알림을 받는다.
+SPOT은 room·stage·zone처럼 장소 하나의 상태와 참가자를 묶는다. 게임 룸 하나가
+`spot_t` instance 하나다. Actor([9장](09-actor-session.ko.md))는 Spot에 join하고,
+Spot lifecycle과 Actor payload는 각 owner의 직렬 실행 문맥에서 처리된다.
 
-spot은 두 종류이며 **직렬화 범위가 다르다** — 이 차이가 상태 관리 방식을 결정한다.
+| 종류 | 개수 | 주된 책임 | 직렬 실행 owner |
+|------|------|-----------|-----------------|
+| `spot_t` | 상태 단위마다 하나 | 도메인 상태와 Spot packet·subscription 처리 | 각 Spot |
+| `entry_spot_t` | MeshNode마다 하나 | Actor 생성 전 입장·배정과 lifecycle 처리 | Entry Spot lifecycle은 Entry Spot, Actor payload는 각 Actor |
 
-| | `spot_t` (room spot) | `entry_spot_t` (entry spot) |
-|--|--|--|
-| 개수 | 상태 단위마다 1개 | 노드당 1개 |
-| 직렬화 | **spot callback** — actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) | **Entry Spot callback** — lifecycle은 Entry Spot 큐, actor 패킷은 대상 actor mailbox |
-| 공유 상태 접근 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 | lifecycle callback은 Entry Spot 큐 안에서 안전. actor 패킷 handler는 actor별 상태만 락 없이 안전 |
-| 역할 | 도메인 상태 소유·처리 | 배정·매칭·할당 |
+### 1.1 room Spot 직렬화 — 큐 하나, 한 번에 하나
 
-## 1.1 room spot 직렬화 — 큐 하나, 한 번에 하나
-
-room spot(`spot_t`)으로 들어오는 actor 패킷과 join/leave callback은
-**spot별 순서 보존 큐**로 모인다. 런타임은 큐에서 하나를 꺼내 핸들러를
-**코루틴으로** 실행하고, 그 핸들러가 끝나야 다음 항목을 꺼낸다.
-timer tick은 이 큐에 들어오지 않는다([§5](#5-timer)).
+같은 Spot의 packet, lifecycle과 timer callback은 Spot application queue에서 순서대로
+실행된다. 한 turn이 `async()`로 결과를 기다리면 continuation이 끝날 때까지 같은 Spot의
+다음 application record를 실행하지 않는다. 서로 다른 Spot이나 Actor는 병렬로 실행할
+수 있다.
 
 ```mermaid
 flowchart LR
-    A1["actor A<br/>submit_card"]:::actor
-    A2["actor B<br/>submit_card"]:::actor
-    J1["actor C<br/>join 요청"]:::actor
-    subgraph SQ["room-3187 spot 큐 (도착 순서 보존)"]
-        direction LR
-        Q1["② join"] --- Q2["① submit_card"]
-    end
-    EXEC["코루틴 실행<br/>(한 번에 하나)"]:::spot
-    STATE["룸 상태<br/>락 없음"]:::spot
-
-    A1 --> SQ
-    A2 --> SQ
-    J1 --> SQ
-    SQ -- dequeue --> EXEC --> STATE
-
-    classDef spot fill:#e8f5e9,stroke:#2e7d32,color:#000000
-    classDef actor fill:#fff8e1,stroke:#f9a825,color:#000000
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
+    P1["Spot packet A"] --> Q["room-3187 application queue"]
+    P2["Spot packet B"] --> Q
+    T["timer record"] --> Q
+    L["Actor lifecycle"] --> Q
+    Q --> E["one application turn"]
+    E --> S["room state"]
 ```
 
-핸들러가 `co_await`로 다른 서버를 기다리는 동안에도 두 가지가 동시에 성립한다.
+`yield()`는 현재 turn을 반납한다. 대기 중 같은 owner의 다음 record가 상태를 바꿀 수
+있으므로 await 전에 읽은 mutable 상태를 continuation에서 그대로 신뢰하면 안 된다.
+공용 Spot 상태를 await 전후로 이어서 사용할 때는 `async()`를 사용한다.
 
-- **spot 관점** — 큐는 그 핸들러가 끝날 때까지 다음 항목을 꺼내지 않는다.
-  suspend 지점에서도 다른 패킷이 끼어들지 않으므로 룸 상태는 안전하다.
-- **스레드 관점** — suspend된 동안 worker 스레드는 풀로 돌아가 **다른 spot의**
-  핸들러를 실행한다. 룸 하나가 외부 응답을 기다린다고 서버가 멈추지 않는다.
-
-```mermaid
-sequenceDiagram
-    participant Q as room-3187 큐
-    participant W as worker 풀
-    participant S as room spot (상태)
-    participant CH as api 채널
-    participant Q2 as room-8841 큐
-
-    Note over Q: [① submit_card(A)] [② join] 대기 중
-    Q->>W: ① dequeue → 코루틴 시작
-    activate W
-    W->>S: 카드 검증·상태 갱신 (락 없음)
-    W->>CH: co_await request(...).async()
-    deactivate W
-    Note over S: ①이 끝나기 전 — ②는 큐에서 대기
-    Note over W: 워커는 다른 spot 처리
-    Q2->>W: room-8841 핸들러 실행
-    CH-->>W: 응답 도착 → ① resume
-    activate W
-    W->>S: 결과 반영, co_return
-    deactivate W
-    Q->>W: ② join dequeue → 다음 코루틴
-```
-
-핸들러를 비동기로 쓰면서도 동기식 코드처럼 위에서 아래로 작성할 수 있는 이유는
-[3장 §6.2](03-concepts.ko.md)의 실행 모델 그대로다 — spot은 거기에 "같은 룸은
-절대 겹치지 않는다"는 직렬성 보장을 더한 것이다.
-
-`async()`는 이 기본 serial 의미를 유지한다. 공용 상태를 await 전후로 이어 쓰는 handler는
-`co_await call.async()`를 사용한다.
-
-player 한 명의 admission/preflight처럼 await 전후에 actor-local 값과 reply 값만 쓰는
-흐름에서는 `yield()`를 사용할 수 있다. `yield()`는 현재 mailbox turn을
-반납하고, completion 뒤 같은 mailbox continuation으로 돌아온다. 같은 actor의 다음 packet은
-continuation 뒤에 실행되지만, 다른 actor나 timer 작업은 그 사이에 실행될 수 있다.
-
-Bingo C++ sample의 `match_bingo` 흐름은 API channel request와 room `join_spot(...)` 대기에
-`yield()`를 사용한다. room list, match queue, lobby state 같은 공용 mutable state를
-await 전후로 이어서 판단하는 handler에는 `yield()`를 쓰지 않는다. `thread_local`은
-짧은 runtime lookup이나 logging context 용도로만 사용하고, turn이나 mailbox 소유권 저장소로
-사용하지 않는다.
-
-짧고 빠른 local 계산을 Spot 실행 큐 밖에서 처리해야 하면 `run_worker(...)`를
-사용한다. worker 함수는 Spot 상태를 직접 만지지 않고, 완료 뒤 `co_await` 지점에서
-다시 같은 Spot 실행 큐로 돌아와 상태를 갱신한다.
+짧은 CPU 계산을 Spot queue 밖에서 처리하려면 `run_cpu_worker(...)`를 사용한다. Worker는
+Spot 상태를 직접 변경하지 않고 snapshot만 받으며 `std::stop_token`으로 cancellation
+요청을 확인한다.
 
 ```cpp
 auto score = co_await context
-  .run_worker ([snapshot] { return calculate_score (snapshot); })
+  .run_cpu_worker<std::optional<int>> ([snapshot] (std::stop_token stop) {
+      if (stop.stop_requested ()) {
+          return std::optional<int>{}; // cancellation 뒤 계산을 시작하지 않는다.
+      }
+      return std::optional<int>{calculate_score (snapshot)};
+  })
   .async ();
+
 if (score) {
-    current_score = score.value ();
+    current_score = *score; // continuation에서 Spot 상태를 갱신한다.
 }
 ```
 
-## 2. 노드 선언
+## 2. MeshNode에 Spot 등록
 
-spot은 spot mesh(디스커버리 채널) 아래 노드로 선언한다. Bingo Play 서버의 실제
-구성:
+Spot·Entry Spot·Actor factory는 owner MeshNode builder에 등록한다. `listen(...)`은
+MeshNode endpoint를 열고 `set_routing_id(...)`는 이 node의 논리 주소를 정한다.
+`channel_name(...)`은 같은 MeshName 안의 논리 membership을 추가한다. 수동 peer는
+`peer_connections().connect(...)`로 등록하고, location store를 구성하면 같은 MeshName의
+descriptor로 peer set을 갱신한다.
 
 ```cpp
-options.add_spot_mesh ("bingo.room.discovery")
-  .set_routing_id (topology.play_rid).enable_router (topology.play_spot_router_endpoint)
-  .enable_pub_sub (topology.play_spot_endpoint)
-  .add_entry_spot<bingo_entry_spot_t> ()
-  .add_spot<bingo_room_spot_t> ("bingo.room");
+auto mesh = options.add_route_mesh ("bingo.application")
+  .listen (topology.play_router_endpoint)
+  .set_routing_id (topology.play_rid);
+
+mesh.channel_name ("bingo.room");
+mesh.peer_connections ().connect (topology.peer_router_endpoint);
+mesh.configure_spot_publisher ().no_drop = true;
+mesh.add_entry_spot<bingo_entry_spot_t> ();
+mesh.add_spot<bingo_room_spot_t> ("bingo.room");
+mesh.add_actor_factory<player_actor_factory_t> ("player");
 ```
 
-| 빌더 | 의미 |
+| 표면 | 의미 |
 |------|------|
-| `add_spot_mesh(name)` | 프로세스의 단일 spot 노드와 discovery view 선언 |
-| `set_routing_id (rid)` | Spot node의 대표 routing id 지정 |
-| `enable_router(endpoint)` | 노드 간 라우팅 수신 |
-| `enable_pub_sub(endpoint)` | spot 토픽 pub/sub endpoint. framework가 대표 id에서 pub/sub 내부 id를 파생해 설정함 |
-| `use_discovery(channel)` | registry 기반 노드 발견 ([11장](11-registry.ko.md)) — `add_spot_mesh()`에서는 기본으로 mesh 이름을 사용함 |
-| `add_route_mesh(name)` | 같은 프로세스의 SpotMesh로 들어오는 외부 routed 호출 수신 ([7장 §7](07-channel-messaging.ko.md)) |
-| channel `enable_client(...)` | spot 코드에서 쓸 외부 channel client 연결 |
-| `add_entry_spot<T>()` | 입장 spot 등록 (노드당 1개) |
-| `add_spot<T>(name)` | spot 타입 등록 |
-| `add_actor_factory<F>(type)` | actor factory 등록 ([9장](09-actor-session.ko.md)) |
+| `add_route_mesh(mesh_name)` | process-local MeshNode 등록 |
+| `listen(endpoint)` / `set_routing_id(rid)` | 수신 endpoint와 node RID 설정 |
+| `channel_name(channel_name)` | 논리 ChannelName membership 추가 |
+| `peer_connections().connect(endpoint)` | 수동 MeshNode peer 등록 |
+| `configure_spot_publisher().no_drop` | Logical Multicast admission 정책 설정 |
+| `add_entry_spot<T>()` | MeshNode의 Entry Spot type 등록 |
+| `add_spot<T>(spot_name)` | 생성 가능한 Spot type 등록 |
+| `add_actor_factory<F>(actor_type)` | Actor factory 등록 |
 
-## 3. room spot 작성
+MeshNode에는 ChannelName을 하나 이상 등록해야 한다. 같은 process에서 MeshName을 중복
+등록하거나 동일 Spot 이름·Actor type을 중복 등록하면 startup이 실패한다.
 
-`spot_t`를 상속하고 도메인 상태를 직접 소유한다. `configure()`에서
-`add_actor_packet<&T::method>()`로 메서드를 actor 패킷 핸들러로 등록한다.
-인스턴스는 **룸(게임)마다 하나**이며 수명은 룸과 같다.
+## 3. room Spot 작성
+
+`spot_t`를 상속하고 `configure(...)`에서 일반 Spot packet과 subscription handler를
+등록한다. Actor payload handler는 Spot registry가 아니라 Actor의
+`actor_context_t::handlers()`에 등록한다. Actor handler는 mutable Spot을 받지 않으며,
+Spot 상태 변경이 필요하면 `spot_handle_t` direct call로 새 Spot turn을 제출한다.
 
 ```cpp
 class bingo_room_spot_t : public zlink::framework::spot_t,
-                           public bingo_room_game_t       // 도메인 상태 직접 소유
-{
-  public:
+                          public bingo_room_t {
+public:
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&bingo_room_spot_t::submit_card> ();
+        context.handlers ().add_handler<&bingo_room_spot_t::reset_round> ();
+        context.handlers ().add_subscribe<&bingo_room_spot_t::on_room_event> (
+          "room.events");
     }
 
-    // 시그니처: (const TActor&, const spot_actor_request_context_t&, const TReq&) → TRes
-    submit_bingo_card_res_t
-    submit_card (const player_actor_t &actor,
-                 const zlink::framework::spot_actor_request_context_t &context,
-                 const submit_bingo_card_req_t &request)
+    void reset_round (const reset_round_t &request)
     {
-        // bingo_room_game_t 멤버 접근 — 직렬 실행 보장, 락 불필요
-        return bingo_room_game_t::submit_card (actor.actor.actor_id, request.card);
+        bingo_room_t::reset (request.round_id); // 같은 Spot turn에서 상태를 변경한다.
     }
 
-    // 입장 수락/거부
-    zlink::framework::spot_actor_join_response_t
-    on_actor_join (std::string_view actor_id,
-                   const zlink::framework::message_t &request)
+    zlink::framework::spot_actor_join_response_t on_actor_join (
+      const zlink::framework::actor_join_request_t &actor,
+      const zlink::framework::message_t &request)
     {
-        auto join_request = request.decode<bingo_room_join_req_t> ();
-        // admission에서는 actor instance나 membership을 만들지 않고 요청만 검증한다.
-        return actor_id.empty () || join_request.display_name.empty ()
-                 ? zlink::framework::spot_actor_join_response_t::reject ()
-                 : zlink::framework::spot_actor_join_response_t::accept ();
+        const auto join = request.decode<bingo_room_join_req_t> ();
+        return actor.actor.empty () || join.display_name.empty ()
+          ? zlink::framework::spot_actor_join_response_t{false, std::nullopt}
+          : zlink::framework::spot_actor_join_response_t{true, std::nullopt};
     }
 
-    void on_actor_joined (const player_actor_t &actor)
+    void on_actor_joined (
+      const zlink::framework::actor_membership_t &membership);
+    void on_leave_actor (
+      const zlink::framework::actor_membership_t &membership);
+    void on_disconnect_actor (
+      const zlink::framework::actor_membership_t &membership);
+};
+
+class player_actor_t : public zlink::framework::actor_t {
+public:
+    void configure (zlink::framework::actor_context_t &context)
     {
-        // actor membership과 입장 알림은 commit 이후 callback에서 확정한다.
-        join (actor.actor.actor_id, actor.display_name);
+        context.handlers ().add_request<&player_actor_t::submit_card> ();
     }
-    void onLeaveActor (const player_actor_t &actor) { leave (actor.actor.actor_id); }
+
+    submit_bingo_card_res_t submit_card (
+      const zlink::framework::spot_actor_request_context_t &context,
+      const submit_bingo_card_req_t &request);
 };
 ```
 
-수명주기 훅:
+`on_actor_join(...)`은 immutable join request와 message를 검증해 accept 또는 reject를
+반환한다. Accept된 membership을 commit한 뒤에만 `on_actor_joined(...)`가 실행된다.
+Lifecycle은 registry 항목이 아니라 Spot member callback이다.
 
-| 훅 | 시점 |
-|----|------|
-| `configure(context)` | spot 생성 시 — 핸들러/타이머 등록 |
-| `on_actor_join(actor_id, msg)` | actor instance 없는 입장 요청 검증. `accept(reply)` 또는 `reject(reply)`를 반환한다. |
-| `on_actor_joined(actor)` | 입장 확정 후 |
-| `onLeaveActor(actor)` | 퇴장 |
+코루틴 중에도 같은 owner의 직렬성은 [§1.1](#11-room-spot-직렬화--큐-하나-한-번에-하나)을
+따른다.
 
-핸들러 메서드는 동기 반환 또는 `task_t<...>` 코루틴 둘 다 가능하다.
-코루틴 중에도 spot 큐 직렬성은 유지된다([§1.1](#11-실행-컨텍스트-직렬화--큐-하나-한-번에-하나)).
+## 4. Entry Spot: 입장과 배정
 
-노드 핸들러(채널·HTTP)와의 핵심 차이 — spot_t 메서드에는
-`request_type`/`reply_type`/`topic_name`이 없고 `dependency_types` DI도 없다.
-필요한 채널 client는 channel 선언의 `enable_client(...)`로 켜고, publisher는 노드 선언의
-`enable_pub_sub(...)`로 Spot pub/sub 역할을 켜서 사용한다([§6](#6-spot에서-바깥으로-보내기)).
-
-## 4. entry spot: 매칭과 룸 배정
-
-entry spot은 룸에 들어가기 **전** 단계 — 매칭, 룸 생성/배정 — 를 담당한다.
-`entry_spot_t`를 상속하며 **노드당 1개**만 생성된다.
-
-entry spot의 actor 패킷은 Entry Spot 실행 큐가 아니라 대상 actor mailbox에서 처리된다.
-같은 actor의 연속 요청은 순서대로 실행되지만, 서로 다른 actor의 handler는 같은 Entry
-Spot 안에서도 동시에 진행될 수 있다. 따라서 entry spot actor handler에서는 actor별
-상태만 락 없이 다루고, 여러 actor가 공유하는 admission 상태는 lifecycle callback이나
-별도 동기화가 있는 도메인 서비스에서 다룬다.
-
-Entry Spot actor handler는 Entry Spot 실행 줄을 소유하지 않는다. 이 handler 안에서
-request, worker, actor join 같은 call object에 `yield()`를 호출하면 timeout을 기다리지
-않고 즉시 계약 오류가 난다. Entry Spot actor handler에서는 일반 `co_await call.async()`
-또는 동기 반환을 사용한다.
+`entry_spot_t`는 MeshNode마다 하나이며 Actor가 user Spot에 join하기 전의 입장·배정
+정책을 처리한다. Entry Spot lifecycle callback은 Entry Spot queue에서 실행하지만 Actor
+payload handler는 대상 Actor queue에서 실행된다. 따라서 Actor handler에서 여러 Actor가
+공유하는 mutable 상태를 직접 변경하지 않는다.
 
 ```cpp
-class bingo_entry_spot_t : public zlink::framework::entry_spot_t
-{
-  public:
+class bingo_entry_spot_t : public zlink::framework::entry_spot_t {
+public:
     void configure (zlink::framework::spot_context_t &context)
     {
-        context.handlers ().add_actor_packet<&bingo_entry_spot_t::match_bingo> ();
+        context.handlers ().add_handler<&bingo_entry_spot_t::allocate_room> ();
     }
 
-    match_bingo_res_t match_bingo (const player_actor_t &actor,
-                                   zlink::framework::spot_actor_request_context_t &,
-                                   const match_bingo_req_t &request)
+    room_allocated_t allocate_room (const allocate_room_t &request)
     {
-        const auto room_id = rooms.allocate (request.mode);
-        return {room_id, rooms.get (room_id).snapshot ()};
+        return allocator.allocate (request.mode); // Entry Spot turn에서 배정 상태를 변경한다.
     }
 
-    bingo_room_allocator_t rooms;
+    bingo_room_allocator_t allocator;
 };
 ```
 
-room spot(`spot_t`)과의 차이:
-
-| | entry spot (`entry_spot_t`) | room spot (`spot_t`) |
-|--|--|--|
-| 개수 | 노드당 1개 | 상태 단위마다 1개 |
-| 역할 | 배정·매칭 (라우팅 전) | 도메인 상태 소유·처리 |
-| 직렬화 범위 | lifecycle은 Entry Spot 큐, actor 패킷은 대상 actor mailbox | actor 패킷·join/leave는 단일 큐. timer는 예외([§5](#5-timer)) |
-| 공유 상태 접근 | lifecycle callback은 Entry Spot 큐 안에서 안전. actor 패킷 handler는 actor별 상태만 락 없이 안전 | spot 큐 안에서 락 없이 안전. timer tick은 자체 동기화 필요 |
-| actor lifecycle | Entry Spot은 기본 accept. 훅 `onCreateActor(actor[, request])`/`on_actor_joined`/`onLeaveActor`/`onDisconnectActor` | `on_actor_join`으로 수락/거부 + lifecycle 훅 |
+Entry Spot에서 Actor를 제거할 때는 `entry_spot_context_t::destroy_actor(...)`를 사용한다.
+Actor가 user Spot에 있으면 먼저 leave 또는 Entry Spot join을 완료해야 한다.
 
 ## 5. Timer
 
-spot 안의 주기 작업은 `spot_context_t::add_timer<THandler>`로 등록한다.
-`THandler` 타입은 timer 진단 이벤트에 남는 handler type으로 사용된다.
-
-timer tick은 room spot과 entry spot 모두에서 spot 직렬 큐에 들어가지 않는다.
-tick 처리 경로에서 spot 공유 상태에 접근할 때는 자체 동기화가 필요하다.
+Spot timer는 network record와 같은 Spot application turn에서 callback을 실행한다. 같은
+timer key를 다시 등록하면 이전 generation의 대기 record는 callback을 실행하지 않는다.
+`cancel()`은 아직 시작하지 않은 callback을 막지만 이미 시작한 callback을 강제로
+중단하지 않는다.
 
 ```cpp
 struct draw_tick_timer_t {};
@@ -274,48 +201,62 @@ void configure (zlink::framework::spot_context_t &context)
 
 | `timer_overrun_policy_t` | 늦은 tick 처리 |
 |--------------------------|----------------|
-| `skip_late_ticks` (기본) | 늦은 tick은 건너뜀 (`timer_tick_t::skipped_ticks`로 보고) |
-| `catch_up_bounded` | `max_catch_up_ticks`까지 따라잡기 |
-| `delay_next_tick` | 다음 tick을 밀어서 간격 유지 |
+| `skip_late_ticks` | 늦은 tick을 건너뛴다 |
+| `catch_up_bounded` | `max_catch_up_ticks` 상한 안에서 처리한다 |
+| `delay_next_tick` | 다음 tick 시점을 늦춰 간격을 유지한다 |
 
-`timer_t::cancel()`로 중지한다. tick 핸들러의 미처리 예외 정책은
-`stop_on_unhandled_exception`으로 정한다. timer 이벤트는
-[12장 모니터링](12-monitoring.ko.md)의 `add_spot_timer_events`로 관측한다.
+Timer 상태는 [12장 모니터링](12-monitoring.ko.md)에서 관측한다.
 
-## 6. spot에서 바깥으로 보내기
+## 6. Spot에서 바깥으로 보내기
 
-- client/server channel에 `enable_client(...)`를 설정하면 spot 코드에서 그
-  채널로 request/send를 보낼 수 있다.
-- `enable_pub_sub(...)`로 Spot topic publish 경로를 연다.
-- local spot을 만들지 않는 노드에서 SPOT mesh로 publish하려면
-  `spot_publisher_client_t`를 주입받아 `publish(channel, topic, event)`를 호출한다.
-- 토픽 구독자(클라이언트)에게 가는 알림은 `enable_pub_sub` endpoint를 통해
-  spot 토픽으로 발행된다.
+Spot context는 owner MeshName을 이미 알고 있다.
+
+- `send_to_spot(...)`와 `request_to_spot(...)`는 `spot_handle_t` 하나로 target을 지정한다.
+- `publish(channel_name, topic, event)`는 owner MeshNode의 ChannelName에 Logical
+  Multicast를 제출한다. 별도 PUB/SUB 역할을 구성하지 않는다.
+- local Spot이 없는 process에서 같은 Logical Multicast를 제출하려면 DI의
+  `spot_publisher_client_t`를 사용해 MeshName과 ChannelName을 함께 지정한다.
+- 특정 Spot을 외부에서 호출할 때는 `spot_handle_resolver_t`로 `spot_handle_t`를 얻고
+  `route_client_t::send_to_spot(...)` 또는 `request_to_spot(...)`에 넘긴다.
+
+```cpp
+auto result = co_await context
+  .publish ("bingo.room", "room-3187", number_drawn_t{number})
+  .async ();
+
+auto external = co_await spot_publisher
+  .publish ("bingo.application", "bingo.room", "room-3187",
+            number_drawn_t{number})
+  .async ();
+```
+
+Logical Multicast는 local matching queue와 remote MeshNode admission을 하나의 결과로
+집계한다. 기본 `no_drop=true`에서는 모든 대상의 reserve가 성공해야 수락한다. 독립
+classic fanout이 필요하면 `add_fanout_channel(...)`을 별도로 구성한다([7장 §6](07-channel-messaging.ko.md#6-fanout-publishsubscribe)).
 
 ## 7. Stage wrapper (playhouse Stage 류)
 
-`playhouse` Stage 같은 상위 실행 모델을 SPOT 위에 올릴 수 있다. SPOT이 transport
-바닥(노드 수명주기, spot_rid 생성/종료, publish/subscribe, attach client send/request,
-timer 등록, 같은 Spot callback의 직렬 실행)을 제공하고, wrapper는 그 위에 membership 정책, broadcast
-정책, 입장/권한, `stage_id → 주소` 조회를 얹는다. cpp framework 는 Stage wrapper 를
-별도 타입으로 제공하지 않으므로 응용이 SPOT 위에 직접 구성한다.
+Stage 같은 상위 모델은 SPOT 위에 application 계층으로 구성할 수 있다. SPOT은 MeshNode
+수명, Spot RID, owner turn, timer와 Logical Multicast를 제공하고 wrapper는 membership,
+권한과 `stage_id` 조회 정책을 소유한다. C++ framework는 별도 Stage public type을
+제공하지 않는다.
 
 ## 8. 자주 막히는 곳
 
-- **`publish`가 안 된다** → 노드에 `enable_pub_sub`가 없다.
-- **routed 호출이 안 나간다** → 대상 이름이 RouteMesh인지, 같은 프로세스의 SpotMesh가
-  router 역할을 켰는지, target ROUTER에 실제로 연결돼 있는지 확인한다([7장 §7](07-channel-messaging.ko.md)).
-- **spot factory 타입 중복** → 같은 노드 안에서 같은 타입을 두 번 등록하면 시작 예외.
-- **spot 상태에 lock을 걸어야 하나?** → actor 패킷·join/leave처럼 같은 spot 큐에서
-  도는 callback끼리는 직렬 실행이라 불필요(§1.1). timer tick이나 외부에서
-  `spot_rid`로 직접 접근하는 경로는 별도 동기화가 필요하다.
-- **timer는 직렬 큐에 들어가나?** → room spot과 entry spot 모두 timer tick은 spot
-  직렬화 경계 밖이라 공유 상태 접근 시 자체 동기화가 필요하다(§5).
+- **Logical Multicast 대상이 없다** → owner MeshNode의 ChannelName membership과 peer
+  admission, remote positive weight를 확인한다.
+- **특정 Spot 호출이 실패한다** → resolver에 전달한 MeshName·Spot RID와 반환된
+  `spot_handle_t`가 최신인지 확인한다.
+- **Spot factory type이 중복된다** → 같은 MeshNode에 동일 Spot 이름을 한 번만 등록한다.
+- **Spot 상태에 lock이 필요한가?** → 같은 Spot application turn끼리는 직렬이다.
+  Worker나 다른 owner가 공유하는 상태는 별도 동기화하거나 Spot turn으로 제출한다.
+- **Timer가 다른 Spot callback과 겹치는가?** → 같은 Spot에서는 겹치지 않는다. 서로
+  다른 owner의 turn은 병렬로 실행할 수 있다.
 
 ## 9. 더 보기
 
 - 인터페이스/계약 카탈로그: [13장 인터페이스 카탈로그](13-interface-catalog.ko.md)
-- 실행 가능한 전체 예제(room/stage/zone): [14장 샘플 맵](14-samples-map.ko.md)
-- spot 안의 참가자별 상태/세션이 필요하면: [9장 Actor · Session](09-actor-session.ko.md)
+- 실행 가능한 전체 예제: [14장 샘플 맵](14-samples-map.ko.md)
+- 참가자별 상태와 session binding: [9장 Actor · Session](09-actor-session.ko.md)
 
 [다음: Actor · Session →](09-actor-session.ko.md)

@@ -68,7 +68,7 @@ Actor location row는 논리 Actor의 현재 owner와 Spot membership을 나타�
 | Owner RID, Owner generation | Actor queue를 소유한 MeshNode identity |
 | Actor generation | Actor lifecycle과 transfer fencing 값 |
 | Membership epoch | 같은 Actor generation 안에서 Spot membership 변경을 구분하는 CAS 값 |
-| Spot RID와 Spot kind | 현재 Spot membership |
+| Spot RID, Spot generation과 Spot kind | 현재 Spot membership과 같은 RID로 다시 만들어진 Spot을 구분하는 lifecycle fence |
 | Owner lease | owner runtime의 유효성 |
 
 Actor location row는 STREAM session route를 public location record로 제공하지 않는다. session binding은

@@ -24,7 +24,7 @@ channel messaging은 framework의 가장 기본 축이다. 세 가지 상호작�
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
 flowchart LR
-  CL["호출하는 쪽<br/>IZLinkChannelClient / IZLinkFanoutClient"]
+  CL["호출하는 쪽<br/>IZLinkRouteClient / IZLinkFanoutClient"]
   CL -->|"Request: 응답이 필요"| H1["server handler → 응답 돌려줌"]
   CL -->|"Send: 응답 없는 단방향"| H2["server handler (응답 없음)"]
   CL -->|"Publish(topic): 여러 곳에"| SUB["구독자 1 · 2 · ... · N"]
@@ -191,9 +191,10 @@ public sealed class PlaceOrderHandler
     }
 }
 
-// 클라이언트: gRPC stub 대신 IZLinkChannelClient 주입
+// 클라이언트: gRPC stub 대신 IZLinkRouteClient 주입
 var placed = await client
-    .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
+    .RequestToChannel("services", "orders",
+        new PlaceOrder("order-1042", "acct-77", 18742))
     .Async<OrderPlaced>(ct);
 ```
 
@@ -208,17 +209,16 @@ var placed = await client
 
 ## 1. channel 종류
 
-| 등록 메서드 | transport(소켓 구조) | 역할 | 용도 |
-|-------------|-----------|------------|------|
-| `AddClientServerChannel` | ROUTER 서버 ← DEALER 클라이언트 | `EnableServer` / `EnableClient` | request, send |
-| `AddFanoutChannel` | PUB → SUB | `EnablePublisher` / `EnableSubscriber` | event fan-out |
-| `AddRouteMeshChannel` | ROUTER mesh | `EnableServer` / `EnableClient` | routing id 주소 라우팅 (§9) |
+| 등록 메서드 | 논리 구성 | 용도 |
+|-------------|-----------|------|
+| `AddRouteMesh` + `ChannelName` | MeshNode + channel membership | request, send, RID direct route |
+| `AddFanoutChannel` | 독립 fanout channel | event fan-out |
 
-이 챕터 §2~§7은 가장 흔한 **client-server**(request/send)와 **fanout**(pub/sub)을
-다룬다. 수평 확장은 client-server channel에 여러 endpoint를 연결하거나 location store
-자동 연결([10-location](10-location.ko.md))을 사용해서 처리한다. 주소 라우팅용 **route mesh** 는 대상 `RoutingId`를 함께 지정해야
-하므로 `IZLinkRouteClient`와 route 전용 handler를 쓴다.
-[§8](#8-client-server-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
+이 챕터 §2~§7은 RouteMesh의 ChannelName request/send와 독립 fanout(pub/sub)을
+다룬다. 수평 확장은 같은 MeshName의 peer를 연결하거나 location store 자동 연결
+([10-location](10-location.ko.md))을 사용해서 처리한다. RID direct route는 대상
+`RoutingId`를 함께 지정하므로 `IZLinkRouteClient`와 route 전용 handler를 쓴다.
+[§8](#8-channelname-수평-확장)·[§9](#9-route-mesh--주소-라우팅)에서 따로 다룬다.
 소켓 구조 그림은 [03-concepts §1](03-concepts.ko.md#1-channel--서버-간-연결).
 
 ## 2. handler 작성
@@ -328,55 +328,47 @@ handler 작성 방식은 다음 기준으로 고른다.
 
 - handler 하나를 class 하나로 분리하고 타입 안전성을 우선하면 interface 기반을 쓴다.
 - 같은 주제의 handler 메서드를 한 class에 여러 개 담고 싶으면 attribute 기반을 쓴다.
-- 샘플은 등록 방식을 게임별로 나눠 보여 준다 — **Bingo** 는 attribute +
-  `AddHandlersFromAssemblyOf<...>` + `AddHandlerGroup(...)` **자동 등록**, **TicTacToe** 는
-  `AddRequestHandler<T>()` **수동 등록**(§3 방법 A/B).
+- 샘플은 handler type을 발견한 뒤 `ChannelName(...)`의 typed registration으로
+  노출 범위를 고정한다.
 
 ## 3. handler를 channel에 노출하기
 
 framework는 발견한 handler를 모든 channel에 자동으로 열지 않는다. **발견과
 노출은 별개 단계**다.
 
-> **등록은 자동이 기본, 수동도 된다.** `[ZLinkHandlerGroup]` +
-> `AddHandlersFromAssemblyOf<...>`로 **자동**(attribute scan) 등록하는 것이 기본이고 가장
-> 편하다(방법 A). 어떤 handler가 매핑되는지 구성 코드에서 명시적으로 통제하고 싶으면
-> `AddRequestHandler<T>()` 등으로 **수동** 등록한다(방법 B). 둘 다 같은 dispatcher로
-> 들어간다.
+> `AddHandlersFromAssemblyOf<...>`는 handler type을 발견하고, `ChannelName(...)`의
+> typed registration은 어느 MeshName과 ChannelName에 노출할지 고정한다.
 
-### 방법 A — group + AddHandlerGroup (여러 handler 묶음)
+### RouteMesh와 handler 등록
 
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    {
-        var channel =     options.AddClientServerChannel("api");
-                channel.EnableServer("tcp://0.0.0.0:7101");
-        channel.AddHandlerGroup("api");          // [ZLinkHandlerGroup("api")] 묶음 노출
-
-    }
-
-    options.AddHandlersFromAssemblyOf<Program>(); // handler 후보 발견(노출 아님)
+    options.AddHandlersFromAssemblyOf<Program>(); // handler type 발견
+    var mesh = options.AddRouteMesh("services")
+        .Listen("tcp://0.0.0.0:7101")
+        .SetRoutingId(RoutingId.From("api-1"));
+    var channel = mesh.ChannelName("api");
+    channel.AddRequestHandler<GetProfileHandler, GetProfileRequest, GetProfileReply>();
+    channel.AddSendHandler<RefreshCacheHandler, RefreshCacheCommand>();
 });
 ```
 
-- `[ZLinkHandlerGroup("api")]`가 없는 class는 어느 channel에도 매핑되지
-  않는다(opt-in 표식).
-- 같은 group을 여러 channel에, 한 channel에 여러 group을 매핑할 수 있다.
-
-### 방법 B — typed registration (개별 등록)
+### 다른 ChannelName에 개별 등록
 
 ```csharp
 {
-    var channel = options.AddClientServerChannel("price");
-        channel.EnableServer("tcp://0.0.0.0:7301");
+    var mesh = options.AddRouteMesh("pricing")
+        .Listen("tcp://0.0.0.0:7301")
+        .SetRoutingId(RoutingId.From("price-1"));
+    var channel = mesh.ChannelName("price");
     channel.AddRequestHandler<GetPriceHandler>();
     channel.AddSendHandler<RefreshCacheHandler>();
 
 }
 ```
 
-fanout channel의 publish handler는 builder의 `AddPublishHandler<...>()` 또는
-group 매핑으로 등록한다.
+fanout channel의 publish handler는 builder의 `AddHandler<...>()`로 등록한다.
 
 > **packet 이름 해석 순서:** ① handler 등록의 `packetName` 인자 → ②
 > payload 타입의 `[ZLinkPacket("...")]` → ③ 둘 다 없으면 타입 이름(`Type.Name`).
@@ -386,41 +378,31 @@ group 매핑으로 등록한다.
 
 ### 잘못된 등록은 시작 단계에서 막힌다
 
-channel 종류가 handler 종류를 강제한다 — client/server는 request·send만, fanout은
-publish만 받는다. channel 이름은 종류별로 따로 관리되지 않고, framework 안에서 하나의
-이름 공간을 공유한다. 따라서 client/server channel과 fanout channel이 서로 다른
-종류여도 같은 이름을 쓰면 안 된다. 맞지 않게 등록하거나 같은 channel 이름을 중복으로 등록하면,
-런타임에 조용히 무시되거나 잘못 라우팅되지 않고 **`AddZLinkFramework` 시작 단계에서
-`ZLinkConfigurationException`으로 즉시 실패**한다. 즉 잘못된 설정은 빌드가 아니라
-**부팅이 깨지므로** 운영에 나가기 전에 드러난다.
-
-| 잘못된 등록 | 시작 단계 예외 메시지 |
-|-------------|----------------------|
-| client/server channel에 publish handler 등록 | `client/server channel '{name}' cannot register publish handlers` |
-| fanout channel에 request/send handler 등록 | `fanout channel '{name}' cannot register send or request handlers` |
-| 종류가 달라도 같은 channel 이름을 중복 등록 | `Duplicate channel name '{name}'` |
-| 종류가 맞지 않는 handler 그룹 매핑(예: fanout에 request 그룹) | `maps handler group '{group}' with incompatible handler kind` |
-| handler를 노출했지만 받을 역할이 없음(server/subscriber 미등록) | `exposes handlers but does not enable server/subscriber capability` |
-| 같은 channel에 `kind + packet 이름` 중복 | `Duplicate request/send/publish handler '{channel}:{packet}'` |
+같은 process에서 같은 MeshName을 두 번 등록하거나 MeshNode에 ChannelName을 하나도
+등록하지 않으면 startup이 실패한다. ChannelName handler는 MeshName, ChannelName,
+message kind와 packet name으로 구분한다. 같은 key를 중복 등록하면
+`ZLinkConfigurationException`으로 실패하고, 서로 다른 MeshName이나 ChannelName에는
+같은 packet name을 사용할 수 있다. Fanout handler는 독립 fanout channel builder에
+등록하며 RouteMesh handler와 섞지 않는다.
 
 ## 4. outbound 호출
 
-### request / send — `IZLinkChannelClient`
+### request / send — `IZLinkRouteClient`
 
 ```csharp
-public sealed class PriceService(IZLinkChannelClient client)
+public sealed class PriceService(IZLinkRouteClient client)
 {
     public async Task<decimal> GetAsync(string symbol, CancellationToken ct)
     {
         var reply = await client
-            .RequestToChannel("price", new PriceRequest(symbol))
+            .RequestToChannel("pricing", "price", new PriceRequest(symbol))
             .Async<PriceReply>(ct);    // request: reply 타입은 payload가 아니라 .Async<T> 에서 지정
         return reply.Price;
     }
 
     public ValueTask RefreshAsync(string accountId, CancellationToken ct)
         => client
-            .SendToChannel("profile", new RefreshCacheCommand(accountId))
+            .SendToChannel("services", "profile", new RefreshCacheCommand(accountId))
             .Submit(ct);               // send: 응답과 완료 객체를 기다리지 않는다
 }
 ```
@@ -430,22 +412,19 @@ public sealed class PriceService(IZLinkChannelClient client)
   **30초**이고, 기본과 달라야 할 때만 붙인다(우선순위는 아래 예제 주석 참고).
   `Send`/`Publish`는 응답을 기다리지 않으므로 timeout 표면 자체가 없다.
 - packet 이름은 호출 시점에 바꿀 수 없다. 등록 시(§4의 해석 순서) 한 번 확정된다.
-- socket은 호출마다 만드는 게 아니라 **startup에 선언한 역할만큼만** 미리 만들어
-  둔다. 그래서 호출한 channel에 client 역할이 등록돼 있지 않으면, 그 channel 용
-  socket이 애초에 없으므로 `ZLinkConfigurationException`으로 실패한다
-  (`IZLinkChannelClient` 자체는 항상 DI에 등록되므로 주입은 되고, 검증은 호출
-  시점에 일어난다).
+- `IZLinkRouteClient`는 startup에 등록한 RouteMesh를 사용한다. MeshName이나
+  ChannelName이 등록되어 있지 않으면 `ZLinkConfigurationException`으로 실패한다.
 
 기본과 달라야 할 때만 종결자를 붙인다:
 
 ```csharp
 await client
-    .RequestToChannel("price", new PriceRequest(symbol))
+    .RequestToChannel("pricing", "price", new PriceRequest(symbol))
     .Timeout(TimeSpan.FromSeconds(5))  // 이 호출의 reply 대기 상한을 기본(30초)과 다르게 둘 때만 지정
     .Async<PriceReply>(ct);
 // reply 대기 상한 결정 순서(앞이 우선):
 //   1) 호출별 .Timeout(...)
-//   2) channel builder의 SetDefaultRequestTimeout(...)
+//   2) MeshNode builder의 SetDefaultRequestTimeout(...)
 //   3) 전역 options.DefaultRequestTimeout (기본 30초)
 ```
 
@@ -470,9 +449,8 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
   직렬화하지 않는다(framework 내부 최적화).
 - `IZLinkFanoutClient`는 fanout channel에 publish 하는 DI client 이다.
 
-> **구독 연결.** 구독자는 `AddFanoutChannel(name).EnableSubscriber()`로 채널을 구독한다.
-> store 자동 연결 없이 publisher에 직접 연결할 때는 endpoint를 주는 `EnableSubscriber(publisherEndpoint)`
-> 오버로드를 쓴다.
+> **구독 연결.** 구독자는 `AddFanoutChannel(name).ConnectSubscriber(endpoint)`로
+> publisher endpoint를 연결한다.
 
 > **구독자 쪽 topic 필터링(.NET).** 구독자는 채널을 구독할 때 topic을 지정하지 않고, 받은
 > 메시지의 `context.Topic`을 handler 안에서 보고 처리/무시를 정한다. 즉 topic으로 받을 메시지를
@@ -495,7 +473,7 @@ public sealed class ProfileService(IZLinkFanoutClient publisher)
 > `Async(...)`/`Async<T>(...)`의 완료는 transport 위임까지만 보장한다.
 > remote handler 완료나 구독자 수신을 보장하지 않는다([03-concepts](03-concepts.ko.md) §6.2).
 
-> **pub/sub는 replay가 없다.** 구독자가 **아직 붙기 전**에 publish 된 메시지나, **끊겨 있는
+> **pub/sub는 replay가 없다.** 구독자가 **아직 연결되기 전**에 publish 된 메시지나, **연결이 끊긴
 > 동안** 지나간 메시지는 다시 받지 못한다(재연결해도 그 사이 것은 안 온다). 놓치면 안 되는 이벤트는
 > 별도 재동기화(예: 재연결 후 현재 상태를 한 번 request)로 메운다.
 
@@ -531,29 +509,31 @@ filter도 `new`가 아니라 .NET DI에서 resolve 된다.
 
 ## 6. 연결 제어
 
-수동 연결은 startup builder에서 역할 단위로 설정한다.
+수동 연결은 MeshNode의 peer 목록에 설정한다.
 
 ```csharp
-// 등록 시점 수동 연결
-options.AddClientServerChannel("profile")
-    .EnableClient("tcp://10.0.10.15:7101")
-    .EnableClient("tcp://10.0.10.16:7101");
+var mesh = options.AddRouteMesh("services")
+    .Listen("tcp://0.0.0.0:7102")
+    .SetRoutingId(RoutingId.From("profile-client-1"));
+mesh.ChannelName("profile");
+mesh.PeerConnections.Connect("tcp://10.0.10.15:7101");
+mesh.PeerConnections.Connect("tcp://10.0.10.16:7101");
 ```
 
 endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket을 직접 제어하는
 handle이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바꿀 수 있다 — 아래 참조.**
 
 자동 연결 모드는 peer 목록의 소유권이 location store에 있다. 서버가 새 endpoint로
-다시 뜨면 store의 peer row가 갱신되고 client 연결이 따라간다 — 별도 조작이 필요
+새 endpoint로 다시 시작하면 store의 peer row가 갱신되고 client 연결도 갱신된다. 별도 조작이 필요
 없다. 수동 연결은 설정을 바꾼 뒤 애플리케이션을 재시작해 다시 적용한다.
 
 ### 운영 drain / restore (런타임)
 
-유지보수·rolling 재시작·scale-in 직전에, 노드를 죽이거나 store의 peer row를 빼지 않고
-**새 요청 수신만 멈추고 싶을 때** 가 있다. 이걸 위해 `IZLinkChannelRuntimeOptions`
-(DI singleton)을 주입받아 channel의 serving 역할을 런타임에 drain 한다.
+유지보수·rolling 재시작·scale-in 직전에, 노드를 종료하거나 store의 peer row를 제거하지 않고
+**새 요청 수신만 멈추고 싶을 때**가 있다. `IZLinkRouteMeshRuntimeOptions`를 주입받아
+MeshName과 ChannelName으로 weight를 변경한다.
 
-여기서 쓰는 `Weight`는 drain 전용 플래그가 아니라, client-server channel이 새
+여기서 쓰는 `Weight`는 drain 전용 플래그가 아니라, ChannelName membership이 새
 메시지를 어느 peer로 보낼지 고를 때 참고하는 **peer 가중치**다. 연결된 서버들의
 weight가 모두 같으면 새 요청은 균등하게 round-robin으로 분배된다. weight가 서로
 다르면 더 큰 값을 가진 서버가 그 비율만큼 더 자주 선택된다. `0`은 "연결은 유지하지만
@@ -590,18 +570,18 @@ server A와 server B처럼 양수 weight를 가진 peer만 새 요청 후보가 
 균등하게 round-robin으로 선택된다.
 
 ```csharp
-// 운영 admin 엔드포인트 (DI 주입). "orders" 는 이 앱이 등록한 client-server channel.
+// 운영 admin 엔드포인트. "services"와 "orders"는 등록한 MeshName과 ChannelName이다.
 app.MapPost("/admin/channels/orders/drain",
-    (IZLinkChannelRuntimeOptions options) =>
+    (IZLinkRouteMeshRuntimeOptions options) =>
     {
-        options.ClientServerChannel("orders").ConfigureServerSocket().Weight = 0;   // drain
+        options.Channel("services", "orders").Weight = 0; // 새 select-one 대상에서 제외
         return Results.Ok();
     });
 
 app.MapPost("/admin/channels/orders/restore",
-    (IZLinkChannelRuntimeOptions options) =>
+    (IZLinkRouteMeshRuntimeOptions options) =>
     {
-        options.ClientServerChannel("orders").ConfigureServerSocket().Weight = 100;  // 정상 복귀
+        options.Channel("services", "orders").Weight = 100; // 정상 복귀
         return Results.Ok();
     });
 ```
@@ -612,15 +592,13 @@ app.MapPost("/admin/channels/orders/restore",
   store의 peer row도 그대로 남는다(graceful drain).
 - `Weight = 100`으로 기본 정상 serving 상태로 복귀한다. `1..99`로 두면 연결된 peer의
   분배 비율을 낮춘다(weighted).
-- 같은 `Weight`를 **build-time 초기값**으로도 쓰고, route mesh serving 역할도 같은
-  `ConfigureSocket` 접근자 패턴으로 연다(접근자별 대상은 아래 주석 참고):
+- 같은 `Weight`를 build-time 초기값으로도 설정한다.
 
 ```csharp
-// build-time 초기값: serving socket의 시작 weight
-builder.AddClientServerChannel("orders").ConfigureServerSocket().Weight = 30;
-
-// 같은 패턴 — channel 종류만 다르다
-options.RouteMeshChannel(name).ConfigureSocket();    // route mesh serving 역할 socket
+var mesh = options.AddRouteMesh("services")
+    .Listen("tcp://0.0.0.0:7101")
+    .SetRoutingId(RoutingId.From("orders-1"));
+mesh.ChannelName("orders").SetWeight(30); // 이 membership의 시작 weight
 ```
 - drain 신호 전파는 best-effort eventual 이다 — "drain 신호를 보냈다" 까지 보장하고, peer가
   실제로 후보에서 뺀 시점은 모니터링(`PeerAdmissionChanged` 이벤트, [11-monitoring](11-monitoring.ko.md))
@@ -685,11 +663,12 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
 등록 후 high-level 호출은 그대로 업무 객체를 주고받고 직렬화는 Avro로 처리된다.
 다른 언어의 등록 표면은 [framework-api §9](../../spec/05-framework-api.ko.md#9-codec) 표를 본다.
 
-## 8. client-server 수평 확장
+## 8. ChannelName 수평 확장
 
-처리량을 늘리려면 같은 client-server channel 이름으로 provider를 여러 개 실행하고,
-호출 노드는 location store 자동 연결 또는 여러 `EnableClient(endpoint)` 호출로 provider endpoint를 붙인다.
-호출자는 여전히 `IZLinkChannelClient.RequestToChannel(...)` / `SendToChannel(...)`를 사용한다.
+처리량을 늘리려면 같은 MeshName과 ChannelName membership으로 provider를 여러 개
+실행한다. 호출 노드는 location store 자동 연결 또는 `PeerConnections.Connect(...)`로
+provider endpoint를 등록한다. 호출자는 `IZLinkRouteClient.RequestToChannel(...)`과
+`SendToChannel(...)`을 사용한다.
 
 > **샘플에서 보기 — [ShoppingMall](../../common/sample/event/shoppingmall.ko.md).** `CommerceApi`
 > 2개와 `OrderWorkflow` 2개를 동시에 띄워 이 절의 확장을 실제로 검증한다. 호출자
@@ -700,22 +679,27 @@ options.Codecs.Use(new AvroCodecExtension()); // extension 내부에서 Avro ser
 ```csharp
 // 처리 노드 A
 {
-    var channel = options.AddClientServerChannel("image.resize");
-    channel.EnableServer("tcp://0.0.0.0:5600");
-    channel.AddHandlerGroup("resize"); // request/send handler 등록
+    var mesh = options.AddRouteMesh("media")
+        .Listen("tcp://0.0.0.0:5600")
+        .SetRoutingId(RoutingId.From("resize-a"));
+    mesh.ChannelName("image.resize")
+        .AddRequestHandler<ResizeHandler, ResizeRequest, ResizeReply>();
 }
 ```
 
 ```csharp
 // 호출 노드 — 여러 provider endpoint를 같은 channel client에 연결
 {
-    var channel = options.AddClientServerChannel("image.resize")
-        .EnableClient("tcp://10.30.1.10:5600")
-        .EnableClient("tcp://10.30.1.10:5601");
+    var mesh = options.AddRouteMesh("media")
+        .Listen("tcp://0.0.0.0:5590")
+        .SetRoutingId(RoutingId.From("resize-client"));
+    mesh.ChannelName("image.resize");
+    mesh.PeerConnections.Connect("tcp://10.30.1.10:5600");
+    mesh.PeerConnections.Connect("tcp://10.30.1.10:5601");
 }
 
 // 또는 location store로 자동 발견 — 노드 추가 시 호출자 재시작 불필요
-options.AddClientServerChannel("image.resize").EnableClient();
+options.AddRouteMesh("media").ChannelName("image.resize");
 ```
 
 ```mermaid
@@ -727,44 +711,41 @@ graph LR
     C -.->|"노드 추가 시<br/>store row 자동 반영"| D["처리 노드 C<br/>:5602"]
 ```
 
-특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 route mesh(§9)를 사용한다.
+특정 엔티티(주문 ID·사용자 ID)가 늘 같은 노드로 가야 하면 RID direct route(§9)를 사용한다.
 
-> **provider에 안정적 식별자 주기 — client-server 채널의 `SetRoutingId(...)`.** `SetRoutingId`는
-> route mesh 전용이 아니다. client-server provider에도 걸어 두면(`EnableServer(...).EnableClient().SetRoutingId(RoutingId.From(rid))`)
-> 그 노드가 **고정된 논리 id** 를 갖는다. provider가 죽고 같은 rid로 새로 떠도 location store가 같은
+> **provider에 안정적 식별자 주기.** `AddRouteMesh(...).SetRoutingId(...)`로
+> MeshNode에 고정된 논리 id를 준다. provider가 종료된 뒤 같은 RID로 새 process를 시작해도 location store가 같은
 > 논리 id의 새 endpoint로 이어 주므로(same-rid failover), 응답에 어느 노드가 처리했는지(rid)를 실어 보내거나
 > 프로세스 교체 후에도 라우팅을 이어 갈 때 쓴다.
 
 ## 9. route mesh — 주소 라우팅
 
-route mesh는 `RoutingId`로 **특정 주소를 지정해서 라우팅**한다(dealer의 분산과
-대비). `EnableServer`는 이 노드가 받을 endpoint와 이 노드의 `RoutingId`를 설정하고,
-`EnableClient`는 다른 route node로 나가는 연결을 설정한다. 한 노드가 둘 다 활성화할 수 있다.
+RouteMesh의 RID direct 호출은 `RoutingId`로 특정 MeshNode를 지정한다. `Listen`은 이
+노드의 endpoint를 열고 `SetRoutingId`는 논리 주소를 정한다. 수동 peer는
+`PeerConnections.Connect(...)`로 등록한다.
 SPOT 라우팅 백본이 필요할 때 이 channel 종류를 쓴다([06-spot](06-spot.ko.md)).
 
 ```csharp
 {
-    var routed = options.AddRouteMeshChannel("tictactoe.router")
-        .EnableServer(playRouterEndpoint)  // 이 노드가 받을 endpoint
-        .EnableClient(peerRouterEndpoint)  // 다른 노드로 나가는 연결
-        .SetRoutingId(RoutingId.From(playRouterId)); // 이 노드의 논리 주소 — 다른 노드가 이 RoutingId로 지목해 보낸다
-    routed.AddRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
+    var mesh = options.AddRouteMesh("tictactoe")
+        .Listen(playRouterEndpoint)
+        .SetRoutingId(RoutingId.From(playRouterId));
+    mesh.PeerConnections.Connect(peerRouterEndpoint);
+    mesh.AddRouteRequestHandler<AllocateRoomRouteHandler, AllocateRoom, RoomAllocated>(
         "room.allocate");                  // 마지막 인자 = packet 이름
 }
 ```
 
-route mesh로 직접 호출할 때는 일반 `IZLinkChannelClient`가 아니라
-`IZLinkRouteClient`를 주입받고, 호출마다 route channel 이름과 대상 `RoutingId`를
-지정한다. `IZLinkRouteClient`는 특정 channel 하나에 묶인 client가 아니므로,
-route mesh channel이 여러 개 있어도 호출 인자의 channel 이름으로 어느 경로를 쓸지
-분명하게 정한다.
+RID direct 호출도 `IZLinkRouteClient`를 주입받고 MeshName과 대상 `RoutingId`를
+지정한다. `IZLinkRouteClient`는 특정 MeshNode 하나에 묶인 client가 아니므로 호출마다
+MeshName을 분명하게 정한다.
 
 ```csharp
 var target = RoutingId.From("play-node-1");   // 보낼 대상 노드의 RoutingId
 
 var room = await routeClient
-    // 인자 = (route channel 이름, 대상 RoutingId, payload). client가 channel에 안 묶이므로 호출마다 channel을 지정한다.
-    .RequestToNode("tictactoe.router", target, new AllocateRoom("alice"))
+    // 인자 = (MeshName, 대상 RoutingId, payload)
+    .RequestToNode("tictactoe", target, new AllocateRoom("alice"))
     .Async<RoomAllocated>(ct);
 
 public sealed class AllocateRoomRouteHandler
@@ -794,7 +775,7 @@ public sealed class PlayRoutes(IZLinkRouteClient routes) : IPlayRoutes
     public IZLinkRequestCall Request<TRequest>(
         RoutingId targetNodeRid,
         TRequest request)
-        => routes.RequestToNode("tictactoe.router", targetNodeRid, request);
+        => routes.RequestToNode("tictactoe", targetNodeRid, request);
 }
 
 builder.Services.AddSingleton<IPlayRoutes, PlayRoutes>();
@@ -818,25 +799,22 @@ builder.Services.AddZLinkFramework(options =>
 {
         options.Codecs.Use(ZLinkProtobufCodec.Default);
 
-    // 들어오는 요청을 받는 서버 channel
-    {
-        var channel =     options.AddClientServerChannel("api");
-                channel.EnableServer("tcp://0.0.0.0:7101");
-        channel.AddHandlerGroup("api");
-
-    }
+    var mesh = options.AddRouteMesh("services")
+        .Listen("tcp://0.0.0.0:7101")
+        .SetRoutingId(RoutingId.From("api-1"));
+    mesh.ChannelName("api")
+        .AddRequestHandler<UserHandlers, GetUserRequest, GetUserReply>();
+    mesh.ChannelName("account"); // outbound select-one membership
 
     // 이벤트 발행/구독 channel
     {
-        var channel =     options.AddFanoutChannel("api.events");
-                channel.EnablePublisher("tcp://0.0.0.0:7201");
-        channel.EnableSubscriber();
-        channel.AddHandlerGroup("api.events");
+        var channel = options.AddFanoutChannel("api.events")
+            .EnablePublisher("tcp://0.0.0.0:7201")
+            .ConnectSubscriber("tcp://127.0.0.1:7201");
+        channel.AddHandler<UserCacheRefreshedEventHandler,
+            UserCacheRefreshedEvent>();
 
     }
-
-    // 다른 서비스로 나가는 outbound channel
-        options.AddClientServerChannel("account").EnableClient();
 
     options.AddHandlersFromAssemblyOf<Program>();
 });
@@ -844,10 +822,10 @@ builder.Services.AddZLinkFramework(options =>
 var app = builder.Build();
 
 app.MapPost("/users/{id}", async (
-    string id, IZLinkChannelClient client, CancellationToken ct) =>
+    string id, IZLinkRouteClient client, CancellationToken ct) =>
 {
     var account = await client
-        .RequestToChannel("account", new GetAccountRequest(id))
+        .RequestToChannel("services", "account", new GetAccountRequest(id))
         .Async<GetAccountReply>(ct);
     return Results.Ok(account);
 });
@@ -883,8 +861,8 @@ public sealed class UserCacheRefreshedEventHandler
 
 ## 11. 자주 막히는 곳
 
-- **handler가 안 불린다** → `AddHandlersFromAssemblyOf(...)` 만으로는 노출되지
-  않는다. `AddHandlerGroup(...)` 또는 typed registration이 필요하다(§3).
+- **handler가 안 불린다** → `AddHandlersFromAssemblyOf(...)`만으로는 노출되지
+  않는다. `ChannelName(...)`의 typed registration이 필요하다(§3).
 - **`ZLinkConfigurationException`** → channel이 없거나 해당 역할이 없는
   경우. 등록을 확인한다.
 - **시작 시 예외** → channel 이름 중복, 같은 channel `kind + packet 이름` 중복,
@@ -895,7 +873,7 @@ public sealed class UserCacheRefreshedEventHandler
   **send는 조용히 drop** 된다. 다만 조용히 drop 된다는 말은 호출자에게 reply가 없다는
   뜻이지, 관측 흔적이 없다는 뜻은 아니다. message flow 로그/observer를 켜 두면 dispatch
   실패가 구조화 로그와 observer event로 남고, 이유는 marker
-  (`HandlerMissing` / `ReplyError`·`Drop`)로 구분된다([11-monitoring](11-monitoring.ko.md)).
+  (`no_handler` / `reply_error`·`drop`)로 구분된다([11-monitoring](11-monitoring.ko.md)).
 
 ## 12. 더 보기
 

@@ -147,7 +147,9 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 - 절차: 룸에 부하를 주고(다수 액션), player actor를 `play-a`→`play-b`로 이동시킨다.
 - 검증: `zlink.spot.queue.depth`/`queue.wait.duration`이 `spot_kind=user` 라벨로 계수되고,
-  `zlink.actor.transfers`가 이동 완료 1회당 1회, `transfer.duration`이 out→commit ack 구간을 담는다.
+  `zlink.actor.transfers`가 target activation 1회당 1회, `transfer.duration`이 transfer 시작부터 target
+  activation 또는 실패 terminal까지의 구간을 담는다. commit ack는 중간 상태이며, 성공 reply 전달
+  완료까지 구간을 늘리지 않는다.
   이동 전 actor request가 pending이면 `zlink.mesh_node.requests.inflight`의 `surface=actor` 값에
   반영되고, 각 request가 terminal completion에 도달하면 기준값으로 돌아온다. spot 계기는
   `spot_kind`(`entry|user`)로 분리된다

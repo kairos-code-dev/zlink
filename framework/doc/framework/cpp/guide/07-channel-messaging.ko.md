@@ -20,14 +20,13 @@
 
 > **cpp 는 수동 등록만 제공한다.** 어트리뷰트·리플렉션 기반 자동 등록(어노테이션
 > scan)은 cpp 언어 표준이 아니라 제공하지 않는다 — 핸들러는 항상 명시 registry
-> (`handlers().group(...).add<T>()`, SPOT 은 `configure()` context)로 등록한다. dotnet·node·java
+> (`handlers().group(...).add<T>()`, SPOT 은 `configure()` context)로 등록한다. dotnet·node·java·kotlin
 > 는 수동에 더해 어트리뷰트/데코레이터 자동 등록도 제공한다.
 
 ```cpp
 app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
     options.codecs ().use (
-      zlink::framework_codecs::messagepack<create_game_req_t,
-                                           create_game_res_t> ());
+      zlink::framework_codecs::messagepack ()); // MessagePack extension을 한 번 등록한다.
 
     auto mesh = options.add_route_mesh ("tictactoe.application")
       .listen ("tcp://0.0.0.0:5561")             // MeshNode의 ROUTER endpoint
@@ -100,7 +99,7 @@ MeshName(`tictactoe.application`)은 물리 mesh를 식별하고 ChannelName(`ti
 논리 membership을 식별한다. 각 MeshNode는 ROUTER endpoint 하나를 열며, 같은 ChannelName에 등록한
 handler group으로 typed 요청을 dispatch한다.
 
-## 3. 호출하는 MeshNode: channel_client_t
+## 3. 호출하는 MeshNode: request_client_t
 
 요청을 보내는 프로세스도 같은 MeshName의 MeshNode를 등록한다. 수동 연결은 상대 endpoint를
 `peer_connections()`에 넣고, 자동 연결은 location store에서 같은 MeshName의 descriptor를 찾는다.
@@ -113,22 +112,23 @@ mesh.channel_name ("tictactoe.play");
 mesh.peer_connections ().connect ("tcp://10.30.1.15:5561"); // 수동 peer
 ```
 
-`channel_client_t`는 DI 서비스다 — 핸들러의 `dependency_types`로 받는다.
+`request_client_t`는 DI 서비스다. 핸들러의 `dependency_types`로 받는다.
 
 ```cpp
 class create_game_http_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::channel_client_t>;
-    explicit create_game_http_handler_t (zlink::framework::channel_client_t &client) :
+      zlink::framework::dependency_list_t<zlink::framework::request_client_t>;
+    explicit create_game_http_handler_t (zlink::framework::request_client_t &client) :
         _client (client) {}
 
     zlink::framework::task_t<create_game_http_res_t>
     handle (const create_game_http_req_t &request)
     {
         auto room = co_await _client
-                      .request ("tictactoe.play", create_game_req_t{request.game_name})
+                      .request ("tictactoe.application", "tictactoe.play",
+                                create_game_req_t{request.game_name})
                       .async<create_game_res_t> ();
         co_return create_game_http_res_t{room.room_id,
                                          room.game_name,
@@ -145,18 +145,19 @@ class create_game_http_handler_t
 
 | facade | 호출 | 의미 |
 |--------|------|------|
-| `channel_client_t` | `request(channel, req).async<TReply>()` | request-reply. `co_await`로 typed 응답 |
+| `request_client_t` | `request(mesh, channel, req).async<TReply>()` | request-reply. `co_await`로 typed 응답 |
+| `request_client_t` | `send(mesh, channel, msg).submit()` | 응답 없는 단방향 전송 |
 | `publisher_t` | `publish(channel, topic, event)` | fanout 채널로 topic publish (§6) |
-| `message_bus_t` | `send(channel, msg)` | 응답 없는 단방향 전송 (advanced — `app.advanced().zlink()`의 builder에서 `message_bus()`로 획득) |
 
-`channel_client_t`는 DI로 주입받고, `publisher_t`/`message_bus_t`는
-`zlink_builder_t`(`publisher()`/`message_bus()`)에서 얻는다.
+`request_client_t`는 DI로 주입받거나 `message_bus_t::client()`에서 얻는다.
+`publisher_t`는 `message_bus_t::publisher()`에서도 얻을 수 있다.
 
-call 객체에는 전송 전에 옵션을 얹을 수 있다.
+call 객체에는 전송 전에 옵션을 설정할 수 있다.
 
 ```cpp
 auto reply = co_await _client
-               .request ("tictactoe.play", create_game_req_t{name})
+               .request ("tictactoe.application", "tictactoe.play",
+                         create_game_req_t{name})
                .metadata ("trace-id", trace_id)
                .async<create_game_res_t> ();
 ```
@@ -269,17 +270,18 @@ mesh.peer_connections ().connect ("tcp://10.30.1.10:5600");
 mesh.peer_connections ().connect ("tcp://10.30.1.10:5601");
 ```
 
-각 MeshNode는 `listen(endpoint)`로 ROUTER endpoint 하나를 열고 같은 socket으로 송수신한다. Handler
-group을 연결한 ChannelName은 요청을 처리하고, 연결하지 않은 membership은 다른 MeshNode의 handler를
-호출하는 데 사용할 수 있다. Location store를 등록하면 manual peer 목록 대신 같은 MeshName의 descriptor를
-기준으로 peer를 자동 조정한다.
+각 MeshNode는 `listen(endpoint)`로 다른 MeshNode가 연결할 endpoint를 제공한다. Handler group을 연결한
+ChannelName은 요청을 처리하고, 연결하지 않은 membership은 다른 MeshNode의 handler를 호출하는 데 사용할
+수 있다. Location store를 등록하면 manual peer 목록 대신 같은 MeshName의 descriptor를 기준으로 peer를
+자동 조정한다. 내부 연결과 송수신 배선은
+[runtime architecture](../internals/runtime-architecture.ko.md)에서 설명한다.
 
 ```mermaid
 flowchart LR
-    C["calling MeshNode<br/>ROUTER 5599"]:::channel
-    S1["image MeshNode A<br/>ROUTER 5600"]:::channel
-    S2["image MeshNode B<br/>ROUTER 5601"]:::channel
-    S3["image MeshNode C<br/>ROUTER 5602<br/>(discovered later)"]:::channel
+    C["calling MeshNode"]:::channel
+    S1["image MeshNode A"]:::channel
+    S2["image MeshNode B"]:::channel
+    S3["image MeshNode C<br/>(discovered later)"]:::channel
 
     C == "요청 1" ==> S1
     C == "요청 2" ==> S2
@@ -306,8 +308,8 @@ options.add_fanout_channel ("bingo.notifications")
   .enable_publisher ("tcp://0.0.0.0:5571");
 
 // 보내기 — publisher_t로 topic 단위 publish
-co_await publisher.publish ("bingo.notifications", "room-3187",
-                            number_drawn_notify_t{state}).async ();
+publisher.publish ("bingo.notifications", "room-3187",
+                   number_drawn_notify_t{state});
 
 // subscriber 쪽 — 핸들러 그룹으로 받는다
 options.add_fanout_channel ("bingo.notifications")
@@ -328,18 +330,16 @@ flowchart LR
     P["publisher<br/>bind tcp://0.0.0.0:5571"]:::channel
     S1["subscriber A<br/>handler group: notifications"]:::channel
     S2["subscriber B<br/>handler group: notifications"]:::channel
-    S3["subscriber C<br/>(topic 미구독 — 수신 없음)"]:::infra
+    S3["subscriber C<br/>handler ignores another topic"]:::channel
     P -- "topic: room-3187" --> S1
     P -- "topic: room-3187" --> S2
-    P -.->|"room-9920만 구독"| S3
+    P -- "topic: room-3187" --> S3
 
     classDef channel fill:#e3f2fd,stroke:#1565c0,color:#000000
-    classDef infra fill:#eceff1,stroke:#546e7a,color:#000000
 ```
 
-publish 한 message 는 **구독자 수와 무관하게 한 번만 인코딩**된다. 런타임은 그
-인코딩 결과를 **구독 중인 각 구독자 연결로 한 번씩 전달**할 뿐, 구독자마다 다시
-직렬화하지 않는다.
+publish한 message는 channel의 모든 subscriber에게 전달된다. topic은 transport 구독 필터가 아니다.
+subscriber의 handler는 수신 context의 topic을 확인하고 application이 처리할 topic인지 판단한다.
 
 ## 7. Node direct 호출
 

@@ -21,7 +21,7 @@ Publisher/Subscriber 역할로 PS-A1~PS-C1을 실행한 기록이다. 10.0.0의 
 | `PS-A4` | 10.0.0 전환 대상 | 같은 subscriber process를 유지한 채 transport만 단절·복구하고, 기존 subscription 자동 재적용과 단절 구간 non-replay를 확인해야 한다. 현재 process 재시작 방식은 이 계약을 검증하지 않는다. |
 | `PS-B1` | 10.0.0 전환 대상 | manual endpoint에서 한 subscriber handler에 지연을 주입해도 다른 subscriber가 같은 발행 sequence를 계속 수신하는지 확인해야 한다. |
 | `PS-B2` | 10.0.0 전환 대상 | Publisher를 같은 manual endpoint로 다시 시작한 뒤 기존 subscriber가 복구 이후 발행분을 받는지 확인해야 한다. |
-| `PS-C1` | 10.0.0 전환 대상 | manual endpoint에서 미등록 message name의 `handler_missing`/`drop` evidence와 후속 정상 publish 복구를 확인해야 한다. |
+| `PS-C1` | 10.0.0 전환 대상 | manual endpoint에서 미등록 message name의 `no_handler`/`drop` evidence와 후속 정상 publish 복구를 확인해야 한다. |
 
 ## 검증 경로 판정
 

@@ -16,7 +16,7 @@ lease는 [40 Location runtime](40-location-runtime.ko.md), Actor transfer transa
 
 ## 2. State와 public operation
 
-Drain state는 아래 닫힌 값이다.
+Drain operation이 시작된 뒤의 하위 상태는 아래 닫힌 값이다.
 
 ```text
 serving -> draining -> drained -> stopped
@@ -24,8 +24,9 @@ serving -> draining -> drained -> stopped
                 +-> force_stopping -> stopped
 ```
 
-다이어그램의 상태 이름은 metric과 event에서도 lowercase 문자열 그대로 사용한다. `IsReady()`는
-`serving`에서만 true다.
+다이어그램의 상태 이름은 metric과 event에서도 lowercase 문자열 그대로 사용한다. 전체 MeshNode state의
+`starting`은 이 순서에 들어가기 전 상태이고 `faulted`는 어느 단계에서든 전이할 수 있는 오류 상태다.
+`IsReady()`는 `serving`에서만 true다.
 
 | Operation | 계약 |
 |---|---|

@@ -275,10 +275,11 @@ var spotRid = dispatch.Metadata.Find("spot-rid");
 if (string.IsNullOrWhiteSpace(spotRid))
     throw new InvalidOperationException("spot-rid metadata is required.");
 
-// "spot.route" = spot으로 가는 RouteMesh channel 이름(앱이 등록한 이름).
+// Spot RID를 논리적 전송 대상인 SpotHandle로 해석한다. 소유 node RID는 노출하지 않는다.
+var target = await spots.ResolveAsync("application", RoutingId.From(spotRid), ct);
+
 // packet 이름은 command 타입 등록에서 확정된다 — 호출마다 지정하지 않는다.
-// 운영 코드는 보통 이 호출을 자동 연결 수렴 창 대비 재시도로 감싼다.
-routes.SendToNode("spot.route", RoutingId.From(spotRid), command)
+routes.SendToSpot(target, command)
     .Submit(ct);
 ```
 
@@ -345,7 +346,7 @@ Unity에서도 connector 호출은 일반 `.NET`과 같은 `Task` / `ValueTask` 
 - **콜백이 안 불린다(client)** → `ZlinkStreamDispatchMode.Manual` 인데 `Dispatch.Async()`를
   주기적으로 안 부르고 있다.
 - **`FrameTooLarge`** → 송신은 `MaxSendPayloadSize`(기본 64KB), 수신은
-  `MaxReceivePayloadSize`(기본 64KB)를 넘었다. 송신 한도는 압축 전 원본 크기로 검사하고,
+  `MaxReceivePayloadSize`(기본 64KB)를 넘었다. 압축을 사용하면 송신 한도는 압축된 payload 크기로 검사하고,
   수신 한도는 frame payload 크기와 압축 해제 결과 크기에 적용한다.
 - **압축이 한쪽만** → server→client는 typed API가 자동 해제하지만, client→server
   는 `.Compress()`를 명시해야 한다. built-in LZ4 또는 custom compression codec 중

@@ -71,7 +71,7 @@ class GameSession(
 |------|------|
 | `client().send(msg).submit()` / `client().reply(msg).submit()` | client로 push / 요청에 응답 |
 | `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([06-actor-session](06-actor-session.ko.md)) |
-| `close()` | session context의 close hook (현재 구현은 완료된 future를 반환하는 no-op) |
+| `close()` | 인증 실패나 protocol 위반 시 서버 연결 종료 요청 |
 
 다른 서비스로 channel send/request를 보내야 할 때는 session 생성자에서
 `ZLinkClient`를 함께 주입받아 `send(...)`/`request<T>(...)` suspend 확장을 호출한다. 이
@@ -84,7 +84,7 @@ class GameSession(
   `onErrorSuspending`가 먼저, 연결 종료 확정 후 `onDisconnectedSuspending`가 따른다.
 - handshake 실패와 bind/accept/close 같은 socket 레벨 오류는 session 콜백이 아니라
   runtime monitoring으로만 간다([09-monitoring](09-monitoring.ko.md)).
-- **같은 session의 콜백은 직렬**로 돈다(두 dispatch/lifecycle이 겹치지 않음).
+- **같은 session의 콜백은 직렬**로 실행된다(두 dispatch/lifecycle이 겹치지 않음).
   frame 도착 순서는 session별로 보존된다. session끼리는 독립으로 진행한다.
 - application handler 예외는 `onErrorSuspending`로 올라오지 않는다.
 - **recv 루프는 노출하지 않는다.** framework가 수신 dispatch를 소유하고 응용은
@@ -112,7 +112,7 @@ launch {
 }
 
 connector.connect().await()           // suspend, non-blocking
-	connector.send(payload).submit()
+connector.send(payload).submit()
 ```
 
 connector 쪽도 같은 codec을 설정한다. Kotlin 확장은 기존 Java options를 복사해 compression 설정만

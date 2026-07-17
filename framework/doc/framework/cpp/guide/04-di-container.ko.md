@@ -14,10 +14,9 @@
 | **scoped** | `add_scoped<T>()` | 실행 컨텍스트(scope)마다 1개 |
 | **transient** | `add_transient<T>()` | resolve할 때마다 새 인스턴스 |
 
-`service_scope_kind_t`는 scope의 용도를 구분하는 enum이다. 현재 런타임은 HTTP
-요청을 처리할 때 `handler_invocation` scope를 열고, stream 연결을 받을 때
-`stream_session` scope를 연다. 나머지 값도 `create_scope(kind)`에 넘길 수 있는
-공개 scope 종류이며, scope의 `kind()`로 구분된다.
+`service_scope_kind_t`는 Framework가 만드는 scope의 용도를 구분하는 enum이다.
+Application은 scope를 직접 만들지 않는다. Framework가 handler dispatch, STREAM session,
+Spot activation, Entry Spot과 Actor 생성 경계에서 알맞은 scope를 만들고 정리한다.
 
 | scope 종류 | 수명 범위 |
 |-----------|----------|
@@ -102,19 +101,19 @@ class create_game_http_handler_t
     // 1. 의존할 타입들을 순서대로 선언
     using dependency_types =
       zlink::framework::dependency_list_t<
-        zlink::framework::channel_client_t,
+        zlink::framework::request_client_t,
         zlink::framework::logger_t<create_game_http_handler_t>>;
 
     // 2. 선언 순서대로 생성자가 받는다
     explicit create_game_http_handler_t (
-        zlink::framework::channel_client_t &client,
+        zlink::framework::request_client_t &client,
         zlink::framework::logger_t<create_game_http_handler_t> &logger)
         : _client (client), _logger (logger) {}
 
     create_game_http_res_t handle (const create_game_http_req_t &request);
 
   private:
-    zlink::framework::channel_client_t &_client;
+    zlink::framework::request_client_t &_client;
     zlink::framework::logger_t<create_game_http_handler_t> _logger;
 };
 ```
@@ -129,7 +128,7 @@ class create_game_http_handler_t
 
 | 서비스 | 설명 |
 |--------|------|
-| `channel_client_t` | 채널 요청 송신 — `request(channel, msg).async<TReply>()` |
+| `request_client_t` | 채널 요청 송신 — `request(mesh, channel, msg).async<TReply>()` |
 | `logger_t<TOwner>` | 소유 타입 이름으로 태그된 로거 — `_logger.info(...)` |
 | `session_actor_manager_t` | stream session에서 actor 생성·조회·바인딩 |
 | `logger_factory_t` | `create("category")` — 카테고리를 동적으로 정할 때(`create<TCategory>()`는 타입명 기반) |
@@ -193,7 +192,7 @@ options.services ()
     .add_singleton<support_service_t, conversation_context_t> ();
 ```
 
-규칙: **등록하는 서비스는 주입받는 의존성보다 오래 살아서는 안 된다**.
+규칙: **등록하는 서비스의 수명은 주입받는 의존성의 수명을 초과하면 안 된다**.
 
 ## 8. singleton 서비스의 동시 접근
 

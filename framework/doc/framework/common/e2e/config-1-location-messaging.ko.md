@@ -256,7 +256,7 @@ public error로 실패하는가.
 **검증 질문:** handler가 없는 packet을 보냈을 때, request는 error로 명확히 실패하고 send는 조용히 drop되며, 그 이유가 observer에 정확히 남는가.
 
 - 절차: handler 없는 packet 이름으로 request, 그리고 send.
-- 검증: request는 **error reply로 실패**하고(client는 예외로 받음), observer evidence의 reason/action은 `HandlerMissing`/`ReplyError`다. send는 reply 없이 drop되고 observer reason/action은 `HandlerMissing`/`Drop`이다. 다른 정상 request는 영향 없음.
+- 검증: request는 **error reply로 실패**하고(client는 예외로 받음), observer evidence의 reason/action은 `no_handler`/`reply_error`다. send는 reply 없이 drop되고 observer reason/action은 `no_handler`/`drop`이다. 다른 정상 request는 영향 없음.
 - 세부 동작: negative path(client-visible error + observer) 구분.
 
 #### RM-C7 weighted 분산 (server쪽 weight 차등)

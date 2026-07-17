@@ -111,7 +111,7 @@ export type ZLinkActorJoinResult<TReply = unknown> = {
     readonly reply: TReply;
 } | {
     readonly status: 'rejected';
-    readonly reply: TReply;
+    readonly rejection: TReply;
 };
 
 export interface ZLinkActorJoinSpotCall extends ZLinkActorJoinCall<ZLinkActorJoinSpotCall> {
@@ -1739,6 +1739,7 @@ export interface ZLinkStreamError {
 
 export interface ZLinkStreamNodeBuilder {
     bind(endpoint: string): this;
+    enableActorDispatch(meshName: string): this;
     setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
     registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }
@@ -1748,6 +1749,7 @@ export declare function ZLinkStreamPacket(): MethodDecorator;
 export declare function ZLinkStreamRaw(): MethodDecorator;
 
 export declare enum ZLinkStreamSessionError {
+    Internal = "internal",
     TransportError = "transportError"
 }
 
@@ -2068,6 +2070,7 @@ export interface ZLinkNestSpotTimerHandlerOptions<TSpot extends ZLinkSpot = ZLin
 
 export interface ZLinkNestStreamNodeBuilder extends ZLinkNestFrameworkOptionsBuilder {
     bind(endpoint: string | undefined): this;
+    enableActorDispatch(meshName: string): this;
     setTlsServer(certificatePath: string, keyPath: string, requireClientCertificate?: boolean): this;
     registerSession<TSession extends ZLinkSession>(sessionType: Type<TSession> | Type<ZLinkSessionFactory<TSession>>): this;
 }
@@ -2136,6 +2139,15 @@ export declare class ZLinkHttpClientModule {
     static forRoot(options: ZLinkHttpClientModuleOptions): DynamicModule;
 }
 ```
+
+## 2.31 목표 계약 적용 추적
+
+정식 계약은 위 시그니처다. Source와 package 적용이 남은 항목은 gap 문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-ND-34 / §12.28](../../../gaps/node.ko.md) | `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [IMP-ND-38 / §12.33](../../../gaps/node.ko.md) | `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder가 남아 있다. |
 
 ## 3. 검증
 

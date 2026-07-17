@@ -54,8 +54,8 @@ prefix `P`, kind ∈ {`mesh`, `spot`, `actor`, `route`} 기준. row key는 key �
 | `P:lease:{ownerId}` | STRING | `nodeRidHex\|updatedAtMs`, Redis `PX` TTL로 만료 |
 | `P:leases` | SET | lease를 가진 적 있는 owner id 목록 |
 | `P:stamp:{kind}[:{mesh}]` | STRING | scope별 change stamp counter |
-| `P:transfer:{meshName}:{actorId}:{transferId}` | HASH | participant set, source·target identity, expected Actor generation·membership epoch, state와 recovery lease |
-| `P:transfer-by-actor:{meshName}:{actorId}` | STRING | Actor마다 동시에 하나만 허용하는 active transfer ID |
+| `P:transfer:{actorRowKey}:{transferId}` | HASH | participant set, source·target identity, expected Actor generation·membership epoch, state와 recovery lease. `actorRowKey`는 MeshName과 Actor ID를 UTF-8 byte 길이로 encode한 actor row key다 |
+| `P:transfer-by-actor:{actorRowKey}` | STRING | Actor마다 동시에 하나만 허용하는 active transfer ID. `actorRowKey`는 transfer HASH와 같은 length-prefix 값을 사용한다 |
 | `P:ridalloc:{groupName}` | HASH | 정렬된 member·prefix JSON, slot count, identity mode, slot owner·generation과 owner별 slot index |
 
 MeshNode descriptor row key는 `MeshName + RID`를 length-prefix로 연결한 값이다. Endpoint는 descriptor 값에
@@ -104,7 +104,7 @@ actor row와 key 형식은 다음 규칙으로 고정한다.
   로 직렬화한다. 이 객체의 field 이름은 camelCase이고, `nodeRid`는 routing id hex 문자열이다.
   actor ref 문자열 조립/파싱은 어떤 언어 extension에도 존재해서는 안 된다.
 - row field는 `MeshName`, `ActorId`, `ActorType`, `ActorRef`, `OwnerNodeRid`, `OwnerNodeGeneration`,
-  `SpotRid`, `SpotKind`, `MembershipEpoch`, `OwnerId`, `UpdatedAt` 순서로 encode한다.
+  `SpotRid`, `SpotGeneration`, `SpotKind`, `MembershipEpoch`, `OwnerId`, `UpdatedAt` 순서로 encode한다.
 - 모든 공식 extension은 이 row와 key 형식을 동일하게 사용한다.
 
 ## 3. 원자성 — write는 전부 Lua script
@@ -145,9 +145,11 @@ UTF-8 문자열로 encoding한다. C++의 16-byte 값은 UUID network byte order
 ["67616d652d61","67616d652d62"]
 ```
 
-`P:transfer-by-actor:{meshName}:{actorId}`의 값은 위 canonical UUID 문자열이다. prepare는 이 index와 transfer HASH를
-같이 만들고, activate 또는 abort는 terminal HASH를 보존한 채 active index만 조건부로 지운다. 모든 공식
-extension은 위 descriptor와 participant fixture를 byte-for-byte 동일하게 encode하고 decode해야 한다.
+`P:transfer-by-actor:{actorRowKey}`의 값은 위 canonical UUID 문자열이다. `actorRowKey`는 actor location row와
+같이 MeshName과 Actor ID를 UTF-8 byte 길이로 encode한다. 따라서 값에 `:`가 있거나 비ASCII 문자가 있어도
+field 경계가 달라지지 않는다. prepare는 이 index와 transfer HASH를 같이 만들고, activate 또는 abort는
+terminal HASH를 보존한 채 active index만 조건부로 지운다. 모든 공식 extension은 위 descriptor와
+participant fixture를 byte-for-byte 동일하게 encode하고 decode해야 한다.
 
 transfer HASH, participant set과 active index의 byte-for-byte fixture는
 [`actor-transfer-v1.json`](../../../../testdata/location/redis/actor-transfer-v1.json)이다.
@@ -189,7 +191,8 @@ polling tick은 stamp만 먼저 읽고(GET 1회) 값이 바뀌었을 때만 목�
 
 ## 6. 오류 변환과 connection lifecycle
 
-- read API와 write API에서 Redis 연결/명령 실패는 infrastructure error로 던진다(계약 §3.1).
+- read API와 write API에서 Redis 연결/명령 실패는 infrastructure error로 던진다
+  ([Location Runtime §7](40-location-runtime.ko.md#7-failure와-recovery)).
 - Redis client connection은 extension 인스턴스가 소유한다. 인스턴스는 `IAsyncDisposable`이며
   framework host가 dispose lifecycle을 관리한다. 재연결 정책은 언어별 Redis client의 표준
   동작을 따르고, 장애 구간의 의미는 framework의 fail-static 규칙이 담당한다. fail-static은 마지막으로

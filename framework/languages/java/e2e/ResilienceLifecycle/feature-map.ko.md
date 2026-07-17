@@ -5,7 +5,9 @@
 시나리오의 framework 참여는 `Server/Consumer` role이 맡는다. provider/consumer process lifecycle은
 Client support가 제어한다. Provider와 Consumer role은 같은 Redis location store endpoint와 실행별
 key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient`,
-`ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName)`과 public MeshNode runtime snapshot만 사용한다.
+현재 구현의 `ZLinkChannelRuntimeOptions.clientServerChannel(channelName)`과 public MeshNode runtime
+snapshot을 사용한다. 10.0.0에서는 `ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName)`으로
+전환해야 한다.
 
 ## 시나리오 상태
 
@@ -32,9 +34,11 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 - `RL-B3`: provider의 slow handler가 이미 받은 request를 정상 reply한 뒤 runtime drain이 terminal
   `Drained`로 끝나는지 확인한다. 이어서 MeshNode descriptor 제거와 남은 provider의 후속 request 성공을
   검증한다.
-- `RL-B4`: provider admin 경로가
-  `ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName).weight(0/100)`으로 channel weight를
-  변경해 신규 부하 제외와 복원을 검증한다. 이 동작을 graceful drain으로 판정하지 않는다.
+- `RL-B4` (전환 필요): provider admin 경로가 현재
+  `ZLinkChannelRuntimeOptions.clientServerChannel(channelName).weight(0/100)`으로 channel weight를
+  변경해 신규 부하 제외와 복원을 검증한다. 10.0.0 exact interface를 구현한 뒤
+  `ZLinkRouteMeshRuntimeOptions.channel(meshName, channelName)`으로 같은 의미를 다시 검증해야 한다.
+  이 동작을 graceful drain으로 판정하지 않는다.
 - `RL-B5`: 느린 handler가 이미 받은 request는 weight 0 변경 뒤에도 정상 reply하고, 전파 완료 뒤의
   새 request는 다른 provider로 가는지 검증한다. `Draining`이나 actor handoff는 단언하지 않는다.
 - `RL-B6`: provider-a에 public admin fault를 주입해 일부 request가 public 실패로 끝나는 동안,
@@ -68,6 +72,7 @@ key prefix를 공유한다. Consumer role은 public Spring starter, `ZLinkClient
 ## 남은 항목
 
 - `RL-A1`은 runtime 오류 정규화와 RuntimeMonitoring의 socket source identity 수정이 선행되어야 한다.
+- `RL-B4`는 10.0.0 route-mesh runtime options 구현이 선행되어야 한다.
 
 ## 검증 방법
 

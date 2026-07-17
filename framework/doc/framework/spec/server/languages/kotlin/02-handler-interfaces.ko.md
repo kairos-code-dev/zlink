@@ -238,6 +238,12 @@ Kotlin은 Java interface를 다시 복사하지 않는다. Java public contract�
 전용 interface와 extension으로 고정한다. Kotlin 전용 `suspend` 함수에는 별도
 `CancellationToken`을 넣지 않는다.
 
+Worker callback은 Java exact interface의 `ZLinkWorkerTask<T>`와
+`ZLinkIoWorkerTask<T>`를 그대로 사용한다. 두 callback 모두
+`ZLinkWorkerCancellation`을 받으며, coroutine에서 worker 결과를 기다리는
+`yieldWorker()`가 취소되면 Framework가 같은 cancellation 신호를 작업에 전달한다.
+작업이 cancellation 뒤 완료되어도 취소된 대기의 terminal 결과는 바뀌지 않는다.
+
 ### 7.1 Kotlin 전용 타입
 
 ```text
@@ -394,38 +400,38 @@ suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T
 ```
 
 ```kotlin
-fun ZLinkClient.send(
+fun <TMessage> ZLinkClient.send(
     meshName: String,
     channelName: String,
-    message: Message,
+    message: TMessage,
 ): ZLinkSendCall
-fun ZLinkClient.request(
+fun <TMessage> ZLinkClient.request(
     meshName: String,
     channelName: String,
-    message: Message,
+    message: TMessage,
 ): ZLinkRequestCall
-fun ZLinkFanoutClient.publishToTopic(
+fun <TMessage> ZLinkFanoutClient.publishToTopic(
     channelName: String,
     topic: String,
-    message: Message,
-): ZLinkPublishCall
-fun ZLinkRouteClient.send(
+    message: TMessage,
+): ZLinkFanoutPublishCall
+fun <TMessage> ZLinkRouteClient.send(
     meshName: String,
     target: RoutingId,
-    message: Message,
+    message: TMessage,
 ): ZLinkSendCall
-fun ZLinkRouteClient.request(
+fun <TMessage> ZLinkRouteClient.request(
     meshName: String,
     target: RoutingId,
-    message: Message,
+    message: TMessage,
 ): ZLinkRequestCall
-fun ZLinkRouteClient.send(
+fun <TMessage> ZLinkRouteClient.send(
     target: SpotHandle,
-    message: Message,
+    message: TMessage,
 ): ZLinkSendCall
-fun ZLinkRouteClient.request(
+fun <TMessage> ZLinkRouteClient.request(
     target: SpotHandle,
-    message: Message,
+    message: TMessage,
 ): ZLinkRequestCall
 ```
 
@@ -618,3 +624,14 @@ drain stage를 기다리는 coroutine이 취소되면 그 coroutine의 continuat
 
 > §7.1 타입 목록·§7.2 함수 inventory는 이 §8의 `.await()` 재사용을 포함한 것으로 읽는다. 새 drain
 > extension이나 runtime event adapter를 추가하지 않으므로 inventory는 늘어나지 않는다.
+
+## 9. 목표 계약 적용 추적
+
+정식 계약은 Java worker callback을 재사용하는 위 표면이다. Source와 package 적용이 남은 항목은 gap
+문서가 추적하며 계약을 축소하지 않는다.
+
+| gap | 적용 작업 |
+|---|---|
+| [IMP-KT-34 / §12.23](../../../gaps/kotlin.ko.md) | 공유 Java worker callback이 `ZLinkWorkerCancellation`을 받지 않아 coroutine cancellation을 작업에 전달하지 못한다. |
+| [IMP-KT-36 / §12.28](../../../gaps/kotlin.ko.md) | 공유 Java `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [IMP-KT-40 / §12.33](../../../gaps/kotlin.ko.md) | 공유 Java의 `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |

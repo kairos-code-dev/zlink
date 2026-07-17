@@ -276,8 +276,10 @@ terminator가 정하는가.
 **검증 질문:** 가장 흔한 join 경로가 turn 유지 `async`로 정상 동작하는가.
 
 - 절차: Entry Spot membership을 가진 actor의 handler가 `JoinSpot(...).Async(...)`로 user Spot에 join한다.
-- 검증: join이 timeout 없이 완료되고 callback 순서가 `OnActorJoin → (source leave 없음) →
-  OnJoinedActor`다. 다른 actor의 join·packet이 그 사이 막히지 않는다.
+- 검증: join이 timeout 없이 완료되고 evidence 순서는 `target OnActorJoin → location CAS commit →
+  source OnLeaveActor → target OnJoinedActor`다([23 §3](../../spec/server/23-spot-actor.ko.md#3-join-commit)).
+  Entry Spot도 이 join의 source이므로 source leave를 생략하지 않는다. 다른 actor의 join·packet이 그 사이
+  막히지 않는다.
 - 세부 동작: Actor packet은 Actor turn에서 실행되며 Spot control turn을 점유하지 않는다.
 
 #### TD-E2 user Spot에서 다른 user Spot으로 join한다 (async)
@@ -288,8 +290,9 @@ terminator가 정하는가.
 
 - 절차: user Spot A membership을 가진 actor의 handler가 자기 Actor turn을 유지한 채
   `JoinSpot(B).Async(...)`를 호출한다.
-- 검증: **join이 timeout 없이 완료된다.** callback 순서는 `target OnActorJoin → source OnLeaveActor →
-  target OnJoinedActor`다([23 §3](../../spec/server/23-spot-actor.ko.md#3-join-commit)). 세 lifecycle callback은
+- 검증: **join이 timeout 없이 완료된다.** evidence 순서는 `target OnActorJoin → location CAS commit →
+  source OnLeaveActor → target OnJoinedActor`다([23 §3](../../spec/server/23-spot-actor.ko.md#3-join-commit)).
+  CAS 실패 주입에서는 source leave와 target membership evidence가 없어야 한다. 세 lifecycle callback은
   각각 해당 Spot의 control claim에서 실행되고 caller의 Actor turn id와 달라야 한다.
 - 세부 동작: Actor caller turn과 Spot lifecycle control claim의 독립 진행.
 

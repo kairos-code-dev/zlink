@@ -49,9 +49,15 @@ public final class GameSession implements ZLinkSession {
     private final ZLinkSessionContext context;
     private final ZLinkClient channels;
 
-    @Override public void onConnected() {}
-    @Override public void onDisconnected() {}
-    @Override public void onError(ZLinkStreamError error) {}
+    @Override public CompletionStage<Void> onConnected() {
+        return CompletableFuture.completedFuture(null);
+    }
+    @Override public CompletionStage<Void> onDisconnected() {
+        return CompletableFuture.completedFuture(null);
+    }
+    @Override public CompletionStage<Void> onError(ZLinkStreamError error) {
+        return CompletableFuture.completedFuture(null);
+    }
 
     public GameSession(ZLinkSessionContext context, ZLinkClient channels) {
         this.context = context;
@@ -64,22 +70,20 @@ public final class GameSession implements ZLinkSession {
     }
 
     @Override
-    public void onDispatch(
+    public CompletionStage<Void> onDispatch(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload) {
         switch (dispatch.packetName()) {
             case "ClientInput":
                 ClientInput input = payload.decode(ClientInput.class);
                 channels.sendToChannel("play", new ForwardInputCommand(input))
-                    .submit()
-                    .toCompletableFuture()
-                    .join();
-                return;
+                    .submit();
+                return CompletableFuture.completedFuture(null);
             case "Ping":
-                context.client().reply(new Pong()).submit().toCompletableFuture().join();
-                return;
+                context.client().reply(new Pong()).submit();
+                return CompletableFuture.completedFuture(null);
             default:
-                return;
+                return CompletableFuture.completedFuture(null);
         }
     }
 }
@@ -90,7 +94,7 @@ public final class GameSession implements ZLinkSession {
 | 표면 | 용도 |
 |------|------|
 | `client().send(msg).submit()` / `client().reply(msg).submit()` | client로 push / 요청에 응답 |
-| `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([07-actor-session](06-actor-session.ko.md)) |
+| `actors().bound()` / `actors().bind(...)` / `actors().find(...)` | actor로 relay([06-actor-session](06-actor-session.ko.md)) |
 | `close()` | 인증 실패/프로토콜 위반 시 서버가 연결 종료 |
 
 다른 서비스로 channel send/request를 보내야 할 때는 session 생성자에서
@@ -103,8 +107,8 @@ public final class GameSession implements ZLinkSession {
   `onDisconnected` <- disconnected. session에 귀속되는 transport 오류는
   `onError`가 먼저, 연결 종료 확정 후 `onDisconnected`가 따른다.
 - handshake 실패와 bind/accept/close 같은 socket 레벨 오류는 session 콜백이 아니라
-  runtime monitoring으로만 간다([10-monitoring](09-monitoring.ko.md)).
-- **같은 session의 콜백은 직렬**로 돈다(두 dispatch/lifecycle이 겹치지 않음).
+  runtime monitoring으로만 간다([09-monitoring](09-monitoring.ko.md)).
+- **같은 session의 콜백은 직렬**로 실행된다(두 dispatch/lifecycle이 겹치지 않음).
   frame 도착 순서는 session별로 보존된다. session끼리는 독립으로 진행한다.
 - application handler 예외는 `onError`로 올라오지 않는다.
 - **recv 루프는 노출하지 않는다.** framework가 수신 dispatch를 소유하고 응용은
@@ -125,7 +129,7 @@ connector.on("GameStateNotify", (message) -> {
 });
 
 connector.connect().submit()
-    .thenCompose(ignored -> connector.send(payload).submit());
+    .thenRun(() -> connector.send(payload).submit());
 
 // 게임 루프/메인 스레드에서 주기적으로 콜백 실행
 while (running) {
@@ -178,11 +182,11 @@ payload codec과 compression codec은 서로 다른 설정이다. payload codec�
   안 부르고 있다.
 - **한 stream node에 session 둘** -> startup 예외. node 하나에 session 하나다.
 - **session 콜백에서 actor 상태 직접 접근** -> 하지 않는다. session은 actor
-  dispatch/spot 호출만 제출한다([07-actor-session](06-actor-session.ko.md)).
+  dispatch/spot 호출만 제출한다([06-actor-session](06-actor-session.ko.md)).
 
 ## 4. 더 보기
 
-- session을 actor에 묶기: [07-actor-session](06-actor-session.ko.md)
+- session을 actor에 묶기: [06-actor-session](06-actor-session.ko.md)
 - client connector 상세: [stream-connector](../../spec/stream-connector/languages/java/03-stream-connector.ko.md)
 - 서버 정식 계약: [spring-boot-stream](../../spec/server/languages/java/01-system-structure.ko.md)
 

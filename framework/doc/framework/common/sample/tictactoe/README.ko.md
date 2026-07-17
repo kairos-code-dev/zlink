@@ -260,7 +260,7 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
 - Redis client dependency는 room route store adapter 안에만 둔다. handler, actor, Spot,
   Domain 코드가 Redis client 타입을 직접 참조하면 안 된다.
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 public spot
-  remote ref resolver 계약을 사용해야 한다. 샘플을 통과시키기 위해 framework의
+  handle resolver 계약을 사용해야 한다. 샘플을 통과시키기 위해 framework의
   internal runtime 객체나 sample-local route helper로 remote join 경로를 우회하면 안 된다.
 - Logical Multicast 흐름은 각 언어 framework의 public Logical Multicast API를 사용해야 한다. Spot은
   public subscribe 등록 API로 milestone topic을 구독하고, room Spot은 public publish API로

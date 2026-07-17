@@ -17,7 +17,7 @@
     },
     "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md": {
       "block_count": 15,
-      "sha256": "40987bcda83da85066f25ed4065f69305b1501149e1f405e2b8e9a4677a05a83"
+      "sha256": "cce32b9115c6ec967d4d7ea6f2feb2fdf8335703851380e1f2164c37cbafdaef"
     },
     "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md": {
       "block_count": 2,
@@ -25,11 +25,11 @@
     },
     "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md": {
       "block_count": 8,
-      "sha256": "c826faa394991da1decf4aa2588e0367fa599f62957ea30cb3cc6aa34a82d3ff"
+      "sha256": "fadb883006fe24c250a64b299372cae0fb760f21ae758a02b8fc0fcfdb0aa45c"
     },
     "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md": {
       "block_count": 9,
-      "sha256": "c47f23de176576662d0baab67d27dd548302262071156c69f42f9d2fa8223efd"
+      "sha256": "437e405605c7e34f2a1c4e78523ced45777f3b299f6f3c12b54734217bdbcf1b"
     }
   },
   "allowed_declaration_counts": {
@@ -40,6 +40,7 @@
   "dotnet_public_symbols": [
     "Accepted",
     "ActorRef",
+    "ActorRefSnapshot",
     "Drained",
     "ForceStopped",
     "IZLinkActor",

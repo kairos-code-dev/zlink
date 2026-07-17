@@ -180,6 +180,11 @@ ready owner의 claim을 받아 batch로 drain하고, Node, Spot과 Actor handler
 JSON은 typed message의 기본 codec이다. JSON만 사용하는 application은 메시지 타입마다 codec을 등록하지
 않는다. Protobuf, MessagePack과 사용자 codec은 선택 extension package로 root codec registry에 등록한다.
 
+송신할 업무 타입과 일치하는 extension이 없으면 JSON codec을 선택한다. 반면 수신 envelope가 명시한
+non-JSON content-type과 일치하는 codec이 registry에 없으면 payload를 JSON으로 다시 해석하지 않고
+`PayloadDecodeFailed`로 완료한다. 송신 타입 선택의 기본값과 수신 wire content-type 검증은 서로 다른
+경계이므로 같은 fallback 규칙을 적용하지 않는다.
+
 Codec은 업무 객체와 payload bytes 사이의 변환만 담당한다. Packet name, routing, correlation과 handler
 선택은 Framework가 소유한다. Application metadata와 payload ownership은
 [메시지 계약](03-message-model.ko.md)을 따른다. 내부 multipart 구조는 public Framework API에 노출하지

@@ -27,10 +27,11 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
   handoff(순서 보존·publish 전 replay·straggler forwarding과 mapping 축출·request reply correlation과 timeout)**.
 - 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), 비동기 handler 완료 후 mailbox 재개(Config 8),
   actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
-- 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. join 완료 신호는
-  target `OnJoinedActor`이며, 성공 reply와 public actor location은 target `OnJoinedActor` 정상 완료
-  뒤에만 관찰되어야 한다. remote transfer에서는 source `TransferOut`, source `OnLeaveActor`, target
-  `TransferIn`, target `OnJoinedActor` 순서가 evidence로 남아야 한다.
+- 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. admission accept 뒤
+  durable actor location row는 CAS commit 시점부터 target owner를 가리킨다. target actor route와 성공
+  reply는 `OnJoinedActor` 정상 완료와 activation 뒤에만 관찰되어야 한다. remote transfer에서는 source
+  `TransferOut`, target `TransferIn`, location commit, source `OnLeaveActor`, target `OnJoinedActor` 순서가
+  evidence로 남아야 한다.
 
 ## 2. 서버 구성 (한 번 구동, 공유)
 
@@ -45,8 +46,8 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
 actor 노드는 아래 evidence를 공통으로 남긴다.
 
 - actor id, actor type, actor generation 또는 ref snapshot, source/target spot rid, source/target node rid.
-- callback order marker: `admission`, `transfer_out`, `leave`, `commit_request`, `transfer_in`, `joined`,
-  `location_committed`, `commit_ack`, `source_cleanup`.
+- callback order marker: `admission`, `transfer_out`, `commit_request`, `transfer_in`, `location_committed`,
+  `leave`, `joined`, `commit_ack`, `source_cleanup`.
 - in-flight handoff marker: `handoff_backlog`(moving 중 보존한 packet), `backlog_enqueued`(target queue 적재),
   `straggler_forward`(공개 뒤 forward), `mapping_evicted`(window 후 축출), `stale_fail_fast`(축출 뒤 old ref 거부).
   각 actor packet은 arrival sequence index를 함께 남겨 target 처리 순서와 대조할 수 있어야 한다.
@@ -85,7 +86,7 @@ commit, joined, success reply가 정해진 순서로 관찰되는가.
 - 절차: consumer가 transfer controller endpoint를 호출해 `actor-local-ok`를 만들고 같은 node의 user
   Spot으로 `JoinSpot`을 실행한다. controller는 join reply를 받은 뒤 같은 ActorRef로 actor packet을 보내
   committed target membership에서 처리되는지 확인한다.
-- 검증: evidence order는 `admission -> leave -> location_committed -> joined -> success_reply`다.
+- 검증: evidence order는 `admission -> location_committed -> leave -> joined -> success_reply`다.
   `OnActorJoin` evidence에는 actor id와 request만 있고 actor instance snapshot이나 route metadata가 없어야 한다.
   success reply 전에 location row가 committed target user Spot을 가리켜야 한다. join 이후 packet은 target
   Actor handler에서만 처리되고 Spot lifecycle callback을 경유하지 않는다.
@@ -131,8 +132,8 @@ callback 순서가 공통 스펙과 일치하는가.
 - 절차: `actor-remote-ok`를 `actor-a`에 만들고 mutable state를 설정한다. controller가 `actor-b`의
   user Spot으로 join을 실행한다. source transfer adapter는 state version을 `ZLinkMessage`로 만들고 target
   transfer adapter는 target actor로 복원한다.
-- 검증: evidence order는 `admission -> transfer_out -> leave -> commit_request -> transfer_in ->
-  location_committed -> joined -> commit_ack -> success_reply`다. target `OnJoinedActor`에는 immutable
+- 검증: evidence order는 `admission -> transfer_out -> commit_request -> transfer_in ->
+  location_committed -> leave -> joined -> commit_ack -> success_reply`다. target `OnJoinedActor`에는 immutable
   membership snapshot만 전달되며, callback이 mutable Actor instance를 받거나 보관하면 실패다. join 완료
   뒤 snapshot의 ActorRef로 state 조회 request를 보내 source state version이 복원되었는지 확인한다. source와
   target actor id는 같고 generation 또는 owner snapshot은 target owner로 바뀐다.
@@ -163,8 +164,9 @@ target ownership이 유지되는가.
 
 - 절차: `actor-no-adapter` type에는 actor factory만 등록하고 transfer adapter는 등록하지 않는다. 같은 node
   join이 아니라 반드시 다른 node user Spot으로 remote transfer를 시도한다.
-- 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty_default -> leave ->
-  commit_request -> transfer_in_empty_default -> location_committed -> joined -> commit_ack -> success_reply`다.
+- 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty_default ->
+  commit_request -> transfer_in_empty_default -> location_committed -> leave -> joined -> commit_ack ->
+  success_reply`다.
   source `OnLeaveActor`, target `OnJoinedActor`, target location commit이 모두 정상 순서로 관찰된다.
 - 세부 동작: transfer adapter 미등록 기본 빈 state transfer.
 
@@ -178,8 +180,8 @@ domain state를 별도로 읽어 올 수 있는가.
 - 절차: `actor-empty-state` type에는 custom transfer adapter를 등록한다. source `TransferOut`은 빈
   `ZLinkMessage`를 반환한다. target `TransferIn`은 actor id와 public actor 생성 경로로 target actor를
   만든다. target `OnJoinedActor`는 actor id로 별도 저장소에서 domain state를 읽고 marker를 남긴다.
-- 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty -> leave ->
-  commit_request -> transfer_in_empty -> location_committed -> joined -> domain_state_loaded -> commit_ack
+- 검증: remote transfer는 성공한다. evidence order는 `admission -> transfer_out_empty -> commit_request ->
+  transfer_in_empty -> location_committed -> leave -> joined -> domain_state_loaded -> commit_ack
   -> success_reply`다. adapter 미등록 기본 빈 state transfer와 같은 성공 의미지만, custom adapter
   경로가 빈 state를 반환해도 정상이라는 점을 별도로 확인한다.
 - 세부 동작: custom adapter 빈 state transfer.
@@ -228,10 +230,9 @@ target pending admission만 정리되는가.
 
 - 절차: 같은 actor type으로 `TransferOut`, source `OnLeaveActor`, `TransferIn`, target `OnJoinedActor`가
   각각 실패하도록 네 개의 독립 시나리오를 실행한다.
-- 검증: `TransferOut` 실패는 source leave 없이 source membership을 유지한다. `OnLeaveActor` 실패는
-  target joined 없이 실패한다. `TransferIn` 실패는 target membership을 만들지 않고 실패하며 source는
-  reconcile 대상 evidence를 남긴다. `OnJoinedActor` 실패는 commit 뒤 실패이므로 caller success가 없어야
-  하지만 target membership을 source로 rollback하면 안 된다. Target Actor packet dispatch를 차단한 recoverable
+- 검증: `TransferOut` 또는 `TransferIn` 실패는 source leave 없이 source membership을 유지한다.
+  `OnLeaveActor`와 `OnJoinedActor` 실패는 location commit 뒤 실패이므로 caller success가 없어야 하지만
+  target membership을 source로 rollback하면 안 된다. Target Actor packet dispatch를 차단한 recoverable
   reconciliation 상태에서 target activation을 계속한다.
 - 세부 동작: 실패 지점별 join 결과.
 

@@ -171,11 +171,12 @@ S8도 S9 결과를 선행 조건으로 사용하지 않는다. 각 lane은 공�
 |---|---|---|
 | **R1** | Codex agent | 저장소의 실제 spec, source, test, package와 실행 증거를 독립 검토 |
 | **R2-DOC** | Claude Sonnet 모델 | S3 문서의 같은 고정 revision과 동일한 review manifest를 독립 검토 |
-| **R2-CODE** | Claude Fable 모델 우선, Fable 차단 시 Claude Sonnet | S5·S7·S8·S10·S11의 source·test·build·package 코드와 구현 결과를 같은 고정 revision과 동일한 review manifest에서 독립 검토 |
+| **R2-CODE** | Claude Sonnet 모델 | S5·S7·S8·S10·S11의 source·test·build·package 코드와 구현 결과를 같은 고정 revision과 동일한 review manifest에서 독립 검토 |
 
 R1과 해당 review 유형의 R2는 서로의 finding을 보기 전에 첫 검토를 완료한다. 두 결과가 나온 뒤 coordinator가 중복을
 합치고 하나의 finding ledger를 만든다. 한 리뷰어의 clean 판정으로 다른 리뷰어의 검토를 대신하지
-않는다.
+않는다. 모든 문서·구현 리뷰는 Codex agent와 Claude Sonnet의 두 독립 결과를 필수로 사용한다. 다른
+Claude 모델을 우선 reviewer나 fallback으로 사용하지 않는다.
 
 리뷰 횟수는 구현 stage와 그 구현을 승인하는 review stage를 합친 **review campaign** 단위로 센다.
 Core campaign은 S4+S5, `.NET` campaign은 S8, C++·JVM·Node campaign은 각 S9 lane+대응 S10 lane이다.
@@ -206,7 +207,7 @@ finding이 0건이 될 때까지 수정과 재리뷰를 계속한다. 주요 fin
 #### 구현 중 checkpoint 코드 리뷰
 
 코드 리뷰는 stage의 모든 기능을 구현한 뒤 한꺼번에 시작하지 않는다. 공개 표면과 그 구현·red/green
-test가 하나의 책임 단위로 닫힐 때마다 checkpoint를 만들고 Codex agent와 Claude Fable 우선 R2가 같은
+test가 하나의 책임 단위로 닫힐 때마다 checkpoint를 만들고 Codex agent와 Claude Sonnet이 같은
 snapshot을 독립 검토한다. 적절한 단위는 파일 수나 변경 줄 수가 아니라 다음 책임 경계로 정한다.
 
 - public API와 result·error·ownership을 함께 닫은 기능 묶음
@@ -254,21 +255,14 @@ campaign에 포함된 범위를 생략하지 않고 최종 clean을 판정한다
 S5·S7·S8·S10·S11의 최종 review gate는 중간 리뷰를 증거로 사용하되 최신 revision에 대한 마지막 전체
 scope pass와 stage별 exact clean 문구를 생략하지 않는다.
 
-S3 문서 리뷰는 Codex agent와 Claude Sonnet이 같은 frozen scope를 각각 독립 검토한다. **Claude Fable은
-문서 리뷰에 사용하지 않는다.** spec·guide·internals·E2E·sample 문서의 계약과 설명을 검토하는 작업은
-Codex agent와 Claude Sonnet이 담당한다. S5·S7·S8·S10·S11에서 source·test·build·package 코드와 실제
-구현 결과를 검토할 때만 Codex agent와 Claude Fable을 사용한다. 이때 spec은 구현 일치 여부를 판단하는
-기준으로 읽을 수 있지만 Fable에게 spec 자체의 문서 리뷰를 맡기지 않는다. 코드 리뷰에서는 Fable을 먼저 호출하며,
-모델 제공 중단, quota·capacity 제한, 인증·도구 차단, 강제 종료 시간 초과 또는 정상 종료 실패로
-Fable 리뷰를 완료할 수 없을
-때만 같은 manifest로 Claude Sonnet을 대체 호출한다. finding이 많거나 검토 시간이 오래 걸린다는 이유로
-Sonnet으로 바꾸지 않는다. fallback을 사용하면 Fable invocation, 차단 근거와 Sonnet session을 review
-manifest에 함께 기록한다. Fable의 `PARTIAL` 결과는 참고 증거일 뿐 Sonnet의 검토 범위를 줄이지 않는다.
-Sonnet fallback은 해당 R2 pass에 배정된 범위를 처음부터 독립 검토해야 한다. 같은 모델의 다음 session만
-같은 snapshot의 미검토 범위부터 이어갈 수 있다. finding 수정 뒤에는 새 revision을 고정하고 두 리뷰어가 delta와 직접 영향
-범위를 다시 검토한다. editorial note 수정만으로 전체 리뷰를 다시 실행하지 않는다. 두 리뷰어가 모두
-마지막 pass에서 최신 snapshot의 전체 scope를 검토한 뒤 해당 stage의 exact clean 문구를 남겨야 gate를
-통과한다.
+S3 문서 리뷰와 S5·S7·S8·S10·S11 구현 리뷰는 모두 Codex agent와 Claude Sonnet이 같은 frozen scope를
+각각 독립 검토한다. 문서 리뷰에서는 spec·guide·internals·E2E·sample의 계약과 설명을 검토하고, 구현
+리뷰에서는 frozen spec을 기준으로 source·test·build·package와 실제 실행 결과의 일치를 검토한다.
+Claude Sonnet을 사용할 수 없거나 정상 종료 결과를 얻지 못하면 다른 Claude 모델로 대체하지 않고 해당
+review gate를 `차단`으로 기록한다. 같은 Claude Sonnet의 다음 session만 같은 snapshot의 미검토 범위부터
+이어갈 수 있다. finding 수정 뒤에는 새 revision을 고정하고 두 리뷰어가 delta와 직접 영향 범위를 다시
+검토한다. editorial note 수정만으로 전체 리뷰를 다시 실행하지 않는다. 두 리뷰어가 모두 마지막 pass에서
+최신 snapshot의 전체 scope를 검토한 뒤 해당 stage의 exact clean 문구를 남겨야 gate를 통과한다.
 
 마지막 전체 pass의 manifest에는 acceptance candidate commit SHA와 scope hash를 기록한다. 두 reviewer가
 clean을 남길 때까지 이 candidate 범위 밖의 병렬 작업은 계속할 수 있지만 candidate 자체를 바꾸지 않는다.
@@ -331,11 +325,11 @@ review manifest와 결과는 다음 경로 아래에 stage별로 보관한다.
 
 `framework/doc/plan/v10.0/log/<stage>/<iteration>/`
 
-각 iteration은 `manifest.ko.md`, `codex-review.ko.md`, 실제 R2에 맞는 review 파일,
-`finding-ledger.ko.md`와 `verification.ko.md`를 가진다. S3 R2는 `claude-sonnet-review.ko.md`, 구현
-리뷰 R2는 `claude-fable-review.ko.md`를 사용한다. Fable fallback이면 Fable의 partial·실패 결과를
-`claude-fable-review.ko.md`에 보존하고 Sonnet 결과를 `claude-sonnet-fallback-review.ko.md`에 기록한다.
-review 파일은 append-only 증거로 취급하고 이전 iteration 결과를 덮어쓰지 않는다.
+각 iteration은 `manifest.ko.md`, `codex-review.ko.md`, `claude-sonnet-review.ko.md`,
+`finding-ledger.ko.md`와 `verification.ko.md`를 가진다. 이 규칙을 적용하기 전에 생성된 다른 model의
+review 파일은 당시 provider와 model을 그대로 표시한 과거 증거로 보존하며 이름이나 내용을 바꾸지
+않는다. 새 iteration의 R2 결과나 clean 판정을 대신하는 증거로는 사용하지 않는다. review 파일은
+append-only 증거로 취급하고 이전 iteration 결과를 덮어쓰지 않는다.
 
 coordinator가 정리한 finding ledger는 reviewer 원본을 대신하지 않는다. provider/model, invocation,
 대상 SHA, raw output와 checksum 가운데 하나라도 없거나 process가 정상 종료하지 않았으면 해당 reviewer
@@ -769,7 +763,7 @@ S4 완료 gate:
 |---|---|---|---|---|
 | S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package 범위 기록 | 미착수 | - |
 | S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
-| S5-03 | Claude Fable 우선 Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
+| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
 | S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 미착수 | - |
 | S5-05 | POSD 위험 신호 목록 작성 | 각 항목의 위반 원칙과 두 설계안 기록 | 미착수 | - |
 | S5-06 | 의미 있는 리팩터링 수행 | 선택 이유와 호출자 복잡도 감소 근거 기록 | 미착수 | - |
@@ -861,7 +855,7 @@ S6 완료 gate:
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S7-15 | Codex agent bindings 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
-| S7-16 | Claude Fable 우선 bindings 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
+| S7-16 | Claude Sonnet bindings 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
 | S7-17 | finding 수정과 전체 재검증 | 영향 언어와 package smoke 재실행 후 두 리뷰어의 I1·I2·I3 전체 재리뷰 | 미착수 | - |
 | S7-18 | 두 리뷰어 전체 재리뷰 반복 | 세 축과 두 stage 결과가 모두 `CLEAN`; 둘 다 `BINDINGS REVIEW CLEAN` | 미착수 | - |
 | S7-19 | local package 묶음 검증 | publish-all-wsl 및 별도 언어 package 검증 통과 | 미착수 | - |
@@ -916,7 +910,7 @@ API를 다른 언어의 구현 기준으로 사용하지 않는다.
 | S8-12 | 성능과 resource 회귀 | 별도 성능 개선 작업의 입력으로 분리 | 후속 분리 | 현재 S8 gate를 위해 성능 측정을 실행하지 않음 |
 | S8-12A | `.NET` guide와 internals 갱신 | 구현·sample·E2E·package 검증이 모두 통과한 뒤 guide에는 사용 계약만, internals에는 검증된 실제 pump·scheduler·location·timer 구조만 반영하고 source·구조 test·정식 spec과 대조 | 미착수 | - |
 | S8-13 | Codex agent `.NET` 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
-| S8-14 | Claude Fable 우선 `.NET` 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
+| S8-14 | Claude Sonnet `.NET` 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
 | S8-15 | finding 수정·전체 검증·재리뷰 반복 | 어느 축을 수정했든 두 리뷰어가 세 축 전체를 재검토하고 둘 다 `DOTNET REVIEW CLEAN` | 미착수 | - |
 | S8-16 | process-local MeshName uniqueness 검증 | 중복 AddRouteMesh 실패와 multi-mesh 독립 동작 통과 | 미착수 | - |
 
@@ -1079,7 +1073,7 @@ S10 완료 gate:
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S11-13 | Codex agent 전체 리뷰 | 전체 scope의 I1·I2·I3 각각에 finding·evidence·축별 판정 | 미착수 | - |
-| S11-14 | Claude Fable 우선 전체 리뷰 | 같은 전체 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
+| S11-14 | Claude Sonnet 전체 리뷰 | 같은 전체 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
 | S11-15 | final finding 수정과 영향 검증 | finding 관련 stage와 downstream 검증 뒤 두 리뷰어의 세 축 전체 재리뷰 | 미착수 | - |
 | S11-16 | 전체 scope 재리뷰 반복 | 최신 release-candidate snapshot의 Core·bindings·모든 framework 언어·spec·guide·internals·test·sample·E2E·package·workflow 전체를 표본이나 delta로 줄이지 않고 검토하며, 세 축이 모두 clean이고 두 리뷰어가 모두 `FINAL REVIEW CLEAN` | 미착수 | - |
 
@@ -1141,7 +1135,7 @@ S11 완료 gate:
 | Core release tag | `core/v10.0.0` 예정 |
 | bindings release tags | 언어별 `v10.0.0` 예정 |
 | 최종 Codex review | - |
-| 최종 구현 R2 review | Claude Fable 우선, fallback이면 Fable 차단 증거와 Claude Sonnet session 기록 |
+| 최종 구현 R2 review | Claude Sonnet session과 결과 기록 |
 | Core workflow run | - |
 | Core RC prerelease run·checksum | - |
 | Conan workflow run | - |

@@ -1254,7 +1254,11 @@ core/
 |   |   |   +-- socket_monitor_bridge.hpp # PAIR-based socket monitor bridge
 |   |   +-- mesh/                    # 10.0.0 mesh service runtime
 |   |       +-- mesh_runtime.cpp/hpp # Object model: mailboxes, ready index, claims, budgets, monitor
-|   |       +-- mesh_wire.cpp/hpp    # Node-owned ROUTER wire: ingress thread, admission, envelope
+|   |       +-- mesh_wire.cpp/hpp    # Node-owned ROUTER lifecycle + outbound submits
+|   |       +-- mesh_wire_codec.cpp  # Wire envelope/record encode + decode
+|   |       +-- mesh_wire_admission.cpp # Peer admission handshake + generation replace
+|   |       +-- mesh_wire_ingress.cpp   # Ingress thread: inbound dispatch, peer down
+|   |       +-- mesh_wire_internal.hpp  # Shared wire-module contract
 |   |
 |   +-- utils/                       # Utilities
 |       +-- ypipe.hpp                # Lock-free pipe

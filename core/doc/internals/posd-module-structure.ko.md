@@ -39,7 +39,7 @@ flowchart TB
 
     subgraph SvcRT ["Service Runtime"]
         direction LR
-        mesh_rt["Mesh: mesh_runtime · mesh_wire"]
+        mesh_rt["Mesh: mesh_runtime · mesh_wire (4 modules)"]
         common_rt["Common: runtime_base · api_guard · monitor · bridge"]
     end
 
@@ -126,7 +126,10 @@ lifecycle 게이트를 제공한다. 콜백 모드 추적은 별도의 `service_
 | 모듈 | 역할 |
 |------|------|
 | `mesh_runtime.cpp/hpp` | 객체 모델: mesh_node_t, owner mailbox, ready index, claim, budget, monitor queue, handle registry |
-| `mesh_wire.cpp/hpp` | node 소유 ROUTER wire: ingress 스레드, envelope codec, admission, transfer data plane |
+| `mesh_wire.cpp/hpp` | node 소유 ROUTER wire lifecycle과 outbound submit(wire_submit_*, NODROP reserve/commit) |
+| `mesh_wire_codec.cpp` | wire envelope/record encode·decode (`mesh_wire_internal.hpp` 계약) |
+| `mesh_wire_admission.cpp` | peer admission handshake·generation 교체·descriptor 교환 |
+| `mesh_wire_ingress.cpp` | ingress 스레드: inbound dispatch, peer down, actor·transfer data plane |
 | `api/mesh/mesh_node_api.cpp` | lifecycle·membership·peer·option·status C API |
 | `api/mesh/mesh_messaging_api.cpp` | node/channel/Spot direct 메시징과 Logical Multicast |
 | `api/mesh/mesh_dispatch_api.cpp` | ready handler·drain·batch·claim·reply token |
@@ -136,8 +139,9 @@ lifecycle 게이트를 제공한다. 콜백 모드 추적은 별도의 `service_
 | `api/mesh/mesh_stream_session_api.cpp` | STREAM session service |
 
 깊은 모듈 경계: 공개 API 계층은 signature 검증과 결과 매핑만 소유하고, 상태
-전이는 전부 `mesh_runtime`/`mesh_wire` 함수로 내려간다. raw socket 계층은
-mesh를 모른다(유일한 확장은 NODROP 원자 reserve용 `routed_target_writable()`).
+전이는 전부 `mesh_runtime`과 `mesh_wire*` 4개 모듈(공유 계약은
+`mesh_wire_internal.hpp`)로 내려간다. raw socket 계층은 mesh를
+모른다(유일한 확장은 NODROP 원자 reserve용 `routed_target_writable()`).
 
 
 ### 3.4 Socket Semantic/Runtime (`core/src/runtime/sockets/`)

@@ -406,7 +406,7 @@ manifest에 덧붙인다.
 | S2 framework spec | 완료 | 0 | 0 | 0 | 공통·server, 다섯 언어 exact interface, E2E 55·sample 32·runner 96·guide/internals 81 inventory와 자동 검증 통과 |
 | S3 문서 review loop | 승인 종료 | 28 | 0 | 0 | iteration 20~28도 시도됐지만 clean으로 채택되지 않았다. `log/s3-document-review/final-acceptance/`는 사용자 승인으로 추가 반복을 종료하고 1~19를 종료 기준 범위로 보존한다. |
 | S4 Core 구현·정식 spec 일치 | 완료 | 0 | 0 | 4 | 2026-07-17 HEAD `5857824c2`+working tree에서 84/84 suite·2-process 10/10·stress 3/3·ASAN/UBSAN/TSAN·surface gate·C ABI smoke·internals 갱신·no-hit 전부 통과. known risk 4=TSAN 기존 기계 3계열+MIXED source 도달성(§8.1 S4-05A) |
-| S5 Core review loop | 미착수 | 0 | 0 | 0 | - |
+| S5 Core review loop | 진행 중 | 5 | 0 | 3 | iteration 1~3: finding 28건 수정. iteration 4(4회차 병합): R2 clean / Codex NOT CLEAN(high 3·low 1) → 정책에 따라 제한 해제, 4건 전부 수정(idempotent bind 재검증, publish local 슬롯 선예약, unreachable 회계 필드 신설+spec 명료화, internals 4모듈 inventory) + 회귀 테스트 2건 추가(87 case). iteration 5 기동(R2=Claude Sonnet 교체). known risk 3=기존 TSAN 2계열+ctx_term linger |
 | S6 Core release candidate | 미착수 | 0 | 0 | 0 | - |
 | S7 bindings local package | 미착수 | 0 | 0 | 0 | - |
 | S8 `.NET` 병렬 lane | 미착수 | 0 | 0 | 0 | - |
@@ -761,16 +761,16 @@ S4 완료 gate:
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package 범위 기록 | 미착수 | - |
-| S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
-| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
-| S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 미착수 | - |
-| S5-05 | POSD 위험 신호 목록 작성 | 각 항목의 위반 원칙과 두 설계안 기록 | 미착수 | - |
-| S5-06 | 의미 있는 리팩터링 수행 | 선택 이유와 호출자 복잡도 감소 근거 기록 | 미착수 | - |
-| S5-07 | DDD event와 경계 재검토 | lifecycle, membership, dispatch, ownership과 observation 책임 정리 | 미착수 | - |
-| S5-08 | dead code와 file 제거 | 도달 불가능 branch, 미사용 type·helper·target·file no-hit | 미착수 | - |
-| S5-09 | 전체 Core 검증 재실행 | S4-23~S4-30 결과가 리팩터링 뒤에도 통과 | 미착수 | - |
-| S5-10 | 두 리뷰어 전체 재리뷰 | 어느 축을 수정했든 Core 전체 scope와 I1·I2·I3 전부 재검토 | 미착수 | - |
+| S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package 범위 기록 | 완료 | iteration 1~4 manifest를 `log/s5-core-review/iteration-N/`에 고정(최근: iteration 4 candidate `59b3ea940`, scope 631파일 `d9621658…`). iteration 5 manifest는 수정 commit 뒤 고정 |
+| S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 진행 중 | iteration 1~4 완료·보존. iteration 4: I1 NOT CLEAN(high 3)·I2 CLEAN·I3 NOT CLEAN(low 1) → 4건 전부 수정 반영, iteration 5 재리뷰 대기 |
+| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 진행 중 | 변경 전 iteration 1~4 Fable 결과는 과거 증거로 보존한다(iteration 4 Fable=CLEAN). 이 규칙 적용 뒤 새 iteration과 최종 clean은 Claude Sonnet 결과를 사용 — iteration 5부터 적용 |
+| S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 완료 | I1 finding 10건 전부 수정(commit `a01b537f8ce`): NODROP reserve-commit(신규 `routed_target_writable` probe), Spot 수명·timer registry·상호배제, actor destroy drain, shutdown detach·재진입, MIXED endpoint·generation DRAINING, query 2-pass, strict UTF-8, claim serial 전역화, monitor handler 가드. 신규 test 8 case로 red→green 검증 |
+| S5-05 | POSD 위험 신호 목록 작성 | 각 항목의 위반 원칙과 두 설계안 기록 | 완료 | iteration 1 F-I2-01: `mesh_wire` 결합(codec·admission·ingress·transport). 대안 A(ingress/egress 파일 분할)=domain 지식 반복 vs 대안 B(결정별 깊은 모듈)=선택. finding ledger에 기록 |
+| S5-06 | 의미 있는 리팩터링 수행 | 선택 이유와 호출자 복잡도 감소 근거 기록 | 완료 | 대안 B 실행: `mesh_wire_codec/admission/ingress/wire` 4모듈+`mesh_wire_internal.hpp`, 공개 표면 불변, 85/85 green 유지 |
+| S5-07 | DDD event와 경계 재검토 | lifecycle, membership, dispatch, ownership과 observation 책임 정리 | 완료 | admission 상태 기계와 ingress 라우팅을 별도 모듈 소유로 분리, BACKPRESSURED 방출을 admit_record 단일 지점으로 유지, timer 수명은 mesh seam이 소유(타이머 기계는 hook만) |
+| S5-08 | dead code와 file 제거 | 도달 불가능 branch, 미사용 type·helper·target·file no-hit | 완료 | F3 무의미 삼항 제거, per-node `next_claim_serial` 필드 제거, `valid_utf8_public` 중복 validator 제거. I3는 iteration 1에서 Codex CLEAN |
+| S5-09 | 전체 Core 검증 재실행 | S4-23~S4-30 결과가 리팩터링 뒤에도 통과 | 완료 | 리팩터링 후 전체 suite 85/85, ASAN clean(5 mesh 바이너리), TSAN mesh 신규 race 0(기존 기계 2계열 유지), surface gate PASS 포함 |
+| S5-10 | 두 리뷰어 전체 재리뷰 | 어느 축을 수정했든 Core 전체 scope와 I1·I2·I3 전부 재검토 | 진행 중 | 변경 전 iteration 2 Codex·Fable pass는 과거 증거로 보존한다. 최신 최종 pass는 Codex·Claude Sonnet으로 다시 실행 |
 
 Core 구현 리뷰는 §2.1의 I1·I2·I3를 각각 판정한다. 다음 항목은 축별 최소 검토 범위다.
 

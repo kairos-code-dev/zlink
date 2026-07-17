@@ -842,8 +842,9 @@ retry_reserve:
         }
 
         //  Every fallible preparation happens before any commit: the local
-        //  records are fully built here so that after the remote leg only
-        //  infallible moves remain (all-or-none across both legs).
+        //  records are fully built and every local container slot is
+        //  pre-allocated here so that after the remote leg only infallible
+        //  assignments remain (all-or-none across both legs).
         std::vector<std::unique_ptr<queued_record_t>> prepared;
         prepared.reserve (accepting.size ());
         for (size_t t = 0; t < accepting.size (); ++t) {
@@ -869,6 +870,41 @@ retry_reserve:
             prepared.push_back (std::move (record));
         }
 
+        //  Local slot reservation: deque growth and ready-index nodes are the
+        //  last fallible steps of the local leg, so both are taken before the
+        //  remote commit. Placeholder slots and speculative ready entries are
+        //  only ever visible while this mutex is held: every exit path below
+        //  either fills or rolls them back before the lock is released.
+        std::vector<size_t> slot_base (accepting.size ());
+        std::vector<std::pair<owner_id_t, int>> ready_added;
+        size_t slots_taken = 0;
+        bool prealloc_failed = false;
+        try {
+            ready_added.reserve (accepting.size ());
+            for (size_t t = 0; t < accepting.size (); ++t) {
+                slot_base[t] = accepting[t]->records.size ();
+                accepting[t]->records.push_back (std::unique_ptr<queued_record_t> ());
+                ++slots_taken;
+            }
+            for (size_t t = 0; t < accepting_ids.size (); ++t) {
+                const std::pair<owner_id_t, int> key (accepting_ids[t],
+                                                      static_cast<int> (domain_application));
+                if (node_->ready.insert (key).second)
+                    ready_added.push_back (key);
+            }
+        }
+        catch (const std::bad_alloc &) {
+            prealloc_failed = true;
+        }
+        if (prealloc_failed) {
+            for (size_t t = 0; t < slots_taken; ++t)
+                accepting[t]->records.pop_back ();
+            for (size_t t = 0; t < ready_added.size (); ++t)
+                node_->ready.erase (ready_added[t]);
+            errno = ENOMEM;
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        }
+
         //  Remote leg before the local commit: a NODROP remote failure must
         //  leave the local mailboxes untouched. The wire reserve commits
         //  nothing on backpressure, so a blocking publish may retry the whole
@@ -878,6 +914,12 @@ retry_reserve:
           source_spot_rid_ ? *source_spot_rid_ : rid_bytes_t (), nodrop_, metadata_, parts_,
           part_count_, &admitted_remote, &dropped_remote, &unreachable_remote);
         if (nodrop_ && remote_rc != ZLINK_SUBMIT_OK) {
+            //  Roll the local reservation back before the mutex is released
+            //  (cv wait or return); a retry rebuilds it from scratch.
+            for (size_t t = 0; t < accepting.size (); ++t)
+                accepting[t]->records.pop_back ();
+            for (size_t t = 0; t < ready_added.size (); ++t)
+                node_->ready.erase (ready_added[t]);
             if (blocking && reserve_deadline != 0 && now_ms () < reserve_deadline) {
                 node_->cv.wait_for (lock, std::chrono::milliseconds (
                                             std::min<uint64_t> (10, reserve_deadline - now_ms ())));
@@ -892,9 +934,7 @@ retry_reserve:
             std::unique_ptr<queued_record_t> record = std::move (prepared[t]);
             accepting[t]->pending_messages += 1;
             accepting[t]->pending_bytes += record->byte_size;
-            accepting[t]->records.push_back (std::move (record));
-            node_->ready.insert (
-              std::make_pair (accepting_ids[t], static_cast<int> (domain_application)));
+            accepting[t]->records[slot_base[t]] = std::move (record);
             ++admitted_local;
         }
         node_->cv.notify_all ();
@@ -909,9 +949,10 @@ retry_reserve:
 
     if (detail_out_) {
         init_versioned (detail_out_);
-        detail_out_->snapshot_remote_target_count = snapshot_remote - unreachable_remote;
+        detail_out_->snapshot_remote_target_count = snapshot_remote;
         detail_out_->admitted_remote_target_count = admitted_remote;
         detail_out_->dropped_remote_target_count = dropped_remote;
+        detail_out_->unreachable_remote_target_count = unreachable_remote;
         detail_out_->snapshot_local_spot_count = snapshot_local;
         detail_out_->admitted_local_spot_count = admitted_local;
         detail_out_->dropped_local_spot_count = dropped_local;
@@ -922,9 +963,10 @@ retry_reserve:
     event.kind = (dropped_local > 0 || dropped_remote > 0)
                    ? ZLINK_MESH_MONITOR_MULTICAST_DROPPED
                    : ZLINK_MESH_MONITOR_MULTICAST_COMMITTED;
-    event.snapshot_remote_target_count = snapshot_remote - unreachable_remote;
+    event.snapshot_remote_target_count = snapshot_remote;
     event.admitted_remote_target_count = admitted_remote;
     event.dropped_remote_target_count = dropped_remote;
+    event.unreachable_remote_target_count = unreachable_remote;
     event.snapshot_local_spot_count = snapshot_local;
     event.admitted_local_spot_count = admitted_local;
     event.dropped_local_spot_count = dropped_local;

@@ -151,12 +151,18 @@ publish는 한 호출 안에서 snapshot→검사→commit을 마친다.
    mailbox budget과 모든 remote pipe의 `routed_target_writable()`을 선검사한다.
    하나라도 불가면 아무것도 commit하지 않는다(전부-또는-전무). 비차단은
    `EAGAIN`, 차단은 SNDTIMEO까지 reserve를 재시도한 뒤 `ETIMEDOUT`이다.
-3. commit은 local fanout(`zlink_msg_copy` refcount 공유)과 peer당 정확히 1회의
-   wire submit이다. 수신 node는 자기 local 구독 match에만 fan-out하고 재전파
-   경로가 없다(구조적 no-relay).
+3. reserve가 통과하면 remote commit 전에 local 슬롯(mailbox deque 자리와
+   ready-index 키)을 선예약해 마지막 fallible 지점을 commit 앞으로 당긴다.
+   실패 시 전량 롤백 후 `ENOMEM`이고, 예약물은 node mutex 보유 중에만
+   존재한다(모든 실패 경로가 unlock 전에 롤백).
+4. commit은 local fanout(`zlink_msg_copy` refcount 공유)과 peer당 정확히 1회의
+   wire submit이다. reserve와 commit 사이에 pipe를 잃은 admitted peer는
+   drop이 아닌 peer 이탈로 분류해 unreachable로 센다(spec §7). 수신 node는
+   자기 local 구독 match에만 fan-out하고 재전파 경로가 없다(구조적 no-relay).
 
 publish detail과 `MULTICAST_COMMITTED`/`MULTICAST_DROPPED` event가 snapshot·
-admitted·dropped 수치를 그대로 보고한다.
+admitted·dropped·unreachable 수치를 그대로 보고한다
+(snapshot_remote = admitted + dropped + unreachable).
 
 ## 7. Actor와 transfer fence
 

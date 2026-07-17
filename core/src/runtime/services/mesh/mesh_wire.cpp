@@ -339,10 +339,12 @@ zlink_submit_result_t wire_publish_remote_locked (mesh_node_t *node_,
     //  Commit phase. With the reserve held under wire_send_mutex a capacity
     //  failure cannot occur here (one check_write slot admits the whole
     //  multipart message); a target that still fails lost its pipe to a
-    //  concurrent peer disconnect. Such a target is no longer an admitted
-    //  member, so it leaves the snapshot accounting entirely instead of
-    //  counting as a NODROP drop: the racing truth is that it had already
-    //  left at snapshot time.
+    //  concurrent peer disconnect between the reserve and this commit. That
+    //  is a peer departure, not backpressure: the all-or-none reserve is a
+    //  capacity guarantee, while a departing peer forfeits delivery the same
+    //  way an already-committed message to it would be lost. Such targets
+    //  are reported separately as unreachable so the caller sees the true
+    //  snapshot alongside the departure count.
     for (size_t i = 0; i < targets_.size (); ++i) {
         const zlink_routing_id_t target = rid_value (targets_[i]);
         const zlink_submit_result_t rc =

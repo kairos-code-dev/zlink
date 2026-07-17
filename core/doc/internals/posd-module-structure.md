@@ -41,7 +41,7 @@ flowchart TB
 
     subgraph SvcRT ["Service Runtime"]
         direction LR
-        mesh_rt["Mesh: mesh_runtime · mesh_wire"]
+        mesh_rt["Mesh: mesh_runtime · mesh_wire (4 modules)"]
         common_rt["Common: runtime_base · api_guard · monitor · bridge"]
     end
 
@@ -117,7 +117,10 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | Module | Role |
 |--------|------|
 | `mesh_runtime.cpp/hpp` | Object model: mesh_node_t, owner mailboxes, ready index, claims, budgets, monitor queue, handle registry |
-| `mesh_wire.cpp/hpp` | Node-owned ROUTER wire: ingress thread, envelope codec, admission, transfer data plane |
+| `mesh_wire.cpp/hpp` | Node-owned ROUTER wire lifecycle and outbound submits (wire_submit_*, NODROP reserve/commit) |
+| `mesh_wire_codec.cpp` | Wire envelope/record encode and decode (`mesh_wire_internal.hpp` contract) |
+| `mesh_wire_admission.cpp` | Peer admission handshake, generation replacement, descriptor exchange |
+| `mesh_wire_ingress.cpp` | Ingress thread: inbound dispatch, peer down, actor and transfer data plane |
 | `api/mesh/mesh_node_api.cpp` | Lifecycle, membership, peer, option and status C API |
 | `api/mesh/mesh_messaging_api.cpp` | Node/channel/Spot direct messaging and Logical Multicast |
 | `api/mesh/mesh_dispatch_api.cpp` | Ready handler, drain, batches, claims, reply tokens |
@@ -127,8 +130,8 @@ Concrete implementation of each service. Common infrastructure is in `services/c
 | `api/mesh/mesh_stream_session_api.cpp` | STREAM session service |
 
 Deep-module boundary: the public API layer owns only signature validation and
-result mapping; every state transition delegates into `mesh_runtime`/`mesh_wire`
-functions. The raw socket layer knows nothing about mesh (its only extension is
+result mapping; every state transition delegates into `mesh_runtime` and the
+four `mesh_wire*` modules (their shared contract is `mesh_wire_internal.hpp`). The raw socket layer knows nothing about mesh (its only extension is
 `routed_target_writable()` for the NODROP atomic reserve).
 
 

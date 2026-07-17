@@ -1,0 +1,139 @@
+S5 Core review iteration 4 — R2 (Claude Fable) raw execution log
+Commit: 59b3ea9400327e74e80b0f8d74763c89ccfdf141
+Date: 2026-07-17 21:38 ~ 21:57 +0900
+Mode: read-only (core/ untouched; git status core/ clean at end)
+Codex iteration-4 outputs (codex-*) not read.
+
+[1] Scope hash (start)
+  cmd: files=$(git ls-files core/include core/src core/tests core/packaging \
+         core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md | sort -u)
+       printf '%s\n' "$files" | wc -l
+       printf '%s\n' "$files" | xargs sha256sum | sha256sum
+  out: 631
+       d9621658e16a04c53c646286f3386d99f6ac28faf3196616eec4d71e51a8e413  -
+  => matches manifest iteration-4 §2.
+
+[2] Delta review
+  cmd: git diff --stat 25617130e..59b3ea940
+  out: 10 files, +742/-21 (core: mesh_actor_api.cpp, mesh_c_internal.hpp,
+       mesh_messaging_api.cpp, mesh_stream_session_api.cpp; rest = iteration-3 logs)
+  Full diff of the 4 core files reviewed line by line; remaining 627 scope files
+  bit-identical to the iteration-3 reviewed snapshot.
+
+[3] Fix verdicts (iteration-3 ledger, 4 fixes)
+  - F-I1-03(rerere) bind rollback: RESOLVED.
+    mesh_stream_session_api.cpp:598-611 (pre-validate), 621-675 (registry-atomic
+    one-binding scan + insert), 685-703 (node-lock re-validate: absent/generation/
+    draining -> session_bindings_remove_actor rollback + ESTALE).
+    Interleaving completeness: staleness is monotonic per generation; destroy sets
+    draining under node mutex (mesh_actor_api.cpp:641) BEFORE its removal pass
+    (:739), so either re-validate catches it or the removal pass sees the already-
+    inserted binding. Rollback cannot touch third-party bindings (conflict scan
+    under registry lock guarantees single binding per actor generation at insert).
+    Lock order: node(alone, scoped) then registry->service; no inversion vs existing
+    registry->node order. Spec service/05-stream-session §3 ("실패 뒤에는 호출 전
+    binding 상태를 유지") satisfied by the rollback.
+  - N3-I1-01 prepared records: RESOLVED.
+    mesh_messaging_api.cpp:844-870 prepared build (all fallible steps: nothrow new/
+    ENOMEM, metadata copy, copy_borrowed_parts/INTERNAL_ERROR) before
+    wire_publish_remote_locked (:876); post-commit loop :891-899 only moves/
+    arithmetic. goto retry_reserve at :885 is a backward jump exiting the scope of
+    `prepared` -> destructors run, records freed, rebuilt next round; counters
+    reinitialized at :799-803. No jump-past-initialization (label precedes
+    declarations). unreachable snapshot deduction (:912, :925) intact after motion.
+  - N5 owner_it re-lookup: RESOLVED (completeness re-checked).
+    mesh_actor_api.cpp:685 re-find after lock.lock(); deadline branch guards
+    end() at :691. Post-window stale-reference sweep: actor_it (:658) used only
+    at :660-662 before the window, recomputed each iteration; held/completions are
+    value copies. Class-wide sweep: all 25 lock.unlock() sites across
+    core/src/api/mesh grepped; every relock site (mesh_transfer_api.cpp:985/990-995,
+    :1038-1043; mesh_stream_session_api.cpp:1141ff) re-finds via find_* after
+    reacquisition; remainder end their lock scope. 0 violations.
+  - N6 dead comment: RESOLVED. mesh_c_internal.hpp comment removed; residual
+    double blank line at :37-38 matches two pre-existing tolerated instances
+    (mesh_messaging_api.cpp:49, mesh_node_api.cpp:121, both present in
+    25617130e) -> editorial E9 only.
+
+[4] F-I1-01 rejected re-review: ACCEPTED.
+  Spec service/01-mesh-node.ko.md:254 (§5): "peer drain은 새 snapshot에서
+  제외하지만 이미 commit한 message를 취소하지 않는다."
+  Spec :460-461 (§9): "Logical Multicast는 snapshot 전체의 원자적 reserve/commit
+  까지 보장하며" — guarantee bounded at reserve/commit, delivery out of scope.
+  Implementation: reserve under wire_send_mutex probes routed_target_writable for
+  every target, commits nothing on any miss (mesh_wire.cpp:319-337); commit-phase
+  failure can only be pipe loss from concurrent peer disconnect (one check_write
+  slot admits whole multipart) (:339-357). unreachable excluded from snapshot
+  consistently in detail (mesh_messaging_api.cpp:912) and monitor event (:925);
+  unreachable <= snapshot_remote so no underflow. Peer lost between reserve and
+  commit is observably identical to peer lost right after commit, which §5
+  explicitly permits; rollback of frames already handed to other TCP pipes is
+  impossible. Capacity-dimension all-or-none holds at reserve; accounting
+  interpretation is the only one satisfying both "성공 시 dropped==0" and the
+  no-cancel clause.
+
+[5] ctest
+  run 1: cmake --build core/build -j && ctest --test-dir core/build -j8
+    -> 84/85; FAILED: test_monitor_socket_contract (Subprocess aborted)
+       failing case: test_pubsub_ready_with_monitor_recv_and_socket_callback
+       (zlink_subscribe recv=201 errno=11 EAGAIN; then forced-closure teardown
+       abort at mutex.hpp:108).
+       NOTE: this run overlapped the reviewer's own concurrent full ASAN rebuild
+       (self-inflicted load contamination).
+  run 2: ctest -j8 (no contamination) -> exit 0 (all passed)
+  run 3: ctest -j8 (no contamination, standalone) -> "100% tests passed, 0 tests
+       failed out of 85"
+  Targeted reproduction: standalone x3 -> OK x3; under sustained 6x `yes` CPU
+  saturation x15 -> 15/15 OK. (An earlier 20x loop reporting 20/20 FAIL was a
+  broken harness — control with `true` also "failed"; discarded, harness fixed.)
+  Mechanism analysis: gate waits CONNECTION_READY on both sockets
+  (test_monitor_socket_contract.cpp:193-223, handler :158-175), then publishes
+  immediately; CONNECTION_READY = handshake completion (design-decisions §2.2),
+  which does not cover raw PUB slow-joiner subscription-propagation window; spec
+  01-mesh-node §9 says classic PUB follows the raw PUB contract, so the drop is
+  in-contract. 9.x retained machinery; the 4 changed mesh TUs are not on this
+  path. Classified: observation / editorial E12 (test-only hardening candidate),
+  not a finding.
+
+[6] ASAN (rebuilt at HEAD)
+  test_mesh_lifecycle_contracts 8/8 OK
+  test_mesh_node_basic          8/8 OK
+  test_mesh_monitor_matrix      6/6 OK
+  test_mesh_peer_admission      11/11 OK
+  test_mesh_stress              3/3 OK
+  grep -c AddressSanitizer over full output: 0
+
+[7] TSAN (rebuilt at HEAD; first -j build hit a transient parallel-build failure,
+  clean retry at -j4 succeeded)
+  setarch -R ./core/build-tsan/bin/test_mesh_lifecycle_contracts -> 8/8 OK
+  ThreadSanitizer: reported 10 warnings; classification:
+    9x lock-order-inversion — all prepare_auto_hwm_socket_plan /
+       refresh_auto_hwm_policy / ctx_t::create_socket (auto-HWM series)
+    1x data race — mailbox_t::recv command mailbox ypipe series
+  Both are the known pre-existing raw-machinery series; 0 mesh-code races.
+
+[8] Adversarial full-pass checks (P4)
+  - Lock-order sweep: node->wire_send (leaf, 3 sites in mesh_wire.cpp only);
+    node(alone)->registry->service; registry->node exists but never nested the
+    other way. No cycles.
+  - Regression check of earlier-round fixes inside the 4 delta files: unreachable
+    accounting, destroy drain + session_bindings_pending/remove_actor, spot_it
+    pre-capture (mesh_actor_api.cpp:713-718) all intact. Other modules unchanged.
+  - Public surface: no header changes in delta; contract gate PASS in all 3 runs.
+  - bind ESTALE mapping consistent with initial-validation ESTALE and unbind ESTALE.
+
+[9] Scope hash (end)
+  out: 631 / d9621658e16a04c53c646286f3386d99f6ac28faf3196616eec4d71e51a8e413  -
+  git status --short core/ -> empty (0 lines)
+  => unchanged.
+
+[10] Verdict
+  Iteration-3 fixes: 4/4 resolved (N5 completeness re-verified; class-wide sweep 0).
+  F-I1-01 rejected: accepted with spec grounds.
+  New findings: none. Editorial: E9 (blank-line residue), E10 (post-commit
+  container allocation under true OOM), E11 (retry rebuild churn), E12 (raw
+  pubsub monitor test robustness observation).
+  Known risks: TSAN 2 series accepted (re-classified this run), ctx_term linger
+  accepted (2x clean full suites).
+  I1 CLEAN / I2 CLEAN / I3 CLEAN. No blocker/high.
+
+CORE REVIEW CLEAN

@@ -94,6 +94,7 @@ typedef struct zlink_mesh_publish_detail_t {
   uint32_t snapshot_remote_target_count;
   uint32_t admitted_remote_target_count;
   uint32_t dropped_remote_target_count;
+  uint32_t unreachable_remote_target_count;
   uint32_t snapshot_local_spot_count;
   uint32_t admitted_local_spot_count;
   uint32_t dropped_local_spot_count;
@@ -410,15 +411,24 @@ storage for every result. On success, Core acquires the reference or copy needed
 by the publish operation before the function returns.
 
 With `NODROP=1`, every target in the snapshot accepts the message or no target
-receives it. Any target that cannot accept returns
+receives it. This all-or-none is a capacity-admission guarantee: if any target
+cannot accept for capacity reasons, the call returns
 `ZLINK_SUBMIT_BACKPRESSURED`/`EAGAIN` with `DONTWAIT`, or `ETIMEDOUT` after
-`SNDTIMEO` for a blocking call. With `NODROP=0`, only targets that cannot accept
-are dropped and the rest receive the message.
+`SNDTIMEO` for a blocking call, and no target receives the message. With
+`NODROP=0`, only targets that cannot accept are dropped and the rest receive
+the message.
+
+An admitted remote target whose pipe terminates between the reserve and the
+commit is a §5 peer departure, not backpressure. Such a target is not counted
+as a drop; it is reported through the detail's unreachable count, and per the
+§5 rule that already-committed messages are not recalled, the remaining
+snapshot targets still receive the message.
 
 Detail reports separate remote and local snapshot, admission, and drop counts
-for every successful result. A successful `NODROP=1` call has zero in both
-dropped counts. Zero remote and local snapshot targets returns
-`ZLINK_SUBMIT_NOT_FOUND` with `errno == ENOENT`.
+plus the remote unreachable count for every successful result. The remote
+snapshot equals the sum of admitted, dropped, and unreachable. A successful
+`NODROP=1` call has zero in both dropped counts. Zero remote and local
+snapshot targets returns `ZLINK_SUBMIT_NOT_FOUND` with `errno == ENOENT`.
 
 A topic is a 1-to-`ZLINK_MESH_TOPIC_MAX`-byte UTF-8 string with no NUL. An
 empty topic, invalid UTF-8, or an over-limit topic returns

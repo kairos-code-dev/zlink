@@ -254,6 +254,7 @@ typedef struct zlink_mesh_monitor_event_t {
   uint32_t snapshot_remote_target_count;
   uint32_t admitted_remote_target_count;
   uint32_t dropped_remote_target_count;
+  uint32_t unreachable_remote_target_count;
   uint32_t snapshot_local_spot_count;
   uint32_t admitted_local_spot_count;
   uint32_t dropped_local_spot_count;

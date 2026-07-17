@@ -160,12 +160,21 @@ Publish completes snapshot → check → commit within one call.
    `routed_target_writable()` on every remote pipe. If any target cannot
    accept, nothing commits (all-or-none). Non-blocking fails with `EAGAIN`;
    blocking retries the reserve until SNDTIMEO and fails with `ETIMEDOUT`.
-3. Commit is the local fanout (shared `zlink_msg_copy` refcounts) plus exactly
-   one wire submit per peer. A receiving node fans out only to its own local
-   subscription matches and has no re-propagation path (structural no-relay).
+3. Once the reserve passes, the local slots (mailbox deque positions and
+   ready-index keys) are pre-reserved before the remote commit, pulling the
+   last fallible step ahead of any commit. A failure rolls everything back
+   and returns `ENOMEM`; the reservations only exist while the node mutex is
+   held (every failure path rolls back before unlocking).
+4. Commit is the local fanout (shared `zlink_msg_copy` refcounts) plus exactly
+   one wire submit per peer. An admitted peer that loses its pipe between the
+   reserve and the commit is classified as a peer departure, not a drop, and
+   is counted as unreachable (spec §7). A receiving node fans out only to its
+   own local subscription matches and has no re-propagation path (structural
+   no-relay).
 
 The publish detail and the `MULTICAST_COMMITTED`/`MULTICAST_DROPPED` events
-report the snapshot/admitted/dropped counts verbatim.
+report the snapshot/admitted/dropped/unreachable counts verbatim
+(remote snapshot = admitted + dropped + unreachable).
 
 ## 7. Actors and the transfer fence
 

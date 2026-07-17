@@ -21,6 +21,10 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
+//  Test-only hook (socket_submit_retry_fault_injection.cpp): the next count_
+//  wire sends fail with err_.
+extern "C" void zlink_test_set_submit_retry_fault (int count_, int err_);
+
 #if !defined _WIN32
 namespace
 {
@@ -1151,6 +1155,116 @@ void test_remote_multicast_publish ()
           return result;
       });
 }
+//  A NODROP publish whose admitted remote target loses its pipe between the
+//  wire reserve and the commit is a peer departure, not a drop: the call
+//  succeeds, the detail keeps the true snapshot and reports the departure in
+//  the unreachable count while the local leg still delivers.
+void test_nodrop_unreachable_target_accounting ()
+{
+    run_two_process_case (
+      //  parent: node A injects one send fault so its admitted target fails
+      //  between reserve and commit, then checks the publish accounting.
+      [] (int endpoint_fd) {
+          void *ctx = zlink_ctx_new ();
+          TEST_ASSERT_NOT_NULL (ctx);
+          void *node = new_started_node (ctx, mesh_name, "node-a");
+          publish_endpoint (node, endpoint_fd);
+
+          //  A local Spot match keeps the local leg observable alongside the
+          //  injected remote departure.
+          void *spot = NULL;
+          TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_entry_spot (node, &spot));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                                 zlink_spot_set_subscription (spot, channel_name, "ticks.",
+                                                              ZLINK_SPOT_SUBSCRIPTION_PREFIX));
+
+          TEST_ASSERT_TRUE_MESSAGE (wait_admitted_count (node, 1),
+                                    "node A did not admit the subscriber peer");
+          //  Give B a moment to install its subscription after admission.
+          msleep (300);
+
+          void *publisher = zlink_mesh_node_publisher_new (node);
+          TEST_ASSERT_NOT_NULL (publisher);
+          bool observed = false;
+          for (int attempt = 0; attempt < 10 && !observed; ++attempt) {
+              zlink_mesh_publish_detail_t detail;
+              memset (&detail, 0, sizeof (detail));
+              detail.struct_size = sizeof (detail);
+              detail.version = 1;
+              zlink_msg_t part;
+              make_payload (&part, "market-tick");
+              //  One injected fault fails the next wire frame from this
+              //  node, so the admitted target departs between reserve and
+              //  commit. A concurrent control frame may consume the fault
+              //  instead; that round observes a clean publish and retries.
+              zlink_test_set_submit_retry_fault (1, ENOTCONN);
+              const zlink_submit_result_t rc = zlink_mesh_node_publisher_publish (
+                publisher, channel_name, "ticks.krw", NULL, &part, 1, &detail,
+                ZLINK_SEND_FLAGS_DONTWAIT);
+              zlink_test_set_submit_retry_fault (0, 0);
+              zlink_msg_close (&part);
+              TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK, rc);
+              TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_remote_target_count);
+              TEST_ASSERT_EQUAL_UINT (0, detail.dropped_remote_target_count);
+              TEST_ASSERT_EQUAL_UINT (detail.snapshot_remote_target_count,
+                                      detail.admitted_remote_target_count
+                                        + detail.dropped_remote_target_count
+                                        + detail.unreachable_remote_target_count);
+              TEST_ASSERT_EQUAL_UINT (1, detail.snapshot_local_spot_count);
+              TEST_ASSERT_EQUAL_UINT (1, detail.admitted_local_spot_count);
+              TEST_ASSERT_EQUAL_UINT (0, detail.dropped_local_spot_count);
+              observed = detail.unreachable_remote_target_count == 1
+                         && detail.admitted_remote_target_count == 0;
+          }
+          TEST_ASSERT_TRUE_MESSAGE (observed,
+                                    "injected departure never surfaced as unreachable");
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
+
+          //  Let the child exit first so parent teardown does not linger.
+          msleep (1500);
+          TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 2000));
+          TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+          TEST_ASSERT_EQUAL_INT (0, zlink_ctx_term (ctx));
+      },
+      //  child: node B subscribes, stays admitted through the parent's
+      //  publish attempts and exits before the parent tears down.
+      [] (int endpoint_fd) -> int {
+          char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+          read_endpoint (endpoint_fd, endpoint, sizeof (endpoint));
+          if (endpoint[0] == '\0')
+              return 10;
+
+          void *ctx = zlink_ctx_new ();
+          if (!ctx)
+              return 11;
+          void *node = new_started_node (ctx, mesh_name, "node-b");
+
+          void *spot = NULL;
+          if (zlink_mesh_node_entry_spot (node, &spot) != ZLINK_CONFIG_OK)
+              return 12;
+          if (zlink_spot_set_subscription (spot, channel_name, "ticks.",
+                                           ZLINK_SPOT_SUBSCRIPTION_PREFIX)
+              != ZLINK_CONFIG_OK)
+              return 13;
+
+          if (submit_peer_intent (node, endpoint) == 0)
+              return 14;
+          zlink_mesh_peer_entry_t entry;
+          if (!wait_peer_state (node, ZLINK_MESH_PEER_ADMITTED, &entry))
+              return 15;
+
+          msleep (800);
+          zlink_spot_destroy (&spot);
+          zlink_mesh_node_shutdown (node, 1000);
+          if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK)
+              return 16;
+          if (zlink_ctx_term (ctx) != 0)
+              return 17;
+          return 0;
+      });
+}
+
 //  B looks up A's actor over the wire, drives a request/reply round trip on
 //  the actor lane and finally destroys it remotely.
 void test_remote_actor_lookup_messaging_destroy ()
@@ -2243,6 +2357,7 @@ int main ()
     RUN_TEST (test_remote_node_request_reply_round_trip);
     RUN_TEST (test_remote_spot_direct_request_reply);
     RUN_TEST (test_remote_multicast_publish);
+    RUN_TEST (test_nodrop_unreachable_target_accounting);
     RUN_TEST (test_remote_actor_lookup_messaging_destroy);
     RUN_TEST (test_remote_actor_join_entry_spot);
     RUN_TEST (test_remote_actor_transfer_fence);

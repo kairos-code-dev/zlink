@@ -11,6 +11,14 @@
 #include <string.h>
 
 #include <atomic>
+#include <thread>
+
+#if !defined _WIN32
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+#endif
 
 SETUP_TEARDOWN_TESTCONTEXT
 
@@ -554,6 +562,151 @@ void test_timer_destroy_overlapping_fire_completes ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+#if !defined _WIN32
+namespace
+{
+//  Connects a raw TCP client to endpoint_ ("tcp://host:port") and returns
+//  the connected fd, or -1.
+int connect_raw_stream_client (const char *endpoint_)
+{
+    char protocol[8] = {0};
+    char host[64] = {0};
+    int port = 0;
+    if (sscanf (endpoint_, "%7[^:]://%63[^:]:%d", protocol, host, &port) != 3
+        || strcmp (protocol, "tcp") != 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    const int fd = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (fd < 0)
+        return -1;
+    struct sockaddr_in address;
+    memset (&address, 0, sizeof (address));
+    address.sin_family = AF_INET;
+    address.sin_port = htons (static_cast<uint16_t> (port));
+    if (inet_pton (AF_INET, host, &address.sin_addr) != 1
+        || connect (fd, reinterpret_cast<const struct sockaddr *> (&address), sizeof (address))
+             != 0) {
+        close (fd);
+        return -1;
+    }
+    struct timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    TEST_ASSERT_EQUAL_INT (
+      0, setsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof (timeout)));
+    return fd;
+}
+}
+#endif
+
+//  Two concurrent binds race an actor destroy. Whatever the interleaving,
+//  the destroyed generation must never survive in a binding, and once the
+//  destroy has returned every later bind of that generation must fail:
+//  the post-insert re-validation covers the inserting call and idempotent
+//  observers alike, so no call reports success against a destroyed
+//  generation whose binding is about to disappear.
+void test_stream_session_bind_destroy_race_leaves_no_binding ()
+{
+#if defined(ZLINK_HAVE_WINDOWS)
+    TEST_IGNORE_MESSAGE ("raw TCP test helper is unavailable on Windows");
+#else
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "bind-race-mesh", "orders");
+    void *stream = zlink_socket (ctx, ZLINK_SOCKET_STREAM);
+    TEST_ASSERT_NOT_NULL (stream);
+    void *service = zlink_stream_session_service_new (node, stream);
+    TEST_ASSERT_NOT_NULL (service);
+    const int notify = 1;
+    const int recv_timeout_ms = 5000;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_set_stream_option (stream, ZLINK_STREAM_OPT_NOTIFY, &notify, sizeof (notify)));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_set_option (stream, ZLINK_OPT_RCVTIMEO, &recv_timeout_ms,
+                                             sizeof (recv_timeout_ms)));
+    TEST_ASSERT_EQUAL_INT (ZLINK_BIND_OK, zlink_bind (stream, "tcp://127.0.0.1:0"));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_stream_session_service_start (service));
+
+    char endpoint[ZLINK_MESH_ENDPOINT_MAX + 1];
+    size_t endpoint_size = sizeof (endpoint);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_get_option (stream, ZLINK_OPT_LAST_ENDPOINT, endpoint, &endpoint_size));
+    endpoint[sizeof (endpoint) - 1] = '\0';
+    const int client_fd = connect_raw_stream_client (endpoint);
+    TEST_ASSERT_TRUE (client_fd >= 0);
+    TEST_ASSERT_EQUAL_INT (1, send (client_fd, "!", 1, 0));
+    zlink_msg_t connect_part;
+    TEST_ASSERT_EQUAL_INT (0, zlink_msg_init (&connect_part));
+    const zlink_routing_id_t *source_rid = NULL;
+    zlink_part_flag_t has_more = ZLINK_PART_MORE;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      zlink_recv_part (stream, &source_rid, &connect_part, &has_more, ZLINK_RECV_FLAGS_NONE));
+    TEST_ASSERT_NOT_NULL (source_rid);
+    zlink_routing_id_t session_rid = *source_rid;
+    zlink_msg_close (&connect_part);
+
+    for (int round = 0; round < 8; ++round) {
+        char actor_id[32];
+        snprintf (actor_id, sizeof (actor_id), "racer-%d", round);
+        zlink_actor_ref_t actor;
+        TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK,
+                               zlink_mesh_node_actor_new (node, actor_id, NULL, 0, &actor,
+                                                          ZLINK_SEND_FLAGS_NONE, 1000));
+        std::thread binder_a ([&] () {
+            zlink_mesh_operation_id_t op;
+            (void) zlink_stream_session_bind_actor (service, &session_rid, &actor, &op, 200);
+        });
+        std::thread binder_b ([&] () {
+            zlink_mesh_operation_id_t op;
+            (void) zlink_stream_session_bind_actor (service, &session_rid, &actor, &op, 200);
+        });
+        zlink_mesh_operation_id_t destroy_op;
+        TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                               zlink_mesh_node_actor_destroy (node, &actor, &destroy_op, 200));
+        binder_a.join ();
+        binder_b.join ();
+
+        //  Staleness is monotone: after destroy returned, binds must fail.
+        zlink_mesh_operation_id_t late_op;
+        TEST_ASSERT_TRUE (
+          zlink_stream_session_bind_actor (service, &session_rid, &actor, &late_op, 200)
+          != ZLINK_SUBMIT_OK);
+
+        //  No binding of the destroyed generation survives.
+        zlink_stream_session_binding_t bindings[4];
+        memset (bindings, 0, sizeof (bindings));
+        for (int i = 0; i < 4; ++i) {
+            bindings[i].struct_size = sizeof (bindings[i]);
+            bindings[i].version = ZLINK_STREAM_SESSION_ABI_VERSION;
+        }
+        size_t count = 4;
+        TEST_ASSERT_EQUAL_INT (
+          ZLINK_CONFIG_OK,
+          zlink_stream_session_bindings (service, &session_rid, bindings, &count));
+        TEST_ASSERT_TRUE (count <= 4);
+        for (size_t i = 0; i < count && i < 4; ++i) {
+            TEST_ASSERT_FALSE (bindings[i].actor.generation == actor.generation
+                               && memcmp (bindings[i].actor.actor_id, actor.actor_id,
+                                          strlen (actor.actor_id) + 1)
+                                    == 0);
+        }
+    }
+
+    TEST_ASSERT_EQUAL_INT (0, shutdown (client_fd, SHUT_RDWR));
+    close (client_fd);
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_stream_session_service_shutdown (service, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_stream_session_service_destroy (&service));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_close (stream));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+#endif
+}
+
 int main ()
 {
     setup_test_environment (120);
@@ -567,6 +720,7 @@ int main ()
     RUN_TEST (test_peers_query_output_is_invariant_on_invalid_element);
     RUN_TEST (test_public_strings_reject_invalid_utf8);
     RUN_TEST (test_timer_destroy_overlapping_fire_completes);
+    RUN_TEST (test_stream_session_bind_destroy_race_leaves_no_binding);
     const int rc = UNITY_END ();
     fflush (NULL);
     return rc;

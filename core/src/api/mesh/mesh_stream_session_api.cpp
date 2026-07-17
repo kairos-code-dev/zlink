@@ -682,11 +682,13 @@ zlink_submit_result_t zlink_stream_session_bind_actor (void *service_,
         errno = EBUSY;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
-    if (!idempotent) {
+    {
         //  The actor was validated before the binding locks were taken; an
-        //  actor destroy may have finished its removal pass in between.
-        //  Re-validate and undo a stale insert so no session ever addresses
-        //  a destroyed generation.
+        //  actor destroy may have finished its removal pass in between. Both
+        //  success shapes re-validate — the inserting call for its own
+        //  insert, and an idempotent call because the binding it observed
+        //  may be a concurrent insert that is itself about to roll back —
+        //  so no call ever reports success for a destroyed generation.
         bool stale = false;
         {
             std::lock_guard<std::mutex> lock (node->mutex);

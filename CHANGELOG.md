@@ -23,7 +23,10 @@ aliases, wrappers or dual runtimes. The public contract is owned by
 - Spot service: logical Spots owned by a MeshNode, direct Spot messaging
   addressed by (node RID, Spot RID, generation), channel-scoped local
   subscriptions (exact/prefix) and Logical Multicast with NODROP=1 default
-  and per-publish admission detail.
+  and per-publish admission detail. Publish detail and multicast monitor
+  events keep the true target snapshot and report peers departing between
+  reserve and commit separately (`unreachable_remote_target_count`;
+  remote snapshot = admitted + dropped + unreachable).
 - Actor service: ActorRef with generation and membership epoch, entry-Spot
   creation transaction, join/leave with epoch CAS, direct Actor mailboxes
   and the transfer fence API surface.

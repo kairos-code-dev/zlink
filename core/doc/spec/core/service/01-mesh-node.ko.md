@@ -92,6 +92,7 @@ typedef struct zlink_mesh_publish_detail_t {
   uint32_t snapshot_remote_target_count;
   uint32_t admitted_remote_target_count;
   uint32_t dropped_remote_target_count;
+  uint32_t unreachable_remote_target_count;
   uint32_t snapshot_local_spot_count;
   uint32_t admitted_local_spot_count;
   uint32_t dropped_local_spot_count;
@@ -377,13 +378,19 @@ reserve하지 않고 `ZLINK_SUBMIT_INVALID_ARGUMENT`, `errno == EINVAL`을 반�
 metadata 입력은 borrowed read-only이며 모든 결과에서 caller가 원본 storage를 소유한다. 성공하면 Core가
 함수 반환 전에 publish operation에 필요한 reference 또는 복사본을 확보한다.
 
-`NODROP=1`은 snapshot의 모든 target이 message를 수락하거나 어느 target에도 전달하지 않는다.
-`DONTWAIT`에서 하나라도 수락할 수 없으면 `ZLINK_SUBMIT_BACKPRESSURED`, `errno == EAGAIN`, blocking
-호출은 `SNDTIMEO` 뒤 `ETIMEDOUT`이다. `NODROP=0`은 수락할 수 없는 target만 drop하고 나머지 target에
-전달한다.
+`NODROP=1`은 snapshot의 모든 target이 message를 수락하거나 어느 target에도 전달하지 않는다. 이
+all-or-none은 capacity admission에 대한 보장이다: capacity 때문에 하나라도 수락할 수 없으면
+`DONTWAIT`에서 `ZLINK_SUBMIT_BACKPRESSURED`, `errno == EAGAIN`, blocking 호출은 `SNDTIMEO` 뒤
+`ETIMEDOUT`이며 어느 target도 message를 받지 않는다. `NODROP=0`은 수락할 수 없는 target만 drop하고
+나머지 target에 전달한다.
 
-detail은 remote와 local 각각의 snapshot, admission과 drop 수를 모든 성공 결과에서 제공한다.
-`NODROP=1` 성공은 두 dropped count가 모두 0이다. remote와 local snapshot target이 모두 0이면
+reserve와 commit 사이에 pipe가 종료된 admitted remote target은 backpressure가 아니라 §5의 peer
+이탈이다. 그런 target은 drop으로 세지 않고 detail의 unreachable count로 보고하며, 이미 commit한
+message를 취소하지 않는다는 §5 규칙에 따라 나머지 snapshot target에는 그대로 전달한다.
+
+detail은 remote와 local 각각의 snapshot, admission과 drop 수, 그리고 remote unreachable 수를 모든
+성공 결과에서 제공한다. remote snapshot은 admitted, dropped, unreachable의 합과 같다. `NODROP=1`
+성공은 두 dropped count가 모두 0이다. remote와 local snapshot target이 모두 0이면
 `ZLINK_SUBMIT_NOT_FOUND`, `errno == ENOENT`다.
 
 topic은 NUL을 포함하지 않는 1..`ZLINK_MESH_TOPIC_MAX`-byte UTF-8 문자열이다. 빈 topic, 잘못된 UTF-8과

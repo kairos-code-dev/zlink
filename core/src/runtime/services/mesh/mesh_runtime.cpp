@@ -83,16 +83,20 @@ uint64_t allocate_lifecycle_generation ()
 {
     //  The spec orders lifecycles of the same RID by generation, including
     //  across process restarts, so the allocator anchors on epoch wall-clock
-    //  milliseconds — NOT now_ms(), whose clock_t source is boot-relative
+    //  MICROseconds — NOT now_ms(), whose clock_t source is boot-relative
     //  CLOCK_MONOTONIC and would move backwards across a reboot — and only
     //  bumps past it to keep same-process allocations strictly increasing.
-    //  Ordering across restarts inherits the usual wall-clock assumption:
-    //  a rolled-back system clock defers to the peer-side conflict handling.
+    //  Core owns no durable state (location authority is the framework's per
+    //  the S0 decisions), so cross-process ordering inherits the wall-clock
+    //  assumption: a same-microsecond restart of the same RID or a
+    //  rolled-back system clock surfaces as the duplicate/stale generation
+    //  admission conflict the peer contract already defines (01-mesh-node
+    //  §5), not as silent replacement.
     static std::atomic<uint64_t> last_generation (0);
     uint64_t previous = last_generation.load (std::memory_order_relaxed);
     for (;;) {
         uint64_t candidate = static_cast<uint64_t> (
-          std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::duration_cast<std::chrono::microseconds> (
             std::chrono::system_clock::now ().time_since_epoch ())
             .count ());
         if (candidate <= previous)
@@ -1008,6 +1012,15 @@ zlink_submit_result_t submit_out_of_memory_result ()
     return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
+std::shared_ptr<zlink::request_timeout::task_t> detach_pending_operation_locked (
+  mesh_node_t *node_, std::unordered_map<uint64_t, pending_operation_t>::iterator op_it_)
+{
+    std::shared_ptr<zlink::request_timeout::task_t> task =
+      op_it_->second.timeout_task;
+    node_->operations.erase (op_it_);
+    return task;
+}
+
 void observe_operation_completed (mesh_node_t *node_,
                                   const zlink_mesh_operation_id_t &operation_id_,
                                   int32_t terminal_result_,
@@ -1091,8 +1104,7 @@ int complete_pending_operation_with_commit (
         std::map<owner_id_t, owner_state_t>::iterator owner_it =
           node_->owners.find (op_it->second.requester);
         if (owner_it == node_->owners.end ()) {
-            timeout_task = op_it->second.timeout_task;
-            node_->operations.erase (op_it);
+            timeout_task = detach_pending_operation_locked (node_, op_it);
             owner_missing = true;
         } else {
             queued_record_t &record = *reservation->records.front ();
@@ -1136,8 +1148,7 @@ int complete_pending_operation_with_commit (
             mailbox.records.splice (mailbox.records.end (), reservation->records);
             mailbox.pending_messages += 1;
             mailbox.pending_bytes += record_bytes;
-            timeout_task = op_it->second.timeout_task;
-            node_->operations.erase (op_it);
+            timeout_task = detach_pending_operation_locked (node_, op_it);
         }
     }
     if (timeout_task)
@@ -1267,8 +1278,7 @@ int commit_prepared_pending_operation (
           mailbox.records.end (), reservation->records);
         mailbox.pending_messages += 1;
         mailbox.pending_bytes += record_bytes;
-        timeout_task = op_it->second.timeout_task;
-        node_->operations.erase (op_it);
+        timeout_task = detach_pending_operation_locked (node_, op_it);
         completion_->active = false;
     }
     if (timeout_task)

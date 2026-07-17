@@ -447,8 +447,7 @@ void actor_apply_remote_join_reply (mesh_node_t *node_,
             actor_it->second = std::move (after);
             left_new_epoch = actor_it->second.membership_epoch;
         }
-        timeout_task = op_it->second.timeout_task;
-        node_->operations.erase (op_it);
+        timeout_task = detach_pending_operation_locked (node_, op_it);
         if (node_->monitor)
             node_->monitor->counters.completed_operations += 1;
         delivered = true;
@@ -1418,7 +1417,6 @@ try {
                 return ZLINK_SUBMIT_OK;
             }
             op = op_it->second;
-            join_timeout_task = op_it->second.timeout_task;
             completion_record->operation_id = op.id;
             completion_record->operation_kind = op.kind;
             completion_record->terminal_result =
@@ -1432,7 +1430,7 @@ try {
             std::map<owner_id_t, owner_state_t>::iterator owner_it =
               node->owners.find (op.requester);
             if (owner_it == node->owners.end ()) {
-                node->operations.erase (op_it);
+                join_timeout_task = detach_pending_operation_locked (node, op_it);
                 route.consumed = true;
                 consumed_without_owner = true;
             }
@@ -1485,7 +1483,7 @@ try {
             }
             mailbox.pending_messages += 1;
             mailbox.pending_bytes += completion_bytes;
-            node->operations.erase (op_it);
+            join_timeout_task = detach_pending_operation_locked (node, op_it);
             route.in_flight = false;
             route.consumed = true;
             deliver_local = true;

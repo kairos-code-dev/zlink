@@ -341,20 +341,45 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
         }
     }
 
+    //  The handler must be visible before the dispatch task's first tick (a
+    //  tick that sees no handler drops the event it already consumed), so
+    //  publish first — but restore the previous registration on any task
+    //  failure so a failed call leaves the handle exactly as it was and no
+    //  allocation failure escapes the C surface.
+    zlink_monitor_handler_fn prev_handler =
+      state->socket_handler.load (std::memory_order_acquire);
+    void *prev_userdata = state->socket_handler_userdata.load (std::memory_order_acquire);
+    monitor_snapshot_provider_fn prev_provider =
+      state->snapshot_provider.load (std::memory_order_acquire);
+    void *prev_subject = state->snapshot_subject.load (std::memory_order_acquire);
     state->socket_handler.store (socket_handler_, std::memory_order_release);
     state->socket_handler_userdata.store (socket_handler_userdata_, std::memory_order_release);
     state->snapshot_provider.store (snapshot_provider_, std::memory_order_release);
     state->snapshot_subject.store (snapshot_subject_, std::memory_order_release);
     if (socket_handler_ && state->dispatch_task_id == 0) {
+        int failure_errno = 0;
+        uint64_t task_id = 0;
         zlink::service_control_runtime_t *runtime = socket_->get_ctx ()->service_control_runtime ();
         if (!runtime) {
-            errno = ETERM;
+            failure_errno = ETERM;
+        } else {
+            try {
+                task_id = runtime->add_periodic_task (&monitor_handler_task, state, 10, true);
+            }
+            catch (const std::bad_alloc &) {
+                failure_errno = ENOMEM;
+            }
+        }
+        if (task_id == 0) {
+            state->socket_handler.store (prev_handler, std::memory_order_release);
+            state->socket_handler_userdata.store (prev_userdata, std::memory_order_release);
+            state->snapshot_provider.store (prev_provider, std::memory_order_release);
+            state->snapshot_subject.store (prev_subject, std::memory_order_release);
+            if (failure_errno != 0)
+                errno = failure_errno;
             return -1;
         }
-        state->dispatch_task_id =
-          runtime->add_periodic_task (&monitor_handler_task, state, 10, true);
-        if (state->dispatch_task_id == 0)
-            return -1;
+        state->dispatch_task_id = task_id;
     }
     return 0;
 }

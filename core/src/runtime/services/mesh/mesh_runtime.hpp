@@ -697,6 +697,15 @@ uint64_t now_ms ();
 //  generation. Orders restarted lifecycles of the same RID (01-mesh-node §4).
 uint64_t allocate_lifecycle_generation ();
 
+//  The one owner of terminal operation removal: detaches the operation's
+//  timeout task and erases the entry under the caller-held node mutex. The
+//  caller cancels the returned task after releasing the mutex (a firing
+//  timeout handler takes that mutex, and the scheduler resolves self-cancel).
+//  Every terminal path must consume operations through this primitive so no
+//  new path can forget the task handoff.
+std::shared_ptr<zlink::request_timeout::task_t> detach_pending_operation_locked (
+  mesh_node_t *node_, std::unordered_map<uint64_t, pending_operation_t>::iterator op_it_);
+
 //  Validates a canonical application metadata frame. Returns 0 or -1/EINVAL.
 int validate_metadata (const uint8_t *data_, size_t size_);
 

@@ -4,6 +4,7 @@
 #include "testutil_monitoring.hpp"
 #include "testutil_unity.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -1457,6 +1458,80 @@ void test_stream_ready_with_monitor_callback_and_socket_callback ()
     run_stream_ready_matrix (monitor_callback_mode, socket_callback_mode);
 }
 
+namespace
+{
+struct self_close_probe_t
+{
+    self_close_probe_t () : monitor (NULL), callbacks (0), close_rc (-1) {}
+    std::atomic<void *> monitor;
+    std::atomic<int> callbacks;
+    std::atomic<int> close_rc;
+};
+
+void self_close_monitor_handler (const zlink_monitor_event_t *, void *userdata_)
+{
+    self_close_probe_t *probe = static_cast<self_close_probe_t *> (userdata_);
+    probe->callbacks.fetch_add (1, std::memory_order_relaxed);
+    void *monitor = probe->monitor.exchange (NULL, std::memory_order_acq_rel);
+    if (monitor)
+        probe->close_rc.store (static_cast<int> (zlink_monitor_close (&monitor)),
+                               std::memory_order_release);
+}
+}
+
+void test_monitor_handler_attach_with_queued_events_and_self_close ()
+{
+    //  Regression for S5-13-01: attaching a handler arms an immediate
+    //  dispatch task, and with events already queued its first tick races the
+    //  registration commit. A self-close from that first callback must
+    //  observe the completed task identity, remove the dispatch task and tear
+    //  the monitor down exactly once instead of leaving a periodic task that
+    //  reuses freed state.
+    for (int i = 0; i != 10; i++) {
+        void *server = test_context_socket (ZLINK_SOCKET_PAIR);
+        void *client = test_context_socket (ZLINK_SOCKET_PAIR);
+        TEST_ASSERT_NOT_NULL (server);
+        TEST_ASSERT_NOT_NULL (client);
+        configure_pair_socket (server);
+        configure_pair_socket (client);
+
+        zlink_socket_monitor_open_options_t monitor_opts;
+        memset (&monitor_opts, 0, sizeof (monitor_opts));
+        monitor_opts.events = ZLINK_EVENT_ALL;
+        void *monitor = zlink_socket_monitor_open (server, &monitor_opts);
+        TEST_ASSERT_NOT_NULL (monitor);
+        configure_pair_socket (monitor);
+
+        char endpoint[MAX_SOCKET_STRING];
+        bind_loopback_ipv4 (server, endpoint, sizeof (endpoint));
+        TEST_ASSERT_SUCCESS_ERRNO (zlink_connect (client, endpoint));
+        //  Let listen/accept/ready events queue up before the handler exists.
+        msleep (50);
+
+        self_close_probe_t probe;
+        probe.monitor.store (monitor, std::memory_order_release);
+        TEST_ASSERT_SUCCESS_ERRNO (
+          zlink_socket_monitor_handler (monitor, &self_close_monitor_handler, &probe));
+
+        void *watch = zlink_stopwatch_start ();
+        while (probe.monitor.load (std::memory_order_acquire) != NULL) {
+            msleep (1);
+            TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (
+              3000000UL, zlink_stopwatch_intermediate (watch),
+              "Timeout waiting for the self-closing monitor callback");
+        }
+        zlink_stopwatch_stop (watch);
+        TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_CLOSE_OK),
+                               probe.close_rc.load (std::memory_order_acquire));
+        //  The dispatch task must be gone with the state; give a stray tick
+        //  time to crash before teardown if the regression returns.
+        msleep (50);
+
+        test_context_socket_close_zero_linger (client);
+        test_context_socket_close_zero_linger (server);
+    }
+}
+
 int main ()
 {
     setup_test_environment (120);
@@ -1474,5 +1549,6 @@ int main ()
     RUN_TEST (test_pubsub_delivery_ready_reaches_1000_subscribers);
     RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_recv);
     RUN_TEST (test_stream_ready_with_monitor_recv_and_socket_callback);
+    RUN_TEST (test_monitor_handler_attach_with_queued_events_and_self_close);
     return UNITY_END ();
 }

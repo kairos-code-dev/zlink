@@ -91,7 +91,16 @@ uint64_t service_control_runtime_t::add_periodic_task (service_control_task_fn *
 
     std::pair<std::map<uint64_t, task_entry_t>::iterator, bool> inserted =
       _tasks.insert (std::make_pair (task.id, task));
-    schedule_task_locked (&inserted.first->second);
+    try {
+        schedule_task_locked (&inserted.first->second);
+    }
+    catch (const std::bad_alloc &) {
+        //  Strong rollback: a task entry without a schedule slot would be
+        //  invisible to the loop but still claim the ID.
+        _tasks.erase (inserted.first);
+        errno = ENOMEM;
+        return 0;
+    }
     _cv.broadcast ();
     return task.id;
 }

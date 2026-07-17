@@ -346,6 +346,12 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
     //  publish first — but restore the previous registration on any task
     //  failure so a failed call leaves the handle exactly as it was and no
     //  allocation failure escapes the C surface.
+    //  dispatch_sync covers publication through dispatch_task_id storage:
+    //  monitor_handler_task takes the same lock before loading the handler,
+    //  so an immediate tick cannot run the callback (and a self-close cannot
+    //  snapshot a not-yet-stored task ID) until registration has committed
+    //  its complete identity.
+    zlink::scoped_lock_t dispatch_lock (state->dispatch_sync);
     zlink_monitor_handler_fn prev_handler =
       state->socket_handler.load (std::memory_order_acquire);
     void *prev_userdata = state->socket_handler_userdata.load (std::memory_order_acquire);

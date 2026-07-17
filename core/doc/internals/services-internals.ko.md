@@ -54,6 +54,12 @@ zlink_ctx
 - 핸들 유효성은 전역 immortal registry(`registry ()`)가 판정한다. 정적 소멸
   순서 문제를 피하기 위해 registry 저장소는 의도적으로 누수시킨다(요청
   timeout scheduler와 같은 패턴).
+- 공개 진입점은 registry pin(RAII `mesh_node_pin_t`)으로 node 수명을
+  잡는다: destroy는 registry에서 handle을 제거한 뒤 pin이 0이 될 때까지
+  대기하고 나서야 storage를 해제한다. shutdown 전용 pin은 destroy claim을
+  §11 재진입(`EDEADLK`)으로 거절하고, destroy claim은 이중 destroy를
+  `ESTALE`로 거절한다. blocking 대기 경로는 destroy의 forced-stop 통지에
+  깨어나 상태 검사로 반환하므로 pin은 유한 시간 안에 빠진다.
 - `owner_id_t`는 (kind, key, generation)이다. Spot·Actor generation이 다르면
   다른 mailbox다. 낡은 generation으로의 접근은 mailbox 부재로 끝난다.
 - `Spot` facade와 publisher, monitor, STREAM session service는 모두 node의

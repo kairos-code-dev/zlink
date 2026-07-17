@@ -21,7 +21,8 @@ void track_monitor (monitor_state_t *monitor_, bool live_);
 void *zlink_mesh_node_monitor_open (void *mesh_node_,
                                     const zlink_mesh_monitor_open_options_t *options_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return NULL;

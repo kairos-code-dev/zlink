@@ -393,7 +393,8 @@ zlink_request_result_t zlink_mesh_node_actor_new (void *mesh_node_,
                                                   zlink_send_flags_t flags_,
                                                   uint32_t timeout_ms_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_REQUEST_INVALID_ARGUMENT;
@@ -497,7 +498,8 @@ zlink_config_result_t zlink_mesh_node_actor_lookup (void *mesh_node_,
                                                     const char *actor_id_,
                                                     zlink_actor_location_t *location_out_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -523,7 +525,8 @@ zlink_submit_result_t zlink_mesh_node_actor_lookup_remote (void *mesh_node_,
                                                            zlink_mesh_operation_id_t *operation_id_out_,
                                                            uint32_t timeout_ms_)
 try {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
@@ -582,7 +585,8 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
                                                      zlink_mesh_operation_id_t *operation_id_out_,
                                                      uint32_t timeout_ms_)
 try {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
@@ -778,7 +782,8 @@ zlink_submit_result_t zlink_mesh_node_actor_join_spot (void *mesh_node_,
                                                        zlink_mesh_operation_id_t *operation_id_out_,
                                                        uint32_t timeout_ms_)
 try {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
@@ -937,7 +942,8 @@ zlink_submit_result_t zlink_mesh_node_actor_join_entry_spot (void *mesh_node_,
                                                              zlink_mesh_operation_id_t *operation_id_out_,
                                                              uint32_t timeout_ms_)
 try {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
@@ -1024,7 +1030,8 @@ zlink_submit_result_t zlink_mesh_node_actor_leave_spot (void *mesh_node_,
                                                         zlink_mesh_operation_id_t *operation_id_out_,
                                                         uint32_t timeout_ms_)
 try {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
@@ -1124,7 +1131,8 @@ try {
     uint64_t serial = 0;
     if (unseal_reply_token (token_, &node_ptr, &serial) != 0)
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    mesh_node_t *node = as_mesh_node (node_ptr);
+    mesh_node_pin_t node_pin (node_ptr);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESHUTDOWN;
         return ZLINK_SUBMIT_INVALID_STATE;
@@ -1274,7 +1282,8 @@ zlink_submit_result_t actor_submit (void *mesh_node_,
                                     zlink_send_flags_t flags_,
                                     uint32_t timeout_ms_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;

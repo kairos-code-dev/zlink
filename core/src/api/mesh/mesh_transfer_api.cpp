@@ -688,7 +688,8 @@ zlink_mesh_node_actor_transfer_prepare (void *mesh_node_,
                                         zlink_actor_transfer_token_t *token_out_,
                                         zlink_actor_transfer_prepare_result_t *result_out_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_REQUEST_INVALID_ARGUMENT;
@@ -936,7 +937,8 @@ zlink_mesh_node_actor_transfer_commit (const zlink_actor_transfer_token_t *token
     uint64_t serial = 0;
     if (unseal_transfer_token (token_, &node_ptr, &serial) != 0)
         return ZLINK_CONFIG_INVALID_STATE;
-    mesh_node_t *node = as_mesh_node (node_ptr);
+    mesh_node_pin_t node_pin (node_ptr);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESTALE;
         return ZLINK_CONFIG_INVALID_STATE;
@@ -1097,7 +1099,8 @@ zlink_mesh_node_actor_transfer_activate (const zlink_actor_transfer_token_t *tok
     uint64_t serial = 0;
     if (unseal_transfer_token (token_, &node_ptr, &serial) != 0)
         return ZLINK_CONFIG_INVALID_STATE;
-    mesh_node_t *node = as_mesh_node (node_ptr);
+    mesh_node_pin_t node_pin (node_ptr);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESTALE;
         return ZLINK_CONFIG_INVALID_STATE;
@@ -1180,7 +1183,8 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
     uint64_t serial = 0;
     if (unseal_transfer_token (token_, &node_ptr, &serial) != 0)
         return ZLINK_CONFIG_INVALID_STATE;
-    mesh_node_t *node = as_mesh_node (node_ptr);
+    mesh_node_pin_t node_pin (node_ptr);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESTALE;
         return ZLINK_CONFIG_INVALID_STATE;

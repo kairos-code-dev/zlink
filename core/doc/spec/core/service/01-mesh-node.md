@@ -557,7 +557,11 @@ subscription inventory or internal mailbox-data-structure query.
 
 Send, request, publish, weight changes, peer intents, and queries are
 thread-safe. Lifecycle configuration cannot run concurrently with start.
-Reentrant shutdown or destroy on the same handle returns `EDEADLK`.
+Reentrant shutdown or destroy on the same handle returns `EDEADLK`. Destroy
+does not release the handle storage until every call that already entered
+has returned, and a call entering after destroy removed the handle from the
+registry fails with `EFAULT`. A second concurrent destroy of the same handle
+returns `ESTALE`.
 
 Validation order is argument, state, target lookup, then backpressure. A new
 submit while draining therefore returns `ZLINK_SUBMIT_INVALID_STATE` with

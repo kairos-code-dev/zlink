@@ -32,7 +32,8 @@ int zlink::mesh::set_common_option (void *handle_,
                                     const void *optval_,
                                     size_t optvallen_)
 {
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         //  Spot and publisher handles take no common options.
         errno = ENOTSUP;
@@ -88,7 +89,8 @@ int zlink::mesh::set_common_option (void *handle_,
 
 int zlink::mesh::get_common_option (void *handle_, int option_, void *optval_, size_t *optvallen_)
 {
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ENOTSUP;
         return -1;
@@ -137,7 +139,8 @@ int zlink::mesh::get_common_option (void *handle_, int option_, void *optval_, s
 
 int zlink::mesh::set_routing_id (void *handle_, const void *data_, size_t size_)
 {
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ENOTSUP;
         return -1;
@@ -158,7 +161,8 @@ int zlink::mesh::set_routing_id (void *handle_, const void *data_, size_t size_)
 
 int zlink::mesh::get_routing_id (void *handle_, zlink_routing_id_t *out_)
 {
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ENOTSUP;
         return -1;
@@ -178,7 +182,8 @@ int zlink::mesh::set_tls_server (void *handle_,
                                  int require_client_cert_)
 {
     LIBZLINK_UNUSED (require_client_cert_);
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ENOTSUP;
         return -1;
@@ -203,7 +208,8 @@ int zlink::mesh::set_tls_client (void *handle_,
                                  int trust_system_)
 {
     LIBZLINK_UNUSED (trust_system_);
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ENOTSUP;
         return -1;
@@ -289,7 +295,8 @@ bool zlink::mesh::spot_timer_enter_turn (void *timer_)
             return true; //  not Spot-owned: plain timer contract
         entry = it->second;
     }
-    mesh_node_t *node = as_mesh_node (entry.node);
+    mesh_node_pin_t node_pin (entry.node);
+    mesh_node_t *node = node_pin.get ();
     if (!node)
         return false;
     std::unique_lock<std::mutex> lock (node->mutex);
@@ -339,7 +346,8 @@ void zlink::mesh::spot_timer_cancel (void *timer_)
         it->second.cancelled = true;
         node = it->second.node;
     }
-    mesh_node_t *live = as_mesh_node (node);
+    mesh_node_pin_t live_pin (node);
+    mesh_node_t *live = live_pin.get ();
     if (!live)
         return;
     std::lock_guard<std::mutex> lock (live->mutex);
@@ -358,7 +366,8 @@ void zlink::mesh::spot_timer_leave_turn (void *timer_)
             return;
         entry = it->second;
     }
-    mesh_node_t *node = as_mesh_node (entry.node);
+    mesh_node_pin_t node_pin (entry.node);
+    mesh_node_t *node = node_pin.get ();
     if (!node)
         return;
     {
@@ -386,7 +395,8 @@ bool zlink::mesh::spot_timer_tick_allowed (void *timer_)
             return true;
         entry = it->second;
     }
-    mesh_node_t *node = as_mesh_node (entry.node);
+    mesh_node_pin_t node_pin (entry.node);
+    mesh_node_t *node = node_pin.get ();
     if (!node)
         return false;
     std::lock_guard<std::mutex> lock (node->mutex);
@@ -407,7 +417,8 @@ void zlink::mesh::spot_timer_closed (void *timer_)
         entry = it->second;
         reg.timers.erase (it);
     }
-    mesh_node_t *node = as_mesh_node (entry.node);
+    mesh_node_pin_t node_pin (entry.node);
+    mesh_node_t *node = node_pin.get ();
     if (!node)
         return;
     std::lock_guard<std::mutex> lock (node->mutex);
@@ -422,7 +433,8 @@ void zlink::mesh::spot_timer_closed (void *timer_)
 int zlink::mesh::poller_add (void *poller_, void *handle_, void *user_data_, short events_)
 {
     poller_handle_t *poller = as_poller_handle (poller_);
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!poller || !node) {
         errno = EFAULT;
         return -1;
@@ -464,7 +476,8 @@ int zlink::mesh::poller_add (void *poller_, void *handle_, void *user_data_, sho
 int zlink::mesh::poller_modify (void *poller_, void *handle_, short events_)
 {
     poller_handle_t *poller = as_poller_handle (poller_);
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!poller || !node) {
         errno = EFAULT;
         return -1;
@@ -489,7 +502,8 @@ int zlink::mesh::poller_modify (void *poller_, void *handle_, short events_)
 int zlink::mesh::poller_remove (void *poller_, void *handle_)
 {
     poller_handle_t *poller = as_poller_handle (poller_);
-    mesh_node_t *node = as_mesh_node (handle_);
+    mesh_node_pin_t node_pin (handle_);
+    mesh_node_t *node = node_pin.get ();
     if (!poller || !node) {
         errno = EFAULT;
         return -1;

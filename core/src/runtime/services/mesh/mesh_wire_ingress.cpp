@@ -551,6 +551,14 @@ void handle_actor_left (mesh_node_t *node_,
     }
 }
 
+void handle_reply_tail (mesh_node_t *node_,
+                        const pending_operation_t &op,
+                        const rid_bytes_t &source_rid_,
+                        int32_t terminal_result_,
+                        int32_t failure_errno_,
+                        wire_reader_t &tail_,
+                        std::vector<zlink_msg_t> *parts_);
+
 void handle_reply (mesh_node_t *node_,
                    const rid_bytes_t &source_rid_,
                    uint64_t correlation_,
@@ -576,7 +584,28 @@ void handle_reply (mesh_node_t *node_,
         node_->operations.erase (it);
     }
 
-    //  Operation-specific reply tails.
+    //  Operation-specific reply tails. The operation bookkeeping is already
+    //  consumed above, so an allocation failure past this point must not
+    //  silently drop the completion: it degrades into an INTERNAL_ERROR /
+    //  ENOMEM terminal instead (exactly-once is preserved; complete_operation
+    //  itself is allocation-failure safe).
+    try {
+        handle_reply_tail (node_, op, source_rid_, terminal_result_, failure_errno_, tail_,
+                           parts_);
+    }
+    catch (const std::bad_alloc &) {
+        complete_operation (node_, op, ZLINK_REQUEST_INTERNAL_ERROR, ENOMEM, NULL, NULL);
+    }
+}
+
+void handle_reply_tail (mesh_node_t *node_,
+                        const pending_operation_t &op,
+                        const rid_bytes_t &source_rid_,
+                        int32_t terminal_result_,
+                        int32_t failure_errno_,
+                        wire_reader_t &tail_,
+                        std::vector<zlink_msg_t> *parts_)
+{
     if (op.kind == ZLINK_MESH_OPERATION_ACTOR_JOIN) {
         uint32_t join_result = ZLINK_ACTOR_JOIN_REJECTED;
         rid_bytes_t spot_rid;

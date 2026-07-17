@@ -183,7 +183,8 @@ void *zlink_mesh_node_new (void *ctx_, const zlink_mesh_node_options_t *options_
 
 zlink_config_result_t zlink_mesh_node_set_bind (void *mesh_node_, const char *endpoint_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -203,7 +204,8 @@ zlink_config_result_t zlink_mesh_node_set_bind (void *mesh_node_, const char *en
 
 zlink_config_result_t zlink_mesh_node_add_channel_name (void *mesh_node_, const char *channel_name_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -228,7 +230,8 @@ zlink_config_result_t zlink_mesh_node_add_channel_name (void *mesh_node_, const 
 zlink_config_result_t
 zlink_mesh_node_set_channel_weight (void *mesh_node_, const char *channel_name_, uint32_t weight_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -271,7 +274,8 @@ zlink_mesh_node_set_channel_weight (void *mesh_node_, const char *channel_name_,
 
 zlink_config_result_t zlink_mesh_node_start (void *mesh_node_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -533,7 +537,8 @@ zlink_connect_result_t zlink_mesh_node_connect_peer (
   const zlink_mesh_peer_connection_options_t *options_,
   uint64_t *connection_intent_id_out_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
@@ -613,7 +618,8 @@ zlink_connect_result_t zlink_mesh_node_connect_peer (
 zlink_connect_result_t zlink_mesh_node_remove_peer_connection (void *mesh_node_,
                                                                uint64_t connection_intent_id_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
@@ -641,7 +647,8 @@ zlink_connect_result_t zlink_mesh_node_disconnect_peer (void *mesh_node_,
                                                         const zlink_routing_id_t *peer_rid_,
                                                         uint64_t lifecycle_generation_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONNECT_INVALID_HANDLE;
@@ -690,7 +697,8 @@ zlink_config_result_t zlink_set_mesh_node_option (void *mesh_node_,
                                                   const void *optval_,
                                                   size_t optvallen_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -751,7 +759,8 @@ zlink_config_result_t zlink_get_mesh_node_option (void *mesh_node_,
                                                   void *optval_,
                                                   size_t *optvallen_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -798,7 +807,8 @@ zlink_config_result_t zlink_get_mesh_node_option (void *mesh_node_,
 
 zlink_config_result_t zlink_mesh_node_status (void *mesh_node_, zlink_mesh_node_status_t *status_out_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -848,7 +858,8 @@ zlink_config_result_t zlink_mesh_node_status (void *mesh_node_, zlink_mesh_node_
 zlink_config_result_t
 zlink_mesh_node_peers (void *mesh_node_, zlink_mesh_peer_entry_t *entries_, size_t *count_inout_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -906,7 +917,8 @@ zlink_mesh_node_peer_channels (void *mesh_node_,
                                uint32_t *weights_out_,
                                size_t *count_inout_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -952,7 +964,8 @@ zlink_mesh_node_peer_channels (void *mesh_node_,
 
 void *zlink_spot_new (void *mesh_node_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return NULL;
@@ -990,7 +1003,8 @@ zlink_config_result_t zlink_mesh_node_entry_spot (void *mesh_node_, void **spot_
 zlink_config_result_t
 zlink_mesh_node_spot_lookup (void *mesh_node_, const zlink_routing_id_t *spot_rid_, void **spot_out_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node || !spot_out_) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -1023,7 +1037,8 @@ zlink_config_result_t zlink_mesh_node_spot_get_or_new (void *mesh_node_,
                                                        void **spot_out_,
                                                        uint32_t *created_out_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node || !spot_out_) {
         errno = EFAULT;
         return ZLINK_CONFIG_INVALID_HANDLE;
@@ -1129,7 +1144,8 @@ zlink_config_result_t zlink_spot_status (void *spot_, zlink_spot_status_t *statu
 
 void *zlink_mesh_node_publisher_new (void *mesh_node_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return NULL;

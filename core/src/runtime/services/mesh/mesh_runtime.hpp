@@ -605,6 +605,30 @@ void test_maybe_throw_alloc ();
 #endif
 mesh_node_t *pin_node_lifecycle (void *handle_, int *errno_out_);
 void unpin_node_lifecycle (mesh_node_t *node_);
+//  Data-path pin: validates the handle under the registry mutex and keeps
+//  the node's storage alive until release. Unlike the shutdown pin it does
+//  not reject a claimed-but-uncommitted destroy — a committed destroy is
+//  invisible here because it unregisters first and then waits for pins.
+mesh_node_t *pin_node_data_path (void *handle_);
+
+//  RAII wrapper for pin_node_data_path: replaces raw as_mesh_node() use in
+//  public entry points so no call can outlive the node it validated.
+class mesh_node_pin_t
+{
+  public:
+    explicit mesh_node_pin_t (void *handle_) : _node (pin_node_data_path (handle_)) {}
+    ~mesh_node_pin_t ()
+    {
+        if (_node)
+            unpin_node_lifecycle (_node);
+    }
+    mesh_node_t *get () const { return _node; }
+
+  private:
+    mesh_node_t *_node;
+    mesh_node_pin_t (const mesh_node_pin_t &);
+    mesh_node_pin_t &operator= (const mesh_node_pin_t &);
+};
 mesh_node_t *claim_node_destroy (void *handle_);
 void release_node_destroy_claim (mesh_node_t *node_);
 void unregister_node_and_wait_lifecycle_quiesced (mesh_node_t *node_);

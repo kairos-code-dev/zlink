@@ -328,7 +328,8 @@ void for_each_actor_binding (mesh_node_t *node_,
 
 void *zlink_stream_session_service_new (void *mesh_node_, void *stream_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return NULL;
@@ -469,7 +470,8 @@ zlink_close_result_t zlink_stream_session_service_destroy (void **service_p_)
     zlink::stream_t *stream = service_stream (service);
     if (stream)
         stream->clear_session_observer (service);
-    mesh_node_t *node = as_mesh_node (service->node);
+    mesh_node_pin_t node_pin (service->node);
+    mesh_node_t *node = node_pin.get ();
     std::vector<uint64_t> terminate_operations;
     std::vector<uint64_t> remove_reply_routes;
     {
@@ -592,7 +594,8 @@ try {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
-    mesh_node_t *node = as_mesh_node (service->node);
+    mesh_node_pin_t node_pin (service->node);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESHUTDOWN;
         return ZLINK_SUBMIT_INVALID_STATE;
@@ -742,7 +745,8 @@ try {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
-    mesh_node_t *node = as_mesh_node (service->node);
+    mesh_node_pin_t node_pin (service->node);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESHUTDOWN;
         return ZLINK_SUBMIT_INVALID_STATE;
@@ -1046,13 +1050,20 @@ zlink_stream_session_request_to_actor (void *service_,
                                        zlink_mesh_operation_id_t *operation_id_out_,
                                        zlink_send_flags_t flags_,
                                        uint32_t timeout_ms_)
-{
+try {
     if (!operation_id_out_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     return session_to_actor_submit (service_, session_rid_, actor_, actor_metadata_, parts_,
                                     part_count_, operation_id_out_, flags_, timeout_ms_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_mesh_node_actor_send_bound_session (void *mesh_node_,
@@ -1061,7 +1072,8 @@ zlink_submit_result_t zlink_mesh_node_actor_send_bound_session (void *mesh_node_
                                                                 size_t part_count_,
                                                                 zlink_send_flags_t flags_)
 try {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
@@ -1137,7 +1149,8 @@ zlink_submit_result_t zlink_mesh_node_actor_close_bound_session (void *mesh_node
                                                                  zlink_mesh_operation_id_t *operation_id_out_,
                                                                  uint32_t timeout_ms_)
 try {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;

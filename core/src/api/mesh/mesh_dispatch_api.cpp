@@ -130,7 +130,9 @@ zlink_close_result_t release_claim_body (const claim_body_t &body_)
     if (recall_claim_key (body_.serial, &owner) != 0)
         return ZLINK_CLOSE_INVALID_HANDLE;
 
-    mesh_node_t *node = as_mesh_node (body_.node);
+    mesh_node_pin_t node_pin (body_.node);
+
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         //  Node already destroyed: claim storage is gone with it.
         forget_claim_key (body_.serial);
@@ -169,7 +171,8 @@ zlink_handler_result_t zlink_mesh_node_set_ready_handler (void *mesh_node_,
                                                           zlink_mesh_ready_handler_fn handler_,
                                                           void *userdata_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_HANDLER_INVALID_HANDLE;
@@ -294,7 +297,8 @@ zlink_recv_result_t zlink_mesh_node_drain_ready (void *mesh_node_,
                                                  uint32_t *has_residue_out_,
                                                  zlink_recv_flags_t flags_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     ready_batch_t *batch = as_ready_batch (batch_);
     if (!node || !batch || !has_residue_out_) {
         errno = EFAULT;
@@ -551,7 +555,8 @@ zlink_recv_result_t zlink_mesh_claim_recv_batch (zlink_mesh_claim_t *claim_,
     claim_body_t body;
     if (unseal_claim (claim_, &body) != 0)
         return ZLINK_RECV_INVALID_STATE;
-    mesh_node_t *node = as_mesh_node (body.node);
+    mesh_node_pin_t node_pin (body.node);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESHUTDOWN;
         return ZLINK_RECV_INVALID_STATE;
@@ -801,7 +806,8 @@ try {
     uint64_t serial = 0;
     if (unseal_reply_token (token_, &node_ptr, &serial) != 0)
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
-    mesh_node_t *node = as_mesh_node (node_ptr);
+    mesh_node_pin_t node_pin (node_ptr);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = ESHUTDOWN;
         return ZLINK_SUBMIT_INVALID_STATE;

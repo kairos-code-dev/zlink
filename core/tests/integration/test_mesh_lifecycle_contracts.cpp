@@ -603,6 +603,53 @@ void test_destroy_waits_for_pinned_shutdown ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+//  Concurrent data-path submits race a destroy: calls that already entered
+//  finish against live storage (destroy waits for their pins), calls after
+//  the registry removal fail with EFAULT, and nothing crashes under ASAN.
+void test_destroy_waits_for_concurrent_submits ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "pin-hammer-mesh", "jobs");
+
+    std::atomic<bool> stop (false);
+    std::atomic<int> invalid_handle_seen (0);
+    std::vector<std::thread> workers;
+    for (int w = 0; w < 4; ++w) {
+        workers.emplace_back ([&] () {
+            while (!stop.load ()) {
+                zlink_msg_t part;
+                if (zlink_msg_init_size (&part, 4) != 0)
+                    break;
+                memcpy (zlink_msg_data (&part), "spam", 4);
+                const zlink_submit_result_t rc = zlink_mesh_node_send_to_channel (
+                  node, "jobs", NULL, &part, 1, ZLINK_SEND_FLAGS_DONTWAIT);
+                zlink_msg_close (&part);
+                if (rc == ZLINK_SUBMIT_INVALID_HANDLE) {
+                    ++invalid_handle_seen;
+                    break;
+                }
+            }
+        });
+    }
+    msleep (150);
+    void *doomed = node;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&doomed));
+    stop.store (true);
+    for (size_t w = 0; w < workers.size (); ++w)
+        workers[w].join ();
+
+    //  Post-destroy entry is an invalid handle.
+    zlink_msg_t part;
+    make_payload (&part, "late");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_INVALID_HANDLE,
+                           zlink_mesh_node_send_to_channel (node, "jobs", NULL, &part, 1,
+                                                            ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (EFAULT, zlink_errno ());
+    zlink_msg_close (&part);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 //  Injected allocation failures on the submit paths surface as the formal
 //  ZLINK_SUBMIT_OUT_OF_MEMORY/ENOMEM mapping — never as an escaping
 //  exception — and the next unarmed call succeeds cleanly.
@@ -877,6 +924,7 @@ int main ()
     RUN_TEST (test_timer_destroy_overlapping_fire_completes);
     RUN_TEST (test_destroy_during_shutdown_wait_is_deadlock_error);
     RUN_TEST (test_destroy_waits_for_pinned_shutdown);
+    RUN_TEST (test_destroy_waits_for_concurrent_submits);
     RUN_TEST (test_submit_alloc_failure_maps_to_out_of_memory);
     RUN_TEST (test_stream_session_bind_destroy_race_leaves_no_binding);
     const int rc = UNITY_END ();

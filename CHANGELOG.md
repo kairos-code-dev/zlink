@@ -63,9 +63,10 @@ aliases, wrappers or dual runtimes. The public contract is owned by
   MIXED intent merge, drain/reconnect), the monitor event matrix
   (`test_mesh_monitor_matrix`, 6 cases), dispatch stress
   (`test_mesh_stress`, 3 cases) and lifecycle contracts
-  (`test_mesh_lifecycle_contracts`, 12 cases including the bind/destroy
-  race hammer, both shutdown/destroy lifecycle re-entry orders and the
-  injected submit-path OOM mapping).
+  (`test_mesh_lifecycle_contracts`, 13 cases including the bind/destroy
+  race hammer, concurrent submit/destroy lifetime pinning, both
+  shutdown/destroy lifecycle re-entry orders and the injected submit-path
+  OOM mapping).
 - Sanitizers: ASAN/UBSAN+leak clean on the mesh suite; TSAN reports zero
   races in new mesh code (four pre-existing 9.x machinery observations are
   tracked for review).

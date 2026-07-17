@@ -448,6 +448,20 @@ mesh_node_t *pin_node_lifecycle (void *handle_, int *errno_out_)
     return node;
 }
 
+mesh_node_t *pin_node_data_path (void *handle_)
+{
+    if (!handle_)
+        return NULL;
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    if (!registry ().live_nodes.count (handle_))
+        return NULL;
+    mesh_node_t *node = static_cast<mesh_node_t *> (handle_);
+    if (!node->check_tag ())
+        return NULL;
+    node->lifecycle_pins += 1;
+    return node;
+}
+
 void unpin_node_lifecycle (mesh_node_t *node_)
 {
     std::lock_guard<std::mutex> lock (registry ().mutex);
@@ -504,11 +518,14 @@ mesh_node_t *as_mesh_node (void *handle_)
 {
     if (!handle_)
         return NULL;
-    {
-        std::lock_guard<std::mutex> lock (registry ().mutex);
-        if (!registry ().live_nodes.count (handle_))
-            return NULL;
-    }
+    //  The tag dereference stays under the registry mutex: a committed
+    //  destroy unregisters (needing this mutex) before it deletes, so
+    //  membership observed here implies the storage is still alive. The
+    //  returned pointer is only lifetime-safe for pinned callers; unpinned
+    //  use is limited to membership probes.
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    if (!registry ().live_nodes.count (handle_))
+        return NULL;
     mesh_node_t *node = static_cast<mesh_node_t *> (handle_);
     return node->check_tag () ? node : NULL;
 }

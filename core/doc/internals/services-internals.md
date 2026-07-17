@@ -55,6 +55,13 @@ zlink_ctx
 - Handle validity is decided by a global immortal registry (`registry ()`).
   Its storage is intentionally leaked to avoid static destruction ordering
   problems (the same pattern as the request timeout scheduler).
+- Public entry points hold the node's lifetime through a registry pin (RAII
+  `mesh_node_pin_t`): destroy removes the handle from the registry and then
+  waits for the pin count to drain before releasing the storage. The
+  shutdown-only pin rejects a claimed destroy as the §11 re-entry
+  (`EDEADLK`), and the destroy claim rejects a second destroy with
+  `ESTALE`. Blocking wait paths wake on destroy's forced-stop notification
+  and return through their state checks, so pins drain in bounded time.
 - `owner_id_t` is (kind, key, generation). A different Spot/Actor generation is
   a different mailbox; access through a stale generation ends as a missing
   mailbox.

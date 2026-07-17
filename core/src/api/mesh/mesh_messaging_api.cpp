@@ -30,7 +30,8 @@ void on_operation_timeout (void *userdata_)
       static_cast<operation_timeout_ctx_t *> (userdata_));
     if (!ctx.get ())
         return;
-    mesh_node_t *node = as_mesh_node (ctx->node);
+    mesh_node_pin_t node_pin (ctx->node);
+    mesh_node_t *node = node_pin.get ();
     if (!node)
         return;
     pending_operation_t op;
@@ -352,7 +353,8 @@ zlink_submit_result_t node_channel_submit (void *mesh_node_,
                                            zlink_send_flags_t flags_,
                                            uint32_t timeout_ms_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    mesh_node_pin_t node_pin (mesh_node_);
+    mesh_node_t *node = node_pin.get ();
     if (!node) {
         errno = EFAULT;
         return ZLINK_SUBMIT_INVALID_HANDLE;
@@ -506,7 +508,7 @@ zlink_mesh_node_request_to_channel (void *mesh_node_,
                                     zlink_mesh_operation_id_t *operation_id_out_,
                                     zlink_send_flags_t flags_,
                                     uint32_t timeout_ms_)
-{
+try {
     if (!operation_id_out_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -514,6 +516,13 @@ zlink_mesh_node_request_to_channel (void *mesh_node_,
     return node_channel_submit (mesh_node_, NULL, channel_name_, NULL, NULL, metadata_, parts_,
                                 part_count_, operation_id_out_,
                                 ZLINK_MESH_OPERATION_CHANNEL_REQUEST, flags_, timeout_ms_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 //  --- Spot messaging -------------------------------------------------------------

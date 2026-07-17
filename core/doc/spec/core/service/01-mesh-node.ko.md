@@ -506,7 +506,9 @@ query는 제공하지 않는다.
 ## 11. Thread safety와 오류 우선순위
 
 send, request, publish, weight 변경, peer intent와 query는 thread-safe다. lifecycle configure 함수는 start와
-동시에 호출할 수 없다. 같은 handle의 shutdown과 destroy를 재진입하면 `EDEADLK`다.
+동시에 호출할 수 없다. 같은 handle의 shutdown과 destroy를 재진입하면 `EDEADLK`다. destroy는 이미 진입해
+있는 다른 호출이 반환할 때까지 handle storage를 해제하지 않고 대기하며, destroy가 handle을 registry에서
+제거한 뒤에 진입하는 호출은 `EFAULT`다. 같은 handle의 두 번째 동시 destroy는 `ESTALE`이다.
 
 입력 검증은 argument, state, target lookup, backpressure 순서로 수행한다. 따라서 draining 상태의 새 submit은
 target 상태와 관계없이 `ZLINK_SUBMIT_INVALID_STATE`, `errno == ESHUTDOWN`이다. invalid argument는 state

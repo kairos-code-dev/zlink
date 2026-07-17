@@ -18,9 +18,11 @@
 
 Framework 공통 정식 spec은 모든 언어가 제공할 의미와 실패 계약을 먼저 고정한다. S2에서는 .NET,
 C++, Java, Kotlin과 Node.js의 exact public interface를 각 언어별 정식 spec에 모두 고정한다. S3는
-이 다섯 interface가 같은 공통 계약을 언어 관용 표현으로 정확히 투영했는지 구현 전에 리뷰한다. 현재 구현과 목표
-계약의 차이는 임시 계획 문서만 기록하며 정식 spec은 구현 상태를 설명하지 않는다. 계획 문서에만 있는
-결정을 구현자가 다시 해석하지 않도록, 각 결정은 아래 owner 문서 한 곳에서 완결된 계약이 되어야 한다.
+이 다섯 interface가 같은 공통 계약을 언어 관용 표현으로 정확히 투영했는지 구현 전에 리뷰한다.
+RouteMesh 전환 차이와 stage 상태는 임시 plan이 기록한다. framework 목표 계약과 현재 언어 구현의 차이는
+공개 계약이 아닌 `90-implementation-gap.ko.md`와 언어별 gap 문서가 기록한다. 정식 목표 spec은 구현
+상태를 설명하지 않으며, plan이나 gap 문서에만 있는 결정을 구현자가 다시 해석하지 않도록 각 결정은 아래
+owner 문서 한 곳에서 완결된 계약이 되어야 한다.
 
 이 문서가 다루는 범위는 다음과 같다.
 
@@ -162,7 +164,7 @@ classic fanout 등록과 client는 독립 기능이므로 no-hit 대상이 아�
 | S2 ID | owner | 내용 | 검증 | 상태·위험 |
 |---|---|---|---|---|
 | S2-17 | RouteMesh v10 contract inventory와 다섯 언어 exact interface | 언어별로 허용하는 root, builder, handler, client, option과 result의 exact 목록 | 각 언어 public 선언의 양방향 집합·허용 횟수와 code fixture 비교 | 검증 완료 |
-| S2-18 | `framework/doc/plan/v10.0/`의 구현 차이 추적 문서 | 목표 계약과 현재 Core·bindings·framework 구현 사이의 기능·signature·test 차이 | 각 차이에 owner spec, red gate와 종료 증거가 있음. 정식 spec에서 이 임시 문서를 참조하지 않음 | 정식 gap 문서는 S2 증거로 사용하지 않음 |
+| S2-18 | RouteMesh 전환 inventory와 framework의 비계약 gap 문서 | RouteMesh 전환 차이는 plan이, 목표 framework 계약과 현재 언어 구현의 차이는 `90-implementation-gap.ko.md`와 언어별 gap 문서가 소유 | 정식 목표 계약에서 임시 plan 참조가 없고 gap 문서가 목표 계약·S2 완료 증거로 사용되지 않음 | 전환 실행 상태는 중앙 ledger만 갱신하며 framework gap은 계약과 분리 |
 | S2-18A | 다섯 언어 exact interface와 machine inventory | root option과 topology·location·runtime 공개 선언의 언어별 exact mapping | public declaration 집합·중복 횟수와 언어별 문서 fixture 비교, S8·S9에서 package API snapshot 비교 | S2 문서 검증 완료; package 비교는 S8·S9 |
 
 ## 6. Machine-readable contract inventory
@@ -221,7 +223,8 @@ fixture의 green 결과는 구현 전에는 만들 수 없으므로 다음 red/g
 - service call metadata는 `03-message-model.ko.md`를 단일 정본으로 사용한다.
 - .NET·C++·Java·Kotlin·Node exact interface가 공통 capability와 error 의미를 표현한다.
 - 다섯 언어 public 선언 집합, 허용 중복 횟수와 exact fixture가 machine inventory에 대응한다.
-- 현재 구현 차이는 임시 계획 문서에 기록되고 정식 spec은 이를 참조하지 않는다.
+- RouteMesh 전환 차이와 stage 상태는 임시 plan에, framework 언어별 구현 차이는 비계약 gap 문서에
+  기록되고 정식 목표 spec은 이를 완료 근거나 계약 정본으로 참조하지 않는다.
 - `MM` 파일의 기존 staged·unstaged 변경을 보존했다.
 - S2 문서 link, fence, 금지 surface와 다섯 언어 exact fixture 검증이 통과했고 package green은 S8·S9 gate로 분리했다.
 - 공통·언어별 E2E 문서, 공통·언어별 sample 문서와 public 예제가 영향 inventory에 포함되어 있다.

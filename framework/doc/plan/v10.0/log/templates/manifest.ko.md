@@ -10,18 +10,23 @@
 | Base commit | `<commit SHA>` |
 | Working tree diff | `<path 또는 명령>` |
 | Scope file hashes | `<sha256sum 결과>` |
-| Reviewer | `<Codex agent 또는 Claude Sonnet>` |
+| Reviewer | `<Codex agent, Claude Sonnet 문서 리뷰 또는 Claude Fable 코드 리뷰>` |
 | Provider/model | `<provider와 실제 model identifier/version>` |
 | Invocation/session ID | `<ID>` |
+| Fable fallback | `<사용하지 않음 또는 Fable invocation과 차단 근거>` |
 | Started at | `<ISO-8601>` |
 | Finished at | `<ISO-8601>` |
 | Exit status | `<status>` |
 
-한 iteration에는 Codex agent용 manifest·raw output과 Claude Sonnet용 manifest·raw output을 각각
-보존한다. 두 리뷰는 같은 frozen scope를 독립 검토한다. 어느 한쪽 결과로 문서, 코드, 테스트, 설정
-또는 검증 증거가 수정되면 새 revision을 고정하고 두 리뷰를 모두 다시 실행한다. 구현 리뷰에서 어느
-축이 수정되면 두 리뷰어가 I1·I2·I3 전체를 다시 검토한다. 두 결과가 모두 이 stage의 exact clean
-문구로 끝나야 review gate를 통과한다.
+한 iteration에는 Codex agent용 manifest·raw output과 해당 review 유형의 R2 manifest·raw output을
+각각 보존한다. S3 문서 리뷰의 R2는 Claude Sonnet이다. Claude Fable은 문서 리뷰에 사용하지 않으며,
+S5·S7·S8·S10·S11에서 source·test·build·package 코드와 구현 결과를 검토할 때만 R2로 호출한다.
+구현 리뷰에서는 Fable을 먼저 호출한다. Fable이 제공되지 않거나 quota·capacity, 인증·도구 차단 또는 정상 종료 실패로
+리뷰를 완료할 수 없을 때만 같은 manifest로 Claude Sonnet을 호출한다. fallback을 사용하면 Fable
+invocation과 차단 근거, Sonnet session을 모두 기록한다. 두 리뷰는 같은 frozen scope를 독립 검토한다.
+어느 한쪽 결과로 문서, 코드, 테스트, 설정 또는 검증 증거가 수정되면 새 revision을 고정하고 두 리뷰를
+모두 다시 실행한다. 구현 리뷰에서 어느 축이 수정되면 두 리뷰어가 I1·I2·I3 전체를 다시 검토한다. 두
+결과가 모두 이 stage의 exact clean 문구로 끝나야 review gate를 통과한다.
 
 ## 2. Required input
 
@@ -72,8 +77,9 @@
 | **I3 정리 완결성** | 불필요·죽은 code·file·test·build target·generated artifact와 alias·adapter·forwarder 등 호환 잔재가 남아 있지 않은가? | `<ID 목록 또는 없음>` | `<scoped no-hit, package 내용, file:line>` | `<CLEAN/NOT CLEAN>` |
 
 각 리뷰어는 세 행을 모두 채운다. 한 축이라도 `NOT CLEAN`이면 stage clean 문구를 출력하지 않는다.
-어느 축의 수정이라도 발생하면 새 frozen revision에서 Codex agent와 Claude Sonnet이 세 축 전체를 다시
-검토한다. 두 리뷰어의 세 축이 모두 `CLEAN`이어야 stage exact clean 문구를 인정한다.
+어느 축의 수정이라도 발생하면 새 frozen revision에서 Codex agent와 선택된 R2가 세 축 전체를 다시
+검토한다. 구현 리뷰의 R2 선택은 위 Fable 우선 규칙을 매 iteration 적용한다. 두 리뷰어의 세 축이 모두
+`CLEAN`이어야 stage exact clean 문구를 인정한다.
 
 ## 4. Required verification
 

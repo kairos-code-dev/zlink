@@ -155,7 +155,7 @@ resolved artifact의 이름, version과 실제 경로를 로그에 출력하고,
 | S2-25 | 공통·언어별 sample public 예제와 실제 source | 제거 API, endpoint 배선, raw helper와 내부 API 사용처 전수 기록 | 금지 surface scoped no-hit, package build와 scenario 실행 | 문서 예제 분류 완료; source scoped 검사는 S8·S9 |
 | S2-26 | §5·§6의 runner와 package owner | local package, clean consumer와 E2E·sample runner 변경점 기록 | dependency graph, artifact 내용, consumer와 runner smoke | owner와 요구 출력 고정; package 실행 증거는 S7~S9 |
 | S2-27 | framework 언어별 guide·internals root와 이 문서 | 구현 후 수정할 문서의 독자, 질문, 정본과 검증 기준 mapping | `framework/doc/framework/{dotnet,cpp,java,kotlin,node}/` 실제 파일 inventory와 owner 중복 검사 | §14의 81개 실제 경로 mapping 완료; 수정은 S8·S9 |
-| S2-27A | 정식 spec·guide·internals와 `framework/doc/plan/v10.0/` | current-state 문서와 실행 blueprint의 성격 분리 | 계획 표현의 정식 문서 유입 scoped no-hit와 독자·질문 검사 | S2 review에서 독립 검증 |
+| S2-27A | 정식 목표 spec과 `framework/doc/plan/v10.0/` | current-state 목표 계약과 실행 blueprint의 성격 분리 | 정식 목표 spec의 plan 참조·구현 이력 no-hit와 문서별 독자·질문 검사 | guide·internals 본문 current-state 전환은 §14에 따라 S8·S9에서 검증 |
 | S2-28 | S3 review manifest의 검증 명령 | S2 정식 spec link, anchor, 금지 surface와 다섯 언어 machine inventory 검증 | 같은 frozen scope에서 같은 결과와 nonzero failure 재현 | S3 iteration마다 기록 |
 | S2-28A | 언어별 doc compile fixture와 package API snapshot 계획 | S2에서 고정한 코드 예제와 exact signature를 실제 artifact에 검증할 파일·명령·실패 조건 | .NET fixture는 S8, C++·Java·Kotlin·Node.js fixture는 S9의 구현 red/green gate에 연결 | S2에서는 다섯 언어의 exact 계약과 fixture 설계를 고정 |
 | S2-29 | 공통 E2E Config 1~11 | 10.0.0 topology, 입력, 관찰 결과와 failure scenario의 변경·비변경·신규 검증 분류 | common 문서와 언어별 feature map·runner의 영향 파일 대응 | §11의 55개 lane mapping 완료; 구현 증거는 deferred |

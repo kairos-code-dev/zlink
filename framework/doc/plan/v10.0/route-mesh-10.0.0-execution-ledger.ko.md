@@ -102,6 +102,12 @@ framework/doc/plan/v10.0/route-mesh-10.0.0-execution-ledger.ko.md를 읽고
 첫 항목을 제안할 수는 있지만, 여러 lane의 소유권이 달라지는 작업을 임의로 시작하지 않는다. S3와 S4처럼
 명시적으로 허용한 병렬 실행도 각자 담당 행만 갱신한다.
 
+S3 review manifest가 `리뷰 중`인 동안에는 S3 coordinator와 reviewer를 제외한 작업자가 manifest의
+scope 파일을 수정하지 않는다. S4 구현 중 정식 framework 문서 변경이 필요해지면 해당 S4 행의 증거에
+계약 변경 후보와 파일을 기록하고 coordinator에게 전달한다. Coordinator는 진행 중인 review를 명시적으로
+무효화하고 수정 iteration을 연 뒤에만 scope 문서를 바꾼다. Reviewer는 hash drift를 발견하면 finding을
+계속 확정하지 않고 즉시 결과를 무효로 보고한다.
+
 ### 0.3 POSD 기반 고성능 시스템 원칙
 
 RouteMesh 10.0.0의 Core, bindings와 framework는 POSD 철학을 설계 기준으로 삼는 고성능 시스템으로
@@ -155,15 +161,24 @@ S3, S5, S7, S8, S10과 S11의 review gate를 생략하거나 다음 stage에서 
 | ID | 리뷰어 | 역할 |
 |---|---|---|
 | **R1** | Codex agent | 저장소의 실제 spec, source, test, package와 실행 증거를 독립 검토 |
-| **R2** | Claude Sonnet 모델 | 같은 고정 revision과 동일한 review manifest를 독립 검토 |
+| **R2-DOC** | Claude Sonnet 모델 | S3 문서의 같은 고정 revision과 동일한 review manifest를 독립 검토 |
+| **R2-CODE** | Claude Fable 모델 우선, Fable 차단 시 Claude Sonnet | S5·S7·S8·S10·S11의 source·test·build·package 코드와 구현 결과를 같은 고정 revision과 동일한 review manifest에서 독립 검토 |
 
-R1과 R2는 서로의 finding을 보기 전에 첫 검토를 완료한다. 두 결과가 나온 뒤 coordinator가 중복을
+R1과 해당 review 유형의 R2는 서로의 finding을 보기 전에 첫 검토를 완료한다. 두 결과가 나온 뒤 coordinator가 중복을
 합치고 하나의 finding ledger를 만든다. 한 리뷰어의 clean 판정으로 다른 리뷰어의 검토를 대신하지
 않는다.
 
-모든 리뷰는 Codex agent와 Claude Sonnet 모델이 같은 frozen scope를 각각 독립 검토한다. 어느 한쪽
-리뷰 결과로 문서·코드·테스트·설정 또는 증거가 하나라도 수정되면 새 revision을 고정하고 두 리뷰를
-모두 다시 실행한다. 두 리뷰어가 모두 해당 stage의 exact clean 문구를 남겨야 gate를 통과한다.
+S3 문서 리뷰는 Codex agent와 Claude Sonnet이 같은 frozen scope를 각각 독립 검토한다. **Claude Fable은
+문서 리뷰에 사용하지 않는다.** spec·guide·internals·E2E·sample 문서의 계약과 설명을 검토하는 작업은
+Codex agent와 Claude Sonnet이 담당한다. S5·S7·S8·S10·S11에서 source·test·build·package 코드와 실제
+구현 결과를 검토할 때만 Codex agent와 Claude Fable을 사용한다. 이때 spec은 구현 일치 여부를 판단하는
+기준으로 읽을 수 있지만 Fable에게 spec 자체의 문서 리뷰를 맡기지 않는다. 코드 리뷰에서는 Fable을 먼저 호출하며,
+모델 제공 중단, quota·capacity 제한, 인증·도구 차단 또는 정상 종료 실패로 Fable 리뷰를 완료할 수 없을
+때만 같은 manifest로 Claude Sonnet을 대체 호출한다. finding이 많거나 검토 시간이 오래 걸린다는 이유로
+Sonnet으로 바꾸지 않는다. fallback을 사용하면 Fable invocation, 차단 근거와 Sonnet session을 review
+manifest에 함께 기록한다. 어느 한쪽 리뷰 결과로 문서·코드·테스트·설정 또는 증거가 하나라도 수정되면
+새 revision을 고정하고 두 리뷰를 모두 다시 실행한다. 두 리뷰어가 모두 해당 stage의 exact clean 문구를
+남겨야 gate를 통과한다.
 
 S3은 정식 계약 문서의 완전성·일관성·구현 가능성을 검토하는 **문서 리뷰**다. S5, S7, S8, S10과
 S11은 frozen spec을 기준으로 실제 source·test·package·artifact를 검토하는 **구현 리뷰**다. S3의
@@ -180,7 +195,7 @@ S11은 frozen spec을 기준으로 실제 source·test·package·artifact를 검
 
 각 리뷰어는 세 축마다 finding, evidence와 `CLEAN`/`NOT CLEAN` 판정을 별도로 남긴다. `I2`의
 POSD·DDD 한 줄이나 전체 stage clean 문구로 `I1` 또는 `I3` 판정을 갈음할 수 없다. 어느 축의 finding을
-수정하더라도 새 revision에서 Codex agent와 Claude Sonnet이 세 축 전체를 다시 검토한다. 두 리뷰어의
+수정하더라도 새 revision에서 Codex agent와 선택된 R2 모델이 세 축 전체를 다시 검토한다. 두 리뷰어의
 세 축이 모두 `CLEAN`이고 같은 frozen revision에 대한 stage exact clean 문구가 모두 있어야 구현 review
 gate를 통과한다.
 
@@ -366,7 +381,7 @@ S1 완료 gate:
 | S2-08 | Spot messaging 갱신 | Logical Multicast와 channel-scoped local subscription, explicit publish target interface 반영 | 완료 | `server/20-spot-messaging.ko.md`; Core Spot·Dispatch 교차 검증 |
 | S2-09 | Actor·Spot actor·address messaging 갱신 | bridge 제거, owner MeshNode와 위치 투명성 반영 | 완료 | `server/22-actor-model.ko.md`, `23-spot-actor.ko.md`, `24-spot-address-messaging.ko.md` |
 | S2-10 | session actor dispatch 갱신 | STREAM 경계와 MeshNode 선택이 명확함 | 완료 | `server/30-stream-session.ko.md`, `31-session-actor-dispatch.ko.md` |
-| S2-11 | location runtime과 Redis store 갱신 | MeshNode descriptor와 Spot·Actor location row를 분리하고 Redis를 production 기본 구현으로 지정. 명시적 등록, location store 미등록 시 startup failure, manual admission handshake와 test-only in-memory 경계를 반영 | 완료 | `server/40-location-runtime.ko.md`, `41-location-store-redis.ko.md`; Redis fixture 3개 parse·byte parity |
+| S2-11 | location runtime과 Redis store 갱신 | MeshNode descriptor와 Spot·Actor location row를 분리하고 Redis를 production 기본 구현으로 지정. 명시적 등록, location store 미등록 시 startup failure, manual admission handshake와 test-only in-memory 경계를 반영 | 완료 | `server/40-location-runtime.ko.md`, `41-location-store-redis.ko.md`; Redis fixture 3개 hash 고정·JSON parse·canonical key·field 순서·byte parity gate 통과 |
 | S2-11A | Actor transfer authority store 계약 | participant-set CAS, transfer token, lease, prepared/commit/abort 복구, Redis 구현과 startup capability validation 명시 | 완료 | `server/23-spot-actor.ko.md`, `41-location-store-redis.ko.md`, `actor-transfer-v1.json` |
 | S2-12 | monitoring과 graceful drain 갱신 | RouteMesh별 readiness, drain, multicast와 rollback 단위 반영 | 완료 | `server/50-runtime-monitoring.ko.md`, `54-graceful-drain-handoff.ko.md` |
 | S2-12A | runtime metrics와 message-flow tracing 갱신 | route, multicast, fanout metric·flow 종류와 bounded label을 정의하고 client connector reconnect 계기를 server session 계기와 분리 | 완료 | `server/51-runtime-metrics.ko.md`, `52-message-flow-tracing.ko.md`, `stream-connector/32-stream-connector.ko.md`와 네 언어 connector exact interface |
@@ -383,7 +398,7 @@ S1 완료 gate:
 | S2-15 | Java·Kotlin exact interface 작성 | Java builder·handler·client·Spring 등록과 Kotlin DSL·extension·async 경계의 exact signature를 각각 확정 | 완료 | Java·Kotlin exact 문서와 location 문서 fixture 통과 |
 | S2-16 | Node.js exact interface 작성 | TypeScript declaration, Promise, NestJS 등록, peer·metadata·NoDrop·runtime option exact signature를 확정 | 완료 | Node.js exact 문서와 location 문서 fixture 통과 |
 | S2-17 | 다섯 언어 제거 interface 표 작성 | root·builder·endpoint overload와 SpotNode 이름의 공개 멤버를 언어별로 전수 대응 | 완료 | `route-mesh-v10-contract-inventory.json`; 금지 surface no-hit |
-| S2-18 | 구현 차이 추적 경계 고정 | 정식 spec은 현재 구현 상태를 기록하지 않고 임시 계획 문서만 Core·bindings·framework 구현 차이를 소유 | 완료 | formal plan-reference no-hit; `90-implementation-gap.ko.md` 분리 |
+| S2-18 | 구현 차이 추적 경계 고정 | RouteMesh 전환 차이·진행 상태는 임시 plan이 소유하고 framework 목표 계약과 현재 언어 구현의 차이는 비계약 `90-implementation-gap.ko.md`와 언어별 gap 문서가 소유 | 완료 | 정식 목표 spec의 plan-reference no-hit; gap 문서는 목표 계약·S2 완료 근거에서 제외하고 중앙 ledger만 stage 상태를 소유 |
 | S2-18A | 다섯 언어 현재 checkout builder 전수 mapping | root option과 ClientServer·RouteMesh·Spot builder의 모든 멤버가 언어별로 유지·이동·제거에 정확히 한 번 대응 | 완료 | verifier: transition owners 20, source members 263 exact-once |
 
 ### 6.3 E2E와 sample 영향 검토
@@ -400,8 +415,8 @@ S1 완료 gate:
 | S2-25 | 언어별 sample public API 예제 검토 | 제거 API, endpoint 배선과 raw helper 사용처가 다섯 언어에서 모두 기록됨 | 완료 | 공개 문서 old topology·stale location no-hit |
 | S2-26 | package consumer와 runner 영향 검토 | local package, clean consumer와 E2E runner 변경점 기록 | 완료 | 영향 inventory §13: 96/96 runner |
 | S2-27 | guide·internals 변경 지도 작성 | 구현 뒤 바꿀 모든 사용자·내부 문서 경로와 각 문서의 독자·질문·원본 식별. S2에서는 대상과 검증 기준만 정하고 internals 본문은 바꾸지 않음 | 완료 | 영향 inventory §14: 81/81 문서; 본문 변경은 S8·S9로 deferred |
-| S2-27A | 문서 성격과 current-state 경계 검증 | spec·guide·internals에는 10.0.0 현재 계약만, 계획은 blueprint와 실행 추적만 기록 | 완료 | formal plan-reference와 current-history marker no-hit |
-| S2-28 | link·anchor·render 검증 | S2 정식 spec 범위의 깨진 link·중복 anchor 0개이고 실제 render를 확인한 증거가 있음 | 완료 | 217개 render, 1,039 link, 150 table 문서, 111 fence 문서 오류 0 |
+| S2-27A | 문서 성격과 current-state 경계 검증 | 정식 목표 spec은 10.0.0 목표 계약만 기록하고 plan은 blueprint·실행 추적만 기록. guide·internals 본문 전환은 S8·S9에 유지 | 완료 | 정식 목표 spec의 plan-reference·current-history marker no-hit; 영향 inventory §14에서 guide·internals 81개를 S8·S9 gate로 연결 |
+| S2-28 | link·anchor·render 검증 | S2 정식 spec 범위의 깨진 link·중복 anchor 0개이고 실제 render를 확인한 증거가 있음 | 완료 | 사용자 승인 종료 범위 203개 실제 pymdownx render, source local Markdown link 1,852개, file·anchor 오류 0; verifier·JSON·diff 통과 |
 | S2-28A | 예제 API 강제 검사 설계 | 공개 계약 예제 compile/smoke, 필수 구성 누락과 원본·번역 동기 검사를 구현 stage에서 실행할 파일·명령·실패 조건으로 고정 | 완료 | transition inventory §7의 S8·S9 red/green 명령 |
 | S2-29 | 공통 E2E 문서 적용 사항 검토 | Config 1~11마다 10.0.0 topology, 입력, 관찰 결과와 failure scenario의 변경·비변경·신규 검증을 파일 단위로 분류 | 완료 | 영향 inventory §3·§11 |
 | S2-30 | 공통 sample 문서 적용 사항 검토 | sample마다 target API 예제, Redis 등록, manual topology와 runner 변경·비변경을 파일 단위로 분류 | 완료 | 영향 inventory §4·§12·§12.1 |
@@ -414,20 +429,29 @@ S2 완료 gate:
 - [x] 공통·server 의미 계약과 .NET·C++·Java·Kotlin·Node exact public interface가 정식 spec에 있다.
 - [x] 공통·언어별 E2E 문서, 공통·언어별 sample 문서와 public 예제가 파일 단위 inventory에 포함되어 있다.
 
+2026-07-17에 40개 S2 행과 위 4개 gate를 대조한 Codex 독립 완료 감사 결과는
+`S2 COMPLETION AUDIT CLEAN`이다. 감사에서 발견한 문서 경계, gap 소유권, Redis descriptor fixture gate와
+render 증거 4건을 반영했고, 사용자 승인 종료 시점의 계약·render·JSON·diff 자동 검증도 다시 통과했다.
+
 ## 7. S3 — 문서 독립 리뷰 반복
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S3-01 | S1·S2 문서 revision 동결 | review manifest에 commit과 diff 범위 기록 | 완료 | [iteration 11 manifest](log/s3-document-review/iteration-11/manifest.ko.md): 관련 guide·gap·HTTP error를 포함한 195개 문서, aggregate `8d5851fd02395f8d80924a7feca67769d8bef121ca538e5471ed0a8976361023`, file-list `ba3393d0b5d5516c83c26de6fb2255830db17aa38801c7a45be2d8c54600946a` |
-| S3-02 | Codex agent 문서 리뷰 | 누락, 모순, 구현 불가능 계약과 stale API finding 보고 | 리뷰 중 | [iteration 11 manifest](log/s3-document-review/iteration-11/manifest.ko.md)의 frozen scope 195개 전체 재리뷰 |
-| S3-03 | Claude Sonnet 문서 리뷰 | 같은 scope를 독립 검토하고 finding 보고 | 리뷰 중 | [iteration 11 manifest](log/s3-document-review/iteration-11/manifest.ko.md)의 frozen scope 195개, 실제 Claude Sonnet 전체 재리뷰 |
-| S3-04 | finding 병합과 중복 제거 | 모든 finding에 owner, severity와 red gate 지정 | 완료 | iteration 10 두 결과를 S3-F10-A~C로 병합. 죽은 절 인용과 C++ guide finding은 중복 병합 |
+| S3-01 | S1·S2 문서 revision 동결 | review manifest에 commit과 diff 범위 기록 | 완료 | [사용자 승인 종료 manifest](log/s3-document-review/final-acceptance/manifest.ko.md): iteration 19 범위에 누락된 Kotlin gap을 보완한 203개 파일을 aggregate `7f505e82…99a8`로 기록하고 검증 시작·종료 hash 일치 |
+| S3-02 | Codex agent 문서 리뷰 | 누락, 모순, 구현 불가능 계약과 stale API finding 보고 | 완료 | iteration 1~19의 Codex finding·수정·무효 기록을 보존했다. iteration 17~19에는 clean 문구가 없으며 사용자가 추가 반복을 종료하도록 승인 |
+| S3-03 | Claude Sonnet 문서 리뷰 | 같은 scope를 독립 검토하고 finding 보고 | 완료 | iteration 1~19의 Claude Sonnet finding·수정·무효 기록을 보존했다. 문서 리뷰에는 Fable을 사용하지 않았고 사용자가 추가 반복을 종료하도록 승인 |
+| S3-04 | finding 병합과 중복 제거 | 모든 finding에 owner, severity와 red gate 지정 | 완료 | 채택된 finding은 iteration별 finding ledger와 S3-F9~F17 수정 묶음에 반영. hash drift로 무효 처리한 출력은 finding·clean 판정에 포함하지 않음 |
 | S3-05 | Core 정식 spec finding 수정 | 관련 한국어·영문·signature·result table과 임시 구현 차이 추적을 함께 수정 | 완료 | iteration 8까지 발견한 Core 문서 finding 반영. iteration 9는 framework 문서만 검토했으며 framework 수정에서 Core 계약 변경이 필요하면 다시 연다 |
-| S3-06 | framework spec finding 수정 | 공통·server spec, .NET·C++·Java·Kotlin·Node exact interface, 공통·언어별 E2E·sample 문서와 public 예제 영향 inventory를 함께 수정 | 완료 | iteration 10 S3-F10-A~C 수정 완료 |
-| S3-07 | 문서 자동 검증 재실행 | link, signature, stale name, duplicate와 formatting 검사 통과 | 완료 | `FRAMEWORK DOC CONTRACTS CLEAN` — exact 24·connector exact 4·formal 53·fixture 19·declaration 1,162·feature map 55·scenario 955; iteration 11 scope hash·diff 검사 통과 |
-| S3-08 | 전체 scope 재리뷰 | 이전 diff만이 아니라 S1·S2 전체를 두 리뷰어가 다시 검토 | 리뷰 중 | iteration 11에서 확장된 195개 전체 scope를 두 reviewer가 처음부터 재검토 |
+| S3-06 | framework spec finding 수정 | 공통·server spec, .NET·C++·Java·Kotlin·Node exact interface, 공통·언어별 E2E·sample 문서와 public 예제 영향 inventory를 함께 수정 | 완료 | iteration 14 참고 finding 7건을 S3-F14-A·B로 수정했고, 이후 drift로 되살아난 실제 render anchor 13건은 S3-F17-A로 복구 |
+| S3-07 | 문서 자동 검증 재실행 | link, signature, stale name, duplicate와 formatting 검사 통과 | 완료 | 사용자 승인 종료 시 `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·connector exact 4·formal 53·fixture 19·declaration 1,167·feature map 55·scenario 955), 실제 pymdownx render 203개·link 대상 포함 205개·source local Markdown link 1,852개·오류 0, JSON 15개와 scoped `git diff --check` 통과 |
+| S3-08 | 전체 scope 재리뷰 | 이전 diff만이 아니라 S1·S2 전체를 두 리뷰어가 다시 검토 | 완료 | 19개 iteration을 수행했다. 마지막 반복은 동시 수정으로 clean 판정되지 않았으며, 사용자가 19번으로 충분하다고 판단해 추가 전체 재리뷰를 명시적으로 종료 |
 | S3-09 | 문서별 2축 review 기록 | 각 문서를 원칙 준수와 1차 소스 부합으로 나누고 finding마다 축·severity·file:line·근거·제안 기록 | 완료 | iteration 9 두 reviewer가 모든 finding에 `[1차소스]` 또는 `[원칙]`, severity, file:line, 근거와 수정안을 기록 |
-| S3-10 | 문서별 검증 증거 분리 | finding을 1차 소스로 확인한 뒤 문서별 수정 diff와 SHA-256을 독립 증거로 기록. 사용자가 별도로 요청하지 않으면 commit은 만들지 않음 | 진행 중 | iteration 9 raw output·finding merge와 수정 후 검증 증거 정리 중. commit은 만들지 않음 |
+| S3-10 | 문서별 검증 증거 분리 | finding을 1차 소스로 확인한 뒤 문서별 수정 diff와 SHA-256을 독립 증거로 기록. 사용자가 별도로 요청하지 않으면 commit은 만들지 않음 | 완료 | iteration 1~19의 scope·review hash와 무효 사유를 보존하고 [종료 검증](log/s3-document-review/final-acceptance/verification.ko.md)에 최종 203개 파일별 SHA-256·aggregate·입력 hash를 기록. commit은 만들지 않음 |
+
+S3은 두 리뷰어의 clean 문구로 종료되지 않았다. iteration 17~19는 동시 수정으로 무효였고, 사용자가
+19번의 반복이면 충분하다고 판단해 추가 리뷰를 종료하도록 승인했다. 따라서 아래 완료 gate는 존재하지
+않는 clean 결과를 대신 만들지 않고, 누적 finding 처리·사용자 승인·현재 checkout 자동 검증을 종료
+근거로 사용한다.
 
 ### 7.1 Iteration 9 수정 묶음
 
@@ -449,6 +473,47 @@ S2 완료 gate:
 | S3-F10-B | flow·dispatch-error·runtime-error 공개 계약 정렬: 공통 event kind/field/reason/action과 observer/error sink를 한 owner에 정의하고 C++·Java·Kotlin·Node·.NET exact interface 및 Config 5 evidence를 같은 모델로 정렬 | 공통 owner와 다섯 언어 exact interface가 같은 닫힌 값·observer·sink를 제공하고 exception object 노출이 없으며 inventory·fixture·verifier 통과 | 완료 | 시작 기준 `b0e4af22652b`; [iteration 10 finding ledger](log/s3-document-review/iteration-10/finding-ledger.ko.md) 반영. 공통 `52-message-flow-tracing`을 `zlink.dispatch_error`/`zlink.runtime_error`의 단일 owner로 고정하고 5언어 observer·runtime error sink와 Config 5·ResilienceLifecycle evidence를 정렬. 16개 파일 aggregate `21ddfada…b1b3`; 이전 outcome·별도 dispatch event·exception object·internal sink helper scoped no-hit, JSON parse·scoped `git diff --check` 통과. Verifier에 5언어 flow/sink semantic gate를 추가했고 `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·connector exact 4·formal 53·fixture 19·declarations 1,162·feature map 55·scenario 955) |
 | S3-F10-C | Java·E2E 의미 정리: Java drain을 mesh별 runtime/result 하나로 통일하고 Kotlin 투영 정렬, timeout 우선순위를 호출별→MeshNode별→framework 전역으로 수정, Config 1 decode 실패를 `decode_error`로 수정, Spot messaging에 Spot control claim을 처음 사용 전에 정의·링크 | Java/Kotlin exact parity, Config 1 reason 일치, Spot control claim 문서 완결성, fixture·verifier·table·fence·diff 검사 통과 | 완료 | [iteration 10 finding ledger](log/s3-document-review/iteration-10/finding-ledger.ko.md)의 C10-03·05·06과 Claude low 2 반영. 5개 문서 aggregate `2a8dd2b7…7189`; 제거된 전역 drain 이름·이전 decode 분류·채널별 timeout 우선순위 no-hit, Java·Kotlin mesh별 drain parity와 Spot control claim 최초 사용 전 정의·링크 확인, link·table·fence 5/5와 scoped `git diff --check` 통과. `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·connector exact 4·formal 53·fixture 19·declarations 1,162) |
 
+### 7.3 Iteration 11 수정 묶음
+
+| ID | 담당 범위 | 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| S3-F11-A | 계약·guide 정렬: common README의 target-first·Actor lifecycle owner 수정, .NET·Node channel guide를 RouteMesh API로 전환, C++ messaging facade를 선언된 단일 facade로 통일, Java/Kotlin/C++ worker cancellation exact interface 완결, HTTP client timeout/closed와 구현 이력 분리, channel canonical 이름과 지적 문체 수정 | 제거 API·미선언 type·구현 이력 no-hit, 공통·다섯 언어 exact parity, guide code·link·table·fence·verifier·diff 통과 | 완료 | 2026-07-17: 제거 surface·구현 이력 no-hit; `verify-framework-doc-contracts.sh` clean (`languages=5`, `exact_documents=24`, `formal_documents=53`, `declarations=1164`); guide 11개 link·table·fence clean; scoped `git diff --check` clean |
+| S3-F11-B | E2E·render 정리: Config 1~3 dispatch reason/action을 `no_handler`·`reply_error`·`drop`으로 통일하고 enum 오기 제거, C++/.NET/Java gap과 Java exact 문서의 실제 mkdocs anchor 정정 | 닫힌 값 exact match, 195개 실제 render link·anchor 0 오류, verifier·scoped diff 통과 | 완료 | iteration 11 Claude Config 1~3·gap anchor finding 반영. 8개 대상 파일 aggregate `e51ebe65…00bf`; Config 1~3의 이전 enum 표기 no-hit, 실제 MkDocs Unicode slug·중복 heading 규칙으로 195개 문서의 Markdown 링크 1,651개를 렌더해 link·anchor 오류 0건, scoped `git diff --check` 통과. Verifier의 anchor 계산도 실제 렌더 규칙으로 정렬했고 `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·connector exact 4·formal 53·fixture 19·declarations 1,164·feature map 55·scenario 955) |
+
+### 7.4 Iteration 12 수정 묶음
+
+| ID | 담당 범위 | 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| S3-F12-A | C++ exact interface·guide 정렬: DI scope owner와 factory overload, interface catalog의 worker·Spot·Actor·STREAM 표면, STREAM builder factory와 끊긴 문장, Connector/server 책임, 지원 언어와 현재 계약 문체, overview 내부 구현 노출을 정리 | C++ exact declaration·guide 예제 일치, 미선언 API·내부 배선·roadmap·금지 문체 no-hit, code fixture·verifier·실제 render·link·table·fence·scoped diff 통과 | 완료 | 2026-07-17: [iteration 12 finding ledger](log/s3-document-review/iteration-12/finding-ledger.ko.md)의 C12-01~09·S12-01 반영. 9개 대상 파일 aggregate `6b397fdf…17cc`; 미선언 guide 표면·overview 내부 배선·지원 언어 roadmap·금지 문체 scoped no-hit, JSON parse와 scoped `git diff --check` 통과. `pymdownx` 실제 render 8개 문서·link 180·table 41·fence 98·오류 0. `scripts/verify-framework-doc-contracts.sh` → `FRAMEWORK DOC CONTRACTS CLEAN`(languages 5·exact 24·formal 53·fixture 19·declarations 1,164) |
+| S3-F12-B | Node STREAM codec guide를 실제 `streamPayloadCodec`·`addStreamCodec(...)`·MessagePack/Protobuf extension 경로와 정렬 | 추후 범위 서술 no-hit, source symbol·guide 예제 대응, verifier·실제 render·link·table·fence·scoped diff 통과 | 완료 | [iteration 12 finding ledger](log/s3-document-review/iteration-12/finding-ledger.ko.md)의 S12-02 반영. Node STREAM guide SHA-256 `ed24d0d2…b86c`; JSON 전용·추후 범위 서술 no-hit, `streamPayloadCodec`·`addStreamCodec(...)` source와 `/framework` MessagePack·Protobuf extension 및 root builder 예제 대응 확인, codec contract 6/6 통과. 실제 MkDocs render 202개 문서·1,764개 링크에서 오류 0건, fence 14·table 0·scoped `git diff --check` 통과. `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·connector exact 4·formal 53·fixture 19·declarations 1,164·feature map 55·scenario 955) |
+
+### 7.5 Iteration 13 수정 묶음
+
+| ID | 담당 범위 | 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| S3-F13-A | Actor join commit 순서, Actor location의 Spot generation, Redis transfer key encoding, server·HTTP host·Connector codec owner, transfer terminal metric, 명시적 codec mismatch 오류와 모든 언어 exact·fixture·inventory 정렬 | 공통 계약과 다섯 언어 exact·Redis fixture·inventory 일치, stale 실패 무변경, 구분자 충돌 방지, codec owner·terminal outcome 닫힘, verifier·render·diff 통과 | 완료 | 2026-07-17: [iteration 13 finding ledger](log/s3-document-review/iteration-13/finding-ledger.ko.md)의 C13-01·02·03·06·07·08을 Core Actor 정식 계약과 재대조하고 Core 문서는 수정하지 않았다. 공통 계약·다섯 언어 exact·Redis fixture·inventory·verifier와 Config 10 commit evidence 순서를 정렬했다. 18개 대상·검증 입력 aggregate `38f362fd…daf7`; `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·connector exact 4·formal 53·fixture 19·declaration 1,164·feature map 55·scenario 955), Redis·inventory JSON parse, 실제 render 13개·link 106·table 32·fence 28, scoped `git diff --check` 통과 |
+| S3-F13-B | Kotlin ToActor TA-A3·A4, Kotlin·Node transfer ST-B3 feature map과 Kotlin STREAM `close()` guide 정렬 | 미구현 lifecycle은 차단으로 정확히 표시하고 완료 증거로 사용하지 않음, 기본 빈 state transfer 성공 의미와 `close()` 공개 동작 일치, render·diff 통과 | 완료 | [iteration 13 finding ledger](log/s3-document-review/iteration-13/finding-ledger.ko.md)의 C13-04·05·09 반영. 4개 문서 aggregate `2d24fd87…591f`; Kotlin TA-A3·A4와 Kotlin ST-B3는 미구현 상태를 완료 증거에서 제외했다. Node ST-B3 focused runner는 기본 빈 state 성공 자체는 통과했지만 현재 `joined -> location_committed` 단언이 공통 순서와 달라 전환 필요로 정확히 기록했다. Java `ZLinkStreamSessionContextStateTest`와 `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·formal 53·feature map 55·scenario 955), 실제 render 4개·table 4·fence 6, scoped `git diff --check` 통과 |
+| S3-F13-C | 전체 scope 실제 Markdown render에서 발견한 link·anchor 오류 12건 정리 | 202개 문서 전체를 pymdownx Unicode slug 규칙으로 렌더하고 모든 local file·anchor link 오류 0, verifier·scoped diff 통과 | 완료 | 실제 pymdownx Unicode slug가 `·`, `+`, `&`, `↔` 제거 뒤 양쪽 space를 각각 `-`로 보존하는 규칙에 맞춰 7개 문서의 잘못된 anchor link 12건을 수정하고 verifier 계산도 같은 규칙으로 정렬했다. 8개 대상 aggregate `d8dcf93d…612a`; 전체 202개 문서·Markdown link 1,791개 render에서 local file·anchor 오류 0, `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·formal 53·feature map 55·scenario 955), scoped `git diff --check` 통과 |
+
+### 7.6 Iteration 14 수정 묶음
+
+| ID | 담당 범위 | 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| S3-F14-A | Actor durable location과 ready route 공개 시점 분리, transfer metric terminal, C++ channel request 예제, HTTP C++ timeout 공개 표현, C++ transfer gap 순서 정렬 | owner 계약과 E2E·exact 예제·gap이 같은 의미를 사용하고 internal type 노출·폐기 순서 no-hit, verifier·render·diff 통과 | 완료 | 2026-07-17: [iteration 14 finding ledger](log/s3-document-review/iteration-14/finding-ledger.ko.md)의 C14-01~05를 5개 문서와 C++ code fixture inventory에 반영. 6개 대상 aggregate `d420f47c…4bfb`; HTTP public spec의 internal `boundary_error_t` 노출·mesh 인자 없는 request 예제·폐기 transfer 순서 scoped no-hit, JSON parse와 scoped `git diff --check` 통과. `pymdownx` 실제 render 5개 문서·link 282·table 21·fence 57·오류 0. `scripts/verify-framework-doc-contracts.sh` → `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·formal 53·fixture 19·declarations 1,164·scenario 955) |
+| S3-F14-B | message-flow reason/action stale 값과 C++·Java·Kotlin guide의 금지 문체·구어체 정리 | 닫힌 값 `no_handler`·`reply_error`·`drop` 일치, 대상 표현 no-hit, verifier·render·diff 통과 | 완료 | [iteration 14 finding ledger](log/s3-document-review/iteration-14/finding-ledger.ko.md)의 C14-06~07 반영. .NET guide·C++ PubSub/SpotService map·C++/Node gap의 message-flow reason/action을 `no_handler`·`reply_error`·`drop`으로 정렬하고 C++의 `빠르고 좋다`, Java/Kotlin의 `직렬로 돈다`를 중립 표현으로 바꿨다. 8개 영향 문서 aggregate `ac976d7e…3cf8`; 대상 stale 값·문체 scoped no-hit, 실제 pymdownx 전체 render 202개·link 1,794개·오류 0, `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·formal 53·feature map 55·scenario 955), scoped `git diff --check` 통과 |
+
+### 7.7 Iteration 15 동결 복구
+
+| ID | 담당 범위 | 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| S3-F15-A | iteration 15 시작 전 덮어써진 7개 문서의 실제 pymdownx anchor 12건과 verifier slug 계산 복구 | 202개 전체 render의 local file·anchor 오류 0, verifier가 실제 pymdownx slug와 같은 결과, diff 통과 | 완료 | 7개 drift 파일의 anchor 12건을 실제 render ID로 복구하고 verifier가 punctuation 제거 뒤 공백 각각을 `-`로 보존하도록 정렬. `FRAMEWORK DOC CONTRACTS CLEAN`, 전체 render 202개·link 1,778·오류 0, scoped `git diff --check` 통과. 복구 뒤 문서 aggregate가 iteration 15 동결값 `2bbb5364…8324`와 다시 일치 |
+
+### 7.8 Iteration 17 무효화 뒤 복구
+
+| ID | 담당 범위 | 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| S3-F17-A | 별도 구현 작업이 덮어쓴 실제 pymdownx anchor 12건과 implementation-gap 절 이동으로 생긴 anchor 1건, verifier slug 계산 복구 | 202개 전체 scope를 실제 pymdownx로 렌더해 local file·anchor 오류 0, verifier가 같은 slug를 판정하고 JSON·diff 통과 | 완료 | 8개 문서의 anchor 13건을 실제 render ID로 수정하고 verifier가 punctuation 제거 뒤 생긴 각 공백을 별도 `-`로 보존하도록 복구. 대상 9개 파일 aggregate `4212ec97…2c5e`; `FRAMEWORK DOC CONTRACTS CLEAN`, 실제 render 202개·대상 포함 204개·local link 3,747개·오류 0, JSON 15개 parse와 scoped `git diff --check` 통과 |
+
 문서 리뷰 필수 축:
 
 S3 framework 리뷰 범위에는 framework 공통·server 정식 spec, .NET·C++·Java·Kotlin·Node exact public
@@ -467,12 +532,12 @@ exact interface나 예제를 이후 구현 stage의 검토로 미루지 않는�
 
 S3 완료 gate:
 
-- [ ] open documentation finding이 0개다.
-- [ ] 변경 문서의 실제 render, 예제 API, link와 원본·번역 동기 검증 증거가 있다.
-- [ ] Codex agent 결과 마지막 줄이 `DOC REVIEW CLEAN`이다.
-- [ ] Claude Sonnet 결과 마지막 줄이 `DOC REVIEW CLEAN`이다.
-- [ ] 병렬 Core 구현은 S1 기준선의 red/green 작업으로만 진행됐고 S2·S3 계약의 근거로 사용되지 않았다.
-- [ ] S3 finding이 Core 계약을 바꾼 경우 병렬 구현 담당자에게 변경을 전달했으며 S5 동결 전 재정렬 gate가 기록되어 있다.
+- [x] 채택된 open documentation finding이 0개이며 무효 iteration의 미완료 출력을 finding이나 clean으로 계산하지 않았다.
+- [x] 변경 문서의 실제 render, 예제 API, link와 원본·번역 동기 검증 증거가 있다.
+- [x] iteration 1~19의 Codex·Claude Sonnet 결과와 hash drift 기록을 보존했다.
+- [x] 두 리뷰어의 `DOC REVIEW CLEAN`이 없음을 명시하고, 사용자가 추가 반복 없이 S3를 종료하도록 승인했다.
+- [x] 병렬 Core 구현은 S1 기준선의 red/green 작업으로 진행됐고 S2·S3 목표 계약의 근거로 사용되지 않았다.
+- [x] iteration 8까지 Core 계약 finding을 반영했으며 이후 framework finding에서 Core 계약을 다시 바꾼 항목은 없다.
 
 ## 8. S4 — Core 구현·제거 코드 정리와 정식 spec 일치
 
@@ -530,7 +595,7 @@ S3 완료 gate:
 | S4-24 | integration과 topology test | direct, channel, multicast, reconnect와 drain 통과 | 진행 중 | 2-process topology test(`test_mesh_peer_admission`) 9 case green: admission/readiness/weight 전파, node direct·spot direct request/reply, multicast(NODROP detail), actor lookup/messaging/destroy/join, transfer fence, drain+재연결(peer 종료 시 admitted count 0·inbound peer는 readiness에 불간섭, 동일 RID 재기동 peer 재admission+새 pipe 왕복). 구현 결함 2건 발견·수정: 재연결 시 ERROR intent가 re-HELLO 하지 않던 문제(CONNECTION_READY가 ERROR/ADMITTED intent도 재handshake), inbound peer가 readiness 계산에 포함되던 문제(spec은 intent 기준 — inbound 플래그로 제외). channel 원격 RR 분포 test 잔여 |
 | S4-25 | callback·claim·ownership stress | close, rearm, claim leak/revoke, multipart와 reference count 오류 0건 | 미착수 | - |
 | S4-26 | sanitizer와 race 검증 | ASAN/UBSAN/TSAN 적용 범위에서 신규 오류 0건 | 진행 중 | ASAN/UBSAN+leak 전체 suite(80): 초회 11건 적발 → 전부 해소. 결함 2건 수정: ① `request_timeout_scheduler_internal.cpp` exit-시 heap-UAF(detached timeout thread vs static 소멸자) → immortal singleton, ② `msg.cpp` slice_content_pool thread_local 캐시가 thread 종료 시 엔트리 미해제 → 소멸자에서 free. 테스트측 누수 2건 수정: backpressure matrix 헬퍼 send 실패 시 part 미close, testutil_unity finalize_recv의 malloc 배열 미해제(thread-local 버퍼 직접 반환으로 교체). 최종 전체 suite 재확인 green(80/80), mesh 2-process test ASAN clean. transfer 구현 직후 ASAN이 신규 결함 1건 추가 적발·수정: wire reply tail 파싱이 envelope frame close 뒤 해제된 버퍼를 읽는 heap-UAF(`mesh_wire.cpp` dispatch — release에서는 우연히 통과) → tail을 close 전에 복사. 수정 후 ASAN+leak `test_mesh_peer_admission` 8/8 green. TSAN 실행 완료(mesh test 5/5·2-process 8/8 통과, 2-process는 ASLR off 필요): mesh 신규 코드의 race 0건. 유지 기계에서 3계열 검출·S5 검토 대상으로 기록 — ① `part_helper_state` check-then-set이 무동기(9.x부터, thread-safe send 계약 하 동시 최초 send 시 state 유실 가능; perf 핫패스라 벤치 없는 수정 보류), ② socket 생성 경로 auto-HWM plan의 lock-order-inversion(잠재 deadlock, 9.x 동일), ③ mailbox ypipe 계열 race 경고(무주석 lock-free 동기화의 TSAN 한계로 추정) |
-| S4-27 | 1천·1만 peer benchmark | connection, lookup, multicast, reconnect 결과 기록 | 진행 중 | multi-process topology bench 신설(`core/tests/bench/bench_mesh_topology.cpp`, ctest `bench_mesh_topology` 16 peer): hub가 N개 fork peer를 admit→admission 수렴/원격 actor lookup 평균/NODROP multicast fan-out/drain 시간을 BENCH 라인으로 기록. in-process 다중 peer는 프로세스당 MeshName 1개 제약으로 불가하므로 fork 방식 채택(matrix §7의 in-process 대체 증거 항목을 이 설계로 대체). **구현 결함 1건 발견·수정**: multicast 원격 NODROP의 pipe 쓰기가능 probe(`routed_target_writable`)가 process_commands 없이 out-pipe 맵을 읽어 갓 admit된 peer의 pipe-attach 커맨드 미반영 stale 관측→간헐 publish 실패(errno EAGAIN/ETIMEDOUT). send 경로처럼 probe 진입 시 process_commands 선행하도록 수정. peer 수 sweep 측정치는 이 행에 계속 기록. 1천/1만은 WSL fd·메모리 한계 검토 후 대표 N으로 |
+| S4-27 | 1천·1만 peer benchmark | connection, lookup, multicast, reconnect 결과 기록 | 진행 중 | multi-process topology bench(`core/tests/bench/bench_mesh_topology.cpp`)가 admission 수렴, 원격 actor lookup, NODROP multicast fan-out과 drain을 측정한다. child가 actor 생성 때 생긴 `SPOT_CONTROL`을 multicast로 잘못 인정해 조기 종료하던 benchmark 결함을 red로 재현하고 `SPOT_MULTICAST` kind만 완료로 인정하도록 수정했다. green: 16 peer ctest, 100 peer `55.3ms/313.3us/0.122ms/100`, 1,000 peer `2185.3ms/359.5us/1.746ms/1000`, peer failure 0·drain 완료. 10,000 peer는 cgroup hard limit은 없었지만 49,515 task·약 91.3GB cgroup memory에 도달하고 122.32초 admission deadline에서 미수렴하여 종료됐으며 잔류 process 0을 확인했다. 이 WSL host의 대표 수치는 1,000 peer로 고정한다. 잔여=동일 규모 reconnect 시간 측정 |
 | S4-28 | mixed traffic 성능 검증 | request p99와 resource가 S0 threshold 통과 | 진행 중 | perf harness 10.0.0 이식 완료: `zlink_router_recv_part` 신규 signature 반영, SPOT 패턴 6종·spot-node auto-HWM 스냅샷 기계·러너 SPOT 분기 제거, bindings/c/include를 core 10.0.0 헤더로 미러링, 러너 정책 test 36/36 green, perf 전 타깃 빌드 green. 유지 패턴 ROUTER_ROUTER_REQREP(tcp, 64/1024B, runs 3·duration 3·clients 100) 정지 상태 2회 측정: throughput 64B 98.5%/98.2%·1024B 93.5%/93.2% (S0 §8.4 대비, 게이트 90% 통과). p99는 동일 코드 정지 샘플 간 28% 요동(1024B 0.536↔0.684ms)으로 이 WSL 호스트에서 120% 게이트의 분해능 밖 — 각 size 최량 샘플은 64B 112%·1024B 114.5%로 통과, S4 prep 시점의 동일 코드 123~124% 초과 기록과 일치. 증거=results/multi/report/perf_c_multi_linux_20260717_{061953,062119}_v10_s4_gate_quiet*.txt (061831 첫 실행은 ASAN 빌드 경합 load 152로 무효 처리). MeshNode 신설 패턴은 S4-27과 함께 확정. **성능 리뷰 항목(S5 I2, POSD)**: ① `wire_send_mutex`가 node 발신 전체를 단일 mutex로 직렬화(정확성 우선 1차 설계 — NODROP 원자성 요구 지점만 좁은 구간으로 축소 후보, 벤치 동반 필수) ② NODROP multicast의 blocking send가 lock 보유 중 SNDTIMEO×N까지 지연 가능 ③ transfer data plane이 ACK당 1 record stop-and-wait(윈도우화 후보) ④ ingress 20ms poll 주기의 지연 하한. 모두 계약 green 확보 후 S0 게이트(throughput 90%/p99) 재측정과 함께 개선 |
 | S4-29 | install과 package consumer | 설치 header와 shared library로 clean consumer 통과 | 진행 중 | staging 설치 + C11 clean consumer가 single-node RouteMesh round trip 통과(`C ABI SMOKE PASS (zlink 10.0.0)`). 설치 규칙의 header 충돌(zlink/common.h ↔ service/common.h 동일 목적지) 결함 수정 |
 | S4-30 | 삭제 범위 최종 no-hit | v10 plan·review record의 삭제 추적만 제외하고 source, 현재 계약·guide·internals, test, build와 package에서 제거 symbol·enumerator·macro·metadata 부재 | 진행 중 | core include/src/tests no-hit 0 확인(word-boundary 스캔). guide/internals·bindings 범위 잔여 |
@@ -560,7 +625,7 @@ S4 완료 gate:
 |---|---|---|---|---|
 | S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package·benchmark 범위 기록 | 미착수 | - |
 | S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
-| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
+| S5-03 | Claude Fable 우선 Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
 | S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 미착수 | - |
 | S5-05 | POSD 위험 신호 목록 작성 | 각 항목의 위반 원칙과 두 설계안 기록 | 미착수 | - |
 | S5-06 | 의미 있는 리팩터링 수행 | 선택 이유와 호출자 복잡도 감소 근거 기록 | 미착수 | - |
@@ -590,7 +655,7 @@ S5 완료 gate:
 - [ ] 두 리뷰어의 I3에 불필요·죽은 code·file·호환 잔재 finding, evidence와 `CLEAN` 판정이 있다.
 - [ ] 어느 축 수정 뒤에도 두 리뷰어가 Core 전체 scope의 I1·I2·I3를 모두 다시 검토했다.
 - [ ] Codex agent 결과 마지막 줄이 `CORE REVIEW CLEAN`이다.
-- [ ] Claude Sonnet 결과 마지막 줄이 `CORE REVIEW CLEAN`이다.
+- [ ] R2 결과 마지막 줄이 `CORE REVIEW CLEAN`이다.
 
 ## 10. S6 — Core 10.0.0 release-candidate build와 pre-release 배포
 
@@ -652,7 +717,7 @@ S6 완료 gate:
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S7-15 | Codex agent bindings 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
-| S7-16 | Claude Sonnet bindings 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
+| S7-16 | Claude Fable 우선 bindings 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
 | S7-17 | finding 수정과 전체 재검증 | 영향 언어와 package smoke 재실행 후 두 리뷰어의 I1·I2·I3 전체 재리뷰 | 미착수 | - |
 | S7-18 | 두 리뷰어 전체 재리뷰 반복 | 세 축과 두 stage 결과가 모두 `CLEAN`; 둘 다 `BINDINGS REVIEW CLEAN` | 미착수 | - |
 | S7-19 | local package 묶음 검증 | publish-all-wsl 및 별도 언어 package 검증 통과 | 미착수 | - |
@@ -676,7 +741,7 @@ S7 완료 gate:
 - [ ] open bindings finding이 0개다.
 - [ ] 두 리뷰어의 I1·I2·I3 각각에 finding 또는 `없음`, evidence와 `CLEAN` 판정이 있다.
 - [ ] 어느 축 수정 뒤에도 두 리뷰어가 bindings 전체 scope의 I1·I2·I3를 모두 다시 검토했다.
-- [ ] Codex agent와 Claude Sonnet 결과가 모두 `BINDINGS REVIEW CLEAN`이다.
+- [ ] Codex agent와 R2 결과가 모두 `BINDINGS REVIEW CLEAN`이다.
 - [ ] 외부 immutable 10.0.0 package는 아직 공개하지 않았다.
 
 ## 12. S8 — `.NET framework`, sample과 E2E 적용 및 리뷰
@@ -702,7 +767,7 @@ S7 완료 gate:
 | S8-12 | 성능과 resource 회귀 | mixed traffic p99와 fanout baseline gate 통과 | 미착수 | - |
 | S8-12A | `.NET` guide와 internals 갱신 | 구현·sample·E2E·package·성능 검증이 모두 통과한 뒤 guide에는 사용 계약만, internals에는 검증된 실제 pump·scheduler·location·timer 구조만 반영하고 source·구조 test·정식 spec과 대조 | 미착수 | - |
 | S8-13 | Codex agent `.NET` 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
-| S8-14 | Claude Sonnet `.NET` 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
+| S8-14 | Claude Fable 우선 `.NET` 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
 | S8-15 | finding 수정·전체 검증·재리뷰 반복 | 어느 축을 수정했든 두 리뷰어가 세 축 전체를 재검토하고 둘 다 `DOTNET REVIEW CLEAN` | 미착수 | - |
 | S8-16 | process-local MeshName uniqueness 검증 | 중복 AddRouteMesh 실패와 multi-mesh 독립 동작 통과 | 미착수 | - |
 
@@ -789,10 +854,10 @@ S9 완료 gate:
 
 ## 14. S10 — 언어별 병렬 독립 리뷰 반복
 
-세 언어 lane의 리뷰는 서로 병렬 실행할 수 있다. 각 lane 안에서는 Codex agent와 Claude Sonnet 리뷰를
+세 언어 lane의 리뷰는 서로 병렬 실행할 수 있다. 각 lane 안에서는 Codex agent와 R2 리뷰를
 같은 revision으로 병렬 실행한다. reviewer는 다른 lane을 수정하지 않는다.
 
-| ID | Lane | Codex 결과 | Claude Sonnet 결과 | open finding | 상태 | 증거 |
+| ID | Lane | Codex 결과 | R2 결과 | open finding | 상태 | 증거 |
 |---|---|---|---|---:|---|---|
 | S10-C | C++ | 대기 | 대기 | 0 | 미착수 | - |
 | S10-J | Java/Kotlin | 대기 | 대기 | 0 | 미착수 | - |
@@ -866,7 +931,7 @@ S10 완료 gate:
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S11-13 | Codex agent 전체 리뷰 | 전체 scope의 I1·I2·I3 각각에 finding·evidence·축별 판정 | 미착수 | - |
-| S11-14 | Claude Sonnet 전체 리뷰 | 같은 전체 scope에서 I1·I2·I3를 독립 판정 | 미착수 | - |
+| S11-14 | Claude Fable 우선 전체 리뷰 | 같은 전체 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
 | S11-15 | final finding 수정과 영향 검증 | finding 관련 stage와 downstream 검증 뒤 두 리뷰어의 세 축 전체 재리뷰 | 미착수 | - |
 | S11-16 | 전체 scope 재리뷰 반복 | 세 축이 모두 clean이고 두 리뷰어가 모두 `FINAL REVIEW CLEAN` | 미착수 | - |
 | S11-17 | post-push origin 재검증 | origin commit, tag, workflow와 artifact가 local 증거와 일치 | 미착수 | - |
@@ -883,7 +948,7 @@ S11 완료 gate:
   `CLEAN` 판정이 있다.
 - [ ] 어느 축 수정 뒤에도 두 리뷰어가 전체 통합 scope의 I1·I2·I3를 모두 다시 검토했다.
 - [ ] Codex agent 결과 마지막 줄이 `FINAL REVIEW CLEAN`이다.
-- [ ] Claude Sonnet 결과 마지막 줄이 `FINAL REVIEW CLEAN`이다.
+- [ ] R2 결과 마지막 줄이 `FINAL REVIEW CLEAN`이다.
 - [ ] open finding, skipped required test와 검증되지 않은 배포 artifact가 0개다.
 
 ## 16. 차단, 재개와 이전 stage 재개방 규칙
@@ -912,7 +977,7 @@ S11 완료 gate:
 | Core release tag | `core/v10.0.0` 예정 |
 | bindings release tags | 언어별 `v10.0.0` 예정 |
 | 최종 Codex review | - |
-| 최종 Claude Sonnet review | - |
+| 최종 구현 R2 review | Claude Fable 우선, fallback이면 Fable 차단 증거와 Claude Sonnet session 기록 |
 | Core workflow run | - |
 | Core RC prerelease run·checksum | - |
 | Conan workflow run | - |

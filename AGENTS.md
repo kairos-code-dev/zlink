@@ -146,8 +146,11 @@ interface도 `framework/doc/framework/spec/<package>/languages/<lang>/`에 먼�
 
 아직 공개 전인 RouteMesh 10.0.0 작업에서는 구현 전에 Core 10.0.0 계약을 `core/doc/spec/core/`의 정식
 spec에 먼저 기록한다. 정식 spec·guide·internals는 10.0.0 현재 상태만 설명하며 이전 version, AS-IS,
-제거 이력, 구현 진행표와 설계 대안을 포함하지 않는다. 구현 차이, 전환 inventory와 review 기록은
-`framework/doc/plan/v10.0/` 아래 임시 문서만 소유하고 정식 문서에서 이 임시 문서를 참조하지 않는다.
+제거 이력, 구현 진행표와 설계 대안을 포함하지 않는다. RouteMesh 전환 inventory, stage 진행 상태와
+review 기록은 `framework/doc/plan/v10.0/` 아래 임시 문서만 소유하고 정식 문서에서 이 임시 문서를
+참조하지 않는다. framework 목표 계약과 현재 언어별 구현의 차이는 위 framework 규칙에 따라 공개 계약이
+아닌 `90-implementation-gap.ko.md`와 언어별 gap 문서가 소유한다. 이 gap 문서를 목표 계약의 근거나
+완료 증거로 사용하지 않는다.
 public header·구현·contract test를 정식 spec에 맞춘 뒤 실제 구현이 확정된 시점에 internals를 갱신한다.
 
 RouteMesh 10.0.0 실행 상태의 단일 기준은

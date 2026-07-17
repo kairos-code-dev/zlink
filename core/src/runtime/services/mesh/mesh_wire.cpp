@@ -286,10 +286,12 @@ zlink_submit_result_t wire_publish_remote_locked (mesh_node_t *node_,
                                                   const zlink_msg_t *parts_,
                                                   size_t part_count_,
                                                   uint32_t *admitted_out_,
-                                                  uint32_t *dropped_out_)
+                                                  uint32_t *dropped_out_,
+                                                  uint32_t *unreachable_out_)
 {
     *admitted_out_ = 0;
     *dropped_out_ = 0;
+    *unreachable_out_ = 0;
     if (targets_.empty ())
         return ZLINK_SUBMIT_OK;
     if (!node_->router_socket) {
@@ -335,9 +337,12 @@ zlink_submit_result_t wire_publish_remote_locked (mesh_node_t *node_,
         }
     }
     //  Commit phase. With the reserve held under wire_send_mutex a capacity
-    //  failure cannot occur here; a target that still fails lost its pipe
-    //  (peer disconnect), which drops that target without breaking the
-    //  admission atomicity of the surviving set.
+    //  failure cannot occur here (one check_write slot admits the whole
+    //  multipart message); a target that still fails lost its pipe to a
+    //  concurrent peer disconnect. Such a target is no longer an admitted
+    //  member, so it leaves the snapshot accounting entirely instead of
+    //  counting as a NODROP drop: the racing truth is that it had already
+    //  left at snapshot time.
     for (size_t i = 0; i < targets_.size (); ++i) {
         const zlink_routing_id_t target = rid_value (targets_[i]);
         const zlink_submit_result_t rc =
@@ -345,12 +350,10 @@ zlink_submit_result_t wire_publish_remote_locked (mesh_node_t *node_,
                                       parts_, part_count_, ZLINK_SEND_FLAGS_DONTWAIT);
         if (rc == ZLINK_SUBMIT_OK)
             *admitted_out_ += 1;
+        else if (nodrop_)
+            *unreachable_out_ += 1;
         else
             *dropped_out_ += 1;
-    }
-    if (nodrop_ && *dropped_out_ > 0 && *admitted_out_ == 0) {
-        errno = EAGAIN;
-        return ZLINK_SUBMIT_BACKPRESSURED;
     }
     return ZLINK_SUBMIT_OK;
 }
@@ -678,4 +681,3 @@ zlink_submit_result_t wire_submit_reply (mesh_node_t *node_,
 }
 }
 }
-

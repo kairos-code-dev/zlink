@@ -1165,6 +1165,42 @@ bool stream_session_owns_socket (void *socket_)
     return g_claimed_streams.count (socket_) != 0;
 }
 
+bool session_bindings_pending (mesh_node_t *node_, const zlink_actor_ref_t &actor_)
+{
+    bool pending = false;
+    for_each_actor_binding (node_, actor_,
+                            [&pending] (session_service_t *, binding_t &binding_) {
+                                if (!binding_.pending.empty ())
+                                    pending = true;
+                            });
+    return pending;
+}
+
+void session_bindings_remove_actor (mesh_node_t *node_, const zlink_actor_ref_t &actor_)
+{
+    std::lock_guard<std::mutex> registry_lock (g_session_registry_mutex);
+    for (std::set<void *>::iterator service_it = g_live_sessions.begin ();
+         service_it != g_live_sessions.end (); ++service_it) {
+        session_service_t *service = static_cast<session_service_t *> (*service_it);
+        if (service->node != node_)
+            continue;
+        std::lock_guard<std::mutex> service_lock (service->mutex);
+        for (std::map<std::string, std::vector<binding_t>>::iterator session_it =
+               service->bindings.begin ();
+             session_it != service->bindings.end (); ++session_it) {
+            std::vector<binding_t> &bindings = session_it->second;
+            for (size_t i = bindings.size (); i > 0; --i) {
+                binding_t &binding = bindings[i - 1];
+                if (strncmp (binding.actor.actor_id, actor_.actor_id,
+                             sizeof (binding.actor.actor_id))
+                      == 0
+                    && binding.actor.generation == actor_.generation)
+                    bindings.erase (bindings.begin () + (i - 1));
+            }
+        }
+    }
+}
+
 void stream_sessions_fence_actor (mesh_node_t *node_,
                                   const zlink_actor_ref_t &actor_,
                                   uint64_t transfer_serial_)

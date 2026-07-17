@@ -193,7 +193,9 @@ snapshot, staged map, ack high-water). Key decisions:
 
 ## 8. Monitor
 
-One monitor per node (bounded queue). `emit_monitor_event` applies the mask
+One monitor per node (bounded queue). Emitters pin the monitor pointer under
+the node mutex (`monitor_emit_refs`), and close deletes the object only after
+that count drains to zero. `emit_monitor_event` applies the mask
 and enqueues; on overflow it aggregates high-frequency kinds
 (MESSAGE_SUBMITTED, BACKPRESSURED) while preferring to keep peer state,
 protocol error and lifecycle events. Counters accumulate independently of
@@ -209,6 +211,7 @@ loop after it drops the node lock.
 | Application threads | caller | all public APIs, direct wire sends |
 | Ingress thread | 1 per node | ROUTER recv, socket monitor drain, remote record admission, completion delivery |
 | Timeout scheduler | 1 per process (immortal) | timeout completions at operation deadlines |
+| Spot timer scheduler | 1 per MeshNode (lazily created, reclaimed at destroy) | Spot timer fires and turn waits, isolated from the global timer scheduler so a claim wait never blocks other nodes or plain timers |
 
 - The primary lock is the single `node->mutex`. The monitor has its own mutex;
   `emit_monitor_event` must be called without the node mutex held (internally

@@ -182,7 +182,9 @@ ack high-water)로 추적한다. 핵심 결정:
 
 ## 8. Monitor
 
-monitor는 node당 하나(bounded queue). `emit_monitor_event`는 mask를 적용해
+monitor는 node당 하나(bounded queue). emitter는 node mutex 아래에서 monitor
+포인터를 핀(`monitor_emit_refs`)하고, close는 이 참조가 0이 될 때까지 기다린
+뒤에만 객체를 삭제한다. `emit_monitor_event`는 mask를 적용해
 queue에 넣고, 넘치면 MESSAGE_SUBMITTED·BACKPRESSURED 같은 고빈도 event를
 aggregate하며 peer state·protocol error·lifecycle event를 우선 보존한다.
 counter는 event 소비와 무관하게 누적되고 status 조회는 원자 snapshot이다.
@@ -197,6 +199,7 @@ handler와 recv는 같은 queue의 single consumer이며 handler 등록 중 재�
 | 앱 스레드 | 호출자 | 모든 공개 API, wire 송신(직접 send) |
 | ingress 스레드 | node당 1 | ROUTER recv, socket monitor drain, 원격 record admission, completion 마감 |
 | timeout scheduler | 프로세스 1 (immortal) | operation deadline 도래 시 timeout completion |
+| Spot timer scheduler | MeshNode당 1 (지연 생성, destroy 시 회수) | Spot timer fire·turn 대기. 전역 timer scheduler와 분리되어 claim 대기가 다른 node·일반 timer를 막지 않음 |
 
 - 기본 잠금은 `node->mutex` 하나다. monitor는 자체 mutex를 가지며
   `emit_monitor_event`는 node mutex를 잡지 않은 상태에서 불러야 한다

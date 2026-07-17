@@ -146,16 +146,23 @@ zlink_close_result_t zlink_mesh_node_monitor_close (void **monitor_p_)
     }
     mesh_node_t *node = monitor->node;
     {
-        std::lock_guard<std::mutex> node_lock (node->mutex);
-        std::lock_guard<std::mutex> lock (monitor->mutex);
-        if (monitor->handler_active) {
-            errno = EDEADLK;
-            return ZLINK_CLOSE_BUSY;
+        std::unique_lock<std::mutex> node_lock (node->mutex);
+        {
+            std::lock_guard<std::mutex> lock (monitor->mutex);
+            if (monitor->handler_active) {
+                errno = EDEADLK;
+                return ZLINK_CLOSE_BUSY;
+            }
+            monitor->closed = true;
         }
-        monitor->closed = true;
         node->monitor = NULL;
         if (node->monitor_count > 0)
             node->monitor_count -= 1;
+        //  An emitter that captured the pointer before node->monitor was
+        //  cleared still holds a pinned reference; deleting under it would
+        //  be a use-after-free.
+        while (node->monitor_emit_refs > 0)
+            node->cv.wait (node_lock);
     }
     track_monitor (monitor, false);
     delete monitor;

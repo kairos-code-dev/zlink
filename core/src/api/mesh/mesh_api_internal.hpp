@@ -48,6 +48,9 @@ void *spot_timer_new (void *spot_);
 //  application claim cannot be taken (handler mutual exclusion).
 bool spot_timer_enter_turn (void *timer_);
 void spot_timer_leave_turn (void *timer_);
+//  Cancels a parked enter_turn wait during timer destroy so an in-flight
+//  fire can finish even while the caller holds the Spot's application claim.
+void spot_timer_cancel (void *timer_);
 //  Queue-delivery gate (recv/poller consumption): false once the owning Spot
 //  generation ended, so stale ticks are never delivered.
 bool spot_timer_tick_allowed (void *timer_);

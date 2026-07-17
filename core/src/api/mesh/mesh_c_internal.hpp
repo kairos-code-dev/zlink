@@ -36,7 +36,6 @@ template <typename T> void init_versioned (T *value_)
 int check_name (const char *name_, size_t max_, std::string *out_);
 
 //  UTF-8 validity for public names and topics.
-bool valid_utf8_public (const std::string &text_);
 
 //  Node owner id constant.
 owner_id_t node_owner ();

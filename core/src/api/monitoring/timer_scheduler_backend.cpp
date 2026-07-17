@@ -10,10 +10,9 @@
 #include "api/monitoring/timer_api_internal.hpp"
 #include "api/mesh/mesh_api_internal.hpp"
 
-timer_handle_t::timer_handle_t (backend_kind_t backend_, void *owner_spot_, void *owner_node_) :
+timer_handle_t::timer_handle_t (backend_kind_t backend_, void *owner_node_) :
     tag (0x74696d72),
     backend (backend_),
-    owner_spot (owner_spot_),
     owner_node (owner_node_),
     scheduler (NULL),
     destroyed (false),
@@ -268,22 +267,19 @@ void stop_timer_scheduler (timer_handle_t *timer_)
     timer_->recv_cv.notify_all ();
 }
 
-extern "C" void zlink_timer_cleanup_spot (void *spot_)
+void zlink_timer_release_spot_node_scheduler (void *owner_node_)
 {
-    if (!spot_)
-        return;
-
-    std::lock_guard<std::mutex> lock (g_spot_scheduler_map_mutex);
-    for (spot_scheduler_map_t::iterator sit = g_spot_schedulers.begin ();
-         sit != g_spot_schedulers.end (); ++sit) {
-        std::shared_ptr<scheduler_state_t> scheduler = sit->second;
-        std::lock_guard<std::mutex> scheduler_lock (scheduler->mutex);
-        for (std::multimap<uint64_t, timer_handle_t *>::iterator it = scheduler->schedule.begin ();
-             it != scheduler->schedule.end (); ++it) {
-            timer_handle_t *timer = it->second;
-            std::lock_guard<std::mutex> timer_lock (timer->mutex);
-            if (timer->owner_spot == spot_)
-                timer->owner_spot = NULL;
-        }
+    std::shared_ptr<scheduler_state_t> scheduler;
+    {
+        std::lock_guard<std::mutex> lock (g_spot_scheduler_map_mutex);
+        spot_scheduler_map_t::iterator it = g_spot_schedulers.find (owner_node_);
+        if (it == g_spot_schedulers.end ())
+            return;
+        scheduler = it->second;
+        g_spot_schedulers.erase (it);
     }
+    std::lock_guard<std::mutex> lock (scheduler->mutex);
+    if (scheduler->active_timers == 0 && scheduler->schedule.empty ())
+        scheduler->shutdown_requested = true;
+    scheduler->cv.notify_all ();
 }

@@ -70,6 +70,21 @@ jobs:
             echo "conandata.yml does not contain source for version ${VERSION}" >&2
             exit 1
           fi
+          # Source integrity gate: the entry must pin a sha256 digest.
+          if ! python3 - "$VERSION" <<'EOF'
+          import sys, yaml
+          version = sys.argv[1]
+          with open("core/packaging/conan/conandata.yml") as f:
+              data = yaml.safe_load(f)
+          entry = data.get("sources", {}).get(version, {})
+          digest = entry.get("sha256", "")
+          if not isinstance(digest, str) or len(digest) != 64:
+              print(f"conandata.yml entry for {version} has no sha256 digest", file=sys.stderr)
+              sys.exit(1)
+          EOF
+          then
+            exit 1
+          fi
 
       - name: Create Conan package
         run: |

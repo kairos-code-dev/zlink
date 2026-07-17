@@ -98,7 +98,8 @@ zlink_submit_result_t wire_publish_remote_locked (mesh_node_t *node_,
                                                   const zlink_msg_t *parts_,
                                                   size_t part_count_,
                                                   uint32_t *admitted_out_,
-                                                  uint32_t *dropped_out_);
+                                                  uint32_t *dropped_out_,
+                                                  uint32_t *unreachable_out_);
 
 //  Actor data submit to the ActorRef's node pipe. source_actor_ is NULL for
 //  node-originated calls.

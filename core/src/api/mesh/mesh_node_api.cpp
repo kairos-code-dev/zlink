@@ -5,6 +5,7 @@
 #include "api/mesh/mesh_c_internal.hpp"
 #include "services/mesh/mesh_wire.hpp"
 #include "api/mesh/mesh_api_internal.hpp"
+#include "api/monitoring/timer_api_internal.hpp"
 
 #include "core/ctx.hpp"
 #include "utils/err.hpp"
@@ -451,6 +452,9 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
     }
 
     wire_stop (node);
+    //  All Spot timers are gone (they gate destroy with EBUSY), so the
+    //  node's dedicated timer scheduler can wind down.
+    zlink_timer_release_spot_node_scheduler (node);
     unregister_node (node);
     delete node;
     *mesh_node_p_ = NULL;

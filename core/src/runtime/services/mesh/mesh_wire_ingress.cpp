@@ -540,6 +540,15 @@ void handle_actor_left (mesh_node_t *node_,
     record->kind_data.assign (reinterpret_cast<unsigned char *> (&data),
                               reinterpret_cast<unsigned char *> (&data) + sizeof (data));
     (void) admit_record (node_, spot_owner_id, domain_infrastructure, record, false, 0);
+    //  The remote leave may have been the Spot's last reference: end the
+    //  logical Spot once nothing else (facade, timer, claim) holds it. An
+    //  unreferenced Spot cannot observe the LEFT record anyway.
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        maybe_end_spot_locked (node_,
+                               std::string (previous_spot_rid_.begin (),
+                                            previous_spot_rid_.end ()));
+    }
 }
 
 void handle_reply (mesh_node_t *node_,

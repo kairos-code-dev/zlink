@@ -557,6 +557,9 @@ struct mesh_node_t
     //  children
     uint32_t publisher_count;
     uint32_t monitor_count;
+    //  Emitters currently holding the monitor pointer; close waits for zero
+    //  before deleting the monitor object.
+    int monitor_emit_refs;
     uint32_t stream_session_count;
     monitor_state_t *monitor; //  single monitor handle (owned by caller)
 

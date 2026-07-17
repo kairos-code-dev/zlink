@@ -315,6 +315,7 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     next_actor_generation (1),
     next_transfer_serial (1),
     publisher_count (0),
+    monitor_emit_refs (0),
     monitor_count (0),
     stream_session_count (0),
     monitor (NULL),
@@ -703,9 +704,12 @@ void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_)
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         monitor = node_->monitor;
+        if (!monitor)
+            return;
+        //  Pin the monitor: close waits for emit refs to drain before it
+        //  deletes the object, so the pointer stays valid past this scope.
+        node_->monitor_emit_refs += 1;
     }
-    if (!monitor)
-        return;
 
     event_.struct_size = sizeof (event_);
     event_.version = 1;
@@ -716,11 +720,9 @@ void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_)
     void *userdata = NULL;
     {
         std::lock_guard<std::mutex> lock (monitor->mutex);
-        if (monitor->closed)
-            return;
-        if (monitor->mask != 0 && (monitor->mask & bit) == 0)
-            return;
-        if (monitor->handler) {
+        if (monitor->closed || (monitor->mask != 0 && (monitor->mask & bit) == 0)) {
+            //  Filtered or closing: fall through to the ref release below.
+        } else if (monitor->handler) {
             handler = monitor->handler;
             userdata = monitor->handler_userdata;
         } else {
@@ -754,6 +756,11 @@ void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_)
             std::lock_guard<std::mutex> lock (monitor->mutex);
             monitor->handler_active -= 1;
         }
+    }
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        node_->monitor_emit_refs -= 1;
+        node_->cv.notify_all ();
     }
 }
 

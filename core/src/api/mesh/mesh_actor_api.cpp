@@ -3,6 +3,7 @@
 #include "utils/precompiled.hpp"
 
 #include "api/mesh/mesh_c_internal.hpp"
+#include "api/mesh/mesh_stream_session_internal.hpp"
 #include "services/mesh/mesh_wire.hpp"
 
 #include "utils/err.hpp"
@@ -673,7 +674,15 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
                     && op_it->second.id.low != op_id.low)
                     completions_pending = true;
             }
-            if (!held && !completions_pending)
+            bool session_control_pending = false;
+            if (!held && !completions_pending) {
+                //  Bound session control drains without the node mutex; the
+                //  session services use their own locks.
+                lock.unlock ();
+                session_control_pending = session_bindings_pending (node, *actor_);
+                lock.lock ();
+            }
+            if (!held && !completions_pending && !session_control_pending)
                 break;
             const uint64_t now = now_ms ();
             if (timeout_ms_ == 0 || now >= deadline) {
@@ -699,7 +708,10 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
         if (it != node->actors.end () && it->second.generation == actor_->generation) {
             const std::string spot_key (it->second.spot_rid.begin (), it->second.spot_rid.end ());
             std::map<std::string, spot_state_t>::iterator spot_it = node->spots.find (spot_key);
-            if (spot_it != node->spots.end () && spot_it->second.active_actor_count > 0) {
+            //  Capture before maybe_end_spot_locked: ending the Spot erases
+            //  the element and invalidates spot_it.
+            const bool spot_present = spot_it != node->spots.end ();
+            if (spot_present && spot_it->second.active_actor_count > 0) {
                 spot_it->second.active_actor_count -= 1;
                 maybe_end_spot_locked (node, spot_key);
             }
@@ -710,13 +722,19 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
 
             std::unique_ptr<queued_record_t> record = control_record (
               node, ZLINK_ACTOR_LIFECYCLE_DESTROYED, before, after, ZLINK_REQUEST_OK);
-            if (record.get () && spot_it != node->spots.end ()) {
+            if (record.get () && spot_present) {
+                //  If the Spot ended above, the admission misses its owner
+                //  and drops the record — an unreferenced Spot has no
+                //  observer for DESTROYED anyway.
                 const owner_id_t spot_owner_id =
                   spot_owner (before.spot_rid, before.spot_generation);
                 (void) admit_record (node, spot_owner_id, domain_infrastructure, record, false, 0);
             }
         }
     }
+
+    //  No session may keep addressing the destroyed generation.
+    session_bindings_remove_actor (node, *actor_);
 
     pending_operation_t completed;
     {

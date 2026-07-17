@@ -23,15 +23,12 @@ struct timer_handle_t
         backend_spot_node_scheduler = 2
     };
 
-    explicit timer_handle_t (backend_kind_t backend_,
-                             void *owner_spot_ = NULL,
-                             void *owner_node_ = NULL);
+    explicit timer_handle_t (backend_kind_t backend_, void *owner_node_ = NULL);
 
     bool check_tag () const { return tag == 0x74696d72; }
 
     uint32_t tag;
     backend_kind_t backend;
-    void *owner_spot;
     void *owner_node;
     scheduler_state_t *scheduler;
     std::mutex mutex;
@@ -84,6 +81,13 @@ void ensure_scheduler_started (const std::shared_ptr<scheduler_state_t> &schedul
 std::shared_ptr<scheduler_state_t> resolve_spot_scheduler (void *owner_node_);
 std::shared_ptr<scheduler_state_t> scheduler_for_timer (timer_handle_t *timer_);
 void stop_timer_scheduler (timer_handle_t *timer_);
+
+//  Spot-owned timers run on a per-MeshNode scheduler so a Spot-turn wait can
+//  never head-of-line-block generic timers or other nodes' timers.
+void *zlink_timer_new_for_spot_node (void *owner_node_);
+//  Releases the per-node scheduler once the node is destroyed (all its
+//  timers are gone by then: they gate node destroy with EBUSY).
+void zlink_timer_release_spot_node_scheduler (void *owner_node_);
 
 timer_handle_t *as_timer_handle (void *timer_);
 int timer_handle_signaler_fd (timer_handle_t *timer_, zlink_fd_t *fd_out_);

@@ -789,6 +789,7 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
     uint32_t dropped_local = 0;
     uint32_t admitted_remote = 0;
     uint32_t dropped_remote = 0;
+    uint32_t unreachable_remote = 0;
     const bool blocking = (flags_ & ZLINK_SEND_FLAGS_DONTWAIT) == 0;
     const uint64_t reserve_deadline =
       blocking && node_->sndtimeo_ms > 0
@@ -799,6 +800,7 @@ retry_reserve:
     dropped_local = 0;
     admitted_remote = 0;
     dropped_remote = 0;
+    unreachable_remote = 0;
     {
         std::unique_lock<std::mutex> lock (node_->mutex);
         const uint64_t message_budget = node_->effective_message_budget ();
@@ -846,7 +848,7 @@ retry_reserve:
         const zlink_submit_result_t remote_rc = wire_publish_remote_locked (
           node_, remote_targets, channel, topic,
           source_spot_rid_ ? *source_spot_rid_ : rid_bytes_t (), nodrop_, metadata_, parts_,
-          part_count_, &admitted_remote, &dropped_remote);
+          part_count_, &admitted_remote, &dropped_remote, &unreachable_remote);
         if (nodrop_ && remote_rc != ZLINK_SUBMIT_OK) {
             if (blocking && reserve_deadline != 0 && now_ms () < reserve_deadline) {
                 node_->cv.wait_for (lock, std::chrono::milliseconds (
@@ -898,7 +900,7 @@ retry_reserve:
 
     if (detail_out_) {
         init_versioned (detail_out_);
-        detail_out_->snapshot_remote_target_count = snapshot_remote;
+        detail_out_->snapshot_remote_target_count = snapshot_remote - unreachable_remote;
         detail_out_->admitted_remote_target_count = admitted_remote;
         detail_out_->dropped_remote_target_count = dropped_remote;
         detail_out_->snapshot_local_spot_count = snapshot_local;
@@ -911,7 +913,7 @@ retry_reserve:
     event.kind = (dropped_local > 0 || dropped_remote > 0)
                    ? ZLINK_MESH_MONITOR_MULTICAST_DROPPED
                    : ZLINK_MESH_MONITOR_MULTICAST_COMMITTED;
-    event.snapshot_remote_target_count = snapshot_remote;
+    event.snapshot_remote_target_count = snapshot_remote - unreachable_remote;
     event.admitted_remote_target_count = admitted_remote;
     event.dropped_remote_target_count = dropped_remote;
     event.snapshot_local_spot_count = snapshot_local;

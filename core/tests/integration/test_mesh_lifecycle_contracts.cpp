@@ -10,6 +10,8 @@
 
 #include <string.h>
 
+#include <atomic>
+
 SETUP_TEARDOWN_TESTCONTEXT
 
 namespace
@@ -464,6 +466,94 @@ void test_public_strings_reject_invalid_utf8 ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+namespace
+{
+void slow_tick_handler (void *timer_, uint64_t fire_count_, void *userdata_)
+{
+    (void) timer_;
+    (void) fire_count_;
+    std::atomic<int> *entered = static_cast<std::atomic<int> *> (userdata_);
+    entered->store (1);
+    msleep (300);
+}
+}
+
+//  Destroying a timer that overlaps an in-flight fire must complete instead
+//  of deadlocking the scheduler, and destroying a Spot timer while this
+//  thread holds the Spot's application claim cancels the parked turn.
+void test_timer_destroy_overlapping_fire_completes ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "tdestroy-mesh", "ticks");
+
+    //  Plain timer: destroy while the handler runs.
+    void *timer = zlink_timer_new ();
+    TEST_ASSERT_NOT_NULL (timer);
+    std::atomic<int> entered (0);
+    TEST_ASSERT_EQUAL_INT (ZLINK_HANDLER_OK,
+                           zlink_timer_handler (timer, slow_tick_handler, &entered));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_timer_start (timer, 20ull * 1000 * 1000, 1));
+    for (int waited = 0; waited < 2000 && entered.load () == 0; waited += 5)
+        msleep (5);
+    TEST_ASSERT_TRUE (entered.load () != 0);
+    //  The handler is still sleeping: destroy must wait it out and return.
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_timer_destroy (&timer));
+
+    //  Spot timer: while this thread holds the Spot's application claim, the
+    //  parked timer turn is cancelled by destroy instead of deadlocking.
+    zlink_routing_id_t rid;
+    memset (&rid, 0, sizeof (rid));
+    rid.size = 8;
+    memcpy (rid.data, "tick-spt", 8);
+    void *spot = NULL;
+    uint32_t created = 0;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_mesh_node_spot_get_or_new (node, &rid, &spot, &created));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_spot_set_subscription (spot, "ticks", "beat.",
+                                                        ZLINK_SPOT_SUBSCRIPTION_PREFIX));
+    void *publisher = zlink_mesh_node_publisher_new (node);
+    TEST_ASSERT_NOT_NULL (publisher);
+    zlink_msg_t part;
+    make_payload (&part, "beat-1");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_mesh_node_publisher_publish (publisher, "ticks", "beat.a", NULL,
+                                                              &part, 1, NULL,
+                                                              ZLINK_SEND_FLAGS_NONE));
+    zlink_msg_close (&part);
+
+    zlink_mesh_claim_t claim;
+    take_ready_claim (node, ZLINK_MESH_OWNER_SPOT, ZLINK_MESH_READY_APPLICATION, &claim);
+
+    void *spot_timer = zlink_spot_timer_new (spot);
+    TEST_ASSERT_NOT_NULL (spot_timer);
+    std::atomic<int> spot_entered (0);
+    TEST_ASSERT_EQUAL_INT (ZLINK_HANDLER_OK,
+                           zlink_timer_handler (spot_timer, slow_tick_handler, &spot_entered));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_timer_start (spot_timer, 20ull * 1000 * 1000, 0));
+    //  Give the fire time to park behind the held application claim.
+    msleep (200);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_timer_destroy (&spot_timer));
+    //  The cancelled turn never ran the handler while the claim was held.
+    TEST_ASSERT_EQUAL_INT (0, spot_entered.load ());
+
+    void *recv_batch = zlink_mesh_receive_batch_new (4, 16, 1 << 20);
+    TEST_ASSERT_NOT_NULL (recv_batch);
+    recv_one_record (&claim, recv_batch);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+
+    void *batch_handle = recv_batch;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_receive_batch_destroy (&batch_handle));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 int main ()
 {
     setup_test_environment (120);
@@ -476,6 +566,7 @@ int main ()
     RUN_TEST (test_shutdown_detaches_timeoutless_operations);
     RUN_TEST (test_peers_query_output_is_invariant_on_invalid_element);
     RUN_TEST (test_public_strings_reject_invalid_utf8);
+    RUN_TEST (test_timer_destroy_overlapping_fire_completes);
     const int rc = UNITY_END ();
     fflush (NULL);
     return rc;

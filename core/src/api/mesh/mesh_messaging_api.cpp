@@ -22,6 +22,23 @@ struct operation_timeout_ctx_t
 {
     mesh_node_t *node;
     uint64_t operation_low;
+    std::shared_ptr<struct operation_timeout_gate_t> gate;
+};
+
+struct operation_timeout_gate_t
+{
+    enum state_t
+    {
+        prepared,
+        committed,
+        canceled
+    };
+
+    operation_timeout_gate_t () : state (prepared) {}
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    state_t state;
 };
 
 void on_operation_timeout (void *userdata_)
@@ -30,6 +47,13 @@ void on_operation_timeout (void *userdata_)
       static_cast<operation_timeout_ctx_t *> (userdata_));
     if (!ctx.get ())
         return;
+    {
+        std::unique_lock<std::mutex> lock (ctx->gate->mutex);
+        while (ctx->gate->state == operation_timeout_gate_t::prepared)
+            ctx->gate->cv.wait (lock);
+        if (ctx->gate->state == operation_timeout_gate_t::canceled)
+            return;
+    }
     mesh_node_pin_t node_pin (ctx->node);
     mesh_node_t *node = node_pin.get ();
     if (!node)
@@ -42,11 +66,117 @@ void on_operation_timeout (void *userdata_)
         if (it == node->operations.end ())
             return;
         op = it->second;
-        node->operations.erase (it);
     }
-    complete_operation (node, op, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT, NULL, NULL);
+    (void) complete_pending_operation (node, op, ZLINK_REQUEST_TIMED_OUT, ETIMEDOUT, NULL,
+                                       NULL);
 }
 
+struct operation_timeout_guard_state_t
+{
+    std::shared_ptr<operation_timeout_gate_t> gate;
+    std::shared_ptr<zlink::request_timeout::task_t> task;
+    bool committed;
+
+    operation_timeout_guard_state_t () : committed (false) {}
+};
+
+}
+
+namespace zlink
+{
+namespace mesh
+{
+operation_timeout_guard_t::operation_timeout_guard_t (mesh_node_t *node_,
+                                                      uint64_t operation_low_,
+                                                      uint32_t timeout_ms_) :
+    _state (NULL),
+    _valid (true)
+{
+    if (timeout_ms_ == 0)
+        return;
+
+#ifdef ZLINK_BUILD_TESTS
+    try {
+        test_maybe_throw_alloc ();
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        _valid = false;
+        return;
+    }
+#endif
+    std::unique_ptr<operation_timeout_guard_state_t> state (
+      new (std::nothrow) operation_timeout_guard_state_t ());
+    std::unique_ptr<operation_timeout_ctx_t> ctx (
+      new (std::nothrow) operation_timeout_ctx_t ());
+    if (!state.get () || !ctx.get ()) {
+        errno = ENOMEM;
+        _valid = false;
+        return;
+    }
+
+    try {
+        state->gate = std::make_shared<operation_timeout_gate_t> ();
+        ctx->node = node_;
+        ctx->operation_low = operation_low_;
+        ctx->gate = state->gate;
+        state->task = zlink::request_timeout::schedule (
+          timeout_ms_, &on_operation_timeout, ctx.get (),
+          &zlink::request_reply_runtime::destroy_timeout_callback_ctx<operation_timeout_ctx_t>);
+        if (!state->task) {
+            errno = ENOMEM;
+            _valid = false;
+            return;
+        }
+        ctx.release ();
+        _state = state.release ();
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        _valid = false;
+    }
+}
+
+operation_timeout_guard_t::~operation_timeout_guard_t ()
+{
+    operation_timeout_guard_state_t *state =
+      static_cast<operation_timeout_guard_state_t *> (_state);
+    if (!state)
+        return;
+    if (!state->committed) {
+        {
+            std::lock_guard<std::mutex> lock (state->gate->mutex);
+            state->gate->state = operation_timeout_gate_t::canceled;
+            state->gate->cv.notify_all ();
+        }
+        zlink::request_timeout::cancel (state->task);
+    }
+    delete state;
+}
+
+bool operation_timeout_guard_t::valid () const
+{
+    return _valid;
+}
+
+void operation_timeout_guard_t::commit ()
+{
+    operation_timeout_guard_state_t *state =
+      static_cast<operation_timeout_guard_state_t *> (_state);
+    if (!state || state->committed)
+        return;
+    {
+        std::lock_guard<std::mutex> lock (state->gate->mutex);
+        state->gate->state = operation_timeout_gate_t::committed;
+        state->committed = true;
+        state->gate->cv.notify_all ();
+    }
+}
+}
+}
+
+namespace
+{
 
 //  Validates borrowed input parts and copies them (reference counted) into
 //  record storage.
@@ -213,23 +343,20 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
 
-    zlink_mesh_operation_id_t op_id;
-    memset (&op_id, 0, sizeof (op_id));
+    operation_submission_t submission (
+      node_, is_request, operation_kind_, requester_, is_request ? timeout_ms_ : 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
     uint64_t reply_serial = 0;
     if (is_request) {
-        op_id = register_operation (node_, operation_kind_, requester_, timeout_ms_);
-        std::lock_guard<std::mutex> lock (node_->mutex);
-        reply_serial = node_->next_reply_serial++;
         reply_route_t route;
         route.kind = reply_route_t::kind_generic;
         route.requester = requester_;
-        route.requester_node_generation = node_->lifecycle_generation;
-        route.operation_id = op_id;
         route.operation_kind = operation_kind_;
-        route.consumed = false;
         memset (&route.join_actor, 0, sizeof (route.join_actor));
-        route.join_target_spot_generation = 0;
-        node_->reply_routes[reply_serial] = route;
+        if (!submission.add_reply_route (route, &reply_serial))
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
 
         record->operation_id = op_id;
         record->operation_kind = operation_kind_;
@@ -243,21 +370,12 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
     if (admit_record (node_, destination_, domain_application, record, blocking, admit_timeout)
         != 0) {
         const int reason = errno;
-        if (is_request) {
-            std::lock_guard<std::mutex> lock (node_->mutex);
-            node_->operations.erase (op_id.low);
-            node_->reply_routes.erase (reply_serial);
-        }
         errno = reason;
         return submit_errno_result ();
     }
 
     if (is_request) {
-        if (schedule_operation_timeout (node_, op_id.low, timeout_ms_) != 0) {
-            //  Timeout scheduling failure leaves the operation pending
-            //  without a deadline; surface the internal failure.
-            return ZLINK_SUBMIT_INTERNAL_ERROR;
-        }
+        submission.commit ();
         *operation_id_out_ = op_id;
     }
 
@@ -309,25 +427,23 @@ zlink_submit_result_t submit_remote (mesh_node_t *node_,
         return rc;
     }
 
-    const zlink_mesh_operation_id_t op_id =
-      register_operation (node_, operation_kind_, requester_, timeout_ms_);
+    operation_submission_t submission (
+      node_, true, operation_kind_, requester_, timeout_ms_);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
     const wire_type_t type = channel_kind_ ? wire_channel_request : wire_node_request;
     const zlink_submit_result_t rc = wire_submit_data (
       node_, peer_rid_, type, op_id.low, channel_, metadata_, parts_, part_count_, flags_);
     if (rc != ZLINK_SUBMIT_OK) {
         const int reason = errno;
-        {
-            std::lock_guard<std::mutex> lock (node_->mutex);
-            node_->operations.erase (op_id.low);
-        }
         if (reason == EAGAIN || reason == ETIMEDOUT)
             emit_submit_event (node_, ZLINK_MESH_MONITOR_BACKPRESSURED, ZLINK_MESH_OWNER_NODE,
                                channel_, reason);
         errno = reason;
         return rc;
     }
-    if (schedule_operation_timeout (node_, op_id.low, timeout_ms_) != 0)
-        return ZLINK_SUBMIT_INTERNAL_ERROR;
+    submission.commit ();
     *operation_id_out_ = op_id;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
@@ -448,11 +564,7 @@ try {
                                 flags_, 0);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_request_to_node (void *mesh_node_,
@@ -473,11 +585,7 @@ try {
                                 flags_, timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_send_to_channel (void *mesh_node_,
@@ -492,11 +600,7 @@ try {
                                 flags_, 0);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t
@@ -518,11 +622,7 @@ try {
                                 ZLINK_MESH_OPERATION_CHANNEL_REQUEST, flags_, timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 //  --- Spot messaging -------------------------------------------------------------
@@ -565,11 +665,7 @@ try {
                                 static_cast<zlink_mesh_operation_kind_t> (0), flags_, 0);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_spot_request_to_channel (void *spot_,
@@ -595,11 +691,7 @@ try {
                                 ZLINK_MESH_OPERATION_SPOT_REQUEST, flags_, timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 namespace
@@ -679,18 +771,17 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
                                 target_spot_generation_, metadata_, parts_, part_count_, flags_);
             return rc;
         }
-        const zlink_mesh_operation_id_t op_id = register_operation (
-          node, ZLINK_MESH_OPERATION_SPOT_REQUEST, requester, timeout_ms_);
+        operation_submission_t submission (
+          node, true, ZLINK_MESH_OPERATION_SPOT_REQUEST, requester, timeout_ms_);
+        if (!submission.valid ())
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        const zlink_mesh_operation_id_t op_id = submission.operation_id ();
         const zlink_submit_result_t rc =
           wire_submit_spot (node, target_node, true, op_id.low, facade->spot_rid, target_spot,
                             target_spot_generation_, metadata_, parts_, part_count_, flags_);
-        if (rc != ZLINK_SUBMIT_OK) {
-            std::lock_guard<std::mutex> lock (node->mutex);
-            node->operations.erase (op_id.low);
+        if (rc != ZLINK_SUBMIT_OK)
             return rc;
-        }
-        if (schedule_operation_timeout (node, op_id.low, timeout_ms_) != 0)
-            return ZLINK_SUBMIT_INTERNAL_ERROR;
+        submission.commit ();
         *operation_id_out_ = op_id;
         return ZLINK_SUBMIT_OK;
     }
@@ -702,21 +793,28 @@ zlink_submit_result_t spot_direct_submit (void *spot_,
         }
         //  Request: admission succeeded, the terminal completion carries the
         //  lookup failure.
-        const zlink_mesh_operation_id_t op_id = register_operation (
-          node, ZLINK_MESH_OPERATION_SPOT_REQUEST, requester, timeout_ms_);
-        *operation_id_out_ = op_id;
+        operation_submission_t submission (
+          node, true, ZLINK_MESH_OPERATION_SPOT_REQUEST, requester, 0);
+        if (!submission.valid ())
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        const zlink_mesh_operation_id_t op_id = submission.operation_id ();
         pending_operation_t op;
         {
             std::lock_guard<std::mutex> lock (node->mutex);
             std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
               node->operations.find (op_id.low);
             op = op_it->second;
-            node->operations.erase (op_it);
         }
-        if (generation_conflict)
-            complete_operation (node, op, ZLINK_REQUEST_CONFLICT, ESTALE, NULL, NULL);
-        else
-            complete_operation (node, op, ZLINK_REQUEST_NOT_FOUND, ENOENT, NULL, NULL);
+        const int completion_rc =
+          generation_conflict
+            ? complete_pending_operation (
+                node, op, ZLINK_REQUEST_CONFLICT, ESTALE, NULL, NULL)
+            : complete_pending_operation (
+                node, op, ZLINK_REQUEST_NOT_FOUND, ENOENT, NULL, NULL);
+        if (completion_rc < 0)
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        submission.commit ();
+        *operation_id_out_ = op_id;
         return ZLINK_SUBMIT_OK;
     }
 
@@ -742,11 +840,7 @@ try {
                                metadata_, parts_, part_count_, NULL, flags_, 0);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_spot_request_to_spot (void *spot_,
@@ -769,11 +863,7 @@ try {
                                timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 //  --- Logical Multicast ------------------------------------------------------------
@@ -931,7 +1021,8 @@ retry_reserve:
         //  remote leg only infallible assignments remain (all-or-none across
         //  both legs) and no preparation failure escapes the C ABI.
         std::vector<std::unique_ptr<queued_record_t>> prepared;
-        std::vector<size_t> slot_base;
+        std::vector<std::list<std::unique_ptr<queued_record_t>>::iterator>
+          reserved_slots;
         std::vector<std::pair<owner_id_t, int>> ready_added;
         size_t slots_taken = 0;
         bool prealloc_failed = false;
@@ -970,11 +1061,11 @@ retry_reserve:
             //  ready entries are only ever visible while this mutex is held:
             //  every exit path below either fills or rolls them back before
             //  the lock is released.
-            slot_base.resize (accepting.size ());
+            reserved_slots.resize (accepting.size ());
             ready_added.reserve (accepting.size ());
             for (size_t t = 0; t < accepting.size (); ++t) {
-                slot_base[t] = accepting[t]->records.size ();
                 accepting[t]->records.push_back (std::unique_ptr<queued_record_t> ());
+                reserved_slots[t] = --accepting[t]->records.end ();
                 ++slots_taken;
             }
             for (size_t t = 0; t < accepting_ids.size (); ++t) {
@@ -1038,7 +1129,7 @@ retry_reserve:
             std::unique_ptr<queued_record_t> record = std::move (prepared[t]);
             accepting[t]->pending_messages += 1;
             accepting[t]->pending_bytes += record->byte_size;
-            accepting[t]->records[slot_base[t]] = std::move (record);
+            *reserved_slots[t] = std::move (record);
             ++admitted_local;
         }
         node_->cv.notify_all ();
@@ -1080,27 +1171,6 @@ retry_reserve:
 }
 }
 
-namespace zlink
-{
-namespace mesh
-{
-int schedule_operation_timeout (mesh_node_t *node_, uint64_t operation_low_, uint32_t timeout_ms_)
-{
-    if (timeout_ms_ == 0)
-        return 0;
-    std::shared_ptr<zlink::request_timeout::task_t> task;
-    return zlink::request_reply_runtime::schedule_timeout_task<operation_timeout_ctx_t> (
-      timeout_ms_, &on_operation_timeout,
-      [&] (operation_timeout_ctx_t &ctx_) {
-          ctx_.node = node_;
-          ctx_.operation_low = operation_low_;
-      },
-      &task);
-}
-
-}
-}
-
 zlink_submit_result_t zlink_mesh_node_publisher_publish (void *publisher_,
                                                          const char *channel_name_,
                                                          const char *topic_,
@@ -1119,11 +1189,7 @@ try {
                            part_count_, detail_out_, flags_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_spot_publish (void *spot_,
@@ -1154,11 +1220,7 @@ try {
                            parts_, part_count_, detail_out_, flags_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 //  --- local subscription --------------------------------------------------------

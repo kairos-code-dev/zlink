@@ -763,18 +763,25 @@ int deliver_reply_via_route (mesh_node_t *node_,
             errno = EALREADY;
             return -1;
         }
-        route.consumed = true;
+        if (route.in_flight) {
+            errno = EBUSY;
+            return -1;
+        }
         if (route.remote_origin) {
             remote = true;
             remote_origin = route.origin_rid;
             remote_correlation = route.origin_correlation;
+            route.in_flight = true;
         } else {
             std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
               node_->operations.find (route.operation_id.low);
-            if (op_it == node_->operations.end ())
+            if (op_it == node_->operations.end ()) {
+                route.in_flight = false;
+                route.consumed = true;
                 return 0; //  Requester already completed: drop by contract.
+            }
             op = op_it->second;
-            node_->operations.erase (op_it);
+            route.in_flight = true;
             deliver_local = true;
         }
     }
@@ -782,11 +789,29 @@ int deliver_reply_via_route (mesh_node_t *node_,
         const zlink_submit_result_t rc = wire_submit_reply (
           node_, remote_origin, remote_correlation, terminal_result_, failure_errno_,
           parts_->empty () ? NULL : &(*parts_)[0], parts_->size ());
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator it =
+          node_->reply_routes.find (serial_);
+        if (it != node_->reply_routes.end ()) {
+            it->second.in_flight = false;
+            if (rc == ZLINK_SUBMIT_OK)
+                it->second.consumed = true;
+        }
         return rc == ZLINK_SUBMIT_OK ? 0 : -1;
     }
-    if (deliver_local)
-        complete_operation (node_, op, terminal_result_, failure_errno_, NULL,
-                            parts_->empty () ? NULL : parts_);
+    if (deliver_local) {
+        const int rc = complete_pending_operation (
+          node_, op, terminal_result_, failure_errno_, NULL, parts_->empty () ? NULL : parts_);
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator it =
+          node_->reply_routes.find (serial_);
+        if (it != node_->reply_routes.end ()) {
+            it->second.in_flight = false;
+            if (rc >= 0)
+                it->second.consumed = true;
+        }
+        return rc < 0 ? -1 : 0;
+    }
     return 0;
 }
 }
@@ -811,6 +836,23 @@ try {
     if (!node) {
         errno = ESHUTDOWN;
         return ZLINK_SUBMIT_INVALID_STATE;
+    }
+
+    //  Prepare borrowed payload references before reserving or consuming the
+    //  one-shot token. Allocation failure therefore leaves the token and the
+    //  requester operation untouched and retryable.
+#ifdef ZLINK_BUILD_TESTS
+    test_maybe_throw_alloc ();
+#endif
+    std::vector<zlink_msg_t> reply_parts (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        zlink_msg_init (&reply_parts[i]);
+        if (zlink_msg_copy (&reply_parts[i],
+                            const_cast<zlink_msg_t *> (&parts_[i]))
+            != 0) {
+            errno = EFAULT;
+            return ZLINK_SUBMIT_INTERNAL_ERROR;
+        }
     }
 
     pending_operation_t op;
@@ -841,18 +883,20 @@ try {
             errno = EALREADY;
             return ZLINK_SUBMIT_INVALID_STATE;
         }
+        if (route.in_flight) {
+            errno = EBUSY;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
         if (route.requester_node_generation != node->lifecycle_generation) {
             errno = ESTALE;
             return ZLINK_SUBMIT_INVALID_STATE;
         }
         if (route.remote_origin) {
-            //  The requester lives on an admitted peer: consume the token
-            //  and answer over the wire with the requester-side correlation.
-            route.consumed = true;
             remote = true;
             remote_origin = route.origin_rid;
             remote_correlation = route.origin_correlation;
             transfer_relay = route.kind == reply_route_t::kind_transfer_relay;
+            route.in_flight = true;
         } else {
             std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
               node->operations.find (route.operation_id.low);
@@ -861,40 +905,46 @@ try {
                 //  token, drop the reply, and do not produce a second
                 //  completion.
                 route.consumed = true;
+                route.in_flight = false;
                 return ZLINK_SUBMIT_OK;
             }
             op = op_it->second;
-            node->operations.erase (op_it);
-            route.consumed = true;
+            route.in_flight = true;
         }
     }
 
     if (remote) {
-        if (transfer_relay)
-            return wire_submit_reply_relay (node, remote_origin, remote_correlation,
-                                            ZLINK_REQUEST_OK, 0, parts_, part_count_);
-        return wire_submit_reply (node, remote_origin, remote_correlation, ZLINK_REQUEST_OK, 0,
-                                  parts_, part_count_);
+        const zlink_submit_result_t rc =
+          transfer_relay
+            ? wire_submit_reply_relay (node, remote_origin, remote_correlation,
+                                       ZLINK_REQUEST_OK, 0, parts_, part_count_)
+            : wire_submit_reply (node, remote_origin, remote_correlation, ZLINK_REQUEST_OK, 0,
+                                 parts_, part_count_);
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator it =
+          node->reply_routes.find (serial);
+        if (it != node->reply_routes.end ()) {
+            it->second.in_flight = false;
+            if (rc == ZLINK_SUBMIT_OK)
+                it->second.consumed = true;
+        }
+        return rc;
     }
 
-    //  Borrowed input: reference the payload without consuming caller parts.
-    std::vector<zlink_msg_t> reply_parts (part_count_);
-    for (size_t i = 0; i < part_count_; ++i) {
-        zlink_msg_init (&reply_parts[i]);
-        if (zlink_msg_copy (&reply_parts[i], const_cast<zlink_msg_t *> (&parts_[i])) != 0) {
-            for (size_t j = 0; j <= i; ++j)
-                zlink_msg_close (&reply_parts[j]);
-            errno = EFAULT;
-            return ZLINK_SUBMIT_INTERNAL_ERROR;
+    const int completion_rc =
+      complete_pending_operation (node, op, ZLINK_REQUEST_OK, 0, NULL, &reply_parts);
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator route_it =
+          node->reply_routes.find (serial);
+        if (route_it != node->reply_routes.end ()) {
+            route_it->second.in_flight = false;
+            if (completion_rc >= 0)
+                route_it->second.consumed = true;
         }
     }
-    complete_operation (node, op, ZLINK_REQUEST_OK, 0, NULL, &reply_parts);
-    return ZLINK_SUBMIT_OK;
+    return completion_rc < 0 ? ZLINK_SUBMIT_OUT_OF_MEMORY : ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }

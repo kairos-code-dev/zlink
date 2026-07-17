@@ -307,79 +307,231 @@ void actor_apply_remote_join_reply (mesh_node_t *node_,
                                     const rid_bytes_t &spot_rid_,
                                     uint64_t spot_generation_)
 {
+    actor_state_t before;
+    actor_state_t after;
+    bool stale = false;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        const std::string id (op_.join_actor.actor_id);
+        std::map<std::string, actor_state_t>::iterator it = node_->actors.find (id);
+        if (it == node_->actors.end ()
+            || it->second.generation != op_.join_actor.generation) {
+            stale = true;
+        } else {
+            before = it->second;
+            after = before;
+            if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
+                after.spot_rid = spot_rid_;
+                after.spot_generation = spot_generation_;
+                after.spot_node_rid = spot_node_rid_;
+                after.membership_epoch += 1;
+            }
+        }
+    }
+    if (stale) {
+        (void) complete_pending_operation (node_, op_, ZLINK_REQUEST_CONFLICT, ESTALE, NULL,
+                                           NULL);
+        return;
+    }
+
     zlink_actor_join_completion_t completion;
     memset (&completion, 0, sizeof (completion));
     completion.struct_size = sizeof (completion);
     completion.version = 1;
     completion.join_result = static_cast<zlink_actor_join_result_t> (join_result_);
+    completion.actor.node_rid = rid_value (node_->routing_id);
+    snprintf (completion.actor.actor_id, sizeof (completion.actor.actor_id), "%s",
+              after.id.c_str ());
+    completion.actor.generation = after.generation;
+    completion.location.struct_size = sizeof (completion.location);
+    completion.location.version = 1;
+    completion.location.actor = completion.actor;
+    completion.location.spot_rid = rid_value (after.spot_rid);
+    completion.location.spot_generation = after.spot_generation;
+    completion.location.membership_epoch = after.membership_epoch;
+    std::vector<unsigned char> kind_data (
+      reinterpret_cast<unsigned char *> (&completion),
+      reinterpret_cast<unsigned char *> (&completion) + sizeof (completion));
 
-    bool stale = false;
+    owner_id_t ready_owner = op_.requester;
+    const std::pair<owner_id_t, int> ready_key (
+      ready_owner, static_cast<int> (domain_infrastructure));
     rid_bytes_t left_notify_node;
     zlink_actor_ref_t left_actor;
     rid_bytes_t left_prev_spot;
     uint64_t left_prev_generation = 0;
     uint64_t left_prev_epoch = 0;
     uint64_t left_new_epoch = 0;
+    const bool previous_spot_remote = !before.spot_node_rid.empty ();
+    const std::string previous_spot_key (
+      before.spot_rid.begin (), before.spot_rid.end ());
+    if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED
+        && previous_spot_remote) {
+        left_notify_node = before.spot_node_rid;
+        left_actor = op_.join_actor;
+        left_prev_spot = before.spot_rid;
+        left_prev_generation = before.spot_generation;
+        left_prev_epoch = before.membership_epoch;
+    }
+    const int32_t terminal_result =
+      join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED ? ZLINK_REQUEST_OK
+                                                : ZLINK_REQUEST_REJECTED;
+    const int32_t failure_errno =
+      join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED ? 0 : EACCES;
+    bool delivered = false;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
-        const std::string id (op_.join_actor.actor_id);
-        std::map<std::string, actor_state_t>::iterator it = node_->actors.find (id);
-        if (it == node_->actors.end () || it->second.generation != op_.join_actor.generation) {
-            stale = true;
-        } else {
-            actor_state_t &actor = it->second;
-            if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
-                //  The accepted reply is the single membership commit point.
-                if (actor.spot_node_rid.empty ()) {
-                    const std::string prev_key (actor.spot_rid.begin (), actor.spot_rid.end ());
-                    std::map<std::string, spot_state_t>::iterator prev_it =
-                      node_->spots.find (prev_key);
-                    if (prev_it != node_->spots.end ()
-                        && prev_it->second.active_actor_count > 0) {
-                        prev_it->second.active_actor_count -= 1;
-                        maybe_end_spot_locked (node_, prev_key);
-                    }
-                } else {
-                    left_notify_node = actor.spot_node_rid;
-                    left_actor = op_.join_actor;
-                    left_prev_spot = actor.spot_rid;
-                    left_prev_generation = actor.spot_generation;
-                    left_prev_epoch = actor.membership_epoch;
-                }
-                actor.spot_rid = spot_rid_;
-                actor.spot_generation = spot_generation_;
-                actor.spot_node_rid = spot_node_rid_;
-                actor.membership_epoch += 1;
-                left_new_epoch = actor.membership_epoch;
-            }
-            completion.actor.node_rid = rid_value (node_->routing_id);
-            snprintf (completion.actor.actor_id, sizeof (completion.actor.actor_id), "%s",
-                      id.c_str ());
-            completion.actor.generation = actor.generation;
-            completion.location.struct_size = sizeof (completion.location);
-            completion.location.version = 1;
-            completion.location.actor = completion.actor;
-            completion.location.spot_rid = rid_value (actor.spot_rid);
-            completion.location.spot_generation = actor.spot_generation;
-            completion.location.membership_epoch = actor.membership_epoch;
+        std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
+          node_->operations.find (op_.id.low);
+        std::map<std::string, actor_state_t>::iterator actor_it =
+          node_->actors.find (before.id);
+        if (op_it == node_->operations.end ()
+            || actor_it == node_->actors.end ()
+            || actor_it->second.generation != before.generation
+            || actor_it->second.membership_epoch != before.membership_epoch
+            || actor_it->second.spot_rid != before.spot_rid
+            || actor_it->second.spot_node_rid != before.spot_node_rid
+            || actor_it->second.spot_generation != before.spot_generation)
+            return;
+        std::map<owner_id_t, owner_state_t>::iterator owner_it =
+          node_->owners.find (op_it->second.requester);
+        const std::shared_ptr<completion_reservation_t> reservation =
+          op_it->second.completion;
+        if (owner_it == node_->owners.end () || !reservation
+            || reservation->records.empty ())
+            return;
+
+        mailbox_t &mailbox =
+          owner_it->second.domains[domain_infrastructure];
+        bool ready_inserted = false;
+        try {
+#ifdef ZLINK_BUILD_TESTS
+            test_maybe_throw_alloc ();
+#endif
+            ready_inserted = node_->ready.insert (ready_key).second;
         }
+        catch (const std::bad_alloc &) {
+            if (ready_inserted)
+                node_->ready.erase (ready_key);
+            return;
+        }
+        queued_record_t &record = *reservation->records.front ();
+        if (!reservation->prepared) {
+            record.kind = ZLINK_MESH_RECORD_COMPLETION;
+            record.operation_id = op_.id;
+            record.operation_kind = op_.kind;
+            record.terminal_result = terminal_result;
+            record.failure_errno = failure_errno;
+            record.kind_data.swap (kind_data);
+            reservation->prepared = true;
+        }
+        mailbox.records.splice (mailbox.records.end (),
+                                reservation->records);
+        mailbox.pending_messages += 1;
+        mailbox.pending_bytes += record.byte_size;
+
+        if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
+            //  Completion storage and membership change commit together.
+            if (!previous_spot_remote) {
+                std::map<std::string, spot_state_t>::iterator prev_it =
+                  node_->spots.find (previous_spot_key);
+                if (prev_it != node_->spots.end ()
+                    && prev_it->second.active_actor_count > 0) {
+                    prev_it->second.active_actor_count -= 1;
+                    maybe_end_spot_locked (node_, previous_spot_key);
+                }
+            }
+            actor_it->second = std::move (after);
+            left_new_epoch = actor_it->second.membership_epoch;
+        }
+        node_->operations.erase (op_it);
+        if (node_->monitor)
+            node_->monitor->counters.completed_operations += 1;
+        delivered = true;
     }
-    if (stale) {
-        complete_operation (node_, op_, ZLINK_REQUEST_CONFLICT, ESTALE, NULL, NULL);
+    if (!delivered)
         return;
-    }
+    signal_ready (node_, ready_owner, domain_infrastructure);
+    zlink_mesh_monitor_event_t event;
+    memset (&event, 0, sizeof (event));
+    event.kind = ZLINK_MESH_MONITOR_OPERATION_COMPLETED;
+    event.operation_id_high = op_.id.high;
+    event.operation_id_low = op_.id.low;
+    event.result_code = terminal_result;
+    event.failure_errno = failure_errno;
+    emit_monitor_event (node_, event);
     if (!left_notify_node.empty ())
         wire_notify_actor_left (node_, left_notify_node, left_actor, left_prev_spot,
                                 left_prev_generation, left_prev_epoch, left_new_epoch);
-
-    std::vector<unsigned char> kind_data (reinterpret_cast<unsigned char *> (&completion),
-                                          reinterpret_cast<unsigned char *> (&completion)
-                                            + sizeof (completion));
-    if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED)
-        complete_operation (node_, op_, ZLINK_REQUEST_OK, 0, &kind_data, NULL);
-    else
-        complete_operation (node_, op_, ZLINK_REQUEST_REJECTED, EACCES, &kind_data, NULL);
 }
+}
+}
+
+namespace
+{
+struct actor_destroy_commit_t
+{
+    std::string actor_id;
+    uint64_t generation;
+    std::string spot_key;
+    owner_id_t actor_owner_id;
+    bool spot_present;
+};
+
+bool commit_actor_destroy_locked (mesh_node_t *node_, void *userdata_)
+{
+    actor_destroy_commit_t *commit =
+      static_cast<actor_destroy_commit_t *> (userdata_);
+    std::map<std::string, actor_state_t>::iterator actor_it =
+      node_->actors.find (commit->actor_id);
+    if (actor_it == node_->actors.end ()
+        || actor_it->second.generation != commit->generation)
+        return false;
+    std::map<std::string, spot_state_t>::iterator spot_it =
+      node_->spots.find (commit->spot_key);
+    commit->spot_present = spot_it != node_->spots.end ();
+    if (commit->spot_present && spot_it->second.active_actor_count > 0) {
+        spot_it->second.active_actor_count -= 1;
+        maybe_end_spot_locked (node_, commit->spot_key);
+    }
+    node_->owners.erase (commit->actor_owner_id);
+    node_->actors.erase (actor_it);
+    return true;
+}
+
+struct actor_leave_commit_t
+{
+    std::string actor_id;
+    uint64_t generation;
+    uint64_t expected_epoch;
+    std::string previous_spot_key;
+    std::string entry_spot_key;
+    actor_state_t after;
+};
+
+bool commit_actor_leave_locked (mesh_node_t *node_, void *userdata_)
+{
+    actor_leave_commit_t *commit =
+      static_cast<actor_leave_commit_t *> (userdata_);
+    std::map<std::string, actor_state_t>::iterator actor_it =
+      node_->actors.find (commit->actor_id);
+    if (actor_it == node_->actors.end ()
+        || actor_it->second.generation != commit->generation
+        || actor_it->second.membership_epoch != commit->expected_epoch)
+        return false;
+    std::map<std::string, spot_state_t>::iterator previous =
+      node_->spots.find (commit->previous_spot_key);
+    if (previous != node_->spots.end ()
+        && previous->second.active_actor_count > 0) {
+        previous->second.active_actor_count -= 1;
+        maybe_end_spot_locked (node_, commit->previous_spot_key);
+    }
+    std::map<std::string, spot_state_t>::iterator entry =
+      node_->spots.find (commit->entry_spot_key);
+    if (entry != node_->spots.end ())
+        entry->second.active_actor_count += 1;
+    actor_it->second = std::move (commit->after);
+    return true;
 }
 }
 
@@ -559,25 +711,20 @@ try {
             return ZLINK_SUBMIT_NOT_CONNECTED;
         }
     }
-    const zlink_mesh_operation_id_t op_id =
-      register_operation (node, ZLINK_MESH_OPERATION_ACTOR_LOOKUP, node_owner (), timeout_ms_);
+    operation_submission_t submission (
+      node, true, ZLINK_MESH_OPERATION_ACTOR_LOOKUP, node_owner (), timeout_ms_);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
     const zlink_submit_result_t rc = wire_submit_actor_lookup (node, target_node, op_id.low, id);
-    if (rc != ZLINK_SUBMIT_OK) {
-        std::lock_guard<std::mutex> lock (node->mutex);
-        node->operations.erase (op_id.low);
+    if (rc != ZLINK_SUBMIT_OK)
         return rc;
-    }
-    if (schedule_operation_timeout (node, op_id.low, timeout_ms_) != 0)
-        return ZLINK_SUBMIT_INTERNAL_ERROR;
+    submission.commit ();
     *operation_id_out_ = op_id;
     return ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
@@ -618,23 +765,21 @@ try {
                 return ZLINK_SUBMIT_NOT_CONNECTED;
             }
             lock.unlock ();
-            const zlink_mesh_operation_id_t op_id = register_operation (
-              node, ZLINK_MESH_OPERATION_ACTOR_DESTROY, node_owner (), timeout_ms_);
+            operation_submission_t submission (
+              node, true, ZLINK_MESH_OPERATION_ACTOR_DESTROY, node_owner (), timeout_ms_);
+            if (!submission.valid ())
+                return ZLINK_SUBMIT_OUT_OF_MEMORY;
+            const zlink_mesh_operation_id_t op_id = submission.operation_id ();
             const zlink_submit_result_t rc =
               wire_submit_actor_destroy (node, target_node, op_id.low, *actor_);
-            if (rc != ZLINK_SUBMIT_OK) {
-                std::lock_guard<std::mutex> relock (node->mutex);
-                node->operations.erase (op_id.low);
+            if (rc != ZLINK_SUBMIT_OK)
                 return rc;
-            }
-            if (schedule_operation_timeout (node, op_id.low, timeout_ms_) != 0)
-                return ZLINK_SUBMIT_INTERNAL_ERROR;
+            submission.commit ();
             *operation_id_out_ = op_id;
             return ZLINK_SUBMIT_OK;
         }
     }
 
-    pending_operation_t op;
     actor_state_t before;
     {
         std::unique_lock<std::mutex> lock (node->mutex);
@@ -649,12 +794,38 @@ try {
             return err == ESTALE ? ZLINK_SUBMIT_INVALID_STATE : ZLINK_SUBMIT_NOT_FOUND;
         }
         before = *actor;
-        actor->draining = true;
     }
 
-    const zlink_mesh_operation_id_t op_id =
-      register_operation (node, ZLINK_MESH_OPERATION_ACTOR_DESTROY, node_owner (), timeout_ms_);
-    *operation_id_out_ = op_id;
+    operation_submission_t submission (
+      node, true, ZLINK_MESH_OPERATION_ACTOR_DESTROY, node_owner (), 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
+    actor_destroy_commit_t destroy_commit;
+    destroy_commit.actor_id = before.id;
+    destroy_commit.generation = before.generation;
+    destroy_commit.spot_key.assign (
+      before.spot_rid.begin (), before.spot_rid.end ());
+    destroy_commit.actor_owner_id =
+      actor_owner (before.id, before.generation);
+    destroy_commit.spot_present = false;
+    std::unique_ptr<queued_record_t> destroyed_record = control_record (
+      node, ZLINK_ACTOR_LIFECYCLE_DESTROYED, before, before,
+      ZLINK_REQUEST_OK);
+    if (!destroyed_record.get ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::map<std::string, actor_state_t>::iterator actor_it =
+          node->actors.find (before.id);
+        if (actor_it == node->actors.end ()
+            || actor_it->second.generation != before.generation
+            || actor_it->second.draining) {
+            errno = ESTALE;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
+        actor_it->second.draining = true;
+    }
 
     //  Local destroy: with new admission closed by the draining mark, wait
     //  until the actor's active claims release and its outstanding request
@@ -712,62 +883,56 @@ try {
         lock.unlock ();
     }
 
-    //  Emit DESTROYED to the owning Spot's control lane, drop the mailboxes,
-    //  and complete the operation.
-    {
-        std::unique_lock<std::mutex> lock (node->mutex);
-        const std::string id (actor_->actor_id);
-        std::map<std::string, actor_state_t>::iterator it = node->actors.find (id);
-        if (it != node->actors.end () && it->second.generation == actor_->generation) {
-            const std::string spot_key (it->second.spot_rid.begin (), it->second.spot_rid.end ());
-            std::map<std::string, spot_state_t>::iterator spot_it = node->spots.find (spot_key);
-            //  Capture before maybe_end_spot_locked: ending the Spot erases
-            //  the element and invalidates spot_it.
-            const bool spot_present = spot_it != node->spots.end ();
-            if (spot_present && spot_it->second.active_actor_count > 0) {
-                spot_it->second.active_actor_count -= 1;
-                maybe_end_spot_locked (node, spot_key);
-            }
-            node->owners.erase (actor_owner (id, it->second.generation));
-            actor_state_t after = it->second;
-            node->actors.erase (it);
-            lock.unlock ();
-
-            std::unique_ptr<queued_record_t> record = control_record (
-              node, ZLINK_ACTOR_LIFECYCLE_DESTROYED, before, after, ZLINK_REQUEST_OK);
-            if (record.get () && spot_present) {
-                //  If the Spot ended above, the admission misses its owner
-                //  and drops the record — an unreferenced Spot has no
-                //  observer for DESTROYED anyway.
-                const owner_id_t spot_owner_id =
-                  spot_owner (before.spot_rid, before.spot_generation);
-                (void) admit_record (node, spot_owner_id, domain_infrastructure, record, false, 0);
-            }
-        }
-    }
-
-    //  No session may keep addressing the destroyed generation.
-    session_bindings_remove_actor (node, *actor_);
-
     pending_operation_t completed;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
           node->operations.find (op_id.low);
-        if (op_it == node->operations.end ())
-            return ZLINK_SUBMIT_OK;
+        if (op_it == node->operations.end ()) {
+            std::map<std::string, actor_state_t>::iterator actor_it =
+              node->actors.find (before.id);
+            if (actor_it != node->actors.end ()
+                && actor_it->second.generation == before.generation)
+                actor_it->second.draining = false;
+            errno = ESHUTDOWN;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
         completed = op_it->second;
-        node->operations.erase (op_it);
     }
-    complete_operation (node, completed, ZLINK_REQUEST_OK, 0, NULL, NULL);
+    const int completion_rc = complete_pending_operation_with_commit (
+      node, completed, ZLINK_REQUEST_OK, 0, NULL, NULL,
+      &commit_actor_destroy_locked, &destroy_commit);
+    if (completion_rc < 0) {
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::map<std::string, actor_state_t>::iterator actor_it =
+          node->actors.find (before.id);
+        if (actor_it != node->actors.end ()
+            && actor_it->second.generation == before.generation)
+            actor_it->second.draining = false;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    }
+    if (completion_rc == 0) {
+        errno = ESTALE;
+        return ZLINK_SUBMIT_INVALID_STATE;
+    }
+
+    submission.commit ();
+    *operation_id_out_ = op_id;
+    if (destroy_commit.spot_present) {
+        //  An ended Spot has no observer; otherwise emit the already prepared
+        //  lifecycle record after the atomic destroy/completion commit.
+        const owner_id_t spot_owner_id =
+          spot_owner (before.spot_rid, before.spot_generation);
+        (void) admit_record (
+          node, spot_owner_id, domain_infrastructure, destroyed_record, false,
+          0);
+    }
+    //  No session may keep addressing the destroyed generation.
+    session_bindings_remove_actor (node, *actor_);
     return ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 //  --- membership -------------------------------------------------------------------
@@ -834,8 +999,11 @@ try {
                 return ZLINK_SUBMIT_NOT_CONNECTED;
             }
             lock.unlock ();
-            const zlink_mesh_operation_id_t op_id = register_operation (
-              node, ZLINK_MESH_OPERATION_ACTOR_JOIN, node_owner (), timeout_ms_);
+            operation_submission_t submission (
+              node, true, ZLINK_MESH_OPERATION_ACTOR_JOIN, node_owner (), timeout_ms_);
+            if (!submission.valid ())
+                return ZLINK_SUBMIT_OUT_OF_MEMORY;
+            const zlink_mesh_operation_id_t op_id = submission.operation_id ();
             {
                 std::lock_guard<std::mutex> relock (node->mutex);
                 std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
@@ -846,13 +1014,9 @@ try {
             const zlink_submit_result_t rc = wire_submit_actor_join (
               node, target_node, op_id.low, *actor_, false, target_spot,
               target_spot_generation_, creation_parts_, creation_part_count_);
-            if (rc != ZLINK_SUBMIT_OK) {
-                std::lock_guard<std::mutex> relock (node->mutex);
-                node->operations.erase (op_id.low);
+            if (rc != ZLINK_SUBMIT_OK)
                 return rc;
-            }
-            if (schedule_operation_timeout (node, op_id.low, timeout_ms_) != 0)
-                return ZLINK_SUBMIT_INTERNAL_ERROR;
+            submission.commit ();
             *operation_id_out_ = op_id;
             return ZLINK_SUBMIT_OK;
         }
@@ -865,27 +1029,24 @@ try {
         target_owner = spot_owner (target_spot, it->second.generation);
     }
 
-    const zlink_mesh_operation_id_t op_id =
-      register_operation (node, ZLINK_MESH_OPERATION_ACTOR_JOIN, node_owner (), timeout_ms_);
+    operation_submission_t submission (
+      node, true, ZLINK_MESH_OPERATION_ACTOR_JOIN, node_owner (), timeout_ms_);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
 
     //  The join control record carries a one-shot reply token bound to the
     //  actor-join route kind.
     uint64_t reply_serial;
-    {
-        std::lock_guard<std::mutex> lock (node->mutex);
-        reply_serial = node->next_reply_serial++;
-        reply_route_t route;
-        route.kind = reply_route_t::kind_actor_join;
-        route.requester = node_owner ();
-        route.requester_node_generation = node->lifecycle_generation;
-        route.operation_id = op_id;
-        route.operation_kind = ZLINK_MESH_OPERATION_ACTOR_JOIN;
-        route.consumed = false;
-        route.join_actor = *actor_;
-        route.join_target_spot_rid = target_spot;
-        route.join_target_spot_generation = target_spot_generation_;
-        node->reply_routes[reply_serial] = route;
-    }
+    reply_route_t route;
+    route.kind = reply_route_t::kind_actor_join;
+    route.requester = node_owner ();
+    route.operation_kind = ZLINK_MESH_OPERATION_ACTOR_JOIN;
+    route.join_actor = *actor_;
+    route.join_target_spot_rid = target_spot;
+    route.join_target_spot_generation = target_spot_generation_;
+    if (!submission.add_reply_route (route, &reply_serial))
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
 
     std::unique_ptr<queued_record_t> record =
       control_record (node, ZLINK_ACTOR_LIFECYCLE_JOINED, actor_snapshot, actor_snapshot,
@@ -911,9 +1072,6 @@ try {
 
     if (admit_record (node, target_owner, domain_application, record, timeout_ms_ > 0, timeout_ms_)
         != 0) {
-        std::lock_guard<std::mutex> lock (node->mutex);
-        node->operations.erase (op_id.low);
-        node->reply_routes.erase (reply_serial);
         switch (errno) {
             case EAGAIN:
                 return ZLINK_SUBMIT_BACKPRESSURED;
@@ -923,15 +1081,12 @@ try {
                 return ZLINK_SUBMIT_INVALID_STATE;
         }
     }
+    submission.commit ();
     *operation_id_out_ = op_id;
     return ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_actor_join_entry_spot (void *mesh_node_,
@@ -981,8 +1136,11 @@ try {
                 return ZLINK_SUBMIT_NOT_CONNECTED;
             }
             lock.unlock ();
-            const zlink_mesh_operation_id_t op_id = register_operation (
-              node, ZLINK_MESH_OPERATION_ACTOR_JOIN, node_owner (), timeout_ms_);
+            operation_submission_t submission (
+              node, true, ZLINK_MESH_OPERATION_ACTOR_JOIN, node_owner (), timeout_ms_);
+            if (!submission.valid ())
+                return ZLINK_SUBMIT_OUT_OF_MEMORY;
+            const zlink_mesh_operation_id_t op_id = submission.operation_id ();
             {
                 std::lock_guard<std::mutex> relock (node->mutex);
                 std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
@@ -993,13 +1151,9 @@ try {
             const zlink_submit_result_t rc = wire_submit_actor_join (
               node, target_node, op_id.low, *actor_, true, rid_bytes_t (), 0, creation_parts_,
               creation_part_count_);
-            if (rc != ZLINK_SUBMIT_OK) {
-                std::lock_guard<std::mutex> relock (node->mutex);
-                node->operations.erase (op_id.low);
+            if (rc != ZLINK_SUBMIT_OK)
                 return rc;
-            }
-            if (schedule_operation_timeout (node, op_id.low, timeout_ms_) != 0)
-                return ZLINK_SUBMIT_INTERNAL_ERROR;
+            submission.commit ();
             *operation_id_out_ = op_id;
             return ZLINK_SUBMIT_OK;
         }
@@ -1017,11 +1171,7 @@ try {
                                             creation_part_count_, operation_id_out_, timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_actor_leave_spot (void *mesh_node_,
@@ -1041,8 +1191,10 @@ try {
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
 
+    LIBZLINK_UNUSED (timeout_ms_);
     actor_state_t before, after;
     owner_id_t previous_spot_owner;
+    actor_leave_commit_t leave_commit;
     {
         std::unique_lock<std::mutex> lock (node->mutex);
         if (node->state == ZLINK_MESH_NODE_DRAINING || node->state == ZLINK_MESH_NODE_STOPPED) {
@@ -1060,6 +1212,7 @@ try {
             return ZLINK_SUBMIT_INVALID_STATE;
         }
         before = *actor;
+        after = before;
         previous_spot_owner = spot_owner (actor->spot_rid, actor->spot_generation);
 
         //  Leaving returns the actor to the entry Spot.
@@ -1070,46 +1223,55 @@ try {
             return ZLINK_SUBMIT_INVALID_STATE;
         }
         const std::string prev_key (actor->spot_rid.begin (), actor->spot_rid.end ());
-        std::map<std::string, spot_state_t>::iterator prev_it = node->spots.find (prev_key);
-        if (prev_it != node->spots.end () && prev_it->second.active_actor_count > 0) {
-            prev_it->second.active_actor_count -= 1;
-            maybe_end_spot_locked (node, prev_key);
-        }
-        actor->spot_rid = entry_it->second.rid;
-        actor->spot_generation = entry_it->second.generation;
-        actor->membership_epoch += 1;
-        entry_it->second.active_actor_count += 1;
-        after = *actor;
+        after.spot_rid = entry_it->second.rid;
+        after.spot_generation = entry_it->second.generation;
+        after.membership_epoch += 1;
+        leave_commit.actor_id = before.id;
+        leave_commit.generation = before.generation;
+        leave_commit.expected_epoch = before.membership_epoch;
+        leave_commit.previous_spot_key = prev_key;
+        leave_commit.entry_spot_key = entry_key;
+        leave_commit.after = after;
     }
 
-    const zlink_mesh_operation_id_t op_id =
-      register_operation (node, ZLINK_MESH_OPERATION_ACTOR_LEAVE, node_owner (), timeout_ms_);
-    *operation_id_out_ = op_id;
-
+    operation_submission_t submission (
+      node, true, ZLINK_MESH_OPERATION_ACTOR_LEAVE, node_owner (), 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
     std::unique_ptr<queued_record_t> record =
       control_record (node, ZLINK_ACTOR_LIFECYCLE_LEFT, before, after, ZLINK_REQUEST_OK);
-    if (record.get ())
-        (void) admit_record (node, previous_spot_owner, domain_infrastructure, record, false, 0);
+    if (!record.get ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
 
     pending_operation_t completed;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
           node->operations.find (op_id.low);
-        if (op_it == node->operations.end ())
-            return ZLINK_SUBMIT_OK;
+        if (op_it == node->operations.end ()) {
+            errno = ESHUTDOWN;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
         completed = op_it->second;
-        node->operations.erase (op_it);
     }
-    complete_operation (node, completed, ZLINK_REQUEST_OK, 0, NULL, NULL);
+    const int completion_rc = complete_pending_operation_with_commit (
+      node, completed, ZLINK_REQUEST_OK, 0, NULL, NULL,
+      &commit_actor_leave_locked, &leave_commit);
+    if (completion_rc < 0)
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    if (completion_rc == 0) {
+        errno = ESTALE;
+        return ZLINK_SUBMIT_INVALID_STATE;
+    }
+    submission.commit ();
+    *operation_id_out_ = op_id;
+    (void) admit_record (
+      node, previous_spot_owner, domain_infrastructure, record, false, 0);
     return ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_actor_join_reply (const zlink_mesh_reply_token_t *token_,
@@ -1138,6 +1300,29 @@ try {
         return ZLINK_SUBMIT_INVALID_STATE;
     }
 
+#ifdef ZLINK_BUILD_TESTS
+    test_maybe_throw_alloc ();
+#endif
+    std::unique_ptr<queued_record_t> completion_record (
+      new (std::nothrow) queued_record_t ());
+    if (!completion_record.get ()) {
+        errno = ENOMEM;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    }
+    completion_record->kind = ZLINK_MESH_RECORD_COMPLETION;
+    completion_record->kind_data.resize (sizeof (zlink_actor_join_completion_t));
+    completion_record->parts.resize (part_count_);
+    for (size_t i = 0; i < part_count_; ++i) {
+        zlink_msg_init (&completion_record->parts[i]);
+        if (zlink_msg_copy (&completion_record->parts[i],
+                            const_cast<zlink_msg_t *> (&parts_[i]))
+            != 0) {
+            errno = EFAULT;
+            return ZLINK_SUBMIT_INTERNAL_ERROR;
+        }
+        completion_record->byte_size += zlink_msg_size (&completion_record->parts[i]);
+    }
+
     pending_operation_t op;
     zlink_actor_join_completion_t completion;
     memset (&completion, 0, sizeof (completion));
@@ -1149,6 +1334,9 @@ try {
     uint64_t remote_correlation = 0;
     rid_bytes_t remote_joined_spot;
     uint64_t remote_joined_generation = 0;
+    std::string remote_spot_key;
+    owner_id_t ready_owner;
+    bool deliver_local = false;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         std::unordered_map<uint64_t, reply_route_t>::iterator it = node->reply_routes.find (serial);
@@ -1165,21 +1353,18 @@ try {
             errno = EALREADY;
             return ZLINK_SUBMIT_INVALID_STATE;
         }
+        if (route.in_flight) {
+            errno = EBUSY;
+            return ZLINK_SUBMIT_INVALID_STATE;
+        }
 
         if (route.remote_origin) {
-            //  The joining actor lives on the requesting peer; the accepted
-            //  verdict only commits this Spot's active count here and the
-            //  membership commit happens at the source on the wire reply.
-            if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
-                const std::string spot_key (route.join_target_spot_rid.begin (),
-                                            route.join_target_spot_rid.end ());
-                std::map<std::string, spot_state_t>::iterator spot_it =
-                  node->spots.find (spot_key);
-                if (spot_it != node->spots.end ()
-                    && spot_it->second.generation == route.join_target_spot_generation)
-                    spot_it->second.active_actor_count += 1;
-            }
-            route.consumed = true;
+            //  Reserve the token, but commit Spot state only after the wire
+            //  reply has been accepted. A failed submit clears in_flight and
+            //  leaves the token retryable.
+            remote_spot_key.assign (route.join_target_spot_rid.begin (),
+                                    route.join_target_spot_rid.end ());
+            route.in_flight = true;
             remote = true;
             remote_origin = route.origin_rid;
             remote_correlation = route.origin_correlation;
@@ -1188,84 +1373,149 @@ try {
         }
 
         if (!remote) {
-        const std::string id (route.join_actor.actor_id);
-        std::map<std::string, actor_state_t>::iterator actor_it = node->actors.find (id);
-        if (actor_it == node->actors.end ()
-            || actor_it->second.generation != route.join_actor.generation) {
-            errno = ESTALE;
-            return ZLINK_SUBMIT_INVALID_STATE;
-        }
-        actor_state_t &actor = actor_it->second;
-
-        if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
-            //  The accepted reply is the single membership commit point.
-            const std::string prev_key (actor.spot_rid.begin (), actor.spot_rid.end ());
-            std::map<std::string, spot_state_t>::iterator prev_it = node->spots.find (prev_key);
-            if (prev_it != node->spots.end () && prev_it->second.active_actor_count > 0) {
-                prev_it->second.active_actor_count -= 1;
-                maybe_end_spot_locked (node, prev_key);
+            const std::string id (route.join_actor.actor_id);
+            std::map<std::string, actor_state_t>::iterator actor_it = node->actors.find (id);
+            if (actor_it == node->actors.end ()
+                || actor_it->second.generation != route.join_actor.generation) {
+                errno = ESTALE;
+                return ZLINK_SUBMIT_INVALID_STATE;
             }
-            actor.spot_rid = route.join_target_spot_rid;
-            actor.spot_generation = route.join_target_spot_generation;
-            actor.membership_epoch += 1;
-            const std::string new_key (actor.spot_rid.begin (), actor.spot_rid.end ());
-            std::map<std::string, spot_state_t>::iterator new_it = node->spots.find (new_key);
-            if (new_it != node->spots.end ())
-                new_it->second.active_actor_count += 1;
-        }
+            actor_state_t &actor = actor_it->second;
+            actor_state_t after = actor;
+            const std::string prev_key (actor.spot_rid.begin (), actor.spot_rid.end ());
+            const std::string new_key (route.join_target_spot_rid.begin (),
+                                       route.join_target_spot_rid.end ());
+            if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
+                after.spot_rid = route.join_target_spot_rid;
+                after.spot_generation = route.join_target_spot_generation;
+                after.membership_epoch += 1;
+            }
 
-        completion.actor.node_rid = rid_value (node->routing_id);
-        snprintf (completion.actor.actor_id, sizeof (completion.actor.actor_id), "%s",
-                  id.c_str ());
-        completion.actor.generation = actor.generation;
-        completion.location.struct_size = sizeof (completion.location);
-        completion.location.version = 1;
-        completion.location.actor = completion.actor;
-        completion.location.spot_rid = rid_value (actor.spot_rid);
-        completion.location.spot_generation = actor.spot_generation;
-        completion.location.membership_epoch = actor.membership_epoch;
+            completion.actor.node_rid = rid_value (node->routing_id);
+            snprintf (completion.actor.actor_id, sizeof (completion.actor.actor_id), "%s",
+                      id.c_str ());
+            completion.actor.generation = after.generation;
+            completion.location.struct_size = sizeof (completion.location);
+            completion.location.version = 1;
+            completion.location.actor = completion.actor;
+            completion.location.spot_rid = rid_value (after.spot_rid);
+            completion.location.spot_generation = after.spot_generation;
+            completion.location.membership_epoch = after.membership_epoch;
 
-        route.consumed = true;
-        std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
-          node->operations.find (route.operation_id.low);
-        if (op_it == node->operations.end ())
-            return ZLINK_SUBMIT_OK;
-        op = op_it->second;
-        node->operations.erase (op_it);
-        }
-    }
+            std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
+              node->operations.find (route.operation_id.low);
+            if (op_it == node->operations.end ()) {
+                route.consumed = true;
+                return ZLINK_SUBMIT_OK;
+            }
+            op = op_it->second;
+            completion_record->operation_id = op.id;
+            completion_record->operation_kind = op.kind;
+            completion_record->terminal_result =
+              join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED ? ZLINK_REQUEST_OK
+                                                        : ZLINK_REQUEST_REJECTED;
+            completion_record->failure_errno =
+              join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED ? 0 : EACCES;
+            memcpy (&completion_record->kind_data[0], &completion, sizeof (completion));
+            ready_owner = op.requester;
 
-    if (remote)
-        return wire_submit_join_reply (node, remote_origin, remote_correlation, join_result_,
-                                       remote_joined_spot, remote_joined_generation, parts_,
-                                       part_count_);
-
-    std::vector<unsigned char> kind_data (reinterpret_cast<unsigned char *> (&completion),
-                                          reinterpret_cast<unsigned char *> (&completion)
-                                            + sizeof (completion));
-    std::vector<zlink_msg_t> reply_parts;
-    if (part_count_ > 0) {
-        reply_parts.resize (part_count_);
-        for (size_t i = 0; i < part_count_; ++i) {
-            zlink_msg_init (&reply_parts[i]);
-            if (zlink_msg_copy (&reply_parts[i], const_cast<zlink_msg_t *> (&parts_[i])) != 0) {
+            std::map<owner_id_t, owner_state_t>::iterator owner_it =
+              node->owners.find (op.requester);
+            if (owner_it == node->owners.end ()) {
+                node->operations.erase (op_it);
+                route.consumed = true;
+                return ZLINK_SUBMIT_OK;
+            }
+            mailbox_t &mailbox = owner_it->second.domains[domain_infrastructure];
+            const std::pair<owner_id_t, int> ready_key (
+              op.requester, static_cast<int> (domain_infrastructure));
+            const std::shared_ptr<completion_reservation_t> reservation =
+              op_it->second.completion;
+            if (!reservation || reservation->records.empty ()) {
                 errno = EFAULT;
                 return ZLINK_SUBMIT_INTERNAL_ERROR;
             }
+            bool ready_inserted = false;
+            try {
+#ifdef ZLINK_BUILD_TESTS
+                test_maybe_throw_alloc ();
+#endif
+                ready_inserted = node->ready.insert (ready_key).second;
+            }
+            catch (const std::bad_alloc &) {
+                if (ready_inserted)
+                    node->ready.erase (ready_key);
+                route.in_flight = false;
+                errno = ENOMEM;
+                return ZLINK_SUBMIT_OUT_OF_MEMORY;
+            }
+            if (!reservation->prepared) {
+                *reservation->records.front () = std::move (*completion_record);
+                reservation->prepared = true;
+            }
+            const size_t completion_bytes =
+              reservation->records.front ()->byte_size;
+            mailbox.records.splice (mailbox.records.end (),
+                                    reservation->records);
+
+            if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
+                std::map<std::string, spot_state_t>::iterator prev_it =
+                  node->spots.find (prev_key);
+                if (prev_it != node->spots.end ()
+                    && prev_it->second.active_actor_count > 0) {
+                    prev_it->second.active_actor_count -= 1;
+                    maybe_end_spot_locked (node, prev_key);
+                }
+                actor = after;
+                std::map<std::string, spot_state_t>::iterator new_it =
+                  node->spots.find (new_key);
+                if (new_it != node->spots.end ())
+                    new_it->second.active_actor_count += 1;
+            }
+            mailbox.pending_messages += 1;
+            mailbox.pending_bytes += completion_bytes;
+            node->operations.erase (op_it);
+            route.in_flight = false;
+            route.consumed = true;
+            deliver_local = true;
         }
     }
-    if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED)
-        complete_operation (node, op, ZLINK_REQUEST_OK, 0, &kind_data, &reply_parts);
-    else
-        complete_operation (node, op, ZLINK_REQUEST_REJECTED, EACCES, &kind_data, &reply_parts);
+
+    if (remote) {
+        const zlink_submit_result_t rc =
+          wire_submit_join_reply (node, remote_origin, remote_correlation, join_result_,
+                                  remote_joined_spot, remote_joined_generation, parts_,
+                                  part_count_);
+        std::lock_guard<std::mutex> lock (node->mutex);
+        std::unordered_map<uint64_t, reply_route_t>::iterator it =
+          node->reply_routes.find (serial);
+        if (it != node->reply_routes.end ()) {
+            it->second.in_flight = false;
+            if (rc == ZLINK_SUBMIT_OK) {
+                if (join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED) {
+                    std::map<std::string, spot_state_t>::iterator spot_it =
+                      node->spots.find (remote_spot_key);
+                    if (spot_it != node->spots.end ()
+                        && spot_it->second.generation == remote_joined_generation)
+                        spot_it->second.active_actor_count += 1;
+                }
+                it->second.consumed = true;
+            }
+        }
+        return rc;
+    }
+    if (deliver_local) {
+        signal_ready (node, ready_owner, domain_infrastructure);
+        observe_operation_completed (
+          node, op.id,
+          join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED ? ZLINK_REQUEST_OK
+                                                    : ZLINK_REQUEST_REJECTED,
+          join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED ? 0 : EACCES);
+    }
     return ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 //  --- messaging ---------------------------------------------------------------------
@@ -1345,18 +1595,17 @@ zlink_submit_result_t actor_submit (void *mesh_node_,
                                                *target_actor_, metadata_, parts_, part_count_,
                                                flags_);
             }
-            const zlink_mesh_operation_id_t op_id = register_operation (
-              node, ZLINK_MESH_OPERATION_ACTOR_REQUEST, requester, timeout_ms_);
+            operation_submission_t submission (
+              node, true, ZLINK_MESH_OPERATION_ACTOR_REQUEST, requester, timeout_ms_);
+            if (!submission.valid ())
+                return ZLINK_SUBMIT_OUT_OF_MEMORY;
+            const zlink_mesh_operation_id_t op_id = submission.operation_id ();
             const zlink_submit_result_t rc =
               wire_submit_actor_data (node, target_node, true, op_id.low, source_actor_,
                                       *target_actor_, metadata_, parts_, part_count_, flags_);
-            if (rc != ZLINK_SUBMIT_OK) {
-                std::lock_guard<std::mutex> relock (node->mutex);
-                node->operations.erase (op_id.low);
+            if (rc != ZLINK_SUBMIT_OK)
                 return rc;
-            }
-            if (schedule_operation_timeout (node, op_id.low, timeout_ms_) != 0)
-                return ZLINK_SUBMIT_INTERNAL_ERROR;
+            submission.commit ();
             *operation_id_out_ = op_id;
             return ZLINK_SUBMIT_OK;
         }
@@ -1401,24 +1650,21 @@ zlink_submit_result_t actor_submit (void *mesh_node_,
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
 
-    zlink_mesh_operation_id_t op_id;
-    memset (&op_id, 0, sizeof (op_id));
+    operation_submission_t submission (
+      node, is_request, ZLINK_MESH_OPERATION_ACTOR_REQUEST, requester,
+      is_request ? timeout_ms_ : 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
     uint64_t reply_serial = 0;
     if (is_request) {
-        op_id = register_operation (node, ZLINK_MESH_OPERATION_ACTOR_REQUEST, requester,
-                                    timeout_ms_);
-        std::lock_guard<std::mutex> lock (node->mutex);
-        reply_serial = node->next_reply_serial++;
         reply_route_t route;
         route.kind = reply_route_t::kind_generic;
         route.requester = requester;
-        route.requester_node_generation = node->lifecycle_generation;
-        route.operation_id = op_id;
         route.operation_kind = ZLINK_MESH_OPERATION_ACTOR_REQUEST;
-        route.consumed = false;
         memset (&route.join_actor, 0, sizeof (route.join_actor));
-        route.join_target_spot_generation = 0;
-        node->reply_routes[reply_serial] = route;
+        if (!submission.add_reply_route (route, &reply_serial))
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
         record->operation_id = op_id;
         record->operation_kind = ZLINK_MESH_OPERATION_ACTOR_REQUEST;
         record->has_reply_token = true;
@@ -1430,11 +1676,6 @@ zlink_submit_result_t actor_submit (void *mesh_node_,
                       blocking ? static_cast<uint32_t> (node->sndtimeo_ms < 0 ? 0 : node->sndtimeo_ms)
                                : 0)
         != 0) {
-        if (is_request) {
-            std::lock_guard<std::mutex> lock (node->mutex);
-            node->operations.erase (op_id.low);
-            node->reply_routes.erase (reply_serial);
-        }
         switch (errno) {
             case EAGAIN:
             case ETIMEDOUT:
@@ -1447,8 +1688,10 @@ zlink_submit_result_t actor_submit (void *mesh_node_,
                 return ZLINK_SUBMIT_INTERNAL_ERROR;
         }
     }
-    if (is_request)
+    if (is_request) {
+        submission.commit ();
         *operation_id_out_ = op_id;
+    }
     return ZLINK_SUBMIT_OK;
 }
 }
@@ -1464,11 +1707,7 @@ try {
                          flags_, 0);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_request_to_actor (void *mesh_node_,
@@ -1488,11 +1727,7 @@ try {
                          operation_id_out_, flags_, timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_actor_send_to_actor (void *mesh_node_,
@@ -1511,11 +1746,7 @@ try {
                          part_count_, NULL, flags_, 0);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_actor_request_to_actor (void *mesh_node_,
@@ -1536,9 +1767,5 @@ try {
                          part_count_, operation_id_out_, flags_, timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }

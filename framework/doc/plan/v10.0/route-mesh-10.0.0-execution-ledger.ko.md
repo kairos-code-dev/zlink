@@ -406,7 +406,7 @@ manifest에 덧붙인다.
 | S2 framework spec | 완료 | 0 | 0 | 0 | 공통·server, 다섯 언어 exact interface, E2E 55·sample 32·runner 96·guide/internals 81 inventory와 자동 검증 통과 |
 | S3 문서 review loop | 승인 종료 | 28 | 0 | 0 | iteration 20~28도 시도됐지만 clean으로 채택되지 않았다. `log/s3-document-review/final-acceptance/`는 사용자 승인으로 추가 반복을 종료하고 1~19를 종료 기준 범위로 보존한다. |
 | S4 Core 구현·정식 spec 일치 | 완료 | 0 | 0 | 4 | 2026-07-17 HEAD `5857824c2`+working tree에서 84/84 suite·2-process 10/10·stress 3/3·ASAN/UBSAN/TSAN·surface gate·C ABI smoke·internals 갱신·no-hit 전부 통과. known risk 4=TSAN 기존 기계 3계열+MIXED source 도달성(§8.1 S4-05A) |
-| S5 Core review loop | 진행 중 | 8 | 0 | 4 | iteration 1~3: finding 28건 수정. iteration 4(4회차 병합): R2 clean / Codex NOT CLEAN(high 3·low 1) → 정책에 따라 제한 해제, 4건 전부 수정(idempotent bind 재검증, publish local 슬롯 선예약, unreachable 회계 필드 신설+spec 명료화, internals 4모듈 inventory) + 회귀 테스트 2건 추가(87 case). iteration 5(Codex+Sonnet): 동일 4지점 수렴(high 1·medium 2·low 2, 병합 4건) → 전부 수정(§9 원자성 문구 §7 종속화, slot_base try 내부 이동, CHANGELOG 수치, race test 결과 관측). iteration 6(Codex+Sonnet): iteration 5분 전부 해소, 신규 병합 4건(shutdown/destroy 수명 high 포함) → 전부 수정(EDEADLK 가드+shutdown_active 꼬리 유지, submit-family OOM 장벽 전면, monitor close EBUSY, internals timer 경계) + 신규 test 1. iteration 7(Codex+Sonnet): 역순 lifecycle 창(high, 양측 수렴)→registry pin/claim으로 해소, OOM/예외 매핑 전면화(공개 25 진입점 외곽 장벽+완료/ingress 절반+오매핑 2), ready handler 해제 spec 미달 정정(TSAN churn flake 근본원인), CHANGELOG. test 3건 추가(hook 2종). iteration 8 기동. known risk 4 유지 |
+| S5 Core review loop | 진행 중 | 9 | 0 | 4 | iteration 1~7 finding과 수정 기록은 각 finding ledger에 보존. iteration 8 finding 4건을 수정한 snapshot `f5000d2fe`에서 iteration 9 Codex·Sonnet 모두 NOT CLEAN: request 전달 전 timeout 준비, terminal completion·reply token 원자성, package 10.0.0/ABI 10, dead declaration·deadline, 제거 이름 재사용 gate, OOM 정책 중복의 병합 7건. 전부 수정해 request transaction, completion storage 선예약, STREAM close 2단계 terminal commit, package metadata gate와 fault test를 반영했다. 최종 85/85, ASAN/UBSAN 42/42, TSAN 신규 Mesh race·잠금 순환 0. 사용자 지시에 따라 iteration 10 리뷰 시작 직전에서 중지. known risk 4 유지 |
 | S6 Core release candidate | 미착수 | 0 | 0 | 0 | - |
 | S7 bindings local package | 미착수 | 0 | 0 | 0 | - |
 | S8 `.NET` 병렬 lane | 미착수 | 0 | 0 | 0 | - |
@@ -761,16 +761,16 @@ S4 완료 gate:
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package 범위 기록 | 완료 | iteration 1~4 manifest를 `log/s5-core-review/iteration-N/`에 고정(최근: iteration 4 candidate `59b3ea940`, scope 631파일 `d9621658…`). iteration 5 manifest는 수정 commit 뒤 고정 |
-| S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 진행 중 | iteration 1~4 완료·보존. iteration 4: I1 NOT CLEAN(high 3)·I2 CLEAN·I3 NOT CLEAN(low 1) → 4건 전부 수정 반영, iteration 5 재리뷰 대기 |
-| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 진행 중 | 변경 전 iteration 1~4 Fable 결과는 과거 증거로 보존한다(iteration 4 Fable=CLEAN). 이 규칙 적용 뒤 새 iteration과 최종 clean은 Claude Sonnet 결과를 사용 — iteration 5부터 적용 |
-| S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 완료 | I1 finding 10건 전부 수정(commit `a01b537f8ce`): NODROP reserve-commit(신규 `routed_target_writable` probe), Spot 수명·timer registry·상호배제, actor destroy drain, shutdown detach·재진입, MIXED endpoint·generation DRAINING, query 2-pass, strict UTF-8, claim serial 전역화, monitor handler 가드. 신규 test 8 case로 red→green 검증 |
+| S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package 범위 기록 | 완료 | iteration 1~9 manifest를 `log/s5-core-review/iteration-N/`에 보존. iteration 9 candidate `f5000d2fe`, scope 631파일, hash `5eeb7c90…`. 수정 commit 뒤 iteration 10 snapshot을 새로 동결한다 |
+| S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 진행 중 | iteration 9 NOT CLEAN(high 2·medium 1·low 1), 병합 수정 완료. iteration 10 전체 재리뷰 시작 전 중지 |
+| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 진행 중 | iteration 9 NOT CLEAN(high 1·low 4), 병합 수정 완료. iteration 10은 Codex와 동일 prompt·snapshot으로 시작 전 중지 |
+| S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 완료 | 초기 I1 finding 10건과 iteration 2~8 ledger의 후속분을 수정. iteration 9 병합 7건도 request transaction, completion storage·domain commit 원자성, STREAM close 2단계 commit, 10.0.0 package metadata, 제거 gate·dead code와 OOM policy 일원화로 해소 |
 | S5-05 | POSD 위험 신호 목록 작성 | 각 항목의 위반 원칙과 두 설계안 기록 | 완료 | iteration 1 F-I2-01: `mesh_wire` 결합(codec·admission·ingress·transport). 대안 A(ingress/egress 파일 분할)=domain 지식 반복 vs 대안 B(결정별 깊은 모듈)=선택. finding ledger에 기록 |
 | S5-06 | 의미 있는 리팩터링 수행 | 선택 이유와 호출자 복잡도 감소 근거 기록 | 완료 | 대안 B 실행: `mesh_wire_codec/admission/ingress/wire` 4모듈+`mesh_wire_internal.hpp`, 공개 표면 불변, 85/85 green 유지 |
 | S5-07 | DDD event와 경계 재검토 | lifecycle, membership, dispatch, ownership과 observation 책임 정리 | 완료 | admission 상태 기계와 ingress 라우팅을 별도 모듈 소유로 분리, BACKPRESSURED 방출을 admit_record 단일 지점으로 유지, timer 수명은 mesh seam이 소유(타이머 기계는 hook만) |
 | S5-08 | dead code와 file 제거 | 도달 불가능 branch, 미사용 type·helper·target·file no-hit | 완료 | F3 무의미 삼항 제거, per-node `next_claim_serial` 필드 제거, `valid_utf8_public` 중복 validator 제거. I3는 iteration 1에서 Codex CLEAN |
-| S5-09 | 전체 Core 검증 재실행 | S4-23~S4-30 결과가 리팩터링 뒤에도 통과 | 완료 | 리팩터링 후 전체 suite 85/85, ASAN clean(5 mesh 바이너리), TSAN mesh 신규 race 0(기존 기계 2계열 유지), surface gate PASS 포함 |
-| S5-10 | 두 리뷰어 전체 재리뷰 | 어느 축을 수정했든 Core 전체 scope와 I1·I2·I3 전부 재검토 | 진행 중 | 변경 전 iteration 2 Codex·Fable pass는 과거 증거로 보존한다. 최신 최종 pass는 Codex·Claude Sonnet으로 다시 실행 |
+| S5-09 | 전체 Core 검증 재실행 | S4-23~S4-30 결과가 리팩터링 뒤에도 통과 | 완료 | 최종 source에서 전체 85/85, ASAN/UBSAN 5개 Mesh 바이너리 42/42, TSAN lifecycle 13/13·stress 3/3. 신규 Mesh race·STREAM 잠금 순환 0, 기존 auto-HWM·mailbox·pipe 계열만 유지. surface/package gate PASS, SONAME 10 확인 |
+| S5-10 | 두 리뷰어 전체 재리뷰 | 어느 축을 수정했든 Core 전체 scope와 I1·I2·I3 전부 재검토 | 진행 중 | iteration 9 두 리뷰 결과는 과거 NOT CLEAN 증거로 보존. 사용자 지시에 따라 수정 snapshot을 커밋한 뒤 iteration 10 Codex·Sonnet 리뷰를 시작하기 직전에서 중지 |
 
 Core 구현 리뷰는 §2.1의 I1·I2·I3를 각각 판정한다. 다음 항목은 축별 최소 검토 범위다.
 

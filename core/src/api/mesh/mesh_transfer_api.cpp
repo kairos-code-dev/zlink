@@ -1228,7 +1228,7 @@ zlink_mesh_node_actor_transfer_abort (const zlink_actor_transfer_token_t *token_
                 transfer->snapshot.clear ();
                 mailbox.pending_messages = mailbox.records.size ();
                 mailbox.pending_bytes = 0;
-                for (std::deque<std::unique_ptr<queued_record_t>>::iterator record =
+                for (std::list<std::unique_ptr<queued_record_t>>::iterator record =
                        mailbox.records.begin ();
                      record != mailbox.records.end (); ++record)
                     mailbox.pending_bytes += (*record)->byte_size;

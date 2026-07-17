@@ -202,7 +202,7 @@ raw ROUTER는 thread-safe이므로 **송신은 앱 스레드에서 직접** 일�
 - ROUTER recv: envelope 파싱, admission 검증, record를 owner mailbox에 admit
 - socket monitor drain: `CONNECTION_READY`로 outbound intent를 매칭해 HELLO
   발송, peer 단절 처리
-- 원격 request의 completion 마감(`complete_operation`)
+- 원격 request의 completion admission(`complete_pending_operation`)
 
 application dispatch 콜백을 이 스레드가 직접 실행하지 않는다 — ready handler는
 wakeup 전용이고, record 소비는 소비자 스레드가 claim으로 수행한다.

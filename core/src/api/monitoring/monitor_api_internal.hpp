@@ -10,14 +10,6 @@
 #include "sockets/common/socket_base.hpp"
 #include "utils/mutex.hpp"
 
-namespace zlink
-{
-class spot_node_t;
-class spot_pub_t;
-class spot_sub_t;
-class spot_internal_receiver_t;
-}
-
 typedef int (*monitor_snapshot_provider_fn) (void *subject_, zlink_monitor_status_t *out_);
 
 struct monitor_handler_state_t

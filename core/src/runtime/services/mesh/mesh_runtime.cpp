@@ -43,8 +43,8 @@ handle_registry_t &registry ()
 }
 
 #ifdef ZLINK_BUILD_TESTS
-//  Test-only hook: the next count_ guarded allocation points in the mesh
-//  submit paths throw bad_alloc, exercising the public OOM mapping.
+//  Test-only hook: throw at the count_-th guarded allocation point in the
+//  next mesh operation, exercising rollback at a chosen transaction phase.
 extern "C" void zlink_test_set_mesh_alloc_fault (int count_)
 {
     g_mesh_alloc_faults.store (count_ < 0 ? 0 : count_, std::memory_order_relaxed);
@@ -61,8 +61,11 @@ void test_maybe_throw_alloc ()
     int remaining = g_mesh_alloc_faults.load (std::memory_order_relaxed);
     while (remaining > 0) {
         if (g_mesh_alloc_faults.compare_exchange_weak (remaining, remaining - 1,
-                                                       std::memory_order_relaxed))
-            throw std::bad_alloc ();
+                                                       std::memory_order_relaxed)) {
+            if (remaining == 1)
+                throw std::bad_alloc ();
+            return;
+        }
     }
 }
 #endif
@@ -974,44 +977,17 @@ zlink_submit_result_t submit_errno_result ()
     }
 }
 
-void complete_operation (mesh_node_t *node_,
-                         const pending_operation_t &op_,
-                         int32_t terminal_result_,
-                         int32_t failure_errno_,
-                         std::vector<unsigned char> *kind_data_,
-                         std::vector<zlink_msg_t> *reply_parts_)
+zlink_submit_result_t submit_out_of_memory_result ()
 {
-    //  Completions run on ingress and timer threads too, where an escaping
-    //  exception is std::terminate: every fallible step sits behind this
-    //  barrier and a completion that cannot be stored is dropped the same
-    //  way as one whose owner is already gone.
-    std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
-    if (!record.get ())
-        return;
-    try {
-        record->kind = ZLINK_MESH_RECORD_COMPLETION;
-        record->operation_id = op_.id;
-        record->operation_kind = op_.kind;
-        record->terminal_result = terminal_result_;
-        record->failure_errno = failure_errno_;
-        if (kind_data_)
-            record->kind_data = std::move (*kind_data_);
-        if (reply_parts_) {
-            record->parts = std::move (*reply_parts_);
-            reply_parts_->clear ();
-            for (size_t i = 0; i < record->parts.size (); ++i)
-                record->byte_size += zlink_msg_size (&record->parts[i]);
-        }
-        if (admit_record (node_, op_.requester, domain_infrastructure, record, false, 0) != 0) {
-            //  Infrastructure admission cannot fail for live owners; if the
-            //  owner is already gone the completion is dropped with the
-            //  owner.
-        }
-    }
-    catch (const std::bad_alloc &) {
-        return;
-    }
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
+void observe_operation_completed (mesh_node_t *node_,
+                                  const zlink_mesh_operation_id_t &operation_id_,
+                                  int32_t terminal_result_,
+                                  int32_t failure_errno_)
+{
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         if (node_->monitor)
@@ -1020,11 +996,245 @@ void complete_operation (mesh_node_t *node_,
     zlink_mesh_monitor_event_t event;
     memset (&event, 0, sizeof (event));
     event.kind = ZLINK_MESH_MONITOR_OPERATION_COMPLETED;
-    event.operation_id_high = op_.id.high;
-    event.operation_id_low = op_.id.low;
+    event.operation_id_high = operation_id_.high;
+    event.operation_id_low = operation_id_.low;
     event.result_code = terminal_result_;
     event.failure_errno = failure_errno_;
     emit_monitor_event (node_, event);
+}
+
+int complete_pending_operation (mesh_node_t *node_,
+                                const pending_operation_t &op_,
+                                int32_t terminal_result_,
+                                int32_t failure_errno_,
+                                std::vector<unsigned char> *kind_data_,
+                                std::vector<zlink_msg_t> *reply_parts_)
+{
+    return complete_pending_operation_with_commit (
+      node_, op_, terminal_result_, failure_errno_, kind_data_, reply_parts_,
+      NULL, NULL);
+}
+
+int complete_pending_operation_with_commit (
+  mesh_node_t *node_,
+  const pending_operation_t &op_,
+  int32_t terminal_result_,
+  int32_t failure_errno_,
+  std::vector<unsigned char> *kind_data_,
+  std::vector<zlink_msg_t> *reply_parts_,
+  pending_operation_commit_fn commit_locked_,
+  void *commit_userdata_)
+{
+    owner_id_t ready_owner;
+    std::pair<owner_id_t, int> ready_key;
+    try {
+        ready_owner = op_.requester;
+        ready_key =
+          std::make_pair (ready_owner, static_cast<int> (domain_infrastructure));
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return -1;
+    }
+    const std::shared_ptr<completion_reservation_t> reservation = op_.completion;
+    if (!reservation || reservation->records.empty ()) {
+        errno = EFAULT;
+        return -1;
+    }
+
+    size_t record_bytes = 0;
+    int32_t observed_terminal_result = terminal_result_;
+    int32_t observed_failure_errno = failure_errno_;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
+          node_->operations.find (op_.id.low);
+        if (op_it == node_->operations.end ())
+            return 0;
+        if (op_it->second.completion != reservation
+            || reservation->records.empty ()) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (reservation->committing)
+            return 0;
+        std::map<owner_id_t, owner_state_t>::iterator owner_it =
+          node_->owners.find (op_it->second.requester);
+        if (owner_it == node_->owners.end ()) {
+            node_->operations.erase (op_it);
+            return 0;
+        }
+        queued_record_t &record = *reservation->records.front ();
+        if (!reservation->prepared) {
+            record.kind = ZLINK_MESH_RECORD_COMPLETION;
+            record.operation_id = op_.id;
+            record.operation_kind = op_.kind;
+            record.terminal_result = terminal_result_;
+            record.failure_errno = failure_errno_;
+            if (kind_data_)
+                record.kind_data.swap (*kind_data_);
+            if (reply_parts_)
+                record.parts.swap (*reply_parts_);
+            for (size_t i = 0; i < record.parts.size (); ++i)
+                record.byte_size += zlink_msg_size (&record.parts[i]);
+            reservation->prepared = true;
+        }
+        record_bytes = record.byte_size;
+        observed_terminal_result = record.terminal_result;
+        observed_failure_errno = record.failure_errno;
+        mailbox_t &mailbox = owner_it->second.domains[domain_infrastructure];
+        bool ready_inserted = false;
+        try {
+#ifdef ZLINK_BUILD_TESTS
+            test_maybe_throw_alloc ();
+#endif
+            ready_inserted = node_->ready.insert (ready_key).second;
+        }
+        catch (const std::bad_alloc &) {
+            if (ready_inserted)
+                node_->ready.erase (ready_key);
+            errno = ENOMEM;
+            return -1;
+        }
+        if (commit_locked_
+            && !commit_locked_ (node_, commit_userdata_)) {
+            if (ready_inserted)
+                node_->ready.erase (ready_key);
+            return 0;
+        }
+        mailbox.records.splice (mailbox.records.end (), reservation->records);
+        mailbox.pending_messages += 1;
+        mailbox.pending_bytes += record_bytes;
+        node_->operations.erase (op_it);
+    }
+    signal_ready (node_, ready_owner, domain_infrastructure);
+    observe_operation_completed (
+      node_, op_.id, observed_terminal_result, observed_failure_errno);
+    return 1;
+}
+
+int prepare_pending_operation_completion (
+  mesh_node_t *node_,
+  const zlink_mesh_operation_id_t &operation_id_,
+  pending_operation_completion_t *completion_)
+{
+    if (!node_ || !completion_ || completion_->active) {
+        errno = EINVAL;
+        return -1;
+    }
+    try {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
+          node_->operations.find (operation_id_.low);
+        if (op_it == node_->operations.end ())
+            return 0;
+        const std::shared_ptr<completion_reservation_t> reservation =
+          op_it->second.completion;
+        if (!reservation || reservation->records.empty ()) {
+            errno = EFAULT;
+            return -1;
+        }
+        if (reservation->committing)
+            return 0;
+        if (node_->owners.find (op_it->second.requester)
+            == node_->owners.end ())
+            return 0;
+#ifdef ZLINK_BUILD_TESTS
+        test_maybe_throw_alloc ();
+#endif
+        completion_->operation = op_it->second;
+        completion_->ready_owner = op_it->second.requester;
+        completion_->ready_node.insert (std::make_pair (
+          completion_->ready_owner,
+          static_cast<int> (domain_infrastructure)));
+        reservation->committing = true;
+        completion_->active = true;
+        return 1;
+    }
+    catch (const std::bad_alloc &) {
+        completion_->ready_node.clear ();
+        errno = ENOMEM;
+        return -1;
+    }
+}
+
+void cancel_pending_operation_completion (
+  mesh_node_t *node_,
+  pending_operation_completion_t *completion_)
+{
+    if (!node_ || !completion_ || !completion_->active)
+        return;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
+          node_->operations.find (completion_->operation.id.low);
+        if (op_it != node_->operations.end ()
+            && op_it->second.completion
+                 == completion_->operation.completion)
+            op_it->second.completion->committing = false;
+    }
+    completion_->ready_node.clear ();
+    completion_->active = false;
+}
+
+int commit_prepared_pending_operation (
+  mesh_node_t *node_,
+  pending_operation_completion_t *completion_,
+  int32_t terminal_result_,
+  int32_t failure_errno_)
+{
+    if (!node_ || !completion_ || !completion_->active) {
+        errno = EINVAL;
+        return -1;
+    }
+    const std::shared_ptr<completion_reservation_t> reservation =
+      completion_->operation.completion;
+    size_t record_bytes = 0;
+    {
+        std::lock_guard<std::mutex> lock (node_->mutex);
+        std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
+          node_->operations.find (completion_->operation.id.low);
+        if (op_it == node_->operations.end ()
+            || op_it->second.completion != reservation
+            || !reservation || !reservation->committing
+            || reservation->records.empty ()) {
+            completion_->active = false;
+            return 0;
+        }
+        std::map<owner_id_t, owner_state_t>::iterator owner_it =
+          node_->owners.find (op_it->second.requester);
+        if (owner_it == node_->owners.end ()) {
+            reservation->committing = false;
+            completion_->active = false;
+            return 0;
+        }
+        queued_record_t &record = *reservation->records.front ();
+        record.kind = ZLINK_MESH_RECORD_COMPLETION;
+        record.operation_id = completion_->operation.id;
+        record.operation_kind = completion_->operation.kind;
+        record.terminal_result = terminal_result_;
+        record.failure_errno = failure_errno_;
+        reservation->prepared = true;
+        record_bytes = record.byte_size;
+
+        //  C++17 set::merge transfers the node allocated by prepare without
+        //  allocating. A duplicate key stays in ready_node and is discarded
+        //  with the completed reservation.
+        node_->ready.merge (completion_->ready_node);
+        mailbox_t &mailbox =
+          owner_it->second.domains[domain_infrastructure];
+        mailbox.records.splice (
+          mailbox.records.end (), reservation->records);
+        mailbox.pending_messages += 1;
+        mailbox.pending_bytes += record_bytes;
+        node_->operations.erase (op_it);
+        completion_->active = false;
+    }
+    signal_ready (
+      node_, completion_->ready_owner, domain_infrastructure);
+    observe_operation_completed (
+      node_, completion_->operation.id, terminal_result_, failure_errno_);
+    return 1;
 }
 }
 }

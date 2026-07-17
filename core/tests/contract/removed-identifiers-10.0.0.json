@@ -107,6 +107,9 @@
   "zlink_spot_route_bridge_options_t",
   "zlink_subscribe_handler_fn"
  ],
+ "REUSED_IDENTIFIER": {
+  "zlink_actor_join_result_t": "ENUM_TYPE"
+ },
  "ENUM_TYPE": [
   "zlink_service_event_detail_flag_e",
   "zlink_service_event_subject_kind_t",

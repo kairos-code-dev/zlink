@@ -98,10 +98,17 @@ wakeup 경로는 셋이고 서로 배타 규칙이 있다.
    소비한 뒤 남은 work가 있으면 재무장한다. handler와 poller 등록은 상호
    배타(`EBUSY`)다.
 
-## 4. Reply token과 completion
+## 4. Request transaction, reply token과 completion
 
-request 등록은 `reply_routes[serial]`에 one-shot route를 만들고 32-byte sealed
-token으로 serial만 밖에 내보낸다. 소비 시점 규칙:
+request를 전달하기 전에 `operation_submission_t`가 operation,
+`reply_routes[serial]`의 one-shot route와 timeout 실행에 필요한 저장소를
+한 묶음으로 준비한다. 준비 과정에서 실패하면 이 객체의 소멸자가 등록한
+operation과 route를 지우고 timeout을 취소한다. target mailbox나 wire로
+request를 전달한 호출부만 `commit()`을 호출하므로, 호출자가 실패를 받은
+request가 target에 전달되거나 식별할 수 없는 operation으로 남지 않는다.
+
+reply token은 32-byte sealed token이며 route serial만 밖에 내보낸다. 소비
+시점 규칙:
 
 - 성공한 reply가 route를 소비한다. 두 번째 reply는 `EALREADY`.
 - requester가 먼저 timeout되면 reply는 token을 소비하고 조용히 폐기된다
@@ -112,9 +119,26 @@ token으로 serial만 밖에 내보낸다. 소비 시점 규칙:
   소비되지 않는다.
 
 completion은 언제나 requester owner의 infrastructure mailbox로 들어간다.
+각 operation은 등록할 때 빈 completion record와 list node를 함께 할당한다.
+terminal 경로는 payload를 이 record에 준비한 뒤 `list::splice`로 mailbox에
+옮기고, admission이 성공한 시점에만 operation과 reply token을 소비한다.
+Actor membership이나 STREAM binding처럼 completion과 함께 바뀌어야 하는
+domain state도 같은 node lock 아래에서 commit한다. 따라서 payload 준비,
+ready-index admission 또는 wire 송신이 실패하면 operation과 token은
+재시도할 수 있는 상태이고 domain state도 바뀌지 않는다.
+
+bound STREAM session close는 raw socket의 session observer를 호출할 수 있어
+node lock 안에서 disconnect하지 않는다. 이 경로는 먼저 operation, terminal
+record와 ready-index node를 모두 준비하고 competing completion을 막은 뒤
+node lock을 놓는다. disconnect 성공 뒤에는 allocation 없이 준비한 terminal
+record를 commit한다. 준비 실패는 disconnect 전에 반환되고, disconnect 실패는
+예약을 취소하므로 node와 raw STREAM의 잠금 순서가 순환하지 않는다.
+
 timeout completion은 전역 timeout scheduler(immortal singleton, 전용 스레드)가
-deadline에 `complete_operation`을 호출해 만든다. shutdown이 deadline을 넘기면
-남은 operation(무기한 포함)을 detach해 정확히 한 번의
+deadline에 `complete_pending_operation()`을 호출해 만든다. timeout callback은
+request transaction이 commit 또는 취소 결정을 내릴 때까지 기다리므로 request
+전달보다 먼저 terminal completion을 만들지 않는다. shutdown이 deadline을
+넘기면 남은 operation(무기한 포함)을 정확히 한 번의
 `REQUEST_TERMINATED`/`ESHUTDOWN` completion으로 마감한다. shutdown 재진입은
 `shutdown_active` 플래그로만 `EDEADLK`이고, TIMED_OUT 뒤의 순차 재호출은
 합법이다.
@@ -161,7 +185,7 @@ publish는 한 호출 안에서 snapshot→검사→commit을 마친다.
    mailbox budget과 모든 remote pipe의 `routed_target_writable()`을 선검사한다.
    하나라도 불가면 아무것도 commit하지 않는다(전부-또는-전무). 비차단은
    `EAGAIN`, 차단은 SNDTIMEO까지 reserve를 재시도한 뒤 `ETIMEDOUT`이다.
-3. reserve가 통과하면 remote commit 전에 local 슬롯(mailbox deque 자리와
+3. reserve가 통과하면 remote commit 전에 local 슬롯(mailbox list node와
    ready-index 키)을 선예약해 마지막 fallible 지점을 commit 앞으로 당긴다.
    실패 시 전량 롤백 후 `ENOMEM`이고, 예약물은 node mutex 보유 중에만
    존재한다(모든 실패 경로가 unlock 전에 롤백).

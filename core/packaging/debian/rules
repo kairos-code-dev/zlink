@@ -61,7 +61,7 @@ ifneq ("$(wildcard debian/zlink.hpp)","")
 endif
 
 override_dh_strip:
-	dh_strip --dbg-package=libzlink6-dbg
+	dh_strip --dbg-package=libzlink10-dbg
 
 %:
 	dh $@ --with=autoreconf --parallel

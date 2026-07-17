@@ -581,20 +581,19 @@ void handle_reply (mesh_node_t *node_,
         if (it == node_->operations.end ())
             return; //  Already completed (timeout/shutdown): exactly-once.
         op = it->second;
-        node_->operations.erase (it);
     }
 
-    //  Operation-specific reply tails. The operation bookkeeping is already
-    //  consumed above, so an allocation failure past this point must not
-    //  silently drop the completion: it degrades into an INTERNAL_ERROR /
-    //  ENOMEM terminal instead (exactly-once is preserved; complete_operation
-    //  itself is allocation-failure safe).
+    //  Parse the operation-specific tail before the pending operation is
+    //  removed. Allocation failure degrades to an INTERNAL_ERROR completion;
+    //  the preallocated completion reservation keeps the operation available
+    //  until terminal mailbox admission commits.
     try {
         handle_reply_tail (node_, op, source_rid_, terminal_result_, failure_errno_, tail_,
                            parts_);
     }
     catch (const std::bad_alloc &) {
-        complete_operation (node_, op, ZLINK_REQUEST_INTERNAL_ERROR, ENOMEM, NULL, NULL);
+        (void) complete_pending_operation (node_, op, ZLINK_REQUEST_INTERNAL_ERROR, ENOMEM,
+                                           NULL, NULL);
     }
 }
 
@@ -615,14 +614,16 @@ void handle_reply_tail (mesh_node_t *node_,
             spot_rid = read_rid (tail_);
             spot_generation = tail_.u64 ();
             if (tail_.failed) {
-                complete_operation (node_, op, ZLINK_REQUEST_PROTOCOL_ERROR, EPROTO, NULL, NULL);
+                (void) complete_pending_operation (node_, op, ZLINK_REQUEST_PROTOCOL_ERROR,
+                                                   EPROTO, NULL, NULL);
                 return;
             }
             actor_apply_remote_join_reply (node_, op, join_result, source_rid_, spot_rid,
                                            spot_generation);
             return;
         }
-        complete_operation (node_, op, terminal_result_, failure_errno_, NULL, NULL);
+        (void) complete_pending_operation (node_, op, terminal_result_, failure_errno_, NULL,
+                                           NULL);
         return;
     }
     if (op.kind == ZLINK_MESH_OPERATION_ACTOR_LOOKUP && terminal_result_ == ZLINK_REQUEST_OK) {
@@ -641,18 +642,20 @@ void handle_reply_tail (mesh_node_t *node_,
         location.spot_generation = tail_.u64 ();
         location.membership_epoch = tail_.u64 ();
         if (tail_.failed) {
-            complete_operation (node_, op, ZLINK_REQUEST_PROTOCOL_ERROR, EPROTO, NULL, NULL);
+            (void) complete_pending_operation (node_, op, ZLINK_REQUEST_PROTOCOL_ERROR, EPROTO,
+                                               NULL, NULL);
             return;
         }
         std::vector<unsigned char> kind_data (
           reinterpret_cast<unsigned char *> (&location),
           reinterpret_cast<unsigned char *> (&location) + sizeof (location));
-        complete_operation (node_, op, terminal_result_, failure_errno_, &kind_data, NULL);
+        (void) complete_pending_operation (node_, op, terminal_result_, failure_errno_,
+                                           &kind_data, NULL);
         return;
     }
 
-    complete_operation (node_, op, terminal_result_, failure_errno_,
-                        NULL, parts_->empty () ? NULL : parts_);
+    (void) complete_pending_operation (node_, op, terminal_result_, failure_errno_, NULL,
+                                       parts_->empty () ? NULL : parts_);
 }
 
 //  --- ingress: message pump -----------------------------------------------------------

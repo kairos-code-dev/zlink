@@ -66,10 +66,10 @@ owner_id_t actor_owner (const std::string &id_, uint64_t generation_)
     return id;
 }
 
-zlink_mesh_operation_id_t register_operation (mesh_node_t *node_,
-                                              zlink_mesh_operation_kind_t kind_,
-                                              const owner_id_t &requester_,
-                                              uint32_t timeout_ms_)
+static zlink_mesh_operation_id_t
+register_operation (mesh_node_t *node_,
+                    zlink_mesh_operation_kind_t kind_,
+                    const owner_id_t &requester_)
 {
     std::lock_guard<std::mutex> lock (node_->mutex);
 #ifdef ZLINK_BUILD_TESTS
@@ -77,13 +77,98 @@ zlink_mesh_operation_id_t register_operation (mesh_node_t *node_,
 #endif
     pending_operation_t op;
     memset (&op.join_actor, 0, sizeof (op.join_actor));
+    op.completion = std::make_shared<completion_reservation_t> ();
+    std::unique_ptr<queued_record_t> completion_record (new queued_record_t ());
+    op.completion->records.push_back (std::move (completion_record));
     op.id.high = node_->lifecycle_generation;
     op.id.low = node_->next_operation_serial++;
     op.kind = kind_;
     op.requester = requester_;
-    op.deadline_ms = timeout_ms_ > 0 ? now_ms () + timeout_ms_ : 0;
-    node_->operations[op.id.low] = op;
+    node_->operations.insert (std::make_pair (op.id.low, op));
     return op.id;
+}
+
+operation_submission_t::operation_submission_t (
+  mesh_node_t *node_,
+  bool active_,
+  zlink_mesh_operation_kind_t kind_,
+  const owner_id_t &requester_,
+  uint32_t timeout_ms_) :
+    _node (node_),
+    _reply_serial (0),
+    _timeout (NULL),
+    _active (active_),
+    _valid (true),
+    _committed (false)
+{
+    memset (&_operation_id, 0, sizeof (_operation_id));
+    if (!_active)
+        return;
+    _operation_id = register_operation (_node, kind_, requester_);
+    _timeout = new (std::nothrow)
+      operation_timeout_guard_t (_node, _operation_id.low, timeout_ms_);
+    if (!_timeout || !_timeout->valid ()) {
+        std::lock_guard<std::mutex> lock (_node->mutex);
+        _node->operations.erase (_operation_id.low);
+        delete _timeout;
+        _timeout = NULL;
+        _active = false;
+        _valid = false;
+        errno = ENOMEM;
+    }
+}
+
+operation_submission_t::~operation_submission_t ()
+{
+    if (_active && !_committed) {
+        std::lock_guard<std::mutex> lock (_node->mutex);
+        _node->operations.erase (_operation_id.low);
+        if (_reply_serial != 0)
+            _node->reply_routes.erase (_reply_serial);
+    }
+    delete _timeout;
+}
+
+bool operation_submission_t::valid () const
+{
+    return _valid;
+}
+
+const zlink_mesh_operation_id_t &operation_submission_t::operation_id () const
+{
+    return _operation_id;
+}
+
+bool operation_submission_t::add_reply_route (reply_route_t route_,
+                                              uint64_t *serial_out_)
+{
+    if (!_active || !_valid || _reply_serial != 0 || !serial_out_) {
+        errno = EINVAL;
+        return false;
+    }
+    try {
+        std::lock_guard<std::mutex> lock (_node->mutex);
+        const uint64_t serial = _node->next_reply_serial++;
+        route_.operation_id = _operation_id;
+        route_.requester_node_generation = _node->lifecycle_generation;
+        _node->reply_routes.insert (std::make_pair (serial, route_));
+        _reply_serial = serial;
+        *serial_out_ = serial;
+        return true;
+    }
+    catch (const std::bad_alloc &) {
+        _valid = false;
+        errno = ENOMEM;
+        return false;
+    }
+}
+
+void operation_submission_t::commit ()
+{
+    if (!_active || !_valid || _committed)
+        return;
+    _timeout->commit ();
+    _committed = true;
 }
 }
 }
@@ -329,6 +414,21 @@ extern "C" void zlink_test_set_shutdown_pause_after_pin (int ms_)
 {
     g_shutdown_pause_after_pin_ms.store (ms_ < 0 ? 0 : ms_, std::memory_order_relaxed);
 }
+
+extern "C" void zlink_test_mesh_request_bookkeeping (void *node_,
+                                                     size_t *operations_out_,
+                                                     size_t *reply_routes_out_)
+{
+    mesh_node_pin_t node_pin (node_);
+    mesh_node_t *node = node_pin.get ();
+    if (!node)
+        return;
+    std::lock_guard<std::mutex> lock (node->mutex);
+    if (operations_out_)
+        *operations_out_ = node->operations.size ();
+    if (reply_routes_out_)
+        *reply_routes_out_ = node->reply_routes.size ();
+}
 #endif
 
 namespace
@@ -432,7 +532,6 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
                node->operations.begin ();
              it != node->operations.end (); ++it)
             detached.push_back (it->second);
-        node->operations.clear ();
         //  shutdown_active stays set until this thread is completely done
         //  with the node: it is the flag a concurrent destroy checks, so it
         //  must cover the unlocked emit/completion tail below, not just the
@@ -441,8 +540,8 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
         for (size_t i = 0; i < revoked_events.size (); ++i)
             emit_monitor_event (node, revoked_events[i]);
         for (size_t i = 0; i < detached.size (); ++i)
-            complete_operation (node, detached[i], ZLINK_REQUEST_TERMINATED, ESHUTDOWN, NULL,
-                                NULL);
+            (void) complete_pending_operation (
+              node, detached[i], ZLINK_REQUEST_TERMINATED, ESHUTDOWN, NULL, NULL);
         lock.lock ();
         node->shutdown_active = false;
         lock.unlock ();

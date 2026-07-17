@@ -10,6 +10,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <list>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -133,7 +134,7 @@ struct mailbox_t
 {
     mailbox_t ();
 
-    std::deque<std::unique_ptr<queued_record_t>> records;
+    std::list<std::unique_ptr<queued_record_t>> records;
     uint64_t pending_messages;
     uint64_t pending_bytes;
     //  True while a consumer holds this mailbox's claim.
@@ -176,13 +177,29 @@ struct claim_body_t
 
 //  --- operations -----------------------------------------------------------
 
+//  One list node is allocated with the operation, before request delivery.
+//  Completion moves that node into the requester mailbox with list::splice,
+//  so terminal delivery cannot lose the operation while allocating a queue
+//  slot.
+struct completion_reservation_t
+{
+    completion_reservation_t () : prepared (false), committing (false) {}
+
+    std::list<std::unique_ptr<queued_record_t>> records;
+    bool prepared;
+    //  A two-phase terminal path has reserved this operation. Timeout and
+    //  shutdown completion attempts leave it to that path until commit or
+    //  cancel, so an external side effect can run without holding node mutex.
+    bool committing;
+};
+
 struct pending_operation_t
 {
     zlink_mesh_operation_id_t id;
     zlink_mesh_operation_kind_t kind;
     //  Completion is delivered to this owner's infrastructure mailbox.
     owner_id_t requester;
-    uint64_t deadline_ms; //  0 = no timeout
+    std::shared_ptr<completion_reservation_t> completion;
     //  Remote actor join: the source-side commit on the wire reply needs the
     //  joining actor's identity.
     zlink_actor_ref_t join_actor;
@@ -448,6 +465,7 @@ struct reply_route_t
         requester_node_generation (0),
         operation_kind (static_cast<zlink_mesh_operation_kind_t> (0)),
         consumed (false),
+        in_flight (false),
         remote_origin (false),
         origin_generation (0),
         origin_correlation (0),
@@ -465,6 +483,10 @@ struct reply_route_t
     zlink_mesh_operation_id_t operation_id;
     zlink_mesh_operation_kind_t operation_kind;
     bool consumed;
+    //  A reply submit reserves the token while fallible payload or wire work
+    //  runs. Failure clears the reservation; only a successful commit sets
+    //  consumed, so callers can retry without duplicate delivery.
+    bool in_flight;
     //  Remote-origin requests: the reply travels back over the wire to this
     //  admitted peer with the requester-side correlation serial.
     bool remote_origin;
@@ -629,6 +651,27 @@ class mesh_node_pin_t
     mesh_node_pin_t (const mesh_node_pin_t &);
     mesh_node_pin_t &operator= (const mesh_node_pin_t &);
 };
+
+//  Reserves every fallible timeout resource before a request is delivered.
+//  The timeout callback waits until commit; destroying an uncommitted guard
+//  cancels it. This keeps request admission and timeout ownership atomic
+//  without exposing scheduler policy to individual submit paths.
+class operation_timeout_guard_t
+{
+  public:
+    operation_timeout_guard_t (mesh_node_t *node_,
+                               uint64_t operation_low_,
+                               uint32_t timeout_ms_);
+    ~operation_timeout_guard_t ();
+    bool valid () const;
+    void commit ();
+
+  private:
+    void *_state;
+    bool _valid;
+    operation_timeout_guard_t (const operation_timeout_guard_t &);
+    operation_timeout_guard_t &operator= (const operation_timeout_guard_t &);
+};
 mesh_node_t *claim_node_destroy (void *handle_);
 void release_node_destroy_claim (mesh_node_t *node_);
 void unregister_node_and_wait_lifecycle_quiesced (mesh_node_t *node_);
@@ -667,16 +710,65 @@ void recompute_readiness_locked (mesh_node_t *node_);
 //  Maps errno set by a failed submit path to the public submit result.
 zlink_submit_result_t submit_errno_result ();
 
+//  Single policy point for C-ABI allocation barriers.
+zlink_submit_result_t submit_out_of_memory_result ();
+
 //  Emits a monitor event if a monitor is open and the kind is selected.
 void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_);
 
-//  Completion delivery for a local operation.
-void complete_operation (mesh_node_t *node_,
-                         const pending_operation_t &op_,
-                         int32_t terminal_result_,
-                         int32_t failure_errno_,
-                         std::vector<unsigned char> *kind_data_,
-                         std::vector<zlink_msg_t> *reply_parts_);
+//  Accounts for and emits the observable terminal event of one operation.
+void observe_operation_completed (mesh_node_t *node_,
+                                  const zlink_mesh_operation_id_t &operation_id_,
+                                  int32_t terminal_result_,
+                                  int32_t failure_errno_);
+
+//  Builds and admits a terminal record before removing the registered
+//  operation. Returns 1 when delivered, 0 when the operation or owner already
+//  ended, and -1/ENOMEM while leaving the operation pending for retry.
+int complete_pending_operation (mesh_node_t *node_,
+                                const pending_operation_t &op_,
+                                int32_t terminal_result_,
+                                int32_t failure_errno_,
+                                std::vector<unsigned char> *kind_data_,
+                                std::vector<zlink_msg_t> *reply_parts_);
+
+//  Variant for state transitions that must commit under the same node lock
+//  as terminal mailbox admission. commit_locked_ must not allocate or throw.
+typedef bool (*pending_operation_commit_fn) (mesh_node_t *node_, void *userdata_);
+int complete_pending_operation_with_commit (
+  mesh_node_t *node_,
+  const pending_operation_t &op_,
+  int32_t terminal_result_,
+  int32_t failure_errno_,
+  std::vector<unsigned char> *kind_data_,
+  std::vector<zlink_msg_t> *reply_parts_,
+  pending_operation_commit_fn commit_locked_,
+  void *commit_userdata_);
+
+//  Two-phase completion for a terminal path with an external side effect.
+//  prepare performs every fallible allocation and excludes competing
+//  completion; commit only links preallocated nodes and updates counters.
+struct pending_operation_completion_t
+{
+    pending_operation_completion_t () : active (false) {}
+
+    pending_operation_t operation;
+    owner_id_t ready_owner;
+    std::set<std::pair<owner_id_t, int>> ready_node;
+    bool active;
+};
+int prepare_pending_operation_completion (
+  mesh_node_t *node_,
+  const zlink_mesh_operation_id_t &operation_id_,
+  pending_operation_completion_t *completion_);
+void cancel_pending_operation_completion (
+  mesh_node_t *node_,
+  pending_operation_completion_t *completion_);
+int commit_prepared_pending_operation (
+  mesh_node_t *node_,
+  pending_operation_completion_t *completion_,
+  int32_t terminal_result_,
+  int32_t failure_errno_);
 }
 }
 

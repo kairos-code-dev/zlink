@@ -216,7 +216,7 @@ application threads**; the ingress thread is responsible only for:
   owner mailboxes
 - socket monitor drain: matching outbound intents on `CONNECTION_READY` and
   sending the HELLO, handling peer loss
-- delivering completions for remote requests (`complete_operation`)
+- admitting completions for remote requests (`complete_pending_operation`)
 
 This thread never executes application dispatch callbacks — the ready handler
 is wakeup-only, and record consumption happens on consumer threads through

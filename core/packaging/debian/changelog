@@ -1,5 +1,5 @@
-zlink (6.0.3-0.1) UNRELEASED; urgency=low
+zlink (10.0.0-0.1) UNRELEASED; urgency=low
 
-  * Initial packaging.
+  * Package the RouteMesh 10.0.0 ABI.
 
- -- zlink Developers <ulalax@kairoscode.dev>  Fri, 29 May 2026 00:00:00 +0900
+ -- zlink Developers <ulalax@kairoscode.dev>  Sat, 18 Jul 2026 00:00:00 +0900

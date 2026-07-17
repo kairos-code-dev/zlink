@@ -566,6 +566,9 @@ void test_timer_destroy_overlapping_fire_completes ()
 //  and the shutdown pin/lock pause for the reverse-order lifecycle race.
 extern "C" void zlink_test_set_mesh_alloc_fault (int count_);
 extern "C" void zlink_test_set_shutdown_pause_after_pin (int ms_);
+extern "C" void zlink_test_mesh_request_bookkeeping (void *node_,
+                                                     size_t *operations_out_,
+                                                     size_t *reply_routes_out_);
 
 //  A destroy that lands between shutdown's handle validation and its mutex
 //  acquisition must wait for the pinned shutdown instead of freeing the node
@@ -659,8 +662,32 @@ void test_submit_alloc_failure_maps_to_out_of_memory ()
     TEST_ASSERT_NOT_NULL (ctx);
     void *node = new_started_node (ctx, "oom-mesh", "jobs");
 
-    //  Direct channel send: record preparation fault.
+    //  The third guarded allocation is timeout preparation, after the
+    //  operation record was built and registered. Transaction rollback must
+    //  leave neither request delivery nor bookkeeping behind.
     zlink_msg_t part;
+    make_payload (&part, "request-timeout-oom");
+    zlink_mesh_operation_id_t failed_operation;
+    memset (&failed_operation, 0, sizeof (failed_operation));
+    zlink_test_set_mesh_alloc_fault (3);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OUT_OF_MEMORY,
+      zlink_mesh_node_request_to_channel (
+        node, "jobs", NULL, &part, 1, &failed_operation,
+        ZLINK_SEND_FLAGS_DONTWAIT, 1000));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    TEST_ASSERT_EQUAL_UINT64 (0, failed_operation.high);
+    TEST_ASSERT_EQUAL_UINT64 (0, failed_operation.low);
+    size_t operation_count = 99;
+    size_t reply_route_count = 99;
+    zlink_test_mesh_request_bookkeeping (
+      node, &operation_count, &reply_route_count);
+    TEST_ASSERT_EQUAL_UINT64 (0, operation_count);
+    TEST_ASSERT_EQUAL_UINT64 (0, reply_route_count);
+    zlink_test_set_mesh_alloc_fault (0);
+    zlink_msg_close (&part);
+
+    //  Direct channel send: record preparation fault.
     make_payload (&part, "job-oom");
     zlink_test_set_mesh_alloc_fault (1);
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OUT_OF_MEMORY,
@@ -789,7 +816,7 @@ int connect_raw_stream_client (const char *endpoint_)
 //  point; it is closed by design (both success shapes re-validate under
 //  the node mutex and staleness is monotone) and this hammer guards the
 //  observable half of that contract.
-void test_stream_session_bind_destroy_race_leaves_no_binding ()
+void test_stream_session_binding_atomicity_and_destroy_race ()
 {
 #if defined(ZLINK_HAVE_WINDOWS)
     TEST_IGNORE_MESSAGE ("raw TCP test helper is unavailable on Windows");
@@ -831,6 +858,83 @@ void test_stream_session_bind_destroy_race_leaves_no_binding ()
     TEST_ASSERT_NOT_NULL (source_rid);
     zlink_routing_id_t session_rid = *source_rid;
     zlink_msg_close (&connect_part);
+
+    zlink_actor_ref_t atomic_actor;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_REQUEST_OK,
+      zlink_mesh_node_actor_new (node, "atomic-binding", NULL, 0,
+                                 &atomic_actor, ZLINK_SEND_FLAGS_NONE, 1000));
+    zlink_mesh_operation_id_t atomic_op;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_stream_session_bind_actor (
+        service, &session_rid, &atomic_actor, &atomic_op, 200));
+    zlink_stream_session_binding_t atomic_bindings[4];
+    memset (atomic_bindings, 0, sizeof (atomic_bindings));
+    for (size_t i = 0; i < 4; ++i) {
+        atomic_bindings[i].struct_size = sizeof (atomic_bindings[i]);
+        atomic_bindings[i].version = ZLINK_STREAM_SESSION_ABI_VERSION;
+    }
+    size_t atomic_count = 4;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_stream_session_bindings (
+        service, &session_rid, atomic_bindings, &atomic_count));
+    TEST_ASSERT_EQUAL_UINT64 (1, atomic_count);
+    const uint64_t atomic_generation =
+      atomic_bindings[0].binding_generation;
+
+    //  Completion admission fails before unbind commits, so the binding
+    //  remains queryable and the same operation can be retried cleanly.
+    zlink_test_set_mesh_alloc_fault (2);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OUT_OF_MEMORY,
+      zlink_stream_session_unbind_actor (
+        service, &session_rid, &atomic_actor, atomic_generation, &atomic_op,
+        200));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    zlink_test_set_mesh_alloc_fault (0);
+    atomic_count = 4;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_stream_session_bindings (
+        service, &session_rid, atomic_bindings, &atomic_count));
+    TEST_ASSERT_EQUAL_UINT64 (1, atomic_count);
+    TEST_ASSERT_EQUAL_UINT64 (
+      atomic_generation, atomic_bindings[0].binding_generation);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_stream_session_unbind_actor (
+        service, &session_rid, &atomic_actor, atomic_generation, &atomic_op,
+        200));
+
+    //  Bind rollback is also allocation-free after a completion-admission
+    //  failure: no binding is exposed until the retry succeeds.
+    zlink_test_set_mesh_alloc_fault (2);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OUT_OF_MEMORY,
+      zlink_stream_session_bind_actor (
+        service, &session_rid, &atomic_actor, &atomic_op, 200));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    zlink_test_set_mesh_alloc_fault (0);
+    atomic_count = 4;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_stream_session_bindings (
+        service, &session_rid, atomic_bindings, &atomic_count));
+    TEST_ASSERT_EQUAL_UINT64 (0, atomic_count);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_stream_session_bind_actor (
+        service, &session_rid, &atomic_actor, &atomic_op, 200));
+    atomic_count = 4;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_stream_session_bindings (
+        service, &session_rid, atomic_bindings, &atomic_count));
+    TEST_ASSERT_EQUAL_UINT64 (1, atomic_count);
+    const uint64_t close_generation =
+      atomic_bindings[0].binding_generation;
 
     for (int round = 0; round < 8; ++round) {
         char actor_id[32];
@@ -898,6 +1002,27 @@ void test_stream_session_bind_destroy_race_leaves_no_binding ()
         }
     }
 
+    //  The disconnect side effect runs only after completion admission.
+    //  Injected failure therefore preserves both the session and binding;
+    //  the retry performs one successful close.
+    zlink_test_set_mesh_alloc_fault (2);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OUT_OF_MEMORY,
+      zlink_mesh_node_actor_close_bound_session (
+        node, &atomic_actor, close_generation, &atomic_op, 200));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    zlink_test_set_mesh_alloc_fault (0);
+    atomic_count = 4;
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_CONFIG_OK,
+      zlink_stream_session_bindings (
+        service, &session_rid, atomic_bindings, &atomic_count));
+    TEST_ASSERT_EQUAL_UINT64 (1, atomic_count);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_mesh_node_actor_close_bound_session (
+        node, &atomic_actor, close_generation, &atomic_op, 200));
+
     TEST_ASSERT_EQUAL_INT (0, shutdown (client_fd, SHUT_RDWR));
     close (client_fd);
     TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_stream_session_service_shutdown (service, 1000));
@@ -926,7 +1051,7 @@ int main ()
     RUN_TEST (test_destroy_waits_for_pinned_shutdown);
     RUN_TEST (test_destroy_waits_for_concurrent_submits);
     RUN_TEST (test_submit_alloc_failure_maps_to_out_of_memory);
-    RUN_TEST (test_stream_session_bind_destroy_race_leaves_no_binding);
+    RUN_TEST (test_stream_session_binding_atomicity_and_destroy_race);
     const int rc = UNITY_END ();
     fflush (NULL);
     return rc;

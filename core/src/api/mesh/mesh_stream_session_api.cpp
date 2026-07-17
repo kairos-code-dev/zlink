@@ -275,26 +275,82 @@ void send_next_participant_locked (session_service_t *service_, binding_t *bindi
         service_->last_error = errno;
 }
 
-//  Delivers a bind/unbind terminal completion to the node infrastructure
-//  claim.
-void complete_binding_operation (mesh_node_t *node_,
-                                 zlink_mesh_operation_kind_t kind_,
-                                 const zlink_mesh_operation_id_t &op_id_,
-                                 int32_t result_,
-                                 int32_t err_)
+//  Delivers a STREAM lifecycle terminal completion to the node
+//  infrastructure claim. The optional callback runs only after every
+//  fallible completion-admission step has succeeded.
+int complete_binding_operation (mesh_node_t *node_,
+                                zlink_mesh_operation_kind_t kind_,
+                                const zlink_mesh_operation_id_t &op_id_,
+                                int32_t result_,
+                                int32_t err_,
+                                pending_operation_commit_fn commit_locked_ = NULL,
+                                void *commit_userdata_ = NULL)
 {
     pending_operation_t op;
-    {
+    try {
         std::lock_guard<std::mutex> lock (node_->mutex);
         std::unordered_map<uint64_t, pending_operation_t>::iterator it =
           node_->operations.find (op_id_.low);
         if (it == node_->operations.end ())
-            return;
+            return 0;
         op = it->second;
-        node_->operations.erase (it);
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return -1;
     }
     LIBZLINK_UNUSED (kind_);
-    complete_operation (node_, op, result_, err_, NULL, NULL);
+    return complete_pending_operation_with_commit (
+      node_, op, result_, err_, NULL, NULL, commit_locked_, commit_userdata_);
+}
+
+struct stream_unbind_commit_t
+{
+    session_service_t *service;
+    const std::string *session_key;
+    size_t binding_index;
+    bool remove_binding;
+};
+
+bool commit_stream_unbind_locked (mesh_node_t *, void *userdata_)
+{
+    stream_unbind_commit_t *commit =
+      static_cast<stream_unbind_commit_t *> (userdata_);
+    if (!commit->remove_binding)
+        return true;
+    std::map<std::string, std::vector<binding_t>>::iterator current =
+      commit->service->bindings.find (*commit->session_key);
+    if (current == commit->service->bindings.end ()
+        || commit->binding_index >= current->second.size ())
+        return false;
+    current->second.erase (current->second.begin () + commit->binding_index);
+    if (current->second.empty ())
+        commit->service->bindings.erase (current);
+    return true;
+}
+
+struct stream_close_commit_t
+{
+    session_service_t *service;
+    zlink_routing_id_t session_rid;
+    uint64_t binding_generation;
+};
+
+void clear_stream_binding_closing (const stream_close_commit_t &commit_)
+{
+    std::lock_guard<std::mutex> lock (commit_.service->mutex);
+    const std::string session_key (
+      reinterpret_cast<const char *> (commit_.session_rid.data),
+      commit_.session_rid.size);
+    std::map<std::string, std::vector<binding_t>>::iterator current =
+      commit_.service->bindings.find (session_key);
+    if (current == commit_.service->bindings.end ())
+        return;
+    for (size_t i = 0; i < current->second.size (); ++i) {
+        if (current->second[i].binding_generation
+            == commit_.binding_generation)
+            current->second[i].closing = false;
+    }
 }
 
 template <typename Action>
@@ -525,12 +581,12 @@ zlink_close_result_t zlink_stream_session_service_destroy (void **service_p_)
                   node->operations.find (terminate_operations[i]);
                 if (operation != node->operations.end ()) {
                     op = operation->second;
-                    node->operations.erase (operation);
                     found = true;
                 }
             }
             if (found)
-                complete_operation (node, op, ZLINK_REQUEST_TERMINATED, ESHUTDOWN, NULL, NULL);
+                (void) complete_pending_operation (
+                  node, op, ZLINK_REQUEST_TERMINATED, ESHUTDOWN, NULL, NULL);
         }
         std::lock_guard<std::mutex> lock (node->mutex);
         for (size_t i = 0; i < remove_reply_routes.size (); ++i)
@@ -600,6 +656,7 @@ try {
         errno = ESHUTDOWN;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
+    LIBZLINK_UNUSED (timeout_ms_);
 
     uint64_t membership_epoch = 0;
     //  Validate the actor generation and retain the authority version that
@@ -621,9 +678,16 @@ try {
 
     const std::string session_key (reinterpret_cast<const char *> (session_rid_->data),
                                    session_rid_->size);
+    operation_submission_t submission (
+      node, true, ZLINK_MESH_OPERATION_STREAM_BIND, node_owner (), 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
     bool idempotent = false;
     bool fenced = false;
     bool conflict = false;
+    bool inserted = false;
+    uint64_t inserted_generation = 0;
     {
         //  The registry lock makes the one-binding rule atomic across all
         //  services attached to this MeshNode.
@@ -670,6 +734,7 @@ try {
             binding_t binding;
             binding.actor = *actor_;
             binding.binding_generation = service->next_binding_generation++;
+            inserted_generation = binding.binding_generation;
             binding.membership_epoch = membership_epoch;
             binding.transfer_serial = 0;
             memset (&binding.transfer_id, 0, sizeof (binding.transfer_id));
@@ -681,6 +746,7 @@ try {
             binding.terminal_sealed = false;
             binding.closing = false;
             service->bindings[session_key].push_back (std::move (binding));
+            inserted = true;
         }
     }
     if (fenced) {
@@ -713,18 +779,38 @@ try {
         }
     }
 
-    const zlink_mesh_operation_id_t op_id =
-      register_operation (node, ZLINK_MESH_OPERATION_STREAM_BIND, node_owner (), timeout_ms_);
+    const int completion_rc = complete_binding_operation (
+      node, ZLINK_MESH_OPERATION_STREAM_BIND, op_id, ZLINK_REQUEST_OK, 0);
+    if (completion_rc < 0) {
+        if (inserted) {
+            std::lock_guard<std::mutex> lock (service->mutex);
+            std::map<std::string, std::vector<binding_t>>::iterator bindings =
+              service->bindings.find (session_key);
+            if (bindings != service->bindings.end ()) {
+                for (std::vector<binding_t>::iterator binding =
+                       bindings->second.begin ();
+                     binding != bindings->second.end (); ++binding) {
+                    if (binding->binding_generation == inserted_generation) {
+                        bindings->second.erase (binding);
+                        break;
+                    }
+                }
+                if (bindings->second.empty ())
+                    service->bindings.erase (bindings);
+            }
+        }
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    }
+    if (completion_rc == 0) {
+        errno = ESHUTDOWN;
+        return ZLINK_SUBMIT_INVALID_STATE;
+    }
+    submission.commit ();
     *operation_id_out_ = op_id;
-    complete_binding_operation (node, ZLINK_MESH_OPERATION_STREAM_BIND, op_id, ZLINK_REQUEST_OK, 0);
     return ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_stream_session_unbind_actor (void *service_,
@@ -751,11 +837,19 @@ try {
         errno = ESHUTDOWN;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
+    LIBZLINK_UNUSED (timeout_ms_);
 
     std::unique_lock<std::mutex> lock (service->mutex);
     remove_disconnected_bindings_locked (service);
     const std::string session_key (reinterpret_cast<const char *> (session_rid_->data),
                                    session_rid_->size);
+    operation_submission_t submission (
+      node, true, ZLINK_MESH_OPERATION_STREAM_UNBIND, node_owner (), 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
+    size_t binding_index = 0;
+    bool remove_binding = false;
     std::map<std::string, std::vector<binding_t>>::iterator it = service->bindings.find (session_key);
     if (it != service->bindings.end ()) {
         for (size_t i = 0; i < it->second.size (); ++i) {
@@ -771,38 +865,37 @@ try {
                     errno = ESTALE;
                     return ZLINK_SUBMIT_INVALID_STATE;
                 }
-                it->second.erase (it->second.begin () + i);
-                if (it->second.empty ())
-                    service->bindings.erase (it);
-                const zlink_mesh_operation_id_t op_id = register_operation (
-                  node, ZLINK_MESH_OPERATION_STREAM_UNBIND, node_owner (), timeout_ms_);
-                *operation_id_out_ = op_id;
-                lock.unlock ();
-                complete_binding_operation (node, ZLINK_MESH_OPERATION_STREAM_UNBIND, op_id,
-                                            ZLINK_REQUEST_OK, 0);
-                return ZLINK_SUBMIT_OK;
+                binding_index = i;
+                remove_binding = true;
+                break;
             }
         }
     }
     //  A missing binding unbinds idempotently only for expected generation 0.
-    if (expected_binding_generation_ != 0) {
+    if (!remove_binding && expected_binding_generation_ != 0) {
         errno = ESTALE;
         return ZLINK_SUBMIT_INVALID_STATE;
     }
-    const zlink_mesh_operation_id_t op_id =
-      register_operation (node, ZLINK_MESH_OPERATION_STREAM_UNBIND, node_owner (), timeout_ms_);
+    stream_unbind_commit_t unbind_commit;
+    unbind_commit.service = service;
+    unbind_commit.session_key = &session_key;
+    unbind_commit.binding_index = binding_index;
+    unbind_commit.remove_binding = remove_binding;
+    const int completion_rc = complete_binding_operation (
+      node, ZLINK_MESH_OPERATION_STREAM_UNBIND, op_id, ZLINK_REQUEST_OK, 0,
+      &commit_stream_unbind_locked, &unbind_commit);
+    if (completion_rc < 0)
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    if (completion_rc == 0) {
+        errno = ESHUTDOWN;
+        return ZLINK_SUBMIT_INVALID_STATE;
+    }
+    submission.commit ();
     *operation_id_out_ = op_id;
-    lock.unlock ();
-    complete_binding_operation (node, ZLINK_MESH_OPERATION_STREAM_UNBIND, op_id, ZLINK_REQUEST_OK,
-                                0);
     return ZLINK_SUBMIT_OK;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_config_result_t zlink_stream_session_bindings (void *service_,
@@ -960,26 +1053,23 @@ zlink_submit_result_t session_to_actor_submit (void *service_,
                             return ZLINK_SUBMIT_OUT_OF_MEMORY;
                         }
 
-                        zlink_mesh_operation_id_t op_id;
-                        memset (&op_id, 0, sizeof (op_id));
+                        operation_submission_t submission (
+                          service->node, is_request,
+                          ZLINK_MESH_OPERATION_ACTOR_REQUEST, node_owner (),
+                          is_request ? timeout_ms_ : 0);
+                        if (!submission.valid ())
+                            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+                        const zlink_mesh_operation_id_t op_id =
+                          submission.operation_id ();
                         uint64_t reply_serial = 0;
                         if (is_request) {
-                            op_id = register_operation (service->node,
-                                                        ZLINK_MESH_OPERATION_ACTOR_REQUEST,
-                                                        node_owner (), timeout_ms_);
-                            std::lock_guard<std::mutex> node_lock (service->node->mutex);
-                            reply_serial = service->node->next_reply_serial++;
                             reply_route_t route;
                             route.kind = reply_route_t::kind_generic;
                             route.requester = node_owner ();
-                            route.requester_node_generation =
-                              service->node->lifecycle_generation;
-                            route.operation_id = op_id;
                             route.operation_kind = ZLINK_MESH_OPERATION_ACTOR_REQUEST;
-                            route.consumed = false;
                             memset (&route.join_actor, 0, sizeof (route.join_actor));
-                            route.join_target_spot_generation = 0;
-                            service->node->reply_routes[reply_serial] = route;
+                            if (!submission.add_reply_route (route, &reply_serial))
+                                return ZLINK_SUBMIT_OUT_OF_MEMORY;
                             record->operation_id = op_id;
                             record->operation_kind = ZLINK_MESH_OPERATION_ACTOR_REQUEST;
                             record->has_reply_token = true;
@@ -991,12 +1081,8 @@ zlink_submit_result_t session_to_actor_submit (void *service_,
                         binding.pending.push_back (std::move (record));
                         send_next_participant_locked (service, &binding);
                         if (is_request) {
+                            submission.commit ();
                             *operation_id_out_ = op_id;
-                            lock.unlock ();
-                            if (schedule_operation_timeout (service->node, op_id.low,
-                                                            timeout_ms_)
-                                != 0)
-                                return ZLINK_SUBMIT_INTERNAL_ERROR;
                         }
                         return ZLINK_SUBMIT_OK;
                     }
@@ -1033,11 +1119,7 @@ try {
                                     part_count_, NULL, flags_, 0);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t
@@ -1059,11 +1141,7 @@ try {
                                     part_count_, operation_id_out_, flags_, timeout_ms_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_actor_send_bound_session (void *mesh_node_,
@@ -1136,11 +1214,7 @@ try {
     return send_stream_complete (stream, &session_rid, parts_, part_count_, flags_);
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 zlink_submit_result_t zlink_mesh_node_actor_close_bound_session (void *mesh_node_,
@@ -1159,6 +1233,13 @@ try {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
+    LIBZLINK_UNUSED (timeout_ms_);
+    operation_submission_t submission (
+      node, true, ZLINK_MESH_OPERATION_STREAM_CLOSE,
+      actor_owner (actor_->actor_id, actor_->generation), 0);
+    if (!submission.valid ())
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    const zlink_mesh_operation_id_t op_id = submission.operation_id ();
 
     std::lock_guard<std::mutex> registry_lock (g_session_registry_mutex);
     for (std::set<void *>::iterator it = g_live_sessions.begin (); it != g_live_sessions.end ();
@@ -1189,39 +1270,54 @@ try {
                         errno = EBUSY;
                         return ZLINK_SUBMIT_INVALID_STATE;
                     }
-                    zlink_routing_id_t session_rid;
-                    memset (&session_rid, 0, sizeof (session_rid));
-                    session_rid.size = static_cast<uint8_t> (
-                      std::min (bind_it->first.size (), sizeof (session_rid.data)));
-                    memcpy (session_rid.data, bind_it->first.data (), session_rid.size);
+                    stream_close_commit_t close_commit;
+                    memset (&close_commit.session_rid, 0,
+                            sizeof (close_commit.session_rid));
+                    close_commit.service = service;
+                    close_commit.session_rid.size = static_cast<uint8_t> (
+                      std::min (bind_it->first.size (),
+                                sizeof (close_commit.session_rid.data)));
+                    memcpy (close_commit.session_rid.data, bind_it->first.data (),
+                            close_commit.session_rid.size);
+                    close_commit.binding_generation =
+                      expected_binding_generation_;
                     binding.closing = true;
                     lock.unlock ();
+                    pending_operation_completion_t prepared_completion;
+                    const int prepare_rc =
+                      prepare_pending_operation_completion (
+                        node, op_id, &prepared_completion);
+                    if (prepare_rc < 0) {
+                        clear_stream_binding_closing (close_commit);
+                        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+                    }
+                    if (prepare_rc == 0) {
+                        clear_stream_binding_closing (close_commit);
+                        errno = ESHUTDOWN;
+                        return ZLINK_SUBMIT_INVALID_STATE;
+                    }
                     const zlink_connect_result_t disconnect_result =
-                      zlink_disconnect_rid (service->stream, &session_rid);
+                      zlink_disconnect_rid (
+                        service->stream, &close_commit.session_rid);
                     if (disconnect_result != ZLINK_CONNECT_OK) {
-                        lock.lock ();
-                        std::map<std::string, std::vector<binding_t>>::iterator current =
-                          service->bindings.find (std::string (
-                            reinterpret_cast<const char *> (session_rid.data), session_rid.size));
-                        if (current != service->bindings.end ()) {
-                            for (size_t restore = 0; restore < current->second.size (); ++restore) {
-                                if (current->second[restore].binding_generation
-                                    == expected_binding_generation_)
-                                    current->second[restore].closing = false;
-                            }
-                        }
+                        cancel_pending_operation_completion (
+                          node, &prepared_completion);
+                        clear_stream_binding_closing (close_commit);
                         if (disconnect_result == ZLINK_CONNECT_NOT_FOUND)
                             return ZLINK_SUBMIT_NOT_CONNECTED;
                         if (disconnect_result == ZLINK_CONNECT_BUSY)
                             return ZLINK_SUBMIT_INVALID_STATE;
                         return ZLINK_SUBMIT_INTERNAL_ERROR;
                     }
-                    const zlink_mesh_operation_id_t op_id = register_operation (
-                      node, ZLINK_MESH_OPERATION_STREAM_CLOSE,
-                      actor_owner (actor_->actor_id, actor_->generation), timeout_ms_);
+                    const int completion_rc =
+                      commit_prepared_pending_operation (
+                        node, &prepared_completion, ZLINK_REQUEST_OK, 0);
+                    if (completion_rc != 1) {
+                        errno = ESHUTDOWN;
+                        return ZLINK_SUBMIT_INVALID_STATE;
+                    }
+                    submission.commit ();
                     *operation_id_out_ = op_id;
-                    complete_binding_operation (node, ZLINK_MESH_OPERATION_STREAM_CLOSE, op_id,
-                                                ZLINK_REQUEST_OK, 0);
                     return ZLINK_SUBMIT_OK;
                 }
             }
@@ -1231,11 +1327,7 @@ try {
     return ZLINK_SUBMIT_NOT_FOUND;
 }
 catch (const std::bad_alloc &) {
-    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
-    //  rollback barriers did not translate still ends as the formal
-    //  OUT_OF_MEMORY result instead of an escaping exception.
-    errno = ENOMEM;
-    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    return submit_out_of_memory_result ();
 }
 
 namespace zlink

@@ -83,10 +83,6 @@ int actor_lookup_local (mesh_node_t *node_,
                         uint64_t *spot_generation_out_,
                         uint64_t *membership_epoch_out_);
 
-//  Schedules the ETIMEDOUT terminal completion for a pending operation
-//  (defined in mesh_messaging_api.cpp). timeout 0 schedules nothing.
-int schedule_operation_timeout (mesh_node_t *node_, uint64_t operation_low_, uint32_t timeout_ms_);
-
 //  Transfer wire handlers (defined in mesh_transfer_api.cpp). The ingress
 //  thread calls these with decoded envelope fields.
 void transfer_handle_ready (mesh_node_t *node_,
@@ -169,11 +165,36 @@ int deliver_reply_via_route (mesh_node_t *node_,
                              int32_t failure_errno_,
                              std::vector<zlink_msg_t> *parts_);
 
-//  Builds a new operation id and registers the pending operation.
-zlink_mesh_operation_id_t register_operation (mesh_node_t *node_,
-                                              zlink_mesh_operation_kind_t kind_,
-                                              const owner_id_t &requester_,
-                                              uint32_t timeout_ms_);
+//  Owns request bookkeeping until delivery commits. Every early return
+//  removes the operation and optional reply route and cancels the prepared
+//  timeout; callers therefore cannot leave a partial request behind.
+class operation_submission_t
+{
+  public:
+    operation_submission_t (mesh_node_t *node_,
+                            bool active_,
+                            zlink_mesh_operation_kind_t kind_,
+                            const owner_id_t &requester_,
+                            uint32_t timeout_ms_);
+    ~operation_submission_t ();
+
+    bool valid () const;
+    const zlink_mesh_operation_id_t &operation_id () const;
+    bool add_reply_route (reply_route_t route_, uint64_t *serial_out_);
+    void commit ();
+
+  private:
+    mesh_node_t *_node;
+    zlink_mesh_operation_id_t _operation_id;
+    uint64_t _reply_serial;
+    operation_timeout_guard_t *_timeout;
+    bool _active;
+    bool _valid;
+    bool _committed;
+
+    operation_submission_t (const operation_submission_t &);
+    operation_submission_t &operator= (const operation_submission_t &);
+};
 }
 }
 

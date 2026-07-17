@@ -48,10 +48,20 @@ aliases, wrappers or dual runtimes. The public contract is owned by
 
 ### Changed
 - Version 10.0.0, SONAME `libzlink.so.10`.
+- Debian, RPM and NuGet recipes now derive the 10.0.0 package identity and
+  ABI 10 library names checked by the public-surface contract gate.
 - `zlink_router_recv_part()` no longer emits a service Spot RID output;
   raw ROUTER carries no service envelope.
 - Raw SUB/XSUB `zlink_subscribe_part()` reports the required topic length
   without consuming the queued message when the caller buffer is small.
+
+### Fixed
+- Request submission now prepares operation, reply-route and timeout state
+  before target delivery and rolls all three back on preparation failure.
+- Terminal completion storage is reserved with the operation. Reply tokens,
+  Actor membership and STREAM bindings are committed only with successful
+  completion admission, so allocation failure leaves retryable state instead
+  of losing an accepted operation.
 
 ### Verification (release-candidate scope)
 - Full core suite green: 85/85 CTest targets, including the two-process
@@ -64,9 +74,10 @@ aliases, wrappers or dual runtimes. The public contract is owned by
   (`test_mesh_monitor_matrix`, 6 cases), dispatch stress
   (`test_mesh_stress`, 3 cases) and lifecycle contracts
   (`test_mesh_lifecycle_contracts`, 13 cases including the bind/destroy
-  race hammer, concurrent submit/destroy lifetime pinning, both
+  race hammer, STREAM bind/unbind/close completion-admission fault
+  atomicity, concurrent submit/destroy lifetime pinning, both
   shutdown/destroy lifecycle re-entry orders and the injected submit-path
-  OOM mapping).
+  OOM mapping with operation/reply-route rollback).
 - Sanitizers: ASAN/UBSAN+leak clean on the mesh suite; TSAN reports zero
   races in new mesh code (four pre-existing 9.x machinery observations are
   tracked for review).

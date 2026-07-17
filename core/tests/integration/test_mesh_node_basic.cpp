@@ -17,6 +17,8 @@
 
 SETUP_TEARDOWN_TESTCONTEXT
 
+extern "C" void zlink_test_set_mesh_alloc_fault (int count_);
+
 namespace
 {
 void *new_started_node (void *ctx_, const char *name_, const char *channel_)
@@ -222,6 +224,19 @@ void test_mesh_local_channel_request_reply ()
     //  One-shot reply through the sealed token.
     zlink_msg_t reply_part;
     make_payload (&reply_part, "ack-2381");
+    //  Payload preparation failure and terminal-mailbox admission failure
+    //  both leave the token and operation retryable.
+    zlink_test_set_mesh_alloc_fault (1);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OUT_OF_MEMORY,
+                           zlink_mesh_reply (&record->reply_token, &reply_part, 1,
+                                             ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    zlink_test_set_mesh_alloc_fault (2);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OUT_OF_MEMORY,
+                           zlink_mesh_reply (&record->reply_token, &reply_part, 1,
+                                             ZLINK_SEND_FLAGS_NONE));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    zlink_test_set_mesh_alloc_fault (0);
     TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
                            zlink_mesh_reply (&record->reply_token, &reply_part, 1,
                                              ZLINK_SEND_FLAGS_NONE));

@@ -105,10 +105,18 @@ There are three wakeup paths with mutual-exclusion rules:
    non-empty": drain consumes the signal byte and re-arms while claimable work
    remains. Handler and poller registration are mutually exclusive (`EBUSY`).
 
-## 4. Reply tokens and completions
+## 4. Request transactions, reply tokens and completions
 
-Registering a request creates a one-shot route in `reply_routes[serial]` and
-exposes only the serial through a 32-byte sealed token. Consumption rules:
+Before request delivery, `operation_submission_t` prepares the operation, its
+one-shot route in `reply_routes[serial]`, and the storage needed by the timeout
+task as one transaction. If preparation fails, its destructor removes the
+operation and route and cancels the timeout. A submit path calls `commit()`
+only after it has delivered the request to the target mailbox or wire. A
+request reported as failed therefore cannot have reached its target or remain
+as an operation that the caller cannot identify.
+
+The 32-byte sealed reply token exposes only the route serial. Consumption
+rules:
 
 - A successful reply consumes the route; a second reply is `EALREADY`.
 - If the requester timed out first, the reply consumes the token and is
@@ -118,13 +126,33 @@ exposes only the serial through a 32-byte sealed token. Consumption rules:
 - An Actor join token has its kind sealed in: passing it to the generic reply
   is `EINVAL` and does not consume it.
 
-Completions always land in the requester owner's infrastructure mailbox.
+Completions always land in the requester owner's infrastructure mailbox. Each
+operation allocates an empty completion record and list node when it is
+registered. A terminal path prepares the payload in that record, moves it
+into the mailbox with `list::splice`, and consumes the operation and reply
+token only after admission succeeds. Domain state that must change with a
+completion, such as Actor membership or a STREAM binding, is committed under
+the same node lock. Payload preparation, ready-index admission, or wire-send
+failure therefore leaves the operation and token retryable and leaves domain
+state unchanged.
+
+Closing a bound STREAM session can invoke the raw socket's session observer,
+so it does not disconnect while holding the node lock. This path first
+prepares the operation, terminal record, and ready-index node and excludes
+competing completion. It then releases the node lock, disconnects, and commits
+the prepared terminal record without allocation. Preparation failure returns
+before disconnect, while disconnect failure cancels the reservation; the node
+and raw STREAM lock orders therefore cannot form a cycle.
+
 Timeout completions are produced by the global timeout scheduler (an immortal
-singleton with its own thread) calling `complete_operation` at the deadline.
-When a shutdown outlives its deadline it detaches every remaining operation
-(including timeout-less ones) into exactly one `REQUEST_TERMINATED`/`ESHUTDOWN`
-completion. Shutdown re-entry is `EDEADLK` only through the `shutdown_active`
-flag; a sequential call after TIMED_OUT is legal.
+singleton with its own thread) calling `complete_pending_operation()` at the
+deadline. The timeout callback waits for the request transaction to commit or
+cancel, so it cannot complete an operation before request delivery. When a
+shutdown outlives its deadline it completes every remaining operation
+(including timeout-less ones) with exactly one
+`REQUEST_TERMINATED`/`ESHUTDOWN` completion. Shutdown re-entry is `EDEADLK`
+only through the `shutdown_active` flag; a sequential call after TIMED_OUT is
+legal.
 
 ## 5. Wire: ROUTER, the ingress thread and the envelope
 
@@ -171,7 +199,7 @@ Publish completes snapshot → check → commit within one call.
    `routed_target_writable()` on every remote pipe. If any target cannot
    accept, nothing commits (all-or-none). Non-blocking fails with `EAGAIN`;
    blocking retries the reserve until SNDTIMEO and fails with `ETIMEDOUT`.
-3. Once the reserve passes, the local slots (mailbox deque positions and
+3. Once the reserve passes, the local slots (mailbox list nodes and
    ready-index keys) are pre-reserved before the remote commit, pulling the
    last fallible step ahead of any commit. A failure rolls everything back
    and returns `ENOMEM`; the reservations only exist while the node mutex is

@@ -12,9 +12,11 @@ Checks:
      formal function, and no function outside the formal set.
   3. Formal types, enum types, enumerators, struct fields and macros are
      all present in the header closure.
-  4. Identifiers listed in removed-identifiers-10.0.0.json are absent.
+  4. Removed identifiers are absent, with exact-kind validation for approved
+     same-spelling replacements.
   5. Dynamic exports of libzlink match the formal function set exactly
      (no headerless internal exports).
+  6. Debian, RPM and NuGet metadata match the CMake version and SONAME.
 
 Usage: check_public_surface.py <repo_root> <libzlink_path>
 Exit code 0 on success, 1 on contract violation.
@@ -115,6 +117,69 @@ def c_blocks(path):
     return "\n".join(re.findall(rf"^{fence}c\s*\n(.*?)^{fence}\s*$", text, re.M | re.S))
 
 
+def check_packaging_metadata(root, failures):
+    cmake = (root / "core" / "CMakeLists.txt").read_text()
+    version_match = re.search(r"project\s*\(\s*zlink\s+VERSION\s+([0-9.]+)", cmake)
+    soname_match = re.search(r'\bSOVERSION\s+"([0-9]+)"', cmake)
+    if not version_match or not soname_match:
+        failures.append("cannot derive package version or SOVERSION from core/CMakeLists.txt")
+        return
+    version = version_match.group(1)
+    soname = soname_match.group(1)
+    version_path = version.replace(".", "_")
+
+    expected_text = {
+        "core/packaging/debian/control": (
+            f"Package: libzlink{soname}",
+            f"Package: libzlink{soname}-dev",
+            f"Package: libzlink{soname}-dbg",
+        ),
+        "core/packaging/debian/changelog": (f"zlink ({version}-0.1)",),
+        "core/packaging/debian/zlink.dsc": (
+            f"Binary: libzlink{soname}, libzlink{soname}-dev, libzlink{soname}-dbg",
+            f"Version: {version}-0.1",
+        ),
+        "core/packaging/debian/rules": (f"--dbg-package=libzlink{soname}-dbg",),
+        "core/packaging/redhat/zlink.spec": (
+            f"%define lib_name libzlink{soname}",
+            f"Version:       {version}",
+        ),
+        "core/packaging/nuget/package.config": (
+            f'version = "{version}"',
+            f'pathversion="{version_path}"',
+        ),
+        "core/packaging/nuget/package.nuspec": (
+            f"<version>{version}</version>",
+            version_path,
+        ),
+        "core/packaging/nuget/package.targets": (version_path,),
+    }
+    for relative, needles in expected_text.items():
+        path = root / relative
+        if not path.exists():
+            failures.append(f"packaging metadata missing: {relative}")
+            continue
+        text = path.read_text()
+        for needle in needles:
+            if needle not in text:
+                failures.append(f"packaging metadata mismatch: {relative} lacks {needle!r}")
+
+    debian = root / "core" / "packaging" / "debian"
+    expected_files = {
+        f"libzlink{soname}.install",
+        f"libzlink{soname}.docs",
+        f"libzlink{soname}-dev.install",
+        f"libzlink{soname}-dev.manpages",
+    }
+    missing = sorted(name for name in expected_files if not (debian / name).exists())
+    if missing:
+        failures.append(f"Debian ABI package files missing: {missing}")
+    stale = sorted(path.name for path in debian.glob("libzlink[0-9]*")
+                   if path.name not in expected_files)
+    if stale:
+        failures.append(f"stale Debian ABI package files: {stale}")
+
+
 def main():
     if len(sys.argv) != 3:
         print(__doc__)
@@ -170,6 +235,15 @@ def main():
         if leftovers:
             failures.append(f"removed {kind} still declared ({len(leftovers)}): "
                             f"{sorted(leftovers)[:8]} ...")
+    for identifier, allowed_kind in removed.get("REUSED_IDENTIFIER", {}).items():
+        declared_as = {kind for kind in KINDS if identifier in headers[kind]}
+        if declared_as != {allowed_kind}:
+            failures.append(
+                f"reused identifier {identifier} declared as {sorted(declared_as)}, "
+                f"expected only {allowed_kind}"
+            )
+
+    check_packaging_metadata(root, failures)
 
     if lib.exists():
         nm = subprocess.run(

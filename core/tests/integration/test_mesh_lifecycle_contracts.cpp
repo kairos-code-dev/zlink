@@ -562,6 +562,47 @@ void test_timer_destroy_overlapping_fire_completes ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+//  Destroying the node while a shutdown is still draining is the same-handle
+//  lifecycle re-entry the contract ends with EDEADLK (§11): the node
+//  survives, the parked shutdown completes once the claim releases, and only
+//  then does a destroy succeed.
+void test_destroy_during_shutdown_wait_is_deadlock_error ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "sd-race-mesh", "jobs");
+
+    zlink_msg_t part;
+    make_payload (&part, "job-1");
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_mesh_node_send_to_channel (node, "jobs", NULL, &part, 1,
+                                                            ZLINK_SEND_FLAGS_NONE));
+    zlink_msg_close (&part);
+    zlink_mesh_claim_t claim;
+    take_ready_claim (node, ZLINK_MESH_OWNER_NODE, ZLINK_MESH_READY_APPLICATION, &claim);
+
+    //  The held claim parks the shutdown in its drain wait.
+    std::atomic<int> shutdown_rc (-1);
+    std::thread shutdown_thread ([&] () {
+        shutdown_rc.store (static_cast<int> (zlink_mesh_node_shutdown (node, 3000)));
+    });
+    msleep (300);
+    TEST_ASSERT_EQUAL_INT (-1, shutdown_rc.load ());
+
+    void *doomed = node;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_BUSY, zlink_mesh_node_destroy (&doomed));
+    TEST_ASSERT_EQUAL_INT (EDEADLK, zlink_errno ());
+    TEST_ASSERT_NOT_NULL (doomed);
+
+    //  Releasing the claim lets the parked shutdown drain and finish.
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_claim_release (&claim));
+    shutdown_thread.join ();
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_REQUEST_OK), shutdown_rc.load ());
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 #if !defined _WIN32
 namespace
 {
@@ -741,6 +782,7 @@ int main ()
     RUN_TEST (test_peers_query_output_is_invariant_on_invalid_element);
     RUN_TEST (test_public_strings_reject_invalid_utf8);
     RUN_TEST (test_timer_destroy_overlapping_fire_completes);
+    RUN_TEST (test_destroy_during_shutdown_wait_is_deadlock_error);
     RUN_TEST (test_stream_session_bind_destroy_race_leaves_no_binding);
     const int rc = UNITY_END ();
     fflush (NULL);

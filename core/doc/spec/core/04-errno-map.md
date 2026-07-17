@@ -90,7 +90,7 @@ retries the same message with a sufficient topic buffer.
 | `ZLINK_HANDLER_DEADLOCK` | `EDEADLK` | Forbidden registration or removal inside the same callback |
 | `ZLINK_HANDLER_INVALID_HANDLE` | `EFAULT` | Invalid handle |
 | `ZLINK_HANDLER_INTERNAL_ERROR` | preserved errno | Internal failure without a finer public category |
-| `ZLINK_CLOSE_BUSY` | `EBUSY` | Active child handle, callback, or API exists |
+| `ZLINK_CLOSE_BUSY` | `EBUSY`, `EDEADLK` | `EBUSY` — an active child handle, callback, or API exists. `EDEADLK` — same-handle shutdown/destroy lifecycle re-entry (01-mesh-node §11) |
 | `ZLINK_CLOSE_SHUTDOWN` | `ESHUTDOWN` | Handle is already stopped |
 | `ZLINK_CLOSE_INVALID_HANDLE` | `EFAULT`, `ESTALE` | Invalid pointer or opaque value |
 | `ZLINK_CLOSE_INTERNAL_ERROR` | preserved errno | Internal failure without a finer public category |

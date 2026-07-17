@@ -51,7 +51,13 @@ void on_operation_timeout (void *userdata_)
 //  record storage.
 int copy_borrowed_parts (const zlink_msg_t *parts_, size_t part_count_, queued_record_t *record_)
 {
-    record_->parts.resize (part_count_);
+    try {
+        record_->parts.resize (part_count_);
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return -1;
+    }
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_init (&record_->parts[i]);
     for (size_t i = 0; i < part_count_; ++i) {
@@ -184,17 +190,24 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
         errno = ENOMEM;
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
-    record->kind = kind_;
-    record->source_node_rid = node_->routing_id;
-    record->source_spot_rid = source_spot_rid_;
-    record->channel_name = channel_name_;
-    if (metadata_) {
-        record->has_metadata = true;
-        record->application_metadata.assign (metadata_->data, metadata_->data + metadata_->size);
-        record->byte_size += metadata_->size;
+    try {
+        record->kind = kind_;
+        record->source_node_rid = node_->routing_id;
+        record->source_spot_rid = source_spot_rid_;
+        record->channel_name = channel_name_;
+        if (metadata_) {
+            record->has_metadata = true;
+            record->application_metadata.assign (metadata_->data,
+                                                 metadata_->data + metadata_->size);
+            record->byte_size += metadata_->size;
+        }
+        if (copy_borrowed_parts (parts_, part_count_, record.get ()) != 0)
+            return errno == ENOMEM ? ZLINK_SUBMIT_OUT_OF_MEMORY : ZLINK_SUBMIT_INTERNAL_ERROR;
     }
-    if (copy_borrowed_parts (parts_, part_count_, record.get ()) != 0)
-        return ZLINK_SUBMIT_INTERNAL_ERROR;
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    }
 
     zlink_mesh_operation_id_t op_id;
     memset (&op_id, 0, sizeof (op_id));
@@ -737,11 +750,17 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
                                       zlink_send_flags_t flags_)
 {
     std::string channel;
-    if (check_name (channel_name_, ZLINK_CHANNEL_NAME_MAX, &channel) != 0)
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
     std::string topic;
-    if (check_name (topic_, ZLINK_MESH_TOPIC_MAX, &topic) != 0)
-        return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    try {
+        if (check_name (channel_name_, ZLINK_CHANNEL_NAME_MAX, &channel) != 0)
+            return ZLINK_SUBMIT_INVALID_ARGUMENT;
+        if (check_name (topic_, ZLINK_MESH_TOPIC_MAX, &topic) != 0)
+            return ZLINK_SUBMIT_INVALID_ARGUMENT;
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
+    }
     if (!valid_utf8 (reinterpret_cast<const unsigned char *> (topic.data ()), topic.size ()))
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     if (check_submit_input (metadata_, parts_, part_count_) != 0)
@@ -752,7 +771,7 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
     //  Snapshot local Spot matches and admitted remote channel members.
     std::vector<owner_id_t> local_targets;
     std::vector<rid_bytes_t> remote_targets;
-    {
+    try {
         std::unique_lock<std::mutex> lock (node_->mutex);
         if (check_submit_state_locked (node_) != 0)
             return submit_errno_result ();
@@ -772,6 +791,10 @@ zlink_submit_result_t publish_common (mesh_node_t *node_,
             if (ch != peer.channels.end () && ch->second > 0)
                 remote_targets.push_back (peer.rid);
         }
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
     const uint32_t snapshot_remote = static_cast<uint32_t> (remote_targets.size ());
     const uint32_t snapshot_local = static_cast<uint32_t> (local_targets.size ());
@@ -843,43 +866,46 @@ retry_reserve:
 
         //  Every fallible preparation happens before any commit: the local
         //  records are fully built and every local container slot is
-        //  pre-allocated here so that after the remote leg only infallible
-        //  assignments remain (all-or-none across both legs).
+        //  pre-allocated inside one bad_alloc barrier, so that after the
+        //  remote leg only infallible assignments remain (all-or-none across
+        //  both legs) and no preparation failure escapes the C ABI.
         std::vector<std::unique_ptr<queued_record_t>> prepared;
-        prepared.reserve (accepting.size ());
-        for (size_t t = 0; t < accepting.size (); ++t) {
-            std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
-            if (!record.get ()) {
-                errno = ENOMEM;
-                return ZLINK_SUBMIT_OUT_OF_MEMORY;
-            }
-            record->kind = ZLINK_MESH_RECORD_SPOT_MULTICAST;
-            record->source_node_rid = node_->routing_id;
-            if (source_spot_rid_)
-                record->source_spot_rid = *source_spot_rid_;
-            record->channel_name = channel;
-            record->topic = topic;
-            if (metadata_) {
-                record->has_metadata = true;
-                record->application_metadata.assign (metadata_->data,
-                                                     metadata_->data + metadata_->size);
-                record->byte_size += metadata_->size;
-            }
-            if (copy_borrowed_parts (parts_, part_count_, record.get ()) != 0)
-                return ZLINK_SUBMIT_INTERNAL_ERROR;
-            prepared.push_back (std::move (record));
-        }
-
-        //  Local slot reservation: deque growth and ready-index nodes are the
-        //  last fallible steps of the local leg, so both are taken before the
-        //  remote commit. Placeholder slots and speculative ready entries are
-        //  only ever visible while this mutex is held: every exit path below
-        //  either fills or rolls them back before the lock is released.
         std::vector<size_t> slot_base;
         std::vector<std::pair<owner_id_t, int>> ready_added;
         size_t slots_taken = 0;
         bool prealloc_failed = false;
         try {
+            prepared.reserve (accepting.size ());
+            for (size_t t = 0; t < accepting.size (); ++t) {
+                std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
+                if (!record.get ()) {
+                    errno = ENOMEM;
+                    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+                }
+                record->kind = ZLINK_MESH_RECORD_SPOT_MULTICAST;
+                record->source_node_rid = node_->routing_id;
+                if (source_spot_rid_)
+                    record->source_spot_rid = *source_spot_rid_;
+                record->channel_name = channel;
+                record->topic = topic;
+                if (metadata_) {
+                    record->has_metadata = true;
+                    record->application_metadata.assign (metadata_->data,
+                                                         metadata_->data + metadata_->size);
+                    record->byte_size += metadata_->size;
+                }
+                if (copy_borrowed_parts (parts_, part_count_, record.get ()) != 0)
+                    return errno == ENOMEM ? ZLINK_SUBMIT_OUT_OF_MEMORY
+                                           : ZLINK_SUBMIT_INTERNAL_ERROR;
+                prepared.push_back (std::move (record));
+            }
+
+            //  Local slot reservation: deque growth and ready-index nodes are
+            //  the last fallible steps of the local leg, so both are taken
+            //  before the remote commit. Placeholder slots and speculative
+            //  ready entries are only ever visible while this mutex is held:
+            //  every exit path below either fills or rolls them back before
+            //  the lock is released.
             slot_base.resize (accepting.size ());
             ready_added.reserve (accepting.size ());
             for (size_t t = 0; t < accepting.size (); ++t) {
@@ -910,10 +936,23 @@ retry_reserve:
         //  leave the local mailboxes untouched. The wire reserve commits
         //  nothing on backpressure, so a blocking publish may retry the whole
         //  reserve within SNDTIMEO.
-        const zlink_submit_result_t remote_rc = wire_publish_remote_locked (
-          node_, remote_targets, channel, topic,
-          source_spot_rid_ ? *source_spot_rid_ : rid_bytes_t (), nodrop_, metadata_, parts_,
-          part_count_, &admitted_remote, &dropped_remote, &unreachable_remote);
+        zlink_submit_result_t remote_rc;
+        try {
+            remote_rc = wire_publish_remote_locked (
+              node_, remote_targets, channel, topic,
+              source_spot_rid_ ? *source_spot_rid_ : rid_bytes_t (), nodrop_, metadata_, parts_,
+              part_count_, &admitted_remote, &dropped_remote, &unreachable_remote);
+        }
+        catch (const std::bad_alloc &) {
+            //  The wire leg allocates its envelope before any frame is sent,
+            //  so an allocation failure here committed nothing remotely.
+            for (size_t t = 0; t < accepting.size (); ++t)
+                accepting[t]->records.pop_back ();
+            for (size_t t = 0; t < ready_added.size (); ++t)
+                node_->ready.erase (ready_added[t]);
+            errno = ENOMEM;
+            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+        }
         if (nodrop_ && remote_rc != ZLINK_SUBMIT_OK) {
             //  Roll the local reservation back before the mutex is released
             //  (cv wait or return); a retry rebuilds it from scratch.

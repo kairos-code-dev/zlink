@@ -662,10 +662,25 @@ int admit_record (mesh_node_t *node_,
         }
     }
 
+    //  The ready-index node and the deque slot are the only fallible steps
+    //  left; take them before the counters so an allocation failure leaves
+    //  the mailbox exactly as it was and maps to ENOMEM instead of escaping
+    //  the C ABI.
+    const uint64_t record_bytes = record_->byte_size;
+    const std::pair<owner_id_t, int> ready_key (owner_, static_cast<int> (domain_));
+    bool ready_inserted = false;
+    try {
+        ready_inserted = node_->ready.insert (ready_key).second;
+        mailbox.records.push_back (std::move (record_));
+    }
+    catch (const std::bad_alloc &) {
+        if (ready_inserted)
+            node_->ready.erase (ready_key);
+        errno = ENOMEM;
+        return -1;
+    }
     mailbox.pending_messages += 1;
-    mailbox.pending_bytes += record_->byte_size;
-    mailbox.records.push_back (std::move (record_));
-    node_->ready.insert (std::make_pair (owner_, static_cast<int> (domain_)));
+    mailbox.pending_bytes += record_bytes;
     notify_consumer_locked (node_, lock);
     return 0;
 }
@@ -742,8 +757,15 @@ void emit_monitor_event (mesh_node_t *node_, zlink_mesh_monitor_event_t &event_)
                 if (monitor->events.size () >= queue_limit)
                     monitor->events.pop_front ();
             }
-            monitor->events.push_back (event_);
-            monitor->cv.notify_all ();
+            try {
+                monitor->events.push_back (event_);
+                monitor->cv.notify_all ();
+            }
+            catch (const std::bad_alloc &) {
+                //  The queue is bounded and lossy by contract; dropping the
+                //  event under allocation pressure is the same observable
+                //  behavior as an overflow drop.
+            }
         }
     }
     if (handler) {

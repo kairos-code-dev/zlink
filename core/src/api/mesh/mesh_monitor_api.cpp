@@ -150,7 +150,10 @@ zlink_close_result_t zlink_mesh_node_monitor_close (void **monitor_p_)
         {
             std::lock_guard<std::mutex> lock (monitor->mutex);
             if (monitor->handler_active) {
-                errno = EDEADLK;
+                //  Formal close mapping: an active callback is EBUSY
+                //  (EDEADLK belongs to handler registration and node
+                //  lifecycle re-entry, not to close).
+                errno = EBUSY;
                 return ZLINK_CLOSE_BUSY;
             }
             monitor->closed = true;

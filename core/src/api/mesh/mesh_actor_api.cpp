@@ -1324,23 +1324,30 @@ zlink_submit_result_t actor_submit (void *mesh_node_,
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
     const bool is_request = operation_id_out_ != NULL;
-    record->kind = is_request ? ZLINK_MESH_RECORD_ACTOR_REQUEST : ZLINK_MESH_RECORD_ACTOR_SEND;
-    record->source_node_rid = node->routing_id;
-    if (source_actor_)
-        record->source_actor = *source_actor_;
-    if (metadata_) {
-        record->has_metadata = true;
-        record->application_metadata.assign (metadata_->data, metadata_->data + metadata_->size);
-        record->byte_size += metadata_->size;
-    }
-    record->parts.resize (part_count_);
-    for (size_t i = 0; i < part_count_; ++i) {
-        zlink_msg_init (&record->parts[i]);
-        if (zlink_msg_copy (&record->parts[i], const_cast<zlink_msg_t *> (&parts_[i])) != 0) {
-            errno = EFAULT;
-            return ZLINK_SUBMIT_INTERNAL_ERROR;
+    try {
+        record->kind = is_request ? ZLINK_MESH_RECORD_ACTOR_REQUEST : ZLINK_MESH_RECORD_ACTOR_SEND;
+        record->source_node_rid = node->routing_id;
+        if (source_actor_)
+            record->source_actor = *source_actor_;
+        if (metadata_) {
+            record->has_metadata = true;
+            record->application_metadata.assign (metadata_->data,
+                                                 metadata_->data + metadata_->size);
+            record->byte_size += metadata_->size;
         }
-        record->byte_size += zlink_msg_size (&record->parts[i]);
+        record->parts.resize (part_count_);
+        for (size_t i = 0; i < part_count_; ++i) {
+            zlink_msg_init (&record->parts[i]);
+            if (zlink_msg_copy (&record->parts[i], const_cast<zlink_msg_t *> (&parts_[i])) != 0) {
+                errno = EFAULT;
+                return ZLINK_SUBMIT_INTERNAL_ERROR;
+            }
+            record->byte_size += zlink_msg_size (&record->parts[i]);
+        }
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
 
     zlink_mesh_operation_id_t op_id;

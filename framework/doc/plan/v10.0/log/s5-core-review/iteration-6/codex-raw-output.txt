@@ -1,0 +1,234 @@
+S5 Core implementation review iteration 6 - Codex raw transcript
+Snapshot requested: b1e6c81fb
+Scope requested: 631 files
+Aggregate requested: 6fa7e8c66ef878cff76356c9208dbf194a3dffc7f494948d91b87f51cd7656d8
+
+[manifest]
+command: sed -n '1,240p' framework/doc/plan/v10.0/log/s5-core-review/iteration-6/manifest.ko.md
+result:
+  Acceptance candidate commit: b1e6c81fb
+  Scope file count: 631
+  Scope aggregate SHA-256: 6fa7e8c66ef878cff76356c9208dbf194a3dffc7f494948d91b87f51cd7656d8
+  Required previous findings: F-I1-01 residual, N5-I1-01, N5-I3-01, N5-I3-02
+
+[start scope hash]
+command: git ls-files core/include core/src core/tests core/packaging core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md | xargs sha256sum | sha256sum
+stdout:
+6fa7e8c66ef878cff76356c9208dbf194a3dffc7f494948d91b87f51cd7656d8  -
+
+[snapshot and scope]
+command: git rev-parse HEAD
+stdout:
+b1e6c81fb5de1d28000bbb9ffaf6750169393067
+command: git ls-files core/include core/src core/tests core/packaging core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md | wc -l
+stdout:
+631
+
+[iteration 6 delta]
+command: git diff --stat c8d567c64..b1e6c81fb -- core/include core/src core/tests core/packaging core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md
+stdout:
+ CHANGELOG.md                                       | 17 ++++++----
+ core/doc/spec/core/service/01-mesh-node.ko.md      |  6 ++--
+ core/doc/spec/core/service/01-mesh-node.md         |  4 ++-
+ core/src/api/mesh/mesh_messaging_api.cpp           |  3 +-
+ core/tests/integration/test_mesh_lifecycle_contracts.cpp | 37 +++++++++++++++++-----
+ 5 files changed, 48 insertions(+), 19 deletions(-)
+
+[whole S5 campaign delta]
+command: git diff --stat 8206fd44d..b1e6c81fb -- core/include core/src core/tests core/packaging core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md
+result:
+44 files changed, 3735 insertions(+), 1825 deletions(-)
+command: git diff --check 8206fd44d..b1e6c81fb
+stdout: <empty>
+
+[configured CTest inventory]
+command: ctest --test-dir core/build -N
+stdout summary:
+Test project /home/hep7/project/kairos/zlink/core/build
+  #1 bench_mesh_topology
+  #2 test_ancillaries
+  #3 test_thread_safe_contract_policy
+  #4 test_monitor_enhanced
+  #5 test_monitor_socket_contract
+  #6 test_monitor_perf_contract
+  #7 test_multi_stream_server_reassembly
+  #8 test_socket_with_handler
+  #9 test_connect_resolve
+  #10 test_capabilities
+  #11 test_ctx_destroy
+  #12 test_ctx_options
+  #13 test_socket_null
+  #14 test_heartbeats
+  #15 test_multi_socket_contract_regressions
+  #16 test_mesh_node_basic
+  #17 test_mesh_peer_admission
+  #18 test_mesh_monitor_matrix
+  #19 test_mesh_stress
+  #20 test_mesh_lifecycle_contracts
+  #21 test_public_inproc_multipart_send
+  #22 test_helper_send_part_basic
+  #23 test_helper_recv_part_basic
+  #24 test_helper_ownership
+  #25 test_helper_interleave
+  #26 test_helper_more_bad_send
+  #27 test_helper_request_sequence_failure
+  #28 test_pubsub
+  #29 test_reconnect_ivl
+  #30 test_reconnect_options
+  #31 test_connect_rid
+  #32 test_pubsub_filter_xpub
+  #33 test_xpub_nodrop
+  #34 test_timer_poller
+  #35 test_router_handover
+  #36 test_router_mandatory
+  #37 test_router_multiple_dealers
+  #38 test_zmp_request_reply
+  #39 test_zmp_request_reply_router_recv_surface
+  #40 test_router_concurrent_routed_recv
+  #41 test_router_mandatory_hwm
+  #42 test_stream_socket
+  #43 test_stream_threadsafe
+  #44 test_stream_send_blocking_wakeup
+  #45 test_stream_fastpath
+  #46 test_transport_matrix
+  #47 test_router_auto_id_format
+  #48 test_stream_routing_id_size
+  #49 test_stream_socket_callback_zero_byte
+  #50 test_stream_socket_raw_callback_ready_contract
+  #51 test_stream_socket_raw_multiclient_ready_regression
+  #52 test_stream_socket_recv_multiclient_ready_regression
+  #53 test_stream_socket_raw_multiclient_load
+  #54 test_stream_socket_raw_multiclient_load_send_ready
+  #55 test_stream_threadsafe_callback_handoff
+  #56 test_stream_threadsafe_callback_queue_load
+  #57 test_stream_threadsafe_recv_queue_load
+  #58 test_stream_threadsafe_recv_queue_timed_window
+  #59 test_stream_threadsafe_send_msg
+  #60 test_stream_threadsafe_runtime_reads
+  #61 test_stream_threadsafe_socket_runtime_reads
+  #62 test_stream_threadsafe_client_churn
+  #63 test_backpressure_matrix_single_socket
+  #64 test_backpressure_matrix_single_socket_regression
+  #65 test_backpressure_matrix_pubsub_regression
+  #66 test_backpressure_oneway_matrix_single_socket
+  #67 test_backpressure_oneway_matrix_single_socket_regression
+  #68 test_backpressure_oneway_matrix_pubsub_regression
+  #69 contract_public_surface
+  #70 unittest_ypipe
+  #71 unittest_poller
+  #72 unittest_fast_mutex
+  #73 unittest_mtrie
+  #74 unittest_ip_resolver
+  #75 unittest_ipc_address
+  #76 unittest_radix_tree
+  #77 unittest_zmp_decoder
+  #78 unittest_raw_decoder
+  #79 unittest_msg_view
+  #80 unittest_ctx_runtime
+  #81 unittest_socket_runtime
+  #82 unittest_typed_option
+  #83 unittest_public_contract_headers
+  #84 unittest_request_timeout_scheduler
+  #85 unittest_result_enum_mapping
+Total Tests: 85
+
+[runner case counts]
+command: rg -c '^\s*RUN_TEST\s*\(' <runner>
+stdout:
+core/tests/integration/test_mesh_peer_admission.cpp 12
+core/tests/integration/test_mesh_monitor_matrix.cpp 6
+core/tests/integration/test_mesh_stress.cpp 3
+core/tests/integration/test_mesh_lifecycle_contracts.cpp 9
+
+[public surface]
+command: python3 core/tests/contract/check_public_surface.py /home/hep7/project/kairos/zlink /home/hep7/project/kairos/zlink/core/build/lib/libzlink.so.10.0.0
+stdout:
+PUBLIC SURFACE CONTRACT: PASS
+functions=196 exports match, removed identifiers absent
+
+[static hygiene]
+scope_files: 631
+zero_byte_files: none
+merge_markers: none
+language-exchange or 문서작성 in scoped docs: none
+tabs in scoped docs: none
+changed TODO/FIXME/XXX/HACK: none
+Conan conandata.yml: YAML PASS dict ['sources']
+
+[iteration 5 resolution evidence]
+F-I1-01 residual:
+  core/doc/spec/core/service/01-mesh-node.ko.md:254-255
+    peer drain excludes new snapshots and does not cancel committed messages.
+  core/doc/spec/core/service/01-mesh-node.ko.md:381-394
+    NODROP all-or-none is capacity admission; reserve-to-commit peer departure is unreachable.
+  core/doc/spec/core/service/01-mesh-node.ko.md:467-471
+    section 9 atomicity explicitly delegates to section 7 capacity/unreachable rules.
+  English equivalents: 276-278, 413-431, 512-518.
+
+N5-I1-01:
+  core/src/api/mesh/mesh_messaging_api.cpp:878-906
+    slot_base.resize, ready_added.reserve, deque placeholders and ready inserts are in bad_alloc catch;
+    speculative placeholders/ready entries roll back and return OUT_OF_MEMORY/ENOMEM.
+  residual observed at 844-870 and 52-64: prepared.reserve, strings, metadata and parts resize are before the catch.
+
+N5-I3-01:
+  configured targets=85; runner cases=12/6/3/9.
+  CHANGELOG.md:56-70 records 85/85, peer 12, monitor 6, stress 3, lifecycle 9, four observations.
+
+N5-I3-02:
+  core/tests/integration/test_mesh_lifecycle_contracts.cpp:661-672 captures both results.
+  lines 679-692 assert {OK, INVALID_STATE, NOT_FOUND, BACKPRESSURED}.
+  lines 694-717 assert post-destroy failure and no destroyed-generation binding.
+
+[new finding evidence]
+N6-I1-01 medium:
+  core/src/api/mesh/mesh_messaging_api.cpp:848-870 performs prepared.reserve and record storage allocations.
+  core/src/api/mesh/mesh_messaging_api.cpp:52-54 resizes the parts vector.
+  core/src/api/mesh/mesh_messaging_api.cpp:882-899 begins the only local bad_alloc catch later.
+  core/src/api/mesh/mesh_messaging_api.cpp:1001-1044 has no outer exception mapping.
+  core/doc/spec/core/04-errno-map.ko.md:39,43-45 requires OUT_OF_MEMORY/ENOMEM for necessary submit storage.
+
+N6-I1-02 high:
+  core/src/api/mesh/mesh_node_api.cpp:328 sets shutdown_active.
+  core/src/api/mesh/mesh_node_api.cpp:353 waits on cv and releases node mutex.
+  core/src/api/mesh/mesh_node_api.cpp:419-452 destroy does not inspect shutdown_active.
+  core/src/api/mesh/mesh_node_api.cpp:454-460 stops wire, unregisters and deletes node.
+  core/doc/spec/core/service/01-mesh-node.ko.md:508-509 requires EDEADLK for same-handle shutdown/destroy reentry.
+
+N6-I1-03 medium:
+  core/src/api/mesh/mesh_monitor_api.cpp:152-154 returns ZLINK_CLOSE_BUSY with errno=EDEADLK.
+  core/doc/spec/core/04-errno-map.ko.md:95 assigns EDEADLK to HANDLER_DEADLOCK.
+  core/doc/spec/core/04-errno-map.ko.md:98 assigns CLOSE_BUSY to EBUSY.
+
+N6-I3-01 low:
+  core/doc/internals/services-internals.ko.md:23-28 says api/mesh owns validation/mapping and delegates all state changes.
+  core/src/api/mesh/mesh_api.cpp:223-246 owns Spot timer registry/cancellation state.
+  core/src/api/mesh/mesh_api.cpp:250-276 mutates timer_count.
+  core/src/api/mesh/mesh_api.cpp:280-325 and 349-418 mutate timer_turn_active and close lifecycle state.
+
+[known risk evidence]
+TSAN auto-HWM lock-order:
+  core/src/runtime/core/ctx_auto_hwm_recalc.cpp:80-116 holds _slot_sync through socket plan prepare/apply.
+  Static pass did not establish an opposite ordering; tracked, not promoted.
+TSAN raw mailbox ypipe:
+  core/src/runtime/core/mailbox.cpp:39-56 and 64-97 serialize cpipe write/read with _sync.
+  Existing observation retained; static pass did not prove root cause or resolution.
+Raw teardown:
+  core/src/runtime/core/pipe.cpp:704-730 calls detach_peer_backref before sink termination.
+  core/src/runtime/engine/asio/asio_engine.cpp:1845-1855 takes routing-id blob view then emits/disconnects/errors/unplugs.
+  Existing 9.x machinery risk retained.
+ctx_term linger:
+  core/src/runtime/sockets/common/socket_base.cpp:129-134 default linger is -1 for blocky context.
+  core/src/runtime/sockets/common/socket_base_lifecycle.cpp:137-161 terminates attached pipes and registers acknowledgements.
+  No bounded termination proof; risk retained.
+
+[end scope hash]
+command: git ls-files core/include core/src core/tests core/packaging core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md | xargs sha256sum | sha256sum
+stdout:
+6fa7e8c66ef878cff76356c9208dbf194a3dffc7f494948d91b87f51cd7656d8  -
+
+[verdict]
+I1 NOT CLEAN: high 1, medium 2
+I2 CLEAN: no finding
+I3 NOT CLEAN: low 1
+CORE REVIEW NOT CLEAN

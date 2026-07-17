@@ -384,23 +384,31 @@ zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t time
              it != node->operations.end (); ++it)
             detached.push_back (it->second);
         node->operations.clear ();
-        node->shutdown_active = false;
+        //  shutdown_active stays set until this thread is completely done
+        //  with the node: it is the flag a concurrent destroy checks, so it
+        //  must cover the unlocked emit/completion tail below, not just the
+        //  drain wait.
         lock.unlock ();
         for (size_t i = 0; i < revoked_events.size (); ++i)
             emit_monitor_event (node, revoked_events[i]);
         for (size_t i = 0; i < detached.size (); ++i)
             complete_operation (node, detached[i], ZLINK_REQUEST_TERMINATED, ESHUTDOWN, NULL,
                                 NULL);
+        lock.lock ();
+        node->shutdown_active = false;
+        lock.unlock ();
         errno = ETIMEDOUT;
         return ZLINK_REQUEST_TIMED_OUT;
     }
 
-    node->shutdown_active = false;
     node->state = ZLINK_MESH_NODE_STOPPED;
     node->last_changed_ms = now_ms ();
     lock.unlock ();
     wire_stop (node);
     emit_state_changed (node);
+    lock.lock ();
+    node->shutdown_active = false;
+    lock.unlock ();
     return ZLINK_REQUEST_OK;
 }
 
@@ -418,6 +426,14 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
 
     {
         std::lock_guard<std::mutex> lock (node->mutex);
+        //  A shutdown in flight still owns this node past its drain wait
+        //  (its emit/completion tail runs unlocked), so destroying now is
+        //  the same-handle lifecycle re-entry the contract ends with
+        //  EDEADLK (§11).
+        if (node->shutdown_active) {
+            errno = EDEADLK;
+            return ZLINK_CLOSE_BUSY;
+        }
         uint32_t live_facades = 0;
         uint32_t live_timers = 0;
         for (std::map<std::string, spot_state_t>::iterator it = node->spots.begin ();
@@ -430,12 +446,10 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
             errno = EBUSY;
             return ZLINK_CLOSE_BUSY;
         }
-    }
 
-    //  Forced termination of any non-stopped node: outstanding operations end
-    //  with an ESHUTDOWN terminal completion before storage goes away.
-    {
-        std::unique_lock<std::mutex> lock (node->mutex);
+        //  Forced termination of any non-stopped node happens under the same
+        //  lock hold as the admission checks above, so no shutdown can start
+        //  between the check and the teardown commitment.
         if (node->state != ZLINK_MESH_NODE_STOPPED) {
             node->state = ZLINK_MESH_NODE_STOPPED;
             node->last_changed_ms = now_ms ();
@@ -451,11 +465,14 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
         node->cv.notify_all ();
     }
 
+    //  Close the public entry door before tearing anything down: a caller
+    //  that has not yet validated the handle now fails with EFAULT instead
+    //  of racing the teardown below.
+    unregister_node (node);
     wire_stop (node);
     //  All Spot timers are gone (they gate destroy with EBUSY), so the
     //  node's dedicated timer scheduler can wind down.
     zlink_timer_release_spot_node_scheduler (node);
-    unregister_node (node);
     delete node;
     *mesh_node_p_ = NULL;
     return ZLINK_CLOSE_OK;

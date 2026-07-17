@@ -1,0 +1,160 @@
+S5 Core Review — iteration 6 (extended pass 2) — Claude Sonnet R2 raw process log
+
+1. Setup
+   - Read iteration-6/manifest.ko.md: snapshot b1e6c81fb, 631 files, scope hash
+     6fa7e8c66e...d8. Confirmed HEAD and scope hash match at session start via:
+     git rev-parse HEAD
+     git ls-files core/include core/src core/tests core/packaging \
+       core/CMakeLists.txt core/doc/spec/core core/doc/internals CHANGELOG.md \
+       | xargs sha256sum | sha256sum
+   - Read iteration-5/finding-ledger.ko.md, claude-sonnet-review.ko.md,
+     codex-review.ko.md to understand the 4 merged findings that this
+     iteration's commit (b1e6c81fb) was supposed to resolve, and to see the
+     exact severity/reasoning precedent set by both reviewers.
+   - git log 8206fd44d..b1e6c81fb: confirmed single-commit delta since
+     iteration-5 candidate, message lists the 4 fixes.
+   - git show --stat / git diff c8d567c64..b1e6c81fb: 5 substantive files
+     (CHANGELOG.md, 01-mesh-node.ko.md, 01-mesh-node.md,
+     mesh_messaging_api.cpp, test_mesh_lifecycle_contracts.cpp) + review docs.
+
+2. Resolution judgment per merged finding
+   a. CS-I1-02/F-I1-01 residual (spec S9 atomicity wording): read S5, S7, S9
+      of 01-mesh-node.ko.md/.md side by side. S7 (:378-395) already defined
+      the capacity-admission-only atomicity + unreachable rule for
+      reserve~commit peer departure. S9's new sentence explicitly defers to
+      S7 and states the unreachable rule applies. Grepped the whole spec/core
+      doc set for any other unqualified "atomic reserve/commit" wording —
+      only the two edited lines existed. Judged RESOLVED.
+   b. CS-I1-01/N5-I1-01 (slot_base OOM mapping): read
+      mesh_messaging_api.cpp:820-970 in full. Confirmed slot_base is now
+      declared empty and resize() moved inside the try block that already
+      guarded ready_added.reserve/records.push_back/ready.insert. Traced the
+      rollback logic (slots_taken counter, iterates 0..slots_taken) and
+      confirmed that if resize() itself throws, slots_taken stays 0 so the
+      rollback loop is a correct no-op (no partial state to undo). Judged
+      RESOLVED, exception-safe.
+   c. CS-I3-01/N5-I3-01 (CHANGELOG counts): rebuilt core/build (already
+      current), ran `ctest -N` (85 total, matches "85/85"). Grepped
+      `RUN_TEST (` counts directly in the 5 mesh integration test source
+      files: peer_admission=12, lifecycle_contracts=9, monitor_matrix=6,
+      stress=3, node_basic=8 (not claimed in CHANGELOG so not compared).
+      All match CHANGELOG.md:56-66 prose exactly. Judged RESOLVED.
+   d. CS-I3-02/N5-I3-02 (race test return-value observation): read the full
+      diff of test_stream_session_bind_destroy_race_leaves_no_binding.
+      Confirmed both binder threads now capture return codes into
+      std::atomic<int>, and a legal-result-set assertion
+      {OK, INVALID_STATE, NOT_FOUND, BACKPRESSURED} runs every round.
+      Cross-checked zlink_stream_session_bind_actor's actual early-return
+      paths (mesh_stream_session_api.cpp:572-711) against the legal set to
+      confirm no path outside that set is reachable in this test's exact
+      scenario (no transfer fencing, no cross-session conflict, so
+      BACKPRESSURED is included defensively but the set is not looser than
+      necessary in a way that would hide a regression). Comment now
+      accurately states what is/is not directly observed and explicitly
+      names the success-then-rollback interleaving as closed by design
+      argument rather than by test. Independently re-verified the
+      happens-before argument by re-reading mesh_stream_session_api.cpp:
+      685-705 (both success shapes re-validate under node mutex) and
+      mesh_actor_api.cpp:436,476 (generation is monotone, node-global).
+      Judged RESOLVED; evaluated and explicitly accepted the coordinator's
+      "seam not worth it" judgment with independent reasoning (production
+      code shouldn't grow a test-only pause seam on a public bind path for
+      a low-severity, already-formally-proven property).
+
+3. Full-scope re-review (I1/I2/I3)
+   - While re-tracing the slot_base fix, noticed the try/catch block it was
+     moved into begins several lines below a separate "prepared record"
+     build loop in the same function (publish_common, lines 848-869) that
+     performs multiple fallible std::string/std::vector operations
+     (prepared.reserve, channel_name/topic assignment, application_metadata
+     .assign, copy_borrowed_parts -> parts.resize) with ZERO exception
+     guard — same defect class as the one just fixed, immediately adjacent.
+   - Generalized the search: grepped every `new (std::nothrow) queued_record_t`
+     call site across core/src/api/mesh/*.cpp (8 sites in 4 files) and read
+     the surrounding code for each to classify which are (a) public submit-
+     result-typed functions bound by the 04-errno-map.ko.md ENOMEM contract
+     vs (b) internal void/unique_ptr-returning best-effort event/control
+     record builders not bound by that contract.
+   - Confirmed 4 submit-family functions with the same unguarded-allocation
+     defect: submit_local_record (mesh_messaging_api.cpp:190,193,196),
+     publish_common's prepared loop (mesh_messaging_api.cpp:849,860-861,
+     864-865,868), the local Actor send/request path (mesh_actor_api.cpp:
+     1333,1336), and the STREAM-session transfer-fenced Actor send/request
+     path (mesh_stream_session_api.cpp:923, plus copy_session_record_parts's
+     internal resize at :233). All four explicitly map ENOMEM/OUT_OF_MEMORY
+     for the adjacent `new (std::nothrow)` null-check, making the errno-map
+     contract's applicability to the same function's later allocations
+     self-evident from the code itself, not just from the spec doc.
+   - Excluded mesh_actor_api.cpp:88,176 (control_record/destroyed) and
+     mesh_transfer_api.cpp:75 (emit_transfer_control): these return
+     void/unique_ptr, are best-effort internal event-record builders, not
+     submit-result-typed public paths, so not bound by the same contract.
+   - Cross-checked project-wide convention: grepped
+     `catch (const std::bad_alloc &)` across core/src — 14 hits in
+     transports/tls, transports/tcp/ipc/ws, socket_poller.cpp,
+     ctx_socket_registry.cpp, plus the 1 new mesh site. Confirms the project
+     does treat this exception boundary seriously elsewhere, strengthening
+     that the mesh API gap is a real inconsistency, not an accepted
+     project-wide convention of "small allocations are infallible in
+     practice."
+   - Filed this as new finding CS6-I1-01 (medium), matching the severity
+     precedent both iteration-5 reviewers set for the single-line version of
+     this exact defect category. Did not escalate to high purely due to
+     breadth — reasoned that per-call likelihood of tripping an uncaught
+     bad_alloc during a genuine system-wide OOM is roughly the same order for
+     any single one of these hot-path call sites as it was for the one line
+     already fixed; breadth increases the total unprotected surface but not
+     the qualitative risk of any single occurrence.
+   - I2: checked core/doc/internals/posd-module-structure.ko.md +
+     architecture.ko.md mesh module maps against
+     `git ls-files core/src/runtime/services/mesh/` (8 files) and
+     core/CMakeLists.txt:886-890 — exact match, consistent with iteration-5's
+     N4-I3-01 resolution. No new I2 finding; classified CS6-I1-01 as I1 (
+     contract/implementation alignment) not I2 (module boundary), consistent
+     with how iteration 5 categorized the analogous slot_base finding.
+   - I3: re-verified CHANGELOG counts (see 2c), re-checked scope-wide for
+     0-byte files and merge-conflict markers (git ls-files | xargs test -s /
+     grep for <<<<<<< markers) — 0 hits across all 631 files. Confirmed mesh
+     test registration in core/tests/CMakeLists.txt:93-97. Confirmed
+     conandata.yml still parses as YAML. `git diff --check c8d567c64..
+     b1e6c81fb` clean. No I3 finding.
+
+4. Dynamic verification actually executed this session
+   - `cmake --build core/build -j$(nproc)`: already up to date, success.
+   - `ctest --test-dir core/build -j8`: 85/85 passed (128s wall).
+   - `python3 core/tests/contract/check_public_surface.py . core/build/lib/
+     libzlink.so.10.0.0`: PASS, 196 exports.
+   - `./bin/unittest_public_contract_headers`: 1/1 PASS.
+   - `test_mesh_lifecycle_contracts` run standalone x3 (plain build): 9/9
+     PASS every time.
+   - Rebuilt and ran all 5 mesh binaries under core/build-asan: lifecycle 9,
+     peer_admission 12, stress 3, monitor_matrix 6, node_basic 8 — 0
+     ASan/LSan reports across all five.
+   - Rebuilt and ran test_mesh_lifecycle_contracts under core/build-tsan with
+     `setarch $(uname -m) -R`: 9/9 PASS, 12 TSAN warnings, all classified:
+     10 lock-order-inversion (prepare_auto_hwm_socket_plan family, known
+     risk #1), 1 data race (mailbox_t::recv command mailbox, known risk #2),
+     1 data race (pipe_t::detach_peer_backref, known risk #3). No asio
+     blob_t race surfaced in this particular run (load-dependent per
+     iteration-5's own note); no new mesh-application-layer race.
+   - Did NOT re-run TSAN 2-process peer_admission (280s, known
+     baseline-reproduced flake per manifest + iteration-5's own independent
+     confirmation) or the TSAN stress matrix (also previously independently
+     reproduced and explained in iteration-5) — explicitly accepted the
+     task's framing that these are delta-irrelevant baseline reproductions,
+     and the actual code delta this iteration (1 line moved + 1 test file)
+     does not touch any code path relevant to either.
+
+5. End-of-session checks
+   - `git status --short core/`: clean, no modifications made to core/.
+   - End scope hash recomputed: identical to start value and to manifest
+     value (6fa7e8c66e...d8), 631 files.
+   - HEAD unchanged: b1e6c81fb5de1d28000bbb9ffaf6750169393067.
+
+6. Final verdict reasoning
+   - All 4 iteration-5 merged findings: resolved, confirmed by direct code/
+     doc reading plus dynamic re-execution covering both changed code paths.
+   - 1 new medium finding (CS6-I1-01): I1 axis reverts to NOT CLEAN. I2 and
+     I3 axes are CLEAN. Gate requires blocker/high/medium == 0 AND all three
+     axes CLEAN — not met.
+   - Verdict: CORE REVIEW NOT CLEAN.

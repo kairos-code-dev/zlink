@@ -24,8 +24,12 @@ describes the current source structure that implements that contract.
 | `src/api/mesh/mesh_api.cpp` | The seam through which cross-cutting concerns (poller, timer) enter mesh |
 
 Layering rule: `api/mesh/*` owns public signature validation and result
-mapping, and delegates every state change into `mesh_runtime`/`mesh_wire`
-functions. The raw socket layer (`runtime/sockets/`) knows nothing about mesh.
+mapping, and delegates state changes into `mesh_runtime`/`mesh_wire`
+functions. The exception is the cross-cutting seam `mesh_api.cpp`: the Spot
+timer registry (including cancellation) and the turn-admission state
+(`timer_turn_active`, `timer_count`) are owned and mutated by that seam
+directly — the timer machinery only provides hooks, keeping the
+Spot-coupling knowledge in one place on the mesh side. The raw socket layer (`runtime/sockets/`) knows nothing about mesh.
 The only extension mesh asks of the raw ROUTER is the non-consuming write
 probe `routed_target_writable()` used by the NODROP atomic reserve.
 

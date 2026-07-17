@@ -23,7 +23,11 @@ session)의 실제 내부 구조를 빠르게 파악하도록 돕는 내부 문�
 | `src/api/mesh/mesh_api.cpp` | poller·timer 등 세로 관심사가 mesh로 들어오는 seam |
 
 계층 규칙: `api/mesh/*`는 공개 signature 검증과 결과 매핑을 소유하고, 상태
-변경은 전부 `mesh_runtime`/`mesh_wire`의 함수로 내려보낸다. raw socket 계층
+변경은 `mesh_runtime`/`mesh_wire`의 함수로 내려보낸다. 예외는 세로 관심사
+seam인 `mesh_api.cpp`다: Spot timer registry(cancellation 포함)와 turn
+admission 상태(`timer_turn_active`·`timer_count`)는 이 seam이 직접
+소유·변경한다 — timer 기계는 hook만 제공하고 Spot 결합 지식은 mesh 쪽 한
+곳에 모은다. raw socket 계층
 (`runtime/sockets/`)은 mesh를 모른다. mesh가 raw ROUTER에 요구하는 유일한
 확장은 비소비 기록 조사인 `routed_target_writable()`(NODROP 원자 reserve용)
 하나다.

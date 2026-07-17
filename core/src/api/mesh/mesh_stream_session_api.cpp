@@ -230,7 +230,13 @@ int copy_session_record_parts (const zlink_msg_t *parts_,
                                size_t part_count_,
                                queued_record_t *record_)
 {
-    record_->parts.resize (part_count_);
+    try {
+        record_->parts.resize (part_count_);
+    }
+    catch (const std::bad_alloc &) {
+        errno = ENOMEM;
+        return -1;
+    }
     for (size_t i = 0; i < part_count_; ++i)
         zlink_msg_init (&record_->parts[i]);
     for (size_t i = 0; i < part_count_; ++i) {
@@ -915,18 +921,26 @@ zlink_submit_result_t session_to_actor_submit (void *service_,
                             return ZLINK_SUBMIT_OUT_OF_MEMORY;
                         }
                         const bool is_request = operation_id_out_ != NULL;
-                        record->kind = is_request ? ZLINK_MESH_RECORD_ACTOR_REQUEST
-                                                  : ZLINK_MESH_RECORD_ACTOR_SEND;
-                        record->source_node_rid = service->node->routing_id;
-                        if (metadata_) {
-                            record->has_metadata = true;
-                            record->application_metadata.assign (metadata_->data,
-                                                                 metadata_->data
-                                                                   + metadata_->size);
-                            record->byte_size += metadata_->size;
+                        try {
+                            record->kind = is_request ? ZLINK_MESH_RECORD_ACTOR_REQUEST
+                                                      : ZLINK_MESH_RECORD_ACTOR_SEND;
+                            record->source_node_rid = service->node->routing_id;
+                            if (metadata_) {
+                                record->has_metadata = true;
+                                record->application_metadata.assign (metadata_->data,
+                                                                     metadata_->data
+                                                                       + metadata_->size);
+                                record->byte_size += metadata_->size;
+                            }
+                            if (copy_session_record_parts (parts_, part_count_, record.get ())
+                                != 0)
+                                return errno == ENOMEM ? ZLINK_SUBMIT_OUT_OF_MEMORY
+                                                       : ZLINK_SUBMIT_INTERNAL_ERROR;
                         }
-                        if (copy_session_record_parts (parts_, part_count_, record.get ()) != 0)
-                            return ZLINK_SUBMIT_INTERNAL_ERROR;
+                        catch (const std::bad_alloc &) {
+                            errno = ENOMEM;
+                            return ZLINK_SUBMIT_OUT_OF_MEMORY;
+                        }
 
                         zlink_mesh_operation_id_t op_id;
                         memset (&op_id, 0, sizeof (op_id));

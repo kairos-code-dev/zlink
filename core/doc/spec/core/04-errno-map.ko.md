@@ -95,7 +95,7 @@ message를 다시 수신한다.
 | `ZLINK_HANDLER_DEADLOCK` | `EDEADLK` | 같은 callback 안의 금지한 등록·해제 |
 | `ZLINK_HANDLER_INVALID_HANDLE` | `EFAULT` | handle이 유효하지 않음 |
 | `ZLINK_HANDLER_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 내부 실패 |
-| `ZLINK_CLOSE_BUSY` | `EBUSY` | active child handle, callback 또는 API가 존재함 |
+| `ZLINK_CLOSE_BUSY` | `EBUSY`, `EDEADLK` | `EBUSY` — active child handle, callback 또는 API가 존재함. `EDEADLK` — 같은 handle의 shutdown·destroy lifecycle 재진입(01-mesh-node §11) |
 | `ZLINK_CLOSE_SHUTDOWN` | `ESHUTDOWN` | 이미 종료된 handle |
 | `ZLINK_CLOSE_INVALID_HANDLE` | `EFAULT`, `ESTALE` | pointer 또는 opaque value가 유효하지 않음 |
 | `ZLINK_CLOSE_INTERNAL_ERROR` | 보존된 errno | 다른 공개 분류가 없는 내부 실패 |

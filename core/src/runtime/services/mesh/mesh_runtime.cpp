@@ -10,6 +10,7 @@
 
 #include <string.h>
 #include <algorithm>
+#include <chrono>
 
 namespace
 {
@@ -81,14 +82,19 @@ uint64_t now_ms ()
 uint64_t allocate_lifecycle_generation ()
 {
     //  The spec orders lifecycles of the same RID by generation, including
-    //  across process restarts, so the allocator anchors on wall-clock
-    //  milliseconds and only bumps past it to keep same-process allocations
-    //  strictly increasing. A constant seed (the previous behaviour) made
-    //  every restart generation 1 and disabled stale-lifecycle replacement.
+    //  across process restarts, so the allocator anchors on epoch wall-clock
+    //  milliseconds — NOT now_ms(), whose clock_t source is boot-relative
+    //  CLOCK_MONOTONIC and would move backwards across a reboot — and only
+    //  bumps past it to keep same-process allocations strictly increasing.
+    //  Ordering across restarts inherits the usual wall-clock assumption:
+    //  a rolled-back system clock defers to the peer-side conflict handling.
     static std::atomic<uint64_t> last_generation (0);
     uint64_t previous = last_generation.load (std::memory_order_relaxed);
     for (;;) {
-        uint64_t candidate = now_ms ();
+        uint64_t candidate = static_cast<uint64_t> (
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            std::chrono::system_clock::now ().time_since_epoch ())
+            .count ());
         if (candidate <= previous)
             candidate = previous + 1;
         if (last_generation.compare_exchange_weak (previous, candidate,

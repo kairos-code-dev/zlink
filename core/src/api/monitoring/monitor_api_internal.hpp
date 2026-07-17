@@ -103,7 +103,11 @@ zlink::socket_base_t *raw_monitor_snapshot_subject (monitor_handler_state_t *sta
 void clear_raw_monitor_snapshot_subjects (zlink::socket_base_t *source_);
 void unregister_monitor_handlers (zlink::socket_base_t *socket_);
 
+//  expected_state_ == NULL: creation path (monitor open, unpublished socket).
+//  Non-NULL: update path — the caller pinned that state, and the call fails
+//  with ESHUTDOWN unless the registry still maps socket_ to exactly it.
 int set_monitor_handler_state (zlink::socket_base_t *socket_,
+                               monitor_handler_state_t *expected_state_,
                                zlink_monitor_handler_fn socket_handler_,
                                monitor_snapshot_provider_fn snapshot_provider_,
                                void *snapshot_subject_,

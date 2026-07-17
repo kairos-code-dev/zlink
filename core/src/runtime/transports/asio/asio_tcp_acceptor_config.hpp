@@ -5,6 +5,7 @@
 
 #include "core/options.hpp"
 #include "utils/config.hpp"
+#include "utils/err.hpp"
 
 #include <boost/asio/detail/socket_option.hpp>
 #include <boost/asio/error.hpp>
@@ -22,13 +23,20 @@ namespace zlink
 {
 //  Preserve the transport's real failure cause: EADDRINUSE is reserved for an
 //  actual address collision, every other acceptor failure keeps its own errno
-//  so the public bind result can classify it per the errno map.
+//  so the public bind result can classify it per the errno map. On Windows
+//  the system category carries Winsock numbers, which must be translated to
+//  the POSIX errno space the public contract exposes.
 inline int acceptor_error_to_errno (const boost::system::error_code &ec_)
 {
     if (ec_ == boost::asio::error::address_in_use)
         return EADDRINUSE;
-    if (ec_.category () == boost::system::system_category () && ec_.value () != 0)
+    if (ec_.category () == boost::system::system_category () && ec_.value () != 0) {
+#ifdef ZLINK_HAVE_WINDOWS
+        return zlink::wsa_error_to_errno (ec_.value ());
+#else
         return ec_.value ();
+#endif
+    }
     return EINVAL;
 }
 

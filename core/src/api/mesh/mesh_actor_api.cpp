@@ -379,6 +379,9 @@ void actor_apply_remote_join_reply (mesh_node_t *node_,
     const int32_t failure_errno =
       join_result_ == ZLINK_ACTOR_JOIN_ACCEPTED ? 0 : EACCES;
     bool delivered = false;
+    //  Cancelled outside the node mutex (same contract as
+    //  complete_pending_operation_with_commit).
+    std::shared_ptr<zlink::request_timeout::task_t> timeout_task;
     {
         std::lock_guard<std::mutex> lock (node_->mutex);
         std::unordered_map<uint64_t, pending_operation_t>::iterator op_it =
@@ -444,11 +447,14 @@ void actor_apply_remote_join_reply (mesh_node_t *node_,
             actor_it->second = std::move (after);
             left_new_epoch = actor_it->second.membership_epoch;
         }
+        timeout_task = op_it->second.timeout_task;
         node_->operations.erase (op_it);
         if (node_->monitor)
             node_->monitor->counters.completed_operations += 1;
         delivered = true;
     }
+    if (timeout_task)
+        zlink::request_timeout::cancel (timeout_task);
     if (!delivered)
         return;
     signal_ready (node_, ready_owner, domain_infrastructure);
@@ -1336,6 +1342,10 @@ try {
     std::string remote_spot_key;
     owner_id_t ready_owner;
     bool deliver_local = false;
+    bool consumed_without_owner = false;
+    //  Cancelled outside the node mutex (same contract as
+    //  complete_pending_operation_with_commit).
+    std::shared_ptr<zlink::request_timeout::task_t> join_timeout_task;
     {
         std::lock_guard<std::mutex> lock (node->mutex);
         std::unordered_map<uint64_t, reply_route_t>::iterator it = node->reply_routes.find (serial);
@@ -1408,6 +1418,7 @@ try {
                 return ZLINK_SUBMIT_OK;
             }
             op = op_it->second;
+            join_timeout_task = op_it->second.timeout_task;
             completion_record->operation_id = op.id;
             completion_record->operation_kind = op.kind;
             completion_record->terminal_result =
@@ -1423,8 +1434,9 @@ try {
             if (owner_it == node->owners.end ()) {
                 node->operations.erase (op_it);
                 route.consumed = true;
-                return ZLINK_SUBMIT_OK;
+                consumed_without_owner = true;
             }
+            if (!consumed_without_owner) {
             mailbox_t &mailbox = owner_it->second.domains[domain_infrastructure];
             const std::pair<owner_id_t, int> ready_key (
               op.requester, static_cast<int> (domain_infrastructure));
@@ -1477,8 +1489,16 @@ try {
             route.in_flight = false;
             route.consumed = true;
             deliver_local = true;
+            }
         }
     }
+
+    //  The operation was consumed on these two outcomes only; error returns
+    //  above leave it pending, so its timeout task must stay armed.
+    if (join_timeout_task && (consumed_without_owner || deliver_local))
+        zlink::request_timeout::cancel (join_timeout_task);
+    if (consumed_without_owner)
+        return ZLINK_SUBMIT_OK;
 
     if (remote) {
         const zlink_submit_result_t rc =

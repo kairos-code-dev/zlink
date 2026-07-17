@@ -95,6 +95,28 @@ void test_cancel_while_handler_is_firing_waits_for_handler_completion ()
     TEST_ASSERT_EQUAL_INT (0, state.cleanup_count.load (std::memory_order_relaxed));
 }
 
+void test_schedule_across_idle_exit_boundary_fires_every_task ()
+{
+    //  Regression for the S5-10-01 lost-wakeup race: schedule() used to check
+    //  scheduler-thread liveness in a separate critical section from the task
+    //  insert, so a task issued exactly while the idle thread committed its
+    //  exit could be stranded with no consumer. The scheduler idles out after
+    //  100ms, so sweeping the inter-schedule sleep across that boundary lands
+    //  successive schedules before, at and after the exit commit. Every task
+    //  must fire exactly once within the bound.
+    for (int i = 0; i != 25; i++) {
+        callback_state_t state;
+        std::shared_ptr<zlink::request_timeout::task_t> task =
+          zlink::request_timeout::schedule (1, timeout_handler, &state, cleanup_handler);
+        TEST_ASSERT_TRUE (task.get () != NULL);
+        wait_until_entered (&state);
+        zlink::request_timeout::cancel (task);
+        task.reset ();
+        TEST_ASSERT_EQUAL_INT (1, state.entered.load (std::memory_order_relaxed));
+        msleep (90 + (i % 21));
+    }
+}
+
 int main (void)
 {
     UNITY_BEGIN ();
@@ -103,6 +125,7 @@ int main (void)
 
     RUN_TEST (test_cancel_before_deadline_prevents_handler_and_runs_cleanup);
     RUN_TEST (test_cancel_while_handler_is_firing_waits_for_handler_completion);
+    RUN_TEST (test_schedule_across_idle_exit_boundary_fires_every_task);
 
     return UNITY_END ();
 }

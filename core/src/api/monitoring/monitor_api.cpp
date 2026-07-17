@@ -302,6 +302,7 @@ void unregister_monitor_handlers (zlink::socket_base_t *socket_)
 }
 
 int set_monitor_handler_state (zlink::socket_base_t *socket_,
+                               monitor_handler_state_t *expected_state_,
                                zlink_monitor_handler_fn socket_handler_,
                                monitor_snapshot_provider_fn snapshot_provider_,
                                void *snapshot_subject_,
@@ -318,7 +319,17 @@ int set_monitor_handler_state (zlink::socket_base_t *socket_,
         std::lock_guard<std::mutex> lock (registry.sync);
         std::map<zlink::socket_base_t *, monitor_handler_state_t *>::iterator it =
           registry.handlers.find (socket_);
-        if (it == registry.handlers.end ()) {
+        if (expected_state_) {
+            //  Update path: the caller pinned this exact state. If a
+            //  concurrent close already removed or replaced the entry, fail
+            //  instead of resurrecting a registration for a closing socket.
+            if (it == registry.handlers.end () || it->second != expected_state_
+                || expected_state_->unregistered) {
+                errno = ESHUTDOWN;
+                return -1;
+            }
+            state = expected_state_;
+        } else if (it == registry.handlers.end ()) {
             state = new (std::nothrow) monitor_handler_state_t (socket_);
             if (!state) {
                 errno = ENOMEM;

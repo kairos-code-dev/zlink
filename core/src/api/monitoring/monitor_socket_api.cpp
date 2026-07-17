@@ -40,7 +40,8 @@ int attach_socket_monitor_handler_state (void *monitor_,
     }
 
     return set_monitor_handler_state (
-      handle.socket, handler_, state->snapshot_provider.load (std::memory_order_acquire),
+      handle.socket, state, handler_,
+      state->snapshot_provider.load (std::memory_order_acquire),
       state->snapshot_subject.load (std::memory_order_acquire), userdata_);
 }
 
@@ -90,7 +91,7 @@ void *open_socket_monitor_with_handler_internal (void *s_,
         return NULL;
     }
 
-    if (set_monitor_handler_state (monitor_socket_base, effective_handler,
+    if (set_monitor_handler_state (monitor_socket_base, NULL, effective_handler,
                                    &socket_monitor_snapshot_provider,
                                    static_cast<void *> (handle.socket), userdata_)
         != 0) {

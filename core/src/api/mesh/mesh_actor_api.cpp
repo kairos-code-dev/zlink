@@ -522,7 +522,7 @@ zlink_submit_result_t zlink_mesh_node_actor_lookup_remote (void *mesh_node_,
                                                            const char *actor_id_,
                                                            zlink_mesh_operation_id_t *operation_id_out_,
                                                            uint32_t timeout_ms_)
-{
+try {
     mesh_node_t *node = as_mesh_node (mesh_node_);
     if (!node) {
         errno = EFAULT;
@@ -569,12 +569,19 @@ zlink_submit_result_t zlink_mesh_node_actor_lookup_remote (void *mesh_node_,
     *operation_id_out_ = op_id;
     return ZLINK_SUBMIT_OK;
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
                                                      const zlink_actor_ref_t *actor_,
                                                      zlink_mesh_operation_id_t *operation_id_out_,
                                                      uint32_t timeout_ms_)
-{
+try {
     mesh_node_t *node = as_mesh_node (mesh_node_);
     if (!node) {
         errno = EFAULT;
@@ -751,6 +758,13 @@ zlink_submit_result_t zlink_mesh_node_actor_destroy (void *mesh_node_,
     complete_operation (node, completed, ZLINK_REQUEST_OK, 0, NULL, NULL);
     return ZLINK_SUBMIT_OK;
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 //  --- membership -------------------------------------------------------------------
 
@@ -763,7 +777,7 @@ zlink_submit_result_t zlink_mesh_node_actor_join_spot (void *mesh_node_,
                                                        size_t creation_part_count_,
                                                        zlink_mesh_operation_id_t *operation_id_out_,
                                                        uint32_t timeout_ms_)
-{
+try {
     mesh_node_t *node = as_mesh_node (mesh_node_);
     if (!node) {
         errno = EFAULT;
@@ -907,6 +921,13 @@ zlink_submit_result_t zlink_mesh_node_actor_join_spot (void *mesh_node_,
     *operation_id_out_ = op_id;
     return ZLINK_SUBMIT_OK;
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 zlink_submit_result_t zlink_mesh_node_actor_join_entry_spot (void *mesh_node_,
                                                              const zlink_actor_ref_t *actor_,
@@ -915,7 +936,7 @@ zlink_submit_result_t zlink_mesh_node_actor_join_entry_spot (void *mesh_node_,
                                                              size_t creation_part_count_,
                                                              zlink_mesh_operation_id_t *operation_id_out_,
                                                              uint32_t timeout_ms_)
-{
+try {
     mesh_node_t *node = as_mesh_node (mesh_node_);
     if (!node) {
         errno = EFAULT;
@@ -989,13 +1010,20 @@ zlink_submit_result_t zlink_mesh_node_actor_join_entry_spot (void *mesh_node_,
                                             entry_generation, creation_parts_,
                                             creation_part_count_, operation_id_out_, timeout_ms_);
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 zlink_submit_result_t zlink_mesh_node_actor_leave_spot (void *mesh_node_,
                                                         const zlink_actor_ref_t *actor_,
                                                         uint64_t expected_membership_epoch_,
                                                         zlink_mesh_operation_id_t *operation_id_out_,
                                                         uint32_t timeout_ms_)
-{
+try {
     mesh_node_t *node = as_mesh_node (mesh_node_);
     if (!node) {
         errno = EFAULT;
@@ -1069,13 +1097,20 @@ zlink_submit_result_t zlink_mesh_node_actor_leave_spot (void *mesh_node_,
     complete_operation (node, completed, ZLINK_REQUEST_OK, 0, NULL, NULL);
     return ZLINK_SUBMIT_OK;
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 zlink_submit_result_t zlink_actor_join_reply (const zlink_mesh_reply_token_t *token_,
                                               zlink_actor_join_result_t join_result_,
                                               const zlink_msg_t *parts_,
                                               size_t part_count_,
                                               zlink_send_flags_t flags_)
-{
+try {
     LIBZLINK_UNUSED (flags_);
     if (join_result_ != ZLINK_ACTOR_JOIN_ACCEPTED && join_result_ != ZLINK_ACTOR_JOIN_REJECTED) {
         errno = EINVAL;
@@ -1216,6 +1251,13 @@ zlink_submit_result_t zlink_actor_join_reply (const zlink_mesh_reply_token_t *to
     else
         complete_operation (node, op, ZLINK_REQUEST_REJECTED, EACCES, &kind_data, &reply_parts);
     return ZLINK_SUBMIT_OK;
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 //  --- messaging ---------------------------------------------------------------------
@@ -1390,6 +1432,8 @@ zlink_submit_result_t actor_submit (void *mesh_node_,
                 return ZLINK_SUBMIT_BACKPRESSURED;
             case ESHUTDOWN:
                 return ZLINK_SUBMIT_INVALID_STATE;
+            case ENOMEM:
+                return ZLINK_SUBMIT_OUT_OF_MEMORY;
             default:
                 return ZLINK_SUBMIT_INTERNAL_ERROR;
         }
@@ -1406,9 +1450,16 @@ zlink_submit_result_t zlink_mesh_node_send_to_actor (void *mesh_node_,
                                                      const zlink_msg_t *parts_,
                                                      size_t part_count_,
                                                      zlink_send_flags_t flags_)
-{
+try {
     return actor_submit (mesh_node_, NULL, actor_, actor_metadata_, parts_, part_count_, NULL,
                          flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_mesh_node_request_to_actor (void *mesh_node_,
@@ -1419,13 +1470,20 @@ zlink_submit_result_t zlink_mesh_node_request_to_actor (void *mesh_node_,
                                                         zlink_mesh_operation_id_t *operation_id_out_,
                                                         zlink_send_flags_t flags_,
                                                         uint32_t timeout_ms_)
-{
+try {
     if (!operation_id_out_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     return actor_submit (mesh_node_, NULL, actor_, actor_metadata_, parts_, part_count_,
                          operation_id_out_, flags_, timeout_ms_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_actor_send_to_actor (void *mesh_node_,
@@ -1435,13 +1493,20 @@ zlink_submit_result_t zlink_actor_send_to_actor (void *mesh_node_,
                                                  const zlink_msg_t *parts_,
                                                  size_t part_count_,
                                                  zlink_send_flags_t flags_)
-{
+try {
     if (!source_actor_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     return actor_submit (mesh_node_, source_actor_, target_actor_, actor_metadata_, parts_,
                          part_count_, NULL, flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_actor_request_to_actor (void *mesh_node_,
@@ -1453,11 +1518,18 @@ zlink_submit_result_t zlink_actor_request_to_actor (void *mesh_node_,
                                                     zlink_mesh_operation_id_t *operation_id_out_,
                                                     zlink_send_flags_t flags_,
                                                     uint32_t timeout_ms_)
-{
+try {
     if (!source_actor_ || !operation_id_out_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
     }
     return actor_submit (mesh_node_, source_actor_, target_actor_, actor_metadata_, parts_,
                          part_count_, operation_id_out_, flags_, timeout_ms_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }

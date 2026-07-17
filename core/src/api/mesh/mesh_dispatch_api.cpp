@@ -175,10 +175,16 @@ zlink_handler_result_t zlink_mesh_node_set_ready_handler (void *mesh_node_,
         return ZLINK_HANDLER_INVALID_HANDLE;
     }
     std::unique_lock<std::mutex> lock (node->mutex);
-    if (node->ready_handler_depth > 0) {
+    //  Re-entry from inside the handler is EDEADLK; a call from any other
+    //  thread completes only after the callback that already started has
+    //  returned (spec 02-dispatch).
+    if (node->ready_handler_depth > 0
+        && node->ready_handler_thread == std::this_thread::get_id ()) {
         errno = EDEADLK;
         return ZLINK_HANDLER_DEADLOCK;
     }
+    while (node->ready_handler_depth > 0)
+        node->cv.wait (lock);
     if (handler_ && node->pollin_registered) {
         errno = EBUSY;
         return ZLINK_HANDLER_BUSY;
@@ -785,7 +791,7 @@ zlink_submit_result_t zlink_mesh_reply (const zlink_mesh_reply_token_t *token_,
                                         const zlink_msg_t *parts_,
                                         size_t part_count_,
                                         zlink_send_flags_t flags_)
-{
+try {
     LIBZLINK_UNUSED (flags_);
     if (!parts_ || part_count_ == 0) {
         errno = EINVAL;
@@ -878,4 +884,11 @@ zlink_submit_result_t zlink_mesh_reply (const zlink_mesh_reply_token_t *token_,
     }
     complete_operation (node, op, ZLINK_REQUEST_OK, 0, NULL, &reply_parts);
     return ZLINK_SUBMIT_OK;
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }

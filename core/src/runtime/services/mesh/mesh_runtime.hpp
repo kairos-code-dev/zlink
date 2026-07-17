@@ -526,6 +526,10 @@ struct mesh_node_t
     zlink_mesh_ready_handler_fn ready_handler;
     void *ready_handler_userdata;
     int ready_handler_depth;
+    //  Thread currently inside the ready handler (valid while depth > 0):
+    //  same-thread (de)registration is re-entry (EDEADLK), other threads
+    //  wait for the callback to return (spec 02-dispatch).
+    std::thread::id ready_handler_thread;
     bool pollin_registered;
     //  Edge-signals the poller fd when the ready index becomes non-empty;
     //  drain_ready re-arms it while work remains (level-triggered contract).
@@ -542,6 +546,12 @@ struct mesh_node_t
     //  shutdown/destroy on the same handle is re-entry (EDEADLK). A
     //  sequential shutdown after a TIMED_OUT drain is legal and waits again.
     bool shutdown_active;
+    //  Registry-owned lifecycle admission (guarded by the handle-registry
+    //  mutex, not this node's mutex): shutdown pins the node for its whole
+    //  call so destroy waits for the pins to drain before deleting, and
+    //  destroy claims exclusivity so the reverse order is re-entry too.
+    uint32_t lifecycle_pins;
+    bool destroy_claimed;
 
     //  spots & actors
     std::map<std::string, spot_state_t> spots;   //  key: rid bytes as string
@@ -587,6 +597,17 @@ int register_node (mesh_node_t *node_);
 void unregister_node (mesh_node_t *node_);
 
 mesh_node_t *as_mesh_node (void *handle_);
+//  §11 lifecycle admission: shutdown/destroy order against each other via
+//  the registry so neither can free or use the node under the other.
+#ifdef ZLINK_BUILD_TESTS
+//  Consumes one armed test fault by throwing bad_alloc (no-op when unarmed).
+void test_maybe_throw_alloc ();
+#endif
+mesh_node_t *pin_node_lifecycle (void *handle_, int *errno_out_);
+void unpin_node_lifecycle (mesh_node_t *node_);
+mesh_node_t *claim_node_destroy (void *handle_);
+void release_node_destroy_claim (mesh_node_t *node_);
+void unregister_node_and_wait_lifecycle_quiesced (mesh_node_t *node_);
 void track_facade (spot_facade_t *facade_, bool live_);
 void track_publisher (publisher_t *publisher_, bool live_);
 void track_monitor (monitor_state_t *monitor_, bool live_);

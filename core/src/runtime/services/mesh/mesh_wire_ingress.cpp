@@ -1071,11 +1071,20 @@ void run_ingress_loop (mesh_node_t *node_)
         if (rc == 0)
             continue;
         for (;;) {
-            rid_bytes_t source;
-            std::vector<zlink_msg_t> frames;
-            if (!recv_wire_message (node_, &source, &frames))
-                break;
-            dispatch_wire_message (node_, source, &frames);
+            //  An escaping exception would terminate the process from this
+            //  detached thread; under allocation pressure the inbound
+            //  message is dropped, which is the same observable outcome as
+            //  losing it in transit.
+            try {
+                rid_bytes_t source;
+                std::vector<zlink_msg_t> frames;
+                if (!recv_wire_message (node_, &source, &frames))
+                    break;
+                dispatch_wire_message (node_, source, &frames);
+            }
+            catch (const std::bad_alloc &) {
+                continue;
+            }
         }
     }
 }

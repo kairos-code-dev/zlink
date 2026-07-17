@@ -191,6 +191,9 @@ zlink_submit_result_t submit_local_record (mesh_node_t *node_,
         return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
     try {
+#ifdef ZLINK_BUILD_TESTS
+        test_maybe_throw_alloc ();
+#endif
         record->kind = kind_;
         record->source_node_rid = node_->routing_id;
         record->source_spot_rid = source_spot_rid_;
@@ -433,7 +436,7 @@ zlink_submit_result_t zlink_mesh_node_send_to_node (void *mesh_node_,
                                                     const zlink_msg_t *parts_,
                                                     size_t part_count_,
                                                     zlink_send_flags_t flags_)
-{
+try {
     if (!target_rid_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -441,6 +444,13 @@ zlink_submit_result_t zlink_mesh_node_send_to_node (void *mesh_node_,
     return node_channel_submit (mesh_node_, target_rid_, NULL, NULL, NULL, metadata_, parts_,
                                 part_count_, NULL, static_cast<zlink_mesh_operation_kind_t> (0),
                                 flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_mesh_node_request_to_node (void *mesh_node_,
@@ -451,7 +461,7 @@ zlink_submit_result_t zlink_mesh_node_request_to_node (void *mesh_node_,
                                                        zlink_mesh_operation_id_t *operation_id_out_,
                                                        zlink_send_flags_t flags_,
                                                        uint32_t timeout_ms_)
-{
+try {
     if (!target_rid_ || !operation_id_out_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -460,6 +470,13 @@ zlink_submit_result_t zlink_mesh_node_request_to_node (void *mesh_node_,
                                 part_count_, operation_id_out_, ZLINK_MESH_OPERATION_NODE_REQUEST,
                                 flags_, timeout_ms_);
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 zlink_submit_result_t zlink_mesh_node_send_to_channel (void *mesh_node_,
                                                        const char *channel_name_,
@@ -467,10 +484,17 @@ zlink_submit_result_t zlink_mesh_node_send_to_channel (void *mesh_node_,
                                                        const zlink_msg_t *parts_,
                                                        size_t part_count_,
                                                        zlink_send_flags_t flags_)
-{
+try {
     return node_channel_submit (mesh_node_, NULL, channel_name_, NULL, NULL, metadata_, parts_,
                                 part_count_, NULL, static_cast<zlink_mesh_operation_kind_t> (0),
                                 flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t
@@ -521,7 +545,7 @@ zlink_submit_result_t zlink_spot_send_to_channel (void *spot_,
                                                   const zlink_msg_t *parts_,
                                                   size_t part_count_,
                                                   zlink_send_flags_t flags_)
-{
+try {
     spot_facade_t *facade;
     mesh_node_t *node;
     owner_id_t owner;
@@ -530,6 +554,13 @@ zlink_submit_result_t zlink_spot_send_to_channel (void *spot_,
     return node_channel_submit (node, NULL, channel_name_, &owner, &facade->spot_rid, metadata_,
                                 parts_, part_count_, NULL,
                                 static_cast<zlink_mesh_operation_kind_t> (0), flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_spot_request_to_channel (void *spot_,
@@ -540,7 +571,7 @@ zlink_submit_result_t zlink_spot_request_to_channel (void *spot_,
                                                      zlink_mesh_operation_id_t *operation_id_out_,
                                                      zlink_send_flags_t flags_,
                                                      uint32_t timeout_ms_)
-{
+try {
     if (!operation_id_out_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -553,6 +584,13 @@ zlink_submit_result_t zlink_spot_request_to_channel (void *spot_,
     return node_channel_submit (node, NULL, channel_name_, &owner, &facade->spot_rid, metadata_,
                                 parts_, part_count_, operation_id_out_,
                                 ZLINK_MESH_OPERATION_SPOT_REQUEST, flags_, timeout_ms_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 namespace
@@ -690,9 +728,16 @@ zlink_submit_result_t zlink_spot_send_to_spot (void *spot_,
                                                const zlink_msg_t *parts_,
                                                size_t part_count_,
                                                zlink_send_flags_t flags_)
-{
+try {
     return spot_direct_submit (spot_, target_node_rid_, target_spot_rid_, target_spot_generation_,
                                metadata_, parts_, part_count_, NULL, flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_spot_request_to_spot (void *spot_,
@@ -705,7 +750,7 @@ zlink_submit_result_t zlink_spot_request_to_spot (void *spot_,
                                                   zlink_mesh_operation_id_t *operation_id_out_,
                                                   zlink_send_flags_t flags_,
                                                   uint32_t timeout_ms_)
-{
+try {
     if (!operation_id_out_) {
         errno = EINVAL;
         return ZLINK_SUBMIT_INVALID_ARGUMENT;
@@ -713,6 +758,13 @@ zlink_submit_result_t zlink_spot_request_to_spot (void *spot_,
     return spot_direct_submit (spot_, target_node_rid_, target_spot_rid_, target_spot_generation_,
                                metadata_, parts_, part_count_, operation_id_out_, flags_,
                                timeout_ms_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 //  --- Logical Multicast ------------------------------------------------------------
@@ -875,6 +927,9 @@ retry_reserve:
         size_t slots_taken = 0;
         bool prealloc_failed = false;
         try {
+#ifdef ZLINK_BUILD_TESTS
+            test_maybe_throw_alloc ();
+#endif
             prepared.reserve (accepting.size ());
             for (size_t t = 0; t < accepting.size (); ++t) {
                 std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
@@ -1045,7 +1100,7 @@ zlink_submit_result_t zlink_mesh_node_publisher_publish (void *publisher_,
                                                          size_t part_count_,
                                                          zlink_mesh_publish_detail_t *detail_out_,
                                                          zlink_send_flags_t flags_)
-{
+try {
     publisher_t *pub = as_publisher (publisher_);
     if (!pub) {
         errno = EFAULT;
@@ -1053,6 +1108,13 @@ zlink_submit_result_t zlink_mesh_node_publisher_publish (void *publisher_,
     }
     return publish_common (pub->node, NULL, pub->nodrop, channel_name_, topic_, metadata_, parts_,
                            part_count_, detail_out_, flags_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t zlink_spot_publish (void *spot_,
@@ -1063,7 +1125,7 @@ zlink_submit_result_t zlink_spot_publish (void *spot_,
                                           size_t part_count_,
                                           zlink_mesh_publish_detail_t *detail_out_,
                                           zlink_send_flags_t flags_)
-{
+try {
     spot_facade_t *facade;
     mesh_node_t *node;
     if (resolve_facade (spot_, &facade, &node, NULL) != 0)
@@ -1081,6 +1143,13 @@ zlink_submit_result_t zlink_spot_publish (void *spot_,
     }
     return publish_common (node, &facade->spot_rid, nodrop, channel_name_, topic_, metadata_,
                            parts_, part_count_, detail_out_, flags_);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 //  --- local subscription --------------------------------------------------------

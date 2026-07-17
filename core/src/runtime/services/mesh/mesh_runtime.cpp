@@ -20,12 +20,19 @@ namespace
 struct handle_registry_t
 {
     std::mutex mutex;
+    //  Signalled when a node's lifecycle_pins drains to zero so a committed
+    //  destroy can proceed to teardown.
+    std::condition_variable lifecycle_cv;
     std::map<std::string, zlink::mesh::mesh_node_t *> nodes_by_name;
     std::set<void *> live_nodes;
     std::set<void *> live_facades;
     std::set<void *> live_publishers;
     std::set<void *> live_monitors;
 };
+
+#ifdef ZLINK_BUILD_TESTS
+std::atomic<int> g_mesh_alloc_faults (0);
+#endif
 
 handle_registry_t &registry ()
 {
@@ -35,10 +42,31 @@ handle_registry_t &registry ()
 
 }
 
+#ifdef ZLINK_BUILD_TESTS
+//  Test-only hook: the next count_ guarded allocation points in the mesh
+//  submit paths throw bad_alloc, exercising the public OOM mapping.
+extern "C" void zlink_test_set_mesh_alloc_fault (int count_)
+{
+    g_mesh_alloc_faults.store (count_ < 0 ? 0 : count_, std::memory_order_relaxed);
+}
+#endif
+
 namespace zlink
 {
 namespace mesh
 {
+#ifdef ZLINK_BUILD_TESTS
+void test_maybe_throw_alloc ()
+{
+    int remaining = g_mesh_alloc_faults.load (std::memory_order_relaxed);
+    while (remaining > 0) {
+        if (g_mesh_alloc_faults.compare_exchange_weak (remaining, remaining - 1,
+                                                       std::memory_order_relaxed))
+            throw std::bad_alloc ();
+    }
+}
+#endif
+
 uint64_t now_ms ()
 {
     //  clock_t caches its last TSC sample and is intentionally mutable. Mesh
@@ -311,6 +339,8 @@ mesh_node_t::mesh_node_t (ctx_t *ctx_) :
     next_operation_serial (1),
     next_reply_serial (1),
     shutdown_active (false),
+    lifecycle_pins (0),
+    destroy_claimed (false),
     next_spot_generation (1),
     next_actor_generation (1),
     next_transfer_serial (1),
@@ -390,6 +420,84 @@ void unregister_node (mesh_node_t *node_)
     if (it != registry ().nodes_by_name.end () && it->second == node_)
         registry ().nodes_by_name.erase (it);
     registry ().live_nodes.erase (node_);
+}
+
+mesh_node_t *pin_node_lifecycle (void *handle_, int *errno_out_)
+{
+    if (!handle_) {
+        *errno_out_ = EFAULT;
+        return NULL;
+    }
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    if (!registry ().live_nodes.count (handle_)) {
+        *errno_out_ = EFAULT;
+        return NULL;
+    }
+    mesh_node_t *node = static_cast<mesh_node_t *> (handle_);
+    if (!node->check_tag ()) {
+        *errno_out_ = EFAULT;
+        return NULL;
+    }
+    if (node->destroy_claimed) {
+        //  A destroy already owns this handle's lifecycle: same-handle
+        //  re-entry (§11).
+        *errno_out_ = EDEADLK;
+        return NULL;
+    }
+    node->lifecycle_pins += 1;
+    return node;
+}
+
+void unpin_node_lifecycle (mesh_node_t *node_)
+{
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    node_->lifecycle_pins -= 1;
+    if (node_->lifecycle_pins == 0)
+        registry ().lifecycle_cv.notify_all ();
+}
+
+mesh_node_t *claim_node_destroy (void *handle_)
+{
+    if (!handle_) {
+        errno = EFAULT;
+        return NULL;
+    }
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    if (!registry ().live_nodes.count (handle_)) {
+        errno = EFAULT;
+        return NULL;
+    }
+    mesh_node_t *node = static_cast<mesh_node_t *> (handle_);
+    if (!node->check_tag ()) {
+        errno = EFAULT;
+        return NULL;
+    }
+    if (node->destroy_claimed) {
+        errno = ESTALE;
+        return NULL;
+    }
+    node->destroy_claimed = true;
+    return node;
+}
+
+void release_node_destroy_claim (mesh_node_t *node_)
+{
+    std::lock_guard<std::mutex> lock (registry ().mutex);
+    node_->destroy_claimed = false;
+}
+
+void unregister_node_and_wait_lifecycle_quiesced (mesh_node_t *node_)
+{
+    std::unique_lock<std::mutex> lock (registry ().mutex);
+    std::map<std::string, mesh_node_t *>::iterator it =
+      registry ().nodes_by_name.find (node_->mesh_name);
+    if (it != registry ().nodes_by_name.end () && it->second == node_)
+        registry ().nodes_by_name.erase (it);
+    registry ().live_nodes.erase (node_);
+    //  A pinned shutdown may still be anywhere between its handle check and
+    //  its final return; the storage must not go away under it.
+    while (node_->lifecycle_pins != 0)
+        registry ().lifecycle_cv.wait (lock);
 }
 
 mesh_node_t *as_mesh_node (void *handle_)
@@ -576,10 +684,13 @@ static void notify_consumer_locked (mesh_node_t *node_, std::unique_lock<std::mu
     zlink_mesh_ready_handler_fn handler = node_->ready_handler;
     void *userdata = node_->ready_handler_userdata;
     ++node_->ready_handler_depth;
+    node_->ready_handler_thread = std::this_thread::get_id ();
     lock_.unlock ();
     (void) handler (node_, mask, userdata);
     lock_.lock ();
     --node_->ready_handler_depth;
+    //  A (de)registration from another thread waits for this return.
+    node_->cv.notify_all ();
 }
 
 void signal_ready (mesh_node_t *node_, const owner_id_t &owner_, domain_t domain_)
@@ -853,23 +964,35 @@ void complete_operation (mesh_node_t *node_,
                          std::vector<unsigned char> *kind_data_,
                          std::vector<zlink_msg_t> *reply_parts_)
 {
-    std::unique_ptr<queued_record_t> record (new queued_record_t ());
-    record->kind = ZLINK_MESH_RECORD_COMPLETION;
-    record->operation_id = op_.id;
-    record->operation_kind = op_.kind;
-    record->terminal_result = terminal_result_;
-    record->failure_errno = failure_errno_;
-    if (kind_data_)
-        record->kind_data = std::move (*kind_data_);
-    if (reply_parts_) {
-        record->parts = std::move (*reply_parts_);
-        reply_parts_->clear ();
-        for (size_t i = 0; i < record->parts.size (); ++i)
-            record->byte_size += zlink_msg_size (&record->parts[i]);
+    //  Completions run on ingress and timer threads too, where an escaping
+    //  exception is std::terminate: every fallible step sits behind this
+    //  barrier and a completion that cannot be stored is dropped the same
+    //  way as one whose owner is already gone.
+    std::unique_ptr<queued_record_t> record (new (std::nothrow) queued_record_t ());
+    if (!record.get ())
+        return;
+    try {
+        record->kind = ZLINK_MESH_RECORD_COMPLETION;
+        record->operation_id = op_.id;
+        record->operation_kind = op_.kind;
+        record->terminal_result = terminal_result_;
+        record->failure_errno = failure_errno_;
+        if (kind_data_)
+            record->kind_data = std::move (*kind_data_);
+        if (reply_parts_) {
+            record->parts = std::move (*reply_parts_);
+            reply_parts_->clear ();
+            for (size_t i = 0; i < record->parts.size (); ++i)
+                record->byte_size += zlink_msg_size (&record->parts[i]);
+        }
+        if (admit_record (node_, op_.requester, domain_infrastructure, record, false, 0) != 0) {
+            //  Infrastructure admission cannot fail for live owners; if the
+            //  owner is already gone the completion is dropped with the
+            //  owner.
+        }
     }
-    if (admit_record (node_, op_.requester, domain_infrastructure, record, false, 0) != 0) {
-        //  Infrastructure admission cannot fail for live owners; if the
-        //  owner is already gone the completion is dropped with the owner.
+    catch (const std::bad_alloc &) {
+        return;
     }
 
     {

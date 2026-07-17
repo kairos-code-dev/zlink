@@ -562,6 +562,99 @@ void test_timer_destroy_overlapping_fire_completes ()
     TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
 }
 
+//  Test-only hooks (ZLINK_BUILD_TESTS builds): mesh submit allocation fault
+//  and the shutdown pin/lock pause for the reverse-order lifecycle race.
+extern "C" void zlink_test_set_mesh_alloc_fault (int count_);
+extern "C" void zlink_test_set_shutdown_pause_after_pin (int ms_);
+
+//  A destroy that lands between shutdown's handle validation and its mutex
+//  acquisition must wait for the pinned shutdown instead of freeing the node
+//  under it: both calls complete, in either outcome order, and a shutdown
+//  after the destroy fails with EFAULT.
+void test_destroy_waits_for_pinned_shutdown ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "pin-race-mesh", "jobs");
+
+    //  Park the shutdown between its lifecycle pin and its lock.
+    zlink_test_set_shutdown_pause_after_pin (400);
+    std::atomic<int> shutdown_rc (-1);
+    std::thread shutdown_thread ([&] () {
+        shutdown_rc.store (static_cast<int> (zlink_mesh_node_shutdown (node, 1000)));
+    });
+    msleep (100);
+    TEST_ASSERT_EQUAL_INT (-1, shutdown_rc.load ());
+
+    //  The destroy commits while the shutdown is paused pre-lock; it must
+    //  block on the pin instead of deleting the node under the shutdown.
+    void *doomed = node;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&doomed));
+    TEST_ASSERT_NULL (doomed);
+    shutdown_thread.join ();
+    //  The paused shutdown observed the destroy's forced STOPPED state.
+    TEST_ASSERT_EQUAL_INT (static_cast<int> (ZLINK_REQUEST_OK), shutdown_rc.load ());
+
+    //  The handle is gone: a later shutdown is an invalid-handle error.
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_INVALID_ARGUMENT, zlink_mesh_node_shutdown (node, 100));
+    TEST_ASSERT_EQUAL_INT (EFAULT, zlink_errno ());
+
+    zlink_test_set_shutdown_pause_after_pin (0);
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
+//  Injected allocation failures on the submit paths surface as the formal
+//  ZLINK_SUBMIT_OUT_OF_MEMORY/ENOMEM mapping — never as an escaping
+//  exception — and the next unarmed call succeeds cleanly.
+void test_submit_alloc_failure_maps_to_out_of_memory ()
+{
+    void *ctx = zlink_ctx_new ();
+    TEST_ASSERT_NOT_NULL (ctx);
+    void *node = new_started_node (ctx, "oom-mesh", "jobs");
+
+    //  Direct channel send: record preparation fault.
+    zlink_msg_t part;
+    make_payload (&part, "job-oom");
+    zlink_test_set_mesh_alloc_fault (1);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OUT_OF_MEMORY,
+                           zlink_mesh_node_send_to_channel (node, "jobs", NULL, &part, 1,
+                                                            ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    zlink_test_set_mesh_alloc_fault (0);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_mesh_node_send_to_channel (node, "jobs", NULL, &part, 1,
+                                                            ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+
+    //  Publish: multicast preparation fault, then a clean retry delivers.
+    void *spot = NULL;
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK, zlink_mesh_node_entry_spot (node, &spot));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CONFIG_OK,
+                           zlink_spot_set_subscription (spot, "jobs", "tick.",
+                                                        ZLINK_SPOT_SUBSCRIPTION_PREFIX));
+    void *publisher = zlink_mesh_node_publisher_new (node);
+    TEST_ASSERT_NOT_NULL (publisher);
+    make_payload (&part, "tick-oom");
+    zlink_test_set_mesh_alloc_fault (1);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OUT_OF_MEMORY,
+                           zlink_mesh_node_publisher_publish (publisher, "jobs", "tick.a", NULL,
+                                                              &part, 1, NULL,
+                                                              ZLINK_SEND_FLAGS_DONTWAIT));
+    TEST_ASSERT_EQUAL_INT (ENOMEM, zlink_errno ());
+    zlink_test_set_mesh_alloc_fault (0);
+    TEST_ASSERT_EQUAL_INT (ZLINK_SUBMIT_OK,
+                           zlink_mesh_node_publisher_publish (publisher, "jobs", "tick.a", NULL,
+                                                              &part, 1, NULL,
+                                                              ZLINK_SEND_FLAGS_DONTWAIT));
+    zlink_msg_close (&part);
+
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_publisher_destroy (&publisher));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_spot_destroy (&spot));
+    TEST_ASSERT_EQUAL_INT (ZLINK_REQUEST_OK, zlink_mesh_node_shutdown (node, 1000));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_mesh_node_destroy (&node));
+    TEST_ASSERT_EQUAL_INT (ZLINK_CLOSE_OK, zlink_ctx_term (ctx));
+}
+
 //  Destroying the node while a shutdown is still draining is the same-handle
 //  lifecycle re-entry the contract ends with EDEADLK (§11): the node
 //  survives, the parked shutdown completes once the claim releases, and only
@@ -783,6 +876,8 @@ int main ()
     RUN_TEST (test_public_strings_reject_invalid_utf8);
     RUN_TEST (test_timer_destroy_overlapping_fire_completes);
     RUN_TEST (test_destroy_during_shutdown_wait_is_deadlock_error);
+    RUN_TEST (test_destroy_waits_for_pinned_shutdown);
+    RUN_TEST (test_submit_alloc_failure_maps_to_out_of_memory);
     RUN_TEST (test_stream_session_bind_destroy_race_leaves_no_binding);
     const int rc = UNITY_END ();
     fflush (NULL);

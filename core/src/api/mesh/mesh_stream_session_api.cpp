@@ -206,7 +206,7 @@ zlink_submit_result_t send_stream_complete (void *stream_,
     zlink_msg_t complete;
     if (zlink_msg_init_size (&complete, total_size) != 0) {
         errno = ENOMEM;
-        return ZLINK_SUBMIT_INTERNAL_ERROR;
+        return ZLINK_SUBMIT_OUT_OF_MEMORY;
     }
     unsigned char *destination = static_cast<unsigned char *> (zlink_msg_data (&complete));
     size_t offset = 0;
@@ -580,7 +580,7 @@ zlink_submit_result_t zlink_stream_session_bind_actor (void *service_,
                                                        const zlink_actor_ref_t *actor_,
                                                        zlink_mesh_operation_id_t *operation_id_out_,
                                                        uint32_t timeout_ms_)
-{
+try {
     std::shared_ptr<session_service_t> service_owner = as_session_service (service_);
     session_service_t *service = service_owner.get ();
     if (!service) {
@@ -716,6 +716,13 @@ zlink_submit_result_t zlink_stream_session_bind_actor (void *service_,
     complete_binding_operation (node, ZLINK_MESH_OPERATION_STREAM_BIND, op_id, ZLINK_REQUEST_OK, 0);
     return ZLINK_SUBMIT_OK;
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 zlink_submit_result_t zlink_stream_session_unbind_actor (void *service_,
                                                          const zlink_routing_id_t *session_rid_,
@@ -723,7 +730,7 @@ zlink_submit_result_t zlink_stream_session_unbind_actor (void *service_,
                                                          uint64_t expected_binding_generation_,
                                                          zlink_mesh_operation_id_t *operation_id_out_,
                                                          uint32_t timeout_ms_)
-{
+try {
     std::shared_ptr<session_service_t> service_owner = as_session_service (service_);
     session_service_t *service = service_owner.get ();
     if (!service) {
@@ -785,6 +792,13 @@ zlink_submit_result_t zlink_stream_session_unbind_actor (void *service_,
     complete_binding_operation (node, ZLINK_MESH_OPERATION_STREAM_UNBIND, op_id, ZLINK_REQUEST_OK,
                                 0);
     return ZLINK_SUBMIT_OK;
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_config_result_t zlink_stream_session_bindings (void *service_,
@@ -1010,9 +1024,16 @@ zlink_submit_result_t zlink_stream_session_send_to_actor (void *service_,
                                                           const zlink_msg_t *parts_,
                                                           size_t part_count_,
                                                           zlink_send_flags_t flags_)
-{
+try {
     return session_to_actor_submit (service_, session_rid_, actor_, actor_metadata_, parts_,
                                     part_count_, NULL, flags_, 0);
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 zlink_submit_result_t
@@ -1039,7 +1060,7 @@ zlink_submit_result_t zlink_mesh_node_actor_send_bound_session (void *mesh_node_
                                                                 const zlink_msg_t *parts_,
                                                                 size_t part_count_,
                                                                 zlink_send_flags_t flags_)
-{
+try {
     mesh_node_t *node = as_mesh_node (mesh_node_);
     if (!node) {
         errno = EFAULT;
@@ -1102,13 +1123,20 @@ zlink_submit_result_t zlink_mesh_node_actor_send_bound_session (void *mesh_node_
     //  cannot expose a prefix of the logical message.
     return send_stream_complete (stream, &session_rid, parts_, part_count_, flags_);
 }
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
+}
 
 zlink_submit_result_t zlink_mesh_node_actor_close_bound_session (void *mesh_node_,
                                                                  const zlink_actor_ref_t *actor_,
                                                                  uint64_t expected_binding_generation_,
                                                                  zlink_mesh_operation_id_t *operation_id_out_,
                                                                  uint32_t timeout_ms_)
-{
+try {
     mesh_node_t *node = as_mesh_node (mesh_node_);
     if (!node) {
         errno = EFAULT;
@@ -1188,6 +1216,13 @@ zlink_submit_result_t zlink_mesh_node_actor_close_bound_session (void *mesh_node
     }
     errno = ENOENT;
     return ZLINK_SUBMIT_NOT_FOUND;
+}
+catch (const std::bad_alloc &) {
+    //  Outer C-ABI barrier: any storage-acquisition failure that deeper
+    //  rollback barriers did not translate still ends as the formal
+    //  OUT_OF_MEMORY result instead of an escaping exception.
+    errno = ENOMEM;
+    return ZLINK_SUBMIT_OUT_OF_MEMORY;
 }
 
 namespace zlink

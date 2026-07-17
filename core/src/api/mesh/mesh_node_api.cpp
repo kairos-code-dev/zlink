@@ -13,6 +13,9 @@
 
 #include <string.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <thread>
 
 using namespace zlink::mesh;
 
@@ -69,6 +72,9 @@ zlink_mesh_operation_id_t register_operation (mesh_node_t *node_,
                                               uint32_t timeout_ms_)
 {
     std::lock_guard<std::mutex> lock (node_->mutex);
+#ifdef ZLINK_BUILD_TESTS
+    test_maybe_throw_alloc ();
+#endif
     pending_operation_t op;
     memset (&op.join_actor, 0, sizeof (op.join_actor));
     op.id.high = node_->lifecycle_generation;
@@ -307,13 +313,52 @@ zlink_config_result_t zlink_mesh_node_start (void *mesh_node_)
     return ZLINK_CONFIG_OK;
 }
 
+#ifdef ZLINK_BUILD_TESTS
+namespace
+{
+std::atomic<int> g_shutdown_pause_after_pin_ms (0);
+}
+//  Test-only hook: the next shutdown call sleeps this long between its
+//  lifecycle pin and its mutex acquisition, making the reverse-order
+//  shutdown/destroy interleaving deterministic.
+extern "C" void zlink_test_set_shutdown_pause_after_pin (int ms_)
+{
+    g_shutdown_pause_after_pin_ms.store (ms_ < 0 ? 0 : ms_, std::memory_order_relaxed);
+}
+#endif
+
+namespace
+{
+//  Unpins the §11 lifecycle pin on every return path of shutdown.
+struct lifecycle_pin_guard_t
+{
+    explicit lifecycle_pin_guard_t (zlink::mesh::mesh_node_t *node_) : node (node_) {}
+    ~lifecycle_pin_guard_t () { zlink::mesh::unpin_node_lifecycle (node); }
+    zlink::mesh::mesh_node_t *node;
+};
+}
+
 zlink_request_result_t zlink_mesh_node_shutdown (void *mesh_node_, uint32_t timeout_ms_)
 {
-    mesh_node_t *node = as_mesh_node (mesh_node_);
+    //  The registry pin keeps the node alive for this whole call: a destroy
+    //  that commits meanwhile waits for the pin to drain before deleting,
+    //  and a destroy that already claimed the handle makes this call the
+    //  §11 re-entry (EDEADLK).
+    int pin_errno = 0;
+    mesh_node_t *node = pin_node_lifecycle (mesh_node_, &pin_errno);
     if (!node) {
-        errno = EFAULT;
-        return ZLINK_REQUEST_INVALID_ARGUMENT;
+        errno = pin_errno;
+        return pin_errno == EDEADLK ? ZLINK_REQUEST_INVALID_STATE
+                                    : ZLINK_REQUEST_INVALID_ARGUMENT;
     }
+    lifecycle_pin_guard_t pin_guard (node);
+#ifdef ZLINK_BUILD_TESTS
+    {
+        const int pause_ms = g_shutdown_pause_after_pin_ms.exchange (0, std::memory_order_relaxed);
+        if (pause_ms > 0)
+            std::this_thread::sleep_for (std::chrono::milliseconds (pause_ms));
+    }
+#endif
 
     std::unique_lock<std::mutex> lock (node->mutex);
     //  Re-entry (a concurrent shutdown/destroy on this handle) deadlocks; a
@@ -418,11 +463,12 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
         errno = EFAULT;
         return ZLINK_CLOSE_INVALID_HANDLE;
     }
-    mesh_node_t *node = as_mesh_node (*mesh_node_p_);
-    if (!node) {
-        errno = EFAULT;
+    //  The destroy claim makes this handle's lifecycle exclusive: a second
+    //  destroy fails with ESTALE and a later shutdown pin fails with the
+    //  §11 EDEADLK before it can touch the node.
+    mesh_node_t *node = claim_node_destroy (*mesh_node_p_);
+    if (!node)
         return ZLINK_CLOSE_INVALID_HANDLE;
-    }
 
     {
         std::lock_guard<std::mutex> lock (node->mutex);
@@ -431,6 +477,7 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
         //  the same-handle lifecycle re-entry the contract ends with
         //  EDEADLK (§11).
         if (node->shutdown_active) {
+            release_node_destroy_claim (node);
             errno = EDEADLK;
             return ZLINK_CLOSE_BUSY;
         }
@@ -443,6 +490,7 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
         }
         if (node->publisher_count > 0 || node->monitor_count > 0
             || node->stream_session_count > 0 || live_facades > 0 || live_timers > 0) {
+            release_node_destroy_claim (node);
             errno = EBUSY;
             return ZLINK_CLOSE_BUSY;
         }
@@ -465,10 +513,10 @@ zlink_close_result_t zlink_mesh_node_destroy (void **mesh_node_p_)
         node->cv.notify_all ();
     }
 
-    //  Close the public entry door before tearing anything down: a caller
-    //  that has not yet validated the handle now fails with EFAULT instead
-    //  of racing the teardown below.
-    unregister_node (node);
+    //  Close the public entry door before tearing anything down, then wait
+    //  for any pinned shutdown (validated but not yet returned) to leave
+    //  the node before its storage goes away.
+    unregister_node_and_wait_lifecycle_quiesced (node);
     wire_stop (node);
     //  All Spot timers are gone (they gate destroy with EBUSY), so the
     //  node's dedicated timer scheduler can wind down.

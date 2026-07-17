@@ -171,10 +171,11 @@ Core campaign은 S4+S5, C++·JVM·Node campaign은 각 S9 lane+대응 S10 lane�
 snapshot과 같은 배정 범위를 이어서 검토하면 한 pass다.
 
 각 구현 campaign은 책임 단위가 닫힌 시점의 중간 checkpoint 리뷰와 stage 끝의 전체 최종 리뷰를
-수행한다. blocker·high finding이 계속 나오거나 수정 범위가 여러 package·언어·공개 계약으로 퍼질 때만
-추가 pass를 열며, 이 경우 보통 3~4회까지 반복한다. 3~4회는 의무 횟수나 종료 조건이 아니다. 주요
-finding이 더 나오지 않으면 불필요한 pass를 추가하지 않고 구현을 계속하거나 최종 전체 리뷰로 이동한다.
-표현 교정 때문에 pass를 늘리지 않는다.
+수행한다. 수정·재리뷰는 campaign마다 기본적으로 최대 4회까지 수행한다. 4회는 의무 횟수가 아니므로
+그 전에 두 리뷰어가 clean 조건을 충족하면 즉시 종료한다. 4번째 리뷰 결과를 병합한 시점에 미해결
+blocker·high·medium finding이 있으면 4회 제한을 적용하지 않고, 최신 snapshot의 미해결 medium 이상
+finding이 0건이 될 때까지 수정과 재리뷰를 계속한다. 주요 finding이 더 나오지 않으면 불필요한 pass를
+추가하지 않고 구현을 계속하거나 최종 전체 리뷰로 이동한다. 표현 교정 때문에 pass를 늘리지 않는다.
 
 | Pass | 우선 검토 축 | 반드시 찾을 문제 |
 |---|---|---|
@@ -372,6 +373,10 @@ manifest에 덧붙인다.
    두 리뷰어가 해당 stage의 exact clean 문구를 남기면 종료한다. S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을
    기준으로 하되, 미해결 finding 0건과 사용자의 명시적 종료 승인이 기록되면 `승인 종료`로 끝낼 수
    있다. 이때 clean으로 기록하지 않는다.
+
+4번째 리뷰 결과를 병합한 뒤 미해결 blocker·high·medium finding이 있으면 기본 횟수 제한의 예외로
+다음 iteration을 연다. 이 예외 반복은 최신 snapshot에서 미해결 medium 이상 finding이 0건이 될 때까지
+계속하며, 마지막 iteration은 위 절차에 따라 전체 scope와 clean 조건을 다시 확인한다.
 
 한 리뷰어가 실행되지 않았거나 결과가 중단되면 review gate는 `차단`이다. 시간 부족, finding 개수
 감소 또는 test 통과만으로 clean 판정을 추정하지 않는다.

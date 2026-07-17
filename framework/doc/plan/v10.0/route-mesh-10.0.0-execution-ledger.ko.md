@@ -39,6 +39,7 @@ snapshot을 대상으로 수행한다. S5의 최종 clean 판정은 S3 종료 �
 | `리뷰 중` | 고정된 review snapshot을 독립 검토 중. 다른 담당 범위의 구현·test·문서 수정은 계속할 수 있음 |
 | `수정 중` | review finding을 반영하고 관련 검증을 다시 수행 중 |
 | `차단` | 외부 권한, 배포 환경 또는 확정되지 않은 계약 때문에 진행할 수 없음 |
+| `후속 분리` | 사용자가 현재 release gate에서 제외하고 별도 후속 작업으로 진행하도록 결정함 |
 | `승인 종료` | clean 문구는 없지만 사용자가 반복 종료를 명시적으로 승인한 terminal 상태. clean으로 기록하지 않음 |
 | `완료` | 해당 stage의 완료 gate가 요구하는 checklist, 검증, 리뷰와 증거가 충족됨 |
 
@@ -117,31 +118,16 @@ source·test를 변경 목록(delta)에 기록한다. 다음 review pass는 새 
 검토하고 전체 자동 gate를 실행한다. 공개 계약의 의미가 여러 package나 언어로 전파되는 변경일 때만
 새 전체 범위 리뷰를 연다.
 
-### 0.3 POSD 기반 고성능 시스템 원칙
+### 0.3 POSD 기반 구현 원칙
 
-RouteMesh 10.0.0의 Core, bindings와 framework는 POSD 철학을 설계 기준으로 삼는 고성능 시스템으로
-작성한다. 기능 통과만으로 완료하지 않는다. 공개 interface는 작고 단순하게 유지하고 routing, codec,
+RouteMesh 10.0.0의 Core, bindings와 framework는 POSD 철학을 설계 기준으로 삼는다. 공개 interface는
+작고 단순하게 유지하고 routing, codec,
 queue, retry, peer admission과 lifecycle 복잡성은 책임을 소유한 깊은 모듈 안에 둔다. 같은 설계 지식이
 여러 계층이나 언어에 반복되면 정보 누출로 판단하며, 호출자에게 transport detail이나 내부 policy를
 추가로 요구하는 방식으로 성능 문제를 우회하지 않는다.
 
-성능은 막연한 목표나 특정 구현 기법의 강제가 아니라 재현 가능한 검증 계약이다. 다음 기준을 모든 구현
-stage와 I2 리뷰에 적용한다.
-
-- 불필요한 message encode·decode, payload copy, allocation과 언어·C API callback 왕복을 추가하지 않는다.
-- immutable message reference, batch·claim, ready index와 언어별 native scheduler를 사용해 hot path의
-  queue contention과 FFI 경계를 줄인다. 다만 실제 측정 없이 복잡한 최적화를 public contract로 노출하지
-  않는다.
-- connection 수, direct·select-one·Logical Multicast, mixed traffic, reconnect와 shutdown을 실제 부하로
-  측정하고 throughput, latency, memory와 queue/backpressure 결과를 기준선과 비교한다.
-- benchmark는 실제 배포에 사용하는 runtime과 package를 대상으로 실행한다. 오래된 build, source-only
-  결과나 test 전용 fast path로 성능 gate를 통과시키지 않는다.
-- 성능을 위해 POSD 책임 경계를 깨지 않는다. 성능과 구조가 충돌하면 최소 두 설계안을 비교하고,
-  benchmark와 호출자 복잡도 증거를 함께 기록한 뒤 깊은 모듈을 유지하는 안을 선택한다.
-
-S4, S5와 각 bindings·framework 구현 및 리뷰 stage는 기능·회귀 검증과 별도로 성능·resource 증거를
-남긴다. 요구한 benchmark 또는 성능 gate가 없거나, 의미 있는 회귀를 원인 분석 없이 승인한 상태에서는
-해당 stage를 `완료`로 바꾸지 않는다.
+성능 측정과 개선은 RouteMesh 10.0.0 기능 구현·배포 gate에서 제외하고 별도 후속 작업으로 진행한다.
+현재 stage를 완료하기 위해 benchmark나 p99 측정을 새로 실행하지 않는다.
 
 ## 1. 고정 실행 순서
 
@@ -151,14 +137,14 @@ S4, S5와 각 bindings·framework 구현 및 리뷰 stage는 기능·회귀 검�
 | **S1** | Core 10.0.0 정식 spec 작성 | 아니요 | Core 목표 계약 전체가 reviewed 정식 spec에 고정됨 |
 | **S2** | framework 정식 spec 변경과 E2E·sample 영향 검토 | 아니요 | 공통·server 계약, 다섯 언어 exact interface, 공통·언어별 E2E·sample 문서와 public 예제 영향이 고정됨 |
 | **S3** | 문서 독립 리뷰와 수정 반복 | 리뷰 2개만 병렬 | 두 리뷰어 모두 `DOC REVIEW CLEAN`이거나, clean 없이 종료한다는 사용자 승인과 미해결 finding 0건이 기록됨 |
-| **S4** | Core 구현·제거 정리와 정식 spec 일치 | 아니요 | 기능·삭제·회귀·성능, header-spec 일치와 구현 후 internals gate 통과 |
+| **S4** | Core 구현·제거 정리와 정식 spec 일치 | 아니요 | 기능·삭제·회귀, header-spec 일치와 구현 후 internals gate 통과 |
 | **S5** | Core 구현 3축 독립 리뷰와 수정 반복 | 리뷰 2개만 병렬 | 두 리뷰어의 I1 계약 일치·I2 POSD/DDD·I3 정리 완결성이 모두 clean이고 `CORE REVIEW CLEAN` |
 | **S6** | Core 10.0.0 release-candidate GitHub Actions build와 pre-release 배포 | workflow 병렬 허용 | RC native artifact와 local Conan 검증 완료. stable tag·remote publish 없음 |
 | **S7** | bindings 적용, 3축 독립 리뷰와 local package E2E smoke | 언어별 제한적 병렬 | 모든 bindings local package 검증과 두 리뷰어의 I1·I2·I3 clean 및 `BINDINGS REVIEW CLEAN` |
 | **S8** | `.NET framework`, sample과 E2E 적용 및 3축 리뷰 | 리뷰 2개만 병렬 | 두 리뷰어의 I1·I2·I3가 모두 clean이고 `DOTNET REVIEW CLEAN` |
 | **S9** | C++, Java/Kotlin, Node.js framework 적용 | 세 lane 병렬 | 세 lane 구현과 검증 완료 |
 | **S10** | 세 언어 lane별 3축 독립 리뷰와 수정 반복 | 세 lane 병렬 | lane마다 두 리뷰어의 I1·I2·I3와 언어별 clean 문구가 모두 clean |
-| **S11** | Core stable·bindings 외부 배포, 전체 3축 최종 검토와 종료 | 배포 후 리뷰 2개만 병렬 | stable package smoke, 두 리뷰어의 I1·I2·I3 clean 및 `FINAL REVIEW CLEAN` |
+| **S11** | 전체 3축 최종 검토, Core stable·bindings 외부 배포와 종료 | 최종 리뷰 2개만 병렬 | 두 리뷰어의 I1·I2·I3 clean과 `FINAL REVIEW CLEAN` 뒤 stable package 배포·smoke 완료 |
 
 S3, S5, S7, S8, S10과 S11의 review gate를 생략하거나 다음 stage에서 대신 처리하지 않는다. S2·S3와
 병렬로 시작한 S4 변경은 S3를 대신하지 않으며 S3 finding이 반영된 정식 계약에 다시 맞춰야 한다.
@@ -184,13 +170,11 @@ Core campaign은 S4+S5, C++·JVM·Node campaign은 각 S9 lane+대응 S10 lane�
 각 stage가 하나의 campaign이다. reviewer invocation이 시간 제한 때문에 여러 session으로 나뉘어도 같은
 snapshot과 같은 배정 범위를 이어서 검토하면 한 pass다.
 
-각 campaign은 구현 중 checkpoint 리뷰를 포함해 원칙적으로 **3회** 수행한다. 범위가 큰 Core campaign은
-시작 전에 **4회**로 고정한다. 그 밖의 campaign은 세 번째 pass에서 blocker·high finding이 새로 나오거나
-수정 범위가 여러 package·언어·공개 계약으로 퍼질 때만 네 번째 pass를 추가한다. 네 번째 pass까지
-끝났는데도 material finding이 남으면 stage를 `수정 중` 또는 `차단`으로 두고 원인과 남은 범위를
-기록한다. 3~4회는 계획 기준이지 finding을 남긴 채 종료하기 위한 상한이 아니다. P4의 material finding을
-수정한 뒤에는 해소 확인과 최신 전체 범위 판정을 위한 마지막 pass를 한 번 더 수행할 수 있다. 이 예외는
-blocker·high finding이나 실행 결과를 바꾸는 수정에만 적용하며 표현 교정 때문에 pass를 늘리지 않는다.
+각 구현 campaign은 책임 단위가 닫힌 시점의 중간 checkpoint 리뷰와 stage 끝의 전체 최종 리뷰를
+수행한다. blocker·high finding이 계속 나오거나 수정 범위가 여러 package·언어·공개 계약으로 퍼질 때만
+추가 pass를 열며, 이 경우 보통 3~4회까지 반복한다. 3~4회는 의무 횟수나 종료 조건이 아니다. 주요
+finding이 더 나오지 않으면 불필요한 pass를 추가하지 않고 구현을 계속하거나 최종 전체 리뷰로 이동한다.
+표현 교정 때문에 pass를 늘리지 않는다.
 
 | Pass | 우선 검토 축 | 반드시 찾을 문제 |
 |---|---|---|
@@ -218,38 +202,40 @@ snapshot을 독립 검토한다. 적절한 단위는 파일 수나 변경 줄 �
 
 checkpoint finding은 가능한 한 다음 의존 기능을 넓히기 전에 수정하고 관련 검증을 다시 실행한다.
 서로 독립인 lane은 계속 진행할 수 있다. checkpoint 리뷰가 manifest, reviewer 식별자, I1·I2·I3 판정과
-검증 증거를 모두 갖추면 해당 campaign의 3~4회 review pass에 포함한다. campaign 끝의 review stage는
+검증 증거를 모두 갖추면 해당 campaign의 review pass로 기록한다. campaign 끝의 review stage는
 앞선 checkpoint finding과 검증을 입력으로 사용하되, 최신 revision의 **전체 campaign scope**를 처음부터
 다시 검토한다. source·test·spec·guide·internals·sample·E2E·package·workflow·artifact 가운데 해당
 campaign에 포함된 범위를 생략하지 않고 최종 clean을 판정한다.
 
-다음 표는 campaign별 pass와 진행 상태를 이 ledger 안에서 추적하는 행이다. P4가 조건부인 campaign이나
-P4 material finding 수정 뒤의 예외 pass는 trigger가 발생했을 때 별도 `*-P4` 또는 `*-FX` 행을 추가한다.
+다음 표의 중간 checkpoint는 실행 후보 단위다. 각 campaign은 다음 구현이 현재 설계에 의존하는 지점에서
+후보 하나를 선택해 리뷰하고, 주요 finding이 계속될 때만 다음 후보를 사용한다. 이미 지나간 checkpoint를
+여러 번 연속 소급 실행하지 않는다. 그런 경우 현재 snapshot에서 catch-up 리뷰 한 번만 수행하고 이전
+후보는 증거에 `대체됨`으로 기록한 뒤 구현을 계속한다. 최종 행은 항상 실행한다.
 
 | Checkpoint ID | Campaign pass | 책임 단위 | 상태 | 증거 |
 |---|---:|---|---|---|
-| **S4-C1** | P1 | S4-01~S4-14 public surface, lifecycle, peer selection과 기본 messaging | 미착수 | - |
-| **S4-C2** | P2 | S4-15~S4-22F Actor·STREAM transfer, 관측·오류와 제거·ABI 범위 | 미착수 | - |
-| **S4-C3** | P3 | S4-23~S4-32 stress·sanitizer·성능·package와 검증된 internals | 미착수 | - |
-| **S5-F** | P4 최종 | 최신 Core source·test·spec·internals·package·성능 증거 전체 | 미착수 | - |
-| **S7-C1** | P1 | bindings public surface, ownership·error mapping과 native wrapper | 미착수 | - |
-| **S7-C2** | P2 | 언어별 package consumer, 공통 smoke와 제거 범위 | 미착수 | - |
-| **S7-F** | P3 최종 | 최신 bindings 전체 언어·package·workflow 범위 | 미착수 | - |
-| **S8-C1** | P1 | `.NET` public surface, runtime lifecycle·location·transfer 책임 | 미착수 | - |
-| **S8-C2** | P2 | `.NET` sample·E2E·package·성능과 문서 범위 | 미착수 | - |
-| **S8-F** | P3 최종 | 최신 `.NET` framework campaign 전체 | 미착수 | - |
-| **S9-C-C1** | P1 | C++ public surface와 runtime 책임 | 미착수 | - |
-| **S9-C-C2** | P2 | C++ sample·E2E·package와 제거 범위 | 미착수 | - |
-| **S10-C-F** | P3 최종 | 최신 C++ campaign 전체 | 미착수 | - |
-| **S9-J-C1** | P1 | JVM public surface와 runtime 책임 | 미착수 | - |
-| **S9-J-C2** | P2 | JVM sample·E2E·package와 제거 범위 | 미착수 | - |
-| **S10-J-F** | P3 최종 | 최신 JVM campaign 전체 | 미착수 | - |
-| **S9-N-C1** | P1 | Node.js public surface와 runtime 책임 | 미착수 | - |
-| **S9-N-C2** | P2 | Node.js sample·E2E·package와 제거 범위 | 미착수 | - |
-| **S10-N-F** | P3 최종 | 최신 Node.js campaign 전체 | 미착수 | - |
-| **S11-C1** | P1 | 병합된 전체 source·spec·test·sample·E2E | 미착수 | - |
-| **S11-C2** | P2 | package·workflow·배포 artifact와 origin 증거 | 미착수 | - |
-| **S11-F** | P3 최종 | 최신 release-candidate SHA의 전체 통합 scope | 미착수 | - |
+| **S4-C1** | 중간 후보 1 | S4-01~S4-14 public surface, lifecycle, peer selection과 기본 messaging | 미착수 | - |
+| **S4-C2** | 중간 후보 2 | S4-15~S4-22F Actor·STREAM transfer, 관측·오류와 제거·ABI 범위 | 미착수 | - |
+| **S4-C3** | 추가 후보 | S4-23~S4-32 stress·sanitizer·package와 검증된 internals | 미착수 | - |
+| **S5-F** | 최종 | 최신 Core source·test·spec·internals·package 증거 전체 | 미착수 | - |
+| **S7-C1** | 중간 후보 1 | bindings public surface, ownership·error mapping과 native wrapper | 미착수 | - |
+| **S7-C2** | 중간 후보 2 | 언어별 package consumer, 공통 smoke와 제거 범위 | 미착수 | - |
+| **S7-F** | 최종 | 최신 bindings 전체 언어·package·workflow 범위 | 미착수 | - |
+| **S8-C1** | 중간 후보 1 | `.NET` public surface, runtime lifecycle·location·transfer 책임 | 미착수 | - |
+| **S8-C2** | 추가 후보 | `.NET` sample·E2E·package와 문서 범위 | 미착수 | - |
+| **S8-F** | 최종 | 최신 `.NET` framework campaign 전체 | 미착수 | - |
+| **S9-C-C1** | 중간 후보 1 | C++ public surface와 runtime 책임 | 미착수 | - |
+| **S9-C-C2** | 중간 후보 2 | C++ sample·E2E·package와 제거 범위 | 미착수 | - |
+| **S10-C-F** | 최종 | 최신 C++ campaign 전체 | 미착수 | - |
+| **S9-J-C1** | 중간 후보 1 | JVM public surface와 runtime 책임 | 미착수 | - |
+| **S9-J-C2** | 중간 후보 2 | JVM sample·E2E·package와 제거 범위 | 미착수 | - |
+| **S10-J-F** | 최종 | 최신 JVM campaign 전체 | 미착수 | - |
+| **S9-N-C1** | 중간 후보 1 | Node.js public surface와 runtime 책임 | 미착수 | - |
+| **S9-N-C2** | 중간 후보 2 | Node.js sample·E2E·package와 제거 범위 | 미착수 | - |
+| **S10-N-F** | 최종 | 최신 Node.js campaign 전체 | 미착수 | - |
+| **S11-C1** | 중간 후보 1 | 병합된 전체 source·spec·test·sample·E2E | 미착수 | - |
+| **S11-C2** | 추가 후보 | release-candidate package·workflow와 배포 준비 증거 | 미착수 | - |
+| **S11-F** | 최종 | 최신 release-candidate SHA의 전체 통합 scope | 미착수 | - |
 
 S5·S7·S8·S10·S11의 최종 review gate는 중간 리뷰를 증거로 사용하되 최신 revision에 대한 마지막 전체
 scope pass와 stage별 exact clean 문구를 생략하지 않는다.
@@ -382,8 +368,8 @@ manifest에 덧붙인다.
    축을 다시 판정한다.
 6. 마지막 pass에서는 최신 snapshot의 전체 scope를 R1과 R2가 각각 처음부터 검토하고 I1·I2·I3를
    다시 판정한다.
-7. campaign에 고정된 3~4회 pass를 완료하고, 두 리뷰어의 I1·I2·I3가 모두 `CLEAN`이며 두 리뷰어가
-   해당 stage의 exact clean 문구를 남기면 종료한다. S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을
+7. 필요한 중간 checkpoint와 마지막 전체 pass를 완료하고, 두 리뷰어의 I1·I2·I3가 모두 `CLEAN`이며
+   두 리뷰어가 해당 stage의 exact clean 문구를 남기면 종료한다. S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을
    기준으로 하되, 미해결 finding 0건과 사용자의 명시적 종료 승인이 기록되면 `승인 종료`로 끝낼 수
    있다. 이때 clean으로 기록하지 않는다.
 
@@ -393,15 +379,15 @@ manifest에 덧붙인다.
 ## 3. 전체 진행 현황
 
 `open finding`은 reviewer가 채택한 finding 수다. 아직 정식 finding으로 분류하지 않았지만 다음 review에서
-반드시 판정해야 하는 race·deadlock·성능 불확실성은 `known risk`에 별도로 센다.
+반드시 판정해야 하는 race·deadlock 위험은 `known risk`에 별도로 센다.
 
 | Stage | 상태 | 현재 iteration | open finding | known risk | 완료 증거 |
 |---|---|---:|---:|---:|---|
 | S0 정식 spec 범위·계약 확정 | 완료 | 0 | 0 | 0 | `s0-scope-baseline.ko.md`, `log/templates/manifest.ko.md` |
 | S1 Core 정식 spec | 완료 | 4 | 0 | 0 | `log/s1-core-review/iteration-4/`; 두 리뷰 finding 12건 수정, 자동 검증 통과, 사용자 구현 기준선 승인; 최종 hash `6cd163bf…ea71` |
 | S2 framework spec | 완료 | 0 | 0 | 0 | 공통·server, 다섯 언어 exact interface, E2E 55·sample 32·runner 96·guide/internals 81 inventory와 자동 검증 통과 |
-| S3 문서 review loop | 승인 종료 | 19 | 0 | 0 | `log/s3-document-review/final-acceptance/`; clean 문구를 만들지 않고 누적 finding 처리·자동 검증·사용자 승인으로 추가 반복 종료 |
-| S4 Core 구현·정식 spec 일치 | 진행 중 | 0 | 0 | 4 | Core 범위가 clean인 HEAD `104d02f9bb6997fca1e990e502b2f6083ddef57b`에서 public surface와 remote messaging·transfer 구현이 source에 존재한다. 2026-07-17 현재 source로 다시 만든 `test_mesh_node_basic` 8 case와 `test_mesh_peer_admission` 10 case가 통과했다. 전체 test·stress·성능·package·internals·spec parity gate는 남아 있다. TSAN의 기존 기계 3계열과 p99 판정 불확실성 1건은 S5 판정 대상이다. |
+| S3 문서 review loop | 승인 종료 | 28 | 0 | 0 | iteration 20~28도 시도됐지만 clean으로 채택되지 않았다. `log/s3-document-review/final-acceptance/`는 사용자 승인으로 추가 반복을 종료하고 1~19를 종료 기준 범위로 보존한다. |
+| S4 Core 구현·정식 spec 일치 | 진행 중 | 0 | 0 | 3 | Core 범위가 clean인 HEAD `104d02f9bb6997fca1e990e502b2f6083ddef57b`에서 public surface와 remote messaging·transfer 구현이 source에 존재한다. 2026-07-17 현재 source로 다시 만든 `test_mesh_node_basic` 8 case와 `test_mesh_peer_admission` 10 case가 통과했다. 전체 test·stress·package·internals·spec parity gate는 남아 있다. TSAN의 기존 기계 3계열은 S5 판정 대상이다. |
 | S5 Core review loop | 미착수 | 0 | 0 | 0 | - |
 | S6 Core release candidate | 미착수 | 0 | 0 | 0 | - |
 | S7 bindings local package | 미착수 | 0 | 0 | 0 | - |
@@ -571,18 +557,19 @@ render 증거 4건을 반영했고, 사용자 승인 종료 시점의 계약·re
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S3-01 | S1·S2 문서 revision 동결 | review manifest에 commit과 diff 범위 기록 | 완료 | [사용자 승인 종료 manifest](log/s3-document-review/final-acceptance/manifest.ko.md): iteration 19 범위에 누락된 Kotlin gap을 보완한 203개 파일을 aggregate `7f505e82…99a8`로 기록하고 검증 시작·종료 hash 일치 |
-| S3-02 | Codex agent 문서 리뷰 | 누락, 모순, 구현 불가능 계약과 stale API finding 보고 | 완료 | iteration 1~19의 Codex finding·수정·무효 기록을 보존했다. iteration 17~19에는 clean 문구가 없으며 사용자가 추가 반복을 종료하도록 승인 |
-| S3-03 | Claude Sonnet 문서 리뷰 | 같은 scope를 독립 검토하고 finding 보고 | 완료 | iteration 1~19의 Claude Sonnet finding·수정·무효 기록을 보존했다. 문서 리뷰에는 Fable을 사용하지 않았고 사용자가 추가 반복을 종료하도록 승인 |
+| S3-02 | Codex agent 문서 리뷰 | 누락, 모순, 구현 불가능 계약과 stale API finding 보고 | 완료 | iteration 1~28의 Codex 결과를 보존했다. iteration 20~28은 clean으로 채택되지 않았으며 사용자가 추가 반복을 종료하도록 승인 |
+| S3-03 | Claude Sonnet 문서 리뷰 | 같은 scope를 독립 검토하고 finding 보고 | 완료 | iteration 1~28의 Claude Sonnet 결과를 보존했다. iteration 20~28은 clean으로 채택되지 않았고 문서 리뷰에는 Fable을 사용하지 않음 |
 | S3-04 | finding 병합과 중복 제거 | 모든 finding에 owner, severity와 red gate 지정 | 완료 | 채택된 finding은 iteration별 finding ledger와 S3-F9~F17 수정 묶음에 반영. hash drift로 무효 처리한 출력은 finding·clean 판정에 포함하지 않음 |
 | S3-05 | Core 정식 spec finding 수정 | 관련 한국어·영문·signature·result table과 임시 구현 차이 추적을 함께 수정 | 완료 | iteration 8까지 발견한 Core 문서 finding 반영. iteration 9는 framework 문서만 검토했으며 framework 수정에서 Core 계약 변경이 필요하면 다시 연다 |
 | S3-06 | framework spec finding 수정 | 공통·server spec, .NET·C++·Java·Kotlin·Node exact interface, 공통·언어별 E2E·sample 문서와 public 예제 영향 inventory를 함께 수정 | 완료 | iteration 14 참고 finding 7건을 S3-F14-A·B로 수정했고, 이후 drift로 되살아난 실제 render anchor 13건은 S3-F17-A로 복구 |
 | S3-07 | 문서 자동 검증 재실행 | link, signature, stale name, duplicate와 formatting 검사 통과 | 완료 | 사용자 승인 종료 시 `FRAMEWORK DOC CONTRACTS CLEAN`(exact 24·connector exact 4·formal 53·fixture 19·declaration 1,167·feature map 55·scenario 955), 실제 pymdownx render 203개·link 대상 포함 205개·source local Markdown link 1,852개·오류 0, JSON 15개와 scoped `git diff --check` 통과 |
-| S3-08 | 전체 scope 재리뷰 | 이전 diff만이 아니라 S1·S2 전체를 두 리뷰어가 다시 검토 | 완료 | 19개 iteration을 수행했다. 마지막 반복은 동시 수정으로 clean 판정되지 않았으며, 사용자가 19번으로 충분하다고 판단해 추가 전체 재리뷰를 명시적으로 종료 |
+| S3-08 | 전체 scope 재리뷰 | 이전 diff만이 아니라 S1·S2 전체를 두 리뷰어가 다시 검토 | 완료 | iteration 28까지 시도했지만 20~28은 clean으로 채택되지 않았다. 사용자는 final acceptance에서 1~19를 종료 기준 범위로 보존하고 추가 전체 재리뷰를 종료하도록 승인 |
 | S3-09 | 문서별 2축 review 기록 | 각 문서를 원칙 준수와 1차 소스 부합으로 나누고 finding마다 축·severity·file:line·근거·제안 기록 | 완료 | iteration 9 두 reviewer가 모든 finding에 `[1차소스]` 또는 `[원칙]`, severity, file:line, 근거와 수정안을 기록 |
-| S3-10 | 문서별 검증 증거 분리 | finding을 1차 소스로 확인한 뒤 문서별 수정 diff와 SHA-256을 독립 증거로 기록. 사용자가 별도로 요청하지 않으면 commit은 만들지 않음 | 완료 | iteration 1~19의 scope·review hash와 무효 사유를 보존하고 [종료 검증](log/s3-document-review/final-acceptance/verification.ko.md)에 최종 203개 파일별 SHA-256·aggregate·입력 hash를 기록. commit은 만들지 않음 |
+| S3-10 | 문서별 검증 증거 분리 | finding을 1차 소스로 확인한 뒤 문서별 수정 diff와 SHA-256을 독립 증거로 기록. 사용자가 별도로 요청하지 않으면 commit은 만들지 않음 | 완료 | iteration 1~28의 결과와 미채택 사유를 보존하고 [종료 검증](log/s3-document-review/final-acceptance/verification.ko.md)에 종료 기준 203개 파일별 SHA-256·aggregate·입력 hash를 기록. commit은 만들지 않음 |
 
-S3은 두 리뷰어의 clean 문구로 종료되지 않았다. iteration 17~19는 동시 수정으로 무효였고, 사용자가
-19번의 반복이면 충분하다고 판단해 추가 리뷰를 종료하도록 승인했다. 따라서 아래 완료 gate는 존재하지
+S3은 두 리뷰어의 clean 문구로 종료되지 않았다. iteration 20~28도 시도됐지만 clean으로 채택되지
+않았고, 사용자가 추가 리뷰를 종료하도록 승인했다. final acceptance는 1~19를 종료 기준 범위로
+보존한다. 따라서 아래 완료 gate는 존재하지
 않는 clean 결과를 대신 만들지 않고, 누적 finding 처리·사용자 승인·현재 checkout 자동 검증을 종료
 근거로 사용한다.
 
@@ -667,7 +654,7 @@ S3 완료 gate:
 
 - [x] 채택된 open documentation finding이 0개이며 무효 iteration의 미완료 출력을 finding이나 clean으로 계산하지 않았다.
 - [x] 변경 문서의 실제 render, 예제 API, link와 원본·번역 동기 검증 증거가 있다.
-- [x] iteration 1~19의 Codex·Claude Sonnet 결과와 hash drift 기록을 보존했다.
+- [x] iteration 1~28의 Codex·Claude Sonnet 결과와 미채택·hash drift 기록을 보존했다.
 - [x] 두 리뷰어의 `DOC REVIEW CLEAN`이 없음을 명시하고, 사용자가 추가 반복 없이 S3를 종료하도록 승인했다.
 - [x] 병렬 Core 구현은 S1 기준선의 red/green 작업으로 진행됐고 S2·S3 목표 계약의 근거로 사용되지 않았다.
 - [x] iteration 8까지 Core 계약 finding을 반영했으며 이후 framework finding에서 Core 계약을 다시 바꾼 항목은 없다.
@@ -728,21 +715,15 @@ S3 완료 gate:
 | S4-24 | integration과 topology test | direct, channel, multicast, reconnect와 drain 통과 | 진행 중 | HEAD `104d02f9bb6997fca1e990e502b2f6083ddef57b`에서 `cmake --build core/build --target test_mesh_node_basic test_mesh_peer_admission -j2` 뒤 대상 CTest 2/2 통과. Unity 결과는 `test_mesh_node_basic` 8/8, 2-process `test_mesh_peer_admission` 10/10이다. admission/readiness/weight, node·Spot direct request/reply, multicast, Actor lookup·messaging·destroy·join, transfer fence, channel RR·weight 0 제외, drain·재연결을 포함한다. 전체 topology matrix는 S4 완료 전에 다시 실행해 manifest에 기록 |
 | S4-25 | callback·claim·ownership stress | close, rearm, claim leak/revoke, multipart와 reference count 오류 0건 | 미착수 | - |
 | S4-26 | sanitizer와 race 검증 | ASAN/UBSAN/TSAN 적용 범위에서 신규 오류 0건 | 진행 중 | ASAN/UBSAN+leak 전체 suite(80): 초회 11건 적발 → 전부 해소. 결함 2건 수정: ① `request_timeout_scheduler_internal.cpp` exit-시 heap-UAF(detached timeout thread vs static 소멸자) → immortal singleton, ② `msg.cpp` slice_content_pool thread_local 캐시가 thread 종료 시 엔트리 미해제 → 소멸자에서 free. 테스트측 누수 2건 수정: backpressure matrix 헬퍼 send 실패 시 part 미close, testutil_unity finalize_recv의 malloc 배열 미해제(thread-local 버퍼 직접 반환으로 교체). 최종 전체 suite 재확인 green(80/80), mesh 2-process test ASAN clean. transfer 구현 직후 ASAN이 신규 결함 1건 추가 적발·수정: wire reply tail 파싱이 envelope frame close 뒤 해제된 버퍼를 읽는 heap-UAF(`mesh_wire.cpp` dispatch — release에서는 우연히 통과) → tail을 close 전에 복사. 수정 후 ASAN+leak `test_mesh_peer_admission` 8/8 green. TSAN 실행 완료(mesh test 5/5·2-process 8/8 통과, 2-process는 ASLR off 필요): mesh 신규 코드의 race 0건. 유지 기계에서 3계열 검출·S5 검토 대상으로 기록 — ① `part_helper_state` check-then-set이 무동기(9.x부터, thread-safe send 계약 하 동시 최초 send 시 state 유실 가능; perf 핫패스라 벤치 없는 수정 보류), ② socket 생성 경로 auto-HWM plan의 lock-order-inversion(잠재 deadlock, 9.x 동일), ③ mailbox ypipe 계열 race 경고(무주석 lock-free 동기화의 TSAN 한계로 추정) |
-| S4-27 | 1천·1만 peer benchmark | connection, lookup, multicast, reconnect 결과 기록 | 진행 중 | multi-process topology bench(`core/tests/bench/bench_mesh_topology.cpp`)가 admission 수렴, 원격 actor lookup, NODROP multicast fan-out과 drain을 측정한다. child가 actor 생성 때 생긴 `SPOT_CONTROL`을 multicast로 잘못 인정해 조기 종료하던 benchmark 결함을 red로 재현하고 `SPOT_MULTICAST` kind만 완료로 인정하도록 수정했다. green: 16 peer ctest, 100 peer `55.3ms/313.3us/0.122ms/100`, 1,000 peer `2185.3ms/359.5us/1.746ms/1000`, peer failure 0·drain 완료. 10,000 peer는 cgroup hard limit은 없었지만 49,515 task·약 91.3GB cgroup memory에 도달하고 122.32초 admission deadline에서 미수렴하여 종료됐으며 잔류 process 0을 확인했다. 이 WSL host의 대표 수치는 1,000 peer로 고정한다. 잔여=동일 규모 reconnect 시간 측정 |
-| S4-28 | mixed traffic 성능 검증 | 사전에 고정한 반복 측정 규칙에서 request p99와 resource가 S0 threshold 통과 | 진행 중 | perf harness 10.0.0 이식과 throughput 측정은 완료했다. 기존 p99 표본은 112~124%이고 동일 코드 표본 간 변동 폭이 28%라 현재 증거로는 120% gate를 PASS로 판정하지 않는다. 최량 표본 선택은 금지한다. 증거=results/multi/report/perf_c_multi_linux_20260717_{061953,062119}_v10_s4_gate_quiet*.txt. **S5 I2 검토 대상**: node 발신 전체 `wire_send_mutex`, lock 보유 중 NODROP blocking send, ACK당 1 record stop-and-wait transfer, ingress 20ms poll 주기 |
+| S4-27 | 대규모 peer benchmark | 별도 성능 개선 작업의 입력으로 분리 | 후속 분리 | 기존 측정 기록은 보존하되 현재 S4 gate를 위해 추가 benchmark를 실행하지 않는다 |
+| S4-28 | mixed traffic 성능 검증 | 별도 성능 개선 작업의 입력으로 분리 | 후속 분리 | 기존 측정 기록은 보존하되 p99 판정과 추가 성능 측정은 현재 S4·S5 gate에서 제외한다 |
 | S4-29 | install과 package consumer | 설치 header와 shared library로 clean consumer 통과 | 진행 중 | staging 설치 + C11 clean consumer가 single-node RouteMesh round trip 통과(`C ABI SMOKE PASS (zlink 10.0.0)`). 설치 규칙의 header 충돌(zlink/common.h ↔ service/common.h 동일 목적지) 결함 수정 |
 | S4-30 | 삭제 범위 최종 no-hit | v10 plan·review record의 삭제 추적만 제외하고 source, 현재 계약·guide·internals, test, build와 package에서 제거 symbol·enumerator·macro·metadata 부재 | 진행 중 | core include/src/tests no-hit 0 확인(word-boundary 스캔). guide/internals·bindings 범위 잔여 |
 
-S4-28의 성능 gate는 같은 source revision, release build, runtime 경로, host와 runner 설정에서 연속된 유효
-측정 5회로 판정한다. 각 실행 전에 runner가 기록한 preflight 조건을 통과한 표본만 사용하며, 결과를 본
-뒤 유리한 표본만 선택하거나 제외하지 않는다. 5회 throughput과 p99의 중앙값을 S0 기준과 비교한다.
-p99의 최댓값과 최솟값 차이가 최솟값의 20%를 넘으면 환경 변동으로 `판정 불가`이며 PASS로 기록하지
-않는다. 이 경우 부하 간섭을 제거한 환경에서 같은 5회 측정을 다시 수행한다.
-
 ### 8.5 구현 검증 후 Core internals 확정
 
-`internals`는 계획 단계의 예상 구조를 기록하지 않는다. S4-23부터 S4-29까지의 기능, 구조, stress,
-sanitizer, 성능과 package 검증이 통과해 실제 구현 구조가 확정된 뒤에만 갱신한다. 갱신한 문서는 source와
+`internals`는 계획 단계의 예상 구조를 기록하지 않는다. S4-23부터 S4-26과 S4-29까지의 기능, 구조,
+stress, sanitizer와 package 검증이 통과해 실제 구현 구조가 확정된 뒤에만 갱신한다. 갱신한 문서는 source와
 구조 test에 다시 대조하며, 이 검증이 실패하면 S4 구현 단계로 돌아간다.
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
@@ -752,7 +733,7 @@ sanitizer, 성능과 package 검증이 통과해 실제 구현 구조가 확정�
 
 S4 완료 gate:
 
-- [ ] Core 기능, 삭제, 회귀, stress, sanitizer와 성능 검증이 모두 통과한다.
+- [ ] Core 기능, 삭제, 회귀, stress와 sanitizer 검증이 모두 통과한다.
 - [ ] 구현된 `core/include/zlink.h` 공개 계약과 Core 정식 spec의 한국어·영문이 일치한다.
 - [ ] Core internals가 구현 뒤 갱신되었고 실제 소켓, queue, thread와 lifecycle 구조를 정확히 설명한다.
 - [ ] 실패를 숨기는 sleep, retry-only workaround, raw frame과 test 전용 우회가 없다.
@@ -762,7 +743,7 @@ S4 완료 gate:
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package·benchmark 범위 기록 | 미착수 | - |
+| S5-01 | Core revision과 검증 결과 동결 | manifest에 source·test·package 범위 기록 | 미착수 | - |
 | S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
 | S5-03 | Claude Fable 우선 Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
 | S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 미착수 | - |
@@ -804,7 +785,7 @@ S5 완료 gate:
 | S6-02 | 리뷰된 ABI와 Conan metadata 불변성 확인 | S5 clean commit의 SOVERSION 10과 선택한 `10.0.0-rc.N` source가 RC tag commit과 일치하며 stable `10.0.0` URL은 S11 전까지 resolve하지 않음 | 미착수 | - |
 | S6-03 | 리뷰된 release note 불변성 확인 | S5 clean 뒤 공개 기능과 검증 결과 변경 없음 | 미착수 | - |
 | S6-03A | RC/stable workflow guard 검증 | RC tag의 `prerelease=true`, `zlink/10.0.0-rc.N` create와 Conan upload skip, stable tag의 `zlink/10.0.0` create와 publish-required failure test 통과 | 미착수 | - |
-| S6-04 | RC 전 local gate 실행 | clean build, full test, 선택한 RC source entry의 local Conan create, package, symbol, SONAME와 perf 통과 | 미착수 | - |
+| S6-04 | RC 전 local gate 실행 | clean build, full test, 선택한 RC source entry의 local Conan create, package, symbol과 SONAME 통과 | 미착수 | - |
 | S6-05 | RC commit과 tag 생성 | 검증된 commit에 순번 `core/v10.0.0-rc.N` tag 생성·push. stable tag 없음 | 미착수 | - |
 | S6-06 | native build workflow 감시 | `.github/workflows/build.yml`이 RC tag/commit으로 성공 | 미착수 | - |
 | S6-07 | GitHub pre-release 검증 | RC native asset을 prerelease로 게시하고 stable Conan remote publish는 실행하지 않음 | 미착수 | - |
@@ -903,8 +884,8 @@ S7 완료 gate:
 | S8-09 | `.NET` sample 전환 | 분산 sample은 공식 Redis extension을 등록하고 지정된 manual sample은 `IZLinkMeshPeerConnections`를 사용하며 S2 inventory 반영 후 `samples/run_samples.sh` 전체 통과 | 미착수 | - |
 | S8-10 | `.NET` framework E2E 전환 | `e2e/run_e2e_all.sh`의 전체 config 통과 | 미착수 | - |
 | S8-11 | source/package contract 검증 | `scripts/verify_packaged_contract.sh`, NuGet consumer와 native payload 일치 | 미착수 | - |
-| S8-12 | 성능과 resource 회귀 | mixed traffic p99와 fanout baseline gate 통과 | 미착수 | - |
-| S8-12A | `.NET` guide와 internals 갱신 | 구현·sample·E2E·package·성능 검증이 모두 통과한 뒤 guide에는 사용 계약만, internals에는 검증된 실제 pump·scheduler·location·timer 구조만 반영하고 source·구조 test·정식 spec과 대조 | 미착수 | - |
+| S8-12 | 성능과 resource 회귀 | 별도 성능 개선 작업의 입력으로 분리 | 후속 분리 | 현재 S8 gate를 위해 성능 측정을 실행하지 않음 |
+| S8-12A | `.NET` guide와 internals 갱신 | 구현·sample·E2E·package 검증이 모두 통과한 뒤 guide에는 사용 계약만, internals에는 검증된 실제 pump·scheduler·location·timer 구조만 반영하고 source·구조 test·정식 spec과 대조 | 미착수 | - |
 | S8-13 | Codex agent `.NET` 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 미착수 | - |
 | S8-14 | Claude Fable 우선 `.NET` 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
 | S8-15 | finding 수정·전체 검증·재리뷰 반복 | 어느 축을 수정했든 두 리뷰어가 세 축 전체를 재검토하고 둘 다 `DOTNET REVIEW CLEAN` | 미착수 | - |
@@ -1037,26 +1018,18 @@ S10 완료 gate:
 - [ ] 어느 축의 finding이든 수정한 뒤 각 lane의 전체 package·sample·E2E를 다시 실행하고 두 리뷰어가
   해당 lane의 I1·I2·I3 전체를 재검토했다.
 
-## 15. S11 — Core stable·bindings 외부 배포, 전체 최종 검토와 종료
+## 15. S11 — 전체 최종 검토, Core stable·bindings 외부 배포와 종료
 
-### 15.1 전체 통합 검증
+### 15.1 배포 전 전체 통합 검증
 
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S11-01 | 모든 lane 병합과 clean checkout 확인 | 의도하지 않은 file과 미병합 변경 0개 | 미착수 | - |
 | S11-00A | Core stable revision 동결 | 최종 source가 마지막 S6 RC와 같은 commit이고 S7~S10 동안 Core source·ABI 변경이 없음 | 미착수 | - |
-| S11-00B | Core stable tag와 외부 배포 | 같은 commit에 `core/v10.0.0` tag를 붙이고 native build와 Conan release workflow 성공 | 미착수 | - |
-| S11-00C | Core stable artifact 검증 | GitHub Release, checksums, headers, SONAME, symbols와 remote `zlink/10.0.0` consumer 통과 | 미착수 | - |
-| S11-00D | stable Core 기반 bindings 재검증 | stable asset으로 native payload를 다시 동기화하고 S7 package·공통 E2E smoke 결과가 RC와 일치 | 미착수 | - |
-| S11-01A | bindings 외부 배포 revision 동결 | S7 clean source, Core stable release SHA와 package checksum이 manifest와 일치 | 미착수 | - |
-| S11-01B | 언어별 10.0.0 tag 배포 | cpp, dotnet, java, node, python, go, rust workflow 정상 종료 | 미착수 | - |
-| S11-01C | 실제 배포 채널 확인 | NuGet, Maven, npm, PyPI, crates.io, Go tag/module과 C++ GitHub Release 존재 | 미착수 | - |
-| S11-01D | 배포 package E2E smoke | 각 채널의 새 package를 빈 workspace에 설치해 공통 smoke 통과 | 미착수 | - |
-| S11-01E | framework 배포 package 재검증 | local package pin을 같은 10.0.0 배포 package로 바꾸어 package·sample·E2E 통과 | 미착수 | - |
 | S11-02 | 정식 spec과 public API 전수 대조 | Core, bindings와 framework 언어별 차이 0개 | 미착수 | - |
 | S11-03 | 제거 항목 repository no-hit | 허용된 v10 plan·review record 외 stale 이름 0개 | 미착수 | - |
-| S11-04 | Core 전체 검증 재실행 | build, test, sanitizer, perf와 package consumer 통과 | 미착수 | - |
-| S11-05 | bindings 배포 채널 smoke 재실행 | 모든 배포 package E2E 통과 | 미착수 | - |
+| S11-04 | Core 전체 검증 재실행 | build, test, sanitizer와 package consumer 통과 | 미착수 | - |
+| S11-05 | bindings local package smoke 재실행 | S7에서 검증한 모든 local package E2E 통과 | 미착수 | - |
 | S11-06 | `.NET` 전체 검증 재실행 | contract, package, sample와 E2E 통과 | 미착수 | - |
 | S11-07 | C++ 전체 검증 재실행 | contract, package, sample와 E2E 통과 | 미착수 | - |
 | S11-08 | Java/Kotlin 전체 검증 재실행 | contract, package, sample와 E2E 통과 | 미착수 | - |
@@ -1072,14 +1045,27 @@ S10 완료 gate:
 | S11-13 | Codex agent 전체 리뷰 | 전체 scope의 I1·I2·I3 각각에 finding·evidence·축별 판정 | 미착수 | - |
 | S11-14 | Claude Fable 우선 전체 리뷰 | 같은 전체 scope에서 I1·I2·I3를 독립 판정. Fable 차단 시에만 Sonnet fallback | 미착수 | - |
 | S11-15 | final finding 수정과 영향 검증 | finding 관련 stage와 downstream 검증 뒤 두 리뷰어의 세 축 전체 재리뷰 | 미착수 | - |
-| S11-16 | 전체 scope 재리뷰 반복 | 최신 snapshot의 Core·bindings·모든 framework 언어·spec·guide·internals·test·sample·E2E·package·workflow·배포 artifact 전체를 표본이나 delta로 줄이지 않고 검토하며, 세 축이 모두 clean이고 두 리뷰어가 모두 `FINAL REVIEW CLEAN` | 미착수 | - |
+| S11-16 | 전체 scope 재리뷰 반복 | 최신 release-candidate snapshot의 Core·bindings·모든 framework 언어·spec·guide·internals·test·sample·E2E·package·workflow 전체를 표본이나 delta로 줄이지 않고 검토하며, 세 축이 모두 clean이고 두 리뷰어가 모두 `FINAL REVIEW CLEAN` | 미착수 | - |
+
+### 15.3 최종 리뷰 뒤 외부 배포와 확인
+
+| ID | 작업 | 완료 조건 | 상태 | 증거 |
+|---|---|---|---|---|
+| S11-00B | Core stable tag와 외부 배포 | `FINAL REVIEW CLEAN` candidate와 같은 commit에 `core/v10.0.0` tag를 붙이고 native build와 Conan release workflow 성공 | 미착수 | - |
+| S11-00C | Core stable artifact 검증 | GitHub Release, checksums, headers, SONAME, symbols와 remote `zlink/10.0.0` consumer 통과 | 미착수 | - |
+| S11-00D | stable Core 기반 bindings 재검증 | stable asset으로 native payload를 다시 동기화하고 S7 package·공통 E2E smoke 결과가 RC와 일치 | 미착수 | - |
+| S11-01A | bindings 외부 배포 revision 동결 | S7 clean source, Core stable release SHA와 package checksum이 manifest와 일치 | 미착수 | - |
+| S11-01B | 언어별 10.0.0 tag 배포 | cpp, dotnet, java, node, python, go, rust workflow 정상 종료 | 미착수 | - |
+| S11-01C | 실제 배포 채널 확인 | NuGet, Maven, npm, PyPI, crates.io, Go tag/module과 C++ GitHub Release 존재 | 미착수 | - |
+| S11-01D | 배포 package E2E smoke | 각 채널의 새 package를 빈 workspace에 설치해 공통 smoke 통과 | 미착수 | - |
+| S11-01E | framework 배포 package 재검증 | local package pin을 같은 10.0.0 배포 package로 바꾸어 package·sample·E2E 통과 | 미착수 | - |
 | S11-17 | post-push origin 재검증 | origin commit, tag, workflow와 artifact가 local 증거와 일치 | 미착수 | - |
 | S11-18 | 완료 보고서 작성 | 모든 stage 증거, 남은 issue 0과 최종 SHA 기록 | 미착수 | - |
 
 S11 완료 gate:
 
 - [ ] final Core tag가 마지막 RC와 같은 source commit을 가리키고 GitHub Release와 Conan remote package가 검증되었다.
-- [ ] 두 리뷰어의 I1에 Core spec부터 bindings·모든 framework 언어·sample·E2E·package·release artifact의
+- [ ] 두 리뷰어의 I1에 Core spec부터 bindings·모든 framework 언어·sample·E2E·release-candidate package·workflow의
   누락·오구현·동작 불일치 finding, evidence와 `CLEAN` 판정이 있다.
 - [ ] 두 리뷰어의 I2에 전체 구조의 POSD·DDD 관점에서 의미 있는 리팩터링 잔여 finding, evidence와
   `CLEAN` 판정이 있다.
@@ -1125,6 +1111,6 @@ S11 완료 gate:
 | bindings workflow runs | - |
 | 전체 E2E 결과 | - |
 | 전체 sample 결과 | - |
-| benchmark report | - |
+| benchmark report | 별도 성능 개선 작업에서 기록 |
 | stale no-hit 결과 | - |
 | open finding | `0`이 되어야 종료 |

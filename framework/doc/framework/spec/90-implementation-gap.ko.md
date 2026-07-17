@@ -8,24 +8,14 @@
 
 검토 기준일은 2026-07-17이며 대상은 `.NET`, Java/Kotlin, Node.js와 C++ framework다.
 
-## 이 문서와 언어별 갭 문서의 관계
+## 구현 차이의 소유권
 
-> **이 문서는 "왜"를 소유한다. 언어별 갭 문서는 "무엇을"을 소유한다.**
+이 문서는 `.NET`, Java/Kotlin, Node.js와 C++ framework의 현재 구현 차이를 한곳에서 관리한다.
+공통·package별 spec은 목표 동작을 소유하고, 언어별 exact spec은 정확한 public interface와 해당
+언어에서 관찰한 차이를 기록한다. 언어별 exact spec의 구현 차이 표는 이 문서를 참조한다.
 
-| | 소유하는 것 |
-|---|---|
-| **이 문서** | 판정 기준 · **전 언어가 함께 닫는 계약 갭**(§12.20 이후) · **교차 언어 결함**(`IMP-X*`) · 샘플 축 · 문서 소유권 · 감사 라운드 요약 |
-| **[gaps/&lt;lang&gt;](gaps/)** | 그 언어의 **작업 체크리스트** — 모든 항목의 file:line과 고칠 것. 교차 언어 결함도 **그 언어에서 무엇을 고치는지**로 다시 적혀 있다 |
-
-**언어 하나를 고치는 사람은 `gaps/<lang>` 하나만 보면 된다.** 계약의 근거가 궁금할 때만 이리 온다.
-
-| 언어 | 작업 문서 |
-|------|-----------|
-| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) |
-| Java | [gaps/java](gaps/java.ko.md) |
-| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) |
-| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) |
-| C++ | [gaps/cpp](gaps/cpp.ko.md) |
+구현 stage의 상태, 담당자와 실행 증거는 이 문서에 기록하지 않는다. 이 문서는 목표 계약과 현재
+public surface 사이의 차이만 설명한다.
 
 ## 1. 판정 기준
 
@@ -87,7 +77,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | 21 | [MeshNode](server/21-mesh-node.ko.md) | **X** §12.33 | **X** §12.33 | **X** §12.33 | **X** §12.33 | **X** §12.33 |
 | 22 | [Actor 모델](server/22-actor-model.ko.md) | **X** §12.34 | **X** §12.2 | **X** §12.2 | O | **X** §12.2 §12.34 |
 | 23 | [Spot Actor Join/Transfer](server/23-spot-actor.ko.md) | **X** §12.24 §12.29 | **X** §12.2 §12.24 §12.29 | **X** §12.2 §12.24 §12.29 | **X** §12.24 §12.29 | **X** §12.2 §12.24 §12.29 |
-| 24 | [Spot 주소 메시징](server/24-spot-address-messaging.ko.md) | O | **X** §12.9 | **X** §12.9 | O | **X** [IMP-CP-03](gaps/cpp.ko.md#구현-감사에서-발굴-2026-07-14-스펙코드-직접-대조) |
+| 24 | [Spot 주소 메시징](server/24-spot-address-messaging.ko.md) | O | **X** §2.7 | **X** §2.7 | O | **X** §2.7 |
 | 25 | [Stage Wrapper](server/25-stage-wrapper-on-spot.ko.md) | O | O | O | O | O |
 
 ### 2.4 STREAM (3x)
@@ -124,7 +114,7 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 | §12.1 | **Java** | **독립 unread-history가 없다.** overflow가 가장 오래된 메시지를 버리고(기준선은 새 메시지), 기본 상한이 무제한이며, drop 오류가 없고, handler 없는 메시지가 폐기되며, `waitFor`가 기존 메시지를 못 받고, `AUTO`에서 한도가 적용되지 않는다 |
 | §12.2 | **Java, C++** | `onActorJoin` admission이 **선택 사항**이라, 구현을 빠뜨리면 컴파일은 통과하고 **모든 join이 조용히 거절**된다 |
 | §12.8 | **Java** | runtime event 모델이 sealed 계층이 아니라 flat record + kind enum이고, `ZLinkMonitoringOptions`에 location 계열 source 등록 4개가 없으며, event handler가 `void`를 반환한다 |
-| §12.9 | **Java** | `sendToSpot`/`requestToSpot`이 spot handle과 **channel 이름을 함께** 받는다. handle이 전송 mesh를 소유해야 한다 |
+| §12.9 | **Java, Kotlin, C++** | Java/Kotlin은 `sendToSpot`/`requestToSpot`이 spot handle과 channel 이름을 함께 받는다. C++은 spot context outbound가 node RID와 spot RID를 함께 받는다. 모든 언어에서 handle이 전송 mesh를 소유해야 한다 |
 | §12.15 | **Java** | 비동기 실패를 오류 코드를 담은 공통 예외로 정규화하지 않는다 |
 | §12.22 | **C++** | HTTP client에 `yield`·`submit`이 없고 DI 서버 표면도 없다 |
 | §12.23 | **C++, Java/Kotlin** | 두 worker와 terminator는 구현했지만 callback에 cancellation 신호를 전달하지 않는다 |
@@ -144,16 +134,11 @@ Java runtime을 Kotlin 표면으로 사용해 같은 결과를 내는지 별도�
 connector wire의 frame·header·metadata 계약은 세 native 구현에서 해소했다(§10). 수신 message queue
 admission은 Java와 이를 공유하는 Kotlin이 §12.1을 아직 충족하지 않는다.
 
-## 3~6. 언어별 기준선 대조 기록 → 언어별 문서로 옮겼다
+## 3~6. 언어별 구현 차이
 
-각 언어의 과거 확인 기록은 그 언어의 갭 문서가 소유한다(§16).
-
-| 언어 | 문서 |
-|------|------|
-| Java/Kotlin | [gaps/java](gaps/java.ko.md) · [gaps/kotlin](gaps/kotlin.ko.md) |
-| Node.js | [gaps/node](gaps/node.ko.md) |
-| C++ | [gaps/cpp](gaps/cpp.ko.md) |
-| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) |
+각 언어의 정확한 public interface와 그 interface에서 확인한 구현 차이는
+`server/languages/<lang>/`의 exact spec에 기록한다. 여러 언어에 공통인 원인과 전체 구현 상태는
+이 문서의 §2.7과 §12가 소유한다.
 
 ## 7. 문서 및 계약 검증 차이
 
@@ -289,17 +274,18 @@ dispatch이기 때문이다. **filter를 이 경로까지 넓히려면 공개 �
 
 나머지 §12.1~§12.19는 언어별 표면 차이이며, 각 항목이 미구현인지 결함인지를 본문에 적었다.
 
-### 12.1~12.19 언어별 표면 차이 → 언어별 문서로 옮겼다
+### 12.1~12.19 언어별 표면 차이
 
-기준선 대조로 찾은 **언어별 표면 차이**는 각 언어의 갭 문서가 소유한다(§16).
+각 언어의 exact spec이 public interface와 언어별 차이를 함께 기록한다. §2.7은 현재 열려 있는
+차이를 언어별로 모아 보여 주며, 아래 범위는 그 차이의 분류 기준이다.
 
 | 언어 | 항목 |
 |------|------|
-| [`.NET`](gaps/dotnet.ko.md) | §12.7 |
-| [Java](gaps/java.ko.md) | §12.1~12.4 · §12.8~12.10 · §12.12·12.13 · §12.15~12.19 |
-| [Kotlin](gaps/kotlin.ko.md) | §12.3 · §12.14 · §12.19 |
-| [Node](gaps/node.ko.md) | §12.5 · §12.6 · §12.11 |
-| [C++](gaps/cpp.ko.md) | §12.2 |
+| `.NET` | §12.7 |
+| Java | §12.1~12.4 · §12.8~12.10 · §12.12·12.13 · §12.15~12.19 |
+| Kotlin | §12.3 · §12.14 · §12.19 |
+| Node | §12.5 · §12.6 · §12.11 |
+| C++ | §12.2 |
 
 §12.20과 §12.21은 모든 언어에서 해소됐다. §12.23은 C++·Java/Kotlin, §12.24는 모든 언어에 남아
 있다. 이후 공통 갭은 §2.7과 아래 상세 절을 기준으로 판단한다.
@@ -719,13 +705,13 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 
 ### 15.2 라운드별 결과 (2026-07-14)
 
-| 언어 | R1~R3 (framework) | R4 (샘플·e2e) | 합계 | 문서 |
-|------|-------------------|---------------|------|------|
-| `.NET` (기준선) | 18 | 17 | **35** | [gaps/dotnet](gaps/dotnet.ko.md) |
-| Java | 33 | 18 | **51** | [gaps/java](gaps/java.ko.md) |
-| Kotlin | Java 공유 | **10 (고유)** | — | [gaps/kotlin](gaps/kotlin.ko.md) |
-| Node / TypeScript | 33 | 15 | **48** | [gaps/node](gaps/node.ko.md) |
-| C++ | 40 | **104** | **144** | [gaps/cpp](gaps/cpp.ko.md) |
+| 언어 | R1~R3 (framework) | R4 (샘플·e2e) | 합계 |
+|------|-------------------|---------------|------|
+| `.NET` (기준선) | 18 | 17 | **35** |
+| Java | 33 | 18 | **51** |
+| Kotlin | Java 공유 | **10 (고유)** | — |
+| Node / TypeScript | 33 | 15 | **48** |
+| C++ | 40 | **104** | **144** |
 
 **기준선에서 18건이 나온 것이 이 감사의 가장 큰 소득이다.** `.NET`을 정본으로 삼아 다른
 언어를 맞추는 방식으로는 이 18건을 **검출할 수 없다.**
@@ -774,7 +760,7 @@ spec 트리를 패키지 폴더로 나눈 뒤 드러난 **같은 계약을 두 �
 | 이 문서가 적었던 것 | 실제 |
 |---|---|
 | §13.2 "**연결 축은 규약과 일치한다**" | Java 샘플에 TicTacToe 밖 수동 연결이 **29곳**. `.NET`만 보고 판정했다 |
-| [gaps/node] §4.7 "Node Config 11 ObservabilityOps runner는 **OBS-A1~C5 evidence와 함께 통과했다**" | 그 디렉토리엔 **e2e 앱이 없다.** 시나리오를 `echo "$scenario … PASS"`로 통과시킨다 |
+| 과거 Node 점검 기록의 "Node Config 11 ObservabilityOps runner는 **OBS-A1~C5 evidence와 함께 통과했다**" | 그 디렉토리엔 **e2e 앱이 없다.** 시나리오를 `echo "$scenario … PASS"`로 통과시킨다 |
 | 각 언어 `feature-map.ko.md`의 **"구현 100%"** | C++ `ObservabilityOps` map은 **자기 runner가 PENDING이라 찍는 행**을 "구현"으로 적는다. `ToActorMessaging` map은 대역인 TA-A1~A4를 `implemented`로 적는다 |
 
 **실패할 수 없는 검증이 있다.** Node의 probe 서버는 클라이언트가 단언할 `serviceRole`·`state`를
@@ -825,7 +811,7 @@ std::visit ([] (const auto &value) { return value.reply; }, joined);   // 양쪽
 ```
 
 Bingo와 TicTacToe의 join handler가 이 형태라 **거절된 join을 정상 성공 응답으로 클라이언트에
-보낸다**([gaps/cpp](gaps/cpp.ko.md) SMP-CP-51). 같은 샘플의 다른 handler 3곳은 `get_if`로 제대로
+보낸다.** 같은 샘플의 다른 handler 3곳은 `get_if`로 제대로
 분기한다 — **일관성이 없다는 것은 타입이 실수를 막아 주지 못한다는 뜻이다.**
 
 **고쳐야 할 것:** `.NET`의 모양을 정본으로 삼는다. **공통 상위 타입에서 reply 접근자를 없앤다.**
@@ -838,7 +824,7 @@ Java는 `sealed interface`에서 `reply()` 선언을 빼고, Node는 union 갈�
 > **예측이 적중했다.** 위 문단은 원래 "Java는 지금은 멀쩡하지만 다음 사람이 C++과 같은 실수를
 > 하는 것을 막지 못한다"였다. **이미 그 실수가 있었다.** Java TicTacToe의
 > `PlayActorJoinGameHandler`가 `joined.reply()`를 **분기 없이** 부르고, 심지어
-> `actor.joinGame(roomId)`를 **그 앞에서 커밋**한다([gaps/java](gaps/java.ko.md) SMP-JV-24).
+> `actor.joinGame(roomId)`를 **그 앞에서 커밋**한다.
 > 거절된 join이면 actor의 게임 소속은 이미 커밋됐고, `Rejected(null).reply()`가 **NPE**가 된다.
 > **타입이 초대한 실수가 실제로 일어났다.**
 
@@ -848,20 +834,18 @@ Java는 `sealed interface`에서 `reply()` 선언을 빼고, Node는 union 갈�
 
 `.NET`의 `sendLogLevel` / `publishLogLevel` 공개 옵션을 제거하고 send의 handler 없음·decode 실패·
 invalid frame은 `Warning`, publish는 `Debug`, application handler 예외는 `Error`로 runtime 내부에서
-고정했다. Java·C++의 남은 표면은 각 언어 gap 문서에서 추적한다.
+고정했다. Java·C++의 남은 표면은 §2.7과 해당 언어 exact spec에서 추적한다.
 
-## 16. 언어별 갭 체크리스트
+## 16. 언어별 구현 차이 연결
 
-**언어별 갭은 아래 문서가 소유한다.** 각 문서는 체크리스트이며, **계약이 아니라 작업 목록**이다.
+언어별 exact spec은 public interface를 정의하면서 현재 구현과 다른 항목을 함께 표시한다. 표의 구현
+차이 항목은 이 문서의 §2.7 또는 §12 상세 절을 참조한다. 구현 진행 상태와 완료 증거는 exact spec이나
+이 문서에 중복해서 기록하지 않는다.
 
-| 언어 | 문서 | 항목 수 |
-|------|------|---------|
-| `.NET` | [gaps/dotnet](gaps/dotnet.ko.md) | 70 (완료 61, 미완료 9) |
-| Java | [gaps/java](gaps/java.ko.md) | 40 (완료 17, 미완료 23) |
-| Kotlin | [gaps/kotlin](gaps/kotlin.ko.md) | 15 (완료 6, 미완료 9) |
-| Node.js / TypeScript | [gaps/node](gaps/node.ko.md) | 29 (완료 19, 미완료 10) |
-| C++ | [gaps/cpp](gaps/cpp.ko.md) | 28 (완료 12, 미완료 16) |
-
-각 문서는 세 묶음을 담는다 — **구현 감사에서 발굴한 것**(IMP-*), **교차 언어 결함**(IMP-X*),
-**언어별 표면 차이**(§12.x). 전 언어 공통 계약 갭(§12.20 이후)은 이 문서가 소유하고 각 언어
-체크리스트가 참조한다.
+| 언어 | exact spec 위치 |
+|------|-----------------|
+| `.NET` | `server/languages/dotnet/` |
+| Java | `server/languages/java/` |
+| Kotlin | `server/languages/kotlin/` |
+| Node.js / TypeScript | `server/languages/node/` |
+| C++ | `server/languages/cpp/` |

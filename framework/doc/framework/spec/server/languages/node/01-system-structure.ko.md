@@ -18,7 +18,7 @@
 > [channel-topology](../../10-channel-topology.ko.md).
 >
 > **public 타입과 시그니처는 [handler-interfaces](02-handler-interfaces.ko.md)가 소유한다.**
-> **사용 예제와 튜토리얼은 [Node 가이드](../../../../node/guide/01-overview.ko.md)가 소유한다.**
+> 이 문서는 Node framework의 시스템 구조와 package 경계만 정의하며 사용 예제와 튜토리얼은 포함하지 않는다.
 > client connector는 [stream-connector](../../../stream-connector/languages/typescript/03-stream-connector.ko.md)가 소유한다.
 
 ## 1. 패키지 구조

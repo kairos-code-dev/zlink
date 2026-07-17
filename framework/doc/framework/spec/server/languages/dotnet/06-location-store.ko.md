@@ -413,5 +413,5 @@ services.AddZLinkFramework(options =>
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-DN-24 / §12.27](../../../gaps/dotnet.ko.md) | `ZLinkActorLocation`과 Redis codec에 `SpotGeneration`이 없다. |
-| [IMP-DN-26 / §12.29](../../../gaps/dotnet.ko.md) | `IZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |
+| [90 §12.27](../../../90-implementation-gap.ko.md) | `ZLinkActorLocation`과 Redis codec에 `SpotGeneration`이 없다. |
+| [90 §12.29](../../../90-implementation-gap.ko.md) | `IZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |

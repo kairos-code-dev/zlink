@@ -142,8 +142,8 @@ MeshName context를 사용하므로 호출마다 mesh 이름을 받지 않는다
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-DN-25 / §12.28](../../../gaps/dotnet.ko.md) | `IZLinkStreamNodeBuilder.EnableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
-| [IMP-DN-30 / §12.33](../../../gaps/dotnet.ko.md) | `AddRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |
+| [90 §12.28](../../../90-implementation-gap.ko.md) | `IZLinkStreamNodeBuilder.EnableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [90 §12.33](../../../90-implementation-gap.ko.md) | `AddRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |
 
 ## 3. Manual peer
 

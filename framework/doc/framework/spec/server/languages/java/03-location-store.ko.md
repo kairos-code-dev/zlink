@@ -214,5 +214,5 @@ public final class ZLinkRedisLocationStore implements
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-JV-36 / §12.27](../../../gaps/java.ko.md) | `ZLinkActorLocation`과 Redis codec에 `spotGeneration`이 없다. |
-| [IMP-JV-38 / §12.29](../../../gaps/java.ko.md) | `ZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |
+| [90 §12.27](../../../90-implementation-gap.ko.md) | `ZLinkActorLocation`과 Redis codec에 `spotGeneration`이 없다. |
+| [90 §12.29](../../../90-implementation-gap.ko.md) | `ZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |

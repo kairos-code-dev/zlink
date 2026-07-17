@@ -1903,9 +1903,9 @@ Spring readiness 연결을 설명한다. Client connector의 상태 handler와
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-JV-35 / §12.23](../../../gaps/java.ko.md) | `ZLinkWorkerTask.run()`과 `ZLinkIoWorkerTask.run()`이 `ZLinkWorkerCancellation`을 받지 않는다. |
-| [IMP-JV-37 / §12.28](../../../gaps/java.ko.md) | `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
-| [IMP-JV-41 / §12.33](../../../gaps/java.ko.md) | `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |
+| [90 §12.23](../../../90-implementation-gap.ko.md) | `ZLinkWorkerTask.run()`과 `ZLinkIoWorkerTask.run()`이 `ZLinkWorkerCancellation`을 받지 않는다. |
+| [90 §12.28](../../../90-implementation-gap.ko.md) | `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [90 §12.33](../../../90-implementation-gap.ko.md) | `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

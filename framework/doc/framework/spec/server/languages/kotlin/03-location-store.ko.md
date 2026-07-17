@@ -39,5 +39,5 @@ participant set, Actor generation, membership epoch와 recovery lease의 원자 
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-KT-35 / §12.27](../../../gaps/kotlin.ko.md) | 공유 Java `ZLinkActorLocation`과 Redis codec에 `spotGeneration`이 없다. |
-| [IMP-KT-37 / §12.29](../../../gaps/kotlin.ko.md) | 공유 Java `ZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |
+| [90 §12.27](../../../90-implementation-gap.ko.md) | 공유 Java `ZLinkActorLocation`과 Redis codec에 `spotGeneration`이 없다. |
+| [90 §12.29](../../../90-implementation-gap.ko.md) | 공유 Java `ZLinkActorTransferStore`와 공식 Redis prepare·commit·abort·takeover 구현이 없다. |

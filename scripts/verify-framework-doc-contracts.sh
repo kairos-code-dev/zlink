@@ -567,6 +567,8 @@ const commonDocuments = [
 ].filter(relative => !relative.endsWith('/90-implementation-gap.ko.md'));
 
 const formalDocuments = [...new Set([...commonDocuments, ...exactDocuments, ...streamConnectorDocuments])];
+const implementationGapDocument = 'framework/doc/framework/spec/90-implementation-gap.ko.md';
+const checkedDocuments = [...new Set([...formalDocuments, implementationGapDocument])];
 const routeMeshOwnerNames = new Set([
   'framework/doc/framework/spec/05-framework-api.ko.md',
   'framework/doc/framework/spec/server/10-channel-topology.ko.md',
@@ -625,11 +627,12 @@ const anchorsFor = relative => {
   return anchors;
 };
 
-for (const relative of formalDocuments) {
+for (const relative of checkedDocuments) {
   const source = read(relative);
   if (source === undefined) continue;
   if ((source.match(/^```/gm) || []).length % 2 !== 0) failures.push(`unbalanced code fence: ${relative}`);
   if (source.includes('framework/doc/plan/v10.0/')) failures.push(`formal contract references temporary plan: ${relative}`);
+  if (source.includes('gaps/')) failures.push(`document references removed per-language gap path: ${relative}`);
 
   if (policyDocuments.has(relative)) {
     for (const symbol of inventory.forbidden_surface) {

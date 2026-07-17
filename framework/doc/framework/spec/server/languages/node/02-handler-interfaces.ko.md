@@ -11,8 +11,8 @@ package root가 내보내는 공개 TypeScript declaration 전체를 고정한�
 대상 독자는 두 server package의 API를 구현하거나 package declaration parity를 검토하는 개발자다.
 HTTP client와 Stream Connector package는 이 문서의 범위가 아니다.
 
-기능의 의미와 동작 규칙은 [공통 스펙](../../../README.ko.md)이 소유하고, 사용법과 예제는
-[Node.js guide](../../../../node/guide/01-overview.ko.md)가 소유한다. Stream Connector의 공개 계약은
+기능의 의미와 동작 규칙은 [공통 스펙](../../../README.ko.md)이 소유한다. 이 문서는 Node framework
+handler의 정확한 public interface만 정의하며 사용법과 예제는 포함하지 않는다. Stream Connector의 공개 계약은
 [별도 문서](../../../stream-connector/languages/typescript/03-stream-connector.ko.md)가 소유한다.
 
 아래 declaration은 배포 package와 이름 집합이 양방향으로 같아야 하며, 각 이름의 overload, generic,
@@ -2146,8 +2146,8 @@ export declare class ZLinkHttpClientModule {
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-ND-34 / §12.28](../../../gaps/node.ko.md) | `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
-| [IMP-ND-38 / §12.33](../../../gaps/node.ko.md) | `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder가 남아 있다. |
+| [90 §12.28](../../../90-implementation-gap.ko.md) | `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [90 §12.33](../../../90-implementation-gap.ko.md) | `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder가 남아 있다. |
 
 ## 3. 검증
 

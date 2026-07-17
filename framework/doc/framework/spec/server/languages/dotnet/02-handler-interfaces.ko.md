@@ -773,7 +773,7 @@ public interface IZLinkActorRequestHandler<TActor, in TRequest, TReply>
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-DN-31 / §12.34](../../../gaps/dotnet.ko.md) | binding의 `ActorRef`에 계약 밖 `IsUnchecked` 공개 property가 남아 있다. |
+| [90 §12.34](../../../90-implementation-gap.ko.md) | binding의 `ActorRef`에 계약 밖 `IsUnchecked` 공개 property가 남아 있다. |
 
 ## 6. Bound STREAM session
 

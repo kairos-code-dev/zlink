@@ -359,5 +359,5 @@ group, slot과 owner token이 모두 일치할 때만 `released`이며 stale tok
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-CP-41 / §12.27](../../../gaps/cpp.ko.md) | `actor_location_t`과 Redis codec에 `spot_generation`이 없다. |
-| [IMP-CP-43 / §12.29](../../../gaps/cpp.ko.md) | `actor_transfer_store_t`와 Redis prepare·commit·abort·takeover 구현이 없다. |
+| [90 §12.27](../../../90-implementation-gap.ko.md) | `actor_location_t`과 Redis codec에 `spot_generation`이 없다. |
+| [90 §12.29](../../../90-implementation-gap.ko.md) | `actor_transfer_store_t`와 Redis prepare·commit·abort·takeover 구현이 없다. |

@@ -632,6 +632,6 @@ drain stage를 기다리는 coroutine이 취소되면 그 coroutine의 continuat
 
 | gap | 적용 작업 |
 |---|---|
-| [IMP-KT-34 / §12.23](../../../gaps/kotlin.ko.md) | 공유 Java worker callback이 `ZLinkWorkerCancellation`을 받지 않아 coroutine cancellation을 작업에 전달하지 못한다. |
-| [IMP-KT-36 / §12.28](../../../gaps/kotlin.ko.md) | 공유 Java `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
-| [IMP-KT-40 / §12.33](../../../gaps/kotlin.ko.md) | 공유 Java의 `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |
+| [90 §12.23](../../../90-implementation-gap.ko.md) | 공유 Java worker callback이 `ZLinkWorkerCancellation`을 받지 않아 coroutine cancellation을 작업에 전달하지 못한다. |
+| [90 §12.28](../../../90-implementation-gap.ko.md) | 공유 Java `ZLinkStreamNodeBuilder.enableActorDispatch(meshName)`과 MeshName별 startup 검증이 없다. |
+| [90 §12.33](../../../90-implementation-gap.ko.md) | 공유 Java의 `addRouteMesh(meshName)`과 MeshNode builder가 source·package에 없고 기존 분리 builder와 production in-memory location helper가 남아 있다. |

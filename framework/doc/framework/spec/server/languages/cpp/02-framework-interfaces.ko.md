@@ -2820,15 +2820,15 @@ declaration으로 참조해야 하는 구성을 공개 계약으로 인정하지
 ### 15.25 목표 계약 적용 추적
 
 정식 계약은 이 문서의 시그니처다. Worker의 source와 package 적용이 남은 항목은
-[§12.23](../../../gaps/cpp.ko.md)이 추적하며 계약을 축소하지 않는다.
+[90 §12.23](../../../90-implementation-gap.ko.md)이 추적하며 계약을 축소하지 않는다.
 
 | gap | 적용 작업 |
 |---|---|
 | §12.23 | CPU/I/O worker와 `yield`는 구현됐지만 callback의 `std::stop_token` 전달이 없다. |
-| [IMP-CP-42 / §12.28](../../../gaps/cpp.ko.md) | `enable_actor_dispatch(mesh_name)`과 MeshName별 startup 검증이 없다. |
-| [IMP-CP-44 / §12.30](../../../gaps/cpp.ko.md) | Node options의 `set_tls_server(..., require_client_certificate)`와 Core TLS option 연결이 없고 low-level builder에 계약 밖 TLS 메서드가 남아 있다. |
-| [IMP-CP-47 / §12.33](../../../gaps/cpp.ko.md) | `add_route_mesh(mesh_name)`이 MeshNode builder를 반환하는 통합 표면이 source·package에 적용되지 않았다. |
-| [IMP-CP-48 / §12.34](../../../gaps/cpp.ko.md) | `actor_ref_t`에 계약 밖 `actor_type`이 남아 있고 snapshot 복원 호출자가 이 값을 다시 전달해야 한다. |
+| [90 §12.28](../../../90-implementation-gap.ko.md) | `enable_actor_dispatch(mesh_name)`과 MeshName별 startup 검증이 없다. |
+| [90 §12.30](../../../90-implementation-gap.ko.md) | Node options의 `set_tls_server(..., require_client_certificate)`와 Core TLS option 연결이 없고 low-level builder에 계약 밖 TLS 메서드가 남아 있다. |
+| [90 §12.33](../../../90-implementation-gap.ko.md) | `add_route_mesh(mesh_name)`이 MeshNode builder를 반환하는 통합 표면이 source·package에 적용되지 않았다. |
+| [90 §12.34](../../../90-implementation-gap.ko.md) | `actor_ref_t`에 계약 밖 `actor_type`이 남아 있고 snapshot 복원 호출자가 이 값을 다시 전달해야 한다. |
 
 ---
 <!-- framework-adapter-nav:bottom:start -->

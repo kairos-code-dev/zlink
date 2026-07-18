@@ -186,16 +186,25 @@ internal static class ZLinkActorBoundSessionRelay
         byte[] frame,
         CancellationToken cancellationToken)
     {
+        // An identity-less frame (no session rid) replies on the actor's
+        // current binding: it cannot name a binding token, and gating it on
+        // the empty native token would never match a session bound through
+        // the coordinator's own registry.
         var sourceBindingToken = ZLinkActorBoundSessionBindingToken.Native(sourceSessionRid);
         await ZLinkRetryingSubmitter.Async(
                 () =>
                 {
                     using var frameMessage = Message.From(frame);
-                    return runtime.SendActorBoundSessionIfCurrent(
-                        actorId,
-                        sourceBindingToken,
-                        new[] { frameMessage },
-                        SendFlags.None);
+                    return sourceSessionRid.IsEmpty
+                        ? runtime.SendActorBoundSession(
+                            actorId,
+                            new[] { frameMessage },
+                            SendFlags.None)
+                        : runtime.SendActorBoundSessionIfCurrent(
+                            actorId,
+                            sourceBindingToken,
+                            new[] { frameMessage },
+                            SendFlags.None);
                 },
                 runtime.Registration.DefaultRequestTimeout,
                 "Actor request reply relay failed.",

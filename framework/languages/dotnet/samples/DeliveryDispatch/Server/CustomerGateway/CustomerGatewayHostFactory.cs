@@ -47,6 +47,7 @@ public static class CustomerGatewayHostFactory
             mesh7.ChannelName(SampleNames.CustomerActorDiscovery);
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
+                .EnableActorDispatch(SampleNames.CustomerActorDiscovery)
                 .RegisterSession<CustomerSession>();
         });
 

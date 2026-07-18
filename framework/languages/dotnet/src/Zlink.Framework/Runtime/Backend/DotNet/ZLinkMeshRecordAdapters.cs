@@ -13,9 +13,14 @@ internal static class ZLinkMeshRecordAdapters
         IReadOnlyList<Message> parts = batch.RetainMessage(index);
         var message = parts.Count > 0 ? parts[0] : Message.From(ReadOnlySpan<byte>.Empty);
         var epoch = record.ActorControl?.CurrentMembershipEpoch ?? 0;
+        // Locally submitted joins leave the record's SourceActor zero-filled;
+        // the control payload names the joining actor.
+        var joiningActor = record.SourceActor.ActorId is { Length: > 0 }
+            ? record.SourceActor
+            : record.ActorControl?.CurrentActor ?? record.SourceActor;
         return new ZLinkMeshActorJoinRequest(
-            record.SourceActor.ToBackend(),
-            record.SourceActor.ToBackend(),
+            joiningActor.ToBackend(),
+            joiningActor.ToBackend(),
             record.SourceNodeRid,
             record.SourceSpotRid,
             epoch,

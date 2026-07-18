@@ -51,6 +51,7 @@ public static class SessionServerHostFactory
             mesh3.ChannelName(SampleNames.RoomSpotDiscovery);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
+                .EnableActorDispatch(SampleNames.RoomSpotDiscovery)
                 .RegisterSession<BingoSession>();
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(

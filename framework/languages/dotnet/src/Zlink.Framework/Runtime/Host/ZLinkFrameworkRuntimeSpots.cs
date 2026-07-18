@@ -95,6 +95,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         return GetActorClientSpotNodeRuntime().Node;
     }
 
+    /// <summary>Any router-capable node, or null before startup — the
+    /// bound-session relay planes live on the router plane even on hosts
+    /// without local actor factories (a session host binding remote actors).</summary>
+    internal IZLinkBackendSpotNode? GetRouterSpotNodeOrNull()
+    {
+        return _state?.SpotNodes.Values
+            .FirstOrDefault(static node => node.Registration.Router is not null)
+            ?.Node;
+    }
+
     internal ZLinkSpotNodeRuntime GetActorClientSpotNodeRuntime()
     {
         var state = GetOrStartState();

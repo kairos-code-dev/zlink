@@ -38,6 +38,7 @@ builder.Services.AddZLinkFramework(options =>
     // The browser's end of the world.
     options.AddStreamNode(ZoneWorldNames.GatewayStreamNode)
         .Bind(gateway.StreamEndpoint)
+        .EnableActorDispatch(ZoneWorldNames.ZoneMesh)
         .RegisterSession<PlayerSession>();
 
     // The Gateway joins the spot mesh but hosts nothing in it — no entry spot, no actor

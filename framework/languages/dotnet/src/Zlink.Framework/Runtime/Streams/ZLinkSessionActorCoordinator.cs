@@ -53,7 +53,8 @@ internal sealed class ZLinkSessionActorCoordinator(
             if (existing is not ZLinkSessionActor sessionActor)
                 throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
-            await UnbindNativeActorAsync(existing.ActorId, cancellationToken).ConfigureAwait(false);
+            if (IsLocalActorRef(existing.Ref))
+                await UnbindNativeActorAsync(existing.ActorId, cancellationToken).ConfigureAwait(false);
             await _bindings.ReleaseAsync(context, sessionActor, cancellationToken).ConfigureAwait(false);
         }
 
@@ -71,7 +72,13 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             EnsureConcreteActorRef(actor);
             var actorRef = actor.ToBackend();
-            await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
+            // The native session binding requires a node-local actor; a remote
+            // actor binds through the framework route instead (the remote node
+            // acknowledges via ConfirmRemoteBindingAsync and session frames
+            // travel on the actor-frame relay plane).
+            var nativeBound = IsLocalActorRef(actor);
+            if (nativeBound)
+                await BindNativeActorAsync(actorRef, cancellationToken).ConfigureAwait(false);
             try
             {
                 await ConfirmRemoteBindingAsync(context, actor, cancellationToken).ConfigureAwait(false);
@@ -84,8 +91,9 @@ internal sealed class ZLinkSessionActorCoordinator(
             {
                 try
                 {
-                    await UnbindNativeActorAsync(actor.ActorId, CancellationToken.None)
-                        .ConfigureAwait(false);
+                    if (nativeBound)
+                        await UnbindNativeActorAsync(actor.ActorId, CancellationToken.None)
+                            .ConfigureAwait(false);
                 }
                 catch (Exception rollbackFailure)
                 {
@@ -99,6 +107,12 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             ZLinkRuntimeMetrics.CompleteStreamSessionBind(metricStarted);
         }
+    }
+
+    private bool IsLocalActorRef(ActorRef actor)
+    {
+        if (!runtime.IsStarted) return true;
+        return actor.NodeRid == runtime.GetActorClientSpotNode().RoutingId;
     }
 
     private async ValueTask ConfirmRemoteBindingAsync(
@@ -162,12 +176,52 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         if (stream is ZLinkManagedStream managedStream)
         {
+            if (!IsLocalActorRef(actorRef.Ref))
+            {
+                await ForwardToRemoteActorAsync(actorRef, header, payload, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             await _relaySender.SendAsync(managedStream, actorRef, header, payload, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
 
         await DispatchLocalAsync(actorRef, header, payload, replyRawAsync, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    // Session frame for an actor hosted on another node: relayed to the
+    // actor's owner node on the actor-frame plane (spec 31 §6). The relay
+    // carries this session's identity, so the target binds the remote route
+    // and replies/pushes travel back on the push relay.
+    private async ValueTask ForwardToRemoteActorAsync(
+        ZLinkSessionActor actorRef,
+        ZlinkStreamHeader header,
+        Message payload,
+        CancellationToken cancellationToken)
+    {
+        if (actorRef.Context.RoutingId is not { } sessionRid)
+            throw new InvalidOperationException("Actor session relay requires a stream routing id.");
+        var sessionNodeRid = runtime.GetActorClientSpotNode().RoutingId;
+        var headerBytes = ZLinkStreamProtocolDefaults.EncodeHeader(header).ToArray();
+        var bodyBytes = payload.ToArray();
+        var target = actorRef.Ref.ToBackend();
+        await ZLinkRetryingSubmitter.Async(
+                () =>
+                {
+                    using var headerPart = Message.From(headerBytes);
+                    if (!runtime.ForwardActorBoundSessionPart(
+                            target, sessionNodeRid, sessionRid, headerPart, true, SendFlags.DontWait))
+                        return false;
+                    using var bodyPart = Message.From(bodyBytes);
+                    return runtime.ForwardActorBoundSessionPart(
+                        target, sessionNodeRid, sessionRid, bodyPart, false, SendFlags.DontWait);
+                },
+                runtime.Registration.DefaultRequestTimeout,
+                "Remote actor session relay failed because the relay route was not ready before timeout.",
+                cancellationToken)
             .ConfigureAwait(false);
     }
 

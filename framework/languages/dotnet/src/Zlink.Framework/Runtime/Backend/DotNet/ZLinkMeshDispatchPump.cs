@@ -391,6 +391,9 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         var state = ResolveSpotState(
             ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
             targetOwner: true, record);
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[pump] spot-control owner={ownerSpotRid} src={record.SourceSpotRid} op={record.OperationKind} handler={state.DispatchHandler is not null}");
         if (record.OperationKind == MeshOperationKind.ActorJoin)
         {
             // Actor-join admission record: build a framework join request.

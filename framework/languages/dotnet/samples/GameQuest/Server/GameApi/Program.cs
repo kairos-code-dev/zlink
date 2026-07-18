@@ -70,6 +70,7 @@ internal static class Program
                 .EnableClient();
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(streamEndpoint)
+                .EnableActorDispatch(SampleNames.SessionSpotDiscovery)
                 .RegisterSession<GameQuestSession>();
             var mesh15 = options.AddRouteMesh(SampleNames.SessionSpotDiscovery)
                 .Listen(topology.GameApiSpotRouterEndpoint(apiName))

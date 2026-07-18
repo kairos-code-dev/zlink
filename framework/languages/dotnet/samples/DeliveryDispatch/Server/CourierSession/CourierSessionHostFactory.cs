@@ -41,6 +41,7 @@ public static class CourierSessionHostFactory
             mesh8.ChannelName(SampleNames.CourierActorDiscovery);
             options.AddStreamNode(SampleNames.CourierStreamNode)
                 .Bind(topology.CourierStreamEndpoint)
+                .EnableActorDispatch(SampleNames.CourierActorDiscovery)
                 .RegisterSession<CourierSession>();
         });
 

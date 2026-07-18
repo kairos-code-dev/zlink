@@ -46,6 +46,7 @@ public static class SessionServerHostFactory
             mesh6.ChannelName(SampleNames.SupportSpotDiscovery);
             options.AddStreamNode(SampleNames.StreamNode)
                 .Bind(session.StreamEndpoint)
+                .EnableActorDispatch(SampleNames.SupportSpotDiscovery)
                 .RegisterSession<SupportChatSession>();
         });
 

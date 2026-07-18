@@ -169,6 +169,16 @@ internal sealed partial class ZLinkFrameworkRuntime
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
+            // The joined callback belongs to the commit phase (spec 23 §10):
+            // its failure must reject the commit so the source keeps its
+            // backlog and rolls back, and the source's capture window must
+            // stay open while the callback runs — the commit reply is what
+            // moves the source from capturing to forwarding.
+            await CompleteTransferredActorTargetAsync(
+                    target,
+                    actorState,
+                    cancellationToken)
+                .ConfigureAwait(false);
             if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
                 Console.Error.WriteLine($"[join-commit] {actorId} prepared");
 
@@ -263,31 +273,6 @@ internal sealed partial class ZLinkFrameworkRuntime
                     cancellationToken)
                 .ConfigureAwait(false);
             actorState.Handoff.Complete(request.HandoffId);
-            try
-            {
-                await CompleteTransferredActorTargetAsync(
-                        target,
-                        actorState,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception joinedFailure)
-            {
-                // A joined-callback failure is an application-level join
-                // rejection: it will not recover on a completion retry, so
-                // roll the transferred actor back here and reply a terminal
-                // rejection the source classifies as handoff-rejected.
-                actorState.Handoff.Quarantine(request.HandoffId);
-                await _actorSessionManager.RollbackTransferredActorAsync(
-                        request.ActorId,
-                        CancellationToken.None)
-                    .ConfigureAwait(false);
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.RequestRejected,
-                    $"Actor '{request.ActorId}' joined callback rejected the handoff.",
-                    innerException: joinedFailure);
-            }
-
             _actorHandoffAdmissions.RecordCompletion(request, spotRid);
             _actorHandoffAdmissions.Complete(request.HandoffId);
             ZLinkFrameworkDebugLog.SpotDiscovery(

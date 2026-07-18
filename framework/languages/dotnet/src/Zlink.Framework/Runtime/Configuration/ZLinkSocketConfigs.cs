@@ -1,6 +1,9 @@
 namespace Zlink.Framework.Runtime.Configuration;
 
-internal sealed class ZLinkSocketConfig : IZLinkSocketConfig
+// Also surfaces the MeshNode ROUTER build-time option subset via
+// IZLinkMeshNodeSocketConfig (spec 05-route-mesh §5). Every member the mesh-node
+// interface exposes (MaxMessageSize/HWM/timeouts) already lives here.
+internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSocketConfig
 {
     internal const int DefaultPeerWeight = 100;
 

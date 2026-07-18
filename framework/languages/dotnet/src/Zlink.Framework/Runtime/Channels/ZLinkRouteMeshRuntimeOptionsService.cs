@@ -49,24 +49,23 @@ internal sealed class ZLinkMeshNodeRuntimeOptions(ZLinkSpotNodeRegistration regi
 }
 
 // Live channel-weight surface. Weight get reflects the last applied value from the
-// ROUTER socket recipe; set validates the 0..100 range and applies through
+// channel membership; set validates the 0..100 range and applies through
 // IMeshNode.SetChannelWeight, which Core turns into a descriptor-revision bump.
 internal sealed class ZLinkMeshChannelRuntimeOptions(
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendSpotNode node,
-    string channelName,
-    ZLinkSocketConfig recipe) : IZLinkMeshChannelRuntimeOptions
+    ZLinkMeshChannelMembership membership) : IZLinkMeshChannelRuntimeOptions
 {
     public int Weight
     {
-        get => recipe.Weight;
+        get => membership.Weight;
         set
         {
             ZLinkSocketConfig.ValidatePeerWeight(value);
             runtime.ExecuteOperation(() =>
             {
-                node.SetChannelWeight(channelName, (uint)value);
-                recipe.Weight = value;
+                node.SetChannelWeight(membership.ChannelName, (uint)value);
+                membership.Weight = value;
                 return true;
             });
         }

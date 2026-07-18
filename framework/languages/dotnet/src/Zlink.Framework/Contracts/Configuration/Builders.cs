@@ -148,72 +148,10 @@ public interface IZLinkFanoutChannelBuilder
         where THandler : class;
 }
 
-public interface IZLinkSpotNodeBuilder
-{
-    IZLinkSpotNodeBuilder EnableRouter(string endpoint);
-
-    IZLinkSpotNodeBuilder ConnectRouter(string endpoint);
-
-    IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint);
-
-    IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId);
-
-    IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount);
-
-    IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
-
-    IZLinkSpotNodeBuilder SetRoutingIdAllocationGroup(string groupName);
-
-    IZLinkSocketConfig ConfigureRouterSocket();
-
-    IZLinkRouteConfig ConfigureRouterRouting();
-
-    IZLinkSpotNodeBuilder EnablePubSub(string endpoint);
-
-    IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint);
-
-    IZLinkEndpointConnections RouterConnections { get; }
-
-    IZLinkEndpointConnections PubSubConnections { get; }
-
-    /// <summary>
-    /// Role-oriented name for <see cref="RouterConnections"/>. Both
-    /// properties expose the same logical connection set.
-    /// </summary>
-    IZLinkEndpointConnections ChannelClientConnections { get; }
-
-    /// <summary>
-    /// Role-oriented name for <see cref="PubSubConnections"/>. Both
-    /// properties expose the same logical connection set.
-    /// </summary>
-    IZLinkEndpointConnections PublisherConnections { get; }
-
-    IZLinkSpotPublisherConfig ConfigurePubSubPublisher();
-
-    IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber();
-
-    IZLinkEntrySpotOptions ConfigureEntrySpot();
-
-    IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId);
-
-    IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
-        where TSpot : IZLinkSpot;
-
-    IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
-        where TEntrySpot : IZLinkEntrySpot;
-
-    IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory;
-
-    IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
-        where TActor : IZLinkActor
-        where TAdapter : class, IZLinkActorTransferAdapter<TActor>;
-}
-
-public interface IZLinkSpotMeshBuilder : IZLinkSpotNodeBuilder
-{
-    IZLinkSpotMeshBuilder UseDrainPolicy(ZLinkSpotDrainPolicy policy);
-}
+// The 10.0.0 unified MeshNode registration surface (IZLinkMeshNodeBuilder,
+// IZLinkMeshChannelBuilder and supporting types) lives in MeshNodeBuilders.cs.
+// It replaces the pre-10.0.0 IZLinkSpotNodeBuilder/IZLinkSpotMeshBuilder cluster
+// removed here per spec 05-route-mesh + gap 90 §12.33.
 
 public interface IZLinkFrameworkOptions
 {
@@ -250,18 +188,15 @@ public interface IZLinkFrameworkOptions
     IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(string channelName);
 
     /// <summary>
-    /// Registers the framework's single-process in-memory store for every
-    /// location store role. For local development, unit tests, and sample
-    /// smoke tests only — never for multi-process production topologies.
-    /// </summary>
-    void UseInMemoryLocationStores();
-
-    /// <summary>
-    /// Registers one physical location store instance for every store role
-    /// location store role, the way codecs register serializer instances. The
-    /// instance may additionally implement the optional change stamp and
-    /// watch contracts; they are picked up automatically. Mutually
-    /// exclusive with UseInMemoryLocationStores.
+    /// Registers one physical location store instance for every store role,
+    /// the way codecs register serializer instances. The instance may
+    /// additionally implement the optional change stamp and watch contracts;
+    /// they are picked up automatically. The official Redis store is the
+    /// production default; the single-process in-memory store is test-only
+    /// (registered via the internal test helper, spec 05-route-mesh §7 / gap
+    /// 90 §12.33). Hosts that use auto discovery, distributed Spot/Actor
+    /// addressing, or Actor transfer must register a store or host startup
+    /// fails fast.
     /// </summary>
     void AddLocationStore(Locations.IZLinkLocationStore store);
 
@@ -276,7 +211,11 @@ public interface IZLinkFrameworkOptions
 
     IZLinkStreamNodeBuilder AddStreamNode(string streamNodeName);
 
-    IZLinkSpotMeshBuilder AddSpotMesh(string channelName);
+    // Registers one process-local MeshNode under meshName (spec 05-route-mesh §2).
+    // Registering the same meshName twice fails host startup. The MeshNode owns its
+    // ROUTER endpoint, logical channel memberships, RID-direct route handlers and
+    // Spot/Actor registry.
+    IZLinkMeshNodeBuilder AddRouteMesh(string meshName);
 }
 
 public interface IZLinkMetadataPolicyBuilder

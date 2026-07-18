@@ -102,7 +102,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkRouteChannelBuilder(routeChannel);
     }
 
-    public void UseInMemoryLocationStores()
+    // Test-only in-memory location store registration (spec 05-route-mesh §7 /
+    // gap 90 §12.33 S8-08). Not on IZLinkFrameworkOptions; single-process contract
+    // tests reach it through the internal ZLinkTestLocationStores helper. Production
+    // hosts register a distributed store via AddLocationStore or fail fast.
+    internal void UseInMemoryLocationStores()
     {
         _registration.Locations.UseInMemoryStores = true;
     }
@@ -147,26 +151,29 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkStreamNodeBuilder(streamNode);
     }
 
-    public IZLinkSpotMeshBuilder AddSpotMesh(string channelName)
+    public IZLinkMeshNodeBuilder AddRouteMesh(string meshName)
     {
-        if (string.IsNullOrWhiteSpace(channelName))
-            throw new ZLinkConfigurationException("SPOT mesh channel name must not be empty.");
+        if (string.IsNullOrWhiteSpace(meshName))
+            throw new ZLinkConfigurationException("RouteMesh name must not be empty.");
 
+        // A MeshNode drives the same registration the runtime consumes: a mesh
+        // channel keyed by meshName (the discovery/location identity) plus the
+        // spot node keyed by the same meshName (spec 05-route-mesh §2).
         var discovery = ZLinkRegistrationBuilderGuard.AddUnique(
             _registration.SpotMeshChannels,
-            channelName,
+            meshName,
             () => new ZLinkSpotMeshChannelRegistration
             {
-                ChannelName = channelName
+                ChannelName = meshName
             },
-            "SPOT mesh channel name must not be empty.",
-            $"Duplicate SPOT mesh channel name '{channelName}'.");
-        var spotNode = ZLinkRegistrationBuilderGuard.RegisterSpotNode(
+            "RouteMesh name must not be empty.",
+            $"Duplicate RouteMesh name '{meshName}'.");
+        var meshNode = ZLinkRegistrationBuilderGuard.RegisterSpotNode(
             _registration.SpotNodes,
-            channelName);
-        spotNode.SpotMeshChannelName = discovery.ChannelName;
+            meshName);
+        meshNode.SpotMeshChannelName = discovery.ChannelName;
 
-        return new ZLinkSpotNodeBuilder(spotNode);
+        return new ZLinkMeshNodeBuilder(meshNode);
     }
 
     private ZLinkChannelRegistration AddChannelRegistration(

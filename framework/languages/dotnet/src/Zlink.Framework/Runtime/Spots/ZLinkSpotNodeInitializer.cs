@@ -22,7 +22,7 @@ internal sealed class ZLinkSpotNodeInitializer(
             var nodeRoutingId = CreateNodeRoutingId(spotNodeRegistration);
             node.SetRoutingId(nodeRoutingId);
             node.ApplyRoleConfig(
-                spotNodeRegistration.PubSub?.PublisherConfig,
+                spotNodeRegistration.SpotPublisherConfig,
                 spotNodeRegistration.PubSub?.SubscriberConfig);
             if (nodeRoutingId.Size > 0 && spotNodeRegistration.PubSub is not null)
             {
@@ -44,7 +44,7 @@ internal sealed class ZLinkSpotNodeInitializer(
                 locationLifecycle);
 
             // MeshNode startup ordering (spec 21-mesh-node §3): set routing id
-            // (above), bind the ROUTER endpoint, add the configured channel
+            // (above), bind the ROUTER endpoint, add each configured channel
             // membership with its weight, then Start — before any spot/entry-spot
             // use. IMeshNode.Start requires a bind endpoint and at least one
             // channel, so a node with a ROUTER endpoint is started explicitly here
@@ -59,9 +59,16 @@ internal sealed class ZLinkSpotNodeInitializer(
 
             if (hasRouterBind)
             {
-                var channelName = spotNodeRegistration.SpotMeshChannelName
-                                  ?? spotNodeRegistration.SpotNodeName;
-                node.AddChannel(channelName);
+                // spec 05-route-mesh §4: each logical membership joins the node's
+                // single ROUTER with its build-time weight (0 = excluded from new
+                // select-one/multicast targeting). ValidateSpotNode guarantees at
+                // least one membership before startup reaches here.
+                foreach (var membership in spotNodeRegistration.ChannelMemberships)
+                {
+                    node.AddChannel(membership.ChannelName);
+                    node.SetChannelWeight(membership.ChannelName, (uint)membership.Weight);
+                }
+
                 node.Start();
             }
 

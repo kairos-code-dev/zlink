@@ -85,6 +85,17 @@ internal sealed class ZLinkFrameworkRegistration
                 assemblies.Add(transfer.ActorType.Assembly);
                 assemblies.Add(transfer.AdapterType.Assembly);
             }
+
+            foreach (var handler in spotNode.RouteSendHandlers) assemblies.Add(handler.HandlerType.Assembly);
+
+            foreach (var handler in spotNode.RouteRequestHandlers) assemblies.Add(handler.HandlerType.Assembly);
+
+            foreach (var membership in spotNode.ChannelMemberships)
+            {
+                foreach (var handler in membership.SendHandlers) assemblies.Add(handler.HandlerType.Assembly);
+
+                foreach (var handler in membership.RequestHandlers) assemblies.Add(handler.HandlerType.Assembly);
+            }
         }
 
         foreach (var channel in Channels.Values)
@@ -160,8 +171,8 @@ internal sealed class ZLinkMetadataPolicyRegistration
     public HashSet<string> ForwardedApplicationKeys { get; } = new(StringComparer.Ordinal);
 }
 
-// spot mesh channel marker: AddSpotMesh(...) registers the mesh channel
-// name and the spot node references it through SpotMeshChannelName. Peer
+// Mesh channel marker: AddRouteMesh(meshName) registers the mesh discovery
+// name and the MeshNode references it through SpotMeshChannelName. Peer
 // acquisition is owned by location-store auto-connect or manual wiring.
 internal sealed class ZLinkSpotMeshChannelRegistration
 {
@@ -301,6 +312,31 @@ internal sealed record ZLinkChannelHandlerRegistration(
     Type? ReplyType,
     string? PacketName);
 
+// One logical channel membership on a MeshNode (spec 05-route-mesh §4). The
+// membership is (MeshName, ChannelName) scoped; weight is 0..100 (0 excludes the
+// channel from new select-one/multicast targeting). Handlers are the channel's
+// IZLinkSendHandler/IZLinkRequestHandler namespace.
+internal sealed class ZLinkMeshChannelMembership
+{
+    public required string ChannelName { get; init; }
+
+    private int _weight = ZLinkSocketConfig.DefaultPeerWeight;
+
+    public int Weight
+    {
+        get => _weight;
+        set
+        {
+            ZLinkSocketConfig.ValidatePeerWeight(value);
+            _weight = value;
+        }
+    }
+
+    public List<ZLinkChannelHandlerRegistration> SendHandlers { get; } = [];
+
+    public List<ZLinkChannelHandlerRegistration> RequestHandlers { get; } = [];
+}
+
 internal sealed class ZLinkSpotNodeRegistration
 {
     public required string SpotNodeName { get; init; }
@@ -312,6 +348,27 @@ internal sealed class ZLinkSpotNodeRegistration
     public ZLinkSpotRouterCapabilityRegistration? Router { get; set; }
 
     public ZLinkSpotPubSubCapabilityRegistration? PubSub { get; set; }
+
+    // MeshNode-level default for RID-direct route requests handled by this node
+    // (spec 05-route-mesh §2 IZLinkMeshNodeBuilder.SetDefaultRequestTimeout). Null
+    // falls back to the framework-wide DefaultRequestTimeout.
+    public TimeSpan? DefaultRequestTimeout { get; set; }
+
+    // Logical Multicast publish admission policy for this MeshNode
+    // (spec §5 IZLinkSpotPublisherConfig, ConfigureSpotPublisher). Rides the
+    // node's single ROUTER; NoDrop defaults to true and needs no separate bind.
+    public ZLinkSpotPublisherConfig SpotPublisherConfig { get; } = new() { NoDrop = true };
+
+    // Immutable logical channel memberships added via ChannelName(...) (spec §4).
+    // Each carries its build-time weight and channel-scoped handler namespace.
+    public List<ZLinkMeshChannelMembership> ChannelMemberships { get; } = [];
+
+    // RID-direct route handlers registered on the MeshNode builder itself
+    // (spec §2 AddRouteSendHandler/AddRouteRequestHandler). They share the node
+    // ROUTER's source-RID route-handler context.
+    public List<ZLinkRouteHandlerRegistration> RouteSendHandlers { get; } = [];
+
+    public List<ZLinkRouteHandlerRegistration> RouteRequestHandlers { get; } = [];
 
     public HashSet<Type> SpotFactories { get; } = [];
 

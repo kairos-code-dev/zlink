@@ -1,62 +1,49 @@
 namespace Zlink.Framework.Runtime.Configuration.Builders;
 
-internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registration)
-    : IZLinkSpotNodeBuilder,
-        IZLinkSpotMeshBuilder
+// MeshNode builder (spec 05-route-mesh §2). Drives the same
+// ZLinkSpotNodeRegistration the runtime consumes: AddRouteMesh(meshName) owns the
+// node's single ROUTER endpoint, its logical channel memberships, RID-direct route
+// handlers, Spot/Actor registry, publish admission policy and drain policy.
+internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registration)
+    : IZLinkMeshNodeBuilder
 {
-    public IZLinkEndpointConnections RouterConnections => EnsureRouter().ManualConnections;
+    private ZLinkMeshPeerConnections? _peerConnections;
 
-    public IZLinkEndpointConnections PubSubConnections => EnsurePubSub().ManualConnections;
-
-    public IZLinkEndpointConnections ChannelClientConnections => RouterConnections;
-
-    public IZLinkEndpointConnections PublisherConnections => PubSubConnections;
-
-    public IZLinkSpotMeshBuilder UseDrainPolicy(ZLinkSpotDrainPolicy policy)
+    public IZLinkMeshChannelBuilder ChannelName(string channelName)
     {
-        if (!Enum.IsDefined(policy))
-            throw new ZLinkConfigurationException($"Unknown SPOT drain policy '{policy}'.");
+        if (string.IsNullOrWhiteSpace(channelName))
+            throw new ZLinkConfigurationException("Channel membership name must not be empty.");
 
-        registration.DrainPolicy = policy;
-        return this;
+        if (registration.ChannelMemberships.Any(
+                membership => string.Equals(membership.ChannelName, channelName, StringComparison.Ordinal)))
+            throw new ZLinkConfigurationException(
+                $"Duplicate channel membership '{channelName}' on MeshNode '{registration.SpotNodeName}'.");
+
+        var membership = new ZLinkMeshChannelMembership { ChannelName = channelName };
+        registration.ChannelMemberships.Add(membership);
+        return new ZLinkMeshChannelBuilder(membership);
     }
 
-    public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
+    public IZLinkMeshNodeBuilder Listen(string endpoint)
     {
-        var router = EnsureRouter();
         if (string.IsNullOrWhiteSpace(endpoint))
-            throw new ZLinkConfigurationException("SPOT router bind endpoint must not be empty.");
+            throw new ZLinkConfigurationException("MeshNode ROUTER bind endpoint must not be empty.");
 
-        router.BindEndpoint = endpoint;
+        EnsureRouter().BindEndpoint = endpoint;
         return this;
     }
 
-    public IZLinkSpotNodeBuilder ConnectRouter(string endpoint)
-    {
-        AddRouterManualConnection(endpoint, null);
-        return this;
-    }
-
-    public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
-    {
-        if (peerRid.Size == 0)
-            throw new ZLinkConfigurationException("Manual SPOT router peer routing id must not be empty.");
-
-        AddRouterManualConnection(endpoint, peerRid);
-        return this;
-    }
-
-    public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
+    public IZLinkMeshNodeBuilder SetRoutingId(RoutingId routingId)
     {
         registration.RoutingId = routingId;
         registration.HasExplicitRoutingId = true;
         return this;
     }
 
-    public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount) =>
+    public IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount) =>
         UseAllocatedRoutingId(slotCount, registration.SpotNodeName);
 
-    public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
+    public IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix)
     {
         registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.Create(
             slotCount,
@@ -65,7 +52,7 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkSpotNodeBuilder SetRoutingIdAllocationGroup(string groupName)
+    public IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(string groupName)
     {
         registration.RoutingIdAllocation = ZLinkRoutingIdAllocationBuilderSupport.WithGroup(
             groupName,
@@ -74,79 +61,116 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkSocketConfig ConfigureRouterSocket()
-    {
-        return EnsureRouter().SocketConfig;
-    }
+    public IZLinkMeshNodeSocketConfig ConfigureRouterSocket() => EnsureRouter().SocketConfig;
 
-    public IZLinkRouteConfig ConfigureRouterRouting()
-    {
-        return EnsureRouter().RoutingConfig;
-    }
+    public IZLinkSpotPublisherConfig ConfigureSpotPublisher() => registration.SpotPublisherConfig;
 
-    public IZLinkSpotNodeBuilder EnablePubSub(string endpoint)
+    public IZLinkMeshNodeBuilder UseDrainPolicy(ZLinkMeshNodeDrainPolicy policy)
     {
-        var pubSub = EnsurePubSub();
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new ZLinkConfigurationException("SPOT pub/sub bind endpoint must not be empty.");
-
-        pubSub.BindEndpoint = endpoint;
+        registration.DrainPolicy = policy switch
+        {
+            ZLinkMeshNodeDrainPolicy.DrainNatural => ZLinkSpotDrainPolicy.DrainNatural,
+            ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate => ZLinkSpotDrainPolicy.ReleaseAndRecreate,
+            _ => throw new ZLinkConfigurationException($"Unknown MeshNode drain policy '{policy}'.")
+        };
         return this;
     }
 
-    public IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint)
+    public IZLinkMeshPeerConnections PeerConnections =>
+        _peerConnections ??= new ZLinkMeshPeerConnections(EnsureRouter());
+
+    public IZLinkMeshNodeBuilder SetDefaultRequestTimeout(TimeSpan timeout)
     {
-        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
-            EnsurePubSub().ManualConnections,
-            endpoint,
-            "Manual SPOT peer PUB endpoint must not be empty.");
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
+        registration.DefaultRequestTimeout = timeout;
         return this;
     }
 
-    public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
+    public IZLinkMeshNodeBuilder AddRouteSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkRouteSendHandler<TMessage>
     {
-        return EnsurePubSub().PublisherConfig;
+        registration.RouteSendHandlers.Add(new ZLinkRouteHandlerRegistration(
+            typeof(THandler),
+            typeof(TMessage),
+            null,
+            packetName));
+        return this;
     }
 
-    public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
+    public IZLinkMeshNodeBuilder AddRouteSendHandler<THandler>(string? packetName = null)
+        where THandler : class
     {
-        return EnsurePubSub().SubscriberConfig;
+        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+                typeof(THandler),
+                typeof(IZLinkRouteSendHandler<>),
+                "route send")
+            .GetGenericArguments();
+        registration.RouteSendHandlers.Add(new ZLinkRouteHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            null,
+            packetName));
+        return this;
     }
 
-    public IZLinkEntrySpotOptions ConfigureEntrySpot()
+    public IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply>
     {
-        return registration.EntrySpotOptions;
+        registration.RouteRequestHandlers.Add(new ZLinkRouteHandlerRegistration(
+            typeof(THandler),
+            typeof(TRequest),
+            typeof(TReply),
+            packetName));
+        return this;
     }
 
-    public IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
+    public IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+                typeof(THandler),
+                typeof(IZLinkRouteRequestHandler<,>),
+                "route request")
+            .GetGenericArguments();
+        registration.RouteRequestHandlers.Add(new ZLinkRouteHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            args[1],
+            packetName));
+        return this;
+    }
+
+    public IZLinkEntrySpotOptions ConfigureEntrySpot() => registration.EntrySpotOptions;
+
+    public IZLinkMeshNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
     {
         registration.EntrySpotOptions.RoutingId = routingId;
         registration.HasExplicitEntrySpotRoutingId = true;
         return this;
     }
 
-    public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
+    public IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot
     {
         if (!registration.SpotFactories.Add(typeof(TSpot)))
             throw new ZLinkConfigurationException(
-                $"Duplicate SPOT factory '{typeof(TSpot)}' on node '{registration.SpotNodeName}'.");
+                $"Duplicate SPOT factory '{typeof(TSpot)}' on MeshNode '{registration.SpotNodeName}'.");
 
         return this;
     }
 
-    public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
+    public IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot
     {
         if (registration.EntrySpotType is not null)
             throw new ZLinkConfigurationException(
-                $"Duplicate Entry Spot registry on node '{registration.SpotNodeName}'.");
+                $"Duplicate Entry Spot registry on MeshNode '{registration.SpotNodeName}'.");
 
         registration.EntrySpotType = typeof(TEntrySpot);
         return this;
     }
 
-    public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
+    public IZLinkMeshNodeBuilder AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory
     {
         ZLinkRegistrationBuilderGuard.AddUnique(
@@ -158,26 +182,17 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
-    public IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
+    public IZLinkMeshNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
         where TActor : IZLinkActor
         where TAdapter : class, IZLinkActorTransferAdapter<TActor>
-    {
-        AddActorTransfer(
-            actorType,
-            ZLinkActorTransferRegistry.CreateRegistration<TActor, TAdapter>());
-        return this;
-    }
-
-    private void AddActorTransfer(
-        string actorType,
-        ZLinkActorTransferRegistration transfer)
     {
         ZLinkRegistrationBuilderGuard.AddUnique(
             registration.ActorTransfers,
             actorType,
-            transfer,
+            ZLinkActorTransferRegistry.CreateRegistration<TActor, TAdapter>(),
             "Actor transfer name must not be empty.",
             $"Duplicate actor transfer '{actorType}'.");
+        return this;
     }
 
     private ZLinkSpotRouterCapabilityRegistration EnsureRouter()
@@ -185,20 +200,116 @@ internal sealed class ZLinkSpotNodeBuilder(ZLinkSpotNodeRegistration registratio
         registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
         return registration.Router;
     }
+}
 
-    private void AddRouterManualConnection(string endpoint, RoutingId? peerRid)
+// Logical channel membership builder (spec 05-route-mesh §4). Weight and the
+// channel-scoped IZLinkSendHandler/IZLinkRequestHandler namespace are recorded on
+// the membership the MeshNode owns.
+internal sealed class ZLinkMeshChannelBuilder(ZLinkMeshChannelMembership membership)
+    : IZLinkMeshChannelBuilder
+{
+    public IZLinkMeshChannelBuilder SetWeight(int weight)
     {
-        if (string.IsNullOrWhiteSpace(endpoint))
-            throw new ZLinkConfigurationException("Manual SPOT router endpoint must not be empty.");
-
-        var router = EnsureRouter();
-        router.ManualConnections.Connect(endpoint);
-        if (peerRid is { } routingId) router.PeerRoutingIds[endpoint] = routingId;
+        membership.Weight = weight;
+        return this;
     }
 
-    private ZLinkSpotPubSubCapabilityRegistration EnsurePubSub()
+    public IZLinkMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>
     {
-        registration.PubSub ??= new ZLinkSpotPubSubCapabilityRegistration();
-        return registration.PubSub;
+        membership.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TMessage),
+            null,
+            packetName));
+        return this;
+    }
+
+    public IZLinkMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+                typeof(THandler),
+                typeof(IZLinkSendHandler<>),
+                "send")
+            .GetGenericArguments();
+        membership.SendHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            null,
+            packetName));
+        return this;
+    }
+
+    public IZLinkMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>
+    {
+        membership.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            typeof(TRequest),
+            typeof(TReply),
+            packetName));
+        return this;
+    }
+
+    public IZLinkMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
+        where THandler : class
+    {
+        var args = ZLinkTypedHandlerBuilderSupport.ResolveSingleHandlerInterface(
+                typeof(THandler),
+                typeof(IZLinkRequestHandler<,>),
+                "request")
+            .GetGenericArguments();
+        membership.RequestHandlers.Add(new ZLinkChannelHandlerRegistration(
+            typeof(THandler),
+            args[0],
+            args[1],
+            packetName));
+        return this;
+    }
+}
+
+// Adapter over the MeshNode ROUTER's manual connection set and expected peer RIDs
+// (spec 05-route-mesh §3 IZLinkMeshPeerConnections). Expected RID is optional; when
+// present it pins the admission handshake identity for that endpoint.
+internal sealed class ZLinkMeshPeerConnections(ZLinkSpotRouterCapabilityRegistration router)
+    : IZLinkMeshPeerConnections
+{
+    public void Connect(string endpoint)
+    {
+        ValidateEndpoint(endpoint);
+        router.ManualConnections.Connect(endpoint);
+    }
+
+    public void Connect(RoutingId expectedRoutingId, string endpoint)
+    {
+        if (expectedRoutingId.Size == 0)
+            throw new ZLinkConfigurationException("Expected peer routing id must not be empty.");
+
+        ValidateEndpoint(endpoint);
+        router.ManualConnections.Connect(endpoint);
+        router.PeerRoutingIds[endpoint] = expectedRoutingId;
+    }
+
+    public void Disconnect(string endpoint)
+    {
+        ValidateEndpoint(endpoint);
+        router.ManualConnections.Disconnect(endpoint);
+        router.PeerRoutingIds.Remove(endpoint);
+    }
+
+    public IReadOnlyList<ZLinkMeshPeerConnection> ListConnections()
+    {
+        return router.ManualConnections.ListConnections()
+            .Select(endpoint => new ZLinkMeshPeerConnection(
+                endpoint,
+                router.PeerRoutingIds.TryGetValue(endpoint, out var rid) ? rid : null))
+            .ToArray();
+    }
+
+    private static void ValidateEndpoint(string endpoint)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new ZLinkConfigurationException("Manual MeshNode peer endpoint must not be empty.");
     }
 }

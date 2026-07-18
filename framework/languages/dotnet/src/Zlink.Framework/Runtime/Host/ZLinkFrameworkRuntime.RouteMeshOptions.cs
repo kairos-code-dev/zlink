@@ -25,16 +25,16 @@ internal sealed partial class ZLinkFrameworkRuntime
         return ExecuteOperation<IZLinkMeshChannelRuntimeOptions>(() =>
         {
             var (nodeRuntime, registration) = ResolveMeshNode(meshName);
-            var meshChannelName = registration.SpotMeshChannelName ?? registration.SpotNodeName;
-            if (!string.Equals(channelName, meshChannelName, StringComparison.Ordinal))
+            var membership = registration.ChannelMemberships.FirstOrDefault(
+                candidate => string.Equals(candidate.ChannelName, channelName, StringComparison.Ordinal));
+            if (membership is null)
                 throw new ZLinkConfigurationException(
                     $"RouteMesh '{meshName}' has no channel membership '{channelName}'.");
-            if (registration.Router is not { } router)
+            if (registration.Router is null)
                 throw new ZLinkConfigurationException(
                     $"RouteMesh '{meshName}' has no serving channel on this node.");
 
-            return new ZLinkMeshChannelRuntimeOptions(
-                this, nodeRuntime.Node, meshChannelName, router.SocketConfig);
+            return new ZLinkMeshChannelRuntimeOptions(this, nodeRuntime.Node, membership);
         });
     }
 

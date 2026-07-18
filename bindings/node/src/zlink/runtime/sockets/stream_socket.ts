@@ -20,9 +20,7 @@ import {
   materializeReceived,
   materializeReceivedInto,
 } from '../messaging/message_materializer';
-import { startRequestProgress } from '../messaging/request_progress';
 import { requireNative } from '../native/native';
-import { validateCString } from '../options/validation';
 import {
   Received,
   RoutingId,
@@ -33,26 +31,10 @@ import { SubmitResult } from '../../contracts/errors/errors';
 import { wrapRoutingId } from '../core/routing_id_conversion';
 import { RecvFlags, SendFlags, SocketType as NativeSocketType } from '../../contracts/sockets/socket_constants';
 import type {
-  ActorBindOperation,
-  ActorRef,
-  ActorUnbindOperation,
   SendOperation,
   SocketSendReadyHandler,
   StreamPacketHandler,
 } from '../../contracts/service';
-import {
-  RuntimeActorBindOperation,
-  RuntimeActorUnbindOperation,
-} from '../service/spot/actor_operations';
-import {
-  actorRefFromRaw,
-  actorRefToRaw,
-} from '../service/spot/actor_models';
-import {
-  invokeStreamBindActor,
-  invokeStreamSendBoundActor,
-  invokeStreamUnbindActor,
-} from '../service/spot/actor_invokers';
 
 const native = requireNative();
 
@@ -187,53 +169,5 @@ export class StreamSocket extends SocketBase {
     configCall('stream disconnect by routing id failed', () => {
       native.socketDisconnectRid(getNativeHandle(this), normalizedRoutingId);
     });
-  }
-  bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOperation {
-    const handle = getNativeHandle(this);
-    const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
-    const actorRaw = actorRefToRaw(actor);
-    return new RuntimeActorBindOperation((callback, timeoutMs) => {
-      const releaseProgress = startRequestProgress(handle);
-      try {
-        return invokeStreamBindActor(handle, normalizedSessionRid, actorRaw, (result, parts) => {
-          releaseProgress();
-          callback(result, parts);
-        }, timeoutMs);
-      } catch (error) {
-        releaseProgress();
-        throw error;
-      }
-    });
-  }
-  unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOperation {
-    const handle = getNativeHandle(this);
-    const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
-    const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new RuntimeActorUnbindOperation((callback, timeoutMs) => {
-      const releaseProgress = startRequestProgress(handle);
-      try {
-        return invokeStreamUnbindActor(handle, normalizedSessionRid, normalizedActorId, (result, parts) => {
-          releaseProgress();
-          callback(result, parts);
-        }, timeoutMs);
-      } catch (error) {
-        releaseProgress();
-        throw error;
-      }
-    });
-  }
-  sendBoundActor(sessionRid: RoutingId, actorId: string): SendOperation {
-    const handle = getNativeHandle(this);
-    const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
-    const normalizedActorId = validateCString(actorId, 'actorId', 255);
-    return new RuntimeSendOperation((parts, flags) =>
-      invokeStreamSendBoundActor(handle, normalizedSessionRid, normalizedActorId, parts, flags),
-    );
-  }
-  boundActors(sessionRid: RoutingId): ActorRef[] {
-    const normalizedSessionRid = normalizeRoutingId(sessionRid, 'sessionRid');
-    return (configCall('stream bound actors snapshot failed', () =>
-      native.streamBoundActors(getNativeHandle(this), normalizedSessionRid) as Array<{ nodeRid: Buffer; actorId: string; generation: bigint | number }>
-    )).map((entry) => actorRefFromRaw(entry));
   }
 }

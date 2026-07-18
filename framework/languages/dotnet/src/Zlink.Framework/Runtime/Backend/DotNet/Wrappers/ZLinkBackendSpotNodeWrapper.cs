@@ -21,6 +21,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     private readonly object _entrySpotGate = new();
     private IZLinkBackendSpot? _entrySpot;
     private Action? _sendReadyHandler;
+    // S8-07: captured Spot publisher NoDrop policy (default true). Applied per
+    // spot once the frozen binding surfaces a public publish-option setter; see
+    // ApplyRoleConfig for the exact binding gap.
+    private bool _spotPublisherNoDrop = true;
     private bool _bound;
     private bool _started;
     private bool _disposed;
@@ -101,6 +105,29 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         IZLinkSpotPublisherConfig? publisher,
         IZLinkSpotSubscriberConfig? subscriber)
     {
+        // S8-07: capture the Spot publisher policy (Logical Multicast NoDrop) so
+        // it can be applied to each Spot the node creates.
+        //
+        // NoDrop wiring status:
+        //   * Default (NoDrop = true) ALREADY takes effect with no framework
+        //     action: Core initializes every spot's publish plane with
+        //     publish_nodrop = 1 (mesh_runtime.hpp spot_state_t), so
+        //     ISpot.Publish is atomic-admission by default.
+        //   * Explicit NoDrop = false CANNOT be honored through the frozen public
+        //     binding. Core exposes a per-spot setter
+        //     zlink_spot_set_publish_option(ZLINK_MESH_PUBLISH_OPT_NODROP) — and
+        //     it is even bound as an internal P/Invoke in
+        //     bindings NativeMethods.Spot.cs (zlink_spot_set_publish_option) —
+        //     but it is NOT surfaced on the public ISpot / Spot API, so the
+        //     framework has no accessible call to flip a spot to NoDrop = false.
+        //     IMeshNodePublisher.SetNoDrop configures a separate publisher handle
+        //     (publisher_t.nodrop), which does not affect the zlink_spot_publish
+        //     plane the framework uses for Spot Logical Multicast.
+        //
+        // When the binding surfaces a public ISpot publish-option setter, apply
+        // _spotPublisherNoDrop in CreateSpot/GetOrCreateSpot/EntrySpot below.
+        _spotPublisherNoDrop = publisher?.NoDrop ?? true;
+
         // MeshNode carries no per-role HWM/linger/timeout knobs; follow-up.
     }
 

@@ -1,3 +1,5 @@
+using Zlink.Framework.Contracts.Streams;
+
 namespace Zlink.Framework.Runtime.Backend.Contracts;
 
 // Framework-owned dispatch records (RouteMesh 10.0.0 Option B).
@@ -28,7 +30,8 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         RoutingId? spotRid,
         ulong? requestSeq,
         Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply,
-        string? channelName = null)
+        string? channelName = null,
+        ZLinkMessageMetadata? metadata = null)
     {
         Parts = parts;
         SourceNodeRid = sourceNodeRid;
@@ -36,9 +39,14 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         RequestSeq = requestSeq;
         _reply = reply;
         ChannelName = channelName;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
 
     public IReadOnlyList<Message> Parts { get; }
+
+    // The immutable application-metadata snapshot decoded from the record's
+    // application-metadata frame (S8-06A). Empty when the sender attached none.
+    public ZLinkMessageMetadata Metadata { get; }
 
     public RoutingId? SourceNodeRid { get; }
 
@@ -78,15 +86,23 @@ internal sealed class ZLinkBackendSubscribeMessage : IDisposable
 {
     private bool _disposed;
 
-    public ZLinkBackendSubscribeMessage(string topic, IReadOnlyList<Message> parts)
+    public ZLinkBackendSubscribeMessage(
+        string topic,
+        IReadOnlyList<Message> parts,
+        ZLinkMessageMetadata? metadata = null)
     {
         Topic = topic;
         Parts = parts;
+        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
 
     public string Topic { get; }
 
     public IReadOnlyList<Message> Parts { get; }
+
+    // The immutable application-metadata snapshot decoded from the logical
+    // multicast record's application-metadata frame (S8-06A). Empty when none.
+    public ZLinkMessageMetadata Metadata { get; }
 
     public void Dispose()
     {

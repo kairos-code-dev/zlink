@@ -104,19 +104,6 @@ public final class InternalAccess {
             RequestCallback callback, SendFlags flags, Duration timeout);
         void routerReply(RouterSocket socket, RoutingId routingId,
                          long requestSequence, List<Message> parts);
-        boolean routerSendToSpot(RouterSocket socket, RoutingId destNodeRid,
-                                 RoutingId destSpotRid, List<Message> parts,
-                                 SendFlags flags);
-        CompletableFuture<List<Message>> routerRequestToSpotAsync(
-            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
-            List<Message> parts, Duration timeout, SendFlags flags);
-        boolean routerRequestToSpotCallback(
-            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
-            List<Message> parts, BiConsumer<RequestResult, List<Message>> callback,
-            SendFlags flags, Duration timeout);
-        void routerReplyToSpot(RouterSocket socket, RoutingId destNodeRid,
-                               RoutingId destSpotRid, long requestSeq,
-                               List<Message> parts);
     }
 
     public interface SpotAccess {
@@ -571,36 +558,6 @@ public final class InternalAccess {
                                    long requestSequence, List<Message> parts) {
         runtimeSocketAccess().routerReply(socket, routingId, requestSequence,
             parts);
-    }
-
-    public static boolean routerSendToSpot(
-            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
-            List<Message> parts, SendFlags flags) {
-        return runtimeSocketAccess().routerSendToSpot(socket, destNodeRid,
-            destSpotRid, parts, flags);
-    }
-
-    public static CompletableFuture<List<Message>> routerRequestToSpotAsync(
-            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
-            List<Message> parts, Duration timeout, SendFlags flags) {
-        return runtimeSocketAccess().routerRequestToSpotAsync(socket, destNodeRid,
-            destSpotRid, parts, timeout, flags);
-    }
-
-    public static boolean routerRequestToSpotCallback(
-            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
-            List<Message> parts,
-            BiConsumer<RequestResult, List<Message>> callback,
-            SendFlags flags, Duration timeout) {
-        return runtimeSocketAccess().routerRequestToSpotCallback(socket,
-            destNodeRid, destSpotRid, parts, callback, flags, timeout);
-    }
-
-    public static void routerReplyToSpot(
-            RouterSocket socket, RoutingId destNodeRid, RoutingId destSpotRid,
-            long requestSeq, List<Message> parts) {
-        runtimeSocketAccess().routerReplyToSpot(socket, destNodeRid, destSpotRid,
-            requestSeq, parts);
     }
 
     public static RoutingId routingIdFromTrusted(byte[] value) {

@@ -21,9 +21,5 @@ public interface RouterSocket extends Socket {
     boolean recv(Received result, RecvFlags flags);
     RequestOperation request(RoutingId rid);
     ReplyOperation reply(RoutingId rid, long requestSequence);
-    SendOperation sendToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
-    RequestOperation requestToSpot(RoutingId destNodeRid, RoutingId destSpotRid);
-    ReplyOperation replyToSpot(RoutingId destNodeRid, RoutingId destSpotRid,
-                        long requestSeq);
     @Override RouterSocketOptions options();
 }

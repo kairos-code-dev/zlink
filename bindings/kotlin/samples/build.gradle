@@ -31,7 +31,6 @@ def sampleMainClasses = [
     runActorSequentialExample: 'systems.zlink.samples.ActorSequentialExampleKt',
     runSpotPubSubExample: 'systems.zlink.samples.SpotPubSubExampleKt',
     runSpotRpcExample: 'systems.zlink.samples.SpotRpcExampleKt',
-    runSpotChannelExample: 'systems.zlink.samples.SpotChannelExampleKt',
     runSpotTimerExample: 'systems.zlink.samples.SpotTimerExampleKt',
     runDealerRouterRecvSample: 'systems.zlink.samples.DealerRouterRecvSampleKt',
     runMonitorRecvSample: 'systems.zlink.samples.MonitorRecvSampleKt',

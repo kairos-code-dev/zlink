@@ -104,42 +104,6 @@ final class NativeDealerRequestSupport {
                     requestSequence, parts);
             }
 
-            @Override
-            public boolean routerSendToSpot(
-                    RouterSocket socket, RoutingId destNodeRid,
-                    RoutingId destSpotRid, List<Message> parts,
-                    SendFlags flags) {
-                return NativeRouterSpotSupport.sendToSpot(socket, destNodeRid,
-                    destSpotRid, parts, flags);
-            }
-
-            @Override
-            public CompletableFuture<List<Message>> routerRequestToSpotAsync(
-                    RouterSocket socket, RoutingId destNodeRid,
-                    RoutingId destSpotRid, List<Message> parts,
-                    Duration timeout, SendFlags flags) {
-                return NativeRouterSpotSupport.requestToSpot(socket,
-                    destNodeRid, destSpotRid, parts, timeout, flags);
-            }
-
-            @Override
-            public boolean routerRequestToSpotCallback(
-                    RouterSocket socket, RoutingId destNodeRid,
-                    RoutingId destSpotRid, List<Message> parts,
-                    BiConsumer<RequestResult, List<Message>> callback,
-                    SendFlags flags, Duration timeout) {
-                return NativeRouterSpotSupport.requestToSpot(socket,
-                    destNodeRid, destSpotRid, parts, callback, flags, timeout);
-            }
-
-            @Override
-            public void routerReplyToSpot(
-                    RouterSocket socket, RoutingId destNodeRid,
-                    RoutingId destSpotRid, long requestSeq,
-                    List<Message> parts) {
-                NativeRouterSpotSupport.replyToSpot(socket, destNodeRid,
-                    destSpotRid, requestSeq, parts);
-            }
         });
     }
 

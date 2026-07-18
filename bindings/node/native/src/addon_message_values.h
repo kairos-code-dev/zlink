@@ -74,9 +74,9 @@ enum message_snapshot_flags_t
     MESSAGE_SNAPSHOT_ALWAYS_PROPERTIES = 1 << 1
 };
 
-// The current core message property API is a stub: zlink_msg_gets() always
-// returns NULL. Preserve the binding's synthetic routed identity properties
-// without paying repeated native property probes on every data-only receive.
+// Core 10.0.0 exposes no message property API, so the binding derives its
+// synthetic routed identity properties itself and avoids repeated native
+// property probes on every data-only receive.
 inline napi_value create_message_properties_snapshot (napi_env env,
                                                       const zlink_routing_id_t *routing_id,
                                                       zlink_msg_t *msg,

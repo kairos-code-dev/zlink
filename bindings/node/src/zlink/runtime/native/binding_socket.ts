@@ -36,29 +36,6 @@ export interface SocketNativeBinding {
     flags: number,
     timeoutMs: number
   ) => void;
-  routerSpotReply: (
-    socket: NativeHandle,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    requestSeq: bigint,
-    parts: unknown
-  ) => void;
-  routerSpotRequest: (
-    socket: NativeHandle,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    parts: unknown,
-    callback: NativeRequestCallback,
-    flags: number,
-    timeoutMs: number
-  ) => void;
-  routerSpotSend: (
-    socket: NativeHandle,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    parts: unknown,
-    flags: number
-  ) => void;
   socketBind: (socket: NativeHandle, endpoint: string) => void;
   socketClose: (socket: NativeHandle) => void;
   socketConnect: (socket: NativeHandle, endpoint: string) => void;
@@ -148,12 +125,6 @@ export interface SocketNativeBinding {
   ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
   socketUnbind: (socket: NativeHandle, endpoint: string) => void;
   socketUnsetSubscription: (socket: NativeHandle, topic: string) => void;
-  spotNodeActorBindRemoteSession: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    sourceNodeRid: Buffer,
-    sourceSessionRid: Buffer
-  ) => void;
   streamBindActor: (
     stream: NativeHandle,
     sessionRid: Buffer,

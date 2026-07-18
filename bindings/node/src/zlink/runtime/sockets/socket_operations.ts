@@ -225,10 +225,6 @@ export class RoutedMessageSocket extends SendReadySocket {
     }
     return true;
   }
-  protected sendToSpotFromRoutedMessage(_destNodeRid: RoutingId, _destSpotRid: RoutingId, _parts: readonly Message[], _flags: SendFlags): boolean {
-    throw submitErrorFromResult(SubmitResult.InvalidState, 'spot-routed send is only supported by RouterSocket');
-  }
-
   protected replyToRoutedMessage(
     _sourceRid: RoutingId,
     _requestSeq: bigint,
@@ -261,14 +257,6 @@ export class RoutedMessageSocket extends SendReadySocket {
       : (parts: readonly Message[], sendFlags: SendFlags) => {
         if (!raw.routingId) {
           throw submitErrorFromResult(SubmitResult.InvalidState, 'missing routed send target');
-        }
-        if (raw.spotRid) {
-          return this.sendToSpotFromRoutedMessage(
-            RoutingId.from(raw.routingId),
-            RoutingId.from(raw.spotRid),
-            parts,
-            sendFlags
-          );
         }
         return this.sendDirectRaw(raw.routingId, parts, sendFlags);
       };

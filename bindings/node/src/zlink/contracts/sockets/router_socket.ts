@@ -39,10 +39,4 @@ export interface RouterSocket extends ConnectableSocket {
   request(peerRid: RoutingId): RequestOperation;
   /** Begin a reply to request `requestSeq` from `peerRid`; parts are consumed on a successful submit. */
   reply(peerRid: RoutingId, requestSeq: bigint): ReplyOperation;
-  /** Begin a send addressed to a spot on another node; parts are consumed on a successful submit. */
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation;
-  /** Begin a request to a spot on another node; parts are consumed on submit and a reply is awaited. */
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation;
-  /** Begin a reply to a spot request `requestSeq`; parts are consumed on a successful submit. */
-  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation;
 }

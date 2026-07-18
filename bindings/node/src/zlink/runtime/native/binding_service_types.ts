@@ -114,6 +114,67 @@ export interface MeshReceiveRequirementsRaw {
   byteCount: number;
 }
 
+/** A 128-bit actor-transfer id (zlink_actor_transfer_id_t). */
+export interface ActorTransferIdRaw {
+  high: bigint;
+  low: bigint;
+}
+
+/** Raw typed kind_data emitted by the addon for a receive record. */
+export type MeshKindDataRaw =
+  | ActorControlKindDataRaw
+  | ActorJoinCompletionKindDataRaw
+  | ActorLookupCompletionKindDataRaw
+  | SendReadyKindDataRaw
+  | TransferControlKindDataRaw;
+
+export interface ActorControlKindDataRaw {
+  kind: 'actorControl';
+  lifecycleKind: number;
+  previousActor: ActorRefRaw;
+  currentActor: ActorRefRaw;
+  previousSpotRid: Buffer;
+  currentSpotRid: Buffer;
+  previousSpotGeneration: bigint;
+  currentSpotGeneration: bigint;
+  previousMembershipEpoch: bigint;
+  currentMembershipEpoch: bigint;
+  resultCode: number;
+}
+
+export interface ActorJoinCompletionKindDataRaw {
+  kind: 'actorJoinCompletion';
+  joinResult: number;
+  actor: ActorRefRaw;
+  location: ActorLocationRaw;
+}
+
+export interface ActorLookupCompletionKindDataRaw {
+  kind: 'actorLookupCompletion';
+  location: ActorLocationRaw;
+}
+
+export interface SendReadyKindDataRaw {
+  kind: 'sendReady';
+  destinationKind: number;
+  targetNodeRid: Buffer;
+  targetSpotRid: Buffer;
+  targetActor: ActorRefRaw;
+  channelName: string | null;
+}
+
+export interface TransferControlKindDataRaw {
+  kind: 'transferControl';
+  phase: number;
+  role: number;
+  transferId: ActorTransferIdRaw;
+  actor: ActorRefRaw;
+  membershipEpoch: bigint;
+  finalSequence: bigint;
+  resultCode: number;
+  failureErrno: number;
+}
+
 /** A materialized receive record (zlink_mesh_receive_record_t + its parts). */
 export interface MeshReceiveRecordRaw {
   kind: number;
@@ -128,6 +189,8 @@ export interface MeshReceiveRecordRaw {
   channelName: string | null;
   topic: string | null;
   applicationMetadata: Buffer | null;
+  /** Typed kind_data for this record kind, or null when the kind carries none. */
+  kindData: MeshKindDataRaw | null;
   terminalResult: number;
   failureErrno: number;
   parts: Buffer[];
@@ -171,6 +234,34 @@ export interface StreamSessionBindingRaw {
 
 /** Ready-domain handler installed via meshNodeSetReadyHandler. Returns the domain mask to drain. */
 export type NativeReadyHandler = (readyDomains: number) => number;
+
+/** Inputs to meshNodeActorTransferPrepare (zlink_actor_transfer_prepare_t). */
+export interface ActorTransferPrepareRaw {
+  role: number;
+  transferId: ActorTransferIdRaw;
+  actor: ActorRefRaw;
+  expectedMembershipEpoch: bigint;
+  peerNodeRid: Buffer;
+  finalSequence: bigint;
+  reserveMessageCount: bigint;
+  reserveByteCount: bigint;
+}
+
+/** Result detail from meshNodeActorTransferPrepare (zlink_actor_transfer_prepare_result_t). */
+export interface ActorTransferPrepareResultRaw {
+  role: number;
+  transferId: ActorTransferIdRaw;
+  actor: ActorRefRaw;
+  finalSequence: bigint;
+  reserveMessageCount: bigint;
+  reserveByteCount: bigint;
+}
+
+/** Result of meshNodeActorTransferPrepare: the opaque token bytes and result detail. */
+export interface ActorTransferPrepareOutcomeRaw {
+  token: Buffer;
+  result: ActorTransferPrepareResultRaw;
+}
 
 /** Options passed to meshNodeNew. */
 export interface MeshNodeNewOptions {

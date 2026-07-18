@@ -152,6 +152,7 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("meshNodePublisherDestroy", mesh_node_publisher_destroy),
       // Pull dispatch
       ZLINK_METHOD ("meshNodeSetReadyHandler", mesh_node_set_ready_handler),
+      ZLINK_METHOD ("meshNodeUnsetReadyHandler", mesh_node_unset_ready_handler),
       ZLINK_METHOD ("meshReadyBatchNew", mesh_ready_batch_new),
       ZLINK_METHOD ("meshReadyBatchReset", mesh_ready_batch_reset),
       ZLINK_METHOD ("meshReadyBatchDestroy", mesh_ready_batch_destroy),
@@ -192,6 +193,11 @@ void define_spot_exports (napi_env env, napi_value exports)
       ZLINK_METHOD ("meshNodeRequestToActor", mesh_node_request_to_actor),
       ZLINK_METHOD ("actorSendToActor", actor_send_to_actor),
       ZLINK_METHOD ("actorRequestToActor", actor_request_to_actor),
+      // Actor transfer fence
+      ZLINK_METHOD ("meshNodeActorTransferPrepare", mesh_node_actor_transfer_prepare),
+      ZLINK_METHOD ("meshNodeActorTransferCommit", mesh_node_actor_transfer_commit),
+      ZLINK_METHOD ("meshNodeActorTransferActivate", mesh_node_actor_transfer_activate),
+      ZLINK_METHOD ("meshNodeActorTransferAbort", mesh_node_actor_transfer_abort),
       // Stream session service
       ZLINK_METHOD ("streamSessionServiceNew", stream_session_service_new),
       ZLINK_METHOD ("streamSessionServiceStart", stream_session_service_start),

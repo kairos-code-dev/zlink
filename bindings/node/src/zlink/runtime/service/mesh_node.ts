@@ -22,15 +22,20 @@ import type {
   ReceiveBatch,
   RequestOptions,
   Spot as SpotContract,
-  StreamSessionService as StreamSessionServiceContract
+  StreamSessionService as StreamSessionServiceContract,
+  ActorTransferPrepare,
+  ActorTransferToken,
+  PrepareActorTransferResult
 } from '../../contracts/service';
 import type {
+  ActorTransferPrepareRaw,
   MeshConnectPeerOptions,
   MeshNodeNewOptions,
   MeshNodeStatusRaw,
   MeshPeerEntryRaw,
   MeshReadyRecordRaw,
   NativeReadyHandler,
+  NativeServiceHandle,
   SpotGetOrNewRaw
 } from '../native/binding_service_types';
 import { NativeHandle, getNativeHandle } from '../handles/native_handle';
@@ -63,6 +68,9 @@ export interface MeshNodeOptions {
 
 /** Runtime mesh node: the local participant of a RouteMesh. */
 export class MeshNode extends NativeHandle implements MeshNodeContract {
+  /** Opaque native handle for the installed ready handler, or null when none is registered. */
+  private _readyHandlerState: NativeServiceHandle | null = null;
+
   constructor(ctx: RuntimeContext, options?: MeshNodeOptions) {
     const nativeOptions: MeshNodeNewOptions = {
       meshName: options?.meshName,
@@ -90,11 +98,24 @@ export class MeshNode extends NativeHandle implements MeshNodeContract {
 
   close(): void {
     if (getNativeHandle(this) != null) {
+      this.clearReadyHandler();
       closeCall('mesh node close failed', () => {
         requireNative().meshNodeDestroy(getNativeHandle(this));
       });
       this._native = null;
     }
+  }
+
+  /** Unregister and release the ready handler if one is installed. */
+  private clearReadyHandler(): void {
+    const state = this._readyHandlerState;
+    if (state == null) {
+      return;
+    }
+    this._readyHandlerState = null;
+    configCall('mesh node ready handler unregistration failed', () => {
+      requireNative().meshNodeUnsetReadyHandler(getNativeHandle(this), state);
+    });
   }
 
   addChannelName(name: string): void {
@@ -430,12 +451,61 @@ export class MeshNode extends NativeHandle implements MeshNodeContract {
     );
   }
 
+  // --- Actor transfer fence ---------------------------------------------
+  prepareActorTransfer(prepare: ActorTransferPrepare, timeoutMs?: number): PrepareActorTransferResult {
+    const raw: ActorTransferPrepareRaw = {
+      role: prepare.role | 0,
+      transferId: { high: prepare.transferId.high, low: prepare.transferId.low },
+      actor: actorRefToRaw(prepare.actor),
+      expectedMembershipEpoch: prepare.expectedMembershipEpoch,
+      peerNodeRid: normalizeRoutingId(prepare.peerNodeRid, 'peerNodeRid'),
+      finalSequence: prepare.finalSequence,
+      reserveMessageCount: prepare.reserveMessageCount,
+      reserveByteCount: prepare.reserveByteCount
+    };
+    const outcome = configCall('mesh node actor transfer prepare failed', () =>
+      requireNative().meshNodeActorTransferPrepare(getNativeHandle(this), raw, timeoutOrZero(timeoutMs))
+    );
+    return {
+      token: { opaque: outcome.token },
+      result: {
+        role: outcome.result.role,
+        transferId: { high: outcome.result.transferId.high, low: outcome.result.transferId.low },
+        actor: actorRefFromRaw(outcome.result.actor),
+        finalSequence: outcome.result.finalSequence,
+        reserveMessageCount: outcome.result.reserveMessageCount,
+        reserveByteCount: outcome.result.reserveByteCount
+      }
+    };
+  }
+
+  commitActorTransfer(token: ActorTransferToken, newMembershipEpoch: bigint): void {
+    configCall('mesh node actor transfer commit failed', () => {
+      requireNative().meshNodeActorTransferCommit(token.opaque, newMembershipEpoch);
+    });
+  }
+
+  activateActorTransfer(token: ActorTransferToken): void {
+    configCall('mesh node actor transfer activate failed', () => {
+      requireNative().meshNodeActorTransferActivate(token.opaque);
+    });
+  }
+
+  abortActorTransfer(token: ActorTransferToken): void {
+    configCall('mesh node actor transfer abort failed', () => {
+      requireNative().meshNodeActorTransferAbort(token.opaque);
+    });
+  }
+
   // --- Pull dispatch -----------------------------------------------------
   setReadyHandler(handler: (readyDomains: number) => number): void {
     const nativeHandler: NativeReadyHandler = handler;
-    configCall('mesh node ready handler registration failed', () => {
-      requireNative().meshNodeSetReadyHandler(getNativeHandle(this), nativeHandler);
-    });
+    // Replacing an existing handler releases the previous native registration
+    // first so its threadsafe function is not leaked.
+    this.clearReadyHandler();
+    this._readyHandlerState = configCall('mesh node ready handler registration failed', () =>
+      requireNative().meshNodeSetReadyHandler(getNativeHandle(this), nativeHandler)
+    );
   }
 
   createReadyBatch(capacity: number): ReadyBatch {

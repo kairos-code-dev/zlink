@@ -257,11 +257,12 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 routed.EnableClient("tcp://127.0.0.1:7204");
             }
             {
-                var mesh = options.AddSpotMesh("spot.mesh");
+                var mesh = options.AddRouteMesh("spot.mesh");
+                mesh.ChannelName("spot.mesh");
                 {
                     var node = mesh;
                     {
-                        var router = node.EnableRouter("tcp://127.0.0.1:9105");
+                        var router = node.Listen("tcp://127.0.0.1:9105");
                     }
                 }
             }

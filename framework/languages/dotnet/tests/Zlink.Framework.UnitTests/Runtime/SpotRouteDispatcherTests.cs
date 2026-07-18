@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
 
@@ -67,30 +68,21 @@ public sealed class SpotRouteDispatcherTests
             null);
     }
 
-    private static Received CreateRoutedReceived(IReadOnlyList<Message> parts)
+    // RouteMesh 10.0.0 delivers per-spot route records to the dispatcher as a
+    // framework-owned ZLinkBackendRouteReceived (the pump drains Core claims into
+    // this record). The record owns a private copy of the parts; the dispatcher
+    // disposes it via `using (received)`, so the caller's originals stay valid.
+    private static ZLinkBackendRouteReceived CreateRoutedReceived(IReadOnlyList<Message> parts)
     {
-        using var context = global::Systems.Zlink.Zlink.CreateContext();
-        using var node = context.CreateSpotNode();
-        using var sender = node.CreateSpot();
-        using var receiver = node.CreateSpot();
-        var nodeRid = RoutingId.From("route-node");
-        var senderRid = RoutingId.From("route-source");
-        var receiverRid = RoutingId.From("route-target");
-        node.SetRoutingId(nodeRid);
-        sender.SetRoutingId(senderRid);
-        receiver.SetRoutingId(receiverRid);
-        sender.SendToSpot(nodeRid, receiverRid).Messages(parts).Submit();
-
-        var received = Received.Create();
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (receiver.RecvRouted(received, RecvFlags.DontWait)) return received;
-            Thread.Sleep(5);
-        }
-
-        received.Dispose();
-        throw new TimeoutException("Timed out creating a routed test packet.");
+        var owned = parts
+            .Select(static part => Message.From(part.AsReadOnlySpan()))
+            .ToArray();
+        return new ZLinkBackendRouteReceived(
+            owned,
+            sourceNodeRid: RoutingId.From("route-source"),
+            spotRid: RoutingId.From("route-target"),
+            requestSeq: null,
+            reply: null);
     }
 
     private sealed record TestMessage(string Value);

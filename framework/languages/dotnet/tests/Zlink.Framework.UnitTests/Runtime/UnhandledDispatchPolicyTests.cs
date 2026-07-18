@@ -1228,15 +1228,25 @@ public sealed partial class UnhandledDispatchPolicyTests
                 throw new ZlinkConfigException(ZlinkConfigException.ErrorCode.InternalError);
         }
 
-        public bool Subscribe(TopicMessage result, RecvFlags flags)
+        public ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags)
         {
-            return SubscribeHandler?.Invoke(result, flags) ?? false;
+            if (SubscribeHandler is null) return null;
+            var topicMessage = new TopicMessage();
+            try
+            {
+                if (!SubscribeHandler(topicMessage, flags)) return null;
+                var parts = topicMessage.Parts
+                    .Select(static part => Message.From(part.AsReadOnlySpan()))
+                    .ToArray();
+                return new ZLinkBackendSubscribeMessage(topicMessage.Topic, parts);
+            }
+            finally
+            {
+                topicMessage.Dispose();
+            }
         }
 
-        public bool RecvRoute(Received result, RecvFlags flags)
-        {
-            return false;
-        }
+        public ZLinkBackendRouteReceived? RecvRoute(RecvFlags flags) => null;
 
         public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
         {

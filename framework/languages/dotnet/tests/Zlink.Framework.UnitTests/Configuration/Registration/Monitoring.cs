@@ -100,11 +100,12 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             }
 
             {
-                var mesh = options.AddSpotMesh("game.stage");
+                var mesh = options.AddRouteMesh("game.stage");
+                mesh.ChannelName("game.stage");
                 {
                     var spot = mesh;
                     {
-                        var router = spot.EnableRouter("tcp://127.0.0.1:9000");
+                        var router = spot.Listen("tcp://127.0.0.1:9000");
                     }
                     spot.AddSpotFactory<TestSpot>();
                 }
@@ -202,7 +203,8 @@ public sealed class MonitoringTests : RegistrationValidationSupport
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("game.stage").EnablePubSub(endpoint);
+            options.UseInMemoryLocationStores();
+            options.AddRouteMesh("game.stage").Listen(endpoint).ChannelName("game.stage");
         });
         builder.Services.AddZLinkMonitoring(options =>
         {
@@ -253,7 +255,8 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("game.stage").EnablePubSub("tcp://127.0.0.1:9000");
+            options.UseInMemoryLocationStores();
+            options.AddRouteMesh("game.stage").Listen("tcp://127.0.0.1:9000").ChannelName("game.stage");
         });
         services.AddZLinkMonitoring(options =>
         {

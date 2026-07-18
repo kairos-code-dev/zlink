@@ -83,7 +83,7 @@ public sealed class BackendAdapterFactoryTests
         IZLinkSpotBackendAdapter spotAdapter)
     {
         await using var context = channelAdapter.CreateContext();
-        await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
+        await using var spotNode = spotAdapter.CreateSpotNode(context);
 
         Assert.IsType<ZLinkBackendSpotNodeWrapper>(spotNode);
     }
@@ -128,7 +128,7 @@ public sealed class BackendAdapterFactoryTests
         var channelAdapter = factory.CreateChannelAdapter();
         var spotAdapter = factory.CreateSpotAdapter();
         await using var context = channelAdapter.CreateContext();
-        await using var spotNode = spotAdapter.CreateSpotNode(context, SpotNodeMode.All);
+        await using var spotNode = spotAdapter.CreateSpotNode(context);
 
         var accesses = Enumerable.Range(0, 32)
             .Select(_ => Task.Run(spotNode.EntrySpot))

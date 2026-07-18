@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Codecs;
 using Zlink.Framework.Runtime.Dispatch;
 
@@ -195,30 +196,21 @@ public sealed class ActorTransferTests
         }
     }
 
-    private static Received CreateRoutedReceived(IReadOnlyList<Message> parts)
+    // RouteMesh 10.0.0 hands the spot route dispatcher a framework-owned
+    // ZLinkBackendRouteReceived (drained from Core claims by the node pump) rather
+    // than a binding Received. The record owns a private copy of the parts and is
+    // disposed by the dispatcher, so the caller's originals remain valid.
+    private static ZLinkBackendRouteReceived CreateRoutedReceived(IReadOnlyList<Message> parts)
     {
-        using var context = global::Systems.Zlink.Zlink.CreateContext();
-        using var node = context.CreateSpotNode();
-        using var sender = node.CreateSpot();
-        using var receiver = node.CreateSpot();
-        var nodeRid = RoutingId.From("transfer-node");
-        var senderRid = RoutingId.From("transfer-source");
-        var receiverRid = RoutingId.From("transfer-target");
-        node.SetRoutingId(nodeRid);
-        sender.SetRoutingId(senderRid);
-        receiver.SetRoutingId(receiverRid);
-        sender.SendToSpot(nodeRid, receiverRid).Messages(parts).Submit();
-
-        var received = Received.Create();
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (receiver.RecvRouted(received, RecvFlags.DontWait)) return received;
-            Thread.Sleep(5);
-        }
-
-        received.Dispose();
-        throw new TimeoutException("Timed out creating a routed transfer packet.");
+        var owned = parts
+            .Select(static part => Message.From(part.AsReadOnlySpan()))
+            .ToArray();
+        return new ZLinkBackendRouteReceived(
+            owned,
+            sourceNodeRid: RoutingId.From("transfer-source"),
+            spotRid: RoutingId.From("transfer-target"),
+            requestSeq: null,
+            reply: null);
     }
 
     private sealed class TransferActorAdapter : IZLinkActorTransferAdapter<TransferActor>

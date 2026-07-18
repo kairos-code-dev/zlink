@@ -5,24 +5,40 @@ namespace Zlink.Framework.UnitTests;
 
 public sealed class BackendStreamSocketConcurrencyTests
 {
+    private static readonly RoutingId NodeRid = RoutingId.From("stream-node");
+
     [Fact]
     public async Task ConcurrentBoundActorMessages_AreSubmittedSerially()
     {
-        var native = DispatchProxy.Create<IStreamSocket, BlockingStreamSocketProxy>();
-        var proxy = (BlockingStreamSocketProxy)(object)native;
-        await using var backend = new ZLinkBackendStreamSocketWrapper(native);
+        // RouteMesh 10.0.0 moved the bound-actor plane onto IStreamSessionService,
+        // created lazily from the MeshNode. The framework wrapper still serialises
+        // concurrent SendBoundActor submits under a single send gate; this exercises
+        // that guarantee through the new session-service surface.
+        var socket = DispatchProxy.Create<IStreamSocket, NoopStreamSocketProxy>();
+        var node = DispatchProxy.Create<IMeshNode, StreamNodeProxy>();
+        var session = DispatchProxy.Create<IStreamSessionService, BlockingSessionProxy>();
+        var sessionProxy = (BlockingSessionProxy)(object)session;
+        ((StreamNodeProxy)(object)node).Session = session;
+        var sessionRid = RoutingId.From("session");
+        sessionProxy.Bindings =
+        [
+            new StreamSessionBinding(sessionRid, new ActorRef(NodeRid, "actor-1", 1), 0, 0),
+            new StreamSessionBinding(sessionRid, new ActorRef(NodeRid, "actor-2", 1), 0, 0)
+        ];
+
+        await using var backend = new ZLinkBackendStreamSocketWrapper(
+            socket, node, completions: null, ownsNode: false);
         using var firstHeader = Message.From("first-header");
         using var firstBody = Message.From("first-body");
         using var secondHeader = Message.From("second-header");
         using var secondBody = Message.From("second-body");
-        var sessionRid = RoutingId.From("session");
 
         var first = Task.Run(() => backend.SendBoundActor(
             sessionRid,
             "actor-1",
             [firstHeader, firstBody],
             SendFlags.None));
-        await proxy.FirstSubmitEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await sessionProxy.FirstSubmitEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var second = Task.Run(() =>
@@ -37,21 +53,54 @@ public sealed class BackendStreamSocketConcurrencyTests
         await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         await Task.Delay(100);
-        Assert.Equal(1, proxy.SubmitCount);
-        Assert.Equal(1, proxy.MaximumConcurrentSubmits);
+        Assert.Equal(1, sessionProxy.SubmitCount);
+        Assert.Equal(1, sessionProxy.MaximumConcurrentSubmits);
 
-        proxy.AllowFirstSubmit.TrySetResult();
+        sessionProxy.AllowFirstSubmit.TrySetResult();
         Assert.True(await first.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.True(await second.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.Equal(2, proxy.SubmitCount);
-        Assert.Equal(1, proxy.MaximumConcurrentSubmits);
+        Assert.Equal(2, sessionProxy.SubmitCount);
+        Assert.Equal(1, sessionProxy.MaximumConcurrentSubmits);
     }
 
-    private class BlockingStreamSocketProxy : DispatchProxy
+    private class NoopStreamSocketProxy : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            ArgumentNullException.ThrowIfNull(targetMethod);
+            return targetMethod.Name switch
+            {
+                "DisposeAsync" => ValueTask.CompletedTask,
+                "Dispose" => null,
+                _ => throw new NotSupportedException(targetMethod.Name)
+            };
+        }
+    }
+
+    private class StreamNodeProxy : DispatchProxy
+    {
+        public IStreamSessionService Session { get; set; } = null!;
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            ArgumentNullException.ThrowIfNull(targetMethod);
+            return targetMethod.Name switch
+            {
+                "CreateStreamSessionService" => Session,
+                "DisposeAsync" => ValueTask.CompletedTask,
+                "Dispose" => null,
+                _ => throw new NotSupportedException(targetMethod.Name)
+            };
+        }
+    }
+
+    private class BlockingSessionProxy : DispatchProxy
     {
         private int _activeSubmits;
         private int _maximumConcurrentSubmits;
         private int _submitCount;
+
+        public StreamSessionBinding[] Bindings { get; set; } = [];
 
         public TaskCompletionSource FirstSubmitEntered { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -66,15 +115,24 @@ public sealed class BackendStreamSocketConcurrencyTests
         protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
         {
             ArgumentNullException.ThrowIfNull(targetMethod);
-            return targetMethod.Name switch
+            switch (targetMethod.Name)
             {
-                "SendBoundActor" => new BlockingSendOperation(this),
-                "DisposeAsync" => ValueTask.CompletedTask,
-                _ => throw new NotSupportedException(targetMethod.Name)
-            };
+                case "Start":
+                    return null;
+                case "Bindings":
+                    return Bindings;
+                case "SendToActor":
+                    return Submit();
+                case "DisposeAsync":
+                    return ValueTask.CompletedTask;
+                case "Dispose":
+                    return null;
+                default:
+                    throw new NotSupportedException(targetMethod.Name);
+            }
         }
 
-        private bool Submit()
+        private SubmitResult Submit()
         {
             var active = Interlocked.Increment(ref _activeSubmits);
             UpdateMaximum(active);
@@ -87,7 +145,7 @@ public sealed class BackendStreamSocketConcurrencyTests
                     AllowFirstSubmit.Task.GetAwaiter().GetResult();
                 }
 
-                return true;
+                return SubmitResult.Ok;
             }
             finally
             {
@@ -104,15 +162,6 @@ public sealed class BackendStreamSocketConcurrencyTests
                 if (Interlocked.CompareExchange(ref _maximumConcurrentSubmits, active, current) == current)
                     return;
             }
-        }
-
-        private sealed class BlockingSendOperation(BlockingStreamSocketProxy owner)
-            : SendOperation, SendSubmitOperation
-        {
-            public SendSubmitOperation Message(Message message) => this;
-            public SendSubmitOperation Messages(IReadOnlyList<Message> messages) => this;
-            public SendSubmitOperation Flags(SendFlags flags) => this;
-            public bool Submit() => owner.Submit();
         }
     }
 }

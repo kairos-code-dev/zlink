@@ -49,13 +49,17 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             Assert.Null(registration.SpotNodes["entry"].EntrySpotType);
             Assert.Equal(RoutingId.From("configured-entry"), node.EntryRoutingId);
+            // RouteMesh 10.0.0 MeshNode startup ordering (spec 21-mesh-node §3):
+            // routing id, then ROUTER bind (+ channels + Start), then entry-spot
+            // configuration. The 9.x order applied the entry-spot routing id before
+            // the router bind; the node now binds/starts before any entry-spot use.
             Assert.Equal(
                 new[]
                 {
                     "node-rid:entry-node",
+                    "router-bind:inproc://entry",
                     "entry-facade",
-                    "entry-rid:configured-entry",
-                    "router-bind:inproc://entry"
+                    "entry-rid:configured-entry"
                 },
                 node.InitializationEvents.Take(4));
         }
@@ -75,15 +79,18 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             SpotNodeName = "pubsub",
             RoutingId = RoutingId.From("pubsub-node"),
+            // RouteMesh 10.0.0: publisher config is node-level (SpotPublisherConfig,
+            // read by the initializer via ApplyRoleConfig); subscriber config stays
+            // under the PubSub capability.
+            SpotPublisherConfig =
+            {
+                SendHighWaterMark = 17,
+                SendTimeout = TimeSpan.FromMilliseconds(21),
+                Linger = TimeSpan.FromMilliseconds(34),
+                NoDrop = true
+            },
             PubSub = new ZLinkSpotPubSubCapabilityRegistration
             {
-                PublisherConfig =
-                {
-                    SendHighWaterMark = 17,
-                    SendTimeout = TimeSpan.FromMilliseconds(21),
-                    Linger = TimeSpan.FromMilliseconds(34),
-                    NoDrop = true
-                },
                 SubscriberConfig =
                 {
                     ReceiveHighWaterMark = 55,
@@ -2811,7 +2818,11 @@ public sealed partial class EntrySpotActorDispatchTests
         return ZLinkStreamProtocolDefaults.DecodeHeader(frame.AsMemory(6, headerSize));
     }
 
-    private static Received CreateRoutedReceived(string value)
+    // RouteMesh 10.0.0 delivers routed traffic to the entry spot dispatch pump as a
+    // framework-owned ZLinkBackendRouteReceived (the node pump drains Core claims
+    // into these records). The record owns the encoded parts and is disposed by the
+    // dispatch path, so we mint fresh parts per call and hand them straight over.
+    private static ZLinkBackendRouteReceived CreateRoutedReceived(string value)
     {
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
@@ -2821,37 +2832,12 @@ public sealed partial class EntrySpotActorDispatchTests
             header,
             new ProbeRouteMessage(value),
             null);
-        using var context = global::Systems.Zlink.Zlink.CreateContext();
-        using var node = context.CreateSpotNode();
-        using var sender = node.CreateSpot();
-        using var receiver = node.CreateSpot();
-        var nodeRid = RoutingId.From("route-source-node");
-        var senderRid = RoutingId.From("route-source-spot");
-        var receiverRid = RoutingId.From("route-receiver-spot");
-
-        node.SetRoutingId(nodeRid);
-        sender.SetRoutingId(senderRid);
-        receiver.SetRoutingId(receiverRid);
-        sender.SendToSpot(nodeRid, receiverRid)
-            .Messages(parts)
-            .Submit();
-
-        var received = Received.Create();
-        if (!WaitUntil(() => receiver.RecvRouted(received, RecvFlags.DontWait), TimeSpan.FromSeconds(5)))
-            throw new TimeoutException("Timed out creating a routed Received message for the entry spot dispatch test.");
-        return received;
-    }
-
-    private static bool WaitUntil(Func<bool> predicate, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow.Add(timeout);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (predicate()) return true;
-            Thread.Sleep(10);
-        }
-
-        return false;
+        return new ZLinkBackendRouteReceived(
+            parts,
+            sourceNodeRid: RoutingId.From("route-source-node"),
+            spotRid: RoutingId.From("route-receiver-spot"),
+            requestSeq: null,
+            reply: null);
     }
 
     private sealed class DispatchProbe
@@ -3471,9 +3457,9 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public void SetSubscription(string topic) { }
 
-        public bool Subscribe(TopicMessage result, RecvFlags flags) => false;
+        public ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags) => null;
 
-        public bool RecvRoute(Received result, RecvFlags flags) => false;
+        public ZLinkBackendRouteReceived? RecvRoute(RecvFlags flags) => null;
 
         public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
         {
@@ -3750,7 +3736,43 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects() => [];
 
-        public IZLinkBackendSpotRouteBridge CreateRouteBridge() => throw new NotSupportedException();
+        public List<string> AddedChannels { get; } = [];
+
+        public Dictionary<string, uint> ChannelWeights { get; } = new();
+
+        public int StartCount { get; private set; }
+
+        public Action<ZLinkBackendRouteReceived>? NodeRouteHandler { get; private set; }
+
+        public Action<ZLinkBackendActorTransferControl>? TransferControlHandler { get; private set; }
+
+        public void AddChannel(string channelName) => AddedChannels.Add(channelName);
+
+        public void SetChannelWeight(string channelName, uint weight) =>
+            ChannelWeights[channelName] = weight;
+
+        public void Start() => StartCount++;
+
+        public ZLinkBackendActorTransferToken PrepareActorTransfer(
+            ZLinkBackendActorTransferPrepare prepare,
+            out ZLinkBackendActorTransferPrepareResult result,
+            TimeSpan timeout) => throw new NotSupportedException();
+
+        public void CommitActorTransfer(
+            ZLinkBackendActorTransferToken token,
+            ulong newMembershipEpoch) => throw new NotSupportedException();
+
+        public void ActivateActorTransfer(ZLinkBackendActorTransferToken token) =>
+            throw new NotSupportedException();
+
+        public void AbortActorTransfer(ZLinkBackendActorTransferToken token) =>
+            throw new NotSupportedException();
+
+        public void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler) =>
+            TransferControlHandler = handler;
+
+        public void OnNodeRoute(Action<ZLinkBackendRouteReceived> handler) =>
+            NodeRouteHandler = handler;
 
         public IZLinkBackendSpot EntrySpot()
         {
@@ -3955,11 +3977,17 @@ public sealed partial class EntrySpotActorDispatchTests
         CapturingSpotNode node,
         CapturingSpotNode? pubSubOnlyNode) : IZLinkSpotBackendAdapter
     {
-        public IZLinkBackendSpotNode CreateSpotNode(
-            IZLinkBackendContext context,
-            SpotNodeMode mode) => mode == SpotNodeMode.PubSub && pubSubOnlyNode is not null
-                ? pubSubOnlyNode
-                : node;
+        private int _createCount;
+
+        // RouteMesh 10.0.0 unified the spot node: CreateSpotNode no longer carries
+        // a SpotNodeMode and is invoked once per ZLinkSpotNodeRegistration. When a
+        // pub/sub-only registration is present it is enumerated first, so the first
+        // call resolves to the pub/sub-only node and later calls to the routed node.
+        public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context)
+        {
+            var index = _createCount++;
+            return index == 0 && pubSubOnlyNode is not null ? pubSubOnlyNode : node;
+        }
     }
 
     private sealed class CapturingBackendContext : IZLinkBackendContext

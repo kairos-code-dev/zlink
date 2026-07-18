@@ -54,13 +54,10 @@
         <Compile Include="Runtime/ActorBoundSessionRelayTests.cs"/>
         <Compile Include="Runtime/TransportFailFastTests.cs"/>
         <Compile Include="Runtime/BackendAdapterFactoryTests.cs"/>
-        <Compile Include="Runtime/BackendSpotNodeConcurrencyTests.cs"/>
         <Compile Include="Runtime/BackendStreamSocketConcurrencyTests.cs"/>
-        <Compile Include="Runtime/BackendActorHandleOwnershipTests.cs"/>
         <Compile Include="Runtime/BackendMonitorWrapperTests.cs"/>
         <Compile Include="Runtime/CoverageCriticalRuntimeTests.cs"/>
         <Compile Include="Runtime/CustomSerializerEnvelopeTests.cs"/>
-        <Compile Include="Runtime/ChannelRuntimeOptionsTests.cs"/>
         <Compile Include="Runtime/DrainCoordinatorTests.cs"/>
         <Compile Include="Runtime/EntrySpotActorDispatchTests.cs"/>
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>

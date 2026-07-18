@@ -114,7 +114,7 @@ public sealed class ActorClientTests
         services.AddZLinkFramework(options =>
         {
             options.UseInMemoryLocationStores();
-            options.AddSpotMesh("play").EnableRouter("inproc://actor-client");
+            options.AddRouteMesh("play").Listen("inproc://actor-client").ChannelName("play");
         });
 
         await using var provider = services.BuildServiceProvider();
@@ -128,22 +128,7 @@ public sealed class ActorClientTests
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
-            options.AddSpotMesh("play").EnableRouter("inproc://actor-client");
-        });
-
-        await using var provider = services.BuildServiceProvider();
-
-        Assert.Null(provider.GetService<IZLinkActorClient>());
-    }
-
-    [Fact]
-    public async Task AddZLinkFramework_DoesNot_Register_ActorClient_For_PubSub_Only_SpotNode()
-    {
-        var services = new ServiceCollection();
-        services.AddZLinkFramework(options =>
-        {
-            options.UseInMemoryLocationStores();
-            options.AddSpotMesh("play").EnablePubSub("inproc://actor-client-pubsub");
+            options.AddRouteMesh("play").Listen("inproc://actor-client").ChannelName("play");
         });
 
         await using var provider = services.BuildServiceProvider();

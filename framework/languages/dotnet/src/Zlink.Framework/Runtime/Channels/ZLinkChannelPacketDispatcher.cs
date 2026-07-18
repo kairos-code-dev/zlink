@@ -200,7 +200,7 @@ internal sealed class ZLinkChannelPacketDispatcher
     {
         await _requestPipeline.DispatchAsync(
                 channelName,
-                received,
+                received.Parts,
                 header,
                 (replyHeader, reply, replyType) => ZLinkChannelReplyWriter.ReplyRequest(
                     router,

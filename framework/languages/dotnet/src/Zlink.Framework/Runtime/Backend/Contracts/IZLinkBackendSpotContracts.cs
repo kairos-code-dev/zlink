@@ -148,6 +148,12 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     // orchestrating authority (S8-04A) registers the consumer; unset, the records
     // are delivered to no consumer instead of being silently dropped.
     void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler);
+
+    // Registers the handler the node dispatch pump invokes for node-addressed
+    // (NodeSend/NodeRequest) and channel-addressed (ChannelSend/ChannelRequest)
+    // records, so the MeshNode builder's registered route/channel handlers receive
+    // inbound traffic. Requests reply through the record's held reply token.
+    void OnNodeRoute(Action<ZLinkBackendRouteReceived> handler);
 }
 
 internal interface IZLinkBackendSpot : IAsyncDisposable

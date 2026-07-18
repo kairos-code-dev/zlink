@@ -21,6 +21,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private ZLinkEntrySpotDispatchPump? _entryDispatchPump;
     private ZLinkSpotOutboundTransport? _entryOutbound;
     private ZLinkEntrySpotActivation? _entrySpotActivation;
+    private ZLinkMeshNodeRouteDispatcher? _nodeRouteDispatcher;
     private int _entrySpotMetricActive;
     private int _entrySpotLifecycleClosed;
 
@@ -187,6 +188,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
     public async ValueTask InitializeEntrySpotAsync()
     {
+        WireNodeRouteDispatch();
         _entrySpot ??= Node.EntrySpot();
         _entryOutbound ??= new ZLinkSpotOutboundTransport(
             _entrySpot,
@@ -366,6 +368,24 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
 
             throw;
         }
+    }
+
+    // Wires inbound node-route (NodeSend/NodeRequest) and channel-membership
+    // (ChannelSend/ChannelRequest) dispatch to the MeshNode builder's registered
+    // handlers. Idempotent; a node with no such handlers registers no sink and its
+    // node/channel records are released by the pump.
+    private void WireNodeRouteDispatch()
+    {
+        if (_nodeRouteDispatcher is not null) return;
+
+        _nodeRouteDispatcher = ZLinkMeshNodeRouteDispatcher.Create(
+            _services,
+            _frameworkRegistration,
+            Registration,
+            _runtime,
+            _taskRunner);
+        if (_nodeRouteDispatcher is not null)
+            Node.OnNodeRoute(_nodeRouteDispatcher.Dispatch);
     }
 
     private bool ShouldAttachActorDispatchPump()

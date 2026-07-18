@@ -21,6 +21,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     private readonly ZLinkMeshCompletionTable _completions;
     private readonly ConcurrentDictionary<RoutingId, SpotDispatchState> _spots = new();
     private Action<ActorTransferControl>? _transferControlHandler;
+    private Action<ZLinkBackendRouteReceived>? _nodeRouteHandler;
     private readonly object _lifecycleGate = new();
     private readonly SemaphoreSlim _signal = new(0);
     private CancellationTokenSource? _stop;
@@ -58,6 +59,18 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         Action<ZLinkBackendSpotDispatchInfo> handler)
     {
         RegisterSpot(spotRid).DispatchHandler = handler;
+        EnsureStarted();
+    }
+
+    // Registers the node-level route/channel dispatch sink. Node-addressed
+    // (NodeSend/NodeRequest) and channel-addressed (ChannelSend/ChannelRequest)
+    // records are owned by the node (ready-record OwnerKind == Node) — their
+    // source spot rid is the remote sender's, so they cannot key a local per-spot
+    // queue. They are delivered to this single node-level consumer, which routes
+    // them to the MeshNode builder's registered route/channel handlers.
+    public void SetNodeRouteHandler(Action<ZLinkBackendRouteReceived> handler)
+    {
+        _nodeRouteHandler = handler;
         EnsureStarted();
     }
 
@@ -167,6 +180,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             case MeshRecordKind.NodeRequest:
             case MeshRecordKind.ChannelSend:
             case MeshRecordKind.ChannelRequest:
+                EnqueueNodeRoute(batch, index, record);
+                return;
             case MeshRecordKind.SpotSend:
             case MeshRecordKind.SpotRequest:
                 EnqueueRoute(batch, index, record);
@@ -219,6 +234,38 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             reply);
         state.Routes.Enqueue(route);
         state.Raise(ZLinkBackendSpotDispatchEvent.RouteReadable);
+    }
+
+    // Node/channel-addressed records (owned by the node). Requests carry the reply
+    // token exactly like the per-spot route plane; channel records also carry the
+    // addressed channel name so the node dispatcher can select the channel
+    // membership's handler set. Delivered to the node-level route consumer; if none
+    // is registered (no MeshNode route/channel handlers), the retained parts are
+    // released so a dropped record cannot leak.
+    private void EnqueueNodeRoute(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
+    {
+        var replyRecord = record;
+        var reply = record.Kind is MeshRecordKind.NodeRequest or MeshRecordKind.ChannelRequest
+            ? new Func<IReadOnlyList<Message>, SendFlags, SubmitResult>(
+                (parts, flags) => replyRecord.Reply(parts, flags))
+            : null;
+        var received = new ZLinkBackendRouteReceived(
+            RetainParts(batch, index),
+            record.SourceNodeRid,
+            record.SourceSpotRid,
+            record.OperationId == default ? null : record.OperationId.Low,
+            reply,
+            record.Kind is MeshRecordKind.ChannelSend or MeshRecordKind.ChannelRequest
+                ? record.ChannelName
+                : null);
+        var handler = _nodeRouteHandler;
+        if (handler is null)
+        {
+            received.Dispose();
+            return;
+        }
+
+        handler(received);
     }
 
     private void EnqueueSubscribe(MeshReceiveBatch batch, int index, MeshReceiveRecord record)

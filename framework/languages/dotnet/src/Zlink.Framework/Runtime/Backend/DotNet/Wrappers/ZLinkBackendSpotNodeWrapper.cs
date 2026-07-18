@@ -489,6 +489,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         _node.AbortActorTransfer(token.Native);
     }
 
+    public void OnNodeRoute(Action<ZLinkBackendRouteReceived> handler)
+    {
+        _pump.SetNodeRouteHandler(handler);
+    }
+
     public void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler)
     {
         _pump.SetTransferControlHandler(control => handler(

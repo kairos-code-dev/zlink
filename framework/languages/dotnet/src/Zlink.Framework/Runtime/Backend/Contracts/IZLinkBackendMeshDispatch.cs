@@ -27,13 +27,15 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
         RoutingId? sourceNodeRid,
         RoutingId? spotRid,
         ulong? requestSeq,
-        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply)
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply,
+        string? channelName = null)
     {
         Parts = parts;
         SourceNodeRid = sourceNodeRid;
         SpotRid = spotRid;
         RequestSeq = requestSeq;
         _reply = reply;
+        ChannelName = channelName;
     }
 
     public IReadOnlyList<Message> Parts { get; }
@@ -41,6 +43,11 @@ internal sealed class ZLinkBackendRouteReceived : IDisposable
     public RoutingId? SourceNodeRid { get; }
 
     public RoutingId? SpotRid { get; }
+
+    // The addressed channel name for node-level channel records
+    // (ChannelSend/ChannelRequest). Null for RID-direct node route records
+    // (NodeSend/NodeRequest) and for per-spot route records.
+    public string? ChannelName { get; }
 
     public ulong? RequestSeq { get; }
 

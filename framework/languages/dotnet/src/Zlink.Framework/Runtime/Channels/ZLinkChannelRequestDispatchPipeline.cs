@@ -12,7 +12,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
 {
     public async Task DispatchAsync(
         string channelName,
-        Received received,
+        IReadOnlyList<Message> parts,
         ZLinkEnvelopeHeader header,
         Action<ZLinkEnvelopeHeader, object?, Type?> reply,
         Action<ZLinkEnvelopeHeader> replyError,
@@ -49,7 +49,7 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
 
         ZLinkFrameworkException? decodeError = null;
         if (!scope.TryDecode(
-                received.Parts,
+                parts,
                 endpoint.MessageType,
                 scope.ContentType!,
                 codecs,

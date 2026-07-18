@@ -397,7 +397,11 @@ internal sealed class ZLinkActorHandoffAdmissions(
         if (!_terminal.TryGetValue(request.HandoffId, out var terminal)
             || !terminal.Reply.Accepted
             || !terminal.Matches(request, targetSpotRid, requireRecordedCompletion: false))
-            throw new InvalidOperationException(
+            // Terminal for the source's completion reconciliation: this
+            // target no longer honors the handoff (expired or replaced), so
+            // retrying the completion can never succeed.
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestRejected,
                 $"Actor '{request.ActorId}' does not have a matching accepted handoff '{request.HandoffId}'.");
         return terminal;
     }

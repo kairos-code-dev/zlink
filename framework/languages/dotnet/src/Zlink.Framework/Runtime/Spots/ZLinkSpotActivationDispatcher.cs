@@ -211,10 +211,14 @@ internal sealed class ZLinkSpotActivationDispatcher
             }
 
             var joinRequest = ZLinkRemoteActorJoinPackets.DecodeJoinRequest(received.Parts);
+            // The commit outlives a single RPC attempt: the joined callback
+            // may hold longer than the request timeout, and the source's
+            // deduped retry awaits the same preparation. Cancelling the
+            // processing with the request would abort the in-flight join.
             var reply = await runtime.JoinRoutedActorAsync(
                 nativeSpot.RoutingId,
                 joinRequest,
-                cancellationToken)
+                runtime.ShutdownToken)
             .ConfigureAwait(false);
             var replyParts = ZLinkRemoteActorJoinPackets.EncodeJoinReplyEnvelope(
                 channelName,

@@ -40,6 +40,9 @@ internal static class ZLinkActorHandoffFrames
             arrivalIndex);
     }
 
+    private static RoutingId RidOrDefault(byte[] rid) =>
+        rid is { Length: > 0 } ? RoutingId.From(rid) : default;
+
     public static ZLinkSpotActorFrameBatch Restore(
         ZLinkBackendActorRef actor,
         IReadOnlyList<ZLinkActorHandoffFrame> frames)
@@ -50,14 +53,15 @@ internal static class ZLinkActorHandoffFrames
             foreach (var frame in frames.OrderBy(static frame => frame.ArrivalIndex))
             {
                 var replyActor = new ZLinkBackendActorRef(
-                    RoutingId.From(frame.ReplyActorNodeRid),
+                    RidOrDefault(frame.ReplyActorNodeRid),
                     actor.ActorId,
                     frame.ReplyActorGeneration);
                 restored.Add(new ZLinkSpotActorFrame(
                     actor,
                     replyActor,
-                    RoutingId.From(frame.SourceNodeRid),
-                    RoutingId.From(frame.SourceSessionRid),
+                    RidOrDefault(frame.SourceNodeRid),
+                    // A caller-routed frame carries no session identity.
+                    RidOrDefault(frame.SourceSessionRid),
                     frame.RequestId,
                     frame.Flags,
                     ZLinkStreamProtocolDefaults.DecodeHeader(frame.Header),

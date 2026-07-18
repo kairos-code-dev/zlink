@@ -54,7 +54,9 @@ public sealed partial class Message : IDisposable, IAsyncDisposable
     private int GetRefCountCore()
     {
         EnsureValid();
-        return NativeMethods.zlink_msg_refcnt(ref _msg);
+        var refcount = NativeMethods.zlink_msg_refcnt(ref _msg, out var error);
+        ZlinkException.ThrowConfigIfError(error);
+        return refcount;
     }
 
     private unsafe void CopyPayloadToStorage(ReadOnlySpan<byte> data)

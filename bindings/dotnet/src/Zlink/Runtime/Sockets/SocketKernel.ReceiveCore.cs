@@ -175,18 +175,15 @@ internal sealed partial class SocketKernel
                 // DONT_WAIT-only variant: avoid blocking while still allowing
                 // managed free callbacks during native message handling.
                 IntPtr sourceNodeRid;
-                IntPtr sourceSpotRid;
                 ulong receivedRequestSeq;
                 int hasMore;
                 var rc = (flags & DontWaitFlag) != 0
                     ? NativeMethods.zlink_router_recv_part_nowait(Handle,
-                        out sourceNodeRid, out sourceSpotRid,
-                        out receivedRequestSeq, ref part, out hasMore,
-                        flags)
+                        out sourceNodeRid, out receivedRequestSeq, ref part,
+                        out hasMore, flags)
                     : NativeMethods.zlink_router_recv_part(Handle,
-                        out sourceNodeRid, out sourceSpotRid,
-                        out receivedRequestSeq, ref part, out hasMore,
-                        flags);
+                        out sourceNodeRid, out receivedRequestSeq, ref part,
+                        out hasMore, flags);
                 if (rc != 0)
                 {
                     if (initialized)
@@ -204,7 +201,8 @@ internal sealed partial class SocketKernel
                 if (nativePartCount == 0)
                 {
                     routingId = RoutingIdSnapshot.FromPointer(sourceNodeRid);
-                    spotRid = RoutingIdSnapshot.FromPointer(sourceSpotRid);
+                    // Core 10.0.0 removed the spot rid from the ROUTER recv
+                    // envelope; the source spot rid is no longer reported here.
                     requestSeq = receivedRequestSeq;
                 }
 

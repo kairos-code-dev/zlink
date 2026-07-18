@@ -18,12 +18,6 @@ internal static partial class NativeMethods
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate int ZlinkStreamOnRawDelegate(
-        IntPtr routingId,
-        IntPtr message,
-        IntPtr userdata);
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void ZlinkStreamOnPacketDelegate(
         IntPtr stream,
         IntPtr routingId,

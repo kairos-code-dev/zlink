@@ -18,16 +18,11 @@ internal sealed partial class SocketKernel : IDisposable
 
     private void Dispose(bool closeNativeSocket)
     {
+        // Core 10.0.0 removed the raw STREAM detach entry point; the packet
+        // callback lifecycle ends with the socket close below. Clearing the
+        // managed stream callback state keeps the pinned delegates collectable.
         if (_streamAttached)
         {
-            try
-            {
-                NativeMethods.zlink_stream_detach(Handle);
-            }
-            catch
-            {
-            }
-
             _streamAttached = false;
             _callbacks.ClearStream();
         }

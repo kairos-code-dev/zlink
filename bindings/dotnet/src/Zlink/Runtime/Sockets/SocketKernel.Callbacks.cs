@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-using System.Text;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink.Runtime.Sockets.Internal;
@@ -45,77 +44,6 @@ internal sealed partial class SocketKernel : IDisposable
         {
             _callbacks.ClearSendReady();
             ZlinkException.ThrowHandlerIfError(rc);
-        }
-    }
-
-    public unsafe void SubscribeHandler(SocketSubscribeHandler handler)
-    {
-        EnsureSupports(nameof(SubscribeHandler),
-            SocketTypePolicy.SocketCapability.SubscribeHandler);
-        if (handler == null)
-            throw new ArgumentNullException(nameof(handler));
-
-        var context = SynchronizationContext.Current;
-        var native = new NativeMethods.ZlinkSubscribeHandlerDelegate(
-            OnNativeSubscribe);
-        _callbacks.SubscribeHandler = handler;
-        _callbacks.SubscribeHandlerContext = context;
-        _callbacks.SubscribeHandlerNative = native;
-        var rc = NativeMethods.zlink_subscribe_handler(Handle, native,
-            IntPtr.Zero);
-        if (rc != 0)
-        {
-            _callbacks.ClearSubscribe();
-            throw ZlinkException.CreateHandlerException(NativeMethods.zlink_errno());
-        }
-    }
-
-    private unsafe void OnNativeSubscribe(IntPtr sourceRoutingId, byte* topic,
-        nuint topicLen, IntPtr parts, nuint partCount, IntPtr userData)
-    {
-        var handler = _callbacks.SubscribeHandler;
-        var context = _callbacks.SubscribeHandlerContext;
-        if (handler == null)
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
-            return;
-        }
-
-        Message[]? managedParts = null;
-        var delivered = false;
-        try
-        {
-            var routingId = string.Empty;
-            if (sourceRoutingId != IntPtr.Zero)
-            {
-                var nativeRoutingId = (ZlinkRoutingId*)sourceRoutingId;
-                routingId = RoutingIdCodec.ToPublicString(
-                    NativeHelpers.ReadRoutingId(ref *nativeRoutingId));
-            }
-
-            var topicId = topic == null || topicLen == 0
-                ? string.Empty
-                : Encoding.UTF8.GetString(
-                    new ReadOnlySpan<byte>(topic, checked((int)topicLen)));
-            managedParts = Message.FromNativeVector(parts, partCount);
-            parts = IntPtr.Zero;
-            partCount = 0;
-            delivered = true;
-            CallbackDelivery.Post(context,
-                () => handler(routingId, topicId, managedParts));
-        }
-        catch (Exception ex)
-        {
-            CallbackExceptionHub.Report(ex);
-            if (!delivered && managedParts != null)
-                foreach (var part in managedParts)
-                    part.Dispose();
-        }
-        finally
-        {
-            if (parts != IntPtr.Zero)
-                NativeMethods.zlink_multipart_close(parts, partCount);
         }
     }
 

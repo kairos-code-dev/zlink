@@ -99,15 +99,14 @@ internal sealed partial class SocketKernel
             IntPtr sourceRoutingId;
             if (_policy.UsesRouterRoutedReceiveEnvelope)
             {
-                IntPtr sourceSpotRid;
                 ulong requestSeq;
                 rc = (flags & DontWaitFlag) != 0
                     ? NativeMethods.zlink_router_recv_part_nowait(Handle,
-                        out sourceRoutingId, out sourceSpotRid,
-                        out requestSeq, ref part, out more, flags)
+                        out sourceRoutingId, out requestSeq, ref part,
+                        out more, flags)
                     : NativeMethods.zlink_router_recv_part(Handle,
-                        out sourceRoutingId, out sourceSpotRid,
-                        out requestSeq, ref part, out more, flags);
+                        out sourceRoutingId, out requestSeq, ref part,
+                        out more, flags);
             }
             else
             {

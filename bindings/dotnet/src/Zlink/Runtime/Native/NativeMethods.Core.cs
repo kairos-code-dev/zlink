@@ -285,7 +285,8 @@ internal static partial class NativeMethods
     internal static extern nuint zlink_msg_size(IntPtr msg);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int zlink_msg_refcnt(ref ZlinkMsg msg);
+    internal static extern int zlink_msg_refcnt(ref ZlinkMsg msg,
+        out int errorOut);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void zlink_multipart_close(IntPtr parts, nuint count);

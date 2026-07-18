@@ -7,17 +7,10 @@ internal delegate void StreamFramedPacketHandler(
     Message header,
     Message body);
 
-internal delegate int StreamRawPacketHandler(string routingId, Message payload);
-
-internal delegate int StreamUInt32PacketHandler(uint routingId, Message payload);
-
 internal delegate void StreamUInt32FramedPacketHandler(uint routingId,
     Message header, Message body);
 
 internal delegate void SocketRecvHandler(string routingId, Message[] parts);
-
-internal delegate void SocketSubscribeHandler(string routingId, string topic,
-    Message[] parts);
 
 internal static class SocketInterop
 {

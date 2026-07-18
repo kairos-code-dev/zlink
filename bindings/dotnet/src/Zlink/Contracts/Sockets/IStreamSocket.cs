@@ -39,11 +39,6 @@ public interface IStreamSocket : IRoutedMessageSocket
     void OnPacket(StreamPacketHandler handler);
 
     /// <summary>
-    ///     Detaches the stream peer currently attached to this socket.
-    /// </summary>
-    void DetachStream();
-
-    /// <summary>
     ///     Disconnects the peer identified by <paramref name="peerRid" />.
     /// </summary>
     void DisconnectRid(RoutingId peerRid);

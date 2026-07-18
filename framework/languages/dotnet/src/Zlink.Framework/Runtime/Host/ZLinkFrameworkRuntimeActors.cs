@@ -892,10 +892,54 @@ internal sealed partial class ZLinkFrameworkRuntime
         };
         var batch = ZLinkActorHandoffIngress.CaptureMovingFrames(this, parts);
         if (batch.Count == 0) return;
+        // Per-actor FIFO across concurrently handled relay records: sibling
+        // forwarded frames must not overtake each other (spec 23 §10.2).
+        Task chained;
+        lock (_remoteFrameChainGate)
+        {
+            var prior = _remoteFrameChains.TryGetValue(actorId, out var chain)
+                ? chain
+                : Task.CompletedTask;
+            chained = DispatchRemoteFrameAfterAsync(prior, batch, cancellationToken);
+            _remoteFrameChains[actorId] = chained;
+        }
+
+        try
+        {
+            await chained.ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_remoteFrameChainGate)
+            {
+                if (_remoteFrameChains.TryGetValue(actorId, out var current)
+                    && ReferenceEquals(current, chained))
+                    _remoteFrameChains.Remove(actorId);
+            }
+        }
+    }
+
+    private async Task DispatchRemoteFrameAfterAsync(
+        Task prior,
+        ZLinkSpotActorFrameBatch batch,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await prior.ConfigureAwait(false);
+        }
+        catch
+        {
+            // The prior frame reported its own failure; the chain continues.
+        }
+
         await new ZLinkActorInboundPipeline(this, new ZLinkEntrySpotActorInboundEndpoint(this))
             .DispatchAsync(batch, cancellationToken)
             .ConfigureAwait(false);
     }
+
+    private readonly object _remoteFrameChainGate = new();
+    private readonly Dictionary<string, Task> _remoteFrameChains = new(StringComparer.Ordinal);
 
     /// <summary>Session-node relay for a frame whose bound actor lives on
     /// another node: wraps the stream frame in the internal node-addressed

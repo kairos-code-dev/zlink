@@ -8,6 +8,8 @@ internal sealed class ZLinkEntrySpotDispatchPump(
     ZLinkRuntimeTaskRunner taskRunner) : IAsyncDisposable
 {
     private readonly object _activeDispatchGate = new();
+    private readonly object _actorChainGate = new();
+    private readonly Dictionary<string, Task> _actorChains = new(StringComparer.Ordinal);
     private readonly HashSet<Task> _activeDispatches = [];
     private readonly ZLinkActorInboundPipeline _actorPipeline = new(
         runtime,
@@ -128,10 +130,36 @@ internal sealed class ZLinkEntrySpotDispatchPump(
         ZLinkSpotActorFrameBatch frames,
         CancellationToken cancellationToken)
     {
-        var dispatch = _actorPipeline.DispatchAsync(frames, cancellationToken);
-        if (dispatch.IsCompletedSuccessfully) return;
+        // Per-actor FIFO: sibling batches for the same actor must not race —
+        // a later batch overtaking an earlier one breaks the session order
+        // and the handoff backlog's arrival sequence (spec 23 §10.2). Chains
+        // are keyed per actor so one busy actor never stalls the others.
+        var actorId = frames.Count > 0 ? frames[0].Actor.ActorId : string.Empty;
+        Task observed;
+        lock (_actorChainGate)
+        {
+            var prior = _actorChains.TryGetValue(actorId, out var chain)
+                ? chain
+                : Task.CompletedTask;
+            observed = DispatchActorBatchAfterAsync(prior, frames, cancellationToken);
+            _actorChains[actorId] = observed;
+        }
 
-        var observed = ObserveActorDispatchAsync(dispatch);
+        _ = observed.ContinueWith(
+            (completed, state) =>
+            {
+                var pump = (ZLinkEntrySpotDispatchPump)state!;
+                lock (pump._actorChainGate)
+                {
+                    if (pump._actorChains.TryGetValue(actorId, out var current)
+                        && ReferenceEquals(current, completed))
+                        pump._actorChains.Remove(actorId);
+                }
+            },
+            this,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
         lock (_activeDispatchGate) _activeDispatches.Add(observed);
         _ = observed.ContinueWith(
             static (completed, state) =>
@@ -143,6 +171,25 @@ internal sealed class ZLinkEntrySpotDispatchPump(
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
+    }
+
+    private async Task DispatchActorBatchAfterAsync(
+        Task prior,
+        ZLinkSpotActorFrameBatch frames,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await prior.ConfigureAwait(false);
+        }
+        catch
+        {
+            // The prior batch reported its own failure; the chain continues.
+        }
+
+        await ObserveActorDispatchAsync(
+                _actorPipeline.DispatchAsync(frames, cancellationToken))
+            .ConfigureAwait(false);
     }
 
     private async Task ObserveActorDispatchAsync(ValueTask dispatch)

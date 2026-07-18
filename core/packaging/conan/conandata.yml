@@ -3,6 +3,7 @@ sources:
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v10.0.0.tar.gz"
   "10.0.0-rc.1":
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v10.0.0-rc.1.tar.gz"
+    sha256: "54c74dc0052c07d2b5d5eb0cbee5a7e3e94b05e15d160b13f73651f0fb81eade"
   "9.0.2":
     url: "https://github.com/kairos-code-dev/zlink/archive/refs/tags/core/v9.0.2.tar.gz"
   "9.0.1":

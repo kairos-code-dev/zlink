@@ -72,3 +72,14 @@ green을 확인하는 방식으로 진행한다(사용자 승인 "최적 판단�
 RouteMesh 개념(MeshNode)에 맞춰 mesh_node_t로 개명하며, 제거 개념명
 (SpotNode/bridge)은 no-hit 대상이다. framework(cpp)와 samples는 이 명명을
 따른다.
+
+## 진행 방식 2차 변경 로그 (2026-07-18)
+
+**변경**: bindings/framework 재작성 규모(4언어×수천 줄+samples)를 메인 루프
+단독 순차 재작성으로 처리하면 컨텍스트 자동 요약이 반복되며 코드 일관성이
+저하된다. 사용자 명시 지침("방법 변경 가능·완료 최우선")에 따라, 각 lane의
+대규모 구현(파일군 재작성)은 **worktree 격리 구현 에이전트**가 컴파일 green
+(`cmake --build`)까지 수행하고, coordinator(메인 루프)가 통합·검증한 뒤
+**리뷰 campaign(Codex·Sonnet 3축)**으로 품질을 확보한다. 이는 ledger의 원래
+"구현→리뷰 campaign" 설계와 일치하며, 구현 위임 후 독립 리뷰로 검증한다.
+(기존 "구현은 메인 루프 직접" 원칙을 이 대규모 릴리스 작업에 한해 조정.)

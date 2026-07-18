@@ -158,9 +158,9 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<ZLinkChannelClient>();
         services.AddSingleton<IZLinkChannelClient>(static provider =>
             provider.GetRequiredService<ZLinkChannelClient>());
-        services.AddSingleton<IZLinkChannelRuntimeOptions>(static provider => new ZLinkChannelRuntimeOptions(
-            provider.GetRequiredService<ZLinkFrameworkRuntime>(),
-            provider.GetService<ZLinkLocationAutoConnectHost>()));
+        services.AddSingleton<IZLinkRouteMeshRuntimeOptions>(static provider =>
+            new ZLinkRouteMeshRuntimeOptionsService(
+                provider.GetRequiredService<ZLinkFrameworkRuntime>()));
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<ZLinkFanoutClient>();

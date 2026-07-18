@@ -11,6 +11,20 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
         return this;
     }
 
+    public IZLinkStreamNodeBuilder EnableActorDispatch(string meshName)
+    {
+        if (string.IsNullOrWhiteSpace(meshName))
+            throw new ZLinkConfigurationException("Actor dispatch MeshName must not be empty.");
+
+        if (registration.ActorDispatchMeshName is not null)
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{registration.StreamNodeName}' already enabled actor dispatch for "
+                + $"MeshName '{registration.ActorDispatchMeshName}'.");
+
+        registration.ActorDispatchMeshName = meshName;
+        return this;
+    }
+
     public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false)
     {
         if (string.IsNullOrWhiteSpace(certPath))

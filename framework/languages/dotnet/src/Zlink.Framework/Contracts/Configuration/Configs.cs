@@ -33,8 +33,8 @@ public interface IZLinkSocketConfig
     ///     load-balancing selection. 0 = drain (peers stop selecting this node for
     ///     new requests; in-flight and reply paths are unaffected), 100 = normal
     ///     (default). Settable at build time and at runtime via
-    ///     <c>IZLinkChannelRuntimeOptions</c>; runtime changes apply immediately
-    ///     to new outbound peer selections.
+    ///     <c>IZLinkRouteMeshRuntimeOptions.Channel(meshName, channelName).Weight</c>;
+    ///     runtime changes apply immediately to new outbound peer selections.
     /// </summary>
     int Weight { get; set; }
 }

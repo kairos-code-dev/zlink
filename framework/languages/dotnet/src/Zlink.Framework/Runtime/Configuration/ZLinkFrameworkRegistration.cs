@@ -243,6 +243,11 @@ internal sealed class ZLinkStreamNodeRegistration
 
     public string? BindEndpoint { get; set; }
 
+    // MeshName pinned by EnableActorDispatch(meshName); null means this STREAM node
+    // does not dispatch session Actors (spec 31 §2). Session resolve/bind/dispatch
+    // is keyed on this MeshName, never inferred from "the sole spot node".
+    public string? ActorDispatchMeshName { get; set; }
+
     public ZLinkStreamTlsServerRegistration? TlsServer { get; set; }
 
     public Type? HeaderSessionType { get; set; }

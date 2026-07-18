@@ -12,17 +12,15 @@ internal sealed class ZLinkStreamRuntimeManager(
         var streamAdapter = backendAdapterFactory.CreateStreamAdapter();
         var monitoringAdapter = backendAdapterFactory.CreateMonitoringAdapter();
 
-        // Actor dispatch binds STREAM sessions on the framework's single MeshNode
-        // (spec 31 §2). Until EnableActorDispatch(meshName) fixes the per-node
-        // MeshName selection (gap §12.28), the sole spot node is that MeshNode;
-        // when there is not exactly one, no shared node is threaded and the stream
-        // adapter mints a standalone node.
-        var actorDispatchNode = state.SpotNodes.Count == 1
-            ? state.SpotNodes.Values.Single().Node
-            : null;
-
         foreach (var streamNodeRegistration in registration.StreamNodes.Values)
         {
+            // Actor dispatch binds STREAM sessions on the MeshNode pinned by
+            // EnableActorDispatch(meshName) (spec 31 §2, gap §12.28). The MeshName is
+            // never inferred from "the sole spot node"; a STREAM node without actor
+            // dispatch threads no node and the adapter mints a standalone node, while
+            // a MeshName with no matching local MeshNode is a startup config error.
+            var actorDispatchNode = ResolveActorDispatchNode(state, streamNodeRegistration);
+
             IZLinkBackendStreamSocket? socket = null;
             IZLinkBackendSocketMonitor? monitor = null;
             ZLinkStreamNodeRuntime? runtime = null;
@@ -67,5 +65,20 @@ internal sealed class ZLinkStreamRuntimeManager(
                 throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
             }
         }
+    }
+
+    private static IZLinkBackendSpotNode? ResolveActorDispatchNode(
+        ZLinkFrameworkRuntimeState state,
+        ZLinkStreamNodeRegistration streamNodeRegistration)
+    {
+        if (streamNodeRegistration.ActorDispatchMeshName is not { } dispatchMeshName)
+            return null;
+
+        if (!state.SpotNodes.TryGetValue(dispatchMeshName, out var dispatchNodeRuntime))
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{streamNodeRegistration.StreamNodeName}' enabled actor dispatch for "
+                + $"MeshName '{dispatchMeshName}', but no RouteMesh with that name is registered on this node.");
+
+        return dispatchNodeRuntime.Node;
     }
 }

@@ -83,3 +83,20 @@ RouteMesh 개념(MeshNode)에 맞춰 mesh_node_t로 개명하며, 제거 개념�
 **리뷰 campaign(Codex·Sonnet 3축)**으로 품질을 확보한다. 이는 ledger의 원래
 "구현→리뷰 campaign" 설계와 일치하며, 구현 위임 후 독립 리뷰로 검증한다.
 (기존 "구현은 메인 루프 직접" 원칙을 이 대규모 릴리스 작업에 한해 조정.)
+
+## 참조 lane 정정 로그 (2026-07-18)
+
+**정정**: 이전 로그에서 "cpp 패턴 확정 후 나머지 lane 미러"로 적었으나, 이
+프로젝트는 일관되게 **dotnet 기준 parity**로 진행해 왔고(framework parity의
+정본이 dotnet), ledger 원래 구조도 S8=.NET lane 선행·S9=나머지 언어였다.
+따라서 참조 lane을 **dotnet**으로 되돌린다.
+
+- **bindings 계층**: 각 언어 SDK가 동일한 Core 10.0.0 C API를 매핑하는 것이라
+  매핑 규정은 Core가 소유하고 언어별 독립·병렬로 진행한다. cpp bindings 재작성
+  (진행 중)은 유효한 독립 작업으로 유지한다.
+- **framework 계층**: RouteMesh 상위 계층의 표면·기능 parity 정본은 **dotnet**.
+  cpp/jvm/node framework는 dotnet framework를 미러한다. 따라서 "cpp 확정 후
+  나머지 대기" 의존을 제거하고, framework 표면 결정은 dotnet lane이 선행 확정한다.
+- 실행: dotnet lane(bindings→framework)을 선행 참조로 착수. cpp/jvm/node
+  bindings는 병렬로 Core C API에 독립 매핑하되, framework 단계는 dotnet 확정
+  이후 미러.

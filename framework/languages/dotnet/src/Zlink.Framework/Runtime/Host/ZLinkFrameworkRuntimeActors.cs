@@ -152,6 +152,8 @@ internal sealed partial class ZLinkFrameworkRuntime
                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
                                $"Actor '{actorId}' does not have a native Actor ref.");
             var boundRoute = ZLinkRemoteActorJoinPackets.DecodeBoundSessionRoute(request);
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine($"[join-commit] {actorId} bind-route node={boundRoute.NodeRid} session={boundRoute.SessionRid}");
             await BindRemoteBoundSessionRouteAsync(
                     actorId,
                     actorRef,
@@ -159,12 +161,16 @@ internal sealed partial class ZLinkFrameworkRuntime
                     boundRoute.SessionRid,
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine($"[join-commit] {actorId} prepare-target");
             await PrepareTransferredActorTargetAsync(
                     target,
                     creation.Actor,
                     actorState,
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine($"[join-commit] {actorId} prepared");
 
             var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(
                 true,
@@ -257,11 +263,31 @@ internal sealed partial class ZLinkFrameworkRuntime
                     cancellationToken)
                 .ConfigureAwait(false);
             actorState.Handoff.Complete(request.HandoffId);
-            await CompleteTransferredActorTargetAsync(
-                    target,
-                    actorState,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await CompleteTransferredActorTargetAsync(
+                        target,
+                        actorState,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception joinedFailure)
+            {
+                // A joined-callback failure is an application-level join
+                // rejection: it will not recover on a completion retry, so
+                // roll the transferred actor back here and reply a terminal
+                // rejection the source classifies as handoff-rejected.
+                actorState.Handoff.Quarantine(request.HandoffId);
+                await _actorSessionManager.RollbackTransferredActorAsync(
+                        request.ActorId,
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestRejected,
+                    $"Actor '{request.ActorId}' joined callback rejected the handoff.",
+                    innerException: joinedFailure);
+            }
+
             _actorHandoffAdmissions.RecordCompletion(request, spotRid);
             _actorHandoffAdmissions.Complete(request.HandoffId);
             ZLinkFrameworkDebugLog.SpotDiscovery(

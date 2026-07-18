@@ -468,7 +468,16 @@ internal sealed class ZLinkActorRemoteJoiner(
                 exception => ZLinkFrameworkDebugLog.SpotDiscovery(
                     $"handoff completion retry actor={actorId} id={handoffId}: {exception.Message}"),
                 runtime.ShutdownToken,
+                // Terminal: an explicit rejection (the target's joined
+                // callback refused the handoff) or a target that no longer
+                // hosts the actor (it already rolled the transfer back) —
+                // retrying either would spin for the whole request window.
                 exception => exception is ZLinkActorHandoffRejectedException
+                             || exception is ZLinkFrameworkException
+                             {
+                                 Kind: ZLinkFrameworkErrorKind.RequestRejected
+                                     or ZLinkFrameworkErrorKind.ActorRouteNotFound
+                             }
                              || (exception is OperationCanceledException
                                  && cancellationToken.IsCancellationRequested))
             .ConfigureAwait(false);

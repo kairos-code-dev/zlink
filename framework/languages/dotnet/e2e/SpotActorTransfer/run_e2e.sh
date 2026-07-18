@@ -5,6 +5,10 @@ umask 077
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT_DIR/../redis-common.sh"
 
+# The ST-F markers (handoff_backlog, straggler_forward, ...) are runtime
+# diagnostics behind this gate; the runner asserts them, so it owns the gate.
+export ZLINK_DEBUG_FRAMEWORK_SPOT_DISCOVERY=1
+
 if [[ "$#" -eq 0 ]]; then
   SCENARIO="all"
 else

@@ -318,7 +318,11 @@ public sealed class AutoConnectReconcilerTests
             await fixture.Store.ListMeshNodesAsync("play"),
             row => row.Rid.Equals(RoutingId.From("local")));
         Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
-        Assert.True(row.LifecycleGeneration > 1);
+        // The row keeps the writer's core lifecycle generation verbatim;
+        // takeover fencing advances the store's owner token, not row content.
+        Assert.Equal(
+            Descriptor("local", "tcp://l:1").LifecycleGeneration,
+            row.LifecycleGeneration);
     }
 
     [Fact]

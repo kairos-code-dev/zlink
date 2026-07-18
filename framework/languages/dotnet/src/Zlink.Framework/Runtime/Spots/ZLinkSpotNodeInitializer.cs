@@ -116,6 +116,7 @@ internal sealed class ZLinkSpotNodeInitializer(
         var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName,
                 node.RoutingId,
+                node.EntrySpot().LifecycleGeneration,
                 spotType: null,
                 node.RoutingId,
                 ZLinkSpotKind.Entry,

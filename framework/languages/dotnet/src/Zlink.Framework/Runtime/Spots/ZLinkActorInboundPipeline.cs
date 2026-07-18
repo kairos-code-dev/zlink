@@ -97,7 +97,16 @@ internal sealed class ZLinkActorInboundPipeline(
             runtime.Flow.CaptureEnabled,
             ZLinkFlowOrigin.Inbound);
         var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);
-        if (allowCapture && state.Handoff.TryCapture(frame)) return;
+        var debugPump = Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1";
+        if (allowCapture && state.Handoff.TryCapture(frame))
+        {
+            if (debugPump)
+                Console.Error.WriteLine($"[dispatch] captured actor={frame.Actor.ActorId} name={frame.Header.Name}");
+            return;
+        }
+        if (debugPump)
+            Console.Error.WriteLine(
+                $"[dispatch] frame actor={frame.Actor.ActorId} name={frame.Header.Name} blocked={state.IsDispatchBlocked}");
         if (state.IsDispatchBlocked)
         {
             await ZLinkActorBoundSessionRelay.ReplyStaleActorAsync(
@@ -119,11 +128,15 @@ internal sealed class ZLinkActorInboundPipeline(
         if (await RouteAwayFromCurrentActorAsync(state, frame, cancellationToken)
                 .ConfigureAwait(false))
         {
+            if (debugPump)
+                Console.Error.WriteLine($"[dispatch] routed-away actor={frame.Actor.ActorId} name={frame.Header.Name}");
             acknowledgeHandledFrame?.Invoke();
             return;
         }
 
         var actor = endpoint.ResolveActor(state);
+        if (debugPump && actor is null)
+            Console.Error.WriteLine($"[dispatch] no-actor actor={frame.Actor.ActorId}");
         if (actor is null)
         {
             ZLinkActorBoundSessionRelay.TryReplyMissingNoBindActor(
@@ -218,6 +231,9 @@ internal sealed class ZLinkActorInboundPipeline(
             return;
         }
 
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[dispatch] enter actor={actor.ActorId} name={frame.Header.Name} req={frame.RequestId} flags={frame.Flags}");
         var boundSession = ZLinkActorBoundSessionRelay.EnterDispatch(
             runtime,
             actor.ActorId,
@@ -235,7 +251,13 @@ internal sealed class ZLinkActorInboundPipeline(
                     frame,
                     boundSession,
                     acknowledgeHandledFrame,
-                    cancellationToken).ConfigureAwait(false)) return;
+                    cancellationToken).ConfigureAwait(false))
+            {
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine(
+                        $"[dispatch] session-bind handled actor={frame.Actor.ActorId} nobind={boundSession.IsNoBind}");
+                return;
+            }
 
             if (frame.Header.Kind == ZlinkStreamMessageKind.Request
                 && frame.Header.RequestSeq is not null)

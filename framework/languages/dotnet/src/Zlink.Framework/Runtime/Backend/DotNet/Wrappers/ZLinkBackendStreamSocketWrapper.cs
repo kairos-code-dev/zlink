@@ -88,16 +88,33 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         _socket.DisconnectRid(routingId);
     }
 
-    public ValueTask BindActorAsync(
+    public async ValueTask BindActorAsync(
         RoutingId sessionRid,
         ZLinkBackendActorRef actor,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var submit = Session().BindActor(
-            sessionRid, actor.ToNative(), out var operationId, timeout);
-        return AwaitOperationAsync(submit, operationId, cancellationToken);
+        // Core marks a session live from its connected observer event, which is
+        // asynchronous to packet delivery — a bind triggered by the session's
+        // first packet can outrun it and see NotConnected. Retry within the
+        // bind timeout; the liveness event is milliseconds behind the packet.
+        var deadline = DateTime.UtcNow
+                       + (timeout > TimeSpan.Zero ? timeout : TimeSpan.FromSeconds(5));
+        while (true)
+        {
+            var submit = Session().BindActor(
+                sessionRid, actor.ToNative(), out var operationId, timeout);
+            if (submit != SubmitResult.NotConnected || DateTime.UtcNow >= deadline)
+            {
+                await AwaitOperationAsync(submit, operationId, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     public ValueTask UnbindActorAsync(
@@ -130,6 +147,9 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
         MeshOperationId operationId,
         CancellationToken cancellationToken)
     {
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[stream] await op={operationId} submit={submit} hasTable={_completions is not null} tid={Environment.CurrentManagedThreadId}");
         if (submit != SubmitResult.Ok)
             throw new ZlinkSubmitException((ZlinkSubmitException.ErrorCode)(int)submit);
         if (_completions is null || operationId == default) return;

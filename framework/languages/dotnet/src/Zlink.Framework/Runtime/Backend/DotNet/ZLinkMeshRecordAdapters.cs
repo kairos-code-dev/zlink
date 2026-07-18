@@ -51,13 +51,28 @@ internal static class ZLinkMeshRecordAdapters
     }
 
     public static IReadOnlyList<ZLinkBackendActorPart> ToActorParts(
-        MeshReceiveBatch batch, int index, MeshReceiveRecord record)
+        MeshReceiveBatch batch, int index, MeshReceiveRecord record,
+        ActorRef ownerActor = default, ulong requestId = 0)
     {
         IReadOnlyList<Message> messages = batch.RetainMessage(index);
         if (messages.Count == 0) return Array.Empty<ZLinkBackendActorPart>();
 
-        var actor = record.SourceActor.ToBackend();
-        var requestId = record.OperationId.Low;
+        // Session-relayed sends leave the record's SourceActor empty (the sender
+        // is an external session, not an actor); the target actor is the claim
+        // owner's identity from the ready record.
+        var actorRef = record.SourceActor.ActorId is { Length: > 0 }
+            ? record.SourceActor
+            : ownerActor;
+        if (actorRef.ActorId is not { Length: > 0 })
+        {
+            ZLinkMessageParts.DisposeAll(messages);
+            return Array.Empty<ZLinkBackendActorPart>();
+        }
+
+        var actor = actorRef.ToBackend();
+        // Inbound request records carry no operation id; the pump mints the
+        // request id that keys the record's reply token so no-bind replies can
+        // redeem it.
         var flags = record.Kind == MeshRecordKind.ActorRequest ? 1u : 0u;
         var parts = new ZLinkBackendActorPart[messages.Count];
         for (var i = 0; i < parts.Length; i++)

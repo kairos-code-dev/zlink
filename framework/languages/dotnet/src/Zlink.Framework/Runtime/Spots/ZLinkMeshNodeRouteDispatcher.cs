@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Zlink.Framework.Runtime.Streams;
 
 namespace Zlink.Framework.Runtime.Spots;
 
@@ -69,7 +70,25 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
         ZLinkFrameworkRuntime runtime,
         ZLinkRuntimeTaskRunner taskRunner)
     {
-        var routeDescriptors = BuildRouteDescriptors(spotNode).ToArray();
+        var descriptors = BuildRouteDescriptors(spotNode);
+        // Router-capable nodes always host the framework's internal
+        // remote-session push relay consumer (spec 31 §6): an actor that moved
+        // to another node pushes to its bound session through this packet.
+        if (spotNode.Router is not null)
+            descriptors = descriptors
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkRemoteSessionPushRelayHandler),
+                        typeof(IZLinkRouteSendHandler<ZLinkRemoteSessionPushRelay>),
+                        ZLinkMessageKind.Command,
+                        ZLinkRemoteSessionPushProtocol.PacketName)))
+                .Append(ToRouteDescriptor(
+                    ZLinkHandlerScanner.CreateExplicitRouteInterfaceDescriptor(
+                        typeof(ZLinkRemoteActorFrameRelayHandler),
+                        typeof(IZLinkRouteSendHandler<ZLinkRemoteActorFrameRelay>),
+                        ZLinkMessageKind.Command,
+                        ZLinkRemoteActorFrameProtocol.PacketName)));
+        var routeDescriptors = descriptors.ToArray();
         var channelEndpoints = BuildChannelEndpoints(spotNode).ToArray();
         if (routeDescriptors.Length == 0 && channelEndpoints.Length == 0)
             return null;

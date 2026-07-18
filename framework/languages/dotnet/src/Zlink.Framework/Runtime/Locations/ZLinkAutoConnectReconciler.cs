@@ -168,7 +168,7 @@ internal sealed class ZLinkAutoConnectReconciler
             if (!_localPublished || _localGeneration == 0) return false;
 
             var result = await _runtime.WriteDescriptorAsync(
-                    _localRow with { LifecycleGeneration = _localGeneration },
+                    _localRow,
                     ZLinkLocationWriteIntent.Renew,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -417,15 +417,18 @@ internal sealed class ZLinkAutoConnectReconciler
             .ConfigureAwait(false);
         if (claim.Status == ZLinkLocationWriteStatus.Stored)
         {
-            await StampClaimedGenerationAsync(claim.Generation, cancellationToken)
-                .ConfigureAwait(false);
+            // The store-issued generation is the owner token for later
+            // renew/remove fencing; the row's LifecycleGeneration stays the
+            // writer's core value (spec 41 §3.1 keeps the domains apart).
+            _localGeneration = claim.Generation;
+            _localPublished = true;
             return;
         }
 
         if (claim.Status == ZLinkLocationWriteStatus.RejectedConflict && _localGeneration > 0)
         {
             var renewed = await _runtime.WriteDescriptorAsync(
-                _localRow with { LifecycleGeneration = _localGeneration },
+                _localRow,
                 ZLinkLocationWriteIntent.Renew,
                 cancellationToken).ConfigureAwait(false);
             _localPublished = renewed.Status == ZLinkLocationWriteStatus.Stored;
@@ -439,26 +442,11 @@ internal sealed class ZLinkAutoConnectReconciler
                 ZLinkLocationWriteIntent.Takeover,
                 cancellationToken).ConfigureAwait(false);
             if (takeover.Status == ZLinkLocationWriteStatus.Stored)
-                await StampClaimedGenerationAsync(takeover.Generation, cancellationToken)
-                    .ConfigureAwait(false);
+            {
+                _localGeneration = takeover.Generation;
+                _localPublished = true;
+            }
         }
-    }
-
-    /// <summary>The claim row is serialized before the store issues the
-    /// lifecycle generation, so one renew persists the issued value into the
-    /// descriptor JSON (the store keeps row JSON exactly as written).</summary>
-    private async ValueTask StampClaimedGenerationAsync(
-        ulong generation,
-        CancellationToken cancellationToken)
-    {
-        _localGeneration = generation;
-        _localRow = _localRow! with { LifecycleGeneration = generation };
-        var renewed = await _runtime.WriteDescriptorAsync(
-                _localRow,
-                ZLinkLocationWriteIntent.Renew,
-                cancellationToken)
-            .ConfigureAwait(false);
-        _localPublished = renewed.Status == ZLinkLocationWriteStatus.Stored;
     }
 
     private ZLinkMeshNodeDescriptorKey LocalKey() =>

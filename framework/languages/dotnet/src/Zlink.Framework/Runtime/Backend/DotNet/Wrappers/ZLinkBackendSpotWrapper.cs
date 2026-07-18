@@ -12,20 +12,32 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
     private readonly ZLinkMeshCompletionTable _completions;
     private readonly ZLinkMeshDispatchPump.SpotDispatchState _state;
 
+    private readonly Func<string?> _publishChannelName;
+
     public ZLinkBackendSpotWrapper(
         IMeshNode node,
         ISpot spot,
         ZLinkMeshDispatchPump pump,
-        ZLinkMeshCompletionTable completions)
+        ZLinkMeshCompletionTable completions,
+        Func<string?>? publishChannelName = null)
     {
         _node = node;
         _spot = spot;
         _pump = pump;
         _completions = completions;
+        _publishChannelName = publishChannelName ?? (static () => null);
         _state = pump.RegisterSpot(spot.RoutingId);
     }
 
+    // Spot pub/sub is logical multicast on the router plane: the publish and
+    // subscription channel is the node's mesh channel; the topic is the
+    // filter. Falls back to the topic (channel-per-topic) when the node has
+    // no registered channel yet.
+    private string PublishChannel(string topic) => _publishChannelName() ?? topic;
+
     public RoutingId RoutingId => _spot.RoutingId;
+
+    public ulong LifecycleGeneration => _spot.Status().LifecycleGeneration;
 
     internal ISpot NativeSpot => _spot;
 
@@ -37,7 +49,7 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
 
     public void SetSubscription(string topic)
     {
-        _spot.SetSubscription(topic, topic);
+        _spot.SetSubscription(PublishChannel(topic), topic);
     }
 
     public ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags)
@@ -105,14 +117,14 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         string topic, Message message, SendFlags flags,
         ReadOnlyMemory<byte> metadata)
     {
-        return _spot.Publish(topic, topic, new[] { message }, flags, metadata);
+        return _spot.Publish(PublishChannel(topic), topic, new[] { message }, flags, metadata);
     }
 
     public MeshPublishDetail Publish(
         string topic, IReadOnlyList<Message> parts, SendFlags flags,
         ReadOnlyMemory<byte> metadata)
     {
-        return _spot.Publish(topic, topic, parts, flags, metadata);
+        return _spot.Publish(PublishChannel(topic), topic, parts, flags, metadata);
     }
 
     public SubmitResult SendToSpot(

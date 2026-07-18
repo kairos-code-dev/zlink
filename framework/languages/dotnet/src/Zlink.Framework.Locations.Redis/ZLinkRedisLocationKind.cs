@@ -18,10 +18,12 @@ internal sealed class ZLinkRedisLocationKind<TRow>
 
     public required Func<TRow, string> OwnerOf { get; init; }
 
-    /// <summary>Row-carried fencing value used as the renew guard against
-    /// the hash's store generation; 0 skips the guard for rows that do not
-    /// carry the store token (actor rows fence through the transfer
-    /// authority instead).</summary>
+    /// <summary>Renew guard token compared against the hash's store
+    /// generation; 0 makes the renew guard owner-id-only. Row content
+    /// generations (lifecycle/spot) are writer-owned core values and are a
+    /// different domain from the store's fencing generation (spec 41 §3.1),
+    /// so no kind derives the guard from row content — removal presents the
+    /// tracked store token explicitly instead.</summary>
     public required Func<TRow, ulong> GenerationOf { get; init; }
 
     public required Func<TRow, DateTimeOffset, TRow> Finalize { get; init; }
@@ -36,7 +38,7 @@ internal static class ZLinkRedisLocationKinds
             new ZLinkMeshNodeDescriptorKey(row.MeshName, row.Rid)),
         MeshOf = static row => row.MeshName,
         OwnerOf = static row => row.OwnerId,
-        GenerationOf = static row => row.LifecycleGeneration,
+        GenerationOf = static _ => 0,
         Finalize = static (row, updatedAt) => row with { UpdatedAt = updatedAt }
     };
 
@@ -47,7 +49,7 @@ internal static class ZLinkRedisLocationKinds
             new ZLinkSpotLocationKey(row.MeshName, row.SpotRid)),
         MeshOf = static row => row.MeshName,
         OwnerOf = static row => row.OwnerId,
-        GenerationOf = static row => row.SpotGeneration,
+        GenerationOf = static _ => 0,
         Finalize = static (row, updatedAt) => row with { UpdatedAt = updatedAt }
     };
 

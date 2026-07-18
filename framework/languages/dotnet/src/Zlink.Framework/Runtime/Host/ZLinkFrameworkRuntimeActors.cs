@@ -580,6 +580,9 @@ internal sealed partial class ZLinkFrameworkRuntime
 
         if (TryGetSessionActorContext(actorId, out var context))
         {
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine(
+                    $"[remote-bind] local-context actor={actorId} session={context.RoutingId}");
             await context.ActorCoordinator.BindActorAsync(
                     context,
                     actorRef.ToNative(),
@@ -587,6 +590,10 @@ internal sealed partial class ZLinkFrameworkRuntime
                 .ConfigureAwait(false);
             return;
         }
+
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[remote-bind] register actor={actorId} node={sourceNodeRid} session={sourceSessionRid}");
 
         var node = GetActorSpotNode()
                    ?? throw new ZLinkFrameworkException(
@@ -839,6 +846,119 @@ internal sealed partial class ZLinkFrameworkRuntime
         string bindingToken)
     {
         _actorBoundSessionCoordinator.UnbindSessionActor(actorId, context, bindingToken);
+    }
+
+    /// <summary>Actor-node entry for a relayed session frame whose bound actor
+    /// migrated here: dispatches it through the standard actor inbound
+    /// pipeline. The frame carries the session identity, so the dispatch
+    /// binds the remote session route and replies travel back over the
+    /// bound-session push relay.</summary>
+    internal async ValueTask DispatchRemoteActorFrameAsync(
+        string actorId,
+        ulong actorGeneration,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        byte[] header,
+        byte[] body,
+        CancellationToken cancellationToken)
+    {
+        var state = GetOrCreateActorState(actorId);
+        var actorRef = state.NativeActorRef
+                       ?? new ZLinkBackendActorRef(default, actorId, actorGeneration);
+        var parts = new[]
+        {
+            new ZLinkBackendActorPart(
+                actorRef, sourceNodeRid, sourceSessionRid, 0, 0,
+                Message.From(header), More: true),
+            new ZLinkBackendActorPart(
+                actorRef, sourceNodeRid, sourceSessionRid, 0, 0,
+                Message.From(body), More: false)
+        };
+        var batch = ZLinkActorHandoffIngress.CaptureMovingFrames(this, parts);
+        if (batch.Count == 0) return;
+        await new ZLinkActorInboundPipeline(this, new ZLinkEntrySpotActorInboundEndpoint(this))
+            .DispatchAsync(batch, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Session-node relay for a frame whose bound actor lives on
+    /// another node: wraps the stream frame in the internal node-addressed
+    /// actor-frame packet.</summary>
+    private bool RelayRemoteActorFrame(
+        ZLinkBackendActorRef actor,
+        RoutingId sourceNodeRid,
+        RoutingId sourceSessionRid,
+        byte[] header,
+        byte[] body)
+    {
+        var nodeRuntime = GetActorClientSpotNodeRuntime();
+        var meshName = nodeRuntime.Registration.SpotMeshChannelName
+                       ?? nodeRuntime.Registration.SpotNodeName;
+        // A locally relayed frame carries no source node rid (the session is
+        // on this node); the receiver needs the concrete session node for the
+        // reply route, so substitute the local node rid.
+        var sessionNodeRid = sourceNodeRid.IsEmpty ? nodeRuntime.Node.RoutingId : sourceNodeRid;
+        if (sessionNodeRid.IsEmpty || sourceSessionRid.IsEmpty) return false;
+        var relayMessage = new ZLinkRemoteActorFrameRelay(
+            actor.ActorId,
+            actor.Generation,
+            sessionNodeRid.ToHex(),
+            sourceSessionRid.ToHex(),
+            header,
+            body);
+        var envelope = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Command,
+            meshName,
+            ZLinkRemoteActorFrameProtocol.PacketName);
+        var parts = ZLinkEnvelopeCodec.EncodeParts(
+            envelope,
+            relayMessage,
+            typeof(ZLinkRemoteActorFrameRelay),
+            Registration.Codecs);
+        var submit = nodeRuntime.Node.SendToNode(actor.NodeRid, parts, SendFlags.DontWait);
+        ZLinkMessageParts.DisposeAll(parts);
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[frame-relay] actor={actor.ActorId} -> node={actor.NodeRid} submit={submit}");
+        return submit == SubmitResult.Ok;
+    }
+
+    /// <summary>Session-node entry for a relayed remote push: delivers the
+    /// encoded frame to the still-bound local session (drop on stale).</summary>
+    internal bool DeliverRemoteSessionPush(string actorId, RoutingId sessionRid, byte[] frame)
+    {
+        return _actorBoundSessionCoordinator.DeliverLocalSessionFrame(actorId, sessionRid, frame);
+    }
+
+    /// <summary>Actor-node relay for a push whose bound session lives on
+    /// another node: wraps the frame in the internal node-addressed route
+    /// packet. One-way push semantics — the submit runs on a detached runtime
+    /// task so the actor's turn never blocks on route admission; failures are
+    /// reported through the runtime task error sink.</summary>
+    private bool RelayRemoteSessionPush(
+        string actorId,
+        RoutingId sessionNodeRid,
+        RoutingId sessionRid,
+        byte[] frame)
+    {
+        var nodeRuntime = GetActorClientSpotNodeRuntime();
+        var meshName = nodeRuntime.Registration.SpotMeshChannelName
+                       ?? nodeRuntime.Registration.SpotNodeName;
+        var relayMessage = new ZLinkRemoteSessionPushRelay(actorId, sessionRid.ToHex(), frame);
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Command,
+            meshName,
+            ZLinkRemoteSessionPushProtocol.PacketName);
+        var parts = ZLinkEnvelopeCodec.EncodeParts(
+            header,
+            relayMessage,
+            typeof(ZLinkRemoteSessionPushRelay),
+            Registration.Codecs);
+        var submit = nodeRuntime.Node.SendToNode(sessionNodeRid, parts, SendFlags.DontWait);
+        ZLinkMessageParts.DisposeAll(parts);
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine($"[relay] node-send actor={actorId} submit={submit}");
+        return submit == SubmitResult.Ok;
     }
 
     internal bool TryGetSessionActorContext(

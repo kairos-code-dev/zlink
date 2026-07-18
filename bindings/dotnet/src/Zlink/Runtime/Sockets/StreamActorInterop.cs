@@ -11,13 +11,16 @@ internal static class ActorInterop
 {
     internal static unsafe ActorRef FromNative(ref ZlinkActorRef native)
     {
-        fixed (byte* actorId = native.ActorId)
+        fixed (byte* actorIdBytes = native.ActorId)
         {
-            var nodeRid = RoutingId.From(
-                NativeHelpers.ReadRoutingId(ref native.NodeRid));
-            return new ActorRef(nodeRid,
-                NativeHelpers.ReadFixedString(actorId, 256),
-                native.Generation);
+            // Records without an actor arrive zero-filled, and node-local shapes
+            // legitimately omit the NodeRid; map both to the default value
+            // instead of rejecting the record.
+            var actorId = NativeHelpers.ReadFixedString(actorIdBytes, 256);
+            if (actorId.Length == 0)
+                return default;
+            var nodeRid = RoutingId.FromNative(ref native.NodeRid) ?? default;
+            return new ActorRef(nodeRid, actorId, native.Generation);
         }
     }
 

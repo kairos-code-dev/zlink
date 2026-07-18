@@ -10,19 +10,22 @@ internal sealed class ZLinkSpotLocationLifecycle(
     internal async ValueTask<ZLinkLocationWriteStatus> ClaimAsync(
         string meshName,
         RoutingId spotRid,
+        ulong spotGeneration,
         string? spotType,
         RoutingId nodeRid,
         ZLinkSpotKind spotKind,
         Func<CancellationToken, ValueTask>? deactivate,
         CancellationToken cancellationToken = default)
     {
-        // The store issues the spot generation on claim; the row carries no
+        // The row's SpotGeneration is the spot's core lifecycle generation
+        // (the value peers pass back on spot-addressed submits); the store's
+        // own generation is a separate owner-token fence. The row carries no
         // endpoint because peers reach a spot through its owner MeshNode
         // descriptor (40-location-runtime §2.2).
         var row = new ZLinkSpotLocation(
             meshName,
             spotRid,
-            SpotGeneration: 0,
+            SpotGeneration: spotGeneration,
             OwnerNodeRid: nodeRid,
             OwnerNodeGeneration: 0,
             spotKind,
@@ -45,26 +48,19 @@ internal sealed class ZLinkSpotLocationLifecycle(
 
         if (result.Status == ZLinkLocationWriteStatus.Stored)
         {
-            // The claim row is serialized before the store issues the spot
-            // generation, so one renew persists the issued value into the
-            // row (the store keeps row JSON exactly as written).
-            _ = await runtime.WriteSpotAsync(
-                    row with { SpotGeneration = result.Generation },
-                    ZLinkLocationWriteIntent.Renew,
-                    cancellationToken)
-                .ConfigureAwait(false);
             var canonical = ZLinkLocationKeyCodec.EncodeSpotKey(
                 new ZLinkSpotLocationKey(meshName, spotRid));
             lock (_gate)
             {
-                _spots[canonical] = new TrackedSpot(spotRid, result.Generation, deactivate);
+                _spots[canonical] = new TrackedSpot(
+                    spotRid, spotGeneration, result.Generation, deactivate);
             }
         }
 
         return result.Status;
     }
 
-    /// <summary>Store-issued generation of a spot this runtime claimed;
+    /// <summary>Core lifecycle generation of a spot this runtime claimed;
     /// actor membership rows carry it as their spot lifecycle fence.</summary>
     internal bool TryGetTrackedGeneration(RoutingId spotRid, out ulong generation)
     {
@@ -73,7 +69,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
             foreach (var tracked in _spots.Values)
             {
                 if (!tracked.SpotRid.Equals(spotRid)) continue;
-                generation = tracked.Generation;
+                generation = tracked.SpotGeneration;
                 return true;
             }
         }
@@ -98,7 +94,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
             }
         }
 
-        var result = await runtime.RemoveSpotAsync(key, tracked.Generation, cancellationToken)
+        var result = await runtime.RemoveSpotAsync(key, tracked.StoreGeneration, cancellationToken)
             .ConfigureAwait(false);
         if (result.Status is not (ZLinkLocationWriteStatus.Stored or ZLinkLocationWriteStatus.IgnoredStale))
             throw new InvalidOperationException(
@@ -124,8 +120,11 @@ internal sealed class ZLinkSpotLocationLifecycle(
         lock (_gate) _spots.Clear();
     }
 
+    // SpotGeneration is the spot's core lifecycle generation (row content);
+    // StoreGeneration is the store-issued owner token presented on removal.
     private sealed record TrackedSpot(
         RoutingId SpotRid,
-        ulong Generation,
+        ulong SpotGeneration,
+        ulong StoreGeneration,
         Func<CancellationToken, ValueTask>? Deactivate);
 }

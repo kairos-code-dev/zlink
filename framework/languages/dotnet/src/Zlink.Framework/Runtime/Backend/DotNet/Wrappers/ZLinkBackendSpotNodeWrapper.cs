@@ -24,6 +24,9 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     // Captured Spot publisher NoDrop policy (default true); applied to each
     // spot this node creates via ApplySpotPublisherPolicy.
     private bool _spotPublisherNoDrop = true;
+    // First registered mesh channel; spot wrappers publish/subscribe on it
+    // (spot pub/sub is logical multicast on the router plane).
+    private string? _primaryChannelName;
     private bool _bound;
     private bool _started;
     private bool _disposed;
@@ -83,6 +86,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     // (spec 21 §4); a positive weight is a runtime descriptor-revision bump.
     public void AddChannel(string channelName)
     {
+        _primaryChannelName ??= channelName;
         _node.AddChannel(channelName);
     }
 
@@ -138,7 +142,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     {
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
-            _node, ApplySpotPublisherPolicy(_node.CreateSpot()), _pump, _completions);
+            _node, ApplySpotPublisherPolicy(_node.CreateSpot()), _pump, _completions,
+            () => _primaryChannelName);
     }
 
     public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
@@ -146,7 +151,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
             _node, ApplySpotPublisherPolicy(_node.GetOrCreateSpot(spotRid, out created)),
-            _pump, _completions);
+            _pump, _completions, () => _primaryChannelName);
     }
 
     // Core defaults every spot publish plane to NoDrop = true, so only an
@@ -181,7 +186,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         {
             EnsureStarted();
             return _entrySpot ??= new ZLinkBackendSpotWrapper(
-                _node, ApplySpotPublisherPolicy(_node.EntrySpot()), _pump, _completions);
+                _node, ApplySpotPublisherPolicy(_node.EntrySpot()), _pump, _completions,
+                () => _primaryChannelName);
         }
     }
 
@@ -323,6 +329,14 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         return _node.SendBoundSession(actor.ToNative(), parts, flags) == SubmitResult.Ok;
     }
 
+    public SubmitResult SendToNode(
+        RoutingId targetNodeRid,
+        IReadOnlyList<Message> parts,
+        SendFlags flags)
+    {
+        return _node.SendToNode(targetNodeRid, parts, flags);
+    }
+
     public bool SendToActor(
         ZLinkBackendActorRef actor,
         IReadOnlyList<Message> parts,
@@ -379,6 +393,15 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         uint flags,
         IReadOnlyList<Message> parts)
     {
+        // A no-bind actor request replies through the inbound record's core
+        // reply token (registered by the dispatch pump); there is no session
+        // binding to carry the reply. A missing token means the requester is
+        // gone or the record was evicted — the reply is dropped by contract.
+        var found = _pump.TryTakeActorReply(requestId, out var reply);
+        var submit = found ? reply(parts, SendFlags.DontWait) : default;
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[nobind-reply] req={requestId} found={found} submit={submit}");
         ZLinkMessageParts.DisposeAll(parts);
     }
 

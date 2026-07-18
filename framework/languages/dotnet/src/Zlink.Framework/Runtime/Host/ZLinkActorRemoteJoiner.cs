@@ -271,7 +271,13 @@ internal sealed class ZLinkActorRemoteJoiner(
             routerChannelId,
             ZLinkRemoteActorJoinPackets.CommitPacketName,
             registration.DefaultRequestTimeout);
-        actorState.TryGetBoundSession(out var boundSession);
+        var hasBoundSession = actorState.TryGetBoundSession(out var boundSession);
+        // A locally bound session records no SessionNodeRid (null means "this
+        // node"); the join commit crosses nodes, so the target must receive
+        // the concrete session node rid — the actor's current owner node — or
+        // its pushes can never route back to the session.
+        if (hasBoundSession && boundSession.SessionNodeRid is null)
+            boundSession = boundSession with { SessionNodeRid = actorRef.NodeRid };
         var committedFrames = actorState.Handoff.SnapshotFrames();
         var reply = await ReconcileTargetJoinCommitAsync(
                 actor.ActorId,

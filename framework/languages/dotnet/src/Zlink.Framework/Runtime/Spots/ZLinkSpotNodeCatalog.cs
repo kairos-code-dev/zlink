@@ -489,6 +489,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotChannelName,
                 spotRid,
+                activation.NativeSpot.LifecycleGeneration,
                 spotType.FullName,
                 node.RoutingId,
                 ZLinkSpotKind.User,

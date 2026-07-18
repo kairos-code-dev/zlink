@@ -52,6 +52,11 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     IZLinkBackendSpot EntrySpot();
 
+    // Node-addressed one-way send on the router plane (NodeSend record on the
+    // target). Carries framework-internal packets such as the remote-session
+    // push relay; the target's node route dispatcher decodes the envelope.
+    SubmitResult SendToNode(RoutingId targetNodeRid, IReadOnlyList<Message> parts, SendFlags flags);
+
     ZLinkBackendActorRef CreateActor(string actorId, Message createRequest);
 
     ZLinkBackendActorRef? ActorLookup(string actorId);
@@ -159,6 +164,11 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 internal interface IZLinkBackendSpot : IAsyncDisposable
 {
     RoutingId RoutingId { get; }
+
+    // Core lifecycle generation of this spot activation — the value peers
+    // must present on spot-addressed submits, published through the spot's
+    // location row.
+    ulong LifecycleGeneration { get; }
 
     void SetRoutingId(RoutingId routingId);
 

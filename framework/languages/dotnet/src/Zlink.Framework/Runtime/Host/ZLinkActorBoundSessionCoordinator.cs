@@ -4,6 +4,8 @@ internal sealed class ZLinkActorBoundSessionCoordinator
 {
     private readonly ZLinkActorBoundSessionRegistry _boundSessions;
     private readonly ZLinkSessionActorBindingTable _sessionBindings = new();
+    private readonly object _remoteForwardGate = new();
+    private readonly Dictionary<string, List<byte[]>> _remoteForwardBuffers = new(StringComparer.Ordinal);
     private readonly Func<string, ZLinkActorRuntimeState> _getState;
     private readonly Func<IZLinkBackendSpotNode?> _getNode;
     private readonly ZLinkFrameworkRegistration _registration;
@@ -22,11 +24,52 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         _boundSessions = new ZLinkActorBoundSessionRegistry(UnbindActorSession);
     }
 
+    /// <summary>Set by the runtime after construction: relays an encoded push
+    /// frame to a remote session node as (actorId, sessionNodeRid, sessionRid,
+    /// frame). Core's bound-session send is node-local, so a session bound on
+    /// another node is reached through this framework-internal route packet
+    /// (spec 31 §6 keeps the session route inside the framework).</summary>
+    public Func<string, RoutingId, RoutingId, byte[], bool>? RemotePushRelay { get; set; }
+
+    /// <summary>Set by the runtime after construction: relays a session frame
+    /// to a bound actor that migrated to another node as (actorRef,
+    /// sessionNodeRid, sessionRid, headerBytes, bodyBytes).</summary>
+    public Func<ZLinkBackendActorRef, RoutingId, RoutingId, byte[], byte[], bool>? RemoteFrameRelay { get; set; }
+
+    /// <summary>Session-node delivery for a relayed remote push: writes the
+    /// frame to the still-bound local session. A binding or session-rid miss
+    /// is a stale push racing rebind/disconnect and is dropped (spec 31 §6).</summary>
+    public bool DeliverLocalSessionFrame(string actorId, RoutingId sessionRid, byte[] frame)
+    {
+        var debug = Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1";
+        if (!_sessionBindings.TryGetByActorId(actorId, out var context))
+        {
+            if (debug) Console.Error.WriteLine($"[deliver] no-context actor={actorId}");
+            return false;
+        }
+        if (context.RoutingId is not { } boundRid || !boundRid.Equals(sessionRid))
+        {
+            if (debug)
+                Console.Error.WriteLine(
+                    $"[deliver] session-mismatch actor={actorId} bound={context.RoutingId} expected={sessionRid}");
+            return false;
+        }
+        using var message = Message.From(frame);
+        var written = context.Write(message);
+        if (debug) Console.Error.WriteLine($"[deliver] write actor={actorId} ok={written}");
+        return written;
+    }
+
     public void BindSessionActor(string actorId, ZLinkSessionContext context, string bindingToken, ZLinkSessionActor actorRef) =>
         _sessionBindings.Bind(actorId, context, bindingToken, actorRef);
 
-    public void UnbindSessionActor(string actorId, ZLinkSessionContext context, string bindingToken) =>
+    public void UnbindSessionActor(string actorId, ZLinkSessionContext context, string bindingToken)
+    {
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[unbind] session-actor actor={actorId} token={bindingToken} at={Environment.StackTrace.Split('\n').Skip(2).FirstOrDefault()?.Trim()}");
         _sessionBindings.Unbind(actorId, context, bindingToken);
+    }
 
     public bool TryGetSessionActorContext(string actorId, string bindingToken, out ZLinkSessionContext context) =>
         _sessionBindings.TryGet(actorId, bindingToken, out context);
@@ -75,6 +118,8 @@ internal sealed class ZLinkActorBoundSessionCoordinator
                     throw new InvalidOperationException("A local actor bound-session send requires one encoded stream frame.");
                 return context.Write(parts[0]);
             }
+            if (TryRelayRemotePush(actorId, session, ConcatParts(parts)))
+                return true;
             if (!ZLinkActorBoundSessionBindingToken.IsNative(session.BindingToken))
                 throw Error(ZLinkFrameworkErrorKind.ActorSessionNotBound,
                     $"Actor '{actorId}' no longer has the selected local session binding.", true);
@@ -111,9 +156,157 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             .ReplyActorNoBind(actor, sourceNodeRid, sourceSessionRid, requestId, flags, parts);
 
     public bool ForwardPart(ZLinkBackendActorRef actorRef, RoutingId sourceNodeRid, RoutingId sourceSessionRid,
-        Message message, bool hasMore, SendFlags flags) =>
-        RequireNode("Actor session forward requires a router-capable SpotNode.", ZLinkFrameworkErrorKind.ActorRouteNotFound)
+        Message message, bool hasMore, SendFlags flags)
+    {
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[forward] actor={actorRef.ActorId} actorNode={actorRef.NodeRid} gen={actorRef.Generation} src={sourceNodeRid} session={sourceSessionRid} more={hasMore}");
+
+        // A bound actor that migrated to another node cannot be reached
+        // through the local bound-session send; buffer the parts and relay
+        // the frame to the actor's owner node, which dispatches it through
+        // its actor pipeline (replies come back on the push relay).
+        if (RemoteFrameRelay is { } frameRelay
+            && !actorRef.NodeRid.IsEmpty
+            && _getNode() is { } frameLocalNode
+            && !actorRef.NodeRid.Equals(frameLocalNode.RoutingId))
+        {
+            // Locally relayed frames carry no session identity; the actor's
+            // bound-session state (or the local session-side binding registry
+            // after a source-side migration cleared the actor-side state)
+            // names the session this frame belongs to.
+            if (sourceSessionRid.IsEmpty)
+            {
+                if (_getState(actorRef.ActorId).TryGetBoundSession(out var forwardSession)
+                    && !forwardSession.SessionRid.IsEmpty)
+                {
+                    sourceSessionRid = forwardSession.SessionRid;
+                    if (sourceNodeRid.IsEmpty && forwardSession.SessionNodeRid is { } forwardNode)
+                        sourceNodeRid = forwardNode;
+                }
+                else if (_sessionBindings.TryGetByActorId(actorRef.ActorId, out var forwardContext)
+                         && forwardContext.RoutingId is { } forwardRid)
+                {
+                    sourceSessionRid = forwardRid;
+                }
+            }
+
+            lock (_remoteForwardGate)
+            {
+                var key = "frame:" + actorRef.ActorId;
+                if (!_remoteForwardBuffers.TryGetValue(key, out var framePending))
+                {
+                    framePending = [];
+                    _remoteForwardBuffers[key] = framePending;
+                }
+
+                framePending.Add(message.ToArray());
+                if (hasMore) return true;
+                var header = framePending[0];
+                var bodyLength = 0;
+                for (var i = 1; i < framePending.Count; i++) bodyLength += framePending[i].Length;
+                var frameBody = new byte[bodyLength];
+                var bodyOffset = 0;
+                for (var i = 1; i < framePending.Count; i++)
+                {
+                    framePending[i].CopyTo(frameBody, bodyOffset);
+                    bodyOffset += framePending[i].Length;
+                }
+
+                if (!frameRelay(actorRef, sourceNodeRid, sourceSessionRid, header, frameBody))
+                {
+                    // Retries resubmit only the terminal part; keep the
+                    // buffered prefix so the frame stays whole.
+                    framePending.RemoveAt(framePending.Count - 1);
+                    return false;
+                }
+
+                _remoteForwardBuffers.Remove(key);
+                return true;
+            }
+        }
+
+        // A session on another node cannot be reached through the local
+        // bound-session send; buffer the parts and relay the coalesced frame
+        // to the session's node instead.
+        if (RemotePushRelay is { } relay
+            && !sourceNodeRid.IsEmpty
+            && _getNode() is { } localNode
+            && !sourceNodeRid.Equals(localNode.RoutingId))
+        {
+            lock (_remoteForwardGate)
+            {
+                if (!_remoteForwardBuffers.TryGetValue(actorRef.ActorId, out var pending))
+                {
+                    pending = [];
+                    _remoteForwardBuffers[actorRef.ActorId] = pending;
+                }
+
+                pending.Add(message.ToArray());
+                if (hasMore) return true;
+                _remoteForwardBuffers.Remove(actorRef.ActorId);
+                var total = 0;
+                foreach (var part in pending) total += part.Length;
+                var frame = new byte[total];
+                var offset = 0;
+                foreach (var part in pending)
+                {
+                    part.CopyTo(frame, offset);
+                    offset += part.Length;
+                }
+
+                return relay(actorRef.ActorId, sourceNodeRid, sourceSessionRid, frame);
+            }
+        }
+
+        return RequireNode("Actor session forward requires a router-capable SpotNode.", ZLinkFrameworkErrorKind.ActorRouteNotFound)
             .ForwardActorBoundSessionPart(actorRef, sourceNodeRid, sourceSessionRid, message, hasMore, flags);
+    }
+
+    private bool TryRelayRemotePush(string actorId, ZLinkActorBoundSession session, byte[] frame)
+    {
+        var debug = Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1";
+        if (RemotePushRelay is not { } relay
+            || session.SessionNodeRid is not { } sessionNodeRid
+            || sessionNodeRid.IsEmpty)
+        {
+            if (debug)
+                Console.Error.WriteLine(
+                    $"[relay] skip actor={actorId} nodeRid={(session.SessionNodeRid?.ToString() ?? "<null>")}");
+            return false;
+        }
+        if (_getNode() is not { } localNode || sessionNodeRid.Equals(localNode.RoutingId))
+        {
+            if (debug) Console.Error.WriteLine($"[relay] local actor={actorId}");
+            return false;
+        }
+        if (debug)
+            Console.Error.WriteLine(
+                $"[relay] remote actor={actorId} -> node={sessionNodeRid} session={session.SessionRid} bytes={frame.Length}");
+        return relay(actorId, sessionNodeRid, session.SessionRid, frame);
+    }
+
+    private static byte[] ConcatParts(IReadOnlyList<Message> parts)
+    {
+        if (parts.Count == 1) return parts[0].ToArray();
+        var buffers = new byte[parts.Count][];
+        var total = 0;
+        for (var i = 0; i < parts.Count; i++)
+        {
+            buffers[i] = parts[i].ToArray();
+            total += buffers[i].Length;
+        }
+
+        var frame = new byte[total];
+        var offset = 0;
+        foreach (var buffer in buffers)
+        {
+            buffer.CopyTo(frame, offset);
+            offset += buffer.Length;
+        }
+
+        return frame;
+    }
 
     public ValueTask NotifyRemoteDisconnectedAsync(ZLinkActorRuntimeState state, ZLinkBackendActorRef actorRef,
         IZLinkBackendSpotNode node, CancellationToken cancellationToken)

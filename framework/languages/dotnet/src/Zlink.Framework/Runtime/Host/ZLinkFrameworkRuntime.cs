@@ -81,7 +81,11 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             _actorSessionManager.GetOrCreateState,
             GetActorSpotNode,
             registration,
-            () => ShutdownToken);
+            () => ShutdownToken)
+        {
+            RemotePushRelay = RelayRemoteSessionPush,
+            RemoteFrameRelay = RelayRemoteActorFrame
+        };
         _actorDrainCoordinator = new ZLinkActorDrainCoordinator(
             _actors,
             _actorSessionManager,

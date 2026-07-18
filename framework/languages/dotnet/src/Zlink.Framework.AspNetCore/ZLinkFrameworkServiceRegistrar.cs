@@ -89,6 +89,12 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton(registration);
         services.TryAddSingleton<IZLinkBackendAdapterFactory, ZLinkDotNetBackendAdapterFactory>();
 
+        // Framework-internal consumer for cross-node bound-session pushes
+        // (spec 31 §6); the node route dispatcher resolves it from DI when a
+        // relayed push arrives on a router-capable node.
+        services.TryAddScoped<ZLinkRemoteSessionPushRelayHandler>();
+        services.TryAddScoped<ZLinkRemoteActorFrameRelayHandler>();
+
         // Install the shared, runtime-mutable message-flow mode cell (seeded from the
         // configured mode) so SetMessageFlowMode can flip tracing on/off live and
         // every surface that reads EffectiveMessageFlow observes it.

@@ -229,6 +229,7 @@ public sealed class LocationLifecycleTests
         var status = await node.SpotLocations.ClaimAsync(
             "mesh",
             spotRid,
+            7,
             "game",
             RoutingId.From("node-a"),
             ZLinkSpotKind.User,
@@ -334,6 +335,7 @@ public sealed class LocationLifecycleTests
         var first = await original.SpotLocations.ClaimAsync(
             "mesh",
             spotRid,
+            7,
             "game",
             RoutingId.From("node-a"),
             ZLinkSpotKind.User,
@@ -344,6 +346,7 @@ public sealed class LocationLifecycleTests
         var takeover = await restarted.SpotLocations.ClaimAsync(
             "mesh",
             spotRid,
+            7,
             "game",
             RoutingId.From("node-a"),
             ZLinkSpotKind.User,
@@ -353,7 +356,10 @@ public sealed class LocationLifecycleTests
         var current = await fixture.Store.ResolveSpotAsync(key);
         Assert.Equal(restarted.Runtime.OwnerId, current!.OwnerId);
         Assert.Equal(RoutingId.From("node-a"), current.OwnerNodeRid);
-        Assert.True(current.SpotGeneration > firstRow!.SpotGeneration);
+        // The row keeps the writer's core spot generation verbatim; takeover
+        // fencing advances the store's owner token, not the row content.
+        Assert.Equal(7ul, firstRow!.SpotGeneration);
+        Assert.Equal(7ul, current.SpotGeneration);
 
         await original.SpotLocations.ReleaseAsync("mesh", spotRid);
         var afterStaleRelease = await fixture.Store.ResolveSpotAsync(key);
@@ -372,6 +378,7 @@ public sealed class LocationLifecycleTests
         var first = await nodeA.SpotLocations.ClaimAsync(
             "mesh",
             spotRid,
+            7,
             "game",
             RoutingId.From("node-a"),
             ZLinkSpotKind.User,
@@ -381,6 +388,7 @@ public sealed class LocationLifecycleTests
         var conflict = await nodeB.SpotLocations.ClaimAsync(
             "mesh",
             spotRid,
+            7,
             "game",
             RoutingId.From("node-b"),
             ZLinkSpotKind.User,
@@ -487,6 +495,7 @@ public sealed class LocationLifecycleTests
         var status = await node.SpotLocations.ClaimAsync(
             "mesh",
             spotRid,
+            7,
             "game",
             RoutingId.From("node-a"),
             ZLinkSpotKind.User,

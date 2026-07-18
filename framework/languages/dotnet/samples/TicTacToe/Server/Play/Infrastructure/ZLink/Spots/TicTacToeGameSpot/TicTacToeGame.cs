@@ -5,6 +5,7 @@ using TicTacToe.Server.Play.Domain.TicTacToe;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Actors;
 using TicTacToe.Server.Play.Infrastructure.ZLink.Spots.TicTacToeGameSpot.Handlers;
 using TicTacToe.Shared.Contracts;
+using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Spots;
 using Zlink.Framework.Contracts.Timers;
@@ -239,11 +240,16 @@ internal sealed class TicTacToeGame(
             player.ActorId,
             after.RoomId,
             wins);
-        Context.Outbound.Publish(
-                SampleTopics.PlayerMilestone,
-                new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
-                .TrySubmit();
-        return ValueTask.CompletedTask;
+        return ContinueWithoutResultCore(
+            Context.Outbound.Publish(
+                    SampleTopics.PlayerMilestone,
+                    new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
+                .SubmitAsync(cancellationToken));
+    }
+
+    private static async ValueTask ContinueWithoutResultCore(ValueTask<ZLinkPublishResult> submit)
+    {
+        _ = await submit.ConfigureAwait(false);
     }
 
     private static void SendSessionPush(

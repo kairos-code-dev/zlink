@@ -265,10 +265,12 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 ZLinkLocationKind.MeshNode,
                 ZLinkLocationKeyCodec.EncodeMeshNodeKey(
                     new ZLinkMeshNodeDescriptorKey(descriptor.MeshName, descriptor.Rid)),
-                // The store issues the lifecycle generation on claim, so the
-                // event carries the value the row now has in the store.
+                // Row content generations are writer-owned core values; the
+                // store's generation is a separate owner-token fence, so the
+                // event carries the row exactly as written (store UpdatedAt
+                // applied).
                 result => _events.DescriptorRowUpdatedAsync(
-                stamped with { LifecycleGeneration = result.Generation, UpdatedAt = result.UpdatedAt },
+                stamped with { UpdatedAt = result.UpdatedAt },
                 cancellationToken))
             .ConfigureAwait(false);
     }
@@ -284,7 +286,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 ZLinkLocationKind.Spot,
                 ZLinkLocationKeyCodec.EncodeSpotKey(new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid)),
                 result => _events.SpotRowUpdatedAsync(
-                stamped with { SpotGeneration = result.Generation, UpdatedAt = result.UpdatedAt },
+                stamped with { UpdatedAt = result.UpdatedAt },
                 cancellationToken))
             .ConfigureAwait(false);
     }

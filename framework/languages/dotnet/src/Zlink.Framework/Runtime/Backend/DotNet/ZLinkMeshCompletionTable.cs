@@ -91,23 +91,14 @@ internal sealed class ZLinkMeshCompletionTable
     }
 
     // Maps a Completion receive record's terminal result/errno onto the framework
-    // RequestResult surface the callbacks expect.
+    // RequestResult surface the callbacks expect. Completion terminal results are
+    // zlink_request_result_t values (0 / 101+), which the binding's RequestResult
+    // mirrors one-to-one; values without a managed member (e.g. native
+    // Backpressured) fall back to InternalError.
     public static RequestResult MapResult(int terminalResult, int failureErrno)
     {
         if (terminalResult == 0) return RequestResult.Ok;
-        return (SubmitResult)terminalResult switch
-        {
-            SubmitResult.Ok => RequestResult.Ok,
-            SubmitResult.NotFound => RequestResult.NotFound,
-            SubmitResult.NotConnected => RequestResult.NotConnected,
-            SubmitResult.NotAdmitted => RequestResult.NotConnected,
-            SubmitResult.Terminated => RequestResult.Terminated,
-            SubmitResult.InvalidArgument => RequestResult.InvalidArgument,
-            SubmitResult.InvalidState => RequestResult.InvalidState,
-            SubmitResult.NotSupported => RequestResult.NotSupported,
-            SubmitResult.OutOfMemory => RequestResult.InternalError,
-            SubmitResult.Backpressured => RequestResult.Busy,
-            _ => RequestResult.InternalError
-        };
+        var result = (RequestResult)terminalResult;
+        return Enum.IsDefined(result) ? result : RequestResult.InternalError;
     }
 }

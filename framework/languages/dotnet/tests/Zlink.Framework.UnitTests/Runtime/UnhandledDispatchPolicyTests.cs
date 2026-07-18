@@ -1202,6 +1202,8 @@ public sealed partial class UnhandledDispatchPolicyTests
 
     private sealed class CapturingSpot : IZLinkBackendSpot
     {
+        public ulong LifecycleGeneration => 1;
+
         public int SubscriptionAttempts { get; private set; }
 
         public int SubscriptionFailuresRemaining { get; init; }

@@ -700,7 +700,9 @@ public sealed partial class EntrySpotActorDispatchTests
             var forwarder = new ZLinkActorStragglerForwarder(runtime, capacity: 1);
             using var body = Message.From(Encoding.UTF8.GetBytes("body"));
             var source = new ZLinkBackendActorRef(RoutingId.From("source-node"), "actor-forward", 1);
-            var target = new ZLinkBackendActorRef(RoutingId.From("target-node"), "actor-forward", 2);
+            // The runtime's own node rid keeps this on the backend forward
+            // path (a remote target now takes the actor-frame relay plane).
+            var target = new ZLinkBackendActorRef(RoutingId.From("entry-node"), "actor-forward", 2);
             var forwardingLease = new ZLinkActorForwardingLease(TimeProvider.System);
             forwardingLease.Commit(TimeSpan.FromSeconds(5));
 
@@ -709,7 +711,7 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Throws<ObjectDisposedException>(() => forwarder.Enqueue(
                 source,
                 target,
-                RoutingId.From("session-node"),
+                RoutingId.From("entry-node"),
                 RoutingId.From("session-1"),
                 6,
                 0,
@@ -720,7 +722,7 @@ public sealed partial class EntrySpotActorDispatchTests
             forwarder.Enqueue(
                 source,
                 target,
-                RoutingId.From("session-node"),
+                RoutingId.From("entry-node"),
                 RoutingId.From("session-1"),
                 7,
                 0,
@@ -1464,7 +1466,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
             var reply = Assert.Single(node.NoBindReplies);
             Assert.Equal(actorRef, reply.Actor);
-            Assert.Equal(RoutingId.From("source-node"), reply.SourceNodeRid);
+            Assert.Equal(RoutingId.From("entry-node"), reply.SourceNodeRid);
             Assert.Equal(RoutingId.From("source-session"), reply.SourceSessionRid);
             Assert.Equal<ulong>(42, reply.RequestId);
             Assert.Equal<uint>(1, reply.Flags);
@@ -1673,7 +1675,9 @@ public sealed partial class EntrySpotActorDispatchTests
             runtime.GetOrCreateActorState(actor.ActorId).BindNativeActorRef(actor);
             runtime.BindActorSession(
                 actor.ActorId,
-                RoutingId.From("session-node"),
+                // The runtime's own node rid: a differing rid now means a
+                // remote session node and takes the relay plane instead.
+                RoutingId.From("entry-node"),
                 RoutingId.From("session-rid"),
                 ZLinkActorBoundSessionBindingToken.Native(RoutingId.From("session-rid")));
             var retained = new ZLinkBoundSessionService(runtime).Create(actor.ActorId);
@@ -1712,7 +1716,9 @@ public sealed partial class EntrySpotActorDispatchTests
             runtime.GetOrCreateActorState(actor.ActorId).BindNativeActorRef(actor);
             runtime.BindActorSession(
                 actor.ActorId,
-                RoutingId.From("session-node"),
+                // The runtime's own node rid: a differing rid now means a
+                // remote session node and takes the relay plane instead.
+                RoutingId.From("entry-node"),
                 RoutingId.From("session-rid"),
                 ZLinkActorBoundSessionBindingToken.Native(RoutingId.From("session-rid")));
             var retained = new ZLinkBoundSessionService(runtime).Create(actor.ActorId);
@@ -2780,7 +2786,10 @@ public sealed partial class EntrySpotActorDispatchTests
         [
             new ZLinkBackendActorPart(
                 actorRef,
-                RoutingId.From("source-node"),
+                // The runtime's own node rid: these parts model a locally
+                // relayed session frame (a differing rid now means a remote
+                // session node and takes the relay plane instead).
+                RoutingId.From("entry-node"),
                 RoutingId.From("source-session"),
                 requestId,
                 flags,
@@ -2788,7 +2797,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 true),
             new ZLinkBackendActorPart(
                 actorRef,
-                RoutingId.From("source-node"),
+                RoutingId.From("entry-node"),
                 RoutingId.From("source-session"),
                 requestId,
                 flags,
@@ -3420,6 +3429,8 @@ public sealed partial class EntrySpotActorDispatchTests
 
     private sealed class CapturingSpot : IZLinkBackendSpot
     {
+        public ulong LifecycleGeneration => 1;
+
         private Action<ZLinkBackendSpotDispatchInfo>? _dispatchHandler;
 
         public RoutingId RoutingId { get; private set; } = RoutingId.From("entry-spot");
@@ -3874,6 +3885,14 @@ public sealed partial class EntrySpotActorDispatchTests
             if (DestroyFailure is { } failure) throw failure;
             if (DestroyHandler is { } handler)
                 await handler(actor, cancellationToken);
+        }
+
+        public SubmitResult SendToNode(
+            RoutingId targetNodeRid,
+            IReadOnlyList<Message> parts,
+            SendFlags flags)
+        {
+            return SubmitResult.Ok;
         }
 
         public bool SendActorBoundSession(

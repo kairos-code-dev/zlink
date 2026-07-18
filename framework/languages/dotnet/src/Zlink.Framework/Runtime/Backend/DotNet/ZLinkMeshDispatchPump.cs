@@ -21,6 +21,23 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     private readonly IMeshNode _node;
     private readonly ZLinkMeshCompletionTable _completions;
     private readonly ConcurrentDictionary<RoutingId, SpotDispatchState> _spots = new();
+
+    // Core reply tokens of inbound ActorRequest records, keyed by request id
+    // (operation id low). No-bind replies (ReplyActorNoBind) redeem the token
+    // to answer a mesh actor request without a session binding; bound requests
+    // reply through the session plane and leave their token to be evicted by
+    // the bound cap.
+    private const int MaxPendingActorReplies = 8192;
+    private long _nextActorRequestId;
+    private readonly ConcurrentDictionary<
+        ulong, Func<IReadOnlyList<Message>, SendFlags, SubmitResult>> _actorReplies = new();
+
+    public bool TryTakeActorReply(
+        ulong requestId,
+        out Func<IReadOnlyList<Message>, SendFlags, SubmitResult> reply)
+    {
+        return _actorReplies.TryRemove(requestId, out reply!);
+    }
     private Action<ActorTransferControl>? _transferControlHandler;
     private Action<ZLinkBackendRouteReceived>? _nodeRouteHandler;
     private readonly object _lifecycleGate = new();
@@ -42,6 +59,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         {
             if (_started || _disposed) return;
             _started = true;
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine("[pump] started");
             _stop = new CancellationTokenSource();
             _node.SetReadyHandler(OnReady);
             _loop = Task.Run(() => RunAsync(_stop.Token));
@@ -84,6 +103,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private MeshReadyDomains OnReady(MeshReadyDomains readyDomains)
     {
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine($"[pump] ready mask={readyDomains}");
         _signal.Release();
         return readyDomains;
     }
@@ -104,6 +125,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             }
 
             DrainResidue(readyBatch, receiveBatch);
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine("[pump] idle");
         }
     }
 
@@ -116,18 +139,27 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             bool residue;
             try
             {
-                // Infrastructure plane first so control traffic drains ahead of app.
-                residue = _node.DrainReady(MeshReadyDomains.All, readyBatch);
+                // Non-blocking: the native drain/claim receives block indefinitely
+                // by default, which would park this pump thread inside one claim
+                // and starve every other owner. The signal semaphore provides the
+                // wakeups; the pump itself must never wait inside the native API.
+                residue = _node.DrainReady(
+                    MeshReadyDomains.All, readyBatch, RecvFlags.DontWait);
             }
             catch (ObjectDisposedException)
             {
                 return;
             }
-            catch (ZlinkException)
+            catch (ZlinkException ex)
             {
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine($"[pump] drain error: {ex.Message}");
                 return;
             }
 
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine(
+                    $"[pump] drained ready={readyBatch.Count} residue={residue} tid={Environment.CurrentManagedThreadId}");
             for (var i = 0; i < readyBatch.Count; i++)
                 DrainClaim(readyBatch, i, receiveBatch);
 
@@ -137,13 +169,35 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private void DrainClaim(MeshReadyBatch readyBatch, int index, MeshReceiveBatch receiveBatch)
     {
+        var debug = Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1";
+        // The claim owner identifies the local consumer the records belong to.
+        // Spot owners carry the hosting spot's rid directly; actor owners carry
+        // only the actor identity (core leaves their spot_rid empty), so the
+        // hosting spot is resolved through the node's actor table. Receive
+        // records key per-spot dispatch by this owner rid: their own
+        // SourceSpotRid is the remote sender's spot (or empty for
+        // session-relayed actor sends), so it cannot address the local consumer.
+        var readyRecord = readyBatch[index];
+        var ownerSpotRid = readyRecord.SpotRid;
+        if (ownerSpotRid.IsEmpty
+            && readyRecord.OwnerKind == MeshOwnerKind.Actor
+            && readyRecord.Actor.ActorId is { Length: > 0 } ownerActorId)
+            try
+            {
+                if (_node.ActorLookup(ownerActorId, out var ownerLocation))
+                    ownerSpotRid = ownerLocation.SpotRid;
+            }
+            catch (ZlinkException)
+            {
+            }
         MeshClaim claim;
         try
         {
             claim = readyBatch.TakeClaim(index);
         }
-        catch (ZlinkException)
+        catch (ZlinkException ex)
         {
+            if (debug) Console.Error.WriteLine($"[pump] take-claim error: {ex.Message}");
             return;
         }
 
@@ -152,16 +206,24 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             while (true)
             {
                 receiveBatch.Reset();
-                if (!claim.Receive(receiveBatch))
+                if (debug) Console.Error.WriteLine("[pump] claim recv…");
+                var got = claim.Receive(receiveBatch, RecvFlags.DontWait);
+                if (debug) Console.Error.WriteLine($"[pump] claim recv={got} count={(got ? receiveBatch.Count : 0)}");
+                if (!got)
                     return;
 
                 var count = receiveBatch.Count;
                 for (var record = 0; record < count; record++)
-                    DispatchRecord(receiveBatch, record);
+                    DispatchRecord(receiveBatch, record, ownerSpotRid, readyRecord.Actor);
             }
         }
-        catch (ZlinkException)
+        catch (Exception ex)
         {
+            // A failed pull or a poison record must not kill the pump loop: the
+            // pump is the node's only dispatch thread, so surviving and moving to
+            // the next claim keeps every other owner (and the completion table)
+            // alive.
+            if (debug) Console.Error.WriteLine($"[pump] claim error: {ex}");
         }
         finally
         {
@@ -169,9 +231,13 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         }
     }
 
-    private void DispatchRecord(MeshReceiveBatch batch, int index)
+    private void DispatchRecord(
+        MeshReceiveBatch batch, int index, RoutingId ownerSpotRid, ActorRef ownerActor)
     {
         var record = batch[index];
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[pump] record kind={record.Kind} op={record.OperationKind} tid={Environment.CurrentManagedThreadId}");
         switch (record.Kind)
         {
             case MeshRecordKind.Completion:
@@ -185,17 +251,17 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
                 return;
             case MeshRecordKind.SpotSend:
             case MeshRecordKind.SpotRequest:
-                EnqueueRoute(batch, index, record);
+                EnqueueRoute(batch, index, record, ownerSpotRid);
                 return;
             case MeshRecordKind.SpotMulticast:
-                EnqueueSubscribe(batch, index, record);
+                EnqueueSubscribe(batch, index, record, ownerSpotRid);
                 return;
             case MeshRecordKind.SpotControl:
-                EnqueueSpotControl(batch, index, record);
+                EnqueueSpotControl(batch, index, record, ownerSpotRid);
                 return;
             case MeshRecordKind.ActorSend:
             case MeshRecordKind.ActorRequest:
-                EnqueueActor(batch, index, record);
+                EnqueueActor(batch, index, record, ownerSpotRid, ownerActor);
                 return;
             case MeshRecordKind.SendReady:
                 RaiseSendReady(record);
@@ -212,13 +278,16 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private void ResolveCompletion(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
     {
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[pump] completion op={record.OperationId} kind={record.OperationKind} terminal={record.TerminalResult}");
         var parts = record.PartCount > 0
             ? batch.RetainMessage(index)
             : Array.Empty<Message>();
         _completions.Complete(record, parts);
     }
 
-    private void EnqueueRoute(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
+    private void EnqueueRoute(MeshReceiveBatch batch, int index, MeshReceiveRecord record, RoutingId ownerSpotRid)
     {
         // Malformed application metadata is a protocol error: reject the ingress
         // and do not deliver it to a handler (spec 03 §3). The batch reset
@@ -226,7 +295,9 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         if (!TryDecodeMetadata(record, out var metadata))
             return;
 
-        var state = ResolveSpotState(record.SourceSpotRid, targetOwner: true, record);
+        var state = ResolveSpotState(
+            ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
+            targetOwner: true, record);
         var replyRecord = record;
         var reply = record.Kind is MeshRecordKind.NodeRequest
             or MeshRecordKind.ChannelRequest or MeshRecordKind.SpotRequest
@@ -282,7 +353,7 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         handler(received);
     }
 
-    private void EnqueueSubscribe(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
+    private void EnqueueSubscribe(MeshReceiveBatch batch, int index, MeshReceiveRecord record, RoutingId ownerSpotRid)
     {
         // Malformed application metadata is a protocol error: reject the ingress
         // (spec 03 §3). The same publish snapshot is delivered to every matching
@@ -290,7 +361,9 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         if (!TryDecodeMetadata(record, out var metadata))
             return;
 
-        var state = ResolveSpotState(record.SourceSpotRid, targetOwner: true, record);
+        var state = ResolveSpotState(
+            ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
+            targetOwner: true, record);
         var message = new ZLinkBackendSubscribeMessage(
             record.Topic ?? string.Empty, RetainParts(batch, index), metadata);
         state.Subscriptions.Enqueue(message);
@@ -313,9 +386,11 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         return ZLinkMeshMetadataCodec.TryDecode(frame, out metadata);
     }
 
-    private void EnqueueSpotControl(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
+    private void EnqueueSpotControl(MeshReceiveBatch batch, int index, MeshReceiveRecord record, RoutingId ownerSpotRid)
     {
-        var state = ResolveSpotState(record.SourceSpotRid, targetOwner: true, record);
+        var state = ResolveSpotState(
+            ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
+            targetOwner: true, record);
         if (record.OperationKind == MeshOperationKind.ActorJoin)
         {
             // Actor-join admission record: build a framework join request.
@@ -336,10 +411,30 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
         }
     }
 
-    private void EnqueueActor(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
+    private void EnqueueActor(
+        MeshReceiveBatch batch, int index, MeshReceiveRecord record,
+        RoutingId ownerSpotRid, ActorRef ownerActor)
     {
-        var state = ResolveSpotState(record.SourceSpotRid, targetOwner: true, record);
-        var parts = ZLinkMeshRecordAdapters.ToActorParts(batch, index, record);
+        ulong requestId = 0;
+        if (record.Kind == MeshRecordKind.ActorRequest)
+        {
+            requestId = (ulong)Interlocked.Increment(ref _nextActorRequestId);
+            if (_actorReplies.Count < MaxPendingActorReplies)
+            {
+                var replyRecord = record;
+                _actorReplies[requestId] =
+                    (parts, flags) => replyRecord.Reply(parts, flags);
+            }
+        }
+
+
+        var state = ResolveSpotState(
+            ownerSpotRid.IsEmpty ? record.SourceSpotRid : ownerSpotRid,
+            targetOwner: true, record);
+        var parts = ZLinkMeshRecordAdapters.ToActorParts(batch, index, record, ownerActor, requestId);
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[pump] actor owner={ownerSpotRid} src={record.SourceSpotRid} parts={parts.Count} handler={state.DispatchHandler is not null} keys={string.Join(",", _spots.Keys)}");
         if (parts.Count == 0) return;
         state.RaiseActor(parts);
     }

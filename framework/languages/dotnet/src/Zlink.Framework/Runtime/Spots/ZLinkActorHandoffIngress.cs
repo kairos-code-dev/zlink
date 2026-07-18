@@ -44,6 +44,13 @@ internal static class ZLinkActorHandoffIngress
                     // The async dispatcher owns stale request replies.
                 }
 
+                // Capture here, in pump-event order: the dispatch batches run
+                // detached and concurrently, so capturing inside the pipeline
+                // would race sibling frames and break the backlog's arrival
+                // sequence (spec 23 §10.2).
+                if (state.Handoff.TryCapture(frame))
+                    continue;
+
                 dispatchable.Add(frame);
             }
             catch

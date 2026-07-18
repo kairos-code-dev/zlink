@@ -180,34 +180,26 @@ internal sealed class ZLinkSessionActorCoordinator(
         {
             // A resolve miss with the row still present is the
             // transfer-commit window (a claimed-but-unpublished
-            // generation-0 row while the actor moves nodes); retry within
-            // the request timeout so a relayed frame is not lost to a
-            // milliseconds-wide gap. A confirmed store miss is terminal —
-            // the actor was destroyed — and fails fast.
-            var deadline = DateTime.UtcNow + runtime.Registration.DefaultRequestTimeout;
-            ActorRef? current;
-            while (true)
-            {
-                bool rowPresent;
-                (current, rowPresent) = directory is ZLinkActorDirectory concreteDirectory
-                    ? await concreteDirectory.FindWithPresenceAsync(actorRef.ActorId, cancellationToken)
-                        .ConfigureAwait(false)
-                    : (await directory.FindAsync(actorRef.ActorId, cancellationToken)
-                        .ConfigureAwait(false), false);
-                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
-                    Console.Error.WriteLine(
-                        $"[relay-resolve] actor={actorRef.ActorId} bound={actorRef.Ref.NodeRid}/{actorRef.Ref.Generation} resolved={(current is { } c ? $"{c.NodeRid}/{c.Generation}" : "<none>")} present={rowPresent}");
-                if (current is not null || !rowPresent || DateTime.UtcNow >= deadline) break;
-                await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            // generation-0 row while the actor moves nodes). The session
+            // already holds a concrete bound ref: proceed with it — the
+            // source incarnation's capture pipeline preserves in-flight
+            // order — instead of stalling the frame behind the window.
+            // A confirmed store miss is terminal: the actor was destroyed.
+            var (current, rowPresent) = directory is ZLinkActorDirectory concreteDirectory
+                ? await concreteDirectory.FindWithPresenceAsync(actorRef.ActorId, cancellationToken)
+                    .ConfigureAwait(false)
+                : (await directory.FindAsync(actorRef.ActorId, cancellationToken)
+                    .ConfigureAwait(false), false);
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine(
+                    $"[relay-resolve] actor={actorRef.ActorId} bound={actorRef.Ref.NodeRid}/{actorRef.Ref.Generation} resolved={(current is { } c ? $"{c.NodeRid}/{c.Generation}" : "<none>")} present={rowPresent}");
 
-            if (current is not { } resolved)
+            if (current is null && !rowPresent)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,
                     $"Actor '{actorRef.ActorId}' is no longer available.");
 
-            if (!ActorRefsEqual(resolved, actorRef.Ref))
+            if (current is { } resolved && !ActorRefsEqual(resolved, actorRef.Ref))
             {
                 actorRef = (ZLinkSessionActor)await BindOrGetActorAsync(
                         actorRef.Context,

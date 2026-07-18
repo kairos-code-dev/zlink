@@ -1,5 +1,7 @@
 namespace Zlink.Framework.Runtime.Channels;
 
+using Zlink.Framework.Runtime.Messaging;
+
 internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkRouteClient
 {
     public IZLinkSendCall SendToNode<TMessage>(
@@ -46,20 +48,42 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
     RoutingId targetNodeRid,
     TMessage message) : IZLinkSendCall
 {
-    public void Submit(CancellationToken cancellationToken = default)
+    //  Node-direct metadata needs the router-seam threading tracked in gap 90
+    //  §12.36; refusing beats silently dropping the caller's frame.
+    public IZLinkSendCall Metadata(string key, string value)
     {
-        var accepted = runtime.SubmitRouteSendAsync(
-                routerChannelId,
-                targetNodeRid,
-                ZLinkMessageNameResolver.ResolveFromMessage(message),
-                message,
-                cancellationToken);
-        ZLinkUnawaitedSubmit.Observe(
-            accepted,
-            "route send submit",
-            runtime.ErrorSink,
-            "RouteMeshChannel",
-            "Send");
+        throw ZLinkMeshCallSupport.NodeRouteMetadataPending();
+    }
+
+    public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        throw ZLinkMeshCallSupport.NodeRouteMetadataPending();
+    }
+
+    public ZLinkSubmitResult TrySubmit()
+    {
+        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+    }
+
+    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await runtime.SubmitRouteSendAsync(
+                    routerChannelId,
+                    targetNodeRid,
+                    ZLinkMessageNameResolver.ResolveFromMessage(message),
+                    message,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+        }
+
+        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 }
 
@@ -79,17 +103,19 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
         return this;
     }
 
+    public IZLinkRequestCall Metadata(string key, string value)
+    {
+        throw ZLinkMeshCallSupport.NodeRouteMetadataPending();
+    }
+
+    public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        throw ZLinkMeshCallSupport.NodeRouteMetadataPending();
+    }
+
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync<TReply>(cancellationToken);
-    }
-
-    public void Submit<TReply>(CancellationToken cancellationToken = default)
-    {
-        ZLinkUnawaitedSubmit.Observe(
-            ObserveAsync<TReply>(cancellationToken),
-            "route request submit",
-            runtime.ErrorSink);
     }
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
@@ -111,10 +137,6 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
             cancellationToken);
     }
 
-    private async ValueTask ObserveAsync<TReply>(CancellationToken cancellationToken)
-    {
-        _ = await ExecuteAsync<TReply>(cancellationToken).ConfigureAwait(false);
-    }
 }
 
 internal sealed class ZLinkRouteSpotSendCall<TMessage>(
@@ -122,33 +144,53 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
     ZLinkResolvedSpotHandle target,
     TMessage message) : IZLinkSendCall
 {
-    public void Submit(CancellationToken cancellationToken = default)
+    private readonly ZLinkCallMetadata _metadata = new();
+
+    public IZLinkSendCall Metadata(string key, string value)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var accepted = SubmitToSnapshotAsync(target.Snapshot, cancellationToken);
-        ZLinkUnawaitedSubmit.Observe(
-            accepted,
-            "route spot send submit",
-            runtime.ErrorSink,
-            "RouteMeshChannel",
-            "Send");
+        _metadata.Set(key, value);
+        return this;
     }
 
-    private ValueTask SubmitToSnapshotAsync(
-        ZLinkSpotHandleSnapshot snapshot,
-        CancellationToken cancellationToken)
+    public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata)
     {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    public ZLinkSubmitResult TrySubmit()
+    {
+        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+    }
+
+    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var snapshot = target.Snapshot;
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Command,
             snapshot.RouterChannelId,
             ZLinkMessageNameResolver.ResolveFromMessage(message));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, runtime.Registration.Codecs);
-        return runtime.SendToSpotViaRouterChannelAsync(
-            snapshot.RouterChannelId,
-            snapshot.NodeRid,
-            snapshot.SpotRid,
-            parts,
-            cancellationToken);
+        try
+        {
+            await runtime.SendToSpotViaRouterChannelAsync(
+                    snapshot.RouterChannelId,
+                    snapshot.NodeRid,
+                    snapshot.SpotRid,
+                    (ulong)snapshot.Generation,
+                    parts,
+                    cancellationToken,
+                    _metadata.Encode())
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+        }
+
+        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 }
 
@@ -157,6 +199,7 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
     ZLinkResolvedSpotHandle target,
     TRequest request) : IZLinkRequestCall
 {
+    private readonly ZLinkCallMetadata _metadata = new();
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
@@ -167,17 +210,21 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
         return this;
     }
 
+    public IZLinkRequestCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync<TReply>(cancellationToken);
-    }
-
-    public void Submit<TReply>(CancellationToken cancellationToken = default)
-    {
-        ZLinkUnawaitedSubmit.Observe(
-            ObserveAsync<TReply>(cancellationToken),
-            "route Spot request submit",
-            runtime.ErrorSink);
     }
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
@@ -209,9 +256,11 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
                         snapshot.RouterChannelId,
                         snapshot.NodeRid,
                         snapshot.SpotRid,
+                        (ulong)snapshot.Generation,
                         parts,
                         timeout,
-                        cancellationToken);
+                        cancellationToken,
+                        _metadata.Encode());
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -222,8 +271,4 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
             runtime.Registration.Codecs);
     }
 
-    private async ValueTask ObserveAsync<TReply>(CancellationToken cancellationToken)
-    {
-        _ = await ExecuteAsync<TReply>(cancellationToken).ConfigureAwait(false);
-    }
 }

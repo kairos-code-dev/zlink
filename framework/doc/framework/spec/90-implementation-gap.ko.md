@@ -608,6 +608,32 @@ gate도 이 값을 요구한다. Java testkit의 fake backend와 `.NET` 단위 �
 - 성공한 이동에서는 owner Node RID와 membership epoch만 바뀌고, destroy 뒤 새 Actor 생성에서만 다음
   Actor generation을 할당하는지 언어별 contract test로 확인한다.
 
+### 12.36 .NET call builder의 TrySubmit·node-direct metadata
+
+**.NET 부분 충족.** [.NET handler interfaces §2](server/languages/dotnet/02-handler-interfaces.ko.md#2-공통-metadata와-call)와
+[.NET RouteMesh §6](server/languages/dotnet/05-route-mesh.ko.md#6-메시징-metadata)은 모든 call builder에
+`IZLinkMetadataCall<TSelf>` metadata overload와 `TrySubmit()`(비대기 admission 판정)을 요구한다.
+
+현재 .NET 구현은 call 표면을 exact 형상으로 정렬했고 Spot direct send/request와 Logical Multicast
+publish는 metadata를 canonical frame으로 Core까지 전달한다. 다음 두 조각은 미충족으로 남아
+`NotSupportedException`으로 명시 실패한다.
+
+- **mesh 경로 TrySubmit**: mesh submit은 node별 비동기 submit queue를 거치므로 동기 admission 판정이
+  없다. queue에 들어간 message를 `Backpressured`로 보고하면 재시도 시 중복 전송이 생기므로, 동기
+  seam 직행 경로가 생길 때까지 `TrySubmit()`은 명시적으로 거부한다. classic dealer plane의
+  `TrySubmit()`은 구현되어 있다.
+- **node-direct·channel metadata**: `IZLinkRouteClient.SendToNode/RequestToNode`와 mesh channel 계열은
+  router seam(`IZLinkBackendRouterSocket`) 경유라 metadata 인자가 아직 관통되지 않았다. spot
+  direct·publish와 동일한 seam 확장이 필요하다.
+
+**고쳐야 할 것:**
+
+- mesh submit 경로에 DONTWAIT 동기 admission 판정을 제공하는 seam 직행 `TrySubmit` 경로를 추가한다.
+- router seam send/request에 metadata 인자를 관통시키고 node-direct·channel call의
+  `Metadata(...)`를 실제 전송으로 연결한다.
+- 두 조각이 착지하면 `NotSupportedException` fail-fast를 제거하고 exact interface 회귀 테스트로
+  판정한다.
+
 ## 13. 샘플 연결·등록 축 준수 현황
 
 [샘플 규약](../common/sample/README.ko.md)은 두 축을 고정한다.

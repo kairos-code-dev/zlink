@@ -94,41 +94,50 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan? timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
     {
         return runtime.RequestToSpotViaRouterChannelAsync(
             routerChannelId,
             targetNodeRid,
             targetSpotRid,
+            targetSpotGeneration,
             parts,
             timeout ?? activation.DefaultRequestTimeout,
-            cancellationToken);
+            cancellationToken,
+            metadata);
     }
 
-    public ValueTask PublishCurrentAsync(
+    public ValueTask<MeshPublishDetail> PublishCurrentAsync(
         string topic,
         IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
     {
         using var operation = runtime.EnterOperation();
-        return outbound.PublishCurrentAsync(topic, parts, cancellationToken);
+        return outbound.PublishCurrentAsync(topic, parts, cancellationToken, metadata);
     }
 
     public ValueTask SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
         IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
     {
         return runtime.SendToSpotViaRouterChannelAsync(
             routerChannelId,
             targetNodeRid,
             targetSpotRid,
+            targetSpotGeneration,
             parts,
-            cancellationToken);
+            cancellationToken,
+            metadata);
     }
 
 }

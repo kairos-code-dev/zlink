@@ -65,9 +65,11 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         Message message,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout)
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata)
     {
-        return RequestToChannel(channelName, new[] { message }, callback, flags, timeout);
+        return RequestToChannel(
+            channelName, new[] { message }, callback, flags, timeout, metadata);
     }
 
     public bool RequestToChannel(
@@ -75,69 +77,88 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout)
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata)
     {
         var submit = _spot.RequestToChannel(
-            channelName, parts, out var operationId, timeout ?? default, flags);
+            channelName, parts, out var operationId, timeout ?? default, flags,
+            metadata);
         return submit == SubmitResult.Ok
                && _completions.RegisterRequest(operationId, callback);
     }
 
-    public bool SendToChannel(string channelName, Message message, SendFlags flags)
+    public SubmitResult SendToChannel(
+        string channelName, Message message, SendFlags flags,
+        ReadOnlyMemory<byte> metadata)
     {
-        return _spot.SendToChannel(channelName, new[] { message }, flags) == SubmitResult.Ok;
+        return _spot.SendToChannel(channelName, new[] { message }, flags, metadata);
     }
 
-    public bool SendToChannel(
-        string channelName, IReadOnlyList<Message> parts, SendFlags flags)
+    public SubmitResult SendToChannel(
+        string channelName, IReadOnlyList<Message> parts, SendFlags flags,
+        ReadOnlyMemory<byte> metadata)
     {
-        return _spot.SendToChannel(channelName, parts, flags) == SubmitResult.Ok;
+        return _spot.SendToChannel(channelName, parts, flags, metadata);
     }
 
-    public bool Publish(string topic, Message message, SendFlags flags)
+    public MeshPublishDetail Publish(
+        string topic, Message message, SendFlags flags,
+        ReadOnlyMemory<byte> metadata)
     {
-        return _spot.Publish(topic, topic, new[] { message }, flags) is not null;
+        return _spot.Publish(topic, topic, new[] { message }, flags, metadata);
     }
 
-    public bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags)
+    public MeshPublishDetail Publish(
+        string topic, IReadOnlyList<Message> parts, SendFlags flags,
+        ReadOnlyMemory<byte> metadata)
     {
-        return _spot.Publish(topic, topic, parts, flags) is not null;
+        return _spot.Publish(topic, topic, parts, flags, metadata);
     }
 
-    public bool SendToSpot(
-        RoutingId targetRid, RoutingId spotRid, Message message, SendFlags flags)
+    public SubmitResult SendToSpot(
+        RoutingId targetRid, RoutingId spotRid, ulong spotGeneration,
+        Message message, SendFlags flags, ReadOnlyMemory<byte> metadata)
     {
-        return _spot.SendToSpot(targetRid, spotRid, 0, new[] { message }, flags)
-            == SubmitResult.Ok;
+        return _spot.SendToSpot(
+            targetRid, spotRid, spotGeneration, new[] { message }, flags, metadata);
     }
 
-    public bool SendToSpot(
-        RoutingId targetRid, RoutingId spotRid, IReadOnlyList<Message> parts, SendFlags flags)
+    public SubmitResult SendToSpot(
+        RoutingId targetRid, RoutingId spotRid, ulong spotGeneration,
+        IReadOnlyList<Message> parts, SendFlags flags, ReadOnlyMemory<byte> metadata)
     {
-        return _spot.SendToSpot(targetRid, spotRid, 0, parts, flags) == SubmitResult.Ok;
+        return _spot.SendToSpot(
+            targetRid, spotRid, spotGeneration, parts, flags, metadata);
     }
 
     public bool RequestToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
+        ulong spotGeneration,
         Message message,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout)
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata)
     {
-        return RequestToSpot(targetRid, spotRid, new[] { message }, callback, flags, timeout);
+        return RequestToSpot(
+            targetRid, spotRid, spotGeneration, new[] { message }, callback, flags,
+            timeout, metadata);
     }
 
     public bool RequestToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
+        ulong spotGeneration,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout)
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata)
     {
         var submit = _spot.RequestToSpot(
-            targetRid, spotRid, 0, parts, out var operationId, timeout ?? default, flags);
+            targetRid, spotRid, spotGeneration, parts, out var operationId,
+            timeout ?? default, flags, metadata);
         return submit == SubmitResult.Ok
                && _completions.RegisterRequest(operationId, callback);
     }

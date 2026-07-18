@@ -7,30 +7,38 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
         IReadOnlyList<Message> parts,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
     {
         return ResolveTarget(routerChannelId, targetNodeRid).SendAsync(
             targetNodeRid,
             targetSpotRid,
+            targetSpotGeneration,
             parts,
-            cancellationToken);
+            cancellationToken,
+            metadata);
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
         IReadOnlyList<Message> parts,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
     {
         return await ResolveTarget(routerChannelId, targetNodeRid).RequestAsync(
                 targetNodeRid,
                 targetSpotRid,
+                targetSpotGeneration,
                 parts,
                 timeout,
-                cancellationToken)
+                cancellationToken,
+                metadata)
             .ConfigureAwait(false);
     }
 
@@ -95,15 +103,19 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         ValueTask SendAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
+            ulong targetSpotGeneration,
             IReadOnlyList<Message> parts,
-            CancellationToken cancellationToken);
+            CancellationToken cancellationToken,
+            ReadOnlyMemory<byte> metadata);
 
         ValueTask<IReadOnlyList<Message>> RequestAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
+            ulong targetSpotGeneration,
             IReadOnlyList<Message> parts,
             TimeSpan timeout,
-            CancellationToken cancellationToken);
+            CancellationToken cancellationToken,
+            ReadOnlyMemory<byte> metadata);
     }
 
     private sealed class SpotNodeRouterTarget(
@@ -113,26 +125,34 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         public ValueTask SendAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
+            ulong targetSpotGeneration,
             IReadOnlyList<Message> parts,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            ReadOnlyMemory<byte> metadata)
             => outbound.SendToSpotAsync(
                 targetNodeRid,
                 targetSpotRid,
+                targetSpotGeneration,
                 parts,
-                cancellationToken);
+                cancellationToken,
+                metadata);
 
         public async ValueTask<IReadOnlyList<Message>> RequestAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
+            ulong targetSpotGeneration,
             IReadOnlyList<Message> parts,
             TimeSpan timeout,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            ReadOnlyMemory<byte> metadata)
             => await outbound.RequestToSpotAsync(
                     targetNodeRid,
                     targetSpotRid,
+                    targetSpotGeneration,
                     parts,
                     timeout,
-                    cancellationToken)
+                    cancellationToken,
+                    metadata)
                 .ConfigureAwait(false);
     }
 
@@ -146,8 +166,10 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         public ValueTask SendAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
+            ulong targetSpotGeneration,
             IReadOnlyList<Message> parts,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            ReadOnlyMemory<byte> metadata)
         {
             throw new ZLinkConfigurationException(
                 $"Route channel '{routeChannel.RouterChannelId}' cannot deliver spot-addressed " +
@@ -157,9 +179,11 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
         public ValueTask<IReadOnlyList<Message>> RequestAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
+            ulong targetSpotGeneration,
             IReadOnlyList<Message> parts,
             TimeSpan timeout,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            ReadOnlyMemory<byte> metadata)
         {
             throw new ZLinkConfigurationException(
                 $"Route channel '{routeChannel.RouterChannelId}' cannot serve spot-addressed " +

@@ -172,67 +172,87 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
 
     void OnSendReady(Action handler);
 
+    //  Submit surfaces return the binding SubmitResult (not a flattened bool)
+    //  so the exact call contract can report Backpressured, TargetNotFound and
+    //  RouteNotConnected distinctly; `metadata` is the canonical application
+    //  metadata frame (05-route-mesh §6), empty when the call set none.
     bool RequestToChannel(
         string channelName,
         Message message,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout);
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata);
 
     bool RequestToChannel(
         string channelName,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout);
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata);
 
-    bool SendToChannel(
+    SubmitResult SendToChannel(
         string channelName,
         Message message,
-        SendFlags flags);
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata);
 
-    bool SendToChannel(
+    SubmitResult SendToChannel(
         string channelName,
         IReadOnlyList<Message> parts,
-        SendFlags flags);
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata);
 
-    bool Publish(
+    MeshPublishDetail Publish(
         string topic,
         Message message,
-        SendFlags flags);
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata);
 
-    bool Publish(
+    MeshPublishDetail Publish(
         string topic,
         IReadOnlyList<Message> parts,
-        SendFlags flags);
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata);
 
-    bool SendToSpot(
+    //  `spotGeneration` is the target Spot lifecycle generation from the
+    //  resolved handle snapshot; the Core contract rejects 0 (03-spot §5).
+    SubmitResult SendToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
+        ulong spotGeneration,
         Message message,
-        SendFlags flags);
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata);
 
-    bool SendToSpot(
+    SubmitResult SendToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
+        ulong spotGeneration,
         IReadOnlyList<Message> parts,
-        SendFlags flags);
+        SendFlags flags,
+        ReadOnlyMemory<byte> metadata);
 
     bool RequestToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
+        ulong spotGeneration,
         Message message,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout);
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata);
 
     bool RequestToSpot(
         RoutingId targetRid,
         RoutingId spotRid,
+        ulong spotGeneration,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,
-        TimeSpan? timeout);
+        TimeSpan? timeout,
+        ReadOnlyMemory<byte> metadata);
 
     ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags);
 

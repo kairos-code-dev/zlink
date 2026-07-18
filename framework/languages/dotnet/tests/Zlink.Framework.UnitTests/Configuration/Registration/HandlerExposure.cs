@@ -17,11 +17,11 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         await host.StartAsync();
 
         var client = host.Services.GetRequiredService<IZLinkRouteClient>();
-        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            client.SendToNode(
+        var exception = await Assert.ThrowsAsync<ZLinkConfigurationException>(async () =>
+            await client.SendToNode(
                 "missing",
                 RoutingId.From("01"),
-                "ping").Submit());
+                "ping").SubmitAsync());
 
         Assert.Contains("Route channel 'missing' is not registered", exception.Message, StringComparison.Ordinal);
         await host.StopAsync();
@@ -38,7 +38,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         var client = host.Services.GetRequiredService<IZLinkChannelClient>();
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
-            client.SendToChannel("missing", "ping").Submit());
+            client.SendToChannel("missing", "ping").TrySubmit());
 
         Assert.Contains("Channel client 'missing' is not registered", exception.Message, StringComparison.Ordinal);
         await host.StopAsync();

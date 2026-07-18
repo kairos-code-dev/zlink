@@ -225,6 +225,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                             snapshot.RouterChannelId,
                             snapshot.NodeRid,
                             snapshot.SpotRid,
+                            (ulong)snapshot.Generation,
                             admissionParts,
                             registration.DefaultRequestTimeout,
                             cancellationToken)
@@ -277,6 +278,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 handoffId,
                 targetNodeRid,
                 targetSpotRid,
+                (ulong)admission.Snapshot.Generation,
                 routerChannelId,
                 () => ZLinkRemoteActorJoinPackets.EncodeJoinRequest(
                     header,
@@ -308,6 +310,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     actorRef.NodeRid,
                     targetNodeRid,
                     targetSpotRid,
+                    (ulong)admission.Snapshot.Generation,
                     routerChannelId,
                 CancellationToken.None)
                 .ConfigureAwait(false);
@@ -400,6 +403,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         string handoffId,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
         string routerChannelId,
         Func<IReadOnlyList<Message>> createParts)
     {
@@ -410,6 +414,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                             routerChannelId,
                             targetNodeRid,
                             targetSpotRid,
+                            targetSpotGeneration,
                             createParts(),
                             registration.DefaultRequestTimeout,
                             token)
@@ -434,6 +439,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         RoutingId sourceNodeRid,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
         string routerChannelId,
         CancellationToken cancellationToken)
     {
@@ -449,6 +455,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                         sourceNodeRid,
                         targetNodeRid,
                         targetSpotRid,
+                        targetSpotGeneration,
                         routerChannelId,
                         runtime.ShutdownToken);
                 },
@@ -497,6 +504,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         RoutingId sourceNodeRid,
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
         string routerChannelId,
         CancellationToken cancellationToken)
     {
@@ -517,6 +525,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                 routerChannelId,
                 targetNodeRid,
                 targetSpotRid,
+                targetSpotGeneration,
                 parts,
                 registration.DefaultRequestTimeout,
                 cancellationToken)

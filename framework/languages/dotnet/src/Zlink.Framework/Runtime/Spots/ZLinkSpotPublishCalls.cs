@@ -7,9 +7,28 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
     string topic,
     TEvent message) : IZLinkPublishCall
 {
+    private readonly ZLinkCallMetadata _metadata = new();
     private readonly string _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
 
-    public void Submit(CancellationToken cancellationToken = default)
+    public IZLinkPublishCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkPublishCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    public ZLinkPublishResult TrySubmit()
+    {
+        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+    }
+
+    public async ValueTask<ZLinkPublishResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
     {
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
@@ -21,7 +40,6 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
             topic,
             message,
             activation.Codecs);
-        var accepted = activation.OutboundEndpoint.PublishCurrentAsync(topic, parts, cancellationToken);
         if (activation.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
             activation.Flow.Trace(new ZLinkMessageFlowEvent(
                 ZLinkMessageFlowOutcome.Sent,
@@ -31,16 +49,20 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
                 activation.ChannelName,
                 topic,
                 SpotRid: activation.SpotRid.ToString()));
-        ZLinkUnawaitedSubmit.Observe(
-            RecordPublishedAsync(accepted),
-            "spot publish submit",
-            activation.ErrorSink);
-    }
+        MeshPublishDetail detail;
+        try
+        {
+            detail = await activation.OutboundEndpoint
+                .PublishCurrentAsync(topic, parts, cancellationToken, _metadata.Encode())
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkPublishResult(ZLinkSubmitStatus.TimedOut, default);
+        }
 
-    private static async ValueTask RecordPublishedAsync(ValueTask accepted)
-    {
-        await accepted.ConfigureAwait(false);
         ZLinkRuntimeMetrics.RecordFanoutPublished(null);
+        return detail.ToPublishResult();
     }
 }
 
@@ -59,9 +81,28 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
     string topic,
     TEvent message) : IZLinkPublishCall
 {
+    private readonly ZLinkCallMetadata _metadata = new();
     private readonly string _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
 
-    public void Submit(CancellationToken cancellationToken = default)
+    public IZLinkPublishCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkPublishCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    public ZLinkPublishResult TrySubmit()
+    {
+        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+    }
+
+    public async ValueTask<ZLinkPublishResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
     {
         using var operation = runtime.EnterOperation();
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
@@ -87,24 +128,66 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
                 topic,
                 SpotRid: bundle.Spot.RoutingId.ToString()));
 
-        var accepted = (bundle.Submitter
-                ?? throw new InvalidOperationException("External SPOT publish submitter is not initialized."))
-            .Async(
-                parts,
-                pending => bundle.Spot.Publish(topic, pending, SendFlags.DontWait),
-                cancellationToken);
-        ZLinkUnawaitedSubmit.Observe(
-            RecordPublishedAsync(accepted),
-            "spot publish submit",
-            runtime.ErrorSink);
+        var metadata = _metadata.Encode();
+        MeshPublishDetail? detail = null;
+        try
+        {
+            await (bundle.Submitter
+                    ?? throw new InvalidOperationException(
+                        "External SPOT publish submitter is not initialized."))
+                .Async(
+                    parts,
+                    pending => TryPublish(bundle.Spot, pending, metadata, out detail),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkPublishResult(ZLinkSubmitStatus.TimedOut, default);
+        }
+
+        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
+        return (detail
+                ?? throw new InvalidOperationException(
+                    "Publish completed without a fan-out detail."))
+            .ToPublishResult();
     }
 
-    private static async ValueTask RecordPublishedAsync(ValueTask accepted)
+    private bool TryPublish(
+        IZLinkBackendSpot spot,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata,
+        out MeshPublishDetail? detail)
     {
-        await accepted.ConfigureAwait(false);
-        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
+        try
+        {
+            detail = spot.Publish(topic, parts, SendFlags.DontWait, metadata);
+            return true;
+        }
+        catch (ZlinkSubmitException ex) when
+            (ex.Result == ZlinkSubmitException.ErrorCode.Backpressured)
+        {
+            detail = null;
+            return false;
+        }
     }
 }
+internal static class ZLinkPublishResultMapper
+{
+    public static ZLinkPublishResult ToPublishResult(this MeshPublishDetail detail)
+    {
+        return new ZLinkPublishResult(
+            ZLinkSubmitStatus.Submitted,
+            new ZLinkLogicalMulticastDetail(
+                detail.SnapshotRemoteTargets,
+                detail.AdmittedRemoteTargets,
+                detail.DroppedRemoteTargets,
+                detail.SnapshotLocalSpots,
+                detail.AdmittedLocalSpots,
+                detail.DroppedLocalSpots));
+    }
+}
+
 
 internal static class ZLinkSpotPublishEnvelope
 {

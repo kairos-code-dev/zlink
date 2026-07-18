@@ -1396,7 +1396,9 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var state = await runtime.GetStartedStateForRoutingAsync(CancellationToken.None);
             var activation = Assert.IsType<ZLinkEntrySpotActivation>(state.SpotNodes["entry"].EntrySpotActivation);
-            activation.Outbound.Publish("events", new ProbeRouteMessage("published")).Submit();
+            _ = await activation.Outbound
+                .Publish("events", new ProbeRouteMessage("published"))
+                .SubmitAsync();
 
             var header = Assert.IsType<ZLinkEnvelopeHeader>(node.EntrySpotBackend.PublishedHeader);
             Assert.Null(header.CorrelationId);
@@ -1428,9 +1430,9 @@ public sealed partial class EntrySpotActorDispatchTests
 
         try
         {
-            new ZLinkSpotPublisherClientService(runtime)
+            _ = await new ZLinkSpotPublisherClientService(runtime)
                 .PublishSpot("entry", "events", new ProbeRouteMessage("published"))
-                .Submit();
+                .SubmitAsync();
 
             var publisher = Assert.Single(node.CreatedSpots);
             var header = Assert.IsType<ZLinkEnvelopeHeader>(publisher.PublishedHeader);
@@ -3478,58 +3480,83 @@ public sealed partial class EntrySpotActorDispatchTests
             Message message,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout) => false;
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata) => false;
 
         public bool RequestToChannel(
             string channelName,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout) => false;
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata) => false;
 
-        public bool SendToChannel(string channelName, Message message, SendFlags flags) => false;
+        public SubmitResult SendToChannel(
+            string channelName, Message message, SendFlags flags,
+            ReadOnlyMemory<byte> metadata) => SubmitResult.Backpressured;
 
-        public bool SendToChannel(string channelName, IReadOnlyList<Message> parts, SendFlags flags) => false;
+        public SubmitResult SendToChannel(
+            string channelName, IReadOnlyList<Message> parts, SendFlags flags,
+            ReadOnlyMemory<byte> metadata) => SubmitResult.Backpressured;
 
-        public bool Publish(string topic, Message message, SendFlags flags)
+        public MeshPublishDetail Publish(
+            string topic, Message message, SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
         {
             _ = topic;
             _ = flags;
             PublishedHeader = ZLinkEnvelopeCodec.DecodeHeader(message);
-            return PublishAccepted;
+            return PublishAccepted
+                ? new MeshPublishDetail(0, 0, 0, 0, 1, 1, 0)
+                : throw new ZlinkSubmitException(
+                    ZlinkSubmitException.ErrorCode.Backpressured);
         }
 
-        public bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags)
+        public MeshPublishDetail Publish(
+            string topic, IReadOnlyList<Message> parts, SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
         {
             _ = topic;
             _ = flags;
             PublishedHeader = ZLinkEnvelopeCodec.DecodeHeader(parts);
-            return PublishAccepted;
+            return PublishAccepted
+                ? new MeshPublishDetail(0, 0, 0, 0, 1, 1, 0)
+                : throw new ZlinkSubmitException(
+                    ZlinkSubmitException.ErrorCode.Backpressured);
         }
 
-        public bool SendToSpot(RoutingId targetRid, RoutingId targetSpotRid, Message message, SendFlags flags) => false;
+        public SubmitResult SendToSpot(
+            RoutingId targetRid, RoutingId targetSpotRid, ulong spotGeneration,
+            Message message, SendFlags flags, ReadOnlyMemory<byte> metadata)
+            => SubmitResult.Backpressured;
 
-        public bool SendToSpot(
+        public SubmitResult SendToSpot(
             RoutingId targetRid,
             RoutingId targetSpotRid,
+            ulong spotGeneration,
             IReadOnlyList<Message> parts,
-            SendFlags flags) => false;
+            SendFlags flags,
+            ReadOnlyMemory<byte> metadata) => SubmitResult.Backpressured;
 
         public bool RequestToSpot(
             RoutingId targetRid,
             RoutingId targetSpotRid,
+            ulong spotGeneration,
             Message message,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout) => false;
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata) => false;
 
         public bool RequestToSpot(
             RoutingId targetRid,
             RoutingId targetSpotRid,
+            ulong spotGeneration,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout) => false;
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata) => false;
 
         public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags) => null;
 

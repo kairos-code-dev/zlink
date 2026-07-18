@@ -48,7 +48,27 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
     ZLinkResolvedSpotHandle target,
     TMessage message) : IZLinkSendCall
 {
-    public void Submit(CancellationToken cancellationToken = default)
+    private readonly ZLinkCallMetadata _metadata = new();
+
+    public IZLinkSendCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    public ZLinkSubmitResult TrySubmit()
+    {
+        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+    }
+
+    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // One-way sends use the current snapshot once and never retry; a
@@ -59,13 +79,24 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
             activation.ChannelName,
             ZLinkMessageNameResolver.ResolveFromMessage(message));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        var accepted = activation.OutboundEndpoint.SendToSpotAsync(
-                snapshot.RouterChannelId,
-                snapshot.NodeRid,
-                snapshot.SpotRid,
-                parts,
-                cancellationToken);
-        ZLinkUnawaitedSubmit.Observe(accepted, "spot client submit", activation.ErrorSink);
+        try
+        {
+            await activation.OutboundEndpoint.SendToSpotAsync(
+                    snapshot.RouterChannelId,
+                    snapshot.NodeRid,
+                    snapshot.SpotRid,
+                    (ulong)snapshot.Generation,
+                    parts,
+                    cancellationToken,
+                    _metadata.Encode())
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+        }
+
+        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 }
 
@@ -74,6 +105,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
     ZLinkResolvedSpotHandle target,
     TRequest request) : IZLinkRequestCall
 {
+    private readonly ZLinkCallMetadata _metadata = new();
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
@@ -84,17 +116,21 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
         return this;
     }
 
+    public IZLinkRequestCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync<TReply>(cancellationToken);
-    }
-
-    public void Submit<TReply>(CancellationToken cancellationToken = default)
-    {
-        ZLinkUnawaitedSubmit.Observe(
-            ObserveAsync<TReply>(cancellationToken),
-            "spot request submit",
-            activation.ErrorSink);
     }
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
@@ -124,9 +160,11 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
                         snapshot.RouterChannelId,
                         snapshot.NodeRid,
                         snapshot.SpotRid,
+                        (ulong)snapshot.Generation,
                         parts,
                         timeout,
-                        cancellationToken);
+                        cancellationToken,
+                        _metadata.Encode());
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -137,10 +175,6 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
             activation.Codecs);
     }
 
-    private async ValueTask ObserveAsync<TReply>(CancellationToken cancellationToken)
-    {
-        _ = await ExecuteAsync<TReply>(cancellationToken).ConfigureAwait(false);
-    }
 
 }
 
@@ -149,7 +183,23 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
     string channelName,
     TMessage message) : IZLinkSendCall
 {
-    public void Submit(CancellationToken cancellationToken = default)
+    public IZLinkSendCall Metadata(string key, string value)
+    {
+        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
+    }
+
+    public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
+    }
+
+    public ZLinkSubmitResult TrySubmit()
+    {
+        throw ZLinkMeshCallSupport.TrySubmitPendingSyncAdmission();
+    }
+
+    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -157,10 +207,18 @@ internal sealed class ZLinkCurrentSpotSendCall<TMessage>(
             channelName,
             ZLinkMessageNameResolver.ResolveFromMessage(message));
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, activation.Codecs);
-        ZLinkUnawaitedSubmit.Observe(
-            activation.OutboundEndpoint.SendToChannelAsync(channelName, parts, cancellationToken),
-            "spot channel submit",
-            activation.ErrorSink);
+        try
+        {
+            await activation.OutboundEndpoint
+                .SendToChannelAsync(channelName, parts, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+        }
+
+        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
     }
 }
 
@@ -179,17 +237,19 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
         return this;
     }
 
+    public IZLinkRequestCall Metadata(string key, string value)
+    {
+        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
+    }
+
+    public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        throw Channels.ZLinkClassicCallSupport.MetadataNotSupported();
+    }
+
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
         return ExecuteAsync<TReply>(cancellationToken);
-    }
-
-    public void Submit<TReply>(CancellationToken cancellationToken = default)
-    {
-        ZLinkUnawaitedSubmit.Observe(
-            ObserveAsync<TReply>(cancellationToken),
-            "spot channel request submit",
-            activation.ErrorSink);
     }
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
@@ -220,9 +280,5 @@ internal sealed class ZLinkCurrentSpotRequestCall<TMessage>(
             activation.Codecs);
     }
 
-    private async ValueTask ObserveAsync<TReply>(CancellationToken cancellationToken)
-    {
-        _ = await ExecuteAsync<TReply>(cancellationToken).ConfigureAwait(false);
-    }
 
 }

@@ -1261,7 +1261,8 @@ public sealed partial class UnhandledDispatchPolicyTests
             Message message,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout)
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata)
         {
             return false;
         }
@@ -1271,52 +1272,69 @@ public sealed partial class UnhandledDispatchPolicyTests
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout)
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata)
         {
             return false;
         }
 
-        public bool SendToChannel(string channelName, Message message, SendFlags flags)
+        public SubmitResult SendToChannel(
+            string channelName, Message message, SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
         {
-            return false;
+            return SubmitResult.Backpressured;
         }
 
-        public bool SendToChannel(string channelName, IReadOnlyList<Message> parts, SendFlags flags)
+        public SubmitResult SendToChannel(
+            string channelName, IReadOnlyList<Message> parts, SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
         {
-            return false;
+            return SubmitResult.Backpressured;
         }
 
-        public bool Publish(string topic, Message message, SendFlags flags)
+        public MeshPublishDetail Publish(
+            string topic, Message message, SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
         {
-            return false;
+            throw new ZlinkSubmitException(
+                ZlinkSubmitException.ErrorCode.Backpressured);
         }
 
-        public bool Publish(string topic, IReadOnlyList<Message> parts, SendFlags flags)
+        public MeshPublishDetail Publish(
+            string topic, IReadOnlyList<Message> parts, SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
         {
-            return false;
+            throw new ZlinkSubmitException(
+                ZlinkSubmitException.ErrorCode.Backpressured);
         }
 
-        public bool SendToSpot(RoutingId targetRid, RoutingId targetSpotRid, Message message, SendFlags flags)
+        public SubmitResult SendToSpot(
+            RoutingId targetRid, RoutingId targetSpotRid, ulong spotGeneration,
+            Message message, SendFlags flags, ReadOnlyMemory<byte> metadata)
         {
-            return false;
+            return SubmitResult.Backpressured;
         }
 
-        public bool SendToSpot(
+        public SubmitResult SendToSpot(
             RoutingId targetRid,
             RoutingId targetSpotRid,
+            ulong spotGeneration,
             IReadOnlyList<Message> parts,
-            SendFlags flags)
+            SendFlags flags,
+            ReadOnlyMemory<byte> metadata)
         {
-            return false;
+            return SubmitResult.Backpressured;
         }
 
         public bool RequestToSpot(
             RoutingId targetRid,
             RoutingId targetSpotRid,
+            ulong spotGeneration,
             Message message,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout)
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata)
         {
             return false;
         }
@@ -1324,10 +1342,12 @@ public sealed partial class UnhandledDispatchPolicyTests
         public bool RequestToSpot(
             RoutingId targetRid,
             RoutingId targetSpotRid,
+            ulong spotGeneration,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,
-            TimeSpan? timeout)
+            TimeSpan? timeout,
+            ReadOnlyMemory<byte> metadata)
         {
             return false;
         }

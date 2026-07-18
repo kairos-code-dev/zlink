@@ -312,7 +312,12 @@ internal sealed class EvidenceStore
 {
     readonly ConcurrentQueue<string> _entries = new();
     readonly string? _file;
-    readonly SemaphoreSlim _signal = new(0);
+    // A pulse completed on every Add and swapped for a fresh one, so EVERY
+    // concurrent waiter wakes — a counted semaphore hands one release to one
+    // waiter and silently starves the rest.
+    readonly object _pulseGate = new();
+    TaskCompletionSource<bool> _pulse =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public EvidenceStore(string rid, string? file)
     {
@@ -323,7 +328,15 @@ internal sealed class EvidenceStore
     public void Add(string value)
     {
         _entries.Enqueue(value);
-        _signal.Release();
+        TaskCompletionSource<bool> pulse;
+        lock (_pulseGate)
+        {
+            pulse = _pulse;
+            _pulse = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        pulse.TrySetResult(true);
         if (!string.IsNullOrWhiteSpace(_file))
         {
             File.AppendAllLines(_file, new[] { value });
@@ -340,13 +353,19 @@ internal sealed class EvidenceStore
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (true)
         {
+            Task pulseTask;
+            lock (_pulseGate)
+            {
+                pulseTask = _pulse.Task;
+            }
+
             var snapshot = Snapshot();
             if (condition(snapshot)) return snapshot;
 
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero) throw new TimeoutException("Timed out waiting for spot service evidence.");
 
-            await _signal.WaitAsync(remaining, cancellationToken);
+            await Task.WhenAny(pulseTask, Task.Delay(remaining, cancellationToken));
         }
     }
 }

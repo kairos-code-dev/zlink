@@ -640,14 +640,12 @@ wait_named_server() {
       wait_health play-a "$PLAY_A_HTTP"
       wait_port play-a-control "$PLAY_A_CONTROL"
       wait_port play-a-spot-router "$PLAY_A_SPOT_ROUTER"
-      wait_port play-a-spot-pub "$PLAY_A_SPOT_PUB"
       wait_port play-a-external-spot "$PLAY_A_EXTERNAL_SPOT"
       ;;
     play-b)
       wait_health play-b "$PLAY_B_HTTP"
       wait_port play-b-control "$PLAY_B_CONTROL"
       wait_port play-b-spot-router "$PLAY_B_SPOT_ROUTER"
-      wait_port play-b-spot-pub "$PLAY_B_SPOT_PUB"
       wait_port play-b-external-spot "$PLAY_B_EXTERNAL_SPOT"
       ;;
     multi-node-a)

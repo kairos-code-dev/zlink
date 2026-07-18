@@ -3,6 +3,10 @@ namespace StoreFailure.Shared;
 public static class StoreFailureNames
 {
     public const string Channel = "storefailure.profile";
+
+    // Callers are mesh members like any other node (spec 10 §1); they carry a
+    // distinct ChannelName so profile select-one never targets a consumer.
+    public const string ConsumerChannel = "store-failure.consumer";
 }
 
 public sealed record ProfileReq(string Value, string Marker);

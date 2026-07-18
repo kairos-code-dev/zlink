@@ -465,12 +465,10 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
 
         public bool Disconnect(ZLinkAutoConnectTarget target)
         {
-            // Retiring a replaced/removed peer lifetime is not initiator-gated:
-            // Core queues the successor admission of the same RID behind an
-            // explicit predecessor disconnect on every member that admitted
-            // the old lifetime.
-            if (target.NodeRid is { Size: > 0 })
-                node.DisconnectPeerLifetime(target.NodeRid, target.LifecycleGeneration);
+            // Row absence alone must not tear down a live admitted transport
+            // (store outages and lease expiry windows ride established
+            // connections, SF-B2); only the dialing side retires its own
+            // connect intent here.
             if (!connectRouter || !target.InitiatesSpotRouterLink) return true;
             return node.DisconnectRouterAuto(target.Endpoint);
         }

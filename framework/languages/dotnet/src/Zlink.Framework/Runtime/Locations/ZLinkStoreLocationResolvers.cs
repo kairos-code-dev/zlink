@@ -64,10 +64,16 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkSpotLocationKey key,
         CancellationToken cancellationToken = default)
     {
-        var row = await ResolveAsync(
-            key,
-            static (store, key, ct) => store.ResolveSpotAsync(key, ct),
-            _spotStore,
+        var raw = await ZLinkLocationStoreRead.ExecuteAsync(
+            _health,
+            "ZLinkSpotLocation-resolver-read",
+            cancellationToken,
+            storeToken => _spotStore.ResolveSpotAsync(key, storeToken)).ConfigureAwait(false);
+        // A confirmed store miss ends the identity's observed lifecycle: a
+        // re-created spot restarts its generation axis and must resolve.
+        if (raw is null) _observed.ForgetSpot(key);
+        var row = await _liveRows.ResolveAsync(
+            raw,
             static row => row.OwnerId,
             row => _observed.AcceptSpot(row),
             cancellationToken).ConfigureAwait(false);

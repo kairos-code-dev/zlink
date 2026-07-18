@@ -9,6 +9,7 @@ using StoreFailure.Shared;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 
 using Systems.Zlink;
@@ -62,7 +63,7 @@ internal static class ConsumerHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.TraceLabel}-flow.log"))
                 .TraceLabel(options.TraceLabel);
-            framework.AddClientServerChannel(StoreFailureNames.Channel).EnableClient();
+            JoinConsumerMesh(framework, "consumer-1");
         });
 
         var app = builder.Build();
@@ -161,7 +162,7 @@ internal static class ConsumerHostFactory
         });
         app.MapPost("/profile/request", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var reply = await RequestProfileAsync(channel, request);
             return Results.Ok(reply);
@@ -169,11 +170,12 @@ internal static class ConsumerHostFactory
         app.MapPost("/profile/request/timeout/{milliseconds:int}", async (
             int milliseconds,
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             try
             {
-                var reply = await channel.RequestToChannel(StoreFailureNames.Channel, request)
+                var reply = await channel.RequestToChannel(
+                    StoreFailureNames.Channel, StoreFailureNames.Channel, request)
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -185,11 +187,12 @@ internal static class ConsumerHostFactory
         });
         app.MapPost("/profile/request/missing", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             try
             {
-                var reply = await channel.RequestToChannel(StoreFailureNames.Channel, request)
+                var reply = await channel.RequestToChannel(
+                    StoreFailureNames.Channel, StoreFailureNames.Channel, request)
                     .Timeout(TimeSpan.FromSeconds(3))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -201,9 +204,10 @@ internal static class ConsumerHostFactory
         });
         app.MapPost("/profile/command", (
             ProfileMsg command,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
-            _ = channel.SendToChannel(StoreFailureNames.Channel, command).TrySubmit();
+            _ = channel.SendToChannel(
+                StoreFailureNames.Channel, StoreFailureNames.Channel, command).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
@@ -212,7 +216,7 @@ internal static class ConsumerHostFactory
             await host.StartAsync();
             try
             {
-                var channel = host.Services.GetRequiredService<IZLinkChannelClient>();
+                var channel = host.Services.GetRequiredService<IZLinkRouteClient>();
                 var reply = await RequestProfileAsync(channel, request);
                 return Results.Ok(reply);
             }
@@ -244,10 +248,23 @@ internal static class ConsumerHostFactory
                         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
                         .TraceLabel(traceLabel);
-                    framework.AddClientServerChannel(StoreFailureNames.Channel).EnableClient();
+                    JoinConsumerMesh(framework, $"consumer-{traceLabel}");
                 });
             })
             .Build();
+    }
+
+    // A caller joins the providers' RouteMesh with its own membership and
+    // issues ChannelName select-one calls through IZLinkRouteClient (spec 10
+    // §1). The bind uses an ephemeral port; the rid is fixed per harness role
+    // because the store decorators under test do not provide the routing-id
+    // slot-allocation capability.
+    static void JoinConsumerMesh(IZLinkFrameworkOptions framework, string rid)
+    {
+        var mesh = framework.AddRouteMesh(StoreFailureNames.Channel)
+            .Listen("tcp://127.0.0.1:0")
+            .SetRoutingId(RoutingId.From(rid));
+        mesh.ChannelName(StoreFailureNames.ConsumerChannel);
     }
 
     static async Task StopClientHostAsync(IHost host)
@@ -264,9 +281,10 @@ internal static class ConsumerHostFactory
     }
 
     static async Task<ProfileRes> RequestProfileAsync(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         ProfileReq request)
-        => await channel.RequestToChannel(StoreFailureNames.Channel, request)
+        => await channel.RequestToChannel(
+                    StoreFailureNames.Channel, StoreFailureNames.Channel, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ProfileRes>();
 }

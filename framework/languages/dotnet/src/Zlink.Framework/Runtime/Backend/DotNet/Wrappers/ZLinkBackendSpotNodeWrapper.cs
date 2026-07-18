@@ -143,11 +143,16 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         try
         {
             _node.DisconnectPeer(peerRid, lifecycleGeneration);
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine($"[retire] rid={peerRid} gen={lifecycleGeneration} ok");
         }
-        catch (ZlinkException)
+        catch (ZlinkException error)
         {
             // The lifetime may already be gone (never admitted, or Core
             // retired it with the transport); retirement is idempotent.
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine(
+                    $"[retire] rid={peerRid} gen={lifecycleGeneration} error={error.Message}");
         }
     }
 

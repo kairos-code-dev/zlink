@@ -55,7 +55,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
 
     static final class RecvOutScratch {
         final MemorySegment sourceNodeRidOut;
-        final MemorySegment sourceSpotRidOut;
         final MemorySegment requestSeqOut;
         final MemorySegment partsOut;
         final MemorySegment partCountOut;
@@ -64,7 +63,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         RecvOutScratch() {
             Arena auto = Arena.ofAuto();
             sourceNodeRidOut = auto.allocate(ValueLayout.ADDRESS);
-            sourceSpotRidOut = auto.allocate(ValueLayout.ADDRESS);
             requestSeqOut = auto.allocate(ValueLayout.JAVA_LONG);
             partsOut = auto.allocate(ValueLayout.ADDRESS);
             partCountOut = auto.allocate(ValueLayout.JAVA_LONG);
@@ -281,7 +279,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                                            boolean nullOnNoData) {
         RecvOutScratch scratch = RECV_OUT_SCRATCH.get();
         MemorySegment sourceNodeRidOut = scratch.sourceNodeRidOut;
-        MemorySegment sourceSpotRidOut = scratch.sourceSpotRidOut;
         MemorySegment requestSeqOut = scratch.requestSeqOut;
         MemorySegment hasMoreOut = scratch.hasMoreOut;
         Message firstPart = new Message();
@@ -289,7 +286,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         try {
             int rc;
             while (true) {
-                rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                rc = routerRecvPart(sourceNodeRidOut,
                     requestSeqOut,
                     InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
                     flags.value());
@@ -311,8 +308,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 // Routed echo hot path: populate caller storage in place.
                 byte[] nodeRidBytes =
                     NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes =
-                    NativeRoutingIds.readBytesOut(sourceSpotRidOut);
+                byte[] spotRidBytes = null;
                 firstPartConsumed = true;
                 ContractAccess.receivedPopulateRoutedSinglePart(target,
                     nodeRidBytes, spotRidBytes, firstPart, 0L, false, null,
@@ -343,13 +339,12 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         // Reconstruct a fresh Received via the existing constructors for the
         // multipart / request-seq case, then adoptFrom into the target.
         MemorySegment sourceNodeRidOut = scratch.sourceNodeRidOut;
-        MemorySegment sourceSpotRidOut = scratch.sourceSpotRidOut;
         MemorySegment requestSeqOut = scratch.requestSeqOut;
         MemorySegment hasMoreOut = scratch.hasMoreOut;
         Received fresh;
         if (!hasMore) {
             RoutingId nodeRid = NativeRoutingIds.readOut(sourceNodeRidOut);
-            RoutingId spotRid = NativeRoutingIds.readOut(sourceSpotRidOut);
+            RoutingId spotRid = null;
             fresh = InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
                 null, requestSequence, true,
                 replySender(nodeRid, spotRid, requestSequence),
@@ -362,15 +357,13 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             if (requestSequence == 0L) {
                 byte[] nodeRidBytes =
                     NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes =
-                    NativeRoutingIds.readBytesOut(sourceSpotRidOut);
+                byte[] spotRidBytes = null;
                 fresh = InternalAccess.received(nodeRidBytes, spotRidBytes,
                     partsArray, true, 0L, false, null, null);
             } else {
                 RoutingId nodeRid =
                     NativeRoutingIds.readOut(sourceNodeRidOut);
-                RoutingId spotRid =
-                    NativeRoutingIds.readOut(sourceSpotRidOut);
+                RoutingId spotRid = null;
                 fresh = InternalAccess.received(nodeRid, spotRid, partsArray,
                     true, requestSequence, true,
                     replySender(nodeRid, spotRid, requestSequence),
@@ -396,7 +389,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     private Received recvDirectOnceImpl(RecvFlags flags, boolean nullOnNoData) {
         RecvOutScratch scratch = RECV_OUT_SCRATCH.get();
         MemorySegment sourceNodeRidOut = scratch.sourceNodeRidOut;
-        MemorySegment sourceSpotRidOut = scratch.sourceSpotRidOut;
         MemorySegment requestSeqOut = scratch.requestSeqOut;
         MemorySegment hasMoreOut = scratch.hasMoreOut;
         Message firstPart = new Message();
@@ -404,7 +396,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         try {
             int rc;
             while (true) {
-                rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                rc = routerRecvPart(sourceNodeRidOut,
                     requestSeqOut,
                     InternalAccess.messageNativeHandle(firstPart), hasMoreOut,
                     flags.value());
@@ -427,16 +419,14 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                 if (requestSequence == 0L) {
                     byte[] nodeRidBytes =
                         NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                    byte[] spotRidBytes =
-                        NativeRoutingIds.readBytesOut(sourceSpotRidOut);
+                    byte[] spotRidBytes = null;
                     return InternalAccess.receivedLazy(nodeRidBytes, spotRidBytes,
                         firstPart, null,
                         0L, false, null, null);
                 }
                 RoutingId nodeRid =
                     NativeRoutingIds.readOut(sourceNodeRidOut);
-                RoutingId spotRid =
-                    NativeRoutingIds.readOut(sourceSpotRidOut);
+                RoutingId spotRid = null;
                 return InternalAccess.receivedLazy(nodeRid, spotRid, firstPart,
                     null, requestSequence, true,
                     replySender(nodeRid, spotRid, requestSequence),
@@ -451,13 +441,12 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             if (requestSequence == 0L) {
                 byte[] nodeRidBytes =
                     NativeRoutingIds.readBytesOut(sourceNodeRidOut);
-                byte[] spotRidBytes =
-                    NativeRoutingIds.readBytesOut(sourceSpotRidOut);
+                byte[] spotRidBytes = null;
                 return InternalAccess.received(nodeRidBytes, spotRidBytes,
                     partsArray, true, 0L, false, null, null);
             }
             RoutingId nodeRid = NativeRoutingIds.readOut(sourceNodeRidOut);
-            RoutingId spotRid = NativeRoutingIds.readOut(sourceSpotRidOut);
+            RoutingId spotRid = null;
             return InternalAccess.received(nodeRid, spotRid, partsArray, true,
                 requestSequence, true,
                 replySender(nodeRid, spotRid, requestSequence),
@@ -476,7 +465,6 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
                                                   RecvOutScratch scratch,
                                                   RecvFlags flags) {
         MemorySegment sourceNodeRidOut = scratch.sourceNodeRidOut;
-        MemorySegment sourceSpotRidOut = scratch.sourceSpotRidOut;
         MemorySegment requestSeqOut = scratch.requestSeqOut;
         MemorySegment hasMoreOut = scratch.hasMoreOut;
         boolean hasMore = true;
@@ -484,7 +472,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             Message next = new Message();
             boolean nextOk = false;
             try {
-                int rc = routerRecvPart(sourceNodeRidOut, sourceSpotRidOut,
+                int rc = routerRecvPart(sourceNodeRidOut,
                     requestSeqOut, InternalAccess.messageNativeHandle(next),
                     hasMoreOut, flags.value());
                 if (rc != 0) {
@@ -521,13 +509,12 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
     }
 
     private int routerRecvPart(MemorySegment sourceNodeRidOut,
-                               MemorySegment sourceSpotRidOut,
                                MemorySegment requestSeqOut,
                                MemorySegment partOut,
                                MemorySegment hasMoreOut,
                                int flags) {
         return Native.routerRecvPart(InternalAccess.socketHandle(socket), sourceNodeRidOut,
-            sourceSpotRidOut, requestSeqOut, partOut, hasMoreOut, flags);
+            requestSeqOut, partOut, hasMoreOut, flags);
     }
 
     private MethodHandle callbackHandle(String name, MethodType type) {

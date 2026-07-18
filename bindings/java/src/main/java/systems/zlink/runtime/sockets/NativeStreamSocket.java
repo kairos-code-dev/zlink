@@ -14,7 +14,6 @@ import systems.zlink.contracts.service.spot.SendOperation;
 import systems.zlink.runtime.messaging.MessageOperations;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.sockets.StreamUInt32FramedNativeHandler;
-import systems.zlink.runtime.sockets.StreamUInt32RawNativeHandler;
 import java.lang.foreign.MemorySegment;
 import java.util.List;
 import java.util.Objects;
@@ -81,9 +80,6 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
             (routingId, header, body) -> handler.onPacket(routingId, header,
                 body));
     }
-    void onPacketNative(StreamUInt32RawNativeHandler handler) {
-        runtime().attachStreamRaw(handler);
-    }
     void onFramedPacket(StreamFramedPacketHandler handler) {
         runtime().attachStreamPacket(handler);
     }
@@ -93,19 +89,9 @@ final class NativeStreamSocket extends NativeSocketBase implements StreamSocket 
     void onFramedPacketNative(StreamUInt32FramedNativeHandler handler) {
         runtime().attachStreamPacket(handler);
     }
-    void detachStream() { runtime().detachStream(); }
     @Override
     public void close() {
-        MemorySegment handle = runtime().handle();
-        if (handle == null || handle.address() == 0) {
-            runtime().close();
-            return;
-        }
-        try {
-            detachStream();
-        } finally {
-            runtime().close();
-        }
+        runtime().close();
     }
     @Override public StreamSocketOptions options() { return options; }
 }

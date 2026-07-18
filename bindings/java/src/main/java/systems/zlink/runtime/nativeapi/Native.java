@@ -82,10 +82,6 @@ public final class Native {
             "zlink_recv_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SUBSCRIBE_HANDLER = downcall(
-            "zlink_subscribe_handler",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_SEND_READY_HANDLER = downcall(
             "zlink_send_ready_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -130,45 +126,10 @@ public final class Native {
                             ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                             ValueLayout.ADDRESS, ValueLayout.ADDRESS,
                             ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_ATTACH = downcall("zlink_stream_attach",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_ATTACH_RAW = downcall("zlink_stream_attach_raw",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_STREAM_PACKET_HANDLER = downcall(
             "zlink_stream_packet_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_ATTACH_LEN32BE = downcall("zlink_stream_attach_len32be",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_DETACH = downcall("zlink_stream_detach",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
-    private static final MethodHandle MH_STREAM_SEND = downcall("zlink_stream_send",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_SEND_MSG = downcall("zlink_stream_send_msg",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_BIND_ACTOR = downcall(
-            "zlink_stream_bind_actor",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_UNBIND_ACTOR = downcall(
-            "zlink_stream_unbind_actor",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_SEND_BOUND_ACTOR_PART = downcall(
-            "zlink_stream_send_bound_actor_part",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
-                    ValueLayout.JAVA_INT));
-    private static final MethodHandle MH_STREAM_BOUND_ACTORS = downcall(
-            "zlink_stream_bound_actors",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
     private static final MethodHandle MH_SETSOCKOPT = downcall("zlink_set_option",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_GETSOCKOPT = downcall("zlink_get_option",
@@ -190,16 +151,6 @@ public final class Native {
                     ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_GET_DEALER_OPTION = downcall(
             "zlink_get_dealer_option",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.ADDRESS));
-    private static final MethodHandle MH_SET_SPOT_OPTION = downcall(
-            "zlink_set_spot_option",
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-                    ValueLayout.JAVA_LONG));
-    private static final MethodHandle MH_GET_SPOT_OPTION = downcall(
-            "zlink_get_spot_option",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS));
@@ -382,15 +333,11 @@ public final class Native {
       "zlink_thread_join",
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
 
-    private static final MethodHandle MH_ROUTER_SPOT_HANDLER = downcall(
-      "zlink_router_handler",
-      FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     private static final MethodHandle MH_ROUTER_RECV_PART = downcall(
       "zlink_router_recv_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+        ValueLayout.JAVA_INT));
     // DONT_WAIT-only critical variant. zlink_router_recv_part is non-blocking
     // when called with DONT_WAIT flag, so the JVM can elide GC safepoint
     // transition for this call. Caller must guarantee DONT_WAIT bit is set.
@@ -399,7 +346,7 @@ public final class Native {
         "zlink_router_recv_part",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
           ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-          ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+          ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_REQUEST_PART = downcall(
       "zlink_router_request_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
@@ -625,17 +572,6 @@ public final class Native {
         }
     }
 
-    public static int subscribeHandler(MemorySegment handle,
-                                       MemorySegment handler,
-                                       MemorySegment userdata) {
-        try {
-            return (int) MH_SUBSCRIBE_HANDLER.invokeExact(handle, handler,
-                userdata);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_subscribe_handler failed", t);
-        }
-    }
-
     public static int sendReadyHandler(MemorySegment handle,
                                        MemorySegment handler,
                                        MemorySegment userdata) {
@@ -753,24 +689,6 @@ public final class Native {
         }
     }
 
-    public static int streamAttach(MemorySegment socket, MemorySegment callback,
-                                   int flags) {
-        try {
-            return (int) MH_STREAM_ATTACH.invokeExact(socket, callback, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_attach failed", t);
-        }
-    }
-
-    public static int streamAttachRaw(MemorySegment socket,
-                                      MemorySegment callback) {
-        try {
-            return (int) MH_STREAM_ATTACH_RAW.invokeExact(socket, callback, MemorySegment.NULL);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_attach_raw failed", t);
-        }
-    }
-
     public static int streamPacketHandler(MemorySegment socket,
                                           MemorySegment callback) {
         try {
@@ -778,85 +696,6 @@ public final class Native {
                 MemorySegment.NULL);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_stream_packet_handler failed", t);
-        }
-    }
-
-    public static int streamAttachLen32be(MemorySegment socket,
-                                          MemorySegment callback) {
-        try {
-            return (int) MH_STREAM_ATTACH_LEN32BE.invokeExact(socket, callback);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_attach_len32be failed", t);
-        }
-    }
-
-    public static int streamDetach(MemorySegment socket) {
-        try {
-            return (int) MH_STREAM_DETACH.invokeExact(socket);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_detach failed", t);
-        }
-    }
-
-    public static int streamSend(MemorySegment socket, MemorySegment rid,
-                                 MemorySegment payload, long len, int flags) {
-        try {
-            return (int) MH_STREAM_SEND.invokeExact(socket, rid, payload, len,
-              flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_send failed", t);
-        }
-    }
-
-    public static int streamSendMessage(MemorySegment socket, MemorySegment rid,
-                                    MemorySegment msg, int flags) {
-        try {
-            return (int) MH_STREAM_SEND_MSG.invokeExact(socket, rid, msg, flags);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_send_msg failed", t);
-        }
-    }
-
-    public static int streamBindActor(MemorySegment stream,
-                                      MemorySegment sessionRid,
-                                      MemorySegment actor,
-                                      MemorySegment handler,
-                                      MemorySegment userdata,
-                                      int timeoutMs) {
-        try {
-            return (int) MH_STREAM_BIND_ACTOR.invokeExact(stream,
-              sessionRid, actor, handler, userdata, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_bind_actor failed", t);
-        }
-    }
-
-    public static int streamUnbindActor(MemorySegment stream,
-                                        MemorySegment sessionRid,
-                                        MemorySegment actorId,
-                                        MemorySegment handler,
-                                        MemorySegment userdata,
-                                        int timeoutMs) {
-        try {
-            return (int) MH_STREAM_UNBIND_ACTOR.invokeExact(stream,
-              sessionRid, actorId, handler, userdata, timeoutMs);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_unbind_actor failed", t);
-        }
-    }
-
-    public static int streamSendBoundActorReceived(MemorySegment stream,
-                                               MemorySegment sessionRid,
-                                               MemorySegment actorId,
-                                               MemorySegment msg,
-                                               int flags,
-                                               int partFlag) {
-        try {
-            return (int) MH_STREAM_SEND_BOUND_ACTOR_PART.invokeExact(stream,
-              sessionRid, actorId, msg, flags, partFlag);
-        } catch (Throwable t) {
-            throw new RuntimeException(
-              "zlink_stream_send_bound_actor_part failed", t);
         }
     }
 
@@ -914,26 +753,6 @@ public final class Native {
               len);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_get_dealer_option failed", t);
-        }
-    }
-
-    public static int setSpotOption(MemorySegment handle, int option,
-                                    MemorySegment value, long len) {
-        try {
-            return (int) MH_SET_SPOT_OPTION.invokeExact(handle, option, value,
-              len);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_set_spot_option failed", t);
-        }
-    }
-
-    public static int getSpotOption(MemorySegment handle, int option,
-                                    MemorySegment value, MemorySegment len) {
-        try {
-            return (int) MH_GET_SPOT_OPTION.invokeExact(handle, option, value,
-              len);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_get_spot_option failed", t);
         }
     }
 
@@ -1521,27 +1340,15 @@ public final class Native {
         }
     }
 
-    public static int routerHandler(MemorySegment router,
-                                    MemorySegment handler,
-                                    MemorySegment userdata) {
-        try {
-            return (int) MH_ROUTER_SPOT_HANDLER.invokeExact(router, handler,
-                userdata);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_handler failed", t);
-        }
-    }
-
     public static int routerRecvPart(MemorySegment router,
                                      MemorySegment sourceNodeRidOut,
-                                     MemorySegment sourceSpotRidOut,
                                      MemorySegment requestSeqOut,
                                      MemorySegment partOut,
                                      MemorySegment hasMoreOut,
                                      int flags) {
         try {
             return (int) MH_ROUTER_RECV_PART.invokeExact(router,
-                sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partOut,
+                sourceNodeRidOut, requestSeqOut, partOut,
                 hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_recv_part failed", t);
@@ -1552,14 +1359,13 @@ public final class Native {
     // bit is set in flags so that the underlying call is non-blocking.
     public static int routerRecvPartNoWaitCritical(MemorySegment router,
                                                    MemorySegment sourceNodeRidOut,
-                                                   MemorySegment sourceSpotRidOut,
                                                    MemorySegment requestSeqOut,
                                                    MemorySegment partOut,
                                                    MemorySegment hasMoreOut,
                                                    int flags) {
         try {
             return (int) MH_ROUTER_RECV_PART_CRITICAL.invokeExact(router,
-                sourceNodeRidOut, sourceSpotRidOut, requestSeqOut, partOut,
+                sourceNodeRidOut, requestSeqOut, partOut,
                 hasMoreOut, flags);
         } catch (Throwable t) {
             throw new RuntimeException("zlink_router_recv_part (critical) failed", t);
@@ -1733,18 +1539,4 @@ public final class Native {
                                  int timeoutMs) {
         return NativePollerSymbols.pollerWait(poller, event, timeoutMs);
     }
-
-    public static int streamBoundActors(MemorySegment stream,
-                                        MemorySegment sessionRid,
-                                        MemorySegment entries,
-                                        MemorySegment count) {
-        try {
-            return (int) MH_STREAM_BOUND_ACTORS.invokeExact(stream, sessionRid,
-              entries, count);
-        } catch (Throwable t) {
-            throw new RuntimeException("zlink_stream_bound_actors failed", t);
-        }
-    }
-
-    // DONT_WAIT-only critical variant. Caller MUST guarantee DONT_WAIT set.
 }

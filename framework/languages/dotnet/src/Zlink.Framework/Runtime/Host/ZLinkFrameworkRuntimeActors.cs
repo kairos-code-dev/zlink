@@ -929,7 +929,10 @@ internal sealed partial class ZLinkFrameworkRuntime
         // on this node); the receiver needs the concrete session node for the
         // reply route, so substitute the local node rid.
         var sessionNodeRid = sourceNodeRid.IsEmpty ? nodeRuntime.Node.RoutingId : sourceNodeRid;
-        if (sessionNodeRid.IsEmpty || sourceSessionRid.IsEmpty) return false;
+        // A caller-routed frame forwarded to a moved actor carries no session
+        // identity; only the reply-route node rid is mandatory. The target's
+        // dispatch binds nothing for an identity-less frame.
+        if (sessionNodeRid.IsEmpty) return false;
         var relayMessage = new ZLinkRemoteActorFrameRelay(
             actor.ActorId,
             actor.Generation,

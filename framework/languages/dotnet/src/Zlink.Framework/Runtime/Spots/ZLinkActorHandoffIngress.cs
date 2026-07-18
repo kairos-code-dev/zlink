@@ -12,7 +12,12 @@ internal static class ZLinkActorHandoffIngress
         {
             var headerPart = parts[index++];
             if (!ZLinkSpotActorFrameReader.TryRead(parts, ref index, headerPart, out var frame))
+            {
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine(
+                        $"[ingress] frame read failed actor={headerPart.Actor.ActorId} req={headerPart.RequestId} flags={headerPart.Flags}");
                 continue;
+            }
             try
             {
                 var state = runtime.GetOrCreateActorState(frame.Actor.ActorId);

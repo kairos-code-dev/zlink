@@ -43,8 +43,13 @@ internal sealed class ZLinkRemoteActorFrameRelayHandler(ZLinkFrameworkRuntime ru
         await runtime.DispatchRemoteActorFrameAsync(
                 message.ActorId,
                 message.ActorGeneration,
-                RoutingId.FromHex(message.SourceNodeRid),
-                RoutingId.FromHex(message.SourceSessionRid),
+                message.SourceNodeRid is { Length: > 0 } nodeHex
+                    ? RoutingId.FromHex(nodeHex)
+                    : default,
+                // A forwarded caller-routed frame carries no session identity.
+                message.SourceSessionRid is { Length: > 0 } sessionHex
+                    ? RoutingId.FromHex(sessionHex)
+                    : default,
                 message.Header,
                 message.Body,
                 cancellationToken)

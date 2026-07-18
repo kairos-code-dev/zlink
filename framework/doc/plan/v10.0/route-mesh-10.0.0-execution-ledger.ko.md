@@ -400,7 +400,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S8-CPP lane (C ABI+C++ bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-4 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~3 결함(ownership/claim수명/metadata/transfer/dead-code 연쇄) 전량 해소, no-hit ZERO, 라이브러리+15samples green. low 4건 follow-up(`iteration-4/low-followups.ko.md`). 다음=cpp framework 미러 |
 | **S8-DN lane (.NET bindings→framework) [참조 lane]** | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-3 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1(로드 blocker·join-reply·transfer·metadata 참조표면)·iter-2(raw-layer ABI: router_recv_part 스택손상·stream_detach·msg_refcnt·dead P/Invoke) 전량 해소. 197 P/Invoke⊆196 ABI 전수감사·no-hit 0. 다음=dotnet framework 적용(참조)→framework 리뷰 |
 | S8-JVM lane (Java/Kotlin bindings→framework) | bindings 잔재 정리 | 0 | 0 | 0 | :compileJava green. 구 FFI 테이블·router-spot·msg_gets 잔재 정리+samples(Java/Kotlin) 변환 진행→스냅샷→bindings 리뷰 |
-| S8-NODE lane (Node.js bindings→framework) | bindings 리뷰 iter-1 수정 | 0 | 0 | 0 | addon+tsc+samples green. **iter-1 두 리뷰어 NOT CLEAN**(wire enum 값 불일치·RouterSocket.sendToSpot 미구현·kind_data/transfer 미노출·ready handler·dead 잔재). coordinator 수정 진행→iter-2 |
+| S8-NODE lane (Node.js bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-4 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~3(enum 값·RouterSocket·kind_data·transfer·ready-handler·option 테이블) 전량 해소, no-hit 0, addon+tsc green. low 4건 follow-up. 다음=node framework 미러 |
 | S11 Core stable·bindings 외부 배포·최종 검토 | 미착수 | 0 | 0 | 0 | - |
 
 ## 4. S0 — Core 정식 spec 범위와 결정 확정

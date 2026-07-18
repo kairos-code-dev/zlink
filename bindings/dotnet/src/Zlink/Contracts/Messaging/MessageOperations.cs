@@ -106,19 +106,8 @@ public static class MessageOperations
         return operation.Messages(messages, 0);
     }
 
-    /// <summary>
-    ///     Adds <paramref name="messages" /> as parts, in order. The parts are
-    ///     consumed on a successful submit; see <see cref="SendOperation" /> for the
-    ///     ownership contract.
-    /// </summary>
-    /// <returns>The same builder, for chaining further parts, flags, or submit.</returns>
-    public static ActorJoinSubmitOperation Messages(
-        this ActorJoinOperation operation,
-        IReadOnlyList<Message> messages)
-    {
-        EnsureNotEmpty(messages);
-        return operation.Message(messages[0]).Messages(messages, 1);
-    }
+    // ActorJoin operation-builder extensions removed in RouteMesh 10.0.0
+    // (the actor join fluent builders no longer exist).
 
     /// <summary>
     ///     Adds <paramref name="messages" /> as parts, in order. The parts are
@@ -126,13 +115,6 @@ public static class MessageOperations
     ///     ownership contract.
     /// </summary>
     /// <returns>The same builder, for chaining further parts, flags, or submit.</returns>
-    public static ActorJoinSubmitOperation Messages(
-        this ActorJoinSubmitOperation operation,
-        IReadOnlyList<Message> messages)
-    {
-        EnsureNotEmpty(messages);
-        return operation.Messages(messages, 0);
-    }
 
     /// <summary>
     ///     Adds <paramref name="messages" /> as parts, in order. The parts are
@@ -140,13 +122,6 @@ public static class MessageOperations
     ///     ownership contract.
     /// </summary>
     /// <returns>The same builder, for chaining further parts, flags, or submit.</returns>
-    public static ActorJoinCallbackSubmitOperation Messages(
-        this ActorJoinCallbackSubmitOperation operation,
-        IReadOnlyList<Message> messages)
-    {
-        EnsureNotEmpty(messages);
-        return operation.Messages(messages, 0);
-    }
 
     /// <summary>
     ///     Adds <paramref name="messages" /> as parts, in order. The parts are
@@ -154,15 +129,6 @@ public static class MessageOperations
     ///     ownership contract.
     /// </summary>
     /// <returns>The same builder, for chaining further parts, flags, or submit.</returns>
-    public static ActorJoinReplyOperation Messages(
-        this ActorJoinReplyOperation operation,
-        IReadOnlyList<Message> messages)
-    {
-        EnsureNotEmpty(messages);
-        foreach (var message in messages) operation = operation.Message(message);
-
-        return operation;
-    }
 
     private static SendSubmitOperation Messages(
         this SendSubmitOperation operation,
@@ -204,25 +170,7 @@ public static class MessageOperations
         return operation;
     }
 
-    private static ActorJoinSubmitOperation Messages(
-        this ActorJoinSubmitOperation operation,
-        IReadOnlyList<Message> messages,
-        int startIndex)
-    {
-        for (var index = startIndex; index < messages.Count; index++) operation = operation.Message(messages[index]);
 
-        return operation;
-    }
-
-    private static ActorJoinCallbackSubmitOperation Messages(
-        this ActorJoinCallbackSubmitOperation operation,
-        IReadOnlyList<Message> messages,
-        int startIndex)
-    {
-        for (var index = startIndex; index < messages.Count; index++) operation = operation.Message(messages[index]);
-
-        return operation;
-    }
 
     private static void EnsureNotEmpty(IReadOnlyList<Message> messages)
     {

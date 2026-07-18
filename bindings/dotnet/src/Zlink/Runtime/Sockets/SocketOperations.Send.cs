@@ -270,54 +270,6 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
     }
 }
 
-internal sealed class ActorSendBoundSessionOperation : SendOperation,
-    SendSubmitOperation
-{
-    private readonly ActorRef _actor;
-    private readonly SpotNode _node;
-    private SendFlags _flags;
-    private OperationMessageBuffer _parts;
-    private OperationSubmissionGuard _submission;
-
-    internal ActorSendBoundSessionOperation(SpotNode node, ActorRef actor)
-    {
-        _node = node;
-        _actor = actor;
-    }
-
-    public SendSubmitOperation Message(Message message)
-    {
-        EnsureNotSubmitted();
-        _parts.Add(message);
-        return this;
-    }
-
-    public SendSubmitOperation Flags(SendFlags flags)
-    {
-        EnsureNotSubmitted();
-        _flags = flags;
-        return this;
-    }
-
-    public bool Submit()
-    {
-        EnsureReady();
-        _submission.MarkSubmittedAfterValidation();
-        return Actor.SendBoundSessionCore(_node, _actor, _parts.Parts, _flags);
-    }
-
-    private void EnsureReady()
-    {
-        EnsureNotSubmitted();
-        _parts.EnsureNotEmpty();
-    }
-
-    private void EnsureNotSubmitted()
-    {
-        _submission.EnsureNotSubmitted();
-    }
-}
-
 internal sealed class ReceivedSendOperationImpl : SendOperation,
     SendSubmitOperation
 {

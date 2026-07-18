@@ -57,14 +57,14 @@ internal sealed class Context : NativeOwner, IContext
         return new StreamSocket(this);
     }
 
-    public ISpotNode CreateSpotNode()
+    public IMeshNode CreateMeshNode()
     {
-        return new SpotNode(this);
+        return new MeshNode(this, null);
     }
 
-    public ISpotNode CreateSpotNode(SpotNodeMode mode)
+    public IMeshNode CreateMeshNode(MeshNodeOptions options)
     {
-        return new SpotNode(this, mode);
+        return new MeshNode(this, options);
     }
 
     public void Shutdown()

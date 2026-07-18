@@ -21,9 +21,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     private readonly object _entrySpotGate = new();
     private IZLinkBackendSpot? _entrySpot;
     private Action? _sendReadyHandler;
-    // S8-07: captured Spot publisher NoDrop policy (default true). Applied per
-    // spot once the frozen binding surfaces a public publish-option setter; see
-    // ApplyRoleConfig for the exact binding gap.
+    // Captured Spot publisher NoDrop policy (default true); applied to each
+    // spot this node creates via ApplySpotPublisherPolicy.
     private bool _spotPublisherNoDrop = true;
     private bool _bound;
     private bool _started;
@@ -105,27 +104,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         IZLinkSpotPublisherConfig? publisher,
         IZLinkSpotSubscriberConfig? subscriber)
     {
-        // S8-07: capture the Spot publisher policy (Logical Multicast NoDrop) so
-        // it can be applied to each Spot the node creates.
-        //
-        // NoDrop wiring status:
-        //   * Default (NoDrop = true) ALREADY takes effect with no framework
-        //     action: Core initializes every spot's publish plane with
-        //     publish_nodrop = 1 (mesh_runtime.hpp spot_state_t), so
-        //     ISpot.Publish is atomic-admission by default.
-        //   * Explicit NoDrop = false CANNOT be honored through the frozen public
-        //     binding. Core exposes a per-spot setter
-        //     zlink_spot_set_publish_option(ZLINK_MESH_PUBLISH_OPT_NODROP) — and
-        //     it is even bound as an internal P/Invoke in
-        //     bindings NativeMethods.Spot.cs (zlink_spot_set_publish_option) —
-        //     but it is NOT surfaced on the public ISpot / Spot API, so the
-        //     framework has no accessible call to flip a spot to NoDrop = false.
-        //     IMeshNodePublisher.SetNoDrop configures a separate publisher handle
-        //     (publisher_t.nodrop), which does not affect the zlink_spot_publish
-        //     plane the framework uses for Spot Logical Multicast.
-        //
-        // When the binding surfaces a public ISpot publish-option setter, apply
-        // _spotPublisherNoDrop in CreateSpot/GetOrCreateSpot/EntrySpot below.
+        // Captures the Spot publisher policy (Logical Multicast NoDrop). Core
+        // defaults every spot publish plane to NoDrop = true, so only an
+        // explicit false is pushed through ISpot.SetNoDrop when this node
+        // creates a spot (ApplySpotPublisherPolicy).
         _spotPublisherNoDrop = publisher?.NoDrop ?? true;
 
         // MeshNode carries no per-role HWM/linger/timeout knobs; follow-up.
@@ -155,14 +137,25 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     public IZLinkBackendSpot CreateSpot()
     {
         EnsureStarted();
-        return new ZLinkBackendSpotWrapper(_node, _node.CreateSpot(), _pump, _completions);
+        return new ZLinkBackendSpotWrapper(
+            _node, ApplySpotPublisherPolicy(_node.CreateSpot()), _pump, _completions);
     }
 
     public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
     {
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
-            _node, _node.GetOrCreateSpot(spotRid, out created), _pump, _completions);
+            _node, ApplySpotPublisherPolicy(_node.GetOrCreateSpot(spotRid, out created)),
+            _pump, _completions);
+    }
+
+    // Core defaults every spot publish plane to NoDrop = true, so only an
+    // explicit false has to reach the native setter (S8-07).
+    private ISpot ApplySpotPublisherPolicy(ISpot spot)
+    {
+        if (!_spotPublisherNoDrop)
+            spot.SetNoDrop(false);
+        return spot;
     }
 
     public ZLinkSpotNodeStatus Status()
@@ -188,7 +181,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         {
             EnsureStarted();
             return _entrySpot ??= new ZLinkBackendSpotWrapper(
-                _node, _node.EntrySpot(), _pump, _completions);
+                _node, ApplySpotPublisherPolicy(_node.EntrySpot()), _pump, _completions);
         }
     }
 

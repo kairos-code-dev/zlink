@@ -8,7 +8,7 @@ namespace Systems.Zlink;
 internal sealed class MeshNodePublisher : IMeshNodePublisher
 {
     // ZLINK_MESH_PUBLISH_OPT_NODROP from mesh_node.h.
-    private const int OptNoDrop = 0x3630;
+    internal const int OptNoDrop = 0x3630;
 
     private IntPtr _handle;
 

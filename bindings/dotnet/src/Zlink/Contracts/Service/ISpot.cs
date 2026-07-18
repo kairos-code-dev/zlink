@@ -122,6 +122,15 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default);
 
+    /// <summary>
+    ///     Sets whether publishes from this spot avoid dropping messages.
+    ///     Defaults to <see langword="true" /> (all-or-none admission).
+    /// </summary>
+    void SetNoDrop(bool noDrop);
+
+    /// <summary>Reads the current no-drop publish policy of this spot.</summary>
+    bool GetNoDrop();
+
     /// <summary>Adds a subscription for a channel topic filter.</summary>
     void SetSubscription(string channelName, string topicFilter,
         SpotSubscriptionKind kind = SpotSubscriptionKind.Exact);

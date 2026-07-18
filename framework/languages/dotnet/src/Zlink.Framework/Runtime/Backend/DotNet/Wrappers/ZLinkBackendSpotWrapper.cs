@@ -27,6 +27,8 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
 
     public RoutingId RoutingId => _spot.RoutingId;
 
+    internal ISpot NativeSpot => _spot;
+
     // Spot routing ids are assigned by the node (CreateSpot/GetOrCreateSpot); the
     // binding ISpot has no setter, so this preserves callers as a no-op.
     public void SetRoutingId(RoutingId routingId)

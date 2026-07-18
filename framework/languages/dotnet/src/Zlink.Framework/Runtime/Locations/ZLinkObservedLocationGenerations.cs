@@ -39,15 +39,20 @@ internal sealed class ZLinkObservedLocationGenerations
             new ZLinkSpotLocationKey(row.MeshName, row.SpotRid),
             new ObservedVersion(row.SpotGeneration, 0));
 
+    // Membership epoch is the major axis: it increases monotonically across
+    // joins and cross-node transfers, while the actor generation is a
+    // per-node counter that legitimately restarts when the actor moves to
+    // another node (core next_actor_generation) — generation-major ordering
+    // would reject the post-transfer row as a lagging replica forever.
     internal bool AcceptActor(ZLinkActorLocation row) =>
         _actors.Accept(
             new ZLinkActorLocationKey(row.MeshName, row.ActorId),
-            new ObservedVersion(row.ActorRef.Generation, row.MembershipEpoch));
+            new ObservedVersion(row.MembershipEpoch, row.ActorRef.Generation));
 
     internal void ObserveActor(ZLinkActorLocation row) =>
         _actors.Observe(
             new ZLinkActorLocationKey(row.MeshName, row.ActorId),
-            new ObservedVersion(row.ActorRef.Generation, row.MembershipEpoch));
+            new ObservedVersion(row.MembershipEpoch, row.ActorRef.Generation));
 
     /// <summary>A confirmed store miss ends the identity's observed lifecycle:
     /// the row was removed, so a re-created incarnation legitimately restarts

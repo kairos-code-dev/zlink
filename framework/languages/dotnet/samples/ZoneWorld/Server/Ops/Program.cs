@@ -56,6 +56,9 @@ builder.Services.AddZLinkFramework(options =>
     var locations = options.ConfigureLocations();
     locations.HeartbeatInterval = TimeSpan.FromSeconds(1);
     locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
+    // Ops observes the zone mesh without joining it: the operational query
+    // enumerates it only when declared here (§8.1).
+    locations.ObservedMeshNames.Add(ZoneWorldNames.ZoneMesh);
 
     options.ConfigureDispatch()
         .MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly)
@@ -69,7 +72,10 @@ builder.Services.AddZLinkFramework(options =>
     // The announcement and the maintenance change both leave here without a node list.
     // Adding a node changes nothing on this side — that is the whole point (ZW-D2).
     options.AddFanoutChannel(ZoneWorldNames.BroadcastChannel)
-        .EnablePublisher(ops.BroadcastEndpoint);
+        .EnablePublisher(ops.BroadcastEndpoint)
+        // Discovery subscribers dial this publisher through its descriptor
+        // row, which needs a concrete routing id to be advertised.
+        .SetRoutingId(Systems.Zlink.RoutingId.From("zoneworld-ops-broadcast"));
 
     options.AddClientServerChannel(ZoneWorldNames.ReportChannel)
         .EnableServer(ops.ReportEndpoint)

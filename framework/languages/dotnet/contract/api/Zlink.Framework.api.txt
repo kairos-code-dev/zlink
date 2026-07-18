@@ -1386,6 +1386,7 @@ assembly Zlink.Framework
     ctor ZLinkLocationOptions()
     property System.TimeSpan HeartbeatInterval { get; set; } [nullability=read:not-null,write:not-null]
     property System.Int32 ListPageSize { get; set; } [nullability=read:not-null,write:not-null]
+    property System.Collections.Generic.IList<System.String> ObservedMeshNames { get; } [nullability=read:not-null,write:unknown]
     property System.TimeSpan OwnerLeaseRenewTimeout { get; set; } [nullability=read:not-null,write:not-null]
     property System.TimeSpan OwnerLeaseTtl { get; set; } [nullability=read:not-null,write:not-null]
     property System.TimeSpan PollingInterval { get; set; } [nullability=read:not-null,write:not-null]

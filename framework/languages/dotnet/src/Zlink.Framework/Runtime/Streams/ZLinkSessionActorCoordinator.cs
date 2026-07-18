@@ -176,8 +176,24 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         if (runtime.Services.GetService<IZLinkActorDirectory>() is { } directory)
         {
-            var current = await directory.FindAsync(actorRef.ActorId, cancellationToken)
-                .ConfigureAwait(false);
+            // A resolve miss can be the transfer-commit window (the row is
+            // rewritten while the actor moves nodes); retry within the
+            // request timeout before declaring the actor gone, so a relayed
+            // one-way frame is not lost to a milliseconds-wide gap.
+            var deadline = DateTime.UtcNow + runtime.Registration.DefaultRequestTimeout;
+            ActorRef? current;
+            while (true)
+            {
+                current = await directory.FindAsync(actorRef.ActorId, cancellationToken)
+                    .ConfigureAwait(false);
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine(
+                        $"[relay-resolve] actor={actorRef.ActorId} bound={actorRef.Ref.NodeRid}/{actorRef.Ref.Generation} resolved={(current is { } c ? $"{c.NodeRid}/{c.Generation}" : "<none>")}");
+                if (current is not null || DateTime.UtcNow >= deadline) break;
+                await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (current is not { } resolved)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorRouteNotFound,

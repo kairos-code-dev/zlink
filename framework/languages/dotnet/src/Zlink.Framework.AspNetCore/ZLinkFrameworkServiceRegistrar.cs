@@ -382,6 +382,9 @@ internal static class ZLinkFrameworkServiceRegistrar
                     (spot.SpotMeshChannelName ?? spot.SpotNodeName)
                     + ZLinkLocationAutoConnectHost.SpotPubMeshSuffix))
             .Concat(registration.SpotMeshChannels.Keys)
+            // Observer hosts (an ops console watching a mesh it never joins)
+            // extend the enumeration scope explicitly.
+            .Concat(registration.Locations.Options.ObservedMeshNames)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         services.AddSingleton<IZLinkLocationRuntimeQuery>(

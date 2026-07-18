@@ -36,15 +36,37 @@ public sealed class GameClient(IZlinkStreamConnector connector, string playerId)
             DispatchMode = ZlinkStreamDispatchMode.Immediate
         });
         if (Environment.GetEnvironmentVariable("ZONEWORLD_DEBUG_INBOUND") == "1")
+        {
             connector.ObserveInbound((observation, _) =>
             {
-                var preview = observation.Name == "ZoneStateNotify"
-                    ? " " + System.Text.Encoding.UTF8.GetString(observation.PayloadPreview.Span)
-                    : string.Empty;
                 Console.Error.WriteLine(
-                    $"[inbound] player={playerId} kind={observation.Kind} name={observation.Name} bytes={observation.PayloadLength}{preview}");
+                    $"[inbound] player={playerId} kind={observation.Kind} name={observation.Name} bytes={observation.PayloadLength}");
                 return ValueTask.CompletedTask;
             });
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var state = await connector.WaitFor<ZoneStateNotify>()
+                        .Timeout(TimeSpan.FromMinutes(5))
+                        .Async(CancellationToken.None);
+                    Console.Error.WriteLine(
+                        $"[state] player={playerId} zone={state.Payload.ZoneId} tick={state.Payload.Tick} players={string.Join(",", state.Payload.Players.Select(p => $"{p.PlayerId}@{p.X},{p.Y}"))}");
+                }
+            });
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var rejected = await connector.WaitFor<MoveRejectedNotify>()
+                        .Timeout(TimeSpan.FromMinutes(5))
+                        .Async(CancellationToken.None);
+                    Console.Error.WriteLine(
+                        $"[move-rejected] player={playerId} reason={rejected.Payload.Reason} x={rejected.Payload.X} y={rejected.Payload.Y}");
+                }
+            });
+        }
+
         await connector.Connect.Async(cancellationToken);
         return new GameClient(connector, playerId);
     }

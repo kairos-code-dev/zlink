@@ -147,9 +147,19 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         {
             // Hosting handoff: the live row belongs to the previous host,
             // which deactivates its instance as part of the move. Takeover
-            // is the fencing path that lets the new host claim anyway.
+            // is the fencing path that lets the new host claim anyway. The
+            // membership epoch continues from the existing row — it is the
+            // monotonic ordering axis across transfers, and a takeover that
+            // reset it would make the new incarnation read as a lagging
+            // replica to every observer.
             try
             {
+                var existing = await resolver.ResolveActorRowAsync(
+                        new ZLinkActorLocationKey(meshName, actorId),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (existing is not null)
+                    row = row with { MembershipEpoch = existing.MembershipEpoch };
                 result = await runtime.WriteActorAsync(row, ZLinkLocationWriteIntent.Takeover, cancellationToken)
                     .ConfigureAwait(false);
             }

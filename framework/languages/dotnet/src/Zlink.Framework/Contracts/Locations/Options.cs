@@ -25,6 +25,12 @@ public sealed class ZLinkLocationOptions
     /// <see cref="ZLinkPageRequest"/>.</summary>
     public int ListPageSize { get; set; } = 1000;
 
+    /// <summary>Additional mesh namespaces the operational query enumerates
+    /// beyond the ones this host advertises or dials. An observer host (an
+    /// ops console watching a mesh it never joins) lists the meshes it wants
+    /// location topology for.</summary>
+    public IList<string> ObservedMeshNames { get; } = new List<string>();
+
     /// <summary>Grace boundary for location-state failures. Existing ready
     /// connections remain available; after this time, auto connect does not
     /// start new outbound connections until location state recovers.</summary>

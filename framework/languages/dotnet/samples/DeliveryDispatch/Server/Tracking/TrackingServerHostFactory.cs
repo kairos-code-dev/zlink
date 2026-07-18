@@ -40,10 +40,11 @@ public static class TrackingServerHostFactory
                 .EnableServer(topology.TrackingChannelEndpoint)
                 .SetRoutingId(RoutingId.From("delivery-tracking-server"))
                 .AddHandlerGroup(SampleNames.TrackingRouteChannel);
-            options.AddRouteMesh(SampleNames.CustomerActorDiscovery)
+            var mesh10 = options.AddRouteMesh(SampleNames.CustomerActorDiscovery)
                 .Listen(topology.TrackingSpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From("delivery-tracking-spot-node"))
                 .SetEntrySpotRoutingId(RoutingId.From("delivery-tracking-spot-node"));
+            mesh10.ChannelName(SampleNames.CustomerActorDiscovery);
         });
 
         return builder.Build();

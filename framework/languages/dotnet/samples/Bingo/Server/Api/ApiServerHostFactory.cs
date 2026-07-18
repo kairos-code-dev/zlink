@@ -44,10 +44,11 @@ public static class ApiServerHostFactory
                 .SetRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
                 .EnableServer(node.ChannelEndpoint)
                 .AddHandlerGroup("api");
-            options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
+            var mesh2 = options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "api")
                 .SetRoutingIdAllocationGroup(SampleNames.ApiAllocationGroup)
                 .Listen(node.SpotRouterEndpoint);
+            mesh2.ChannelName(SampleNames.RoomSpotDiscovery);
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "api",

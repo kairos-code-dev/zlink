@@ -85,6 +85,7 @@ internal static class PlayHostFactory
                 .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
                 .AddSpotFactory<ScenarioUserSpot>()
                 .AddSpotFactory<ScenarioAlternateSpot>();
+            spot.ChannelName(SpotServiceNames.SpotChannel);
         });
 
         var app = builder.Build();

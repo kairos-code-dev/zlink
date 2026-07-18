@@ -37,9 +37,10 @@ internal static class SessionHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(SessionHostFactory));
-            framework.AddRouteMesh(ObservabilityNames.PlayMesh)
+            var mesh17 = framework.AddRouteMesh(ObservabilityNames.PlayMesh)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
+            mesh17.ChannelName(ObservabilityNames.PlayMesh);
             framework.AddStreamNode(ObservabilityNames.StreamNode)
                 .Bind(options.StreamEndpoint)
                 .RegisterSession<ObservabilitySession>();

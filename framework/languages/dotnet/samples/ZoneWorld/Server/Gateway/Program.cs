@@ -43,10 +43,11 @@ builder.Services.AddZLinkFramework(options =>
     // The Gateway joins the spot mesh but hosts nothing in it — no entry spot, no actor
     // factory. Membership is what lets it bind a session to an actor living on a zone
     // node and relay packets to it.
-    options.AddRouteMesh(ZoneWorldNames.ZoneMesh)
+    var mesh12 = options.AddRouteMesh(ZoneWorldNames.ZoneMesh)
         .UseAllocatedRoutingId(slotCount: 1, routingIdPrefix: "gw0")
         .SetRoutingIdAllocationGroup("zoneworld.gateway")
         .Listen(gateway.SpotRouterEndpoint);
+    mesh12.ChannelName(ZoneWorldNames.ZoneMesh);
 
     options.AddClientServerChannel(ZoneWorldNames.ActorsChannel)
         .EnableClient();

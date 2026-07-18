@@ -50,13 +50,14 @@ public static class SupportServerHostFactory
                 .AddHandlerGroup("support");
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
-            options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
+            var mesh5 = options.AddRouteMesh(SampleNames.SupportSpotDiscovery)
                 .Listen(topology.SupportEntrySpotRouterEndpoint)
                 .SetRoutingId(topology.SupportEntryRid)
                 .AddEntrySpot<SupportEntrySpot>()
                 .AddActorFactory<SupportUserActorFactory>(SampleNames.SupportActorType)
                 .AddActorTransferAdapter<SupportUserActor, SupportUserActorTransferAdapter>(SampleNames.SupportActorType)
                 .AddSpotFactory<ConversationSpot>();
+            mesh5.ChannelName(SampleNames.SupportSpotDiscovery);
         });
 
         return builder.Build();

@@ -51,9 +51,10 @@ public static class DispatchServerHostFactory
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-channel"))
                 .AddHandlerGroup(SampleNames.DispatchChannel);
-            options.AddRouteMesh(SampleNames.CourierActorDiscovery)
+            var mesh9 = options.AddRouteMesh(SampleNames.CourierActorDiscovery)
                 .Listen(topology.DispatchSpotRouterEndpoint)
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-courier-client"));
+            mesh9.ChannelName(SampleNames.CourierActorDiscovery);
             options.AddClientServerChannel(SampleNames.TrackingRouteChannel)
                 .EnableClient()
                 .SetRoutingId(Systems.Zlink.RoutingId.From("delivery-dispatch-tracking-client"));

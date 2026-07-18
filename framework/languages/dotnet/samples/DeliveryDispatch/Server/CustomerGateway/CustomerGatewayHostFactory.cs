@@ -38,12 +38,13 @@ public static class CustomerGatewayHostFactory
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel("customer-gateway");
             options.AddHandlersFromAssemblyOf(typeof(CustomerGatewayHostFactory));
-            options.AddRouteMesh(SampleNames.CustomerActorDiscovery)
+            var mesh7 = options.AddRouteMesh(SampleNames.CustomerActorDiscovery)
                 .Listen(topology.CustomerSpotRouterEndpoint)
                 .SetRoutingId(topology.CustomerSpotNodeRid)
                 .SetEntrySpotRoutingId(topology.CustomerSpotNodeRid)
                 .AddEntrySpot<CustomerEntrySpot>()
                 .AddActorFactory<CustomerActorFactory>(SampleNames.CustomerActorType);
+            mesh7.ChannelName(SampleNames.CustomerActorDiscovery);
             options.AddStreamNode(SampleNames.CustomerStreamNode)
                 .Bind(topology.CustomerStreamEndpoint)
                 .RegisterSession<CustomerSession>();

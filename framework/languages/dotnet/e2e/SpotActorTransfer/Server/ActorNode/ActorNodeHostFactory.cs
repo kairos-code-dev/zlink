@@ -49,7 +49,7 @@ internal static class ActorNodeHostFactory
             locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
             locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             framework.AddHandlersFromAssemblyOf<TransferEntrySpot>();
-            framework.AddRouteMesh(SpotActorTransferNames.Mesh)
+            var mesh28 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .SetEntrySpotRoutingId(RoutingId.From(SpotActorTransferNames.EntrySpotRid))
@@ -66,6 +66,7 @@ internal static class ActorNodeHostFactory
                 .AddActorFactory<TransferActorFactory>(SpotActorTransferNames.ActorTypeFailTransferIn)
                 .AddActorTransferAdapter<TransferActor, TransferActorAdapter>(SpotActorTransferNames.ActorTypeFailTransferIn)
                 .AddSpotFactory<TransferUserSpot>();
+            mesh28.ChannelName(SpotActorTransferNames.Mesh);
         });
         return (builder.Build(), options);
     }

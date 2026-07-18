@@ -81,7 +81,7 @@ builder.Services.AddZLinkFramework(options =>
     // after it, and when that spot is on another node the join is the transfer — which is
     // why the transfer adapter is not optional (§2.6).
     const string allocationGroup = "zoneworld.zone-node";
-    options.AddRouteMesh(ZoneWorldNames.ZoneMesh)
+    var mesh13 = options.AddRouteMesh(ZoneWorldNames.ZoneMesh)
         .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "zn")
         .SetRoutingIdAllocationGroup(allocationGroup)
         .Listen(node.SpotRouterEndpoint)
@@ -89,6 +89,7 @@ builder.Services.AddZLinkFramework(options =>
         .AddActorFactory<PlayerActorFactory>(ZoneWorldNames.PlayerActorType)
         .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(ZoneWorldNames.PlayerActorType)
         .AddSpotFactory<ZoneSpot>();
+    mesh13.ChannelName(ZoneWorldNames.ZoneMesh);
 
     // Registered only so the runtime can build the spot bridge that carries the announcement
     // from a channel handler into this node's zone spots (§8.2). It is never used to address a

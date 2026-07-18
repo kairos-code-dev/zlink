@@ -249,13 +249,11 @@ PY
 
 start_server mission-a "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj" --config "${MISSION_A_CONFIG_FILE}"
 wait_port mission-a-spot-router "${GAMEQUEST_MISSION_A_SPOT_ROUTER_ENDPOINT}"
-wait_port mission-a-spot-pub "${GAMEQUEST_MISSION_A_SPOT_ENDPOINT}"
 wait_port mission-a-channel "${GAMEQUEST_MISSION_A_CHANNEL_ENDPOINT}"
 wait_http mission-a "${GAMEQUEST_MISSION_A_HTTP_URL}"
 
 start_server mission-b "${SCRIPT_DIR}/Server/QuestMission/GameQuest.QuestMission.csproj" --config "${MISSION_B_CONFIG_FILE}"
 wait_port mission-b-spot-router "${GAMEQUEST_MISSION_B_SPOT_ROUTER_ENDPOINT}"
-wait_port mission-b-spot-pub "${GAMEQUEST_MISSION_B_SPOT_ENDPOINT}"
 wait_port mission-b-channel "${GAMEQUEST_MISSION_B_CHANNEL_ENDPOINT}"
 wait_http mission-b "${GAMEQUEST_MISSION_B_HTTP_URL}"
 

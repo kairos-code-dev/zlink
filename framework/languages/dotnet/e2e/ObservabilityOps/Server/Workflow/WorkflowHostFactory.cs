@@ -46,12 +46,13 @@ internal static class WorkflowHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(WorkflowHostFactory));
-            framework.AddRouteMesh(ObservabilityNames.WorkflowMesh)
+            var mesh16 = framework.AddRouteMesh(ObservabilityNames.WorkflowMesh)
                 .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddSpotFactory<WorkflowSpot>()
                 .AddSpotFactory<ProjectionSpot>();
+            mesh16.ChannelName(ObservabilityNames.WorkflowMesh);
         });
 
         var app = builder.Build();

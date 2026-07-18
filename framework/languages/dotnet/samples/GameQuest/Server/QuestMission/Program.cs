@@ -58,10 +58,11 @@ internal static class Program
                 .AddHandlerGroup("quest-owner");
             options.AddClientServerChannel(SampleNames.GameApiChannel)
                 .EnableClient();
-            options.AddRouteMesh(SampleNames.QuestSpotDiscovery)
+            var mesh14 = options.AddRouteMesh(SampleNames.QuestSpotDiscovery)
                 .Listen(instance.SpotRouterEndpoint)
                 .SetRoutingId(instance.SpotRid)
                 .AddSpotFactory<PlayerQuestSpot>();
+            mesh14.ChannelName(SampleNames.QuestSpotDiscovery);
         });
 
         var app = builder.Build();

@@ -47,11 +47,12 @@ internal static class SessionHostFactory
             framework.AddRouteMeshChannel(AutomaticTurnDispatchNames.SpotRouteChannel)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
-            framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
+            var mesh23 = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
                                 .Listen(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<SessionAwaitEntrySpot>()
                 .AddActorFactory<SessionAwaitActorFactory>(AutomaticTurnDispatchNames.ActorType);
+            mesh23.ChannelName(AutomaticTurnDispatchNames.SpotChannel);
             framework.AddStreamNode(AutomaticTurnDispatchNames.StreamNode)
                 .Bind(options.StreamEndpoint)
                 .RegisterSession<AwaitStreamSession>();

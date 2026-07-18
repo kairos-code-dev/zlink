@@ -59,6 +59,7 @@ internal sealed class PlayServer(SampleSettings settings)
                 .AddActorFactory<PlayActorFactory>(SampleTypes.PlayerActor)
                 .AddActorTransferAdapter<PlayActor, PlayActorTransferAdapter>(SampleTypes.PlayerActor)
                 .AddSpotFactory<TicTacToeGame>();
+            mesh.ChannelName(SampleNodes.PlaySpot);
             mesh.PeerConnections.Connect(
                 RoutingId.From(settings.PeerPlaySpotNodeRid), settings.PeerSpotEndpoint);
         });

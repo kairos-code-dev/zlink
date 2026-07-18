@@ -2,7 +2,7 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-    <ZLinkBindingsPackageVersion Condition="'$(ZLinkBindingsPackageVersion)' == ''">9.0.8</ZLinkBindingsPackageVersion>
+    <ZLinkBindingsPackageVersion Condition="'$(ZLinkBindingsPackageVersion)' == ''">10.0.0</ZLinkBindingsPackageVersion>
   </PropertyGroup>
 
   <ItemGroup>

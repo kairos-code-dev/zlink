@@ -223,13 +223,11 @@ start_server play-a "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server
 wait_port play-a-stream "${PLAY_A_ENDPOINT}"
 wait_port play-a-channel "${PLAY_A_CHANNEL_ENDPOINT}"
 wait_port play-a-spot "${SPOT_A_ENDPOINT}"
-wait_port play-a-spot-pubsub "${SPOT_A_PUBSUB_ENDPOINT}"
 
 start_server play-b "${SCRIPT_DIR}/Server.Play/bin/Debug/net8.0/TicTacToe.Server.Play.dll" "${PLAY_B_CONFIG_FILE}"
 wait_port play-b-stream "${PLAY_B_ENDPOINT}"
 wait_port play-b-channel "${PLAY_B_CHANNEL_ENDPOINT}"
 wait_port play-b-spot "${SPOT_B_ENDPOINT}"
-wait_port play-b-spot-pubsub "${SPOT_B_PUBSUB_ENDPOINT}"
 
 start_server api-a "${SCRIPT_DIR}/Server.Api/bin/Debug/net8.0/TicTacToe.Server.Api.dll" "${API_A_CONFIG_FILE}"
 wait_port api-a-http "${API_A_BIND_URL}"

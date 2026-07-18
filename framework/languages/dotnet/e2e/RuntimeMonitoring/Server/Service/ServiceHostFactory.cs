@@ -58,6 +58,7 @@ internal static class ServiceHostFactory
                 .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
 
             var spotMesh = framework.AddRouteMesh(RuntimeMonitoringNames.SpotChannel);
+            spotMesh.ChannelName(RuntimeMonitoringNames.SpotChannel);
             spotMesh.Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<MonitoringEntrySpot>()

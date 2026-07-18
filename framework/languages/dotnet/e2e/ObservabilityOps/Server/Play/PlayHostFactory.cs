@@ -45,7 +45,7 @@ internal static class PlayHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(PlayHostFactory));
-            framework.AddRouteMesh(ObservabilityNames.PlayMesh)
+            var mesh18 = framework.AddRouteMesh(ObservabilityNames.PlayMesh)
                 .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
@@ -54,6 +54,7 @@ internal static class PlayHostFactory
                 .AddActorFactory<PlayerActorFactory>(ObservabilityNames.PlayerActorType)
                 .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(ObservabilityNames.PlayerActorType)
                 .AddSpotFactory<RoomSpot>();
+            mesh18.ChannelName(ObservabilityNames.PlayMesh);
         });
 
         var app = builder.Build();

@@ -37,12 +37,13 @@ public static class NodeHostFactory
                 .TraceLogFile(configuration.FlowLogPath)
                 .TraceLabel(configuration.Role.Name);
             options.AddHandlersFromAssemblyOf(typeof(NodeHostFactory));
-            options.AddRouteMesh(SampleNames.CourierActorDiscovery)
+            var mesh11 = options.AddRouteMesh(SampleNames.CourierActorDiscovery)
                 .Listen(node.SpotRouterEndpoint)
                 .SetRoutingId(node.Rid)
                 .SetEntrySpotRoutingId(node.Rid)
                 .AddEntrySpot<CourierEntrySpot>()
                 .AddActorFactory<CourierActorFactory>(SampleNames.CourierActorType);
+            mesh11.ChannelName(SampleNames.CourierActorDiscovery);
             // The courier's decision goes back to dispatch as its own one-way message, so this
             // node needs a way to speak to the dispatch channel (common sample spec §7.4).
             options.AddClientServerChannel(SampleNames.DispatchChannel)

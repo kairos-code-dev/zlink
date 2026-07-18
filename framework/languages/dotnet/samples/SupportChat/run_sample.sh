@@ -207,7 +207,6 @@ dotnet build "${SCRIPT_DIR}/SupportChat.csproj" --maxcpucount:1
 start_server support "${SCRIPT_DIR}/Server/Support/SupportChat.Server.Support.csproj" --config "${SUPPORT_CONFIG_FILE}"
 wait_port support-channel "${SUPPORTCHAT_SUPPORT_CHANNEL_ENDPOINT}"
 wait_port support-spot-router "${SUPPORTCHAT_ENTRY_SPOT_ROUTER_ENDPOINT}"
-wait_port support-spot-pub "${SUPPORTCHAT_ENTRY_SPOT_ENDPOINT}"
 
 start_server api "${SCRIPT_DIR}/Server/Api/SupportChat.Server.Api.csproj" --config "${API_CONFIG_FILE}"
 wait_port api "${SUPPORTCHAT_API_CHANNEL_ENDPOINT}"

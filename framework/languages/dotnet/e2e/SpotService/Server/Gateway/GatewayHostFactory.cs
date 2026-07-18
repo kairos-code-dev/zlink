@@ -63,9 +63,10 @@ internal static class GatewayHostFactory
                 .TraceLabel(options.Rid);
             framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
                 .EnableClient(Require(options.ExternalSpotEndpoint, "ExternalSpotEndpoint"));
-            framework.AddRouteMesh(SpotServiceNames.SpotChannel)
+            var mesh19 = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
+            mesh19.ChannelName(SpotServiceNames.SpotChannel);
         });
 
         var app = builder.Build();

@@ -215,13 +215,11 @@ PY
 start_server workflow-a "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --config "${WORKFLOW_A_CONFIG_FILE}"
 wait_port workflow-a-channel "${SHOPPINGMALL_WORKFLOW_A_CHANNEL_ENDPOINT}"
 wait_port workflow-a-spot-router "${SHOPPINGMALL_WORKFLOW_A_SPOT_ROUTER_ENDPOINT}"
-wait_port workflow-a-spot-pub "${SHOPPINGMALL_WORKFLOW_A_SPOT_ENDPOINT}"
 wait_http workflow-a "${SHOPPINGMALL_WORKFLOW_A_HTTP_URL}"
 
 start_server workflow-b "${SCRIPT_DIR}/Server/OrderWorkflow/ShoppingMall.OrderWorkflow.csproj" --config "${WORKFLOW_B_CONFIG_FILE}"
 wait_port workflow-b-channel "${SHOPPINGMALL_WORKFLOW_B_CHANNEL_ENDPOINT}"
 wait_port workflow-b-spot-router "${SHOPPINGMALL_WORKFLOW_B_SPOT_ROUTER_ENDPOINT}"
-wait_port workflow-b-spot-pub "${SHOPPINGMALL_WORKFLOW_B_SPOT_ENDPOINT}"
 wait_http workflow-b "${SHOPPINGMALL_WORKFLOW_B_HTTP_URL}"
 
 start_server api-a "${SCRIPT_DIR}/Server/CommerceApi/ShoppingMall.CommerceApi.csproj" --config "${API_A_CONFIG_FILE}"

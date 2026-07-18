@@ -52,6 +52,7 @@ internal static class FixtureSamples
         {
             {
                 var mesh = options.AddRouteMesh("game.stage");
+                mesh.ChannelName("game.stage");
                 mesh.Listen("tcp://127.0.0.1:7302");
                 mesh.AddSpotFactory<FixtureStageSpot>();
             }
@@ -92,6 +93,7 @@ internal static class FixtureSamples
 
             {
                 var mesh = options.AddRouteMesh("game.stage");
+                mesh.ChannelName("game.stage");
                 mesh.Listen("tcp://127.0.0.1:7605");
                 mesh.AddSpotFactory<FixtureStageSpot>();
             }
@@ -118,6 +120,7 @@ internal static class FixtureSamples
 
             {
                 var mesh = options.AddRouteMesh("game.stage");
+                mesh.ChannelName("game.stage");
                 mesh.Listen("tcp://127.0.0.1:7702");
                 mesh.AddSpotFactory<FixtureActorSpot>();
                 mesh.AddActorFactory<FixtureActorFactory>("hero");

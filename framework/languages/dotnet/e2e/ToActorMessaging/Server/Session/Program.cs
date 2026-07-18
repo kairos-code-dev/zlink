@@ -23,9 +23,10 @@ builder.Services.AddZLinkFramework(framework =>
         .SetConnectionString(options.RedisEndpoint)
         .SetKeyPrefix(options.RedisKeyPrefix)));
     framework.AddHandlersFromAssemblyOf(typeof(Program));
-    framework.AddRouteMesh("to-actor")
+    var mesh26 = framework.AddRouteMesh("to-actor")
         .Listen(options.RouterEndpoint)
         .SetRoutingId(RoutingId.From(options.Rid));
+    mesh26.ChannelName("to-actor");
     framework.AddStreamNode("to-actor-session")
         .Bind(options.StreamEndpoint)
         .RegisterSession<ToActorSession>();

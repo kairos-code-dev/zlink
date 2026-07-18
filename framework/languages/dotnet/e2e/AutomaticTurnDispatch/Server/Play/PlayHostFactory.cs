@@ -60,12 +60,13 @@ internal static class PlayHostFactory
                 .EnableServer(options.SpotRouteEndpoint)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
-            framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
+            var mesh24 = framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
                                 .Listen(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<AwaitEntrySpot>()
                 .AddActorFactory<AwaitActorFactory>(AutomaticTurnDispatchNames.ActorType)
                 .AddSpotFactory<AwaitProbeSpot>();
+            mesh24.ChannelName(AutomaticTurnDispatchNames.SpotChannel);
         });
 
         var app = builder.Build();

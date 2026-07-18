@@ -71,7 +71,7 @@ internal static class MultiNodeHostFactory
                             "MultiNodeCreateSpotReq");
                 }
 
-                framework.AddRouteMesh(ResolveSpotMeshName(options))
+                var mesh20 = framework.AddRouteMesh(ResolveSpotMeshName(options))
                     .Listen(Require(options.MultiSpotRouterAEndpoint, "MultiSpotRouterAEndpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeA))
                     .AddEntrySpot<ScenarioEntrySpot>()
@@ -79,6 +79,7 @@ internal static class MultiNodeHostFactory
                     .AddSpotFactory<SpotOnlyUserSpot>()
                     .AddSpotFactory<ScenarioUserSpot>()
                     .AddSpotFactory<MultiNodeSpotA>();
+                mesh20.ChannelName(ResolveSpotMeshName(options));
             }
 
             if (isNodeB)
@@ -94,7 +95,7 @@ internal static class MultiNodeHostFactory
                             "MultiNodeCreateSpotReq");
                 }
 
-                framework.AddRouteMesh(ResolveSpotMeshName(options))
+                var mesh21 = framework.AddRouteMesh(ResolveSpotMeshName(options))
                     .Listen(Require(options.MultiSpotRouterBEndpoint, "MultiSpotRouterBEndpoint"))
                     .SetRoutingId(RoutingId.From(SpotServiceNames.MultiSpotNodeB))
                     .AddEntrySpot<ScenarioEntrySpot>()
@@ -102,6 +103,7 @@ internal static class MultiNodeHostFactory
                     .AddSpotFactory<SpotOnlyUserSpot>()
                     .AddSpotFactory<ScenarioUserSpot>()
                     .AddSpotFactory<MultiNodeSpotB>();
+                mesh21.ChannelName(ResolveSpotMeshName(options));
             }
         });
 

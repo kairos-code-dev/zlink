@@ -208,19 +208,15 @@ dotnet build "${SCRIPT_DIR}/Bingo.csproj" --maxcpucount:1
 
 start_server play-a "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_A_CONFIG_FILE}"
 wait_port play-a-spot-router "${BINGO_PLAY_A_SPOT_ROUTER_ENDPOINT}"
-wait_port play-a-spot-pub "${BINGO_PLAY_A_SPOT_ENDPOINT}"
 start_server play-b "${SCRIPT_DIR}/Server/Play/Bingo.Server.Play.csproj" --config "${PLAY_B_CONFIG_FILE}"
 wait_port play-b-spot-router "${BINGO_PLAY_B_SPOT_ROUTER_ENDPOINT}"
-wait_port play-b-spot-pub "${BINGO_PLAY_B_SPOT_ENDPOINT}"
 
 start_server api-a "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_A_CONFIG_FILE}"
 wait_port api-a "${BINGO_API_A_CHANNEL_ENDPOINT}"
 wait_port api-a-spot-router "${BINGO_API_A_SPOT_ROUTER_ENDPOINT}"
-wait_port api-a-spot-pub "${BINGO_API_A_SPOT_ENDPOINT}"
 start_server api-b "${SCRIPT_DIR}/Server/Api/Bingo.Server.Api.csproj" --config "${API_B_CONFIG_FILE}"
 wait_port api-b "${BINGO_API_B_CHANNEL_ENDPOINT}"
 wait_port api-b-spot-router "${BINGO_API_B_SPOT_ROUTER_ENDPOINT}"
-wait_port api-b-spot-pub "${BINGO_API_B_SPOT_ENDPOINT}"
 
 start_server session-a "${SCRIPT_DIR}/Server/Session/Bingo.Server.Session.csproj" --config "${SESSION_A_CONFIG_FILE}"
 wait_port session-a-router "${BINGO_SESSION_A_ROUTER_ENDPOINT}"

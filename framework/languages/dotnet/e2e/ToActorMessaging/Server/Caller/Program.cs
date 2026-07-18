@@ -29,6 +29,7 @@ builder.Services.AddZLinkFramework(framework =>
         .Listen(options.RouterEndpoint)
         .SetRoutingId(RoutingId.From(options.Rid))
         .SetEntrySpotRoutingId(RoutingId.From(options.Rid));
+    spot.ChannelName("to-actor");
     if (options.ConnectActorRoutes)
     {
         spot.PeerConnections.Connect(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint);

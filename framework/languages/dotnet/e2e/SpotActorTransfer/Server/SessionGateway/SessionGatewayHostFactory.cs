@@ -22,9 +22,10 @@ internal static class SessionGatewayHostFactory
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)
                 .SetKeyPrefix(options.RedisKeyPrefix)));
-            framework.AddRouteMesh(SpotActorTransferNames.Mesh)
+            var mesh27 = framework.AddRouteMesh(SpotActorTransferNames.Mesh)
                 .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
+            mesh27.ChannelName(SpotActorTransferNames.Mesh);
             framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
                 .Bind(options.StreamEndpoint)
                 .RegisterSession<TransferSession>();

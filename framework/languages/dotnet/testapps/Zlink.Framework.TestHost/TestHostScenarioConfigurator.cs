@@ -167,6 +167,9 @@ internal static class TestHostScenarioConfigurator
                 var mesh = framework.AddRouteMesh(options.DiscoveryChannelName
                                                   ?? throw new InvalidOperationException(
                                                       "SPOT node mode requires --discovery-channel."));
+                mesh.ChannelName(options.DiscoveryChannelName
+                                                  ?? throw new InvalidOperationException(
+                                                      "SPOT node mode requires --discovery-channel."));
                 _ = options.SpotNodeName
                     ?? throw new InvalidOperationException("SPOT node mode requires --spot-node-name.");
                 var spotBindEndpoint = options.SpotBindEndpoint

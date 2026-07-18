@@ -60,7 +60,7 @@ public static class PlayServerHostFactory
             options.AddClientServerChannel(SampleNames.ApiChannel)
                 .EnableClient();
 
-            options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
+            var mesh4 = options.AddRouteMesh(SampleNames.RoomSpotDiscovery)
                 .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)
                 .UseAllocatedRoutingId(slotCount: 2, routingIdPrefix: "play")
                 .SetRoutingIdAllocationGroup(SampleNames.PlayAllocationGroup)
@@ -69,6 +69,7 @@ public static class PlayServerHostFactory
                 .AddActorFactory<PlayerActorFactory>(SampleNames.PlayerActorType)
                 .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(SampleNames.PlayerActorType)
                 .AddSpotFactory<BingoRoom>();
+            mesh4.ChannelName(SampleNames.RoomSpotDiscovery);
         });
         builder.Services.AddSingleton(new BingoRoutingIdReport(
             "play",

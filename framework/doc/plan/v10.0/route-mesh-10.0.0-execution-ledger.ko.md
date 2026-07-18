@@ -876,6 +876,22 @@ S7 준비가 끝나면 네 언어 lane을 동시에 시작한다. 각 lane은 �
 | **S8-JVM** | Java/Kotlin bindings | `BINDINGS REVIEW CLEAN` | Java/Kotlin framework (§13.3) | `JVM REVIEW CLEAN` | 미착수 |
 | **S8-NODE** | Node.js bindings | `BINDINGS REVIEW CLEAN` | Node.js framework (§13.4) | `NODE REVIEW CLEAN` | 미착수 |
 
+### 11.2.0 lane별 bindings 전환 규모 (2026-07-18 정량화)
+
+4개 lane 모두 Service 레이어(SpotNode·bridge·spot-part 제거)의 대규모
+전환이 필요하다. 각 lane 소스 규모와 구 API hit:
+
+| lane | 소스 파일 | SpotNode hit | bridge hit | 비고 |
+|---|---:|---:|---:|---|
+| cpp | 164 | 95 | 29 | Service 5549줄, 1036 컴파일 에러(§11.2.1) |
+| dotnet | 252 | 61 | 11 | |
+| jvm(java+kotlin) | 283+ | 조사 예정 | 조사 예정 | java 283 소스 |
+| node | 253 | 조사 예정 | 조사 예정 | |
+
+각 lane은 Runtime/raw-socket 레이어는 유지하고 Service 레이어를 Core
+10.0.0 dispatch/claim/batch/MeshNode API로 재작성한다. lane 순서: cpp(최소)
+→ dotnet → jvm → node. 병렬 가능하나 세션 단위로 lane별 완결 진행한다.
+
 ### 11.2.1 S8-CPP lane bindings 전환 범위 (2026-07-18 정량화)
 
 10.0.0 core 헤더/lib로 cpp bindings(164 소스)를 빌드해 전환 범위를 확정했다.

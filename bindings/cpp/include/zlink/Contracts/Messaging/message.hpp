@@ -87,8 +87,6 @@ class message_t
     bool is_empty () const noexcept;
     int ref_count () const noexcept;
 
-    std::optional<std::string> property (const std::string &property_) const;
-
     std::vector<uint8_t> to_bytes () const;
     size_t copy_to (std::span<std::byte> destination_) const;
     size_t copy_to (std::span<uint8_t> destination_) const;

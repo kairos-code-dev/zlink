@@ -288,16 +288,6 @@ int message_t::ref_count () const noexcept
     return _valid ? zlink_msg_refcnt (detail::native_handle (*this), nullptr) : -1;
 }
 
-std::optional<std::string> message_t::property (const std::string &property_) const
-{
-    if (!_valid || property_.empty ())
-        return std::nullopt;
-    const char *value = zlink_msg_gets (detail::native_handle (*this), property_.c_str ());
-    if (!value)
-        return std::nullopt;
-    return std::string (value);
-}
-
 std::vector<uint8_t> message_t::to_bytes () const
 {
     const uint8_t *ptr = reinterpret_cast<const uint8_t *> (data ());

@@ -397,7 +397,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S5 Core review loop | 완료 | 16 | 0 | 4 | iteration 1~9 기록은 각 finding ledger에 보존. iteration 10(`a4e91c01d`): Codex 7건+Sonnet 1건 병합 8건(scheduler lost-wakeup, generation 고정, timeout ABA, monitor UAF, join flags, acceptor errno, 테스트 단위, stale internals→S5-11 이관) 일괄 수정, 85/85 → `c1c579ad1`. iteration 11(새 §2 절차): Sonnet CLEAN·Codex NOT CLEAN(수정분 신규 반례 5건: monotonic clock 앵커, actor join task 미회수, monitor 등록 재생성 race, Windows errno, 회귀 테스트 부재) 일괄 수정, 85/85 → `7f9d3e315`. iteration 10~16 반복(11부터 새 §2 절차, 리뷰어 문서 산출물만). 계열별 root-cause 수정: scheduler lost-wakeup/generation/timeout ABA/monitor UAF·등록원자성/error-atomicity 전 계층(operation transaction·completion 선예약·detach primitive·scheduler 무할당 봉인). iteration 16 `1f247af7a`에서 Codex·Sonnet 모두 `CORE REVIEW CLEAN`(세 축). 종료 검증: CTest 86/86, ASAN 7/7 report 0, surface gate·package metadata·diff-check PASS, TSAN 신규 Mesh/monitor race 0(기존 auto-HWM 14+mailbox 1 유지). S5-11/12 internals 확정 커밋 `2128ae91c`. known risk 4=S6 이후 sanitizer gate로 이월 |
 | S6 Core release candidate | 완료(로컬 종결) | 0 | 0 | 0 | RC tag `core/v10.0.0-rc.1`. local Conan create·consumer smoke(`zlink 10.0.0`) 통과, SONAME 10, stable package 부재. GitHub native artifact·conan-release CI는 S11 외부배포로 이월(build.yml workflow-file issue·conandata sha256) |
 | S7 bindings·framework 공통 준비 | 완료 | 0 | 0 | 0 | RC artifact 동기화(libzlink 10.0.0→4 lane native), 제거 정책 검색 문자열·공통 smoke 정의 고정, Python/Go/Rust 보류. release workflow는 S11 이월 |
-| S8-CPP lane (C ABI+C++ bindings→framework) | 미착수 | 0 | 0 | 0 | - |
+| S8-CPP lane (C ABI+C++ bindings→framework) | 진행 중 | 0 | 0 | 0 | bindings 전환 범위 정량화(§11.2.1): Runtime 레이어 호환, Service 레이어(1036 에러, spot_node/bridge 삭제+spot/actor/stream 재작성) 전환 착수 |
 | S8-DN lane (.NET bindings→framework) | 미착수 | 0 | 0 | 0 | - |
 | S8-JVM lane (Java/Kotlin bindings→framework) | 미착수 | 0 | 0 | 0 | - |
 | S8-NODE lane (Node.js bindings→framework) | 미착수 | 0 | 0 | 0 | - |
@@ -871,10 +871,37 @@ S7 준비가 끝나면 네 언어 lane을 동시에 시작한다. 각 lane은 �
 
 | lane | bindings 대상 | bindings clean | framework 대상 | framework clean | 상태 |
 |---|---|---|---|---|---|
-| **S8-CPP** | C ABI + C++ bindings | `BINDINGS REVIEW CLEAN` | C++ framework (§13.2) | `CPP REVIEW CLEAN` | 미착수 |
+| **S8-CPP** | C ABI + C++ bindings | `BINDINGS REVIEW CLEAN` | C++ framework (§13.2) | `CPP REVIEW CLEAN` | bindings 전환 착수 |
 | **S8-DN** | .NET bindings | `BINDINGS REVIEW CLEAN` | .NET framework (§12) | `DOTNET REVIEW CLEAN` | 미착수 |
 | **S8-JVM** | Java/Kotlin bindings | `BINDINGS REVIEW CLEAN` | Java/Kotlin framework (§13.3) | `JVM REVIEW CLEAN` | 미착수 |
 | **S8-NODE** | Node.js bindings | `BINDINGS REVIEW CLEAN` | Node.js framework (§13.4) | `NODE REVIEW CLEAN` | 미착수 |
+
+### 11.2.1 S8-CPP lane bindings 전환 범위 (2026-07-18 정량화)
+
+10.0.0 core 헤더/lib로 cpp bindings(164 소스)를 빌드해 전환 범위를 확정했다.
+
+- **Runtime/Sockets·Core·Messaging·Options·Eventing**: 10.0.0과 호환. 유일
+  예외는 `message.cpp`의 `zlink_msg_gets`(제거된 per-message metadata API) 1건.
+- **Runtime/Service 전면 재작성 필요** (총 1036 컴파일 에러, 전부 이 레이어):
+  - `spot_node.cpp`(89), `spot_route_bridge.cpp`(16): 구 SpotNode·route bridge
+    API가 10.0.0에서 삭제됨 → **파일 삭제 대상**.
+  - `spot.cpp`(23)·`spot_send.cpp`(16)·`spot_receive.cpp`(9)·`spot_publish`:
+    구 `zlink_spot_*_spot_part`·`zlink_spot_publish_part`를 MeshNode/Spot
+    dispatch API(`zlink_spot_send_to_channel/to_spot`·`zlink_spot_publish`·
+    claim/receive batch)로 재작성.
+  - `actor.cpp`(5)·`actor_operations.cpp`(18): 구 `zlink_spot_node_actor_*`를
+    `zlink_mesh_node_actor_*`(new/lookup/join/leave/transfer)로 재작성.
+  - `request_reply.cpp`·`reply_operations.cpp`·`stream.cpp`: 구
+    `zlink_stream_bind_actor`·`zlink_*_reply_spot_part`를 STREAM session
+    service·`zlink_mesh_reply`로 재작성.
+- 제거 심볼 no-hit 대상(bindings clean 조건): `zlink_spot_node_*`,
+  `zlink_*_spot_part`, `zlink_spot_route_bridge_*`, `zlink_stream_bind_actor`,
+  `zlink_spot_publish_part`.
+
+계약 기준: Core Service spec(`core/doc/spec/core/service/01-mesh-node~05`)과
+C++ exact interface(`framework/doc/framework/spec/server/languages/cpp/`).
+Runtime 레이어는 유지, Service 레이어를 spec 기준으로 재작성한 뒤 bindings
+리뷰 campaign(Codex·Sonnet)을 연다.
 
 각 lane의 bindings 단계와 framework 단계는 별도 review campaign이고 별도
 finding ledger를 가진다. lane이 bindings clean에 도달하면 다른 lane을

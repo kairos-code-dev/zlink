@@ -2,7 +2,7 @@
 
 import { RoutingId } from '../core';
 
-/** Identifies what a monitored source is (a socket, or a spot's pub/sub side). */
+/** Identifies what a monitored source is. Core 10.0.0 defines only the socket source. */
 export const MonitorSourceKind = Object.freeze({ Socket: 1 } as const);
 export type MonitorSourceKindValue = typeof MonitorSourceKind[keyof typeof MonitorSourceKind];
 

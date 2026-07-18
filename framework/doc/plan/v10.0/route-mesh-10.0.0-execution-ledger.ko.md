@@ -142,23 +142,29 @@ queue, retry, peer admission과 lifecycle 복잡성은 책임을 소유한 깊�
 | **S4** | Core 구현·제거 정리와 정식 spec 일치 | 아니요 | 기능·삭제·회귀, header-spec 일치와 구현 후 internals gate 통과 |
 | **S5** | Core 구현 3축 독립 리뷰와 수정 반복 | 리뷰 2개만 병렬 | 두 리뷰어의 I1 계약 일치·I2 POSD/DDD·I3 정리 완결성이 모두 clean이고 `CORE REVIEW CLEAN` |
 | **S6** | Core 10.0.0 release-candidate GitHub Actions build와 pre-release 배포 | workflow 병렬 허용 | RC native artifact와 local Conan 검증 완료. stable tag·remote publish 없음 |
-| **S7** | bindings 적용, 3축 독립 리뷰와 local package E2E smoke | 언어별 제한적 병렬 | 모든 bindings local package 검증과 두 리뷰어의 I1·I2·I3 clean 및 `BINDINGS REVIEW CLEAN` |
-| **S8** | 다섯 언어 병렬 그룹의 `.NET framework`, sample·E2E 적용과 3축 리뷰 | S9의 세 lane과 동시 실행 | 두 리뷰어의 I1·I2·I3가 모두 clean이고 `DOTNET REVIEW CLEAN` |
-| **S9** | 같은 병렬 그룹의 C++, Java/Kotlin, Node.js framework 적용 | S8과 세 lane 동시 실행 | 세 lane 구현과 검증 완료 |
-| **S10** | S9의 세 구현 lane별 3축 독립 리뷰와 수정 반복 | 세 lane 병렬 | lane마다 두 리뷰어의 I1·I2·I3와 언어별 clean 문구가 모두 clean |
+| **S7** | bindings·framework 공통 준비(언어 독립) | 아니요 | RC artifact 동기화, 제거 wrapper·금지 구현 정책과 no-hit 목록, 공통 smoke matrix 정의가 4개 lane 입력으로 고정됨 |
+| **S8** | 네 언어 lane 병렬 파이프라인: 각 lane = bindings 적용→bindings 3축 리뷰→framework 적용→framework 3축 리뷰 | 네 lane(cpp·dotnet·jvm·node) 동시 실행 | lane마다 `BINDINGS REVIEW CLEAN`(bindings 단계)과 언어별 framework clean 문구(`CPP/DOTNET/JVM/NODE REVIEW CLEAN`)가 모두 나옴 |
 | **S11** | 전체 3축 최종 검토, Core stable·bindings 외부 배포와 종료 | 최종 리뷰 2개만 병렬 | 두 리뷰어의 I1·I2·I3 clean과 `FINAL REVIEW CLEAN` 뒤 stable package 배포·smoke 완료 |
 
-S3, S5, S7, S8, S10과 S11의 review gate를 생략하거나 다음 stage에서 대신 처리하지 않는다. S2·S3와
+**stage 재구성(2026-07-18 사용자 결정)**: bindings 적용 대상은 **cpp·dotnet·jvm(Java+Kotlin)·node
+네 언어**다. Python·Go·Rust는 이번 10.0.0 적용을 **보류**하며 코드는 삭제하지 않는다(framework는
+원래 이 셋을 대상으로 하지 않는다). C ABI는 별도 언어 lane이 아니라 cpp lane의 선행 검증(C header·
+shared library smoke)으로 포함한다. 이전 판의 S7(bindings 전체 stage)·S8(.NET framework)·S9(C++/JVM/
+Node framework)·S10(lane 리뷰)은 **S8 네 언어 lane 파이프라인**으로 통합됐다. 각 lane은 bindings를
+먼저 적용·리뷰해 `BINDINGS REVIEW CLEAN`을 낸 뒤, 그 언어의 framework를 적용·리뷰한다. lane끼리는
+독립·병렬이고, 한 lane이 bindings clean에 도달하면 다른 lane을 기다리지 않고 그 lane의 framework를
+바로 시작한다.
+
+S3, S5, S8 lane과 S11의 review gate를 생략하거나 다음 stage에서 대신 처리하지 않는다. S2·S3와
 병렬로 시작한 S4 변경은 S3를 대신하지 않으며 S3 finding이 반영된 정식 계약에 다시 맞춰야 한다.
 S3이 `승인 종료`이면 S3 gate를 통과한 terminal 상태로 보고 downstream stage를 진행한다. 정식 계약이
 바뀌지 않는 한 `DOC REVIEW CLEAN`을 만들기 위해 S3를 다시 열지 않는다.
 
-S8과 S9은 stage 번호가 달라도 같은 실행 순서에 속한다. S7 gate가 끝나면 `.NET`, C++, Java/Kotlin,
-Node.js lane을 동시에 시작한다. S9 lane은 S8 구현 또는 `DOTNET REVIEW CLEAN`을 기다리지 않으며,
-S8도 S9 결과를 선행 조건으로 사용하지 않는다. 각 lane은 공통 spec과 자기 언어의 exact interface를
-계약 기준으로 사용하고, 다른 언어 구현은 관찰 가능한 동작과 검증 방법을 비교하는 참고 증거로만
-사용한다. 다른 언어에만 있는 public API나 내부 구조를 복제하지 않는다.
-다섯 언어는 같은 관찰 가능한 공개 동작을 제공하되, 구현은 각 언어의 기존 framework 구조, 타입 체계,
+S8의 네 lane(cpp·dotnet·jvm·node)은 S7 공통 준비가 끝나면 동시에 시작한다. 각 lane은 자기 언어
+안에서 bindings→framework를 순차 진행하지만 lane 사이에는 선행 조건이 없다. 각 lane은 공통 spec과
+자기 언어의 exact interface를 계약 기준으로 사용하고, 다른 언어 구현은 관찰 가능한 동작과 검증
+방법을 비교하는 참고 증거로만 사용한다. 다른 언어에만 있는 public API나 내부 구조를 복제하지 않는다.
+네 언어는 같은 관찰 가능한 공개 동작을 제공하되, 구현은 각 언어의 기존 framework 구조, 타입 체계,
 비동기 처리, 오류 전달, resource 수명과 package 작성 규칙을 따른다. 언어 특성을 이유로 공개 동작을
 줄이거나 내부 정책을 호출자에게 전달하지 않는다.
 
@@ -170,7 +176,7 @@ S8도 S9 결과를 선행 조건으로 사용하지 않는다. 각 lane은 공�
 |---|---|---|
 | **R1** | Codex agent | 저장소의 실제 spec, source, test, package와 실행 증거를 독립 검토 |
 | **R2-DOC** | Claude Sonnet 모델 | S3 문서의 같은 고정 revision과 동일한 review manifest를 독립 검토 |
-| **R2-CODE** | Claude Sonnet 모델 | S5·S7·S8·S10·S11의 source·test·build·package 코드와 구현 결과를 같은 고정 revision과 동일한 review manifest에서 독립 검토 |
+| **R2-CODE** | Claude Sonnet 모델 | S5·S8 각 언어 lane·S11의 source·test·build·package 코드와 구현 결과를 같은 고정 revision과 동일한 review manifest에서 독립 검토 |
 
 R1과 해당 review 유형의 R2는 서로의 finding을 보기 전에 첫 검토를 완료한다. 두 결과가 나온 뒤 coordinator가 중복을
 합치고 하나의 finding ledger를 만든다. 한 리뷰어의 clean 판정으로 다른 리뷰어의 검토를 대신하지
@@ -215,7 +221,7 @@ clean과 종료 검증으로 구현이 확정된 뒤 실제 source 구조를 기
 연다. internals 확인까지 통과하면 review 문서, finding ledger와 stage 증거를 정리하고 다음 stage
 구현으로 이동한다.
 
-S3 문서 리뷰와 S5·S7·S8·S10·S11 구현 리뷰는 모두 Codex agent와 Claude Sonnet이 같은 frozen scope를
+S3 문서 리뷰와 S5·S8 lane·S11 구현 리뷰는 모두 Codex agent와 Claude Sonnet이 같은 frozen scope를
 각각 독립 검토한다. 문서 리뷰에서는 spec·guide·internals·E2E·sample의 계약과 설명을 검토하고, 구현
 리뷰에서는 frozen spec을 기준으로 source·test·build·package와 실제 실행 결과의 일치를 검토한다.
 구현 확정 전에 작성된 internals는 구현 판정의 근거와 수정 대상에서 제외한다.
@@ -390,10 +396,11 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S4 Core 구현·정식 spec 일치 | 완료 | 0 | 0 | 4 | 2026-07-17 HEAD `5857824c2`+working tree에서 84/84 suite·2-process 10/10·stress 3/3·ASAN/UBSAN/TSAN·surface gate·C ABI smoke·초기 internals 기록·no-hit 통과. 최종 internals 확정은 S5-11/12. known risk 4=TSAN 기존 기계 3계열+MIXED source 도달성(§8.1 S4-05A) |
 | S5 Core review loop | 완료 | 16 | 0 | 4 | iteration 1~9 기록은 각 finding ledger에 보존. iteration 10(`a4e91c01d`): Codex 7건+Sonnet 1건 병합 8건(scheduler lost-wakeup, generation 고정, timeout ABA, monitor UAF, join flags, acceptor errno, 테스트 단위, stale internals→S5-11 이관) 일괄 수정, 85/85 → `c1c579ad1`. iteration 11(새 §2 절차): Sonnet CLEAN·Codex NOT CLEAN(수정분 신규 반례 5건: monotonic clock 앵커, actor join task 미회수, monitor 등록 재생성 race, Windows errno, 회귀 테스트 부재) 일괄 수정, 85/85 → `7f9d3e315`. iteration 10~16 반복(11부터 새 §2 절차, 리뷰어 문서 산출물만). 계열별 root-cause 수정: scheduler lost-wakeup/generation/timeout ABA/monitor UAF·등록원자성/error-atomicity 전 계층(operation transaction·completion 선예약·detach primitive·scheduler 무할당 봉인). iteration 16 `1f247af7a`에서 Codex·Sonnet 모두 `CORE REVIEW CLEAN`(세 축). 종료 검증: CTest 86/86, ASAN 7/7 report 0, surface gate·package metadata·diff-check PASS, TSAN 신규 Mesh/monitor race 0(기존 auto-HWM 14+mailbox 1 유지). S5-11/12 internals 확정 커밋 `2128ae91c`. known risk 4=S6 이후 sanitizer gate로 이월 |
 | S6 Core release candidate | 미착수 | 0 | 0 | 0 | - |
-| S7 bindings local package | 미착수 | 0 | 0 | 0 | - |
-| S8 `.NET` 병렬 lane | 미착수 | 0 | 0 | 0 | - |
-| S9 C++·JVM·Node.js 병렬 lane | 미착수 | 0 | 0 | 0 | - |
-| S10 병렬 review loop | 미착수 | 0 | 0 | 0 | - |
+| S7 bindings·framework 공통 준비 | 미착수 | 0 | 0 | 0 | - |
+| S8-CPP lane (C ABI+C++ bindings→framework) | 미착수 | 0 | 0 | 0 | - |
+| S8-DN lane (.NET bindings→framework) | 미착수 | 0 | 0 | 0 | - |
+| S8-JVM lane (Java/Kotlin bindings→framework) | 미착수 | 0 | 0 | 0 | - |
+| S8-NODE lane (Node.js bindings→framework) | 미착수 | 0 | 0 | 0 | - |
 | S11 Core stable·bindings 외부 배포·최종 검토 | 미착수 | 0 | 0 | 0 | - |
 
 ## 4. S0 — Core 정식 spec 범위와 결정 확정
@@ -805,7 +812,15 @@ S6 완료 gate:
 - [ ] 검증된 Core 10.0.0 RC artifact URL, source SHA와 checksum이 S7 입력으로 기록되어 있다.
 - [ ] `core/v10.0.0` stable tag, stable GitHub Release와 Conan remote package는 아직 존재하지 않는다.
 
-## 11. S7 — bindings 적용, 리뷰와 local package E2E smoke
+## 11. S7 — bindings·framework 공통 준비 (언어 독립)
+
+S7은 네 언어 lane(cpp·dotnet·jvm·node)이 공유하는 언어 독립 준비를 한 번
+수행한다. RC artifact 동기화, 제거 wrapper·금지 구현 정책과 no-hit 목록,
+공통 smoke matrix 정의가 여기서 고정되며 각 lane은 이를 입력으로만 쓴다.
+언어별 bindings·framework 적용과 리뷰는 S8 lane 파이프라인에서 수행한다.
+Python·Go·Rust는 이번 10.0.0 적용을 보류하므로 이 준비에서 대응하지 않는다
+(코드는 삭제하지 않는다). C ABI는 별도 언어가 아니라 cpp lane의 선행 검증
+(C header·shared library smoke)으로 포함한다.
 
 ### 11.1 공통 적용
 
@@ -814,30 +829,61 @@ S6 완료 gate:
 | S7-00 | RC tag parser와 runtime version 분리 | local-package script가 `core/v10.0.0-rc.N` asset tag는 그대로 사용하고 C/header runtime version은 숫자 `10.0.0`으로 기록하며 version macro에 `-rc.N` suffix를 남기지 않음 | 미착수 | - |
 | S7-00A | RC fixture·provenance test | RC/stable tag fixture가 version marker, source SHA, checksum과 asset URL을 검증하고 malformed tag·suffix 잔존·checksum 불일치에서 실패 | 미착수 | - |
 | S7-01 | Core RC artifact 동기화 | update-zlink-libs script가 `core/v10.0.0-rc.N` asset의 runtime version 10.0.0, source SHA와 checksum을 검증하고 복사 | 미착수 | - |
-| S7-02 | binding API inventory 작성 | C ABI, C++, .NET, Java, Node, Python, Go, Rust 전체 대응 | 미착수 | - |
-| S7-03 | 제거 wrapper와 generated API 정리 | SpotNode mode, bridge, Core dispatch worker option, remote subject query, Spot·Actor–STREAM service `*_part`, Actor join/lifecycle 전용 receive·reply, channel-dealer event와 old alias no-hit. 모든 raw socket용 channel metadata wrapper 유지 확인 | 미착수 | - |
-| S7-04 | MeshNode API 구현 | lifecycle, peer, node/channel call·one-shot reply, direct와 publisher의 optional application metadata frame, ready/claim/batch와 publisher 공개 | 미착수 | - |
-| S7-04A | claim·batch wrapper 수명 구현 | deterministic release, destroy 뒤 finalizer release, borrowed metadata/payload view와 retain contract 통과 | 미착수 | - |
-| S7-05 | ownership과 error mapping 구현 | Core contract와 언어별 예외·result 의미 일치 | 미착수 | - |
-| S7-06 | source/package API snapshot 갱신 | 10.0.0 공개 표면과 native payload 일치 | 미착수 | - |
-| S7-07 | bindings release workflow 수정 | RC와 최종 `core/v10.0.0`의 동일 source SHA·checksum 검증 및 release asset 사용, tag run에도 provenance 필수 | 미착수 | - |
+| S7-02 | binding API inventory 작성 | 적용 대상 C ABI·C++·.NET·Java/Kotlin·Node 전체 대응. Python·Go·Rust는 보류 대상으로 표시만 하고 갱신하지 않음 | 미착수 | - |
+| S7-03 | 제거 wrapper와 generated API 정책·no-hit 목록 | SpotNode mode, bridge, Core dispatch worker option, remote subject query, Spot·Actor–STREAM service `*_part`, Actor join/lifecycle 전용 receive·reply, channel-dealer event와 old alias no-hit 검색 문자열 고정. 모든 raw socket용 channel metadata wrapper 유지 기준. 실제 적용은 각 lane | 미착수 | - |
+| S7-07 | bindings release workflow 수정 | RC와 최종 `core/v10.0.0`의 동일 source SHA·checksum 검증 및 release asset 사용, tag run에도 provenance 필수. 네 언어 공통 workflow 골격 | 미착수 | - |
 | S7-08 | `.NET` native 입력 경로 통일 | workflow와 pack이 `bindings/dotnet/native/<rid>/`만 source 입력으로 사용 | 미착수 | - |
+| S7-SMOKE | 공통 smoke matrix 정의 | node/channel/Spot direct send/request와 Logical Multicast metadata snapshot·malformed·1024 경계·relay·reply 비자동복사, NODROP, batch reset/retain과 shutdown을 각 lane이 실행할 공통 scenario로 고정 | 미착수 | - |
 
-### 11.2 리뷰 종료 뒤 언어별 package·consumer 검증
+S7 완료 gate:
 
-아래 검증은 S7-18에서 두 reviewer가 `BINDINGS REVIEW CLEAN`을 남긴 뒤 실행한다.
+- [ ] RC artifact 동기화와 provenance test가 통과한다.
+- [ ] 제거 wrapper 정책·no-hit 검색 문자열과 공통 smoke matrix가 네 lane 입력으로 고정됐다.
+- [ ] Python·Go·Rust는 보류로 표시되고 코드가 삭제되지 않았다.
+
+### 11.2 S8 lane 파이프라인 (cpp·dotnet·jvm·node 병렬)
+
+S7 준비가 끝나면 네 언어 lane을 동시에 시작한다. 각 lane은 자기 언어 안에서
+다음 순서를 지키고, lane 사이에는 선행 조건이 없다.
+
+1. **bindings 적용**: MeshNode API·claim/batch 수명·ownership/error mapping·
+   source/package snapshot 갱신. cpp lane은 C ABI consumer(header·shared
+   library·C smoke)를 선행 검증으로 포함한다.
+2. **bindings 리뷰**: Codex·Sonnet 3축 독립 리뷰(§2 절차) 반복 →
+   `BINDINGS REVIEW CLEAN`. 리뷰 clean 뒤 local package·consumer·공통 smoke
+   검증.
+3. **framework 적용**: 그 언어의 framework(공통·server 계약과 exact
+   interface)·sample·E2E 전환. dotnet은 §12(구 S8) 상세 항목, cpp·jvm·node는
+   §13(구 S9) 항목을 lane 내부 단계로 사용한다.
+4. **framework 리뷰**: Codex·Sonnet 3축 독립 리뷰 반복 → 언어별 clean 문구
+   (`CPP REVIEW CLEAN`·`DOTNET REVIEW CLEAN`·`JVM REVIEW CLEAN`·
+   `NODE REVIEW CLEAN`). 리뷰 clean 뒤 package·consumer 검증과 언어별
+   internals 확정.
+
+| lane | bindings 대상 | bindings clean | framework 대상 | framework clean | 상태 |
+|---|---|---|---|---|---|
+| **S8-CPP** | C ABI + C++ bindings | `BINDINGS REVIEW CLEAN` | C++ framework (§13.2) | `CPP REVIEW CLEAN` | 미착수 |
+| **S8-DN** | .NET bindings | `BINDINGS REVIEW CLEAN` | .NET framework (§12) | `DOTNET REVIEW CLEAN` | 미착수 |
+| **S8-JVM** | Java/Kotlin bindings | `BINDINGS REVIEW CLEAN` | Java/Kotlin framework (§13.3) | `JVM REVIEW CLEAN` | 미착수 |
+| **S8-NODE** | Node.js bindings | `BINDINGS REVIEW CLEAN` | Node.js framework (§13.4) | `NODE REVIEW CLEAN` | 미착수 |
+
+각 lane의 bindings 단계와 framework 단계는 별도 review campaign이고 별도
+finding ledger를 가진다. lane이 bindings clean에 도달하면 다른 lane을
+기다리지 않고 그 lane의 framework 적용을 시작한다. 네 lane이 모두 framework
+clean에 도달하면 S11 최종 통합 리뷰로 넘어간다.
+
+### 11.3 lane별 bindings 검증 참조 (구 언어별 항목)
+
+아래는 각 lane의 bindings 리뷰 clean 뒤 실행하는 언어별 package·consumer
+검증이다. 보류한 Python·Go·Rust 항목은 제거했다.
 
 | ID | 범위 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
-| S7-C | C ABI consumer | public header, shared library와 C smoke 통과 | 미착수 | - |
-| S7-CPP | C++ bindings | contract, package consumer와 E2E smoke 통과 | 미착수 | - |
-| S7-DN | .NET bindings | contract, NuGet consumer와 E2E smoke 통과 | 미착수 | - |
-| S7-J | Java bindings | contract, package consumer와 E2E smoke 통과 | 미착수 | - |
-| S7-N | Node.js bindings | contract, npm consumer와 E2E smoke 통과 | 미착수 | - |
-| S7-PY | Python bindings | contract, wheel consumer와 E2E smoke 통과 | 미착수 | - |
-| S7-GO | Go bindings | contract, module consumer와 E2E smoke 통과 | 미착수 | - |
-| S7-RS | Rust bindings | contract, crate consumer와 E2E smoke 통과 | 미착수 | - |
-| S7-SMOKE | 공통 smoke matrix | node/channel/Spot direct send/request와 Logical Multicast metadata snapshot·malformed·1024 경계·relay·reply 비자동복사, NODROP, batch reset/retain과 shutdown 통과 | 미착수 | - |
+| S8-CPP-V | C ABI + C++ | public header·shared library·C smoke와 C++ contract·package consumer·E2E smoke 통과 | 미착수 | - |
+| S8-DN-V | .NET | contract, NuGet consumer와 E2E smoke 통과 | 미착수 | - |
+| S8-JVM-V | Java/Kotlin | contract, package consumer와 E2E smoke 통과 | 미착수 | - |
+| S8-NODE-V | Node.js | contract, npm consumer와 E2E smoke 통과 | 미착수 | - |
+| S8-SMOKE | 공통 smoke matrix | 네 lane이 S7-SMOKE 정의를 각 언어에서 실행하고 통과 | 미착수 | - |
 
 ### 11.3 bindings 독립 리뷰와 외부 배포 전 검증
 
@@ -872,7 +918,7 @@ S7 완료 gate:
 - [ ] Codex agent와 R2 결과가 모두 `BINDINGS REVIEW CLEAN`이다.
 - [ ] 외부 immutable 10.0.0 package는 아직 공개하지 않았다.
 
-## 12. S8 — 다섯 언어 병렬 그룹의 `.NET` lane
+## 12. S8-DN lane 상세 — .NET (bindings clean 뒤 framework 단계)
 
 S8은 S9의 C++·JVM·Node.js lane과 동시에 시작한다. `.NET` 구현은 다른 언어의 선행 기준 구현이
 아니며, 공통 framework spec과 `.NET` exact interface를 계약 기준으로 사용한다. 다른 lane과 비교가
@@ -925,7 +971,7 @@ S8 완료 gate:
 - [ ] 두 clean 결과 뒤 S8-11의 package·consumer 종료 검증이 통과했다.
 - [ ] S8-11 뒤 S8-17/18에서 최종 `.NET` internals를 한 번 반영하고 source와의 일치를 확인했다.
 
-## 13. S9 — S8과 동시에 진행하는 C++, Java/Kotlin과 Node.js lane
+## 13. S8-CPP·JVM·NODE lane 상세 — C++·Java/Kotlin·Node.js framework 단계
 
 ### 13.1 병렬 작업 격리
 
@@ -996,7 +1042,7 @@ S9 완료 gate:
 - [ ] 세 lane이 S8의 구현 결과나 clean 판정을 계약 근거 또는 선행 조건으로 사용하지 않았다.
 - [ ] 공통 spec 변경이 필요해진 경우 구현을 멈추고 S2·S3 계약 review를 다시 연다.
 
-## 14. S10 — S9의 세 구현 lane별 병렬 독립 리뷰 반복
+## 14. lane framework 리뷰 상세 (S8-CPP/JVM/NODE framework 단계 리뷰)
 
 S9의 세 구현 lane 리뷰는 서로 병렬 실행할 수 있다. 각 lane 안에서는 Codex agent와 R2 리뷰를
 같은 revision으로 병렬 실행한다. reviewer는 다른 lane을 수정하지 않는다.

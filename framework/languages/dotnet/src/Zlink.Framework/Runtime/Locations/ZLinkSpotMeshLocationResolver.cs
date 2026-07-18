@@ -21,16 +21,29 @@ internal sealed class ZLinkSpotMeshLocationResolver
         string actorId,
         CancellationToken cancellationToken)
     {
+        var (row, _) = await ResolveActorWithPresenceAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+        return row;
+    }
+
+    /// <summary>See ZLinkStoreLocationResolvers.ResolveActorRowWithPresenceAsync.</summary>
+    internal async ValueTask<(ZLinkActorLocation? Row, bool RowPresent)>
+        ResolveActorWithPresenceAsync(
+            string actorId,
+            CancellationToken cancellationToken)
+    {
+        var present = false;
         foreach (var meshName in _meshNames)
         {
-            var row = await _rows.ResolveActorRowAsync(
+            var (row, rowPresent) = await _rows.ResolveActorRowWithPresenceAsync(
                     new ZLinkActorLocationKey(meshName, actorId),
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (row is not null) return row;
+            if (row is not null) return (row, true);
+            present |= rowPresent;
         }
 
-        return null;
+        return (null, present);
     }
 
     internal async ValueTask<ZLinkSpotLocation?> ResolveAsync(

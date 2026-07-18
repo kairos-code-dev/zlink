@@ -95,9 +95,7 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         var submit = _spot.RequestToChannel(
             channelName, parts, out var operationId, timeout ?? default, flags,
             metadata);
-        // Terminal admission failures (NotFound, InvalidState, ...) must surface
-        // to the caller; only Backpressured means "wait for send-ready and retry".
-        return ZLinkSubmitFailureMapper.AcceptOrThrow(submit, $"channel '{channelName}'")
+        return AcceptRequestSubmit(submit, $"channel '{channelName}'")
                && _completions.RegisterRequest(operationId, callback);
     }
 
@@ -177,10 +175,24 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         var submit = _spot.RequestToSpot(
             targetRid, spotRid, spotGeneration, parts, out var operationId,
             timeout ?? default, flags, metadata);
-        // See RequestToChannel: only Backpressured may wait for send-ready.
-        return ZLinkSubmitFailureMapper.AcceptOrThrow(
-                   submit, $"SPOT '{spotRid}' on node '{targetRid}'")
+        return AcceptRequestSubmit(submit, $"SPOT '{spotRid}' on node '{targetRid}'")
                && _completions.RegisterRequest(operationId, callback);
+    }
+
+    // Terminal admission failures (NotFound, InvalidState, ...) surface to the
+    // caller; Backpressured waits for send-ready; a NotConnected admission gap
+    // is a retriable transport window and rides the async submitter's retry
+    // classification instead of failing the blocking call outright.
+    private static bool AcceptRequestSubmit(SubmitResult submit, string targetDescription)
+    {
+        return submit switch
+        {
+            SubmitResult.Ok => true,
+            SubmitResult.Backpressured => false,
+            SubmitResult.NotConnected =>
+                throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected),
+            _ => throw ZLinkSubmitFailureMapper.CreateException(submit, targetDescription)
+        };
     }
 
     public ZLinkBackendActorJoinRequest? RecvActorJoin(RecvFlags flags)

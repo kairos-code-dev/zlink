@@ -22,9 +22,27 @@ internal static class SmF6RemoteSpotOutboundScenario
         ZlinkStreamAssert.Ensure(target.NodeRid == SpotServiceNames.MultiSpotNodeB,
             "SM-F6 target spot was not created on node B.");
 
-        var mesh = (await multiA.Post("/spot/spot-only/request-send")
-            .Body(new SpotOnlyMeshReq(sourceSpotRid, targetSpotRid, marker))
-            .Async<SpotOnlyMeshRes>()).Body;
+        // The first cross-node call races mesh admission at startup; a
+        // blocking submit only waits until the MeshNode send timeout
+        // (spec 04 §1.1), so poll within a bounded window until the pair
+        // admits instead of asserting on the racing first attempt.
+        SpotOnlyMeshRes mesh;
+        var admissionDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+        while (true)
+        {
+            try
+            {
+                mesh = (await multiA.Post("/spot/spot-only/request-send")
+                    .Body(new SpotOnlyMeshReq(sourceSpotRid, targetSpotRid, marker))
+                    .Async<SpotOnlyMeshRes>()).Body;
+                break;
+            }
+            catch (Zlink.Framework.Contracts.Errors.ZLinkFrameworkException)
+                when (DateTimeOffset.UtcNow < admissionDeadline)
+            {
+                await Task.Delay(200);
+            }
+        }
         ZlinkStreamAssert.Ensure(mesh.TargetSpotRid == targetSpotRid, "SM-F6 request target mismatch.");
         ZlinkStreamAssert.Ensure(mesh.TargetValue == 7, "SM-F6 target request value mismatch.");
 

@@ -89,6 +89,20 @@ internal sealed class ZLinkStoreLocationResolvers :
         ZLinkActorLocationKey key,
         CancellationToken cancellationToken = default)
     {
+        var (row, _) = await ResolveActorRowWithPresenceAsync(key, cancellationToken)
+            .ConfigureAwait(false);
+        return row;
+    }
+
+    /// <summary>Resolve plus the raw-row presence: callers that retry a
+    /// transient resolve window (a claimed-but-unpublished generation-0 row,
+    /// a lagging replica view) need to distinguish it from a confirmed store
+    /// miss, which is terminal — the identity was removed.</summary>
+    internal async ValueTask<(ZLinkActorLocation? Row, bool RowPresent)>
+        ResolveActorRowWithPresenceAsync(
+            ZLinkActorLocationKey key,
+            CancellationToken cancellationToken = default)
+    {
         var raw = await ZLinkLocationStoreRead.ExecuteAsync(
             _health,
             "ZLinkActorLocation-resolver-read",
@@ -116,7 +130,7 @@ internal sealed class ZLinkStoreLocationResolvers :
             await _events.ActorResolveMissAsync(key, cancellationToken).ConfigureAwait(false);
         }
 
-        return row;
+        return (row, raw is not null);
     }
 
     private async ValueTask<TRow?> ResolveAsync<TStore, TKey, TRow>(

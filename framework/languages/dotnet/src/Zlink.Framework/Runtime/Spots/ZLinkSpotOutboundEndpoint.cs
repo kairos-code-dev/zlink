@@ -74,6 +74,18 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         }
     }
 
+    /// <summary>One-shot non-blocking channel send (TrySubmit surface): a
+    /// single DontWait attempt on the classic dealer. False = backpressured.</summary>
+    public bool TrySendToChannelOnce(
+        string channelName,
+        IReadOnlyList<Message> parts)
+    {
+        using var operation = runtime.EnterOperation();
+        var bundle = runtime.GetClientBundle(channelName);
+        var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
+        return dealer.Send(parts, SendFlags.DontWait);
+    }
+
     public ValueTask SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
@@ -129,6 +141,25 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     {
         using var operation = runtime.EnterOperation();
         return outbound.TryPublishCurrentOnce(topic, parts, metadata, out detail);
+    }
+
+    /// <summary>One-shot non-blocking spot send (TrySubmit surface): a single
+    /// DontWait attempt with no send-ready wait. False = backpressured.</summary>
+    public bool TrySendToSpotOnce(
+        string routerChannelId,
+        RoutingId targetNodeRid,
+        RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return runtime.TrySendToSpotViaRouterChannelOnce(
+            routerChannelId,
+            targetNodeRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            parts,
+            metadata);
     }
 
     public ValueTask SendToSpotAsync(

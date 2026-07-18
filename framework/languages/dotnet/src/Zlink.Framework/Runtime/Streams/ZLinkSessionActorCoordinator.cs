@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Zlink.Framework.Runtime.Streams;
 
+using Zlink.Framework.Runtime.Actors;
+
 internal sealed class ZLinkSessionActorCoordinator(
     ZLinkFrameworkRuntime runtime,
     IZLinkStream stream)
@@ -176,20 +178,26 @@ internal sealed class ZLinkSessionActorCoordinator(
 
         if (runtime.Services.GetService<IZLinkActorDirectory>() is { } directory)
         {
-            // A resolve miss can be the transfer-commit window (the row is
-            // rewritten while the actor moves nodes); retry within the
-            // request timeout before declaring the actor gone, so a relayed
-            // one-way frame is not lost to a milliseconds-wide gap.
+            // A resolve miss with the row still present is the
+            // transfer-commit window (a claimed-but-unpublished
+            // generation-0 row while the actor moves nodes); retry within
+            // the request timeout so a relayed frame is not lost to a
+            // milliseconds-wide gap. A confirmed store miss is terminal —
+            // the actor was destroyed — and fails fast.
             var deadline = DateTime.UtcNow + runtime.Registration.DefaultRequestTimeout;
             ActorRef? current;
             while (true)
             {
-                current = await directory.FindAsync(actorRef.ActorId, cancellationToken)
-                    .ConfigureAwait(false);
+                bool rowPresent;
+                (current, rowPresent) = directory is ZLinkActorDirectory concreteDirectory
+                    ? await concreteDirectory.FindWithPresenceAsync(actorRef.ActorId, cancellationToken)
+                        .ConfigureAwait(false)
+                    : (await directory.FindAsync(actorRef.ActorId, cancellationToken)
+                        .ConfigureAwait(false), false);
                 if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
                     Console.Error.WriteLine(
-                        $"[relay-resolve] actor={actorRef.ActorId} bound={actorRef.Ref.NodeRid}/{actorRef.Ref.Generation} resolved={(current is { } c ? $"{c.NodeRid}/{c.Generation}" : "<none>")}");
-                if (current is not null || DateTime.UtcNow >= deadline) break;
+                        $"[relay-resolve] actor={actorRef.ActorId} bound={actorRef.Ref.NodeRid}/{actorRef.Ref.Generation} resolved={(current is { } c ? $"{c.NodeRid}/{c.Generation}" : "<none>")} present={rowPresent}");
+                if (current is not null || !rowPresent || DateTime.UtcNow >= deadline) break;
                 await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationToken)
                     .ConfigureAwait(false);
             }

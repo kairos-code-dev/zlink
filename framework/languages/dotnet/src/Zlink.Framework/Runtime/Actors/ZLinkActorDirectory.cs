@@ -13,22 +13,35 @@ internal sealed class ZLinkActorDirectory(
         string actorId,
         CancellationToken cancellationToken = default)
     {
+        var (actorRef, _) = await FindWithPresenceAsync(actorId, cancellationToken)
+            .ConfigureAwait(false);
+        return actorRef;
+    }
+
+    /// <summary>Find plus the raw-row presence: a null ref with a present row
+    /// is a transient resolve window (claimed-but-unpublished generation-0,
+    /// lagging replica) worth retrying; a null ref without a row is a
+    /// confirmed miss — the actor was destroyed or never existed.</summary>
+    internal async ValueTask<(ActorRef? Ref, bool RowPresent)> FindWithPresenceAsync(
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
 
         if (runtime.TryGetCreatedActorState(actorId, out var state)
             && state.NativeActorRef is { } localActorRef)
         {
-            return localActorRef.ToNative();
+            return (localActorRef.ToNative(), true);
         }
 
         if (locations is null)
         {
-            return null;
+            return (null, false);
         }
 
-        var row = await _meshRows!.ResolveActorAsync(actorId, cancellationToken)
+        var (row, rowPresent) = await _meshRows!.ResolveActorWithPresenceAsync(actorId, cancellationToken)
             .ConfigureAwait(false);
-        return row?.ActorRef;
+        return (row?.ActorRef, rowPresent);
     }
 
     public async ValueTask<ActorRef> EnsureAsync(

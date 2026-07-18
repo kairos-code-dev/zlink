@@ -146,14 +146,6 @@ final class NativeSocketRuntime implements AutoCloseable {
         }
     }
 
-    public void attachStreamRaw(StreamRawPacketHandler handler) {
-        socketCore.attachStreamRaw(handler);
-    }
-
-    public void attachStreamRaw(StreamUInt32RawNativeHandler handler) {
-        socketCore.attachStreamRaw(handler);
-    }
-
     public void attachStreamPacket(StreamFramedPacketHandler handler) {
         socketCore.attachStreamPacket(handler);
     }
@@ -164,10 +156,6 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     public void attachStreamPacket(StreamUInt32FramedNativeHandler handler) {
         socketCore.attachStreamPacket(handler);
-    }
-
-    public void detachStream() {
-        socketCore.detachStream();
     }
 
     public void setSockOpt(int optionId, String optionName, byte[] value) {
@@ -531,10 +519,6 @@ final class NativeSocketRuntime implements AutoCloseable {
 
     public void onReceive(SocketMessageHandler handler) {
         socketCore.onReceive(handler);
-    }
-
-    public void onSubscribe(SubscribeHandler handler) {
-        socketCore.onSubscribe(handler);
     }
 
     public void setSendReadyHandler(SendReadyHandler handler) {

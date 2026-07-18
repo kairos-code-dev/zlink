@@ -12,6 +12,7 @@ internal static class ObsC1DrainingMarkerScenario
         var suffix = Guid.NewGuid().ToString("N");
         var actorId = $"obs-c1-{suffix}";
         var roomRid = $"room-c1-{suffix}";
+        RoomRid = roomRid;
         await context.PlayA.Post("/rooms").Body(new CreateRoomReq(roomRid)).AsyncRaw();
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
@@ -52,5 +53,8 @@ internal static class ObsC1DrainingMarkerScenario
     }
 
     private static async Task<EvidenceSnapshot> EvidenceAsync(ScenarioContext context) =>
-        (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body;
+        (await context.PlayA.Get("/evidence").Query("spotRid", RoomRid!)
+            .Async<EvidenceSnapshot>()).Body;
+
+    private static string? RoomRid;
 }

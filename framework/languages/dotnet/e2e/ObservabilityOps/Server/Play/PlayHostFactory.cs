@@ -9,6 +9,7 @@ using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Spots;
@@ -110,21 +111,38 @@ internal static class PlayHostFactory
         async Task<IResult> CreateEvidenceAsync(
             IZLinkDrainControl drain,
             IZLinkLocationRuntimeQuery locations,
+            IZLinkSpotHandleResolver spots,
+            IZLinkActorDirectory actors,
             EvidenceStore evidence,
             IServiceProvider services,
+            string? spotRid,
+            string? actorId,
             CancellationToken cancellationToken)
         {
             var peers = await locations.ListMeshNodeDescriptorsAsync(
                 ObservabilityNames.PlayMesh, cancellationToken);
             // Spot and actor rows are resolve-only store records in 10.0.0:
-            // the operational surface enumerates MeshNode descriptors only.
+            // the operational surface enumerates MeshNode descriptors and
+            // resolves a caller-named spot rid on request.
+            var actorRows = Array.Empty<ActorRow>();
+            if (!string.IsNullOrWhiteSpace(actorId)
+                && await actors.FindAsync(actorId, cancellationToken) is { } actorRef)
+                actorRows =
+                [
+                    new ActorRow(actorId, actorRef.NodeRid.ToString(), (long)actorRef.Generation)
+                ];
+            var spotRows = Array.Empty<SpotRow>();
+            if (!string.IsNullOrWhiteSpace(spotRid)
+                && await spots.ResolveSpotHandleAsync(RoutingId.From(spotRid), cancellationToken)
+                    is { } handle)
+                spotRows = [new SpotRow(ObservabilityNames.PlayMesh, options.Rid, handle.SpotRid.ToString(), "spot", 0)];
             return Results.Ok(new EvidenceSnapshot(
                 options.Rid, drain.IsReady, evidence.Snapshot(),
                 services.GetService<MetricEvidenceCollector>()?.Snapshot() ?? [],
                 peers.Select(row => new PeerRow(row.Rid.ToString(),
                     row.Draining, (long)row.LifecycleGeneration)).ToArray(),
-                [],
-                []));
+                actorRows,
+                spotRows));
         }
     }
 

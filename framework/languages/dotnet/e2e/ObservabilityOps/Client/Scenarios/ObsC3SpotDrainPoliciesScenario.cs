@@ -13,14 +13,14 @@ internal static class ObsC3SpotDrainPoliciesScenario
         await context.PlayA.Post("/rooms")
             .Body(new CreateRoomReq(roomRid, "auto-close")).AsyncRaw();
         await context.PlayA.Post("/drain?deadlineMs=10000").AsyncRaw();
-        var duringNatural = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body;
+        var duringNatural = (await context.PlayA.Get("/evidence").Query("spotRid", roomRid).Async<EvidenceSnapshot>()).Body;
         ZlinkStreamAssert.Ensure(duringNatural.SpotRows.Any(row => row.SpotRid == roomRid),
             "OBS-C3 drain-natural removed the room before its application lifetime ended.");
         var playDrain = await ScenarioContext.WaitForDrainAsync(
             context.PlayA, TimeSpan.FromSeconds(12));
         ZlinkStreamAssert.Ensure(playDrain.Result == "Drained",
             $"OBS-C3 drain-natural did not finish cleanly: {playDrain.Result}/{playDrain.Reason}.");
-        var playMetrics = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body.Metrics;
+        var playMetrics = (await context.PlayA.Get("/evidence").Query("spotRid", roomRid).Async<EvidenceSnapshot>()).Body.Metrics;
         ZlinkStreamAssert.Ensure(playMetrics.Any(sample => sample.Name == "zlink.drain.rooms.drained"
                                                           && sample.Value >= 1
                                                           && sample.Tags.GetValueOrDefault("policy") == "drain_natural"),
@@ -38,7 +38,7 @@ internal static class ObsC3SpotDrainPoliciesScenario
             context.WorkflowA, TimeSpan.FromSeconds(12));
         ZlinkStreamAssert.Ensure(workflowDrain.Result == "Drained",
             $"OBS-C3 release-and-recreate did not drain cleanly: {workflowDrain.Result}/{workflowDrain.Reason}.");
-        var released = (await context.WorkflowB.Get("/evidence").Async<EvidenceSnapshot>()).Body;
+        var released = (await context.WorkflowB.Get("/evidence").Query("spotRid", workflowRid).Async<EvidenceSnapshot>()).Body;
         ZlinkStreamAssert.Ensure(released.SpotRows.All(row => row.SpotRid != workflowRid),
             "OBS-C3 release-and-recreate left the owner Spot row registered.");
         await context.WorkflowB.Post("/workflows")

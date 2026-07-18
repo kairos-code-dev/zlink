@@ -61,7 +61,8 @@ internal static class ObsC2ActorHandoffScenario
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var snapshot = (await context.PlayB.Get("/evidence").Async<EvidenceSnapshot>()).Body;
+            var snapshot = (await context.PlayB.Get("/evidence").Query("actorId", actorId)
+                .Async<EvidenceSnapshot>()).Body;
             if (snapshot.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == "play-b")) return snapshot;
             await Task.Delay(100);
         }

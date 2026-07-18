@@ -96,7 +96,8 @@ internal static class WorkflowHostFactory
             return Results.Ok(response);
         });
         app.MapGet("/evidence", async (IZLinkDrainControl drain, IZLinkLocationRuntimeQuery locations,
-            WorkflowEvidenceStore evidence, MetricEvidenceCollector metrics) =>
+            Zlink.Framework.Contracts.Locations.IZLinkSpotHandleResolver spots,
+            WorkflowEvidenceStore evidence, MetricEvidenceCollector metrics, string? spotRid) =>
         {
             // Spot rows are resolve-only store records in 10.0.0: the
             // operational surface enumerates MeshNode descriptors only. The
@@ -116,10 +117,30 @@ internal static class WorkflowHostFactory
             {
                 peers = [];
             }
+            var spotRows = Array.Empty<SpotRow>();
+            if (!string.IsNullOrWhiteSpace(spotRid))
+            {
+                try
+                {
+                    if (await spots.ResolveSpotHandleAsync(Systems.Zlink.RoutingId.From(spotRid))
+                            .AsTask().WaitAsync(TimeSpan.FromMilliseconds(500)) is { } handle)
+                        spotRows =
+                        [
+                            new SpotRow(
+                                ObservabilityNames.WorkflowMesh, options.Rid,
+                                handle.SpotRid.ToString(), "spot", 0)
+                        ];
+                }
+                catch (Exception)
+                {
+                    // Resolve-only observation degrades with the store.
+                }
+            }
+
             return Results.Ok(new EvidenceSnapshot(options.Rid, drain.IsReady, evidence.Snapshot(),
                 metrics.Snapshot(), peers.Select(row => new PeerRow(row.Rid.ToString(),
                     row.Draining, (long)row.LifecycleGeneration)).ToArray(), [],
-                []));
+                spotRows));
         });
         app.MapPost("/evidence/wait", async (EvidenceWaitReq request, WorkflowEvidenceStore evidence,
             CancellationToken cancellationToken) =>

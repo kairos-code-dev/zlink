@@ -32,13 +32,12 @@ internal static class ZLinkActorBoundSessionRelay
     {
         var isNoBind = IsNoBindRequest(requestId, flags);
         var scope = ZLinkBoundSessionDispatchScope.Enter(actorId);
-        // An identity-less frame (no session rid) must not overwrite a
-        // concrete session binding — a locally submitted actor dispatch would
-        // otherwise clobber the remote session route registered by the bind
-        // confirm and strand every later push.
-        if (!isNoBind
-            && (!sourceSessionRid.IsEmpty
-                || !runtime.TryGetActorBoundSession(actorId, out _)))
+        // Only a frame carrying a session identity may (re)bind: an
+        // identity-less frame (a caller-routed actor dispatch) must neither
+        // overwrite the concrete session route registered by the bind confirm
+        // nor create a phantom empty binding on a never-bound actor — pushes
+        // to an unbound actor must fail ActorSessionNotBound.
+        if (!isNoBind && !sourceSessionRid.IsEmpty)
             runtime.BindActorSession(
                 actorId,
                 sourceNodeRid,

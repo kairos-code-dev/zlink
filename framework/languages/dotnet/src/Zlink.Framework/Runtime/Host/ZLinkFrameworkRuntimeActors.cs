@@ -795,7 +795,12 @@ internal sealed partial class ZLinkFrameworkRuntime
                 boundSession.BindingToken,
                 bindingToken,
                 StringComparison.Ordinal))
+        {
+            if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                Console.Error.WriteLine(
+                    $"[notify-disconnect] skip actor={actor.ActorId} token={bindingToken}");
             return;
+        }
 
         if (state.Actor is not null
             && state.NativeActorRef is { } localActor

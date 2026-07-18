@@ -97,16 +97,47 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask CleanupAsync(
+    public async ValueTask CleanupAsync(
         ZLinkSessionContext context,
         CancellationToken cancellationToken)
     {
         ZLinkSessionActorBinding[] bindings;
+        ZLinkSessionActor[] actors;
         lock (_bindings)
         {
             bindings = _bindings.Values.ToArray();
+            actors = _actorsById.Values.ToArray();
             _bindings.Clear();
             _actorsById.Clear();
+        }
+
+        // The session transport is gone: propagate the disconnect to each
+        // remotely-bound actor BEFORE dropping the local records — the remote
+        // relay resolves the actor's session route from them. A node-local
+        // actor's disconnect callback rides the native stream binding instead.
+        var localNodeRid = runtime.GetActorSpotNode()?.RoutingId;
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine(
+                $"[session-cleanup] actors={actors.Length} localNode={localNodeRid}");
+        foreach (var actor in actors)
+        {
+            if (localNodeRid is { } local && actor.Ref.NodeRid == local) continue;
+            try
+            {
+                await runtime.NotifyActorDisconnectedAsync(
+                        actor.Ref,
+                        actor.BindingToken,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                // Cleanup must release every binding even when one peer is
+                // unreachable; the actor node's own lifecycle recovers it.
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine(
+                        $"[session-cleanup] notify failed actor={actor.ActorId}: {error.Message}");
+            }
         }
 
         foreach (var binding in bindings)
@@ -114,8 +145,6 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             runtime.UnbindSessionActor(binding.ActorId, context, binding.BindingToken);
             runtime.UnbindActorSession(binding.ActorId, binding.BindingToken);
         }
-
-        return ValueTask.CompletedTask;
     }
 
     private static string BuildBindingKey(string actorId, string bindingToken)

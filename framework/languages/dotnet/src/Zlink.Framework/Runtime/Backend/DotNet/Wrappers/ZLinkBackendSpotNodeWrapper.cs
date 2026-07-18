@@ -135,7 +135,33 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     public void DisconnectPeer(string endpoint)
     {
         if (_peerIntents.TryRemove(endpoint, out var intent))
-            _node.RemovePeerConnection(intent);
+        {
+            try
+            {
+                _node.RemovePeerConnection(intent);
+                return;
+            }
+            catch (ZlinkException)
+            {
+                // Intent removal covers unadmitted intents only; an admitted
+                // lifetime takes the exact RID+generation disconnect below.
+            }
+        }
+
+        foreach (var peer in _node.Peers())
+        {
+            if (!string.Equals(peer.Endpoint, endpoint, StringComparison.Ordinal)
+                || peer.State is not (MeshPeerState.Admitted or MeshPeerState.Draining))
+                continue;
+            try
+            {
+                _node.DisconnectPeer(peer.RoutingId, peer.LifecycleGeneration);
+            }
+            catch (ZlinkException)
+            {
+                // Core may have retired the lifetime with the transport.
+            }
+        }
     }
 
     public void DisconnectPeerLifetime(RoutingId peerRid, ulong lifecycleGeneration)

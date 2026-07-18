@@ -339,9 +339,12 @@ internal sealed class ZLinkActorBoundSessionCoordinator
             ZlinkStreamMetadata.Empty);
         using var headerPart = Message.From(ZLinkStreamProtocolDefaults.EncodeHeader(header).Span);
         using var bodyPart = Message.From(Array.Empty<byte>());
-        if (!node.ForwardActorBoundSessionPart(actorRef, sourceNodeRid, session.SessionRid, headerPart, true, SendFlags.DontWait))
+        // The disconnect frame takes the same route as any session frame to
+        // this actor: ForwardPart relays it to the actor's owner node when the
+        // actor is remote and writes the native bound session when it is local.
+        if (!ForwardPart(actorRef, sourceNodeRid, session.SessionRid, headerPart, true, SendFlags.DontWait))
             throw new InvalidOperationException("Actor session disconnect header forward failed.");
-        if (!node.ForwardActorBoundSessionPart(actorRef, sourceNodeRid, session.SessionRid, bodyPart, false, SendFlags.DontWait))
+        if (!ForwardPart(actorRef, sourceNodeRid, session.SessionRid, bodyPart, false, SendFlags.DontWait))
             throw new InvalidOperationException("Actor session disconnect body forward failed.");
         return ValueTask.CompletedTask;
     }

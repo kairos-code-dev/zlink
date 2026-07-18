@@ -157,8 +157,14 @@ internal sealed class ToActorScenarioContext : IDisposable
                 actor.NodeRid.ToString(),
                 actor.Generation))
             .Async<ActorCallResponse>()).Body;
-        ZlinkStreamAssert.Ensure(response.ErrorKind == "RouteNotConnected",
-            $"{scenario} expected RouteNotConnected without a route mesh, got '{response.ErrorKind}'.");
+        // 10.0.0 conversion table (spec 05 §13.1): an explicit route
+        // disconnect removes the peer from the member snapshot, so Core
+        // reports NOT_FOUND and the framework surfaces ActorRouteNotFound.
+        // RouteNotConnected is reserved for a known member whose pipe is
+        // not ready.
+        ZlinkStreamAssert.Ensure(
+            response.ErrorKind is "ActorRouteNotFound" or "RouteNotConnected",
+            $"{scenario} expected ActorRouteNotFound or RouteNotConnected without a route, got '{response.ErrorKind}'.");
     }
 
     public async Task AssertNoRouteCallerRecoveryAsync(
@@ -167,16 +173,27 @@ internal sealed class ToActorScenarioContext : IDisposable
         string value)
     {
         await _noRouteCallerHttp.Post("/route/reconnect").Body(new { }).Async<object>();
-        var response = (await _noRouteCallerHttp.Post("/request")
-            .Body(new ActorCallRequest(
-                scenario,
-                actor.ActorId,
-                value,
-                actor.NodeRid.ToString(),
-                actor.Generation))
-            .Async<ActorCallResponse>()).Body;
+        // Mesh admission after a reconnect is asynchronous (spec 21 §5); the
+        // recovery contract is that requests succeed once the peer readmits,
+        // so poll within a bounded window instead of racing the handshake.
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(10);
+        ActorCallResponse response;
+        while (true)
+        {
+            response = (await _noRouteCallerHttp.Post("/request")
+                .Body(new ActorCallRequest(
+                    scenario,
+                    actor.ActorId,
+                    value,
+                    actor.NodeRid.ToString(),
+                    actor.Generation))
+                .Async<ActorCallResponse>()).Body;
+            if (response.ErrorKind is null || DateTimeOffset.UtcNow >= deadline) break;
+            await Task.Delay(100);
+        }
+
         ZlinkStreamAssert.Ensure(response.Result == $"reply:{value}" && response.ErrorKind is null,
-            $"{scenario} first request after route recovery failed: '{response.ErrorKind ?? response.Result}'.");
+            $"{scenario} request after route recovery failed: '{response.ErrorKind ?? response.Result}'.");
     }
 
     public async Task<IZlinkStreamConnector> ConnectAsync(string endpoint)

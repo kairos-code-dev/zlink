@@ -77,7 +77,7 @@ internal sealed class ChannelStartupPublishHostedService(
 }
 
 internal sealed class ChannelClientStartupRequestHostedService(
-    IZLinkChannelClient client,
+    IZLinkRouteClient client,
     TestHostEventSink sink,
     string channelName,
     string value) : IHostedService
@@ -85,7 +85,7 @@ internal sealed class ChannelClientStartupRequestHostedService(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var reply = await client
-            .RequestToChannel(channelName, new TestHostProfileRequest(value))
+            .RequestToChannel(channelName, channelName, new TestHostProfileRequest(value))
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<TestHostProfileReply>(cancellationToken);
         sink.Append($"channel-client|{reply.Value}");

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Messaging;
 
@@ -28,10 +29,13 @@ internal static class FixtureSamples
             options.AddHandlersFromAssemblyOf<FixtureSendHandler>();
 
             {
-                var channel = options.AddClientServerChannel("orders");
-                channel.EnableServer("tcp://127.0.0.1:7201");
-
-                channel.EnableClient("tcp://127.0.0.1:7201");
+                var mesh = options.AddRouteMesh("orders")
+                    .Listen("tcp://127.0.0.1:7201")
+                    .SetRoutingId(RoutingId.From("doc-orders"));
+                mesh.ChannelName("orders"); // 논리 channel의 handler namespace를 MeshNode에 등록한다.
+                mesh.PeerConnections.Connect(
+                    RoutingId.From("doc-orders"),
+                    "tcp://127.0.0.1:7201"); // manual peer도 같은 MeshNode admission을 사용한다.
             }
 
             {
@@ -87,8 +91,10 @@ internal static class FixtureSamples
         {
 
             {
-                var channel = options.AddClientServerChannel("orders");
-                channel.EnableServer("tcp://127.0.0.1:7603");
+                var mesh = options.AddRouteMesh("orders")
+                    .Listen("tcp://127.0.0.1:7603")
+                    .SetRoutingId(RoutingId.From("doc-orders"));
+                mesh.ChannelName("orders");
             }
 
             {
@@ -100,7 +106,7 @@ internal static class FixtureSamples
         });
         builder.Services.AddZLinkMonitoring(options =>
         {
-            options.AddSocketEvents("orders.server", ZLinkSocketEventKind.ConnectionReady);
+            options.AddMeshNodeEvents("orders");
             options.AddSpotEvents("stage-node", TimeSpan.FromMilliseconds(250));
         });
         return builder;

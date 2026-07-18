@@ -49,12 +49,15 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
-            var channel = framework.AddClientServerChannel(options.ChannelName
-                                                           ?? throw new InvalidOperationException(
-                                                               "Channel server mode requires --channel-name."))
-                .EnableServer(options.ServerEndpoint
-                              ?? throw new InvalidOperationException(
-                                  "Channel server mode requires --server-endpoint."));
+            var meshName = options.ChannelName
+                           ?? throw new InvalidOperationException(
+                               "Channel server mode requires --channel-name.");
+            var mesh = framework.AddRouteMesh(meshName)
+                .Listen(options.ServerEndpoint
+                        ?? throw new InvalidOperationException(
+                            "Channel server mode requires --server-endpoint."))
+                .SetRoutingId(RoutingId.From("dotnet-channel-server"));
+            var channel = mesh.ChannelName(meshName);
             channel
                 .AddRequestHandler<TestHostProfileRequestHandler, TestHostProfileRequest, TestHostProfileReply>();
             channel.AddSendHandler<TestHostProfileSendHandler, TestHostProfileSend>();
@@ -66,18 +69,20 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
-            {
-                framework.AddClientServerChannel(options.ChannelName
-                                                 ?? throw new InvalidOperationException(
-                                                     "Channel client mode requires --channel-name."))
-                    .EnableClient(options.ServerEndpoint
-                                  ?? throw new InvalidOperationException(
-                                      "Channel client mode requires --server-endpoint."));
-            }
+            var meshName = options.ChannelName
+                           ?? throw new InvalidOperationException(
+                               "Channel client mode requires --channel-name.");
+            var mesh = framework.AddRouteMesh(meshName)
+                .SetRoutingId(RoutingId.From("dotnet-channel-client"));
+            mesh.ChannelName(meshName);
+            mesh.PeerConnections.Connect(
+                options.ServerEndpoint
+                ?? throw new InvalidOperationException(
+                    "Channel client mode requires --server-endpoint."));
         });
         services.AddHostedService(provider =>
             new ChannelClientStartupRequestHostedService(
-                provider.GetRequiredService<IZLinkChannelClient>(),
+                provider.GetRequiredService<IZLinkRouteClient>(),
                 provider.GetRequiredService<TestHostEventSink>(),
                 options.ChannelName!,
                 options.PublishValue ?? "dotnet-to-node"));
@@ -126,14 +131,16 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
-            framework.AddRouteMeshChannel(options.ChannelName
-                                          ?? throw new InvalidOperationException(
-                                              "Route server mode requires --channel-name."))
-                .EnableServer(options.ServerEndpoint
-                              ?? throw new InvalidOperationException(
-                                  "Route server mode requires --server-endpoint."))
-                .SetRoutingId(RoutingId.From("dotnet-route"))
-                .AddRequestHandler<TestHostRouteRequestHandler, TestHostRouteRequest, TestHostRouteReply>();
+            var meshName = options.ChannelName
+                           ?? throw new InvalidOperationException(
+                               "Route server mode requires --channel-name.");
+            var mesh = framework.AddRouteMesh(meshName)
+                .Listen(options.ServerEndpoint
+                        ?? throw new InvalidOperationException(
+                            "Route server mode requires --server-endpoint."))
+                .SetRoutingId(RoutingId.From("dotnet-route"));
+            mesh.ChannelName(meshName);
+            mesh.AddRouteRequestHandler<TestHostRouteRequestHandler, TestHostRouteRequest, TestHostRouteReply>();
         });
     }
 
@@ -142,12 +149,16 @@ internal static class TestHostScenarioConfigurator
         services.AddSingleton(new TestHostEventSink(options.EventFilePath));
         services.AddZLinkFramework(framework =>
         {
-            framework.AddRouteMeshChannel(options.ChannelName
-                                          ?? throw new InvalidOperationException(
-                                              "Route client mode requires --channel-name."))
-                .EnableClient(options.ServerEndpoint
-                              ?? throw new InvalidOperationException(
-                                  "Route client mode requires --server-endpoint."));
+            var meshName = options.ChannelName
+                           ?? throw new InvalidOperationException(
+                               "Route client mode requires --channel-name.");
+            var mesh = framework.AddRouteMesh(meshName)
+                .SetRoutingId(RoutingId.From("dotnet-route-client"));
+            mesh.ChannelName(meshName);
+            mesh.PeerConnections.Connect(
+                options.ServerEndpoint
+                ?? throw new InvalidOperationException(
+                    "Route client mode requires --server-endpoint."));
         });
         services.AddHostedService(provider =>
             new RouteClientStartupRequestHostedService(

@@ -37,7 +37,6 @@ import java.util.Optional;
  * Abstract common socket base for zlink typed socket facades.
  */
 final class NativeSocketRuntime implements AutoCloseable {
-    static final int ERRNO_EFSM = 156384763;
     static final int DEFAULT_IO_BUFFER_SIZE = 8192;
     static final int TOPIC_CAPACITY = 256;
     private final SocketCore socketCore;

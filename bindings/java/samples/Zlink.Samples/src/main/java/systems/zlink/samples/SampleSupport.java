@@ -49,8 +49,6 @@ final class SampleSupport {
     static final String STREAM_PAYLOAD = "hello-stream";
     static final String PUBSUB_TOPIC = "prices";
     static final String PUBSUB_PAYLOAD = "101.25";
-    static final String SPOT_TOPIC = "room:lobby";
-    static final String SPOT_PAYLOAD = "hello-spot";
     private static final int TCP_PORT_BASE =
         40_000 + (int) (ProcessHandle.current().pid() % 10_000);
     private static final AtomicInteger NEXT_TCP_PORT =

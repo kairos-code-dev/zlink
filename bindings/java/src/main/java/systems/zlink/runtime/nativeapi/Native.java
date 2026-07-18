@@ -337,7 +337,7 @@ public final class Native {
       "zlink_router_recv_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
         ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_INT));
+        ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     // DONT_WAIT-only critical variant. zlink_router_recv_part is non-blocking
     // when called with DONT_WAIT flag, so the JVM can elide GC safepoint
     // transition for this call. Caller must guarantee DONT_WAIT bit is set.
@@ -346,7 +346,7 @@ public final class Native {
         "zlink_router_recv_part",
         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
           ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-          ValueLayout.JAVA_INT));
+          ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     private static final MethodHandle MH_ROUTER_REQUEST_PART = downcall(
       "zlink_router_request_part",
       FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,

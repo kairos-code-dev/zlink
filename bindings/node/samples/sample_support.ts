@@ -12,19 +12,10 @@ const zlink = require('@zlink-systems/zlink');
 const READY_ALL = 3;
 
 // A received record's `kind` and `operationKind` are the raw core enum values
-// (zlink_mesh_record_kind_t / zlink_mesh_operation_kind_t). The samples spell
-// out the ones they need rather than depend on the higher-level contract enums,
-// which describe a different, coarser taxonomy.
-const MeshRecordKind = Object.freeze({
-  NodeSend: 1, NodeRequest: 2, ChannelSend: 3, ChannelRequest: 4,
-  SpotSend: 5, SpotRequest: 6, SpotMulticast: 7, SpotControl: 8,
-  ActorSend: 9, ActorRequest: 10, Completion: 11, SendReady: 12, TransferControl: 13
-});
-const MeshOperationKind = Object.freeze({
-  NodeRequest: 1, ChannelRequest: 2, SpotRequest: 3, ActorRequest: 4,
-  ActorLookup: 5, ActorDestroy: 6, ActorJoin: 7, ActorLeave: 8,
-  StreamBind: 9, StreamUnbind: 10, StreamClose: 11
-});
+// (zlink_mesh_record_kind_t / zlink_mesh_operation_kind_t). The public contract
+// enums map one-to-one to those values, so the samples reuse them directly.
+const MeshRecordKind = zlink.ReceiveKind;
+const MeshOperationKind = zlink.OperationKind;
 
 // A request record carries a reply token, so it is the shape a responder replies
 // to (as opposed to sends, completions, or controls).

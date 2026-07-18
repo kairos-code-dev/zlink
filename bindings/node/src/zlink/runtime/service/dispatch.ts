@@ -8,6 +8,7 @@ import type {
   ReadyBatch,
   ReadyRecord,
   ReceiveBatch,
+  ReceiveKindData,
   ReceiveRecord
 } from '../../contracts/service';
 import type { MeshClaimRecvRaw, MeshReceiveRecordRaw } from '../native/binding_service_types';
@@ -17,7 +18,7 @@ import {
   messageFromNativeBuffer,
   normalizeMessageLikePayload
 } from '../buffers/message_conversion';
-import { flagsOrZero, maybeActorRefFromRaw, ridOrNull } from './conversions';
+import { flagsOrZero, kindDataFromRaw, maybeActorRefFromRaw, ridOrNull } from './conversions';
 
 /** One materialized inbound record; owns its parts and the private reply token. */
 export class RuntimeReceiveRecord implements ReceiveRecord {
@@ -31,6 +32,7 @@ export class RuntimeReceiveRecord implements ReceiveRecord {
   readonly channelName: string | null;
   readonly topic: string | null;
   readonly applicationMetadata: Buffer | null;
+  readonly kindData: ReceiveKindData | null;
   readonly terminalResult: number;
   readonly failureErrno: number;
   readonly parts: Message[];
@@ -47,6 +49,7 @@ export class RuntimeReceiveRecord implements ReceiveRecord {
     this.channelName = raw.channelName;
     this.topic = raw.topic;
     this.applicationMetadata = raw.applicationMetadata;
+    this.kindData = kindDataFromRaw(raw.kindData);
     this.terminalResult = raw.terminalResult;
     this.failureErrno = raw.failureErrno;
     this.parts = raw.parts.map((part) => messageFromNativeBuffer(part));

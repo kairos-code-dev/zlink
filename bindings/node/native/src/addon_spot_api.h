@@ -43,6 +43,7 @@ napi_value mesh_node_publisher_destroy (napi_env env, napi_callback_info info);
 
 // --- Pull dispatch ---
 napi_value mesh_node_set_ready_handler (napi_env env, napi_callback_info info);
+napi_value mesh_node_unset_ready_handler (napi_env env, napi_callback_info info);
 napi_value mesh_ready_batch_new (napi_env env, napi_callback_info info);
 napi_value mesh_ready_batch_reset (napi_env env, napi_callback_info info);
 napi_value mesh_ready_batch_destroy (napi_env env, napi_callback_info info);
@@ -85,6 +86,12 @@ napi_value mesh_node_send_to_actor (napi_env env, napi_callback_info info);
 napi_value mesh_node_request_to_actor (napi_env env, napi_callback_info info);
 napi_value actor_send_to_actor (napi_env env, napi_callback_info info);
 napi_value actor_request_to_actor (napi_env env, napi_callback_info info);
+
+// --- Actor transfer fence ---
+napi_value mesh_node_actor_transfer_prepare (napi_env env, napi_callback_info info);
+napi_value mesh_node_actor_transfer_commit (napi_env env, napi_callback_info info);
+napi_value mesh_node_actor_transfer_activate (napi_env env, napi_callback_info info);
+napi_value mesh_node_actor_transfer_abort (napi_env env, napi_callback_info info);
 
 // --- Stream session service ---
 napi_value stream_session_service_new (napi_env env, napi_callback_info info);

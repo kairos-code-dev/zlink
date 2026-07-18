@@ -12,18 +12,25 @@ import type {
   ReadyBatch,
   ReceiveBatch
 } from './dispatch';
+import type { ActorTransferPrepare, ActorTransferToken, PrepareActorTransferResult } from './transfer';
 import type { MessagingOptions, RequestOptions } from './shared';
 import type { Spot } from './spot';
 import type { Publisher } from './publisher';
 import type { StreamSessionService } from './stream_session';
 
-/** The overall readiness state of a mesh node. */
+/**
+ * The overall readiness state of a mesh node. Maps one-to-one to the Core wire
+ * enum `zlink_mesh_node_state_t`; the addon passes these values through
+ * unchanged.
+ */
 export const MeshNodeState = Object.freeze({
-  Idle: 1,
-  Connecting: 2,
+  Created: 1,
+  Started: 2,
   PartialReady: 3,
   Ready: 4,
-  Error: 5
+  Draining: 5,
+  Stopped: 6,
+  Error: 7
 } as const);
 export type MeshNodeStateValue = typeof MeshNodeState[keyof typeof MeshNodeState];
 
@@ -197,6 +204,16 @@ export interface MeshNode {
   sendActorBoundSession(actor: ActorRef, parts: MessageLike | readonly MessageLike[], flags?: number): SubmitResult;
   /** Close an actor's bound session; completion arrives through pull dispatch. */
   closeActorBoundSession(actor: ActorRef, expectedBindingGeneration: bigint, timeoutMs?: number): MeshOperationId;
+
+  // --- Actor transfer fence ---------------------------------------------
+  /** Prepare an actor transfer; returns the fence token and its result detail. */
+  prepareActorTransfer(prepare: ActorTransferPrepare, timeoutMs?: number): PrepareActorTransferResult;
+  /** Commit a prepared actor transfer at the new membership epoch. */
+  commitActorTransfer(token: ActorTransferToken, newMembershipEpoch: bigint): void;
+  /** Activate a committed actor transfer on the target. */
+  activateActorTransfer(token: ActorTransferToken): void;
+  /** Abort a prepared actor transfer, releasing the fence. */
+  abortActorTransfer(token: ActorTransferToken): void;
 
   // --- Pull dispatch -----------------------------------------------------
   /** Install the handler invoked with the ready-domain mask; return the mask to drain. */

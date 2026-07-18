@@ -10,6 +10,12 @@ export interface MeshOperationId {
   readonly low: bigint;
 }
 
+/** A 128-bit actor-transfer id (zlink_actor_transfer_id_t). */
+export interface ActorTransferId {
+  readonly high: bigint;
+  readonly low: bigint;
+}
+
 /** A reference to an actor: its home node, id, and lifecycle generation. */
 export interface ActorRef {
   readonly nodeRid: RoutingId;
@@ -29,20 +35,134 @@ export interface ActorLocation {
 export const ReadyOwnerKind = Object.freeze({ Node: 1, Spot: 2, Actor: 3 } as const);
 export type ReadyOwnerKindValue = typeof ReadyOwnerKind[keyof typeof ReadyOwnerKind];
 
-/** Which kind of subject a received record concerns. */
-export const ReceiveKind = Object.freeze({ Node: 1, Spot: 2, Actor: 3 } as const);
+/**
+ * The kind of a received record. Maps one-to-one to the Core wire enum
+ * `zlink_mesh_record_kind_t`; the addon passes these values through unchanged.
+ */
+export const ReceiveKind = Object.freeze({
+  NodeSend: 1,
+  NodeRequest: 2,
+  ChannelSend: 3,
+  ChannelRequest: 4,
+  SpotSend: 5,
+  SpotRequest: 6,
+  SpotMulticast: 7,
+  SpotControl: 8,
+  ActorSend: 9,
+  ActorRequest: 10,
+  Completion: 11,
+  SendReady: 12,
+  TransferControl: 13
+} as const);
 export type ReceiveKindValue = typeof ReceiveKind[keyof typeof ReceiveKind];
 
-/** The messaging shape a received record carries. */
+/**
+ * The operation a request or completion record concerns. Maps one-to-one to the
+ * Core wire enum `zlink_mesh_operation_kind_t`; the addon passes these values
+ * through unchanged.
+ */
 export const OperationKind = Object.freeze({
-  Send: 1,
-  Request: 2,
-  Reply: 3,
-  Publish: 4,
-  ActorJoin: 5,
-  ActorLeave: 6
+  NodeRequest: 1,
+  ChannelRequest: 2,
+  SpotRequest: 3,
+  ActorRequest: 4,
+  ActorLookup: 5,
+  ActorDestroy: 6,
+  ActorJoin: 7,
+  ActorLeave: 8,
+  StreamBind: 9,
+  StreamUnbind: 10,
+  StreamClose: 11
 } as const);
 export type OperationKindValue = typeof OperationKind[keyof typeof OperationKind];
+
+/** An actor lifecycle transition kind (zlink_actor_lifecycle_kind_t). */
+export const ActorLifecycleKind = Object.freeze({
+  Created: 1,
+  Joined: 2,
+  Left: 3,
+  Disconnected: 4,
+  Destroyed: 5
+} as const);
+export type ActorLifecycleKindValue = typeof ActorLifecycleKind[keyof typeof ActorLifecycleKind];
+
+/** Whether an actor join was accepted or rejected (zlink_actor_join_result_t). */
+export const ActorJoinResult = Object.freeze({ Accepted: 0, Rejected: 1 } as const);
+export type ActorJoinResultValue = typeof ActorJoinResult[keyof typeof ActorJoinResult];
+
+/** Where a send-ready record says traffic may now be pushed (zlink_mesh_destination_kind_t). */
+export const MeshDestinationKind = Object.freeze({
+  Node: 1,
+  Channel: 2,
+  Spot: 3,
+  Actor: 4,
+  BoundSession: 5
+} as const);
+export type MeshDestinationKindValue = typeof MeshDestinationKind[keyof typeof MeshDestinationKind];
+
+/**
+ * The typed payload carried in a receive record's `kind_data`. Its concrete
+ * shape is selected by the discriminating `kind` field, which mirrors the Core
+ * `kind_data` mapping for the owning record.
+ */
+export type ReceiveKindData =
+  | ActorControlPayload
+  | ActorJoinCompletionPayload
+  | ActorLookupCompletionPayload
+  | SendReadyPayload
+  | ActorTransferControlPayload;
+
+/** The typed `kind_data` of a {@link ReceiveKind.SpotControl} record (zlink_actor_control_record_t). */
+export interface ActorControlPayload {
+  readonly kind: 'actorControl';
+  readonly lifecycleKind: number;
+  readonly previousActor: ActorRef | null;
+  readonly currentActor: ActorRef | null;
+  readonly previousSpotRid: RoutingId | null;
+  readonly currentSpotRid: RoutingId | null;
+  readonly previousSpotGeneration: bigint;
+  readonly currentSpotGeneration: bigint;
+  readonly previousMembershipEpoch: bigint;
+  readonly currentMembershipEpoch: bigint;
+  readonly resultCode: number;
+}
+
+/** The typed `kind_data` of an actor-join {@link ReceiveKind.Completion} record (zlink_actor_join_completion_t). */
+export interface ActorJoinCompletionPayload {
+  readonly kind: 'actorJoinCompletion';
+  readonly joinResult: number;
+  readonly actor: ActorRef | null;
+  readonly location: ActorLocation;
+}
+
+/** The typed `kind_data` of an actor-lookup {@link ReceiveKind.Completion} record (zlink_actor_location_t). */
+export interface ActorLookupCompletionPayload {
+  readonly kind: 'actorLookupCompletion';
+  readonly location: ActorLocation;
+}
+
+/** The typed `kind_data` of a {@link ReceiveKind.SendReady} record (zlink_mesh_send_ready_data_t). */
+export interface SendReadyPayload {
+  readonly kind: 'sendReady';
+  readonly destinationKind: number;
+  readonly targetNodeRid: RoutingId | null;
+  readonly targetSpotRid: RoutingId | null;
+  readonly targetActor: ActorRef | null;
+  readonly channelName: string | null;
+}
+
+/** The typed `kind_data` of a {@link ReceiveKind.TransferControl} record (zlink_actor_transfer_control_t). */
+export interface ActorTransferControlPayload {
+  readonly kind: 'transferControl';
+  readonly phase: number;
+  readonly role: number;
+  readonly transferId: ActorTransferId;
+  readonly actor: ActorRef | null;
+  readonly membershipEpoch: bigint;
+  readonly finalSequence: bigint;
+  readonly resultCode: number;
+  readonly failureErrno: number;
+}
 
 /** One ready-index record surfaced by {@link MeshNode.drainReady}. */
 export interface ReadyRecord {
@@ -71,6 +191,8 @@ export interface ReceiveRecord {
   readonly channelName: string | null;
   readonly topic: string | null;
   readonly applicationMetadata: Buffer | null;
+  /** The typed `kind_data` for this record kind, or null when the kind carries none. */
+  readonly kindData: ReceiveKindData | null;
   readonly terminalResult: number;
   readonly failureErrno: number;
   /** The received parts; the record owns them until they are consumed. */

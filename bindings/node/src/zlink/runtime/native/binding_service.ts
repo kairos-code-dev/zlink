@@ -4,6 +4,8 @@ import type { NativeHandle } from './binding_types';
 import type {
   ActorLocationRaw,
   ActorRefRaw,
+  ActorTransferPrepareOutcomeRaw,
+  ActorTransferPrepareRaw,
   MeshClaimRecvRaw,
   MeshConnectPeerOptions,
   MeshDrainReadyRaw,
@@ -108,7 +110,10 @@ export interface ServiceNativeBinding {
   meshNodePublisherDestroy: (publisher: NativeHandle) => void;
 
   // --- Pull dispatch ------------------------------------------------------
-  meshNodeSetReadyHandler: (node: NativeHandle, handler: NativeReadyHandler) => void;
+  /** Install the ready handler; returns an opaque handle used to unregister it. */
+  meshNodeSetReadyHandler: (node: NativeHandle, handler: NativeReadyHandler) => NativeHandle;
+  /** Unregister a previously installed ready handler and release its resources. */
+  meshNodeUnsetReadyHandler: (node: NativeHandle, handlerState: NativeHandle) => void;
   meshReadyBatchNew: (capacity: number) => NativeHandle;
   meshReadyBatchReset: (batch: NativeHandle) => void;
   meshReadyBatchDestroy: (batch: NativeHandle) => void;
@@ -278,6 +283,16 @@ export interface ServiceNativeBinding {
     flags: number,
     timeoutMs: number
   ) => MeshOperationIdRaw;
+
+  // --- Actor transfer fence ----------------------------------------------
+  meshNodeActorTransferPrepare: (
+    node: NativeHandle,
+    prepare: ActorTransferPrepareRaw,
+    timeoutMs: number
+  ) => ActorTransferPrepareOutcomeRaw;
+  meshNodeActorTransferCommit: (token: Buffer, newMembershipEpoch: bigint) => void;
+  meshNodeActorTransferActivate: (token: Buffer) => void;
+  meshNodeActorTransferAbort: (token: Buffer) => void;
 
   // --- Stream session service --------------------------------------------
   streamSessionServiceNew: (node: NativeHandle, stream: NativeHandle) => NativeHandle;

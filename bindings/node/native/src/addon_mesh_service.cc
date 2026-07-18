@@ -10,9 +10,12 @@
 #include "addon_message_values.h"
 #include "addon_spot_api.h"
 
+#include <condition_variable>
 #include <cstring>
+#include <mutex>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -72,6 +75,16 @@ void svc_set_int32 (napi_env env, napi_value obj, const char *name, int32_t valu
 {
     napi_value out;
     napi_create_int32 (env, value, &out);
+    napi_set_named_property (env, obj, name, out);
+}
+
+// Emit a size_t count as a plain JS number. The receive-batch capacity API
+// accepts numbers, so buffer-too-small requirements are surfaced as numbers to
+// match the public contract type.
+void svc_set_size (napi_env env, napi_value obj, const char *name, size_t value)
+{
+    napi_value out;
+    napi_create_double (env, static_cast<double> (value), &out);
     napi_set_named_property (env, obj, name, out);
 }
 
@@ -263,6 +276,135 @@ napi_value svc_buffer_or_null (napi_env env, const uint8_t *data, size_t size)
     return out;
 }
 
+// Copy a raw actor location (zlink_actor_location_t) into a JS object shaped
+// like ActorLocationRaw. The runtime maps it to the public ActorLocation.
+napi_value svc_create_actor_location (napi_env env, const zlink_actor_location_t &loc)
+{
+    napi_value obj;
+    napi_create_object (env, &obj);
+    napi_set_named_property (env, obj, "actor", svc_create_actor_ref (env, loc.actor));
+    napi_set_named_property (env, obj, "spotRid", create_routing_id_value (env, loc.spot_rid));
+    napi_set_named_property (env, obj, "spotGeneration", svc_create_u64 (env, loc.spot_generation));
+    napi_set_named_property (env, obj, "membershipEpoch",
+                             svc_create_u64 (env, loc.membership_epoch));
+    return obj;
+}
+
+// Materialize a receive record's versioned kind_data view into a typed JS
+// object (or null when the kind carries none), copied out of the batch-owned
+// storage so it outlives the batch. The discriminating "kind" field selects the
+// concrete shape, mirroring the Core kind_data mapping.
+napi_value svc_create_kind_data (napi_env env,
+                                 zlink_mesh_record_kind_t kind,
+                                 zlink_mesh_operation_kind_t operation_kind,
+                                 const void *kind_data,
+                                 size_t kind_data_size)
+{
+    napi_value null_value;
+    napi_get_null (env, &null_value);
+    if (!kind_data || kind_data_size == 0)
+        return null_value;
+
+    switch (kind) {
+    case ZLINK_MESH_RECORD_SPOT_CONTROL: {
+        if (kind_data_size < sizeof (zlink_actor_control_record_t))
+            return null_value;
+        const zlink_actor_control_record_t *c =
+          static_cast<const zlink_actor_control_record_t *> (kind_data);
+        napi_value obj;
+        napi_create_object (env, &obj);
+        set_string_property (env, obj, "kind", "actorControl");
+        svc_set_int32 (env, obj, "lifecycleKind", static_cast<int32_t> (c->kind));
+        napi_set_named_property (env, obj, "previousActor",
+                                 svc_create_actor_ref (env, c->previous_actor));
+        napi_set_named_property (env, obj, "currentActor",
+                                 svc_create_actor_ref (env, c->current_actor));
+        napi_set_named_property (env, obj, "previousSpotRid",
+                                 create_routing_id_value (env, c->previous_spot_rid));
+        napi_set_named_property (env, obj, "currentSpotRid",
+                                 create_routing_id_value (env, c->current_spot_rid));
+        svc_set_bigint (env, obj, "previousSpotGeneration", c->previous_spot_generation);
+        svc_set_bigint (env, obj, "currentSpotGeneration", c->current_spot_generation);
+        svc_set_bigint (env, obj, "previousMembershipEpoch", c->previous_membership_epoch);
+        svc_set_bigint (env, obj, "currentMembershipEpoch", c->current_membership_epoch);
+        svc_set_int32 (env, obj, "resultCode", c->result_code);
+        return obj;
+    }
+    case ZLINK_MESH_RECORD_COMPLETION: {
+        if (operation_kind == ZLINK_MESH_OPERATION_ACTOR_JOIN) {
+            if (kind_data_size < sizeof (zlink_actor_join_completion_t))
+                return null_value;
+            const zlink_actor_join_completion_t *j =
+              static_cast<const zlink_actor_join_completion_t *> (kind_data);
+            napi_value obj;
+            napi_create_object (env, &obj);
+            set_string_property (env, obj, "kind", "actorJoinCompletion");
+            svc_set_int32 (env, obj, "joinResult", static_cast<int32_t> (j->join_result));
+            napi_set_named_property (env, obj, "actor", svc_create_actor_ref (env, j->actor));
+            napi_set_named_property (env, obj, "location",
+                                     svc_create_actor_location (env, j->location));
+            return obj;
+        }
+        if (operation_kind == ZLINK_MESH_OPERATION_ACTOR_LOOKUP) {
+            if (kind_data_size < sizeof (zlink_actor_location_t))
+                return null_value;
+            const zlink_actor_location_t *loc =
+              static_cast<const zlink_actor_location_t *> (kind_data);
+            napi_value obj;
+            napi_create_object (env, &obj);
+            set_string_property (env, obj, "kind", "actorLookupCompletion");
+            napi_set_named_property (env, obj, "location",
+                                     svc_create_actor_location (env, *loc));
+            return obj;
+        }
+        return null_value;
+    }
+    case ZLINK_MESH_RECORD_SEND_READY: {
+        if (kind_data_size < sizeof (zlink_mesh_send_ready_data_t))
+            return null_value;
+        const zlink_mesh_send_ready_data_t *r =
+          static_cast<const zlink_mesh_send_ready_data_t *> (kind_data);
+        napi_value obj;
+        napi_create_object (env, &obj);
+        set_string_property (env, obj, "kind", "sendReady");
+        svc_set_int32 (env, obj, "destinationKind", static_cast<int32_t> (r->destination_kind));
+        napi_set_named_property (env, obj, "targetNodeRid",
+                                 create_routing_id_value (env, r->target_node_rid));
+        napi_set_named_property (env, obj, "targetSpotRid",
+                                 create_routing_id_value (env, r->target_spot_rid));
+        napi_set_named_property (env, obj, "targetActor",
+                                 svc_create_actor_ref (env, r->target_actor));
+        napi_set_named_property (env, obj, "channelName",
+                                 svc_string_or_null (env, r->channel_name, r->channel_name_size));
+        return obj;
+    }
+    case ZLINK_MESH_RECORD_TRANSFER_CONTROL: {
+        if (kind_data_size < sizeof (zlink_actor_transfer_control_t))
+            return null_value;
+        const zlink_actor_transfer_control_t *t =
+          static_cast<const zlink_actor_transfer_control_t *> (kind_data);
+        napi_value obj;
+        napi_create_object (env, &obj);
+        set_string_property (env, obj, "kind", "transferControl");
+        svc_set_int32 (env, obj, "phase", static_cast<int32_t> (t->phase));
+        svc_set_int32 (env, obj, "role", static_cast<int32_t> (t->role));
+        napi_value transfer_id;
+        napi_create_object (env, &transfer_id);
+        napi_set_named_property (env, transfer_id, "high", svc_create_u64 (env, t->transfer_id.high));
+        napi_set_named_property (env, transfer_id, "low", svc_create_u64 (env, t->transfer_id.low));
+        napi_set_named_property (env, obj, "transferId", transfer_id);
+        napi_set_named_property (env, obj, "actor", svc_create_actor_ref (env, t->actor));
+        svc_set_bigint (env, obj, "membershipEpoch", t->membership_epoch);
+        svc_set_bigint (env, obj, "finalSequence", t->final_sequence);
+        svc_set_int32 (env, obj, "resultCode", t->result_code);
+        svc_set_int32 (env, obj, "failureErrno", t->failure_errno);
+        return obj;
+    }
+    default:
+        return null_value;
+    }
+}
+
 } // namespace
 
 // ======================================================================
@@ -352,7 +494,10 @@ napi_value mesh_node_destroy (napi_env env, napi_callback_info info)
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *node = svc_external (env, argv[0]);
-    zlink_mesh_node_destroy (&node);
+    // Honor the close result: on a busy/failed close the handle is retained by
+    // Core, so surface the error and let JS keep ownership instead of nulling.
+    if (zlink_mesh_node_destroy (&node) != ZLINK_CLOSE_OK)
+        return throw_last_error (env, "meshNodeDestroy failed");
     napi_value undef;
     napi_get_undefined (env, &undef);
     return undef;
@@ -811,7 +956,8 @@ napi_value mesh_node_publisher_destroy (napi_env env, napi_callback_info info)
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *publisher = svc_external (env, argv[0]);
-    zlink_mesh_node_publisher_destroy (&publisher);
+    if (zlink_mesh_node_publisher_destroy (&publisher) != ZLINK_CLOSE_OK)
+        return throw_last_error (env, "meshNodePublisherDestroy failed");
     napi_value undef;
     napi_get_undefined (env, &undef);
     return undef;
@@ -824,23 +970,72 @@ napi_value mesh_node_publisher_destroy (napi_env env, napi_callback_info info)
 namespace
 {
 
+// The JS ready handler runs on the JS thread and its numeric return value is the
+// drain mask Core must receive. Core invokes the bridge from an internal thread,
+// so the return has to be marshaled synchronously: a blocking threadsafe call
+// hands the domains to the JS thread and waits for the handler's mask. When Core
+// happens to invoke the bridge re-entrantly on the JS thread itself, the handler
+// is called directly instead.
 struct ready_handler_state_t
 {
+    ready_handler_state_t () : env (NULL), handler_ref (NULL), tsfn (NULL) {}
+
+    napi_env env;
+    napi_ref handler_ref;
     napi_threadsafe_function tsfn;
+    std::thread::id js_thread;
 };
 
-void ready_handler_call_js (napi_env env, napi_value js_cb, void *context, void *data)
+struct ready_call_ctx_t
 {
-    (void) context;
-    uint32_t domains = static_cast<uint32_t> (reinterpret_cast<uintptr_t> (data));
-    if (!env || !js_cb)
-        return;
+    ready_call_ctx_t (uint32_t domains_) : domains (domains_), done (false), result (0) {}
+
+    uint32_t domains;
+    std::mutex mu;
+    std::condition_variable cv;
+    bool done;
+    uint32_t result;
+};
+
+// Invoke the JS handler on the JS thread and read back its numeric drain mask.
+// A thrown JS exception is caught and cleared; the accepted mask becomes 0 so
+// Core re-notifies the readable domains at a bounded rate.
+uint32_t invoke_ready_handler_js (napi_env env, napi_value handler, uint32_t domains)
+{
+    uint32_t result = 0;
     napi_value undef;
     napi_get_undefined (env, &undef);
     napi_value arg;
     napi_create_uint32 (env, domains, &arg);
     napi_value ret;
-    (void) napi_call_function (env, undef, js_cb, 1, &arg, &ret);
+    napi_status status = napi_call_function (env, undef, handler, 1, &arg, &ret);
+    if (status == napi_ok) {
+        napi_valuetype ret_type = napi_undefined;
+        napi_typeof (env, ret, &ret_type);
+        if (ret_type == napi_number)
+            napi_get_value_uint32 (env, ret, &result);
+    } else {
+        napi_value ignored;
+        (void) napi_get_and_clear_last_exception (env, &ignored);
+    }
+    return result;
+}
+
+void ready_handler_call_js (napi_env env, napi_value js_cb, void *context, void *data)
+{
+    (void) context;
+    ready_call_ctx_t *ctx = static_cast<ready_call_ctx_t *> (data);
+    if (!ctx)
+        return;
+    uint32_t result = 0;
+    if (env && js_cb)
+        result = invoke_ready_handler_js (env, js_cb, ctx->domains);
+    {
+        std::lock_guard<std::mutex> lock (ctx->mu);
+        ctx->result = result;
+        ctx->done = true;
+    }
+    ctx->cv.notify_one ();
 }
 
 zlink_mesh_ready_domain_mask_t ready_handler_bridge (void *mesh_node,
@@ -849,12 +1044,39 @@ zlink_mesh_ready_domain_mask_t ready_handler_bridge (void *mesh_node,
 {
     (void) mesh_node;
     ready_handler_state_t *state = static_cast<ready_handler_state_t *> (userdata);
-    if (state && state->tsfn) {
-        (void) napi_call_threadsafe_function (
-          state->tsfn, reinterpret_cast<void *> (static_cast<uintptr_t> (ready_domains)),
-          napi_tsfn_nonblocking);
+    if (!state || !state->tsfn)
+        return 0;
+
+    // Re-entrant call on the JS thread: invoke the handler directly; a blocking
+    // threadsafe call would deadlock the event loop.
+    if (std::this_thread::get_id () == state->js_thread) {
+        napi_handle_scope scope;
+        if (napi_open_handle_scope (state->env, &scope) != napi_ok)
+            return 0;
+        napi_value handler = NULL;
+        napi_get_reference_value (state->env, state->handler_ref, &handler);
+        uint32_t result = handler ? invoke_ready_handler_js (state->env, handler, ready_domains) : 0;
+        napi_close_handle_scope (state->env, scope);
+        return result;
     }
-    return ready_domains;
+
+    ready_call_ctx_t ctx (ready_domains);
+    if (napi_call_threadsafe_function (state->tsfn, &ctx, napi_tsfn_blocking) != napi_ok)
+        return 0;
+    std::unique_lock<std::mutex> lock (ctx.mu);
+    ctx.cv.wait (lock, [&ctx] { return ctx.done; });
+    return ctx.result;
+}
+
+void ready_tsfn_finalize (napi_env env, void *finalize_data, void *finalize_hint)
+{
+    (void) finalize_hint;
+    ready_handler_state_t *state = static_cast<ready_handler_state_t *> (finalize_data);
+    if (!state)
+        return;
+    if (state->handler_ref)
+        napi_delete_reference (env, state->handler_ref);
+    delete state;
 }
 
 } // namespace
@@ -871,20 +1093,51 @@ napi_value mesh_node_set_ready_handler (napi_env env, napi_callback_info info)
         napi_throw_error (env, NULL, "meshNodeSetReadyHandler allocation failed");
         return NULL;
     }
-    state->tsfn = NULL;
+    state->env = env;
+    state->js_thread = std::this_thread::get_id ();
+    if (napi_create_reference (env, argv[1], 1, &state->handler_ref) != napi_ok) {
+        delete state;
+        napi_throw_error (env, NULL, "meshNodeSetReadyHandler setup failed");
+        return NULL;
+    }
     napi_value resource_name;
     napi_create_string_utf8 (env, "zlink-mesh-ready-handler", NAPI_AUTO_LENGTH, &resource_name);
-    if (napi_create_threadsafe_function (env, argv[1], NULL, resource_name, 0, 1, NULL, NULL, state,
-                                         ready_handler_call_js, &state->tsfn)
+    if (napi_create_threadsafe_function (env, argv[1], NULL, resource_name, 0, 1, state,
+                                         ready_tsfn_finalize, state, ready_handler_call_js,
+                                         &state->tsfn)
         != napi_ok) {
+        napi_delete_reference (env, state->handler_ref);
         delete state;
         napi_throw_error (env, NULL, "meshNodeSetReadyHandler setup failed");
         return NULL;
     }
     (void) napi_unref_threadsafe_function (env, state->tsfn);
     if (zlink_mesh_node_set_ready_handler (node, ready_handler_bridge, state) != ZLINK_HANDLER_OK) {
+        // Releasing the threadsafe function runs ready_tsfn_finalize, which frees
+        // the state and its handler reference.
         napi_release_threadsafe_function (state->tsfn, napi_tsfn_abort);
         return throw_last_error (env, "meshNodeSetReadyHandler failed");
+    }
+    // Hand the state back to JS as an opaque handle so it can unregister later.
+    napi_value ext;
+    napi_create_external (env, state, NULL, NULL, &ext);
+    return ext;
+}
+
+napi_value mesh_node_unset_ready_handler (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = svc_external (env, argv[0]);
+    ready_handler_state_t *state = static_cast<ready_handler_state_t *> (svc_external (env, argv[1]));
+
+    // Clearing the Core handler completes only after any in-flight callback has
+    // returned, so releasing the threadsafe function afterwards is safe.
+    (void) zlink_mesh_node_set_ready_handler (node, NULL, NULL);
+    if (state && state->tsfn) {
+        napi_release_threadsafe_function (state->tsfn, napi_tsfn_release);
+        state->tsfn = NULL;
     }
     napi_value undef;
     napi_get_undefined (env, &undef);
@@ -924,7 +1177,8 @@ napi_value mesh_ready_batch_destroy (napi_env env, napi_callback_info info)
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *batch = svc_external (env, argv[0]);
-    zlink_mesh_ready_batch_destroy (&batch);
+    if (zlink_mesh_ready_batch_destroy (&batch) != ZLINK_CLOSE_OK)
+        return throw_last_error (env, "meshReadyBatchDestroy failed");
     napi_value undef;
     napi_get_undefined (env, &undef);
     return undef;
@@ -1007,8 +1261,10 @@ napi_value mesh_claim_release (napi_env env, napi_callback_info info)
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     zlink_mesh_claim_t *claim = static_cast<zlink_mesh_claim_t *> (svc_external (env, argv[0]));
     if (claim) {
-        zlink_mesh_claim_release (claim);
+        zlink_close_result_t rc = zlink_mesh_claim_release (claim);
         delete claim;
+        if (rc != ZLINK_CLOSE_OK)
+            return throw_last_error (env, "meshClaimRelease failed");
     }
     napi_value undef;
     napi_get_undefined (env, &undef);
@@ -1050,7 +1306,8 @@ napi_value mesh_receive_batch_destroy (napi_env env, napi_callback_info info)
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *batch = svc_external (env, argv[0]);
-    zlink_mesh_receive_batch_destroy (&batch);
+    if (zlink_mesh_receive_batch_destroy (&batch) != ZLINK_CLOSE_OK)
+        return throw_last_error (env, "meshReceiveBatchDestroy failed");
     napi_value undef;
     napi_get_undefined (env, &undef);
     return undef;
@@ -1087,9 +1344,9 @@ napi_value mesh_claim_recv_batch (napi_env env, napi_callback_info info)
         svc_set_bool (env, obj, "ok", false);
         napi_value required_obj;
         napi_create_object (env, &required_obj);
-        svc_set_bigint (env, required_obj, "messageCount", required.message_count);
-        svc_set_bigint (env, required_obj, "partCount", required.part_count);
-        svc_set_bigint (env, required_obj, "byteCount", required.byte_count);
+        svc_set_size (env, required_obj, "messageCount", required.message_count);
+        svc_set_size (env, required_obj, "partCount", required.part_count);
+        svc_set_size (env, required_obj, "byteCount", required.byte_count);
         napi_set_named_property (env, obj, "required", required_obj);
         napi_value empty;
         napi_create_array_with_length (env, 0, &empty);
@@ -1129,6 +1386,9 @@ napi_value mesh_claim_recv_batch (napi_env env, napi_callback_info info)
         napi_set_named_property (env, record_obj, "applicationMetadata",
                                  svc_buffer_or_null (env, record.application_metadata,
                                                      record.application_metadata_size));
+        napi_set_named_property (env, record_obj, "kindData",
+                                 svc_create_kind_data (env, record.kind, record.operation_kind,
+                                                       record.kind_data, record.kind_data_size));
         svc_set_int32 (env, record_obj, "terminalResult", record.terminal_result);
         svc_set_int32 (env, record_obj, "failureErrno", record.failure_errno);
 
@@ -1259,7 +1519,8 @@ napi_value spot_destroy (napi_env env, napi_callback_info info)
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *spot = svc_external (env, argv[0]);
-    zlink_spot_destroy (&spot);
+    if (zlink_spot_destroy (&spot) != ZLINK_CLOSE_OK)
+        return throw_last_error (env, "spotDestroy failed");
     napi_value undef;
     napi_get_undefined (env, &undef);
     return undef;
@@ -1794,6 +2055,163 @@ napi_value actor_request_to_actor (napi_env env, napi_callback_info info)
 }
 
 // ======================================================================
+//  Actor transfer fence
+// ======================================================================
+
+namespace
+{
+
+uint64_t svc_get_u64_prop (napi_env env, napi_value obj, const char *name)
+{
+    napi_value v;
+    napi_get_named_property (env, obj, name, &v);
+    return svc_u64 (env, v);
+}
+
+int32_t svc_get_int32_prop (napi_env env, napi_value obj, const char *name)
+{
+    napi_value v;
+    napi_get_named_property (env, obj, name, &v);
+    return svc_int32 (env, v);
+}
+
+bool svc_parse_transfer_token (napi_env env, napi_value value, zlink_actor_transfer_token_t *out)
+{
+    bool is_buffer = false;
+    napi_is_buffer (env, value, &is_buffer);
+    if (!is_buffer) {
+        napi_throw_type_error (env, NULL, "transfer token must be a Buffer");
+        return false;
+    }
+    void *data = NULL;
+    size_t len = 0;
+    napi_get_buffer_info (env, value, &data, &len);
+    if (len != sizeof (*out)) {
+        napi_throw_range_error (env, NULL, "transfer token has an unexpected size");
+        return false;
+    }
+    memcpy (out, data, sizeof (*out));
+    return true;
+}
+
+} // namespace
+
+napi_value mesh_node_actor_transfer_prepare (napi_env env, napi_callback_info info)
+{
+    napi_value argv[3];
+    size_t argc = 3;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    void *node = svc_external (env, argv[0]);
+    napi_value p = argv[1];
+
+    zlink_actor_transfer_prepare_t prepare;
+    memset (&prepare, 0, sizeof (prepare));
+    prepare.struct_size = sizeof (prepare);
+    prepare.version = ZLINK_ACTOR_ABI_VERSION;
+    prepare.role = static_cast<zlink_actor_transfer_role_t> (svc_get_int32_prop (env, p, "role"));
+    napi_value transfer_id_value;
+    napi_get_named_property (env, p, "transferId", &transfer_id_value);
+    prepare.transfer_id.high = svc_get_u64_prop (env, transfer_id_value, "high");
+    prepare.transfer_id.low = svc_get_u64_prop (env, transfer_id_value, "low");
+    napi_value actor_value;
+    napi_get_named_property (env, p, "actor", &actor_value);
+    if (!svc_parse_actor_ref (env, actor_value, &prepare.actor))
+        return NULL;
+    prepare.expected_membership_epoch = svc_get_u64_prop (env, p, "expectedMembershipEpoch");
+    napi_value peer_rid_value;
+    napi_get_named_property (env, p, "peerNodeRid", &peer_rid_value);
+    if (!parse_routing_id_value (env, peer_rid_value, &prepare.peer_node_rid))
+        return NULL;
+    prepare.final_sequence = svc_get_u64_prop (env, p, "finalSequence");
+    prepare.reserve_message_count = svc_get_u64_prop (env, p, "reserveMessageCount");
+    prepare.reserve_byte_count = svc_get_u64_prop (env, p, "reserveByteCount");
+
+    uint32_t timeout_ms = svc_uint32 (env, argv[2]);
+
+    zlink_actor_transfer_token_t token;
+    memset (&token, 0, sizeof (token));
+    zlink_actor_transfer_prepare_result_t result;
+    memset (&result, 0, sizeof (result));
+    result.struct_size = sizeof (result);
+    result.version = ZLINK_ACTOR_ABI_VERSION;
+
+    zlink_request_result_t rc =
+      zlink_mesh_node_actor_transfer_prepare (node, &prepare, timeout_ms, &token, &result);
+    if (rc != ZLINK_REQUEST_OK)
+        return throw_last_error (env, "meshNodeActorTransferPrepare failed");
+
+    napi_value obj;
+    napi_create_object (env, &obj);
+    napi_value token_buf;
+    void *copy = NULL;
+    napi_create_buffer_copy (env, sizeof (token), &token, &copy, &token_buf);
+    napi_set_named_property (env, obj, "token", token_buf);
+
+    napi_value result_obj;
+    napi_create_object (env, &result_obj);
+    svc_set_int32 (env, result_obj, "role", static_cast<int32_t> (result.role));
+    napi_value result_transfer_id;
+    napi_create_object (env, &result_transfer_id);
+    napi_set_named_property (env, result_transfer_id, "high",
+                             svc_create_u64 (env, result.transfer_id.high));
+    napi_set_named_property (env, result_transfer_id, "low",
+                             svc_create_u64 (env, result.transfer_id.low));
+    napi_set_named_property (env, result_obj, "transferId", result_transfer_id);
+    napi_set_named_property (env, result_obj, "actor", svc_create_actor_ref (env, result.actor));
+    svc_set_bigint (env, result_obj, "finalSequence", result.final_sequence);
+    svc_set_bigint (env, result_obj, "reserveMessageCount", result.reserve_message_count);
+    svc_set_bigint (env, result_obj, "reserveByteCount", result.reserve_byte_count);
+    napi_set_named_property (env, obj, "result", result_obj);
+    return obj;
+}
+
+napi_value mesh_node_actor_transfer_commit (napi_env env, napi_callback_info info)
+{
+    napi_value argv[2];
+    size_t argc = 2;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    zlink_actor_transfer_token_t token;
+    if (!svc_parse_transfer_token (env, argv[0], &token))
+        return NULL;
+    uint64_t new_membership_epoch = svc_u64 (env, argv[1]);
+    if (zlink_mesh_node_actor_transfer_commit (&token, new_membership_epoch) != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "meshNodeActorTransferCommit failed");
+    napi_value undef;
+    napi_get_undefined (env, &undef);
+    return undef;
+}
+
+napi_value mesh_node_actor_transfer_activate (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    zlink_actor_transfer_token_t token;
+    if (!svc_parse_transfer_token (env, argv[0], &token))
+        return NULL;
+    if (zlink_mesh_node_actor_transfer_activate (&token) != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "meshNodeActorTransferActivate failed");
+    napi_value undef;
+    napi_get_undefined (env, &undef);
+    return undef;
+}
+
+napi_value mesh_node_actor_transfer_abort (napi_env env, napi_callback_info info)
+{
+    napi_value argv[1];
+    size_t argc = 1;
+    napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
+    zlink_actor_transfer_token_t token;
+    if (!svc_parse_transfer_token (env, argv[0], &token))
+        return NULL;
+    if (zlink_mesh_node_actor_transfer_abort (&token) != ZLINK_CONFIG_OK)
+        return throw_last_error (env, "meshNodeActorTransferAbort failed");
+    napi_value undef;
+    napi_get_undefined (env, &undef);
+    return undef;
+}
+
+// ======================================================================
 //  Stream session service
 // ======================================================================
 
@@ -1844,7 +2262,8 @@ napi_value stream_session_service_destroy (napi_env env, napi_callback_info info
     size_t argc = 1;
     napi_get_cb_info (env, info, &argc, argv, NULL, NULL);
     void *service = svc_external (env, argv[0]);
-    zlink_stream_session_service_destroy (&service);
+    if (zlink_stream_session_service_destroy (&service) != ZLINK_CLOSE_OK)
+        return throw_last_error (env, "streamSessionServiceDestroy failed");
     napi_value undef;
     napi_get_undefined (env, &undef);
     return undef;

@@ -8,24 +8,48 @@ export type * from './shared';
 export {
   ReadyOwnerKind,
   ReceiveKind,
-  OperationKind
+  OperationKind,
+  ActorLifecycleKind,
+  ActorJoinResult,
+  MeshDestinationKind
 } from './dispatch';
 export type {
   ReadyOwnerKindValue,
   ReceiveKindValue,
   OperationKindValue,
+  ActorLifecycleKindValue,
+  ActorJoinResultValue,
+  MeshDestinationKindValue,
   MeshOperationId,
+  ActorTransferId,
   ActorRef,
   ActorLocation,
   ReadyRecord,
   ReceiveRequirements,
   ReceiveRecord,
+  ReceiveKindData,
+  ActorControlPayload,
+  ActorJoinCompletionPayload,
+  ActorLookupCompletionPayload,
+  SendReadyPayload,
+  ActorTransferControlPayload,
   DrainReadyResult,
   ClaimReceiveResult,
   ReadyBatch,
   Claim,
   ReceiveBatch
 } from './dispatch';
+
+// Actor transfer fence.
+export { ActorTransferRole, ActorTransferPhase } from './transfer';
+export type {
+  ActorTransferRoleValue,
+  ActorTransferPhaseValue,
+  ActorTransferToken,
+  ActorTransferPrepare,
+  ActorTransferPrepareResult,
+  PrepareActorTransferResult
+} from './transfer';
 
 // Mesh node.
 export { MeshNodeState } from './mesh_node';

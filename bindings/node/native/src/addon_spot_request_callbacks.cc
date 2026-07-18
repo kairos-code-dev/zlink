@@ -5,7 +5,6 @@
 #include "addon_message_values.h"
 #include "addon_tsfn_slots.h"
 
-#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -118,12 +117,6 @@ request_js_state_t *create_request_js_state_impl (napi_env env,
 
 } // namespace
 
-request_js_state_t *create_request_js_state (napi_env env, napi_value handler)
-{
-    return create_request_js_state_impl (env, handler, "zlink-spot-request-callback",
-                                         "spot request callback setup failed", false);
-}
-
 request_js_state_t *create_core_request_js_state (napi_env env, napi_value handler)
 {
     return create_request_js_state_impl (env, handler, "zlink-request-reply-callback",
@@ -161,29 +154,4 @@ void request_reply_callback_trampoline (zlink_request_result_t errnum_,
         payload.release ();
     }
     release_request_tsfn (state);
-}
-
-void sync_request_callback (zlink_request_result_t result_,
-                            zlink_msg_t *parts_,
-                            size_t part_count_,
-                            void *userdata_)
-{
-    sync_request_state_t *state = static_cast<sync_request_state_t *> (userdata_);
-    close_recv_parts (parts_, part_count_);
-    if (!state)
-        return;
-    {
-        std::lock_guard<std::mutex> lock (state->mu);
-        state->result = result_;
-        state->done = true;
-    }
-    state->cv.notify_one ();
-}
-
-zlink_request_result_t wait_sync_request (sync_request_state_t *state)
-{
-    std::unique_lock<std::mutex> lock (state->mu);
-    if (!state->cv.wait_for (lock, std::chrono::seconds (5), [state] { return state->done; }))
-        return ZLINK_REQUEST_TIMED_OUT;
-    return state->result;
 }

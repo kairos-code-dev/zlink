@@ -6,13 +6,12 @@ import { normalizeRoutingId } from '../core/routing_id';
 import {
   RuntimeReplyOperation,
   RuntimeRequestOperation,
-  RuntimeSendOperation,
   RoutedMessageSocket,
 } from './socket_operations';
 import { configureSocketChannelName } from './socket_base';
 import { normalizeReplyFlags } from './socket_submit_errors';
 import type { RuntimeContext as Context } from '../core/context';
-import { configCall, submitNativeError, submitOrBackpressure } from '../errors/native_errors';
+import { configCall, submitNativeError } from '../errors/native_errors';
 import { getNativeHandle } from '../handles/native_handle';
 import { executeNativeRequest } from '../messaging/request_executor';
 import { startRequestProgress } from '../messaging/request_progress';
@@ -23,7 +22,6 @@ import type {
   ReplyOperation,
   RequestCallback,
   RequestOperation,
-  SendOperation,
 } from '../../contracts/service';
 
 const native = requireNative();
@@ -80,78 +78,6 @@ export class RouterSocket extends RoutedMessageSocket {
       submitErrorMessage: 'request failed',
       requestErrorMessage: 'request failed'
     });
-  }
-  sendToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): SendOperation {
-    return new RuntimeSendOperation((parts, opFlags) => this.sendToSpotDirect(destNodeRid, destSpotRid, parts, opFlags));
-  }
-  /** @internal */
-  sendToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): boolean {
-    try {
-      native.routerSpotSend(
-        getNativeHandle(this),
-        normalizeRoutingId(destNodeRid),
-        normalizeRoutingId(destSpotRid),
-        normalizeOperationPayload(payloadOrParts),
-        flags | 0
-      );
-      return true;
-    } catch (error) {
-      return submitOrBackpressure(error, flags, 'sendToSpot failed');
-    }
-  }
-  protected sendToSpotFromRoutedMessage(destNodeRid: RoutingId, destSpotRid: RoutingId, parts: readonly Message[], flags: SendFlags): boolean {
-    return this.sendToSpotDirect(destNodeRid, destSpotRid, parts, flags);
-  }
-  requestToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId): RequestOperation {
-    return new RuntimeRequestOperation((parts, cbOrTimeout, opFlags, opTimeout) =>
-      this.requestToSpotDirect(destNodeRid, destSpotRid, parts, cbOrTimeout, opFlags, opTimeout)
-    );
-  }
-  private requestToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, payloadOrParts: MessageLike | readonly MessageLike[], callbackOrTimeout?: RequestCallback | number, flagsOrTimeout?: SendFlags | number, maybeTimeout?: number): Promise<Message[]> | boolean {
-    const parts = normalizeOperationPayload(payloadOrParts);
-    const nodeRid = normalizeRoutingId(destNodeRid);
-    const spotRid = normalizeRoutingId(destSpotRid);
-    const nativeHandle = getNativeHandle(this);
-    return executeNativeRequest({
-      callbackOrTimeout,
-      flagsOrTimeout,
-      maybeTimeout,
-      promiseTimeoutMayUseFlagsOrTimeout: true,
-      startProgress: () => startRequestProgress(nativeHandle),
-      invoke: (callback, flags, timeoutMs) => {
-        native.routerSpotRequest(
-          nativeHandle,
-          nodeRid,
-          spotRid,
-          parts,
-          callback,
-          flags | 0,
-          timeoutMs | 0
-        );
-      },
-      submitErrorMessage: 'requestToSpot failed',
-      requestErrorMessage: 'requestToSpot failed'
-    });
-  }
-  replyToSpot(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint): ReplyOperation {
-    return new RuntimeReplyOperation((parts, opFlags) => this.replyToSpotDirect(destNodeRid, destSpotRid, requestSeq, parts, opFlags));
-  }
-  private replyToSpotDirect(destNodeRid: RoutingId, destSpotRid: RoutingId, requestSeq: bigint, payloadOrParts: MessageLike | readonly MessageLike[], flags: SendFlags = SendFlags.None): void {
-    normalizeReplyFlags(flags);
-    const normalizedDestNodeRid = normalizeRoutingId(destNodeRid);
-    const normalizedDestSpotRid = normalizeRoutingId(destSpotRid);
-    const parts = normalizeOperationPayload(payloadOrParts);
-    try {
-      native.routerSpotReply(
-        getNativeHandle(this),
-        normalizedDestNodeRid,
-        normalizedDestSpotRid,
-        requestSeq,
-        parts
-      );
-    } catch (error) {
-      throw submitNativeError(error, flags, 'replyToSpot failed');
-    }
   }
   reply(peerRid: RoutingId, requestSeq: bigint): ReplyOperation {
     return new RuntimeReplyOperation((parts, opFlags) => this.replyDirect(peerRid, requestSeq, parts, opFlags));

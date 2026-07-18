@@ -10,8 +10,7 @@ internal static class Program
 
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateMeshNode();
-        node.SetBind("tcp://127.0.0.1:*");
-        node.Start();
+        SampleSupport.StartConfiguredNode(node, "actor-gateway-relay");
         using var spot = node.CreateSpot();
         ActorRef actor = node.CreateActor("play-session-actor");
         using var sessionReady = new ManualResetEventSlim(false);
@@ -34,24 +33,23 @@ internal static class Program
             sessionReady.Set();
         });
 
+        // Core 10.0.0은 actor 바인딩을 STREAM session service가 소유한다.
+        using var sessionService = SampleSupport.StartSessionService(node, stream);
+
         using var client = SampleSupport.ConnectRawClient(port);
         SampleSupport.SendStreamPacket(client.GetStream(), "hello-gateway"u8);
         if (!sessionReady.Wait(5000) || sessionRid == null)
             throw new TimeoutException("stream session");
 
-        Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async()
-            .WaitAsync(TimeSpan.FromSeconds(5)));
+        SampleSupport.BindSessionActor(node, sessionService, sessionRid.Value,
+            actor);
 
         // actor가 play spot에 합류한다 (호스트가 admit).
         ulong epoch = SampleSupport.JoinLocalSpot(node, actor, spot, "join-play");
 
         // 게이트웨이가 클라이언트 입력을 바인딩된 actor로 relay한다.
-        using Message relayed = Message.From("client-input");
-        stream.SendBoundActor(sessionRid.Value, actor.ActorId)
-            .Message(relayed)
-            .Submit();
+        SampleSupport.RelaySessionMessage(sessionService, sessionRid.Value, actor,
+            "client-input");
         SampleSupport.WaitOrThrow(() =>
         {
             SampleSupport.CollectActorMessages(node, ready, recv, payloads);
@@ -60,9 +58,7 @@ internal static class Program
 
         Console.WriteLine("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"");
         SampleSupport.LeaveLocalSpot(node, actor, epoch);
-        Zlink.MultipartClose(await stream.UnbindActor(sessionRid.Value, actor.ActorId)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async()
-            .WaitAsync(TimeSpan.FromSeconds(5)));
+        SampleSupport.UnbindSessionActor(node, sessionService, sessionRid.Value,
+            actor);
     }
 }

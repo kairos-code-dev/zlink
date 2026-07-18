@@ -58,32 +58,6 @@ internal sealed class RouterPeerReplyOperation : RouterReplyOperation
     }
 }
 
-internal sealed class RouterSpotReplyOperation : RouterReplyOperation
-{
-    private readonly RoutingId _destNodeRid;
-    private readonly RoutingId _destSpotRid;
-    private readonly ulong _requestSeq;
-    private readonly RouterSocket _socket;
-
-    internal RouterSpotReplyOperation(
-        RouterSocket socket,
-        RoutingId destNodeRid,
-        RoutingId destSpotRid,
-        ulong requestSeq)
-    {
-        _socket = socket;
-        _destNodeRid = destNodeRid;
-        _destSpotRid = destSpotRid;
-        _requestSeq = requestSeq;
-    }
-
-    protected override void SubmitCore(IReadOnlyList<Message> parts)
-    {
-        _socket.ReplyToSpotCore(_destNodeRid, _destSpotRid, _requestSeq,
-            parts);
-    }
-}
-
 internal sealed class ReceivedReplyOperationImpl : ReplyOperation,
     ReplySubmitOperation
 {

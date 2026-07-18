@@ -87,29 +87,40 @@ public interface ISpot : IZlinkSocket, IDisposable, IAsyncDisposable
     /// <summary>Reads the current spot status.</summary>
     SpotStatus Status();
 
-    /// <summary>Sends parts to a channel. Parts are consumed on success.</summary>
+    /// <summary>
+    ///     Sends parts to a channel, optionally attaching immutable outbound
+    ///     application metadata. Parts are consumed on success.
+    /// </summary>
     SubmitResult SendToChannel(string channelName, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Requests to a channel. Parts are consumed on success.</summary>
     SubmitResult RequestToChannel(string channelName,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None);
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Sends parts to a spot on another node.</summary>
     SubmitResult SendToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
         ulong targetSpotGeneration, IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Requests to a spot on another node.</summary>
     SubmitResult RequestToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
         ulong targetSpotGeneration, IReadOnlyList<Message> parts,
         out MeshOperationId operationId, TimeSpan timeout = default,
-        SendFlags flags = SendFlags.None);
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
-    /// <summary>Publishes parts under a channel/topic (logical multicast).</summary>
+    /// <summary>
+    ///     Publishes parts under a channel/topic (logical multicast), optionally
+    ///     attaching immutable outbound application metadata.
+    /// </summary>
     MeshPublishDetail Publish(string channelName, string? topic,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Adds a subscription for a channel topic filter.</summary>
     void SetSubscription(string channelName, string topicFilter,

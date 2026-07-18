@@ -157,62 +157,9 @@ internal sealed class RoutedSendOperation : SendOperation, SendSubmitOperation
     }
 }
 
-internal sealed class RouterSendOperation : SendOperation, SendSubmitOperation
-{
-    private readonly RoutingId _destNodeRid;
-    private readonly RoutingId _destSpotRid;
-    private readonly RouterSocket _socket;
-    private SendFlags _flags;
-    private OperationMessageBuffer _parts;
-    private OperationSubmissionGuard _submission;
-
-    internal RouterSendOperation(RouterSocket socket, RoutingId destNodeRid,
-        RoutingId destSpotRid)
-    {
-        _socket = socket;
-        _destNodeRid = destNodeRid;
-        _destSpotRid = destSpotRid;
-    }
-
-    public SendSubmitOperation Message(Message message)
-    {
-        EnsureNotSubmitted();
-        _parts.Add(message);
-        return this;
-    }
-
-    public SendSubmitOperation Flags(SendFlags flags)
-    {
-        EnsureNotSubmitted();
-        _flags = flags;
-        return this;
-    }
-
-    public bool Submit()
-    {
-        EnsureReady();
-        _submission.MarkSubmittedAfterValidation();
-        return _socket.SendToSpotCore(_destNodeRid, _destSpotRid, _parts.Parts,
-            _flags);
-    }
-
-    private void EnsureReady()
-    {
-        EnsureNotSubmitted();
-        _parts.EnsureNotEmpty();
-    }
-
-    private void EnsureNotSubmitted()
-    {
-        _submission.EnsureNotSubmitted();
-    }
-}
-
 internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
 {
-    private readonly string? _actorId;
     private readonly RoutingId? _routingId;
-    private readonly RoutingId? _sessionRid;
     private readonly StreamSocket _socket;
     private SendFlags _flags;
     private OperationMessageBuffer _parts;
@@ -224,14 +171,6 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
         _routingId = routingId;
     }
 
-    internal StreamSendOperation(StreamSocket socket, RoutingId sessionRid,
-        string actorId)
-    {
-        _socket = socket;
-        _sessionRid = sessionRid;
-        _actorId = actorId;
-    }
-
     public SendSubmitOperation Message(Message message)
     {
         EnsureNotSubmitted();
@@ -250,9 +189,6 @@ internal sealed class StreamSendOperation : SendOperation, SendSubmitOperation
     {
         EnsureReady();
         _submission.MarkSubmittedAfterValidation();
-        if (_actorId != null)
-            return _socket.SendBoundActorCore(_sessionRid!.Value, _actorId,
-                _parts.Parts, _flags);
         return _parts.IsSingle
             ? _socket.SendRoutedCore(_routingId!.Value, _parts.Single, _flags)
             : _socket.SendRoutedCore(_routingId!.Value, _parts.Parts, _flags);

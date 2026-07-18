@@ -16,6 +16,8 @@ internal static class Program
         string clientEndpoint = SampleSupport.NewEndpoint("tcp", "spot-rpc-client");
         serverNode.SetBind(serverEndpoint);
         clientNode.SetBind(clientEndpoint);
+        serverNode.SetRoutingId(RoutingId.From("spot-rpc-server"));
+        clientNode.SetRoutingId(RoutingId.From("spot-rpc-client"));
         serverNode.Start();
         clientNode.Start();
         serverNode.ConnectPeer(clientEndpoint);

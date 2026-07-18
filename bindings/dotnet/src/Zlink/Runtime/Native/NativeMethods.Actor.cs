@@ -16,7 +16,7 @@ internal static partial class NativeMethods
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_mesh_node_actor_lookup(IntPtr meshNode,
         [MarshalAs(UnmanagedType.LPUTF8Str)] string actorId,
-        out ZlinkActorLocation location);
+        ref ZlinkActorLocation location);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_mesh_node_actor_lookup_remote(IntPtr meshNode,
@@ -73,4 +73,22 @@ internal static partial class NativeMethods
         ref ZlinkActorRef sourceActor, ref ZlinkActorRef targetActor,
         IntPtr actorMetadata, IntPtr parts, nuint partCount,
         out ZlinkMeshOperationId operationId, int flags, uint timeoutMs);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_actor_transfer_prepare(
+        IntPtr meshNode, ref ZlinkActorTransferPrepare prepare, uint timeoutMs,
+        out ZlinkActorTransferToken token,
+        ref ZlinkActorTransferPrepareResult result);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_actor_transfer_commit(
+        in ZlinkActorTransferToken token, ulong newMembershipEpoch);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_actor_transfer_activate(
+        in ZlinkActorTransferToken token);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int zlink_mesh_node_actor_transfer_abort(
+        in ZlinkActorTransferToken token);
 }

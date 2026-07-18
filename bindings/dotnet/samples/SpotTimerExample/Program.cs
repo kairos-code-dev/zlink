@@ -1,6 +1,7 @@
 // 자립형 가이드 예제: SPOT timer.
 // 게임룸(Spot)이 주기 타이머로 틱을 돌린다(예: 게임 루프 틱/타임아웃).
 //   dotnet run --project samples/SpotTimerExample
+using SampleCommon;
 using Systems.Zlink;
 
 internal static class Program
@@ -10,8 +11,7 @@ internal static class Program
         // --8<-- [start:doc]
         using var ctx = Zlink.CreateContext();
         using var node = ctx.CreateMeshNode();
-        node.SetBind("tcp://127.0.0.1:*");
-        node.Start();
+        SampleSupport.StartConfiguredNode(node, "spot-timer-node");
         using var room = node.CreateSpot();
         // 게임룸의 이벤트 루프에서 디스패치되는 타이머를 만든다.
         using var timer = Zlink.CreateTimer(room);

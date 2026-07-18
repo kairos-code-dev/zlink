@@ -54,7 +54,7 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_mesh_claim_recv_batch(ref ZlinkMeshClaim claim,
-        IntPtr batch, out ZlinkMeshReceiveRequirements required, int flags);
+        IntPtr batch, ref ZlinkMeshReceiveRequirements required, int flags);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern nuint zlink_mesh_receive_batch_count(IntPtr batch);

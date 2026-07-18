@@ -206,29 +206,24 @@ internal sealed partial class SocketKernel
         // recv; non-request-reply routed traffic (the common router-router
         // / dealer-router echo case) skips this branch entirely.
         var routingIdBytes = routingId.ToByteArray();
-        var spotRidBytes = spotRid.ToByteArray();
         var replyRoutingId = routingIdBytes == null
             ? null
             : RoutingId.FromOwnedOptionalBytes(routingIdBytes);
-        var replySpotRid = spotRidBytes == null
-            ? null
-            : RoutingId.FromOwnedOptionalBytes(spotRidBytes);
         ReceivedReplyHandler replyHandler = replyParts =>
         {
             if (replyRoutingId is null)
                 throw new ZlinkSubmitException(SubmitResult.InvalidArgument,
                     (int)ErrorCode.EInval);
-            SendReplyCore(replyRoutingId.Value, replySpotRid, requestSeq,
-                replyParts);
+            SendReplyCore(replyRoutingId.Value, requestSeq, replyParts);
         };
 
         if (singlePart != null)
             result.PopulateRoutedSinglePart(singlePart, routingId, spotRid,
-                requestSeq, replyHandler, CreateRoutedSendHandler(routingId, spotRid),
-                CreateRoutedSendSingleHandler(routingId, spotRid));
+                requestSeq, replyHandler, CreateRoutedSendHandler(routingId),
+                CreateRoutedSendSingleHandler(routingId));
         else
             result.PopulateRoutedMultipart(parts!, routingId, spotRid,
-                requestSeq, replyHandler, CreateRoutedSendHandler(routingId, spotRid),
-                CreateRoutedSendSingleHandler(routingId, spotRid));
+                requestSeq, replyHandler, CreateRoutedSendHandler(routingId),
+                CreateRoutedSendSingleHandler(routingId));
     }
 }

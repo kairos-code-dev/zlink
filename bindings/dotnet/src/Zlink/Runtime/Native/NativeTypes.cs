@@ -60,31 +60,6 @@ internal struct ZlinkPollerEvent
     public short Events;
 }
 
-[StructLayout(LayoutKind.Sequential)]
-internal struct ZlinkSpotDispatchInfoNative
-{
-    public int Event;
-    public int SubjectKind;
-    public IntPtr Subject;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct ZlinkSpotRouteBridgeOptions
-{
-    public uint StructSize;
-    public int DefaultRequestTimeoutMs;
-    public int ErrorReplyPolicy;
-    public int ReceiveMode;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct ZlinkSpotRouteBridgeEndpointOptions
-{
-    public uint StructSize;
-    public uint Capabilities;
-    public int InboundRelayPolicy;
-}
-
 internal static class NativeHelpers
 {
     public static unsafe string ReadString(byte* buffer, int maxLen)

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
+using System.Runtime.InteropServices;
 using Systems.Zlink.Runtime.Native;
 
 namespace Systems.Zlink;
@@ -44,8 +45,15 @@ internal sealed partial class MeshNode
     {
         ActorContractValidation.ValidateActorId(actorId, nameof(actorId));
         EnsureNotDisposed();
+        var native = new ZlinkActorLocation
+        {
+            StructSize =
+                (uint)System.Runtime.InteropServices.Marshal
+                    .SizeOf<ZlinkActorLocation>(),
+            Version = 1
+        };
         var rc = NativeMethods.zlink_mesh_node_actor_lookup(Handle, actorId,
-            out var native);
+            ref native);
         if (rc == (int)ConfigResult.NotFound)
         {
             location = null!;
@@ -166,27 +174,31 @@ internal sealed partial class MeshNode
     }
 
     public SubmitResult SendToActor(ActorRef actor,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None)
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeActor = ActorInterop.ToNative(actor);
-        return MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_mesh_node_send_to_actor(Handle, ref nativeActor,
-                IntPtr.Zero, np, count, (int)flags));
+        return MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_mesh_node_send_to_actor(Handle, ref nativeActor,
+                    meta, np, count, (int)flags));
     }
 
     public SubmitResult RequestToActor(ActorRef actor,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None)
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
     {
         EnsureNotDisposed();
         var nativeActor = ActorInterop.ToNative(actor);
         var timeoutMs = MeshSend.EncodeTimeout(timeout);
         ZlinkMeshOperationId op = default;
-        var result = MeshSend.Submit(parts, nameof(parts), (np, count) =>
-            NativeMethods.zlink_mesh_node_request_to_actor(Handle,
-                ref nativeActor, IntPtr.Zero, np, count, out op, (int)flags,
-                timeoutMs));
+        var result = MeshSend.SubmitWithMetadata(parts, nameof(parts), metadata,
+            (np, count, meta) =>
+                NativeMethods.zlink_mesh_node_request_to_actor(Handle,
+                    ref nativeActor, meta, np, count, out op, (int)flags,
+                    timeoutMs));
         operationId = new MeshOperationId(op.High, op.Low);
         return result;
     }
@@ -211,5 +223,74 @@ internal sealed partial class MeshNode
             MeshSend.EncodeTimeout(timeout));
         ZlinkException.ThrowSubmitIfError(rc);
         return new MeshOperationId(op.High, op.Low);
+    }
+
+    public ActorTransferToken PrepareActorTransfer(ActorTransferPrepare prepare,
+        out ActorTransferPrepareResult result, TimeSpan timeout = default)
+    {
+        EnsureNotDisposed();
+        var nativePrepare = new ZlinkActorTransferPrepare
+        {
+            StructSize = (uint)Marshal.SizeOf<ZlinkActorTransferPrepare>(),
+            Version = 1,
+            Role = (int)prepare.Role,
+            TransferId = new ZlinkActorTransferId
+            {
+                High = prepare.TransferId.High,
+                Low = prepare.TransferId.Low
+            },
+            Actor = ActorInterop.ToNative(prepare.Actor),
+            ExpectedMembershipEpoch = prepare.ExpectedMembershipEpoch,
+            PeerNodeRid = prepare.PeerNodeRid.ToNative(),
+            FinalSequence = prepare.FinalSequence,
+            ReserveMessageCount = prepare.ReserveMessageCount,
+            ReserveByteCount = prepare.ReserveByteCount
+        };
+        var nativeResult = new ZlinkActorTransferPrepareResult
+        {
+            StructSize = (uint)Marshal.SizeOf<ZlinkActorTransferPrepareResult>(),
+            Version = 1
+        };
+        var rc = NativeMethods.zlink_mesh_node_actor_transfer_prepare(Handle,
+            ref nativePrepare, MeshSend.EncodeTimeout(timeout), out var token,
+            ref nativeResult);
+        if (rc != 0)
+            throw new ZlinkRequestException((RequestResult)rc);
+
+        result = new ActorTransferPrepareResult(
+            (ActorTransferRole)nativeResult.Role,
+            new ActorTransferId(nativeResult.TransferId.High,
+                nativeResult.TransferId.Low),
+            ActorInterop.FromNative(ref nativeResult.Actor),
+            nativeResult.FinalSequence,
+            nativeResult.ReserveMessageCount,
+            nativeResult.ReserveByteCount);
+        return new ActorTransferToken(token);
+    }
+
+    public void CommitActorTransfer(ActorTransferToken token,
+        ulong newMembershipEpoch)
+    {
+        EnsureNotDisposed();
+        var native = token.Native;
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_mesh_node_actor_transfer_commit(in native,
+                newMembershipEpoch));
+    }
+
+    public void ActivateActorTransfer(ActorTransferToken token)
+    {
+        EnsureNotDisposed();
+        var native = token.Native;
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_mesh_node_actor_transfer_activate(in native));
+    }
+
+    public void AbortActorTransfer(ActorTransferToken token)
+    {
+        EnsureNotDisposed();
+        var native = token.Native;
+        ZlinkException.ThrowConfigIfError(
+            NativeMethods.zlink_mesh_node_actor_transfer_abort(in native));
     }
 }

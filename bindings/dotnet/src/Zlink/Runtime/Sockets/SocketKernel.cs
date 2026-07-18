@@ -46,25 +46,18 @@ internal sealed partial class SocketKernel : IDisposable
     }
 
     private void SendReplyCore(RoutingId routingId,
-        RoutingId? spotRid, ulong requestSeq, IReadOnlyList<Message> parts)
+        ulong requestSeq, IReadOnlyList<Message> parts)
     {
         var nativeRoutingId = routingId.ToNative();
-        var hasSpotRid = spotRid.HasValue;
-        ZlinkRoutingId nativeSpotRid = default;
-        if (hasSpotRid)
-            nativeSpotRid = spotRid.GetValueOrDefault().ToNative();
         var cloned = RequestReplySupport.CloneParts(parts);
         try
         {
             RequestReplySupport.SubmitClonedParts(cloned,
                 (ref ZlinkMsg nativePart,
-                    NativeMethods.ZlinkPartFlag partFlag) => !hasSpotRid
-                    ? NativeMethods.zlink_router_reply_part(Handle,
+                    NativeMethods.ZlinkPartFlag partFlag) =>
+                    NativeMethods.zlink_router_reply_part(Handle,
                         ref nativeRoutingId, requestSeq, ref nativePart,
-                        partFlag)
-                    : NativeMethods.zlink_router_reply_spot_part(Handle,
-                        ref nativeRoutingId, ref nativeSpotRid, requestSeq,
-                        ref nativePart, partFlag));
+                        partFlag));
         }
         catch
         {

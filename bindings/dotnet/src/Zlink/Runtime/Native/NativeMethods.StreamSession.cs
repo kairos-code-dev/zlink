@@ -25,7 +25,7 @@ internal static partial class NativeMethods
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_stream_session_service_status(
-        IntPtr service, out ZlinkStreamSessionStatus status);
+        IntPtr service, ref ZlinkStreamSessionStatus status);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl)]
     internal static extern int zlink_stream_session_bind_actor(IntPtr service,

@@ -95,6 +95,110 @@ public static class SampleSupport
         throw new TimeoutException(message);
     }
 
+    /// <summary>
+    ///     Configures a MeshNode with the identity, bind endpoint, and channel
+    ///     Core requires before <c>Start</c> (a unique routing id, a bind, and at
+    ///     least one channel), then starts it.
+    /// </summary>
+    public static void StartConfiguredNode(IMeshNode node, string routingId,
+        string channelName = "app", string bind = "tcp://127.0.0.1:*")
+    {
+        node.SetRoutingId(RoutingId.From(routingId));
+        node.SetBind(bind);
+        node.AddChannel(channelName);
+        node.Start();
+    }
+
+    /// <summary>Creates and starts a STREAM session service for a stream socket.</summary>
+    public static IStreamSessionService StartSessionService(IMeshNode node,
+        IStreamSocket stream)
+    {
+        IStreamSessionService service = node.CreateStreamSessionService(stream);
+        service.Start();
+        return service;
+    }
+
+    /// <summary>
+    ///     Binds an actor to a STREAM session through the session service and
+    ///     waits for the bind completion on the node's ready index.
+    /// </summary>
+    public static void BindSessionActor(IMeshNode node,
+        IStreamSessionService service, RoutingId sessionRid, ActorRef actor,
+        int timeoutMs = 5000)
+    {
+        SubmitResult rc = service.BindActor(sessionRid, actor,
+            out MeshOperationId op);
+        if (rc != SubmitResult.Ok)
+            throw new InvalidOperationException(
+                $"stream session bind submit failed: {rc}");
+        WaitStreamOperation(node, op, "bind", timeoutMs);
+    }
+
+    /// <summary>Unbinds an actor from a STREAM session through the session service.</summary>
+    public static void UnbindSessionActor(IMeshNode node,
+        IStreamSessionService service, RoutingId sessionRid, ActorRef actor,
+        int timeoutMs = 5000)
+    {
+        ulong generation = 0;
+        foreach (StreamSessionBinding binding in service.Bindings(sessionRid))
+        {
+            if (string.Equals(binding.Actor.ActorId, actor.ActorId,
+                    StringComparison.Ordinal))
+                generation = binding.BindingGeneration;
+        }
+
+        SubmitResult rc = service.UnbindActor(sessionRid, actor, generation,
+            out MeshOperationId op);
+        if (rc != SubmitResult.Ok)
+            throw new InvalidOperationException(
+                $"stream session unbind submit failed: {rc}");
+        WaitStreamOperation(node, op, "unbind", timeoutMs);
+    }
+
+    /// <summary>Relays a payload to a session-bound actor via the session service.</summary>
+    public static void RelaySessionMessage(IStreamSessionService service,
+        RoutingId sessionRid, ActorRef actor, string payload)
+    {
+        using Message message = Message.From(payload);
+        SubmitResult rc = service.SendToActor(sessionRid, actor,
+            new[] { message });
+        if (rc != SubmitResult.Ok)
+            throw new InvalidOperationException(
+                $"stream session relay failed: {rc}");
+    }
+
+    private static void WaitStreamOperation(IMeshNode node, MeshOperationId opId,
+        string name, int timeoutMs)
+    {
+        using var ready = new MeshReadyBatch();
+        using var recv = new MeshReceiveBatch();
+        bool completed = false;
+        int terminal = 0;
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!completed && DateTime.UtcNow < deadline)
+        {
+            PumpReady(node, ready, recv, (record, batch, index) =>
+            {
+                if (record.Kind == MeshRecordKind.Completion
+                    && record.OperationId.Equals(opId))
+                {
+                    terminal = record.TerminalResult;
+                    completed = true;
+                }
+            });
+            if (completed)
+                break;
+            Thread.Sleep(10);
+        }
+
+        if (!completed)
+            throw new TimeoutException(
+                $"stream session {name} did not complete");
+        if (terminal != 0)
+            throw new InvalidOperationException(
+                $"stream session {name} failed: {terminal}");
+    }
+
     public static void WaitSpotPeerConnected(IMeshNode node, int timeoutMs = 5000)
     {
         WaitOrThrow(
@@ -162,12 +266,13 @@ public static class SampleSupport
                 if (record.Kind == MeshRecordKind.SpotControl
                     && record.OperationKind == MeshOperationKind.ActorJoin)
                 {
-                    // 호스트가 join 요청 레코드를 받아 admit(응답)한다.
+                    // 호스트가 join 요청 레코드를 받아 admit(응답)한다. actor join은
+                    // 전용 join-reply 경로(record.Accept)로만 승인할 수 있다.
                     Message[] request = batch.RetainMessage(index);
                     if (onHostObservedJoin != null && request.Length > 0)
                         onHostObservedJoin(request[0].GetString());
                     using (Message ok = Message.From(admitPayload))
-                        record.Reply(new[] { ok });
+                        record.Accept(new[] { ok });
                     MultipartCloseSafe(request);
                 }
                 else if (record.Kind == MeshRecordKind.Completion

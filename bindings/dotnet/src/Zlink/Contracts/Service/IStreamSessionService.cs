@@ -85,14 +85,16 @@ public interface IStreamSessionService : IDisposable, IAsyncDisposable
     /// <summary>Lists the bindings for a session.</summary>
     StreamSessionBinding[] Bindings(RoutingId sessionRid);
 
-    /// <summary>Sends parts to a session-bound actor.</summary>
+    /// <summary>Sends parts to a session-bound actor, optionally with metadata.</summary>
     SubmitResult SendToActor(RoutingId sessionRid, ActorRef actor,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Requests to a session-bound actor.</summary>
     SubmitResult RequestToActor(RoutingId sessionRid, ActorRef actor,
         IReadOnlyList<Message> parts, out MeshOperationId operationId,
-        TimeSpan timeout = default, SendFlags flags = SendFlags.None);
+        TimeSpan timeout = default, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Closes the service and releases its resources.</summary>
     void Close();
@@ -106,7 +108,8 @@ public interface IMeshNodePublisher : IDisposable, IAsyncDisposable
 {
     /// <summary>Publishes parts under a channel/topic.</summary>
     MeshPublishDetail Publish(string channelName, string? topic,
-        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None);
+        IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
 
     /// <summary>Sets whether publisher sends avoid dropping messages.</summary>
     void SetNoDrop(bool noDrop);

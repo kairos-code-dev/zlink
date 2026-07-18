@@ -22,8 +22,8 @@ internal static class ProviderEndpoints
             IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
         {
-            var peers = await query.ListPeerLocationsAsync(
-                new ZLinkPeerLocationFilter(MeshName: mesh),
+            var peers = await query.ListMeshNodeDescriptorsAsync(
+                mesh ?? throw new InvalidOperationException("mesh query parameter is required."),
                 cancellationToken);
             return Results.Ok(peers.Select(ToPeerRow).ToArray());
         });
@@ -37,8 +37,8 @@ internal static class ProviderEndpoints
             PeerLocationRow[] rows = [];
             while (DateTimeOffset.UtcNow < deadline)
             {
-                rows = (await query.ListPeerLocationsAsync(
-                        new ZLinkPeerLocationFilter(MeshName: request.MeshName),
+                rows = (await query.ListMeshNodeDescriptorsAsync(
+                        request.MeshName,
                         cancellationToken))
                     .Select(ToPeerRow)
                     .ToArray();
@@ -64,11 +64,11 @@ internal static class ProviderEndpoints
         // freshness (doc §1 verification basis).
         app.MapGet("/locations/member-peers", async (
             string? mesh,
-            IZLinkPeerLocationResolver resolver,
+            IZLinkMeshNodeLocationResolver resolver,
             CancellationToken cancellationToken) =>
         {
-            var peers = await resolver.ListLivePeersAsync(
-                new ZLinkPeerLocationFilter(MeshName: mesh),
+            var peers = await resolver.ListLiveMeshNodesAsync(
+                mesh ?? throw new InvalidOperationException("mesh query parameter is required."),
                 cancellationToken);
             return Results.Ok(peers.Select(ToPeerRow).ToArray());
         });
@@ -106,7 +106,7 @@ internal static class ProviderEndpoints
             IZLinkChannelClient channel,
             CancellationToken cancellationToken) =>
         {
-            channel.SendToChannel("profile", command).Submit(cancellationToken);
+            channel.SendToChannel("profile", command).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/route/request", async (
@@ -254,16 +254,16 @@ internal static class ProviderEndpoints
         });
     }
 
-    private static PeerLocationRow ToPeerRow(ZLinkPeerLocation peer)
+    private static PeerLocationRow ToPeerRow(ZLinkMeshNodeDescriptor peer)
     {
         return new PeerLocationRow(
             peer.MeshName,
-            peer.NodeRid?.ToString(),
-            peer.Role.ToString(),
+            peer.Rid.ToString(),
+            "Router",
             peer.Endpoint,
-            peer.Weight,
+            (uint)(peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight) ? weight : 0),
             peer.OwnerId,
-            peer.Generation);
+            peer.LifecycleGeneration);
     }
 
 }

@@ -28,9 +28,9 @@ internal sealed class SpotToSpotHandler(
             .RequestToSpot(target, new StateReq("add", 3))
             .Async<StateRes>(cancellationToken);
         spot.Context.Outbound.SendToSpot(target, new StateMsg($"sm-c3-send-{request.Marker}"))
-            .Submit(cancellationToken);
+            .TrySubmit();
         spot.Context.Outbound.Publish(SpotServiceNames.SpotMsgTopic, new SpotMsg($"sm-c3-publish-{request.Marker}"))
-            .Submit(cancellationToken);
+            .TrySubmit();
         evidence.Add(
             $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotRid}"
             + $"|target={request.TargetSpotRid}|value={reply.Value}");
@@ -111,7 +111,7 @@ internal sealed class SpotToSpotNegativeHandler(
         }
 
         spot.Context.Outbound.SendToSpot(target, new MissingSpotMsg($"missing-{request.Marker}"))
-            .Submit(cancellationToken);
+            .TrySubmit();
 
         evidence.Add(
             $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotRid}"
@@ -141,11 +141,11 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
         spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelNotify(notifyMarker))
-            .Submit(cancellationToken);
+            .TrySubmit();
         spot.Context.Outbound.Publish(
                 SpotServiceNames.SpotMsgTopic,
                 new SpotMsg("sm-c2-publish"))
-            .Submit(cancellationToken);
+            .TrySubmit();
         evidence.Add(
             $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|echo={echo.Value}|notify={notifyMarker}");
@@ -179,7 +179,7 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
         spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new MissingChannelNotify($"missing-{request.Marker}"))
-            .Submit(cancellationToken);
+            .TrySubmit();
         evidence.Add(
             $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
             + $"|requestFailed={requestFailed}");

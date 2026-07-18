@@ -42,7 +42,6 @@ internal sealed class LocationRuntimeEventRecorder(
             : -1;
         var topologyEntries = @event is ZLinkLocationRuntimeEvent.TopologyChanged changed
             ? changed.Topology
-                .Where(entry => entry.NodeRid is not null)
                 .Select(entry => $"{entry.NodeRid}:{entry.State}")
                 .Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal)
@@ -50,7 +49,7 @@ internal sealed class LocationRuntimeEventRecorder(
             : [];
         var summaryEntries = @event is ZLinkLocationRuntimeEvent.ServiceSummaryChanged summaryChanged
             ? summaryChanged.ServiceSummary
-                .Select(entry => $"{entry.MeshName}:{entry.AutoConnectType}:{entry.Role}:"
+                .Select(entry => $"{entry.MeshName}:"
                                  + $"{entry.TotalCount}:{entry.ReadyCount}:{entry.ErrorCount}:{entry.StoppedCount}")
                 .Order(StringComparer.Ordinal)
                 .ToArray()
@@ -78,9 +77,8 @@ internal sealed class LocationTopologyTransitionTracker
         IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry> topology)
     {
         var current = topology
-            .Where(entry => entry.NodeRid is not null
-                            && entry.State == Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState.Ready)
-            .Select(entry => entry.NodeRid!.Value.ToString())
+            .Where(entry => entry.State == Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState.Ready)
+            .Select(entry => entry.NodeRid.ToString())
             .Where(static nodeRid => !nodeRid.StartsWith("hex:", StringComparison.Ordinal))
             .ToHashSet(StringComparer.Ordinal);
         lock (_gate)

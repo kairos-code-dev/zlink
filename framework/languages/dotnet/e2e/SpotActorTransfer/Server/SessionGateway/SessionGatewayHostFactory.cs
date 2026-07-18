@@ -22,8 +22,8 @@ internal static class SessionGatewayHostFactory
             framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
                 .SetConnectionString(options.RedisEndpoint)
                 .SetKeyPrefix(options.RedisKeyPrefix)));
-            framework.AddSpotMesh(SpotActorTransferNames.Mesh)
-                .EnableRouter(options.RouterEndpoint)
+            framework.AddRouteMesh(SpotActorTransferNames.Mesh)
+                .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid));
             framework.AddStreamNode($"{SpotActorTransferNames.Mesh}-stream-{options.Rid}")
                 .Bind(options.StreamEndpoint)

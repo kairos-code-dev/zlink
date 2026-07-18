@@ -89,16 +89,14 @@ internal static class ProviderEndpoints
         });
         app.MapPost("/admin/weight/wait", async (
             WeightWaitReq request,
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+            [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             CancellationToken cancellationToken) =>
         {
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var deadline = DateTimeOffset.UtcNow + timeout;
             while (DateTimeOffset.UtcNow < deadline)
             {
-                var weight = runtimeOptions.ClientServerChannel(StoreFailureNames.Channel)
-                    .ConfigureServerSocket()
-                    .Weight;
+                var weight = runtimeOptions.Channel(StoreFailureNames.Channel, StoreFailureNames.Channel).Weight;
                 if (weight == request.Expected) return Results.Ok(new { weight });
 
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);

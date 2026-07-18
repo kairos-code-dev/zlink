@@ -46,11 +46,10 @@ internal static class WorkflowHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(WorkflowHostFactory));
-            framework.AddSpotMesh(ObservabilityNames.WorkflowMesh)
-                .UseDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate)
-                .EnableRouter(options.RouterEndpoint)
+            framework.AddRouteMesh(ObservabilityNames.WorkflowMesh)
+                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate)
+                .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(options.PubEndpoint)
                 .AddSpotFactory<WorkflowSpot>()
                 .AddSpotFactory<ProjectionSpot>();
         });
@@ -98,13 +97,13 @@ internal static class WorkflowHostFactory
         app.MapGet("/evidence", async (IZLinkDrainControl drain, IZLinkLocationRuntimeQuery locations,
             WorkflowEvidenceStore evidence, MetricEvidenceCollector metrics) =>
         {
-            var peers = await locations.ListPeerLocationsAsync(new ZLinkPeerLocationFilter());
-            var spots = (await locations.ListSpotLocationsAsync(new ZLinkSpotLocationFilter())).Items;
+            var peers = await locations.ListMeshNodeDescriptorsAsync(ObservabilityNames.WorkflowMesh);
+            // Spot rows are resolve-only store records in 10.0.0: the
+            // operational surface enumerates MeshNode descriptors only.
             return Results.Ok(new EvidenceSnapshot(options.Rid, drain.IsReady, evidence.Snapshot(),
-                metrics.Snapshot(), peers.Select(row => new PeerRow(row.NodeRid?.ToString() ?? string.Empty,
-                    row.Draining, row.Generation)).ToArray(), [],
-                spots.Select(row => new SpotRow(row.MeshName, row.NodeRid.ToString(), row.SpotRid.ToString(),
-                    row.SpotKind.ToString(), row.Generation)).ToArray()));
+                metrics.Snapshot(), peers.Select(row => new PeerRow(row.Rid.ToString(),
+                    row.Draining, (long)row.LifecycleGeneration)).ToArray(), [],
+                []));
         });
         app.MapPost("/evidence/wait", async (EvidenceWaitReq request, WorkflowEvidenceStore evidence,
             CancellationToken cancellationToken) =>

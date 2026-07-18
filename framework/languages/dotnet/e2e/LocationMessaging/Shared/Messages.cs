@@ -17,7 +17,7 @@ public sealed record PeerLocationRow(
     string Endpoint,
     uint Weight,
     string OwnerId,
-    long Generation);
+    ulong Generation);
 
 public sealed record PeerLocationWaitReq(
     string MeshName,

@@ -15,11 +15,9 @@ public static class OperationalEndpoints
             IZLinkLocationRuntimeQuery query,
             CancellationToken cancellationToken) =>
         {
-            var rows = await query.ListPeerLocationsAsync(
-                new ZLinkPeerLocationFilter(MeshName: mesh, Role: ZLinkLocationRole.Pub),
-                cancellationToken);
+            var rows = await query.ListMeshNodeDescriptorsAsync(mesh, cancellationToken);
             return Results.Ok(rows.Select(row =>
-                new PeerLocationRowRes(row.NodeRid?.ToString() ?? string.Empty, row.Endpoint)).ToArray());
+                new PeerLocationRowRes(row.Rid.ToString(), row.Endpoint)).ToArray());
         });
         app.MapPost("/locations/peers/wait", async (
             PeerLocationWaitReq request,
@@ -30,13 +28,11 @@ public static class OperationalEndpoints
             var deadline = DateTimeOffset.UtcNow + timeout;
             while (DateTimeOffset.UtcNow < deadline)
             {
-                var matches = (await query.ListPeerLocationsAsync(
-                        new ZLinkPeerLocationFilter(
-                            MeshName: request.MeshName,
-                            Role: ZLinkLocationRole.Pub,
-                            NodeRid: RoutingId.From(request.NodeRid)),
+                var matches = (await query.ListMeshNodeDescriptorsAsync(
+                        request.MeshName,
                         cancellationToken))
-                    .Where(row => request.Endpoint is null || row.Endpoint == request.Endpoint)
+                    .Where(row => row.Rid.Equals(RoutingId.From(request.NodeRid))
+                                  && (request.Endpoint is null || row.Endpoint == request.Endpoint))
                     .ToArray();
                 if (request.Present ? matches.Length == 1 : matches.Length == 0)
                     return Results.Ok(new { reached = true });

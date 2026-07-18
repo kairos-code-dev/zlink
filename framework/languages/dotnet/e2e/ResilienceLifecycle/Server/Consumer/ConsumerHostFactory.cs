@@ -77,12 +77,12 @@ internal static class ConsumerHostFactory
             var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMilliseconds(request.TimeoutMilliseconds);
             while (true)
             {
-                var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter());
+                var peers = await query.ListMeshNodeDescriptorsAsync(ResilienceLifecycleNames.Channel);
                 var matches = peers
-                    .Where(peer => peer.NodeRid is { Size: > 0 } rid
-                                   && rid == RoutingId.From(request.RoutingId)
+                    .Where(peer => peer.Rid == RoutingId.From(request.RoutingId)
                                    && (request.ExpectedWeight is null
-                                       || peer.Weight == request.ExpectedWeight)
+                                       || (peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight)
+                                           ? weight : 0) == request.ExpectedWeight)
                                    && (request.ExpectedDraining is null
                                        || peer.Draining == request.ExpectedDraining))
                     .ToArray();
@@ -92,11 +92,12 @@ internal static class ConsumerHostFactory
                 if (satisfied)
                     return Results.Ok(matches
                         .Select(peer => new TopologyEntryRes(
-                            peer.NodeRid?.ToString(),
+                            peer.Rid.ToString(),
                             peer.Endpoint,
                             "Ready",
-                            peer.Weight,
-                            peer.Generation,
+                            (uint)(peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight)
+                                ? weight : 0),
+                            (long)peer.LifecycleGeneration,
                             peer.Draining))
                         .ToArray());
 
@@ -175,7 +176,7 @@ internal static class ConsumerHostFactory
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            channel.SendToChannel(ResilienceLifecycleNames.Channel, command).Submit();
+            channel.SendToChannel(ResilienceLifecycleNames.Channel, command).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>

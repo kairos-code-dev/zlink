@@ -45,7 +45,7 @@ internal sealed partial class AwaitSession
                      ?? throw new ZLinkFrameworkException(
                          ZLinkFrameworkErrorKind.SpotRouteNotFound,
                          $"Spot '{spotRid}' has no live location row.");
-        routes.SendToSpot(handle, message).Submit(cancellationToken);
+        routes.SendToSpot(handle, message).TrySubmit();
     }
 
     private static async ValueTask<TRes> RequestSpotAsync<TRes>(

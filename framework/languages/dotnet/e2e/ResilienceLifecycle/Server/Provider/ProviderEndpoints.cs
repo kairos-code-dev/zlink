@@ -47,18 +47,18 @@ internal static class ProviderEndpoints
             return Results.Ok(new { status = "fault", mode });
         });
         app.MapPost("/admin/weight/exclude", (
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+            [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
-            runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel).ConfigureServerSocket().Weight = 0;
+            runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight = 0;
             evidence.Add($"admin|rid={evidence.Rid}|action=weight-exclude|weight=0");
             return Results.Ok(new { status = "excluded", weight = 0 });
         });
         app.MapPost("/admin/weight/include", (
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+            [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
-            runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel).ConfigureServerSocket().Weight = 100;
+            runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight = 100;
             evidence.Add($"admin|rid={evidence.Rid}|action=weight-include|weight=100");
             return Results.Ok(new { status = "included", weight = 100 });
         });
@@ -74,24 +74,21 @@ internal static class ProviderEndpoints
                 _ => throw new InvalidOperationException($"Unknown drain result '{result.GetType().Name}'.")
             });
         });
-        app.MapGet("/admin/weight", ([FromServices] IZLinkChannelRuntimeOptions runtimeOptions) =>
+        app.MapGet("/admin/weight", ([FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions) =>
         {
-            var weight = runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel).ConfigureServerSocket()
-                .Weight;
+            var weight = runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight;
             return Results.Ok(new { weight });
         });
         app.MapPost("/admin/weight/wait", async (
             WeightWaitReq request,
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+            [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             CancellationToken cancellationToken) =>
         {
             var timeout = TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             var deadline = DateTimeOffset.UtcNow + timeout;
             while (DateTimeOffset.UtcNow < deadline)
             {
-                var weight = runtimeOptions.ClientServerChannel(ResilienceLifecycleNames.Channel)
-                    .ConfigureServerSocket()
-                    .Weight;
+                var weight = runtimeOptions.Channel(ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel).Weight;
                 if (weight == request.Expected) return Results.Ok(new { weight });
 
                 await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);

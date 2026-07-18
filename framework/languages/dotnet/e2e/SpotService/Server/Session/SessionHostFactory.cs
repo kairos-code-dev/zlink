@@ -60,8 +60,8 @@ internal static class SessionHostFactory
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddHandlerGroup("play");
-            framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
+            framework.AddRouteMesh(SpotServiceNames.SpotChannel)
+                                .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType);

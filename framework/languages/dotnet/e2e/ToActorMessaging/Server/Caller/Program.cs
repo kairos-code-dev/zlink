@@ -19,22 +19,22 @@ var builder = WebApplication.CreateBuilder(args);
         builder.Configuration.AddInMemoryCollection();
 builder.WebHost.UseUrls(options.HttpUrl);
 var cachedActors = new ConcurrentDictionary<string, ActorRef>(StringComparer.Ordinal);
-IZLinkEndpointConnections? actorConnections = null;
+IZLinkMeshPeerConnections? actorConnections = null;
 builder.Services.AddZLinkFramework(framework =>
 {
     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
         .SetConnectionString(options.RedisEndpoint)
         .SetKeyPrefix(options.RedisKeyPrefix)));
-    var spot = framework.AddSpotMesh("to-actor")
-        .EnableRouter(options.RouterEndpoint)
+    var spot = framework.AddRouteMesh("to-actor")
+        .Listen(options.RouterEndpoint)
         .SetRoutingId(RoutingId.From(options.Rid))
-        .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
-        .EnablePubSub(options.PubSubEndpoint);
+        .SetEntrySpotRoutingId(RoutingId.From(options.Rid));
     if (options.ConnectActorRoutes)
-        spot
-            .ConnectRouter(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint)
-            .ConnectRouter(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint);
-    actorConnections = spot.RouterConnections;
+    {
+        spot.PeerConnections.Connect(RoutingId.From(options.ActorRid), options.ActorRouterEndpoint);
+        spot.PeerConnections.Connect(RoutingId.From(options.ActorBRid), options.ActorBRouterEndpoint);
+    }
+    actorConnections = spot.PeerConnections;
 });
 
 var app = builder.Build();

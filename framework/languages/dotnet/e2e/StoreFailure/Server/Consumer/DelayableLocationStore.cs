@@ -16,6 +16,11 @@ internal sealed class LocationStoreDelayState
     }
 }
 
+/// <summary>
+/// E2E deployment decorator that injects a configurable per-operation delay
+/// in front of the configured public store. All location semantics remain
+/// owned by the inner store.
+/// </summary>
 internal sealed class DelayableLocationStore(
     IZLinkLocationStore inner,
     LocationStoreDelayState delayState,
@@ -32,30 +37,30 @@ internal sealed class DelayableLocationStore(
         }
     }
 
-    public async ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
-        ZLinkPeerLocation peer,
+    public async ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
+        ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default)
     {
         await WaitDelayAsync(cancellationToken);
-        return await inner.UpdatePeerAsync(peer, intent, cancellationToken);
+        return await inner.UpdateMeshNodeAsync(descriptor, intent, cancellationToken);
     }
 
-    public async ValueTask<ZLinkLocationWriteResult> RemovePeerAsync(
-        ZLinkPeerLocationKey key,
+    public async ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
+        ZLinkMeshNodeDescriptorKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default)
     {
         await WaitDelayAsync(cancellationToken);
-        return await inner.RemovePeerAsync(key, owner, cancellationToken);
+        return await inner.RemoveMeshNodeAsync(key, owner, cancellationToken);
     }
 
-    public async ValueTask<IReadOnlyList<ZLinkPeerLocation>> ListPeersAsync(
-        ZLinkPeerLocationFilter filter,
+    public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
+        string meshName,
         CancellationToken cancellationToken = default)
     {
         await WaitDelayAsync(cancellationToken);
-        return await inner.ListPeersAsync(filter, cancellationToken);
+        return await inner.ListMeshNodesAsync(meshName, cancellationToken);
     }
 
     public async ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
@@ -67,7 +72,7 @@ internal sealed class DelayableLocationStore(
         return await inner.UpdateSpotAsync(spot, intent, cancellationToken);
     }
 
-    public async ValueTask<ZLinkLocationWriteResult> RemoveSpotAsync(
+    public async ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default)
@@ -84,15 +89,6 @@ internal sealed class DelayableLocationStore(
         return await inner.ResolveSpotAsync(key, cancellationToken);
     }
 
-    public async ValueTask<ZLinkLocationPage<ZLinkSpotLocation>> ListSpotsAsync(
-        ZLinkSpotLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        await WaitDelayAsync(cancellationToken);
-        return await inner.ListSpotsAsync(filter, page, cancellationToken);
-    }
-
     public async ValueTask<ZLinkLocationWriteResult> UpdateActorAsync(
         ZLinkActorLocation actor,
         ZLinkLocationWriteIntent intent,
@@ -102,7 +98,7 @@ internal sealed class DelayableLocationStore(
         return await inner.UpdateActorAsync(actor, intent, cancellationToken);
     }
 
-    public async ValueTask<ZLinkLocationWriteResult> RemoveActorAsync(
+    public async ValueTask<ZLinkLocationWriteStatus> RemoveActorAsync(
         ZLinkActorLocationKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default)
@@ -117,50 +113,6 @@ internal sealed class DelayableLocationStore(
     {
         await WaitDelayAsync(cancellationToken);
         return await inner.ResolveActorAsync(key, cancellationToken);
-    }
-
-    public async ValueTask<ZLinkLocationPage<ZLinkActorLocation>> ListActorsAsync(
-        ZLinkActorLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        await WaitDelayAsync(cancellationToken);
-        return await inner.ListActorsAsync(filter, page, cancellationToken);
-    }
-
-    public async ValueTask<ZLinkLocationWriteResult> UpdateRouteAsync(
-        ZLinkRouteLocation route,
-        ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default)
-    {
-        await WaitDelayAsync(cancellationToken);
-        return await inner.UpdateRouteAsync(route, intent, cancellationToken);
-    }
-
-    public async ValueTask<ZLinkLocationWriteResult> RemoveRouteAsync(
-        ZLinkRouteLocationKey key,
-        ZLinkLocationOwnerToken owner,
-        CancellationToken cancellationToken = default)
-    {
-        await WaitDelayAsync(cancellationToken);
-        return await inner.RemoveRouteAsync(key, owner, cancellationToken);
-    }
-
-    public async ValueTask<ZLinkRouteLocation?> ResolveRouteAsync(
-        ZLinkRouteLocationKey key,
-        CancellationToken cancellationToken = default)
-    {
-        await WaitDelayAsync(cancellationToken);
-        return await inner.ResolveRouteAsync(key, cancellationToken);
-    }
-
-    public async ValueTask<ZLinkLocationPage<ZLinkRouteLocation>> ListRoutesAsync(
-        ZLinkRouteLocationFilter filter,
-        ZLinkPageRequest page = default,
-        CancellationToken cancellationToken = default)
-    {
-        await WaitDelayAsync(cancellationToken);
-        return await inner.ListRoutesAsync(filter, page, cancellationToken);
     }
 
     public async ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
@@ -196,16 +148,75 @@ internal sealed class DelayableLocationStore(
         return await inner.RemoveAllByOwnerAsync(ownerId, cancellationToken);
     }
 
-    public async ValueTask<long> GetChangeStampAsync(
+    public async ValueTask<ZLinkActorTransferWriteResult> PrepareActorTransferAsync(
+        ZLinkActorTransferPrepareRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitDelayAsync(cancellationToken);
+        return await inner.PrepareActorTransferAsync(request, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkActorTransferWriteResult> CommitActorTransferAsync(
+        string meshName,
+        string actorId,
+        Guid transferId,
+        string recoveryOwnerId,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitDelayAsync(cancellationToken);
+        return await inner.CommitActorTransferAsync(meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkActorTransferWriteResult> ActivateActorTransferAsync(
+        string meshName,
+        string actorId,
+        Guid transferId,
+        string recoveryOwnerId,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitDelayAsync(cancellationToken);
+        return await inner.ActivateActorTransferAsync(meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkActorTransferWriteResult> AbortActorTransferAsync(
+        string meshName,
+        string actorId,
+        Guid transferId,
+        string recoveryOwnerId,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitDelayAsync(cancellationToken);
+        return await inner.AbortActorTransferAsync(meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkActorTransferWriteResult> TakeOverActorTransferAsync(
+        string meshName,
+        string actorId,
+        Guid transferId,
+        string successorOwnerId,
+        TimeSpan recoveryLeaseTtl,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitDelayAsync(cancellationToken);
+        return await inner.TakeOverActorTransferAsync(meshName, actorId, transferId, successorOwnerId, recoveryLeaseTtl, cancellationToken);
+    }
+
+    public async ValueTask<ZLinkActorTransferRecord?> ResolveActorTransferAsync(
+        string meshName,
+        string actorId,
+        CancellationToken cancellationToken = default)
+    {
+        await WaitDelayAsync(cancellationToken);
+        return await inner.ResolveActorTransferAsync(meshName, actorId, cancellationToken);
+    }
+
+    public async ValueTask<ulong> GetChangeStampAsync(
         ZLinkLocationChangeStampScope scope,
         CancellationToken cancellationToken = default)
     {
-        if (changeStampStore is null)
-        {
-            return 0;
-        }
-
         await WaitDelayAsync(cancellationToken);
+        if (changeStampStore is null)
+            throw new NotSupportedException("The inner store exposes no change stamp.");
         return await changeStampStore.GetChangeStampAsync(scope, cancellationToken);
     }
 }

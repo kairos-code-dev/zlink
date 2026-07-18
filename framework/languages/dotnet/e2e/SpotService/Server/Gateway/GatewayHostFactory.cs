@@ -63,10 +63,9 @@ internal static class GatewayHostFactory
                 .TraceLabel(options.Rid);
             framework.AddRouteMeshChannel(SpotServiceNames.ExternalSpotChannel)
                 .EnableClient(Require(options.ExternalSpotEndpoint, "ExternalSpotEndpoint"));
-            framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(Require(options.SpotPubEndpoint, "SpotPubEndpoint"));
+            framework.AddRouteMesh(SpotServiceNames.SpotChannel)
+                .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
+                .SetRoutingId(RoutingId.From(options.Rid));
         });
 
         var app = builder.Build();
@@ -94,7 +93,7 @@ internal static class GatewayHostFactory
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
                     new SpotMsg(request.Marker))
-                .Submit();
+                .TrySubmit();
             evidence.Add($"spot-publish|rid={options.Rid}|spot={request.SpotRid}|marker={request.Marker}");
             return Results.Ok(new SpotPublishRes(
                 "spot.sm-c4-publish",
@@ -244,10 +243,10 @@ internal static class GatewayHostFactory
                            + TimeSpan.FromMilliseconds(Math.Clamp(request.TimeoutMilliseconds, 1, 30000));
             while (DateTimeOffset.UtcNow < deadline)
             {
-                var peers = await locations.ListPeerLocationsAsync(
-                    new ZLinkPeerLocationFilter(), cancellationToken);
+                var peers = await locations.ListMeshNodeDescriptorsAsync(
+                    SpotServiceNames.SpotChannel, cancellationToken);
                 var peerReady = peers.Any(row => string.Equals(
-                    row.NodeRid?.ToString(), request.NodeRid, StringComparison.Ordinal));
+                    row.Rid.ToString(), request.NodeRid, StringComparison.Ordinal));
                 var entry = await handles.ResolveSpotHandleAsync(
                     RoutingId.From(request.NodeRid), cancellationToken);
                 if (peerReady && entry is not null)

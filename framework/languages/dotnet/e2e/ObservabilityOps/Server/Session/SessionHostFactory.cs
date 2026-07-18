@@ -37,10 +37,9 @@ internal static class SessionHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(SessionHostFactory));
-            framework.AddSpotMesh(ObservabilityNames.PlayMesh)
-                .EnableRouter(options.RouterEndpoint)
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(options.PubEndpoint);
+            framework.AddRouteMesh(ObservabilityNames.PlayMesh)
+                .Listen(options.RouterEndpoint)
+                .SetRoutingId(RoutingId.From(options.Rid));
             framework.AddStreamNode(ObservabilityNames.StreamNode)
                 .Bind(options.StreamEndpoint)
                 .RegisterSession<ObservabilitySession>();
@@ -58,11 +57,11 @@ internal static class SessionHostFactory
             IZLinkDrainControl drain,
             IZLinkLocationRuntimeQuery locations) =>
         {
-            var peers = await locations.ListPeerLocationsAsync(new ZLinkPeerLocationFilter());
+            var peers = await locations.ListMeshNodeDescriptorsAsync(ObservabilityNames.PlayMesh);
             return Results.Ok(new EvidenceSnapshot(
                 options.Rid, drain.IsReady, [], metrics.Snapshot(),
-                peers.Select(row => new PeerRow(row.NodeRid?.ToString() ?? string.Empty,
-                    row.Draining, row.Generation)).ToArray(), [], []));
+                peers.Select(row => new PeerRow(row.Rid.ToString(),
+                    row.Draining, (long)row.LifecycleGeneration)).ToArray(), [], []));
         });
         app.MapPost("/metrics/wait", async (MetricWaitReq request, MetricEvidenceCollector metrics,
             CancellationToken cancellationToken) => Results.Ok(await metrics.WaitAsync(

@@ -77,17 +77,14 @@ internal static class PlayHostFactory
                     .EnableClient(options.ExternalClientEndpoint)
                     .AddHandlerGroup("client");
 
-            var spot = framework.AddSpotMesh(SpotServiceNames.SpotChannel)
-                .EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
+            var spot = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
+                .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(Require(options.SpotPubEndpoint, "SpotPubEndpoint"))
                 .AddEntrySpot<ScenarioEntrySpot>()
                 .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
                 .AddSpotFactory<ScenarioUserSpot>()
                 .AddSpotFactory<ScenarioAlternateSpot>();
-            if (!string.IsNullOrWhiteSpace(options.ClientSpotPubEndpoint))
-                spot.ConnectPeerPub(options.ClientSpotPubEndpoint);
         });
 
         var app = builder.Build();
@@ -132,7 +129,7 @@ internal static class PlayHostFactory
         IZLinkSpotHandleResolver locator,
         string targetSpotRid,
         object command)
-        => routes.SendToSpot(await locator.ResolveRequiredAsync(targetSpotRid), command).Submit();
+        => routes.SendToSpot(await locator.ResolveRequiredAsync(targetSpotRid), command).TrySubmit();
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotAsync(
         IZLinkRouteClient routes,

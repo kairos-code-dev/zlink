@@ -91,12 +91,12 @@ internal static class ConsumerHostFactory
         {
             try
             {
-                var peers = await query.ListPeerLocationsAsync(
-                    new ZLinkPeerLocationFilter(),
+                var peers = await query.ListMeshNodeDescriptorsAsync(
+                    StoreFailureNames.Channel,
                     cancellationToken);
                 return Results.Ok(peers
                     .Select(peer => new PeerRowRes(
-                        peer.NodeRid?.ToString(),
+                        peer.Rid.ToString(),
                         peer.Endpoint,
                         peer.OwnerId,
                         peer.Draining))
@@ -120,10 +120,10 @@ internal static class ConsumerHostFactory
             {
                 try
                 {
-                    var rows = (await query.ListPeerLocationsAsync(
-                            new ZLinkPeerLocationFilter(), cancellationToken))
+                    var rows = (await query.ListMeshNodeDescriptorsAsync(
+                            StoreFailureNames.Channel, cancellationToken))
                         .Select(peer => new PeerRowRes(
-                            peer.NodeRid?.ToString(), peer.Endpoint, peer.OwnerId, peer.Draining))
+                            peer.Rid.ToString(), peer.Endpoint, peer.OwnerId, peer.Draining))
                         .ToArray();
                     var reached = request.PresentRids.All(rid => rows.Any(row => row.Rid == rid))
                                   && request.AbsentRids.All(rid => rows.All(row => row.Rid != rid))
@@ -203,7 +203,7 @@ internal static class ConsumerHostFactory
             ProfileMsg command,
             IZLinkChannelClient channel) =>
         {
-            channel.SendToChannel(StoreFailureNames.Channel, command).Submit();
+            _ = channel.SendToChannel(StoreFailureNames.Channel, command).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>

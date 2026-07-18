@@ -42,8 +42,8 @@ internal static class SpotFailureEndpoints
             {
                 try
                 {
-                    routes.SendToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
-                            new MissingSpotMsg(request.Marker)).Submit(missingSendCts.Token);
+                    _ = await routes.SendToSpot(await locator.ResolveRequiredAsync(request.SpotRid),
+                            new MissingSpotMsg(request.Marker)).SubmitAsync(missingSendCts.Token);
                 }
                 catch (OperationCanceledException) when (missingSendCts.IsCancellationRequested)
                 {

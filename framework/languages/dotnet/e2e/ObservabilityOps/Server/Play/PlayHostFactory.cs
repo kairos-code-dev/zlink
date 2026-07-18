@@ -45,12 +45,11 @@ internal static class PlayHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"flow-{options.Rid}.log"))
                 .TraceLabel(options.Rid);
             framework.AddHandlersFromAssemblyOf(typeof(PlayHostFactory));
-            framework.AddSpotMesh(ObservabilityNames.PlayMesh)
-                .UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural)
-                .EnableRouter(options.RouterEndpoint)
+            framework.AddRouteMesh(ObservabilityNames.PlayMesh)
+                .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural)
+                .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(options.PubEndpoint)
                 .AddEntrySpot<PlayEntrySpot>()
                 .AddActorFactory<PlayerActorFactory>(ObservabilityNames.PlayerActorType)
                 .AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>(ObservabilityNames.PlayerActorType)
@@ -114,19 +113,17 @@ internal static class PlayHostFactory
             IServiceProvider services,
             CancellationToken cancellationToken)
         {
-            var peers = await locations.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), cancellationToken);
-            var actors = (await locations.ListActorLocationsAsync(
-                new ZLinkActorLocationFilter())).Items;
-            var spots = (await locations.ListSpotLocationsAsync(
-                new ZLinkSpotLocationFilter())).Items;
+            var peers = await locations.ListMeshNodeDescriptorsAsync(
+                ObservabilityNames.PlayMesh, cancellationToken);
+            // Spot and actor rows are resolve-only store records in 10.0.0:
+            // the operational surface enumerates MeshNode descriptors only.
             return Results.Ok(new EvidenceSnapshot(
                 options.Rid, drain.IsReady, evidence.Snapshot(),
                 services.GetService<MetricEvidenceCollector>()?.Snapshot() ?? [],
-                peers.Select(row => new PeerRow(row.NodeRid?.ToString() ?? string.Empty,
-                    row.Draining, row.Generation)).ToArray(),
-                actors.Select(row => new ActorRow(row.ActorId, row.NodeRid.ToString(), row.Generation)).ToArray(),
-                spots.Select(row => new SpotRow(row.MeshName, row.NodeRid.ToString(),
-                    row.SpotRid.ToString(), row.SpotKind.ToString(), row.Generation)).ToArray()));
+                peers.Select(row => new PeerRow(row.Rid.ToString(),
+                    row.Draining, (long)row.LifecycleGeneration)).ToArray(),
+                [],
+                []));
         }
     }
 

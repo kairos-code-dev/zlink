@@ -39,7 +39,7 @@ internal sealed class WorkflowSpot(
         CancellationToken cancellationToken)
     {
         Context.Outbound.Publish("observability.projection",
-            new ProjectionUpdatedEvent(Context.SpotRid.ToString(), Version, request.Marker)).Submit(cancellationToken);
+            new ProjectionUpdatedEvent(Context.SpotRid.ToString(), Version, request.Marker)).TrySubmit();
         evidence.Add($"projection-published|rid={Context.SpotRid}|version={Version}|marker={request.Marker}");
         return ValueTask.FromResult(new PublishProjectionRes(Context.SpotRid.ToString(), Version));
     }

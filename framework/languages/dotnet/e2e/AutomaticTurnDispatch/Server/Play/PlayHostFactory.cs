@@ -60,10 +60,9 @@ internal static class PlayHostFactory
                 .EnableServer(options.SpotRouteEndpoint)
                 .EnableClient()
                 .SetRoutingId(RoutingId.From(options.Rid));
-            framework.AddSpotMesh(AutomaticTurnDispatchNames.SpotChannel)
-                                .EnableRouter(options.SpotRouterEndpoint)
+            framework.AddRouteMesh(AutomaticTurnDispatchNames.SpotChannel)
+                                .Listen(options.SpotRouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(options.SpotPubEndpoint)
                 .AddEntrySpot<AwaitEntrySpot>()
                 .AddActorFactory<AwaitActorFactory>(AutomaticTurnDispatchNames.ActorType)
                 .AddSpotFactory<AwaitProbeSpot>();

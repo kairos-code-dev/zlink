@@ -47,17 +47,17 @@ internal static class ConsumerEndpoints
             PeerLocationRow[] rows;
             do
             {
-                rows = (await query.ListPeerLocationsAsync(
-                        new ZLinkPeerLocationFilter(MeshName: request.MeshName),
+                rows = (await query.ListMeshNodeDescriptorsAsync(
+                        request.MeshName,
                         cancellationToken))
                     .Select(peer => new PeerLocationRow(
                         peer.MeshName,
-                        peer.NodeRid?.ToString(),
-                        peer.Role.ToString(),
+                        peer.Rid.ToString(),
+                        "Router",
                         peer.Endpoint,
-                        peer.Weight,
+                        (uint)(peer.ChannelWeights.TryGetValue(peer.MeshName, out var weight) ? weight : 0),
                         peer.OwnerId,
-                        peer.Generation))
+                        peer.LifecycleGeneration))
                     .ToArray();
                 var matches = rows.Where(row =>
                     row.Role == request.Role
@@ -131,7 +131,7 @@ internal static class ConsumerEndpoints
         {
             channel.SendToChannel(
                 "profile",
-                new MissingProfileMsg(command.CommandId)).Submit();
+                new MissingProfileMsg(command.CommandId)).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/payload", async (
@@ -238,7 +238,7 @@ internal static class ConsumerEndpoints
         IZLinkChannelClient channel,
         ProfileMsg command)
     {
-        channel.SendToChannel("profile", command).Submit();
+        channel.SendToChannel("profile", command).TrySubmit();
         return "Submitted";
     }
 

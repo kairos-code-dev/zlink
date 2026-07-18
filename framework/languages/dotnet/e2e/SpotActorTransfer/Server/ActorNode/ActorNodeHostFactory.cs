@@ -49,8 +49,8 @@ internal static class ActorNodeHostFactory
             locations.OwnerLeaseTtl = TimeSpan.FromSeconds(3);
             locations.PollingInterval = TimeSpan.FromMilliseconds(500);
             framework.AddHandlersFromAssemblyOf<TransferEntrySpot>();
-            framework.AddSpotMesh(SpotActorTransferNames.Mesh)
-                .EnableRouter(options.RouterEndpoint)
+            framework.AddRouteMesh(SpotActorTransferNames.Mesh)
+                .Listen(options.RouterEndpoint)
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .SetEntrySpotRoutingId(RoutingId.From(SpotActorTransferNames.EntrySpotRid))
                 .AddEntrySpot<TransferEntrySpot>()

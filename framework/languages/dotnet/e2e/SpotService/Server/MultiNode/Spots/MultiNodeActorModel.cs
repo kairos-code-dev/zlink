@@ -223,7 +223,7 @@ internal sealed class SpotOnlyUserSpot(
                 .RequestToSpot(target, new StateReq("add", 7))
                 .Async<StateRes>(cancellationToken);
             Context.Outbound.SendToSpot(target, new StateMsg($"sm-f6-send-{command.Marker}"))
-                .Submit(cancellationToken);
+                .TrySubmit();
             evidence.Add(
                 $"spot-only-request|rid={evidence.Rid}|source={Context.SpotRid}"
                 + $"|target={command.TargetSpotRid}|value={reply.Value}|marker={command.Marker}");

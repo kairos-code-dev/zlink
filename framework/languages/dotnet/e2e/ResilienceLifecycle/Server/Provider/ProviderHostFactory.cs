@@ -42,12 +42,13 @@ internal static class ProviderHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
-            var channel = framework.AddClientServerChannel(ResilienceLifecycleNames.Channel)
-                .EnableServer(Require(options.ChannelEndpoint, "ChannelEndpoint"))
+            var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
+                .Listen(Require(options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
-            channel.ConfigureServerSocket().Weight = options.Weight;
-            channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
-            channel.AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
+            mesh.ChannelName(ResilienceLifecycleNames.Channel)
+                .SetWeight(options.Weight)
+                .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq")
+                .AddSendHandler<ProfileCommandHandler, ProfileMsg>("ProfileMsg");
         });
 
         var app = builder.Build();

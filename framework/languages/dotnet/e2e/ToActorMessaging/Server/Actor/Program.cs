@@ -24,11 +24,10 @@ builder.Services.AddZLinkFramework(framework =>
         .SetConnectionString(options.RedisEndpoint)
         .SetKeyPrefix(options.RedisKeyPrefix)));
     framework.AddHandlersFromAssemblyOf(typeof(Program));
-    framework.AddSpotMesh("to-actor")
-        .EnableRouter(options.RouterEndpoint)
+    framework.AddRouteMesh("to-actor")
+        .Listen(options.RouterEndpoint)
         .SetRoutingId(RoutingId.From(options.Rid))
         .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
-        .EnablePubSub(options.PubSubEndpoint)
         .AddEntrySpot<TestEntrySpot>()
         .AddActorFactory<TestActorFactory>("test-actor");
 });

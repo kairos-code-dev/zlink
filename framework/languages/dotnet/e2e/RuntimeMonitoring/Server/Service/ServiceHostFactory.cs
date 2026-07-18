@@ -51,16 +51,15 @@ internal static class ServiceHostFactory
                 .TraceLogFile(Path.Combine(options.LogDir, $"{options.Rid}-flow.log"))
                 .TraceLabel(options.Rid);
 
-            var channel = framework.AddClientServerChannel(RuntimeMonitoringNames.Channel)
-                .EnableServer(Require(options.ChannelEndpoint, "ChannelEndpoint"))
-                .EnableClient()
+            var channelMesh = framework.AddRouteMesh(RuntimeMonitoringNames.Channel)
+                .Listen(Require(options.ChannelEndpoint, "ChannelEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid));
-            channel.AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
+            channelMesh.ChannelName(RuntimeMonitoringNames.Channel)
+                .AddRequestHandler<ProfileRequestHandler, ProfileReq, ProfileRes>("ProfileReq");
 
-            var spotMesh = framework.AddSpotMesh(RuntimeMonitoringNames.SpotChannel);
-            spotMesh.EnableRouter(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
+            var spotMesh = framework.AddRouteMesh(RuntimeMonitoringNames.SpotChannel);
+            spotMesh.Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
-                .EnablePubSub(Require(options.SpotPubEndpoint, "SpotPubEndpoint"))
                 .AddEntrySpot<MonitoringEntrySpot>()
                 .AddSpotFactory<MonitoringSubjectSpot>();
         });
@@ -129,18 +128,18 @@ internal static class ServiceHostFactory
             return Results.Ok(new { status = closed ? "closed" : "not-found" });
         });
         app.MapPost("/admin/weight/exclude", (
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+            [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
-            runtimeOptions.ClientServerChannel(RuntimeMonitoringNames.Channel).ConfigureServerSocket().Weight = 0;
+            runtimeOptions.Channel(RuntimeMonitoringNames.Channel, RuntimeMonitoringNames.Channel).Weight = 0;
             evidence.Add($"admin|rid={evidence.Rid}|action=drain|weight=0");
             return Results.Ok(new { status = "drained", weight = 0 });
         });
         app.MapPost("/admin/weight/include", (
-            [FromServices] IZLinkChannelRuntimeOptions runtimeOptions,
+            [FromServices] IZLinkRouteMeshRuntimeOptions runtimeOptions,
             [FromServices] EvidenceStore evidence) =>
         {
-            runtimeOptions.ClientServerChannel(RuntimeMonitoringNames.Channel).ConfigureServerSocket().Weight = 100;
+            runtimeOptions.Channel(RuntimeMonitoringNames.Channel, RuntimeMonitoringNames.Channel).Weight = 100;
             evidence.Add($"admin|rid={evidence.Rid}|action=restore|weight=100");
             return Results.Ok(new { status = "restored", weight = 100 });
         });

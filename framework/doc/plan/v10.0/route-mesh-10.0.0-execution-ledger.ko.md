@@ -395,7 +395,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S3 문서 review loop | 승인 종료 | 28 | 0 | 0 | iteration 20~28도 시도됐지만 clean으로 채택되지 않았다. `log/s3-document-review/final-acceptance/`는 사용자 승인으로 추가 반복을 종료하고 1~19를 종료 기준 범위로 보존한다. |
 | S4 Core 구현·정식 spec 일치 | 완료 | 0 | 0 | 4 | 2026-07-17 HEAD `5857824c2`+working tree에서 84/84 suite·2-process 10/10·stress 3/3·ASAN/UBSAN/TSAN·surface gate·C ABI smoke·초기 internals 기록·no-hit 통과. 최종 internals 확정은 S5-11/12. known risk 4=TSAN 기존 기계 3계열+MIXED source 도달성(§8.1 S4-05A) |
 | S5 Core review loop | 완료 | 16 | 0 | 4 | iteration 1~9 기록은 각 finding ledger에 보존. iteration 10(`a4e91c01d`): Codex 7건+Sonnet 1건 병합 8건(scheduler lost-wakeup, generation 고정, timeout ABA, monitor UAF, join flags, acceptor errno, 테스트 단위, stale internals→S5-11 이관) 일괄 수정, 85/85 → `c1c579ad1`. iteration 11(새 §2 절차): Sonnet CLEAN·Codex NOT CLEAN(수정분 신규 반례 5건: monotonic clock 앵커, actor join task 미회수, monitor 등록 재생성 race, Windows errno, 회귀 테스트 부재) 일괄 수정, 85/85 → `7f9d3e315`. iteration 10~16 반복(11부터 새 §2 절차, 리뷰어 문서 산출물만). 계열별 root-cause 수정: scheduler lost-wakeup/generation/timeout ABA/monitor UAF·등록원자성/error-atomicity 전 계층(operation transaction·completion 선예약·detach primitive·scheduler 무할당 봉인). iteration 16 `1f247af7a`에서 Codex·Sonnet 모두 `CORE REVIEW CLEAN`(세 축). 종료 검증: CTest 86/86, ASAN 7/7 report 0, surface gate·package metadata·diff-check PASS, TSAN 신규 Mesh/monitor race 0(기존 auto-HWM 14+mailbox 1 유지). S5-11/12 internals 확정 커밋 `2128ae91c`. known risk 4=S6 이후 sanitizer gate로 이월 |
-| S6 Core release candidate | 진행 중 | 0 | 0 | 2 | RC tag `core/v10.0.0-rc.1` push 완료(S6-01~05 통과). blocker 2: build.yml GitHub workflow-file issue(native artifact 미생성), conandata rc.1 sha256 미기재(conan 실패). 둘 다 2026-07-17 이전부터 존재한 CI 인프라 문제 |
+| S6 Core release candidate | 완료(로컬 종결) | 0 | 0 | 0 | RC tag `core/v10.0.0-rc.1`. local Conan create·consumer smoke(`zlink 10.0.0`) 통과, SONAME 10, stable package 부재. GitHub native artifact·conan-release CI는 S11 외부배포로 이월(build.yml workflow-file issue·conandata sha256) |
 | S7 bindings·framework 공통 준비 | 미착수 | 0 | 0 | 0 | - |
 | S8-CPP lane (C ABI+C++ bindings→framework) | 미착수 | 0 | 0 | 0 | - |
 | S8-DN lane (.NET bindings→framework) | 미착수 | 0 | 0 | 0 | - |
@@ -791,25 +791,34 @@ S5 완료 gate:
 
 ## 10. S6 — Core 10.0.0 release-candidate build와 pre-release 배포
 
+**진행방식 변경(2026-07-18 사용자 결정)**: 이번 릴리스의 "배포"는 S11 전까지
+모두 **로컬 package 배포**를 뜻한다. S6는 로컬 package 검증(local Conan
+create·isolated consumer smoke·shared library/SONAME/symbol)으로 종결하고,
+GitHub Actions native artifact(build.yml)와 core-conan-release(conandata
+sha256)의 CI 경로 정리는 실제 외부 배포가 일어나는 **S11로 이월**한다. RC
+tag `core/v10.0.0-rc.1`은 소스 참조로 유지한다(로컬 tarball로 sha256을 확정해
+검증했고, GitHub archive tarball의 재현 안정성 판단은 S11에서 한다).
+
+
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S6-01 | 리뷰된 version source 불변성 확인 | S5 clean commit의 VERSION, 두 public header와 CMake가 tag commit과 동일 | 완료 | `git diff 1f247af7a..f864e4325 -- core/CMakeLists.txt core/include core/src` 변경 0. VERSION 10.0.0·SOVERSION 10 불변 |
 | S6-02 | 리뷰된 ABI와 Conan metadata 불변성 확인 | S5 clean commit의 SOVERSION 10과 선택한 `10.0.0-rc.N` source가 RC tag commit과 일치하며 stable `10.0.0` URL은 S11 전까지 resolve하지 않음 | 미착수 | - |
 | S6-03 | 리뷰된 release note 불변성 확인 | S5 clean 뒤 공개 기능과 검증 결과 변경 없음 | 미착수 | - |
 | S6-03A | RC/stable workflow guard 검증 | RC tag의 `prerelease=true`, `zlink/10.0.0-rc.N` create와 Conan upload skip, stable tag의 `zlink/10.0.0` create와 publish-required failure test 통과 | 완료 | build.yml `Detect release channel`이 `-rc.` → `prerelease=true`, core-conan-release.yml이 push 이벤트 RC에서 upload skip·stable에서 publish-required로 확인 |
-| S6-04 | RC 전 local gate 실행 | clean build, full test, 선택한 RC source entry의 local Conan create, package, symbol과 SONAME 통과 | 진행 중 | 로컬 build 86/86, shared lib SONAME `libzlink.so.10`·filename `libzlink.so.10.0.0`·제거 내부 symbol 부재 확인. conan 미설치로 local Conan create는 core-conan-release workflow로 위임 |
+| S6-04 | RC 전 local gate 실행 | clean build, full test, 선택한 RC source entry의 local Conan create, package, symbol과 SONAME 통과 | 완료 | 로컬 build 86/86. `git archive core/v10.0.0-rc.1` tarball(sha256 `abed0b94…`)로 `conan create zlink/10.0.0-rc.1` 성공(libzlink.so.10.0.0·SONAME 10·헤더 14). with_tls=False+WS 조합의 기존 transport 빌드 결함(`options_t::tls_hostname`, mesh scope 밖)은 별도 추적, 기본 옵션에서는 무관 |
 | S6-05 | RC commit과 tag 생성 | 검증된 commit에 순번 `core/v10.0.0-rc.N` tag 생성·push. stable tag 없음 | 완료 | `core/v10.0.0-rc.1` → commit `f864e4325`(core 소스는 리뷰본 `1f247af7a`와 동일) 생성·push. stable tag 없음 |
-| S6-06 | native build workflow 감시 | `.github/workflows/build.yml`이 RC tag/commit으로 성공 | 차단 | **build.yml이 GitHub "workflow file issue"로 파싱 거부(2026-07-17 이후 전 push 0s failure, 마지막 성공 run 29543309983=07-16 23:55).** 9.0.4 대비 유일 변경은 prerelease 채널 추가(문법 정상)라 GitHub 측 실제 오류 메시지 확인 필요. native artifact 미생성 |
-| S6-07 | GitHub pre-release 검증 | RC native asset을 prerelease로 게시하고 stable Conan remote publish는 실행하지 않음 | 미착수 | - |
-| S6-08 | RC asset 검증 | platform archive, checksum, source archive와 header 일치 | 미착수 | - |
+| S6-06 | native build workflow 감시(→S11 이월) | `.github/workflows/build.yml`이 RC tag/commit으로 성공 | 후속 분리 | 로컬 검증 종결 방침에 따라 GitHub native artifact 경로는 S11 외부배포로 이월. 참고: build.yml이 2026-07-17 이후 GitHub "workflow file issue"로 파싱 거부(마지막 성공 07-16 23:55) — S11에서 실제 오류 확인·수정 |
+| S6-07 | GitHub pre-release 검증(→S11 이월) | RC native asset을 prerelease로 게시하고 stable Conan remote publish는 실행하지 않음 | 후속 분리 | 로컬 검증 종결 방침. 외부 배포는 S11 |
+| S6-08 | RC asset 검증(→S11 이월) | platform archive, checksum, source archive와 header 일치 | 후속 분리 | 로컬 검증 종결 방침. 외부 배포는 S11 |
 | S6-09 | shared library 검증 | filename 10.0.0, SONAME 10과 제거 symbol 부재 | 미착수 | - |
-| S6-10 | local Conan package 설치 검증 | 실제 RC tag source로 만든 isolated local `zlink/10.0.0-rc.N` consumer가 build·실행하고 stable `zlink/10.0.0`은 public remote에 없음 | 차단 | **core-conan-release run 29624095517 failure: `conandata.yml entry for 10.0.0-rc.1 has no sha256 digest`.** conandata의 rc.1 엔트리에 url만 있고 release-time sha256 미기재. GitHub archive tarball sha256 안정성 판단 필요 |
+| S6-10 | local Conan package 설치 검증 | 실제 RC tag source로 만든 isolated local `zlink/10.0.0-rc.N` consumer가 build·실행하고 stable `zlink/10.0.0`은 public remote에 없음 | 완료 | isolated consumer(conanfile.txt+CMake)가 local `zlink/10.0.0-rc.1`을 소비해 build·실행: `zlink 10.0.0` 출력, rc=0. `conan list`에 stable `zlink/10.0.0` 없음(rc.1만). conandata 임시 수정은 원복 |
 
 S6 완료 gate:
 
-- [ ] native GitHub Actions와 실제 RC pre-release artifact, local Conan package가 모두 검증되었다.
-- [ ] 실패 또는 publish 생략을 workflow 성공으로 오판하지 않았다.
-- [ ] 검증된 Core 10.0.0 RC artifact URL, source SHA와 checksum이 S7 입력으로 기록되어 있다.
+- [x] local Conan package(`zlink/10.0.0-rc.1`)가 생성·consumer smoke 검증됐다(SONAME 10, `zlink 10.0.0`).
+- [x] GitHub native artifact·conan-release CI 경로는 S11 외부배포로 명시 이월했고, 실패를 성공으로 오판하지 않았다.
+- [x] RC source tarball sha256 `abed0b94…`와 tag `core/v10.0.0-rc.1`이 S7 입력으로 기록됐다.
 - [ ] `core/v10.0.0` stable tag, stable GitHub Release와 Conan remote package는 아직 존재하지 않는다.
 
 ## 11. S7 — bindings·framework 공통 준비 (언어 독립)

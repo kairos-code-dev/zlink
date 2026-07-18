@@ -47,20 +47,14 @@ struct spot_operation_state_t
     struct routing_target_t
     {
         std::optional<routing_id_t> first_rid;
-        std::optional<routing_id_t> second_rid;
         zlink_routing_id_t first_rid_native_cache{};
-        zlink_routing_id_t second_rid_native_cache{};
         bool has_first_rid_native_cache = false;
-        bool has_second_rid_native_cache = false;
 
         void reset () noexcept
         {
             first_rid.reset ();
-            second_rid.reset ();
             first_rid_native_cache = zlink_routing_id_t{};
-            second_rid_native_cache = zlink_routing_id_t{};
             has_first_rid_native_cache = false;
-            has_second_rid_native_cache = false;
         }
     };
 
@@ -94,22 +88,13 @@ struct spot_operation_state_t
         }
     };
 
+    // Raw ROUTER reply state. Only the reply sequence survives here; all other
+    // per-command service fields were retired with the service send paths.
     struct spot_command_t
     {
-        spot_t *spot = nullptr;
-        std::string topic;
-        std::string channel_name;
-        routing_target_t target;
         uint64_t request_seq = 0;
 
-        void reset () noexcept
-        {
-            spot = nullptr;
-            topic.clear ();
-            channel_name.clear ();
-            target.reset ();
-            request_seq = 0;
-        }
+        void reset () noexcept { request_seq = 0; }
     };
 
     struct received_command_t
@@ -135,14 +120,6 @@ inline void cache_first_rid_native (spot_operation_state_t::routing_target_t &ta
     target_.first_rid.reset ();
 }
 
-inline void cache_second_rid_native (spot_operation_state_t::routing_target_t &target_,
-                                     const routing_id_t &rid_) noexcept
-{
-    target_.second_rid_native_cache = *zlink::detail::routing_id_native (rid_);
-    target_.has_second_rid_native_cache = true;
-    target_.second_rid.reset ();
-}
-
 inline const zlink_routing_id_t *target_first_rid_native (
   const spot_operation_state_t::routing_target_t &target_) noexcept
 {
@@ -150,16 +127,6 @@ inline const zlink_routing_id_t *target_first_rid_native (
         return &target_.first_rid_native_cache;
     if (target_.first_rid.has_value ())
         return zlink::detail::routing_id_native (*target_.first_rid);
-    return nullptr;
-}
-
-inline const zlink_routing_id_t *target_second_rid_native (
-  const spot_operation_state_t::routing_target_t &target_) noexcept
-{
-    if (target_.has_second_rid_native_cache)
-        return &target_.second_rid_native_cache;
-    if (target_.second_rid.has_value ())
-        return zlink::detail::routing_id_native (*target_.second_rid);
     return nullptr;
 }
 

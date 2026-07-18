@@ -67,6 +67,8 @@ class stream_session_service_t
 {
   public:
     stream_session_service_t (mesh_node_t &node_, stream_socket_t &stream_);
+    /// @brief Destroys the session service. Must not outlive its owning node;
+    ///        see mesh_node_t's destructor for the busy/leak contract.
     ~stream_session_service_t ();
 
     stream_session_service_t (stream_session_service_t &&other_) noexcept;

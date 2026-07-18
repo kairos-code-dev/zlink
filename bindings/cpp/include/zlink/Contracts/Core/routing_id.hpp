@@ -100,16 +100,6 @@ class request_submit_operation_t;
 class request_callback_submit_operation_t;
 class reply_operation_t;
 class reply_submit_operation_t;
-class actor_join_operation_t;
-class actor_join_submit_operation_t;
-class actor_join_callback_submit_operation_t;
-class actor_join_entry_spot_operation_t;
-class actor_join_reply_operation_t;
-class actor_leave_operation_t;
-class actor_destroy_operation_t;
-class actor_lookup_operation_t;
-class actor_bind_operation_t;
-class actor_unbind_operation_t;
 } // namespace service
 
 /// @brief Strongly-typed I/O thread count for context creation.

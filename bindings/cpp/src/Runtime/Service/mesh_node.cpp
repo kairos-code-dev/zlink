@@ -109,7 +109,8 @@ mesh_node_t::mesh_node_t (context_t &ctx_, const mesh_node_options_t &options_) 
 mesh_node_t::~mesh_node_t ()
 {
     if (_impl && _impl->handle)
-        (void) zlink_mesh_node_destroy (&_impl->handle);
+        detail::report_close_on_destroy (
+          "mesh_node_t", static_cast<close_result_t> (zlink_mesh_node_destroy (&_impl->handle)));
 }
 
 mesh_node_t::mesh_node_t (mesh_node_t &&other_) noexcept :
@@ -674,7 +675,9 @@ mesh_node_publisher_t::mesh_node_publisher_t (mesh_node_t &node_) :
 mesh_node_publisher_t::~mesh_node_publisher_t ()
 {
     if (_impl && _impl->handle)
-        (void) zlink_mesh_node_publisher_destroy (&_impl->handle);
+        detail::report_close_on_destroy (
+          "mesh_node_publisher_t",
+          static_cast<close_result_t> (zlink_mesh_node_publisher_destroy (&_impl->handle)));
 }
 
 mesh_node_publisher_t::mesh_node_publisher_t (mesh_node_publisher_t &&other_) noexcept :

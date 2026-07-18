@@ -74,7 +74,8 @@ spot_t::spot_t (native_handle_ctor_tag_t) noexcept : _impl (std::make_unique<imp
 spot_t::~spot_t ()
 {
     if (_impl && _impl->handle)
-        (void) zlink_spot_destroy (&_impl->handle);
+        detail::report_close_on_destroy (
+          "spot_t", static_cast<close_result_t> (zlink_spot_destroy (&_impl->handle)));
 }
 
 spot_t::spot_t (spot_t &&other_) noexcept : _impl (std::move (other_._impl)) {}

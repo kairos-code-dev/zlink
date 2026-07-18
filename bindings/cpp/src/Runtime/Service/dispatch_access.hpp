@@ -51,8 +51,6 @@ struct dispatch_access_t
         std::memcpy (claim_._opaque.data (), native_.opaque, sizeof (native_.opaque));
     }
 
-    static void invalidate_claim (claim_t &claim_) noexcept { claim_._valid = false; }
-
     // batch handle access
     static void *ready_handle (ready_batch_t &batch_) noexcept { return batch_._handle; }
     static void *receive_handle (receive_batch_t &batch_) noexcept { return batch_._handle; }

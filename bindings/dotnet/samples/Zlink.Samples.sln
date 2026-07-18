@@ -35,8 +35,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ActorRoomExample", "ActorRo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ActorSequentialExample", "ActorSequentialExample\ActorSequentialExample.csproj", "{5A3D39A6-5CB0-4CFC-A1C3-7E3CE049A93D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotChannelExample", "SpotChannelExample\SpotChannelExample.csproj", "{11411C5E-AECE-4D11-AD90-01ECF4CCB2CF}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotPubSubExample", "SpotPubSubExample\SpotPubSubExample.csproj", "{EF1886C4-64CA-4B1A-AEA3-0ED68B29BFD0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpotRpcExample", "SpotRpcExample\SpotRpcExample.csproj", "{C0E60F74-5669-454B-9ABD-3B544988D9FB}"
@@ -116,10 +114,6 @@ Global
 		{5A3D39A6-5CB0-4CFC-A1C3-7E3CE049A93D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5A3D39A6-5CB0-4CFC-A1C3-7E3CE049A93D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5A3D39A6-5CB0-4CFC-A1C3-7E3CE049A93D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11411C5E-AECE-4D11-AD90-01ECF4CCB2CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11411C5E-AECE-4D11-AD90-01ECF4CCB2CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11411C5E-AECE-4D11-AD90-01ECF4CCB2CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11411C5E-AECE-4D11-AD90-01ECF4CCB2CF}.Release|Any CPU.Build.0 = Release|Any CPU
 		{EF1886C4-64CA-4B1A-AEA3-0ED68B29BFD0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{EF1886C4-64CA-4B1A-AEA3-0ED68B29BFD0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EF1886C4-64CA-4B1A-AEA3-0ED68B29BFD0}.Release|Any CPU.ActiveCfg = Release|Any CPU

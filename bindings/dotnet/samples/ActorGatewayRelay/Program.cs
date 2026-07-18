@@ -1,4 +1,3 @@
-using System.Text;
 using SampleCommon;
 using Systems.Zlink;
 
@@ -10,36 +9,28 @@ internal static class Program
             return;
 
         using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
+        using var node = ctx.CreateMeshNode();
+        node.SetBind("tcp://127.0.0.1:*");
+        node.Start();
         using var spot = node.CreateSpot();
-        using var actor = node.CreateActor("play-session-actor");
+        ActorRef actor = node.CreateActor("play-session-actor");
         using var sessionReady = new ManualResetEventSlim(false);
         RoutingId? sessionRid = null;
-        string receivedPayload = "";
 
-        spot.SetDispatchHandler(info =>
-        {
-            ActorReceived? part = info.RecvActor();
-            if (part == null)
-                return;
-            using (part)
-            {
-                receivedPayload = part.Message.GetString();
-            }
-        });
+        using var ready = new MeshReadyBatch();
+        using var recv = new MeshReceiveBatch();
+        List<string> payloads = new();
 
         using var stream = ctx.CreateStreamSocket();
         string endpoint = SampleSupport.NewEndpoint("tcp", "actor-gateway");
         int port = SampleSupport.ExtractPort(endpoint);
         stream.Bind(endpoint);
+        // 원격 클라이언트가 접속하면 게이트웨이가 session routing id를 알려준다.
         stream.OnPacket((routingId, header, payload) =>
         {
             header.Dispose();
+            payload.Dispose();
             sessionRid = routingId;
-            using (payload)
-            {
-                receivedPayload = Encoding.UTF8.GetString(payload.AsReadOnlySpan());
-            }
             sessionReady.Set();
         });
 
@@ -48,43 +39,28 @@ internal static class Program
         if (!sessionReady.Wait(5000) || sessionRid == null)
             throw new TimeoutException("stream session");
 
-        Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor.Ref)
+        Zlink.MultipartClose(await stream.BindActor(sessionRid.Value, actor)
             .Timeout(TimeSpan.FromSeconds(2))
             .Async()
             .WaitAsync(TimeSpan.FromSeconds(5)));
 
-        using Message joinMessage = Message.From("join-play");
-        Task<(ActorJoinResult Result, IReadOnlyList<Message> Parts)> joinTask =
-            actor.Join(spot)
-                .Message(joinMessage)
-                .Timeout(TimeSpan.FromSeconds(2))
-                .Async();
-        ActorJoinRequest? request = null;
-        SampleSupport.WaitOrThrow(() =>
-        {
-            request = spot.RecvActorJoin(RecvFlags.DontWait);
-            return request != null;
-        }, 2000, "actor join request");
-        using Message joinReply = Message.From("accepted");
-        spot.ReplyActorJoin(request!, joinResultCode: 0).Message(joinReply).Submit();
-        foreach (Message reply in (await joinTask.WaitAsync(TimeSpan.FromSeconds(5))).Parts)
-            reply.Dispose();
+        // actor가 play spot에 합류한다 (호스트가 admit).
+        ulong epoch = SampleSupport.JoinLocalSpot(node, actor, spot, "join-play");
 
+        // 게이트웨이가 클라이언트 입력을 바인딩된 actor로 relay한다.
         using Message relayed = Message.From("client-input");
-        stream.SendBoundActor(sessionRid.Value, actor.Ref.ActorId)
+        stream.SendBoundActor(sessionRid.Value, actor.ActorId)
             .Message(relayed)
             .Submit();
-        SampleSupport.WaitOrThrow(
-            () => receivedPayload == "client-input",
-            5000,
-            "actor relay");
+        SampleSupport.WaitOrThrow(() =>
+        {
+            SampleSupport.CollectActorMessages(node, ready, recv, payloads);
+            return payloads.Contains("client-input");
+        }, 5000, "actor relay");
 
         Console.WriteLine("[actor/gateway] stream payload: \"client-input\" -> actor: \"client-input\"");
-        Zlink.MultipartClose(await actor.Leave(spot)
-            .Timeout(TimeSpan.FromSeconds(2))
-            .Async()
-            .WaitAsync(TimeSpan.FromSeconds(5)));
-        Zlink.MultipartClose(await stream.UnbindActor(sessionRid.Value, actor.Ref.ActorId)
+        SampleSupport.LeaveLocalSpot(node, actor, epoch);
+        Zlink.MultipartClose(await stream.UnbindActor(sessionRid.Value, actor.ActorId)
             .Timeout(TimeSpan.FromSeconds(2))
             .Async()
             .WaitAsync(TimeSpan.FromSeconds(5)));

@@ -9,7 +9,9 @@ internal static class Program
     {
         // --8<-- [start:doc]
         using var ctx = Zlink.CreateContext();
-        using var node = ctx.CreateSpotNode();
+        using var node = ctx.CreateMeshNode();
+        node.SetBind("tcp://127.0.0.1:*");
+        node.Start();
         using var room = node.CreateSpot();
         // 게임룸의 이벤트 루프에서 디스패치되는 타이머를 만든다.
         using var timer = Zlink.CreateTimer(room);

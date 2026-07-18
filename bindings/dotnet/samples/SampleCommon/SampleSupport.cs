@@ -95,12 +95,155 @@ public static class SampleSupport
         throw new TimeoutException(message);
     }
 
-    public static void WaitSpotPeerConnected(ISpotNode node, int timeoutMs = 5000)
+    public static void WaitSpotPeerConnected(IMeshNode node, int timeoutMs = 5000)
     {
         WaitOrThrow(
-            () => node.Status().ConnectedPeerCount > 0,
+            () => node.Status().AdmittedPeerCount > 0,
             timeoutMs,
-            "spot peer connection");
+            "mesh peer admission");
+    }
+
+    /// <summary>
+    ///     Drains the node's ready index once and invokes <paramref name="handler" />
+    ///     for every received record. The handler may take ownership of a record's
+    ///     parts with <c>batch.RetainMessage(index)</c> and answer request or control
+    ///     records with <c>record.Reply(...)</c>.
+    /// </summary>
+    public static void PumpReady(IMeshNode node, MeshReadyBatch ready,
+        MeshReceiveBatch recv,
+        Action<MeshReceiveRecord, MeshReceiveBatch, int> handler,
+        MeshReadyDomains domains = MeshReadyDomains.All)
+    {
+        ready.Reset();
+        node.DrainReady(domains, ready, RecvFlags.DontWait);
+        int readyCount = ready.Count;
+        for (int i = 0; i < readyCount; i++)
+        {
+            using MeshClaim claim = ready.TakeClaim(i);
+            recv.Reset();
+            while (claim.Receive(recv, RecvFlags.DontWait))
+            {
+                int count = recv.Count;
+                for (int r = 0; r < count; r++)
+                    handler(recv[r], recv, r);
+                recv.Reset();
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Joins a local actor to a spot hosted on the same node. Submits the join,
+    ///     admits the incoming host-side control record with <paramref name="admitPayload" />,
+    ///     waits for the join completion, and returns the actor's membership epoch
+    ///     (needed later to leave). Optionally verifies the join payload the host
+    ///     observed.
+    /// </summary>
+    public static ulong JoinLocalSpot(IMeshNode node, ActorRef actor, ISpot spot,
+        string joinPayload, string admitPayload = "accepted",
+        Action<string>? onHostObservedJoin = null, int timeoutMs = 5000)
+    {
+        using var ready = new MeshReadyBatch();
+        using var recv = new MeshReceiveBatch();
+
+        MeshOperationId joinOp;
+        using (Message join = Message.From(joinPayload))
+        {
+            joinOp = node.JoinSpot(actor, node.RoutingId, spot.RoutingId,
+                spot.Status().LifecycleGeneration, new[] { join });
+        }
+
+        bool completed = false;
+        int terminal = -1;
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!completed && DateTime.UtcNow < deadline)
+        {
+            PumpReady(node, ready, recv, (record, batch, index) =>
+            {
+                if (record.Kind == MeshRecordKind.SpotControl
+                    && record.OperationKind == MeshOperationKind.ActorJoin)
+                {
+                    // 호스트가 join 요청 레코드를 받아 admit(응답)한다.
+                    Message[] request = batch.RetainMessage(index);
+                    if (onHostObservedJoin != null && request.Length > 0)
+                        onHostObservedJoin(request[0].GetString());
+                    using (Message ok = Message.From(admitPayload))
+                        record.Reply(new[] { ok });
+                    MultipartCloseSafe(request);
+                }
+                else if (record.Kind == MeshRecordKind.Completion
+                    && record.OperationKind == MeshOperationKind.ActorJoin
+                    && record.OperationId.Equals(joinOp))
+                {
+                    terminal = record.TerminalResult;
+                    completed = true;
+                }
+            });
+            if (completed)
+                break;
+            Thread.Sleep(10);
+        }
+
+        if (!completed)
+            throw new TimeoutException("actor join did not complete");
+        if (terminal != 0)
+            throw new InvalidOperationException($"actor join rejected: {terminal}");
+
+        return node.ActorLookup(actor.ActorId, out ActorLocation location)
+            ? location.MembershipEpoch
+            : 0UL;
+    }
+
+    /// <summary>
+    ///     Leaves a spot the actor previously joined and waits (best effort) for the
+    ///     leave completion.
+    /// </summary>
+    public static void LeaveLocalSpot(IMeshNode node, ActorRef actor,
+        ulong membershipEpoch, int timeoutMs = 5000)
+    {
+        using var ready = new MeshReadyBatch();
+        using var recv = new MeshReceiveBatch();
+        MeshOperationId leaveOp = node.LeaveSpot(actor, membershipEpoch);
+
+        bool completed = false;
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (!completed && DateTime.UtcNow < deadline)
+        {
+            PumpReady(node, ready, recv, (record, batch, index) =>
+            {
+                if (record.Kind == MeshRecordKind.Completion
+                    && record.OperationKind == MeshOperationKind.ActorLeave
+                    && record.OperationId.Equals(leaveOp))
+                {
+                    completed = true;
+                }
+            });
+            if (completed)
+                break;
+            Thread.Sleep(10);
+        }
+    }
+
+    /// <summary>
+    ///     Drains the node once and appends every actor-addressed message payload
+    ///     into <paramref name="sink" /> in arrival order.
+    /// </summary>
+    public static void CollectActorMessages(IMeshNode node, MeshReadyBatch ready,
+        MeshReceiveBatch recv, List<string> sink)
+    {
+        PumpReady(node, ready, recv, (record, batch, index) =>
+        {
+            if (record.Kind != MeshRecordKind.ActorSend || record.PartCount == 0)
+                return;
+            Message[] parts = batch.RetainMessage(index);
+            sink.Add(parts[0].GetString());
+            MultipartCloseSafe(parts);
+        });
+    }
+
+    private static void MultipartCloseSafe(Message[] parts)
+    {
+        if (parts.Length > 0)
+            Zlink.MultipartClose(parts);
     }
 
     public static string ReceiveUtf8(IMessageSocket socket, int timeoutMs)

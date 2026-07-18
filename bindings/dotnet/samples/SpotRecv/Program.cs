@@ -10,48 +10,54 @@ internal static class Program
 
         using var publisherContext = Zlink.CreateContext();
         using var subscriberContext = Zlink.CreateContext();
-        using var publisherNode = publisherContext.CreateSpotNode();
-        using var subscriberNode = subscriberContext.CreateSpotNode();
+        using var publisherNode = publisherContext.CreateMeshNode(
+            new MeshNodeOptions { MeshName = "spot-recv" });
+        using var subscriberNode = subscriberContext.CreateMeshNode(
+            new MeshNodeOptions { MeshName = "spot-recv" });
         const string serviceName = "direct";
+        const string channel = "room";
         const string topic = "room:lobby";
         const string payload = "hello-spot";
         string publisherEndpoint = SampleSupport.NewEndpoint("tcp", "sample");
         string subscriberEndpoint = SampleSupport.NewEndpoint("tcp", "sample");
-        publisherNode.SetRoutingId(SampleSupport.RoutingIdUtf8("z-sample-spot-pub"));
-        subscriberNode.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub"));
-        publisherNode.SetPubBind(publisherEndpoint);
-        subscriberNode.SetPubBind(subscriberEndpoint);
+        publisherNode.AddChannel(channel);
+        subscriberNode.AddChannel(channel);
+        publisherNode.SetBind(publisherEndpoint);
+        subscriberNode.SetBind(subscriberEndpoint);
+        publisherNode.Start();
+        subscriberNode.Start();
         publisherNode.ConnectPeer(subscriberEndpoint);
         subscriberNode.ConnectPeer(publisherEndpoint);
         using var publisher = publisherNode.CreateSpot();
         using var subscriber = subscriberNode.CreateSpot();
-        publisher.SetRoutingId(SampleSupport.RoutingIdUtf8("z-sample-spot-pub-spot"));
-        subscriber.SetRoutingId(SampleSupport.RoutingIdUtf8("a-sample-spot-sub-spot"));
-        subscriber.SetSubscription(topic);
+        subscriber.SetSubscription(channel, topic);
 
         SampleSupport.WaitOrThrow(
-            () => publisherNode.Status().ConnectedPeerCount > 0
-                && subscriberNode.Status().ConnectedPeerCount > 0,
+            () => publisherNode.Status().AdmittedPeerCount > 0
+                && subscriberNode.Status().AdmittedPeerCount > 0,
             5000,
             "spot peer readiness");
 
-        using var subscribed = new TopicMessage();
+        using var ready = new MeshReadyBatch();
+        using var recv = new MeshReceiveBatch();
+        string? receivedTopic = null;
+        string? receivedPayload = null;
         SampleSupport.WaitOrThrow(() =>
         {
-            try
+            using (Message message = Message.From(payload))
+                publisher.Publish(channel, topic, new[] { message });
+            SampleSupport.PumpReady(subscriberNode, ready, recv, (record, batch, index) =>
             {
-                using Message message = Message.From(payload);
-                publisher.Publish(topic).Message(message).Submit();
-                return subscriber.Subscribe(subscribed, RecvFlags.DontWait);
-            }
-            catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
-            {
-                return false;
-            }
+                if (record.Kind != MeshRecordKind.SpotMulticast)
+                    return;
+                Message[] parts = batch.RetainMessage(index);
+                receivedTopic = record.Topic;
+                receivedPayload = parts[0].GetString();
+                Zlink.MultipartClose(parts);
+            });
+            return receivedPayload != null;
         }, 5000, "spot recv sample");
 
-        string receivedTopic = subscribed.Topic;
-        string receivedPayload = subscribed.SinglePartOrThrow().GetString();
         Console.WriteLine(
             $"[spot/recv] service: \"{serviceName}\" tick: 1 publish: \"{topic}/{payload}\" -> recv: \"{receivedTopic}/{receivedPayload}\"");
     }

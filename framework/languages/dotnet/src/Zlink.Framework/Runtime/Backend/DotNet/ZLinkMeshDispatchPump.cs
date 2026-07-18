@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Zlink.Framework.Contracts.Streams;
 using Zlink.Framework.Runtime.Backend.Contracts;
 
 namespace Zlink.Framework.Runtime.Backend.DotNet;
@@ -219,6 +220,12 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private void EnqueueRoute(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
     {
+        // Malformed application metadata is a protocol error: reject the ingress
+        // and do not deliver it to a handler (spec 03 §3). The batch reset
+        // releases the Core-owned parts we never retained.
+        if (!TryDecodeMetadata(record, out var metadata))
+            return;
+
         var state = ResolveSpotState(record.SourceSpotRid, targetOwner: true, record);
         var replyRecord = record;
         var reply = record.Kind is MeshRecordKind.NodeRequest
@@ -231,7 +238,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             record.SourceNodeRid,
             record.SourceSpotRid,
             record.OperationId == default ? null : record.OperationId.Low,
-            reply);
+            reply,
+            metadata: metadata);
         state.Routes.Enqueue(route);
         state.Raise(ZLinkBackendSpotDispatchEvent.RouteReadable);
     }
@@ -244,6 +252,11 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
     // released so a dropped record cannot leak.
     private void EnqueueNodeRoute(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
     {
+        // Malformed application metadata is a protocol error: reject the ingress
+        // (spec 03 §3). No parts are retained before this point.
+        if (!TryDecodeMetadata(record, out var metadata))
+            return;
+
         var replyRecord = record;
         var reply = record.Kind is MeshRecordKind.NodeRequest or MeshRecordKind.ChannelRequest
             ? new Func<IReadOnlyList<Message>, SendFlags, SubmitResult>(
@@ -257,7 +270,8 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
             reply,
             record.Kind is MeshRecordKind.ChannelSend or MeshRecordKind.ChannelRequest
                 ? record.ChannelName
-                : null);
+                : null,
+            metadata);
         var handler = _nodeRouteHandler;
         if (handler is null)
         {
@@ -270,11 +284,33 @@ internal sealed class ZLinkMeshDispatchPump : IAsyncDisposable
 
     private void EnqueueSubscribe(MeshReceiveBatch batch, int index, MeshReceiveRecord record)
     {
+        // Malformed application metadata is a protocol error: reject the ingress
+        // (spec 03 §3). The same publish snapshot is delivered to every matching
+        // Spot handler, so the decoded view is immutable and shared.
+        if (!TryDecodeMetadata(record, out var metadata))
+            return;
+
         var state = ResolveSpotState(record.SourceSpotRid, targetOwner: true, record);
         var message = new ZLinkBackendSubscribeMessage(
-            record.Topic ?? string.Empty, RetainParts(batch, index));
+            record.Topic ?? string.Empty, RetainParts(batch, index), metadata);
         state.Subscriptions.Enqueue(message);
         state.Raise(ZLinkBackendSpotDispatchEvent.SubscribeReadable);
+    }
+
+    // Decodes the record's application-metadata frame into an immutable snapshot.
+    // Returns false only when the frame is present but malformed, so callers
+    // drop the record as a protocol error rather than deliver it.
+    private static bool TryDecodeMetadata(
+        MeshReceiveRecord record, out ZLinkMessageMetadata metadata)
+    {
+        var frame = record.ApplicationMetadata;
+        if (frame is null || frame.Length == 0)
+        {
+            metadata = ZLinkMessageMetadata.Empty;
+            return true;
+        }
+
+        return ZLinkMeshMetadataCodec.TryDecode(frame, out metadata);
     }
 
     private void EnqueueSpotControl(MeshReceiveBatch batch, int index, MeshReceiveRecord record)

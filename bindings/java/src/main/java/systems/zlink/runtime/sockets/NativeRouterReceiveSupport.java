@@ -37,10 +37,12 @@ import java.util.function.BiConsumer;
 
 final class NativeRouterReceiveSupport implements AutoCloseable {
     private static final Linker LINKER = Linker.nativeLinker();
-    private static final FunctionDescriptor FD_ROUTER_HANDLER =
+    // Matches zlink_socket_msg_handler_fn:
+    //   (const zlink_routing_id_t* source_rid, zlink_msg_t* parts,
+    //    size_t part_count, void* userdata) -> void
+    private static final FunctionDescriptor FD_RECV_HANDLER =
       FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS,
-        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
-        ValueLayout.ADDRESS);
+        ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
 
     private final NativeRouterSocket socket;
     private final boolean closeSocketOnClose;
@@ -123,10 +125,9 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
             MemorySegment stub = LINKER.upcallStub(callbackHandle(
                 "handleReceiveCallback",
                 MethodType.methodType(void.class, MemorySegment.class,
-                    MemorySegment.class, long.class, MemorySegment.class,
-                    long.class, MemorySegment.class)),
-                FD_ROUTER_HANDLER, arena);
-            int rc = NativeMessage.routerHandler(InternalAccess.socketHandle(socket), stub,
+                    MemorySegment.class, long.class, MemorySegment.class)),
+                FD_RECV_HANDLER, arena);
+            int rc = NativeMessage.recvHandler(InternalAccess.socketHandle(socket), stub,
                 MemorySegment.NULL);
             if (rc != 0) {
                 callbacks.clearExecutorIfCreated(lease);
@@ -210,9 +211,12 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         receiveCallbackArena = null;
     }
 
-    private void handleReceiveCallback(MemorySegment sourceNodeRid,
-                                       MemorySegment sourceSpotRid,
-                                       long requestSequence,
+    // zlink_socket_msg_handler_fn upcall. Core 10.0.0 delivers callback receive
+    // only for raw STREAM subjects, which carry no request/reply metadata, so
+    // the callback shape is (source_rid, parts, part_count, userdata) with no
+    // spot rid and no request sequence. Ownership of the parts vector transfers
+    // to us; snapshotReceive materialises and closes it exactly once.
+    private void handleReceiveCallback(MemorySegment sourceRid,
                                        MemorySegment parts,
                                        long partCount,
                                        MemorySegment userdata) {
@@ -224,8 +228,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         }
         CallbackReceivedData snapshot;
         try {
-            snapshot = snapshotReceive(sourceNodeRid, sourceSpotRid,
-                requestSequence, parts, partCount);
+            snapshot = snapshotReceive(sourceRid, parts, partCount);
         } catch (RuntimeException ex) {
             callbacks.recordFailure(ex);
             return;
@@ -237,9 +240,7 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         }
     }
 
-    private CallbackReceivedData snapshotReceive(MemorySegment sourceNodeRid,
-                                                 MemorySegment sourceSpotRid,
-                                                 long requestSequence,
+    private CallbackReceivedData snapshotReceive(MemorySegment sourceRid,
                                                  MemorySegment parts,
                                                  long partCount) {
         Message[] snapshotParts;
@@ -248,19 +249,17 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         } finally {
             NativeMessage.multipartClose(parts, partCount);
         }
-        return new CallbackReceivedData(NativeRoutingIds.read(sourceNodeRid),
-            NativeRoutingIds.read(sourceSpotRid), requestSequence,
+        return new CallbackReceivedData(NativeRoutingIds.read(sourceRid),
             snapshotParts);
     }
 
     private void dispatchReceive(SocketMessageHandler handler,
                                  CallbackReceivedData snapshot) {
         RoutingId nodeRid = snapshot.nodeRid();
-        RoutingId spotRid = snapshot.spotRid();
-        long requestSequence = snapshot.requestSequence();
-        try (Received received = InternalAccess.received(nodeRid, spotRid,
-            snapshot.parts(), true, requestSequence, requestSequence != 0L,
-            replySender(nodeRid, spotRid, requestSequence))) {
+        // STREAM callback receive has no spot rid, request sequence, or reply
+        // channel; deliver a plain routed Received keyed only by the source rid.
+        try (Received received = InternalAccess.received(nodeRid, null,
+            snapshot.parts(), true, 0L, false, null)) {
             handler.onMessage(received);
         } catch (RuntimeException ex) {
             callbacks.recordFailure(ex);
@@ -532,6 +531,5 @@ final class NativeRouterReceiveSupport implements AutoCloseable {
         }
     }
 
-    private record CallbackReceivedData(RoutingId nodeRid, RoutingId spotRid,
-                                        long requestSequence, Message[] parts) {}
+    private record CallbackReceivedData(RoutingId nodeRid, Message[] parts) {}
 }

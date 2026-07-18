@@ -33,8 +33,10 @@ public final class NativeMessage {
             new String[] {"zlink_multipart_close", "zlink_msgv_close"},
             FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_LONG));
     private static final MethodHandle MH_FREE = NativeSymbols.freeDowncall();
-    private static final MethodHandle MH_ROUTER_HANDLER = NativeSymbols.downcall(
-            "zlink_router_handler",
+    // Callback-based receive attaches a native msg handler. Core 10.0.0 supports
+    // this only for raw STREAM subjects; other subjects fail with errno=ENOTSUP.
+    private static final MethodHandle MH_RECV_HANDLER = NativeSymbols.downcall(
+            "zlink_recv_handler",
             FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
@@ -139,14 +141,14 @@ public final class NativeMessage {
         }
     }
 
-    public static int routerHandler(MemorySegment router,
-                                    MemorySegment handler,
-                                    MemorySegment userData) {
+    public static int recvHandler(MemorySegment socket,
+                                  MemorySegment handler,
+                                  MemorySegment userData) {
         try {
-            return (int) MH_ROUTER_HANDLER.invokeExact(router, handler,
+            return (int) MH_RECV_HANDLER.invokeExact(socket, handler,
                 userData);
         } catch (Throwable t) {
-            throw new RuntimeException("zlink_router_handler failed", t);
+            throw new RuntimeException("zlink_recv_handler failed", t);
         }
     }
 

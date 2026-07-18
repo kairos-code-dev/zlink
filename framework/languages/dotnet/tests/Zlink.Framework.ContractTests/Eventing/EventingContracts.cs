@@ -151,9 +151,6 @@ public sealed class EventingContracts
             typeof(ZLinkLocationActorEvent),
             "ResolveMiss", "RowRemoved", "RowUpdated");
         AssertClosedEventUnion(
-            typeof(ZLinkLocationRouteEvent),
-            "ResolveMiss", "RowRemoved", "RowUpdated");
-        AssertClosedEventUnion(
             typeof(ZLinkSpotEvent),
             "PeersChanged", "StatusChanged", "SubjectsChanged", "TimerHandlerFailed",
             "TimerStoppedAfterUnhandledException");

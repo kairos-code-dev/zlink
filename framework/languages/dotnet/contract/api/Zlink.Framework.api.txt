@@ -152,18 +152,18 @@ assembly Zlink.Framework
       generic TMessage variance=invariant nullable=nullable
     method abstract Zlink.Framework.Contracts.Channels.IZLinkSendCall SendToChannel<TMessage>(System.String channelName [nullability=read:not-null,write:not-null], TMessage? message [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
       generic TMessage variance=invariant nullable=nullable
-  type interface Zlink.Framework.Contracts.Channels.IZLinkChannelRuntimeOptions
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkClientServerChannelOptions ClientServerChannel(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshChannelOptions RouteMeshChannel(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Channels.IZLinkFanoutClient
     method abstract Zlink.Framework.Contracts.Channels.IZLinkPublishCall Publish<TEvent>(System.String channelName [nullability=read:not-null,write:not-null], System.String topic [nullability=read:not-null,write:not-null], TEvent? message [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
       generic TEvent variance=invariant nullable=nullable
-  type interface Zlink.Framework.Contracts.Channels.IZLinkPublishCall
-    method abstract System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Channels.IZLinkRequestCall
+  type interface Zlink.Framework.Contracts.Channels.IZLinkMetadataCall<TSelf>
+    generic TSelf variance=invariant nullable=nullable
+    method abstract TSelf? Metadata(System.String key [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:nullable,write:nullable]
+    method abstract TSelf? Metadata(Zlink.Framework.Contracts.Streams.ZLinkMessageMetadata metadata [nullability=read:not-null,write:not-null]) [return=read:nullable,write:nullable]
+  type interface Zlink.Framework.Contracts.Channels.IZLinkPublishCall : Zlink.Framework.Contracts.Channels.IZLinkMetadataCall<Zlink.Framework.Contracts.Channels.IZLinkPublishCall>
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Channels.ZLinkPublishResult> SubmitAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Channels.ZLinkPublishResult TrySubmit() [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Channels.IZLinkRequestCall : Zlink.Framework.Contracts.Channels.IZLinkMetadataCall<Zlink.Framework.Contracts.Channels.IZLinkRequestCall>
     method abstract System.Threading.Tasks.ValueTask<TReply?> Async<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-      generic TReply variance=invariant nullable=unspecified
-    method abstract System.Void Submit<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TReply variance=invariant nullable=unspecified
     method abstract Zlink.Framework.Contracts.Channels.IZLinkRequestCall Timeout(System.TimeSpan timeout [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<TReply?> Yield<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -184,20 +184,64 @@ assembly Zlink.Framework
   type interface Zlink.Framework.Contracts.Channels.IZLinkRouteSendHandler<TMessage>
     generic TMessage variance=in nullable=nullable
     method abstract System.Threading.Tasks.ValueTask HandleAsync(TMessage? message [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Channels.ZLinkRouteSendContext context [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Channels.IZLinkSendCall
-    method abstract System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Channels.IZLinkSendCall : Zlink.Framework.Contracts.Channels.IZLinkMetadataCall<Zlink.Framework.Contracts.Channels.IZLinkSendCall>
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Channels.ZLinkSubmitResult> SubmitAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Channels.ZLinkSubmitResult TrySubmit() [return=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Channels.ZLinkAutoConnectType : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Channels.ZLinkAutoConnectType ClientServer = 2 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Channels.ZLinkAutoConnectType Fanout = 4 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Channels.ZLinkAutoConnectType Invalid = 0 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Channels.ZLinkAutoConnectType RouteMesh = 1 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Channels.ZLinkAutoConnectType SpotMesh = 5 [nullability=read:not-null,write:not-null]
+  type readonly-struct Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail : System.IEquatable<Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail>
+    ctor ZLinkLogicalMulticastDetail(System.UInt64 SnapshotRemoteNodeCount [nullability=read:not-null,write:not-null], System.UInt64 AdmittedRemoteNodeCount [nullability=read:not-null,write:not-null], System.UInt64 DroppedRemoteNodeCount [nullability=read:not-null,write:not-null], System.UInt64 SnapshotLocalSpotCount [nullability=read:not-null,write:not-null], System.UInt64 AdmittedLocalSpotCount [nullability=read:not-null,write:not-null], System.UInt64 DroppedLocalSpotCount [nullability=read:not-null,write:not-null])
+    property System.UInt64 AdmittedLocalSpotCount { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 AdmittedRemoteNodeCount { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 DroppedLocalSpotCount { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 DroppedRemoteNodeCount { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 SnapshotLocalSpotCount { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 SnapshotRemoteNodeCount { get; init; } [nullability=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.UInt64 SnapshotRemoteNodeCount [nullability=read:not-null,write:not-null], out System.UInt64 AdmittedRemoteNodeCount [nullability=read:not-null,write:not-null], out System.UInt64 DroppedRemoteNodeCount [nullability=read:not-null,write:not-null], out System.UInt64 SnapshotLocalSpotCount [nullability=read:not-null,write:not-null], out System.UInt64 AdmittedLocalSpotCount [nullability=read:not-null,write:not-null], out System.UInt64 DroppedLocalSpotCount [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:unknown,write:unknown]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type readonly-struct Zlink.Framework.Contracts.Channels.ZLinkPublishResult : System.IEquatable<Zlink.Framework.Contracts.Channels.ZLinkPublishResult>
+    ctor ZLinkPublishResult(Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Status [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail Detail [nullability=read:not-null,write:not-null])
+    property Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail Detail { get; init; } [nullability=read:not-null,write:not-null]
+    property Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Status { get; init; } [nullability=read:not-null,write:not-null]
+    method System.Void Deconstruct(out Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Status [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Channels.ZLinkLogicalMulticastDetail Detail [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Channels.ZLinkPublishResult other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:unknown,write:unknown]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Channels.ZLinkPublishResult left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Channels.ZLinkPublishResult right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Channels.ZLinkPublishResult left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Channels.ZLinkPublishResult right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Channels.ZLinkRouteRequestContext : Zlink.Framework.Contracts.Handlers.ZLinkHandlerContext, Zlink.Framework.Contracts.Handlers.IZLinkHandlerContext
     property System.String RouterChannelId { get; } [nullability=read:not-null,write:unknown]
     property Systems.Zlink.RoutingId SourceNodeRid { get; } [nullability=read:not-null,write:unknown]
   type sealed-class Zlink.Framework.Contracts.Channels.ZLinkRouteSendContext : Zlink.Framework.Contracts.Handlers.ZLinkHandlerContext, Zlink.Framework.Contracts.Handlers.IZLinkHandlerContext
     property System.String RouterChannelId { get; } [nullability=read:not-null,write:unknown]
     property Systems.Zlink.RoutingId SourceNodeRid { get; } [nullability=read:not-null,write:unknown]
+  type readonly-struct Zlink.Framework.Contracts.Channels.ZLinkSubmitResult : System.IEquatable<Zlink.Framework.Contracts.Channels.ZLinkSubmitResult>
+    ctor ZLinkSubmitResult(Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Status [nullability=read:not-null,write:not-null])
+    property Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Status { get; init; } [nullability=read:not-null,write:not-null]
+    method System.Void Deconstruct(out Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Status [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Channels.ZLinkSubmitResult other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:unknown,write:unknown]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Channels.ZLinkSubmitResult left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Channels.ZLinkSubmitResult right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Channels.ZLinkSubmitResult left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Channels.ZLinkSubmitResult right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type enum Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+    field const Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Backpressured = 1 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus RouteNotConnected = 4 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Shutdown = 5 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus Submitted = 0 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus TargetNotFound = 3 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Channels.ZLinkSubmitStatus TimedOut = 2 [nullability=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Configuration.Drained : Zlink.Framework.Contracts.Configuration.ZLinkDrainResult, System.IEquatable<Zlink.Framework.Contracts.Configuration.Drained>, System.IEquatable<Zlink.Framework.Contracts.Configuration.ZLinkDrainResult>
     ctor Drained()
     method virtual Zlink.Framework.Contracts.Configuration.Drained <Clone>$() [return=read:not-null,write:not-null]
@@ -293,7 +337,7 @@ assembly Zlink.Framework
     method abstract System.Void AddHandlersFromAssembly(System.Reflection.Assembly assembly [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Void AddLocationStore(Zlink.Framework.Contracts.Locations.IZLinkLocationStore store [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshChannelBuilder AddRouteMeshChannel(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotMeshBuilder AddSpotMesh(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddRouteMesh(System.String meshName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder AddStreamNode(System.String streamNodeName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Dispatch.IZLinkDispatchOptions ConfigureDispatch() [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Locations.ZLinkLocationOptions ConfigureLocations() [return=read:not-null,write:not-null]
@@ -303,7 +347,81 @@ assembly Zlink.Framework
     method abstract System.Void UseFilter<TFilter>() [return=read:not-null,write:not-null]
       generic TFilter variance=invariant nullable=unspecified
       where TFilter : class, Zlink.Framework.Contracts.Handlers.IZLinkHandlerFilter
-    method abstract System.Void UseInMemoryLocationStores() [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelBuilder
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelBuilder AddRequestHandler<THandler>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class, Zlink.Framework.Contracts.Handlers.IZLinkRequestHandler<TRequest, TReply>
+      generic TRequest variance=invariant nullable=nullable
+      generic TReply variance=invariant nullable=nullable
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelBuilder AddSendHandler<THandler>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelBuilder AddSendHandler<THandler, TMessage>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class, Zlink.Framework.Contracts.Handlers.IZLinkSendHandler<TMessage>
+      generic TMessage variance=invariant nullable=nullable
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelBuilder SetWeight(System.Int32 weight [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelRuntimeOptions
+    property System.Int32 Weight { get; set; } [nullability=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder
+    property Zlink.Framework.Contracts.Configuration.IZLinkMeshPeerConnections PeerConnections { get; } [nullability=read:not-null,write:unknown]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddActorFactory<TFactory>(System.String actorType [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+      generic TFactory variance=invariant nullable=unspecified
+      where TFactory : class, Zlink.Framework.Contracts.Actors.IZLinkActorFactory
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(System.String actorType [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+      generic TActor variance=invariant nullable=oblivious
+      where TActor : Zlink.Framework.Contracts.Actors.IZLinkActor
+      generic TAdapter variance=invariant nullable=unspecified
+      where TAdapter : class, Zlink.Framework.Contracts.Spots.IZLinkActorTransferAdapter<TActor>
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>() [return=read:not-null,write:not-null]
+      generic TEntrySpot variance=invariant nullable=oblivious
+      where TEntrySpot : Zlink.Framework.Contracts.Spots.IZLinkEntrySpot
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler, TRequest, TReply>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class, Zlink.Framework.Contracts.Channels.IZLinkRouteRequestHandler<TRequest, TReply>
+      generic TRequest variance=invariant nullable=nullable
+      generic TReply variance=invariant nullable=nullable
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddRouteSendHandler<THandler>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddRouteSendHandler<THandler, TMessage>(System.String? packetName = null [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic THandler variance=invariant nullable=unspecified
+      where THandler : class, Zlink.Framework.Contracts.Channels.IZLinkRouteSendHandler<TMessage>
+      generic TMessage variance=invariant nullable=nullable
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder AddSpotFactory<TSpot>() [return=read:not-null,write:not-null]
+      generic TSpot variance=invariant nullable=oblivious
+      where TSpot : Zlink.Framework.Contracts.Spots.IZLinkSpot
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelBuilder ChannelName(System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkEntrySpotOptions ConfigureEntrySpot() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeSocketConfig ConfigureRouterSocket() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotPublisherConfig ConfigureSpotPublisher() [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder Listen(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetDefaultRequestTimeout(System.TimeSpan timeout [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetEntrySpotRoutingId(Systems.Zlink.RoutingId routingId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(System.String groupName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder SetRoutingId(Systems.Zlink.RoutingId routingId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder UseAllocatedRoutingId(System.Int32 slotCount [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder UseAllocatedRoutingId(System.Int32 slotCount [nullability=read:not-null,write:not-null], System.String routingIdPrefix [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeBuilder UseDrainPolicy(Zlink.Framework.Contracts.Configuration.ZLinkMeshNodeDrainPolicy policy [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeRuntimeOptions
+    property System.Int64 MaxMessageSize { get; set; } [nullability=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeSocketConfig
+    property System.Int64 MaxMessageSize { get; set; } [nullability=read:not-null,write:not-null]
+    property System.Int32 ReceiveHighWaterMark { get; set; } [nullability=read:not-null,write:not-null]
+    property System.Nullable<System.TimeSpan> ReceiveTimeout { get; set; } [nullability=read:nullable,write:nullable]
+    property System.Int32 SendHighWaterMark { get; set; } [nullability=read:not-null,write:not-null]
+    property System.Nullable<System.TimeSpan> SendTimeout { get; set; } [nullability=read:nullable,write:nullable]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkMeshPeerConnections
+    method abstract System.Void Connect(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Void Connect(Systems.Zlink.RoutingId expectedRoutingId [nullability=read:not-null,write:not-null], System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Void Disconnect(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection> ListConnections() [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkMetadataPolicyBuilder
     method abstract System.Void AddForwardedMetadataKey(System.String key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkOutboundRouteConfig
@@ -341,6 +459,9 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshChannelBuilder UseAllocatedRoutingId(System.Int32 slotCount [nullability=read:not-null,write:not-null], System.String routingIdPrefix [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshChannelOptions
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkSocketConfig ConfigureSocket() [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntimeOptions
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshChannelRuntimeOptions Channel(System.String meshName [nullability=read:not-null,write:not-null], System.String channelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkMeshNodeRuntimeOptions MeshNode(System.String meshName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkSocketConfig
     property System.Nullable<System.TimeSpan> ConnectTimeout { get; set; } [nullability=read:nullable,write:nullable]
     property System.Nullable<System.TimeSpan> HandshakeInterval { get; set; } [nullability=read:nullable,write:nullable]
@@ -356,42 +477,6 @@ assembly Zlink.Framework
     property System.Nullable<System.TimeSpan> SendTimeout { get; set; } [nullability=read:nullable,write:nullable]
     property System.Boolean TcpNoDelay { get; set; } [nullability=read:not-null,write:not-null]
     property System.Int32 Weight { get; set; } [nullability=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Configuration.IZLinkSpotMeshBuilder : Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotMeshBuilder UseDrainPolicy(Zlink.Framework.Contracts.Configuration.ZLinkSpotDrainPolicy policy [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder
-    property Zlink.Framework.Contracts.Configuration.IZLinkEndpointConnections ChannelClientConnections { get; } [nullability=read:not-null,write:unknown]
-    property Zlink.Framework.Contracts.Configuration.IZLinkEndpointConnections PubSubConnections { get; } [nullability=read:not-null,write:unknown]
-    property Zlink.Framework.Contracts.Configuration.IZLinkEndpointConnections PublisherConnections { get; } [nullability=read:not-null,write:unknown]
-    property Zlink.Framework.Contracts.Configuration.IZLinkEndpointConnections RouterConnections { get; } [nullability=read:not-null,write:unknown]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder AddActorFactory<TFactory>(System.String actorType [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-      generic TFactory variance=invariant nullable=unspecified
-      where TFactory : class, Zlink.Framework.Contracts.Actors.IZLinkActorFactory
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(System.String actorType [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-      generic TActor variance=invariant nullable=oblivious
-      where TActor : Zlink.Framework.Contracts.Actors.IZLinkActor
-      generic TAdapter variance=invariant nullable=unspecified
-      where TAdapter : class, Zlink.Framework.Contracts.Spots.IZLinkActorTransferAdapter<TActor>
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>() [return=read:not-null,write:not-null]
-      generic TEntrySpot variance=invariant nullable=oblivious
-      where TEntrySpot : Zlink.Framework.Contracts.Spots.IZLinkEntrySpot
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder AddSpotFactory<TSpot>() [return=read:not-null,write:not-null]
-      generic TSpot variance=invariant nullable=oblivious
-      where TSpot : Zlink.Framework.Contracts.Spots.IZLinkSpot
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkEntrySpotOptions ConfigureEntrySpot() [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotPublisherConfig ConfigurePubSubPublisher() [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber() [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkRouteConfig ConfigureRouterRouting() [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSocketConfig ConfigureRouterSocket() [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder ConnectPeerPub(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder ConnectRouter(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder ConnectRouter(Systems.Zlink.RoutingId peerRid [nullability=read:not-null,write:not-null], System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder EnablePubSub(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder EnableRouter(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder SetEntrySpotRoutingId(Systems.Zlink.RoutingId routingId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder SetRoutingIdAllocationGroup(System.String groupName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder SetRoutingId(Systems.Zlink.RoutingId routingId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder UseAllocatedRoutingId(System.Int32 slotCount [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Configuration.IZLinkSpotNodeBuilder UseAllocatedRoutingId(System.Int32 slotCount [nullability=read:not-null,write:not-null], System.String routingIdPrefix [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkSpotPublisherConfig
     property System.Nullable<System.TimeSpan> Linger { get; set; } [nullability=read:nullable,write:nullable]
     property System.Boolean NoDrop { get; set; } [nullability=read:not-null,write:not-null]
@@ -408,6 +493,7 @@ assembly Zlink.Framework
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamCompressionBuilder Use(Systems.Zlink.Stream.Connector.Contracts.IZlinkStreamCompressionCodec codec [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder Bind(System.String endpoint [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder EnableActorDispatch(System.String meshName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Zlink.Framework.Contracts.Configuration.IZLinkStreamNodeBuilder RegisterSession<TSession>() [return=read:not-null,write:not-null]
       generic TSession variance=invariant nullable=unspecified
       where TSession : class, Zlink.Framework.Contracts.Streams.IZLinkSession
@@ -425,6 +511,20 @@ assembly Zlink.Framework
     method override System.String ToString() [return=read:not-null,write:not-null]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Configuration.ZLinkDrainResult? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Configuration.ZLinkDrainResult? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Configuration.ZLinkDrainResult? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Configuration.ZLinkDrainResult? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+  type enum Zlink.Framework.Contracts.Configuration.ZLinkMeshNodeDrainPolicy : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+    field const Zlink.Framework.Contracts.Configuration.ZLinkMeshNodeDrainPolicy DrainNatural = 0 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Configuration.ZLinkMeshNodeDrainPolicy ReleaseAndRecreate = 1 [nullability=read:not-null,write:not-null]
+  type readonly-struct Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection : System.IEquatable<Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection>
+    ctor ZLinkMeshPeerConnection(System.String Endpoint [nullability=read:not-null,write:not-null], System.Nullable<Systems.Zlink.RoutingId> ExpectedRoutingId [nullability=read:nullable,write:nullable])
+    property System.String Endpoint { get; init; } [nullability=read:not-null,write:not-null]
+    property System.Nullable<Systems.Zlink.RoutingId> ExpectedRoutingId { get; init; } [nullability=read:nullable,write:nullable]
+    method System.Void Deconstruct(out System.String Endpoint [nullability=read:not-null,write:not-null], out System.Nullable<Systems.Zlink.RoutingId> ExpectedRoutingId [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:unknown,write:unknown]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Configuration.ZLinkMeshPeerConnection right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Configuration.ZLinkSpotDrainPolicy : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Configuration.ZLinkSpotDrainPolicy DrainNatural = 0 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Configuration.ZLinkSpotDrainPolicy ReleaseAndRecreate = 1 [nullability=read:not-null,write:not-null]
@@ -535,7 +635,6 @@ assembly Zlink.Framework
   type interface Zlink.Framework.Contracts.Eventing.IZLinkMonitoringOptions
     method abstract System.Void AddLocationActorEvents(System.String sourceName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Void AddLocationPeerEvents(System.String sourceName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Void AddLocationRouteEvents(System.String sourceName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Void AddLocationRuntimeEvents(System.String sourceName [nullability=read:not-null,write:not-null], System.TimeSpan interval [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Void AddLocationSpotEvents(System.String sourceName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Void AddSocketEvents(System.String sourceName [nullability=read:not-null,write:not-null], params Zlink.Framework.Contracts.Eventing.ZLinkSocketEventKind[] events [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -659,10 +758,10 @@ assembly Zlink.Framework
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.DesiredSetChanged? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.DesiredSetChanged? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.DesiredSetChanged? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.DesiredSetChanged? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved : Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved>, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent>, Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-    ctor RowRemoved(System.String SourceName [nullability=read:not-null,write:not-null], System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
+    ctor RowRemoved(System.String SourceName [nullability=read:not-null,write:not-null], System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key [nullability=read:not-null,write:not-null])
+    property Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key { get; init; } [nullability=read:not-null,write:not-null]
     method virtual Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method sealed-override System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
@@ -671,11 +770,11 @@ assembly Zlink.Framework
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowRemoved? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated : Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated>, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent>, Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-    ctor RowUpdated(System.String SourceName [nullability=read:not-null,write:not-null], System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPeerLocation Peer [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkPeerLocation Peer { get; init; } [nullability=read:not-null,write:not-null]
+    ctor RowUpdated(System.String SourceName [nullability=read:not-null,write:not-null], System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor Descriptor [nullability=read:not-null,write:not-null])
+    property Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor Descriptor { get; init; } [nullability=read:not-null,write:not-null]
+    property Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key { get; init; } [nullability=read:not-null,write:not-null]
     method virtual Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkPeerLocation Peer [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor Descriptor [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method sealed-override System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
@@ -683,54 +782,6 @@ assembly Zlink.Framework
     method override System.String ToString() [return=read:not-null,write:not-null]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationPeerEvent.RowUpdated? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type abstract-class Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent : System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent>, Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-    property System.String SourceName { get; init; } [nullability=read:not-null,write:not-null]
-    property System.DateTimeOffset Timestamp { get; init; } [nullability=read:not-null,write:not-null]
-    method abstract Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss : Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss>, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent>, Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-    ctor ResolveMiss(System.String SourceName [nullability=read:not-null,write:not-null], System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
-    method virtual Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method sealed-override System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.ResolveMiss? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved : Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved>, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent>, Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-    ctor RowRemoved(System.String SourceName [nullability=read:not-null,write:not-null], System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
-    method virtual Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method sealed-override System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowRemoved? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated : Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated>, System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent>, Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
-    ctor RowUpdated(System.String SourceName [nullability=read:not-null,write:not-null], System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkRouteLocation Route [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkRouteLocation Route { get; init; } [nullability=read:not-null,write:not-null]
-    method virtual Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String SourceName [nullability=read:not-null,write:not-null], out System.DateTimeOffset Timestamp [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkRouteLocation Route [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method sealed-override System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Eventing.ZLinkLocationRouteEvent.RowUpdated? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type abstract-class Zlink.Framework.Contracts.Eventing.ZLinkLocationRuntimeEvent : System.IEquatable<Zlink.Framework.Contracts.Eventing.ZLinkLocationRuntimeEvent>, Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
     property System.String SourceName { get; init; } [nullability=read:not-null,write:not-null]
     property System.DateTimeOffset Timestamp { get; init; } [nullability=read:not-null,write:not-null]
@@ -994,6 +1045,7 @@ assembly Zlink.Framework
     property System.String? ChannelName { get; } [nullability=read:nullable,write:unknown]
     property System.Threading.CancellationToken ConnectionAborted { get; } [nullability=read:not-null,write:unknown]
     property System.String? ContentType { get; } [nullability=read:nullable,write:unknown]
+    property Zlink.Framework.Contracts.Streams.ZLinkMessageMetadata Metadata { get; } [nullability=read:not-null,write:unknown]
     property System.String? PacketName { get; } [nullability=read:nullable,write:unknown]
   type interface Zlink.Framework.Contracts.Handlers.IZLinkHandlerFilter
     method abstract System.Threading.Tasks.ValueTask<System.Object?> InvokeAsync(Zlink.Framework.Contracts.Handlers.ZLinkHandlerInvocation invocation [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Handlers.ZLinkHandlerDelegate next [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -1011,6 +1063,7 @@ assembly Zlink.Framework
     property System.String? ChannelName { get; } [nullability=read:nullable,write:unknown]
     property System.Threading.CancellationToken ConnectionAborted { get; } [nullability=read:not-null,write:unknown]
     property System.String? ContentType { get; } [nullability=read:nullable,write:unknown]
+    property Zlink.Framework.Contracts.Streams.ZLinkMessageMetadata Metadata { get; } [nullability=read:not-null,write:unknown]
     property System.String? PacketName { get; } [nullability=read:nullable,write:unknown]
   type sealed-class Zlink.Framework.Contracts.Handlers.ZLinkHandlerDelegate : System.MulticastDelegate, System.ICloneable, System.Runtime.Serialization.ISerializable
     ctor ZLinkHandlerDelegate(System.Object object [nullability=read:unknown,write:unknown], System.IntPtr method [nullability=read:not-null,write:not-null])
@@ -1093,45 +1146,41 @@ assembly Zlink.Framework
     attribute-usage targets=Method allow-multiple=false inherited=true
     ctor ZLinkStreamPacketAttribute()
   type interface Zlink.Framework.Contracts.Locations.IZLinkActorLocationStore
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationPage<Zlink.Framework.Contracts.Locations.ZLinkActorLocation>> ListActorsAsync(Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter filter [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest page = default [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> RemoveActorAsync(Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken owner [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus> RemoveActorAsync(Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken owner [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkActorLocation?> ResolveActorAsync(Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey key [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> UpdateActorAsync(Zlink.Framework.Contracts.Locations.ZLinkActorLocation actor [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent intent [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkActorSpotHandleResolver
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.SpotHandle?> ResolveActorSpotHandleAsync(System.String actorId [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Locations.IZLinkActorTransferStore
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult> AbortActorTransferAsync(System.String meshName [nullability=read:not-null,write:not-null], System.String actorId [nullability=read:not-null,write:not-null], System.Guid transferId [nullability=read:not-null,write:not-null], System.String recoveryOwnerId [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult> ActivateActorTransferAsync(System.String meshName [nullability=read:not-null,write:not-null], System.String actorId [nullability=read:not-null,write:not-null], System.Guid transferId [nullability=read:not-null,write:not-null], System.String recoveryOwnerId [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult> CommitActorTransferAsync(System.String meshName [nullability=read:not-null,write:not-null], System.String actorId [nullability=read:not-null,write:not-null], System.Guid transferId [nullability=read:not-null,write:not-null], System.String recoveryOwnerId [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult> PrepareActorTransferAsync(Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest request [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord?> ResolveActorTransferAsync(System.String meshName [nullability=read:not-null,write:not-null], System.String actorId [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult> TakeOverActorTransferAsync(System.String meshName [nullability=read:not-null,write:not-null], System.String actorId [nullability=read:not-null,write:not-null], System.Guid transferId [nullability=read:not-null,write:not-null], System.String successorOwnerId [nullability=read:not-null,write:not-null], System.TimeSpan recoveryLeaseTtl [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkAllocatedRoutingIdProvider
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkAllocatedRoutingId> WaitForReadyAllocationAsync(System.String groupName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkLocationChangeStampStore
-    method abstract System.Threading.Tasks.ValueTask<System.Int64> GetChangeStampAsync(Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope scope [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<System.UInt64> GetChangeStampAsync(Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope scope [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkLocationReadiness
     method abstract System.Threading.Tasks.ValueTask<System.Boolean> IsPeerReadyAsync(System.String meshName [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationRole role [nullability=read:not-null,write:not-null], System.Nullable<Systems.Zlink.RoutingId> nodeRid = null [nullability=read:nullable,write:nullable], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkLocationRuntimeQuery
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationRuntimeStatus> GetStatusAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationPage<Zlink.Framework.Contracts.Locations.ZLinkActorLocation>> ListActorLocationsAsync(Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter filter [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest page = default [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkPeerLocation>> ListPeerLocationsAsync(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter filter [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationPage<Zlink.Framework.Contracts.Locations.ZLinkRouteLocation>> ListRouteLocationsAsync(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter filter [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest page = default [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor>> ListMeshNodeDescriptorsAsync(System.String meshName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary>> ListServiceSummariesAsync(Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter filter [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationPage<Zlink.Framework.Contracts.Locations.ZLinkSpotLocation>> ListSpotLocationsAsync(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter filter [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest page = default [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationPage<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry>> ListTopologyAsync(Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyFilter filter [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest page = default [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Locations.IZLinkLocationStore : Zlink.Framework.Contracts.Locations.IZLinkActorLocationStore, Zlink.Framework.Contracts.Locations.IZLinkOwnerLeaseStore, Zlink.Framework.Contracts.Locations.IZLinkPeerLocationStore, Zlink.Framework.Contracts.Locations.IZLinkRouteLocationStore, Zlink.Framework.Contracts.Locations.IZLinkSpotLocationStore
+  type interface Zlink.Framework.Contracts.Locations.IZLinkLocationStore : Zlink.Framework.Contracts.Locations.IZLinkActorLocationStore, Zlink.Framework.Contracts.Locations.IZLinkActorTransferStore, Zlink.Framework.Contracts.Locations.IZLinkMeshNodeLocationStore, Zlink.Framework.Contracts.Locations.IZLinkOwnerLeaseStore, Zlink.Framework.Contracts.Locations.IZLinkSpotLocationStore
     method abstract System.Threading.Tasks.ValueTask<System.Int64> RemoveAllByOwnerAsync(System.String ownerId [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Locations.IZLinkLocationWatchStore
-    method abstract System.Collections.Generic.IAsyncEnumerable<Zlink.Framework.Contracts.Locations.ZLinkLocationChanged> WatchAsync(Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter filter [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Locations.IZLinkMeshNodeLocationResolver
+    method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor>> ListLiveMeshNodesAsync(System.String meshName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type interface Zlink.Framework.Contracts.Locations.IZLinkMeshNodeLocationStore
+    method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(System.String meshName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus> RemoveMeshNodeAsync(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken owner [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> UpdateMeshNodeAsync(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor descriptor [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent intent [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkOwnerLeaseStore
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<System.Boolean> RemoveOwnerLeaseAsync(System.String ownerId [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(System.String ownerId [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId nodeRid [nullability=read:not-null,write:not-null], System.TimeSpan leaseTtl [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Locations.IZLinkPeerLocationResolver
-    method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkPeerLocation>> ListLivePeersAsync(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter filter [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Locations.IZLinkPeerLocationStore
-    method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkPeerLocation>> ListPeersAsync(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter filter [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> RemovePeerAsync(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken owner [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> UpdatePeerAsync(Zlink.Framework.Contracts.Locations.ZLinkPeerLocation peer [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent intent [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type interface Zlink.Framework.Contracts.Locations.IZLinkRouteLocationStore
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationPage<Zlink.Framework.Contracts.Locations.ZLinkRouteLocation>> ListRoutesAsync(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter filter [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest page = default [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> RemoveRouteAsync(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken owner [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkRouteLocation?> ResolveRouteAsync(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey key [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> UpdateRouteAsync(Zlink.Framework.Contracts.Locations.ZLinkRouteLocation route [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent intent [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkRoutingIdSlotAllocationStore
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotAcquireResult> AcquireRoutingIdSlotAsync(Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotAcquireRequest request [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotAllocationSnapshot> ListRoutingIdSlotsAsync(System.String groupName [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -1139,56 +1188,114 @@ assembly Zlink.Framework
   type interface Zlink.Framework.Contracts.Locations.IZLinkSpotHandleResolver
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.SpotHandle?> ResolveSpotHandleAsync(Systems.Zlink.RoutingId spotRid [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Zlink.Framework.Contracts.Locations.IZLinkSpotLocationStore
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationPage<Zlink.Framework.Contracts.Locations.ZLinkSpotLocation>> ListSpotsAsync(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter filter [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest page = default [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> RemoveSpotAsync(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationKey key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken owner [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus> RemoveSpotAsync(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationKey key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken owner [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkSpotLocation?> ResolveSpotAsync(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationKey key [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult> UpdateSpotAsync(Zlink.Framework.Contracts.Locations.ZLinkSpotLocation spot [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent intent [nullability=read:not-null,write:not-null], System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type abstract-class Zlink.Framework.Contracts.Locations.SpotHandle
     property Systems.Zlink.RoutingId SpotRid { get; } [nullability=read:not-null,write:unknown]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkActorLocation : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkActorLocation>
-    ctor ZLinkActorLocation(System.String ActorId [nullability=read:not-null,write:not-null], System.String? ActorType [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.ActorRef> ActorRef [nullability=read:nullable,write:nullable], Systems.Zlink.RoutingId NodeRid [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Spots.ZLinkSpotKind LocationKind [nullability=read:not-null,write:not-null], System.String SpotMeshName [nullability=read:not-null,write:not-null], System.Nullable<Systems.Zlink.RoutingId> SpotRid [nullability=read:nullable,write:nullable], System.String OwnerId [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
+    ctor ZLinkActorLocation(System.String MeshName [nullability=read:not-null,write:not-null], System.String ActorId [nullability=read:not-null,write:not-null], System.String ActorType [nullability=read:not-null,write:not-null], Systems.Zlink.ActorRef ActorRef [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId OwnerNodeRid [nullability=read:not-null,write:not-null], System.UInt64 OwnerNodeGeneration [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId SpotRid [nullability=read:not-null,write:not-null], System.UInt64 SpotGeneration [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind [nullability=read:not-null,write:not-null], System.UInt64 MembershipEpoch [nullability=read:not-null,write:not-null], System.String OwnerId [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
     property System.String ActorId { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Nullable<Systems.Zlink.ActorRef> ActorRef { get; init; } [nullability=read:nullable,write:nullable]
-    property System.String? ActorType { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Spots.ZLinkSpotKind LocationKind { get; init; } [nullability=read:not-null,write:not-null]
-    property Systems.Zlink.RoutingId NodeRid { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.ActorRef ActorRef { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String ActorType { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 MembershipEpoch { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
     property System.String OwnerId { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String SpotMeshName { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Nullable<Systems.Zlink.RoutingId> SpotRid { get; init; } [nullability=read:nullable,write:nullable]
+    property System.UInt64 OwnerNodeGeneration { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.RoutingId OwnerNodeRid { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 SpotGeneration { get; init; } [nullability=read:not-null,write:not-null]
+    property Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.RoutingId SpotRid { get; init; } [nullability=read:not-null,write:not-null]
     property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
     method Zlink.Framework.Contracts.Locations.ZLinkActorLocation <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String ActorId [nullability=read:not-null,write:not-null], out System.String? ActorType [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.ActorRef> ActorRef [nullability=read:nullable,write:nullable], out Systems.Zlink.RoutingId NodeRid [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Spots.ZLinkSpotKind LocationKind [nullability=read:not-null,write:not-null], out System.String SpotMeshName [nullability=read:not-null,write:not-null], out System.Nullable<Systems.Zlink.RoutingId> SpotRid [nullability=read:nullable,write:nullable], out System.String OwnerId [nullability=read:not-null,write:not-null], out System.Int64 Generation [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out System.String ActorId [nullability=read:not-null,write:not-null], out System.String ActorType [nullability=read:not-null,write:not-null], out Systems.Zlink.ActorRef ActorRef [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId OwnerNodeRid [nullability=read:not-null,write:not-null], out System.UInt64 OwnerNodeGeneration [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId SpotRid [nullability=read:not-null,write:not-null], out System.UInt64 SpotGeneration [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind [nullability=read:not-null,write:not-null], out System.UInt64 MembershipEpoch [nullability=read:not-null,write:not-null], out System.String OwnerId [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkActorLocation? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
     method override System.String ToString() [return=read:not-null,write:not-null]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkActorLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkActorLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter>
-    ctor ZLinkActorLocationFilter(System.String? ActorType = null [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> NodeRid = null [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> SpotRid = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Spots.ZLinkSpotKind> LocationKind = null [nullability=read:nullable,write:nullable])
-    property System.String? ActorType { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Zlink.Framework.Contracts.Spots.ZLinkSpotKind> LocationKind { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> NodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> SpotRid { get; init; } [nullability=read:nullable,write:nullable]
-    method Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String? ActorType [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> SpotRid [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Spots.ZLinkSpotKind> LocationKind [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey>
-    ctor ZLinkActorLocationKey(System.String ActorId [nullability=read:not-null,write:not-null])
+    ctor ZLinkActorLocationKey(System.String MeshName [nullability=read:not-null,write:not-null], System.String ActorId [nullability=read:not-null,write:not-null])
     property System.String ActorId { get; init; } [nullability=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String ActorId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out System.String ActorId [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
     method override System.String ToString() [return=read:unknown,write:unknown]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkActorLocationKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest>
+    ctor ZLinkActorTransferPrepareRequest(System.String MeshName [nullability=read:not-null,write:not-null], System.String ActorId [nullability=read:not-null,write:not-null], System.Guid TransferId [nullability=read:not-null,write:not-null], Systems.Zlink.ActorRef Source [nullability=read:not-null,write:not-null], Systems.Zlink.ActorRef Target [nullability=read:not-null,write:not-null], System.UInt64 ExpectedActorGeneration [nullability=read:not-null,write:not-null], System.UInt64 ExpectedMembershipEpoch [nullability=read:not-null,write:not-null], System.Collections.Generic.IReadOnlySet<Systems.Zlink.RoutingId> Participants [nullability=read:not-null,write:not-null], System.String RecoveryOwnerId [nullability=read:not-null,write:not-null], System.TimeSpan RecoveryLeaseTtl [nullability=read:not-null,write:not-null])
+    property System.String ActorId { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 ExpectedActorGeneration { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 ExpectedMembershipEpoch { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
+    property System.Collections.Generic.IReadOnlySet<Systems.Zlink.RoutingId> Participants { get; init; } [nullability=read:not-null,write:not-null]
+    property System.TimeSpan RecoveryLeaseTtl { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String RecoveryOwnerId { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.ActorRef Source { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.ActorRef Target { get; init; } [nullability=read:not-null,write:not-null]
+    property System.Guid TransferId { get; init; } [nullability=read:not-null,write:not-null]
+    method Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest <Clone>$() [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out System.String ActorId [nullability=read:not-null,write:not-null], out System.Guid TransferId [nullability=read:not-null,write:not-null], out Systems.Zlink.ActorRef Source [nullability=read:not-null,write:not-null], out Systems.Zlink.ActorRef Target [nullability=read:not-null,write:not-null], out System.UInt64 ExpectedActorGeneration [nullability=read:not-null,write:not-null], out System.UInt64 ExpectedMembershipEpoch [nullability=read:not-null,write:not-null], out System.Collections.Generic.IReadOnlySet<Systems.Zlink.RoutingId> Participants [nullability=read:not-null,write:not-null], out System.String RecoveryOwnerId [nullability=read:not-null,write:not-null], out System.TimeSpan RecoveryLeaseTtl [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:not-null,write:not-null]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorTransferPrepareRequest? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord>
+    ctor ZLinkActorTransferRecord(System.String MeshName [nullability=read:not-null,write:not-null], System.String ActorId [nullability=read:not-null,write:not-null], System.Guid TransferId [nullability=read:not-null,write:not-null], Systems.Zlink.ActorRef Source [nullability=read:not-null,write:not-null], Systems.Zlink.ActorRef Target [nullability=read:not-null,write:not-null], System.UInt64 ExpectedActorGeneration [nullability=read:not-null,write:not-null], System.UInt64 ExpectedMembershipEpoch [nullability=read:not-null,write:not-null], System.Collections.Generic.IReadOnlySet<Systems.Zlink.RoutingId> Participants [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkActorTransferState State [nullability=read:not-null,write:not-null], System.String RecoveryOwnerId [nullability=read:not-null,write:not-null], System.DateTimeOffset RecoveryLeaseExpiresAt [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
+    property System.String ActorId { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 ExpectedActorGeneration { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 ExpectedMembershipEpoch { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
+    property System.Collections.Generic.IReadOnlySet<Systems.Zlink.RoutingId> Participants { get; init; } [nullability=read:not-null,write:not-null]
+    property System.DateTimeOffset RecoveryLeaseExpiresAt { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String RecoveryOwnerId { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.ActorRef Source { get; init; } [nullability=read:not-null,write:not-null]
+    property Zlink.Framework.Contracts.Locations.ZLinkActorTransferState State { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.ActorRef Target { get; init; } [nullability=read:not-null,write:not-null]
+    property System.Guid TransferId { get; init; } [nullability=read:not-null,write:not-null]
+    property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
+    method Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord <Clone>$() [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out System.String ActorId [nullability=read:not-null,write:not-null], out System.Guid TransferId [nullability=read:not-null,write:not-null], out Systems.Zlink.ActorRef Source [nullability=read:not-null,write:not-null], out Systems.Zlink.ActorRef Target [nullability=read:not-null,write:not-null], out System.UInt64 ExpectedActorGeneration [nullability=read:not-null,write:not-null], out System.UInt64 ExpectedMembershipEpoch [nullability=read:not-null,write:not-null], out System.Collections.Generic.IReadOnlySet<Systems.Zlink.RoutingId> Participants [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkActorTransferState State [nullability=read:not-null,write:not-null], out System.String RecoveryOwnerId [nullability=read:not-null,write:not-null], out System.DateTimeOffset RecoveryLeaseExpiresAt [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:not-null,write:not-null]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+  type enum Zlink.Framework.Contracts.Locations.ZLinkActorTransferState : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferState Aborted = 4 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferState Activated = 3 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferState Committed = 2 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferState Prepared = 1 [nullability=read:not-null,write:not-null]
+  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult>
+    ctor ZLinkActorTransferWriteResult(Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus Status [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? Record [nullability=read:nullable,write:nullable])
+    property static Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult IgnoredStale { get; } [nullability=read:not-null,write:unknown]
+    property static Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult InvalidState { get; } [nullability=read:not-null,write:unknown]
+    property static Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult NotFound { get; } [nullability=read:not-null,write:unknown]
+    property Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? Record { get; init; } [nullability=read:nullable,write:nullable]
+    property static Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult RejectedConflict { get; } [nullability=read:not-null,write:unknown]
+    property Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus Status { get; init; } [nullability=read:not-null,write:not-null]
+    method Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult <Clone>$() [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus Status [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord? Record [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method static Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult Stored(Zlink.Framework.Contracts.Locations.ZLinkActorTransferRecord record [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:not-null,write:not-null]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteResult? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+  type enum Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus IgnoredStale = 3 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus InvalidState = 5 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus NotFound = 2 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus RejectedConflict = 4 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkActorTransferWriteStatus Stored = 1 [nullability=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkAllocatedRoutingId : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkAllocatedRoutingId>
     ctor ZLinkAllocatedRoutingId(System.String GroupName [nullability=read:not-null,write:not-null], System.Int32 Slot [nullability=read:not-null,write:not-null], System.Collections.Generic.IReadOnlyDictionary<System.String, Systems.Zlink.RoutingId> MemberRoutingIds [nullability=read:not-null,write:not-null])
     property System.String GroupName { get; init; } [nullability=read:not-null,write:not-null]
@@ -1209,36 +1316,23 @@ assembly Zlink.Framework
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType Invalid = 0 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType RouteMesh = 1 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType SpotMesh = 5 [nullability=read:not-null,write:not-null]
+  type enum Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
+    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind Actor = 3 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind ActorTransfer = 5 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind MeshNode = 1 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind OwnerLease = 4 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind Spot = 2 [nullability=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope>
-    ctor ZLinkLocationChangeStampScope(Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], System.String? MeshName [nullability=read:nullable,write:nullable])
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind { get; init; } [nullability=read:not-null,write:not-null]
+    ctor ZLinkLocationChangeStampScope(Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind Kind [nullability=read:not-null,write:not-null], System.String? MeshName [nullability=read:nullable,write:nullable])
+    property Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind Kind { get; init; } [nullability=read:not-null,write:not-null]
     property System.String? MeshName { get; init; } [nullability=read:nullable,write:nullable]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], out System.String? MeshName [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationChangeScopeKind Kind [nullability=read:not-null,write:not-null], out System.String? MeshName [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
     method override System.String ToString() [return=read:unknown,write:unknown]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationChangeStampScope right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type enum Zlink.Framework.Contracts.Locations.ZLinkLocationChangeType : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
-    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeType Expired = 3 [nullability=read:not-null,write:not-null]
-    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeType Removed = 2 [nullability=read:not-null,write:not-null]
-    field const Zlink.Framework.Contracts.Locations.ZLinkLocationChangeType Upserted = 1 [nullability=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationChanged : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationChanged>
-    ctor ZLinkLocationChanged(Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationKey Key [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationChangeType ChangeType [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationChangeType ChangeType { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind { get; init; } [nullability=read:not-null,write:not-null]
-    property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
-    method Zlink.Framework.Contracts.Locations.ZLinkLocationChanged <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkLocationKey Key [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkLocationChangeType ChangeType [nullability=read:not-null,write:not-null], out System.Int64 Generation [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationChanged? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationChanged? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationChanged? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationChanged? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationChanged? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type abstract-class Zlink.Framework.Contracts.Locations.ZLinkLocationKey : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey>
     method abstract Zlink.Framework.Contracts.Locations.ZLinkLocationKey <Clone>$() [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
@@ -1259,30 +1353,18 @@ assembly Zlink.Framework
     method override System.String ToString() [return=read:not-null,write:not-null]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Actor? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Actor? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Actor? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Actor? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer : Zlink.Framework.Contracts.Locations.ZLinkLocationKey, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer>, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey>
-    ctor Peer(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
-    method virtual Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey Key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode : Zlink.Framework.Contracts.Locations.ZLinkLocationKey, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode>, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey>
+    ctor MeshNode(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key [nullability=read:not-null,write:not-null])
+    property Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key { get; init; } [nullability=read:not-null,write:not-null]
+    method virtual Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode <Clone>$() [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey Key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method sealed-override System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationKey? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
     method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Peer? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route : Zlink.Framework.Contracts.Locations.ZLinkLocationKey, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route>, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey>
-    ctor Route(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
-    method virtual Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey Key [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method sealed-override System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationKey? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Route? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationKey.MeshNode? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Spot : Zlink.Framework.Contracts.Locations.ZLinkLocationKey, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey.Spot>, System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationKey>
     ctor Spot(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationKey Key [nullability=read:not-null,write:not-null])
     property Zlink.Framework.Contracts.Locations.ZLinkSpotLocationKey Key { get; init; } [nullability=read:not-null,write:not-null]
@@ -1298,8 +1380,7 @@ assembly Zlink.Framework
   type enum Zlink.Framework.Contracts.Locations.ZLinkLocationKind : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationKind Actor = 3 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationKind Invalid = 0 [nullability=read:not-null,write:not-null]
-    field const Zlink.Framework.Contracts.Locations.ZLinkLocationKind Peer = 1 [nullability=read:not-null,write:not-null]
-    field const Zlink.Framework.Contracts.Locations.ZLinkLocationKind Route = 4 [nullability=read:not-null,write:not-null]
+    field const Zlink.Framework.Contracts.Locations.ZLinkLocationKind MeshNode = 1 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationKind Spot = 2 [nullability=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationOptions
     ctor ZLinkLocationOptions()
@@ -1312,10 +1393,10 @@ assembly Zlink.Framework
     property System.TimeSpan StoreFailureGrace { get; set; } [nullability=read:not-null,write:not-null]
     method System.Void MapSpotMeshToRouteChannel(System.String spotMeshName [nullability=read:not-null,write:not-null], System.String routeChannelName [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken>
-    ctor ZLinkLocationOwnerToken(System.String OwnerId [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null])
-    property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
+    ctor ZLinkLocationOwnerToken(System.String OwnerId [nullability=read:not-null,write:not-null], System.UInt64 Generation [nullability=read:not-null,write:not-null])
+    property System.UInt64 Generation { get; init; } [nullability=read:not-null,write:not-null]
     property System.String OwnerId { get; init; } [nullability=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String OwnerId [nullability=read:not-null,write:not-null], out System.Int64 Generation [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String OwnerId [nullability=read:not-null,write:not-null], out System.UInt64 Generation [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationOwnerToken other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
@@ -1360,17 +1441,15 @@ assembly Zlink.Framework
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationRuntimeStatus? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationRuntimeStatus? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationRuntimeStatus? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationRuntimeStatus? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary>
-    ctor ZLinkLocationServiceSummary(System.String MeshName [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role [nullability=read:not-null,write:not-null], System.UInt32 TotalCount [nullability=read:not-null,write:not-null], System.UInt32 ReadyCount [nullability=read:not-null,write:not-null], System.UInt32 ErrorCount [nullability=read:not-null,write:not-null], System.UInt32 StoppedCount [nullability=read:not-null,write:not-null], System.DateTimeOffset LastUpdatedAt [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType { get; init; } [nullability=read:not-null,write:not-null]
+    ctor ZLinkLocationServiceSummary(System.String MeshName [nullability=read:not-null,write:not-null], System.UInt32 TotalCount [nullability=read:not-null,write:not-null], System.UInt32 ReadyCount [nullability=read:not-null,write:not-null], System.UInt32 ErrorCount [nullability=read:not-null,write:not-null], System.UInt32 StoppedCount [nullability=read:not-null,write:not-null], System.DateTimeOffset LastUpdatedAt [nullability=read:not-null,write:not-null])
     property System.UInt32 ErrorCount { get; init; } [nullability=read:not-null,write:not-null]
     property System.DateTimeOffset LastUpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
     property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
     property System.UInt32 ReadyCount { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role { get; init; } [nullability=read:not-null,write:not-null]
     property System.UInt32 StoppedCount { get; init; } [nullability=read:not-null,write:not-null]
     property System.UInt32 TotalCount { get; init; } [nullability=read:not-null,write:not-null]
     method Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role [nullability=read:not-null,write:not-null], out System.UInt32 TotalCount [nullability=read:not-null,write:not-null], out System.UInt32 ReadyCount [nullability=read:not-null,write:not-null], out System.UInt32 ErrorCount [nullability=read:not-null,write:not-null], out System.UInt32 StoppedCount [nullability=read:not-null,write:not-null], out System.DateTimeOffset LastUpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out System.UInt32 TotalCount [nullability=read:not-null,write:not-null], out System.UInt32 ReadyCount [nullability=read:not-null,write:not-null], out System.UInt32 ErrorCount [nullability=read:not-null,write:not-null], out System.UInt32 StoppedCount [nullability=read:not-null,write:not-null], out System.DateTimeOffset LastUpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
@@ -1378,12 +1457,10 @@ assembly Zlink.Framework
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummary? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter>
-    ctor ZLinkLocationServiceSummaryFilter(System.String? MeshName = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType> AutoConnectType = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role = null [nullability=read:nullable,write:nullable])
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType> AutoConnectType { get; init; } [nullability=read:nullable,write:nullable]
+    ctor ZLinkLocationServiceSummaryFilter(System.String? MeshName = null [nullability=read:nullable,write:nullable])
     property System.String? MeshName { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role { get; init; } [nullability=read:nullable,write:nullable]
     method Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String? MeshName [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType> AutoConnectType [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String? MeshName [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
@@ -1391,21 +1468,15 @@ assembly Zlink.Framework
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationServiceSummaryFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry>
-    ctor ZLinkLocationTopologyEntry(Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], System.String? MeshName [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> SpotRid [nullability=read:nullable,write:nullable], System.String? ActorId [nullability=read:nullable,write:nullable], System.String? Endpoint [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState State [nullability=read:not-null,write:not-null], System.UInt32 DesiredCount [nullability=read:not-null,write:not-null], System.UInt32 ReadyCount [nullability=read:not-null,write:not-null], System.Int32 ErrorCode [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
-    property System.String? ActorId { get; init; } [nullability=read:nullable,write:nullable]
-    property System.UInt32 DesiredCount { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String? Endpoint { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Int32 ErrorCode { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String? MeshName { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> NodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property System.UInt32 ReadyCount { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> SpotRid { get; init; } [nullability=read:nullable,write:nullable]
+    ctor ZLinkLocationTopologyEntry(System.String MeshName [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId NodeRid [nullability=read:not-null,write:not-null], System.String Endpoint [nullability=read:not-null,write:not-null], System.Boolean Draining [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState State [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
+    property System.Boolean Draining { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String Endpoint { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.RoutingId NodeRid { get; init; } [nullability=read:not-null,write:not-null]
     property Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState State { get; init; } [nullability=read:not-null,write:not-null]
     property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
     method Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], out System.String? MeshName [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> SpotRid [nullability=read:nullable,write:nullable], out System.String? ActorId [nullability=read:nullable,write:nullable], out System.String? Endpoint [nullability=read:nullable,write:nullable], out Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState State [nullability=read:not-null,write:not-null], out System.UInt32 DesiredCount [nullability=read:not-null,write:not-null], out System.UInt32 ReadyCount [nullability=read:not-null,write:not-null], out System.Int32 ErrorCode [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId NodeRid [nullability=read:not-null,write:not-null], out System.String Endpoint [nullability=read:not-null,write:not-null], out System.Boolean Draining [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState State [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
@@ -1413,14 +1484,12 @@ assembly Zlink.Framework
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyEntry? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyFilter : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyFilter>
-    ctor ZLinkLocationTopologyFilter(System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationKind> Kind = null [nullability=read:nullable,write:nullable], System.String? MeshName = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role = null [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> NodeRid = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState> State = null [nullability=read:nullable,write:nullable])
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationKind> Kind { get; init; } [nullability=read:nullable,write:nullable]
+    ctor ZLinkLocationTopologyFilter(System.String? MeshName = null [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> NodeRid = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState> State = null [nullability=read:nullable,write:nullable])
     property System.String? MeshName { get; init; } [nullability=read:nullable,write:nullable]
     property System.Nullable<Systems.Zlink.RoutingId> NodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role { get; init; } [nullability=read:nullable,write:nullable]
     property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState> State { get; init; } [nullability=read:nullable,write:nullable]
     method Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyFilter <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationKind> Kind [nullability=read:nullable,write:nullable], out System.String? MeshName [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState> State [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String? MeshName [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState> State [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyFilter? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
@@ -1434,36 +1503,23 @@ assembly Zlink.Framework
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState Lost = 4 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState Ready = 3 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationTopologyState Stopped = 6 [nullability=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter>
-    ctor ZLinkLocationWatchFilter(Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], System.String? MeshName = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkRouteKind> RouteKind = null [nullability=read:nullable,write:nullable])
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String? MeshName { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkRouteKind> RouteKind { get; init; } [nullability=read:nullable,write:nullable]
-    method Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationKind Kind [nullability=read:not-null,write:not-null], out System.String? MeshName [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkRouteKind> RouteKind [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationWatchFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent NewClaim = 1 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent Renew = 2 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationWriteIntent Takeover = 3 [nullability=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult>
-    ctor ZLinkLocationWriteResult(Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus Status [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
-    property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
+    ctor ZLinkLocationWriteResult(Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus Status [nullability=read:not-null,write:not-null], System.UInt64 Generation [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
+    property System.UInt64 Generation { get; init; } [nullability=read:not-null,write:not-null]
     property static Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult IgnoredStale { get; } [nullability=read:not-null,write:unknown]
     property static Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult RejectedConflict { get; } [nullability=read:not-null,write:unknown]
     property Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus Status { get; init; } [nullability=read:not-null,write:not-null]
     property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
     method Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus Status [nullability=read:not-null,write:not-null], out System.Int64 Generation [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus Status [nullability=read:not-null,write:not-null], out System.UInt64 Generation [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method static Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult Stored(System.Int64 generation [nullability=read:not-null,write:not-null], System.DateTimeOffset updatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult Stored(System.UInt64 generation [nullability=read:not-null,write:not-null], System.DateTimeOffset updatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.String ToString() [return=read:not-null,write:not-null]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationWriteResult? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
@@ -1471,6 +1527,37 @@ assembly Zlink.Framework
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus IgnoredStale = 2 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus RejectedConflict = 3 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkLocationWriteStatus Stored = 1 [nullability=read:not-null,write:not-null]
+  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor>
+    ctor ZLinkMeshNodeDescriptor(System.String MeshName [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId Rid [nullability=read:not-null,write:not-null], System.UInt64 LifecycleGeneration [nullability=read:not-null,write:not-null], System.UInt64 DescriptorRevision [nullability=read:not-null,write:not-null], System.String Endpoint [nullability=read:not-null,write:not-null], System.Collections.Generic.IReadOnlyDictionary<System.String, System.Int32> ChannelWeights [nullability=read:not-null,write:not-null], System.Boolean Draining [nullability=read:not-null,write:not-null], System.String SecurityIdentity [nullability=read:not-null,write:not-null], System.String OwnerId [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
+    property System.Collections.Generic.IReadOnlyDictionary<System.String, System.Int32> ChannelWeights { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 DescriptorRevision { get; init; } [nullability=read:not-null,write:not-null]
+    property System.Boolean Draining { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String Endpoint { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 LifecycleGeneration { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String OwnerId { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.RoutingId Rid { get; init; } [nullability=read:not-null,write:not-null]
+    property System.String SecurityIdentity { get; init; } [nullability=read:not-null,write:not-null]
+    property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
+    method Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor <Clone>$() [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId Rid [nullability=read:not-null,write:not-null], out System.UInt64 LifecycleGeneration [nullability=read:not-null,write:not-null], out System.UInt64 DescriptorRevision [nullability=read:not-null,write:not-null], out System.String Endpoint [nullability=read:not-null,write:not-null], out System.Collections.Generic.IReadOnlyDictionary<System.String, System.Int32> ChannelWeights [nullability=read:not-null,write:not-null], out System.Boolean Draining [nullability=read:not-null,write:not-null], out System.String SecurityIdentity [nullability=read:not-null,write:not-null], out System.String OwnerId [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:not-null,write:not-null]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptor? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+  type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey>
+    ctor ZLinkMeshNodeDescriptorKey(System.String MeshName [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId Rid [nullability=read:not-null,write:not-null])
+    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.RoutingId Rid { get; init; } [nullability=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId Rid [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
+    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
+    method override System.String ToString() [return=read:unknown,write:unknown]
+    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkMeshNodeDescriptorKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkOwnerLease : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkOwnerLease>
     ctor ZLinkOwnerLease(System.String OwnerId [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId NodeRid [nullability=read:not-null,write:not-null], System.DateTimeOffset LeaseExpiresAt [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
     property System.DateTimeOffset LeaseExpiresAt { get; init; } [nullability=read:not-null,write:not-null]
@@ -1520,104 +1607,11 @@ assembly Zlink.Framework
     method override System.String ToString() [return=read:unknown,write:unknown]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkPageRequest left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkPageRequest left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPageRequest right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkPeerLocation : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkPeerLocation>
-    ctor ZLinkPeerLocation(Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType [nullability=read:not-null,write:not-null], System.String MeshName [nullability=read:not-null,write:not-null], System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role [nullability=read:not-null,write:not-null], System.String Endpoint [nullability=read:not-null,write:not-null], System.UInt32 Weight [nullability=read:not-null,write:not-null], System.Boolean Draining [nullability=read:not-null,write:not-null], System.Int64 Value [nullability=read:not-null,write:not-null], System.Collections.Generic.IReadOnlyDictionary<System.String, System.String>? Metadata [nullability=read:nullable,write:nullable], System.Collections.Generic.IReadOnlyList<System.String>? Capabilities [nullability=read:nullable,write:nullable], System.String OwnerId [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Collections.Generic.IReadOnlyList<System.String>? Capabilities { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Boolean Draining { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String Endpoint { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Collections.Generic.IReadOnlyDictionary<System.String, System.String>? Metadata { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> NodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property System.String OwnerId { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role { get; init; } [nullability=read:not-null,write:not-null]
-    property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Int64 Value { get; init; } [nullability=read:not-null,write:not-null]
-    property System.UInt32 Weight { get; init; } [nullability=read:not-null,write:not-null]
-    method Zlink.Framework.Contracts.Locations.ZLinkPeerLocation <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType [nullability=read:not-null,write:not-null], out System.String MeshName [nullability=read:not-null,write:not-null], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role [nullability=read:not-null,write:not-null], out System.String Endpoint [nullability=read:not-null,write:not-null], out System.UInt32 Weight [nullability=read:not-null,write:not-null], out System.Boolean Draining [nullability=read:not-null,write:not-null], out System.Int64 Value [nullability=read:not-null,write:not-null], out System.Collections.Generic.IReadOnlyDictionary<System.String, System.String>? Metadata [nullability=read:nullable,write:nullable], out System.Collections.Generic.IReadOnlyList<System.String>? Capabilities [nullability=read:nullable,write:nullable], out System.String OwnerId [nullability=read:not-null,write:not-null], out System.Int64 Generation [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkPeerLocation? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkPeerLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkPeerLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkPeerLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkPeerLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter>
-    ctor ZLinkPeerLocationFilter(System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType> AutoConnectType = null [nullability=read:nullable,write:nullable], System.String? MeshName = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role = null [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> NodeRid = null [nullability=read:nullable,write:nullable], System.String? Endpoint = null [nullability=read:nullable,write:nullable])
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType> AutoConnectType { get; init; } [nullability=read:nullable,write:nullable]
-    property System.String? Endpoint { get; init; } [nullability=read:nullable,write:nullable]
-    property System.String? MeshName { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> NodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role { get; init; } [nullability=read:nullable,write:nullable]
-    method Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType> AutoConnectType [nullability=read:nullable,write:nullable], out System.String? MeshName [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkLocationRole> Role [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out System.String? Endpoint [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkPeerLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey>
-    ctor ZLinkPeerLocationKey(Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType [nullability=read:not-null,write:not-null], System.String MeshName [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role [nullability=read:not-null,write:not-null], System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], System.String? Endpoint [nullability=read:nullable,write:nullable])
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String? Endpoint { get; init; } [nullability=read:nullable,write:nullable]
-    property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
-    property System.Nullable<Systems.Zlink.RoutingId> NodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role { get; init; } [nullability=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkLocationAutoConnectType AutoConnectType [nullability=read:not-null,write:not-null], out System.String MeshName [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Locations.ZLinkLocationRole Role [nullability=read:not-null,write:not-null], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out System.String? Endpoint [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:unknown,write:unknown]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkPeerLocationKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type enum Zlink.Framework.Contracts.Locations.ZLinkRouteKind : System.Enum, System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
     field const Zlink.Framework.Contracts.Locations.ZLinkRouteKind ActorSession = 1 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkRouteKind FrameworkRoute = 3 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkRouteKind Invalid = 0 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkRouteKind SpotName = 2 [nullability=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkRouteLocation : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkRouteLocation>
-    ctor ZLinkRouteLocation(Zlink.Framework.Contracts.Locations.ZLinkRouteKind RouteKind [nullability=read:not-null,write:not-null], System.String RouteKey [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId OwnerNodeRid [nullability=read:not-null,write:not-null], System.String OwnerId [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null], System.ReadOnlyMemory<System.Byte> Value [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
-    property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String OwnerId { get; init; } [nullability=read:not-null,write:not-null]
-    property Systems.Zlink.RoutingId OwnerNodeRid { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String RouteKey { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkRouteKind RouteKind { get; init; } [nullability=read:not-null,write:not-null]
-    property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
-    property System.ReadOnlyMemory<System.Byte> Value { get; init; } [nullability=read:not-null,write:not-null]
-    method Zlink.Framework.Contracts.Locations.ZLinkRouteLocation <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkRouteKind RouteKind [nullability=read:not-null,write:not-null], out System.String RouteKey [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId OwnerNodeRid [nullability=read:not-null,write:not-null], out System.String OwnerId [nullability=read:not-null,write:not-null], out System.Int64 Generation [nullability=read:not-null,write:not-null], out System.ReadOnlyMemory<System.Byte> Value [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkRouteLocation? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkRouteLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkRouteLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkRouteLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkRouteLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter>
-    ctor ZLinkRouteLocationFilter(System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkRouteKind> RouteKind = null [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> OwnerNodeRid = null [nullability=read:nullable,write:nullable], System.String? OwnerId = null [nullability=read:nullable,write:nullable])
-    property System.String? OwnerId { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> OwnerNodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkRouteKind> RouteKind { get; init; } [nullability=read:nullable,write:nullable]
-    method Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.Nullable<Zlink.Framework.Contracts.Locations.ZLinkRouteKind> RouteKind [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> OwnerNodeRid [nullability=read:nullable,write:nullable], out System.String? OwnerId [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkRouteLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey>
-    ctor ZLinkRouteLocationKey(Zlink.Framework.Contracts.Locations.ZLinkRouteKind RouteKind [nullability=read:not-null,write:not-null], System.String RouteKey [nullability=read:not-null,write:not-null])
-    property System.String RouteKey { get; init; } [nullability=read:not-null,write:not-null]
-    property Zlink.Framework.Contracts.Locations.ZLinkRouteKind RouteKind { get; init; } [nullability=read:not-null,write:not-null]
-    method System.Void Deconstruct(out Zlink.Framework.Contracts.Locations.ZLinkRouteKind RouteKind [nullability=read:not-null,write:not-null], out System.String RouteKey [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object obj [nullability=read:unknown,write:unknown]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey other [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:unknown,write:unknown]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey left [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Locations.ZLinkRouteLocationKey right [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotAcquireRequest : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotAcquireRequest>
     ctor ZLinkRoutingIdSlotAcquireRequest(System.String GroupName [nullability=read:not-null,write:not-null], System.Collections.Generic.IReadOnlyList<Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotAllocationMember> Members [nullability=read:not-null,write:not-null], System.Int32 SlotCount [nullability=read:not-null,write:not-null], System.String OwnerId [nullability=read:not-null,write:not-null], System.TimeSpan LeaseTtl [nullability=read:not-null,write:not-null])
     property System.String GroupName { get; init; } [nullability=read:not-null,write:not-null]
@@ -1733,38 +1727,24 @@ assembly Zlink.Framework
     field const Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotReleaseResult IgnoredStale = 2 [nullability=read:not-null,write:not-null]
     field const Zlink.Framework.Contracts.Locations.ZLinkRoutingIdSlotReleaseResult Released = 1 [nullability=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Locations.ZLinkSpotLocation : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkSpotLocation>
-    ctor ZLinkSpotLocation(System.String MeshName [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId SpotRid [nullability=read:not-null,write:not-null], System.String? SpotType [nullability=read:nullable,write:nullable], Systems.Zlink.RoutingId NodeRid [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind [nullability=read:not-null,write:not-null], System.String? RouteEndpoint [nullability=read:nullable,write:nullable], System.String OwnerId [nullability=read:not-null,write:not-null], System.Int64 Generation [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
-    property System.Int64 Generation { get; init; } [nullability=read:not-null,write:not-null]
+    ctor ZLinkSpotLocation(System.String MeshName [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId SpotRid [nullability=read:not-null,write:not-null], System.UInt64 SpotGeneration [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId OwnerNodeRid [nullability=read:not-null,write:not-null], System.UInt64 OwnerNodeGeneration [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind [nullability=read:not-null,write:not-null], System.String SpotType [nullability=read:not-null,write:not-null], System.String OwnerId [nullability=read:not-null,write:not-null], System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null])
     property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
-    property Systems.Zlink.RoutingId NodeRid { get; init; } [nullability=read:not-null,write:not-null]
     property System.String OwnerId { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String? RouteEndpoint { get; init; } [nullability=read:nullable,write:nullable]
+    property System.UInt64 OwnerNodeGeneration { get; init; } [nullability=read:not-null,write:not-null]
+    property Systems.Zlink.RoutingId OwnerNodeRid { get; init; } [nullability=read:not-null,write:not-null]
+    property System.UInt64 SpotGeneration { get; init; } [nullability=read:not-null,write:not-null]
     property Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind { get; init; } [nullability=read:not-null,write:not-null]
     property Systems.Zlink.RoutingId SpotRid { get; init; } [nullability=read:not-null,write:not-null]
-    property System.String? SpotType { get; init; } [nullability=read:nullable,write:nullable]
+    property System.String SpotType { get; init; } [nullability=read:not-null,write:not-null]
     property System.DateTimeOffset UpdatedAt { get; init; } [nullability=read:not-null,write:not-null]
     method Zlink.Framework.Contracts.Locations.ZLinkSpotLocation <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId SpotRid [nullability=read:not-null,write:not-null], out System.String? SpotType [nullability=read:nullable,write:nullable], out Systems.Zlink.RoutingId NodeRid [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind [nullability=read:not-null,write:not-null], out System.String? RouteEndpoint [nullability=read:nullable,write:nullable], out System.String OwnerId [nullability=read:not-null,write:not-null], out System.Int64 Generation [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Void Deconstruct(out System.String MeshName [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId SpotRid [nullability=read:not-null,write:not-null], out System.UInt64 SpotGeneration [nullability=read:not-null,write:not-null], out Systems.Zlink.RoutingId OwnerNodeRid [nullability=read:not-null,write:not-null], out System.UInt64 OwnerNodeGeneration [nullability=read:not-null,write:not-null], out Zlink.Framework.Contracts.Spots.ZLinkSpotKind SpotKind [nullability=read:not-null,write:not-null], out System.String SpotType [nullability=read:not-null,write:not-null], out System.String OwnerId [nullability=read:not-null,write:not-null], out System.DateTimeOffset UpdatedAt [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkSpotLocation? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
     method override System.String ToString() [return=read:not-null,write:not-null]
     method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkSpotLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkSpotLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
     method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkSpotLocation? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkSpotLocation? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-  type sealed-class Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter>
-    ctor ZLinkSpotLocationFilter(System.String? MeshName = null [nullability=read:nullable,write:nullable], System.String? SpotType = null [nullability=read:nullable,write:nullable], System.Nullable<Systems.Zlink.RoutingId> NodeRid = null [nullability=read:nullable,write:nullable], System.Nullable<Zlink.Framework.Contracts.Spots.ZLinkSpotKind> SpotKind = null [nullability=read:nullable,write:nullable])
-    property System.String? MeshName { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Systems.Zlink.RoutingId> NodeRid { get; init; } [nullability=read:nullable,write:nullable]
-    property System.Nullable<Zlink.Framework.Contracts.Spots.ZLinkSpotKind> SpotKind { get; init; } [nullability=read:nullable,write:nullable]
-    property System.String? SpotType { get; init; } [nullability=read:nullable,write:nullable]
-    method Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter <Clone>$() [return=read:not-null,write:not-null]
-    method System.Void Deconstruct(out System.String? MeshName [nullability=read:nullable,write:nullable], out System.String? SpotType [nullability=read:nullable,write:nullable], out System.Nullable<Systems.Zlink.RoutingId> NodeRid [nullability=read:nullable,write:nullable], out System.Nullable<Zlink.Framework.Contracts.Spots.ZLinkSpotKind> SpotKind [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Boolean Equals(System.Object? obj [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method virtual System.Boolean Equals(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter? other [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method override System.Int32 GetHashCode() [return=read:not-null,write:not-null]
-    method override System.String ToString() [return=read:not-null,write:not-null]
-    method static System.Boolean op_Equality(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
-    method static System.Boolean op_Inequality(Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter? left [nullability=read:nullable,write:nullable], Zlink.Framework.Contracts.Locations.ZLinkSpotLocationFilter? right [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
   type readonly-struct Zlink.Framework.Contracts.Locations.ZLinkSpotLocationKey : System.IEquatable<Zlink.Framework.Contracts.Locations.ZLinkSpotLocationKey>
     ctor ZLinkSpotLocationKey(System.String MeshName [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId SpotRid [nullability=read:not-null,write:not-null])
     property System.String MeshName { get; init; } [nullability=read:not-null,write:not-null]
@@ -1966,10 +1946,8 @@ assembly Zlink.Framework
     method Zlink.Framework.Contracts.Spots.ZLinkSpotActorReplyOptions Compress(System.Boolean enabled = true [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method Zlink.Framework.Contracts.Spots.ZLinkSpotActorReplyOptions Metadata(System.String key [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type sealed-class Zlink.Framework.Contracts.Spots.ZLinkSpotActorRequestContext : Zlink.Framework.Contracts.Handlers.ZLinkHandlerContext, Zlink.Framework.Contracts.Handlers.IZLinkHandlerContext
-    property Zlink.Framework.Contracts.Streams.ZLinkMessageMetadata Metadata { get; } [nullability=read:not-null,write:unknown]
     property Zlink.Framework.Contracts.Spots.ZLinkSpotActorReplyOptions Reply { get; } [nullability=read:not-null,write:unknown]
   type sealed-class Zlink.Framework.Contracts.Spots.ZLinkSpotActorSendContext : Zlink.Framework.Contracts.Handlers.ZLinkHandlerContext, Zlink.Framework.Contracts.Handlers.IZLinkHandlerContext
-    property Zlink.Framework.Contracts.Streams.ZLinkMessageMetadata Metadata { get; } [nullability=read:not-null,write:unknown]
   type readonly-struct Zlink.Framework.Contracts.Spots.ZLinkSpotCreateResponse : System.IEquatable<Zlink.Framework.Contracts.Spots.ZLinkSpotCreateResponse>
     ctor ZLinkSpotCreateResponse(System.Boolean Accepted [nullability=read:not-null,write:not-null], Zlink.Framework.Contracts.Messaging.ZLinkMessage? Reply [nullability=read:nullable,write:nullable])
     property System.Boolean Accepted { get; init; } [nullability=read:not-null,write:not-null]

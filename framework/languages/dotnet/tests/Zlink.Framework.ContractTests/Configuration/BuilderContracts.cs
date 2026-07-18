@@ -49,8 +49,8 @@ public sealed class BuilderContracts
         routeMesh.ConfigureSocket().SendTimeout = TimeSpan.FromSeconds(1);
         Assert.Equal(TimeSpan.FromSeconds(1), routeMesh.ConfigureSocket().SendTimeout);
 
-        var spotMesh = options.AddSpotMesh("rooms");
-        Assert.Same(spotMesh, spotMesh.SetRoutingId(RoutingId.From("rooms-a")));
+        var mesh = options.AddRouteMesh("rooms");
+        Assert.Same(mesh, mesh.SetRoutingId(RoutingId.From("rooms-a")));
     }
 
     [Fact]
@@ -58,8 +58,8 @@ public sealed class BuilderContracts
         typeof(IZLinkClientServerChannelBuilder),
         typeof(IZLinkClientServerChannelOptions),
         typeof(IZLinkFanoutChannelBuilder),
-        typeof(IZLinkChannelRuntimeOptions),
         typeof(IZLinkRouteMeshChannelOptions),
+        typeof(IZLinkRouteMeshRuntimeOptions),
         typeof(IZLinkRouteMeshChannelBuilder))]
     public void Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel()
     {
@@ -121,64 +121,70 @@ public sealed class BuilderContracts
         Assert.Same(events, events.SetRoutingIdAllocationGroup("workers").UseAllocatedRoutingId(100));
         var routes = options.AddRouteMeshChannel("routes");
         Assert.Same(routes, routes.UseAllocatedRoutingId(100).SetRoutingIdAllocationGroup("workers"));
-        var spots = options.AddSpotMesh("spots");
-        Assert.Same(spots, spots.UseAllocatedRoutingId(100).SetRoutingIdAllocationGroup("workers"));
+        var mesh = options.AddRouteMesh("spots");
+        Assert.Same(mesh, mesh.UseAllocatedRoutingId(100).SetRoutingIdAllocationGroup("workers"));
     }
 
     [Fact]
     [ContractExample(
         typeof(IZLinkStreamNodeBuilder),
-        typeof(IZLinkSpotNodeBuilder),
-        typeof(IZLinkSpotMeshBuilder))]
-    public void Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments()
+        typeof(IZLinkMeshNodeBuilder),
+        typeof(IZLinkMeshChannelBuilder),
+        typeof(IZLinkMeshNodeSocketConfig),
+        typeof(IZLinkMeshNodeRuntimeOptions),
+        typeof(IZLinkMeshChannelRuntimeOptions),
+        typeof(IZLinkMeshPeerConnections))]
+    public void Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships()
     {
         var options = new FrameworkOptions();
 
         {
             var stream = options.AddStreamNode("gateway");
             stream.Bind("tcp://127.0.0.1:5400");
+            stream.EnableActorDispatch("play-spots");
             stream.RegisterSession<GatewaySession>();
         }
 
         {
-            var mesh = options.AddSpotMesh("play-spots");
-            Assert.Same(mesh, mesh.UseDrainPolicy(ZLinkSpotDrainPolicy.DrainNatural));
-            ConfigureSpotNode(mesh);
+            var mesh = options.AddRouteMesh("play-spots");
+            Assert.Same(mesh, mesh.UseDrainPolicy(ZLinkMeshNodeDrainPolicy.DrainNatural));
+            ConfigureMeshNode(mesh);
         }
 
         Assert.Contains("gateway", options.StreamNodes);
-        Assert.Contains("play-spots", options.SpotNodes);
-        Assert.Contains("play-spots", options.SpotMeshes);
+        Assert.Contains("play-spots", options.Meshes);
     }
 
     [Fact]
-    public void Spot_mesh_builder_allows_multiple_process_local_nodes()
+    public void RouteMesh_registration_allows_multiple_process_local_nodes()
     {
         var options = new FrameworkOptions();
 
-        options.AddSpotMesh("play-node").EnableRouter("tcp://127.0.0.1:5501");
-        options.AddSpotMesh("session-node").EnableRouter("tcp://127.0.0.1:5502");
+        options.AddRouteMesh("play-node").Listen("tcp://127.0.0.1:5501");
+        options.AddRouteMesh("session-node").Listen("tcp://127.0.0.1:5502");
 
-        Assert.Equal(["play-node", "session-node"], options.SpotMeshes);
-        Assert.Equal(["play-node", "session-node"], options.SpotNodes);
+        Assert.Equal(["play-node", "session-node"], options.Meshes);
     }
 
-    private static void ConfigureSpotNode(IZLinkSpotNodeBuilder spot)
+    private static void ConfigureMeshNode(IZLinkMeshNodeBuilder mesh)
     {
-        spot.EnableRouter("tcp://127.0.0.1:5501")
-            .SetRoutingId(RoutingId.From("spot-router"))
-            .ConnectRouter("tcp://127.0.0.1:5501");
-        spot.ConfigureRouterSocket().TcpNoDelay = true;
+        mesh.Listen("tcp://127.0.0.1:5501")
+            .SetRoutingId(RoutingId.From("spot-router"));
+        mesh.PeerConnections.Connect(
+            RoutingId.From("spot-peer"), "tcp://127.0.0.1:5501");
+        mesh.ConfigureRouterSocket().SendHighWaterMark = 1024;
+        mesh.ConfigureSpotPublisher().NoDrop = true;
 
-        spot.EnablePubSub("tcp://127.0.0.1:5500")
-            .ConnectPeerPub("tcp://127.0.0.1:5502");
-        spot.ConfigurePubSubPublisher().NoDrop = true;
-        spot.ConfigurePubSubSubscriber().ReceiveHighWaterMark = 64;
+        mesh.ChannelName("rooms")
+            .SetWeight(100)
+            .AddRequestHandler<ApiRequestHandler, ApiRequest, ApiReply>();
 
-        spot.SetEntrySpotRoutingId(RoutingId.From("entry"))
+        mesh.SetEntrySpotRoutingId(RoutingId.From("entry"))
             .AddSpotFactory<RoomSpot>()
             .AddEntrySpot<EntrySpot>()
             .AddActorFactory<ActorFactory>("player");
+        mesh.AddRouteSendHandler<RouteSendHandler, ApiEvent>();
+        mesh.AddRouteRequestHandler<RouteRequestHandler, ApiRequest, ApiReply>();
     }
 
     private sealed record ApiEvent(string Value);
@@ -199,9 +205,7 @@ public sealed class BuilderContracts
 
         public List<string> StreamNodes { get; } = [];
 
-        public List<string> SpotNodes { get; } = [];
-
-        public List<string> SpotMeshes { get; } = [];
+        public List<string> Meshes { get; } = [];
         public TimeSpan DefaultRequestTimeout { get; set; }
 
         public TimeSpan ActorTransferForwardWindow { get; set; } = TimeSpan.FromSeconds(5);
@@ -251,10 +255,6 @@ public sealed class BuilderContracts
             return new RouteMeshChannelBuilder();
         }
 
-        public void UseInMemoryLocationStores()
-        {
-        }
-
         public void AddLocationStore(IZLinkLocationStore store)
         {
         }
@@ -285,11 +285,10 @@ public sealed class BuilderContracts
             return new StreamNodeBuilder();
         }
 
-        public IZLinkSpotMeshBuilder AddSpotMesh(string channelName)
+        public IZLinkMeshNodeBuilder AddRouteMesh(string meshName)
         {
-            SpotMeshes.Add(channelName);
-            SpotNodes.Add(channelName);
-            return new SpotMeshBuilder();
+            Meshes.Add(meshName);
+            return new MeshNodeBuilder();
         }
     }
 
@@ -579,6 +578,11 @@ public sealed class BuilderContracts
             return this;
         }
 
+        public IZLinkStreamNodeBuilder EnableActorDispatch(string meshName)
+        {
+            return this;
+        }
+
         public IZLinkStreamNodeBuilder SetTlsServer(string certPath, string keyPath, bool requireClientCert = false)
         {
             return this;
@@ -591,114 +595,106 @@ public sealed class BuilderContracts
         }
     }
 
-    private class SpotNodeBuilder : IZLinkSpotNodeBuilder
+    private sealed class MeshNodeBuilder : IZLinkMeshNodeBuilder
     {
-        public IZLinkEndpointConnections RouterConnections { get; } = new EndpointConnections();
+        public IZLinkMeshPeerConnections PeerConnections { get; } = new MeshPeerConnections();
 
-        public IZLinkEndpointConnections PubSubConnections { get; } = new EndpointConnections();
+        public IZLinkMeshChannelBuilder ChannelName(string channelName) => new MeshChannelBuilder();
 
-        public IZLinkEndpointConnections ChannelClientConnections { get; } = new EndpointConnections();
+        public IZLinkMeshNodeBuilder Listen(string endpoint) => this;
 
-        public IZLinkEndpointConnections PublisherConnections { get; } = new EndpointConnections();
+        public IZLinkMeshNodeBuilder SetRoutingId(RoutingId routingId) => this;
 
-        public IZLinkSpotNodeBuilder EnableRouter(string endpoint)
-        {
-            return this;
-        }
+        public IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount) => this;
 
-        public IZLinkSpotNodeBuilder ConnectRouter(string endpoint)
-        {
-            return this;
-        }
+        public IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix) => this;
 
-        public IZLinkSpotNodeBuilder ConnectRouter(RoutingId peerRid, string endpoint)
-        {
-            return this;
-        }
+        public IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(string groupName) => this;
 
-        public IZLinkSpotNodeBuilder SetRoutingId(RoutingId routingId)
-        {
-            return this;
-        }
+        public IZLinkMeshNodeSocketConfig ConfigureRouterSocket() => new MeshNodeSocketConfig();
 
-        public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount) => this;
+        public IZLinkSpotPublisherConfig ConfigureSpotPublisher() =>
+            new ConnectionAndConfigContracts.SpotPublisherConfig();
 
-        public IZLinkSpotNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix) => this;
+        public IZLinkMeshNodeBuilder UseDrainPolicy(ZLinkMeshNodeDrainPolicy policy) => this;
 
-        public IZLinkSpotNodeBuilder SetRoutingIdAllocationGroup(string groupName) => this;
+        public IZLinkMeshNodeBuilder SetDefaultRequestTimeout(TimeSpan timeout) => this;
 
-        public IZLinkSocketConfig ConfigureRouterSocket()
-        {
-            return new ConnectionAndConfigContracts.SocketConfig();
-        }
+        public IZLinkMeshNodeBuilder AddRouteSendHandler<THandler, TMessage>(string? packetName = null)
+            where THandler : class, IZLinkRouteSendHandler<TMessage> => this;
 
-        public IZLinkRouteConfig ConfigureRouterRouting()
-        {
-            return new ConnectionAndConfigContracts.RouteConfig();
-        }
+        public IZLinkMeshNodeBuilder AddRouteSendHandler<THandler>(string? packetName = null)
+            where THandler : class => this;
 
-        public IZLinkSpotNodeBuilder EnablePubSub(string endpoint)
-        {
-            return this;
-        }
+        public IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+            where THandler : class, IZLinkRouteRequestHandler<TRequest, TReply> => this;
 
-        public IZLinkSpotNodeBuilder ConnectPeerPub(string endpoint)
-        {
-            return this;
-        }
+        public IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler>(string? packetName = null)
+            where THandler : class => this;
 
-        public IZLinkSpotPublisherConfig ConfigurePubSubPublisher()
-        {
-            return new ConnectionAndConfigContracts.SpotPublisherConfig();
-        }
+        public IZLinkEntrySpotOptions ConfigureEntrySpot() =>
+            new ConnectionAndConfigContracts.EntrySpotOptions();
 
-        public IZLinkSpotSubscriberConfig ConfigurePubSubSubscriber()
-        {
-            return new ConnectionAndConfigContracts.SpotSubscriberConfig();
-        }
+        public IZLinkMeshNodeBuilder SetEntrySpotRoutingId(RoutingId routingId) => this;
 
-        public IZLinkEntrySpotOptions ConfigureEntrySpot()
-        {
-            return new ConnectionAndConfigContracts.EntrySpotOptions();
-        }
+        public IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
+            where TSpot : IZLinkSpot => this;
 
-        public IZLinkSpotNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
-        {
-            return this;
-        }
+        public IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
+            where TEntrySpot : IZLinkEntrySpot => this;
 
-        public IZLinkSpotNodeBuilder AddSpotFactory<TSpot>()
-            where TSpot : IZLinkSpot
-        {
-            return this;
-        }
+        public IZLinkMeshNodeBuilder AddActorFactory<TFactory>(string actorType)
+            where TFactory : class, IZLinkActorFactory => this;
 
-        public IZLinkSpotNodeBuilder AddEntrySpot<TEntrySpot>()
-            where TEntrySpot : IZLinkEntrySpot
-        {
-            return this;
-        }
-
-        public IZLinkSpotNodeBuilder AddActorFactory<TFactory>(string actorType)
-            where TFactory : class, IZLinkActorFactory
-        {
-            return this;
-        }
-
-        public IZLinkSpotNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
+        public IZLinkMeshNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
             where TActor : IZLinkActor
-            where TAdapter : class, IZLinkActorTransferAdapter<TActor>
-        {
-            return this;
-        }
+            where TAdapter : class, IZLinkActorTransferAdapter<TActor> => this;
     }
 
-    private sealed class SpotMeshBuilder : SpotNodeBuilder, IZLinkSpotMeshBuilder
+    private sealed class MeshChannelBuilder : IZLinkMeshChannelBuilder
     {
-        public IZLinkSpotMeshBuilder UseDrainPolicy(ZLinkSpotDrainPolicy policy)
-        {
-            return this;
-        }
+        public IZLinkMeshChannelBuilder SetWeight(int weight) => this;
+
+        public IZLinkMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
+            where THandler : class, IZLinkSendHandler<TMessage> => this;
+
+        public IZLinkMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
+            where THandler : class => this;
+
+        public IZLinkMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+            where THandler : class, IZLinkRequestHandler<TRequest, TReply> => this;
+
+        public IZLinkMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
+            where THandler : class => this;
+    }
+
+    private sealed class MeshNodeSocketConfig : IZLinkMeshNodeSocketConfig
+    {
+        public long MaxMessageSize { get; set; }
+
+        public int SendHighWaterMark { get; set; }
+
+        public int ReceiveHighWaterMark { get; set; }
+
+        public TimeSpan? ReceiveTimeout { get; set; }
+
+        public TimeSpan? SendTimeout { get; set; }
+    }
+
+    private sealed class MeshPeerConnections : IZLinkMeshPeerConnections
+    {
+        private readonly List<ZLinkMeshPeerConnection> _connections = [];
+
+        public void Connect(string endpoint) =>
+            _connections.Add(new ZLinkMeshPeerConnection(endpoint, null));
+
+        public void Connect(RoutingId expectedRoutingId, string endpoint) =>
+            _connections.Add(new ZLinkMeshPeerConnection(endpoint, expectedRoutingId));
+
+        public void Disconnect(string endpoint) =>
+            _connections.RemoveAll(connection => connection.Endpoint == endpoint);
+
+        public IReadOnlyList<ZLinkMeshPeerConnection> ListConnections() => _connections;
     }
 
     private sealed class ActorFactory : IZLinkActorFactory

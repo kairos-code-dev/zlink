@@ -22,8 +22,8 @@ public sealed class SpotContracts
         Assert.True(lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnJoinedActorAsync))!.IsAbstract);
         Assert.True(lifecycle.GetMethod(nameof(IZLinkSpot<PlayerActor>.OnLeaveActorAsync))!.IsAbstract);
         Assert.Null(typeof(IZLinkSpot).Assembly.GetType("Zlink.Framework.Contracts.Spots.ZLinkActorJoinAdmission"));
-        Assert.Null(typeof(IZLinkSpotNodeBuilder).GetMethod("AddStatelessActorTransfer"));
-        Assert.NotNull(typeof(IZLinkSpotNodeBuilder).GetMethod("AddActorTransferAdapter"));
+        Assert.Null(typeof(IZLinkMeshNodeBuilder).GetMethod("AddStatelessActorTransfer"));
+        Assert.NotNull(typeof(IZLinkMeshNodeBuilder).GetMethod("AddActorTransferAdapter"));
     }
 
     [Fact]
@@ -63,11 +63,11 @@ public sealed class SpotContracts
         await context.LeaveActorAsync(actor);
         await entryContext.DestroyActorAsync(actor);
         await context.AddTimer<RoomTimerHandler>("heartbeat", TimeSpan.FromSeconds(1));
-        context.Outbound.SendToSpot(null!, new RoomEvent("opened")).Submit();
+        context.Outbound.SendToSpot(null!, new RoomEvent("opened")).TrySubmit();
         await context.Outbound.RequestToSpot(null!, new JoinRoom("room-2")).Async<JoinedRoom>();
         await context.Outbound.RequestToSpot(null!, new JoinRoom("room-2")).Yield<JoinedRoom>();
-        context.Outbound.Publish("room.events", new RoomEvent("opened")).Submit();
-        context.Outbound.SendToChannel("api", new RoomEvent("opened")).Submit();
+        context.Outbound.Publish("room.events", new RoomEvent("opened")).TrySubmit();
+        context.Outbound.SendToChannel("api", new RoomEvent("opened")).TrySubmit();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
         await context.Outbound.RequestToChannel("api", new JoinRoom("room-1")).Yield<JoinedRoom>();
 
@@ -109,16 +109,16 @@ public sealed class SpotContracts
         IZLinkSpotOutbound spotOutbound = new SpotContext(RoutingId.From("room-1"));
         IZLinkSpotOutbound entryOutbound = new EntrySpotContext(RoutingId.From("entry"));
 
-        spotOutbound.SendToSpot(null!, new RoomEvent("spot-send")).Submit();
+        spotOutbound.SendToSpot(null!, new RoomEvent("spot-send")).TrySubmit();
         await spotOutbound.RequestToSpot(null!, new JoinRoom("room-2")).Async<JoinedRoom>();
-        spotOutbound.Publish("room.events", new RoomEvent("spot-publish")).Submit();
-        spotOutbound.SendToChannel("api", new RoomEvent("spot-channel-send")).Submit();
+        spotOutbound.Publish("room.events", new RoomEvent("spot-publish")).TrySubmit();
+        spotOutbound.SendToChannel("api", new RoomEvent("spot-channel-send")).TrySubmit();
         await spotOutbound.RequestToChannel("api", new JoinRoom("room-1")).Async<JoinedRoom>();
 
-        entryOutbound.SendToSpot(null!, new RoomEvent("entry-send")).Submit();
+        entryOutbound.SendToSpot(null!, new RoomEvent("entry-send")).TrySubmit();
         await entryOutbound.RequestToSpot(null!, new JoinRoom("room-2")).Async<JoinedRoom>();
-        entryOutbound.Publish("room.events", new RoomEvent("entry-publish")).Submit();
-        entryOutbound.SendToChannel("api", new RoomEvent("entry-channel-send")).Submit();
+        entryOutbound.Publish("room.events", new RoomEvent("entry-publish")).TrySubmit();
+        entryOutbound.SendToChannel("api", new RoomEvent("entry-channel-send")).TrySubmit();
         await entryOutbound.RequestToChannel("api", new JoinRoom("entry")).Async<JoinedRoom>();
     }
 
@@ -134,11 +134,11 @@ public sealed class SpotContracts
             RoutingId.From("room-1"),
             ZLinkMessage.Empty);
         var localClient = new SpotOutbound();
-        localClient.SendToSpot(null!, new RoomEvent("opened")).Submit();
+        localClient.SendToSpot(null!, new RoomEvent("opened")).TrySubmit();
         var reply = await localClient.RequestToSpot(null!, new JoinRoom("room-1")).Async<JoinedRoom>();
 
         IZLinkSpotPublisherClient publisher = new SpotPublisherClient();
-        publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).Submit();
+        publisher.PublishSpot("play-events", "room.events", new RoomEvent("opened")).TrySubmit();
 
         Assert.Equal(ZLinkSpotCreateState.Created, created.State);
         Assert.Equal("room-1", reply.RoomId);
@@ -782,25 +782,25 @@ public sealed class SpotContracts
 
     private sealed class SendCall : IZLinkSendCall
     {
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkSendCall Metadata(string key, string value) => this;
+
+        public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata) => this;
+
+        public ZLinkSubmitResult TrySubmit() => new(ZLinkSubmitStatus.Submitted);
+
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(TrySubmit());
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
-        public void Submit<TReply>(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkRequestCall Metadata(string key, string value) => this;
+
+        public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
 
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;
-        }
-
-        IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
-        {
-            return Timeout(timeout);
         }
 
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
@@ -817,9 +817,14 @@ public sealed class SpotContracts
 
     private sealed class PublishCall : IZLinkPublishCall
     {
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkPublishCall Metadata(string key, string value) => this;
+
+        public IZLinkPublishCall Metadata(ZLinkMessageMetadata metadata) => this;
+
+        public ZLinkPublishResult TrySubmit() => new(ZLinkSubmitStatus.Submitted, default);
+
+        public ValueTask<ZLinkPublishResult> SubmitAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(TrySubmit());
     }
 
     private sealed class Timer : IZLinkTimer

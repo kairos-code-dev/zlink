@@ -339,16 +339,21 @@ public sealed class StreamContracts
 
     private sealed class SendCall : IZLinkSendCall
     {
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkSendCall Metadata(string key, string value) => this;
+
+        public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata) => this;
+
+        public ZLinkSubmitResult TrySubmit() => new(ZLinkSubmitStatus.Submitted);
+
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(TrySubmit());
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall
     {
-        public void Submit<TReply>(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkRequestCall Metadata(string key, string value) => this;
+
+        public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
 
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {

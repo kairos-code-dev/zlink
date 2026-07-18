@@ -50,6 +50,7 @@ public sealed class HandlerContracts
                 nameof(IZLinkHandlerContext.ChannelName),
                 nameof(IZLinkHandlerContext.ConnectionAborted),
                 nameof(IZLinkHandlerContext.ContentType),
+                nameof(IZLinkHandlerContext.Metadata),
                 nameof(IZLinkHandlerContext.PacketName)
             },
             publicProperties);

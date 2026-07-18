@@ -9,13 +9,14 @@ public sealed class ChannelContracts
         typeof(IZLinkChannelClient),
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall),
-        typeof(IZLinkRequestCall))]
+        typeof(IZLinkMetadataCall<>))]
     public async Task Channel_client_sends_and_requests_by_channel_name()
     {
         var client = new ExampleClient();
 
-        client.SendToChannel("api", new AuthenticateRequest("player-1"))
-            .Submit();
+        var sent = client.SendToChannel("api", new AuthenticateRequest("player-1"))
+            .TrySubmit();
+        Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
 
         var reply = await client
             .RequestToChannel("api", new AuthenticateRequest("player-1"))
@@ -38,8 +39,9 @@ public sealed class ChannelContracts
         var client = new ExampleRouteClient();
         var target = RoutingId.From("play-node-1");
 
-        client.SendToNode("play-router", target, new RoomEvent("opened"))
-            .Submit();
+        var sent = await client.SendToNode("play-router", target, new RoomEvent("opened"))
+            .SubmitAsync();
+        Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
 
         var room = await client
             .RequestToNode("play-router", target, new AllocateRoom("alice"))
@@ -69,8 +71,9 @@ public sealed class ChannelContracts
     {
         var publisher = new ExampleFanoutPublisher();
 
-        publisher.Publish("events", "room.opened", new RoomEvent("opened"))
-            .Submit();
+        var published = publisher.Publish("events", "room.opened", new RoomEvent("opened"))
+            .TrySubmit();
+        Assert.Equal(ZLinkSubmitStatus.Submitted, published.Status);
 
         Assert.Equal(("events", "room.opened"), publisher.LastPublish);
     }
@@ -96,12 +99,13 @@ public sealed class ChannelContracts
             .Async<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
-        orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
-            .Submit();
+        _ = orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
+            .TrySubmit();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
-        events.Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
-            .Submit();
+        _ = await events
+            .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
+            .SubmitAsync();
 
         Assert.Equal("order-1042", placed.OrderId); // unary RPC reply correlated by type
         Assert.Equal("inventory", orders.LastChannelName); // last one-way send routed by channel name
@@ -208,21 +212,25 @@ public sealed class ChannelContracts
 
     private class ExampleSendCall : IZLinkSendCall
     {
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkSendCall Metadata(string key, string value) => this;
+
+        public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata) => this;
+
+        public ZLinkSubmitResult TrySubmit() => new(ZLinkSubmitStatus.Submitted);
+
+        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(TrySubmit());
     }
 
     private class ExampleRequestCall(object? reply) : IZLinkRequestCall
     {
+        public IZLinkRequestCall Metadata(string key, string value) => this;
+
+        public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
+
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;
-        }
-
-        IZLinkRequestCall IZLinkRequestCall.Timeout(TimeSpan timeout)
-        {
-            return Timeout(timeout);
         }
 
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
@@ -230,22 +238,22 @@ public sealed class ChannelContracts
             return ValueTask.FromResult((TReply)reply!);
         }
 
-        public void Submit<TReply>(CancellationToken cancellationToken = default)
-        {
-        }
-
         public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
         {
             return Async<TReply>(cancellationToken);
         }
-
     }
 
     private sealed class ExamplePublishCall : IZLinkPublishCall
     {
-        public void Submit(CancellationToken cancellationToken = default)
-        {
-        }
+        public IZLinkPublishCall Metadata(string key, string value) => this;
+
+        public IZLinkPublishCall Metadata(ZLinkMessageMetadata metadata) => this;
+
+        public ZLinkPublishResult TrySubmit() => new(ZLinkSubmitStatus.Submitted, default);
+
+        public ValueTask<ZLinkPublishResult> SubmitAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(TrySubmit());
     }
 
     private sealed class ExampleRouteSendCall : ExampleSendCall
@@ -254,6 +262,10 @@ public sealed class ChannelContracts
 
     private sealed class ExampleRouteRequestCall(object reply) : IZLinkRequestCall
     {
+        public IZLinkRequestCall Metadata(string key, string value) => this;
+
+        public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
+
         public IZLinkRequestCall Timeout(TimeSpan timeout)
         {
             return this;
@@ -262,10 +274,6 @@ public sealed class ChannelContracts
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         {
             return ValueTask.FromResult((TReply)reply);
-        }
-
-        public void Submit<TReply>(CancellationToken cancellationToken = default)
-        {
         }
 
         public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)

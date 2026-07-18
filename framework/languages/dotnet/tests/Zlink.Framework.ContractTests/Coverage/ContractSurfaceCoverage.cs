@@ -55,7 +55,7 @@ public sealed class ContractSurfaceCoverage
             typeof(ZLinkActorJoinResult), typeof(ZLinkActorJoinResult<>),
             typeof(ZLinkDrainResult), typeof(ZLinkLocationRuntimeEvent),
             typeof(ZLinkLocationPeerEvent), typeof(ZLinkLocationSpotEvent),
-            typeof(ZLinkLocationActorEvent), typeof(ZLinkLocationRouteEvent),
+            typeof(ZLinkLocationActorEvent),
             typeof(ZLinkSpotEvent), typeof(ZLinkRoutingIdSlotAcquireResult)
         ];
 

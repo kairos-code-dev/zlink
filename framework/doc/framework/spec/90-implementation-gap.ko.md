@@ -588,6 +588,26 @@ S7은 `.NET`의 `IsUnchecked`를 공개 표면에서 제거한다. C++은 `actor
 제거하고 snapshot 복원을 인자 없는 `to_actor_ref()`로 바꾼다. Actor handler 선택에 필요한 Actor type은
 Actor manager와 runtime registry가 소유하며 application의 참조 복원 호출자에게 전달하지 않는다.
 
+### 12.35 C++ Actor lifetime 중 generation 변경
+
+**C++ 미충족.** [Spot과 Actor membership §1](server/23-spot-actor.ko.md#1-identity와-authority)은 Actor
+generation을 생성 성공 시 해당 Actor lifetime의 값으로 확정하며 destroy까지 변경하지 않도록 고정한다.
+같은 MeshNode의 Spot 이동과 다른 MeshNode로의 transfer는 source와 target에서 같은 Actor generation을
+사용하고, 성공한 location commit에서 membership epoch만 정확히 1 증가해야 한다.
+
+C++ runtime은 같은 MeshNode의 이동과 remote transfer target `ActorRef`를 만들 때 기존 generation에 1을
+더한다(`spot_runtime.cpp:1227-1229`, `2662-2665`, `3206-3209`, `3406-3409`). C++ ST-F2와 contract
+gate도 이 값을 요구한다. Java testkit의 fake backend와 `.NET` 단위 테스트의 remote join mock에도 같은
+증가 방식이 남아 있어 contract test가 잘못된 값을 정상으로 받아들일 수 있다.
+
+**고쳐야 할 것:**
+
+- C++에서 생성 시 확정한 Actor generation이 destroy까지 변경되지 않게 하고, join·transfer target
+  `ActorRef`가 source Actor ID와 generation을 그대로 사용하게 한다.
+- C++ E2E와 contract test, Java testkit과 `.NET` test double에서 이동 전후 generation 동일성을 검증한다.
+- 성공한 이동에서는 owner Node RID와 membership epoch만 바뀌고, destroy 뒤 새 Actor 생성에서만 다음
+  Actor generation을 할당하는지 언어별 contract test로 확인한다.
+
 ## 13. 샘플 연결·등록 축 준수 현황
 
 [샘플 규약](../common/sample/README.ko.md)은 두 축을 고정한다.

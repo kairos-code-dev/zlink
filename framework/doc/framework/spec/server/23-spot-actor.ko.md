@@ -13,6 +13,13 @@ ordering과 location authority를 정의한다. 대상 독자는 Spot·Actor run
 참여하는 Spot 위치가 바뀔 때 증가한다. Spot과 Actor가 같은 MeshNode에 있더라도 두 값의 의미는 달라지지
 않는다.
 
+Actor generation은 Actor 생성이 성공할 때 해당 Actor lifetime의 값으로 확정된다. 확정된 generation은
+Actor가 destroy될 때까지 변경되지 않는다. 같은 Actor가 같은 MeshNode의 다른 Spot으로 이동하거나 다른
+MeshNode로 transfer되어도 generation을 새로 할당하거나 변경하지 않는다. 이동 결과의 `ActorRef`는 새
+owner의 Node RID를 사용하더라도 source `ActorRef`와 동일한 Actor ID와 generation을 유지해야 한다.
+이동을 구분해야 할 때는 Actor generation을 바꾸지 않고 membership epoch를 증가시킨다. 같은 Actor ID를
+destroy 후 다시 생성하면 새 Actor lifetime이 시작되므로 생성 과정에서 다음 generation을 확정한다.
+
 Redis location store의 Actor location row가 분산 owner와 membership epoch의 authority다. Framework
 memory의 route cache는 이 row의 snapshot이며 단독으로 owner를 확정하지 않는다. Join, leave와 transfer는
 expected generation과 membership epoch를 검증하는 CAS로 location을 갱신한다.
@@ -36,6 +43,9 @@ Join은 다음 순서로 완료된다.
 4. CAS 성공 뒤 source `OnLeaveActor`가 이전 membership을 정리한다.
 5. target membership을 공개하고 immutable membership snapshot으로 `OnJoinedActor`를 실행한다.
 6. source operation을 새 ActorRef location snapshot으로 완료한다.
+
+6단계에서 반환하는 location snapshot은 새 owner의 Node RID를 담지만 Actor generation은 join 전과
+같아야 한다. Join 처리는 Actor 생성이 아니므로 generation을 할당하거나 변경하지 않는다.
 
 `OnActorJoin` reject 또는 CAS 실패에서는 source `OnLeaveActor`를 실행하지 않고 target membership도
 공개하지 않는다. Accepted join reply를 처리하는 CAS가 membership epoch를 증가시키는 유일한 commit
@@ -63,6 +73,10 @@ MeshNode 전역 lock으로 직렬화하지 않는다.
 expected Actor generation과 membership epoch로 한 operation을 식별한다. Framework는 Core가 발급한 sealed
 transfer token과 정확히 다음 membership epoch로 source·target fence를 적용한다. Location store는 Core
 token을 저장하지 않고 다음 durable 상태를 원자적으로 기록한다.
+
+Target `ActorRef`의 Node RID는 target owner로 바뀌지만 Actor ID와 generation은 source `ActorRef`의 값을
+그대로 사용한다. Transfer의 prepare, commit, activation과 recovery 전 과정에서 Actor generation은
+변경되지 않는다.
 
 | 상태 | 의미 |
 |---|---|
@@ -98,6 +112,9 @@ Actor의 infrastructure queue에서 진행되며 Spot lifecycle callback으로 �
 - join reject, stale generation과 stale epoch가 membership을 변경하지 않는다.
 - 같은 MeshNode에서 반대 방향 join 두 개가 서로 기다리지 않고 완료된다.
 - transfer의 각 failure point가 Prepared abort 또는 Committed recovery 중 하나로 수렴한다.
+- Actor 생성이 성공할 때 확정된 generation이 destroy까지 유지된다.
+- 같은 MeshNode의 join과 다른 MeshNode로의 transfer 모두 전후 Actor generation이 동일하고, 성공한
+  location commit에서 membership epoch만 정확히 1 증가한다.
 - message sequence가 transfer 전후에 중복되거나 역전되지 않는다.
 - Actor payload가 Spot callback을 거치지 않고 Actor queue에서 처리된다.
 - Redis capability가 없는 location store로 분산 transfer를 시작하면 startup이 실패한다.

@@ -50,6 +50,7 @@ internal sealed class PlayServer(SampleSettings settings)
 
             options.AddStreamNode(SampleNodes.ClientStream)
                 .Bind(settings.PlayEndpoint)
+                .EnableActorDispatch(SampleNodes.PlaySpot)
                 .RegisterSession<PlaySession>();
 
             var mesh = options.AddRouteMesh(SampleNodes.PlaySpot)

@@ -91,6 +91,8 @@ class spot_status_t
 class spot_t
 {
   public:
+    /// @brief Destroys the spot. Must not outlive its owning node; see
+    ///        mesh_node_t's destructor for the busy/leak contract.
     ~spot_t ();
 
     spot_t (spot_t &&other_) noexcept;

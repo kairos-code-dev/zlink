@@ -14,7 +14,6 @@ namespace service
 struct spot_t::impl
 {
     void *handle = nullptr;
-    int last_error = 0;
 };
 
 struct spot_t::native_handle_ctor_tag_t

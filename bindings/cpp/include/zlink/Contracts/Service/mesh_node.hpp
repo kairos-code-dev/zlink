@@ -48,6 +48,13 @@ class mesh_node_t
     explicit mesh_node_t (context_t &ctx_);
     mesh_node_t (context_t &ctx_, const mesh_node_options_t &options_);
 
+    /// @brief Destroys the node. Ownership contract: the node must outlive the
+    ///        publishers, spots and sessions it creates. Core rejects the
+    ///        destroy with close_result_t::busy while a child or in-flight
+    ///        callback is still open; a noexcept destructor cannot retry, so on
+    ///        busy it reports the leak (diagnostic in every build, assert in
+    ///        debug) rather than failing silently. Declare the node before its
+    ///        children so reverse-order destruction closes them first.
     ~mesh_node_t ();
 
     mesh_node_t (mesh_node_t &&other_) noexcept;
@@ -192,6 +199,8 @@ class mesh_node_publisher_t
 {
   public:
     explicit mesh_node_publisher_t (mesh_node_t &node_);
+    /// @brief Destroys the publisher. Must not outlive its owning node; see
+    ///        mesh_node_t's destructor for the busy/leak contract.
     ~mesh_node_publisher_t ();
 
     mesh_node_publisher_t (mesh_node_publisher_t &&other_) noexcept;

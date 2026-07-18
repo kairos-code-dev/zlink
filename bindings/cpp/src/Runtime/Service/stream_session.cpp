@@ -59,7 +59,9 @@ stream_session_service_t::stream_session_service_t (mesh_node_t &node_, stream_s
 stream_session_service_t::~stream_session_service_t ()
 {
     if (_impl && _impl->handle)
-        (void) zlink_stream_session_service_destroy (&_impl->handle);
+        detail::report_close_on_destroy (
+          "stream_session_service_t",
+          static_cast<close_result_t> (zlink_stream_session_service_destroy (&_impl->handle)));
 }
 
 stream_session_service_t::stream_session_service_t (stream_session_service_t &&other_) noexcept :

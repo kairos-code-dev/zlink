@@ -9,11 +9,14 @@
 #include "../Core/operation_detail.hpp"
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/Contracts/Errors/errors.hpp>
+#include <zlink/Contracts/Errors/results.hpp>
 #include <zlink/Contracts/Messaging/message.hpp>
 #include <zlink/Contracts/Service/mesh_node_models.hpp>
 #include <zlink/Contracts/Sockets/results.hpp>
 
+#include <cassert>
 #include <cerrno>
+#include <cstdio>
 #include <functional>
 #include <future>
 #include <memory>
@@ -86,9 +89,29 @@ inline void store_publish_detail (publish_detail_t *out_,
     out_->dropped_local_spot_count = native_.dropped_local_spot_count;
 }
 
-inline std::function<void ()> make_spot_request_progress (void *spot_)
+// Ownership contract for the RAII service handles (mesh_node/publisher/spot/
+// stream-session): a parent must outlive the children it creates. Core rejects
+// a parent's destroy with close_result_t::busy while any child handle or
+// in-flight callback is still open, and it retains the native handle in that
+// case. A destructor is noexcept and cannot retry or throw, so it cannot
+// honour a busy close the way close()/move-assign do (which keep the object
+// alive for a later retry). Rather than discard the busy result and silently
+// leak the retained handle, the destructors route the close outcome here:
+// non-ok teardown emits a diagnostic (fail-loud in every build) and, in debug
+// builds, trips an assert so the offending destruction order is caught during
+// development. Declaring the parent before its children (so reverse-order
+// destruction closes children first) keeps this path unreachable.
+inline void report_close_on_destroy (const char *type_name_,
+                                     close_result_t result_) noexcept
 {
-    return zlink::detail::make_request_progress_callback (spot_);
+    if (result_ == close_result_t::ok)
+        return;
+    std::fprintf (
+      stderr,
+      "zlink: %s destroyed before Core could release it (close_result=%d); native "
+      "handle leaked -- close child handles before the owning parent\n",
+      type_name_, static_cast<int> (result_));
+    assert (false && "zlink service handle destroyed while still busy; close children first");
 }
 
 struct request_state_t

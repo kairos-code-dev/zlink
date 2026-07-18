@@ -43,11 +43,6 @@ struct received_access_t
         set_send_context (received_, handle_, received_t::send_context_kind_t::router_spot);
     }
 
-    static void set_spot_spot_send_context (received_t &received_, void *handle_)
-    {
-        set_send_context (received_, handle_, received_t::send_context_kind_t::spot_spot);
-    }
-
     static bool has_send_context (const received_t &received_) noexcept
     {
         return received_._send_context_handle != 0

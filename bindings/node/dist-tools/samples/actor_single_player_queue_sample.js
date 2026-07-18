@@ -1,93 +1,71 @@
 // SPDX-License-Identifier: MPL-2.0
+//
+// Reconnect portability over a STREAM gateway: a session stays bound to its
+// actor across a leave, so a message that arrives while the actor is away is
+// queued and delivered in order once it rejoins.
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
-const { frame, reservePort, waitActorJoin } = require('./sample_support');
-async function acceptJoin(actor, spot, payload) {
-    const replyPromise = actor.join(spot).message(Buffer.from(payload)).timeout(2000).submit();
-    const request = waitActorJoin(spot);
-    spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
-    const reply = await replyPromise;
-    assert.equal(reply.result.result, zlink.RequestResult.Ok);
-}
+const { MeshPump, collectActorPayloads, destroyMeshActor, frame, joinActorToSpot, leaveActorFromSpot, reservePort, tcpEndpoint } = require('./sample_support');
 async function main() {
     const port = await reservePort();
     const endpoint = `tcp://127.0.0.1:${port}`;
     const ctx = zlink.createContext();
-    const node = zlink.createSpotNode(ctx);
+    const node = zlink.createMeshNode(ctx, { meshName: 'samples' });
     const stream = zlink.createStreamSocket(ctx);
+    let service = null;
+    let pump = null;
     let spot = null;
     let actor = null;
     let client = null;
-    let session = null;
     try {
+        node.setBind(await tcpEndpoint());
+        node.start();
+        stream.bind(endpoint);
+        service = node.createStreamSessionService(stream);
+        service.start();
         spot = node.createSpot();
         actor = node.createActor('single-player');
+        pump = new MeshPump(node);
         const payloads = [];
-        spot.setDispatchHandler((info) => {
-            if (info.event !== zlink.SpotDispatchEvent.ActorReadable) {
-                return;
-            }
-            for (;;) {
-                const part = info.recvActorPart(zlink.RecvFlags.DontWait);
-                if (!part)
-                    return;
-                payloads.push(part.message.data().toString());
-            }
-        });
-        stream.bind(endpoint);
+        const collect = collectActorPayloads(payloads);
         client = net.createConnection({ host: '127.0.0.1', port });
         await once(client, 'connect');
-        session = await new Promise((resolve) => {
+        const session = await new Promise((resolve) => {
             stream.setPacketHandler((sourceRid) => resolve(sourceRid));
             client.write(frame(Buffer.from('open')));
         });
-        await stream.bindActor(session, actor.ref()).timeout(2000).submit();
-        await acceptJoin(actor, spot, 'join-first');
-        stream.sendBoundActor(session, 'single-player').message(Buffer.from('before')).submit();
-        await actor.leave(spot).timeout(2000).submit();
-        stream.sendBoundActor(session, 'single-player').message(Buffer.from('between')).submit();
-        await acceptJoin(actor, spot, 'join-second');
-        for (let i = 0; i < 100 && payloads.length < 2; i += 1) {
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        }
+        await pump.awaitCompletion(service.bindActor(session, actor, 2000), 2000, collect);
+        await joinActorToSpot(pump, node, actor, spot, 'join-first', { onMessage: collect });
+        service.sendToActor(session, actor, Buffer.from('before')); // joined 상태에서 도착
+        await leaveActorFromSpot(pump, node, actor, { onMessage: collect }); // 처리 위치 이탈
+        service.sendToActor(session, actor, Buffer.from('between')); // leave 사이 도착 → 큐잉
+        await joinActorToSpot(pump, node, actor, spot, 'join-second', { onMessage: collect }); // rejoin
+        await pump.pumpUntil(() => payloads.length >= 2, 2000, collect);
         assert.deepEqual(payloads, ['before', 'between']);
-        await actor.leave(spot).timeout(2000).submit();
+        await leaveActorFromSpot(pump, node, actor);
         console.log('[actor/single-player] queued payload: "before/between" -> actor: "before/between"');
     }
     finally {
-        if (session) {
-            try {
-                await stream.unbindActor(session, 'single-player').timeout(2000).submit();
-            }
-            catch (_) {
-            }
-        }
-        if (client)
-            client.destroy();
-        stream.close();
-        if (actor) {
-            try {
-                actor.close(2000);
-            }
-            catch (_) {
-            }
-        }
-        if (spot) {
-            try {
-                spot.close();
-            }
-            catch (_) {
-            }
-        }
         try {
-            node.close();
+            if (pump && actor)
+                await destroyMeshActor(pump, node, actor);
         }
         catch (_) {
         }
+        if (client)
+            client.destroy();
+        if (pump)
+            pump.close();
+        if (service)
+            service.close();
+        stream.close();
+        if (spot)
+            spot.close();
+        node.close();
         ctx.close();
     }
 }

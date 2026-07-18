@@ -6,11 +6,14 @@
 'use strict';
 
 const zlink = require('@zlink-systems/zlink');
+const { tcpEndpoint } = require('./sample_support');
 
 async function main() {
 // --8<-- [start:doc]
   const ctx = zlink.createContext();
-  const node = zlink.createSpotNode(ctx);
+  const node = zlink.createMeshNode(ctx, { meshName: 'samples' });
+  node.setBind(await tcpEndpoint());
+  node.start();
   const room = node.createSpot();
   // 게임룸의 이벤트 루프에서 디스패치되는 타이머를 만든다.
   const timer = zlink.createTimerFromSpot(room);

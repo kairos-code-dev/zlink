@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
+//
+// End-to-end room server: a TCP client reaches a mesh actor through a STREAM
+// gateway. The join round-trip and the relayed payload are asserted explicitly.
 
 'use strict';
 
@@ -6,84 +9,79 @@ const assert = require('node:assert/strict');
 const { once } = require('node:events');
 const net = require('node:net');
 const zlink = require('@zlink-systems/zlink');
-const { frame, reservePort, waitActorJoin } = require('./sample_support');
+const {
+  MeshPump, collectActorPayloads, destroyMeshActor, frame, isActorJoinRequest,
+  leaveActorFromSpot, reservePort, tcpEndpoint
+} = require('./sample_support');
 
 async function main() {
   const port = await reservePort();
   const endpoint = `tcp://127.0.0.1:${port}`;
   const ctx = zlink.createContext();
-  const node = zlink.createSpotNode(ctx);
+  const node = zlink.createMeshNode(ctx, { meshName: 'samples' });
   const stream = zlink.createStreamSocket(ctx);
+  let service = null;
+  let pump = null;
   let spot = null;
   let actor = null;
   let client = null;
-  let session = null;
 
   try {
+    node.setBind(await tcpEndpoint());
+    node.start();
+    stream.bind(endpoint);
+    service = node.createStreamSessionService(stream);
+    service.start();
+
     spot = node.createSpot();
     actor = node.createActor('room-player-1');
-    const payloads = [];
-    spot.setDispatchHandler((info) => {
-      if (info.event !== zlink.SpotDispatchEvent.ActorReadable) {
-        return;
-      }
-      for (;;) {
-        const part = info.recvActorPart(zlink.RecvFlags.DontWait);
-        if (!part) return;
-        payloads.push(part.message.data().toString());
-      }
-    });
-    stream.bind(endpoint);
+    pump = new MeshPump(node);
+    const payloads: string[] = [];
+    const collect = collectActorPayloads(payloads);
+
     client = net.createConnection({ host: '127.0.0.1', port });
     await once(client, 'connect');
-    session = await new Promise((resolve) => {
+    const session = await new Promise((resolve) => {
       stream.setPacketHandler((sourceRid) => resolve(sourceRid));
       client.write(frame(Buffer.from('open')));
     });
-    await stream.bindActor(session, actor.ref()).timeout(2000).submit();
+    await pump.awaitCompletion(service.bindActor(session, actor, 2000), 2000, collect);
 
-    const replyPromise = actor.join(spot).message(Buffer.from('enter-room')).timeout(2000).submit();
+    // Join the actor into the room and accept it, capturing the join request.
+    const nodeRid = node.status().routingId;
+    const joinOperation = node.joinActorSpot(
+      actor, nodeRid, spot.routingId, spot.status().lifecycleGeneration,
+      Buffer.from('enter-room'), 2000);
+    let joinRequestPayload = null;
+    const joinCompletion = await pump.awaitCompletion(joinOperation, 2000, (record) => {
+      if (isActorJoinRequest(record)) {
+        joinRequestPayload = record.parts[0].data().toString();
+        record.replyActorJoin(0, Buffer.from('accepted'));
+      } else {
+        collect(record);
+      }
+    });
+    assert.equal(joinRequestPayload, 'enter-room');
+    assert.equal(joinCompletion.terminalResult, zlink.RequestResult.Ok);
+    assert.equal(joinCompletion.parts[0].data().toString(), 'accepted');
 
-    const request = waitActorJoin(spot);
-    assert.equal(request.message.data().toString(), 'enter-room');
-    spot.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
-
-    const reply = await replyPromise;
-    assert.equal(reply.result.result, zlink.RequestResult.Ok);
-    assert.equal(reply.parts[0].data().toString(), 'accepted');
-
-    stream.sendBoundActor(session, 'room-player-1').message(Buffer.from('move:north')).submit();
-    for (let i = 0; i < 100 && payloads.length === 0; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    service.sendToActor(session, actor, Buffer.from('move:north'));
+    await pump.pumpUntil(() => payloads.length >= 1, 2000, collect);
     assert.deepEqual(payloads, ['move:north']);
-    await actor.leave(spot).timeout(2000).submit();
+
+    await leaveActorFromSpot(pump, node, actor);
     console.log('[actor/room] stream payload: "move:north" -> actor: "move:north"');
   } finally {
-    if (session) {
-      try {
-        await stream.unbindActor(session, 'room-player-1').timeout(2000).submit();
-      } catch (_) {
-      }
-    }
-    if (client) client.destroy();
-    stream.close();
-    if (actor) {
-      try {
-        actor.close(2000);
-      } catch (_) {
-      }
-    }
-    if (spot) {
-      try {
-        spot.close();
-      } catch (_) {
-      }
-    }
     try {
-      node.close();
+      if (pump && actor) await destroyMeshActor(pump, node, actor);
     } catch (_) {
     }
+    if (client) client.destroy();
+    if (pump) pump.close();
+    if (service) service.close();
+    stream.close();
+    if (spot) spot.close();
+    node.close();
     ctx.close();
   }
 }

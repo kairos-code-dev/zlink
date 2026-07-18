@@ -1,63 +1,50 @@
 // SPDX-License-Identifier: MPL-2.0
 //
-// 자립형 가이드 예제: STREAM이 relay한 메시지를 Actor가 순서대로 처리.
-// Actor는 생성 시 Entry Spot(로비)에 있다가 join으로 개별 room(user Spot)으로
-// 옮겨 간다. 메시지는 STREAM session에 actor를 bind하고 packet을 relay해야만
-// 도달하며, room의 dispatch context에서 들어온 순서대로 처리된다.
+// 자립형 가이드 예제: Actor가 메시지를 들어온 순서대로 처리한다.
+// Actor는 생성 직후 Entry Spot(로비)에 있다가 join으로 개별 room(user Spot)으로
+// 옮겨 간다. room에 합류한 뒤 actor로 보낸 메시지는 pull dispatch를 통해 들어온
+// 순서 그대로 도착한다. (라우팅 평면 없이 한 노드 안에서 보여 준다.)
 'use strict';
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = require('node:assert/strict');
 const zlink = require('@zlink-systems/zlink');
-const { waitActorJoin } = require('./sample_support');
+const { MeshPump, MeshRecordKind, destroyMeshActor, joinActorToSpot, leaveActorFromSpot, tcpEndpoint } = require('./sample_support');
 async function main() {
     // --8<-- [start:doc]
     const ctx = zlink.createContext();
-    const node = zlink.createSpotNode(ctx);
+    const node = zlink.createMeshNode(ctx, { meshName: 'samples' });
+    node.setBind(await tcpEndpoint());
+    node.start();
     const room = node.createSpot();
     // 생성 직후 actor는 Entry Spot(로비)에 위치한다.
     const player = node.createActor('player');
-    const stream = zlink.createStreamSocket(ctx);
+    const pump = new MeshPump(node);
     const processed = [];
     try {
-        const session = zlink.RoutingId.from(Buffer.from('player-session'));
-        // STREAM session에 actor를 bind한다 (이후 relay가 이 actor로 간다).
-        await stream.bindActor(session, player.ref()).timeout(2000).submit();
-        // dispatch 핸들러: STREAM이 relay한 메시지를 모은다.
-        room.setDispatchHandler((info) => {
-            if (info.event !== zlink.SpotDispatchEvent.ActorReadable)
-                return;
-            for (;;) {
-                const part = info.recvActorPart(zlink.RecvFlags.DontWait);
-                if (!part)
-                    return;
-                processed.push(part.message.data().toString());
-            }
-        });
         // join으로 Entry Spot에서 room(user Spot)으로 이동한다.
-        const reply = player.join(room).message(Buffer.from('enter-room')).timeout(2000).submit();
-        const request = waitActorJoin(room);
-        room.replyActorJoin(request, 0).message(Buffer.from('accepted')).submit();
-        await reply;
-        // STREAM이 플레이어 입력을 연달아 relay한다 — actor는 순서대로 처리한다.
+        await joinActorToSpot(pump, node, player, room, 'enter-room');
+        // 플레이어 입력을 연달아 보낸다 — actor는 순서대로 처리한다.
         const commands = ['move', 'attack', 'loot'];
         for (const command of commands) {
-            stream.sendBoundActor(session, 'player').message(Buffer.from(command)).submit();
+            node.sendToActor(player, Buffer.from(command));
         }
-        for (let i = 0; i < 200 && processed.length < commands.length; i += 1) {
-            await new Promise((resolve) => setTimeout(resolve, 10));
-        }
+        await pump.pumpUntil(() => processed.length >= commands.length, 2000, (record) => {
+            if (record.kind === MeshRecordKind.ActorSend) {
+                for (const part of record.parts)
+                    processed.push(part.data().toString());
+            }
+        });
         assert.deepEqual(processed, ['move', 'attack', 'loot']);
-        await stream.unbindActor(session, 'player').timeout(2000).submit();
-        await player.leave(room).timeout(2000).submit();
+        await leaveActorFromSpot(pump, node, player);
         console.log('[actor/sequential] processed in order: move -> attack -> loot');
     }
     finally {
         try {
-            player.close(2000);
+            await destroyMeshActor(pump, node, player);
         }
         catch (_) {
         }
-        stream.close();
+        pump.close();
         room.close();
         node.close();
         ctx.close();

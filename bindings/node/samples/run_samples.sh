@@ -13,7 +13,6 @@ samples=(
   "dist-tools/samples/pubsub_recv_sample.js"
   "dist-tools/samples/dealer_router_recv_sample.js"
   "dist-tools/samples/spot_request_sample.js"
-  "dist-tools/samples/spot_channel_example.js"
   "dist-tools/samples/spot_pubsub_example.js"
   "dist-tools/samples/spot_rpc_example.js"
   "dist-tools/samples/spot_timer_example.js"

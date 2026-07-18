@@ -20,10 +20,31 @@ internal sealed class ZLinkMeshCompletionTable
 
     private readonly ConcurrentDictionary<MeshOperationId, CompletionHandler> _pending = new();
 
+    // A same-process completion can drain on the pump thread between the
+    // operation submit and the caller's Register. Dropping it would leave the
+    // awaiting caller hanging forever, so unmatched completions are buffered
+    // until their handler registers. Records are fully managed views (the
+    // Core-owned parts were retained by the pump before Complete), so holding
+    // them is safe; the bound guards a leak from operations nobody awaits.
+    private const int MaxEarlyCompletions = 4096;
+    private readonly ConcurrentDictionary<
+        MeshOperationId, (MeshReceiveRecord Record, IReadOnlyList<Message> Parts)> _early = new();
+
     public bool Register(MeshOperationId operationId, CompletionHandler handler)
     {
         if (operationId == default) return false;
+        if (_early.TryRemove(operationId, out var early))
+        {
+            handler(early.Record, early.Parts);
+            return true;
+        }
+
         _pending[operationId] = handler;
+        // Complete may have buffered between the early check and the pending
+        // publication; whichever side observes both entries delivers.
+        if (_early.TryRemove(operationId, out early)
+            && _pending.TryRemove(operationId, out var raced))
+            raced(early.Record, early.Parts);
         return true;
     }
 
@@ -38,9 +59,23 @@ internal sealed class ZLinkMeshCompletionTable
         MeshReceiveRecord record, IReadOnlyList<Message> parts)
     {
         if (_pending.TryRemove(record.OperationId, out var handler))
+        {
             handler(record, parts);
-        else
+            return;
+        }
+
+        if (_early.Count >= MaxEarlyCompletions)
+        {
             ZLinkMessageParts.DisposeAll(parts);
+            return;
+        }
+
+        _early[record.OperationId] = (record, parts);
+        // Register may have published a handler between the pending check and
+        // the early publication; whichever side observes both entries delivers.
+        if (_pending.TryRemove(record.OperationId, out handler)
+            && _early.TryRemove(record.OperationId, out var raced))
+            handler(raced.Record, raced.Parts);
     }
 
     public void FailAll(RequestResult result)
@@ -50,6 +85,9 @@ internal sealed class ZLinkMeshCompletionTable
                 handler(
                     default,
                     Array.Empty<Message>());
+        foreach (var operationId in _early.Keys.ToArray())
+            if (_early.TryRemove(operationId, out var early))
+                ZLinkMessageParts.DisposeAll(early.Parts);
     }
 
     // Maps a Completion receive record's terminal result/errno onto the framework

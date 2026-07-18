@@ -12,10 +12,11 @@ import systems.zlink.contracts.eventing.ZlinkTimer;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.ReplyHandler;
+import systems.zlink.contracts.service.spot.MeshNode;
+import systems.zlink.contracts.service.spot.ReadyBatch;
+import systems.zlink.contracts.service.spot.ReceiveBatch;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotNode;
+import systems.zlink.contracts.service.spot.StreamSessionService;
 import systems.zlink.contracts.sockets.RequestCallback;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RecvFlags;
@@ -28,7 +29,7 @@ import systems.zlink.contracts.sockets.StreamSocket;
 import systems.zlink.runtime.eventing.NativeTimer;
 import systems.zlink.runtime.sockets.SocketMessageHandler;
 import systems.zlink.runtime.service.spot.NativeSpot;
-import systems.zlink.runtime.service.spot.NativeSpotNode;
+import systems.zlink.runtime.service.spot.NativeMeshNode;
 import systems.zlink.runtime.messaging.ReceivedPartCursor;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
@@ -49,7 +50,8 @@ public final class InternalAccess {
     private static volatile ContextAccess contextAccess;    private static volatile SocketAccess socketAccess;
     private static volatile RuntimeSocketAccess runtimeSocketAccess;
     private static volatile SpotAccess spotAccess;
-    private static volatile SpotNodeAccess spotNodeAccess;
+    private static volatile MeshNodeAccess meshNodeAccess;
+    private static volatile DispatchAccess dispatchAccess;
     private static volatile TimerAccess timerAccess;
     private static volatile MonitorAccess monitorAccess;
 
@@ -115,40 +117,29 @@ public final class InternalAccess {
         void routerReplyToSpot(RouterSocket socket, RoutingId destNodeRid,
                                RoutingId destSpotRid, long requestSeq,
                                List<Message> parts);
-        List<ActorRef> streamBoundActors(StreamSocket socket,
-                                         RoutingId sessionRid);
-        boolean streamSubmitBind(StreamSocket socket, RoutingId sessionRid,
-                                 ActorRef actor, Duration timeout,
-                                 ReplyHandler callback);
-        boolean streamSubmitUnbind(StreamSocket socket, RoutingId sessionRid,
-                                   String actorId, Duration timeout,
-                                   ReplyHandler callback);
-        boolean streamSendBoundActorReceiveds(StreamSocket socket,
-                                          RoutingId sessionRid,
-                                          String actorId,
-                                          List<Message> parts,
-                                          SendFlags flags);
     }
 
     public interface SpotAccess {
         MemorySegment handle(Spot spot);
-
-        MemorySegment ownerNodeHandle(Spot spot);
-
-        Spot createOwned(SpotNode node);
-
-        Spot adoptOwned(SpotNode node, MemorySegment handle);
-
-        boolean requestToSpotPart(Spot spot, RoutingId destNodeRid,
-                                  RoutingId destSpotRid, Message part,
-                                  RequestCallback callback, SendFlags flags,
-                                  Duration timeout);
     }
 
-    public interface SpotNodeAccess {
-        MemorySegment handle(SpotNode node);
+    public interface MeshNodeAccess {
+        MemorySegment handle(MeshNode node);
 
-        void releaseSpot(SpotNode node, Spot spot);
+        StreamSessionService createStreamSessionService(MeshNode node,
+                                                        StreamSocket stream);
+    }
+
+    public interface DispatchAccess {
+        ReadyBatch newReadyBatch(int recordCapacity);
+
+        ReceiveBatch newReceiveBatch(int messageCapacity, int partCapacity,
+                                     int byteCapacity);
+
+        void reply(byte[] token, List<Message> parts, int flags);
+
+        void actorJoinReply(byte[] token, int decision, List<Message> parts,
+                            int flags);
     }
 
     public interface TimerAccess {
@@ -177,8 +168,12 @@ public final class InternalAccess {
         spotAccess = Objects.requireNonNull(access, "access");
     }
 
-    public static void register(SpotNodeAccess access) {
-        spotNodeAccess = Objects.requireNonNull(access, "access");
+    public static void register(MeshNodeAccess access) {
+        meshNodeAccess = Objects.requireNonNull(access, "access");
+    }
+
+    public static void register(DispatchAccess access) {
+        dispatchAccess = Objects.requireNonNull(access, "access");
     }
 
     public static void register(TimerAccess access) {
@@ -268,35 +263,34 @@ public final class InternalAccess {
         return spotAccess().handle(spot);
     }
 
-    public static MemorySegment spotOwnerNodeHandle(Spot spot) {
-        return spotAccess().ownerNodeHandle(spot);
+    public static MemorySegment meshNodeHandle(MeshNode node) {
+        return meshNodeAccess().handle(node);
     }
 
-    public static Spot spotCreateOwned(SpotNode node) {
-        return spotAccess().createOwned(node);
+    public static StreamSessionService createStreamSessionService(
+            MeshNode node, StreamSocket stream) {
+        return meshNodeAccess().createStreamSessionService(node, stream);
     }
 
-    public static Spot spotAdoptOwned(SpotNode node, MemorySegment handle) {
-        return spotAccess().adoptOwned(node, handle);
+    public static ReadyBatch dispatchNewReadyBatch(int recordCapacity) {
+        return dispatchAccess().newReadyBatch(recordCapacity);
     }
 
-    public static MemorySegment spotNodeHandle(SpotNode node) {
-        return spotNodeAccess().handle(node);
+    public static ReceiveBatch dispatchNewReceiveBatch(int messageCapacity,
+                                                       int partCapacity,
+                                                       int byteCapacity) {
+        return dispatchAccess().newReceiveBatch(messageCapacity, partCapacity,
+            byteCapacity);
     }
 
-    public static void spotNodeReleaseSpot(SpotNode node, Spot spot) {
-        spotNodeAccess().releaseSpot(node, spot);
+    public static void dispatchReply(byte[] token, List<Message> parts,
+                                     int flags) {
+        dispatchAccess().reply(token, parts, flags);
     }
 
-    public static boolean spotRequestToSpotPart(Spot spot,
-                                                RoutingId destNodeRid,
-                                                RoutingId destSpotRid,
-                                                Message part,
-                                                RequestCallback callback,
-                                                SendFlags flags,
-                                                Duration timeout) {
-        return spotAccess().requestToSpotPart(spot, destNodeRid, destSpotRid,
-            part, callback, flags, timeout);
+    public static void dispatchActorJoinReply(byte[] token, int decision,
+                                              List<Message> parts, int flags) {
+        dispatchAccess().actorJoinReply(token, decision, parts, flags);
     }
 
     public static ZlinkTimer timerFromBorrowedHandle(MemorySegment handle) {
@@ -609,38 +603,6 @@ public final class InternalAccess {
             requestSeq, parts);
     }
 
-    public static List<ActorRef> streamBoundActors(StreamSocket socket,
-                                                   RoutingId sessionRid) {
-        return runtimeSocketAccess().streamBoundActors(socket, sessionRid);
-    }
-
-    public static boolean streamSubmitBind(StreamSocket socket,
-                                           RoutingId sessionRid,
-                                           ActorRef actor,
-                                           Duration timeout,
-                                           ReplyHandler callback) {
-        return runtimeSocketAccess().streamSubmitBind(socket, sessionRid, actor,
-            timeout, callback);
-    }
-
-    public static boolean streamSubmitUnbind(StreamSocket socket,
-                                             RoutingId sessionRid,
-                                             String actorId,
-                                             Duration timeout,
-                                             ReplyHandler callback) {
-        return runtimeSocketAccess().streamSubmitUnbind(socket, sessionRid,
-            actorId, timeout, callback);
-    }
-
-    public static boolean streamSendBoundActorReceiveds(StreamSocket socket,
-                                                    RoutingId sessionRid,
-                                                    String actorId,
-                                                    List<Message> parts,
-                                                    SendFlags flags) {
-        return runtimeSocketAccess().streamSendBoundActorReceiveds(socket, sessionRid,
-            actorId, parts, flags);
-    }
-
     public static RoutingId routingIdFromTrusted(byte[] value) {
         return ContractAccess.routingIdFromTrusted(value);
     }
@@ -681,9 +643,14 @@ public final class InternalAccess {
         return require(spotAccess, NativeSpot.class);
     }
 
-    private static SpotNodeAccess spotNodeAccess() {
-        if (spotNodeAccess == null) load(NativeSpotNode.class);
-        return require(spotNodeAccess, NativeSpotNode.class);
+    private static MeshNodeAccess meshNodeAccess() {
+        if (meshNodeAccess == null) load(NativeMeshNode.class);
+        return require(meshNodeAccess, NativeMeshNode.class);
+    }
+
+    private static DispatchAccess dispatchAccess() {
+        if (dispatchAccess == null) load(NativeMeshNode.class);
+        return require(dispatchAccess, NativeMeshNode.class);
     }
 
     private static TimerAccess timerAccess() {

@@ -2,9 +2,8 @@
 
 package systems.zlink.contracts.core;
 
-import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.service.spot.SpotNodeMode;
-import systems.zlink.contracts.service.spot.SpotNodeOptions;
+import systems.zlink.contracts.service.spot.MeshNode;
+import systems.zlink.contracts.service.spot.MeshNodeOptions;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.sockets.PubSocket;
@@ -48,24 +47,16 @@ public interface Context extends AutoCloseable {
     /** Creates a stream socket; the caller owns it and must close it. */
     StreamSocket createStreamSocket();
 
-    /** Creates a spot node in the default mode; the caller owns it and must close it. */
-    SpotNode createSpotNode();
+    /** Creates a mesh node with default options; the caller owns it and must close it. */
+    MeshNode createMeshNode();
 
     /**
-     * Creates a spot node in the given mode; the caller owns it and must close it.
-     *
-     * @param mode which messaging patterns to enable
-     * @return the spot node
-     */
-    SpotNode createSpotNode(SpotNodeMode mode);
-
-    /**
-     * Creates a spot node with the given options; the caller owns it and must close it.
+     * Creates a mesh node with the given options; the caller owns it and must close it.
      *
      * @param options creation options
-     * @return the spot node
+     * @return the mesh node
      */
-    SpotNode createSpotNode(SpotNodeOptions options);
+    MeshNode createMeshNode(MeshNodeOptions options);
 
     /**
      * Terminates the context, interrupting blocking operations on its sockets

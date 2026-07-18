@@ -15,15 +15,8 @@ import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
 import systems.zlink.contracts.messaging.SubscriptionEvent;
 import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.contracts.service.spot.ActorJoinInfo;
-import systems.zlink.contracts.service.spot.ActorJoinRequest;
-import systems.zlink.contracts.service.spot.ActorReceived;
-import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.SpotActorLifecycleEventKind;
+import systems.zlink.contracts.service.spot.ReplyToken;
 import systems.zlink.contracts.service.spot.Spot;
-import systems.zlink.contracts.service.spot.SpotDispatchEvent;
-import systems.zlink.contracts.service.spot.SpotDispatchInfo;
-import systems.zlink.contracts.service.spot.SpotDispatchSubjectKind;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.CommonSocketOptions;
 import systems.zlink.contracts.sockets.DealerSocketOptions;
@@ -44,8 +37,7 @@ import java.util.function.BiFunction;
  */
 public final class ContractAccess {
     private static volatile PollEventsAccess pollEventsAccess;
-    private static volatile ActorJoinAccess actorJoinAccess;
-    private static volatile SpotDispatchInfoAccess spotDispatchInfoAccess;
+    private static volatile ReplyTokenAccess replyTokenAccess;
     private static volatile RoutingIdAccess routingIdAccess;
     private static volatile ContextOptionsAccess contextOptionsAccess;
     private static volatile SocketOptionsAccess socketOptionsAccess;
@@ -68,52 +60,10 @@ public final class ContractAccess {
                        long slot, int revents, int fd);
     }
 
-    public interface ActorJoinAccess {
-        ActorJoinRequest request(ActorJoinInfo info, Message message);
+    public interface ReplyTokenAccess {
+        ReplyToken create(byte[] opaque);
 
-        ActorJoinRequest request(ActorJoinInfo info, java.util.List<Message> parts);
-
-        ActorJoinInfo infoFromNative(ActorRef sourceActor,
-                                     ActorRef targetActor,
-                                     RoutingId sourceNodeRid,
-                                     RoutingId sourceSpotRid,
-                                     RoutingId targetNodeRid,
-                                     RoutingId targetSpotRid,
-                                     long joinEpoch,
-                                     Object requestState,
-                                     int flags);
-
-        Object requestState(ActorJoinInfo info);
-
-        RoutingId sourceNodeRidRaw(ActorJoinInfo info);
-
-        RoutingId sourceSpotRidRaw(ActorJoinInfo info);
-
-        RoutingId targetNodeRidRaw(ActorJoinInfo info);
-
-        RoutingId targetSpotRidRaw(ActorJoinInfo info);
-
-        SpotActorLifecycleEventKind lifecycleKindFromValue(int value);
-    }
-
-    public interface SpotDispatchInfoAccess {
-        Object subjectState(SpotDispatchInfo info);
-
-        SpotDispatchInfo create(SpotDispatchEvent event,
-                                SpotDispatchSubjectKind subjectKind,
-                                Object subject);
-
-        SpotDispatchInfo create(SpotDispatchEvent event,
-                                SpotDispatchSubjectKind subjectKind,
-                                Object subject,
-                                List<ActorReceived> actorMessages);
-
-        SpotDispatchInfo create(SpotDispatchEvent event,
-                                SpotDispatchSubjectKind subjectKind,
-                                Object subject,
-                                ZlinkTimer timer,
-                                String channelName,
-                                List<ActorReceived> actorMessages);
+        byte[] opaque(ReplyToken token);
     }
 
     public interface RoutingIdAccess {
@@ -401,12 +351,8 @@ public final class ContractAccess {
         pollEventsAccess = Objects.requireNonNull(access, "access");
     }
 
-    public static void register(ActorJoinAccess access) {
-        actorJoinAccess = Objects.requireNonNull(access, "access");
-    }
-
-    public static void register(SpotDispatchInfoAccess access) {
-        spotDispatchInfoAccess = Objects.requireNonNull(access, "access");
+    public static void register(ReplyTokenAccess access) {
+        replyTokenAccess = Objects.requireNonNull(access, "access");
     }
 
     public static void register(RoutingIdAccess access) {
@@ -465,85 +411,12 @@ public final class ContractAccess {
             revents, fd);
     }
 
-    public static ActorJoinRequest actorJoinRequest(ActorJoinInfo info,
-                                                    Message message) {
-        return actorJoinAccess().request(info, message);
+    public static ReplyToken replyTokenCreate(byte[] opaque) {
+        return replyTokenAccess().create(opaque);
     }
 
-    public static ActorJoinRequest actorJoinRequest(ActorJoinInfo info,
-                                                    java.util.List<Message> parts) {
-        return actorJoinAccess().request(info, parts);
-    }
-
-    public static ActorJoinInfo actorJoinInfoFromNative(
-      ActorRef sourceActor,
-      ActorRef targetActor,
-      RoutingId sourceNodeRid,
-      RoutingId sourceSpotRid,
-      RoutingId targetNodeRid,
-      RoutingId targetSpotRid,
-      long joinEpoch,
-      Object requestState,
-      int flags) {
-        return actorJoinAccess().infoFromNative(sourceActor, targetActor,
-            sourceNodeRid, sourceSpotRid, targetNodeRid, targetSpotRid,
-            joinEpoch, requestState, flags);
-    }
-
-    public static Object actorJoinInfoRequestState(ActorJoinInfo info) {
-        return actorJoinAccess().requestState(info);
-    }
-
-    public static RoutingId actorJoinInfoSourceNodeRidRaw(ActorJoinInfo info) {
-        return actorJoinAccess().sourceNodeRidRaw(info);
-    }
-
-    public static RoutingId actorJoinInfoSourceSpotRidRaw(ActorJoinInfo info) {
-        return actorJoinAccess().sourceSpotRidRaw(info);
-    }
-
-    public static RoutingId actorJoinInfoTargetNodeRidRaw(ActorJoinInfo info) {
-        return actorJoinAccess().targetNodeRidRaw(info);
-    }
-
-    public static RoutingId actorJoinInfoTargetSpotRidRaw(ActorJoinInfo info) {
-        return actorJoinAccess().targetSpotRidRaw(info);
-    }
-
-    public static SpotActorLifecycleEventKind actorLifecycleKindFromValue(
-      int value) {
-        return actorJoinAccess().lifecycleKindFromValue(value);
-    }
-
-    public static Object spotDispatchSubjectState(SpotDispatchInfo info) {
-        return spotDispatchInfoAccess().subjectState(info);
-    }
-
-    public static SpotDispatchInfo spotDispatchInfo(
-      SpotDispatchEvent event,
-      SpotDispatchSubjectKind subjectKind,
-      Object subject) {
-        return spotDispatchInfoAccess().create(event, subjectKind, subject);
-    }
-
-    public static SpotDispatchInfo spotDispatchInfo(
-      SpotDispatchEvent event,
-      SpotDispatchSubjectKind subjectKind,
-      Object subject,
-      List<ActorReceived> actorMessages) {
-        return spotDispatchInfoAccess().create(event, subjectKind, subject,
-            actorMessages);
-    }
-
-    public static SpotDispatchInfo spotDispatchInfo(
-      SpotDispatchEvent event,
-      SpotDispatchSubjectKind subjectKind,
-      Object subject,
-      ZlinkTimer timer,
-      String channelName,
-      List<ActorReceived> actorMessages) {
-        return spotDispatchInfoAccess().create(event, subjectKind, subject,
-            timer, channelName, actorMessages);
+    public static byte[] replyTokenOpaque(ReplyToken token) {
+        return replyTokenAccess().opaque(token);
     }
 
     public static RoutingId routingIdFromTrusted(byte[] value) {
@@ -1075,22 +948,13 @@ public final class ContractAccess {
         return pollEventsAccess;
     }
 
-    private static ActorJoinAccess actorJoinAccess() {
-        if (actorJoinAccess == null) load(ActorJoinInfo.class);
-        if (actorJoinAccess == null)
+    private static ReplyTokenAccess replyTokenAccess() {
+        if (replyTokenAccess == null) load(ReplyToken.class);
+        if (replyTokenAccess == null)
             throw new IllegalStateException(
                 "missing contract access for "
-                    + ActorJoinInfo.class.getName());
-        return actorJoinAccess;
-    }
-
-    private static SpotDispatchInfoAccess spotDispatchInfoAccess() {
-        if (spotDispatchInfoAccess == null) load(SpotDispatchInfo.class);
-        if (spotDispatchInfoAccess == null)
-            throw new IllegalStateException(
-                "missing contract access for "
-                    + SpotDispatchInfo.class.getName());
-        return spotDispatchInfoAccess;
+                    + ReplyToken.class.getName());
+        return replyTokenAccess;
     }
 
     private static RoutingIdAccess routingIdAccess() {

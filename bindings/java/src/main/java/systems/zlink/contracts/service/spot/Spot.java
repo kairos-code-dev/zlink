@@ -3,80 +3,46 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.messaging.SubscriptionEntry;
-import systems.zlink.contracts.messaging.SubscriptionEvent;
-import systems.zlink.contracts.messaging.TopicMessage;
-import systems.zlink.contracts.sockets.RecvFlags;
-import systems.zlink.contracts.sockets.SendReadyHandler;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 
-/**
- * Unified spot service handle aligned to the current core publish/subscribe
- * service model.
- */
+/** A logical destination for direct messaging and logical multicast. */
 public interface Spot extends AutoCloseable {
+    /** Returns a status snapshot of this spot. */
+    SpotStatus status();
 
-    void setRoutingId(RoutingId rid);
+    /** Returns this spot's routing id. */
+    RoutingId routingId();
 
-    RoutingId getRoutingId();
+    /** Sends a message to a channel from this spot. */
+    void sendToChannel(String channel, List<Message> parts, SendFlags flags);
 
-    Duration requestTimeout();
+    /** Sends a request to a channel from this spot. */
+    OperationId requestToChannel(String channel, List<Message> parts, SendFlags flags,
+                                 Duration timeout);
 
-    void requestTimeout(Duration value);
+    /** Sends a message to another spot. */
+    void sendToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+                    long targetSpotGeneration, List<Message> parts, SendFlags flags);
 
-    SendOperation publish(String topicId);
+    /** Sends a request to another spot. */
+    OperationId requestToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+                              long targetSpotGeneration, List<Message> parts,
+                              SendFlags flags, Duration timeout);
 
-    SendOperation sendToChannel(String channelName);
+    /** Publishes a topic message on a channel from this spot. */
+    void publish(String channel, String topic, List<Message> parts, SendFlags flags);
 
-    SendOperation sendToSpot(RoutingId destNodeRid,
-                                      RoutingId destSpotRid);
+    /** Sets whether publishes from this spot must not be dropped. */
+    void setNoDrop(boolean nodrop);
 
-    RequestOperation requestToChannel(String channelName);
+    /** Adds a topic subscription on a channel. */
+    void setSubscription(String channel, String topicFilter, SubscriptionKind kind);
 
-    RequestOperation requestToSpot(RoutingId destNodeRid,
-                                            RoutingId destSpotRid);
-
-    RequestOperation requestToRouter(RoutingId peerRid);
-
-    ReplyOperation replyToSpot(RoutingId destNodeRid,
-                                        RoutingId destSpotRid,
-                                        long requestSeq);
-
-    ReplyOperation replyToRouter(RoutingId peerRid, long requestSeq);
-
-    void setSubscription(String topicId);
-
-    void unsetSubscription(String topicIdOrPattern);
-
-    Optional<SubscriptionEntry> subscriptionAt(int index);
-
-    void setSendReadyHandler(SendReadyHandler handler);
-
-    boolean subscribe(TopicMessage result, RecvFlags flags);
-
-    boolean receiveSubscriptionEvent(SubscriptionEvent result,
-                                                     RecvFlags flags);
-
-    boolean recvRouted(Received result, RecvFlags flags);
-
-    void setDispatchHandler(SpotDispatchEventHandler handler);
-
-    ActorJoinRequest recvActorJoin(RecvFlags flags);
-
-    ActorJoinRequest recvActorJoin();
-
-    ActorJoinReplyOperation replyActorJoin(ActorJoinRequest request,
-                                                    int joinResultCode);
-
-    SpotActorLifecycleEvent recvActorLifecycle(
-      RecvFlags flags);
-
-    SpotActorLifecycleEvent recvActorLifecycle();
-
-    List<ActorRef> actors();
+    /** Removes a topic subscription on a channel. */
+    void unsetSubscription(String channel, String topicFilter, SubscriptionKind kind);
 
     @Override
     void close();

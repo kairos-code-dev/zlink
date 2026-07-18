@@ -2,52 +2,44 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.contracts.sockets.RecvFlags;
+import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.sockets.SendFlags;
 import java.time.Duration;
+import java.util.List;
 
-/** Local Actor resource owned by a {@link SpotNode}. */
+/** A mesh actor: an addressable, relocatable unit of ownership. */
 public interface Actor extends AutoCloseable {
-
-    /** Returns a reference to this actor. */
+    /** Returns this actor's reference. */
     ActorRef ref();
 
-    /**
-     * Builds an async join to a user spot. Completion delivers an
-     * {@link ActorJoinResult} plus reply parts. {@code spot} must be a user spot.
-     * @param spot the user spot to join
-     * @return the join operation builder
-     */
-    ActorJoinOperation join(Spot spot);
+    /** Joins the given spot. */
+    OperationId joinSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+                         long targetSpotGeneration, List<Message> creationParts,
+                         Duration timeout);
 
-    /**
-     * Builds an async leave from a user spot.
-     * @param spot the spot to leave
-     * @return the leave operation builder
-     */
-    ActorLeaveOperation leave(Spot spot);
+    /** Joins the entry spot of the given node. */
+    OperationId joinEntrySpot(RoutingId targetNodeRid, List<Message> creationParts,
+                              Duration timeout);
 
-    /**
-     * Receives the next actor message; {@link RecvFlags#DONT_WAIT} returns
-     * immediately when no message is available, {@link RecvFlags#NONE} blocks.
-     * The caller owns the returned {@link ActorReceived} and must close it.
-     */
-    ActorReceived recv(RecvFlags flags);
+    /** Leaves the currently joined spot. */
+    OperationId leaveSpot(long expectedMembershipEpoch, Duration timeout);
 
-    /** Receives the next actor message, blocking until one arrives.
-     * The caller owns the returned {@link ActorReceived} and must close it. */
-    ActorReceived recv();
+    /** Sends a message to another actor. */
+    void sendTo(ActorRef target, List<Message> parts, SendFlags flags);
 
-    /** Builds a send to the bound session. */
-    SendOperation sendBoundSession();
+    /** Sends a request to another actor. */
+    OperationId requestTo(ActorRef target, List<Message> parts, SendFlags flags,
+                          Duration timeout);
 
-    /** Closes the bound session with the given timeout. */
-    void closeBoundSession(Duration timeout);
+    /** Sends a message to this actor's bound STREAM session. */
+    void sendBoundSession(List<Message> parts, SendFlags flags);
 
-    /** Closes the bound session. */
-    void closeBoundSession();
+    /** Closes this actor's bound STREAM session. */
+    OperationId closeBoundSession(long expectedBindingGeneration, Duration timeout);
 
-    /** Closes this actor with the given timeout. */
-    void close(Duration timeout);
+    /** Destroys this actor. */
+    OperationId destroy(Duration timeout);
 
     @Override
     void close();

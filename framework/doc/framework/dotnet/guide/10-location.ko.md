@@ -152,11 +152,14 @@ locations.MapSpotMeshToRouteChannel("game-mesh", "game.route");
 
 | 옵션 | 기본값 | 무엇을 정하나 |
 |---|---|---|
-| `HeartbeatInterval` | 5s | 서버가 lease를 갱신하는 주기 |
-| `OwnerLeaseTtl` | 15s | 갱신이 끊긴 row가 만료되기까지의 시간 |
-| `PollingInterval` | 1s | client가 store를 다시 읽는 주기 |
+| `HeartbeatInterval` | 10s | 서버가 owner lease를 갱신하는 주기 |
+| `OwnerLeaseTtl` | 30s | 갱신이 끊긴 owner의 row가 stale로 취급되기까지의 시간 |
+| `PollingInterval` | 1s | watch 미지원 store를 다시 읽는 주기 |
 | `StoreFailureGrace` | 30s | store 장애 시 마지막 판단을 유지하는 시간 |
 | `ListPageSize` | 1000 | 목록 조회 한 페이지 크기 |
+| `ObservedMeshNames` | 빈 목록 | 이 호스트가 직접 참여하지 않는 mesh를 운영 조회로 관찰할 때 열거 |
+| `RoutingIdFencingMargin` | 5s | 할당 routing id 사용 시 lease 만료 전 소켓 정지에 확보하는 여유 |
+| `OwnerLeaseRenewTimeout` | 3s | 할당 routing id의 fencing 판정에 허용하는 1회 갱신 시도 시간 |
 | `MapSpotMeshToRouteChannel(mesh, channel)` | — | spot mesh 이름과 route channel 이름이 다를 때 잇는 매핑 |
 
 ## 4. 운영 조회
@@ -167,23 +170,23 @@ locations.MapSpotMeshToRouteChannel("game-mesh", "game.route");
 | 메서드 | 무엇을 돌려주나 |
 |---|---|
 | `GetStatusAsync()` | store health, 마지막 오류, lease 갱신 상태 |
-| `ListPeerLocationsAsync(filter)` | 활성 peer row (lease 유효한 것만) |
-| `ListSpotLocationsAsync(filter, page)` | spot 위치 row |
-| `ListActorLocationsAsync(filter, page)` | actor 위치 row |
-| `ListRouteLocationsAsync(filter, page)` | route 위치 row |
+| `ListMeshNodeDescriptorsAsync(meshName)` | 그 mesh의 활성 MeshNode descriptor row (lease 유효한 것만) |
 | `ListTopologyAsync(filter, page)` | runtime이 row를 합성한 topology 보기 |
 | `ListServiceSummariesAsync(filter)` | channel 단위 서비스 요약 |
+
+개별 spot·actor의 위치는 목록으로 열거하지 않는다 — 호출자가 rid/actorId를
+지정해 §5의 resolver로 단건 확인한다(10.0.0 resolve-only 계약).
 
 ```csharp
 app.MapGet("/ops/locations", async (IZLinkLocationRuntimeQuery query) =>
 {
     var status = await query.GetStatusAsync();
-    var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter());
+    var nodes = await query.ListMeshNodeDescriptorsAsync("game.room");
     return Results.Ok(new
     {
         storeHealthy = status.StoreHealthy,
         lastError = status.LastError,
-        peers = peers.Select(p => new { rid = p.NodeRid?.ToString(), p.Endpoint })
+        nodes = nodes.Select(n => new { rid = n.Rid.ToString(), n.Endpoint, n.Draining })
     });
 });
 ```

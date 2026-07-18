@@ -133,7 +133,7 @@ actor는 factory로 만든다. factory는 `actorType` 짧은 문자열로 등록
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    var spot = options.AddSpotMesh("play-spots");
+    var spot = options.AddRouteMesh("play-spots");
     spot.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate가 이 키로 factory를 고른다.
     spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player");
     // remote 이동 때 보존할 actor state가 있을 때만 custom adapter를 등록한다.

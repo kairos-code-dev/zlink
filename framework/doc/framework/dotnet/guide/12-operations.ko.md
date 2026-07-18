@@ -114,8 +114,8 @@ stateDiagram-v2
 spot은 상태를 자동으로 옮길 수 없으므로, mesh 등록 시 정리 방식을 앱이 선언한다.
 
 ```csharp
-options.AddSpotMesh("orders")
-    .UseDrainPolicy(ZLinkSpotDrainPolicy.ReleaseAndRecreate);
+options.AddRouteMesh("orders")
+    .UseDrainPolicy(ZLinkMeshNodeDrainPolicy.ReleaseAndRecreate);
 ```
 
 | 정책 | 동작 | 적합한 SPOT |
@@ -168,7 +168,44 @@ Kubernetes 배포에 연결하면 다음 개념이 된다.
 # preStop hook + terminationGracePeriodSeconds ≥ drain deadline — 자동 drain이 끝날 시간을 확보
 ```
 
-## 5. drain 상태 관측
+## 5. MeshNode 런타임 제어와 관측
+
+`AddRouteMesh`로 등록한 MeshNode는 두 DI singleton으로 운영한다.
+
+**런타임 옵션 — `IZLinkRouteMeshRuntimeOptions`.** serving 중에 바꿀 수 있는 값은
+두 가지뿐이다. 나머지 소켓 옵션(HWM·timeout)은 시작 전 `ConfigureRouterSocket()`
+전용이다.
+
+```csharp
+var meshOptions = app.Services.GetRequiredService<IZLinkRouteMeshRuntimeOptions>();
+meshOptions.MeshNode("game.room").MaxMessageSize = 8 * 1024 * 1024;  // 0 = 무제한
+meshOptions.Channel("game.room", "game.room").Weight = 0;            // 신규 select-one 대상에서 제외
+```
+
+`Weight`는 0~100이고 즉시 반영된다. 0은 그 membership을 새 select-one과 Logical
+Multicast 원격 대상에서 빼는 값이라, 재배포 전 트래픽을 빼는 용도로 쓴다. 등록되지
+않은 mesh나 membership을 조회하면 `ZLinkConfigurationException`이다.
+
+**상태 조회 — `IZLinkRouteMeshRuntime`.** mesh 하나에 대해 일관된 snapshot 한 장,
+순서 있는 이벤트 스트림, drain 진입점을 제공한다.
+
+```csharp
+var meshRuntime = app.Services.GetRequiredService<IZLinkRouteMeshRuntime>();
+
+var snapshot = meshRuntime.Snapshot("game.room");   // 노드 상태·peer·channel 일관 스냅샷
+var ready = meshRuntime.IsReady("game.room");
+
+await foreach (var meshEvent in meshRuntime.ObserveAsync("game.room", cancellationToken: ct))
+{
+    // state/peer 전이가 Sequence 순서로 온다 — 11-monitoring의
+    // AddMeshNodeEvents(mesh)는 이 스트림을 event 버스에 올린 것이다.
+}
+```
+
+`DrainAsync(mesh)`/`AwaitDrainedAsync(mesh)`는 §4의 `IZLinkDrainControl`과 같은
+공유 drain에 위임한다 — 첫 호출이 deadline을 고정하고 모두 같은 종단 결과를 받는다.
+
+## 6. drain 상태 관측
 
 drain 상태 전이는 [11-monitoring](11-monitoring.ko.md)의 이벤트 메커니즘을 그대로 쓴다.
 source 등록은 필요 없다. handler만 DI에 등록하면 된다.

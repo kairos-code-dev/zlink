@@ -76,8 +76,8 @@ builder.Services.AddZLinkFramework(options =>
         .RegisterSession<PlaySession>();
 
     // play 역할 — 같은 프로세스가 SpotNode를 호스팅(= 위 stream의 gateway 입구)
-    options.AddSpotMesh("play-spot")
-        .EnableRouter("tcp://0.0.0.0:9201")
+    options.AddRouteMesh("play-spot")
+        .Listen("tcp://0.0.0.0:9201")
         .AddEntrySpot<PlayerEntrySpot>()
         .AddSpotFactory<MatchSpot>();
 });
@@ -384,8 +384,8 @@ session relay는 application route mesh channel로 흐르지 않는다. STREAM s
 builder.Services.AddZLinkFramework(options =>
 {
     // STREAM session의 actor-gateway 입구로 쓸 local SpotNode (router만 있으면 됨)
-    options.AddSpotMesh("game.session")
-        .EnableRouter("tcp://0.0.0.0:9101")
+    options.AddRouteMesh("game.session")
+        .Listen("tcp://0.0.0.0:9101")
         .SetRoutingId(sessionNodeRid);
 
     options.AddStreamNode("client-stream")   // gateway는 위 game.session SpotNode로 자동 연결
@@ -403,10 +403,10 @@ builder.Services.AddZLinkFramework(options =>
     spot.AddActorFactory<PlayerActorFactory>("player");  // actor와 Spot은 Play 서버가 호스팅(Session 서버엔 이 factory가 없다)
 
     {
-        var mesh =     options.AddSpotMesh("game.match");
+        var mesh =     options.AddRouteMesh("game.match");
         {
             var node = mesh;
-            node.EnableRouter("tcp://0.0.0.0:9201");
+            node.Listen("tcp://0.0.0.0:9201");
             node.AddEntrySpot<PlayerEntrySpot>();  // Entry Spot은 SpotNode 당 1개(actor가 처음 머무는 곳)
             node.AddSpotFactory<MatchSpot>();      // user Spot은 factory로 요청마다 동적 생성
 

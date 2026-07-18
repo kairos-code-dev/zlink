@@ -279,7 +279,7 @@ options.ConfigureDispatch()
 
         spot.EnablePubSub("tcp://0.0.0.0:9000");
         spot.ConnectPeerPub("tcp://127.0.0.1:5500");
-        spot.ConfigurePubSubPublisher().NoDrop = true;
+        spot.ConfigurePubSubPublisher().SendHighWaterMark = 1024;
 
         var api = options.AddClientServerChannel("api");
         api.EnableClient("tcp://127.0.0.1:5300");
@@ -338,7 +338,6 @@ outbound.ProbeRouterOnConnect = true;
 var node = options.AddSpotMesh("game.stage");
 IZLinkSpotPublisherConfig publisher = node.ConfigurePubSubPublisher();
 publisher.SendHighWaterMark = 32;
-publisher.NoDrop = true;
 IZLinkSpotSubscriberConfig subscriber = node.ConfigurePubSubSubscriber();
 subscriber.ReceiveHighWaterMark = 64;
 node.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
@@ -353,7 +352,7 @@ dispatch.MessageFlow(ZLinkMessageFlowLogMode.ErrorsOnly);             // 오류 
 | `IZLinkSocketConfig` | socket 옵션(HWM, 버퍼, timeout, `TcpNoDelay`, `Immediate`, `IPv6`, `MaxMessageSize` 등) |
 | `IZLinkRouteConfig` | inbound router routing 옵션(`RequireKnownPeer`, `AllowPeerHandover`, `EnablePeerProbe`, `ConnectRoutingId`) |
 | `IZLinkOutboundRouteConfig` | client 측 routing 옵션(`ProbeRouterOnConnect`) |
-| `IZLinkSpotPublisherConfig` | spot publisher 옵션(`SendHighWaterMark`, `SendTimeout`, `Linger`, `NoDrop`) |
+| `IZLinkSpotPublisherConfig` | spot publisher 옵션(`SendHighWaterMark`, `SendTimeout`, `Linger`) |
 | `IZLinkSpotSubscriberConfig` | spot subscriber 옵션(`ReceiveHighWaterMark`, `ReceiveTimeout`, `Linger`) |
 | `IZLinkEntrySpotOptions` | Entry Spot의 routing id 지정 |
 | `IZLinkDispatchOptions` | 처리할 handler가 없을 때의 정책과 message-flow 진단 설정 |

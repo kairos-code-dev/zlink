@@ -19,7 +19,8 @@ handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconne
 
 | source | 방식 |
 |--------|------|
-| socket | raw monitor 기반 event (connect/disconnect/handshake 등) |
+| socket | raw monitor 기반 event (connect/disconnect/handshake 등) — classic channel용 |
+| mesh | `AddRouteMesh`로 등록한 MeshNode의 runtime 이벤트 스트림(state/peer 전이)을 그대로 전달 |
 | location | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 (`location-runtime` source, [10-location](10-location.ko.md)) |
 | spot | 주기적으로 상태를 읽고 직전 상태와 비교해 event 합성 + timer 실패는 즉시 |
 
@@ -49,6 +50,9 @@ builder.Services.AddZLinkMonitoring(monitor =>
         ZLinkSocketEventKind.ConnectionReady,
         ZLinkSocketEventKind.Disconnected);
 
+    // RouteMesh 노드의 state/peer 전이 이벤트 — mesh 이름으로 등록
+    monitor.AddMeshNodeEvents("game.room");
+
     monitor.AddSpotEvents("stage-node", TimeSpan.FromSeconds(1));
 
     // location store를 등록한 배포에서 — 자기 노드의 위치/연결 상태 변화 이벤트를 받는다
@@ -66,6 +70,9 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IZLinkRuntimeEventHandler<ZLinkSpotEvent>,
     StageNodeMonitor>();
+builder.Services.AddScoped<
+    IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>,
+    RoomMeshMonitor>();
 ```
 
 - socket source 이름은 `channel + capability`(예: `profile.server`,
@@ -80,6 +87,10 @@ builder.Services.AddScoped<
   이 검증의 대상이 아니다.
 - `AddSocketEvents(...)`에 kind를 안 넘기면 그 source가 지원하는 모든 이벤트를
   받는다.
+- `AddMeshNodeEvents(meshName)`의 이름은 `AddRouteMesh(meshName)`로 등록한 mesh와
+  일치해야 한다(시작 단계 검증). 이벤트는 kind 필터 없이 전부 전달되고, handler는
+  `ZLinkMeshRuntimeEvent.Identifier`(예: `zlink.runtime.mesh_node.peer_changed`)와
+  `Reason`/`State` 필드로 구분한다.
 
 ## 3. event handler 작성
 
@@ -121,6 +132,29 @@ public sealed class ProfileServerSocketMonitor(ILogger<ProfileServerSocketMonito
 
 socket event만 native monitor event/value를 진단 정보로 함께 노출한다
 (`Diagnostic.NativeEvent`, `Diagnostic.NativeValue`).
+
+### mesh
+
+```csharp
+public sealed class RoomMeshMonitor(ILogger<RoomMeshMonitor> logger)
+    : IZLinkRuntimeEventHandler<ZLinkMeshRuntimeEvent>
+{
+    public ValueTask HandleAsync(ZLinkMeshRuntimeEvent @event, CancellationToken ct)
+    {
+        // peer 전이는 Reason("ready"/"disconnected" 등), 노드 전이는 State로 온다.
+        if (@event.PeerRid is { } peer)
+            logger.LogInformation("mesh peer: {Mesh} {Peer} {Reason}",
+                @event.MeshName, peer, @event.Reason);
+        else if (@event.State is { } state)
+            logger.LogInformation("mesh state: {Mesh} {State}", @event.MeshName, state);
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+mesh 이벤트는 polling 합성이 아니라 MeshNode runtime의 순서 있는 이벤트
+스트림([12-operations](12-operations.ko.md)의 `IZLinkRouteMeshRuntime.ObserveAsync`)을
+그대로 event 버스에 올린 것이다 — `Sequence`가 mesh 안에서 단조 증가한다.
 
 ### location
 

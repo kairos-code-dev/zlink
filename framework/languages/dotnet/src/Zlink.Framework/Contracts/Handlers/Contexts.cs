@@ -1,5 +1,7 @@
 namespace Zlink.Framework.Contracts.Handlers;
 
+using Zlink.Framework.Contracts.Streams;
+
 public interface IZLinkHandlerContext
 {
     string? ChannelName { get; }
@@ -8,6 +10,12 @@ public interface IZLinkHandlerContext
 
     string? ContentType { get; }
 
+    /// <summary>
+    ///     The immutable application-metadata snapshot the sender attached;
+    ///     <see cref="ZLinkMessageMetadata.Empty" /> when none was sent.
+    /// </summary>
+    ZLinkMessageMetadata Metadata { get; }
+
     CancellationToken ConnectionAborted { get; }
 }
 
@@ -15,7 +23,8 @@ public abstract class ZLinkHandlerContext(
     string? channelName,
     string? packetName,
     string? contentType,
-    CancellationToken connectionAborted)
+    CancellationToken connectionAborted,
+    ZLinkMessageMetadata? metadata = null)
     : IZLinkHandlerContext
 {
     public string? ChannelName { get; } = channelName;
@@ -23,6 +32,8 @@ public abstract class ZLinkHandlerContext(
     public string? PacketName { get; } = packetName;
 
     public string? ContentType { get; } = contentType;
+
+    public ZLinkMessageMetadata Metadata { get; } = metadata ?? ZLinkMessageMetadata.Empty;
 
     public CancellationToken ConnectionAborted { get; } = connectionAborted;
 }
@@ -33,8 +44,9 @@ public sealed class ZLinkRequestContext : ZLinkHandlerContext
         string? channelName,
         string? packetName,
         string? contentType,
-        CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, connectionAborted)
+        CancellationToken connectionAborted,
+        ZLinkMessageMetadata? metadata = null)
+        : base(channelName, packetName, contentType, connectionAborted, metadata)
     {
     }
 }
@@ -45,8 +57,9 @@ public sealed class ZLinkSendContext : ZLinkHandlerContext
         string? channelName,
         string? packetName,
         string? contentType,
-        CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, connectionAborted)
+        CancellationToken connectionAborted,
+        ZLinkMessageMetadata? metadata = null)
+        : base(channelName, packetName, contentType, connectionAborted, metadata)
     {
     }
 }
@@ -59,8 +72,9 @@ public sealed class ZLinkPublishContext : ZLinkHandlerContext
         string? contentType,
         string topic,
         string? source,
-        CancellationToken connectionAborted)
-        : base(channelName, packetName, contentType, connectionAborted)
+        CancellationToken connectionAborted,
+        ZLinkMessageMetadata? metadata = null)
+        : base(channelName, packetName, contentType, connectionAborted, metadata)
     {
         Topic = topic;
         Source = source;

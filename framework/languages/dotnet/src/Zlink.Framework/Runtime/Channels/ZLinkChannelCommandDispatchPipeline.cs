@@ -15,7 +15,8 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
         string channelName,
         IReadOnlyList<Message> parts,
         ZLinkEnvelopeHeader header,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ZLinkMessageMetadata? metadata = null)
     {
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
@@ -52,7 +53,8 @@ internal sealed class ZLinkChannelCommandDispatchPipeline(
             scope.ChannelName,
             scope.PacketName,
             scope.ContentType,
-            cancellationToken);
+            cancellationToken,
+            metadata);
         try
         {
             await dispatcher.DispatchAsync(endpoint, message, context, cancellationToken)

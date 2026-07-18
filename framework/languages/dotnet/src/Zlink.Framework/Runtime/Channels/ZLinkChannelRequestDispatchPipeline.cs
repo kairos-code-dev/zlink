@@ -16,7 +16,8 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
         ZLinkEnvelopeHeader header,
         Action<ZLinkEnvelopeHeader, object?, Type?> reply,
         Action<ZLinkEnvelopeHeader> replyError,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ZLinkMessageMetadata? metadata = null)
     {
         var scope = new ZLinkDispatchFlowScope(
             ZLinkDispatchErrorSurface.Channel,
@@ -70,7 +71,8 @@ internal sealed class ZLinkChannelRequestDispatchPipeline(
             scope.ChannelName,
             scope.PacketName,
             scope.ContentType,
-            cancellationToken);
+            cancellationToken,
+            metadata);
 
         try
         {

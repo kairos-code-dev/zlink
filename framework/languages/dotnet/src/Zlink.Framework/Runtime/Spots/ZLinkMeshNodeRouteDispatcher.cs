@@ -275,7 +275,8 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                         (replyHeader, reply, replyType) =>
                             SubmitEnvelope(received, replyHeader, reply, replyType),
                         errorHeader => SubmitEnvelope(received, errorHeader, null, null),
-                        cancellationToken)
+                        cancellationToken,
+                        received.Metadata)
                     .ConfigureAwait(false);
                 return;
             case ZLinkMessageKind.Command:
@@ -283,7 +284,8 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
                         channelName,
                         received.Parts,
                         header,
-                        cancellationToken)
+                        cancellationToken,
+                        received.Metadata)
                     .ConfigureAwait(false);
                 return;
         }

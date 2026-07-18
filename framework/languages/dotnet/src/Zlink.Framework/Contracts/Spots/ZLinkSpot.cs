@@ -80,12 +80,9 @@ public sealed class ZLinkSpotActorSendContext : ZLinkHandlerContext
         string? contentType,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(null, packetName, contentType, connectionAborted)
+        : base(null, packetName, contentType, connectionAborted, metadata)
     {
-        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
     }
-
-    public ZLinkMessageMetadata Metadata { get; }
 }
 
 public sealed class ZLinkSpotActorRequestContext : ZLinkHandlerContext
@@ -95,13 +92,10 @@ public sealed class ZLinkSpotActorRequestContext : ZLinkHandlerContext
         string? contentType,
         CancellationToken connectionAborted,
         ZLinkMessageMetadata? metadata = null)
-        : base(null, packetName, contentType, connectionAborted)
+        : base(null, packetName, contentType, connectionAborted, metadata)
     {
-        Metadata = metadata ?? ZLinkMessageMetadata.Empty;
         Reply = new ZLinkSpotActorReplyOptions();
     }
-
-    public ZLinkMessageMetadata Metadata { get; }
 
     public ZLinkSpotActorReplyOptions Reply { get; }
 }

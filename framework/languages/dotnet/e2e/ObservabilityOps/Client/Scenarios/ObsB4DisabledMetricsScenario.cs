@@ -32,7 +32,22 @@ internal static class ObsB4DisabledMetricsScenario
         }
         await using var connector = await context.ConnectAsync();
         await connector.Request(new AuthenticateReq(actorId)).Async<AuthenticateRes>();
-        var joined = await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();
+        // The fresh room's row publish races the join resolve after the B3
+        // outage; poll the join within a bounded window.
+        JoinRoomRes joined;
+        var joinDeadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+        while (true)
+        {
+            try
+            {
+                joined = await connector.Request(new JoinRoomReq(roomRid)).Async<JoinRoomRes>();
+                break;
+            }
+            catch (Exception) when (DateTimeOffset.UtcNow < joinDeadline)
+            {
+                await Task.Delay(300);
+            }
+        }
         ZlinkStreamAssert.Ensure(joined.NodeRid == "play-b", "OBS-B4 actor did not reach play-b.");
         for (var index = 0; index < TrafficCount; index++)
         {

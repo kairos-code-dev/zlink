@@ -56,7 +56,7 @@ internal static class ObsC5RolloutScenario
         await context.PlayB.Post("/drain?deadlineMs=30000").AsyncRaw();
         await WaitPeerDrainingAsync(context, "play-b", TimeSpan.FromSeconds(8));
         await context.PlayA.Post("/drain?deadlineMs=10000").AsyncRaw();
-        var draining = await WaitPeerDrainingAsync(context, "play-a", TimeSpan.FromSeconds(8));
+        var draining = await WaitPeerDrainingAsync(context, "play-a", TimeSpan.FromSeconds(8), actorId);
         ZlinkStreamAssert.Ensure(draining.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == "play-a"),
             "OBS-C5 zero-target drain moved the actor to a draining peer.");
         var source = await ScenarioContext.WaitForDrainAsync(
@@ -77,13 +77,17 @@ internal static class ObsC5RolloutScenario
     private static async Task<EvidenceSnapshot> WaitPeerDrainingAsync(
         ScenarioContext context,
         string nodeRid,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        string? actorId = null)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var snapshot = (await context.PlayA.Get("/evidence").Async<EvidenceSnapshot>()).Body;
-            if (snapshot.PeerRows.Any(row => row.NodeRid == nodeRid && row.Draining))
+            var request = context.PlayA.Get("/evidence");
+            if (actorId is not null) request = request.Query("actorId", actorId);
+            var snapshot = (await request.Async<EvidenceSnapshot>()).Body;
+            if (snapshot.PeerRows.Any(row => row.NodeRid == nodeRid && row.Draining)
+                && (actorId is null || snapshot.ActorRows.Any(row => row.ActorId == actorId)))
                 return snapshot;
             await Task.Delay(100);
         }
@@ -96,7 +100,8 @@ internal static class ObsC5RolloutScenario
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            var snapshot = (await context.PlayB.Get("/evidence").Async<EvidenceSnapshot>()).Body;
+            var snapshot = (await context.PlayB.Get("/evidence").Query("actorId", actorId)
+                .Async<EvidenceSnapshot>()).Body;
             if (snapshot.ActorRows.Any(row => row.ActorId == actorId && row.NodeRid == nodeRid)) return;
             await Task.Delay(100);
         }

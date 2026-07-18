@@ -55,7 +55,7 @@ endpoint를 명시하고, client/subscriber 역할은 수동 연결을 쓰거나
 |------|------|-----------|
 | client-server | `AddClientServerChannel` | request-reply · 단방향 send — **ROUTER 서버에 DEALER 클라이언트**가 연결된다 (DEALER 소켓 = client, ROUTER 소켓 = server) |
 | fanout | `AddFanoutChannel` | publisher → 다수 subscriber, topic (PUB / SUB) |
-| route mesh | `AddRouteMesh` | router ↔ router — routing id로 특정 주소에 라우팅 (`SpotNode`가 이 route mesh로 구성된다: [06-spot](06-spot.ko.md)) |
+| route mesh | `AddRouteMesh` | router ↔ router — routing id로 특정 주소에 라우팅 (`MeshNode`가 이 route mesh로 구성된다: [06-spot](06-spot.ko.md)) |
 
 **소켓 구조 한눈에** — 어떤 소켓이 어떻게 연결되는지가 네 종류의 차이다.
 
@@ -79,7 +79,7 @@ graph LR
     P --> S3["subscriber C<br/>SUB"]
 ```
 
-- **route mesh** — ROUTER끼리 연결되어, **routing id로 지정한 주소에만** 보낸다(분산 아님). `SpotNode`가 이 구조로 구성된다.
+- **route mesh** — ROUTER끼리 연결되어, **routing id로 지정한 주소에만** 보낸다(분산 아님). `MeshNode`가 이 구조로 구성된다.
 
 ```mermaid
 %%{init: {'themeVariables': {'edgeLabelBackground':'transparent'}}}%%
@@ -113,7 +113,7 @@ spot은 room/zone/stage처럼 **동적으로 생겼다 사라지는 상태 단�
 
 | | channel handler | SPOT handler |
 |---|---|---|
-| 위치 | channel server/subscriber 역할 | `SpotNode` 안의 entry/user Spot |
+| 위치 | channel server/subscriber 역할 | `MeshNode` 안의 entry/user Spot |
 | 실행 | 서로 다른 요청은 동시에 실행 가능 | 같은 SPOT 안에서는 직렬 실행 |
 | 상태 | 공유 상태를 직접 멤버에 두지 않음 | SPOT이 상태를 직접 소유 |
 
@@ -232,7 +232,7 @@ public void Configure()   // 등록은 그 spot의 Configure() 안에서 한다
 | | 채널/HTTP 핸들러 | entry spot | room spot |
 |---|---|---|---|
 | 기반 | 독립 class (interface/attribute) | `IZLinkSpot` 구현 | `IZLinkSpot` 구현 |
-| 수명 | transient (요청마다) | `SpotNode`와 동일 (영속) | 상태 단위와 동일 (영속) |
+| 수명 | transient (요청마다) | `MeshNode`와 동일 (영속) | 상태 단위와 동일 (영속) |
 | 실행 | 비동기 (채널별 수신 루프·HTTP 파이프라인) | **전체 직렬** — 단일 큐 | **전체 직렬** — 단일 큐 |
 | 공유 상태 | 핸들러에 두지 않음 | 큐 안에서 안전 | 락 없이 안전 |
 | 역할 | 요청 처리·위임 | 배정·매칭·할당 | 도메인 상태 소유·처리 |

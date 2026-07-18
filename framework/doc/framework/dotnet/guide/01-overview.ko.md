@@ -424,7 +424,7 @@ Kafka(주황)가 처리 경로 **밖으로** 나가 전파·보존만 맡는다(
 **서버 간 호출의 LB도 사라진다.** 주문 처리는 재고·결제 같은 다른 서비스를 동기
 호출하는데, 기존 방식은 그 경로마다 K8s Service나 service discovery로 상대를 찾아
 분배해야 한다(주소를 코드에 하드코딩할 수는 없으니까). ZLink에서는 `"inventory"` 같은
-**channel name으로 부르고 location store가 현재 살아 있는 peer를 알려 주므로**, 서버 간
+**channel name으로 부르고 location store가 현재 사용 가능한 peer를 알려 주므로**, 서버 간
 호출용 LB 계층이 따로 필요 없다 — 그래서 after 그림에서 주황 `서버 간 호출용 LB`가
 사라진다.
 
@@ -441,7 +441,7 @@ routing**으로 풀면, 위 조각의 대부분은 조립할 필요 자체가 �
 | key partition + consumer group | **SPOT owner routing** — 같은 `OrderId`는 항상 같은 Spot에서 직렬 실행. 어느 API 인스턴스가 받아도 같은 owner로 route된다 | [06](06-spot.ko.md) |
 | 이벤트마다 DB load-modify-store | **owner spot의 hot state** — 상태가 owner 메모리에 있고, 저장 시점은 업무 규칙에 맞춰 앱이 결정한다 | [06](06-spot.ko.md) |
 | 재전달 대비 version check·분산 락 | **직렬 실행** — 같은 단위에 동시 writer가 없어 정상 경로에서 락·version 경합이 없다 | [06 §3](06-spot.ko.md) |
-| 서버 간 호출용 LB·service discovery | **channel name + location store** — `"inventory"` 이름으로 부르면 현재 살아 있는 peer로 직접 간다 | [05](05-channel-messaging.ko.md)·[10](10-location.ko.md) |
+| 서버 간 호출용 LB·service discovery | **channel name + location store** — `"inventory"` 이름으로 부르면 현재 사용 가능한 peer로 직접 전송한다 | [05](05-channel-messaging.ko.md)·[10](10-location.ko.md) |
 | offset·lag·재동기화 잡 운영 | 소비 파이프라인이 없으므로 해당 운영 항목 자체가 없다 | |
 
 **경계는 그대로다.** durable log가 진짜 필요한 요구 — 이벤트 replay, 장기 보존, 독립
@@ -546,7 +546,7 @@ var reply = await client
 |   - location/monitoring integration                       |
 +-----------------------------------------------------------+
 |  zlink .NET binding (DealerSocket, RouterSocket, Spot,    |
-|   SpotNode ...)                                           |
+|   MeshNode ...)                                           |
 +-----------------------------------------------------------+
 |  zlink core (C API) - transport, ZMP, I/O threads         |
 +-----------------------------------------------------------+
@@ -789,7 +789,7 @@ ZLink의 용도를 구체적인 업무 흐름으로 확인할 때는 [공통 샘
 게임 진행, 상담·채팅처럼 업무 도메인까지 붙인 end-to-end 샘플이다.
 
 **이 계층이 하지 않는 것도 분명하다.** ZLink Framework는 새 transport나 새 socket 의미를 만드는 계층이
-아니다. 기존 `.NET` 바인딩(`DealerSocket`, `SpotNode` 등)을 그대로 쓰되, application
+아니다. 기존 `.NET` 바인딩(`DealerSocket`, `MeshNode` 등)을 그대로 쓰되, application
 개발자가 DI, hosted service, handler, location store 모델로 다룰 수 있게 감싼다. 정식
 public API 계약을 검토하는 사람은 [spec/](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)을, runtime
 내부 구조를 고치는 사람은 [internals/](../internals/backend-dependency-policy.ko.md)를

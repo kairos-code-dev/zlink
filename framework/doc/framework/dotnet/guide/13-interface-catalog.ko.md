@@ -280,7 +280,7 @@ options.ConfigureDispatch()
 
     mesh.SetEntrySpotRoutingId(RoutingId.From("entry"));
     mesh.AddSpotFactory<RoomSpot>();   // user Spot: 요청마다 동적 생성
-    mesh.AddEntrySpot<EntrySpot>();    // Entry Spot: SpotNode 당 단일 진입점
+    mesh.AddEntrySpot<EntrySpot>();    // Entry Spot: MeshNode 당 단일 진입점
 
     mesh.PeerConnections.Connect(     // store 없는 수동 peering (store가 있으면 자동)
         RoutingId.From("play-b"), "tcp://127.0.0.1:5601");

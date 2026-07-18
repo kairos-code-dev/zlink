@@ -77,13 +77,13 @@ builder.Services.AddScoped<
 
 - socket source 이름은 `channel + capability`(예: `profile.server`,
   `profile.client`) 형태다. capability는 `server`, `client`, `publisher`,
-  `subscriber` 중 하나다. spot은 `SpotNode` 등록 이름(예: `stage-node`)이다.
+  `subscriber` 중 하나다. spot은 `MeshNode` 등록 이름(예: `stage-node`)이다.
 - location source 이름(예: `location-runtime`)은 event의 `SourceName` 으로만
   쓰이는 자유 문자열이라 별도 infrastructure 등록 이름으로 검증하지 않는다.
 - location/spot polling 주기는 **항상 명시**해야 한다(숨은 기본 주기 없음 — 운영
   코드가 polling 비용을 설정에서 바로 읽도록).
 - socket source가 등록된 channel capability와 맞지 않거나, spot source가 등록된
-  `SpotNode` 이름과 맞지 않으면 시작 단계 예외다. location source는 자유 문자열이라
+  `MeshNode` 이름과 맞지 않으면 시작 단계 예외다. location source는 자유 문자열이라
   이 검증의 대상이 아니다.
 - `AddSocketEvents(...)`에 kind를 안 넘기면 그 source가 지원하는 모든 이벤트를
   받는다.

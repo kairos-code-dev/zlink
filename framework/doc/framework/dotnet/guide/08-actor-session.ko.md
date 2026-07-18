@@ -34,7 +34,7 @@ membership은 그대로 남는다(actor id만 같으면 되니 — 멱등).
 
 ### (A) 분리 — Session 서버 ↔ Play 서버 (다른 프로세스)
 
-Session 서버는 자기 프로세스에 gateway 용 local SpotNode 하나를 두고(자동 연결), 그 gateway가
+Session 서버는 자기 프로세스에 gateway 용 local MeshNode 하나를 두고(자동 연결), 그 gateway가
 **원격 Play 서버의 actor로 relay를 forward** 한다. 그래서 relay가 네트워크를 한 번 건너간다.
 (예: **Bingo** 샘플 — Session·Play·Api와 location store를 각각
 별도 서버로 운영)
@@ -62,7 +62,7 @@ sequenceDiagram
 ### (B) 통합 — Session + Play (같은 프로세스)
 
 한 `AddZLinkFramework` 안에 StreamNode(session)와 RouteMesh/ActorFactory(play)를 함께 두면, stream의
-gateway가 **같은 프로세스의 그 SpotNode로 자동 연결**된다. relay가 프로세스 안에서 끝나
+gateway가 **같은 프로세스의 그 MeshNode로 자동 연결**된다. relay가 프로세스 안에서 끝나
 네트워크를 타지 않는다. (예: **TicTacToe** 샘플)
 
 ```csharp
@@ -70,12 +70,12 @@ builder.Services.AddZLinkFramework(options =>
 {
     spot.AddActorFactory<PlayerActorFactory>("player");      // play 역할
 
-    // session 역할 — gateway는 같은 프로세스의 SpotNode로 자동 연결(in-process relay)
+    // session 역할 — gateway는 같은 프로세스의 MeshNode로 자동 연결(in-process relay)
     options.AddStreamNode("client-stream")
         .Bind("tcp://0.0.0.0:9000")
         .RegisterSession<PlaySession>();
 
-    // play 역할 — 같은 프로세스가 SpotNode를 호스팅(= 위 stream의 gateway 입구)
+    // play 역할 — 같은 프로세스가 MeshNode를 호스팅(= 위 stream의 gateway 입구)
     options.AddRouteMesh("play-spot")
         .Listen("tcp://0.0.0.0:9201")
         .AddEntrySpot<PlayerEntrySpot>()
@@ -83,10 +83,10 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> STREAM의 actor-gateway 입구는 **같은 프로세스의 (router가 켜진) SpotNode로 자동 연결**된다 —
-> stream과 SpotNode를 한 프로세스에 두면 framework가 자동으로 연결한다(별도 호출 없음). 통합·분리의
-> 실질적인 차이는 그 gateway SpotNode가 **actor를 직접 호스팅하느냐(통합)** vs **원격 Play SpotNode로
-> forward 하느냐(분리)** 다. actor의 실제 위치는 bind 된 ref가 운반하고, gateway SpotNode는
+> STREAM의 actor-gateway 입구는 **같은 프로세스의 (router가 켜진) MeshNode로 자동 연결**된다 —
+> stream과 MeshNode를 한 프로세스에 두면 framework가 자동으로 연결한다(별도 호출 없음). 통합·분리의
+> 실질적인 차이는 그 gateway MeshNode가 **actor를 직접 호스팅하느냐(통합)** vs **원격 Play MeshNode로
+> forward 하느냐(분리)** 다. actor의 실제 위치는 bind 된 ref가 운반하고, gateway MeshNode는
 > 그쪽으로 relay·return을 잇는 입구일 뿐이다.
 
 ### 장단점 — 언제 무엇을
@@ -181,7 +181,7 @@ public sealed class AuthenticateSessionPacketHandler(IZLinkActorManager actors)
 > 작성법은 [09-stream](09-stream.ko.md)이 다룬다.
 
 위 예제는 actor가 **같은 프로세스**에 있어 `IZLinkActorManager.GetOrCreateAsync`로 바로 만들고
-bind 한다. actor를 **다른 SpotNode(Play 서버)** 가 호스팅하는 분리 토폴로지(§1 A)에서는, Play 서버에
+bind 한다. actor를 **다른 MeshNode(Play 서버)** 가 호스팅하는 분리 토폴로지(§1 A)에서는, Play 서버에
 actor를 보장해 달라고 요청해 ref 3종을 받은 뒤, 그 값으로 `ActorRef`를 만들어 bind 한다
 (ensure-then-bind).
 
@@ -349,7 +349,7 @@ actorId)`를 쓴다. location store를 읽어 actor가 존재하는 spot의 논�
 조회용 public 표면이 없다 — actor가 client로 push 할 때는 `Context.BoundSession`을 쓰면 된다.
 
 spot rid → 주소 변환을 기본(location store) 대신 직접 구현으로 바꾸고 싶을 때만
-`AddLocationStore(...)`를 등록한다. `JoinSpot(spotRid, ...)`가 SpotNode 경계를 넘을 때
+`AddLocationStore(...)`를 등록한다. `JoinSpot(spotRid, ...)`가 MeshNode 경계를 넘을 때
 이 변환이 쓰인다.
 
 ## 5. 오류 처리 — `ZLinkFrameworkException`
@@ -371,7 +371,7 @@ framework가 던지는 actor/spot/session 관련 오류는 `ZLinkFrameworkExcept
 ## 6. 등록 코드
 
 session relay는 application route mesh channel로 흐르지 않는다. STREAM session의 actor-gateway
-입구는 **같은 프로세스의 (router가 켜진) local SpotNode로 자동 연결**된다(별도 호출 없음).
+입구는 **같은 프로세스의 (router가 켜진) local MeshNode로 자동 연결**된다(별도 호출 없음).
 `BindAsync(...)`가 local actor ref 또는 Play 서버가 발급한 remote actor locator를 core SessionRelay
 경로에 bind 하므로, session handler는 route mesh channel 이름이나 router socket을 알 필요가 없다.
 
@@ -383,12 +383,12 @@ session relay는 application route mesh channel로 흐르지 않는다. STREAM s
 ```csharp
 builder.Services.AddZLinkFramework(options =>
 {
-    // STREAM session의 actor-gateway 입구로 쓸 local SpotNode (router만 있으면 됨)
+    // STREAM session의 actor-gateway 입구로 쓸 local MeshNode (router만 있으면 됨)
     options.AddRouteMesh("game.session")
         .Listen("tcp://0.0.0.0:9101")
         .SetRoutingId(sessionNodeRid);
 
-    options.AddStreamNode("client-stream")   // gateway는 위 game.session SpotNode로 자동 연결
+    options.AddStreamNode("client-stream")   // gateway는 위 game.session MeshNode로 자동 연결
         .Bind("tcp://0.0.0.0:9000")
         .RegisterSession<TicTacToeSession>();
 });
@@ -407,7 +407,7 @@ builder.Services.AddZLinkFramework(options =>
         {
             var node = mesh;
             node.Listen("tcp://0.0.0.0:9201");
-            node.AddEntrySpot<PlayerEntrySpot>();  // Entry Spot은 SpotNode 당 1개(actor가 처음 머무는 곳)
+            node.AddEntrySpot<PlayerEntrySpot>();  // Entry Spot은 MeshNode 당 1개(actor가 처음 머무는 곳)
             node.AddSpotFactory<MatchSpot>();      // user Spot은 factory로 요청마다 동적 생성
 
         }
@@ -416,7 +416,7 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> SpotNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)와 샘플 코드를
+> MeshNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)와 샘플 코드를
 > 기준으로 확인한다.
 
 ## 7. 더 보기

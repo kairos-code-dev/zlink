@@ -77,8 +77,6 @@ framework.AddClientServerChannel("shop.profile").EnableClient();
   연결은 자동 연결의 상태 맞추기 작업이 끊지 않는다.
 - 사용자 저장소가 필요하면 통합 계약 `IZLinkLocationStore` 구현체를 같은 지점에
   등록한다.
-- 단일 프로세스 개발·테스트는 `framework.UseInMemoryLocationStores()` 한 줄로
-  Redis 없이 같은 동작을 얻는다.
 
 > **샘플에서 보기 — [Bingo](../../common/sample/bingo/README.ko.md).** gateway와 play
 > 노드를 분리한 배포에서 endpoint를 코드에 적지 않고 store 자동 연결로 서로 찾는다.

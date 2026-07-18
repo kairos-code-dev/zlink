@@ -18,7 +18,7 @@ actor는 **ID로 식별되는 상태 보유 객체**다. 같은 `ActorId`로 들
 인스턴스**가 처리한다(일반 handler는 stateless 라 메시지마다 새로 resolve 된다). 게임에서 한
 플레이어, 한 session의 진행 상태를 담기에 맞다.
 
-호출자는 actor가 어느 SpotNode/Spot에 있는지 몰라도 된다. `actorId` 만으로 호출하면 routing은
+호출자는 actor가 어느 MeshNode/Spot에 있는지 몰라도 된다. `actorId` 만으로 호출하면 routing은
 framework가 등록된 resolver로 푼다.
 
 actor **하나**를 볼 때 서로 독립인 **두 속성**이 있다.
@@ -137,7 +137,7 @@ builder.Services.AddZLinkFramework(options =>
     spot.AddActorFactory<PlayerActorFactory>("player");  // "player" = actorType 등록 키. GetOrCreate가 이 키로 factory를 고른다.
     spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player");
     // remote 이동 때 보존할 actor state가 있을 때만 custom adapter를 등록한다.
-    // Entry Spot / user Spot 등록(AddEntrySpot / AddSpotFactory)은 SpotNode 쪽에서
+    // Entry Spot / user Spot 등록(AddEntrySpot / AddSpotFactory)은 MeshNode 쪽에서
     // ([08-actor-session](08-actor-session.ko.md) §6 등록 코드)
 });
 
@@ -166,7 +166,7 @@ actor 안에서의 spot join과 현재 상태 조회는 주입된 `IZLinkActorCo
 | `SpotRid?` | 현재 Spot join 상태 조회. `null`이면 어느 Spot에도 참여하지 않은 상태다. |
 | `BoundSession` | 자기 client로 push ([08-actor-session §3](08-actor-session.ko.md)) |
 | `JoinSpot(spotRid, requestMessage)` | user Spot으로 join하며 `.Async(ct)`로 종결한다. framework가 대기 중인 실행 turn을 관리한다. |
-| `JoinEntrySpot(spotNodeRid, requestMessage)` | target SpotNode의 Entry Spot으로 이동하며 `.Async(ct)`로 종결한다. |
+| `JoinEntrySpot(spotNodeRid, requestMessage)` | target MeshNode의 Entry Spot으로 이동하며 `.Async(ct)`로 종결한다. |
 
 `JoinSpot`/`JoinEntrySpot`도 `Request`처럼 reply 대기 `Timeout(...)` override를 받는다. 생략하면
 기본 timeout을 쓰고, join 대기가 기본과 달라야 할 때만 지정한다(샘플은 기본값).
@@ -176,7 +176,7 @@ join 호출은 현재 actor handler 실행의 일부다. handler가 만든 호�
 않는다. actor 실행과 분리한 작업의 결과로 이동해야 한다면 그 결과를 새 actor message로 전달하고,
 그 message를 처리하는 handler 안에서 join을 호출한다.
 
-`spotRid`는 user Spot의 `RoutingId`이고, `spotNodeRid`는 Entry Spot을 가진 SpotNode의
+`spotRid`는 user Spot의 `RoutingId`이고, `spotNodeRid`는 Entry Spot을 가진 MeshNode의
 `RoutingId`다. `matchId`나 `roomId` 같은 domain 값에서 `RoutingId`를 얻는 규칙은 application이
 정하는데, 샘플·e2e는 대부분 **domain id를 그대로 `RoutingId.From(roomId)`** 로 쓴다(예: Bingo의
 `RoutingId.From(matched.RoomId)`, DeliveryDispatch의 `RoutingId.From(deliveryId)`). 즉 별도
@@ -265,14 +265,14 @@ framework가 actor lifecycle의 특정 시점마다 그 Spot의 **콜백 메서�
 
 ### actor 이동 — 무슨 일이 일어나나 (로컬 vs 크로스노드)
 
-`JoinSpot`으로 actor가 한 Spot에서 다른 Spot으로 옮길 때, 대상 Spot이 **같은 SpotNode**에
-있느냐 **다른 SpotNode**에 있느냐로 동작이 갈린다. 노드가 graceful drain으로 내려갈
+`JoinSpot`으로 actor가 한 Spot에서 다른 Spot으로 옮길 때, 대상 Spot이 **같은 MeshNode**에
+있느냐 **다른 MeshNode**에 있느냐로 동작이 갈린다. 노드가 graceful drain으로 내려갈
 때도 같은 크로스노드 메커니즘으로 framework가 actor를 다른 노드로 자동 handoff한다
 ([12-operations §2](12-operations.ko.md)).
 
 **① 같은 노드 — route 이동(단일 인스턴스).** 인스턴스는 그대로 두고 위치(route)만 바꾼다.
 
-`JoinSpot`을 부르는 주체는 **지금 Entry Spot에 살고 있는 그 actor**(정확히는 그 actor의 handler)다 —
+`JoinSpot`을 부르는 주체는 **현재 Entry Spot에 존재하는 actor**(정확히는 그 actor의 handler)다 —
 actor가 스스로 "나를 BingoRoom으로 옮겨 달라"고 요청하는 흐름이다(§4.②의 Entry Spot actor handler
 참고). framework는 target(BingoRoom)에 입장 허가를 물어보고(admission), 허가되면 **source(Entry Spot)에
 "떠났다"(`OnLeave`), target(BingoRoom)에 "도착했다"(`OnJoined`)**를 알린다. actor 객체는 내내 같은 하나다.

@@ -19,15 +19,19 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         ISpot spot,
         ZLinkMeshDispatchPump pump,
         ZLinkMeshCompletionTable completions,
-        Func<string?>? publishChannelName = null)
+        Func<string?>? publishChannelName = null,
+        ZLinkSpotSubscriptionTracker? subscriptions = null)
     {
         _node = node;
         _spot = spot;
         _pump = pump;
         _completions = completions;
         _publishChannelName = publishChannelName ?? (static () => null);
+        _subscriptions = subscriptions;
         _state = pump.RegisterSpot(spot.RoutingId);
     }
+
+    private readonly ZLinkSpotSubscriptionTracker? _subscriptions;
 
     // Spot pub/sub is logical multicast on the router plane: the publish and
     // subscription channel is the node's mesh channel; the topic is the
@@ -50,6 +54,7 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
     public void SetSubscription(string topic)
     {
         _spot.SetSubscription(PublishChannel(topic), topic);
+        _subscriptions?.Add(_spot.RoutingId, topic);
     }
 
     public ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags)
@@ -226,6 +231,7 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
 
     public ValueTask DisposeAsync()
     {
+        _subscriptions?.RemoveSpot(_spot.RoutingId);
         return _spot.DisposeAsync();
     }
 }

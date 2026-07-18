@@ -15,6 +15,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     private readonly ZLinkMeshDispatchPump _pump;
     private readonly ConcurrentDictionary<string, ulong> _peerIntents =
         new(StringComparer.Ordinal);
+    private readonly ZLinkSpotSubscriptionTracker _subscriptions = new();
     private readonly object _forwardGate = new();
     private readonly Dictionary<ZLinkBackendActorRef, List<Message>> _forwardBuffers = new();
     private readonly object _lifecycleGate = new();
@@ -178,7 +179,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
             _node, _node.CreateSpot(), _pump, _completions,
-            () => _primaryChannelName);
+            () => _primaryChannelName, _subscriptions);
     }
 
     public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
@@ -186,7 +187,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
             _node, _node.GetOrCreateSpot(spotRid, out created),
-            _pump, _completions, () => _primaryChannelName);
+            _pump, _completions, () => _primaryChannelName, _subscriptions);
     }
 
     public ZLinkSpotNodeStatus Status()
@@ -211,8 +212,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
 
     public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects()
     {
-        // MeshNode does not surface a subject table; empty preserves callers.
-        return Array.Empty<ZLinkSpotNodeSubjectEntry>();
+        // MeshNode surfaces no subject table; the framework owns the spots it
+        // created and their logical-multicast subscriptions, so the subject
+        // view (spec 50 snapshot) derives from that tracking.
+        return _subscriptions.Snapshot();
     }
 
     public IZLinkBackendSpot EntrySpot()
@@ -223,7 +226,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
             EnsureStarted();
             return _entrySpot ??= new ZLinkBackendSpotWrapper(
                 _node, _node.EntrySpot(), _pump, _completions,
-                () => _primaryChannelName);
+                () => _primaryChannelName, _subscriptions);
         }
     }
 

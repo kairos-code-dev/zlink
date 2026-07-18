@@ -26,7 +26,13 @@ internal sealed class ZLinkStreamRuntimeManager(
             ZLinkStreamNodeRuntime? runtime = null;
             try
             {
-                socket = streamAdapter.CreateStreamSocket(state.Context, actorDispatchNode);
+                // The standalone fallback node (minted only when no shared MeshNode
+                // exists) is named by the stream's actor-dispatch MeshName, else the
+                // stream node name — Core requires a non-empty mesh name.
+                var standaloneMeshName = streamNodeRegistration.ActorDispatchMeshName
+                    ?? streamNodeRegistration.StreamNodeName;
+                socket = streamAdapter.CreateStreamSocket(
+                    state.Context, standaloneMeshName, actorDispatchNode);
                 if (streamNodeRegistration.TlsServer is { } tlsServer)
                     socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
 

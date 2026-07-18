@@ -3983,7 +3983,7 @@ public sealed partial class EntrySpotActorDispatchTests
         // a SpotNodeMode and is invoked once per ZLinkSpotNodeRegistration. When a
         // pub/sub-only registration is present it is enumerated first, so the first
         // call resolves to the pub/sub-only node and later calls to the routed node.
-        public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context)
+        public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context, string meshName)
         {
             var index = _createCount++;
             return index == 0 && pubSubOnlyNode is not null ? pubSubOnlyNode : node;

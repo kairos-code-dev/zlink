@@ -54,11 +54,12 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
 internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
 {
-    public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context)
+    public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context, string meshName)
     {
+        var nativeContext = (context as ZLinkBackendContextWrapper)?.NativeContext
+                            ?? throw new InvalidOperationException("Expected the .NET backend context wrapper.");
         return new ZLinkBackendSpotNodeWrapper(
-            (context as ZLinkBackendContextWrapper)?.NativeContext.CreateMeshNode()
-            ?? throw new InvalidOperationException("Expected the .NET backend context wrapper."));
+            nativeContext.CreateMeshNode(new Systems.Zlink.MeshNodeOptions { MeshName = meshName }));
     }
 }
 
@@ -66,6 +67,7 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
 {
     public IZLinkBackendStreamSocket CreateStreamSocket(
         IZLinkBackendContext context,
+        string standaloneMeshName,
         IZLinkBackendSpotNode? actorDispatchNode = null)
     {
         var nativeContext = (context as ZLinkBackendContextWrapper)?.NativeContext
@@ -82,7 +84,8 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
             return new ZLinkBackendStreamSocketWrapper(
                 socket, shared.NativeNode, shared.Completions, ownsNode: false);
 
-        var node = nativeContext.CreateMeshNode();
+        var node = nativeContext.CreateMeshNode(
+            new Systems.Zlink.MeshNodeOptions { MeshName = standaloneMeshName });
         return new ZLinkBackendStreamSocketWrapper(
             socket, node, completions: null, ownsNode: true);
     }

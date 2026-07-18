@@ -83,7 +83,7 @@ public sealed class BackendAdapterFactoryTests
         IZLinkSpotBackendAdapter spotAdapter)
     {
         await using var context = channelAdapter.CreateContext();
-        await using var spotNode = spotAdapter.CreateSpotNode(context);
+        await using var spotNode = spotAdapter.CreateSpotNode(context, "test-mesh");
 
         Assert.IsType<ZLinkBackendSpotNodeWrapper>(spotNode);
     }
@@ -93,7 +93,7 @@ public sealed class BackendAdapterFactoryTests
         IZLinkStreamBackendAdapter streamAdapter)
     {
         await using var context = channelAdapter.CreateContext();
-        await using var streamSocket = streamAdapter.CreateStreamSocket(context);
+        await using var streamSocket = streamAdapter.CreateStreamSocket(context, "test-mesh");
 
         Assert.IsType<ZLinkBackendStreamSocketWrapper>(streamSocket);
     }
@@ -128,7 +128,14 @@ public sealed class BackendAdapterFactoryTests
         var channelAdapter = factory.CreateChannelAdapter();
         var spotAdapter = factory.CreateSpotAdapter();
         await using var context = channelAdapter.CreateContext();
-        await using var spotNode = spotAdapter.CreateSpotNode(context);
+        await using var spotNode = spotAdapter.CreateSpotNode(context, "test-mesh");
+
+        // Core's zlink_mesh_node_start requires routing-id + bind + channel before the
+        // node leaves the CREATED state (matches ZLinkSpotNodeInitializer's non-lazy
+        // startup); configure them so the wrapper's lazy EnsureStarted can succeed.
+        spotNode.SetRoutingId(RoutingId.From("entry-singleton-node"));
+        spotNode.SetRouterBind("inproc://entry-singleton-node");
+        spotNode.AddChannel("test-mesh");
 
         var accesses = Enumerable.Range(0, 32)
             .Select(_ => Task.Run(spotNode.EntrySpot))

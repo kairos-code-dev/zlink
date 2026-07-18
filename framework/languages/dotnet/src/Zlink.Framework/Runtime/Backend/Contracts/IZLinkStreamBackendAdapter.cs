@@ -7,7 +7,10 @@ internal interface IZLinkStreamBackendAdapter
     // session service is created from that shared node rather than a freshly
     // minted one. actorDispatchNode is that shared node (null when the process
     // has no MeshNode, in which case a standalone node is minted as a fallback).
+    // standaloneMeshName names the fallback MeshNode minted when actorDispatchNode
+    // is null; Core requires a non-empty mesh name at construction (EINVAL otherwise).
     IZLinkBackendStreamSocket CreateStreamSocket(
         IZLinkBackendContext context,
+        string standaloneMeshName,
         IZLinkBackendSpotNode? actorDispatchNode = null);
 }

@@ -18,7 +18,11 @@ internal sealed class ZLinkSpotNodeInitializer(
 
         foreach (var spotNodeRegistration in registration.SpotNodes.Values)
         {
-            var node = spotAdapter.CreateSpotNode(state.Context);
+            // Core requires the mesh membership name at construction; SpotMeshChannelName
+            // is the meshName from AddRouteMesh(meshName) (falls back to the node name).
+            var meshName = spotNodeRegistration.SpotMeshChannelName
+                ?? spotNodeRegistration.SpotNodeName;
+            var node = spotAdapter.CreateSpotNode(state.Context, meshName);
             var nodeRoutingId = CreateNodeRoutingId(spotNodeRegistration);
             node.SetRoutingId(nodeRoutingId);
             node.ApplyRoleConfig(

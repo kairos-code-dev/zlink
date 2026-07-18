@@ -73,7 +73,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             options.DefaultRequestTimeout = TimeSpan.FromSeconds(5);
             options.Codecs.Use(ZLinkProtobufCodec.Default);
             options.UseFilter<TestFilter>();
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
 
             {
                 var channel = options.AddClientServerChannel("profile");
@@ -203,7 +203,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
 
         builder.Services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             options.AddRouteMesh("game.stage").Listen(endpoint).ChannelName("game.stage");
         });
         builder.Services.AddZLinkMonitoring(options =>
@@ -255,7 +255,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             options.AddRouteMesh("game.stage").Listen("tcp://127.0.0.1:9000").ChannelName("game.stage");
         });
         services.AddZLinkMonitoring(options =>

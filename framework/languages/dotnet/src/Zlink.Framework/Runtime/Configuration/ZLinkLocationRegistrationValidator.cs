@@ -9,7 +9,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         {
             throw new ZLinkConfigurationException(
                 "AddLocationStore registers every store role at once and cannot be combined with "
-                + "UseInMemoryLocationStores.");
+                + "UseTestLocationStore.");
         }
 
         foreach (var (spotMeshName, routeChannelName) in locations.Options.SpotRouterChannels)
@@ -30,7 +30,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         if (!locations.Enabled)
             throw new ZLinkConfigurationException(
-                "Allocated routing ids require AddLocationStore(...) or UseInMemoryLocationStores().");
+                "Allocated routing ids require AddLocationStore(...) or UseTestLocationStore().");
         if (locations.StoreInstance is not null
             && locations.StoreInstance is not IZLinkRoutingIdSlotAllocationStore)
             throw new ZLinkConfigurationException(

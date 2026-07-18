@@ -11,14 +11,14 @@ namespace Zlink.Framework.Runtime.Configuration;
 // host startup (see ZLinkLocationRegistrationValidator / ValidateSpotNode).
 internal static class ZLinkTestLocationStores
 {
-    internal static void UseInMemoryLocationStores(this IZLinkFrameworkOptions options)
+    internal static void UseTestLocationStore(this IZLinkFrameworkOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         if (options is not ZLinkFrameworkOptionsBuilder builder)
             throw new InvalidOperationException(
-                "UseInMemoryLocationStores requires the framework options created by AddZLinkFramework.");
+                "UseTestLocationStore requires the framework options created by AddZLinkFramework.");
 
-        builder.UseInMemoryLocationStores();
+        builder.UseTestLocationStore();
     }
 }

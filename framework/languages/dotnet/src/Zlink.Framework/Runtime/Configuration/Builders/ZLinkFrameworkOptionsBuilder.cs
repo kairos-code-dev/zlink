@@ -106,7 +106,7 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     // gap 90 §12.33 S8-08). Not on IZLinkFrameworkOptions; single-process contract
     // tests reach it through the internal ZLinkTestLocationStores helper. Production
     // hosts register a distributed store via AddLocationStore or fail fast.
-    internal void UseInMemoryLocationStores()
+    internal void UseTestLocationStore()
     {
         _registration.Locations.UseInMemoryStores = true;
     }

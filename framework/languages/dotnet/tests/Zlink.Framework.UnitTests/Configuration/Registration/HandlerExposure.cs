@@ -80,7 +80,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
         var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             services.AddZLinkFramework(options =>
             {
-                options.UseInMemoryLocationStores();
+                options.UseTestLocationStore();
                 {
                     var channel = options.AddFanoutChannel("profile.events");
                     channel.EnableSubscriber();
@@ -332,7 +332,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             {
                 var channel = options.AddRouteMeshChannel("route").EnableServer("tcp://0.0.0.0:5700");
                 channel.SetRoutingId(RoutingId.From("route-node"));
@@ -382,7 +382,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             {
                 var channel = options.AddRouteMeshChannel("backend");
                 channel.EnableServer("tcp://127.0.0.1:7101");

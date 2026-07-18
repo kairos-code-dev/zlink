@@ -113,7 +113,7 @@ public sealed class ActorClientTests
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             options.AddRouteMesh("play").Listen("inproc://actor-client").ChannelName("play");
         });
 

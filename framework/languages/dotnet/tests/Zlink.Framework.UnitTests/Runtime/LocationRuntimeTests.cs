@@ -330,7 +330,7 @@ public sealed class LocationRuntimeTests
     public async Task InMemory_Registration_Resolves_Resolvers_Query_And_Shared_Store()
     {
         var services = new ServiceCollection();
-        services.AddZLinkFramework(options => options.UseInMemoryLocationStores());
+        services.AddZLinkFramework(options => options.UseTestLocationStore());
         await using var provider = services.BuildServiceProvider();
 
         Assert.NotNull(provider.GetRequiredService<IZLinkMeshNodeLocationResolver>());

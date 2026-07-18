@@ -40,7 +40,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             options.AddRouteMeshChannel("play")
                 .EnableServer("tcp://127.0.0.1:7101")
                 .EnableClient("tcp://127.0.0.1:7102");
@@ -137,7 +137,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
                 var channel = options.AddClientServerChannel("profile").EnableClient("tcp://127.0.0.1:7101");
             }
 
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -153,7 +153,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
         IZLinkEndpointConnections? connections = null;
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             connections = options.AddClientServerChannel("profile")
                 .EnableClient()
                 .ClientConnections;
@@ -171,7 +171,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             {
                 var routed = options.AddRouteMeshChannel("backend");
                 routed.EnableServer("tcp://127.0.0.1:7201");
@@ -187,7 +187,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             options.AddRouteMeshChannel("backend")
                 .EnableClient();
         });
@@ -250,7 +250,7 @@ public sealed class ChannelsTests : RegistrationValidationSupport
 
         services.AddZLinkFramework(options =>
         {
-            options.UseInMemoryLocationStores();
+            options.UseTestLocationStore();
             {
                 var routed = options.AddRouteMeshChannel("backend");
                 routed.EnableServer("tcp://127.0.0.1:7203");

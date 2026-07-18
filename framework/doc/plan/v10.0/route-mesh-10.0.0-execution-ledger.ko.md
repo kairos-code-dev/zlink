@@ -398,7 +398,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S6 Core release candidate | 완료(로컬 종결) | 0 | 0 | 0 | RC tag `core/v10.0.0-rc.1`. local Conan create·consumer smoke(`zlink 10.0.0`) 통과, SONAME 10, stable package 부재. GitHub native artifact·conan-release CI는 S11 외부배포로 이월(build.yml workflow-file issue·conandata sha256) |
 | S7 bindings·framework 공통 준비 | 완료 | 0 | 0 | 0 | RC artifact 동기화(libzlink 10.0.0→4 lane native), 제거 정책 검색 문자열·공통 smoke 정의 고정, Python/Go/Rust 보류. release workflow는 S11 이월 |
 | S8-CPP lane (C ABI+C++ bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-4 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~3 결함(ownership/claim수명/metadata/transfer/dead-code 연쇄) 전량 해소, no-hit ZERO, 라이브러리+15samples green. low 4건 follow-up(`iteration-4/low-followups.ko.md`). 다음=cpp framework 미러 |
-| **S8-DN lane (.NET bindings→framework) [참조 lane]** | framework 진행(구현 축 대부분 완료) | 0 | 0 | 0 | bindings CLEAN. framework compile-green + core-correct(lifecycle·stream·relay·transfer) + **S8-02/02A/03/05/06/16 완료**(AddRouteMesh 빌더·RouteMesh DI·node/channel handler dispatch·전송 배선·ready/claim pump·MeshName uniqueness, 구 AddSpotMesh/bridge 제거, build 0/0). 잔여=S8-04/04A/04B(location·Redis authority)·S8-06A/06B/07(metadata·timer·NoDrop)·UnitTests 이관 drift·samples/E2E(S8-09/10)·`DOTNET REVIEW CLEAN`(S8-13~15) |
+| **S8-DN lane (.NET bindings→framework) [참조 lane]** | framework 구현 완료·UnitTests green | 0 | 0 | 0 | bindings CLEAN. framework compile-green + core-correct(lifecycle·stream·relay·transfer) + **S8-02/02A/03/05/06/16 완료**(AddRouteMesh 빌더·RouteMesh DI·node/channel handler dispatch·전송 배선·ready/claim pump·MeshName uniqueness, 구 AddSpotMesh/bridge 제거, build 0/0). **UnitTests 677/683 green**(6 fail=doc-regression, S8-09/10/17 추적). **MeshNode 생성 EINVAL 근본수정**(mesh-name 배선)이 native gap 3건 해소. 잔여=binding-surface gap batch(metadata·NoDrop·actor-row → S8-06A/07/04 완결)·samples/E2E(S8-09/10)·`DOTNET REVIEW CLEAN`(S8-13~15)·internals(S8-17/18) |
 | S8-JVM lane (Java/Kotlin bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-5 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~4(raw-layer ABI·router_recv_part arity·recv_handler 재매핑·C bridge dead 함수) 전량 해소. Java FFI/Panama, C bridge 실빌드 검증, 제거심볼 게이트 EMPTY. low 2 follow-up. 다음=jvm framework 미러 |
 | S8-NODE lane (Node.js bindings→framework) | **bindings CLEAN** | 0 | 0 | 0 | **bindings 게이트 통과**(iter-4 두 리뷰어 R1 opus·R2 Sonnet 모두 `BINDINGS REVIEW CLEAN`). iter-1~3(enum 값·RouterSocket·kind_data·transfer·ready-handler·option 테이블) 전량 해소, no-hit 0, addon+tsc green. low 4건 follow-up. 다음=node framework 미러 |
 | S11 Core stable·bindings 외부 배포·최종 검토 | 미착수 | 0 | 0 | 0 | - |
@@ -1054,6 +1054,13 @@ spec/guide 근거를 확인한 뒤 binding에 추가하고, 해당 lane bindings
 
 **완료(2026-07-18)**: S8-02/02A/03/05/06/16(빌더·DI·handler dispatch·전송 배선·pump·MeshName),
 S8-04A/04B(Redis transfer authority·production 정책), S8-06B(timer 검증). Framework+AspNetCore+Redis 0/0.
+
+**UnitTests 이관 완료(2026-07-18)**: ~14 test 파일 10.0.0 MeshNode surface로 이관. 통합 중 발견한
+**MeshNode 생성 EINVAL 근본 버그**(framework가 mesh-name 없이 CreateMeshNode → Core zlink_mesh_node_new
+거부) 수정 = SpotMeshChannelName/ActorDispatchMeshName을 CreateSpotNode/CreateStreamSocket에 배선.
+이 한 수정이 리뷰어 C 보고 native gap 3건(CreateMeshNode EINVAL·stream shutdown timeout·통합 hang/crash)을
+모두 해소. **전체 UnitTests 677/683 green**; 남은 6건은 Documentation.RegressionTests(E2E fixture 8/15
+미연결·contract-ledger/README/acceptance 미갱신)로 S8-09/10/12A/17/18 완료 시 green이 되는 추적 게이트.
 
 ## 13. S8-CPP·JVM·NODE lane 상세 — C++·Java/Kotlin·Node.js framework 단계
 

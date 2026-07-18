@@ -4,92 +4,97 @@ namespace Zlink.Framework.Locations.Redis.Tests;
 
 public sealed class RedisLocationFixtureTests
 {
-    private const string OwnerA = "owner-a";
+    private static readonly DateTimeOffset FixtureUpdatedAt =
+        new(2024, 7, 15, 0, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void MeshNode_Descriptor_V1_Fixture_Matches_Current_Codec_Output()
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(FixturePath("mesh-node-descriptor-v1.json")));
+        var root = document.RootElement;
+
+        Assert.Equal("mesh-node-descriptor-v1", root.GetProperty("format").GetString());
+        Assert.Equal(
+            new[] { "owner", "gen", "json", "updatedAtMs", "mesh" },
+            ReadStringArray(root.GetProperty("hashFields")));
+
+        var row = root.GetProperty("row");
+        Assert.Equal("mesh", RequiredString(row, "kind"));
+
+        var descriptor = new ZLinkMeshNodeDescriptor(
+            "game",
+            RoutingId.From("game-a"),
+            LifecycleGeneration: 7,
+            DescriptorRevision: 3,
+            "tcp://10.0.0.1:7300",
+            new Dictionary<string, int>(StringComparer.Ordinal) { ["orders"] = 100, ["world"] = 50 },
+            Draining: false,
+            SecurityIdentity: "cluster-a",
+            OwnerId: "mesh-owner-a",
+            UpdatedAt: FixtureUpdatedAt);
+
+        Assert.Equal(
+            RequiredString(row, "key"),
+            ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
+                new ZLinkMeshNodeDescriptorKey(descriptor.MeshName, descriptor.Rid)));
+
+        var hash = row.GetProperty("hash");
+        Assert.Equal(descriptor.OwnerId, RequiredString(hash, "owner"));
+        Assert.Equal(descriptor.MeshName, RequiredString(hash, "mesh"));
+        Assert.Equal(
+            RequiredString(hash, "json"),
+            ZLinkRedisLocationRowJson.Serialize(descriptor));
+    }
 
     [Fact]
     public void Actor_Location_V2_Fixture_Matches_Current_Codec_Output()
     {
-        using var document = JsonDocument.Parse(File.ReadAllText(FixturePath()));
+        using var document = JsonDocument.Parse(File.ReadAllText(FixturePath("actor-location-v2.json")));
         var root = document.RootElement;
 
-        Assert.Equal(
-            "All four Redis extensions must match this fixture byte-for-byte. Canonical contract: framework/doc/framework/spec/server/41-location-store-redis.ko.md.",
-            root.GetProperty("notice").GetString());
         Assert.Equal("actor-location-v2", root.GetProperty("format").GetString());
         Assert.Equal(
-            new[] { "owner", "gen", "json", "updatedAtMs" },
+            new[] { "owner", "gen", "json", "updatedAtMs", "mesh" },
             ReadStringArray(root.GetProperty("hashFields")));
 
-        var rows = root.GetProperty("rows").EnumerateArray().ToDictionary(
-            row => RequiredString(row, "kind"),
-            row => row);
+        var row = root.GetProperty("row");
+        Assert.Equal("actor", RequiredString(row, "kind"));
 
-        AssertRow(
-            rows["actor"],
-            "7:actor-1",
-            ZLinkRedisLocationRowJson.Serialize(TestRows.Actor(OwnerA, 0)));
-        AssertRow(
-            rows["peer"],
-            "10:route-mesh4:play6:router12:6e6f64652d31",
-            ZLinkRedisLocationRowJson.Serialize(TestRows.Peer(OwnerA)));
-        AssertRow(
-            rows["spot"],
-            "4:play12:73706f742d31",
-            ZLinkRedisLocationRowJson.Serialize(TestRows.Spot(OwnerA, "spot-1")));
-        AssertRow(
-            rows["route"],
-            "1:17:route-1",
-            ZLinkRedisLocationRowJson.Serialize(TestRows.Route(OwnerA)));
-
-        var actorJson = RequiredString(rows["actor"].GetProperty("hash"), "json");
-        Assert.Contains("\"ActorRef\":{\"nodeRid\":\"6e6f64652d31\",\"actorId\":\"actor-1\",\"generation\":1}", actorJson, StringComparison.Ordinal);
-        Assert.Contains("\"LocationKind\":1", actorJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("SpotKind", actorJson, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Actor_Location_V2_Fixture_Keys_Match_Current_Key_Codec_Output()
-    {
-        using var document = JsonDocument.Parse(File.ReadAllText(FixturePath()));
-        var rows = document.RootElement.GetProperty("rows").EnumerateArray().ToDictionary(
-            row => RequiredString(row, "kind"),
-            row => row);
-
-        var actor = TestRows.Actor(OwnerA, 0);
-        var peer = TestRows.Peer(OwnerA);
-        var spot = TestRows.Spot(OwnerA, "spot-1");
-        var route = TestRows.Route(OwnerA);
+        var actor = new ZLinkActorLocation(
+            "game",
+            "actor-1",
+            "player",
+            new ActorRef(RoutingId.From("game-a"), "actor-1", 11),
+            OwnerNodeRid: RoutingId.From("game-a"),
+            OwnerNodeGeneration: 7,
+            SpotRid: RoutingId.From("spot-1"),
+            SpotGeneration: 3,
+            SpotKind: ZLinkSpotKind.User,
+            MembershipEpoch: 4,
+            OwnerId: "actor-owner-a",
+            UpdatedAt: FixtureUpdatedAt);
 
         Assert.Equal(
-            ZLinkRedisLocationKeyCodec.EncodeActorKey(new ZLinkActorLocationKey(actor.ActorId)),
-            RequiredString(rows["actor"], "key"));
-        Assert.Equal(
-            ZLinkRedisLocationKeyCodec.EncodePeerKey(new ZLinkPeerLocationKey(
-                peer.AutoConnectType,
-                peer.MeshName,
-                peer.Role,
-                peer.NodeRid,
-                peer.Endpoint)),
-            RequiredString(rows["peer"], "key"));
-        Assert.Equal(
-            ZLinkRedisLocationKeyCodec.EncodeSpotKey(new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid)),
-            RequiredString(rows["spot"], "key"));
-        Assert.Equal(
-            ZLinkRedisLocationKeyCodec.EncodeRouteKey(new ZLinkRouteLocationKey(route.RouteKind, route.RouteKey)),
-            RequiredString(rows["route"], "key"));
-    }
+            RequiredString(row, "key"),
+            ZLinkRedisLocationKeyCodec.EncodeActorKey(
+                new ZLinkActorLocationKey(actor.MeshName, actor.ActorId)));
 
-    private static void AssertRow(JsonElement row, string expectedKey, string expectedJson)
-    {
-        Assert.Equal(expectedKey, RequiredString(row, "key"));
         var hash = row.GetProperty("hash");
-        Assert.Equal(OwnerA, RequiredString(hash, "owner"));
-        Assert.Equal("0", RequiredString(hash, "gen"));
-        Assert.Equal(expectedJson, RequiredString(hash, "json"));
-        Assert.Equal("0", RequiredString(hash, "updatedAtMs"));
+        Assert.Equal(actor.OwnerId, RequiredString(hash, "owner"));
+        Assert.Equal(actor.MeshName, RequiredString(hash, "mesh"));
+        var json = RequiredString(hash, "json");
+        Assert.Equal(json, ZLinkRedisLocationRowJson.Serialize(actor));
+
+        // The actor ref is the typed camelCase object, never a string format.
+        Assert.Contains(
+            "\"ActorRef\":{\"nodeRid\":\"67616d652d61\",\"actorId\":\"actor-1\",\"generation\":11}",
+            json,
+            StringComparison.Ordinal);
+        Assert.Contains("\"SpotKind\":2", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("LocationKind", json, StringComparison.Ordinal);
     }
 
-    private static string FixturePath()
+    private static string FixturePath(string fileName)
     {
         foreach (var root in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
         {
@@ -98,10 +103,11 @@ public sealed class RedisLocationFixtureTests
             {
                 var candidate = Path.Combine(
                     directory.FullName,
+                    "framework",
                     "testdata",
                     "location",
                     "redis",
-                    "actor-location-v2.json");
+                    fileName);
                 if (File.Exists(candidate))
                 {
                     return candidate;
@@ -111,7 +117,7 @@ public sealed class RedisLocationFixtureTests
             }
         }
 
-        throw new FileNotFoundException("Could not find testdata/location/redis/actor-location-v2.json.");
+        throw new FileNotFoundException($"Could not find framework/testdata/location/redis/{fileName}.");
     }
 
     private static string RequiredString(JsonElement element, string propertyName) =>

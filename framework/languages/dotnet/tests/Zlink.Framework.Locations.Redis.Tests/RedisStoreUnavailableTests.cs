@@ -24,10 +24,10 @@ public sealed class RedisStoreFailureTests
         await using var store = CreateUnreachableStore();
 
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.UpdateActorAsync(TestRows.Actor("owner-a", 0), ZLinkLocationWriteIntent.NewClaim));
+            await store.UpdateActorAsync(TestRows.Actor("owner-a"), ZLinkLocationWriteIntent.NewClaim));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.RemoveActorAsync(
-                new ZLinkActorLocationKey("actor-1"),
+                new ZLinkActorLocationKey("play", "actor-1"),
                 new ZLinkLocationOwnerToken("owner-a", 1)));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.RemoveAllByOwnerAsync("owner-a"));
@@ -42,12 +42,12 @@ public sealed class RedisStoreFailureTests
         await using var store = CreateUnreachableStore();
 
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
+            await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-1")));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.ListPeersAsync(new ZLinkPeerLocationFilter()));
+            await store.ListMeshNodesAsync("play"));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.GetChangeStampAsync(
-                new ZLinkLocationChangeStampScope(ZLinkLocationKind.Actor, null)));
+                new ZLinkLocationChangeStampScope(ZLinkLocationChangeScopeKind.Actor, null)));
     }
 
     [Fact]

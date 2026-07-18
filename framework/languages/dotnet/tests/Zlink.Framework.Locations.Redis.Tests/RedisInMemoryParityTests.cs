@@ -31,24 +31,25 @@ public sealed class RedisInMemoryParityTests
         var inMemoryStore = new ZLinkInMemoryLocationStore();
 
         var redisTrace = await RunScenarioAsync(
-            redisStore, redisStore, redisStore, redisStore, redisStore, redisStore);
+            redisStore, redisStore, redisStore, redisStore, redisStore);
         var inMemoryTrace = await RunScenarioAsync(
-            inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore);
+            inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore, inMemoryStore);
 
         Assert.Equal(inMemoryTrace, redisTrace);
     }
 
     private static async Task<IReadOnlyList<string>> RunScenarioAsync(
-        IZLinkPeerLocationStore peers,
+        IZLinkMeshNodeLocationStore meshNodes,
         IZLinkSpotLocationStore spots,
         IZLinkActorLocationStore actors,
-        IZLinkRouteLocationStore routes,
         IZLinkOwnerLeaseStore leases,
         IZLinkLocationStore store)
     {
         var trace = new List<string>();
         void Record(string step, ZLinkLocationWriteResult result) =>
             trace.Add($"{step}={result.Status}:{result.Generation}");
+        void RecordStatus(string step, ZLinkLocationWriteStatus status) =>
+            trace.Add($"{step}={status}");
         void RecordLease(string step, ZLinkOwnerLeaseRenewal renewal) =>
             trace.Add($"{step}=renewed:{renewal.LeaseExpiresAt > renewal.StoreNow}");
         void RecordBool(string step, bool removed) =>
@@ -58,54 +59,44 @@ public sealed class RedisInMemoryParityTests
         RecordLease("lease-a", await leases.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), leaseTtl));
         RecordLease("lease-b", await leases.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), leaseTtl));
 
-        // Actor lifecycle: claim, conflict, renew guard, takeover fencing,
-        // owner-guarded remove, re-claim after removal.
-        var claim = await actors.UpdateActorAsync(TestRows.Actor(OwnerA, 0), ZLinkLocationWriteIntent.NewClaim);
+        // Actor lifecycle: claim, conflict, owner-guarded renew, takeover
+        // fencing, owner-guarded remove, re-claim after removal.
+        var claim = await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim);
         Record("actor-claim", claim);
         Record("actor-claim-conflict",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerB, 0), ZLinkLocationWriteIntent.NewClaim));
+            await actors.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.NewClaim));
         Record("actor-renew",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerA, claim.Generation), ZLinkLocationWriteIntent.Renew));
-        Record("actor-renew-wrong-generation",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerA, claim.Generation + 9), ZLinkLocationWriteIntent.Renew));
-        var takeover = await actors.UpdateActorAsync(TestRows.Actor(OwnerB, 0), ZLinkLocationWriteIntent.Takeover);
+            await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.Renew));
+        var takeover = await actors.UpdateActorAsync(TestRows.Actor(OwnerB), ZLinkLocationWriteIntent.Takeover);
         Record("actor-takeover", takeover);
         Record("actor-old-owner-renew",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerA, claim.Generation), ZLinkLocationWriteIntent.Renew));
-        Record("actor-old-owner-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"),
+            await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.Renew));
+        RecordStatus("actor-old-owner-remove", await actors.RemoveActorAsync(
+            new ZLinkActorLocationKey("play", "actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, claim.Generation)));
-        Record("actor-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("actor-1"),
+        RecordStatus("actor-remove", await actors.RemoveActorAsync(
+            new ZLinkActorLocationKey("play", "actor-1"),
             new ZLinkLocationOwnerToken(OwnerB, takeover.Generation)));
         Record("actor-reclaim",
-            await actors.UpdateActorAsync(TestRows.Actor(OwnerA, 0), ZLinkLocationWriteIntent.NewClaim));
+            await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim));
 
         // Spot rows plus bulk removal by owner.
         Record("spot-claim-1",
             await spots.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim));
         Record("spot-claim-2",
             await spots.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-2"), ZLinkLocationWriteIntent.NewClaim));
-        Record("spot-remove-wrong-owner", await spots.RemoveSpotAsync(
+        RecordStatus("spot-remove-wrong-owner", await spots.RemoveSpotAsync(
             new ZLinkSpotLocationKey("play", RoutingId.From("spot-1")),
             new ZLinkLocationOwnerToken(OwnerB, 1)));
         trace.Add($"remove-all-by-owner={await store.RemoveAllByOwnerAsync(OwnerA)}");
 
-        // Route claim and generation continuity for a second claim cycle.
-        var routeClaim = await routes.UpdateRouteAsync(TestRows.Route(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Record("route-claim", routeClaim);
-        Record("route-remove", await routes.RemoveRouteAsync(
-            new ZLinkRouteLocationKey(ZLinkRouteKind.ActorSession, "route-1"),
-            new ZLinkLocationOwnerToken(OwnerA, routeClaim.Generation)));
-        Record("route-reclaim",
-            await routes.UpdateRouteAsync(TestRows.Route(OwnerB), ZLinkLocationWriteIntent.NewClaim));
-
         // A removed owner lease makes that owner's remaining rows claimable.
-        var peerClaim = await peers.UpdatePeerAsync(TestRows.Peer(OwnerA), ZLinkLocationWriteIntent.NewClaim);
-        Record("peer-claim", peerClaim);
+        var descriptorClaim = await meshNodes.UpdateMeshNodeAsync(
+            TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
+        Record("mesh-node-claim", descriptorClaim);
         RecordBool("lease-a-remove", await leases.RemoveOwnerLeaseAsync(OwnerA));
-        Record("peer-claim-after-lease-removed",
-            await peers.UpdatePeerAsync(TestRows.Peer(OwnerB), ZLinkLocationWriteIntent.NewClaim));
+        Record("mesh-node-claim-after-lease-removed",
+            await meshNodes.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerB), ZLinkLocationWriteIntent.NewClaim));
 
         return trace;
     }

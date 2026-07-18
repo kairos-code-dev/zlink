@@ -4,83 +4,54 @@ namespace Zlink.Framework.Locations.Redis.Tests;
 
 public sealed class LocationKeyCodecGoldenVectorTests
 {
-    public static TheoryData<ZLinkPeerLocationKey, string> PeerKeys => new()
+    public static TheoryData<ZLinkMeshNodeDescriptorKey, string> MeshNodeKeys => new()
     {
         {
-            Peer(
-                ZLinkLocationAutoConnectType.RouteMesh,
-                ZLinkLocationRole.Router,
-                "play",
-                "node-1",
-                "tcp://ignored-when-node-rid-exists"),
-            "10:route-mesh4:play6:router12:6e6f64652d31"
+            new ZLinkMeshNodeDescriptorKey("play", RoutingId.From("node-1")),
+            "4:play12:6e6f64652d31"
         },
         {
-            Peer(ZLinkLocationAutoConnectType.ClientServer, ZLinkLocationRole.Dealer, "api", null, "tcp://api"),
-            "13:client-server3:api6:dealer9:tcp://api"
-        },
-        {
-            Peer(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer, "jobs", "node-2", null),
-            "11:dealer-mesh4:jobs6:dealer12:6e6f64652d32"
-        },
-        {
-            Peer(ZLinkLocationAutoConnectType.Fanout, ZLinkLocationRole.Pub, "events", null, "tcp://pub"),
-            "6:fanout6:events3:pub9:tcp://pub"
-        },
-        {
-            Peer(ZLinkLocationAutoConnectType.Fanout, ZLinkLocationRole.Sub, "events", null, "tcp://sub"),
-            "6:fanout6:events3:sub9:tcp://sub"
-        },
-        {
-            Peer(ZLinkLocationAutoConnectType.SpotMesh, ZLinkLocationRole.Spot, "world", "spot-1", null),
-            "9:spot-mesh5:world4:spot12:73706f742d31"
+            new ZLinkMeshNodeDescriptorKey("world", RoutingId.From("node-2")),
+            "5:world12:6e6f64652d32"
         }
     };
 
     [Theory]
-    [MemberData(nameof(PeerKeys))]
-    public void Framework_And_Redis_Codecs_Match_All_Peer_Key_Golden_Vectors(
-        ZLinkPeerLocationKey key,
+    [MemberData(nameof(MeshNodeKeys))]
+    public void Framework_And_Redis_Codecs_Match_All_MeshNode_Key_Golden_Vectors(
+        ZLinkMeshNodeDescriptorKey key,
         string expected)
     {
-        Assert.Equal(expected, ZLinkLocationKeyCodec.EncodePeerKey(key));
-        Assert.Equal(expected, ZLinkRedisLocationKeyCodec.EncodePeerKey(key));
+        Assert.Equal(expected, ZLinkLocationKeyCodec.EncodeMeshNodeKey(key));
+        Assert.Equal(expected, ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(key));
     }
 
     [Fact]
-    public void Length_Prefixes_Disambiguate_Adjacent_Peer_Segments()
+    public void Spot_And_Actor_Keys_Match_The_Shared_Canonical_Form()
     {
-        var first = Peer(
-            ZLinkLocationAutoConnectType.ClientServer,
-            ZLinkLocationRole.Dealer,
-            "ab",
-            null,
-            "c");
-        var second = Peer(
-            ZLinkLocationAutoConnectType.ClientServer,
-            ZLinkLocationRole.Dealer,
-            "a",
-            null,
-            "bc");
+        var spot = new ZLinkSpotLocationKey("play", RoutingId.From("spot-1"));
+        Assert.Equal("4:play12:73706f742d31", ZLinkLocationKeyCodec.EncodeSpotKey(spot));
+        Assert.Equal(
+            ZLinkLocationKeyCodec.EncodeSpotKey(spot),
+            ZLinkRedisLocationKeyCodec.EncodeSpotKey(spot));
 
-        Assert.Equal("13:client-server2:ab6:dealer1:c", ZLinkLocationKeyCodec.EncodePeerKey(first));
-        Assert.Equal("13:client-server1:a6:dealer2:bc", ZLinkLocationKeyCodec.EncodePeerKey(second));
+        var actor = new ZLinkActorLocationKey("play", "actor-1");
+        Assert.Equal("4:play7:actor-1", ZLinkLocationKeyCodec.EncodeActorKey(actor));
         Assert.Equal(
-            ZLinkLocationKeyCodec.EncodePeerKey(first),
-            ZLinkRedisLocationKeyCodec.EncodePeerKey(first));
-        Assert.Equal(
-            ZLinkLocationKeyCodec.EncodePeerKey(second),
-            ZLinkRedisLocationKeyCodec.EncodePeerKey(second));
-        Assert.NotEqual(
-            ZLinkLocationKeyCodec.EncodePeerKey(first),
-            ZLinkLocationKeyCodec.EncodePeerKey(second));
+            ZLinkLocationKeyCodec.EncodeActorKey(actor),
+            ZLinkRedisLocationKeyCodec.EncodeActorKey(actor));
     }
 
-    private static ZLinkPeerLocationKey Peer(
-        ZLinkLocationAutoConnectType type,
-        ZLinkLocationRole role,
-        string mesh,
-        string? nodeRid,
-        string? endpoint) =>
-        new(type, mesh, role, nodeRid is null ? null : RoutingId.From(nodeRid), endpoint);
+    [Fact]
+    public void Length_Prefixes_Disambiguate_Adjacent_Segments()
+    {
+        var first = new ZLinkActorLocationKey("ab", "c");
+        var second = new ZLinkActorLocationKey("a", "bc");
+
+        Assert.Equal("2:ab1:c", ZLinkLocationKeyCodec.EncodeActorKey(first));
+        Assert.Equal("1:a2:bc", ZLinkLocationKeyCodec.EncodeActorKey(second));
+        Assert.NotEqual(
+            ZLinkLocationKeyCodec.EncodeActorKey(first),
+            ZLinkLocationKeyCodec.EncodeActorKey(second));
+    }
 }

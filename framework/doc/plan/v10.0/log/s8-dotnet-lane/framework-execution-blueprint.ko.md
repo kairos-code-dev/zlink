@@ -76,3 +76,29 @@ bindings를 로컬 nupkg feed로 pack: `/tmp/zlink-localfeed/Systems.Zlink.10.0.
 - IZLinkChannelRuntimeOptions 공개 계약 rename(CLAUDE.md parity). OnSendReady no-hit vs AsyncSubmitter
   재시도 모델. CreateActor IActor→ActorRef(_ownedActors 처분 부기 제거, DestroyActor(ActorRef)).
   Completion↔MeshOperationId request-completion 라우팅이 가장 까다로움(구 builder .Submit(callback) 대체).
+
+## 아키텍처 결정 정정 (2026-07-18) — Option B: framework-owned dispatch record
+
+Stage-B 실행 에이전트가 **binding gap blocker** 발견: framework seam이 route/subscribe/spot/channel
+dispatch·reply를 bindings의 `Received`/`TopicMessage`로 구동하나(9.x push), 10.0.0에서 그 populate/
+reply-wire 메서드가 `MeshReceiveRecord`로 대체돼 framework 쪽에서 record→Received 브리지 구성 불가
+(`Systems.Zlink`의 Populate 메서드 internal·IVT 없음). 우회(reflection·전면 재작성)는 hack 또는 범위 초과.
+
+**spec 대조**(`framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md:1066-1070`):
+"framework가 claim을 owner별로 drain해 typed handler에 전달하고, **reply token·route envelope·Core
+claim을 dispose하지 않고 직접 관리**한다." → framework가 pull 모델(MeshReceiveRecord)을 직접 소비하고
+reply token을 보유하는 것이 10.0.0 정본 설계. `Received`/`TopicMessage`(9.x raw-socket 수신형)로 브리지백
+하는 것이 아님.
+
+**결정(Option B)**: framework의 mesh dispatch·reply plane을 **framework-owned dispatch record**로 재배선.
+- seam이 route/subscribe/spot/channel 수신을 framework record(source rid·spot rid·request seq·
+  `Message[]`(RetainMessage)·**reply token**)로 전달. `received.Reply()` 대신 framework record가 보유한
+  reply token으로 `MeshReceiveRecord.Reply`/`ReplyJoin` 호출.
+- 재배선 범위(route/subscribe/reply plane): `IZLinkBackendSpot.RecvRoute(Received)`/`Subscribe(TopicMessage)`
+  seam 계약 → framework record; consumer `ZLinkSpotRouteDispatcher`·`ZLinkSpotReplySubmitter`·
+  `ZLinkSpotActivationDispatcher`·구독 드레인·`ZLinkEnvelopeHeader` 디코드 적응.
+- actor/join/lifecycle/completion/sendready/transfer plane은 이미 framework-owned 타입(agent 확인) — pump가
+  직접 구성, 변경 최소.
+- **bindings 무변경**(CLEAN·4-lane parity 보호). blueprint의 "seam 보존·~30파일 재배선 회피"는 무효화 —
+  route/subscribe/reply plane은 재배선 필요(단, actor 등 나머지 plane은 최소).
+- cpp/jvm/node framework 미러의 참조 설계도 동일(framework-owned dispatch record, bindings 무변경).

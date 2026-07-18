@@ -2,55 +2,68 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Mappings;
 
 internal static class ZLinkDotNetBackendMappings
 {
-    public static ZLinkSpotKind ToFramework(this SpotKind spotKind)
-    {
-        return spotKind switch
-        {
-            SpotKind.Entry => ZLinkSpotKind.Entry,
-            SpotKind.User => ZLinkSpotKind.User,
-            _ => ZLinkSpotKind.Invalid
-        };
-    }
-
-    public static ZLinkSpotNodeStatus ToFramework(this SpotNodeStatus status)
+    public static ZLinkSpotNodeStatus ToFramework(this MeshNodeStatus status)
     {
         return new ZLinkSpotNodeStatus(
-            status.ChannelName,
+            status.MeshName,
             status.LocalEndpoint,
-            status.NodeRoutingId,
-            (ZLinkSpotNodeState)status.State,
+            status.RoutingId,
+            MapNodeState(status.State),
             status.ConfiguredPeerCount,
-            status.ActivePeerCount,
-            status.ConnectedPeerCount,
-            status.SubjectCount,
-            status.ReadySubjectCount,
+            status.AdmittedPeerCount,
+            status.AdmittedPeerCount,
+            status.ChannelCount,
+            status.ChannelCount,
             status.LastError,
             status.LastChangedMs);
     }
 
-    public static ZLinkSpotNodePeerEntry ToFramework(this SpotNodePeerEntry entry)
+    private static ZLinkSpotNodeState MapNodeState(MeshNodeState state)
     {
-        return new ZLinkSpotNodePeerEntry(
-            entry.ChannelName,
-            entry.LocalEndpoint,
-            entry.PeerEndpoint,
-            (ZLinkSpotPeerSource)entry.Source,
-            (ZLinkSpotPeerKind)entry.Kind,
-            (ZLinkSpotPeerState)entry.State,
-            entry.Weight,
-            entry.ConnectedSinceMs,
-            entry.LastChangedMs);
+        return state switch
+        {
+            MeshNodeState.Created => ZLinkSpotNodeState.Idle,
+            MeshNodeState.Started => ZLinkSpotNodeState.Connecting,
+            MeshNodeState.PartialReady => ZLinkSpotNodeState.PartialReady,
+            MeshNodeState.Ready => ZLinkSpotNodeState.Ready,
+            MeshNodeState.Error => ZLinkSpotNodeState.Error,
+            _ => ZLinkSpotNodeState.Idle
+        };
     }
 
-    public static ZLinkSpotNodeSubjectEntry ToFramework(this SpotNodeSubjectEntry entry)
+    public static ZLinkSpotNodePeerEntry ToFramework(this MeshNodePeer peer)
     {
-        return new ZLinkSpotNodeSubjectEntry(
-            (ZLinkSpotRole)entry.Role,
-            entry.Subject,
-            (ZLinkSubjectKind)entry.SubjectKind,
-            entry.ReadyPeerCount,
-            entry.ActivePeerCount,
-            entry.LastChangedMs);
+        return new ZLinkSpotNodePeerEntry(
+            string.Empty,
+            string.Empty,
+            peer.Endpoint,
+            MapPeerSource(peer.Source),
+            ZLinkSpotPeerKind.SpotMesh,
+            MapPeerState(peer.State),
+            peer.ChannelCount,
+            0,
+            peer.LastChangedMs);
+    }
+
+    private static ZLinkSpotPeerSource MapPeerSource(MeshPeerSource source)
+    {
+        return source switch
+        {
+            MeshPeerSource.Manual => ZLinkSpotPeerSource.Manual,
+            MeshPeerSource.Discovery => ZLinkSpotPeerSource.Discovery,
+            _ => ZLinkSpotPeerSource.Mixed
+        };
+    }
+
+    private static ZLinkSpotPeerState MapPeerState(MeshPeerState state)
+    {
+        return state switch
+        {
+            MeshPeerState.Configured => ZLinkSpotPeerState.Configured,
+            MeshPeerState.Connecting => ZLinkSpotPeerState.Connecting,
+            MeshPeerState.Admitted => ZLinkSpotPeerState.Connected,
+            _ => ZLinkSpotPeerState.Configured
+        };
     }
 
     public static ZLinkBackendSocketMonitorEvent ToFramework(this MonitorEvent monitorEvent)
@@ -61,82 +74,6 @@ internal static class ZLinkDotNetBackendMappings
             monitorEvent.LocalAddr,
             monitorEvent.RemoteAddr,
             monitorEvent.Value);
-    }
-
-    public static ZLinkBackendSpotDispatchInfo ToFramework(this SpotDispatchInfo info)
-    {
-        IReadOnlyList<ZLinkBackendActorPart>? actorParts = null;
-        if (info.Event == SpotDispatchEvent.ActorReadable && info.ActorMessages.Count > 0)
-        {
-            var mapped = new List<ZLinkBackendActorPart>();
-            foreach (var message in info.ActorMessages)
-                mapped.AddRange(message.ToFrameworkParts());
-            actorParts = mapped;
-        }
-
-        return new ZLinkBackendSpotDispatchInfo(
-            info.Event switch
-            {
-                SpotDispatchEvent.SubscribeReadable => ZLinkBackendSpotDispatchEvent.SubscribeReadable,
-                SpotDispatchEvent.RoutedReadable => ZLinkBackendSpotDispatchEvent.RouteReadable,
-                SpotDispatchEvent.ChannelReplyReadable => ZLinkBackendSpotDispatchEvent.ChannelReplyReadable,
-                SpotDispatchEvent.ActorJoinReadable => ZLinkBackendSpotDispatchEvent.ActorJoinReadable,
-                SpotDispatchEvent.ActorReadable => ZLinkBackendSpotDispatchEvent.ActorReadable,
-                SpotDispatchEvent.ActorLifecycleReadable => ZLinkBackendSpotDispatchEvent.ActorLifecycleReadable,
-                _ => ZLinkBackendSpotDispatchEvent.Internal
-            },
-            info.Event == SpotDispatchEvent.ChannelReplyReadable
-            && info.SubjectKind == SpotDispatchSubjectKind.ChannelDealer
-                ? info.DrainChannelReply
-                : null,
-            actorParts);
-    }
-
-    public static IReadOnlyList<ZLinkBackendActorPart> ToFrameworkParts(
-        this ActorReceived message)
-    {
-        var parts = new ZLinkBackendActorPart[message.Parts.Count];
-        for (var i = 0; i < parts.Length; i++)
-            parts[i] = new ZLinkBackendActorPart(
-                message.Info.Actor.ToBackend(),
-                message.Info.SourceNodeRid,
-                message.Info.SourceSessionRid,
-                message.Info.RequestId,
-                message.Info.Flags,
-                message.Parts[i],
-                i + 1 < parts.Length);
-
-        return parts;
-    }
-
-    public static ZLinkBackendSpotActorLifecycleInfo ToFramework(
-        this SpotActorLifecycleInfo info)
-    {
-        return new ZLinkBackendSpotActorLifecycleInfo(
-            info.PreviousActor is { } previousActor
-                ? previousActor.ToBackend()
-                : null,
-            info.CurrentActor is { } currentActor
-                ? currentActor.ToBackend()
-                : null,
-            info.PreviousSpotRid,
-            info.CurrentSpotRid,
-            info.JoinEpoch,
-            info.Flags);
-    }
-
-    public static ZLinkBackendSpotActorLifecycleEvent ToFramework(
-        this SpotActorLifecycleEvent lifecycle)
-    {
-        return new ZLinkBackendSpotActorLifecycleEvent(
-            lifecycle.Kind switch
-            {
-                SpotActorLifecycleEventKind.Joined => ZLinkBackendActorLifecycleEventKind.Joined,
-                SpotActorLifecycleEventKind.Left => ZLinkBackendActorLifecycleEventKind.Left,
-                SpotActorLifecycleEventKind.Disconnected => ZLinkBackendActorLifecycleEventKind.Disconnected,
-                _ => ZLinkBackendActorLifecycleEventKind.Joined
-            },
-            lifecycle.Info.ToFramework());
     }
 
     public static ZLinkBackendActorRef ToBackend(this ActorRef actorRef)

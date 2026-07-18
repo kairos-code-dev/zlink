@@ -158,7 +158,7 @@ internal sealed partial class ZLinkEntrySpotActivation
     }
 
     public async ValueTask DispatchRouteAsync(
-        Received received,
+        ZLinkBackendRouteReceived received,
         CancellationToken cancellationToken)
     {
         await ExecuteAsync(

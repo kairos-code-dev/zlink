@@ -52,12 +52,10 @@ internal sealed class ZLinkDotNetChannelBackendAdapter : IZLinkChannelBackendAda
 
 internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
 {
-    public IZLinkBackendSpotNode CreateSpotNode(
-        IZLinkBackendContext context,
-        SpotNodeMode mode)
+    public IZLinkBackendSpotNode CreateSpotNode(IZLinkBackendContext context)
     {
         return new ZLinkBackendSpotNodeWrapper(
-            (context as ZLinkBackendContextWrapper)?.NativeContext.CreateSpotNode(mode)
+            (context as ZLinkBackendContextWrapper)?.NativeContext.CreateMeshNode()
             ?? throw new InvalidOperationException("Expected the .NET backend context wrapper."));
     }
 }
@@ -66,11 +64,13 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
 {
     public IZLinkBackendStreamSocket CreateStreamSocket(IZLinkBackendContext context)
     {
-        var socket = (context as ZLinkBackendContextWrapper)?.NativeContext.CreateStreamSocket()
-                     ?? throw new InvalidOperationException("Expected the .NET backend context wrapper.");
+        var nativeContext = (context as ZLinkBackendContextWrapper)?.NativeContext
+                            ?? throw new InvalidOperationException(
+                                "Expected the .NET backend context wrapper.");
+        var socket = nativeContext.CreateStreamSocket();
         socket.Options.Linger = TimeSpan.Zero;
-        return new ZLinkBackendStreamSocketWrapper(
-            socket);
+        var node = nativeContext.CreateMeshNode();
+        return new ZLinkBackendStreamSocketWrapper(socket, node);
     }
 }
 

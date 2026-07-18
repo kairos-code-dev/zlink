@@ -121,13 +121,12 @@ internal sealed class ZLinkSpotSubscriptionRegistry
         Func<ZLinkSpotSubscriptionDescriptor, object?, CancellationToken, ValueTask> dispatchAsync,
         CancellationToken cancellationToken)
     {
-        using var message = new TopicMessage();
         while (!cancellationToken.IsCancellationRequested)
         {
-            bool received;
+            ZLinkBackendSubscribeMessage? message;
             try
             {
-                received = nativeSpot.Subscribe(message, RecvFlags.DontWait);
+                message = nativeSpot.Subscribe(RecvFlags.DontWait);
             }
             catch (ZlinkRecvException ex)
                 when (ex.Result is ZlinkRecvException.ErrorCode.NoData
@@ -136,15 +135,17 @@ internal sealed class ZLinkSpotSubscriptionRegistry
                 return;
             }
 
-            if (!received) return;
+            if (message is null) return;
 
-            await DispatchMessageAsync(message, codecs, dispatchErrors, logger, dispatchAsync, cancellationToken)
-                .ConfigureAwait(false);
+            using (message)
+                await DispatchMessageAsync(
+                        message, codecs, dispatchErrors, logger, dispatchAsync, cancellationToken)
+                    .ConfigureAwait(false);
         }
     }
 
     private async ValueTask DispatchMessageAsync(
-        TopicMessage message,
+        ZLinkBackendSubscribeMessage message,
         ZLinkCodecRegistryBuilder? codecs,
         ZLinkDispatchErrorReporter dispatchErrors,
         ILogger logger,

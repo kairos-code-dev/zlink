@@ -15,7 +15,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
-    private IZLinkBackendSpotRouteBridge? _spotRouteBridge;
 
     public ZLinkRouteChannelRuntime(
         IServiceProvider services,
@@ -54,8 +53,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         _connections = new ZLinkRouteConnectionSet(router);
         _receivePump = new ZLinkRouteReceivePump(
             router,
-            () => _spotRouteBridge,
-            registration.RouterChannelId,
             new ZLinkRoutePacketDispatcher(
                 registration.RouterChannelId,
                 router,
@@ -91,8 +88,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
         Capture(RequestStop);
         await CaptureAsync(_taskRunner.StopAsync).ConfigureAwait(false);
         await CaptureAsync(_submitter.DisposeAsync).ConfigureAwait(false);
-        if (_spotRouteBridge is not null)
-            await CaptureAsync(_spotRouteBridge.DisposeAsync).ConfigureAwait(false);
         await CaptureAsync(_router.DisposeAsync).ConfigureAwait(false);
         Capture(_stopSource.Dispose);
         if (failures.Count == 1)
@@ -123,67 +118,6 @@ internal sealed class ZLinkRouteChannelRuntime : IAsyncDisposable
                 failures.Add(exception);
             }
         }
-    }
-
-    public void AttachSpotRouteBridge(
-        IZLinkBackendSpotRouteBridge bridge)
-    {
-        if (_spotRouteBridge is not null)
-            throw new ZLinkConfigurationException(
-                $"Route channel '{RouterChannelId}' is already attached to a SPOT route bridge.");
-
-        bridge.AttachRouterChannel(
-            RouterChannelId,
-            _router);
-        _spotRouteBridge = bridge;
-    }
-
-    internal bool TrySendViaSpotRouteBridge(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts)
-    {
-        if (_spotRouteBridge is null) return false;
-
-        var accepted = _spotRouteBridge.Send(
-            RouterChannelId,
-            targetNodeRid,
-            targetSpotRid,
-            parts,
-            SendFlags.DontWait);
-        if (!accepted)
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RouteNotConnected,
-                $"Route channel '{RouterChannelId}' is not ready for SPOT route bridge send.");
-
-        _spotRouteBridge.Drain();
-        return true;
-    }
-
-    internal bool TryRequestViaSpotRouteBridge(
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        TimeSpan timeout)
-    {
-        if (_spotRouteBridge is null) return false;
-
-        var accepted = _spotRouteBridge.Request(
-            RouterChannelId,
-            targetNodeRid,
-            targetSpotRid,
-            parts,
-            callback,
-            SendFlags.DontWait,
-            timeout);
-        if (!accepted)
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RouteNotConnected,
-                $"Route channel '{RouterChannelId}' is not ready for SPOT route bridge request.");
-
-        _spotRouteBridge.Drain();
-        return true;
     }
 
     public void Start()

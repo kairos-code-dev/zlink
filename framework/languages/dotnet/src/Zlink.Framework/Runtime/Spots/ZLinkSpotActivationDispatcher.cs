@@ -124,28 +124,22 @@ internal sealed class ZLinkSpotActivationDispatcher
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var received = Received.Create();
-            if (!nativeSpot.RecvRoute(received, RecvFlags.DontWait))
-            {
-                received.Dispose();
-                return;
-            }
+            var received = nativeSpot.RecvRoute(RecvFlags.DontWait);
+            if (received is null) return;
 
             await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
-            runtime.DrainSpotRouteBridges();
         }
     }
 
     public async ValueTask DispatchRouteAsync(
-        Received received,
+        ZLinkBackendRouteReceived received,
         CancellationToken cancellationToken)
     {
         await _routeDispatcher.DispatchAsync(received, cancellationToken).ConfigureAwait(false);
-        runtime.DrainSpotRouteBridges();
     }
 
     private async ValueTask<bool> DispatchInternalRoutePacketAsync(
-        Received received,
+        ZLinkBackendRouteReceived received,
         ZLinkEnvelopeHeader header,
         CancellationToken cancellationToken)
     {
@@ -239,7 +233,7 @@ internal sealed class ZLinkSpotActivationDispatcher
     }
 
     private void ReplyInternalRouteError(
-        Received received,
+        ZLinkBackendRouteReceived received,
         ZLinkEnvelopeHeader header,
         Exception exception)
     {

@@ -4,8 +4,6 @@ namespace Zlink.Framework.Runtime.Channels;
 
 internal sealed class ZLinkRouteReceivePump(
     IZLinkBackendRouterSocket router,
-    Func<IZLinkBackendSpotRouteBridge?> spotRouteBridge,
-    string routerChannelId,
     ZLinkRoutePacketDispatcher dispatcher,
     IZLinkRuntimeErrorSink errorSink)
 {
@@ -22,18 +20,15 @@ internal sealed class ZLinkRouteReceivePump(
                 Received? received = null;
                 try
                 {
-                    DrainSpotRouteBridge();
                     received = router.Recv(RecvFlags.DontWait);
                     if (received is null)
                     {
-                        DrainSpotRouteBridge();
                         await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                         continue;
                     }
 
                     backoff.Reset();
                     if (IsProbeFrame(received)) continue;
-                    if (TryHandleSpotRouteBridgePacket(received)) continue;
 
                     DispatchInBackground(received, cancellationToken);
                     received = null;
@@ -44,7 +39,6 @@ internal sealed class ZLinkRouteReceivePump(
                 }
                 catch (ZlinkRecvException ex) when (ex.Result == ZlinkRecvException.ErrorCode.NoData)
                 {
-                    DrainSpotRouteBridge();
                     await backoff.NoDataAsync(cancellationToken).ConfigureAwait(false);
                 }
                 catch (ObjectDisposedException)
@@ -74,29 +68,9 @@ internal sealed class ZLinkRouteReceivePump(
         }
     }
 
-    private void DrainSpotRouteBridge()
-    {
-        spotRouteBridge()?.Drain();
-    }
-
     private static bool IsProbeFrame(Received received)
     {
         return received.Parts.Count == 0 || received.Parts[0].Size == 0;
-    }
-
-    private bool TryHandleSpotRouteBridgePacket(Received received)
-    {
-        var bridge = spotRouteBridge();
-        if (bridge is null
-            || received.RoutingId is not { } sourceNodeRid)
-            return false;
-
-        var handled = received.RequestSeq is { } requestSeq
-            ? bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, requestSeq, received.Parts)
-            : bridge.HandleRouterReceived(routerChannelId, sourceNodeRid, 0, received.Parts);
-        if (handled) bridge.Drain();
-
-        return handled;
     }
 
     private void DispatchInBackground(

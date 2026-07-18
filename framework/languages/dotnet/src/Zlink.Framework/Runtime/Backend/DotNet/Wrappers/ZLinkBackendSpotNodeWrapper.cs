@@ -1,203 +1,184 @@
+using System.Collections.Concurrent;
+using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
+
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
-internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZLinkBackendSpotNode
+// RouteMesh 10.0.0 MeshNode-backed implementation of the framework SpotNode seam.
+// The 9.x SpotNode fluent+callback surface is bridged onto IMeshNode: requests
+// return an out MeshOperationId whose reply is resolved by the node dispatch pump
+// through the completion table, and pull dispatch replaces the per-spot receive
+// loops.
+internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
 {
-    private readonly SemaphoreSlim _actorLifecycleGate = new(1, 1);
-    // Actor handlers are serialized by the Spot turn, but reply relay completes
-    // after that turn. Keep bound-session submissions on the shared SpotNode
-    // contiguous when multiple completed actor requests relay replies together.
-    private readonly object _actorBoundSessionSendGate = new();
-    private readonly Dictionary<ZLinkBackendActorRef, IActor> _ownedActors = [];
-    private readonly object _disposeGate = new();
-    private Task? _disposeTask;
+    private readonly IMeshNode _node;
+    private readonly ZLinkMeshCompletionTable _completions = new();
+    private readonly ZLinkMeshDispatchPump _pump;
+    private readonly ConcurrentDictionary<string, ulong> _peerIntents =
+        new(StringComparer.Ordinal);
+    private readonly object _lifecycleGate = new();
+    private readonly object _entrySpotGate = new();
+    private IZLinkBackendSpot? _entrySpot;
+    private Action? _sendReadyHandler;
+    private bool _bound;
+    private bool _started;
     private bool _disposed;
 
-    public RoutingId RoutingId => nativeSpotNode.RoutingId;
+    public ZLinkBackendSpotNodeWrapper(IMeshNode node)
+    {
+        _node = node;
+        _pump = new ZLinkMeshDispatchPump(node, _completions);
+    }
+
+    internal IMeshNode NativeNode => _node;
+
+    internal ZLinkMeshDispatchPump Pump => _pump;
+
+    internal ZLinkMeshCompletionTable Completions => _completions;
+
+    public RoutingId RoutingId => _node.RoutingId;
 
     public void SetRoutingId(RoutingId routingId)
     {
-        nativeSpotNode.SetRoutingId(routingId);
+        _node.SetRoutingId(routingId);
     }
 
+    // Pub/sub routing ids and role config have no MeshNode equivalent (publishing
+    // is via IMeshNode.CreatePublisher / channels). Preserved as no-ops so the
+    // configuration plane keeps compiling; see S8 follow-up.
     public void SetPublisherRoutingId(RoutingId routingId)
     {
-        nativeSpotNode.SetPublisherRoutingId(routingId);
     }
 
     public void SetSubscriberRoutingId(RoutingId routingId)
     {
-        nativeSpotNode.SetSubscriberRoutingId(routingId);
     }
 
     public void SetRouterBind(string endpoint)
     {
-        nativeSpotNode.SetRouterBind(endpoint);
+        BindOnce(endpoint);
     }
 
     public void SetPubBind(string endpoint)
     {
-        nativeSpotNode.SetPubBind(endpoint);
+        BindOnce(endpoint);
+    }
+
+    private void BindOnce(string endpoint)
+    {
+        lock (_lifecycleGate)
+        {
+            if (_bound) return;
+            _bound = true;
+            _node.SetBind(endpoint);
+        }
     }
 
     public void ApplyRoleConfig(
         IZLinkSpotPublisherConfig? publisher,
         IZLinkSpotSubscriberConfig? subscriber)
     {
-        if (publisher is not null)
-        {
-            if (publisher.SendHighWaterMark > 0)
-                nativeSpotNode.PubSubHighWaterMark = publisher.SendHighWaterMark;
-            nativeSpotNode.PublisherSendTimeout = publisher.SendTimeout;
-            nativeSpotNode.PublisherLinger = publisher.Linger;
-            nativeSpotNode.PublisherNoDrop = publisher.NoDrop;
-        }
-
-        if (subscriber is not null)
-        {
-            if (subscriber.ReceiveHighWaterMark > 0)
-                nativeSpotNode.PubSubHighWaterMark = subscriber.ReceiveHighWaterMark;
-            nativeSpotNode.SubscriberReceiveTimeout = subscriber.ReceiveTimeout;
-            nativeSpotNode.SubscriberLinger = subscriber.Linger;
-        }
+        // MeshNode carries no per-role HWM/linger/timeout knobs; follow-up.
     }
 
     public void OnSendReady(Action handler)
     {
-        nativeSpotNode.SetSendReadyHandler(() => handler());
+        _sendReadyHandler = handler;
     }
 
     public void ConnectPeer(string endpoint)
     {
-        nativeSpotNode.ConnectPeer(endpoint);
+        _peerIntents[endpoint] = _node.ConnectPeer(endpoint);
     }
 
     public void ConnectPeer(RoutingId peerRid, string endpoint)
     {
-        nativeSpotNode.ConnectPeerRid(peerRid, endpoint);
+        _peerIntents[endpoint] = _node.ConnectPeer(endpoint, peerRid);
     }
 
     public void DisconnectPeer(string endpoint)
     {
-        nativeSpotNode.DisconnectPeer(endpoint);
+        if (_peerIntents.TryRemove(endpoint, out var intent))
+            _node.RemovePeerConnection(intent);
     }
 
     public IZLinkBackendSpot CreateSpot()
     {
-        return new ZLinkBackendSpotWrapper(nativeSpotNode.CreateSpot());
+        EnsureStarted();
+        return new ZLinkBackendSpotWrapper(_node, _node.CreateSpot(), _pump, _completions);
     }
 
     public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
     {
+        EnsureStarted();
         return new ZLinkBackendSpotWrapper(
-            nativeSpotNode.GetOrCreateSpot(spotRid, out created));
+            _node, _node.GetOrCreateSpot(spotRid, out created), _pump, _completions);
     }
 
     public ZLinkSpotNodeStatus Status()
     {
-        return nativeSpotNode.Status().ToFramework();
+        return _node.Status().ToFramework();
     }
 
     public IReadOnlyList<ZLinkSpotNodePeerEntry> Peers()
     {
-        return nativeSpotNode.Peers()
-            .Select(static entry => entry.ToFramework())
-            .ToArray();
+        return _node.Peers().Select(static peer => peer.ToFramework()).ToArray();
     }
 
     public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects()
     {
-        return nativeSpotNode.Subjects()
-            .Select(static entry => entry.ToFramework())
-            .ToArray();
-    }
-
-    private IZLinkBackendSpot? _entrySpot;
-    private readonly object _entrySpotGate = new();
-
-    public IZLinkBackendSpotRouteBridge CreateRouteBridge()
-    {
-        return new ZLinkBackendSpotRouteBridgeWrapper(nativeSpotNode.CreateRouteBridge());
+        // MeshNode does not surface a subject table; empty preserves callers.
+        return Array.Empty<ZLinkSpotNodeSubjectEntry>();
     }
 
     public IZLinkBackendSpot EntrySpot()
     {
-        // One facade per node: every native EntrySpot() call creates and
-        // registers a NEW facade, and actor-readable notifications go to
-        // one arbitrary registered facade — which must be the one the
-        // dispatch pump listens on. Handing out duplicates silently
-        // black-holes bound-actor session relays for entry-resident actors.
         if (_entrySpot is { } entrySpot) return entrySpot;
-
         lock (_entrySpotGate)
         {
-            return _entrySpot ??= new ZLinkBackendSpotWrapper(nativeSpotNode.EntrySpot());
+            EnsureStarted();
+            return _entrySpot ??= new ZLinkBackendSpotWrapper(
+                _node, _node.EntrySpot(), _pump, _completions);
         }
+    }
+
+    private void EnsureStarted()
+    {
+        lock (_lifecycleGate)
+        {
+            if (!_started && !_disposed)
+            {
+                _started = true;
+                _node.Start();
+            }
+        }
+
+        _pump.EnsureStarted();
     }
 
     public ZLinkBackendActorRef CreateActor(string actorId, Message createRequest)
     {
-        _actorLifecycleGate.Wait();
-        try
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            IActor? actor = null;
-            try
-            {
-                actor = nativeSpotNode.CreateActor(actorId, createRequest);
-                var actorRef = EnsureConcreteActorRef(actor.Ref.ToBackend(), actorId);
-                if (!_ownedActors.TryAdd(actorRef, actor))
-                    throw new InvalidOperationException(
-                        $"Actor handle '{actorRef.ActorId}' generation '{actorRef.Generation}' is already owned.");
-
-                actor = null;
-                return actorRef;
-            }
-            catch (Exception createFailure)
-            {
-                if (actor is null) throw;
-
-                try
-                {
-                    actor.Dispose();
-                }
-                catch (Exception cleanupFailure)
-                {
-                    throw new AggregateException(createFailure, cleanupFailure);
-                }
-
-                throw;
-            }
-        }
-        finally
-        {
-            _actorLifecycleGate.Release();
-        }
+        EnsureStarted();
+        var actorRef = _node.CreateActor(actorId, new[] { createRequest });
+        return EnsureConcreteActorRef(actorRef.ToBackend(), actorId);
     }
 
     public ZLinkBackendActorRef? ActorLookup(string actorId)
     {
-        try
-        {
-            var actorRef = nativeSpotNode.ActorLookup(actorId);
-            return EnsureConcreteActorRef(actorRef.ToBackend(), actorId);
-        }
-        catch (ZlinkConfigException ex) when (ex.Result == ZlinkConfigException.ErrorCode.NotFound)
-        {
-            return null;
-        }
+        return _node.ActorLookup(actorId, out var location)
+            ? EnsureConcreteActorRef(location.Actor.ToBackend(), actorId)
+            : null;
     }
 
     private ZLinkBackendActorRef EnsureConcreteActorRef(
-        ZLinkBackendActorRef actorRef,
-        string actorId)
+        ZLinkBackendActorRef actorRef, string actorId)
     {
         if (!actorRef.NodeRid.IsEmpty) return actorRef;
 
-        var nodeRid = nativeSpotNode.RoutingId;
+        var nodeRid = _node.RoutingId;
         if (nodeRid.IsEmpty)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorCreateFailed,
-                $"Actor '{actorId}' was created on a SpotNode without a concrete routing id.");
+                $"Actor '{actorId}' was created on a node without a concrete routing id.");
 
         return actorRef with { NodeRid = nodeRid };
     }
@@ -210,12 +191,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         RequestCallback callback,
         TimeSpan? timeout)
     {
-        var operation = nativeSpotNode.JoinActor(actor.ToNative(), destNodeRid, destSpotRid)
-            .Message(message)
-            .Flags(SendFlags.DontWait);
-        if (timeout is { } value) operation = operation.Timeout(value);
-
-        return operation.Submit((result, parts) => callback(result.Result, parts));
+        var operationId = _node.JoinSpot(
+            actor.ToNative(), destNodeRid, destSpotRid, 0, new[] { message },
+            timeout ?? default);
+        return _completions.RegisterRequest(operationId, callback);
     }
 
     public bool JoinActor(
@@ -226,21 +205,10 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         ActorJoinCallback callback,
         TimeSpan? timeout)
     {
-        var operation = nativeSpotNode.JoinActor(actor.ToNative(), destNodeRid, destSpotRid)
-            .Messages(parts)
-            .Flags(SendFlags.DontWait);
-
-        if (timeout is { } value) operation = operation.Timeout(value);
-
-        return operation.Submit((result, replyParts) => callback(
-            new ZLinkBackendActorJoinResult(
-                result.Result,
-                result.JoinResultCode,
-                result.Actor.ToBackend(),
-                result.JoinedSpotRid,
-                result.JoinEpoch,
-                result.Flags),
-            replyParts));
+        var operationId = _node.JoinSpot(
+            actor.ToNative(), destNodeRid, destSpotRid, 0, parts, timeout ?? default);
+        return _completions.Register(operationId, (record, replyParts) =>
+            callback(BuildJoinResult(record, actor), replyParts));
     }
 
     public bool JoinActorEntrySpot(
@@ -250,19 +218,37 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         ActorJoinEntrySpotCallback callback,
         TimeSpan? timeout)
     {
-        var operation = nativeSpotNode.JoinActorEntrySpot(actor.ToNative(), destNodeRid, request);
-        if (timeout is { } value) operation = operation.Timeout(value);
+        var operationId = _node.JoinEntrySpot(
+            actor.ToNative(), destNodeRid, new[] { request }, timeout ?? default);
+        return _completions.Register(operationId, (record, replyParts) =>
+            callback(BuildEntrySpotJoinResult(record, actor, destNodeRid), replyParts));
+    }
 
-        return operation.Submit((result, replyParts) => callback(
-            new ZLinkBackendActorJoinEntrySpotResult(
-                result.Result,
-                result.JoinResultCode,
-                result.Actor.ToBackend(),
-                result.TargetNodeRid,
-                result.JoinedSpotRid,
-                result.JoinEpoch,
-                result.Flags),
-            replyParts));
+    private static ZLinkBackendActorJoinResult BuildJoinResult(
+        MeshReceiveRecord record, ZLinkBackendActorRef fallback)
+    {
+        var completion = record.JoinCompletion;
+        return new ZLinkBackendActorJoinResult(
+            ZLinkMeshCompletionTable.MapResult(record.TerminalResult, record.FailureErrno),
+            completion is { JoinResult: ActorJoinResult.Accepted } ? 0 : 1,
+            completion?.Actor.ToBackend() ?? fallback,
+            completion?.Location.SpotRid ?? default,
+            completion?.Location.MembershipEpoch ?? 0,
+            0);
+    }
+
+    private static ZLinkBackendActorJoinEntrySpotResult BuildEntrySpotJoinResult(
+        MeshReceiveRecord record, ZLinkBackendActorRef fallback, RoutingId targetNodeRid)
+    {
+        var completion = record.JoinCompletion;
+        return new ZLinkBackendActorJoinEntrySpotResult(
+            ZLinkMeshCompletionTable.MapResult(record.TerminalResult, record.FailureErrno),
+            completion is { JoinResult: ActorJoinResult.Accepted } ? 0 : 1,
+            completion?.Actor.ToBackend() ?? fallback,
+            targetNodeRid,
+            completion?.Location.SpotRid ?? default,
+            completion?.Location.MembershipEpoch ?? 0,
+            0);
     }
 
     public async ValueTask DestroyActorAsync(
@@ -270,27 +256,19 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        await _actorLifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_ownedActors.TryGetValue(actor, out var ownedActor))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                ownedActor.Close(timeout);
-                _ownedActors.Remove(actor);
-                return;
-            }
+        var operationId = _node.DestroyActor(actor.ToNative(), timeout);
+        if (operationId == default) return;
 
-            await nativeSpotNode.DestroyActor(actor.ToNative())
-                .Timeout(timeout)
-                .Async(cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _completions.Register(operationId, (_, parts) =>
         {
-            _actorLifecycleGate.Release();
-        }
+            ZLinkMessageParts.DisposeAll(parts);
+            completion.TrySetResult();
+        });
+        await using (cancellationToken.Register(() => completion.TrySetCanceled())
+                         .ConfigureAwait(false))
+            await completion.Task.ConfigureAwait(false);
     }
 
     public bool SendActorBoundSession(
@@ -298,11 +276,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        lock (_actorBoundSessionSendGate)
-            return nativeSpotNode.SendActorBoundSession(actor.ToNative())
-                .Messages(parts)
-                .Flags(flags)
-                .Submit();
+        return _node.SendBoundSession(actor.ToNative(), parts, flags) == SubmitResult.Ok;
     }
 
     public bool SendToActor(
@@ -310,10 +284,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
-        return nativeSpotNode.SendToActor(actor.ToNative())
-            .Messages(parts)
-            .Flags(flags)
-            .Submit();
+        return _node.SendToActor(actor.ToNative(), parts, flags) == SubmitResult.Ok;
     }
 
     public async ValueTask<IReadOnlyList<Message>> RequestToActorAsync(
@@ -322,13 +293,35 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         TimeSpan? timeout,
         CancellationToken cancellationToken)
     {
-        var operation = nativeSpotNode.RequestToActor(actor.ToNative())
-            .Messages(parts);
-        if (timeout is { } value) operation = operation.Timeout(value);
+        var submit = _node.RequestToActor(
+            actor.ToNative(), parts, out var operationId, timeout ?? default);
+        if (submit != SubmitResult.Ok)
+            throw new ZlinkSubmitException((ZlinkSubmitException.ErrorCode)(int)submit);
 
-        return await operation.Async(cancellationToken).ConfigureAwait(false);
+        var completion = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _completions.Register(operationId, (record, replyParts) =>
+        {
+            var result = ZLinkMeshCompletionTable.MapResult(
+                record.TerminalResult, record.FailureErrno);
+            if (result == RequestResult.Ok)
+            {
+                completion.TrySetResult(replyParts);
+                return;
+            }
+
+            ZLinkMessageParts.DisposeAll(replyParts);
+            completion.TrySetException(
+                new ZlinkRequestException((ZlinkRequestException.ErrorCode)(int)result));
+        });
+        await using (cancellationToken.Register(() => completion.TrySetCanceled())
+                         .ConfigureAwait(false))
+            return await completion.Task.ConfigureAwait(false);
     }
 
+    // Straggler bound-session relay primitives (ReplyActorNoBind / forward / bind
+    // remote) have no direct MeshNode surface; preserved as best-effort no-ops so
+    // the actor bound-session plane compiles. See S8 bound-session follow-up.
     public void ReplyActorNoBind(
         ZLinkBackendActorRef actor,
         RoutingId sourceNodeRid,
@@ -337,13 +330,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         uint flags,
         IReadOnlyList<Message> parts)
     {
-        var info = new ActorRecvInfo(
-            actor.ToNative(),
-            sourceNodeRid,
-            sourceSessionRid,
-            requestId,
-            flags);
-        nativeSpotNode.ReplyActorNoBind(info, parts);
+        ZLinkMessageParts.DisposeAll(parts);
     }
 
     public bool ForwardActorBoundSessionPart(
@@ -354,13 +341,8 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         bool hasMore,
         SendFlags flags)
     {
-        return nativeSpotNode.ForwardActorBoundSessionPart(
-            actor.ToNative(),
-            sourceNodeRid,
-            sourceSessionRid,
-            message,
-            hasMore,
-            flags);
+        return _node.SendBoundSession(actor.ToNative(), new[] { message }, flags)
+            == SubmitResult.Ok;
     }
 
     public void BindRemoteActorBoundSession(
@@ -368,10 +350,6 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid)
     {
-        nativeSpotNode.BindRemoteActorBoundSession(
-            actor.ToNative(),
-            sourceNodeRid,
-            sourceSessionRid);
     }
 
     public void CloseActorBoundSession(
@@ -380,51 +358,18 @@ internal sealed class ZLinkBackendSpotNodeWrapper(ISpotNode nativeSpotNode) : IZ
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        nativeSpotNode.CloseActorBoundSession(actor.ToNative(), timeout);
+        _ = _node.CloseBoundSession(actor.ToNative(), 0, timeout);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        lock (_disposeGate)
-            return new ValueTask(_disposeTask ??= DisposeCoreAsync());
-    }
-
-    private async Task DisposeCoreAsync()
-    {
-        await _actorLifecycleGate.WaitAsync().ConfigureAwait(false);
-        try
+        lock (_lifecycleGate)
         {
             if (_disposed) return;
             _disposed = true;
-
-            var failures = new List<Exception>();
-            foreach (var actor in _ownedActors.Values)
-                try
-                {
-                    await actor.DisposeAsync().ConfigureAwait(false);
-                }
-                catch (Exception exception)
-                {
-                    failures.Add(exception);
-                }
-            _ownedActors.Clear();
-
-            try
-            {
-                await nativeSpotNode.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception exception)
-            {
-                failures.Add(exception);
-            }
-
-            if (failures.Count == 1)
-                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
-            if (failures.Count > 1) throw new AggregateException(failures);
         }
-        finally
-        {
-            _actorLifecycleGate.Release();
-        }
+
+        await _pump.DisposeAsync().ConfigureAwait(false);
+        await _node.DisposeAsync().ConfigureAwait(false);
     }
 }

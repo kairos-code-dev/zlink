@@ -10,14 +10,14 @@ internal sealed class ZLinkSpotRouteDispatcher(
     Func<ZLinkSpotHandlerInvoker> handlerInvoker,
     ZLinkCodecRegistryBuilder codecs,
     ZLinkDispatchErrorReporter dispatchErrors,
-    Func<Received, ZLinkEnvelopeHeader, CancellationToken, ValueTask<bool>>? internalPackets = null,
+    Func<ZLinkBackendRouteReceived, ZLinkEnvelopeHeader, CancellationToken, ValueTask<bool>>? internalPackets = null,
     ILogger<ZLinkSpotRouteDispatcher>? logger = null)
 {
     private readonly ILogger<ZLinkSpotRouteDispatcher> _logger =
         logger ?? NullLogger<ZLinkSpotRouteDispatcher>.Instance;
 
     public async ValueTask DispatchAsync(
-        Received received,
+        ZLinkBackendRouteReceived received,
         CancellationToken cancellationToken)
     {
         using (received)
@@ -193,7 +193,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
     }
 
     private void ReplyError(
-        Received received,
+        ZLinkBackendRouteReceived received,
         ZLinkEnvelopeHeader header,
         Exception exception)
     {
@@ -206,7 +206,7 @@ internal sealed class ZLinkSpotRouteDispatcher(
     }
 
     private void HandleProtocolError(
-        Received received,
+        ZLinkBackendRouteReceived received,
         ZLinkEnvelopeProtocolException protocolError)
     {
         var header = protocolError.Header;

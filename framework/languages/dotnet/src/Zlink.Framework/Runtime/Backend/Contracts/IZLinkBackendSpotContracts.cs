@@ -36,8 +36,6 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects();
 
-    IZLinkBackendSpotRouteBridge CreateRouteBridge();
-
     IZLinkBackendSpot EntrySpot();
 
     ZLinkBackendActorRef CreateActor(string actorId, Message createRequest);
@@ -115,38 +113,6 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         CancellationToken cancellationToken);
 }
 
-internal interface IZLinkBackendSpotRouteBridge : IAsyncDisposable
-{
-    void AttachRouterChannel(
-        string channelName,
-        IZLinkBackendRouterSocket router,
-        SpotRouteBridgeEndpointOptions? options = null);
-
-    bool Send(
-        string channelName,
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        SendFlags flags);
-
-    bool Request(
-        string channelName,
-        RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
-        IReadOnlyList<Message> parts,
-        RequestCallback callback,
-        SendFlags flags,
-        TimeSpan? timeout);
-
-    bool HandleRouterReceived(
-        string channelName,
-        RoutingId sourceNodeRid,
-        ulong requestSeq,
-        IReadOnlyList<Message> parts);
-
-    void Drain();
-}
-
 internal interface IZLinkBackendSpot : IAsyncDisposable
 {
     RoutingId RoutingId { get; }
@@ -155,9 +121,9 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
 
     void SetSubscription(string topic);
 
-    bool Subscribe(TopicMessage result, RecvFlags flags);
+    ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags);
 
-    bool RecvRoute(Received result, RecvFlags flags);
+    ZLinkBackendRouteReceived? RecvRoute(RecvFlags flags);
 
     void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler);
 

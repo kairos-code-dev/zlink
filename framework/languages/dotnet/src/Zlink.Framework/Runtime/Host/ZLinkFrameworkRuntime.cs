@@ -362,30 +362,6 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return state is not null && state.MessageFlowObservers.Enqueue(flow);
     }
 
-    internal void DrainSpotRouteBridges()
-    {
-        var state = IsStarted ? _state : null;
-        if (state is null) return;
-
-        IZLinkBackendSpotRouteBridge[] bridges;
-        lock (state.SyncRoot)
-        {
-            bridges = state.SpotRouteBridges.ToArray();
-        }
-
-        foreach (var bridge in bridges)
-            try
-            {
-                bridge.Drain();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (ZlinkCloseException)
-            {
-            }
-    }
-
     internal ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateForRoutingAsync(
         CancellationToken cancellationToken)
     {

@@ -64,8 +64,6 @@ internal sealed class ZLinkRouteChannelInitializer(
                 state.StopTokenSource.Token,
                 state.TaskRunner.ExecutionOwner,
                 services.GetRequiredService<ZLinkFrameworkRuntime>());
-            await AttachSpotRouteBridgeIfAcceptedAsync(state, routedRegistration, runtime)
-                .ConfigureAwait(false);
             return runtime;
         }
         catch (Exception initializationFailure)
@@ -78,57 +76,6 @@ internal sealed class ZLinkRouteChannelInitializer(
             failures.ThrowIfAny();
             throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
-    }
-
-    private async ValueTask AttachSpotRouteBridgeIfAcceptedAsync(
-        ZLinkFrameworkRuntimeState state,
-        ZLinkRouteChannelRegistration routedRegistration,
-        ZLinkRouteChannelRuntime runtime)
-    {
-        var owner = ResolveSpotRouteBridgeOwner(routedRegistration);
-        if (owner is null) return;
-
-        if (!state.SpotNodes.TryGetValue(owner.SpotNodeName, out var spotRuntime))
-            throw new ZLinkConfigurationException(
-                $"Route channel '{routedRegistration.RouterChannelId}' cannot attach an implicit SPOT route bridge because SPOT node '{owner.SpotNodeName}' is not started.");
-
-        var bridge = spotRuntime.Node.CreateRouteBridge();
-        try
-        {
-            runtime.AttachSpotRouteBridge(bridge);
-            state.SpotRouteBridges.Add(bridge);
-        }
-        catch (Exception attachmentFailure)
-        {
-            var failures = new ZLinkFailureCollector(attachmentFailure);
-            await failures.CaptureAsync(bridge.DisposeAsync).ConfigureAwait(false);
-            failures.ThrowIfAny();
-            throw new InvalidOperationException("Unreachable after bridge cleanup failure propagation.");
-        }
-    }
-
-    private ZLinkSpotNodeRegistration? ResolveSpotRouteBridgeOwner(ZLinkRouteChannelRegistration routeChannel)
-    {
-        if (registration.SpotNodes.TryGetValue(routeChannel.RouterChannelId, out var named)
-            && named.Router is not null)
-            return named;
-
-        if (routeChannel.RoutingId.Size > 0)
-            foreach (var spotNode in registration.SpotNodes.Values)
-                if (spotNode.RoutingId == routeChannel.RoutingId)
-                    return spotNode;
-
-        ZLinkSpotNodeRegistration? owner = null;
-        foreach (var spotNode in registration.SpotNodes.Values)
-        {
-            if (spotNode.Router is null) continue;
-
-            if (owner is not null) return null;
-
-            owner = spotNode;
-        }
-
-        return owner;
     }
 
     private IEnumerable<ZLinkRouteHandlerDescriptor> CreateRouteHandlerDescriptors(

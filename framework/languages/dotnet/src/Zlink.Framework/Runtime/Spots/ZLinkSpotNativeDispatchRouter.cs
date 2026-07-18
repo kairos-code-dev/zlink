@@ -4,7 +4,7 @@ internal static class ZLinkSpotNativeDispatchRouter
 {
     public static void Attach(
         IZLinkBackendSpot nativeSpot,
-        Action<IReadOnlyList<Received>> routeReadable,
+        Action<IReadOnlyList<ZLinkBackendRouteReceived>> routeReadable,
         Action<Action?> channelReplyReadable,
         Action subscribeReadable,
         Action actorJoinReadable,

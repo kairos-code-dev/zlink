@@ -136,70 +136,34 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
                 .ConfigureAwait(false);
     }
 
+    // RouteMesh 10.0.0: remote spot delivery no longer rides a ROUTER-socket
+    // route bridge. Cross-node spot addressing now flows through the MeshNode spot
+    // plane (ISpot.SendToSpot/RequestToSpot); routing a spot address to a bare
+    // route channel is unsupported pending the S8 route/spot-plane follow-up.
     private sealed class RouteChannelTarget(ZLinkRouteChannelRuntime routeChannel)
         : IRouterTarget
     {
-        // Remote spot delivery over a route channel uses the bridge relay
-        // framing exclusively: it is the only spot inbound the receiving
-        // pump dispatches (spot-address messaging contract §6).
         public ValueTask SendAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             CancellationToken cancellationToken)
         {
-            if (!routeChannel.TrySendViaSpotRouteBridge(
-                    targetNodeRid,
-                    targetSpotRid,
-                    parts))
-                throw new ZLinkConfigurationException(
-                    $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot delivery.");
-
-            return ValueTask.CompletedTask;
+            throw new ZLinkConfigurationException(
+                $"Route channel '{routeChannel.RouterChannelId}' cannot deliver spot-addressed " +
+                "sends in RouteMesh 10.0.0; use the MeshNode spot plane.");
         }
 
-        public async ValueTask<IReadOnlyList<Message>> RequestAsync(
+        public ValueTask<IReadOnlyList<Message>> RequestAsync(
             RoutingId targetNodeRid,
             RoutingId targetSpotRid,
             IReadOnlyList<Message> parts,
             TimeSpan timeout,
             CancellationToken cancellationToken)
         {
-            using var completion = new ZLinkNativeReplyCompletion<RequestResult>(
-                cancellationToken,
-                timeout,
-                $"SPOT route bridge request to '{targetSpotRid}' timed out.");
-            if (!routeChannel.TryRequestViaSpotRouteBridge(
-                        targetNodeRid,
-                        targetSpotRid,
-                        parts,
-                        (result, reply) =>
-                        {
-                            // NotFound from a spot-addressed request means the
-                            // target node answered "no such spot here": a stale
-                            // spot address, not an unknown node.
-                            if (result == RequestResult.NotFound)
-                            {
-                                completion.Fail(
-                                    new ZLinkFrameworkException(
-                                        ZLinkFrameworkErrorKind.SpotRouteNotFound,
-                                        $"SPOT '{targetSpotRid}' does not live on node '{targetNodeRid}'."),
-                                    reply);
-                                return;
-                            }
-
-                            CompleteRouteRequest(
-                                completion,
-                                result,
-                                reply,
-                                $"SPOT route bridge request failed with result '{result}'.");
-                        },
-                        timeout))
-                throw new ZLinkConfigurationException(
-                    $"Route channel '{routeChannel.RouterChannelId}' has no SPOT route bridge for remote spot requests.");
-
-            var (_, reply) = await completion.Task.ConfigureAwait(false);
-            return reply;
+            throw new ZLinkConfigurationException(
+                $"Route channel '{routeChannel.RouterChannelId}' cannot serve spot-addressed " +
+                "requests in RouteMesh 10.0.0; use the MeshNode spot plane.");
         }
     }
 

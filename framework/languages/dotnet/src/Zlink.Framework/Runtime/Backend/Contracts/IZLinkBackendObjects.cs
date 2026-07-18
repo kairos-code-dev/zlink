@@ -98,7 +98,7 @@ internal readonly record struct ZLinkBackendSpotDispatchInfo(
     ZLinkBackendSpotDispatchEvent Event,
     Action? DrainChannelReply = null,
     IReadOnlyList<ZLinkBackendActorPart>? ActorParts = null,
-    IReadOnlyList<Received>? RoutedMessages = null);
+    IReadOnlyList<ZLinkBackendRouteReceived>? RoutedMessages = null);
 
 internal readonly record struct ZLinkBackendSocketMonitorEvent(
     ZLinkSocketNativeEventType NativeEvent,

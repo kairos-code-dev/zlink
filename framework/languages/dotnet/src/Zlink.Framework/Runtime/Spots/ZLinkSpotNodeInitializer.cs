@@ -18,9 +18,7 @@ internal sealed class ZLinkSpotNodeInitializer(
 
         foreach (var spotNodeRegistration in registration.SpotNodes.Values)
         {
-            var node = spotAdapter.CreateSpotNode(
-                state.Context,
-                ResolveSpotNodeMode(spotNodeRegistration));
+            var node = spotAdapter.CreateSpotNode(state.Context);
             var nodeRoutingId = CreateNodeRoutingId(spotNodeRegistration);
             node.SetRoutingId(nodeRoutingId);
             node.ApplyRoleConfig(
@@ -70,18 +68,6 @@ internal sealed class ZLinkSpotNodeInitializer(
                 throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
             }
         }
-    }
-
-    private static SpotNodeMode ResolveSpotNodeMode(ZLinkSpotNodeRegistration registration)
-    {
-        return (registration.Router is not null, registration.PubSub is not null) switch
-        {
-            (true, true) => SpotNodeMode.All,
-            (true, false) => SpotNodeMode.Routed,
-            (false, true) => SpotNodeMode.PubSub,
-            _ => throw new ZLinkConfigurationException(
-                $"SPOT node '{registration.SpotNodeName}' must enable router or pub/sub capability.")
-        };
     }
 
     /// <summary>Spot lifecycle write (draft 15.1): spot node start

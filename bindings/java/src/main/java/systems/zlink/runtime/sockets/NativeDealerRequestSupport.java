@@ -6,17 +6,12 @@ import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.messaging.Received;
-import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.ReplyHandler;
-import systems.zlink.contracts.service.spot.SpotNode;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.RecvFlags;
 import systems.zlink.contracts.sockets.RequestCallback;
 import systems.zlink.contracts.sockets.RequestResult;
 import systems.zlink.contracts.sockets.RouterSocket;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.contracts.sockets.StreamSocket;
-import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeLayouts;
@@ -144,36 +139,6 @@ final class NativeDealerRequestSupport {
                     List<Message> parts) {
                 NativeRouterSpotSupport.replyToSpot(socket, destNodeRid,
                     destSpotRid, requestSeq, parts);
-            }
-
-            @Override
-            public List<ActorRef> streamBoundActors(StreamSocket socket,
-                                                    RoutingId sessionRid) {
-                return NativeStreamActorSupport.boundActors(socket, sessionRid);
-            }
-
-            @Override
-            public boolean streamSubmitBind(
-                    StreamSocket socket, RoutingId sessionRid, ActorRef actor,
-                    Duration timeout, ReplyHandler callback) {
-                return NativeStreamActorSupport.submitBind(socket, sessionRid,
-                    actor, timeout, callback);
-            }
-
-            @Override
-            public boolean streamSubmitUnbind(
-                    StreamSocket socket, RoutingId sessionRid, String actorId,
-                    Duration timeout, ReplyHandler callback) {
-                return NativeStreamActorSupport.submitUnbind(socket,
-                    sessionRid, actorId, timeout, callback);
-            }
-
-            @Override
-            public boolean streamSendBoundActorReceiveds(
-                    StreamSocket socket, RoutingId sessionRid, String actorId,
-                    List<Message> parts, SendFlags flags) {
-                return NativeStreamActorSupport.sendBoundActorReceiveds(socket,
-                    sessionRid, actorId, parts, flags);
             }
         });
     }

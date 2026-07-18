@@ -9,9 +9,8 @@ import systems.zlink.runtime.nativeapi.ContractAccess;
 import systems.zlink.contracts.errors.ZlinkConfigException;
 import systems.zlink.contracts.errors.ConfigResult;
 import systems.zlink.contracts.errors.ZlinkException;
-import systems.zlink.contracts.service.spot.SpotNode;
-import systems.zlink.contracts.service.spot.SpotNodeMode;
-import systems.zlink.contracts.service.spot.SpotNodeOptions;
+import systems.zlink.contracts.service.spot.MeshNode;
+import systems.zlink.contracts.service.spot.MeshNodeOptions;
 import systems.zlink.contracts.sockets.DealerSocket;
 import systems.zlink.contracts.sockets.PairSocket;
 import systems.zlink.contracts.sockets.PubSocket;
@@ -24,7 +23,7 @@ import systems.zlink.runtime.nativeapi.InternalAccess;
 import systems.zlink.runtime.nativeapi.Native;
 import systems.zlink.runtime.nativeapi.NativeErrno;
 import systems.zlink.runtime.nativeapi.NativeHelpers;
-import systems.zlink.runtime.service.spot.NativeSpotNode;
+import systems.zlink.runtime.service.spot.NativeMeshNode;
 import systems.zlink.runtime.sockets.NativeSockets;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
@@ -136,18 +135,13 @@ final class NativeContext implements Context {
     }
 
     @Override
-    public SpotNode createSpotNode() {
-        return NativeSpotNode.create(this);
+    public MeshNode createMeshNode() {
+        return NativeMeshNode.create(this);
     }
 
     @Override
-    public SpotNode createSpotNode(SpotNodeMode mode) {
-        return NativeSpotNode.create(this, mode);
-    }
-
-    @Override
-    public SpotNode createSpotNode(SpotNodeOptions options) {
-        return NativeSpotNode.create(this, options);
+    public MeshNode createMeshNode(MeshNodeOptions options) {
+        return NativeMeshNode.create(this, options);
     }
 
     MemorySegment handle() {

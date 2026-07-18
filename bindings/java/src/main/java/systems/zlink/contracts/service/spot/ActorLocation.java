@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+
+package systems.zlink.contracts.service.spot;
+
+import systems.zlink.contracts.core.RoutingId;
+
+/**
+ * The current membership location of an actor.
+ *
+ * @param actor the actor reference
+ * @param spotRid the spot the actor is a member of, if any
+ * @param spotGeneration the joined spot's lifecycle generation
+ * @param membershipEpoch the actor's membership epoch within the spot
+ */
+public record ActorLocation(ActorRef actor, RoutingId spotRid, long spotGeneration,
+                            long membershipEpoch) {
+}

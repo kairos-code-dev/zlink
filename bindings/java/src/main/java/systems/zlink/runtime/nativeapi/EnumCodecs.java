@@ -9,17 +9,7 @@ import systems.zlink.contracts.eventing.MonitorSourceKind;
 import systems.zlink.contracts.eventing.PollEventFlags;
 import systems.zlink.contracts.sockets.RidDuplicatePolicy;
 import systems.zlink.contracts.sockets.SocketType;
-import systems.zlink.contracts.service.spot.SpotDispatchEvent;
-import systems.zlink.contracts.service.spot.SpotDispatchSubjectKind;
 import systems.zlink.contracts.service.spot.SpotKind;
-import systems.zlink.contracts.service.spot.SpotNodeMode;
-import systems.zlink.contracts.service.spot.SpotNodeSocketOwner;
-import systems.zlink.contracts.service.spot.SpotNodeState;
-import systems.zlink.contracts.service.spot.SpotPeerKind;
-import systems.zlink.contracts.service.spot.SpotPeerSource;
-import systems.zlink.contracts.service.spot.SpotPeerState;
-import systems.zlink.contracts.service.spot.SpotRole;
-import systems.zlink.contracts.service.spot.SubjectKind;
 import java.util.EnumSet;
 
 /**
@@ -213,187 +203,12 @@ public final class EnumCodecs {
         };
     }
 
-    public static SpotDispatchEvent spotDispatchEventFromValue(int value) {
-        return switch (value) {
-            case 1 -> SpotDispatchEvent.SUBSCRIBE_READABLE;
-            case 2 -> SpotDispatchEvent.ROUTED_READABLE;
-            case 3 -> SpotDispatchEvent.TIMER_READABLE;
-            case 4 -> SpotDispatchEvent.CHANNEL_REPLY_READABLE;
-            case 5 -> SpotDispatchEvent.ACTOR_READABLE;
-            case 6 -> SpotDispatchEvent.ACTOR_JOIN_READABLE;
-            case 7 -> SpotDispatchEvent.ACTOR_LIFECYCLE_READABLE;
-            default -> throw invalid("SpotDispatchEvent", value);
-        };
-    }
-
-    public static int spotDispatchEventValue(SpotDispatchEvent value) {
-        return switch (value) {
-            case SUBSCRIBE_READABLE -> 1;
-            case ROUTED_READABLE -> 2;
-            case TIMER_READABLE -> 3;
-            case CHANNEL_REPLY_READABLE -> 4;
-            case ACTOR_READABLE -> 5;
-            case ACTOR_JOIN_READABLE -> 6;
-            case ACTOR_LIFECYCLE_READABLE -> 7;
-        };
-    }
-
-    public static SpotDispatchSubjectKind spotDispatchSubjectKindFromValue(
-      int value) {
-        return switch (value) {
-            case 1 -> SpotDispatchSubjectKind.SPOT;
-            case 2 -> SpotDispatchSubjectKind.TIMER;
-            case 3 -> SpotDispatchSubjectKind.CHANNEL_DEALER;
-            case 4 -> SpotDispatchSubjectKind.ACTOR;
-            default -> throw invalid("SpotDispatchSubjectKind", value);
-        };
-    }
-
-    public static int spotDispatchSubjectKindValue(
-      SpotDispatchSubjectKind value) {
-        return switch (value) {
-            case SPOT -> 1;
-            case TIMER -> 2;
-            case CHANNEL_DEALER -> 3;
-            case ACTOR -> 4;
-        };
-    }
-
-    public static int serviceEventSubjectKindValue(
-      SubjectKind value) {
-        return switch (value) {
-            case NONE -> 0;
-            case TOPIC -> 1;
-            case PATTERN -> 2;
-        };
-    }
-
-    public static SubjectKind serviceEventSubjectKindFromValue(
-      int value) {
-        return switch (value) {
-            case 0 -> SubjectKind.NONE;
-            case 1 -> SubjectKind.TOPIC;
-            case 2 -> SubjectKind.PATTERN;
-            default -> throw invalid("SubjectKind", value);
-        };
-    }
-
-    public static int spotNodeModeValue(SpotNodeMode value) {
-        return switch (value) {
-            case PUBSUB -> 1;
-            case ROUTED -> 2;
-            case ALL -> 3;
-        };
-    }
-
-    public static int spotNodeSocketOwnerValue(SpotNodeSocketOwner value) {
-        return switch (value) {
-            case ANY -> 0;
-            case NODE -> 1;
-            case SPOT -> 2;
-        };
-    }
-
-    public static SpotNodeSocketOwner spotNodeSocketOwnerFromValue(int value) {
-        return switch (value) {
-            case 0 -> SpotNodeSocketOwner.ANY;
-            case 1 -> SpotNodeSocketOwner.NODE;
-            case 2 -> SpotNodeSocketOwner.SPOT;
-            default -> SpotNodeSocketOwner.ANY;
-        };
-    }
-
-    public static SpotNodeState spotNodeStateFromValue(int value) {
-        return switch (value) {
-            case 1 -> SpotNodeState.IDLE;
-            case 2 -> SpotNodeState.CONNECTING;
-            case 3 -> SpotNodeState.PARTIAL_READY;
-            case 4 -> SpotNodeState.READY;
-            case 5 -> SpotNodeState.ERROR;
-            default -> throw invalid("SpotNodeState", value);
-        };
-    }
-
-    public static int spotNodeStateValue(SpotNodeState value) {
-        return switch (value) {
-            case IDLE -> 1;
-            case CONNECTING -> 2;
-            case PARTIAL_READY -> 3;
-            case READY -> 4;
-            case ERROR -> 5;
-        };
-    }
-
-    public static int spotPeerSourceValue(SpotPeerSource value) {
-        return switch (value) {
-            case MANUAL -> 1;
-            case DISCOVERY -> 2;
-            case MIXED -> 3;
-        };
-    }
-
-    public static SpotPeerSource spotPeerSourceFromValue(int value) {
-        return switch (value) {
-            case 1 -> SpotPeerSource.MANUAL;
-            case 2 -> SpotPeerSource.DISCOVERY;
-            case 3 -> SpotPeerSource.MIXED;
-            default -> throw invalid("SpotPeerSource", value);
-        };
-    }
-
-    public static int spotPeerKindValue(SpotPeerKind value) {
-        return switch (value) {
-            case SPOT_MESH -> 1;
-            case ROUTER_CHANNEL -> 2;
-        };
-    }
-
-    public static SpotPeerKind spotPeerKindFromValue(int value) {
-        return switch (value) {
-            case 1 -> SpotPeerKind.SPOT_MESH;
-            case 2 -> SpotPeerKind.ROUTER_CHANNEL;
-            default -> throw invalid("SpotPeerKind", value);
-        };
-    }
-
     public static SpotKind spotKindFromValue(int value) {
         return switch (value) {
             case 0 -> SpotKind.INVALID;
             case 1 -> SpotKind.ENTRY;
             case 2 -> SpotKind.USER;
             default -> throw invalid("SpotKind", value);
-        };
-    }
-
-    public static int spotPeerStateValue(SpotPeerState value) {
-        return switch (value) {
-            case CONFIGURED -> 1;
-            case CONNECTING -> 2;
-            case CONNECTED -> 3;
-        };
-    }
-
-    public static SpotPeerState spotPeerStateFromValue(int value) {
-        return switch (value) {
-            case 1 -> SpotPeerState.CONFIGURED;
-            case 2 -> SpotPeerState.CONNECTING;
-            case 3 -> SpotPeerState.CONNECTED;
-            default -> throw invalid("SpotPeerState", value);
-        };
-    }
-
-    public static int spotRoleValue(SpotRole value) {
-        return switch (value) {
-            case PUB -> 1;
-            case SUB -> 2;
-        };
-    }
-
-    public static SpotRole spotRoleFromValue(int value) {
-        return switch (value) {
-            case 1 -> SpotRole.PUB;
-            case 2 -> SpotRole.SUB;
-            default -> throw invalid("SpotRole", value);
         };
     }
 

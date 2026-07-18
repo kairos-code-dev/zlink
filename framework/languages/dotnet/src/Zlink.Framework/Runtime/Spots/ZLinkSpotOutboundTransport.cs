@@ -105,6 +105,65 @@ internal sealed class ZLinkSpotOutboundTransport(
             cancellationToken);
     }
 
+    /// <summary>One-shot non-blocking ChannelName select-one send (TrySubmit
+    /// surface): a single DontWait attempt with no send-ready wait.
+    /// False = backpressured.</summary>
+    public bool TrySendToChannelOnce(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return ZLinkSubmitFailureMapper.AcceptOrThrow(
+            nativeSpot.SendToChannel(channelName, parts, SendFlags.DontWait, metadata),
+            $"channel '{channelName}'");
+    }
+
+    public ValueTask SendToChannelAsync(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return _submitter.Async(
+            parts,
+            pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
+                nativeSpot.SendToChannel(channelName, pending, SendFlags.DontWait, metadata),
+                $"channel '{channelName}'"),
+            cancellationToken);
+    }
+
+    public ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        return _submitter.SubmitRequestAsync<IReadOnlyList<Message>>(
+            parts,
+            (pending, complete, fail) => nativeSpot.RequestToChannel(
+                channelName,
+                pending,
+                (result, reply) =>
+                {
+                    if (result == RequestResult.Ok)
+                    {
+                        complete(reply);
+                        return;
+                    }
+
+                    fail(ZLinkRequestFailureMapper.CreateCompletionException(
+                        result,
+                        $"Channel request to '{channelName}' failed with result '{result}'."));
+                    ZLinkMessageParts.DisposeAll(reply);
+                },
+                SendFlags.None,
+                timeout,
+                metadata),
+            cancellationToken,
+            ZLinkMessageParts.DisposeAll);
+    }
+
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId targetNodeRid,
         RoutingId targetSpotRid,

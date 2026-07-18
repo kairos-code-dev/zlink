@@ -105,6 +105,21 @@ internal sealed partial class ZLinkFrameworkRuntime
             ?.Node;
     }
 
+    /// <summary>The registered MeshNode for a physical mesh. ChannelName
+    /// select-one calls (IZLinkRouteClient) submit through this node's entry
+    /// spot so weight, ready and drain admission stay Core-owned (spec 11 §3).</summary>
+    internal ZLinkSpotNodeRuntime GetMeshNodeRuntime(string meshName)
+    {
+        var state = GetOrStartState();
+        lock (state.SyncRoot)
+        {
+            return state.SpotNodes.TryGetValue(meshName, out var nodeRuntime)
+                   ? nodeRuntime
+                   : throw new ZLinkConfigurationException(
+                       $"RouteMesh '{meshName}' is not registered.");
+        }
+    }
+
     internal ZLinkSpotNodeRuntime GetActorClientSpotNodeRuntime()
     {
         var state = GetOrStartState();

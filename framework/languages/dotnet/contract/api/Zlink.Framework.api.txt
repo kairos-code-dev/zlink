@@ -41,7 +41,6 @@ assembly Zlink.Framework
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult> Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult<TReply?>> Async<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TReply variance=invariant nullable=unspecified
-    method abstract System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult> Yield(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method virtual System.Threading.Tasks.ValueTask<Zlink.Framework.Contracts.Actors.ZLinkActorJoinResult<TReply?>> Yield<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TReply variance=invariant nullable=unspecified
@@ -169,10 +168,14 @@ assembly Zlink.Framework
     method abstract System.Threading.Tasks.ValueTask<TReply?> Yield<TReply>(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
       generic TReply variance=invariant nullable=unspecified
   type interface Zlink.Framework.Contracts.Channels.IZLinkRouteClient
+    method abstract Zlink.Framework.Contracts.Channels.IZLinkRequestCall RequestToChannel<TRequest>(System.String meshName [nullability=read:not-null,write:not-null], System.String channelName [nullability=read:not-null,write:not-null], TRequest? request [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic TRequest variance=invariant nullable=nullable
     method abstract Zlink.Framework.Contracts.Channels.IZLinkRequestCall RequestToNode<TRequest>(System.String routerChannelId [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId targetNodeRid [nullability=read:not-null,write:not-null], TRequest? request [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
       generic TRequest variance=invariant nullable=nullable
     method abstract Zlink.Framework.Contracts.Channels.IZLinkRequestCall RequestToSpot<TRequest>(Zlink.Framework.Contracts.Locations.SpotHandle target [nullability=read:not-null,write:not-null], TRequest? request [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
       generic TRequest variance=invariant nullable=nullable
+    method abstract Zlink.Framework.Contracts.Channels.IZLinkSendCall SendToChannel<TMessage>(System.String meshName [nullability=read:not-null,write:not-null], System.String channelName [nullability=read:not-null,write:not-null], TMessage? message [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
+      generic TMessage variance=invariant nullable=nullable
     method abstract Zlink.Framework.Contracts.Channels.IZLinkSendCall SendToNode<TMessage>(System.String routerChannelId [nullability=read:not-null,write:not-null], Systems.Zlink.RoutingId targetNodeRid [nullability=read:not-null,write:not-null], TMessage? message [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]
       generic TMessage variance=invariant nullable=nullable
     method abstract Zlink.Framework.Contracts.Channels.IZLinkSendCall SendToSpot<TMessage>(Zlink.Framework.Contracts.Locations.SpotHandle target [nullability=read:not-null,write:not-null], TMessage? message [nullability=read:nullable,write:nullable]) [return=read:not-null,write:not-null]

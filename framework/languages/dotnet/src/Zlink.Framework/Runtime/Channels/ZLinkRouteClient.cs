@@ -34,12 +34,164 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkRo
         return new ZLinkRouteSpotRequestCall<TRequest>(runtime, RequireResolvedHandle(target), request);
     }
 
+    public IZLinkSendCall SendToChannel<TMessage>(
+        string meshName,
+        string channelName,
+        TMessage message)
+    {
+        return new ZLinkMeshChannelSendCall<TMessage>(runtime, meshName, channelName, message);
+    }
+
+    public IZLinkRequestCall RequestToChannel<TRequest>(
+        string meshName,
+        string channelName,
+        TRequest request)
+    {
+        return new ZLinkMeshChannelRequestCall<TRequest>(runtime, meshName, channelName, request);
+    }
+
     private static ZLinkResolvedSpotHandle RequireResolvedHandle(SpotHandle target)
     {
         return target as ZLinkResolvedSpotHandle
                ?? throw new ArgumentException("Spot handle was not created by this framework runtime.", nameof(target));
     }
 
+}
+
+internal sealed class ZLinkMeshChannelSendCall<TMessage>(
+    ZLinkFrameworkRuntime runtime,
+    string meshName,
+    string channelName,
+    TMessage message) : IZLinkSendCall
+{
+    private readonly ZLinkCallMetadata _metadata = new();
+
+    public IZLinkSendCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    // One-shot non-blocking submit: a single DontWait attempt whose routine
+    // failures map to statuses. Blocking admission stays on SubmitAsync.
+    public ZLinkSubmitResult TrySubmit()
+    {
+        var parts = Encode();
+        try
+        {
+            var accepted = runtime.GetMeshNodeRuntime(meshName).EntryOutbound
+                .TrySendToChannelOnce(channelName, parts, _metadata.Encode());
+            return new ZLinkSubmitResult(
+                accepted ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured);
+        }
+        catch (ZLinkFrameworkException failure)
+            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
+        {
+            return failed;
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+        }
+    }
+
+    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var parts = Encode();
+        try
+        {
+            await runtime.GetMeshNodeRuntime(meshName).EntryOutbound
+                .SendToChannelAsync(channelName, parts, cancellationToken, _metadata.Encode())
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+        }
+
+        return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
+    }
+
+    private IReadOnlyList<Message> Encode()
+    {
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Command,
+            channelName,
+            ZLinkMessageNameResolver.ResolveFromMessage(message));
+        return ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, runtime.Registration.Codecs);
+    }
+}
+
+internal sealed class ZLinkMeshChannelRequestCall<TRequest>(
+    ZLinkFrameworkRuntime runtime,
+    string meshName,
+    string channelName,
+    TRequest request) : IZLinkRequestCall
+{
+    private readonly ZLinkCallMetadata _metadata = new();
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
+    private TimeSpan? _timeout;
+
+    public IZLinkRequestCall Timeout(TimeSpan timeout)
+    {
+        ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
+        _timeout = timeout;
+        return this;
+    }
+
+    public IZLinkRequestCall Metadata(string key, string value)
+    {
+        _metadata.Set(key, value);
+        return this;
+    }
+
+    public IZLinkRequestCall Metadata(ZLinkMessageMetadata metadata)
+    {
+        _metadata.Merge(metadata);
+        return this;
+    }
+
+    public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
+    {
+        return ExecuteAsync<TReply>(cancellationToken);
+    }
+
+    public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
+    {
+        return _turn is null
+            ? ExecuteAsync<TReply>(cancellationToken)
+            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+    }
+
+    private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
+    {
+        var packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
+        var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
+        var timeout = _timeout ?? nodeRuntime.Registration.DefaultRequestTimeout
+            ?? runtime.Registration.DefaultRequestTimeout;
+        var header = ZLinkClientCallCodec.CreateEnvelope(
+            ZLinkMessageKind.Request,
+            channelName,
+            packetName,
+            timeout);
+        var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, runtime.Registration.Codecs);
+        var reply = await nodeRuntime.EntryOutbound
+            .RequestToChannelAsync(channelName, parts, timeout, cancellationToken, _metadata.Encode())
+            .ConfigureAwait(false);
+        return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
+            reply,
+            "Channel request reply is empty.",
+            $"Channel request failed for '{packetName}'.",
+            runtime.Registration.Codecs);
+    }
 }
 
 internal sealed class ZLinkRouteSendCall<TMessage>(

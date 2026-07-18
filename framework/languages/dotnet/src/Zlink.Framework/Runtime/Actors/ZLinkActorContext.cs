@@ -107,16 +107,6 @@ internal sealed class ZLinkActorJoinCall :
         return ExecuteAsync(cancellationToken);
     }
 
-    public void Submit(CancellationToken cancellationToken = default)
-    {
-        ZLinkUnawaitedSubmit.Observe(
-            ObserveAsync(cancellationToken),
-            _targetKind == TargetKind.Spot
-                ? "actor Spot join submit"
-                : "actor Entry Spot join submit",
-            _runtime.ErrorSink);
-    }
-
     public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
     {
         return _turn is null
@@ -162,11 +152,6 @@ internal sealed class ZLinkActorJoinCall :
             var target = _targetKind == TargetKind.Spot ? "SPOT" : "Entry SPOT";
             throw new TimeoutException($"{target} actor join timed out after {timeout}.");
         }
-    }
-
-    private async ValueTask ObserveAsync(CancellationToken cancellationToken)
-    {
-        _ = await ExecuteAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private enum TargetKind

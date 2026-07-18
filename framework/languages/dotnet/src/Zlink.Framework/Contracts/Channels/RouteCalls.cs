@@ -29,6 +29,27 @@ public interface IZLinkRouteClient
     IZLinkRequestCall RequestToSpot<TRequest>(
         SpotHandle target,
         TRequest request);
+
+    /// <summary>
+    /// Sends to one ready positive-weight member of the ChannelName on the
+    /// named mesh. Selection and submit are one atomic operation; the selected
+    /// RID is not returned and the send is not re-submitted to another member.
+    /// </summary>
+    IZLinkSendCall SendToChannel<TMessage>(
+        string meshName,
+        string channelName,
+        TMessage message);
+
+    /// <summary>
+    /// Requests one ready positive-weight member of the ChannelName on the
+    /// named mesh. Selection and submit are one atomic operation; a timeout or
+    /// disconnect after submit is not retried on another member because the
+    /// request may already have executed.
+    /// </summary>
+    IZLinkRequestCall RequestToChannel<TRequest>(
+        string meshName,
+        string channelName,
+        TRequest request);
 }
 
 public interface IZLinkRouteSendHandler<in TMessage>

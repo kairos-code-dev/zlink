@@ -53,8 +53,6 @@ public abstract record ZLinkActorJoinResult<TReply>
 
 public interface IZLinkActorJoinCall
 {
-    void Submit(CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Executes the join as part of the actor handler turn that created this
     /// call. The returned operation must be awaited by that handler and must

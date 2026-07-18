@@ -194,6 +194,24 @@ public sealed class ChannelContracts
             TargetNodeRid = targetNodeRid;
             return new ExampleRouteRequestCall(new RoomAllocated("room-1"));
         }
+
+        public IZLinkSendCall SendToChannel<TMessage>(
+            string meshName,
+            string channelName,
+            TMessage message)
+        {
+            RouterChannelId = channelName;
+            return new ExampleRouteSendCall();
+        }
+
+        public IZLinkRequestCall RequestToChannel<TRequest>(
+            string meshName,
+            string channelName,
+            TRequest request)
+        {
+            RouterChannelId = channelName;
+            return new ExampleRouteRequestCall(new RoomAllocated("room-1"));
+        }
     }
 
     private sealed class ExampleFanoutPublisher : IZLinkFanoutClient

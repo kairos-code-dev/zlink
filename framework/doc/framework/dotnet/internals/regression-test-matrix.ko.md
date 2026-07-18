@@ -277,6 +277,8 @@ backend gate 와 별도로 유지한다.
 - `02-handler-interfaces.ko.md`
 - `03-stream-connector.ko.md`
 - `04-routing-id-allocation.ko.md`
+- `05-route-mesh.ko.md`
+- `06-location-store.ko.md`
 - `dotnet-http-client.ko.md`
 - `regression-test-matrix.ko.md`
 - `runtime-lifecycle.ko.md`

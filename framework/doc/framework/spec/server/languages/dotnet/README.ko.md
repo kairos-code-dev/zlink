@@ -37,3 +37,10 @@ Stream connector client는 별도 package이며
 
 Contract test는 source assembly와 실제 NuGet package의 public export를 이 디렉토리의 시그니처와
 비교한다. Nullable annotation, 기본값, generic 제약과 overload도 계약에 포함한다.
+
+## 회귀 테스트
+
+| 테스트 | 확인 범위 |
+|---|---|
+| `ContractSurfaceCoverage.Fixed_spec_snapshot_matches_every_exported_contract_signature` | 정식 spec snapshot과 source·package의 공개 서명이 일치하는지 확인한다. |
+| `RegressionTests.DotNetContractRegressionTestReferences_Resolve_ToActiveTestMethods` | 문서가 가리키는 회귀 테스트와 E2E 시나리오가 현재 test tree에 존재하는지 확인한다. |

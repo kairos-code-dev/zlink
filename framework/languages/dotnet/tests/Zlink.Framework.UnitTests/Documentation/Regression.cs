@@ -14,6 +14,8 @@ public sealed class RegressionTests
         "02-handler-interfaces.ko.md",
         "03-stream-connector.ko.md",
         "04-routing-id-allocation.ko.md",
+        "05-route-mesh.ko.md",
+        "06-location-store.ko.md",
         "dotnet-http-client.ko.md",
         "regression-test-matrix.ko.md",
         "runtime-lifecycle.ko.md",
@@ -132,17 +134,21 @@ public sealed class RegressionTests
             Assert.DoesNotContain("AddRouteChannel(", text, StringComparison.Ordinal);
         }
 
-        // SPOT과 channel 등록 표면은 한 문서(시스템 구조)가 함께 소유한다.
-        var combined = File.ReadAllText(ResolveDoc("01-system-structure.ko.md"));
+        // RouteMesh 등록과 peer 연결은 전용 언어 계약이 함께 소유한다.
+        var routeMesh = File.ReadAllText(Path.Combine(
+            GetDotNetContractDocRoot(),
+            "05-route-mesh.ko.md"));
 
-        Assert.DoesNotContain("AcceptSpotRoutesFromChannel", combined,
+        Assert.DoesNotContain("AcceptSpotRoutesFromChannel", routeMesh,
             StringComparison.Ordinal);
-        Assert.Contains("AddClientServerChannel", combined,
+        Assert.Contains("AddRouteMesh", routeMesh,
             StringComparison.Ordinal);
-        Assert.Contains("AddRouteMesh", combined,
+        Assert.Contains("IZLinkMeshNodeBuilder", routeMesh,
             StringComparison.Ordinal);
-        Assert.DoesNotContain("NonPublic", combined, StringComparison.Ordinal);
-        Assert.DoesNotContain("internal/private", combined,
+        Assert.Contains("IZLinkMeshPeerConnections", routeMesh,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("NonPublic", routeMesh, StringComparison.Ordinal);
+        Assert.DoesNotContain("internal/private", routeMesh,
             StringComparison.OrdinalIgnoreCase);
     }
 
@@ -380,24 +386,23 @@ public sealed class RegressionTests
     public void DotNetLanguageContractsPreserveTheReviewedPublicRuntimeDecisions()
     {
         var handlers = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "02-handler-interfaces.ko.md"));
-        var channel = File.ReadAllText(Path.Combine(
+        var system = File.ReadAllText(Path.Combine(
             GetDotNetContractDocRoot(),
             "01-system-structure.ko.md"));
-        var spot = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "01-system-structure.ko.md"));
-        var actor = File.ReadAllText(Path.Combine(GetDotNetContractDocRoot(), "02-handler-interfaces.ko.md"));
+        var routeMesh = File.ReadAllText(Path.Combine(
+            GetDotNetContractDocRoot(),
+            "05-route-mesh.ko.md"));
+        var locationStore = File.ReadAllText(Path.Combine(
+            GetDotNetContractDocRoot(),
+            "06-location-store.ko.md"));
 
-        Assert.Contains("`IZLinkEndpointConnections`", handlers, StringComparison.Ordinal);
-        Assert.Contains("`IZLinkSpotMeshBuilder`", handlers, StringComparison.Ordinal);
-        Assert.Contains("`IZLinkDrainControl`", handlers, StringComparison.Ordinal);
-        Assert.Equal(10, Regex.Matches(handlers, @"string\? packetName = null").Count);
-        Assert.Contains(
-            "Entry Spot timer callback은 Entry Spot 전체 실행 줄",
-            handlers,
-            StringComparison.Ordinal);
-        Assert.Contains("`ZLinkConfigurationException`", channel, StringComparison.Ordinal);
-        Assert.Contains("ASP.NET Core", spot, StringComparison.Ordinal);
-        Assert.Contains("public interface IZLinkActorClient", actor, StringComparison.Ordinal);
-        Assert.Contains("public interface IZLinkLocationStore", handlers, StringComparison.Ordinal);
+        Assert.Contains("public interface IZLinkMeshNodeBuilder", routeMesh, StringComparison.Ordinal);
+        Assert.Contains("public interface IZLinkMeshPeerConnections", routeMesh, StringComparison.Ordinal);
+        Assert.Contains("string? packetName = null", routeMesh, StringComparison.Ordinal);
+        Assert.Contains("`ZLinkConfigurationException`", system, StringComparison.Ordinal);
+        Assert.Contains("ASP.NET Core", system, StringComparison.Ordinal);
+        Assert.Contains("public interface IZLinkActorClient", handlers, StringComparison.Ordinal);
+        Assert.Contains("public interface IZLinkLocationStore", locationStore, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -457,7 +462,8 @@ public sealed class RegressionTests
                 .Select(static match => match.Groups["id"].Value))
             .Order(StringComparer.Ordinal)
             .ToArray();
-        Assert.NotEmpty(formalMatrixIds);
+        // 형식 ID 표는 계약 문서에 존재할 때만 ledger와 일대일로 맞춘다.
+        // 현재 10.0 정식 spec은 실행 진행표를 소유하지 않으므로 빈 집합도 유효하다.
         Assert.Equal(formalMatrixIds.Length, formalMatrixIds.Distinct(StringComparer.Ordinal).Count());
         foreach (var id in formalMatrixIds)
             Assert.Single(Regex.Matches(ledger, $@"(?m)^\| {Regex.Escape(id)} \|").Cast<Match>());

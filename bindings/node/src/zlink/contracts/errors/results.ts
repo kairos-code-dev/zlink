@@ -33,7 +33,8 @@ export const RequestResult = Object.freeze({
   NotConnected: 109,
   InvalidArgument: 110,
   InvalidState: 111,
-  NotSupported: 112
+  NotSupported: 112,
+  Backpressured: 113
 } as const);
 export type RequestResult = typeof RequestResult[keyof typeof RequestResult];
 
@@ -45,7 +46,9 @@ export const RecvResult = Object.freeze({
   Terminated: 203,
   InvalidHandle: 204,
   NotSupported: 205,
-  InternalError: 206
+  InternalError: 206,
+  BufferTooSmall: 207,
+  InvalidState: 208
 } as const);
 export type RecvResult = typeof RecvResult[keyof typeof RecvResult];
 
@@ -91,7 +94,8 @@ export const ConnectResult = Object.freeze({
   InternalError: 604,
   NotFound: 605,
   Conflict: 606,
-  Busy: 607
+  Busy: 607,
+  AuthFailed: 608
 } as const);
 export type ConnectResult = typeof ConnectResult[keyof typeof ConnectResult];
 
@@ -103,6 +107,9 @@ export const ConfigResult = Object.freeze({
   NotSupported: 703,
   InternalError: 704,
   InvalidState: 705,
-  NotFound: 706
+  NotFound: 706,
+  Conflict: 707,
+  BufferTooSmall: 708,
+  Busy: 709
 } as const);
 export type ConfigResult = typeof ConfigResult[keyof typeof ConfigResult];

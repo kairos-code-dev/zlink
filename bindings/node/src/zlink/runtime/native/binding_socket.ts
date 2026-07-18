@@ -125,30 +125,5 @@ export interface SocketNativeBinding {
   ) => { routingId?: Buffer | null; topic: string; subscribed: boolean } | null;
   socketUnbind: (socket: NativeHandle, endpoint: string) => void;
   socketUnsetSubscription: (socket: NativeHandle, topic: string) => void;
-  streamBindActor: (
-    stream: NativeHandle,
-    sessionRid: Buffer,
-    actor: ActorRefRaw,
-    callback: NativeRequestCallback,
-    timeoutMs: number
-  ) => void;
-  streamBoundActors: (
-    stream: NativeHandle,
-    sessionRid: Buffer
-  ) => ActorRefRaw[];
-  streamSendBoundActorPart: (
-    stream: NativeHandle,
-    sessionRid: Buffer,
-    actorId: string,
-    parts: unknown,
-    flags: number
-  ) => void;
-  streamUnbindActor: (
-    stream: NativeHandle,
-    sessionRid: Buffer,
-    actorId: string,
-    callback: NativeRequestCallback,
-    timeoutMs: number
-  ) => void;
   subscriptionAt: (socket: NativeHandle, index: number) => SubscriptionEntry | null;
 }

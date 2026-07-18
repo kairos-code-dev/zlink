@@ -3,7 +3,7 @@
 import { RoutingId } from '../core';
 
 /** Identifies what a monitored source is (a socket, or a spot's pub/sub side). */
-export const MonitorSourceKind = Object.freeze({ Socket: 1, SpotPub: 3, SpotSub: 4 } as const);
+export const MonitorSourceKind = Object.freeze({ Socket: 1 } as const);
 export type MonitorSourceKindValue = typeof MonitorSourceKind[keyof typeof MonitorSourceKind];
 
 /** The kind of a delivered socket monitor connection-lifecycle event. */

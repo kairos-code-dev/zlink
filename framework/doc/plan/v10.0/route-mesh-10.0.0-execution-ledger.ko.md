@@ -388,7 +388,7 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S2 framework spec | 완료 | 0 | 0 | 0 | 공통·server, 다섯 언어 exact interface, E2E 55·sample 32·runner 96·guide/internals 81 inventory와 자동 검증 통과 |
 | S3 문서 review loop | 승인 종료 | 28 | 0 | 0 | iteration 20~28도 시도됐지만 clean으로 채택되지 않았다. `log/s3-document-review/final-acceptance/`는 사용자 승인으로 추가 반복을 종료하고 1~19를 종료 기준 범위로 보존한다. |
 | S4 Core 구현·정식 spec 일치 | 완료 | 0 | 0 | 4 | 2026-07-17 HEAD `5857824c2`+working tree에서 84/84 suite·2-process 10/10·stress 3/3·ASAN/UBSAN/TSAN·surface gate·C ABI smoke·초기 internals 기록·no-hit 통과. 최종 internals 확정은 S5-11/12. known risk 4=TSAN 기존 기계 3계열+MIXED source 도달성(§8.1 S4-05A) |
-| S5 Core review loop | 진행 중 | 12 | 0 | 4 | iteration 1~9 기록은 각 finding ledger에 보존. iteration 10(`a4e91c01d`): Codex 7건+Sonnet 1건 병합 8건(scheduler lost-wakeup, generation 고정, timeout ABA, monitor UAF, join flags, acceptor errno, 테스트 단위, stale internals→S5-11 이관) 일괄 수정, 85/85 → `c1c579ad1`. iteration 11(새 §2 절차): Sonnet CLEAN·Codex NOT CLEAN(수정분 신규 반례 5건: monotonic clock 앵커, actor join task 미회수, monitor 등록 재생성 race, Windows errno, 회귀 테스트 부재) 일괄 수정, 85/85 → `7f9d3e315`. iteration 12 진행 중: Sonnet `CORE REVIEW CLEAN`(5/5 해소, low 1=terminal cancel 패턴 중복 후속 목록), Codex 보고서 대기. known risk 4 유지 |
+| S5 Core review loop | 완료 | 16 | 0 | 4 | iteration 1~9 기록은 각 finding ledger에 보존. iteration 10(`a4e91c01d`): Codex 7건+Sonnet 1건 병합 8건(scheduler lost-wakeup, generation 고정, timeout ABA, monitor UAF, join flags, acceptor errno, 테스트 단위, stale internals→S5-11 이관) 일괄 수정, 85/85 → `c1c579ad1`. iteration 11(새 §2 절차): Sonnet CLEAN·Codex NOT CLEAN(수정분 신규 반례 5건: monotonic clock 앵커, actor join task 미회수, monitor 등록 재생성 race, Windows errno, 회귀 테스트 부재) 일괄 수정, 85/85 → `7f9d3e315`. iteration 10~16 반복(11부터 새 §2 절차, 리뷰어 문서 산출물만). 계열별 root-cause 수정: scheduler lost-wakeup/generation/timeout ABA/monitor UAF·등록원자성/error-atomicity 전 계층(operation transaction·completion 선예약·detach primitive·scheduler 무할당 봉인). iteration 16 `1f247af7a`에서 Codex·Sonnet 모두 `CORE REVIEW CLEAN`(세 축). 종료 검증: CTest 86/86, ASAN 7/7 report 0, surface gate·package metadata·diff-check PASS, TSAN 신규 Mesh/monitor race 0(기존 auto-HWM 14+mailbox 1 유지). S5-11/12 internals 확정 커밋 `2128ae91c`. known risk 4=S6 이후 sanitizer gate로 이월 |
 | S6 Core release candidate | 미착수 | 0 | 0 | 0 | - |
 | S7 bindings local package | 미착수 | 0 | 0 | 0 | - |
 | S8 `.NET` 병렬 lane | 미착수 | 0 | 0 | 0 | - |
@@ -745,17 +745,17 @@ S4 완료 gate:
 | ID | 작업 | 완료 조건 | 상태 | 증거 |
 |---|---|---|---|---|
 | S5-01 | Core review snapshot 동결 | manifest에 commit, 전체 파일 범위·hash와 동일 prompt 기록. snapshot 생성을 위한 build·test 재실행 없음 | 완료 | iteration 1~12 manifest를 `log/s5-core-review/iteration-N/`에 보존. iteration 10 `a4e91c01d`(536d62e8…), 11 `c1c579ad1`(56a1b0c1…), 12 `7f9d3e315`(539d94ab…, prompt SHA-256 588f639b…) 각 631파일 |
-| S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 진행 중 | iteration 10 NOT CLEAN(F1~F7)·11 NOT CLEAN(수정분 신규 반례 5건) — 전부 병합 수정 반영. iteration 12 보고서 작성 중 |
-| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 진행 중 | iteration 10 NOT CLEAN(high 1)·11 CLEAN·12 `CORE REVIEW CLEAN`(세 축 CLEAN, low 1 후속 목록) |
+| S5-02 | Codex agent Core 리뷰 | I1·I2·I3 각각의 finding·evidence·축별 판정 보고 | 완료 | iteration 10~15 NOT CLEAN finding 병합 수정, iteration 16 `CORE REVIEW CLEAN`(세 축) |
+| S5-03 | Claude Sonnet Core 리뷰 | 같은 scope에서 I1·I2·I3를 독립 판정 | 완료 | iteration 11~16 대부분 CLEAN, iteration 16 `CORE REVIEW CLEAN`(세 축) |
 | S5-04 | 정확성·누락 finding 수정 | spec과 다른 동작, 빠진 test·상태·오류를 보완 | 완료 | 초기 I1 finding 10건과 iteration 2~8 ledger의 후속분을 수정. iteration 9 병합 7건도 request transaction, completion storage·domain commit 원자성, STREAM close 2단계 commit, 10.0.0 package metadata, 제거 gate·dead code와 OOM policy 일원화로 해소 |
 | S5-05 | POSD 위험 신호 목록 작성 | 각 항목의 위반 원칙과 두 설계안 기록 | 완료 | iteration 1 F-I2-01: `mesh_wire` 결합(codec·admission·ingress·transport). 대안 A(ingress/egress 파일 분할)=domain 지식 반복 vs 대안 B(결정별 깊은 모듈)=선택. finding ledger에 기록 |
 | S5-06 | 의미 있는 리팩터링 수행 | 선택 이유와 호출자 복잡도 감소 근거 기록 | 완료 | 대안 B 실행: `mesh_wire_codec/admission/ingress/wire` 4모듈+`mesh_wire_internal.hpp`, 공개 표면 불변, 85/85 green 유지 |
 | S5-07 | DDD event와 경계 재검토 | lifecycle, membership, dispatch, ownership과 observation 책임 정리 | 완료 | admission 상태 기계와 ingress 라우팅을 별도 모듈 소유로 분리, BACKPRESSURED 방출을 admit_record 단일 지점으로 유지, timer 수명은 mesh seam이 소유(타이머 기계는 hook만) |
 | S5-08 | dead code와 file 제거 | 도달 불가능 branch, 미사용 type·helper·target·file no-hit | 완료 | F3 무의미 삼항 제거, per-node `next_claim_serial` 필드 제거, `valid_utf8_public` 중복 validator 제거. I3는 iteration 1에서 Codex CLEAN |
 | S5-09 | 리뷰 종료 뒤 Core 종료 검증 | 두 reviewer의 `CORE REVIEW CLEAN` 뒤 ASAN·UBSAN·TSAN, 공개 API·제거 항목, package metadata와 package·consumer gate 통과 | 미착수 | iteration 10 전 같은 source의 예비 결과는 전체 85/85, ASAN/UBSAN 42/42, TSAN 신규 Mesh race·잠금 순환 0, surface/package gate PASS였다. 새 절차에서는 clean 리뷰 뒤 종료 검증을 실행해 이 행을 닫는다 |
-| S5-10 | 두 리뷰어 전체 재리뷰 | 어느 축을 수정했든 Core 전체 scope와 I1·I2·I3 전부 재검토 | 진행 중 | iteration 10~12 모두 byte 동일 prompt로 전체 scope 재검토(10은 구 절차, 11부터 새 §2 절차). 12에서 Sonnet CLEAN, Codex 보고서 대기. 두 clean이 모이면 종료 검증으로 이동 |
-| S5-11 | 확정 Core internals 갱신 | 두 review clean과 S5-09 종료 검증 뒤 최종 source의 ROUTER 배선, mailbox·ready·claim·batch, lock·thread, timeout과 Actor·STREAM lifecycle을 `core/doc/internals/`에 반영 | 미착수 | - |
-| S5-12 | Core internals 확정 검사 | S5-11 문서와 최종 source·구조 test·diagram·link의 차이 0개. 문서 검사만으로 구현 전체 재리뷰를 열지 않음 | 미착수 | - |
+| S5-10 | 두 리뷰어 전체 재리뷰 | 어느 축을 수정했든 Core 전체 scope와 I1·I2·I3 전부 재검토 | 완료 | iteration 16에서 두 리뷰어가 최신 snapshot 전체 scope를 재검토하고 세 축 모두 CLEAN |
+| S5-11 | 확정 Core internals 갱신 | 두 review clean과 S5-09 종료 검증 뒤 최종 source의 ROUTER 배선, mailbox·ready·claim·batch, lock·thread, timeout과 Actor·STREAM lifecycle을 `core/doc/internals/`에 반영 | 완료 | 커밋 `2128ae91c`: services-internals §4·§8 신규 구조(timeout task 소유·detach primitive·µs generation·monitor pin·무할당 scheduler) 반영, stale SPOT 참조를 MeshNode dispatch로 교체 |
+| S5-12 | Core internals 확정 검사 | S5-11 문서와 최종 source·구조 test·diagram·link의 차이 0개. 문서 검사만으로 구현 전체 재리뷰를 열지 않음 | 완료 | stale 식별자(spot_sub_recv 등) no-hit, internals가 가리키는 소스 파일 전수 존재, `git diff --check` 통과. 코드 결함 미발견으로 재리뷰 미개방 |
 
 Core 구현 리뷰는 §2.1의 I1·I2·I3를 각각 판정한다. 다음 항목은 축별 최소 검토 범위다.
 
@@ -772,16 +772,15 @@ Core 구현 리뷰는 §2.1의 I1·I2·I3를 각각 판정한다. 다음 항목�
 
 S5 완료 gate:
 
-- [ ] 적용되는 종료 기준의 open Core finding이 0개다. 1~3회차는 전체 severity, 4회차부터는
-  blocker·high·medium을 기준으로 한다.
-- [ ] 두 리뷰어의 I1에 spec 누락·오구현·동작 불일치 finding, evidence와 `CLEAN` 판정이 있다.
-- [ ] 두 리뷰어의 I2에 POSD 위험 신호·DDD 경계·의미 있는 리팩터링 finding, evidence와 `CLEAN` 판정이 있다.
-- [ ] 두 리뷰어의 I3에 불필요·죽은 code·file·호환 잔재 finding, evidence와 `CLEAN` 판정이 있다.
-- [ ] 어느 축 수정 뒤에도 두 리뷰어가 Core 전체 scope의 I1·I2·I3를 모두 다시 검토했다.
-- [ ] Codex agent 결과 마지막 줄이 `CORE REVIEW CLEAN`이다.
-- [ ] R2 결과 마지막 줄이 `CORE REVIEW CLEAN`이다.
-- [ ] 두 clean 결과 뒤 S5-09의 sanitizer·공개 API·package 종료 검증이 통과했다.
-- [ ] S5-09 뒤 S5-11/12에서 최종 Core internals를 한 번 반영하고 source와의 일치를 확인했다.
+- [x] 적용되는 종료 기준의 open Core finding이 0개다(iteration 16, 4회차 이후 기준 blocker·high·medium 0).
+- [x] 두 리뷰어의 I1에 finding·evidence와 `CLEAN` 판정이 있다(iteration 16 review.ko.md).
+- [x] 두 리뷰어의 I2에 finding·evidence와 `CLEAN` 판정이 있다.
+- [x] 두 리뷰어의 I3에 finding·evidence와 `CLEAN` 판정이 있다.
+- [x] 어느 축 수정 뒤에도 두 리뷰어가 Core 전체 scope의 I1·I2·I3를 모두 다시 검토했다(매 iteration byte 동일 prompt 전체 pass).
+- [x] Codex agent 결과 마지막 줄이 `CORE REVIEW CLEAN`이다(`iteration-16/codex/review.ko.md`).
+- [x] R2 결과 마지막 줄이 `CORE REVIEW CLEAN`이다(`iteration-16/claude-sonnet/review.ko.md`).
+- [x] 두 clean 결과 뒤 sanitizer·공개 API·package 종료 검증이 통과했다(`iteration-16/verification.ko.md`).
+- [x] S5-11/12에서 최종 Core internals를 반영하고 source와의 일치를 확인했다(커밋 `2128ae91c`, stale 참조 no-hit).
 
 ## 10. S6 — Core 10.0.0 release-candidate build와 pre-release 배포
 

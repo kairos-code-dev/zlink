@@ -398,10 +398,9 @@ S3 문서 리뷰는 두 `DOC REVIEW CLEAN`을 기준으로 하되, 미해결 fin
 | S6 Core release candidate | 완료(로컬 종결) | 0 | 0 | 0 | RC tag `core/v10.0.0-rc.1`. local Conan create·consumer smoke(`zlink 10.0.0`) 통과, SONAME 10, stable package 부재. GitHub native artifact·conan-release CI는 S11 외부배포로 이월(build.yml workflow-file issue·conandata sha256) |
 | S7 bindings·framework 공통 준비 | 완료 | 0 | 0 | 0 | RC artifact 동기화(libzlink 10.0.0→4 lane native), 제거 정책 검색 문자열·공통 smoke 정의 고정, Python/Go/Rust 보류. release workflow는 S11 이월 |
 | S8-CPP lane (C ABI+C++ bindings→framework) | 진행 중 | 0 | 0 | 0 | Runtime 전환 완료. Service 재작성(군1~6) worktree 격리 구현 에이전트 착수(컴파일 green 목표). 완료 후 coordinator 통합→bindings 리뷰 campaign(`log/s8-cpp-lane/bindings-review/prompt-template.md`) |
-| S8-DOTNET/JVM/NODE lane | 진행 중 | 0 | 0 | 0 | 각 lane 전환 범위 read-only 조사 병렬 착수(Service 파일 분류·폐기 P/Invoke·JNI·N-API hit·native 버전 배선). 조사 결과로 lane별 전환 설계 후 cpp 패턴 미러 구현→리뷰 campaign |
-| S8-DN lane (.NET bindings→framework) | 미착수 | 0 | 0 | 0 | - |
-| S8-JVM lane (Java/Kotlin bindings→framework) | 미착수 | 0 | 0 | 0 | - |
-| S8-NODE lane (Node.js bindings→framework) | 미착수 | 0 | 0 | 0 | - |
+| S8-DN lane (.NET bindings→framework) | 설계 완료 | 0 | 0 | 0 | 전환 범위 조사·설계 완료(`log/s8-dotnet-lane/bindings-transition-design.ko.md`): Service 1,819+6,443줄, P/Invoke `NativeMethods.*`, stream_session C# 신설·csproj 버전·.so 심링크. cpp 패턴 확정 후 미러 구현→리뷰 campaign |
+| S8-JVM lane (Java/Kotlin bindings→framework) | 설계 완료 | 0 | 0 | 0 | 전환 범위 조사·설계 완료(`log/s8-jvm-lane/bindings-transition-design.ko.md`): Java FFI/Panama(JNI 아님) 9,500+줄, Kotlin은 Service 없음(samples-only). route_bridge·router-direct 삭제, stream_session 신설. cpp 패턴 후 미러 |
+| S8-NODE lane (Node.js bindings→framework) | 설계 완료 | 0 | 0 | 0 | 전환 범위 조사·설계 완료(`log/s8-node-lane/bindings-transition-design.ko.md`): N-API addon(`addon_spot.cc` 2,548 등)+TS contracts/runtime, SONAME·package.json·addon 재빌드. cpp 패턴 후 미러 |
 | S11 Core stable·bindings 외부 배포·최종 검토 | 미착수 | 0 | 0 | 0 | - |
 
 ## 4. S0 — Core 정식 spec 범위와 결정 확정

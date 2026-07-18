@@ -102,12 +102,20 @@ internal sealed class ZLinkActorClient(
         CancellationToken cancellationToken)
     {
         if (MeshRows is not { } meshRows) return;
-        var row = await meshRows.ResolveActorAsync(actor.ActorId, cancellationToken)
+        var (row, rowPresent) = await meshRows.ResolveActorWithPresenceAsync(
+                actor.ActorId, cancellationToken)
             .ConfigureAwait(false);
         if (row?.ActorRef is not { } current)
+        {
+            // A present-but-unresolvable row is the transfer window (the
+            // successor claimed it with an unpublished generation-0 ref). The
+            // caller's concrete ref still addresses the source incarnation,
+            // whose capture pipeline preserves in-flight order — proceed.
+            if (rowPresent) return;
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorRouteNotFound,
                 $"Actor route '{actor.ActorId}' was not found.");
+        }
         if (current.NodeRid != actor.NodeRid || current.Generation != actor.Generation)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorLocationStale,

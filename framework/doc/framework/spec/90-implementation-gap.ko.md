@@ -622,17 +622,37 @@ publish는 metadata를 canonical frame으로 Core까지 전달한다. 다음 두
   없다. queue에 들어간 message를 `Backpressured`로 보고하면 재시도 시 중복 전송이 생기므로, 동기
   seam 직행 경로가 생길 때까지 `TrySubmit()`은 명시적으로 거부한다. classic dealer plane의
   `TrySubmit()`은 구현되어 있다.
-- **node-direct·channel metadata**: `IZLinkRouteClient.SendToNode/RequestToNode`와 mesh channel 계열은
+- **node-direct metadata**: `IZLinkRouteClient.SendToNode/RequestToNode`는
   router seam(`IZLinkBackendRouterSocket`) 경유라 metadata 인자가 아직 관통되지 않았다. spot
-  direct·publish와 동일한 seam 확장이 필요하다.
+  direct·publish와 동일한 seam 확장이 필요하다. mesh ChannelName select-one 계열
+  (`IZLinkRouteClient.SendToChannel/RequestToChannel`)은 entry spot seam으로 metadata를
+  관통하고 send `TrySubmit()`을 one-shot DONTWAIT로 구현했다(2026-07-19).
 
 **고쳐야 할 것:**
 
 - mesh submit 경로에 DONTWAIT 동기 admission 판정을 제공하는 seam 직행 `TrySubmit` 경로를 추가한다.
-- router seam send/request에 metadata 인자를 관통시키고 node-direct·channel call의
+- router seam send/request에 metadata 인자를 관통시키고 node-direct call의
   `Metadata(...)`를 실제 전송으로 연결한다.
 - 두 조각이 착지하면 `NotSupportedException` fail-fast를 제거하고 exact interface 회귀 테스트로
   판정한다.
+
+### 12.37 .NET IZLinkRouteMeshRuntime snapshot의 Core 미노출 필드
+
+**.NET 부분 충족.** [.NET RouteMesh §8](server/languages/dotnet/05-route-mesh.ko.md#8-runtime-snapshot-event와-drain)과
+[Runtime monitoring](server/50-runtime-monitoring.ko.md)은 MeshNode snapshot에 peer별 ChannelName
+set, channel별 ready member 수, Logical Multicast admission 누계(backpressure·remote/local
+snapshot·admitted·dropped·pending admission), drain seal 상태와 pending transfer·STREAM barrier
+수를 요구한다.
+
+현재 .NET `IZLinkRouteMeshRuntime` 구현은 exact interface와 event stream(polling 파생)을
+제공하지만 Core `zlink_mesh_node_status_t`/`zlink_mesh_peer_entry_t`가 위 값을 노출하지 않아
+해당 field는 빈 값(빈 목록·0·false)으로 채운다. channel ready member 수는 admitted peer 수
+기반 근사값이다. per-mesh drain은 host 공유 drain에 위임한다(단일 mesh host에서는 동일 의미).
+
+**고쳐야 할 것:**
+
+- Core status/peer 표면이 위 값을 노출하면 binding·seam을 거쳐 실측값으로 교체한다.
+- 다중 mesh host의 선택적 drain이 필요해지면 mesh 단위 drain seam을 추가한다.
 
 ## 13. 샘플 연결·등록 축 준수 현황
 

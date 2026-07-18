@@ -26,7 +26,11 @@ internal static class RmC4TimeoutIsolationScenario
             .Async<ProfileRes>()).Body;
         ZlinkStreamAssert.Ensure(immediate.Value == "profile:rm-c4-after-timeout", "RM-C4 follow-up reply mismatch.");
 
-        var slowCompletion = await ProviderEvidence.WaitFromEitherAsync(providerA, providerB, "value=slow");
+        // The timed-out request may still be in flight (dealer connect or
+        // handler completion after the client-side timeout); the completion
+        // evidence gets a wider window than the default poll.
+        var slowCompletion = await ProviderEvidence.WaitFromEitherAsync(
+            providerA, providerB, "value=slow", timeoutMilliseconds: 30000);
         ZlinkStreamAssert.Ensure(
             slowCompletion.Any(line => line.Contains("profile-request", StringComparison.Ordinal)
                                        && line.Contains("value=slow", StringComparison.Ordinal)),

@@ -24,7 +24,8 @@ internal sealed record ZLinkAutoConnectTarget(
     string Endpoint,
     bool Draining = false,
     string? OwnerId = null,
-    bool InitiatesSpotRouterLink = true);
+    bool InitiatesSpotRouterLink = true,
+    ulong LifecycleGeneration = 0);
 
 /// <summary>
 /// Pure desired-target-set computation over a mesh descriptor snapshot,
@@ -55,7 +56,8 @@ internal static class ZLinkAutoConnectPlanner
                 descriptor.Draining,
                 descriptor.OwnerId,
                 local.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh
-                || LocalIsInitiator(local, descriptor));
+                || LocalIsInitiator(local, descriptor),
+                descriptor.LifecycleGeneration);
             desired[target.TargetKey] = target;
         }
 

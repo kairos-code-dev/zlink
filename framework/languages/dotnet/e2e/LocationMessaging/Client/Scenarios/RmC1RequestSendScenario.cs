@@ -36,10 +36,15 @@ internal static class RmC1RequestSendScenario
         ZLinkHttpClient providerB,
         string commandId)
     {
+        // ChannelName send is select-one (spec 11 §2): the command lands on
+        // exactly one member, so the wait completes on whichever provider
+        // received it and the other side contributes its current snapshot.
         var wait = new EvidenceWaitReq($"command={commandId}");
         var providerAEvidence = providerA.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
         var providerBEvidence = providerB.Post("/evidence/wait").Body(wait).Async<string[]>().AsTask();
-        await Task.WhenAll(providerAEvidence, providerBEvidence);
-        return (await providerAEvidence).Body.Concat((await providerBEvidence).Body).ToArray();
+        var winner = await Task.WhenAny(providerAEvidence, providerBEvidence);
+        var other = ReferenceEquals(winner, providerAEvidence) ? providerB : providerA;
+        var otherSnapshot = (await other.Get("/evidence").Async<string[]>()).Body;
+        return (await winner).Body.Concat(otherSnapshot).ToArray();
     }
 }

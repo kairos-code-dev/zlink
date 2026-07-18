@@ -363,6 +363,7 @@ internal sealed class ZLinkAutoConnectReconciler
         ZLinkAutoConnectTarget target) =>
         RequiresConnectionHandover(current, target)
         || OwnerChanged(current, target)
+        || current.LifecycleGeneration != target.LifecycleGeneration
         || current.Draining != target.Draining;
 
     private static bool RequiresConnectionHandover(

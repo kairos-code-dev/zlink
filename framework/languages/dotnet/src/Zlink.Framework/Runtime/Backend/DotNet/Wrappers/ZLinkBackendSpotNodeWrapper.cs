@@ -138,6 +138,19 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
             _node.RemovePeerConnection(intent);
     }
 
+    public void DisconnectPeerLifetime(RoutingId peerRid, ulong lifecycleGeneration)
+    {
+        try
+        {
+            _node.DisconnectPeer(peerRid, lifecycleGeneration);
+        }
+        catch (ZlinkException)
+        {
+            // The lifetime may already be gone (never admitted, or Core
+            // retired it with the transport); retirement is idempotent.
+        }
+    }
+
     public IZLinkBackendSpot CreateSpot()
     {
         EnsureStarted();
@@ -171,6 +184,16 @@ internal sealed class ZLinkBackendSpotNodeWrapper : IZLinkBackendSpotNode
     public IReadOnlyList<ZLinkSpotNodePeerEntry> Peers()
     {
         return _node.Peers().Select(static peer => peer.ToFramework()).ToArray();
+    }
+
+    public MeshNodeStatus MeshStatus()
+    {
+        return _node.Status();
+    }
+
+    public IReadOnlyList<MeshNodePeer> MeshPeers()
+    {
+        return _node.Peers();
     }
 
     public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects()

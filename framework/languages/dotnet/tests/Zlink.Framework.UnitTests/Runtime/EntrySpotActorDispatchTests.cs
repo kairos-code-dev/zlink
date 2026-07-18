@@ -3733,6 +3733,8 @@ public sealed partial class EntrySpotActorDispatchTests
 
         public void DisconnectPeer(string endpoint) { }
 
+        public void DisconnectPeerLifetime(RoutingId peerRid, ulong lifecycleGeneration) { }
+
         public IZLinkBackendSpot CreateSpot()
         {
             var spot = CreatedSpotFactory?.Invoke() ?? new CapturingSpot();
@@ -3764,6 +3766,27 @@ public sealed partial class EntrySpotActorDispatchTests
             0);
 
         public IReadOnlyList<ZLinkSpotNodePeerEntry> Peers() => [];
+
+        public MeshNodeStatus MeshStatus() => new(
+            MeshNodeState.Ready,
+            RoutingId,
+            "entry",
+            "inproc://entry",
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0);
+
+        public IReadOnlyList<MeshNodePeer> MeshPeers() => [];
 
         public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects() => [];
 

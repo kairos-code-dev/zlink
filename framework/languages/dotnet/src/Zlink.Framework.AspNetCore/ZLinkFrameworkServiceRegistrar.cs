@@ -167,6 +167,11 @@ internal static class ZLinkFrameworkServiceRegistrar
         services.AddSingleton<IZLinkRouteMeshRuntimeOptions>(static provider =>
             new ZLinkRouteMeshRuntimeOptionsService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>()));
+        services.AddSingleton<IZLinkRouteMeshRuntime>(static provider =>
+            new ZLinkRouteMeshRuntimeService(
+                provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetService<ZLinkLocationStoreHealth>(),
+                () => provider.GetService<IZLinkDrainControl>()));
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<ZLinkFanoutClient>();

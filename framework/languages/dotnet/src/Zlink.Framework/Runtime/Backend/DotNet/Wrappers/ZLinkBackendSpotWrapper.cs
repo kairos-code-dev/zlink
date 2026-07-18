@@ -95,7 +95,9 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         var submit = _spot.RequestToChannel(
             channelName, parts, out var operationId, timeout ?? default, flags,
             metadata);
-        return submit == SubmitResult.Ok
+        // Terminal admission failures (NotFound, InvalidState, ...) must surface
+        // to the caller; only Backpressured means "wait for send-ready and retry".
+        return ZLinkSubmitFailureMapper.AcceptOrThrow(submit, $"channel '{channelName}'")
                && _completions.RegisterRequest(operationId, callback);
     }
 
@@ -175,7 +177,9 @@ internal sealed class ZLinkBackendSpotWrapper : IZLinkBackendSpot
         var submit = _spot.RequestToSpot(
             targetRid, spotRid, spotGeneration, parts, out var operationId,
             timeout ?? default, flags, metadata);
-        return submit == SubmitResult.Ok
+        // See RequestToChannel: only Backpressured may wait for send-ready.
+        return ZLinkSubmitFailureMapper.AcceptOrThrow(
+                   submit, $"SPOT '{spotRid}' on node '{targetRid}'")
                && _completions.RegisterRequest(operationId, callback);
     }
 

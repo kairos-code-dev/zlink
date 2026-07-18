@@ -9,6 +9,7 @@ using ResilienceLifecycle.Shared;
 using Zlink.Framework;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Channels;
+using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Eventing;
@@ -39,7 +40,6 @@ internal static class ConsumerHostFactory
         });
         builder.WebHost.UseUrls(options.HttpUrl);
         builder.Services.AddSingleton<ConnectionEvidence>();
-        builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, ConnectionEventObserver>();
         builder.Services.AddSingleton(new StormClientFleet(options));
         builder.Services.AddZLinkFramework(framework =>
         {
@@ -50,12 +50,15 @@ internal static class ConsumerHostFactory
                 .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                 .TraceLogFile(Path.Combine(options.LogDir, "consumer-flow.log"))
                 .TraceLabel("consumer");
-            framework.AddClientServerChannel(ResilienceLifecycleNames.Channel).EnableClient();
+            JoinConsumerMesh(framework, "consumer");
         });
-        builder.Services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
-            "resilience.profile.client",
-            ZLinkSocketEventKind.ConnectionReady,
-            ZLinkSocketEventKind.Disconnected));
+        // Mesh peers replace the 9.x socket monitor as the connection-evidence
+        // source: a peer reaching ready is the wire-level ConnectionReady and a
+        // ready peer dropping out is its Disconnected.
+        builder.Services.AddHostedService(provider => new MeshConnectionObserverService(
+            provider,
+            provider.GetRequiredService<ConnectionEvidence>(),
+            "monitor-socket|source=resilience.profile.client|"));
 
         var app = builder.Build();
         app.MapGet("/health", () => Results.Ok(new { status = "ready" }));
@@ -111,7 +114,7 @@ internal static class ConsumerHostFactory
 
         app.MapPost("/profile/request", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             var reply = await RequestProfileAsync(channel, request);
             return Results.Ok(reply);
@@ -119,11 +122,12 @@ internal static class ConsumerHostFactory
         app.MapPost("/profile/request/timeout/{milliseconds:int}", async (
             int milliseconds,
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             try
             {
-                var reply = await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
+                var reply = await channel.RequestToChannel(
+                        ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, request)
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return Results.Ok(reply);
@@ -136,11 +140,12 @@ internal static class ConsumerHostFactory
         app.MapPost("/profile/request/attempt/{milliseconds:int}", async (
             int milliseconds,
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             try
             {
-                var reply = await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
+                var reply = await channel.RequestToChannel(
+                        ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, request)
                     .Timeout(TimeSpan.FromMilliseconds(milliseconds))
                     .Async<ProfileRes>();
                 return new ProfileAttemptRes(reply, null, false);
@@ -156,11 +161,12 @@ internal static class ConsumerHostFactory
         });
         app.MapPost("/profile/request/missing", async (
             ProfileReq request,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
             try
             {
                 var reply = await channel.RequestToChannel(
+                        ResilienceLifecycleNames.Channel,
                         ResilienceLifecycleNames.Channel,
                         new MissingProfileReq(request.Value, request.Marker))
                     .Timeout(TimeSpan.FromSeconds(3))
@@ -174,9 +180,10 @@ internal static class ConsumerHostFactory
         });
         app.MapPost("/profile/command", (
             ProfileMsg command,
-            IZLinkChannelClient channel) =>
+            IZLinkRouteClient channel) =>
         {
-            channel.SendToChannel(ResilienceLifecycleNames.Channel, command).TrySubmit();
+            channel.SendToChannel(
+                ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, command).TrySubmit();
             return Results.Ok(new { status = "sent" });
         });
         app.MapPost("/profile/request/new-client", async (ProfileReq request) =>
@@ -185,7 +192,7 @@ internal static class ConsumerHostFactory
             await host.StartAsync();
             try
             {
-                var channel = host.Services.GetRequiredService<IZLinkChannelClient>();
+                var channel = host.Services.GetRequiredService<IZLinkRouteClient>();
                 var reply = await RequestProfileAsync(channel, request);
                 return Results.Ok(reply);
             }
@@ -228,10 +235,23 @@ internal static class ConsumerHostFactory
                         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(options.LogDir, $"{traceLabel}-flow.log"))
                         .TraceLabel(traceLabel);
-                    framework.AddClientServerChannel(ResilienceLifecycleNames.Channel).EnableClient();
+                    JoinConsumerMesh(framework, "newclient");
                 });
             })
             .Build();
+    }
+
+    // A caller joins the providers' RouteMesh with its own membership and
+    // issues ChannelName select-one calls through IZLinkRouteClient. The bind
+    // uses an ephemeral port and the routing id comes from a store-allocated
+    // group (spec 10 §1; fixed ids stay reserved for the providers).
+    internal static void JoinConsumerMesh(IZLinkFrameworkOptions framework, string ridPrefix)
+    {
+        var mesh = framework.AddRouteMesh(ResilienceLifecycleNames.Channel)
+            .Listen("tcp://127.0.0.1:0")
+            .UseAllocatedRoutingId(slotCount: 128, routingIdPrefix: ridPrefix)
+            .SetRoutingIdAllocationGroup($"resilience.{ridPrefix}");
+        mesh.ChannelName(ResilienceLifecycleNames.ConsumerChannel);
     }
 
     static async Task StopClientHostAsync(IHost host)
@@ -248,9 +268,10 @@ internal static class ConsumerHostFactory
     }
 
     static async Task<ProfileRes> RequestProfileAsync(
-        IZLinkChannelClient channel,
+        IZLinkRouteClient channel,
         ProfileReq request)
-        => await channel.RequestToChannel(ResilienceLifecycleNames.Channel, request)
+        => await channel.RequestToChannel(
+                        ResilienceLifecycleNames.Channel, ResilienceLifecycleNames.Channel, request)
             .Timeout(TimeSpan.FromSeconds(5))
             .Async<ProfileRes>();
 }
@@ -276,12 +297,25 @@ internal sealed record TopologyEntryRes(
 internal sealed class ConnectionEvidence
 {
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> _entries = new();
-    private readonly SemaphoreSlim _changed = new(0);
+    // A pulse completed on every Add and swapped for a fresh one, so EVERY
+    // concurrent waiter wakes — a counted semaphore hands one release to one
+    // waiter and silently starves the rest.
+    private readonly object _pulseGate = new();
+    private TaskCompletionSource<bool> _pulse =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public void Add(string entry)
     {
         _entries.Enqueue(entry);
-        _changed.Release();
+        TaskCompletionSource<bool> pulse;
+        lock (_pulseGate)
+        {
+            pulse = _pulse;
+            _pulse = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        pulse.TrySetResult(true);
     }
 
     public async Task<string[]> WaitAsync(
@@ -293,13 +327,19 @@ internal sealed class ConnectionEvidence
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (true)
         {
+            Task pulseTask;
+            lock (_pulseGate)
+            {
+                pulseTask = _pulse.Task;
+            }
+
             var snapshot = _entries.ToArray();
             if (snapshot.Skip(Math.Clamp(afterCount, 0, snapshot.Length)).Any(line =>
                     required.All(expected => line.Contains(expected, StringComparison.Ordinal)))) return snapshot;
 
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero
-                || !await _changed.WaitAsync(remaining, cancellationToken))
+                || await Task.WhenAny(pulseTask, Task.Delay(remaining, cancellationToken)) != pulseTask)
                 throw new TimeoutException("Expected connection evidence did not arrive.");
         }
     }
@@ -313,6 +353,12 @@ internal sealed class ConnectionEvidence
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (true)
         {
+            Task pulseTask;
+            lock (_pulseGate)
+            {
+                pulseTask = _pulse.Task;
+            }
+
             var snapshot = _entries.ToArray();
             var added = snapshot.Skip(Math.Clamp(afterCount, 0, snapshot.Length)).ToArray();
             if (requiredEvents.All(expected => added.Any(line =>
@@ -320,7 +366,7 @@ internal sealed class ConnectionEvidence
 
             var remaining = deadline - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero
-                || !await _changed.WaitAsync(remaining, cancellationToken))
+                || await Task.WhenAny(pulseTask, Task.Delay(remaining, cancellationToken)) != pulseTask)
                 throw new TimeoutException("Expected connection evidence did not arrive.");
         }
     }
@@ -329,19 +375,80 @@ internal sealed class ConnectionEvidence
     public string[] Snapshot() => _entries.ToArray();
 }
 
-internal sealed class ConnectionEventObserver(
+// Polls the mesh runtime snapshot and turns peer ready transitions into the
+// connection-evidence lines the scenarios wait on. Wire-level socket sources
+// do not exist for mesh nodes (spec 50 owns the mesh monitoring surface).
+internal sealed class MeshConnectionObserverService(
+    IServiceProvider services,
     ConnectionEvidence evidence,
-    ILogger<ConnectionEventObserver> logger)
-    : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
+    string linePrefix) : BackgroundService
 {
-    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)
+    private int _debugTick;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var entry =
-            $"monitor-socket|source={@event.SourceName}|kind={@event.Event}"
-            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}";
-        evidence.Add(entry);
-        logger.LogInformation("resilience connection evidence: {Entry}", entry);
-        return ValueTask.CompletedTask;
+        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+            Console.Error.WriteLine("[mesh-observer] started");
+        var meshRuntime = services.GetRequiredService<IZLinkRouteMeshRuntime>();
+        var query = services.GetRequiredService<IZLinkLocationRuntimeQuery>();
+        var ready = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                var snapshot = meshRuntime.Snapshot(ResilienceLifecycleNames.Channel);
+                // Core reuses the peer entry (and its dialed-endpoint label)
+                // across same-RID lifetime replacements; the descriptor row
+                // carries the endpoint the peer currently advertises.
+                var rows = await query.ListMeshNodeDescriptorsAsync(
+                    ResilienceLifecycleNames.Channel, stoppingToken);
+                var advertised = rows.ToDictionary(
+                    static row => row.Rid.ToString(),
+                    static row => row.Endpoint,
+                    StringComparer.Ordinal);
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1"
+                    && Interlocked.Increment(ref _debugTick) % 20 == 1)
+                    Console.Error.WriteLine(
+                        $"[mesh-observer] state={snapshot.State} peers=[{string.Join(",", snapshot.Peers.Select(p => $"{p.Rid}:{p.AdmissionState}@{p.Endpoint}"))}]");
+                var current = snapshot.Peers
+                    .Where(static peer => peer.Ready)
+                    .ToDictionary(
+                        static peer => peer.Rid.ToString(),
+                        peer => advertised.TryGetValue(peer.Rid.ToString(), out var endpoint)
+                            ? endpoint
+                            : peer.Endpoint,
+                        StringComparer.Ordinal);
+                foreach (var (rid, endpoint) in current)
+                    if (!ready.ContainsKey(rid))
+                    {
+                        evidence.Add($"{linePrefix}kind=ConnectionReady|remote={endpoint}|routing={rid}");
+                        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                            Console.Error.WriteLine($"[mesh-observer] ready rid={rid} ep={endpoint}");
+                    }
+                foreach (var (rid, endpoint) in ready)
+                    if (!current.ContainsKey(rid))
+                    {
+                        evidence.Add($"{linePrefix}kind=Disconnected|remote={endpoint}|routing={rid}");
+                        if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                            Console.Error.WriteLine($"[mesh-observer] gone rid={rid} ep={endpoint}");
+                    }
+                ready = current;
+            }
+            catch (Exception error)
+            {
+                // The mesh node may not be started yet; keep polling.
+                if (Environment.GetEnvironmentVariable("ZLINK_DEBUG_PUMP") == "1")
+                    Console.Error.WriteLine($"[mesh-observer] error {error.GetType().Name}: {error.Message}");
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
     }
 }

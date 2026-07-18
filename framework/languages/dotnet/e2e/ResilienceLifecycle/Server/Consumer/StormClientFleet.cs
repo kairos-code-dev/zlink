@@ -14,7 +14,7 @@ internal sealed class StormClientFleet(ConsumerOptions options) : IAsyncDisposab
     private const int ClientCount = 100;
     private readonly ConnectionEvidence _connections = new();
     private readonly List<IHost> _hosts = [];
-    private IReadOnlyList<IZLinkChannelClient> _clients = [];
+    private IReadOnlyList<IZLinkRouteClient> _clients = [];
 
     public int ConnectionCount => _connections.Snapshot().Length;
 
@@ -24,7 +24,7 @@ internal sealed class StormClientFleet(ConsumerOptions options) : IAsyncDisposab
         {
             for (var index = 0; index < ClientCount; index++) _hosts.Add(CreateHost(index));
             await Task.WhenAll(_hosts.Select(host => host.StartAsync(cancellationToken)));
-            _clients = _hosts.Select(host => host.Services.GetRequiredService<IZLinkChannelClient>()).ToArray();
+            _clients = _hosts.Select(host => host.Services.GetRequiredService<IZLinkRouteClient>()).ToArray();
         }
 
         return await RequestAllAsync(markerPrefix, cancellationToken);
@@ -34,7 +34,10 @@ internal sealed class StormClientFleet(ConsumerOptions options) : IAsyncDisposab
     {
         if (_clients.Count != ClientCount) throw new InvalidOperationException("Storm fleet is not started.");
         return await Task.WhenAll(_clients.Select((client, index) => client
-            .RequestToChannel(ResilienceLifecycleNames.Channel, new ProfileReq("fast", $"{markerPrefix}-{index}"))
+            .RequestToChannel(
+                ResilienceLifecycleNames.Channel,
+                ResilienceLifecycleNames.Channel,
+                new ProfileReq("fast", $"{markerPrefix}-{index}"))
             .Timeout(TimeSpan.FromSeconds(10))
             .Async<ProfileRes>(cancellationToken)
             .AsTask()));
@@ -63,8 +66,10 @@ internal sealed class StormClientFleet(ConsumerOptions options) : IAsyncDisposab
             .ConfigureServices(services =>
             {
                 services.AddSingleton(_connections);
-                services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>>(
-                    _ => new StormConnectionEventObserver(index, _connections));
+                services.AddHostedService(provider => new MeshConnectionObserverService(
+                    provider,
+                    _connections,
+                    $"client=storm-{index}|"));
                 services.AddZLinkFramework(framework =>
                 {
                     framework.AddLocationStore(new ZLinkRedisLocationStore(redis => redis
@@ -74,12 +79,8 @@ internal sealed class StormClientFleet(ConsumerOptions options) : IAsyncDisposab
                         .MessageFlow(ZLinkMessageFlowLogMode.KeyTransitions)
                         .TraceLogFile(Path.Combine(options.LogDir, $"storm-{index}-flow.log"))
                         .TraceLabel($"storm-{index}");
-                    framework.AddClientServerChannel(ResilienceLifecycleNames.Channel).EnableClient();
+                    ConsumerHostFactory.JoinConsumerMesh(framework, "storm");
                 });
-                services.AddZLinkMonitoring(monitor => monitor.AddSocketEvents(
-                    "resilience.profile.client",
-                    ZLinkSocketEventKind.ConnectionReady,
-                    ZLinkSocketEventKind.Disconnected));
             })
             .Build();
     }
@@ -104,15 +105,3 @@ internal sealed class StormClientFleet(ConsumerOptions options) : IAsyncDisposab
     }
 }
 
-internal sealed class StormConnectionEventObserver(int index, ConnectionEvidence evidence)
-    : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
-{
-    public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add(
-            $"client=storm-{index}|kind={@event.Event}"
-            + $"|remote={@event.RemoteAddr}|routing={@event.RoutingId}");
-        return ValueTask.CompletedTask;
-    }
-}

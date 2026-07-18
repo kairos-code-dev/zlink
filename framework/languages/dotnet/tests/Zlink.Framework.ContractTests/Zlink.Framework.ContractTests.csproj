@@ -45,6 +45,7 @@
         <Compile Include="Codecs/CodecContracts.cs"/>
         <Compile Include="Configuration/BuilderContracts.cs"/>
         <Compile Include="Configuration/ConnectionAndConfigContracts.cs"/>
+        <Compile Include="Configuration/RouteMeshRuntimeContracts.cs"/>
         <Compile Include="Coverage/ContractSurfaceCoverage.cs"/>
         <Compile Include="Locations/LocationContracts.cs"/>
         <Compile Include="Handlers/HandlerContracts.cs"/>

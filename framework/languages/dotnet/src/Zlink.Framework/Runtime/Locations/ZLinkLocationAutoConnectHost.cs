@@ -155,7 +155,12 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             if (!state.SpotNodes.TryGetValue(name, out var node) || spot.Router is null) continue;
 
             var meshName = spot.SpotMeshChannelName ?? spot.SpotNodeName;
-            var endpoint = spot.Router.BindEndpoint ?? node.Node.Status().LocalEndpoint;
+            // An ephemeral bind (port 0) must advertise the endpoint Core
+            // actually bound — peers dial the descriptor row verbatim.
+            var endpoint = spot.Router.BindEndpoint is { } configured
+                           && !configured.EndsWith(":0", StringComparison.Ordinal)
+                ? configured
+                : node.Node.Status().LocalEndpoint;
             AddLoop(
                 ZLinkLocationAutoConnectType.SpotMesh,
                 meshName,
@@ -165,7 +170,11 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 (uint)spot.Router.SocketConfig.Weight,
                 new SpotRouterExecutor(
                     node,
-                    spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect));
+                    spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect),
+                // The row carries the Core node lifecycle generation verbatim
+                // (spec 40 §3): Core allocates it restart-monotonic, and
+                // admission orders same-RID lifecycles by it.
+                lifecycleGeneration: node.Node.MeshStatus().LifecycleGeneration);
             // Descriptors carry one ROUTER endpoint each, so the pub/sub
             // plane lives in its own mesh namespace: the node advertises
             // its pub endpoint there and dials every other publisher.
@@ -338,7 +347,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         string endpoint,
         uint weight,
         IZLinkAutoConnectExecutor executor,
-        bool retainRemovedMembers = false)
+        bool retainRemovedMembers = false,
+        ulong lifecycleGeneration = 0)
     {
         // A descriptor is keyed by (MeshName, Rid), so a capability without
         // an identity cannot be advertised (an endpoint-less member still
@@ -355,7 +365,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         var row = advertisable
             ? new ZLinkMeshNodeDescriptor(
                 meshName, nodeRid!.Value,
-                LifecycleGeneration: 0, DescriptorRevision: 1,
+                lifecycleGeneration, DescriptorRevision: 1,
                 endpoint,
                 new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = (int)weight },
                 Draining: false,
@@ -455,6 +465,12 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
 
         public bool Disconnect(ZLinkAutoConnectTarget target)
         {
+            // Retiring a replaced/removed peer lifetime is not initiator-gated:
+            // Core queues the successor admission of the same RID behind an
+            // explicit predecessor disconnect on every member that admitted
+            // the old lifetime.
+            if (target.NodeRid is { Size: > 0 })
+                node.DisconnectPeerLifetime(target.NodeRid, target.LifecycleGeneration);
             if (!connectRouter || !target.InitiatesSpotRouterLink) return true;
             return node.DisconnectRouterAuto(target.Endpoint);
         }

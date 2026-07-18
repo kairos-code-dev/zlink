@@ -314,6 +314,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public bool ConnectRouterAuto(RoutingId? peerRid, string endpoint)
         => _peerConnector.ConnectRouterAuto(peerRid, endpoint);
 
+    public void DisconnectPeerLifetime(RoutingId peerRid, ulong lifecycleGeneration)
+        => Node.DisconnectPeerLifetime(peerRid, lifecycleGeneration);
+
     public bool ConnectPubSubAuto(string endpoint)
         => _peerConnector.ConnectPubSubAuto(endpoint);
 

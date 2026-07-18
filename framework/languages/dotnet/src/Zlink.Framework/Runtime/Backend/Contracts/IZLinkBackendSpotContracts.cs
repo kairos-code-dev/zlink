@@ -40,6 +40,11 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     void DisconnectPeer(string endpoint);
 
+    // Retires an admitted peer lifetime by (RID, lifecycle generation). Core
+    // queues a successor admission of the same RID behind this explicit
+    // predecessor disconnect on every member that admitted the old lifetime.
+    void DisconnectPeerLifetime(RoutingId peerRid, ulong lifecycleGeneration);
+
     IZLinkBackendSpot CreateSpot();
 
     IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created);
@@ -47,6 +52,12 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     ZLinkSpotNodeStatus Status();
 
     IReadOnlyList<ZLinkSpotNodePeerEntry> Peers();
+
+    // Raw MeshNode status/peer snapshots (rid, generations, admission state)
+    // backing the IZLinkRouteMeshRuntime monitoring surface (spec 50 §2).
+    MeshNodeStatus MeshStatus();
+
+    IReadOnlyList<MeshNodePeer> MeshPeers();
 
     IReadOnlyList<ZLinkSpotNodeSubjectEntry> Subjects();
 

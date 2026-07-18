@@ -8,10 +8,11 @@ internal static class ProviderEvidence
     public static async Task<string[]> WaitFromEitherAsync(
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB,
-        string contains)
+        string contains,
+        int timeoutMilliseconds = 10000)
     {
         using var cancellation = new CancellationTokenSource();
-        var request = new EvidenceWaitReq(contains);
+        var request = new EvidenceWaitReq(contains, timeoutMilliseconds);
         var pending = new List<Task<string[]>>
         {
             WaitAsync(providerA, request, cancellation.Token),

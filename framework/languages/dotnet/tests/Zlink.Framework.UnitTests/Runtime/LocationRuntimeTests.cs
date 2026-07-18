@@ -491,6 +491,36 @@ public sealed class LocationRuntimeTests
                 ? throw new InvalidOperationException("owner cleanup unavailable")
                 : inner.RemoveAllByOwnerAsync(ownerId, cancellationToken);
 
+        public ValueTask<ZLinkActorTransferWriteResult> PrepareActorTransferAsync(
+            ZLinkActorTransferPrepareRequest request,
+            CancellationToken cancellationToken = default) =>
+            inner.PrepareActorTransferAsync(request, cancellationToken);
+
+        public ValueTask<ZLinkActorTransferWriteResult> CommitActorTransferAsync(
+            string meshName, string actorId, Guid transferId, string recoveryOwnerId,
+            CancellationToken cancellationToken = default) =>
+            inner.CommitActorTransferAsync(meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
+
+        public ValueTask<ZLinkActorTransferWriteResult> ActivateActorTransferAsync(
+            string meshName, string actorId, Guid transferId, string recoveryOwnerId,
+            CancellationToken cancellationToken = default) =>
+            inner.ActivateActorTransferAsync(meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
+
+        public ValueTask<ZLinkActorTransferWriteResult> AbortActorTransferAsync(
+            string meshName, string actorId, Guid transferId, string recoveryOwnerId,
+            CancellationToken cancellationToken = default) =>
+            inner.AbortActorTransferAsync(meshName, actorId, transferId, recoveryOwnerId, cancellationToken);
+
+        public ValueTask<ZLinkActorTransferWriteResult> TakeOverActorTransferAsync(
+            string meshName, string actorId, Guid transferId, string successorOwnerId,
+            TimeSpan recoveryLeaseTtl, CancellationToken cancellationToken = default) =>
+            inner.TakeOverActorTransferAsync(
+                meshName, actorId, transferId, successorOwnerId, recoveryLeaseTtl, cancellationToken);
+
+        public ValueTask<ZLinkActorTransferRecord?> ResolveActorTransferAsync(
+            string meshName, string actorId, CancellationToken cancellationToken = default) =>
+            inner.ResolveActorTransferAsync(meshName, actorId, cancellationToken);
+
         public ValueTask<ZLinkLocationWriteResult> UpdatePeerAsync(
             ZLinkPeerLocation peer, ZLinkLocationWriteIntent intent,
             CancellationToken cancellationToken = default) =>

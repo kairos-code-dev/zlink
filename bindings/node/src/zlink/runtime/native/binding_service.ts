@@ -1,278 +1,334 @@
 // SPDX-License-Identifier: MPL-2.0
 
+import type { NativeHandle } from './binding_types';
 import type {
-  ActorPartRaw,
+  ActorLocationRaw,
   ActorRefRaw,
-  NativeActorEntryJoinCallback,
-  NativeActorJoinCallback,
-  NativeActorLookupCallback,
-  NativeHandle,
-  NativeRequestCallback,
-  NativeTopicMessageRaw,
-  SpotActorJoinRecvRaw,
-  SpotActorLifecycleRaw,
-  SpotDispatchRaw,
-  SpotNodeActorEntryRaw,
-  SpotNodePeerEntryRaw,
-  SpotNodeSocketEntryRaw,
-  SpotNodeSpotEntryRaw,
-  SpotNodeSpotGetOrNewRaw,
-  SpotNodeStatusRaw,
-  SpotNodeSubjectEntryRaw,
-  SpotRoutedRaw
-} from './binding_types';
+  MeshClaimRecvRaw,
+  MeshConnectPeerOptions,
+  MeshDrainReadyRaw,
+  MeshNodeNewOptions,
+  MeshNodeStatusRaw,
+  MeshOperationIdRaw,
+  MeshPeerChannelsRaw,
+  MeshPeerEntryRaw,
+  MeshPublishDetailRaw,
+  NativeReadyHandler,
+  SpotGetOrNewRaw,
+  SpotStatusRaw,
+  StreamSessionBindingRaw,
+  StreamSessionStatusRaw
+} from './binding_service_types';
 
+/** Parts payload accepted by native send/reply methods (Buffer, Message-like, or array thereof). */
+export type NativeParts = unknown;
+
+/**
+ * The native addon surface for the RouteMesh 10.0.0 service layer. Every method
+ * maps 1:1 to a `zlink_mesh_node_*` / `zlink_spot_*` / `zlink_actor_*` /
+ * `zlink_stream_session_*` C entry point. Config/close results are thrown on
+ * failure; submit results are returned as `SubmitResult` codes; request-style
+ * operations return a `MeshOperationIdRaw` whose completion arrives through the
+ * pull-dispatch pipeline.
+ */
 export interface ServiceNativeBinding {
-  remoteActorGetRef: (
+  // --- MeshNode lifecycle -------------------------------------------------
+  meshNodeNew: (ctx: NativeHandle, options: MeshNodeNewOptions) => NativeHandle;
+  meshNodeSetBind: (node: NativeHandle, endpoint: string) => void;
+  meshNodeStart: (node: NativeHandle) => void;
+  meshNodeShutdown: (node: NativeHandle, timeoutMs: number) => number;
+  meshNodeDestroy: (node: NativeHandle) => void;
+  meshNodeAddChannelName: (node: NativeHandle, channelName: string) => void;
+  meshNodeSetChannelWeight: (node: NativeHandle, channelName: string, weight: number) => void;
+
+  // --- Peers --------------------------------------------------------------
+  meshNodeConnectPeer: (node: NativeHandle, options: MeshConnectPeerOptions) => bigint;
+  meshNodeRemovePeerConnection: (node: NativeHandle, connectionIntentId: bigint) => void;
+  meshNodeDisconnectPeer: (
+    node: NativeHandle,
+    peerRid: Buffer,
+    lifecycleGeneration: bigint
+  ) => void;
+
+  // --- Node / channel messaging ------------------------------------------
+  meshNodeSendToNode: (
+    node: NativeHandle,
+    targetRid: Buffer,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  meshNodeRequestToNode: (
+    node: NativeHandle,
+    targetRid: Buffer,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  meshNodeSendToChannel: (
+    node: NativeHandle,
+    channelName: string,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  meshNodeRequestToChannel: (
+    node: NativeHandle,
+    channelName: string,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+
+  // --- Options / introspection -------------------------------------------
+  meshNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
+  meshNodeGetOption: (node: NativeHandle, option: number) => Buffer;
+  meshNodeStatus: (node: NativeHandle) => MeshNodeStatusRaw;
+  meshNodePeers: (node: NativeHandle) => MeshPeerEntryRaw[];
+  meshNodePeerChannels: (
+    node: NativeHandle,
+    peerRid: Buffer,
+    lifecycleGeneration: bigint
+  ) => MeshPeerChannelsRaw;
+
+  // --- Publisher ----------------------------------------------------------
+  meshNodePublisherNew: (node: NativeHandle) => NativeHandle;
+  meshNodePublisherPublish: (
+    publisher: NativeHandle,
+    channelName: string,
+    topic: string,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => MeshPublishDetailRaw;
+  meshNodePublisherSetOption: (publisher: NativeHandle, option: number, value: Buffer) => void;
+  meshNodePublisherGetOption: (publisher: NativeHandle, option: number) => Buffer;
+  meshNodePublisherDestroy: (publisher: NativeHandle) => void;
+
+  // --- Pull dispatch ------------------------------------------------------
+  meshNodeSetReadyHandler: (node: NativeHandle, handler: NativeReadyHandler) => void;
+  meshReadyBatchNew: (capacity: number) => NativeHandle;
+  meshReadyBatchReset: (batch: NativeHandle) => void;
+  meshReadyBatchDestroy: (batch: NativeHandle) => void;
+  meshNodeDrainReady: (
+    node: NativeHandle,
+    domains: number,
+    batch: NativeHandle,
+    flags: number
+  ) => MeshDrainReadyRaw;
+  meshReadyBatchTakeClaim: (batch: NativeHandle, index: number) => NativeHandle;
+  meshClaimRelease: (claim: NativeHandle) => void;
+  meshReceiveBatchNew: (
+    messageCapacity: number,
+    partCapacity: number,
+    byteCapacity: number
+  ) => NativeHandle;
+  meshReceiveBatchReset: (batch: NativeHandle) => void;
+  meshReceiveBatchDestroy: (batch: NativeHandle) => void;
+  meshClaimRecvBatch: (
+    claim: NativeHandle,
+    batch: NativeHandle,
+    flags: number
+  ) => MeshClaimRecvRaw;
+  meshReply: (replyToken: Buffer, parts: NativeParts, flags: number) => number;
+
+  // --- Spot ---------------------------------------------------------------
+  spotNew: (node: NativeHandle) => NativeHandle;
+  meshNodeEntrySpot: (node: NativeHandle) => NativeHandle;
+  meshNodeSpotLookup: (node: NativeHandle, spotRid: Buffer) => NativeHandle | null;
+  meshNodeSpotGetOrNew: (node: NativeHandle, spotRid: Buffer) => SpotGetOrNewRaw;
+  spotDestroy: (spot: NativeHandle) => void;
+  spotStatus: (spot: NativeHandle) => SpotStatusRaw;
+  spotSendToChannel: (
+    spot: NativeHandle,
+    channelName: string,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  spotRequestToChannel: (
+    spot: NativeHandle,
+    channelName: string,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  spotSendToSpot: (
+    spot: NativeHandle,
+    targetNodeRid: Buffer,
+    targetSpotRid: Buffer,
+    targetSpotGeneration: bigint,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  spotRequestToSpot: (
+    spot: NativeHandle,
+    targetNodeRid: Buffer,
+    targetSpotRid: Buffer,
+    targetSpotGeneration: bigint,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  spotPublish: (
+    spot: NativeHandle,
+    channelName: string,
+    topic: string,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => MeshPublishDetailRaw;
+  spotSetPublishOption: (spot: NativeHandle, option: number, value: Buffer) => void;
+  spotGetPublishOption: (spot: NativeHandle, option: number) => Buffer;
+  spotSetSubscription: (
+    spot: NativeHandle,
+    channelName: string,
+    topicFilter: string,
+    kind: number
+  ) => void;
+  spotUnsetSubscription: (
+    spot: NativeHandle,
+    channelName: string,
+    topicFilter: string,
+    kind: number
+  ) => void;
+
+  // --- Actor --------------------------------------------------------------
+  meshNodeActorNew: (
+    node: NativeHandle,
+    actorId: string,
+    creationParts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => ActorRefRaw;
+  meshNodeActorLookup: (node: NativeHandle, actorId: string) => ActorLocationRaw;
+  meshNodeActorLookupRemote: (
     node: NativeHandle,
     targetNodeRid: Buffer,
     actorId: string,
-    callback: NativeActorLookupCallback,
     timeoutMs: number
-  ) => void;
-  spotActorJoinRecv: (spot: NativeHandle, flags: number) => SpotActorJoinRecvRaw | null;
-  spotActorJoinReply: (
-    spot: NativeHandle,
-    info: Record<string, unknown>,
-    joinResultCode: number,
-    parts: unknown
-  ) => void;
-  spotActors: (spot: NativeHandle) => ActorRefRaw[];
-  spotDestroy: (spot: NativeHandle) => void;
-  spotDispatchEventHandler: (
-    spot: NativeHandle,
-    node: NativeHandle,
-    handler: (event: SpotDispatchRaw) => void
-  ) => void;
-  spotGetOption: (spot: NativeHandle, option: number) => Buffer;
-  spotNew: (node: NativeHandle) => NativeHandle;
-  spotNodeActorCloseBoundSession: (
+  ) => MeshOperationIdRaw;
+  meshNodeActorDestroy: (
     node: NativeHandle,
     actor: ActorRefRaw,
     timeoutMs: number
-  ) => void;
-  spotNodeActorDestroy: (
+  ) => MeshOperationIdRaw;
+  meshNodeActorJoinSpot: (
     node: NativeHandle,
     actor: ActorRefRaw,
-    callbackOrTimeout: NativeRequestCallback | number,
-    timeoutMs?: number
-  ) => void;
-  spotNodeActorJoinEntrySpot: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    destNodeRid: Buffer,
-    parts: unknown,
-    callback: NativeActorEntryJoinCallback,
-    flags: number,
-    timeoutMs: number
-  ) => void;
-  spotNodeActorJoinSpot: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    parts: unknown,
-    callback: NativeActorJoinCallback,
-    flags: number,
-    timeoutMs: number
-  ) => void;
-  spotNodeActorLeaveSpot: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    currentSpotRid: Buffer,
-    callback: NativeRequestCallback,
-    timeoutMs: number
-  ) => void;
-  spotNodeActorLookup: (node: NativeHandle, actorId: string) => ActorRefRaw;
-  spotNodeActorNew: (node: NativeHandle, actorId: string, request?: unknown) => ActorRefRaw;
-  spotNodeActorRecvPart: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    flags: number
-  ) => ActorPartRaw | null;
-  spotNodeActorSendBoundSessionMsg: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    parts: unknown,
-    flags: number
-  ) => void;
-  spotNodeSendToActor: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    parts: unknown,
-    flags: number,
-    timeoutMs: number,
-    callback?: NativeRequestCallback
-  ) => void;
-  spotNodeRequestToActor: (
-    node: NativeHandle,
-    actor: ActorRefRaw,
-    parts: unknown,
-    callback: NativeRequestCallback,
-    flags: number,
-    timeoutMs: number
-  ) => void;
-  spotNodeActorReplyNoBind: (
-    node: NativeHandle,
-    info: unknown,
-    parts: unknown,
-    result: number
-  ) => void;
-  spotNodeActors: (node: NativeHandle) => SpotNodeActorEntryRaw[];
-  spotRouteBridgeNew: (ctx: NativeHandle, node: NativeHandle) => NativeHandle;
-  spotRouteBridgeClose: (bridge: NativeHandle) => void;
-  spotRouteBridgeAttachRouterChannel: (
-    bridge: NativeHandle,
-    channelName: string,
-    router: NativeHandle,
-    capabilities: number
-  ) => void;
-  spotRouteBridgeSend: (
-    bridge: NativeHandle,
-    channelName: string,
     targetNodeRid: Buffer,
     targetSpotRid: Buffer,
-    parts: unknown,
-    flags: number
-  ) => boolean;
-  spotRouteBridgeRequest: (
-    bridge: NativeHandle,
-    channelName: string,
+    targetSpotGeneration: bigint,
+    creationParts: NativeParts,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  meshNodeActorJoinEntrySpot: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
     targetNodeRid: Buffer,
-    targetSpotRid: Buffer,
-    parts: unknown,
-    callback: NativeRequestCallback,
-    flags: number,
+    creationParts: NativeParts,
     timeoutMs: number
-  ) => void;
-  spotRouteBridgeHandleRouterReceived: (
-    bridge: NativeHandle,
-    channelName: string,
-    sourceNodeRid: Buffer,
-    requestSeq: bigint,
-    parts: unknown
-  ) => boolean;
-  spotRouteBridgeDrain: (bridge: NativeHandle) => number;
-  spotNodePublisherNew: (node: NativeHandle) => NativeHandle;
-  spotNodePublisherPublish: (
-    publisher: NativeHandle,
-    topic: string,
-    parts: unknown,
-    flags: number
-  ) => boolean;
-  spotNodePublisherClose: (publisher: NativeHandle) => void;
-  spotNodeConnectPeerPub: (node: NativeHandle, endpoint: string) => void;
-  spotNodeConnectPeerRidPub: (
+  ) => MeshOperationIdRaw;
+  meshNodeActorLeaveSpot: (
     node: NativeHandle,
-    targetNodeRid: Buffer,
-    endpoint: string
-  ) => void;
-  spotNodeDestroy: (node: NativeHandle) => void;
-  spotNodeDisconnectPeerPub: (node: NativeHandle, endpoint: string) => void;
-  spotNodeDisconnectPeerRidPub: (node: NativeHandle, targetNodeRid: Buffer) => void;
-  spotNodeEntrySpot: (node: NativeHandle) => NativeHandle;
-  spotNodeGetOption: (node: NativeHandle, option: number) => Buffer;
-  spotNodeInternalSockets: (node: NativeHandle, filter?: unknown) => SpotNodeSocketEntryRaw[];
-  spotNodeNew: (ctx: NativeHandle, options: { mode: number }) => NativeHandle;
-  spotNodePeers: (node: NativeHandle) => SpotNodePeerEntryRaw[];
-  spotNodePeersQuery: (node: NativeHandle, filter?: unknown) => SpotNodePeerEntryRaw[];
-  spotNodeSetOption: (node: NativeHandle, option: number, value: Buffer) => void;
-  spotNodeSetPubBind: (node: NativeHandle, endpoint: string) => void;
-  spotNodeSetPubRoutingId: (node: NativeHandle, routingId: Buffer) => void;
-  spotNodeSetRouterBind: (node: NativeHandle, endpoint: string) => void;
-  spotNodeSetSubRoutingId: (node: NativeHandle, routingId: Buffer) => void;
-  spotNodeSetTlsClient: (
-    node: NativeHandle,
-    ca: string,
-    hostname: string,
-    trustSystem: number
-  ) => void;
-  spotNodeSetTlsServer: (
-    node: NativeHandle,
-    cert: string,
-    key: string,
-    requireClientCert: number
-  ) => void;
-  spotNodeSpotGetOrNew: (
-    node: NativeHandle,
-    spotRid: Buffer
-  ) => SpotNodeSpotGetOrNewRaw;
-  spotNodeSpotLookup: (node: NativeHandle, spotRid: Buffer) => NativeHandle | null;
-  spotNodeSpots: (node: NativeHandle) => SpotNodeSpotEntryRaw[];
-  spotNodeStatus: (node: NativeHandle) => SpotNodeStatusRaw;
-  spotNodeSubjects: (node: NativeHandle, filter?: unknown) => SpotNodeSubjectEntryRaw[];
-  spotPublish: (
-    spot: NativeHandle,
-    topic: string,
-    parts: unknown,
-    flags: number
-  ) => void;
-  spotRecv: (spot: NativeHandle, flags: number) => NativeTopicMessageRaw | null;
-  spotRecvActorLifecycle: (spot: NativeHandle, flags: number) => SpotActorLifecycleRaw | null;
-  spotRecvNoWait: (spot: NativeHandle) => NativeTopicMessageRaw | null;
-  spotRecvRouted: (spot: NativeHandle, flags: number) => SpotRoutedRaw | null;
-  spotRecvRoutedNoWait: (spot: NativeHandle) => SpotRoutedRaw | null;
-  spotReplyRouter: (
-    spot: NativeHandle,
-    peerRid: Buffer,
-    requestSeq: bigint,
-    parts: unknown
-  ) => void;
-  spotDrainReply: (spot: NativeHandle) => number;
-  spotDrainChannelReply: (spot: NativeHandle, subjectHandle: bigint) => number;
-  spotReplySpot: (
-    spot: NativeHandle,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    requestSeq: bigint,
-    parts: unknown
-  ) => void;
-  spotRequestChannel: (
-    spot: NativeHandle,
-    channelName: string,
-    parts: unknown,
-    callback: NativeRequestCallback,
-    flags: number,
+    actor: ActorRefRaw,
+    expectedMembershipEpoch: bigint,
     timeoutMs: number
-  ) => void;
-  spotRequestRouter: (
-    spot: NativeHandle,
-    peerRid: Buffer,
-    parts: unknown,
-    callback: NativeRequestCallback,
-    flags: number,
-    timeoutMs: number
-  ) => void;
-  spotRequestSpot: (
-    spot: NativeHandle,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    parts: unknown,
-    callback: NativeRequestCallback,
-    flags: number,
-    timeoutMs: number
-  ) => void;
-  spotSendChannel: (
-    spot: NativeHandle,
-    channelName: string,
-    parts: unknown,
+  ) => MeshOperationIdRaw;
+  actorJoinReply: (
+    replyToken: Buffer,
+    joinResult: number,
+    parts: NativeParts,
     flags: number
-  ) => void;
-  spotSendReadyHandler: (spot: NativeHandle, handler: unknown) => void;
-  spotSendToSpot: (
-    spot: NativeHandle,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    parts: unknown,
-    flags: number
-  ) => void;
-  spotSendToSpotNoWaitResult: (
-    spot: NativeHandle,
-    destNodeRid: Buffer,
-    destSpotRid: Buffer,
-    parts: unknown
   ) => number;
-  spotSetOption: (spot: NativeHandle, option: number, value: Buffer) => void;
-  spotSubscribe: (spot: NativeHandle, topic: string) => void;
-  spotUnsubscribe: (spot: NativeHandle, topic: string) => void;
+  meshNodeSendToActor: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  meshNodeRequestToActor: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  actorSendToActor: (
+    node: NativeHandle,
+    sourceActor: ActorRefRaw,
+    targetActor: ActorRefRaw,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  actorRequestToActor: (
+    node: NativeHandle,
+    sourceActor: ActorRefRaw,
+    targetActor: ActorRefRaw,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+
+  // --- Stream session service --------------------------------------------
+  streamSessionServiceNew: (node: NativeHandle, stream: NativeHandle) => NativeHandle;
+  streamSessionServiceStart: (service: NativeHandle) => void;
+  streamSessionServiceShutdown: (service: NativeHandle, timeoutMs: number) => number;
+  streamSessionServiceDestroy: (service: NativeHandle) => void;
+  streamSessionServiceStatus: (service: NativeHandle) => StreamSessionStatusRaw;
+  streamSessionBindActor: (
+    service: NativeHandle,
+    sessionRid: Buffer,
+    actor: ActorRefRaw,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  streamSessionUnbindActor: (
+    service: NativeHandle,
+    sessionRid: Buffer,
+    actor: ActorRefRaw,
+    expectedBindingGeneration: bigint,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  streamSessionBindings: (
+    service: NativeHandle,
+    sessionRid: Buffer
+  ) => StreamSessionBindingRaw[];
+  streamSessionSendToActor: (
+    service: NativeHandle,
+    sessionRid: Buffer,
+    actor: ActorRefRaw,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  streamSessionRequestToActor: (
+    service: NativeHandle,
+    sessionRid: Buffer,
+    actor: ActorRefRaw,
+    metadata: Buffer | null,
+    parts: NativeParts,
+    flags: number,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
+  meshNodeActorSendBoundSession: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    parts: NativeParts,
+    flags: number
+  ) => number;
+  meshNodeActorCloseBoundSession: (
+    node: NativeHandle,
+    actor: ActorRefRaw,
+    expectedBindingGeneration: bigint,
+    timeoutMs: number
+  ) => MeshOperationIdRaw;
 }

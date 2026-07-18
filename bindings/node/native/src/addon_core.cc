@@ -273,7 +273,6 @@ int router_recv_parts (void *router,
                        int32_t flags)
 {
     const zlink_routing_id_t *peer_rid_ptr = NULL;
-    const zlink_routing_id_t *spot_rid_ptr = NULL;
     zlink_msg_t first_part;
     if (zlink_msg_init (&first_part) != 0)
         return ZLINK_RECV_INTERNAL_ERROR;
@@ -286,7 +285,7 @@ int router_recv_parts (void *router,
     if (parts)
         parts->clear ();
 
-    int rc = zlink_router_recv_part (router, &peer_rid_ptr, &spot_rid_ptr, request_seq, &first_part,
+    int rc = zlink_router_recv_part (router, &peer_rid_ptr, request_seq, &first_part,
                                      &has_more, static_cast<zlink_recv_flags_t> (flags));
     if (rc != ZLINK_RECV_OK) {
         zlink_msg_close (&first_part);
@@ -294,7 +293,7 @@ int router_recv_parts (void *router,
     }
 
     copy_routing_id (peer_rid, peer_rid_ptr);
-    copy_routing_id (spot_rid, spot_rid_ptr);
+    copy_routing_id (spot_rid, NULL);
     if (!parts) {
         zlink_msg_close (&first_part);
         errno = EFAULT;
@@ -308,7 +307,6 @@ int router_recv_parts (void *router,
     }
     while (has_more) {
         const zlink_routing_id_t *next_peer_rid = NULL;
-        const zlink_routing_id_t *next_spot_rid = NULL;
         uint64_t next_request_seq = 0;
         zlink_msg_t next_part;
         if (zlink_msg_init (&next_part) != 0) {
@@ -317,7 +315,7 @@ int router_recv_parts (void *router,
             return ZLINK_RECV_INTERNAL_ERROR;
         }
         zlink_part_flag_t more = ZLINK_PART_FINAL;
-        rc = zlink_router_recv_part (router, &next_peer_rid, &next_spot_rid, &next_request_seq,
+        rc = zlink_router_recv_part (router, &next_peer_rid, &next_request_seq,
                                      &next_part, &more, ZLINK_RECV_FLAGS_DONTWAIT);
         if (rc != ZLINK_RECV_OK) {
             zlink_msg_close (&next_part);

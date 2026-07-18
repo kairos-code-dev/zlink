@@ -7,10 +7,7 @@
         "native/src/addon_core.cc",
         "native/src/addon_core_options.cc",
         "native/src/addon_exports.cc",
-        "native/src/addon_spot_actors.cc",
-        "native/src/addon_spot_actor_values.cc",
-        "native/src/addon_spot.cc",
-        "native/src/addon_spot_node_snapshots.cc",
+        "native/src/addon_mesh_service.cc",
         "native/src/addon_spot_request_callbacks.cc"
       ],
       "include_dirs": [ "../../core/include" ],

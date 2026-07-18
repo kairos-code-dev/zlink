@@ -31,7 +31,7 @@ import {
   RuntimeXSubSocket,
 } from './zlink/runtime/sockets';
 import {
-  RuntimeSpotNode,
+  RuntimeMeshNode,
 } from './zlink/runtime/service';
 import {
   asPublicContract,
@@ -48,8 +48,8 @@ import type {
   PollEvents,
   PubSocket,
   RouterSocket,
+  MeshNode,
   Spot,
-  SpotNode,
   Stopwatch,
   StreamSocket,
   SubSocket,
@@ -58,7 +58,7 @@ import type {
   XPubSocket,
   XSubSocket,
 } from './zlink/contracts';
-import type { BaseSocket, Message, SpotNodeModeValue } from './zlink/contracts';
+import type { BaseSocket, Message } from './zlink/contracts';
 
 export function createContext(): Context {
   return asPublicContract<Context>(new RuntimeContext());
@@ -96,8 +96,11 @@ export function createStreamSocket(ctx: Context): StreamSocket {
   return asPublicContract<StreamSocket>(new RuntimeStreamSocket(asRuntimeContext(ctx)));
 }
 
-export function createSpotNode(ctx: Context, mode?: SpotNodeModeValue): SpotNode {
-  return asPublicContract<SpotNode>(new RuntimeSpotNode(asRuntimeContext(ctx), mode));
+export function createMeshNode(
+  ctx: Context,
+  options?: { meshName?: string; trustProfile?: string }
+): MeshNode {
+  return asPublicContract<MeshNode>(new RuntimeMeshNode(asRuntimeContext(ctx), options));
 }
 
 export function createPoller(): Poller {

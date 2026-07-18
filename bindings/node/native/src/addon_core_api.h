@@ -60,9 +60,6 @@ napi_value router_request (napi_env env, napi_callback_info info);
 napi_value router_reply (napi_env env, napi_callback_info info);
 napi_value router_recv_message (napi_env env, napi_callback_info info);
 napi_value router_try_recv_message (napi_env env, napi_callback_info info);
-napi_value router_spot_send (napi_env env, napi_callback_info info);
-napi_value router_spot_request (napi_env env, napi_callback_info info);
-napi_value router_spot_reply (napi_env env, napi_callback_info info);
 
 napi_value monitor_open (napi_env env, napi_callback_info info);
 napi_value monitor_handler (napi_env env, napi_callback_info info);

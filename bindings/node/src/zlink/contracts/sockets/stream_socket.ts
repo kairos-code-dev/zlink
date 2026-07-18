@@ -3,7 +3,7 @@
 import type { RoutingId } from '../core';
 import type { Received } from '../messaging';
 import type { SendOperation } from '../messaging';
-import type { ActorBindOperation, ActorRef, ActorUnbindOperation, StreamPacketHandler } from '../service';
+import type { StreamPacketHandler } from '../service';
 import type { RecvFlags } from './socket_constants';
 import type { StreamSocketOptions } from './socket_options';
 import type { Socket } from './socket';
@@ -39,12 +39,4 @@ export interface StreamSocket extends Socket {
   getRoutingId(): RoutingId;
   /** Disconnect the peer identified by `routingId`. */
   disconnectRid(routingId: RoutingId): void;
-  /** Bind `actor` to the session `sessionRid`; submit the returned operation to apply the binding. */
-  bindActor(sessionRid: RoutingId, actor: ActorRef): ActorBindOperation;
-  /** Remove the binding of `actorId` from the session `sessionRid`; submit the returned operation to apply it. */
-  unbindActor(sessionRid: RoutingId, actorId: string): ActorUnbindOperation;
-  /** Begin a send addressed to the bound actor `actorId` on session `sessionRid`; parts are consumed on a successful submit. */
-  sendBoundActor(sessionRid: RoutingId, actorId: string): SendOperation;
-  /** Return the actors currently bound to the session `sessionRid`. */
-  boundActors(sessionRid: RoutingId): ActorRef[];
 }

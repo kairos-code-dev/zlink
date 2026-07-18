@@ -28,19 +28,6 @@ void request_reply_callback_trampoline (zlink_request_result_t errnum,
                                         size_t part_count,
                                         void *userdata);
 
-void actor_join_callback_trampoline (const zlink_actor_join_result_t *result,
-                                     zlink_msg_t *parts,
-                                     size_t part_count,
-                                     void *userdata);
-
-void actor_join_entry_spot_callback_trampoline (
-  const zlink_actor_join_entry_spot_result_t *result,
-  zlink_msg_t *parts,
-  size_t part_count,
-  void *userdata);
-
-void actor_lookup_callback_trampoline (const zlink_actor_lookup_result_t *result, void *userdata);
-
 void sync_request_callback (zlink_request_result_t result,
                             zlink_msg_t *parts,
                             size_t part_count,

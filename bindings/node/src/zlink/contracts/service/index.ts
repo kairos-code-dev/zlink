@@ -1,68 +1,54 @@
 // SPDX-License-Identifier: MPL-2.0
 
+// Shared handler + utility types the raw socket layer depends on, plus the
+// re-exported fluent messaging operation contracts (via shared.ts).
+export type * from './shared';
+
+// Pull-dispatch value types and batch/claim/record contracts.
 export {
-  SpotDispatchEvent,
-  SpotDispatchSubjectKind,
-  SpotActorLifecycleEventKind,
-  SpotKind,
-  SpotNodeMode,
-  SpotNodeSocketOwner,
-  SpotNodeState,
-  SpotPeerKind,
-  SpotPeerSource,
-  SpotPeerState,
-  SpotRole,
-} from './spot/spot_models';
+  ReadyOwnerKind,
+  ReceiveKind,
+  OperationKind
+} from './dispatch';
 export type {
-  SpotDispatchEvent as SpotDispatchEventValue,
-  SpotDispatchSubjectKind as SpotDispatchSubjectKindValue,
-  SpotActorLifecycleEventKind as SpotActorLifecycleEventKindValue,
-  SpotKindValue,
-  SpotNodeModeValue,
-  SpotNodeSocketOwnerValue,
-  SpotNodeStateValue,
-  SpotPeerKindValue,
-  SpotPeerSourceValue,
-  SpotPeerStateValue,
-  SpotRoleValue,
-} from './spot/spot_models';
-export type { Actor } from './spot/actor';
-export type { Spot } from './spot/spot';
-export type { SpotNode } from './spot/spot_node';
-export {
-  SpotRouteBridgeEndpointCapabilities,
-  type SpotNodePublisher,
-  type SpotRouteBridge,
-  type SpotRouteBridgeEndpointCapabilitiesValue,
-  type SpotRouteBridgeEndpointOptions,
-} from './spot/spot_route_bridge';
-export type {
-  SocketSendReadyHandler,
-  StreamPacketHandler,
-  SocketMonitorHandler,
-  SpotSendReadyHandler,
+  ReadyOwnerKindValue,
+  ReceiveKindValue,
+  OperationKindValue,
+  MeshOperationId,
   ActorRef,
-  ActorRoute,
-  ActorRecvInfo,
-  ActorJoinInfo,
-  ActorPart,
-  ActorJoinRequest,
-  ActorJoinResult,
-  ActorJoinEntrySpotResult,
-  ActorLookupResult,
-  SpotNodePeerEntry,
-  SpotNodePeerFilter,
-  SpotNodeSocketEntry,
-  SpotNodeSocketFilter,
-  SpotNodeStatus,
-  SpotNodeSubjectEntry,
-  SpotNodeSubjectFilter,
-  SpotActorLifecycleInfo,
-  SpotActorLifecycleEvent,
-  SpotNodeSpotEntry,
-  SpotNodeActorEntry,
-  SpotDispatchInfo,
-  SpotDispatchEventHandler,
-  SubscriptionEntry,
-} from './spot/spot_models';
-export type * from './spot/spot_operations';
+  ActorLocation,
+  ReadyRecord,
+  ReceiveRequirements,
+  ReceiveRecord,
+  DrainReadyResult,
+  ClaimReceiveResult,
+  ReadyBatch,
+  Claim,
+  ReceiveBatch
+} from './dispatch';
+
+// Mesh node.
+export { MeshNodeState } from './mesh_node';
+export type {
+  MeshNodeStateValue,
+  MeshNode,
+  MeshNodeStatus,
+  MeshPeerEntry,
+  PeerChannels,
+  ConnectPeerOptions,
+  GetOrCreateSpotResult
+} from './mesh_node';
+
+// Spot.
+export { SpotKind, SubscriptionKind } from './spot';
+export type { SpotKindValue, SubscriptionKindValue, Spot, SpotStatus } from './spot';
+
+// Publisher.
+export type { Publisher, MeshPublishDetail } from './publisher';
+
+// Stream session service.
+export type {
+  StreamSessionService,
+  StreamSessionStatus,
+  StreamSessionBinding
+} from './stream_session';

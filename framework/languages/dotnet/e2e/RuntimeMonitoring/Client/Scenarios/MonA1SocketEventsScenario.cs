@@ -16,34 +16,32 @@ internal static class MonA1SocketEventsScenario
         var service = await EphemeralService.StartAsync(options, "svc-a1");
         var connected = await WaitAsync(
             observer,
-            ["source=monitor.profile.client", service.ChannelEndpoint, "routing=svc-a1"],
-            [["kind=Connected", "kind=ConnectionReady"]],
+            ["source=monitor.profile", service.ChannelEndpoint, "routing=svc-a1"],
+            [["kind=ConnectionReady"]],
             baseline);
         ZlinkStreamAssert.Ensure(connected.Any(line =>
-                IsSocketEvent(line, service.ChannelEndpoint, "svc-a1")
-                && (line.Contains("kind=Connected", StringComparison.Ordinal)
-                    || line.Contains("kind=ConnectionReady", StringComparison.Ordinal))),
-            "MON-A1 socket connection identity evidence missing.");
+                IsMeshEvent(line, service.ChannelEndpoint, "svc-a1")
+                && line.Contains("kind=ConnectionReady", StringComparison.Ordinal)),
+            "MON-A1 mesh connection identity evidence missing.");
 
         var disconnectBaseline = baseline + connected.Length;
         await service.DisposeAsync();
         var disconnected = await WaitAsync(
             observer,
-            ["source=monitor.profile.client", service.ChannelEndpoint],
-            [["kind=Disconnected", "kind=Closed"]],
+            ["source=monitor.profile", service.ChannelEndpoint],
+            [["kind=Disconnected"]],
             disconnectBaseline);
         ZlinkStreamAssert.Ensure(disconnected.Any(line =>
-                line.Contains("source=monitor.profile.client", StringComparison.Ordinal)
+                line.Contains("source=monitor.profile", StringComparison.Ordinal)
                 && line.Contains($"remote={service.ChannelEndpoint}", StringComparison.Ordinal)
-                && (line.Contains("kind=Disconnected", StringComparison.Ordinal)
-                    || line.Contains("kind=Closed", StringComparison.Ordinal))),
-            "MON-A1 socket disconnect endpoint evidence missing.");
+                && line.Contains("kind=Disconnected", StringComparison.Ordinal)),
+            "MON-A1 mesh disconnect endpoint evidence missing.");
         Console.WriteLine("scenario MON-A1 passed");
     }
 
-    private static bool IsSocketEvent(string line, string endpoint, string rid)
-        => line.Contains("monitor-socket|", StringComparison.Ordinal)
-           && line.Contains("source=monitor.profile.client", StringComparison.Ordinal)
+    private static bool IsMeshEvent(string line, string endpoint, string rid)
+        => line.Contains("monitor-mesh|", StringComparison.Ordinal)
+           && line.Contains("source=monitor.profile", StringComparison.Ordinal)
            && line.Contains($"remote={endpoint}", StringComparison.Ordinal)
            && line.Contains($"routing={rid}", StringComparison.Ordinal);
 

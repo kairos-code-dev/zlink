@@ -36,6 +36,9 @@ internal static class ServiceHostFactory
         builder.Services.AddSingleton(new EvidenceStore(options.EvidenceFile, options.Rid));
         builder.Services.AddSingleton<LocationTopologyTransitionTracker>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSocketEvent>, SocketEventRecorder>();
+        builder.Services.AddScoped<
+            IZLinkRuntimeEventHandler<Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent>,
+            MeshEventRecorder>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkSpotEvent>, SpotEventRecorder>();
         builder.Services.AddScoped<IZLinkRuntimeEventHandler<ZLinkLocationRuntimeEvent>, LocationRuntimeEventRecorder>();
 
@@ -66,8 +69,9 @@ internal static class ServiceHostFactory
         });
         builder.Services.AddZLinkMonitoring(monitor =>
         {
-            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelServerSource);
-            monitor.AddSocketEvents(RuntimeMonitoringNames.ChannelClientSource);
+            // The channel is a RouteMesh in 10.0.0: wire-level identity comes
+            // from the mesh runtime event stream (spec 50), not socket sources.
+            monitor.AddMeshNodeEvents(RuntimeMonitoringNames.Channel);
             monitor.AddSpotEvents(RuntimeMonitoringNames.SpotNode, TimeSpan.FromMilliseconds(100));
 
             if (!string.IsNullOrWhiteSpace(options.RedisEndpoint))

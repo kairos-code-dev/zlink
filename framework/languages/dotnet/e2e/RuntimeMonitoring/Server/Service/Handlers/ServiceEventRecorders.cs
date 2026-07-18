@@ -16,6 +16,57 @@ internal sealed class SocketEventRecorder(EvidenceStore evidence) : IZLinkRuntim
     }
 }
 
+// Mesh runtime events (spec 50) replace the 9.x socket sources for the mesh
+// plane: a peer reaching ready is the wire-level connection identity and a
+// peer leaving is its disconnect. The advertised endpoint comes from the
+// mesh snapshot (events carry rid+generation only) and is cached so the
+// disconnect line still names the endpoint of a gone peer.
+internal sealed class MeshEventRecorder(
+    EvidenceStore evidence,
+    Zlink.Framework.Contracts.Configuration.IZLinkRouteMeshRuntime meshRuntime)
+    : IZLinkRuntimeEventHandler<Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent>
+{
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string>
+        LastKnownEndpoints = new(StringComparer.Ordinal);
+
+    public ValueTask HandleAsync(
+        Zlink.Framework.Contracts.Configuration.ZLinkMeshRuntimeEvent @event,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var peer = @event.PeerRid?.ToString() ?? string.Empty;
+        var endpoint = string.Empty;
+        if (peer.Length > 0)
+        {
+            try
+            {
+                endpoint = meshRuntime.Snapshot(@event.MeshName).Peers
+                    .FirstOrDefault(entry => entry.Rid.ToString() == peer)?.Endpoint ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                // The mesh may be stopping; the cached endpoint still names it.
+            }
+
+            if (endpoint.Length > 0) LastKnownEndpoints[peer] = endpoint;
+            else LastKnownEndpoints.TryGetValue(peer, out endpoint!);
+        }
+
+        var kind = @event.Reason switch
+        {
+            "ready" => "ConnectionReady",
+            "disconnected" => "Disconnected",
+            _ => @event.Identifier == "zlink.runtime.mesh_node.state_changed"
+                ? $"State:{@event.State}"
+                : @event.Reason ?? @event.Identifier
+        };
+        evidence.Add(
+            $"monitor-mesh|source={@event.MeshName}|kind={kind}"
+            + $"|remote={endpoint}|routing={peer}|sequence={@event.Sequence}");
+        return ValueTask.CompletedTask;
+    }
+}
+
 internal sealed class ThrowingSocketEventRecorder(EvidenceStore evidence) : IZLinkRuntimeEventHandler<ZLinkSocketEvent>
 {
     public ValueTask HandleAsync(ZLinkSocketEvent @event, CancellationToken cancellationToken)

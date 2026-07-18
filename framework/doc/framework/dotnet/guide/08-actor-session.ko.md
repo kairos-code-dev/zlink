@@ -61,7 +61,7 @@ sequenceDiagram
 
 ### (B) 통합 — Session + Play (같은 프로세스)
 
-한 `AddZLinkFramework` 안에 StreamNode(session)와 SpotMesh/ActorFactory(play)를 함께 두면, stream의
+한 `AddZLinkFramework` 안에 StreamNode(session)와 RouteMesh/ActorFactory(play)를 함께 두면, stream의
 gateway가 **같은 프로세스의 그 SpotNode로 자동 연결**된다. relay가 프로세스 안에서 끝나
 네트워크를 타지 않는다. (예: **TicTacToe** 샘플)
 

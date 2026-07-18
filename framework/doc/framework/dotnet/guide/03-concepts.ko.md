@@ -168,7 +168,7 @@ graph LR
 ## 5. location — 주소 해석
 
 앱 코드는 가능하면 channel 이름 같은 논리 이름만 알고, 실제 peer 주소(`host:port`)는
-배포가 공유하는 **location store** 가 푼다. 각 서버는 시작할 때 자기 위치(peer row)를
+배포가 공유하는 **location store** 가 푼다. 각 서버는 시작할 때 자기 위치(descriptor row)를
 store에 자동 등록하고, client는 channel 이름만으로 store에서 상대를 찾아 연결한다.
 서버가 늘고 줄면 연결도 따라간다 — 사용법은 [10-location](10-location.ko.md), 계약은
 [공통 스펙](../../spec/server/40-location-runtime.ko.md)이 다룬다.

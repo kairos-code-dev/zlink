@@ -284,7 +284,7 @@ flowchart LR
     LB2["L7 LB / gateway<br/>(HTTP는 그대로)"]:::infra
     Api2["API 서버들 ×N<br/>ASP.NET Core + ZLink<br/>channel client"]:::app
     Dom2["도메인 서버들 ×N<br/>ASP.NET Core + ZLink<br/>SPOT(주문·대화) · STREAM"]:::app
-    Store["location store<br/>(peer rows)"]:::infra
+    Store["location store<br/>(descriptor rows)"]:::infra
 
     Client2 -- "HTTP" --> LB2 --> Api2
     Client2 -- "STREAM 직접 접속" --> Dom2
@@ -396,7 +396,7 @@ flowchart LR
     DB2[("주문 상태 DB")]:::infra
     LOG2[("Kafka log — 남는 역할:<br/>외부 시스템 전파 · replay용 보존")]:::infra
     EXT["정산 · 분석 · 타 팀 시스템<br/>(독립 소비자들)"]:::infra
-    Store["location store<br/>(peer rows)"]:::infra
+    Store["location store<br/>(descriptor rows)"]:::infra
 
     Client2 -- "주문 HTTP" --> LB2 --> Api2
     Api2 -- "owner routing by OrderId (직접)" --> Spot
@@ -723,7 +723,7 @@ flowchart LR
         StreamN["stream node"]:::stream
         ActorG["session relay"]:::actor
     end
-    Store["Location store<br/>(peer rows)"]:::infra
+    Store["Location store<br/>(descriptor rows)"]:::infra
 
     Client -- "1 HTTP 요청" --> HTTP
     HTTP --> ApiC

@@ -65,7 +65,7 @@ builder.Services.AddZLinkFramework(framework =>
 });
 ```
 
-client는 endpoint 없이 참여만 선언한다. 연결 대상은 store의 peer row에서 찾는다.
+client는 endpoint 없이 참여만 선언한다. 연결 대상은 store의 descriptor row에서 찾는다.
 
 ```csharp
 framework.AddClientServerChannel("shop.profile").EnableClient();
@@ -95,12 +95,12 @@ sequenceDiagram
     participant S as profile 서버
     participant ST as location store
     participant C as API 서버 (client)
-    S->>ST: 시작 — peer row + owner lease 기록
+    S->>ST: 시작 — descriptor row + owner lease 기록
     loop HeartbeatInterval(기본 5s)
         S->>ST: lease 갱신
     end
     loop PollingInterval(기본 1s)
-        C->>ST: peer row 조회
+        C->>ST: descriptor row 조회
     end
     C->>S: 새 row 발견 → 연결 생성
     Note over C,S: 이후 메시지는 store를 거치지 않는다

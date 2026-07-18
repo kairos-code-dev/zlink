@@ -524,12 +524,12 @@ endpoint 인자는 startup 설정이다. host 시작 뒤 실행 중인 socket을
 handle이 아니다. **단 하나, 가용성(drain/restore)은 런타임에 바꿀 수 있다 — 아래 참조.**
 
 자동 연결 모드는 peer 목록의 소유권이 location store에 있다. 서버가 새 endpoint로
-새 endpoint로 다시 시작하면 store의 peer row가 갱신되고 client 연결도 갱신된다. 별도 조작이 필요
+새 endpoint로 다시 시작하면 store의 descriptor row가 갱신되고 client 연결도 갱신된다. 별도 조작이 필요
 없다. 수동 연결은 설정을 바꾼 뒤 애플리케이션을 재시작해 다시 적용한다.
 
 ### 운영 drain / restore (런타임)
 
-유지보수·rolling 재시작·scale-in 직전에, 노드를 종료하거나 store의 peer row를 제거하지 않고
+유지보수·rolling 재시작·scale-in 직전에, 노드를 종료하거나 store의 descriptor row를 제거하지 않고
 **새 요청 수신만 멈추고 싶을 때**가 있다. `IZLinkRouteMeshRuntimeOptions`를 주입받아
 MeshName과 ChannelName으로 weight를 변경한다.
 
@@ -589,7 +589,7 @@ app.MapPost("/admin/channels/orders/restore",
 - `Weight = 0`(drain)은 serving socket을 **닫지 않는다**. 이 서버를 새 outbound 후보에서
   빼라는 신호다. 이미 들어온 in-flight 요청은
   끝까지 처리·reply 하고, 그 시점 이후 peer 들이 그 노드를 새 요청 대상에서 뺀다.
-  store의 peer row도 그대로 남는다(graceful drain).
+  store의 descriptor row도 그대로 남는다(graceful drain).
 - `Weight = 100`으로 기본 정상 serving 상태로 복귀한다. `1..99`로 두면 연결된 peer의
   분배 비율을 낮춘다(weighted).
 - 같은 `Weight`를 build-time 초기값으로도 설정한다.

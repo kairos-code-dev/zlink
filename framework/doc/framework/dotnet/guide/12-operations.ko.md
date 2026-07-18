@@ -99,7 +99,7 @@ stateDiagram-v2
 참여해 `StopAsync`에서 자동으로 drain한다. Draining 동안 일어나는 일은 다음 순서로
 고정되어 있다.
 
-1. location store의 peer row에 `Draining` 표시를 켠다. 이 노드는 신규 배치 후보에서
+1. location store의 descriptor row에 `Draining` 표시를 켠다. 이 노드는 신규 배치 후보에서
    빠지지만 **기존 연결은 유지된다**([10-location §2](10-location.ko.md)).
 2. 새 STREAM 연결, 새 SPOT 생성, 새 actor join을 거부한다. 진행 중이던 transfer의
    inbound commit은 받아들인다.

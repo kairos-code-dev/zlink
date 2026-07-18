@@ -208,7 +208,7 @@ events
 ```csharp
 options.AddHandlersFromAssemblyOf<Program>();
 options.ConfigureMetadata().AddForwardedMetadataKey("trace-id");  // 이 key만 다운스트림으로 전달 허용(허용 목록)
-var spot = options.AddSpotMesh("play-spots");
+var spot = options.AddRouteMesh("play-spots");
 spot.AddActorFactory<PlayerActorFactory>("player");
 spot.AddActorTransferAdapter<PlayerActor, PlayerActorTransferAdapter>("player"); // remote 이동 state가 있을 때만 등록
 options.AddLocationStore(new ZLinkRedisLocationStore(r => r
@@ -221,7 +221,7 @@ options.ConfigureDispatch()
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkFrameworkOptions` | framework 최상위 등록 표면. channel/spot/stream node 등록, codec, handler scan, location store, filter와 dispatch 설정을 소유 |
-| `IZLinkSpotNodeBuilder` | SpotNode의 Entry Spot, Spot factory, actor factory와 actor transfer adapter 등록을 소유 |
+| `IZLinkMeshNodeBuilder` | MeshNode의 `Listen`·`ChannelName` membership, Entry Spot, Spot factory, actor factory와 actor transfer adapter 등록을 소유 |
 | `IZLinkMetadataPolicyBuilder` | 어플리케이션 metadata 전달 정책(`AddForwardedMetadataKey(key)`) |
 
 검증: `BuilderContracts.Framework_options_register_the_top_level_runtime_surface`.
@@ -254,7 +254,7 @@ options.ConfigureDispatch()
 | `IZLinkFanoutChannelBuilder` | fanout channel(`EnablePublisher`/`EnableSubscriber`, publish handler) |
 | `IZLinkRouteMeshChannelBuilder` | route mesh channel(`EnableServer`/`EnableClient`, route handler, `SetRoutingId`) |
 | `IZLinkClientServerChannelOptions` / `IZLinkRouteMeshChannelOptions` | 각 channel의 build-time 옵션 묶음(socket/routing 설정 접근) |
-| `IZLinkChannelRuntimeOptions` | **런타임** channel 옵션(DI singleton). `ConfigureServerSocket().Weight`로 drain/restore/weighted 분배([04 §7](05-channel-messaging.ko.md)) |
+| `IZLinkRouteMeshRuntimeOptions` | **런타임** mesh 옵션(DI singleton). `MeshNode(mesh).MaxMessageSize`와 `Channel(mesh, channel).Weight`만 serving 중 변경 가능([12-operations §5](12-operations.ko.md)) |
 
 검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`.
 
@@ -269,42 +269,33 @@ options.ConfigureDispatch()
 }
 
 {
-    var mesh = options.AddSpotMesh("play-mesh");
+    var mesh = options.AddRouteMesh("play-mesh");
 
-    {
-        var spot = mesh;
+    mesh.Listen("tcp://127.0.0.1:5501");                     // MeshNode의 유일한 router 소켓 bind
+    mesh.SetRoutingId(RoutingId.From("spot-router"));        // 이 노드의 routing id
 
-        spot.EnableRouter("tcp://127.0.0.1:5501");                  // router 활성화 후
-        spot.SetRoutingId(RoutingId.From("spot-router"));     // 그 router의 routing id 지정(순서 의존)
+    mesh.ChannelName("play-mesh").SetWeight(100);            // logical membership + select-one 가중치
+    mesh.ConfigureSpotPublisher().SendHighWaterMark = 1024;  // publish 측 전송 옵션
+    mesh.ConfigureRouterSocket().SendHighWaterMark = 512;    // HWM·timeout — startup-only
 
-        spot.EnablePubSub("tcp://0.0.0.0:9000");
-        spot.ConnectPeerPub("tcp://127.0.0.1:5500");
-        spot.ConfigurePubSubPublisher().SendHighWaterMark = 1024;
+    mesh.SetEntrySpotRoutingId(RoutingId.From("entry"));
+    mesh.AddSpotFactory<RoomSpot>();   // user Spot: 요청마다 동적 생성
+    mesh.AddEntrySpot<EntrySpot>();    // Entry Spot: SpotNode 당 단일 진입점
 
-        var api = options.AddClientServerChannel("api");
-        api.EnableClient("tcp://127.0.0.1:5300");
-        api.ConfigureClientSocket().Immediate = true;
-        spot.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
-        spot.AddSpotFactory<RoomSpot>();   // user Spot: 요청마다 동적 생성
-        spot.AddEntrySpot<EntrySpot>();    // Entry Spot: SpotNode 당 단일 진입점
-    }
-
-    {
-        var spot = mesh;
-        spot.EnableRouter("tcp://127.0.0.1:5601");
-        spot.ConfigureRouterRouting().RoutingId = RoutingId.From("session-gateway");
-    }
+    mesh.PeerConnections.Connect(     // store 없는 수동 peering (store가 있으면 자동)
+        RoutingId.From("play-b"), "tcp://127.0.0.1:5601");
 }
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkStreamNodeBuilder` | stream node(`Bind`, `SetTlsServer`, `RegisterSession<TSession>`) — 스트림 압축은 프레임워크 레벨 `options.ConfigureStreamCompression()` |
+| `IZLinkStreamNodeBuilder` | stream node(`Bind`, `SetTlsServer`, `RegisterSession<TSession>`, `EnableActorDispatch(mesh)`) — 스트림 압축은 프레임워크 레벨 `options.ConfigureStreamCompression()` |
 | `IZLinkStreamCompressionBuilder` | stream payload 압축 설정(`UseDefault()` 등) |
-| `IZLinkSpotNodeBuilder` | spot node 등록 표면(`EnableRouter`, `EnablePubSub`, entry/spot factory) |
-| `IZLinkSpotMeshBuilder` | spot mesh와 단일 spot node(router/pub-sub/factory 설정) |
+| `IZLinkMeshNodeBuilder` | MeshNode 등록 표면(`Listen`·`ChannelName`·routing id·`PeerConnections`·entry/spot/actor factory·drain 정책) |
+| `IZLinkMeshChannelBuilder` | logical membership 표면(`SetWeight`, membership 스코프 send/request handler) |
+| `IZLinkMeshPeerConnections` | 수동 peering 집합(`Connect(endpoint)`·`Connect(rid, endpoint)`·`Disconnect`·`ListConnections`) |
 
-검증: `BuilderContracts.Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments`.
+검증: `BuilderContracts.Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships`.
 
 ### 2.4 연결 집합 — role 별 endpoint 소유
 
@@ -312,15 +303,14 @@ options.ConfigureDispatch()
 client·subscriber·spot router가 서로 다른 연결 집합이다.
 
 ```csharp
-// 각 호출은 role(client / subscriber / spot router …)별 독립 연결 집합을 소유한다 — endpoint가 겹쳐도 공유하지 않는다.
+// 각 호출은 role(client / subscriber / mesh peer …)별 독립 연결 집합을 소유한다 — endpoint가 겹쳐도 공유하지 않는다.
 channel.EnableClient("tcp://127.0.0.1:5001");
 subscriber.EnableSubscriber("tcp://127.0.0.1:5002");
-spot.ConnectRouter("tcp://127.0.0.1:5003");
-spot.ConnectPeerPub("tcp://127.0.0.1:5004");
+mesh.PeerConnections.Connect("tcp://127.0.0.1:5003");
 ```
 
 검증: `BuilderContracts.Channel_builders_expose_only_the_handlers_and_capabilities_valid_for_that_channel`,
-`BuilderContracts.Spot_and_stream_builders_declare_node_local_roles_and_channel_attachments`.
+`BuilderContracts.Mesh_and_stream_builders_declare_node_local_roles_and_channel_memberships`.
 
 ### 2.5 socket · routing · spot · dispatch 설정
 
@@ -335,11 +325,11 @@ route.RequireKnownPeer = true;                       // 미지의 peer 거부(in
 IZLinkOutboundRouteConfig outbound = routed.ConfigureClientRouting();
 outbound.ProbeRouterOnConnect = true;
 
-var node = options.AddSpotMesh("game.stage");
-IZLinkSpotPublisherConfig publisher = node.ConfigurePubSubPublisher();
+var node = options.AddRouteMesh("game.stage");
+IZLinkMeshNodeSocketConfig router = node.ConfigureRouterSocket();  // HWM·timeout은 startup-only
+router.ReceiveHighWaterMark = 64;
+IZLinkSpotPublisherConfig publisher = node.ConfigureSpotPublisher();
 publisher.SendHighWaterMark = 32;
-IZLinkSpotSubscriberConfig subscriber = node.ConfigurePubSubSubscriber();
-subscriber.ReceiveHighWaterMark = 64;
 node.ConfigureEntrySpot().RoutingId = RoutingId.From("entry");
 
 var dispatch = options.ConfigureDispatch();
@@ -702,7 +692,7 @@ ZLinkDrainResult result = await drain.DrainAsync(TimeSpan.FromSeconds(25), ct);
 | `IZLinkDrainControl` | drain 명시 제어(DI singleton) — `IsReady`, `DrainAsync(ct)`(기본 30초), `DrainAsync(deadline, ct)`, `AwaitDrainedAsync(ct)` |
 | `ZLinkDrainResult` | drain terminal result — `Drained` 또는 `ForceStopped(ZLinkDrainForceReason)` |
 | `ZLinkDrainForceReason` | 강제 종료 사유(`DeadlineExceeded`/`DrainingStatePublishFailed`/`OwnerCleanupFailed`/`TeardownFailed`) |
-| `ZLinkSpotDrainPolicy` | spot mesh의 drain 정책(`DrainNatural`/`ReleaseAndRecreate`) — `IZLinkSpotMeshBuilder.UseDrainPolicy(...)`에 넘긴다 |
+| `ZLinkMeshNodeDrainPolicy` | MeshNode의 drain 정책(`DrainNatural`/`ReleaseAndRecreate`) — `IZLinkMeshNodeBuilder.UseDrainPolicy(...)`에 넘긴다 |
 | `ZLinkDrainEvent` / `ZLinkDrainState` | drain 상태 전이 이벤트(`Serving`/`Draining`/`Drained`/`ForceStopping`, `SourceName`=`"drain"`) — `IZLinkRuntimeEventHandler<ZLinkDrainEvent>`로 구독 |
 | `ZLinkFlowOrigin` | 메시지 흐름의 시작 지점(`Inbound`/`Timer`/`Application`/`Lifecycle`) — `ZLinkMessageFlowEvent.FlowOrigin` 필드의 값 |
 
@@ -740,23 +730,21 @@ SpotHandle? actorSpot = await actors.ResolveActorSpotHandleAsync("p-1", ct); // 
 
 // 운영 조회 — 활성 raw row와 상태 (DI 주입)
 var status = await query.GetStatusAsync(ct);                                        // IZLinkLocationRuntimeQuery
-var peers = await query.ListPeerLocationsAsync(new ZLinkPeerLocationFilter(), ct);
+var nodes = await query.ListMeshNodeDescriptorsAsync("game.room", ct);
 var topology = await query.ListTopologyAsync(new ZLinkLocationTopologyFilter(), page, ct);
 var summaries = await query.ListServiceSummariesAsync(new ZLinkLocationServiceSummaryFilter(), ct);
 ```
 
 | 인터페이스 | 역할 |
 |------------|------|
-| `IZLinkLocationStore` | store 5종(peer/spot/actor/route/owner lease)의 통합 계약. `AddLocationStore(instance)`로 등록 |
-| `IZLinkPeerLocationStore` / `IZLinkSpotLocationStore` / `IZLinkActorLocationStore` / `IZLinkRouteLocationStore` | 역할별 store 계약. 사용자 구현체를 역할별로 나눠 등록할 때 사용 |
+| `IZLinkLocationStore` | store 5-role(MeshNode descriptor/spot/actor/owner lease/actor transfer)의 통합 계약 — 한 물리 backend가 전 역할을 제공한다. `AddLocationStore(instance)`로 등록 |
+| `IZLinkMeshNodeLocationStore` / `IZLinkSpotLocationStore` / `IZLinkActorLocationStore` | 역할별 store 계약(update/remove/list·resolve). 통합 계약이 이들을 상속한다 |
 | `IZLinkOwnerLeaseStore` | runtime instance 별 owner lease(생존 신고) 저장 계약 |
-| `IZLinkLocationChangeStampStore` | (선택) kind/mesh 별 change stamp — 변경 번호만 읽어 변경 유무를 싸게 감지하는 최적화 |
-| `IZLinkLocationWatchStore` | (선택) 변경 이벤트 stream — 자동 연결 재계산을 깨우는 최적화. 없으면 polling, 즉 주기적 store 재조회가 기본 경로 |
-| `IZLinkPeerLocationResolver` | 자동 연결이 쓰는 live peer row 목록 조회(`ListLivePeersAsync(filter)`) |
+| `IZLinkActorTransferStore` | Actor transfer authority(participant CAS·transfer token·recovery lease) — location row와 같은 물리 store를 공유해 한 시계로 fencing 한다 |
+| `IZLinkLocationChangeStampStore` | (선택) scope 별 change stamp — 변경 번호만 읽어 변경 유무를 싸게 감지하는 최적화 |
 | `IZLinkSpotHandleResolver` | spot rid → `SpotHandle` 메시징 조회 |
 | `IZLinkActorSpotHandleResolver` | actor id → 그 actor가 있는 spot의 `SpotHandle` |
-| route 단건 조회 | public resolver가 아니라 store SPI/운영 조회 경로에서 처리 |
-| `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 7종 — `GetStatusAsync`, `ListPeerLocationsAsync`, `ListSpotLocationsAsync`, `ListActorLocationsAsync`, `ListRouteLocationsAsync`(페이지네이션), `ListTopologyAsync`(합성 topology 보기), `ListServiceSummariesAsync`(channel 단위 요약) |
+| `IZLinkLocationRuntimeQuery` | 운영/E2E 조회 4종 — `GetStatusAsync`, `ListMeshNodeDescriptorsAsync(mesh)`, `ListTopologyAsync`(합성 topology 보기), `ListServiceSummariesAsync`(channel 단위 요약) |
 
 모든 조회는 store에 도달한다(캐시 없음). 비활성 서버의 row는 owner lease 만료 후
 성공 결과에서 자동 제외된다.
